@@ -1,7 +1,6 @@
 // stdlib/matrix_tests.sun - Tests for matrix.sun (Matrix, SliceRange, views).
-// Replaces the runtime-positive tests of the C++ suite Stdlib_Matrix; the
-// compile-only and use-after-move (compile error) tests stay in
-// tests/stdlib/test_matrix.cpp.
+// The slice operator itself (`x[a:b]` calling __slice__) is tested in
+// tests/operators/test_slicing.cpp.
 
 using std;
 

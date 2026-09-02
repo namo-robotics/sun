@@ -1,7 +1,6 @@
 // stdlib/interpolation_tests.sun - Tests for string interpolation (no single source file).
-// Replaces the runtime-behavior tests of the C++ suite Stdlib_Text_Interpolation;
-// the compile-environment cases (no stdlib, self-declared std.String, no
-// `using std;`) stay in tests/stdlib/text/test_interpolation.cpp.
+// The compile-environment cases (no stdlib, self-declared std.String, no
+// `using std;`) are in tests/modules/test_interpolation.cpp.
 
 using std;
 

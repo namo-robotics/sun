@@ -1,18 +1,19 @@
-// tests/stdlib/text/test_interpolation.cpp - Compile-environment tests for
-// string interpolation. The runtime-behavior tests moved to Sun tests in
-// stdlib/interpolation_tests.sun; what stays here are the cases a Sun test
-// file cannot express: compiling without the stdlib at all, a compilation
-// that declares std.String itself, and a program that never says `using std;`.
+// tests/modules/test_interpolation.cpp - Where an interpolated string's
+// names come from
+//
+// A template literal desugars to std.String and std.HeapAllocator calls
+// (parsing/lowering_pass.cpp), and those names resolve like any other module
+// name: from stdlib.moon without the program writing `using std;`, from
+// sources that declare the classes themselves (the standard library's own
+// situation), and not at all when neither is present (driver.cpp). The
+// runtime behavior of interpolation is tested in
+// stdlib/interpolation_tests.sun.
 
 #include <gtest/gtest.h>
 
-#include <memory>
-#include <string>
-
 #include "driver/execution_utils.h"
 
-TEST(Stdlib_Text_Interpolation, fails_without_stdlib) {
-  // String interpolation requires stdlib for sun::String
+TEST(Modules_Interpolation, fails_without_stdlib) {
   EXPECT_THROW(executeString(R"(
     function main() i64 {
         var x = 1;
@@ -23,10 +24,9 @@ TEST(Stdlib_Text_Interpolation, fails_without_stdlib) {
                SunError);
 }
 
-TEST(Stdlib_Text_Interpolation, allowed_when_sources_declare_sun_string) {
+TEST(Modules_Interpolation, allowed_when_sources_declare_sun_string) {
   // No stdlib.moon: interpolation needs std.String and std.HeapAllocator to
-  // exist, and this compilation declares them itself — the situation the
-  // standard library's own sources are in.
+  // exist, and this compilation declares them itself.
   auto value = executeString(R"(
     public module std {
       public class HeapAllocator {
@@ -56,8 +56,7 @@ TEST(Stdlib_Text_Interpolation, allowed_when_sources_declare_sun_string) {
   EXPECT_EQ(value, 0);
 }
 
-TEST(Stdlib_Text_Interpolation, works_without_using_sun) {
-  // String interpolation should work with just stdlib, no 'using std;' needed
+TEST(Modules_Interpolation, works_without_using_sun) {
   auto value = executeStringWithStdlib(R"(
     function main() i64 {
         var s = `Hello`;

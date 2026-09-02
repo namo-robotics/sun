@@ -1,7 +1,6 @@
 // stdlib/io_tests.sun - Tests for io.sun.
-// Replaces the C++ suites Stdlib_Io_Dir, Stdlib_Io_Paths, Stdlib_Io_Poll,
-// and the std.io File-class half of Stdlib_Io_File. The __file_* intrinsic
-// tests stay in tests/stdlib/io/test_file.cpp.
+// The raw __file_* intrinsics underneath are tested in
+// tests/builtins/test_file_intrinsics.cpp.
 
 using std;
 using std.io;

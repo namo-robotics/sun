@@ -494,6 +494,36 @@ TEST(Lambdas_RefCaptures, ref_conflict_while_captured) {
                                 "Borrow check failed");
 }
 
+// A mutable capture is exclusive: two lambdas cannot both hold one variable
+// by ref while either is alive.
+TEST(Lambdas_RefCaptures, two_lambdas_cannot_both_capture_by_ref) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      function main() i32 {
+          var x: i32 = 0;
+          var f = [ref x]() => void { x = 1; };
+          var g = [ref x]() => void { x = 2; };
+          f();
+          g();
+          return x;
+      }
+    )"),
+                                "Borrow check failed");
+}
+
+// A shared capture and a mutable one of the same variable conflict too.
+TEST(Lambdas_RefCaptures, ref_and_const_ref_captures_of_one_variable_conflict) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      function main() i32 {
+          var x: i32 = 0;
+          var f = [ref x]() => void { x = 1; };
+          var g = [const ref x]() => i32 { return x; };
+          f();
+          return g();
+      }
+    )"),
+                                "Borrow check failed");
+}
+
 // ============================================================================
 // Parser shape
 // ============================================================================

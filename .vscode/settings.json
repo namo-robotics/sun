@@ -43,10 +43,11 @@
             "pattern": "build/tests/sun_tests",
             "cwd": "${workspaceFolder}",
             "parallelizationLimit": 8,
-            // Suite names mirror tests/ on disk (tests/stdlib/collections/
-            // test_vec.cpp defines Stdlib_Collections_Vec), so splitting a
-            // test id into its segments reproduces the directory tree in
-            // the Test Explorer: Stdlib > Collections > Vec > create_empty_vec.
+            // Suite names mirror tests/ on disk (tests/functions/generic/
+            // test_constraints.cpp defines Functions_Generic_Constraints), so
+            // splitting a test id into its segments reproduces the directory
+            // tree in the Test Explorer:
+            // Functions > Generic > Constraints > numeric_accepts_integer.
             //
             // The leading backtick makes splitBy a regex. It splits on '.'
             // (suite/test boundary) and on '_' before a capital - the shape
@@ -84,6 +85,9 @@
         "/workspaces/sun"
     ],
     "sun.lsp_path": "build/sun-lsp",
+    "sun.sun_configs": [
+        "sun-config.json"
+    ],
     // === LLDB (for debugging) ===
     // Wrapper unsets DEBUGINFOD_URLS, which otherwise hangs lldb in the
     // container (unreachable symbol server, no timeout). Absolute path: the

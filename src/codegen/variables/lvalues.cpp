@@ -28,10 +28,21 @@ namespace ops = sun::codegen::ops;
 // (caller decides whether that is an error).
 std::pair<Value*, sun::ClassType*> VariableGenerator::codegenObjectPtr(
     const ExprAST& object) {
+  sun::TypePtr objectType = object.getResolvedType();
+
+  // An element of an array of classes (`items[i].field`): codegen() would
+  // load the whole struct by value, but member access wants the element's
+  // storage, so take its address instead. A class indexed through
+  // __index__ has no address and keeps going through codegen().
+  if (object.getType() == ASTNodeType::INDEX && objectType &&
+      objectType->isClass()) {
+    if (Value* elemPtr = tryCodegenAddress(object)) {
+      return {elemPtr, sun::tryGetType<sun::ClassType>(objectType)};
+    }
+  }
+
   Value* objectPtr = codegen(object);
   if (!objectPtr) return {nullptr, nullptr};
-
-  sun::TypePtr objectType = object.getResolvedType();
 
   // For generic method bodies, 'this' may have a type parameter type; use the
   // specialized state_.frame.currentClass instead

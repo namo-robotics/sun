@@ -1,6 +1,6 @@
 // stdlib/byte_order_tests.sun - Tests for byte_order.sun.
-// Replaces the C++ suite Stdlib_ByteOrder; the bare-intrinsic suite
-// Stdlib_ByteOrder_Intrinsics (_bswap_*) stays in tests/stdlib/test_byte_order.cpp.
+// The bare _bswap_* intrinsics it builds on are tested in
+// tests/builtins/test_intrinsics.cpp.
 
 using std;
 

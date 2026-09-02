@@ -144,6 +144,7 @@ add_library(sun_lib
     ${PROTO_SRCS}
     # Driver: pipeline orchestration (the sun executable is src/driver/main.cpp)
     src/driver/driver.cpp
+    src/driver/depfile.cpp
     src/driver/manifest_processor.cpp
     src/driver/sun_config.cpp
     # Parsing
@@ -379,88 +380,22 @@ target_link_libraries(sun-lsp PRIVATE sun_lib)
 option(SKIP_STDLIB "Skip building the precompiled stdlib.moon" OFF)
 
 if(NOT SKIP_STDLIB)
+    # Only the entrypoints are named here. Which .sun files, bundles, protos
+    # and archives each artifact is built from is decided by the manifests,
+    # so every bundle command below asks the compiler to write a depfile
+    # (--depfile) and hands it to the build tool as DEPFILE: editing any
+    # file a manifest names rebuilds exactly the artifacts that read it.
     set(STDLIB_MOON ${CMAKE_BINARY_DIR}/stdlib.moon)
     set(STDLIB_ENTRYPOINT ${CMAKE_SOURCE_DIR}/stdlib/stdlib.sun)
-    set(STDLIB_SOURCES
-        ${STDLIB_ENTRYPOINT}
-        ${CMAKE_SOURCE_DIR}/stdlib/print.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/allocator.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/unique.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/errors.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/sys.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/option.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/iterator.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/slice.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/contiguous_buffer.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/vec.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/matrix.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/string.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/map.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/linked_list.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/queue.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/thread.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/test.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/shared.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/math.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/byte_order.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/networking.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/io.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/env.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/time.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/process.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/http.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/simple_math.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/proto_wire.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/json.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/bigint.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/target_linux.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/target_darwin.sun
-    )
-
-    # The stdlib's own tests, written in Sun (stdlib/*_tests.sun) and listed
-    # under test_files: in the manifest. They are compiled only into the test
-    # binary below, never into stdlib.moon, so they are dependencies of the
-    # test binary alone.
-    set(STDLIB_TEST_SOURCES
-        ${CMAKE_SOURCE_DIR}/stdlib/fixtures_tests.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/bigint_tests.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/byte_order_tests.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/contiguous_buffer_tests.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/convert_tests.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/env_tests.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/http_tests.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/interpolation_tests.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/io_tests.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/json_tests.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/linked_list_tests.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/map_tests.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/math_tests.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/matrix_tests.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/mutex_tests.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/option_tests.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/process_tests.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/queue_tests.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/shared_tests.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/string_tests.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/thread_tests.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/time_tests.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/udp_tests.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/vec_tests.sun
-    )
 
     # The paths sun-config.json's entrypoints name (relative to the config's
-    # folder, i.e. <source>/build). ctest runs the test binary sequentially:
-    # the runner otherwise starts one thread per test, and the env/cwd tests
-    # want the process to themselves.
+    # folder, i.e. <source>/build). ctest runs the test binaries
+    # sequentially: the runner otherwise starts one thread per test, and the
+    # env/cwd tests want the process to themselves.
     set(STDLIB_TEST_BIN ${CMAKE_BINARY_DIR}/stdlib_tests)
     set(TLS_MOON ${CMAKE_BINARY_DIR}/tls.moon)
     set(TLS_ENTRYPOINT ${CMAKE_SOURCE_DIR}/tls/tls.sun)
-    set(TLS_SOURCES
-        ${TLS_ENTRYPOINT}
-        ${CMAKE_SOURCE_DIR}/tls/openssl.sun
-        ${CMAKE_SOURCE_DIR}/tls/tls_stream.sun
-        ${CMAKE_SOURCE_DIR}/tls/https_client.sun
-    )
+    set(TLS_TEST_BIN ${CMAKE_BINARY_DIR}/tls_tests)
 
     # Static OpenSSL archives for tls.moon (see the manifest's `archives:`),
     # so programs using TLS need no -lssl/-lcrypto and no OpenSSL installed.
@@ -483,33 +418,39 @@ if(NOT SKIP_STDLIB)
     endif()
 
     # The canonical build drives everything from sun-config.json: one
-    # `sun -c -g sun-config.json` builds stdlib.moon, the stdlib test binary
-    # and tls.moon, exactly as a developer running the same command would
-    # get (config entrypoints resolve relative to the config's folder, and
-    # the config cannot skip its tls entrypoint). An out-of-tree build dir
-    # or missing OpenSSL archives fall back to explicit per-artifact
-    # commands.
+    # `sun -c -g sun-config.json` builds stdlib.moon, the stdlib test binary,
+    # tls.moon and the tls test binary, exactly as a developer running the
+    # same command would get (config entrypoints resolve relative to the
+    # config's folder, and the config cannot skip its tls entrypoint). An
+    # out-of-tree build dir or missing OpenSSL archives fall back to explicit
+    # per-artifact commands.
     if(SUN_HAVE_OPENSSL AND CMAKE_BINARY_DIR STREQUAL ${CMAKE_SOURCE_DIR}/build)
         add_custom_command(
-            OUTPUT ${STDLIB_MOON} ${STDLIB_TEST_BIN}_test ${TLS_MOON}
-            COMMAND $<TARGET_FILE:sun> -c -g ${CMAKE_SOURCE_DIR}/sun-config.json
+            OUTPUT ${STDLIB_MOON} ${STDLIB_TEST_BIN}_test ${TLS_MOON} ${TLS_TEST_BIN}_test
+            COMMAND $<TARGET_FILE:sun> -c -g
+                    --depfile ${CMAKE_BINARY_DIR}/sun-config.d
+                    ${CMAKE_SOURCE_DIR}/sun-config.json
             DEPENDS sun ${CMAKE_SOURCE_DIR}/sun-config.json
-                    ${STDLIB_SOURCES} ${STDLIB_TEST_SOURCES} ${TLS_SOURCES}
-                    ${SUN_OPENSSL_DIR}/libssl.a ${SUN_OPENSSL_DIR}/libcrypto.a
+                    ${STDLIB_ENTRYPOINT} ${TLS_ENTRYPOINT}
+            DEPFILE ${CMAKE_BINARY_DIR}/sun-config.d
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            COMMENT "Building sun-config.json products (stdlib.moon, stdlib tests, tls.moon)"
+            COMMENT "Building sun-config.json products (stdlib.moon, stdlib tests, tls.moon, tls tests)"
             VERBATIM
         )
         add_custom_target(stdlib_moon ALL DEPENDS ${STDLIB_MOON})
         add_custom_target(stdlib_sun_tests ALL DEPENDS ${STDLIB_TEST_BIN}_test)
         add_custom_target(tls_moon ALL DEPENDS ${TLS_MOON})
+        add_custom_target(tls_sun_tests ALL DEPENDS ${TLS_TEST_BIN}_test)
     else()
         # Built with -g: debug compiles can step into stdlib; non-debug
         # compiles strip the bundle's debug info at link time.
         add_custom_command(
             OUTPUT ${STDLIB_MOON}
-            COMMAND $<TARGET_FILE:sun> --emit-moon -g -o ${STDLIB_MOON} ${STDLIB_ENTRYPOINT}
-            DEPENDS sun ${STDLIB_SOURCES}
+            COMMAND $<TARGET_FILE:sun> --emit-moon -g
+                    --depfile ${STDLIB_MOON}.d
+                    -o ${STDLIB_MOON} ${STDLIB_ENTRYPOINT}
+            DEPENDS sun ${STDLIB_ENTRYPOINT}
+            DEPFILE ${STDLIB_MOON}.d
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
             COMMENT "Building precompiled stdlib.moon"
             VERBATIM
@@ -518,8 +459,11 @@ if(NOT SKIP_STDLIB)
 
         add_custom_command(
             OUTPUT ${STDLIB_TEST_BIN}_test
-            COMMAND $<TARGET_FILE:sun> -c -g -o ${STDLIB_TEST_BIN} ${STDLIB_ENTRYPOINT}
-            DEPENDS sun ${STDLIB_SOURCES} ${STDLIB_TEST_SOURCES}
+            COMMAND $<TARGET_FILE:sun> -c -g
+                    --depfile ${STDLIB_TEST_BIN}_test.d
+                    -o ${STDLIB_TEST_BIN} ${STDLIB_ENTRYPOINT}
+            DEPENDS sun ${STDLIB_ENTRYPOINT}
+            DEPFILE ${STDLIB_TEST_BIN}_test.d
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
             COMMENT "Building stdlib Sun test binary"
             VERBATIM
@@ -533,14 +477,30 @@ if(NOT SKIP_STDLIB)
                 OUTPUT ${TLS_MOON}
                 COMMAND $<TARGET_FILE:sun> --emit-moon -g
                         --lib-path ${CMAKE_BINARY_DIR}
+                        --depfile ${TLS_MOON}.d
                         -o ${TLS_MOON} ${TLS_ENTRYPOINT}
-                DEPENDS sun ${STDLIB_MOON} ${TLS_SOURCES}
-                        ${SUN_OPENSSL_DIR}/libssl.a ${SUN_OPENSSL_DIR}/libcrypto.a
+                DEPENDS sun ${STDLIB_MOON} ${TLS_ENTRYPOINT}
+                DEPFILE ${TLS_MOON}.d
                 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
                 COMMENT "Building precompiled tls.moon (with static OpenSSL)"
                 VERBATIM
             )
             add_custom_target(tls_moon ALL DEPENDS ${TLS_MOON})
+
+            # A library with tests compiles to just its test binary.
+            add_custom_command(
+                OUTPUT ${TLS_TEST_BIN}_test
+                COMMAND $<TARGET_FILE:sun> -c -g
+                        --lib-path ${CMAKE_BINARY_DIR}
+                        --depfile ${TLS_TEST_BIN}_test.d
+                        -o ${TLS_TEST_BIN} ${TLS_ENTRYPOINT}
+                DEPENDS sun ${STDLIB_MOON} ${TLS_ENTRYPOINT}
+                DEPFILE ${TLS_TEST_BIN}_test.d
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                COMMENT "Building tls Sun test binary"
+                VERBATIM
+            )
+            add_custom_target(tls_sun_tests ALL DEPENDS ${TLS_TEST_BIN}_test)
         else()
             message(STATUS
                 "tls.moon skipped: no static OpenSSL in ${SUN_OPENSSL_DIR}. "
@@ -559,8 +519,11 @@ if(NOT SKIP_STDLIB)
         add_custom_command(
             OUTPUT ${CROSS_MOON}
             COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/${cross_triple}
-            COMMAND $<TARGET_FILE:sun> --emit-moon -g --target ${cross_triple} -o ${CROSS_MOON} ${STDLIB_ENTRYPOINT}
-            DEPENDS sun ${STDLIB_SOURCES}
+            COMMAND $<TARGET_FILE:sun> --emit-moon -g --target ${cross_triple}
+                    --depfile ${CROSS_MOON}.d
+                    -o ${CROSS_MOON} ${STDLIB_ENTRYPOINT}
+            DEPENDS sun ${STDLIB_ENTRYPOINT}
+            DEPFILE ${CROSS_MOON}.d
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
             COMMENT "Building precompiled ${cross_triple}/stdlib.moon"
             VERBATIM

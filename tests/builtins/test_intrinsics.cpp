@@ -1279,3 +1279,93 @@ TEST(Builtins_NoImplicitReturns, conditional_exit_inside_bound_block_is_fine) {
   )");
   EXPECT_EQ(value, 7);
 }
+
+// ============================================================================
+// Bit intrinsics
+// ============================================================================
+
+// The high half of a 64x64 multiply and the leading/trailing zero counts,
+// which std.BigUint is built on (its behavior tests are in
+// stdlib/bigint_tests.sun).
+TEST(Builtins_BitIntrinsics, mul_hi_ctlz_cttz) {
+  auto value = executeString(R"(
+    function main() i32 {
+        var one: u64 = 1;
+        var all_ones: u64 = 0 - one;
+        var top: u64 = one << 63;
+        var two32: u64 = one << 32;
+        // (2^64-1)^2 >> 64 == 2^64-2
+        if (_mul_hi_u64(all_ones, all_ones) != all_ones - 1) { return 1; }
+        if (_mul_hi_u64(top, 4) != 2) { return 2; }
+        if (_mul_hi_u64(two32 * 4, two32) != 4) { return 3; }
+        if (_mul_hi_u64(3, 4) != 0) { return 4; }
+        if (_ctlz_u64(1) != 63) { return 5; }
+        if (_ctlz_u64(top) != 0) { return 6; }
+        if (_ctlz_u64(0) != 64) { return 7; }
+        if (_cttz_u64(8) != 3) { return 8; }
+        if (_cttz_u64(top) != 63) { return 9; }
+        if (_cttz_u64(0) != 64) { return 10; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+// Byte swaps at each width, which std.byte_order is built on (its helper
+// tests are in stdlib/byte_order_tests.sun).
+TEST(Builtins_BitIntrinsics, bswap_u16_u32_u64) {
+  auto value = executeString(R"(
+    function main() i32 {
+        // 0x1234 -> 0x3412
+        var a: u16 = 4660;
+        if (_bswap_u16(a) != 13330) { return 1; }
+        if (_bswap_u16(_bswap_u16(a)) != a) { return 2; }
+        // 0xFF00 -> 0x00FF
+        var b: u16 = 65280;
+        if (_bswap_u16(b) != 255) { return 3; }
+
+        // 0x12345678 -> 0x78563412
+        var c: u32 = 305419896;
+        if (_bswap_u32(c) != 2018915346) { return 4; }
+        if (_bswap_u32(_bswap_u32(c)) != c) { return 5; }
+        if (_bswap_u32(0) != 0) { return 6; }
+
+        // 0x0123456789ABCDEF, checked by reversing it twice
+        var d: u64 = 81985529216486895;
+        if (_bswap_u64(_bswap_u64(d)) != d) { return 7; }
+        // The lowest byte becomes the highest, and back again
+        var one: u64 = 1;
+        if (_bswap_u64(one) != one << 56) { return 8; }
+        var high: u64 = 255;
+        high = high << 56;
+        if (_bswap_u64(high) != 255) { return 9; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+// ============================================================================
+// _spawn
+// ============================================================================
+
+// The thread trampoline has no unwind handling, so anything that could throw
+// across the spawn boundary is rejected up front (analysis.cpp,
+// recordSpawnArgumentConversions). _spawn is only written inside
+// std.thread.spawn, so the program goes through the stdlib.
+TEST(Builtins_SpawnIntrinsic, rejects_a_throwing_function) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(compileStringWithStdlib(R"(
+    using std;
+    using std.thread;
+
+    function explode() void throws IError {
+        throw Error(1, "boom");
+    }
+
+    function main() i32 {
+        var t = spawn(explode);
+        return 0;
+    }
+  )"),
+                                "a spawned function must not throw");
+}

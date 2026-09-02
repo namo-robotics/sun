@@ -87,6 +87,15 @@ jobs:
           test -x build/stdlib_tests_test
           build/stdlib_tests_test --test-sequential
 
+      - name: Run tls Sun tests
+        # The tls bundle's suite (tls/*_tests.sun), AOT-compiled to
+        # build/tls_tests_test alongside tls.moon. Same visible rerun as the
+        # stdlib's; sequential because the handshake tests set SSL_CERT_FILE,
+        # which is process-wide.
+        run: |
+          test -x build/tls_tests_test
+          build/tls_tests_test --test-sequential
+
       - name: Add compiler to PATH
         # Examples call the bare `sun` binary; expose the freshly built one.
         # A separate step so the PATH change takes effect in the next step.
@@ -179,6 +188,13 @@ jobs:
         run: |
           test -x build/stdlib_tests_test
           build/stdlib_tests_test --test-sequential
+
+      - name: Run tls Sun tests
+        # Same as the Linux job, on real macOS hardware. Sequential because
+        # the handshake tests set SSL_CERT_FILE, which is process-wide.
+        run: |
+          test -x build/tls_tests_test
+          build/tls_tests_test --test-sequential
 
       - name: Add compiler to PATH
         run: echo "${GITHUB_WORKSPACE}/build" >> "$GITHUB_PATH"

@@ -432,6 +432,7 @@ static void processMoonImports(
 }
 
 void Driver::collectNativeArchives(const std::set<std::string>& linkedModules) {
+  nativeArchivePaths_ = manifestArchivePaths_;
   if (linkedModules.empty()) return;
 
   std::error_code ec;
@@ -449,8 +450,10 @@ void Driver::collectNativeArchives(const std::set<std::string>& linkedModules) {
     }
   }
 
-  nativeArchivePaths_ = sun::LibraryCache::instance().extractNativeArchives(
+  const auto bundled = sun::LibraryCache::instance().extractNativeArchives(
       linkedModules, archiveTempDir_);
+  nativeArchivePaths_.insert(nativeArchivePaths_.end(), bundled.begin(),
+                             bundled.end());
 }
 
 // Try to load a shared library holding the same code as a bundled archive
@@ -799,10 +802,13 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
     if (!ctx->debugInfoEnabled()) {
       sun::DebugInfoBuilder::stripFromModule(*ctx->mainModule);
     }
-    // A bundle binding a C library carries that library's static archives;
-    // put them on disk so the link (or the JIT) can use them.
-    collectNativeArchives(linker.getLinkedModules());
   }
+  // The archives to link: the manifest's own `archives:` plus those carried
+  // by the bundles just linked (a bundle binding a C library carries that
+  // library's static archives; they go on disk so the link, or the JIT, can
+  // use them).
+  collectNativeArchives(hasMoonImports ? linker.getLinkedModules()
+                                       : std::set<std::string>{});
 
   // All codegen is done (including static init); emit the DI finalization
   // before any module verification.
@@ -1144,6 +1150,7 @@ sun::SunValue Driver::executeFile(const std::string& filename, int argc,
                        resolved.moonImports.end());
     protoFiles.insert(protoFiles.end(), resolved.protoFiles.begin(),
                       resolved.protoFiles.end());
+    manifestArchivePaths_ = std::move(resolved.archiveFiles);
     // test_files are part of the program only when building the test binary
     hasTests_ |= !resolved.testSunFiles.empty();
     if (testHandling_ == TestHandling::Compile) {
@@ -1254,6 +1261,7 @@ void Driver::compileFile(const std::string& filename) {
                        resolved.moonImports.end());
     protoFiles.insert(protoFiles.end(), resolved.protoFiles.begin(),
                       resolved.protoFiles.end());
+    manifestArchivePaths_ = std::move(resolved.archiveFiles);
     // test_files are part of the program only when building the test binary
     hasTests_ |= !resolved.testSunFiles.empty();
     if (testHandling_ == TestHandling::Compile) {
@@ -1428,6 +1436,14 @@ void Driver::compileFiles(const std::vector<std::string>& sourceFiles,
                           const std::vector<sun::MoonImport>& moonImports,
                           const std::vector<std::string>& protoFiles) {
   auto mergedAst = parseAndMergeFiles(sourceFiles, protoFiles, {});
+
+  // What this compilation read, for --depfile: sources, then the bundles
+  // and schemas the manifest named, then the archives it declared.
+  inputFiles_ = sourceFiles;
+  for (const auto& import : moonImports) inputFiles_.push_back(import.path);
+  inputFiles_.insert(inputFiles_.end(), protoFiles.begin(), protoFiles.end());
+  inputFiles_.insert(inputFiles_.end(), manifestArchivePaths_.begin(),
+                     manifestArchivePaths_.end());
 
   // Create a parser for runPipeline (used for precompiled imports lookup)
   auto stubParser = Parser::createStringParser("");

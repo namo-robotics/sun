@@ -1,0 +1,234 @@
+// tls/https_client_tests.sun - Tests for https_client.sun: response parsing
+// without a network, and the handshake against a local `openssl s_server`
+// serving a throwaway certificate. Listed under test_files: in tls.sun, so
+// none of it ships in tls.moon.
+//
+// The handshake tests need the `openssl` command-line tool to mint the
+// certificate and run the server; when it is missing they print SKIP and
+// pass. They also point SSL_CERT_FILE, which is process-wide, at the
+// certificate, so this suite runs with --test-sequential.
+
+using std;
+using std.process;
+using tls;
+
+public module tls {
+  module https_client_tests {
+    // ------------------------------------------------------------------
+    // Response parsing (no network)
+    // ------------------------------------------------------------------
+
+    test_function parses_status_headers_and_body() {
+      var alloc = make_heap_allocator();
+      var raw = String(alloc, "HTTP/1.1 404 Not Found\r\nContent-Length: 5\r\n\r\nhello");
+      var resp = HttpClientResponse(alloc);
+      parse_response(alloc, raw, resp);
+      std.test.assert_eq(resp.status, 404);
+      std.test.assert(resp.body.equals_literal("hello"), "body is the bytes after the headers");
+      std.test.assert(resp.headers.starts_with("Content-Length: 5"), "headers keep the raw header block");
+    }
+
+    test_function decodes_chunked_body() {
+      var alloc = make_heap_allocator();
+      var raw = String(alloc, "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n");
+      var resp = HttpClientResponse(alloc);
+      parse_response(alloc, raw, resp);
+      std.test.assert_eq(resp.status, 200);
+      std.test.assert(resp.body.equals_literal("hello world"), "chunks are joined without their sizes");
+    }
+
+    test_function rejects_response_without_header_terminator() {
+      var alloc = make_heap_allocator();
+      var raw = String(alloc, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n");
+      var resp = HttpClientResponse(alloc);
+      var threw: bool = false;
+      try {
+        parse_response(alloc, raw, resp);
+      } catch (e: IError) {
+        threw = true;
+      }
+      std.test.assert(threw, "a header block with no blank line is not a response");
+    }
+
+    // ------------------------------------------------------------------
+    // Handshake and certificate verification (local TLS server)
+    // ------------------------------------------------------------------
+
+    // Whether the openssl command-line tool is on the path.
+    function have_openssl_tool(alloc: ref HeapAllocator) bool {
+      var cmd = std.process.Command(alloc, "openssl");
+      cmd.add_arg("version");
+      cmd.set_stdout(Stdio.Null);
+      cmd.set_stderr(Stdio.Null);
+      try {
+        return cmd.status() == 0;
+      } catch (e: IError) {
+        return false;
+      }
+    }
+
+    // A self-signed certificate for `common_name` plus an `openssl s_server`
+    // serving it on `port`, both torn down with the fixture. Trusting the
+    // certificate means pointing SSL_CERT_FILE at cert_path.
+    class TlsServer {
+      public var cert_path: String;
+      public var port: i32;
+      var key_path: String;
+      var dir: String;
+      var server: std.process.Child;
+
+      init(allocator: ref HeapAllocator, common_name: static_ptr<u8>, port_: i32) throws IError {
+        var dir = String(allocator, "/tmp/sun_tls_");
+        dir.append(port_);
+        dir.append_char(b'_');
+        dir.append(std.process.pid());
+        std.io.make_dir(dir, 493);
+        var cert = dir.clone(allocator);
+        cert.append_literal("/cert.pem");
+        var key = dir.clone(allocator);
+        key.append_literal("/key.pem");
+
+        var subject = String(allocator, "/CN=");
+        subject.append_literal(common_name);
+        var alt_name = String(allocator, "subjectAltName=DNS:");
+        alt_name.append_literal(common_name);
+        var mint = std.process.Command(allocator, "openssl");
+        mint.add_arg("req");
+        mint.add_arg("-x509");
+        mint.add_arg("-newkey");
+        mint.add_arg("rsa:2048");
+        mint.add_arg("-keyout");
+        mint.add_arg(key);
+        mint.add_arg("-out");
+        mint.add_arg(cert);
+        mint.add_arg("-days");
+        mint.add_arg("1");
+        mint.add_arg("-nodes");
+        mint.add_arg("-subj");
+        mint.add_arg(subject);
+        mint.add_arg("-addext");
+        mint.add_arg(alt_name);
+        mint.set_stdout(Stdio.Null);
+        mint.set_stderr(Stdio.Null);
+        if (mint.status() != 0) {
+          throw Error(1, "could not mint a test certificate");
+        }
+
+        var port_text = String(allocator, "");
+        port_text.append(port_);
+        var serve = std.process.Command(allocator, "openssl");
+        serve.add_arg("s_server");
+        serve.add_arg("-accept");
+        serve.add_arg(port_text);
+        serve.add_arg("-www");
+        serve.add_arg("-cert");
+        serve.add_arg(cert);
+        serve.add_arg("-key");
+        serve.add_arg(key);
+        serve.set_stdin(Stdio.Null);
+        serve.set_stdout(Stdio.Null);
+        serve.set_stderr(Stdio.Null);
+        this.server = serve.start();
+        this.cert_path = cert;
+        this.key_path = key;
+        this.dir = dir;
+        this.port = port_;
+
+        // The server is ready once the port accepts a connection.
+        var pause = std.time.create_duration_millis(100);
+        var attempts: i32 = 0;
+        var ready: bool = false;
+        while (not ready and attempts < 50) {
+          var probe = TcpStream();
+          try {
+            probe.connect_local(port_);
+            ready = true;
+          } catch (e: IError) {
+            std.time.sleep(pause);
+          }
+          probe.close();
+          attempts = attempts + 1;
+        }
+        if (not ready) {
+          this.server.kill(std.process.SIGTERM);
+          throw Error(1, "the local TLS server did not start");
+        }
+      }
+
+      deinit() {
+        // Best-effort teardown; deinit must not throw.
+        try {
+          this.server.kill(std.process.SIGTERM);
+          this.server.wait();
+        } catch (e: IError) {}
+        try {
+          std.io.remove_file(this.cert_path);
+        } catch (e: IError) {}
+        try {
+          std.io.remove_file(this.key_path);
+        } catch (e: IError) {}
+        try {
+          std.io.remove_dir(this.dir);
+        } catch (e: IError) {}
+      }
+    }
+
+    // Fetch "/" over TLS from the local server: the status code, or -1 when
+    // connecting or verification failed.
+    function fetch_status(alloc: ref HeapAllocator, port: i32) i32 {
+      var client = HttpsClient(alloc);
+      var host = String(alloc, "localhost");
+      try {
+        var resp = client.get(host, port, "/");
+        return resp.status;
+      } catch (e: IError) {
+        return -1;
+      }
+    }
+
+    // Trusting the throwaway certificate is what makes verification succeed.
+    test_function connects_to_server_with_trusted_certificate() {
+      var alloc = make_heap_allocator();
+      if (not have_openssl_tool(alloc)) {
+        println("SKIP: openssl tool not available");
+        return;
+      }
+      var server = TlsServer(alloc, "localhost", 18443);
+      var environment = std.env.Env(alloc);
+      environment.set("SSL_CERT_FILE", server.cert_path);
+      var status = fetch_status(alloc, server.port);
+      environment.remove("SSL_CERT_FILE");
+      std.test.assert_eq(status, 200);
+    }
+
+    // With no SSL_CERT_FILE the self-signed certificate chains to nothing
+    // trusted.
+    test_function rejects_untrusted_certificate_by_default() {
+      var alloc = make_heap_allocator();
+      if (not have_openssl_tool(alloc)) {
+        println("SKIP: openssl tool not available");
+        return;
+      }
+      var server = TlsServer(alloc, "localhost", 18444);
+      var environment = std.env.Env(alloc);
+      environment.remove("SSL_CERT_FILE");
+      std.test.assert_eq(fetch_status(alloc, server.port), -1);
+    }
+
+    // Valid and trusted, but issued for another name than the one connected
+    // to.
+    test_function rejects_certificate_for_a_different_hostname() {
+      var alloc = make_heap_allocator();
+      if (not have_openssl_tool(alloc)) {
+        println("SKIP: openssl tool not available");
+        return;
+      }
+      var server = TlsServer(alloc, "otherhost.example", 18445);
+      var environment = std.env.Env(alloc);
+      environment.set("SSL_CERT_FILE", server.cert_path);
+      var status = fetch_status(alloc, server.port);
+      environment.remove("SSL_CERT_FILE");
+      std.test.assert_eq(status, -1);
+    }
+  }  // module https_client_tests
+}  // module tls

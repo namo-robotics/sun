@@ -64,16 +64,28 @@ class Driver {
   // Whether the last compilation saw any test functions or test_files
   bool hasTests_ = false;
 
-  // Static archives carried by imported .moon bundles, extracted to a temp
-  // directory that lives as long as this Driver.
+  // Every file the last compilation read, for `--depfile`: the source files
+  // in compile order, then imported bundles and proto schemas. Archives are
+  // reported separately by getNativeArchivePaths.
+  std::vector<std::string> inputFiles_;
+
+  // Static archives the program's own manifest declares under `archives:`,
+  // resolved to paths. A bundle build packs them into the .moon; a program
+  // build (including a library's test binary) links them directly.
+  std::vector<std::string> manifestArchivePaths_;
+
+  // Every static archive this compilation must link: the manifest's own,
+  // plus those carried by imported .moon bundles, which are extracted to a
+  // temp directory that lives as long as this Driver.
   std::vector<std::string> nativeArchivePaths_;
   std::filesystem::path archiveTempDir_;
 
-  // Extract the archives carried by the bundles just linked, so AOT can pass
-  // them to the linker and the JIT can resolve their symbols.
+  // Gather the archives to link: the manifest's own, then those carried by
+  // the bundles just linked (put on disk first), so AOT can pass them to the
+  // linker and the JIT can resolve their symbols.
   void collectNativeArchives(const std::set<std::string>& linkedModules);
 
-  // Make bundle-carried archives resolvable by the JIT.
+  // Make the gathered archives resolvable by the JIT.
   void registerArchivesWithJIT();
 
   // Private constructor - use factory methods
@@ -235,10 +247,18 @@ class Driver {
   /// Access the underlying module (for emitting object code after compilation)
   llvm::Module& getModule() { return *ctx->mainModule; }
 
-  // Static archives carried by the .moon bundles this compilation linked
-  // against, as paths on disk. Empty unless a bundle carried any.
+  // Static archives this compilation must link, as paths on disk: those the
+  // program's manifest declares plus those carried by the .moon bundles it
+  // linked against. Empty when there are none.
   const std::vector<std::string>& getNativeArchivePaths() const {
     return nativeArchivePaths_;
+  }
+
+  // Every file the last compilation read (sources, bundles, protos), so a
+  // build system can be told what the artifact depends on. Valid after
+  // compileFile/compileFiles/executeFile.
+  const std::vector<std::string>& getInputFiles() const {
+    return inputFiles_;
   }
 
   /// Enable/disable LLVM IR dumping to stdout

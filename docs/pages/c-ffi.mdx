@@ -369,7 +369,9 @@ The archives travel inside the `.moon`. Programs importing the bundle link
 against them automatically — no `-l` flags, and nothing to install alongside
 the finished binary. Paths accept path variables (`$VENDOR`), so where the
 archives live stays a build-time setting rather than something baked into the
-manifest.
+manifest. A program whose own manifest names `archives:` links them the same
+way, and so does the test binary of a library that declares them — which is
+how the `tls` bundle's own tests link OpenSSL.
 
 This is how `tls.moon` ships OpenSSL; see [TLS & HTTPS](/tls). The archives
 have to be self-contained (an archive referencing a library you do not ship

@@ -75,7 +75,8 @@ The standard library tests itself this way: each `stdlib/<area>_tests.sun`
 sits next to the file it tests and is listed under `test_files:` in
 `stdlib/stdlib.sun`, with shared fixtures in `stdlib/fixtures_tests.sun`.
 `sun test stdlib/stdlib.sun` runs the whole suite from a workspace checkout;
-none of it ships in `stdlib.moon`.
+none of it ships in `stdlib.moon`. The `tls` bundle does the same with
+`tls/https_client_tests.sun`, listed in `tls/tls.sun`.
 
 ## Running tests
 

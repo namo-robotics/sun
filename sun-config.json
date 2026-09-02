@@ -14,7 +14,8 @@
         {
             "path": "tls/tls.sun",
             "type": "library",
-            "output_name": "build/tls"
+            "output_name": "build/tls",
+            "test_binary_name": "build/tls_tests_test"
         }
     ],
     "root": true

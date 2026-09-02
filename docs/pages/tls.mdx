@@ -180,3 +180,14 @@ manifest {
 `archives:` works for any bundle wrapping a C library. Importers link against
 what the bundle carries automatically — no `-l` flags, and nothing to install
 alongside the finished program.
+
+## Tests
+
+The bundle's own tests are Sun code, `tls/https_client_tests.sun`, listed
+under `test_files:` in `tls/tls.sun` (see [Testing](/testing)) and compiled
+only into the test binary, `build/tls_tests_test`. Response parsing runs with
+no network; the handshake tests mint a throwaway certificate with the
+`openssl` command-line tool, run `openssl s_server` on it, and check that
+the client accepts the certificate once `SSL_CERT_FILE` trusts it and rejects
+it otherwise. They run sequentially because that variable is process-wide,
+and skip themselves when the `openssl` tool is not on the path.

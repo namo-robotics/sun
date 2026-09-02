@@ -1,7 +1,4 @@
 // stdlib/shared_tests.sun - Tests for shared.sun.
-// Replaces the runtime tests of the C++ suite Stdlib_Concurrency_Shared; the
-// compile-time negatives (use after move, no accessor besides lock, no
-// hand-built guard) stay in tests/stdlib/concurrency/test_shared.cpp.
 //
 // A moved-from value is left all-zero and still has its deinit run, so every
 // drop counter here ignores the zero state — the same discipline Unique<T>

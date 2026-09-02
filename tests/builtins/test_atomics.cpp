@@ -1,21 +1,22 @@
-// tests/stdlib/concurrency/test_mutex.cpp - Compile-level tests for the
-// atomic and futex intrinsics behind Mutex, plus Mutex compilation checks.
-// The Mutex behavior tests (single- and multi-threaded) live in
-// stdlib/mutex_tests.sun and run through `sun test`.
+// tests/builtins/test_atomics.cpp - The atomic and futex intrinsics
+//
+// These are the primitives std.thread.Mutex is built from. The Mutex
+// behavior tests (single- and multi-threaded) live in stdlib/mutex_tests.sun;
+// what is checked here is each intrinsic on its own, plus the memory
+// orderings the backend emits for them.
 
 #include <gtest/gtest.h>
 #include <llvm/Support/raw_ostream.h>
 
-#include <memory>
-#include <sstream>
 #include <string>
 
 #include "driver/execution_utils.h"
-#include "support/error.h"
 
 namespace {
 
-/** Compiles a Sun program and returns its LLVM IR. */
+/*
+ * Compiles a Sun program ahead of time and returns its LLVM IR as text.
+ */
 std::string atomicIrFor(const std::string& source) {
   initTestEnvironment();
   auto driver = Driver::createForAOT("atomic_ir");
@@ -29,40 +30,51 @@ std::string atomicIrFor(const std::string& source) {
 }  // namespace
 
 // ============================================================================
-// Atomic Intrinsic Compilation Tests
+// 32-bit compare-and-swap, store and load
 // ============================================================================
 
-TEST(Stdlib_Concurrency_Mutex, atomic_cmpxchg_compiles) {
-  EXPECT_NO_THROW(compileString(R"(
+TEST(Builtins_Atomics, atomic_cmpxchg_success) {
+  auto value = executeString(R"(
     function main() i32 {
       var x: i32 = 0;
       var old = unsafe { _atomic_cmpxchg_i32(_address_of<i32>(x), 0, 1); };
+      // old is the value before the swap; x is now 1
       return old;
     }
-  )"));
+  )");
+  EXPECT_EQ(value, 0);
 }
 
-TEST(Stdlib_Concurrency_Mutex, atomic_store_compiles) {
-  EXPECT_NO_THROW(compileString(R"(
+TEST(Builtins_Atomics, atomic_cmpxchg_fail) {
+  auto value = executeString(R"(
+    function main() i32 {
+      var x: i32 = 5;
+      // Expected is 0 but x is 5, so the swap does not happen
+      var old = unsafe { _atomic_cmpxchg_i32(_address_of<i32>(x), 0, 1); };
+      // old is the actual value, unchanged
+      return old;
+    }
+  )");
+  EXPECT_EQ(value, 5);
+}
+
+TEST(Builtins_Atomics, atomic_store_and_load) {
+  auto value = executeString(R"(
     function main() i32 {
       var x: i32 = 0;
       unsafe { _atomic_store_i32(_address_of<i32>(x), 42); };
-      return 0;
-    }
-  )"));
-}
-
-TEST(Stdlib_Concurrency_Mutex, atomic_load_compiles) {
-  EXPECT_NO_THROW(compileString(R"(
-    function main() i32 {
-      var x: i32 = 42;
       var val = unsafe { _atomic_load_i32(_address_of<i32>(x)); };
       return val;
     }
-  )"));
+  )");
+  EXPECT_EQ(value, 42);
 }
 
-TEST(Stdlib_Concurrency_Mutex, atomic_i64_operations_execute) {
+// ============================================================================
+// 64-bit variants, signed and unsigned
+// ============================================================================
+
+TEST(Builtins_Atomics, atomic_i64_operations_execute) {
   auto value = executeString(R"(
     function main() i32 {
       var x: i64 = 10;
@@ -90,7 +102,7 @@ TEST(Stdlib_Concurrency_Mutex, atomic_i64_operations_execute) {
   EXPECT_EQ(value, 0);
 }
 
-TEST(Stdlib_Concurrency_Mutex, atomic_u64_operations_execute) {
+TEST(Builtins_Atomics, atomic_u64_operations_execute) {
   auto value = executeString(R"(
     function main() i32 {
       var x: u64 = 20;
@@ -118,7 +130,11 @@ TEST(Stdlib_Concurrency_Mutex, atomic_u64_operations_execute) {
   EXPECT_EQ(value, 0);
 }
 
-TEST(Stdlib_Concurrency_Mutex, atomic_orderings_are_emitted) {
+// ============================================================================
+// Memory orderings reach the IR
+// ============================================================================
+
+TEST(Builtins_Atomics, atomic_orderings_are_emitted) {
   std::string ir = atomicIrFor(R"(
     function main() i32 {
       var x: i32 = 0;
@@ -148,101 +164,18 @@ TEST(Stdlib_Concurrency_Mutex, atomic_orderings_are_emitted) {
 }
 
 // ============================================================================
-// Futex Intrinsic Compilation Tests
+// Futex
 // ============================================================================
 
-TEST(Stdlib_Concurrency_Mutex, futex_wait_compiles) {
-  EXPECT_NO_THROW(compileString(R"(
-    function main() i32 {
-      var x: i32 = 0;
-      // Don't actually wait - just verify it compiles
-      // _futex_wait(_address_of<i32>(x), 1);  // Would block if x != 1
-      return 0;
-    }
-  )"));
-}
-
-TEST(Stdlib_Concurrency_Mutex, futex_wake_compiles) {
-  EXPECT_NO_THROW(compileString(R"(
+// Waking an address nobody waits on is a harmless no-op. (_futex_wait is not
+// exercised here: with no other thread to wake it, it would block forever.)
+TEST(Builtins_Atomics, futex_wake_without_waiters_returns) {
+  auto value = executeString(R"(
     function main() i32 {
       var x: i32 = 0;
       unsafe { _futex_wake(_address_of<i32>(x)); };
       return 0;
     }
-  )"));
-}
-
-// ============================================================================
-// Atomic Intrinsic Execution Tests
-// ============================================================================
-
-TEST(Stdlib_Concurrency_Mutex, atomic_cmpxchg_success) {
-  auto value = executeString(R"(
-    function main() i32 {
-      var x: i32 = 0;
-      var old = unsafe { _atomic_cmpxchg_i32(_address_of<i32>(x), 0, 1); };
-      // old should be 0 (the original value)
-      // x should now be 1
-      return old;
-    }
   )");
   EXPECT_EQ(value, 0);
 }
-
-TEST(Stdlib_Concurrency_Mutex, atomic_cmpxchg_fail) {
-  auto value = executeString(R"(
-    function main() i32 {
-      var x: i32 = 5;
-      // Expected is 0, but x is 5, so cmpxchg should fail
-      var old = unsafe { _atomic_cmpxchg_i32(_address_of<i32>(x), 0, 1); };
-      // old should be 5 (the actual value, not changed)
-      return old;
-    }
-  )");
-  EXPECT_EQ(value, 5);
-}
-
-TEST(Stdlib_Concurrency_Mutex, atomic_store_and_load) {
-  auto value = executeString(R"(
-    function main() i32 {
-      var x: i32 = 0;
-      unsafe { _atomic_store_i32(_address_of<i32>(x), 42); };
-      var val = unsafe { _atomic_load_i32(_address_of<i32>(x)); };
-      return val;
-    }
-  )");
-  EXPECT_EQ(value, 42);
-}
-
-// ============================================================================
-// Mutex Compilation Tests
-// ============================================================================
-
-TEST(Stdlib_Concurrency_Mutex, mutex_import_compiles) {
-  EXPECT_NO_THROW(compileString(R"(
-    using std.thread;
-
-    function main() i32 {
-      var m = Mutex();
-      return 0;
-    }
-  )",
-                                true));
-}
-
-TEST(Stdlib_Concurrency_Mutex, mutex_lock_unlock_compiles) {
-  EXPECT_NO_THROW(compileString(R"(
-    using std.thread;
-
-    function main() i32 {
-      var m = Mutex();
-      m.lock();
-      m.unlock();
-      return 0;
-    }
-  )",
-                                true));
-}
-
-// The Mutex execution tests (single- and multi-threaded) were migrated to
-// stdlib/mutex_tests.sun.

@@ -16,7 +16,9 @@ The language itself is documented in `docs/pages/` — read the page for the are
 ./build.sh                    # always build this way; never run cmake directly
 cd build && ctest -j8 --output-on-failure
 ./build/tests/sun_tests --gtest_filter="MemorySafety*"          # a whole group
-./build/tests/sun_tests --gtest_filter="Stdlib_Collections_*"   # a subgroup
+./build/tests/sun_tests --gtest_filter="Functions_Generic_*"    # a subgroup
+./build/stdlib_tests_test --test-sequential                     # the stdlib's Sun tests
+./build/tls_tests_test --test-sequential                        # the tls bundle's Sun tests
 ./build/sun input.sun               # JIT execute
 ./build/sun -c -o output input.sun  # AOT compile
 ```

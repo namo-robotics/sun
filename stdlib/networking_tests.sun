@@ -1,0 +1,77 @@
+// stdlib/networking_tests.sun - Tests for networking.sun (TcpListener,
+// TcpStream, name resolution). UdpSocket and Ipv4Addr are in udp_tests.sun.
+// Every listener binds port 0 and reads the OS's pick back with
+// local_port(), so parallel test runs never collide.
+
+using std;
+
+public module std {
+  module networking_tests {
+    // A non-blocking read on a connected stream with nothing to read fails
+    // with a would-block code instead of waiting.
+    test_function nonblocking_recv_reports_would_block() {
+      var alloc = make_heap_allocator();
+      var listener = TcpListener();
+      listener.bind_loopback(0);
+      listener.listen(1);
+      var stream = TcpStream();
+      stream.connect_local(listener.local_port());
+      stream.set_nonblocking(true);
+      var buf = ContiguousBuffer<u8>(alloc, 16);
+      var would_block: bool = false;
+      try {
+        stream.recv(buf);
+      } catch (e: IError) {
+        would_block = is_would_block(e.code());
+      }
+      std.test.assert(would_block, "recv on an idle non-blocking stream reports would-block");
+      stream.set_nonblocking(false);
+      stream.close();
+      listener.close();
+    }
+
+    // A socket that was never opened has no descriptor, so the OS answers
+    // EBADF (9 on every supported target), which is not a would-block code.
+    // The error carries the real errno, whatever the operation.
+    test_function unopened_sockets_report_ebadf() {
+      var alloc = make_heap_allocator();
+      var stream = TcpStream();
+      var buf = ContiguousBuffer<u8>(alloc, 1);
+      var recv_code: i32 = 0;
+      try {
+        stream.recv(buf);
+      } catch (e: IError) {
+        recv_code = e.code();
+      }
+      std.test.assert_eq(recv_code, 9);
+      std.test.assert(not is_would_block(recv_code), "EBADF is not a would-block code");
+
+      var listener = TcpListener();
+      var listener_code: i32 = 0;
+      try {
+        listener.set_nonblocking(true);
+      } catch (e: IError) {
+        listener_code = e.code();
+      }
+      std.test.assert_eq(listener_code, 9);
+    }
+
+    test_function resolves_localhost_to_loopback() {
+      var alloc = make_heap_allocator();
+      var host = String(alloc, "localhost");
+      std.test.assert_eq(resolve_host_ipv4(host), INADDR_LOOPBACK);
+    }
+
+    test_function unresolvable_host_throws() {
+      var alloc = make_heap_allocator();
+      var host = String(alloc, "no-such-host.invalid");
+      var threw: bool = false;
+      try {
+        resolve_host_ipv4(host);
+      } catch (e: IError) {
+        threw = true;
+      }
+      std.test.assert(threw, "a name under .invalid never resolves");
+    }
+  }  // module networking_tests
+}  // module std
