@@ -521,7 +521,8 @@ public module std {
   }
 
   // A UDP socket: connectionless send and receive, with multicast and
-  // receive-timeout support. Bind it before receiving; sending needs no bind.
+  // receive-timeout support. bind() creates the descriptor, so it always
+  // comes first; a send-only socket binds port 0 and lets the OS pick.
   public class UdpSocket {
     var fd: i32;
 

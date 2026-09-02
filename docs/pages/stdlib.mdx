@@ -819,8 +819,9 @@ listener.bind_addr(any, 8080);
 ### UDP
 
 `UdpSocket` sends and receives datagrams — no connection, one message per
-call. Bind before receiving; sending needs no bind. Binding port 0 lets the
-OS pick a free port, and `local_port()` reads the pick back.
+call. `bind` creates the socket, so it always comes first; binding port 0
+lets the OS pick a free port — right for a send-only socket — and
+`local_port()` reads the pick back.
 
 ```sun
 using std;
