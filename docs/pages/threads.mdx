@@ -23,19 +23,30 @@ function main() i32 {
 }
 ```
 
-It hands back a `Thread<T>` handle, where `T` is what the lambda returns.
+It hands back a `Thread<T>` handle, where `T` is what the function returns.
 
 `spawn` is an ordinary generic function, not a keyword:
 
 ```sun
-public function spawn<F: _Lambda>(fn: F, args...: _params_of<F>)
+public function spawn<F: _Callable>(fn: F, args...: _params_of<F>)
     Thread<_return_type_of<F>>
 ```
 
-`_params_of<F>` is the parameter list of whatever lambda you passed, so the
+`_Callable` accepts a lambda or a named function passed as a value, so
+`spawn(work, 5)` runs the named function `work` on the new thread.
+`_params_of<F>` is the parameter list of whatever you passed, so the
 arguments you supply are checked against it, and `_return_type_of<F>` is what
-that lambda returns. Both are resolved when the call is compiled, so a wrong
-argument is a compile error like any other.
+it returns. Both are resolved when the call is compiled, so a wrong argument
+is a compile error like any other.
+
+The spawned function must not throw: the thread has no way to hand an
+unwinding error back to the spawner, so a `throws` callee is rejected at
+compile time. Catch inside the function and carry failures in its result.
+
+Every spawned thread gets an 8 MiB stack, whatever libc the binary links.
+Libc defaults vary wildly (glibc ~8 MiB, musl 128 KiB, macOS 512 KiB), so
+without this, recursion that works on the main thread could overflow on a
+worker on some targets.
 
 ## Arguments
 
@@ -430,9 +441,10 @@ ordering rules.
 
 ## Constraints
 
-- `spawn` takes a lambda — a literal, a variable holding one, or a global. A
-  named function is not a lambda and is rejected by the `_Lambda` constraint
-- The arguments must match the lambda's parameters exactly, in number and type
+- `spawn` takes anything callable: a lambda (a literal, a variable holding
+  one, or a global) or a named function passed as a value — the `_Callable`
+  constraint. It must not be able to throw
+- The arguments must match the callee's parameters exactly, in number and type
 - A thread is joined when its handle goes out of scope, so a thread spawned
   inside a loop body is joined at the end of that iteration. To run several
   threads at once, spawn them all in the same scope

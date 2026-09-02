@@ -22,6 +22,15 @@ TEST(Tooling_Fmt, SimpleFunction) {
             "}\n");
 }
 
+// A test function prints its keyword and nothing of its synthesized
+// signature (void return, implicit throws), so the output re-parses.
+TEST(Tooling_Fmt, TestFunctionKeepsItsKeyword) {
+  EXPECT_EQ(fmt("test_function checksThings(){return;}"),
+            "test_function checksThings() {\n"
+            "  return;\n"
+            "}\n");
+}
+
 TEST(Tooling_Fmt, IndentNesting) {
   EXPECT_EQ(fmt("function main() i32 {\n"
                 "if (1 < 2) {\n"

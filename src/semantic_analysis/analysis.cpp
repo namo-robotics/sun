@@ -2356,27 +2356,42 @@ void SemanticAnalyzer::analyzeIntrinsicCall(GenericCallAST& genericCall) {
   }
 }
 
-// The lambda is argument 0 and is taken apart rather than passed on, so it
-// stands in for itself; everything after it fills the lambda's parameters.
+// The callee is argument 0 and is taken apart rather than passed on, so it
+// stands in for itself; everything after it fills the callee's parameters.
+// F may be a lambda or a named-function value.
 void SemanticAnalyzer::recordSpawnArgumentConversions(
     GenericCallAST& genericCall) {
   const auto& typeArgs = genericCall.getResolvedTypeArgs();
   auto* lambda = typeArgs.empty()
                      ? nullptr
                      : sun::tryGetType<sun::LambdaType>(typeArgs[0]);
-  if (!lambda) {
-    logAndThrowError("_spawn<F> requires a lambda type argument",
+  auto* namedFn = typeArgs.empty()
+                      ? nullptr
+                      : sun::tryGetType<sun::FunctionType>(typeArgs[0]);
+  if (!lambda && !namedFn) {
+    logAndThrowError("_spawn<F> requires a lambda or function type argument",
                      genericCall.getLocation());
+  }
+
+  // The trampoline that runs the thread has no unwind handling, so an error
+  // escaping the spawned function would take the process down mid-unwind.
+  if (lambda ? lambda->canThrow() : namedFn->canThrow()) {
+    logAndThrowError(
+        "a spawned function must not throw; catch errors inside it and "
+        "return them as part of its result",
+        genericCall.getLocation());
   }
 
   const auto& args = genericCall.getArgs();
   std::vector<sun::TypePtr> paramTypes{typeArgs[0]};
-  for (const auto& param : lambda->getParamTypes()) {
+  const auto& calleeParams =
+      lambda ? lambda->getParamTypes() : namedFn->getParamTypes();
+  for (const auto& param : calleeParams) {
     paramTypes.push_back(param);
   }
   if (args.size() != paramTypes.size()) {
     logAndThrowError(
-        "_spawn<F> takes the lambda and one argument per parameter it "
+        "_spawn<F> takes the function and one argument per parameter it "
         "declares: " +
             std::to_string(paramTypes.size()) + " in all, got " +
             std::to_string(args.size()),

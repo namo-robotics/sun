@@ -1,0 +1,215 @@
+// stdlib/queue_tests.sun - Tests for queue.sun.
+// Replaces the C++ suite(s) Stdlib_Collections_Queue.
+
+using std;
+
+public module std {
+  module queue_tests {
+    // Drop counters, one per test that uses them, so tests running in
+    // parallel never share state.
+    var drops_when_queue_dies: i32 = 0;
+    var drops_from_clear: i32 = 0;
+
+    // Counts its own drops in drops_when_queue_dies. A moved-from husk is
+    // zeroed, and has nothing to release.
+    class TrackedByDeath {
+      public var id: i32;
+      init(id: i32) {
+        this.id = id;
+      }
+      deinit() {
+        if (this.id != 0) {
+          drops_when_queue_dies = drops_when_queue_dies + 1;
+        }
+      }
+    }
+
+    // Counts its own drops in drops_from_clear.
+    class TrackedByClear {
+      public var id: i32;
+      init(id: i32) {
+        this.id = id;
+      }
+      deinit() {
+        if (this.id != 0) {
+          drops_from_clear = drops_from_clear + 1;
+        }
+      }
+    }
+
+    // Builds a queue of three tracked items and lets it go out of scope.
+    function fill_and_abandon_queue() void {
+      var allocator = make_heap_allocator();
+      var q = Queue<TrackedByDeath>(allocator);
+      q.push(TrackedByDeath(1));
+      q.push(TrackedByDeath(2));
+      q.push(TrackedByDeath(3));
+    }
+
+    test_function empty_queue() {
+      var allocator = make_heap_allocator();
+      var q = Queue<i32>(allocator);
+      std.test.assert(q.is_empty());
+      std.test.assert_eq(q.size(), 0);
+    }
+
+    test_function push_grows_the_queue() {
+      var allocator = make_heap_allocator();
+      var q = Queue<i32>(allocator);
+      q.push(10);
+      q.push(20);
+      q.push(30);
+      std.test.assert_eq(q.size(), 3);
+    }
+
+    // The whole point of the type: what goes in first comes out first.
+    test_function pops_in_the_order_pushed() {
+      var allocator = make_heap_allocator();
+      var q = Queue<i32>(allocator);
+      q.push(1);
+      q.push(2);
+      q.push(3);
+      var order: i32 = 0;
+      while (q.is_empty() == false) {
+        match (q.pop()) {
+          Option.Some(v) => {
+            order = order * 10 + v;
+          },
+          Option.None => {}
+        };
+      }
+      std.test.assert_eq(order, 123);
+    }
+
+    test_function pop_on_empty_is_none() {
+      var allocator = make_heap_allocator();
+      var q = Queue<i32>(allocator);
+      var result: i32 = -2;
+      match (q.pop()) {
+        Option.Some(v) => {
+          result = -1;
+        },
+        Option.None => {
+          result = 42;
+        }
+      };
+      std.test.assert_eq(result, 42);
+    }
+
+    test_function push_and_pop_interleaved() {
+      var allocator = make_heap_allocator();
+      var q = Queue<i32>(allocator);
+      q.push(1);
+      q.push(2);
+      var first: i32 = 0;
+      match (q.pop()) {
+        Option.Some(v) => {
+          first = v;
+        },
+        Option.None => {}
+      };
+      q.push(3);
+      // 2 was queued before 3, so it leaves first.
+      var second: i32 = 0;
+      match (q.pop()) {
+        Option.Some(v) => {
+          second = v;
+        },
+        Option.None => {}
+      };
+      std.test.assert_eq(first, 1);
+      std.test.assert_eq(second, 2);
+      std.test.assert_eq(q.size(), 1);
+    }
+
+    test_function peek_borrows_the_front_without_removing_it() {
+      var allocator = make_heap_allocator();
+      var q = Queue<i32>(allocator);
+      q.push(7);
+      q.push(8);
+      var front: i32 = 0;
+      match (q.peek()) {
+        Option.Some(v) => {
+          front = v;
+        },
+        Option.None => {}
+      };
+      std.test.assert_eq(front, 7);
+      // Still two items: peek borrows, it does not take.
+      std.test.assert_eq(q.size(), 2);
+    }
+
+    test_function peek_back_is_the_most_recent_push() {
+      var allocator = make_heap_allocator();
+      var q = Queue<i32>(allocator);
+      q.push(1);
+      q.push(9);
+      var result: i32 = -2;
+      match (q.peek_back()) {
+        Option.Some(v) => {
+          result = v;
+        },
+        Option.None => {
+          result = -1;
+        }
+      };
+      std.test.assert_eq(result, 9);
+    }
+
+    test_function peek_on_empty_is_none() {
+      var allocator = make_heap_allocator();
+      var q = Queue<i32>(allocator);
+      var result: i32 = -2;
+      match (q.peek()) {
+        Option.Some(v) => {
+          result = -1;
+        },
+        Option.None => {
+          result = 42;
+        }
+      };
+      std.test.assert_eq(result, 42);
+    }
+
+    test_function clear_empties_the_queue() {
+      var allocator = make_heap_allocator();
+      var q = Queue<i32>(allocator);
+      q.push(1);
+      q.push(2);
+      q.clear();
+      std.test.assert(q.is_empty());
+      std.test.assert_eq(q.size(), 0);
+    }
+
+    test_function iterates_front_to_back() {
+      var allocator = make_heap_allocator();
+      var q = Queue<i32>(allocator);
+      q.push(1);
+      q.push(2);
+      q.push(3);
+      var seen: i32 = 0;
+      for (var x: i32 in q) {
+        seen = seen * 10 + x;
+      }
+      std.test.assert_eq(seen, 123);
+      // Iteration borrows: everything is still queued afterwards.
+      std.test.assert_eq(q.size(), 3);
+    }
+
+    // The queue owns what it holds: items still queued are dropped with it.
+    test_function drops_remaining_items() {
+      fill_and_abandon_queue();
+      std.test.assert_eq(drops_when_queue_dies, 3);
+    }
+
+    test_function clear_drops_the_items_it_removes() {
+      var allocator = make_heap_allocator();
+      var q = Queue<TrackedByClear>(allocator);
+      q.push(TrackedByClear(1));
+      q.push(TrackedByClear(2));
+      q.clear();
+      // Both were dropped by clear(), before the queue itself goes away.
+      std.test.assert_eq(drops_from_clear, 2);
+    }
+  }  // module queue_tests
+}  // module std

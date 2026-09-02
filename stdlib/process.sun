@@ -392,6 +392,12 @@ public module std {
               }
               c_close(devnull);
             }
+            // An ignored signal stays ignored across exec, and hosts such as
+            // CI runners start every process with SIGPIPE ignored. A child
+            // inheriting that gets EPIPE where it expects to die quietly
+            // (`yes | head` then complains on stderr). Give it the default,
+            // as Rust's and Python's process spawners do.
+            c_signal(SIGPIPE, 0);
             c_execvp(prog, argv.raw_data());
             // Only reached if exec failed. 127 is what a shell reports for
             // "command not found".

@@ -284,8 +284,10 @@ class Parser {
       const std::string& name = "",
       std::vector<TypeParameter> typeParameters = {}, bool isLambda = false,
       bool isLifecycleMethod = false,
-      std::vector<LifetimeParameter> lifetimeParameters = {});
-  unique_ptr<FunctionAST> parseFunction(bool isClassMethod = false);
+      std::vector<LifetimeParameter> lifetimeParameters = {},
+      bool isTestFunction = false);
+  unique_ptr<FunctionAST> parseFunction(bool isClassMethod = false,
+                                        bool isTest = false);
   // Parse a constructor or destructor member: init(args) { } / deinit() { }.
   // They are written without 'public' or 'method' and are always public.
   unique_ptr<FunctionAST> parseLifecycleMethod();

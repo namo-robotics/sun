@@ -25,6 +25,11 @@ import { Callout } from 'nextra/components'
   [Path Resolution](/modules#path-resolution) for every place that is searched.
 </Callout>
 
+The library's own tests are Sun code: each `stdlib/<area>_tests.sun` sits
+next to the file it tests, listed under `test_files:` in the manifest (see
+[Testing](/testing)). They compile only into the test binary, never into
+`stdlib.moon`.
+
 ## HeapAllocator
 
 The standard memory allocator using system `malloc`/`free`. Many stdlib types require an allocator for construction.
@@ -664,6 +669,10 @@ println(out.stdout());     // hello
 Arguments are passed to the program as they are given — a space inside one
 argument stays inside it, with no shell reparsing.
 
+The child starts with `SIGPIPE` at its default disposition even when the parent
+ignores it. An ignored signal would otherwise survive `exec`, and a child whose
+reader goes away would then see `EPIPE` and complain instead of exiting quietly.
+
 ### Child
 
 | Method | Signature | Description |
@@ -1165,6 +1174,23 @@ Readers throw `JsonError` (code 60) on a kind mismatch or missing key; parse
 errors carry the byte offset of the problem in `offset()`. When writing,
 `Float` values keep a `.0` or exponent so they read back as `Float`, and
 non-finite floats become `null`.
+
+## Testing: std.test
+
+The assertions and runner support behind `test_function` — see
+[Testing](/testing) for the full feature. What user code calls directly:
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `assert(cond)` / `assert(cond, msg)` | `(bool[, static_ptr<u8>]) void throws IError` | Throw `AssertionError` when false |
+| `assert_eq(expected, actual)` | overloaded per primitive, plus `(const ref String, const ref String)` | Throw when the values differ, showing both |
+| `assert_ne(a, b)` | overloaded per primitive | Throw when the values are equal |
+| `fail(msg)` | `(static_ptr<u8>) void throws IError` | Fail unconditionally |
+
+`AssertionError` (code 10) implements `IError`. The remaining items —
+`TestResult`, `run_one`, `report`, `finish`, `wants_sequential` — exist for
+the compiler's synthesized test runner; `--debug` writes that runner's source
+to `<input>_debug/test_runner.sun` if you want to see how they fit together.
 
 ## Error Types
 

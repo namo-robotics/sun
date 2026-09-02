@@ -1,0 +1,215 @@
+# Testing
+
+Sun has builtin unit testing: declare tests with `test_function`, assert with
+`std.test`, and the compiler produces a test runner for you. Tests never
+appear in production binaries or `.moon` bundles.
+
+```sun
+using std;
+
+module geometry {
+    function addOne(n: i32) i32 {
+        return n + 1;
+    }
+
+    test_function addsOne() {
+        std.test.assert_eq(geometry.addOne(1), 2);
+    }
+}
+
+function main() i32 {
+    return 0;
+}
+
+manifest { libraries: ["stdlib.moon"] }
+```
+
+```bash
+$ sun test program.sun
+PASS geometry.addsOne
+1 passed, 0 failed
+```
+
+## Declaring tests
+
+A test is declared like a function, with `test_function` in place of
+`function`. Its signature is fixed — no parameters, no return type — and it
+may always throw: a failed assertion is a `throw`, so no `throws IError`
+clause is written. The compiler rejects any of these being spelled out.
+
+Tests are module-level declarations. They cannot appear inside classes,
+interfaces or function bodies, cannot be `public` (they are never
+importable), cannot take type parameters, and cannot be named `main`.
+
+A test's name is reported qualified by its module (`geometry.addsOne`), so
+the same test name in two different modules is fine. Two same-named tests in
+one module are a duplicate-declaration error.
+
+## Where tests live
+
+Tests can sit **inline**, next to the code they exercise. Privacy is
+module-scoped, so a test inside `module geometry` can call the module's
+private functions directly — no exporting things just to test them.
+
+Larger suites go in **test files**: `.sun` files listed under `test_files:`
+in the manifest, loaded only when compiling tests. A test file reopens the
+module it tests to reach its private items:
+
+```sun
+manifest {
+    source_files: ["geometry.sun"]
+    test_files: ["geometry_tests.sun"]
+    libraries: ["stdlib.moon"]
+}
+```
+
+`test_files:` is also accepted inside per-OS `target:` blocks.
+
+Production builds strip test functions before analysis, so a test may freely
+reference helpers that exist only in `test_files`. Everything else — classes,
+helper functions, module variables declared outside `test_files` — stays in
+the production build, so shared fixtures and helpers that should not ship
+belong in a test file.
+
+The standard library tests itself this way: each `stdlib/<area>_tests.sun`
+sits next to the file it tests and is listed under `test_files:` in
+`stdlib/stdlib.sun`, with shared fixtures in `stdlib/fixtures_tests.sun`.
+`sun test stdlib/stdlib.sun` runs the whole suite from a workspace checkout;
+none of it ships in `stdlib.moon`.
+
+## Running tests
+
+`sun test` compiles the program with its tests and runs them under the JIT:
+
+```bash
+sun test program.sun                    # parallel (default)
+sun test program.sun --test-sequential  # one after another
+```
+
+The exit code is 0 when every test passes, 1 otherwise.
+
+Compiling with `-c` also emits a second binary, `<output>_test`, whenever the
+program has tests:
+
+```bash
+$ sun -c -o app program.sun
+Successfully compiled to: app
+Successfully compiled test binary to: app_test
+$ ./app_test --test-sequential
+```
+
+Pass `--no-test` to skip the test binary. A program with tests but no `main`
+— a library — compiles to just the test binary.
+
+## Filtering
+
+`--test-filter <pattern>` picks which tests run. Like `--test-sequential` it
+is a runtime argument of the test binary, so no recompile is needed:
+
+```bash
+sun test program.sun --test-filter geometry.midpoint  # exact dotted name
+sun test program.sun --test-filter geometry.*         # everything under geometry
+sun test program.sun --test-filter geometry           # same, no star needed
+./app_test --test-filter geometry.midpoint            # compiled binary too
+```
+
+The flag repeats: a test runs when it matches any given pattern. A pattern
+matches a test's dotted name exactly, as a module prefix (`geometry` selects
+`geometry.midpoint`), or as a trailing-star prefix (`geo*`). The summary
+counts only the tests that ran, and a filter that selects nothing reports
+`0 passed, 0 failed` and exits 0.
+
+## Parallel by default
+
+The runner starts one thread per test, then joins and reports in declaration
+order, so the output is deterministic. Tests therefore must not share
+unsynchronized state: a module-level `var` written by two tests is a data
+race. Either protect shared state with `std.thread.Mutex`, or pass
+`--test-sequential` (a runtime argument, so no recompile) to run tests one
+after another in declaration order.
+
+## Assertions
+
+`std.test` provides throwing assertions. A failure throws `AssertionError`
+(code 10), which the runner catches and reports with the test's name.
+
+| Function | Meaning |
+| --- | --- |
+| `assert(cond)` | Fail when `cond` is false |
+| `assert(cond, "why")` | Same, with an explanation in the output |
+| `assert_eq(expected, actual)` | Fail when the values differ, showing both. Overloaded for every primitive and for `String` (by content) |
+| `assert_ne(a, b)` | Fail when the values are equal |
+| `fail("why")` | Fail unconditionally |
+
+For types without an `assert_eq` overload, write the comparison yourself:
+`std.test.assert(a.equals(b), "explanation")`.
+
+Any uncaught error fails a test the same way an assertion does — a test that
+calls throwing code needs no `try` block unless it wants to assert on the
+error.
+
+Tests require the standard library (`stdlib.moon` in the manifest, or
+`--moon stdlib.moon`); the assertions and the runner live there.
+
+## Fixtures
+
+Sun needs no fixture framework: a fixture is an ordinary class whose `init`
+does the setup and whose `deinit` does the teardown.
+
+```sun
+using std;
+
+module config {
+    class TempDir {
+        public var path: String;
+        init() throws IError { /* create a unique directory */ }
+        deinit() { /* remove it and its contents */ }
+    }
+
+    test_function writesConfigFile() {
+        var dir = config.TempDir();   // setup
+        // ... exercise code that writes into dir.path ...
+        std.test.assert(true);
+        // teardown: dir.deinit() runs here — or during unwinding
+        // if an assertion threw
+    }
+}
+```
+
+Two language guarantees make this complete:
+
+1. A local is dropped exactly once at the end of its scope, so teardown
+   always runs after a passing test.
+2. A failed assertion is a `throw`, and unwinding runs the same drop glue as
+   scope exit — so teardown also runs when the test fails. What other
+   frameworks build `tearDown()` machinery for, Sun's ownership model already
+   guarantees.
+
+This composes: a test can hold several fixtures (`var db = TestDb(); var dir
+= TempDir();`), and a fallible setup is just `init() throws IError` — a setup
+failure is reported through the same path as an assertion.
+
+## In the editor
+
+The Sun VSCode extension shows every `test_function` in the Test Explorer,
+grouped by entrypoint and file, with run icons in the gutter. Tests are
+discovered through the `entrypoints` list of your `sun-config.json` (the
+`sun.sun_configs` setting names the config files; the workspace root's is
+found by default), so the whole tree appears without opening a file.
+
+Running a selection passes `--test-filter` for each chosen test. When the
+config names a `test_binary_name` and that binary is newer than every
+source, the extension runs it directly; otherwise it JIT-compiles via
+`sun test <entrypoint>`. A failed assertion's message appears on the test.
+Point `sun.compiler_path` at your `sun` binary if it is not on PATH (the
+extension also tries the one next to `sun-lsp`).
+
+## Debugging the runner
+
+`--debug` writes the synthesized runner source next to the other debug
+artifacts, so you can see exactly what the test binary's `main` does:
+
+```bash
+sun test --debug program.sun    # writes program_debug/test_runner.sun
+sun -c --debug -o app program.sun   # test build writes app_test_debug/
+```

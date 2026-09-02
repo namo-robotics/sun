@@ -75,6 +75,10 @@ public module std {
   extern "C" function c_execvp(file: raw_ptr<u8>, argv: raw_ptr<u8>) i32 as "execvp";
   extern "C" function c_waitpid(pid: i32, status: raw_ptr<i32>, options: i32) i32 as "waitpid";
   extern "C" function c_kill(pid: i32, sig: i32) i32 as "kill";
+  // The handler is a function pointer in C; it travels as an integer here
+  // because the only values the stdlib passes are SIG_DFL (0) and SIG_IGN (1),
+  // and a pointer and an i64 ride in the same register on every target.
+  extern "C" function c_signal(sig: i32, handler: i64) i64 as "signal";
   extern "C" function c_setpgid(pid: i32, pgid: i32) i32 as "setpgid";
   extern "C" function c_setsid() i32 as "setsid";
   extern "C" function c_getpid() i32 as "getpid";

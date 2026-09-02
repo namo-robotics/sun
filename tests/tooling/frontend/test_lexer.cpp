@@ -86,7 +86,22 @@ TEST(Tooling_Frontend_Lexer, EveryKeywordLexesAsItself) {
     // A keyword token carries its spelling as text.
     EXPECT_EQ(lexAll(std::string(*word))[0].text, *word);
   }
-  EXPECT_EQ(count, 54);
+  EXPECT_EQ(count, 55);
+}
+
+// "test_function" is reserved; longer words that merely start with it are
+// ordinary identifiers, exactly like "packed_class" vs "packed_classes".
+TEST(Tooling_Frontend_Lexer, TestFunctionKeyword) {
+  auto kinds = kindsOf("test_function");
+  ASSERT_EQ(kinds.size(), 1u);
+  EXPECT_EQ(kinds[0], TokenKind::TEST_FUNCTION);
+
+  for (const std::string word : {"test_functions", "test_function2"}) {
+    auto tokens = lexAll(word);
+    ASSERT_EQ(tokens.size(), 2u) << word;
+    EXPECT_EQ(tokens[0].kind, TokenKind::IDENTIFIER) << word;
+    EXPECT_EQ(tokens[0].getIdentifier(), word);
+  }
 }
 
 // ------------------------------------------------------------------

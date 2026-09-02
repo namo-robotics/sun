@@ -76,6 +76,17 @@ jobs:
         env:
           SUN_PATH: ${{ github.workspace }}
 
+      - name: Run stdlib Sun tests
+        # The stdlib's own suite (stdlib/*_tests.sun), AOT-compiled to
+        # build/stdlib_tests_test by the CMake build. ctest above already runs
+        # it as one entry and hides its output on success; this step runs it
+        # again so every test's PASS/FAIL line is in the log, and fails
+        # loudly if the binary was never built. Sequential, as in ctest: the
+        # env and cwd tests change process-wide state.
+        run: |
+          test -x build/stdlib_tests_test
+          build/stdlib_tests_test --test-sequential
+
       - name: Add compiler to PATH
         # Examples call the bare `sun` binary; expose the freshly built one.
         # A separate step so the PATH change takes effect in the next step.
@@ -160,6 +171,14 @@ jobs:
           ctest -j4 --output-on-failure
         env:
           SUN_PATH: ${{ github.workspace }}
+
+      - name: Run stdlib Sun tests
+        # Same as the Linux job: a visible run of stdlib/*_tests.sun on real
+        # macOS hardware, sequential because the env and cwd tests change
+        # process-wide state.
+        run: |
+          test -x build/stdlib_tests_test
+          build/stdlib_tests_test --test-sequential
 
       - name: Add compiler to PATH
         run: echo "${GITHUB_WORKSPACE}/build" >> "$GITHUB_PATH"

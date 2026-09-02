@@ -1,0 +1,25 @@
+// A program carrying inline tests and a test_files manifest entry, used by
+// EndToEnd_Testing to check the production compile ignores all of it.
+using std;
+
+module arithmetic {
+  function double_it(n: i32) i32 {
+    return n * 2;
+  }
+
+  public function quadruple(n: i32) i32 {
+    return arithmetic.double_it(arithmetic.double_it(n));
+  }
+
+  test_function doubles() {
+    std.test.assert_eq(arithmetic.double_it(2), 4);
+  }
+}
+
+function main() i32 {
+  return arithmetic.quadruple(2);
+}
+
+manifest {
+    test_files: ["testing_example_tests.sun"]
+}

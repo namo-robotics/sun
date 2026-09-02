@@ -1,0 +1,736 @@
+// stdlib/string_tests.sun - Tests for string.sun.
+// Replaces the C++ suite(s) Stdlib_Text_String.
+
+using std;
+
+public module std {
+  module string_tests {
+    // True when appending x as f64 text produces exactly the expected bytes.
+    function check_f64(alloc: const ref HeapAllocator, x: f64, expected: static_ptr<u8>) bool {
+      var s = String(alloc, "");
+      s.append_f64(x);
+      return s.equals_literal(expected);
+    }
+
+    // Parse text as an i64, or hand back the fallback when parsing fails.
+    function parse_int_or(alloc: const ref HeapAllocator, text: static_ptr<u8>, fallback: i64) i64 {
+      var s = String(alloc, text);
+      return match s.parse_i64() {
+        Option.Some(v) => v,
+        Option.None => fallback
+      };
+    }
+
+    // Parse text as an f64, or hand back the fallback when parsing fails.
+    function parse_float_or(alloc: const ref HeapAllocator, text: static_ptr<u8>, fallback: f64) f64 {
+      var s = String(alloc, text);
+      return match s.parse_f64() {
+        Option.Some(v) => v,
+        Option.None => fallback
+      };
+    }
+
+    // Byte index of the needle in s, or -1 when absent.
+    function find_index(s: const ref String, needle: static_ptr<u8>) i64 {
+      return match s.find(needle) {
+        Option.Some(i) => i,
+        Option.None => -1
+      };
+    }
+
+    test_function construct_from_literal() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "Hello");
+      std.test.assert_eq(s.length(), 5);
+    }
+
+    test_function construct_empty() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "");
+      std.test.assert_eq(s.length(), 0);
+    }
+
+    test_function construct_from_buffer() {
+      var allocator = make_heap_allocator();
+      var buf = ContiguousBuffer<u8>(allocator, 10);
+      // Write "Hi" (72, 105) to the buffer
+      buf.set_unchecked(0, 72);
+      buf.set_unchecked(1, 105);
+      var s = String(allocator, buf, 2);
+      std.test.assert_eq(s.length(), 2);
+      var h: i64 = s.at(0);
+      std.test.assert_eq(h, 72);
+      var i: i64 = s.at(1);
+      std.test.assert_eq(i, 105);
+    }
+
+    test_function at_access() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "ABCDE");
+      var a: i64 = s.at(0);
+      var c: i64 = s.at(2);
+      var e: i64 = s.at(4);
+      std.test.assert_eq(a, 65);
+      std.test.assert_eq(c, 67);
+      std.test.assert_eq(e, 69);
+    }
+
+    test_function set_at_modify() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "Hello");
+      // Change 'H' (72) to 'J' (74)
+      s.set_at(0, 74);
+      var ch: i64 = s.at(0);
+      std.test.assert_eq(ch, 74);
+    }
+
+    test_function equals_literal_true() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "Hello");
+      std.test.assert(s.equals_literal("Hello"));
+    }
+
+    test_function equals_literal_false_content() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "Hello");
+      std.test.assert(not s.equals_literal("World"));
+    }
+
+    test_function equals_literal_false_length() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "Hello");
+      std.test.assert(not s.equals_literal("Hell"));
+    }
+
+    test_function append_char() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "Hi");
+      s.append_char(33);  // '!'
+      std.test.assert_eq(s.length(), 3);
+    }
+
+    test_function append_char_content() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "Hi");
+      s.append_char(33);  // '!'
+      var ch: i64 = s.at(2);
+      std.test.assert_eq(ch, 33);
+    }
+
+    test_function append_literal() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "Hello");
+      s.append_literal(", World");
+      std.test.assert_eq(s.length(), 12);
+    }
+
+    test_function append_string() {
+      var allocator = make_heap_allocator();
+      var s1 = String(allocator, "Hello");
+      var s2 = String(allocator, " World");
+      s1.append(s2);
+      std.test.assert_eq(s1.length(), 11);
+    }
+
+    test_function slice_basic() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "Hello World");
+      var view = s[0:5];  // "Hello"
+      std.test.assert_eq(view.length(), 5);
+    }
+
+    test_function slice_middle() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "Hello World");
+      var view = s[6:11];  // "World"
+      std.test.assert_eq(view.length(), 5);
+    }
+
+    test_function slice_content() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "Hello World");
+      var view = s[0:5];  // "Hello"
+      var h: i64 = view.at(0);
+      var o: i64 = view.at(4);
+      std.test.assert_eq(h, 72);  // 'H'
+      std.test.assert_eq(o, 111);  // 'o'
+    }
+
+    test_function slice_equals_literal() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "Hello World");
+      var view = s[6:11];  // "World"
+      std.test.assert(view.equals_literal("World"));
+    }
+
+    test_function initial_capacity() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "Hello");
+      std.test.assert(s.capacity() >= s.length());
+    }
+
+    test_function clear() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "Hello");
+      s.clear();
+      std.test.assert_eq(s.length(), 0);
+    }
+
+    test_function append_i64_positive() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "");
+      s.append_i64(12345);
+      std.test.assert(s.equals_literal("12345"));
+    }
+
+    test_function append_i64_negative() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "");
+      s.append_i64(-42);
+      std.test.assert(s.equals_literal("-42"));
+    }
+
+    test_function append_i64_zero() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "");
+      s.append_i64(0);
+      std.test.assert(s.equals_literal("0"));
+    }
+
+    test_function append_hex() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "");
+      s.append_hex(255);
+      std.test.assert(s.equals_literal("ff"));
+    }
+
+    test_function append_bool_true() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "");
+      s.append_bool(true);
+      std.test.assert(s.equals_literal("true"));
+    }
+
+    test_function append_bool_false() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "");
+      s.append_bool(false);
+      std.test.assert(s.equals_literal("false"));
+    }
+
+    test_function find_char() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "hello world");
+      // 'o' sits at index 4
+      var idx = match s.find_char(111) {
+        Option.Some(i) => i,
+        Option.None => -1
+      };
+      std.test.assert_eq(idx, 4);
+    }
+
+    test_function find_char_not_found() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "hello");
+      // 'x' is not in the string
+      var idx = match s.find_char(120) {
+        Option.Some(i) => i,
+        Option.None => -1
+      };
+      std.test.assert_eq(idx, -1);
+    }
+
+    test_function starts_with() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "hello world");
+      std.test.assert(s.starts_with("hello"));
+    }
+
+    test_function ends_with() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "hello world");
+      std.test.assert(s.ends_with("world"));
+    }
+
+    test_function reverse() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "abc");
+      s.reverse();
+      std.test.assert(s.equals_literal("cba"));
+    }
+
+    test_function growth_beyond_initial_capacity() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "");
+      for (var i: i64 = 0; i < 100; i = i + 1) {
+        s.append_char(65);  // 'A'
+      }
+      std.test.assert_eq(s.length(), 100);
+    }
+
+    test_function literal_escape_newline_tab() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "a\nb\tc");
+      std.test.assert_eq(s.length(), 5);
+      std.test.assert(s.at(1) == 10, "newline byte");
+      std.test.assert(s.at(3) == 9, "tab byte");
+    }
+
+    test_function literal_escape_crlf() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "\r\n");
+      std.test.assert_eq(s.length(), 2);
+      std.test.assert(s.at(0) == 13, "carriage return byte");
+      std.test.assert(s.at(1) == 10, "newline byte");
+    }
+
+    test_function literal_escape_quote_and_backslash() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "say \"hi\" \\ done");
+      // s = say "hi" \ done  (15 bytes)
+      std.test.assert_eq(s.length(), 15);
+      std.test.assert(s.at(4) == 34, "double quote byte");
+      std.test.assert(s.at(9) == 92, "backslash byte");
+    }
+
+    test_function literal_unknown_escape_preserved() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "a\qb");
+      // Unknown escape \q stays as backslash + q
+      std.test.assert_eq(s.length(), 4);
+      std.test.assert(s.at(1) == 92, "backslash byte");
+      std.test.assert(s.at(2) == 113, "q byte");
+    }
+
+    test_function append_f64_shortest_round_trip() {
+      var alloc = make_heap_allocator();
+      std.test.assert(check_f64(alloc, 0.1, "0.1"), "0.1");
+      std.test.assert(check_f64(alloc, 1.5, "1.5"), "1.5");
+      std.test.assert(check_f64(alloc, 100.0, "100"), "100");
+      std.test.assert(check_f64(alloc, 1e21, "1e+21"), "1e+21");
+      std.test.assert(check_f64(alloc, -2.5e-7, "-2.5e-07"), "-2.5e-07");
+      std.test.assert(check_f64(alloc, 3.141592653589793, "3.141592653589793"), "pi");
+      std.test.assert(check_f64(alloc, 1.0 / 3.0, "0.3333333333333333"), "one third");
+      std.test.assert(check_f64(alloc, -0.0, "-0"), "-0");
+      var f: f32 = 2.5;
+      var s = String(alloc, "");
+      s.append(f);
+      s.append(0.25);
+      std.test.assert(s.equals_literal("2.50.25"), "f32 and f64 append");
+    }
+
+    test_function parse_i64_and_parse_f64() {
+      var alloc = make_heap_allocator();
+      std.test.assert_eq(parse_int_or(alloc, "42", -1), 42);
+      std.test.assert_eq(parse_int_or(alloc, "-42", -1), -42);
+      std.test.assert_eq(parse_int_or(alloc, "9223372036854775807", -1), 9223372036854775807);
+      std.test.assert_eq(parse_int_or(alloc, "-9223372036854775808", -1), -9223372036854775807 - 1);
+      std.test.assert_eq(parse_int_or(alloc, "9223372036854775808", -1), -1);
+      std.test.assert_eq(parse_int_or(alloc, "12a", -1), -1);
+      std.test.assert_eq(parse_int_or(alloc, "", -1), -1);
+      std.test.assert_eq(parse_int_or(alloc, "-", -1), -1);
+      std.test.assert_eq(parse_int_or(alloc, "1.5", -1), -1);
+      std.test.assert_eq(parse_float_or(alloc, "1.5", 0.0), 1.5);
+      std.test.assert_eq(parse_float_or(alloc, "-2.5e3", 0.0), -2500.0);
+      std.test.assert_eq(parse_float_or(alloc, "7", 0.0), 7.0);
+      std.test.assert_eq(parse_float_or(alloc, "0.1", 0.0), 0.1);
+      std.test.assert_eq(parse_float_or(alloc, "abc", -1.0), -1.0);
+      std.test.assert_eq(parse_float_or(alloc, "1e", -1.0), -1.0);
+      std.test.assert_eq(parse_float_or(alloc, "1.5x", -1.0), -1.0);
+      std.test.assert_eq(parse_float_or(alloc, ".", -1.0), -1.0);
+    }
+
+    test_function to_lower_and_to_upper() {
+      var alloc = make_heap_allocator();
+      var s = String(alloc, "Hello, World 42!");
+      s.to_lower();
+      std.test.assert(s.equals_literal("hello, world 42!"), "to_lower");
+      s.to_upper();
+      std.test.assert(s.equals_literal("HELLO, WORLD 42!"), "to_upper");
+      // Case conversion of a single byte keeps the u8 type
+      var ch: u8 = 65;
+      var lowered: u8 = ch + 32;
+      var one = String(alloc, "");
+      one.append_char(lowered);
+      std.test.assert(one.equals_literal("a"), "byte case conversion");
+    }
+
+    test_function trim_variants() {
+      var alloc = make_heap_allocator();
+      var s = String(alloc, "  \t hi \n ");
+      s.trim();
+      std.test.assert(s.equals_literal("hi"), "trim both ends");
+
+      var lead = String(alloc, "  hi  ");
+      lead.trim_start();
+      std.test.assert(lead.equals_literal("hi  "), "trim_start");
+
+      var trail = String(alloc, "  hi  ");
+      trail.trim_end();
+      std.test.assert(trail.equals_literal("  hi"), "trim_end");
+
+      var blank = String(alloc, "   ");
+      blank.trim();
+      std.test.assert(blank.is_empty(), "trim all-whitespace");
+
+      var none = String(alloc, "hi");
+      none.trim();
+      std.test.assert(none.equals_literal("hi"), "trim nothing to remove");
+    }
+
+    test_function find_and_contains() {
+      var alloc = make_heap_allocator();
+      var s = String(alloc, "hello world");
+      std.test.assert_eq(find_index(s, "hello"), 0);
+      std.test.assert_eq(find_index(s, "world"), 6);
+      std.test.assert_eq(find_index(s, "o w"), 4);
+      std.test.assert_eq(find_index(s, "worlds"), -1);
+      std.test.assert_eq(find_index(s, ""), 0);
+      std.test.assert(s.contains("lo wo"), "contains literal");
+      std.test.assert(not s.contains("xyz"), "missing literal");
+
+      var needle = String(alloc, "wor");
+      std.test.assert(s.contains(needle), "contains String");
+      var missing = String(alloc, "cat");
+      std.test.assert(not s.contains(missing), "missing String");
+      std.test.assert(s.starts_with(String(alloc, "hell")), "starts_with String");
+      std.test.assert(s.ends_with(String(alloc, "rld")), "ends_with String");
+      std.test.assert(not s.starts_with(String(alloc, "world")), "wrong prefix");
+    }
+
+    test_function substr_and_clone() {
+      var alloc = make_heap_allocator();
+      var s = String(alloc, "abcdef");
+      var mid = s.substr(alloc, 2, 3);
+      std.test.assert(mid.equals_literal("cde"), "substr middle");
+      var empty = s.substr(alloc, 6, 0);
+      std.test.assert(empty.is_empty(), "substr empty tail");
+
+      var copy = s.clone(alloc);
+      std.test.assert(copy.equals(s), "clone equals source");
+      copy.to_upper();
+      std.test.assert(s.equals_literal("abcdef"), "clone is independent");
+
+      try {
+        var bad = s.substr(alloc, 4, 3);
+        std.test.fail("expected error");
+      } catch (e: IError) {}
+    }
+
+    test_function split_on_byte_and_string() {
+      var alloc = make_heap_allocator();
+      var csv = String(alloc, "a,b,,c");
+      var parts = csv.split(alloc, 44);  // ','
+      std.test.assert_eq(parts.size(), 4);
+      std.test.assert(parts.get_unchecked(0).equals_literal("a"), "first piece");
+      std.test.assert(parts.get_unchecked(2).is_empty(), "empty piece kept");
+      std.test.assert(parts.get_unchecked(3).equals_literal("c"), "last piece");
+
+      var plain = String(alloc, "no separators here");
+      var whole = plain.split(alloc, 44);
+      std.test.assert_eq(whole.size(), 1);
+
+      var text = String(alloc, "k1=v1;;k2=v2;");
+      var fields = text.split(alloc, ";;");
+      std.test.assert_eq(fields.size(), 2);
+      std.test.assert(fields.get_unchecked(0).equals_literal("k1=v1"), "first field");
+      std.test.assert(fields.get_unchecked(1).equals_literal("k2=v2;"), "second field");
+
+      var untouched = String(alloc, "abc");
+      var one = untouched.split(alloc, "");
+      std.test.assert_eq(one.size(), 1);
+      std.test.assert(one.get_unchecked(0).equals_literal("abc"), "empty separator");
+    }
+
+    test_function split_nonempty_skips_empty_pieces() {
+      var alloc = make_heap_allocator();
+      var csv = String(alloc, ",a,,b,");
+      var parts = csv.split_nonempty(alloc, 44);  // ','
+      std.test.assert_eq(parts.size(), 2);
+      std.test.assert(parts.get_unchecked(0).equals_literal("a"), "first piece");
+      std.test.assert(parts.get_unchecked(1).equals_literal("b"), "second piece");
+
+      var seps = String(alloc, ",,,");
+      var none = seps.split_nonempty(alloc, 44);
+      std.test.assert_eq(none.size(), 0);
+
+      var text = String(alloc, ";;k1=v1;;;;k2=v2;;");
+      var fields = text.split_nonempty(alloc, ";;");
+      std.test.assert_eq(fields.size(), 2);
+      std.test.assert(fields.get_unchecked(0).equals_literal("k1=v1"), "first field");
+      std.test.assert(fields.get_unchecked(1).equals_literal("k2=v2"), "second field");
+
+      var abc = String(alloc, "abc");
+      var one = abc.split_nonempty(alloc, "");
+      std.test.assert_eq(one.size(), 1);
+      std.test.assert(one.get_unchecked(0).equals_literal("abc"), "empty separator");
+
+      var blank = String(alloc, "");
+      var nothing = blank.split_nonempty(alloc, "");
+      std.test.assert_eq(nothing.size(), 0);
+    }
+
+    // The five split entry points share one implementation, so the empty
+    // separator and empty subject cases are pinned here.
+    test_function split_edge_cases() {
+      var alloc = make_heap_allocator();
+      var s = String(alloc, "abc");
+      var empty = String(alloc, "");
+
+      // An empty separator cuts nothing: the whole string is one piece
+      var whole = s.split(alloc, "");
+      std.test.assert_eq(whole.size(), 1);
+      std.test.assert(whole.get_unchecked(0).equals_literal("abc"), "one whole piece");
+      std.test.assert_eq(s.split_nonempty(alloc, "").size(), 1);
+
+      // An empty subject yields one empty piece, or none when empty pieces
+      // are dropped
+      std.test.assert_eq(empty.split(alloc, "").size(), 1);
+      std.test.assert_eq(empty.split_nonempty(alloc, "").size(), 0);
+      std.test.assert_eq(empty.split(alloc, b',').size(), 1);
+      std.test.assert_eq(empty.split_nonempty(alloc, b',').size(), 0);
+      std.test.assert_eq(empty.split_whitespace(alloc).size(), 0);
+    }
+
+    test_function split_whitespace_collapses_runs() {
+      var alloc = make_heap_allocator();
+      var s = String(alloc, "  one\ttwo  \n three\r\n");
+      var words = s.split_whitespace(alloc);
+      std.test.assert_eq(words.size(), 3);
+      std.test.assert(words.get_unchecked(0).equals_literal("one"), "first word");
+      std.test.assert(words.get_unchecked(1).equals_literal("two"), "second word");
+      std.test.assert(words.get_unchecked(2).equals_literal("three"), "third word");
+
+      var solid = String(alloc, "word");
+      var solo = solid.split_whitespace(alloc);
+      std.test.assert_eq(solo.size(), 1);
+      std.test.assert(solo.get_unchecked(0).equals_literal("word"), "single word");
+
+      var spaces = String(alloc, " \t\n ");
+      var empty = spaces.split_whitespace(alloc);
+      std.test.assert_eq(empty.size(), 0);
+    }
+
+    test_function join_parts() {
+      var alloc = make_heap_allocator();
+      var csv = String(alloc, "a,b,,c");
+      var parts = csv.split(alloc, 44);
+      var rejoined = join(alloc, parts, ",");
+      std.test.assert(rejoined.equals(csv), "split then join round trips");
+      var dashed = join(alloc, parts, " - ");
+      std.test.assert(dashed.equals_literal("a - b -  - c"), "multi-byte separator");
+
+      var single = Vec<String>(alloc, 2);
+      single.push(String(alloc, "solo"));
+      var alone = join(alloc, single, ",");
+      std.test.assert(alone.equals_literal("solo"), "single part");
+    }
+
+    test_function replace_literal_and_string() {
+      var alloc = make_heap_allocator();
+      // Replacement longer than the match: buffer has to grow
+      var s = String(alloc, "one fish two fish");
+      s.replace("fish", "lizard");
+      std.test.assert(s.equals_literal("one lizard two lizard"), "longer replacement");
+
+      // Replacement shorter than the match
+      s.replace("lizard", "ox");
+      std.test.assert(s.equals_literal("one ox two ox"), "shorter replacement");
+
+      // Same length
+      s.replace("ox", "oy");
+      std.test.assert(s.equals_literal("one oy two oy"), "same-length replacement");
+
+      // Replacement containing the needle must not loop forever
+      var loopy = String(alloc, "aaa");
+      loopy.replace("a", "aa");
+      std.test.assert(loopy.equals_literal("aaaaaa"), "replacement contains needle");
+
+      // Deleting matches
+      var del = String(alloc, "x-y-z");
+      del.replace("-", "");
+      std.test.assert(del.equals_literal("xyz"), "empty replacement deletes");
+
+      // No match leaves the string alone
+      var same = String(alloc, "hello");
+      same.replace("zz", "yy");
+      std.test.assert(same.equals_literal("hello"), "no match");
+
+      // Empty needle is a no-op
+      same.replace("", "yy");
+      std.test.assert(same.equals_literal("hello"), "empty needle");
+
+      // String overloads
+      var text = String(alloc, "cat dog cat");
+      var from = String(alloc, "cat");
+      var to = String(alloc, "bird");
+      text.replace(from, to);
+      std.test.assert(text.equals_literal("bird dog bird"), "String overloads");
+    }
+
+    test_function c_str_terminates_without_changing_the_string() {
+      var alloc = make_heap_allocator();
+      var s = String(alloc, "abc");
+      s.append_literal("def");
+      var p = s.c_str();
+      // A NUL sits just past the last byte, and the bytes are unchanged.
+      if (unsafe { _load<u8>(p, 6); } != 0) {
+        std.test.fail("missing NUL");
+      }
+      if (unsafe { _load<u8>(p, 0); } != 97) {
+        std.test.fail("bytes changed");
+      }
+      std.test.assert_eq(s.length(), 6);
+      std.test.assert(s.equals_literal("abcdef"), "content unchanged");
+      // Still usable, and re-terminating after a mutation still works.
+      s.append_char(33);
+      if (unsafe { _load<u8>(s.c_str(), 7); } != 0) {
+        std.test.fail("missing NUL after append");
+      }
+      std.test.assert_eq(s.length(), 7);
+    }
+
+    test_function from_c_str_copies_the_bytes() {
+      var alloc = make_heap_allocator();
+      var src = String(alloc, "round trip");
+      var copy = from_c_str(alloc, src.c_str());
+      std.test.assert_eq(copy.length(), 10);
+      std.test.assert(copy.equals_literal("round trip"), "copied content");
+      // The copy is independent of the source.
+      src.clear();
+      std.test.assert_eq(copy.length(), 10);
+    }
+
+    test_function from_c_str_handles_empty_and_null() {
+      var alloc = make_heap_allocator();
+      var empty = String(alloc, "");
+      var a = from_c_str(alloc, empty.c_str());
+      std.test.assert(a.is_empty(), "empty C string");
+      var b = from_c_str(alloc, null);
+      std.test.assert(b.is_empty(), "null C string");
+    }
+
+    test_function push_encodes_utf8() {
+      var alloc = make_heap_allocator();
+      var s = String(alloc, "");
+      s.push('a');
+      std.test.assert_eq(s.length(), 1);
+      s.push('é');  // 2 bytes
+      std.test.assert_eq(s.length(), 3);
+      s.push('你');  // 3 bytes
+      std.test.assert_eq(s.length(), 6);
+      s.push('😀');  // 4 bytes
+      std.test.assert_eq(s.length(), 10);
+      // é is C3 A9
+      std.test.assert(s.at(1) == b'\xC3' and s.at(2) == b'\xA9', "é bytes");
+    }
+
+    test_function char_count_counts_scalars_not_bytes() {
+      var alloc = make_heap_allocator();
+      var s = String(alloc, "héllo😀");
+      std.test.assert_eq(s.length(), 10);  // bytes
+      std.test.assert_eq(s.count_chars(), 6);  // scalar values
+    }
+
+    test_function chars_round_trips_through_push() {
+      var alloc = make_heap_allocator();
+      var s = String(alloc, "héllo😀");
+      var out = String(alloc, "");
+      var it = s.iterate_chars();
+      for (var c: char in it) {
+        out.push(c);
+      }
+      std.test.assert(out.equals(s), "round trip");
+    }
+
+    test_function chars_yields_the_scalar_values() {
+      var alloc = make_heap_allocator();
+      var s = String(alloc, "a😀");
+      var seen = 0;
+      var it = s.iterate_chars();
+      for (var c: char in it) {
+        if (seen == 0) {
+          std.test.assert_eq(c, 'a');
+        }
+        if (seen == 1) {
+          std.test.assert_eq(c, '\u{1F600}');
+        }
+        seen = seen + 1;
+      }
+      std.test.assert_eq(seen, 2);
+    }
+
+    // Malformed bytes must not stall or overrun iteration: each bad byte
+    // becomes one U+FFFD and the scan moves on.
+    test_function chars_replaces_malformed_bytes() {
+      var alloc = make_heap_allocator();
+      var s = String(alloc, "a");
+      s.append_char(b'\xFF');  // not a valid lead byte
+      s.append_char(b'b');
+      s.append_char(b'\xE2');  // 3-byte lead...
+      s.append_char(b'c');  // ...with a bad continuation
+      std.test.assert_eq(s.count_chars(), 5);
+      var replacements = 0;
+      var it = s.iterate_chars();
+      for (var c: char in it) {
+        if (c == '\u{FFFD}') {
+          replacements = replacements + 1;
+        }
+      }
+      std.test.assert_eq(replacements, 2);
+    }
+
+    test_function find_returns_the_byte_index_of_a_char() {
+      var alloc = make_heap_allocator();
+      var s = String(alloc, "héllo😀");
+      var at_e = match s.find('é') {
+        Option.Some(i) => i,
+        Option.None => -1
+      };
+      std.test.assert_eq(at_e, 1);
+      var at_emoji = match s.find('😀') {
+        Option.Some(i) => i,
+        Option.None => -1
+      };
+      std.test.assert_eq(at_emoji, 6);
+      var absent = match s.find('z') {
+        Option.Some(i) => i,
+        Option.None => -1
+      };
+      std.test.assert_eq(absent, -1);
+      var last_l = match s.rfind('l') {
+        Option.Some(i) => i,
+        Option.None => -1
+      };
+      std.test.assert_eq(last_l, 4);
+      std.test.assert(s.contains('h'), "contains char");
+      std.test.assert(not s.contains('z'), "missing char");
+    }
+
+    test_function char_of_rejects_non_scalar_values() {
+      var ok = match char_of(65) {
+        Option.Some(c) => c == 'A',
+        Option.None => false
+      };
+      std.test.assert(ok, "char_of(65) is 'A'");
+      var surrogate = match char_of(55296) {
+        Option.Some(c) => true,
+        Option.None => false
+      };
+      std.test.assert(not surrogate, "surrogate rejected");
+      var too_big = match char_of(1114112) {
+        Option.Some(c) => true,
+        Option.None => false
+      };
+      std.test.assert(not too_big, "beyond U+10FFFF rejected");
+      std.test.assert_eq(code_of('😀'), 128512);
+    }
+
+    test_function interpolating_a_char_writes_utf8() {
+      var c: char = '😀';
+      var s = `[${c}]`;
+      std.test.assert_eq(s.length(), 6);  // '[' + 4 bytes + ']'
+      std.test.assert(s.at(0) == b'[' and s.at(5) == b']', "brackets preserved");
+    }
+  }  // module string_tests
+}  // module std

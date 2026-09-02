@@ -24,6 +24,15 @@
 /// execute. It owns all compilation components and provides static factory
 /// methods for easy construction.
 class Driver {
+ public:
+  /// How a compilation treats test_function declarations. Editor analysis
+  /// (analyzeFiles/analyzeString) never goes through runPipeline, so it
+  /// always sees tests and needs no mode.
+  enum class TestHandling {
+    Strip,    // production (default): tests removed before analysis
+    Compile,  // test binary: tests kept, test_files loaded, runner synthesized
+  };
+
  private:
   // Owned components
   std::unique_ptr<CodegenContext> ctx;
@@ -44,10 +53,16 @@ class Driver {
   bool debugMode_ = false;
   std::string debugFolder_;
 
+  // See setTestHandling
+  TestHandling testHandling_ = TestHandling::Strip;
+
   // Moon libraries to preload for single-file compilation modes
   std::vector<sun::MoonImport> moonImports_;
   std::vector<std::string> protoFiles_;
   bool dumpProtoSun_ = false;
+
+  // Whether the last compilation saw any test functions or test_files
+  bool hasTests_ = false;
 
   // Static archives carried by imported .moon bundles, extracted to a temp
   // directory that lives as long as this Driver.
@@ -75,6 +90,11 @@ class Driver {
   sun::SunValue runPipeline(std::unique_ptr<BlockExprAST> blockAst,
                             Parser& parser, bool execute, int argc = 0,
                             char** argv = nullptr);
+
+  // Strip test functions (production builds) or collect them, make them
+  // public and splice in the synthesized runner main (test builds). Runs
+  // first in runPipeline, before any analysis.
+  void applyTestHandling(BlockExprAST& blockAst);
 
   // Front half of the pipeline shared by compilation and analysis: lowering,
   // moon stub injection and semantic analysis (no borrow check, no codegen)
@@ -113,6 +133,12 @@ class Driver {
   void writeUserDefinedIR(const std::string& path);
 
  public:
+  void setTestHandling(TestHandling handling) { testHandling_ = handling; }
+
+  /// True when the last compilation encountered test functions or the
+  /// manifest listed test_files. Valid after compileFile/executeFile.
+  bool programHasTests() const { return hasTests_; }
+
   /// Create a Driver for JIT execution. debugInfo enables DWARF emission (-g).
   static std::unique_ptr<Driver> createForJIT(
       const std::string& moduleName = "sun", bool debugInfo = false);

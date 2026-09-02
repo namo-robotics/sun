@@ -35,7 +35,7 @@ void writeFile(const fs::path& path, const std::string& content) {
 TEST(Modules_SunConfig, config_variables_override_cli_and_environment) {
   fs::path dir = freshDir("override");
   writeFile(dir / "sun-config.json",
-            "{ \"pathVariables\": { \"LIBS\": \"conflibs\" } }\n");
+            "{ \"path_variables\": { \"LIBS\": \"conflibs\" } }\n");
   writeFile(dir / "main.sun",
             "manifest { libraries: [\"$LIBS/lib.moon\"] }\n"
             "function main() i32 { return 0; }\n");
@@ -56,7 +56,7 @@ TEST(Modules_SunConfig, config_variables_override_cli_and_environment) {
 TEST(Modules_SunConfig, config_is_found_in_a_parent_folder) {
   fs::path dir = freshDir("parent");
   writeFile(dir / "sun-config.json",
-            "{ \"pathVariables\": { \"SHARED\": \"common\" } }\n");
+            "{ \"path_variables\": { \"SHARED\": \"common\" } }\n");
   writeFile(dir / "src" / "main.sun",
             "manifest { source_files: [\"$SHARED/util.sun\"] }\n"
             "function main() i32 { return 0; }\n");
@@ -73,7 +73,7 @@ TEST(Modules_SunConfig, config_is_found_in_a_parent_folder) {
 
 TEST(Modules_SunConfig, config_sun_path_resolves_manifest_entries) {
   fs::path dir = freshDir("sunpath");
-  writeFile(dir / "sun-config.json", "{ \"sunPath\": [\"deps\"] }\n");
+  writeFile(dir / "sun-config.json", "{ \"sun_path\": [\"deps\"] }\n");
   writeFile(dir / "deps" / "util.moon", "not a real bundle\n");
   writeFile(dir / "main.sun",
             "manifest { libraries: [\"util.moon\"] }\n"
@@ -91,12 +91,12 @@ TEST(Modules_SunConfig, config_sun_path_resolves_manifest_entries) {
 TEST(Modules_SunConfig, configs_merge_up_the_parent_chain) {
   fs::path dir = freshDir("merge");
   writeFile(dir / "sun-config.json",
-            "{ \"sunPath\": [\"pdeps\"], "
-            "\"pathVariables\": { \"SHARED\": \"common\", \"LIBS\": "
+            "{ \"sun_path\": [\"pdeps\"], "
+            "\"path_variables\": { \"SHARED\": \"common\", \"LIBS\": "
             "\"parentlibs\" } }\n");
   writeFile(dir / "sub" / "sun-config.json",
-            "{ \"sunPath\": [\"cdeps\"], "
-            "\"pathVariables\": { \"LIBS\": \"libs\" } }\n");
+            "{ \"sun_path\": [\"cdeps\"], "
+            "\"path_variables\": { \"LIBS\": \"libs\" } }\n");
 
   auto config = sun::SunConfig::findFrom(dir / "sub");
   ASSERT_TRUE(config.has_value());
@@ -115,9 +115,9 @@ TEST(Modules_SunConfig, configs_merge_up_the_parent_chain) {
 TEST(Modules_SunConfig, root_true_stops_the_parent_walk) {
   fs::path dir = freshDir("root_stop");
   writeFile(dir / "sun-config.json",
-            "{ \"pathVariables\": { \"SHARED\": \"common\" } }\n");
+            "{ \"path_variables\": { \"SHARED\": \"common\" } }\n");
   writeFile(dir / "sub" / "sun-config.json",
-            "{ \"root\": true, \"pathVariables\": { \"LIBS\": \"libs\" } }\n");
+            "{ \"root\": true, \"path_variables\": { \"LIBS\": \"libs\" } }\n");
 
   auto config = sun::SunConfig::findFrom(dir / "sub");
   ASSERT_TRUE(config.has_value());
@@ -155,11 +155,80 @@ TEST(Modules_SunConfig, unknown_config_key_is_an_error) {
   }
 }
 
+TEST(Modules_SunConfig, entrypoints_parse_with_anchored_paths) {
+  fs::path dir = freshDir("entrypoints");
+  writeFile(dir / "sun-config.json",
+            "{ \"entrypoints\": ["
+            "{ \"path\": \"stdlib/stdlib.sun\", \"type\": \"library\", "
+            "\"output_name\": \"build/stdlib\", "
+            "\"test_binary_name\": \"build/stdlib_test\" },"
+            "{ \"path\": \"app.sun\" }"
+            "] }\n");
+
+  auto config = sun::SunConfig::loadFile(dir / "sun-config.json");
+  ASSERT_EQ(config.entrypoints.size(), 2u);
+  EXPECT_EQ(config.entrypoints[0].path,
+            (dir / "stdlib" / "stdlib.sun").lexically_normal().string());
+  EXPECT_EQ(config.entrypoints[0].type, sun::ConfigEntrypoint::Type::Library);
+  EXPECT_EQ(config.entrypoints[0].outputName,
+            (dir / "build" / "stdlib").lexically_normal().string());
+  EXPECT_EQ(config.entrypoints[0].testBinaryName,
+            (dir / "build" / "stdlib_test").lexically_normal().string());
+  // Defaults: binary type, names derived later from the entrypoint
+  EXPECT_EQ(config.entrypoints[1].type, sun::ConfigEntrypoint::Type::Binary);
+  EXPECT_TRUE(config.entrypoints[1].outputName.empty());
+  EXPECT_TRUE(config.entrypoints[1].testBinaryName.empty());
+}
+
+TEST(Modules_SunConfig, entrypoint_without_path_is_an_error) {
+  fs::path dir = freshDir("entrypoint_no_path");
+  writeFile(dir / "sun-config.json",
+            "{ \"entrypoints\": [{ \"type\": \"library\" }] }\n");
+  EXPECT_THROW(sun::SunConfig::loadFile(dir / "sun-config.json"), SunError);
+}
+
+TEST(Modules_SunConfig, entrypoint_type_must_be_binary_or_library) {
+  fs::path dir = freshDir("entrypoint_bad_type");
+  writeFile(dir / "sun-config.json",
+            "{ \"entrypoints\": "
+            "[{ \"path\": \"a.sun\", \"type\": \"plugin\" }] }\n");
+  EXPECT_THROW(sun::SunConfig::loadFile(dir / "sun-config.json"), SunError);
+}
+
+TEST(Modules_SunConfig, unknown_entrypoint_key_is_an_error) {
+  fs::path dir = freshDir("entrypoint_unknown_key");
+  writeFile(dir / "sun-config.json",
+            "{ \"entrypoints\": "
+            "[{ \"path\": \"a.sun\", \"binaryName\": \"a\" }] }\n");
+  try {
+    sun::SunConfig::loadFile(dir / "sun-config.json");
+    FAIL() << "expected an unknown-key error";
+  } catch (const SunError& e) {
+    EXPECT_NE(std::string(e.what()).find("binaryName"), std::string::npos);
+  }
+}
+
+TEST(Modules_SunConfig, entrypoints_concatenate_up_the_parent_chain) {
+  fs::path dir = freshDir("entrypoint_merge");
+  writeFile(dir / "sun-config.json",
+            "{ \"entrypoints\": [{ \"path\": \"parent.sun\" }] }\n");
+  writeFile(dir / "sub" / "sun-config.json",
+            "{ \"entrypoints\": [{ \"path\": \"child.sun\" }] }\n");
+
+  auto config = sun::SunConfig::findFrom(dir / "sub");
+  ASSERT_TRUE(config.has_value());
+  ASSERT_EQ(config->entrypoints.size(), 2u);
+  EXPECT_EQ(config->entrypoints[0].path,
+            (dir / "sub" / "child.sun").lexically_normal().string());
+  EXPECT_EQ(config->entrypoints[1].path,
+            (dir / "parent.sun").lexically_normal().string());
+}
+
 TEST(Modules_SunConfig, absolute_config_entries_are_kept_as_is) {
   fs::path dir = freshDir("absolute");
   writeFile(dir / "sun-config.json",
-            "{ \"sunPath\": [\"/opt/sun\"], "
-            "\"pathVariables\": { \"LIBS\": \"/opt/libs\" } }\n");
+            "{ \"sun_path\": [\"/opt/sun\"], "
+            "\"path_variables\": { \"LIBS\": \"/opt/libs\" } }\n");
 
   auto config = sun::SunConfig::loadFile(dir / "sun-config.json");
   ASSERT_EQ(config.sunPath.size(), 1u);

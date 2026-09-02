@@ -252,17 +252,31 @@ and in every folder above it:
 
 ```json filename="sun-config.json"
 {
-    "sunPath": ["../../build"],
-    "pathVariables": { "LIBS": "libs" },
+    "sun_path": ["../../build"],
+    "path_variables": { "LIBS": "libs" },
+    "entrypoints": [
+        { "path": "stdlib/stdlib.sun", "type": "library",
+          "output_name": "build/stdlib",
+          "test_binary_name": "build/stdlib_test" }
+    ],
     "root": true
 }
 ```
 
-Those three keys are the whole file — anything else is an error:
+Those four keys are the whole file — anything else is an error:
 
-- **`sunPath`** — extra directories to search for `.moon` libraries, on top
+- **`sun_path`** — extra directories to search for `.moon` libraries, on top
   of `SUN_PATH` and the install location
-- **`pathVariables`** — values for the `$NAME` variables a manifest uses
+- **`path_variables`** — values for the `$NAME` variables a manifest uses
+- **`entrypoints`** — the project's build products. Each entry names an
+  entrypoint file (`path`, required), whether it is a `"binary"`
+  (an executable, the default) or a `"library"` (a `.moon` bundle), and
+  optionally what to call the compiled artifact (`output_name`) and its test
+  binary (`test_binary_name`). With entrypoints declared, the config file
+  itself can stand in for an entrypoint on the command line —
+  `sun -c sun-config.json` builds every product, `sun test sun-config.json`
+  runs every suite — and editor tooling knows the project's entrypoints
+  without scanning
 - **`root`** — `true` stops the upward search at this file, keeping a project
   self-contained
 

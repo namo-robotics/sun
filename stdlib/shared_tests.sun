@@ -1,0 +1,365 @@
+// stdlib/shared_tests.sun - Tests for shared.sun.
+// Replaces the runtime tests of the C++ suite Stdlib_Concurrency_Shared; the
+// compile-time negatives (use after move, no accessor besides lock, no
+// hand-built guard) stay in tests/stdlib/concurrency/test_shared.cpp.
+//
+// A moved-from value is left all-zero and still has its deinit run, so every
+// drop counter here ignores the zero state — the same discipline Unique<T>
+// follows by null-checking its pointer.
+
+using std;
+using std.thread;
+
+public module std {
+  module shared_tests {
+    // A small value to put behind a Shared handle.
+    class Res {
+      public var v: i32;
+      init(v: i32) {
+        this.v = v;
+      }
+    }
+
+    // Drop counter for value_drops_only_when_the_last_handle_goes only; no
+    // other test touches it, so parallel tests never share state.
+    var drop_count: i32 = 0;
+
+    // A value that counts its drops, ignoring the moved-from zero state.
+    class DropRes {
+      public var v: i32;
+      init(v: i32) {
+        this.v = v;
+      }
+      deinit() {
+        if (this.v != 0) {
+          drop_count = drop_count + 1;
+        }
+      }
+    }
+
+    // A counter the locking tests write through the guard.
+    class Counter {
+      public var n: i64;
+      init() {
+        this.n = 0;
+      }
+    }
+
+    // Error type for the unwinding test.
+    class Boom implements IError {
+      init() {}
+      method code() i32 {
+        return 1;
+      }
+      method message() String {
+        return String("boom");
+      }
+    }
+
+    // Builds a Shared value and hands out a clone; the original drops here.
+    function hand_out(alloc: const ref HeapAllocator) Shared<Res> {
+      var s = Shared<Res>(alloc, Res(9));
+      return s.clone();  // s drops here; the clone carries on
+    }
+
+    // Locks the shared counter, writes it, and throws with the guard alive.
+    function lock_then_throw(s: const ref Shared<Counter>) i32 throws IError {
+      var g = s.lock();
+      g.get().n = 7;
+      throw Boom();
+    }
+
+    // Adds five through a read-only handle; lock() is a const method.
+    function bump(s: const ref Shared<Counter>) void {
+      var g = s.lock();
+      g.get().n = g.get().n + 5;
+    }
+
+    // ------------------------------------------------------------------
+    // Reference counting
+    // ------------------------------------------------------------------
+
+    test_function one_handle_starts_at_one() {
+      var alloc = make_heap_allocator();
+      var s = Shared<Res>(alloc, Res(5));
+      std.test.assert_eq(s.count(), 1);
+    }
+
+    test_function clone_raises_and_scope_exit_lowers_the_count() {
+      var alloc = make_heap_allocator();
+      var s = Shared<Res>(alloc, Res(5));
+      var inner: i32 = 0;
+      if (true) {
+        var c = s.clone();
+        inner = s.count();
+      }
+      std.test.assert_eq(inner, 2);
+      std.test.assert_eq(s.count(), 1);
+    }
+
+    test_function value_drops_only_when_the_last_handle_goes() {
+      var alloc = make_heap_allocator();
+      var afterClone: i32 = 0;
+      if (true) {
+        var s = Shared<DropRes>(alloc, DropRes(5));
+        if (true) {
+          var c = s.clone();
+        }
+        afterClone = drop_count;  // 0 - s still owns it
+      }
+      std.test.assert_eq(afterClone, 0);
+      std.test.assert_eq(drop_count, 1);
+    }
+
+    test_function a_clone_keeps_the_value_alive() {
+      var alloc = make_heap_allocator();
+      var kept = hand_out(alloc);
+      var g = kept.lock();
+      std.test.assert_eq(g.get().v, 9);
+      std.test.assert_eq(kept.count(), 1);
+    }
+
+    test_function binding_a_handle_to_a_new_name_moves_it() {
+      var alloc = make_heap_allocator();
+      var s = Shared<Res>(alloc, Res(3));
+      var s2 = s;  // a move, not another owner
+      std.test.assert_eq(s2.count(), 1);
+    }
+
+    // A value that owns heap memory must be released exactly once, by
+    // whichever handle happens to be last.
+    test_function an_owning_value_is_released_once() {
+      var alloc = make_heap_allocator();
+      var total: i64 = 0;
+      if (true) {
+        var s = Shared<Vec<i64>>(alloc, Vec<i64>(alloc, 4));
+        if (true) {
+          var c = s.clone();
+          var g = c.lock();
+          g.get().push(11);
+          g.get().push(31);
+        }
+        var g = s.lock();
+        total = g.get().size();
+      }
+      std.test.assert_eq(total, 2);
+    }
+
+    // ------------------------------------------------------------------
+    // Locking
+    // ------------------------------------------------------------------
+
+    test_function write_through_the_guard_and_read_it_back() {
+      var alloc = make_heap_allocator();
+      var s = Shared<Counter>(alloc, Counter());
+      if (true) {
+        var g = s.lock();
+        g.get().n = 42;
+      }
+      var g2 = s.lock();
+      std.test.assert_eq(g2.get().n, 42);
+    }
+
+    // Dropping the guard unlocks, so a second lock in the same function
+    // proceeds.
+    test_function the_guard_unlocks_at_scope_exit() {
+      var alloc = make_heap_allocator();
+      var s = Shared<Counter>(alloc, Counter());
+      if (true) {
+        var g = s.lock();
+        g.get().n = g.get().n + 1;
+      }
+      if (true) {
+        var g = s.lock();
+        g.get().n = g.get().n + 1;
+      }
+      if (true) {
+        var g = s.lock();
+        g.get().n = g.get().n + 1;
+      }
+      var g = s.lock();
+      std.test.assert_eq(g.get().n, 3);
+    }
+
+    // Unwinding past a guard releases the lock on the way out.
+    test_function the_guard_unlocks_while_unwinding() {
+      var alloc = make_heap_allocator();
+      var s = Shared<Counter>(alloc, Counter());
+      var got: i64 = 0;
+      try {
+        var r = lock_then_throw(s);
+      } catch (e: IError) {
+        var g = s.lock();  // deadlocks if the guard did not unlock
+        got = g.get().n;
+      }
+      std.test.assert_eq(got, 7);
+    }
+
+    // lock() is a const method, so a read-only handle can still reach the
+    // value.
+    test_function lock_works_through_a_const_ref_handle() {
+      var alloc = make_heap_allocator();
+      var s = Shared<Counter>(alloc, Counter());
+      bump(s);
+      bump(s);
+      var g = s.lock();
+      std.test.assert_eq(g.get().n, 10);
+    }
+
+    // ------------------------------------------------------------------
+    // Threads
+    // ------------------------------------------------------------------
+
+    // The gap this type closes: two threads that both WRITE one value. Each
+    // owns its own clone, moved in through the capture list.
+    test_function two_threads_write_one_value() {
+      var alloc = make_heap_allocator();
+      var s = Shared<Counter>(alloc, Counter());
+      var c1 = s.clone();
+      var c2 = s.clone();
+      var t1 = spawn(
+        [c1]() => i32 {
+          var i: i64 = 0;
+          while (i < 20000) {
+            var g = c1.lock();
+            g.get().n = g.get().n + 1;
+            i = i + 1;
+          }
+          return 0;
+        }
+      );
+      var t2 = spawn(
+        [c2]() => i32 {
+          var i: i64 = 0;
+          while (i < 20000) {
+            var g = c2.lock();
+            g.get().n = g.get().n + 1;
+            i = i + 1;
+          }
+          return 0;
+        }
+      );
+      t1.join();
+      t2.join();
+      var g = s.lock();
+      std.test.assert_eq(g.get().n, 40000);
+    }
+
+    test_function four_threads_write_one_value() {
+      var alloc = make_heap_allocator();
+      var s = Shared<Counter>(alloc, Counter());
+      var c1 = s.clone();
+      var c2 = s.clone();
+      var c3 = s.clone();
+      var c4 = s.clone();
+      var t1 = spawn(
+        [c1]() => i32 {
+          var i: i64 = 0;
+          while (i < 5000) {
+            var g = c1.lock();
+            g.get().n = g.get().n + 1;
+            i = i + 1;
+          }
+          return 0;
+        }
+      );
+      var t2 = spawn(
+        [c2]() => i32 {
+          var i: i64 = 0;
+          while (i < 5000) {
+            var g = c2.lock();
+            g.get().n = g.get().n + 1;
+            i = i + 1;
+          }
+          return 0;
+        }
+      );
+      var t3 = spawn(
+        [c3]() => i32 {
+          var i: i64 = 0;
+          while (i < 5000) {
+            var g = c3.lock();
+            g.get().n = g.get().n + 1;
+            i = i + 1;
+          }
+          return 0;
+        }
+      );
+      var t4 = spawn(
+        [c4]() => i32 {
+          var i: i64 = 0;
+          while (i < 5000) {
+            var g = c4.lock();
+            g.get().n = g.get().n + 1;
+            i = i + 1;
+          }
+          return 0;
+        }
+      );
+      t1.join();
+      t2.join();
+      t3.join();
+      t4.join();
+      var g = s.lock();
+      std.test.assert_eq(g.get().n, 20000);
+    }
+
+    // Several threads may also share one handle read-only and lock through
+    // it.
+    test_function threads_share_one_handle_by_const_ref() {
+      var alloc = make_heap_allocator();
+      var s = Shared<Counter>(alloc, Counter());
+      var t1 = spawn(
+        [const ref s]() => i32 {
+          var i: i64 = 0;
+          while (i < 20000) {
+            var g = s.lock();
+            g.get().n = g.get().n + 1;
+            i = i + 1;
+          }
+          return 0;
+        }
+      );
+      var t2 = spawn(
+        [const ref s]() => i32 {
+          var i: i64 = 0;
+          while (i < 20000) {
+            var g = s.lock();
+            g.get().n = g.get().n + 1;
+            i = i + 1;
+          }
+          return 0;
+        }
+      );
+      t1.join();
+      t2.join();
+      var g = s.lock();
+      std.test.assert_eq(g.get().n, 40000);
+    }
+
+    // A thread that is never joined by hand is joined when its handle's
+    // scope ends, and only then is the clone it captured dropped. If those
+    // ran the other way round the thread would be reading freed memory.
+    test_function an_unjoined_thread_finishes_before_its_clone_drops() {
+      var alloc = make_heap_allocator();
+      var s = Shared<Counter>(alloc, Counter());
+      if (true) {
+        var c = s.clone();
+        var t = spawn(
+          [c]() => i32 {
+            var i: i64 = 0;
+            while (i < 50000) {
+              var g = c.lock();
+              g.get().n = g.get().n + 1;
+              i = i + 1;
+            }
+            return 0;
+          }
+        );
+      }
+      var g = s.lock();
+      std.test.assert_eq(g.get().n, 50000);
+      std.test.assert_eq(s.count(), 1);
+    }
+  }  // module shared_tests
+}  // module std

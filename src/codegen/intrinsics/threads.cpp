@@ -64,38 +64,70 @@ Value* IntrinsicsGenerator::codegenSpawnIntrinsic(
   auto* i64Ty = Type::getInt64Ty(llvmCtx);
 
   if (args.empty()) {
-    logAndThrowError("_spawn<F>() requires the lambda to run");
+    logAndThrowError("_spawn<F>() requires the function to run");
   }
+  // F is either a lambda (fat pointer, hidden environment argument) or a
+  // named-function value (bare one-word pointer, no environment).
   auto* lambdaType = sun::tryGetType<sun::LambdaType>(lambdaSunType);
-  if (!lambdaType) {
-    logAndThrowError("_spawn<F>() requires a lambda type argument");
+  auto* namedFnType = sun::tryGetType<sun::FunctionType>(lambdaSunType);
+  if (!lambdaType && !namedFnType) {
+    logAndThrowError("_spawn<F>() requires a lambda or function type argument");
   }
 
-  sun::TypePtr returnType = lambdaType->getReturnType();
+  // The trampoline has no unwind handling, so an error crossing the spawn
+  // boundary would take the whole process down mid-unwind. Catch inside the
+  // spawned function and carry failures in its result instead.
+  if (lambdaType ? lambdaType->canThrow() : namedFnType->canThrow()) {
+    logAndThrowError(
+        "a spawned function must not throw; catch errors inside it and "
+        "return them as part of its result");
+  }
+
+  sun::TypePtr returnType =
+      lambdaType ? lambdaType->getReturnType() : namedFnType->getReturnType();
   Type* resultLLVMType = typeResolver.resolveForReturn(returnType);
-  StructType* fatType = cast<StructType>(lambdaType->toLLVMType(llvmCtx));
-  FunctionType* lambdaFuncType = lambdaType->toLLVMFunctionType(llvmCtx);
+  StructType* fatType =
+      lambdaType ? cast<StructType>(lambdaType->toLLVMType(llvmCtx)) : nullptr;
+  FunctionType* calleeFuncType = lambdaType
+                                     ? lambdaType->toLLVMFunctionType(llvmCtx)
+                                     : namedFnType->toLLVMFunctionType(llvmCtx);
   StructType* contextType = getThreadContextStruct(contextPtrType);
 
-  // The lambda. A literal yields a pointer to the fat struct { func*, env* };
-  // a variable holding one yields the fat struct by value.
-  Value* lambdaVal = codegen(*args[0]);
-  if (!lambdaVal) {
-    logAndThrowError("Failed to generate the lambda for _spawn");
+  Value* funcPtr = nullptr;
+  Value* envPtr = ConstantPointerNull::get(cast<PointerType>(ptrTy));
+  Value* calleeSeed = nullptr;
+  if (lambdaType) {
+    // The lambda. A literal yields a pointer to the fat struct
+    // { func*, env* }; a variable holding one yields the fat struct by value.
+    Value* lambdaVal = codegen(*args[0]);
+    if (!lambdaVal) {
+      logAndThrowError("Failed to generate the lambda for _spawn");
+    }
+    Value* lambdaFat =
+        lambdaVal->getType()->isPointerTy()
+            ? ctx.builder->CreateLoad(fatType, lambdaVal, "spawn.fat")
+            : lambdaVal;
+    funcPtr = ctx.builder->CreateExtractValue(lambdaFat, 0, "spawn.func");
+    envPtr = ctx.builder->CreateExtractValue(lambdaFat, 1, "spawn.env");
+    calleeSeed = lambdaFat;
+  } else {
+    // A named-function value is already the callable address.
+    funcPtr = codegen(*args[0]);
+    if (!funcPtr) {
+      logAndThrowError("Failed to generate the function for _spawn");
+    }
+    calleeSeed = funcPtr;
   }
-  Value* lambdaFat =
-      lambdaVal->getType()->isPointerTy()
-          ? ctx.builder->CreateLoad(fatType, lambdaVal, "spawn.fat")
-          : lambdaVal;
-  Value* funcPtr = ctx.builder->CreateExtractValue(lambdaFat, 0, "spawn.func");
-  Value* envPtr = ctx.builder->CreateExtractValue(lambdaFat, 1, "spawn.env");
 
-  // The arguments, lowered exactly as any other call to this lambda would
+  // The arguments, lowered exactly as any other call to this callee would
   // lower them: semantic analysis recorded one conversion each, and a
-  // compound argument moves, leaving its source invalidated.
-  std::vector<Value*> argValues{lambdaFat};
-  if (!gen_.emitCallArguments(args, conversions, lambdaType->getParamTypes(),
-                              lambdaFuncType, argValues, "_spawn",
+  // compound argument moves, leaving its source invalidated. Slot 0 is the
+  // callee itself and never reaches the argument blob.
+  std::vector<Value*> argValues{calleeSeed};
+  const auto& calleeParams =
+      lambdaType ? lambdaType->getParamTypes() : namedFnType->getParamTypes();
+  if (!gen_.emitCallArguments(args, conversions, calleeParams, calleeFuncType,
+                              argValues, "_spawn",
                               /*firstArg=*/1)) {
     logAndThrowError("Failed to generate the arguments for _spawn");
   }
@@ -103,12 +135,15 @@ Value* IntrinsicsGenerator::codegenSpawnIntrinsic(
   FunctionCallee mallocFunc = sun::libc::malloc(module);
   const DataLayout& layout = module->getDataLayout();
 
-  // The argument block: one field per lambda parameter, in declared order.
+  // The argument block: one field per parameter, in declared order. A
+  // lambda's LLVM signature carries the hidden environment first, which the
+  // blob never stores; a named function's parameters start at slot zero.
   StructType* argsType = nullptr;
   Value* argsBlob = ConstantPointerNull::get(cast<PointerType>(ptrTy));
   if (argValues.size() > 1) {
-    std::vector<Type*> fieldTypes(lambdaFuncType->param_begin() + 1,
-                                  lambdaFuncType->param_end());
+    std::vector<Type*> fieldTypes(
+        calleeFuncType->param_begin() + (lambdaType ? 1 : 0),
+        calleeFuncType->param_end());
     argsType = StructType::get(llvmCtx, fieldTypes);
     argsBlob = ctx.builder->CreateCall(
         mallocFunc,
@@ -147,16 +182,28 @@ Value* IntrinsicsGenerator::codegenSpawnIntrinsic(
   ctx.builder->CreateStore(
       argsBlob, ctx.builder->CreateStructGEP(contextType, contextPtr, 4));
 
+  // Spawned threads get an explicit 8 MiB stack. Libc defaults differ
+  // wildly — glibc ~8 MiB, musl 128 KiB, macOS 512 KiB — so recursion that
+  // works on the main thread would overflow a worker on some targets. An
+  // explicit size makes spawn behave the same however the binary is linked.
+  // pthread_attr_t is at most 64 bytes on every supported libc.
+  Value* attr = ctx.builder->CreateAlloca(
+      ArrayType::get(Type::getInt8Ty(module->getContext()), 64), nullptr,
+      "spawn.attr");
+  ctx.builder->CreateCall(sun::libc::pthreadAttrInit(module), {attr});
+  ctx.builder->CreateCall(
+      sun::libc::pthreadAttrSetstacksize(module),
+      {attr, ConstantInt::get(i64Ty, 8ull * 1024 * 1024)});
+
   // pthread_create writes the thread id straight into the context (field 3)
   Value* tidFieldPtr =
       ctx.builder->CreateStructGEP(contextType, contextPtr, 3, "ctx.tid");
   Function* trampoline = threadUtils.getOrCreateThreadTrampoline(
-      lambdaFuncType, fatType, resultLLVMType, contextType, argsType);
-  ctx.builder->CreateCall(
-      sun::libc::pthreadCreate(module),
-      {tidFieldPtr, ConstantPointerNull::get(cast<PointerType>(ptrTy)),
-       trampoline, contextPtr},
-      "pthread_create_result");
+      calleeFuncType, fatType, resultLLVMType, contextType, argsType);
+  ctx.builder->CreateCall(sun::libc::pthreadCreate(module),
+                          {tidFieldPtr, attr, trampoline, contextPtr},
+                          "pthread_create_result");
+  ctx.builder->CreateCall(sun::libc::pthreadAttrDestroy(module), {attr});
 
   return contextPtr;
 }

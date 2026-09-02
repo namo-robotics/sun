@@ -30,6 +30,10 @@ bool satisfies(const TypePtr& type, const std::string& name) {
       return valueType->isPrimitive();
     case TypeTrait::Lambda:
       return valueType->isLambda();
+    case TypeTrait::Function:
+      return valueType->isFunction();
+    case TypeTrait::Callable:
+      return valueType->isLambda() || valueType->isFunction();
     case TypeTrait::None:
       break;
   }

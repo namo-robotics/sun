@@ -185,13 +185,15 @@ public module std {
     var n: i64 = text.length();
     while (i < n) {
       var ch: i32 = _convert<i32>(text.at(i));
-      if (ch >= 48 and ch <= 57) {  // '0'..'9'
+      if (ch >= 48 and ch <= 57) {
+        // '0'..'9'
         octet_value = octet_value * 10 + (ch - 48);
         digits = digits + 1;
         if (digits > 3 or octet_value > 255) {
           throw Error(-1, "malformed IPv4 address");
         }
-      } else if (ch == 46) {  // '.'
+      } else if (ch == 46) {
+        // '.'
         if (digits == 0 or parts == 3) {
           throw Error(-1, "malformed IPv4 address");
         }
@@ -582,8 +584,14 @@ public module std {
       var sender_ip: i32 = 0;
       var sender_port: i32 = 0;
       var result: i64 = unsafe {
-        __recvfrom_ipv4(this.fd, buf.raw_data(), buf.size(), 0,
-                        _address_of<i32>(sender_ip), _address_of<i32>(sender_port));
+        __recvfrom_ipv4(
+          this.fd,
+          buf.raw_data(),
+          buf.size(),
+          0,
+          _address_of<i32>(sender_ip),
+          _address_of<i32>(sender_port)
+        );
       };
       if (result < 0) {
         var err_code: i32 = errno();

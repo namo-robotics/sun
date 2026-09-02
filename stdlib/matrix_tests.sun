@@ -1,0 +1,147 @@
+// stdlib/matrix_tests.sun - Tests for matrix.sun (Matrix, SliceRange, views).
+// Replaces the runtime-positive tests of the C++ suite Stdlib_Matrix; the
+// compile-only and use-after-move (compile error) tests stay in
+// tests/stdlib/test_matrix.cpp.
+
+using std;
+
+public module std {
+  module matrix_tests {
+    test_function simple_matrix() {
+      var allocator = make_heap_allocator();
+      var m = Matrix<i32>(allocator, [1]);
+      var idx: array<i64, 1> = [0];
+      m.set(idx, 10);
+      std.test.assert_eq(m.get(idx), 10);
+    }
+
+    test_function matrix_ndims_and_size() {
+      var allocator = make_heap_allocator();
+      var shape: array<i64, 3> = [2, 3, 4];
+      var m = Matrix<f64>(allocator, shape);
+      std.test.assert_eq(m.ndims(), 3);
+      std.test.assert_eq(m.size(), 24);  // 2*3*4
+    }
+
+    // Bracket indexing syntax: M[i, j]
+    test_function bracket_index_syntax() {
+      var allocator = make_heap_allocator();
+      var m = Matrix<i32>(allocator, [2, 3]);
+      m[0, 0] = 42;
+      std.test.assert_eq(m[0, 0], 42);
+    }
+
+    test_function bracket_index_2d() {
+      var allocator = make_heap_allocator();
+      var m = Matrix<i32>(allocator, [3, 3]);
+      // Fill diagonal with values
+      m[0, 0] = 1;
+      m[1, 1] = 2;
+      m[2, 2] = 3;
+      // Sum diagonal
+      std.test.assert_eq(m[0, 0] + m[1, 1] + m[2, 2], 6);
+    }
+
+    test_function slice_range_construction() {
+      // A slice range representing [2:5]
+      var s = SliceRange(2, 5, true, true);
+      std.test.assert_eq(s.get_start(), 2);
+      std.test.assert_eq(s.get_end(10), 5);
+      std.test.assert_eq(s.compute_size(10), 3);
+    }
+
+    test_function slice_range_open_ends() {
+      // Slice [:5] - from start to 5
+      var s1 = SliceRange(0, 5, false, true);
+      std.test.assert_eq(s1.get_start(), 0);
+      std.test.assert_eq(s1.get_end(10), 5);
+
+      // Slice [3:] - from 3 to end
+      var s2 = SliceRange(3, 0, true, false);
+      std.test.assert_eq(s2.get_start(), 3);
+      std.test.assert_eq(s2.get_end(10), 10);
+
+      // Full slice [:] - from start to end
+      var s3 = SliceRange(0, 0, false, false);
+      std.test.assert(s3.is_full_range(), "[:] is the full range");
+    }
+
+    test_function slice_1d_basic() {
+      var allocator = make_heap_allocator();
+      var m = Matrix<i32>(allocator, [10]);
+      for (var i: i64 = 0; i < 10; i = i + 1) {
+        m[i] = i;
+      }
+      // Slice [2:5] should give a view of length 3
+      var view = m[2:5];
+      std.test.assert_eq(view.size(), 3);
+    }
+
+    test_function slice_1d_values() {
+      var allocator = make_heap_allocator();
+      var m = Matrix<i32>(allocator, [10]);
+      for (var i: i64 = 0; i < 10; i = i + 1) {
+        m[i] = i;
+      }
+      // Slice [2:5] should give a view with values 2, 3, 4
+      var view = m[2:5];
+      var idx0: array<i64, 1> = [0];
+      var idx1: array<i64, 1> = [1];
+      var idx2: array<i64, 1> = [2];
+      std.test.assert_eq(view.get(idx0), 2);
+      std.test.assert_eq(view.get(idx1), 3);
+      std.test.assert_eq(view.get(idx2), 4);
+    }
+
+    test_function slice_1d_from_start() {
+      var allocator = make_heap_allocator();
+      var m = Matrix<i32>(allocator, [5]);
+      m[0] = 10;
+      m[1] = 20;
+      m[2] = 30;
+      m[3] = 40;
+      m[4] = 50;
+      // Slice [0:3]
+      var view = m[0:3];
+      var idx0: array<i64, 1> = [0];
+      var idx1: array<i64, 1> = [1];
+      var idx2: array<i64, 1> = [2];
+      var sum: i64 = view.get(idx0) + view.get(idx1) + view.get(idx2);
+      std.test.assert_eq(sum, 60);  // 10 + 20 + 30
+    }
+
+    test_function slice_1d_to_end() {
+      var allocator = make_heap_allocator();
+      var m = Matrix<i32>(allocator, [5]);
+      m[0] = 10;
+      m[1] = 20;
+      m[2] = 30;
+      m[3] = 40;
+      m[4] = 50;
+      // Slice [3:5]
+      var view = m[3:5];
+      var idx0: array<i64, 1> = [0];
+      var idx1: array<i64, 1> = [1];
+      var sum: i64 = view.get(idx0) + view.get(idx1);
+      std.test.assert_eq(sum, 90);  // 40 + 50
+    }
+
+    // View can be modified and read - the view owns the data after the move
+    test_function slice_1d_modify_through_view() {
+      var allocator = make_heap_allocator();
+      var m = Matrix<i32>(allocator, [5]);
+      m[0] = 1;
+      m[1] = 2;
+      m[2] = 3;
+      m[3] = 4;
+      m[4] = 5;
+      // Get a view - this MOVES m.data to view
+      var view = m[1:4];  // view now contains [2,3,4]
+      // Modify through view
+      var idx0: array<i64, 1> = [0];
+      view.set(idx0, 200);
+      // Read back through view (not the original matrix)
+      std.test.assert_eq(view.get(idx0), 200);
+    }
+  }  // module matrix_tests
+}  // module std

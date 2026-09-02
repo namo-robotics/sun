@@ -81,6 +81,23 @@ inline sun::SunValue executeStringWithStdlib(const std::string& source,
   return executeString(source, argc, argv, true);
 }
 
+// Execute in test mode: tests kept, the runner main synthesized, stdlib
+// preloaded. Returns the runner's exit code (0 = every test passed).
+inline sun::SunValue executeTestsWithStdlib(const std::string& source,
+                                            int argc = 0,
+                                            char** argv = nullptr) {
+  initTestEnvironment();
+  try {
+    auto driver = Driver::createForJIT();
+    driver->setTestHandling(Driver::TestHandling::Compile);
+    driver->setMoonImports(getStdlibMoonImports());
+    return driver->executeString(source, argc, argv);
+  } catch (const SunError& e) {
+    std::cerr << e.what() << std::endl;
+    throw;
+  }
+}
+
 // Execute and dump all reachable IR (includes stdlib functions)
 inline sun::SunValue executeStringWithReachableIR(const std::string& source,
                                                   int argc = 0,

@@ -1,0 +1,157 @@
+// stdlib/vec_tests.sun - Tests for stdlib/vec.sun.
+// Replaces the C++ suite Stdlib_Collections_Vec.
+
+using std;
+
+public module std {
+  module vec_tests {
+    test_function create_empty_vec() {
+      var allocator = make_heap_allocator();
+      var v = Vec<i64>(allocator, 8);
+      std.test.assert_eq(v.size(), 0);
+    }
+
+    test_function push_and_size() {
+      var allocator = make_heap_allocator();
+      var v = Vec<i64>(allocator, 8);
+      v.push(10);
+      v.push(20);
+      v.push(30);
+      std.test.assert_eq(v.size(), 3);
+    }
+
+    test_function push_and_get() {
+      var allocator = make_heap_allocator();
+      var v = Vec<i64>(allocator, 8);
+      v.push(10);
+      v.push(20);
+      v.push(30);
+      std.test.assert_eq(v.get(0) + v.get(1) + v.get(2), 60);
+    }
+
+    test_function set_element() {
+      var allocator = make_heap_allocator();
+      var v = Vec<i64>(allocator, 8);
+      v.push(10);
+      v.push(20);
+      v.set(0, 99);
+      std.test.assert_eq(v.get(0), 99);
+    }
+
+    test_function pop_element() {
+      var allocator = make_heap_allocator();
+      var v = Vec<i64>(allocator, 8);
+      v.push(10);
+      v.push(20);
+      v.push(30);
+      var last = match v.pop() {
+        Option.Some(x) => x,
+        Option.None => -1
+      };
+      std.test.assert_eq(last, 30);
+      std.test.assert_eq(v.size(), 2);
+    }
+
+    test_function pop_empty_is_none() {
+      var allocator = make_heap_allocator();
+      var v = Vec<i64>(allocator, 8);
+      v.push(1);
+      v.pop();
+      var got = match v.pop() {
+        Option.Some(x) => 1,
+        Option.None => 42
+      };
+      std.test.assert_eq(got, 42);
+    }
+
+    test_function is_empty() {
+      var allocator = make_heap_allocator();
+      var v = Vec<i64>(allocator, 8);
+      std.test.assert(v.is_empty());
+      v.push(1);
+      std.test.assert(v.is_empty() == false);
+    }
+
+    test_function clear() {
+      var allocator = make_heap_allocator();
+      var v = Vec<i64>(allocator, 8);
+      v.push(1);
+      v.push(2);
+      v.push(3);
+      v.clear();
+      std.test.assert_eq(v.size(), 0);
+    }
+
+    test_function capacity() {
+      var allocator = make_heap_allocator();
+      var v = Vec<i64>(allocator, 8);
+      std.test.assert_eq(v.capacity(), 8);
+    }
+
+    test_function auto_grow() {
+      var allocator = make_heap_allocator();
+      var v = Vec<i64>(allocator, 8);
+      for (var i: i64 = 0; i < 20; i = i + 1) {
+        v.push(i);
+      }
+      std.test.assert_eq(v.size(), 20);
+    }
+
+    test_function auto_grow_values_preserved() {
+      var allocator = make_heap_allocator();
+      var v = Vec<i64>(allocator, 8);
+      for (var i: i64 = 0; i < 20; i = i + 1) {
+        v.push(i * 10);
+      }
+      std.test.assert_eq(v.get(0) + v.get(10) + v.get(19), 290);
+    }
+
+    test_function first_and_last() {
+      var allocator = make_heap_allocator();
+      var v = Vec<i64>(allocator, 8);
+      v.push(10);
+      v.push(20);
+      v.push(30);
+      var f = match v.first() {
+        Option.Some(x) => x,
+        Option.None => -1
+      };
+      var l = match v.last() {
+        Option.Some(x) => x,
+        Option.None => -1
+      };
+      std.test.assert_eq(f, 10);
+      std.test.assert_eq(l, 30);
+    }
+
+    test_function i32_type() {
+      var allocator = make_heap_allocator();
+      var v = Vec<i32>(allocator, 8);
+      v.push(5);
+      v.push(10);
+      std.test.assert_eq(v.get(0) + v.get(1), 15);
+    }
+
+    test_function iteration() {
+      var allocator = make_heap_allocator();
+      var v = Vec<i64>(allocator, 8);
+      v.push(1);
+      v.push(2);
+      v.push(3);
+      v.push(4);
+      var sum: i64 = 0;
+      for (var x: i64 in v) {
+        sum = sum + x;
+      }
+      std.test.assert_eq(sum, 10);
+    }
+
+    test_function index_operator() {
+      var allocator = make_heap_allocator();
+      var v = Vec<i64>(allocator, 8);
+      v.push(100);
+      v.push(200);
+      std.test.assert_eq(v[0] + v[1], 300);
+    }
+  }  // module vec_tests
+}  // module std

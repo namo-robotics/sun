@@ -30,6 +30,8 @@ enum class TypeTrait {
   Numeric,    // Integer + Float
   Primitive,  // Numeric + bool
   Lambda,     // _Lambda: any closure type, however it was written
+  Function,   // _Function: a named-function value (function (Args) Result)
+  Callable,   // _Callable: Lambda + Function — anything that can be called
 };
 
 // Look up a trait by the name written in source. Returns None when the name is
@@ -43,6 +45,8 @@ inline TypeTrait getTypeTrait(const std::string& name) {
   if (name == "_Numeric") return TypeTrait::Numeric;
   if (name == "_Primitive") return TypeTrait::Primitive;
   if (name == "_Lambda") return TypeTrait::Lambda;
+  if (name == "_Function") return TypeTrait::Function;
+  if (name == "_Callable") return TypeTrait::Callable;
   return TypeTrait::None;
 }
 

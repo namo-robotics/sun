@@ -1,0 +1,71 @@
+// stdlib/fixtures_tests.sun - Shared fixtures for the stdlib's own tests.
+//
+// The stdlib test suite runs as one process with every test on its own
+// thread by default, so anything touching shared machine state (files,
+// environment variables) must use names unique to the test. These helpers
+// derive uniqueness from a per-test tag plus the process id, which also
+// isolates concurrent CI runs from each other.
+
+using std;
+
+public module std {
+  module tests {
+    // A scratch directory under /tmp, created on init and removed with its
+    // files on deinit. A failed assertion throws, and unwinding runs deinit
+    // like any scope exit, so cleanup happens even when the test fails.
+    // Pass the test's own name as the tag so parallel tests never collide.
+    public class TempDir {
+      public var path: String;
+      var alloc: HeapAllocator;
+
+      init(allocator: ref HeapAllocator, tag: static_ptr<u8>) throws IError {
+        this.alloc = allocator.copy();
+        var p = String("/tmp/sun_stdlib_");
+        p.append_literal(tag);
+        p.append_char(b'_');
+        p.append(std.process.pid());
+        this.path = p;
+        std.io.make_dir(this.path, 493);
+      }
+
+      // A path for `name` inside the directory, owned by the caller.
+      public method file(name: static_ptr<u8>) String {
+        var p = this.path.clone(this.alloc);
+        p.append_char(b'/');
+        p.append_literal(name);
+        return p;
+      }
+
+      deinit() {
+        // Best-effort cleanup: remove the entries we can, then the
+        // directory itself. deinit must not throw.
+        try {
+          var entries = std.io.read_dir(this.alloc, this.path);
+          var i: i64 = 0;
+          while (i < entries.size()) {
+            var entry_path = this.path.clone(this.alloc);
+            entry_path.append_char(b'/');
+            entry_path.append(entries.get_unchecked(i).name());
+            if (entries.get_unchecked(i).is_dir()) {
+              std.io.remove_dir(entry_path);
+            } else {
+              std.io.remove_file(entry_path);
+            }
+            i = i + 1;
+          }
+          std.io.remove_dir(this.path);
+        } catch (e: IError) {}
+      }
+    }
+
+    // A /tmp file path unique to the calling test, owned by the caller.
+    // Nothing is created; the test makes and removes the file itself.
+    public function unique_path(tag: static_ptr<u8>) String {
+      var p = String("/tmp/sun_stdlib_");
+      p.append_literal(tag);
+      p.append_char(b'_');
+      p.append(std.process.pid());
+      return p;
+    }
+  }  // module tests
+}  // module std

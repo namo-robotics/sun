@@ -1,0 +1,272 @@
+// stdlib/test.sun - Unit testing: assertions, test results, and the runner.
+//
+// Test functions are declared with `test_function` and compiled only into
+// the test binary. For that binary the compiler synthesizes a main that runs
+// every test through run_one — each on its own thread by default — and
+// reports with report/finish. Passing --test-sequential to the test binary
+// runs the tests one after another in declaration order instead.
+//
+// A failed assertion throws AssertionError. Unwinding runs the same drop
+// glue as normal scope exit, so a fixture class's deinit (the teardown)
+// still runs when a test fails.
+//
+// Usage:
+//   test_function growsWhenFull() {
+//       var v = Vec<i32>(make_heap_allocator());
+//       v.push(1);
+//       std.test.assert_eq(v.size(), 1);
+//   }
+
+public module std {
+  public module test {
+    // Raised by a failed assertion; carries the explanation text.
+    public class AssertionError implements IError {
+      var message_: String;
+
+      // Build the error from a literal explanation.
+      init(message: static_ptr<u8>) {
+        this.message_ = String(message);
+      }
+
+      // Build the error from text composed at runtime; the text is copied.
+      init(message: const ref String) {
+        var alloc: HeapAllocator = HeapAllocator();
+        this.message_ = message.clone(alloc);
+      }
+
+      // Error code 10: assertion failure.
+      public method code() i32 {
+        return 10;
+      }
+
+      // A fresh copy of the explanation, owned by the caller.
+      public method message() String {
+        var alloc: HeapAllocator = HeapAllocator();
+        return this.message_.clone(alloc);
+      }
+    }
+
+    // Throw AssertionError when the condition is false.
+    public function assert(condition: bool) void throws IError {
+      if (condition) {
+        return;
+      }
+      throw AssertionError("assertion failed");
+    }
+
+    // Same, with an explanation shown in the failure output.
+    public function assert(condition: bool, message: static_ptr<u8>) void throws IError {
+      if (condition) {
+        return;
+      }
+      throw AssertionError(message);
+    }
+
+    // Throw when the two values differ, showing both in the failure text.
+    // One overload per primitive, like print; for other types write
+    // assert(a == b, "explanation").
+    public function assert_eq(expected: i32, actual: i32) void throws IError {
+      if (expected == actual) {
+        return;
+      }
+      throw AssertionError(`assertion failed: expected ${expected}, got ${actual}`);
+    }
+    public function assert_eq(expected: i64, actual: i64) void throws IError {
+      if (expected == actual) {
+        return;
+      }
+      throw AssertionError(`assertion failed: expected ${expected}, got ${actual}`);
+    }
+    public function assert_eq(expected: u32, actual: u32) void throws IError {
+      if (expected == actual) {
+        return;
+      }
+      throw AssertionError(`assertion failed: expected ${expected}, got ${actual}`);
+    }
+    public function assert_eq(expected: u64, actual: u64) void throws IError {
+      if (expected == actual) {
+        return;
+      }
+      throw AssertionError(`assertion failed: expected ${expected}, got ${actual}`);
+    }
+    public function assert_eq(expected: f64, actual: f64) void throws IError {
+      if (expected == actual) {
+        return;
+      }
+      throw AssertionError(`assertion failed: expected ${expected}, got ${actual}`);
+    }
+    public function assert_eq(expected: char, actual: char) void throws IError {
+      if (expected == actual) {
+        return;
+      }
+      throw AssertionError(`assertion failed: expected ${expected}, got ${actual}`);
+    }
+    public function assert_eq(expected: bool, actual: bool) void throws IError {
+      if (expected == actual) {
+        return;
+      }
+      throw AssertionError(`assertion failed: expected ${expected}, got ${actual}`);
+    }
+    // Compare two strings by content.
+    public function assert_eq(expected: const ref String, actual: const ref String) void throws IError {
+      if (expected.equals(actual)) {
+        return;
+      }
+      throw AssertionError(`assertion failed: expected ${expected}, got ${actual}`);
+    }
+
+    // Throw when the two values are equal.
+    public function assert_ne(a: i32, b: i32) void throws IError {
+      if (a == b) {
+        throw AssertionError(`assertion failed: both values are ${a}`);
+      }
+    }
+    public function assert_ne(a: i64, b: i64) void throws IError {
+      if (a == b) {
+        throw AssertionError(`assertion failed: both values are ${a}`);
+      }
+    }
+    public function assert_ne(a: u32, b: u32) void throws IError {
+      if (a == b) {
+        throw AssertionError(`assertion failed: both values are ${a}`);
+      }
+    }
+    public function assert_ne(a: u64, b: u64) void throws IError {
+      if (a == b) {
+        throw AssertionError(`assertion failed: both values are ${a}`);
+      }
+    }
+    public function assert_ne(a: f64, b: f64) void throws IError {
+      if (a == b) {
+        throw AssertionError(`assertion failed: both values are ${a}`);
+      }
+    }
+    public function assert_ne(a: char, b: char) void throws IError {
+      if (a == b) {
+        throw AssertionError(`assertion failed: both values are ${a}`);
+      }
+    }
+    public function assert_ne(a: bool, b: bool) void throws IError {
+      if (a == b) {
+        throw AssertionError(`assertion failed: both values are ${a}`);
+      }
+    }
+
+    // Unconditionally fail with the given message.
+    public function fail(message: static_ptr<u8>) void throws IError {
+      throw AssertionError(message);
+    }
+
+    // The outcome of one test, produced on the test's thread and moved back
+    // to the main thread through join. The message is empty on a pass.
+    public class TestResult {
+      public var name: static_ptr<u8>;
+      public var passed: bool;
+      public var message: String;
+
+      init(name: static_ptr<u8>, passed: bool, message: String) {
+        this.name = name;
+        this.passed = passed;
+        this.message = message;
+      }
+    }
+
+    // Run one test: call it and catch anything it throws. Never throws
+    // itself, so it is safe to run on a spawned thread (nothing may unwind
+    // across a spawn boundary).
+    public function run_one(name: static_ptr<u8>, fn: function () void throws IError) TestResult {
+      try {
+        fn();
+        return TestResult(name, true, String(""));
+      } catch (e: IError) {
+        return TestResult(name, false, e.message());
+      }
+    }
+
+    // Print one result line: "PASS name" or "FAIL name: message". Returns
+    // whether the test passed. Only the main thread reports, so lines from
+    // parallel runs never interleave.
+    public function report(result: const ref TestResult) bool {
+      if (result.passed) {
+        println(`PASS ${result.name}`);
+        return true;
+      }
+      println(`FAIL ${result.name}: ${result.message}`);
+      return false;
+    }
+
+    // Print the summary line and hand back the process exit code: 0 when
+    // every test passed, 1 otherwise.
+    public function finish(total: i64, failed: i64) i32 {
+      var passed: i64 = total - failed;
+      println(`${passed} passed, ${failed} failed`);
+      if (failed > 0) {
+        return 1;
+      }
+      return 0;
+    }
+
+    // True when the test binary's arguments ask for sequential execution
+    // ("--test-sequential" anywhere in argv).
+    public function wants_sequential(argc: i32, argv: raw_ptr<raw_ptr<i8>>) bool {
+      var alloc: HeapAllocator = HeapAllocator();
+      var env = std.env.Env(alloc);
+      var cli = env.args(argc, argv);
+      var i: i64 = 0;
+      while (i < cli.size()) {
+        if (cli.get_unchecked(i).equals_literal("--test-sequential")) {
+          return true;
+        }
+        i = i + 1;
+      }
+      return false;
+    }
+
+    // True when the dotted test name matches one filter pattern: the exact
+    // name, a trailing-star prefix ("geometry.*"), or a module prefix
+    // ("geometry" selects everything under it).
+    function matches(name: const ref String, pattern: const ref String) bool {
+      if (name.equals(pattern)) {
+        return true;
+      }
+      var plen: i64 = pattern.length();
+      if (plen > 0 and pattern.at(plen - 1) == b'*') {
+        if (name.length() < plen - 1) {
+          return false;
+        }
+        for (var i: i64 = 0; i < plen - 1; i = i + 1) {
+          if (name.at(i) != pattern.at(i)) {
+            return false;
+          }
+        }
+        return true;
+      }
+      return name.length() > plen and name.starts_with(pattern) and name.at(plen) == b'.';
+    }
+
+    // True when the test named `name` should run, given the test binary's
+    // arguments. Every "--test-filter <pattern>" in argv contributes one
+    // pattern; a test runs when it matches any of them, and no patterns at
+    // all runs every test.
+    public function is_selected(name: static_ptr<u8>, argc: i32, argv: raw_ptr<raw_ptr<i8>>) bool {
+      var alloc: HeapAllocator = HeapAllocator();
+      var env = std.env.Env(alloc);
+      var cli = env.args(argc, argv);
+      var name_text = String(name);
+      var saw_filter = false;
+      var i: i64 = 0;
+      while (i + 1 < cli.size()) {
+        if (cli.get_unchecked(i).equals_literal("--test-filter")) {
+          saw_filter = true;
+          if (matches(name_text, cli.get_unchecked(i + 1))) {
+            return true;
+          }
+          i = i + 2;
+          continue;
+        }
+        i = i + 1;
+      }
+      return saw_filter == false;
+    }
+  }  // module test
+}  // module std

@@ -27,6 +27,7 @@ manifest {
 ```sun
 manifest {
     source_files: ["file1.sun", "file2.sun"]  // Optional: additional source files
+    test_files: ["file1_tests.sun"]           // Optional: test-only source files
     libraries: ["lib1.moon", "lib2.moon"]     // Optional: precompiled libraries
     protos: ["schemas/msgs.proto"]            // Optional: protobuf schemas to import
     archives: ["vendor/libfoo.a"]             // Optional: C libraries to carry along
@@ -38,6 +39,8 @@ manifest {
 ```
 
 - **source_files** — Source files (`.sun`) to parse and merge with the entrypoint
+- **test_files** — Source files loaded only when compiling tests (`sun test`,
+  or the `<output>_test` binary `-c` emits); see [Testing](/testing)
 - **libraries** — Precompiled library bundles (`.moon`) to link
 - **protos** — Protobuf schemas (`.proto`) compiled into message classes; see
   [Protobuf](/protobuf)
@@ -62,7 +65,7 @@ is tolerated). A minimal program needs only a `main()` function.
 Paths in the manifest are resolved in order:
 
 1. **Relative to the entrypoint file** — the directory containing the entrypoint
-2. **A `sun-config.json`** — any `sunPath` directories from the config files
+2. **A `sun-config.json`** — any `sun_path` directories from the config files
    above the entrypoint (see [Sun Config](/#sun-config))
 3. **`--lib-path`** — directories given on the command line
 4. **`SUN_PATH`** — directories in the `SUN_PATH` environment variable
@@ -213,13 +216,18 @@ Sun's standard library is built from `stdlib/stdlib.sun`:
 ```sun filename="stdlib/stdlib.sun"
 manifest {
     source_files: [
-        "allocator.sun", "unique.sun", "errors.sun", "sys.sun", "option.sun",
-        "math.sun", "iterator.sun", "slice.sun", "contiguous_buffer.sun",
-        "vec.sun", "matrix.sun", "string.sun", "print.sun", "map.sun",
-        "linked_list.sun", "mutex.sun", "io.sun", "env.sun", "time.sun",
-        "process.sun", "networking.sun", "http.sun", "proto_wire.sun",
-        "json.sun", "bigint.sun"
-    ]
+        "allocator.sun", "unique.sun", "sys.sun", "option.sun", "math.sun",
+        "byte_order.sun", "iterator.sun", "slice.sun",
+        "contiguous_buffer.sun", "vec.sun", "matrix.sun", "string.sun",
+        "errors.sun", "print.sun", "map.sun", "linked_list.sun", "queue.sun",
+        "thread.sun", "test.sun", "shared.sun", "io.sun", "env.sun",
+        "time.sun", "process.sun", "networking.sun", "http.sun",
+        "proto_wire.sun", "json.sun", "bigint.sun"
+    ],
+    target: {
+        macos: { source_files: [ "target_darwin.sun" ] }
+        linux: { source_files: [ "target_linux.sun" ] }
+    }
 }
 ```
 
@@ -227,6 +235,7 @@ manifest {
 |--------|----------|
 | `allocator.sun` | Memory allocators (`HeapAllocator`, `IAllocator` interface) |
 | `bigint.sun` | Arbitrary-precision `BigUint` |
+| `byte_order.sun` | `std.byte_order` — endianness conversions |
 | `env.sun` | `std.env` — environment variables, working directory, `args` |
 | `errors.sun` | Standard error types (`EmptyError`, `NotFoundError`, etc.) |
 | `http.sun` | HTTP/1.1 server (`HttpServer`); the client is in `tls.moon` |
@@ -236,14 +245,18 @@ manifest {
 | `linked_list.sun` | Doubly-linked list `LinkedList<T>` |
 | `map.sun` | Generic hash map `Map<K, V>` |
 | `matrix.sun` | `Matrix<T>` and `MatrixView<T>` N-dimensional arrays |
-| `mutex.sun` | `Mutex` for thread synchronization |
 | `networking.sun` | TCP sockets (`TcpStream`, `TcpListener`) and DNS |
 | `option.sun` | `Option<T>` and `Result<T, E>` payload enums |
 | `print.sun` | Overloaded `print`/`println`/`eprint`/`eprintln` |
 | `process.sun` | `std.process` — `Command`, signals, raw fork/exec |
 | `proto_wire.sun` | Protobuf wire format |
+| `queue.sun` | FIFO `Queue<T>` built on `LinkedList<T>` |
+| `shared.sun` | `Shared<T>` reference-counted handle with `Mutex`-guarded access |
 | `string.sun` | `String` and `StringView` classes |
 | `sys.sun` | The stdlib's private `extern "C"` declarations |
+| `target_linux.sun` / `target_darwin.sun` | Per-OS constants (errno, socket options) |
+| `test.sun` | `std.test` — assertions and the `test_function` runner |
+| `thread.sun` | `std.thread` — `spawn`, `Thread<T>`, `Mutex` |
 | `time.sun` | `std.time` — `Duration`, `Instant`, `DateTime` |
 | `unique.sun` | `Unique<T>` smart pointer with automatic cleanup |
 | `vec.sun` | Generic growable array `Vec<T>` |

@@ -327,7 +327,10 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
                        target.chain[target.chain.size() - 2]->getType() ==
                            ASTNodeType::INTERFACE_DEFINITION);
       return Hover{
-          renderPrototype(fn.getProto(), isMethod ? "method" : "function",
+          renderPrototype(fn.getProto(),
+                          isMethod       ? "method"
+                          : fn.isTest()  ? "test_function"
+                                         : "function",
                           fn.getProto().getName(), fn.isPublic(), source,
                           bindings),
           fn.getProto().getDoc(), range};

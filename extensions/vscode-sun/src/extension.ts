@@ -8,6 +8,7 @@ import {
   ServerOptions,
   TransportKind,
 } from 'vscode-languageclient/node';
+import { activateTestExplorer } from './testExplorer';
 
 let client: LanguageClient | undefined;
 let discoveredEntrypoints: Set<string> = new Set();
@@ -102,10 +103,45 @@ function getMergedEntrypoints(workspaceFolder: string | undefined): string[] {
 function getPathVariables(): Record<string, string> {
   return vscode.workspace
     .getConfiguration('sun')
-    .get<Record<string, string>>('pathVariables', {});
+    .get<Record<string, string>>('path_variables', {});
 }
 
-/** Send entrypoints and path variables to LSP */
+/** The sun_configs setting resolved to absolute paths of files that exist. */
+export function getSunConfigs(workspaceFolder: string | undefined): string[] {
+  const configured = vscode.workspace
+    .getConfiguration('sun')
+    .get<string[]>('sun_configs', ['sun-config.json']);
+  const resolved: string[] = [];
+  for (const entry of configured) {
+    const configPath =
+      path.isAbsolute(entry) || !workspaceFolder
+        ? entry
+        : path.join(workspaceFolder, entry);
+    if (fs.existsSync(configPath)) {
+      resolved.push(configPath);
+    }
+  }
+  return resolved;
+}
+
+/** True when any resolved config file declares a non-empty entrypoints
+ *  list — then the configs describe the project and the manifest scan is
+ *  unnecessary. */
+function configsDeclareEntrypoints(configPaths: string[]): boolean {
+  for (const configPath of configPaths) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      if (Array.isArray(parsed.entrypoints) && parsed.entrypoints.length > 0) {
+        return true;
+      }
+    } catch {
+      // A malformed config is the server's to report; keep scanning.
+    }
+  }
+  return false;
+}
+
+/** Send sun-configs, entrypoints and path variables to LSP */
 async function sendConfigurationToLSP(workspaceFolder: string | undefined): Promise<void> {
   if (!client) return;
 
@@ -114,6 +150,7 @@ async function sendConfigurationToLSP(workspaceFolder: string | undefined): Prom
   await client.sendNotification('workspace/didChangeConfiguration', {
     settings: {
       sun: {
+        sun_configs: getSunConfigs(workspaceFolder),
         entrypoints,
         pathVariables: getPathVariables(),
       },
@@ -124,20 +161,20 @@ async function sendConfigurationToLSP(workspaceFolder: string | undefined): Prom
 export async function activate(_context: vscode.ExtensionContext): Promise<void> {
   const configuredPath = vscode.workspace
     .getConfiguration('sun')
-    .get<string>('lsp.path', '/usr/bin/sun-lsp');
+    .get<string>('lsp_path', '/usr/bin/sun-lsp');
 
   const command = resolveServerCommand(configuredPath);
 
   if (!canLaunchServer(command)) {
     const selection = await vscode.window.showWarningMessage(
-      `Sun LSP executable not found: ${command}. Set 'sun.lsp.path' to the full path of sun-lsp (for example /usr/bin/sun-lsp or /workspaces/sun/build/sun-lsp).`,
+      `Sun LSP executable not found: ${command}. Set 'sun.lsp_path' to the full path of sun-lsp (for example /usr/bin/sun-lsp or /workspaces/sun/build/sun-lsp).`,
       'Open Settings'
     );
 
     if (selection === 'Open Settings') {
       await vscode.commands.executeCommand(
         'workbench.action.openSettings',
-        'sun.lsp.path'
+        'sun.lsp_path'
       );
     }
     return;
@@ -154,7 +191,7 @@ export async function activate(_context: vscode.ExtensionContext): Promise<void>
 
   const configuredPaths = vscode.workspace
     .getConfiguration('sun')
-    .get<string[]>('sunPath', []);
+    .get<string[]>('sun_path', []);
 
   if (configuredPaths.length > 0) {
     for (const p of configuredPaths) {
@@ -172,8 +209,13 @@ export async function activate(_context: vscode.ExtensionContext): Promise<void>
     env.SUN_PATH = sunPathParts.join(':');
   }
 
-  // Discover manifests in workspace
-  discoveredEntrypoints = await discoverManifests();
+  // Discover entrypoints. When a sun-config declares them, the configs
+  // describe the project and the manifest scan is skipped; otherwise every
+  // .sun file with a manifest block is an entrypoint candidate.
+  const sunConfigs = getSunConfigs(workspaceFolder);
+  discoveredEntrypoints = configsDeclareEntrypoints(sunConfigs)
+    ? new Set()
+    : await discoverManifests();
 
   // Get merged entrypoints (manual config takes precedence)
   const entrypoints = getMergedEntrypoints(workspaceFolder);
@@ -186,6 +228,7 @@ export async function activate(_context: vscode.ExtensionContext): Promise<void>
   const clientOptions: LanguageClientOptions = {
     documentSelector: [{ scheme: 'file', language: 'sun' }],
     initializationOptions: {
+      sun_configs: sunConfigs,
       entrypoints,
       pathVariables: getPathVariables(),
     },
@@ -197,11 +240,21 @@ export async function activate(_context: vscode.ExtensionContext): Promise<void>
   const configChangeDisposable = vscode.workspace.onDidChangeConfiguration(async (e) => {
     if (
       e.affectsConfiguration('sun.entrypoints') ||
-      e.affectsConfiguration('sun.pathVariables')
+      e.affectsConfiguration('sun.sun_configs') ||
+      e.affectsConfiguration('sun.path_variables')
     ) {
       await sendConfigurationToLSP(workspaceFolder);
     }
   });
+
+  // An edited sun-config.json changes entrypoints and path variables;
+  // resending the settings makes the server re-read the files.
+  const configFileWatcher =
+    vscode.workspace.createFileSystemWatcher('**/sun-config.json');
+  configFileWatcher.onDidCreate(() => sendConfigurationToLSP(workspaceFolder));
+  configFileWatcher.onDidChange(() => sendConfigurationToLSP(workspaceFolder));
+  configFileWatcher.onDidDelete(() => sendConfigurationToLSP(workspaceFolder));
+  _context.subscriptions.push(configFileWatcher);
 
   // Watch for .sun file changes to update discovered manifests
   fileWatcher = vscode.workspace.createFileSystemWatcher('**/*.sun');
@@ -232,6 +285,7 @@ export async function activate(_context: vscode.ExtensionContext): Promise<void>
     await client.start();
     _context.subscriptions.push(configChangeDisposable);
     _context.subscriptions.push(fileWatcher);
+    activateTestExplorer(_context, client, env, workspaceFolder, command);
   } catch (error) {
     configChangeDisposable.dispose();
     fileWatcher.dispose();

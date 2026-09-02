@@ -172,13 +172,22 @@ ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
   // they define the per-OS primitives (constants, errno, socket options)
   // that the shared files consume, and later files may reference earlier
   // ones but not the other way round.
+  auto addTestSuns = [&](const std::vector<ManifestSunDependency>& suns) {
+    for (const auto& sunDep : suns) {
+      out.testSunFiles.push_back(resolvePath(
+          expandPathVariables(sunDep.path, config), baseDir, config));
+    }
+  };
+
   auto osName = targetOsName(resolvedTargetTriple(targetTriple));
   for (const auto& block : manifest.getTargets()) {
     if (!osName || block.os != *osName) continue;
     addSuns(block.suns);
+    addTestSuns(block.testSuns);
   }
 
   addSuns(manifest.getSuns());
+  addTestSuns(manifest.getTestSuns());
   addMoons(manifest.getMoons());
   addProtos(manifest.getProtos());
   addArchives(manifest.getArchives());

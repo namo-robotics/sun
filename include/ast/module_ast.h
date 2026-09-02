@@ -30,5 +30,6 @@ class ModuleAST : public ExprAST {
 
   const std::string& getName() const { return name; }
   const BlockExprAST& getBody() const { return *body; }
+  BlockExprAST& mutableBody() { return *body; }
   std::string dotLabel() const override { return "Module\n" + name; }
 };

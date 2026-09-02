@@ -323,19 +323,30 @@ unique_ptr<MatchExprAST> Parser::parseMatchExpression() {
 
 // Parse function: function name(args) returnType { body }
 // or: function name<T, U>(args) returnType { body }
-// A class method is spelled the same way but opens with 'method'.
-unique_ptr<FunctionAST> Parser::parseFunction(bool isClassMethod) {
+// A class method is spelled the same way but opens with 'method'; a test is
+// spelled the same way but opens with 'test_function' and takes no
+// parameters, no return type and no type parameters.
+unique_ptr<FunctionAST> Parser::parseFunction(bool isClassMethod,
+                                              bool isTest) {
   Position start = captureStart();
-  getNextToken();  // eat 'function' / 'method'
+  getNextToken();  // eat 'function' / 'method' / 'test_function'
 
   // Allow both regular identifiers and intrinsic identifiers (e.g., __index__)
   if (curTok.kind != TokenKind::IDENTIFIER &&
       curTok.kind != TokenKind::INTRINSIC_IDENTIFIER)
     throwIdentifierError(isClassMethod
                              ? "Expected method name after 'method'"
+                         : isTest
+                             ? "Expected test name after 'test_function'"
                              : "Expected function name after 'function'");
 
   std::string funcName = curTok.getIdentifier().value();
+
+  // The test binary's entry point is synthesized by the compiler, so a test
+  // may not claim the entry point's name.
+  if (isTest && funcName == "main") {
+    parsingError("a test function cannot be named 'main'");
+  }
 
   // Constructors and destructors are not methods; they have their own
   // member syntax without 'public' or 'method', and no other member may
@@ -349,16 +360,25 @@ unique_ptr<FunctionAST> Parser::parseFunction(bool isClassMethod) {
   }
   getNextToken();  // eat function name
 
+  // A generic test has no call site to pick its type arguments, so it could
+  // never be instantiated or run.
+  if (isTest && curTok.kind == TokenKind::LESS) {
+    parsingError("a test function cannot take type parameters");
+  }
+
   // Parse optional type parameters: function name<'a, T>(...)
   std::vector<LifetimeParameter> lifetimeParameters;
   std::vector<TypeParameter> typeParameters =
       parseTypeParameterList(&lifetimeParameters);
 
-  auto result = parseFunctionLiteral(funcName, std::move(typeParameters), false,
-                                     false, std::move(lifetimeParameters));
-  return finishNode(
+  auto result =
+      parseFunctionLiteral(funcName, std::move(typeParameters), false, false,
+                           std::move(lifetimeParameters), isTest);
+  auto func = finishNode(
       unique_ptr<FunctionAST>(static_cast<FunctionAST*>(result.release())),
       start);
+  if (isTest) func->setIsTest(true);
+  return func;
 }
 
 // Parse a constructor or destructor member: init(args) { } / deinit() { }.
@@ -586,7 +606,7 @@ unique_ptr<LambdaAST> Parser::parseLambda() {
 unique_ptr<ExprAST> Parser::parseFunctionLiteral(
     const std::string& name, std::vector<TypeParameter> typeParameters,
     bool isLambda, bool isLifecycleMethod,
-    std::vector<LifetimeParameter> lifetimeParameters) {
+    std::vector<LifetimeParameter> lifetimeParameters, bool isTestFunction) {
   Position start = captureStart();
   expectCurrentTokenKind(TokenKind::PAREN_OPEN,
                          "Expected '(' in function literal");
@@ -635,6 +655,13 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
 
   getNextToken();  // eat ')'
 
+  // The runner calls every test the same way, so a test cannot ask for
+  // arguments; state is built inside the test body (fixtures are classes).
+  if (isTestFunction && (!args.empty() || variadicParam)) {
+    parsingError("a test function takes no parameters; write 'test_function " +
+                 name + "() { ... }' and build state inside the body");
+  }
+
   if (isLambda) {
     expectCurrentTokenKind(TokenKind::FAT_ARROW,
                            "expected '=>' after lambda parameters");
@@ -648,7 +675,22 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
   // Return type is required for all functions except init and deinit, which
   // never declare one and implicitly return void.
   std::optional<TypeAnnotation> retType;
-  if (isLifecycleMethod) {
+  if (isTestFunction) {
+    // A test returns nothing and may always throw: a failed assertion is a
+    // throw, and spelling 'throws IError' on every test would be noise.
+    retType = TypeAnnotation("void");
+    retType->canError = true;
+    if (curTok.kind == TokenKind::THROWS) {
+      parsingError(
+          "a test function may always throw; 'throws IError' is implicit");
+    }
+    if (curTok.kind != TokenKind::BRACE_OPEN) {
+      parsingError(
+          "a test function does not declare a return type; write "
+          "'test_function " +
+          name + "() { ... }'");
+    }
+  } else if (isLifecycleMethod) {
     retType = TypeAnnotation("void");
     // A constructor that can throw is written: init(args) throws IError { }
     if (curTok.kind == TokenKind::THROWS) {
@@ -2244,6 +2286,12 @@ unique_ptr<ExprAST> Parser::parseStatement() {
   parsePublic();
   if (!atItemLevel_)
     parsingError("'public' is only allowed on module-level declarations");
+  // Tests are never importable — they exist only in the test binary — so a
+  // visibility modifier on one is always a mistake.
+  if (curTok.kind == TokenKind::TEST_FUNCTION)
+    parsingError(
+        "a test function cannot be 'public'; tests are never importable and "
+        "are compiled only into the test binary");
   if (!isPublicableStatementStart(curTok.kind))
     parsingError(
         "'public' must precede a declaration (module, class, interface, "
@@ -2387,6 +2435,17 @@ unique_ptr<ExprAST> Parser::parseStatementCore() {
       }
       // Function definitions don't need trailing semicolons
       auto func = parseFunction();
+      while (curTok.kind == TokenKind::SEMI_COLON)
+        getNextToken();  // optional semicolons
+      return func;
+    }
+    case TokenKind::TEST_FUNCTION: {
+      if (!atItemLevel_) {
+        parsingError(
+            "test declarations are only allowed at module scope; move the "
+            "test to module scope");
+      }
+      auto func = parseFunction(/*isClassMethod=*/false, /*isTest=*/true);
       while (curTok.kind == TokenKind::SEMI_COLON)
         getNextToken();  // optional semicolons
       return func;
@@ -2769,6 +2828,7 @@ unique_ptr<ManifestAST> Parser::parseManifest() {
   std::vector<ManifestProtoDependency> protos;
   std::vector<ManifestArchiveDependency> archives;
   std::vector<ManifestTargetBlock> targets;
+  std::vector<ManifestSunDependency> testSuns;
 
   while (curTok.kind == TokenKind::IDENTIFIER) {
     auto ident = curTok.getIdentifier().value();
@@ -2788,10 +2848,12 @@ unique_ptr<ManifestAST> Parser::parseManifest() {
       archives = parseManifestArchives();
     } else if (ident == "target") {
       targets = parseManifestTargets();
+    } else if (ident == "test_files") {
+      testSuns = parseManifestSuns();
     } else {
       parsingError("unexpected identifier '" + ident +
-                   "' in manifest; expected 'source_files', 'libraries', "
-                   "'protos', 'archives' or 'target'");
+                   "' in manifest; expected 'source_files', 'test_files', "
+                   "'libraries', 'protos', 'archives' or 'target'");
     }
 
     // Sections are newline-separated; a trailing ',' or ';' is tolerated
@@ -2805,10 +2867,11 @@ unique_ptr<ManifestAST> Parser::parseManifest() {
                          "expected '}' at end of manifest block");
   getNextToken();  // eat '}'
 
-  return finishNode(std::make_unique<ManifestAST>(
-                        std::move(suns), std::move(moons), std::move(protos),
-                        std::move(archives), std::move(targets)),
-                    start);
+  return finishNode(
+      std::make_unique<ManifestAST>(std::move(suns), std::move(moons),
+                                    std::move(protos), std::move(archives),
+                                    std::move(targets), std::move(testSuns)),
+      start);
 }
 
 // Parse the target-conditional block:
@@ -2856,10 +2919,12 @@ std::vector<ManifestTargetBlock> Parser::parseManifestTargets() {
         block.protos = parseManifestProtos();
       } else if (section == "archives") {
         block.archives = parseManifestArchives();
+      } else if (section == "test_files") {
+        block.testSuns = parseManifestSuns();
       } else {
         parsingError("unexpected identifier '" + section +
                      "' in target block; expected 'source_files', "
-                     "'libraries', 'protos' or 'archives'");
+                     "'test_files', 'libraries', 'protos' or 'archives'");
       }
 
       if (curTok.kind == TokenKind::SEMI_COLON ||
@@ -4142,6 +4207,11 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
     } else if (curTok.kind == TokenKind::FUNCTION) {
       parsingError("a class method is declared with 'method', not 'function'");
       return nullptr;
+    } else if (curTok.kind == TokenKind::TEST_FUNCTION) {
+      parsingError(
+          "tests are not allowed inside classes; declare the test at module "
+          "scope (module privacy already lets it reach this class)");
+      return nullptr;
     } else {
       parsingError(
           "expected 'var' (field), 'method', 'init' or 'deinit' in class body");
@@ -4357,6 +4427,11 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
     } else if (curTok.kind == TokenKind::FUNCTION) {
       parsingError(
           "an interface method is declared with 'method', not 'function'");
+      return nullptr;
+    } else if (curTok.kind == TokenKind::TEST_FUNCTION) {
+      parsingError(
+          "tests are not allowed inside interfaces; declare the test at "
+          "module scope");
       return nullptr;
     } else {
       parsingError("expected 'var' (field) or 'method' in interface body");

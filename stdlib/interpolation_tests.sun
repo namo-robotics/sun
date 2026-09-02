@@ -1,0 +1,166 @@
+// stdlib/interpolation_tests.sun - Tests for string interpolation (no single source file).
+// Replaces the runtime-behavior tests of the C++ suite Stdlib_Text_Interpolation;
+// the compile-environment cases (no stdlib, self-declared std.String, no
+// `using std;`) stay in tests/stdlib/text/test_interpolation.cpp.
+
+using std;
+
+public module std {
+  module interpolation_tests {
+    // Build a short labeled string; pins that returning an interpolated
+    // temporary hands the caller a live buffer.
+    function make_label(n: i64) String {
+      return `v=${n}`;
+    }
+
+    // Take an interpolated String by value and check its contents survived
+    // the move.
+    function take_label(s: String) void throws IError {
+      std.test.assert(s.equals_literal("v=7"), "moved interpolation lost its contents");
+    }
+
+    test_function simple_literal() {
+      var s = `Hello World`;
+      std.test.assert_eq(s.length(), 11);
+    }
+
+    test_function interpolate_string() {
+      var allocator = make_heap_allocator();
+      var name = String(allocator, "World");
+      var s = `Hello ${name}!`;
+      std.test.assert_eq(s.length(), 12);  // "Hello World!"
+    }
+
+    test_function interpolate_integer() {
+      var age: i64 = 42;
+      var s = `Age: ${age}`;
+      std.test.assert_eq(s.length(), 7);  // "Age: 42"
+    }
+
+    test_function interpolate_boolean_true() {
+      var flag: bool = true;
+      var s = `Flag: ${flag}`;
+      std.test.assert_eq(s.length(), 10);  // "Flag: true"
+    }
+
+    test_function interpolate_boolean_false() {
+      var flag: bool = false;
+      var s = `Flag: ${flag}`;
+      std.test.assert_eq(s.length(), 11);  // "Flag: false"
+    }
+
+    test_function multiple_interpolations() {
+      var allocator = make_heap_allocator();
+      var name = String(allocator, "Alice");
+      var age: i64 = 30;
+      var s = `${name} is ${age} years old`;
+      std.test.assert_eq(s.length(), 21);  // "Alice is 30 years old"
+    }
+
+    test_function adjacent_interpolations() {
+      var a: i64 = 1;
+      var b: i64 = 2;
+      var s = `${a}${b}`;
+      std.test.assert(s.equals_literal("12"), "adjacent values");
+    }
+
+    test_function interpolate_expression() {
+      var x: i64 = 10;
+      var y: i64 = 5;
+      var s = `Sum: ${x + y}`;
+      std.test.assert(s.equals_literal("Sum: 15"), "expression value");
+    }
+
+    test_function interpolate_literal_string() {
+      var s = `Hello ${"World"}!`;
+      std.test.assert_eq(s.length(), 12);  // "Hello World!"
+    }
+
+    test_function escape_backtick() {
+      var s = `Hello \` World`;
+      std.test.assert_eq(s.length(), 13);  // "Hello ` World"
+    }
+
+    test_function escape_dollar() {
+      var s = `Price: \${100}`;
+      std.test.assert(s.equals_literal("Price: ${100}"), "escaped dollar");
+    }
+
+    test_function escape_newline() {
+      var s = `Line1\nLine2`;
+      std.test.assert_eq(s.length(), 11);  // includes the newline byte
+    }
+
+    test_function empty_template() {
+      var s = ``;
+      std.test.assert_eq(s.length(), 0);
+    }
+
+    test_function only_interpolation() {
+      var allocator = make_heap_allocator();
+      var name = String(allocator, "Test");
+      var s = `${name}`;
+      std.test.assert(s.equals_literal("Test"), "bare interpolation");
+    }
+
+    test_function nested_braces_in_expression() {
+      var arr: array<i64, 3> = [1, 2, 3];
+      var s = `First: ${arr[0]}`;
+      std.test.assert(s.equals_literal("First: 1"), "index expression");
+    }
+
+    // The desugar reserves the literal bytes up front; this checks the
+    // reserved path produces exactly the same bytes as growing would.
+    test_function long_template_content_is_exact() {
+      var n: i64 = 42;
+      var alloc = make_heap_allocator();
+      var who = String(alloc, "alice");
+      var s = `timestamp=${n} user=${who} status=active region=eu-west-1`;
+      std.test.assert(
+        s.equals_literal("timestamp=42 user=alice status=active region=eu-west-1"),
+        "long template content"
+      );
+    }
+
+    // Interpolation lowers to a block expression, whose value is a temporary
+    // owned by nobody. Returning one used to leave the caller with a String
+    // of the right length over a freed buffer.
+    test_function returned_from_function_keeps_contents() {
+      var s = make_label(7);
+      std.test.assert_eq(s.length(), 3);
+      std.test.assert(s.equals_literal("v=7"), "returned interpolation content");
+    }
+
+    // Same ownership transfer, in argument position
+    test_function passed_by_value_keeps_contents() {
+      take_label(`v=${7}`);
+    }
+
+    test_function println_interpolated_direct() {
+      // Interpolated string passed directly as a ref String argument
+      var x: i32 = 42;
+      println(`x = ${x}`);
+    }
+
+    test_function print_interpolated_direct() {
+      var x: i64 = 7;
+      print(`a=${x}`);
+      println();
+    }
+
+    test_function println_interpolated_twice() {
+      // Back-to-back interpolated temporaries stress repeated temp cleanup
+      var a: i64 = 1;
+      var b: i64 = 2;
+      println(`a=${a}`);
+      println(`b=${b}`);
+    }
+
+    test_function interpolate_float() {
+      var ratio: f64 = 0.25;
+      var s = `ratio=${ratio} half=${1.5}`;
+      std.test.assert(s.equals_literal("ratio=0.25 half=1.5"), "float formatting");
+      std.test.assert_eq(s.length(), 19);
+    }
+  }  // module interpolation_tests
+}  // module std

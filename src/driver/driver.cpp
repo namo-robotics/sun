@@ -11,6 +11,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <inja/inja.hpp>
 #include <sstream>
 
 #include "ast/manifest_ast.h"
@@ -18,6 +19,7 @@
 #include "debug/ast_dot_generator.h"
 #include "debug/scope_tree_generator.h"
 #include "driver/manifest_processor.h"
+#include "generated/test_runner_template.h"
 #include "moon_bundling/library_cache.h"
 #include "moon_bundling/module_linker.h"
 #include "moon_bundling/proto_importer.h"
@@ -534,6 +536,134 @@ void Driver::addJITStaticLibrary(const std::string& path) {
   }
 }
 
+namespace {
+
+// Walk the item-level statements of a merged program, recursing through
+// module bodies. Strip mode erases every test function; collect mode makes
+// each one public — along with every module on the way down to it — because
+// the synthesized runner lives at root scope and could not name anything
+// module-private. Records each test's dotted path. Runs before moon-stub
+// injection, so only user-written modules are visited.
+void visitTests(BlockExprAST& block, std::vector<std::string>& modulePath,
+                bool strip, std::vector<std::string>* found, bool& sawAny) {
+  auto& body = block.mutableBody();
+  for (auto it = body.begin(); it != body.end();) {
+    ExprAST* stmt = it->get();
+    if (stmt && stmt->getType() == ASTNodeType::MODULE) {
+      auto& module = static_cast<ModuleAST&>(*stmt);
+      modulePath.push_back(module.getName());
+      bool sawInModule = false;
+      visitTests(module.mutableBody(), modulePath, strip, found, sawInModule);
+      if (sawInModule && !strip) {
+        module.setVisibility(sun::Visibility::Public);
+      }
+      sawAny |= sawInModule;
+      modulePath.pop_back();
+      ++it;
+      continue;
+    }
+    if (stmt && stmt->getType() == ASTNodeType::FUNCTION &&
+        static_cast<FunctionAST&>(*stmt).isTest()) {
+      sawAny = true;
+      if (strip) {
+        it = body.erase(it);
+        continue;
+      }
+      auto& func = static_cast<FunctionAST&>(*stmt);
+      func.setVisibility(sun::Visibility::Public);
+      std::string path;
+      for (const auto& segment : modulePath) path += segment + ".";
+      path += func.getProto().getName();
+      found->push_back(path);
+      ++it;
+      continue;
+    }
+    ++it;
+  }
+}
+
+// Remove a root-level `main` so the synthesized runner can take its place.
+void removeRootMain(BlockExprAST& block) {
+  auto& body = block.mutableBody();
+  for (auto it = body.begin(); it != body.end(); ++it) {
+    ExprAST* stmt = it->get();
+    if (stmt && stmt->getType() == ASTNodeType::FUNCTION &&
+        static_cast<FunctionAST&>(*stmt).getProto().getName() == "main") {
+      body.erase(it);
+      return;
+    }
+  }
+}
+
+// The test binary's entry point, rendered from the embedded runner template
+// (src/driver/test_runner_template.inja.sun) with the collected dotted test
+// names. The template documents the runner's behavior; this only feeds in
+// the names.
+std::string synthesizeTestRunner(const std::vector<std::string>& tests) {
+  inja::Environment env;
+  // Jinja-style whitespace handling, so the template's {% for %} lines
+  // leave no blank lines behind in the rendered runner.
+  env.set_trim_blocks(true);
+  env.set_lstrip_blocks(true);
+  nlohmann::json data;
+  data["tests"] = tests;
+  return env.render(kTestRunnerTemplate, data);
+}
+
+}  // namespace
+
+void Driver::applyTestHandling(BlockExprAST& blockAst) {
+  std::vector<std::string> modulePath;
+  std::vector<std::string> tests;
+  bool sawAny = false;
+
+  if (testHandling_ == TestHandling::Strip) {
+    visitTests(blockAst, modulePath, /*strip=*/true, nullptr, sawAny);
+    hasTests_ |= sawAny;
+    return;
+  }
+
+  visitTests(blockAst, modulePath, /*strip=*/false, &tests, sawAny);
+  hasTests_ |= sawAny;
+  if (tests.empty()) {
+    logAndThrowError(
+        "no test functions found: declare tests with 'test_function' or list "
+        "test-only sources under 'test_files:' in the manifest");
+  }
+
+  // The runner and its assertions live in std.test, so the test build needs
+  // the standard library (same rule as string interpolation).
+  if (!hasStdlibImport(moonImports_) && !declaresStdlibString(blockAst)) {
+    logAndThrowError(
+        "test functions require the standard library. Add "
+        "'moon \"stdlib.moon\"' to your manifest or use --moon stdlib.moon");
+  }
+
+  removeRootMain(blockAst);
+
+  std::string runnerSrc = synthesizeTestRunner(tests);
+
+  if (debugMode_ && !debugFolder_.empty()) {
+    std::string runnerPath = debugFolder_ + "/test_runner.sun";
+    std::ofstream runnerFile(runnerPath);
+    if (runnerFile) {
+      runnerFile << runnerSrc;
+      llvm::outs() << "  Generated: " << runnerPath << "\n";
+    } else {
+      llvm::errs() << "Warning: Could not write " << runnerPath << "\n";
+    }
+  }
+
+  static constexpr const char* kRunnerPath = "<test-runner>";
+  SourceManager::instance().addSource(kRunnerPath, runnerSrc);
+  auto runnerParser = Parser::createStringParser(runnerSrc);
+  runnerParser.setFilePath(kRunnerPath);
+  auto runnerAst = runnerParser.parseProgram();
+  for (auto& stmt : runnerAst->mutableBody()) {
+    blockAst.mutableBody().push_back(std::move(stmt));
+  }
+}
+
 void Driver::analyzeProgram(BlockExprAST& blockAst, Parser& parser) {
   // Lower the lossless parse tree into the core AST before semantic analysis
   LoweringPass lowering;
@@ -574,6 +704,11 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
     llvm::errs() << "Error: Failed to parse program.\n";
     return result;
   }
+
+  // Strip or compile test functions before any analysis, so a production
+  // build never even sema-analyzes a test (whose helpers may live in
+  // test_files this build did not load).
+  applyTestHandling(*blockAst);
 
   // Debug mode: generate AST DOT graph (pre-lowering, lossless parse tree)
   if (debugMode_ && !debugFolder_.empty()) {
@@ -1009,6 +1144,12 @@ sun::SunValue Driver::executeFile(const std::string& filename, int argc,
                        resolved.moonImports.end());
     protoFiles.insert(protoFiles.end(), resolved.protoFiles.begin(),
                       resolved.protoFiles.end());
+    // test_files are part of the program only when building the test binary
+    hasTests_ |= !resolved.testSunFiles.empty();
+    if (testHandling_ == TestHandling::Compile) {
+      sunFiles.insert(sunFiles.end(), resolved.testSunFiles.begin(),
+                      resolved.testSunFiles.end());
+    }
   }
 
   // Add the entrypoint file itself
@@ -1113,6 +1254,12 @@ void Driver::compileFile(const std::string& filename) {
                        resolved.moonImports.end());
     protoFiles.insert(protoFiles.end(), resolved.protoFiles.begin(),
                       resolved.protoFiles.end());
+    // test_files are part of the program only when building the test binary
+    hasTests_ |= !resolved.testSunFiles.empty();
+    if (testHandling_ == TestHandling::Compile) {
+      sunFiles.insert(sunFiles.end(), resolved.testSunFiles.begin(),
+                      resolved.testSunFiles.end());
+    }
   }
 
   // Add the entrypoint file itself

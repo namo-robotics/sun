@@ -1,0 +1,58 @@
+using std;
+
+// The code under test: distance helpers in a module. `half` is private, but
+// privacy is module-scoped, so tests declared inside the module reach it.
+module distance {
+  function half(n: i64) i64 {
+    return n / 2;
+  }
+
+  public function midpoint(a: i64, b: i64) i64 {
+    return a + distance.half(b - a);
+  }
+
+  // A test is a function declared with `test_function`: no parameters, no
+  // return type, and it may always throw — a failed assertion is a throw.
+  test_function halves() {
+    std.test.assert_eq(distance.half(10), 5);
+  }
+
+  test_function findsTheMidpoint() {
+    std.test.assert_eq(distance.midpoint(2, 10), 6);
+  }
+}
+
+// A fixture is an ordinary class: init is the setup, deinit the teardown.
+// A failed assertion unwinds, and unwinding drops locals like scope exit
+// does, so teardown runs whether the test passes or fails.
+class ScratchBuffer {
+  public var data: Vec<i64>;
+
+  init() {
+    var alloc = make_heap_allocator();
+    this.data = Vec<i64>(alloc, 4);
+    this.data.push(1);
+  }
+
+  deinit() {
+    // The Vec releases itself; a real fixture would remove temp files,
+    // close connections, and so on.
+  }
+}
+
+test_function startsWithOneEntry() {
+  var fx = ScratchBuffer();
+  std.test.assert_eq(fx.data.size(), 1);
+}
+
+function main() i32 {
+  // The production binary never contains the tests above.
+  var m = distance.midpoint(2, 10);
+  println(`midpoint(2, 10) = ${m}`);
+  return 0;
+}
+
+manifest {
+    test_files: ["more_tests.sun"]
+    libraries: ["stdlib.moon"]
+}

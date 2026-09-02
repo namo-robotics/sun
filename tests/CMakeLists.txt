@@ -53,6 +53,14 @@ endif()
 # Ensure stdlib.moon is built before tests run
 if(NOT SKIP_STDLIB)
     add_dependencies(sun_tests stdlib_moon)
+
+    # The stdlib's own Sun test suite (stdlib/*_tests.sun), AOT-compiled to
+    # build/stdlib_tests_test by the root CMakeLists. One ctest entry runs the
+    # whole suite sequentially; individual failures print as FAIL lines, and
+    # `build/stdlib_tests_test --test-filter <name>` reruns one test.
+    add_test(NAME stdlib_sun_tests
+             COMMAND ${STDLIB_TEST_BIN}_test --test-sequential
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endif()
 
 # Shared library for the C FFI tests. Its symbols are deliberately absent

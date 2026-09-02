@@ -661,6 +661,7 @@ void ASTSerializer::serializeFunction(const FunctionAST& expr,
   auto* func = node->mutable_function_def();
   *func->mutable_proto() = serializePrototype(expr.getProto());
   func->set_is_c_extern(expr.isCExtern());
+  func->set_is_test(expr.isTest());
   func->set_visibility(toProto(expr.getVisibility()));
   // An empty body and no body are different things: the latter is a
   // declaration, and reconstructing it as the former would give a C extern

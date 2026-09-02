@@ -45,8 +45,9 @@ enum class TokenKind {
   BREAK,     // break keyword for loop control
   CONTINUE,  // continue keyword for loop control
   RETURN,
-  FUNCTION,  // function keyword
-  TRY,       // try keyword for error handling
+  FUNCTION,       // function keyword
+  TEST_FUNCTION,  // test_function keyword: a function compiled only into the test binary
+  TRY,            // try keyword for error handling
   CATCH,     // catch keyword for exception handling
   THROW,     // throw keyword for throwing exceptions
   THROWS,    // throws keyword marking a signature that may throw
@@ -170,6 +171,8 @@ static const std::map<TokenKind, std::string> tokenRegexes = {
     {TokenKind::BREAK, "break"},
     {TokenKind::CONTINUE, "continue"},
     {TokenKind::FUNCTION, "function"},
+    // Longest-match makes "test_function" win over IDENTIFIER
+    {TokenKind::TEST_FUNCTION, "test_function"},
     {TokenKind::TRY, "try"},
     {TokenKind::CATCH, "catch"},
     {TokenKind::THROWS, "throws"},  // Must come before throw
@@ -364,6 +367,7 @@ inline const std::map<TokenKind, TokenInfo>& getTokenInfo() {
       {TokenKind::CONTINUE, {"continue"}},
       {TokenKind::RETURN, {"return"}},
       {TokenKind::FUNCTION, {"function"}},
+      {TokenKind::TEST_FUNCTION, {"test_function"}},
       {TokenKind::TRY, {"try"}},
       {TokenKind::CATCH, {"catch"}},
       {TokenKind::THROWS, {"throws"}},
