@@ -90,23 +90,81 @@ const std::map<std::string, BuiltinEmitter>& builtinTable() {
       // Atomic intrinsics
       {"_atomic_cmpxchg_i32",
        [](auto& g, const auto& e) {
-         return g.codegenAtomicCmpxchgI32Intrinsic(e);
+         return g.codegenAtomicCmpxchgIntrinsic(e, 32, true,
+                                                "_atomic_cmpxchg_i32");
        }},
       {"_atomic_store_i32",
        [](auto& g, const auto& e) {
-         return g.codegenAtomicStoreI32Intrinsic(e);
+         return g.codegenAtomicStoreIntrinsic(e, 32, true, "_atomic_store_i32");
        }},
       {"_atomic_load_i32",
        [](auto& g, const auto& e) {
-         return g.codegenAtomicLoadI32Intrinsic(e);
+         return g.codegenAtomicLoadIntrinsic(e, 32, "_atomic_load_i32");
        }},
       {"_atomic_fetch_add_i32",
        [](auto& g, const auto& e) {
-         return g.codegenAtomicFetchOpI32Intrinsic(e, /*subtract=*/false);
+         return g.codegenAtomicFetchOpIntrinsic(e, 32, true, false,
+                                                "_atomic_fetch_add_i32");
        }},
       {"_atomic_fetch_sub_i32",
        [](auto& g, const auto& e) {
-         return g.codegenAtomicFetchOpI32Intrinsic(e, /*subtract=*/true);
+         return g.codegenAtomicFetchOpIntrinsic(e, 32, true, true,
+                                                "_atomic_fetch_sub_i32");
+       }},
+      {"_atomic_cmpxchg_i64",
+       [](auto& g, const auto& e) {
+         return g.codegenAtomicCmpxchgIntrinsic(e, 64, true,
+                                                "_atomic_cmpxchg_i64");
+       }},
+      {"_atomic_store_i64",
+       [](auto& g, const auto& e) {
+         return g.codegenAtomicStoreIntrinsic(e, 64, true, "_atomic_store_i64");
+       }},
+      {"_atomic_load_i64",
+       [](auto& g, const auto& e) {
+         return g.codegenAtomicLoadIntrinsic(e, 64, "_atomic_load_i64");
+       }},
+      {"_atomic_fetch_add_i64",
+       [](auto& g, const auto& e) {
+         return g.codegenAtomicFetchOpIntrinsic(e, 64, true, false,
+                                                "_atomic_fetch_add_i64");
+       }},
+      {"_atomic_fetch_sub_i64",
+       [](auto& g, const auto& e) {
+         return g.codegenAtomicFetchOpIntrinsic(e, 64, true, true,
+                                                "_atomic_fetch_sub_i64");
+       }},
+      {"_atomic_cmpxchg_u64",
+       [](auto& g, const auto& e) {
+         return g.codegenAtomicCmpxchgIntrinsic(e, 64, false,
+                                                "_atomic_cmpxchg_u64");
+       }},
+      {"_atomic_store_u64",
+       [](auto& g, const auto& e) {
+         return g.codegenAtomicStoreIntrinsic(e, 64, false,
+                                              "_atomic_store_u64");
+       }},
+      {"_atomic_load_u64",
+       [](auto& g, const auto& e) {
+         return g.codegenAtomicLoadIntrinsic(e, 64, "_atomic_load_u64");
+       }},
+      {"_atomic_fetch_add_u64",
+       [](auto& g, const auto& e) {
+         return g.codegenAtomicFetchOpIntrinsic(e, 64, false, false,
+                                                "_atomic_fetch_add_u64");
+       }},
+      {"_atomic_fetch_sub_u64",
+       [](auto& g, const auto& e) {
+         return g.codegenAtomicFetchOpIntrinsic(e, 64, false, true,
+                                                "_atomic_fetch_sub_u64");
+       }},
+      {"_atomic_fence_acquire",
+       [](auto& g, const auto& e) {
+         return g.codegenAtomicFenceIntrinsic(e, /*acquire=*/true);
+       }},
+      {"_atomic_fence_release",
+       [](auto& g, const auto& e) {
+         return g.codegenAtomicFenceIntrinsic(e, /*acquire=*/false);
        }},
 
       // Bit intrinsics

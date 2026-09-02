@@ -82,6 +82,16 @@ jobs:
           chmod +x ./scripts/build-deb.sh
           ./scripts/build-deb.sh
 
+      - name: Record Debian package name
+        id: deb
+        run: |
+          mapfile -t packages < <(find dist -maxdepth 1 -type f -name '*.deb' -printf '%f\n')
+          if [ "${#packages[@]}" -ne 1 ]; then
+            echo "Expected exactly one Debian package, found ${#packages[@]}" >&2
+            exit 1
+          fi
+          echo "name=${packages[0]}" >> "$GITHUB_OUTPUT"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -98,6 +108,15 @@ jobs:
           tag_name: ${{ steps.release.outputs.tag }}
           files: dist/*
           body: |
+            Install the Linux package:
+
+            ```bash
+            curl -fL "https://github.com/${{ github.repository }}/releases/download/${{ steps.release.outputs.tag }}/${{ steps.deb.outputs.name }}" -o "/tmp/${{ steps.deb.outputs.name }}" && chmod 0644 "/tmp/${{ steps.deb.outputs.name }}"
+            sudo apt install "/tmp/${{ steps.deb.outputs.name }}" && rm -f "/tmp/${{ steps.deb.outputs.name }}"
+            ```
+
+            The temporary path is reachable by APT's restricted `_apt` user, and mode `0644` handles restrictive user umasks.
+
             The `.deb` installs the compiler and both bundles on Linux; on
             macOS that is what `brew install namo-robotics/sun/sun` installs,
             from the `.tar.gz` here. The `.moon` files are the same bundles on
@@ -138,6 +157,15 @@ jobs:
             Latest development build from main branch.
 
             Commit: ${{ env.BUILD_SHA }}
+
+            Install the Linux package:
+
+            ```bash
+            curl -fL "https://github.com/${{ github.repository }}/releases/download/dev/${{ steps.deb.outputs.name }}" -o "/tmp/${{ steps.deb.outputs.name }}" && chmod 0644 "/tmp/${{ steps.deb.outputs.name }}"
+            sudo apt install "/tmp/${{ steps.deb.outputs.name }}" && rm -f "/tmp/${{ steps.deb.outputs.name }}"
+            ```
+
+            The temporary path is reachable by APT's restricted `_apt` user, and mode `0644` handles restrictive user umasks.
 
             The `.deb` installs the compiler and both bundles on Linux; on
             macOS that is what `brew install namo-robotics/sun/sun` installs,
@@ -194,8 +222,24 @@ jobs:
       - name: Install package
         run: |
           apt-get update
-          # apt (not dpkg) so the package's declared Depends are resolved.
-          apt-get install -y --no-install-recommends ./dist/*.deb
+
+          private_dir=$(mktemp -d)
+          chmod 0700 "$private_dir"
+          deb=$(mktemp /tmp/sun.XXXXXX.deb)
+          log=$(mktemp)
+          trap 'rm -r "$private_dir"; rm -f "$deb" "$log"' EXIT
+
+          cp ./dist/*.deb "$deb"
+          chmod 0644 "$deb"
+          cd "$private_dir"
+
+          # APT (not dpkg) verifies that the package metadata pulls every
+          # dependency needed on a clean base image.
+          apt-get install -y --no-install-recommends "$deb" 2>&1 | tee "$log"
+          if grep -Fq "Download is performed unsandboxed as root" "$log"; then
+            echo "APT could not read the package through its _apt sandbox" >&2
+            exit 1
+          fi
 
       - name: Test installation
         run: |

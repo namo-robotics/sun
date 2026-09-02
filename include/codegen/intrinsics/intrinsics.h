@@ -85,6 +85,18 @@ enum class Intrinsic {
   AtomicLoadI32,     // _atomic_load_i32(ptr) -> i32
   AtomicFetchAddI32,  // _atomic_fetch_add_i32(ptr, delta) -> old_value
   AtomicFetchSubI32,  // _atomic_fetch_sub_i32(ptr, delta) -> old_value
+  AtomicCmpxchgI64,  // _atomic_cmpxchg_i64(ptr, expected, desired) -> old_value
+  AtomicStoreI64,    // _atomic_store_i64(ptr, value) -> void
+  AtomicLoadI64,     // _atomic_load_i64(ptr) -> i64
+  AtomicFetchAddI64,  // _atomic_fetch_add_i64(ptr, delta) -> old_value
+  AtomicFetchSubI64,  // _atomic_fetch_sub_i64(ptr, delta) -> old_value
+  AtomicCmpxchgU64,  // _atomic_cmpxchg_u64(ptr, expected, desired) -> old_value
+  AtomicStoreU64,    // _atomic_store_u64(ptr, value) -> void
+  AtomicLoadU64,     // _atomic_load_u64(ptr) -> u64
+  AtomicFetchAddU64,   // _atomic_fetch_add_u64(ptr, delta) -> old_value
+  AtomicFetchSubU64,   // _atomic_fetch_sub_u64(ptr, delta) -> old_value
+  AtomicFenceAcquire,  // _atomic_fence_acquire() -> void
+  AtomicFenceRelease,  // _atomic_fence_release() -> void
 
   // Futex intrinsics (Linux-specific thread synchronization)
   FutexWait,  // _futex_wait(ptr, expected) -> void
@@ -191,6 +203,18 @@ inline Intrinsic getIntrinsic(const std::string& name) {
   if (name == "_atomic_load_i32") return Intrinsic::AtomicLoadI32;
   if (name == "_atomic_fetch_add_i32") return Intrinsic::AtomicFetchAddI32;
   if (name == "_atomic_fetch_sub_i32") return Intrinsic::AtomicFetchSubI32;
+  if (name == "_atomic_cmpxchg_i64") return Intrinsic::AtomicCmpxchgI64;
+  if (name == "_atomic_store_i64") return Intrinsic::AtomicStoreI64;
+  if (name == "_atomic_load_i64") return Intrinsic::AtomicLoadI64;
+  if (name == "_atomic_fetch_add_i64") return Intrinsic::AtomicFetchAddI64;
+  if (name == "_atomic_fetch_sub_i64") return Intrinsic::AtomicFetchSubI64;
+  if (name == "_atomic_cmpxchg_u64") return Intrinsic::AtomicCmpxchgU64;
+  if (name == "_atomic_store_u64") return Intrinsic::AtomicStoreU64;
+  if (name == "_atomic_load_u64") return Intrinsic::AtomicLoadU64;
+  if (name == "_atomic_fetch_add_u64") return Intrinsic::AtomicFetchAddU64;
+  if (name == "_atomic_fetch_sub_u64") return Intrinsic::AtomicFetchSubU64;
+  if (name == "_atomic_fence_acquire") return Intrinsic::AtomicFenceAcquire;
+  if (name == "_atomic_fence_release") return Intrinsic::AtomicFenceRelease;
 
   // Futex intrinsics
   if (name == "_futex_wait") return Intrinsic::FutexWait;
@@ -303,6 +327,18 @@ inline bool requiresUnsafeBlock(Intrinsic i) {
     case Intrinsic::AtomicLoadI32:
     case Intrinsic::AtomicFetchAddI32:
     case Intrinsic::AtomicFetchSubI32:
+    case Intrinsic::AtomicCmpxchgI64:
+    case Intrinsic::AtomicStoreI64:
+    case Intrinsic::AtomicLoadI64:
+    case Intrinsic::AtomicFetchAddI64:
+    case Intrinsic::AtomicFetchSubI64:
+    case Intrinsic::AtomicCmpxchgU64:
+    case Intrinsic::AtomicStoreU64:
+    case Intrinsic::AtomicLoadU64:
+    case Intrinsic::AtomicFetchAddU64:
+    case Intrinsic::AtomicFetchSubU64:
+    case Intrinsic::AtomicFenceAcquire:
+    case Intrinsic::AtomicFenceRelease:
     case Intrinsic::FutexWait:
     case Intrinsic::FutexWake:
     // libc and the kernel, with their contracts and none of Sun's
@@ -338,7 +374,8 @@ inline bool requiresUnsafeBlock(Intrinsic i) {
 
 inline bool requiresUnsafeBlock(const std::string& name) {
   // The IPv4 shorthands dispatch by name rather than through the enum, so name
-  // them here; they reach the same libc calls as __bind, __connect and __accept.
+  // them here; they reach the same libc calls as __bind, __connect and
+  // __accept.
   if (name == "__bind_ipv4" || name == "__connect_ipv4" ||
       name == "__accept_fd") {
     return true;
