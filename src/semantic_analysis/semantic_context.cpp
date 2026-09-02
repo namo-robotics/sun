@@ -910,33 +910,31 @@ void SemanticContext::registerBuiltinFunctions() {
                       {Types::RawPointer(Types::UInt8()), Types::Int64()},
                       {}});
 
-  // Atomic intrinsics
-  // _atomic_cmpxchg_i32(ptr, expected, desired) - atomic compare-and-swap
-  registerFunctionInCurrentScope(
-      "_atomic_cmpxchg_i32",
-      {Types::Int32(),
-       {Types::RawPointer(Types::Int32()), Types::Int32(), Types::Int32()},
-       {}});
-  // _atomic_store_i32(ptr, value) - atomic store with release ordering
-  registerFunctionInCurrentScope(
-      "_atomic_store_i32",
-      {Types::Void(), {Types::RawPointer(Types::Int32()), Types::Int32()}, {}});
-  // _atomic_load_i32(ptr) - atomic load with acquire ordering
-  registerFunctionInCurrentScope(
-      "_atomic_load_i32",
-      {Types::Int32(), {Types::RawPointer(Types::Int32())}, {}});
-  // _atomic_fetch_add_i32(ptr, delta) - atomic add, returns the old value
-  registerFunctionInCurrentScope(
-      "_atomic_fetch_add_i32",
-      {Types::Int32(),
-       {Types::RawPointer(Types::Int32()), Types::Int32()},
-       {}});
-  // _atomic_fetch_sub_i32(ptr, delta) - atomic subtract, returns the old value
-  registerFunctionInCurrentScope(
-      "_atomic_fetch_sub_i32",
-      {Types::Int32(),
-       {Types::RawPointer(Types::Int32()), Types::Int32()},
-       {}});
+  // Atomic intrinsics use acquire/release ordering and operate on matching
+  // pointer and value types.
+  auto registerAtomicInteger = [this](const std::string& suffix,
+                                      const sun::TypePtr& type) {
+    const std::string prefix = "_atomic_";
+    registerFunctionInCurrentScope(
+        prefix + "cmpxchg_" + suffix,
+        {type, {Types::RawPointer(type), type, type}, {}});
+    registerFunctionInCurrentScope(
+        prefix + "store_" + suffix,
+        {Types::Void(), {Types::RawPointer(type), type}, {}});
+    registerFunctionInCurrentScope(prefix + "load_" + suffix,
+                                   {type, {Types::RawPointer(type)}, {}});
+    registerFunctionInCurrentScope(prefix + "fetch_add_" + suffix,
+                                   {type, {Types::RawPointer(type), type}, {}});
+    registerFunctionInCurrentScope(prefix + "fetch_sub_" + suffix,
+                                   {type, {Types::RawPointer(type), type}, {}});
+  };
+  registerAtomicInteger("i32", Types::Int32());
+  registerAtomicInteger("i64", Types::Int64());
+  registerAtomicInteger("u64", Types::UInt64());
+  registerFunctionInCurrentScope("_atomic_fence_acquire",
+                                 {Types::Void(), {}, {}});
+  registerFunctionInCurrentScope("_atomic_fence_release",
+                                 {Types::Void(), {}, {}});
 
   // Bit intrinsics
   // _mul_hi_u64(a, b) - high 64 bits of the 128-bit product a * b
@@ -1049,8 +1047,7 @@ void SemanticContext::registerModuleVariable(const std::string& baseName,
                                              const std::string& qualifiedName,
                                              sun::TypePtr type,
                                              sun::Visibility visibility,
-                                             bool isConst,
-                                             bool isCExtern) {
+                                             bool isConst, bool isCExtern) {
   VariableInfo info{type, true, false};
   info.visibility = visibility;
   info.isConst = isConst;

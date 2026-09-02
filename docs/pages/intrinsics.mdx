@@ -432,47 +432,94 @@ _println_str("Hello, world!");
 
 ## Atomic Intrinsics
 
-Atomic intrinsics provide lock-free thread-safe operations. Used internally by `Mutex` and other synchronization primitives.
+Atomic intrinsics provide low-level integer synchronization. They are `unsafe`
+because the compiler cannot prove that a raw pointer stays live, is correctly
+aligned, or is used atomically everywhere. Each pointer must address a value
+whose type matches the intrinsic suffix.
 
-### `_atomic_cmpxchg_i32(ptr, expected, desired)`
+The supported suffixes are `i32`, `i64`, and `u64`. For example,
+`_atomic_load_i64` accepts a `raw_ptr<i64>` and returns an `i64`.
 
-Atomic compare-and-exchange on an `i32`. If the value at `ptr` equals `expected`, it is replaced with `desired`. Returns the old value at `ptr`.
+### Memory ordering
+
+The ordering is part of each intrinsic rather than a run-time parameter:
+
+| Operation | Ordering |
+|-----------|----------|
+| `_atomic_load_*` | Acquire |
+| `_atomic_store_*` | Release |
+| `_atomic_cmpxchg_*` | Acquire-release on success, acquire on failure |
+| `_atomic_fetch_add_*`, `_atomic_fetch_sub_*` | Acquire-release |
+| `_atomic_fence_acquire` | Acquire fence |
+| `_atomic_fence_release` | Release fence |
+
+An acquire operation that observes a value from a release operation on the same
+atomic location also observes the ordinary writes that happened before that
+release. This is enough for common publication and single-producer,
+single-consumer queue patterns. These intrinsics do not provide relaxed or
+sequentially consistent ordering.
+
+### `_atomic_cmpxchg_i32/i64/u64(ptr, expected, desired)`
+
+Atomically compares the value at `ptr` with `expected`. If they are equal, it
+stores `desired`. The return value is always the value that was at `ptr`, so the
+exchange succeeded when the return value equals `expected`.
 
 ```sun
 var state: i32 = 0;
-var old = unsafe { _atomic_cmpxchg_i32(_address_of<i32>(state), 0, 1); };
-// If state was 0, it's now 1. old == 0
+var old = unsafe {
+    _atomic_cmpxchg_i32(_address_of<i32>(state), 0, 1);
+};
 ```
 
-### `_atomic_store_i32(ptr, value)`
+### `_atomic_store_i32/i64/u64(ptr, value)`
 
-Atomically stores `value` at the memory location `ptr`.
+Stores `value` with release ordering.
 
 ```sun
-unsafe { _atomic_store_i32(_address_of<i32>(state), 0); };  // Reset to 0
+var sequence: u64 = 0;
+var next: u64 = 42;
+unsafe { _atomic_store_u64(_address_of<u64>(sequence), next); };
 ```
 
-### `_atomic_load_i32(ptr)`
+### `_atomic_load_i32/i64/u64(ptr)`
 
-Atomically loads the `i32` value at `ptr`.
+Loads the value with acquire ordering.
 
 ```sun
-var current = unsafe { _atomic_load_i32(_address_of<i32>(state)); };
+var current = unsafe {
+    _atomic_load_u64(_address_of<u64>(sequence));
+};
 ```
 
-### `_atomic_fetch_add_i32(ptr, delta)` / `_atomic_fetch_sub_i32(ptr, delta)`
+### `_atomic_fetch_add_i32/i64/u64` / `_atomic_fetch_sub_i32/i64/u64`
 
-Atomically add or subtract `delta` at `ptr`, returning the value from *before*
-the operation. That is what a reference count needs: whoever reads 1 from a
-decrement was the last owner, so exactly one caller runs the cleanup.
+Atomically adds or subtracts `delta` with acquire-release ordering and returns
+the value from before the operation. That is what a reference count needs:
+whoever reads 1 from a decrement was the last owner, so exactly one caller runs
+the cleanup.
 
 ```sun
-// One more owner
-unsafe { _atomic_fetch_add_i32(_address_of<i32>(count), 1); };
-
-// One fewer. was == 1 means this was the last handle.
-var was = unsafe { _atomic_fetch_sub_i32(_address_of<i32>(count), 1); };
+var delta: u64 = 1;
+var before = unsafe {
+    _atomic_fetch_add_u64(_address_of<u64>(sequence), delta);
+};
 ```
+
+### `_atomic_fence_acquire()` / `_atomic_fence_release()`
+
+Emit explicit acquire and release fences. A release fence keeps earlier memory
+operations before the fence; an acquire fence keeps later memory operations
+after it. Use the acquire/release loads and stores directly when one atomic
+location carries the synchronization signal.
+
+```sun
+unsafe { _atomic_fence_release(); };
+unsafe { _atomic_fence_acquire(); };
+```
+
+The compiler emits LLVM atomic operations. Whether a width is implemented with
+a lock-free instruction is a property of the compilation target.
 
 ## Bit Intrinsics
 
@@ -709,11 +756,13 @@ class Vec<T> {
 | `_print_newline` | none | `void` | Print newline |
 | `_print_bytes` | `ptr, len` | `void` | Print bytes to stdout |
 | `_println_str` | `static_ptr<u8>` | `void` | Print string with newline |
-| `_atomic_cmpxchg_i32` | `ptr, expected, desired` | `i32` | Atomic compare-and-exchange |
-| `_atomic_store_i32` | `ptr, value` | `void` | Atomic store |
-| `_atomic_load_i32` | `ptr` | `i32` | Atomic load |
-| `_atomic_fetch_add_i32` | `ptr, delta` | `i32` | Atomic add, returns the old value |
-| `_atomic_fetch_sub_i32` | `ptr, delta` | `i32` | Atomic subtract, returns the old value |
+| `_atomic_cmpxchg_i32/i64/u64` | `ptr, expected, desired` | matching integer | Atomic compare-and-exchange |
+| `_atomic_store_i32/i64/u64` | `ptr, value` | `void` | Release store |
+| `_atomic_load_i32/i64/u64` | `ptr` | matching integer | Acquire load |
+| `_atomic_fetch_add_i32/i64/u64` | `ptr, delta` | matching integer | Atomic add, returns the old value |
+| `_atomic_fetch_sub_i32/i64/u64` | `ptr, delta` | matching integer | Atomic subtract, returns the old value |
+| `_atomic_fence_acquire` | none | `void` | Acquire fence |
+| `_atomic_fence_release` | none | `void` | Release fence |
 | `_mul_hi_u64` | `a: u64, b: u64` | `u64` | High 64 bits of the 128-bit product |
 | `_ctlz_u64` | `x: u64` | `u64` | Leading zero bits (64 for 0) |
 | `_cttz_u64` | `x: u64` | `u64` | Trailing zero bits (64 for 0) |

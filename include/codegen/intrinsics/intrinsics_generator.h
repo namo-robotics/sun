@@ -90,15 +90,24 @@ class IntrinsicsGenerator {
   llvm::Value* codegenBswapIntrinsic(const CallExprAST& expr,
                                      unsigned bitWidth);
 
-  // Atomic intrinsics (in intrinsics.cpp)
-  llvm::Value* codegenAtomicCmpxchgI32Intrinsic(const CallExprAST& expr);
-  llvm::Value* codegenAtomicStoreI32Intrinsic(const CallExprAST& expr);
-  llvm::Value* codegenAtomicLoadI32Intrinsic(const CallExprAST& expr);
-  // Shared by _atomic_fetch_add_i32 and _atomic_fetch_sub_i32
-  llvm::Value* codegenAtomicFetchOpI32Intrinsic(const CallExprAST& expr,
-                                                bool subtract);
+  // Atomic intrinsics (in atomic.cpp)
+  llvm::Value* codegenAtomicCmpxchgIntrinsic(const CallExprAST& expr,
+                                             unsigned bitWidth,
+                                             bool signedValues,
+                                             const char* name);
+  llvm::Value* codegenAtomicStoreIntrinsic(const CallExprAST& expr,
+                                           unsigned bitWidth, bool signedValues,
+                                           const char* name);
+  llvm::Value* codegenAtomicLoadIntrinsic(const CallExprAST& expr,
+                                          unsigned bitWidth, const char* name);
+  llvm::Value* codegenAtomicFetchOpIntrinsic(const CallExprAST& expr,
+                                             unsigned bitWidth,
+                                             bool signedValues, bool subtract,
+                                             const char* name);
+  llvm::Value* codegenAtomicFenceIntrinsic(const CallExprAST& expr,
+                                           bool acquire);
 
-  // Futex intrinsics (in intrinsics.cpp)
+  // Futex intrinsics (in atomic.cpp)
   llvm::Value* codegenFutexWaitIntrinsic(const CallExprAST& expr);
   llvm::Value* codegenFutexWakeIntrinsic(const CallExprAST& expr);
 
@@ -200,8 +209,7 @@ class IntrinsicsGenerator {
    * semantic analysis resolved rather than synthesized here, so there is one
    * definition of it and codegen never spells the class's name.
    */
-  llvm::StructType* getThreadContextStruct(
-      const sun::TypePtr& contextPtrType);
+  llvm::StructType* getThreadContextStruct(const sun::TypePtr& contextPtrType);
 
  private:
   CodegenState& state_;

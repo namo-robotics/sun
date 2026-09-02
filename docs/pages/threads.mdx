@@ -414,6 +414,20 @@ The `Mutex` implementation uses atomic compare-and-swap with kernel wait-on-addr
   `Mutex` uses a fast path (single atomic CAS) for uncontended locks and falls back to kernel wait-on-address blocking only when contention is detected.
 </Callout>
 
+## Low-Level Atomics
+
+For counters, publication flags, and queue indices that do not need a whole
+critical section, Sun provides unsafe atomic integer intrinsics for `i32`,
+`i64`, and `u64`. Loads use acquire ordering, stores use release ordering, and
+compare-and-exchange and fetch-add/subtract use acquire-release ordering.
+Explicit acquire and release fences are also available.
+
+These primitives take raw pointers, so they are intentionally lower-level than
+`Mutex` and `Shared<T>`. The caller must keep the pointed-to value alive and
+aligned, and every concurrent access to that location must be atomic. See
+[Atomic Intrinsics](/intrinsics#atomic-intrinsics) for the complete API and
+ordering rules.
+
 ## Constraints
 
 - `spawn` takes a lambda — a literal, a variable holding one, or a global. A

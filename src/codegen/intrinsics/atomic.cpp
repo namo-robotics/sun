@@ -1,8 +1,8 @@
 // src/codegen/intrinsics/atomic.cpp - Atomic intrinsic function codegen
 //
-// This file contains codegen for atomic and synchronization intrinsics:
-// - _atomic_cmpxchg_i32, _atomic_store_i32, _atomic_load_i32
-// - _futex_wait, _futex_wake (Linux futex syscalls)
+// This file contains codegen for typed integer atomics, memory fences, and
+// operating-system wait-on-address synchronization. The futex intrinsics use
+// Linux system calls.
 
 #include "codegen/codegen_visitor.h"
 #include "codegen/intrinsics/intrinsics_generator.h"
@@ -12,17 +12,19 @@
 using namespace llvm;
 
 // -------------------------------------------------------------------
-// Atomic intrinsics: _atomic_cmpxchg_i32, _atomic_store_i32, _atomic_load_i32
+// Atomic integer and fence intrinsics
 // -------------------------------------------------------------------
 
-Value* IntrinsicsGenerator::codegenAtomicCmpxchgI32Intrinsic(
-    const CallExprAST& expr) {
-  // _atomic_cmpxchg_i32(ptr, expected, desired) -> old_value
-  // Returns the old value. Success if old == expected.
+/**
+ * Emits compare-and-exchange for one supported atomic integer width.
+ */
+Value* IntrinsicsGenerator::codegenAtomicCmpxchgIntrinsic(
+    const CallExprAST& expr, unsigned bitWidth, bool signedValues,
+    const char* name) {
   const auto& args = expr.getArgs();
   if (args.size() != 3) {
-    logAndThrowError(
-        "_atomic_cmpxchg_i32 expects 3 arguments: (ptr, expected, desired)");
+    logAndThrowError(std::string(name) +
+                     " expects 3 arguments: (ptr, expected, desired)");
     return nullptr;
   }
 
@@ -31,28 +33,32 @@ Value* IntrinsicsGenerator::codegenAtomicCmpxchgI32Intrinsic(
   llvm::Value* desired = codegen(*args[2]);
   if (!ptr || !expected || !desired) return nullptr;
 
-  auto* i32Ty = llvm::Type::getInt32Ty(ctx.getContext());
+  auto* intTy = llvm::Type::getIntNTy(ctx.getContext(), bitWidth);
+  expected =
+      signedValues
+          ? ctx.builder->CreateSExtOrTrunc(expected, intTy, "cmpxchg.expected")
+          : ctx.builder->CreateZExtOrTrunc(expected, intTy, "cmpxchg.expected");
+  desired =
+      signedValues
+          ? ctx.builder->CreateSExtOrTrunc(desired, intTy, "cmpxchg.desired")
+          : ctx.builder->CreateZExtOrTrunc(desired, intTy, "cmpxchg.desired");
 
-  // Ensure expected and desired are i32
-  expected = ctx.builder->CreateTrunc(expected, i32Ty, "cmpxchg.expected");
-  desired = ctx.builder->CreateTrunc(desired, i32Ty, "cmpxchg.desired");
-
-  // LLVM cmpxchg: returns { old_value, success_flag }
-  // Use acquire ordering for success (read-acquire), monotonic for failure
   llvm::Value* result = ctx.builder->CreateAtomicCmpXchg(
       ptr, expected, desired, llvm::MaybeAlign(),
       llvm::AtomicOrdering::AcquireRelease, llvm::AtomicOrdering::Acquire);
-
-  // Extract just the old value (element 0)
   return ctx.builder->CreateExtractValue(result, 0, "cmpxchg.old");
 }
 
-Value* IntrinsicsGenerator::codegenAtomicStoreI32Intrinsic(const CallExprAST& expr) {
-  // _atomic_store_i32(ptr, value) -> void
-  // Performs an atomic store with release ordering
+/**
+ * Emits a release store for one supported atomic integer width.
+ */
+Value* IntrinsicsGenerator::codegenAtomicStoreIntrinsic(const CallExprAST& expr,
+                                                        unsigned bitWidth,
+                                                        bool signedValues,
+                                                        const char* name) {
   const auto& args = expr.getArgs();
   if (args.size() != 2) {
-    logAndThrowError("_atomic_store_i32 expects 2 arguments: (ptr, value)");
+    logAndThrowError(std::string(name) + " expects 2 arguments: (ptr, value)");
     return nullptr;
   }
 
@@ -60,46 +66,44 @@ Value* IntrinsicsGenerator::codegenAtomicStoreI32Intrinsic(const CallExprAST& ex
   llvm::Value* value = codegen(*args[1]);
   if (!ptr || !value) return nullptr;
 
-  auto* i32Ty = llvm::Type::getInt32Ty(ctx.getContext());
+  auto* intTy = llvm::Type::getIntNTy(ctx.getContext(), bitWidth);
+  value =
+      signedValues
+          ? ctx.builder->CreateSExtOrTrunc(value, intTy, "atomic.store.val")
+          : ctx.builder->CreateZExtOrTrunc(value, intTy, "atomic.store.val");
 
-  // Ensure value is i32
-  value = ctx.builder->CreateTrunc(value, i32Ty, "atomic.store.val");
-
-  // Create atomic store with release ordering
   llvm::StoreInst* store = ctx.builder->CreateStore(value, ptr);
   store->setAtomic(llvm::AtomicOrdering::Release);
-
-  return llvm::ConstantInt::get(i32Ty, 0);
+  return llvm::ConstantInt::get(intTy, 0);
 }
 
-Value* IntrinsicsGenerator::codegenAtomicLoadI32Intrinsic(const CallExprAST& expr) {
-  // _atomic_load_i32(ptr) -> i32
-  // Performs an atomic load with acquire ordering
+/**
+ * Emits an acquire load for one supported atomic integer width.
+ */
+Value* IntrinsicsGenerator::codegenAtomicLoadIntrinsic(const CallExprAST& expr,
+                                                       unsigned bitWidth,
+                                                       const char* name) {
   const auto& args = expr.getArgs();
   if (args.size() != 1) {
-    logAndThrowError("_atomic_load_i32 expects 1 argument: (ptr)");
+    logAndThrowError(std::string(name) + " expects 1 argument: (ptr)");
     return nullptr;
   }
 
   llvm::Value* ptr = codegen(*args[0]);
   if (!ptr) return nullptr;
 
-  auto* i32Ty = llvm::Type::getInt32Ty(ctx.getContext());
-
-  // Create atomic load with acquire ordering
-  llvm::LoadInst* load = ctx.builder->CreateLoad(i32Ty, ptr, "atomic.load.val");
+  auto* intTy = llvm::Type::getIntNTy(ctx.getContext(), bitWidth);
+  llvm::LoadInst* load = ctx.builder->CreateLoad(intTy, ptr, "atomic.load.val");
   load->setAtomic(llvm::AtomicOrdering::Acquire);
-
   return load;
 }
 
-Value* IntrinsicsGenerator::codegenAtomicFetchOpI32Intrinsic(const CallExprAST& expr,
-                                                        bool subtract) {
-  // _atomic_fetch_add_i32(ptr, delta) / _atomic_fetch_sub_i32(ptr, delta)
-  // Both return the value from before the operation, which is what a
-  // reference count needs: the owner that reads 1 was the last one.
-  const char* name =
-      subtract ? "_atomic_fetch_sub_i32" : "_atomic_fetch_add_i32";
+/**
+ * Emits fetch-add or fetch-sub for one supported atomic integer width.
+ */
+Value* IntrinsicsGenerator::codegenAtomicFetchOpIntrinsic(
+    const CallExprAST& expr, unsigned bitWidth, bool signedValues,
+    bool subtract, const char* name) {
   const auto& args = expr.getArgs();
   if (args.size() != 2) {
     logAndThrowError(std::string(name) + " expects 2 arguments: (ptr, delta)");
@@ -110,15 +114,31 @@ Value* IntrinsicsGenerator::codegenAtomicFetchOpI32Intrinsic(const CallExprAST& 
   llvm::Value* delta = codegen(*args[1]);
   if (!ptr || !delta) return nullptr;
 
-  auto* i32Ty = llvm::Type::getInt32Ty(ctx.getContext());
-  delta = ctx.builder->CreateTrunc(delta, i32Ty, "atomic.rmw.delta");
+  auto* intTy = llvm::Type::getIntNTy(ctx.getContext(), bitWidth);
+  delta =
+      signedValues
+          ? ctx.builder->CreateSExtOrTrunc(delta, intTy, "atomic.rmw.delta")
+          : ctx.builder->CreateZExtOrTrunc(delta, intTy, "atomic.rmw.delta");
 
-  // AcquireRelease matches the ordering the cmpxchg above uses. The release
-  // half is what makes the final decrement safe: whoever drives a count to
-  // zero sees every other owner's writes before it runs the drop.
   return ctx.builder->CreateAtomicRMW(
       subtract ? llvm::AtomicRMWInst::Sub : llvm::AtomicRMWInst::Add, ptr,
       delta, llvm::MaybeAlign(), llvm::AtomicOrdering::AcquireRelease);
+}
+
+/**
+ * Emits an explicit acquire or release fence.
+ */
+Value* IntrinsicsGenerator::codegenAtomicFenceIntrinsic(const CallExprAST& expr,
+                                                        bool acquire) {
+  if (!expr.getArgs().empty()) {
+    logAndThrowError(std::string(acquire ? "_atomic_fence_acquire"
+                                         : "_atomic_fence_release") +
+                     " expects no arguments");
+    return nullptr;
+  }
+  ctx.builder->CreateFence(acquire ? llvm::AtomicOrdering::Acquire
+                                   : llvm::AtomicOrdering::Release);
+  return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
 }
 
 // -------------------------------------------------------------------
