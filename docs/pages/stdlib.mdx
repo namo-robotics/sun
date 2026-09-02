@@ -669,6 +669,10 @@ println(out.stdout());     // hello
 Arguments are passed to the program as they are given — a space inside one
 argument stays inside it, with no shell reparsing.
 
+The child starts with `SIGPIPE` at its default disposition even when the parent
+ignores it. An ignored signal would otherwise survive `exec`, and a child whose
+reader goes away would then see `EPIPE` and complain instead of exiting quietly.
+
 ### Child
 
 | Method | Signature | Description |

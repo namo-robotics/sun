@@ -68,6 +68,24 @@ public module std {
     }
 
     /*
+     * A parent that ignores SIGPIPE must not pass that on: the child gets
+     * the default disposition, so a writer whose reader has gone away dies
+     * quietly instead of printing "Broken pipe". CI runners start every step
+     * with SIGPIPE ignored, which is how this was first noticed.
+     */
+    test_function child_starts_with_default_sigpipe() {
+      var alloc = make_heap_allocator();
+      var previous: i64 = unsafe { c_signal(SIGPIPE, 1); };
+      var cmd = std.process.Command(alloc, "/bin/sh");
+      cmd.add_arg("-c");
+      cmd.add_arg("yes | head -c 1");
+      var res = cmd.output();
+      unsafe { c_signal(SIGPIPE, previous); };
+      std.test.assert(res.stdout().equals_literal("y"), "head still read one byte");
+      std.test.assert(res.stderr().is_empty(), "yes died of SIGPIPE without complaint");
+    }
+
+    /*
      * Each add_arg is one argv entry: a space inside an argument stays
      * inside it, with no re-parsing by a shell.
      */
