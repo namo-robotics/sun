@@ -68,7 +68,9 @@ a VS Code extension in `extensions/vscode-sun`. Autocomplete is the gap.
 - [x] Test declarations in `.sun` source (`test_function`, manifest
       `test_files:`)
 - [x] Assertion builtins with useful failure output (`std.test`)
-- [ ] Test filtering (`sun test --filter geometry.*`)
+- [x] Test filtering (`--test-filter geometry.*`, repeatable, exact / module
+      prefix / trailing-star patterns; a runtime argument like
+      `--test-sequential`)
 - [ ] A thread pool for very large suites (today: one thread per test)
 
 ## Error Handling Improvements

@@ -1,0 +1,136 @@
+// stdlib/time_tests.sun - Tests for time.sun.
+// Replaces the C++ suite(s) Stdlib_Sys_Time.
+//
+// Timing assertions are lower bounds only. A loaded CI machine can stall for
+// an arbitrarily long time, so an upper bound would be a flake generator.
+
+using std;
+
+public module std {
+  module time_tests {
+    /*
+     * A Duration converts between seconds, milliseconds, microseconds and
+     * nanoseconds consistently, keeping the sub-second remainder.
+     */
+    test_function duration_conversions() {
+      var d = std.time.create_duration_millis(1500);
+      std.test.assert_eq(d.as_secs(), 1);
+      std.test.assert_eq(d.as_millis(), 1500);
+      std.test.assert_eq(d.as_micros(), 1500000);
+      std.test.assert_eq(d.as_nanos(), 1500000000);
+      std.test.assert_eq(d.subsec_nanos(), 500000000);
+      std.test.assert(d.as_secs_f64() > 1.49 and d.as_secs_f64() < 1.51, "fractional seconds near 1.5");
+
+      std.test.assert_eq(std.time.create_duration_seconds(2).as_millis(), 2000);
+      std.test.assert_eq(std.time.create_duration_micros(2500).as_nanos(), 2500000);
+      std.test.assert_eq(std.time.create_duration_nanos(1).as_nanos(), 1);
+    }
+
+    /*
+     * Two back-to-back readings of the monotonic clock never run backwards;
+     * since() clamps the reverse difference at zero.
+     */
+    test_function monotonic_clock_does_not_go_backwards() {
+      var first = std.time.now();
+      var second = std.time.now();
+      std.test.assert(second.since(first).as_nanos() >= 0, "forward difference is non-negative");
+      std.test.assert_eq(first.since(second).as_nanos(), 0);
+    }
+
+    /*
+     * sleep() waits at least the requested time, with slack for clock
+     * granularity. Lower bound only.
+     */
+    test_function sleep_waits_at_least_the_requested_time() {
+      var start = std.time.now();
+      std.time.sleep(std.time.create_duration_millis(50));
+      std.test.assert(start.elapsed().as_millis() >= 40, "slept for roughly the requested time");
+    }
+
+    /*
+     * read_unix_time() agrees with the host clock. The C++ harness compared
+     * against std::time(); here `date +%s` reports the host's view instead.
+     */
+    test_function unix_time_agrees_with_the_host_clock() {
+      var alloc = make_heap_allocator();
+      var before = std.time.read_unix_time();
+      var cmd = std.process.Command(alloc, "/bin/sh");
+      cmd.add_arg("-c");
+      cmd.add_arg("date +%s");
+      var out = cmd.output();
+      std.test.assert_eq(out.status(), 0);
+      out.stdout().trim();
+      var host: i64 = match out.stdout().parse_i64() {
+        Option.Some(x) => x,
+        Option.None => -1
+      };
+      var after = std.time.read_unix_time();
+      std.test.assert(host >= before - 5, "host clock is not behind ours");
+      std.test.assert(host <= after + 5, "host clock is not ahead of ours");
+    }
+
+    /*
+     * The millisecond wall clock stays within rounding of the second one.
+     */
+    test_function unix_time_millis_is_consistent_with_seconds() {
+      var secs = std.time.read_unix_time();
+      var ms = std.time.read_unix_time_millis();
+      var derived = ms / 1000;
+      std.test.assert(derived >= secs - 2, "millis not behind seconds");
+      std.test.assert(derived <= secs + 2, "millis not ahead of seconds");
+    }
+
+    /*
+     * convert_to_utc breaks a fixed timestamp into calendar fields.
+     * 1700000000 = 2023-11-14 22:13:20 UTC, a Tuesday.
+     */
+    test_function utc_breaks_a_fixed_timestamp_into_calendar_fields() {
+      var d = std.time.convert_to_utc(1700000000);
+      std.test.assert_eq(d.year, 2023);
+      std.test.assert_eq(d.month, 11);  // 1-based, not tm_mon
+      std.test.assert_eq(d.day, 14);
+      std.test.assert_eq(d.hour, 22);
+      std.test.assert_eq(d.minute, 13);
+      std.test.assert_eq(d.second, 20);
+      std.test.assert_eq(d.weekday, 2);  // Tuesday, Sunday = 0
+      std.test.assert_eq(d.utc_offset, 0);
+    }
+
+    /*
+     * to_unix_utc inverts convert_to_utc, and a hand-built epoch DateTime
+     * maps to timestamp zero.
+     */
+    test_function to_unix_utc_round_trips() {
+      var stamp: i64 = 1700000000;
+      std.test.assert_eq(std.time.to_unix_utc(std.time.convert_to_utc(stamp)), stamp);
+      var d = std.time.DateTime(1970, 1, 1, 0, 0, 0);
+      std.test.assert_eq(std.time.to_unix_utc(d), 0);
+    }
+
+    /*
+     * format() renders a fixed timestamp with a strftime format string.
+     */
+    test_function format_renders_a_fixed_timestamp() {
+      var alloc = make_heap_allocator();
+      var d = std.time.convert_to_utc(1700000000);
+      var text = std.time.format(alloc, d, "%Y-%m-%d %H:%M:%S");
+      std.test.assert(text.equals_literal("2023-11-14 22:13:20"), "full timestamp renders");
+      var day = std.time.format(alloc, d, "%Y-%m-%d");
+      std.test.assert(day.equals_literal("2023-11-14"), "date-only format renders");
+    }
+
+    /*
+     * convert_to_local applies the timezone. The C++ test pinned TZ=UTC with
+     * tzset(), but environment variables are process-global and these tests
+     * share one process, so this asserts timezone-independent invariants
+     * instead: the local round trip returns the stamp, and treating the
+     * local fields as UTC shifts it by exactly the reported UTC offset.
+     */
+    test_function local_uses_the_timezone() {
+      var stamp: i64 = 1700000000;
+      var d = std.time.convert_to_local(stamp);
+      std.test.assert_eq(std.time.to_unix_local(d), stamp);
+      std.test.assert_eq(std.time.to_unix_utc(d), stamp + d.utc_offset);
+    }
+  }  // module time_tests
+}  // module std

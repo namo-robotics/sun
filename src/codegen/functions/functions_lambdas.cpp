@@ -678,6 +678,11 @@ Value* FunctionGenerator::codegenFunc(FunctionAST& funcAst) {
 llvm::Value* FunctionGenerator::codegenLambda(LambdaAST& lambdaAst) {
   // Lambda codegen moves the insert point; put it back on the way out
   CodegenState::InsertPointGuard here(state_);
+  // The enclosing expression's debug location, restored on the way out so
+  // the instructions after this lambda (the closure load, the call it is an
+  // argument of) stay located — a call without a location is a verifier
+  // error when both sides carry debug info.
+  llvm::DebugLoc enclosingLoc = ctx.builder->getCurrentDebugLocation();
 
   // Get a mutable reference to the prototype to set captures
   PrototypeAST& proto = const_cast<PrototypeAST&>(lambdaAst.getProto());
@@ -827,8 +832,9 @@ llvm::Value* FunctionGenerator::codegenLambda(LambdaAST& lambdaAst) {
 
   scopes().pop();
 
-  // The lambda's debug location must not leak into the enclosing function
-  debugInfo.clearLocation(*ctx.builder);
+  // The lambda's own locations must not leak into the enclosing function;
+  // put back what the enclosing expression had.
+  ctx.builder->SetCurrentDebugLocation(enclosingLoc);
 
   return resultPtr;
 }

@@ -1,5 +1,6 @@
-// tests/stdlib/test_byte_order.cpp - stdlib/byte_order.sun and the _bswap_u16
-// / _bswap_u32 / _bswap_u64 intrinsics it is built on
+// tests/stdlib/test_byte_order.cpp - The _bswap_u16 / _bswap_u32 / _bswap_u64
+// intrinsics byte_order.sun is built on. The helper tests live in
+// stdlib/byte_order_tests.sun.
 
 #include <gtest/gtest.h>
 
@@ -31,90 +32,6 @@ TEST(Stdlib_ByteOrder_Intrinsics, bswap_u16_u32_u64) {
         var high: u64 = 255;
         high = high << 56;
         if (_bswap_u64(high) != 255) { return 9; }
-        return 0;
-    }
-  )");
-  EXPECT_EQ(value, 0);
-}
-
-TEST(Stdlib_ByteOrder, swap_and_endian_helpers) {
-  auto value = executeStringWithStdlib(R"(
-    using std.byte_order;
-
-    function main() i32 {
-        var a: u16 = 4660;         // 0x1234
-        var b: u32 = 305419896;    // 0x12345678
-        var c: u64 = 81985529216486895;
-
-        if (swap_bytes_u16(a) != 13330) { return 1; }
-        if (swap_bytes_u32(b) != 2018915346) { return 2; }
-        if (swap_bytes_u64(swap_bytes_u64(c)) != c) { return 3; }
-
-        // Big-endian is the opposite of every machine Sun targets, so the
-        // conversions reverse the bytes and undo each other.
-        if (to_big_endian_u16(a) != 13330) { return 4; }
-        if (to_big_endian_u32(b) != 2018915346) { return 5; }
-        if (from_big_endian_u16(to_big_endian_u16(a)) != a) { return 6; }
-        if (from_big_endian_u32(to_big_endian_u32(b)) != b) { return 7; }
-        if (from_big_endian_u64(to_big_endian_u64(c)) != c) { return 8; }
-
-        // Little-endian already matches the machine, so nothing moves.
-        if (to_little_endian_u16(a) != a) { return 9; }
-        if (to_little_endian_u32(b) != b) { return 10; }
-        if (to_little_endian_u64(c) != c) { return 11; }
-        if (from_little_endian_u16(a) != a) { return 12; }
-        if (from_little_endian_u32(b) != b) { return 13; }
-        if (from_little_endian_u64(c) != c) { return 14; }
-        return 0;
-    }
-  )");
-  EXPECT_EQ(value, 0);
-}
-
-// The helpers are also reachable by their full name, without importing the
-// submodule — the same path through the real stdlib bundle that
-// Modules.moon_nested_module_is_reachable_by_qualified_name covers for a
-// bundle built on the spot.
-TEST(Stdlib_ByteOrder, reachable_by_qualified_name) {
-  auto value = executeStringWithStdlib(R"(
-    function main() i32 {
-        var a: u16 = 4660;         // 0x1234
-        var b: u32 = 305419896;    // 0x12345678
-        if (std.byte_order.swap_bytes_u16(a) != 13330) { return 1; }
-        if (std.byte_order.to_big_endian_u32(b) != 2018915346) { return 2; }
-        if (std.byte_order.from_big_endian_u32(std.byte_order.to_big_endian_u32(b)) != b) {
-            return 3;
-        }
-        return 0;
-    }
-  )");
-  EXPECT_EQ(value, 0);
-}
-
-// A two-byte length and a four-byte value written big-endian, then read back
-// out of the bytes, the way a binary wire format uses these helpers.
-TEST(Stdlib_ByteOrder, round_trip_through_a_byte_buffer) {
-  auto value = executeStringWithStdlib(R"(
-    using std;
-    using std.byte_order;
-
-    function main() i32 throws IError {
-        var alloc = make_heap_allocator();
-        var buf = Vec<u8>(alloc, 4);
-
-        var length: u16 = 1024;
-        var wire_length: u16 = to_big_endian_u16(length);
-        buf.push(_convert<u8>(wire_length & 255));
-        buf.push(_convert<u8>((wire_length >> 8) & 255));
-
-        // 1024 big-endian is 0x04 0x00
-        if (buf.get(0) != 4) { return 1; }
-        if (buf.get(1) != 0) { return 2; }
-
-        var low: u16 = _convert<u16>(buf.get(0));
-        var high: u16 = _convert<u16>(buf.get(1));
-        var read_back: u16 = from_big_endian_u16(low | (high << 8));
-        if (read_back != length) { return 3; }
         return 0;
     }
   )");

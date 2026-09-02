@@ -1,5 +1,5 @@
 {
-    "sunPath": ["../../build"],
-    "pathVariables": { "LIBS": "libs" },
+    "sun_path": ["../../build"],
+    "path_variables": { "LIBS": "libs" },
     "root": true
 }

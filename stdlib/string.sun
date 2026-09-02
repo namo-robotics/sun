@@ -147,24 +147,32 @@ public module std {
   // Provides read-only access to a substring without copying
   // WARNING: StringView must not outlive the parent String!
   // NOTE: Defined before String because String.__slice__ returns StringView
+  // A non-owning window into a String's bytes. Every field is a plain
+  // scalar, so the view references nothing but the String's own buffer —
+  // it stays valid exactly as long as that String does. (A MatrixView is
+  // not usable here: it keeps the shape and stride arrays it was built
+  // with, and __slice__'s arrays die with its frame.)
   public class StringView {
-    var view: MatrixView<u8>;  // Underlying 1D matrix view
+    var data: raw_ptr<u8>;  // The String's buffer (non-owning)
+    var start: i64;  // First byte of the view
+    var len: i64;  // Bytes in the view
 
-    // Takes the view by value: a view is a class, so it moves in rather than
-    // being read out of a borrow
-    init(mat_view: MatrixView<u8>) {
-      this.view = mat_view;
+    // Build a view over [start_, start_ + len_) of a String's buffer. The
+    // caller keeps that String alive and unmodified while the view is used.
+    init(data_: raw_ptr<u8>, start_: i64, len_: i64) {
+      this.data = data_;
+      this.start = start_;
+      this.len = len_;
     }
 
     // Get view length
     public const method length() i64 {
-      return this.view.size();
+      return this.len;
     }
 
     // Get byte at index (relative to view start)
     public const method at(i: i64) u8 {
-      var idx: array<i64, 1> = [i];
-      return this.view.get(idx);
+      return unsafe { _load<u8>(this.data, this.start + i); };
     }
 
     // Check if view equals a literal
@@ -1293,14 +1301,7 @@ public module std {
       var range: SliceRange = ranges[0];
       var start: i64 = range.get_start();
       var end: i64 = range.get_end(this.len);
-
-      // Build shape and strides for the view
-      var new_shape: array<i64, 1> = [end - start];
-      var strides: array<i64, 1> = [1];  // 1D contiguous
-
-      // Create MatrixView from raw pointer
-      var mat_view: MatrixView<u8> = MatrixView<u8>(this.data.raw_data(), start, new_shape, strides);
-      return StringView(mat_view);
+      return StringView(this.data.raw_data(), start, end - start);
     }
   }
 

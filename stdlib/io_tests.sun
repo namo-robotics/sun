@@ -1,0 +1,426 @@
+// stdlib/io_tests.sun - Tests for io.sun.
+// Replaces the C++ suites Stdlib_Io_Dir, Stdlib_Io_Paths, Stdlib_Io_Poll,
+// and the std.io File-class half of Stdlib_Io_File. The __file_* intrinsic
+// tests stay in tests/stdlib/io/test_file.cpp.
+
+using std;
+using std.io;
+
+public module std {
+  module io_tests {
+    // -----------------------------------------------------------------
+    // Directory listing and file metadata (was Stdlib_Io_Dir)
+    // -----------------------------------------------------------------
+
+    test_function read_dir_lists_entries_without_dot_and_dotdot() {
+      var alloc = make_heap_allocator();
+      var td = std.tests.TempDir(alloc, "read_dir_lists");
+      var a_path = td.file("a.txt");
+      var a_body = String("aaa");
+      std.io.write_string(a_path, a_body);
+      var b_path = td.file("b.txt");
+      var b_body = String("bb");
+      std.io.write_string(b_path, b_body);
+      var sub = td.file("sub");
+      std.io.make_dir(sub, 493);
+
+      var entries = std.io.read_dir(alloc, td.path);
+      var files: i32 = 0;
+      var dirs: i32 = 0;
+      for (var e: std.io.DirEntry in entries) {
+        // "." and ".." are excluded, so nothing starts with a dot here.
+        std.test.assert(e.name().at(0) != b'.', "dot entries are excluded");
+        if (e.is_dir()) {
+          dirs = dirs + 1;
+        }
+        if (e.is_file()) {
+          files = files + 1;
+        }
+      }
+      std.test.assert_eq(dirs, 1);
+      std.test.assert_eq(files, 2);
+    }
+
+    test_function read_dir_finds_a_named_entry() {
+      var alloc = make_heap_allocator();
+      var td = std.tests.TempDir(alloc, "read_dir_finds");
+      var needle = td.file("needle.txt");
+      var body = String("x");
+      std.io.write_string(needle, body);
+
+      var entries = std.io.read_dir(alloc, td.path);
+      var found = false;
+      for (var e: std.io.DirEntry in entries) {
+        if (e.name().equals_literal("needle.txt")) {
+          found = true;
+        }
+      }
+      std.test.assert(found, "needle.txt should be listed");
+    }
+
+    test_function read_dir_on_empty_directory() {
+      var alloc = make_heap_allocator();
+      var td = std.tests.TempDir(alloc, "read_dir_empty");
+      var entries = std.io.read_dir(alloc, td.path);
+      std.test.assert_eq(entries.size(), 0);
+    }
+
+    test_function read_dir_on_missing_directory_throws() {
+      var alloc = make_heap_allocator();
+      var td = std.tests.TempDir(alloc, "read_dir_missing");
+      var missing = td.file("nope");
+      try {
+        var entries = std.io.read_dir(alloc, missing);
+        std.test.fail("expected error");
+      } catch (e: IError) {}
+    }
+
+    test_function metadata_predicates() {
+      var alloc = make_heap_allocator();
+      var td = std.tests.TempDir(alloc, "metadata_predicates");
+      var file = td.file("file.txt");
+      var body = String("12345");
+      std.io.write_string(file, body);
+      var adir = td.file("adir");
+      std.io.make_dir(adir, 493);
+      var missing = td.file("missing");
+
+      std.test.assert(std.io.exists(file), "file should exist");
+      std.test.assert(not std.io.exists(missing), "missing path should not exist");
+      std.test.assert(std.io.is_dir(adir), "adir is a directory");
+      std.test.assert(not std.io.is_dir(file), "file is not a directory");
+      std.test.assert(std.io.is_file(file), "file is an ordinary file");
+      std.test.assert(not std.io.is_file(adir), "adir is not an ordinary file");
+      std.test.assert_eq(std.io.get_file_size(file), 5);
+    }
+
+    test_function read_dir_accepts_a_runtime_string_path() {
+      var alloc = make_heap_allocator();
+      var td = std.tests.TempDir(alloc, "read_dir_runtime");
+      var only = td.file("only.txt");
+      var body = String("x");
+      std.io.write_string(only, body);
+
+      // td.path is a String assembled at runtime, not a literal.
+      var entries = std.io.read_dir(alloc, td.path);
+      std.test.assert_eq(entries.size(), 1);
+    }
+
+    // -----------------------------------------------------------------
+    // Paths built at runtime (was Stdlib_Io_Paths, issue #84)
+    // -----------------------------------------------------------------
+
+    test_function open_and_write_a_computed_path() {
+      var alloc = make_heap_allocator();
+      var td = std.tests.TempDir(alloc, "open_write_computed");
+      var path = td.file("computed.txt");
+
+      var f = std.io.File();
+      f.open(path, FileMode.Write);
+      var body = String("written through a String path");
+      var n: i64 = f.write(body);
+      f.close();
+
+      std.test.assert_eq(n, 29);
+      var back = std.io.read_to_string(alloc, path);
+      std.test.assert(back.equals(body), "content round-trips");
+    }
+
+    test_function whole_file_helpers_take_a_computed_path() {
+      var alloc = make_heap_allocator();
+      var td = std.tests.TempDir(alloc, "whole_file_helpers");
+      var path = td.file("round_trip.txt");
+      var body = String("round trip");
+
+      std.io.write_string(path, body);
+      var back = std.io.read_to_string(alloc, path);
+      std.test.assert(back.equals(body), "read_to_string returns what write_string wrote");
+      std.test.assert_eq(std.io.get_file_size(path), 10);
+    }
+
+    test_function metadata_queries_take_a_computed_path() {
+      var alloc = make_heap_allocator();
+      var td = std.tests.TempDir(alloc, "metadata_computed");
+      var file = td.file("there.txt");
+      var body = String("x");
+      std.io.write_string(file, body);
+      var missing = td.file("nope.txt");
+
+      std.test.assert(std.io.exists(file), "file should exist");
+      std.test.assert(not std.io.exists(missing), "missing path should not exist");
+      std.test.assert(std.io.is_dir(td.path), "the temp dir is a directory");
+      std.test.assert(not std.io.is_dir(file), "the file is not a directory");
+      std.test.assert(std.io.is_file(file), "the file is an ordinary file");
+    }
+
+    test_function directory_calls_take_a_computed_path() {
+      var alloc = make_heap_allocator();
+      var td = std.tests.TempDir(alloc, "directory_computed");
+      var dir = td.file("made");
+      std.io.make_dir(dir, 493);
+      std.test.assert(std.io.is_dir(dir), "made should be a directory");
+
+      var inner = td.file("made/one.txt");
+      var body = String("1");
+      std.io.write_string(inner, body);
+
+      var entries = std.io.read_dir(alloc, dir);
+      std.test.assert_eq(entries.size(), 1);
+
+      var renamed = td.file("made/two.txt");
+      std.io.rename_file(inner, renamed);
+      std.test.assert(not std.io.exists(inner), "old name should be gone");
+
+      std.io.remove_file(renamed);
+      std.io.remove_dir(dir);
+      std.test.assert(not std.io.exists(dir), "made should be removed");
+    }
+
+    test_function literals_still_pick_the_static_ptr_overload() {
+      // A literal cannot embed the process id, so this is the one test with
+      // a fixed /tmp name. The file is removed before any assertion can
+      // throw, so no litter is left behind even on failure.
+      var alloc = make_heap_allocator();
+      var body = String("literal path");
+      std.io.write_string("/tmp/sun_stdlib_io_literal_overload.txt", body);
+      var there = std.io.exists("/tmp/sun_stdlib_io_literal_overload.txt");
+      var back = std.io.read_to_string(alloc, "/tmp/sun_stdlib_io_literal_overload.txt");
+      std.io.remove_file("/tmp/sun_stdlib_io_literal_overload.txt");
+
+      std.test.assert(there, "literal path exists after write");
+      std.test.assert_eq(back.length(), 12);
+    }
+
+    // -----------------------------------------------------------------
+    // Poller (was Stdlib_Io_Poll)
+    // -----------------------------------------------------------------
+
+    test_function empty_poller_returns_zero() {
+      var alloc = make_heap_allocator();
+      var p = std.io.Poller(alloc);
+      std.test.assert_eq(p.count(), 0);
+      std.test.assert_eq(p.wait(0), 0);
+    }
+
+    test_function pipe_becomes_readable_after_a_write() {
+      var alloc = make_heap_allocator();
+      var pipe = std.process.open_pipe(alloc);
+      var p = std.io.Poller(alloc);
+      p.add_read(pipe.read_fd());
+
+      // Nothing written yet, so a zero timeout finds nothing ready.
+      std.test.assert_eq(p.wait(0), 0);
+      std.test.assert(not p.is_readable(0), "nothing to read before a write");
+
+      var msg = String("hi");
+      var writer = std.io.File();
+      writer.adopt(pipe.write_fd());
+      writer.write(msg);
+
+      std.test.assert_eq(p.wait(1000), 1);
+      std.test.assert(p.is_readable(0), "pipe should be readable after a write");
+      std.test.assert_eq(p.fd_at(0), pipe.read_fd());
+      pipe.close_read();
+    }
+
+    test_function hangup_is_reported_when_the_writer_closes() {
+      var alloc = make_heap_allocator();
+      var pipe = std.process.open_pipe(alloc);
+      pipe.close_write();
+
+      var p = std.io.Poller(alloc);
+      p.add_read(pipe.read_fd());
+      std.test.assert(p.wait(1000) >= 1, "hangup should be reported");
+      std.test.assert(p.is_hup(0), "the reported event is a hangup");
+      pipe.close_read();
+    }
+
+    test_function watches_several_descriptors_by_position() {
+      var alloc = make_heap_allocator();
+      var first = std.process.open_pipe(alloc);
+      var second = std.process.open_pipe(alloc);
+
+      var p = std.io.Poller(alloc);
+      p.add_read(first.read_fd());
+      p.add_read(second.read_fd());
+      std.test.assert_eq(p.count(), 2);
+
+      // Write to the second one only.
+      var msg = String("x");
+      var writer = std.io.File();
+      writer.adopt(second.write_fd());
+      writer.write(msg);
+
+      std.test.assert_eq(p.wait(1000), 1);
+      std.test.assert(not p.is_readable(0), "first pipe has nothing");
+      std.test.assert(p.is_readable(1), "second pipe is readable");
+
+      first.close_read();
+      first.close_write();
+      second.close_read();
+    }
+
+    test_function remove_forgets_all_matching_descriptors() {
+      var alloc = make_heap_allocator();
+      var p = std.io.Poller(alloc);
+      p.add_read(10);
+      p.add_write(20);
+      p.add_read_write(10);
+      p.add_read(30);
+
+      std.test.assert(p.remove(10), "both registrations of 10 are removed");
+      std.test.assert_eq(p.count(), 2);
+      std.test.assert_eq(p.fd_at(0), 20);
+      std.test.assert_eq(p.fd_at(1), 30);
+      std.test.assert(p.remove(20), "20 is removed");
+      std.test.assert_eq(p.count(), 1);
+      std.test.assert_eq(p.fd_at(0), 30);
+      std.test.assert(not p.remove(10), "10 is already gone");
+      std.test.assert(not p.remove(99), "99 was never watched");
+    }
+
+    test_function duration_wait_returns_ready_events() {
+      var alloc = make_heap_allocator();
+      var first = std.process.open_pipe(alloc);
+      var second = std.process.open_pipe(alloc);
+      var third = std.process.open_pipe(alloc);
+      var p = std.io.Poller(alloc);
+      p.add_read(first.read_fd());
+      p.add_read(second.read_fd());
+      p.add_read(third.read_fd());
+
+      var msg = String("ready");
+      var writer = std.io.File();
+      writer.adopt(second.write_fd());
+      writer.write(msg);
+      var later_writer = std.io.File();
+      later_writer.adopt(third.write_fd());
+      later_writer.write(msg);
+
+      var events = p.wait(std.time.create_duration_millis(1000));
+      std.test.assert_eq(events.size(), 2);
+      std.test.assert_eq(events.get_unchecked(0).fd(), second.read_fd());
+      std.test.assert(events.get_unchecked(0).is_readable(), "second pipe is readable");
+      std.test.assert(not events.get_unchecked(0).is_writable(), "not writable");
+      std.test.assert(not events.get_unchecked(0).is_priority(), "no urgent data");
+      std.test.assert(not events.get_unchecked(0).is_error(), "no error");
+      std.test.assert(not events.get_unchecked(0).is_invalid(), "descriptor is valid");
+      std.test.assert(not events.get_unchecked(0).is_hup(), "no hangup");
+      std.test.assert((events.get_unchecked(0).events() & std.io.POLLIN) != 0, "POLLIN bit set");
+
+      std.test.assert_eq(events.get_unchecked(1).fd(), third.read_fd());
+      std.test.assert(events.get_unchecked(1).is_readable(), "third pipe is readable");
+
+      first.close_read();
+      first.close_write();
+      second.close_read();
+      third.close_read();
+    }
+
+    test_function empty_duration_wait_honors_timeout() {
+      var alloc = make_heap_allocator();
+      var p = std.io.Poller(alloc);
+      var start = std.time.now();
+      var events = p.wait(std.time.create_duration_millis(20));
+      std.test.assert_eq(events.size(), 0);
+      std.test.assert(start.elapsed().as_millis() >= 10, "the timeout was honored");
+    }
+
+    // -----------------------------------------------------------------
+    // The std.io File class (was the stdlib half of Stdlib_Io_File)
+    // -----------------------------------------------------------------
+
+    test_function sun_io_file_literal_path_round_trip() {
+      // File.open with a literal takes the static_ptr overload, so the path
+      // here must be a fixed literal. Removed before any assertion can throw.
+      var alloc = make_heap_allocator();
+      var f = std.io.File();
+      f.open("/tmp/sun_stdlib_io_file_literal.txt", FileMode.Write);
+      f.write("written by File");
+      f.close();
+
+      var text = std.io.read_to_string(alloc, "/tmp/sun_stdlib_io_file_literal.txt");
+      std.io.remove_file("/tmp/sun_stdlib_io_file_literal.txt");
+      std.test.assert(text.equals_literal("written by File"), "literal-path File round-trips");
+    }
+
+    test_function sun_io_file_runtime_string_path() {
+      var alloc = make_heap_allocator();
+      var td = std.tests.TempDir(alloc, "sun_io_file_runtime");
+      // The path is built at runtime, which the intrinsics cannot take.
+      var path = td.file("runtime.txt");
+      var body = String("runtime path");
+      std.io.write_string(path, body);
+
+      var back = std.io.read_to_string(alloc, path);
+      std.test.assert(back.equals_literal("runtime path"), "runtime-path round-trip");
+      std.test.assert_eq(std.io.get_file_size(path), 12);
+    }
+
+    test_function sun_io_file_seek_and_size() {
+      var alloc = make_heap_allocator();
+      var td = std.tests.TempDir(alloc, "sun_io_file_seek");
+      var path = td.file("seek.txt");
+      var body = String("0123456789");
+      std.io.write_string(path, body);
+
+      var f = std.io.File();
+      f.open(path, FileMode.Read);
+      std.test.assert_eq(f.size(), 10);
+      std.test.assert_eq(f.tell(), 0);
+      std.test.assert_eq(f.seek(4, Whence.Start), 4);
+      std.test.assert_eq(f.tell(), 4);
+      std.test.assert_eq(f.seek(0, Whence.End), 10);
+      f.close();
+      std.test.assert(not f.is_open(), "closed File holds no descriptor");
+    }
+
+    test_function sun_io_append_mode_keeps_existing_content() {
+      var alloc = make_heap_allocator();
+      var td = std.tests.TempDir(alloc, "sun_io_append");
+      var path = td.file("append.txt");
+      var body = String("first;");
+      std.io.write_string(path, body);
+
+      var f = std.io.File();
+      f.open(path, FileMode.Append);
+      f.write("second");
+      f.close();
+
+      var back = std.io.read_to_string(alloc, path);
+      std.test.assert(back.equals_literal("first;second"), "append keeps existing content");
+    }
+
+    test_function sun_io_open_missing_file_throws() {
+      var alloc = make_heap_allocator();
+      var td = std.tests.TempDir(alloc, "sun_io_open_missing");
+      var missing = td.file("nope.txt");
+      var f = std.io.File();
+      try {
+        f.open(missing, FileMode.Read);
+        std.test.fail("expected error");
+      } catch (e: IError) {}
+    }
+
+    test_function sun_io_remove_rename_and_directories() {
+      var alloc = make_heap_allocator();
+      var td = std.tests.TempDir(alloc, "sun_io_remove_rename");
+      var victim = td.file("victim.txt");
+      var body = String("x");
+      std.io.write_string(victim, body);
+
+      var renamed = td.file("renamed.txt");
+      std.io.rename_file(victim, renamed);
+      std.test.assert(not std.io.exists(victim), "old name should be gone");
+      std.test.assert(std.io.exists(renamed), "new name should exist");
+      std.io.remove_file(renamed);
+      std.test.assert(not std.io.exists(renamed), "removed file should be gone");
+
+      var newdir = td.file("newdir");
+      std.io.make_dir(newdir, 493);
+      std.test.assert(std.io.is_dir(newdir), "newdir is a directory");
+      std.io.remove_dir(newdir);
+      std.test.assert(not std.io.exists(newdir), "newdir should be removed");
+    }
+  }  // module io_tests
+}  // module std

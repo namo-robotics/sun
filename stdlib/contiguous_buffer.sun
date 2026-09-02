@@ -23,7 +23,6 @@ public module std {
   public class ContiguousBuffer<T> implements IIterable<ref T, ContiguousBuffer<T>> {
     var data: Unique<u8>;  // Element storage (owned, auto-freed)
     var alloc: HeapAllocator;  // Allocator (stored via copy)
-    var alloc: HeapAllocator;  // Allocator (stored via copy)
     var size_: i64;  // Number of elements (fixed after init)
 
     // Constructor with allocator and size

@@ -145,7 +145,11 @@ public module std {
     var ndims_: i64;  // Number of dimensions
     var total_size: i64;  // Total elements in view
 
-    // Constructor from raw components
+    // Constructor from raw components.
+    // WARNING: the view keeps the shape and stride arrays it is given (an
+    // array field shares the caller's storage), so both must outlive the
+    // view — storage owned by the matrix, never a caller's frame-local
+    // array. Tracked by the lifetime work in issue #178.
     init(data_ptr: raw_ptr<u8>, offset: i64, shape: const ref array<i64>, strides_arr: const ref array<i64>) {
       this.data = data_ptr;
       this.base_offset = offset;

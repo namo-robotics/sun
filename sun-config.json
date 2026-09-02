@@ -1,8 +1,21 @@
 {
-    "sunPath": ["build"],
-    "pathVariables": {
+    "sun_path": ["build"],
+    "path_variables": {
         "OPENSSL_LIBS_LINUX": "third_party/openssl/x86_64-linux-musl",
         "OPENSSL_LIBS_MACOS": "third_party/openssl/arm64-apple-darwin"
     },
+    "entrypoints": [
+        {
+            "path": "stdlib/stdlib.sun",
+            "type": "library",
+            "output_name": "build/stdlib",
+            "test_binary_name": "build/stdlib_tests_test"
+        },
+        {
+            "path": "tls/tls.sun",
+            "type": "library",
+            "output_name": "build/tls"
+        }
+    ],
     "root": true
 }

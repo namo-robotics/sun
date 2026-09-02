@@ -1,0 +1,99 @@
+// stdlib/math_tests.sun - Tests for math.sun (generic math helpers).
+// Replaces the C++ suite Stdlib_Math.
+
+using std;
+
+public module std {
+  module math_tests {
+    test_function min_i32() {
+      std.test.assert_eq(compute_min<i32>(10, 5), 5);
+    }
+
+    test_function min_i32_reversed() {
+      std.test.assert_eq(compute_min<i32>(3, 9), 3);
+    }
+
+    test_function min_f64() {
+      var result = compute_min<f64>(3.5, 2.1);
+      std.test.assert(result > 2.0 and result < 2.2, "min_f64 should pick 2.1");
+    }
+
+    test_function max_i32() {
+      std.test.assert_eq(compute_max<i32>(10, 5), 10);
+    }
+
+    test_function max_i64() {
+      var m: i64 = compute_max<i64>(100, 200);
+      std.test.assert_eq(m, 200);
+    }
+
+    test_function abs_positive() {
+      std.test.assert_eq(compute_abs<i32>(42), 42);
+    }
+
+    test_function abs_negative() {
+      std.test.assert_eq(compute_abs<i32>(-42), 42);
+    }
+
+    test_function abs_zero() {
+      std.test.assert_eq(compute_abs<i32>(0), 0);
+    }
+
+    test_function clamp_within_range() {
+      std.test.assert_eq(clamp<i32>(5, 0, 10), 5);
+    }
+
+    test_function clamp_below_min() {
+      std.test.assert_eq(clamp<i32>(-5, 0, 10), 0);
+    }
+
+    test_function clamp_above_max() {
+      std.test.assert_eq(clamp<i32>(15, 0, 10), 10);
+    }
+
+    test_function sign_positive() {
+      std.test.assert_eq(compute_sign<i32>(42), 1);
+    }
+
+    test_function sign_negative() {
+      std.test.assert_eq(compute_sign<i32>(-42), -1);
+    }
+
+    test_function sign_zero() {
+      std.test.assert_eq(compute_sign<i32>(0), 0);
+    }
+
+    test_function in_range_true() {
+      std.test.assert(is_in_range<i32>(5, 0, 10));
+    }
+
+    test_function in_range_at_boundary() {
+      std.test.assert(is_in_range<i32>(0, 0, 10), "low end is inside");
+      std.test.assert(is_in_range<i32>(10, 0, 10), "high end is inside");
+    }
+
+    test_function in_range_false() {
+      std.test.assert(not is_in_range<i32>(15, 0, 10));
+    }
+
+    test_function combined_min_max() {
+      var a: i32 = 5;
+      var b: i32 = 10;
+      var c: i32 = 3;
+      var m1 = compute_max<i32>(a, b);  // 10
+      var m2 = compute_max<i32>(b, c);  // 10
+      std.test.assert_eq(compute_min<i32>(m1, m2), 10);
+    }
+
+    test_function clamp_uses_minmax_pattern() {
+      // clamp behaves like compute_max(lo, compute_min(x, hi))
+      var x: i32 = 15;
+      var lo: i32 = 0;
+      var hi: i32 = 10;
+      var clamped = clamp<i32>(x, lo, hi);
+      var manual = compute_max<i32>(lo, compute_min<i32>(x, hi));
+      std.test.assert_eq(clamped, manual);
+      std.test.assert_eq(clamped, 10);
+    }
+  }  // module math_tests
+}  // module std

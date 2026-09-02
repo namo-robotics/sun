@@ -18,10 +18,13 @@
 #include "ast/manifest_ast.h"
 #include "driver/driver.h"
 #include "driver/manifest_processor.h"
+#include "driver/sun_config.h"
 #include "lsp/definition.h"
 #include "lsp/hover.h"
+#include "lsp/name_ranges.h"
 #include "lsp/references.h"
 #include "lsp/rename.h"
+#include "lsp/tests.h"
 #include "lsp/text_positions.h"
 #include "parsing/formatter.h"
 #include "parsing/lexer.h"
@@ -155,6 +158,11 @@ class EntrypointManager {
   /// Check if any entrypoints are configured
   bool hasEntrypoints() const { return !entrypoints_.empty(); }
 
+  /// Every resolved entrypoint, for workspace-wide requests
+  const std::vector<EntrypointConfig>& entrypoints() const {
+    return entrypoints_;
+  }
+
  private:
   std::vector<std::string> configuredPaths_;
   std::vector<EntrypointConfig> entrypoints_;
@@ -211,6 +219,38 @@ class EntrypointManager {
 
 static EntrypointManager entrypointManager;
 
+// Config files the editor pointed the server at (the sun_configs setting).
+// Their declared entrypoints merge with any explicitly configured ones, and
+// their build metadata (test binary names) feeds the workspace test
+// listing.
+static std::vector<std::string> configuredSunConfigs;
+static std::vector<std::string> explicitEntrypoints;
+static std::map<std::string, sun::ConfigEntrypoint> configEntrypointInfo;
+
+// Re-read the configured sun-config files and hand the manager the union of
+// their entrypoints and the explicitly configured ones (configs first, so a
+// file covered by both maps to the config's entrypoint). A config that
+// fails to parse is skipped: a bad editor setting must not kill the server.
+static void refreshEntrypoints() {
+  std::vector<std::string> combined;
+  configEntrypointInfo.clear();
+  for (const auto& configPath : configuredSunConfigs) {
+    try {
+      sun::SunConfig config = sun::SunConfig::loadFile(configPath);
+      for (const auto& entry : config.entrypoints) {
+        combined.push_back(entry.path);
+        configEntrypointInfo.emplace(normalizePath(entry.path), entry);
+      }
+    } catch (const std::exception& e) {
+      std::cerr << "sun-lsp: ignoring " << configPath << ": " << e.what()
+                << std::endl;
+    }
+  }
+  combined.insert(combined.end(), explicitEntrypoints.begin(),
+                  explicitEntrypoints.end());
+  entrypointManager.setEntrypoints(combined);
+}
+
 /// Install manifest path variables ($NAME) from a configuration object's
 /// "pathVariables" member ({NAME: dir, ...}). Replaces the previous set so
 /// removed variables disappear. Returns true if the member was present.
@@ -241,6 +281,21 @@ static std::optional<std::vector<std::string>> readEntrypoints(
       if (auto path = entryObj->getString("path")) {
         paths.push_back(path->str());
       }
+    }
+  }
+  return paths;
+}
+
+// The sun_configs setting: sun-config.json files whose entrypoints the
+// server should know about. Paths arrive absolute from the client.
+static std::optional<std::vector<std::string>> readSunConfigs(
+    const llvm::json::Object& config) {
+  const llvm::json::Array* configs = config.getArray("sun_configs");
+  if (!configs) return std::nullopt;
+  std::vector<std::string> paths;
+  for (const auto& entry : *configs) {
+    if (auto str = entry.getAsString()) {
+      paths.push_back(str->str());
     }
   }
   return paths;
@@ -799,6 +854,13 @@ void appendDiagnostic(llvm::json::Array& diagnostics,
 }
 
 llvm::json::Array analyzeDiagnostics(const OpenDocument& document) {
+  // *.inja.sun files are Sun templates: their splices cannot parse, so
+  // diagnosing them would only report the template syntax as errors. They
+  // still get Sun highlighting; they just stay quiet.
+  if (llvm::StringRef(document.path).ends_with(".inja.sun")) {
+    return llvm::json::Array();
+  }
+
   // Compute content hash for caching
   // Include entrypoint info in hash to invalidate when context changes
   std::string cacheKey =
@@ -1026,9 +1088,13 @@ int main() {
           if (const llvm::json::Object* initOptions =
                   params->getObject("initializationOptions")) {
             applyPathVariables(*initOptions);
-            if (auto entrypointPaths = readEntrypoints(*initOptions)) {
-              entrypointManager.setEntrypoints(*entrypointPaths);
+            if (auto configPaths = readSunConfigs(*initOptions)) {
+              configuredSunConfigs = std::move(*configPaths);
             }
+            if (auto entrypointPaths = readEntrypoints(*initOptions)) {
+              explicitEntrypoints = std::move(*entrypointPaths);
+            }
+            refreshEntrypoints();
           }
         }
       }
@@ -1090,6 +1156,12 @@ int main() {
       llvm::json::Object renameProvider;
       renameProvider["prepareProvider"] = true;
       capabilities["renameProvider"] = std::move(renameProvider);
+      // Non-standard: the client's test explorer probes for these before
+      // sending sun/tests and sun/workspaceTests requests.
+      llvm::json::Object experimental;
+      experimental["sunTests"] = true;
+      experimental["sunWorkspaceTests"] = true;
+      capabilities["experimental"] = std::move(experimental);
 
       llvm::json::Object serverInfo;
       serverInfo["name"] = "sun-lsp";
@@ -1227,13 +1299,18 @@ int main() {
         if (const llvm::json::Object* sunSettings =
                 settings->getObject("sun")) {
           bool variablesChanged = applyPathVariables(*sunSettings);
+          auto configPaths = readSunConfigs(*sunSettings);
           auto entrypointPaths = readEntrypoints(*sunSettings);
-          if (variablesChanged || entrypointPaths) {
-            if (entrypointPaths) {
-              entrypointManager.setEntrypoints(*entrypointPaths);
-            } else {
-              entrypointManager.reparse();
+          if (variablesChanged || configPaths || entrypointPaths) {
+            if (configPaths) {
+              configuredSunConfigs = std::move(*configPaths);
             }
+            if (entrypointPaths) {
+              explicitEntrypoints = std::move(*entrypointPaths);
+            }
+            // Re-reads the config files too, so a client can resend the
+            // same settings to pick up an edited sun-config.json.
+            refreshEntrypoints();
             // Clear caches since context may have changed
             diagnosticsCache.clear();
             analyzedDocuments.clear();
@@ -1672,6 +1749,160 @@ int main() {
       llvm::json::Object workspaceEdit;
       workspaceEdit["changes"] = std::move(changes);
       sendResponse(*id, std::move(workspaceEdit));
+      continue;
+    }
+
+    // Custom request for the editor's test explorer: every test_function in
+    // one document, with the dotted name the runner's --test-filter matches
+    // and the range of the name token. An unanalyzable document answers with
+    // an empty list, not an error.
+    if (methodName == "sun/tests" && params) {
+      if (!id) continue;
+
+      llvm::json::Object* textDocument = nullptr;
+      if (llvm::json::Value* rawTextDocument = params->get("textDocument")) {
+        textDocument = rawTextDocument->getAsObject();
+      }
+      if (!textDocument) {
+        sendErrorResponse(*id, -32602, "Missing textDocument parameter");
+        continue;
+      }
+      std::optional<llvm::StringRef> uri = textDocument->getString("uri");
+      if (!uri) {
+        sendErrorResponse(*id, -32602, "Missing textDocument.uri");
+        continue;
+      }
+      auto documentIter = openDocuments.find(uri->str());
+      if (documentIter == openDocuments.end()) {
+        sendErrorResponse(*id, -32602, "Document not open");
+        continue;
+      }
+
+      const OpenDocument& document = documentIter->second;
+      llvm::json::Array tests;
+      if (const AnalyzedDocument* analyzed = getAnalyzedDocument(document)) {
+        try {
+          for (const auto& item : sun::lsp::collectTests(
+                   *analyzed->ast, document.path, document.text)) {
+            llvm::json::Object test;
+            test["id"] = item.id;
+            test["label"] = item.label;
+            test["range"] = makeRange(
+                item.location.start.line, item.location.start.character,
+                item.location.end.line, item.location.end.character);
+            tests.push_back(std::move(test));
+          }
+        } catch (const std::exception&) {
+          tests = llvm::json::Array();
+        }
+      }
+
+      // The entrypoint is what `sun test` should be handed to run these
+      // tests: the covering manifest when there is one, else the file
+      // itself.
+      const EntrypointConfig* entrypoint =
+          entrypointManager.findEntrypointForFile(document.path);
+      llvm::json::Object result;
+      result["entrypoint"] =
+          entrypoint ? entrypoint->entrypointPath : document.path;
+      result["tests"] = std::move(tests);
+      sendResponse(*id, std::move(result));
+      continue;
+    }
+
+    // Workspace-wide test discovery for the editor's test explorer: every
+    // test in every configured entrypoint, plus what the client needs to
+    // run them — the entrypoint to hand `sun test`, the configured test
+    // binary (from a sun-config entrypoints entry, when there is one), and
+    // the sources whose timestamps say whether that binary is fresh.
+    if (methodName == "sun/workspaceTests") {
+      if (!id) continue;
+
+      // Unsaved edits in open documents stand in for their files, the same
+      // way per-document analysis treats the requested buffer.
+      std::map<std::string, std::string> overrides;
+      for (const auto& [docUri, document] : openDocuments) {
+        overrides[normalizePath(document.path)] = document.text;
+      }
+
+      llvm::json::Array entrypointsJson;
+      for (const auto& entrypoint : entrypointManager.entrypoints()) {
+        std::vector<sun::lsp::TestSpan> spans;
+        try {
+          auto driver = Driver::createForAOT("sun-lsp");
+          auto program =
+              driver->analyzeFiles(entrypoint.sunFiles, entrypoint.moonImports,
+                                   entrypoint.protoFiles, overrides);
+          if (program.ast) {
+            spans = sun::lsp::collectTestSpans(*program.ast);
+          }
+        } catch (const std::exception&) {
+          spans.clear();
+        }
+
+        // Group tests by file, narrowing each span to its name token with
+        // that file's text: the open buffer when there is one, the file on
+        // disk otherwise.
+        std::map<std::string, llvm::json::Array> testsByFile;
+        std::map<std::string, std::string> fileTexts;
+        for (const auto& span : spans) {
+          auto text = fileTexts.find(span.filePath);
+          if (text == fileTexts.end()) {
+            std::string content;
+            auto override = overrides.find(span.filePath);
+            if (override != overrides.end()) {
+              content = override->second;
+            } else {
+              std::ifstream in(span.filePath);
+              std::stringstream buffer;
+              buffer << in.rdbuf();
+              content = buffer.str();
+            }
+            text = fileTexts.emplace(span.filePath, std::move(content)).first;
+          }
+          auto location = sun::lsp::makeSymbolLocation(
+              span.filePath,
+              sun::lsp::nameRange(span.span, span.label, text->second),
+              text->second);
+          llvm::json::Object test;
+          test["id"] = span.id;
+          test["label"] = span.label;
+          test["range"] =
+              makeRange(location.start.line, location.start.character,
+                        location.end.line, location.end.character);
+          testsByFile[span.filePath].push_back(std::move(test));
+        }
+
+        llvm::json::Array files;
+        for (auto& [filePath, fileTests] : testsByFile) {
+          llvm::json::Object fileJson;
+          fileJson["uri"] = pathToUri(filePath);
+          fileJson["tests"] = std::move(fileTests);
+          files.push_back(std::move(fileJson));
+        }
+
+        llvm::json::Object entryJson;
+        entryJson["entrypoint"] = entrypoint.entrypointPath;
+        auto info = configEntrypointInfo.find(
+            normalizePath(entrypoint.entrypointPath));
+        if (info != configEntrypointInfo.end() &&
+            !info->second.testBinaryName.empty()) {
+          entryJson["test_binary"] = info->second.testBinaryName;
+        } else {
+          entryJson["test_binary"] = nullptr;
+        }
+        llvm::json::Array sources;
+        for (const auto& file : entrypoint.sunFiles) {
+          sources.push_back(file);
+        }
+        entryJson["sources"] = std::move(sources);
+        entryJson["files"] = std::move(files);
+        entrypointsJson.push_back(std::move(entryJson));
+      }
+
+      llvm::json::Object result;
+      result["entrypoints"] = std::move(entrypointsJson);
+      sendResponse(*id, std::move(result));
       continue;
     }
 

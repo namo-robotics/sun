@@ -221,5 +221,52 @@ public module std {
       }
       return false;
     }
+
+    // True when the dotted test name matches one filter pattern: the exact
+    // name, a trailing-star prefix ("geometry.*"), or a module prefix
+    // ("geometry" selects everything under it).
+    function matches(name: const ref String, pattern: const ref String) bool {
+      if (name.equals(pattern)) {
+        return true;
+      }
+      var plen: i64 = pattern.length();
+      if (plen > 0 and pattern.at(plen - 1) == b'*') {
+        if (name.length() < plen - 1) {
+          return false;
+        }
+        for (var i: i64 = 0; i < plen - 1; i = i + 1) {
+          if (name.at(i) != pattern.at(i)) {
+            return false;
+          }
+        }
+        return true;
+      }
+      return name.length() > plen and name.starts_with(pattern) and name.at(plen) == b'.';
+    }
+
+    // True when the test named `name` should run, given the test binary's
+    // arguments. Every "--test-filter <pattern>" in argv contributes one
+    // pattern; a test runs when it matches any of them, and no patterns at
+    // all runs every test.
+    public function is_selected(name: static_ptr<u8>, argc: i32, argv: raw_ptr<raw_ptr<i8>>) bool {
+      var alloc: HeapAllocator = HeapAllocator();
+      var env = std.env.Env(alloc);
+      var cli = env.args(argc, argv);
+      var name_text = String(name);
+      var saw_filter = false;
+      var i: i64 = 0;
+      while (i + 1 < cli.size()) {
+        if (cli.get_unchecked(i).equals_literal("--test-filter")) {
+          saw_filter = true;
+          if (matches(name_text, cli.get_unchecked(i + 1))) {
+            return true;
+          }
+          i = i + 2;
+          continue;
+        }
+        i = i + 1;
+      }
+      return saw_filter == false;
+    }
   }  // module test
 }  // module std

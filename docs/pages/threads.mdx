@@ -43,6 +43,11 @@ The spawned function must not throw: the thread has no way to hand an
 unwinding error back to the spawner, so a `throws` callee is rejected at
 compile time. Catch inside the function and carry failures in its result.
 
+Every spawned thread gets an 8 MiB stack, whatever libc the binary links.
+Libc defaults vary wildly (glibc ~8 MiB, musl 128 KiB, macOS 512 KiB), so
+without this, recursion that works on the main thread could overflow on a
+worker on some targets.
+
 ## Arguments
 
 Give the thread what it should work on as arguments, and they **move** into it:

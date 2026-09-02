@@ -1,0 +1,103 @@
+// stdlib/udp_tests.sun - Tests for networking.sun (UdpSocket, Ipv4Addr).
+// Replaces the C++ suite Stdlib_Udp. Every socket binds port 0 and reads the
+// OS's pick back with local_port(), so parallel test runs never collide.
+
+using std;
+
+public module std {
+  module udp_tests {
+    test_function roundtrip_loopback() {
+      var alloc = make_heap_allocator();
+      var here = ipv4_loopback();
+      var sender = UdpSocket();
+      var receiver = UdpSocket();
+      sender.bind(here, 0);
+      receiver.bind(here, 0);
+      var sent: i64 = sender.send_str_to("ping", here, receiver.local_port());
+      std.test.assert_eq(sent, 4);
+      var buf = ContiguousBuffer<u8>(alloc, 64);
+      var datagram = receiver.recv_from(buf);
+      std.test.assert_eq(datagram.length(), 4);
+      std.test.assert_eq(datagram.port(), sender.local_port());
+      std.test.assert_eq(datagram.addr().to_network_i32(), INADDR_LOOPBACK);
+      var first: u8 = unsafe { _load<u8>(buf.raw_data(), 0); };
+      var last: u8 = unsafe { _load<u8>(buf.raw_data(), 3); };
+      std.test.assert_eq(_convert<i32>(first), 112);  // 'p'
+      std.test.assert_eq(_convert<i32>(last), 103);  // 'g'
+      sender.close();
+      receiver.close();
+    }
+
+    test_function recv_timeout_reports_would_block() {
+      var alloc = make_heap_allocator();
+      var here = ipv4_loopback();
+      var socket = UdpSocket();
+      socket.bind(here, 0);
+      var timeout = std.time.create_duration_millis(50);
+      socket.set_recv_timeout(timeout);
+      var buf = ContiguousBuffer<u8>(alloc, 16);
+      try {
+        socket.recv_from(buf);
+        std.test.fail("recv on an empty socket should time out");
+      } catch (e: IError) {
+        std.test.assert(is_would_block(e.code()), "timeout should report would-block");
+      }
+      socket.close();
+    }
+
+    test_function multicast_options_smoke() {
+      var socket = UdpSocket();
+      var wildcard = ipv4_any();
+      var group = Ipv4Addr(224, 0, 0, 251);
+      var iface = ipv4_loopback();
+      socket.bind(wildcard, 0);
+      socket.join_multicast(group, iface);
+      socket.set_multicast_ttl(1);
+      socket.set_multicast_loop(true);
+      socket.set_multicast_loop(false);
+      socket.leave_multicast(group, iface);
+      socket.close();
+    }
+
+    test_function ipv4addr_roundtrip() {
+      var alloc = make_heap_allocator();
+      var loopback = Ipv4Addr(127, 0, 0, 1);
+      std.test.assert_eq(loopback.to_network_i32(), INADDR_LOOPBACK);
+      std.test.assert_eq(_convert<i32>(loopback.octet(0)), 127);
+      std.test.assert_eq(_convert<i32>(loopback.octet(3)), 1);
+      var lan = Ipv4Addr(192, 168, 1, 10);
+      var text = lan.to_string(alloc);
+      std.test.assert(text.equals_literal("192.168.1.10"), "address renders dotted");
+      var parsed = parse_ipv4(text);
+      std.test.assert_eq(parsed.to_network_i32(), lan.to_network_i32());
+      var truncated = String(alloc, "192.168.1");
+      var threw_truncated = false;
+      try {
+        parse_ipv4(truncated);
+      } catch (e: IError) {
+        threw_truncated = true;
+      }
+      std.test.assert(threw_truncated, "three octets should not parse");
+      var overflow = String(alloc, "1.2.3.400");
+      var threw_overflow = false;
+      try {
+        parse_ipv4(overflow);
+      } catch (e: IError) {
+        threw_overflow = true;
+      }
+      std.test.assert(threw_overflow, "octet above 255 should not parse");
+    }
+
+    test_function send_on_closed_socket_reports_errno() {
+      var socket = UdpSocket();
+      var dest = ipv4_loopback();
+      try {
+        socket.send_to(null, 0, dest, 9);
+        std.test.fail("send on a never-opened socket should throw");
+      } catch (e: IError) {
+        // EBADF is 9 on every supported target.
+        std.test.assert_eq(e.code(), 9);
+      }
+    }
+  }  // module udp_tests
+}  // module std

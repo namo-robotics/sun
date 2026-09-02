@@ -1,0 +1,264 @@
+// stdlib/process_tests.sun - Tests for process.sun.
+// Replaces the C++ suite(s) Stdlib_Sys_Command, Stdlib_Sys_Process.
+//
+// The Command tests run /bin/sh, which Linux and macOS CI both have, so the
+// old per-test existence guard was dropped. Every test that spawns also
+// waits, so no zombies are left for a later test's waitpid.
+
+using std;
+using std.process;
+
+public module std {
+  module process_tests {
+    // ------------------------------------------------------------------
+    // Command / Child / Output (was Stdlib_Sys_Command)
+    // ------------------------------------------------------------------
+
+    /*
+     * output() captures stdout, leaves stderr empty, and reports status 0.
+     */
+    test_function output_captures_stdout_and_status() {
+      var alloc = make_heap_allocator();
+      var cmd = std.process.Command(alloc, "/bin/sh");
+      cmd.add_arg("-c");
+      cmd.add_arg("printf hello");
+      var out = cmd.output();
+      std.test.assert_eq(out.status(), 0);
+      std.test.assert(out.stdout().equals_literal("hello"), "stdout captured");
+      std.test.assert(out.stderr().is_empty(), "stderr empty");
+    }
+
+    /*
+     * A child's non-zero exit code comes back through output().status().
+     */
+    test_function non_zero_exit_is_reported() {
+      var alloc = make_heap_allocator();
+      var cmd = std.process.Command(alloc, "/bin/sh");
+      cmd.add_arg("-c");
+      cmd.add_arg("exit 3");
+      std.test.assert_eq(cmd.output().status(), 3);
+    }
+
+    /*
+     * stdout and stderr are captured into separate Strings.
+     */
+    test_function stderr_is_captured_separately() {
+      var alloc = make_heap_allocator();
+      var cmd = std.process.Command(alloc, "/bin/sh");
+      cmd.add_arg("-c");
+      cmd.add_arg("printf out; printf err >&2");
+      var res = cmd.output();
+      std.test.assert(res.stdout().equals_literal("out"), "stdout is out");
+      std.test.assert(res.stderr().equals_literal("err"), "stderr is err");
+    }
+
+    /*
+     * Output well past one pipe buffer (64 KiB on Linux) on stdout while
+     * stderr also has data. Draining stdout to the end before touching
+     * stderr would wedge here.
+     */
+    test_function large_output_does_not_deadlock() {
+      var alloc = make_heap_allocator();
+      var cmd = std.process.Command(alloc, "/bin/sh");
+      cmd.add_arg("-c");
+      cmd.add_arg("yes abcdefgh | head -c 200000; printf e >&2");
+      var res = cmd.output();
+      std.test.assert_eq(res.stdout().length(), 200000);
+      std.test.assert(res.stderr().equals_literal("e"), "stderr captured alongside");
+    }
+
+    /*
+     * Each add_arg is one argv entry: a space inside an argument stays
+     * inside it, with no re-parsing by a shell.
+     */
+    test_function arguments_are_passed_separately_not_reparsed() {
+      var alloc = make_heap_allocator();
+      var cmd = std.process.Command(alloc, "/bin/sh");
+      cmd.add_arg("-c");
+      cmd.add_arg("printf '%s|%s' \"$1\" \"$2\"");
+      cmd.add_arg("sh");
+      cmd.add_arg("one two");
+      cmd.add_arg("three");
+      var res = cmd.output();
+      std.test.assert(res.stdout().equals_literal("one two|three"), "arguments kept separate");
+    }
+
+    /*
+     * add_arg(ref String) borrows the text: the command runs it and the
+     * caller still owns the String afterwards.
+     */
+    test_function string_arguments_are_accepted() {
+      var alloc = make_heap_allocator();
+      var script = String(alloc, "printf built-at-runtime");
+      var cmd = std.process.Command(alloc, "/bin/sh");
+      cmd.add_arg("-c");
+      cmd.add_arg(script);
+      var res = cmd.output();
+      std.test.assert(res.stdout().equals_literal("built-at-runtime"), "runtime-built argument ran");
+      std.test.assert_eq(script.length(), 23);
+    }
+
+    /*
+     * status() runs with inherited streams and returns the exit code.
+     */
+    test_function status_runs_with_inherited_streams() {
+      var alloc = make_heap_allocator();
+      var cmd = std.process.Command(alloc, "/bin/sh");
+      cmd.add_arg("-c");
+      cmd.add_arg("exit 7");
+      std.test.assert_eq(cmd.status(), 7);
+    }
+
+    /*
+     * start() gives a Child with a real pid; wait() returns the exit code.
+     */
+    test_function start_then_wait_gives_the_exit_code() {
+      var alloc = make_heap_allocator();
+      var cmd = std.process.Command(alloc, "/bin/sh");
+      cmd.add_arg("-c");
+      cmd.add_arg("exit 5");
+      var child = cmd.start();
+      std.test.assert(child.id() > 0, "child has a positive pid");
+      std.test.assert_eq(child.wait(), 5);
+    }
+
+    /*
+     * With stdin piped, bytes written to the child come back out of a
+     * program that echoes its input.
+     */
+    test_function child_stdin_can_be_written() {
+      var alloc = make_heap_allocator();
+      var cmd = std.process.Command(alloc, "/bin/sh");
+      cmd.add_arg("-c");
+      cmd.add_arg("cat");
+      cmd.set_stdin(Stdio.Piped);
+      cmd.set_stdout(Stdio.Piped);
+      var child = cmd.start();
+      var payload = String(alloc, "echoed back");
+      child.write_stdin(payload);
+      child.close_stdin();
+      var res = child.collect(alloc);
+      std.test.assert(res.stdout().equals_literal("echoed back"), "stdin round-tripped");
+      std.test.assert_eq(res.status(), 0);
+    }
+
+    /*
+     * A child killed by a signal reports 128 + the signal, as a shell does.
+     */
+    test_function a_signalled_child_reports_128_plus_the_signal() {
+      var alloc = make_heap_allocator();
+      var cmd = std.process.Command(alloc, "/bin/sh");
+      cmd.add_arg("-c");
+      cmd.add_arg("kill -9 $$");
+      cmd.set_stdout(Stdio.Null);
+      cmd.set_stderr(Stdio.Null);
+      std.test.assert_eq(cmd.status(), 137);  // 128 + SIGKILL
+    }
+
+    /*
+     * When exec fails the child exits 127, what a shell reports for
+     * "command not found".
+     */
+    test_function missing_program_exits_127() {
+      var alloc = make_heap_allocator();
+      var cmd = std.process.Command(alloc, "/no/such/program/anywhere");
+      cmd.set_stderr(Stdio.Null);
+      std.test.assert_eq(cmd.status(), 127);
+    }
+
+    // ------------------------------------------------------------------
+    // Identity, pipes, wait status (was Stdlib_Sys_Process)
+    // ------------------------------------------------------------------
+
+    /*
+     * pid() is the real OS process id. The C++ harness compared it with
+     * getpid(); here a shell child reports its parent's pid instead.
+     */
+    test_function ids_match_the_host_process() {
+      var alloc = make_heap_allocator();
+      var cmd = std.process.Command(alloc, "/bin/sh");
+      cmd.add_arg("-c");
+      cmd.add_arg("echo $PPID");
+      var out = cmd.output();
+      std.test.assert_eq(out.status(), 0);
+      out.stdout().trim();
+      var reported: i64 = match out.stdout().parse_i64() {
+        Option.Some(x) => x,
+        Option.None => -1
+      };
+      std.test.assert_eq(reported, _convert<i64>(std.process.pid()));
+    }
+
+    /*
+     * Parent pid and user ids look like a normal process: a real parent,
+     * a different pid, and matching real/effective user ids.
+     */
+    test_function parent_pid_and_uids_are_plausible() {
+      std.test.assert(std.process.parent_pid() > 0, "parent pid is positive");
+      std.test.assert(std.process.pid() != std.process.parent_pid(), "pid differs from parent pid");
+      std.test.assert_eq(std.process.uid(), std.process.euid());
+    }
+
+    /*
+     * Bytes written into a pipe's write end read back from its read end.
+     */
+    test_function pipe_round_trips_bytes() {
+      var alloc = make_heap_allocator();
+      var p = std.process.open_pipe(alloc);
+      var writer = std.io.File();
+      writer.adopt(p.write_fd());
+      var msg = String(alloc, "through the pipe");
+      std.test.assert_eq(writer.write(msg), 16);
+      writer.close();
+
+      var reader = std.io.File();
+      reader.adopt(p.read_fd());
+      var got = reader.read_all(alloc);
+      reader.close();
+      std.test.assert(got.equals_literal("through the pipe"), "pipe payload intact");
+    }
+
+    /*
+     * The wait-status decoders follow waitpid(2)'s bit layout: low 7 bits
+     * the signal, next 8 the exit code.
+     */
+    test_function wait_status_decoding() {
+      // exit(3): status 0x0300
+      std.test.assert(std.process.exited(768), "exit(3) counts as exited");
+      std.test.assert_eq(std.process.exit_status(768), 3);
+      std.test.assert(not std.process.is_signaled(768), "exit(3) is not a signal death");
+
+      // killed by SIGKILL (9)
+      std.test.assert(not std.process.exited(9), "signal death is not an exit");
+      std.test.assert(std.process.is_signaled(9), "signal death is signaled");
+      std.test.assert_eq(std.process.get_term_signal(9), 9);
+
+      // exit(0)
+      std.test.assert(std.process.exited(0), "exit(0) counts as exited");
+      std.test.assert_eq(std.process.exit_status(0), 0);
+    }
+
+    /*
+     * dup_fd points a chosen descriptor at an existing one; writing through
+     * the duplicate reaches the same pipe. The number is kept high so a
+     * concurrently running test's own descriptors are not clobbered.
+     */
+    test_function dup_fd_redirects_a_descriptor() {
+      var alloc = make_heap_allocator();
+      var p = std.process.open_pipe(alloc);
+      std.process.dup_fd(p.write_fd(), 199);
+      var writer = std.io.File();
+      writer.adopt(199);
+      var msg = String(alloc, "via dup");
+      writer.write(msg);
+      writer.close();
+      p.close_write();
+
+      var reader = std.io.File();
+      reader.adopt(p.read_fd());
+      var got = reader.read_all(alloc);
+      reader.close();
+      std.test.assert(got.equals_literal("via dup"), "write through the duplicate arrived");
+    }
+  }  // module process_tests
+}  // module std

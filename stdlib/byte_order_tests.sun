@@ -1,0 +1,71 @@
+// stdlib/byte_order_tests.sun - Tests for byte_order.sun.
+// Replaces the C++ suite Stdlib_ByteOrder; the bare-intrinsic suite
+// Stdlib_ByteOrder_Intrinsics (_bswap_*) stays in tests/stdlib/test_byte_order.cpp.
+
+using std;
+
+public module std {
+  module byte_order_tests {
+    test_function swap_and_endian_helpers() {
+      var a: u16 = 4660;  // 0x1234
+      var b: u32 = 305419896;  // 0x12345678
+      var c: u64 = 81985529216486895;
+
+      std.test.assert_eq(std.byte_order.swap_bytes_u16(a), 13330);
+      std.test.assert_eq(std.byte_order.swap_bytes_u32(b), 2018915346);
+      std.test.assert_eq(std.byte_order.swap_bytes_u64(std.byte_order.swap_bytes_u64(c)), c);
+
+      // Big-endian is the opposite of every machine Sun targets, so the
+      // conversions reverse the bytes and undo each other.
+      std.test.assert_eq(std.byte_order.to_big_endian_u16(a), 13330);
+      std.test.assert_eq(std.byte_order.to_big_endian_u32(b), 2018915346);
+      std.test.assert_eq(std.byte_order.from_big_endian_u16(std.byte_order.to_big_endian_u16(a)), a);
+      std.test.assert_eq(std.byte_order.from_big_endian_u32(std.byte_order.to_big_endian_u32(b)), b);
+      std.test.assert_eq(std.byte_order.from_big_endian_u64(std.byte_order.to_big_endian_u64(c)), c);
+
+      // Little-endian already matches the machine, so nothing moves.
+      std.test.assert_eq(std.byte_order.to_little_endian_u16(a), a);
+      std.test.assert_eq(std.byte_order.to_little_endian_u32(b), b);
+      std.test.assert_eq(std.byte_order.to_little_endian_u64(c), c);
+      std.test.assert_eq(std.byte_order.from_little_endian_u16(a), a);
+      std.test.assert_eq(std.byte_order.from_little_endian_u32(b), b);
+      std.test.assert_eq(std.byte_order.from_little_endian_u64(c), c);
+    }
+
+    // The helpers are reachable by their full name, without importing the
+    // submodule — the same path through the real stdlib bundle that
+    // Modules.moon_nested_module_is_reachable_by_qualified_name covers for a
+    // bundle built on the spot.
+    test_function reachable_by_qualified_name() {
+      var a: u16 = 4660;  // 0x1234
+      var b: u32 = 305419896;  // 0x12345678
+      std.test.assert_eq(std.byte_order.swap_bytes_u16(a), 13330);
+      std.test.assert_eq(std.byte_order.to_big_endian_u32(b), 2018915346);
+      std.test.assert_eq(
+        std.byte_order.from_big_endian_u32(std.byte_order.to_big_endian_u32(b)),
+        b
+      );
+    }
+
+    // A two-byte length written big-endian, then read back out of the bytes,
+    // the way a binary wire format uses these helpers.
+    test_function round_trip_through_a_byte_buffer() {
+      var alloc = make_heap_allocator();
+      var buf = Vec<u8>(alloc, 4);
+
+      var length: u16 = 1024;
+      var wire_length: u16 = std.byte_order.to_big_endian_u16(length);
+      buf.push(_convert<u8>(wire_length & 255));
+      buf.push(_convert<u8>((wire_length >> 8) & 255));
+
+      // 1024 big-endian is 0x04 0x00
+      std.test.assert_eq(_convert<i32>(buf.get(0)), 4);
+      std.test.assert_eq(_convert<i32>(buf.get(1)), 0);
+
+      var low: u16 = _convert<u16>(buf.get(0));
+      var high: u16 = _convert<u16>(buf.get(1));
+      var read_back: u16 = std.byte_order.from_big_endian_u16(low | (high << 8));
+      std.test.assert_eq(read_back, length);
+    }
+  }  // module byte_order_tests
+}  // module std

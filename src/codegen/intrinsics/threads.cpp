@@ -182,16 +182,28 @@ Value* IntrinsicsGenerator::codegenSpawnIntrinsic(
   ctx.builder->CreateStore(
       argsBlob, ctx.builder->CreateStructGEP(contextType, contextPtr, 4));
 
+  // Spawned threads get an explicit 8 MiB stack. Libc defaults differ
+  // wildly — glibc ~8 MiB, musl 128 KiB, macOS 512 KiB — so recursion that
+  // works on the main thread would overflow a worker on some targets. An
+  // explicit size makes spawn behave the same however the binary is linked.
+  // pthread_attr_t is at most 64 bytes on every supported libc.
+  Value* attr = ctx.builder->CreateAlloca(
+      ArrayType::get(Type::getInt8Ty(module->getContext()), 64), nullptr,
+      "spawn.attr");
+  ctx.builder->CreateCall(sun::libc::pthreadAttrInit(module), {attr});
+  ctx.builder->CreateCall(
+      sun::libc::pthreadAttrSetstacksize(module),
+      {attr, ConstantInt::get(i64Ty, 8ull * 1024 * 1024)});
+
   // pthread_create writes the thread id straight into the context (field 3)
   Value* tidFieldPtr =
       ctx.builder->CreateStructGEP(contextType, contextPtr, 3, "ctx.tid");
   Function* trampoline = threadUtils.getOrCreateThreadTrampoline(
       calleeFuncType, fatType, resultLLVMType, contextType, argsType);
-  ctx.builder->CreateCall(
-      sun::libc::pthreadCreate(module),
-      {tidFieldPtr, ConstantPointerNull::get(cast<PointerType>(ptrTy)),
-       trampoline, contextPtr},
-      "pthread_create_result");
+  ctx.builder->CreateCall(sun::libc::pthreadCreate(module),
+                          {tidFieldPtr, attr, trampoline, contextPtr},
+                          "pthread_create_result");
+  ctx.builder->CreateCall(sun::libc::pthreadAttrDestroy(module), {attr});
 
   return contextPtr;
 }

@@ -187,6 +187,88 @@ TEST(EndToEnd_Testing, production_compile_ignores_tests) {
   )"));
 }
 
+// One passing and one failing test make filter selection observable through
+// the exit code: a run that selects only the passing test exits 0, one that
+// reaches the failing test exits 1.
+static const char* kFilterProgram = R"(
+    using std;
+
+    module geometry {
+        test_function passes() {
+            std.test.assert(true);
+        }
+
+        test_function alsoPasses() {
+            std.test.assert(true);
+        }
+    }
+
+    module physics {
+        test_function fails() {
+            std.test.assert(false);
+        }
+    }
+)";
+
+// --test-filter with the exact dotted name runs only that test.
+TEST(EndToEnd_Testing, filter_exact_name_selects_one_test) {
+  const char* argvPass[] = {"program", "--test-filter", "geometry.passes",
+                            nullptr};
+  EXPECT_EQ(
+      executeTestsWithStdlib(kFilterProgram, 3, const_cast<char**>(argvPass)),
+      0);
+
+  const char* argvFail[] = {"program", "--test-filter", "physics.fails",
+                            nullptr};
+  EXPECT_EQ(
+      executeTestsWithStdlib(kFilterProgram, 3, const_cast<char**>(argvFail)),
+      1);
+}
+
+// A trailing star selects every test whose name starts with the prefix.
+TEST(EndToEnd_Testing, filter_trailing_star_selects_a_module) {
+  const char* argvGlob[] = {"program", "--test-filter", "geometry.*", nullptr};
+  EXPECT_EQ(
+      executeTestsWithStdlib(kFilterProgram, 3, const_cast<char**>(argvGlob)),
+      0);
+}
+
+// A bare module name selects everything under it, no star needed.
+TEST(EndToEnd_Testing, filter_module_prefix_selects_a_module) {
+  const char* argvPrefix[] = {"program", "--test-filter", "geometry", nullptr};
+  EXPECT_EQ(
+      executeTestsWithStdlib(kFilterProgram, 3, const_cast<char**>(argvPrefix)),
+      0);
+}
+
+// Repeated --test-filter flags select the union of their matches.
+TEST(EndToEnd_Testing, repeated_filters_select_the_union) {
+  const char* argvUnion[] = {"program",       "--test-filter",
+                             "geometry.passes", "--test-filter",
+                             "physics.fails",   nullptr};
+  EXPECT_EQ(
+      executeTestsWithStdlib(kFilterProgram, 5, const_cast<char**>(argvUnion)),
+      1);
+}
+
+// A filter that matches nothing runs zero tests and still exits 0.
+TEST(EndToEnd_Testing, filter_with_no_match_exits_zero) {
+  const char* argvNone[] = {"program", "--test-filter", "nothing.here",
+                            nullptr};
+  EXPECT_EQ(
+      executeTestsWithStdlib(kFilterProgram, 3, const_cast<char**>(argvNone)),
+      0);
+}
+
+// Filtering composes with sequential mode.
+TEST(EndToEnd_Testing, filter_combines_with_sequential) {
+  const char* argvSeq[] = {"program", "--test-sequential", "--test-filter",
+                           "geometry.*", nullptr};
+  EXPECT_EQ(
+      executeTestsWithStdlib(kFilterProgram, 4, const_cast<char**>(argvSeq)),
+      0);
+}
+
 // A whole program file with inline tests plus a test_files manifest entry:
 // the production compile strips the inline tests and never loads the test
 // file. (Requires SUN_PATH at the workspace root.)

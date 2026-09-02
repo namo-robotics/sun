@@ -24,6 +24,55 @@ std::string anchorAtConfigDir(const std::string& value,
   return (configDir / p).lexically_normal().string();
 }
 
+// One entry of the entrypoints array: an object naming the entrypoint file
+// and, optionally, what kind of artifact it is and what its outputs are
+// called. Every path-like value is anchored at the config's folder.
+ConfigEntrypoint parseEntrypoint(const llvm::json::Value& value,
+                                 const std::filesystem::path& configDir,
+                                 const std::filesystem::path& file) {
+  const llvm::json::Object* object = value.getAsObject();
+  if (!object) {
+    logAndThrowError("'entrypoints' entries must be objects in " +
+                     file.string());
+  }
+
+  ConfigEntrypoint entrypoint;
+  for (const auto& [key, entryValue] : *object) {
+    std::string name = llvm::StringRef(key).str();
+    auto str = entryValue.getAsString();
+    if (!str) {
+      logAndThrowError("entrypoint key '" + name + "' must be a string in " +
+                       file.string());
+    }
+    if (name == "path") {
+      entrypoint.path = anchorAtConfigDir(str->str(), configDir);
+    } else if (name == "type") {
+      if (*str == "binary") {
+        entrypoint.type = ConfigEntrypoint::Type::Binary;
+      } else if (*str == "library") {
+        entrypoint.type = ConfigEntrypoint::Type::Library;
+      } else {
+        logAndThrowError("entrypoint type '" + str->str() + "' in " +
+                         file.string() + "; expected 'binary' or 'library'");
+      }
+    } else if (name == "output_name") {
+      entrypoint.outputName = anchorAtConfigDir(str->str(), configDir);
+    } else if (name == "test_binary_name") {
+      entrypoint.testBinaryName = anchorAtConfigDir(str->str(), configDir);
+    } else {
+      logAndThrowError("unknown entrypoint key '" + name + "' in " +
+                       file.string() +
+                       "; expected 'path', 'type', 'output_name' or "
+                       "'test_binary_name'");
+    }
+  }
+  if (entrypoint.path.empty()) {
+    logAndThrowError("an entrypoints entry is missing 'path' in " +
+                     file.string());
+  }
+  return entrypoint;
+}
+
 }  // namespace
 
 std::optional<SunConfig> SunConfig::findFrom(
@@ -43,12 +92,15 @@ std::optional<SunConfig> SunConfig::findFrom(
         merged = std::move(config);
       } else {
         // Nearer definitions win: emplace keeps an existing variable, and
-        // parent search dirs append after the child's.
+        // parent search dirs and entrypoints append after the child's.
         for (const auto& [name, value] : config.pathVariables) {
           merged->pathVariables.emplace(name, value);
         }
         merged->sunPath.insert(merged->sunPath.end(), config.sunPath.begin(),
                                config.sunPath.end());
+        merged->entrypoints.insert(merged->entrypoints.end(),
+                                   config.entrypoints.begin(),
+                                   config.entrypoints.end());
       }
       if (stop) {
         break;
@@ -86,26 +138,26 @@ SunConfig SunConfig::loadFile(const std::filesystem::path& file) {
 
   for (const auto& [key, value] : *root) {
     std::string name = llvm::StringRef(key).str();
-    if (name == "sunPath") {
+    if (name == "sun_path") {
       const llvm::json::Array* dirs = value.getAsArray();
       if (!dirs) {
-        logAndThrowError("'sunPath' must be an array of directories in " +
+        logAndThrowError("'sun_path' must be an array of directories in " +
                          file.string());
       }
       for (const auto& dir : *dirs) {
         auto str = dir.getAsString();
         if (!str) {
-          logAndThrowError("'sunPath' entries must be strings in " +
+          logAndThrowError("'sun_path' entries must be strings in " +
                            file.string());
         }
         config.sunPath.push_back(
             anchorAtConfigDir(str->str(), config.configDir));
       }
-    } else if (name == "pathVariables") {
+    } else if (name == "path_variables") {
       const llvm::json::Object* vars = value.getAsObject();
       if (!vars) {
         logAndThrowError(
-            "'pathVariables' must be an object of NAME: dir "
+            "'path_variables' must be an object of NAME: dir "
             "pairs in " +
             file.string());
       }
@@ -118,6 +170,16 @@ SunConfig SunConfig::loadFile(const std::filesystem::path& file) {
         config.pathVariables[llvm::StringRef(varName).str()] =
             anchorAtConfigDir(str->str(), config.configDir);
       }
+    } else if (name == "entrypoints") {
+      const llvm::json::Array* entries = value.getAsArray();
+      if (!entries) {
+        logAndThrowError("'entrypoints' must be an array of objects in " +
+                         file.string());
+      }
+      for (const auto& entry : *entries) {
+        config.entrypoints.push_back(
+            parseEntrypoint(entry, config.configDir, file));
+      }
     } else if (name == "root") {
       auto flag = value.getAsBoolean();
       if (!flag) {
@@ -126,7 +188,8 @@ SunConfig SunConfig::loadFile(const std::filesystem::path& file) {
       config.root = *flag;
     } else {
       logAndThrowError("unknown key '" + name + "' in " + file.string() +
-                       "; expected 'sunPath', 'pathVariables' or 'root'");
+                       "; expected 'sun_path', 'path_variables', "
+                       "'entrypoints' or 'root'");
     }
   }
 

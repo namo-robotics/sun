@@ -1,9 +1,9 @@
 {
     "name": "sun-language",
     "displayName": "Sun Language",
-    "description": "Syntax highlighting, diagnostics, formatting, hover type information, go-to-definition, find references and rename symbol for Sun",
+    "description": "Syntax highlighting, diagnostics, formatting, hover type information, go-to-definition, find references, rename symbol and Test Explorer for Sun",
     "icon": "images/sun-logo.png",
-    "version": "0.1.29",
+    "version": "0.1.30",
     "publisher": "namo-robotics",
     "license": "MIT",
     "repository": {
@@ -16,7 +16,9 @@
     "categories": [
         "Programming Languages"
     ],
-    "activationEvents": [],
+    "activationEvents": [
+        "workspaceContains:**/*.sun"
+    ],
     "main": "./out/extension.js",
     "contributes": {
         "languages": [
@@ -76,12 +78,27 @@
         "configuration": {
             "title": "Sun",
             "properties": {
-                "sun.lsp.path": {
+                "sun.lsp_path": {
                     "type": "string",
                     "default": "sun-lsp",
                     "description": "Path to the sun-lsp executable"
                 },
-                "sun.sunPath": {
+                "sun.compiler_path": {
+                    "type": "string",
+                    "default": "sun",
+                    "description": "Path to the sun compiler, used by the Test Explorer to run tests (sun test <entrypoint>). Absolute, workspace-relative (for example build/sun), or a command on PATH; when unset the extension also tries the sun binary next to sun-lsp."
+                },
+                "sun.sun_configs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [
+                        "sun-config.json"
+                    ],
+                    "description": "sun-config.json files (absolute or workspace-relative) whose entrypoints lists describe the project. The language server discovers the Test Explorer's tests from them, and their entrypoints replace manifest scanning."
+                },
+                "sun.sun_path": {
                     "type": "array",
                     "items": {
                         "type": "string"
@@ -114,7 +131,7 @@
                     "default": [],
                     "description": "List of entrypoint files with manifest blocks. Files listed in an entrypoint's manifest will use the full manifest context for cross-file analysis."
                 },
-                "sun.pathVariables": {
+                "sun.path_variables": {
                     "type": "object",
                     "additionalProperties": {
                         "type": "string"

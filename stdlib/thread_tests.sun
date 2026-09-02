@@ -1,0 +1,619 @@
+// stdlib/thread_tests.sun - Tests for thread.sun (spawn and Thread<T>).
+// Replaces the runtime tests of the C++ suite Stdlib_Concurrency_Threads;
+// the parse/sema/borrow-check negatives and compile-only tests stay in
+// tests/stdlib/concurrency/test_threads.cpp.
+
+using std;
+using std.thread;
+
+public module std {
+  module thread_tests {
+    // Doubles its argument; a named function to spawn.
+    function double_it(n: i32) i32 {
+      return n * 2;
+    }
+
+    // Calls the given function pointer with n.
+    function apply(f: function (i32) i32, n: i32) i32 {
+      return f(n);
+    }
+
+    // A counter a thread writes through a by-ref capture.
+    class Counter {
+      public var n: i32;
+      init() {
+        this.n = 0;
+      }
+    }
+
+    // Error type for the unwinding test.
+    class Boom implements IError {
+      init() {}
+      method code() i32 {
+        return 1;
+      }
+      method message() String {
+        return String("boom");
+      }
+    }
+
+    // Throws immediately.
+    function throw_boom() i32 throws IError {
+      throw Boom();
+    }
+
+    // ------------------------------------------------------------------
+    // The shape of a spawn call
+    // ------------------------------------------------------------------
+
+    // A named function is a callable value and spawns like a lambda.
+    test_function spawn_accepts_a_named_function() {
+      var t = spawn(double_it, 21);
+      std.test.assert_eq(t.join(), 42);
+    }
+
+    // A function-pointer value rides through spawn's argument pack like any
+    // other one-word value — this is exactly how the test runner passes each
+    // test to std.test.run_one.
+    test_function spawn_passes_function_pointer_arguments() {
+      var t = spawn(apply, double_it, 21);
+      std.test.assert_eq(t.join(), 42);
+    }
+
+    // _is answers the same question spawn's constraint asks: a
+    // named-function value is _Function and _Callable, but not _Lambda.
+    test_function function_values_satisfy_function_traits() {
+      var f: function (i32) i32 = double_it;
+      var l = (n: i32) => i32 { return n; };
+      std.test.assert(_is<_Function>(f), "f is a _Function");
+      std.test.assert(_is<_Callable>(f), "f is a _Callable");
+      std.test.assert(_is<_Lambda>(f) == false, "f is not a _Lambda");
+      std.test.assert(_is<_Function>(l) == false, "l is not a _Function");
+      std.test.assert(_is<_Callable>(l), "l is a _Callable");
+    }
+
+    // Thread<T> is an ordinary class, so a handle can be written out rather
+    // than only inferred from what spawn returned.
+    test_function thread_handle_can_be_written_as_a_type() {
+      var t: Thread<i32> = spawn(() => i32 { return 42; });
+      std.test.assert_eq(t.join(), 42);
+    }
+
+    // ------------------------------------------------------------------
+    // Basic spawn and join
+    // ------------------------------------------------------------------
+
+    test_function spawn_and_join_basic() {
+      var t = spawn(() => i32 { return 42; });
+      std.test.assert_eq(t.join(), 42);
+    }
+
+    test_function spawn_with_captured_value() {
+      var x: i32 = 10;
+      var t = spawn(() => i32 { return x * 2; });
+      std.test.assert_eq(t.join(), 20);
+    }
+
+    // Issue #99: a void lambda has no result slot; join returns nothing.
+    // Passing means neither the spawn nor the join tripped over the missing
+    // slot.
+    test_function spawn_void_lambda_and_join() {
+      var t = spawn(() => void {});
+      t.join();
+    }
+
+    // Issue #99: a lambda held in a variable arrives as a fat struct value.
+    test_function spawn_lambda_variable() {
+      var f = () => i32 { return 7; };
+      var t = spawn(f);
+      std.test.assert_eq(t.join() * 6, 42);
+    }
+
+    test_function spawn_lambda_variable_with_capture() {
+      var x: i32 = 10;
+      var f = () => i32 { return x * 2; };
+      var t = spawn(f);
+      std.test.assert_eq(t.join() + 1, 21);
+    }
+
+    test_function multiple_threads() {
+      var t1 = spawn(() => i32 { return 10; });
+      var t2 = spawn(() => i32 { return 20; });
+      var t3 = spawn(() => i32 { return 30; });
+      std.test.assert_eq(t1.join() + t2.join() + t3.join(), 60);
+    }
+
+    // ------------------------------------------------------------------
+    // Scoped threads (issue #122): shared state through a by-ref capture
+    // ------------------------------------------------------------------
+
+    // The thread writes through the capture; the parent reads it after
+    // joining.
+    test_function byref_capture_shares_a_class() {
+      var c = Counter();
+      var t = spawn(
+        [ref c]() => i32 {
+          var i: i32 = 0;
+          while (i < 1000) {
+            c.n = c.n + 1;
+            i = i + 1;
+          }
+          return 0;
+        }
+      );
+      var r = t.join();
+      std.test.assert_eq(c.n, 1000);
+    }
+
+    // A thread nobody joined by hand is joined when its handle's scope ends,
+    // so its writes are complete and its captures were alive throughout.
+    test_function unjoined_thread_joins_at_scope_exit() {
+      var c = Counter();
+      if (true) {
+        var t = spawn(
+          [ref c]() => i32 {
+            var i: i32 = 0;
+            while (i < 100000) {
+              c.n = c.n + 1;
+              i = i + 1;
+            }
+            return 0;
+          }
+        );
+      }
+      std.test.assert_eq(c.n, 100000);
+    }
+
+    // Spawns a thread over a local and returns before joining it by hand;
+    // the return leaves the scope, so the join happens there.
+    function spawn_then_return_early() i32 {
+      var c = Counter();
+      var t = spawn(
+        [ref c]() => i32 {
+          var i: i32 = 0;
+          while (i < 100000) {
+            c.n = c.n + 1;
+            i = i + 1;
+          }
+          return 0;
+        }
+      );
+      return 5;
+    }
+
+    // A return between spawn and join leaves the scope, so the join happens
+    // there.
+    test_function unjoined_thread_joins_on_early_return() {
+      std.test.assert_eq(spawn_then_return_early(), 5);
+    }
+
+    // Joining by hand leaves nothing for the scope exit to join.
+    test_function explicit_join_is_not_repeated_at_scope_exit() {
+      var x: i32 = 1;
+      var t = spawn([ref x]() => i32 { x = 2; return 40; });
+      var r = t.join();
+      std.test.assert_eq(r + x, 42);
+    }
+
+    // A handle is a value like any other: binding it to a second name moves
+    // it, so exactly one name still joins the thread.
+    test_function handle_moves_to_a_new_variable() {
+      var t = spawn(() => i32 { return 11; });
+      var t2 = t;
+      std.test.assert_eq(t2.join(), 11);
+    }
+
+    // Overwriting a handle joins the thread it held first.
+    test_function reassigned_handle_joins_previous_thread() {
+      var t = spawn(() => i32 { return 1; });
+      t = spawn(() => i32 { return 2; });
+      std.test.assert_eq(t.join(), 2);
+    }
+
+    // An exception unwinding out of the scope joins the thread on its way
+    // past.
+    test_function unjoined_thread_joins_while_unwinding() {
+      var c = Counter();
+      var got: i32 = 0;
+      try {
+        var t = spawn(
+          [ref c]() => i32 {
+            var i: i32 = 0;
+            while (i < 100000) {
+              c.n = c.n + 1;
+              i = i + 1;
+            }
+            return 0;
+          }
+        );
+        var r = throw_boom();
+      } catch (e: IError) {
+        got = c.n;
+      }
+      std.test.assert_eq(got, 100000);
+    }
+
+    // A [const ref x] capture only reads, so it is a shared loan: any number
+    // of threads can hold one at once.
+    test_function two_threads_can_capture_one_const_ref() {
+      var x: i32 = 0;
+      var t1 = spawn([const ref x]() => i32 { return x + 1; });
+      var t2 = spawn([const ref x]() => i32 { return x + 2; });
+      std.test.assert_eq(t1.join() + t2.join(), 3);
+    }
+
+    // A read-only shared configuration.
+    class Config {
+      public var limit: i32;
+      init(limit: i32) {
+        this.limit = limit;
+      }
+    }
+
+    // A class is shared read-only the same way.
+    test_function threads_share_a_class_by_const_ref() {
+      var cfg = Config(20);
+      var t1 = spawn([const ref cfg]() => i32 { return cfg.limit; });
+      var t2 = spawn([const ref cfg]() => i32 { return cfg.limit; });
+      std.test.assert_eq(t1.join() + t2.join(), 40);
+    }
+
+    // ------------------------------------------------------------------
+    // Thread results that own resources
+    // ------------------------------------------------------------------
+
+    // Drop counter for joined_class_result_is_owned_by_the_joiner only.
+    var joined_result_drops: i32 = 0;
+
+    // Counts every drop, including the moved-from zero state; the joiner is
+    // the only owner, so exactly one drop is right.
+    class JoinedRes {
+      public var v: i32;
+      init(v: i32) {
+        this.v = v;
+      }
+      deinit() {
+        joined_result_drops = joined_result_drops + 1;
+      }
+    }
+
+    // Spawns a thread returning a class and takes the result through join.
+    function join_class_result() i32 {
+      var t = spawn(() => JoinedRes { return JoinedRes(7); });
+      var r = t.join();
+      return r.v;
+    }
+
+    // A thread returning a class hands its result to the joiner: the result
+    // slot is raw memory, so freeing it releases the result's own bytes and
+    // nothing they point at. The joiner owns what it took, and drops it once.
+    test_function joined_class_result_is_owned_by_the_joiner() {
+      var v = join_class_result();
+      std.test.assert_eq(v, 7);
+      std.test.assert_eq(joined_result_drops, 1);
+    }
+
+    // Drop counter for unjoined_class_result_is_dropped only.
+    var unjoined_result_drops: i32 = 0;
+
+    // Counts every drop; nobody takes it, so the scope-exit join drops it.
+    class UnjoinedRes {
+      public var v: i32;
+      init(v: i32) {
+        this.v = v;
+      }
+      deinit() {
+        unjoined_result_drops = unjoined_result_drops + 1;
+      }
+    }
+
+    // Spawns a thread returning a class and never joins by hand.
+    function drop_class_result() void {
+      var t = spawn(() => UnjoinedRes { return UnjoinedRes(7); });
+    }
+
+    // Nobody takes the result of a thread joined at scope exit, so its
+    // deinit runs there rather than the result being freed as raw bytes.
+    test_function unjoined_class_result_is_dropped() {
+      drop_class_result();
+      std.test.assert_eq(unjoined_result_drops, 1);
+    }
+
+    // A class that owns heap memory, to prove one release and no double
+    // free whether the result is taken or dropped at scope exit.
+    class Buffer {
+      public var v: i32;
+      public var data: raw_ptr<i8>;
+      init(v: i32) {
+        this.v = v;
+        var size: i64 = 8;
+        this.data = unsafe { _malloc(size); };
+      }
+      public method get() i32 {
+        return this.v;
+      }
+      deinit() {
+        if (this.data != null) {
+          unsafe { _free(this.data); };
+          this.data = null;
+        }
+      }
+    }
+
+    // Joins a thread returning a Buffer and reads the result.
+    function take_buffer() i32 {
+      var t = spawn(() => Buffer { return Buffer(9); });
+      var b = t.join();
+      return b.get();
+    }
+
+    // Lets the scope-exit join drop the Buffer result.
+    function drop_buffer_at_scope_exit() void {
+      var t = spawn(() => Buffer { return Buffer(4); });
+    }
+
+    // The same holds for a class that owns heap memory: one release, no
+    // double free, whether the result is taken or dropped at scope exit.
+    test_function class_result_owning_heap_is_released_once() {
+      var v = take_buffer();
+      drop_buffer_at_scope_exit();
+      std.test.assert_eq(v, 9);
+    }
+
+    // Drop counter for unjoined_enum_result_drops_its_payload only.
+    var enum_payload_drops: i32 = 0;
+
+    // Counts every drop; carried as an enum payload.
+    class EnumRes {
+      public var v: i32;
+      init(v: i32) {
+        this.v = v;
+      }
+      deinit() {
+        enum_payload_drops = enum_payload_drops + 1;
+      }
+    }
+
+    // A result type with a payload to drop.
+    enum Maybe { Some(EnumRes), Nothing }
+
+    // Spawns a thread returning a payload enum and never joins by hand.
+    function drop_enum_result() void {
+      var t = spawn(() => Maybe { return Maybe.Some(EnumRes(7)); });
+    }
+
+    // An unjoined thread whose result is a payload enum drops the payload
+    // too.
+    test_function unjoined_enum_result_drops_its_payload() {
+      drop_enum_result();
+      std.test.assert_eq(enum_payload_drops, 1);
+    }
+
+    // ------------------------------------------------------------------
+    // Arguments: what the thread is given to work on
+    // ------------------------------------------------------------------
+    // A thread body no longer has to capture what it works on. spawn
+    // forwards its arguments to the lambda, moving them in, so the thread
+    // owns them from the moment it starts.
+
+    test_function spawn_forwards_one_argument() {
+      var t = spawn((n: i32) => i32 { return n * 2; }, 21);
+      std.test.assert_eq(t.join(), 42);
+    }
+
+    test_function spawn_forwards_several_arguments() {
+      var t = spawn(
+        (a: i32, b: i64, c: bool) => i32 {
+          if (c) {
+            return a + _convert<i32>(b);
+          }
+          return 0;
+        },
+        40,
+        2,
+        true
+      );
+      std.test.assert_eq(t.join(), 42);
+    }
+
+    // A narrower literal widens to the parameter, the same as at any other
+    // call.
+    test_function spawn_widens_a_narrow_argument() {
+      var t = spawn((n: i64) => i64 { return n * 2; }, 21);
+      std.test.assert_eq(t.join(), 42);
+    }
+
+    // A lambda kept in a variable can be spawned as often as you like, with
+    // different arguments each time — nothing about it is per-thread.
+    test_function one_lambda_spawned_twice() {
+      var work = (n: i32) => i32 { return n * 2; };
+      var a = spawn(work, 20);
+      var b = spawn(work, 1);
+      std.test.assert_eq(a.join() + b.join(), 42);
+    }
+
+    // A module-level lambda for spawn_a_global_lambda.
+    var global_work = (n: i32) => i32 { return n * 2; };
+
+    // A global lambda captures nothing — globals are read directly — so it
+    // is the natural way to write a thread body that takes what it needs as
+    // arguments.
+    test_function spawn_a_global_lambda() {
+      var t = spawn(global_work, 21);
+      std.test.assert_eq(t.join(), 42);
+    }
+
+    // ------------------------------------------------------------------
+    // Arguments the thread takes ownership of
+    // ------------------------------------------------------------------
+
+    // Drop counter for class_argument_moves_into_the_thread only.
+    var moved_argument_drops: i32 = 0;
+
+    // Counts real drops only: a moved-from value is all zero and not
+    // counted.
+    class MovedRes {
+      public var v: i32;
+      init(v: i32) {
+        this.v = v;
+      }
+      deinit() {
+        if (this.v != 0) {
+          moved_argument_drops = moved_argument_drops + 1;
+          this.v = 0;
+        }
+      }
+    }
+
+    // A compound argument moves into the thread. Rebinding it inside the
+    // body makes it a local the body owns, so it is released when the thread
+    // ends — a by-value parameter left alone is nobody's to drop.
+    test_function class_argument_moves_into_the_thread() {
+      var take_res = (r: MovedRes) => i32 {
+        var owned = r;
+        return owned.v;
+      };
+      var got: i32 = 0;
+      if (true) {
+        var r = MovedRes(7);
+        var t = spawn(take_res, r);
+        got = t.join();
+      }
+      // 7 came back, and the value was released exactly once — inside the
+      // thread.
+      std.test.assert_eq(got, 7);
+      std.test.assert_eq(moved_argument_drops, 1);
+    }
+
+    // ------------------------------------------------------------------
+    // A thread over borrowed locals stays within the frame it borrows from
+    // ------------------------------------------------------------------
+
+    // The legitimate scoped use: borrow, spawn, join, all in one frame.
+    test_function ref_capturing_thread_joined_in_frame_is_fine() {
+      var x = 40;
+      var t = spawn([ref x]() => i32 { return x + 2; });
+      std.test.assert_eq(t.join(), 42);
+    }
+
+    // A worker that starts a capture-free thread in its constructor and
+    // keeps the handle in a field. The field type is written out in full:
+    // an unqualified imported generic as a field type currently derails
+    // name resolution later in the bundle (compiler gap, worth fixing).
+    class Worker {
+      var t: std.thread.Thread<i32>;
+      init() {
+        this.t = spawn(() => i32 { return 7; });
+      }
+      public method take() i32 {
+        return this.t.join();
+      }
+    }
+
+    // A thread with no captures owns everything it touches, so a
+    // constructor may start it and store the handle in a field: the object
+    // joins it on drop.
+    test_function capture_free_thread_may_live_in_a_field() {
+      var w = Worker();
+      std.test.assert_eq(w.take() + 35, 42);
+    }
+
+    // A receiver for the bound-method spawn test.
+    class BoundCounter {
+      var count: i32;
+      init() {
+        this.count = 40;
+      }
+      public method get(extra: i32) i32 {
+        return this.count + extra;
+      }
+    }
+
+    // A bound method holds its receiver by reference, so spawning it works
+    // in the receiver's frame - and, like any borrowing thread, no further.
+    test_function bound_method_thread_joined_in_frame_is_fine() {
+      var c = BoundCounter();
+      var t = spawn(c.get, 2);
+      std.test.assert_eq(t.join(), 42);
+    }
+
+    // A class that runs its own method on a thread and hands the result to
+    // a caller-supplied callback once the thread is done.
+    class Job {
+      var base: i32;
+      init(base: i32) {
+        this.base = base;
+      }
+      // The work that runs on the thread.
+      public method work() i32 {
+        return this.base * 2;
+      }
+      // Run work() on a thread; when it finishes, hand what it returned to
+      // the callback and pass the callback's answer on.
+      public method runThen(callback: (i32) => i32) i32 {
+        var t = spawn(this.work);
+        var result = t.join();
+        return callback(result);
+      }
+    }
+
+    // Bind the method (this.work) as the thread body, join, then call the
+    // lambda the caller passed in.
+    test_function method_on_a_thread_reports_to_a_callback() {
+      var j = Job(20);
+      std.test.assert_eq(j.runThen((r: i32) => i32 { return r + 2; }), 42);
+    }
+
+    // ------------------------------------------------------------------
+    // Handles that legitimately leave their frame (issue #160)
+    // ------------------------------------------------------------------
+
+    // Handles over capture-free lambdas own everything they touch, so a
+    // pool of them may live in a container and leave the frame with it.
+    // Thread is written out in full here for the same compiler gap the
+    // Worker field notes.
+    function make_thread_pool(alloc: const ref HeapAllocator) Vec<std.thread.Thread<i32>> {
+      var v = Vec<std.thread.Thread<i32>>(alloc, 4);
+      v.push(spawn(() => i32 { return 20; }));
+      v.push(spawn(() => i32 { return 22; }));
+      return v;
+    }
+
+    test_function capture_free_handles_may_leave_in_a_vec() {
+      var alloc = make_heap_allocator();
+      var v = make_thread_pool(alloc);
+      var total = 0;
+      match (v.pop()) {
+        Option.Some(t) => {
+          total = total + t.join();
+        },
+        Option.None => {
+          std.test.fail("expected a second thread");
+        }
+      };
+      match (v.pop()) {
+        Option.Some(t) => {
+          total = total + t.join();
+        },
+        Option.None => {
+          std.test.fail("expected a first thread");
+        }
+      };
+      std.test.assert_eq(total, 42);
+    }
+
+    // Looks at a frame-bound handle without keeping it.
+    function borrow_handle(t: ref std.thread.Thread<i32>) i32 {
+      return 2;
+    }
+
+    // Passing a frame-bound handle by ref stays legal: a borrow cannot be
+    // kept by the callee.
+    test_function frame_bound_handle_may_pass_by_ref() {
+      var x = 40;
+      var t = spawn([ref x]() => i32 { return x; });
+      var extra = borrow_handle(t);
+      std.test.assert_eq(t.join() + extra, 42);
+    }
+  }  // module thread_tests
+}  // module std

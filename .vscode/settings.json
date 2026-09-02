@@ -79,11 +79,11 @@
         "*.proto": "proto"
     },
     // === Project-Specific ===
-    "sun.sunPath": [
+    "sun.sun_path": [
         "build",
         "/workspaces/sun"
     ],
-    "sun.lsp.path": "build/sun-lsp",
+    "sun.lsp_path": "build/sun-lsp",
     // === LLDB (for debugging) ===
     // Wrapper unsets DEBUGINFOD_URLS, which otherwise hangs lldb in the
     // container (unreachable symbol server, no timeout). Absolute path: the

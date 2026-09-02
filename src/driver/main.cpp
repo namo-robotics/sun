@@ -14,6 +14,7 @@
 #include "driver/compiler.h"
 #include "driver/driver.h"
 #include "driver/manifest_processor.h"
+#include "driver/sun_config.h"
 #include "moon_bundling/library_cache.h"
 #include "moon_bundling/moon.h"
 #include "moon_bundling/moon_builder.h"
@@ -84,17 +85,22 @@ static void printUsage(const char* programName) {
                   "searched recursively\n";
   llvm::errs() << "                    (--check: exit 1 if formatting would "
                   "change a file)\n";
-  llvm::errs() << "  test [--test-sequential] <script.sun> [-- args...]\n";
+  llvm::errs() << "  test [--test-sequential] [--test-filter <pattern>] "
+                  "<script.sun> [-- args...]\n";
   llvm::errs() << "                    JIT-run the program's test functions "
                   "(parallel by default);\n";
   llvm::errs() << "                    exit 0 when every test passes\n";
   llvm::errs() << "\nArguments after the script file (or after --) are passed "
                   "to main(argc, argv).\n";
   llvm::errs() << "\nsun-config.json files in the entrypoint's folder and "
-                  "its parents define sunPath and\npathVariables (nearest "
-                  "definitions win; \"root\": true stops the search). They "
-                  "override\n--path-var, editor settings and the "
-                  "environment.\n";
+                  "its parents define sun_path,\npath_variables and "
+                  "entrypoints (nearest definitions win; \"root\": true "
+                  "stops the\nsearch). They override --path-var, editor "
+                  "settings and the environment. A config\nthat declares "
+                  "entrypoints can stand in for them: `sun -c "
+                  "sun-config.json` builds\nevery product, `sun test "
+                  "sun-config.json` runs every suite, and plain `sun\n"
+                  "sun-config.json` runs the single binary entrypoint.\n";
   llvm::errs() << "\nExamples:\n";
   llvm::errs()
       << "  sun program.sun                              # JIT execute\n";
@@ -129,7 +135,12 @@ static bool collectSunFiles(const std::string& dir,
       if (name.size() > 1 && name[0] == '.') it.disable_recursion_pending();
       continue;
     }
-    if (path.extension() == ".sun") out.push_back(path.string());
+    // *.inja.sun files are templates, not Sun programs: their splices
+    // cannot parse, so the formatter leaves them alone.
+    if (path.extension() == ".sun" &&
+        std::filesystem::path(path.stem()).extension() != ".inja") {
+      out.push_back(path.string());
+    }
   }
   std::sort(out.begin() + firstNew, out.end());
   return true;
@@ -234,9 +245,92 @@ static int runFmt(int argc, char* argv[]) {
   return 0;
 }
 
+// True when the input argument is a sun-config.json rather than a .sun
+// entrypoint. A config with an entrypoints list stands in for its
+// entrypoints on the command line.
+static bool isConfigInput(const std::string& input) {
+  return std::filesystem::path(input).filename() == sun::SunConfig::kFileName;
+}
+
+// Parse the config named on the command line and insist it declares
+// entrypoints — without them there is nothing to stand in for.
+static sun::SunConfig loadConfigInput(const std::string& input) {
+  sun::SunConfig config =
+      sun::SunConfig::loadFile(std::filesystem::absolute(input));
+  if (config.entrypoints.empty()) {
+    logAndThrowError(input +
+                     " declares no entrypoints; add an 'entrypoints' list or "
+                     "name a .sun file directly");
+  }
+  return config;
+}
+
+// The default artifact name for an entrypoint: its path without the .sun
+// extension.
+static std::string deriveOutputName(const std::string& entrypoint) {
+  std::string output = entrypoint;
+  size_t dotPos = output.rfind(".sun");
+  if (dotPos != std::string::npos && dotPos == output.length() - 4) {
+    output = output.substr(0, dotPos);
+  }
+  return output;
+}
+
+// Compile one entrypoint with tests enabled and JIT-run the synthesized
+// runner. Returns its exit code: 0 iff every selected test passed. With
+// skipWhenNoTests (config runs, where a library may simply have no tests
+// yet) an entrypoint without tests reports itself and counts as passing;
+// without it that stays the usual error.
+static int runTestEntrypoint(const std::string& inputFile,
+                             const std::vector<sun::MoonImport>& moonImports,
+                             const std::vector<char*>& forwarded,
+                             bool debugMode, bool debugInfo, bool emitIR,
+                             bool skipWhenNoTests = false) {
+  // The runner reads its flags from main(argc, argv), argv[0] being the
+  // entrypoint file, same as ordinary JIT execution.
+  std::vector<char*> programArgv;
+  programArgv.push_back(const_cast<char*>(inputFile.c_str()));
+  int programArgc = 1;
+  for (char* forwardedArg : forwarded) {
+    programArgv.push_back(forwardedArg);
+    programArgc++;
+  }
+  programArgv.push_back(nullptr);
+
+  try {
+    auto driver = Driver::createForJIT("main_module", debugInfo);
+    driver->setTestHandling(Driver::TestHandling::Compile);
+    driver->setDumpIR(emitIR);
+    if (debugMode) {
+      driver->setDebugMode(true, inputFile);
+    }
+    driver->setMoonImports(moonImports);
+    auto result =
+        driver->executeFile(inputFile, programArgc, programArgv.data());
+    // The runner returns 0 when every test passed, 1 otherwise
+    if (auto* code = std::get_if<int32_t>(&result)) {
+      return *code;
+    }
+  } catch (const SunError& e) {
+    if (skipWhenNoTests && std::string(e.what()).find(
+                               "no test functions found") != std::string::npos) {
+      llvm::outs() << "no tests\n";
+      return 0;
+    }
+    std::cerr << e.what() << std::endl;
+    return 1;
+  } catch (const std::exception& e) {
+    std::cerr << "Error: " << e.what() << std::endl;
+    return 1;
+  }
+  return 0;
+}
+
 // `sun test <entrypoint>`: compile with tests enabled and JIT-run the
 // synthesized runner. Arguments after the file (and anything after --) are
-// forwarded to the runner's main; --test-sequential is the one it reads.
+// forwarded to the runner's main; it reads --test-sequential and
+// --test-filter <pattern>. A sun-config.json as the entrypoint runs every
+// configured entrypoint's tests in turn.
 static int runTest(int argc, char* argv[]) {
   std::string inputFile;
   std::vector<sun::MoonImport> moonImports;
@@ -254,6 +348,9 @@ static int runTest(int argc, char* argv[]) {
       break;
     } else if (arg == "--test-sequential") {
       forwarded.push_back(argv[i]);
+    } else if (arg == "--test-filter" && i + 1 < argc) {
+      forwarded.push_back(argv[i]);
+      forwarded.push_back(argv[++i]);
     } else if (arg == "--debug") {
       debugMode = true;
     } else if (arg == "-g") {
@@ -282,7 +379,8 @@ static int runTest(int argc, char* argv[]) {
                                               spec.substr(eq + 1));
     } else if (arg[0] == '-') {
       llvm::errs() << "Unknown option for 'sun test': " << arg << "\n";
-      llvm::errs() << "Usage: sun test [--test-sequential] [--debug] [-g] "
+      llvm::errs() << "Usage: sun test [--test-sequential] "
+                      "[--test-filter <pattern>] [--debug] [-g] "
                       "[--emit-ir] [--moon <spec>] [--lib-path <dir>] "
                       "<script.sun> [-- args...]\n";
       return 1;
@@ -296,8 +394,8 @@ static int runTest(int argc, char* argv[]) {
   for (; i < argc; ++i) forwarded.push_back(argv[i]);
 
   if (inputFile.empty()) {
-    llvm::errs() << "Usage: sun test [--test-sequential] <script.sun> "
-                    "[-- args...]\n";
+    llvm::errs() << "Usage: sun test [--test-sequential] "
+                    "[--test-filter <pattern>] <script.sun> [-- args...]\n";
     return 1;
   }
 
@@ -307,37 +405,276 @@ static int runTest(int argc, char* argv[]) {
     sun::SunPath::addSearchPath(libPath);
   }
 
-  // The runner reads its flags from main(argc, argv), argv[0] being the
-  // entrypoint file, same as ordinary JIT execution.
-  std::vector<char*> programArgv;
-  programArgv.push_back(const_cast<char*>(inputFile.c_str()));
-  int programArgc = 1;
-  for (char* forwardedArg : forwarded) {
-    programArgv.push_back(forwardedArg);
-    programArgc++;
+  if (!isConfigInput(inputFile)) {
+    return runTestEntrypoint(inputFile, moonImports, forwarded, debugMode,
+                             debugInfo, emitIR);
   }
-  programArgv.push_back(nullptr);
+
+  // A config input: run every configured entrypoint's tests in turn. The
+  // exit code is 0 only when every suite passes.
+  try {
+    sun::SunConfig config = loadConfigInput(inputFile);
+    int failures = 0;
+    for (const auto& entry : config.entrypoints) {
+      if (config.entrypoints.size() > 1) {
+        // Flushed so the header lands before the runner's own stdout.
+        llvm::outs() << "== " << entry.path << " ==\n";
+        llvm::outs().flush();
+      }
+      if (runTestEntrypoint(entry.path, moonImports, forwarded, debugMode,
+                            debugInfo, emitIR,
+                            /*skipWhenNoTests=*/true) != 0) {
+        failures++;
+      }
+    }
+    return failures > 0 ? 1 : 0;
+  } catch (const SunError& e) {
+    std::cerr << e.what() << std::endl;
+    return 1;
+  }
+}
+
+// One -c compilation: which files, what to call the outputs, and the flags
+// that shape the build.
+struct CompileJob {
+  std::vector<std::string> inputFiles;
+  std::string outputFile;      // production artifact (resolved, non-empty)
+  std::string testBinaryName;  // empty: outputFile + "_test"
+  std::string targetTriple;
+  sun::LinkOptions baseLinkOpts;
+  std::vector<sun::MoonImport> moonImports;
+  bool emitObjOnly = false;
+  bool emitIR = false;
+  bool debugMode = false;
+  bool debugInfo = false;
+  bool dumpProtoSun = false;
+  bool noTest = false;
+};
+
+// Compile the job's test binary: tests kept, the runner synthesized, linked
+// to the job's test binary name. Throws SunError like any compile —
+// including "no test functions found" when the program has no tests; the
+// caller decides what that means for it.
+static int compileTestBinary(const CompileJob& job) {
+  const std::string& inputFile = job.inputFiles[0];
+  const std::string testOutput = job.testBinaryName.empty()
+                                     ? job.outputFile + "_test"
+                                     : job.testBinaryName;
+
+  auto testDriver =
+      Driver::createForAOT("test_module", job.targetTriple, job.debugInfo);
+  if (job.debugMode) {
+    // Separate folder (<input>_test_debug/) so the production build's
+    // artifacts survive; this one also carries test_runner.sun.
+    std::filesystem::path inputPath(inputFile);
+    testDriver->setDebugMode(
+        true, (inputPath.parent_path() /
+               (inputPath.stem().string() + "_test.sun"))
+                  .string());
+  }
+  testDriver->setMoonImports(job.moonImports);
+  testDriver->setTestHandling(Driver::TestHandling::Compile);
+
+  if (job.inputFiles.size() > 1) {
+    testDriver->compileFiles(job.inputFiles, job.moonImports);
+  } else {
+    testDriver->compileFile(inputFile);
+  }
+
+  if (job.emitIR) {
+    testDriver->printUserDefinedIR();
+  }
+
+  sun::LinkOptions testLinkOpts = job.baseLinkOpts;
+  const auto& testBundled = testDriver->getNativeArchivePaths();
+  testLinkOpts.archives.insert(testLinkOpts.archives.end(),
+                               testBundled.begin(), testBundled.end());
+  std::string errorMsg;
+  if (!sun::compileToExecutable(testDriver->getModule(), testOutput, errorMsg,
+                                /*keepObjectFile=*/false, testLinkOpts)) {
+    llvm::errs() << "Test compilation failed: " << errorMsg << "\n";
+    return 1;
+  }
+  llvm::outs() << "Successfully compiled test binary to: " << testOutput
+               << "\n";
+  return 0;
+}
+
+// The -c flow for one entrypoint: the production executable (when there is
+// a main, or when there are no tests to build instead) plus the test binary
+// (when the program has tests and --no-test was not given).
+static int runCompile(const CompileJob& job) {
+  const std::string& inputFile = job.inputFiles[0];
+  llvm::outs() << "Compiling: " << inputFile << " -> " << job.outputFile
+               << "\n";
+  // The production link appends its bundles' archives below; the test
+  // binary links from the untouched base copy plus its own bundles.
+  sun::LinkOptions linkOpts = job.baseLinkOpts;
 
   try {
-    auto driver = Driver::createForJIT("main_module", debugInfo);
-    driver->setTestHandling(Driver::TestHandling::Compile);
-    driver->setDumpIR(emitIR);
-    if (debugMode) {
+    auto driver =
+        Driver::createForAOT("main_module", job.targetTriple, job.debugInfo);
+    if (job.debugMode) {
       driver->setDebugMode(true, inputFile);
     }
-    driver->setMoonImports(std::move(moonImports));
-    auto result =
-        driver->executeFile(inputFile, programArgc, programArgv.data());
-    // The runner returns 0 when every test passed, 1 otherwise
-    if (auto* code = std::get_if<int32_t>(&result)) {
-      return *code;
+    driver->setMoonImports(job.moonImports);
+    driver->setDumpProtoSun(job.dumpProtoSun);
+
+    if (job.inputFiles.size() > 1) {
+      driver->compileFiles(job.inputFiles, job.moonImports);
+    } else {
+      driver->compileFile(inputFile);
     }
+
+    // Print IR if requested (only user-defined, not imports)
+    if (job.emitIR) {
+      driver->printUserDefinedIR();
+    }
+
+    bool buildTests =
+        driver->programHasTests() && !job.noTest && !job.emitObjOnly;
+    // A program of only tests has no main; that is fine, the test binary
+    // is the deliverable. Without tests a missing main stays a link error.
+    bool hasMain = driver->getModule().getFunction("main") != nullptr;
+    bool emitProduction = hasMain || !buildTests;
+
+    // Emit executable
+    std::string errorMsg;
+    bool success = true;
+    if (!emitProduction) {
+      llvm::outs() << "No main() found; emitting only the test binary\n";
+    } else if (job.emitObjOnly) {
+      success =
+          sun::emitObjectFile(driver->getModule(), job.outputFile, errorMsg);
+    } else {
+      // Imported bundles may carry their own static libraries; link those
+      // too, so a program using such a bundle needs no -l flags.
+      const auto& bundled = driver->getNativeArchivePaths();
+      linkOpts.archives.insert(linkOpts.archives.end(), bundled.begin(),
+                               bundled.end());
+      success =
+          sun::compileToExecutable(driver->getModule(), job.outputFile,
+                                   errorMsg,
+                                   /*keepObjectFile=*/false, linkOpts);
+    }
+
+    if (!success) {
+      llvm::errs() << "Compilation failed: " << errorMsg << "\n";
+      return 1;
+    }
+    if (emitProduction) {
+      llvm::outs() << "Successfully compiled to: " << job.outputFile << "\n";
+    }
+
+    // A program with tests also gets a test binary, so `sun -c` leaves
+    // both artifacts behind. --no-test skips this second compile entirely.
+    if (buildTests) {
+      return compileTestBinary(job);
+    }
+    return 0;
   } catch (const SunError& e) {
     std::cerr << e.what() << std::endl;
     return 1;
   } catch (const std::exception& e) {
     std::cerr << "Error: " << e.what() << std::endl;
     return 1;
+  }
+}
+
+// Build a .moon bundle from an entrypoint with a manifest.
+static int buildMoonArtifact(const std::string& entrypoint,
+                             const std::filesystem::path& outputPath,
+                             const std::string& targetTriple, bool debugInfo,
+                             bool dumpProtoSun,
+                             const std::vector<sun::MoonImport>& extraMoons) {
+  llvm::outs() << "Creating moon: " << outputPath.string() << "\n";
+  try {
+    sun::MoonBuildOptions options;
+    options.targetTriple = targetTriple;
+    options.debugInfo = debugInfo;
+    options.dumpProtoSun = dumpProtoSun;
+    options.extraMoons = extraMoons;
+    auto report = sun::MoonBuilder::build(entrypoint, outputPath, options);
+    for (const auto& f : report.sunFiles) {
+      llvm::outs() << "  Including: " << f << "\n";
+    }
+    for (const auto& p : report.protoFiles) {
+      llvm::outs() << "  Including proto: " << p << "\n";
+    }
+    for (const auto& m : report.moonImports) {
+      llvm::outs() << "  Moon import: " << m.path << "\n";
+    }
+    llvm::outs() << "Successfully created: " << outputPath.string() << "\n";
+    return 0;
+  } catch (const SunError& e) {
+    llvm::errs() << "Error: " << e.what() << "\n";
+    return 1;
+  } catch (const std::exception& e) {
+    llvm::errs() << "Error: " << e.what() << "\n";
+    return 1;
+  }
+}
+
+// -c with a config input: build every declared entrypoint. A library
+// becomes a .moon bundle plus (when it has tests) its test binary; a binary
+// becomes an executable plus its test binary.
+static int runConfigCompile(const sun::SunConfig& config,
+                            const CompileJob& base) {
+  for (const auto& entry : config.entrypoints) {
+    CompileJob job = base;
+    job.inputFiles = {entry.path};
+    job.outputFile = entry.outputName.empty() ? deriveOutputName(entry.path)
+                                              : entry.outputName;
+    job.testBinaryName = entry.testBinaryName;
+
+    // Config-named outputs may sit in folders that do not exist yet (e.g.
+    // "build/stdlib"); create them so the artifacts have somewhere to land.
+    std::error_code ec;
+    for (const std::string& artifact :
+         {job.outputFile, job.testBinaryName}) {
+      std::filesystem::path parent =
+          std::filesystem::path(artifact).parent_path();
+      if (!artifact.empty() && !parent.empty()) {
+        std::filesystem::create_directories(parent, ec);
+      }
+    }
+
+    if (entry.type == sun::ConfigEntrypoint::Type::Library) {
+      std::filesystem::path moonPath(job.outputFile);
+      if (moonPath.extension() != ".moon") {
+        moonPath += ".moon";
+      }
+      if (buildMoonArtifact(entry.path, moonPath, job.targetTriple,
+                            job.debugInfo, job.dumpProtoSun,
+                            job.moonImports) != 0) {
+        return 1;
+      }
+      if (job.noTest) {
+        continue;
+      }
+      // The bundle is the production artifact; the only executable a
+      // library yields is its test binary, and a library without tests
+      // yields none.
+      try {
+        if (compileTestBinary(job) != 0) {
+          return 1;
+        }
+      } catch (const SunError& e) {
+        if (std::string(e.what()).find("no test functions found") ==
+            std::string::npos) {
+          std::cerr << e.what() << std::endl;
+          return 1;
+        }
+      } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+        return 1;
+      }
+      continue;
+    }
+
+    if (runCompile(job) != 0) {
+      return 1;
+    }
   }
   return 0;
 }
@@ -493,6 +830,23 @@ int main(int argc, char* argv[]) {
     sun::SunPath::addSearchPath(libPath);
   }
 
+  // A sun-config.json named as the input stands in for its declared
+  // entrypoints: -c builds every product, plain run executes the single
+  // binary entrypoint. (`sun test <config>` is handled in runTest.)
+  bool configInput = inputFiles.size() == 1 && isConfigInput(inputFiles[0]);
+  if (configInput && (emitMoon || emitObjOnly)) {
+    llvm::errs() << "Error: a sun-config.json input works with -c or plain "
+                    "run; libraries in its entrypoints already build their "
+                    ".moon bundles under -c\n";
+    return 1;
+  }
+  if (configInput && !outputFile.empty()) {
+    llvm::errs() << "Error: -o does not combine with a sun-config.json "
+                    "input; the config's output_name fields name the "
+                    "artifacts\n";
+    return 1;
+  }
+
   // Handle --emit-moon mode (create .moon library from entrypoint with
   // manifest)
   if (emitMoon) {
@@ -504,33 +858,8 @@ int main(int argc, char* argv[]) {
     std::filesystem::path outputPath =
         outputFile.empty() ? sun::MoonBuilder::defaultOutputPath(entrypoint)
                            : std::filesystem::path(outputFile);
-
-    llvm::outs() << "Creating moon: " << outputPath.string() << "\n";
-    try {
-      sun::MoonBuildOptions options;
-      options.targetTriple = targetTriple;
-      options.debugInfo = debugInfo;
-      options.dumpProtoSun = dumpProtoSun;
-      options.extraMoons = moonImports;
-      auto report = sun::MoonBuilder::build(entrypoint, outputPath, options);
-      for (const auto& f : report.sunFiles) {
-        llvm::outs() << "  Including: " << f << "\n";
-      }
-      for (const auto& p : report.protoFiles) {
-        llvm::outs() << "  Including proto: " << p << "\n";
-      }
-      for (const auto& m : report.moonImports) {
-        llvm::outs() << "  Moon import: " << m.path << "\n";
-      }
-      llvm::outs() << "Successfully created: " << outputPath.string() << "\n";
-      return 0;
-    } catch (const SunError& e) {
-      llvm::errs() << "Error: " << e.what() << "\n";
-      return 1;
-    } catch (const std::exception& e) {
-      llvm::errs() << "Error: " << e.what() << "\n";
-      return 1;
-    }
+    return buildMoonArtifact(entrypoint, outputPath, targetTriple, debugInfo,
+                             dumpProtoSun, moonImports);
   }
 
   // Normal compilation/execution modes
@@ -541,6 +870,30 @@ int main(int argc, char* argv[]) {
   }
 
   std::string inputFile = inputFiles[0];
+
+  // In run mode a config input resolves to its one binary entrypoint; a
+  // config with several is ambiguous about what to run.
+  if (configInput && !compileMode) {
+    try {
+      sun::SunConfig config = loadConfigInput(inputFile);
+      std::vector<const sun::ConfigEntrypoint*> binaries;
+      for (const auto& entry : config.entrypoints) {
+        if (entry.type == sun::ConfigEntrypoint::Type::Binary) {
+          binaries.push_back(&entry);
+        }
+      }
+      if (binaries.size() != 1) {
+        llvm::errs() << "Error: " << inputFile << " declares "
+                     << binaries.size()
+                     << " binary entrypoints; name the .sun file to run\n";
+        return 1;
+      }
+      inputFile = binaries[0]->path;
+    } catch (const SunError& e) {
+      std::cerr << e.what() << std::endl;
+      return 1;
+    }
+  }
 
   // Build program arguments: argv[0] = script name, followed by remaining args
   std::vector<char*> programArgv;
@@ -558,127 +911,37 @@ int main(int argc, char* argv[]) {
   programArgv.push_back(nullptr);
 
   // Determine output filename if not specified
-  if (compileMode && outputFile.empty()) {
-    // Derive output name from input (remove .sun extension if present)
-    outputFile = inputFile;
-    size_t dotPos = outputFile.rfind(".sun");
-    if (dotPos != std::string::npos && dotPos == outputFile.length() - 4) {
-      outputFile = outputFile.substr(0, dotPos);
-    }
+  if (compileMode && !configInput && outputFile.empty()) {
+    outputFile = deriveOutputName(inputFile);
     if (emitObjOnly) {
       outputFile += ".o";
     }
   }
 
   if (compileMode) {
-    // Compilation mode: generate executable without JIT
-    llvm::outs() << "Compiling: " << inputFile << " -> " << outputFile << "\n";
-
     linkOpts.targetTriple = targetTriple;
-    // The production link appends its bundles' archives below; the test
-    // binary links from this untouched copy plus its own bundles.
-    const sun::LinkOptions baseLinkOpts = linkOpts;
+    CompileJob job;
+    job.inputFiles = inputFiles;
+    job.outputFile = outputFile;
+    job.targetTriple = targetTriple;
+    job.baseLinkOpts = linkOpts;
+    job.moonImports = moonImports;
+    job.emitObjOnly = emitObjOnly;
+    job.emitIR = emitIR;
+    job.debugMode = debugMode;
+    job.debugInfo = debugInfo;
+    job.dumpProtoSun = dumpProtoSun;
+    job.noTest = noTest;
 
-    try {
-      auto driver =
-          Driver::createForAOT("main_module", targetTriple, debugInfo);
-      if (debugMode) {
-        driver->setDebugMode(true, inputFile);
-      }
-      driver->setMoonImports(moonImports);
-      driver->setDumpProtoSun(dumpProtoSun);
-
-      if (inputFiles.size() > 1) {
-        driver->compileFiles(inputFiles, moonImports);
-      } else {
-        driver->compileFile(inputFile);
-      }
-
-      // Print IR if requested (only user-defined, not imports)
-      if (emitIR) {
-        driver->printUserDefinedIR();
-      }
-
-      bool buildTests =
-          driver->programHasTests() && !noTest && !emitObjOnly;
-      // A program of only tests has no main; that is fine, the test binary
-      // is the deliverable. Without tests a missing main stays a link error.
-      bool hasMain = driver->getModule().getFunction("main") != nullptr;
-      bool emitProduction = hasMain || !buildTests;
-
-      // Emit executable
-      std::string errorMsg;
-      bool success = true;
-      if (!emitProduction) {
-        llvm::outs() << "No main() found; emitting only the test binary\n";
-      } else if (emitObjOnly) {
-        success =
-            sun::emitObjectFile(driver->getModule(), outputFile, errorMsg);
-      } else {
-        // Imported bundles may carry their own static libraries; link those
-        // too, so a program using such a bundle needs no -l flags.
-        const auto& bundled = driver->getNativeArchivePaths();
-        linkOpts.archives.insert(linkOpts.archives.end(), bundled.begin(),
-                                 bundled.end());
-        success =
-            sun::compileToExecutable(driver->getModule(), outputFile, errorMsg,
-                                     /*keepObjectFile=*/false, linkOpts);
-      }
-
-      if (!success) {
-        llvm::errs() << "Compilation failed: " << errorMsg << "\n";
+    if (configInput) {
+      try {
+        return runConfigCompile(loadConfigInput(inputFiles[0]), job);
+      } catch (const SunError& e) {
+        std::cerr << e.what() << std::endl;
         return 1;
       }
-      if (emitProduction) {
-        llvm::outs() << "Successfully compiled to: " << outputFile << "\n";
-      }
-
-      // A program with tests also gets a test binary, so `sun -c` leaves
-      // both artifacts behind. --no-test skips this second compile entirely.
-      if (buildTests) {
-        std::string testOutput = outputFile + "_test";
-        auto testDriver =
-            Driver::createForAOT("test_module", targetTriple, debugInfo);
-        if (debugMode) {
-          // Separate folder (<input>_test_debug/) so the production build's
-          // artifacts survive; this one also carries test_runner.sun.
-          std::filesystem::path inputPath(inputFile);
-          testDriver->setDebugMode(
-              true, (inputPath.parent_path() /
-                     (inputPath.stem().string() + "_test.sun"))
-                        .string());
-        }
-        testDriver->setMoonImports(moonImports);
-        testDriver->setTestHandling(Driver::TestHandling::Compile);
-
-        if (inputFiles.size() > 1) {
-          testDriver->compileFiles(inputFiles, moonImports);
-        } else {
-          testDriver->compileFile(inputFile);
-        }
-
-        sun::LinkOptions testLinkOpts = baseLinkOpts;
-        const auto& testBundled = testDriver->getNativeArchivePaths();
-        testLinkOpts.archives.insert(testLinkOpts.archives.end(),
-                                     testBundled.begin(), testBundled.end());
-        if (!sun::compileToExecutable(testDriver->getModule(), testOutput,
-                                      errorMsg,
-                                      /*keepObjectFile=*/false,
-                                      testLinkOpts)) {
-          llvm::errs() << "Test compilation failed: " << errorMsg << "\n";
-          return 1;
-        }
-        llvm::outs() << "Successfully compiled test binary to: " << testOutput
-                     << "\n";
-      }
-      return 0;
-    } catch (const SunError& e) {
-      std::cerr << e.what() << std::endl;
-      return 1;
-    } catch (const std::exception& e) {
-      std::cerr << "Error: " << e.what() << std::endl;
-      return 1;
     }
+    return runCompile(job);
   }
 
   // JIT execution mode (default)

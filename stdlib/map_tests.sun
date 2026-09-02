@@ -1,0 +1,200 @@
+// stdlib/map_tests.sun - Tests for map.sun.
+// Replaces the C++ suite(s) Stdlib_Collections_Map.
+
+using std;
+
+public module std {
+  module map_tests {
+    test_function create_empty_map() {
+      var allocator = make_heap_allocator();
+      var m = Map<i64, i32>(allocator, 16);
+      std.test.assert_eq(m.size(), 0);
+    }
+
+    test_function insert_and_get() {
+      var allocator = make_heap_allocator();
+      var m = Map<i64, i32>(allocator, 16);
+      m.insert(42, 100);
+      std.test.assert_eq(m.get(42), 100);
+    }
+
+    test_function insert_multiple_and_get() {
+      var allocator = make_heap_allocator();
+      var m = Map<i64, i32>(allocator, 16);
+      m.insert(1, 10);
+      m.insert(2, 20);
+      m.insert(3, 30);
+      std.test.assert_eq(m.get(1) + m.get(2) + m.get(3), 60);
+    }
+
+    test_function update_existing_key() {
+      var allocator = make_heap_allocator();
+      var m = Map<i64, i32>(allocator, 16);
+      m.insert(42, 100);
+      m.insert(42, 200);
+      std.test.assert_eq(m.get(42), 200);
+    }
+
+    test_function contains_key() {
+      var allocator = make_heap_allocator();
+      var m = Map<i64, i32>(allocator, 16);
+      m.insert(42, 100);
+      std.test.assert(m.contains(42));
+      std.test.assert(m.contains(99) == false);
+    }
+
+    test_function size_tracking() {
+      var allocator = make_heap_allocator();
+      var m = Map<i64, i32>(allocator, 16);
+      std.test.assert_eq(m.size(), 0);
+      m.insert(1, 10);
+      std.test.assert_eq(m.size(), 1);
+      m.insert(2, 20);
+      std.test.assert_eq(m.size(), 2);
+      m.insert(1, 15);  // Update, not new
+      std.test.assert_eq(m.size(), 2);
+    }
+
+    test_function get_or_default_found() {
+      var allocator = make_heap_allocator();
+      var m = Map<i64, i32>(allocator, 16);
+      m.insert(42, 100);
+      var fallback: i32 = -1;
+      std.test.assert_eq(m.get_or_default(42, fallback), 100);
+    }
+
+    test_function get_or_default_not_found() {
+      var allocator = make_heap_allocator();
+      var m = Map<i64, i32>(allocator, 16);
+      m.insert(42, 100);
+      var fallback: i32 = -1;
+      std.test.assert_eq(m.get_or_default(99, fallback), -1);
+    }
+
+    test_function remove_existing() {
+      var allocator = make_heap_allocator();
+      var m = Map<i64, i32>(allocator, 16);
+      m.insert(42, 100);
+      var removed: i32 = m.remove(42);
+      std.test.assert_eq(removed, 100);
+      std.test.assert_eq(m.size(), 0);
+    }
+
+    test_function remove_then_contains() {
+      var allocator = make_heap_allocator();
+      var m = Map<i64, i32>(allocator, 16);
+      m.insert(42, 100);
+      m.remove(42);
+      std.test.assert(m.contains(42) == false);
+    }
+
+    test_function remove_and_reinsert() {
+      var allocator = make_heap_allocator();
+      var m = Map<i64, i32>(allocator, 16);
+      m.insert(42, 100);
+      m.remove(42);
+      m.insert(42, 200);
+      std.test.assert_eq(m.get(42), 200);
+    }
+
+    test_function clear() {
+      var allocator = make_heap_allocator();
+      var m = Map<i64, i32>(allocator, 16);
+      m.insert(1, 10);
+      m.insert(2, 20);
+      m.insert(3, 30);
+      m.clear();
+      std.test.assert_eq(m.size(), 0);
+      std.test.assert(m.contains(1) == false);
+    }
+
+    test_function auto_grow() {
+      var allocator = make_heap_allocator();
+      var m = Map<i64, i32>(allocator, 16);
+      // Insert past the initial capacity to force a resize.
+      for (var i: i64 = 0; i < 20; i = i + 1) {
+        m.insert(i, _convert<i32>(i) * 10);
+      }
+      var sum: i32 = 0;
+      for (var i: i64 = 0; i < 20; i = i + 1) {
+        sum = sum + m.get(i);
+      }
+      // 10 * (0 + 1 + ... + 19) = 1900
+      std.test.assert_eq(sum, 1900);
+    }
+
+    test_function many_elements() {
+      var allocator = make_heap_allocator();
+      var m = Map<i64, i32>(allocator, 16);
+      for (var i: i64 = 0; i < 100; i = i + 1) {
+        m.insert(i, 1);
+      }
+      var sum: i32 = 0;
+      for (var i: i64 = 0; i < 100; i = i + 1) {
+        sum = sum + m.get(i);
+      }
+      std.test.assert_eq(sum, 100);
+      std.test.assert_eq(m.size(), 100);
+    }
+
+    test_function custom_capacity() {
+      var allocator = make_heap_allocator();
+      var m = Map<i64, i32>(allocator, 64);
+      std.test.assert_eq(m.capacity(), 64);
+    }
+
+    test_function get_missing_key_throws() {
+      var allocator = make_heap_allocator();
+      var m = Map<i64, i32>(allocator, 16);
+      m.insert(42, 100);
+      try {
+        var val: i32 = m.get(99);
+        std.test.fail("expected error");
+      } catch (e: IError) {}
+    }
+
+    test_function remove_missing_key_throws() {
+      var allocator = make_heap_allocator();
+      var m = Map<i64, i32>(allocator, 16);
+      m.insert(42, 100);
+      try {
+        var val: i32 = m.remove(99);
+        std.test.fail("expected error");
+      } catch (e: IError) {}
+    }
+
+    test_function hash_collision_handling() {
+      var allocator = make_heap_allocator();
+      // Small capacity to force keys into the same bucket.
+      var m = Map<i64, i32>(allocator, 4);
+      m.insert(0, 1);
+      m.insert(4, 2);
+      m.insert(8, 3);
+      m.insert(12, 4);
+      std.test.assert_eq(m.get(0) + m.get(4) + m.get(8) + m.get(12), 10);
+    }
+
+    test_function iteration_sum_values() {
+      var allocator = make_heap_allocator();
+      var m = Map<i64, i32>(allocator, 16);
+      m.insert(1, 10);
+      m.insert(2, 20);
+      m.insert(3, 30);
+      var sum: i32 = 0;
+      for (var v: i32 in m) {
+        sum = sum + v;
+      }
+      std.test.assert_eq(sum, 60);
+    }
+
+    test_function iteration_empty_map() {
+      var allocator = make_heap_allocator();
+      var m = Map<i64, i32>(allocator, 16);
+      var count: i32 = 0;
+      for (var v: i32 in m) {
+        count = count + 1;
+      }
+      std.test.assert_eq(count, 0);
+    }
+  }  // module map_tests
+}  // module std

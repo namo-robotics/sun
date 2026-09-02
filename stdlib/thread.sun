@@ -25,11 +25,11 @@ public module std {
     // whoever joins releases it, so it has no deinit of its own. The compiler
     // writes these five fields directly, so their order is load-bearing.
     class ThreadContext {
-      var func: raw_ptr<i8>;    // the lambda's code pointer
-      var env: raw_ptr<i8>;     // the lambda's captured environment
+      var func: raw_ptr<i8>;  // the lambda's code pointer
+      var env: raw_ptr<i8>;  // the lambda's captured environment
       var result: raw_ptr<i8>;  // where the result lands; null for void
-      var tid: i64;             // the OS thread id
-      var args: raw_ptr<i8>;    // the arguments moved in, or null
+      var tid: i64;  // the OS thread id
+      var args: raw_ptr<i8>;  // the arguments moved in, or null
     }
 
     // A running OS thread, and the right to its result. The handle owns the
@@ -71,8 +71,7 @@ public module std {
     // works on, rather than a closure that had to capture it.
     // `fn` may be a lambda or a named function passed as a value; it must
     // not throw — catch inside it and carry any failure in the result.
-    public function spawn<F: _Callable>(fn: F, args...: _params_of<F>)
-        Thread<_return_type_of<F>> {
+    public function spawn<F: _Callable>(fn: F, args...: _params_of<F>) Thread<_return_type_of<F>> {
       return Thread<_return_type_of<F>>(unsafe { _spawn<F>(fn, args...); });
     }
 

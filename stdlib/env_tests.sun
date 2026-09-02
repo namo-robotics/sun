@@ -1,0 +1,144 @@
+// stdlib/env_tests.sun - Tests for env.sun.
+// Replaces the C++ suite(s) Stdlib_Sys_Env.
+//
+// Environment variables are process-global and tests may run in parallel in
+// one process, so every test here uses a variable name unique to itself and
+// cleans up before returning. The old C++ test
+// removed_free_function_api_is_rejected asserted a compile-time diagnostic
+// (calling the deleted free-function API), which a Sun test file cannot
+// express; it was dropped rather than migrated.
+
+using std;
+
+public module std {
+  module env_tests {
+    /*
+     * A set value can be read back, the split happens at the first equals
+     * sign only, and an empty value round-trips as an empty String.
+     */
+    test_function captures_lookup_empty_and_equals_values() {
+      var alloc = make_heap_allocator();
+      var environment = std.env.Env(alloc);
+      environment.set("SUN_TEST_ENV_CAPTURES", "left=right");
+      var value_matches: bool = match environment.get("SUN_TEST_ENV_CAPTURES") {
+        Option.Some(found) => found.equals_literal("left=right"),
+        Option.None => false
+      };
+      std.test.assert(value_matches, "value with an equals sign reads back whole");
+      environment.set("SUN_TEST_ENV_CAPTURES", "");
+      var empty: bool = match environment.get("SUN_TEST_ENV_CAPTURES") {
+        Option.Some(found) => found.is_empty(),
+        Option.None => false
+      };
+      std.test.assert(empty, "empty value reads back as an empty String");
+      environment.remove("SUN_TEST_ENV_CAPTURES");
+    }
+
+    /*
+     * An Env is a snapshot: a change made outside it (here through a second
+     * Env) is invisible until refresh() rebuilds it.
+     */
+    test_function refresh_observes_external_mutation() {
+      var alloc = make_heap_allocator();
+      var snapshot = std.env.Env(alloc);
+      var outside = std.env.Env(alloc);
+      std.test.assert(not snapshot.has("SUN_TEST_ENV_REFRESH"), "variable absent at start");
+      outside.set("SUN_TEST_ENV_REFRESH", "outside");
+      std.test.assert(not snapshot.has("SUN_TEST_ENV_REFRESH"), "snapshot does not see the outside write");
+      snapshot.refresh();
+      std.test.assert(snapshot.has("SUN_TEST_ENV_REFRESH"), "refresh picks up the outside write");
+      var value_matches: bool = match snapshot.get("SUN_TEST_ENV_REFRESH") {
+        Option.Some(found) => found.equals_literal("outside"),
+        Option.None => false
+      };
+      std.test.assert(value_matches, "refreshed snapshot has the outside value");
+      outside.remove("SUN_TEST_ENV_REFRESH");
+    }
+
+    /*
+     * set/has/remove keep the snapshot and the native environment in step,
+     * and iteration visits the entry exactly once.
+     */
+    test_function set_remove_and_iteration_stay_synchronized() {
+      var alloc = make_heap_allocator();
+      var environment = std.env.Env(alloc);
+      environment.set("SUN_TEST_ENV_SYNC", "one=two");
+      std.test.assert(environment.has("SUN_TEST_ENV_SYNC"), "set makes has() true");
+      var found: i32 = 0;
+      for (var entry: ref std.env.EnvEntry in environment) {
+        if (entry.name().equals_literal("SUN_TEST_ENV_SYNC")) {
+          std.test.assert(entry.value().equals_literal("one=two"), "iterated value matches");
+          found = found + 1;
+        }
+      }
+      std.test.assert_eq(found, 1);
+      environment.remove("SUN_TEST_ENV_SYNC");
+      std.test.assert(not environment.has("SUN_TEST_ENV_SYNC"), "remove makes has() false");
+      // The native environment must agree: a brand new snapshot has no trace.
+      var fresh = std.env.Env(alloc);
+      std.test.assert(not fresh.has("SUN_TEST_ENV_SYNC"), "removal reached the native environment");
+    }
+
+    /*
+     * The String-typed name and value overloads of set/get/has/remove work
+     * like the literal ones.
+     */
+    test_function string_name_and_value_overloads() {
+      var alloc = make_heap_allocator();
+      var environment = std.env.Env(alloc);
+      var name = String(alloc, "SUN_TEST_ENV_OVERLOADS");
+      var value = String(alloc, "runtime");
+      environment.set(name, value);
+      std.test.assert(environment.has(name), "String name found after set");
+      var value_matches: bool = match environment.get(name) {
+        Option.Some(found) => found.equals_literal("runtime"),
+        Option.None => false
+      };
+      std.test.assert(value_matches, "String-set value reads back");
+      environment.remove(name);
+      std.test.assert(not environment.has(name), "String remove works");
+    }
+
+    /*
+     * cwd() reads and set_cwd() changes the working directory. The working
+     * directory is process-global, so this is written set-and-restore; it is
+     * only fully deterministic under --test-sequential (which is how CI runs
+     * the suite).
+     */
+    test_function cwd_and_set_cwd_are_methods() {
+      var alloc = make_heap_allocator();
+      var environment = std.env.Env(alloc);
+      var before = environment.cwd();
+      environment.set_cwd("/");
+      var after = environment.cwd();
+      environment.set_cwd(before);
+      var restored = environment.cwd();
+      std.test.assert(after.equals_literal("/"), "cwd reports the directory set_cwd chose");
+      std.test.assert(restored.equals(before), "original working directory restored");
+    }
+
+    /*
+     * args() copies every argv entry, including argv[0], into owned Strings.
+     * The C++ harness passed a real argv into main; here one is built by hand
+     * from NUL-terminated Strings.
+     */
+    test_function args_copies_argv() {
+      var alloc = make_heap_allocator();
+      var environment = std.env.Env(alloc);
+      var arg0 = String(alloc, "prog");
+      var arg1 = String(alloc, "alpha");
+      var arg2 = String(alloc, "beta");
+      var argv = ContiguousBuffer<raw_ptr<u8>>(alloc, 4);
+      argv.set_unchecked(0, arg0.c_str());
+      argv.set_unchecked(1, arg1.c_str());
+      argv.set_unchecked(2, arg2.c_str());
+      argv.set_unchecked(3, null);
+      var raw_argv: raw_ptr<raw_ptr<i8>> = unsafe { _ptr_as_raw<raw_ptr<i8>>(argv.raw_data()); };
+      var cli = environment.args(3, raw_argv);
+      std.test.assert_eq(cli.size(), 3);
+      std.test.assert(cli.get_unchecked(0).equals_literal("prog"), "argv[0] copied");
+      std.test.assert(cli.get_unchecked(1).equals_literal("alpha"), "argv[1] copied");
+      std.test.assert(cli.get_unchecked(2).equals_literal("beta"), "argv[2] copied");
+    }
+  }  // module env_tests
+}  // module std

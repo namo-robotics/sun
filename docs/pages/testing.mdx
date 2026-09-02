@@ -71,6 +71,12 @@ helper functions, module variables declared outside `test_files` — stays in
 the production build, so shared fixtures and helpers that should not ship
 belong in a test file.
 
+The standard library tests itself this way: each `stdlib/<area>_tests.sun`
+sits next to the file it tests and is listed under `test_files:` in
+`stdlib/stdlib.sun`, with shared fixtures in `stdlib/fixtures_tests.sun`.
+`sun test stdlib/stdlib.sun` runs the whole suite from a workspace checkout;
+none of it ships in `stdlib.moon`.
+
 ## Running tests
 
 `sun test` compiles the program with its tests and runs them under the JIT:
@@ -94,6 +100,24 @@ $ ./app_test --test-sequential
 
 Pass `--no-test` to skip the test binary. A program with tests but no `main`
 — a library — compiles to just the test binary.
+
+## Filtering
+
+`--test-filter <pattern>` picks which tests run. Like `--test-sequential` it
+is a runtime argument of the test binary, so no recompile is needed:
+
+```bash
+sun test program.sun --test-filter geometry.midpoint  # exact dotted name
+sun test program.sun --test-filter geometry.*         # everything under geometry
+sun test program.sun --test-filter geometry           # same, no star needed
+./app_test --test-filter geometry.midpoint            # compiled binary too
+```
+
+The flag repeats: a test runs when it matches any given pattern. A pattern
+matches a test's dotted name exactly, as a module prefix (`geometry` selects
+`geometry.midpoint`), or as a trailing-star prefix (`geo*`). The summary
+counts only the tests that ran, and a filter that selects nothing reports
+`0 passed, 0 failed` and exits 0.
 
 ## Parallel by default
 
@@ -164,6 +188,21 @@ Two language guarantees make this complete:
 This composes: a test can hold several fixtures (`var db = TestDb(); var dir
 = TempDir();`), and a fallible setup is just `init() throws IError` — a setup
 failure is reported through the same path as an assertion.
+
+## In the editor
+
+The Sun VSCode extension shows every `test_function` in the Test Explorer,
+grouped by entrypoint and file, with run icons in the gutter. Tests are
+discovered through the `entrypoints` list of your `sun-config.json` (the
+`sun.sun_configs` setting names the config files; the workspace root's is
+found by default), so the whole tree appears without opening a file.
+
+Running a selection passes `--test-filter` for each chosen test. When the
+config names a `test_binary_name` and that binary is newer than every
+source, the extension runs it directly; otherwise it JIT-compiles via
+`sun test <entrypoint>`. A failed assertion's message appears on the test.
+Point `sun.compiler_path` at your `sun` binary if it is not on PATH (the
+extension also tries the one next to `sun-lsp`).
 
 ## Debugging the runner
 

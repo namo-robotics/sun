@@ -25,6 +25,11 @@ import { Callout } from 'nextra/components'
   [Path Resolution](/modules#path-resolution) for every place that is searched.
 </Callout>
 
+The library's own tests are Sun code: each `stdlib/<area>_tests.sun` sits
+next to the file it tests, listed under `test_files:` in the manifest (see
+[Testing](/testing)). They compile only into the test binary, never into
+`stdlib.moon`.
+
 ## HeapAllocator
 
 The standard memory allocator using system `malloc`/`free`. Many stdlib types require an allocator for construction.

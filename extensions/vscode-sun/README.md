@@ -17,17 +17,19 @@ a compiled language with Rust-style borrow checking and an LLVM backend.
 ## Requirements
 
 The extension talks to the Sun language server, `sun-lsp`, which ships with the Sun compiler.
-By default it is looked up on your `PATH`; set `sun.lsp.path` to point at it if it lives
+By default it is looked up on your `PATH`; set `sun.lsp_path` to point at it if it lives
 elsewhere (for example a local build at `build/sun-lsp`).
 
 ## Settings
 
 | Setting | Description |
 | --- | --- |
-| `sun.lsp.path` | Path to the `sun-lsp` executable. Defaults to `sun-lsp` on `PATH`. Relative paths resolve against the workspace folder. |
-| `sun.sunPath` | Extra directories added to `SUN_PATH` for module resolution. Defaults to the workspace folder. |
+| `sun.lsp_path` | Path to the `sun-lsp` executable. Defaults to `sun-lsp` on `PATH`. Relative paths resolve against the workspace folder. |
+| `sun.compiler_path` | Path to the `sun` compiler, used by the Test Explorer to run tests. Defaults to `sun` on `PATH`; the binary next to `sun-lsp` is tried as a fallback. |
+| `sun.sun_configs` | `sun-config.json` files whose `entrypoints` lists describe the project. Defaults to the workspace root's. Test discovery and entrypoint resolution use them; when they declare entrypoints, manifest scanning is skipped. |
+| `sun.sun_path` | Extra directories added to `SUN_PATH` for module resolution. Defaults to the workspace folder. |
 | `sun.entrypoints` | Entrypoint files containing a `manifest` block. When set, replaces automatic manifest discovery. |
-| `sun.pathVariables` | Path variables for manifest entries, e.g. `{"LIBS": "libs"}` for `libraries: ["$LIBS/mathlib.moon"]`. Equivalent to the compiler's `--path-var` flag; relative values resolve against the entrypoint's directory. |
+| `sun.path_variables` | Path variables for manifest entries, e.g. `{"LIBS": "libs"}` for `libraries: ["$LIBS/mathlib.moon"]`. Equivalent to the compiler's `--path-var` flag; relative values resolve against the entrypoint's directory. |
 
 A folder can also hold a `sun-config.json` defining `sunPath` and
 `pathVariables` for the entrypoints in and below it. Both the compiler and

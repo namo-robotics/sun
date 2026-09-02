@@ -11,6 +11,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <inja/inja.hpp>
 #include <sstream>
 
 #include "ast/manifest_ast.h"
@@ -18,6 +19,7 @@
 #include "debug/ast_dot_generator.h"
 #include "debug/scope_tree_generator.h"
 #include "driver/manifest_processor.h"
+#include "generated/test_runner_template.h"
 #include "moon_bundling/library_cache.h"
 #include "moon_bundling/module_linker.h"
 #include "moon_bundling/proto_importer.h"
@@ -538,9 +540,10 @@ namespace {
 
 // Walk the item-level statements of a merged program, recursing through
 // module bodies. Strip mode erases every test function; collect mode makes
-// each one public (the synthesized runner lives at root scope and could not
-// name a module-private function) and records its dotted path. Runs before
-// moon-stub injection, so only user-written modules are visited.
+// each one public — along with every module on the way down to it — because
+// the synthesized runner lives at root scope and could not name anything
+// module-private. Records each test's dotted path. Runs before moon-stub
+// injection, so only user-written modules are visited.
 void visitTests(BlockExprAST& block, std::vector<std::string>& modulePath,
                 bool strip, std::vector<std::string>* found, bool& sawAny) {
   auto& body = block.mutableBody();
@@ -549,7 +552,12 @@ void visitTests(BlockExprAST& block, std::vector<std::string>& modulePath,
     if (stmt && stmt->getType() == ASTNodeType::MODULE) {
       auto& module = static_cast<ModuleAST&>(*stmt);
       modulePath.push_back(module.getName());
-      visitTests(module.mutableBody(), modulePath, strip, found, sawAny);
+      bool sawInModule = false;
+      visitTests(module.mutableBody(), modulePath, strip, found, sawInModule);
+      if (sawInModule && !strip) {
+        module.setVisibility(sun::Visibility::Public);
+      }
+      sawAny |= sawInModule;
       modulePath.pop_back();
       ++it;
       continue;
@@ -587,52 +595,19 @@ void removeRootMain(BlockExprAST& block) {
   }
 }
 
-// The test binary's entry point. Every test runs through std.test.run_one,
-// each on its own thread by default (spawn must stay an unqualified call:
-// only those infer their type arguments today); "--test-sequential" in argv
-// runs them inline instead. Results are reported in declaration order either
-// way, so the output is deterministic.
+// The test binary's entry point, rendered from the embedded runner template
+// (src/driver/test_runner_template.inja.sun) with the collected dotted test
+// names. The template documents the runner's behavior; this only feeds in
+// the names.
 std::string synthesizeTestRunner(const std::vector<std::string>& tests) {
-  std::string src = "using std;\nusing std.test;\nusing std.thread;\n\n";
-  src +=
-      "function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {\n"
-      "    var alloc = make_heap_allocator();\n"
-      "    var total: i64 = " +
-      std::to_string(tests.size()) +
-      ";\n"
-      "    var failed: i64 = 0;\n"
-      "    if (wants_sequential(argc, argv)) {\n";
-  for (size_t i = 0; i < tests.size(); ++i) {
-    const std::string r = "r" + std::to_string(i);
-    src += "        var " + r + " = run_one(\"" + tests[i] + "\", " +
-           tests[i] +
-           ");\n"
-           "        if (report(" +
-           r + ") == false) { failed = failed + 1; }\n";
-  }
-  src +=
-      "    } else {\n"
-      "        var threads = Vec<Thread<TestResult>>(alloc, total);\n";
-  for (const auto& test : tests) {
-    src += "        threads.push(spawn(run_one, \"" + test + "\", " + test +
-           "));\n";
-  }
-  src +=
-      "        var i: i64 = 0;\n"
-      "        while (i < threads.size()) {\n"
-      "            try {\n"
-      "                var t = threads.take(i);\n"
-      "                var r = t.join();\n"
-      "                if (report(r) == false) { failed = failed + 1; }\n"
-      "            } catch (e: IError) {\n"
-      "                failed = failed + 1;\n"
-      "            }\n"
-      "            i = i + 1;\n"
-      "        }\n"
-      "    }\n"
-      "    return finish(total, failed);\n"
-      "}\n";
-  return src;
+  inja::Environment env;
+  // Jinja-style whitespace handling, so the template's {% for %} lines
+  // leave no blank lines behind in the rendered runner.
+  env.set_trim_blocks(true);
+  env.set_lstrip_blocks(true);
+  nlohmann::json data;
+  data["tests"] = tests;
+  return env.render(kTestRunnerTemplate, data);
 }
 
 }  // namespace
