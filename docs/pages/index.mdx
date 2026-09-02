@@ -59,14 +59,16 @@ import { Callout } from 'nextra/components'
 
 ### Ubuntu (Debian Package)
 
-Download and install the latest dev build:
+Download and install the latest development build:
 
 ```bash
-curl -LO https://github.com/namo-robotics/sun/releases/download/dev/sun_0.dev_amd64.deb
-sudo apt install ./sun_0.dev_amd64.deb
+curl -fL https://github.com/namo-robotics/sun/releases/download/dev/sun_0.dev_amd64.deb -o /tmp/sun_0.dev_amd64.deb && chmod 0644 /tmp/sun_0.dev_amd64.deb
+sudo apt install /tmp/sun_0.dev_amd64.deb && rm -f /tmp/sun_0.dev_amd64.deb
 ```
 
-The package installs `sun` and `sun-lsp` to `/usr/bin` and includes 
+Using `/tmp` lets APT's restricted `_apt` user reach the package even when your home directory is private. Setting mode `0644` also handles restrictive user umasks.
+
+The package installs `sun` and `sun-lsp` to `/usr/bin` and includes
 bundled libraries installed to `/usr/lib/sun`. To update, download and install the new package.
 
 ### macOS (Apple Silicon)
