@@ -54,6 +54,12 @@ field addresses, alignment and slot writes.
   map used by loads, assignments, lvalues, module members, and function-pointer
   calls. A `sun.cabi` metadata tag keeps the native name unchanged when
   `.moon` bundling prefixes or remaps Sun symbols.
+- Before emitting any body, `FunctionGenerator::declareBlockSignatures` walks
+  the complete module subtree and declares every free function and class
+  method. Included files are one merged AST even when their declarations sit
+  under separate module nodes, so calls do not depend on source-list order.
+  Re-entering a module during emission reuses those declarations rather than
+  creating new ones.
 - Call arguments are never re-examined here. Semantic analysis records an
   `ArgConversion` per argument on the call node, and every kind of call — plain,
   module-qualified, generic, method, lambda, interface, constructor,

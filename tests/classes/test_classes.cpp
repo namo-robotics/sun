@@ -1484,3 +1484,26 @@ TEST(Classes, method_is_usable_as_a_name) {
   )");
   EXPECT_EQ(value, 81);
 }
+
+TEST(Classes, method_overload_keeps_its_selected_return_type) {
+  auto value = executeString(R"(
+    class Box {
+        var value: i32;
+        init(value: i32) { this.value = value; }
+        method get() i32 { return this.value; }
+    }
+    class Choice {
+        init() {}
+        method pick(value: i32) i32 { return value; }
+        method pick(use_box: bool) Box {
+            if (use_box) { return Box(42); }
+            return Box(0);
+        }
+    }
+    function main() i32 {
+        var choice = Choice();
+        return choice.pick(true).get();
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}

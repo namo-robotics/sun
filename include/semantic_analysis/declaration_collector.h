@@ -114,6 +114,12 @@ class DeclarationCollector {
   }
 
  private:
+  /**
+   * Register type names through the whole module tree before any class shape
+   * is resolved, so sibling modules may name each other's public types.
+   */
+  void collectTypeNames(BlockExprAST &block);
+
   SemanticContext &ctx_;
   SemanticAnalyzer &sema_;
 

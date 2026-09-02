@@ -27,6 +27,10 @@ public module std {
     return unsafe { c_errno_location(); };
   }
 
+  // Descriptor flags and the errno used for non-blocking operations.
+  var O_NONBLOCK: i32 = 2048;  // 0x800
+  var WOULD_BLOCK_ERRNO: i32 = 11;
+
   // MSG_NOSIGNAL on every send already keeps a broken-pipe write from
   // raising SIGPIPE, so per-socket setup has nothing to do.
   function suppress_sigpipe(fd: i32) void {}

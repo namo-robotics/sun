@@ -1408,3 +1408,39 @@ TEST(Modules, private_module_variable_cannot_be_assigned_from_outside) {
   )"),
                                 "is private to module 'dds'");
 }
+
+TEST(Modules, moon_sibling_signatures_are_source_order_independent) {
+  initTestEnvironment();
+  auto moonPath = writeMoonLib("sibling_signature", R"(
+    public module api {
+      public class Reader {
+        init() {}
+        public method read(token: const ref ztypes.Token) i32 {
+          return token.get();
+        }
+      }
+    }
+
+    public module ztypes {
+      public class Token {
+        var value: i32;
+        init(value: i32) { this.value = value; }
+        public const method get() i32 { return this.value; }
+      }
+    }
+  )");
+
+  auto driver = Driver::createForJIT("moon_sibling_signature_main");
+  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  auto value = driver->executeString(R"(
+    using api;
+    using ztypes;
+
+    function main() i32 {
+      var token = Token(42);
+      var reader = Reader();
+      return reader.read(token);
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}

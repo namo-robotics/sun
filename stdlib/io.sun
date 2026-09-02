@@ -68,6 +68,75 @@ public module std {
       }
     }
 
+    // One descriptor reported ready by Poller.wait(Duration).
+    public class Event {
+      var fd_: i32;
+      var events_: i16;
+
+      // Build an event from a descriptor and the POLL* bits it reported.
+      init(fd: i32, events: i16) {
+        this.fd_ = fd;
+        this.events_ = events;
+      }
+
+      // The descriptor that became ready.
+      public const method fd() i32 {
+        return this.fd_;
+      }
+
+      // The raw POLL* bits reported for this descriptor.
+      public const method events() i16 {
+        return this.events_;
+      }
+
+      // Report whether data is ready to read.
+      public const method is_readable() bool {
+        return (this.events_ & POLLIN) != 0;
+      }
+
+      // Report whether urgent data is ready to read.
+      public const method is_priority() bool {
+        return (this.events_ & POLLPRI) != 0;
+      }
+
+      // Report whether the descriptor has room to write.
+      public const method is_writable() bool {
+        return (this.events_ & POLLOUT) != 0;
+      }
+
+      // Report whether the descriptor has an error condition.
+      public const method is_error() bool {
+        return (this.events_ & POLLERR) != 0;
+      }
+
+      // Report whether the peer closed its end.
+      public const method is_hup() bool {
+        return (this.events_ & POLLHUP) != 0;
+      }
+
+      // Report whether the descriptor is not open.
+      public const method is_invalid() bool {
+        return (this.events_ & POLLNVAL) != 0;
+      }
+    }
+
+    // Convert a Duration to poll's millisecond timeout without wrapping.
+    function poll_timeout_millis(timeout: const ref std.time.Duration) i32 {
+      var max_timeout: i64 = 2147483647;
+      if (timeout.as_secs() > 2147483) {
+        return 2147483647;
+      }
+
+      var millis: i64 = timeout.as_millis();
+      if ((timeout.subsec_nanos() % 1000000) != 0) {
+        millis = millis + 1;
+      }
+      if (millis > max_timeout) {
+        return 2147483647;
+      }
+      return _convert<i32>(millis);
+    }
+
     // Translate a FileMode into the C open() flag bits it stands for.
     function open_flags(mode: FileMode) i32 {
       return match mode {
@@ -562,10 +631,12 @@ public module std {
     // Waits for readiness on a set of descriptors. The descriptors keep their
     // positions, so revents(i) answers for the fd added i-th.
     public class Poller {
+      var alloc: HeapAllocator;
       var fds: Vec<PollFd>;
 
       // Build an empty poller. Add descriptors before waiting.
       init(alloc: ref HeapAllocator) {
+        this.alloc = alloc.copy();
         this.fds = Vec<PollFd>(alloc, 4);
       }
 
@@ -589,6 +660,27 @@ public module std {
         this.fds.push(PollFd(fd, POLLIN | POLLOUT));
       }
 
+      // Stop watching every registration for a descriptor.
+      public method remove(fd: i32) bool {
+        var removed: bool = false;
+        var i: i64 = 0;
+        while (i < this.fds.size()) {
+          if (this.fds.get_unchecked(i).fd == fd) {
+            var j: i64 = i;
+            while (j + 1 < this.fds.size()) {
+              var next: ref PollFd = this.fds.get_unchecked(j + 1);
+              this.fds.set_unchecked(j, PollFd(next.fd, next.events));
+              j = j + 1;
+            }
+            this.fds.pop();
+            removed = true;
+          } else {
+            i = i + 1;
+          }
+        }
+        return removed;
+      }
+
       // Forget every descriptor. Positions restart from zero after this.
       public method clear() void {
         this.fds.clear();
@@ -602,9 +694,6 @@ public module std {
       // Blocks until something is ready, the timeout expires, or a signal
       // arrives. -1 waits forever. Returns how many descriptors are ready.
       public method wait(timeout_ms: i32) i32 throws IError {
-        if (this.fds.size() == 0) {
-          return 0;
-        }
         var ready: i32 = unsafe {
           c_poll(
             this.fds.raw_data(),
@@ -614,6 +703,23 @@ public module std {
         };
         if (ready < 0) {
           throw Error(errno(), "poll failed");
+        }
+        return ready;
+      }
+
+      // Wait for a finite duration and return the descriptors that became ready.
+      public method wait(timeout: const ref std.time.Duration) Vec<Event> throws IError {
+        var ready_count: i32 = this.wait(poll_timeout_millis(timeout));
+        var capacity: i64 = _convert<i64>(ready_count);
+        if (capacity < 1) {
+          capacity = 1;
+        }
+        var ready: Vec<Event> = Vec<Event>(this.alloc, capacity);
+        for (var i: i64 = 0; i < this.fds.size(); i = i + 1) {
+          var entry: ref PollFd = this.fds.get_unchecked(i);
+          if (entry.revents != 0) {
+            ready.push(Event(entry.fd, entry.revents));
+          }
         }
         return ready;
       }

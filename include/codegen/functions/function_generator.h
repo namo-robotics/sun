@@ -91,8 +91,8 @@ class FunctionGenerator {
   // Declare one function signature, body to follow
   void forwardDeclareFunction(const PrototypeAST& proto);
 
-  // Declare every function and method a block defines, before any body is
-  // emitted, so calls may name things defined further down the block
+  // Declare every function and method in a block's module subtree before any
+  // body is emitted, so calls may name things defined later in merged input.
   void declareBlockSignatures(const BlockExprAST& block);
 
   // ---------------------------------------------------------------

@@ -9,10 +9,13 @@ namespace sun {
 
 // Network intrinsic identifiers are defined in the main Intrinsic enum.
 // This header exists for organizational purposes and future expansion.
+// These calls follow libc's contract: a failing socket operation returns -1
+// and leaves its positive error code in errno. A wrapper must read errno
+// immediately, before making another C call.
 //
 // Socket creation/connection:
 //   __socket(domain, type, protocol) -> i32
-//     Create a socket. Returns fd or negative errno.
+//     Create a socket. Returns its descriptor, or -1 on failure.
 //     domain: AF_INET=2, AF_INET6=10, AF_UNIX=1
 //     type: SOCK_STREAM=1, SOCK_DGRAM=2
 //     protocol: usually 0
@@ -32,10 +35,10 @@ namespace sun {
 //
 // Data transfer:
 //   __send(fd, buf, len, flags) -> i64
-//     Send data on connected socket. Returns bytes sent or -errno.
+//     Send data on connected socket. Returns bytes sent, or -1 on failure.
 //
 //   __recv(fd, buf, len, flags) -> i64
-//     Receive data from socket. Returns bytes received or -errno.
+//     Receive data from socket. Returns bytes received, or -1 on failure.
 //
 // Socket control:
 //   __shutdown(fd, how) -> i32
