@@ -531,9 +531,9 @@ answers it with a syscall when that matters.
 
 ### Waiting on descriptors
 
-`Poller` wraps `poll(2)`. Descriptors keep the position they were added at, so
-`is_readable(i)` answers for the i-th one. Nothing here needs a `struct pollfd`
-assembled by hand.
+`Poller` wraps portable `poll(2)`. Its integer timeout overload keeps descriptors
+in registration order, so `is_readable(i)` answers for the i-th one. Nothing
+here needs a `struct pollfd` assembled by hand.
 
 ```sun
 var poller = Poller(alloc);
@@ -545,11 +545,29 @@ if (poller.is_readable(0)) { /* sock_fd has data */ }
 if (poller.is_hup(1)) { /* pipe_fd's writer closed */ }
 ```
 
+For a finite wait, pass a `Duration` to receive only the descriptors that
+reported an event. Positive fractions of a millisecond round up, and very long
+durations clamp to the largest `i32` timeout.
+
+```sun
+using std.time;
+
+var events = poller.wait(create_duration_millis(250));
+for (var event: ref Event in events) {
+    if (event.is_readable()) { /* event.fd() has data */ }
+    if (event.is_hup()) { /* event.fd() reached end of stream */ }
+}
+
+poller.remove(sock_fd);       // removes every registration for sock_fd
+```
+
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `add_read` / `add_write` / `add_read_write` | `(fd: i32) void` | Watch a descriptor |
 | `add` | `(fd: i32, events: i16) void` | Watch with an explicit `POLL*` mask |
+| `remove` | `(fd: i32) bool` | Remove every matching registration; report whether one existed |
 | `wait` | `(timeout_ms: i32) i32 throws IError` | Number ready; -1 blocks |
+| `wait` | `(timeout: const ref Duration) Vec<Event> throws IError` | Ready descriptors in registration order |
 | `is_readable` / `is_writable` / `is_hup` / `is_error` | `(i: i64) bool` | |
 | `fd_at` / `revents` | `(i: i64) i32` / `(i: i64) i16` | |
 | `clear` / `count` | | Reset, or how many are watched |
@@ -557,6 +575,11 @@ if (poller.is_hup(1)) { /* pipe_fd's writer closed */ }
 The bits are `POLLIN`, `POLLPRI`, `POLLOUT`, `POLLERR`, `POLLHUP` and
 `POLLNVAL`. Do not call `add` while a `wait` is in flight: growing the set
 reallocates it.
+
+An `Event` exposes `fd()` and the raw mask through `events()`. Its
+`is_readable()`, `is_priority()`, `is_writable()`, `is_error()`, `is_hup()` and
+`is_invalid()` helpers test the corresponding bit without exposing platform
+details.
 
 ## Environment
 
@@ -738,6 +761,7 @@ var host = String(alloc, "example.com");
 stream.connect_host(host, 80);       // resolve a name, then connect
 stream.connect_ip(ip, 80);           // or an address already in hand
 stream.connect_local(8080);          // or 127.0.0.1
+stream.set_nonblocking(true);         // configure the chosen connection
 
 stream.send_str("ping");
 stream.send_string(message);
@@ -748,8 +772,10 @@ stream.close();
 // Server
 var listener = TcpListener();
 listener.bind_port(8080);            // 0.0.0.0; bind_loopback for 127.0.0.1
+listener.set_nonblocking(true);       // configure after binding
 listener.listen(128);
 var client = listener.accept();
+client.set_nonblocking(true);         // accepted streams configure themselves
 ```
 
 `resolve_host_ipv4` does name resolution on its own, returning the first A
@@ -759,8 +785,21 @@ record in network byte order — the form `connect_ip` takes:
 var ip: i32 = resolve_host_ipv4(host);
 ```
 
-It throws when the name does not resolve or has no IPv4 address. IPv4 and
-blocking sockets only for now: no IPv6, no timeouts, no non-blocking mode.
+It throws when the name does not resolve or has no IPv4 address. Socket
+operations also throw the positive libc `errno` value through `IError.code()`;
+they do not use `-1` as an error code.
+
+For a single-threaded event loop, connect a stream or bind a listener first,
+then call `set_nonblocking(true)` and register `get_fd()` with a `Poller`. Wait
+with a `Duration`, handle each returned `Event`, and keep reading, writing, or
+accepting until an operation throws an error for which
+`is_would_block(e.code())` is true. An accepted `TcpStream` has its own
+descriptor, so configure and register it separately. Calling
+`set_nonblocking(false)` restores blocking behavior without changing unrelated
+descriptor flags.
+
+IPv4 is the only supported address family for now. Socket-level receive
+timeouts are not provided; use `Poller` for bounded waits.
 
 ## HTTP server
 

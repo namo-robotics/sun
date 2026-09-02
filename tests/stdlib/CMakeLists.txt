@@ -6,6 +6,7 @@ target_sources(sun_tests PRIVATE
     test_json.cpp
     test_math.cpp
     test_matrix.cpp
+    test_networking.cpp
     test_option.cpp
     test_tls.cpp
 )

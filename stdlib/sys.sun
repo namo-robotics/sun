@@ -21,6 +21,7 @@ public module std {
   // --- file descriptors ----------------------------------------------------
 
   extern "C" function c_open(path: raw_ptr<u8>, flags: i32, ...) i32 as "open";
+  extern "C" function c_fcntl(fd: i32, command: i32, ...) i32 as "fcntl";
   extern "C" function c_close(fd: i32) i32 as "close";
   extern "C" function c_read(fd: i32, buf: raw_ptr<u8>, count: i64) i64 as "read";
   extern "C" function c_write(fd: i32, buf: raw_ptr<u8>, count: i64) i64 as "write";

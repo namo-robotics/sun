@@ -35,6 +35,35 @@ public module std {
   public var SHUT_RDWR: i32 = 2;
   public var INADDR_ANY: i32 = 0;
   public var INADDR_LOOPBACK: i32 = 16777343;  // 127.0.0.1 in network byte order
+  var F_GETFL: i32 = 3;
+  var F_SETFL: i32 = 4;
+
+  // Report whether an errno value means a non-blocking operation would block.
+  public function is_would_block(code: i32) bool {
+    return code == WOULD_BLOCK_ERRNO;
+  }
+
+  // Change one descriptor's non-blocking flag while preserving its other flags.
+  function set_fd_nonblocking(fd: i32, enabled: bool) void throws IError {
+    var flags: i32 = unsafe { c_fcntl(fd, F_GETFL); };
+    if (flags < 0) {
+      var err_code: i32 = errno();
+      throw Error(err_code, "failed to read descriptor flags");
+    }
+
+    var next_flags: i32 = flags;
+    if (enabled) {
+      next_flags = flags | O_NONBLOCK;
+    } else {
+      next_flags = flags & ~O_NONBLOCK;
+    }
+
+    var result: i32 = unsafe { c_fcntl(fd, F_SETFL, next_flags); };
+    if (result < 0) {
+      var err_code: i32 = errno();
+      throw Error(err_code, "failed to set descriptor flags");
+    }
+  }
 
   // -------------------------------------------------------------------
   // DNS resolution
@@ -90,14 +119,16 @@ public module std {
     public method connect_local(port: i32) void throws IError {
       var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
       if (sock_fd < 0) {
-        throw Error(sock_fd, "failed to create socket");
+        var err_code: i32 = errno();
+        throw Error(err_code, "failed to create socket");
       }
       this.fd = sock_fd;
       suppress_sigpipe(this.fd);
 
       var result: i32 = unsafe { __connect_ipv4(this.fd, INADDR_LOOPBACK, port); };
       if (result < 0) {
-        throw Error(result, "failed to connect");
+        var err_code: i32 = errno();
+        throw Error(err_code, "failed to connect");
       }
     }
 
@@ -105,14 +136,16 @@ public module std {
     public method connect_ip(ip: i32, port: i32) void throws IError {
       var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
       if (sock_fd < 0) {
-        throw Error(sock_fd, "failed to create socket");
+        var err_code: i32 = errno();
+        throw Error(err_code, "failed to create socket");
       }
       this.fd = sock_fd;
       suppress_sigpipe(this.fd);
 
       var result: i32 = unsafe { __connect_ipv4(this.fd, ip, port); };
       if (result < 0) {
-        throw Error(result, "failed to connect");
+        var err_code: i32 = errno();
+        throw Error(err_code, "failed to connect");
       }
     }
 
@@ -128,7 +161,7 @@ public module std {
       var len: i64 = data.length();
       var result: i64 = unsafe { __send(this.fd, str_ptr, len, MSG_NOSIGNAL); };
       if (result < 0) {
-        var err_code: i32 = -1;
+        var err_code: i32 = errno();
         throw Error(err_code, "send failed");
       }
       return result;
@@ -138,7 +171,7 @@ public module std {
     public method send_bytes(data: raw_ptr<u8>, len: i64) i64 throws IError {
       var result: i64 = unsafe { __send(this.fd, data, len, MSG_NOSIGNAL); };
       if (result < 0) {
-        var err_code: i32 = -1;
+        var err_code: i32 = errno();
         throw Error(err_code, "send failed");
       }
       return result;
@@ -153,10 +186,15 @@ public module std {
     public method recv(buf: ref ContiguousBuffer<u8>) i64 throws IError {
       var result: i64 = unsafe { __recv(this.fd, buf.raw_data(), buf.size(), 0); };
       if (result < 0) {
-        var err_code: i32 = -1;
+        var err_code: i32 = errno();
         throw Error(err_code, "recv failed");
       }
       return result;
+    }
+
+    // Change whether operations on this socket wait for readiness.
+    public method set_nonblocking(enabled: bool) void throws IError {
+      set_fd_nonblocking(this.fd, enabled);
     }
 
     // Close the connection
@@ -207,14 +245,16 @@ public module std {
     public method bind_port(port: i32) void throws IError {
       var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
       if (sock_fd < 0) {
-        throw Error(sock_fd, "failed to create socket");
+        var err_code: i32 = errno();
+        throw Error(err_code, "failed to create socket");
       }
       this.fd = sock_fd;
       this.enable_reuse_addr();
 
       var result: i32 = unsafe { __bind_ipv4(this.fd, INADDR_ANY, port); };
       if (result < 0) {
-        throw Error(result, "failed to bind socket");
+        var err_code: i32 = errno();
+        throw Error(err_code, "failed to bind socket");
       }
     }
 
@@ -222,14 +262,16 @@ public module std {
     public method bind_loopback(port: i32) void throws IError {
       var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
       if (sock_fd < 0) {
-        throw Error(sock_fd, "failed to create socket");
+        var err_code: i32 = errno();
+        throw Error(err_code, "failed to create socket");
       }
       this.fd = sock_fd;
       this.enable_reuse_addr();
 
       var result: i32 = unsafe { __bind_ipv4(this.fd, INADDR_LOOPBACK, port); };
       if (result < 0) {
-        throw Error(result, "failed to bind socket");
+        var err_code: i32 = errno();
+        throw Error(err_code, "failed to bind socket");
       }
     }
 
@@ -237,7 +279,8 @@ public module std {
     public method listen(backlog: i32) void throws IError {
       var result: i32 = unsafe { __listen(this.fd, backlog); };
       if (result < 0) {
-        throw Error(result, "failed to listen");
+        var err_code: i32 = errno();
+        throw Error(err_code, "failed to listen");
       }
     }
 
@@ -245,12 +288,18 @@ public module std {
     public method accept() TcpStream throws IError {
       var client_fd: i32 = unsafe { __accept_fd(this.fd); };
       if (client_fd < 0) {
-        throw Error(client_fd, "failed to accept connection");
+        var err_code: i32 = errno();
+        throw Error(err_code, "failed to accept connection");
       }
       suppress_sigpipe(client_fd);
       var stream = TcpStream();
       stream.fd = client_fd;
       return stream;
+    }
+
+    // Change whether operations on this socket wait for readiness.
+    public method set_nonblocking(enabled: bool) void throws IError {
+      set_fd_nonblocking(this.fd, enabled);
     }
 
     // Close the listener

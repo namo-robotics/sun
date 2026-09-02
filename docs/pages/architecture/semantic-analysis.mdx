@@ -15,6 +15,10 @@ It makes two passes over the merged AST:
    lets code call a function or use a type that is defined further down the
    file. Generic definitions (classes, interfaces, enums) are registered as
    templates, not concrete types. Bodies are not analyzed yet.
+   Before signatures and class shapes are resolved, a type-name prepass walks
+   the complete module tree. That makes a public signature able to name a type
+   from a sibling module even when a `.moon` import reconstructed those modules
+   in a different order.
 2. **Full analysis** — a deep walk of every statement and expression. Each
    node is checked against its context and stamped with a resolved
    `sun::Type`.
@@ -49,6 +53,9 @@ During the deep walk, a few things are happening at once:
   width and how `Option.None` learns its type arguments. A suffixed literal
   arrives already typed and ignores the expected type; its value is
   range-checked against the suffix instead.
+- **Overload selection** — once argument types select an overloaded method,
+  the chosen function signature remains attached to the callee. Later result
+  inference uses that signature instead of looking up the method name again.
 - **Checking** — assignments, arguments, and operators are verified for
   compatibility; overloads are resolved against the actual argument types;
   calls to throwing functions must sit inside `try` or a throwing function;

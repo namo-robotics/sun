@@ -16,6 +16,27 @@ using sun::rules::promoteBinaryOperands;
 using sun::rules::unifyTernaryTypes;
 
 sun::TypePtr TypeInferer::inferCallType(const CallExprAST& callExpr) {
+  // Analysis records the selected overload on the callee. Reuse that exact
+  // signature instead of looking the name up again and taking its first
+  // overload, which may have a different return type.
+  if (auto selectedType = callExpr.getCallee()->getResolvedType()) {
+    if (selectedType->isFunction()) {
+      auto returnType =
+          static_cast<const sun::FunctionType*>(selectedType.get())
+              ->getReturnType();
+      if (!sun::generics::mentionsTypeParameter(returnType)) {
+        return returnType;
+      }
+    }
+    if (selectedType->isLambda()) {
+      auto returnType = static_cast<const sun::LambdaType*>(selectedType.get())
+                            ->getReturnType();
+      if (!sun::generics::mentionsTypeParameter(returnType)) {
+        return returnType;
+      }
+    }
+  }
+
   // For function calls, check overload resolution FIRST before inferType on
   // callee This avoids errors for overloaded functions referenced by name
   if (callExpr.getCallee()->getType() == ASTNodeType::VARIABLE_REFERENCE) {

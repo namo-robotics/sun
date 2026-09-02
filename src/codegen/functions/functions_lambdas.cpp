@@ -397,6 +397,19 @@ void FunctionGenerator::forwardDeclareFunction(const PrototypeAST& proto) {
 // generic helper declared after its caller.
 void FunctionGenerator::declareBlockSignatures(const BlockExprAST& block) {
   for (const auto& expr : block.getBody()) {
+    // Included source files are merged into one AST, but their declarations
+    // may remain under separate module nodes. Descend through those wrappers
+    // so every signature exists before the first module body is emitted.
+    if (expr->getType() == ASTNodeType::MODULE) {
+      const auto& module = static_cast<const ModuleAST&>(*expr);
+      declareBlockSignatures(module.getBody());
+      continue;
+    }
+    if (expr->getType() == ASTNodeType::MOON_SCOPE) {
+      const auto& moonScope = static_cast<const MoonScopeAST&>(*expr);
+      declareBlockSignatures(moonScope.getBody());
+      continue;
+    }
     if (expr->getType() == ASTNodeType::CLASS_DEFINITION) {
       classes().declareBlockClassMethods(
           static_cast<const ClassDefinitionAST&>(*expr));

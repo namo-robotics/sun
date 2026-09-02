@@ -26,6 +26,10 @@ public module std {
     return unsafe { c_errno_location(); };
   }
 
+  // Descriptor flags and the errno used for non-blocking operations.
+  var O_NONBLOCK: i32 = 4;
+  var WOULD_BLOCK_ERRNO: i32 = 35;
+
   // setsockopt family. macOS has no MSG_NOSIGNAL — it folds to no flag at
   // all here — and marks the socket SO_NOSIGPIPE instead (below).
   public var MSG_NOSIGNAL: i32 = 0;
