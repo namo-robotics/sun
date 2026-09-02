@@ -223,6 +223,12 @@ const std::map<std::string, BuiltinEmitter>& builtinTable() {
        [](auto& g, const auto& e) { return g.codegenConnectIPv4(e); }},
       {"__accept_fd",
        [](auto& g, const auto& e) { return g.codegenAcceptFd(e); }},
+      {"__sendto_ipv4",
+       [](auto& g, const auto& e) { return g.codegenSendToIPv4(e); }},
+      {"__recvfrom_ipv4",
+       [](auto& g, const auto& e) { return g.codegenRecvFromIPv4(e); }},
+      {"__getsockname_ipv4",
+       [](auto& g, const auto& e) { return g.codegenGetSockNameIPv4(e); }},
   };
   return table;
 }

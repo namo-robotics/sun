@@ -175,6 +175,22 @@ inline llvm::FunctionCallee setsockopt(llvm::Module* m) {
 inline llvm::FunctionCallee getsockopt(llvm::Module* m) {
   return get(m, "getsockopt", i32(m), {i32(m), i32(m), i32(m), ptr(m), ptr(m)});
 }
+// ssize_t sendto(int fd, const void *buf, size_t len, int flags,
+//                const struct sockaddr *addr, socklen_t addrlen)
+inline llvm::FunctionCallee sendto(llvm::Module* m) {
+  return get(m, "sendto", i64(m),
+             {i32(m), ptr(m), i64(m), i32(m), ptr(m), i32(m)});
+}
+// ssize_t recvfrom(int fd, void *buf, size_t len, int flags,
+//                  struct sockaddr *addr, socklen_t *addrlen)
+inline llvm::FunctionCallee recvfrom(llvm::Module* m) {
+  return get(m, "recvfrom", i64(m),
+             {i32(m), ptr(m), i64(m), i32(m), ptr(m), ptr(m)});
+}
+// int getsockname(int fd, struct sockaddr *addr, socklen_t *len)
+inline llvm::FunctionCallee getsockname(llvm::Module* m) {
+  return get(m, "getsockname", i32(m), {i32(m), ptr(m), ptr(m)});
+}
 
 // --- threads -----------------------------------------------------------------
 

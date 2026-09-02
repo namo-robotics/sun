@@ -749,8 +749,8 @@ C's `tm_year`/`tm_mon` offsets. It also carries `day`, `hour`, `minute`,
 
 ## Networking
 
-TCP sockets and hostname resolution, from `networking.sun`. For TLS and
-HTTPS see [TLS & HTTPS](/tls).
+TCP and UDP sockets and hostname resolution, from `networking.sun`. For TLS
+and HTTPS see [TLS & HTTPS](/tls).
 
 ```sun
 using std;
@@ -798,8 +798,70 @@ descriptor, so configure and register it separately. Calling
 `set_nonblocking(false)` restores blocking behavior without changing unrelated
 descriptor flags.
 
-IPv4 is the only supported address family for now. Socket-level receive
-timeouts are not provided; use `Poller` for bounded waits.
+### IPv4 addresses
+
+`Ipv4Addr` names an address by its dotted-quad octets, so nobody has to
+remember that 127.0.0.1 is the integer 16777343. It holds the address in
+network byte order — `to_network_i32()` returns the form `connect_ip` and the
+intrinsics take, and `ipv4_from_network` wraps what `resolve_host_ipv4`
+returns.
+
+```sun
+var lan = Ipv4Addr(192, 168, 1, 10);     // from octets
+var addr = parse_ipv4(text);             // from a String; throws if malformed
+var any = ipv4_any();                    // 0.0.0.0
+var home = ipv4_loopback();              // 127.0.0.1
+println(lan.to_string(alloc));           // "192.168.1.10"
+stream.connect_addr(lan, 80);            // TCP takes it too
+listener.bind_addr(any, 8080);
+```
+
+### UDP
+
+`UdpSocket` sends and receives datagrams — no connection, one message per
+call. Bind before receiving; sending needs no bind. Binding port 0 lets the
+OS pick a free port, and `local_port()` reads the pick back.
+
+```sun
+using std;
+
+var socket = UdpSocket();
+var any = ipv4_any();
+socket.bind(any, 0);
+var port: i32 = socket.local_port();
+
+var dest = Ipv4Addr(192, 168, 1, 20);
+socket.send_str_to("ping", dest, 9000);      // a literal
+socket.send_to(data, len, dest, 9000);       // raw bytes
+
+var buf = ContiguousBuffer<u8>(alloc, 2048);
+var datagram = socket.recv_from(buf);        // one datagram, cut to fit buf
+datagram.length();                           // bytes received
+datagram.addr();                             // sender's Ipv4Addr
+datagram.port();                             // sender's port
+socket.close();
+```
+
+A blocking `recv_from` can be given a deadline with
+`set_recv_timeout(duration)`; when it expires the call throws an error for
+which `is_would_block(e.code())` is true. `set_nonblocking(true)` and a
+`Poller` work here the same way they do for TCP.
+
+Multicast is part of `UdpSocket`. Join a group on an interface (use
+`ipv4_any()` to let the OS choose one), and the socket receives datagrams
+sent to the group on its bound port:
+
+```sun
+var group = Ipv4Addr(239, 255, 0, 1);
+var iface = ipv4_any();
+socket.join_multicast(group, iface);
+socket.set_multicast_ttl(1);        // how many router hops sends may cross
+socket.set_multicast_loop(true);    // hear this host's own sends
+socket.leave_multicast(group, iface);
+```
+
+IPv4 is the only supported address family for now. TCP sockets have no
+socket-level receive timeout; use `Poller` for bounded waits there.
 
 ## HTTP server
 

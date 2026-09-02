@@ -618,3 +618,259 @@ Value* IntrinsicsGenerator::codegenAcceptFd(const CallExprAST& expr) {
   Function* helper = getOrCreateAcceptFdHelper(module, llvmCtx);
   return ctx.builder->CreateCall(helper, {fd}, "accept_fd_result");
 }
+
+// Load sin_addr (offset 4, left in network order) and sin_port (offset 2,
+// swapped to host order and widened to i32) out of a sockaddr_in, storing
+// them through the two out-pointers.
+static void extractSockaddrInParts(IRBuilder<>& builder, LLVMContext& llvmCtx,
+                                   Value* sockaddr, Value* outIp,
+                                   Value* outPort) {
+  auto* i8Ty = Type::getInt8Ty(llvmCtx);
+  auto* i16Ty = Type::getInt16Ty(llvmCtx);
+  auto* i32Ty = Type::getInt32Ty(llvmCtx);
+
+  Value* addrPtr = builder.CreateGEP(i8Ty, sockaddr, builder.getInt32(4));
+  Value* ip = builder.CreateLoad(i32Ty, addrPtr, "peer_ip");
+  builder.CreateStore(ip, outIp);
+
+  Value* portPtr = builder.CreateGEP(i8Ty, sockaddr, builder.getInt32(2));
+  Value* portNet = builder.CreateLoad(i16Ty, portPtr, "peer_port_net");
+  Value* portHi = builder.CreateLShr(portNet, 8);
+  Value* portLo = builder.CreateShl(portNet, 8);
+  Value* port16 = builder.CreateOr(portHi, portLo);  // bswap16
+  Value* port = builder.CreateZExt(port16, i32Ty, "peer_port");
+  builder.CreateStore(port, outPort);
+}
+
+// __sun_sendto_ipv4(fd, buf, len, flags, ip, port) -> i64 — build the
+// destination sockaddr and forward to sendto.
+static Function* getOrCreateSendToIPv4Helper(llvm::Module* module,
+                                             LLVMContext& llvmCtx) {
+  Function* func = module->getFunction("__sun_sendto_ipv4");
+  if (func) return func;
+
+  auto* i32Ty = Type::getInt32Ty(llvmCtx);
+  auto* i64Ty = Type::getInt64Ty(llvmCtx);
+  auto* ptrTy = PointerType::getUnqual(llvmCtx);
+  FunctionType* funcTy = FunctionType::get(
+      i64Ty, {i32Ty, ptrTy, i64Ty, i32Ty, i32Ty, i32Ty}, false);
+  func = Function::Create(funcTy, Function::InternalLinkage,
+                          "__sun_sendto_ipv4", module);
+
+  BasicBlock* entry = BasicBlock::Create(llvmCtx, "entry", func);
+  IRBuilder<> builder(entry);
+
+  auto args = func->arg_begin();
+  Value* fd = args++;
+  Value* buf = args++;
+  Value* len = args++;
+  Value* flags = args++;
+  Value* ip = args++;
+  Value* port = args++;
+
+  Value* sockaddr = buildSockaddrIn(
+      builder, llvmCtx, ip, port,
+      llvm::Triple(module->getTargetTriple()).isOSDarwin());
+  Value* result = builder.CreateCall(
+      sun::libc::sendto(module),
+      {fd, buf, len, flags, sockaddr, builder.getInt32(16)}, "result");
+  builder.CreateRet(result);
+  return func;
+}
+
+// __sun_recvfrom_ipv4(fd, buf, len, flags, out_ip, out_port) -> i64 — receive
+// with a scratch sockaddr and report the sender through the out slots.
+static Function* getOrCreateRecvFromIPv4Helper(llvm::Module* module,
+                                               LLVMContext& llvmCtx) {
+  Function* func = module->getFunction("__sun_recvfrom_ipv4");
+  if (func) return func;
+
+  auto* i8Ty = Type::getInt8Ty(llvmCtx);
+  auto* i32Ty = Type::getInt32Ty(llvmCtx);
+  auto* i64Ty = Type::getInt64Ty(llvmCtx);
+  auto* ptrTy = PointerType::getUnqual(llvmCtx);
+  FunctionType* funcTy = FunctionType::get(
+      i64Ty, {i32Ty, ptrTy, i64Ty, i32Ty, ptrTy, ptrTy}, false);
+  func = Function::Create(funcTy, Function::InternalLinkage,
+                          "__sun_recvfrom_ipv4", module);
+
+  BasicBlock* entry = BasicBlock::Create(llvmCtx, "entry", func);
+  IRBuilder<> builder(entry);
+
+  auto args = func->arg_begin();
+  Value* fd = args++;
+  Value* buf = args++;
+  Value* len = args++;
+  Value* flags = args++;
+  Value* outIp = args++;
+  Value* outPort = args++;
+
+  Value* sockaddr =
+      builder.CreateAlloca(i8Ty, builder.getInt32(16), "sockaddr");
+  builder.CreateMemSet(sockaddr, builder.getInt8(0), 16, MaybeAlign(4));
+  Value* addrLen = builder.CreateAlloca(i32Ty, nullptr, "addrlen");
+  builder.CreateStore(builder.getInt32(16), addrLen);
+
+  Value* result =
+      builder.CreateCall(sun::libc::recvfrom(module),
+                         {fd, buf, len, flags, sockaddr, addrLen}, "result");
+  // On failure the sockaddr is still the zeroed scratch, so the out slots get
+  // harmless zeros; a wrapper throws before reading them.
+  extractSockaddrInParts(builder, llvmCtx, sockaddr, outIp, outPort);
+  builder.CreateRet(result);
+  return func;
+}
+
+// __sun_getsockname_ipv4(fd, out_ip, out_port) -> i32 — report the socket's
+// own bound address through the out slots.
+static Function* getOrCreateGetSockNameIPv4Helper(llvm::Module* module,
+                                                  LLVMContext& llvmCtx) {
+  Function* func = module->getFunction("__sun_getsockname_ipv4");
+  if (func) return func;
+
+  auto* i8Ty = Type::getInt8Ty(llvmCtx);
+  auto* i32Ty = Type::getInt32Ty(llvmCtx);
+  auto* ptrTy = PointerType::getUnqual(llvmCtx);
+  FunctionType* funcTy =
+      FunctionType::get(i32Ty, {i32Ty, ptrTy, ptrTy}, false);
+  func = Function::Create(funcTy, Function::InternalLinkage,
+                          "__sun_getsockname_ipv4", module);
+
+  BasicBlock* entry = BasicBlock::Create(llvmCtx, "entry", func);
+  IRBuilder<> builder(entry);
+
+  auto args = func->arg_begin();
+  Value* fd = args++;
+  Value* outIp = args++;
+  Value* outPort = args++;
+
+  Value* sockaddr =
+      builder.CreateAlloca(i8Ty, builder.getInt32(16), "sockaddr");
+  builder.CreateMemSet(sockaddr, builder.getInt8(0), 16, MaybeAlign(4));
+  Value* addrLen = builder.CreateAlloca(i32Ty, nullptr, "addrlen");
+  builder.CreateStore(builder.getInt32(16), addrLen);
+
+  Value* result = builder.CreateCall(sun::libc::getsockname(module),
+                                     {fd, sockaddr, addrLen}, "result");
+  extractSockaddrInParts(builder, llvmCtx, sockaddr, outIp, outPort);
+  builder.CreateRet(result);
+  return func;
+}
+
+// __sendto_ipv4(fd: i32, buf: raw_ptr<u8>, len: i64, flags: i32, ip: i32,
+// port: i32) -> i64
+Value* IntrinsicsGenerator::codegenSendToIPv4(const CallExprAST& expr) {
+  if (expr.getArgs().size() != 6) {
+    logAndThrowError(
+        "__sendto_ipv4 expects 6 arguments: (fd: i32, buf: raw_ptr<u8>, "
+        "len: i64, flags: i32, ip: i32, port: i32)");
+    return nullptr;
+  }
+
+  LLVMContext& llvmCtx = ctx.getContext();
+  auto* i32Ty = Type::getInt32Ty(llvmCtx);
+  auto* i64Ty = Type::getInt64Ty(llvmCtx);
+
+  Value* fd = codegen(*expr.getArgs()[0]);
+  if (!fd) return nullptr;
+  Value* buf = codegen(*expr.getArgs()[1]);
+  if (!buf) return nullptr;
+  Value* len = codegen(*expr.getArgs()[2]);
+  if (!len) return nullptr;
+  Value* flags = codegen(*expr.getArgs()[3]);
+  if (!flags) return nullptr;
+  Value* ip = codegen(*expr.getArgs()[4]);
+  if (!ip) return nullptr;
+  Value* port = codegen(*expr.getArgs()[5]);
+  if (!port) return nullptr;
+
+  if (!fd->getType()->isIntegerTy(32)) {
+    fd = ctx.builder->CreateSExtOrTrunc(fd, i32Ty);
+  }
+  if (!len->getType()->isIntegerTy(64)) {
+    len = ctx.builder->CreateSExtOrTrunc(len, i64Ty);
+  }
+  if (!flags->getType()->isIntegerTy(32)) {
+    flags = ctx.builder->CreateSExtOrTrunc(flags, i32Ty);
+  }
+  if (!ip->getType()->isIntegerTy(32)) {
+    ip = ctx.builder->CreateSExtOrTrunc(ip, i32Ty);
+  }
+  if (!port->getType()->isIntegerTy(32)) {
+    port = ctx.builder->CreateSExtOrTrunc(port, i32Ty);
+  }
+
+  Function* helper = getOrCreateSendToIPv4Helper(module, llvmCtx);
+  return ctx.builder->CreateCall(helper, {fd, buf, len, flags, ip, port},
+                                 "sendto_ipv4_result");
+}
+
+// __recvfrom_ipv4(fd: i32, buf: raw_ptr<u8>, len: i64, flags: i32,
+// out_ip: raw_ptr<i32>, out_port: raw_ptr<i32>) -> i64
+Value* IntrinsicsGenerator::codegenRecvFromIPv4(const CallExprAST& expr) {
+  if (expr.getArgs().size() != 6) {
+    logAndThrowError(
+        "__recvfrom_ipv4 expects 6 arguments: (fd: i32, buf: raw_ptr<u8>, "
+        "len: i64, flags: i32, out_ip: raw_ptr<i32>, out_port: raw_ptr<i32>)");
+    return nullptr;
+  }
+
+  LLVMContext& llvmCtx = ctx.getContext();
+  auto* i32Ty = Type::getInt32Ty(llvmCtx);
+  auto* i64Ty = Type::getInt64Ty(llvmCtx);
+
+  Value* fd = codegen(*expr.getArgs()[0]);
+  if (!fd) return nullptr;
+  Value* buf = codegen(*expr.getArgs()[1]);
+  if (!buf) return nullptr;
+  Value* len = codegen(*expr.getArgs()[2]);
+  if (!len) return nullptr;
+  Value* flags = codegen(*expr.getArgs()[3]);
+  if (!flags) return nullptr;
+  Value* outIp = codegen(*expr.getArgs()[4]);
+  if (!outIp) return nullptr;
+  Value* outPort = codegen(*expr.getArgs()[5]);
+  if (!outPort) return nullptr;
+
+  if (!fd->getType()->isIntegerTy(32)) {
+    fd = ctx.builder->CreateSExtOrTrunc(fd, i32Ty);
+  }
+  if (!len->getType()->isIntegerTy(64)) {
+    len = ctx.builder->CreateSExtOrTrunc(len, i64Ty);
+  }
+  if (!flags->getType()->isIntegerTy(32)) {
+    flags = ctx.builder->CreateSExtOrTrunc(flags, i32Ty);
+  }
+
+  Function* helper = getOrCreateRecvFromIPv4Helper(module, llvmCtx);
+  return ctx.builder->CreateCall(helper, {fd, buf, len, flags, outIp, outPort},
+                                 "recvfrom_ipv4_result");
+}
+
+// __getsockname_ipv4(fd: i32, out_ip: raw_ptr<i32>, out_port: raw_ptr<i32>)
+// -> i32
+Value* IntrinsicsGenerator::codegenGetSockNameIPv4(const CallExprAST& expr) {
+  if (expr.getArgs().size() != 3) {
+    logAndThrowError(
+        "__getsockname_ipv4 expects 3 arguments: (fd: i32, "
+        "out_ip: raw_ptr<i32>, out_port: raw_ptr<i32>)");
+    return nullptr;
+  }
+
+  LLVMContext& llvmCtx = ctx.getContext();
+
+  Value* fd = codegen(*expr.getArgs()[0]);
+  if (!fd) return nullptr;
+  Value* outIp = codegen(*expr.getArgs()[1]);
+  if (!outIp) return nullptr;
+  Value* outPort = codegen(*expr.getArgs()[2]);
+  if (!outPort) return nullptr;
+
+  if (!fd->getType()->isIntegerTy(32)) {
+    fd = ctx.builder->CreateSExtOrTrunc(fd, Type::getInt32Ty(llvmCtx));
+  }
+
+  Function* helper = getOrCreateGetSockNameIPv4Helper(module, llvmCtx);
+  return ctx.builder->CreateCall(helper, {fd, outIp, outPort},
+                                 "getsockname_ipv4_result");
+}

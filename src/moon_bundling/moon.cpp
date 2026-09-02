@@ -52,8 +52,9 @@ bool shouldSkipRename(const std::string& name) {
       // include/codegen/intrinsics/libc.h)
       "write", "read", "open", "close", "lseek", "fstat", "fsync", "ftruncate",
       "unlink", "rename", "mkdir", "rmdir", "socket", "bind", "listen",
-      "accept", "connect", "send", "recv", "shutdown", "setsockopt",
-      "getsockopt", "syscall", "pthread_create", "pthread_join"};
+      "accept", "connect", "send", "recv", "sendto", "recvfrom",
+      "getsockname", "shutdown", "setsockopt", "getsockopt", "syscall",
+      "pthread_create", "pthread_join"};
 
   if (name.starts_with("llvm.")) return true;
   if (name.starts_with("$")) return true;

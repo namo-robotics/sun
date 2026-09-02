@@ -42,3 +42,5 @@ tmp
 cmake_test_discovery*
 # Vendored static OpenSSL archives for tls.moon (built by scripts/build-openssl.sh)
 third_party/openssl/
+
+.claude/settings.local.json

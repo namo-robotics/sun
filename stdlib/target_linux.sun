@@ -39,6 +39,13 @@ public module std {
   public var MSG_NOSIGNAL: i32 = 16384;
   public var SOL_SOCKET: i32 = 1;
   public var SO_REUSEADDR: i32 = 2;
+  public var SO_RCVTIMEO: i32 = 20;
+
+  // IPPROTO_IP-level options for IPv4 multicast.
+  public var IP_MULTICAST_TTL: i32 = 33;
+  public var IP_MULTICAST_LOOP: i32 = 34;
+  public var IP_ADD_MEMBERSHIP: i32 = 35;
+  public var IP_DROP_MEMBERSHIP: i32 = 36;
 
   // struct addrinfo: ai_addr is the 4th pointer-sized slot (byte 24). The
   // full layout is documented at the getaddrinfo declaration in sys.sun.

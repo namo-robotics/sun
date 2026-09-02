@@ -377,7 +377,8 @@ inline bool requiresUnsafeBlock(const std::string& name) {
   // them here; they reach the same libc calls as __bind, __connect and
   // __accept.
   if (name == "__bind_ipv4" || name == "__connect_ipv4" ||
-      name == "__accept_fd") {
+      name == "__accept_fd" || name == "__sendto_ipv4" ||
+      name == "__recvfrom_ipv4" || name == "__getsockname_ipv4") {
     return true;
   }
   return requiresUnsafeBlock(getIntrinsic(name));
