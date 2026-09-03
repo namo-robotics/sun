@@ -96,4 +96,9 @@
     // Allow gutter breakpoints in .sun files (cppdbg only whitelists
     // C-family languages by default)
     "debug.allowBreakpointsEverywhere": true,
+    "github.copilot.chat.commitMessageGeneration.instructions": [
+        {
+            "file": "AGENTS.md"
+        }
+    ]
 }
