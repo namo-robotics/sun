@@ -291,9 +291,53 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
     }
   }
 
-  // For array and class types, use the alloca directly
+  // Sized arrays own their inline storage. A fresh temporary (a literal, a
+  // materialized call result) is adopted as the variable's storage; a named
+  // source MOVES its elements into new storage, never aliasing it.
+  if (auto* arrayType = sun::tryGetType<sun::ArrayType>(varSunType)) {
+    if (!arrayType->isUnsized()) {
+      ASTNodeType valueKind = expr.getValue()->getType();
+      bool valueIsFreshTemp = valueKind == ASTNodeType::ARRAY_LITERAL ||
+                              valueKind == ASTNodeType::CALL ||
+                              valueKind == ASTNodeType::GENERIC_CALL;
+      if (valueIsFreshTemp) {
+        if (auto* allocaValue = dyn_cast<AllocaInst>(value)) {
+          allocaValue->setName(expr.getName());
+          scope[expr.getName()] = allocaValue;
+          debugDeclareLocal(allocaValue, expr.getName(), varSunType,
+                            expr.getLocation());
+          scopes().trackClassAllocation(allocaValue, expr.getName(),
+                                        varSunType);
+          return allocaValue;
+        }
+      }
+      AllocaInst* alloca = createEntryBlockAlloca(func, expr.getName(), varType);
+      gen_.emitArrayTransfer(alloca, value, *arrayType, /*move=*/true);
+      scope[expr.getName()] = alloca;
+      debugDeclareLocal(alloca, expr.getName(), varSunType, expr.getLocation());
+      scopes().trackClassAllocation(alloca, expr.getName(), varSunType);
+      return alloca;
+    }
+  }
+
+  // A `ref array<T>` local bound to a sized array: the view of its storage
+  if (auto* refType = sun::tryGetType<sun::ReferenceType>(varSunType)) {
+    if (refType->isUnsizedArrayRef() && value->getType()->isPointerTy()) {
+      sun::TypePtr valueType =
+          sun::unwrapRef(expr.getValue()->getResolvedType());
+      if (auto* sized = sun::tryGetType<sun::ArrayType>(valueType)) {
+        if (!sized->isUnsized()) {
+          value = gen_.emitArrayView(value, sized->getDimensions());
+        } else {
+          value = gen_.loadArrayView(value);
+        }
+      }
+    }
+  }
+
+  // For class types, use the alloca directly
   // instead of creating a new alloca and storing a pointer
-  if (varType->isArrayTy() || (varSunType && varSunType->isClass())) {
+  if (varSunType && varSunType->isClass()) {
     if (auto* allocaValue = dyn_cast<AllocaInst>(value)) {
       allocaValue->setName(expr.getName());
       scope[expr.getName()] = allocaValue;
@@ -507,49 +551,9 @@ llvm::Constant* VariableGenerator::genGlobalArray(
                      expr.getName());
   }
 
-  // Create global variable for data storage
-  std::string varName = expr.getMangledName();
-  llvm::GlobalVariable* dataGV = new llvm::GlobalVariable(
-      *module, dataConst->getType(), /*isConstant=*/false,
-      llvm::GlobalValue::InternalLinkage, dataConst, varName + ".data");
-
-  // Build constant dims array
-  std::vector<llvm::Constant*> dimValues;
-  llvm::Type* i64Ty = llvm::Type::getInt64Ty(ctx.getContext());
-  for (int64_t d : dims) {
-    dimValues.push_back(llvm::ConstantInt::get(i64Ty, d));
-  }
-  llvm::ArrayType* dimsArrayType = llvm::ArrayType::get(i64Ty, dims.size());
-  llvm::Constant* dimsConst =
-      llvm::ConstantArray::get(dimsArrayType, dimValues);
-
-  // Create global variable for dims array
-  llvm::GlobalVariable* dimsGV = new llvm::GlobalVariable(
-      *module, dimsArrayType, /*isConstant=*/true,
-      llvm::GlobalValue::InternalLinkage, dimsConst, varName + ".dims");
-
-  // Build fat struct constant: { ptr data, i32 ndims, ptr dims }
-  llvm::StructType* fatType =
-      sun::ArrayType::getArrayStructType(ctx.getContext());
-
-  // Get pointers to first element of data and dims
-  llvm::Constant* zero =
-      llvm::ConstantInt::get(llvm::Type::getInt64Ty(ctx.getContext()), 0);
-  llvm::Constant* dataPtr = llvm::ConstantExpr::getInBoundsGetElementPtr(
-      dataConst->getType(), dataGV,
-      llvm::ArrayRef<llvm::Constant*>{zero, zero});
-  llvm::Constant* dimsPtr = llvm::ConstantExpr::getInBoundsGetElementPtr(
-      dimsArrayType, dimsGV, llvm::ArrayRef<llvm::Constant*>{zero, zero});
-
-  llvm::Constant* fatStruct = llvm::ConstantStruct::get(
-      fatType, {dataPtr,
-                llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()),
-                                       dims.size()),
-                dimsPtr});
-
-  // Create the global variable for the fat struct
-  createGlobalVariable(varName, fatType, fatStruct);
-  return fatStruct;
+  // The global IS the inline storage
+  createGlobalVariable(expr.getMangledName(), dataConst->getType(), dataConst);
+  return dataConst;
 }
 
 // -------------------------------------------------------------------
@@ -879,8 +883,19 @@ void VariableGenerator::emitStaticInitFunction() {
         }
 
         if (isRefParam) {
-          // Reference parameters take the argument's address
-          if (!argVal->getType()->isPointerTy()) {
+          // Reference parameters take the argument's address; a sized array
+          // handed to a `ref array<T>` parameter is viewed with its rank
+          // erased
+          auto* paramRef =
+              static_cast<const sun::ReferenceType*>(paramType.get());
+          auto* sizedArg = sun::tryGetType<sun::ArrayType>(
+              sun::unwrapRef(arg->getResolvedType()));
+          if (paramRef->isUnsizedArrayRef() && sizedArg &&
+              !sizedArg->isUnsized()) {
+            argVal = gen_.emitArrayView(argVal, sizedArg->getDimensions());
+          } else if (paramRef->isUnsizedArrayRef()) {
+            argVal = gen_.loadArrayView(argVal);
+          } else if (!argVal->getType()->isPointerTy()) {
             AllocaInst* tempAlloca =
                 createEntryBlockAlloca(initFunc, "ref.temp", argVal->getType());
             ctx.builder->CreateStore(argVal, tempAlloca);

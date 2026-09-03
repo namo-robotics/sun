@@ -34,6 +34,17 @@ void storeIntoSlot(llvm::IRBuilder<>& builder, const llvm::DataLayout& dl,
                          dl.getTypeAllocSize(structTy));
     return;
   }
+  // A sized array arrives as the address of its inline storage
+  if (auto* arrayType = sun::tryGetType<sun::ArrayType>(slotType)) {
+    if (!arrayType->isUnsized() && value->getType()->isPointerTy()) {
+      llvm::Type* storageTy =
+          arrayType->getDataStorageType(builder.getContext());
+      llvm::Align align = fieldAlign(owner, storageTy, dl);
+      builder.CreateMemCpy(dest, align, value, align,
+                           dl.getTypeAllocSize(storageTy));
+      return;
+    }
+  }
   builder.CreateAlignedStore(value, dest,
                              fieldAlign(owner, value->getType(), dl));
 }

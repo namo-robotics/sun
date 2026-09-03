@@ -706,12 +706,6 @@ Value* ClassGenerator::codegen(const MemberAccessAST& expr) {
     objectType = expr.getObject()->getResolvedType();
   }
 
-  // Handle array.shape() - returns a 1D array of dimension sizes
-  if (memberName == "shape" &&
-      sun::tryGetType<sun::ArrayType>(sun::unwrapRef(objectType))) {
-    return codegenArrayShape(expr);
-  }
-
   // Resolve the object down to (pointer, class type)
   auto [objectPtr, classType] = codegenObjectPtr(*expr.getObject());
   if (!objectPtr) return nullptr;
@@ -728,9 +722,11 @@ Value* ClassGenerator::codegen(const MemberAccessAST& expr) {
 
     // For compound fields carried by address, return their storage pointer.
     // Interface dispatch loads its fat pointer from that address, just as it
-    // does for interface locals, parameters and globals.
+    // does for interface locals, parameters and globals. A sized array field
+    // is its inline storage; a `ref array<T>` field holds a view value and
+    // is loaded like any other reference.
     if (field->type->isClass() || field->type->isInterface() ||
-        CodegenVisitor::isPayloadEnum(field->type)) {
+        field->type->isArray() || CodegenVisitor::isPayloadEnum(field->type)) {
       return fieldPtr;
     }
 
@@ -955,17 +951,13 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
   llvm::Type* fieldLLVMType = field->type->toLLVMType(ctx.getContext());
   llvm::Type* valueType = value->getType();
 
-  // Handle ref array<T> assigned to array<T> field - load the fat struct from
-  // the ref
   sun::TypePtr valueSunType = expr.getValue()->getResolvedType();
-  if (auto* refType = sun::tryGetType<sun::ReferenceType>(valueSunType)) {
-    if (field->type->isArray() && refType->getReferencedType()->isArray()) {
-      // value is a pointer to the fat struct, load it
-      llvm::StructType* fatType =
-          sun::ArrayType::getArrayStructType(ctx.getContext());
-      value = ctx.builder->CreateAlignedLoad(
-          fatType, value, module->getDataLayout().getABITypeAlign(fatType),
-          "arr.fat.load");
+
+  // A `ref array<T>` field holds the view value; a view expression may
+  // arrive as the value or as a pointer to where it is stored
+  if (auto* fieldRef = sun::tryGetType<sun::ReferenceType>(field->type)) {
+    if (fieldRef->isUnsizedArrayRef()) {
+      value = gen_.loadArrayView(value);
       valueType = value->getType();
     }
   }
@@ -1011,6 +1003,14 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
         layout::fieldAlign(classType, fieldLLVMType,
                            module->getDataLayout()));
     return fatPtrValue;
+  }
+
+  // Sized array fields own their elements inline: the source array MOVES in
+  // after the field's old elements are dropped.
+  if (auto* fieldArrayType = sun::tryGetType<sun::ArrayType>(field->type)) {
+    dropOverwrittenValue();
+    gen_.emitArrayTransfer(fieldPtr, value, *fieldArrayType, /*move=*/true);
+    return value;
   }
 
   // Payload-enum fields: the value arrives as a storage pointer. Drop the

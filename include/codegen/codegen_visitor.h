@@ -209,10 +209,10 @@ class CodegenVisitor {
   llvm::Value* applyMoveSemantics(llvm::Value* argVal, sun::TypePtr argSunType);
 
   /**
-   * Materializes a struct return value to the caller's stack.
-   * Functions return class types as LLVM struct values; using the result
-   * (reaching a field, calling a method) needs an addressable location.
-   * Skips error unions { i1, T } and array fat structs { ptr, i32, ptr }.
+   * Materializes a struct or array return value to the caller's stack.
+   * Functions return classes and sized arrays as LLVM aggregate values; using
+   * the result (reaching a field, indexing) needs an addressable location.
+   * Skips error unions { i1, T } and non-owning views { ptr, i32, ptr }.
    */
   llvm::Value* materializeStructReturn(llvm::Value* callResult);
 
@@ -298,18 +298,40 @@ class CodegenVisitor {
   llvm::Value* codegenIndexElementPtr(const IndexAST& expr);
 
   // Class __index__/__setindex__ protocol pieces, decomposed so compound
-  // assignment can box the indices and resolve the receiver exactly once
-  llvm::AllocaInst* boxIndicesToArrayRef(const IndexAST& expr);
-  llvm::Value* emitClassIndexCall(llvm::Value* objectPtr,
-                                  llvm::AllocaInst* idxArr,
+  // assignment can box the indices and resolve the receiver exactly once.
+  // The boxed indices are a `ref array<i64>` view value.
+  llvm::Value* boxIndicesToArrayRef(const IndexAST& expr);
+  llvm::Value* emitClassIndexCall(llvm::Value* objectPtr, llvm::Value* idxView,
                                   sun::ClassType* classType);
   llvm::Value* emitClassSetIndexCall(llvm::Value* objectPtr,
-                                     llvm::AllocaInst* idxArr,
-                                     llvm::Value* value,
+                                     llvm::Value* idxView, llvm::Value* value,
                                      sun::ClassType* classType);
+  llvm::Function* declareIndexProtocolMethod(sun::ClassType* classType,
+                                             const sun::ClassMethod& method,
+                                             const std::string& mangledName,
+                                             llvm::Type* valueParamType);
 
-  // `arr.shape` and the other array member reads
-  llvm::Value* codegenArrayShape(const MemberAccessAST& expr);
+  // `arr.ndims()` and `arr.dim(i)` on a sized array or a view
+  llvm::Value* codegenArrayQuery(const CallExprAST& call,
+                                 const MemberAccessAST& member);
+
+  // Views: the { ptr data, i32 ndims, ptr dims } value a sized array decays
+  // to at a `ref array<T>` site. The dims table is a private constant global.
+  llvm::Constant* arrayDimsTable(const std::vector<size_t>& dims);
+  llvm::Value* emitArrayView(llvm::Value* storagePtr,
+                             const std::vector<size_t>& dims);
+  // The view value from however an unsized-array expression arrived: the
+  // value itself, or a pointer to where it is stored
+  llvm::Value* loadArrayView(llvm::Value* value);
+
+  // Copy a sized array's inline storage from src to dest; a move also
+  // invalidates the source so its own drop releases nothing
+  void emitArrayTransfer(llvm::Value* dest, llvm::Value* src,
+                         const sun::ArrayType& type, bool move);
+  // Store one element into a slot of inline storage (compounds move in)
+  void storeArrayElement(llvm::Value* slotPtr, llvm::Value* elemVal,
+                         const sun::TypePtr& elemSunType,
+                         llvm::Type* slotType);
 
   // An alloca in the function's entry block, so loops don't grow the stack
   AllocaInst* createEntryBlockAlloca(Function* func, StringRef varName,
@@ -489,15 +511,6 @@ class CodegenVisitor {
   llvm::Value* codegenClassSetIndex(const IndexAST& indexExpr,
                                     const ExprAST* valueExpr,
                                     sun::ClassType* classType);
-
-  /**
-   * Copies a returned array's data/dims to the caller's stack.
-   * Arrays returned by value hold pointers into the callee's stack, which
-   * dangle after the return. This allocates storage on the caller's stack and
-   * copies the contents, handing back a fat struct with valid pointers.
-   */
-  llvm::Value* copyArrayToCallerStack(llvm::Value* arrayFat,
-                                      const sun::ArrayType* arrayType);
 
   // Attach a #dbg_declare for a user variable (no-op without -g)
   void debugDeclareLocal(llvm::AllocaInst* alloca, const std::string& name,

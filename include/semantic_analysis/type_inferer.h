@@ -96,6 +96,17 @@ class TypeInferer {
                                         const std::string &name,
                                         size_t argCount, const Position &loc);
 
+  /** True for a builtin array method name: ndims() or dim(i). */
+  static bool isArrayMethod(const std::string &name);
+
+  /**
+   * The result type of an array builtin method call (on a sized array or a
+   * `ref array<T>` view), checking the arguments.
+   */
+  sun::TypePtr inferArrayMethodType(const std::string &name,
+                                    const std::vector<sun::TypePtr> &argTypes,
+                                    const Position &loc);
+
   // ---- Written type annotations ------------------------------------------
 
   /**

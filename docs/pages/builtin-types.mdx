@@ -129,16 +129,19 @@ iteration always terminates and always covers the whole string.
 
 ## Arrays
 
-Arrays are fixed-size collections of elements of the same type.
+A sized array `array<T, N>` owns its `N` elements inline, wherever it lives: a
+local, a class field, a global, or an element of another array. Its size is
+part of its type, so `array<i32, 3>` and `array<i32, 5>` are different types.
+Multi-dimensional arrays add one size per dimension: `array<f64, 2, 3>`.
 
 ### Declaration and Initialization
 
 ```sun
-// Array literals
+// Array literals; the type is array<i32, 5>
 var arr = [1, 2, 3, 4, 5];
 
 // With explicit type annotation
-var arr: array<i32> = [10, 20, 30];
+var arr: array<i32, 3> = [10, 20, 30];
 
 // Multidimensional arrays
 var matrix: array<f64, 2, 3> = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
@@ -149,16 +152,53 @@ var matrix: array<f64, 2, 3> = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
 ```sun
 var arr = [10, 20, 30, 40, 50];
 var first = arr[0];   // 10
-var third = arr[2];   // 30
+arr[2] = 33;
 
 // Multidimensional indexing
 var matrix = [[1, 2], [3, 4]];
 var element = matrix[1, 0];  // 3
 ```
 
-<Callout type="warning">
-  Array bounds are checked at runtime. Accessing an out-of-bounds index will cause a runtime error.
-</Callout>
+`arr.ndims()` is the number of dimensions and `arr.dim(i)` the size of
+dimension `i`, both as `i64`. Indices are not bounds-checked at run time.
+
+### Ownership
+
+An array is a compound value like a class: passing it by value, assigning it
+to a field or binding it to a new variable **moves** it, and the source may not
+be used afterwards. An array whose elements own something (a class with a
+`deinit`) drops each element when the array is dropped. An element of such an
+array is borrowed in place with `ref` or `const ref`; it cannot be moved out.
+
+```sun
+var a: array<i32, 3> = [1, 2, 3];
+var b = a;        // a moves into b
+// a[0]           // ERROR: use of moved variable 'a'
+```
+
+### Views: `ref array<T>`
+
+An unsized `array<T>` is a **view** of some sized array with its rank erased.
+It only ever exists behind `ref`: a `ref array<T>` or `const ref array<T>`
+parameter accepts an array of any size and rank with that element type, and
+the view keeps the dimensions so `ndims()`, `dim(i)` and multi-dimensional
+indexing work through it.
+
+```sun
+function sum(xs: const ref array<i32>) i32 {
+    var total = 0;
+    for (var i: i64 = 0; i < xs.dim(0); i = i + 1) { total = total + xs[i]; }
+    return total;
+}
+
+var a: array<i32, 4> = [1, 2, 3, 4];
+sum(a);   // a is borrowed, not moved
+```
+
+A bare `array<T>` cannot be a field, local, global, by-value parameter or
+return type. A `ref array<T>` field makes the class a reference holder, and a
+`ref array<T>` return borrows the call's inputs, exactly as with any other
+reference (see [Memory Safety](/memory-safety)).
 
 ## Pointer Types
 

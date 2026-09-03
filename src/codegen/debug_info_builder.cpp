@@ -391,13 +391,27 @@ DIType* DebugInfoBuilder::resolveTypeImpl(const Type& type) {
 
     case Type::Kind::Array: {
       const auto& at = static_cast<const sun::ArrayType&>(type);
-      auto* st = ArrayType::getArrayStructType(ctx);
       auto* u64 = di_->createBasicType("u64", 64, dwarf::DW_ATE_unsigned);
-      return structFor(
-          "array<" + at.getElementType()->toString() + ">", st,
-          {{"data", pointerTo(resolveType(at.getElementType()))},
-           {"ndims", di_->createBasicType("i32", 32, dwarf::DW_ATE_signed)},
-           {"dims", pointerTo(u64)}});
+      // An unsized array is the view struct a `ref array<T>` carries
+      if (at.isUnsized()) {
+        auto* st = ArrayType::getArrayStructType(ctx);
+        return structFor(
+            "array<" + at.getElementType()->toString() + ">", st,
+            {{"data", pointerTo(resolveType(at.getElementType()))},
+             {"ndims", di_->createBasicType("i32", 32, dwarf::DW_ATE_signed)},
+             {"dims", pointerTo(u64)}});
+      }
+      // A sized array is inline storage: a DWARF array with one subrange
+      // per dimension
+      llvm::Type* storageTy = at.getDataStorageType(ctx);
+      SmallVector<Metadata*, 4> subscripts;
+      for (size_t dim : at.getDimensions()) {
+        subscripts.push_back(di_->getOrCreateSubrange(0, dim));
+      }
+      return di_->createArrayType(dl.getTypeSizeInBits(storageTy),
+                                  dl.getABITypeAlign(storageTy).value() * 8,
+                                  resolveType(at.getElementType()),
+                                  di_->getOrCreateArray(subscripts));
     }
 
     case Type::Kind::Slice: {

@@ -32,8 +32,8 @@ generic payload enums with owning payloads and drop glue. The absence APIs
 ## Constants and Compile-Time Evaluation
 
 Routine requirements in embedded and safety-critical work, not niceties.
-Fixed-size array types (`array<i32, 4>`, `array<f64, 2, 3>`) exist and their
-dimensions are part of the type.
+Fixed-size array types (`array<i32, 4>`, `array<f64, 2, 3>`) exist, own their
+elements inline, and their dimensions are part of the type.
 
 - [ ] Compile-time evaluation of constant expressions (`const` variables,
       `const ref` and `const method` exist; a `const` global is still

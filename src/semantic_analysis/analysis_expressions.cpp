@@ -39,10 +39,18 @@ void SemanticAnalyzer::analyzeNumberLiteral(ExprAST& expr,
   expr.setResolvedType(types_.inferType(expr));
 }
 
-void SemanticAnalyzer::analyzeArrayLiteral(ArrayLiteralAST& arrLit) {
-  // Analyze each element
+void SemanticAnalyzer::analyzeArrayLiteral(ArrayLiteralAST& arrLit,
+                                           sun::TypePtr expectedType) {
+  // The expected element type (a field's or parameter's array type) lets a
+  // literal of narrower numbers widen to it
+  if (expectedType && unwrapRef(expectedType) &&
+      unwrapRef(expectedType)->isArray() && !arrLit.getResolvedType()) {
+    arrLit.setResolvedType(unwrapRef(expectedType));
+  }
+  // Analyze each element; a compound element moves into the literal
   for (const auto& elem : arrLit.getElements()) {
     analyzeExpr(const_cast<ExprAST&>(*elem));
+    checkMoveSource(*elem, arrLit.getLocation());
   }
   // Always use inferType - it will use any expected type hint (from
   // function parameter) to widen element types if needed, while computing

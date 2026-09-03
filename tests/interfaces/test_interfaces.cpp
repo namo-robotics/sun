@@ -335,8 +335,10 @@ TEST(Interfaces_Iterator, generic_implements_iiterator) {
       init() {}
     }
 
+    // The iterator views the caller's array through a `ref array<T>` field,
+    // which makes it a reference holder bound to that array's frame.
     class ArrayIterator<T> implements IIterator<T, DummyContainer> {
-      var items: array<T>;
+      var items: ref array<T>;
       var index: i32;
       var size: i32;
 

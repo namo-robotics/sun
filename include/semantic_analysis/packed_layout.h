@@ -81,8 +81,10 @@ inline llvm::Align lvalueAlign(const ExprAST& target, llvm::Type* slotTy,
 // interior padding the user asked to remove.
 inline std::string rejectFieldType(const TypePtr& fieldType) {
   if (!fieldType) return {};
-  if (fieldType->isArray()) {
-    return "has array type. Arrays are fat pointers and cannot be packed. Use "
+  if (fieldType->isArray() &&
+      static_cast<const ArrayType*>(fieldType.get())->isUnsized()) {
+    return "has unsized array type. An unsized array is a view of storage "
+           "owned elsewhere and cannot be packed; use a sized array<T, N> or "
            "raw_ptr<T> instead.";
   }
   if (fieldType->isInterface()) {

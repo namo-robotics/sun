@@ -44,10 +44,6 @@ llvm::Value* ClassGenerator::codegenEnumVariantAccess(
   return gen_.codegenEnumVariantAccess(enumType, variant);
 }
 
-llvm::Value* ClassGenerator::codegenArrayShape(const MemberAccessAST& expr) {
-  return gen_.codegenArrayShape(expr);
-}
-
 std::pair<llvm::Value*, sun::ClassType*> ClassGenerator::codegenObjectPtr(
     const ExprAST& object) {
   return gen_.codegenObjectPtr(object);

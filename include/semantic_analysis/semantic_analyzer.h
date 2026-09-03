@@ -199,7 +199,8 @@ class SemanticAnalyzer {
 
   // Value expressions (analysis_expressions.cpp)
   void analyzeNumberLiteral(ExprAST &expr, sun::TypePtr expectedType);
-  void analyzeArrayLiteral(ArrayLiteralAST &arrLit);
+  void analyzeArrayLiteral(ArrayLiteralAST &arrLit,
+                           sun::TypePtr expectedType = nullptr);
   void analyzeIndexExpr(IndexAST &arrIdx);
   void analyzeSliceExpr(ExprAST &expr);
   void analyzeBinaryExpr(BinaryExprAST &binExpr, sun::TypePtr expectedType);

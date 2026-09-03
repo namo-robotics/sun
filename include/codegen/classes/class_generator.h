@@ -258,7 +258,6 @@ class ClassGenerator {
                          unsigned argNoBase = 1);
   llvm::Value* codegenEnumVariantAccess(sun::EnumType& enumType,
                                         const sun::EnumVariant& variant);
-  llvm::Value* codegenArrayShape(const MemberAccessAST& expr);
   std::pair<llvm::Value*, sun::ClassType*> codegenObjectPtr(
       const ExprAST& object);
   llvm::Value* materializeMethodClosure(llvm::Value* fnPtr,

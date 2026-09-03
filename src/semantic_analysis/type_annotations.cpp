@@ -240,7 +240,23 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
     if (!annot.elementType) {
       return nullptr;
     }
-    sun::TypePtr referencedType = typeAnnotationToType(*annot.elementType);
+    // `ref array<T>` is the one place an unsized array may be written: a
+    // view of some sized array with its rank erased
+    sun::TypePtr referencedType;
+    if (annot.elementType->isArray() &&
+        annot.elementType->arrayDimensions.empty()) {
+      if (!annot.elementType->elementType) {
+        logAndThrowError("array type requires an element type", annot.span);
+      }
+      sun::TypePtr elemType =
+          typeAnnotationToType(*annot.elementType->elementType);
+      if (!elemType) {
+        logAndThrowError("invalid array element type", annot.span);
+      }
+      referencedType = sun::Types::Array(elemType, {});
+    } else {
+      referencedType = typeAnnotationToType(*annot.elementType);
+    }
     if (!referencedType) return nullptr;
     auto refType =
         sun::Types::Reference(referencedType, /*isMutable=*/!annot.constRef);
@@ -323,16 +339,24 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
     return lambdaType;
   }
 
-  // Array types: array<T, N> or array<T, M, N> or array<T> (unsized)
+  // Array types: array<T, N> or array<T, M, N>. An unsized array<T> is a
+  // view of storage owned elsewhere and may only be written behind `ref`
+  // (handled by the reference case above).
   if (annot.isArray()) {
     if (!annot.elementType) {
       logAndThrowError("array type requires an element type", annot.span);
+    }
+    if (annot.arrayDimensions.empty()) {
+      logAndThrowError(
+          "an unsized array<T> is a view of a sized array and may only be "
+          "used behind ref: write 'ref array<T>' or 'const ref array<T>', or "
+          "give it a size: array<T, N>",
+          annot.span);
     }
     sun::TypePtr elemType = typeAnnotationToType(*annot.elementType);
     if (!elemType) {
       logAndThrowError("invalid array element type", annot.span);
     }
-    // Empty dimensions means "unsized" - accepts any array<T, ...>
     return sun::Types::Array(elemType, annot.arrayDimensions);
   }
 

@@ -79,7 +79,8 @@ Value* ScopeManager::compoundStorageAddress(const std::string& name) {
 void ScopeManager::trackClassAllocation(Value* alloca, const std::string& name,
                                         sun::TypePtr type) {
   if (scopes_.empty()) return;
-  if (type && type->isEnum() && !sun::typeNeedsDrop(type)) return;
+  if (type && (type->isEnum() || type->isArray()) && !sun::typeNeedsDrop(type))
+    return;
   for (auto& scope : scopes_) {
     for (auto& alloc : scope.classAllocations) {
       if (alloc.alloca == alloca) {
@@ -305,8 +306,60 @@ void ScopeManager::emitFieldDeinit(Value* objectPtr,
       Value* fieldPtr = ctx.builder->CreateStructGEP(
           structType, objectPtr, field.index, baseName + "." + field.name);
       emitEnumDrop(static_cast<sun::EnumType&>(*field.type), fieldPtr);
+    } else if (field.type->isArray() && sun::typeNeedsDrop(field.type)) {
+      Value* fieldPtr = ctx.builder->CreateStructGEP(
+          structType, objectPtr, field.index, baseName + "." + field.name);
+      emitArrayDrop(static_cast<sun::ArrayType&>(*field.type), fieldPtr,
+                    baseName + "." + field.name);
     }
   }
+}
+
+/**
+ * Drops every element of a sized array's inline storage, in order. A
+ * moved-from element is all zero, which its own drop treats as nothing.
+ */
+void ScopeManager::emitArrayDrop(sun::ArrayType& arrayType, Value* storagePtr,
+                                 const std::string& name) {
+  if (arrayType.isUnsized() || !sun::typeNeedsDrop(&arrayType)) return;
+  const sun::TypePtr& elemType = arrayType.getElementType();
+  llvm::Type* elemLLVMType = elemType->toLLVMType(ctx.getContext());
+  size_t count = arrayType.getTotalElements();
+
+  // The storage is [N x [M x T]]; its first element's address is also the
+  // address of a flat run of N*M elements
+  Value* first = ctx.builder->CreateBitCast(
+      storagePtr, PointerType::getUnqual(ctx.getContext()), name + ".elems");
+
+  Function* parent = ctx.builder->GetInsertBlock()->getParent();
+  BasicBlock* headBlock =
+      BasicBlock::Create(ctx.getContext(), name + ".drop.head", parent);
+  BasicBlock* bodyBlock =
+      BasicBlock::Create(ctx.getContext(), name + ".drop.body", parent);
+  BasicBlock* doneBlock =
+      BasicBlock::Create(ctx.getContext(), name + ".drop.done", parent);
+  llvm::Type* i64Ty = llvm::Type::getInt64Ty(ctx.getContext());
+
+  BasicBlock* entryBlock = ctx.builder->GetInsertBlock();
+  ctx.builder->CreateBr(headBlock);
+
+  ctx.builder->SetInsertPoint(headBlock);
+  PHINode* index = ctx.builder->CreatePHI(i64Ty, 2, name + ".drop.i");
+  index->addIncoming(ConstantInt::get(i64Ty, 0), entryBlock);
+  Value* more = ctx.builder->CreateICmpULT(
+      index, ConstantInt::get(i64Ty, count), name + ".drop.more");
+  ctx.builder->CreateCondBr(more, bodyBlock, doneBlock);
+
+  ctx.builder->SetInsertPoint(bodyBlock);
+  Value* elemPtr =
+      ctx.builder->CreateGEP(elemLLVMType, first, index, name + ".elem");
+  emitDropInPlace(elemType, elemPtr, name + "[i]");
+  Value* next =
+      ctx.builder->CreateAdd(index, ConstantInt::get(i64Ty, 1), name + ".next");
+  index->addIncoming(next, ctx.builder->GetInsertBlock());
+  ctx.builder->CreateBr(headBlock);
+
+  ctx.builder->SetInsertPoint(doneBlock);
 }
 
 /**
@@ -363,6 +416,8 @@ void ScopeManager::emitDropInPlace(const sun::TypePtr& type, Value* ptr,
     emitInterfaceDrop(*interfaceType, ptr);
   } else if (type->isEnum()) {
     emitEnumDrop(static_cast<sun::EnumType&>(*type), ptr);
+  } else if (type->isArray()) {
+    emitArrayDrop(static_cast<sun::ArrayType&>(*type), ptr, name);
   }
 }
 

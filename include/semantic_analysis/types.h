@@ -778,10 +778,12 @@ class ErrorUnionType : public Type {
   }
 };
 
-// Fixed-size array type: array<T, N> or array<T, M, N> for multi-dimensional
-// Type annotation: array<i32, 5> for [5 x i32], array<i32, 3, 2> for [3 x [2 x
-// i32]] Stack-allocated, bounds-checked at compile-time for constant indices
-// Unsized arrays: array<T> (empty dimensions) accept any array<T, ...>
+// Array type: array<T, N> or array<T, M, N> for multi-dimensional.
+// A sized array OWNS its elements inline - [N x T] wherever it lives (a local,
+// a field, a global, an element of another array) - and moves like every
+// other compound value. An unsized array<T> (empty dimensions) is a view of
+// some sized array with the rank erased; it exists only behind `ref` and is
+// carried as the fat struct { ptr data, i32 ndims, ptr dims }.
 class ArrayType : public Type {
   TypePtr elementType;             // The element type (e.g., i32)
   std::vector<size_t> dimensions;  // Fixed sizes (e.g., {5} or {3, 2}), empty
@@ -877,11 +879,9 @@ class ArrayType : public Type {
     return false;
   }
 
-  // Get the fat array struct type: { ptr data, i32 ndims, ptr dims }
-  // ALL arrays (sized and unsized) use this representation
-  // - data: pointer to the contiguous element storage
-  // - ndims: number of dimensions
-  // - dims: pointer to i64 array of dimension sizes
+  // The view struct { ptr data, i32 ndims, ptr dims } that a `ref array<T>`
+  // is carried as: the element storage, the rank, and the dimension sizes
+  // (an i64 table that outlives the view - a private constant global).
   static llvm::StructType* getArrayStructType(llvm::LLVMContext& ctx) {
     // Check for existing named type to avoid duplicates
     if (auto* existing = llvm::StructType::getTypeByName(
@@ -898,14 +898,15 @@ class ArrayType : public Type {
         sun::StructNames::ArrayStruct);
   }
 
-  // Array is represented as a fat struct: { ptr data, i32 ndims, ptr dims }
-  // This allows arrays of any shape to be passed around uniformly
+  // A sized array is its inline storage; an unsized one is the view struct
+  // (reached only through ReferenceType::toLLVMType).
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
-    return getArrayStructType(ctx);
+    if (isUnsized()) return getArrayStructType(ctx);
+    return getDataStorageType(ctx);
   }
 
-  // Get the raw LLVM array type for the data storage (used internally)
-  // For array<i32, 3, 2> this returns [3 x [2 x i32]]
+  // The inline storage type of a sized array: [3 x [2 x i32]] for
+  // array<i32, 3, 2>. Null for an unsized array.
   llvm::Type* getDataStorageType(llvm::LLVMContext& ctx) const {
     if (isUnsized()) {
       // Unsized arrays have no fixed storage type
@@ -1007,8 +1008,11 @@ inline bool ReferenceType::isUnsizedArrayRef() const {
   return false;
 }
 
-// ref array<T> is just a pointer to the fat array struct
+// A reference is the referent's address, except a `ref array<T>` to an
+// unsized array, which IS the view struct { ptr data, i32 ndims, ptr dims }:
+// the view is born at the borrow site from a sized array and travels by value.
 inline llvm::Type* ReferenceType::toLLVMType(llvm::LLVMContext& ctx) const {
+  if (isUnsizedArrayRef()) return ArrayType::getArrayStructType(ctx);
   return llvm::PointerType::getUnqual(ctx);
 }
 
@@ -2575,6 +2579,13 @@ inline bool typeNeedsDropImpl(const Type* type,
     }
     return false;
   }
+  // A sized array owns its elements and drops each of them; an unsized array
+  // is a view and owns nothing.
+  if (type->isArray()) {
+    auto* a = static_cast<const ArrayType*>(type);
+    return !a->isUnsized() && a->getElementType() &&
+           typeNeedsDropImpl(a->getElementType().get(), visited);
+  }
   return false;
 }
 
@@ -2641,13 +2652,6 @@ inline bool typeIsFrameCarrying(const TypePtr& type) {
   return typeIsFrameCarrying(type.get());
 }
 
-// True if a read can honestly duplicate a value of this type. Scalars can:
-// primitives, pointers, functions. So can an array, which is a fat pointer to
-// storage owned elsewhere. A class, payload enum or interface value cannot: it
-// has one owner, so reading one out of a borrow would hand back a second value
-// backed by the borrowed storage. Borrow it with `ref` instead, or copy it
-// explicitly with a clone method. Unbound type parameters answer true; the
-// specialization is checked with the concrete type in hand.
 // A copy of the type with every lifetime NAME stripped, recursively.
 // Lifetime names are relative to one signature's lifetime list; a type that
 // crosses into another namespace - a generic type-parameter binding, whose
@@ -2684,12 +2688,28 @@ inline TypePtr eraseLifetimeNames(const TypePtr& type) {
   return type;
 }
 
+// True if a read can honestly duplicate a value of this type. Scalars can:
+// primitives, pointers, functions. A class, payload enum, interface or array
+// value cannot: it has one owner, so reading one out of a borrow would hand
+// back a second value backed by the borrowed storage. Borrow it with `ref`
+// instead, or copy it explicitly with a clone method. Unbound type parameters
+// answer true; the specialization is checked with the concrete type in hand.
 inline bool typeCopiesByRead(const Type* type) {
-  return type && (!type->isCompound() || type->isArray());
+  return type && !type->isCompound();
 }
 
 inline bool typeCopiesByRead(const TypePtr& type) {
   return typeCopiesByRead(type.get());
+}
+
+// True if reading a value of this type out of a place MOVES it: an owned
+// compound value. A borrow stays put and a scalar copies.
+inline bool typeMovesOnRead(const Type* type) {
+  return type && !type->isReference() && !typeCopiesByRead(type);
+}
+
+inline bool typeMovesOnRead(const TypePtr& type) {
+  return typeMovesOnRead(type.get());
 }
 
 inline bool Type::isNumeric() const {
