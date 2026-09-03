@@ -544,6 +544,7 @@ class Formatter {
     }
     out_ += " {\n";
     ++indent_;
+    lastLine_ = -1;  // no blank line right after '{'
     for (size_t i = 0; i < variants.size(); ++i) {
       flushCommentsBefore(variants[i].location.offset);
       writeIndent();
@@ -589,6 +590,7 @@ class Formatter {
     printExpr(*m.getDiscriminant());
     out_ += " {\n";
     ++indent_;
+    lastLine_ = -1;  // no blank line right after '{'
     const auto& arms = m.getArms();
     for (size_t i = 0; i < arms.size(); ++i) {
       const auto& arm = arms[i];

@@ -714,6 +714,50 @@ TEST(Tooling_Fmt, MatchDestructuringPattern) {
   EXPECT_NE(once.find("Shape.Rect(w, _) => "), std::string::npos);
 }
 
+// Regression (#200): a trailing comment on the `match x {` line moves inside
+// the block; a preceding statement must not then earn it a blank line on the
+// second pass.
+TEST(Tooling_Fmt, MatchOpeningLineTrailingCommentIsIdempotent) {
+  std::string once =
+      fmt("function classify(o: Option<i64>) i64 {\n"
+          "var y = 1;\n"
+          "var idx = match o {  // trailing comment here\n"
+          "Option.Some(i) => i,\n"
+          "Option.None => -1\n"
+          "};\n"
+          "return idx;\n"
+          "}\n");
+  EXPECT_EQ(once,
+            "function classify(o: Option<i64>) i64 {\n"
+            "  var y = 1;\n"
+            "  var idx = match o {\n"
+            "    // trailing comment here\n"
+            "    Option.Some(i) => i,\n"
+            "    Option.None => -1\n"
+            "  };\n"
+            "  return idx;\n"
+            "}\n");
+  EXPECT_EQ(fmt(once), once);
+}
+
+// Same shape for a multiline enum header
+TEST(Tooling_Fmt, EnumOpeningLineTrailingCommentIsIdempotent) {
+  std::string once =
+      fmt("function f() void {}\n"
+          "enum Shape {  // shapes\n"
+          "Circle,\n"
+          "Rect\n"
+          "}\n");
+  EXPECT_EQ(once,
+            "function f() void {}\n"
+            "enum Shape {\n"
+            "  // shapes\n"
+            "  Circle,\n"
+            "  Rect\n"
+            "}\n");
+  EXPECT_EQ(fmt(once), once);
+}
+
 TEST(Tooling_Fmt, GenericEnumDeclaration) {
   EXPECT_EQ(fmt("enum Option<T>{Some(T),None}"),
             "enum Option<T> { Some(T), None }\n");
