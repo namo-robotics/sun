@@ -74,7 +74,7 @@ the per-file breakdown.
 The type system (`types.h`) includes:
 
 - **Primitives**: `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `f32`, `f64`, `bool`, `void`
-- **Arrays**: Fixed-size arrays with N-dimensional indexing
+- **Arrays**: Fixed-size arrays with N-dimensional indexing, owning their elements inline; `ref array<T>` views one with the rank erased
 - **Functions/Lambdas**: First-class function types with closure support
 - **Pointers**: `ptr<T>` owning pointers (RAII), `raw_ptr<T>` for C interop, `static_ptr<T>` for static data
 - **References**: `ref T` for borrowing without ownership transfer

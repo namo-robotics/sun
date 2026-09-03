@@ -1298,7 +1298,7 @@ public module std {
     // Returns a non-owning view into the string data
     public const method __slice__(ranges: const ref array<SliceRange>) StringView {
       // For strings, we only support 1D slicing
-      var range: SliceRange = ranges[0];
+      const ref range = ranges[0];
       var start: i64 = range.get_start();
       var end: i64 = range.get_end(this.len);
       return StringView(this.data.raw_data(), start, end - start);

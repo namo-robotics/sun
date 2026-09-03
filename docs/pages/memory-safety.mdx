@@ -632,6 +632,38 @@ function make() Holder {
 This holds transitively: a class whose field is (or contains) a ref-storing
 class is subject to the same rules.
 
+### An Unsized Array Is a View
+
+A sized `array<T, N>` owns its elements and moves like any other compound
+value. An unsized `array<T>` owns nothing: it is a view of some sized array
+with its rank erased, and it may only be written behind `ref`. A
+`ref array<T>` parameter borrows the array it is given; a `ref array<T>` field
+is a reference field, so the class is a holder under Rule 5; a
+`ref array<T>` return is a reference return under Rule 3.
+
+```sun
+class Holder {
+    var xs: const ref array<i64>;                     // a view: Holder is a holder
+    init(xs: const ref array<i64>) { this.xs = xs; }
+}
+
+function make() Holder {
+    var local: array<i64, 3> = [10, 20, 30];
+    return Holder(local);   // ❌ ERROR: cannot return a value that stores references
+}
+
+function first(xs: const ref array<i64>) array<i64> {   // ❌ ERROR: array<T> may only
+    return xs;                                          //    be used behind ref
+}
+
+function main() i32 {
+    var a: array<i64, 3> = [10, 20, 30];
+    var h = Holder(a);       // ✓ h borrows a until the end of main
+    var b = a;               // ❌ ERROR: cannot move out of 'a' because it is borrowed
+    return 0;
+}
+```
+
 ### Rule 5b: An Anonymous Lambda Lifetime Is Frame-Bound
 
 A lambda that carries a captured environment — a `[ref x]` or owned `[x]`

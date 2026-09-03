@@ -118,6 +118,14 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
       checkMemberAccess(static_cast<const MemberAccessAST&>(expr));
       break;
 
+    case ASTNodeType::ARRAY_LITERAL:
+      checkArrayLiteral(static_cast<const ArrayLiteralAST&>(expr));
+      break;
+
+    case ASTNodeType::INDEX:
+      checkIndexExpr(static_cast<const IndexAST&>(expr));
+      break;
+
     case ASTNodeType::MEMBER_ASSIGNMENT:
       checkMemberAssignment(static_cast<const MemberAssignmentAST&>(expr));
       break;
@@ -178,7 +186,7 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
         for (const auto& arg : gcall.getArgs()) {
           if (!arg || isFrameSourcedLambdaExpr(*arg)) continue;
           auto argType = arg->getResolvedType();
-          if (!argType || !argType->isCompound()) continue;
+          if (!typeMovesOnRead(argType)) continue;
           const std::string* base = getBaseVariableName(*arg);
           if (base) {
             noteFrameSourcedLambdaStore(*base, envDepth, arg->getLocation());
@@ -195,8 +203,6 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
     case ASTNodeType::BOOL_LITERAL:
     case ASTNodeType::NULL_LITERAL:
     case ASTNodeType::STRUCT_LITERAL:
-    case ASTNodeType::ARRAY_LITERAL:
-    case ASTNodeType::INDEX:
     case ASTNodeType::THIS:
     case ASTNodeType::PROTOTYPE:
     case ASTNodeType::IMPORT:
@@ -310,7 +316,7 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
       var.getValue()->setMoved(true);
     }
     // For variable references of compound types, mark as moved
-    else if (srcType && srcType->isCompound() &&
+    else if (typeMovesOnRead(srcType) &&
              var.getValue()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
       const auto& srcRef =
           static_cast<const VariableReferenceAST&>(*var.getValue());
@@ -613,7 +619,7 @@ void BorrowChecker::checkVariableAssignment(
     const auto& srcRef =
         static_cast<const VariableReferenceAST&>(*assign.getValue());
     auto srcType = assign.getValue()->getResolvedType();
-    if (srcType && srcType->isCompound() &&
+    if (typeMovesOnRead(srcType) &&
         checkMoveAllowed(srcRef.getName(), srcRef.getLocation()) &&
         checkFieldsIntact(srcRef.getName(), srcRef.getLocation())) {
       recordMove(srcRef.getName(), srcRef.getLocation());
@@ -832,7 +838,7 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
     for (const auto& arg : args) {
       if (!arg) continue;
       TypePtr argType = arg->getResolvedType();
-      if (!argType || !argType->isCompound()) continue;
+      if (!typeMovesOnRead(argType)) continue;
       if (arg->getType() != ASTNodeType::VARIABLE_REFERENCE) {
         noteFieldMove(*arg);
         continue;
@@ -929,7 +935,7 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
 
     // If argument is compound type AND parameter is NOT a reference (by-value)
     // then we move the argument
-    if (argType && argType->isCompound() && !paramType->isReference() &&
+    if (typeMovesOnRead(argType) && !paramType->isReference() &&
         checkMoveAllowed(varRef.getName(), varRef.getLocation()) &&
         checkFieldsIntact(varRef.getName(), varRef.getLocation())) {
       recordMove(varRef.getName(), varRef.getLocation());
@@ -1128,7 +1134,7 @@ std::string BorrowChecker::fieldPath(const ExprAST& expr) const {
 
 void BorrowChecker::noteFieldMove(const ExprAST& value) {
   TypePtr type = value.getResolvedType();
-  if (!type || !type->isCompound()) return;
+  if (!typeMovesOnRead(type)) return;
 
   std::string path = fieldPath(value);
   // A plain variable move is recorded by the caller; only field paths here
@@ -1373,7 +1379,7 @@ void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
         "returns",
         pos);
   }
-  if (retType && retType->isCompound() && !currentFunctionReturnsRef_) {
+  if (typeMovesOnRead(retType) && !currentFunctionReturnsRef_) {
     // Mark temporaries as moved (ownership transferred to caller)
     if (value->isTemporary()) {
       const_cast<ExprAST*>(value)->setMoved(true);
@@ -2269,8 +2275,7 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
   // into the closure's environment, so the name it came from is gone from
   // here on and the enclosing scope no longer drops it.
   for (const auto& cap : proto.getCaptures()) {
-    if (cap.kind != CaptureKind::Owned || !cap.type || !cap.type->isCompound())
-      continue;
+    if (cap.kind != CaptureKind::Owned || !typeMovesOnRead(cap.type)) continue;
     if (!state_.getActiveLoans(cap.name).empty()) {
       reportError(
           "cannot move '" + cap.name + "' into the lambda while it is borrowed",
@@ -2575,7 +2580,7 @@ void BorrowChecker::checkMemberAssignment(const MemberAssignmentAST& assign) {
       assign.getValue()->setMoved(true);
     }
     // For variable references of compound types, mark as moved
-    else if (srcType && srcType->isCompound() &&
+    else if (typeMovesOnRead(srcType) &&
              assign.getValue()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
       const auto& srcRef =
           static_cast<const VariableReferenceAST&>(*assign.getValue());
@@ -2620,7 +2625,58 @@ void BorrowChecker::checkIndexedAssignment(const IndexedAssignmentAST& assign) {
       }
     }
 
-    noteFieldMove(*assign.getValue());
+    // The slot takes the value: a compound source variable is moved from
+    if (assign.getValue()->isTemporary()) {
+      assign.getValue()->setMoved(true);
+    } else if (assign.getValue()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
+      const auto& srcRef =
+          static_cast<const VariableReferenceAST&>(*assign.getValue());
+      if (typeMovesOnRead(assign.getValue()->getResolvedType()) &&
+          checkMoveAllowed(srcRef.getName(), srcRef.getLocation()) &&
+          checkFieldsIntact(srcRef.getName(), srcRef.getLocation())) {
+        recordMove(srcRef.getName(), srcRef.getLocation());
+        clearFieldPaths(srcRef.getName());
+        assign.getValue()->setMoved(true);
+      }
+    } else {
+      noteFieldMove(*assign.getValue());
+    }
+  }
+}
+
+// An array literal takes each element: a compound element variable is moved
+// from, a field path is marked moved, and every element is checked for
+// use-after-move like any other read.
+void BorrowChecker::checkArrayLiteral(const ArrayLiteralAST& literal) {
+  for (const auto& elem : literal.getElements()) {
+    if (!elem) continue;
+    checkExpr(*elem);
+    if (!typeMovesOnRead(elem->getResolvedType())) continue;
+    if (elem->getType() != ASTNodeType::VARIABLE_REFERENCE) {
+      if (elem->isTemporary()) {
+        elem->setMoved(true);
+      } else {
+        noteFieldMove(*elem);
+      }
+      continue;
+    }
+    const auto& varRef = static_cast<const VariableReferenceAST&>(*elem);
+    if (checkMoveAllowed(varRef.getName(), varRef.getLocation()) &&
+        checkFieldsIntact(varRef.getName(), varRef.getLocation())) {
+      recordMove(varRef.getName(), varRef.getLocation());
+      clearFieldPaths(varRef.getName());
+      elem->setMoved(true);
+    }
+  }
+}
+
+// Indexing reads the target and every index expression
+void BorrowChecker::checkIndexExpr(const IndexAST& index) {
+  if (index.getTarget()) checkExpr(*index.getTarget());
+  for (const auto& slice : index.getIndices()) {
+    if (!slice) continue;
+    if (slice->hasStart()) checkExpr(*slice->getStart());
+    if (slice->hasEnd()) checkExpr(*slice->getEnd());
   }
 }
 

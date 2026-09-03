@@ -51,6 +51,22 @@ Value* CodegenVisitor::applyMoveSemantics(Value* argVal,
     return fat;
   }
 
+  // A sized array moves its inline storage: load it, then zero the source
+  // when its elements own anything, so the source's drop releases nothing
+  if (auto* arrayType = sun::tryGetType<sun::ArrayType>(argSunType)) {
+    if (arrayType->isUnsized()) return argVal;
+    llvm::Type* storageType = arrayType->getDataStorageType(ctx.getContext());
+    Value* storageVal =
+        ctx.builder->CreateLoad(storageType, argVal, "move.array");
+    if (sun::typeNeedsDrop(argSunType)) {
+      const DataLayout& DL = module->getDataLayout();
+      ctx.builder->CreateMemSet(
+          argVal, ConstantInt::get(Type::getInt8Ty(ctx.getContext()), 0),
+          DL.getTypeAllocSize(storageType), DL.getABITypeAlign(storageType));
+    }
+    return storageVal;
+  }
+
   // Only apply move semantics to class types that are pointers (addressable)
   auto* classType = sun::tryGetType<sun::ClassType>(argSunType);
   if (!classType) return argVal;
@@ -228,7 +244,19 @@ Value* CodegenVisitor::emitMarshalledExternCall(
 }
 
 Value* CodegenVisitor::materializeStructReturn(Value* callResult) {
-  if (!callResult || !callResult->getType()->isStructTy()) {
+  if (!callResult) return callResult;
+
+  // A sized array comes back as its inline storage by value; give it a
+  // home on this frame so it can be indexed, moved and dropped by address
+  if (callResult->getType()->isArrayTy()) {
+    Function* currentFunc = ctx.builder->GetInsertBlock()->getParent();
+    AllocaInst* resultAlloca = createEntryBlockAlloca(
+        currentFunc, "ret.array", callResult->getType());
+    ctx.builder->CreateStore(callResult, resultAlloca);
+    return resultAlloca;
+  }
+
+  if (!callResult->getType()->isStructTy()) {
     return callResult;
   }
 
@@ -300,14 +328,14 @@ Value* CodegenVisitor::prepareRefArgument(const ExprAST* argExpr,
     return nullptr;
   }
 
-  // Array value expression - need to create a temporary alloca
+  // A sized array temporary (a literal, a returned array) already sits in
+  // storage of its own: its address is the argument
   if (argSunType && argSunType->isArray()) {
     Value* argVal = codegen(*argExpr);
     if (!argVal) return nullptr;
-    llvm::StructType* fatType =
-        sun::ArrayType::getArrayStructType(ctx.getContext());
+    if (argVal->getType()->isPointerTy()) return argVal;
     AllocaInst* tempAlloca =
-        ctx.builder->CreateAlloca(fatType, nullptr, "arr.temp");
+        ctx.builder->CreateAlloca(argVal->getType(), nullptr, "arr.temp");
     ctx.builder->CreateStore(argVal, tempAlloca);
     return tempAlloca;
   }
@@ -722,14 +750,10 @@ Value* CodegenVisitor::codegenMethodCall(const CallExprAST& expr,
                      enumType->getDisplayName() + "' carries no payload");
   }
 
-  // Handle array.shape() builtin
-  if (methodName == "shape" &&
+  // arr.ndims() and arr.dim(i) on arrays and views
+  if ((methodName == "ndims" || methodName == "dim") &&
       sun::tryGetType<sun::ArrayType>(sun::unwrapRef(objectType))) {
-    if (!expr.getArgs().empty()) {
-      logAndThrowError("shape() takes no arguments");
-      return nullptr;
-    }
-    return codegenArrayShape(memberAccess);
+    return codegenArrayQuery(expr, memberAccess);
   }
 
   // Generate object pointer
@@ -852,15 +876,6 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
     calleeReturnType = funcType.getReturnType();
   }
 
-  // Handle array returns: copy data/dims to caller's stack
-  // Arrays returned by value have pointers to callee's stack which become
-  // dangling after return. Copy to caller's stack to fix this.
-  if (auto* arrayType = sun::tryGetType<sun::ArrayType>(expr)) {
-    if (result && !arrayType->getDimensions().empty()) {
-      result = copyArrayToCallerStack(result, arrayType);
-    }
-  }
-
   return scopes.trackCallTemporary(result, expr.getResolvedType());
 }
 
@@ -898,9 +913,32 @@ bool CodegenVisitor::emitCallArguments(
     Value* argVal = nullptr;
 
     switch (conversions[i]) {
-      case sun::ArgConversion::Borrow:
+      case sun::ArgConversion::Borrow: {
+        // A `ref array<T>` argument is a view value, passed on as it is
+        auto* argRef = sun::tryGetType<sun::ReferenceType>(argSunType);
+        if (argRef && argRef->isUnsizedArrayRef()) {
+          argVal = loadArrayView(codegen(*argExpr));
+          break;
+        }
         argVal = prepareRefArgument(argExpr, argSunType);
         break;
+      }
+
+      case sun::ArgConversion::ArrayToView: {
+        // The argument's storage, seen with its rank erased
+        Value* storage = codegen(*argExpr);
+        if (!storage) return false;
+        auto* sized = sun::tryGetType<sun::ArrayType>(sun::unwrapRef(argSunType));
+        if (!storage->getType()->isPointerTy()) {
+          Function* func = ctx.builder->GetInsertBlock()->getParent();
+          AllocaInst* temp = createEntryBlockAlloca(
+              func, "arr.spill", sized->getDataStorageType(ctx.getContext()));
+          ctx.builder->CreateStore(storage, temp);
+          storage = temp;
+        }
+        argVal = emitArrayView(storage, sized->getDimensions());
+        break;
+      }
 
       case sun::ArgConversion::RawPtrAsRef:
         // The pointer value is the referent's address
@@ -987,6 +1025,12 @@ bool CodegenVisitor::emitCallArguments(
                                      ? calleeTy->getParamType(slot)
                                      : nullptr;
         argVal = loadClosureForLambdaParam(argVal, valueType, expectedTy);
+        // A sized array is carried by address; the parameter takes the
+        // inline storage by value
+        if (expectedTy && expectedTy->isArrayTy() &&
+            argVal->getType()->isPointerTy()) {
+          argVal = ctx.builder->CreateLoad(expectedTy, argVal, "arr.arg");
+        }
         break;
       }
     }

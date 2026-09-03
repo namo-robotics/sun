@@ -409,7 +409,9 @@ TEST(Classes_Packed, cannot_ref_field_reached_through_packed_owner) {
                                 "not aligned enough to be borrowed");
 }
 
-TEST(Classes_Packed, rejects_array_field) {
+// An unsized array is a view and may not be a field at all; a sized array is
+// inline storage and packs like any other bytes.
+TEST(Classes_Packed, rejects_unsized_array_field) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     packed_class P {
         var a: u8;
@@ -418,7 +420,22 @@ TEST(Classes_Packed, rejects_array_field) {
     }
     function main() i32 { return 0; }
   )"),
-                                "Arrays are fat pointers and cannot be packed");
+                                "may only be used behind ref");
+}
+
+TEST(Classes_Packed, accepts_sized_array_field) {
+  auto value = executeString(R"(
+    packed_class P {
+        var a: u8;
+        var data: array<i32, 3>;
+        init() { this.a = 1; this.data = [2, 3, 4]; }
+    }
+    function main() i32 {
+        var p = P();
+        return _convert<i32>(_sizeof<P>()) * 10 + p.data[2];
+    }
+  )");
+  EXPECT_EQ(value, 134);
 }
 
 TEST(Classes_Packed, rejects_non_packed_class_field) {

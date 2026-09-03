@@ -15,6 +15,31 @@ Value* FunctionGenerator::codegen(const ReturnExprAST& expr) {
     // Reference returns must return the referent's ADDRESS, not the
     // auto-dereffed value the normal expression path produces
     if (currentFunctionReturnsRef) {
+      // A `ref array<T>` return hands back the view value: a sized array is
+      // viewed with its rank erased, a view is passed on as it is
+      if (retType->isStructTy()) {
+        sun::TypePtr valType =
+            sun::unwrapRef(expr.getValue()->getResolvedType());
+        if (auto* arrayType = sun::tryGetType<sun::ArrayType>(valType)) {
+          Value* view = nullptr;
+          if (arrayType->isUnsized()) {
+            view = gen_.loadArrayView(codegen(*expr.getValue()));
+          } else {
+            Value* storage = gen_.tryCodegenAddress(*expr.getValue());
+            if (!storage) storage = codegen(*expr.getValue());
+            if (storage && storage->getType()->isPointerTy()) {
+              view = gen_.emitArrayView(storage, arrayType->getDimensions());
+            }
+          }
+          if (!view) {
+            logAndThrowError("Cannot return a view of this expression",
+                             expr.getLocation());
+          }
+          scopes().emitScopeCleanup();
+          ctx.builder->CreateRet(view);
+          return nullptr;
+        }
+      }
       Value* addr = gen_.tryCodegenAddress(*expr.getValue());
       if (!addr) {
         // Expressions that are themselves reference-typed codegen directly
@@ -66,7 +91,8 @@ Value* FunctionGenerator::codegen(const ReturnExprAST& expr) {
       // Handle return-by-value for compound types (classes):
       // If the function returns a struct type but we have a pointer,
       // load the struct from the pointer to return it by value.
-      if (retType->isStructTy() && retVal->getType()->isPointerTy()) {
+      if ((retType->isStructTy() || retType->isArrayTy()) &&
+          retVal->getType()->isPointerTy()) {
         retVal = ctx.builder->CreateLoad(retType, retVal, "struct.ret");
       } else if (retType->isDoubleTy() && retVal->getType()->isIntegerTy()) {
         retVal = ctx.builder->CreateSIToFP(retVal, retType, "inttofp");

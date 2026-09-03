@@ -310,6 +310,10 @@ class ScopeManager {
   // enum needs no drop code)
   void emitEnumDrop(sun::EnumType& enumType, llvm::Value* storagePtr);
 
+  // Drop every element of a sized array's inline storage
+  void emitArrayDrop(sun::ArrayType& arrayType, llvm::Value* storagePtr,
+                     const std::string& name);
+
  private:
   // Give `alloc` a drop flag if it has none: an i1 slot that starts false in
   // the entry block and is set where the value became owned, so it is true

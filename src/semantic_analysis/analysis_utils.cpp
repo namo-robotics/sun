@@ -151,9 +151,20 @@ void SemanticAnalyzer::checkMoveSource(const ExprAST& value,
     source = static_cast<const ParenExprAST*>(source)->getInner();
   }
   sun::TypePtr type = source->getResolvedType();
-  // Only an owned compound value moves; scalars and arrays (a fat pointer
-  // into storage owned elsewhere) copy, and borrows stay put
-  if (!type || type->isReference() || sun::typeCopiesByRead(type)) return;
+  // Only an owned compound value moves; scalars copy and borrows stay put
+  if (!sun::typeMovesOnRead(type)) return;
+
+  // An array owns its elements the way a container does: an element is
+  // reached by borrowing it, never by moving it out of the middle
+  if (source->getType() == ASTNodeType::INDEX) {
+    const auto& index = static_cast<const IndexAST&>(*source);
+    sun::TypePtr targetType = unwrapRef(index.getTarget()->getResolvedType());
+    if (targetType && targetType->isArray()) {
+      logAndThrowError("Cannot move an element out of an array; borrow it "
+                       "with 'ref' or 'const ref' instead",
+                       loc);
+    }
+  }
 
   if (source->getType() == ASTNodeType::MEMBER_ACCESS) {
     const auto& access = static_cast<const MemberAccessAST&>(*source);

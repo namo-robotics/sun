@@ -51,7 +51,14 @@ std::string QualifiedName::canonicalTypeString(const TypePtr& type,
     auto* arrType = static_cast<const ArrayType*>(type.get());
     std::string inner =
         canonicalTypeString(arrType->getElementType(), hashPrefix);
-    return "array_" + inner + "_";
+    // The dimensions are part of the type: array<i32, 3> and array<i32, 5>
+    // are different values with different sizes
+    std::string dims;
+    for (size_t dim : arrType->getDimensions()) {
+      dims += (dims.empty() ? "" : "x") + std::to_string(dim);
+    }
+    if (dims.empty()) return "array_" + inner + "_";
+    return "array_" + inner + "_" + dims + "_";
   }
 
   if (type->isLambda()) {

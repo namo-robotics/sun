@@ -29,28 +29,31 @@ public module std {
   // interface IIndexable<T> {
   //     method get(indices: array<i64>) T;
   //     method set(indices: array<i64>, value: T) void;
-  //     method shape() array<i64>;
+  //     method dim(i: i64) i64;
   //     method size() i64;
   //     method ndims() i64;
   // }
 
-  // N-dimensional matrix with contiguous row-major storage
+  // N-dimensional matrix with contiguous row-major storage. The shape is
+  // owned by the matrix, so a matrix may outlive the array it was built from.
   public class Matrix<T> {
+    var alloc: HeapAllocator;  // Allocator (stored via copy), shared with views
     var data: ContiguousBuffer<T>;  // Contiguous element storage (bounds-checked, auto-freed)
-    var dims: array<i64>;  // Shape of each dimension
+    var dims: Vec<i64>;  // Size of each dimension
     var ndims_: i64;  // Number of dimensions
     var total_size: i64;  // Total number of elements
 
     // Constructor: allocates memory for matrix of given shape
-    // shape is an array of dimension sizes: [rows, cols, ...] 
+    // shape is an array of dimension sizes: [rows, cols, ...], copied in
     init(alloc: const ref HeapAllocator, shape: const ref array<i64>) {
-      this.dims = shape;
-      var shape_dims = shape.shape();
-      this.ndims_ = shape_dims[0];
+      this.alloc = alloc.copy();
+      this.ndims_ = shape.dim(0);
+      this.dims = Vec<i64>(alloc, this.ndims_);
 
-      // Compute total size (product of all dimensions)
+      // Copy the shape and compute total size (product of all dimensions)
       this.total_size = 1;
       for (var i: i64 = 0; i < this.ndims_; i = i + 1) {
+        this.dims.push(shape[i]);
         this.total_size = this.total_size * shape[i];
       }
 
@@ -84,9 +87,9 @@ public module std {
       this.data.set_unchecked(idx, value);
     }
 
-    // Get shape array
-    public const method shape() array<i64> {
-      return this.dims;
+    // Get the size of dimension i
+    public const method dim(i: i64) i64 {
+      return this.dims[i];
     }
 
     // Get total element count
@@ -116,7 +119,7 @@ public module std {
     // NOTE: Currently only supports 1D slicing (single range)
     public const method __slice__(ranges: const ref array<SliceRange>) MatrixView<T> {
       // For 1D matrices, slicing is straightforward
-      var range: SliceRange = ranges[0];
+      const ref range = ranges[0];
       var start: i64 = range.get_start();
       var end: i64 = range.get_end(this.dims[0]);
 
@@ -125,7 +128,7 @@ public module std {
       var strides: array<i64, 1> = [1];  // 1D contiguous
 
       // Pass raw pointer to MatrixView (non-owning view over our data)
-      return MatrixView<T>(this.data.raw_data(), start, new_shape, strides);
+      return MatrixView<T>(this.alloc, this.data.raw_data(), start, new_shape, strides);
     }
 
     // Get raw data pointer (escape hatch for interop)
@@ -136,31 +139,29 @@ public module std {
 
   // MatrixView<T> - non-owning view into a Matrix or another view
   // Supports slicing operations that return views without copying data
-  // Views have their own shape and strides but point to parent's data
+  // Views own their shape and strides and point to the parent's data, which
+  // must outlive the view
   public class MatrixView<T> {
     var data: raw_ptr<u8>;  // Pointer to underlying Matrix data (non-owning, as bytes)
     var base_offset: i64;  // Offset into data for start of view
-    var dims: array<i64>;  // Shape of this view
-    var strides: array<i64>;  // Stride in each dimension
+    var dims: Vec<i64>;  // Shape of this view
+    var strides: Vec<i64>;  // Stride in each dimension
     var ndims_: i64;  // Number of dimensions
     var total_size: i64;  // Total elements in view
 
-    // Constructor from raw components.
-    // WARNING: the view keeps the shape and stride arrays it is given (an
-    // array field shares the caller's storage), so both must outlive the
-    // view — storage owned by the matrix, never a caller's frame-local
-    // array. Tracked by the lifetime work in issue #178.
-    init(data_ptr: raw_ptr<u8>, offset: i64, shape: const ref array<i64>, strides_arr: const ref array<i64>) {
+    // Constructor from raw components; the shape and strides are copied in
+    init(alloc: const ref HeapAllocator, data_ptr: raw_ptr<u8>, offset: i64, shape: const ref array<i64>, strides_arr: const ref array<i64>) {
       this.data = data_ptr;
       this.base_offset = offset;
-      this.dims = shape;
-      this.strides = strides_arr;
-      var shape_dims = shape.shape();
-      this.ndims_ = shape_dims[0];
+      this.ndims_ = shape.dim(0);
+      this.dims = Vec<i64>(alloc, this.ndims_);
+      this.strides = Vec<i64>(alloc, this.ndims_);
 
-      // Compute total size
+      // Copy the shape and strides and compute total size
       this.total_size = 1;
       for (var i: i64 = 0; i < this.ndims_; i = i + 1) {
+        this.dims.push(shape[i]);
+        this.strides.push(strides_arr[i]);
         this.total_size = this.total_size * shape[i];
       }
     }
@@ -186,9 +187,9 @@ public module std {
       unsafe { _store<T>(this.data, idx, value); };
     }
 
-    // Get shape array
-    public const method shape() array<i64> {
-      return this.dims;
+    // Get the size of dimension i
+    public const method dim(i: i64) i64 {
+      return this.dims[i];
     }
 
     // Get total element count

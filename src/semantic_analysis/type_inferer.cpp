@@ -104,6 +104,14 @@ sun::TypePtr TypeInferer::inferCallType(const CallExprAST& callExpr) {
                                       callExpr.getArgs().size(),
                                       memberAccess.getLocation());
     }
+    if (unwrapRef(objectType) && unwrapRef(objectType)->isArray()) {
+      std::vector<sun::TypePtr> argTypes;
+      for (const auto& arg : callExpr.getArgs()) {
+        argTypes.push_back(inferType(*arg));
+      }
+      return inferArrayMethodType(memberAccess.getMemberName(), argTypes,
+                                  memberAccess.getLocation());
+    }
     if (objectType && objectType->isModule()) {
       std::vector<sun::TypePtr> argTypes;
       for (const auto& arg : callExpr.getArgs()) {
@@ -1148,17 +1156,17 @@ sun::TypePtr TypeInferer::inferType(const MemberAccessAST& memberAccess) {
     }
 
     case sun::Type::Kind::Array: {
-      auto* arrayType = static_cast<sun::ArrayType*>(objectType.get());
-      if (memberName == "shape") {
-        if (arrayType->isUnsized()) {
-          return sun::Types::Array(sun::Types::Int64(), {});
-        }
-        size_t ndims = arrayType->getDimensions().size();
-        return sun::Types::Array(sun::Types::Int64(), {ndims});
+      // The accessors are methods; the call form is typed by
+      // inferArrayMethodType before the callee is inferred, so reaching
+      // here means the property form was written.
+      if (isArrayMethod(memberName)) {
+        logAndThrowError("Array has no property '" + memberName +
+                             "'; call it: '" + memberName + "(...)'",
+                         memberAccess.getLocation());
       }
-      logAndThrowError(
-          "Array has no member '" + memberName + "'; available: 'shape'",
-          memberAccess.getLocation());
+      logAndThrowError("Array has no member '" + memberName +
+                           "'; available: ndims(), dim(i)",
+                       memberAccess.getLocation());
     }
 
     case sun::Type::Kind::StaticPointer: {
@@ -1295,6 +1303,30 @@ sun::StaticPointerType* TypeInferer::asNonClassStaticPtr(
 
 bool TypeInferer::isStaticPtrMethod(const std::string& name) {
   return name == "length" || name == "raw";
+}
+
+bool TypeInferer::isArrayMethod(const std::string& name) {
+  return name == "ndims" || name == "dim";
+}
+
+sun::TypePtr TypeInferer::inferArrayMethodType(
+    const std::string& name, const std::vector<sun::TypePtr>& argTypes,
+    const Position& loc) {
+  if (!isArrayMethod(name)) {
+    logAndThrowError(
+        "Array has no method '" + name + "'; available: ndims(), dim(i)", loc);
+  }
+  if (name == "ndims") {
+    if (!argTypes.empty()) {
+      logAndThrowError("array.ndims() takes no arguments", loc);
+    }
+    return sun::Types::Int64();
+  }
+  if (argTypes.size() != 1 || !argTypes[0] ||
+      !unwrapRef(argTypes[0])->isIntegral()) {
+    logAndThrowError("array.dim(i) takes one integer argument", loc);
+  }
+  return sun::Types::Int64();
 }
 
 sun::TypePtr TypeInferer::inferStaticPtrMethodType(

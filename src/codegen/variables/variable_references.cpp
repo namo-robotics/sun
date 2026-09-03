@@ -126,7 +126,8 @@ Value* VariableGenerator::codegen(const VariableReferenceAST& expr) {
   if (varType && varType->isReference()) {
     const auto* refType = static_cast<const sun::ReferenceType*>(varType.get());
 
-    // A global reference stores the native pointer in global storage.
+    // A global reference stores the native pointer in global storage; a
+    // global `ref array<T>` stores the view value itself.
     if (GlobalVariable* global = globalForSunName(expr.getMangledName())) {
       Value* pointer = ctx.builder->CreateLoad(
           global->getValueType(), global, expr.getName() + ".ref.ptr");
@@ -141,16 +142,34 @@ Value* VariableGenerator::codegen(const VariableReferenceAST& expr) {
                                      expr.getName() + ".deref");
     }
 
-    // For references to arrays, we need to return a pointer to the fat struct
-    // The alloca holds the pointer value - load it to get the actual pointer
+    // A `ref array<T, N>` holds the storage address; a `ref array<T>` holds
+    // the view value itself (a parameter's slot), or the address of one (a
+    // local re-borrowing another view)
     if (refType->getReferencedType()->isArray()) {
       AllocaInst* alloca = scopes().findVariable(expr.getName());
       if (alloca) {
-        // Load the pointer from the alloca - this gives us ptr to fat struct
-        // IndexExprAST will then load the fat struct through this pointer
+        llvm::StructType* fatType =
+            sun::ArrayType::getArrayStructType(ctx.getContext());
+        if (alloca->getAllocatedType() == fatType) {
+          return ctx.builder->CreateLoad(fatType, alloca,
+                                         expr.getName() + ".view");
+        }
         llvm::Type* ptrType = llvm::PointerType::getUnqual(ctx.getContext());
-        return ctx.builder->CreateLoad(ptrType, alloca,
-                                       expr.getName() + ".ref.ptr");
+        Value* pointer = ctx.builder->CreateLoad(ptrType, alloca,
+                                                 expr.getName() + ".ref.ptr");
+        if (refType->isUnsizedArrayRef()) {
+          return ctx.builder->CreateLoad(fatType, pointer,
+                                         expr.getName() + ".view");
+        }
+        return pointer;
+      }
+      if (Value* addr = functionGen().createCaptureSlotAddress(expr.getName())) {
+        if (refType->isUnsizedArrayRef()) {
+          return ctx.builder->CreateLoad(
+              sun::ArrayType::getArrayStructType(ctx.getContext()), addr,
+              expr.getName() + ".view");
+        }
+        return addr;
       }
       logAndThrowError("Array ref variable not found: " + expr.getName());
     }
@@ -177,27 +196,21 @@ Value* VariableGenerator::codegen(const VariableReferenceAST& expr) {
     logAndThrowError("Reference variable not found: " + expr.getName());
   }
 
-  // For array types, load the fat struct value
-  // Arrays are now represented as { ptr data, i32 ndims, ptr dims }
+  // A sized array is carried by the address of its inline storage, like a
+  // class: the local's alloca, the global, or the capture slot
   if (varType && varType->isArray()) {
-    AllocaInst* alloca = scopes().findVariable(expr.getName());
-    if (alloca) {
-      llvm::StructType* fatType =
-          sun::ArrayType::getArrayStructType(ctx.getContext());
-      return ctx.builder->CreateLoad(fatType, alloca, expr.getName() + ".fat");
+    if (Value* addr = scopes().compoundStorageAddress(expr.getName())) {
+      return addr;
     }
-    // Check global arrays
-    GlobalVariable* gv = module->getGlobalVariable(expr.getName());
-    if (gv) {
-      llvm::StructType* fatType =
-          sun::ArrayType::getArrayStructType(ctx.getContext());
-      return ctx.builder->CreateLoad(fatType, gv, expr.getName() + ".fat");
+    if (GlobalVariable* gv = globalForSunName(expr.getMangledName())) {
+      return gv;
     }
-    // [ref arr] capture: the slot address points at the original fat struct
+    if (GlobalVariable* gv = globalForSunName(expr.getName())) {
+      return gv;
+    }
+    // [ref arr] and owned captures: the slot address is the storage
     if (Value* addr = functionGen().createCaptureSlotAddress(expr.getName())) {
-      llvm::StructType* fatType =
-          sun::ArrayType::getArrayStructType(ctx.getContext());
-      return ctx.builder->CreateLoad(fatType, addr, expr.getName() + ".fat");
+      return addr;
     }
     logAndThrowError("Array variable not found: " + expr.getName());
   }
@@ -379,6 +392,15 @@ void VariableGenerator::assignToVariableSlot(Value* slot, Value* value,
     if (value == slot) return;
     scopes().emitDropInPlace(varType, slot, name);
     value = gen_.applyMoveSemantics(value, varType);
+  }
+  // A sized array moves its inline storage in after the old elements drop
+  if (auto* arrayType = sun::tryGetType<sun::ArrayType>(varType)) {
+    if (!arrayType->isUnsized()) {
+      if (value == slot) return;
+      scopes().emitDropInPlace(varType, slot, name);
+      gen_.emitArrayTransfer(slot, value, *arrayType, /*move=*/true);
+      return;
+    }
   }
   layout::storeIntoSlot(*ctx.builder, module->getDataLayout(), slot, value,
                         varType);

@@ -347,6 +347,7 @@ class Parser {
   unique_ptr<ExprAST> finishVariableAssignment(const std::string& name,
                                                const Position& namePos);
   unique_ptr<ExprAST> finishMemberAssignment(unique_ptr<ExprAST> lhs);
+  unique_ptr<ExprAST> finishIndexedAssignment(unique_ptr<ExprAST> expr);
 
   // Try-catch expression parsing: try { ... } catch (e: IError) { ... }
   unique_ptr<ExprAST> parseTryCatch();

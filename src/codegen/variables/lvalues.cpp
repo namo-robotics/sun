@@ -316,7 +316,7 @@ Value* VariableGenerator::codegen(const CompoundAssignmentAST& expr) {
       auto* classType = static_cast<sun::ClassType*>(baseType.get());
       Value* objPtr = codegen(*indexExpr.getTarget());
       if (!objPtr) return nullptr;
-      llvm::AllocaInst* idxArr = gen_.boxIndicesToArrayRef(indexExpr);
+      llvm::Value* idxArr = gen_.boxIndicesToArrayRef(indexExpr);
       if (!idxArr) return nullptr;
 
       Value* cur = gen_.emitClassIndexCall(objPtr, idxArr, classType);

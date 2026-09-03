@@ -1949,6 +1949,30 @@ unique_ptr<ExprAST> Parser::finishMemberAssignment(unique_ptr<ExprAST> lhs) {
       start);
 }
 
+// The rest of `target[i] = value;` or `target[i] op= value;` once the indexed
+// target has been parsed and the assignment operator is the current token
+unique_ptr<ExprAST> Parser::finishIndexedAssignment(unique_ptr<ExprAST> expr) {
+  Token opTok = curTok;
+  getNextToken();  // eat '=' or 'op='
+  auto value = parseExpression();
+  if (!value) return nullptr;
+
+  if (curTok.kind == TokenKind::SEMI_COLON)
+    getNextToken();
+  else
+    parsingError("expected ';' after indexed assignment");
+
+  Position start = expr->getLocation();
+  if (compoundToBinaryOp(opTok.kind)) {
+    return finishNode(std::make_unique<CompoundAssignmentAST>(
+                          std::move(expr), opTok, std::move(value)),
+                      start);
+  }
+  return finishNode(std::make_unique<IndexedAssignmentAST>(std::move(expr),
+                                                           std::move(value)),
+                    start);
+}
+
 unique_ptr<ExprAST> Parser::parseAssignmentOrExpression() {
   auto idToken = curTok;
   std::string idName = curTok.getIdentifier().value();
@@ -1974,25 +1998,7 @@ unique_ptr<ExprAST> Parser::parseAssignmentOrExpression() {
 
   // Check for indexed assignment: x[i] = value or x[i] op= value
   if (isAssignmentOp(curTok.kind) && expr->getType() == ASTNodeType::INDEX) {
-    Token opTok = curTok;
-    getNextToken();  // eat '=' or 'op='
-    auto value = parseExpression();
-    if (!value) return nullptr;
-
-    if (curTok.kind == TokenKind::SEMI_COLON)
-      getNextToken();
-    else
-      parsingError("expected ';' after indexed assignment");
-
-    Position start = expr->getLocation();
-    if (compoundToBinaryOp(opTok.kind)) {
-      return finishNode(std::make_unique<CompoundAssignmentAST>(
-                            std::move(expr), opTok, std::move(value)),
-                        start);
-    }
-    return finishNode(std::make_unique<IndexedAssignmentAST>(std::move(expr),
-                                                             std::move(value)),
-                      start);
+    return finishIndexedAssignment(std::move(expr));
   }
 
   // Check for member assignment: a.b = value, a.b.c.d = value, a.b op= value
@@ -2474,6 +2480,11 @@ unique_ptr<ExprAST> Parser::parseStatementCore() {
       if (isAssignmentOp(curTok.kind) &&
           lhs->getType() == ASTNodeType::MEMBER_ACCESS) {
         return finishMemberAssignment(std::move(lhs));
+      }
+      // this.items[i] = value or this.items[i] op= value
+      if (isAssignmentOp(curTok.kind) &&
+          lhs->getType() == ASTNodeType::INDEX) {
+        return finishIndexedAssignment(std::move(lhs));
       }
 
       // Not an assignment - expression statement (like method call)

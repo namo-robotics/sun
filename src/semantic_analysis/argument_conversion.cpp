@@ -46,10 +46,19 @@ bool isPayloadEnum(const TypePtr& type) {
 // passed as is. A value read out of a borrow never moves (only types that copy
 // by read get this far, checked by isAssignableTo).
 ArgConversion byValue(const TypePtr& argType) {
-  if (argType->isReference()) return ArgConversion::PassValue;
-  if (argType->isClass() || argType->isInterface() || isPayloadEnum(argType))
-    return ArgConversion::Move;
+  if (typeMovesOnRead(argType)) return ArgConversion::Move;
   return ArgConversion::PassValue;
+}
+
+// True if `target` is an unsized array<T> and `value` a sized array of the
+// same element type: the argument's storage is viewed with its rank erased.
+bool decaysToView(const TypePtr& value, const TypePtr& target) {
+  if (!value || !target || !value->isArray() || !target->isArray())
+    return false;
+  auto* valueArray = static_cast<const ArrayType*>(value.get());
+  auto* targetArray = static_cast<const ArrayType*>(target.get());
+  return targetArray->isUnsized() && !valueArray->isUnsized() &&
+         targetArray->getElementType()->equals(*valueArray->getElementType());
 }
 
 }  // namespace
@@ -62,6 +71,8 @@ const char* toString(ArgConversion conversion) {
       return "move";
     case ArgConversion::Borrow:
       return "borrow";
+    case ArgConversion::ArrayToView:
+      return "array to view";
     case ArgConversion::RawPtrAsRef:
       return "raw pointer as reference";
     case ArgConversion::ClassToInterface:
@@ -114,6 +125,7 @@ std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
     if (value && value->isClass() && target && target->isInterface()) {
       return ArgConversion::ClassToRefInterface;
     }
+    if (decaysToView(value, target)) return ArgConversion::ArrayToView;
     return ArgConversion::Borrow;
   }
 
@@ -149,9 +161,9 @@ std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
   }
 
   // Everything else that is accepted shares a representation with the
-  // parameter: sized to unsized arrays, null to a pointer, raw_ptr<T> to a
-  // byte pointer, a non-throwing lambda for a throwing one, a class seen
-  // through two type instances.
+  // parameter: null to a pointer, raw_ptr<T> to a byte pointer, a
+  // non-throwing lambda for a throwing one, a class seen through two type
+  // instances.
   return byValue(argType);
 }
 

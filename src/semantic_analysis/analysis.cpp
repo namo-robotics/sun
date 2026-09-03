@@ -161,7 +161,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
     }
 
     case ASTNodeType::ARRAY_LITERAL:
-      analyzeArrayLiteral(static_cast<ArrayLiteralAST&>(expr));
+      analyzeArrayLiteral(static_cast<ArrayLiteralAST&>(expr), expectedType);
       break;
 
     case ASTNodeType::INDEX:
@@ -1839,6 +1839,10 @@ SemanticAnalyzer::CalleeResolution SemanticAnalyzer::resolveCallee(
       memberAccess.setResolvedType(types_.inferStaticPtrMethodType(
           *staticPtr, memberAccess.getMemberName(), callExpr.getArgs().size(),
           memberAccess.getLocation()));
+    } else if (objectType && objectType->isArray()) {
+      // Array builtin methods: ndims(), dim(i)
+      memberAccess.setResolvedType(types_.inferArrayMethodType(
+          memberAccess.getMemberName(), argTypes, memberAccess.getLocation()));
     } else {
       // Not a class type (interface, module, ptr-to-class, builtin...).
       // Set the type directly (the object is already analyzed) instead of

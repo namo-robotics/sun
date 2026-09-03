@@ -18,10 +18,12 @@
 namespace sun {
 
 enum class ArgConversion : uint8_t {
-  PassValue,    // the value as it is: scalars, arrays, pointers and
-                // lambda values (and anything read out of a borrow)
+  PassValue,    // the value as it is: scalars, pointers and lambda values
+                // (and anything read out of a borrow)
   Move,         // an owning compound by value: the source is invalidated
   Borrow,       // a `ref T` parameter: the argument's address
+  ArrayToView,  // a sized array to `ref array<T>`: a view of its storage
+                // with the rank erased
   RawPtrAsRef,  // raw_ptr<T> to `ref T`: the pointer is the address
   ClassToInterface,          // an owned class to an owning interface
   BorrowedClassToInterface,  // a borrowed class to an interface parameter:

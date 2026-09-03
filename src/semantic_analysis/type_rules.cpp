@@ -329,12 +329,20 @@ bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
     return toL->acceptsValueOf(*fromL);
   }
 
+  // A borrow of a sized array stands in for a borrow of the unsized view
+  // (the rank is erased); a sized array itself must match exactly.
+  if (to->isArray() && from->isArray()) return false;
+
   // Unwrap reference types and check inner compatibility. A const borrow
   // never becomes a mutable one.
   if (to->isReference() && from->isReference()) {
     auto* toRef = static_cast<const sun::ReferenceType*>(to.get());
     auto* fromRef = static_cast<const sun::ReferenceType*>(from.get());
     if (!sun::refMutabilityConvertible(*fromRef, *toRef)) return false;
+    if (sun::ClassType::isArrayCompatible(fromRef->getReferencedType(),
+                                          toRef->getReferencedType())) {
+      return true;
+    }
     return isAssignableTo(fromRef->getReferencedType(),
                           toRef->getReferencedType());
   }

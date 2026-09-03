@@ -719,7 +719,7 @@ GenericSpecializer::instantiateGenericFunction(
     sun::TypePtr paramType = sema_.types().typeAnnotationToType(argType);
 
     // If a type parameter resolved to a compound type, error - must use ref
-    if (paramType && paramType->isCompound() && !paramType->isReference()) {
+    if (paramType && sun::typeMovesOnRead(paramType)) {
       logAndThrowError("Parameter '" + argName + "' has compound type '" +
                            paramType->toDisplayString() +
                            "' which cannot be passed by value. Use 'ref " +

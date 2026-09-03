@@ -41,7 +41,11 @@ field addresses, alignment and slot writes.
   `typeResolver.resolveForReturn(type)` for function returns.
 - Classes are value types: functions returning a class return the struct by
   value, and callers materialize it on the stack for addressability.
-- Arrays are fat pointers: `{ ptr data, i32 ndims, ptr dims }`.
+- A sized array `array<T, N>` is inline storage `[N x T]`, carried by address
+  like a class, moved with a memcpy that invalidates the source. A
+  `ref array<T>` to an unsized array is the view struct
+  `{ ptr data, i32 ndims, ptr dims }` by value, built at the borrow site; its
+  dims table is a private constant global.
 - Throwing functions (`T throws IError`) return plain `T`; errors are native LLVM
   exceptions (`__gxx_personality_v0`, landing pads), so `throw` unwinds and
   `catch` selects a handler by the thrown class's type id.

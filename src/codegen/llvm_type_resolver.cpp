@@ -196,8 +196,9 @@ Type* LLVMTypeResolver::resolve(const sun::Type& type) {
     }
 
     case sun::Type::Kind::Reference: {
-      // Reference is stored as a pointer (passed by address)
-      result = PointerType::getUnqual(ctx);
+      // A reference is the referent's address; a `ref array<T>` to an
+      // unsized array is the view struct itself
+      result = type.toLLVMType(ctx);
       break;
     }
 
