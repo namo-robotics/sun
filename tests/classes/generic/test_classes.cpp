@@ -486,6 +486,42 @@ TEST(Classes_Generic_Errors, error_on_wrong_type_argument_count) {
                SunError);
 }
 
+// A duplicate field is a mistake in the template, so it is reported there
+// rather than being carried into every specialization's layout.
+TEST(Classes_Generic_Errors, duplicate_field_in_generic_class_is_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Box<T> {
+      var value: T;
+      var value: T;
+      init(x: T) { this.value = x; }
+    }
+
+    function main() i32 {
+      var b: Box<i32> = Box<i32>(1);
+      return 0;
+    };
+  )"),
+                                "Field 'value' already exists in class 'Box'");
+}
+
+// The check runs on the template itself, so it does not depend on anything
+// asking for a specialization.
+TEST(Classes_Generic_Errors,
+     duplicate_field_in_uninstantiated_generic_class_is_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Box<T> {
+      var value: T;
+      var value: T;
+      init(x: T) { this.value = x; }
+    }
+
+    function main() i32 {
+      return 0;
+    };
+  )"),
+                                "Field 'value' already exists in class 'Box'");
+}
+
 TEST(Classes_Generic_Errors, using_inside_module_resolves_generic) {
   auto value = executeStringWithStdlib(R"(
     public module namo {

@@ -798,6 +798,38 @@ TEST(Interfaces_DynamicDispatch, extra_argument_to_interface_method_is_error) {
 }
 
 // ============================================================================
+// Duplicate interface fields
+// ============================================================================
+
+TEST(Interfaces, duplicate_field_in_interface_is_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
+    interface IShape {
+      var sides: i32;
+      var sides: i32;
+      method area() i32;
+    }
+    function main() i32 { return 0; }
+  )"),
+      "Field 'sides' already exists in interface 'IShape'");
+}
+
+// Generic interfaces are templates, so the duplicate is caught on the
+// declaration rather than on whatever instantiates it.
+TEST(Interfaces, duplicate_field_in_generic_interface_is_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
+    interface IHolder<T> {
+      var value: T;
+      var value: T;
+      method get() T;
+    }
+    function main() i32 { return 0; }
+  )"),
+      "Field 'value' already exists in interface 'IHolder'");
+}
+
+// ============================================================================
 // Borrowed class arguments to interface parameters
 // ============================================================================
 
