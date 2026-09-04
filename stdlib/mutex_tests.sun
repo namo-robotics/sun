@@ -173,5 +173,33 @@ public module std {
         std.test.assert_eq(races_counter, 2000);
       }
     }
+
+    // State for guard_releases_on_scope_exit only.
+    var guard_counter: i32 = 0;
+    var guard_mutex: Mutex = Mutex();
+
+    // Adds one to the guard counter under a scope-bound guard.
+    function increment_under_guard() void {
+      var guard = guard_mutex.acquire();
+      guard_counter = guard_counter + 1;
+    }
+
+    test_function guard_releases_on_scope_exit() {
+      if (true) {
+        var guard = guard_mutex.acquire();
+        guard_counter = guard_counter + 1;
+      }
+      // The guard is gone, so another thread can take the lock. This would
+      // block forever if the guard had not released it.
+      var t = spawn(
+        () => i32 {
+          increment_under_guard();
+          return 0;
+        }
+      );
+      t.join();
+      increment_under_guard();
+      std.test.assert_eq(guard_counter, 3);
+    }
   }  // module mutex_tests
 }  // module std

@@ -216,6 +216,13 @@ inline llvm::FunctionCallee pthreadAttrSetstacksize(llvm::Module* m) {
 inline llvm::FunctionCallee pthreadAttrDestroy(llvm::Module* m) {
   return get(m, "pthread_attr_destroy", i32(m), {ptr(m)});
 }
+
+// --- process -----------------------------------------------------------------
+
+// void abort(void)
+inline llvm::FunctionCallee abort(llvm::Module* m) {
+  return get(m, "abort", llvm::Type::getVoidTy(m->getContext()), {});
+}
 // long syscall(long number, ...) — the escape hatch for futex, which has no
 // libc wrapper. The syscall *number* is per-target data (see thread_utils).
 inline llvm::FunctionCallee syscall(llvm::Module* m) {

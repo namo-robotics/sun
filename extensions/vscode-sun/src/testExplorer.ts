@@ -261,132 +261,192 @@ export function activateTestExplorer(
     token: vscode.CancellationToken
   ): Promise<void> {
     const run = controller.createTestRun(request);
-    const sunBinary = resolveSunBinary(serverCommand);
+    try {
+      const sunBinary = resolveSunBinary(serverCommand);
 
-    // Collect the requested leaves, grouped by entrypoint.
-    const requested: vscode.TestItem[] = [];
-    if (request.include) {
-      for (const item of request.include) {
-        requested.push(...leavesOf(item));
-      }
-    } else {
-      controller.items.forEach((root) => requested.push(...leavesOf(root)));
-    }
-    const excluded = new Set(request.exclude ?? []);
-    const byEntrypoint = new Map<string, vscode.TestItem[]>();
-    for (const item of requested) {
-      if (excluded.has(item)) continue;
-      const target = targets.get(item);
-      if (!target || !target.dottedName) continue;
-      const group = byEntrypoint.get(target.entrypoint) ?? [];
-      group.push(item);
-      byEntrypoint.set(target.entrypoint, group);
-    }
-
-    for (const [entrypoint, items] of byEntrypoint) {
-      if (token.isCancellationRequested) break;
-
-      // No filter args when every known test of the entrypoint is included:
-      // the suite may hold tests in files not yet discovered, and run-all
-      // should run those too.
-      const root = controller.items.get(entrypoint);
-      const knownLeaves = root ? leavesOf(root) : [];
-      const runsWholeSuite =
-        knownLeaves.length > 0 && knownLeaves.every((leaf) => items.includes(leaf));
-
-      const filterArgs: string[] = [];
-      if (!runsWholeSuite) {
-        for (const item of items) {
-          filterArgs.push('--test-filter', targets.get(item)!.dottedName);
+      // Collect the requested leaves, grouped by entrypoint.
+      const requested: vscode.TestItem[] = [];
+      if (request.include) {
+        for (const item of request.include) {
+          requested.push(...leavesOf(item));
         }
-      }
-
-      // A fresh prebuilt test binary (declared in sun-config.json) runs
-      // instantly; anything else JIT-compiles the current sources.
-      const runInfo = entrypointRuns.get(entrypoint);
-      let command: string;
-      let args: string[];
-      if (runInfo && binaryIsFresh(runInfo)) {
-        command = runInfo.testBinary!;
-        args = filterArgs;
       } else {
-        command = sunBinary;
-        args = ['test', entrypoint, ...filterArgs];
+        controller.items.forEach((root) => requested.push(...leavesOf(root)));
+      }
+      const excluded = new Set(request.exclude ?? []);
+      const byEntrypoint = new Map<string, vscode.TestItem[]>();
+      for (const item of requested) {
+        if (excluded.has(item)) continue;
+        const target = targets.get(item);
+        if (!target || !target.dottedName) continue;
+        const group = byEntrypoint.get(target.entrypoint) ?? [];
+        group.push(item);
+        byEntrypoint.set(target.entrypoint, group);
       }
 
-      for (const item of items) run.started(item);
-      const byName = new Map<string, vscode.TestItem>();
-      for (const item of items) byName.set(targets.get(item)!.dottedName, item);
+      for (const [entrypoint, items] of byEntrypoint) {
+        if (token.isCancellationRequested) break;
 
-      output.appendLine(`> ${command} ${args.join(' ')}`);
-      await new Promise<void>((resolve) => {
-        const child = spawn(command, args, {
-          cwd: workspaceFolder ?? path.dirname(entrypoint),
-          env,
-        });
-        token.onCancellationRequested(() => child.kill());
+        // No filter args when every known test of the entrypoint is included:
+        // the suite may hold tests in files not yet discovered, and run-all
+        // should run those too.
+        const root = controller.items.get(entrypoint);
+        const knownLeaves = root ? leavesOf(root) : [];
+        const runsWholeSuite =
+          knownLeaves.length > 0 && knownLeaves.every((leaf) => items.includes(leaf));
 
-        let buffered = '';
-        let allOutput = '';
-        const handleLine = (line: string) => {
-          run.appendOutput(line + '\r\n');
-          const pass = /^PASS (\S+)$/.exec(line);
-          if (pass) {
-            const item = byName.get(pass[1]);
-            if (item) {
-              run.passed(item);
-              byName.delete(pass[1]);
+        const filterArgs: string[] = [];
+        if (!runsWholeSuite) {
+          for (const item of items) {
+            filterArgs.push('--test-filter', targets.get(item)!.dottedName);
+          }
+        }
+
+        // A fresh prebuilt test binary (declared in sun-config.json) runs
+        // instantly; anything else JIT-compiles the current sources.
+        const runInfo = entrypointRuns.get(entrypoint);
+        let command: string;
+        let args: string[];
+        if (runInfo && binaryIsFresh(runInfo)) {
+          command = runInfo.testBinary!;
+          args = filterArgs;
+        } else {
+          command = sunBinary;
+          args = ['test', entrypoint, ...filterArgs];
+        }
+
+        for (const item of items) run.started(item);
+        const byName = new Map<string, vscode.TestItem>();
+        for (const item of items) byName.set(targets.get(item)!.dottedName, item);
+
+        output.appendLine(`> ${command} ${args.join(' ')}`);
+        await new Promise<void>((resolve) => {
+          // The runner leads its own process group so that cancelling also
+          // reaches anything the tests spawned. An orphaned grandchild holding
+          // the output pipe would otherwise keep the run open indefinitely.
+          const child = spawn(command, args, {
+            cwd: workspaceFolder ?? path.dirname(entrypoint),
+            env,
+            detached: process.platform !== 'win32',
+          });
+          const signalRunner = (signal: NodeJS.Signals) => {
+            if (child.exitCode !== null || child.signalCode !== null) return;
+            try {
+              if (child.pid !== undefined && process.platform !== 'win32') {
+                process.kill(-child.pid, signal);
+              } else {
+                child.kill(signal);
+              }
+            } catch {
+              // Already gone.
             }
-            return;
-          }
-          const fail = /^FAIL (\S+): ?(.*)$/.exec(line);
-          if (fail) {
-            const item = byName.get(fail[1]);
-            if (item) {
-              run.failed(item, new vscode.TestMessage(fail[2] || 'test failed'));
-              byName.delete(fail[1]);
+          };
+
+          let done = false;
+          let killTimer: NodeJS.Timeout | undefined;
+          const finish = (settle: () => void) => {
+            if (done) return;
+            done = true;
+            if (killTimer) clearTimeout(killTimer);
+            cancellation.dispose();
+            settle();
+            resolve();
+          };
+
+          // Cancelling asks the runner to stop and, if it does not, kills it.
+          // Outstanding tests are skipped rather than errored: they never ran.
+          const cancellation = token.onCancellationRequested(() => {
+            signalRunner('SIGTERM');
+            killTimer = setTimeout(() => signalRunner('SIGKILL'), 2000);
+          });
+          const skipOutstanding = () => {
+            for (const item of byName.values()) run.skipped(item);
+            byName.clear();
+          };
+
+          let buffered = '';
+          let allOutput = '';
+          const handleLine = (line: string) => {
+            run.appendOutput(line + '\r\n');
+            const pass = /^PASS (\S+)$/.exec(line);
+            if (pass) {
+              const item = byName.get(pass[1]);
+              if (item) {
+                run.passed(item);
+                byName.delete(pass[1]);
+              }
+              return;
             }
-          }
-        };
-        const consume = (chunk: Buffer) => {
-          allOutput += chunk.toString();
-          buffered += chunk.toString();
-          let newline;
-          while ((newline = buffered.indexOf('\n')) >= 0) {
-            handleLine(buffered.slice(0, newline).replace(/\r$/, ''));
-            buffered = buffered.slice(newline + 1);
-          }
-        };
-        child.stdout.on('data', consume);
-        child.stderr.on('data', (chunk: Buffer) => {
-          allOutput += chunk.toString();
-          run.appendOutput(chunk.toString().replace(/\n/g, '\r\n'));
+            const fail = /^FAIL (\S+): ?(.*)$/.exec(line);
+            if (fail) {
+              const item = byName.get(fail[1]);
+              if (item) {
+                run.failed(item, new vscode.TestMessage(fail[2] || 'test failed'));
+                byName.delete(fail[1]);
+              }
+            }
+          };
+          const consume = (chunk: Buffer) => {
+            allOutput += chunk.toString();
+            buffered += chunk.toString();
+            let newline;
+            while ((newline = buffered.indexOf('\n')) >= 0) {
+              handleLine(buffered.slice(0, newline).replace(/\r$/, ''));
+              buffered = buffered.slice(newline + 1);
+            }
+          };
+          child.stdout.on('data', consume);
+          child.stderr.on('data', (chunk: Buffer) => {
+            allOutput += chunk.toString();
+            run.appendOutput(chunk.toString().replace(/\n/g, '\r\n'));
+          });
+          child.on('error', (error) => {
+            finish(() => {
+              for (const item of byName.values()) {
+                run.errored(item, new vscode.TestMessage(String(error)));
+              }
+              byName.clear();
+            });
+          });
+          // 'exit' fires when the runner itself is gone; 'close' waits for the
+          // output pipes too, which a surviving grandchild can hold open. A
+          // cancelled run settles on 'exit' so it can never hang on that.
+          child.on('exit', () => {
+            if (token.isCancellationRequested) finish(skipOutstanding);
+          });
+          child.on('close', (code, signal) => {
+            if (buffered.length > 0) handleLine(buffered.replace(/\r$/, ''));
+            if (token.isCancellationRequested) {
+              finish(skipOutstanding);
+              return;
+            }
+            // A requested test the runner never reported: a compile failure,
+            // a crash, or a name the filter did not match. A signal or a
+            // non-zero exit is the most useful thing to say about it, since
+            // a crashed runner usually leaves no output at all.
+            let why: string;
+            if (signal) {
+              why = `the test runner was killed by ${signal}`;
+            } else if (code !== 0) {
+              why = `the test runner exited with code ${code}`;
+            } else {
+              why = 'the test runner reported no result';
+            }
+            const detail = allOutput.trim();
+            const message = detail ? `${why}\n\n${detail}` : why;
+            finish(() => {
+              for (const item of byName.values()) {
+                run.errored(item, new vscode.TestMessage(message));
+              }
+            });
+          });
         });
-        child.on('error', (error) => {
-          for (const item of byName.values()) {
-            run.errored(item, new vscode.TestMessage(String(error)));
-          }
-          byName.clear();
-          resolve();
-        });
-        child.on('close', () => {
-          if (buffered.length > 0) handleLine(buffered.replace(/\r$/, ''));
-          // A requested test the runner never reported: a compile failure,
-          // a crash, or a name the filter did not match.
-          for (const item of byName.values()) {
-            run.errored(
-              item,
-              new vscode.TestMessage(
-                allOutput.trim() || 'the test runner reported no result'
-              )
-            );
-          }
-          resolve();
-        });
-      });
+      }
+    } finally {
+      // Whatever happened above, the run must end, or every test it started
+      // stays spinning in the explorer.
+      run.end();
     }
-
-    run.end();
   }
 
   controller.createRunProfile(

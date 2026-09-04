@@ -27,6 +27,52 @@ std::string withPreamble(const std::string& body) {
 
 }  // namespace
 
+// A void method that falls off its end (no `return;`) still drops its
+// locals, exactly as a void function does.
+TEST(MemorySafety_Drops_ScopeCleanup, void_method_without_return_drops_locals) {
+  auto value = executeString(withPreamble(R"(
+    class Worker {
+      var runs: i32;
+      init() { this.runs = 0; }
+      public method work() void {
+        var f = Owner();
+        this.runs = this.runs + 1;
+      }
+    }
+
+    function main() i32 {
+      var w = Worker();
+      w.work();
+      w.work();
+      return counter * 10 + w.runs;
+    }
+  )"));
+  EXPECT_EQ(value, 22);
+}
+
+// The same for an interface's default method body.
+TEST(MemorySafety_Drops_ScopeCleanup,
+     void_default_method_without_return_drops_locals) {
+  auto value = executeString(withPreamble(R"(
+    interface IWorker {
+      method work() void {
+        var f = Owner();
+      }
+    }
+    class Worker implements IWorker {
+      init() {}
+    }
+
+    function main() i32 {
+      var w = Worker();
+      w.work();
+      w.work();
+      return counter;
+    }
+  )"));
+  EXPECT_EQ(value, 2);
+}
+
 TEST(MemorySafety_Drops_ScopeCleanup, if_block_owner_dropped_at_block_exit) {
   auto value = executeString(withPreamble(R"(
     function helper() i32 {

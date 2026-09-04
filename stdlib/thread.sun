@@ -11,6 +11,11 @@
 //   // critical section
 //   m.unlock();
 //
+//   if (condition) {
+//     var guard = m.acquire();  // locked until guard goes out of scope
+//     // critical section; early returns and throws release the lock too
+//   }
+//
 // A thread never outlives the scope that spawned it: the handle spawn hands
 // back owns the running thread, and dropping it joins.
 
@@ -153,6 +158,42 @@ public module std {
         // Force state to 0 and wake one waiter
         unsafe { _atomic_store_i32(_address_of<i32>(this.state), 0); };
         unsafe { _futex_wake(_address_of<i32>(this.state)); };
+      }
+
+      // Wait for the lock, then hand back a guard that holds it. The guard
+      // unlocks when it goes out of scope, however the scope is left.
+      public method acquire() LockGuard {
+        this.lock();
+        return LockGuard(this, LockKey());
+      }
+    }
+
+    // Proof that a guard was handed out by acquire(). Constructors are always
+    // public, so the guard instead demands this module-private token: code
+    // outside the module cannot name LockKey, so it cannot build a guard.
+    class LockKey {
+      var unused: i8;
+
+      // Nothing to set up; the token's value is that only this module can
+      // make one.
+      init() {
+        this.unused = 0;
+      }
+    }
+
+    // Holds a Mutex locked for as long as it lives. Built only by
+    // Mutex.acquire(), so a guard always holds the lock it names.
+    public class LockGuard {
+      var mutex: ref Mutex;
+
+      // Take custody of an already-locked mutex.
+      init(mutex: ref Mutex, key: LockKey) {
+        this.mutex = mutex;
+      }
+
+      // Release the lock.
+      deinit() {
+        this.mutex.unlock();
       }
     }
   }  // module thread

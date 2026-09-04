@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -178,6 +179,26 @@ class BorrowChecker {
   bool classStoresRefs(const TypePtr& type) const;
   bool classStoresRefsWalk(const TypePtr& type,
                            std::unordered_set<const Type*>& visited) const;
+  // Does this class hold a mutable reference anywhere in its fields?
+  bool classStoresMutableRefs(const TypePtr& type) const;
+  // Visit the by-ref inputs a holder-producing call keeps pointing into: a
+  // constructor of a ref-storing class visits the arguments bound to its ref
+  // init parameters; a call returning such a class by value visits the
+  // receiver and the arguments bound to ref parameters. `mutableRef` says
+  // whether the holder may write through that input. Returns false when the
+  // call produces no holder.
+  bool forEachHolderInput(
+      const CallExprAST& call,
+      const std::function<void(const ExprAST& input, bool mutableRef)>& visit)
+      const;
+  // A holder-producing call keeps pointing into its by-ref inputs after it
+  // returns, so the value holds a loan on each until scope exit.
+  void borrowHolderInputs(const CallExprAST& call);
+  // Does a ref-storing value point into this frame? A construction or
+  // holder-returning call fed a frame-local (or a temporary) by ref, or a
+  // local whose recorded bound names one. A holder built only from `this`,
+  // ref parameters and globals points at storage the caller owns.
+  bool holderPointsIntoFrame(const ExprAST& value) const;
 
   // Protos of the lambdas whose bodies are currently being checked
   // (innermost last) - nested by-ref captures alias their loans
