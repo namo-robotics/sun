@@ -33,9 +33,10 @@ class DeclarationCollector {
       : ctx_(ctx), sema_(sema) {}
 
   /**
-   * Declaration pre-pass: register all functions, classes, interfaces, enums,
-   * and modules in a block before analyzing bodies. This allows forward
-   * references between declarations at the same scope level.
+   * Declaration pre-pass: register all imports, functions, classes,
+   * interfaces, enums, and modules in a block before analyzing bodies. This
+   * allows forward references between declarations at the same scope level,
+   * and lets a `using` anywhere in the block serve every declaration in it.
    */
   void collectDeclarations(BlockExprAST &block);
 

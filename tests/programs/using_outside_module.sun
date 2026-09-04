@@ -1,8 +1,7 @@
-// Regression: `using std;` at file scope does not reach inside a module
-// block, so Vec is not visible where this return type is written. That used
-// to print an error and still emit a (hanging) binary; it must be fatal.
-using std;
-
+// Regression: a generic type that cannot be resolved must be a fatal compile
+// error. Nothing imports std here, so Vec is not visible where this return
+// type is written. That used to print an error and still emit a (hanging)
+// binary.
 public module namo {
   public function make(a: ref HeapAllocator) Vec<String> {
     var v = Vec<String>(a, 4);

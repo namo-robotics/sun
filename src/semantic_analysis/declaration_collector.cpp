@@ -114,8 +114,12 @@ void DeclarationCollector::collectDeclarations(BlockExprAST& block) {
   // and local variable ordering matter)
   if (!ctx_.isAtModuleLevel()) return;
 
-  // Nested calls (modules) share the outermost pre-pass; specialization
-  // bodies deferred anywhere inside are analyzed when it completes.
+  // Nested calls (modules) share the outermost pre-pass. Specialization
+  // bodies deferred anywhere inside are analyzed when the outermost pass
+  // completes normally (see the end of this function); if an error unwinds
+  // through it they are dropped, so the error that stopped the pass is the
+  // one reported rather than a failure in a body analyzed against
+  // half-registered declarations.
   struct PrepassGuard {
     DeclarationCollector& c;
     GenericSpecializer& generics;
@@ -129,13 +133,37 @@ void DeclarationCollector::collectDeclarations(BlockExprAST& block) {
       --c.prepassDepth_;
       if (outermost) {
         generics.setInDeclarationPrepass(false);
-        generics.analyzeDeferredSpecializations();
+        generics.discardDeferredSpecializations();
       }
     }
   } prepassGuard(*this, sema_.generics());
   // The outermost pass makes sibling-module type names visible before any
   // class shape or public method signature is resolved.
   if (prepassGuard.outermost) collectTypeNames(block);
+
+  // Precompiled bundles first. Their stubs were resolved when the bundle was
+  // built, in the bundle's own context; the imports this block binds next
+  // must not reach into their class shapes and make a name ambiguous there.
+  for (const auto& expr : block.getBody()) {
+    if (expr->getType() != ASTNodeType::MOON_SCOPE) continue;
+    auto& moonScope = static_cast<MoonScopeAST&>(*expr);
+    const std::string& contentHash = moonScope.getContentHash();
+    if (!contentHash.empty()) ctx_.enterModuleScope(contentHash);
+    collectDeclarations(const_cast<BlockExprAST&>(moonScope.getBody()));
+    if (!contentHash.empty()) ctx_.exitScope();
+  }
+
+  // Bind this block's imports before anything in it is resolved. Declaration
+  // order does not matter at module level, and a merged bundle places every
+  // file-level `using` after the modules it precedes in source, so the
+  // nested modules, class shapes and signatures below must not depend on
+  // where the `using` sits. Every module scope already exists (the outermost
+  // pass registered the whole tree), so the bindings resolve now.
+  for (const auto& expr : block.getBody()) {
+    if (expr->getType() == ASTNodeType::USING) {
+      registerUsing(static_cast<UsingAST&>(*expr));
+    }
+  }
 
   // Sub-pass A: Register types (enums, interfaces, classes) so that
   // function signatures can reference forward-declared types.
@@ -224,31 +252,11 @@ void DeclarationCollector::collectDeclarations(BlockExprAST& block) {
         }
         break;
       }
-      case ASTNodeType::USING: {
-        // Bind imports in declaration order so nested modules and the shape
-        // / signature passes below resolve imported names (moon-imported
-        // module scopes precede user code in the body)
-        registerUsing(static_cast<UsingAST&>(*expr));
-        break;
-      }
       case ASTNodeType::MODULE: {
         auto& nsDecl = static_cast<ModuleAST&>(*expr);
         ctx_.declareModule(nsDecl);
         collectDeclarations(const_cast<BlockExprAST&>(nsDecl.getBody()));
         ctx_.exitScope();
-        break;
-      }
-      case ASTNodeType::MOON_SCOPE: {
-        // Process the contained module stubs with content hash prefix
-        auto& moonScope = static_cast<MoonScopeAST&>(*expr);
-        const std::string& contentHash = moonScope.getContentHash();
-        if (!contentHash.empty()) {
-          ctx_.enterModuleScope(contentHash);
-        }
-        collectDeclarations(const_cast<BlockExprAST&>(moonScope.getBody()));
-        if (!contentHash.empty()) {
-          ctx_.exitScope();
-        }
         break;
       }
       default:
@@ -343,6 +351,15 @@ void DeclarationCollector::collectDeclarations(BlockExprAST& block) {
       default:
         break;
     }
+  }
+
+  // Every declaration in the program is registered now, so the method bodies
+  // of the specializations requested along the way can be analyzed. This runs
+  // only when the outermost pass got this far: an error above unwinds past it
+  // and the guard drops the deferred bodies instead.
+  if (prepassGuard.outermost) {
+    sema_.generics().setInDeclarationPrepass(false);
+    sema_.generics().analyzeDeferredSpecializations();
   }
 }
 

@@ -1,0 +1,50 @@
+// A file-level `using` serves every declaration in the file, including class
+// fields and function signatures inside nested module blocks. Bodies always
+// saw the import; the declaration pre-pass resolves these before bodies run
+// and must see it too (issue #198).
+using std;
+
+public module outer {
+  module inner {
+    class Holder {
+      var v: Vec<i32>;
+
+      init(alloc: const ref HeapAllocator) {
+        this.v = Vec<i32>(alloc, 4);
+      }
+
+      public method count() i64 {
+        return this.v.size();
+      }
+    }
+
+    function fill(alloc: const ref HeapAllocator, n: i32) Vec<i32> {
+      var v = Vec<i32>(alloc, 4);
+      var i = 0;
+      while (i < n) {
+        v.push(i);
+        i = i + 1;
+      }
+      return v;
+    }
+
+    function total(v: ref Vec<i32>) i64 {
+      return v.size();
+    }
+
+    public function run() i64 {
+      var alloc = make_heap_allocator();
+      var h = Holder(alloc);
+      var filled = fill(alloc, 3);
+      return h.count() + total(filled);
+    }
+  }
+
+  public function run() i64 {
+    return inner.run();
+  }
+}
+
+function main() i32 {
+  return _convert<i32>(outer.run());
+}

@@ -69,6 +69,14 @@ class GenericSpecializer {
   void analyzeDeferredSpecializations();
 
   /**
+   * Drop the deferred method bodies without analyzing them. For the error
+   * path: when the pre-pass stops early, declarations are only partly
+   * registered and analyzing these bodies would report a misleading failure
+   * in place of the error that stopped it.
+   */
+  void discardDeferredSpecializations() { deferredSpecializations_.clear(); }
+
+  /**
    * True while the declaration pre-pass is running, so a class specialization
    * registers its type and method signatures now but defers its method bodies
    * until every declaration in the program is known.

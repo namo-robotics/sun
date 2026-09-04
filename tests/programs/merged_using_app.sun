@@ -1,0 +1,38 @@
+// merged_using_app.sun - Names lib.Box unqualified, through a file-level
+// `using`, as a field type and in a signature inside a nested module. Merged
+// compilation places this `using` after every module in the bundle, and the
+// declaration pre-pass must still see it (issue #198).
+using lib;
+
+public module app {
+  module inner {
+    class Holder {
+      var b: Box<i32>;
+
+      init(b: Box<i32>) {
+        this.b = b;
+      }
+
+      public method value() i32 {
+        return this.b.get();
+      }
+    }
+
+    function wrap(x: i32) Box<i32> {
+      return Box<i32>(x);
+    }
+
+    public function run() i32 {
+      var h = Holder(wrap(40));
+      return h.value() + 2;
+    }
+  }
+
+  public function run() i32 {
+    return inner.run();
+  }
+}
+
+function main() i32 {
+  return app.run();
+}

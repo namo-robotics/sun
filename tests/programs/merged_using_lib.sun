@@ -1,0 +1,15 @@
+// merged_using_lib.sun - The library half of a two-file bundle: a generic
+// class another file imports with a file-level `using`.
+public module lib {
+  public class Box<T> {
+    var v: T;
+
+    init(v: T) {
+      this.v = v;
+    }
+
+    public method get() T {
+      return this.v;
+    }
+  }
+}
