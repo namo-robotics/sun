@@ -4,6 +4,8 @@
 // One handler per AST node kind, called from the dispatcher in
 // analysis.cpp.
 
+#include <set>
+
 #include "semantic_analysis/field_initialization.h"
 #include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/semantic_analyzer.h"
@@ -46,9 +48,18 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
         classDef.getLocation());
   }
 
-  // Validate field names
+  // Validate field names and reject duplicates. Names alone are compared, so
+  // this runs before the generic early-return below: a template's field types
+  // have no meaning until a specialization substitutes them, but a repeated
+  // name is wrong at the declaration either way.
+  std::set<std::string> seenFields;
   for (const auto& field : classDef.getFields()) {
     validateNotReserved(field.name, "Field name", field.location);
+    if (!seenFields.insert(field.name).second) {
+      logAndThrowError("Field '" + field.name + "' already exists in class '" +
+                           baseName + "'",
+                       field.location);
+    }
   }
 
   // Validate method names
@@ -273,9 +284,17 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
         interfaceDef.getLocation());
   }
 
-  // Validate field names
+  // Validate field names and reject duplicates, on the same terms as classes:
+  // a name-only comparison, ahead of the generic early-return below.
+  std::set<std::string> seenInterfaceFields;
   for (const auto& field : interfaceDef.getFields()) {
     validateNotReserved(field.name, "Interface field name", field.location);
+    if (!seenInterfaceFields.insert(field.name).second) {
+      logAndThrowError("Field '" + field.name +
+                           "' already exists in interface '" +
+                           interfaceDef.getName() + "'",
+                       field.location);
+    }
   }
 
   // Validate method names
