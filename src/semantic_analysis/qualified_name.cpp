@@ -6,51 +6,45 @@
 
 namespace sun {
 
-std::string QualifiedName::canonicalTypeString(const TypePtr& type,
-                                               const std::string& hashPrefix) {
+namespace {
+
+// The raw spelling of a type, before it is made safe for a symbol name
+std::string spellType(const TypePtr& type) {
   if (!type) return "void";
 
+  // Classes and interfaces go in by their mangled name, library hash and
+  // all: a bundle and its importers spell that name identically, so the
+  // same signature reads the same on both sides.
   if (type->isClass()) {
-    std::string typeMangledName =
-        static_cast<const ClassType*>(type.get())->getMangledName();
-    // Strip hash prefix only if it matches our library's hash. A generic
-    // specialization carries its type arguments' names inline
-    // (Vec_$hash$_std_String), so every occurrence goes, not just the leading
-    // one — the library mangled those names before its symbols were prefixed.
-    if (!hashPrefix.empty()) {
-      for (size_t at = typeMangledName.find(hashPrefix);
-           at != std::string::npos; at = typeMangledName.find(hashPrefix, at)) {
-        typeMangledName.erase(at, hashPrefix.size());
-      }
-    }
-    return typeMangledName;
+    return static_cast<const ClassType*>(type.get())->getMangledName();
+  }
+  if (type->isInterface()) {
+    return static_cast<const InterfaceType*>(type.get())->getName();
   }
 
   if (type->isReference()) {
     auto* refType = static_cast<const ReferenceType*>(type.get());
-    std::string inner =
-        canonicalTypeString(refType->getReferencedType(), hashPrefix);
-    return "ref_" + inner + "_";
+    std::string inner = spellType(refType->getReferencedType());
+    // Mutability is part of the type: Option<ref T> and Option<const ref T>
+    // are different specializations
+    return (refType->isMutable() ? "ref_" : "const_ref_") + inner + "_";
   }
 
   if (type->isRawPointer()) {
     auto* ptrType = static_cast<const RawPointerType*>(type.get());
-    std::string inner =
-        canonicalTypeString(ptrType->getPointeeType(), hashPrefix);
+    std::string inner = spellType(ptrType->getPointeeType());
     return "raw_ptr_" + inner + "_";
   }
 
   if (type->isStaticPointer()) {
     auto* ptrType = static_cast<const StaticPointerType*>(type.get());
-    std::string inner =
-        canonicalTypeString(ptrType->getPointeeType(), hashPrefix);
+    std::string inner = spellType(ptrType->getPointeeType());
     return "static_ptr_" + inner + "_";
   }
 
   if (type->isArray()) {
     auto* arrType = static_cast<const ArrayType*>(type.get());
-    std::string inner =
-        canonicalTypeString(arrType->getElementType(), hashPrefix);
+    std::string inner = spellType(arrType->getElementType());
     // The dimensions are part of the type: array<i32, 3> and array<i32, 5>
     // are different values with different sizes
     std::string dims;
@@ -67,10 +61,10 @@ std::string QualifiedName::canonicalTypeString(const TypePtr& type,
     const auto& params = lamType->getParamTypes();
     for (size_t i = 0; i < params.size(); ++i) {
       if (i > 0) result += ", ";
-      result += canonicalTypeString(params[i], hashPrefix);
+      result += spellType(params[i]);
     }
     result += ") -> ";
-    result += canonicalTypeString(lamType->getReturnType(), hashPrefix);
+    result += spellType(lamType->getReturnType());
     if (lamType->canThrow()) result += " throws IError";
     return result;
   }
@@ -79,39 +73,34 @@ std::string QualifiedName::canonicalTypeString(const TypePtr& type,
   return type->toString();
 }
 
-std::string QualifiedName::buildParamSuffix(
-    const std::vector<TypePtr>& paramTypes, const std::string& hashPrefix) {
-  if (paramTypes.empty()) return "";
+}  // namespace
 
+std::string QualifiedName::canonicalTypeString(const TypePtr& type) {
+  std::string spelled = spellType(type);
+  // Punctuation a type spelling may contain that has no place in a symbol
+  for (char& c : spelled) {
+    if (c == '<' || c == '>' || c == ',' || c == '(' || c == ')') c = '_';
+    if (c == '[' || c == ']' || c == ' ') c = '_';
+  }
+  return spelled;
+}
+
+std::string QualifiedName::buildParamSuffix(
+    const std::vector<TypePtr>& paramTypes) {
   std::string result;
   for (const auto& paramType : paramTypes) {
-    result += "$";
-    std::string typeStr = canonicalTypeString(paramType, hashPrefix);
-    // Sanitize: replace special chars that may cause issues in symbol names
-    for (char& c : typeStr) {
-      if (c == '<' || c == '>' || c == ',' || c == '(' || c == ')') c = '_';
-      if (c == '[' || c == ']' || c == ' ') c = '_';
-    }
-    result += typeStr;
+    result += "$" + canonicalTypeString(paramType);
   }
   return result;
 }
 
 std::string QualifiedName::buildVariadicArgSuffix(
-    const std::vector<TypePtr>& variadicArgTypes,
-    const std::string& hashPrefix) {
+    const std::vector<TypePtr>& variadicArgTypes) {
   if (variadicArgTypes.empty()) return "";
 
   std::string result = "$v$";
   for (const auto& argType : variadicArgTypes) {
-    result += "$";
-    std::string typeStr = canonicalTypeString(argType, hashPrefix);
-    // Sanitize: replace special chars that may cause issues in symbol names
-    for (char& c : typeStr) {
-      if (c == '<' || c == '>' || c == ',' || c == '(' || c == ')') c = '_';
-      if (c == '[' || c == ']' || c == ' ') c = '_';
-    }
-    result += typeStr;
+    result += "$" + canonicalTypeString(argType);
   }
   return result;
 }
@@ -121,13 +110,12 @@ QualifiedName QualifiedName::specializationOf(
     const std::vector<TypePtr>& packArgTypes) {
   QualifiedName result = templateName;
   for (const auto& typeArg : typeArgs) {
-    result.baseName += "_" + typeArg->toString();
+    result.baseName += "_" + canonicalTypeString(typeArg);
   }
   // A pack's element types are part of the specialization's identity too, so
   // two call sites at different arities get two functions rather than
   // colliding on whichever was instantiated first.
-  result.baseName +=
-      buildVariadicArgSuffix(packArgTypes, templateName.getHashPrefix());
+  result.baseName += buildVariadicArgSuffix(packArgTypes);
   // The type arguments already tell the specializations apart.
   result.paramSuffix.clear();
   return result;

@@ -20,8 +20,10 @@ namespace sun {
 /// Binary header for .moon format
 struct MoonHeader {
   static constexpr uint32_t MAGIC = 0x53554E4C;  // "SUNL"
-  static constexpr uint32_t VERSION = 7;  // V7: native static archives carried
-                                          // alongside the module index
+  static constexpr uint32_t VERSION = 8;  // V8: symbols spelled with the
+                                          // bundle hash by the compiler, so
+                                          // older bundles' symbols no longer
+                                          // match what importers compute
 
   uint32_t magic = MAGIC;
   uint32_t version = VERSION;
@@ -52,10 +54,17 @@ struct NativeArchiveEntry {
 // Writer and Reader classes
 // =============================================================================
 
+/// FNV-1a hash of `data` as 8 hex characters. Bundle hashes are made from
+/// this; it keeps the `$hash$_` symbol prefix short enough to read in IR.
+std::string computeContentHash(const std::string& data);
+
 /// Creates .moon bundle files containing multiple modules
 class MoonWriter {
  public:
-  MoonWriter();
+  /// @param bundleHash The bundle's content hash, chosen before its code was
+  /// compiled so the compiler could spell every exported symbol with the
+  /// `$hash$_` prefix. Recorded in each module's metadata for importers.
+  explicit MoonWriter(std::string bundleHash);
 
   /// Add a compiled module to the bundle
   /// @param module The compiled LLVM module
@@ -89,6 +98,7 @@ class MoonWriter {
 
   std::vector<ModuleData> modules_;
   std::vector<std::pair<std::string, std::string>> nativeArchives_;
+  std::string bundleHash_;
   std::string error_;
 };
 

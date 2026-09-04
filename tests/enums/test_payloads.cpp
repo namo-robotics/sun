@@ -6,8 +6,8 @@
 #include <fstream>
 
 #include "driver/execution_utils.h"
-#include "moon_bundling/metadata_extractor.h"
 #include "moon_bundling/moon.h"
+#include "moon_bundling/moon_builder.h"
 #include "moon_bundling/moon_import.h"
 
 // ============================================================================
@@ -603,14 +603,8 @@ TEST(Enums_Payloads, CrossModuleMoonBundle) {
   }
 
   // Build the .moon bundle the same way `sun --emit-moon` does
-  auto metadata = sun::extractMetadataFromFile(libSrc.string());
-  ASSERT_TRUE(metadata.has_value());
-  auto libDriver = Driver::createForAOT("moon_module");
-  libDriver->compileFiles({libSrc.string()}, {});
-  sun::MoonWriter writer;
-  writer.addModule(libDriver->getModule(), *metadata);
   fs::path moonPath = dir / "shapes.moon";
-  ASSERT_TRUE(writer.write(moonPath));
+  sun::MoonBuilder::build(libSrc.string(), moonPath);
 
   // Import it: construct and destructure the payload enum across the boundary
   auto driver = Driver::createForJIT("moon_main");

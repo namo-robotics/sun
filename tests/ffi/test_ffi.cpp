@@ -15,8 +15,8 @@
 #include "codegen/abi/extern_c.h"
 #include "driver/compiler.h"
 #include "driver/execution_utils.h"
-#include "moon_bundling/metadata_extractor.h"
 #include "moon_bundling/moon.h"
+#include "moon_bundling/moon_builder.h"
 #include "moon_bundling/moon_import.h"
 #include "parsing/parser.h"
 #include "serialization/ast_deserializer.h"
@@ -1127,9 +1127,9 @@ TEST(Ffi, native_global_and_sun_definition_collision_fails) {
 // ============================================================================
 
 TEST(Ffi, extern_symbol_survives_moon_bundling) {
-  // Bundling prefixes every symbol in a module for isolation. A C extern's
-  // name *is* its ABI, so prefixing it renames the libc symbol out of
-  // existence and the import fails to link.
+  // A bundle's own symbols carry its hash prefix for isolation. A C extern's
+  // name *is* its ABI, so prefixing it would rename the libc symbol out of
+  // existence and the import would fail to link.
   namespace fs = std::filesystem;
   initTestEnvironment();
 
@@ -1156,24 +1156,25 @@ TEST(Ffi, extern_symbol_survives_moon_bundling) {
     )";
   }
 
-  auto metadata = sun::extractMetadataFromFile(libSrc.string());
-  ASSERT_TRUE(metadata.has_value());
-  auto libDriver = Driver::createForAOT("ffi_moon_module");
-  libDriver->compileFiles({libSrc.string()}, {});
-
-  // The C symbol must still be spelled `labs` in the bundled module.
-  llvm::Function* labs = libDriver->getModule().getFunction("labs");
-  ASSERT_NE(labs, nullptr);
-  EXPECT_TRUE(labs->hasFnAttribute("sun.cabi"));
-  llvm::GlobalVariable* optind =
-      libDriver->getModule().getGlobalVariable("optind");
-  ASSERT_NE(optind, nullptr);
-  EXPECT_NE(optind->getMetadata("sun.cabi"), nullptr);
-
-  sun::MoonWriter writer;
-  writer.addModule(libDriver->getModule(), *metadata);
   fs::path moonPath = dir / "cwrap.moon";
-  ASSERT_TRUE(writer.write(moonPath));
+  sun::MoonBuilder::build(libSrc.string(), moonPath);
+
+  // The C symbol must still be spelled `labs` in the bundled bitcode.
+  {
+    auto reader = sun::MoonReader::open(moonPath);
+    ASSERT_NE(reader, nullptr);
+    auto modules = reader->listModules();
+    ASSERT_FALSE(modules.empty());
+    llvm::LLVMContext context;
+    auto bundled = reader->loadModule(modules[0], context);
+    ASSERT_NE(bundled, nullptr);
+    llvm::Function* labs = bundled->getFunction("labs");
+    ASSERT_NE(labs, nullptr);
+    EXPECT_TRUE(labs->hasFnAttribute("sun.cabi"));
+    llvm::GlobalVariable* optind = bundled->getGlobalVariable("optind");
+    ASSERT_NE(optind, nullptr);
+    EXPECT_NE(optind->getMetadata("sun.cabi"), nullptr);
+  }
 
   auto driver = Driver::createForJIT("ffi_moon_main");
   driver->setMoonImports({sun::MoonImport(moonPath.string())});

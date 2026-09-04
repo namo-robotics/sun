@@ -530,21 +530,22 @@ void SemanticAnalyzer::analyzeModuleDefinition(ModuleAST& nsDecl) {
 }
 
 void SemanticAnalyzer::analyzeMoonScope(ExprAST& expr) {
-  // MoonScopeAST wraps module stubs from a moon import
-  // Enter a scope with the content hash prefix for symbol isolation
+  // A bundle's declarations live under its content hash, whether they are
+  // an import's stubs or the sources of the bundle being built
   auto& moonScope = static_cast<MoonScopeAST&>(expr);
   const std::string& contentHash = moonScope.getContentHash();
   if (!contentHash.empty()) {
     ctx_.enterModuleScope(contentHash);
   }
-  // Analyze contained ModuleAST nodes. These are stubs — signatures whose
-  // bodies were stripped when the moon was built — so body-shape checks are
-  // off while we are in here.
-  ctx_.enterMoonScope();
+  // An import's contents are stubs — signatures whose bodies were stripped
+  // when the moon was built — so body-shape checks are off while we are in
+  // there. The bundle being built is ordinary source and keeps every check.
+  const bool stubs = !moonScope.isOwnBundle();
+  if (stubs) ctx_.enterMoonScope();
   for (const auto& bodyExpr : moonScope.getBody().getBody()) {
     analyzeExpr(*bodyExpr);
   }
-  ctx_.exitMoonScope();
+  if (stubs) ctx_.exitMoonScope();
   if (!contentHash.empty()) {
     ctx_.exitScope();
   }

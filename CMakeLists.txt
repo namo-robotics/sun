@@ -239,7 +239,6 @@ add_library(sun_lib
     src/moon_bundling/library_cache.cpp
     src/moon_bundling/moon_cache.cpp
     src/moon_bundling/module_linker.cpp
-    src/moon_bundling/module_types.cpp
     src/moon_bundling/metadata_extractor.cpp
     src/moon_bundling/proto_importer.cpp
     # Debug utilities
@@ -362,6 +361,9 @@ add_custom_target(sun_version
         -P ${CMAKE_SOURCE_DIR}/cmake/GitVersion.cmake
     BYPRODUCTS ${SUN_VERSION_HEADER}
     COMMENT "Updating sun_version.h")
+# The compiler's version is part of every .moon bundle's content hash
+# (moon_builder.cpp), so the library needs the header too.
+add_dependencies(sun_lib sun_version)
 
 add_executable(sun src/driver/main.cpp)
 add_dependencies(sun sun_version)

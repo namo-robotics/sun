@@ -9,7 +9,7 @@
 //
 // All name mangling logic is centralized here:
 // - extractHashPrefix: get "$hash$_" prefix from a mangled name
-// - canonicalTypeString: stable type string for mangling (strips hash prefixes)
+// - canonicalTypeString: stable type string for mangling
 // - buildParamSuffix: "$type1$type2$..." for overload disambiguation
 
 #pragma once
@@ -139,35 +139,22 @@ struct QualifiedName {
     return "";
   }
 
-  // Get the hash prefix from this qualified name's scope path.
-  // Looks for first segment starting with '$'.
-  std::string getHashPrefix() const {
-    for (const auto& segment : scopePath) {
-      if (!segment.empty() && segment[0] == '$') {
-        return segment + "_";
-      }
-    }
-    return "";
-  }
-
-  // Get canonical type string for mangling.
-  // Strips hash prefix from class names when it matches the given prefix,
-  // ensuring that types within the same library are mangled without hashes.
-  // This produces stable names for overload disambiguation.
+  // The one way a type is spelled inside a symbol name: overload suffixes
+  // and the type arguments of every specialization use it. A bundle and its
+  // importers name every type identically (library hash included), so the
+  // result is the same on both sides of a .moon boundary. Symbol-safe: any
+  // punctuation in the spelling becomes '_'.
   //
-  // - Classes: use mangledName, strip matching hash prefix
-  // - References: "ref_<inner>_"
+  // - Classes / interfaces: their mangled name
+  // - References: "ref_<inner>_" / "const_ref_<inner>_"
   // - Pointers: "raw_ptr_<inner>_" / "static_ptr_<inner>_"
   // - Arrays: "array_<inner>_"
   // - Primitives/other: use toString()
-  static std::string canonicalTypeString(const TypePtr& type,
-                                         const std::string& hashPrefix);
+  static std::string canonicalTypeString(const TypePtr& type);
 
   // Build param type suffix string for overload disambiguation.
   // Format: "$paramType1$paramType2$..."
-  // Uses canonicalTypeString with hash prefix stripping.
-  static std::string buildParamSuffix(const std::vector<TypePtr>& paramTypes,
-                                      const std::string& hashPrefix = "");
+  static std::string buildParamSuffix(const std::vector<TypePtr>& paramTypes);
 
   // Build a suffix that keys a variadic generic-method specialization by its
   // actual variadic argument types, so calls with different arities/types
@@ -175,8 +162,7 @@ struct QualifiedName {
   // when there are no variadic args (leaving non-variadic names unchanged).
   // Must be computed identically by semantic analysis and codegen.
   static std::string buildVariadicArgSuffix(
-      const std::vector<TypePtr>& variadicArgTypes,
-      const std::string& hashPrefix = "");
+      const std::vector<TypePtr>& variadicArgTypes);
 
   // Name one specialization of a generic function or method. The template's
   // scope and module are the specialization's too; only the base name grows,
@@ -202,9 +188,8 @@ struct QualifiedName {
   }
 
   // Set param suffix from resolved param types.
-  // Automatically derives hash prefix from this name's scope path.
   void setParamSuffix(const std::vector<TypePtr>& paramTypes) {
-    paramSuffix = buildParamSuffix(paramTypes, getHashPrefix());
+    paramSuffix = buildParamSuffix(paramTypes);
   }
 };
 

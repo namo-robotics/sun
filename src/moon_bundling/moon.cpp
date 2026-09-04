@@ -10,16 +10,10 @@
 
 #include <fstream>
 #include <iomanip>
-#include <set>
 #include <sstream>
-
-#include "semantic_analysis/struct_names.h"
 
 namespace sun {
 
-namespace {
-
-/// Compute FNV-1a hash of data, return as 8-char hex string
 std::string computeContentHash(const std::string& data) {
   constexpr uint64_t FNV_OFFSET = 14695981039346656037ULL;
   constexpr uint64_t FNV_PRIME = 1099511628211ULL;
@@ -35,148 +29,12 @@ std::string computeContentHash(const std::string& data) {
   return oss.str();
 }
 
-// Known external C runtime functions that should NOT be prefixed
-bool shouldSkipRename(const std::string& name) {
-  static const std::set<std::string> cRuntimeFunctions = {
-      "malloc", "free", "realloc", "calloc", "memset", "memcpy", "memmove",
-      "memcmp", "strlen", "strcpy", "strncpy", "strcmp", "strncmp", "strcat",
-      "strncat", "printf", "fprintf", "sprintf", "snprintf", "puts", "putchar",
-      "getchar", "fopen", "fclose", "fread", "fwrite", "fseek", "ftell",
-      "fflush", "exit", "abort", "atexit", "atoi", "atof", "atol", "strtol",
-      "strtod", "qsort", "bsearch", "rand", "srand", "time", "clock",
-      "difftime", "mktime", "asctime", "ctime", "gmtime", "localtime",
-      "strftime", "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "sinh",
-      "cosh", "tanh", "exp", "log", "log10", "pow", "sqrt", "ceil", "floor",
-      "fabs", "fmod", "frexp", "ldexp", "modf",
-      // POSIX symbols the intrinsics call (mirrors
-      // include/codegen/intrinsics/libc.h)
-      "write", "read", "open", "close", "lseek", "fstat", "fsync", "ftruncate",
-      "unlink", "rename", "mkdir", "rmdir", "socket", "bind", "listen",
-      "accept", "connect", "send", "recv", "sendto", "recvfrom",
-      "getsockname", "shutdown", "setsockopt", "getsockopt", "syscall",
-      "pthread_create", "pthread_join"};
-
-  if (name.starts_with("llvm.")) return true;
-  if (name.starts_with("$")) return true;
-  if (cRuntimeFunctions.count(name)) return true;
-  if (!name.empty() && name[0] == '_') return true;
-  return false;
-}
-
-// Apply content hash prefix to all symbols in an LLVM module for isolation
-void applySymbolPrefix(llvm::Module& module, const std::string& prefix) {
-  for (auto& func : module.functions()) {
-    if (!func.hasName() || func.getName().empty()) continue;
-    if (func.isIntrinsic()) continue;
-    // A C extern's name *is* its ABI. Prefixing it renames the C symbol out
-    // of existence, so the bundle would fail to link against libc.
-    if (func.hasFnAttribute("sun.cabi")) continue;
-    std::string originalName = func.getName().str();
-    if (!shouldSkipRename(originalName)) {
-      func.setName(prefix + "_" + originalName);
-    }
-  }
-
-  for (auto& global : module.globals()) {
-    if (!global.hasName() || global.getName().empty()) continue;
-    if (global.getMetadata("sun.cabi")) continue;
-    std::string originalName = global.getName().str();
-    if (!shouldSkipRename(originalName)) {
-      global.setName(prefix + "_" + originalName);
-    }
-  }
-
-  for (auto* structTy : module.getIdentifiedStructTypes()) {
-    if (!structTy->hasName()) continue;
-    llvm::StringRef name = structTy->getName();
-    if (name.starts_with("llvm.")) continue;
-    if (name.starts_with("$")) continue;
-    bool isRuntimeType = false;
-    for (const auto& info : sun::StructNames::All) {
-      if (name.starts_with(info.name)) {
-        isRuntimeType = true;
-        break;
-      }
-    }
-    if (isRuntimeType) continue;
-    structTy->setName(prefix + "_" + name.str());
-  }
-}
-
-// Apply symbol prefix to names in protobuf metadata
-void applyMetadataPrefix(moon::ModuleMetadata& metadata,
-                         const std::string& prefix) {
-  // Prefix function names in FunctionDef protos
-  for (int i = 0; i < metadata.functions_size(); ++i) {
-    auto* func = metadata.mutable_functions(i);
-    auto* proto = func->mutable_proto();
-    std::string name = proto->name();
-    if (!name.empty() && !name.starts_with("$")) {
-      proto->set_name(prefix + "_" + name);
-    }
-  }
-
-  // Prefix class names, implemented interfaces, and method names in ClassDef
-  // protos
-  for (int i = 0; i < metadata.classes_size(); ++i) {
-    auto* cls = metadata.mutable_classes(i);
-    std::string name = cls->name();
-    if (!name.empty() && !name.starts_with("$")) {
-      cls->set_name(prefix + "_" + name);
-    }
-    // Prefix implemented interface names
-    for (int j = 0; j < cls->implemented_interfaces_size(); ++j) {
-      auto* iface = cls->mutable_implemented_interfaces(j);
-      std::string ifaceName = iface->name();
-      if (!ifaceName.empty() && !ifaceName.starts_with("$")) {
-        iface->set_name(prefix + "_" + ifaceName);
-      }
-    }
-    // Also prefix method names
-    for (int j = 0; j < cls->methods_size(); ++j) {
-      auto* method = cls->mutable_methods(j);
-      auto* funcProto = method->mutable_function()->mutable_proto();
-      std::string methodName = funcProto->name();
-      if (!methodName.empty() && !methodName.starts_with("$")) {
-        funcProto->set_name(prefix + "_" + methodName);
-      }
-    }
-  }
-
-  // Prefix interface names and method names in InterfaceDef protos
-  for (int i = 0; i < metadata.interfaces_size(); ++i) {
-    auto* iface = metadata.mutable_interfaces(i);
-    std::string name = iface->name();
-    if (!name.empty() && !name.starts_with("$")) {
-      iface->set_name(prefix + "_" + name);
-    }
-    for (int j = 0; j < iface->methods_size(); ++j) {
-      auto* method = iface->mutable_methods(j);
-      auto* funcProto = method->mutable_function()->mutable_proto();
-      std::string methodName = funcProto->name();
-      if (!methodName.empty() && !methodName.starts_with("$")) {
-        funcProto->set_name(prefix + "_" + methodName);
-      }
-    }
-  }
-
-  // Prefix enum names
-  for (int i = 0; i < metadata.enums_size(); ++i) {
-    auto* enumDef = metadata.mutable_enums(i);
-    std::string name = enumDef->name();
-    if (!name.empty() && !name.starts_with("$")) {
-      enumDef->set_name(prefix + "_" + name);
-    }
-  }
-}
-
-}  // namespace
-
 //===----------------------------------------------------------------------===//
 // MoonWriter
 //===----------------------------------------------------------------------===//
 
-MoonWriter::MoonWriter() = default;
+MoonWriter::MoonWriter(std::string bundleHash)
+    : bundleHash_(std::move(bundleHash)) {}
 
 void MoonWriter::addModule(llvm::Module& module,
                            const moon::ModuleMetadata& metadata) {
@@ -198,7 +56,6 @@ void MoonWriter::addModule(llvm::Module& module,
     blobIndexByModule_[&module] = data.blobIndex;
   }
 
-  // Store metadata (hash will be computed in write() from combined content)
   data.metadata = metadata;
 
   // Stamp the target the bitcode was compiled for; the linker refuses to mix
@@ -219,14 +76,6 @@ bool MoonWriter::write(const std::filesystem::path& outputPath) {
     return false;
   }
 
-  // Compute a single content hash from ALL original bitcodes in the bundle
-  std::string combinedContent;
-  for (const auto& mod : modules_) {
-    combinedContent += blobs_[mod.blobIndex];
-  }
-  std::string bundleHash = computeContentHash(combinedContent);
-  std::string prefix = "$" + bundleHash + "$";
-
   // Write header (will update indexOffset later)
   MoonHeader header;
   auto headerPos = out.tellp();
@@ -234,11 +83,10 @@ bool MoonWriter::write(const std::filesystem::path& outputPath) {
 
   // Write module data and build index
   std::vector<ModuleIndexEntry> index;
-  llvm::LLVMContext tempContext;
 
-  // Each distinct blob is prefixed and written once; every module that shares
-  // it points at the same region. A bundle built from one compilation unit
-  // therefore stores its code once instead of once per exported module.
+  // Each distinct blob is written once; every module that shares it points
+  // at the same region. A bundle built from one compilation unit therefore
+  // stores its code once instead of once per exported module.
   struct BlobLocation {
     uint64_t offset = 0;
     uint64_t size = 0;
@@ -252,49 +100,22 @@ bool MoonWriter::write(const std::filesystem::path& outputPath) {
 
     auto& location = blobLocations[mod.blobIndex];
     if (!location.written) {
+      // The bitcode is stored as compiled: the compiler already spelled the
+      // bundle's own symbols with the `$hash$_` prefix importers look for.
       const std::string& bitcode = blobs_[mod.blobIndex];
-
-      // Re-parse the bitcode to apply symbol prefixes
-      auto memBuffer = llvm::MemoryBuffer::getMemBuffer(
-          llvm::StringRef(bitcode.data(), bitcode.size()),
-          mod.metadata.source_hash(), false);
-
-      auto moduleOrErr =
-          llvm::parseBitcodeFile(memBuffer->getMemBufferRef(), tempContext);
-      if (!moduleOrErr) {
-        llvm::consumeError(moduleOrErr.takeError());
-        error_ = "Failed to re-parse bitcode for symbol prefixing";
-        return false;
-      }
-
-      auto& parsedModule = *moduleOrErr;
-
-      // Apply symbol prefixes to LLVM module
-      applySymbolPrefix(*parsedModule, prefix);
-
-      // Re-serialize the prefixed module
-      std::string prefixedBitcode;
-      llvm::raw_string_ostream bitcodeStream(prefixedBitcode);
-      llvm::WriteBitcodeToFile(*parsedModule, bitcodeStream);
-      bitcodeStream.flush();
-
-      // Write prefixed bitcode
       location.offset = static_cast<uint64_t>(out.tellp());
-      location.size = prefixedBitcode.size();
+      location.size = bitcode.size();
       location.written = true;
-      out.write(prefixedBitcode.data(),
-                static_cast<std::streamsize>(prefixedBitcode.size()));
+      out.write(bitcode.data(), static_cast<std::streamsize>(bitcode.size()));
     }
 
     entry.bitcodeOffset = location.offset;
     entry.bitcodeSize = location.size;
 
-    // NOTE: Do NOT prefix metadata names. The semantic analyzer will compute
-    // fully-qualified names based on the import scope path (content hash) and
-    // the module namespace wrapping. The metadata stores base names only.
-
-    // Set shared bundle hash
-    mod.metadata.set_content_hash(bundleHash);
+    // Metadata keeps base names only: importers derive the fully-qualified
+    // names from this hash and the module path, exactly as the bundle's own
+    // compilation did.
+    mod.metadata.set_content_hash(bundleHash_);
 
     // Serialize metadata as protobuf
     std::string metadataStr;

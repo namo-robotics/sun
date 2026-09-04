@@ -8,9 +8,13 @@
 #include "ast/block_expr_ast.h"
 #include "ast/expr_ast.h"
 
-/// MoonScopeAST wraps all stubs from a single moon import.
-/// It carries the content hash for deduplication and optional alias for
-/// renaming.
+/// MoonScopeAST wraps the declarations of one bundle under its `$hash$`
+/// scope: the stubs of an imported .moon, or — when a .moon is being built —
+/// the sources being bundled. Both are analyzed under the same scope name, so
+/// a bundle spells its own symbols exactly as its importers will.
+///
+/// An imported scope also carries the module name and optional alias from
+/// the manifest, and its stubs are precompiled (no bodies, no body checks).
 class MoonScopeAST : public ExprAST {
   std::string
       contentHash_;         // Content hash from moon metadata for deduplication
@@ -18,6 +22,7 @@ class MoonScopeAST : public ExprAST {
   std::optional<std::string> alias_;  // Optional rename from manifest
   std::string moonPath_;  // Path to the moon file (for error messages)
   std::unique_ptr<BlockExprAST> body_;  // Module stubs from this moon
+  bool ownBundle_ = false;              // The bundle being built, not an import
 
  public:
   MoonScopeAST(std::string contentHash, std::string moduleName,
@@ -29,12 +34,26 @@ class MoonScopeAST : public ExprAST {
         moonPath_(std::move(moonPath)),
         body_(std::move(body)) {}
 
+  /// The scope of the bundle being built: `body` is the program's own source
+  /// declarations, fully analyzed and compiled, under `scopeName` ("$hash$").
+  static std::unique_ptr<MoonScopeAST> forOwnBundle(
+      std::string scopeName, std::unique_ptr<BlockExprAST> body) {
+    auto scope = std::make_unique<MoonScopeAST>(
+        std::move(scopeName), "", std::nullopt, "", std::move(body));
+    scope->ownBundle_ = true;
+    return scope;
+  }
+
   ASTNodeType getType() const override { return ASTNodeType::MOON_SCOPE; }
+
+  /// True for the bundle being built; false for an imported bundle's stubs
+  bool isOwnBundle() const { return ownBundle_; }
 
   void forEachChildSlot(const ChildSlotFn& fn) override {
     if (body_) body_->forEachChildSlot(fn);
   }
   std::string toString() const override {
+    if (ownBundle_) return "own_bundle_scope(" + contentHash_ + ")";
     return "moon_scope(" + getEffectiveName() + ")";
   }
 
@@ -58,6 +77,7 @@ class MoonScopeAST : public ExprAST {
   BlockExprAST& getBody() { return *body_; }
 
   std::string dotLabel() const override {
+    if (ownBundle_) return "OwnBundleScope\n" + contentHash_;
     return "MoonScope\n" + getEffectiveName() +
            "\nhash: " + contentHash_.substr(0, 8);
   }

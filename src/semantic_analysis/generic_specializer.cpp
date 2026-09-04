@@ -100,11 +100,8 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
   sun::QualifiedName specializedQName;
   specializedQName.scopePath = genericClassInfo->qualifiedName.scopePath;
   specializedQName.modulePath = genericClassInfo->qualifiedName.modulePath;
-  std::string specializedBaseName = genericClassInfo->qualifiedName.baseName;
-  for (const auto& arg : typeArgs) {
-    specializedBaseName += "_" + sun::Types::mangleTypeName(arg);
-  }
-  specializedQName.baseName = specializedBaseName;
+  specializedQName.baseName = sun::Types::mangleGenericClassName(
+      genericClassInfo->qualifiedName.baseName, typeArgs);
 
   // Derive the mangled name from the qualified name
   std::string mangledName = specializedQName.mangled();

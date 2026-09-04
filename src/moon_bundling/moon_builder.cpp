@@ -2,10 +2,15 @@
 
 #include "moon_bundling/moon_builder.h"
 
+#include <llvm/TargetParser/Host.h>
+
+#include <algorithm>
 #include <fstream>
+#include <map>
 
 #include "driver/driver.h"
 #include "driver/manifest_processor.h"
+#include "generated/sun_version.h"
 #include "moon_bundling/metadata_extractor.h"
 #include "moon_bundling/moon.h"
 #include "moon_bundling/proto_importer.h"
@@ -17,6 +22,46 @@ namespace {
 
 [[noreturn]] void fail(const std::string& message) {
   throw SunError(SunError::Kind::Compile, message);
+}
+
+// The bundle's content hash, decided before anything is compiled so the
+// compiler can spell the bundle's own symbols with it. It has to change
+// whenever the code image would: it covers every source, every bundle the
+// code links against (and how those are aliased), the target, the debug
+// setting and the compiler itself. Importers rely on distinct bundles
+// carrying distinct hashes, and a symbol prefix must not collide.
+std::string computeBundleHash(const std::vector<moon::ModuleMetadata>& metadata,
+                              const std::vector<MoonImport>& moonImports,
+                              const MoonBuildOptions& options) {
+  std::string input;
+  // Sorted, so the hash does not depend on manifest order
+  std::vector<std::string> sources;
+  for (const auto& m : metadata) sources.push_back(m.source_hash());
+  std::sort(sources.begin(), sources.end());
+  for (const auto& h : sources) input += "source:" + h + "\n";
+
+  for (const auto& import : moonImports) {
+    auto reader = MoonReader::open(import.path);
+    if (!reader) fail("Cannot open imported moon: " + import.path);
+    const auto modules = reader->listModules();
+    const auto* first =
+        modules.empty() ? nullptr : reader->getMetadata(modules[0]);
+    if (!first) fail("Imported moon has no modules: " + import.path);
+    input += "moon:" + first->content_hash() + "\n";
+    // An alias changes which symbols this bundle's code refers to
+    for (const auto& [from, to] : std::map<std::string, std::string>(
+             import.moduleRemap.begin(), import.moduleRemap.end())) {
+      input += "alias:" + from + "=" + to + "\n";
+    }
+  }
+
+  input += "target:" +
+           (options.targetTriple.empty() ? llvm::sys::getDefaultTargetTriple()
+                                         : options.targetTriple) +
+           "\n";
+  input += std::string("debug:") + (options.debugInfo ? "1" : "0") + "\n";
+  input += std::string("compiler:") + SUN_VERSION + "-" + SUN_GIT_HASH + "\n";
+  return computeContentHash(input);
 }
 
 }  // namespace
@@ -86,14 +131,18 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
     }
   }
 
-  // ---- Compile everything into one LLVM module ----
+  // ---- Compile everything into one LLVM module, under the bundle's own
+  // hash so its symbols are already the ones importers will look for ----
+  const std::string bundleHash =
+      computeBundleHash(allMetadata, report.moonImports, options);
   auto driver = Driver::createForAOT("moon_module", options.targetTriple,
                                      options.debugInfo);
   driver->setDumpProtoSun(options.dumpProtoSun);
+  driver->setOwnBundleHash(bundleHash);
   driver->compileFiles(report.sunFiles, report.moonImports, report.protoFiles);
 
   // ---- Write the bundle: each module's metadata + the shared code ----
-  MoonWriter writer;
+  MoonWriter writer(bundleHash);
   for (const auto& metadata : allMetadata) {
     writer.addModule(driver->getModule(), metadata);
   }

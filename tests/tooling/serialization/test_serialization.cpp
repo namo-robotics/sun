@@ -8,7 +8,6 @@
 #include <string>
 
 #include "ast.h"
-#include "moon_bundling/module_types.h"
 #include "parsing/lexer.h"
 #include "parsing/parser.h"
 #include "serialization/ast_deserializer.h"
@@ -998,21 +997,6 @@ TEST(Tooling_Serialization, FunctionPointerTypeAnnotationRoundtrip) {
   EXPECT_TRUE(type.isFunction());
   EXPECT_TRUE(type.canError);
   EXPECT_EQ(type.toString(), "function (i32, bool) i64 throws IError");
-}
-
-TEST(Tooling_Serialization, ModuleFunctionPointerTypeSyntax) {
-  auto current = sun::ModuleTypeResolver::parseTypeSignature(
-      "function (i32, bool) i64 throws IError");
-  ASSERT_NE(current, nullptr);
-  ASSERT_EQ(current->getKind(), sun::Type::Kind::Function);
-  EXPECT_EQ(current->toString(), "function (i32, bool) i64 throws IError");
-}
-
-TEST(Tooling_Serialization, ModuleLegacyFunctionPointerTypeCompatibility) {
-  auto legacy = sun::ModuleTypeResolver::parseTypeSignature("(i32) -> i32");
-  ASSERT_NE(legacy, nullptr);
-  ASSERT_EQ(legacy->getKind(), sun::Type::Kind::Function);
-  EXPECT_EQ(legacy->toString(), "function (i32) i32");
 }
 
 // =============================================================================

@@ -32,8 +32,8 @@ class ModuleLinker {
   /// @return true if all modules linked successfully
   bool linkModules(const std::vector<std::string>& moduleKeys);
 
-  /// Register available modules without linking their bitcode
-  /// Builds symbol-to-module mapping for deferred linking
+  /// Register available modules without linking their bitcode. Which
+  /// symbols each provides is learned by declareAvailableFunctions().
   /// @param moduleKeys List of module keys to make available
   void registerAvailableModules(const std::vector<std::string>& moduleKeys);
 
@@ -44,12 +44,13 @@ class ModuleLinker {
   void registerAvailableModulesWithRemap(const MoonImport& moonImport);
 
   /// Declare all exported functions as external declarations in target module
-  /// This allows codegen to reference functions before actual linking
+  /// This allows codegen to reference functions before actual linking, and
+  /// records which module defines each symbol for linkOnlyUsedSymbols()
   /// Must call registerAvailableModules() first
   void declareAvailableFunctions();
 
   /// Link only the modules needed to resolve undefined symbols in target
-  /// Must call registerAvailableModules() first
+  /// Must call declareAvailableFunctions() first
   /// @return true on success
   bool linkOnlyUsedSymbols();
 
@@ -64,14 +65,6 @@ class ModuleLinker {
  private:
   /// Link a module and its dependencies recursively
   bool linkModuleRecursive(const std::string& moduleKey);
-
-  /// Build symbol-to-module mapping from module metadata
-  void buildSymbolMap(const std::string& moduleKey);
-
-  /// Build symbol-to-module mapping with module name remapping
-  void buildSymbolMapWithRemap(
-      const std::string& moduleKey,
-      const std::unordered_map<std::string, std::string>& moduleRemap);
 
   /// Remap a symbol name by replacing module names according to remap config
   /// e.g., "$hash$_std_Vec_push" -> "$hash$_std_v1_Vec_push"

@@ -1552,10 +1552,8 @@ class ClassType : public Type {
   std::string getMangledMethodName(
       const std::string& methodName,
       const std::vector<TypePtr>& paramTypes) const {
-    std::string base = mangledName + "_" + methodName;
-    std::string hashPrefix = QualifiedName::extractHashPrefix(mangledName);
-    base += QualifiedName::buildParamSuffix(paramTypes, hashPrefix);
-    return base;
+    return mangledName + "_" + methodName +
+           QualifiedName::buildParamSuffix(paramTypes);
   }
 
   // --- ScopeMethodTable accessors ---
@@ -2202,32 +2200,16 @@ class Types {
     return type;
   }
 
-  // Generate mangled name for a specialized generic class
+  // Generate mangled name for a specialized generic class: the generic's
+  // mangled name with each type argument spelled the way every symbol
+  // spells types (QualifiedName::canonicalTypeString)
   static std::string mangleGenericClassName(
       const std::string& baseName, const std::vector<TypePtr>& typeArgs) {
     std::string result = baseName;
     for (const auto& arg : typeArgs) {
-      result += "_" + mangleTypeName(arg);
+      result += "_" + QualifiedName::canonicalTypeString(arg);
     }
     return result;
-  }
-
-  // Generate mangled name for a type (for use in function names, etc.)
-  static std::string mangleTypeName(const TypePtr& type) {
-    if (!type) return "void";
-    if (type->isPrimitive()) {
-      auto* prim = dynamic_cast<const PrimitiveType*>(type.get());
-      return prim->toString();
-    }
-    if (type->isClass()) {
-      auto* cls = dynamic_cast<const ClassType*>(type.get());
-      return cls->getMangledName();  // Already mangled if specialized
-    }
-    if (type->isTypeParameter()) {
-      auto* tp = dynamic_cast<const TypeParameterType*>(type.get());
-      return tp->getName();
-    }
-    return type->toString();
   }
 
   // Create a type parameter type. `constraint` is the name written after the
