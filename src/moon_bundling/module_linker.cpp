@@ -5,7 +5,6 @@
 #include <llvm/Linker/Linker.h>
 
 #include "moon_bundling/library_cache.h"
-#include "moon_bundling/module_types.h"
 #include "moon_bundling/moon.h"
 #include "semantic_analysis/struct_names.h"
 
@@ -142,72 +141,7 @@ bool ModuleLinker::linkModules(const std::vector<std::string>& moduleKeys) {
 void ModuleLinker::registerAvailableModules(
     const std::vector<std::string>& moduleKeys) {
   for (const auto& key : moduleKeys) {
-    if (availableModules_.count(key)) {
-      continue;
-    }
     availableModules_.insert(key);
-    buildSymbolMap(key);
-  }
-}
-
-void ModuleLinker::buildSymbolMap(const std::string& moduleKey) {
-  auto* metadata = LibraryCache::instance().getMetadata(moduleKey);
-  if (!metadata) {
-    return;
-  }
-
-  // Get symbol prefix for constructing qualified names
-  // Note: getSymbolPrefix returns "$hash$", and bitcode uses "$hash$_name"
-  // format
-  std::string prefix = sun::getSymbolPrefix(*metadata);
-  std::string moduleName = metadata->module_name();
-
-  // Map exported functions to this module
-  // Bitcode symbol format: prefix + "_" + moduleName + "_" + funcName
-  for (int i = 0; i < metadata->functions_size(); ++i) {
-    const auto& func = metadata->functions(i);
-    const auto& proto = func.proto();
-    std::string funcName = proto.name();
-
-    // Construct qualified name matching bitcode: $hash$_module_func
-    std::string qualifiedName;
-    if (!moduleName.empty()) {
-      qualifiedName = prefix + "_" + moduleName + "_" + funcName;
-    } else {
-      qualifiedName = prefix + "_" + funcName;
-    }
-
-    if (!qualifiedName.empty()) {
-      symbolToModule_[qualifiedName] = moduleKey;
-    }
-  }
-
-  // Map class methods - only non-generic classes have callable methods
-  // Generic class specializations are handled via codegen (not metadata)
-  for (int i = 0; i < metadata->classes_size(); ++i) {
-    const auto& cls = metadata->classes(i);
-
-    // Skip generic classes - their methods require instantiation
-    if (cls.type_parameters_size() > 0) continue;
-
-    // Construct class qualified name matching bitcode
-    std::string className;
-    if (!moduleName.empty()) {
-      className = prefix + "_" + moduleName + "_" + cls.name();
-    } else {
-      className = prefix + "_" + cls.name();
-    }
-
-    for (int j = 0; j < cls.methods_size(); ++j) {
-      const auto& method = cls.methods(j);
-      const auto& methodProto = method.function().proto();
-
-      // Skip generic methods
-      if (methodProto.type_parameters_size() > 0) continue;
-
-      std::string mangledName = className + "_" + methodProto.name();
-      symbolToModule_[mangledName] = moduleKey;
-    }
   }
 }
 
@@ -509,69 +443,6 @@ void ModuleLinker::registerAvailableModulesWithRemap(
     // Store the remap configuration for this module
     if (moonImport.hasRemap()) {
       moduleRemaps_[moduleKey] = moonImport.moduleRemap;
-      buildSymbolMapWithRemap(moduleKey, moonImport.moduleRemap);
-    } else {
-      buildSymbolMap(moduleKey);
-    }
-  }
-}
-
-void ModuleLinker::buildSymbolMapWithRemap(
-    const std::string& moduleKey,
-    const std::unordered_map<std::string, std::string>& moduleRemap) {
-  auto* metadata = LibraryCache::instance().getMetadata(moduleKey);
-  if (!metadata) {
-    return;
-  }
-
-  std::string prefix = sun::getSymbolPrefix(*metadata);
-  std::string originalModuleName = metadata->module_name();
-
-  // Get the aliased module name (if remapped)
-  std::string aliasedModuleName = originalModuleName;
-  auto it = moduleRemap.find(originalModuleName);
-  if (it != moduleRemap.end()) {
-    aliasedModuleName = it->second;
-  }
-
-  // Map exported functions using ALIASED names
-  for (int i = 0; i < metadata->functions_size(); ++i) {
-    const auto& func = metadata->functions(i);
-    const auto& proto = func.proto();
-    std::string funcName = proto.name();
-
-    // Construct qualified name with ALIASED module name
-    std::string aliasedQualifiedName;
-    if (!aliasedModuleName.empty()) {
-      aliasedQualifiedName = prefix + "_" + aliasedModuleName + "_" + funcName;
-    } else {
-      aliasedQualifiedName = prefix + "_" + funcName;
-    }
-
-    if (!aliasedQualifiedName.empty()) {
-      symbolToModule_[aliasedQualifiedName] = moduleKey;
-    }
-  }
-
-  // Map class methods with aliased names
-  for (int i = 0; i < metadata->classes_size(); ++i) {
-    const auto& cls = metadata->classes(i);
-    if (cls.type_parameters_size() > 0) continue;
-
-    std::string className;
-    if (!aliasedModuleName.empty()) {
-      className = prefix + "_" + aliasedModuleName + "_" + cls.name();
-    } else {
-      className = prefix + "_" + cls.name();
-    }
-
-    for (int j = 0; j < cls.methods_size(); ++j) {
-      const auto& method = cls.methods(j);
-      const auto& methodProto = method.function().proto();
-      if (methodProto.type_parameters_size() > 0) continue;
-
-      std::string mangledName = className + "_" + methodProto.name();
-      symbolToModule_[mangledName] = moduleKey;
     }
   }
 }

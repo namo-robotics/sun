@@ -239,7 +239,6 @@ add_library(sun_lib
     src/moon_bundling/library_cache.cpp
     src/moon_bundling/moon_cache.cpp
     src/moon_bundling/module_linker.cpp
-    src/moon_bundling/module_types.cpp
     src/moon_bundling/metadata_extractor.cpp
     src/moon_bundling/proto_importer.cpp
     # Debug utilities
