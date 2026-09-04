@@ -266,9 +266,13 @@ std::pair<Function*, llvm::StructType*> FunctionGenerator::codegen(
     const PrototypeAST& proto, llvm::StructType* envType, bool isLambda,
     llvm::Type* returnType) {
   // The qualified name semantic analysis gave it. An anonymous lambda has
-  // none to mangle, so give each one its own.
+  // none to mangle, so give each one its own. That name is only unique
+  // within this module, so the function stays internal (see below): nothing
+  // outside the module can name it, and two modules' `lambda0`s never clash
+  // when a bundle is linked into a program.
   std::string funcName = proto.getMangledName();
-  if (funcName.empty()) {
+  const bool anonymous = funcName.empty();
+  if (anonymous) {
     funcName = "lambda" + std::to_string(lambdaCounter++);
   }
 
@@ -352,6 +356,7 @@ std::pair<Function*, llvm::StructType*> FunctionGenerator::codegen(
     func =
         Function::Create(funcType, Function::ExternalLinkage, funcName, module);
   }
+  if (anonymous) func->setLinkage(Function::InternalLinkage);
 
   // Name the arguments
   unsigned argIdx = 0;

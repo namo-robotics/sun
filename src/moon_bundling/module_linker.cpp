@@ -246,8 +246,8 @@ void ModuleLinker::declareAvailableFunctions() {
 
     // Load the bitcode module to scan its functions directly
     // This captures all concrete functions including generic specializations
-    // NOTE: Symbols in the bitcode are ALREADY prefixed with the content hash
-    // (done at moon bundle creation time), so we don't add prefixes here.
+    // NOTE: The bitcode's symbols already carry the bundle's content hash
+    // (the compiler spelled them that way), so we don't add prefixes here.
     auto owned = LibraryCache::instance().loadModule(moduleKey, *scanContext_);
     if (!owned) continue;
 
@@ -262,6 +262,10 @@ void ModuleLinker::declareAvailableFunctions() {
       if (func.isDeclaration()) continue;
       // Skip LLVM intrinsics
       if (func.isIntrinsic()) continue;
+      // Skip module-private functions (lambdas, runtime helpers): nothing
+      // outside the bundle can name them, and their names are only unique
+      // within it
+      if (func.hasLocalLinkage()) continue;
       // Skip unnamed functions
       if (!func.hasName() || func.getName().empty()) continue;
 
@@ -408,11 +412,11 @@ bool ModuleLinker::linkModuleRecursive(const std::string& moduleKey) {
   // only (tracking what the module depends on), not for runtime loading.
 
   // Load the module bitcode
-  // NOTE: All symbols in the bitcode are already prefixed with the content hash
-  // (done at moon bundle creation time). This provides:
+  // NOTE: The bitcode's own symbols and struct types already carry the
+  // bundle's content hash: the compiler spelled them that way when the
+  // bundle was built (see Driver::setOwnBundleHash). This provides:
   // 1. Symbol isolation between different library versions
-  // 2. Integrity verification - if bitcode is modified, symbols won't match
-  // 3. Struct type isolation to prevent LLVM type merging issues
+  // 2. Struct type isolation to prevent LLVM type merging issues
   // Parse a fresh copy into the target's context. The copy scanned by
   // declareAvailableFunctions() lives in a separate context on purpose: the
   // link source must not share struct type objects with the target, or

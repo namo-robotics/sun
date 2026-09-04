@@ -6,24 +6,39 @@
 
 namespace sun {
 
+namespace {
+
+// Drop every occurrence of the library's own hash prefix from a mangled type
+// name. A generic specialization carries its type arguments' names inline
+// (Vec_$hash$_std_String), so every occurrence goes, not just the leading one.
+// Other libraries' prefixes stay: they tell same-named types apart.
+std::string stripOwnHash(std::string mangledName,
+                         const std::string& hashPrefix) {
+  if (hashPrefix.empty()) return mangledName;
+  for (size_t at = mangledName.find(hashPrefix); at != std::string::npos;
+       at = mangledName.find(hashPrefix, at)) {
+    mangledName.erase(at, hashPrefix.size());
+  }
+  return mangledName;
+}
+
+}  // namespace
+
 std::string QualifiedName::canonicalTypeString(const TypePtr& type,
                                                const std::string& hashPrefix) {
   if (!type) return "void";
 
+  // Classes and interfaces are named alike: their mangled name, minus the
+  // library's own hash, so the same signature reads the same from inside the
+  // library and from an importer.
   if (type->isClass()) {
-    std::string typeMangledName =
-        static_cast<const ClassType*>(type.get())->getMangledName();
-    // Strip hash prefix only if it matches our library's hash. A generic
-    // specialization carries its type arguments' names inline
-    // (Vec_$hash$_std_String), so every occurrence goes, not just the leading
-    // one — the library mangled those names before its symbols were prefixed.
-    if (!hashPrefix.empty()) {
-      for (size_t at = typeMangledName.find(hashPrefix);
-           at != std::string::npos; at = typeMangledName.find(hashPrefix, at)) {
-        typeMangledName.erase(at, hashPrefix.size());
-      }
-    }
-    return typeMangledName;
+    return stripOwnHash(
+        static_cast<const ClassType*>(type.get())->getMangledName(),
+        hashPrefix);
+  }
+  if (type->isInterface()) {
+    return stripOwnHash(
+        static_cast<const InterfaceType*>(type.get())->getName(), hashPrefix);
   }
 
   if (type->isReference()) {

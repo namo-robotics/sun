@@ -61,6 +61,9 @@ class Driver {
   std::vector<std::string> protoFiles_;
   bool dumpProtoSun_ = false;
 
+  // See setOwnBundleHash. Empty for a program build.
+  std::string ownBundleHash_;
+
   // Whether the last compilation saw any test functions or test_files
   bool hasTests_ = false;
 
@@ -223,6 +226,12 @@ class Driver {
 
   /// Print the Sun source synthesized from each imported .proto to stdout
   void setDumpProtoSun(bool dump) { dumpProtoSun_ = dump; }
+
+  /// Compile as the body of a .moon bundle with this content hash: the
+  /// program's own declarations are analyzed under a `$hash$` module scope,
+  /// so every symbol and struct type is spelled the way importers of the
+  /// bundle will spell it. Must be set before compileFiles.
+  void setOwnBundleHash(std::string hash) { ownBundleHash_ = std::move(hash); }
 
   /// Compile multiple source files with optional precompiled moon libraries
   /// This is the merged-AST compilation model: all files are parsed and merged

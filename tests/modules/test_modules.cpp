@@ -14,6 +14,7 @@
 #include "codegen/codegen.h"
 #include "codegen/codegen_visitor.h"
 #include "driver/execution_utils.h"
+#include "moon_bundling/moon.h"
 #include "moon_bundling/moon_builder.h"
 #include "parsing/lexer.h"
 #include "parsing/parser.h"
@@ -1443,4 +1444,162 @@ TEST(Modules, moon_sibling_signatures_are_source_order_independent) {
     }
   )");
   EXPECT_EQ(value, 42);
+}
+
+// === Names must agree on both sides of a .moon boundary ===
+
+// An interface-typed parameter is mangled into the method's symbol. The
+// bundle and its importer must spell it the same way, or the importer asks
+// the linker for a symbol the bundle never defined (issue #216).
+TEST(Modules, moon_interface_param_links) {
+  initTestEnvironment();
+  auto moonPath = writeMoonLib("ifaceparam", R"(
+    public module handlers {
+        public interface IHandler { method handle(x: i32) i32; }
+
+        public class Runner {
+            var h: IHandler;
+            init(h: IHandler) { this.h = h; }
+            public method run(x: i32) i32 { return this.h.handle(x); }
+        }
+    }
+  )");
+
+  auto driver = Driver::createForJIT("moon_iface_param_main");
+  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  auto value = driver->executeString(R"(
+    using handlers;
+
+    class Echo implements IHandler {
+        var pad: i32;
+        init() { this.pad = 0; }
+        public method handle(x: i32) i32 { return x + 1; }
+    }
+
+    function main() i32 {
+        var h: IHandler = Echo();
+        var r = Runner(h);
+        return r.run(41);
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// A generic specialized over one of the bundle's own types, passed by value:
+// the specialization's LLVM struct type is named after its mangled name, and
+// the importer pre-declares the bundle's functions with struct types unified
+// by name. Both sides must therefore name the specialization identically
+// (issue #217). The importer then also reuses the bundle's precompiled
+// specialization instead of instantiating its own.
+TEST(Modules, moon_generic_over_own_type_by_value_links) {
+  initTestEnvironment();
+  auto moonPath = writeMoonLib("boxes", R"(
+    public module boxes {
+        public interface IHandler { method handle(x: i32) i32; }
+
+        public class Box<T> {
+            var value: T;
+            init(value: T) { this.value = value; }
+            public method get() ref T {
+                return unsafe { _to_ref<T>(_address_of<T>(this.value)); };
+            }
+        }
+
+        public class Server {
+            var box: Box<IHandler>;
+            init(box: Box<IHandler>) { this.box = box; }
+            public method run(x: i32) i32 { return this.box.get().handle(x); }
+        }
+        public function make_server(box: Box<IHandler>) Server {
+            return Server(box);
+        }
+
+        public class Config {
+            public var n: i32;
+            init(n: i32) { this.n = n; }
+        }
+        public function config_value(box: Box<Config>) i32 {
+            return box.get().n;
+        }
+    }
+  )");
+
+  auto driver = Driver::createForJIT("moon_generic_by_value_main");
+  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  auto value = driver->executeString(R"(
+    using boxes;
+
+    class Echo implements IHandler {
+        var pad: i32;
+        init() { this.pad = 0; }
+        public method handle(x: i32) i32 { return x + 1; }
+    }
+
+    function main() i32 {
+        var h: IHandler = Echo();
+        var b = Box<IHandler>(h);
+        var s = make_server(b);
+        var c = Box<Config>(Config(10));
+        return s.run(31) + config_value(c);
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// The compiler spells a bundle's own symbols with the bundle's hash while it
+// compiles them; nothing renames symbols afterwards. So every function the
+// bundle defines must carry the hash its metadata records — a symbol without
+// it is one the importer could never find.
+TEST(Modules, moon_symbols_carry_the_bundle_hash) {
+  initTestEnvironment();
+  auto moonPath = writeMoonLib("hashed", R"(
+    public module hashed {
+        public interface IShape { method area() i32; }
+        public class Square implements IShape {
+            var side: i32;
+            init(side: i32) { this.side = side; }
+            public method area() i32 { return this.side * this.side; }
+        }
+        public class Pair<T> {
+            var a: T;
+            var b: T;
+            init(a: T, b: T) { this.a = a; this.b = b; }
+        }
+        public var count: i32 = 0;
+        public function make_pair(side: i32) Pair<Square> {
+            var f = (x: i32) => i32 { return x + 1; };
+            return Pair<Square>(Square(side), Square(f(side)));
+        }
+    }
+  )");
+
+  auto reader = sun::MoonReader::open(moonPath);
+  ASSERT_NE(reader, nullptr);
+  auto modules = reader->listModules();
+  ASSERT_FALSE(modules.empty());
+  const auto* metadata = reader->getMetadata(modules[0]);
+  ASSERT_NE(metadata, nullptr);
+  const std::string prefix = sun::getSymbolPrefix(*metadata) + "_";
+  ASSERT_GT(prefix.size(), 3u);
+
+  llvm::LLVMContext context;
+  auto bundled = reader->loadModule(modules[0], context);
+  ASSERT_NE(bundled, nullptr);
+  for (const auto& func : bundled->functions()) {
+    if (func.isDeclaration() || func.isIntrinsic()) continue;
+    // Module-private functions (lambdas) cannot be named from outside, so
+    // their names need no prefix
+    if (func.hasLocalLinkage()) continue;
+    std::string name = func.getName().str();
+    if (name.empty() || name[0] == '_') continue;  // runtime helpers
+    if (func.hasFnAttribute("sun.cabi")) continue;
+    EXPECT_EQ(name.rfind(prefix, 0), 0u) << "unprefixed symbol: " << name;
+  }
+  for (const auto& global : bundled->globals()) {
+    if (!global.hasInitializer()) continue;
+    std::string name = global.getName().str();
+    if (name.empty() || name[0] == '_') continue;  // literals and helpers
+    if (global.getMetadata("sun.cabi")) continue;
+    EXPECT_EQ(name.rfind(prefix, 0), 0u) << "unprefixed global: " << name;
+  }
 }

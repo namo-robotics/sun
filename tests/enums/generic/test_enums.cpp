@@ -6,8 +6,8 @@
 #include <fstream>
 
 #include "driver/execution_utils.h"
-#include "moon_bundling/metadata_extractor.h"
 #include "moon_bundling/moon.h"
+#include "moon_bundling/moon_builder.h"
 #include "moon_bundling/moon_import.h"
 
 // ============================================================================
@@ -272,14 +272,9 @@ TEST(Enums_Generic, CrossModuleMoonBundle) {
     )";
   }
 
-  auto metadata = sun::extractMetadataFromFile(libSrc.string());
-  ASSERT_TRUE(metadata.has_value());
-  auto libDriver = Driver::createForAOT("moon_module");
-  libDriver->compileFiles({libSrc.string()}, {});
-  sun::MoonWriter writer;
-  writer.addModule(libDriver->getModule(), *metadata);
+  // Build the .moon bundle the same way `sun --emit-moon` does
   fs::path moonPath = dir / "optlib.moon";
-  ASSERT_TRUE(writer.write(moonPath));
+  sun::MoonBuilder::build(libSrc.string(), moonPath);
 
   // Instantiate the imported generic enum with a NEW type argument (f64) and
   // use the library's own i32 specialization

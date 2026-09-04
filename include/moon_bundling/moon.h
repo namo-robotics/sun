@@ -52,10 +52,17 @@ struct NativeArchiveEntry {
 // Writer and Reader classes
 // =============================================================================
 
+/// FNV-1a hash of `data` as 8 hex characters. Bundle hashes are made from
+/// this; it keeps the `$hash$_` symbol prefix short enough to read in IR.
+std::string computeContentHash(const std::string& data);
+
 /// Creates .moon bundle files containing multiple modules
 class MoonWriter {
  public:
-  MoonWriter();
+  /// @param bundleHash The bundle's content hash, chosen before its code was
+  /// compiled so the compiler could spell every exported symbol with the
+  /// `$hash$_` prefix. Recorded in each module's metadata for importers.
+  explicit MoonWriter(std::string bundleHash);
 
   /// Add a compiled module to the bundle
   /// @param module The compiled LLVM module
@@ -89,6 +96,7 @@ class MoonWriter {
 
   std::vector<ModuleData> modules_;
   std::vector<std::pair<std::string, std::string>> nativeArchives_;
+  std::string bundleHash_;
   std::string error_;
 };
 

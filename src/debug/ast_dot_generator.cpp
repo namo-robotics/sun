@@ -287,8 +287,13 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       break;
     }
     case ASTNodeType::MOON_SCOPE: {
-      // Don't expand MoonScopeAST nodes - they represent imported modules
-      // and expanding them clutters the debug output
+      // An imported bundle's stubs would only clutter the graph; the bundle
+      // being built is the program itself, so show it
+      const auto* scope = static_cast<const MoonScopeAST*>(node);
+      if (scope->isOwnBundle()) {
+        int bodyId = visitNode(&scope->getBody());
+        emitEdge(bodyId, "body");
+      }
       break;
     }
     case ASTNodeType::CLASS_DEFINITION: {

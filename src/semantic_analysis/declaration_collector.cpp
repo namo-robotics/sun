@@ -144,9 +144,11 @@ void DeclarationCollector::collectDeclarations(BlockExprAST& block) {
   // Precompiled bundles first. Their stubs were resolved when the bundle was
   // built, in the bundle's own context; the imports this block binds next
   // must not reach into their class shapes and make a name ambiguous there.
+  // The bundle being built is ordinary source and takes its turn below.
   for (const auto& expr : block.getBody()) {
     if (expr->getType() != ASTNodeType::MOON_SCOPE) continue;
     auto& moonScope = static_cast<MoonScopeAST&>(*expr);
+    if (moonScope.isOwnBundle()) continue;
     const std::string& contentHash = moonScope.getContentHash();
     if (!contentHash.empty()) ctx_.enterModuleScope(contentHash);
     collectDeclarations(const_cast<BlockExprAST&>(moonScope.getBody()));
@@ -256,6 +258,17 @@ void DeclarationCollector::collectDeclarations(BlockExprAST& block) {
         auto& nsDecl = static_cast<ModuleAST&>(*expr);
         ctx_.declareModule(nsDecl);
         collectDeclarations(const_cast<BlockExprAST&>(nsDecl.getBody()));
+        ctx_.exitScope();
+        break;
+      }
+      case ASTNodeType::MOON_SCOPE: {
+        // The bundle being built: its sources are collected here, in
+        // declaration order with everything else, under the bundle's hash.
+        // Imported bundles were handled before the usings above.
+        auto& moonScope = static_cast<MoonScopeAST&>(*expr);
+        if (!moonScope.isOwnBundle()) break;
+        ctx_.enterModuleScope(moonScope.getContentHash());
+        collectDeclarations(const_cast<BlockExprAST&>(moonScope.getBody()));
         ctx_.exitScope();
         break;
       }

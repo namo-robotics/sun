@@ -231,8 +231,13 @@ void Driver::dumpUserDefinedIR(llvm::raw_ostream& OS) {
     if (name[0] == '_') continue;
     // Skip library module globals (vtables, etc.)
     if (name.rfind("std_", 0) == 0) continue;
-    // Skip prefixed symbols (from moon imports)
-    if (name.rfind("$", 0) == 0) continue;
+    // Skip prefixed symbols from moon imports; a bundle build's own globals
+    // carry its prefix too, and those are the user's
+    if (name.rfind("$", 0) == 0 &&
+        (ownBundleHash_.empty() ||
+         name.rfind("$" + ownBundleHash_ + "$_", 0) != 0)) {
+      continue;
+    }
     gv.print(OS);
     OS << "\n";
   }
@@ -429,6 +434,25 @@ static void processMoonImports(
   if (!finalMoonScopeASTs.empty()) {
     blockAst.prependExpressions(std::move(finalMoonScopeASTs));
   }
+}
+
+/// Move everything the program declares itself (every top-level node that is
+/// not an imported bundle's scope) into one MoonScopeAST for the bundle being
+/// built, named by its `$hash$` prefix. Imported scopes stay where they are.
+static void wrapOwnBundle(BlockExprAST& blockAst,
+                          const std::string& scopeName) {
+  auto ownBody = std::make_unique<BlockExprAST>();
+  std::vector<std::unique_ptr<ExprAST>> imported;
+  for (auto& expr : blockAst.mutableBody()) {
+    if (expr->getType() == ASTNodeType::MOON_SCOPE) {
+      imported.push_back(std::move(expr));
+    } else {
+      ownBody->addExpression(std::move(expr));
+    }
+  }
+  blockAst.mutableBody() = std::move(imported);
+  blockAst.addExpression(
+      MoonScopeAST::forOwnBundle(scopeName, std::move(ownBody)));
 }
 
 void Driver::collectNativeArchives(const std::set<std::string>& linkedModules) {
@@ -689,6 +713,13 @@ void Driver::analyzeProgram(BlockExprAST& blockAst, Parser& parser) {
   {
     sun::ScopedStage stage("moon imports");
     processMoonImports(blockAst, parser, moonImports_);
+  }
+
+  // A bundle build compiles its own sources under the bundle's `$hash$`
+  // scope, as a sibling of the imported bundles, so its names come out the
+  // way importers will compute them.
+  if (!ownBundleHash_.empty()) {
+    wrapOwnBundle(blockAst, "$" + ownBundleHash_ + "$");
   }
 
   // Run semantic analysis on the unified AST

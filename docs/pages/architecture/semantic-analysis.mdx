@@ -135,7 +135,11 @@ class or function segments. The single predicate is
 `isAccessibleFrom(from, visibility, owner)` (`include/semantic_analysis/visibility.h`): public,
 or `from` is the owner module or one of its descendants. Contents of an imported `.moon` live
 under a `$hash$` scope segment, so importer code is never inside a bundle
-module and bundle-private items are hidden by the same rule.
+module and bundle-private items are hidden by the same rule. A bundle being
+built (`--emit-moon`) compiles its own sources under that same segment — the
+hash is fixed before compilation from the sources, dependencies, target and
+compiler — so every symbol and struct type it emits is already spelled the
+way importers will spell it, with no renaming of the bitcode afterwards.
 
 Enforcement lives in two places:
 
