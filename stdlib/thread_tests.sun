@@ -498,11 +498,9 @@ public module std {
     }
 
     // A worker that starts a capture-free thread in its constructor and
-    // keeps the handle in a field. The field type is written out in full:
-    // an unqualified imported generic as a field type currently derails
-    // name resolution later in the bundle (compiler gap, worth fixing).
+    // keeps the handle in a field.
     class Worker {
-      var t: std.thread.Thread<i32>;
+      var t: Thread<i32>;
       init() {
         this.t = spawn(() => i32 { return 7; });
       }
@@ -571,10 +569,8 @@ public module std {
 
     // Handles over capture-free lambdas own everything they touch, so a
     // pool of them may live in a container and leave the frame with it.
-    // Thread is written out in full here for the same compiler gap the
-    // Worker field notes.
-    function make_thread_pool(alloc: const ref HeapAllocator) Vec<std.thread.Thread<i32>> {
-      var v = Vec<std.thread.Thread<i32>>(alloc, 4);
+    function make_thread_pool(alloc: const ref HeapAllocator) Vec<Thread<i32>> {
+      var v = Vec<Thread<i32>>(alloc, 4);
       v.push(spawn(() => i32 { return 20; }));
       v.push(spawn(() => i32 { return 22; }));
       return v;
@@ -604,7 +600,7 @@ public module std {
     }
 
     // Looks at a frame-bound handle without keeping it.
-    function borrow_handle(t: ref std.thread.Thread<i32>) i32 {
+    function borrow_handle(t: ref Thread<i32>) i32 {
       return 2;
     }
 

@@ -427,11 +427,32 @@ TEST(Classes_Generic_Scoping,
 // ============================================================================
 
 TEST(Classes_Generic_Errors, error_on_generic_type_not_in_scope) {
-  // `using std;` outside the module block does not reach inside it, so Vec is
-  // not visible where the return type is written. Uses the file path because
-  // the single-string path scopes top-level `using` differently.
-  EXPECT_THROW(compileFileWithStdlib("tests/programs/using_outside_module.sun"),
-               SunError);
+  // Nothing imports std, so Vec is not visible where the return type is
+  // written. The error must be the one at that annotation, not a failure
+  // surfacing later from a body analyzed against half-registered declarations.
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      compileFileWithStdlib("tests/programs/using_outside_module.sun"),
+      "Unknown generic type 'Vec'");
+}
+
+// ============================================================================
+// A file-level `using` reaches fields and signatures inside module blocks
+//
+// Bodies always saw a file-level import. The declaration pre-pass resolves
+// class fields and function signatures before bodies, and merged compilation
+// places every file-level `using` after the modules, so the pre-pass has to
+// bind imports before it resolves anything (issue #198).
+// ============================================================================
+
+TEST(Classes_Generic_Scoping,
+     file_level_using_reaches_module_fields_and_signatures) {
+  compileFileWithStdlib("tests/programs/using_reaches_module_members.sun");
+}
+
+TEST(Classes_Generic_Scoping,
+     file_level_using_reaches_module_members_across_merged_files) {
+  compileFiles({"tests/programs/merged_using_lib.sun",
+                "tests/programs/merged_using_app.sun"});
 }
 
 TEST(Classes_Generic_Errors, error_on_unknown_generic_type_name) {
