@@ -200,11 +200,33 @@ Value* IntrinsicsGenerator::codegenSpawnIntrinsic(
       ctx.builder->CreateStructGEP(contextType, contextPtr, 3, "ctx.tid");
   Function* trampoline = threadUtils.getOrCreateThreadTrampoline(
       calleeFuncType, fatType, resultLLVMType, contextType, argsType);
-  ctx.builder->CreateCall(sun::libc::pthreadCreate(module),
-                          {tidFieldPtr, attr, trampoline, contextPtr},
-                          "pthread_create_result");
+  Value* createResult = ctx.builder->CreateCall(
+      sun::libc::pthreadCreate(module),
+      {tidFieldPtr, attr, trampoline, contextPtr}, "pthread_create_result");
   ctx.builder->CreateCall(sun::libc::pthreadAttrDestroy(module), {attr});
 
+  // A failed pthread_create leaves the thread id unset, and joining that
+  // later crashes without a word. Say what happened and abort instead.
+  Function* func = ctx.builder->GetInsertBlock()->getParent();
+  BasicBlock* failBB = BasicBlock::Create(llvmCtx, "spawn.fail", func);
+  BasicBlock* okBB = BasicBlock::Create(llvmCtx, "spawn.ok", func);
+  Value* failed = ctx.builder->CreateICmpNE(
+      createResult, ConstantInt::get(createResult->getType(), 0),
+      "spawn.failed");
+  ctx.builder->CreateCondBr(failed, failBB, okBB);
+
+  ctx.builder->SetInsertPoint(failBB);
+  static const char kMessage[] =
+      "spawn: the OS refused to create a thread (pthread_create failed)\n";
+  Value* message = ctx.builder->CreateGlobalString(kMessage, "spawn.fail.msg");
+  ctx.builder->CreateCall(
+      sun::libc::write(module),
+      {ConstantInt::get(Type::getInt32Ty(llvmCtx), 2), message,
+       ConstantInt::get(i64Ty, sizeof(kMessage) - 1)});
+  ctx.builder->CreateCall(sun::libc::abort(module));
+  ctx.builder->CreateUnreachable();
+
+  ctx.builder->SetInsertPoint(okBB);
   return contextPtr;
 }
 

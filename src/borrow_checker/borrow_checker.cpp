@@ -854,6 +854,14 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
     return;
   }
 
+  // A value that stores references - a constructed holder, or one a call
+  // hands back by value - keeps pointing into the call's by-ref inputs, so
+  // it holds a loan on each of them, conservatively until scope exit since
+  // the value can live that long. The loan is what rejects a later move or
+  // replacement of the borrowed variable, and recordMove/canMutateDirectly
+  // report it with this call site as the note.
+  borrowHolderInputs(call);
+
   // Constructor call (ClassName(args...)): resolve the init overload and move
   // compound arguments bound to by-value parameters.
   std::vector<TypePtr> paramTypes;
@@ -866,35 +874,6 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
                                   .getMethodForArgs("init", argTypes);
     if (!init) return;
     paramTypes = init->paramTypes;
-
-    // A class that stores references keeps pointing into its by-ref
-    // constructor arguments after the call returns, so the constructed value
-    // holds a loan on each of them - conservatively until scope exit, since
-    // the object can live that long. The loan is what rejects a later move
-    // or replacement of the borrowed variable, and recordMove/
-    // canMutateDirectly report it with this construction site as the note.
-    if (classStoresRefs(calleeType)) {
-      for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
-        if (!args[i] || !paramTypes[i] || !paramTypes[i]->isReference()) {
-          continue;
-        }
-        const std::string* base = getBaseVariableName(*args[i]);
-        if (!base || rawPointerLocals_.count(*base)) continue;
-        auto targetInfo = resolveRefTarget(*base);
-        if (targetInfo.isRebind) continue;  // reborrow: original loan governs
-        const auto& argPos = args[i]->getLocation();
-        std::string holder = "$refholder@" + std::to_string(argPos.line) + ":" +
-                             std::to_string(argPos.column);
-        auto result =
-            state_.addBorrow(targetInfo.actualTarget, holder,
-                             isMutableRef(paramTypes[i]) ? BorrowKind::Mutable
-                                                         : BorrowKind::Shared,
-                             currentScope_, argPos);
-        if (!result.allowed) {
-          reportConflict(result.errorMessage, argPos, result.conflictingLoan);
-        }
-      }
-    }
   } else if (auto* funcType =
                  dynamic_cast<const FunctionType*>(calleeType.get())) {
     // Direct calls and method calls carry a FunctionType
@@ -1186,6 +1165,124 @@ bool BorrowChecker::classStoresRefsWalk(
   return false;
 }
 
+bool BorrowChecker::classStoresMutableRefs(const TypePtr& type) const {
+  std::unordered_set<const Type*> visited;
+  std::vector<const ClassType*> pending;
+  if (const auto* root = tryGetType<ClassType>(type)) pending.push_back(root);
+  while (!pending.empty()) {
+    const ClassType* classType = pending.back();
+    pending.pop_back();
+    if (!visited.insert(classType).second) continue;
+    for (const auto& field : classType->getFields()) {
+      if (!field.type) continue;
+      if (field.type->isReference() && isMutableRef(field.type)) return true;
+      if (const auto* inner = tryGetType<ClassType>(field.type)) {
+        pending.push_back(inner);
+      }
+    }
+  }
+  return false;
+}
+
+bool BorrowChecker::forEachHolderInput(
+    const CallExprAST& call,
+    const std::function<void(const ExprAST& input, bool mutableRef)>& visit)
+    const {
+  const ExprAST* callee = call.getCallee();
+  TypePtr calleeType = callee ? callee->getResolvedType() : nullptr;
+  if (!calleeType) return false;
+  const auto& args = call.getArgs();
+  std::vector<TypePtr> paramTypes;
+
+  if (calleeType->isClass()) {
+    if (!classStoresRefs(calleeType)) return false;
+    std::vector<TypePtr> argTypes;
+    for (const auto& arg : args) {
+      argTypes.push_back(arg ? arg->getResolvedType() : nullptr);
+    }
+    const ClassMethod* init = static_cast<const ClassType&>(*calleeType)
+                                  .getMethodForArgs("init", argTypes);
+    if (!init) return false;
+    paramTypes = init->paramTypes;
+  } else {
+    TypePtr resultType = call.getResolvedType();
+    if (!resultType || resultType->isReference() || !resultType->isClass() ||
+        !classStoresRefs(resultType)) {
+      return false;
+    }
+    if (auto* funcType = tryGetType<FunctionType>(calleeType)) {
+      paramTypes = funcType->getParamTypes();
+    } else if (auto* lambdaType = tryGetType<LambdaType>(calleeType)) {
+      paramTypes = lambdaType->getParamTypes();
+    } else {
+      return false;
+    }
+    // The receiver of `obj.method(...)`: the holder may keep a reference
+    // into it, writable when the class stores any mutable reference
+    if (callee->getType() == ASTNodeType::MEMBER_ACCESS) {
+      const auto& access = static_cast<const MemberAccessAST&>(*callee);
+      if (access.getObject()) {
+        visit(*access.getObject(), classStoresMutableRefs(resultType));
+      }
+    }
+  }
+
+  for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
+    if (!args[i] || !paramTypes[i] || !paramTypes[i]->isReference()) continue;
+    visit(*args[i], isMutableRef(paramTypes[i]));
+  }
+  return true;
+}
+
+void BorrowChecker::borrowHolderInputs(const CallExprAST& call) {
+  forEachHolderInput(call, [&](const ExprAST& input, bool mutableRef) {
+    const std::string* base = getBaseVariableName(input);
+    if (!base || rawPointerLocals_.count(*base)) return;
+    TypePtr inputType = input.getResolvedType();
+    if (inputType && inputType->isRawPointer()) return;
+    auto targetInfo = resolveRefTarget(*base);
+    if (targetInfo.isRebind) return;  // reborrow: the original loan governs
+    const auto& inputPos = input.getLocation();
+    std::string holder = "$refholder@" + std::to_string(inputPos.line) + ":" +
+                         std::to_string(inputPos.column);
+    auto result = state_.addBorrow(
+        targetInfo.actualTarget, holder,
+        mutableRef ? BorrowKind::Mutable : BorrowKind::Shared, currentScope_,
+        inputPos);
+    if (!result.allowed) {
+      reportConflict(result.errorMessage, inputPos, result.conflictingLoan);
+    }
+  });
+}
+
+bool BorrowChecker::holderPointsIntoFrame(const ExprAST& value) const {
+  const ExprAST* e = &value;
+  while (e->getType() == ASTNodeType::PAREN_EXPR) {
+    e = static_cast<const ParenExprAST&>(*e).getInner();
+  }
+  // A local holder: its bound is the deepest declaration it borrows, and
+  // functionScopeDepth_ means nothing in this frame
+  if (e->getType() == ASTNodeType::VARIABLE_REFERENCE) {
+    auto it = refHolderBounds_.find(
+        static_cast<const VariableReferenceAST&>(*e).getName());
+    return it != refHolderBounds_.end() && it->second > functionScopeDepth_;
+  }
+  if (e->getType() != ASTNodeType::CALL) return false;
+  bool pointsIn = false;
+  forEachHolderInput(static_cast<const CallExprAST&>(*e),
+                     [&](const ExprAST& input, bool) {
+                       const std::string* base = getBaseVariableName(input);
+                       // A temporary dies with the statement
+                       if (!base) {
+                         pointsIn = true;
+                         return;
+                       }
+                       if (rawPointerLocals_.count(*base)) return;
+                       if (!nameOutlivesFrame(*base)) pointsIn = true;
+                     });
+  return pointsIn;
+}
+
 // Every move funnels through here. Moving a borrowed place would leave the
 // live borrows reading the zeroed husk the move leaves behind, so it is
 // rejected; a loan on the base variable covers its fields too.
@@ -1367,11 +1464,15 @@ void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
   // lends the value out, so nothing moves.
   auto retType = value->getResolvedType();
 
-  // A value that stores references, or carries a '<'_>' lambda's captured
-  // environment, must not escape by value: what it points into lives in
-  // this frame and dies when the function returns
+  // A value that carries a '<'_>' lambda's captured environment must not
+  // escape by value, and neither may one that stores references into this
+  // frame: what it points into dies when the function returns. A holder
+  // whose references all come from `this`, ref parameters or globals points
+  // at storage the caller owns, so it may leave - the caller's loans on the
+  // call's by-ref inputs cover it, as they do for a returned `ref`.
   if (!returnMatchesNamedLifetime && retType && !retType->isReference() &&
-      classStoresRefs(retType)) {
+      classStoresRefs(retType) &&
+      (sun::typeIsFrameCarrying(retType) || holderPointsIntoFrame(*value))) {
     const auto& pos = ret.getLocation();
     reportError(
         "cannot return a value that stores references or a '<'_>' lambda - "
@@ -2205,29 +2306,14 @@ void BorrowChecker::trackRefHolderStore(const std::string& destName,
     return;
   }
 
-  // A fresh construction of a class that stores references
+  // A fresh holder: a construction of a class that stores references, or a
+  // call handing one back by value. It borrows the call's by-ref inputs.
   if (e->getType() != ASTNodeType::CALL) return;
   const auto& call = static_cast<const CallExprAST&>(*e);
-  TypePtr calleeType =
-      call.getCallee() ? call.getCallee()->getResolvedType() : nullptr;
-  if (!calleeType || !calleeType->isClass() || !classStoresRefs(calleeType)) {
-    return;
-  }
-  const auto& args = call.getArgs();
-  std::vector<TypePtr> argTypes;
-  for (const auto& arg : args) {
-    argTypes.push_back(arg ? arg->getResolvedType() : nullptr);
-  }
-  const ClassMethod* init = static_cast<const ClassType&>(*calleeType)
-                                .getMethodForArgs("init", argTypes);
-  if (!init) return;
-  const auto& paramTypes = init->paramTypes;
-
   size_t bound = functionScopeDepth_;
-  for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
-    if (!args[i] || !paramTypes[i] || !paramTypes[i]->isReference()) continue;
-    const std::string* base = getBaseVariableName(*args[i]);
-    if (!base || rawPointerLocals_.count(*base)) continue;
+  bool isHolder = forEachHolderInput(call, [&](const ExprAST& input, bool) {
+    const std::string* base = getBaseVariableName(input);
+    if (!base || rawPointerLocals_.count(*base)) return;
     size_t targetDepth = lookupDeclDepth(*base);
     if (targetDepth > destDepth) {
       reportError("cannot store this value in '" + destName +
@@ -2237,10 +2323,11 @@ void BorrowChecker::trackRefHolderStore(const std::string& destName,
                       destName + "' does. Declare '" + destName +
                       "' alongside '" + *base + "'",
                   pos);
-      continue;
+      return;
     }
     bound = std::max(bound, targetDepth);
-  }
+  });
+  if (!isHolder) return;
   auto [dit, inserted] = refHolderBounds_.try_emplace(destName, bound);
   if (!inserted) dit->second = std::max(dit->second, bound);
 }

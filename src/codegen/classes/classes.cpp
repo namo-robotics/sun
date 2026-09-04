@@ -591,9 +591,12 @@ void ClassGenerator::generateMethodBody(const FunctionAST& methodFunc,
 
   // Add implicit return if no explicit return. A non-void body whose last
   // statement always returns/throws (e.g. a match with terminating arms)
-  // leaves an unreachable tail block.
+  // leaves an unreachable tail block. A void body that falls off the end
+  // still owns its locals, so they are dropped here as an explicit
+  // `return;` would drop them.
   if (!ctx.builder->GetInsertBlock()->getTerminator()) {
     if (returnType->isVoidTy()) {
+      scopes().emitScopeCleanup();
       ctx.builder->CreateRetVoid();
     } else {
       ctx.builder->CreateUnreachable();
@@ -1228,9 +1231,11 @@ Value* ClassGenerator::codegen(const InterfaceDefinitionAST& expr) {
     // Generate the method body (statement position, as in codegenMethod)
     codegen(methodFunc.getBody());
 
-    // Add implicit return if no explicit return (see codegenMethod)
+    // Add implicit return if no explicit return (see codegenMethod); a void
+    // body that falls off the end drops its locals first
     if (!ctx.builder->GetInsertBlock()->getTerminator()) {
       if (returnType->isVoidTy()) {
+        scopes().emitScopeCleanup();
         ctx.builder->CreateRetVoid();
       } else {
         ctx.builder->CreateUnreachable();
