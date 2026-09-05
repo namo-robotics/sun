@@ -20,6 +20,7 @@ namespace sun {
 struct MoonBuildOptions {
   std::string targetTriple;            // empty = host
   bool debugInfo = false;              // -g
+  bool optimize = true;                // disabled by -O0
   bool dumpProtoSun = false;           // print synthesized proto source
   std::vector<MoonImport> extraMoons;  // CLI --moon imports
 };

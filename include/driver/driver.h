@@ -162,20 +162,19 @@ class Driver {
   /// manifest listed test_files. Valid after compileFile/executeFile.
   bool programHasTests() const { return hasTests_; }
 
-  /// Create a Driver for JIT execution. Optimization defaults to !debugInfo
-  /// unless explicitly overridden. debugInfo enables DWARF emission.
+  /// Create a JIT driver with independent debug-info and optimization settings.
   static std::unique_ptr<Driver> createForJIT(
       const std::string& moduleName = "sun", bool debugInfo = false,
-      std::optional<bool> optimize = std::nullopt);
+      bool optimize = true);
 
   /// Create a Driver for AOT compilation (no JIT). A non-empty targetTriple
   /// cross-compiles for that target (object/IR emission only — linking and
   /// execution stay host-only). debugInfo enables DWARF emission.
-  /// Optimization defaults to !debugInfo unless explicitly overridden.
+  /// Optimization is enabled by default, independently of debug info.
   static std::unique_ptr<Driver> createForAOT(
       const std::string& moduleName = "module",
       const std::string& targetTriple = "", bool debugInfo = false,
-      std::optional<bool> optimize = std::nullopt);
+      bool optimize = true);
 
   /// Execute a source string with optional command-line arguments
   /// filePath is used for error messages (optional)

@@ -78,6 +78,7 @@ std::string computeBundleHash(std::vector<std::string> sources,
                                          : options.targetTriple) +
            "\n";
   input += std::string("debug:") + (options.debugInfo ? "1" : "0") + "\n";
+  input += std::string("optimize:") + (options.optimize ? "1" : "0") + "\n";
   input += std::string("compiler:") + SUN_VERSION + "-" + SUN_GIT_HASH + "\n";
   return computeContentHash(input);
 }
@@ -132,7 +133,7 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   const std::string bundleHash =
       computeBundleHash(fingerprints, report.moonImports, options);
   auto driver = Driver::createForAOT("moon_module", options.targetTriple,
-                                     options.debugInfo);
+                                     options.debugInfo, options.optimize);
   driver->setDumpProtoSun(options.dumpProtoSun);
   driver->setOwnBundleHash(bundleHash);
   driver->setMetadataCallback(

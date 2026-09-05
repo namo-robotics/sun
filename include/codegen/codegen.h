@@ -1,7 +1,6 @@
 #pragma once
 
 #include <map>
-#include <optional>
 #include <stdexcept>
 
 #include "driver/sun_jit.h"
@@ -66,12 +65,12 @@ class CodegenContext {
                           const std::shared_ptr<SunJIT>& jit,
                           LLVMContext* existingContext = nullptr,
                           std::string targetTriple = "", bool debugInfo = false,
-                          std::optional<bool> optimize = std::nullopt)
+                          bool optimize = true)
       : moduleName(std::move(moduleName)),
         jit(jit),
         targetTriple_(std::move(targetTriple)),
         debugInfo_(debugInfo),
-        optimize_(optimize.value_or(!debugInfo)) {
+        optimize_(optimize) {
     ownsContext = existingContext == nullptr;
     if (existingContext) {
       initializeModule(*existingContext);

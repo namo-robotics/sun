@@ -60,7 +60,8 @@ function main() i32 {
 std::unique_ptr<Driver> compileWithDebug(const std::string& source,
                                          const std::string& triple = "") {
   initTestEnvironment();
-  auto driver = Driver::createForAOT("debug_test", triple, /*debugInfo=*/true);
+  auto driver = Driver::createForAOT("debug_test", triple, /*debugInfo=*/true,
+                                      /*optimize=*/false);
   driver->compileString(source);
   return driver;
 }
@@ -297,14 +298,16 @@ std::string linkSimpleDebugBinary(const std::string& name,
   std::string srcPath = ::testing::TempDir() + name + "_src.sun";
   std::ofstream(srcPath) << kSimpleProgram;
 
-  auto driver = Driver::createForAOT("debug_bin_test", "", /*debugInfo=*/true);
+  auto driver = Driver::createForAOT("debug_bin_test", "", /*debugInfo=*/true,
+                                      /*optimize=*/false);
   driver->compileFile(srcPath);
 
   std::string binary = ::testing::TempDir() + name + "_bin";
   std::string errorMsg;
   sun::LinkOptions linkOpts;
   if (!sun::compileToExecutable(driver->getModule(), binary, errorMsg,
-                                /*keepObjectFile=*/false, linkOpts)) {
+                                /*keepObjectFile=*/false, linkOpts,
+                                /*optimize=*/false)) {
     skipReason = "host link failed: " + errorMsg;
     return "";
   }
@@ -359,7 +362,7 @@ function main() i32 { return sununiqadd(3, 4); }
   std::string cmd =
       "timeout 120 gdb --batch -q -ex 'set breakpoint pending on' "
       "-ex 'break sununiqadd' -ex run -ex 'info args' -ex 'print a + b' "
-      "--args build/sun -g " +
+      "--args build/sun -g -O0 " +
       srcPath + " > " + outPath + " 2>&1";
   // Through a variable: macOS's WEXITSTATUS takes its argument's address
   // (union-wait heritage), so it rejects an rvalue.
@@ -470,4 +473,20 @@ function main() i32 {
       }
     }
   }
+}
+
+TEST(Tooling_Backend_DebugInfo, debug_info_keeps_optimization_enabled_by_default) {
+  initTestEnvironment();
+  auto driver = Driver::createForAOT("optimized_debug", "", /*debugInfo=*/true);
+  driver->compileString(R"(
+function main() i32 {
+  var x: i32 = 3;
+  var y: i32 = 4;
+  return x + y;
+}
+)");
+  auto& module = driver->getModule();
+  EXPECT_NE(printModule(module).find("ret i32 7"), std::string::npos);
+  ASSERT_NE(module.getFunction("main")->getSubprogram(), nullptr);
+  EXPECT_TRUE(module.getFunction("main")->getSubprogram()->isOptimized());
 }

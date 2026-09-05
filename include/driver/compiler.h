@@ -223,11 +223,11 @@ inline NativeLibraries loadNativeLibraries(const LinkOptions& opts) {
   return result;
 }
 
-/// Emits an object file; optimize overrides the default based on debug info.
+/// Emits an object file with the requested backend optimization setting.
 /// Returns true on success, false on failure
 inline bool emitObjectFile(llvm::Module& module, const std::string& outputPath,
                            std::string& errorMsg,
-                           std::optional<bool> optimize = std::nullopt) {
+                           bool optimize = true) {
   // Honor a triple codegen already chose (set by --target); default to the
   // host otherwise.
   std::string targetTriple = module.getTargetTriple();
@@ -244,17 +244,14 @@ inline bool emitObjectFile(llvm::Module& module, const std::string& outputPath,
     return false;
   }
 
-  // Keep the default tied to debug info, but allow optimized test binaries
-  // to carry debug info without changing their backend optimization level.
+  // Debug info does not change the backend optimization level.
   auto cpu = "generic";
   auto features = "";
   llvm::TargetOptions opt;
-  bool hasDebugInfo = module.getModuleFlag("Debug Info Version") != nullptr;
   auto targetMachine = target->createTargetMachine(
       targetTriple, cpu, features, opt, llvm::Reloc::PIC_,
       /*CM=*/std::nullopt,
-      optimize.value_or(!hasDebugInfo) ? llvm::CodeGenOptLevel::Default
-                                       : llvm::CodeGenOptLevel::None);
+      optimize ? llvm::CodeGenOptLevel::Default : llvm::CodeGenOptLevel::None);
 
   if (!targetMachine) {
     errorMsg = "Failed to create target machine";
@@ -373,14 +370,14 @@ inline bool linkExecutable(const std::string& objectPath,
   return true;
 }
 
-/// Compiles a standalone executable with an optional optimization override.
+/// Compiles a standalone executable with the requested optimization setting.
 /// Returns true on success, false on failure
 inline bool compileToExecutable(llvm::Module& module,
                                 const std::string& outputPath,
                                 std::string& errorMsg,
                                 bool keepObjectFile = false,
                                 const LinkOptions& linkOpts = {},
-                                std::optional<bool> optimize = std::nullopt) {
+                                bool optimize = true) {
   // Generate temporary object file path
   std::string objectPath = outputPath + ".o";
 

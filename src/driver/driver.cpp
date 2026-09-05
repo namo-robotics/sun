@@ -146,13 +146,13 @@ static bool declaresStdlibString(const BlockExprAST& block) {
 // Factory method for JIT execution
 std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
                                              bool debugInfo,
-                                             std::optional<bool> optimize) {
+                                             bool optimize) {
   ensureLLVMInitialized();
 
   // JIT always runs on the host; .moon bundle selection must match.
   sun::LibraryCache::instance().setTargetTriple("");
 
-  auto jit = SunJIT::Create(optimize.value_or(!debugInfo));
+  auto jit = SunJIT::Create(optimize);
   if (!jit) {
     llvm::errs() << "Failed to create SunJIT: " << toString(jit.takeError())
                  << "\n";
@@ -184,7 +184,7 @@ std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
 std::unique_ptr<Driver> Driver::createForAOT(const std::string& moduleName,
                                              const std::string& targetTriple,
                                              bool debugInfo,
-                                             std::optional<bool> optimize) {
+                                             bool optimize) {
   ensureLLVMInitialized();
 
   // Both the parser's bundle resolution and the linker's bundle selection
@@ -831,9 +831,7 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
       throw SunError(SunError::Kind::Semantic,
                      "Failed to link precompiled module: " + linker.getError());
     }
-    // Precompiled bundles may carry debug info (stdlib is built with -g); a
-    // non-debug compile must not inherit it — it would bloat the binary and
-    // flip the backend to CodeGenOptLevel::None.
+    // Strip imported debug info when the current build does not request it.
     if (!ctx->debugInfoEnabled()) {
       sun::DebugInfoBuilder::stripFromModule(*ctx->mainModule);
     }
