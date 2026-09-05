@@ -1,20 +1,14 @@
 name: Docs
 
-# Publishes only after BuildAndTest passes on main, so the site never
-# documents a commit whose tests failed. workflow_run carries no path filter,
-# so this rebuilds on every green main push rather than only on docs changes —
-# a rebuild of unchanged content republishes the same site harmlessly,
-# whereas a missed filter would leave the site stale.
-#
-# The trigger matches the other workflow by its `name:` field, not its file
-# name, so renaming it there means renaming it here too — otherwise this
-# workflow simply stops running, with nothing to see in the Actions tab.
+# Packages calls this after its builds, installation tests, and tap update
+# succeed. The required ref keeps the site on the commit those jobs built.
 on:
-  workflow_run:
-    workflows: [BuildAndTest]
-    types: [completed]
-    branches: [main]
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit successfully built and tested by Packages
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -27,10 +21,6 @@ concurrency:
 
 jobs:
   build:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -39,9 +29,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          # The commit CI tested; on a workflow_run event the default
-          # checkout would take the default branch's head instead.
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ inputs.ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
