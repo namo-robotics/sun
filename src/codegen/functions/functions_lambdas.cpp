@@ -668,9 +668,6 @@ Value* FunctionGenerator::codegenFunc(FunctionAST& funcAst) {
     functions().noteUserDefined(func->getName().str());
   }
 
-  // Run the optimizer on the function.
-  // ctx.fpm->run(*func, *ctx.fam);
-
   scopes().pop();
 
   return resultPtr;

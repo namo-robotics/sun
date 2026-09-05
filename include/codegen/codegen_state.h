@@ -85,7 +85,8 @@ class CodegenState {
         module(ctx.mainModule.get()),
         typeRegistry(std::move(registry)),
         typeResolver(ctx.getContext(), &ctx.mainModule->getDataLayout()),
-        debugInfo(ctx.mainModule.get(), ctx.debugInfoEnabled()) {}
+        debugInfo(ctx.mainModule.get(), ctx.debugInfoEnabled(),
+                  ctx.optimizationEnabled()) {}
 
   CodegenState(const CodegenState&) = delete;
   CodegenState& operator=(const CodegenState&) = delete;

@@ -15,6 +15,7 @@
 #include <llvm/TargetParser/Triple.h>
 
 #include <cstdlib>
+#include <optional>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -222,10 +223,11 @@ inline NativeLibraries loadNativeLibraries(const LinkOptions& opts) {
   return result;
 }
 
-/// Emits an object file from the given LLVM module
+/// Emits an object file; optimize overrides the default based on debug info.
 /// Returns true on success, false on failure
 inline bool emitObjectFile(llvm::Module& module, const std::string& outputPath,
-                           std::string& errorMsg) {
+                           std::string& errorMsg,
+                           std::optional<bool> optimize = std::nullopt) {
   // Honor a triple codegen already chose (set by --target); default to the
   // host otherwise.
   std::string targetTriple = module.getTargetTriple();
@@ -242,9 +244,8 @@ inline bool emitObjectFile(llvm::Module& module, const std::string& outputPath,
     return false;
   }
 
-  // Create target machine. Debug builds (-g) use CodeGenOptLevel::None so the
-  // backend does not merge instructions across source lines (e.g. folding a
-  // subtraction into a later comparison's flags), which makes stepping jumpy.
+  // Keep the default tied to debug info, but allow optimized test binaries
+  // to carry debug info without changing their backend optimization level.
   auto cpu = "generic";
   auto features = "";
   llvm::TargetOptions opt;
@@ -252,8 +253,8 @@ inline bool emitObjectFile(llvm::Module& module, const std::string& outputPath,
   auto targetMachine = target->createTargetMachine(
       targetTriple, cpu, features, opt, llvm::Reloc::PIC_,
       /*CM=*/std::nullopt,
-      hasDebugInfo ? llvm::CodeGenOptLevel::None
-                   : llvm::CodeGenOptLevel::Default);
+      optimize.value_or(!hasDebugInfo) ? llvm::CodeGenOptLevel::Default
+                                       : llvm::CodeGenOptLevel::None);
 
   if (!targetMachine) {
     errorMsg = "Failed to create target machine";
@@ -372,18 +373,19 @@ inline bool linkExecutable(const std::string& objectPath,
   return true;
 }
 
-/// Compiles the LLVM module to a standalone executable
+/// Compiles a standalone executable with an optional optimization override.
 /// Returns true on success, false on failure
 inline bool compileToExecutable(llvm::Module& module,
                                 const std::string& outputPath,
                                 std::string& errorMsg,
                                 bool keepObjectFile = false,
-                                const LinkOptions& linkOpts = {}) {
+                                const LinkOptions& linkOpts = {},
+                                std::optional<bool> optimize = std::nullopt) {
   // Generate temporary object file path
   std::string objectPath = outputPath + ".o";
 
   // Step 1: Emit object file
-  if (!emitObjectFile(module, objectPath, errorMsg)) {
+  if (!emitObjectFile(module, objectPath, errorMsg, optimize)) {
     return false;
   }
 

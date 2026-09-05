@@ -412,3 +412,62 @@ TEST(Tooling_Backend_DebugInfo, lldb_breaks_reads_variables_and_steps) {
   EXPECT_NE(out.find("return sum;"), std::string::npos) << out;
   EXPECT_NE(out.find("(int) 7"), std::string::npos) << out;
 }
+
+TEST(Tooling_Backend_DebugInfo, ReleaseOptimizesLocalArithmetic) {
+  initTestEnvironment();
+  auto driver = Driver::createForAOT("release_optimization");
+  driver->compileString(R"(
+function main() i32 {
+  var x: i32 = 3;
+  var y: i32 = 4;
+  return x + y;
+}
+)");
+  std::string ir = printModule(driver->getModule());
+  EXPECT_NE(ir.find("ret i32 7"), std::string::npos);
+  EXPECT_EQ(ir.find("alloca i32"), std::string::npos);
+}
+
+TEST(Tooling_Backend_DebugInfo, DebugPreservesLocalArithmetic) {
+  auto driver = compileWithDebug(R"(
+function main() i32 {
+  var x: i32 = 3;
+  var y: i32 = 4;
+  return x + y;
+}
+)");
+  std::string ir = printModule(driver->getModule());
+  EXPECT_NE(ir.find("alloca i32"), std::string::npos);
+  EXPECT_NE(ir.find("add i32"), std::string::npos);
+}
+
+TEST(Tooling_Backend_DebugInfo, optimization_is_independent_of_debug_info) {
+  initTestEnvironment();
+  for (bool debugInfo : {false, true}) {
+    for (bool optimize : {false, true}) {
+      SCOPED_TRACE(::testing::Message() << "debugInfo=" << debugInfo
+                                        << ", optimize=" << optimize);
+      auto driver = Driver::createForAOT("optimization_override", "",
+                                         debugInfo, optimize);
+      driver->compileString(R"(
+function main() i32 {
+  var x: i32 = 3;
+  var y: i32 = 4;
+  return x + y;
+}
+)");
+      auto& module = driver->getModule();
+      std::string ir = printModule(module);
+      EXPECT_EQ(ir.find("alloca i32") == std::string::npos, optimize);
+      EXPECT_EQ(ir.find("ret i32 7") != std::string::npos, optimize);
+      EXPECT_EQ(module.getModuleFlag("Debug Info Version") != nullptr,
+                debugInfo);
+      if (debugInfo) {
+        auto* sp = module.getFunction("main")->getSubprogram();
+        ASSERT_NE(sp, nullptr);
+        EXPECT_EQ(sp->isOptimized(), optimize);
+        EXPECT_EQ(sp->getUnit()->isOptimized(), optimize);
+      }
+    }
+  }
+}

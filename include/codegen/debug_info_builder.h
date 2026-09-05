@@ -32,9 +32,11 @@ class DebugInfoBuilder {
   // function currently being emitted (mirrors CodegenVisitor's scopes).
   std::vector<llvm::DIScope*> scopeStack_;
   bool finalized_ = false;
+  bool optimized_ = false;
 
  public:
-  DebugInfoBuilder(llvm::Module* module, bool enabled);
+  /// Build debug metadata, recording whether the generated code is optimized.
+  DebugInfoBuilder(llvm::Module* module, bool enabled, bool optimized = false);
 
   bool enabled() const { return di_ != nullptr; }
 

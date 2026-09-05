@@ -15,8 +15,9 @@ namespace sun {
 
 using namespace llvm;
 
-DebugInfoBuilder::DebugInfoBuilder(llvm::Module* module, bool enabled)
-    : module_(module) {
+DebugInfoBuilder::DebugInfoBuilder(llvm::Module* module, bool enabled,
+                                   bool optimized)
+    : module_(module), optimized_(optimized) {
   if (!enabled || !module) return;
   di_ = std::make_unique<DIBuilder>(*module);
   if (!module->getModuleFlag("Debug Info Version")) {
@@ -42,7 +43,7 @@ DICompileUnit* DebugInfoBuilder::ensureCompileUnit(
     file = di_->createFile(module_->getModuleIdentifier(), ".");
   }
   cu_ = di_->createCompileUnit(dwarf::DW_LANG_C_plus_plus_14, file, "sun",
-                               /*isOptimized=*/false, /*Flags=*/"",
+                               /*isOptimized=*/optimized_, /*Flags=*/"",
                                /*RuntimeVersion=*/0);
   return cu_;
 }
@@ -75,7 +76,9 @@ DISubprogram* DebugInfoBuilder::enterFunction(llvm::IRBuilderBase& builder,
   auto* sp =
       di_->createFunction(file, name, func->getName(), file, loc.line, spType,
                           /*ScopeLine=*/loc.line, DINode::FlagPrototyped,
-                          DISubprogram::SPFlagDefinition);
+                          DISubprogram::SPFlagDefinition |
+                              (optimized_ ? DISubprogram::SPFlagOptimized
+                                          : DISubprogram::SPFlagZero));
   func->setSubprogram(sp);
   scopeStack_.push_back(sp);
   // Drop any location inherited from the enclosing function's codegen

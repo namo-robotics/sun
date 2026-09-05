@@ -145,13 +145,14 @@ static bool declaresStdlibString(const BlockExprAST& block) {
 
 // Factory method for JIT execution
 std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
-                                             bool debugInfo) {
+                                             bool debugInfo,
+                                             std::optional<bool> optimize) {
   ensureLLVMInitialized();
 
   // JIT always runs on the host; .moon bundle selection must match.
   sun::LibraryCache::instance().setTargetTriple("");
 
-  auto jit = SunJIT::Create();
+  auto jit = SunJIT::Create(optimize.value_or(!debugInfo));
   if (!jit) {
     llvm::errs() << "Failed to create SunJIT: " << toString(jit.takeError())
                  << "\n";
@@ -161,7 +162,7 @@ std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
   auto jitShared = std::shared_ptr<SunJIT>(std::move(jit.get()));
   auto ctx = std::make_unique<CodegenContext>(moduleName, jitShared,
                                               /*existingContext=*/nullptr,
-                                              /*targetTriple=*/"", debugInfo);
+                                              /*targetTriple=*/"", debugInfo, optimize);
 
   // Register runtime symbols for JIT
   auto& mainDylib = ctx->jit->getMainJITDylib();
@@ -182,7 +183,8 @@ std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
 // Factory method for AOT compilation
 std::unique_ptr<Driver> Driver::createForAOT(const std::string& moduleName,
                                              const std::string& targetTriple,
-                                             bool debugInfo) {
+                                             bool debugInfo,
+                                             std::optional<bool> optimize) {
   ensureLLVMInitialized();
 
   // Both the parser's bundle resolution and the linker's bundle selection
@@ -191,7 +193,7 @@ std::unique_ptr<Driver> Driver::createForAOT(const std::string& moduleName,
 
   auto ctx = std::make_unique<CodegenContext>(moduleName, nullptr,
                                               /*existingContext=*/nullptr,
-                                              targetTriple, debugInfo);
+                                              targetTriple, debugInfo, optimize);
   auto typeRegistry = std::make_shared<sun::TypeRegistry>();
   auto codegenVisitor = std::make_unique<CodegenVisitor>(*ctx, typeRegistry);
   auto analyzer = std::make_unique<SemanticAnalyzer>(typeRegistry);
@@ -846,6 +848,16 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
   // All codegen is done (including static init); emit the DI finalization
   // before any module verification.
   codegenVisitor->finalizeDebugInfo();
+
+  // Optimize only after codegen has finished using instruction pointers.
+  if (ctx->optimizationEnabled()) {
+    sun::ScopedStage stage("optimize");
+    for (auto& function : *ctx->mainModule) {
+      if (!function.isDeclaration()) {
+        ctx->fpm->run(function, *ctx->fam);
+      }
+    }
+  }
 
   // Debug mode: dump only user-defined IR after codegen (filters out stdlib /
   // moon imports)
