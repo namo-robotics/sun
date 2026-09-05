@@ -52,8 +52,6 @@ static void printUsage(const char* programName) {
                   "manifest protos\n";
   llvm::errs() << "  -g                Emit DWARF debug info (keeps optimization level)\n";
   llvm::errs() << "  -O0               Disable IR and backend optimizations\n";
-  llvm::errs() << "  --no-test-debug   Omit test debug info without changing "
-                  "optimization\n";
   llvm::errs() << "  --debug           Generate debug output (ast.dot, ir.ll, "
                   "test_runner.sun) in <input>_debug/\n";
   llvm::errs() << "  --no-test         Do not also compile the test binary "
@@ -293,7 +291,7 @@ static int runTestEntrypoint(const std::string& inputFile,
                              const std::vector<sun::MoonImport>& moonImports,
                              const std::vector<char*>& forwarded,
                              bool debugMode, bool optimize, bool emitIR,
-                             bool noTestDebug, bool skipWhenNoTests = false) {
+                             bool skipWhenNoTests = false) {
   // The runner reads its flags from main(argc, argv), argv[0] being the
   // entrypoint file, same as ordinary JIT execution.
   std::vector<char*> programArgv;
@@ -306,7 +304,7 @@ static int runTestEntrypoint(const std::string& inputFile,
   programArgv.push_back(nullptr);
 
   try {
-    auto driver = Driver::createForJIT("main_module", !noTestDebug,
+    auto driver = Driver::createForJIT("main_module", /*debugInfo=*/true,
                                         optimize);
     driver->setTestHandling(Driver::TestHandling::Compile);
     driver->setDumpIR(emitIR);
@@ -348,7 +346,6 @@ static int runTest(int argc, char* argv[]) {
   std::vector<char*> forwarded;
   bool debugMode = false;
   bool optimize = true;
-  bool noTestDebug = false;
   bool emitIR = false;
 
   int i = 0;
@@ -367,9 +364,7 @@ static int runTest(int argc, char* argv[]) {
     } else if (arg == "-O0") {
       optimize = false;
     } else if (arg == "-g") {
-      // Tests already include debug info unless --no-test-debug is set.
-    } else if (arg == "--no-test-debug") {
-      noTestDebug = true;
+      // Tests always include debug info.
     } else if (arg == "--emit-ir") {
       emitIR = true;
     } else if (arg == "--lib-path" && i + 1 < argc) {
@@ -395,7 +390,7 @@ static int runTest(int argc, char* argv[]) {
     } else if (arg[0] == '-') {
       llvm::errs() << "Unknown option for 'sun test': " << arg << "\n";
       llvm::errs() << "Usage: sun test [--test-sequential] "
-                      "[--test-filter <pattern>] [--debug] [-g] [-O0] [--no-test-debug] "
+                      "[--test-filter <pattern>] [--debug] [-g] [-O0] "
                       "[--emit-ir] [--moon <spec>] [--lib-path <dir>] "
                       "<script.sun> [-- args...]\n";
       return 1;
@@ -422,7 +417,7 @@ static int runTest(int argc, char* argv[]) {
 
   if (!isConfigInput(inputFile)) {
     return runTestEntrypoint(inputFile, moonImports, forwarded, debugMode,
-                             optimize, emitIR, noTestDebug);
+                             optimize, emitIR);
   }
 
   // A config input: run every configured entrypoint's tests in turn. The
@@ -437,7 +432,7 @@ static int runTest(int argc, char* argv[]) {
         llvm::outs().flush();
       }
       if (runTestEntrypoint(entry.path, moonImports, forwarded, debugMode,
-                            optimize, emitIR, noTestDebug,
+                            optimize, emitIR,
                             /*skipWhenNoTests=*/true) != 0) {
         failures++;
       }
@@ -465,7 +460,6 @@ struct CompileJob {
   bool optimize = true;
   bool dumpProtoSun = false;
   bool noTest = false;
-  bool noTestDebug = false;
   sun::Depfile* depfile = nullptr;  // records output -> inputs when given
 };
 
@@ -479,9 +473,9 @@ static int compileTestBinary(const CompileJob& job) {
                                      ? job.outputFile + "_test"
                                      : job.testBinaryName;
 
-  // Tests inherit production optimization and carry debug info by default.
+  // Tests inherit production optimization and always carry debug info.
   auto testDriver =
-      Driver::createForAOT("test_module", job.targetTriple, !job.noTestDebug,
+      Driver::createForAOT("test_module", job.targetTriple, /*debugInfo=*/true,
                            job.optimize);
   if (job.debugMode) {
     // Separate folder (<input>_test_debug/) so the production build's
@@ -744,7 +738,6 @@ int main(int argc, char* argv[]) {
   bool optimize = true;
   bool dumpProtoSun = false;
   bool noTest = false;
-  bool noTestDebug = false;
   std::string depfilePath;
   int programArgStart = -1;  // Index where program arguments start
 
@@ -783,8 +776,6 @@ int main(int argc, char* argv[]) {
       debugInfo = true;
     } else if (arg == "--debug") {
       debugMode = true;
-    } else if (arg == "--no-test-debug") {
-      noTestDebug = true;
     } else if (arg == "--no-test") {
       noTest = true;
     } else if (arg == "--depfile" && i + 1 < argc) {
@@ -1000,7 +991,6 @@ int main(int argc, char* argv[]) {
     job.optimize = optimize;
     job.dumpProtoSun = dumpProtoSun;
     job.noTest = noTest;
-    job.noTestDebug = noTestDebug;
     job.depfile = depfilePath.empty() ? nullptr : &depfile;
 
     if (configInput) {
