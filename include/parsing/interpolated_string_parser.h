@@ -38,7 +38,7 @@ class InterpolatedStringParser {
   // positions (best-effort; exact for offsets).
   static std::unique_ptr<InterpolatedStringAST> parseToAst(
       const std::string& content, const Position& start, const Position& end,
-      const std::string& filePath);
+      const std::string& filePath, sun::SourceFileId sourceFile);
 
   // Desugar the node into the runtime block (consumes segment expressions).
   // Synthetic nodes are stamped with the template's location.
@@ -49,7 +49,7 @@ class InterpolatedStringParser {
   // expressions). start = template token start (for position rebasing).
   static std::vector<InterpolatedStringAST::Segment> tokenize(
       const std::string& content, const Position& start,
-      const std::string& filePath);
+      const std::string& filePath, sun::SourceFileId sourceFile);
 
   // Process escape sequences in a literal segment
   static std::string processEscapes(const std::string& raw);
@@ -58,7 +58,8 @@ class InterpolatedStringParser {
   static size_t findMatchingBrace(const std::string& content, size_t start);
 
   // Parse an expression string using a sub-parser
-  static std::unique_ptr<ExprAST> parseExpression(const std::string& exprText);
+  static std::unique_ptr<ExprAST> parseExpression(const std::string& exprText,
+                                                  sun::SourceFileId sourceFile);
 
   // Rebase fragment-relative positions in a sub-expression tree to absolute
   // file positions

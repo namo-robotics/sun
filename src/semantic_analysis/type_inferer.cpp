@@ -1387,6 +1387,10 @@ sun::TypePtr TypeInferer::inferGenericFunctionCallType(
   // No specialization - type args contain type parameters
   // Compute return type from generic function's declared return type
   if (genFuncInfo->returnType.has_value()) {
+    SemanticContext::ScopeSwitchGuard definitionScope(
+        ctx_, SemanticContext::definitionScopeOf(*genFuncInfo));
+    SemanticContext::SourceFileGuard definitionFile(
+        ctx_, genFuncInfo->AST->getSourceFileId());
     auto typeParams = typeParameterNames(genFuncInfo->typeParameters);
     ctx_.enterTypeParamScope(typeParams, typeArgs);
     sun::TypePtr returnType = typeAnnotationToType(*genFuncInfo->returnType);

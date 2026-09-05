@@ -153,6 +153,7 @@ enum class ScopeType {
 // Alias import from a using statement (legacy — being replaced by
 // ImportBinding)
 struct UsingImport {
+  sun::SourceFileId sourceFileId = 0;
   std::string namespacePath;  // "std" or "std.nested"
   std::string target;         // "Vec" for specific, "*" for wildcard
   bool isWildcard;            // true if target == "*" (using std;)
@@ -168,6 +169,7 @@ struct SemanticScopeBase;
 
 // Scope-based import binding — a reference to a symbol in another scope
 struct ImportBinding {
+  sun::SourceFileId sourceFileId = 0;
   std::string localName;  // How the symbol is referred to locally ("Vec")
   SemanticScopeBase* sourceScope;  // Pointer to the scope it was imported from
   std::string sourceName;          // Name in the source scope ("Vec")
@@ -360,6 +362,8 @@ using SemanticScope = SemanticScopeBase;
 struct AccessContext {
   virtual ~AccessContext() = default;
   virtual sun::ModulePath currentModulePath() const = 0;
+  /** The source unit performing name lookup. */
+  virtual sun::SourceFileId currentSourceFileId() const { return 0; }
   [[noreturn]] virtual void denyAccess(
       const sun::access::ItemRef& item) const = 0;
 };
@@ -417,6 +421,12 @@ struct SemanticScopeBase
     return s->accessContext;
   }
 
+  /** Whether an import belongs to the source unit performing lookup. */
+  bool admitsImport(sun::SourceFileId sourceFile) const {
+    const auto* context = accessCtx();
+    return sourceFile == (context ? context->currentSourceFileId() : 0);
+  }
+
   // True if this scope was loaded from an external .moon file
   bool isExternal = false;
 
@@ -452,7 +462,7 @@ struct SemanticScopeBase
 
   // Generic scope-chain traversal: calls finder(scope) at each scope in chain
   template <typename ResultT, typename Finder>
-  ResultT lookupInChain(Finder finder) const;
+  ResultT lookupInChain(const std::string& name, Finder finder) const;
 
   // Lookup a class by name in the scope chain
   std::shared_ptr<sun::ClassType> lookupClass(const std::string& name) const;
@@ -780,7 +790,8 @@ class AccessFilter {
 // finder signature: ResultT finder(const SemanticScopeBase* scope)
 // -------------------------------------------------------------------
 template <typename ResultT, typename Finder>
-ResultT SemanticScopeBase::lookupInChain(Finder finder) const {
+ResultT SemanticScopeBase::lookupInChain(const std::string& name,
+                                        Finder finder) const {
   AccessFilter filter(this);
   auto probe = [&](const SemanticScopeBase* s) -> ResultT {
     auto r = finder(s);
@@ -805,8 +816,9 @@ ResultT SemanticScopeBase::lookupInChain(Finder finder) const {
     }
     // Search import bindings from using statements
     for (const auto& binding : s->importBindings) {
+      if (!s->admitsImport(binding.sourceFileId)) continue;
       if (!binding.sourceScope) continue;
-      if (binding.isWildcard) {
+      if (binding.isWildcard || binding.localName == name) {
         result = probe(binding.sourceScope);
         if (result) return result;
       }

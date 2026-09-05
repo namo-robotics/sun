@@ -14,6 +14,7 @@
 #include "moon_bundling/metadata_extractor.h"
 #include "moon_bundling/moon.h"
 #include "moon_bundling/proto_importer.h"
+#include "serialization/source_file_ids.h"
 #include "support/error.h"
 
 namespace sun {
@@ -118,6 +119,15 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
     collect(extractAllMetadataFromSource(synthesized.sunSource,
                                          synthesized.pseudoPath, baseDir),
             synthesized.pseudoPath);
+  }
+
+  // Store deterministic file identities local to this bundle.
+  std::map<sun::SourceFileId, sun::SourceFileId> sourceFiles;
+  for (auto& metadata : allMetadata) {
+    serialization::remapSourceFiles(metadata, [&](sun::SourceFileId id) {
+      auto [it, inserted] = sourceFiles.try_emplace(id, sourceFiles.size() + 1);
+      return it->second;
+    });
   }
 
   // ---- Root modules must be public: a bundle whose top-level module is

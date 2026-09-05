@@ -13,8 +13,8 @@
 
 std::unique_ptr<InterpolatedStringAST> InterpolatedStringParser::parseToAst(
     const std::string& content, const Position& start, const Position& end,
-    const std::string& filePath) {
-  auto segments = tokenize(content, start, filePath);
+    const std::string& filePath, sun::SourceFileId sourceFile) {
+  auto segments = tokenize(content, start, filePath, sourceFile);
 
   auto node =
       std::make_unique<InterpolatedStringAST>(content, std::move(segments));
@@ -22,12 +22,13 @@ std::unique_ptr<InterpolatedStringAST> InterpolatedStringParser::parseToAst(
   if (!filePath.empty()) loc.filePath = filePath;
   loc.setEnd(end.line, end.column, end.offset);
   node->setLocation(std::move(loc));
+  node->inheritSourceFile(sourceFile);
   return node;
 }
 
 std::vector<InterpolatedStringAST::Segment> InterpolatedStringParser::tokenize(
     const std::string& content, const Position& start,
-    const std::string& filePath) {
+    const std::string& filePath, sun::SourceFileId sourceFile) {
   std::vector<InterpolatedStringAST::Segment> segments;
   // Content begins one byte past the opening backtick
   const int contentOffset = start.offset + 1;
@@ -91,7 +92,7 @@ std::vector<InterpolatedStringAST::Segment> InterpolatedStringParser::tokenize(
 
     // Extract and parse the expression
     std::string exprText = content.substr(exprStart, exprEnd - exprStart);
-    auto expr = parseExpression(exprText);
+    auto expr = parseExpression(exprText, sourceFile);
 
     if (expr) {
       auto [lineBase, colBase] = positionAt(exprStart);
@@ -169,13 +170,14 @@ size_t InterpolatedStringParser::findMatchingBrace(const std::string& content,
 }
 
 std::unique_ptr<ExprAST> InterpolatedStringParser::parseExpression(
-    const std::string& exprText) {
+    const std::string& exprText, sun::SourceFileId sourceFile) {
   if (exprText.empty()) {
     logAndThrowError("Empty interpolation expression");
   }
 
   // Create a sub-parser using the factory method that primes the lexer
   Parser subParser = Parser::createStringParser(exprText);
+  subParser.setSourceFileId(sourceFile);
 
   // Parse a single expression
   auto expr = subParser.parseExpression();

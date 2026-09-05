@@ -21,6 +21,7 @@ enum Visibility {
 }
 
 message ASTNode {
+  uint64 source_file_id = 100;
   Position location = 1;
   bool precompiled = 2;
   bool skip_codegen = 3;
@@ -191,6 +192,7 @@ message VariableReference {
 }
 
 message VariableCreation {
+  uint64 source_file_id = 100;
   string name = 1;
   optional ASTNode value = 2;
   optional TypeAnnotation type_annotation = 3;
@@ -265,6 +267,7 @@ message PackExpansion {
 // =============================================================================
 
 message BlockExpr {
+  uint64 source_file_id = 100;
   repeated ASTNode body = 1;
   optional Position location = 2;  // Span of the braces
   // Which construct this block is the body of; values mirror the C++
@@ -383,6 +386,7 @@ message Prototype {
 }
 
 message FunctionDef {
+  uint64 source_file_id = 100;
   Prototype proto = 1;
   BlockExpr body = 2;
   string source_text = 3;  // Original source for generic specialization
@@ -495,6 +499,7 @@ message ImplementedInterface {
 }
 
 message ClassDef {
+  uint64 source_file_id = 100;
   string name = 1;
   repeated string type_parameters = 2 [deprecated = true];  // see type_params
   repeated ImplementedInterface implemented_interfaces = 3;
@@ -526,6 +531,7 @@ message InterfaceMethod {
 }
 
 message InterfaceDef {
+  uint64 source_file_id = 100;
   string name = 1;
   repeated string type_parameters = 2 [deprecated = true];  // see type_params
   repeated InterfaceField fields = 3;
@@ -547,6 +553,7 @@ message EnumVariant {
 }
 
 message EnumDef {
+  uint64 source_file_id = 100;
   string name = 1;
   repeated EnumVariant variants = 2;
   repeated string type_parameters = 3 [deprecated = true];  // see type_params

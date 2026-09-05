@@ -15,6 +15,7 @@ void DeclarationCollector::collectTypeNames(BlockExprAST& block) {
   if (!ctx_.isAtModuleLevel()) return;
 
   for (const auto& expr : block.getBody()) {
+    SemanticContext::SourceFileGuard sourceFile(ctx_, expr->getSourceFileId());
     switch (expr->getType()) {
       case ASTNodeType::ENUM_DEFINITION: {
         auto& enumDef = static_cast<EnumDefinitionAST&>(*expr);
@@ -146,6 +147,7 @@ void DeclarationCollector::collectDeclarations(BlockExprAST& block) {
   // must not reach into their class shapes and make a name ambiguous there.
   // The bundle being built is ordinary source and takes its turn below.
   for (const auto& expr : block.getBody()) {
+    SemanticContext::SourceFileGuard sourceFile(ctx_, expr->getSourceFileId());
     if (expr->getType() != ASTNodeType::MOON_SCOPE) continue;
     auto& moonScope = static_cast<MoonScopeAST&>(*expr);
     if (moonScope.isOwnBundle()) continue;
@@ -162,6 +164,7 @@ void DeclarationCollector::collectDeclarations(BlockExprAST& block) {
   // where the `using` sits. Every module scope already exists (the outermost
   // pass registered the whole tree), so the bindings resolve now.
   for (const auto& expr : block.getBody()) {
+    SemanticContext::SourceFileGuard sourceFile(ctx_, expr->getSourceFileId());
     if (expr->getType() == ASTNodeType::USING) {
       registerUsing(static_cast<UsingAST&>(*expr));
     }
@@ -170,6 +173,7 @@ void DeclarationCollector::collectDeclarations(BlockExprAST& block) {
   // Sub-pass A: Register types (enums, interfaces, classes) so that
   // function signatures can reference forward-declared types.
   for (const auto& expr : block.getBody()) {
+    SemanticContext::SourceFileGuard sourceFile(ctx_, expr->getSourceFileId());
     // Precompiled nodes (from .moon libs) are registered here like any
     // other type declaration — registration is idempotent, and every type,
     // generic template and class shape must be known before any signature
@@ -283,6 +287,7 @@ void DeclarationCollector::collectDeclarations(BlockExprAST& block) {
   // may call methods of any class in this block — so every class's methods
   // must be known before any signature is resolved.
   for (const auto& expr : block.getBody()) {
+    SemanticContext::SourceFileGuard sourceFile(ctx_, expr->getSourceFileId());
     if (expr->getType() != ASTNodeType::CLASS_DEFINITION) continue;
     auto& classDef = static_cast<ClassDefinitionAST&>(*expr);
     if (classDef.isPartial() || classDef.isGeneric()) continue;
@@ -299,6 +304,7 @@ void DeclarationCollector::collectDeclarations(BlockExprAST& block) {
   // Sub-pass B: Register functions (signatures only, no body analysis).
   // Types are now available for parameter/return type resolution.
   for (const auto& expr : block.getBody()) {
+    SemanticContext::SourceFileGuard sourceFile(ctx_, expr->getSourceFileId());
     if (expr->getType() == ASTNodeType::VARIABLE_CREATION) {
       auto& variable = static_cast<VariableCreationAST&>(*expr);
       if (variable.isCExtern()) {
@@ -379,6 +385,7 @@ void DeclarationCollector::collectDeclarations(BlockExprAST& block) {
 // Register a named, non-lambda function's signature (no body analysis) in
 // the current scope. Generic functions register as templates.
 void DeclarationCollector::collectFunctionSignature(FunctionAST& func) {
+  SemanticContext::SourceFileGuard sourceFile(ctx_, func.getSourceFileId());
   PrototypeAST& proto = const_cast<PrototypeAST&>(func.getProto());
 
   // Skip lambdas and anonymous functions
@@ -592,6 +599,7 @@ void DeclarationCollector::registerClassShape(
 
 void DeclarationCollector::collectEnumDeclarations(const BlockExprAST& block) {
   for (const auto& expr : block.getBody()) {
+    SemanticContext::SourceFileGuard sourceFile(ctx_, expr->getSourceFileId());
     if (expr->getType() != ASTNodeType::ENUM_DEFINITION) continue;
     auto& enumDef = static_cast<EnumDefinitionAST&>(*expr);
     if (enumDef.isGeneric()) {

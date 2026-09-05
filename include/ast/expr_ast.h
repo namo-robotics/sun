@@ -11,10 +11,12 @@
 #include "ast/ast_common.h"
 #include "parsing/lexer.h"
 #include "semantic_analysis/visibility.h"
+#include "support/source_file.h"
 
 class ExprAST {
  protected:
   mutable std::unique_ptr<ExprAnalysis> analysis_;  // Analysis metadata
+  sun::SourceFileId sourceFileId_ = 0;
   Position location_;                               // Original source location
   bool precompiled_ = false;  // True if from precompiled library
   bool skipCodegen_ = false;  // Set by semantic analyzer for diamond duplicates
@@ -38,6 +40,7 @@ class ExprAST {
 
   // Copy base class fields to a cloned node. Called by derived clone() methods.
   void cloneBase(ExprAST& dest) const {
+    dest.sourceFileId_ = sourceFileId_;
     dest.location_ = location_;
     dest.precompiled_ = precompiled_;
     dest.skipCodegen_ = skipCodegen_;
@@ -51,6 +54,15 @@ class ExprAST {
 
  public:
   virtual ~ExprAST() = default;
+
+  /** The source unit whose imports apply to this node. */
+  sun::SourceFileId getSourceFileId() const { return sourceFileId_; }
+
+  /** Preserve the source context when parsing or synthesizing a node. */
+  void setSourceFileId(sun::SourceFileId id) { sourceFileId_ = id; }
+
+  /** Fill missing source identities without changing imported subtrees. */
+  void inheritSourceFile(sun::SourceFileId id);
   virtual ASTNodeType getType() const = 0;
 
   // Debug representation of this AST node

@@ -3,6 +3,7 @@
 
 #include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/type_inferer.h"
+#include "semantic_analysis/type_traits.h"
 #include "support/error.h"
 
 using sun::unwrapRef;
@@ -366,6 +367,11 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
     return primitiveType;
   }
 
+  // Builtin traits are symbolic targets of _is and generic constraints.
+  if (sun::isTypeTrait(annot.baseName)) {
+    return sun::Types::TypeParameter(annot.baseName);
+  }
+
   // Check for type parameter binding (in generic context)
   auto typeParamBinding = ctx_.findTypeParameter(annot.baseName);
   if (typeParamBinding) {
@@ -485,21 +491,11 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
     return enumType;
   }
 
-  // A dotted name spells a module path, so it is never an unbound type
-  // parameter — reaching here means the module or the symbol is wrong. Say so
-  // now; silently making a type parameter of it only surfaces later as a
-  // mismatch against the type it was meant to name.
-  if (annot.baseName.find('.') != std::string::npos) {
-    logAndThrowError("Unknown type '" + annot.baseName +
-                         "'. No class, interface or enum by that name is "
-                         "visible here — check the spelling, and that the "
-                         "module declaring it is imported in this scope.",
-                     annot.span);
-  }
-
-  // Unknown type - could be a type parameter not yet bound
-  // Create a TypeParameter type for it
-  return sun::Types::TypeParameter(annot.baseName);
+  logAndThrowError("Unknown type '" + annot.baseName +
+                       "'. No class, interface or enum by that name is "
+                       "visible here — check the spelling, and that the "
+                       "module declaring it is imported in this scope.",
+                   annot.span);
 }
 
 // -------------------------------------------------------------------

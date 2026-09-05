@@ -619,6 +619,7 @@ TEST(Tooling_Fmt, MultipleFilesOneParserNoCommentBleed) {
 #include "parsing/lowering_pass.h"
 #include "parsing/parser.h"
 #include "serialization/ast_serializer.h"
+#include "serialization/source_file_ids.h"
 
 namespace {
 
@@ -648,7 +649,11 @@ std::string loweredFingerprint(BlockExprAST& ast) {
   sun::serialization::SerializerConfig config;
   config.include_location = false;
   sun::serialization::ASTSerializer serializer(config);
-  return serializer.serializeProgram(ast).SerializeAsString();
+  auto program = serializer.serializeProgram(ast);
+  // Each corpus tree represents one file; its allocated identity can differ.
+  sun::serialization::remapSourceFiles(
+      program, [](sun::SourceFileId) { return sun::SourceFileId{1}; });
+  return program.SerializeAsString();
 }
 
 }  // namespace
