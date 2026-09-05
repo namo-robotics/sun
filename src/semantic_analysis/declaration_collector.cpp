@@ -22,18 +22,30 @@ void DeclarationCollector::collectTypeNames(BlockExprAST& block) {
         if (enumDef.isGeneric()) {
           if (!ctx_.lookupGenericEnum(enumDef.getName())) {
             ctx_.registerGenericEnum(
-                enumDef.getName(), {&enumDef, enumDef.getTypeParameters(),
-                                    ctx_.makeQualifiedName(enumDef.getName())});
+                enumDef.getName(),
+                {&enumDef, enumDef.getTypeParameters(),
+                 (enumDef.hasQualifiedName()
+                      ? enumDef.getQualifiedName()
+                      : ctx_.makeQualifiedName(enumDef.getName()))});
           }
           break;
         }
         if (ctx_.lookupEnum(enumDef.getName())) break;
-        auto enumType = ctx_.types()->getEnum(enumDef.getName());
+        auto enumType = ctx_.types()->getEnum(
+            (enumDef.hasQualifiedName()
+                 ? enumDef.getQualifiedName()
+                 : ctx_.makeQualifiedName(enumDef.getName()))
+                .mangled());
         for (const auto& variant : enumDef.getVariants()) {
           enumType->addVariant(variant.name, variant.value);
         }
+        enumType->setBaseName(enumDef.getName());
         enumType->visibility = enumDef.getVisibility();
-        enumType->setQualifiedName(ctx_.makeQualifiedName(enumDef.getName()));
+        enumType->setQualifiedName(
+            (enumDef.hasQualifiedName()
+                 ? enumDef.getQualifiedName()
+                 : ctx_.makeQualifiedName(enumDef.getName())));
+        enumDef.setQualifiedName(enumType->getQualifiedName());
         ctx_.registerEnum(enumDef.getName(), enumType);
         break;
       }
@@ -45,14 +57,19 @@ void DeclarationCollector::collectTypeNames(BlockExprAST& block) {
             GenericInterfaceInfo info;
             info.AST = &interfaceDef;
             info.typeParameters = interfaceDef.getTypeParameters();
-            info.qualifiedName = ctx_.makeQualifiedName(interfaceDef.getName());
+            info.qualifiedName =
+                (interfaceDef.hasQualifiedName()
+                     ? interfaceDef.getQualifiedName()
+                     : ctx_.makeQualifiedName(interfaceDef.getName()));
             ctx_.registerGenericInterface(interfaceDef.getName(), info);
           }
         } else {
           sun::QualifiedName qualifiedInterface =
               interfaceDef.hasQualifiedName()
                   ? interfaceDef.getQualifiedName()
-                  : ctx_.makeQualifiedName(interfaceDef.getName());
+                  : (interfaceDef.hasQualifiedName()
+                         ? interfaceDef.getQualifiedName()
+                         : ctx_.makeQualifiedName(interfaceDef.getName()));
           std::string interfaceName = qualifiedInterface.mangled();
           auto interfaceType = ctx_.types()->getInterface(interfaceName);
           if (interfaceName != interfaceDef.getName()) {
@@ -140,7 +157,39 @@ void DeclarationCollector::collectDeclarations(BlockExprAST& block) {
   } prepassGuard(*this, sema_.generics());
   // The outermost pass makes sibling-module type names visible before any
   // class shape or public method signature is resolved.
-  if (prepassGuard.outermost) collectTypeNames(block);
+  if (prepassGuard.outermost) {
+    collectTypeNames(block);
+    auto* root = &ctx_.rootScope();
+    std::function<void(SemanticScopeBase*)> index =
+        [&](SemanticScopeBase* scope) {
+          auto add = [&](const sun::QualifiedName& name, sun::Type::Kind kind) {
+            root->canonicalDeclarations[name] = kind;
+            root->canonicalModules[name.scopePathString()] = scope;
+          };
+          using Kind = sun::Type::Kind;
+          for (const auto& [_, type] : scope->classes)
+            add(type->getQualifiedName(), Kind::Class);
+          for (const auto& [_, type] : scope->interfaces)
+            add(type->getQualifiedName(), Kind::Interface);
+          for (const auto& [_, type] : scope->enums)
+            add(type->getQualifiedName(), Kind::Enum);
+          for (const auto& [_, info] : scope->genericClasses)
+            add(info.qualifiedName, Kind::Class);
+          for (const auto& [_, info] : scope->genericInterfaces)
+            add(info.qualifiedName, Kind::Interface);
+          for (const auto& [_, info] : scope->genericEnums)
+            add(info.qualifiedName, Kind::Enum);
+          for (const auto& [_, child] : scope->childModules) index(child.get());
+        };
+    index(root);
+    for (const auto& expr : block.getBody()) {
+      auto* moon = dynamic_cast<MoonScopeAST*>(expr.get());
+      if (!moon || moon->isOwnBundle()) continue;
+      for (const auto& requirement : moon->requiredDeclarations)
+        ctx_.requireDeclaration(requirement.qualifiedName, moon->getMoonPath(),
+                                requirement.expectedKind);
+    }
+  }
 
   // Precompiled bundles first. Their stubs were resolved when the bundle was
   // built, in the bundle's own context; the imports this block binds next
@@ -186,20 +235,32 @@ void DeclarationCollector::collectDeclarations(BlockExprAST& block) {
         if (enumDef.isGeneric()) {
           if (!ctx_.lookupGenericEnum(enumDef.getName())) {
             ctx_.registerGenericEnum(
-                enumDef.getName(), {&enumDef, enumDef.getTypeParameters(),
-                                    ctx_.makeQualifiedName(enumDef.getName())});
+                enumDef.getName(),
+                {&enumDef, enumDef.getTypeParameters(),
+                 (enumDef.hasQualifiedName()
+                      ? enumDef.getQualifiedName()
+                      : ctx_.makeQualifiedName(enumDef.getName()))});
           }
           break;
         }
         // Skip if already registered (e.g. from import)
         if (ctx_.lookupEnum(enumDef.getName())) break;
         // Create and register a minimal enum type
-        auto enumType = ctx_.types()->getEnum(enumDef.getName());
+        auto enumType = ctx_.types()->getEnum(
+            (enumDef.hasQualifiedName()
+                 ? enumDef.getQualifiedName()
+                 : ctx_.makeQualifiedName(enumDef.getName()))
+                .mangled());
         for (const auto& variant : enumDef.getVariants()) {
           enumType->addVariant(variant.name, variant.value);
         }
+        enumType->setBaseName(enumDef.getName());
         enumType->visibility = enumDef.getVisibility();
-        enumType->setQualifiedName(ctx_.makeQualifiedName(enumDef.getName()));
+        enumType->setQualifiedName(
+            (enumDef.hasQualifiedName()
+                 ? enumDef.getQualifiedName()
+                 : ctx_.makeQualifiedName(enumDef.getName())));
+        enumDef.setQualifiedName(enumType->getQualifiedName());
         ctx_.registerEnum(enumDef.getName(), enumType);
         break;
       }
@@ -212,7 +273,10 @@ void DeclarationCollector::collectDeclarations(BlockExprAST& block) {
             GenericInterfaceInfo info;
             info.AST = &interfaceDef;
             info.typeParameters = interfaceDef.getTypeParameters();
-            info.qualifiedName = ctx_.makeQualifiedName(interfaceDef.getName());
+            info.qualifiedName =
+                (interfaceDef.hasQualifiedName()
+                     ? interfaceDef.getQualifiedName()
+                     : ctx_.makeQualifiedName(interfaceDef.getName()));
             ctx_.registerGenericInterface(interfaceDef.getName(), info);
           }
         } else {
@@ -220,7 +284,9 @@ void DeclarationCollector::collectDeclarations(BlockExprAST& block) {
           sun::QualifiedName qualifiedInterface =
               interfaceDef.hasQualifiedName()
                   ? interfaceDef.getQualifiedName()
-                  : ctx_.makeQualifiedName(interfaceDef.getName());
+                  : (interfaceDef.hasQualifiedName()
+                         ? interfaceDef.getQualifiedName()
+                         : ctx_.makeQualifiedName(interfaceDef.getName()));
           std::string interfaceName = qualifiedInterface.mangled();
           auto interfaceType = ctx_.types()->getInterface(interfaceName);
           if (interfaceName != interfaceDef.getName()) {
@@ -315,8 +381,10 @@ void DeclarationCollector::collectDeclarations(BlockExprAST& block) {
       continue;
     }
 
-    // Other precompiled declarations were registered in sub-pass A.
-    if (expr->isPrecompiled()) continue;
+    // Types were registered in sub-pass A. Imported functions still need
+    // signatures here, including functions in deeply nested modules.
+    if (expr->isPrecompiled() && expr->getType() != ASTNodeType::FUNCTION)
+      continue;
 
     switch (expr->getType()) {
       case ASTNodeType::FUNCTION:
@@ -444,8 +512,8 @@ void DeclarationCollector::collectExternVariable(
 
   auto found = ctx_.scope()->variables.find(varCreate.getName());
   if (found != ctx_.scope()->variables.end()) {
-    if (!found->second.isCExtern || !found->second.type ||
-        !type || !found->second.type->equals(*type)) {
+    if (!found->second.isCExtern || !found->second.type || !type ||
+        !found->second.type->equals(*type)) {
       logAndThrowError("Conflicting declaration of extern variable '" +
                            varCreate.getName() + "'",
                        varCreate.getLocation());
@@ -497,8 +565,12 @@ void DeclarationCollector::registerUsing(UsingAST& usingDecl) {
   // "using A.B;" where A.B is a module name means "import all from A.B"
   std::string namespacePath = usingDecl.getNamespacePathString();
   std::string target = usingDecl.getTarget();
+  if (usingDecl.getModuleQualifiedName()) {
+    namespacePath = usingDecl.getModuleQualifiedName()->lookupName();
+    if (usingDecl.isModuleImport()) target = "*";
+  }
 
-  if (!usingDecl.isModuleImport()) {
+  if (!usingDecl.getModuleQualifiedName() && !usingDecl.isModuleImport()) {
     std::string displayPath =
         namespacePath.empty() ? target : namespacePath + "." + target;
     if (auto* modScope = ctx_.lookupModuleScope(displayPath)) {
@@ -604,19 +676,29 @@ void DeclarationCollector::collectEnumDeclarations(const BlockExprAST& block) {
     auto& enumDef = static_cast<EnumDefinitionAST&>(*expr);
     if (enumDef.isGeneric()) {
       if (!ctx_.lookupGenericEnum(enumDef.getName())) {
-        ctx_.registerGenericEnum(enumDef.getName(),
-                                 {&enumDef, enumDef.getTypeParameters(),
-                                  ctx_.makeQualifiedName(enumDef.getName())});
+        ctx_.registerGenericEnum(
+            enumDef.getName(),
+            {&enumDef, enumDef.getTypeParameters(),
+             (enumDef.hasQualifiedName()
+                  ? enumDef.getQualifiedName()
+                  : ctx_.makeQualifiedName(enumDef.getName()))});
       }
       continue;
     }
     if (ctx_.lookupEnum(enumDef.getName())) continue;
-    auto enumType = ctx_.types()->getEnum(enumDef.getName());
+    auto enumType = ctx_.types()->getEnum(
+        (enumDef.hasQualifiedName() ? enumDef.getQualifiedName()
+                                    : ctx_.makeQualifiedName(enumDef.getName()))
+            .mangled());
     for (const auto& variant : enumDef.getVariants()) {
       enumType->addVariant(variant.name, variant.value);
     }
+    enumType->setBaseName(enumDef.getName());
     enumType->visibility = enumDef.getVisibility();
-    enumType->setQualifiedName(ctx_.makeQualifiedName(enumDef.getName()));
+    enumType->setQualifiedName(
+        (enumDef.hasQualifiedName()
+             ? enumDef.getQualifiedName()
+             : ctx_.makeQualifiedName(enumDef.getName())));
     ctx_.registerEnum(enumDef.getName(), enumType);
   }
 }

@@ -12,7 +12,8 @@
 // and what it drops is the alignstack attribute on HFA arguments. Reproduce
 // any expectation with:
 //
-//   echo '<decls>' | clang --target=arm64-apple-darwin -S -emit-llvm -o - -x c -
+//   echo '<decls>' | clang --target=arm64-apple-darwin -S -emit-llvm -o - -x c
+//   -
 
 #include <gtest/gtest.h>
 #include <llvm/IR/DerivedTypes.h>
@@ -208,8 +209,8 @@ TEST_F(Ffi_Abi_Aapcs64Darwin, dispatch_accepts_apple_arm64_triples) {
   llvm::Type* params[] = {structOf({f32(), f32()})};
   for (const char* tripleStr :
        {"arm64-apple-darwin", "aarch64-apple-darwin", "arm64-apple-macosx14"}) {
-    auto lowering = sun::abi::lowerCSignature(llvm::Triple(tripleStr), voidTy,
-                                              params, dl);
+    auto lowering =
+        sun::abi::lowerCSignature(llvm::Triple(tripleStr), voidTy, params, dl);
     ASSERT_TRUE(lowering.params[0].isCoerced()) << tripleStr;
     EXPECT_EQ(lowering.params[0].stackAlign, 0u)
         << tripleStr << " should use the Darwin variant";
@@ -297,8 +298,8 @@ TEST(Ffi_Abi_CrossTargetDarwin, extern_ir_carries_extension_attributes) {
 }
 
 TEST(Ffi_Abi_CrossTargetDarwin, struct_argument_coerces_like_elf) {
-  auto driver = Driver::createForAOT("darwin_struct_module",
-                                     "arm64-apple-darwin");
+  auto driver =
+      Driver::createForAOT("darwin_struct_module", "arm64-apple-darwin");
   driver->compileString(R"(
     class Triplet {
         var a: i32; var b: i32; var c: i32;
@@ -327,8 +328,8 @@ TEST(Ffi_Abi_CrossTargetDarwin, dead_target_branch_emits_no_extern_call) {
   // the object file, even though the declaration may. Guarded per-OS code is
   // how the stdlib declares Darwin's __error next to glibc's
   // __errno_location.
-  auto driver = Driver::createForAOT("darwin_fold_module",
-                                     "arm64-apple-darwin");
+  auto driver =
+      Driver::createForAOT("darwin_fold_module", "arm64-apple-darwin");
   driver->compileString(R"(
     extern "C" function c_errno_linux() raw_ptr<i32> as "__errno_location";
     extern "C" function c_errno_darwin() raw_ptr<i32> as "__error";
@@ -360,8 +361,8 @@ TEST(Ffi_Abi_CrossTargetDarwin, dead_target_branch_emits_no_extern_call) {
 TEST(Ffi_Abi_CrossTargetDarwin, futex_intrinsics_lower_to_ulock) {
   // macOS has no futex; the same Sun intrinsics must reach Darwin's
   // __ulock_wait/__ulock_wake instead of a Linux syscall number.
-  auto driver = Driver::createForAOT("darwin_ulock_module",
-                                     "arm64-apple-darwin");
+  auto driver =
+      Driver::createForAOT("darwin_ulock_module", "arm64-apple-darwin");
   driver->compileString(R"(
     function main() i32 {
         var word: i32 = 1;
@@ -386,8 +387,8 @@ TEST(Ffi_Abi_CrossTargetDarwin, futex_intrinsics_lower_to_ulock) {
 TEST(Ffi_Abi_CrossTargetDarwin, file_open_uses_darwin_flag_values) {
   // Linux 0x241/0x441 decode to the wrong bits on Darwin (no truncation,
   // async I/O); the helper must bake in 0x601/0x209 instead.
-  auto driver = Driver::createForAOT("darwin_open_module",
-                                     "arm64-apple-darwin");
+  auto driver =
+      Driver::createForAOT("darwin_open_module", "arm64-apple-darwin");
   driver->compileString(R"(
     function main() i32 {
         unsafe { __file_open("out.txt", 1); };
@@ -406,8 +407,8 @@ TEST(Ffi_Abi_CrossTargetDarwin, file_open_uses_darwin_flag_values) {
 TEST(Ffi_Abi_CrossTargetDarwin, sockaddr_gets_len_and_family_bytes) {
   // Darwin's sockaddr_in begins u8 sin_len, u8 sin_family; a 16-bit store of
   // AF_INET at offset 0 (the Linux shape) would leave the family AF_UNSPEC.
-  auto driver = Driver::createForAOT("darwin_sockaddr_module",
-                                     "arm64-apple-darwin");
+  auto driver =
+      Driver::createForAOT("darwin_sockaddr_module", "arm64-apple-darwin");
   driver->compileString(R"(
     function main() i32 {
         unsafe { __bind_ipv4(0, 0, 8080); };

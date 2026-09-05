@@ -12,8 +12,8 @@
 #include "moon_bundling/moon_cache.h"
 #include "parsing/parser.h"
 #include "support/error.h"
-#include "support/target_os.h"
 #include "support/sun_path.h"
+#include "support/target_os.h"
 
 namespace sun {
 

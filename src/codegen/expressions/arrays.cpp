@@ -91,8 +91,8 @@ void CodegenVisitor::emitArrayTransfer(Value* dest, Value* src,
   scopes.markClassAllocationAsDeinited(src);
   if (sun::typeNeedsDrop(&type)) {
     ctx.builder->CreateMemSet(
-        src, ConstantInt::get(llvm::Type::getInt8Ty(ctx.getContext()), 0),
-        size, align);
+        src, ConstantInt::get(llvm::Type::getInt8Ty(ctx.getContext()), 0), size,
+        align);
   }
 }
 
@@ -163,7 +163,8 @@ Value* CodegenVisitor::codegen(const ArrayLiteralAST& expr) {
 
   // The slot type at each outer index: the element for a 1-D array, the
   // inner [M x T] for a multi-dimensional one
-  llvm::Type* slotType = sunArrayType->getElementType()->toLLVMType(ctx.getContext());
+  llvm::Type* slotType =
+      sunArrayType->getElementType()->toLLVMType(ctx.getContext());
   for (auto it = dims.rbegin(); it != std::prev(dims.rend()); ++it) {
     slotType = llvm::ArrayType::get(slotType, *it);
   }
@@ -267,8 +268,7 @@ Value* CodegenVisitor::codegenIndexElementPtr(const IndexAST& expr) {
       base = temp;
     }
     std::vector<Value*> gepIndices = {ctx.builder->getInt64(0)};
-    gepIndices.insert(gepIndices.end(), indexValues.begin(),
-                      indexValues.end());
+    gepIndices.insert(gepIndices.end(), indexValues.begin(), indexValues.end());
     return ctx.builder->CreateGEP(storageType, base, gepIndices,
                                   "arr.elem.ptr");
   }
@@ -625,8 +625,8 @@ Value* CodegenVisitor::emitClassSetIndexCall(Value* objectPtr, Value* idxView,
   llvm::Type* valueParamType = method->paramTypes.size() >= 2
                                    ? typeResolver.resolve(method->paramTypes[1])
                                    : value->getType();
-  Function* methodFunc = declareIndexProtocolMethod(classType, *method,
-                                                    mangledName, valueParamType);
+  Function* methodFunc = declareIndexProtocolMethod(
+      classType, *method, mangledName, valueParamType);
 
   // Coerce the value to the __setindex__ value-parameter type (e.g. an i64
   // loop counter assigned into a Vec<i32>)

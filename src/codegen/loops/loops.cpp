@@ -261,8 +261,8 @@ Value* LoopGenerator::codegen(const ForInExprAST& expr) {
   std::shared_ptr<sun::ClassType> iteratorClassType = iterableClassType;
 
   if (!nextFunc) {
-    Function* iterFunc =
-        functions().findClassMethod(iterableClassType, iterableTypeName, "iter");
+    Function* iterFunc = functions().findClassMethod(iterableClassType,
+                                                     iterableTypeName, "iter");
     if (!iterFunc) {
       logAndThrowError("for-in loop: " + iterableTypeName +
                        " must have a next() method or an iter() method");
@@ -294,8 +294,8 @@ Value* LoopGenerator::codegen(const ForInExprAST& expr) {
       logAndThrowError("iter() must return a class type with a next() method");
       return nullptr;
     }
-    nextFunc = functions().findClassMethod(iteratorClassType,
-                               iteratorClassType->getMangledName(), "next");
+    nextFunc = functions().findClassMethod(
+        iteratorClassType, iteratorClassType->getMangledName(), "next");
     if (!nextFunc) {
       logAndThrowError("Iterator returned by iter() must have next() method");
       return nullptr;

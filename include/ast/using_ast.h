@@ -24,7 +24,7 @@ class UsingAST : public ExprAST {
 
   ASTNodeType getType() const override { return ASTNodeType::USING; }
   std::string toString() const override {
-    if (isModuleImport_) {
+    if (target == "*") {
       return "using " + getNamespacePathString();
     }
     return "using " + getNamespacePathString() + "." + target;
@@ -35,6 +35,8 @@ class UsingAST : public ExprAST {
   }
   const std::string& getTarget() const { return target; }
   bool isModuleImport() const { return isModuleImport_; }
+  /** Record whether semantic binding identified a whole-module import. */
+  void setModuleImport(bool value) { isModuleImport_ = value; }
 
   // Get the full path as string (e.g., "Math.Trig" or "Math::Trig")
   std::string getNamespacePathString() const {
@@ -46,7 +48,7 @@ class UsingAST : public ExprAST {
     return result;
   }
   std::string dotLabel() const override {
-    if (isModuleImport_) {
+    if (target == "*") {
       return "Using\n" + getNamespacePathString();
     }
     return "Using\n" + getNamespacePathString() + "." + target;

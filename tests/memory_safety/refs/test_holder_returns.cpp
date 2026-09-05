@@ -83,32 +83,29 @@ TEST(MemorySafety_HolderReturns, function_returns_holder_of_ref_param) {
 // A holder of a local dies with the frame, whether built directly or handed
 // back by a call on that local.
 TEST(MemorySafety_HolderReturns, holder_of_local_via_call_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      executeString(std::string(kCounterAndBump) + R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(std::string(kCounterAndBump) + R"(
     function make() Bump {
         var c = Counter();
         return c.guard();
     }
     function main() i32 { return 0; }
   )"),
-      kHolderReturn);
+                                kHolderReturn);
 }
 
 // A by-value parameter is storage the frame owns, so a holder of it cannot
 // leave either.
 TEST(MemorySafety_HolderReturns, holder_of_by_value_param_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      executeString(std::string(kCounterAndBump) + R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(std::string(kCounterAndBump) + R"(
     function make(c: Counter) Bump { return c.guard(); }
     function main() i32 { return 0; }
   )"),
-      kHolderReturn);
+                                kHolderReturn);
 }
 
 // A local holder that borrows a local carries that bound to the return.
 TEST(MemorySafety_HolderReturns, local_holder_of_local_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      executeString(std::string(kCounterAndBump) + R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(std::string(kCounterAndBump) + R"(
     function make() Bump {
         var c = Counter();
         var g = Bump(c);
@@ -116,14 +113,13 @@ TEST(MemorySafety_HolderReturns, local_holder_of_local_rejected) {
     }
     function main() i32 { return 0; }
   )"),
-      kHolderReturn);
+                                kHolderReturn);
 }
 
 // At the call site the returned holder borrows the receiver, so the receiver
 // cannot be replaced while the holder lives.
 TEST(MemorySafety_HolderReturns, returned_holder_keeps_receiver_borrowed) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      executeString(std::string(kCounterAndBump) + R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(std::string(kCounterAndBump) + R"(
     function main() i32 {
         var c = Counter();
         var g = c.guard();
@@ -131,14 +127,13 @@ TEST(MemorySafety_HolderReturns, returned_holder_keeps_receiver_borrowed) {
         return 0;
     }
   )"),
-      "Borrow check failed");
+                                "Borrow check failed");
 }
 
 // And a holder handed back by a call cannot land in a name declared outside
 // the scope of what it borrows.
 TEST(MemorySafety_HolderReturns, returned_holder_cannot_outlive_receiver) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      executeString(std::string(kCounterAndBump) + R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(std::string(kCounterAndBump) + R"(
     function main() i32 {
         var outer = Counter();
         var g = outer.guard();
@@ -149,5 +144,5 @@ TEST(MemorySafety_HolderReturns, returned_holder_cannot_outlive_receiver) {
         return 0;
     }
   )"),
-      "cannot store this value in 'g'");
+                                "cannot store this value in 'g'");
 }

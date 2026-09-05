@@ -23,6 +23,7 @@
 #include "moon_bundling/library_cache.h"
 #include "moon_bundling/module_linker.h"
 #include "moon_bundling/proto_importer.h"
+#include "parsing/doc_comments.h"
 #include "parsing/lowering_pass.h"
 #include "support/error.h"
 #include "support/source_manager.h"
@@ -77,8 +78,7 @@ static void stripUnreachableForJIT(llvm::Module& module) {
 static bool wrapStaticCtorsForJIT(llvm::Module& module) {
   auto* ctors = module.getGlobalVariable("llvm.global_ctors");
   if (!ctors || !ctors->hasInitializer()) return false;
-  auto* entries =
-      llvm::dyn_cast<llvm::ConstantArray>(ctors->getInitializer());
+  auto* entries = llvm::dyn_cast<llvm::ConstantArray>(ctors->getInitializer());
   if (!entries) return false;
 
   // Each entry is { i32 priority, ptr function, ptr data }. Lower priority
@@ -94,16 +94,16 @@ static bool wrapStaticCtorsForJIT(llvm::Module& module) {
     fns.push_back({priority, fn});
   }
   if (fns.empty()) return false;
-  std::stable_sort(fns.begin(), fns.end(),
-                   [](const auto& a, const auto& b) { return a.first < b.first; });
+  std::stable_sort(fns.begin(), fns.end(), [](const auto& a, const auto& b) {
+    return a.first < b.first;
+  });
 
   auto* runnerType = llvm::FunctionType::get(
       llvm::Type::getVoidTy(module.getContext()), false);
   auto* runner =
       llvm::Function::Create(runnerType, llvm::GlobalValue::ExternalLinkage,
                              "__sun_run_static_ctors", module);
-  auto* entry =
-      llvm::BasicBlock::Create(module.getContext(), "entry", runner);
+  auto* entry = llvm::BasicBlock::Create(module.getContext(), "entry", runner);
   llvm::IRBuilder<> builder(entry);
   for (const auto& [priority, fn] : fns) builder.CreateCall(fn);
   builder.CreateRetVoid();
@@ -788,6 +788,8 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
     throw sun::buildBorrowCheckError(borrowErrors);
   }
 
+  if (metadataCallback_) metadataCallback_(*blockAst, *analyzer);
+
   // Register precompiled modules for lazy linking
   // This builds the symbol-to-module map without loading bitcode yet
   const auto& precompiledImports = parser.getPrecompiledImports();
@@ -799,7 +801,7 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
     linker.registerAvailableModules(precompiledImports);
   }
   for (const auto& moonImport : moonImports_) {
-    linker.registerAvailableModulesWithRemap(moonImport);
+    linker.registerAvailableBundle(moonImport);
   }
   if (hasMoonImports) {
     // Create forward declarations for all functions from bitcode so codegen
@@ -1325,6 +1327,7 @@ static std::unique_ptr<BlockExprAST> mergeASTs(
   std::unordered_map<std::string, std::vector<std::unique_ptr<ExprAST>>>
       moduleContents;
   std::vector<std::string> moduleOrder;
+  std::map<std::string, const ModuleAST*> moduleOrigins;
 
   // Track non-module statements separately so we can order them after modules
   std::vector<std::unique_ptr<ExprAST>> nonModuleStatements;
@@ -1347,7 +1350,16 @@ static std::unique_ptr<BlockExprAST> mergeASTs(
         // Move the module body statements to our collection
         auto& modBody = const_cast<std::vector<std::unique_ptr<ExprAST>>&>(
             mod.getBody().getBody());
-        if (!moduleContents.count(modName)) moduleOrder.push_back(modName);
+        if (!moduleContents.count(modName)) {
+          moduleOrder.push_back(modName);
+          moduleOrigins[modName] = &mod;
+          moduleContents[modName];
+        } else if (moduleOrigins[modName]->getVisibility() !=
+                   mod.getVisibility()) {
+          logAndThrowError("all declarations of module '" + modName +
+                               "' must agree on its visibility",
+                           mod.getLocation());
+        }
         for (auto& modStmt : modBody) {
           if (modStmt) {
             moduleContents[modName].push_back(std::move(modStmt));
@@ -1366,6 +1378,9 @@ static std::unique_ptr<BlockExprAST> mergeASTs(
     auto modBody =
         std::make_unique<BlockExprAST>(std::move(contents), BlockKind::Module);
     auto mergedMod = std::make_unique<ModuleAST>(modName, std::move(modBody));
+    mergedMod->setVisibility(moduleOrigins[modName]->getVisibility());
+    mergedMod->setLocation(moduleOrigins[modName]->getLocation());
+    mergedMod->setSourceFileId(moduleOrigins[modName]->getSourceFileId());
     mergedBody.push_back(std::move(mergedMod));
   }
 
@@ -1401,6 +1416,7 @@ void Driver::parseSynthesizedProtoModules(
           "Failed to parse synthesized module for " + synthesized.pseudoPath);
     }
     canonicalPaths.push_back(synthesized.pseudoPath);
+    sun::attachDocComments(*blockAst, synthesized.sunSource);
     parsedFiles.push_back(std::move(blockAst));
   }
 }
@@ -1450,6 +1466,7 @@ std::unique_ptr<BlockExprAST> Driver::parseAndMergeFiles(
     if (!blockAst) {
       throw SunError(SunError::Kind::Parse, "Failed to parse " + filename);
     }
+    sun::attachDocComments(*blockAst, source);
     parsedFiles.push_back(std::move(blockAst));
   }
 

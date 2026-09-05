@@ -363,7 +363,6 @@ class Parser {
   // Throw expression parsing: throw <expr>
   unique_ptr<ExprAST> parseThrow();
 
-
   // Class definition parsing: class Name { fields and methods }
   unique_ptr<ClassDefinitionAST> parseClassDefinition();
 

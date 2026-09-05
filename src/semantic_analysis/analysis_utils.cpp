@@ -160,9 +160,10 @@ void SemanticAnalyzer::checkMoveSource(const ExprAST& value,
     const auto& index = static_cast<const IndexAST&>(*source);
     sun::TypePtr targetType = unwrapRef(index.getTarget()->getResolvedType());
     if (targetType && targetType->isArray()) {
-      logAndThrowError("Cannot move an element out of an array; borrow it "
-                       "with 'ref' or 'const ref' instead",
-                       loc);
+      logAndThrowError(
+          "Cannot move an element out of an array; borrow it "
+          "with 'ref' or 'const ref' instead",
+          loc);
     }
   }
 

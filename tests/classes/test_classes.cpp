@@ -488,48 +488,43 @@ TEST(Classes, init_rejects_public_keyword) {
 }
 
 TEST(Classes, init_rejects_const_modifier) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      compileString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(R"(
     class A { var x: i32; const init() { this.x = 1; } }
     function main() i32 { return 0; }
   )"),
-      "'init' cannot be a const method");
+                                "'init' cannot be a const method");
 }
 
 TEST(Classes, init_rejects_return_type) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      compileString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(R"(
     class A { var x: i32; init() void { this.x = 1; } }
     function main() i32 { return 0; }
   )"),
-      "'init' does not declare a return type");
+                                "'init' does not declare a return type");
 }
 
 TEST(Classes, deinit_rejects_parameters) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      compileString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(R"(
     class A { var x: i32; init() { this.x = 1; } deinit(fast: bool) { this.x = 0; } }
     function main() i32 { return 0; }
   )"),
-      "'deinit' takes no parameters");
+                                "'deinit' takes no parameters");
 }
 
 TEST(Classes, deinit_cannot_throw) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      compileString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(R"(
     class A { var x: i32; init() { this.x = 1; } deinit() throws IError { this.x = 0; } }
     function main() i32 { return 0; }
   )"),
-      "'deinit' cannot throw");
+                                "'deinit' cannot throw");
 }
 
 TEST(Classes, interface_cannot_declare_init) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      compileString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(R"(
     interface IThing { method init() void; }
     function main() i32 { return 0; }
   )"),
-      "'init' cannot be an interface method");
+                                "'init' cannot be an interface method");
 }
 
 // A constructor that can fail: init(args) throws IError { }

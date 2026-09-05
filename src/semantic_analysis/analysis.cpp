@@ -174,6 +174,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       break;
 
     case ASTNodeType::VARIABLE_REFERENCE: {
+      if (expr.getModuleQualifiedName()) {
+        expr.setResolvedType(types_.inferType(expr));
+        break;
+      }
       auto& varRef = static_cast<VariableReferenceAST&>(expr);
 
       // An expected function-pointer type selects one overload without
@@ -312,7 +316,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
     }
 
     case ASTNodeType::QUALIFIED_NAME:
-      analyzeQualifiedName(static_cast<QualifiedNameAST&>(expr));
+      if (expr.getModuleQualifiedName())
+        expr.setResolvedType(types_.inferType(expr));
+      else
+        analyzeQualifiedName(static_cast<QualifiedNameAST&>(expr));
       break;
 
     case ASTNodeType::CLASS_DEFINITION:
@@ -334,7 +341,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
     }
 
     case ASTNodeType::MEMBER_ACCESS:
-      analyzeMemberAccess(static_cast<MemberAccessAST&>(expr), expectedType);
+      if (expr.getModuleQualifiedName())
+        expr.setResolvedType(types_.inferType(expr));
+      else
+        analyzeMemberAccess(static_cast<MemberAccessAST&>(expr), expectedType);
       break;
 
     case ASTNodeType::MEMBER_ASSIGNMENT:
@@ -1083,7 +1093,11 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
     for (const auto& tp : proto.getTypeParameters()) {
       typeParams.push_back(tp.name);
       typeParamTypes.push_back(sun::Types::TypeParameter(
-          tp.name, tp.constraint ? tp.constraint->name : ""));
+          tp.name, tp.constraint
+                       ? (tp.constraint->qualifiedName
+                              ? tp.constraint->qualifiedName->mangled()
+                              : tp.constraint->name)
+                       : ""));
     }
     ctx_.addTypeParameterBindings(typeParams, typeParamTypes);
   }
@@ -2119,6 +2133,12 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
     for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
       sun::TypePtr argType = args[i]->getResolvedType();
       sun::TypePtr paramType = paramTypes[i];
+
+      // Unbound template arguments are checked again with concrete types at
+      // specialization, just as they are in argument conversion classification.
+      if (sun::generics::mentionsTypeParameter(argType) ||
+          sun::generics::mentionsTypeParameter(paramType))
+        continue;
 
       // Try to coerce integer literal to parameter type
       if (tryCoerceIntegerLiteral(const_cast<ExprAST*>(args[i].get()),

@@ -75,7 +75,8 @@ Value* IntrinsicsGenerator::codegenInitIntrinsic(
 
   // Look up the constructor (init method) that is compatible with the argument
   // types.
-  ClassGenerator::ConstructorLookup ctor = gen_.classGenerator().lookupConstructor(classType, argTypes);
+  ClassGenerator::ConstructorLookup ctor =
+      gen_.classGenerator().lookupConstructor(classType, argTypes);
 
   std::vector<Value*> ctorArgs;
   // Slot 0 is the method closure; patched below once the ctor is resolved.
@@ -131,7 +132,8 @@ Value* IntrinsicsGenerator::codegenInitIntrinsic(
   }
 
   if (ctorFunc) {
-    ctorArgs[0] = gen_.materializeMethodClosure(ctorFunc, rawPtr, "init.closure");
+    ctorArgs[0] =
+        gen_.materializeMethodClosure(ctorFunc, rawPtr, "init.closure");
     ctx.builder->CreateCall(ctorFunc, ctorArgs);
   }
 

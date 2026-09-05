@@ -130,9 +130,8 @@ std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
   }
 
   if (paramType->isInterface() && value && value->isClass()) {
-    return argType->isReference()
-               ? ArgConversion::BorrowedClassToInterface
-               : ArgConversion::ClassToInterface;
+    return argType->isReference() ? ArgConversion::BorrowedClassToInterface
+                                  : ArgConversion::ClassToInterface;
   }
 
   if (argType->isStaticPointer() && paramType->isRawPointer()) {

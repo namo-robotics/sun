@@ -4,8 +4,8 @@
 // One handler per AST node kind, called from the dispatcher in
 // analysis.cpp.
 
-#include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/c_abi_types.h"
+#include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/type_rules.h"
 #include "support/error.h"
 

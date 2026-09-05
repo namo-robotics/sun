@@ -129,8 +129,8 @@ Value* VariableGenerator::codegen(const VariableReferenceAST& expr) {
     // A global reference stores the native pointer in global storage; a
     // global `ref array<T>` stores the view value itself.
     if (GlobalVariable* global = globalForSunName(expr.getMangledName())) {
-      Value* pointer = ctx.builder->CreateLoad(
-          global->getValueType(), global, expr.getName() + ".ref.ptr");
+      Value* pointer = ctx.builder->CreateLoad(global->getValueType(), global,
+                                               expr.getName() + ".ref.ptr");
       sun::TypePtr referenced = refType->getReferencedType();
       if (referenced->isArray() || referenced->isClass() ||
           referenced->isInterface() ||
@@ -163,7 +163,8 @@ Value* VariableGenerator::codegen(const VariableReferenceAST& expr) {
         }
         return pointer;
       }
-      if (Value* addr = functionGen().createCaptureSlotAddress(expr.getName())) {
+      if (Value* addr =
+              functionGen().createCaptureSlotAddress(expr.getName())) {
         if (refType->isUnsizedArrayRef()) {
           return ctx.builder->CreateLoad(
               sun::ArrayType::getArrayStructType(ctx.getContext()), addr,
@@ -381,11 +382,10 @@ Value* VariableGenerator::codegen(const VariableAssignmentAST& expr) {
 void VariableGenerator::assignToVariableSlot(Value* slot, Value* value,
                                              const sun::TypePtr& varType,
                                              const std::string& name) {
-  bool compound =
-      varType &&
-      (varType->isClass() || varType->isInterface() ||
-       CodegenVisitor::isPayloadEnum(varType)) &&
-      value->getType()->isPointerTy();
+  bool compound = varType &&
+                  (varType->isClass() || varType->isInterface() ||
+                   CodegenVisitor::isPayloadEnum(varType)) &&
+                  value->getType()->isPointerTy();
   if (compound) {
     // Self-assignment would drop the object and then copy from the corpse;
     // it has no effect, so emit nothing.

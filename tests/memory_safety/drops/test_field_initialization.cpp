@@ -336,8 +336,7 @@ TEST(MemorySafety_Drops_FieldInit, a_write_only_inside_a_loop_is_rejected) {
                                 "cannot tell whether field 'r' already holds");
 }
 
-TEST(MemorySafety_Drops_FieldInit,
-     a_method_may_give_a_field_its_first_value) {
+TEST(MemorySafety_Drops_FieldInit, a_method_may_give_a_field_its_first_value) {
   auto value = executeString(withPreamble(R"(
     class Holder {
       var r: Res;
@@ -437,7 +436,8 @@ TEST(MemorySafety_Drops_FieldInit, generic_class_first_write_drops_nothing) {
 
 // A throw can leave a try block part-way through, so a catch clause cannot
 // tell whether the block already gave the field its value.
-TEST(MemorySafety_Drops_FieldInit, a_catch_that_reassigns_the_field_is_rejected) {
+TEST(MemorySafety_Drops_FieldInit,
+     a_catch_that_reassigns_the_field_is_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(withPreamble(R"(
     class Boom implements IError {
       init() {}

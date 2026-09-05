@@ -238,7 +238,8 @@ class SchemaValidator {
  private:
   static void validateField(const FD* f) {
     if (f->type() == FD::TYPE_GROUP) {
-      fail("groups are not supported (field '" + asString(f->full_name()) + "')");
+      fail("groups are not supported (field '" + asString(f->full_name()) +
+           "')");
     }
     if (f->is_map() && !isSupportedMapKey(f->message_type()->map_key())) {
       fail("unsupported map key type on field '" + asString(f->full_name()) +
@@ -649,8 +650,8 @@ class MessageGenerator {
               ";");
     });
     forEachOneof([&](const pb::OneofDescriptor* o) {
-      w_.line("public var " + asString(o->name()) + ": " +
-              T::oneofEnumName(o) + ";");
+      w_.line("public var " + asString(o->name()) + ": " + T::oneofEnumName(o) +
+              ";");
     });
     w_.line("public var unknown_fields: Vec<u8>;");
     w_.line("var alloc_: HeapAllocator;");
@@ -802,8 +803,7 @@ class MessageGenerator {
   void emitDecodeField(const FD* f) {
     std::string fld = "msg." + asString(f->name());
     if (const pb::OneofDescriptor* o = f->real_containing_oneof()) {
-      w_.line("msg." + asString(o->name()) + " = " + T::oneofEnumName(o) +
-              "." +
+      w_.line("msg." + asString(o->name()) + " = " + T::oneofEnumName(o) + "." +
               T::oneofVariantName(f) + "(" + T::readExpr(f) + ");");
     } else if (f->is_map()) {
       emitDecodeMapEntry(f, fld);

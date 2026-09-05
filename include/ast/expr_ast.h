@@ -5,6 +5,7 @@
 #include <functional>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "ast/analysis.h"
@@ -17,7 +18,16 @@ class ExprAST {
  protected:
   mutable std::unique_ptr<ExprAnalysis> analysis_;  // Analysis metadata
   sun::SourceFileId sourceFileId_ = 0;
-  Position location_;                               // Original source location
+  /** When set, this expression IS a fully qualified module name, identified by
+   * its defining bundle and original module path. For a using statement, this
+   * identifies its target module instead of the statement itself.
+   * Used only by variable references, qualified names, member accesses, and
+   * using statements. Lookup uses this identity directly, without resolving
+   * source aliases in the caller. Source spelling is kept for formatting and
+   * diagnostics.
+   */
+  std::optional<sun::QualifiedName> moduleQualifiedName_;
+  Position location_;         // Original source location
   bool precompiled_ = false;  // True if from precompiled library
   bool skipCodegen_ = false;  // Set by semantic analyzer for diamond duplicates
   std::string symbolPrefix_;  // Hash prefix for moon symbol isolation
@@ -41,6 +51,7 @@ class ExprAST {
   // Copy base class fields to a cloned node. Called by derived clone() methods.
   void cloneBase(ExprAST& dest) const {
     dest.sourceFileId_ = sourceFileId_;
+    dest.moduleQualifiedName_ = moduleQualifiedName_;
     dest.location_ = location_;
     dest.precompiled_ = precompiled_;
     dest.skipCodegen_ = skipCodegen_;
@@ -54,6 +65,17 @@ class ExprAST {
 
  public:
   virtual ~ExprAST() = default;
+
+  /** The original module denoted by this expression or retained using target.
+   */
+  const std::optional<sun::QualifiedName>& getModuleQualifiedName() const {
+    return moduleQualifiedName_;
+  }
+
+  /** Bind a module reference without changing its source spelling. */
+  void setModuleQualifiedName(sun::QualifiedName name) {
+    moduleQualifiedName_ = std::move(name);
+  }
 
   /** The source unit whose imports apply to this node. */
   sun::SourceFileId getSourceFileId() const { return sourceFileId_; }

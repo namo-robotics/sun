@@ -25,6 +25,13 @@
 /// methods for easy construction.
 class Driver {
  public:
+  /** Receive the analyzed program after borrow checking and before code
+   * generation. */
+  void setMetadataCallback(
+      std::function<void(const BlockExprAST&, SemanticAnalyzer&)> callback) {
+    metadataCallback_ = std::move(callback);
+  }
+
   /// How a compilation treats test_function declarations. Editor analysis
   /// (analyzeFiles/analyzeString) never goes through runPipeline, so it
   /// always sees tests and needs no mode.
@@ -63,6 +70,7 @@ class Driver {
 
   // See setOwnBundleHash. Empty for a program build.
   std::string ownBundleHash_;
+  std::function<void(const BlockExprAST&, SemanticAnalyzer&)> metadataCallback_;
 
   // Whether the last compilation saw any test functions or test_files
   bool hasTests_ = false;
@@ -266,9 +274,7 @@ class Driver {
   // Every file the last compilation read (sources, bundles, protos), so a
   // build system can be told what the artifact depends on. Valid after
   // compileFile/compileFiles/executeFile.
-  const std::vector<std::string>& getInputFiles() const {
-    return inputFiles_;
-  }
+  const std::vector<std::string>& getInputFiles() const { return inputFiles_; }
 
   /// Enable/disable LLVM IR dumping to stdout
   void setDumpIR(bool dump) { dumpIR = dump; }

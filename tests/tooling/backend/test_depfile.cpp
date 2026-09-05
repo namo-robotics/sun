@@ -102,8 +102,8 @@ TEST(Tooling_Backend_Depfile, shared_input_reaches_every_rule) {
 TEST(Tooling_Backend_Depfile, outputs_of_the_same_run_are_not_inputs) {
   sun::Depfile depfile;
   depfile.addOutput("/out/stdlib.moon", {"/src/stdlib.sun"});
-  depfile.addOutput("/out/tls.moon", {"/src/tls.sun", "/out/stdlib.moon",
-                                      "/vendor/libssl.a"});
+  depfile.addOutput("/out/tls.moon",
+                    {"/src/tls.sun", "/out/stdlib.moon", "/vendor/libssl.a"});
   EXPECT_EQ(depfile.render(),
             "/out/stdlib.moon: \\\n  /src/stdlib.sun\n"
             "/out/tls.moon: \\\n  /src/tls.sun \\\n  /vendor/libssl.a\n");
@@ -182,9 +182,8 @@ manifest {
 )");
   const std::string app = scratch.path("app");
   const std::string depfile = scratch.path("app.d");
-  const std::string cmd = "build/sun -c --lib-path build --depfile " +
-                          depfile + " -o " + app + " " +
-                          scratch.path("app.sun") + " > " +
+  const std::string cmd = "build/sun -c --lib-path build --depfile " + depfile +
+                          " -o " + app + " " + scratch.path("app.sun") + " > " +
                           scratch.path("log") + " 2>&1";
   int rc = std::system(cmd.c_str());
   ASSERT_EQ(WEXITSTATUS(rc), 0) << readFile(scratch.path("log"));
@@ -211,12 +210,11 @@ TEST(Tooling_Backend_Depfile, rejected_without_a_build_mode) {
   if (!haveSunBinary()) GTEST_SKIP() << "build/sun not found";
   Scratch scratch("jit");
   writeFile(scratch.path("run.sun"), "function main() i32 { return 0; }\n");
-  const std::string cmd = "build/sun --depfile " + scratch.path("run.d") +
-                          " " + scratch.path("run.sun") + " > " +
+  const std::string cmd = "build/sun --depfile " + scratch.path("run.d") + " " +
+                          scratch.path("run.sun") + " > " +
                           scratch.path("log") + " 2>&1";
   int rc = std::system(cmd.c_str());
   EXPECT_NE(WEXITSTATUS(rc), 0);
-  EXPECT_NE(readFile(scratch.path("log")).find("--depfile"),
-            std::string::npos);
+  EXPECT_NE(readFile(scratch.path("log")).find("--depfile"), std::string::npos);
   EXPECT_FALSE(std::filesystem::exists(scratch.path("run.d")));
 }

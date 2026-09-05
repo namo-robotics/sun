@@ -317,8 +317,9 @@ static int runTestEntrypoint(const std::string& inputFile,
       return *code;
     }
   } catch (const SunError& e) {
-    if (skipWhenNoTests && std::string(e.what()).find(
-                               "no test functions found") != std::string::npos) {
+    if (skipWhenNoTests &&
+        std::string(e.what()).find("no test functions found") !=
+            std::string::npos) {
       llvm::outs() << "no tests\n";
       return 0;
     }
@@ -473,10 +474,9 @@ static int compileTestBinary(const CompileJob& job) {
     // Separate folder (<input>_test_debug/) so the production build's
     // artifacts survive; this one also carries test_runner.sun.
     std::filesystem::path inputPath(inputFile);
-    testDriver->setDebugMode(
-        true, (inputPath.parent_path() /
-               (inputPath.stem().string() + "_test.sun"))
-                  .string());
+    testDriver->setDebugMode(true, (inputPath.parent_path() /
+                                    (inputPath.stem().string() + "_test.sun"))
+                                       .string());
   }
   testDriver->setMoonImports(job.moonImports);
   testDriver->setTestHandling(Driver::TestHandling::Compile);
@@ -493,8 +493,8 @@ static int compileTestBinary(const CompileJob& job) {
 
   sun::LinkOptions testLinkOpts = job.baseLinkOpts;
   const auto& testBundled = testDriver->getNativeArchivePaths();
-  testLinkOpts.archives.insert(testLinkOpts.archives.end(),
-                               testBundled.begin(), testBundled.end());
+  testLinkOpts.archives.insert(testLinkOpts.archives.end(), testBundled.begin(),
+                               testBundled.end());
   std::string errorMsg;
   if (!sun::compileToExecutable(testDriver->getModule(), testOutput, errorMsg,
                                 /*keepObjectFile=*/false, testLinkOpts)) {
@@ -561,10 +561,9 @@ static int runCompile(const CompileJob& job) {
       const auto& bundled = driver->getNativeArchivePaths();
       linkOpts.archives.insert(linkOpts.archives.end(), bundled.begin(),
                                bundled.end());
-      success =
-          sun::compileToExecutable(driver->getModule(), job.outputFile,
-                                   errorMsg,
-                                   /*keepObjectFile=*/false, linkOpts);
+      success = sun::compileToExecutable(driver->getModule(), job.outputFile,
+                                         errorMsg,
+                                         /*keepObjectFile=*/false, linkOpts);
     }
 
     if (!success) {
@@ -654,8 +653,7 @@ static int runConfigCompile(const sun::SunConfig& config,
     // Config-named outputs may sit in folders that do not exist yet (e.g.
     // "build/stdlib"); create them so the artifacts have somewhere to land.
     std::error_code ec;
-    for (const std::string& artifact :
-         {job.outputFile, job.testBinaryName}) {
+    for (const std::string& artifact : {job.outputFile, job.testBinaryName}) {
       std::filesystem::path parent =
           std::filesystem::path(artifact).parent_path();
       if (!artifact.empty() && !parent.empty()) {
@@ -903,9 +901,9 @@ int main(int argc, char* argv[]) {
     std::filesystem::path outputPath =
         outputFile.empty() ? sun::MoonBuilder::defaultOutputPath(entrypoint)
                            : std::filesystem::path(outputFile);
-    return finish(buildMoonArtifact(
-        entrypoint, outputPath, targetTriple, debugInfo, dumpProtoSun,
-        moonImports, depfilePath.empty() ? nullptr : &depfile));
+    return finish(buildMoonArtifact(entrypoint, outputPath, targetTriple,
+                                    debugInfo, dumpProtoSun, moonImports,
+                                    depfilePath.empty() ? nullptr : &depfile));
   }
 
   // Normal compilation/execution modes

@@ -39,21 +39,21 @@
 #include <set>
 #include <type_traits>
 
-#include "ast.h"                                      // Pure AST header with ASTNodeType
-#include "codegen/abi/extern_c.h"                     // The extern "C" boundary
-#include "codegen/classes/class_generator.h"          // Classes, interfaces, enums
-#include "codegen/codegen.h"                          // CodegenContext
-#include "codegen/codegen_state.h"                    // Shared state for one codegen run
-#include "codegen/errors/error_generator.h"           // throw, try/catch, unwinding calls
-#include "codegen/functions/function_generator.h"     // Functions, lambdas, closures
-#include "codegen/functions/function_registry.h"      // Function lookup and conventions
+#include "ast.h"                   // Pure AST header with ASTNodeType
+#include "codegen/abi/extern_c.h"  // The extern "C" boundary
+#include "codegen/classes/class_generator.h"  // Classes, interfaces, enums
+#include "codegen/codegen.h"                  // CodegenContext
+#include "codegen/codegen_state.h"           // Shared state for one codegen run
+#include "codegen/errors/error_generator.h"  // throw, try/catch, unwinding calls
+#include "codegen/functions/function_generator.h"  // Functions, lambdas, closures
+#include "codegen/functions/function_registry.h"  // Function lookup and conventions
 #include "codegen/intrinsics/intrinsics_generator.h"  // Intrinsics, built-ins
 #include "codegen/loops/loop_generator.h"             // Loops and their jumps
-#include "codegen/scopes/scope_manager.h"             // Scope stack and drop emission
-#include "codegen/support/type_checks.h"              // requireType / tryGetType helpers
-#include "codegen/variables/variable_generator.h"     // Variables, lvalues and globals
-#include "semantic_analysis/types.h"                  // Type system
-#include "support/error.h"                            // Error handling
+#include "codegen/scopes/scope_manager.h"  // Scope stack and drop emission
+#include "codegen/support/type_checks.h"   // requireType / tryGetType helpers
+#include "codegen/variables/variable_generator.h"  // Variables, lvalues and globals
+#include "semantic_analysis/types.h"               // Type system
+#include "support/error.h"                         // Error handling
 
 // Convert a condition value to i1 (non-zero test for numeric conditions)
 llvm::Value* coerceCondToBool(CodegenContext& ctx, llvm::Value* condV);
@@ -157,7 +157,9 @@ class CodegenVisitor {
 
   // Snapshot the module's current function declarations.
   // Call after declareAvailableFunctions() but before codegen().
-  void snapshotPrecompiledFunctions() { functions.snapshotPrecompiled(*module); }
+  void snapshotPrecompiledFunctions() {
+    functions.snapshotPrecompiled(*module);
+  }
 
   /// Get the set of user-defined function names (for IR filtering)
   const std::set<std::string>& getUserDefinedFunctions() const {
@@ -330,8 +332,7 @@ class CodegenVisitor {
                          const sun::ArrayType& type, bool move);
   // Store one element into a slot of inline storage (compounds move in)
   void storeArrayElement(llvm::Value* slotPtr, llvm::Value* elemVal,
-                         const sun::TypePtr& elemSunType,
-                         llvm::Type* slotType);
+                         const sun::TypePtr& elemSunType, llvm::Type* slotType);
 
   // An alloca in the function's entry block, so loops don't grow the stack
   AllocaInst* createEntryBlockAlloca(Function* func, StringRef varName,

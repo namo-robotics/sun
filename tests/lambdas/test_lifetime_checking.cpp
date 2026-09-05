@@ -39,8 +39,7 @@ constexpr const char* kHolder = R"(
 
 // An inner-scoped handler cannot enter an outer receiver.
 TEST(Lambdas_LifetimeChecking, this_param_rejects_inner_scoped_handler) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      executeString(std::string(kHolder) + R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(std::string(kHolder) + R"(
     function main() i32 {
         var h = Holder();
         if (true) {
@@ -50,7 +49,7 @@ TEST(Lambdas_LifetimeChecking, this_param_rejects_inner_scoped_handler) {
         return h.call(1);
     }
   )"),
-      "Borrow check failed");
+                                "Borrow check failed");
 }
 
 // Same scope satisfies the tie.
@@ -73,8 +72,7 @@ TEST(Lambdas_LifetimeChecking, this_param_accepts_same_scope_handler) {
 // wire's signature says cb may end up inside dst; the call site checks the
 // concrete scopes.
 TEST(Lambdas_LifetimeChecking, wire_rejects_inner_source_outer_dest) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      executeString(std::string(kHolder) + R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(std::string(kHolder) + R"(
     function wire<'a>(cb: <'a>(i32) => i32, dst: ref 'a Holder) void {
         dst.set(cb);
         return;
@@ -88,7 +86,7 @@ TEST(Lambdas_LifetimeChecking, wire_rejects_inner_source_outer_dest) {
         return h.call(1);
     }
   )"),
-      "Borrow check failed");
+                                "Borrow check failed");
 }
 
 // The same wiring with compatible scopes runs.
@@ -113,15 +111,14 @@ TEST(Lambdas_LifetimeChecking, wire_accepts_outliving_source) {
 // A callee cannot launder one lifetime into another: unrelated names do
 // not satisfy each other.
 TEST(Lambdas_LifetimeChecking, cross_name_store_rejected_in_callee) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      executeString(std::string(kHolder) + R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(std::string(kHolder) + R"(
     function evil<'a, 'b>(cb: <'a>(i32) => i32, dst: ref 'b Holder) void {
         dst.set(cb);
         return;
     }
     function main() i32 { return 0; }
   )"),
-      "Borrow check failed");
+                                "Borrow check failed");
 }
 
 // ============================================================================
@@ -341,8 +338,7 @@ TEST(Lambdas_LifetimeChecking, this_field_class_stores_and_fires) {
 // A bus that received a handler moves between locals; the journey may not
 // leave the handler's scope.
 TEST(Lambdas_LifetimeChecking, carrier_journey_rejected_past_env_scope) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      executeString(std::string(kHolder) + R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(std::string(kHolder) + R"(
     function main() i32 {
         var keep = Holder();
         if (true) {
@@ -354,7 +350,7 @@ TEST(Lambdas_LifetimeChecking, carrier_journey_rejected_past_env_scope) {
         return keep.call(1);
     }
   )"),
-      "Borrow check failed");
+                                "Borrow check failed");
 }
 
 // The same journey inside the handler's scope is fine.

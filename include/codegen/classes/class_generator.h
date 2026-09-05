@@ -115,8 +115,8 @@ class ClassGenerator {
       const std::vector<std::unique_ptr<ExprAST>>& args);
 
   // Overload for pre-collected argument types
-  ConstructorLookup lookupConstructor(sun::ClassType* classType,
-                                      const std::vector<sun::TypePtr>& argTypes);
+  ConstructorLookup lookupConstructor(
+      sun::ClassType* classType, const std::vector<sun::TypePtr>& argTypes);
 
   // ---------------------------------------------------------------
   // Generic instantiation
@@ -144,9 +144,9 @@ class ClassGenerator {
 
   // Moves a concrete class into heap storage and creates an owning interface
   // fat pointer. The vtable's final slot drops and frees that erased object.
-  llvm::Value* createOwnedInterfaceFatPointer(
-      llvm::Value* objectPtr, sun::ClassType* classType,
-      sun::InterfaceType* ifaceType);
+  llvm::Value* createOwnedInterfaceFatPointer(llvm::Value* objectPtr,
+                                              sun::ClassType* classType,
+                                              sun::InterfaceType* ifaceType);
 
   // Returns the vtable global for a (class, interface) pair, building it on
   // demand if the class was not codegen'd in this module (e.g. an stdlib error
@@ -199,8 +199,7 @@ class ClassGenerator {
       sun::ClassType* classType, sun::InterfaceType* ifaceType);
 
   // Emits the type-specific routine that destroys and frees an erased object.
-  llvm::Function* getOrCreateInterfaceDropFunction(
-      sun::ClassType* classType);
+  llvm::Function* getOrCreateInterfaceDropFunction(sun::ClassType* classType);
 
   // Declare every method of one class (no bodies)
   void declareClassMethods(const ClassDefinitionAST& expr,

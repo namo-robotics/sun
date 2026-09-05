@@ -37,11 +37,8 @@ class ModuleLinker {
   /// @param moduleKeys List of module keys to make available
   void registerAvailableModules(const std::vector<std::string>& moduleKeys);
 
-  /// Register available modules with module name remapping (aliasing)
-  /// This enables using multiple versions of the same library by remapping
-  /// module names at link time (e.g., "std" -> "std_v1")
-  /// @param moonImport Moon import configuration with optional remapping
-  void registerAvailableModulesWithRemap(const MoonImport& moonImport);
+  /** Register a bundle's original compiled symbols; aliases are source-only. */
+  void registerAvailableBundle(const MoonImport& moonImport);
 
   /// Declare all exported functions as external declarations in target module
   /// This allows codegen to reference functions before actual linking, and
@@ -66,12 +63,6 @@ class ModuleLinker {
   /// Link a module and its dependencies recursively
   bool linkModuleRecursive(const std::string& moduleKey);
 
-  /// Remap a symbol name by replacing module names according to remap config
-  /// e.g., "$hash$_std_Vec_push" -> "$hash$_std_v1_Vec_push"
-  std::string remapSymbolName(
-      const std::string& symbol,
-      const std::unordered_map<std::string, std::string>& moduleRemap) const;
-
   llvm::Module& target_;
   // Context for modules parsed by declareAvailableFunctions(). Scans use
   // their own context so the target never shares struct type objects with a
@@ -83,10 +74,6 @@ class ModuleLinker {
   std::set<std::string> availableModules_;
   std::unordered_map<std::string, std::string>
       symbolToModule_;  // mangled name -> moduleKey
-
-  /// Module key -> remap configuration (for aliased modules)
-  std::unordered_map<std::string, std::unordered_map<std::string, std::string>>
-      moduleRemaps_;
 
   std::string error_;
 };

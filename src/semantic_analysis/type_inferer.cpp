@@ -15,6 +15,22 @@ using sun::unwrapRef;
 using sun::rules::promoteBinaryOperands;
 using sun::rules::unifyTernaryTypes;
 
+namespace {
+// Resolve an exported module reference using only its defining qualified name.
+sun::TypePtr inferModuleReference(const ExprAST& expr,
+                                  SemanticContext& context) {
+  const auto& name = *expr.getModuleQualifiedName();
+  auto* module = context.lookupModuleScope(name.lookupName());
+  if (!module)
+    logAndThrowError("moon exact dependency: requires module '" +
+                         name.display() + "' from bundle " + name.bundleHash() +
+                         ". Explicitly import the required exact bundle.",
+                     expr.getLocation());
+  context.requireModuleAccessible(*module, expr.getLocation());
+  return sun::Types::Module(name.lookupName());
+}
+}  // namespace
+
 sun::TypePtr TypeInferer::inferCallType(const CallExprAST& callExpr) {
   // Analysis records the selected overload on the callee. Reuse that exact
   // signature instead of looking the name up again and taking its first
@@ -393,6 +409,8 @@ sun::TypePtr TypeInferer::inferType(const ExprAST& expr) {
     case ASTNodeType::INDEX:
       return inferIndexType(static_cast<const IndexAST&>(expr));
     case ASTNodeType::VARIABLE_REFERENCE:
+      if (expr.getModuleQualifiedName())
+        return inferModuleReference(expr, ctx_);
       return inferVariableReferenceType(
           static_cast<const VariableReferenceAST&>(expr));
     case ASTNodeType::VARIABLE_CREATION: {
@@ -622,6 +640,8 @@ sun::TypePtr TypeInferer::inferType(const ExprAST& expr) {
     }
 
     case ASTNodeType::QUALIFIED_NAME: {
+      if (expr.getModuleQualifiedName())
+        return inferModuleReference(expr, ctx_);
       const auto& qualName = static_cast<const QualifiedNameAST&>(expr);
       std::string fullName = qualName.getFullName();
 
@@ -754,11 +774,10 @@ sun::TypePtr TypeInferer::inferModuleMemberType(
   auto* moduleType = static_cast<sun::ModuleType*>(objectType.get());
   std::string modPath = moduleType->getModulePath();
 
-  // Check if it's a nested module first
   std::string nestedModPath = modPath + "." + memberName;
   if (auto* nested = ctx_.lookupModuleScope(nestedModPath)) {
     ctx_.requireModuleAccessible(*nested, memberAccess.getLocation());
-    return sun::Types::Module(nestedModPath);
+    return sun::Types::Module(sun::QualifiedName::joinPath(nested->scopePath));
   }
 
   // Use unified symbol lookup to find the member in this module
@@ -1072,6 +1091,8 @@ sun::TypePtr TypeInferer::inferTypeParameterMemberType(
 }
 
 sun::TypePtr TypeInferer::inferType(const MemberAccessAST& memberAccess) {
+  if (memberAccess.getModuleQualifiedName())
+    return inferModuleReference(memberAccess, ctx_);
   const std::string& memberName = memberAccess.getMemberName();
 
   // Get the fully-resolved object type:

@@ -28,8 +28,8 @@ void SemanticAnalyzer::inheritInterfaceFields(
       }
 
       // Instantiate the generic interface
-      interfaceType =
-          generics_.instantiateGenericInterface(ifaceRef.name, typeArgs);
+      interfaceType = generics_.instantiateGenericInterface(
+          ifaceRef.lookupName(), typeArgs);
       if (!interfaceType) {
         logAndThrowError("Class '" + classDef.getName() +
                              "' implements unknown generic interface '" +
@@ -39,7 +39,7 @@ void SemanticAnalyzer::inheritInterfaceFields(
       interfaceDisplayName = interfaceType->toDisplayString();
     } else {
       // Non-generic interface
-      interfaceType = ctx_.lookupInterface(ifaceRef.name);
+      interfaceType = ctx_.lookupInterface(ifaceRef.lookupName());
       if (!interfaceType) {
         logAndThrowError("Class '" + classDef.getName() +
                              "' implements unknown interface '" +
@@ -90,15 +90,15 @@ void SemanticAnalyzer::validateInterfaceImplementation(
         typeArgs.push_back(types_.typeAnnotationToType(typeArg));
       }
 
-      interfaceType =
-          generics_.instantiateGenericInterface(ifaceRef.name, typeArgs);
+      interfaceType = generics_.instantiateGenericInterface(
+          ifaceRef.lookupName(), typeArgs);
       if (!interfaceType) {
         // Already reported in inheritInterfaceFields
         continue;
       }
       interfaceDisplayName = interfaceType->toDisplayString();
     } else {
-      interfaceType = ctx_.lookupInterface(ifaceRef.name);
+      interfaceType = ctx_.lookupInterface(ifaceRef.lookupName());
       if (!interfaceType) {
         // Already reported in inheritInterfaceFields
         continue;
@@ -221,7 +221,8 @@ void SemanticAnalyzer::validateInterfaceImplementation(
                       interfaceMethod.name + "' parameter " +
                       std::to_string(i + 1) +
                       " does not declare the lifetime the interface '" +
-                      interfaceDisplayName + "' requires - the names must "
+                      interfaceDisplayName +
+                      "' requires - the names must "
                       "match the interface's exactly",
                   classDef.getLocation());
             }

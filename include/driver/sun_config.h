@@ -44,7 +44,7 @@ struct ConfigEntrypoint {
     Library,  // a .moon bundle: no main, tests compile to the test binary
   };
 
-  std::string path;            // the entrypoint .sun file
+  std::string path;  // the entrypoint .sun file
   Type type = Type::Binary;
   std::string outputName;      // empty: derived from the entrypoint's name
   std::string testBinaryName;  // empty: outputName + "_test"
@@ -56,7 +56,7 @@ struct SunConfig {
   std::filesystem::path configDir;   // directory of the nearest config file
   std::vector<std::string> sunPath;  // extra library search dirs (absolute)
   std::map<std::string, std::string> pathVariables;  // values made absolute
-  std::vector<ConfigEntrypoint> entrypoints;  // declared build products
+  std::vector<ConfigEntrypoint> entrypoints;         // declared build products
   bool root = false;  // stop the upward search at this file
 
   // The merged view of every sun-config.json in startDir and its parents

@@ -15,9 +15,9 @@ class VariableCreationAST : public ExprAST {
   std::string name;
   std::unique_ptr<ExprAST> value;
   std::optional<TypeAnnotation> typeAnnotation;
-  bool isConst_;     // `const x = ...`: the binding and its value never change
+  bool isConst_;  // `const x = ...`: the binding and its value never change
   bool isCExtern_ = false;  // C extern storage is provided by a native global
-  bool explicitCAbi_ = false;  // Source spelled the optional "C" ABI
+  bool explicitCAbi_ = false;            // Source spelled the optional "C" ABI
   std::optional<std::string> linkName_;  // Optional native symbol override
   std::string doc_;  // Comment written above the declaration
 
@@ -60,10 +60,9 @@ class VariableCreationAST : public ExprAST {
   std::string toString() const override {
     std::string externPrefix =
         explicitCAbi_ ? "extern \"C\" var " : "extern var ";
-    std::string result = std::string(isPublic() ? "public " : "") +
-                         (isCExtern_ ? externPrefix
-                                     : (isConst_ ? "const " : "var ")) +
-                         name;
+    std::string result =
+        std::string(isPublic() ? "public " : "") +
+        (isCExtern_ ? externPrefix : (isConst_ ? "const " : "var ")) + name;
     if (typeAnnotation) result += ": " + typeAnnotation->toString();
     // A global imported from a .moon carries its type but no initializer.
     if (value) result += " = " + value->toString();

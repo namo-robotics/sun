@@ -155,12 +155,11 @@ TEST(Functions_Generic_Constraints, callable_accepts_a_named_function) {
 }
 
 TEST(Functions_Generic_Constraints, callable_rejects_a_number) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     function run<F: _Callable>(f: F) i32 { return 0; }
     function main() i32 { return run(42); }
   )"),
-      "does not satisfy constraint '_Callable'");
+                                "does not satisfy constraint '_Callable'");
 }
 
 // A constraint and `_is<T>` share one vocabulary, so `_Lambda` is a trait in
@@ -219,7 +218,8 @@ TEST(Functions_Generic_Constraints, interface_field_readable_in_body) {
   EXPECT_EQ(value, 10);
 }
 
-TEST(Functions_Generic_Constraints, interface_constraint_on_generic_class_body) {
+TEST(Functions_Generic_Constraints,
+     interface_constraint_on_generic_class_body) {
   auto value = executeString(R"(
     interface IShape { public method area() i32; }
     class Square implements IShape {

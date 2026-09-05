@@ -47,6 +47,7 @@ class SemanticContext : public AccessContext {
   SemanticScope *scope() const { return currentScope_; }
 
   /** The global scope, for debugging and visualization. */
+  SemanticScope &rootScope() { return *rootScope_; }
   const SemanticScope &rootScope() const { return *rootScope_; }
 
   /** Set the class whose body is being analyzed, so `this` resolves to it. */
@@ -77,7 +78,7 @@ class SemanticContext : public AccessContext {
    * Enter (creating or reusing) a module scope and record its visibility;
    * re-openings must agree.
    */
-  void declareModule(const ModuleAST &module);
+  void declareModule(ModuleAST &module);
 
   /** Enter a class scope with qualified name for proper scope path. */
   void enterClassScope(const sun::QualifiedName &className);
@@ -252,8 +253,7 @@ class SemanticContext : public AccessContext {
   void registerModuleVariable(const std::string &baseName,
                               const std::string &qualifiedName,
                               sun::TypePtr type, sun::Visibility visibility,
-                              bool isConst = false,
-                              bool isCExtern = false);
+                              bool isConst = false, bool isCExtern = false);
 
   /**
    * Find a variable by its dotted name (`a.b.x`). An undotted name is an
@@ -376,6 +376,11 @@ class SemanticContext : public AccessContext {
 
   /** Find a generic enum template by name in the scope chain. */
   const GenericEnumInfo *lookupGenericEnum(const std::string &name) const;
+
+  /** Require the original nominal declaration, without source-name fallback. */
+  void requireDeclaration(
+      const sun::QualifiedName &name, const std::string &exporter = "",
+      std::optional<sun::Type::Kind> expectedKind = std::nullopt) const;
 
   // ---- Type parameters and aliases ---------------------------------------
 

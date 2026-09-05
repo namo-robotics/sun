@@ -112,9 +112,8 @@ bool MoonWriter::write(const std::filesystem::path& outputPath) {
     entry.bitcodeOffset = location.offset;
     entry.bitcodeSize = location.size;
 
-    // Metadata keeps base names only: importers derive the fully-qualified
-    // names from this hash and the module path, exactly as the bundle's own
-    // compilation did.
+    // Declarations belong to this bundle; their type references already carry
+    // the exact identities bound in the analyzed program.
     mod.metadata.set_content_hash(bundleHash_);
 
     // Serialize metadata as protobuf

@@ -215,7 +215,6 @@ TEST(Lambdas_LifetimeSyntax, anonymous_lifetime_store_rejected) {
 // Rejected spellings and names
 // ============================================================================
 
-
 // A lambda lifetime binder follows the same duplicate-name rule as a function.
 TEST(Lambdas_LifetimeSyntax, duplicate_lambda_lifetime_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(

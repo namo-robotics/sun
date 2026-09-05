@@ -4,6 +4,7 @@
 
 #include "ast.h"
 #include "ast.pb.h"
+#include "serialization/qualified_name.h"
 #include "serialization/token_kind_proto_map.h"
 #include "types.pb.h"
 
@@ -41,6 +42,9 @@ ast::TypeAnnotation ASTSerializer::serializeTypeAnnotation(
     const TypeAnnotation& type) const {
   ast::TypeAnnotation proto;
   proto.set_base_name(type.baseName);
+  if (type.qualifiedName)
+    *proto.mutable_qualified_name() =
+        sun::serialization::serializeQualifiedName(*type.qualifiedName);
 
   if (type.elementType) {
     *proto.mutable_element_type() = serializeTypeAnnotation(*type.elementType);
@@ -96,6 +100,10 @@ void ASTSerializer::serializeExprBase(const ExprAST& expr,
     *node->mutable_location() = serializePosition(expr.getLocation());
   }
   node->set_source_file_id(expr.getSourceFileId());
+  if (expr.getModuleQualifiedName())
+    *node->mutable_module_qualified_name() =
+        sun::serialization::serializeQualifiedName(
+            *expr.getModuleQualifiedName());
   node->set_precompiled(expr.isPrecompiled());
   node->set_skip_codegen(expr.shouldSkipCodegen());
   node->set_symbol_prefix(expr.getSymbolPrefix());
@@ -128,7 +136,13 @@ ast::Prototype ASTSerializer::serializePrototype(
   for (const auto& tp : proto.getTypeParameters()) {
     auto* out = result.add_type_params();
     out->set_name(tp.name);
-    if (tp.constraint) out->set_constraint(tp.constraint->name);
+    if (tp.constraint) {
+      out->set_constraint(tp.constraint->name);
+      if (tp.constraint->qualifiedName)
+        *out->mutable_qualified_name() =
+            sun::serialization::serializeQualifiedName(
+                *tp.constraint->qualifiedName);
+    }
   }
 
   for (const auto& lp : proto.getLifetimeParameters()) {
@@ -788,7 +802,13 @@ void ASTSerializer::serializeClassDef(const ClassDefinitionAST& expr,
   for (const auto& tp : expr.getTypeParameters()) {
     auto* out = cls->add_type_params();
     out->set_name(tp.name);
-    if (tp.constraint) out->set_constraint(tp.constraint->name);
+    if (tp.constraint) {
+      out->set_constraint(tp.constraint->name);
+      if (tp.constraint->qualifiedName)
+        *out->mutable_qualified_name() =
+            sun::serialization::serializeQualifiedName(
+                *tp.constraint->qualifiedName);
+    }
   }
 
   for (const auto& lp : expr.getLifetimeParameters()) {
@@ -798,6 +818,9 @@ void ASTSerializer::serializeClassDef(const ClassDefinitionAST& expr,
   for (const auto& iface : expr.getImplementedInterfaces()) {
     auto* ifaceProto = cls->add_implemented_interfaces();
     ifaceProto->set_name(iface.name);
+    if (iface.qualifiedName)
+      *ifaceProto->mutable_qualified_name() =
+          sun::serialization::serializeQualifiedName(*iface.qualifiedName);
     for (const auto& typeArg : iface.typeArguments) {
       *ifaceProto->add_type_arguments() = serializeTypeAnnotation(typeArg);
     }
@@ -829,7 +852,13 @@ void ASTSerializer::serializeInterfaceDef(const InterfaceDefinitionAST& expr,
   for (const auto& tp : expr.getTypeParameters()) {
     auto* out = iface->add_type_params();
     out->set_name(tp.name);
-    if (tp.constraint) out->set_constraint(tp.constraint->name);
+    if (tp.constraint) {
+      out->set_constraint(tp.constraint->name);
+      if (tp.constraint->qualifiedName)
+        *out->mutable_qualified_name() =
+            sun::serialization::serializeQualifiedName(
+                *tp.constraint->qualifiedName);
+    }
   }
 
   for (const auto& lp : expr.getLifetimeParameters()) {
@@ -860,7 +889,13 @@ void ASTSerializer::serializeEnumDef(const EnumDefinitionAST& expr,
   for (const auto& tp : expr.getTypeParameters()) {
     auto* out = enumDef->add_type_params();
     out->set_name(tp.name);
-    if (tp.constraint) out->set_constraint(tp.constraint->name);
+    if (tp.constraint) {
+      out->set_constraint(tp.constraint->name);
+      if (tp.constraint->qualifiedName)
+        *out->mutable_qualified_name() =
+            sun::serialization::serializeQualifiedName(
+                *tp.constraint->qualifiedName);
+    }
   }
 
   for (const auto& variant : expr.getVariants()) {

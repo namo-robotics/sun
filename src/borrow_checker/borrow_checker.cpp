@@ -1245,10 +1245,10 @@ void BorrowChecker::borrowHolderInputs(const CallExprAST& call) {
     const auto& inputPos = input.getLocation();
     std::string holder = "$refholder@" + std::to_string(inputPos.line) + ":" +
                          std::to_string(inputPos.column);
-    auto result = state_.addBorrow(
-        targetInfo.actualTarget, holder,
-        mutableRef ? BorrowKind::Mutable : BorrowKind::Shared, currentScope_,
-        inputPos);
+    auto result =
+        state_.addBorrow(targetInfo.actualTarget, holder,
+                         mutableRef ? BorrowKind::Mutable : BorrowKind::Shared,
+                         currentScope_, inputPos);
     if (!result.allowed) {
       reportConflict(result.errorMessage, inputPos, result.conflictingLoan);
     }
@@ -1815,7 +1815,8 @@ bool BorrowChecker::checkFrameStoreDepth(const std::string& destBase,
     reportError(
         "cannot store this lambda in '" + destBase + "' - '" + destBase +
             "' is declared in an outer scope and outlives the lambda's "
-            "captured environment. Declare '" + destBase +
+            "captured environment. Declare '" +
+            destBase +
             "' alongside what the lambda captures, or give the lambda its "
             "data as arguments instead of captures",
         pos);
@@ -2223,14 +2224,16 @@ void BorrowChecker::checkNamedLifetimesAtCall(
         std::string dstName = dst.value.described.empty()
                                   ? "the destination"
                                   : "'" + dst.value.described + "'";
-        reportError(
-            "cannot make this call: the signature ties " + srcName + " and " +
-                dstName + " together through lifetime '" + name + ", but " +
-                srcName + "'s captured environment does not provably "
-                "outlive " + dstName + ". Declare them in the same scope, "
-                "or give the lambda its data as arguments instead of "
-                "captures",
-            src.pos);
+        reportError("cannot make this call: the signature ties " + srcName +
+                        " and " + dstName + " together through lifetime '" +
+                        name + ", but " + srcName +
+                        "'s captured environment does not provably "
+                        "outlive " +
+                        dstName +
+                        ". Declare them in the same scope, "
+                        "or give the lambda its data as arguments instead of "
+                        "captures",
+                    src.pos);
       }
     }
   }
@@ -2715,7 +2718,8 @@ void BorrowChecker::checkIndexedAssignment(const IndexedAssignmentAST& assign) {
     // The slot takes the value: a compound source variable is moved from
     if (assign.getValue()->isTemporary()) {
       assign.getValue()->setMoved(true);
-    } else if (assign.getValue()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
+    } else if (assign.getValue()->getType() ==
+               ASTNodeType::VARIABLE_REFERENCE) {
       const auto& srcRef =
           static_cast<const VariableReferenceAST&>(*assign.getValue());
       if (typeMovesOnRead(assign.getValue()->getResolvedType()) &&

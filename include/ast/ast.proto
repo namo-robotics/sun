@@ -21,6 +21,8 @@ enum Visibility {
 }
 
 message ASTNode {
+  // Canonical module identity for expressions and retained using targets.
+  optional QualifiedName module_qualified_name = 101;
   uint64 source_file_id = 100;
   Position location = 1;
   bool precompiled = 2;
@@ -85,7 +87,7 @@ message ASTNode {
     ManifestMoonDependency manifest_moon_dep = 72;
     ModuleDef module_def = 73;
     UsingStmt using_stmt = 74;
-    QualifiedName qualified_name = 75;
+    QualifiedNameExpr qualified_name = 75;
     
     // Definitions
     ClassDef class_def = 80;
@@ -350,10 +352,10 @@ message FunctionArg {
 
 // One generic type parameter: a name, and optionally a constraint the type
 // argument must satisfy (a built-in trait, an interface, or `lambda`).
-// Mirrors the TypeParameter/TypeConstraint pair in include/ast/. Only the
-// constraint's name travels — its source span, like a TypeAnnotation's, is
-// local to the file it was parsed from.
+// Mirrors TypeParameter/TypeConstraint. User-defined constraints retain the
+// exact interface identity alongside their source spelling.
 message TypeParameter {
+  optional QualifiedName qualified_name = 3;
   string name = 1;
   optional string constraint = 2;
 }
@@ -468,7 +470,8 @@ message UsingStmt {
   bool is_module_import = 3;
 }
 
-message QualifiedName {
+// A dotted name as written in a source expression.
+message QualifiedNameExpr {
   repeated string parts = 1;  // ["Module", "SubModule", "name"]
 }
 
@@ -494,6 +497,7 @@ message ClassMethod {
 
 // Implemented interface with type arguments
 message ImplementedInterface {
+  optional QualifiedName qualified_name = 3;
   string name = 1;
   repeated TypeAnnotation type_arguments = 2;
 }
