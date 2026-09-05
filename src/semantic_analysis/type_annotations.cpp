@@ -161,7 +161,7 @@ sun::TypePtr TypeInferer::substituteTypeParameters(sun::TypePtr type) {
       if (changed) {
         // Need to re-instantiate the generic interface with substituted type
         // args
-        std::string baseName = it->getBaseGenericName();
+        std::string baseName = it->getGenericQualifiedName().lookupName();
         if (baseName.empty()) {
           baseName = it->getName();
         }
@@ -185,7 +185,8 @@ sun::TypePtr TypeInferer::substituteTypeParameters(sun::TypePtr type) {
         if (newArg != arg) changed = true;
       }
       if (changed) {
-        return generics_.instantiateGenericEnum(et->getGenericBase(), newArgs);
+        return generics_.instantiateGenericEnum(
+            et->getGenericQualifiedName().lookupName(), newArgs);
       }
     }
     return type;
@@ -218,6 +219,13 @@ std::vector<sun::TypePtr> TypeInferer::resolveTypeArguments(
 // -------------------------------------------------------------------
 
 sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
+  if (annot.qualifiedName) {
+    ctx_.requireDeclaration(*annot.qualifiedName);
+    TypeAnnotation canonical(annot);
+    canonical.baseName = annot.qualifiedName->lookupName();
+    canonical.qualifiedName.reset();
+    return typeAnnotationToType(canonical);
+  }
   // Raw pointer types: raw_ptr<T> non-owning pointer for C interop
   if (annot.isRawPointer()) {
     if (!annot.elementType) {
@@ -526,7 +534,7 @@ sun::TypePtr TypeInferer::createConstView(sun::TypePtr type) {
     }
     if (!changed) return type;
     if (auto viewed = generics_.instantiateGenericEnum(
-            enumType->getGenericBase(), args)) {
+            enumType->getGenericQualifiedName().lookupName(), args)) {
       return viewed;
     }
   }

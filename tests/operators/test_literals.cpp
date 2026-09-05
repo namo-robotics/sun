@@ -180,27 +180,24 @@ TEST(Operators_Literals, negative_value_never_fits_unsigned) {
 }
 
 TEST(Operators_Literals, unknown_suffix_is_error) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
         function main() i32 { var b = 21u9; return 0; }
       )"),
-      "Invalid numeric literal suffix 'u9'");
+                                "Invalid numeric literal suffix 'u9'");
 }
 
 TEST(Operators_Literals, float_suffix_on_integer_form_is_error) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
         function main() i32 { var b = 2f32; return 0; }
       )"),
-      "write 2.0f32");
+                                "write 2.0f32");
 }
 
 TEST(Operators_Literals, integer_suffix_on_float_form_is_error) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
         function main() i32 { var b = 1.5u8; return 0; }
       )"),
-      "Invalid suffix 'u8' on a float literal");
+                                "Invalid suffix 'u8' on a float literal");
 }
 
 // ============================================================================
@@ -219,22 +216,20 @@ TEST(Operators_Literals, untyped_literal_still_adapts_at_declaration) {
 }
 
 TEST(Operators_Literals, untyped_literal_argument_still_stays_i32) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
         function classify(id: u8) i32 { return 1; }
         function main() i32 { return classify(21); }
       )"),
-      "No matching overload of 'classify'");
+                                "No matching overload of 'classify'");
 }
 
 TEST(Operators_Literals, typed_variable_still_never_narrows) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
         function classify(id: u8) i32 { return 1; }
         function main() i32 {
             var a: i32 = 5;
             return classify(a);
         }
       )"),
-      "No matching overload of 'classify'");
+                                "No matching overload of 'classify'");
 }

@@ -24,8 +24,7 @@ namespace sun {
 struct BorrowError {
   std::string message;
   Position location;
-  std::vector<Position>
-      relatedLocations;  // Where conflicting borrows occurred
+  std::vector<Position> relatedLocations;  // Where conflicting borrows occurred
 };
 
 /// Turn the borrow errors of one compilation into the single error the driver
@@ -133,9 +132,9 @@ class BorrowChecker {
   struct LifetimeValue {
     enum class Kind { Outlives, Concrete, Symbolic };
     Kind kind = Kind::Outlives;
-    size_t depth = 0;      // Concrete: declaration/environment scope depth
-    std::string name;      // Symbolic: the signature lifetime's name
-    std::string described; // the variable it came from, for messages
+    size_t depth = 0;       // Concrete: declaration/environment scope depth
+    std::string name;       // Symbolic: the signature lifetime's name
+    std::string described;  // the variable it came from, for messages
   };
   // Does a value with lifetime src provably live at least as long as
   // storage with lifetime dst?
@@ -162,8 +161,8 @@ class BorrowChecker {
   // reject if the destination outlives the frame or was declared in an
   // outer scope than the lambda's environment, otherwise mark the
   // destination frame-bound so the carrier cannot cross a call boundary
-  void noteFrameSourcedLambdaStore(const std::string& destBase,
-                                   size_t envDepth, const Position& pos);
+  void noteFrameSourcedLambdaStore(const std::string& destBase, size_t envDepth,
+                                   const Position& pos);
   // A ref-storing class value is landing in the named destination (a fresh
   // construction, or a holder local moved in). Rejects a destination that
   // outlives what the value borrows, and records the destination's own
@@ -172,8 +171,8 @@ class BorrowChecker {
                            const ExprAST& value, const Position& pos);
   // Conservatively relate callbacks whose generic parameters lost lifetime
   // names to every receiver and mutable-ref destination the callee can keep.
-  void checkErasedLifetimeLambdaArgs(
-      const CallExprAST& call, const std::vector<TypePtr>& paramTypes);
+  void checkErasedLifetimeLambdaArgs(const CallExprAST& call,
+                                     const std::vector<TypePtr>& paramTypes);
   // Does this type point into storage it does not own - a reference in any
   // field, transitively, or a '<'_>' lambda environment it can carry?
   bool classStoresRefs(const TypePtr& type) const;

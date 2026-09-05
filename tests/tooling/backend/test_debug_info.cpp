@@ -390,12 +390,12 @@ TEST(Tooling_Backend_DebugInfo, lldb_breaks_reads_variables_and_steps) {
   // every loaded module, and on macOS libobjc has an `add` of its own that
   // fires during process startup, long before main.
   std::string guard = haveTool("timeout") ? "timeout 120 " : "";
-  std::string module =
-      std::filesystem::path(binary).filename().string();
+  std::string module = std::filesystem::path(binary).filename().string();
   std::string outPath = ::testing::TempDir() + "sun_debug_info_lldb.out";
   std::string cmd = guard + "env DEBUGINFOD_URLS= " + lldb +
                     " -b -o 'settings set target.disable-aslr false'"
-                    " -o 'breakpoint set --name add --shlib " + module +
+                    " -o 'breakpoint set --name add --shlib " +
+                    module +
                     "' -o run"
                     " -o 'frame variable' -o next -o 'print sum' " +
                     binary + " > " + outPath + " 2>&1";

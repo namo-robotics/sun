@@ -3,9 +3,11 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
+#include "semantic_analysis/qualified_name.h"
 #include "support/position.h"
 
 // Type annotation structure for parsed type info
@@ -14,6 +16,7 @@
 // Array types: array<T, N> or array<T, M, N> for fixed-size arrays
 // Error union types: T, error (value or error)
 struct TypeAnnotation {
+  std::optional<sun::QualifiedName> qualifiedName;
   std::string baseName;  // "i32", "f64", "ptr", "fn", "lambda", "array", etc.
   std::unique_ptr<TypeAnnotation>
       elementType;  // For ptr/ref/array: element type
@@ -55,7 +58,8 @@ struct TypeAnnotation {
   TypeAnnotation() = default;
   TypeAnnotation(std::string name) : baseName(std::move(name)) {}
   TypeAnnotation(const TypeAnnotation& other)
-      : baseName(other.baseName),
+      : qualifiedName(other.qualifiedName),
+        baseName(other.baseName),
         arrayDimensions(other.arrayDimensions),
         canError(other.canError),
         constRef(other.constRef),
@@ -78,6 +82,7 @@ struct TypeAnnotation {
   }
   TypeAnnotation& operator=(const TypeAnnotation& other) {
     if (this != &other) {
+      qualifiedName = other.qualifiedName;
       baseName = other.baseName;
       arrayDimensions = other.arrayDimensions;
       canError = other.canError;

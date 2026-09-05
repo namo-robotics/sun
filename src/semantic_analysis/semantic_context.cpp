@@ -98,9 +98,11 @@ void SemanticContext::enterModuleScope(const std::string& moduleName) {
     child = modScope;
   }
   currentScope_ = child.get();
+  rootScope_->canonicalModules[sun::QualifiedName(currentScope_->scopePath, "")
+                                   .scopePathString()] = currentScope_;
 }
 
-void SemanticContext::declareModule(const ModuleAST& module) {
+void SemanticContext::declareModule(ModuleAST& module) {
   enterModuleScope(module.getName());
   auto* scope = static_cast<ModuleScope*>(currentScope_);
   if (scope->visibilityDeclared &&
@@ -111,6 +113,15 @@ void SemanticContext::declareModule(const ModuleAST& module) {
             "; all declarations of a module must agree on its visibility",
         module.getLocation());
   }
+  if (module.hasQualifiedName()) {
+    scope->qualifiedName = module.getQualifiedName();
+    scope->scopePath = scope->qualifiedName.scopePath;
+    scope->scopePath.push_back(scope->qualifiedName.baseName);
+  } else {
+    module.setQualifiedName(scope->qualifiedName);
+  }
+  rootScope_->canonicalModules[sun::QualifiedName(scope->scopePath, "")
+                                   .scopePathString()] = scope;
   scope->visibility = module.getVisibility();
   scope->visibilityDeclared = true;
 }
@@ -303,6 +314,12 @@ static std::vector<SemanticScope*> collectAllModuleScopes(
     const SemanticScope* startScope, const std::string& dotPath) {
   std::vector<SemanticScope*> results;
   if (dotPath.empty() || !startScope) return results;
+  bool pinned = dotPath.starts_with("$");
+  if (pinned) {
+    if (auto* scope = startScope->lookupModuleScope(dotPath))
+      results.push_back(scope);
+    return results;
+  }
 
   // Helper to add a scope if not already present
   auto addUnique = [&results](SemanticScope* scope) {
@@ -605,6 +622,14 @@ SymbolMatch SemanticContext::findSymbolInModule(
     return std::nullopt;
   };
 
+  // An exact module identity must never search other versions by visible name.
+  if (modulePath.starts_with("$")) {
+    if (auto* scope = lookupModuleScope(modulePath)) {
+      if (auto match = searchInScope(scope)) return *match;
+    }
+    accessFilter.finish();
+    return {};
+  }
   // Search ALL module scopes with the same visible name
   // This handles same-named modules in different import scopes
   // Track all matches to detect version conflicts (same symbol in multiple
@@ -1055,11 +1080,10 @@ void SemanticContext::registerBuiltinFunctions() {
        {}});
   // __getsockname_ipv4(fd, out_ip, out_port) -> result
   registerFunctionInCurrentScope(
-      "__getsockname_ipv4",
-      {Types::Int32(),
-       {Types::Int32(), Types::RawPointer(Types::Int32()),
-        Types::RawPointer(Types::Int32())},
-       {}});
+      "__getsockname_ipv4", {Types::Int32(),
+                             {Types::Int32(), Types::RawPointer(Types::Int32()),
+                              Types::RawPointer(Types::Int32())},
+                             {}});
 }
 
 // -------------------------------------------------------------------
@@ -1103,87 +1127,8 @@ VariableInfo* SemanticContext::lookupQualifiedVariable(
 // e.g., "b" -> "$hash$.b" if b is inside a library scope
 std::string SemanticContext::getFullModulePath(
     const std::string& visiblePath) const {
-  if (visiblePath.empty() || !currentScope_) return visiblePath;
-
-  // Helper to find a segment and return its full path including library scopes
-  // Throws on ambiguity (same name found in multiple library scopes)
-  // Import scopes are traversed transparently (not included in path)
-  std::function<std::string(const SemanticScope&, const std::string&,
-                            const std::string&)>
-      findFullPath = [&](const SemanticScope& scope, const std::string& segment,
-                         const std::string& currentPath) -> std::string {
-    // Direct child lookup
-    auto it = scope.childModules.find(segment);
-    if (it != scope.childModules.end() && !isLibraryScope(segment)) {
-      return currentPath.empty() ? segment : currentPath + "." + segment;
-    }
-
-    // Search inside library scopes, tracking all matches for ambiguity
-    std::string found;
-    std::string foundInLib;
-
-    for (const auto& [modName, child] : scope.childModules) {
-      if (!child || !isLibraryScope(modName)) continue;
-
-      // Include library scope name in the path (including import scopes)
-      // Import scopes like $import_xxx$ must be in the full path for codegen
-      std::string libPath =
-          currentPath.empty() ? modName : currentPath + "." + modName;
-
-      // Check if this library scope has the segment as direct child
-      auto childIt = child->childModules.find(segment);
-      if (childIt != child->childModules.end()) {
-        std::string candidate =
-            libPath.empty() ? segment : libPath + "." + segment;
-        // Don't throw on ambiguity for modules - same module name in different
-        // import scopes should be merged. Symbol lookup will find the right
-        // one.
-        if (found.empty()) {
-          found = candidate;
-          foundInLib = modName;
-        }
-      }  // Recursively check nested library scopes
-      auto result = findFullPath(*child, segment, libPath);
-      if (!result.empty()) {
-        // Keep first match, let symbol lookup resolve actual ambiguity
-        if (found.empty()) {
-          found = result;
-        }
-      }
-    }
-    return found;
-  };
-
-  // Search from innermost scope outward (back to front) so that modules
-  // registered in function scopes (via scoped imports) are resolved correctly.
-  for (auto* scopeIt = currentScope_; scopeIt != nullptr;
-       scopeIt = scopeIt->parent) {
-    std::string fullPath;
-    const SemanticScope* current = scopeIt;
-
-    std::string segment;
-    std::istringstream stream(visiblePath);
-    bool resolved = true;
-    while (std::getline(stream, segment, '.')) {
-      // Find full path for this segment
-      std::string segmentFullPath = findFullPath(*current, segment, fullPath);
-      if (segmentFullPath.empty()) {
-        resolved = false;
-        break;
-      }
-      fullPath = segmentFullPath;
-
-      // Navigate to that scope for next segment
-      SemanticScope* nextScope = lookupModuleScope(fullPath);
-      if (!nextScope) {
-        resolved = false;
-        break;
-      }
-      current = nextScope;
-    }
-    if (resolved && !fullPath.empty()) return fullPath;
-  }
-
+  if (auto* scope = lookupModuleScope(visiblePath))
+    return sun::QualifiedName(scope->scopePath, "").scopePathString();
   return visiblePath;
 }
 
@@ -1434,4 +1379,27 @@ void SemanticContext::requireModuleAccessible(
       continue;  // bundle boundary, not a module
     requireAccessible(moduleRef(static_cast<const ModuleScope&>(*s)), loc);
   }
+}
+
+void SemanticContext::requireDeclaration(
+    const sun::QualifiedName& name, const std::string& exporter,
+    std::optional<sun::Type::Kind> expectedKind) const {
+  const auto& index = rootScope_->canonicalDeclarations;
+  auto found = index.find(name);
+  if (found != index.end() && (!expectedKind || found->second == *expectedKind))
+    return;
+  std::string message = "moon exact dependency: ";
+  if (!exporter.empty()) message += "library '" + exporter + "' ";
+  message += "requires declaration '" + name.display() + "' from bundle " +
+             name.bundleHash();
+  if (found != index.end()) message += " (declaration has the wrong type kind)";
+  for (const auto& [candidate, kind] : index) {
+    if (candidate.display() == name.display() &&
+        candidate.bundleHash() != name.bundleHash()) {
+      message += "; conflicting bundle supplied: " + candidate.bundleHash();
+      break;
+    }
+  }
+  logAndThrowError(message + ". Explicitly import the required exact bundle.",
+                   currentLocation());
 }

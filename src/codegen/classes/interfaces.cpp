@@ -19,15 +19,14 @@ using namespace llvm;
  */
 Function* ClassGenerator::getOrCreateInterfaceDropFunction(
     sun::ClassType* classType) {
-  std::string name =
-      "__sun_interface_drop$" + classType->getMangledName();
+  std::string name = "__sun_interface_drop$" + classType->getMangledName();
   if (Function* existing = module->getFunction(name)) return existing;
 
   auto* ptrTy = PointerType::getUnqual(ctx.getContext());
-  FunctionType* fnTy = FunctionType::get(
-      Type::getVoidTy(ctx.getContext()), {ptrTy}, false);
-  Function* fn = Function::Create(fnTy, Function::LinkOnceODRLinkage, name,
-                                  module);
+  FunctionType* fnTy =
+      FunctionType::get(Type::getVoidTy(ctx.getContext()), {ptrTy}, false);
+  Function* fn =
+      Function::Create(fnTy, Function::LinkOnceODRLinkage, name, module);
 
   CodegenState::InsertPointGuard here(state_);
   BasicBlock* entry = BasicBlock::Create(ctx.getContext(), "entry", fn);
@@ -100,10 +99,10 @@ GlobalVariable* ClassGenerator::getOrCreateBorrowedInterfaceVtable(
   Function* noOpDrop = module->getFunction(dropName);
   if (!noOpDrop) {
     auto* ptrTy = PointerType::getUnqual(ctx.getContext());
-    FunctionType* fnTy = FunctionType::get(
-        Type::getVoidTy(ctx.getContext()), {ptrTy}, false);
-    noOpDrop = Function::Create(fnTy, Function::LinkOnceODRLinkage, dropName,
-                                module);
+    FunctionType* fnTy =
+        FunctionType::get(Type::getVoidTy(ctx.getContext()), {ptrTy}, false);
+    noOpDrop =
+        Function::Create(fnTy, Function::LinkOnceODRLinkage, dropName, module);
     BasicBlock* entry = BasicBlock::Create(ctx.getContext(), "entry", noOpDrop);
     IRBuilder<> builder(entry);
     builder.CreateRetVoid();
@@ -112,13 +111,12 @@ GlobalVariable* ClassGenerator::getOrCreateBorrowedInterfaceVtable(
 
   auto* ptrTy = PointerType::getUnqual(ctx.getContext());
   std::vector<llvm::Type*> slots(entries.size(), ptrTy);
-  std::string typeName =
-      className + "_" + interfaceName + "_borrowed_vtable_t";
+  std::string typeName = className + "_" + interfaceName + "_borrowed_vtable_t";
   StructType* type = StructType::create(ctx.getContext(), slots, typeName);
   std::string name = className + "_" + interfaceName + "_borrowed_vtable";
-  auto* result = new GlobalVariable(
-      *module, type, true, GlobalValue::InternalLinkage,
-      ConstantStruct::get(type, entries), name);
+  auto* result =
+      new GlobalVariable(*module, type, true, GlobalValue::InternalLinkage,
+                         ConstantStruct::get(type, entries), name);
   borrowedVtableGlobals[key] = result;
   return result;
 }
@@ -165,7 +163,7 @@ Value* ClassGenerator::createOwnedInterfaceFatPointer(
   GlobalVariable* owningVtable =
       getOrCreateInterfaceVtable(classType, ifaceType);
   fatPtr = ctx.builder->CreateInsertValue(fatPtr, owningVtable, 1,
-                                           "iface.owner.vtable");
+                                          "iface.owner.vtable");
   StructType* objectType = classType->getStructType(ctx.getContext());
   const DataLayout& layout = module->getDataLayout();
   uint64_t objectSize = layout.getTypeAllocSize(objectType);
@@ -178,8 +176,8 @@ Value* ClassGenerator::createOwnedInterfaceFatPointer(
       sun::libc::malloc(module),
       {ConstantInt::get(Type::getInt64Ty(ctx.getContext()), allocationSize)},
       "iface.box");
-  Value* moved = ctx.builder->CreateAlignedLoad(
-      objectType, objectPtr, objectAlign, "iface.move");
+  Value* moved = ctx.builder->CreateAlignedLoad(objectType, objectPtr,
+                                                objectAlign, "iface.move");
   ctx.builder->CreateAlignedStore(moved, box, objectAlign);
   ctx.builder->CreateMemSet(objectPtr, ctx.builder->getInt8(0), objectSize,
                             MaybeAlign(objectAlign));

@@ -35,7 +35,9 @@ void GenericSpecializer::checkTypeParameterConstraints(
     const sun::TypePtr& arg = typeArgs[i];
     if (!arg || arg->isTypeParameter()) continue;
 
-    if (!sun::traits::satisfies(arg, constraint->name)) {
+    if (!sun::traits::satisfies(arg, constraint->qualifiedName
+                                         ? constraint->qualifiedName->mangled()
+                                         : constraint->name)) {
       // Point at the constraint itself when it carries a span; a declaration
       // parsed from a bundle has none, so fall back to the caller's location.
       std::optional<Position> at =
@@ -85,6 +87,16 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
     const GenericClassInfo& info, const std::vector<sun::TypePtr>& typeArgs) {
   const GenericClassInfo* genericClassInfo = &info;
   const std::string& baseName = info.qualifiedName.baseName;
+
+  // The template's members, interfaces and bodies are analyzed in the scope
+  // the template was declared in, wherever this instantiation was requested
+  // from: names resolve as they do at the definition site (transitive
+  // dependencies of its module included) and access control sees the
+  // template's own module.
+  SemanticContext::ScopeSwitchGuard definitionScope(
+      ctx_, SemanticContext::definitionScopeOf(*genericClassInfo));
+  SemanticContext::SourceFileGuard definitionFile(
+      ctx_, genericClassInfo->AST->getSourceFileId());
 
   // Verify type argument count matches
   if (typeArgs.size() != genericClassInfo->typeParameters.size()) {
@@ -197,16 +209,6 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
     }
   }
 
-  // The template's members, interfaces and bodies are analyzed in the scope
-  // the template was declared in, wherever this instantiation was requested
-  // from: names resolve as they do at the definition site (transitive
-  // dependencies of its module included) and access control sees the
-  // template's own module.
-  SemanticContext::ScopeSwitchGuard definitionScope(
-      ctx_, SemanticContext::definitionScopeOf(*genericClassInfo));
-  SemanticContext::SourceFileGuard definitionFile(
-      ctx_, genericClassInfo->AST->getSourceFileId());
-
   // Push a scope for class-level type parameter bindings
   ctx_.enterClassScope(specializedQName);
   ctx_.addTypeParameterBindings(
@@ -249,9 +251,9 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
           ifaceTypeArgs.push_back(sema_.types().typeAnnotationToType(typeArg));
         }
         interfaceType =
-            instantiateGenericInterface(ifaceRef.name, ifaceTypeArgs);
+            instantiateGenericInterface(ifaceRef.lookupName(), ifaceTypeArgs);
       } else {
-        interfaceType = ctx_.lookupInterface(ifaceRef.name);
+        interfaceType = ctx_.lookupInterface(ifaceRef.lookupName());
       }
 
       // Add interface to class type
@@ -263,6 +265,7 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
     // Clone interface reference for specialized AST
     ImplementedInterfaceAST ifaceClone;
     ifaceClone.name = ifaceRef.name;
+    ifaceClone.qualifiedName = ifaceRef.qualifiedName;
     for (const auto& ta : ifaceRef.typeArguments) {
       ifaceClone.typeArguments.push_back(ta);
     }
@@ -1105,7 +1108,7 @@ GenericSpecializer::instantiateGenericInterface(
 
   // Use the AST's mangled name for generating specialized interface name
   std::string effectiveBase = (genericInfo && genericInfo->AST)
-                                  ? genericInfo->AST->getMangledName()
+                                  ? genericInfo->qualifiedName.mangled()
                                   : baseName;
 
   // Generate mangled name for the specialized interface
@@ -1133,10 +1136,13 @@ GenericSpecializer::instantiateGenericInterface(
 
   // Create the specialized interface type
   auto specializedInterface =
-      ctx_.types()->getSpecializedInterface(baseName, typeArgs);
+      ctx_.types()->getSpecializedInterface(effectiveBase, typeArgs);
+  specializedInterface->setGenericQualifiedName(genericInfo->qualifiedName);
   specializedInterface->visibility = genericInfo->AST->getVisibility();
   specializedInterface->setQualifiedName(
-      sun::QualifiedName(genericInfo->qualifiedName.scopePath, mangledName,
+      sun::QualifiedName(genericInfo->qualifiedName.scopePath,
+                         sun::Types::mangleGenericClassName(
+                             genericInfo->qualifiedName.baseName, typeArgs),
                          genericInfo->qualifiedName.modulePath));
 
   {
@@ -1214,8 +1220,8 @@ std::shared_ptr<sun::EnumType> GenericSpecializer::instantiateGenericEnum(
   const std::string& templateName = genericInfo->qualifiedName.baseName.empty()
                                         ? baseName
                                         : genericInfo->qualifiedName.baseName;
-  std::string mangledName =
-      sun::Types::mangleGenericClassName(templateName, typeArgs);
+  std::string mangledName = sun::Types::mangleGenericClassName(
+      genericInfo->qualifiedName.mangled(), typeArgs);
   if (ctx_.types()->hasEnum(mangledName)) {
     auto existing = ctx_.types()->getEnum(mangledName);
     ctx_.registerEnum(mangledName, existing);
@@ -1248,11 +1254,14 @@ std::shared_ptr<sun::EnumType> GenericSpecializer::instantiateGenericEnum(
   }
 
   auto specialized = ctx_.types()->getEnum(mangledName);
+  specialized->setGenericQualifiedName(genericInfo->qualifiedName);
   specialized->setBaseName(templateName);
   specialized->setGenericOrigin(templateName, typeArgs);
   specialized->visibility = genericInfo->AST->getVisibility();
   specialized->setQualifiedName(
-      sun::QualifiedName(genericInfo->qualifiedName.scopePath, mangledName,
+      sun::QualifiedName(genericInfo->qualifiedName.scopePath,
+                         sun::Types::mangleGenericClassName(
+                             genericInfo->qualifiedName.baseName, typeArgs),
                          genericInfo->qualifiedName.modulePath));
 
   {

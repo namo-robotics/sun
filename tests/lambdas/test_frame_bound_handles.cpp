@@ -23,7 +23,8 @@
 
 // Storing the handle in a field would let the object carry it past the
 // frame's death.
-TEST(Lambdas_FrameBoundHandles, ref_capturing_thread_cannot_be_stored_in_a_field) {
+TEST(Lambdas_FrameBoundHandles,
+     ref_capturing_thread_cannot_be_stored_in_a_field) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
     using std.thread;
     class Worker {
@@ -43,7 +44,8 @@ TEST(Lambdas_FrameBoundHandles, ref_capturing_thread_cannot_be_stored_in_a_field
 
 // An owned capture pins the thread to the frame just as a borrow does: the
 // closure's environment, where the owned value lives, is frame storage.
-TEST(Lambdas_FrameBoundHandles, owned_capture_thread_cannot_be_stored_in_a_field) {
+TEST(Lambdas_FrameBoundHandles,
+     owned_capture_thread_cannot_be_stored_in_a_field) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
     using std.thread;
     class Worker {
@@ -125,7 +127,8 @@ TEST(Lambdas_FrameBoundHandles, bound_method_thread_cannot_be_returned) {
 // The issue's reproduction: a container element was the one unchecked
 // escape route. The push itself is rejected - the callee could keep the
 // handle past this frame's death, and nothing in its parameter type says so.
-TEST(Lambdas_FrameBoundHandles, frame_bound_handle_cannot_be_pushed_into_a_vec) {
+TEST(Lambdas_FrameBoundHandles,
+     frame_bound_handle_cannot_be_pushed_into_a_vec) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
     using std;
     using std.thread;
@@ -187,7 +190,8 @@ TEST(Lambdas_FrameBoundHandles, frame_bound_handle_cannot_enter_a_constructor) {
 
 // An enum payload is a by-value parameter too: wrapping the handle would
 // let the enum value smuggle it onward.
-TEST(Lambdas_FrameBoundHandles, frame_bound_handle_cannot_enter_an_enum_payload) {
+TEST(Lambdas_FrameBoundHandles,
+     frame_bound_handle_cannot_enter_an_enum_payload) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
     using std;
     using std.thread;
@@ -216,7 +220,8 @@ TEST(Lambdas_FrameBoundHandles, frame_bound_handle_cannot_pass_to_a_lambda) {
 }
 
 // An indexed slot is a container element by another name.
-TEST(Lambdas_FrameBoundHandles, frame_bound_handle_cannot_enter_an_indexed_slot) {
+TEST(Lambdas_FrameBoundHandles,
+     frame_bound_handle_cannot_enter_an_indexed_slot) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
     using std.thread;
     function main() i32 {
@@ -231,7 +236,8 @@ TEST(Lambdas_FrameBoundHandles, frame_bound_handle_cannot_enter_an_indexed_slot)
 
 // An array literal built from a frame-bound handle is frame-bound as a
 // whole, so it cannot be returned either.
-TEST(Lambdas_FrameBoundHandles, array_literal_with_frame_bound_handle_cannot_return) {
+TEST(Lambdas_FrameBoundHandles,
+     array_literal_with_frame_bound_handle_cannot_return) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
     using std.thread;
     function make() array<Thread<i32>, 1> {
@@ -248,7 +254,8 @@ TEST(Lambdas_FrameBoundHandles, array_literal_with_frame_bound_handle_cannot_ret
 
 // A module-level global outlives every frame, so a frame-bound handle
 // cannot be parked there even though its type is clean.
-TEST(Lambdas_FrameBoundHandles, frame_bound_handle_cannot_be_assigned_to_a_global) {
+TEST(Lambdas_FrameBoundHandles,
+     frame_bound_handle_cannot_be_assigned_to_a_global) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
     using std.thread;
     var gt = spawn(() => i32 { return 0; });

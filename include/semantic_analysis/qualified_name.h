@@ -111,6 +111,21 @@ struct QualifiedName {
     return result;
   }
 
+  /** Return the dotted lookup name, including the bundle scope. */
+  std::string lookupName() const {
+    return (scopePath.empty() ? baseName : scopePathString() + "." + baseName) +
+           paramSuffix;
+  }
+
+  /** Return the defining bundle hash, or empty for an unbundled name. */
+  std::string bundleHash() const {
+    if (scopePath.empty()) return "";
+    const auto& scope = scopePath.front();
+    if (scope.size() < 3 || scope.front() != '$' || scope.back() != '$')
+      return "";
+    return scope.substr(1, scope.size() - 2);
+  }
+
   // Static helper to join a scope path vector into dot-separated string
   static std::string joinPath(const std::vector<std::string>& path) {
     std::string result;

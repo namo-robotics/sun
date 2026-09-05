@@ -102,7 +102,8 @@ bool unifyPayloadTypeParam(const TypeAnnotation& annot,
 
 void SemanticAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
   // Forbid redefinition of enum in same module
-  if (declarations_.isDeclared(enumDef.getName())) {
+  if (declarations_.isDeclared(
+          ctx_.makeQualifiedName(enumDef.getName()).mangled())) {
     logAndThrowError("Redefinition of enum '" + enumDef.getName() + "'",
                      enumDef.getLocation());
   }
@@ -130,13 +131,16 @@ void SemanticAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
                                {&enumDef, enumDef.getTypeParameters(),
                                 ctx_.makeQualifiedName(enumDef.getName())});
     }
-    declarations_.noteDeclared(enumDef.getName());
+    declarations_.noteDeclared(
+        ctx_.makeQualifiedName(enumDef.getName()).mangled());
     enumDef.setResolvedType(sun::Types::Void());
     return;
   }
 
   // Create the enum type
-  auto enumType = ctx_.types()->getEnum(enumDef.getName());
+  auto enumType = ctx_.types()->getEnum(
+      ctx_.makeQualifiedName(enumDef.getName()).mangled());
+  enumType->setBaseName(enumDef.getName());
   enumType->visibility = enumDef.getVisibility();
   enumType->setQualifiedName(ctx_.makeQualifiedName(enumDef.getName()));
 
@@ -165,7 +169,8 @@ void SemanticAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
   ctx_.registerEnum(enumDef.getName(), enumType);
 
   // Track symbol for redefinition detection
-  declarations_.noteDeclared(enumDef.getName());
+  declarations_.noteDeclared(
+      ctx_.makeQualifiedName(enumDef.getName()).mangled());
 
   enumDef.setResolvedType(sun::Types::Void());
 }
@@ -353,8 +358,7 @@ void SemanticAnalyzer::analyzeGenericEnumConstruction(
     sun::TypePtr expected = unwrapRef(expectedType);
     if (expected && expected->isEnum()) {
       auto* et = static_cast<sun::EnumType*>(expected.get());
-      if (et->getGenericBase() == genericName ||
-          et->getBaseName() == genericName) {
+      if (et->getGenericQualifiedName() == genericInfo.qualifiedName) {
         expectedEnum = et;
       }
     }
@@ -408,42 +412,49 @@ void SemanticAnalyzer::analyzeGenericEnumConstruction(
 // here (resolved type set); false lets the MEMBER_ACCESS case continue.
 bool SemanticAnalyzer::tryAnalyzeGenericEnumUnitVariant(
     MemberAccessAST& memberAccess, sun::TypePtr expectedType) {
-  if (memberAccess.getObject()->getType() != ASTNodeType::VARIABLE_REFERENCE) {
-    return false;
-  }
-  const auto& varRef =
-      static_cast<const VariableReferenceAST&>(*memberAccess.getObject());
-  if (ctx_.lookupVariable(varRef.getName())) return false;
-  const auto* genericEnum = ctx_.lookupGenericEnum(varRef.getName());
+  std::function<std::string(const ExprAST&)> dottedName =
+      [&](const ExprAST& node) -> std::string {
+    if (auto* variable = dynamic_cast<const VariableReferenceAST*>(&node)) {
+      if (ctx_.lookupVariable(variable->getName())) return "";
+      return variable->getName();
+    }
+    if (auto* member = dynamic_cast<const MemberAccessAST*>(&node)) {
+      auto prefix = dottedName(*member->getObject());
+      if (!prefix.empty()) return prefix + "." + member->getMemberName();
+    }
+    return "";
+  };
+  auto name = dottedName(*memberAccess.getObject());
+  if (name.empty()) return false;
+  const auto* genericEnum = ctx_.lookupGenericEnum(name);
   if (!genericEnum) return false;
 
   sun::TypePtr expected = expectedType ? unwrapRef(expectedType) : nullptr;
   sun::EnumType* expectedEnum = nullptr;
   if (expected && expected->isEnum()) {
     auto* et = static_cast<sun::EnumType*>(expected.get());
-    if (et->getGenericBase() == varRef.getName() ||
-        et->getBaseName() == varRef.getName()) {
+    if (et->getGenericQualifiedName() == genericEnum->qualifiedName) {
       expectedEnum = et;
     }
   }
   if (!expectedEnum) {
-    logAndThrowError("Cannot infer type arguments for '" + varRef.getName() +
-                         "." + memberAccess.getMemberName() +
+    logAndThrowError("Cannot infer type arguments for '" + name + "." +
+                         memberAccess.getMemberName() +
                          "'; add a type annotation to the target",
                      memberAccess.getLocation());
   }
   const auto* variant = expectedEnum->getVariant(memberAccess.getMemberName());
   if (!variant) {
     logAndThrowError("Unknown variant '" + memberAccess.getMemberName() +
-                         "' in enum '" + varRef.getName() + "'",
+                         "' in enum '" + name + "'",
                      memberAccess.getLocation());
   }
   if (variant->hasPayload()) {
-    logAndThrowError(
-        "Variant '" + memberAccess.getMemberName() + "' of enum '" +
-            varRef.getName() + "' carries a payload; construct it with '" +
-            varRef.getName() + "." + memberAccess.getMemberName() + "(...)'",
-        memberAccess.getLocation());
+    logAndThrowError("Variant '" + memberAccess.getMemberName() +
+                         "' of enum '" + name +
+                         "' carries a payload; construct it with '" + name +
+                         "." + memberAccess.getMemberName() + "(...)'",
+                     memberAccess.getLocation());
   }
   const_cast<ExprAST&>(*memberAccess.getObject()).setResolvedType(expected);
   memberAccess.setResolvedType(expected);

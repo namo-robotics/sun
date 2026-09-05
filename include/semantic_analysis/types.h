@@ -1622,7 +1622,19 @@ class InterfaceType : public Type {
   // Declarations only, never bindings - see ClassType::lifetimeParams_.
   std::vector<std::string> lifetimeParams_;
 
+  sun::QualifiedName genericQualifiedName_;
+
  public:
+  /** The original template name, independent of specialization and source
+   * aliases. */
+  const sun::QualifiedName& getGenericQualifiedName() const {
+    return genericQualifiedName_;
+  }
+  /** Record the template that produced this type. */
+  void setGenericQualifiedName(sun::QualifiedName name) {
+    genericQualifiedName_ = std::move(name);
+  }
+
   sun::Visibility visibility = sun::Visibility::Private;
 
   const std::vector<std::string>& getLifetimeParams() const {
@@ -1898,7 +1910,19 @@ class EnumType : public Type {
   std::vector<TypePtr> genericArgs_;  // e.g. [i32] for Option_i32
   sun::QualifiedName qualifiedName_;
 
+  sun::QualifiedName genericQualifiedName_;
+
  public:
+  /** The original template name, independent of specialization and source
+   * aliases. */
+  const sun::QualifiedName& getGenericQualifiedName() const {
+    return genericQualifiedName_;
+  }
+  /** Record the template that produced this type. */
+  void setGenericQualifiedName(sun::QualifiedName name) {
+    genericQualifiedName_ = std::move(name);
+  }
+
   sun::Visibility visibility = sun::Visibility::Private;
 
   // Structured name: owner() is the declaring module (unit of visibility)

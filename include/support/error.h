@@ -142,11 +142,10 @@ class SunError : public std::exception {
       bool isNote = related.level == RelatedDiagnostic::Level::Note;
       auto [line, prevLine] =
           SourceManager::instance().getLineWithContext(related.location);
-      fullMessage_ +=
-          "\n" + formatDiagnostic(isNote ? "Note" : kindToString(),
-                                  isNote ? ansi::cyan : ansi::red,
-                                  related.message, related.location, line,
-                                  prevLine);
+      fullMessage_ += "\n" + formatDiagnostic(isNote ? "Note" : kindToString(),
+                                              isNote ? ansi::cyan : ansi::red,
+                                              related.message, related.location,
+                                              line, prevLine);
     }
   }
 

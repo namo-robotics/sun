@@ -46,12 +46,13 @@ enum class TokenKind {
   CONTINUE,  // continue keyword for loop control
   RETURN,
   FUNCTION,       // function keyword
-  TEST_FUNCTION,  // test_function keyword: a function compiled only into the test binary
+  TEST_FUNCTION,  // test_function keyword: a function compiled only into the
+                  // test binary
   TRY,            // try keyword for error handling
-  CATCH,     // catch keyword for exception handling
-  THROW,     // throw keyword for throwing exceptions
-  THROWS,    // throws keyword marking a signature that may throw
-  UNSAFE,    // unsafe keyword for unsafe blocks
+  CATCH,          // catch keyword for exception handling
+  THROW,          // throw keyword for throwing exceptions
+  THROWS,         // throws keyword marking a signature that may throw
+  UNSAFE,         // unsafe keyword for unsafe blocks
   // Type keywords (must come before IDENTIFIER for priority)
   STATIC_PTR,       // static_ptr (pointer to immortal static data)
   PTR,              // ptr (unique/owning pointer with RAII)
@@ -1121,8 +1122,9 @@ class Lexer {
         std::string digits = text.substr(0, cut);
         std::string suffix = text.substr(cut);
         if (isFloatSuffix(suffix)) {
-          literalError(startPos, "A float suffix needs a float literal; write " +
-                                     digits + ".0" + suffix);
+          literalError(startPos,
+                       "A float suffix needs a float literal; write " + digits +
+                           ".0" + suffix);
         }
         if (!isIntegerSuffix(suffix)) {
           literalError(startPos,

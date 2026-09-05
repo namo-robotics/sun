@@ -4,6 +4,7 @@
 
 #include "ast.h"
 #include "ast.pb.h"
+#include "serialization/qualified_name.h"
 #include "serialization/token_kind_proto_map.h"
 #include "types.pb.h"
 
@@ -22,8 +23,7 @@ static std::vector<std::string> toStringVector(const Repeated& field) {
 // Lifetime parameters, from the names the bundle carries. Bundles written
 // before lifetimes existed have none, which reads back as fully elided.
 template <typename Owner>
-static std::vector<LifetimeParameter> toLifetimeParameters(
-    const Owner& owner) {
+static std::vector<LifetimeParameter> toLifetimeParameters(const Owner& owner) {
   std::vector<LifetimeParameter> params;
   params.reserve(owner.lifetime_params_size());
   for (const auto& name : owner.lifetime_params()) {
@@ -38,11 +38,13 @@ static std::vector<TypeParameter> toTypeParameters(const Owner& owner) {
   if (owner.type_params_size() > 0) {
     params.reserve(owner.type_params_size());
     for (const auto& tp : owner.type_params()) {
-      params.emplace_back(
-          tp.name(), tp.has_constraint()
-                         ? std::optional<TypeConstraint>(
-                               TypeConstraint(tp.constraint()))
-                         : std::nullopt);
+      params.emplace_back(tp.name(), tp.has_constraint()
+                                         ? std::optional<TypeConstraint>(
+                                               TypeConstraint(tp.constraint()))
+                                         : std::nullopt);
+      if (tp.has_qualified_name() && params.back().constraint)
+        params.back().constraint->qualifiedName =
+            sun::serialization::deserializeQualifiedName(tp.qualified_name());
     }
     return params;
   }
@@ -86,6 +88,9 @@ TypeAnnotation ASTDeserializer::deserializeTypeAnnotation(
     const ast::TypeAnnotation& type) const {
   TypeAnnotation result;
   result.baseName = type.base_name();
+  if (type.has_qualified_name())
+    result.qualifiedName =
+        sun::serialization::deserializeQualifiedName(type.qualified_name());
 
   if (type.has_element_type()) {
     result.elementType = std::make_unique<TypeAnnotation>(
@@ -150,6 +155,9 @@ void ASTDeserializer::deserializeExprBase(const ast::ASTNode& node,
     expr->setLocation(deserializePosition(node.location()));
   }
   expr->setSourceFileId(node.source_file_id());
+  if (node.has_module_qualified_name())
+    expr->setModuleQualifiedName(sun::serialization::deserializeQualifiedName(
+        node.module_qualified_name()));
   expr->setPrecompiled(node.precompiled());
   expr->setSkipCodegen(node.skip_codegen());
   expr->setSymbolPrefix(node.symbol_prefix());
@@ -808,13 +816,14 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeModule(
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeUsing(
     const ast::UsingStmt& proto) const {
-  // Note: UsingAST computes isModuleImport_ from target == "*"
-  return std::make_unique<UsingAST>(toStringVector(proto.namespace_path()),
-                                    proto.target());
+  auto result = std::make_unique<UsingAST>(
+      toStringVector(proto.namespace_path()), proto.target());
+  result->setModuleImport(proto.is_module_import());
+  return result;
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeQualifiedName(
-    const ast::QualifiedName& proto) const {
+    const ast::QualifiedNameExpr& proto) const {
   return std::make_unique<QualifiedNameAST>(toStringVector(proto.parts()));
 }
 
@@ -841,6 +850,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
   for (const auto& ifaceProto : proto.implemented_interfaces()) {
     ImplementedInterfaceAST iface;
     iface.name = ifaceProto.name();
+    if (ifaceProto.has_qualified_name())
+      iface.qualifiedName = sun::serialization::deserializeQualifiedName(
+          ifaceProto.qualified_name());
     for (const auto& typeArg : ifaceProto.type_arguments()) {
       iface.typeArguments.push_back(deserializeTypeAnnotation(typeArg));
     }

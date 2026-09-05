@@ -13,10 +13,11 @@
 //                               emitter currently is.
 //
 // Every codegen component takes CodegenState by reference, the way every
-// semantic component takes SemanticContext (semantic_analysis/semantic_context.h).
-// The state answers only positional questions: what module is being built, what
-// function is being written, what `this` means right now. It never walks the AST
-// — that needs CodegenVisitor, which depends on this and not the other way round.
+// semantic component takes SemanticContext
+// (semantic_analysis/semantic_context.h). The state answers only positional
+// questions: what module is being built, what function is being written, what
+// `this` means right now. It never walks the AST — that needs CodegenVisitor,
+// which depends on this and not the other way round.
 
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/IRBuilder.h>

@@ -121,8 +121,7 @@ class VariableGenerator {
   llvm::Value* createLoadForRef(const std::string& varName,
                                 const sun::ReferenceType& refType);
   void createStoreForRef(const std::string& varName,
-                         const sun::ReferenceType& refType,
-                         llvm::Value* value);
+                         const sun::ReferenceType& refType, llvm::Value* value);
 
  private:
   CodegenState& state_;

@@ -59,7 +59,8 @@ class InterfaceDefinitionAST : public ExprAST {
   }
 
  public:
-  InterfaceDefinitionAST(std::string name, std::vector<TypeParameter> typeParams,
+  InterfaceDefinitionAST(std::string name,
+                         std::vector<TypeParameter> typeParams,
                          std::vector<InterfaceFieldDecl> fields,
                          std::vector<InterfaceMethodDecl> methods,
                          bool precompiled = false)

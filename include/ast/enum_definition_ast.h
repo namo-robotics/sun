@@ -33,13 +33,22 @@ class EnumDefinitionAST : public ExprAST {
   std::string name;
   std::vector<EnumVariantDecl> variants;
   std::vector<TypeParameter> typeParameters;  // empty = non-generic
-  std::string doc_;                         // Comment written above the enum
+  std::string doc_;                           // Comment written above the enum
   // Populated during semantic analysis (mutable, like ClassAnalysis
   // specializations on ClassDefinitionAST)
   mutable std::map<std::string, std::shared_ptr<sun::EnumType>>
       specializations_;
 
  public:
+  sun::QualifiedName qualifiedName;
+  /** The original declaration name, retained by imported enums. */
+  const sun::QualifiedName& getQualifiedName() const { return qualifiedName; }
+  /** Whether this enum already carries its defining name. */
+  bool hasQualifiedName() const { return !qualifiedName.baseName.empty(); }
+  /** Record the defining name independently of visible aliases. */
+  void setQualifiedName(sun::QualifiedName name) {
+    qualifiedName = std::move(name);
+  }
   EnumDefinitionAST(std::string name, std::vector<EnumVariantDecl> variants,
                     bool precompiled = false,
                     std::vector<TypeParameter> typeParams = {})

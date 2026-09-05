@@ -621,6 +621,12 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunction(
 SemanticScopeBase* SemanticScopeBase::lookupModuleScope(
     const std::string& dotPath) const {
   if (dotPath.empty()) return nullptr;
+  const auto* root = this;
+  while (root->parent) root = root->parent;
+  if (dotPath.starts_with("$")) {
+    auto it = root->canonicalModules.find(dotPath);
+    return it == root->canonicalModules.end() ? nullptr : it->second;
+  }
 
   // Helper to find a segment in a scope, traversing through library scopes
   std::function<SemanticScopeBase*(const SemanticScopeBase&,
@@ -701,6 +707,7 @@ std::vector<std::string> SemanticScopeBase::getCurrentScopePath() const {
 // isModuleName — check if a name refers to a module
 // -------------------------------------------------------------------
 bool SemanticScopeBase::isModuleName(const std::string& name) const {
+  if (lookupModuleScope(name)) return true;
   for (auto* s = this; s != nullptr; s = s->parent) {
     // Direct child module
     if (s->childModules.count(name) > 0) return true;
@@ -724,6 +731,12 @@ static std::vector<SemanticScopeBase*> collectAllModuleScopes(
     const SemanticScopeBase* startScope, const std::string& dotPath) {
   std::vector<SemanticScopeBase*> results;
   if (dotPath.empty() || !startScope) return results;
+  bool pinned = dotPath.starts_with("$");
+  if (pinned) {
+    if (auto* scope = startScope->lookupModuleScope(dotPath))
+      results.push_back(scope);
+    return results;
+  }
 
   auto addUnique = [&results](SemanticScopeBase* scope) {
     if (std::find(results.begin(), results.end(), scope) == results.end()) {

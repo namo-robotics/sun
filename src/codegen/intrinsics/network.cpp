@@ -494,9 +494,9 @@ static Function* getOrCreateSockaddrCallHelper(llvm::Module* module,
   Value* ip = args++;
   Value* port = args++;
 
-  Value* sockaddr = buildSockaddrIn(
-      builder, llvmCtx, ip, port,
-      llvm::Triple(module->getTargetTriple()).isOSDarwin());
+  Value* sockaddr =
+      buildSockaddrIn(builder, llvmCtx, ip, port,
+                      llvm::Triple(module->getTargetTriple()).isOSDarwin());
   Value* result = builder.CreateCall(
       callee, {fd, sockaddr, builder.getInt32(16)}, "result");
   builder.CreateRet(result);
@@ -668,9 +668,9 @@ static Function* getOrCreateSendToIPv4Helper(llvm::Module* module,
   Value* ip = args++;
   Value* port = args++;
 
-  Value* sockaddr = buildSockaddrIn(
-      builder, llvmCtx, ip, port,
-      llvm::Triple(module->getTargetTriple()).isOSDarwin());
+  Value* sockaddr =
+      buildSockaddrIn(builder, llvmCtx, ip, port,
+                      llvm::Triple(module->getTargetTriple()).isOSDarwin());
   Value* result = builder.CreateCall(
       sun::libc::sendto(module),
       {fd, buf, len, flags, sockaddr, builder.getInt32(16)}, "result");
@@ -731,8 +731,7 @@ static Function* getOrCreateGetSockNameIPv4Helper(llvm::Module* module,
   auto* i8Ty = Type::getInt8Ty(llvmCtx);
   auto* i32Ty = Type::getInt32Ty(llvmCtx);
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  FunctionType* funcTy =
-      FunctionType::get(i32Ty, {i32Ty, ptrTy, ptrTy}, false);
+  FunctionType* funcTy = FunctionType::get(i32Ty, {i32Ty, ptrTy, ptrTy}, false);
   func = Function::Create(funcTy, Function::InternalLinkage,
                           "__sun_getsockname_ipv4", module);
 

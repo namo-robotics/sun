@@ -1,8 +1,8 @@
-#include <algorithm>
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/JSON.h>
 #include <llvm/Support/SHA256.h>
 
+#include <algorithm>
 #include <cctype>
 #include <cstdlib>
 #include <filesystem>
@@ -720,8 +720,8 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
       if (tok.text == "method" &&
           (prevKind == TokenKind::BRACE_OPEN ||
            prevKind == TokenKind::BRACE_CLOSE ||
-           prevKind == TokenKind::SEMI_COLON ||
-           prevKind == TokenKind::PUBLIC || prevKind == TokenKind::CONST)) {
+           prevKind == TokenKind::SEMI_COLON || prevKind == TokenKind::PUBLIC ||
+           prevKind == TokenKind::CONST)) {
         tokenType = LSPTokenType::Keyword;
         afterFunction = true;
       } else if (afterClass) {
@@ -1883,8 +1883,8 @@ int main() {
 
         llvm::json::Object entryJson;
         entryJson["entrypoint"] = entrypoint.entrypointPath;
-        auto info = configEntrypointInfo.find(
-            normalizePath(entrypoint.entrypointPath));
+        auto info =
+            configEntrypointInfo.find(normalizePath(entrypoint.entrypointPath));
         if (info != configEntrypointInfo.end() &&
             !info->second.testBinaryName.empty()) {
           entryJson["test_binary"] = info->second.testBinaryName;

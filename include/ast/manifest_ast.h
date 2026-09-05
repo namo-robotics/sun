@@ -80,9 +80,7 @@ class ManifestAST : public ExprAST {
   const std::vector<ManifestArchiveDependency>& getArchives() const {
     return archives;
   }
-  const std::vector<ManifestTargetBlock>& getTargets() const {
-    return targets;
-  }
+  const std::vector<ManifestTargetBlock>& getTargets() const { return targets; }
   const std::vector<ManifestSunDependency>& getTestSuns() const {
     return testSuns;
   }

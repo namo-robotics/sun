@@ -15,8 +15,8 @@ inline bool isCStyleEnum(const TypePtr& type) {
 /** Return whether a C function pointer can accept this parameter type. */
 inline bool isCallbackParameter(const TypePtr& type) {
   return type && !type->isVoid() &&
-         (type->isPrimitive() || type->isRawPointer() ||
-          type->isReference() || isCStyleEnum(type));
+         (type->isPrimitive() || type->isRawPointer() || type->isReference() ||
+          isCStyleEnum(type));
 }
 
 /** Return whether a C function pointer can return this type. */
@@ -41,9 +41,8 @@ inline bool isFunctionPointer(const TypePtr& type) {
 /** Return whether a value has a supported C global or parameter layout. */
 inline bool isValue(const TypePtr& type) {
   return type && !type->isVoid() &&
-         (type->isPrimitive() || type->isRawPointer() ||
-          type->isReference() || type->isClass() || isCStyleEnum(type) ||
-          isFunctionPointer(type));
+         (type->isPrimitive() || type->isRawPointer() || type->isReference() ||
+          type->isClass() || isCStyleEnum(type) || isFunctionPointer(type));
 }
 
 /** Return whether a value has a supported C return layout. */

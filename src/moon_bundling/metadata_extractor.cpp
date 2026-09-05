@@ -1,7 +1,7 @@
+#include "moon_bundling/metadata_types.h"
+#include "semantic_analysis/semantic_analyzer.h"
 // metadata_extractor.cpp — Extract module metadata as protobuf from source
 // files
-
-#include "moon_bundling/metadata_extractor.h"
 
 #include <llvm/Support/SHA256.h>
 
@@ -15,6 +15,7 @@
 #include "ast.h"
 #include "ast.pb.h"
 #include "moon.pb.h"
+#include "moon_bundling/metadata_extractor.h"
 #include "parsing/doc_comments.h"
 #include "parsing/lowering_pass.h"
 #include "parsing/parser.h"
@@ -27,9 +28,7 @@ namespace {
 using serialization::ASTSerializer;
 
 // Check if a function/method is generic (has type parameters)
-bool isGeneric(const PrototypeAST& proto) {
-  return !proto.getTypeParameters().empty();
-}
+bool isGeneric(const PrototypeAST& proto) { return proto.isTemplate(); }
 
 // Check if a class is generic
 bool isGeneric(const ClassDefinitionAST& cls) {
@@ -52,8 +51,7 @@ void clearNonGenericBodies(ast::ClassDef* cls,
     auto* method = cls->mutable_methods(i);
     const auto& origMethod = methods[i];
     // Keep body only if method itself is generic OR class is generic
-    bool methodIsGeneric =
-        !origMethod.function->getProto().getTypeParameters().empty();
+    bool methodIsGeneric = origMethod.function->getProto().isTemplate();
     bool classIsGeneric = !original.getTypeParameters().empty();
     if (!methodIsGeneric && !classIsGeneric) {
       clearBody(method->mutable_function());
@@ -69,8 +67,7 @@ void clearNonGenericBodies(ast::InterfaceDef* iface,
     auto* method = iface->mutable_methods(i);
     const auto& origMethod = methods[i];
     // Keep body only if method itself is generic OR interface is generic
-    bool methodIsGeneric =
-        !origMethod.function->getProto().getTypeParameters().empty();
+    bool methodIsGeneric = origMethod.function->getProto().isTemplate();
     bool ifaceIsGeneric = !original.getTypeParameters().empty();
     if (!methodIsGeneric && !ifaceIsGeneric) {
       clearBody(method->mutable_function());
@@ -272,6 +269,87 @@ std::vector<moon::ModuleMetadata> extractAllMetadata(
 }
 
 }  // namespace
+
+std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
+    const BlockExprAST& program, SemanticAnalyzer& analyzer,
+    const std::string& bundleHash) {
+  auto& ctx = analyzer.context();
+  ASTSerializer serializer({.include_location = true});
+  std::vector<moon::ModuleMetadata> result;
+  std::map<std::pair<std::string, SourceFileId>, size_t> entries;
+  auto entry = [&](const std::string& path,
+                   const ExprAST& stmt) -> moon::ModuleMetadata& {
+    auto [it, added] =
+        entries.try_emplace({path, stmt.getSourceFileId()}, result.size());
+    if (added) {
+      auto& md = result.emplace_back();
+      md.set_module_name(path);
+      md.set_content_hash(bundleHash);
+      md.set_source_hash(bundleHash + "-" + std::to_string(it->second));
+      md.set_source_path(stmt.getLocation().filePath.value_or(""));
+      md.set_version("1.0.0");
+    }
+    return result[it->second];
+  };
+  std::function<void(const BlockExprAST&, std::string, Visibility)> walk =
+      [&](const BlockExprAST& block, std::string path, Visibility visibility) {
+        for (const auto& stmt : block.getBody()) {
+          SemanticContext::SourceFileGuard file(ctx, stmt->getSourceFileId());
+          SemanticContext::LocationGuard location(ctx, stmt->getLocation());
+          if (auto* moon = dynamic_cast<const MoonScopeAST*>(stmt.get())) {
+            if (!moon->isOwnBundle()) continue;
+            SemanticContext::ScopeSwitchGuard scope(
+                ctx, ctx.lookupModuleScope(moon->getContentHash()));
+            walk(moon->getBody(), "", Visibility::Private);
+            continue;
+          }
+          if (auto* module = dynamic_cast<const ModuleAST*>(stmt.get())) {
+            auto nested = path.empty() ? module->getName()
+                                       : path + "." + module->getName();
+            entry(nested, *module)
+                .set_visibility(module->isPublic() ? ast::PUBLIC
+                                                   : ast::PRIVATE);
+            SemanticContext::ScopeSwitchGuard scope(
+                ctx, ctx.scope()->childModules.at(module->getName()).get());
+            walk(module->getBody(), nested, module->getVisibility());
+            continue;
+          }
+          moon::ModuleMetadata temporary;
+          if (auto* function = dynamic_cast<const FunctionAST*>(stmt.get())) {
+            if (function->isTest()) continue;
+            extractFunction(*function, temporary, serializer);
+          } else if (auto* cls =
+                         dynamic_cast<const ClassDefinitionAST*>(stmt.get())) {
+            extractClass(*cls, temporary, serializer);
+          } else if (auto* iface = dynamic_cast<const InterfaceDefinitionAST*>(
+                         stmt.get())) {
+            extractInterface(*iface, temporary, serializer);
+          } else if (auto* enumeration =
+                         dynamic_cast<const EnumDefinitionAST*>(stmt.get())) {
+            extractEnum(*enumeration, temporary, serializer);
+          } else if (auto* variable =
+                         dynamic_cast<const VariableCreationAST*>(stmt.get())) {
+            extractGlobal(*variable, temporary, serializer);
+            auto* global = temporary.mutable_globals(0);
+            if (!global->has_type_annotation())
+              *global->mutable_type_annotation() =
+                  exportType(variable->getResolvedType());
+            global->clear_value();
+          } else if (stmt->getType() == ASTNodeType::USING) {
+            *temporary.add_using_declarations() = serializer.serialize(*stmt);
+          } else
+            continue;
+          bindMetadataTypes(temporary, ctx);
+          bindMetadataModules(temporary, ctx);
+          auto& md = entry(path, *stmt);
+          md.set_visibility(visibility == Visibility::Public ? ast::PUBLIC
+                                                             : ast::PRIVATE);
+          md.MergeFrom(temporary);
+        }
+      };
+  walk(program, "", Visibility::Private);
+  return result;
+}
 
 std::optional<std::vector<moon::ModuleMetadata>> extractAllMetadataFromFile(
     const std::string& filename) {

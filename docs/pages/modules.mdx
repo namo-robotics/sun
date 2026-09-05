@@ -140,6 +140,33 @@ manifest {
 }
 ```
 
+### Exact dependency types and module aliases
+
+Exported nominal types identify their defining bundle by its exact content hash,
+original declaration path, and name in a canonical `QualifiedName`. The compiler
+checks the referenced declaration’s kind where an interface is required.
+If `a.moon` exports a function that accepts a type from `b-v1.moon`, the application must explicitly import both
+bundles. Import order does not matter. Supplying `b-v2.moon` produces an exact
+dependency error, even when its type has the same name and layout.
+
+Aliases change source lookup names only. For example,
+`--moon b-v1.moon:b=old_b --moon b-v2.moon:b=new_b` allows both versions to
+coexist. Their compiled symbols retain their original hash-scoped names, and
+`a.moon` continues to accept `old_b` values. Passing a `new_b` value fails type
+checking. A module alias also applies to its nested modules. Different versions
+need distinct visible module names.
+
+Module references in exported generic bodies carry their original qualified
+names, including the defining bundle hash. Retained `using` targets are also
+canonicalized when the library is built, while preserving their file-local scope.
+These imports do not become imports in the caller's file.
+Dependencies used only by compiled implementations can run from the embedded
+bitcode without a separate declaration import. Dependency declarations are not
+loaded automatically.
+
+Moon format changes require rebuilding libraries with the current compiler,
+including the standard library and TLS bundles for every target.
+
 ### Moon Files from a URL
 
 A moon entry can point at a URL instead of a local path:

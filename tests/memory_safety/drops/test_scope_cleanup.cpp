@@ -525,7 +525,8 @@ TEST(MemorySafety_Drops_ScopeCleanup, by_value_method_param_is_dropped) {
 // at run time by a drop flag.
 // ---------------------------------------------------------------------
 
-TEST(MemorySafety_Drops_ScopeCleanup, conditional_move_drops_on_the_other_path) {
+TEST(MemorySafety_Drops_ScopeCleanup,
+     conditional_move_drops_on_the_other_path) {
   auto value = executeString(withPreamble(R"(
     function sink(o: Owner) void { }
 

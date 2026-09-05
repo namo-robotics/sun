@@ -684,24 +684,10 @@ Value* ClassGenerator::codegen(const MemberAccessAST& expr) {
                      moduleType->getModulePath() + "'");
   }
 
-  // Check for enum variant access: EnumName.VariantName. Prefer the
-  // sema-resolved object type (handles generic specializations like
-  // Option.None, whose object resolves to Option_i32); fall back to the
-  // registry for the plain-name path, without auto-creating entries.
-  if (expr.getObject()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
-    const auto& varRef =
-        static_cast<const VariableReferenceAST&>(*expr.getObject());
-    std::shared_ptr<sun::EnumType> enumType =
-        sun::tryGetTypePtr<sun::EnumType>(*expr.getObject());
-    if (!enumType && typeRegistry->hasEnum(varRef.getName())) {
-      enumType = typeRegistry->getEnum(varRef.getName());
-    }
-    if (enumType && enumType->getNumVariants() > 0) {
-      const auto* variant = enumType->getVariant(memberName);
-      if (variant) {
-        return codegenEnumVariantAccess(*enumType, *variant);
-      }
-    }
+  // The analyzed object identifies the enum, including qualified unit variants.
+  if (auto enumType = sun::tryGetTypePtr<sun::EnumType>(*expr.getObject())) {
+    if (const auto* variant = enumType->getVariant(memberName))
+      return codegenEnumVariantAccess(*enumType, *variant);
   }
 
   // Refresh objectType in case it was not set from module handling above
@@ -992,8 +978,8 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
     Value* fatPtrValue = value;
     sun::TypePtr sourceType = sun::unwrapRef(valueSunType);
     if (auto* sourceClassType = sun::tryGetType<sun::ClassType>(sourceType)) {
-      fatPtrValue = createOwnedInterfaceFatPointer(
-          value, sourceClassType, fieldInterfaceType);
+      fatPtrValue = createOwnedInterfaceFatPointer(value, sourceClassType,
+                                                   fieldInterfaceType);
       if (!fatPtrValue) return nullptr;
     } else if (sourceType && sourceType->isInterface() &&
                value->getType()->isPointerTy()) {
@@ -1003,8 +989,7 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
     dropOverwrittenValue();
     ctx.builder->CreateAlignedStore(
         fatPtrValue, fieldPtr,
-        layout::fieldAlign(classType, fieldLLVMType,
-                           module->getDataLayout()));
+        layout::fieldAlign(classType, fieldLLVMType, module->getDataLayout()));
     return fatPtrValue;
   }
 
@@ -1280,7 +1265,8 @@ Value* ClassGenerator::codegen(const EnumDefinitionAST& expr) {
   // ClassType::getStructType embedding an enum field (which cannot reach the
   // resolver) can serve it from the EnumType cache.
   if (expr.hasAnyPayload()) {
-    if (auto enumType = typeRegistry->getEnum(expr.getName())) {
+    if (auto enumType =
+            typeRegistry->getEnum(expr.getQualifiedName().mangled())) {
       typeResolver.getEnumStorageType(*enumType);
     }
   }

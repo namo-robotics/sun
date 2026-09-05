@@ -30,8 +30,7 @@ TEST(EndToEnd_Testing, all_passing_tests_exit_zero) {
   EXPECT_EQ(executeTestsWithStdlib(program), 0);
 
   const char* argvSeq[] = {"program", "--test-sequential", nullptr};
-  EXPECT_EQ(executeTestsWithStdlib(program, 2, const_cast<char**>(argvSeq)),
-            0);
+  EXPECT_EQ(executeTestsWithStdlib(program, 2, const_cast<char**>(argvSeq)), 0);
 }
 
 // One failing assertion turns the exit code to 1 without stopping the
@@ -51,8 +50,7 @@ TEST(EndToEnd_Testing, a_failing_test_exits_one) {
   EXPECT_EQ(executeTestsWithStdlib(program), 1);
 
   const char* argvSeq[] = {"program", "--test-sequential", nullptr};
-  EXPECT_EQ(executeTestsWithStdlib(program, 2, const_cast<char**>(argvSeq)),
-            1);
+  EXPECT_EQ(executeTestsWithStdlib(program, 2, const_cast<char**>(argvSeq)), 1);
 }
 
 // A test sits inside the module it exercises, so module-scoped privacy lets
@@ -243,7 +241,7 @@ TEST(EndToEnd_Testing, filter_module_prefix_selects_a_module) {
 
 // Repeated --test-filter flags select the union of their matches.
 TEST(EndToEnd_Testing, repeated_filters_select_the_union) {
-  const char* argvUnion[] = {"program",       "--test-filter",
+  const char* argvUnion[] = {"program",         "--test-filter",
                              "geometry.passes", "--test-filter",
                              "physics.fails",   nullptr};
   EXPECT_EQ(

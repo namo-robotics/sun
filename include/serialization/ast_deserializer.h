@@ -153,7 +153,7 @@ class ASTDeserializer {
   std::unique_ptr<ExprAST> deserializeModule(const ast::ModuleDef& proto) const;
   std::unique_ptr<ExprAST> deserializeUsing(const ast::UsingStmt& proto) const;
   std::unique_ptr<ExprAST> deserializeQualifiedName(
-      const ast::QualifiedName& proto) const;
+      const ast::QualifiedNameExpr& proto) const;
 
   std::unique_ptr<ExprAST> deserializeClassDef(
       const ast::ClassDef& proto) const;

@@ -240,6 +240,8 @@ add_library(sun_lib
     src/moon_bundling/moon_cache.cpp
     src/moon_bundling/module_linker.cpp
     src/moon_bundling/metadata_extractor.cpp
+    src/moon_bundling/metadata_types.cpp
+    src/moon_bundling/metadata_modules.cpp
     src/moon_bundling/proto_importer.cpp
     # Debug utilities
     src/debug/ast_dot_generator.cpp

@@ -20,6 +20,7 @@
 #include "moon_bundling/metadata_extractor.h"
 #include "parsing/interpolated_string_parser.h"
 #include "serialization/ast_deserializer.h"
+#include "serialization/metadata_references.h"
 #include "serialization/source_file_ids.h"
 #include "support/stage_timer.h"
 #include "support/sun_path.h"
@@ -327,19 +328,16 @@ unique_ptr<MatchExprAST> Parser::parseMatchExpression() {
 // A class method is spelled the same way but opens with 'method'; a test is
 // spelled the same way but opens with 'test_function' and takes no
 // parameters, no return type and no type parameters.
-unique_ptr<FunctionAST> Parser::parseFunction(bool isClassMethod,
-                                              bool isTest) {
+unique_ptr<FunctionAST> Parser::parseFunction(bool isClassMethod, bool isTest) {
   Position start = captureStart();
   getNextToken();  // eat 'function' / 'method' / 'test_function'
 
   // Allow both regular identifiers and intrinsic identifiers (e.g., __index__)
   if (curTok.kind != TokenKind::IDENTIFIER &&
       curTok.kind != TokenKind::INTRINSIC_IDENTIFIER)
-    throwIdentifierError(isClassMethod
-                             ? "Expected method name after 'method'"
-                         : isTest
-                             ? "Expected test name after 'test_function'"
-                             : "Expected function name after 'function'");
+    throwIdentifierError(isClassMethod ? "Expected method name after 'method'"
+                         : isTest ? "Expected test name after 'test_function'"
+                                  : "Expected function name after 'function'");
 
   std::string funcName = curTok.getIdentifier().value();
 
@@ -1969,9 +1967,9 @@ unique_ptr<ExprAST> Parser::finishIndexedAssignment(unique_ptr<ExprAST> expr) {
                           std::move(expr), opTok, std::move(value)),
                       start);
   }
-  return finishNode(std::make_unique<IndexedAssignmentAST>(std::move(expr),
-                                                           std::move(value)),
-                    start);
+  return finishNode(
+      std::make_unique<IndexedAssignmentAST>(std::move(expr), std::move(value)),
+      start);
 }
 
 unique_ptr<ExprAST> Parser::parseAssignmentOrExpression() {
@@ -2483,8 +2481,7 @@ unique_ptr<ExprAST> Parser::parseStatementCore() {
         return finishMemberAssignment(std::move(lhs));
       }
       // this.items[i] = value or this.items[i] op= value
-      if (isAssignmentOp(curTok.kind) &&
-          lhs->getType() == ASTNodeType::INDEX) {
+      if (isAssignmentOp(curTok.kind) && lhs->getType() == ASTNodeType::INDEX) {
         return finishIndexedAssignment(std::move(lhs));
       }
 
@@ -2802,9 +2799,8 @@ std::unique_ptr<ExprAST> Parser::parseExtern() {
                            "expected identifier after 'extern var'");
     std::string name = curTok.getIdentifier().value();
     getNextToken();
-    expectCurrentTokenKind(
-        TokenKind::COLON,
-        "extern variable '" + name + "' requires an explicit type");
+    expectCurrentTokenKind(TokenKind::COLON, "extern variable '" + name +
+                                                 "' requires an explicit type");
     getNextToken();
     TypeAnnotation type = parseTypeAnnotation();
     auto var = std::make_unique<VariableCreationAST>(
@@ -3481,6 +3477,8 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
 
   // Track the primary module name (first non-empty module found)
   std::string primaryModuleName;
+  std::map<std::string, std::string> originalModules;
+  std::vector<MoonScopeAST::DeclarationRequirement> requirements;
 
   for (const auto& moduleKey : reader->listModules()) {
     // Record for linking
@@ -3515,6 +3513,10 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
     // declarations come first so the stubs' field/parameter types resolve
     // the same names their source did (e.g. Vec<u8> from stdlib.moon).
     std::vector<std::unique_ptr<ExprAST>> stubs;
+    sun::serialization::visitQualifiedNames(
+        *metadata, [&](const auto& name, auto expectedKind) {
+          requirements.push_back({name, expectedKind});
+        });
     auto scopedMetadata = *metadata;
     sun::serialization::remapSourceFiles(
         scopedMetadata, [&](sun::SourceFileId id) {
@@ -3531,6 +3533,7 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
     // Get the original module name and apply remapping if configured
     std::string modName = metadata->module_name();
     std::string effectiveName = moonImport.getAliasedModule(modName);
+    originalModules[effectiveName] = modName;
     if (!effectiveName.empty()) {
       auto& vis = moduleVisibility[effectiveName];
       if (metadata->visibility() == sun::ast::PUBLIC)
@@ -3614,6 +3617,16 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
         nsAST->setPrecompiled(true);
         std::string prefix;
         for (size_t k = 0; k <= i; ++k) prefix += (k ? "." : "") + segs[k];
+        if (auto originalModule = originalModules.find(prefix);
+            originalModule != originalModules.end()) {
+          std::vector<std::string> path{contentHash};
+          std::istringstream original(originalModule->second);
+          std::string part;
+          while (std::getline(original, part, '.')) path.push_back(part);
+          auto name = path.back();
+          path.pop_back();
+          nsAST->setQualifiedName(sun::QualifiedName(path, name, path));
+        }
         nsAST->setVisibility(visibilityOf(prefix));
         current = std::move(nsAST);
       }
@@ -3641,8 +3654,10 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
   // Wrap everything in a MoonScopeAST
   auto body = std::make_unique<BlockExprAST>(std::move(allModuleASTs),
                                              BlockKind::Module);
-  return std::make_unique<MoonScopeAST>(contentHash, primaryModuleName, alias,
-                                        resolvedStr, std::move(body));
+  auto result = std::make_unique<MoonScopeAST>(
+      contentHash, primaryModuleName, alias, resolvedStr, std::move(body));
+  result->requiredDeclarations = std::move(requirements);
+  return result;
 }
 
 // Create AST stubs from protobuf module metadata
@@ -3743,6 +3758,8 @@ void Parser::createModuleStubs(
 
     auto ast = deserializer.deserialize(node);
     if (ast) {
+      static_cast<EnumDefinitionAST&>(*ast).setQualifiedName(
+          sun::QualifiedName(scopePath, metadata.enums(i).name(), scopePath));
       moduleAST.push_back(std::move(ast));
     }
   }

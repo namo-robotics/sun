@@ -191,9 +191,8 @@ Value* IntrinsicsGenerator::codegenSpawnIntrinsic(
       ArrayType::get(Type::getInt8Ty(module->getContext()), 64), nullptr,
       "spawn.attr");
   ctx.builder->CreateCall(sun::libc::pthreadAttrInit(module), {attr});
-  ctx.builder->CreateCall(
-      sun::libc::pthreadAttrSetstacksize(module),
-      {attr, ConstantInt::get(i64Ty, 8ull * 1024 * 1024)});
+  ctx.builder->CreateCall(sun::libc::pthreadAttrSetstacksize(module),
+                          {attr, ConstantInt::get(i64Ty, 8ull * 1024 * 1024)});
 
   // pthread_create writes the thread id straight into the context (field 3)
   Value* tidFieldPtr =

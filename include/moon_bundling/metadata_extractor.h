@@ -6,7 +6,16 @@
 
 #include "moon.pb.h"
 
+class BlockExprAST;
+class SemanticAnalyzer;
+
 namespace sun {
+
+/** Export the bundle's own declarations from the successfully analyzed program.
+ */
+std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
+    const BlockExprAST& program, SemanticAnalyzer& analyzer,
+    const std::string& bundleHash);
 
 /// Parse a source file and extract module metadata without full compilation.
 /// Computes a SHA-256 hash of the file contents and stores it in the metadata.

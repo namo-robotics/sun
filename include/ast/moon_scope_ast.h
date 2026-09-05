@@ -7,6 +7,7 @@
 
 #include "ast/block_expr_ast.h"
 #include "ast/expr_ast.h"
+#include "semantic_analysis/types.h"
 
 /// MoonScopeAST wraps the declarations of one bundle under its `$hash$`
 /// scope: the stubs of an imported .moon, or — when a .moon is being built —
@@ -25,6 +26,20 @@ class MoonScopeAST : public ExprAST {
   bool ownBundle_ = false;              // The bundle being built, not an import
 
  public:
+  /** A referenced declaration and the type kind required by this use. */
+  struct DeclarationRequirement {
+    sun::QualifiedName qualifiedName;
+    // Empty accepts any nominal type; implements and constraints require
+    // Interface.
+    std::optional<sun::Type::Kind> expectedKind;
+  };
+
+  /** Exact declarations referenced by this bundle's metadata, with any kind
+   * requirement imposed by their use. Validate after all explicit imports
+   * are indexed, including generic declarations that are never instantiated.
+   */
+  std::vector<DeclarationRequirement> requiredDeclarations;
+
   MoonScopeAST(std::string contentHash, std::string moduleName,
                std::optional<std::string> alias, std::string moonPath,
                std::unique_ptr<BlockExprAST> body)

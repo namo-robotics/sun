@@ -257,7 +257,8 @@ TEST(Builtins_Arrays, class_with_array) {
 // A borrow of a sized array may not be read into an owning field: that would
 // give the field and the borrowed array the same elements.
 TEST(Builtins_Arrays, sized_ref_read_into_field_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
     class Box {
         var arr: array<i32, 5>;
         init(x: ref array<i32, 5>) {
@@ -270,7 +271,7 @@ TEST(Builtins_Arrays, sized_ref_read_into_field_rejected) {
         return 0;
     }
   )"),
-                                "Cannot assign value of type 'ref array<i32, 5>'");
+      "Cannot assign value of type 'ref array<i32, 5>'");
 }
 
 TEST(Builtins_Arrays, index_array_ref) {

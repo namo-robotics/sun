@@ -312,9 +312,7 @@ class Formatter {
       }
       return;  // ';' comes from needsSemicolon
     }
-    out_ += asMethod  ? "method "
-            : f.isTest() ? "test_function "
-                         : "function ";
+    out_ += asMethod ? "method " : f.isTest() ? "test_function " : "function ";
     // A test's whole return signature (void, throws IError) is synthesized,
     // never spelled in source, so printing any of it would not re-parse.
     printProtoSig(f.getProto(), /*includeParameters=*/true,
@@ -744,8 +742,8 @@ class Formatter {
         if (n.isCExtern()) {
           // Preserve the optional ABI spelling from the source span.
           std::string s = stripPublic(slice(n.getLocation()));
-          bool explicitAbi = n.hasExplicitCAbi() ||
-                             s.rfind("extern \"C\"", 0) == 0;
+          bool explicitAbi =
+              n.hasExplicitCAbi() || s.rfind("extern \"C\"", 0) == 0;
           out_ += explicitAbi ? "extern \"C\" var " : "extern var ";
         } else {
           out_ += n.isConst() ? "const " : "var ";

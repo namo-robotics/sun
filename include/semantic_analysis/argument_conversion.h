@@ -18,23 +18,23 @@
 namespace sun {
 
 enum class ArgConversion : uint8_t {
-  PassValue,    // the value as it is: scalars, pointers and lambda values
-                // (and anything read out of a borrow)
-  Move,         // an owning compound by value: the source is invalidated
-  Borrow,       // a `ref T` parameter: the argument's address
-  ArrayToView,  // a sized array to `ref array<T>`: a view of its storage
-                // with the rank erased
-  RawPtrAsRef,  // raw_ptr<T> to `ref T`: the pointer is the address
-  ClassToInterface,          // an owned class to an owning interface
+  PassValue,         // the value as it is: scalars, pointers and lambda values
+                     // (and anything read out of a borrow)
+  Move,              // an owning compound by value: the source is invalidated
+  Borrow,            // a `ref T` parameter: the argument's address
+  ArrayToView,       // a sized array to `ref array<T>`: a view of its storage
+                     // with the rank erased
+  RawPtrAsRef,       // raw_ptr<T> to `ref T`: the pointer is the address
+  ClassToInterface,  // an owned class to an owning interface
   BorrowedClassToInterface,  // a borrowed class to an interface parameter:
                              // fat pointer with a no-op drop slot
   ClassToRefInterface,       // a class to `ref Interface`: a fat pointer
                              // spilled to the stack, its address passed
-  WidenNumeric,         // a narrower integer or float to a wider parameter
-  StaticToRawPtr,       // static_ptr<T> to raw_ptr<T>: its data pointer
-  DerefRawPtr,          // raw_ptr<T> to a primitive T: the pointee is loaded
-  CVararg,              // past the declared parameters of a C-variadic callee:
-                        // C's default argument promotions
+  WidenNumeric,              // a narrower integer or float to a wider parameter
+  StaticToRawPtr,            // static_ptr<T> to raw_ptr<T>: its data pointer
+  DerefRawPtr,  // raw_ptr<T> to a primitive T: the pointee is loaded
+  CVararg,      // past the declared parameters of a C-variadic callee:
+                // C's default argument promotions
 };
 
 namespace conversions {

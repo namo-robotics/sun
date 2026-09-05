@@ -9,11 +9,11 @@ import "ast.proto";
 
 option cc_enable_arenas = true;
 
-// Module metadata stored in .moon bundle files
-// Contains all information needed to import and instantiate types from a module
+// Module metadata stored in .moon bundle files.
 message ModuleMetadata {
+  reserved 16;  // Former module binding table; references now carry canonical names.
   // Source identification
-  string source_hash = 1;     // SHA-256 hash of original source file
+  string source_hash = 1;     // Unique key for this declaration entry
   string module_name = 2;     // Namespace name (e.g., "sun")
   string version = 3;         // Semantic version (e.g., "1.0.0")
   string content_hash = 4;    // Bundle-wide hash for symbol isolation

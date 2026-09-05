@@ -393,8 +393,8 @@ function main() i32 {
       refersTo(source, "delta; }", true, {{"delta: i32"}, {"delta; }"}}));
   EXPECT_TRUE(refersTo(source, "base + delta", true,
                        {{"base = 10"}, {"base + delta"}}));
-  EXPECT_TRUE(
-      refersTo(source, "f(1)", true, {{"f = (delta: i32)"}, {"f(1)"}, {"f(2)"}}));
+  EXPECT_TRUE(refersTo(source, "f(1)", true,
+                       {{"f = (delta: i32)"}, {"f(1)"}, {"f(2)"}}));
 }
 
 TEST(Tooling_Lsp_References, CatchBinding) {

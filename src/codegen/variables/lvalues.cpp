@@ -136,17 +136,16 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
       {
         bool byRef = false;
         bool owned = false;
-        Value* slotAddr =
-            functionGen().createCaptureSlotAddress(varRef.getName(), nullptr, &byRef, &owned);
+        Value* slotAddr = functionGen().createCaptureSlotAddress(
+            varRef.getName(), nullptr, &byRef, &owned);
         if (slotAddr && (byRef || owned)) return slotAddr;
       }
 
       // Globals: mangled name first (module-qualified), then plain
-      if (GlobalVariable* gv =
-              globalForSunName(varRef.getMangledName())) {
+      if (GlobalVariable* gv = globalForSunName(varRef.getMangledName())) {
         if (varType && varType->isReference()) {
-          return ctx.builder->CreateLoad(
-              gv->getValueType(), gv, varRef.getName() + ".ref.ptr");
+          return ctx.builder->CreateLoad(gv->getValueType(), gv,
+                                         varRef.getName() + ".ref.ptr");
         }
         return gv;
       }
@@ -161,9 +160,9 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
 
       // mod.global: the module is compile-time only, so the storage is the
       // global the member's declaration emitted
-      if (llvm::GlobalVariable* gv =
-              classes().moduleMemberGlobal(*memberAccess.getObject(),
-                                 memberAccess.getQualifiedName().mangled())) {
+      if (llvm::GlobalVariable* gv = classes().moduleMemberGlobal(
+              *memberAccess.getObject(),
+              memberAccess.getQualifiedName().mangled())) {
         return gv;
       }
 
@@ -175,7 +174,7 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
       if (!field) return nullptr;
 
       return layout::fieldPtr(*ctx.builder, classType, objectPtr, *field,
-                         memberAccess.getMemberName() + ".addr");
+                              memberAccess.getMemberName() + ".addr");
     }
 
     case ASTNodeType::INDEX: {
@@ -270,17 +269,18 @@ Value* VariableGenerator::codegenAddress(const ExprAST& expr) {
 // Apply `cur op rhs` for a compound assignment and coerce the result back to
 // the slot's type if operand unification widened it
 Value* VariableGenerator::emitCompoundOpValue(const CompoundAssignmentAST& expr,
-                                           Value* cur, llvm::Type* slotTy,
-                                           const sun::TypePtr& slotSunType) {
+                                              Value* cur, llvm::Type* slotTy,
+                                              const sun::TypePtr& slotSunType) {
   Value* rhs = codegen(*expr.getValue());
   if (!rhs) return nullptr;
 
   const Position& loc = expr.getLocation();
   bool unsignedOp = slotSunType && slotSunType->isUnsigned();
 
-  gen_.unifyBinaryOperands(cur, rhs, slotSunType, expr.getValue()->getResolvedType(),
-                      loc);
-  Value* result = gen_.emitBinaryOp(expr.binaryOpKind(), cur, rhs, unsignedOp, loc);
+  gen_.unifyBinaryOperands(cur, rhs, slotSunType,
+                           expr.getValue()->getResolvedType(), loc);
+  Value* result =
+      gen_.emitBinaryOp(expr.binaryOpKind(), cur, rhs, unsignedOp, loc);
   if (!result) return nullptr;
 
   if (result->getType() != slotTy) {

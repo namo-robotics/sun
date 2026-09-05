@@ -160,21 +160,9 @@ void ModuleLinker::declareAvailableFunctions() {
   std::set<std::string> scanned;
 
   for (const auto& moduleKey : availableModules_) {
-    // Check if this module has aliasing configured
-    auto remapIt = moduleRemaps_.find(moduleKey);
-    bool hasRemap =
-        (remapIt != moduleRemaps_.end() && !remapIt->second.empty());
-    const auto* remap = hasRemap ? &remapIt->second : nullptr;
-
     std::string bitcodeId = LibraryCache::instance().getBitcodeId(moduleKey);
     if (!bitcodeId.empty()) {
       std::string scanKey = bitcodeId;
-      if (remap) {
-        for (const auto& [from, to] :
-             std::map<std::string, std::string>(remap->begin(), remap->end())) {
-          scanKey += "|" + from + "=" + to;
-        }
-      }
       if (!scanned.insert(scanKey).second) continue;
     }
 
@@ -210,11 +198,7 @@ void ModuleLinker::declareAvailableFunctions() {
         continue;  // Skip __sun_* helper functions
       }
 
-      // Apply aliasing if configured
       std::string declaredName = funcName;
-      if (remap) {
-        declaredName = remapSymbolName(funcName, *remap);
-      }
 
       // Skip if already declared in target
       if (target_.getFunction(declaredName)) continue;
@@ -252,9 +236,6 @@ void ModuleLinker::declareAvailableFunctions() {
       if (globalName[0] == '_') continue;  // internal helpers and literals
 
       std::string declaredName = globalName;
-      if (remap) {
-        declaredName = remapSymbolName(globalName, *remap);
-      }
 
       symbolToModule_[declaredName] = moduleKey;
     }
@@ -370,36 +351,6 @@ bool ModuleLinker::linkModuleRecursive(const std::string& moduleKey) {
     return false;
   }
 
-  // Check if this module has aliasing configured
-  auto remapIt = moduleRemaps_.find(moduleKey);
-  if (remapIt != moduleRemaps_.end() && !remapIt->second.empty()) {
-    // Rename all functions/globals in the bitcode module to use aliased names
-    const auto& remap = remapIt->second;
-
-    // Rename functions
-    for (auto& func : libModule->functions()) {
-      if (func.hasName() && !func.getName().empty()) {
-        std::string oldName = func.getName().str();
-        std::string newName = remapSymbolName(oldName, remap);
-        if (newName != oldName) {
-          func.setName(newName);
-        }
-      }
-    }
-
-    // Rename globals
-    for (auto& global : libModule->globals()) {
-      if (global.hasName() && !global.getName().empty()) {
-        if (global.getMetadata("sun.cabi")) continue;
-        std::string oldName = global.getName().str();
-        std::string newName = remapSymbolName(oldName, remap);
-        if (newName != oldName) {
-          global.setName(newName);
-        }
-      }
-    }
-  }
-
   // Ensure the library module has same data layout and triple as target
   // This avoids "Linking two modules of different data layouts" warnings
   if (libModule->getDataLayoutStr().empty()) {
@@ -425,8 +376,7 @@ bool ModuleLinker::linkModuleRecursive(const std::string& moduleKey) {
   return true;
 }
 
-void ModuleLinker::registerAvailableModulesWithRemap(
-    const MoonImport& moonImport) {
+void ModuleLinker::registerAvailableBundle(const MoonImport& moonImport) {
   // Open the moon file
   auto reader = MoonReader::open(moonImport.path);
   if (!reader) {
@@ -439,36 +389,7 @@ void ModuleLinker::registerAvailableModulesWithRemap(
       continue;
     }
     availableModules_.insert(moduleKey);
-
-    // Store the remap configuration for this module
-    if (moonImport.hasRemap()) {
-      moduleRemaps_[moduleKey] = moonImport.moduleRemap;
-    }
   }
-}
-
-std::string ModuleLinker::remapSymbolName(
-    const std::string& symbol,
-    const std::unordered_map<std::string, std::string>& moduleRemap) const {
-  // Symbol format: $hash$_moduleName_... or prefix_moduleName_...
-  // We need to find and replace the module name portion
-
-  std::string result = symbol;
-
-  for (const auto& [fromModule, toModule] : moduleRemap) {
-    // Look for _fromModule_ pattern (underscore-delimited module name)
-    std::string fromPattern = "_" + fromModule + "_";
-    std::string toPattern = "_" + toModule + "_";
-
-    size_t pos = result.find(fromPattern);
-    if (pos != std::string::npos) {
-      result.replace(pos, fromPattern.size(), toPattern);
-      // Only replace first occurrence (module name appears once in symbol)
-      break;
-    }
-  }
-
-  return result;
 }
 
 }  // namespace sun

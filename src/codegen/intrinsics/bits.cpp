@@ -38,7 +38,7 @@ Value* IntrinsicsGenerator::codegenMulHiU64Intrinsic(const CallExprAST& expr) {
 }
 
 Value* IntrinsicsGenerator::codegenCountZerosIntrinsic(const CallExprAST& expr,
-                                                  bool leading) {
+                                                       bool leading) {
   const char* name = leading ? "_ctlz_u64" : "_cttz_u64";
   const auto& args = expr.getArgs();
   if (args.size() != 1) {

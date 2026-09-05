@@ -283,8 +283,7 @@ TEST(Lambdas_RefLambdaTypes, generic_class_over_ref_lambda_works_in_frame) {
 
 // A named callback cannot cross an erased generic setter into an unrelated
 // receiver; otherwise Box could invoke it after its captured frame dies.
-TEST(Lambdas_RefLambdaTypes,
-     generic_set_rejects_callback_from_dead_frame) {
+TEST(Lambdas_RefLambdaTypes, generic_set_rejects_callback_from_dead_frame) {
   EXPECT_THROW(executeString(R"(
     class Box<T> {
         var f: T;
@@ -314,8 +313,7 @@ TEST(Lambdas_RefLambdaTypes,
 
 // Matching the erased callback lifetime to the generic receiver keeps the
 // conservative generic check precise enough to accept a safe store.
-TEST(Lambdas_RefLambdaTypes,
-     generic_set_accepts_callback_tied_to_receiver) {
+TEST(Lambdas_RefLambdaTypes, generic_set_accepts_callback_tied_to_receiver) {
   auto value = executeString(R"(
     class Box<T> {
         var f: T;

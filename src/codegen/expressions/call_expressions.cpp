@@ -250,8 +250,8 @@ Value* CodegenVisitor::materializeStructReturn(Value* callResult) {
   // home on this frame so it can be indexed, moved and dropped by address
   if (callResult->getType()->isArrayTy()) {
     Function* currentFunc = ctx.builder->GetInsertBlock()->getParent();
-    AllocaInst* resultAlloca = createEntryBlockAlloca(
-        currentFunc, "ret.array", callResult->getType());
+    AllocaInst* resultAlloca =
+        createEntryBlockAlloca(currentFunc, "ret.array", callResult->getType());
     ctx.builder->CreateStore(callResult, resultAlloca);
     return resultAlloca;
   }
@@ -928,7 +928,8 @@ bool CodegenVisitor::emitCallArguments(
         // The argument's storage, seen with its rank erased
         Value* storage = codegen(*argExpr);
         if (!storage) return false;
-        auto* sized = sun::tryGetType<sun::ArrayType>(sun::unwrapRef(argSunType));
+        auto* sized =
+            sun::tryGetType<sun::ArrayType>(sun::unwrapRef(argSunType));
         if (!storage->getType()->isPointerTy()) {
           Function* func = ctx.builder->GetInsertBlock()->getParent();
           AllocaInst* temp = createEntryBlockAlloca(
@@ -959,8 +960,8 @@ bool CodegenVisitor::emitCallArguments(
         auto* classType =
             static_cast<sun::ClassType*>(sun::unwrapRef(argSunType).get());
         auto* ifaceType = static_cast<sun::InterfaceType*>(paramType.get());
-        argVal = classes.createOwnedInterfaceFatPointer(
-            argVal, classType, ifaceType);
+        argVal = classes.createOwnedInterfaceFatPointer(argVal, classType,
+                                                        ifaceType);
         break;
       }
 

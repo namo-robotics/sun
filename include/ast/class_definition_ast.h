@@ -14,16 +14,16 @@
 #include "parsing/lexer.h"
 #include "semantic_analysis/qualified_name.h"
 
-// Field declaration in a class: var name: type;
+// Field qualifiedName in a class: var name: type;
 struct ClassFieldDecl {
   std::string name;
   TypeAnnotation type;
-  Position location;  // Source location of field declaration
+  Position location;  // Source location of field qualifiedName
   sun::Visibility visibility = sun::Visibility::Private;
   std::string doc;  // Comment written above the field
 };
 
-// Method declaration in a class (uses FunctionAST internally)
+// Method qualifiedName in a class (uses FunctionAST internally)
 struct ClassMethodDecl {
   std::unique_ptr<FunctionAST> function;
   bool isConstructor;    // true if method name is "init"
@@ -34,8 +34,13 @@ struct ClassMethodDecl {
 // Implemented interface with optional type arguments
 // e.g., IIterator<T> or IComparable<i32>
 struct ImplementedInterfaceAST {
+  /** Resolve a compiled interface independently of source aliases. */
+  std::string lookupName() const {
+    return qualifiedName ? qualifiedName->lookupName() : name;
+  }
   std::string name;                           // Interface name: "IIterator"
   std::vector<TypeAnnotation> typeArguments;  // Type args: [T] or [i32]
+  std::optional<sun::QualifiedName> qualifiedName;
 };
 
 // Class definition: class Name<T, U> implements Interface1<T>, Interface2 {
@@ -214,7 +219,7 @@ class ClassDefinitionAST : public ExprAST {
     return std::string(isPacked_ ? "Packed Class\n" : "Class\n") + name;
   }
 
-  // Keyword that introduces this declaration in source
+  // Keyword that introduces this qualifiedName in source
   const char* classKeyword() const {
     return isPacked_ ? "packed_class" : "class";
   }

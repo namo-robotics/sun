@@ -124,8 +124,8 @@ void ScopeManager::ensureDropFlag(ClassAllocation& alloc) {
   // that took ownership is gone, so leave the decision static.
   Value* anchor = alloc.ownedAt;
   auto* anchorInst = dyn_cast_or_null<Instruction>(anchor);
-  BasicBlock* anchorBlock =
-      anchorInst ? anchorInst->getParent() : dyn_cast_or_null<BasicBlock>(anchor);
+  BasicBlock* anchorBlock = anchorInst ? anchorInst->getParent()
+                                       : dyn_cast_or_null<BasicBlock>(anchor);
   if (!anchorBlock || !anchorBlock->getParent()) return;
 
   llvm::Type* boolTy = llvm::Type::getInt1Ty(ctx.getContext());
@@ -135,7 +135,8 @@ void ScopeManager::ensureDropFlag(ClassAllocation& alloc) {
   // layout is untouched. False on entry, so a path that never reached the
   // point of ownership never drops.
   IRBuilder<> entry(&func->getEntryBlock(), func->getEntryBlock().begin());
-  alloc.dropFlag = entry.CreateAlloca(boolTy, nullptr, alloc.varName + ".owned");
+  alloc.dropFlag =
+      entry.CreateAlloca(boolTy, nullptr, alloc.varName + ".owned");
   entry.CreateStore(ConstantInt::getFalse(ctx.getContext()), alloc.dropFlag);
 
   // True from the point of ownership on. This sits inside the loop body when
@@ -254,7 +255,8 @@ void ScopeManager::emitFieldCleanup(Value* objectPtr,
       ctx.builder->CreateBr(skipRawBB);
 
       ctx.builder->SetInsertPoint(skipRawBB);
-    } else if (auto* nestedClass = sun::tryGetType<sun::ClassType>(field.type)) {
+    } else if (auto* nestedClass =
+                   sun::tryGetType<sun::ClassType>(field.type)) {
       // Embedded class field - recursively call deinit on it if it has one
       // Generate GEP to access the embedded struct field
       Value* fieldPtr = ctx.builder->CreateStructGEP(
@@ -370,8 +372,7 @@ void ScopeManager::emitInterfaceDrop(sun::InterfaceType& interfaceType,
   StructType* fatType = interfaceType.getFatPointerType(ctx.getContext());
   Value* fat = ctx.builder->CreateLoad(fatType, storagePtr, "iface.drop.fat");
   Value* data = ctx.builder->CreateExtractValue(fat, 0, "iface.drop.data");
-  Value* vtable =
-      ctx.builder->CreateExtractValue(fat, 1, "iface.drop.vtable");
+  Value* vtable = ctx.builder->CreateExtractValue(fat, 1, "iface.drop.vtable");
 
   auto* ptrTy = PointerType::getUnqual(ctx.getContext());
   auto* nullPtr = ConstantPointerNull::get(ptrTy);
@@ -396,8 +397,8 @@ void ScopeManager::emitInterfaceDrop(sun::InterfaceType& interfaceType,
       ConstantInt::get(Type::getInt32Ty(ctx.getContext()), dropIndex),
       "iface.drop.slot");
   Value* drop = ctx.builder->CreateLoad(ptrTy, dropSlot, "iface.drop.fn");
-  FunctionType* dropType = FunctionType::get(
-      Type::getVoidTy(ctx.getContext()), {ptrTy}, false);
+  FunctionType* dropType =
+      FunctionType::get(Type::getVoidTy(ctx.getContext()), {ptrTy}, false);
   ctx.builder->CreateCall(dropType, drop, {data});
   ctx.builder->CreateStore(Constant::getNullValue(fatType), storagePtr);
   ctx.builder->CreateBr(doneBlock);
@@ -411,8 +412,7 @@ void ScopeManager::emitDropInPlace(const sun::TypePtr& type, Value* ptr,
   if (auto* classType = sun::tryGetType<sun::ClassType>(type)) {
     emitDeinitCall(classType, ptr);
     emitFieldDeinit(ptr, classType, name);
-  } else if (auto* interfaceType =
-                 sun::tryGetType<sun::InterfaceType>(type)) {
+  } else if (auto* interfaceType = sun::tryGetType<sun::InterfaceType>(type)) {
     emitInterfaceDrop(*interfaceType, ptr);
   } else if (type->isEnum()) {
     emitEnumDrop(static_cast<sun::EnumType&>(*type), ptr);
@@ -519,8 +519,8 @@ Function* ScopeManager::getOrCreateEnumDropFunction(sun::EnumType& enumType) {
   FunctionType* fnTy = FunctionType::get(voidTy, {ptrTy}, false);
   // LinkOnceODR: the same specialization may be emitted by several modules
   // (main program + .moon bundles); identical bodies merge at link/JIT time.
-  Function* fn = Function::Create(fnTy, Function::LinkOnceODRLinkage, name,
-                                  state_.module);
+  Function* fn =
+      Function::Create(fnTy, Function::LinkOnceODRLinkage, name, state_.module);
 
   CodegenState::InsertPointGuard here(state_);
   BasicBlock* entry = BasicBlock::Create(ctx.getContext(), "entry", fn);

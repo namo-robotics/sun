@@ -274,7 +274,7 @@ struct SymbolMatch {
 
 // Information about a generic class definition (template)
 struct GenericClassInfo {
-  const ClassDefinitionAST* AST;            // Original AST node
+  const ClassDefinitionAST* AST;              // Original AST node
   std::vector<TypeParameter> typeParameters;  // <T, U: Trait>
   std::weak_ptr<SemanticScopeBase> definitionScope;
   sun::QualifiedName qualifiedName;  // Captured at registration
@@ -282,17 +282,17 @@ struct GenericClassInfo {
 
 // Information about a generic interface definition (template)
 struct GenericInterfaceInfo {
-  const InterfaceDefinitionAST* AST;        // Original AST node
+  const InterfaceDefinitionAST* AST;          // Original AST node
   std::vector<TypeParameter> typeParameters;  // <T, U: Trait>
-  sun::QualifiedName qualifiedName;         // Captured at registration
+  sun::QualifiedName qualifiedName;           // Captured at registration
   std::weak_ptr<SemanticScopeBase> definitionScope;
 };
 
 // Information about a generic enum definition (template)
 struct GenericEnumInfo {
-  const EnumDefinitionAST* AST;             // Original AST node
+  const EnumDefinitionAST* AST;               // Original AST node
   std::vector<TypeParameter> typeParameters;  // <T, U: Trait>
-  sun::QualifiedName qualifiedName;         // Captured at registration
+  sun::QualifiedName qualifiedName;           // Captured at registration
   std::weak_ptr<SemanticScopeBase> definitionScope;
 };
 
@@ -380,6 +380,11 @@ struct SemanticScopeBase
 
   // Get the scope type (virtual - each subclass returns its type)
   virtual ScopeType getType() const = 0;
+
+  /** Original module paths and nominal declarations, indexed on the root scope.
+   */
+  std::map<std::string, SemanticScopeBase*> canonicalModules;
+  std::map<sun::QualifiedName, sun::Type::Kind> canonicalDeclarations;
 
   // ===== Identification (for persistent scopes) =====
   std::string scopeName;  // Display name (module name, source file, etc.)
@@ -791,7 +796,7 @@ class AccessFilter {
 // -------------------------------------------------------------------
 template <typename ResultT, typename Finder>
 ResultT SemanticScopeBase::lookupInChain(const std::string& name,
-                                        Finder finder) const {
+                                         Finder finder) const {
   AccessFilter filter(this);
   auto probe = [&](const SemanticScopeBase* s) -> ResultT {
     auto r = finder(s);

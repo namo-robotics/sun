@@ -56,8 +56,8 @@ void attachLoweringAttributes(Target* target,
   };
 
   if (lowering.usesSret()) {
-    target->addParamAttr(idx, llvm::Attribute::getWithStructRetType(
-                                  llvmCtx, lowering.ret.type));
+    target->addParamAttr(
+        idx, llvm::Attribute::getWithStructRetType(llvmCtx, lowering.ret.type));
     addAlign(idx, lowering.ret.align);
     ++idx;
   } else if (lowering.ret.extend != abi::Extend::None) {
@@ -185,16 +185,14 @@ llvm::GlobalVariable* ExternCEmitter::declareGlobal(
       logAndThrowError("extern C global '" + symbol +
                        "' collides with a global definition");
     }
-    existing->setMetadata(
-        "sun.cabi", llvm::MDNode::get(ctx_.getContext(), {}));
+    existing->setMetadata("sun.cabi", llvm::MDNode::get(ctx_.getContext(), {}));
     return existing;
   }
 
   auto* global = new llvm::GlobalVariable(
       *module_, valueType, /*isConstant=*/false,
       llvm::GlobalValue::ExternalLinkage, /*Initializer=*/nullptr, symbol);
-  global->setMetadata("sun.cabi",
-                      llvm::MDNode::get(ctx_.getContext(), {}));
+  global->setMetadata("sun.cabi", llvm::MDNode::get(ctx_.getContext(), {}));
   return global;
 }
 

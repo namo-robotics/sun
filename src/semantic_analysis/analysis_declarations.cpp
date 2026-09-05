@@ -466,9 +466,8 @@ void SemanticAnalyzer::analyzeFunctionDefinition(FunctionAST& func) {
 void SemanticAnalyzer::analyzeLambdaExpr(LambdaAST& lambda) {
   PrototypeAST& proto = const_cast<PrototypeAST&>(lambda.getProto());
 
-  rejectRefEnvReturnType(
-      proto.getReturnType(), lambda.getLocation(),
-      /*allowNamed=*/true);
+  rejectRefEnvReturnType(proto.getReturnType(), lambda.getLocation(),
+                         /*allowNamed=*/true);
 
   // A lambda's own binders and any enclosing binders are both in scope for
   // its signature.
@@ -509,10 +508,10 @@ void SemanticAnalyzer::analyzeModuleDefinition(ModuleAST& nsDecl) {
           ctx_.makeQualifiedName(varCreate.getName());
       varCreate.setQualifiedName(qualifiedName);
       if (auto type = varCreate.getResolvedType()) {
-        ctx_.registerModuleVariable(
-            varCreate.getName(), qualifiedName.mangled(), type,
-            varCreate.getVisibility(), varCreate.isConst(),
-            varCreate.isCExtern());
+        ctx_.registerModuleVariable(varCreate.getName(),
+                                    qualifiedName.mangled(), type,
+                                    varCreate.getVisibility(),
+                                    varCreate.isConst(), varCreate.isCExtern());
       }
     } else if (bodyExpr->getType() == ASTNodeType::REFERENCE_CREATION) {
       analyzeExpr(*bodyExpr);

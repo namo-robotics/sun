@@ -33,8 +33,7 @@ Value* CodegenVisitor::codegen(const IfExprAST& expr) {
   // marking stays so drop-flag decisions match what the borrow checker
   // assumed for a two-armed if.
   if (auto* constCond = dyn_cast<ConstantInt>(CondV)) {
-    const ExprAST* live =
-        constCond->isZero() ? expr.getElse() : expr.getThen();
+    const ExprAST* live = constCond->isZero() ? expr.getElse() : expr.getThen();
     if (!live) {
       // `if (false) { ... }` with no else: nothing to emit.
       return ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
@@ -179,8 +178,7 @@ Value* CodegenVisitor::codegen(const TernaryExprAST& expr) {
   // `var X: i32 = _target_is("macos") ? 6 : 1;` folds here into the plain
   // constant a global initializer needs, where there is no current function.
   if (auto* constCond = dyn_cast<ConstantInt>(CondV)) {
-    const ExprAST* live =
-        constCond->isZero() ? expr.getElse() : expr.getThen();
+    const ExprAST* live = constCond->isZero() ? expr.getElse() : expr.getThen();
     Value* liveV = nullptr;
     {
       ScopeManager::BranchArm arm(scopes);

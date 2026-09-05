@@ -65,15 +65,15 @@ TEST(Modules_ManifestTargets, target_block_follows_the_compilation_target) {
   fs::path dir = writeTargetedManifest("per_target");
   std::string entry = (dir / "main.sun").string();
 
-  auto forLinux = sun::ManifestProcessor::fromEntrypointFile(
-      entry, "aarch64-linux-gnu");
+  auto forLinux =
+      sun::ManifestProcessor::fromEntrypointFile(entry, "aarch64-linux-gnu");
   ASSERT_TRUE(forLinux.has_value());
   EXPECT_TRUE(includes(forLinux->sunFiles, "shared.sun"));
   EXPECT_TRUE(includes(forLinux->sunFiles, "linux_only.sun"));
   EXPECT_FALSE(includes(forLinux->sunFiles, "darwin_only.sun"));
 
-  auto forDarwin = sun::ManifestProcessor::fromEntrypointFile(
-      entry, "arm64-apple-darwin");
+  auto forDarwin =
+      sun::ManifestProcessor::fromEntrypointFile(entry, "arm64-apple-darwin");
   ASSERT_TRUE(forDarwin.has_value());
   EXPECT_TRUE(includes(forDarwin->sunFiles, "shared.sun"));
   EXPECT_TRUE(includes(forDarwin->sunFiles, "darwin_only.sun"));
@@ -95,14 +95,13 @@ TEST(Modules_ManifestTargets, target_sources_come_before_the_shared_list) {
 
 TEST(Modules_ManifestTargets, empty_triple_selects_the_host_os) {
   fs::path dir = writeTargetedManifest("host_default");
-  auto resolved = sun::ManifestProcessor::fromEntrypointFile(
-      (dir / "main.sun").string());
+  auto resolved =
+      sun::ManifestProcessor::fromEntrypointFile((dir / "main.sun").string());
   ASSERT_TRUE(resolved.has_value());
 
   auto hostOs = sun::targetOsName(sun::resolvedTargetTriple(""));
   ASSERT_TRUE(hostOs.has_value());
-  EXPECT_EQ(includes(resolved->sunFiles, "linux_only.sun"),
-            *hostOs == "linux");
+  EXPECT_EQ(includes(resolved->sunFiles, "linux_only.sun"), *hostOs == "linux");
   EXPECT_EQ(includes(resolved->sunFiles, "darwin_only.sun"),
             *hostOs == "macos");
 }

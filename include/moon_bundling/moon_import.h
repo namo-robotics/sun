@@ -2,10 +2,10 @@
 // module aliasing
 //
 // Module aliasing allows using multiple versions of the same library by
-// remapping their module names at link time. For example:
+// giving their modules distinct source lookup names. For example:
 //   --moon stdlib-v1.moon:std=std_v1 --moon stdlib-v2.moon:std=std_v2
 //
-// This remaps all symbols from module "std" to "std_v1" or "std_v2",
+// Compiled symbols keep their original hash-scoped names,
 // allowing code to use both versions:
 //   using std_v1;  // Use old API
 //   using std_v2;  // Use new API
@@ -46,7 +46,14 @@ struct MoonImport {
   /// Get the aliased name for a module, or the original if not remapped
   std::string getAliasedModule(const std::string& original) const {
     auto it = moduleRemap.find(original);
-    return it != moduleRemap.end() ? it->second : original;
+    if (it != moduleRemap.end()) return it->second;
+    std::string best;
+    for (const auto& [from, to] : moduleRemap) {
+      if (original.starts_with(from + ".") && from.size() > best.size())
+        best = from;
+    }
+    return best.empty() ? original
+                        : moduleRemap.at(best) + original.substr(best.size());
   }
 };
 

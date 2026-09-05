@@ -1233,8 +1233,7 @@ TEST(Tooling_Frontend_Parser, ExternGlobalMetadata) {
   auto ast = parseString(
       "public extern \"C\" var local_name: raw_ptr<u8> as \"native_name\";");
   ASSERT_EQ(ast->getBody().size(), 1u);
-  auto* variable =
-      dynamic_cast<VariableCreationAST*>(ast->getBody()[0].get());
+  auto* variable = dynamic_cast<VariableCreationAST*>(ast->getBody()[0].get());
   ASSERT_NE(variable, nullptr);
   EXPECT_TRUE(variable->isCExtern());
   EXPECT_TRUE(variable->hasExplicitCAbi());
@@ -1246,8 +1245,7 @@ TEST(Tooling_Frontend_Parser, ExternGlobalMetadata) {
 
 TEST(Tooling_Frontend_Parser, ExternGlobalAllowsImplicitCAbi) {
   auto ast = parseString("extern var value: i32;");
-  auto* variable =
-      dynamic_cast<VariableCreationAST*>(ast->getBody()[0].get());
+  auto* variable = dynamic_cast<VariableCreationAST*>(ast->getBody()[0].get());
   ASSERT_NE(variable, nullptr);
   EXPECT_TRUE(variable->isCExtern());
   EXPECT_FALSE(variable->hasExplicitCAbi());

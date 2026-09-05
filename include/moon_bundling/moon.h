@@ -20,8 +20,8 @@ namespace sun {
 /// Binary header for .moon format
 struct MoonHeader {
   static constexpr uint32_t MAGIC = 0x53554E4C;  // "SUNL"
-  // Source imports and exported declarations carry file identities.
-  static constexpr uint32_t VERSION = 9;
+  // Retained module references and using targets carry canonical names.
+  static constexpr uint32_t VERSION = 1;
 
   uint32_t magic = MAGIC;
   uint32_t version = VERSION;

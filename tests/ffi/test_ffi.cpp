@@ -1071,7 +1071,8 @@ TEST(Ffi, conflicting_native_global_redeclarations_fail) {
 }
 
 TEST(Ffi, extern_global_derived_and_compound_access_require_unsafe) {
-  EXPECT_THROW(Driver::createForAOT("extern_global_field_safety")->compileString(R"(
+  EXPECT_THROW(
+      Driver::createForAOT("extern_global_field_safety")->compileString(R"(
     class Pair {
       var first: i32;
       var second: i32;
@@ -1079,20 +1080,22 @@ TEST(Ffi, extern_global_derived_and_compound_access_require_unsafe) {
     extern "C" var pair: Pair as "native_pair";
     function main() i32 { return pair.first; }
   )"),
-               std::exception);
+      std::exception);
 
-  EXPECT_THROW(Driver::createForAOT("extern_global_compound_safety")->compileString(R"(
+  EXPECT_THROW(
+      Driver::createForAOT("extern_global_compound_safety")->compileString(R"(
     extern "C" var value: i32 as "native_value";
     function main() i32 {
       value += 1;
       return 0;
     }
   )"),
-               std::exception);
+      std::exception);
 }
 
 TEST(Ffi, private_extern_global_is_not_visible_outside_its_module) {
-  EXPECT_THROW(Driver::createForAOT("extern_global_visibility")->compileString(R"(
+  EXPECT_THROW(
+      Driver::createForAOT("extern_global_visibility")->compileString(R"(
     public module wrapper {
       extern "C" var hidden: i32 as "native_hidden";
     }
@@ -1100,16 +1103,17 @@ TEST(Ffi, private_extern_global_is_not_visible_outside_its_module) {
       unsafe { return wrapper.hidden; };
     }
   )"),
-               std::exception);
+      std::exception);
 }
 
 TEST(Ffi, native_function_and_global_kind_collision_fails) {
-  EXPECT_THROW(Driver::createForAOT("extern_global_kind_collision")->compileString(R"(
+  EXPECT_THROW(
+      Driver::createForAOT("extern_global_kind_collision")->compileString(R"(
     extern "C" var storage: i32 as "same_native_kind";
     extern "C" function operation() i32 as "same_native_kind";
     function main() i32 { return 0; }
   )"),
-               std::exception);
+      std::exception);
 }
 
 TEST(Ffi, native_global_and_sun_definition_collision_fails) {

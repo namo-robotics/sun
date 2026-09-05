@@ -179,11 +179,13 @@ void SemanticAnalyzer::analyzeMemberAccess(MemberAccessAST& memberAccess,
                                            sun::TypePtr expectedType) {
   // Check for enum variant access: EnumName.VariantName
   // Don't try to analyze the "object" if it's an enum type name
+  if (tryAnalyzeGenericEnumUnitVariant(memberAccess, expectedType)) return;
   bool isEnumAccess = false;
   if (memberAccess.getObject()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
     const auto& varRef =
         static_cast<const VariableReferenceAST&>(*memberAccess.getObject());
-    if (ctx_.lookupEnum(varRef.getName())) {
+    if (auto enumType = ctx_.lookupEnum(varRef.getName())) {
+      const_cast<ExprAST&>(*memberAccess.getObject()).setResolvedType(enumType);
       isEnumAccess = true;
     } else if (tryAnalyzeGenericEnumUnitVariant(memberAccess, expectedType)) {
       // Generic enum unit variant (Option.None): resolved from expected
@@ -204,9 +206,9 @@ void SemanticAnalyzer::analyzeMemberAccess(MemberAccessAST& memberAccess,
   if (objectType && objectType->isModule()) {
     const auto* moduleType =
         static_cast<const sun::ModuleType*>(objectType.get());
-    SymbolMatch match = ctx_.findSymbolInModule(
-        moduleType->getModulePath(), memberAccess.getMemberName(),
-        SymbolKind::Variable);
+    SymbolMatch match = ctx_.findSymbolInModule(moduleType->getModulePath(),
+                                                memberAccess.getMemberName(),
+                                                SymbolKind::Variable);
     if (match && match.variableInfo) {
       checkExternVariableAccessAllowed(*match.variableInfo, match.display(),
                                        memberAccess.getLocation());

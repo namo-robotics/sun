@@ -326,14 +326,13 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
                            ASTNodeType::CLASS_DEFINITION ||
                        target.chain[target.chain.size() - 2]->getType() ==
                            ASTNodeType::INTERFACE_DEFINITION);
-      return Hover{
-          renderPrototype(fn.getProto(),
-                          isMethod       ? "method"
-                          : fn.isTest()  ? "test_function"
-                                         : "function",
-                          fn.getProto().getName(), fn.isPublic(), source,
-                          bindings),
-          fn.getProto().getDoc(), range};
+      return Hover{renderPrototype(fn.getProto(),
+                                   isMethod      ? "method"
+                                   : fn.isTest() ? "test_function"
+                                                 : "function",
+                                   fn.getProto().getName(), fn.isPublic(),
+                                   source, bindings),
+                   fn.getProto().getDoc(), range};
     }
     case ASTNodeType::LAMBDA: {
       const auto& lambda = static_cast<const LambdaAST&>(node);

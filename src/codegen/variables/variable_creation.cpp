@@ -259,8 +259,8 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
 
     // A concrete value is moved into stable storage owned by the interface.
     if (auto* classType = sun::tryGetType<sun::ClassType>(valueSunType)) {
-      Value* fatPtr = classes().createOwnedInterfaceFatPointer(
-          value, classType, ifaceType);
+      Value* fatPtr =
+          classes().createOwnedInterfaceFatPointer(value, classType, ifaceType);
       if (!fatPtr) return nullptr;
 
       AllocaInst* alloca =
@@ -311,7 +311,8 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
           return allocaValue;
         }
       }
-      AllocaInst* alloca = createEntryBlockAlloca(func, expr.getName(), varType);
+      AllocaInst* alloca =
+          createEntryBlockAlloca(func, expr.getName(), varType);
       gen_.emitArrayTransfer(alloca, value, *arrayType, /*move=*/true);
       scope[expr.getName()] = alloca;
       debugDeclareLocal(alloca, expr.getName(), varSunType, expr.getLocation());
