@@ -1247,7 +1247,9 @@ TEST(Tooling_Serialization, ExternGlobalMetadataRoundtrip) {
 
 // Source identity is semantic state even when diagnostics are omitted.
 TEST(Tooling_Serialization, SourceFilesSurviveCloningWithoutLocations) {
-  Parser parser;
+  // Keep construction independent of the test runner's standard input.
+  std::istringstream input;
+  Parser parser(input);
   auto first =
       parser.parseString("using lib; function f() i32 { return answer(); }");
   auto second = parser.parseString("function g() i32 { return 0; }");

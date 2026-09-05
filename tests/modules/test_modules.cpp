@@ -57,6 +57,34 @@ TEST(Modules, module_with_using_all) {
   EXPECT_EQ(value, 25);
 }
 
+// File imports must resolve field types and constructor expressions identically.
+TEST(Modules, file_using_std_reaches_module_class_fields) {
+  auto value = executeStringWithStdlib(R"(
+    using std;
+
+    /* Exercises a file import inside a module. */
+    module spike {
+      /* Stores a string constructed through the file import. */
+      public class Path {
+        var path: String;
+        init(alloc: const ref HeapAllocator) {
+          this.path = String(alloc, "/");
+        }
+        /* Returns the stored path length. */
+        public method length() i64 { return this.path.length(); }
+      }
+    }
+
+    /* Checks that the module class uses the imported string type. */
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var path = spike.Path(alloc);
+      return _convert<i32>(path.length());
+    }
+  )");
+  EXPECT_EQ(value, 1);
+}
+
 TEST(Modules, module_with_using_specific) {
   // Test: using math.square; to import only one symbol
   auto value = executeString(R"(

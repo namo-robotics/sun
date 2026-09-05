@@ -536,3 +536,18 @@ jobs:
             -f message="sun $version" \
             -f content="$(base64 -w0 sun.rb)" \
             ${blob:+-f sha="$blob"}
+
+  # Publish main's docs only after every package job succeeds.
+  docs:
+    needs: [build-deb, test-install, build-macos, test-install-macos, update-tap]
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main')
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/docs.yml
+    with:
+      ref: ${{ github.event.workflow_run.head_sha || github.sha }}
