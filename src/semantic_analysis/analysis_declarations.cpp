@@ -12,6 +12,7 @@
 #include "support/error.h"
 
 void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
+  sun::prepareFieldInitializers(classDef);
   const std::string& baseName = classDef.getName();
 
   // Partial classes: add methods to the primary class.

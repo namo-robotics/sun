@@ -10,6 +10,10 @@
 
 namespace sun {
 
+/** Supplies default constructors and lowers field defaults before body
+ * analysis. */
+void prepareFieldInitializers(ClassDefinitionAST& classDef);
+
 /**
  * Checks a constructor against Sun's two-phase rule, and decides what each
  * write to a field does to the value that was there.

@@ -837,3 +837,16 @@ TEST(Tooling_Fmt, ExternGlobalsPreserveAbiVisibilityAndLinkName) {
             "public extern \"C\" var value: raw_ptr<i32> as \"C_name\";\n");
   EXPECT_EQ(fmt("extern var value:i32;"), "extern var value: i32;\n");
 }
+
+TEST(Tooling_Fmt, ClassFieldInitializers) {
+  const std::string source =
+      "class Foo{var x:i32=10;var y:i32=this.x+2;init(){}}";
+  const std::string expected =
+      "class Foo {\n"
+      "  var x: i32 = 10;\n"
+      "  var y: i32 = this.x + 2;\n"
+      "  init() {}\n"
+      "}\n";
+  EXPECT_EQ(fmt(source), expected);
+  EXPECT_EQ(fmt(expected), expected);
+}

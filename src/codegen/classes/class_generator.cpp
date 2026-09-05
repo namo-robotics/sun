@@ -11,8 +11,8 @@ llvm::Value* ClassGenerator::codegen(const ExprAST& expr) {
   return gen_.codegen(expr);
 }
 
-llvm::Value* ClassGenerator::codegen(const BlockExprAST& block) {
-  return gen_.codegen(block);
+llvm::Value* ClassGenerator::codegen(const BlockExprAST& block, size_t start) {
+  return gen_.codegen(block, start);
 }
 
 ScopeManager& ClassGenerator::scopes() { return gen_.scopeManager(); }

@@ -138,33 +138,19 @@ public module std {
 
   // struct tm — 9 ints, pad to 8, then long tm_gmtoff and const char* tm_zone.
   // Same on glibc and musl, x86-64 and aarch64.
+  /** A zeroed calendar-time record for native functions to fill in. */
   class CTm {
-    var sec: i32;
-    var min: i32;
-    var hour: i32;
-    var mday: i32;
-    var mon: i32;
-    var year: i32;
-    var wday: i32;
-    var yday: i32;
-    var isdst: i32;
-    var gmtoff: i64;
-    var zone: raw_ptr<u8>;
-
-    // Build a zeroed calendar-time struct for a C call to fill in.
-    init() {
-      this.sec = 0;
-      this.min = 0;
-      this.hour = 0;
-      this.mday = 0;
-      this.mon = 0;
-      this.year = 0;
-      this.wday = 0;
-      this.yday = 0;
-      this.isdst = 0;
-      this.gmtoff = 0;
-      this.zone = null;
-    }
+    var sec: i32 = 0;
+    var min: i32 = 0;
+    var hour: i32 = 0;
+    var mday: i32 = 0;
+    var mon: i32 = 0;
+    var year: i32 = 0;
+    var wday: i32 = 0;
+    var yday: i32 = 0;
+    var isdst: i32 = 0;
+    var gmtoff: i64 = 0;
+    var zone: raw_ptr<u8> = null;
   }
 
   // struct dirent has no mirror here: its head differs per OS (Linux puts

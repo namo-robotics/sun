@@ -41,7 +41,10 @@ bool isGeneric(const InterfaceDefinitionAST& iface) {
 }
 
 // Clear the body of a FunctionDef proto (keep only signature)
-void clearBody(ast::FunctionDef* func) { func->mutable_body()->clear_body(); }
+void clearBody(ast::FunctionDef* func) {
+  func->mutable_body()->clear_body();
+  func->set_field_initializer_count(0);
+}
 
 // Clear bodies of non-generic methods in a ClassDef
 void clearNonGenericBodies(ast::ClassDef* cls,

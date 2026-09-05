@@ -41,7 +41,7 @@ public module std {
     var data: ContiguousBuffer<T>;  // Contiguous element storage (bounds-checked, auto-freed)
     var dims: Vec<i64>;  // Size of each dimension
     var ndims_: i64;  // Number of dimensions
-    var total_size: i64;  // Total number of elements
+    var total_size: i64 = 1;  // Total number of elements
 
     // Constructor: allocates memory for matrix of given shape
     // shape is an array of dimension sizes: [rows, cols, ...], copied in
@@ -51,7 +51,6 @@ public module std {
       this.dims = Vec<i64>(alloc, this.ndims_);
 
       // Copy the shape and compute total size (product of all dimensions)
-      this.total_size = 1;
       for (var i: i64 = 0; i < this.ndims_; i = i + 1) {
         this.dims.push(shape[i]);
         this.total_size = this.total_size * shape[i];
@@ -147,7 +146,7 @@ public module std {
     var dims: Vec<i64>;  // Shape of this view
     var strides: Vec<i64>;  // Stride in each dimension
     var ndims_: i64;  // Number of dimensions
-    var total_size: i64;  // Total elements in view
+    var total_size: i64 = 1;  // Total elements in view
 
     // Constructor from raw components; the shape and strides are copied in
     init(alloc: const ref HeapAllocator, data_ptr: raw_ptr<u8>, offset: i64, shape: const ref array<i64>, strides_arr: const ref array<i64>) {
@@ -158,7 +157,6 @@ public module std {
       this.strides = Vec<i64>(alloc, this.ndims_);
 
       // Copy the shape and strides and compute total size
-      this.total_size = 1;
       for (var i: i64 = 0; i < this.ndims_; i = i + 1) {
         this.dims.push(shape[i]);
         this.strides.push(strides_arr[i]);

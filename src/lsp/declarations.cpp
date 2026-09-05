@@ -49,6 +49,22 @@ bool NodeFinder::visit(const ExprAST& node) {
   if (hasSpan && !spanContains(loc, offset_)) return false;
   if (hasSpan) chain_.push_back(&node);
   bool found = false;
+  // Defaults live in class scope. Their analyzed copies are in constructor
+  // prefixes, whose function spans do not cover the field declarations.
+  if (node.getType() == ASTNodeType::CLASS_DEFINITION) {
+    const auto& cls = static_cast<const ClassDefinitionAST&>(node);
+    if (const auto* constructor = cls.getConstructor()) {
+      const auto& function = *constructor->function;
+      if (function.hasBody()) {
+        for (size_t i = 0; !found && i < function.getFieldInitializerCount();
+             ++i) {
+          const auto& assignment = static_cast<const MemberAssignmentAST&>(
+              *function.getBody().getBody().at(i));
+          found = visit(*assignment.getValue());
+        }
+      }
+    }
+  }
   forEachChild(node, [&](const ExprAST& child) {
     if (!found) found = visit(child);
   });

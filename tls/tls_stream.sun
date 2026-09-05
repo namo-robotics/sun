@@ -83,18 +83,14 @@ public module tls {
     return out;
   }
 
-  // TLS client connection. Owns the TCP socket and the OpenSSL handles;
-  // close() (or drop) releases everything in order.
+  /**
+   * A TLS client connection that starts empty and owns its socket and OpenSSL
+   * handles. Closing or dropping it releases them in order.
+   */
   public class TlsStream {
-    var tcp: TcpStream;
-    var ctx: raw_ptr<u8>;  // SSL_CTX*
-    var ssl: raw_ptr<u8>;  // SSL*
-
-    init() {
-      this.tcp = TcpStream();
-      this.ctx = null;
-      this.ssl = null;
-    }
+    var tcp: TcpStream = TcpStream();
+    var ctx: raw_ptr<u8> = null;  // SSL_CTX*
+    var ssl: raw_ptr<u8> = null;  // SSL*
 
     deinit() {
       this.close();

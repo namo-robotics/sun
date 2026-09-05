@@ -3,7 +3,7 @@
     "displayName": "Sun Language",
     "description": "Syntax highlighting, diagnostics, formatting, hover type information, go-to-definition, find references, rename symbol and Test Explorer for Sun",
     "icon": "images/sun-logo.png",
-    "version": "0.1.33",
+    "version": "0.1.34",
     "publisher": "namo-robotics",
     "license": "MIT",
     "repository": {

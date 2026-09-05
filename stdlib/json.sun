@@ -592,14 +592,12 @@ public module std {
   var JSON_MAX_DEPTH: i64 = 256;
 
   class JsonParser {
-    var pos: i64;
-    var depth: i64;
+    var pos: i64 = 0;
+    var depth: i64 = 0;
     var alloc: HeapAllocator;
 
     // Build a parser positioned at the start of the text.
     init(alloc: ref HeapAllocator) {
-      this.pos = 0;
-      this.depth = 0;
       this.alloc = alloc.copy();
     }
 

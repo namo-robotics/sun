@@ -58,13 +58,12 @@ public module std {
     public class PollFd {
       var fd: i32;
       var events: i16;
-      var revents: i16;
+      var revents: i16 = 0;
 
       // Build a poll record for one descriptor and the events to watch for.
       init(fd: i32, events: i16) {
         this.fd = fd;
         this.events = events;
-        this.revents = 0;
       }
     }
 
@@ -155,16 +154,11 @@ public module std {
       };
     }
 
-    // File handle wrapper
+    /** A file handle that starts empty; open or adopt a descriptor before use. */
     public class File {
       // 0 means "holds nothing". A moved-from File is zeroed, and closing
       // fd 0 would close stdin.
-      var fd: i32;
-
-      // Build a File that holds no descriptor. Open or adopt one before use.
-      init() {
-        this.fd = 0;
-      }
+      var fd: i32 = 0;
 
       // Open a file with the specified mode
       public method open(path: static_ptr<u8>, mode: FileMode) void throws IError {

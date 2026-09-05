@@ -76,7 +76,7 @@ class BorrowChecker {
   void checkWhileExpr(const WhileExprAST& whileExpr);
   void checkForExpr(const ForExprAST& forExpr);
   void checkForInExpr(const ForInExprAST& forInExpr);
-  void checkBlockExpr(const BlockExprAST& block);
+  void checkBlockExpr(const BlockExprAST& block, size_t start = 0);
   void checkReturnStmt(const ReturnExprAST& ret);
   void checkFunctionDef(const FunctionAST& func);
   void checkLambdaDef(const LambdaAST& lambda);

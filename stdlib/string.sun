@@ -206,14 +206,13 @@ public module std {
   public class Chars implements IIterator<char, Chars> {
     var data: raw_ptr<u8>;
     var len: i64;
-    var pos: i64;
+    var pos: i64 = 0;
 
     // Build an iterator over a byte range. The caller must keep the bytes alive
     // for as long as the iterator is used.
     init(data: raw_ptr<u8>, len: i64) {
       this.data = data;
       this.len = len;
-      this.pos = 0;
     }
 
     // Byte offset of the scalar value that next() will return.

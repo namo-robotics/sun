@@ -156,6 +156,9 @@ void forEachChild(const ExprAST& node, const ChildFn& fn) {
       fn(static_cast<const MoonScopeAST&>(node).getBody());
       break;
     case ASTNodeType::CLASS_DEFINITION: {
+      for (const auto& field :
+           static_cast<const ClassDefinitionAST&>(node).getFields())
+        visit(field.initializer.get(), fn);
       for (const auto& method :
            static_cast<const ClassDefinitionAST&>(node).getMethods())
         visit(method.function.get(), fn);

@@ -77,12 +77,9 @@ public module std {
     }
   }
 
+  /** Iterates over borrowed queue elements from the beginning. */
   public class QueueIterator<T> implements IIterator<ref T, Queue<T>> {
-    var inner: LinkedListIterator<T>;
-
-    init() {
-      this.inner = LinkedListIterator<T>();
-    }
+    var inner: LinkedListIterator<T> = LinkedListIterator<T>();
 
     // Next item, or None once the queue is exhausted. Items are borrowed: the
     // queue still owns them.

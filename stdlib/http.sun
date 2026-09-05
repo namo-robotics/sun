@@ -47,13 +47,12 @@ public module std {
   // -------------------------------------------------------------------
 
   public class HttpResponse {
-    public var status: i32;
+    public var status: i32 = 200;
     public var content_type: String;
     public var body: String;
 
     // Build a 200 response with an empty HTML body.
     init(alloc: ref HeapAllocator) {
-      this.status = 200;
       this.content_type = String(alloc, "text/html");
       this.body = String(alloc, "");
     }
@@ -165,15 +164,13 @@ public module std {
   // -------------------------------------------------------------------
 
   public class HttpServer {
-    var listener: TcpListener;
+    var listener: TcpListener = TcpListener();
     var alloc: HeapAllocator;
-    var running: bool;
+    var running: bool = false;
 
     // Build a server with no socket bound yet.
     init(allocator: ref HeapAllocator) {
       this.alloc = allocator.copy();
-      this.listener = TcpListener();
-      this.running = false;
     }
 
     // Close the listening socket.

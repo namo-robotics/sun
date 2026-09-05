@@ -239,9 +239,9 @@ public module std {
       // every element through a borrow, and the pointers would be scattered.
       var blob: String;
       var offsets: Vec<i64>;
-      var stdin_mode: Stdio;
-      var stdout_mode: Stdio;
-      var stderr_mode: Stdio;
+      var stdin_mode: Stdio = Stdio.Inherit;
+      var stdout_mode: Stdio = Stdio.Inherit;
+      var stderr_mode: Stdio = Stdio.Inherit;
 
       // Build a command for a program named by a literal. The name also becomes
       // argv[0].
@@ -249,9 +249,6 @@ public module std {
         this.alloc = allocator.copy();
         this.blob = String(allocator, "");
         this.offsets = Vec<i64>(allocator, 4);
-        this.stdin_mode = Stdio.Inherit;
-        this.stdout_mode = Stdio.Inherit;
-        this.stderr_mode = Stdio.Inherit;
         this.add_arg(program);
       }
 
@@ -261,9 +258,6 @@ public module std {
         this.alloc = allocator.copy();
         this.blob = String(allocator, "");
         this.offsets = Vec<i64>(allocator, 4);
-        this.stdin_mode = Stdio.Inherit;
-        this.stdout_mode = Stdio.Inherit;
-        this.stderr_mode = Stdio.Inherit;
         this.add_arg(program);
       }
 

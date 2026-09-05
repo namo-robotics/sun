@@ -8,7 +8,7 @@ using namespace llvm;
 
 // A block is a scope: it declares what it defines before emitting any body,
 // then drops whatever it still owns on the way out.
-Value* CodegenVisitor::codegen(const BlockExprAST& block) {
+Value* CodegenVisitor::codegen(const BlockExprAST& block, size_t start) {
   if (block.isEmpty()) return ConstantFP::get(ctx.getContext(), APFloat(0.0));
 
   variables.declareBlockExternGlobals(block);
@@ -17,7 +17,8 @@ Value* CodegenVisitor::codegen(const BlockExprAST& block) {
   Value* lastValue = nullptr;
   bool encounteredReturn = false;
 
-  for (const auto& expr : block.getBody()) {
+  for (size_t i = start; i < block.getBody().size(); ++i) {
+    const auto& expr = block.getBody()[i];
     if (encounteredReturn) {
       // Code after return is unreachable, skip codegen
       break;

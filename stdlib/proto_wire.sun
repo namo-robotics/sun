@@ -179,14 +179,13 @@ public module std {
   public class ProtoReader {
     var data: raw_ptr<u8>;
     var len: i64;  // current limit (end of the message being decoded)
-    var pos: i64;
+    var pos: i64 = 0;
 
     // Build a reader over a buffer. The buffer stays borrowed for the reader's
     // whole life, so its bytes cannot move underneath it.
     init(buf: ref Vec<u8>) {
       this.data = buf.raw_data();
       this.len = buf.size();
-      this.pos = 0;
     }
 
     // Report whether the reader has consumed everything up to the current limit.

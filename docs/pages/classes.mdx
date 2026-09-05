@@ -35,6 +35,41 @@ class Point {
 - **Interfaces**: Classes can implement one or more interfaces
 - **Visibility**: Fields and methods are private by default; mark the API `public`
 
+## Field Initializers
+
+Fields can supply values that run before the constructor body:
+
+```sun
+class Point {
+    var x: i32 = 10;
+    var y: i32 = this.x + 2;
+
+    init() {}
+    init(x: i32) { this.x = x; }
+}
+```
+
+Initializers run in field declaration order on every constructor call. They
+can use names from the class's definition scope, class type parameters, and
+`this`. Constructor parameters and locals are not visible, even when they
+share a name with an outer variable. Reading a field before it has been
+initialized, or passing an incomplete `this` elsewhere, remains an error.
+
+Defaults always run, including when the constructor subsequently replaces a
+field. Replacing an owning value drops the previous value normally; defaults
+do not introduce implicit copies.
+
+When every field has a default and there is no constructor, Sun supplies
+`init()`. If only some fields have defaults, write a constructor that initializes
+the rest, including fields inherited from interfaces. A default that propagates
+an error requires an explicit constructor with an appropriate `throws`
+declaration; the supplied constructor is non-throwing.
+
+Field initializers also work in packed classes. Fields still require explicit
+types. Struct literals must name every field and do not run these defaults.
+They remain available when Sun supplies the constructor; a class with an
+explicit `init` must still be constructed through it.
+
 ## Visibility
 
 Class members are **private by default**; `public` is the only modifier.

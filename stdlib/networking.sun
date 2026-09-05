@@ -217,13 +217,9 @@ public module std {
   // TcpStream - TCP connection (client or accepted)
   // -------------------------------------------------------------------
 
+  /** A TCP connection that starts without an open socket. */
   public class TcpStream {
-    var fd: i32;
-
-    // Build a closed socket. Connect or bind it before use.
-    init() {
-      this.fd = -1;
-    }
+    var fd: i32 = -1;
 
     // Close the socket if it is still open.
     deinit() {
@@ -342,13 +338,9 @@ public module std {
   // TcpListener - TCP server socket
   // -------------------------------------------------------------------
 
+  /** A TCP listener that starts without a bound socket. */
   public class TcpListener {
-    var fd: i32;
-
-    // Build a closed listener. Bind it before use.
-    init() {
-      this.fd = -1;
-    }
+    var fd: i32 = -1;
 
     // Close the listening socket if it is still open.
     deinit() {
@@ -540,13 +532,9 @@ public module std {
   // A UDP socket: connectionless send and receive, with multicast and
   // receive-timeout support. bind() creates the descriptor, so it always
   // comes first; a send-only socket binds port 0 and lets the OS pick.
+  /** A UDP socket that starts closed. */
   public class UdpSocket {
-    var fd: i32;
-
-    // Build a closed socket. Bind it before use.
-    init() {
-      this.fd = -1;
-    }
+    var fd: i32 = -1;
 
     // Close the socket if it is still open.
     deinit() {
