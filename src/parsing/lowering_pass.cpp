@@ -3,6 +3,7 @@
 #include "parsing/lowering_pass.h"
 
 #include "parsing/interpolated_string_parser.h"
+#include "semantic_analysis/field_initialization.h"
 
 void LoweringPass::run(BlockExprAST& program) {
   program.forEachChildSlot(
@@ -52,6 +53,9 @@ void LoweringPass::lowerSlot(std::unique_ptr<ExprAST>& slot) {
   if (!slot) return;
   slot->inheritSourceFile(sourceFile);
   switch (slot->getType()) {
+    case ASTNodeType::CLASS_DEFINITION:
+      sun::prepareFieldInitializers(static_cast<ClassDefinitionAST&>(*slot));
+      break;
     case ASTNodeType::IF: {
       auto& n = static_cast<IfExprAST&>(*slot);
       normalizeBody(n.thenSlot(), /*isIfBody=*/true);

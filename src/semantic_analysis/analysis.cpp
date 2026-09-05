@@ -649,7 +649,8 @@ void SemanticAnalyzer::analyzeStructLiteral(StructLiteralAST& literal,
 
   // A class with its own init is constructed through it; allowing both would
   // give two ways to build one object with different invariants.
-  if (classType->getMethod("init")) {
+  if (const auto* init = classType->getMethod("init");
+      init && !init->isSynthesizedConstructor) {
     logAndThrowError("Class '" + classType->getDisplayName() +
                          "' declares an 'init', so construct it with "
                          "'" +
@@ -1102,6 +1103,15 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
     ctx_.addTypeParameterBindings(typeParams, typeParamTypes);
   }
 
+  // Field defaults see the definition scope and this, before parameters exist.
+  bool savedAllowThisForDefaults = allowThisLifetime_;
+  allowThisLifetime_ = ctx_.getCurrentClass() != nullptr;
+  const auto& statements = func.getBody().getBody();
+  for (size_t i = 0; i < func.getFieldInitializerCount(); ++i) {
+    analyzeExpr(*statements.at(i));
+  }
+  allowThisLifetime_ = savedAllowThisForDefaults;
+
   // Declare parameters
   for (const auto& [argName, argType] : proto.getArgs()) {
     sun::TypePtr paramType = types_.typeAnnotationToType(argType);
@@ -1127,7 +1137,10 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
   }
   bool savedAllowThisForBody = allowThisLifetime_;
   allowThisLifetime_ = ctx_.getCurrentClass() != nullptr;
-  analyzeBlock(const_cast<BlockExprAST&>(func.getBody()));
+  declarations_.collectDeclarations(const_cast<BlockExprAST&>(func.getBody()));
+  for (size_t i = func.getFieldInitializerCount(); i < statements.size(); ++i) {
+    analyzeExpr(*statements[i]);
+  }
   allowThisLifetime_ = savedAllowThisForBody;
   activeLifetimeNames_.resize(lifetimeMark);
 
@@ -1497,19 +1510,25 @@ void SemanticAnalyzer::analyzeMethodWithBindings(
                          /*isConst=*/proto.isConstMethod());
   }
 
+  clearResolvedTypes(const_cast<BlockExprAST&>(methodFunc.getBody()));
+  const auto& statements = methodFunc.getBody().getBody();
+  for (size_t i = 0; i < methodFunc.getFieldInitializerCount(); ++i) {
+    analyzeExpr(*statements.at(i));
+  }
+
   // Step 5: Declare method parameters with substituted types
   for (size_t i = 0; i < proto.getArgs().size(); ++i) {
     const auto& [argName, argType] = proto.getArgs()[i];
     ctx_.declareVariable(argName, substitutedParamTypes[i], /*isParam=*/true);
   }
 
-  // Step 5.5: Clear old resolved types before re-analysis
-  // This is critical for shared generic ASTs that may have resolvedType set
-  // from a previous specialization (e.g., Map<i64,i64> types on Map<i64,i32>)
-  clearResolvedTypes(const_cast<BlockExprAST&>(methodFunc.getBody()));
-
-  // Step 6: Analyze the method body
-  analyzeBlock(const_cast<BlockExprAST&>(methodFunc.getBody()));
+  // Analyze the source body after its parameters are in scope.
+  declarations_.collectDeclarations(
+      const_cast<BlockExprAST&>(methodFunc.getBody()));
+  for (size_t i = methodFunc.getFieldInitializerCount(); i < statements.size();
+       ++i) {
+    analyzeExpr(*statements[i]);
+  }
 
   // Step 7: Pop scopes and restore context
   ctx_.exitScope();  // method scope

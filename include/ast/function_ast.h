@@ -17,6 +17,8 @@ class FunctionAST : public ExprAST {
   std::unique_ptr<BlockExprAST> Body;
   bool CAbi = false;
   bool IsTest = false;
+  size_t fieldInitializerCount_ = 0;
+  bool synthesizedConstructor_ = false;
 
  protected:
   // Override to allocate FunctionAnalysis instead of base ExprAnalysis
@@ -72,6 +74,20 @@ class FunctionAST : public ExprAST {
   // Set body (for replacing empty stub with parsed body)
   void setBody(std::unique_ptr<BlockExprAST> newBody) {
     Body = std::move(newBody);
+  }
+
+  /** Returns the number of generated field assignments before the source body.
+   */
+  size_t getFieldInitializerCount() const { return fieldInitializerCount_; }
+  /** Records the generated prefix so lowering and analysis do not repeat it. */
+  void setFieldInitializerCount(size_t count) {
+    fieldInitializerCount_ = count;
+  }
+  /** Reports whether field defaults supplied this constructor. */
+  bool isSynthesizedConstructor() const { return synthesizedConstructor_; }
+  /** Marks a constructor supplied by field defaults. */
+  void setSynthesizedConstructor(bool value) {
+    synthesizedConstructor_ = value;
   }
 
   // Check if function is a bodyless declaration. True for both `extern

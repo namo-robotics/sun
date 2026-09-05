@@ -42,6 +42,59 @@
 #include "support/error.h"
 
 namespace sun {
+
+void prepareFieldInitializers(ClassDefinitionAST& classDef) {
+  if (classDef.isPartial() || classDef.isPrecompiled()) return;
+  size_t count = 0;
+  for (const auto& field : classDef.getFields()) {
+    if (field.initializer) ++count;
+  }
+  if (!count) return;
+
+  if (!classDef.getConstructor()) {
+    if (count != classDef.getFields().size()) {
+      logAndThrowError(
+          "Class '" + classDef.getName() +
+              "' needs an explicit init to initialize fields without defaults",
+          classDef.getLocation());
+    }
+    auto proto = std::make_unique<PrototypeAST>(
+        "init", std::vector<std::pair<std::string, TypeAnnotation>>{});
+    proto->setLocation(classDef.getLocation());
+    auto body = std::make_unique<BlockExprAST>();
+    body->setKind(BlockKind::Function);
+    body->setLocation(classDef.getLocation());
+    auto function =
+        std::make_unique<FunctionAST>(std::move(proto), std::move(body));
+    function->setVisibility(sun::Visibility::Public);
+    function->setLocation(classDef.getLocation());
+    function->setSynthesizedConstructor(true);
+    function->inheritSourceFile(classDef.getSourceFileId());
+    classDef.getMutableMethods().push_back({std::move(function), true});
+  }
+
+  for (auto& method : classDef.getMutableMethods()) {
+    auto& function = *method.function;
+    if (!method.isConstructor || !function.hasBody() ||
+        function.getFieldInitializerCount())
+      continue;
+    std::vector<std::unique_ptr<ExprAST>> prefix;
+    for (const auto& field : classDef.getFields()) {
+      if (!field.initializer) continue;
+      auto receiver = std::make_unique<ThisExprAST>();
+      receiver->setLocation(field.location);
+      auto assignment = std::make_unique<MemberAssignmentAST>(
+          std::move(receiver), field.name, field.initializer->clone());
+      assignment->setLocation(field.initializer->getLocation());
+      assignment->inheritSourceFile(classDef.getSourceFileId());
+      prefix.push_back(std::move(assignment));
+    }
+    const_cast<BlockExprAST&>(function.getBody())
+        .prependExpressions(std::move(prefix));
+    function.setFieldInitializerCount(count);
+  }
+}
+
 namespace {
 
 /**
@@ -575,6 +628,12 @@ void checkFieldInitialization(const FunctionAST& constructor,
                               const ClassType& classType,
                               const std::vector<ClassMethodDecl>& methods) {
   if (!constructor.hasBody()) return;
+  if (constructor.isSynthesizedConstructor() &&
+      constructor.getFieldInitializerCount() != classType.getFields().size()) {
+    logAndThrowError(
+        "An explicit init is required for inherited fields without defaults",
+        constructor.getLocation());
+  }
   ClassInitInfo info(classType, methods);
   BodyWalk walk(info);
   walk.walk(constructor.getBody());

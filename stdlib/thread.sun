@@ -87,14 +87,10 @@ public module std {
     //   0 = unlocked
     //   1 = locked (no waiters)
     //   2 = locked (with waiters)
+    /** A mutex that starts unlocked. */
     public class Mutex {
       // Lock state: 0=unlocked, 1=locked, 2=locked+waiters
-      var state: i32;
-
-      // Build an unlocked mutex.
-      init() {
-        this.state = 0;
-      }
+      var state: i32 = 0;
 
       // Acquire the lock. Blocks until the lock is available.
       public method lock() void {
@@ -171,14 +167,9 @@ public module std {
     // Proof that a guard was handed out by acquire(). Constructors are always
     // public, so the guard instead demands this module-private token: code
     // outside the module cannot name LockKey, so it cannot build a guard.
+    /** A module-private token that permits constructing a lock guard. */
     class LockKey {
-      var unused: i8;
-
-      // Nothing to set up; the token's value is that only this module can
-      // make one.
-      init() {
-        this.unused = 0;
-      }
+      var unused: i8 = 0;
     }
 
     // Holds a Mutex locked for as long as it lives. Built only by

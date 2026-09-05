@@ -40,6 +40,10 @@ void ExprAST::inheritSourceFile(sun::SourceFileId id) {
           sourceFileId_);
       return;
     case ASTNodeType::CLASS_DEFINITION:
+      for (const auto& field :
+           static_cast<ClassDefinitionAST&>(*this).getFields())
+        if (field.initializer)
+          field.initializer->inheritSourceFile(sourceFileId_);
       for (const auto& method :
            static_cast<ClassDefinitionAST&>(*this).getMethods())
         if (method.function) method.function->inheritSourceFile(sourceFileId_);

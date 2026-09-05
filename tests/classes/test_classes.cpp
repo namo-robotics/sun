@@ -1502,3 +1502,270 @@ TEST(Classes, method_overload_keeps_its_selected_return_type) {
   )");
   EXPECT_EQ(value, 42);
 }
+
+TEST(Classes_FieldInitializers, defaults_run_in_order_for_every_overload) {
+  EXPECT_EQ(executeString(R"(
+    var calls: i32 = 0;
+    function next() i32 { calls = calls + 1; return calls; }
+    class Foo {
+      var x: i32 = next();
+      var y: i32 = this.x + next();
+      init() {}
+      init(value: i32) { this.x = value; }
+    }
+    function main() i32 {
+      var a = Foo();
+      var b = Foo(10);
+      return a.x + a.y + b.x + b.y + calls;
+    }
+  )"),
+            25);
+}
+
+TEST(Classes_FieldInitializers,
+     synthesized_constructor_is_visible_before_class) {
+  EXPECT_EQ(executeString(R"(
+    function main() i32 { var f = Foo(); return f.x; }
+    class Foo { var x: i32 = 42; }
+  )"),
+            42);
+}
+
+TEST(Classes_FieldInitializers,
+     defaults_use_outer_names_despite_parameters_and_locals) {
+  EXPECT_EQ(executeString(R"(
+    public module settings { public var seed: i32 = 12; }
+    using settings;
+    class Foo {
+      var x: i32 = seed;
+      init(seed: i32) { this.x = this.x + seed; }
+      init() { var seed: i32 = 100; }
+    }
+    function main() i32 {
+      var a = Foo(3);
+      var b = Foo();
+      return a.x + b.x;
+    }
+  )"),
+            27);
+}
+
+TEST(Classes_FieldInitializers, constructor_parameters_are_not_visible) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(R"(
+    class Foo { var x: i32 = seed; init(seed: i32) {} }
+    function main() i32 { return 0; }
+  )"),
+                                "Unknown variable: 'seed'");
+}
+
+TEST(Classes_FieldInitializers, later_field_reads_are_rejected) {
+  EXPECT_THROW(compileString(R"(
+    class Foo { var x: i32 = this.y; var y: i32 = 2; }
+    function main() i32 { return 0; }
+  )"),
+               SunError);
+}
+
+TEST(Classes_FieldInitializers, incomplete_this_cannot_escape) {
+  EXPECT_THROW(compileString(R"(
+    function inspect(f: ref Foo) i32 { return f.x; }
+    class Foo { var x: i32 = inspect(this); }
+    function main() i32 { return 0; }
+  )"),
+               SunError);
+}
+
+TEST(Classes_FieldInitializers, missing_defaults_require_explicit_constructor) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(R"(
+    class Foo { var x: i32 = 1; var y: i32; }
+    function main() i32 { return 0; }
+  )"),
+                                "needs an explicit init");
+  EXPECT_EQ(executeString(R"(
+    class Foo { var x: i32 = 1; var y: i32; init() { this.y = 2; } }
+    function main() i32 { var f = Foo(); return f.x + f.y; }
+  )"),
+            3);
+}
+
+TEST(Classes_FieldInitializers, inherited_fields_must_be_initialized) {
+  EXPECT_THROW(compileString(R"(
+    interface Fields { var y: i32; }
+    class Foo implements Fields { var x: i32 = 1; }
+    function main() i32 { return 0; }
+  )"),
+               SunError);
+  EXPECT_EQ(executeString(R"(
+    interface Fields { var y: i32; }
+    class Foo implements Fields { var y: i32 = 7; }
+    function main() i32 { var f = Foo(); return f.y; }
+  )"),
+            7);
+}
+
+TEST(Classes_FieldInitializers, packed_and_nested_class_defaults) {
+  EXPECT_EQ(executeString(R"(
+    packed_class Pair { var x: i32 = 3; var y: i32 = 4; }
+    class Foo { var pair: Pair = Pair(); var extra: Pair = { x: 5, y: 6 }; }
+    function main() i32 { var f = Foo(); return f.pair.x + f.extra.y; }
+  )"),
+            9);
+}
+
+TEST(Classes_FieldInitializers,
+     struct_literals_are_exhaustive_and_skip_defaults) {
+  EXPECT_THROW(compileString(R"(
+    class Foo { public var x: i32 = 1; public var y: i32 = 2; }
+    function main() i32 { var f: Foo = { x: 3 }; return 0; }
+  )"),
+               SunError);
+  EXPECT_EQ(executeString(R"(
+    var calls: i32 = 0;
+    function next() i32 { calls = calls + 1; return calls; }
+    class Foo { var x: i32 = next(); }
+    function main() i32 { var f: Foo = { x: 5 }; return f.x + calls; }
+  )"),
+            5);
+}
+
+TEST(Classes_FieldInitializers, owning_defaults_are_replaced_and_dropped_once) {
+  EXPECT_EQ(executeString(R"(
+    var dropped: i32 = 0;
+    class Resource {
+      var id: i32;
+      init(id: i32) { this.id = id; }
+      deinit() { dropped = dropped + this.id; }
+    }
+    class Foo {
+      var resource: Resource = Resource(1);
+      init() { this.resource = Resource(10); }
+    }
+    function use() void { var f = Foo(); }
+    function main() i32 { use(); return dropped; }
+  )"),
+            11);
+}
+
+TEST(Classes_FieldInitializers,
+     throwing_defaults_require_throwing_constructor) {
+  const std::string preamble = R"(
+    class Failure implements IError {
+      init() {}
+      method code() i32 { return 1; }
+      method message() static_ptr<u8> { return "failed"; }
+    }
+    function fail() i32 throws IError { throw Failure(); }
+  )";
+  EXPECT_THROW(compileString(preamble + R"(
+    class Foo { var x: i32 = fail(); }
+    function main() i32 { return 0; }
+  )"),
+               SunError);
+  EXPECT_EQ(executeString(preamble + R"(
+    class Foo { var x: i32 = fail(); init() throws IError {} }
+    function main() i32 {
+      try { var f = Foo(); return 0; }
+      catch (e: IError) { return 7; }
+    }
+  )"),
+            7);
+}
+
+TEST(Classes_FieldInitializers,
+     generic_defaults_are_independent_and_use_definition_scope) {
+  EXPECT_EQ(executeString(R"(
+    public module settings { public var seed: i32 = 7; }
+    using settings;
+    class Box<T> { var value: T = _convert<T>(10); }
+    class Counter<T> {
+      var value: i32 = seed;
+      init(seed: i32) { this.value = this.value + seed; }
+    }
+    function main() i32 {
+      var a = Box<i32>();
+      var b = Box<i64>();
+      var c = Counter<i32>(1);
+      var d = Counter<i64>(2);
+      return a.value + _convert<i32>(b.value) + c.value + d.value;
+    }
+  )"),
+            37);
+}
+
+TEST(Classes_FieldInitializers,
+     failing_defaults_clean_up_fields_and_owned_arguments) {
+  EXPECT_EQ(executeString(R"(
+    var dropped: i32 = 0;
+    class Resource {
+      var id: i32;
+      init(id: i32) { this.id = id; }
+      deinit() { dropped = dropped + this.id; }
+    }
+    class Failure implements IError {
+      init() {}
+      method code() i32 { return 1; }
+      method message() static_ptr<u8> { return "failed"; }
+    }
+    function fail() i32 throws IError { throw Failure(); }
+    class Foo {
+      var resource: Resource = Resource(1);
+      var status: i32 = fail();
+      init(resource: Resource) throws IError {}
+    }
+    function main() i32 {
+      try { var f = Foo(Resource(10)); return 0; }
+      catch (e: IError) { return dropped; }
+    }
+  )"),
+            11);
+}
+
+TEST(Classes_FieldInitializers,
+     invalid_types_and_missing_annotations_are_rejected) {
+  EXPECT_THROW(compileString(R"(
+    class Foo { var x: i32 = true; }
+    function main() i32 { return 0; }
+  )"),
+               SunError);
+  EXPECT_THROW(compileString(R"(
+    class Foo { var x = 10; }
+    function main() i32 { return 0; }
+  )"),
+               SunError);
+  EXPECT_THROW(compileString(R"(
+    interface Foo { var x: i32 = 10; }
+    function main() i32 { return 0; }
+  )"),
+               SunError);
+}
+
+TEST(Classes_FieldInitializers,
+     constructor_catch_keeps_defaults_and_escape_drops_replacement) {
+  EXPECT_EQ(executeString(R"(
+    var dropped: i32 = 0;
+    class Resource {
+      var id: i32;
+      init(id: i32) { this.id = id; }
+      deinit() { dropped = dropped + this.id; }
+    }
+    class Failure implements IError {
+      init() {}
+      method code() i32 { return 1; }
+      method message() static_ptr<u8> { return "failed"; }
+    }
+    function fail() void throws IError { throw Failure(); }
+    class Foo {
+      var resource: Resource = Resource(1);
+      init() throws IError {
+        try { fail(); }
+        catch (e: IError) { this.resource = Resource(10 + dropped); }
+        fail();
+      }
+    }
+    function main() i32 {
+      try { var f = Foo(); return 0; }
+      catch (e: IError) { return dropped; }
+    }
+  )"),
+            11);
+}

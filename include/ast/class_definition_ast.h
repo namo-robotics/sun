@@ -14,13 +14,14 @@
 #include "parsing/lexer.h"
 #include "semantic_analysis/qualified_name.h"
 
-// Field qualifiedName in a class: var name: type;
+/** Declares a class field with its type and optional default expression. */
 struct ClassFieldDecl {
   std::string name;
   TypeAnnotation type;
   Position location;  // Source location of field qualifiedName
   sun::Visibility visibility = sun::Visibility::Private;
   std::string doc;  // Comment written above the field
+  std::unique_ptr<ExprAST> initializer;
 };
 
 // Method qualifiedName in a class (uses FunctionAST internally)
@@ -93,6 +94,9 @@ class ClassDefinitionAST : public ExprAST {
   ASTNodeType getType() const override { return ASTNodeType::CLASS_DEFINITION; }
 
   void forEachChildSlot(const ChildSlotFn& fn) override {
+    for (auto& field : fields) {
+      if (field.initializer) fn(field.initializer);
+    }
     for (auto& method : methods) {
       if (method.function) method.function->forEachChildSlot(fn);
     }

@@ -592,3 +592,15 @@ function main() i64 {
   EXPECT_EQ(hoverAt(source, "for (var item", true), "var item: ref i64");
   EXPECT_EQ(hoverAt(source, "item;", true), "item: ref i64");
 }
+
+TEST(Tooling_Lsp_Hover, FieldInitializerUsesAnalyzedExpression) {
+  const std::string source = R"(
+    public module settings { public var seed: i32 = 10; }
+    using settings;
+    class Foo {
+      var x: i32 = seed + 2;
+      init(seed: bool) {}
+    }
+  )";
+  EXPECT_EQ(hoverAt(source, "seed +"), "seed: i32");
+}

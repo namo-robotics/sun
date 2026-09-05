@@ -29,13 +29,12 @@ public module std {
   public class Vec<T> implements IIterable<ref T, Vec<T>> {
     var data: ContiguousBuffer<T>;  // Element storage (bounds-checked, auto-freed)
     var capacity_: i64;  // Allocated capacity
-    var size_: i64;  // Current number of elements
+    var size_: i64 = 0;  // Current number of elements
 
     // Constructor with allocator and capacity
     init(allocator: const ref HeapAllocator, capacity: i64) {
       this.data = ContiguousBuffer<T>(allocator, capacity);
       this.capacity_ = capacity;
-      this.size_ = 0;
     }
 
     // Destructor - drop live elements (the buffer memory itself is freed by
@@ -215,13 +214,9 @@ public module std {
   // VecIterator<T> - Iterator over Vec elements
   // ============================================================================
 
+  /** Iterates over borrowed vector elements from the beginning. */
   public class VecIterator<T> implements IIterator<ref T, Vec<T>> {
-    var current: i64;
-
-    // Build an iterator positioned before the first element.
-    init() {
-      this.current = 0;
-    }
+    var current: i64 = 0;
 
     // Next element, or None once the Vec is exhausted. Elements are borrowed:
     // the Vec still owns them.

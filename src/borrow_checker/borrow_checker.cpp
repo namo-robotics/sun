@@ -1407,9 +1407,10 @@ void BorrowChecker::checkForInExpr(const ForInExprAST& forInExpr) {
   exitScope();
 }
 
-void BorrowChecker::checkBlockExpr(const BlockExprAST& block) {
+void BorrowChecker::checkBlockExpr(const BlockExprAST& block, size_t start) {
   enterScope();
-  for (const auto& stmt : block.getBody()) {
+  for (size_t i = start; i < block.getBody().size(); ++i) {
+    const auto& stmt = block.getBody()[i];
     if (stmt) {
       checkExpr(*stmt);
     }
@@ -1539,6 +1540,13 @@ void BorrowChecker::checkFunctionDef(const FunctionAST& func) {
   enterFunctionScope(funcName);
   currentFunctionReturnsRef_ = returnsRef;
 
+  // Defaults resolve outer names before parameters introduce their lifetimes.
+  if (func.hasBody()) {
+    for (size_t i = 0; i < func.getFieldInitializerCount(); ++i) {
+      checkExpr(*func.getBody().getBody().at(i));
+    }
+  }
+
   // Track reference parameters and their lifetimes. A by-value parameter
   // is storage this frame owns; a ref parameter's referent outlives it.
   for (const auto& [argName, argType] : proto.getArgs()) {
@@ -1572,7 +1580,7 @@ void BorrowChecker::checkFunctionDef(const FunctionAST& func) {
 
   // Check the function body (skip for extern declarations)
   if (func.hasBody()) {
-    checkBlockExpr(func.getBody());
+    checkBlockExpr(func.getBody(), func.getFieldInitializerCount());
   }
 
   // Exit function scope - clears all borrows

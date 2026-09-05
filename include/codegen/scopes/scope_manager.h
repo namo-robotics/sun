@@ -78,6 +78,8 @@ struct ClassAllocation {
   // How many branch arms were open when the value became owned. A move nested
   // deeper than this happens on some paths only.
   unsigned branchDepth = 0;
+  bool unwindOnly =
+      false;  // Constructor fields belong to the caller on success.
 };
 
 /**
@@ -206,7 +208,7 @@ class ScopeManager {
   // later adopted by a variable) keeps its single entry — double-tracking
   // would double-drop.
   void trackClassAllocation(llvm::Value* alloca, const std::string& name,
-                            sun::TypePtr type);
+                            sun::TypePtr type, bool unwindOnly = false);
 
   // A block used as a value hands its result to the enclosing expression, and
   // ownership goes with it — the block's own scope must not drop it. Marks the
@@ -269,10 +271,10 @@ class ScopeManager {
   // Emit cleanup for all scopes from the innermost down to index `depth`
   // (inclusive), without popping any. Used by break/continue/throw paths that
   // jump out of several scopes at once.
-  void emitCleanupToDepth(size_t depth);
+  void emitCleanupToDepth(size_t depth, bool unwinding = false);
 
   // Emit cleanup for a single scope's allocations (LIFO), without popping it
-  void emitCleanupForScope(CodegenScope& scope);
+  void emitCleanupForScope(CodegenScope& scope, bool unwinding = false);
 
   // Drop whatever value of `type` lives at `ptr`, in place: class recursion,
   // interface vtable drop glue, or the enum drop function.

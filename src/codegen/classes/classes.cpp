@@ -585,9 +585,37 @@ void ClassGenerator::generateMethodBody(const FunctionAST& methodFunc,
     ++argIt;
   }
 
-  // Generate the method body. A method's return value comes only from
-  // explicit return statements, so the body is in statement position.
-  codegen(methodFunc.getBody());
+  // Parameters own their arguments during defaults, but their names are not
+  // visible until the source body starts.
+  const size_t prefixCount = methodFunc.getFieldInitializerCount();
+  if (prefixCount) {
+    std::vector<std::pair<std::string, AllocaInst*>> hiddenParameters;
+    for (const auto& name : paramNames) {
+      auto& variables = scopes().back().variables;
+      hiddenParameters.emplace_back(name, variables.at(name));
+      variables.erase(name);
+    }
+    for (size_t i = 0; i < prefixCount; ++i) {
+      const auto& assignment = static_cast<const MemberAssignmentAST&>(
+          *methodFunc.getBody().getBody().at(i));
+      codegen(static_cast<const ExprAST&>(assignment));
+      const auto* field = currentClass->getField(assignment.getMemberName());
+      if (field && sun::typeNeedsDrop(field->type)) {
+        auto* address =
+            layout::fieldPtr(*ctx.builder, currentClass.get(), thisPtr, *field,
+                             field->name + ".initialized");
+        scopes().trackClassAllocation(address, "this." + field->name,
+                                      field->type,
+                                      /*unwindOnly=*/true);
+      }
+    }
+    for (const auto& [name, storage] : hiddenParameters) {
+      scopes().back().variables[name] = storage;
+    }
+  }
+
+  // The source body follows the defaults in the same constructor frame.
+  codegen(methodFunc.getBody(), prefixCount);
 
   // Add implicit return if no explicit return. A non-void body whose last
   // statement always returns/throws (e.g. a match with terminating arms)

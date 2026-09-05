@@ -10,6 +10,7 @@
 #include "ast.h"
 #include "parsing/lexer.h"
 #include "parsing/parser.h"
+#include "semantic_analysis/field_initialization.h"
 #include "serialization/ast_deserializer.h"
 #include "serialization/ast_serializer.h"
 #include "serialization/token_kind_proto_map.h"
@@ -1266,4 +1267,23 @@ TEST(Tooling_Serialization, SourceFilesSurviveCloningWithoutLocations) {
     EXPECT_FALSE(node->getLocation().filePath.has_value());
     EXPECT_EQ(node->clone()->getSourceFileId(), first->getSourceFileId());
   }
+}
+
+TEST(Tooling_Serialization, ClassFieldInitializersAndLoweredPrefixRoundtrip) {
+  auto program = parseCode("class Foo { var x: i32 = 42; }");
+  auto& cls = static_cast<ClassDefinitionAST&>(*program->getBody()[0]);
+  sun::prepareFieldInitializers(cls);
+  ASSERT_NE(cls.getConstructor(), nullptr);
+  auto clone = cls.clone();
+  auto& restored = static_cast<ClassDefinitionAST&>(*clone);
+  ASSERT_NE(restored.getFields()[0].initializer, nullptr);
+  ASSERT_NE(restored.getConstructor(), nullptr);
+  const auto& constructor = *restored.getConstructor()->function;
+  EXPECT_TRUE(constructor.isSynthesizedConstructor());
+  EXPECT_EQ(constructor.getFieldInitializerCount(), 1u);
+  EXPECT_EQ(constructor.getBody().getBody().size(), 1u);
+  sun::prepareFieldInitializers(restored);
+  EXPECT_EQ(constructor.getBody().getBody().size(), 1u);
+  EXPECT_NE(restored.getFields()[0].initializer.get(),
+            cls.getFields()[0].initializer.get());
 }

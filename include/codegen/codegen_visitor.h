@@ -137,7 +137,9 @@ class CodegenVisitor {
   // What the driver calls
   // ---------------------------------------------------------------
 
-  llvm::Value* codegen(const BlockExprAST& block);
+  /** Emits a block, optionally skipping a prefix already emitted by its caller.
+   */
+  llvm::Value* codegen(const BlockExprAST& block, size_t start = 0);
   llvm::Value* codegen(const ExprAST& expr);
 
   // A node kind whose codegen lives on a component must be dispatched to that

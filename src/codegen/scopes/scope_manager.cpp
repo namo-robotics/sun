@@ -77,7 +77,7 @@ Value* ScopeManager::compoundStorageAddress(const std::string& name) {
 // -------------------------------------------------------------------
 
 void ScopeManager::trackClassAllocation(Value* alloca, const std::string& name,
-                                        sun::TypePtr type) {
+                                        sun::TypePtr type, bool unwindOnly) {
   if (scopes_.empty()) return;
   if (type && (type->isEnum() || type->isArray()) && !sun::typeNeedsDrop(type))
     return;
@@ -90,6 +90,7 @@ void ScopeManager::trackClassAllocation(Value* alloca, const std::string& name,
     }
   }
   ClassAllocation entry{alloca, name, false, std::move(type)};
+  entry.unwindOnly = unwindOnly;
   // Remember this point: if a branch later moves the value on some paths only,
   // its drop flag is set here, where the value became owned.
   if (BasicBlock* here = ctx.builder->GetInsertBlock()) {
@@ -421,14 +422,14 @@ void ScopeManager::emitDropInPlace(const sun::TypePtr& type, Value* ptr,
   }
 }
 
-void ScopeManager::emitCleanupToDepth(size_t depth) {
+void ScopeManager::emitCleanupToDepth(size_t depth, bool unwinding) {
   if (scopes_.empty()) return;
   for (size_t i = scopes_.size(); i-- > depth;) {
-    emitCleanupForScope(scopes_[i]);
+    emitCleanupForScope(scopes_[i], unwinding);
   }
 }
 
-void ScopeManager::emitCleanupForScope(CodegenScope& scope) {
+void ScopeManager::emitCleanupForScope(CodegenScope& scope, bool unwinding) {
   // First, cleanup class allocations (call deinit methods)
   auto& currentClassScope = scope.classAllocations;
 
@@ -437,7 +438,7 @@ void ScopeManager::emitCleanupForScope(CodegenScope& scope) {
   if (!currentClassScope.empty()) {
     for (auto it = currentClassScope.rbegin(); it != currentClassScope.rend();
          ++it) {
-      if (!it->alloca || !it->type) continue;
+      if (!it->alloca || !it->type || (it->unwindOnly && !unwinding)) continue;
       if (it->dropFlag) {
         emitFlaggedDrop(*it);
       } else if (!it->moved) {

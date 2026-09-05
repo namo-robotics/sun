@@ -1033,3 +1033,40 @@ TEST_F(MoonExactTypes, nested_using_target_is_canonical_in_generic_body) {
   )"),
       42);
 }
+
+TEST(Modules_FileImports, field_initializers_survive_source_and_moon_imports) {
+  auto paths = writeImportSources({R"(
+    public module defaults {
+      var calls: i32 = 0;
+      function next() i32 { calls = calls + 1; return calls; }
+      public class Value { public var n: i32 = next(); }
+      public class Box<T> { public var value: Value = Value(); }
+      public function count() i32 { return calls; }
+    }
+  )",
+                                   R"(
+    function main() i32 {
+      var a = defaults.Value();
+      var b = defaults.Box<i32>();
+      var literal: defaults.Value = { n: 100 };
+      return a.n + b.value.n + defaults.count() + literal.n - 100;
+    }
+  )"});
+  EXPECT_EQ(
+      Driver::createForJIT("field_initializer_sources")->executeFiles(paths),
+      5);
+  initTestEnvironment();
+  auto moon = std::filesystem::path(paths[0]).parent_path() / "defaults.moon";
+  ASSERT_NO_THROW(sun::MoonBuilder::build(paths[0], moon));
+  auto driver = Driver::createForJIT("field_initializer_bundle");
+  driver->setMoonImports({sun::MoonImport(moon.string())});
+  EXPECT_EQ(driver->executeString(R"(
+    function main() i32 {
+      var a = defaults.Value();
+      var b = defaults.Box<i32>();
+      var literal: defaults.Value = { n: 100 };
+      return a.n + b.value.n + defaults.count() + literal.n - 100;
+    }
+  )"),
+            5);
+}

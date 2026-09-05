@@ -162,7 +162,8 @@ Value* ErrorGenerator::codegen(const ThrowExprAST& expr) {
     // function): drop live owners before unwinding.
     scopes().emitCleanupToDepth(tryStack.empty()
                                     ? scopes().functionBoundaryDepth()
-                                    : tryStack.back().scopeDepth);
+                                    : tryStack.back().scopeDepth,
+                                /*unwinding=*/true);
 
     emitCxaThrowAndUnreachable(exc);
   } else {
@@ -191,7 +192,8 @@ Value* ErrorGenerator::codegen(const ThrowExprAST& expr) {
     // tracked scope allocation).
     scopes().emitCleanupToDepth(tryStack.empty()
                                     ? scopes().functionBoundaryDepth()
-                                    : tryStack.back().scopeDepth);
+                                    : tryStack.back().scopeDepth,
+                                /*unwinding=*/true);
 
     emitCxaThrowAndUnreachable(exc);
   }
@@ -380,7 +382,8 @@ Value* ErrorGenerator::codegen(const TryCatchExprAST& expr) {
     // function): drop live owners before rethrowing.
     scopes().emitCleanupToDepth(tryStack.empty()
                                     ? scopes().functionBoundaryDepth()
-                                    : tryStack.back().scopeDepth);
+                                    : tryStack.back().scopeDepth,
+                                /*unwinding=*/true);
     FunctionCallee rethrow = getCxaRethrow();
     if (!tryStack.empty()) {
       ensurePersonality(func);
@@ -554,7 +557,7 @@ Value* ErrorGenerator::emitPossiblyThrowingCall(FunctionType* fnTy,
       // the exception joins the catch dispatch.
       lp->addClause(ConstantPointerNull::get(ptrTy));
       Value* excPtr = ctx.builder->CreateExtractValue(lp, 0, "exc.ptr");
-      scopes().emitCleanupToDepth(cleanupDepth);
+      scopes().emitCleanupToDepth(cleanupDepth, /*unwinding=*/true);
       // Cleanup may have moved the insert point into a later block (owned-ptr
       // frees create null-check blocks): the dispatch edge starts there.
       tryStack.back().excPhi->addIncoming(excPtr,
@@ -563,7 +566,7 @@ Value* ErrorGenerator::emitPossiblyThrowingCall(FunctionType* fnTy,
     } else {
       // Pure cleanup pad: drop owners, then continue unwinding to the caller.
       lp->setCleanup(true);
-      scopes().emitCleanupToDepth(cleanupDepth);
+      scopes().emitCleanupToDepth(cleanupDepth, /*unwinding=*/true);
       ctx.builder->CreateResume(lp);
     }
     unwindDest = padBB;

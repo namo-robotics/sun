@@ -280,7 +280,9 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
   // ClassType for resolved types)
   std::vector<ClassFieldDecl> fieldsClone;
   for (const auto& field : genericClassInfo->AST->getFields()) {
-    fieldsClone.push_back({field.name, field.type, field.location});
+    fieldsClone.push_back(
+        {field.name, field.type, field.location, field.visibility, field.doc,
+         field.initializer ? field.initializer->clone() : nullptr});
   }
 
   // Clone methods for specialized AST - each specialization gets its own
@@ -314,6 +316,8 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
           proto.getTypeParameterNames(), proto.canThrow());
       method.visibility = methodVisibility(*methodClone.function);
       method.isConst = methodClone.isConst;
+      method.isSynthesizedConstructor =
+          methodClone.function->isSynthesizedConstructor();
     }
 
     // Update the cloned method's prototype with resolved types

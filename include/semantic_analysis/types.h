@@ -1034,6 +1034,7 @@ struct ClassMethod {
   bool canThrow = false;  // declared with 'throws IError' — may unwind
   bool isConst = false;   // `const function`: does not change `this`
   sun::Visibility visibility = sun::Visibility::Private;
+  bool isSynthesizedConstructor = false;
 
   bool isGeneric() const { return !typeParameters.empty(); }
 };

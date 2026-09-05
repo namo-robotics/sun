@@ -415,3 +415,15 @@ function main() i64 {
             static_cast<int>(offsetOf(source, "item: i64 in v")));
   EXPECT_EQ(rangeText(source, *item), "item");
 }
+
+TEST(Tooling_Lsp_Definition, FieldInitializerIgnoresConstructorParameter) {
+  const std::string source = R"(
+    public module settings { public var seed: i32 = 10; }
+    using settings;
+    class Foo {
+      var x: i32 = seed + 2;
+      init(seed: bool) {}
+    }
+  )";
+  EXPECT_TRUE(definedAt(source, "seed +", "seed: i32"));
+}

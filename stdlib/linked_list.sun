@@ -25,14 +25,12 @@
 public module std {
   public class LinkedListNode<T> {
     var value: T;
-    var next: raw_ptr<LinkedListNode<T>>;
-    var prev: raw_ptr<LinkedListNode<T>>;
+    var next: raw_ptr<LinkedListNode<T>> = null;
+    var prev: raw_ptr<LinkedListNode<T>> = null;
 
     // Build a detached node that owns the given value.
     init(v: T) {
       this.value = v;
-      this.next = null;
-      this.prev = null;
     }
 
     // Borrow the stored value; the node keeps ownership
@@ -92,17 +90,14 @@ public module std {
   // ============================================================================
 
   public class LinkedList<T> implements IIterable<ref T, LinkedList<T>> {
-    var head: raw_ptr<LinkedListNode<T>>;
-    var tail: raw_ptr<LinkedListNode<T>>;
+    var head: raw_ptr<LinkedListNode<T>> = null;
+    var tail: raw_ptr<LinkedListNode<T>> = null;
     var alloc: HeapAllocator;
-    var size_: i64;
+    var size_: i64 = 0;
 
     // Constructor with allocator
     init(allocator: const ref HeapAllocator) {
       this.alloc = allocator.copy();
-      this.head = null;
-      this.tail = null;
-      this.size_ = 0;
     }
 
     // Destructor - free all nodes
@@ -313,15 +308,10 @@ public module std {
   // LinkedListIterator<T> - Iterator over LinkedList elements
   // ============================================================================
 
+  /** Iterates over borrowed list elements from the first node. */
   public class LinkedListIterator<T> implements IIterator<ref T, LinkedList<T>> {
-    var current: raw_ptr<LinkedListNode<T>>;
-    var started: bool;
-
-    // Build an iterator positioned before the first node.
-    init() {
-      this.current = null;
-      this.started = false;
-    }
+    var current: raw_ptr<LinkedListNode<T>> = null;
+    var started: bool = false;
 
     // Next element, or None once the list is exhausted. Elements are
     // borrowed: the list still owns them.

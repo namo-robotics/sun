@@ -98,8 +98,10 @@ class Formatter {
 
   // --- statements ---------------------------------------------------------
 
-  void printStmts(const std::vector<std::unique_ptr<ExprAST>>& stmts) {
-    for (const auto& stmt : stmts) {
+  void printStmts(const std::vector<std::unique_ptr<ExprAST>>& stmts,
+                  size_t start = 0) {
+    for (size_t i = start; i < stmts.size(); ++i) {
+      const auto& stmt = stmts[i];
       if (!stmt || stmt->isPrecompiled()) continue;
       const Position& loc = stmt->getLocation();
       flushCommentsBefore(loc.offset);
@@ -162,10 +164,10 @@ class Formatter {
   // --- blocks -------------------------------------------------------------
 
   // Multiline block: '{' newline, indented statements, '}'
-  void printBlockML(const BlockExprAST& b) {
+  void printBlockML(const BlockExprAST& b, size_t start = 0) {
     const Position& loc = b.getLocation();
     int endOffset = loc.endOffset.value_or(static_cast<int>(src_.size()));
-    if (b.isEmpty() && !hasCommentBefore(endOffset)) {
+    if (b.getBody().size() == start && !hasCommentBefore(endOffset)) {
       out_ += "{}";
       return;
     }
@@ -173,7 +175,7 @@ class Formatter {
     ++indent_;
     int savedLast = lastLine_;
     lastLine_ = -1;  // no blank line right after '{'
-    printStmts(b.getBody());
+    printStmts(b.getBody(), start);
     flushCommentsBefore(endOffset);
     --indent_;
     writeIndent();
@@ -396,10 +398,13 @@ class Formatter {
     };
     std::vector<Member> members;
     for (const auto& f : c.getFields()) {
-      members.push_back({f.location.offset, f.location.line,
-                         endLineOf(f.location), &f, nullptr});
+      members.push_back(
+          {f.location.offset, f.location.line,
+           endLineOf(f.initializer ? f.initializer->getLocation() : f.location),
+           &f, nullptr});
     }
     for (const auto& m : c.getMethods()) {
+      if (m.function->isSynthesizedConstructor()) continue;
       const Position& loc = m.function->getLocation();
       members.push_back(
           {loc.offset, loc.line, endLineOf(loc), nullptr, m.function.get()});
@@ -418,6 +423,10 @@ class Formatter {
         out_ += m.field->name;
         out_ += ": ";
         printType(m.field->type);
+        if (m.field->initializer) {
+          out_ += " = ";
+          printExpr(*m.field->initializer);
+        }
         out_ += ';';
       } else {
         const std::string& methodName = m.method->getProto().getName();
@@ -425,7 +434,8 @@ class Formatter {
           // Constructors and destructors are written bare: init(...) { }
           printProtoSig(m.method->getProto());
           out_ += ' ';
-          printBlockML(m.method->getBody());
+          printBlockML(m.method->getBody(),
+                       m.method->getFieldInitializerCount());
         } else {
           printVisibility(m.method->getVisibility());
           if (m.method->getProto().isConstMethod()) out_ += "const ";

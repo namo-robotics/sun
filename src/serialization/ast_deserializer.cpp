@@ -725,6 +725,8 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeFunction(
       std::make_unique<FunctionAST>(std::move(prototype), std::move(body));
   func->setCExtern(proto.is_c_extern());
   func->setIsTest(proto.is_test());
+  func->setFieldInitializerCount(proto.field_initializer_count());
+  func->setSynthesizedConstructor(proto.synthesized_constructor());
   func->setVisibility(fromProto(proto.visibility()));
   return func;
 }
@@ -836,6 +838,8 @@ std::unique_ptr<FunctionAST> ASTDeserializer::deserializeMethodFunction(
   }
   auto function =
       std::make_unique<FunctionAST>(std::move(prototype), std::move(body));
+  function->setFieldInitializerCount(proto.field_initializer_count());
+  function->setSynthesizedConstructor(proto.synthesized_constructor());
   function->setSourceFileId(proto.source_file_id());
   function->setVisibility(fromProto(proto.visibility()));
   if (proto.has_location()) {
@@ -861,7 +865,10 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
 
   std::vector<ClassFieldDecl> fields;
   for (const auto& fieldProto : proto.fields()) {
-    fields.push_back(deserializeField<ClassFieldDecl>(fieldProto));
+    auto field = deserializeField<ClassFieldDecl>(fieldProto);
+    if (fieldProto.has_initializer())
+      field.initializer = deserialize(fieldProto.initializer());
+    fields.push_back(std::move(field));
   }
 
   std::vector<ClassMethodDecl> methods;

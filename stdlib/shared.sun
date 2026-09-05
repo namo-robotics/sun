@@ -18,15 +18,13 @@
 public module std {
   // The heap payload: one per Shared "family". Not named by user code.
   class SharedBox<T> {
-    var count: i32;  // Live handles; the one that sees 1 was the last
-    var lock: std.thread.Mutex;
+    var count: i32 = 1;  // Live handles; the one that sees 1 was the last
+    var lock: std.thread.Mutex = std.thread.Mutex();
     var value: T;
 
     // Take ownership of the value. The box starts with one handle: the
     // Shared<T> that built it.
     init(value: T) {
-      this.count = 1;
-      this.lock = std.thread.Mutex();
       this.value = value;
     }
 
@@ -61,14 +59,9 @@ public module std {
   // Proof that a guard was handed out by lock(). Constructors are always
   // public, so the guard instead demands this module-private token: code
   // outside the module cannot name GuardKey, so it cannot build a guard.
+  /** A module-private token that permits constructing a shared guard. */
   class GuardKey {
-    var unused: i8;
-
-    // Nothing to set up; the token's value is that only this module can
-    // make one.
-    init() {
-      this.unused = 0;
-    }
+    var unused: i8 = 0;
   }
 
   // Holds the lock for as long as it is alive. Dropping it unlocks, including

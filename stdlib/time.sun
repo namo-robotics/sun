@@ -158,9 +158,9 @@ public module std {
       public var hour: i32;  // 0-23
       public var minute: i32;  // 0-59
       public var second: i32;  // 0-60, 60 for a leap second
-      public var weekday: i32;  // 0 = Sunday
-      public var yearday: i32;  // 0-365
-      public var utc_offset: i64;  // seconds east of UTC
+      public var weekday: i32 = 0;  // 0 = Sunday
+      public var yearday: i32 = 0;  // 0-365
+      public var utc_offset: i64 = 0;  // seconds east of UTC
 
       // Build a calendar time from its date and clock fields. Weekday, day of year
       // and UTC offset start at zero; the conversion functions fill them in.
@@ -171,9 +171,6 @@ public module std {
         this.hour = hour;
         this.minute = minute;
         this.second = second;
-        this.weekday = 0;
-        this.yearday = 0;
-        this.utc_offset = 0;
       }
     }
 

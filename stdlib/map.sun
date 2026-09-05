@@ -132,13 +132,12 @@ public module std {
     var states: ContiguousBuffer<i8>;  // State array: 0=empty, 1=occupied, 2=deleted
     var alloc: HeapAllocator;  // Allocator (stored via copy)
     var capacity_: i64;  // Number of buckets
-    var size_: i64;  // Number of occupied entries
+    var size_: i64 = 0;  // Number of occupied entries
 
     // Constructor with allocator and capacity
     init(allocator: const ref HeapAllocator, capacity: i64) {
       this.alloc = allocator.copy();
       this.capacity_ = capacity;
-      this.size_ = 0;
 
       // Allocate ContiguousBuffer storage - size equals capacity
       this.keys = ContiguousBuffer<K>(allocator, capacity);
@@ -418,13 +417,9 @@ public module std {
   // MapIterator<K, V> - Iterator over map values
   // ============================================================================
 
+  /** Iterates over borrowed map values from the first bucket. */
   public class MapIterator<K, V> implements IIterator<ref V, Map<K, V>> {
-    var current: i64;
-
-    // Build an iterator positioned before the first bucket.
-    init() {
-      this.current = 0;
-    }
+    var current: i64 = 0;
 
     // Value in the next occupied slot, or None once the map is exhausted
     // Values are borrowed: the map still owns them.

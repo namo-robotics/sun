@@ -24,12 +24,11 @@ public module tls {
   // -------------------------------------------------------------------
 
   public class HttpClientResponse {
-    public var status: i32;
+    public var status: i32 = 0;
     public var headers: String;  // raw header block after the status line
     public var body: String;  // decoded body
 
     init(alloc: ref HeapAllocator) {
-      this.status = 0;
       this.headers = String(alloc, "");
       this.body = String(alloc, "");
     }

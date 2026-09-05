@@ -680,6 +680,8 @@ void ASTSerializer::serializeFunction(const FunctionAST& expr,
   *func->mutable_proto() = serializePrototype(expr.getProto());
   func->set_is_c_extern(expr.isCExtern());
   func->set_is_test(expr.isTest());
+  func->set_field_initializer_count(expr.getFieldInitializerCount());
+  func->set_synthesized_constructor(expr.isSynthesizedConstructor());
   func->set_visibility(toProto(expr.getVisibility()));
   // An empty body and no body are different things: the latter is a
   // declaration, and reconstructing it as the former would give a C extern
@@ -695,6 +697,8 @@ void ASTSerializer::serializeMethodFunction(const FunctionAST& function,
   if (function.hasBody()) {
     serializeBlockInto(function.getBody(), proto->mutable_body());
   }
+  proto->set_field_initializer_count(function.getFieldInitializerCount());
+  proto->set_synthesized_constructor(function.isSynthesizedConstructor());
   proto->set_source_file_id(function.getSourceFileId());
   proto->set_visibility(toProto(function.getVisibility()));
   if (config_.include_location && function.getLocation().endOffset) {
@@ -827,7 +831,10 @@ void ASTSerializer::serializeClassDef(const ClassDefinitionAST& expr,
   }
 
   for (const auto& field : expr.getFields()) {
-    serializeFieldInto(field, cls->add_fields());
+    auto* fieldProto = cls->add_fields();
+    serializeFieldInto(field, fieldProto);
+    if (field.initializer)
+      *fieldProto->mutable_initializer() = serialize(*field.initializer);
   }
 
   for (const auto& method : expr.getMethods()) {

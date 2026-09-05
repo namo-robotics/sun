@@ -4192,6 +4192,15 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
       getNextToken();  // eat ':'
 
       TypeAnnotation fieldType = parseTypeAnnotation();
+      std::unique_ptr<ExprAST> initializer;
+      if (curTok.kind == TokenKind::EQUAL) {
+        getNextToken();
+        initializer = curTok.kind == TokenKind::BRACE_OPEN
+                          ? parseStructLiteral()
+                          : parseExpression();
+        if (!initializer)
+          parsingError("field initialization expression expected");
+      }
 
       if (curTok.kind != TokenKind::SEMI_COLON) {
         parsingError("expected ';' after field declaration");
@@ -4199,8 +4208,12 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
       }
       getNextToken();  // eat ';'
 
-      fields.push_back(
-          {std::move(fieldName), std::move(fieldType), fieldLoc, memberVis});
+      fields.push_back({std::move(fieldName),
+                        std::move(fieldType),
+                        fieldLoc,
+                        memberVis,
+                        {},
+                        std::move(initializer)});
     } else if (curTok.kind == TokenKind::IDENTIFIER &&
                (curTok.getIdentifier() == "init" ||
                 curTok.getIdentifier() == "deinit")) {

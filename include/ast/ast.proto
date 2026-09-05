@@ -404,6 +404,8 @@ message FunctionDef {
   // A `test_function`. Without this a clone or bundle roundtrip would hand
   // back an ordinary function, and the test would leak into production builds.
   bool is_test = 8;
+  uint64 field_initializer_count = 9;
+  bool synthesized_constructor = 10;
 }
 
 message LambdaExpr {
@@ -481,6 +483,7 @@ message QualifiedNameExpr {
 
 // Class field declaration
 message ClassField {
+  optional ASTNode initializer = 6;
   string name = 1;
   TypeAnnotation type = 2;
   Position location = 3;

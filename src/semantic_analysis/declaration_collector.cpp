@@ -3,6 +3,7 @@
 
 #include "semantic_analysis/declaration_collector.h"
 
+#include "semantic_analysis/field_initialization.h"
 #include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "support/config.h"
@@ -83,6 +84,7 @@ void DeclarationCollector::collectTypeNames(BlockExprAST& block) {
       }
       case ASTNodeType::CLASS_DEFINITION: {
         auto& classDef = static_cast<ClassDefinitionAST&>(*expr);
+        sun::prepareFieldInitializers(classDef);
         if (classDef.isPartial() || ctx_.lookupClass(classDef.getName())) break;
         sun::QualifiedName qualifiedClass =
             classDef.hasQualifiedName()
@@ -300,6 +302,7 @@ void DeclarationCollector::collectDeclarations(BlockExprAST& block) {
       }
       case ASTNodeType::CLASS_DEFINITION: {
         auto& classDef = static_cast<ClassDefinitionAST&>(*expr);
+        sun::prepareFieldInitializers(classDef);
         if (classDef.isPartial()) break;
         // Skip if already registered
         if (ctx_.lookupClass(classDef.getName())) break;
@@ -652,6 +655,8 @@ void DeclarationCollector::registerClassShape(
                              proto.getTypeParameterNames(), proto.canThrow());
     method.visibility = methodVisibility(*methodDecl.function);
     method.isConst = methodDecl.isConst;
+    method.isSynthesizedConstructor =
+        methodDecl.function->isSynthesizedConstructor();
   }
   ctx_.setCurrentClass(savedClass);
 

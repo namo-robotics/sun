@@ -235,7 +235,9 @@ class ClassGenerator {
   // codegen(const ExprAST&), which attaches an expression debug location the
   // block path does not want.
   llvm::Value* codegen(const ExprAST& expr);
-  llvm::Value* codegen(const BlockExprAST& block);
+  /** Emits a block, optionally skipping a prefix already emitted by its caller.
+   */
+  llvm::Value* codegen(const BlockExprAST& block, size_t start = 0);
 
   // A node kind with its own overload must not silently bind to the
   // ExprAST forwarder above: that path attaches an expression debug location,
