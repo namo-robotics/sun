@@ -1315,8 +1315,7 @@ void Driver::compileFile(const std::string& filename) {
 /// Merge multiple parsed BlockExprASTs into a single unified AST.
 /// Same-named modules are merged together.
 static std::unique_ptr<BlockExprAST> mergeASTs(
-    std::vector<std::unique_ptr<BlockExprAST>>& parsedFiles,
-    const std::vector<std::string>& filePaths) {
+    std::vector<std::unique_ptr<BlockExprAST>>& parsedFiles) {
   std::vector<std::unique_ptr<ExprAST>> mergedBody;
 
   // Track modules by name so we can merge same-named modules. Emission keeps
@@ -1460,7 +1459,7 @@ std::unique_ptr<BlockExprAST> Driver::parseAndMergeFiles(
   parseSynthesizedProtoModules(protoFiles, parsedFiles, canonicalPaths);
 
   // Merge all parsed files into a single AST
-  return mergeASTs(parsedFiles, canonicalPaths);
+  return mergeASTs(parsedFiles);
 }
 
 void Driver::compileFiles(const std::vector<std::string>& sourceFiles,

@@ -30,6 +30,8 @@ struct Position;
  * is asking" is the nearest module scope on the stack.
  */
 class SemanticContext : public AccessContext {
+  sun::SourceFileId sourceFileId_ = 0;
+
  public:
   /** Start with an empty global scope holding the builtin functions. */
   explicit SemanticContext(std::shared_ptr<sun::TypeRegistry> registry);
@@ -387,6 +389,24 @@ class SemanticContext : public AccessContext {
 
   /** The type a `type` alias names, searching outwards (null if none). */
   sun::TypePtr findTypeAlias(const std::string &name) const;
+
+  /** The file whose imports are visible during the current operation. */
+  sun::SourceFileId currentSourceFileId() const override {
+    return sourceFileId_;
+  }
+
+  /** Restore source context after declaration analysis or specialization. */
+  struct SourceFileGuard {
+    SemanticContext &ctx;
+    sun::SourceFileId saved;
+    SourceFileGuard(SemanticContext &c, sun::SourceFileId id)
+        : ctx(c), saved(c.sourceFileId_) {
+      if (id) ctx.sourceFileId_ = id;
+    }
+    ~SourceFileGuard() { ctx.sourceFileId_ = saved; }
+    SourceFileGuard(const SourceFileGuard &) = delete;
+    SourceFileGuard &operator=(const SourceFileGuard &) = delete;
+  };
 
   // ---- Scope and location guards -----------------------------------------
 

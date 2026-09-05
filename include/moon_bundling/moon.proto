@@ -21,11 +21,9 @@ message ModuleMetadata {
   // Dependencies
   repeated string dependencies = 5;  // Paths to imported modules
 
-  // `using` declarations in effect for the exported definitions (dotted
-  // module paths, e.g. "sun"). Re-bound when the module stubs are imported so
-  // exported class shapes / signatures resolve the same names they were
-  // written against (e.g. a field of type Vec<u8> from stdlib.moon).
-  repeated string usings = 11;
+  // Source imports retain their target and file identity within this module.
+  reserved 11;
+  repeated sun.ast.ASTNode using_declarations = 15;
 
   // Target the bitcode was compiled for (LLVM triple, e.g.
   // "x86_64-pc-linux-gnu"). Linking a bundle into a different target is an

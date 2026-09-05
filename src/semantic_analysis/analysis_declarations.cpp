@@ -459,7 +459,8 @@ void SemanticAnalyzer::analyzeFunctionDefinition(FunctionAST& func) {
   analyzeFunction(func);
 
   // Set the function type on the function node
-  func.setResolvedType(types_.inferType(func));
+  func.setResolvedType(sun::Types::Function(
+      funcInfo.returnType, funcInfo.paramTypes, funcInfo.canThrow));
 }
 
 void SemanticAnalyzer::analyzeLambdaExpr(LambdaAST& lambda) {

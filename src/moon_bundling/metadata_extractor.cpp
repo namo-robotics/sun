@@ -179,20 +179,10 @@ void extractFromStatements(const std::vector<std::unique_ptr<ExprAST>>& stmts,
   for (const auto& stmt : stmts) {
     if (!stmt) continue;
 
-    // Record `using` declarations (whole-module imports) so importers can
-    // rebind them around the exported stubs
+    // Keep source imports in their original module and file context.
     if (stmt->getType() == ASTNodeType::USING) {
-      const auto& u = static_cast<const UsingAST&>(*stmt);
-      std::string path = u.getNamespacePathString();
-      std::string target = u.getTarget();
-      std::string full =
-          path.empty() ? target : (target == "*" ? path : path + "." + target);
-      auto& metadata = collector.forModule(modulePath);
-      bool seen = false;
-      for (const auto& existing : metadata.usings()) {
-        if (existing == full) seen = true;
-      }
-      if (!seen) metadata.add_usings(full);
+      *collector.forModule(modulePath).add_using_declarations() =
+          serializer.serialize(*stmt);
     }
 
     // Handle module/namespace blocks (nested modules become dotted paths)
@@ -256,13 +246,12 @@ std::vector<moon::ModuleMetadata> extractAllMetadata(
   std::vector<moon::ModuleMetadata> out;
   size_t idx = 0;
   for (auto& [name, md] : collector.modules) {
-    // A file-level shell with nothing exported (just usings) is noise. Named
-    // modules are kept even when empty: their visibility is part of the
-    // bundle's interface (an outer `public module a` of `a.b`, say)
+    // Keep file-level imports even when all declarations are inside modules.
+    // Named modules also carry visibility when otherwise empty.
     bool empty = md.functions_size() == 0 && md.classes_size() == 0 &&
                  md.interfaces_size() == 0 && md.enums_size() == 0 &&
                  md.globals_size() == 0;
-    if (empty && name.empty()) continue;
+    if (empty && name.empty() && md.using_declarations_size() == 0) continue;
     // Bundle entries are keyed by source hash: several modules from one file
     // need distinct keys
     md.set_source_hash(idx == 0 ? sourceHash

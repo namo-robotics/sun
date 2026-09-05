@@ -5,6 +5,19 @@ import PathVariablesExample from '../generated/path_variables.mdx'
 
 Sun uses a **manifest-based** module system where programs declare their dependencies in a `manifest` block. Multiple source files are merged into a single AST before compilation, enabling efficient cross-file optimization.
 
+## Using statements
+
+A `using` statement makes names available only to code in the same source file
+and within its enclosing scope. A file-level `using` also reaches nested modules
+in that file. A `using` inside a module or function stays within that scope and
+its children.
+
+Files contributing to the same module share declarations, but each file must
+provide its own imports. Module-level imports apply regardless of their position
+in the file. Generic definitions retain their own file's imports when specialized
+from another file or loaded from a `.moon` library. Qualified names such as
+`std.Vec` do not require a `using` statement.
+
 ## Manifests
 
 Every Sun program has an **entrypoint file** containing a `manifest` block that declares all dependencies:

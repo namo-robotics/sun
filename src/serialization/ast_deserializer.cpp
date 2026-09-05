@@ -149,6 +149,7 @@ void ASTDeserializer::deserializeExprBase(const ast::ASTNode& node,
   if (node.has_location()) {
     expr->setLocation(deserializePosition(node.location()));
   }
+  expr->setSourceFileId(node.source_file_id());
   expr->setPrecompiled(node.precompiled());
   expr->setSkipCodegen(node.skip_codegen());
   expr->setSymbolPrefix(node.symbol_prefix());
@@ -405,6 +406,7 @@ std::unique_ptr<BlockExprAST> ASTDeserializer::deserializeBlockExpr(
     body.push_back(deserialize(stmt));
   }
   auto block = std::make_unique<BlockExprAST>(std::move(body));
+  block->setSourceFileId(proto.source_file_id());
   if (proto.has_block_kind()) {
     block->setKind(static_cast<BlockKind>(proto.block_kind()));
   }
@@ -825,6 +827,7 @@ std::unique_ptr<FunctionAST> ASTDeserializer::deserializeMethodFunction(
   }
   auto function =
       std::make_unique<FunctionAST>(std::move(prototype), std::move(body));
+  function->setSourceFileId(proto.source_file_id());
   function->setVisibility(fromProto(proto.visibility()));
   if (proto.has_location()) {
     function->setLocation(deserializePosition(proto.location()));

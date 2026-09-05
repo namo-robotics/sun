@@ -78,6 +78,7 @@ class Parser {
 
   // Current file being parsed (for error messages)
   std::string currentFilePath;
+  sun::SourceFileId sourceFileId_ = sun::nextSourceFileId();
 
   // Helper: throw parsing error with source context
   [[noreturn]] void parsingError(const std::string& msg) {
@@ -176,6 +177,9 @@ class Parser {
 
   // Set the file path for error messages
   void setFilePath(const std::string& path) { currentFilePath = path; }
+
+  /** Parse an embedded expression in its enclosing source unit. */
+  void setSourceFileId(sun::SourceFileId id) { sourceFileId_ = id; }
   const std::string& getFilePath() const { return currentFilePath; }
 
   unique_ptr<BlockExprAST> parseProgram();
@@ -236,6 +240,7 @@ class Parser {
     if (node) {
       start.setEnd(prevTok_.end.line, prevTok_.end.column, prevTok_.end.offset);
       node->setLocation(std::move(start));
+      node->inheritSourceFile(sourceFileId_);
     }
     return node;
   }

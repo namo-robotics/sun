@@ -1244,3 +1244,24 @@ TEST(Tooling_Serialization, ExternGlobalMetadataRoundtrip) {
   EXPECT_EQ(variable->getLinkName(), "native_name");
   EXPECT_EQ(variable->getVisibility(), sun::Visibility::Public);
 }
+
+// Source identity is semantic state even when diagnostics are omitted.
+TEST(Tooling_Serialization, SourceFilesSurviveCloningWithoutLocations) {
+  Parser parser;
+  auto first =
+      parser.parseString("using lib; function f() i32 { return answer(); }");
+  auto second = parser.parseString("function g() i32 { return 0; }");
+  ASSERT_NE(first->getSourceFileId(), 0);
+  EXPECT_NE(first->getSourceFileId(), second->getSourceFileId());
+  ASTSerializer serializer({.include_location = false});
+  ASTDeserializer deserializer;
+  auto restored =
+      deserializer.deserializeProgram(serializer.serializeProgram(*first));
+  EXPECT_EQ(restored->getSourceFileId(), first->getSourceFileId());
+  ASSERT_EQ(restored->getBody().size(), 2);
+  for (const auto& node : restored->getBody()) {
+    EXPECT_EQ(node->getSourceFileId(), first->getSourceFileId());
+    EXPECT_FALSE(node->getLocation().filePath.has_value());
+    EXPECT_EQ(node->clone()->getSourceFileId(), first->getSourceFileId());
+  }
+}

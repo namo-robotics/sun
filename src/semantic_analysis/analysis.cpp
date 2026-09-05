@@ -127,6 +127,7 @@ void SemanticAnalyzer::validateBorrowTarget(const ExprAST& target,
 // -------------------------------------------------------------------
 
 void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
+  SemanticContext::SourceFileGuard sourceFile(ctx_, expr.getSourceFileId());
   SemanticContext::LocationGuard locationGuard(ctx_, expr.getLocation());
   switch (expr.getType()) {
     case ASTNodeType::NUMBER:
@@ -431,7 +432,20 @@ std::vector<sun::TypePtr> SemanticAnalyzer::validateAndResolveParamTypes(
 // -------------------------------------------------------------------
 
 FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
+  SemanticContext::SourceFileGuard sourceFile(ctx_, func.getSourceFileId());
   PrototypeAST& proto = const_cast<PrototypeAST&>(func.getProto());
+
+  // Only declared generic parameters may remain unresolved in a signature.
+  SemanticContext::ScopeSwitchGuard signatureScope(ctx_, ctx_.scope());
+  if (!proto.getTypeParameters().empty()) {
+    std::vector<sun::TypePtr> parameters;
+    for (const auto& parameter : proto.getTypeParameters()) {
+      auto bound = ctx_.findTypeParameter(parameter.name);
+      parameters.push_back(bound ? bound
+                                 : sun::Types::TypeParameter(parameter.name));
+    }
+    ctx_.enterTypeParamScope(proto.getTypeParameterNames(), parameters);
+  }
 
   // Validate function name (if named function, not lambda)
   if (!proto.getName().empty()) {
@@ -1422,6 +1436,8 @@ void SemanticAnalyzer::analyzeMethodWithBindings(
     FunctionAST& methodFunc, std::shared_ptr<sun::ClassType> classType,
     const std::vector<std::string>& typeParams,
     const std::vector<sun::TypePtr>& typeArgs) {
+  SemanticContext::SourceFileGuard sourceFile(ctx_,
+                                              methodFunc.getSourceFileId());
   // Step 2: Set up scope with type parameter bindings (only if needed)
   // For generic class methods, type bindings are already in the Class scope
   bool needsTypeParamScope =

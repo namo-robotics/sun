@@ -15,6 +15,7 @@ void LoweringPass::run(BlockExprAST& program) {
 static void normalizeBody(std::unique_ptr<ExprAST>& slot, bool isIfBody) {
   if (!slot || slot->getType() != ASTNodeType::BLOCK) return;
   auto& block = static_cast<BlockExprAST&>(*slot);
+  const auto sourceFile = block.getSourceFileId();
   if (block.isEmpty()) {
     if (isIfBody) {
       slot = std::make_unique<BoolLiteralAST>(false);
@@ -24,10 +25,13 @@ static void normalizeBody(std::unique_ptr<ExprAST>& slot, bool isIfBody) {
   } else if (block.getBody().size() == 1) {
     slot = std::move(block.mutableBody()[0]);
   }
+  slot->inheritSourceFile(sourceFile);
 }
 
 void LoweringPass::lowerSlot(std::unique_ptr<ExprAST>& slot) {
   if (!slot || slot->isPrecompiled()) return;
+
+  const auto sourceFile = slot->getSourceFileId();
 
   // Bottom-up: children first
   slot->forEachChildSlot(
@@ -46,6 +50,7 @@ void LoweringPass::lowerSlot(std::unique_ptr<ExprAST>& slot) {
   }
 
   if (!slot) return;
+  slot->inheritSourceFile(sourceFile);
   switch (slot->getType()) {
     case ASTNodeType::IF: {
       auto& n = static_cast<IfExprAST&>(*slot);

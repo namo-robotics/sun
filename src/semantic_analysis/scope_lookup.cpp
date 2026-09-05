@@ -197,6 +197,7 @@ std::shared_ptr<sun::ClassType> SemanticScopeBase::lookupClass(
     }
   }
   return lookupInChain<std::shared_ptr<sun::ClassType>>(
+      name,
       [&](const SemanticScopeBase* scope) { return scope->findClass(name); });
 }
 
@@ -214,7 +215,7 @@ const GenericClassInfo* SemanticScopeBase::lookupGenericClass(
   }
 
   return lookupInChain<const GenericClassInfo*>(
-      [&](const SemanticScopeBase* scope) {
+      name, [&](const SemanticScopeBase* scope) {
         return scope->findGenericClass(name);
       });
 }
@@ -240,7 +241,7 @@ std::shared_ptr<sun::InterfaceType> SemanticScopeBase::lookupInterface(
     }
   }
   return lookupInChain<std::shared_ptr<sun::InterfaceType>>(
-      [&](const SemanticScopeBase* scope) {
+      name, [&](const SemanticScopeBase* scope) {
         return scope->findInterface(name);
       });
 }
@@ -260,7 +261,7 @@ const GenericInterfaceInfo* SemanticScopeBase::lookupGenericInterface(
   }
 
   return lookupInChain<const GenericInterfaceInfo*>(
-      [&](const SemanticScopeBase* scope) {
+      name, [&](const SemanticScopeBase* scope) {
         return scope->findGenericInterface(name);
       });
 }
@@ -276,6 +277,7 @@ std::shared_ptr<sun::EnumType> SemanticScopeBase::lookupEnum(
     }
   }
   return lookupInChain<std::shared_ptr<sun::EnumType>>(
+      name,
       [&](const SemanticScopeBase* scope) { return scope->findEnum(name); });
 }
 
@@ -290,7 +292,7 @@ const GenericEnumInfo* SemanticScopeBase::lookupGenericEnum(
     }
   }
   return lookupInChain<const GenericEnumInfo*>(
-      [&](const SemanticScopeBase* scope) {
+      name, [&](const SemanticScopeBase* scope) {
         return scope->findGenericEnum(name);
       });
 }
@@ -315,7 +317,10 @@ VariableInfo* SemanticScopeBase::lookupVariable(const std::string& name) {
     }
     // Search import bindings from using statements
     for (const auto& binding : s->importBindings) {
-      if (!binding.sourceScope || !binding.isWildcard) continue;
+      if (!s->admitsImport(binding.sourceFileId)) continue;
+      if (!binding.sourceScope ||
+          (!binding.isWildcard && binding.localName != name))
+        continue;
       if (auto* v = probe(binding.sourceScope)) return v;
     }
   }
@@ -356,7 +361,10 @@ const GenericFunctionInfo* SemanticScopeBase::lookupGenericFunction(
     }
     // Search import bindings
     for (const auto& binding : s->importBindings) {
-      if (!binding.sourceScope || !binding.isWildcard) continue;
+      if (!s->admitsImport(binding.sourceFileId)) continue;
+      if (!binding.sourceScope ||
+          (!binding.isWildcard && binding.localName != name))
+        continue;
       if (auto* g = probe(binding.sourceScope,
                           {binding.sourceScope->scopePath, name}))
         return g;
@@ -404,7 +412,10 @@ std::vector<FunctionInfo> SemanticScopeBase::getAllFunctions(
       }
     }
     for (const auto& binding : s->importBindings) {
-      if (!binding.sourceScope) continue;
+      if (!s->admitsImport(binding.sourceFileId)) continue;
+      if (!binding.sourceScope ||
+          (!binding.isWildcard && binding.localName != name))
+        continue;
       binding.sourceScope->collectFunctions(prefix, allResults);
     }
   };
@@ -584,7 +595,10 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunction(
       }
     }
     for (const auto& binding : s->importBindings) {
-      if (!binding.sourceScope) continue;
+      if (!s->admitsImport(binding.sourceFileId)) continue;
+      if (!binding.sourceScope ||
+          (!binding.isWildcard && binding.localName != name))
+        continue;
       result = findInScope(binding.sourceScope);
       if (result) return result;
     }
@@ -663,7 +677,9 @@ SemanticScopeBase* SemanticScopeBase::lookupModuleScope(
 std::vector<UsingImport> SemanticScopeBase::getActiveUsingImports() const {
   std::vector<UsingImport> result;
   for (auto* s = this; s != nullptr; s = s->parent) {
-    result.insert(result.end(), s->usingImports.begin(), s->usingImports.end());
+    for (const auto& import : s->usingImports) {
+      if (s->admitsImport(import.sourceFileId)) result.push_back(import);
+    }
   }
   return result;
 }
@@ -775,6 +791,7 @@ static std::vector<SemanticScopeBase*> collectAllModuleScopes(
       }
 
       for (const auto& binding : s->importBindings) {
+        if (!s->admitsImport(binding.sourceFileId)) continue;
         if (!binding.sourceScope || !binding.isWildcard) continue;
         if (binding.sourceScope->scopeName == path) {
           addUnique(binding.sourceScope);

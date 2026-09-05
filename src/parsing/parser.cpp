@@ -20,6 +20,7 @@
 #include "moon_bundling/metadata_extractor.h"
 #include "parsing/interpolated_string_parser.h"
 #include "serialization/ast_deserializer.h"
+#include "serialization/source_file_ids.h"
 #include "support/stage_timer.h"
 #include "support/sun_path.h"
 #include "support/target_os.h"
@@ -1122,8 +1123,8 @@ unique_ptr<ExprAST> Parser::parsePrimary() {
       Position tokEnd = curTok.end;
       getNextToken();  // consume the template string token
       usesStringInterpolation_ = true;
-      base = InterpolatedStringParser::parseToAst(content, tokStart, tokEnd,
-                                                  currentFilePath);
+      base = InterpolatedStringParser::parseToAst(
+          content, tokStart, tokEnd, currentFilePath, sourceFileId_);
       break;
     }
     case TokenKind::PAREN_OPEN:
@@ -3514,16 +3515,18 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
     // declarations come first so the stubs' field/parameter types resolve
     // the same names their source did (e.g. Vec<u8> from stdlib.moon).
     std::vector<std::unique_ptr<ExprAST>> stubs;
-    for (const auto& u : metadata->usings()) {
-      std::vector<std::string> path;
-      std::stringstream ss(u);
-      std::string seg;
-      while (std::getline(ss, seg, '.')) path.push_back(seg);
-      auto usingStub = std::make_unique<UsingAST>(std::move(path), "*");
+    auto scopedMetadata = *metadata;
+    sun::serialization::remapSourceFiles(
+        scopedMetadata, [&](sun::SourceFileId id) {
+          return sun::serialization::loadedSourceFileId(contentHash, id);
+        });
+    sun::serialization::ASTDeserializer importDeserializer;
+    for (const auto& u : scopedMetadata.using_declarations()) {
+      auto usingStub = importDeserializer.deserialize(u);
       usingStub->setPrecompiled(true);
       stubs.push_back(std::move(usingStub));
     }
-    createModuleStubs(*metadata, stubs);
+    createModuleStubs(scopedMetadata, stubs);
 
     // Get the original module name and apply remapping if configured
     std::string modName = metadata->module_name();
@@ -3674,6 +3677,7 @@ void Parser::createModuleStubs(
   for (int i = 0; i < metadata.interfaces_size(); ++i) {
     sun::ast::ASTNode node;
     *node.mutable_interface_def() = metadata.interfaces(i);
+    node.set_source_file_id(node.interface_def().source_file_id());
     if (node.interface_def().has_location()) {
       *node.mutable_location() = node.interface_def().location();
     }
@@ -3693,6 +3697,7 @@ void Parser::createModuleStubs(
   for (int i = 0; i < metadata.classes_size(); ++i) {
     sun::ast::ASTNode node;
     *node.mutable_class_def() = metadata.classes(i);
+    node.set_source_file_id(node.class_def().source_file_id());
     if (node.class_def().has_location()) {
       *node.mutable_location() = node.class_def().location();
     }
@@ -3713,6 +3718,7 @@ void Parser::createModuleStubs(
   for (int i = 0; i < metadata.globals_size(); ++i) {
     sun::ast::ASTNode node;
     *node.mutable_variable_creation() = metadata.globals(i);
+    node.set_source_file_id(node.variable_creation().source_file_id());
 
     auto ast = deserializer.deserialize(node);
     if (ast) {
@@ -3730,6 +3736,7 @@ void Parser::createModuleStubs(
   for (int i = 0; i < metadata.enums_size(); ++i) {
     sun::ast::ASTNode node;
     *node.mutable_enum_def() = metadata.enums(i);
+    node.set_source_file_id(node.enum_def().source_file_id());
     if (node.enum_def().has_location()) {
       *node.mutable_location() = node.enum_def().location();
     }
@@ -3744,6 +3751,7 @@ void Parser::createModuleStubs(
   for (int i = 0; i < metadata.functions_size(); ++i) {
     sun::ast::ASTNode node;
     *node.mutable_function_def() = metadata.functions(i);
+    node.set_source_file_id(node.function_def().source_file_id());
     if (node.function_def().has_location()) {
       *node.mutable_location() = node.function_def().location();
     }
@@ -4054,6 +4062,7 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
 
 // In parser.cpp (implementation)
 std::unique_ptr<BlockExprAST> Parser::parseString(const std::string& source) {
+  sourceFileId_ = sun::nextSourceFileId();
   std::istringstream ss(source);
   lexer.resetInput(ss);  // point the lexer at a new stream; keeps the buffer
                          // and position reset without touching the shared DFA

@@ -384,6 +384,7 @@ static std::vector<SemanticScope*> collectAllModuleScopes(
       // statements) Compare the binding's source scope's scopeName against
       // path
       for (const auto& binding : s->importBindings) {
+        if (!s->admitsImport(binding.sourceFileId)) continue;
         if (!binding.sourceScope || !binding.isWildcard) continue;
         // scopeName is the simple name like "std", not the full path with
         // import prefixes
@@ -1199,25 +1200,31 @@ sun::QualifiedName SemanticContext::resolveNameWithUsings(
 void SemanticContext::addUsingImport(const UsingImport& import) {
   // Skip if already present (idempotent for Pass 1 + Pass 2 double-processing)
   for (const auto& existing : currentScope_->usingImports) {
-    if (existing.namespacePath == import.namespacePath &&
+    if (existing.sourceFileId == currentSourceFileId() &&
+        existing.namespacePath == import.namespacePath &&
         existing.target == import.target) {
       return;
     }
   }
-  currentScope_->usingImports.push_back(import);
+  auto scopedImport = import;
+  scopedImport.sourceFileId = currentSourceFileId();
+  currentScope_->usingImports.push_back(std::move(scopedImport));
 }
 
 void SemanticContext::addImportBinding(const ImportBinding& binding) {
   // Skip if already present (idempotent for Pass 1 + Pass 2 double-processing)
   for (const auto& existing : currentScope_->importBindings) {
-    if (existing.sourceScope == binding.sourceScope &&
+    if (existing.sourceFileId == currentSourceFileId() &&
+        existing.sourceScope == binding.sourceScope &&
         existing.isWildcard == binding.isWildcard &&
         existing.localName == binding.localName &&
         existing.sourceName == binding.sourceName) {
       return;
     }
   }
-  currentScope_->importBindings.push_back(binding);
+  auto scopedBinding = binding;
+  scopedBinding.sourceFileId = currentSourceFileId();
+  currentScope_->importBindings.push_back(std::move(scopedBinding));
 }
 
 void SemanticContext::registerClass(const std::string& name,

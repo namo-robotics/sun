@@ -95,6 +95,7 @@ void ASTSerializer::serializeExprBase(const ExprAST& expr,
   if (config_.include_location) {
     *node->mutable_location() = serializePosition(expr.getLocation());
   }
+  node->set_source_file_id(expr.getSourceFileId());
   node->set_precompiled(expr.isPrecompiled());
   node->set_skip_codegen(expr.shouldSkipCodegen());
   node->set_symbol_prefix(expr.getSymbolPrefix());
@@ -109,6 +110,7 @@ ast::Program ASTSerializer::serializeProgram(const BlockExprAST& root) const {
 
 void ASTSerializer::serializeBlockInto(const BlockExprAST& block,
                                        ast::BlockExpr* proto) const {
+  proto->set_source_file_id(block.getSourceFileId());
   proto->set_block_kind(static_cast<uint32_t>(block.getKind()));
   for (const auto& stmt : block.getBody()) {
     *proto->add_body() = serialize(*stmt);
@@ -466,6 +468,7 @@ void ASTSerializer::serializeVariableRef(const VariableReferenceAST& expr,
 
 void ASTSerializer::serializeVariableCreation(const VariableCreationAST& expr,
                                               ast::ASTNode* node) const {
+  node->mutable_variable_creation()->set_source_file_id(expr.getSourceFileId());
   auto* var = node->mutable_variable_creation();
   var->set_name(expr.getName());
   var->set_visibility(toProto(expr.getVisibility()));
@@ -658,6 +661,7 @@ void ASTSerializer::serializeUnsafeBlock(const UnsafeBlockAST& expr,
 
 void ASTSerializer::serializeFunction(const FunctionAST& expr,
                                       ast::ASTNode* node) const {
+  node->mutable_function_def()->set_source_file_id(expr.getSourceFileId());
   auto* func = node->mutable_function_def();
   *func->mutable_proto() = serializePrototype(expr.getProto());
   func->set_is_c_extern(expr.isCExtern());
@@ -677,6 +681,7 @@ void ASTSerializer::serializeMethodFunction(const FunctionAST& function,
   if (function.hasBody()) {
     serializeBlockInto(function.getBody(), proto->mutable_body());
   }
+  proto->set_source_file_id(function.getSourceFileId());
   proto->set_visibility(toProto(function.getVisibility()));
   if (config_.include_location && function.getLocation().endOffset) {
     *proto->mutable_location() = serializePosition(function.getLocation());
@@ -776,6 +781,7 @@ void ASTSerializer::serializeQualifiedName(const QualifiedNameAST& expr,
 
 void ASTSerializer::serializeClassDef(const ClassDefinitionAST& expr,
                                       ast::ASTNode* node) const {
+  node->mutable_class_def()->set_source_file_id(expr.getSourceFileId());
   auto* cls = node->mutable_class_def();
   cls->set_name(expr.getName());
 
@@ -816,6 +822,7 @@ void ASTSerializer::serializeClassDef(const ClassDefinitionAST& expr,
 
 void ASTSerializer::serializeInterfaceDef(const InterfaceDefinitionAST& expr,
                                           ast::ASTNode* node) const {
+  node->mutable_interface_def()->set_source_file_id(expr.getSourceFileId());
   auto* iface = node->mutable_interface_def();
   iface->set_name(expr.getName());
 
@@ -845,6 +852,7 @@ void ASTSerializer::serializeInterfaceDef(const InterfaceDefinitionAST& expr,
 
 void ASTSerializer::serializeEnumDef(const EnumDefinitionAST& expr,
                                      ast::ASTNode* node) const {
+  node->mutable_enum_def()->set_source_file_id(expr.getSourceFileId());
   auto* enumDef = node->mutable_enum_def();
   enumDef->set_name(expr.getName());
   enumDef->set_visibility(toProto(expr.getVisibility()));

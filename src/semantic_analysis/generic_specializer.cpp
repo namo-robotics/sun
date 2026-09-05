@@ -204,6 +204,8 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
   // template's own module.
   SemanticContext::ScopeSwitchGuard definitionScope(
       ctx_, SemanticContext::definitionScopeOf(*genericClassInfo));
+  SemanticContext::SourceFileGuard definitionFile(
+      ctx_, genericClassInfo->AST->getSourceFileId());
 
   // Push a scope for class-level type parameter bindings
   ctx_.enterClassScope(specializedQName);
@@ -297,19 +299,10 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
     const auto& methodClone = methodsClone[i];
     const auto& proto = methodClone.function->getProto();
 
-    // Get return type with substitution
-    sun::TypePtr returnType;
-    if (proto.getReturnType()) {
-      returnType = sema_.types().typeAnnotationToType(*proto.getReturnType());
-    } else {
-      returnType = sun::Types::Void();
-    }
-
-    // Get parameter types with substitution
-    std::vector<sun::TypePtr> paramTypes;
-    for (const auto& [argName, argType] : proto.getArgs()) {
-      paramTypes.push_back(sema_.types().typeAnnotationToType(argType));
-    }
+    // Resolve class bindings while retaining declared method parameters.
+    auto signature = sema_.getFunctionInfo(*methodClone.function);
+    sun::TypePtr returnType = signature.returnType;
+    std::vector<sun::TypePtr> paramTypes = std::move(signature.paramTypes);
 
     // Add method to class type (skip if type already exists)
     if (!astOnlyMode) {
@@ -402,6 +395,7 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
   specializedAST->setIsPacked(genericClassInfo->AST->isPacked());
   specializedAST->setVisibility(genericClassInfo->AST->getVisibility());
   specializedAST->setLocation(genericClassInfo->AST->getLocation());
+  specializedAST->inheritSourceFile(genericClassInfo->AST->getSourceFileId());
 
   // Interface conformance is checked per specialization (signatures are
   // only known once T is substituted)
@@ -482,6 +476,8 @@ void GenericSpecializer::analyzeDeferredSpecializations() {
     DeferredSpecialization d = deferredSpecializations_[i];
     SemanticContext::ScopeSwitchGuard definitionScope(
         ctx_, SemanticContext::definitionScopeOf(*d.genericInfo));
+    SemanticContext::SourceFileGuard definitionFile(
+        ctx_, d.genericInfo->AST->getSourceFileId());
 
     ctx_.enterClassScope(d.specializedClass->getQualifiedName());
     ctx_.addTypeParameterBindings(
@@ -708,6 +704,8 @@ GenericSpecializer::instantiateGenericFunction(
   // where its captures and outer type bindings live)
   SemanticContext::ScopeSwitchGuard definitionScope(
       ctx_, SemanticContext::definitionScopeOf(genericInfo));
+  SemanticContext::SourceFileGuard definitionFile(
+      ctx_, genericInfo.AST->getSourceFileId());
   ctx_.enterTypeParamScope(typeParams, typeArgs);
 
   // Substitute parameter types
@@ -985,6 +983,8 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
   // scope so the body resolves names as written at the definition site
   SemanticContext::ScopeSwitchGuard definitionScope(
       ctx_, classDefinitionScope(*classType));
+  SemanticContext::SourceFileGuard definitionFile(
+      ctx_, genericMethodAST->getSourceFileId());
   ctx_.enterTypeParamScope(allTypeParams, allTypeArgs);
 
   // Substitute types in parameters
@@ -1144,6 +1144,8 @@ GenericSpecializer::instantiateGenericInterface(
     // result is registered in the requesting scope below
     SemanticContext::ScopeSwitchGuard definitionScope(
         ctx_, SemanticContext::definitionScopeOf(*genericInfo));
+    SemanticContext::SourceFileGuard definitionFile(
+        ctx_, genericInfo->AST->getSourceFileId());
     // Push a scope for type parameter bindings
     ctx_.enterTypeParamScope(typeParameterNames(genericInfo->typeParameters),
                              typeArgs);
@@ -1258,6 +1260,8 @@ std::shared_ptr<sun::EnumType> GenericSpecializer::instantiateGenericEnum(
     // is registered in the requesting scope below
     SemanticContext::ScopeSwitchGuard definitionScope(
         ctx_, SemanticContext::definitionScopeOf(*genericInfo));
+    SemanticContext::SourceFileGuard definitionFile(
+        ctx_, genericInfo->AST->getSourceFileId());
     ctx_.enterTypeParamScope(typeParameterNames(genericInfo->typeParameters),
                              typeArgs);
     for (const auto& variant : genericInfo->AST->getVariants()) {
