@@ -167,7 +167,8 @@ std::string symbolPrefix(const fs::path& bundle) {
   return metadata ? sun::getSymbolPrefix(*metadata) + "_" : "";
 }
 
-// The names in the symbol index of the first archive a bundle carries
+// The names in the symbol index of the first archive a bundle carries, as C
+// code spells them (without the underscore Mach-O prepends)
 std::vector<std::string> carriedArchiveSymbols(const fs::path& bundle) {
   std::vector<std::string> names;
   auto reader = sun::MoonReader::open(bundle);
@@ -182,8 +183,13 @@ std::vector<std::string> carriedArchiveSymbols(const fs::path& bundle) {
     llvm::consumeError(archive.takeError());
     return names;
   }
+  const auto kind = (*archive)->kind();
+  const bool machO = kind == llvm::object::Archive::K_DARWIN ||
+                     kind == llvm::object::Archive::K_DARWIN64;
   for (const auto& symbol : (*archive)->symbols()) {
-    names.push_back(symbol.getName().str());
+    llvm::StringRef name = symbol.getName();
+    if (machO) name.consume_front("_");
+    names.push_back(name.str());
   }
   return names;
 }

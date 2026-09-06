@@ -232,10 +232,9 @@ std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
 
   // Register runtime symbols for JIT
   auto& mainDylib = ctx->jit->getMainJITDylib();
-  auto& session = ctx->jit->getExecutionSession();
   llvm::orc::SymbolMap runtimeSymbols;
   auto provide = [&](const char* name, void* address) {
-    runtimeSymbols[session.intern(name)] = ExecutorSymbolDef(
+    runtimeSymbols[ctx->jit->mangle(name)] = ExecutorSymbolDef(
         ExecutorAddr::fromPtr(address), JITSymbolFlags::Exported);
   };
   provide("putchard", reinterpret_cast<void*>(&putchard));
