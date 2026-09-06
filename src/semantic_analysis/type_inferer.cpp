@@ -133,7 +133,7 @@ sun::TypePtr TypeInferer::inferCallType(const CallExprAST& callExpr) {
       for (const auto& arg : callExpr.getArgs()) {
         argTypes.push_back(inferType(*arg));
       }
-      if (const FunctionInfo* info = sema_.resolveModuleQualifiedCall(
+      if (const FunctionInfo* info = sema_.calls().resolveModuleQualifiedCall(
               memberAccess, objectType, argTypes)) {
         return info->returnType;
       }
@@ -882,16 +882,30 @@ sun::TypePtr TypeInferer::inferModuleMemberType(
                                     match.functionInfo->canThrow);
       case SymbolKind::GenericFunction: {
         // m.f<i32>(...): instantiate here, and point the call site at the
-        // specialization rather than at the template's name.
-        if (!memberAccess.hasTypeArguments() || !match.genericFunctionInfo) {
+        // specialization rather than at the template's name. A call site
+        // that inferred its type arguments from the arguments (see
+        // SemanticAnalyzer::resolveModuleQualifiedGenericCall) has already
+        // recorded them; only a bare reference to the template has none.
+        if (!memberAccess.hasTypeArguments() &&
+            !memberAccess.hasResolvedTypeArgs()) {
+          logAndThrowError(
+              "Generic function '" + memberName + "' in module '" + modPath +
+                  "' needs type arguments here; they are only inferred at a "
+                  "call, e.g. " +
+                  memberName + "<i32>(...)",
+              memberAccess.getLocation());
+        }
+        if (!match.genericFunctionInfo) {
           logAndThrowError("Generic function '" + memberName + "' in module '" +
-                               modPath + "' needs type arguments, e.g. " +
-                               memberName + "<i32>(...)",
+                               modPath + "' has no definition",
                            memberAccess.getLocation());
         }
-        auto typeArgs = resolveTypeArguments(memberAccess.getTypeArguments(),
-                                             memberAccess.getLocation(),
-                                             "generic function instantiation");
+        std::vector<sun::TypePtr> typeArgs =
+            memberAccess.hasResolvedTypeArgs()
+                ? memberAccess.getResolvedTypeArgs()
+                : resolveTypeArguments(memberAccess.getTypeArguments(),
+                                       memberAccess.getLocation(),
+                                       "generic function instantiation");
         memberAccess.setResolvedTypeArgs(typeArgs);
         SpecializedFunctionInfo specialized =
             generics_.requireGenericSpecialization(*match.genericFunctionInfo,

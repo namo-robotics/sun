@@ -179,6 +179,7 @@ add_library(sun_lib
     src/semantic_analysis/analysis_statements.cpp
     src/semantic_analysis/analysis_expressions.cpp
     src/semantic_analysis/analysis_utils.cpp
+    src/semantic_analysis/call_analyzer.cpp
     src/semantic_analysis/declaration_collector.cpp
     src/semantic_analysis/access_checker.cpp
     src/semantic_analysis/type_rules.cpp

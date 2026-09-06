@@ -53,6 +53,12 @@ public module std {
       std.test.assert_eq(t.join(), 42);
     }
 
+    // A qualified call infers F from its argument like the unqualified one.
+    test_function spawn_accepts_a_qualified_call() {
+      var t = std.thread.spawn(double_it, 21);
+      std.test.assert_eq(t.join(), 42);
+    }
+
     // A function-pointer value rides through spawn's argument pack like any
     // other one-word value — this is exactly how the test runner passes each
     // test to std.test.run_one.
