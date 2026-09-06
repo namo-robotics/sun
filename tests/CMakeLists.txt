@@ -91,10 +91,21 @@ set_target_properties(sun_ffi_static_testlib PROPERTIES
     POSITION_INDEPENDENT_CODE ON
 )
 add_dependencies(sun_tests sun_ffi_static_testlib)
-# Passed as a define rather than a test ENVIRONMENT entry: gtest_discover_tests
+
+# A second version of the same archive, same file name in its own directory,
+# for the tests where two bundles carry different versions of one library.
+add_library(sun_ffi_static_testlib_v2 STATIC fixtures/ffi_static_testlib_v2.c)
+set_target_properties(sun_ffi_static_testlib_v2 PROPERTIES
+    OUTPUT_NAME sun_ffi_static_testlib
+    ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tests/v2
+    POSITION_INDEPENDENT_CODE ON
+)
+add_dependencies(sun_tests sun_ffi_static_testlib_v2)
+# Passed as defines rather than test ENVIRONMENT entries: gtest_discover_tests
 # splits a multi-entry ENVIRONMENT list into separate property arguments.
 target_compile_definitions(sun_tests
-    PRIVATE SUN_FFI_TESTLIB_DIR="${CMAKE_BINARY_DIR}/tests")
+    PRIVATE SUN_FFI_TESTLIB_DIR="${CMAKE_BINARY_DIR}/tests"
+            SUN_FFI_TESTLIB_V2_DIR="${CMAKE_BINARY_DIR}/tests/v2")
 
 # Discover tests automatically (nice per-test reporting in ctest)
 include(GoogleTest)

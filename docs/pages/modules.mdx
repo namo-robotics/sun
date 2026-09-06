@@ -59,9 +59,11 @@ manifest {
   [Protobuf](/protobuf)
 - **archives** — Native static libraries (`.a`) to carry inside the bundle
   being built, so importers link against them without `-l` flags; only
-  meaningful with `--emit-moon`. A bundle built on top of this one carries
-  them forward along with the code that calls into them, so a program needs
-  only the bundle it imports. See [C FFI](/c-ffi)
+  meaningful with `--emit-moon`. Their symbols are renamed under a hash of
+  the listed archives together, so the bundle binds the copies it carries
+  even when another bundle carries a different version. A bundle built on
+  top of this one carries them forward along with the code that calls into
+  them, so a program needs only the bundle it imports. See [C FFI](/c-ffi)
 - **target** — Entries that only apply when compiling for one operating
   system (`linux`, `macos` or `windows` — the same names `_target_is`
   accepts). Each block takes the same sections as the manifest itself. The

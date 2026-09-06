@@ -4,11 +4,13 @@
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Passes/PassBuilder.h>
-#include <llvm/Support/DynamicLibrary.h>
+#include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Transforms/IPO/GlobalDCE.h>
 #include <llvm/Transforms/Utils/Cloning.h>
+#include <pthread.h>
 #include <unistd.h>
 
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <inja/inja.hpp>
@@ -20,6 +22,7 @@
 #include "debug/scope_tree_generator.h"
 #include "driver/manifest_processor.h"
 #include "generated/test_runner_template.h"
+#include "moon_bundling/archive_symbols.h"
 #include "moon_bundling/library_cache.h"
 #include "moon_bundling/module_linker.h"
 #include "moon_bundling/proto_importer.h"
@@ -166,10 +169,23 @@ std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
 
   // Register runtime symbols for JIT
   auto& mainDylib = ctx->jit->getMainJITDylib();
-  cantFail(mainDylib.define(llvm::orc::absoluteSymbols(
-      {{ctx->jit->getExecutionSession().intern("putchard"),
-        ExecutorSymbolDef(ExecutorAddr::fromPtr(&putchard),
-                          JITSymbolFlags::Exported)}})));
+  auto& session = ctx->jit->getExecutionSession();
+  llvm::orc::SymbolMap runtimeSymbols;
+  auto provide = [&](const char* name, void* address) {
+    runtimeSymbols[session.intern(name)] = ExecutorSymbolDef(
+        ExecutorAddr::fromPtr(address), JITSymbolFlags::Exported);
+  };
+  provide("putchard", reinterpret_cast<void*>(&putchard));
+#ifdef __GLIBC__
+  // The JIT resolves everything else from the running process, but glibc
+  // keeps these in libc_nonshared.a: every program links its own copy and
+  // dlsym cannot see them. Static archives a bundle carries (OpenSSL calls
+  // atexit) reference them, so hand over the compiler's own.
+  provide("atexit", reinterpret_cast<void*>(&atexit));
+  provide("at_quick_exit", reinterpret_cast<void*>(&at_quick_exit));
+  provide("pthread_atfork", reinterpret_cast<void*>(&pthread_atfork));
+#endif
+  cantFail(mainDylib.define(llvm::orc::absoluteSymbols(runtimeSymbols)));
 
   auto typeRegistry = std::make_shared<sun::TypeRegistry>();
   auto codegenVisitor = std::make_unique<CodegenVisitor>(*ctx, typeRegistry);
@@ -457,6 +473,93 @@ static void wrapOwnBundle(BlockExprAST& blockAst,
       MoonScopeAST::forOwnBundle(scopeName, std::move(ownBody)));
 }
 
+/// Bind the program's own C externs to the archives the bundle being built
+/// carries: an extern whose link name is a key of `renames` is emitted, and
+/// recorded in the bundle's metadata, under the prefixed value. Imported
+/// bundles' scopes are left alone; their externs were bound when they were
+/// built. Link names no rename applies to are collected in `unmapped`.
+static void renameOwnExterns(BlockExprAST& block,
+                             const std::map<std::string, std::string>& renames,
+                             std::vector<std::string>& unmapped) {
+  for (auto& stmt : block.mutableBody()) {
+    if (!stmt) continue;
+    switch (stmt->getType()) {
+      case ASTNodeType::MODULE:
+        renameOwnExterns(static_cast<ModuleAST&>(*stmt).mutableBody(), renames,
+                         unmapped);
+        break;
+      case ASTNodeType::FUNCTION: {
+        auto& func = static_cast<FunctionAST&>(*stmt);
+        if (!func.isCExtern()) break;
+        auto& proto = func.getProtoMut();
+        auto it = renames.find(proto.getLinkName());
+        if (it != renames.end()) {
+          proto.setLinkName(it->second);
+        } else {
+          unmapped.push_back(proto.getLinkName());
+        }
+        break;
+      }
+      case ASTNodeType::VARIABLE_CREATION: {
+        auto& variable = static_cast<VariableCreationAST&>(*stmt);
+        if (!variable.isCExtern()) break;
+        auto it = renames.find(variable.getLinkName());
+        if (it != renames.end()) {
+          variable.setLinkName(it->second);
+        } else {
+          unmapped.push_back(variable.getLinkName());
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+}
+
+/// What the linker will not say. Two archives with one file name under
+/// different hashes mean two versions of a library go into the program,
+/// each bound to the code that came with it. A plain extern naming a symbol
+/// that a bundle carries only in prefixed form binds to whatever the final
+/// link provides under the bare name, which is rarely what was meant.
+static void warnAboutArchiveSet(const std::vector<std::string>& archives,
+                                const std::vector<std::string>& bareExterns) {
+  std::map<std::string, std::vector<std::string>> byName;
+  for (const auto& path : archives) {
+    byName[std::filesystem::path(path).filename().string()].push_back(path);
+  }
+  for (const auto& [name, paths] : byName) {
+    if (paths.size() < 2) continue;
+    llvm::errs() << "Warning: " << paths.size() << " versions of " << name
+                 << " will be linked, each bound to the code that came with "
+                    "it:\n";
+    for (const auto& path : paths) llvm::errs() << "  " << path << "\n";
+  }
+
+  if (bareExterns.empty()) return;
+  std::set<std::string> wanted(bareExterns.begin(), bareExterns.end());
+  std::set<std::string> reported;
+  for (const auto& path : archives) {
+    auto buffer = llvm::MemoryBuffer::getFile(path);
+    if (!buffer) continue;
+    for (const auto& [bare, recorded] :
+         sun::listArchiveDefinitions((*buffer)->getMemBufferRef())) {
+      if (bare == recorded || !wanted.count(bare)) continue;
+      if (!reported.insert(bare).second) continue;
+      llvm::errs() << "Warning: extern \"C\" '" << bare
+                   << "' names a symbol that "
+                   << std::filesystem::path(path).filename().string()
+                   << " carries as '" << recorded
+                   << "'. The declaration binds to whatever the final link "
+                      "provides as '"
+                   << bare
+                   << "', not to that bundle's copy. Call through the "
+                      "bundle's API, or carry the archive under `archives:` "
+                      "to bind your own copy.\n";
+    }
+  }
+}
+
 void Driver::collectNativeArchives(const std::set<std::string>& linkedModules) {
   nativeArchivePaths_ = manifestArchivePaths_;
   if (linkedModules.empty()) return;
@@ -480,79 +583,24 @@ void Driver::collectNativeArchives(const std::set<std::string>& linkedModules) {
       linkedModules, archiveTempDir_);
   nativeArchivePaths_.insert(nativeArchivePaths_.end(), bundled.begin(),
                              bundled.end());
-}
-
-// Try to load a shared library holding the same code as a bundled archive
-// (libssl.a -> libssl.so.3, or libssl.3.dylib on macOS).
-//
-// On Linux the loader's own search path finds these, so a bare name is
-// enough. macOS needs full paths: Apple ships no usable OpenSSL, and the
-// bare names resolve to /usr/lib/libssl.dylib and libcrypto.dylib, which
-// are compatibility stubs that print "loading libcrypto in an unsafe way"
-// and abort the whole process the moment they are opened. Homebrew's and
-// MacPorts' builds are the real thing, and sit outside the search path.
-static bool loadSharedCounterpart(const std::filesystem::path& archive) {
-  std::string stem = archive.stem().string();  // "libssl"
-  if (stem.rfind("lib", 0) != 0) return false;
-
-  std::vector<std::string> candidates;
-#ifdef __APPLE__
-  for (const char* dir : {"/opt/homebrew/opt/openssl@3/lib/",
-                          "/usr/local/opt/openssl@3/lib/", "/opt/local/lib/"}) {
-    for (const char* suffix : {".3.dylib", ".dylib"}) {
-      candidates.push_back(dir + stem + suffix);
-    }
-  }
-#else
-  for (const char* suffix : {".so", ".so.3", ".so.1.1"}) {
-    candidates.push_back(stem + suffix);
-  }
-#endif
-
-  for (const auto& candidate : candidates) {
-    if (!llvm::sys::DynamicLibrary::LoadLibraryPermanently(candidate.c_str(),
-                                                           nullptr)) {
-      return true;
-    }
-  }
-  return false;
+  warnAboutArchiveSet(nativeArchivePaths_, unmappedExternLinkNames_);
 }
 
 void Driver::registerArchivesWithJIT() {
-  if (!ctx->jit || nativeArchivePaths_.empty()) return;
+  if (!ctx->jit) return;
 
-  // Prefer shared libraries whenever all of them are present. AOT linking
-  // always uses the bundled archives, so shipped binaries stay
-  // self-contained either way; this only decides what the JIT resolves
-  // against.
-  bool allShared = true;
-  for (const auto& archive : nativeArchivePaths_) {
-    if (!loadSharedCounterpart(archive)) {
-      allShared = false;
-      break;
-    }
-  }
-  if (allShared) return;
-
-  // Falling back to the bundle's own archives. This is a poor substitute:
-  // a static library expects a real link, and the JIT can only resolve what
-  // the running process already exports. One symbol it cannot find poisons
-  // every archive member that needs it — glibc's `atexit`, for instance,
-  // lives in libc_nonshared.a and is invisible to dlsym — and the failure
-  // surfaces far away as "failed to materialize" errors naming unrelated
-  // symbols. Say where it came from so that is not a mystery.
-  llvm::errs() << "Warning: no shared library found for the archives this "
-                  "program's bundles carry. Linking them into the JIT "
-                  "instead, which may not resolve every symbol; compiling "
-                  "with -c always uses the archives and is unaffected.\n";
-#ifdef __APPLE__
-  llvm::errs() << "  For TLS, `brew install openssl@3` supplies one.\n";
-#endif
-
+  // The same archives the AOT link would use, so a program behaves alike
+  // run directly and compiled. Their symbols carry the prefix of the bundle
+  // that brought them, so a shared library of the same code could not stand
+  // in even if one were installed. What an archive member needs from outside
+  // resolves from the running process; the glibc entry points dlsym cannot
+  // see are provided by createForJIT.
   for (const auto& archive : nativeArchivePaths_) {
     if (auto err = ctx->jit->addStaticLibrary(archive)) {
       llvm::errs() << "Warning: could not load bundled library '" << archive
-                   << "': " << llvm::toString(std::move(err)) << "\n";
+                   << "' into the JIT: " << llvm::toString(std::move(err))
+                   << "\n  Compiling with -c links it with the system linker "
+                      "instead.\n";
     }
   }
 }
@@ -716,6 +764,12 @@ void Driver::analyzeProgram(BlockExprAST& blockAst, Parser& parser) {
     sun::ScopedStage stage("moon imports");
     processMoonImports(blockAst, parser, moonImports_);
   }
+
+  // Bind the program's own C externs to the archives it carries before its
+  // scope is wrapped and before metadata is extracted, so the bundle and its
+  // importers agree on every symbol name.
+  unmappedExternLinkNames_.clear();
+  renameOwnExterns(blockAst, externRenames_, unmappedExternLinkNames_);
 
   // A bundle build compiles its own sources under the bundle's `$hash$`
   // scope, as a sibling of the imported bundles, so its names come out the

@@ -31,7 +31,8 @@ struct MoonBuildReport {
   std::vector<std::string> protoFiles;    // synthesized .proto schemas
   std::vector<MoonImport> moonImports;    // bundles linked against
   std::vector<std::string> modules;       // exported module names (dotted)
-  // Native archives the manifest's own `archives:` named (resolved paths)
+  // Native archives the manifest's own `archives:` named (resolved paths);
+  // carried with their symbols renamed under the bundle's hash
   std::vector<std::string> archiveFiles;
   // File names of archives taken over from imported bundles whose code was
   // linked in, so the bundle stays self-contained for its importers

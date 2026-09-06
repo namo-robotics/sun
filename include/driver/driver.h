@@ -70,6 +70,11 @@ class Driver {
 
   // See setOwnBundleHash. Empty for a program build.
   std::string ownBundleHash_;
+  // See setExternSymbolRenames. Empty for a program build.
+  std::map<std::string, std::string> externRenames_;
+  // Link names of the program's own C externs that no rename applied to,
+  // i.e. the symbols it expects the final link to provide unprefixed.
+  std::vector<std::string> unmappedExternLinkNames_;
   std::function<void(const BlockExprAST&, SemanticAnalyzer&)> metadataCallback_;
 
   // Whether the last compilation saw any test functions or test_files
@@ -87,16 +92,19 @@ class Driver {
 
   // Every static archive this compilation must link: the manifest's own,
   // plus those carried by imported .moon bundles, which are extracted to a
-  // temp directory that lives as long as this Driver.
+  // temp directory as `<archive set hash>/<name>`.
   std::vector<std::string> nativeArchivePaths_;
   std::filesystem::path archiveTempDir_;
 
   // Gather the archives to link: the manifest's own, then those carried by
   // the bundles just linked (put on disk first), so AOT can pass them to the
-  // linker and the JIT can resolve their symbols.
+  // linker and the JIT can load them. Warns when the set looks troublesome:
+  // two versions of one library, or a plain extern naming a symbol a bundle
+  // carries only under its own prefix.
   void collectNativeArchives(const std::set<std::string>& linkedModules);
 
-  // Make the gathered archives resolvable by the JIT.
+  // Load the gathered archives into the JIT, exactly as the AOT link would
+  // link them.
   void registerArchivesWithJIT();
 
   // Private constructor - use factory methods
@@ -243,6 +251,15 @@ class Driver {
   /// so every symbol and struct type is spelled the way importers of the
   /// bundle will spell it. Must be set before compileFiles.
   void setOwnBundleHash(std::string hash) { ownBundleHash_ = std::move(hash); }
+
+  /// C symbols the bundle being built carries in its archives, mapped to
+  /// their prefixed spelling (`SSL_new` -> `$sethash$_SSL_new`). The
+  /// program's own `extern "C"` declarations naming a key are emitted, and
+  /// recorded in the bundle's metadata, under the value, so the bundle and
+  /// its importers bind to the carried copy. Must be set before compileFiles.
+  void setExternSymbolRenames(std::map<std::string, std::string> renames) {
+    externRenames_ = std::move(renames);
+  }
 
   /// Compile multiple source files with optional precompiled moon libraries
   /// This is the merged-AST compilation model: all files are parsed and merged

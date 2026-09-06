@@ -8,11 +8,10 @@ programs that do not speak TLS carry none of it. The bundle wraps OpenSSL and
 flags and no OpenSSL installed on the machine it runs on.
 
 <Callout type="info">
-  That applies to compiled programs — `sun -c program.sun`. Running one
-  straight from source needs a shared OpenSSL the JIT can resolve against,
-  which Linux already has; on macOS, install one with `brew install
-  openssl@3`. See [carrying the C library
-  along](/c-ffi#carrying-the-c-library-along) for why.
+  That holds both for compiled programs (`sun -c program.sun`) and for
+  running one straight from source: the JIT loads the same embedded
+  archives the linker uses. See [carrying the C library
+  along](/c-ffi#carrying-the-c-library-along) for how the archives travel.
 </Callout>
 
 ```sun
@@ -181,7 +180,10 @@ manifest {
 what the bundle carries automatically — no `-l` flags, and nothing to install
 alongside the finished program. A bundle built on `tls.moon` carries the
 archives forward with the tls code it links in, so a program importing only
-that bundle still links.
+that bundle still links. The OpenSSL symbols inside are renamed under a
+hash of the two archives together, so a program may import two bundles
+built on different OpenSSL builds, each bound to its own, while bundles
+sharing one build share one copy; see [C FFI](/c-ffi).
 
 ## Tests
 

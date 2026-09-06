@@ -2,15 +2,19 @@
 
 #include "moon_bundling/moon_builder.h"
 
+#include <llvm/Support/MemoryBufferRef.h>
+#include <llvm/Support/raw_ostream.h>
 #include <llvm/TargetParser/Host.h>
 
 #include <algorithm>
 #include <fstream>
 #include <map>
+#include <set>
 
 #include "driver/driver.h"
 #include "driver/manifest_processor.h"
 #include "generated/sun_version.h"
+#include "moon_bundling/archive_symbols.h"
 #include "moon_bundling/metadata_extractor.h"
 #include "moon_bundling/moon.h"
 #include "moon_bundling/proto_importer.h"
@@ -37,19 +41,42 @@ std::string readWholeFile(const std::string& path, const char* what) {
                      std::istreambuf_iterator<char>());
 }
 
+// A native archive named by the manifest's `archives:`, read once: its
+// digest joins the bundle hash and the archive set hash, its symbols decide
+// which externs bind to it, and its bytes are rewritten under the set hash
+// when the bundle is written.
+struct OwnArchive {
+  std::string path;
+  std::string name;  // file name carried in the bundle
+  std::string data;
+  std::string digest;
+};
+
 // The bundle's content hash, decided before anything is compiled so the
 // compiler can spell the bundle's own symbols with it. It has to change
 // whenever the code image would: it covers every source, every bundle the
-// code links against (and how those are aliased), the target, the debug
-// setting and the compiler itself. Importers rely on distinct bundles
-// carrying distinct hashes, and a symbol prefix must not collide.
+// code links against (and how those are aliased), every archive it carries
+// (two bundles alike in source but for the C library they wrap are
+// different bundles, and importers drop a second bundle with a known
+// hash), the target, the debug setting and the compiler itself. Importers
+// rely on distinct bundles carrying distinct hashes, and a symbol prefix
+// must not collide.
 std::string computeBundleHash(std::vector<std::string> sources,
                               const std::vector<MoonImport>& moonImports,
+                              const std::vector<OwnArchive>& archives,
                               const MoonBuildOptions& options) {
   std::string input;
   // Sorted, so the hash does not depend on manifest order
   std::sort(sources.begin(), sources.end());
   for (const auto& h : sources) input += "source:" + h + "\n";
+
+  std::vector<std::string> archiveLines;
+  for (const auto& archive : archives) {
+    archiveLines.push_back("archive:" + archive.name + ":" + archive.digest +
+                           "\n");
+  }
+  std::sort(archiveLines.begin(), archiveLines.end());
+  for (const auto& line : archiveLines) input += line;
 
   std::vector<std::string> dependencies;
   for (const auto& import : moonImports) {
@@ -126,14 +153,68 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
     fingerprints.push_back(sourceFingerprint(source.sunSource));
   std::vector<moon::ModuleMetadata> allMetadata;
 
+  std::vector<OwnArchive> ownArchives;
+  for (const auto& archivePath : report.archiveFiles) {
+    OwnArchive archive;
+    archive.path = archivePath;
+    archive.name = fs::path(archivePath).filename().string();
+    archive.data = readWholeFile(archivePath, "native archive");
+    archive.digest = computeSha256Hex(archive.data);
+    ownArchives.push_back(std::move(archive));
+  }
+  std::vector<std::pair<std::string, std::string>> archiveIdentities;
+  for (const auto& archive : ownArchives) {
+    archiveIdentities.emplace_back(archive.name, archive.digest);
+  }
+  const std::string archiveSetHash = computeArchiveSetHash(archiveIdentities);
+
   // ---- Compile everything into one LLVM module, under the bundle's own
   // hash so its symbols are already the ones importers will look for ----
   const std::string bundleHash =
-      computeBundleHash(fingerprints, report.moonImports, options);
+      computeBundleHash(fingerprints, report.moonImports, ownArchives, options);
   auto driver = Driver::createForAOT("moon_module", options.targetTriple,
                                      options.debugInfo, options.optimize);
   driver->setDumpProtoSun(options.dumpProtoSun);
   driver->setOwnBundleHash(bundleHash);
+
+  // The C symbols the own archives define get a prefix made from the bytes
+  // of all of them together, the way Sun symbols get the bundle's: another
+  // bundle carrying another version of the library never collides with this
+  // one, and one carrying the very same archives spells the symbols the same
+  // way, so a program importing both links one copy. Within the set the
+  // archives keep the single namespace a plain link would give them, so
+  // their references to each other (libssl into libcrypto) stay consistent
+  // and two of them defining one symbol is the same situation, and the same
+  // warning-worthy one, as it would be for any C program linking both. The
+  // program's externs naming these symbols are emitted under the prefixed
+  // name; the archives are rewritten to match once compilation is done.
+  std::map<std::string, std::string> renames;  // symbol -> prefixed name
+  std::map<std::string, std::string> definedBy;  // symbol -> archive name
+  std::map<std::string, std::string> ownUndefinedBy;  // symbol -> archive
+  for (const auto& archive : ownArchives) {
+    auto scan = scanArchiveSymbols(
+        llvm::MemoryBufferRef(archive.data, archive.name));
+    if (!scan) {
+      fail("moon bundle: cannot isolate the symbols of native archive " +
+           archive.path + ": " + llvm::toString(scan.takeError()));
+    }
+    for (const auto& symbol : scan->defined) {
+      auto [it, fresh] = definedBy.emplace(symbol, archive.name);
+      if (!fresh) {
+        llvm::errs() << "Warning: native archives " << it->second << " and "
+                     << archive.name << " both define '" << symbol
+                     << "'; the link takes whichever it meets first, as it "
+                        "would for any program linking both.\n";
+        continue;
+      }
+      renames.emplace(symbol, "$" + archiveSetHash + "$_" + symbol);
+    }
+    for (const auto& symbol : scan->undefined) {
+      ownUndefinedBy.emplace(symbol, archive.name);
+    }
+  }
+  for (const auto& [symbol, renamed] : renames) ownUndefinedBy.erase(symbol);
+  driver->setExternSymbolRenames(renames);
   driver->setMetadataCallback(
       [&](const BlockExprAST& program, SemanticAnalyzer& analyzer) {
         allMetadata = extractAnalyzedMetadata(program, analyzer, bundleHash);
@@ -159,31 +240,68 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
     writer.addModule(driver->getModule(), metadata);
   }
   // Native archives travel inside the bundle, so importers link against them
-  // without naming -l flags. The manifest's own `archives:` come first; then
-  // the archives of every imported bundle whose code was just linked into
-  // this one (the driver put them on disk). That code keeps its calls into
-  // those archives, and importers see only this bundle, so the archives must
-  // follow the code the same way the bitcode already does. Identical archives
-  // reached through several bundles are carried once; two different archives
-  // under one file name cannot both be carried, since a consumer extracts
-  // them by name.
-  std::map<std::string, std::string> carriedDigestByName;
-  auto carry = [&](const std::string& archivePath, bool inherited) {
-    std::string data = readWholeFile(archivePath, "native archive");
-    const std::string name = fs::path(archivePath).filename().string();
-    const std::string digest = computeSha256Hex(data);
-    auto [it, fresh] = carriedDigestByName.try_emplace(name, digest);
-    if (!fresh) {
-      if (it->second == digest) return;
-      fail("moon bundle: cannot carry two different archives named '" + name +
-           "' (one of them from " + archivePath + ")");
-    }
+  // without naming -l flags. The manifest's own `archives:` come first, with
+  // their symbols renamed; then the archives of every imported bundle whose
+  // code was just linked into this one (the driver put them on disk, as
+  // `<set hash>/<name>`), carried unchanged since their symbols were renamed
+  // when their bundle was built. That code keeps its calls into those
+  // archives, and importers see only this bundle, so the archives must
+  // follow the code the same way the bitcode already does. An archive is
+  // identified by its set hash and name, which determine its renamed bytes:
+  // the same library reached through several bundles is carried once, and
+  // two versions of it are both carried.
+  std::set<std::pair<std::string, std::string>> carried;
+  std::map<std::string, std::vector<std::string>> hashesByName;
+  auto carry = [&](const std::string& setHash, const std::string& name,
+                   std::string data, bool inherited) {
+    if (!carried.insert({setHash, name}).second) return;
+    hashesByName[name].push_back(setHash);
     if (inherited) report.inheritedArchives.push_back(name);
-    writer.addNativeArchive(name, std::move(data));
+    writer.addNativeArchive(setHash, name, std::move(data));
   };
-  for (const auto& archivePath : report.archiveFiles) carry(archivePath, false);
+  for (const auto& archive : ownArchives) {
+    auto renamed = renameArchiveSymbols(
+        llvm::MemoryBufferRef(archive.data, archive.name), renames);
+    if (!renamed) {
+      fail("moon bundle: cannot isolate the symbols of native archive " +
+           archive.path + ": " + llvm::toString(renamed.takeError()));
+    }
+    carry(archiveSetHash, archive.name, std::move(*renamed), false);
+  }
+  std::map<std::string, std::string> inheritedDefinitions;  // bare -> carried
   for (const auto& archivePath : driver->getNativeArchivePaths()) {
-    carry(archivePath, true);
+    std::string data = readWholeFile(archivePath, "native archive");
+    const fs::path path(archivePath);
+    const auto definitions =
+        listArchiveDefinitions(llvm::MemoryBufferRef(data, archivePath));
+    inheritedDefinitions.insert(definitions.begin(), definitions.end());
+    carry(path.parent_path().filename().string(), path.filename().string(),
+          std::move(data), true);
+  }
+
+  // What would go wrong only at the final link, said now. An own archive
+  // expecting a symbol that an imported bundle carries under a prefix cannot
+  // reach that copy; the renamed name belongs to that archive alone.
+  for (const auto& [symbol, archiveName] : ownUndefinedBy) {
+    auto carried = inheritedDefinitions.find(symbol);
+    if (carried == inheritedDefinitions.end() || carried->second == symbol) {
+      continue;
+    }
+    llvm::errs() << "Warning: native archive " << archiveName
+                 << " references '" << symbol
+                 << "', which an imported bundle carries only as '"
+                 << carried->second
+                 << "'. The reference will not resolve against that copy; "
+                    "carry the library it comes from under `archives:` or "
+                    "link it into the program.\n";
+  }
+  for (const auto& [name, hashes] : hashesByName) {
+    if (hashes.size() < 2) continue;
+    llvm::errs() << "Warning: this bundle carries " << hashes.size()
+                 << " versions of " << name
+                 << ", each bound to the code that came with it:";
+    for (const auto& hash : hashes) llvm::errs() << " " << hash;
+    llvm::errs() << "\n";
   }
   if (!writer.write(outputPath)) {
     fail("Error writing moon: " + writer.getError());

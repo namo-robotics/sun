@@ -183,19 +183,20 @@ std::vector<std::string> LibraryCache::extractNativeArchives(
     if (bundle->getNativeArchives().empty()) continue;
     if (!seenBundles.insert(bundle).second) continue;  // one visit per bundle
 
-    std::error_code ec;
-    std::filesystem::path bundleDir =
-        destDir / bundle->getPath().stem().string();
-    std::filesystem::create_directories(bundleDir, ec);
-    if (ec) continue;
-
     for (const auto& entry : bundle->getNativeArchives()) {
       std::vector<char> data;
-      if (!bundle->readNativeArchive(entry.name, data)) continue;
+      if (!bundle->readNativeArchive(entry, data)) continue;
       const std::string digest =
           computeSha256Hex(llvm::StringRef(data.data(), data.size()));
       if (!extractedDigests.insert(digest).second) continue;
-      std::filesystem::path out = bundleDir / entry.name;
+      // Grouped by archive set hash: two versions of one library must not
+      // overwrite each other, and the directory name tells the builder and
+      // the warnings which symbols an archive carries
+      std::error_code ec;
+      std::filesystem::path hashDir = destDir / entry.archiveSetHash;
+      std::filesystem::create_directories(hashDir, ec);
+      if (ec) continue;
+      std::filesystem::path out = hashDir / entry.name;
       std::ofstream file(out, std::ios::binary);
       if (!file) continue;
       file.write(data.data(), static_cast<std::streamsize>(data.size()));

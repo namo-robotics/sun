@@ -235,6 +235,7 @@ add_library(sun_lib
     src/serialization/ast_deserializer.cpp
     # Precompiled library support (moon format)
     src/moon_bundling/moon.cpp
+    src/moon_bundling/archive_symbols.cpp
     src/moon_bundling/moon_builder.cpp
     src/moon_bundling/library_cache.cpp
     src/moon_bundling/moon_cache.cpp

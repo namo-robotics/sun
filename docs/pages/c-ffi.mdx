@@ -373,20 +373,40 @@ manifest. A program whose own manifest names `archives:` links them the same
 way, and so does the test binary of a library that declares them — which is
 how the `tls` bundle's own tests link OpenSSL.
 
-This is how `tls.moon` ships OpenSSL; see [TLS & HTTPS](/tls). The archives
-have to be self-contained (an archive referencing a library you do not ship
-fails at link time) and built for the target Sun links for — the musl
-toolchain, for the static default.
+This is how `tls.moon` ships OpenSSL; see [TLS & HTTPS](/tls).
 
-Compiled programs always use the carried archives. The JIT cannot: it
-resolves symbols out of the running process, while a static library expects
-a real link, and a single symbol it cannot find takes down every archive
-member that needs it. So `sun program.sun` looks for a shared build of the
-same library instead — on Linux the loader finds `libssl.so.3` and its
-siblings by name, and on macOS, which ships no usable OpenSSL of its own,
-Sun looks inside Homebrew's and MacPorts' prefixes. Without one installed, a
-program that uses the bundle has to be compiled with `-c` rather than run
-directly; Sun says so instead of failing obscurely.
+A carried archive keeps its identity. When the bundle is built, every symbol
+the archives define is renamed under a hash of all the archives the bundle
+lists together, the way the bundle's Sun symbols are renamed under the
+bundle's hash, and the
+bundle's `extern "C"` declarations naming those symbols bind to the renamed
+copy. Two bundles that carry different versions of one library therefore
+link into a single program without colliding: each calls its own version,
+and a value from one cannot reach the other's code because their Sun types
+are distinct as well. The compiler warns when that happens, since two copies
+of a library also means two sets of its global state. Two bundles that carry
+the same set of archives, whether one was built on the other or each listed
+the same files, spell the symbols the same way and share one copy. Hashing
+the set rather than each file keeps `libssl.a`'s calls into `libcrypto.a`
+inside one identity: the same `libssl.a` next to a different `libcrypto.a`
+is a different set.
+
+Two consequences follow from the binding rule:
+
+- A bundle built on top of `tls.moon` carries the OpenSSL archives forward,
+  already bound to tls, and its own code reaches them only through tls's
+  Sun API. Declaring `extern "C" function SSL_new` in that bundle, or in a
+  program importing it, does not bind to the carried copy; the compiler
+  warns and the symbol has to come from elsewhere. To bind your own copy,
+  carry the library under your own `archives:`.
+- An archive has to be self-contained (an archive referencing a library you
+  do not ship fails at link time), built for the target Sun links for (the
+  musl toolchain, for the static default), and made of native objects: an
+  LTO build whose members are LLVM bitcode cannot be renamed and is rejected.
+
+Running a program directly and compiling it behave alike: the JIT loads the
+carried archives just as the linker would, so a program that works under
+`sun program.sun` links the same way under `sun -c`.
 
 ## Limitations
 
