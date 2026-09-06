@@ -27,7 +27,7 @@ Value* CodegenVisitor::codegen(const IfExprAST& expr) {
 
   // A condition that folded to a constant (a _target_is check, or arithmetic
   // over one) keeps only its live side. This is required, not an
-  // optimization: no optimizer runs on AOT output, and per-OS stdlib code
+  // optimization: IR passes can be disabled, and per-OS stdlib code
   // relies on the dead side's extern calls never being emitted — an emitted
   // call to a symbol another libc lacks would fail at link. The branch-arm
   // marking stays so drop-flag decisions match what the borrow checker

@@ -478,7 +478,8 @@ namespace {
 std::string irFor(const std::string& source) {
   initTestEnvironment();
   std::string debugName = "test_packed_" + std::to_string(getpid());
-  auto driver = Driver::createForJIT();
+  auto driver = Driver::createForJIT("packed_ir", /*debugInfo=*/true,
+                                     /*optimize=*/false);
   driver->setDebugMode(true, debugName);
   driver->executeString(source);
 

@@ -100,7 +100,8 @@ class SunJIT {
     return Error::success();
   }
 
-  static Expected<std::unique_ptr<SunJIT>> Create() {
+  /// Create a host JIT with the requested backend optimization setting.
+  static Expected<std::unique_ptr<SunJIT>> Create(bool optimize = true) {
     auto EPC = SelfExecutorProcessControl::Create();
     if (!EPC) return EPC.takeError();
 
@@ -108,6 +109,8 @@ class SunJIT {
 
     JITTargetMachineBuilder JTMB(
         ES->getExecutorProcessControl().getTargetTriple());
+    JTMB.setCodeGenOptLevel(optimize ? CodeGenOptLevel::Default
+                                    : CodeGenOptLevel::None);
 
     auto DL = JTMB.getDefaultDataLayoutForTarget();
     if (!DL) return DL.takeError();

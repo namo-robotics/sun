@@ -58,16 +58,19 @@ class CodegenContext {
   std::string targetTriple_;
   // Emit DWARF debug info (-g)
   bool debugInfo_ = false;
+  bool optimize_ = true;
 
  public:
   explicit CodegenContext(std::string moduleName,
                           const std::shared_ptr<SunJIT>& jit,
                           LLVMContext* existingContext = nullptr,
-                          std::string targetTriple = "", bool debugInfo = false)
+                          std::string targetTriple = "", bool debugInfo = false,
+                          bool optimize = true)
       : moduleName(std::move(moduleName)),
         jit(jit),
         targetTriple_(std::move(targetTriple)),
-        debugInfo_(debugInfo) {
+        debugInfo_(debugInfo),
+        optimize_(optimize) {
     ownsContext = existingContext == nullptr;
     if (existingContext) {
       initializeModule(*existingContext);
@@ -128,6 +131,8 @@ class CodegenContext {
     PassBuilder PB;
     PB.registerModuleAnalyses(*mam);
     PB.registerFunctionAnalyses(*fam);
+    PB.registerLoopAnalyses(*lam);
+    PB.registerCGSCCAnalyses(*cgam);
     PB.crossRegisterProxies(*lam, *fam, *cgam, *mam);
 
     if (jit) {
@@ -168,6 +173,9 @@ class CodegenContext {
   LLVMContext& getContext() const { return mainModule->getContext(); }
 
   bool debugInfoEnabled() const { return debugInfo_; }
+
+  /// Whether to run IR optimization passes. Independent of debug info.
+  bool optimizationEnabled() const { return optimize_; }
 
   ~CodegenContext() = default;
 
