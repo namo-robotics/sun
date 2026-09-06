@@ -14,6 +14,9 @@ graph LR
 ```
 
 The compiled `moon1.moon` file contains the bitcode of `moon2` and `moon3`.
+Native archives travel the same way: had `moon3` carried a `.a` under
+`archives:`, `moon1.moon` would carry it too, and `main` would link it
+without ever naming `moon3.moon`.
 
 ## Build and run
 

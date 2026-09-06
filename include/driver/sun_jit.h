@@ -134,5 +134,10 @@ class SunJIT {
     return ES->lookup({&MainJD}, Mangle(Name.str()));
   }
 
+  /// The symbol-table spelling of a C-level name on this platform (Mach-O
+  /// adds a leading underscore). Definitions handed to the JIT must use it,
+  /// or JIT'd code referencing the name will not find them.
+  SymbolStringPtr mangle(StringRef Name) { return Mangle(Name.str()); }
+
   ExecutionSession& getExecutionSession() { return *ES; }
 };

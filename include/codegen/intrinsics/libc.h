@@ -4,8 +4,7 @@
 // libc, which makes the emitted IR target-neutral (the AArch64 backend can
 // lower a `call @write` but not `{rax}` constraints). Every libc symbol
 // codegen references is declared through this one header so the signatures
-// cannot drift between call sites, and so the .moon symbol-rename allowlist
-// (src/moon_bundling/moon.cpp shouldSkipRename) has a single list to mirror.
+// cannot drift between call sites.
 //
 // Under JIT the symbols resolve from the compiler's own process (glibc is
 // already loaded); under AOT `cc` links libc by default. Nothing needs -l.

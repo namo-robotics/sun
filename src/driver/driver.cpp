@@ -4,11 +4,12 @@
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Passes/PassBuilder.h>
-#include <llvm/Support/DynamicLibrary.h>
+#include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Transforms/IPO/GlobalDCE.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <unistd.h>
 
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <inja/inja.hpp>
@@ -20,6 +21,7 @@
 #include "debug/scope_tree_generator.h"
 #include "driver/manifest_processor.h"
 #include "generated/test_runner_template.h"
+#include "moon_bundling/archive_symbols.h"
 #include "moon_bundling/library_cache.h"
 #include "moon_bundling/module_linker.h"
 #include "moon_bundling/proto_importer.h"
@@ -29,6 +31,70 @@
 #include "support/source_manager.h"
 #include "support/stage_timer.h"
 #include "support/sun_path.h"
+
+// ---------------------------------------------------------------------------
+// Exit handlers registered by JIT-compiled code
+//
+// A program run under the JIT lives inside the compiler process. C code it
+// brings along (an archive carried by a bundle) may call atexit, as OpenSSL
+// does for its cleanup. The real atexit would run that handler when the
+// compiler exits, long after the JIT's code memory is gone, and crash. So the
+// JIT resolves atexit to a shim that keeps the handlers here, and they run
+// when the program's main returns (its exit, as far as it can tell) while
+// its code is still mapped. A program that calls exit() itself ends the
+// whole process from inside the JIT'd code; a real exit handler drains the
+// same list then, with the memory still there.
+// ---------------------------------------------------------------------------
+namespace {
+
+std::mutex& jitExitMutex() {
+  static std::mutex mutex;
+  return mutex;
+}
+
+std::vector<void (*)()>& jitExitHandlers() {
+  static std::vector<void (*)()> handlers;
+  return handlers;
+}
+
+// Reverse registration order, like atexit; a handler may register another
+void runJITExitHandlers() {
+  for (;;) {
+    void (*handler)() = nullptr;
+    {
+      std::lock_guard<std::mutex> lock(jitExitMutex());
+      if (jitExitHandlers().empty()) return;
+      handler = jitExitHandlers().back();
+      jitExitHandlers().pop_back();
+    }
+    handler();
+  }
+}
+
+// Stands in for atexit and at_quick_exit inside the JIT
+int jitAtExit(void (*handler)()) {
+  {
+    std::lock_guard<std::mutex> lock(jitExitMutex());
+    jitExitHandlers().push_back(handler);
+  }
+  // Registered after the list exists, so at process exit it runs before the
+  // list is destroyed
+  static std::once_flag drainAtProcessExit;
+  std::call_once(drainAtProcessExit, [] { std::atexit(runJITExitHandlers); });
+  return 0;
+}
+
+// Fork handlers registered by JIT'd code would outlive it the same way and
+// fire on the compiler's own later forks. A program run this way does not
+// fork, so they are accepted and dropped.
+int jitAtFork(void (*)(), void (*)(), void (*)()) { return 0; }
+
+// Runs the program's exit handlers when its run ends, however it ends
+struct JITExitScope {
+  ~JITExitScope() { runJITExitHandlers(); }
+};
+
+}  // namespace
 
 static llvm::ExitOnError ExitOnErr;
 using llvm::orc::ThreadSafeModule;
@@ -166,10 +232,19 @@ std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
 
   // Register runtime symbols for JIT
   auto& mainDylib = ctx->jit->getMainJITDylib();
-  cantFail(mainDylib.define(llvm::orc::absoluteSymbols(
-      {{ctx->jit->getExecutionSession().intern("putchard"),
-        ExecutorSymbolDef(ExecutorAddr::fromPtr(&putchard),
-                          JITSymbolFlags::Exported)}})));
+  llvm::orc::SymbolMap runtimeSymbols;
+  auto provide = [&](const char* name, void* address) {
+    runtimeSymbols[ctx->jit->mangle(name)] = ExecutorSymbolDef(
+        ExecutorAddr::fromPtr(address), JITSymbolFlags::Exported);
+  };
+  provide("putchard", reinterpret_cast<void*>(&putchard));
+  // Process-lifetime registrations must not reach the real libc from code
+  // that lives only as long as this driver; see the JIT exit handlers above.
+  // (On glibc these also live in libc_nonshared.a, out of dlsym's sight.)
+  provide("atexit", reinterpret_cast<void*>(&jitAtExit));
+  provide("at_quick_exit", reinterpret_cast<void*>(&jitAtExit));
+  provide("pthread_atfork", reinterpret_cast<void*>(&jitAtFork));
+  cantFail(mainDylib.define(llvm::orc::absoluteSymbols(runtimeSymbols)));
 
   auto typeRegistry = std::make_shared<sun::TypeRegistry>();
   auto codegenVisitor = std::make_unique<CodegenVisitor>(*ctx, typeRegistry);
@@ -457,6 +532,93 @@ static void wrapOwnBundle(BlockExprAST& blockAst,
       MoonScopeAST::forOwnBundle(scopeName, std::move(ownBody)));
 }
 
+/// Bind the program's own C externs to the archives the bundle being built
+/// carries: an extern whose link name is a key of `renames` is emitted, and
+/// recorded in the bundle's metadata, under the prefixed value. Imported
+/// bundles' scopes are left alone; their externs were bound when they were
+/// built. Link names no rename applies to are collected in `unmapped`.
+static void renameOwnExterns(BlockExprAST& block,
+                             const std::map<std::string, std::string>& renames,
+                             std::vector<std::string>& unmapped) {
+  for (auto& stmt : block.mutableBody()) {
+    if (!stmt) continue;
+    switch (stmt->getType()) {
+      case ASTNodeType::MODULE:
+        renameOwnExterns(static_cast<ModuleAST&>(*stmt).mutableBody(), renames,
+                         unmapped);
+        break;
+      case ASTNodeType::FUNCTION: {
+        auto& func = static_cast<FunctionAST&>(*stmt);
+        if (!func.isCExtern()) break;
+        auto& proto = func.getProtoMut();
+        auto it = renames.find(proto.getLinkName());
+        if (it != renames.end()) {
+          proto.setLinkName(it->second);
+        } else {
+          unmapped.push_back(proto.getLinkName());
+        }
+        break;
+      }
+      case ASTNodeType::VARIABLE_CREATION: {
+        auto& variable = static_cast<VariableCreationAST&>(*stmt);
+        if (!variable.isCExtern()) break;
+        auto it = renames.find(variable.getLinkName());
+        if (it != renames.end()) {
+          variable.setLinkName(it->second);
+        } else {
+          unmapped.push_back(variable.getLinkName());
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+}
+
+/// What the linker will not say. Two archives with one file name under
+/// different hashes mean two versions of a library go into the program,
+/// each bound to the code that came with it. A plain extern naming a symbol
+/// that a bundle carries only in prefixed form binds to whatever the final
+/// link provides under the bare name, which is rarely what was meant.
+static void warnAboutArchiveSet(const std::vector<std::string>& archives,
+                                const std::vector<std::string>& bareExterns) {
+  std::map<std::string, std::vector<std::string>> byName;
+  for (const auto& path : archives) {
+    byName[std::filesystem::path(path).filename().string()].push_back(path);
+  }
+  for (const auto& [name, paths] : byName) {
+    if (paths.size() < 2) continue;
+    llvm::errs() << "Warning: " << paths.size() << " versions of " << name
+                 << " will be linked, each bound to the code that came with "
+                    "it:\n";
+    for (const auto& path : paths) llvm::errs() << "  " << path << "\n";
+  }
+
+  if (bareExterns.empty()) return;
+  std::set<std::string> wanted(bareExterns.begin(), bareExterns.end());
+  std::set<std::string> reported;
+  for (const auto& path : archives) {
+    auto buffer = llvm::MemoryBuffer::getFile(path);
+    if (!buffer) continue;
+    for (const auto& [bare, recorded] :
+         sun::listArchiveDefinitions((*buffer)->getMemBufferRef())) {
+      if (bare == recorded || !wanted.count(bare)) continue;
+      if (!reported.insert(bare).second) continue;
+      llvm::errs() << "Warning: extern \"C\" '" << bare
+                   << "' names a symbol that "
+                   << std::filesystem::path(path).filename().string()
+                   << " carries as '" << recorded
+                   << "'. The declaration binds to whatever the final link "
+                      "provides as '"
+                   << bare
+                   << "', not to that bundle's copy. Call through the "
+                      "bundle's API, or carry the archive under `archives:` "
+                      "to bind your own copy.\n";
+    }
+  }
+}
+
 void Driver::collectNativeArchives(const std::set<std::string>& linkedModules) {
   nativeArchivePaths_ = manifestArchivePaths_;
   if (linkedModules.empty()) return;
@@ -480,79 +642,24 @@ void Driver::collectNativeArchives(const std::set<std::string>& linkedModules) {
       linkedModules, archiveTempDir_);
   nativeArchivePaths_.insert(nativeArchivePaths_.end(), bundled.begin(),
                              bundled.end());
-}
-
-// Try to load a shared library holding the same code as a bundled archive
-// (libssl.a -> libssl.so.3, or libssl.3.dylib on macOS).
-//
-// On Linux the loader's own search path finds these, so a bare name is
-// enough. macOS needs full paths: Apple ships no usable OpenSSL, and the
-// bare names resolve to /usr/lib/libssl.dylib and libcrypto.dylib, which
-// are compatibility stubs that print "loading libcrypto in an unsafe way"
-// and abort the whole process the moment they are opened. Homebrew's and
-// MacPorts' builds are the real thing, and sit outside the search path.
-static bool loadSharedCounterpart(const std::filesystem::path& archive) {
-  std::string stem = archive.stem().string();  // "libssl"
-  if (stem.rfind("lib", 0) != 0) return false;
-
-  std::vector<std::string> candidates;
-#ifdef __APPLE__
-  for (const char* dir : {"/opt/homebrew/opt/openssl@3/lib/",
-                          "/usr/local/opt/openssl@3/lib/", "/opt/local/lib/"}) {
-    for (const char* suffix : {".3.dylib", ".dylib"}) {
-      candidates.push_back(dir + stem + suffix);
-    }
-  }
-#else
-  for (const char* suffix : {".so", ".so.3", ".so.1.1"}) {
-    candidates.push_back(stem + suffix);
-  }
-#endif
-
-  for (const auto& candidate : candidates) {
-    if (!llvm::sys::DynamicLibrary::LoadLibraryPermanently(candidate.c_str(),
-                                                           nullptr)) {
-      return true;
-    }
-  }
-  return false;
+  warnAboutArchiveSet(nativeArchivePaths_, unmappedExternLinkNames_);
 }
 
 void Driver::registerArchivesWithJIT() {
-  if (!ctx->jit || nativeArchivePaths_.empty()) return;
+  if (!ctx->jit) return;
 
-  // Prefer shared libraries whenever all of them are present. AOT linking
-  // always uses the bundled archives, so shipped binaries stay
-  // self-contained either way; this only decides what the JIT resolves
-  // against.
-  bool allShared = true;
-  for (const auto& archive : nativeArchivePaths_) {
-    if (!loadSharedCounterpart(archive)) {
-      allShared = false;
-      break;
-    }
-  }
-  if (allShared) return;
-
-  // Falling back to the bundle's own archives. This is a poor substitute:
-  // a static library expects a real link, and the JIT can only resolve what
-  // the running process already exports. One symbol it cannot find poisons
-  // every archive member that needs it — glibc's `atexit`, for instance,
-  // lives in libc_nonshared.a and is invisible to dlsym — and the failure
-  // surfaces far away as "failed to materialize" errors naming unrelated
-  // symbols. Say where it came from so that is not a mystery.
-  llvm::errs() << "Warning: no shared library found for the archives this "
-                  "program's bundles carry. Linking them into the JIT "
-                  "instead, which may not resolve every symbol; compiling "
-                  "with -c always uses the archives and is unaffected.\n";
-#ifdef __APPLE__
-  llvm::errs() << "  For TLS, `brew install openssl@3` supplies one.\n";
-#endif
-
+  // The same archives the AOT link would use, so a program behaves alike
+  // run directly and compiled. Their symbols carry the prefix of the bundle
+  // that brought them, so a shared library of the same code could not stand
+  // in even if one were installed. What an archive member needs from outside
+  // resolves from the running process; the glibc entry points dlsym cannot
+  // see are provided by createForJIT.
   for (const auto& archive : nativeArchivePaths_) {
     if (auto err = ctx->jit->addStaticLibrary(archive)) {
       llvm::errs() << "Warning: could not load bundled library '" << archive
-                   << "': " << llvm::toString(std::move(err)) << "\n";
+                   << "' into the JIT: " << llvm::toString(std::move(err))
+                   << "\n  Compiling with -c links it with the system linker "
+                      "instead.\n";
     }
   }
 }
@@ -716,6 +823,12 @@ void Driver::analyzeProgram(BlockExprAST& blockAst, Parser& parser) {
     sun::ScopedStage stage("moon imports");
     processMoonImports(blockAst, parser, moonImports_);
   }
+
+  // Bind the program's own C externs to the archives it carries before its
+  // scope is wrapped and before metadata is extracted, so the bundle and its
+  // importers agree on every symbol name.
+  unmappedExternLinkNames_.clear();
+  renameOwnExterns(blockAst, externRenames_, unmappedExternLinkNames_);
 
   // A bundle build compiles its own sources under the bundle's `$hash$`
   // scope, as a sibling of the imported bundles, so its names come out the
@@ -960,8 +1073,10 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
   bool hasStaticCtors = wrapStaticCtorsForJIT(*moduleClone);
 
   // Add the cloned module to JIT with its own context
-  // Archives carried by imported bundles resolve like linked libraries
+  // Archives carried by imported bundles resolve like linked libraries, and
+  // the exit handlers their code registers run when this run ends
   registerArchivesWithJIT();
+  JITExitScope exitHandlers;
 
   auto RT = ctx->jit->getMainJITDylib().createResourceTracker();
   ExitOnErr(ctx->jit->addModule(
@@ -1540,8 +1655,10 @@ sun::SunValue Driver::executeFiles(
   stripUnreachableForJIT(*moduleClone);
   bool hasStaticCtors = wrapStaticCtorsForJIT(*moduleClone);
 
-  // Archives carried by imported bundles resolve like linked libraries
+  // Archives carried by imported bundles resolve like linked libraries, and
+  // the exit handlers their code registers run when this run ends
   registerArchivesWithJIT();
+  JITExitScope exitHandlers;
 
   auto RT = ctx->jit->getMainJITDylib().createResourceTracker();
   llvm::ExitOnError ExitOnErr;

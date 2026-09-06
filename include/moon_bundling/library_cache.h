@@ -88,8 +88,10 @@ class LibraryCache {
   MoonReader* findBundleForModule(const std::string& moduleKey);
 
   /// Extract the native static archives carried by the bundles providing
-  /// these modules into destDir (one subdirectory per bundle, so bundles
-  /// carrying the same file name do not collide).
+  /// these modules into destDir, as `<archive set hash>/<file name>` so two
+  /// versions of one library never collide and the parent directory names
+  /// the hash their symbols carry. An archive carried by several bundles
+  /// with identical contents is extracted once.
   /// @return extracted archive paths, in bundle then manifest order
   std::vector<std::string> extractNativeArchives(
       const std::set<std::string>& moduleKeys,

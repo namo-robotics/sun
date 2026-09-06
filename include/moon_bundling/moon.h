@@ -20,8 +20,9 @@ namespace sun {
 /// Binary header for .moon format
 struct MoonHeader {
   static constexpr uint32_t MAGIC = 0x53554E4C;  // "SUNL"
-  // Retained module references and using targets carry canonical names.
-  static constexpr uint32_t VERSION = 1;
+  // Carried native archives record the hash their symbols are renamed
+  // under.
+  static constexpr uint32_t VERSION = 2;
 
   uint32_t magic = MAGIC;
   uint32_t version = VERSION;
@@ -41,9 +42,15 @@ struct ModuleIndexEntry {
 
 /// A native static library (`.a`) carried inside the bundle, so a moon that
 /// binds a C library brings that library's code with it. Programs importing
-/// the bundle link (AOT) or load (JIT) these without naming -l flags.
+/// the bundle link (AOT) or load (JIT) these without naming -l flags. The
+/// archive's symbols are spelled `$archiveSetHash$_symbol`: the hash of all
+/// the archives its bundle listed together, taken from their bytes as the
+/// vendor shipped them (see computeArchiveSetHash). The same set carried by
+/// several bundles is one set of symbols; a set differing in any archive is
+/// another.
 struct NativeArchiveEntry {
-  std::string name;  // file name, e.g. "libssl.a"
+  std::string archiveSetHash;  // hash its symbols are prefixed with
+  std::string name;            // file name, e.g. "libssl.a"
   uint64_t offset = 0;
   uint64_t size = 0;
 };
@@ -55,6 +62,11 @@ struct NativeArchiveEntry {
 /// FNV-1a hash of `data` as 8 hex characters. Bundle hashes are made from
 /// this; it keeps the `$hash$_` symbol prefix short enough to read in IR.
 std::string computeContentHash(const std::string& data);
+
+/// SHA-256 of `data` as 64 hex characters. Identifies exact bytes — source
+/// files going into a bundle hash, or an archive carried by several bundles —
+/// where the short bundle hash above could collide.
+std::string computeSha256Hex(llvm::StringRef data);
 
 /// Creates .moon bundle files containing multiple modules
 class MoonWriter {
@@ -70,9 +82,11 @@ class MoonWriter {
   void addModule(llvm::Module& module, const moon::ModuleMetadata& metadata);
 
   /// Carry a native static library inside the bundle
+  /// @param archiveSetHash Hash the archive's symbols are prefixed with
   /// @param name File name recorded in the bundle (e.g. "libssl.a")
-  /// @param data Raw archive contents
-  void addNativeArchive(std::string name, std::string data);
+  /// @param data Raw archive contents, symbols already renamed
+  void addNativeArchive(std::string archiveSetHash, std::string name,
+                        std::string data);
 
   /// Write the bundle to disk
   /// @param outputPath Path to write the .moon file
@@ -95,7 +109,12 @@ class MoonWriter {
   std::unordered_map<const llvm::Module*, size_t> blobIndexByModule_;
 
   std::vector<ModuleData> modules_;
-  std::vector<std::pair<std::string, std::string>> nativeArchives_;
+  struct PendingArchive {
+    std::string archiveSetHash;
+    std::string name;
+    std::string data;
+  };
+  std::vector<PendingArchive> nativeArchives_;
   std::string bundleHash_;
   std::string error_;
 };
@@ -147,9 +166,12 @@ class MoonReader {
     return nativeArchives_;
   }
 
-  /// Read one carried archive's bytes
-  /// @return false if the name is unknown or the read failed
-  bool readNativeArchive(const std::string& name, std::vector<char>& out);
+  /// Read one carried archive's bytes. Entries come from getNativeArchives();
+  /// two versions of a library share a file name, so the entry rather than
+  /// the name identifies one.
+  /// @return false if the read failed
+  bool readNativeArchive(const NativeArchiveEntry& entry,
+                         std::vector<char>& out);
 
  private:
   MoonReader() = default;

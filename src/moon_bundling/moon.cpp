@@ -6,6 +6,7 @@
 #include <llvm/Bitcode/BitcodeWriter.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Support/MemoryBuffer.h>
+#include <llvm/Support/SHA256.h>
 #include <llvm/Support/raw_ostream.h>
 
 #include <fstream>
@@ -27,6 +28,18 @@ std::string computeContentHash(const std::string& data) {
   std::ostringstream oss;
   oss << std::hex << std::setfill('0') << std::setw(8) << (hash & 0xFFFFFFFF);
   return oss.str();
+}
+
+std::string computeSha256Hex(llvm::StringRef data) {
+  llvm::SHA256 sha;
+  sha.update(data);
+  std::string result;
+  for (uint8_t byte : sha.final()) {
+    constexpr char hex[] = "0123456789abcdef";
+    result += hex[byte >> 4];
+    result += hex[byte & 15];
+  }
+  return result;
 }
 
 //===----------------------------------------------------------------------===//
@@ -65,8 +78,10 @@ void MoonWriter::addModule(llvm::Module& module,
   modules_.push_back(std::move(data));
 }
 
-void MoonWriter::addNativeArchive(std::string name, std::string data) {
-  nativeArchives_.emplace_back(std::move(name), std::move(data));
+void MoonWriter::addNativeArchive(std::string archiveSetHash, std::string name,
+                                  std::string data) {
+  nativeArchives_.push_back(
+      {std::move(archiveSetHash), std::move(name), std::move(data)});
 }
 
 bool MoonWriter::write(const std::filesystem::path& outputPath) {
@@ -135,12 +150,14 @@ bool MoonWriter::write(const std::filesystem::path& outputPath) {
   // Write carried native archives, recording where each landed
   std::vector<NativeArchiveEntry> archiveIndex;
   archiveIndex.reserve(nativeArchives_.size());
-  for (const auto& [name, data] : nativeArchives_) {
+  for (const auto& archive : nativeArchives_) {
     NativeArchiveEntry entry;
-    entry.name = name;
+    entry.archiveSetHash = archive.archiveSetHash;
+    entry.name = archive.name;
     entry.offset = static_cast<uint64_t>(out.tellp());
-    entry.size = data.size();
-    out.write(data.data(), static_cast<std::streamsize>(data.size()));
+    entry.size = archive.data.size();
+    out.write(archive.data.data(),
+              static_cast<std::streamsize>(archive.data.size()));
     archiveIndex.push_back(std::move(entry));
   }
 
@@ -168,6 +185,9 @@ bool MoonWriter::write(const std::filesystem::path& outputPath) {
   uint64_t archiveCount = archiveIndex.size();
   out.write(reinterpret_cast<const char*>(&archiveCount), sizeof(archiveCount));
   for (const auto& entry : archiveIndex) {
+    uint32_t hashLen = static_cast<uint32_t>(entry.archiveSetHash.size());
+    out.write(reinterpret_cast<const char*>(&hashLen), sizeof(hashLen));
+    out.write(entry.archiveSetHash.data(), hashLen);
     uint32_t nameLen = static_cast<uint32_t>(entry.name.size());
     out.write(reinterpret_cast<const char*>(&nameLen), sizeof(nameLen));
     out.write(entry.name.data(), nameLen);
@@ -248,6 +268,10 @@ std::unique_ptr<MoonReader> MoonReader::open(
   if (in.good()) {
     for (uint64_t i = 0; i < archiveCount; ++i) {
       NativeArchiveEntry entry;
+      uint32_t hashLen = 0;
+      in.read(reinterpret_cast<char*>(&hashLen), sizeof(hashLen));
+      entry.archiveSetHash.resize(hashLen);
+      in.read(entry.archiveSetHash.data(), hashLen);
       uint32_t nameLen = 0;
       in.read(reinterpret_cast<char*>(&nameLen), sizeof(nameLen));
       entry.name.resize(nameLen);
@@ -262,15 +286,9 @@ std::unique_ptr<MoonReader> MoonReader::open(
   return reader;
 }
 
-bool MoonReader::readNativeArchive(const std::string& name,
+bool MoonReader::readNativeArchive(const NativeArchiveEntry& entry,
                                    std::vector<char>& out) {
-  for (const auto& entry : nativeArchives_) {
-    if (entry.name == name) {
-      return readBytes(entry.offset, entry.size, out);
-    }
-  }
-  error_ = "Native archive not found in bundle: " + name;
-  return false;
+  return readBytes(entry.offset, entry.size, out);
 }
 
 bool MoonReader::hasModule(const std::string& moduleKey) const {
