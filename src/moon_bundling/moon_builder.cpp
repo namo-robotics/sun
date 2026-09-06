@@ -2,7 +2,6 @@
 
 #include "moon_bundling/moon_builder.h"
 
-#include <llvm/Support/SHA256.h>
 #include <llvm/TargetParser/Host.h>
 
 #include <algorithm>
@@ -28,15 +27,14 @@ namespace {
 
 // Fingerprints preserve all source bytes before computing the bundle identity.
 std::string sourceFingerprint(const std::string& source) {
-  llvm::SHA256 sha;
-  sha.update(llvm::StringRef(source));
-  std::string result;
-  for (uint8_t byte : sha.final()) {
-    constexpr char hex[] = "0123456789abcdef";
-    result += hex[byte >> 4];
-    result += hex[byte & 15];
-  }
-  return result;
+  return computeSha256Hex(source);
+}
+
+std::string readWholeFile(const std::string& path, const char* what) {
+  std::ifstream in(path, std::ios::binary);
+  if (!in) fail(std::string("Cannot read ") + what + ": " + path);
+  return std::string((std::istreambuf_iterator<char>(in)),
+                     std::istreambuf_iterator<char>());
 }
 
 // The bundle's content hash, decided before anything is compiled so the
@@ -160,15 +158,32 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   for (const auto& metadata : allMetadata) {
     writer.addModule(driver->getModule(), metadata);
   }
-  // Native archives named by `archives:` travel inside the bundle, so
-  // importers link against them without naming -l flags.
-  for (const auto& archivePath : report.archiveFiles) {
-    std::ifstream archiveIn(archivePath, std::ios::binary);
-    if (!archiveIn) fail("Cannot read native archive: " + archivePath);
-    std::string data((std::istreambuf_iterator<char>(archiveIn)),
-                     std::istreambuf_iterator<char>());
-    writer.addNativeArchive(fs::path(archivePath).filename().string(),
-                            std::move(data));
+  // Native archives travel inside the bundle, so importers link against them
+  // without naming -l flags. The manifest's own `archives:` come first; then
+  // the archives of every imported bundle whose code was just linked into
+  // this one (the driver put them on disk). That code keeps its calls into
+  // those archives, and importers see only this bundle, so the archives must
+  // follow the code the same way the bitcode already does. Identical archives
+  // reached through several bundles are carried once; two different archives
+  // under one file name cannot both be carried, since a consumer extracts
+  // them by name.
+  std::map<std::string, std::string> carriedDigestByName;
+  auto carry = [&](const std::string& archivePath, bool inherited) {
+    std::string data = readWholeFile(archivePath, "native archive");
+    const std::string name = fs::path(archivePath).filename().string();
+    const std::string digest = computeSha256Hex(data);
+    auto [it, fresh] = carriedDigestByName.try_emplace(name, digest);
+    if (!fresh) {
+      if (it->second == digest) return;
+      fail("moon bundle: cannot carry two different archives named '" + name +
+           "' (one of them from " + archivePath + ")");
+    }
+    if (inherited) report.inheritedArchives.push_back(name);
+    writer.addNativeArchive(name, std::move(data));
+  };
+  for (const auto& archivePath : report.archiveFiles) carry(archivePath, false);
+  for (const auto& archivePath : driver->getNativeArchivePaths()) {
+    carry(archivePath, true);
   }
   if (!writer.write(outputPath)) {
     fail("Error writing moon: " + writer.getError());

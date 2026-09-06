@@ -89,7 +89,8 @@ class LibraryCache {
 
   /// Extract the native static archives carried by the bundles providing
   /// these modules into destDir (one subdirectory per bundle, so bundles
-  /// carrying the same file name do not collide).
+  /// carrying the same file name do not collide). An archive carried by
+  /// several bundles with identical contents is extracted once.
   /// @return extracted archive paths, in bundle then manifest order
   std::vector<std::string> extractNativeArchives(
       const std::set<std::string>& moduleKeys,

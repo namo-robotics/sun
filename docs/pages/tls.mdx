@@ -179,7 +179,9 @@ manifest {
 
 `archives:` works for any bundle wrapping a C library. Importers link against
 what the bundle carries automatically — no `-l` flags, and nothing to install
-alongside the finished program.
+alongside the finished program. A bundle built on `tls.moon` carries the
+archives forward with the tls code it links in, so a program importing only
+that bundle still links.
 
 ## Tests
 

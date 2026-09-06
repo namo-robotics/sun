@@ -56,6 +56,11 @@ struct NativeArchiveEntry {
 /// this; it keeps the `$hash$_` symbol prefix short enough to read in IR.
 std::string computeContentHash(const std::string& data);
 
+/// SHA-256 of `data` as 64 hex characters. Identifies exact bytes — source
+/// files going into a bundle hash, or an archive carried by several bundles —
+/// where the short bundle hash above could collide.
+std::string computeSha256Hex(llvm::StringRef data);
+
 /// Creates .moon bundle files containing multiple modules
 class MoonWriter {
  public:

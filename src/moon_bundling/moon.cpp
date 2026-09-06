@@ -6,6 +6,7 @@
 #include <llvm/Bitcode/BitcodeWriter.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Support/MemoryBuffer.h>
+#include <llvm/Support/SHA256.h>
 #include <llvm/Support/raw_ostream.h>
 
 #include <fstream>
@@ -27,6 +28,18 @@ std::string computeContentHash(const std::string& data) {
   std::ostringstream oss;
   oss << std::hex << std::setfill('0') << std::setw(8) << (hash & 0xFFFFFFFF);
   return oss.str();
+}
+
+std::string computeSha256Hex(llvm::StringRef data) {
+  llvm::SHA256 sha;
+  sha.update(data);
+  std::string result;
+  for (uint8_t byte : sha.final()) {
+    constexpr char hex[] = "0123456789abcdef";
+    result += hex[byte >> 4];
+    result += hex[byte & 15];
+  }
+  return result;
 }
 
 //===----------------------------------------------------------------------===//

@@ -172,6 +172,10 @@ std::vector<std::string> LibraryCache::extractNativeArchives(
 
   std::vector<std::string> extracted;
   std::set<MoonReader*> seenBundles;
+  // A bundle carries the archives of the bundles it was built on, so a
+  // program linking both a bundle and one built on it meets the same archive
+  // twice. The linker would tolerate that, but one copy is enough.
+  std::set<std::string> extractedDigests;
 
   for (const auto& moduleKey : moduleKeys) {
     auto* bundle = findBundleForModule(moduleKey);
@@ -188,6 +192,9 @@ std::vector<std::string> LibraryCache::extractNativeArchives(
     for (const auto& entry : bundle->getNativeArchives()) {
       std::vector<char> data;
       if (!bundle->readNativeArchive(entry.name, data)) continue;
+      const std::string digest =
+          computeSha256Hex(llvm::StringRef(data.data(), data.size()));
+      if (!extractedDigests.insert(digest).second) continue;
       std::filesystem::path out = bundleDir / entry.name;
       std::ofstream file(out, std::ios::binary);
       if (!file) continue;
