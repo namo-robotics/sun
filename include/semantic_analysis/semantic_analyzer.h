@@ -1,10 +1,11 @@
 // semantic_analyzer.h — Pre-codegen semantic analysis pass
 //
-// Four things the analyzer holds rather than is, each with its own header:
+// Five things the analyzer holds rather than is, each with its own header:
 //   SemanticContext       scopes, symbol tables, the type registry
 //   DeclarationCollector  the pre-pass, and what counts as already declared
 //   GenericSpecializer    monomorphization and its cache
 //   TypeInferer           what type is this expression / this annotation
+//   CallAnalyzer          what a call calls, and how its arguments get there
 // They all share the one SemanticContext by reference. The analyzer itself is
 // the part that walks the AST: it checks what it finds, and stamps the
 // resolved types and conversions codegen reads back off the nodes.
@@ -12,6 +13,7 @@
 // Its implementation is split by topic across src/semantic_analysis/:
 //   analysis.cpp             analyzeExpr, analyzeBlock, analyzeFunction
 //   analysis_utils.cpp       places, constness, `_is<T>` type guards
+//   call_analyzer.cpp        every form of call (its own class, see above)
 //   captures.cpp             free variables and closure captures
 //   enums.cpp                enum definitions, construction, match
 //   interfaces.cpp           interfaces and conformance validation
@@ -35,6 +37,7 @@
 
 #include "ast/type_annotation.h"
 #include "semantic_analysis/access_checker.h"
+#include "semantic_analysis/call_analyzer.h"
 #include "semantic_analysis/declaration_collector.h"
 #include "semantic_analysis/generic_specializer.h"
 #include "semantic_analysis/semantic_context.h"
@@ -72,6 +75,9 @@ class SemanticAnalyzer {
   // What type is this expression, and what type does this annotation name.
   TypeInferer types_{ctx_, *this, generics_};
 
+  // Resolves and checks every form of call.
+  CallAnalyzer calls_{ctx_, *this, generics_, types_};
+
  public:
   /** Start with an empty global scope holding the builtin functions. */
   explicit SemanticAnalyzer(std::shared_ptr<sun::TypeRegistry> registry)
@@ -89,16 +95,8 @@ class SemanticAnalyzer {
   /** Type inference and type-annotation resolution. */
   TypeInferer &types() { return types_; }
 
-  /**
-   * Resolve a module-qualified call `mod.foo(args...)` against the actual
-   * argument types and stamp the chosen overload's own mangled name onto the
-   * member access. Rebuilding the name from the module path instead would
-   * drop the overload param suffix and name a symbol codegen never emits.
-   * Returns nullptr if the module has no overload matching those arguments.
-   */
-  const FunctionInfo *resolveModuleQualifiedCall(
-      const MemberAccessAST &memberAccess, const sun::TypePtr &objectType,
-      const std::vector<sun::TypePtr> &argTypes) const;
+  /** Call resolution and checking. */
+  CallAnalyzer &calls() { return calls_; }
 
   /** The global scope, for debugging and visualization. */
   const SemanticScope &getRootScope() const { return ctx_.rootScope(); }
@@ -208,7 +206,13 @@ class SemanticAnalyzer {
   void analyzeMemberAccess(MemberAccessAST &memberAccess,
                            sun::TypePtr expectedType);
   void analyzeQualifiedName(QualifiedNameAST &qualName);
-  void analyzeGenericCallExpr(GenericCallAST &genericCall);
+
+  /**
+   * Call interception for EnumName.Variant(args...) on concrete and generic
+   * enums; returns true when the call was an enum construction.
+   */
+  bool tryAnalyzeEnumConstruction(CallExprAST &callExpr,
+                                  sun::TypePtr expectedType);
 
   /**
    * Extract function signature info (param types, captures, explicit return
@@ -392,30 +396,12 @@ class SemanticAnalyzer {
       bool allowByValueObjects = false);
 
   /**
-   * Calling into C leaves everything the borrow checker and type system
-   * guarantee, so it is gated on `unsafe` — the same rule the equivalent
-   * intrinsics (_malloc, _free, ...) already follow. Throws if `info` names a
-   * C extern and the call site is not inside an unsafe block.
-   */
-  void checkExternCallAllowed(const FunctionInfo &info,
-                              const std::string &displayName,
-                              const Position &loc) const;
-
-  /**
-   * Reject access to C-owned global storage outside an unsafe block.
+   * Reject access to C-owned global storage outside an unsafe block. (Calls
+   * into C and unsafe intrinsics are gated the same way by CallAnalyzer.)
    */
   void checkExternVariableAccessAllowed(const VariableInfo &info,
                                         const std::string &displayName,
                                         const Position &loc) const;
-
-  /**
-   * The same rule for intrinsics: those that read or write unchecked memory
-   * are gated on `unsafe`. `sun::requiresUnsafeBlock` decides which, and this
-   * is where it is applied — for generic and non-generic intrinsics alike.
-   * Throws if `name` is one of them and the call site is not inside a block.
-   */
-  void checkRequiresUnsafeBlock(const std::string &name,
-                                const Position &loc) const;
 
   /**
    * Check `mod.name = value`: the target must be a visible, assignable
@@ -463,55 +449,7 @@ class SemanticAnalyzer {
   void maybeResolveBoundMethodRef(MemberAccessAST &memberAccess,
                                   sun::TypePtr expectedType);
 
-  /**
-   * Analyze a call: resolve the callee against the argument types, check the
-   * arguments against the chosen signature, and record one ArgConversion per
-   * argument for codegen.
-   */
-  void analyzeCall(CallExprAST &callExpr, sun::TypePtr expectedType = nullptr);
-
-  /** What resolving a call's callee established about the call. */
-  struct CalleeResolution {
-    // The overload a plain `f(...)` call resolved to, if it named a function.
-    std::optional<FunctionInfo> function;
-    // The class a constructor call `C(...)` names, if it named one.
-    std::shared_ptr<sun::ClassType> classType;
-    // The callee swallows a variadic pack, whose arguments are not part of
-    // its recorded parameter list — so the arity check sits out.
-    bool takesPack = false;
-    // The method was called on a constant receiver (see checkMethodReceiver),
-    // so a `ref T` result becomes `const ref T`.
-    bool receiverImmutable = false;
-  };
-
-  /**
-   * Analyze a call's arguments and give back their types. Arguments go first
-   * so overload resolution has real types to match against, which means an
-   * argument that needs a hint — an array literal, an overloaded bound method
-   * reference — takes it from a provisional look at the callee. Also expands
-   * a variadic pack (`f(args...)`) into the concrete arguments it stands for.
-   */
-  std::vector<sun::TypePtr> analyzeCallArguments(CallExprAST &callExpr,
-                                                 sun::TypePtr expectedType);
-
-  /**
-   * Resolve what a call is actually calling: an overload by name, a
-   * constructor, a method on an object, or an expression that evaluates to
-   * something callable. Analyzes the callee and stamps the resolved name and
-   * type onto it; the checking of arguments against the result is
-   * analyzeCall's own step.
-   */
-  CalleeResolution resolveCallee(CallExprAST &callExpr,
-                                 const std::vector<sun::TypePtr> &argTypes);
-
   // ===== Enums (all implemented in semantic_analysis/enums.cpp) =====
-
-  /**
-   * Call interception for EnumName.Variant(args...) on concrete and generic
-   * enums; returns true when the call was an enum construction.
-   */
-  bool tryAnalyzeEnumConstruction(CallExprAST &callExpr,
-                                  sun::TypePtr expectedType);
 
   /**
    * Member-access interception for generic enum unit variants (Option.None);
@@ -545,44 +483,4 @@ class SemanticAnalyzer {
   void analyzeEnumMatch(MatchExprAST &matchExpr,
                         const std::shared_ptr<sun::EnumType> &enumType,
                         sun::TypePtr expectedType);
-
-  /**
-   * Analyze an intrinsic call: the arguments only, since codegen decides what
-   * the intrinsic does.
-   */
-  void analyzeIntrinsicCall(GenericCallAST &genericCall);
-
-  // Decide how each argument of a _spawn call reaches the spawned lambda's
-  // parameters, and mark what the thread takes over as moved.
-  void recordSpawnArgumentConversions(GenericCallAST &genericCall);
-
-  /**
-   * Analyze `f<T>(...)`: resolve the template, fill in any type arguments the
-   * call left to the arguments, then specialize it.
-   */
-  void analyzeGenericFunctionCall(GenericCallAST &genericCall);
-
-  /**
-   * Analyze `C<T>(...)`: specialize the generic class, then check the
-   * arguments against the chosen constructor.
-   */
-  void analyzeGenericClassConstruction(GenericCallAST &genericCall);
-
-  /**
-   * Expand a variadic pack (`args...`) in a call's argument list into
-   * concrete, already-typed VariableReferenceAST nodes ("args.0", "args.1",
-   * ...), using the enclosing function scope's recorded variadic param. No-op
-   * when there is no enclosing variadic param or no pack argument is present.
-   */
-  void expandPackArguments(std::vector<std::unique_ptr<ExprAST>> &args);
-
-  /**
-   * Throws "No matching overload" when the class has methods called `name`
-   * but none of them takes `argTypes.size()` arguments. Silent otherwise, so
-   * callers can still fall back on their own type-mismatch diagnostics.
-   */
-  void reportNoMethodForArgCount(const sun::ClassType &cls,
-                                 const std::string &name,
-                                 const std::vector<sun::TypePtr> &argTypes,
-                                 const Position &loc) const;
 };

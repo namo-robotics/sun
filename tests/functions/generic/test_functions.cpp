@@ -386,6 +386,75 @@ TEST(Functions_Generic, nested_module_qualified_call_from_generic_method) {
   EXPECT_EQ(value, 42);
 }
 
+// A qualified call infers its type arguments exactly as an unqualified one
+// does (issue #192).
+TEST(Functions_Generic, module_qualified_call_infers_type_argument) {
+  auto value = executeString(R"(
+    public module m {
+        public function twice<T>(x: T) T { return x + x; }
+    }
+    function main() i32 { return m.twice(21); }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Functions_Generic, module_qualified_call_infers_trailing_type_argument) {
+  auto value = executeString(R"(
+    public module m {
+        public function first<A, B>(a: A, b: B) A { return a; }
+    }
+    function main() i32 { return m.first<i32>(42, true); }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Functions_Generic,
+     nested_module_qualified_inferred_call_from_generic_method) {
+  auto value = executeString(R"(
+    public module a {
+        public module b {
+            public function pick<T>(x: T, y: T) T { return x; }
+        }
+    }
+    class Box<T> {
+        var v: T;
+        init(v: T) { this.v = v; }
+        method get() T { return a.b.pick(this.v, this.v); }
+    }
+    function main() i32 {
+        var box = Box<i32>(20);
+        return box.get() + a.b.pick(22, 0);
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Functions_Generic, module_qualified_call_infers_pack_callee) {
+  auto value = executeString(R"(
+    public module m {
+        public function apply<F: _Lambda>(f: F, args...: _params_of<F>) i32 {
+            return f(args...);
+        }
+    }
+    function main() i32 {
+        var add = (a: i32, b: i32) => i32 { return a + b; };
+        var neg = (a: i32) => i32 { return 0 - a; };
+        return m.apply(add, 3, 4) + m.apply(neg, 5);
+    }
+  )");
+  EXPECT_EQ(value, 2);
+}
+
+TEST(Functions_Generic, module_qualified_call_that_cannot_infer_is_an_error) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    public module m {
+        public function zero<T>() i32 { return 0; }
+    }
+    function main() i32 { return m.zero(); }
+  )"),
+                                "Cannot infer type argument 'T'");
+}
+
 // ============================================================================
 // Type arguments inferred from the call's arguments
 // ============================================================================

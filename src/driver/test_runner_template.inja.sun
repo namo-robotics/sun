@@ -4,8 +4,7 @@
 // dotted test names, in declaration order.
 //
 // Every test runs through std.test.run_one, each on its own thread by
-// default (spawn must stay an unqualified call: only those infer their type
-// arguments today); "--test-sequential" in argv runs them inline instead,
+// default; "--test-sequential" in argv runs them inline instead,
 // and "--test-filter <pattern>" (repeatable) picks which tests run at all.
 // Results are reported in declaration order either way, so the output is
 // deterministic.
@@ -29,7 +28,7 @@ function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
         var threads = Vec<Thread<TestResult>>(alloc, {{ length(tests) }});
         {% for test in tests %}
         if (is_selected("{{ test }}", argc, argv)) {
-            threads.push(spawn(run_one, "{{ test }}", {{ test }}));
+            threads.push(std.thread.spawn(run_one, "{{ test }}", {{ test }}));
         }
         {% endfor %}
         total = threads.size();
