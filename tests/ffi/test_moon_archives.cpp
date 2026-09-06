@@ -14,8 +14,7 @@
 
 #include <gtest/gtest.h>
 
-#include <llvm/Object/Archive.h>
-#include <llvm/Support/MemoryBuffer.h>
+#include <llvm/Support/MemoryBufferRef.h>
 
 #include <unistd.h>
 
@@ -26,6 +25,7 @@
 
 #include "driver/compiler.h"
 #include "driver/execution_utils.h"
+#include "moon_bundling/archive_symbols.h"
 #include "moon_bundling/moon.h"
 #include "moon_bundling/moon_builder.h"
 #include "moon_bundling/moon_import.h"
@@ -168,30 +168,16 @@ std::string symbolPrefix(const fs::path& bundle) {
 }
 
 // The names in the symbol index of the first archive a bundle carries, as C
-// code spells them (without the underscore Mach-O prepends)
+// code spells them
 std::vector<std::string> carriedArchiveSymbols(const fs::path& bundle) {
-  std::vector<std::string> names;
   auto reader = sun::MoonReader::open(bundle);
-  if (!reader || reader->getNativeArchives().empty()) return names;
+  if (!reader || reader->getNativeArchives().empty()) return {};
   std::vector<char> bytes;
   if (!reader->readNativeArchive(reader->getNativeArchives()[0], bytes)) {
-    return names;
+    return {};
   }
-  auto archive = llvm::object::Archive::create(
+  return sun::listArchiveIndex(
       llvm::MemoryBufferRef(llvm::StringRef(bytes.data(), bytes.size()), ""));
-  if (!archive) {
-    llvm::consumeError(archive.takeError());
-    return names;
-  }
-  const auto kind = (*archive)->kind();
-  const bool machO = kind == llvm::object::Archive::K_DARWIN ||
-                     kind == llvm::object::Archive::K_DARWIN64;
-  for (const auto& symbol : (*archive)->symbols()) {
-    llvm::StringRef name = symbol.getName();
-    if (machO) name.consume_front("_");
-    names.push_back(name.str());
-  }
-  return names;
 }
 
 // Build and run a program as a native executable; the exit code, or -1

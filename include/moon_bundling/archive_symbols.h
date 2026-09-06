@@ -45,10 +45,14 @@ llvm::Expected<std::string> renameArchiveSymbols(
     llvm::MemoryBufferRef archive,
     const std::map<std::string, std::string>& renames);
 
+/// The names in an archive's symbol index as C code spells them (Mach-O's
+/// leading underscore removed). Cheap: the index and one member header.
+std::vector<std::string> listArchiveIndex(llvm::MemoryBufferRef archive);
+
 /// The symbols an archive's index says it defines, keyed by the name with
-/// any `$hash$_` prefix removed, mapped to the name as recorded. Cheap: only
-/// the index is read. Used to tell when a plain extern names something a
-/// bundle carries only in prefixed form.
+/// any `$hash$_` prefix removed, mapped to the name as recorded. Used to
+/// tell when a plain extern names something a bundle carries only in
+/// prefixed form.
 std::map<std::string, std::string> listArchiveDefinitions(
     llvm::MemoryBufferRef archive);
 

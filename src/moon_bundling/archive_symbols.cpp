@@ -213,19 +213,41 @@ llvm::Expected<std::string> renameArchiveSymbols(
   return (*written)->getBuffer().str();
 }
 
-std::map<std::string, std::string> listArchiveDefinitions(
-    llvm::MemoryBufferRef archiveBytes) {
-  std::map<std::string, std::string> definitions;
+// Whether the members are Mach-O objects, decided from the first one. The
+// archive format alone does not say: the BSD layout holds either kind.
+bool archiveHoldsMachO(const Archive& archive) {
+  bool machO = false;
+  llvm::Error err = llvm::Error::success();
+  auto first = archive.child_begin(err);
+  if (first != archive.child_end()) {
+    if (auto binary = first->getAsBinary()) {
+      machO = (*binary)->isMachO();
+    } else {
+      llvm::consumeError(binary.takeError());
+    }
+  }
+  llvm::consumeError(std::move(err));
+  return machO;
+}
+
+std::vector<std::string> listArchiveIndex(llvm::MemoryBufferRef archiveBytes) {
+  std::vector<std::string> names;
   auto archive = Archive::create(archiveBytes);
   if (!archive) {
     llvm::consumeError(archive.takeError());
-    return definitions;
+    return names;
   }
-  // Mach-O archives are told apart by their format, so no member is opened
-  const auto kind = (*archive)->kind();
-  const bool machO = kind == Archive::K_DARWIN || kind == Archive::K_DARWIN64;
+  const bool machO = archiveHoldsMachO(**archive);
   for (const Archive::Symbol& symbol : (*archive)->symbols()) {
-    const std::string recorded = bareName(symbol.getName(), machO);
+    names.push_back(bareName(symbol.getName(), machO));
+  }
+  return names;
+}
+
+std::map<std::string, std::string> listArchiveDefinitions(
+    llvm::MemoryBufferRef archiveBytes) {
+  std::map<std::string, std::string> definitions;
+  for (const auto& recorded : listArchiveIndex(archiveBytes)) {
     definitions.emplace(stripBundlePrefix(recorded), recorded);
   }
   return definitions;
