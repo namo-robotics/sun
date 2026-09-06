@@ -17,6 +17,8 @@
 #include <llvm/Object/Archive.h>
 #include <llvm/Support/MemoryBuffer.h>
 
+#include <unistd.h>
+
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -80,7 +82,9 @@ manifest {
 // `leaf2.moon` wraps the second version of the archive. Built once per
 // process (see chain()): the library cache is a singleton that keeps every
 // bundle it has opened, so rebuilding under a fresh path per test would
-// leave it holding readers for files that no longer exist.
+// leave it holding readers for files that no longer exist. The directory is
+// per process too: ctest runs each test as its own process, several at a
+// time, and they must not wipe each other's bundles.
 struct BundleChain {
   fs::path dir;
   fs::path leaf;
@@ -92,7 +96,8 @@ struct BundleChain {
 
   BundleChain() {
     initTestEnvironment();
-    dir = fs::path(::testing::TempDir()) / "sun_moon_archives_test";
+    dir = fs::path(::testing::TempDir()) /
+          ("sun_moon_archives_" + std::to_string(::getpid()));
     fs::remove_all(dir);
     fs::create_directories(dir);
 
@@ -122,6 +127,12 @@ manifest {
     midReport = sun::MoonBuilder::build((dir / "mid.sun").string(), mid);
     sun::MoonBuilder::build((dir / "twin.sun").string(), twin);
     sun::MoonBuilder::build((dir / "leaf2.sun").string(), leaf2);
+  }
+
+  // Runs at process exit, after every test in this process is done with it
+  ~BundleChain() {
+    std::error_code ignored;
+    fs::remove_all(dir, ignored);
   }
 };
 

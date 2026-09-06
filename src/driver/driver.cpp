@@ -7,7 +7,6 @@
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Transforms/IPO/GlobalDCE.h>
 #include <llvm/Transforms/Utils/Cloning.h>
-#include <pthread.h>
 #include <unistd.h>
 
 #include <cstdlib>
@@ -32,6 +31,70 @@
 #include "support/source_manager.h"
 #include "support/stage_timer.h"
 #include "support/sun_path.h"
+
+// ---------------------------------------------------------------------------
+// Exit handlers registered by JIT-compiled code
+//
+// A program run under the JIT lives inside the compiler process. C code it
+// brings along (an archive carried by a bundle) may call atexit, as OpenSSL
+// does for its cleanup. The real atexit would run that handler when the
+// compiler exits, long after the JIT's code memory is gone, and crash. So the
+// JIT resolves atexit to a shim that keeps the handlers here, and they run
+// when the program's main returns (its exit, as far as it can tell) while
+// its code is still mapped. A program that calls exit() itself ends the
+// whole process from inside the JIT'd code; a real exit handler drains the
+// same list then, with the memory still there.
+// ---------------------------------------------------------------------------
+namespace {
+
+std::mutex& jitExitMutex() {
+  static std::mutex mutex;
+  return mutex;
+}
+
+std::vector<void (*)()>& jitExitHandlers() {
+  static std::vector<void (*)()> handlers;
+  return handlers;
+}
+
+// Reverse registration order, like atexit; a handler may register another
+void runJITExitHandlers() {
+  for (;;) {
+    void (*handler)() = nullptr;
+    {
+      std::lock_guard<std::mutex> lock(jitExitMutex());
+      if (jitExitHandlers().empty()) return;
+      handler = jitExitHandlers().back();
+      jitExitHandlers().pop_back();
+    }
+    handler();
+  }
+}
+
+// Stands in for atexit and at_quick_exit inside the JIT
+int jitAtExit(void (*handler)()) {
+  {
+    std::lock_guard<std::mutex> lock(jitExitMutex());
+    jitExitHandlers().push_back(handler);
+  }
+  // Registered after the list exists, so at process exit it runs before the
+  // list is destroyed
+  static std::once_flag drainAtProcessExit;
+  std::call_once(drainAtProcessExit, [] { std::atexit(runJITExitHandlers); });
+  return 0;
+}
+
+// Fork handlers registered by JIT'd code would outlive it the same way and
+// fire on the compiler's own later forks. A program run this way does not
+// fork, so they are accepted and dropped.
+int jitAtFork(void (*)(), void (*)(), void (*)()) { return 0; }
+
+// Runs the program's exit handlers when its run ends, however it ends
+struct JITExitScope {
+  ~JITExitScope() { runJITExitHandlers(); }
+};
+
+}  // namespace
 
 static llvm::ExitOnError ExitOnErr;
 using llvm::orc::ThreadSafeModule;
@@ -176,15 +239,12 @@ std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
         ExecutorAddr::fromPtr(address), JITSymbolFlags::Exported);
   };
   provide("putchard", reinterpret_cast<void*>(&putchard));
-#ifdef __GLIBC__
-  // The JIT resolves everything else from the running process, but glibc
-  // keeps these in libc_nonshared.a: every program links its own copy and
-  // dlsym cannot see them. Static archives a bundle carries (OpenSSL calls
-  // atexit) reference them, so hand over the compiler's own.
-  provide("atexit", reinterpret_cast<void*>(&atexit));
-  provide("at_quick_exit", reinterpret_cast<void*>(&at_quick_exit));
-  provide("pthread_atfork", reinterpret_cast<void*>(&pthread_atfork));
-#endif
+  // Process-lifetime registrations must not reach the real libc from code
+  // that lives only as long as this driver; see the JIT exit handlers above.
+  // (On glibc these also live in libc_nonshared.a, out of dlsym's sight.)
+  provide("atexit", reinterpret_cast<void*>(&jitAtExit));
+  provide("at_quick_exit", reinterpret_cast<void*>(&jitAtExit));
+  provide("pthread_atfork", reinterpret_cast<void*>(&jitAtFork));
   cantFail(mainDylib.define(llvm::orc::absoluteSymbols(runtimeSymbols)));
 
   auto typeRegistry = std::make_shared<sun::TypeRegistry>();
@@ -1014,8 +1074,10 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
   bool hasStaticCtors = wrapStaticCtorsForJIT(*moduleClone);
 
   // Add the cloned module to JIT with its own context
-  // Archives carried by imported bundles resolve like linked libraries
+  // Archives carried by imported bundles resolve like linked libraries, and
+  // the exit handlers their code registers run when this run ends
   registerArchivesWithJIT();
+  JITExitScope exitHandlers;
 
   auto RT = ctx->jit->getMainJITDylib().createResourceTracker();
   ExitOnErr(ctx->jit->addModule(
@@ -1594,8 +1656,10 @@ sun::SunValue Driver::executeFiles(
   stripUnreachableForJIT(*moduleClone);
   bool hasStaticCtors = wrapStaticCtorsForJIT(*moduleClone);
 
-  // Archives carried by imported bundles resolve like linked libraries
+  // Archives carried by imported bundles resolve like linked libraries, and
+  // the exit handlers their code registers run when this run ends
   registerArchivesWithJIT();
+  JITExitScope exitHandlers;
 
   auto RT = ctx->jit->getMainJITDylib().createResourceTracker();
   llvm::ExitOnError ExitOnErr;

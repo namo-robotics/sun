@@ -5,8 +5,9 @@
 // with behaviour that tells the two apart. Two bundles each carrying one
 // version must link into one program with each bound to its own copy.
 // The atexit call stands in for what real libraries do (OpenSSL registers
-// its cleanup this way); under the JIT that symbol is only reachable if the
-// driver provides it, since glibc keeps it out of dlsym's sight.
+// its cleanup this way). Under the JIT the driver has to provide that
+// symbol itself and run the handler when the program's main returns: the
+// real atexit would call into JIT memory long after it is gone.
 
 #include <stdlib.h>
 
