@@ -31,8 +31,8 @@ Value* IntrinsicsGenerator::codegenSizeofIntrinsic(sun::TypePtr targetType) {
 }
 
 Value* IntrinsicsGenerator::codegenInitIntrinsic(
-    sun::TypePtr targetType,
-    const std::vector<std::unique_ptr<ExprAST>>& args) {
+    sun::TypePtr targetType, const std::vector<std::unique_ptr<ExprAST>>& args,
+    const std::vector<sun::ArgConversion>& conversions) {
   // _init<T>(ptr, args...) constructs T at ptr with forwarded arguments
   if (args.empty()) {
     logAndThrowError("_init<T>() requires a pointer argument");
@@ -65,77 +65,53 @@ Value* IntrinsicsGenerator::codegenInitIntrinsic(
         DL.getTypeAllocSize(structTy), llvm::MaybeAlign(1));
   }
 
-  // Collect argument Sun types first (variadic packs are already expanded
-  // into concrete typed args by semantic analysis) so the constructor can be
-  // resolved before adapting values to its calling convention.
+  // Resolve the constructor the arguments select (variadic packs are already
+  // expanded into concrete typed args by semantic analysis). Declare it if
+  // the class is processed later in codegen order.
   std::vector<sun::TypePtr> argTypes;
   for (size_t i = 1; i < args.size(); ++i) {
     argTypes.push_back(args[i]->getResolvedType());
   }
-
-  // Look up the constructor (init method) that is compatible with the argument
-  // types.
   ClassGenerator::ConstructorLookup ctor =
       gen_.classGenerator().lookupConstructor(classType, argTypes);
-
-  std::vector<Value*> ctorArgs;
-  // Slot 0 is the method closure; patched below once the ctor is resolved.
-  ctorArgs.push_back(rawPtr);
-
-  // Skip args[0] (the pointer)
-  for (size_t i = 1; i < args.size(); ++i) {
-    Value* argVal = codegen(*args[i]);
-    if (!argVal) return nullptr;
-    sun::TypePtr argType = args[i]->getResolvedType();
-
-    sun::TypePtr paramType =
-        (ctor.method && i - 1 < ctor.method->paramTypes.size())
-            ? ctor.method->paramTypes[i - 1]
-            : nullptr;
-    bool paramIsRef = paramType && paramType->isReference();
-
-    // Compound values are addressable, so codegen yields a pointer to the
-    // struct. Ref params take that pointer directly; by-value params MOVE
-    // the value into the constructor (source zeroed / tag-poisoned and its
-    // tracking released) to match the calling convention without copying.
-    if (argType && argType->isCompound() && argVal->getType()->isPointerTy() &&
-        !paramIsRef) {
-      argVal = gen_.applyMoveSemantics(argVal, argType);
-    }
-
-    ctorArgs.push_back(argVal);
-  }
+  const size_t ctorArgCount = args.size();  // 'this' replaces the pointer
 
   Function* ctorFunc = nullptr;
-  size_t ctorArgCount = ctorArgs.size();  // includes 'this' pointer
-
-  // Try to find existing constructor
-  Function* candidate = module->getFunction(ctor.mangledName);
+  Function* candidate =
+      ctor.method ? gen_.functionRegistry().getOrDeclareMethodFunction(
+                        ctor.mangledName, ctor.method->paramTypes,
+                        ctor.method->returnType, ctor.method->canThrow)
+                  : module->getFunction(ctor.mangledName);
   if (candidate && candidate->arg_size() == ctorArgCount) {
     ctorFunc = candidate;
   }
 
-  // If not found, try to create a declaration for it
-  // This handles cases where the class is processed later in codegen order
-  if (!ctorFunc && ctor.method &&
-      ctor.method->paramTypes.size() + 1 == ctorArgCount) {
-    // Build parameter types for the constructor
-    std::vector<llvm::Type*> paramTypes;
-    paramTypes.push_back(PointerType::getUnqual(ctx.getContext()));  // this
-    for (const auto& paramType : ctor.method->paramTypes) {
-      paramTypes.push_back(typeResolver.resolve(paramType));
+  if (!ctorFunc) {
+    // Zeroed storage fully describes a class with no constructor. Arguments
+    // that reach no constructor would be dropped on the floor, which is a
+    // miscompile.
+    if (ctorArgCount > 1) {
+      logAndThrowError("No constructor to initialize " +
+                       classType->getDisplayName() + " with " +
+                       std::to_string(ctorArgCount - 1) + " argument(s)");
     }
-    FunctionType* funcType =
-        FunctionType::get(Type::getVoidTy(ctx.getContext()), paramTypes, false);
-    ctorFunc = Function::Create(funcType, Function::ExternalLinkage,
-                                ctor.mangledName, module);
+    return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
   }
 
-  if (ctorFunc) {
-    ctorArgs[0] =
-        gen_.materializeMethodClosure(ctorFunc, rawPtr, "init.closure");
-    ctx.builder->CreateCall(ctorFunc, ctorArgs);
+  // The arguments, lowered exactly as a direct constructor call lowers them:
+  // semantic analysis recorded one conversion each (a compound argument
+  // moves, a class becomes an interface fat pointer, ...). Slot 0 is the
+  // destination pointer, which becomes the method closure.
+  std::vector<Value*> ctorArgs{
+      gen_.materializeMethodClosure(ctorFunc, rawPtr, "init.closure")};
+  const auto& paramTypes =
+      ctor.method ? ctor.method->paramTypes : std::vector<sun::TypePtr>{};
+  if (!gen_.emitCallArguments(args, conversions, paramTypes,
+                              ctorFunc->getFunctionType(), ctorArgs, "_init",
+                              /*firstArg=*/1)) {
+    return nullptr;
   }
+  ctx.builder->CreateCall(ctorFunc, ctorArgs);
 
   return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
 }

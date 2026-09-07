@@ -1326,8 +1326,8 @@ Value* ClassGenerator::codegen(const GenericCallAST& expr) {
     case sun::Intrinsic::Sizeof:
       return intrinsics().codegenSizeofIntrinsic(getFirstTypeArg());
     case sun::Intrinsic::Init:
-      return intrinsics().codegenInitIntrinsic(getFirstTypeArg(),
-                                               expr.getArgs());
+      return intrinsics().codegenInitIntrinsic(
+          getFirstTypeArg(), expr.getArgs(), expr.getArgConversions());
     case sun::Intrinsic::Load:
       return intrinsics().codegenLoadIntrinsic(getFirstTypeArg(),
                                                expr.getArgs());

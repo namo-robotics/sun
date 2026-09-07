@@ -963,6 +963,37 @@ void CallAnalyzer::analyzeIntrinsicCall(GenericCallAST& genericCall) {
   if (genericCall.getFunctionName() == "_spawn") {
     recordSpawnArgumentConversions(genericCall);
   }
+  // _init likewise forwards its arguments to the constructor they select.
+  if (genericCall.getFunctionName() == "_init") {
+    recordInitArgumentConversions(genericCall);
+  }
+}
+
+// Argument 0 is the destination pointer and stands in for itself; the rest
+// fill the parameters of the `init` overload they match. Without a matching
+// overload (no class, no constructor) each argument is handed over as itself,
+// and codegen reports the missing constructor when arguments are present.
+void CallAnalyzer::recordInitArgumentConversions(GenericCallAST& genericCall) {
+  const auto& args = genericCall.getArgs();
+  if (args.empty()) return;  // codegen reports the missing pointer
+
+  std::vector<sun::TypePtr> argTypes = resolvedTypesOf(args);
+  std::vector<sun::TypePtr> ctorArgTypes(argTypes.begin() + 1, argTypes.end());
+
+  const sun::ClassMethod* init = nullptr;
+  const auto& typeArgs = genericCall.getResolvedTypeArgs();
+  if (!typeArgs.empty() && typeArgs[0] && typeArgs[0]->isClass()) {
+    init = static_cast<const sun::ClassType&>(*typeArgs[0])
+               .getMethodForArgs("init", ctorArgTypes);
+  }
+
+  std::vector<sun::TypePtr> paramTypes{argTypes[0]};
+  for (size_t i = 0; i < ctorArgTypes.size(); ++i) {
+    paramTypes.push_back(init ? init->paramTypes[i] : ctorArgTypes[i]);
+  }
+  genericCall.setArgConversions(sun::conversions::classifyArguments(
+      argTypes, paramTypes, /*cVariadic=*/false, "_init",
+      genericCall.getLocation()));
 }
 
 // The callee is argument 0 and is taken apart rather than passed on, so it

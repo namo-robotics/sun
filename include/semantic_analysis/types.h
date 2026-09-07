@@ -1348,8 +1348,19 @@ class ClassType : public Type {
     return fromFloat && toFloat;
   }
 
-  // Get method with overload resolution based on argument types
-  // Returns the method whose parameter types best match the provided arg types
+  // True if an argument of type `from` reaches an interface-typed parameter
+  // `to` by conversion to a fat pointer: an owned class where the interface
+  // is taken by value, or a class where `ref Interface` is expected.
+  // Mirrors the interface rules of isAssignableTo (type_rules.cpp) so that
+  // overload selection accepts what a single known signature accepts.
+  // Defined after InterfaceType and typeIsFrameCarrying, which it needs.
+  static bool isInterfaceConvertible(const TypePtr& from, const TypePtr& to);
+
+  // Get method with overload resolution based on argument types.
+  // Returns the method whose parameter types best match the provided arg
+  // types. An exact match wins; otherwise the first overload reachable by an
+  // implicit argument conversion (borrow, array view, numeric or lambda
+  // widening, class to interface) is chosen.
   const ClassMethod* getMethodForArgs(
       const std::string& methodName,
       const std::vector<TypePtr>& argTypes) const {
@@ -1428,6 +1439,12 @@ class ClassType : public Type {
           if (paramL->acceptsValueOf(*argL)) {
             continue;
           }
+        }
+
+        // A class becomes a fat pointer where an interface it implements is
+        // expected (issue #219).
+        if (isInterfaceConvertible(argTypes[i], method.paramTypes[i])) {
+          continue;
         }
 
         // No match for this parameter
@@ -2653,6 +2670,33 @@ inline bool typeIsFrameCarrying(const Type* type) {
 
 inline bool typeIsFrameCarrying(const TypePtr& type) {
   return typeIsFrameCarrying(type.get());
+}
+
+inline bool ClassType::isInterfaceConvertible(const TypePtr& from,
+                                              const TypePtr& to) {
+  if (!from || !to) return false;
+
+  // Class -> Interface: the class is owned by the interface value. A borrow
+  // never converts this way (it cannot become an owner), and neither does a
+  // frame-carrying class (one that can hold a '<'_>' lambda): the interface
+  // type would erase the frame binding.
+  if (to->isInterface()) {
+    if (!from->isClass() || typeIsFrameCarrying(from)) return false;
+    auto* iface = static_cast<const InterfaceType*>(to.get());
+    return static_cast<const ClassType*>(from.get())
+        ->convertibleToInterface(iface->getName());
+  }
+
+  // Class -> ref Interface: the class is borrowed through the fat pointer
+  if (to->isReference() && from->isClass()) {
+    TypePtr target = unwrapRef(to);
+    if (!target || !target->isInterface()) return false;
+    auto* iface = static_cast<const InterfaceType*>(target.get());
+    return static_cast<const ClassType*>(from.get())
+        ->convertibleToInterface(iface->getName());
+  }
+
+  return false;
 }
 
 // A copy of the type with every lifetime NAME stripped, recursively.
