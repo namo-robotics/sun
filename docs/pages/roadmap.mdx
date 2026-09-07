@@ -131,9 +131,6 @@ need no linker flags and no OpenSSL on the target. Remaining work:
 
 ## Language Odds and Ends
 
-- [ ] An explicit function-type argument (`spawn<function (i32) i32>(...)`)
-      fails to instantiate (#193) — only calls that infer `F` from an
-      argument work
 - [ ] Generic overloads that differ only in their constraint (one name, same
       parameter shape, `<F: _Lambda>` vs `<F: _Function>`) — registration is
       keyed by name, so the second silently replaces the first (#194);

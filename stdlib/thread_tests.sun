@@ -59,6 +59,12 @@ public module std {
       std.test.assert_eq(t.join(), 42);
     }
 
+    // F may be written out as a function type instead of inferred.
+    test_function spawn_accepts_a_written_function_type() {
+      var t = std.thread.spawn<function (i32) i32>(double_it, 21);
+      std.test.assert_eq(t.join(), 42);
+    }
+
     // A function-pointer value rides through spawn's argument pack like any
     // other one-word value — this is exactly how the test runner passes each
     // test to std.test.run_one.

@@ -445,6 +445,25 @@ TEST(Functions_Generic, module_qualified_call_infers_pack_callee) {
   EXPECT_EQ(value, 2);
 }
 
+// A written function-type argument on a qualified pack callee names the same
+// specialization inference would have picked (issue #193).
+TEST(Functions_Generic,
+     module_qualified_call_with_written_function_type_argument) {
+  auto value = executeString(R"(
+    public module m {
+        public function apply<F: _Callable>(f: F, args...: _params_of<F>) i32 {
+            return f(args...);
+        }
+    }
+    function compute(n: i32) i32 { return n * 2; }
+    function main() i32 {
+        var t = m.apply<function (i32) i32>(compute, 21);
+        return t;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
 TEST(Functions_Generic, module_qualified_call_that_cannot_infer_is_an_error) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     public module m {
