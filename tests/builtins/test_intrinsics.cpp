@@ -829,6 +829,54 @@ TEST(Builtins_PrintI64, prints_int64_max) {
             "9223372036854775807");
 }
 
+// ============================================================================
+// _print_u64 — unsigned 64-bit output
+// ============================================================================
+// print(u64) used to route through _print_i64, so any u64 above the i64
+// maximum printed as a negative number (#211).
+
+TEST(Builtins_PrintU64, prints_uint64_max) {
+  EXPECT_EQ(capturePrintedOutput(R"(
+    function main() i32 {
+        var v: u64 = 18446744073709551615;
+        _print_u64(v);
+        return 0;
+    }
+  )"),
+            "18446744073709551615");
+}
+
+TEST(Builtins_PrintU64, prints_value_above_int64_max) {
+  EXPECT_EQ(capturePrintedOutput(R"(
+    function main() i32 {
+        _print_u64(14627333968358193854u64);
+        return 0;
+    }
+  )"),
+            "14627333968358193854");
+}
+
+TEST(Builtins_PrintU64, zero_extends_a_u32_argument) {
+  EXPECT_EQ(capturePrintedOutput(R"(
+    function main() i32 {
+        var v: u32 = 4294967295;
+        _print_u64(v);
+        return 0;
+    }
+  )"),
+            "4294967295");
+}
+
+TEST(Builtins_PrintU64, prints_zero) {
+  EXPECT_EQ(capturePrintedOutput(R"(
+    function main() i32 {
+        _print_u64(0u64);
+        return 0;
+    }
+  )"),
+            "0");
+}
+
 TEST(Builtins_PrintI64, prints_int64_min) {
   // Negating INT64_MIN overflows back to itself; digits are extracted with
   // unsigned div/rem so the magnitude still comes out right.

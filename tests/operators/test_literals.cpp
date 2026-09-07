@@ -233,3 +233,76 @@ TEST(Operators_Literals, typed_variable_still_never_narrows) {
       )"),
                                 "No matching overload of 'classify'");
 }
+
+// ============================================================================
+// The full u64 range: literals above i64's maximum keep their value (#211)
+// ============================================================================
+
+TEST(Operators_Literals, u64_literal_above_i64_max_keeps_its_value) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var v: u64 = 18446744073709551615u64;
+          const m: u64 = 14627333968358193854;
+          if (v != 18446744073709551615) { return 1; }
+          if (v / 2 != 9223372036854775807) { return 2; }
+          if (m != 14627333968358193854u64) { return 3; }
+          if (m > v) { return 4; }
+          return 0;
+      }
+    )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(Operators_Literals, untyped_literal_above_i64_max_defaults_to_u64) {
+  auto value = executeString(R"(
+      function takes_u64(x: u64) i32 { if (x == 10000000000000000000) { return 1; } return 0; }
+      function main() i32 {
+          var big = 10000000000000000000;
+          return takes_u64(big);
+      }
+    )");
+  EXPECT_EQ(value, 1);
+}
+
+TEST(Operators_Literals, i64_min_as_suffixed_literal) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var lo = -9223372036854775808i64;
+          if (lo < -9223372036854775807 and lo + 1 == -9223372036854775807) { return 1; }
+          return 0;
+      }
+    )");
+  EXPECT_EQ(value, 1);
+}
+
+TEST(Operators_Literals, literal_above_i64_max_never_fits_i64) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
+        function main() i32 { var x = 9223372036854775808i64; return 0; }
+      )"),
+      "Integer literal 9223372036854775808 cannot be represented as 'i64'");
+}
+
+TEST(Operators_Literals, negative_literal_past_i64_min_is_error) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
+        function main() i32 { var x = -9223372036854775809i64; return 0; }
+      )"),
+      "Integer literal -9223372036854775809 cannot be represented as 'i64'");
+}
+
+TEST(Operators_Literals, literal_above_u64_max_is_error) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
+        function main() i32 { var x: u64 = 18446744073709551616; return 0; }
+      )"),
+      "Integer literal 18446744073709551616 is too large");
+}
+
+TEST(Operators_Literals, suffixed_literal_above_u64_max_is_error) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
+        function main() i32 { var x = 99999999999999999999u64; return 0; }
+      )"),
+      "Integer literal 99999999999999999999 is too large");
+}

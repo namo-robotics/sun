@@ -33,6 +33,8 @@ const std::map<std::string, BuiltinEmitter>& builtinTable() {
        [](auto& g, const auto& e) { return g.codegenPrintI32(e); }},
       {"_print_i64",
        [](auto& g, const auto& e) { return g.codegenPrintI64(e); }},
+      {"_print_u64",
+       [](auto& g, const auto& e) { return g.codegenPrintU64(e); }},
       {"_print_f64",
        [](auto& g, const auto& e) { return g.codegenPrintF64(e); }},
       {"_print_newline",

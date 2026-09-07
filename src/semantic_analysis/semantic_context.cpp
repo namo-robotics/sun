@@ -825,6 +825,8 @@ void SemanticContext::registerBuiltinFunctions() {
                                  {Types::Void(), {Types::Int32()}, {}});
   registerFunctionInCurrentScope("_print_i64",
                                  {Types::Void(), {Types::Int64()}, {}});
+  registerFunctionInCurrentScope("_print_u64",
+                                 {Types::Void(), {Types::UInt64()}, {}});
   registerFunctionInCurrentScope("_print_f64",
                                  {Types::Void(), {Types::Float64()}, {}});
   registerFunctionInCurrentScope("_print_newline", {Types::Void(), {}, {}});

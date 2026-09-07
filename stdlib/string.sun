@@ -1077,8 +1077,9 @@ public module std {
       this.append_char(ch);
     }
 
-    // Append an unsigned integer in decimal
-    public method append_u64(val: i64) void {
+    // Append an unsigned integer in decimal. The arithmetic stays unsigned so
+    // a value above the i64 maximum writes its full digits.
+    public method append_u64(val: u64) void {
       if (val == 0) {
         this.append_char(b'0');
         return;
@@ -1086,13 +1087,13 @@ public module std {
 
       // Write digits in reverse order, then reverse them
       var start: i64 = this.len;
-      var n: i64 = val;
+      var n: u64 = val;
 
       while (n > 0) {
         // n % 10 without modulo operator
-        var q: i64 = n / 10;
-        var r: i64 = n - q * 10;
-        this.append_dec_digit(r);
+        var q: u64 = n / 10;
+        var r: u64 = n - q * 10;
+        this.append_dec_digit(_convert<i64>(r));
         n = q;
       }
 
@@ -1110,7 +1111,7 @@ public module std {
     // Append a signed integer in decimal
     public method append_i64(val: i64) void {
       if (val >= 0) {
-        this.append_u64(val);
+        this.append_u64(_convert<u64>(val));
         return;
       }
       this.append_char(b'-');
@@ -1119,7 +1120,7 @@ public module std {
         this.append_literal("9223372036854775808");
         return;
       }
-      this.append_u64(0 - val);
+      this.append_u64(_convert<u64>(0 - val));
     }
 
     // Append an integer in hexadecimal (lowercase)

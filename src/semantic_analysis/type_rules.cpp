@@ -8,33 +8,42 @@ using sun::unwrapRef;
 
 namespace sun::rules {
 
-namespace {
-
-// True when an integer literal value is representable in a target primitive.
-bool literalFitsInType(int64_t value, const sun::PrimitiveType* primType) {
-  switch (primType->getKind()) {
+bool literalFitsInType(uint64_t magnitude, bool negative,
+                       sun::Type::Kind kind) {
+  // A signed type of `bits` width holds -2^(bits-1) .. 2^(bits-1)-1; the
+  // negative side reaches one further than the positive side.
+  auto fitsSigned = [&](int bits) {
+    const uint64_t half = uint64_t(1) << (bits - 1);
+    return negative ? magnitude <= half : magnitude < half;
+  };
+  auto fitsUnsigned = [&](uint64_t max) {
+    return !negative && magnitude <= max;
+  };
+  switch (kind) {
     case sun::Type::Kind::Int8:
-      return value >= INT8_MIN && value <= INT8_MAX;
+      return fitsSigned(8);
     case sun::Type::Kind::Int16:
-      return value >= INT16_MIN && value <= INT16_MAX;
+      return fitsSigned(16);
     case sun::Type::Kind::Int32:
-      return value >= INT32_MIN && value <= INT32_MAX;
+      return fitsSigned(32);
     case sun::Type::Kind::Int64:
-      return true;  // int64_t always fits in i64
+      return fitsSigned(64);
     case sun::Type::Kind::UInt8:
-      return value >= 0 && value <= UINT8_MAX;
+      return fitsUnsigned(UINT8_MAX);
     case sun::Type::Kind::UInt16:
-      return value >= 0 && value <= UINT16_MAX;
+      return fitsUnsigned(UINT16_MAX);
     case sun::Type::Kind::UInt32:
-      return value >= 0 && static_cast<uint64_t>(value) <= UINT32_MAX;
+      return fitsUnsigned(UINT32_MAX);
     case sun::Type::Kind::UInt64:
-      return value >= 0;  // int64_t can't represent full u64 range
+      return fitsUnsigned(UINT64_MAX);
     case sun::Type::Kind::Bool:
-      return value == 0 || value == 1;
+      return fitsUnsigned(1);
     default:
       return false;
   }
 }
+
+namespace {
 
 // Bit width of an integer primitive, 0 for anything else.
 int integerBitWidth(const sun::TypePtr& type) {
@@ -82,17 +91,14 @@ bool tryCoerceIntegerLiteral(ExprAST* expr, sun::TypePtr targetType,
     return false;
   }
 
-  int64_t val = numLit.getIntVal();
-  const auto* primType =
-      static_cast<const sun::PrimitiveType*>(targetType.get());
-
-  if (literalFitsInType(val, primType)) {
+  if (literalFitsInType(numLit.getMagnitude(), numLit.isNegative(),
+                        targetType->getKind())) {
     expr->setResolvedType(targetType);
     return true;
   }
 
   if (throwOnFail) {
-    logAndThrowError("Integer literal " + std::to_string(val) +
+    logAndThrowError("Integer literal " + numLit.getIntegerText() +
                          " cannot be represented as '" +
                          targetType->toDisplayString() + "'",
                      expr->getLocation());

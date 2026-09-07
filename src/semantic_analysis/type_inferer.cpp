@@ -363,14 +363,19 @@ sun::TypePtr TypeInferer::inferType(const ExprAST& expr) {
         return sun::Types::fromString(num.getSuffix());
       }
       if (num.isInteger()) {
-        int64_t val = num.getIntVal();
-        // Default to i32 for small integers, i64 for larger ones
-        // The actual type may be refined by assignment context
-        if (val >= INT32_MIN && val <= INT32_MAX) {
+        // Default to the narrowest of i32, i64 and u64 that holds the value.
+        // The actual type may be refined by assignment context.
+        const uint64_t magnitude = num.getMagnitude();
+        const bool negative = num.isNegative();
+        if (sun::rules::literalFitsInType(magnitude, negative,
+                                          sun::Type::Kind::Int32)) {
           return sun::Types::Int32();
-        } else {
+        }
+        if (sun::rules::literalFitsInType(magnitude, negative,
+                                          sun::Type::Kind::Int64)) {
           return sun::Types::Int64();
         }
+        return sun::Types::UInt64();
       }
       // Floating point literal
       return sun::Types::Float64();

@@ -123,6 +123,7 @@ class IntrinsicsGenerator {
   // Print built-ins
   llvm::Value* codegenPrintI32(const CallExprAST& expr);
   llvm::Value* codegenPrintI64(const CallExprAST& expr);
+  llvm::Value* codegenPrintU64(const CallExprAST& expr);
   llvm::Value* codegenPrintF64(const CallExprAST& expr);
   llvm::Value* codegenPrintString(const CallExprAST& expr);
   llvm::Value* codegenPrintBytes(const CallExprAST& expr);

@@ -426,8 +426,12 @@ std::unique_ptr<BlockExprAST> ASTDeserializer::deserializeBlockExpr(
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeNumber(
     const ast::NumberExpr& proto) const {
-  if (proto.has_int_value()) {
-    return std::make_unique<NumberExprAST>(proto.int_value(), proto.suffix());
+  if (proto.has_int_magnitude()) {
+    return std::make_unique<NumberExprAST>(proto.int_magnitude(),
+                                           proto.int_negative()
+                                               ? NumberExprAST::Sign::Negative
+                                               : NumberExprAST::Sign::Positive,
+                                           proto.suffix());
   }
   return std::make_unique<NumberExprAST>(proto.float_value(), proto.suffix());
 }

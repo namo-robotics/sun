@@ -22,12 +22,13 @@ public module std {
 
   // Write an unsigned 32-bit number to standard output.
   public function print(value: u32) void {
-    _print_i64(value);
+    _print_u64(value);
   }
 
-  // Write an unsigned 64-bit number to standard output.
+  // Write an unsigned 64-bit number to standard output. The unsigned print
+  // intrinsic keeps values above the i64 maximum from showing up negative.
   public function print(value: u64) void {
-    _print_i64(value);
+    _print_u64(value);
   }
 
   // Write a floating-point number to standard output.

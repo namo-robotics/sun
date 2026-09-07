@@ -6,6 +6,7 @@
 
 #include "codegen/codegen.h"
 #include "codegen/support/scalar_ops.h"
+#include "semantic_analysis/type_rules.h"
 
 static ExitOnError ExitOnErr;
 
@@ -203,7 +204,14 @@ Value* CodegenVisitor::codegen(const CharLiteralAST& expr) {
 
 Value* CodegenVisitor::codegen(const NumberExprAST& expr) {
   if (expr.isInteger()) {
-    int64_t val = expr.getIntVal();
+    // Semantic analysis has already checked the literal against its resolved
+    // type, so the constant is the low bits of the 64-bit two's-complement
+    // pattern. That is what lets a u64 literal above i64's maximum keep its
+    // full value.
+    const uint64_t bits = expr.getIntegerBits();
+    auto constant = [&](unsigned width) {
+      return ConstantInt::get(Type::getIntNTy(ctx.getContext(), width), bits);
+    };
 
     // Use the resolved type if available (set by semantic analyzer for
     // context-dependent typing)
@@ -213,41 +221,30 @@ Value* CodegenVisitor::codegen(const NumberExprAST& expr) {
           static_cast<const sun::PrimitiveType*>(resolvedType.get());
       switch (primType->getKind()) {
         case sun::Type::Kind::Int8:
-          return ConstantInt::get(Type::getInt8Ty(ctx.getContext()),
-                                  static_cast<int8_t>(val));
-        case sun::Type::Kind::Int16:
-          return ConstantInt::get(Type::getInt16Ty(ctx.getContext()),
-                                  static_cast<int16_t>(val));
-        case sun::Type::Kind::Int32:
-          return ConstantInt::get(Type::getInt32Ty(ctx.getContext()),
-                                  static_cast<int32_t>(val));
-        case sun::Type::Kind::Int64:
-          return ConstantInt::get(Type::getInt64Ty(ctx.getContext()), val);
         case sun::Type::Kind::UInt8:
-          return ConstantInt::get(Type::getInt8Ty(ctx.getContext()),
-                                  static_cast<uint8_t>(val));
+          return constant(8);
+        case sun::Type::Kind::Int16:
         case sun::Type::Kind::UInt16:
-          return ConstantInt::get(Type::getInt16Ty(ctx.getContext()),
-                                  static_cast<uint16_t>(val));
+          return constant(16);
+        case sun::Type::Kind::Int32:
         case sun::Type::Kind::UInt32:
-          return ConstantInt::get(Type::getInt32Ty(ctx.getContext()),
-                                  static_cast<uint32_t>(val));
+          return constant(32);
+        case sun::Type::Kind::Int64:
         case sun::Type::Kind::UInt64:
-          return ConstantInt::get(Type::getInt64Ty(ctx.getContext()),
-                                  static_cast<uint64_t>(val));
+          return constant(64);
         case sun::Type::Kind::Bool:
-          return ConstantInt::get(Type::getInt1Ty(ctx.getContext()), val != 0);
+          return ConstantInt::get(Type::getInt1Ty(ctx.getContext()), bits != 0);
         default:
           break;
       }
     }
 
-    // Default behavior: i32 (or i64 if out of i32 range)
-    if (val >= INT32_MIN && val <= INT32_MAX) {
-      return ConstantInt::get(Type::getInt32Ty(ctx.getContext()),
-                              static_cast<int32_t>(val));
+    // Default behavior: i32 when the value fits, otherwise a 64-bit constant
+    if (sun::rules::literalFitsInType(expr.getMagnitude(), expr.isNegative(),
+                                      sun::Type::Kind::Int32)) {
+      return constant(32);
     }
-    return ConstantInt::get(Type::getInt64Ty(ctx.getContext()), val);
+    return constant(64);
   }
   // Floating point literal -> f64 unless context typed it f32
   auto resolvedType = expr.getResolvedType();
