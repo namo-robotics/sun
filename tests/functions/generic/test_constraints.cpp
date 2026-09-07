@@ -154,6 +154,22 @@ TEST(Functions_Generic_Constraints, callable_accepts_a_named_function) {
   EXPECT_EQ(value, 37);
 }
 
+// The same calls with F written out: a function type satisfies _Callable
+// whether it was inferred or spelled (issue #193).
+TEST(Functions_Generic_Constraints, callable_accepts_a_written_function_type) {
+  auto value = executeString(R"(
+    function run<F: _Callable>(f: F, args...: _params_of<F>) i32 {
+      return f(args...);
+    }
+    function seven() i32 { return 7; }
+    function twice(n: i32) i32 { return n * 2; }
+    function main() i32 {
+      return run<function () i32>(seven) + run<function (i32) i32>(twice, 15);
+    }
+  )");
+  EXPECT_EQ(value, 37);
+}
+
 TEST(Functions_Generic_Constraints, callable_rejects_a_number) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     function run<F: _Callable>(f: F) i32 { return 0; }
