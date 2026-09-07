@@ -371,19 +371,9 @@ bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
     }
   }
 
-  // ref Class -> Interface (unwrap ref, check class implements interface)
-  if (to->isInterface() && from->isReference()) {
-    auto* fromRef = static_cast<const sun::ReferenceType*>(from.get());
-    sun::TypePtr innerFrom = fromRef->getReferencedType();
-    if (innerFrom && innerFrom->isClass()) {
-      // Same frame-carrying ban as the by-value conversion above: the
-      // resulting interface value would erase the frame binding
-      if (sun::typeIsFrameCarrying(innerFrom)) return false;
-      auto* ifaceType = static_cast<const sun::InterfaceType*>(to.get());
-      auto* classType = static_cast<const sun::ClassType*>(innerFrom.get());
-      return classType->convertibleToInterface(ifaceType->getName());
-    }
-  }
+  // ref Class -> Interface never converts: an interface value owns what it
+  // points at, and a borrow cannot become an owner. A borrowed class reaches
+  // an interface only through `ref Interface` (handled above).
 
   // ref(T) -> T: the value is read out of the reference. Only a scalar can be
   // duplicated that way. A compound T read out of a borrow would be a second

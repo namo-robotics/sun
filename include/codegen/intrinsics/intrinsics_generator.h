@@ -52,7 +52,8 @@ class IntrinsicsGenerator {
   // Generic intrinsics codegen (in intrinsics/generic.cpp)
   llvm::Value* codegenSizeofIntrinsic(sun::TypePtr typeArg);
   llvm::Value* codegenInitIntrinsic(
-      sun::TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args);
+      sun::TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args,
+      const std::vector<sun::ArgConversion>& conversions);
   llvm::Value* codegenLoadIntrinsic(
       sun::TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args);
   llvm::Value* codegenStoreIntrinsic(

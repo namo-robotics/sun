@@ -275,6 +275,12 @@ class CallAnalyzer {
   void recordSpawnArgumentConversions(GenericCallAST &genericCall);
 
   /**
+   * Decide how each argument of an _init call reaches the parameters of the
+   * constructor it selects, so codegen lowers them like any constructor call.
+   */
+  void recordInitArgumentConversions(GenericCallAST &genericCall);
+
+  /**
    * Analyze `f<T>(...)`: resolve the template, fill in any type arguments the
    * call left to the arguments, then specialize it.
    */

@@ -965,17 +965,6 @@ bool CodegenVisitor::emitCallArguments(
         break;
       }
 
-      case sun::ArgConversion::BorrowedClassToInterface: {
-        argVal = codegen(*argExpr);
-        if (!argVal) return false;
-        auto* classType =
-            static_cast<sun::ClassType*>(sun::unwrapRef(argSunType).get());
-        auto* ifaceType = static_cast<sun::InterfaceType*>(paramType.get());
-        argVal =
-            classes.createInterfaceFatPointer(argVal, classType, ifaceType);
-        break;
-      }
-
       case sun::ArgConversion::Move:
         argVal = codegen(*argExpr);
         if (!argVal) return false;

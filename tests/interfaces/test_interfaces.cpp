@@ -830,10 +830,12 @@ TEST(Interfaces, duplicate_field_in_generic_interface_is_rejected) {
 }
 
 // ============================================================================
-// Borrowed class arguments to interface parameters
+// Borrowed class arguments to interface parameters: a borrow reaches an
+// interface only as `ref Interface`. An interface value owns what it points
+// at, so a borrow cannot become one.
 // ============================================================================
 
-TEST(Interfaces, borrowed_class_passes_to_interface_parameters) {
+TEST(Interfaces, borrowed_class_passes_to_ref_interface_parameter) {
   auto value = executeString(R"(
     interface IShape { method area() i32; }
     class Sq implements IShape {
@@ -843,12 +845,199 @@ TEST(Interfaces, borrowed_class_passes_to_interface_parameters) {
     }
     function measure(sh: IShape) i32 { return sh.area(); }
     function measure_ref(sh: ref IShape) i32 { return sh.area(); }
-    // q is a borrow; both parameters still get a proper fat pointer
-    function via_borrow(q: ref Sq) i32 { return measure(q) + measure_ref(q); }
+    function via_borrow(q: ref Sq) i32 { return measure_ref(q); }
     function main() i32 {
         var q = Sq(3);
-        return via_borrow(q) + measure(q);   // 9 + 9 + 9
+        return via_borrow(q) + measure_ref(q) + measure(q);   // 9 + 9 + 9
     }
   )");
   EXPECT_EQ(value, 27);
+}
+
+TEST(Interfaces, borrowed_class_does_not_pass_to_by_value_interface) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    interface IShape { method area() i32; }
+    class Sq implements IShape {
+      var s: i32;
+      init(s: i32) { this.s = s; }
+      method area() i32 { return this.s * this.s; }
+    }
+    function measure(sh: IShape) i32 { return sh.area(); }
+    function via_borrow(q: ref Sq) i32 { return measure(q); }
+    function main() i32 {
+        var q = Sq(3);
+        return via_borrow(q);
+    }
+  )"),
+                                "No matching overload of 'measure' for "
+                                "argument types (ref Sq)");
+}
+
+TEST(Interfaces, borrowed_class_does_not_assign_to_interface_variable) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    interface IShape { method area() i32; }
+    class Sq implements IShape {
+      var s: i32;
+      init(s: i32) { this.s = s; }
+      method area() i32 { return this.s * this.s; }
+    }
+    function via_borrow(q: ref Sq) i32 {
+        var sh: IShape = q;
+        return sh.area();
+    }
+    function main() i32 {
+        var q = Sq(3);
+        return via_borrow(q);
+    }
+  )"),
+                                "Cannot assign value of type");
+}
+
+// ============================================================================
+// Class arguments to interface-typed constructor and overload parameters
+// (issue #219): overload selection accepts the same class-to-interface
+// conversion a single known signature does.
+// ============================================================================
+
+namespace {
+
+// A handler interface with one implementation, shared by the tests below.
+constexpr const char* kHandler = R"(
+    interface IHandler { method handle() i32; }
+    class Bump implements IHandler {
+        var n: i32;
+        init(n: i32) { this.n = n; }
+        method handle() i32 { return this.n; }
+    }
+)";
+
+}  // namespace
+
+TEST(Interfaces, class_passes_to_interface_constructor_parameter) {
+  auto value = executeString(std::string(kHandler) + R"(
+    class W {
+        var h: IHandler;
+        init(h: IHandler) { this.h = h; }
+        method run() i32 { return this.h.handle(); }
+    }
+    function main() i32 {
+        var w = W(Bump(7));
+        var b = Bump(5);
+        var v = W(b);   // b moves into the interface value
+        return w.run() + v.run();
+    }
+  )");
+  EXPECT_EQ(value, 12);
+}
+
+// The constructor would store the borrow in an owning field, so a borrowed
+// class does not select an interface-typed constructor parameter.
+TEST(Interfaces, borrowed_class_does_not_match_interface_constructor) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(std::string(kHandler) + R"(
+    class W {
+        var h: IHandler;
+        init(h: IHandler) { this.h = h; }
+    }
+    function wrap(b: ref Bump) i32 { var w = W(b); return 0; }
+    function main() i32 {
+        var b = Bump(5);
+        return wrap(b);
+    }
+  )"),
+                                "No matching constructor for 'W'");
+}
+
+TEST(Interfaces, class_passes_to_ref_interface_constructor_parameter) {
+  auto value = executeString(std::string(kHandler) + R"(
+    class Reader {
+        var seen: i32;
+        init(h: ref IHandler) { this.seen = h.handle(); }
+    }
+    function main() i32 {
+        var b = Bump(9);
+        var r = Reader(b);
+        return r.seen;
+    }
+  )");
+  EXPECT_EQ(value, 9);
+}
+
+TEST(Interfaces, class_selects_interface_method_overload) {
+  auto value = executeString(std::string(kHandler) + R"(
+    class W {
+        var h: IHandler;
+        init() { this.h = Bump(0); }
+        // The i32 overload comes first so a name-only fallback would pick it
+        method set(n: i32) void { this.h = Bump(n + 100); }
+        method set(h: IHandler) void { this.h = h; }
+        method run() i32 { return this.h.handle(); }
+    }
+    function main() i32 {
+        var w = W();
+        w.set(Bump(5));
+        return w.run();
+    }
+  )");
+  EXPECT_EQ(value, 5);
+}
+
+TEST(Interfaces, exact_class_overload_beats_interface_overload) {
+  auto value = executeString(std::string(kHandler) + R"(
+    class W {
+        var tag: i32;
+        init(h: IHandler) { this.tag = 1; }
+        init(b: Bump) { this.tag = 2; }
+    }
+    function main() i32 {
+        var w = W(Bump(0));
+        return w.tag;
+    }
+  )");
+  EXPECT_EQ(value, 2);
+}
+
+// The frame-carrying ban carries over: a class that can hold a '<'_>'
+// lambda still does not become an interface value through a constructor.
+TEST(Interfaces, frame_carrying_class_does_not_match_interface_constructor) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    interface ICallable { method call() i32; }
+    class Holder {
+        var f: <'_>() => i32;
+        init(f: <'this>() => i32) { this.f = f; }
+        public method call() i32 { var g = this.f; return g(); }
+    }
+    class W {
+        var c: ICallable;
+        init(c: ICallable) { this.c = c; }
+    }
+    function main() i32 {
+        var x = 3;
+        var h = Holder([ref x]() => i32 { return x; });
+        var w = W(h);
+        return 0;
+    }
+  )"),
+                                "No matching constructor for 'W'");
+}
+
+// A pack forwarded through _params_of<C> selects the interface overload too.
+TEST(Interfaces, class_fills_interface_parameter_through_params_of) {
+  auto value = executeString(std::string(kHandler) + R"(
+    class W {
+        var h: IHandler;
+        init(h: IHandler) { this.h = h; }
+        method run() i32 { return this.h.handle(); }
+    }
+    function make<T>(args...: _params_of<T>) raw_ptr<T> {
+        var size: i64 = _sizeof<T>();
+        var memory: raw_ptr<i8> = unsafe { _malloc(size); };
+        unsafe { _init<T>(memory, args...); };
+        return memory;
+    }
+    function main() i32 {
+        var w = make<W>(Bump(4));
+        return unsafe { w.run(); };
+    }
+  )");
+  EXPECT_EQ(value, 4);
 }

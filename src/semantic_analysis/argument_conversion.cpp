@@ -77,8 +77,6 @@ const char* toString(ArgConversion conversion) {
       return "raw pointer as reference";
     case ArgConversion::ClassToInterface:
       return "class to interface";
-    case ArgConversion::BorrowedClassToInterface:
-      return "borrowed class to interface";
     case ArgConversion::ClassToRefInterface:
       return "class to ref interface";
     case ArgConversion::WidenNumeric:
@@ -129,9 +127,10 @@ std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
     return ArgConversion::Borrow;
   }
 
-  if (paramType->isInterface() && value && value->isClass()) {
-    return argType->isReference() ? ArgConversion::BorrowedClassToInterface
-                                  : ArgConversion::ClassToInterface;
+  // Only an owned class becomes an owning interface value; a borrowed one
+  // reaches an interface through `ref Interface` alone (see above).
+  if (paramType->isInterface() && argType->isClass()) {
+    return ArgConversion::ClassToInterface;
   }
 
   if (argType->isStaticPointer() && paramType->isRawPointer()) {
