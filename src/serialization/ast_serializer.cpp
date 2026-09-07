@@ -394,7 +394,8 @@ void ASTSerializer::serializeNumber(const NumberExprAST& expr,
                                     ast::ASTNode* node) const {
   auto* num = node->mutable_number_expr();
   if (expr.isInteger()) {
-    num->set_int_value(expr.getIntVal());
+    num->set_int_magnitude(expr.getMagnitude());
+    num->set_int_negative(expr.isNegative());
   } else {
     num->set_float_value(expr.getFloatVal());
   }

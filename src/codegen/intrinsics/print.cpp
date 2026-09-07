@@ -1,6 +1,7 @@
 // src/codegen/intrinsics/print.cpp - Print intrinsic codegen
 //
-// _print_i32/_print_i64/_print_f64/_print_newline/_println_str/_print_bytes.
+// _print_i32/_print_i64/_print_u64/_print_f64/_print_newline/_println_str/
+// _print_bytes.
 // Integer formatting is emitted IR (portable); the final write goes through
 // libc (see include/codegen/intrinsics/libc.h).
 
@@ -123,20 +124,24 @@ static Function* getOrCreatePrintI32Helper(llvm::Module* module,
   return func;
 }
 
-// Get or create the __sun_print_i64 helper function.
-// Same digit-extraction shape as the i32 helper, widened to 64 bits.
-// Buffer is 24 bytes: the longest output is "-9223372036854775808" (20 chars).
-static Function* getOrCreatePrintI64Helper(llvm::Module* module,
-                                           LLVMContext& llvmCtx) {
-  Function* func = module->getFunction("__sun_print_i64");
+// Get or create the __sun_print_i64 or __sun_print_u64 helper function.
+// Same digit-extraction shape as the i32 helper, widened to 64 bits. Digits
+// are always extracted unsigned; the signed variant first takes the absolute
+// value and later writes the minus sign, the unsigned variant prints the
+// whole 64-bit value as is.
+// Buffer is 24 bytes: the longest output is "18446744073709551615" or
+// "-9223372036854775808" (20 chars each).
+static Function* getOrCreatePrint64Helper(llvm::Module* module,
+                                          LLVMContext& llvmCtx, bool isSigned) {
+  const char* name = isSigned ? "__sun_print_i64" : "__sun_print_u64";
+  Function* func = module->getFunction(name);
   if (func) return func;
 
   constexpr int kBufSize = 24;
 
   FunctionType* funcType = FunctionType::get(
       Type::getVoidTy(llvmCtx), {Type::getInt64Ty(llvmCtx)}, false);
-  func = Function::Create(funcType, Function::InternalLinkage,
-                          "__sun_print_i64", module);
+  func = Function::Create(funcType, Function::InternalLinkage, name, module);
 
   BasicBlock* entryBB = BasicBlock::Create(llvmCtx, "entry", func);
   BasicBlock* loopBB = BasicBlock::Create(llvmCtx, "loop", func);
@@ -156,12 +161,16 @@ static Function* getOrCreatePrintI64Helper(llvm::Module* module,
   AllocaInst* idxAlloca = builder.CreateAlloca(i32Ty);
   builder.CreateStore(ConstantInt::get(i32Ty, kBufSize - 1), idxAlloca);
 
-  Value* isNegative =
-      builder.CreateICmpSLT(val, ConstantInt::get(i64Ty, 0), "is_neg");
   // Digits are extracted with unsigned div/rem, so negating INT64_MIN (which
   // overflows back to itself) still yields the correct magnitude bit pattern.
-  Value* absVal = builder.CreateSelect(
-      isNegative, builder.CreateNeg(val, "neg"), val, "abs");
+  Value* isNegative = ConstantInt::getFalse(llvmCtx);
+  Value* absVal = val;
+  if (isSigned) {
+    isNegative =
+        builder.CreateICmpSLT(val, ConstantInt::get(i64Ty, 0), "is_neg");
+    absVal = builder.CreateSelect(isNegative, builder.CreateNeg(val, "neg"),
+                                  val, "abs");
+  }
 
   AllocaInst* numAlloca = builder.CreateAlloca(i64Ty);
   builder.CreateStore(absVal, numAlloca);
@@ -330,7 +339,29 @@ Value* IntrinsicsGenerator::codegenPrintI64(const CallExprAST& expr) {
     val = ctx.builder->CreateSExtOrTrunc(val, Type::getInt64Ty(llvmCtx));
   }
 
-  Function* helper = getOrCreatePrintI64Helper(module, llvmCtx);
+  Function* helper =
+      getOrCreatePrint64Helper(module, llvmCtx, /*isSigned=*/true);
+  return ctx.builder->CreateCall(helper, {val});
+}
+
+// Emit call to the __sun_print_u64 helper. A narrower unsigned argument is
+// zero-extended, so u32 values above i32's maximum print as themselves.
+Value* IntrinsicsGenerator::codegenPrintU64(const CallExprAST& expr) {
+  if (expr.getArgs().size() != 1) {
+    logAndThrowError("print_u64 expects exactly 1 argument");
+    return nullptr;
+  }
+
+  LLVMContext& llvmCtx = ctx.getContext();
+  Value* val = codegen(*expr.getArgs()[0]);
+  if (!val) return nullptr;
+
+  if (!val->getType()->isIntegerTy(64)) {
+    val = ctx.builder->CreateZExtOrTrunc(val, Type::getInt64Ty(llvmCtx));
+  }
+
+  Function* helper =
+      getOrCreatePrint64Helper(module, llvmCtx, /*isSigned=*/false);
   return ctx.builder->CreateCall(helper, {val});
 }
 

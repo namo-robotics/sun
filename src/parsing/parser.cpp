@@ -43,6 +43,7 @@ std::unique_ptr<ExprAST> Parser::parseNumberExpr() {
   if (curTok.kind == TokenKind::INTEGER ||
       curTok.kind == TokenKind::TYPED_INTEGER) {
     result = std::make_unique<NumberExprAST>(curTok.getInteger().value(),
+                                             NumberExprAST::Sign::Positive,
                                              curTok.suffix);
   } else {
     result = std::make_unique<NumberExprAST>(curTok.getFloat().value(),
@@ -1069,7 +1070,8 @@ unique_ptr<ExprAST> Parser::parseUnary() {
     if (opTok.kind == TokenKind::MINUS &&
         curTok.kind == TokenKind::TYPED_INTEGER) {
       auto folded = std::make_unique<NumberExprAST>(
-          -curTok.getInteger().value(), curTok.suffix);
+          curTok.getInteger().value(), NumberExprAST::Sign::Negative,
+          curTok.suffix);
       getNextToken();  // consume the number
       return finishNode(std::move(folded), start);
     }

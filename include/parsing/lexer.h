@@ -2,6 +2,8 @@
 
 #include <array>
 #include <cctype>
+#include <charconv>
+#include <cstdint>
 #include <cstdlib>  // for strtod
 #include <format>
 #include <istream>
@@ -450,7 +452,8 @@ struct Token {
   TokenKind kind;
   std::variant<std::monostate,  // No value: EOF, keywords, operators, UNKNOWN
                std::string,     // IDENTIFIER, STRING
-               int64_t,         // INTEGER
+               uint64_t,        // INTEGER (digits only, never negative),
+                                // CHAR_LITERAL, BYTE_LITERAL
                double           // FLOAT
                >
       value;
@@ -501,7 +504,7 @@ struct Token {
     return {TokenKind::INTRINSIC_IDENTIFIER, id, s, e, std::move(id)};
   }
 
-  static Token integer(int64_t num, const Position& s, const Position& e,
+  static Token integer(uint64_t num, const Position& s, const Position& e,
                        std::string txt) {
     return {TokenKind::INTEGER, num, s, e, std::move(txt)};
   }
@@ -513,7 +516,7 @@ struct Token {
 
   // Factories for suffixed numeric literals (21u8, 1.5f32); the lexer has
   // already validated the suffix.
-  static Token typedInteger(int64_t num, std::string suffix, const Position& s,
+  static Token typedInteger(uint64_t num, std::string suffix, const Position& s,
                             const Position& e, std::string txt) {
     Token t{TokenKind::TYPED_INTEGER, num, s, e, std::move(txt)};
     t.suffix = std::move(suffix);
@@ -534,7 +537,7 @@ struct Token {
 
   // Character ('a') and byte (b'a') literal factory; `value` is the decoded
   // Unicode scalar value or byte.
-  static Token charLiteral(TokenKind k, int64_t value, const Position& s,
+  static Token charLiteral(TokenKind k, uint64_t value, const Position& s,
                            const Position& e, std::string txt) {
     return {k, value, s, e, std::move(txt)};
   }
@@ -572,9 +575,11 @@ struct Token {
     return kind == TokenKind::INTRINSIC_IDENTIFIER;
   }
 
-  std::optional<int64_t> getInteger() const {
+  // Digits of an integer literal as a value. The lexer has already rejected
+  // anything above the u64 maximum, and a leading minus is a separate token.
+  std::optional<uint64_t> getInteger() const {
     if (kind == TokenKind::INTEGER || kind == TokenKind::TYPED_INTEGER)
-      return std::get<int64_t>(value);
+      return std::get<uint64_t>(value);
     return std::nullopt;
   }
 
@@ -591,9 +596,9 @@ struct Token {
   }
 
   // Decoded scalar value of a character literal, or byte of a byte literal.
-  std::optional<int64_t> getCharValue() const {
+  std::optional<uint64_t> getCharValue() const {
     if (kind == TokenKind::CHAR_LITERAL || kind == TokenKind::BYTE_LITERAL)
-      return std::get<int64_t>(value);
+      return std::get<uint64_t>(value);
     return std::nullopt;
   }
 
@@ -658,8 +663,8 @@ class Lexer {
   // A character literal holds one Unicode scalar value: the source is UTF-8,
   // \xNN reaches U+0000..U+007F, and \u{...} names anything above that. A byte
   // literal holds one byte: the source must be ASCII and \xNN covers 00..FF.
-  int64_t decodeLiteralBody(std::string_view body, bool isByte,
-                            const Position& at) const {
+  uint64_t decodeLiteralBody(std::string_view body, bool isByte,
+                             const Position& at) const {
     const std::string what = isByte ? "byte literal" : "character literal";
     const std::string quoted = isByte ? "b'...'" : "'...'";
 
@@ -771,7 +776,26 @@ class Lexer {
                            (isByte ? "byte" : "character") + "; " + quoted +
                            " has more than one");
     }
-    return static_cast<int64_t>(value);
+    return value;
+  }
+
+  // Convert the digits of an integer literal. The digits are all the token
+  // holds (no sign, no suffix), so the only way this fails is a value above
+  // the u64 maximum, which is a compile error rather than a saturated value.
+  uint64_t decodeIntegerDigits(const std::string& digits,
+                               const Position& at) const {
+    uint64_t value = 0;
+    auto [end, ec] =
+        std::from_chars(digits.data(), digits.data() + digits.size(), value);
+    if (ec == std::errc::result_out_of_range) {
+      literalError(at, "Integer literal " + digits +
+                           " is too large; the largest integer literal is " +
+                           std::to_string(UINT64_MAX) + " (the u64 maximum)");
+    }
+    if (ec != std::errc() || end != digits.data() + digits.size()) {
+      literalError(at, "Malformed integer literal '" + digits + "'");
+    }
+    return value;
   }
 
   static std::string toHex(uint32_t value) {
@@ -1106,7 +1130,7 @@ class Lexer {
         return Token::identifier(std::string(matched), startPos, endPos);
       case TokenKind::INTEGER: {
         std::string text(matched);
-        int64_t val = std::strtoll(text.c_str(), nullptr, 10);
+        uint64_t val = decodeIntegerDigits(text, startPos);
         return Token::integer(val, startPos, endPos, std::move(text));
       }
       case TokenKind::FLOAT: {
@@ -1132,7 +1156,7 @@ class Lexer {
                            "' (valid suffixes: i8, i16, i32, i64, u8, u16, "
                            "u32, u64, f32, f64)");
         }
-        int64_t val = std::strtoll(digits.c_str(), nullptr, 10);
+        uint64_t val = decodeIntegerDigits(digits, startPos);
         return Token::typedInteger(val, std::move(suffix), startPos, endPos,
                                    std::move(text));
       }

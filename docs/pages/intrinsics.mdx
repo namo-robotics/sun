@@ -395,6 +395,11 @@ Prints an `i32` value to stdout (no newline).
 
 Prints an `i64` value to stdout (no newline).
 
+### `_print_u64(value)`
+
+Prints a `u64` value to stdout (no newline). Unlike `_print_i64`, a value above
+the `i64` maximum prints as the full unsigned number.
+
 ### `_print_f64(value)`
 
 Prints an `f64` value to stdout (no newline).
@@ -759,6 +764,7 @@ class Vec<T> {
 | `_store_i64` | `ptr, index, value` | `void` | Store i64 at index |
 | `_print_i32` | `value: i32` | `void` | Print i32 to stdout |
 | `_print_i64` | `value: i64` | `void` | Print i64 to stdout |
+| `_print_u64` | `value: u64` | `void` | Print u64 to stdout |
 | `_print_f64` | `value: f64` | `void` | Print f64 to stdout |
 | `_print_char` | `c: char` | `void` | Print a char as UTF-8 |
 | `_print_newline` | none | `void` | Print newline |

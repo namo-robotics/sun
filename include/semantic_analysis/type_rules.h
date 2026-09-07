@@ -27,6 +27,14 @@ namespace sun::rules {
 bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to);
 
 /**
+ * True when an integer literal, given as a magnitude and a sign, is
+ * representable in the integer or bool primitive `kind`. The magnitude spans
+ * the whole u64 range, so 18446744073709551615 fits u64 while anything above
+ * i64's maximum does not fit i64.
+ */
+bool literalFitsInType(uint64_t magnitude, bool negative, sun::Type::Kind kind);
+
+/**
  * Retype an integer literal as `targetType` when its value fits. Returns true
  * when it did. With `throwOnFail`, a value that does not fit is an error
  * rather than a silent no.

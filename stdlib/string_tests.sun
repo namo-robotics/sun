@@ -197,6 +197,28 @@ public module std {
       std.test.assert(s.equals_literal("0"));
     }
 
+    test_function append_i64_min() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "");
+      s.append_i64(-9223372036854775808i64);
+      std.test.assert(s.equals_literal("-9223372036854775808"));
+    }
+
+    // A u64 above the i64 maximum keeps its full digits rather than printing
+    // as a negative number.
+    test_function append_u64_above_i64_max() {
+      var allocator = make_heap_allocator();
+      var s = String(allocator, "");
+      s.append_u64(18446744073709551615u64);
+      std.test.assert(s.equals_literal("18446744073709551615"));
+    }
+
+    test_function interpolating_a_u64_above_i64_max() {
+      var v: u64 = 14627333968358193854;
+      var s = `${v}`;
+      std.test.assert(s.equals_literal("14627333968358193854"));
+    }
+
     test_function append_hex() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "");

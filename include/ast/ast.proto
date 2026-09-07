@@ -109,11 +109,14 @@ message ASTNode {
 
 message NumberExpr {
   oneof value {
-    int64 int_value = 1;
+    // Absolute value of an integer literal; spans the whole u64 range
+    uint64 int_magnitude = 1;
     double float_value = 2;
   }
   // Type suffix written on the literal ("u8", "f32"); empty when untyped
   string suffix = 3;
+  // True for a negative integer literal (a minus folded into -128i8)
+  bool int_negative = 4;
 }
 
 message StringLiteral {

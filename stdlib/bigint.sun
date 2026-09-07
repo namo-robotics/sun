@@ -448,12 +448,12 @@ public module std {
         chunks.push(chunk);
       }
       var i: i64 = chunks.size() - 1;
-      out.append_u64(_convert<i64>(chunks.get_unchecked(i)));
+      out.append_u64(chunks.get_unchecked(i));
       i = i - 1;
       while (i >= 0) {
-        var chunk: i64 = _convert<i64>(chunks.get_unchecked(i));
+        var chunk: u64 = chunks.get_unchecked(i);
         // Zero-pad inner chunks to 9 digits
-        var scale: i64 = 100000000;
+        var scale: u64 = 100000000;
         while (scale > 1 and chunk < scale) {
           out.append_char(b'0');
           scale = scale / 10;

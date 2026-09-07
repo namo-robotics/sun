@@ -71,6 +71,7 @@ enum class Intrinsic {
   // =========================================================================
   PrintI32,      // _print_i32(value) -> void
   PrintI64,      // _print_i64(value) -> void
+  PrintU64,      // _print_u64(value) -> void
   PrintF64,      // _print_f64(value) -> void
   PrintNewline,  // _print_newline() -> void
   PrintBytes,    // _print_bytes(ptr, len) -> void
@@ -189,6 +190,7 @@ inline Intrinsic getIntrinsic(const std::string& name) {
   // -------------------------------------------------------------------------
   if (name == "_print_i32") return Intrinsic::PrintI32;
   if (name == "_print_i64") return Intrinsic::PrintI64;
+  if (name == "_print_u64") return Intrinsic::PrintU64;
   if (name == "_print_f64") return Intrinsic::PrintF64;
   if (name == "_print_newline") return Intrinsic::PrintNewline;
   if (name == "_print_bytes") return Intrinsic::PrintBytes;

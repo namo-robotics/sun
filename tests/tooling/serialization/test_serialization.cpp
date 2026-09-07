@@ -41,7 +41,7 @@ TEST(Tooling_Serialization, NumberIntegerRoundtrip) {
   ASSERT_EQ(restored->getType(), ASTNodeType::NUMBER);
   auto* num = static_cast<NumberExprAST*>(restored.get());
   EXPECT_TRUE(num->isInteger());
-  EXPECT_EQ(num->getIntVal(), 42);
+  EXPECT_EQ(num->getIntegerText(), "42");
 }
 
 TEST(Tooling_Serialization, NumberFloatRoundtrip) {
@@ -61,7 +61,8 @@ TEST(Tooling_Serialization, NumberFloatRoundtrip) {
 }
 
 TEST(Tooling_Serialization, NumberSuffixRoundtrip) {
-  auto ast = std::make_unique<NumberExprAST>(static_cast<int64_t>(21), "u8");
+  auto ast = std::make_unique<NumberExprAST>(
+      uint64_t{21}, NumberExprAST::Sign::Positive, "u8");
 
   ASTSerializer serializer;
   std::string data = serializer.serializeToString(*ast);
@@ -73,8 +74,34 @@ TEST(Tooling_Serialization, NumberSuffixRoundtrip) {
   ASSERT_EQ(restored->getType(), ASTNodeType::NUMBER);
   auto* num = static_cast<NumberExprAST*>(restored.get());
   EXPECT_TRUE(num->isInteger());
-  EXPECT_EQ(num->getIntVal(), 21);
+  EXPECT_EQ(num->getIntegerText(), "21");
   EXPECT_EQ(num->getSuffix(), "u8");
+}
+
+// The magnitude and sign travel separately, so both a negative literal and
+// one above i64's maximum survive a bundle round trip unchanged.
+TEST(Tooling_Serialization, NumberSignAndFullRangeRoundtrip) {
+  auto roundtrip = [](const NumberExprAST& original) {
+    ASTSerializer serializer;
+    ASTDeserializer deserializer;
+    auto restored = deserializer.deserializeFromString(
+        serializer.serializeToString(original));
+    EXPECT_NE(restored, nullptr);
+    EXPECT_EQ(restored->getType(), ASTNodeType::NUMBER);
+    return std::unique_ptr<NumberExprAST>(
+        static_cast<NumberExprAST*>(restored.release()));
+  };
+
+  auto negative = roundtrip(
+      NumberExprAST(uint64_t{128}, NumberExprAST::Sign::Negative, "i8"));
+  EXPECT_EQ(negative->getIntegerText(), "-128");
+  EXPECT_EQ(negative->getSuffix(), "i8");
+
+  auto huge = roundtrip(
+      NumberExprAST(UINT64_MAX, NumberExprAST::Sign::Positive, "u64"));
+  EXPECT_FALSE(huge->isNegative());
+  EXPECT_EQ(huge->getMagnitude(), UINT64_MAX);
+  EXPECT_EQ(huge->getIntegerText(), "18446744073709551615");
 }
 
 TEST(Tooling_Serialization, StringLiteralRoundtrip) {
@@ -857,7 +884,7 @@ TEST(Tooling_Serialization, CloneNumber) {
   ASSERT_NE(cloned, nullptr);
   ASSERT_EQ(cloned->getType(), ASTNodeType::NUMBER);
   auto* num = static_cast<NumberExprAST*>(cloned.get());
-  EXPECT_EQ(num->getIntVal(), 42);
+  EXPECT_EQ(num->getIntegerText(), "42");
 
   // Verify they're different objects
   EXPECT_NE(original.get(), cloned.get());

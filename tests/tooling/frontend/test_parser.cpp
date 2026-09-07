@@ -57,7 +57,7 @@ TEST(Tooling_Frontend_Parser, ParseSuffixedIntegerLiteral) {
   auto* num = dynamic_cast<NumberExprAST*>(ast.get());
   ASSERT_NE(num, nullptr);
   EXPECT_TRUE(num->isInteger());
-  EXPECT_EQ(num->getIntVal(), 21);
+  EXPECT_EQ(num->getIntegerText(), "21");
   EXPECT_EQ(num->getSuffix(), "u8");
 }
 
@@ -80,7 +80,7 @@ TEST(Tooling_Frontend_Parser, NegatedSuffixedIntegerFoldsIntoLiteral) {
   ASSERT_NE(ast, nullptr);
   auto* num = dynamic_cast<NumberExprAST*>(ast.get());
   ASSERT_NE(num, nullptr);
-  EXPECT_EQ(num->getIntVal(), -128);
+  EXPECT_EQ(num->getIntegerText(), "-128");
   EXPECT_EQ(num->getSuffix(), "i8");
 }
 
