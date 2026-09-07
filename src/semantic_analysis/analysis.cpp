@@ -9,6 +9,7 @@
 #include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/symbol_names.h"
 #include "semantic_analysis/type_rules.h"
+#include "semantic_analysis/visibility.h"
 #include "support/config.h"
 #include "support/error.h"
 
@@ -285,7 +286,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       break;
 
     case ASTNodeType::ENUM_DEFINITION: {
-      analyzeEnumDefinition(static_cast<EnumDefinitionAST&>(expr));
+      enums_.analyzeEnumDefinition(static_cast<EnumDefinitionAST&>(expr));
       break;
     }
 
@@ -687,9 +688,9 @@ void SemanticAnalyzer::analyzeModuleGlobalAssignment(
 
   SymbolMatch match = ctx_.findSymbolInModule(modPath, memberName);
   if (!match) {
-    logAndThrowError(
-        "Unknown member '" + memberName + "' in module '" + modPath + "'",
-        assign.getLocation());
+    logAndThrowError("Unknown member '" + memberName + "' in module '" +
+                         sun::displayModulePath(modPath) + "'",
+                     assign.getLocation());
   }
   if (match.kind != SymbolKind::Variable || !match.variableInfo) {
     logAndThrowError(

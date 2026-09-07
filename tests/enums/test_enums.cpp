@@ -232,3 +232,117 @@ TEST(Enums, DuplicateVariantError) {
   )"),
                std::exception);
 }
+
+// ============================================================================
+// Variants named through a module path
+// ============================================================================
+
+TEST(Enums, QualifiedUnitVariantThroughModulePath) {
+  // A unit variant reached through its module path works everywhere the bare
+  // form does: initializer, comparison, argument, annotation, return value
+  auto value = executeString(R"(
+    public module a.b {
+      public enum E { X, Y }
+      public function is_y(e: E) i32 { if (e == E.Y) { return 1; } return 0; }
+    }
+
+    function flip(e: a.b.E) a.b.E {
+      if (e == a.b.E.X) { return a.b.E.Y; }
+      return a.b.E.X;
+    }
+
+    function main() i32 {
+      var e = a.b.E.Y;
+      var total: i32 = 0;
+      if (e == a.b.E.Y) { total += 1; }
+      total += a.b.is_y(a.b.E.Y);
+      var x: a.b.E = a.b.E.X;
+      if (x != a.b.E.Y) { total += 1; }
+      if (flip(x) == a.b.E.Y) { total += 1; }
+      return total;
+    }
+  )");
+  EXPECT_EQ(value, 4);
+}
+
+TEST(Enums, QualifiedUnitVariantMatchPatterns) {
+  // Match arms may spell the variant through the module path too
+  auto value = executeString(R"(
+    public module a.b { public enum E { X, Y, Z } }
+
+    function main() i32 {
+      var e = a.b.E.Y;
+      return match e {
+        a.b.E.X => 1,
+        a.b.E.Y => 2,
+        a.b.E.Z => 3
+      };
+    }
+  )");
+  EXPECT_EQ(value, 2);
+}
+
+TEST(Enums, QualifiedUnitVariantFromLibraryModulePath) {
+  // std.io.FileMode.Write names the stdlib enum's variant with no
+  // `using std.io;` import, the same way std.io.File names the class
+  auto value = executeStringWithStdlib(R"(
+    using std;
+
+    function pick(m: std.io.FileMode) i32 {
+      if (m == std.io.FileMode.Write) { return 1; }
+      return 0;
+    }
+
+    function main() i32 {
+      var m = std.io.FileMode.Write;
+      return pick(m) + pick(std.io.FileMode.Write) + pick(std.io.FileMode.Read);
+    }
+  )");
+  EXPECT_EQ(value, 2);
+}
+
+TEST(Enums, UnknownLibraryModuleMemberNamesSourceModule) {
+  // The diagnostic spells the module as the source does, without the
+  // bundle's hash scope
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
+    using std;
+
+    function main() i32 {
+      var x = std.io.Nope;
+      return 0;
+    }
+  )"),
+                                "Unknown member 'Nope' in module 'std.io'");
+}
+
+TEST(Enums, QualifiedPrivatePayloadVariantDenied) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(R"(
+    public module m { enum Secret { Item(i32) } }
+    function main() i32 { var s = m.Secret.Item(1); return 0; }
+  )"),
+                                "enum 'Secret' is private to module 'm'");
+}
+
+TEST(Enums, QualifiedVariantThroughPrivateModuleDenied) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(R"(
+    public module m {
+      module hidden { public enum E { Item(i32) } }
+    }
+    function main() i32 { var s = m.hidden.E.Item(1); return 0; }
+  )"),
+                                "module 'hidden' is private to module 'm'");
+}
+
+TEST(Enums, QualifiedPrivateEnumPatternDenied) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(R"(
+    public module m {
+      enum Secret { Item(i32) }
+      public function make() Secret { return Secret.Item(1); }
+    }
+    function main() i32 {
+      var s = m.make();
+      return match s { m.Secret.Item(v) => v };
+    }
+  )"),
+                                "enum 'Secret' is private to module 'm'");
+}

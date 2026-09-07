@@ -299,3 +299,98 @@ TEST(Enums_Generic, CrossModuleMoonBundle) {
   )");
   EXPECT_EQ(value, 42);
 }
+
+// ============================================================================
+// Generic enums named through a module path
+// ============================================================================
+
+TEST(Enums_Generic, QualifiedThroughModulePath) {
+  // Construction, unit variants and match patterns all reach the generic
+  // enum through its module path
+  auto value = executeString(R"(
+    public module optlib {
+      public enum Option<T> { Some(T), None }
+    }
+
+    function main() i32 {
+      var a = optlib.Option.Some(40);
+      var b: optlib.Option<i32> = optlib.Option.None;
+      var ai = match a {
+        optlib.Option.Some(v) => v,
+        optlib.Option.None => 0
+      };
+      var bi = match b {
+        optlib.Option.Some(v) => 0,
+        optlib.Option.None => 2
+      };
+      return ai + bi;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Enums_Generic, QualifiedThroughMoonBundle) {
+  namespace fs = std::filesystem;
+  initTestEnvironment();
+
+  fs::path dir = fs::temp_directory_path() / "sun_generic_enum_qualified_moon";
+  fs::create_directories(dir);
+  fs::path libSrc = dir / "optlib.sun";
+  {
+    std::ofstream out(libSrc);
+    out << R"(
+      public module optlib {
+          public enum Option<T> { Some(T), None }
+
+          public function pick(x: i32) Option<i32> {
+              if (x > 0) { return Option.Some(x); }
+              return Option.None;
+          }
+      }
+    )";
+  }
+  fs::path moonPath = dir / "optlib.moon";
+  sun::MoonBuilder::build(libSrc.string(), moonPath);
+
+  // No `using optlib;`: the library's specialization and a new one are both
+  // spelled through the module path
+  auto driver = Driver::createForJIT("moon_main");
+  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  auto value = driver->executeString(R"(
+    function main() i32 {
+        var a = optlib.pick(30);
+        var b = optlib.Option.Some(2.5);
+        var c: optlib.Option<i32> = optlib.Option.None;
+        var ai = match a {
+            optlib.Option.Some(v) => v,
+            optlib.Option.None => 0
+        };
+        var bi = match b {
+            optlib.Option.Some(v) => 12,
+            optlib.Option.None => 0
+        };
+        var ci = match c {
+            optlib.Option.Some(v) => 0,
+            optlib.Option.None => 1
+        };
+        return ai + bi + ci;
+    }
+  )");
+  EXPECT_EQ(value, 43);
+}
+
+TEST(Enums_Generic, QualifiedPrivatePayloadVariantDenied) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(R"(
+    public module m { enum Secret<T> { Item(T), Empty } }
+    function main() i32 { var s = m.Secret.Item(1); return 0; }
+  )"),
+                                "enum 'Secret' is private to module 'm'");
+}
+
+TEST(Enums_Generic, QualifiedPrivateUnitVariantDenied) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(R"(
+    public module m { enum Secret<T> { Item(T), Empty } }
+    function main() i32 { var s = m.Secret.Empty; return 0; }
+  )"),
+                                "enum 'Secret' is private to module 'm'");
+}

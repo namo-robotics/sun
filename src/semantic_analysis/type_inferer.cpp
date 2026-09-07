@@ -9,6 +9,7 @@
 #include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/type_rules.h"
+#include "semantic_analysis/visibility.h"
 #include "support/error.h"
 
 using sun::unwrapRef;
@@ -889,7 +890,8 @@ sun::TypePtr TypeInferer::inferModuleMemberType(
         if (!memberAccess.hasTypeArguments() &&
             !memberAccess.hasResolvedTypeArgs()) {
           logAndThrowError(
-              "Generic function '" + memberName + "' in module '" + modPath +
+              "Generic function '" + memberName + "' in module '" +
+                  sun::displayModulePath(modPath) +
                   "' needs type arguments here; they are only inferred at a "
                   "call, e.g. " +
                   memberName + "<i32>(...)",
@@ -897,7 +899,8 @@ sun::TypePtr TypeInferer::inferModuleMemberType(
         }
         if (!match.genericFunctionInfo) {
           logAndThrowError("Generic function '" + memberName + "' in module '" +
-                               modPath + "' has no definition",
+                               sun::displayModulePath(modPath) +
+                               "' has no definition",
                            memberAccess.getLocation());
         }
         std::vector<sun::TypePtr> typeArgs =
@@ -921,9 +924,9 @@ sun::TypePtr TypeInferer::inferModuleMemberType(
     }
   }
 
-  logAndThrowError(
-      "Unknown member '" + memberName + "' in module '" + modPath + "'",
-      memberAccess.getLocation());
+  logAndThrowError("Unknown member '" + memberName + "' in module '" +
+                       sun::displayModulePath(modPath) + "'",
+                   memberAccess.getLocation());
 }
 
 sun::TypePtr TypeInferer::inferClassMemberType(

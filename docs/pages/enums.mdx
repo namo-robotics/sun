@@ -25,6 +25,17 @@ Declare variables with an enum type and access variants using dot notation:
 var c: Color = Color.Green;
 ```
 
+An enum declared in a module can be named through its module path, the same
+way a module's classes and functions can, or by its bare name after a `using`:
+
+```sun
+using std;
+
+var mode = std.io.FileMode.Write;   // through the module path
+var file = std.io.File();
+file.open("notes.txt", mode);
+```
+
 ### Comparison
 
 Enum values can be compared with `==` and `!=`:

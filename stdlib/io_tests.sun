@@ -3,7 +3,6 @@
 // tests/builtins/test_file_intrinsics.cpp.
 
 using std;
-using std.io;
 
 public module std {
   module io_tests {
@@ -115,7 +114,7 @@ public module std {
       var path = td.file("computed.txt");
 
       var f = std.io.File();
-      f.open(path, FileMode.Write);
+      f.open(path, std.io.FileMode.Write);
       var body = String("written through a String path");
       var n: i64 = f.write(body);
       f.close();
@@ -334,7 +333,7 @@ public module std {
       // here must be a fixed literal. Removed before any assertion can throw.
       var alloc = make_heap_allocator();
       var f = std.io.File();
-      f.open("/tmp/sun_stdlib_io_file_literal.txt", FileMode.Write);
+      f.open("/tmp/sun_stdlib_io_file_literal.txt", std.io.FileMode.Write);
       f.write("written by File");
       f.close();
 
@@ -364,12 +363,12 @@ public module std {
       std.io.write_string(path, body);
 
       var f = std.io.File();
-      f.open(path, FileMode.Read);
+      f.open(path, std.io.FileMode.Read);
       std.test.assert_eq(f.size(), 10);
       std.test.assert_eq(f.tell(), 0);
-      std.test.assert_eq(f.seek(4, Whence.Start), 4);
+      std.test.assert_eq(f.seek(4, std.io.Whence.Start), 4);
       std.test.assert_eq(f.tell(), 4);
-      std.test.assert_eq(f.seek(0, Whence.End), 10);
+      std.test.assert_eq(f.seek(0, std.io.Whence.End), 10);
       f.close();
       std.test.assert(not f.is_open(), "closed File holds no descriptor");
     }
@@ -382,7 +381,7 @@ public module std {
       std.io.write_string(path, body);
 
       var f = std.io.File();
-      f.open(path, FileMode.Append);
+      f.open(path, std.io.FileMode.Append);
       f.write("second");
       f.close();
 
@@ -396,7 +395,7 @@ public module std {
       var missing = td.file("nope.txt");
       var f = std.io.File();
       try {
-        f.open(missing, FileMode.Read);
+        f.open(missing, std.io.FileMode.Read);
         std.test.fail("expected error");
       } catch (e: IError) {}
     }

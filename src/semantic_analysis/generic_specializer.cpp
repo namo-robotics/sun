@@ -1284,8 +1284,8 @@ std::shared_ptr<sun::EnumType> GenericSpecializer::instantiateGenericEnum(
       for (const auto& annot : variant.payloadTypes) {
         auto payloadType = sema_.types().typeAnnotationToType(annot);
         if (!abstractShape) {
-          sema_.validateEnumPayloadType(payloadType, specialized, variant.name,
-                                        variant.location);
+          sema_.enums().validateEnumPayloadType(payloadType, specialized,
+                                                variant.name, variant.location);
         }
         payloadTypes.push_back(std::move(payloadType));
       }

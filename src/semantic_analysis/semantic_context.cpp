@@ -13,6 +13,7 @@
 
 #include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/symbol_names.h"
+#include "semantic_analysis/visibility.h"
 #include "support/error.h"
 
 using sun::unwrapRef;
@@ -431,27 +432,8 @@ static std::vector<SemanticScope*> collectAllModuleScopes(
 SymbolMatch SemanticContext::findSymbolInModule(
     const std::string& modulePath, const std::string& name,
     SymbolKind filterKind, const std::vector<sun::TypePtr>* argTypes) const {
-  // Helper to extract visible module path by stripping $...$ prefixes
-  auto getVisibleModulePath = [](const std::string& path) -> std::string {
-    std::string result;
-    size_t pos = 0;
-    while (pos < path.size()) {
-      size_t dot = path.find('.', pos);
-      std::string segment = (dot == std::string::npos)
-                                ? path.substr(pos)
-                                : path.substr(pos, dot - pos);
-      // Skip segments starting with $ (import scopes, library hashes)
-      if (!segment.empty() && segment[0] != '$') {
-        if (!result.empty()) result += ".";
-        result += segment;
-      }
-      pos = (dot == std::string::npos) ? path.size() : dot + 1;
-    }
-    return result;
-  };
-
   // Get visible module path for searching across all matching scopes
-  std::string visiblePath = getVisibleModulePath(modulePath);
+  std::string visiblePath = sun::displayModulePath(modulePath);
 
   // Access filtering: private symbols of other modules are skipped; if that
   // leaves nothing, the denial is reported instead of "unknown member".
@@ -668,7 +650,7 @@ SymbolMatch SemanticContext::findSymbolInModule(
     std::string paths;
     for (const auto& m : allMatches) {
       if (!paths.empty()) paths += " or ";
-      paths += getVisibleModulePath(m.modulePath);
+      paths += sun::displayModulePath(m.modulePath);
     }
     logAndThrowError("Ambiguous reference to '" + visiblePath + "." + name +
                      "'. Could be: " + paths);

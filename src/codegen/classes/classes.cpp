@@ -12,6 +12,7 @@
 #include "codegen/support/struct_access.h"
 #include "parsing/parser.h"
 #include "semantic_analysis/semantic_scope.h"
+#include "semantic_analysis/visibility.h"
 
 using namespace llvm;
 
@@ -709,7 +710,7 @@ Value* ClassGenerator::codegen(const MemberAccessAST& expr) {
     }
 
     logAndThrowError("Cannot find member '" + memberName + "' in module '" +
-                     moduleType->getModulePath() + "'");
+                     sun::displayModulePath(moduleType->getModulePath()) + "'");
   }
 
   // The analyzed object identifies the enum, including qualified unit variants.

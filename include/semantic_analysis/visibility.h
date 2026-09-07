@@ -70,6 +70,12 @@ inline ModulePath splitModulePath(const std::string& dotted) {
   return out;
 }
 
+// The dotted path as source code spells it: "$hash$.std.io" reads "std.io".
+// Diagnostics use this so a library's bundle hash never reaches the user.
+inline std::string displayModulePath(const std::string& dotted) {
+  return displayModulePath(splitModulePath(dotted));
+}
+
 inline const char* visibilityKeyword(Visibility v) {
   return v == Visibility::Public ? "public" : "private";
 }

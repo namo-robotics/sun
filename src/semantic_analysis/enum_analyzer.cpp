@@ -1,6 +1,8 @@
-// enums.cpp — All enum semantic analysis: definitions, payload validation,
-// variant construction, generic enum templates/instantiation, and match
-// analysis with exhaustiveness checking.
+// enum_analyzer.cpp — All enum semantic analysis: definitions, payload
+// validation, variant construction, generic enum templates/instantiation, and
+// match analysis with exhaustiveness checking.
+
+#include "semantic_analysis/enum_analyzer.h"
 
 #include <map>
 #include <set>
@@ -93,28 +95,26 @@ bool unifyPayloadTypeParam(const TypeAnnotation& annot,
 }  // namespace
 
 // -------------------------------------------------------------------
-// Registration and lookup
-// -------------------------------------------------------------------
-
-// -------------------------------------------------------------------
 // Definition analysis
 // -------------------------------------------------------------------
 
-void SemanticAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
+void EnumAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
   // Forbid redefinition of enum in same module
-  if (declarations_.isDeclared(
+  if (sema_.declarations().isDeclared(
           ctx_.makeQualifiedName(enumDef.getName()).mangled())) {
     logAndThrowError("Redefinition of enum '" + enumDef.getName() + "'",
                      enumDef.getLocation());
   }
 
   // Validate enum name
-  validateNotReserved(enumDef.getName(), "Enum name", enumDef.getLocation());
+  sema_.validateNotReserved(enumDef.getName(), "Enum name",
+                            enumDef.getLocation());
 
   // Validate variant names and check for duplicates
   std::set<std::string> seenVariants;
   for (const auto& variant : enumDef.getVariants()) {
-    validateNotReserved(variant.name, "Enum variant name", variant.location);
+    sema_.validateNotReserved(variant.name, "Enum variant name",
+                              variant.location);
     if (seenVariants.count(variant.name)) {
       logAndThrowError("Duplicate enum variant '" + variant.name +
                            "' in enum '" + enumDef.getName() + "'",
@@ -131,7 +131,7 @@ void SemanticAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
                                {&enumDef, enumDef.getTypeParameters(),
                                 ctx_.makeQualifiedName(enumDef.getName())});
     }
-    declarations_.noteDeclared(
+    sema_.declarations().noteDeclared(
         ctx_.makeQualifiedName(enumDef.getName()).mangled());
     enumDef.setResolvedType(sun::Types::Void());
     return;
@@ -169,7 +169,7 @@ void SemanticAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
   ctx_.registerEnum(enumDef.getName(), enumType);
 
   // Track symbol for redefinition detection
-  declarations_.noteDeclared(
+  sema_.declarations().noteDeclared(
       ctx_.makeQualifiedName(enumDef.getName()).mangled());
 
   enumDef.setResolvedType(sun::Types::Void());
@@ -179,7 +179,7 @@ void SemanticAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
 // Payload validation (Stage 1 rules)
 // -------------------------------------------------------------------
 
-void SemanticAnalyzer::validateEnumPayloadType(
+void EnumAnalyzer::validateEnumPayloadType(
     const sun::TypePtr& type, const std::shared_ptr<sun::EnumType>& enumType,
     const std::string& variantName, const Position& location) {
   const std::string context = "Payload of variant '" + variantName +
@@ -216,39 +216,49 @@ void SemanticAnalyzer::validateEnumPayloadType(
 // Variant construction: EnumName.Variant(args...)
 // -------------------------------------------------------------------
 
+// The dotted spelling of an enum name as written at a use site: "E" for a
+// bare name, "a.b.E" for one reached through its module path. Empty when the
+// expression is not a chain of identifiers, or when its head names a local
+// variable (which shadows any enum of the same name).
+std::string EnumAnalyzer::enumPathOf(const ExprAST& object) {
+  if (auto* variable = dynamic_cast<const VariableReferenceAST*>(&object)) {
+    if (ctx_.lookupVariable(variable->getName())) return "";
+    return variable->getName();
+  }
+  if (auto* member = dynamic_cast<const MemberAccessAST*>(&object)) {
+    std::string prefix = enumPathOf(*member->getObject());
+    if (!prefix.empty()) return prefix + "." + member->getMemberName();
+  }
+  return "";
+}
+
 // Intercepts calls whose callee is `EnumName.Variant` for concrete and
-// generic enums. Returns true if the call was an enum construction (analyzed
-// here); false lets analyzeCall continue with normal call handling.
-bool SemanticAnalyzer::tryAnalyzeEnumConstruction(CallExprAST& callExpr,
-                                                  sun::TypePtr expectedType) {
+// generic enums, with the enum named bare or through its module path.
+// Returns true if the call was an enum construction (analyzed here); false
+// lets analyzeCall continue with normal call handling.
+bool EnumAnalyzer::tryAnalyzeEnumConstruction(CallExprAST& callExpr,
+                                              sun::TypePtr expectedType) {
   if (callExpr.getCallee()->getType() != ASTNodeType::MEMBER_ACCESS) {
     return false;
   }
   auto& memberAccess = static_cast<MemberAccessAST&>(
       const_cast<ExprAST&>(*callExpr.getCallee()));
-  if (memberAccess.getObject()->getType() != ASTNodeType::VARIABLE_REFERENCE) {
-    return false;
-  }
-  const auto& objRef =
-      static_cast<const VariableReferenceAST&>(*memberAccess.getObject());
-  // A local variable shadows an enum type name
-  if (ctx_.lookupVariable(objRef.getName())) {
-    return false;
-  }
-  if (auto enumType = ctx_.lookupEnum(objRef.getName())) {
+  std::string enumName = enumPathOf(*memberAccess.getObject());
+  if (enumName.empty()) return false;
+  if (auto enumType = ctx_.lookupEnum(enumName)) {
     const_cast<ExprAST&>(*memberAccess.getObject()).setResolvedType(enumType);
     analyzeEnumVariantConstruction(callExpr, memberAccess, enumType);
     return true;
   }
-  if (const auto* genericEnum = ctx_.lookupGenericEnum(objRef.getName())) {
-    analyzeGenericEnumConstruction(callExpr, memberAccess, objRef.getName(),
+  if (const auto* genericEnum = ctx_.lookupGenericEnum(enumName)) {
+    analyzeGenericEnumConstruction(callExpr, memberAccess, enumName,
                                    *genericEnum, expectedType);
     return true;
   }
   return false;
 }
 
-void SemanticAnalyzer::analyzeEnumVariantConstruction(
+void EnumAnalyzer::analyzeEnumVariantConstruction(
     CallExprAST& callExpr, MemberAccessAST& memberAccess,
     const std::shared_ptr<sun::EnumType>& enumType) {
   const std::string& variantName = memberAccess.getMemberName();
@@ -277,7 +287,7 @@ void SemanticAnalyzer::analyzeEnumVariantConstruction(
 
   for (size_t i = 0; i < args.size(); ++i) {
     const sun::TypePtr& payloadType = variant->payloadTypes[i];
-    analyzeExpr(const_cast<ExprAST&>(*args[i]), payloadType);
+    sema_.analyzeExpr(const_cast<ExprAST&>(*args[i]), payloadType);
     sun::TypePtr argType = args[i]->getResolvedType();
     // A `ref X` payload borrows, so it accepts an X the same way a `ref X`
     // parameter does: the variant stores the argument's address.
@@ -298,15 +308,15 @@ void SemanticAnalyzer::analyzeEnumVariantConstruction(
     }
   }
   // A `ref X` payload borrows its argument, an owning payload moves it
-  checkArgumentPlaces(args, variant->payloadTypes,
-                      enumType->getBaseName() + "." + variantName,
-                      callExpr.getLocation());
+  sema_.checkArgumentPlaces(args, variant->payloadTypes,
+                            enumType->getBaseName() + "." + variantName,
+                            callExpr.getLocation());
 
   memberAccess.setResolvedType(enumType);
   callExpr.setResolvedType(enumType);
 }
 
-void SemanticAnalyzer::analyzeGenericEnumConstruction(
+void EnumAnalyzer::analyzeGenericEnumConstruction(
     CallExprAST& callExpr, MemberAccessAST& memberAccess,
     const std::string& genericName, const GenericEnumInfo& genericInfo,
     sun::TypePtr expectedType) {
@@ -335,7 +345,7 @@ void SemanticAnalyzer::analyzeGenericEnumConstruction(
 
   // Analyze arguments to learn their types for unification
   for (const auto& arg : args) {
-    analyzeExpr(const_cast<ExprAST&>(*arg));
+    sema_.analyzeExpr(const_cast<ExprAST&>(*arg));
   }
 
   std::map<std::string, sun::TypePtr> bindings;
@@ -410,21 +420,9 @@ void SemanticAnalyzer::analyzeGenericEnumConstruction(
 
 // Returns true if the member access was a generic-enum unit variant handled
 // here (resolved type set); false lets the MEMBER_ACCESS case continue.
-bool SemanticAnalyzer::tryAnalyzeGenericEnumUnitVariant(
+bool EnumAnalyzer::tryAnalyzeGenericEnumUnitVariant(
     MemberAccessAST& memberAccess, sun::TypePtr expectedType) {
-  std::function<std::string(const ExprAST&)> dottedName =
-      [&](const ExprAST& node) -> std::string {
-    if (auto* variable = dynamic_cast<const VariableReferenceAST*>(&node)) {
-      if (ctx_.lookupVariable(variable->getName())) return "";
-      return variable->getName();
-    }
-    if (auto* member = dynamic_cast<const MemberAccessAST*>(&node)) {
-      auto prefix = dottedName(*member->getObject());
-      if (!prefix.empty()) return prefix + "." + member->getMemberName();
-    }
-    return "";
-  };
-  auto name = dottedName(*memberAccess.getObject());
+  std::string name = enumPathOf(*memberAccess.getObject());
   if (name.empty()) return false;
   const auto* genericEnum = ctx_.lookupGenericEnum(name);
   if (!genericEnum) return false;
@@ -465,7 +463,7 @@ bool SemanticAnalyzer::tryAnalyzeGenericEnumUnitVariant(
 // Match analysis: variant patterns, payload bindings, exhaustiveness
 // -------------------------------------------------------------------
 
-void SemanticAnalyzer::analyzeEnumMatch(
+void EnumAnalyzer::analyzeEnumMatch(
     MatchExprAST& matchExpr, const std::shared_ptr<sun::EnumType>& enumType,
     sun::TypePtr expectedType) {
   std::set<int> coveredTags;
@@ -478,7 +476,7 @@ void SemanticAnalyzer::analyzeEnumMatch(
                    matchExpr.getLocation());
       }
       sawWildcard = true;
-      analyzeExpr(const_cast<ExprAST&>(*arm.body), expectedType);
+      sema_.analyzeExpr(const_cast<ExprAST&>(*arm.body), expectedType);
       continue;
     }
     if (sawWildcard) {
@@ -499,17 +497,23 @@ void SemanticAnalyzer::analyzeEnumMatch(
     auto& patternAccess = static_cast<MemberAccessAST&>(*arm.pattern);
     const std::string& variantName = patternAccess.getMemberName();
 
-    // The object must name this same enum type. For specializations the
-    // pattern names the generic (Option.Some on an Option<i32> discriminant).
+    // The object must name this same enum type, bare or through its module
+    // path. For specializations the pattern names the generic (Option.Some
+    // on an Option<i32> discriminant, or optlib.Option.Some).
     sun::TypePtr objectType;
-    if (patternAccess.getObject()->getType() ==
-        ASTNodeType::VARIABLE_REFERENCE) {
-      const auto& varRef =
-          static_cast<const VariableReferenceAST&>(*patternAccess.getObject());
-      objectType = ctx_.lookupEnum(varRef.getName());
-      if (!objectType && (varRef.getName() == enumType->getGenericBase() ||
-                          varRef.getName() == enumType->getBaseName())) {
+    std::string enumName = enumPathOf(*patternAccess.getObject());
+    if (!enumName.empty()) {
+      objectType = ctx_.lookupEnum(enumName);
+      if (!objectType && (enumName == enumType->getGenericBase() ||
+                          enumName == enumType->getBaseName())) {
         objectType = enumType;
+      }
+      if (!objectType) {
+        const auto* genericEnum = ctx_.lookupGenericEnum(enumName);
+        if (genericEnum &&
+            genericEnum->qualifiedName == enumType->getGenericQualifiedName()) {
+          objectType = enumType;
+        }
       }
     }
     if (!objectType) {
@@ -574,7 +578,7 @@ void SemanticAnalyzer::analyzeEnumMatch(
         ctx_.declareVariable(binding.name, binding.resolvedType);
       }
     }
-    analyzeExpr(const_cast<ExprAST&>(*arm.body), expectedType);
+    sema_.analyzeExpr(const_cast<ExprAST&>(*arm.body), expectedType);
     ctx_.exitScope();
   }
 

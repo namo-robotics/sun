@@ -978,14 +978,10 @@ class ModuleType : public Type {
 
   std::string toString() const override { return "module<" + modulePath + ">"; }
 
-  // Drop the "$hash$_" a moon import prefixes and spell the path with dots
+  // The path as source spells it, without the "$hash$" scope a moon import
+  // adds
   std::string toDisplayString() const override {
-    std::string path =
-        modulePath.substr(QualifiedName::extractHashPrefix(modulePath).size());
-    for (char& c : path) {
-      if (c == '_') c = '.';
-    }
-    return "module<" + path + ">";
+    return "module<" + displayModulePath(modulePath) + ">";
   }
 
   bool equals(const Type& other) const override {

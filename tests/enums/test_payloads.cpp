@@ -620,3 +620,67 @@ TEST(Enums_Payloads, CrossModuleMoonBundle) {
   )");
   EXPECT_EQ(value, 24);
 }
+
+// ============================================================================
+// Payload variants named through a module path
+// ============================================================================
+
+TEST(Enums_Payloads, QualifiedPayloadConstructionAndMatch) {
+  // Construction and match patterns spell the enum through its module path
+  auto value = executeString(R"(
+    public module a.b {
+      public enum E { Item(i32), Pair(i32, i32), Empty }
+    }
+
+    function main() i32 {
+      var v = a.b.E.Item(3);
+      var p = a.b.E.Pair(4, 5);
+      var e = a.b.E.Empty;
+      var vi = match v { a.b.E.Item(n) => n, _ => 0 };
+      var pi = match p { a.b.E.Pair(x, y) => x + y, _ => 0 };
+      var ei = match e { a.b.E.Empty => 100, _ => 0 };
+      return vi + pi + ei;
+    }
+  )");
+  EXPECT_EQ(value, 112);
+}
+
+TEST(Enums_Payloads, QualifiedVariantsAcrossMoonBundle) {
+  namespace fs = std::filesystem;
+  initTestEnvironment();
+
+  fs::path dir = fs::temp_directory_path() / "sun_enum_qualified_moon_test";
+  fs::create_directories(dir);
+  fs::path libSrc = dir / "shapes.sun";
+  {
+    std::ofstream out(libSrc);
+    out << R"(
+      public module shapes {
+          public enum Shape { Circle(f64), Rect(f64, f64), Empty }
+      }
+    )";
+  }
+  fs::path moonPath = dir / "shapes.moon";
+  sun::MoonBuilder::build(libSrc.string(), moonPath);
+
+  // No `using shapes;`: every variant is reached through the module path
+  auto driver = Driver::createForJIT("moon_main");
+  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  auto value = driver->executeString(R"(
+    function area(s: ref shapes.Shape) f64 {
+        return match s {
+            shapes.Shape.Circle(r) => 3.0 * r * r,
+            shapes.Shape.Rect(w, h) => w * h,
+            shapes.Shape.Empty => 0.0
+        };
+    }
+
+    function main() i32 {
+        var c = shapes.Shape.Circle(2.0);
+        var r = shapes.Shape.Rect(3.0, 4.0);
+        var e = shapes.Shape.Empty;
+        return area(c) + area(r) + area(e);
+    }
+  )");
+  EXPECT_EQ(value, 24);
+}

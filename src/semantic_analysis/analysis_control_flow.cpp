@@ -45,9 +45,9 @@ void SemanticAnalyzer::analyzeMatchExpr(MatchExprAST& matchExpr,
   sun::TypePtr discType =
       unwrapRef(matchExpr.getDiscriminant()->getResolvedType());
   if (discType && discType->isEnum()) {
-    analyzeEnumMatch(matchExpr,
-                     std::static_pointer_cast<sun::EnumType>(discType),
-                     expectedType);
+    enums_.analyzeEnumMatch(matchExpr,
+                            std::static_pointer_cast<sun::EnumType>(discType),
+                            expectedType);
     matchExpr.setResolvedType(types_.inferType(matchExpr));
     return;
   }
