@@ -178,8 +178,8 @@ void CallAnalyzer::analyzeCall(CallExprAST& callExpr,
   }
 
   // Enum variant construction: EnumName.Variant(args...) for concrete and
-  // generic enums; intercepted before generic callee analysis (see enums.cpp)
-  if (sema_.tryAnalyzeEnumConstruction(callExpr, expectedType)) {
+  // generic enums; intercepted before generic callee analysis.
+  if (sema_.enums().tryAnalyzeEnumConstruction(callExpr, expectedType)) {
     return;
   }
 

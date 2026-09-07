@@ -31,6 +31,11 @@ A file for guiding coding agents.
 - Body: blank line, then one concise bullet per key change if not already captured in the subject.
 - Do not add AI attribution to commits or PRs (no Co-Authored-By, Generated-with, tool names, or session links).
 
+## Planning
+
+- Write plains in plain english, avoiding jargon and abreviations.
+- Use simple, concrete examples in explanations when it makes sense.
+
 ## Issues and PR Guidelinese
 
 - Never create PRs or issues unless specifically asked by the user.

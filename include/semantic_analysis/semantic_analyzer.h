@@ -1,11 +1,12 @@
 // semantic_analyzer.h — Pre-codegen semantic analysis pass
 //
-// Five things the analyzer holds rather than is, each with its own header:
+// The analyzer delegates to these classes, each with its own header:
 //   SemanticContext       scopes, symbol tables, the type registry
 //   DeclarationCollector  the pre-pass, and what counts as already declared
 //   GenericSpecializer    monomorphization and its cache
 //   TypeInferer           what type is this expression / this annotation
 //   CallAnalyzer          what a call calls, and how its arguments get there
+//   EnumAnalyzer          enum definitions, variants, and match patterns
 // They all share the one SemanticContext by reference. The analyzer itself is
 // the part that walks the AST: it checks what it finds, and stamps the
 // resolved types and conversions codegen reads back off the nodes.
@@ -15,7 +16,7 @@
 //   analysis_utils.cpp       places, constness, `_is<T>` type guards
 //   call_analyzer.cpp        every form of call (its own class, see above)
 //   captures.cpp             free variables and closure captures
-//   enums.cpp                enum definitions, construction, match
+//   enum_analyzer.cpp        enum definitions, construction, match
 //   interfaces.cpp           interfaces and conformance validation
 //   packed_classes.cpp       the rules a packed class has to obey
 //
@@ -39,6 +40,7 @@
 #include "semantic_analysis/access_checker.h"
 #include "semantic_analysis/call_analyzer.h"
 #include "semantic_analysis/declaration_collector.h"
+#include "semantic_analysis/enum_analyzer.h"
 #include "semantic_analysis/generic_specializer.h"
 #include "semantic_analysis/semantic_context.h"
 #include "semantic_analysis/semantic_scope.h"
@@ -75,6 +77,9 @@ class SemanticAnalyzer {
   // What type is this expression, and what type does this annotation name.
   TypeInferer types_{ctx_, *this, generics_};
 
+  // Checks enum definitions, variant construction, and match patterns.
+  EnumAnalyzer enums_{ctx_, *this, generics_, types_};
+
   // Resolves and checks every form of call.
   CallAnalyzer calls_{ctx_, *this, generics_, types_};
 
@@ -95,23 +100,14 @@ class SemanticAnalyzer {
   /** Type inference and type-annotation resolution. */
   TypeInferer &types() { return types_; }
 
+  /** Enum definitions, variant construction, and match patterns. */
+  EnumAnalyzer &enums() { return enums_; }
+
   /** Call resolution and checking. */
   CallAnalyzer &calls() { return calls_; }
 
   /** The global scope, for debugging and visualization. */
   const SemanticScope &getRootScope() const { return ctx_.rootScope(); }
-
-  /**
-   * Enum definition analysis: validation, payload resolution, registration
-   * (generic enums register as templates).
-   */
-  void analyzeEnumDefinition(EnumDefinitionAST &enumDef);
-
-  /** Validate a resolved payload type for an enum variant (Stage 1 rules). */
-  void validateEnumPayloadType(const sun::TypePtr &type,
-                               const std::shared_ptr<sun::EnumType> &enumType,
-                               const std::string &variantName,
-                               const Position &location);
 
   /** Clear resolved types on an AST tree (for re-analysis of generic methods).
    */
@@ -206,13 +202,6 @@ class SemanticAnalyzer {
   void analyzeMemberAccess(MemberAccessAST &memberAccess,
                            sun::TypePtr expectedType);
   void analyzeQualifiedName(QualifiedNameAST &qualName);
-
-  /**
-   * Call interception for EnumName.Variant(args...) on concrete and generic
-   * enums; returns true when the call was an enum construction.
-   */
-  bool tryAnalyzeEnumConstruction(CallExprAST &callExpr,
-                                  sun::TypePtr expectedType);
 
   /**
    * Extract function signature info (param types, captures, explicit return
@@ -449,38 +438,4 @@ class SemanticAnalyzer {
   void maybeResolveBoundMethodRef(MemberAccessAST &memberAccess,
                                   sun::TypePtr expectedType);
 
-  // ===== Enums (all implemented in semantic_analysis/enums.cpp) =====
-
-  /**
-   * Member-access interception for generic enum unit variants (Option.None);
-   * returns true when handled (type arguments taken from the expected type).
-   */
-  bool tryAnalyzeGenericEnumUnitVariant(MemberAccessAST &memberAccess,
-                                        sun::TypePtr expectedType);
-
-  /**
-   * Check a concrete enum variant construction, EnumName.Variant(args...),
-   * against the payload the variant declares.
-   */
-  void analyzeEnumVariantConstruction(
-      CallExprAST &callExpr, MemberAccessAST &memberAccess,
-      const std::shared_ptr<sun::EnumType> &enumType);
-
-  /**
-   * Option.Some(42): infer type arguments from payload args (falling back to
-   * the expected type), instantiate, then check like a concrete construction.
-   */
-  void analyzeGenericEnumConstruction(CallExprAST &callExpr,
-                                      MemberAccessAST &memberAccess,
-                                      const std::string &genericName,
-                                      const GenericEnumInfo &genericInfo,
-                                      sun::TypePtr expectedType);
-
-  /**
-   * Match analysis on enum discriminants: variant patterns, payload bindings,
-   * exhaustiveness.
-   */
-  void analyzeEnumMatch(MatchExprAST &matchExpr,
-                        const std::shared_ptr<sun::EnumType> &enumType,
-                        sun::TypePtr expectedType);
 };

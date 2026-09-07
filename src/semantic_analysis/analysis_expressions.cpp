@@ -179,7 +179,8 @@ void SemanticAnalyzer::analyzeMemberAccess(MemberAccessAST& memberAccess,
                                            sun::TypePtr expectedType) {
   // Check for enum variant access: EnumName.VariantName
   // Don't try to analyze the "object" if it's an enum type name
-  if (tryAnalyzeGenericEnumUnitVariant(memberAccess, expectedType)) return;
+  if (enums_.tryAnalyzeGenericEnumUnitVariant(memberAccess, expectedType))
+    return;
   bool isEnumAccess = false;
   if (memberAccess.getObject()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
     const auto& varRef =
@@ -187,9 +188,10 @@ void SemanticAnalyzer::analyzeMemberAccess(MemberAccessAST& memberAccess,
     if (auto enumType = ctx_.lookupEnum(varRef.getName())) {
       const_cast<ExprAST&>(*memberAccess.getObject()).setResolvedType(enumType);
       isEnumAccess = true;
-    } else if (tryAnalyzeGenericEnumUnitVariant(memberAccess, expectedType)) {
+    } else if (enums_.tryAnalyzeGenericEnumUnitVariant(memberAccess,
+                                                       expectedType)) {
       // Generic enum unit variant (Option.None): resolved from expected
-      // type in enums.cpp
+      // type in EnumAnalyzer
       return;
     }
   }

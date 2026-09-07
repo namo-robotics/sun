@@ -36,6 +36,21 @@ DottedName splitDotted(const std::string& name) {
   return {name.substr(0, lastDot), name.substr(lastDot + 1)};
 }
 
+// Check the enum and every module in its qualified path before returning it.
+template <typename Enum>
+void requireQualifiedEnumAccess(const SemanticScopeBase* from,
+                                const SemanticScopeBase* module,
+                                const Enum& found) {
+  AccessFilter filter(from);
+  for (auto* scope = module; scope && scope->getType() == ScopeType::Module;
+       scope = scope->parent) {
+    if (isLibraryScope(scope->scopeName)) continue;
+    filter.admit(static_cast<const ModuleScope&>(*scope));
+  }
+  filter.admit(found);
+  filter.finish();
+}
+
 }  // namespace
 
 bool SemanticScope::hasSymbol(const std::string& name) const {
@@ -273,7 +288,10 @@ std::shared_ptr<sun::EnumType> SemanticScopeBase::lookupEnum(
     const std::string& name) const {
   if (auto dotted = splitDotted(name)) {
     if (auto* modScope = lookupModuleScope(dotted.modulePath)) {
-      if (auto found = modScope->findEnum(dotted.symbol)) return found;
+      if (auto found = modScope->findEnum(dotted.symbol)) {
+        requireQualifiedEnumAccess(this, modScope, found);
+        return found;
+      }
     }
   }
   return lookupInChain<std::shared_ptr<sun::EnumType>>(
@@ -288,7 +306,10 @@ const GenericEnumInfo* SemanticScopeBase::lookupGenericEnum(
     const std::string& name) const {
   if (auto dotted = splitDotted(name)) {
     if (auto* modScope = lookupModuleScope(dotted.modulePath)) {
-      if (auto* found = modScope->findGenericEnum(dotted.symbol)) return found;
+      if (auto* found = modScope->findGenericEnum(dotted.symbol)) {
+        requireQualifiedEnumAccess(this, modScope, found);
+        return found;
+      }
     }
   }
   return lookupInChain<const GenericEnumInfo*>(

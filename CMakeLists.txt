@@ -184,7 +184,7 @@ add_library(sun_lib
     src/semantic_analysis/access_checker.cpp
     src/semantic_analysis/type_rules.cpp
     src/semantic_analysis/symbol_names.cpp
-    src/semantic_analysis/enums.cpp
+    src/semantic_analysis/enum_analyzer.cpp
     # Borrow checker
     src/borrow_checker/borrow_state.cpp
     src/borrow_checker/borrow_checker.cpp
