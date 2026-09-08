@@ -167,6 +167,12 @@ bool mentionsTypeParameter(const TypePtr& type) {
   if (type->isTypeParameter()) return true;
   if (type->isReference()) return mentionsTypeParameter(referent(type));
   if (TypePtr element = elementOf(type)) return mentionsTypeParameter(element);
+  if (type->isFunction()) {
+    auto* f = static_cast<const FunctionType*>(type.get());
+    return std::any_of(f->getParamTypes().begin(), f->getParamTypes().end(),
+                       mentionsTypeParameter) ||
+           mentionsTypeParameter(f->getReturnType());
+  }
   if (type->isLambda()) {
     auto* l = static_cast<const LambdaType*>(type.get());
     return std::any_of(l->getParamTypes().begin(), l->getParamTypes().end(),

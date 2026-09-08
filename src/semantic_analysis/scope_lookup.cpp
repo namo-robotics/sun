@@ -355,7 +355,6 @@ VariableInfo* SemanticScopeBase::lookupVariable(const std::string& name) {
 const GenericFunctionInfo* SemanticScopeBase::lookupGenericFunction(
     const std::string& name) const {
   auto scopePath = getCurrentScopePath();
-  sun::QualifiedName qname(scopePath, name);
   AccessFilter filter(this);
   auto probe = [&](const SemanticScopeBase* s,
                    const sun::QualifiedName& qn) -> const GenericFunctionInfo* {
@@ -365,7 +364,8 @@ const GenericFunctionInfo* SemanticScopeBase::lookupGenericFunction(
   };
 
   for (auto* s = this; s != nullptr; s = s->parent) {
-    if (auto* g = probe(s, qname)) return g;
+    // A sibling template is registered under its declaring scope.
+    if (auto* g = probe(s, {s->scopePath, name})) return g;
     // Try global scope (empty scope path)
     if (!scopePath.empty()) {
       if (auto* g = probe(s, sun::QualifiedName({}, name))) return g;

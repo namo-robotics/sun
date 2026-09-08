@@ -11,6 +11,7 @@
 #include <gtest/gtest.h>
 
 #include "driver/execution_utils.h"
+#include "semantic_analysis/generic_type_arguments.h"
 
 // ============================================================================
 // Stdlib containers in a generic function's signature
@@ -153,4 +154,17 @@ TEST(Functions_Generic_ContainerSignatures, self_referential_interface) {
     }
   )");
   EXPECT_EQ(value, 7);
+}
+
+// Callback parameters and return types can hide unresolved type arguments.
+TEST(Functions_Generic_ContainerSignatures, unresolved_callback_types) {
+  auto parameter = sun::Types::TypeParameter("T");
+  EXPECT_TRUE(sun::generics::mentionsTypeParameter(
+      sun::Types::Function(parameter, {})));
+  EXPECT_TRUE(sun::generics::mentionsTypeParameter(sun::Types::Function(
+      sun::Types::Void(), {sun::Types::Reference(parameter)})));
+  EXPECT_TRUE(sun::generics::mentionsTypeParameter(sun::Types::Array(
+      sun::Types::Function(parameter, {}), {2})));
+  EXPECT_FALSE(sun::generics::mentionsTypeParameter(
+      sun::Types::Function(sun::Types::Void(), {sun::Types::Int32()})));
 }
