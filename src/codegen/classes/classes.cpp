@@ -11,6 +11,7 @@
 #include "codegen/support/scalar_ops.h"
 #include "codegen/support/struct_access.h"
 #include "parsing/parser.h"
+#include "semantic_analysis/generic_type_arguments.h"
 #include "semantic_analysis/semantic_scope.h"
 #include "semantic_analysis/visibility.h"
 
@@ -18,22 +19,6 @@ using namespace llvm;
 
 namespace layout = sun::codegen::layout;
 namespace ops = sun::codegen::ops;
-
-namespace {
-
-// True when a registered specialization still carries a type parameter among
-// its type arguments — a shape produced by resolving a template's own
-// signature, never a class with a layout.
-bool specializationIsAbstract(
-    const std::shared_ptr<sun::ClassType>& classType) {
-  if (!classType) return false;
-  for (const auto& typeArg : classType->getTypeArguments()) {
-    if (typeArg && typeArg->isTypeParameter()) return true;
-  }
-  return false;
-}
-
-}  // namespace
 
 // -------------------------------------------------------------------
 // Precompiled class codegen (from linked bitcode)
@@ -151,13 +136,16 @@ void ClassGenerator::declareClassMethods(
 // emitted, so a method may call one of a class declared further down the file
 // (the same courtesy the function pre-pass extends to free functions).
 void ClassGenerator::declareBlockClassMethods(const ClassDefinitionAST& expr) {
-  if (expr.isPrecompiled() || expr.isPartial()) return;
+  if (expr.isPartial()) return;
 
+  // Imported templates can acquire new specializations in this consumer.
+  // Their callers need declarations before any library body is emitted.
   if (expr.isGeneric()) {
     for (const auto& [mangledName, specializedAST] :
          expr.getSpecializations()) {
       if (!specializedAST) continue;
-      if (specializationIsAbstract(typeRegistry->getClass(mangledName)))
+      if (sun::generics::mentionsTypeParameter(
+              typeRegistry->getClass(mangledName)))
         continue;
       declareBlockClassMethods(*specializedAST);
     }
@@ -211,7 +199,8 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
       // — `ref Pair<T>` in `unwrap<T>` yields Pair<T>, whose T is still a
       // type parameter. That shape has no layout to emit; the class the code
       // actually uses is instantiated when unwrap<i32> is.
-      if (specializationIsAbstract(typeRegistry->getClass(mangledName)))
+      if (sun::generics::mentionsTypeParameter(
+              typeRegistry->getClass(mangledName)))
         continue;
       codegen(*specializedAST);
     }

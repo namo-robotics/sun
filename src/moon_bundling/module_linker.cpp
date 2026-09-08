@@ -225,9 +225,11 @@ void ModuleLinker::declareAvailableFunctions() {
       symbolToModule_[declaredName] = moduleKey;
     }
 
-    // Same for module-level variables the bitcode defines: the importer holds
-    // a declaration, so the defining module has to be pulled in.
+    // Declare globals before imported generic bodies are emitted. Their
+    // references also tell the linker which defining bundle to pull in.
     for (const auto& global : libModule->globals()) {
+      if (global.hasLocalLinkage() || global.getName().starts_with("llvm."))
+        continue;
       if (!global.hasInitializer())
         continue;  // a declaration, not a definition
       if (!global.hasName() || global.getName().empty()) continue;
@@ -235,9 +237,15 @@ void ModuleLinker::declareAvailableFunctions() {
       std::string globalName = global.getName().str();
       if (globalName[0] == '_') continue;  // internal helpers and literals
 
-      std::string declaredName = globalName;
-
-      symbolToModule_[declaredName] = moduleKey;
+      if (!target_.getNamedGlobal(globalName)) {
+        auto* declaration = new llvm::GlobalVariable(
+            target_, mapTypeToTarget(global.getValueType(), ctx, typeMap),
+            global.isConstant(), llvm::GlobalValue::ExternalLinkage, nullptr,
+            globalName, nullptr, global.getThreadLocalMode(),
+            global.getAddressSpace());
+        declaration->setAlignment(global.getAlign());
+      }
+      symbolToModule_[globalName] = moduleKey;
     }
   }
 }

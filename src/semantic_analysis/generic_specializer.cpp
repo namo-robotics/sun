@@ -14,6 +14,7 @@
 #include "support/error.h"
 
 using sun::unwrapRef;
+using sun::generics::mentionsTypeParameter;
 using sun::access::methodVisibility;
 using sun::names::getFunctionSignature;
 using sun::rules::isAssignableTo;
@@ -118,23 +119,10 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
   // Derive the mangled name from the qualified name
   std::string mangledName = specializedQName.mangled();
 
-  // `Unique<T>` where T is still a type parameter is not a specialization —
-  // it is the template's own shape, named by a signature nobody has
-  // instantiated yet (`create_unique<T>() Unique<T>`, or `ref Pair<T>` inside
-  // `unwrap<T>`). The shape is still built, because a template body resolves
-  // against it: `create_unique<T>`'s own body constructs `Unique<T>`, so it
-  // needs those substituted members. What it must never become is something
-  // to emit — codegen walks the specializations recorded on the generic and
-  // would assert trying to lay out a type parameter. So it is never recorded
-  // as one; the class the code actually uses is built when
-  // `create_unique<i32>` is.
-  bool abstractShape = false;
-  for (const auto& arg : typeArgs) {
-    if (arg && arg->isTypeParameter()) {
-      abstractShape = true;
-      break;
-    }
-  }
+  // Resolve members of shapes such as Vec<Sample<T>> for template signatures.
+  // Only concrete specializations may have their bodies checked and emitted.
+  const bool abstractShape =
+      std::any_of(typeArgs.begin(), typeArgs.end(), mentionsTypeParameter);
 
   // Check if already instantiated (both class type AND AST specialization).
   // An abstract shape records no AST, so having the type is all there is.
@@ -651,11 +639,9 @@ GenericSpecializer::instantiateGenericFunction(
 
   // Inside a template body the arguments are still type parameters; the real
   // specialization is made when the enclosing generic gets concrete types.
-  auto isTypeParam = [](const sun::TypePtr& t) {
-    return t && t->isTypeParameter();
-  };
-  if (variadicArgTypes && std::any_of(variadicArgTypes->begin(),
-                                      variadicArgTypes->end(), isTypeParam)) {
+  if (variadicArgTypes &&
+      std::any_of(variadicArgTypes->begin(), variadicArgTypes->end(),
+                  mentionsTypeParameter)) {
     return std::nullopt;
   }
 
@@ -872,18 +858,13 @@ FunctionAST* GenericSpecializer::findGenericMethodAST(
           genericInfo->AST->getSpecialization(classType->getMangledName());
       classDef = specAST ? specAST.get() : genericInfo->AST;
     }
-  } else if (classType->isGenericDefinition()) {
-    auto* genericInfo = ctx_.lookupGenericClass(classType->getBaseName());
-    if (genericInfo) classDef = genericInfo->AST;
   } else {
-    // Non-generic class - may still have generic methods
-    auto* genericInfo = ctx_.lookupGenericClass(classType->getBaseName());
+    // Plain classes can also declare generic methods.
+    auto* genericInfo = ctx_.lookupGenericClass(classType->getQualifiedName());
     if (genericInfo) classDef = genericInfo->AST;
   }
 
   if (!classDef) return nullptr;
-
-  // End of instantiateGenericMethod
 
   for (const auto& methodDecl : classDef->getMethods()) {
     if (methodDecl.function->getProto().getName() == methodName &&
@@ -905,12 +886,11 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
   // Inside a generic template body (analyzed with T bound to itself), the type
   // args are still type parameters; a real specialization is created when the
   // enclosing generic is instantiated with concrete types.
-  auto isTypeParam = [](const sun::TypePtr& t) {
-    return t && t->isTypeParameter();
-  };
-  if (std::any_of(methodTypeArgs.begin(), methodTypeArgs.end(), isTypeParam) ||
-      (variadicArgTypes && std::any_of(variadicArgTypes->begin(),
-                                       variadicArgTypes->end(), isTypeParam))) {
+  if (std::any_of(methodTypeArgs.begin(), methodTypeArgs.end(),
+                  mentionsTypeParameter) ||
+      (variadicArgTypes &&
+       std::any_of(variadicArgTypes->begin(), variadicArgTypes->end(),
+                   mentionsTypeParameter))) {
     return nullptr;
   }
 
@@ -1241,21 +1221,10 @@ std::shared_ptr<sun::EnumType> GenericSpecializer::instantiateGenericEnum(
   checkTypeParameterConstraints(genericInfo->typeParameters, typeArgs,
                                 "generic enum", baseName);
 
-  // `Option<T>` with T still a type parameter is the template's own shape
-  // rather than a specialization, exactly as for generic classes: it is what
-  // `count<T>(v: ref Vec<T>)` names before anyone calls it. The shape is
-  // built, because a template body resolves against it, but a payload that is
-  // still a type parameter is not checked — what a `T` may carry is only
-  // knowable once T is a type — and it is never recorded as something to
-  // emit, since codegen lays out every specialization recorded on the
-  // template and cannot lay out a type parameter.
-  bool abstractShape = false;
-  for (const auto& arg : typeArgs) {
-    if (arg && arg->isTypeParameter()) {
-      abstractShape = true;
-      break;
-    }
-  }
+  // Resolve unresolved payloads for template signatures, but only record
+  // concrete enum specializations for code generation.
+  const bool abstractShape =
+      std::any_of(typeArgs.begin(), typeArgs.end(), mentionsTypeParameter);
 
   auto specialized = ctx_.types()->getEnum(mangledName);
   specialized->setGenericQualifiedName(genericInfo->qualifiedName);

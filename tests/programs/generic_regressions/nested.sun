@@ -1,0 +1,85 @@
+using std;
+/** Exercises nested generic readers. */
+public module m {
+  /** Stores sample metadata. */
+  public class Info {
+    public var n: i32 = 0;
+    init() {}
+  }
+  /** Represents a decoder passed to a callback. */
+  public class Decoder {
+    init() {}
+  }
+  /** Stores a decoding callback. */
+  public class TypeSupport<T> {
+    public var decode: function (ref Decoder, const ref HeapAllocator) T throws IError;
+    init(decode: function (ref Decoder, const ref HeapAllocator) T throws IError) {
+      this.decode = decode;
+    }
+  }
+  /** Pairs metadata with an optional value. */
+  public class Sample<T> {
+    public var info: Info;
+    public var data: Option<T>;
+    init(info: Info, data: Option<T>) {
+      this.info = info;
+      this.data = data;
+    }
+  }
+  /** Builds empty and populated sample vectors. */
+  public class Reader<T> {
+    public var support: TypeSupport<T>;
+    public var state: Shared<Info>;
+    init(support: TypeSupport<T>, state: Shared<Info>) {
+      this.support = support;
+      this.state = state;
+    }
+    /** Returns an empty sample vector. */
+    public method empty() Vec<Sample<T>> {
+      var a = make_heap_allocator();
+      return Vec<Sample<T>>(a, 2);
+    }
+    /** Wraps a value in a populated sample vector. */
+    public method make(v: T) Vec<Sample<T>> {
+      var a = make_heap_allocator();
+      var out = Vec<Sample<T>>(a, 2);
+      var none: Option<T> = Option.None;
+      out.push(Sample<T>(Info(), none));
+      out.push(Sample<T>(Info(), Option.Some(v)));
+      return out;
+    }
+  }
+  /** Constructs a reader through a generic method. */
+  public class Subscriber {
+    init() {}
+    /** Constructs a reader for the supplied type. */
+    public method create_datareader<T>(support: TypeSupport<T>, state: Shared<Info>) Reader<T> {
+      return Reader<T>(support, state);
+    }
+  }
+}
+class Msg {
+  public var v: i32;
+  init(v: i32) {
+    this.v = v;
+  }
+}
+function decode(d: ref m.Decoder, a: const ref HeapAllocator) Msg throws IError {
+  return Msg(7);
+}
+function main() i32 throws IError {
+  var a = make_heap_allocator();
+  var s = m.Subscriber();
+  var r = s.create_datareader<Msg>(m.TypeSupport<Msg>(decode), Shared<m.Info>(a, m.Info()));
+  var e = r.empty();
+  var out = r.make(Msg(7));
+  if (e.size() == 0 and out.size() == 2) {
+    var sample = out.take(1);
+    return match sample.data {
+      Option.Some(value) => value.v - 7,
+      Option.None => 1
+    };
+  }
+  return 1;
+}
+manifest { libraries: ["stdlib.moon"] }
