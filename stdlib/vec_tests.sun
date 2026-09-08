@@ -64,6 +64,191 @@ public module std {
       std.test.assert_eq(got, 42);
     }
 
+    test_function remove_first_and_iterate() {
+      var allocator = make_heap_allocator();
+      var v = Vec<i64>(allocator, 4);
+      v.push(1);
+      v.push(2);
+      v.push(3);
+      v.push(4);
+      std.test.assert_eq(v.remove(0), 1);
+      std.test.assert_eq(v.size(), 3);
+      std.test.assert_eq(v.capacity(), 4);
+      var order: i64 = 0;
+      for (var x: i64 in v) {
+        order = order * 10 + x;
+      }
+      std.test.assert_eq(order, 234);
+      v.push(5);
+      std.test.assert_eq(v.get(3), 5);
+    }
+
+    test_function remove_middle_last_and_singleton() {
+      var allocator = make_heap_allocator();
+      var v = Vec<i64>(allocator, 4);
+      v.push(10);
+      v.push(20);
+      v.push(30);
+      std.test.assert_eq(v.remove(1), 20);
+      std.test.assert_eq(v.size(), 2);
+      std.test.assert_eq(v.get(0), 10);
+      std.test.assert_eq(v.get(1), 30);
+      std.test.assert_eq(v.remove(1), 30);
+      std.test.assert_eq(v.size(), 1);
+      std.test.assert_eq(v.remove(0), 10);
+      std.test.assert(v.is_empty());
+      v.push(40);
+      std.test.assert_eq(v.get(0), 40);
+    }
+
+    test_function remove_invalid_indices_leave_vec_unchanged() {
+      var allocator = make_heap_allocator();
+      var v = Vec<i64>(allocator, 4);
+      var caught: i64 = 0;
+      try {
+        v.remove(0);
+      } catch (e: IError) {
+        caught = caught + 1;
+      }
+      std.test.assert(v.is_empty());
+      v.push(10);
+      for (var index: i64 = -1; index <= 4; index = index + 1) {
+        if (index != 0) {
+          try {
+            v.remove(index);
+          } catch (e: IError) {
+            caught = caught + 1;
+          }
+          std.test.assert_eq(v.size(), 1);
+          std.test.assert_eq(v.get(0), 10);
+        }
+      }
+      std.test.assert_eq(caught, 6);
+    }
+
+    test_function swap_remove_first_and_iterate() {
+      var allocator = make_heap_allocator();
+      var v = Vec<i64>(allocator, 4);
+      v.push(1);
+      v.push(2);
+      v.push(3);
+      v.push(4);
+      std.test.assert_eq(v.swap_remove(0), 1);
+      std.test.assert_eq(v.size(), 3);
+      std.test.assert_eq(v.capacity(), 4);
+      var order: i64 = 0;
+      for (var x: i64 in v) {
+        order = order * 10 + x;
+      }
+      std.test.assert_eq(order, 423);
+      v.push(5);
+      std.test.assert_eq(v.get(3), 5);
+    }
+
+    test_function swap_remove_middle_last_and_singleton() {
+      var allocator = make_heap_allocator();
+      var v = Vec<i64>(allocator, 4);
+      v.push(10);
+      v.push(20);
+      v.push(30);
+      std.test.assert_eq(v.swap_remove(1), 20);
+      std.test.assert_eq(v.size(), 2);
+      std.test.assert_eq(v.get(0), 10);
+      std.test.assert_eq(v.get(1), 30);
+      std.test.assert_eq(v.swap_remove(1), 30);
+      std.test.assert_eq(v.size(), 1);
+      std.test.assert_eq(v.swap_remove(0), 10);
+      std.test.assert(v.is_empty());
+      v.push(40);
+      std.test.assert_eq(v.get(0), 40);
+    }
+
+    test_function swap_remove_invalid_indices_leave_vec_unchanged() {
+      var allocator = make_heap_allocator();
+      var v = Vec<i64>(allocator, 4);
+      var caught: i64 = 0;
+      try {
+        v.swap_remove(0);
+      } catch (e: IError) {
+        caught = caught + 1;
+      }
+      std.test.assert(v.is_empty());
+      v.push(10);
+      for (var index: i64 = -1; index <= 4; index = index + 1) {
+        if (index != 0) {
+          try {
+            v.swap_remove(index);
+          } catch (e: IError) {
+            caught = caught + 1;
+          }
+          std.test.assert_eq(v.size(), 1);
+          std.test.assert_eq(v.get(0), 10);
+        }
+      }
+      std.test.assert_eq(caught, 6);
+    }
+
+    test_function take_leaves_zeroed_slots_and_size_unchanged() {
+      var allocator = make_heap_allocator();
+      var v = Vec<i64>(allocator, 4);
+      v.push(10);
+      v.push(20);
+      std.test.assert_eq(v.take(0), 10);
+      std.test.assert_eq(v.take(1), 20);
+      std.test.assert_eq(v.size(), 2);
+      std.test.assert_eq(v.get(0), 0);
+      std.test.assert_eq(v.get(1), 0);
+    }
+
+    var removal_drops: i64 = 0;
+
+    /** Owns a string and counts destruction of live values. */
+    class RemovalTracked {
+      public var value: String;
+      init(value: String) {
+        this.value = value;
+      }
+      deinit() {
+        if (this.value.length() != 0) {
+          removal_drops = removal_drops + 1;
+        }
+      }
+    }
+
+    /** Select a removal operation and transfer its result to the caller. */
+    function remove_tracked(v: ref Vec<RemovalTracked>, swap: bool) RemovalTracked throws IError {
+      if (swap) {
+        return v.swap_remove(0);
+      }
+      return v.remove(0);
+    }
+
+    /** Check that removing values transfers ownership without dropping them. */
+    function exercise_removal_ownership(swap: bool) void throws IError {
+      var allocator = make_heap_allocator();
+      var v = Vec<RemovalTracked>(allocator, 4);
+      v.push(RemovalTracked(String("first")));
+      v.push(RemovalTracked(String("middle")));
+      v.push(RemovalTracked(String("last")));
+      var before = removal_drops;
+      var removed = remove_tracked(v, swap);
+      std.test.assert_eq(removed.value.length(), 5);
+      std.test.assert_eq(removal_drops, before);
+      std.test.assert_eq(v.size(), 2);
+      v.clear();
+      std.test.assert_eq(removal_drops, before + 2);
+      std.test.assert_eq(removed.value.length(), 5);
+      v.push(RemovalTracked(String("replacement")));
+    }
+
+    test_function removal_transfers_ownership_and_drops_each_value_once() {
+      removal_drops = 0;
+      exercise_removal_ownership(false);
+      std.test.assert_eq(removal_drops, 4);
+      exercise_removal_ownership(true);
+      std.test.assert_eq(removal_drops, 8);
+    }
+
     test_function is_empty() {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);

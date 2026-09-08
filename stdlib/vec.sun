@@ -19,7 +19,8 @@
 //   var len = v.size();      // 2
 //
 // get()/first()/last()/v[i] and iteration borrow: the Vec keeps ownership of
-// the element. take()/pop() move an element out.
+// the element. remove()/swap_remove()/pop() move an element out and shrink
+// the Vec. take() moves an element out but leaves a zeroed slot in place.
 
 // ============================================================================
 // Vec<T> - Dynamic Growable Array
@@ -76,7 +77,8 @@ public module std {
 
     // Borrow the element at index (bounds-checked against size). The Vec keeps
     // ownership, so this hands back a reference: a copy of an element that owns
-    // heap memory would be released twice. Use take()/pop() to move one out.
+    // heap memory would be released twice. Use remove()/swap_remove()/pop()
+    // to move one out and shrink the Vec.
     public const method get(index: i64) ref T throws IError {
       if (index < 0) {
         throw IndexOutOfBoundsError(index);
@@ -139,9 +141,40 @@ public module std {
       this.size_ = 0;
     }
 
-    // Move the element at index out of the Vec (bounds-checked). The slot is
-    // zeroed so it drops as a no-op; ownership transfers to the caller.
-    // Use this instead of get() for element types that own heap memory.
+    /**
+     * Remove and return the element at index, preserving the remaining order.
+     * Throws IndexOutOfBoundsError for an invalid index. Moves the tail down
+     * and shrinks the Vec without allocating or changing its capacity.
+     */
+    public method remove(index: i64) T throws IError {
+      var value = this.take(index);
+      for (var i: i64 = index; i < this.size_ - 1; i = i + 1) {
+        this.data.set_unchecked(i, this.data.take_unchecked(i + 1));
+      }
+      this.size_ = this.size_ - 1;
+      return value;
+    }
+
+    /**
+     * Remove and return the element at index, replacing it with the last element.
+     * Throws IndexOutOfBoundsError for an invalid index. Shrinks the Vec in
+     * constant time without allocating; the remaining order may change.
+     */
+    public method swap_remove(index: i64) T throws IError {
+      var value = this.take(index);
+      this.size_ = this.size_ - 1;
+      if (index < this.size_) {
+        this.data.set_unchecked(index, this.data.take_unchecked(this.size_));
+      }
+      return value;
+    }
+
+    /**
+     * Move the element at index to the caller, leaving a zeroed slot in place.
+     * Throws IndexOutOfBoundsError for an invalid index. The size is unchanged,
+     * even at the last index, and iteration still visits the zeroed slot.
+     * Use remove(), swap_remove(), or pop() to remove an element and shrink.
+     */
     public method take(index: i64) T throws IError {
       if (index < 0) {
         throw IndexOutOfBoundsError(index);
