@@ -216,7 +216,7 @@ class CodegenVisitor {
    * Materializes a struct or array return value to the caller's stack.
    * Functions return classes and sized arrays as LLVM aggregate values; using
    * the result (reaching a field, indexing) needs an addressable location.
-   * Skips error unions { i1, T } and non-owning views { ptr, i32, ptr }.
+   * Keeps non-owning internal structures, such as array views, as values.
    */
   llvm::Value* materializeStructReturn(llvm::Value* callResult);
 

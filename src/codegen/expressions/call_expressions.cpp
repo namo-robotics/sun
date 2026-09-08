@@ -262,14 +262,6 @@ Value* CodegenVisitor::materializeStructReturn(Value* callResult) {
 
   auto* structType = cast<StructType>(callResult->getType());
 
-  // Check that it's not an error union { i1, T } - those should be unwrapped
-  // first
-  bool isErrorUnion = structType->getNumElements() == 2 &&
-                      structType->getElementType(0)->isIntegerTy(1);
-  if (isErrorUnion) {
-    return callResult;
-  }
-
   // Non-owning internal structs stay as values. An owning interface return is
   // materialized so normal compound move and drop tracking can address it.
   if (structType->hasName()) {

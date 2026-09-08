@@ -1263,3 +1263,35 @@ TEST(Errors, returning_from_inside_the_try_is_the_value_form) {
   )");
   EXPECT_EQ(value, 5);
 }
+
+TEST(Errors, bool_leading_class_return_field_access) {
+  auto value = executeString(R"(
+    class TestError implements IError {
+      init() {}
+      method code() i32 { return 1; }
+      method message() static_ptr<u8> { return "test error"; }
+    }
+    class R {
+      public var ok: bool;
+      public var t: i64;
+      init() { this.ok = true; this.t = 37; }
+    }
+    function make(fail: bool) R throws IError {
+      if (fail) { throw TestError(); }
+      return R();
+    }
+    function main() i32 {
+      var result: i32 = 0;
+      try {
+        if (make(false).ok) { result = 40; }
+        if (make(false).t != 37) { return 1; }
+        if (make(true).ok) { return 2; }
+        return 3;
+      } catch (e: IError) {
+        result = result + 2;
+      }
+      return result;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}

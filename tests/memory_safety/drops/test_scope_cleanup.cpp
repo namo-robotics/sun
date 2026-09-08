@@ -662,3 +662,33 @@ TEST(MemorySafety_Drops_ScopeCleanup, conditional_explicit_deinit) {
   )"));
   EXPECT_EQ(value, 11);
 }
+
+TEST(MemorySafety_Drops_ScopeCleanup, bool_leading_return_field_drops_once) {
+  auto value = executeString(R"(
+    var counter: i32 = 0;
+    class R {
+      public var ok: bool;
+      public var t: i64;
+      init() { this.ok = true; this.t = 37; }
+      deinit() { counter = counter + 1; }
+    }
+    class M {
+      init() {}
+      method make() R { return R(); }
+    }
+    function read_field() i32 {
+      var m = M();
+      if (m.make().ok) {
+        if (counter != 0) { return 1; }
+        return 42;
+      }
+      return 0;
+    }
+    function main() i32 {
+      var result = read_field();
+      if (counter != 1) { return 2; }
+      return result;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
