@@ -333,6 +333,9 @@ class Parser {
   std::vector<TypeParameter> parseTypeParameterList(
       std::vector<LifetimeParameter>* lifetimesOut = nullptr);
 
+  // Append dotted path segments after the first identifier of a name.
+  void parseQualifiedNameTail(std::string& name);
+
   // The constraint after the colon in `<T: _Numeric>`. Stamps the source span
   // the way parseTypeAnnotation does, so diagnostics can point at it.
   TypeConstraint parseTypeConstraint(const std::string& paramName);

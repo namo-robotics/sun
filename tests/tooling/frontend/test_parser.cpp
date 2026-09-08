@@ -1272,3 +1272,31 @@ function main() i32 {
   EXPECT_NE(what.find("only allowed at module scope"), std::string::npos)
       << what;
 }
+
+TEST(Tooling_Frontend_Parser_Errors, IncompleteQualifiedInterfaceName) {
+  for (const auto* source :
+       {"class A implements contracts. {}",
+        "class A implements contracts..IValue {}", "class A<T: contracts.> {}",
+        "function f<T: contracts..IValue>() void {}"}) {
+    SCOPED_TRACE(source);
+    EXPECT_THROW(parseString(source), SunError);
+  }
+}
+
+TEST(Tooling_Frontend_Parser_Errors, PrimitiveMethodNamePointsAtDeclaration) {
+  for (const auto* source : {"class A {\n  method u8() i32 { return 0; }\n}",
+                             "interface A {\n  method u8() i32;\n}"}) {
+    SCOPED_TRACE(source);
+    try {
+      parseString(source);
+      FAIL() << "Expected a declaration error";
+    } catch (const SunError& error) {
+      EXPECT_EQ(error.getKind(), SunError::Kind::Parse);
+      ASSERT_TRUE(error.getLocation());
+      EXPECT_EQ(error.getLocation()->line, 2);
+      EXPECT_EQ(error.getLocation()->column, 10);
+      EXPECT_EQ(error.getMessage(),
+                "'u8' is a reserved word and cannot be used as an identifier");
+    }
+  }
+}

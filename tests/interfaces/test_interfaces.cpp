@@ -1041,3 +1041,109 @@ TEST(Interfaces, class_fills_interface_parameter_through_params_of) {
   )");
   EXPECT_EQ(value, 4);
 }
+
+TEST(Interfaces, qualified_names_in_implements_and_constraints) {
+  EXPECT_EQ(executeString(R"(
+    /** Defines interfaces that must be selected by their module path. */
+    public module contracts {
+      /** Supplies a value. */
+      public interface IValue {
+        /** Returns the supplied value. */
+        public method value() i32;
+      }
+      /** Groups generic interfaces in a nested module. */
+      public module nested {
+        /** Supplies a value of the requested type. */
+        public interface IBox<T> {
+          /** Returns the contained value. */
+          public method get() T;
+        }
+      }
+    }
+    interface IValue { method other() i32; }
+    class Value implements contracts.IValue, contracts.nested.IBox<i32> {
+      init() {}
+      /** Returns the supplied value. */
+      public method value() i32 { return 21; }
+      /** Returns the contained value. */
+      public method get() i32 { return 21; }
+    }
+    class Box<T> implements contracts.nested.IBox<T> {
+      var item: T;
+      init(item: T) { this.item = item; }
+      /** Returns the contained value. */
+      public method get() T { return this.item; }
+    }
+    class Wrapper<T: contracts.IValue> {
+      init() {}
+      /** Reads through the interface constraint. */
+      public method read(item: ref T) i32 { return item.value(); }
+    }
+    function read<T: contracts.IValue>(item: ref T) i32 {
+      return item.value();
+    }
+    function main() i32 {
+      var item = Value();
+      var wrapper = Wrapper<Value>();
+      var box = Box<i32>(item.get());
+      return read(item) + wrapper.read(item) + box.get();
+    }
+  )"),
+            63);
+}
+
+TEST(Interfaces, qualified_constraint_rejects_same_named_interface) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
+    /** Defines the required interface. */
+    public module contracts {
+      /** Marks accepted values. */
+      public interface IValue {}
+    }
+    interface IValue {}
+    class Wrong implements IValue { init() {} }
+    class Wrapper<T: contracts.IValue> { init() {} }
+    function main() i32 { var wrapper = Wrapper<Wrong>(); return 0; }
+  )"),
+      "does not satisfy constraint 'contracts.IValue'");
+}
+
+TEST(Interfaces, qualified_constraints_use_definition_scope) {
+  EXPECT_EQ(executeString(R"(
+    /** Owns the constrained declarations. */
+    public module api {
+      /** Groups the required interface. */
+      public module contracts {
+        /** Marks accepted values. */
+        public interface IValue {}
+      }
+      /** Implements the interface in this module. */
+      public class Value implements contracts.IValue { init() {} }
+      /** Accepts values implementing the local interface. */
+      public function accept<T: contracts.IValue>() i32 { return 1; }
+      /** Exposes a constrained generic method. */
+      public class Factory {
+        init() {}
+        /** Accepts values implementing the local interface. */
+        public method accept<T: contracts.IValue>() i32 { return 2; }
+      }
+      /** Constrains the element type of an interface. */
+      public interface IBox<T: contracts.IValue> {}
+      /** Constrains the element type of an enum. */
+      public enum Choice<T: contracts.IValue> { Empty }
+    }
+    /** Provides a conflicting module at the call site. */
+    public module contracts {
+      /** Has the same short name but a different identity. */
+      public interface IValue {}
+    }
+    class Box implements api.IBox<api.Value> { init() {} }
+    function main() i32 {
+      var factory = api.Factory();
+      var box = Box();
+      var choice: api.Choice<api.Value> = api.Choice.Empty;
+      return api.accept<api.Value>() + factory.accept<api.Value>();
+    }
+  )"),
+            3);
+}

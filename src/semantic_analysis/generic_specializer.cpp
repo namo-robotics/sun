@@ -36,9 +36,15 @@ void GenericSpecializer::checkTypeParameterConstraints(
     const sun::TypePtr& arg = typeArgs[i];
     if (!arg || arg->isTypeParameter()) continue;
 
-    if (!sun::traits::satisfies(arg, constraint->qualifiedName
-                                         ? constraint->qualifiedName->mangled()
-                                         : constraint->name)) {
+    std::string requiredName = constraint->qualifiedName
+                                   ? constraint->qualifiedName->mangled()
+                                   : constraint->name;
+    if (!constraint->qualifiedName && !sun::isTypeTrait(requiredName)) {
+      if (auto interfaceType = ctx_.lookupInterface(requiredName)) {
+        requiredName = interfaceType->getName();
+      }
+    }
+    if (!sun::traits::satisfies(arg, requiredName)) {
       // Point at the constraint itself when it carries a span; a declaration
       // parsed from a bundle has none, so fall back to the caller's location.
       std::optional<Position> at =
@@ -687,9 +693,6 @@ GenericSpecializer::instantiateGenericFunction(
                      std::to_string(typeParams.size()) +
                      " type arguments, got " + std::to_string(typeArgs.size()));
   }
-  checkTypeParameterConstraints(proto.getTypeParameters(), typeArgs,
-                                "generic function", funcName,
-                                proto.getLocation());
 
   // Enter scope and bind type parameters
   // Analyze the body in the scope the template was declared in (a module,
@@ -699,6 +702,9 @@ GenericSpecializer::instantiateGenericFunction(
       ctx_, SemanticContext::definitionScopeOf(genericInfo));
   SemanticContext::SourceFileGuard definitionFile(
       ctx_, genericInfo.AST->getSourceFileId());
+  checkTypeParameterConstraints(proto.getTypeParameters(), typeArgs,
+                                "generic function", funcName,
+                                proto.getLocation());
   ctx_.enterTypeParamScope(typeParams, typeArgs);
 
   // Substitute parameter types
@@ -934,9 +940,6 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
         genericMethodAST->getLocation());
     return nullptr;
   }
-  checkTypeParameterConstraints(methodTypeParams, methodTypeArgs,
-                                "generic method", methodName,
-                                genericMethodAST->getLocation());
 
   // Set up scopes for type substitution:
   // 1. Class-level type parameters (if specialized generic class)
@@ -972,6 +975,9 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
       ctx_, classDefinitionScope(*classType));
   SemanticContext::SourceFileGuard definitionFile(
       ctx_, genericMethodAST->getSourceFileId());
+  checkTypeParameterConstraints(methodTypeParams, methodTypeArgs,
+                                "generic method", methodName,
+                                genericMethodAST->getLocation());
   ctx_.enterTypeParamScope(allTypeParams, allTypeArgs);
 
   // Substitute types in parameters
@@ -1115,8 +1121,14 @@ GenericSpecializer::instantiateGenericInterface(
                      std::to_string(genericInfo->typeParameters.size()) +
                      " type arguments, got " + std::to_string(typeArgs.size()));
   }
-  checkTypeParameterConstraints(genericInfo->typeParameters, typeArgs,
-                                "generic interface", baseName);
+  {
+    SemanticContext::ScopeSwitchGuard definitionScope(
+        ctx_, SemanticContext::definitionScopeOf(*genericInfo));
+    SemanticContext::SourceFileGuard definitionFile(
+        ctx_, genericInfo->AST->getSourceFileId());
+    checkTypeParameterConstraints(genericInfo->typeParameters, typeArgs,
+                                  "generic interface", baseName);
+  }
 
   // Create the specialized interface type
   auto specializedInterface =
@@ -1218,8 +1230,14 @@ std::shared_ptr<sun::EnumType> GenericSpecializer::instantiateGenericEnum(
                      " type argument(s), got " +
                      std::to_string(typeArgs.size()));
   }
-  checkTypeParameterConstraints(genericInfo->typeParameters, typeArgs,
-                                "generic enum", baseName);
+  {
+    SemanticContext::ScopeSwitchGuard definitionScope(
+        ctx_, SemanticContext::definitionScopeOf(*genericInfo));
+    SemanticContext::SourceFileGuard definitionFile(
+        ctx_, genericInfo->AST->getSourceFileId());
+    checkTypeParameterConstraints(genericInfo->typeParameters, typeArgs,
+                                  "generic enum", baseName);
+  }
 
   // Resolve unresolved payloads for template signatures, but only record
   // concrete enum specializations for code generation.
