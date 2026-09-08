@@ -215,6 +215,14 @@ public module std {
       }
     }
 
+    /** Select a removal operation and transfer its result to the caller. */
+    function remove_tracked(v: ref Vec<RemovalTracked>, swap: bool) RemovalTracked throws IError {
+      if (swap) {
+        return v.swap_remove(0);
+      }
+      return v.remove(0);
+    }
+
     /** Check that removing values transfers ownership without dropping them. */
     function exercise_removal_ownership(swap: bool) void throws IError {
       var allocator = make_heap_allocator();
@@ -223,10 +231,7 @@ public module std {
       v.push(RemovalTracked(String("middle")));
       v.push(RemovalTracked(String("last")));
       var before = removal_drops;
-      var removed = match swap {
-        true => v.swap_remove(0),
-        false => v.remove(0)
-      };
+      var removed = remove_tracked(v, swap);
       std.test.assert_eq(removed.value.length(), 5);
       std.test.assert_eq(removal_drops, before);
       std.test.assert_eq(v.size(), 2);
