@@ -1414,9 +1414,20 @@ bool Parser::isTypeToken(TokenKind kind) {
   }
 }
 
+// Append the remaining segments of a dotted name after its first identifier.
+void Parser::parseQualifiedNameTail(std::string& name) {
+  while (curTok.kind == TokenKind::DOT) {
+    getNextToken();  // eat '.'
+    expectCurrentTokenKind(TokenKind::IDENTIFIER,
+                           "expected identifier after '.'");
+    name += "." + curTok.getIdentifier().value();
+    getNextToken();  // eat identifier
+  }
+}
+
 // Parse the constraint after the colon in `<T: _Numeric>`. Either a built-in
 // trait (`_Numeric`, `_Lambda` — intrinsic identifiers) or an interface name (a
-// plain identifier). Which of the two a name turns out to be is settled in
+// possibly qualified identifier). Which kind a name denotes is settled in
 // semantic analysis, not here.
 TypeConstraint Parser::parseTypeConstraint(const std::string& paramName) {
   Position start = captureStart();
@@ -1430,6 +1441,7 @@ TypeConstraint Parser::parseTypeConstraint(const std::string& paramName) {
                  paramName + "'");
   }
   getNextToken();  // eat the constraint
+  parseQualifiedNameTail(name);
 
   start.setEnd(prevTok_.end.line, prevTok_.end.column, prevTok_.end.offset);
   return TypeConstraint(std::move(name), std::move(start));
@@ -1824,19 +1836,7 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
     }
     getNextToken();  // eat type name
 
-    // Check for qualified type path: Module.Type
-    // (only for identifier-based types)
-    while (curTok.kind == TokenKind::DOT) {
-      getNextToken();  // eat '.'
-
-      expectCurrentTokenKind(TokenKind::IDENTIFIER,
-                             "expected identifier after '.'");
-
-      // Append to baseName with dot separator
-      type.baseName += ".";
-      type.baseName += curTok.getIdentifier().value();
-      getNextToken();  // eat identifier
-    }
+    parseQualifiedNameTail(type.baseName);
 
     // Check for generic type arguments: ClassName<'a, T, ...> (lifetime
     // arguments come first and never distinguish instantiations). A '<<'
@@ -4124,6 +4124,7 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
       ImplementedInterfaceAST iface;
       iface.name = curTok.getIdentifier().value();
       getNextToken();  // eat interface name
+      parseQualifiedNameTail(iface.name);
 
       // Parse optional type arguments: IIterator<T>
       if (curTok.kind == TokenKind::LESS) {
