@@ -874,6 +874,48 @@ TEST(Classes, member_access_on_function_return) {
   EXPECT_EQ(value, 30);
 }
 
+TEST(Classes, bool_leading_method_return_field_access) {
+  auto value = executeString(R"(
+    class R {
+      public var ok: bool;
+      public var t: i64;
+      init(ok: bool) { this.ok = ok; this.t = 37; }
+    }
+    class M {
+      init() {}
+      method make(ok: bool) R { return R(ok); }
+    }
+    function main() i32 {
+      var m = M();
+      if (m.make(false).ok) { return 1; }
+      if (m.make(true).ok) {
+        if (m.make(true).t == 37) { return 42; }
+      }
+      return 0;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Classes, bool_leading_function_return_field_access) {
+  auto value = executeString(R"(
+    class R {
+      public var ok: bool;
+      public var t: i64;
+      init(ok: bool) { this.ok = ok; this.t = 37; }
+    }
+    function make(ok: bool) R { return R(ok); }
+    function main() i32 {
+      if (make(false).ok) { return 1; }
+      if (make(true).ok) {
+        if (make(true).t == 37) { return 42; }
+      }
+      return 0;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
 TEST(Classes, member_access_on_constructor) {
   // Test accessing a field directly on a constructor call
   auto value = executeString(R"(
