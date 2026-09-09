@@ -535,8 +535,11 @@ SymbolMatch SemanticContext::findSymbolInModule(
           // When the caller knows the argument types, pick the overload that
           // actually matches rather than whichever was registered first.
           if (argTypes) {
+            std::vector<FunctionArgumentType> lookupTypes;
+            lookupTypes.reserve(argTypes->size());
+            for (const auto& type : *argTypes) lookupTypes.push_back({type, {}});
             auto resolved =
-                scope->lookupFunctionLocal(name, *argTypes, &accessFilter);
+                scope->lookupFunctionLocal(name, lookupTypes, &accessFilter);
             if (!resolved) return std::nullopt;
             info = nullptr;
             for (const auto* candidate : *overloads) {
@@ -809,8 +812,9 @@ std::vector<FunctionInfo> SemanticContext::getAllFunctions(
 }
 
 std::optional<FunctionInfo> SemanticContext::lookupFunction(
-    const std::string& name, const std::vector<sun::TypePtr>& argTypes) const {
-  return currentScope_->lookupFunction(name, argTypes);
+    const std::string& name, const std::vector<FunctionArgumentType>& argTypes,
+    std::optional<Position> loc) const {
+  return currentScope_->lookupFunction(name, argTypes, loc);
 }
 
 // -------------------------------------------------------------------

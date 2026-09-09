@@ -215,12 +215,13 @@ TEST(Operators_Literals, untyped_literal_still_adapts_at_declaration) {
   EXPECT_EQ(value, 1);
 }
 
-TEST(Operators_Literals, untyped_literal_argument_still_stays_i32) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
-        function classify(id: u8) i32 { return 1; }
+TEST(Operators_Literals, untyped_literal_argument_adopts_parameter_type) {
+  EXPECT_EQ(executeString(R"(
+        /* Checks a contextually typed unsigned literal. */
+        function classify(id: u8) i32 { if (id == 21u8) { return 1; } return 0; }
+        /* Passes an unsuffixed literal to a plain function. */
         function main() i32 { return classify(21); }
-      )"),
-                                "No matching overload of 'classify'");
+      )"), 1);
 }
 
 TEST(Operators_Literals, typed_variable_still_never_narrows) {
@@ -305,4 +306,162 @@ TEST(Operators_Literals, suffixed_literal_above_u64_max_is_error) {
         function main() i32 { var x = 99999999999999999999u64; return 0; }
       )"),
       "Integer literal 99999999999999999999 is too large");
+}
+
+// Unsuffixed negative arguments use the same range checks as positive literals.
+TEST(Operators_Literals, negative_method_arguments_adopt_parameter_types) {
+  auto value = executeString(R"(
+      /* Checks signed arguments after parameter conversion. */
+      class Enc {
+          init() {}
+          /* Checks a narrow signed argument. */
+          public method put_i8(v: i8) bool { return v == -5i8; }
+          /* Checks a wider signed argument. */
+          public method put_i16(v: i16) bool { return v == -300i16; }
+          /* Checks the smallest signed value. */
+          public method min_i8(v: i8) bool { return v == -128i8; }
+          /* Checks the smallest wider signed value. */
+          public method min_i16(v: i16) bool { return v == -32768i16; }
+          /* Checks that widening preserves the sign. */
+          public method put_i64(v: i64) bool { return v == -5i64; }
+      }
+      /* Exercises contextual typing of method arguments. */
+      function main() i32 {
+          var e = Enc();
+          if (e.put_i8(-5) and e.put_i16(-300) and e.min_i8(-128) and
+              e.min_i16(-32768) and e.put_i64(-5) and e.put_i8(-5i8)) {
+              return 1;
+          }
+          return 0;
+      }
+    )");
+  EXPECT_EQ(value, 1);
+}
+
+TEST(Operators_Literals, negative_untyped_literals_preserve_wide_values) {
+  auto value = executeString(R"(
+      /* Checks signed literal initialization and assignment. */
+      function main() i32 {
+          var wide: i64 = -5;
+          if (wide != -5i64) { return 1; }
+          wide = -300;
+          var minimum: i64 = -9223372036854775808;
+          if (wide != -300i64 or minimum != -9223372036854775808i64) {
+              return 2;
+          }
+          return 0;
+      }
+    )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(Operators_Literals, negative_method_argument_out_of_range_is_error) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      /* Accepts a narrow signed argument. */
+      class Enc {
+          init() {}
+          /* Accepts a narrow signed argument. */
+          public method put(v: i8) void {}
+      }
+      /* Passes an out-of-range literal. */
+      function main() i32 { var e = Enc(); e.put(-129); return 0; }
+    )"), "expected i8, got i32");
+}
+
+TEST(Operators_Literals, negative_method_argument_never_fits_unsigned) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      /* Accepts an unsigned argument. */
+      class Enc {
+          init() {}
+          /* Accepts an unsigned argument. */
+          public method put(v: u8) void {}
+      }
+      /* Passes a negative literal to an unsigned parameter. */
+      function main() i32 { var e = Enc(); e.put(-1); return 0; }
+    )"), "expected u8, got i32");
+}
+
+TEST(Operators_Literals, negative_untyped_literal_past_i64_min_is_error) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      /* Rejects a negative integer outside the supported signed range. */
+      function main() i32 { var x = -9223372036854775809; return 0; }
+    )"), "Integer literal -9223372036854775809 cannot be represented");
+}
+
+TEST(Operators_Literals, negative_plain_function_arguments) {
+  EXPECT_EQ(executeString(R"(
+      /* Returns its narrow argument. */
+      function take(x: i8) i8 { return x; }
+      /* Returns its wider argument. */
+      function take16(x: i16) i16 { return x; }
+      /* Checks negative literals at plain function boundaries. */
+      function main() i32 {
+          if (take(-5) != -5i8 or take(-128) != -128i8 or
+              take16(-300) != -300i16 or take16(-32768) != -32768i16) {
+              return 1;
+          }
+          return 0;
+      }
+    )"), 0);
+}
+
+TEST(Operators_Literals, negative_plain_function_overload_keeps_default_type) {
+  EXPECT_EQ(executeString(R"(
+      /* Identifies the narrow overload. */
+      function pick(x: i8) i32 { return 1; }
+      /* Identifies the default integer overload. */
+      function pick(x: i32) i32 { return 2; }
+      /* Checks that contextual typing does not displace an existing match. */
+      function main() i32 { return pick(-5) + pick(-5i8); }
+    )"), 3);
+}
+
+TEST(Operators_Literals, negative_plain_function_literal_overloads_are_ambiguous) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      /* Accepts a narrow integer. */
+      function take(x: i8) void {}
+      /* Accepts a wider integer. */
+      function take(x: i16) void {}
+      /* Requires a suffix when both contextual types fit. */
+      function main() i32 { take(-5); return 0; }
+    )"), "Ambiguous overload of 'take'");
+}
+
+TEST(Operators_Literals, negative_plain_function_rejects_invalid_arguments) {
+  for (const auto& argument : {"-129", "-5i16", "value"}) {
+    EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(
+        std::string(R"(
+          /* Accepts a narrow integer. */
+          function take(x: i8) void {}
+          /* Rejects overflowing literals and narrowing typed values. */
+          function main() i32 { var value: i32 = -5; take(
+        )") + argument + "); return 0; }"), "No matching overload of 'take'");
+  }
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      /* Accepts an unsigned integer. */
+      function take(x: u8) void {}
+      /* Rejects negative values for unsigned parameters. */
+      function main() i32 { take(-5); return 0; }
+    )"), "No matching overload of 'take'");
+}
+
+TEST(Operators_Literals, plain_function_context_checks_every_argument) {
+  EXPECT_EQ(executeString(R"(
+      /* Identifies a candidate whose second argument does not fit. */
+      function pick(x: i8, y: bool) i32 { return 1; }
+      /* Identifies the candidate that accepts both arguments. */
+      function pick(x: i16, y: i32) i32 {
+          if (x == -5i16 and y == 7) { return 2; }
+          return 0;
+      }
+      /* Identifies the narrower range. */
+      function range(x: i8) i32 { return 3; }
+      /* Identifies the wider range. */
+      function range(x: i16) i32 {
+          if (x == -300i16) { return 4; }
+          return 0;
+      }
+      /* Checks candidate isolation and literal range filtering. */
+      function main() i32 { return pick(-5, 7) + range(-300); }
+    )"), 6);
 }

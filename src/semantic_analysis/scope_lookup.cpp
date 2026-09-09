@@ -462,8 +462,9 @@ std::vector<FunctionInfo> SemanticScopeBase::getAllFunctions(
 // already known, and walking up from it would let unrelated same-named
 // functions in enclosing scopes win.
 std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
-    const std::string& name, const std::vector<sun::TypePtr>& argTypes,
-    AccessFilter* filter) const {
+    const std::string& name, const std::vector<FunctionArgumentType>& argTypes,
+    AccessFilter* filter, bool matchAlternatives,
+    std::optional<Position> loc) const {
   const FunctionTable& funcs = functions;
   auto admit = [&](const FunctionInfo& info) {
     return !filter || filter->admit(info);
@@ -472,7 +473,7 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
   std::string sig = name + "(";
   for (size_t i = 0; i < argTypes.size(); ++i) {
     if (i > 0) sig += ",";
-    sig += argTypes[i] ? argTypes[i]->toString() : "?";
+    sig += argTypes[i].preferred ? argTypes[i].preferred->toString() : "?";
   }
   sig += ")";
   std::string prefix = name + "(";
@@ -487,6 +488,7 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
         [&](const std::string& baseName) -> std::optional<FunctionInfo> {
       auto* overloads = funcs.getOverloads(baseName);
       if (!overloads) return std::nullopt;
+      std::optional<FunctionInfo> alternativeMatch;
       for (const auto* info : *overloads) {
         // A C-variadic callee only fixes its leading parameters; anything
         // past them is checked by the C side, not here.
@@ -498,32 +500,44 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
 
         bool compatible = true;
         for (size_t i = 0; i < info->paramTypes.size(); ++i) {
-          if (!argTypes[i] || !info->paramTypes[i]) {
+          const auto& argType = argTypes[i].preferred;
+          if (!argType || !info->paramTypes[i]) {
             compatible = false;
             break;
           }
-          if (info->paramTypes[i]->equals(*argTypes[i])) continue;
+          if (info->paramTypes[i]->equals(*argType)) continue;
+
+          // Alternatives were computed by the caller without changing arguments.
+          if (matchAlternatives) {
+            const auto& alternatives = argTypes[i].alternatives;
+            if (std::any_of(alternatives.begin(), alternatives.end(),
+                            [&](const sun::TypePtr& type) {
+                              return type && info->paramTypes[i]->equals(*type);
+                            })) {
+              continue;
+            }
+          }
 
           if (info->paramTypes[i]->isReference()) {
             auto* refType = static_cast<const sun::ReferenceType*>(
                 info->paramTypes[i].get());
-            if (refType->getReferencedType()->equals(*argTypes[i])) continue;
+            if (refType->getReferencedType()->equals(*argType)) continue;
             // A borrow handed to a parameter of the other mutability: only
             // ref -> const ref is allowed
-            if (argTypes[i]->isReference()) {
+            if (argType->isReference()) {
               auto* argRef =
-                  static_cast<const sun::ReferenceType*>(argTypes[i].get());
+                  static_cast<const sun::ReferenceType*>(argType.get());
               if (sun::refMutabilityConvertible(*argRef, *refType) &&
                   refType->getReferencedType()->equals(
                       *argRef->getReferencedType()))
                 continue;
             }
             if (refType->getReferencedType()->isArray() &&
-                argTypes[i]->isArray()) {
+                argType->isArray()) {
               auto* paramArray = static_cast<const sun::ArrayType*>(
                   refType->getReferencedType().get());
               auto* argArray =
-                  static_cast<const sun::ArrayType*>(argTypes[i].get());
+                  static_cast<const sun::ArrayType*>(argType.get());
               if (paramArray->isUnsized() &&
                   paramArray->getElementType()->equals(
                       *argArray->getElementType()))
@@ -531,9 +545,9 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
             }
           }
 
-          if (argTypes[i]->isReference()) {
+          if (argType->isReference()) {
             auto* refType =
-                static_cast<const sun::ReferenceType*>(argTypes[i].get());
+                static_cast<const sun::ReferenceType*>(argType.get());
             // Reading the value out of the borrow, so only for a scalar
             // parameter type (see isAssignableTo above)
             if (info->paramTypes[i]->equals(*refType->getReferencedType()) &&
@@ -541,15 +555,15 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
               continue;
           }
 
-          if (argTypes[i]->isNullPointer() &&
+          if (argType->isNullPointer() &&
               info->paramTypes[i]->isAnyPointer()) {
             continue;
           }
 
-          if (argTypes[i]->isStaticPointer() &&
+          if (argType->isStaticPointer() &&
               info->paramTypes[i]->isRawPointer()) {
             auto* staticPtr =
-                static_cast<const sun::StaticPointerType*>(argTypes[i].get());
+                static_cast<const sun::StaticPointerType*>(argType.get());
             auto* rawPtr = static_cast<const sun::RawPointerType*>(
                 info->paramTypes[i].get());
             if (staticPtr->getPointeeType()->equals(
@@ -560,7 +574,7 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
 
           // raw_ptr<T> is compatible with byte pointers (raw_ptr<i8>/u8)
           // for intrinsics
-          if (argTypes[i]->isRawPointer() &&
+          if (argType->isRawPointer() &&
               info->paramTypes[i]->isRawPointer() && isIntrinsic(baseName)) {
             auto* paramRawPtr = static_cast<const sun::RawPointerType*>(
                 info->paramTypes[i].get());
@@ -570,7 +584,7 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
             }
           }
 
-          if (::isAssignableTo(argTypes[i], info->paramTypes[i])) {
+          if (::isAssignableTo(argType, info->paramTypes[i])) {
             continue;
           }
 
@@ -579,10 +593,17 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
         }
 
         if (compatible) {
-          return *info;
+          if (!matchAlternatives) return *info;
+          if (alternativeMatch) {
+            logAndThrowError(
+                "Ambiguous overload of '" + name +
+                    "' for integer literal arguments; add a type suffix",
+                loc);
+          }
+          alternativeMatch = *info;
         }
       }
-      return std::nullopt;
+      return alternativeMatch;
     };
 
     std::string baseName = prefix.substr(0, prefix.size() - 1);
@@ -591,11 +612,14 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
 }
 
 std::optional<FunctionInfo> SemanticScopeBase::lookupFunction(
-    const std::string& name, const std::vector<sun::TypePtr>& argTypes) const {
+    const std::string& name, const std::vector<FunctionArgumentType>& argTypes,
+    std::optional<Position> loc) const {
   AccessFilter filter(this);
+  bool matchAlternatives = false;
   auto findInScope =
       [&](const SemanticScopeBase* scope) -> std::optional<FunctionInfo> {
-    return scope->lookupFunctionLocal(name, argTypes, &filter);
+    return scope->lookupFunctionLocal(name, argTypes, &filter,
+                                       matchAlternatives, loc);
   };
 
   // One scope plus its import children and import bindings
@@ -630,6 +654,18 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunction(
   // definition scope, so the chain already contains their module)
   for (auto* s = this; s != nullptr; s = s->parent) {
     if (auto result = searchScope(s)) return result;
+  }
+
+  // Preserve ordinary matches throughout the scope chain before considering
+  // alternative types. Reuse the same visibility and conversion rules.
+  if (std::any_of(argTypes.begin(), argTypes.end(),
+                  [](const FunctionArgumentType& arg) {
+                    return !arg.alternatives.empty();
+                  })) {
+    matchAlternatives = true;
+    for (auto* s = this; s != nullptr; s = s->parent) {
+      if (auto result = searchScope(s)) return result;
+    }
   }
 
   filter.finish();

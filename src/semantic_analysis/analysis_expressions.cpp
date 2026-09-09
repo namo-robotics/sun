@@ -37,6 +37,10 @@ void SemanticAnalyzer::analyzeNumberLiteral(ExprAST& expr,
     }
   }
   expr.setResolvedType(types_.inferType(expr));
+  if (num.isInteger() && num.isNegative()) {
+    // A negative magnitude beyond the signed range cannot default to u64.
+    tryCoerceIntegerLiteral(&expr, expr.getResolvedType(), /*throwOnFail=*/true);
+  }
 }
 
 void SemanticAnalyzer::analyzeArrayLiteral(ArrayLiteralAST& arrLit,

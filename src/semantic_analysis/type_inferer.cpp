@@ -67,7 +67,10 @@ sun::TypePtr TypeInferer::inferCallType(const CallExprAST& callExpr) {
     for (const auto& arg : callExpr.getArgs()) {
       argTypes.push_back(inferType(*arg));
     }
-    auto funcInfo = ctx_.lookupFunction(resolved.baseName, argTypes);
+    std::vector<FunctionArgumentType> lookupTypes;
+    lookupTypes.reserve(argTypes.size());
+    for (const auto& type : argTypes) lookupTypes.push_back({type, {}});
+    auto funcInfo = ctx_.lookupFunction(resolved.baseName, lookupTypes);
     if (funcInfo && funcInfo->returnType) {
       return funcInfo->returnType;
     }
