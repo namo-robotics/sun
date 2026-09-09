@@ -4,6 +4,7 @@
 
 #include <unordered_set>
 
+#include "ast/control_flow.h"
 #include "codegen/intrinsics/intrinsics.h"
 #include "semantic_analysis/generic_type_arguments.h"
 #include "semantic_analysis/item_refs.h"
@@ -493,20 +494,21 @@ sun::TypePtr TypeInferer::inferType(const ExprAST& expr) {
 
     case ASTNodeType::MATCH: {
       const auto& matchExpr = static_cast<const MatchExprAST&>(expr);
-      // Return type is the type of the first arm's body
-      // All arms should have compatible types (not enforced yet)
-      if (!matchExpr.getArms().empty()) {
-        const auto& firstBody = *matchExpr.getArms()[0].body;
-        // Bodies of destructuring arms are analyzed in per-arm binding
-        // scopes; use the resolved type rather than re-walking a body whose
-        // bindings are out of scope here.
-        // A match yields a value: each arm's body is read, so an arm that
-        // names a `ref T` binding contributes T. (The other arms need not
-        // have an address to hand out — `Option.None => 0` has none.)
-        if (auto resolved = firstBody.getResolvedType()) {
-          return unwrapRef(resolved);
+      // Only arms that reach the merge contribute to the result type.
+      // Bindings have already left their semantic scopes, so use the body's
+      // resolved type instead of looking their names up again.
+      std::unordered_set<int> coveredTags;
+      for (const auto& arm : matchExpr.getArms()) {
+        if (!arm.isWildcard && arm.resolvedVariantTag >= 0 &&
+            !coveredTags.insert(arm.resolvedVariantTag).second)
+          continue;
+        if (!exprDiverges(*arm.body)) {
+          if (auto resolved = arm.body->getResolvedType()) {
+            return unwrapRef(resolved);
+          }
+          return unwrapRef(inferType(*arm.body));
         }
-        return unwrapRef(inferType(firstBody));
+        if (arm.isWildcard) break;
       }
       return sun::Types::Void();
     }

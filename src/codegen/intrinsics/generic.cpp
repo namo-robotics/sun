@@ -295,7 +295,7 @@ Value* IntrinsicsGenerator::codegenDeinitIntrinsic(
     scopes().emitFieldDeinit(ptr, classType, "deinit.intrinsic");
   } else if (typeArg && typeArg->isEnum()) {
     // Payload enums with owning payloads drop through their drop function
-    scopes().emitEnumDrop(static_cast<sun::EnumType&>(*typeArg), ptr);
+    gen_.enumGenerator().emitDrop(static_cast<sun::EnumType&>(*typeArg), ptr);
   }
 
   return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);

@@ -2,13 +2,14 @@
 
 // codegen_visitor.h — The AST walk that emits LLVM IR
 //
-// Nine things this class holds rather than is, each with its own header:
+// Components this class holds rather than is, each with its own header:
 //
 //   CodegenState        the module, the type registry, the type resolver,
 //                       DWARF emission, and the frame being emitted
 //   ScopeManager        the scope stack and every drop it has to write
 //   FunctionRegistry    calling conventions, provenance, name lookup
-//   ClassGenerator      classes, interfaces, enums, generic instantiation
+//   ClassGenerator      classes, interfaces, generic instantiation
+//   EnumGenerator       enum definitions, variants, matches, payload cleanup
 //   FunctionGenerator   functions, lambdas, closures, returns
 //   VariableGenerator   variables, lvalues, globals
 //   LoopGenerator       loops and the jumps out of them
@@ -41,9 +42,10 @@
 
 #include "ast.h"                   // Pure AST header with ASTNodeType
 #include "codegen/abi/extern_c.h"  // The extern "C" boundary
-#include "codegen/classes/class_generator.h"  // Classes, interfaces, enums
+#include "codegen/classes/class_generator.h"  // Classes, interfaces
 #include "codegen/codegen.h"                  // CodegenContext
-#include "codegen/codegen_state.h"           // Shared state for one codegen run
+#include "codegen/codegen_state.h"  // Shared state for one codegen run
+#include "codegen/enums/enum_generator.h"
 #include "codegen/errors/error_generator.h"  // throw, try/catch, unwinding calls
 #include "codegen/functions/function_generator.h"  // Functions, lambdas, closures
 #include "codegen/functions/function_registry.h"  // Function lookup and conventions
@@ -91,8 +93,11 @@ class CodegenVisitor {
   // everything it owns. Container-shaped: scopes.back(), scopes.size().
   ScopeManager scopes{state_, *this};
 
-  // Classes, interfaces, enums, and generic instantiation
+  // Classes, interfaces, and generic instantiation
   ClassGenerator classes{state_, *this};
+
+  // Enum definitions, variants, matches, and payload cleanup
+  EnumGenerator enums{state_, *this};
 
   // Functions, lambdas, closures and returns
   FunctionGenerator functions_{state_, *this};
@@ -183,6 +188,8 @@ class CodegenVisitor {
 
   ScopeManager& scopeManager() { return scopes; }
   ClassGenerator& classGenerator() { return classes; }
+  /** Gives codegen components access to enum generation. */
+  EnumGenerator& enumGenerator() { return enums; }
   FunctionGenerator& functionGenerator() { return functions_; }
   VariableGenerator& variableGenerator() { return variables; }
   ErrorGenerator& errorGenerator() { return errors; }
@@ -293,11 +300,6 @@ class CodegenVisitor {
   llvm::Value* createIntDivRem(llvm::Value* L, llvm::Value* R, bool isModulo,
                                bool isUnsigned);
 
-  // Variant access without arguments: i32 constant for payload-free enums,
-  // tagged storage alloca for unit variants of payload enums
-  llvm::Value* codegenEnumVariantAccess(sun::EnumType& enumType,
-                                        const sun::EnumVariant& variant);
-
   // Element address for the slice-aware index form
   llvm::Value* codegenIndexElementPtr(const IndexAST& expr);
 
@@ -390,15 +392,6 @@ class CodegenVisitor {
   llvm::Value* codegen(const IfExprAST& expr);
   llvm::Value* codegen(const TernaryExprAST& expr);
   llvm::Value* codegen(const MatchExprAST& expr);
-
-  // Enum variant construction: EnumName.Variant(args...) -> storage alloca ptr
-  llvm::Value* codegenEnumVariantConstruction(const CallExprAST& expr,
-                                              sun::EnumType& enumType,
-                                              const sun::EnumVariant& variant);
-
-  // Tag-switch match with payload destructuring
-  llvm::Value* codegenEnumMatch(const MatchExprAST& expr,
-                                sun::EnumType& enumType);
 
   // ---------------------------------------------------------------
   // Calls (call_expressions.cpp)

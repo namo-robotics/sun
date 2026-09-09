@@ -1,19 +1,22 @@
-// enums.cpp - Payload enum codegen: variant construction, unit-variant
-// materialization, and tag-switch match with payload destructuring. The
-// synthesized per-enum drop function lives with the rest of the drop code in
-// scope_manager.cpp.
+// Enum definitions, variant construction, access, and matching.
 
-#include "ast.h"
+#include "codegen/enums/enum_generator.h"
+
+#include <set>
+
 #include "codegen/codegen.h"
 #include "codegen/codegen_visitor.h"
+#include "codegen/support/scalar_ops.h"
 
 using namespace llvm;
+
+ScopeManager& EnumGenerator::scopes() { return gen_.scopeManager(); }
 
 // -------------------------------------------------------------------
 // Enum variant construction: EnumName.Variant(args...)
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegenEnumVariantConstruction(
+Value* EnumGenerator::codegenVariantConstruction(
     const CallExprAST& expr, sun::EnumType& enumType,
     const sun::EnumVariant& variant) {
   StructType* storageTy = typeResolver.getEnumStorageType(enumType);
@@ -21,7 +24,7 @@ Value* CodegenVisitor::codegenEnumVariantConstruction(
       typeResolver.getEnumVariantStruct(enumType, variant.name);
 
   Function* func = ctx.builder->GetInsertBlock()->getParent();
-  AllocaInst* storage = createEntryBlockAlloca(
+  AllocaInst* storage = gen_.createEntryBlockAlloca(
       func, enumType.getBaseName() + "." + variant.name, storageTy);
 
   // Store the tag (field 0 has the same offset in storage and variant view)
@@ -44,7 +47,7 @@ Value* CodegenVisitor::codegenEnumVariantConstruction(
     // A reference payload stores the referent's ADDRESS: the variant borrows,
     // it does not own, so nothing moves and nothing is dropped later.
     if (payloadType->isReference()) {
-      Value* addr = tryCodegenAddress(*args[i]);
+      Value* addr = gen_.tryCodegenAddress(*args[i]);
       if (!addr) {
         logAndThrowError(
             "Payload of variant '" + variant.name +
@@ -55,7 +58,7 @@ Value* CodegenVisitor::codegenEnumVariantConstruction(
       continue;
     }
 
-    Value* argVal = codegen(*args[i]);
+    Value* argVal = gen_.codegen(*args[i]);
     if (!argVal) {
       logAndThrowError("Failed to generate payload value for variant '" +
                        variant.name + "'");
@@ -67,7 +70,7 @@ Value* CodegenVisitor::codegenEnumVariantConstruction(
       // source is invalidated (zeroed / tag-poisoned) so its own drop is a
       // no-op, and its tracking entry is released — the enum owns it now.
       if (argVal->getType()->isPointerTy()) {
-        argVal = applyMoveSemantics(argVal, payloadType);
+        argVal = gen_.applyMoveSemantics(argVal, payloadType);
       }
       // Interface payloads (fat pointers) are copyable borrowed views: a
       // variable arrives as a pointer to its fat pointer, so load it
@@ -81,7 +84,8 @@ Value* CodegenVisitor::codegenEnumVariantConstruction(
     // Numeric widening (sema allows widening assignability)
     if (argVal->getType() != fieldTy) {
       if (argVal->getType()->isIntegerTy() && fieldTy->isIntegerTy()) {
-        argVal = extendInt(argVal, fieldTy, args[i]->getResolvedType());
+        argVal = sun::codegen::ops::extendInt(*ctx.builder, argVal, fieldTy,
+                                              args[i]->getResolvedType());
       } else if (argVal->getType()->isFloatTy() && fieldTy->isDoubleTy()) {
         argVal = ctx.builder->CreateFPExt(argVal, fieldTy, "payload.ext");
       }
@@ -92,7 +96,7 @@ Value* CodegenVisitor::codegenEnumVariantConstruction(
   // The fresh storage owns its payloads until moved into a variable/field
   // (the borrow checker marks that move; genLocalVar adopts the alloca).
   if (!expr.isMoved()) {
-    scopes.trackClassAllocation(storage, "enum.tmp", expr.getResolvedType());
+    scopes().trackClassAllocation(storage, "enum.tmp", expr.getResolvedType());
   }
 
   return storage;
@@ -104,9 +108,9 @@ Value* CodegenVisitor::codegenEnumVariantConstruction(
 // discriminant value is the switch operand directly.
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegenEnumMatch(const MatchExprAST& expr,
-                                        sun::EnumType& enumType) {
-  Value* discVal = codegen(*expr.getDiscriminant());
+Value* EnumGenerator::codegenMatch(const MatchExprAST& expr,
+                                   sun::EnumType& enumType) {
+  Value* discVal = gen_.codegen(*expr.getDiscriminant());
   if (!discVal) {
     logAndThrowError("Failed to generate code for match discriminant");
   }
@@ -122,7 +126,7 @@ Value* CodegenVisitor::codegenEnumMatch(const MatchExprAST& expr,
     // Compounds flow as pointers; spill defensively if a struct value arrives
     if (!discPtr->getType()->isPointerTy()) {
       AllocaInst* spill =
-          createEntryBlockAlloca(TheFunction, "match.disc", storageTy);
+          gen_.createEntryBlockAlloca(TheFunction, "match.disc", storageTy);
       ctx.builder->CreateStore(discVal, spill);
       discPtr = spill;
     }
@@ -137,6 +141,24 @@ Value* CodegenVisitor::codegenEnumMatch(const MatchExprAST& expr,
       tag = ctx.builder->CreateLoad(Type::getInt32Ty(ctx.getContext()), tag,
                                     "match.tag");
     }
+  }
+
+  const bool consuming = expr.getDiscriminant()->isMoved();
+  if (consuming && enumType.hasPayload()) {
+    StructType* storageTy = typeResolver.getEnumStorageType(enumType);
+    Value* owned =
+        gen_.createEntryBlockAlloca(TheFunction, "match.input", storageTy);
+    ctx.builder->CreateStore(
+        gen_.applyMoveSemantics(
+            discPtr, sun::unwrapRef(expr.getDiscriminant()->getResolvedType())),
+        owned);
+    discPtr = owned;
+  }
+  const auto matchType = expr.getResolvedType();
+  AllocaInst* resultStorage = nullptr;
+  if (sun::typeMovesOnRead(matchType)) {
+    resultStorage = gen_.createEntryBlockAlloca(
+        TheFunction, "match.result", typeResolver.resolve(matchType));
   }
 
   BasicBlock* MergeBB =
@@ -176,7 +198,8 @@ Value* CodegenVisitor::codegenEnumMatch(const MatchExprAST& expr,
     llvm::Type* from = val->getType();
     if (from->isIntegerTy() && resultLLVMType->isIntegerTy()) {
       if (from->getIntegerBitWidth() < resultLLVMType->getIntegerBitWidth()) {
-        return extendInt(val, resultLLVMType, arm.body->getResolvedType());
+        return sun::codegen::ops::extendInt(*ctx.builder, val, resultLLVMType,
+                                            arm.body->getResolvedType());
       }
       return ctx.builder->CreateTrunc(val, resultLLVMType, "arm.trunc");
     }
@@ -192,8 +215,13 @@ Value* CodegenVisitor::codegenEnumMatch(const MatchExprAST& expr,
   auto emitArmBody = [&](const MatchArm& arm, BasicBlock* armBB) {
     ctx.builder->SetInsertPoint(armBB);
     // One arm of a branch: a move in here happens on this path only
-    ScopeManager::BranchArm branchArm(scopes);
-    scopes.push();
+    ScopeManager::BranchArm branchArm(scopes());
+    scopes().push();
+
+    if (consuming && arm.isWildcard && enumType.hasPayload()) {
+      scopes().trackClassAllocation(discPtr, "match.ignored",
+                                    expr.getDiscriminant()->getResolvedType());
+    }
 
     // Bind payloads through the variant view struct
     if (!arm.isWildcard && arm.hasPayloadParens) {
@@ -203,42 +231,60 @@ Value* CodegenVisitor::codegenEnumMatch(const MatchExprAST& expr,
           enumType, patternAccess.getMemberName());
       for (size_t i = 0; i < arm.bindings.size(); ++i) {
         const auto& binding = arm.bindings[i];
-        if (binding.isWildcard) continue;
+        if (binding.isWildcard && !consuming) continue;
         unsigned idx = typeResolver.enumPayloadFieldIndex(
             enumType, patternAccess.getMemberName(), i);
         Value* fieldPtr = ctx.builder->CreateStructGEP(variantTy, discPtr, idx,
                                                        binding.name + ".ptr");
         llvm::Type* fieldTy = variantTy->getElementType(idx);
-        if (binding.resolvedType && binding.resolvedType->isCompound()) {
+        if (consuming && binding.resolvedType &&
+            sun::typeMovesOnRead(binding.resolvedType)) {
+          const std::string name =
+              binding.isWildcard ? "match.ignored" : binding.name;
+          AllocaInst* alloca =
+              gen_.createEntryBlockAlloca(TheFunction, name, fieldTy);
+          ctx.builder->CreateStore(ctx.builder->CreateLoad(fieldTy, fieldPtr),
+                                   alloca);
+          if (!binding.isWildcard)
+            scopes().back().variables[binding.name] = alloca;
+          scopes().trackClassAllocation(alloca, name, binding.resolvedType);
+        } else if (binding.isWildcard) {
+          continue;
+        } else if (binding.resolvedType && binding.resolvedType->isCompound()) {
           // Compound payload: bind BY POINTER (a borrow of the payload slot
           // inside the discriminant — never an implicit copy). The alloca
           // holds the slot address; reads go through the indirection.
-          AllocaInst* alloca =
-              createEntryBlockAlloca(TheFunction, binding.name + ".ref",
-                                     PointerType::getUnqual(ctx.getContext()));
+          AllocaInst* alloca = gen_.createEntryBlockAlloca(
+              TheFunction, binding.name + ".ref",
+              PointerType::getUnqual(ctx.getContext()));
           ctx.builder->CreateStore(fieldPtr, alloca);
-          scopes.back().variables[binding.name] = alloca;
-          scopes.back().indirectBindings.insert(binding.name);
+          scopes().back().variables[binding.name] = alloca;
+          scopes().back().indirectBindings.insert(binding.name);
         } else {
           // Scalar payload: fresh local copy
           AllocaInst* alloca =
-              createEntryBlockAlloca(TheFunction, binding.name, fieldTy);
+              gen_.createEntryBlockAlloca(TheFunction, binding.name, fieldTy);
           Value* fieldVal =
               ctx.builder->CreateLoad(fieldTy, fieldPtr, binding.name);
           ctx.builder->CreateStore(fieldVal, alloca);
-          scopes.back().variables[binding.name] = alloca;
-          debugDeclareLocal(alloca, binding.name, binding.resolvedType,
-                            binding.location);
+          scopes().back().variables[binding.name] = alloca;
+          state_.debugInfo.declareLocal(*ctx.builder, alloca, binding.name,
+                                        binding.resolvedType, binding.location);
         }
       }
     }
 
-    Value* bodyVal = codegen(*arm.body);
+    Value* bodyVal = gen_.codegen(*arm.body);
     bool terminated = ctx.builder->GetInsertBlock()->getTerminator() != nullptr;
     if (!terminated) {
       bodyVal = convertArmValue(bodyVal, arm);
+      if (resultStorage && bodyVal && !bodyVal->getType()->isVoidTy()) {
+        ctx.builder->CreateStore(gen_.applyMoveSemantics(bodyVal, matchType),
+                                 resultStorage);
+        bodyVal = resultStorage;
+      }
     }
-    scopes.pop();
+    scopes().pop();
     if (!terminated) {
       // Void arms (statement bodies) contribute no value to the merge
       if (bodyVal && !bodyVal->getType()->isVoidTy()) {
@@ -248,10 +294,13 @@ Value* CodegenVisitor::codegenEnumMatch(const MatchExprAST& expr,
     }
   };
 
+  // Only the first reachable arm for a tag participates in the switch.
+  std::set<int> emittedTags;
   // Variant arms
   for (size_t i = 0; i < arms.size(); ++i) {
     const auto& arm = arms[i];
-    if (arm.isWildcard) continue;
+    if (arm.isWildcard) break;
+    if (!emittedTags.insert(arm.resolvedVariantTag).second) continue;
     BasicBlock* ArmBB = BasicBlock::Create(
         ctx.getContext(), "match.arm." + std::to_string(i), TheFunction);
     switchInst->addCase(ConstantInt::get(Type::getInt32Ty(ctx.getContext()),
@@ -276,25 +325,16 @@ Value* CodegenVisitor::codegenEnumMatch(const MatchExprAST& expr,
     return ConstantInt::get(Type::getInt32Ty(ctx.getContext()), 0);
   }
 
+  if (resultStorage) {
+    scopes().trackClassAllocation(resultStorage, "match.result", matchType);
+    return resultStorage;
+  }
+
   Type* resultType = armResults[0].first->getType();
   for (const auto& [val, bb] : armResults) {
     if (val->getType() != resultType) {
       return ConstantInt::get(Type::getInt32Ty(ctx.getContext()), 0);
     }
-  }
-
-  if (armResults.size() == 1) {
-    // Single value-producing arm: still emit a PHI, because MergeBB can have
-    // other (terminated-arm) predecessors in general
-    PHINode* PN = ctx.builder->CreatePHI(resultType, 1, "match.result");
-    PN->addIncoming(armResults[0].first, armResults[0].second);
-    for (auto it = llvm::pred_begin(MergeBB), et = llvm::pred_end(MergeBB);
-         it != et; ++it) {
-      if (PN->getBasicBlockIndex(*it) == -1) {
-        PN->addIncoming(UndefValue::get(resultType), *it);
-      }
-    }
-    return PN;
   }
 
   PHINode* PN =
@@ -315,15 +355,15 @@ Value* CodegenVisitor::codegenEnumMatch(const MatchExprAST& expr,
 // Variant access without arguments: EnumName.Variant
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegenEnumVariantAccess(
-    sun::EnumType& enumType, const sun::EnumVariant& variant) {
+Value* EnumGenerator::codegenVariantAccess(sun::EnumType& enumType,
+                                           const sun::EnumVariant& variant) {
   // Unit variant of a payload enum: materialize tagged storage and return
   // the pointer (compound convention). Payload variants are constructed
   // through the call path.
   if (enumType.hasPayload()) {
     StructType* storageTy = typeResolver.getEnumStorageType(enumType);
     Function* func = ctx.builder->GetInsertBlock()->getParent();
-    AllocaInst* storage = createEntryBlockAlloca(
+    AllocaInst* storage = gen_.createEntryBlockAlloca(
         func, enumType.getBaseName() + "." + variant.name, storageTy);
     Value* tagPtr =
         ctx.builder->CreateStructGEP(storageTy, storage, 0, "tag.ptr");
@@ -334,4 +374,38 @@ Value* CodegenVisitor::codegenEnumVariantAccess(
   }
   // Payload-free enums are inline i32 constants
   return ConstantInt::get(Type::getInt32Ty(ctx.getContext()), variant.value);
+}
+
+// -------------------------------------------------------------------
+// Enum definition codegen
+// -------------------------------------------------------------------
+
+Value* EnumGenerator::codegen(const EnumDefinitionAST& expr) {
+  // Enum definitions are already fully registered by the semantic analyzer
+  // in the TypeRegistry. Payload-free enums are represented as i32 constants
+  // emitted inline when variants are referenced.
+
+  // Generic templates generate no code themselves; walk the specializations
+  // recorded by the semantic analyzer (mirrors generic classes) and build
+  // their storage structs.
+  if (expr.isGeneric()) {
+    for (const auto& [mangledName, specialized] : expr.getSpecializations()) {
+      if (specialized && specialized->hasPayload()) {
+        typeResolver.getEnumStorageType(*specialized);
+      }
+    }
+    return ConstantFP::get(ctx.getContext(), APFloat(0.0));
+  }
+
+  // Payload enums: eagerly build the storage struct so any later
+  // ClassType::getStructType embedding an enum field (which cannot reach the
+  // resolver) can serve it from the EnumType cache.
+  if (expr.hasAnyPayload()) {
+    if (auto enumType =
+            state_.typeRegistry->getEnum(expr.getQualifiedName().mangled())) {
+      typeResolver.getEnumStorageType(*enumType);
+    }
+  }
+
+  return ConstantFP::get(ctx.getContext(), APFloat(0.0));
 }

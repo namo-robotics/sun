@@ -705,7 +705,7 @@ Value* ClassGenerator::codegen(const MemberAccessAST& expr) {
   // The analyzed object identifies the enum, including qualified unit variants.
   if (auto enumType = sun::tryGetTypePtr<sun::EnumType>(*expr.getObject())) {
     if (const auto* variant = enumType->getVariant(memberName))
-      return codegenEnumVariantAccess(*enumType, *variant);
+      return gen_.enumGenerator().codegenVariantAccess(*enumType, *variant);
   }
 
   // Refresh objectType in case it was not set from module handling above
@@ -1255,40 +1255,6 @@ Value* ClassGenerator::codegen(const InterfaceDefinitionAST& expr) {
   }
 
   // Interface definitions return void
-  return ConstantFP::get(ctx.getContext(), APFloat(0.0));
-}
-
-// -------------------------------------------------------------------
-// Enum definition codegen
-// -------------------------------------------------------------------
-
-Value* ClassGenerator::codegen(const EnumDefinitionAST& expr) {
-  // Enum definitions are already fully registered by the semantic analyzer
-  // in the TypeRegistry. Payload-free enums are represented as i32 constants
-  // emitted inline when variants are referenced.
-
-  // Generic templates generate no code themselves; walk the specializations
-  // recorded by the semantic analyzer (mirrors generic classes) and build
-  // their storage structs.
-  if (expr.isGeneric()) {
-    for (const auto& [mangledName, specialized] : expr.getSpecializations()) {
-      if (specialized && specialized->hasPayload()) {
-        typeResolver.getEnumStorageType(*specialized);
-      }
-    }
-    return ConstantFP::get(ctx.getContext(), APFloat(0.0));
-  }
-
-  // Payload enums: eagerly build the storage struct so any later
-  // ClassType::getStructType embedding an enum field (which cannot reach the
-  // resolver) can serve it from the EnumType cache.
-  if (expr.hasAnyPayload()) {
-    if (auto enumType =
-            typeRegistry->getEnum(expr.getQualifiedName().mangled())) {
-      typeResolver.getEnumStorageType(*enumType);
-    }
-  }
-
   return ConstantFP::get(ctx.getContext(), APFloat(0.0));
 }
 

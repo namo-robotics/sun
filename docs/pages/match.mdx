@@ -237,6 +237,20 @@ function describe(s: ref Shape) f64 {
 }
 ```
 
+A match borrows payloads in place when no reachable arm takes ownership of
+one, so inspection does not consume the enum or require an explicit reference.
+If any reachable arm moves a compound payload, the match consumes the owned
+enum: the selected arm owns its bindings and drops remaining payloads at arm
+exit. A match result stays alive until its receiving owner releases it.
+Matching a `ref` or `const ref` enum always borrows and rejects payload moves.
+See [Ownership and Drops](/enums#ownership-and-drops).
+
+A non-enum match producing an owned value needs a wildcard, or both boolean
+patterns, so every input produces a valid result.
+
+Only the first matching arm runs; there is no fallthrough. A wildcard handles
+values not covered by preceding arms.
+
 Enum matches are exhaustive: cover every variant or add a `_` arm. Duplicate
 arms and arms after `_` produce unreachable-arm warnings.
 

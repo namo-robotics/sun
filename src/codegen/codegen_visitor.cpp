@@ -111,7 +111,7 @@ Value* CodegenVisitor::codegenExpression(const ExprAST& expr) {
     case ASTNodeType::INTERFACE_DEFINITION:
       return classes.codegen(static_cast<const InterfaceDefinitionAST&>(expr));
     case ASTNodeType::ENUM_DEFINITION:
-      return classes.codegen(static_cast<const EnumDefinitionAST&>(expr));
+      return enums.codegen(static_cast<const EnumDefinitionAST&>(expr));
     case ASTNodeType::THIS:
       return classes.codegen(static_cast<const ThisExprAST&>(expr));
     case ASTNodeType::MEMBER_ACCESS:

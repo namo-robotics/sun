@@ -4,6 +4,7 @@
 // One handler per AST node kind, called from the dispatcher in
 // analysis.cpp.
 
+#include "ast/control_flow.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/type_rules.h"
 #include "support/error.h"
@@ -40,6 +41,26 @@ void SemanticAnalyzer::analyzeMatchExpr(MatchExprAST& matchExpr,
   // Analyze the discriminant expression
   analyzeExpr(const_cast<ExprAST&>(*matchExpr.getDiscriminant()));
 
+  auto checkOwnedArmTypes = [&] {
+    auto resultType = matchExpr.getResolvedType();
+    if (!sun::typeMovesOnRead(resultType)) return;
+    std::set<int> coveredTags;
+    for (const auto& arm : matchExpr.getArms()) {
+      if (!arm.isWildcard && arm.resolvedVariantTag >= 0 &&
+          !coveredTags.insert(arm.resolvedVariantTag).second)
+        continue;
+      if (!exprDiverges(*arm.body)) {
+        auto armType = unwrapRef(arm.body->getResolvedType());
+        if (!armType || !armType->equals(*resultType)) {
+          logAndThrowError(
+              "Every reachable arm must produce the same owned type",
+              arm.body->getLocation());
+        }
+      }
+      if (arm.isWildcard) break;
+    }
+  };
+
   // Enum discriminants get variant patterns, payload bindings, and
   // exhaustiveness checking
   sun::TypePtr discType =
@@ -49,6 +70,7 @@ void SemanticAnalyzer::analyzeMatchExpr(MatchExprAST& matchExpr,
                             std::static_pointer_cast<sun::EnumType>(discType),
                             expectedType);
     matchExpr.setResolvedType(types_.inferType(matchExpr));
+    checkOwnedArmTypes();
     return;
   }
 
@@ -64,21 +86,41 @@ void SemanticAnalyzer::analyzeMatchExpr(MatchExprAST& matchExpr,
     }
     analyzeExpr(const_cast<ExprAST&>(*arm.body), expectedType);
   }
+  // Owned results need a value on every path; there is no empty resource
+  // that code generation can safely invent for an unmatched input.
+  auto checkOwnedCoverage = [&] {
+    if (!sun::typeMovesOnRead(matchExpr.getResolvedType())) return;
+    bool hasTrue = false;
+    bool hasFalse = false;
+    for (const auto& arm : matchExpr.getArms()) {
+      if (arm.isWildcard) return;
+      if (arm.pattern && arm.pattern->getType() == ASTNodeType::BOOL_LITERAL) {
+        if (static_cast<const BoolLiteralAST&>(*arm.pattern).getValue()) {
+          hasTrue = true;
+        } else {
+          hasFalse = true;
+        }
+      }
+    }
+    if (discType && discType->isBool() && hasTrue && hasFalse) return;
+    logAndThrowError(
+        "Match producing an owned value must cover every input; add a '_' arm",
+        matchExpr.getLocation());
+  };
   // If we have an expected type and all arms resolved to it, use it
+  bool allArmsMatch = expectedType != nullptr;
   if (expectedType) {
-    bool allArmsMatch = true;
     for (const auto& arm : matchExpr.getArms()) {
       if (arm.body->getResolvedType() != expectedType) {
         allArmsMatch = false;
         break;
       }
     }
-    if (allArmsMatch) {
-      matchExpr.setResolvedType(expectedType);
-      return;
-    }
   }
-  matchExpr.setResolvedType(types_.inferType(matchExpr));
+  matchExpr.setResolvedType(allArmsMatch ? expectedType
+                                         : types_.inferType(matchExpr));
+  checkOwnedCoverage();
+  checkOwnedArmTypes();
 }
 
 void SemanticAnalyzer::analyzeTernaryExpr(TernaryExprAST& ternary,

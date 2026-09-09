@@ -159,8 +159,9 @@ class ExprAST {
     // The resolved type should be checked by the caller to confirm it's a class
     // BLOCK is the value of a block expression — string interpolation lowers
     // to one — and is owned by nobody, so it transfers like any temporary.
+    // MATCH owns the selected arm's result and transfers it the same way.
     return t == ASTNodeType::CALL || t == ASTNodeType::GENERIC_CALL ||
-           t == ASTNodeType::BLOCK;
+           t == ASTNodeType::BLOCK || t == ASTNodeType::MATCH;
   }
 
   /// Returns true if this expression is an lvalue (can be assigned to,

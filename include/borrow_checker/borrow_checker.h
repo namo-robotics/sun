@@ -73,6 +73,10 @@ class BorrowChecker {
   void checkIfExpr(const IfExprAST& ifExpr);
   void checkTernaryExpr(const TernaryExprAST& ternary);
   void checkMatchExpr(const MatchExprAST& matchExpr);
+
+  /** Records ownership transfers through expressions, including blocks and
+   * parentheses. */
+  void consumeOwnedValue(const ExprAST& value);
   void checkWhileExpr(const WhileExprAST& whileExpr);
   void checkForExpr(const ForExprAST& forExpr);
   void checkForInExpr(const ForInExprAST& forInExpr);
@@ -307,10 +311,15 @@ class BorrowChecker {
   // past its death (issue #178, Rule 5's sub-frame gap).
   std::unordered_map<std::string, size_t> refHolderBounds_;
 
-  // Compound match-payload bindings currently in scope. They BORROW the
+  // Compound payload bindings from reference matches. They BORROW the
   // matched value's payload slot in place: moving them (var creation,
   // by-value argument, return, assignment source) is rejected.
   std::unordered_set<std::string> matchBorrowedBindings_;
+
+  // Discover payload moves before checking the match's final binding mode.
+  bool discoveringMatchMoves_ = false;
+  std::unordered_map<const MatchExprAST*, bool> matchConsumes_;
+  std::unordered_map<std::string, const MatchExprAST*> matchPayloadSources_;
 
   // Discriminant variables of enclosing match expressions: frozen (no
   // assignment, no move) while their arms borrow payloads.

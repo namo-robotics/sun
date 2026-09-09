@@ -1,16 +1,14 @@
 #pragma once
 
-// class_generator.h — Classes, interfaces, enums, and generic instantiation
+// class_generator.h — Classes, interfaces, and generic instantiation
 //
-// Everything that turns a type definition into IR:
+// Class and interface definitions become IR through:
 //
 //   classes     the struct layout, each method's signature and body, and the
 //               method closure ABI that gives every method its receiver
 //   interfaces  the vtables behind dynamic dispatch, and the fat pointer
 //               { data, vtable } a class becomes when it is used as one; an
 //               owning conversion moves the class into stable heap storage
-//   enums       the definition itself; the payload machinery lives in
-//               enums.cpp and the drop glue in scope_manager.cpp
 //   generics    each specialization semantic analysis asked for, emitted
 //               against the template's own definition scope
 //
@@ -68,7 +66,6 @@ class ClassGenerator {
 
   llvm::Value* codegen(const ClassDefinitionAST& expr);
   llvm::Value* codegen(const InterfaceDefinitionAST& expr);
-  llvm::Value* codegen(const EnumDefinitionAST& expr);
 
   // A class that arrived from precompiled bitcode: register its type and
   // emit only the generic specializations this program asked for.
@@ -257,8 +254,6 @@ class ClassGenerator {
   void debugDeclareParam(llvm::AllocaInst* alloca, const std::string& name,
                          const PrototypeAST& proto, unsigned userArgIdx,
                          unsigned argNoBase = 1);
-  llvm::Value* codegenEnumVariantAccess(sun::EnumType& enumType,
-                                        const sun::EnumVariant& variant);
   std::pair<llvm::Value*, sun::ClassType*> codegenObjectPtr(
       const ExprAST& object);
   llvm::Value* materializeMethodClosure(llvm::Value* fnPtr,

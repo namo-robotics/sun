@@ -182,11 +182,12 @@ TEST(MemorySafety_Drops_Enums, match_binding_borrows_payload_no_extra_drop) {
   EXPECT_EQ(value, 1);
 }
 
-TEST(MemorySafety_Drops_Enums, moving_out_of_match_binding_is_error) {
+TEST(MemorySafety_Drops_Enums, moving_out_of_borrowed_match_binding_is_error) {
   EXPECT_THROW(executeString(withPreamble(R"(
     function main() i32 {
       var h = Holder.Hold(Owner(1));
-      match h {
+      ref view = h;
+      match view {
         Holder.Hold(o) => {
           var stolen = o;
         },
@@ -198,12 +199,14 @@ TEST(MemorySafety_Drops_Enums, moving_out_of_match_binding_is_error) {
                std::exception);
 }
 
-TEST(MemorySafety_Drops_Enums, passing_match_binding_by_value_is_error) {
+TEST(MemorySafety_Drops_Enums,
+     passing_borrowed_match_binding_by_value_is_error) {
   EXPECT_THROW(executeString(withPreamble(R"(
     function consume(o: Owner) i32 { return o.get_id(); }
     function main() i32 {
       var h = Holder.Hold(Owner(1));
-      return match h {
+      ref view = h;
+      return match view {
         Holder.Hold(o) => consume(o),
         Holder.Nothing => 0
       };

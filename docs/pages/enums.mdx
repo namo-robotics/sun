@@ -201,20 +201,34 @@ rule throughout:
   exception unwinding through the frame), its live payload is dropped
   exactly once — the compiler synthesizes a per-enum drop routine that
   switches on the tag.
-- **Match bindings borrow.** A binding for a compound payload refers to the
-  payload in place for the duration of the arm; it can be read, called, and
-  passed to `ref` parameters, but not moved out (assigned to a variable,
-  passed by value, or returned), and the matched variable itself cannot be
-  reassigned or moved inside the arms. Scalar payload bindings are plain
-  copies. Moving a payload out of a match is a planned follow-up.
+- **Moving a payload consumes its enum.** If any reachable arm takes ownership
+  of a compound payload, the match consumes the owned enum and gives its
+  compound payloads to the selected arm's bindings. Bindings can move into a
+  result, another variable, or a by-value argument. Remaining payloads, including `_` positions, are
+  dropped when the arm exits. The original enum cannot be used again.
+- **Inspection borrows automatically.** If no reachable arm takes ownership
+  of a payload, the bindings borrow in place and the enum remains available.
+  Matching an explicit reference always borrows and rejects payload moves.
+  Scalar payloads are read by value.
 
 ```sun
 var maybe = Option.Some(String(alloc, "hello"));
-var len = match maybe {
-    Option.Some(s) => s.length(),   // borrows the String in place
-    Option.None => 0
+var text = match maybe {
+    Option.Some(s) => s,
+    Option.None => String(alloc, "fallback")
 };
-maybe = Option.None;                // drops the String
+// text now owns the string; maybe has been consumed.
+```
+
+To inspect without consuming:
+
+```sun
+function length(maybe: const ref Option<String>) i64 {
+    return match maybe {
+        Option.Some(s) => s.length(),
+        Option.None => 0
+    };
+}
 ```
 
 ## Generic Enums
