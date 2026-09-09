@@ -1,6 +1,6 @@
 // manifest_processor.h — Shared manifest handling for the driver, the
 // --emit-moon path and the LSP: locate the manifest block, resolve entry
-// paths (relative to the entrypoint's directory, then SUN_PATH), and split
+// paths through local, configured and installed directories, and split
 // the entries into .sun files, .moon imports and .proto schemas. Moon
 // entries with a url are fetched into the download cache (MoonCache) and
 // resolved to the cached file. Entries may reference path variables
@@ -37,8 +37,8 @@ class ManifestProcessor {
   static const ManifestAST* findManifest(const BlockExprAST& program);
 
   // Resolve a manifest path: absolute as-is, else relative to baseDir, else
-  // through the config's sunPath dirs, else SUN_PATH, else returned
-  // unchanged (errors surface later)
+  // through the config's sunPath dirs, --lib-path, SUN_PATH and installation
+  // directories, else returned unchanged (errors surface later)
   static std::string resolvePath(const std::string& path,
                                  const std::string& baseDir,
                                  const SunConfig* config = nullptr);

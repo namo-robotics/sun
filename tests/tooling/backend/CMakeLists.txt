@@ -3,4 +3,5 @@ target_sources(sun_tests PRIVATE
     test_debug.cpp
     test_debug_info.cpp
     test_depfile.cpp
+    test_moon_search_path.cpp
 )
