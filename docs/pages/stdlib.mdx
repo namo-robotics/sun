@@ -830,7 +830,12 @@ listener.bind_addr(any, 8080);
 `UdpSocket` sends and receives datagrams — no connection, one message per
 call. `bind` creates the socket, so it always comes first; binding port 0
 lets the OS pick a free port — right for a send-only socket — and
-`local_port()` reads the pick back.
+`local_port()` reads the pick back. Binds are exclusive by default: an
+occupied address throws an `Error` with the native `EADDRINUSE` code. A
+failed bind leaves the socket closed, so callers can retry another port.
+Pass `true` as the third argument, `socket.bind(any, port, true)`, to enable
+`SO_REUSEADDR` for shared listeners. Each socket sharing the address must
+opt in; ordinary unicast listeners should keep the exclusive default.
 
 ```sun
 using std;
@@ -862,6 +867,8 @@ Multicast is part of `UdpSocket`. Join a group on an interface (use
 sent to the group on its bound port:
 
 ```sun
+var socket = UdpSocket();
+socket.bind(ipv4_any(), 9000, true);
 var group = Ipv4Addr(239, 255, 0, 1);
 var iface = ipv4_any();
 socket.join_multicast(group, iface);

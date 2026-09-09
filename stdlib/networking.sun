@@ -541,15 +541,28 @@ public module std {
       this.close();
     }
 
-    // Allow rebinding the port immediately after a restart
-    public method enable_reuse_addr() void {
+    /** Allow this socket to share its address with other reuse-enabled sockets. */
+    public method enable_reuse_addr() void throws IError {
       var optval: i32 = 1;
-      unsafe { __setsockopt(this.fd, SOL_SOCKET, SO_REUSEADDR, _address_of<i32>(optval), 4); };
+      var result: i32 = unsafe {
+        __setsockopt(this.fd, SOL_SOCKET, SO_REUSEADDR, _address_of<i32>(optval), 4);
+      };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        throw Error(err_code, "failed to enable address reuse");
+      }
     }
 
-    // Create the datagram socket and bind it to addr:port. Port 0 asks the
-    // OS for a free port; read the choice back with local_port().
+    /** Bind exclusively to addr:port. Port zero asks the OS for a free port. */
     public method bind(addr: const ref Ipv4Addr, port: i32) void throws IError {
+      this.bind(addr, port, false);
+    }
+
+    /** Bind to addr:port, enabling SO_REUSEADDR only when reuse is true.
+     * Failed binds close the socket and throw an Error with the native errno.
+     */
+    public method bind(addr: const ref Ipv4Addr, port: i32, reuse: bool) void throws IError {
+      this.close();
       var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_DGRAM, 0); };
       if (sock_fd < 0) {
         var err_code: i32 = errno();
@@ -557,11 +570,19 @@ public module std {
       }
       this.fd = sock_fd;
       suppress_sigpipe(this.fd);
-      this.enable_reuse_addr();
+      if (reuse) {
+        try {
+          this.enable_reuse_addr();
+        } catch (e: IError) {
+          this.close();
+          throw e;
+        }
+      }
 
       var result: i32 = unsafe { __bind_ipv4(this.fd, addr.to_network_i32(), port); };
       if (result < 0) {
         var err_code: i32 = errno();
+        this.close();
         throw Error(err_code, "failed to bind socket");
       }
     }

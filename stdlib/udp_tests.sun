@@ -1,6 +1,5 @@
 // stdlib/udp_tests.sun - Tests for networking.sun (UdpSocket, Ipv4Addr).
-// Replaces the C++ suite Stdlib_Udp. Every socket binds port 0 and reads the
-// OS's pick back with local_port(), so parallel test runs never collide.
+// Tests use OS-assigned ports to avoid collisions with other test runs.
 
 using std;
 
@@ -28,6 +27,48 @@ public module std {
       receiver.close();
     }
 
+    test_function bind_is_exclusive_and_can_retry() {
+      var here = ipv4_loopback();
+      var owner = UdpSocket();
+      owner.bind(here, 0);
+      var port = owner.local_port();
+      var contender = UdpSocket();
+      var rejected = false;
+      try {
+        contender.bind(here, port);
+      } catch (e: IError) {
+        rejected = true;
+        std.test.assert_eq(e.code(), ADDRESS_IN_USE_ERRNO);
+      }
+      std.test.assert(rejected, "default bind should reject an occupied port");
+      std.test.assert(not contender.is_open(), "failed bind should close the socket");
+      contender.bind(here, 0);
+      std.test.assert(contender.local_port() != port, "retry should get a different port");
+      owner.close();
+      contender.bind(here, port, false);
+      std.test.assert_eq(contender.local_port(), port);
+    }
+
+    test_function bind_reuse_is_explicit() {
+      var group = Ipv4Addr(239, 255, 0, 1);
+      var first = UdpSocket();
+      first.bind(group, 0, true);
+      var port = first.local_port();
+      var second = UdpSocket();
+      second.bind(group, port, true);
+      std.test.assert_eq(second.local_port(), port);
+      var exclusive = UdpSocket();
+      var rejected = false;
+      try {
+        exclusive.bind(group, port, false);
+      } catch (e: IError) {
+        rejected = true;
+        std.test.assert_eq(e.code(), ADDRESS_IN_USE_ERRNO);
+      }
+      std.test.assert(rejected, "exclusive bind should reject a shared port");
+      std.test.assert(not exclusive.is_open(), "failed bind should close the socket");
+    }
+
     test_function recv_timeout_reports_would_block() {
       var alloc = make_heap_allocator();
       var here = ipv4_loopback();
@@ -50,7 +91,7 @@ public module std {
       var wildcard = ipv4_any();
       var group = Ipv4Addr(224, 0, 0, 251);
       var iface = ipv4_loopback();
-      socket.bind(wildcard, 0);
+      socket.bind(wildcard, 0, true);
       socket.join_multicast(group, iface);
       socket.set_multicast_ttl(1);
       socket.set_multicast_loop(true);
