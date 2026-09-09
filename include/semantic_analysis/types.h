@@ -134,6 +134,30 @@ class Type {
   bool isString() const;
 };
 
+// True if a read can honestly duplicate a value of this type. Scalars can:
+// primitives, pointers, functions. A class, payload enum, interface or array
+// value cannot: it has one owner, so reading one out of a borrow would hand
+// back a second value backed by the borrowed storage. Borrow it with `ref`
+// instead, or copy it explicitly with a clone method. Unbound type parameters
+// answer true; the specialization is checked with the concrete type in hand.
+inline bool typeCopiesByRead(const Type* type) {
+  return type && !type->isCompound();
+}
+
+inline bool typeCopiesByRead(const TypePtr& type) {
+  return typeCopiesByRead(type.get());
+}
+
+// True if reading a value of this type out of a place MOVES it: an owned
+// compound value. A borrow stays put and a scalar copies.
+inline bool typeMovesOnRead(const Type* type) {
+  return type && !type->isReference() && !typeCopiesByRead(type);
+}
+
+inline bool typeMovesOnRead(const TypePtr& type) {
+  return typeMovesOnRead(type.get());
+}
+
 // Something computed from a type parameter rather than the parameter itself.
 // `_return_type_of<F>` names a type that is only known once F is, so until
 // then it travels as the parameter F plus the projection to apply to it.
@@ -1384,6 +1408,18 @@ class ClassType : public Type {
           continue;
         }
         allExact = false;
+
+        // A borrowed scalar can be read into a value parameter, including
+        // numeric widening. Borrowed compound values must keep their owner.
+        if (argTypes[i]->isReference() &&
+            !method.paramTypes[i]->isReference() &&
+            typeCopiesByRead(method.paramTypes[i])) {
+          TypePtr valueType = unwrapRef(argTypes[i]);
+          if (method.paramTypes[i]->equals(*valueType) ||
+              isNumericWidenable(valueType, method.paramTypes[i])) {
+            continue;
+          }
+        }
 
         // A static_ptr argument narrows to a raw_ptr parameter of the same
         // pointee: the data pointer is passed. Never the other way around.
@@ -2733,30 +2769,6 @@ inline TypePtr eraseLifetimeNames(const TypePtr& type) {
                             rt->isMutable());
   }
   return type;
-}
-
-// True if a read can honestly duplicate a value of this type. Scalars can:
-// primitives, pointers, functions. A class, payload enum, interface or array
-// value cannot: it has one owner, so reading one out of a borrow would hand
-// back a second value backed by the borrowed storage. Borrow it with `ref`
-// instead, or copy it explicitly with a clone method. Unbound type parameters
-// answer true; the specialization is checked with the concrete type in hand.
-inline bool typeCopiesByRead(const Type* type) {
-  return type && !type->isCompound();
-}
-
-inline bool typeCopiesByRead(const TypePtr& type) {
-  return typeCopiesByRead(type.get());
-}
-
-// True if reading a value of this type out of a place MOVES it: an owned
-// compound value. A borrow stays put and a scalar copies.
-inline bool typeMovesOnRead(const Type* type) {
-  return type && !type->isReference() && !typeCopiesByRead(type);
-}
-
-inline bool typeMovesOnRead(const TypePtr& type) {
-  return typeMovesOnRead(type.get());
 }
 
 inline bool Type::isNumeric() const {
