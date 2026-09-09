@@ -115,6 +115,13 @@ std::string ManifestProcessor::resolvePath(const std::string& path,
   if (!resolved.empty()) {
     return resolved.string();
   }
+  // Bundle hashing needs the same installed dependencies as the parser.
+  for (const auto& dir : SunPath::systemInstallDirs()) {
+    auto candidate = dir / p;
+    if (std::filesystem::exists(candidate)) {
+      return candidate.lexically_normal().string();
+    }
+  }
   return path;
 }
 
