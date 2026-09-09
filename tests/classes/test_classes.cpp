@@ -1811,3 +1811,74 @@ TEST(Classes_FieldInitializers,
   )"),
             11);
 }
+
+TEST(Classes, borrowed_primitive_constructor_and_method_arguments) {
+  EXPECT_EQ(executeStringWithStdlib(R"(
+    using std;
+    class E {
+      var a: i64;
+      init(a: i64) { this.a = a; }
+      method add(a: i64) i64 { return this.a + a; }
+      method add(a: bool) i64 { return 100; }
+    }
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var v = Vec<i64>(alloc, 4);
+      v.push(7);
+      var e = E(v.get_unchecked(0));
+      return _convert<i32>(e.add(v.get_unchecked(0)));
+    }
+  )"),
+            14);
+}
+
+TEST(Classes, borrowed_primitive_widening_and_const_reads) {
+  EXPECT_EQ(executeString(R"(
+    class E<T> {
+      var a: T;
+      init(a: T) { this.a = a; }
+      method add(a: T) T { return this.a + a; }
+      method add(a: bool) T { return _convert<T>(100); }
+    }
+    function read(x: const ref i32) const ref i32 { return x; }
+    function main() i32 {
+      var x: i32 = 7;
+      var e = E<i64>(read(x));
+      return _convert<i32>(e.add(read(x)));
+    }
+  )"),
+            14);
+}
+
+TEST(Classes, borrowed_primitive_prefers_exact_reference_overloads) {
+  EXPECT_EQ(executeString(R"(
+    class E {
+      var a: i32;
+      init(a: ref i32) { this.a = 10; }
+      init(a: i32) { this.a = 100; }
+      method add(a: ref i32) i32 { return this.a + 1; }
+      method add(a: i32) i32 { return this.a + 100; }
+    }
+    function borrow(x: ref i32) ref i32 { return x; }
+    function main() i32 {
+      var x: i32 = 7;
+      var e = E(borrow(x));
+      return e.add(borrow(x));
+    }
+  )"),
+            11);
+}
+
+TEST(Classes, borrowed_class_constructor_argument_is_rejected) {
+  EXPECT_THROW(compileString(R"(
+    class Value { var a: i32; init() { this.a = 7; } }
+    class E { init(a: Value) {} }
+    function borrow(x: ref Value) ref Value { return x; }
+    function main() i32 {
+      var x = Value();
+      var e = E(borrow(x));
+      return 0;
+    }
+  )"),
+               SunError);
+}
