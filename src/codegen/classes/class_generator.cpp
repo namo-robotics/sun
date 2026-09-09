@@ -39,11 +39,6 @@ void ClassGenerator::debugDeclareParam(llvm::AllocaInst* alloca,
   gen_.debugDeclareParam(alloca, name, proto, userArgIdx, argNoBase);
 }
 
-llvm::Value* ClassGenerator::codegenEnumVariantAccess(
-    sun::EnumType& enumType, const sun::EnumVariant& variant) {
-  return gen_.codegenEnumVariantAccess(enumType, variant);
-}
-
 std::pair<llvm::Value*, sun::ClassType*> ClassGenerator::codegenObjectPtr(
     const ExprAST& object) {
   return gen_.codegenObjectPtr(object);

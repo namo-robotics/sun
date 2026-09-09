@@ -197,7 +197,8 @@ add_library(sun_lib
     src/codegen/scopes/scope_manager.cpp
     src/codegen/classes/class_generator.cpp
     src/codegen/classes/classes.cpp
-    src/codegen/classes/enums.cpp
+    src/codegen/enums/enum_generator.cpp
+    src/codegen/enums/drops.cpp
     src/codegen/classes/interfaces.cpp
     src/codegen/functions/function_generator.cpp
     src/codegen/functions/function_registry.cpp
@@ -317,6 +318,7 @@ target_precompile_headers(sun_lib PRIVATE
     include/codegen/support/struct_access.h
     include/codegen/scopes/scope_manager.h
     include/codegen/classes/class_generator.h
+    include/codegen/enums/enum_generator.h
     include/codegen/functions/function_generator.h
     include/codegen/functions/function_registry.h
     include/codegen/variables/variable_generator.h
@@ -409,34 +411,13 @@ if(NOT SKIP_STDLIB)
     set(TLS_ENTRYPOINT ${CMAKE_SOURCE_DIR}/tls/tls.sun)
     set(TLS_TEST_BIN ${CMAKE_BINARY_DIR}/tls_tests)
 
-    # Static OpenSSL archives for tls.moon (see the manifest's `archives:`),
-    # so programs using TLS need no -lssl/-lcrypto and no OpenSSL installed.
-    # Build them once with the platform's script; without them tls.moon is
-    # skipped rather than failing the build. Unlike the stdlib, tls.moon is
-    # built for the host only: a cross bundle would need that target's
-    # OpenSSL archives on this machine.
-    if(APPLE)
-        set(SUN_OPENSSL_DEFAULT_DIR ${CMAKE_SOURCE_DIR}/third_party/openssl/arm64-apple-darwin)
-        set(SUN_OPENSSL_HINT "Run ./scripts/build-openssl-macos.sh to enable TLS support.")
-    else()
-        set(SUN_OPENSSL_DEFAULT_DIR ${CMAKE_SOURCE_DIR}/third_party/openssl/x86_64-linux-musl)
-        set(SUN_OPENSSL_HINT "Run ./scripts/fetch-openssl.sh to enable TLS support.")
-    endif()
-    set(SUN_OPENSSL_DIR ${SUN_OPENSSL_DEFAULT_DIR}
-        CACHE PATH "Directory holding the static libssl.a/libcrypto.a for tls.moon")
-    set(SUN_HAVE_OPENSSL FALSE)
-    if(EXISTS ${SUN_OPENSSL_DIR}/libssl.a AND EXISTS ${SUN_OPENSSL_DIR}/libcrypto.a)
-        set(SUN_HAVE_OPENSSL TRUE)
-    endif()
-
     # The canonical build drives everything from sun-config.json: one
     # `sun -c sun-config.json` builds stdlib.moon, the stdlib test binary,
     # tls.moon and the tls test binary, exactly as a developer running the
     # same command would get (config entrypoints resolve relative to the
-    # config's folder, and the config cannot skip its tls entrypoint). An
-    # out-of-tree build dir or missing OpenSSL archives fall back to explicit
+    # config's folder). An out-of-tree build directory uses explicit
     # per-artifact commands.
-    if(SUN_HAVE_OPENSSL AND CMAKE_BINARY_DIR STREQUAL ${CMAKE_SOURCE_DIR}/build)
+    if(CMAKE_BINARY_DIR STREQUAL ${CMAKE_SOURCE_DIR}/build)
         add_custom_command(
             OUTPUT ${STDLIB_MOON} ${STDLIB_TEST_BIN}_test ${TLS_MOON} ${TLS_TEST_BIN}_test
             COMMAND $<TARGET_FILE:sun> -c ${SUN_BUNDLE_FLAGS}
@@ -483,44 +464,38 @@ if(NOT SKIP_STDLIB)
         )
         add_custom_target(stdlib_sun_tests ALL DEPENDS ${STDLIB_TEST_BIN}_test)
 
-        if(SUN_HAVE_OPENSSL)
-            # --lib-path points at this build directory, which in this
-            # branch need not be <source>/build.
-            add_custom_command(
-                OUTPUT ${TLS_MOON}
-                COMMAND $<TARGET_FILE:sun> --emit-moon ${SUN_BUNDLE_FLAGS}
-                        --lib-path ${CMAKE_BINARY_DIR}
-                        --depfile ${TLS_MOON}.d
-                        -o ${TLS_MOON} ${TLS_ENTRYPOINT}
-                DEPENDS sun ${STDLIB_MOON} ${TLS_ENTRYPOINT}
-                DEPFILE ${TLS_MOON}.d
-                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-                COMMENT "Building precompiled tls.moon (with static OpenSSL)"
-                COMMAND_EXPAND_LISTS
-                VERBATIM
-            )
-            add_custom_target(tls_moon ALL DEPENDS ${TLS_MOON})
+        # --lib-path points at this build directory, which in this
+        # branch need not be <source>/build.
+        add_custom_command(
+            OUTPUT ${TLS_MOON}
+            COMMAND $<TARGET_FILE:sun> --emit-moon ${SUN_BUNDLE_FLAGS}
+                    --lib-path ${CMAKE_BINARY_DIR}
+                    --depfile ${TLS_MOON}.d
+                    -o ${TLS_MOON} ${TLS_ENTRYPOINT}
+            DEPENDS sun ${STDLIB_MOON} ${TLS_ENTRYPOINT}
+            DEPFILE ${TLS_MOON}.d
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            COMMENT "Building precompiled tls.moon (with static OpenSSL)"
+            COMMAND_EXPAND_LISTS
+            VERBATIM
+        )
+        add_custom_target(tls_moon ALL DEPENDS ${TLS_MOON})
 
-            # A library with tests compiles to just its test binary.
-            add_custom_command(
-                OUTPUT ${TLS_TEST_BIN}_test
-                COMMAND $<TARGET_FILE:sun> -c ${SUN_BUNDLE_FLAGS}
-                        --lib-path ${CMAKE_BINARY_DIR}
-                        --depfile ${TLS_TEST_BIN}_test.d
-                        -o ${TLS_TEST_BIN} ${TLS_ENTRYPOINT}
-                DEPENDS sun ${STDLIB_MOON} ${TLS_ENTRYPOINT}
-                DEPFILE ${TLS_TEST_BIN}_test.d
-                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-                COMMENT "Building tls Sun test binary"
-                COMMAND_EXPAND_LISTS
-                VERBATIM
-            )
-            add_custom_target(tls_sun_tests ALL DEPENDS ${TLS_TEST_BIN}_test)
-        else()
-            message(STATUS
-                "tls.moon skipped: no static OpenSSL in ${SUN_OPENSSL_DIR}. "
-                "${SUN_OPENSSL_HINT}")
-        endif()
+        # A library with tests compiles to just its test binary.
+        add_custom_command(
+            OUTPUT ${TLS_TEST_BIN}_test
+            COMMAND $<TARGET_FILE:sun> -c ${SUN_BUNDLE_FLAGS}
+                    --lib-path ${CMAKE_BINARY_DIR}
+                    --depfile ${TLS_TEST_BIN}_test.d
+                    -o ${TLS_TEST_BIN} ${TLS_ENTRYPOINT}
+            DEPENDS sun ${STDLIB_MOON} ${TLS_ENTRYPOINT}
+            DEPFILE ${TLS_TEST_BIN}_test.d
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            COMMENT "Building tls Sun test binary"
+            COMMAND_EXPAND_LISTS
+            VERBATIM
+        )
+        add_custom_target(tls_sun_tests ALL DEPENDS ${TLS_TEST_BIN}_test)
     endif()
 
     # Cross-compiled stdlib bundles live in per-target directories under the

@@ -13,7 +13,7 @@ Value* CodegenVisitor::codegen(const MatchExprAST& expr) {
   sun::TypePtr discType =
       sun::unwrapRef(expr.getDiscriminant()->getResolvedType());
   if (auto* enumType = sun::tryGetType<sun::EnumType>(discType)) {
-    return codegenEnumMatch(expr, *enumType);
+    return enums.codegenMatch(expr, *enumType);
   }
 
   // Generate code for the discriminant (value being matched)
@@ -31,6 +31,26 @@ Value* CodegenVisitor::codegen(const MatchExprAST& expr) {
     return nullptr;
   }
 
+  const auto matchType = expr.getResolvedType();
+  AllocaInst* resultStorage = nullptr;
+  if (sun::typeMovesOnRead(matchType)) {
+    resultStorage = createEntryBlockAlloca(TheFunction, "match.result",
+                                           typeResolver.resolve(matchType));
+  }
+  auto emitBody = [&](const MatchArm& arm) {
+    ScopeManager::BranchArm branchArm(scopes);
+    scopes.push();
+    Value* value = codegen(*arm.body);
+    if (!ctx.builder->GetInsertBlock()->getTerminator() && resultStorage &&
+        value && !value->getType()->isVoidTy()) {
+      ctx.builder->CreateStore(applyMoveSemantics(value, matchType),
+                               resultStorage);
+      value = resultStorage;
+    }
+    scopes.pop();
+    return value;
+  };
+
   // Create merge block (where all arms converge)
   BasicBlock* MergeBB =
       BasicBlock::Create(ctx.getContext(), "match.end", TheFunction);
@@ -46,11 +66,7 @@ Value* CodegenVisitor::codegen(const MatchExprAST& expr) {
     if (arm.isWildcard) {
       // Wildcard arm: always matches, no condition needed
       // Just generate the body and branch to merge
-      Value* bodyVal = nullptr;
-      {
-        ScopeManager::BranchArm branchArm(scopes);
-        bodyVal = codegen(*arm.body);
-      }
+      Value* bodyVal = emitBody(arm);
 
       // Check if this block was terminated (e.g., by return)
       bool terminated =
@@ -130,15 +146,15 @@ Value* CodegenVisitor::codegen(const MatchExprAST& expr) {
     }
 
     // Branch: if pattern matches go to ArmBB, else go to NextBB
-    ctx.builder->CreateCondBr(cmp, ArmBB, NextBB);
+    if (isLast && resultStorage) {
+      ctx.builder->CreateBr(ArmBB);
+    } else {
+      ctx.builder->CreateCondBr(cmp, ArmBB, NextBB);
+    }
 
     // Generate arm body
     ctx.builder->SetInsertPoint(ArmBB);
-    Value* bodyVal = nullptr;
-    {
-      ScopeManager::BranchArm branchArm(scopes);
-      bodyVal = codegen(*arm.body);
-    }
+    Value* bodyVal = emitBody(arm);
 
     // Check if this block was terminated (e.g., by return)
     bool terminated = ctx.builder->GetInsertBlock()->getTerminator() != nullptr;
@@ -166,6 +182,11 @@ Value* CodegenVisitor::codegen(const MatchExprAST& expr) {
     // But MergeBB may still have incoming edges from failed matches
     // Return a dummy value
     return ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
+  }
+
+  if (resultStorage) {
+    scopes.trackClassAllocation(resultStorage, "match.result", matchType);
+    return resultStorage;
   }
 
   // If only one arm produced a value, return it directly

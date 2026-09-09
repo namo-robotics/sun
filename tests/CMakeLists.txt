@@ -63,15 +63,10 @@ if(NOT SKIP_STDLIB)
              COMMAND ${STDLIB_TEST_BIN}_test --test-sequential
              WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
-    # The tls bundle's Sun test suite (tls/*_tests.sun), built the same way
-    # when the static OpenSSL archives are present. Sequential too: the
-    # handshake tests point SSL_CERT_FILE, a process-wide setting, at a
-    # throwaway certificate.
-    if(SUN_HAVE_OPENSSL)
-        add_test(NAME tls_sun_tests
-                 COMMAND ${TLS_TEST_BIN}_test --test-sequential
-                 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-    endif()
+    # TLS tests run sequentially because certificate tests change SSL_CERT_FILE.
+    add_test(NAME tls_sun_tests
+             COMMAND ${TLS_TEST_BIN}_test --test-sequential
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endif()
 
 # Shared library for the C FFI tests. Its symbols are deliberately absent

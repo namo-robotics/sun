@@ -8,7 +8,7 @@ specializations have been recorded for it to emit as ordinary non-generic code.
 ## Structure
 
 `CodegenVisitor` (`codegen_visitor.h`) walks the AST and dispatches. It does
-little emitting of its own: nine components do that work, each with its own
+little emitting of its own: its components do that work, each with its own
 header under `include/codegen/` and each owning the state it needs.
 
 They all share one `CodegenState` by reference — the module, the type registry,
@@ -21,7 +21,8 @@ This is the same shape the semantic analyzer uses with `SemanticContext`.
 | `CodegenState` | The module, type registry, type resolver, DWARF, current frame |
 | `ScopeManager` | The scope stack, and every drop it has to emit |
 | `FunctionRegistry` | Calling conventions, where each function came from, name lookup |
-| `ClassGenerator` | Classes, interfaces, enums, generic instantiation, vtables |
+| `ClassGenerator` | Classes, interfaces, generic instantiation, vtables |
+| `EnumGenerator` | Enum definitions, variants, matching, payload cleanup |
 | `FunctionGenerator` | Functions, lambdas, closures, returns |
 | `VariableGenerator` | Variables, lvalues, globals |
 | `LoopGenerator` | Loops, and the jumps out of them |
@@ -81,7 +82,8 @@ holding both its header and the sources that implement it.
 |--------|-------|
 | *(top level)* | `codegen_visitor`, `codegen_state`, `llvm_type_resolver`, `debug_info_builder` |
 | `scopes/` | The scope stack and the drop code it emits |
-| `classes/` | Class and interface definitions, members, method bodies, enums, vtables |
+| `classes/` | Class and interface definitions, members, method bodies, vtables |
+| `enums/` | Enum definitions, variant construction and access, matching, payload cleanup |
 | `functions/` | Functions, lambdas, closures, returns, the function registry |
 | `variables/` | Declarations, loads, assignments, lvalues, global initialization |
 | `expressions/` | Calls, arrays and indexing, conditionals, match, blocks |
@@ -102,7 +104,8 @@ are included by `codegen_visitor.h`.
    or on `CodegenVisitor` if it belongs to none.
 3. Update the `codegenExpression()` dispatch switch to route to it.
 
-A component that emits sub-expressions declares two forwarders,
+A component that forwards sub-expression emission through its own `codegen`
+overloads declares two forwarders,
 `codegen(const ExprAST&)` and `codegen(const BlockExprAST&)`. The block overload
 is not optional: without it a block binds to the `ExprAST` one, which attaches an
 expression debug location and changes the DWARF output. A deleted template

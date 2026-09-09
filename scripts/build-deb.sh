@@ -81,8 +81,7 @@ sun (${full_version}) unstable; urgency=medium
 EOF
 }
 
-# tls.moon embeds static OpenSSL; without the archives CMake skips the bundle
-# and the package would ship no TLS support.
+# Fetch the static OpenSSL archives required to build tls.moon.
 ensure_openssl() {
     if [ -f third_party/openssl/x86_64-linux-musl/libssl.a ] && \
        [ -f third_party/openssl/x86_64-linux-musl/libcrypto.a ]; then

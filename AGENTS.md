@@ -39,3 +39,7 @@ A file for guiding coding agents.
 ## Issues and PR Guidelinese
 
 - Never create PRs or issues unless specifically asked by the user.
+
+## Roadmap
+
+- Roadmap items that are entirely completed should be removed from the roadmap doc.

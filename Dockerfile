@@ -17,6 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Common LLVM dev dependencies
     libzstd-dev zlib1g-dev libxml2-dev libedit-dev libncurses-dev \
     libcurl4-openssl-dev libpfm4-dev libdw-dev libcapstone-dev \
+    # TLS tests generate certificates and run a local OpenSSL server.
+    openssl ca-certificates \
     # Quality-of-life tools
     gdb ccache vim less htop wget curl unzip \
     # Profilers. valgrind (with callgrind_annotate) works unprivileged and

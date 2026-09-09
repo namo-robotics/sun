@@ -736,7 +736,7 @@ Value* CodegenVisitor::codegenMethodCall(const CallExprAST& expr,
   if (auto* enumType = sun::tryGetType<sun::EnumType>(objectType)) {
     const auto* variant = enumType->getVariant(methodName);
     if (variant && variant->hasPayload()) {
-      return codegenEnumVariantConstruction(expr, *enumType, *variant);
+      return enums.codegenVariantConstruction(expr, *enumType, *variant);
     }
     logAndThrowError("Variant '" + methodName + "' of enum '" +
                      enumType->getDisplayName() + "' carries no payload");

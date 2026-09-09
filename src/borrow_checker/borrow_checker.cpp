@@ -18,6 +18,9 @@ BorrowChecker::BorrowChecker() {}
 
 std::vector<BorrowError> BorrowChecker::check(const BlockExprAST& program) {
   errors_.clear();
+  matchConsumes_.clear();
+  matchPayloadSources_.clear();
+  discoveringMatchMoves_ = false;
   state_.clear();
   currentScope_ = 0;
   currentFunction_.clear();
@@ -97,6 +100,15 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
     case ASTNodeType::BLOCK:
       checkBlockExpr(static_cast<const BlockExprAST&>(expr));
       break;
+
+    case ASTNodeType::THROW: {
+      const auto& thrown = static_cast<const ThrowExprAST&>(expr);
+      if (thrown.hasErrorExpr()) {
+        checkExpr(thrown.getErrorExpr());
+        consumeOwnedValue(thrown.getErrorExpr());
+      }
+      break;
+    }
 
     case ASTNodeType::RETURN:
       checkReturnStmt(static_cast<const ReturnExprAST&>(expr));
@@ -213,7 +225,6 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
     case ASTNodeType::INTERFACE_DEFINITION:
     case ASTNodeType::ENUM_DEFINITION:
     case ASTNodeType::PACK_EXPANSION:  // only in unexpanded generic templates
-    case ASTNodeType::THROW:
     case ASTNodeType::BREAK_STMT:
     case ASTNodeType::CONTINUE_STMT:
       break;
@@ -286,6 +297,7 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
     if (valueType && !valueType->isReference()) {
       checkBorrowBinding(var.getName(), *var.getValue(),
                          isMutableRef(declaredType), var.getLocation());
+      matchPayloadSources_.erase(var.getName());
       return;
     }
     // The initializer is itself a ref: a call handing back a borrow of its
@@ -302,6 +314,7 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
     } else if (init->getType() == ASTNodeType::VARIABLE_REFERENCE) {
       checkBorrowBinding(var.getName(), *init, isMutableRef(declaredType),
                          var.getLocation());
+      matchPayloadSources_.erase(var.getName());
       return;
     }
   }
@@ -332,6 +345,8 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
     }
   }
 
+  matchPayloadSources_.erase(var.getName());
+
   // Check for storing a reference with local lifetime (from call with temp
   // args) This catches: var r = foo(ref Temp()); where foo returns ref
   if (var.getValue()) {
@@ -356,6 +371,7 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
 void BorrowChecker::checkReferenceCreation(const ReferenceCreationAST& ref) {
   checkBorrowBinding(ref.getName(), *ref.getTarget(), ref.isMutable(),
                      ref.getLocation());
+  matchPayloadSources_.erase(ref.getName());
 }
 
 // Borrowing a place that was moved out of: the field itself, or the whole
@@ -974,19 +990,58 @@ void BorrowChecker::checkTernaryExpr(const TernaryExprAST& ternary) {
   exitScope();
 }
 
-void BorrowChecker::checkMatchExpr(const MatchExprAST& matchExpr) {
-  // Check discriminant expression
-  if (matchExpr.getDiscriminant()) {
-    checkExpr(*matchExpr.getDiscriminant());
+void BorrowChecker::consumeOwnedValue(const ExprAST& value) {
+  if (!typeMovesOnRead(value.getResolvedType())) return;
+  value.setMoved(true);
+  if (value.getType() == ASTNodeType::PAREN_EXPR) {
+    consumeOwnedValue(*static_cast<const ParenExprAST&>(value).getInner());
+  } else if (value.getType() == ASTNodeType::BLOCK) {
+    const auto& block = static_cast<const BlockExprAST&>(value);
+    if (block.producesValue() && block.getLastExpr()) {
+      consumeOwnedValue(*block.getLastExpr());
+    }
+  } else if (value.getType() == ASTNodeType::VARIABLE_REFERENCE) {
+    const auto& ref = static_cast<const VariableReferenceAST&>(value);
+    if (checkMoveAllowed(ref.getName(), ref.getLocation()) &&
+        checkFieldsIntact(ref.getName(), ref.getLocation())) {
+      recordMove(ref.getName(), ref.getLocation());
+      clearFieldPaths(ref.getName());
+    }
+  } else {
+    noteFieldMove(value);
   }
+}
+
+void BorrowChecker::checkMatchExpr(const MatchExprAST& matchExpr) {
+  const auto& discriminant = *matchExpr.getDiscriminant();
+  checkExpr(discriminant);
+
+  const auto discType = discriminant.getResolvedType();
+  const bool canConsume = discType && discType->isEnum();
+  if (canConsume && !discoveringMatchMoves_ &&
+      !matchConsumes_.count(&matchExpr)) {
+    // A discovery pass records transfers from bindings, including nested
+    // matches. Its provisional loans and errors do not affect validation.
+    BorrowChecker discovery = *this;
+    discovery.discoveringMatchMoves_ = true;
+    discovery.checkMatchExpr(matchExpr);
+    matchConsumes_.insert(discovery.matchConsumes_.begin(),
+                          discovery.matchConsumes_.end());
+  }
+  const bool consuming =
+      canConsume && (discoveringMatchMoves_ || matchConsumes_[&matchExpr]);
+  const auto discLifetime = inferExprLifetime(discriminant);
+  discriminant.setMoved(false);
+  if (consuming && !discoveringMatchMoves_) {
+    consumeOwnedValue(discriminant);
+  }
+  if (discoveringMatchMoves_) matchConsumes_.try_emplace(&matchExpr, false);
 
   // A named discriminant is frozen for the whole match: its payloads may be
   // borrowed by arm bindings, so it must not be reassigned or moved.
-  const std::string* discName = nullptr;
-  if (matchExpr.getDiscriminant()) {
-    discName = getBaseVariableName(*matchExpr.getDiscriminant());
-  }
-  bool discNewlyFrozen = discName && !frozenDiscriminants_.count(*discName);
+  const std::string* discName = getBaseVariableName(discriminant);
+  bool discNewlyFrozen =
+      !consuming && discName && !frozenDiscriminants_.count(*discName);
   if (discNewlyFrozen) frozenDiscriminants_.insert(*discName);
 
   // Each arm is checked in its own scope against the SAME pre-match move
@@ -994,45 +1049,83 @@ void BorrowChecker::checkMatchExpr(const MatchExprAST& matchExpr) {
   // any arm are unioned afterwards, conservatively.
   auto movedBefore = movedVariables_;
   auto movedAfter = movedVariables_;
+  std::set<int> coveredTags;
+  bool sawWildcard = false;
   for (const auto& arm : matchExpr.getArms()) {
+    if (sawWildcard) break;
+    sawWildcard = arm.isWildcard;
+    if (!arm.isWildcard && arm.resolvedVariantTag >= 0 &&
+        !coveredTags.insert(arm.resolvedVariantTag).second)
+      continue;
     movedVariables_ = movedBefore;
     enterScope();
     if (arm.pattern) {
       checkExpr(*arm.pattern);
     }
-    // Compound payload bindings borrow the payload slot in place and can
-    // never be moved out; scalar bindings are plain copies. A borrowed
+    // Owned matches give each binding its payload. Reference matches lend
+    // compound payloads in place; scalar bindings are plain values. A borrowed
     // binding lives as long as the matched value does, so a ref derived
     // from it (e.g. `items.borrow(i)`) may be returned when the
     // discriminant is a parameter or `this`.
-    std::vector<std::string> armBorrows;
+    auto payloadSourcesBefore = matchPayloadSources_;
+    auto borrowsBefore = matchBorrowedBindings_;
+    auto refsBefore = refVariables_;
+    auto paramsBefore = paramLifetimes_;
     std::vector<std::pair<std::string, std::optional<Lifetime>>> savedLifetimes;
     for (const auto& binding : arm.bindings) {
       if (binding.isWildcard) continue;
+      matchPayloadSources_.erase(binding.name);
+      if (canConsume && discoveringMatchMoves_) {
+        matchPayloadSources_[binding.name] = &matchExpr;
+      }
+      matchBorrowedBindings_.erase(binding.name);
+      refVariables_.erase(binding.name);
+      paramLifetimes_.erase(binding.name);
+      savedLifetimes.emplace_back(binding.name,
+                                  state_.getLifetime(binding.name));
+      state_.setLifetime(binding.name,
+                         Lifetime::local(binding.name, currentScope_));
       // A reference payload is an address the enum borrowed from elsewhere,
       // so the binding does not live and die with the matched value.
       if (binding.resolvedType && binding.resolvedType->isReference()) {
-        savedLifetimes.emplace_back(binding.name,
-                                    state_.getLifetime(binding.name));
         state_.setLifetime(binding.name, Lifetime::static_());
         continue;
       }
-      if (binding.resolvedType && binding.resolvedType->isCompound()) {
-        if (matchBorrowedBindings_.insert(binding.name).second) {
-          armBorrows.push_back(binding.name);
-        }
-        if (matchExpr.getDiscriminant()) {
-          savedLifetimes.emplace_back(binding.name,
-                                      state_.getLifetime(binding.name));
-          state_.setLifetime(binding.name,
-                             inferExprLifetime(*matchExpr.getDiscriminant()));
-        }
+      movedVariables_.erase(binding.name);
+      clearFieldPaths(binding.name);
+      noteLoopLocal(binding.name);
+      if (!consuming && binding.resolvedType &&
+          binding.resolvedType->isCompound()) {
+        matchBorrowedBindings_.insert(binding.name);
+        state_.setLifetime(binding.name, discLifetime);
       }
     }
     if (arm.body) {
       checkExpr(*arm.body);
+      if (!exprDiverges(*arm.body) &&
+          typeMovesOnRead(matchExpr.getResolvedType())) {
+        if (arm.body->getResolvedType()->isReference()) {
+          reportError("cannot move a borrowed value into a match result",
+                      arm.body->getLocation());
+        } else {
+          consumeOwnedValue(*arm.body);
+        }
+      }
     }
-    for (const auto& name : armBorrows) matchBorrowedBindings_.erase(name);
+    for (const auto& binding : arm.bindings) {
+      if (binding.isWildcard) continue;
+      movedVariables_.erase(binding.name);
+      clearFieldPaths(binding.name);
+      for (const auto& moved : movedBefore) {
+        if (moved == binding.name || moved.rfind(binding.name + ".", 0) == 0) {
+          movedVariables_.insert(moved);
+        }
+      }
+    }
+    matchPayloadSources_ = std::move(payloadSourcesBefore);
+    matchBorrowedBindings_ = std::move(borrowsBefore);
+    refVariables_ = std::move(refsBefore);
+    paramLifetimes_ = std::move(paramsBefore);
     for (const auto& [name, previous] : savedLifetimes) {
       if (previous) {
         state_.setLifetime(name, *previous);
@@ -1050,11 +1143,13 @@ void BorrowChecker::checkMatchExpr(const MatchExprAST& matchExpr) {
   movedVariables_ = std::move(movedAfter);
 
   if (discNewlyFrozen) frozenDiscriminants_.erase(*discName);
+  if (discoveringMatchMoves_ && canConsume && matchConsumes_[&matchExpr]) {
+    consumeOwnedValue(discriminant);
+  }
 }
 
-// Moving out of a match binding would take ownership of a payload the enum
-// still owns (double drop); moving/reassigning a frozen discriminant would
-// invalidate borrows held by its arms.
+// Borrowed match bindings cannot transfer ownership. Moving or reassigning
+// a frozen discriminant would invalidate the payloads its arms borrow.
 bool BorrowChecker::checkMoveAllowed(const std::string& name,
                                      const Position& pos) {
   if (matchBorrowedBindings_.count(name)) {
@@ -1119,6 +1214,8 @@ void BorrowChecker::noteFieldMove(const ExprAST& value) {
   // A plain variable move is recorded by the caller; only field paths here
   if (path.empty() || path.find('.') == std::string::npos) return;
 
+  const auto base = path.substr(0, path.find('.'));
+  if (!checkMoveAllowed(base, value.getLocation())) return;
   recordMove(path, value.getLocation());
   clearFieldPaths(path);
 }
@@ -1288,6 +1385,11 @@ bool BorrowChecker::holderPointsIntoFrame(const ExprAST& value) const {
 // rejected; a loan on the base variable covers its fields too.
 void BorrowChecker::recordMove(const std::string& place, const Position& pos) {
   std::string base = place.substr(0, place.find('.'));
+  if (discoveringMatchMoves_) {
+    auto payload = matchPayloadSources_.find(base);
+    if (payload != matchPayloadSources_.end())
+      matchConsumes_[payload->second] = true;
+  }
   auto loans = state_.getActiveLoans(base);
   if (!loans.empty()) {
     std::string why =
@@ -1482,6 +1584,10 @@ void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
         pos);
   }
   if (typeMovesOnRead(retType) && !currentFunctionReturnsRef_) {
+    if (value->getType() == ASTNodeType::PAREN_EXPR) {
+      consumeOwnedValue(*value);
+      return;
+    }
     // Mark temporaries as moved (ownership transferred to caller)
     if (value->isTemporary()) {
       const_cast<ExprAST*>(value)->setMoved(true);
@@ -2423,6 +2529,8 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
   // Save the enclosing function's checking state: exitFunctionScope()'s
   // blanket clear would otherwise wipe it for every lambda literal analyzed
   // mid-function
+  auto savedMatchPayloadSources = std::move(matchPayloadSources_);
+  matchPayloadSources_.clear();
   auto savedRefVariables = refVariables_;
   auto savedMovedVariables = movedVariables_;
   auto savedFrameBoundVars = frameBoundVars_;
@@ -2504,6 +2612,7 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
   exitFunctionScope();
 
   // Restore the enclosing function's state
+  matchPayloadSources_ = std::move(savedMatchPayloadSources);
   refVariables_ = std::move(savedRefVariables);
   movedVariables_ = std::move(savedMovedVariables);
   frameBoundVars_ = std::move(savedFrameBoundVars);
@@ -2983,6 +3092,9 @@ Lifetime BorrowChecker::inferExprLifetime(const ExprAST& expr) {
         if (targetLt) {
           return *targetLt;
         }
+        if (target == "this") return Lifetime::param("this");
+        auto param = paramLifetimes_.find(target);
+        if (param != paramLifetimes_.end()) return param->second;
         // Fall back to inferring from the target name
         if (target.substr(0, 6) == "param:") {
           return Lifetime::param(target.substr(6));

@@ -34,8 +34,8 @@
 		"CCACHE_SLOPPINESS": "pch_defines,time_macros",
 		"CTEST_PARALLEL_LEVEL": "8"
 	},
-	// Named volumes are created root-owned; hand them to the ubuntu user.
-	"postCreateCommand": "sudo chown -R ubuntu:ubuntu /home/ubuntu/.cache/ccache /home/ubuntu/.claude",
+	// Fix volume ownership and fetch TLS archives into the mounted workspace.
+	"postCreateCommand": "sudo chown -R ubuntu:ubuntu /home/ubuntu/.cache/ccache /home/ubuntu/.claude && if [ ! -f third_party/openssl/x86_64-linux-musl/libssl.a ] || [ ! -f third_party/openssl/x86_64-linux-musl/libcrypto.a ]; then ./scripts/fetch-openssl.sh; fi",
 	"postAttachCommand": "bash",
 	"features": {
 		"ghcr.io/devcontainers/features/node:1": {

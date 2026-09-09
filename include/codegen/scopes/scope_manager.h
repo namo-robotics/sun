@@ -297,20 +297,10 @@ class ScopeManager {
                         const std::string& baseName,
                         llvm::FunctionCallee freeFunc);
 
-  // Get or emit the synthesized drop function for a payload enum with owning
-  // payloads: `void __sun_enum_drop$<Enum>(ptr storage)` switches on the tag,
-  // drops each owning payload, then poisons the tag so a second drop is a
-  // no-op. Returns nullptr when the enum needs no drop code.
-  llvm::Function* getOrCreateEnumDropFunction(sun::EnumType& enumType);
-
   // Drops the concrete owner held by an interface fat pointer, then clears
   // both fields so a later drop is a no-op.
   void emitInterfaceDrop(sun::InterfaceType& interfaceType,
                          llvm::Value* storagePtr);
-
-  // Emit a drop of the payload-enum storage at `storagePtr` (no-op when the
-  // enum needs no drop code)
-  void emitEnumDrop(sun::EnumType& enumType, llvm::Value* storagePtr);
 
   // Drop every element of a sized array's inline storage
   void emitArrayDrop(sun::ArrayType& arrayType, llvm::Value* storagePtr,
