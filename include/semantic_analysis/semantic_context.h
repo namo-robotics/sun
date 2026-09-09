@@ -281,11 +281,12 @@ class SemanticContext : public AccessContext {
                                       const FunctionInfo &info);
 
   /**
-   * Look up a function by name and exact argument types. Returns nullopt when
-   * no overload matches.
+   * Select an overload by preferred argument types, then by their alternatives.
+   * Returns nullopt when no overload matches.
    */
   std::optional<FunctionInfo> lookupFunction(
-      const std::string &name, const std::vector<sun::TypePtr> &argTypes) const;
+      const std::string &name, const std::vector<FunctionArgumentType> &argTypes,
+      std::optional<Position> loc = std::nullopt) const;
 
   /** Every overload declared under the given name. */
   std::vector<FunctionInfo> getAllFunctions(const std::string &name) const;

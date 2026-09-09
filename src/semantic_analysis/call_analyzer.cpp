@@ -40,6 +40,29 @@ std::vector<sun::TypePtr> resolvedTypesOf(
   return types;
 }
 
+// Precompute contextual types for each unsuffixed integer argument.
+std::vector<FunctionArgumentType> functionArgumentTypes(
+    const std::vector<std::unique_ptr<ExprAST>>& args) {
+  std::vector<FunctionArgumentType> types(args.size());
+  for (size_t i = 0; i < args.size(); ++i) {
+    types[i].preferred = args[i]->getResolvedType();
+    if (args[i]->getType() != ASTNodeType::NUMBER) continue;
+    const auto& number = static_cast<const NumberExprAST&>(*args[i]);
+    if (!number.isInteger() || number.hasSuffix()) continue;
+    for (const auto& type : {sun::Types::Int8(), sun::Types::Int16(),
+                             sun::Types::Int32(), sun::Types::Int64(),
+                             sun::Types::UInt8(), sun::Types::UInt16(),
+                             sun::Types::UInt32(), sun::Types::UInt64(),
+                             sun::Types::Bool()}) {
+      if (sun::rules::literalFitsInType(number.getMagnitude(),
+                                        number.isNegative(), type->getKind())) {
+        types[i].alternatives.push_back(type);
+      }
+    }
+  }
+  return types;
+}
+
 // What to call the callee in diagnostics: a plain call gives its function
 // name, a method call its member name.
 std::string calleeDisplayName(const CallExprAST& callExpr) {
@@ -331,8 +354,14 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveNamedCallee(
     varRef.setQualifiedName(resolved);
   }
 
-  out.function = ctx_.lookupFunction(resolved.baseName, argTypes);
+  const auto& args = callExpr.getArgs();
+  const auto lookupTypes = functionArgumentTypes(args);
+  out.function = ctx_.lookupFunction(resolved.baseName, lookupTypes,
+                                      callExpr.getLocation());
   if (out.function) {
+    for (size_t i = 0; i < out.function->paramTypes.size(); ++i) {
+      tryCoerceIntegerLiteral(args[i].get(), out.function->paramTypes[i]);
+    }
     checkExternCallAllowed(*out.function, varRef.getName(),
                            callExpr.getLocation());
     varRef.setResolvedType(sun::Types::Function(out.function->returnType,

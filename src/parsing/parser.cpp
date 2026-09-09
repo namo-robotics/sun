@@ -1064,11 +1064,11 @@ unique_ptr<ExprAST> Parser::parseUnary() {
     Token opTok = curTok;
     getNextToken();  // eat the operator
 
-    // A minus directly on a suffixed integer literal folds into the literal,
-    // so -128i8 is the i8 value -128 rather than a negation of 128i8 (which
-    // does not fit i8). Untyped literals keep their unary node.
+    // Fold a minus directly on an integer into the literal so contextual
+    // typing and range checks use its signed value, including signed minima.
     if (opTok.kind == TokenKind::MINUS &&
-        curTok.kind == TokenKind::TYPED_INTEGER) {
+        (curTok.kind == TokenKind::INTEGER ||
+         curTok.kind == TokenKind::TYPED_INTEGER)) {
       auto folded = std::make_unique<NumberExprAST>(
           curTok.getInteger().value(), NumberExprAST::Sign::Negative,
           curTok.suffix);

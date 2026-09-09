@@ -16,6 +16,12 @@
 #include "semantic_analysis/qualified_name.h"
 #include "semantic_analysis/types.h"
 
+/** An argument's preferred type and other types its value can adopt. */
+struct FunctionArgumentType {
+  sun::TypePtr preferred;
+  std::vector<sun::TypePtr> alternatives;
+};
+
 // Information about a variable in the symbol table
 struct VariableInfo {
   sun::TypePtr type;
@@ -502,18 +508,20 @@ struct SemanticScopeBase
   // Get all function overloads with the given name
   std::vector<FunctionInfo> getAllFunctions(const std::string& name) const;
 
-  // Lookup function by name and exact argument types (overload resolution)
+  /** Select an overload by types, then by supplied alternative types. */
   std::optional<FunctionInfo> lookupFunction(
-      const std::string& name, const std::vector<sun::TypePtr>& argTypes) const;
+      const std::string& name, const std::vector<FunctionArgumentType>& argTypes,
+      std::optional<Position> loc = std::nullopt) const;
 
-  // Same overload resolution, but restricted to this scope's own function
-  // table — no walk to parents. Used for module-qualified calls, where the
-  // callee's scope is already known.
-  // Inaccessible overloads are skipped and recorded on `filter` (if given)
-  // so the caller can report them once nothing else matched.
+  /**
+   * Select an overload from this scope's own function table. Record inaccessible
+   * candidates on the filter. Setting matchAlternatives enables the fallback
+   * pass, which lookupFunction runs only after ordinary lookup finds no match.
+   */
   std::optional<FunctionInfo> lookupFunctionLocal(
-      const std::string& name, const std::vector<sun::TypePtr>& argTypes,
-      class AccessFilter* filter = nullptr) const;
+      const std::string& name, const std::vector<FunctionArgumentType>& argTypes,
+      class AccessFilter* filter = nullptr, bool matchAlternatives = false,
+      std::optional<Position> loc = std::nullopt) const;
 
   // Lookup module scope by dot-separated path
   SemanticScopeBase* lookupModuleScope(const std::string& dotPath) const;
