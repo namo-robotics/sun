@@ -464,3 +464,47 @@ TEST(Tooling_Frontend_Lexer, DISABLED_ConstructionCost) {
   std::printf("\n  1000 Lexer constructions in %.6f s (%.3f us each)\n\n",
               elapsed, elapsed * 1e6 / 1000);
 }
+
+TEST(Tooling_Frontend_Lexer, IntegerBasesAndSeparators) {
+  const std::vector<std::pair<std::string, uint64_t>> cases = {
+      {"0x10", 16},         {"0xDEAD_beef", 3735928559ULL},
+      {"0xf32", 3890},      {"0x1e5", 485},
+      {"0b1010_0101", 165}, {"1_000", 1000},
+      {"0_0", 0},           {"0x0000", 0},
+      {"0b0", 0},           {"0xffff_ffff_ffff_ffff", UINT64_MAX}};
+  for (const auto& [source, value] : cases) {
+    SCOPED_TRACE(source);
+    for (const std::string suffix :
+         {"", "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64"}) {
+      auto tokens = lexAll(source + suffix + ";");
+      ASSERT_EQ(tokens.size(), 3u);
+      EXPECT_EQ(tokens[0].getInteger(), value);
+      EXPECT_EQ(tokens[0].kind,
+                suffix.empty() ? TokenKind::INTEGER : TokenKind::TYPED_INTEGER);
+      EXPECT_EQ(tokens[0].text, source + suffix);
+      EXPECT_EQ(tokens[0].suffix, suffix);
+      EXPECT_EQ(tokens[1].start.offset, source.size() + suffix.size());
+    }
+  }
+}
+
+TEST(Tooling_Frontend_Lexer, MalformedIntegerBasesAndSeparators) {
+  for (const auto& source :
+       {"0x", "0b", "0xu8", "0b2", "0b102", "0xg", "0x1u9", "0b1f32", "0x_ff",
+        "0b_1", "0xff_", "0b1__0", "1__000", "100_", "1_u8", "0_", "0x1_u8"}) {
+    SCOPED_TRACE(source);
+    EXPECT_THROW(lexAll(source), SunError);
+  }
+  for (const auto& source :
+       {"0x1_0000_0000_0000_0000",
+        "0b10000000000000000000000000000000000000000000000000000000000000000",
+        "18_446_744_073_709_551_616u64"}) {
+    SCOPED_TRACE(source);
+    try {
+      lexAll(source);
+      FAIL() << "Expected an integer overflow error";
+    } catch (const SunError& error) {
+      EXPECT_NE(error.getMessage().find("is too large"), std::string::npos);
+    }
+  }
+}

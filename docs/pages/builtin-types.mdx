@@ -27,6 +27,23 @@ var e: char = 'k';
 
 ## Numeric Literals
 
+Integer literals can use decimal (`113`), hexadecimal (`0x71`), or binary
+(`0b1110001`). Hexadecimal digits accept either letter case; the prefixes
+are lowercase. All bases follow the same typing and range rules, including
+integer suffixes such as `0x71u16` and negative values such as `-0x80i8`.
+Hexadecimal letters are digits, so `0xf32` is the integer `3890`.
+
+Use a single `_` between digits to group an integer's digits:
+
+```sun
+var entity: u32 = 0x0001_00c2;
+var flags = 0b1000_0001u8;
+var count = 1_000;
+```
+
+Separators cannot follow a prefix, precede a suffix, end a literal, or appear
+consecutively. Floating-point literals do not support digit separators.
+
 An untyped integer literal is an `i32` (`i64` when the value needs the room),
 and an untyped float literal is an `f64`. In a position whose type is already
 known — a variable with an annotation, a field, a `return` — an untyped

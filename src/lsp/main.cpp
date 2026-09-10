@@ -325,73 +325,15 @@ constexpr int String = 18;
 constexpr int Number = 19;
 constexpr int Regexp = 20;
 constexpr int Operator = 21;
-// Custom type for init/deinit: not keywords, not ordinary methods. The
-// VSCode extension registers it (semanticTokenTypes) and maps it to a scope
-// the default themes color distinctly (semanticTokenScopes).
+// Constructors and destructors use the extension's function color mapping.
 constexpr int Lifecycle = 22;
 }  // namespace LSPTokenType
 
 // Map TokenKind to LSP semantic token type index (-1 = skip)
 int tokenKindToLSPType(TokenKind kind) {
   switch (kind) {
-    case TokenKind::IF:
-    case TokenKind::ELSE:
-    case TokenKind::FOR:
-    case TokenKind::WHILE:
-    case TokenKind::BREAK:
-    case TokenKind::CONTINUE:
-    case TokenKind::RETURN:
-    case TokenKind::TRY:
-    case TokenKind::CATCH:
-    case TokenKind::THROW:
-    case TokenKind::THROWS:
-    case TokenKind::USING:
-    case TokenKind::MANIFEST:
-    case TokenKind::MODULE:
-    case TokenKind::MATCH:
-    case TokenKind::EXTERN:
-    case TokenKind::DECLARE:
-    case TokenKind::THIS:
-    case TokenKind::VAR:
-    case TokenKind::CONST:
-    case TokenKind::FUNCTION:
-    case TokenKind::TEST_FUNCTION:
-    case TokenKind::CLASS:
-    case TokenKind::PACKED_CLASS:
-    case TokenKind::PARTIAL:
-    case TokenKind::PUBLIC:
-    case TokenKind::INTERFACE:
-    case TokenKind::IMPLEMENTS:
-    case TokenKind::ENUM:
-    case TokenKind::TRUE_LITERAL:
-    case TokenKind::FALSE_LITERAL:
-    case TokenKind::NULL_LITERAL:
-    case TokenKind::AND:
-    case TokenKind::OR:
-    case TokenKind::NOT:
-      return LSPTokenType::Keyword;
-
-    case TokenKind::TYPE_I8:
-    case TokenKind::TYPE_I16:
-    case TokenKind::TYPE_I32:
-    case TokenKind::TYPE_I64:
-    case TokenKind::TYPE_U8:
-    case TokenKind::TYPE_U16:
-    case TokenKind::TYPE_U32:
-    case TokenKind::TYPE_U64:
-    case TokenKind::TYPE_F32:
-    case TokenKind::TYPE_F64:
-    case TokenKind::TYPE_BOOL:
-    case TokenKind::TYPE_VOID:
-    case TokenKind::ARRAY:
-      return LSPTokenType::Type;
-
-    case TokenKind::REF:
-    case TokenKind::RAW_PTR:
-    case TokenKind::STATIC_PTR:
-    case TokenKind::PTR:
-      return LSPTokenType::Modifier;
-
+    // The grammar distinguishes control flow, declarations, and primitive
+    // types. A generic semantic keyword or type would override those scopes.
     case TokenKind::INTEGER:
     case TokenKind::FLOAT:
     case TokenKind::TYPED_INTEGER:
@@ -577,6 +519,8 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
   int angleBracketDepth = 0;
   TokenKind prevKind = TokenKind::TOK_EOF;
   bool afterClass = false;
+  bool afterEnum = false;
+  bool afterModule = false;
   bool afterInterface = false;
   bool afterImplements = false;
   bool afterFunction = false;
@@ -666,13 +610,18 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
     }
 
     // Handle context tracking for keywords that affect following tokens
-    if (tok.kind == TokenKind::CLASS)
+    if (tok.kind == TokenKind::CLASS || tok.kind == TokenKind::PACKED_CLASS)
       afterClass = true;
+    else if (tok.kind == TokenKind::ENUM)
+      afterEnum = true;
+    else if (tok.kind == TokenKind::MODULE)
+      afterModule = true;
     else if (tok.kind == TokenKind::INTERFACE)
       afterInterface = true;
     else if (tok.kind == TokenKind::IMPLEMENTS)
       afterImplements = true;
-    else if (tok.kind == TokenKind::FUNCTION)
+    else if (tok.kind == TokenKind::FUNCTION ||
+             tok.kind == TokenKind::TEST_FUNCTION)
       afterFunction = true;
     else if (tok.kind == TokenKind::COLON)
       afterColon = true;
@@ -695,11 +644,13 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
       afterArrow = false;
     } else if (tok.kind == TokenKind::PAREN_OPEN) {
       // Reset declaration context but keep angle brackets for generic calls
+      afterEnum = afterModule = false;
       afterClass = afterInterface = afterImplements = afterFunction = false;
       afterColon = afterArrow = afterDot = false;
     } else if (tok.kind == TokenKind::PAREN_CLOSE ||
                tok.kind == TokenKind::BRACE_OPEN ||
                tok.kind == TokenKind::SEMI_COLON) {
+      afterEnum = afterModule = false;
       afterClass = afterInterface = afterImplements = afterFunction = false;
       afterColon = afterArrow = afterDot = false;
       if (tok.kind == TokenKind::BRACE_OPEN ||
@@ -722,8 +673,14 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
            prevKind == TokenKind::BRACE_CLOSE ||
            prevKind == TokenKind::SEMI_COLON || prevKind == TokenKind::PUBLIC ||
            prevKind == TokenKind::CONST)) {
-        tokenType = LSPTokenType::Keyword;
+        tokenType = -1;
         afterFunction = true;
+      } else if (afterEnum) {
+        tokenType = LSPTokenType::Enum;
+        afterEnum = false;
+      } else if (afterModule) {
+        tokenType = LSPTokenType::Module;
+        afterModule = false;
       } else if (afterClass) {
         tokenType = LSPTokenType::Class;
         afterClass = false;
@@ -765,6 +722,10 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
       tokens.push_back({line, col, length, tokenType, 0});
     }
 
+    if ((tok.kind >= TokenKind::TYPE_I8 && tok.kind <= TokenKind::TYPE_CHAR) ||
+        tok.kind == TokenKind::ARRAY) {
+      afterColon = afterArrow = false;
+    }
     prevKind = tok.kind;
   }
 

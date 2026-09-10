@@ -223,14 +223,14 @@ static const std::map<TokenKind, std::string> tokenRegexes = {
     // not INTEGER)
     {TokenKind::FLOAT,
      "(0|[1-9][0-9]*)(\\.[0-9]+([eE][+-]?[0-9]+)?|[eE][+-]?[0-9]+)"},
-    {TokenKind::INTEGER, "0|[1-9][0-9]*"},
-    // Suffixed literals. Deliberately permissive suffix (like CHAR_LITERAL's
-    // body): 21u9 and 0xFF match here and get a real diagnostic while
-    // decoding instead of the generic "unrecognized token".
+    {TokenKind::INTEGER, "0[xb][a-zA-Z0-9_]*|0(_[0-9_]*)?|[1-9][0-9_]*"},
+    // Accept unknown suffixes so decoding can report a useful diagnostic.
+    // Prefixed integers are matched above and decoded with the same checks.
     {TokenKind::TYPED_FLOAT,
      "(0|[1-9][0-9]*)(\\.[0-9]+([eE][+-]?[0-9]+)?|[eE][+-]?[0-9]+)"
      "[a-zA-Z][a-zA-Z0-9]*"},
-    {TokenKind::TYPED_INTEGER, "(0|[1-9][0-9]*)[a-zA-Z][a-zA-Z0-9]*"},
+    {TokenKind::TYPED_INTEGER,
+     "(0(_[0-9_]*)?|[1-9][0-9_]*)[a-zA-Z][a-zA-Z0-9_]*"},
     {TokenKind::PLUS, "\\+"},
     {TokenKind::MINUS, "-"},
     {TokenKind::STAR, "\\*"},
@@ -779,20 +779,34 @@ class Lexer {
     return value;
   }
 
-  // Convert the digits of an integer literal. The digits are all the token
-  // holds (no sign, no suffix), so the only way this fails is a value above
-  // the u64 maximum, which is a compile error rather than a saturated value.
-  uint64_t decodeIntegerDigits(const std::string& digits,
-                               const Position& at) const {
+  // Decode an integer body while checking separators and overflow.
+  uint64_t decodeIntegerDigits(const std::string& digits, const Position& at,
+                               int base = 10, size_t start = 0) const {
     uint64_t value = 0;
-    auto [end, ec] =
-        std::from_chars(digits.data(), digits.data() + digits.size(), value);
-    if (ec == std::errc::result_out_of_range) {
-      literalError(at, "Integer literal " + digits +
-                           " is too large; the largest integer literal is " +
-                           std::to_string(UINT64_MAX) + " (the u64 maximum)");
+    bool previousDigit = false;
+    for (size_t i = start; i < digits.size(); ++i) {
+      if (digits[i] == '_') {
+        int next =
+            i + 1 < digits.size() ? sun::escapes::hexDigit(digits[i + 1]) : -1;
+        if (!previousDigit || next < 0 || next >= base) {
+          literalError(at, "Digit separators must appear between digits");
+        }
+        previousDigit = false;
+        continue;
+      }
+      int digit = sun::escapes::hexDigit(digits[i]);
+      if (digit < 0 || digit >= base) {
+        literalError(at, "Malformed integer literal '" + digits + "'");
+      }
+      if (value > (UINT64_MAX - digit) / base) {
+        literalError(at, "Integer literal " + digits +
+                             " is too large; the largest integer literal is " +
+                             std::to_string(UINT64_MAX) + " (the u64 maximum)");
+      }
+      value = value * base + digit;
+      previousDigit = true;
     }
-    if (ec != std::errc() || end != digits.data() + digits.size()) {
+    if (!previousDigit) {
       literalError(at, "Malformed integer literal '" + digits + "'");
     }
     return value;
@@ -1128,27 +1142,42 @@ class Lexer {
                                           endPos);
       case TokenKind::IDENTIFIER:
         return Token::identifier(std::string(matched), startPos, endPos);
-      case TokenKind::INTEGER: {
-        std::string text(matched);
-        uint64_t val = decodeIntegerDigits(text, startPos);
-        return Token::integer(val, startPos, endPos, std::move(text));
-      }
       case TokenKind::FLOAT: {
         std::string text(matched);
         double val = std::strtod(text.c_str(), nullptr);
         return Token::floatNum(val, startPos, endPos, std::move(text));
       }
+      case TokenKind::INTEGER:
       case TokenKind::TYPED_INTEGER: {
-        // Digits then suffix; the regex admits any word as the suffix so a
-        // bad one gets a real diagnostic here.
+        // Consume base digits before looking for a suffix: f32 is itself hex.
         std::string text(matched);
-        size_t cut = text.find_first_not_of("0123456789");
+        int base = 10;
+        size_t start = 0;
+        if (text.size() >= 2 && text[0] == '0' &&
+            (text[1] == 'x' || text[1] == 'b')) {
+          base = text[1] == 'x' ? 16 : 2;
+          start = 2;
+        }
+        size_t cut = start;
+        while (cut < text.size()) {
+          int digit = sun::escapes::hexDigit(text[cut]);
+          if (text[cut] != '_' && (digit < 0 || digit >= base)) break;
+          ++cut;
+        }
         std::string digits = text.substr(0, cut);
+        uint64_t val = decodeIntegerDigits(digits, startPos, base, start);
         std::string suffix = text.substr(cut);
+        if (suffix.empty()) {
+          return Token::integer(val, startPos, endPos, std::move(text));
+        }
+        if (base != 10 && suffix[0] >= '0' && suffix[0] <= '9') {
+          literalError(startPos, "Invalid digit in base-" +
+                                     std::to_string(base) + " integer literal");
+        }
         if (isFloatSuffix(suffix)) {
           literalError(startPos,
-                       "A float suffix needs a float literal; write " + digits +
-                           ".0" + suffix);
+                       "A float suffix needs a float literal; write " +
+                           std::to_string(val) + ".0" + suffix);
         }
         if (!isIntegerSuffix(suffix)) {
           literalError(startPos,
@@ -1156,7 +1185,6 @@ class Lexer {
                            "' (valid suffixes: i8, i16, i32, i64, u8, u16, "
                            "u32, u64, f32, f64)");
         }
-        uint64_t val = decodeIntegerDigits(digits, startPos);
         return Token::typedInteger(val, std::move(suffix), startPos, endPos,
                                    std::move(text));
       }

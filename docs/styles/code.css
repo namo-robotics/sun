@@ -1,0 +1,13 @@
+.sun-code-token {
+  color: var(--sun-light-color);
+  font-style: var(--sun-light-style);
+  font-weight: var(--sun-light-weight);
+  text-decoration: var(--sun-light-decoration);
+}
+
+.dark .sun-code-token {
+  color: var(--sun-dark-color);
+  font-style: var(--sun-dark-style);
+  font-weight: var(--sun-dark-weight);
+  text-decoration: var(--sun-dark-decoration);
+}
