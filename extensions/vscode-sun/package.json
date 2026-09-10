@@ -127,7 +127,7 @@
                     "default": [
                         "sun-config.json"
                     ],
-                    "description": "sun-config.json files (absolute or workspace-relative) whose entrypoints lists describe the project. The language server discovers the Test Explorer's tests from them, and their entrypoints replace manifest scanning."
+                    "description": "sun-config.json files (absolute or workspace-relative) whose entrypoints lists describe the project. Their entrypoints combine with sun.entrypoints for test discovery and cross-file analysis."
                 },
                 "sun.sun_path": {
                     "type": "array",
@@ -160,7 +160,7 @@
                         ]
                     },
                     "default": [],
-                    "description": "List of entrypoint files with manifest blocks. Files listed in an entrypoint's manifest will use the full manifest context for cross-file analysis."
+                    "description": "Explicit entrypoint files with manifest blocks, combined with sun.sun_configs. Only configured entrypoints provide test suites. Files listed in an entrypoint's manifest will use the full manifest context for cross-file analysis."
                 },
                 "sun.path_variables": {
                     "type": "object",
@@ -175,6 +175,7 @@
     },
     "scripts": {
         "compile": "tsc -p ./",
+        "test": "npm run compile && node --test test/*.test.cjs",
         "watch": "tsc -watch -p ./"
     },
     "devDependencies": {

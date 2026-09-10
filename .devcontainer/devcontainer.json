@@ -22,6 +22,8 @@
 		// Claude Code state: session transcripts (projects/), plans/, memory,
 		// settings and credentials. Keeps sessions across container rebuilds.
 		"source=sun-claude,target=/home/ubuntu/.claude,type=volume",
+		// Codex sessions, settings and credentials survive container rebuilds.
+		"source=sun-codex,target=/home/ubuntu/.codex,type=volume",
 		// GitHub CLI credentials (hosts.yml) bound from the host, so the
 		// container shares the host's `gh auth login` instead of needing its
 		// own. Requires ~/.config/gh to exist on the host.
@@ -35,7 +37,7 @@
 		"CTEST_PARALLEL_LEVEL": "8"
 	},
 	// Fix volume ownership and fetch TLS archives into the mounted workspace.
-	"postCreateCommand": "sudo chown -R ubuntu:ubuntu /home/ubuntu/.cache/ccache /home/ubuntu/.claude && if [ ! -f third_party/openssl/x86_64-linux-musl/libssl.a ] || [ ! -f third_party/openssl/x86_64-linux-musl/libcrypto.a ]; then ./scripts/fetch-openssl.sh; fi",
+	"postCreateCommand": "sudo chown -R ubuntu:ubuntu /home/ubuntu/.cache/ccache /home/ubuntu/.claude /home/ubuntu/.codex && if [ ! -f third_party/openssl/x86_64-linux-musl/libssl.a ] || [ ! -f third_party/openssl/x86_64-linux-musl/libcrypto.a ]; then ./scripts/fetch-openssl.sh; fi",
 	"postAttachCommand": "bash",
 	"features": {
 		"ghcr.io/devcontainers/features/node:1": {
@@ -46,7 +48,6 @@
 		"vscode": {
 			"extensions": [
 				"ms-vscode.cpptools-extension-pack",
-				"matepek.vscode-catch2-test-adapter",
 				"vadimcn.vscode-lldb",
 				"namo-robotics.sun-language",
 				"llvm-vs-code-extensions.lldb-dap",
@@ -54,7 +55,8 @@
 				"ms-vscode.cmake-tools",
 				"llvm-vs-code-extensions.vscode-clangd",
 				"Anthropic.claude-code",
-				"openai.chatgpt"
+				"openai.chatgpt",
+				"namo-robotics.cpp-test-explorer"
 			]
 		}
 	}
