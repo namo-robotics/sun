@@ -5,7 +5,7 @@ a compiled language with Rust-style borrow checking and an LLVM backend.
 
 ## Features
 
-- **Syntax highlighting** for `.sun` source files, backed by semantic tokens from the Sun lexer, plus file icons for `.sun` and `.moon` bundles.
+- **Syntax highlighting** with C++-style theme scopes: control flow, declarations, primitive types, named types, functions, and variables have separate roles. Constructors and destructors use function highlighting. Semantic tokens refine names without overriding keyword colors. Colors follow your active theme. Includes file icons for `.sun` and `.moon` bundles.
 - **Diagnostics** from the Sun compiler as you type: parse errors, type errors and borrow-checker errors.
 - **Hover** to see the type of a variable, field, function or method.
 - **Go to definition**, including into library sources: symbols from a `.moon` bundle open the original `.sun` file when it is on disk.

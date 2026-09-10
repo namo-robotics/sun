@@ -850,3 +850,10 @@ TEST(Tooling_Fmt, ClassFieldInitializers) {
   EXPECT_EQ(fmt(source), expected);
   EXPECT_EQ(fmt(expected), expected);
 }
+
+TEST(Tooling_Fmt, IntegerBasesKeepSpelling) {
+  EXPECT_EQ(fmt("var hex:u32=0x00AB_cdefu32;var bits=0b1010_0011;var n=1_000;"),
+            "var hex: u32 = 0x00AB_cdefu32;\n"
+            "var bits = 0b1010_0011;\n"
+            "var n = 1_000;\n");
+}

@@ -465,3 +465,41 @@ TEST(Operators_Literals, plain_function_context_checks_every_argument) {
       function main() i32 { return pick(-5, 7) + range(-300); }
     )"), 6);
 }
+
+TEST(Operators_Literals, integer_bases_preserve_values_and_typing) {
+  EXPECT_EQ(executeString(R"(
+      /* Checks contextual typing of a hexadecimal argument. */
+      function narrow(x: u16) bool { return x == 113u16; }
+      /* Identifies an explicitly narrow argument. */
+      function pick(x: u8) i32 { return 1; }
+      /* Identifies the default integer type. */
+      function pick(x: i32) i32 { return 2; }
+      /* Checks values, suffixes, signed boundaries, and bit operations. */
+      function main() i32 {
+          var entity: u32 = 0x0001_00c2;
+          var flags = 0b1000_0000u8 | 0b1u8;
+          var max = 0xffff_ffff_ffff_ffffu64;
+          var min = -0x8000_0000_0000_0000i64;
+          var small = -0b1000_0000i8;
+          if (entity != 65730u32 or flags != 129u8) { return 1; }
+          if (max != 18446744073709551615u64) { return 2; }
+          if (min != -9223372036854775808i64 or small != -128i8) { return 3; }
+          if (not narrow(0x71) or pick(0x1) != 2 or pick(0b1u8) != 1) { return 4; }
+          if (1_000u16 != 1000u16 or 0xf32 != 3890) { return 5; }
+          return 0;
+      }
+    )"),
+            0);
+}
+
+TEST(Operators_Literals, integer_bases_reject_out_of_range_types) {
+  for (const auto& literal :
+       {"0x100u8", "-0x81i8", "-0b1u8", "0x8000000000000000i64"}) {
+    SCOPED_TRACE(literal);
+    EXPECT_SUN_ERROR_WITH_MESSAGE(
+        executeString(std::string("/* Rejects an out-of-range literal. */\n"
+                                  "function main() i32 { var x = ") +
+                      literal + "; return 0; }"),
+        "cannot be represented");
+  }
+}
