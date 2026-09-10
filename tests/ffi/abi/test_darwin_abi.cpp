@@ -524,3 +524,30 @@ TEST(Ffi_Abi_CrossTargetDarwin, static_linking_is_rejected_for_darwin) {
   linkOpts.sysroot = "/nonexistent-sdk";
   EXPECT_FALSE(sun::linkExecutable("in.o", "out", errorMsg, linkOpts));
 }
+
+TEST(Ffi_Abi_CrossTargetDarwin, enum_representation_controls_extensions) {
+  auto driver =
+      Driver::createForAOT("darwin_enum_module", "arm64-apple-darwin");
+  driver->compileString(R"(
+    enum Signed i8 { Negative = -1 }
+    enum Unsigned u8 { High = 255 }
+    extern "C" function enum_signed(value: Signed) Signed;
+    extern "C" function enum_unsigned(value: Unsigned) Unsigned;
+    function main() i32 {
+      unsafe {
+        return _convert<i32>(enum_signed(Signed.Negative)) +
+               _convert<i32>(enum_unsigned(Unsigned.High));
+      };
+    }
+  )");
+  auto* signedFunction = driver->getModule().getFunction("enum_signed");
+  auto* unsignedFunction = driver->getModule().getFunction("enum_unsigned");
+  ASSERT_NE(signedFunction, nullptr);
+  ASSERT_NE(unsignedFunction, nullptr);
+  EXPECT_TRUE(signedFunction->hasRetAttribute(llvm::Attribute::SExt));
+  EXPECT_TRUE(signedFunction->hasParamAttribute(0, llvm::Attribute::SExt));
+  EXPECT_TRUE(unsignedFunction->hasRetAttribute(llvm::Attribute::ZExt));
+  EXPECT_TRUE(unsignedFunction->hasParamAttribute(0, llvm::Attribute::ZExt));
+  EXPECT_TRUE(signedFunction->getReturnType()->isIntegerTy(8));
+  EXPECT_TRUE(unsignedFunction->getReturnType()->isIntegerTy(8));
+}

@@ -560,6 +560,7 @@ message EnumVariant {
   Position location = 3;
   repeated TypeAnnotation payload_types = 4;  // empty = unit variant
   string doc = 5;  // Comment written above the variant
+  bool has_explicit_value = 6;
 }
 
 message EnumDef {
@@ -571,6 +572,7 @@ message EnumDef {
   string doc = 5;  // Comment written above the enum
   optional Position location = 6;  // Declaration span (bundle exports only)
   repeated TypeParameter type_params = 7;  // <T, U: _Numeric>
+  string underlying_type = 8;  // Empty means the default integer representation
 }
 
 message ThisExpr {

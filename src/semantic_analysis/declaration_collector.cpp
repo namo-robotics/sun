@@ -41,6 +41,8 @@ void DeclarationCollector::collectTypeNames(BlockExprAST& block) {
           enumType->addVariant(variant.name, variant.value);
         }
         enumType->setBaseName(enumDef.getName());
+        enumType->setUnderlyingType(
+            sun::Types::fromString(enumDef.getUnderlyingTypeName()));
         enumType->visibility = enumDef.getVisibility();
         enumType->setQualifiedName(
             (enumDef.hasQualifiedName()
@@ -257,6 +259,8 @@ void DeclarationCollector::collectDeclarations(BlockExprAST& block) {
           enumType->addVariant(variant.name, variant.value);
         }
         enumType->setBaseName(enumDef.getName());
+        enumType->setUnderlyingType(
+            sun::Types::fromString(enumDef.getUnderlyingTypeName()));
         enumType->visibility = enumDef.getVisibility();
         enumType->setQualifiedName(
             (enumDef.hasQualifiedName()
@@ -699,6 +703,8 @@ void DeclarationCollector::collectEnumDeclarations(const BlockExprAST& block) {
       enumType->addVariant(variant.name, variant.value);
     }
     enumType->setBaseName(enumDef.getName());
+    enumType->setUnderlyingType(
+        sun::Types::fromString(enumDef.getUnderlyingTypeName()));
     enumType->visibility = enumDef.getVisibility();
     enumType->setQualifiedName(
         (enumDef.hasQualifiedName()

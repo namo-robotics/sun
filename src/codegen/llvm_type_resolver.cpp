@@ -219,12 +219,13 @@ Type* LLVMTypeResolver::resolve(const sun::Type& type) {
     }
 
     case sun::Type::Kind::Enum: {
-      // Payload-free enums are i32 values; payload enums are tagged unions
+      // Payload-free enums use their integer type; payload enums are tagged
+      // unions
       const auto& enumType = static_cast<const sun::EnumType&>(type);
       if (enumType.hasPayload()) {
         result = getEnumStorageType(enumType);
       } else {
-        result = llvm::Type::getInt32Ty(ctx);
+        result = enumType.toLLVMType(ctx);
       }
       break;
     }

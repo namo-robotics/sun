@@ -19,15 +19,24 @@ llvm::Triple targetTriple(const llvm::Module* module) {
   return llvm::Triple(triple);
 }
 
+// Use an enum's representation when choosing integer ABI extensions.
+sun::TypePtr integerRepresentation(const sun::TypePtr& type) {
+  if (type && type->isEnum()) {
+    return static_cast<sun::EnumType*>(type.get())->getUnderlyingType();
+  }
+  return type;
+}
+
 // Which of the signature's integers are signed, read off the Sun-level types
 // the analyzer resolved. Darwin arm64 needs this to pick between signext and
 // zeroext; targets that never extend ignore it.
 abi::SignednessInfo signednessOf(const PrototypeAST& proto) {
   abi::SignednessInfo signs;
-  if (const sun::TypePtr& ret = proto.getResolvedReturnType()) {
+  if (auto ret = integerRepresentation(proto.getResolvedReturnType())) {
     signs.retSigned = ret->isIntegral() && ret->isSigned();
   }
-  for (const sun::TypePtr& param : proto.getResolvedParamTypes()) {
+  for (const sun::TypePtr& parameter : proto.getResolvedParamTypes()) {
+    auto param = integerRepresentation(parameter);
     signs.paramSigned.push_back(param && param->isIntegral() &&
                                 param->isSigned());
   }
@@ -258,7 +267,9 @@ llvm::Value* ExternCEmitter::promoteVararg(llvm::Value* value,
   if (value->getType()->isIntegerTy() &&
       value->getType()->getIntegerBitWidth() < 32) {
     llvm::Type* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
-    bool isUnsigned = sunType && sunType->isIntegral() && !sunType->isSigned();
+    auto representation = integerRepresentation(sunType);
+    bool isUnsigned = representation && representation->isIntegral() &&
+                      representation->isUnsigned();
     return isUnsigned ? ctx_.builder->CreateZExt(value, i32Ty, "vararg.zext")
                       : ctx_.builder->CreateSExt(value, i32Ty, "vararg.sext");
   }

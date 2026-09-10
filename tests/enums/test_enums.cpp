@@ -346,3 +346,270 @@ TEST(Enums, QualifiedPrivateEnumPatternDenied) {
   )"),
                                 "enum 'Secret' is private to module 'm'");
 }
+
+TEST(Enums, ExplicitValuesAndImplicitSuccessors) {
+  EXPECT_EQ(executeString(R"(
+    enum Kind { Zero, Data = 21, Next, Heartbeat = 7, Negative = -2, Last }
+    function main() i32 {
+      var kind = Kind.Next;
+      var matched = match kind {
+        Kind.Zero => 0, Kind.Data => 1, Kind.Next => 42,
+        Kind.Heartbeat => 3, Kind.Negative => 4, Kind.Last => 5
+      };
+      if (_convert<i32>(Kind.Data) != 21) { return 1; }
+      if (_convert<i64>(Kind.Negative) != -2) { return 2; }
+      if (_convert<i64>(Kind.Last) != -1) { return 3; }
+      return matched;
+    }
+  )"),
+            42);
+}
+
+TEST(Enums, ExplicitIntegerBoundaries) {
+  EXPECT_EQ(executeString(R"(
+    enum Kind { Low = -2147483648, High = 2147483647, Hex = 0x15 }
+    function main() i32 {
+      if (_convert<i64>(Kind.Low) != -2147483648) { return 1; }
+      if (_convert<i64>(Kind.High) != 2147483647) { return 2; }
+      return _convert<i32>(Kind.Hex);
+    }
+  )"),
+            21);
+}
+
+TEST(Enums, RejectInvalidExplicitValues) {
+  for (const auto& declaration :
+       {"enum E { A = 1, B = 1 }", "enum E { A, B = 0 }",
+        "enum E { A = 2147483648 }", "enum E { A = -2147483649 }",
+        "enum E { A = 2147483647, B }", "enum E { A = 18446744073709551615 }",
+        "enum E { A = 1.5 }", "enum E { A = 1 + 2 }",
+        "enum E { A = 1, B(i32) }", "enum E<T> { A = 1, B(T) }"}) {
+    EXPECT_THROW(compileString(std::string(declaration) +
+                               " function main() i32 { return 0; }"),
+                 std::exception)
+        << declaration;
+  }
+}
+
+TEST(Enums, CheckedIntegerDecoding) {
+  EXPECT_EQ(executeStringWithStdlib(R"(
+    using std;
+    enum Kind { Data = 21, Heartbeat = 7, Negative = -1 }
+    function decode<T>(value: T) i32 {
+      return match _enum_from_int<Kind>(value) {
+        Option.Some(kind) => match kind {
+          Kind.Data => 1, Kind.Heartbeat => 2, Kind.Negative => 3
+        },
+        Option.None => 10
+      };
+    }
+    function main() i32 {
+      var byte: u8 = 21;
+      var wide: u64 = 4294967317;
+      var maximum: u64 = 18446744073709551615;
+      return decode(byte) + decode(7) + decode(-1) + decode(8)
+        + decode(wide) + decode(maximum);
+    }
+  )"),
+            36);
+}
+
+TEST(Enums, CheckedIntegerDecodingRejectsInvalidTypes) {
+  for (const auto& expression :
+       {"_enum_from_int<i32>(1)", "_enum_from_int<E>(1.0)",
+        "_enum_from_int<E>(true)", "_enum_from_int<P>(1)",
+        "_enum_from_int<E>()", "_enum_from_int<E>(1, 2)"}) {
+    EXPECT_THROW(compileString(std::string("enum E { A = 1 } enum P { A(i32) } "
+                                           "function main() i32 { var x = ") +
+                               expression + "; return 0; }"),
+                 std::exception)
+        << expression;
+  }
+}
+
+TEST(Enums, CheckedDecodingWithGenericTargetAndReference) {
+  EXPECT_EQ(executeStringWithStdlib(R"(
+    using std;
+    enum Kind { Data = 21 }
+    function decode<T>(value: ref i32) Option<T> {
+      return _enum_from_int<T>(value);
+    }
+    function main() i32 {
+      var value = 21;
+      var decoded = decode<Kind>(value);
+      return match decoded {
+        Option.Some(kind) => _convert<i32>(kind), Option.None => 0
+      };
+    }
+  )"),
+            21);
+}
+
+TEST(Enums, CheckedDecodingRejectsInvalidGenericArgument) {
+  EXPECT_THROW(compileStringWithStdlib(R"(
+    using std;
+    enum Kind { Data = 21 }
+    function decode<T>(value: T) Option<Kind> {
+      return _enum_from_int<Kind>(value);
+    }
+    function main() i32 { var decoded = decode(21.0); return 0; }
+  )"),
+               std::exception);
+}
+
+TEST(Enums, NegativeTagDuplicateArmDoesNotAffectResultType) {
+  EXPECT_EQ(executeString(R"(
+    enum Kind { Negative = -1, Positive = 1 }
+    function pick(kind: Kind) i32 {
+      return match kind {
+        Kind.Negative => { return 42; },
+        Kind.Negative => 1.0,
+        Kind.Positive => 7
+      };
+    }
+    function main() i32 { return pick(Kind.Negative); }
+  )"),
+            42);
+}
+
+TEST(Enums, UnderlyingIntegerWidths) {
+  for (const auto& name :
+       {"i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64"}) {
+    const std::string type(name);
+    const int size = std::stoi(type.substr(1)) / 8;
+    EXPECT_EQ(executeString("enum Color " + type +
+                            R"( { Red = 1, Green = 2, Blue = 3 }
+      function main() i32 { return _convert<i32>(_sizeof<Color>()); }
+    )"),
+              size)
+        << type;
+  }
+}
+
+TEST(Enums, ByteEnumStorageAndReferenceMatch) {
+  EXPECT_EQ(executeString(R"(
+    enum Color u8 { Red = 1, Green, Blue }
+    class Palette {
+      var colors: array<Color, 3>;
+      init() { this.colors = [Color.Red, Color.Green, Color.Blue]; }
+    }
+    function identify(color: ref Color) i32 {
+      return match color { Color.Red => 1, Color.Green => 2, Color.Blue => 3 };
+    }
+    function main() i32 {
+      var colors = Palette();
+      if (_sizeof<Palette>() != 3) { return 10; }
+      return identify(colors.colors[1]);
+    }
+  )"),
+            2);
+}
+
+TEST(Enums, UnderlyingSignednessAndWideTags) {
+  EXPECT_EQ(executeString(R"(
+    enum Small i8 { Negative = -128, Next }
+    enum Byte u8 { High = 255 }
+    enum Wide u64 { Low = 1, High = 4294967297, Max = 18446744073709551615 }
+    enum Signed i64 { Min = -9223372036854775808, Max = 9223372036854775807 }
+    function identify(value: ref Wide) i32 {
+      return match value { Wide.Low => 1, Wide.High => 2, Wide.Max => 3 };
+    }
+    function main() i32 {
+      if (_convert<i64>(Small.Negative) != -128) { return 10; }
+      if (_convert<i64>(Small.Next) != -127) { return 11; }
+      if (_convert<i64>(Byte.High) != 255) { return 12; }
+      if (_convert<u64>(Wide.Max) != 18446744073709551615u64) { return 13; }
+      if (_convert<i64>(Signed.Min) != -9223372036854775808) { return 14; }
+      if (_convert<i64>(Signed.Max) != 9223372036854775807) { return 15; }
+      var value = Wide.High;
+      return identify(value);
+    }
+  )"),
+            2);
+}
+
+TEST(Enums, UnderlyingValueRangeErrors) {
+  for (const auto& declaration : {"enum E u8 { A = -1 }",
+                                  "enum E u8 { A = 256 }",
+                                  "enum E i8 { A = -129 }",
+                                  "enum E i8 { A = 128 }",
+                                  "enum E u16 { A = 65536 }",
+                                  "enum E i16 { A = 32768 }",
+                                  "enum E u32 { A = 4294967296 }",
+                                  "enum E i32 { A = -2147483649 }",
+                                  "enum E i64 { A = 9223372036854775808 }",
+                                  "enum E i64 { A = -9223372036854775809 }",
+                                  "enum E u8 { A = 255, B }",
+                                  "enum E i8 { A = 127, B }",
+                                  "enum E u64 { A = 18446744073709551615, B }",
+                                  "enum E i64 { A = 9223372036854775807, B }",
+                                  "enum E u64 { A = -1 }",
+                                  "enum E f32 { A }",
+                                  "enum E bool { A }",
+                                  "enum E char { A }",
+                                  "enum E ref i32 { A }",
+                                  "enum E u8 { A(i32) }"}) {
+    EXPECT_THROW(compileString(std::string(declaration) +
+                               " function main() i32 { return 0; }"),
+                 std::exception)
+        << declaration;
+  }
+}
+
+TEST(Enums, UnsignedMaximumMayBeFollowedByExplicitReset) {
+  EXPECT_EQ(executeString(R"(
+    enum E u64 { Before = 18446744073709551614, Max, Zero = 0, One }
+    function main() i32 {
+      if (_convert<u64>(E.Max) != 18446744073709551615u64) { return 10; }
+      return _convert<i32>(E.One);
+    }
+  )"),
+            1);
+}
+
+TEST(Enums, CheckedDecodingUsesUnderlyingRangeAndSignedness) {
+  EXPECT_EQ(executeStringWithStdlib(R"(
+    using std;
+    enum Byte u8 { High = 255 }
+    enum Signed i8 { Negative = -1 }
+    enum Wide u64 { Max = 18446744073709551615 }
+    function byte_value<T>(value: T) i32 {
+      return match _enum_from_int<Byte>(value) {
+        Option.Some(e) => _convert<i32>(e), Option.None => 0
+      };
+    }
+    function wide_value<T>(value: T) i32 {
+      return match _enum_from_int<Wide>(value) {
+        Option.Some(e) => match e { Wide.Max => 1 }, Option.None => 0
+      };
+    }
+    function main() i32 {
+      if (byte_value(255) != 255) { return 10; }
+      if (byte_value(-1) != 0) { return 11; }
+      if (byte_value(511) != 0) { return 12; }
+      if (wide_value(-1) != 0) { return 13; }
+      if (wide_value(18446744073709551615u64) != 1) { return 14; }
+      var unsigned_byte: u8 = 255;
+      var rejected = match _enum_from_int<Signed>(unsigned_byte) {
+        Option.Some(e) => 1, Option.None => 0
+      };
+      if (rejected != 0) { return 15; }
+      return match _enum_from_int<Signed>(-1) {
+        Option.Some(e) => _convert<i32>(e), Option.None => 16
+      };
+    }
+  )"),
+            -1);
+}
+
+TEST(Enums, GenericEnumKeepsUnderlyingType) {
+  EXPECT_EQ(executeString(R"(
+    enum State<T> u8 { Empty = 0, Full = 255 }
+    function main() i32 {
+      var state: State<i32> = State.Full;
+      if (_sizeof<State<i32>>() != 1) { return 10; }
+      return _convert<i32>(state);
+    }
+  )"),
+            255);
+}

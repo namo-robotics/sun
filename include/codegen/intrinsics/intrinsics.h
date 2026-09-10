@@ -34,19 +34,20 @@ enum class Intrinsic {
   // =========================================================================
   // Generic intrinsics (require type argument)
   // =========================================================================
-  Sizeof,     // _sizeof<T>() -> i64
-  Init,       // _init<T>(ptr, args...) -> void
-  Load,       // _load<T>(ptr, index) -> T
-  Store,      // _store<T>(ptr, index, value) -> void
-  PtrAsRaw,   // _ptr_as_raw<T>(ptr<T>) -> raw_ptr<T>
-  Is,         // _is<T>(value) -> bool (compile-time type check)
-  AddressOf,  // _address_of<T>(ref T) -> raw_ptr<T>
-  ToRef,      // _to_ref<T>(raw_ptr<T>) -> ref T (unsafe dereference)
-  Deinit,     // _deinit<T>(raw_ptr<T>) -> void (call T.deinit if exists)
-  Convert,    // _convert<T>(numeric) -> T (explicit numeric conversion:
-              // trunc / extend / int<->float)
-  Bitcast,    // _bitcast<T>(value) -> T (same-size bit reinterpretation,
-              // e.g. f32 <-> u32, f64 <-> u64)
+  Sizeof,       // _sizeof<T>() -> i64
+  Init,         // _init<T>(ptr, args...) -> void
+  Load,         // _load<T>(ptr, index) -> T
+  Store,        // _store<T>(ptr, index, value) -> void
+  PtrAsRaw,     // _ptr_as_raw<T>(ptr<T>) -> raw_ptr<T>
+  Is,           // _is<T>(value) -> bool (compile-time type check)
+  AddressOf,    // _address_of<T>(ref T) -> raw_ptr<T>
+  ToRef,        // _to_ref<T>(raw_ptr<T>) -> ref T (unsafe dereference)
+  Deinit,       // _deinit<T>(raw_ptr<T>) -> void (call T.deinit if exists)
+  EnumFromInt,  // _enum_from_int<T>(integer) -> std.Option<T>
+  Convert,      // _convert<T>(numeric) -> T (explicit numeric conversion:
+                // trunc / extend / int<->float)
+  Bitcast,      // _bitcast<T>(value) -> T (same-size bit reinterpretation,
+                // e.g. f32 <-> u32, f64 <-> u64)
 
   // Thread intrinsics. The pthread trampoline is built per lambda signature,
   // which cannot be written in Sun (pthread_create wants ptr(*)(ptr), Sun
@@ -168,6 +169,7 @@ inline Intrinsic getIntrinsic(const std::string& name) {
   if (name == "_address_of") return Intrinsic::AddressOf;
   if (name == "_to_ref") return Intrinsic::ToRef;
   if (name == "_deinit") return Intrinsic::Deinit;
+  if (name == "_enum_from_int") return Intrinsic::EnumFromInt;
   if (name == "_convert") return Intrinsic::Convert;
   if (name == "_bitcast") return Intrinsic::Bitcast;
   if (name == "_spawn") return Intrinsic::Spawn;
@@ -280,6 +282,7 @@ inline bool isGenericIntrinsic(Intrinsic i) {
     case Intrinsic::AddressOf:
     case Intrinsic::ToRef:
     case Intrinsic::Deinit:
+    case Intrinsic::EnumFromInt:
     case Intrinsic::Convert:
     case Intrinsic::Bitcast:
     case Intrinsic::Spawn:

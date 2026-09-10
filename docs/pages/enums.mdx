@@ -15,6 +15,62 @@ Each variant is automatically assigned an integer value starting from 0:
 - `Green` = 1
 - `Blue` = 2
 
+## Explicit values and integer decoding
+
+Enums without payloads can assign integer literals to variants:
+
+```sun
+enum Kind { Data = 21, Next, Heartbeat = 7, Unknown = -1 }
+```
+
+The default representation is `i32`. Choose a different integer type after
+the enum name to control its size and signedness:
+
+```sun
+enum Color u8 {
+    RED = 1,
+    GREEN = 2,
+    BLUE = 3
+}
+```
+
+`Color` occupies one byte, including when stored in arrays and class fields.
+The supported types are `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, and
+`u64`. The representation remains an implementation detail of the enum's
+storage: `Color` is still a distinct type from `u8`.
+
+An omitted value is zero for the first variant, or one greater than the
+preceding variant (`Next` is 22 above). Negative and hexadecimal literals are
+supported. Values must be unique and fit in the chosen integer type; an
+automatic increment past its maximum is an error. Unsigned enums reject
+negative values. Both explicit values and custom integer types require an
+enum without payloads.
+
+Read a value with `_convert<i32>(Kind.Data)`. To decode an integer, use
+`_enum_from_int<Kind>(value)`, which returns `std.Option<Kind>` and requires
+the standard library:
+
+```sun
+using std;
+
+/* Decode a protocol identifier, using zero for an unknown identifier. */
+function read_kind(value: u8) i32 {
+    return match _enum_from_int<Kind>(value) {
+        Option.Some(kind) => match kind {
+            Kind.Data => 1,
+            Kind.Next => 2,
+            Kind.Heartbeat => 3,
+            Kind.Unknown => 4
+        },
+        Option.None => 0
+    };
+}
+```
+
+Decoding compares the original integer before narrowing, so an oversized
+integer cannot wrap into a valid variant. `_convert<Kind>(value)` is not
+allowed.
+
 ## Using Enums
 
 ### Variables

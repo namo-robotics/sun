@@ -1939,7 +1939,7 @@ class InterfaceType : public Type {
 // Enum variant information
 struct EnumVariant {
   std::string name;
-  int64_t value;  // Numeric value of the variant (the runtime tag)
+  int64_t value;  // Tag bits; the enum representation determines signedness
   std::vector<TypePtr> payloadTypes;  // empty = unit variant
 
   bool hasPayload() const { return !payloadTypes.empty(); }
@@ -1950,12 +1950,13 @@ class EnumType;
 using EnumTypePtr = std::shared_ptr<EnumType>;
 
 // Enum type for user-defined enums
-// Enums are represented as i32 values, with variants as named constants
+// Enums use an integer representation, with variants as named constants
 // Example: enum Color { Red, Green, Blue }
 class EnumType : public Type {
   std::string mangledName_;  // Mangled name (e.g., "$hash$_std_Color")
   std::string baseName_;     // User-written base name (e.g., "Color")
   std::vector<EnumVariant> variants;
+  TypePtr underlyingType_ = std::make_shared<PrimitiveType>(Kind::Int32);
   std::string genericBase_;           // e.g. "Option" for Option_i32
   std::vector<TypePtr> genericArgs_;  // e.g. [i32] for Option_i32
   sun::QualifiedName qualifiedName_;
@@ -1989,6 +1990,14 @@ class EnumType : public Type {
       : mangledName_(std::move(mangledName)),
         variants(std::move(vars)),
         baseName_(std::move(baseName)) {}
+
+  /** Return the integer type used to store the enum tag. */
+  const TypePtr& getUnderlyingType() const { return underlyingType_; }
+  /** Set the integer representation before generating enum storage. */
+  void setUnderlyingType(TypePtr type) {
+    assert(type && type->isIntegral());
+    underlyingType_ = std::move(type);
+  }
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::Enum;
@@ -2085,7 +2094,7 @@ class EnumType : public Type {
     return false;
   }
 
-  // Payload-free enums are represented as i32 values. Payload enums need the
+  // Payload-free enums use their integer type. Payload enums need the
   // module DataLayout for storage sizing: LLVMTypeResolver computes the
   // storage struct and caches it here; afterwards toLLVMType serves the
   // cache (e.g. for class field embedding via ClassType::getStructType).
@@ -2096,7 +2105,7 @@ class EnumType : public Type {
                        "' LLVM type requires DataLayout - resolve it via "
                        "LLVMTypeResolver first");
     }
-    return llvm::Type::getInt32Ty(ctx);
+    return underlyingType_->toLLVMType(ctx);
   }
 
   // Get the mangled variant name: EnumName_VariantName

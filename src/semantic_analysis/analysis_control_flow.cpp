@@ -44,9 +44,10 @@ void SemanticAnalyzer::analyzeMatchExpr(MatchExprAST& matchExpr,
   auto checkOwnedArmTypes = [&] {
     auto resultType = matchExpr.getResolvedType();
     if (!sun::typeMovesOnRead(resultType)) return;
-    std::set<int> coveredTags;
+    std::set<int64_t> coveredTags;
     for (const auto& arm : matchExpr.getArms()) {
-      if (!arm.isWildcard && arm.resolvedVariantTag >= 0 &&
+      if (!arm.isWildcard && arm.pattern && arm.pattern->getResolvedType() &&
+          arm.pattern->getResolvedType()->isEnum() &&
           !coveredTags.insert(arm.resolvedVariantTag).second)
         continue;
       if (!exprDiverges(*arm.body)) {

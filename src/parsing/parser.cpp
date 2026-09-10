@@ -4518,11 +4518,30 @@ unique_ptr<EnumDefinitionAST> Parser::parseEnumDefinition() {
   // Optional type parameters: enum Option<T> { ... }
   std::vector<TypeParameter> typeParameters = parseTypeParameterList();
 
+  std::string underlyingType;
+  if (curTok.kind != TokenKind::BRACE_OPEN) {
+    auto annotation = parseTypeAnnotation();
+    auto type = sun::Types::fromString(annotation.baseName);
+    if (!type || !type->isIntegral() || annotation.isGeneric()) {
+      logAndThrowError("Enum underlying type must be an integer type", start);
+    }
+    underlyingType = annotation.baseName;
+  }
+  const std::string representation =
+      underlyingType.empty() ? "i32" : underlyingType;
+  const bool isUnsigned = representation[0] == 'u';
+  const unsigned width = std::stoul(representation.substr(1));
+  const uint64_t maximum =
+      isUnsigned && width == 64
+          ? UINT64_MAX
+          : (uint64_t{1} << (width - (isUnsigned ? 0 : 1))) - 1;
+
   expectCurrentTokenKind(TokenKind::BRACE_OPEN, "expected '{' after enum name");
   getNextToken();  // eat '{'
 
   std::vector<EnumVariantDecl> variants;
-  int64_t nextValue = 0;  // Auto-incrementing value for variants
+  uint64_t nextValue = 0;
+  bool nextValueOverflow = false;
 
   // Parse enum variants: Variant1, Variant2, ...
   while (curTok.kind != TokenKind::BRACE_CLOSE &&
@@ -4553,13 +4572,39 @@ unique_ptr<EnumDefinitionAST> Parser::parseEnumDefinition() {
       getNextToken();  // eat ')'
     }
 
-    int64_t variantValue = nextValue++;
+    bool hasExplicitValue = curTok.kind == TokenKind::EQUAL;
+    uint64_t valueBits = nextValue;
+    if (hasExplicitValue) {
+      getNextToken();
+      bool negative = curTok.kind == TokenKind::MINUS;
+      if (negative) getNextToken();
+      expectCurrentTokenKind(TokenKind::INTEGER,
+                             "expected integer literal for enum value");
+      uint64_t magnitude = curTok.getInteger().value();
+      const uint64_t limit =
+          negative && !isUnsigned ? uint64_t{1} << (width - 1) : maximum;
+      if ((negative && isUnsigned) || magnitude > limit) {
+        logAndThrowError(
+            "Enum value is outside the " + representation + " range",
+            variantLoc);
+      }
+      valueBits = negative ? uint64_t{0} - magnitude : magnitude;
+      getNextToken();
+    } else if (nextValueOverflow) {
+      logAndThrowError(
+          "Implicit enum value is outside the " + representation + " range",
+          variantLoc);
+    }
+    nextValueOverflow = valueBits == maximum;
+    nextValue = valueBits + 1;
+    int64_t variantValue = llvm::APInt(64, valueBits).getSExtValue();
 
-    // TODO: Support explicit value assignment: Red = 1
-    // For now, just auto-increment
-
-    variants.push_back({std::move(variantName), variantValue, variantLoc,
-                        std::move(payloadTypes)});
+    variants.push_back({std::move(variantName),
+                        variantValue,
+                        variantLoc,
+                        std::move(payloadTypes),
+                        {},
+                        hasExplicitValue});
 
     // Handle optional comma between variants
     if (curTok.kind == TokenKind::COMMA) {
@@ -4582,7 +4627,8 @@ unique_ptr<EnumDefinitionAST> Parser::parseEnumDefinition() {
 
   return finishNode(std::make_unique<EnumDefinitionAST>(
                         std::move(enumName), std::move(variants),
-                        /*precompiled=*/false, std::move(typeParameters)),
+                        /*precompiled=*/false, std::move(typeParameters),
+                        std::move(underlyingType)),
                     start);
 }
 

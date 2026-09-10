@@ -892,6 +892,7 @@ void ASTSerializer::serializeEnumDef(const EnumDefinitionAST& expr,
   node->mutable_enum_def()->set_source_file_id(expr.getSourceFileId());
   auto* enumDef = node->mutable_enum_def();
   enumDef->set_name(expr.getName());
+  enumDef->set_underlying_type(expr.getUnderlyingType());
   enumDef->set_visibility(toProto(expr.getVisibility()));
   enumDef->set_doc(expr.getDoc());
   for (const auto& tp : expr.getTypeParameters()) {
@@ -910,6 +911,7 @@ void ASTSerializer::serializeEnumDef(const EnumDefinitionAST& expr,
     auto* variantProto = enumDef->add_variants();
     variantProto->set_name(variant.name);
     variantProto->set_value(variant.value);
+    variantProto->set_has_explicit_value(variant.hasExplicitValue);
     variantProto->set_doc(variant.doc);
     if (config_.include_location) {
       *variantProto->mutable_location() = serializePosition(variant.location);

@@ -490,3 +490,23 @@ function main() i32 {
   ASSERT_NE(module.getFunction("main")->getSubprogram(), nullptr);
   EXPECT_TRUE(module.getFunction("main")->getSubprogram()->isOptimized());
 }
+
+TEST(Tooling_Backend_DebugInfo, EnumUnderlyingTypeMetadata) {
+  auto driver = compileWithDebug(R"(
+    enum Byte u8 { High = 255 }
+    enum Wide u64 { Max = 18446744073709551615 }
+    function main() i32 {
+      var byte = Byte.High;
+      var wide = Wide.Max;
+      return _convert<i32>(byte) + _convert<i32>(wide);
+    }
+  )");
+  const auto ir = printModule(driver->getModule());
+  EXPECT_NE(ir.find("name: \"u8\", size: 8, encoding: DW_ATE_unsigned"),
+            std::string::npos);
+  EXPECT_NE(ir.find("name: \"u64\", size: 64, encoding: DW_ATE_unsigned"),
+            std::string::npos);
+  EXPECT_NE(
+      ir.find("name: \"Max\", value: 18446744073709551615, isUnsigned: true"),
+      std::string::npos);
+}

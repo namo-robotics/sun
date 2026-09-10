@@ -334,12 +334,15 @@ DIType* DebugInfoBuilder::resolveTypeImpl(const Type& type) {
       std::set<std::string> seen;
       for (const auto& v : et.getVariants()) {
         if (!seen.insert(v.name).second) continue;
-        variants.push_back(di_->createEnumerator(v.name, v.value));
+        variants.push_back(di_->createEnumerator(
+            v.name, v.value, et.getUnderlyingType()->isUnsigned()));
       }
+      auto* tagType = et.getUnderlyingType()->toLLVMType(ctx);
       auto* tagDI = di_->createEnumerationType(
-          cu_, et.getDisplayName(), cu_->getFile(), 0, 32, 32,
-          di_->getOrCreateArray(variants),
-          di_->createBasicType("i32", 32, dwarf::DW_ATE_signed));
+          cu_, et.getDisplayName(), cu_->getFile(), 0,
+          dl.getTypeSizeInBits(tagType),
+          dl.getABITypeAlign(tagType).value() * 8,
+          di_->getOrCreateArray(variants), resolveType(et.getUnderlyingType()));
       if (!et.hasPayload()) return tagDI;
 
       // Payload enum: describe the storage struct { tag, payload bytes }.
