@@ -1049,12 +1049,13 @@ void BorrowChecker::checkMatchExpr(const MatchExprAST& matchExpr) {
   // any arm are unioned afterwards, conservatively.
   auto movedBefore = movedVariables_;
   auto movedAfter = movedVariables_;
-  std::set<int> coveredTags;
+  std::set<int64_t> coveredTags;
   bool sawWildcard = false;
   for (const auto& arm : matchExpr.getArms()) {
     if (sawWildcard) break;
     sawWildcard = arm.isWildcard;
-    if (!arm.isWildcard && arm.resolvedVariantTag >= 0 &&
+    if (!arm.isWildcard && arm.pattern && arm.pattern->getResolvedType() &&
+        arm.pattern->getResolvedType()->isEnum() &&
         !coveredTags.insert(arm.resolvedVariantTag).second)
       continue;
     movedVariables_ = movedBefore;

@@ -1245,6 +1245,8 @@ std::shared_ptr<sun::EnumType> GenericSpecializer::instantiateGenericEnum(
       std::any_of(typeArgs.begin(), typeArgs.end(), mentionsTypeParameter);
 
   auto specialized = ctx_.types()->getEnum(mangledName);
+  specialized->setUnderlyingType(
+      sun::Types::fromString(genericInfo->AST->getUnderlyingTypeName()));
   specialized->setGenericQualifiedName(genericInfo->qualifiedName);
   specialized->setBaseName(templateName);
   specialized->setGenericOrigin(templateName, typeArgs);

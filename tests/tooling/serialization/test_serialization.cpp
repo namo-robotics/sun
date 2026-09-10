@@ -1314,3 +1314,40 @@ TEST(Tooling_Serialization, ClassFieldInitializersAndLoweredPrefixRoundtrip) {
   EXPECT_NE(restored.getFields()[0].initializer.get(),
             cls.getFields()[0].initializer.get());
 }
+
+TEST(Tooling_Serialization, ExplicitEnumValuesRoundtrip) {
+  std::vector<EnumVariantDecl> variants = {{"Data", 21, {}, {}, {}, true},
+                                           {"Next", 22, {}, {}, {}, false},
+                                           {"Negative", -1, {}, {}, {}, true}};
+  EnumDefinitionAST original("Kind", std::move(variants));
+  ASTSerializer serializer;
+  ASTDeserializer deserializer;
+  auto restored = deserializer.deserializeFromString(
+      serializer.serializeToString(original));
+  auto* enumDef = dynamic_cast<EnumDefinitionAST*>(restored.get());
+  ASSERT_NE(enumDef, nullptr);
+  ASSERT_EQ(enumDef->getVariants().size(), 3u);
+  EXPECT_EQ(enumDef->getVariants()[0].value, 21);
+  EXPECT_TRUE(enumDef->getVariants()[0].hasExplicitValue);
+  EXPECT_EQ(enumDef->getVariants()[1].value, 22);
+  EXPECT_FALSE(enumDef->getVariants()[1].hasExplicitValue);
+  EXPECT_EQ(enumDef->getVariants()[2].value, -1);
+  EXPECT_TRUE(enumDef->getVariants()[2].hasExplicitValue);
+  EXPECT_EQ(enumDef->toString(), original.toString());
+}
+
+TEST(Tooling_Serialization, EnumUnderlyingTypeRoundtrip) {
+  std::vector<EnumVariantDecl> variants = {{"Max", -1, {}, {}, {}, true}};
+  EnumDefinitionAST original("Wide", std::move(variants), false, {}, "u64");
+  ASTSerializer serializer;
+  ASTDeserializer deserializer;
+  auto restored = deserializer.deserializeFromString(
+      serializer.serializeToString(original));
+  auto* enumDef = dynamic_cast<EnumDefinitionAST*>(restored.get());
+  ASSERT_NE(enumDef, nullptr);
+  EXPECT_EQ(enumDef->getUnderlyingType(), "u64");
+  ASSERT_EQ(enumDef->getVariants().size(), 1u);
+  EXPECT_EQ(enumDef->getVariants()[0].value, -1);
+  EXPECT_EQ(enumDef->toString(),
+            "enum Wide u64 { Max = 18446744073709551615 }");
+}

@@ -249,6 +249,19 @@ var b: u8 = _convert<u8>(300);      // 44 — the high bits are dropped
 Use the stdlib's `safe_convert<T>(value)` when the value may not fit; it throws
 `ConversionError` instead of wrapping (see [Standard Library](/stdlib#numeric-conversion)).
 
+Enums without payloads also convert to integer types: `_convert<i32>(Kind.Data)`
+reads the variant's value. Widening uses the signedness of the enum's
+underlying integer type. An enum cannot be the target of `_convert`; use the
+checked decoder below.
+
+### `_enum_from_int<T>(value)`
+
+Decodes an integer as an enum without payloads and returns `std.Option<T>`.
+The standard library must be loaded. A declared value returns `Option.Some`;
+any other integer returns `Option.None`. The comparison happens before
+narrowing, including for signed and unsigned inputs. No `unsafe` block is
+needed. See [Enums](/enums#explicit-values-and-integer-decoding) for an example.
+
 ### `_bitcast<T>(value)`
 
 Reinterprets the bits of a numeric value as another numeric type of the same

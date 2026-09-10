@@ -1302,6 +1302,8 @@ Value* ClassGenerator::codegen(const GenericCallAST& expr) {
     case sun::Intrinsic::Deinit:
       return intrinsics().codegenDeinitIntrinsic(getFirstTypeArg(),
                                                  expr.getArgs());
+    case sun::Intrinsic::EnumFromInt:
+      return intrinsics().codegenEnumFromIntIntrinsic(expr);
     case sun::Intrinsic::Convert:
       return intrinsics().codegenConvertIntrinsic(getFirstTypeArg(),
                                                   expr.getArgs());

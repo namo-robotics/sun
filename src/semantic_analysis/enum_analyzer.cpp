@@ -110,7 +110,13 @@ void EnumAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
   sema_.validateNotReserved(enumDef.getName(), "Enum name",
                             enumDef.getLocation());
 
+  if (!enumDef.getUnderlyingType().empty() && enumDef.hasAnyPayload()) {
+    logAndThrowError("An enum with an underlying type must not have payloads",
+                     enumDef.getLocation());
+  }
+
   // Validate variant names and check for duplicates
+  std::set<int64_t> seenValues;
   std::set<std::string> seenVariants;
   for (const auto& variant : enumDef.getVariants()) {
     sema_.validateNotReserved(variant.name, "Enum variant name",
@@ -121,6 +127,14 @@ void EnumAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
                        variant.location);
     }
     seenVariants.insert(variant.name);
+    if (!seenValues.insert(variant.value).second) {
+      logAndThrowError("Duplicate enum value " + enumDef.getValueText(variant),
+                       variant.location);
+    }
+    if (variant.hasExplicitValue && enumDef.hasAnyPayload()) {
+      logAndThrowError("Explicit enum values require an enum without payloads",
+                       variant.location);
+    }
   }
 
   // Generic enums register as templates only; payload annotations are
@@ -141,6 +155,8 @@ void EnumAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
   auto enumType = ctx_.types()->getEnum(
       ctx_.makeQualifiedName(enumDef.getName()).mangled());
   enumType->setBaseName(enumDef.getName());
+  enumType->setUnderlyingType(
+      sun::Types::fromString(enumDef.getUnderlyingTypeName()));
   enumType->visibility = enumDef.getVisibility();
   enumType->setQualifiedName(ctx_.makeQualifiedName(enumDef.getName()));
 
@@ -466,7 +482,7 @@ bool EnumAnalyzer::tryAnalyzeGenericEnumUnitVariant(
 void EnumAnalyzer::analyzeEnumMatch(
     MatchExprAST& matchExpr, const std::shared_ptr<sun::EnumType>& enumType,
     sun::TypePtr expectedType) {
-  std::set<int> coveredTags;
+  std::set<int64_t> coveredTags;
   bool sawWildcard = false;
 
   for (auto& arm : matchExpr.getArmsMutable()) {
@@ -555,13 +571,13 @@ void EnumAnalyzer::analyzeEnumMatch(
                        arm.pattern->getLocation());
     }
 
-    if (coveredTags.count(static_cast<int>(variant->value))) {
+    if (coveredTags.count(variant->value)) {
       logWarning(
           "Unreachable arm: variant '" + variantName + "' is already matched",
           arm.pattern->getLocation());
     }
-    coveredTags.insert(static_cast<int>(variant->value));
-    arm.resolvedVariantTag = static_cast<int>(variant->value);
+    coveredTags.insert(variant->value);
+    arm.resolvedVariantTag = variant->value;
 
     // Set resolved types on the pattern nodes so codegen and tooling see a
     // consistent tree (they are not analyzed via analyzeExpr).
@@ -586,7 +602,7 @@ void EnumAnalyzer::analyzeEnumMatch(
   if (!sawWildcard) {
     std::string missing;
     for (const auto& v : enumType->getVariants()) {
-      if (!coveredTags.count(static_cast<int>(v.value))) {
+      if (!coveredTags.count(v.value)) {
         if (!missing.empty()) missing += ", ";
         missing += v.name;
       }

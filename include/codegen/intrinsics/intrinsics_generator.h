@@ -75,6 +75,8 @@ class IntrinsicsGenerator {
   llvm::Value* codegenFreeIntrinsic(const CallExprAST& expr);
   llvm::Value* codegenMemcpyIntrinsic(const CallExprAST& expr);
   llvm::Value* codegenMemsetIntrinsic(const CallExprAST& expr);
+  /** Decode an integer as an enum, returning None for unknown values. */
+  llvm::Value* codegenEnumFromIntIntrinsic(const GenericCallAST& expr);
   llvm::Value* codegenConvertIntrinsic(
       sun::TypePtr targetType,
       const std::vector<std::unique_ptr<ExprAST>>& args);

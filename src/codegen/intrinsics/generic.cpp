@@ -320,7 +320,14 @@ Value* IntrinsicsGenerator::codegenConvertIntrinsic(
     logAndThrowError("_convert<T>: T must be a numeric type or char");
     return nullptr;
   }
-  sun::TypePtr srcType = args[0]->getResolvedType();
+  sun::TypePtr srcType = sun::unwrapRef(args[0]->getResolvedType());
+  if (srcType && srcType->isEnum()) {
+    if (static_cast<sun::EnumType*>(srcType.get())->hasPayload() ||
+        !targetType->isIntegral()) {
+      logAndThrowError(
+          "_convert<T>: enums without payloads convert to integers only");
+    }
+  }
   if (targetType->isChar() || (srcType && srcType->isChar())) {
     const sun::TypePtr& other = targetType->isChar() ? srcType : targetType;
     if (other && (other->isFloatingPoint() || other->isBool())) {
@@ -337,6 +344,10 @@ Value* IntrinsicsGenerator::codegenConvertIntrinsic(
   llvm::Type* srcTy = v->getType();
   if (srcTy == dstTy) return v;
 
+  // Enum conversions use the signedness of their integer representation.
+  if (srcType && srcType->isEnum()) {
+    srcType = static_cast<sun::EnumType*>(srcType.get())->getUnderlyingType();
+  }
   // A char is a non-negative scalar value, so it always zero-extends.
   bool srcSigned = srcType && srcType->isIntegral() && !srcType->isUnsigned();
   bool dstSigned = !targetType->isUnsigned();
@@ -408,4 +419,46 @@ Value* IntrinsicsGenerator::codegenBitcastIntrinsic(
   // Pointers are opaque in LLVM, so a pointer cast is already a no-op here.
   if (v->getType() == dstTy) return v;
   return ctx.builder->CreateBitCast(v, dstTy, "bitcast");
+}
+
+Value* IntrinsicsGenerator::codegenEnumFromIntIntrinsic(
+    const GenericCallAST& expr) {
+  auto& target =
+      *static_cast<sun::EnumType*>(expr.getResolvedTypeArgs()[0].get());
+  auto& result = *static_cast<sun::EnumType*>(expr.getResolvedType().get());
+  const auto& arg = expr.getArgs()[0];
+  auto sourceType = sun::unwrapRef(arg->getResolvedType());
+  Value* value = codegen(*arg);
+  // Compare before narrowing, preserving both signed and unsigned inputs.
+  auto* comparisonType = IntegerType::get(ctx.getContext(), 65);
+  value = ctx.builder->CreateIntCast(value, comparisonType,
+                                     !sourceType->isUnsigned());
+  Value* valid = ConstantInt::getFalse(ctx.getContext());
+  for (const auto& variant : target.getVariants()) {
+    Value* matches = ctx.builder->CreateICmpEQ(
+        value,
+        ConstantInt::get(
+            ctx.getContext(),
+            target.getUnderlyingType()->isUnsigned()
+                ? APInt(64, static_cast<uint64_t>(variant.value)).zext(65)
+                : APInt(64, static_cast<uint64_t>(variant.value)).sext(65)));
+    valid = ctx.builder->CreateOr(valid, matches);
+  }
+  auto* storageType = typeResolver.getEnumStorageType(result);
+  auto* function = ctx.builder->GetInsertBlock()->getParent();
+  auto* storage =
+      gen_.createEntryBlockAlloca(function, "enum.option", storageType);
+  ctx.builder->CreateStore(Constant::getNullValue(storageType), storage);
+  auto* tagType = Type::getInt32Ty(ctx.getContext());
+  Value* tag = ctx.builder->CreateSelect(
+      valid, ConstantInt::get(tagType, result.getVariant("Some")->value),
+      ConstantInt::get(tagType, result.getVariant("None")->value));
+  ctx.builder->CreateStore(
+      tag, ctx.builder->CreateStructGEP(storageType, storage, 0));
+  auto* someType = typeResolver.getEnumVariantStruct(result, "Some");
+  unsigned field = typeResolver.enumPayloadFieldIndex(result, "Some", 0);
+  ctx.builder->CreateStore(
+      ctx.builder->CreateTrunc(value, target.toLLVMType(ctx.getContext())),
+      ctx.builder->CreateStructGEP(someType, storage, field));
+  return storage;
 }

@@ -857,3 +857,19 @@ TEST(Tooling_Fmt, IntegerBasesKeepSpelling) {
             "var bits = 0b1010_0011;\n"
             "var n = 1_000;\n");
 }
+
+TEST(Tooling_Fmt, ExplicitEnumValues) {
+  const std::string expected =
+      "enum Kind { Data = 21, Next, Negative = -2, Last }\n";
+  EXPECT_EQ(fmt("enum Kind{Data=21,Next,Negative=-2,Last}"), expected);
+  EXPECT_EQ(fmt(expected), expected);
+}
+
+TEST(Tooling_Fmt, EnumUnderlyingTypeAndUnsignedMaximum) {
+  const std::string expected =
+      "enum E u64 { High = 18446744073709551615, Low = 0 }\n";
+  EXPECT_EQ(fmt("enum E u64{High=18446744073709551615,Low=0}"), expected);
+  EXPECT_EQ(fmt(expected), expected);
+  EXPECT_EQ(fmt("enum E i8{Negative=-128,Next}"),
+            "enum E i8 { Negative = -128, Next }\n");
+}

@@ -523,7 +523,7 @@ class Formatter {
     lastLine_ = savedLast;
   }
 
-  void printVariant(const EnumVariantDecl& v) {
+  void printVariant(const EnumVariantDecl& v, const EnumDefinitionAST& n) {
     out_ += v.name;
     if (v.hasPayload()) {
       out_ += '(';
@@ -533,6 +533,7 @@ class Formatter {
       }
       out_ += ')';
     }
+    if (v.hasExplicitValue) out_ += " = " + n.getValueText(v);
   }
 
   void printEnum(const EnumDefinitionAST& n) {
@@ -540,12 +541,13 @@ class Formatter {
     out_ += n.getName();
     const auto& typeParams = n.getTypeParameters();
     printTypeParams(typeParams);
+    if (!n.getUnderlyingType().empty()) out_ += " " + n.getUnderlyingType();
     const auto& variants = n.getVariants();
     if (!isMultiLine(n.getLocation())) {
       out_ += " { ";
       for (size_t i = 0; i < variants.size(); ++i) {
         if (i) out_ += ", ";
-        printVariant(variants[i]);
+        printVariant(variants[i], n);
       }
       out_ += " }";
       return;
@@ -556,7 +558,7 @@ class Formatter {
     for (size_t i = 0; i < variants.size(); ++i) {
       flushCommentsBefore(variants[i].location.offset);
       writeIndent();
-      printVariant(variants[i]);
+      printVariant(variants[i], n);
       if (i + 1 < variants.size()) out_ += ',';
       lastLine_ = endLineOf(variants[i].location);
       emitTrailingComments(lastLine_);

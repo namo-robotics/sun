@@ -25,9 +25,9 @@ struct MatchArm {
   bool hasPayloadParens = false;     // pattern had a '(...)' binding list
   std::vector<PatternBinding> bindings;
   std::unique_ptr<ExprAST> body;
-  // Set by semantic analysis: >=0 when the pattern names a variant of the
-  // discriminant enum
-  int resolvedVariantTag = -1;
+  // Set by semantic analysis when the pattern names an enum variant.
+  // Valid tags may be negative; the pattern type identifies enum arms.
+  int64_t resolvedVariantTag = -1;
 
   MatchArm(std::unique_ptr<ExprAST> pattern, bool isWildcard,
            std::unique_ptr<ExprAST> body)

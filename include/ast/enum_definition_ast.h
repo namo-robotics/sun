@@ -19,10 +19,12 @@ class EnumType;
 // Enum variant declaration: Red, Circle(f64), Rect(f64, f64)
 struct EnumVariantDecl {
   std::string name;
-  int64_t value;      // Explicit or implicit numeric value
+  int64_t value;      // Tag bits; the enum type determines signedness
   Position location;  // Source location of variant declaration
   std::vector<TypeAnnotation> payloadTypes;  // empty = unit variant
   std::string doc;  // Comment written above the variant
+
+  bool hasExplicitValue = false;
 
   bool hasPayload() const { return !payloadTypes.empty(); }
 };
@@ -31,6 +33,7 @@ struct EnumVariantDecl {
 // Generic form: enum Option<T> { Some(T), None }
 class EnumDefinitionAST : public ExprAST {
   std::string name;
+  std::string underlyingType;  // Empty means the default representation
   std::vector<EnumVariantDecl> variants;
   std::vector<TypeParameter> typeParameters;  // empty = non-generic
   std::string doc_;                           // Comment written above the enum
@@ -51,11 +54,26 @@ class EnumDefinitionAST : public ExprAST {
   }
   EnumDefinitionAST(std::string name, std::vector<EnumVariantDecl> variants,
                     bool precompiled = false,
-                    std::vector<TypeParameter> typeParams = {})
+                    std::vector<TypeParameter> typeParams = {},
+                    std::string underlyingType = {})
       : name(std::move(name)),
+        underlyingType(std::move(underlyingType)),
         variants(std::move(variants)),
         typeParameters(std::move(typeParams)) {
     precompiled_ = precompiled;
+  }
+
+  /** Return the written integer type, or an empty string for the default. */
+  const std::string& getUnderlyingType() const { return underlyingType; }
+  /** Return the integer representation used for this enum. */
+  std::string getUnderlyingTypeName() const {
+    return underlyingType.empty() ? "i32" : underlyingType;
+  }
+  /** Format a tag according to the enum's signedness. */
+  std::string getValueText(const EnumVariantDecl& variant) const {
+    return !underlyingType.empty() && underlyingType[0] == 'u'
+               ? std::to_string(static_cast<uint64_t>(variant.value))
+               : std::to_string(variant.value);
   }
 
   const std::vector<TypeParameter>& getTypeParameters() const {
@@ -83,7 +101,8 @@ class EnumDefinitionAST : public ExprAST {
   ASTNodeType getType() const override { return ASTNodeType::ENUM_DEFINITION; }
   std::string toString() const override {
     std::string result =
-        std::string(isPublic() ? "public " : "") + "enum " + name + " { ";
+        std::string(isPublic() ? "public " : "") + "enum " + name +
+        (underlyingType.empty() ? "" : " " + underlyingType) + " { ";
     for (size_t i = 0; i < variants.size(); ++i) {
       if (i > 0) result += ", ";
       result += variants[i].name;
@@ -94,6 +113,9 @@ class EnumDefinitionAST : public ExprAST {
           result += variants[i].payloadTypes[j].baseName;
         }
         result += ")";
+      }
+      if (variants[i].hasExplicitValue) {
+        result += " = " + getValueText(variants[i]);
       }
     }
     result += " }";

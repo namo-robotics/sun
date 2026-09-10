@@ -500,9 +500,10 @@ sun::TypePtr TypeInferer::inferType(const ExprAST& expr) {
       // Only arms that reach the merge contribute to the result type.
       // Bindings have already left their semantic scopes, so use the body's
       // resolved type instead of looking their names up again.
-      std::unordered_set<int> coveredTags;
+      std::unordered_set<int64_t> coveredTags;
       for (const auto& arm : matchExpr.getArms()) {
-        if (!arm.isWildcard && arm.resolvedVariantTag >= 0 &&
+        if (!arm.isWildcard && arm.pattern && arm.pattern->getResolvedType() &&
+            arm.pattern->getResolvedType()->isEnum() &&
             !coveredTags.insert(arm.resolvedVariantTag).second)
           continue;
         if (!exprDiverges(*arm.body)) {
@@ -1309,6 +1310,29 @@ sun::TypePtr TypeInferer::inferIntrinsicCallType(
   }
   if (funcName == "_deinit") {
     return sun::Types::Void();
+  }
+  if (funcName == "_enum_from_int") {
+    if (typeArgs.size() != 1 ||
+        (!typeArgs[0]->isTypeParameter() &&
+         (!typeArgs[0]->isEnum() ||
+          static_cast<sun::EnumType*>(typeArgs[0].get())->hasPayload()))) {
+      logAndThrowError("_enum_from_int<T>: T must be an enum without payloads",
+                       genericCall.getLocation());
+    }
+    const auto& args = genericCall.getArgs();
+    if (args.size() != 1 || !args[0]->getResolvedType() ||
+        (!sun::unwrapRef(args[0]->getResolvedType())->isIntegral() &&
+         !sun::unwrapRef(args[0]->getResolvedType())->isTypeParameter())) {
+      logAndThrowError(
+          "_enum_from_int<T> requires exactly one integer argument",
+          genericCall.getLocation());
+    }
+    auto result = generics_.instantiateGenericEnum("std.Option", {typeArgs[0]});
+    if (!result) {
+      logAndThrowError("_enum_from_int<T> requires the standard library",
+                       genericCall.getLocation());
+    }
+    return result;
   }
   if (funcName == "_convert" || funcName == "_bitcast") {
     return typeArgs.empty() ? nullptr : typeArgs[0];

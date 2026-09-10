@@ -104,7 +104,7 @@ Value* EnumGenerator::codegenVariantConstruction(
 
 // -------------------------------------------------------------------
 // Enum match: switch on the tag; payload variants GEP their payloads into
-// binding allocas. Payload-free enums ARE their tag (bare i32), so the
+// binding allocas. Payload-free enums are their integer tag, so the
 // discriminant value is the switch operand directly.
 // -------------------------------------------------------------------
 
@@ -136,9 +136,9 @@ Value* EnumGenerator::codegenMatch(const MatchExprAST& expr,
                                   "match.tag");
   } else {
     tag = discVal;
-    // A ref discriminant may arrive as a pointer to the i32
+    // A ref discriminant may arrive as a pointer to the tag
     if (tag->getType()->isPointerTy()) {
-      tag = ctx.builder->CreateLoad(Type::getInt32Ty(ctx.getContext()), tag,
+      tag = ctx.builder->CreateLoad(enumType.toLLVMType(ctx.getContext()), tag,
                                     "match.tag");
     }
   }
@@ -295,7 +295,7 @@ Value* EnumGenerator::codegenMatch(const MatchExprAST& expr,
   };
 
   // Only the first reachable arm for a tag participates in the switch.
-  std::set<int> emittedTags;
+  std::set<int64_t> emittedTags;
   // Variant arms
   for (size_t i = 0; i < arms.size(); ++i) {
     const auto& arm = arms[i];
@@ -303,7 +303,7 @@ Value* EnumGenerator::codegenMatch(const MatchExprAST& expr,
     if (!emittedTags.insert(arm.resolvedVariantTag).second) continue;
     BasicBlock* ArmBB = BasicBlock::Create(
         ctx.getContext(), "match.arm." + std::to_string(i), TheFunction);
-    switchInst->addCase(ConstantInt::get(Type::getInt32Ty(ctx.getContext()),
+    switchInst->addCase(ConstantInt::get(cast<IntegerType>(tag->getType()),
                                          arm.resolvedVariantTag),
                         ArmBB);
     emitArmBody(arm, ArmBB);
@@ -372,8 +372,8 @@ Value* EnumGenerator::codegenVariantAccess(sun::EnumType& enumType,
         tagPtr);
     return storage;
   }
-  // Payload-free enums are inline i32 constants
-  return ConstantInt::get(Type::getInt32Ty(ctx.getContext()), variant.value);
+  // Payload-free enums are inline constants of the declared integer type.
+  return ConstantInt::get(enumType.toLLVMType(ctx.getContext()), variant.value);
 }
 
 // -------------------------------------------------------------------
@@ -382,8 +382,8 @@ Value* EnumGenerator::codegenVariantAccess(sun::EnumType& enumType,
 
 Value* EnumGenerator::codegen(const EnumDefinitionAST& expr) {
   // Enum definitions are already fully registered by the semantic analyzer
-  // in the TypeRegistry. Payload-free enums are represented as i32 constants
-  // emitted inline when variants are referenced.
+  // in the TypeRegistry. Payload-free enums are represented as integer
+  // constants emitted inline when variants are referenced.
 
   // Generic templates generate no code themselves; walk the specializations
   // recorded by the semantic analyzer (mirrors generic classes) and build

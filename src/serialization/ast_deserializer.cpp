@@ -933,6 +933,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeEnumDef(
     EnumVariantDecl variant;
     variant.name = variantProto.name();
     variant.value = variantProto.value();
+    variant.hasExplicitValue = variantProto.has_explicit_value();
     if (variantProto.has_location()) {
       variant.location = deserializePosition(variantProto.location());
     }
@@ -944,7 +945,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeEnumDef(
   }
   auto enumDef = std::make_unique<EnumDefinitionAST>(
       proto.name(), std::move(variants), /*precompiled=*/false,
-      toTypeParameters(proto));
+      toTypeParameters(proto), proto.underlying_type());
   enumDef->setVisibility(fromProto(proto.visibility()));
   enumDef->setDoc(proto.doc());
   return enumDef;
