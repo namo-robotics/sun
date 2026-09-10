@@ -12,7 +12,7 @@ a compiled language with Rust-style borrow checking and an LLVM backend.
 - **Find references** to every use of a symbol across the files of a manifest. Referencing an interface member also lists the class members implementing it, and the other way around.
 - **Rename symbol** across the files of a manifest. An interface member is renamed together with the class members implementing it. Symbols declared in a library cannot be renamed.
 - **Formatting** via "Format Document" and format-on-save.
-- **Cross-file analysis**: files listed in a `manifest` block are analyzed together with their entrypoint. Manifests are discovered automatically, or set explicitly with `sun.entrypoints`.
+- **Cross-file analysis**: files listed in a `manifest` block are analyzed together with their entrypoint. Entrypoints are configured with `sun.entrypoints` or `sun.sun_configs`.
 
 ## Requirements
 
@@ -26,9 +26,9 @@ elsewhere (for example a local build at `build/sun-lsp`).
 | --- | --- |
 | `sun.lsp_path` | Path to the `sun-lsp` executable. Defaults to `sun-lsp` on `PATH`. Relative paths resolve against the workspace folder. |
 | `sun.compiler_path` | Path to the `sun` compiler, used by the Test Explorer to run tests. Defaults to `sun` on `PATH`; the binary next to `sun-lsp` is tried as a fallback. |
-| `sun.sun_configs` | `sun-config.json` files whose `entrypoints` lists describe the project. Defaults to the workspace root's. Test discovery and entrypoint resolution use them; when they declare entrypoints, manifest scanning is skipped. |
+| `sun.sun_configs` | `sun-config.json` files whose `entrypoints` lists describe the project. Defaults to the workspace root's. Test discovery and cross-file analysis use their declared entrypoints. |
 | `sun.sun_path` | Extra directories added to `SUN_PATH` for module resolution. Defaults to the workspace folder. |
-| `sun.entrypoints` | Entrypoint files containing a `manifest` block. When set, replaces automatic manifest discovery. |
+| `sun.entrypoints` | Entrypoint files containing a `manifest` block. Combined with entrypoints declared by `sun.sun_configs`. |
 | `sun.path_variables` | Path variables for manifest entries, e.g. `{"LIBS": "libs"}` for `libraries: ["$LIBS/mathlib.moon"]`. Equivalent to the compiler's `--path-var` flag; relative values resolve against the entrypoint's directory. |
 
 A folder can also hold a `sun-config.json` defining `sunPath` and
@@ -36,6 +36,13 @@ A folder can also hold a `sun-config.json` defining `sunPath` and
 the language server merge every config from the entrypoint's folder upward
 (nearest definitions win; `"root": true` stops the search), and the merged
 definitions override the settings above.
+
+## Test Explorer
+
+Test Explorer discovers tests only through configured entrypoints, even when no
+files are open. Without configured entrypoints, the tree is empty. Opening a file
+never adds a test suite. Config file changes and saved Sun source changes refresh
+the tree automatically; config files may be created after the server starts.
 
 ## Learn more
 

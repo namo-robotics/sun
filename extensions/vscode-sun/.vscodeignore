@@ -1,5 +1,6 @@
 # Source and development-only files
 src/**
+test/**
 .vscode/**
 .vscode-test/**
 

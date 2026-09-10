@@ -1739,7 +1739,19 @@ int main() {
         continue;
       }
 
+      refreshEntrypoints();
+      diagnosticsCache.clear();
+      analyzedDocuments.clear();
       const OpenDocument& document = documentIter->second;
+      const EntrypointConfig* entrypoint =
+          entrypointManager.findEntrypointForFile(document.path);
+      if (!entrypoint) {
+        llvm::json::Object result;
+        result["entrypoint"] = nullptr;
+        result["tests"] = llvm::json::Array();
+        sendResponse(*id, std::move(result));
+        continue;
+      }
       llvm::json::Array tests;
       if (const AnalyzedDocument* analyzed = getAnalyzedDocument(document)) {
         try {
@@ -1758,14 +1770,8 @@ int main() {
         }
       }
 
-      // The entrypoint is what `sun test` should be handed to run these
-      // tests: the covering manifest when there is one, else the file
-      // itself.
-      const EntrypointConfig* entrypoint =
-          entrypointManager.findEntrypointForFile(document.path);
       llvm::json::Object result;
-      result["entrypoint"] =
-          entrypoint ? entrypoint->entrypointPath : document.path;
+      result["entrypoint"] = entrypoint->entrypointPath;
       result["tests"] = std::move(tests);
       sendResponse(*id, std::move(result));
       continue;
@@ -1778,6 +1784,10 @@ int main() {
     // the sources whose timestamps say whether that binary is fresh.
     if (methodName == "sun/workspaceTests") {
       if (!id) continue;
+
+      refreshEntrypoints();
+      diagnosticsCache.clear();
+      analyzedDocuments.clear();
 
       // Unsaved edits in open documents stand in for their files, the same
       // way per-document analysis treats the requested buffer.

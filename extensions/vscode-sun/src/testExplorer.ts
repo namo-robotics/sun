@@ -2,10 +2,8 @@
 //
 // Discovery is workspace-wide: the language server's custom
 // "sun/workspaceTests" request lists every test of every configured
-// entrypoint (from the sun_configs setting's entrypoints lists), so the tree
-// populates without opening a single file. The per-document "sun/tests"
-// request keeps one file's subtree current as it is edited. The tree groups
-// tests by entrypoint, then by file.
+// entrypoint from sun.entrypoints and sun.sun_configs. Opening a file does
+// not discover tests. The tree groups tests by entrypoint, then by file.
 //
 // Running prefers the entrypoint's configured test binary
 // (test_binary_name in sun-config.json) when it is newer than every source;
@@ -19,16 +17,13 @@ import { spawn } from 'node:child_process';
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 
+/** Source range of a discovered test name. */
 interface TestRange {
   start: { line: number; character: number };
   end: { line: number; character: number };
 }
 
-interface SunTestsResponse {
-  entrypoint: string;
-  tests: Array<{ id: string; label: string; range: TestRange }>;
-}
-
+/** Configured suites and the source files and binaries needed to run them. */
 interface WorkspaceTestsResponse {
   entrypoints: Array<{
     entrypoint: string;
@@ -98,12 +93,15 @@ function binaryIsFresh(run: EntrypointRun): boolean {
   }
 }
 
+/** Discover and run tests through configured workspace entrypoints. */
 export function activateTestExplorer(
   context: vscode.ExtensionContext,
   client: LanguageClient,
   env: NodeJS.ProcessEnv,
   workspaceFolder: string | undefined,
-  serverCommand: string
+  serverCommand: string,
+  synchronizeConfiguration: () => Promise<void>,
+  getConfigPaths: () => string[]
 ): void {
   const controller = vscode.tests.createTestController('sun', 'Sun Tests');
   const output = vscode.window.createOutputChannel('Sun Tests');
@@ -154,16 +152,13 @@ export function activateTestExplorer(
   }
 
   /** Rebuild the whole tree from the server's workspace-wide listing. */
-  async function refreshWorkspace(): Promise<void> {
-    let response: WorkspaceTestsResponse;
-    try {
-      response = await client.sendRequest<WorkspaceTestsResponse>(
-        'sun/workspaceTests',
-        {}
-      );
-    } catch {
-      return;
-    }
+  async function discoverWorkspace(generation: number): Promise<void> {
+    const response = await client.sendRequest<WorkspaceTestsResponse>(
+      'sun/workspaceTests',
+      {}
+    );
+
+    if (disposed || generation !== refreshGeneration) return;
 
     entrypointRuns.clear();
     const roots: vscode.TestItem[] = [];
@@ -188,62 +183,78 @@ export function activateTestExplorer(
     controller.items.replace(roots);
   }
 
-  /** Ask the server for the tests in one open document and rebuild that
-   *  file's subtree, so edits show up without a full workspace pass. */
-  async function refreshDocument(document: vscode.TextDocument): Promise<void> {
-    if (document.languageId !== 'sun' || document.uri.scheme !== 'file') {
-      return;
-    }
-    let response: SunTestsResponse;
-    try {
-      response = await client.sendRequest<SunTestsResponse>('sun/tests', {
-        textDocument: { uri: document.uri.toString() },
+  let disposed = false;
+  let refreshGeneration = 0;
+  let refreshTask: Promise<void> | undefined;
+  let configWatchers: vscode.FileSystemWatcher[] = [];
+
+  /** Serialize refreshes and discard results superseded by another event. */
+  function refreshWorkspace(): Promise<void> {
+    ++refreshGeneration;
+    if (!refreshTask) {
+      refreshTask = (async () => {
+        let generation: number;
+        do {
+          generation = refreshGeneration;
+          try {
+            await synchronizeConfiguration();
+            if (!disposed) await discoverWorkspace(generation);
+          } catch (error) {
+            output.appendLine(`Test discovery failed: ${error}`);
+          }
+        } while (!disposed && generation !== refreshGeneration);
+      })().finally(() => {
+        refreshTask = undefined;
       });
-    } catch {
-      return;
     }
+    return refreshTask;
+  }
 
-    const filePath = document.uri.fsPath;
-    const entrypoint = response.entrypoint || filePath;
-
-    // Drop the file's previous subtree wherever it was (its entrypoint may
-    // have changed when a manifest appeared or vanished).
-    for (const [, root] of controller.items) {
-      root.children.delete(filePath);
-      if (root.children.size === 0) {
-        controller.items.delete(root.id);
-      }
-    }
-    if (response.tests.length === 0) {
-      return;
-    }
-
-    let root = controller.items.get(entrypoint);
-    if (!root) {
-      root = controller.createTestItem(
-        entrypoint,
-        entrypointLabel(entrypoint),
-        vscode.Uri.file(entrypoint)
+  /** Watch exact configured files, including custom names outside the workspace. */
+  function updateConfigWatchers(): void {
+    for (const watcher of configWatchers) watcher.dispose();
+    configWatchers = [];
+    for (const configPath of new Set(getConfigPaths())) {
+      const absolutePath = path.resolve(configPath);
+      const watcher = vscode.workspace.createFileSystemWatcher(
+        new vscode.RelativePattern(vscode.Uri.file(path.dirname(absolutePath)), '*')
       );
-      targets.set(root, { entrypoint, dottedName: '' });
-      controller.items.add(root);
+      const changed = (uri: vscode.Uri) => {
+        if (path.resolve(uri.fsPath) === absolutePath) void refreshWorkspace();
+      };
+      watcher.onDidCreate(changed);
+      watcher.onDidChange(changed);
+      watcher.onDidDelete(changed);
+      configWatchers.push(watcher);
     }
-    root.children.add(makeFileItem(entrypoint, document.uri, response.tests));
   }
 
   controller.refreshHandler = refreshWorkspace;
-
-  // Entrypoints and tests change when sun-config.json does.
-  const configWatcher =
-    vscode.workspace.createFileSystemWatcher('**/sun-config.json');
-  configWatcher.onDidCreate(() => refreshWorkspace());
-  configWatcher.onDidChange(() => refreshWorkspace());
-  configWatcher.onDidDelete(() => refreshWorkspace());
-  context.subscriptions.push(configWatcher);
-
+  updateConfigWatchers();
+  const sourceWatcher = vscode.workspace.createFileSystemWatcher('**/*.sun');
+  sourceWatcher.onDidCreate(() => refreshWorkspace());
+  sourceWatcher.onDidChange(() => refreshWorkspace());
+  sourceWatcher.onDidDelete(() => refreshWorkspace());
   context.subscriptions.push(
-    vscode.workspace.onDidOpenTextDocument(refreshDocument),
-    vscode.workspace.onDidSaveTextDocument(refreshDocument)
+    sourceWatcher,
+    vscode.workspace.onDidSaveTextDocument((document) => {
+      if (document.languageId === 'sun' && document.uri.scheme === 'file') {
+        void refreshWorkspace();
+      }
+    }),
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (['sun.entrypoints', 'sun.sun_configs', 'sun.path_variables']
+        .some((setting) => event.affectsConfiguration(setting))) {
+        updateConfigWatchers();
+        void refreshWorkspace();
+      }
+    }),
+    {
+      dispose: () => {
+        disposed = true;
+        for (const watcher of configWatchers) watcher.dispose();
+      },
+    }
   );
 
   /** Leaf test items under an item (a leaf returns itself). */

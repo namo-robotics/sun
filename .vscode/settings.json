@@ -100,5 +100,7 @@
         {
             "file": "AGENTS.md"
         }
-    ]
+    ],
+    "cppTestExplorer.parallelMode": "case",
+    "cppTestExplorer.concurrency": 0
 }
