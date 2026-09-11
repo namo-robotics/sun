@@ -3,10 +3,22 @@ FROM ubuntu:26.04
 
 LABEL devcontainer.feature="LLVM 20 Dev Environment (Ubuntu 26.04 LTS)"
 
+# Install trusted certificates over HTTP before using the HTTPS mirror.
+RUN sed -i \
+    -e 's|http://archive.ubuntu.com/ubuntu/|http://mirror.geekonweb.fr/ubuntu/|g' \
+    -e 's|https://archive.ubuntu.com/ubuntu/|http://mirror.geekonweb.fr/ubuntu/|g' \
+    -e 's|http://security.ubuntu.com/ubuntu/|http://mirror.geekonweb.fr/ubuntu/|g' \
+    -e 's|https://security.ubuntu.com/ubuntu/|http://mirror.geekonweb.fr/ubuntu/|g' \
+    /etc/apt/sources.list.d/ubuntu.sources \
+    && apt-get update --error-on=any \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && sed -i 's|http://mirror.geekonweb.fr/ubuntu/|https://mirror.geekonweb.fr/ubuntu/|g' /etc/apt/sources.list.d/ubuntu.sources \
+    && rm -rf /var/lib/apt/lists/*
+
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Etc/UTC
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update --error-on=any && apt-get install -y --no-install-recommends \
     # Core build tools
     build-essential cmake ninja-build git python3 python3-pip \
     # LLVM 20 full development suite (native since 25.10)
@@ -32,9 +44,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Set modern LLVM 20 as default (usually already the case, but explicit is safer)
 RUN update-alternatives --install /usr/bin/clang     clang     /usr/bin/clang-20     100 \
- && update-alternatives --install /usr/bin/clang++   clang++   /usr/bin/clang++-20   100 \
- && update-alternatives --install /usr/bin/clangd    clangd    /usr/bin/clangd-20    100 \
- && update-alternatives --install /usr/bin/llvm-config llvm-config /usr/bin/llvm-config-20 100
+    && update-alternatives --install /usr/bin/clang++   clang++   /usr/bin/clang++-20   100 \
+    && update-alternatives --install /usr/bin/clangd    clangd    /usr/bin/clangd-20    100 \
+    && update-alternatives --install /usr/bin/llvm-config llvm-config /usr/bin/llvm-config-20 100
 
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -65,17 +77,17 @@ ENV LANG=en_US.UTF-8 \
 # bundles include a musl-built libstdc++ for Sun's exception runtime, which
 # Ubuntu's glibc-built libstdc++.a cannot provide.
 RUN mkdir -p /opt/cross \
- && curl -sL https://musl.cc/aarch64-linux-musl-cross.tgz | tar xz -C /opt/cross \
- && curl -sL https://musl.cc/x86_64-linux-musl-cross.tgz | tar xz -C /opt/cross
+    && curl -sL https://musl.cc/aarch64-linux-musl-cross.tgz | tar xz -C /opt/cross \
+    && curl -sL https://musl.cc/x86_64-linux-musl-cross.tgz | tar xz -C /opt/cross
 ENV PATH="/opt/cross/aarch64-linux-musl-cross/bin:/opt/cross/x86_64-linux-musl-cross/bin:${PATH}"
 
 # GitHub CLI from the official apt repo (newer than the Ubuntu archive build)
 RUN mkdir -p -m 755 /etc/apt/keyrings \
- && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
- && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
- && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list \
- && apt-get update && apt-get install -y --no-install-recommends gh \
- && apt-get clean && rm -rf /var/lib/apt/lists/*
+    && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update && apt-get install -y --no-install-recommends gh \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Grant sudo to existing ubuntu user (UID 1000 already exists in Ubuntu 24.04+)
 RUN echo "ubuntu ALL=(root) NOPASSWD:ALL" > /etc/sudoers.d/ubuntu \
