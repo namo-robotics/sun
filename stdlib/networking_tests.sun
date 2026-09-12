@@ -7,6 +7,81 @@ using std;
 
 public module std {
   module networking_tests {
+    /** Check that closing and dropping a moved-from TcpStream preserves stdin. */
+    test_function taken_stream_preserves_stdin() {
+      var alloc = make_heap_allocator();
+      var stdin_flags: i32 = unsafe { c_fcntl(0, F_GETFL); };
+      std.test.assert(stdin_flags >= 0, "stdin is open before the test");
+      if (true) {
+        var sockets = Vec<TcpStream>(alloc, 1);
+        var listener = TcpListener();
+        listener.bind_loopback(0);
+        listener.listen(1);
+        var socket = TcpStream();
+        socket.connect_local(listener.local_port());
+        var peer = listener.accept();
+        sockets.push(socket);
+        var taken = sockets.take(0);
+        std.test.assert(not sockets.get(0).is_open(), "the moved-from socket is closed");
+        sockets.get(0).close();
+        sockets.clear();
+        std.test.assert(taken.is_open(), "the taken stream is open");
+        std.test.assert_eq(taken.send_str("ping"), 4);
+        var buf = ContiguousBuffer<u8>(alloc, 4);
+        std.test.assert(peer.recv(buf) > 0, "the taken stream can send data");
+        taken.close();
+        taken.close();
+        std.test.assert(not taken.is_open(), "the socket is closed");
+      }
+      std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, stdin_flags);
+    }
+
+    /** Check that closing and dropping a moved-from TcpListener preserves stdin. */
+    test_function taken_listener_preserves_stdin() {
+      var alloc = make_heap_allocator();
+      var stdin_flags: i32 = unsafe { c_fcntl(0, F_GETFL); };
+      std.test.assert(stdin_flags >= 0, "stdin is open before the test");
+      if (true) {
+        var sockets = Vec<TcpListener>(alloc, 1);
+        var socket = TcpListener();
+        socket.bind_loopback(0);
+        sockets.push(socket);
+        var taken = sockets.take(0);
+        std.test.assert(not sockets.get(0).is_open(), "the moved-from socket is closed");
+        sockets.get(0).close();
+        sockets.clear();
+        std.test.assert(taken.is_open(), "the taken socket is open");
+        std.test.assert(taken.local_port() > 0, "the taken socket remains bound");
+        taken.close();
+        taken.close();
+        std.test.assert(not taken.is_open(), "the socket is closed");
+      }
+      std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, stdin_flags);
+    }
+
+    /** Check that closing and dropping a moved-from UdpSocket preserves stdin. */
+    test_function taken_udp_socket_preserves_stdin() {
+      var alloc = make_heap_allocator();
+      var stdin_flags: i32 = unsafe { c_fcntl(0, F_GETFL); };
+      std.test.assert(stdin_flags >= 0, "stdin is open before the test");
+      if (true) {
+        var sockets = Vec<UdpSocket>(alloc, 1);
+        var socket = UdpSocket();
+        socket.bind(ipv4_loopback(), 0);
+        sockets.push(socket);
+        var taken = sockets.take(0);
+        std.test.assert(not sockets.get(0).is_open(), "the moved-from socket is closed");
+        sockets.get(0).close();
+        sockets.clear();
+        std.test.assert(taken.is_open(), "the taken socket is open");
+        std.test.assert(taken.local_port() > 0, "the taken socket remains bound");
+        taken.close();
+        taken.close();
+        std.test.assert(not taken.is_open(), "the socket is closed");
+      }
+      std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, stdin_flags);
+    }
+
     // A non-blocking read on a connected stream with nothing to read fails
     // with a would-block code instead of waiting.
     test_function nonblocking_recv_reports_would_block() {
