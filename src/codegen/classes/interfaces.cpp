@@ -181,7 +181,8 @@ Value* ClassGenerator::createOwnedInterfaceFatPointer(
   ctx.builder->CreateAlignedStore(moved, box, objectAlign);
   ctx.builder->CreateMemSet(objectPtr, ctx.builder->getInt8(0), objectSize,
                             MaybeAlign(objectAlign));
-  scopes().markClassAllocationAsDeinited(objectPtr);
+  scopes().markClassAllocationAsDeinited(
+      objectPtr, std::make_shared<sun::ClassType>(*classType));
 
   return ctx.builder->CreateInsertValue(fatPtr, box, 0, "iface.owner");
 }

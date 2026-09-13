@@ -139,17 +139,43 @@ Only fields that own something are held to this. A field holding a number
 releases nothing when it is written again, so accumulating a total in a loop is
 fine.
 
-A constructor may still hand the work to its own methods, first values
-included: the compiler follows the call into the method's body and what it
-assigns counts. A method's write always replaces and drops, whoever calls it.
-During construction, before the field's first value, the storage is all zero —
-the state a moved-from value is left in, which an owning type's `deinit` has
-to treat as "nothing to release" anyway, the way `Unique<T>` checks its
-pointer before freeing — so the drop is a no-op there.
+A constructor's first direct assignment starts a field's lifetime without
+destroying its storage. Later assignments destroy the previous value, unless
+ownership has moved away.
 
-What the rules buy is that every write to a field is settled while compiling:
-it either starts the field's life and drops nothing, or replaces a value and
-drops it. Nothing about a field write is checked at run time.
+### Moving Values Out
+
+Moving a value transfers responsibility for destroying it. The old location
+must not run its destructor. Assigning a new value there restores ownership;
+the new value is destroyed normally.
+
+A locally owned class without a custom `deinit` can have a field moved out.
+The remaining fields are still destroyed. The moved field cannot be read,
+and the whole object cannot be used, until that field is assigned again.
+
+Moving a field out of a class with `deinit` is rejected: its destructor may
+need that field. Moving through `ref` or `this`, or out of an indexed
+element, is also rejected. Use `std.replace` to leave a valid replacement:
+
+```sun
+var previous = std.replace(holder.value, replacement);
+```
+
+For a vector, `remove(index)`, `swap_remove(index)`, and `pop()` transfer
+ownership and shrink the vector. `Vec.take()` is no longer available:
+zeroed storage is not an empty value of an arbitrary type.
+
+When positions must stay stable, use `Vec<Option<T>>` and replace the
+occupied slot with `None`:
+
+```sun
+var empty: Option<TcpStream> = Option.None;
+var previous = slots.replace(index, empty);
+```
+
+`Vec.replace` returns the old element without destroying it and keeps the
+size unchanged. Clearing the vector later destroys only values still
+present in its optional slots.
 
 ### Moving on Only Some Paths
 

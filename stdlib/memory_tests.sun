@@ -1,0 +1,43 @@
+using std;
+
+/** Tests for replacing owned values while keeping storage initialized. */
+public module std {
+  module memory_tests {
+    var drops: i32 = 0;
+
+    /** Count every destruction, including values whose contents are zero. */
+    class Owner {
+      var id: i32;
+      init(id: i32) {
+        this.id = id;
+      }
+      deinit() {
+        drops = drops + 1;
+      }
+    }
+
+    /** Replacing through a reference transfers ownership without an extra drop. */
+    test_function replacement_transfers_ownership() {
+      drops = 0;
+      if (true) {
+        var current = Owner(0);
+        var previous = replace(current, Owner(1));
+        std.test.assert_eq(drops, 0);
+        std.test.assert_eq(previous.id, 0);
+        std.test.assert_eq(current.id, 1);
+      }
+      std.test.assert_eq(drops, 2);
+
+      if (true) {
+        var alloc = make_heap_allocator();
+        var slots = Vec<Option<Owner>>(alloc, 1);
+        slots.push(Option.Some(Owner(0)));
+        var empty: Option<Owner> = Option.None;
+        var previous = slots.replace(0, empty);
+        slots.clear();
+        std.test.assert_eq(drops, 2);
+      }
+      std.test.assert_eq(drops, 3);
+    }
+  }
+}

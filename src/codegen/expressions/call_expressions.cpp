@@ -22,10 +22,9 @@ Value* CodegenVisitor::applyMoveSemantics(Value* argVal,
                                           sun::TypePtr argSunType) {
   if (!argSunType || !argVal->getType()->isPointerTy()) return argVal;
 
-  // Whatever tracked the source (a constructor temporary, a local) no longer
-  // owns it: the value moves to the destination. Its own drop is also made a
-  // no-op below (zeroed / tag-poisoned) for sources not tracked here.
-  scopes.markClassAllocationAsDeinited(argVal);
+  // Transfer ownership away from the source. Callers using raw storage must
+  // also exclude the extracted slot from future cleanup.
+  scopes.markClassAllocationAsDeinited(argVal, argSunType);
 
   // Payload enums move by loading the storage and poisoning the source tag
   // (never memset: tag 0 is a real variant); a later drop of the source is
@@ -76,7 +75,7 @@ Value* CodegenVisitor::applyMoveSemantics(Value* argVal,
   // Load the struct value from the source
   Value* structVal = ctx.builder->CreateLoad(structType, argVal, "move.val");
 
-  // Move semantics: zero out the source to prevent double-free
+  // Clear stale contents after transferring ownership.
   llvm::FunctionCallee memsetFn = module->getOrInsertFunction(
       "memset", FunctionType::get(PointerType::getUnqual(ctx.getContext()),
                                   {PointerType::getUnqual(ctx.getContext()),

@@ -87,8 +87,9 @@ void CodegenVisitor::emitArrayTransfer(Value* dest, Value* src,
   ctx.builder->CreateMemCpy(dest, align, src, align, size);
   if (!move) return;
   // The destination owns the elements now. The source's own drop must
-  // release nothing, and an all-zero element is exactly that.
-  scopes.markClassAllocationAsDeinited(src);
+  // release nothing; ownership tracking excludes the moved storage.
+  scopes.markClassAllocationAsDeinited(src,
+                                       std::make_shared<sun::ArrayType>(type));
   if (sun::typeNeedsDrop(&type)) {
     ctx.builder->CreateMemSet(
         src, ConstantInt::get(llvm::Type::getInt8Ty(ctx.getContext()), 0), size,

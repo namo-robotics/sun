@@ -911,6 +911,8 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
   checkErasedLifetimeLambdaArgs(call, paramTypes);
   checkNamedLifetimesAtCall(call, paramTypes);
 
+  checkCallMoveConflicts(call, paramTypes);
+
   for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
     const auto& arg = args[i];
     const auto& paramType = paramTypes[i];
@@ -1170,6 +1172,48 @@ bool BorrowChecker::checkMoveAllowed(const std::string& name,
   return true;
 }
 
+void BorrowChecker::checkCallMoveConflicts(
+    const CallExprAST& call, const std::vector<TypePtr>& paramTypes) {
+  const auto& args = call.getArgs();
+  const auto count = std::min(args.size(), paramTypes.size());
+  auto placePath = [&](const ExprAST& expression) {
+    const ExprAST* place = &expression;
+    while (place->getType() == ASTNodeType::PAREN_EXPR)
+      place = static_cast<const ParenExprAST&>(*place).getInner();
+    return fieldPath(*place);
+  };
+  auto overlaps = [](const std::string& left, const std::string& right) {
+    return !left.empty() && !right.empty() &&
+           (left == right || left.starts_with(right + ".") ||
+            right.starts_with(left + "."));
+  };
+  std::string receiver;
+  if (call.getCallee()->getType() == ASTNodeType::MEMBER_ACCESS) {
+    const auto& member = static_cast<const MemberAccessAST&>(*call.getCallee());
+    if (member.getObject()) receiver = placePath(*member.getObject());
+  }
+  for (size_t i = 0; i < count; ++i) {
+    if (!args[i] || !paramTypes[i] || paramTypes[i]->isReference() ||
+        !typeMovesOnRead(args[i]->getResolvedType()))
+      continue;
+    auto moved = placePath(*args[i]);
+    if (moved.empty()) continue;
+    for (size_t j = 0; j < count; ++j) {
+      if (i == j || !args[j] || !paramTypes[j] || !paramTypes[j]->isReference())
+        continue;
+      if (overlaps(moved, placePath(*args[j]))) {
+        reportError(
+            "cannot move '" + moved + "' while the same call borrows it",
+            args[i]->getLocation());
+      }
+    }
+    if (overlaps(moved, receiver)) {
+      reportError("cannot move '" + moved + "' while calling a method on it",
+                  args[i]->getLocation());
+    }
+  }
+}
+
 std::string BorrowChecker::fieldPath(const ExprAST& expr) const {
   if (expr.getType() == ASTNodeType::VARIABLE_REFERENCE) {
     return static_cast<const VariableReferenceAST&>(expr).getName();
@@ -1216,8 +1260,17 @@ void BorrowChecker::noteFieldMove(const ExprAST& value) {
   if (path.empty() || path.find('.') == std::string::npos) return;
 
   const auto base = path.substr(0, path.find('.'));
+  if (base == "this" || refVariables_.count(base) ||
+      refParamNames_.count(base)) {
+    reportError(
+        "cannot move field '" + path +
+            "' through a reference; replace it with a valid value instead",
+        value.getLocation());
+    return;
+  }
   if (!checkMoveAllowed(base, value.getLocation())) return;
   recordMove(path, value.getLocation());
+  value.setMoved(true);
   clearFieldPaths(path);
 }
 

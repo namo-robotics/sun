@@ -11,6 +11,7 @@
 #include "semantic_analysis/symbol_names.h"
 #include "semantic_analysis/type_rules.h"
 #include "semantic_analysis/type_traits.h"
+#include "support/config.h"
 #include "support/error.h"
 
 using sun::unwrapRef;
@@ -712,8 +713,9 @@ GenericSpecializer::instantiateGenericFunction(
   for (const auto& [argName, argType] : proto.getArgs()) {
     sun::TypePtr paramType = sema_.types().typeAnnotationToType(argType);
 
-    // If a type parameter resolved to a compound type, error - must use ref
-    if (paramType && sun::typeMovesOnRead(paramType)) {
+    // Generic functions follow the same ownership rules as ordinary functions.
+    if (sun::Config::REQUIRE_REF_FOR_COMPOUND_PARAMS && paramType &&
+        sun::typeMovesOnRead(paramType)) {
       logAndThrowError("Parameter '" + argName + "' has compound type '" +
                            paramType->toDisplayString() +
                            "' which cannot be passed by value. Use 'ref " +

@@ -467,7 +467,7 @@ void SemanticAnalyzer::analyzeReturnExpr(ReturnExprAST& returnExpr) {
               "Return 'ref " +
               declaredReturn->toDisplayString() +
               "' to keep borrowing, copy it explicitly with clone(), or "
-              "move the value out first (take()/pop()/remove() on a "
+              "move the value out first (pop()/remove()/swap_remove() on a "
               "container).",
           returnExpr.getLocation());
     }

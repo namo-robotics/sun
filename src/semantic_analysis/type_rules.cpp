@@ -385,7 +385,7 @@ bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
   // duplicated that way. A compound T read out of a borrow would be a second
   // value backed by the borrowed storage — borrow it with `ref`, copy it
   // explicitly with clone(), or move it out of a container with
-  // take()/pop()/remove().
+  // pop()/remove()/swap_remove().
   if (!to->isReference() && from->isReference()) {
     auto* fromRef = static_cast<const sun::ReferenceType*>(from.get());
     if (!sun::typeCopiesByRead(to)) return false;

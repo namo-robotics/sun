@@ -336,10 +336,12 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
     }
   }
 
-  // For class types, use the alloca directly
-  // instead of creating a new alloca and storing a pointer
+  // Fresh call results can be adopted; named sources must transfer ownership.
   if (varSunType && varSunType->isClass()) {
-    if (auto* allocaValue = dyn_cast<AllocaInst>(value)) {
+    auto valueKind = expr.getValue()->getType();
+    auto* allocaValue = dyn_cast<AllocaInst>(value);
+    if (allocaValue && (valueKind == ASTNodeType::CALL ||
+                        valueKind == ASTNodeType::GENERIC_CALL)) {
       allocaValue->setName(expr.getName());
       scope[expr.getName()] = allocaValue;
       debugDeclareLocal(allocaValue, expr.getName(), varSunType,
@@ -369,16 +371,12 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
       return alloca;
     }
 
-    // For class types, if value is a pointer to struct (from member access),
-    // implement MOVE SEMANTICS: load the struct, zero out the source field,
-    // and track the destination for deinit. This prevents double-free.
+    // Transfer a local or field into independently owned storage.
     if (value->getType()->isPointerTy()) {
       if (auto classType = sun::tryGetTypePtr<sun::ClassType>(varSunType)) {
         llvm::StructType* structType =
             classType->getStructType(ctx.getContext());
-        // Load the struct value from the source pointer
-        Value* structVal =
-            ctx.builder->CreateLoad(structType, value, "move.val");
+        Value* structVal = gen_.applyMoveSemantics(value, varSunType);
         // Create a new alloca for this variable (the move destination)
         AllocaInst* alloca =
             createEntryBlockAlloca(func, expr.getName(), structType);
@@ -386,24 +384,6 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
         scope[expr.getName()] = alloca;
         debugDeclareLocal(alloca, expr.getName(), varSunType,
                           expr.getLocation());
-
-        // MOVE SEMANTICS: Zero out the source field to prevent double-free
-        // when the original object's deinit runs. The source expression
-        // was a member access, so 'value' is a pointer to the embedded struct.
-        // We zero the entire struct so its deinit (if called) does nothing.
-        llvm::FunctionCallee memsetFn = module->getOrInsertFunction(
-            "memset",
-            FunctionType::get(PointerType::getUnqual(ctx.getContext()),
-                              {PointerType::getUnqual(ctx.getContext()),
-                               Type::getInt32Ty(ctx.getContext()),
-                               Type::getInt64Ty(ctx.getContext())},
-                              false));
-        const DataLayout& DL = module->getDataLayout();
-        uint64_t structSize = DL.getTypeAllocSize(structType);
-        ctx.builder->CreateCall(
-            memsetFn,
-            {value, ConstantInt::get(Type::getInt32Ty(ctx.getContext()), 0),
-             ConstantInt::get(Type::getInt64Ty(ctx.getContext()), structSize)});
 
         // Track the destination for deinit - it now owns the data
         scopes().trackClassAllocation(alloca, expr.getName(), classType);

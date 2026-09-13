@@ -69,9 +69,8 @@ public module std {
       return unsafe { _to_ref<T>(_ptr_as_raw<T>(_ptr_offset(this.data.get_raw(), index * _sizeof<T>()))); };
     }
 
-    // Move the element at index out of the buffer, leaving the slot zeroed so
-    // it drops as a no-op. Only for callers that are giving up the slot.
-    public method take_unchecked(index: i64) T {
+    /** Extract raw storage that a container must exclude from future drops. */
+    method take_unchecked(index: i64) T {
       var value: T = unsafe { _load<T>(this.data.get_raw(), index); };
       unsafe {
         _memset(

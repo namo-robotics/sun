@@ -1,6 +1,6 @@
 // Tests that containers drop the elements they own: Vec/Map/LinkedList run
 // element deinits on destruction, clear, overwrite, and removal — and do NOT
-// drop elements whose ownership was moved out (pop/take/remove).
+// drop elements whose ownership was moved out (pop/remove).
 
 #include <gtest/gtest.h>
 
@@ -8,9 +8,7 @@
 
 namespace {
 
-// Owner models a real resource holder: like Unique<T>, its deinit is a no-op
-// on moved-from (zeroed) storage — Sun's move semantics zero the source, so
-// owning types must treat the all-zero state as "nothing to release".
+// Every constructed Owner must be destroyed exactly once, even with a zero id.
 const char* kOwnerPreamble = R"(
     using std;
 
@@ -22,10 +20,7 @@ const char* kOwnerPreamble = R"(
         this.id = id;
       }
       deinit() {
-        if (this.id != 0) {
-          counter = counter + 1;
-          this.id = 0;
-        }
+        counter = counter + 1;
       }
       method get_id() i32 {
         return this.id;
@@ -121,15 +116,15 @@ TEST(MemorySafety_Drops_Containers, vec_pop_moves_ownership_no_double_drop) {
 }
 
 TEST(MemorySafety_Drops_Containers,
-     vec_take_transfers_ownership_no_double_drop) {
+     vec_remove_transfers_ownership_no_double_drop) {
   auto value = executeStringWithStdlib(withPreamble(R"(
     function helper() i32 throws IError {
       var alloc = make_heap_allocator();
       var v = Vec<Owner>(alloc, 4);
       v.push(Owner(1));
       v.push(Owner(2));
-      var taken = v.take(0);
-      // taken (id 1) dropped at helper exit; slot 0 is zeroed (no-op drop);
+      var taken = v.remove(0);
+      // taken (id 1) drops at helper exit; removal shrinks the vector;
       // v deinit drops id 2
       return taken.get_id();
     }
@@ -441,8 +436,8 @@ TEST(MemorySafety_Drops_Containers,
   EXPECT_EQ(value, 99);
 }
 
-// take()/pop() still move the element out, leaving the slot to drop as a no-op
-TEST(MemorySafety_Drops_Containers, take_moves_the_element_out) {
+// Removal transfers ownership and excludes the old slot from cleanup.
+TEST(MemorySafety_Drops_Containers, remove_moves_the_element_out) {
   auto value = executeStringWithStdlib(R"(
     using std;
 
@@ -453,7 +448,7 @@ TEST(MemorySafety_Drops_Containers, take_moves_the_element_out) {
       v.push(String(alloc, "hi"));
       var n: i64 = 0;
       try {
-        var owned = v.take(0);
+        var owned = v.remove(0);
         n = owned.length();
       } catch (e: IError) {
         return -1;
@@ -462,7 +457,7 @@ TEST(MemorySafety_Drops_Containers, take_moves_the_element_out) {
     }
   )");
   // owned dropped at scope exit, the Vec drops what is left — each buffer once
-  EXPECT_EQ(value, 7);
+  EXPECT_EQ(value, 6);
 }
 
 // ============================================================================
@@ -703,4 +698,15 @@ TEST(MemorySafety_Drops_Containers,
   )");
   // 5 + 2 drained, Vec left empty
   EXPECT_EQ(value, 7);
+}
+TEST(MemorySafety_Drops_Containers,
+     replacement_cannot_move_its_borrowed_target) {
+  EXPECT_THROW(executeStringWithStdlib(withPreamble(R"(
+    function main() i32 {
+      var original = Owner(0);
+      var previous = replace(original, original);
+      return counter;
+    }
+  )")),
+               std::exception);
 }

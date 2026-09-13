@@ -168,6 +168,35 @@ void SemanticAnalyzer::checkMoveSource(const ExprAST& value,
   }
 
   if (source->getType() == ASTNodeType::MEMBER_ACCESS) {
+    const ExprAST* part = source;
+    while (part && part->getType() == ASTNodeType::MEMBER_ACCESS) {
+      const auto& member = static_cast<const MemberAccessAST&>(*part);
+      if (member.hasQualifiedName() || member.isBoundMethodRef()) break;
+      const ExprAST* owner = member.getObject();
+      if (!owner) break;
+      if (owner->getType() == ASTNodeType::THIS ||
+          (owner->getResolvedType() && owner->getResolvedType()->isReference())) {
+        logAndThrowError(
+            "Cannot move a field through a reference; replace the field instead",
+            loc);
+      }
+      auto ownerType = unwrapRef(owner->getResolvedType());
+      if (auto* cls = sun::tryGetType<sun::ClassType>(ownerType)) {
+        if (cls->getMethod("deinit")) {
+          logAndThrowError(
+              "Cannot move a field out of a class with deinit; replace the "
+              "field instead",
+              loc);
+        }
+      }
+      part = owner;
+    }
+    if (part && part->getType() == ASTNodeType::INDEX) {
+      logAndThrowError(
+          "Cannot move a field out of an indexed element; replace the field "
+          "instead",
+          loc);
+    }
     const auto& access = static_cast<const MemberAccessAST&>(*source);
     std::string why = immutableBaseOf(*access.getObject());
     if (!why.empty()) {

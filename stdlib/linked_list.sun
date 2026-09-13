@@ -38,15 +38,12 @@ public module std {
       return unsafe { _to_ref<T>(_address_of<T>(this.value)); };
     }
 
-    // Move the stored value out. The move zeroes the slot, so the node's own
-    // drop is a no-op. Only for callers that are freeing or reusing the node.
-    public method take_value() T {
-      var value: T = this.value;
-      return value;
+    /** Extract the payload immediately before freeing the node's raw storage. */
+    method take_value() T {
+      return unsafe { _load<T>(_address_of<T>(this.value), 0); };
     }
 
-    // Overwrite the stored value without dropping the old one. Only safe on a
-    // slot that was already moved out of.
+    // Assign a new payload, destroying the previous value.
     public method set_value(v: T) void {
       this.value = v;
     }
@@ -54,7 +51,6 @@ public module std {
     // Replace the stored value, dropping the old one first (no-op for
     // non-owning types)
     public method replace_value(v: T) void {
-      unsafe { _deinit<T>(_address_of<T>(this.value)); };
       this.value = v;
     }
 

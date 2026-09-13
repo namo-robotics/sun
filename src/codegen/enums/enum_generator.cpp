@@ -214,8 +214,6 @@ Value* EnumGenerator::codegenMatch(const MatchExprAST& expr,
 
   auto emitArmBody = [&](const MatchArm& arm, BasicBlock* armBB) {
     ctx.builder->SetInsertPoint(armBB);
-    // One arm of a branch: a move in here happens on this path only
-    ScopeManager::BranchArm branchArm(scopes());
     scopes().push();
 
     if (consuming && arm.isWildcard && enumType.hasPayload()) {
