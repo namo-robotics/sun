@@ -147,7 +147,7 @@ public module std {
      * and shrinks the Vec without allocating or changing its capacity.
      */
     public method remove(index: i64) T throws IError {
-      var value = this.take(index);
+      var value = this.extract_for_removal(index);
       for (var i: i64 = index; i < this.size_ - 1; i = i + 1) {
         this.data.set_unchecked(i, this.data.take_unchecked(i + 1));
       }
@@ -161,7 +161,7 @@ public module std {
      * constant time without allocating; the remaining order may change.
      */
     public method swap_remove(index: i64) T throws IError {
-      var value = this.take(index);
+      var value = this.extract_for_removal(index);
       this.size_ = this.size_ - 1;
       if (index < this.size_) {
         this.data.set_unchecked(index, this.data.take_unchecked(this.size_));
@@ -169,13 +169,15 @@ public module std {
       return value;
     }
 
-    /**
-     * Move the element at index to the caller, leaving a zeroed slot in place.
-     * Throws IndexOutOfBoundsError for an invalid index. The size is unchanged,
-     * even at the last index, and iteration still visits the zeroed slot.
-     * Use remove(), swap_remove(), or pop() to remove an element and shrink.
-     */
-    public method take(index: i64) T throws IError {
+    /** Replace an element and return its previous value without changing size. */
+    public method replace(index: i64, value: T) T throws IError {
+      var previous = this.extract_for_removal(index);
+      this.data.set_unchecked(index, value);
+      return previous;
+    }
+
+    /** Extract a slot that the caller must immediately replace or remove. */
+    method extract_for_removal(index: i64) T throws IError {
       if (index < 0) {
         throw IndexOutOfBoundsError(index);
       }

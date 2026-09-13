@@ -38,13 +38,9 @@ Value* CodegenVisitor::codegen(const IfExprAST& expr) {
       // `if (false) { ... }` with no else: nothing to emit.
       return ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
     }
-    Value* liveV = nullptr;
-    {
-      ScopeManager::BranchArm arm(scopes);
-      scopes.push(live->getLocation());
-      liveV = codegen(*live);
-      scopes.pop();
-    }
+    scopes.push(live->getLocation());
+    Value* liveV = codegen(*live);
+    scopes.pop();
     if (ctx.builder->GetInsertBlock()->getTerminator() != nullptr) {
       return nullptr;  // the live side returned or threw
     }
@@ -76,13 +72,9 @@ Value* CodegenVisitor::codegen(const IfExprAST& expr) {
   ctx.builder->SetInsertPoint(ThenBB);
 
   // Push scope for then block (variables declared here are local to this block)
-  Value* ThenV = nullptr;
-  {
-    ScopeManager::BranchArm arm(scopes);
-    scopes.push(expr.getThen()->getLocation());
-    ThenV = codegen(*expr.getThen());
-    scopes.pop();
-  }
+  scopes.push(expr.getThen()->getLocation());
+  Value* ThenV = codegen(*expr.getThen());
+  scopes.pop();
 
   // Check if the Then block was terminated (e.g., by a return statement)
   bool thenTerminated =
@@ -108,12 +100,9 @@ Value* CodegenVisitor::codegen(const IfExprAST& expr) {
 
     // Push scope for else block (variables declared here are local to this
     // block)
-    {
-      ScopeManager::BranchArm arm(scopes);
-      scopes.push(expr.getElse()->getLocation());
-      ElseV = codegen(*expr.getElse());
-      scopes.pop();
-    }
+    scopes.push(expr.getElse()->getLocation());
+    ElseV = codegen(*expr.getElse());
+    scopes.pop();
 
     elseTerminated = ctx.builder->GetInsertBlock()->getTerminator() != nullptr;
 
@@ -179,11 +168,7 @@ Value* CodegenVisitor::codegen(const TernaryExprAST& expr) {
   // constant a global initializer needs, where there is no current function.
   if (auto* constCond = dyn_cast<ConstantInt>(CondV)) {
     const ExprAST* live = constCond->isZero() ? expr.getElse() : expr.getThen();
-    Value* liveV = nullptr;
-    {
-      ScopeManager::BranchArm arm(scopes);
-      liveV = codegen(*live);
-    }
+    Value* liveV = codegen(*live);
     if (!liveV) {
       logAndThrowError("Failed to generate code for the ternary's live arm");
       return nullptr;
@@ -212,11 +197,7 @@ Value* CodegenVisitor::codegen(const TernaryExprAST& expr) {
   sun::TypePtr resultType = expr.getResolvedType();
 
   ctx.builder->SetInsertPoint(ThenBB);
-  Value* ThenV = nullptr;
-  {
-    ScopeManager::BranchArm arm(scopes);
-    ThenV = codegen(*expr.getThen());
-  }
+  Value* ThenV = codegen(*expr.getThen());
   bool thenTerminated =
       ctx.builder->GetInsertBlock()->getTerminator() != nullptr;
   if (!thenTerminated) {
@@ -231,11 +212,7 @@ Value* CodegenVisitor::codegen(const TernaryExprAST& expr) {
 
   TheFunction->insert(TheFunction->end(), ElseBB);
   ctx.builder->SetInsertPoint(ElseBB);
-  Value* ElseV = nullptr;
-  {
-    ScopeManager::BranchArm arm(scopes);
-    ElseV = codegen(*expr.getElse());
-  }
+  Value* ElseV = codegen(*expr.getElse());
   bool elseTerminated =
       ctx.builder->GetInsertBlock()->getTerminator() != nullptr;
   if (!elseTerminated) {

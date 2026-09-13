@@ -35,8 +35,7 @@ function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
         var i: i64 = 0;
         while (i < threads.size()) {
             try {
-                var t = threads.take(i);
-                var r = t.join();
+                var r = threads.get(i).join();
                 if (report(r) == false) { failed = failed + 1; }
             } catch (e: IError) {
                 failed = failed + 1;

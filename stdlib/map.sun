@@ -368,11 +368,6 @@ public module std {
 
     // Grow capacity and rehash all entries
     method grow() void {
-      // Move old buffers out of this (move semantics: old_* now owns the data,
-      // this.keys/values/states are zeroed to prevent double-free)
-      var old_keys = this.keys;
-      var old_values = this.values;
-      var old_states = this.states;
       var old_capacity = this.capacity_;
 
       // Double capacity
@@ -380,9 +375,9 @@ public module std {
       this.capacity_ = new_capacity;
 
       // Allocate new ContiguousBuffer storage
-      this.keys = ContiguousBuffer<K>(this.alloc, new_capacity);
-      this.values = ContiguousBuffer<V>(this.alloc, new_capacity);
-      this.states = ContiguousBuffer<i8>(this.alloc, new_capacity);
+      var old_keys = replace(this.keys, ContiguousBuffer<K>(this.alloc, new_capacity));
+      var old_values = replace(this.values, ContiguousBuffer<V>(this.alloc, new_capacity));
+      var old_states = replace(this.states, ContiguousBuffer<i8>(this.alloc, new_capacity));
 
       // Initialize new states to EMPTY
       this.states.fill(0);

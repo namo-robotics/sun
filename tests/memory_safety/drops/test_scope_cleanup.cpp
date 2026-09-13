@@ -692,3 +692,173 @@ TEST(MemorySafety_Drops_ScopeCleanup, bool_leading_return_field_drops_once) {
   )");
   EXPECT_EQ(value, 42);
 }
+TEST(MemorySafety_Drops_ScopeCleanup, moved_local_can_be_initialized_again) {
+  auto value = executeString(withPreamble(R"(
+    function run() void {
+      var original = Owner();
+      var moved = original;
+      original = Owner();
+    }
+    function main() i32 { run(); return counter; }
+  )"));
+  EXPECT_EQ(value, 2);
+}
+
+TEST(MemorySafety_Drops_ScopeCleanup, moved_field_is_not_destroyed_again) {
+  auto value = executeString(withPreamble(R"(
+    class Pair {
+      var first: Owner;
+      var second: Owner;
+      init() { this.first = Owner(); this.second = Owner(); }
+    }
+    function run(take: bool) void {
+      var pair = Pair();
+      if (take) { var moved = pair.first; }
+    }
+    function main() i32 { run(true); run(false); return counter; }
+  )"));
+  EXPECT_EQ(value, 4);
+}
+
+TEST(MemorySafety_Drops_ScopeCleanup, moved_field_can_be_initialized_again) {
+  auto value = executeString(withPreamble(R"(
+    class Pair {
+      var first: Owner;
+      var second: Owner;
+      init() { this.first = Owner(); this.second = Owner(); }
+    }
+    function run(take: bool) void {
+      var pair = Pair();
+      if (take) { var moved = pair.first; }
+      pair.first = Owner();
+    }
+    function main() i32 { run(true); run(false); return counter; }
+  )"));
+  EXPECT_EQ(value, 6);
+}
+TEST(MemorySafety_Drops_ScopeCleanup, returned_field_transfers_ownership) {
+  auto value = executeString(withPreamble(R"(
+    class Pair {
+      var first: Owner;
+      var second: Owner;
+      init() { this.first = Owner(); this.second = Owner(); }
+    }
+    function extract() Owner {
+      var pair = Pair();
+      return pair.first;
+    }
+    function run() void { var moved = extract(); }
+    function main() i32 { run(); return counter; }
+  )"));
+  EXPECT_EQ(value, 2);
+}
+
+TEST(MemorySafety_Drops_ScopeCleanup, conditional_refill_of_moved_local) {
+  auto value = executeString(withPreamble(R"(
+    function run(refill: bool) void {
+      var original = Owner();
+      var moved = original;
+      if (refill) { original = Owner(); }
+    }
+    function main() i32 { run(true); run(false); return counter; }
+  )"));
+  EXPECT_EQ(value, 3);
+}
+
+TEST(MemorySafety_Drops_ScopeCleanup,
+     field_move_through_reference_is_rejected) {
+  EXPECT_THROW(executeString(withPreamble(R"(
+    class Holder {
+      var value: Owner;
+      init() { this.value = Owner(); }
+    }
+    function extract(holder: ref Holder) Owner { return holder.value; }
+    function main() i32 {
+      var holder = Holder();
+      var moved = extract(holder);
+      return 0;
+    }
+  )")),
+               std::exception);
+}
+TEST(MemorySafety_Drops_ScopeCleanup, reassignment_preserves_moved_value) {
+  auto value = executeString(R"(
+    class Value {
+      var id: i32;
+      init(id: i32) { this.id = id; }
+      deinit() {}
+    }
+    function main() i32 {
+      var original = Value(7);
+      var moved = original;
+      original = Value(3);
+      return moved.id * 10 + original.id;
+    }
+  )");
+  EXPECT_EQ(value, 73);
+}
+
+TEST(MemorySafety_Drops_ScopeCleanup,
+     moving_to_inner_scope_drops_at_inner_exit) {
+  auto value = executeString(withPreamble(R"(
+    function main() i32 {
+      var original = Owner();
+      if (true) { var moved = original; }
+      return counter;
+    }
+  )"));
+  EXPECT_EQ(value, 1);
+}
+
+TEST(MemorySafety_Drops_ScopeCleanup, nested_field_move_and_refill) {
+  auto value = executeString(withPreamble(R"(
+    class Pair {
+      var first: Owner;
+      var second: Owner;
+      init() { this.first = Owner(); this.second = Owner(); }
+    }
+    class Outer {
+      var pair: Pair;
+      init() { this.pair = Pair(); }
+    }
+    function run() void {
+      var outer = Outer();
+      var moved = outer.pair.first;
+      outer.pair.first = Owner();
+    }
+    function main() i32 { run(); return counter; }
+  )"));
+  EXPECT_EQ(value, 3);
+}
+
+TEST(MemorySafety_Drops_ScopeCleanup,
+     moved_array_field_is_not_destroyed_again) {
+  auto value = executeString(withPreamble(R"(
+    class Holder {
+      var values: array<Owner, 2>;
+      init() { this.values = [Owner(), Owner()]; }
+    }
+    function run() void {
+      var holder = Holder();
+      var moved = holder.values;
+    }
+    function main() i32 { run(); return counter; }
+  )"));
+  EXPECT_EQ(value, 2);
+}
+
+TEST(MemorySafety_Drops_ScopeCleanup, custom_destructor_prevents_partial_move) {
+  EXPECT_THROW(executeString(withPreamble(R"(
+    class Holder {
+      var value: Owner;
+      init() { this.value = Owner(); }
+      deinit() { counter = counter + 1; }
+    }
+    function main() i32 {
+      var holder = Holder();
+      var moved = holder.value;
+      return 0;
+    }
+  )")),
+               std::exception);
+}

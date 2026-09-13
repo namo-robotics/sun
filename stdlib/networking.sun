@@ -219,8 +219,9 @@ public module std {
 
   /** A TCP connection that starts without an open socket. */
   public class TcpStream {
-    // Moved-from values are zeroed and must not own stdin.
     var fd: i32 = -1;
+    // Moves clear this flag, while an owned descriptor may be zero.
+    var owns_fd: bool = false;
 
     // Close the socket if it is still open.
     deinit() {
@@ -235,6 +236,7 @@ public module std {
         throw Error(err_code, "failed to create socket");
       }
       this.fd = sock_fd;
+      this.owns_fd = true;
       suppress_sigpipe(this.fd);
 
       var result: i32 = unsafe { __connect_ipv4(this.fd, INADDR_LOOPBACK, port); };
@@ -252,6 +254,7 @@ public module std {
         throw Error(err_code, "failed to create socket");
       }
       this.fd = sock_fd;
+      this.owns_fd = true;
       suppress_sigpipe(this.fd);
 
       var result: i32 = unsafe { __connect_ipv4(this.fd, ip, port); };
@@ -316,16 +319,17 @@ public module std {
 
     // Close the connection
     public method close() void {
-      if (this.fd > 0) {
+      if (this.owns_fd) {
         unsafe { __shutdown(this.fd, SHUT_RDWR); };
         unsafe { c_close(this.fd); };
         this.fd = -1;
+        this.owns_fd = false;
       }
     }
 
     // Report whether the socket still holds a live file descriptor.
     public method is_open() bool {
-      return this.fd > 0;
+      return this.owns_fd;
     }
 
     // The underlying file descriptor, for code that needs to poll or hand it to
@@ -341,8 +345,9 @@ public module std {
 
   /** A TCP listener that starts without a bound socket. */
   public class TcpListener {
-    // Moved-from values are zeroed and must not own stdin.
     var fd: i32 = -1;
+    // Moves clear this flag, while an owned descriptor may be zero.
+    var owns_fd: bool = false;
 
     // Close the listening socket if it is still open.
     deinit() {
@@ -363,6 +368,7 @@ public module std {
         throw Error(err_code, "failed to create socket");
       }
       this.fd = sock_fd;
+      this.owns_fd = true;
       this.enable_reuse_addr();
 
       var result: i32 = unsafe { __bind_ipv4(this.fd, INADDR_ANY, port); };
@@ -380,6 +386,7 @@ public module std {
         throw Error(err_code, "failed to create socket");
       }
       this.fd = sock_fd;
+      this.owns_fd = true;
       this.enable_reuse_addr();
 
       var result: i32 = unsafe { __bind_ipv4(this.fd, INADDR_LOOPBACK, port); };
@@ -397,6 +404,7 @@ public module std {
         throw Error(err_code, "failed to create socket");
       }
       this.fd = sock_fd;
+      this.owns_fd = true;
       this.enable_reuse_addr();
 
       var result: i32 = unsafe { __bind_ipv4(this.fd, addr.to_network_i32(), port); };
@@ -425,6 +433,7 @@ public module std {
       suppress_sigpipe(client_fd);
       var stream = TcpStream();
       stream.fd = client_fd;
+      stream.owns_fd = true;
       return stream;
     }
 
@@ -450,16 +459,17 @@ public module std {
 
     // Close the listener
     public method close() void {
-      if (this.fd > 0) {
+      if (this.owns_fd) {
         unsafe { __shutdown(this.fd, SHUT_RDWR); };
         unsafe { c_close(this.fd); };
         this.fd = -1;
+        this.owns_fd = false;
       }
     }
 
     // Report whether the listener still holds a live file descriptor.
     public method is_open() bool {
-      return this.fd > 0;
+      return this.owns_fd;
     }
 
     // The underlying file descriptor, for polling or C calls.
@@ -536,8 +546,9 @@ public module std {
   // comes first; a send-only socket binds port 0 and lets the OS pick.
   /** A UDP socket that starts closed. */
   public class UdpSocket {
-    // Moved-from values are zeroed and must not own stdin.
     var fd: i32 = -1;
+    // Moves clear this flag, while an owned descriptor may be zero.
+    var owns_fd: bool = false;
 
     // Close the socket if it is still open.
     deinit() {
@@ -572,6 +583,7 @@ public module std {
         throw Error(err_code, "failed to create socket");
       }
       this.fd = sock_fd;
+      this.owns_fd = true;
       suppress_sigpipe(this.fd);
       if (reuse) {
         try {
@@ -737,15 +749,16 @@ public module std {
     // Close the socket. UDP has no connection to shut down, so this just
     // releases the descriptor.
     public method close() void {
-      if (this.fd > 0) {
+      if (this.owns_fd) {
         unsafe { c_close(this.fd); };
         this.fd = -1;
+        this.owns_fd = false;
       }
     }
 
     // Report whether the socket still holds a live file descriptor.
     public method is_open() bool {
-      return this.fd > 0;
+      return this.owns_fd;
     }
 
     // The underlying file descriptor, for polling or C calls.

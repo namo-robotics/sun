@@ -32,36 +32,6 @@
         80,
         120
     ],
-    "testMate.cpp.test.stderrDecorator": true,
-    "testMate.cpp.log.logpanel": true,
-    "testMate.cpp.test.workingDirectory": "${workspaceFolder}",
-    "testMate.cpp.test.parallelExecutionLimit": 8,
-    // All tests live in one binary (sun_tests); parallelizationLimit lets
-    // TestMate split its tests across up to 8 concurrent processes
-    "testMate.cpp.test.advancedExecutables": [
-        {
-            "pattern": "build/tests/sun_tests",
-            "cwd": "${workspaceFolder}",
-            "parallelizationLimit": 8,
-            // Suite names mirror tests/ on disk (tests/functions/generic/
-            // test_constraints.cpp defines Functions_Generic_Constraints), so
-            // splitting a test id into its segments reproduces the directory
-            // tree in the Test Explorer:
-            // Functions > Generic > Constraints > numeric_accepts_integer.
-            //
-            // The leading backtick makes splitBy a regex. It splits on '.'
-            // (suite/test boundary) and on '_' before a capital - the shape
-            // of a suite segment - but the lookbehind stops it once a '.'
-            // has been seen, so snake_case test names stay whole. Without
-            // that guard, names like cannot_redefine_IError_as_class and
-            // DISABLED_ThroughputMBps would be torn apart.
-            "testGrouping": {
-                "groupBySplittedTestName": {
-                    "splitBy": "`(?<!\\.[^.]*)_(?=[A-Z])|\\."
-                }
-            }
-        }
-    ],
     // Hide ctest's generated test-discovery files (rewritten on every ctest
     // run by gtest_discover_tests PRE_TEST mode) from the explorer/watcher
     "files.exclude": {
@@ -102,5 +72,10 @@
         }
     ],
     "cppTestExplorer.parallelMode": "case",
-    "cppTestExplorer.concurrency": 0
+    "cppTestExplorer.concurrency": 0,
+    "cppTestExplorer.testGrouping": {
+        "groupBySplittedTestName": {
+            "splitBy": "`(?<!\\.[^.]*)_(?=[A-Z])|\\."
+        }
+    }
 }

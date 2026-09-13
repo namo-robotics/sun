@@ -1,8 +1,6 @@
 // stdlib/shared_tests.sun - Tests for shared.sun.
 //
-// A moved-from value is left all-zero and still has its deinit run, so every
-// drop counter here ignores the zero state — the same discipline Unique<T>
-// follows by null-checking its pointer.
+// Every constructed resource must be destroyed once, including zero-valued ones.
 
 using std;
 using std.thread;
@@ -21,16 +19,14 @@ public module std {
     // other test touches it, so parallel tests never share state.
     var drop_count: i32 = 0;
 
-    // A value that counts its drops, ignoring the moved-from zero state.
+    // A value that counts every call to its destructor.
     class DropRes {
       public var v: i32;
       init(v: i32) {
         this.v = v;
       }
       deinit() {
-        if (this.v != 0) {
-          drop_count = drop_count + 1;
-        }
+        drop_count = drop_count + 1;
       }
     }
 

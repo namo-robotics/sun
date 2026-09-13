@@ -676,7 +676,7 @@ void CallAnalyzer::checkArgumentTypes(
       hint = ". It is borrowed, and a '" + paramType->toDisplayString() +
              "' cannot be read out of a borrow: take the parameter by "
              "'ref', pass a clone(), or move the value out first "
-             "(take()/pop()/remove() on a container)";
+             "(pop()/remove()/swap_remove() on a container)";
     }
     logAndThrowError("Type mismatch in argument " + std::to_string(i + 1) +
                          " of call to '" + funcName + "': expected " +

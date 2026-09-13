@@ -38,7 +38,6 @@ Value* CodegenVisitor::codegen(const MatchExprAST& expr) {
                                            typeResolver.resolve(matchType));
   }
   auto emitBody = [&](const MatchArm& arm) {
-    ScopeManager::BranchArm branchArm(scopes);
     scopes.push();
     Value* value = codegen(*arm.body);
     if (!ctx.builder->GetInsertBlock()->getTerminator() && resultStorage &&

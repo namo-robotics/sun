@@ -161,6 +161,10 @@ class BorrowChecker {
   void checkNamedLifetimesAtCall(const CallExprAST& call,
                                  const std::vector<TypePtr>& paramTypes);
 
+  /** Reject calls that borrow and move overlapping storage. */
+  void checkCallMoveConflicts(const CallExprAST& call,
+                              const std::vector<TypePtr>& paramTypes);
+
   // A frame-sourced lambda is being stored into the named destination:
   // reject if the destination outlives the frame or was declared in an
   // outer scope than the lambda's environment, otherwise mark the

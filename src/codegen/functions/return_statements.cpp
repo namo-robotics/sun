@@ -70,8 +70,10 @@ Value* FunctionGenerator::codegen(const ReturnExprAST& expr) {
 
     // Move semantics: borrow checker marks expressions as "moved" when
     // ownership transfers (return, assignment, pass-by-value). Skip deinit.
-    if (expr.getValue()->isMoved() && retVal) {
-      scopes().markClassAllocationAsDeinited(retVal);
+    if (sun::typeMovesOnRead(expr.getValue()->getResolvedType()) &&
+        retVal->getType()->isPointerTy()) {
+      scopes().markClassAllocationAsDeinited(
+          retVal, expr.getValue()->getResolvedType());
     }
 
     // THEN clean up owned allocations that weren't moved (move semantics)

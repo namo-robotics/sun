@@ -228,19 +228,19 @@ using std;
 public module lib {
   /** Moves an element out of the vector. */
   public function rem<T>(v: ref Vec<T>, index: i64) T throws IError {
-    return v.take(index);
+    return v.remove(index);
   }
   /** Calls the sibling function from another generic body. */
-  public function nested<T>(v: ref Vec<T>) T throws IError { return rem<T>(v, 2); }
+  public function nested<T>(v: ref Vec<T>) T throws IError { return rem<T>(v, 0); }
   /** Exercises explicit, inferred and nested generic calls. */
   public function check() i32 throws IError {
     var a = make_heap_allocator();
     var v = Vec<i64>(a, 3);
     v.push(1); v.push(2); v.push(3);
     var first = rem<i64>(v, 0);
-    var second = rem(v, 1);
+    var second = rem(v, 0);
     var third = nested<i64>(v);
-    if (first == 1 and second == 2 and third == 3 and v.size() == 3) { return 0; }
+    if (first == 1 and second == 2 and third == 3 and v.size() == 0) { return 0; }
     return 1;
   }
 }
@@ -312,7 +312,7 @@ TEST_F(Modules_GenericRegressions, NestedTypeArguments) {
       ASSERT_NE(begin, std::string::npos);
       ASSERT_NE(end, std::string::npos);
       source.replace(begin, end + 2 - begin,
-                     "var value = sample.data.take(0); return value.v - 7;");
+                     "var value = sample.data.remove(0); return value.v - 7;");
     }
     write("nested.sun", source);
     ASSERT_NO_FATAL_FAILURE(checkProgram("nested.sun"));

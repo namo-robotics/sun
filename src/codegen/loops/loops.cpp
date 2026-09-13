@@ -63,11 +63,6 @@ Value* LoopGenerator::codegen(const ForExprAST& expr) {
   // Per-iteration scope: owners declared in the body are dropped at the
   // back-edge (and by break/continue), not once after the loop
   {
-    // The body is one arm of a branch (it may not run). Defence in depth
-    // rather than a fix: checkLoopBody already rejects moving anything
-    // declared outside the body, and a value declared inside it records the
-    // body's own depth, so a move there stays a compile-time decision.
-    ScopeManager::BranchArm arm(scopes());
     scopes().push(expr.getBody()->getLocation());
 
     // Push loop context for break/continue (continue goes to step, break goes
@@ -152,9 +147,6 @@ Value* LoopGenerator::codegen(const WhileExprAST& expr) {
   // Per-iteration scope: owners declared in the body are dropped at the
   // back-edge (and by break/continue), not leaked into the enclosing scope
   {
-    // The body is one arm of a branch (it may not run) — see the note in the
-    // for-loop above for why this is defence in depth
-    ScopeManager::BranchArm arm(scopes());
     scopes().push(expr.getBody()->getLocation());
 
     // Push loop context for break/continue (continue goes to cond, break goes
@@ -374,9 +366,6 @@ Value* LoopGenerator::codegen(const ForInExprAST& expr) {
   // Per-iteration scope: owners declared in the body are dropped at the
   // back-edge (and by break/continue)
   {
-    // The body is one arm of a branch (it may not run) — see the note in the
-    // for-loop above for why this is defence in depth
-    ScopeManager::BranchArm arm(scopes());
     scopes().push(expr.getBody()->getLocation());
     loopStack.push_back({condBB, afterBB, scopes().size() - 1});
 

@@ -7,6 +7,8 @@
 
 #include "codegen/scopes/scope_manager.h"
 
+#include <llvm/IR/Operator.h>
+
 #include "codegen/codegen_visitor.h"
 #include "semantic_analysis/packed_layout.h"
 
@@ -97,24 +99,102 @@ void ScopeManager::trackClassAllocation(Value* alloca, const std::string& name,
     entry.ownedAt = here->empty() ? static_cast<Value*>(here)
                                   : static_cast<Value*>(&here->back());
   }
-  entry.branchDepth = branchDepth_;
   scopes_.back().classAllocations.push_back(std::move(entry));
 }
 
-void ScopeManager::markClassAllocationAsDeinited(Value* alloca) {
+namespace {
+
+/** Identify fields by their path, since empty fields can share an address. */
+struct StoragePlace {
+  Value* base;
+  std::vector<uint64_t> fields;
+};
+
+/** Follow constant field addresses without merging distinct empty fields. */
+StoragePlace storagePlace(Value* ptr) {
+  if (auto* gep = dyn_cast<GEPOperator>(ptr)) {
+    auto parent = storagePlace(gep->getPointerOperand());
+    auto index = gep->idx_begin();
+    auto* first = dyn_cast<ConstantInt>(index->get());
+    if (!first || !first->isZero()) return {ptr, {}};
+    for (++index; index != gep->idx_end(); ++index) {
+      auto* field = dyn_cast<ConstantInt>(index->get());
+      if (!field) return {ptr, {}};
+      parent.fields.push_back(field->getZExtValue());
+    }
+    return parent;
+  }
+  return {ptr, {}};
+}
+
+}  // namespace
+
+ClassAllocation* ScopeManager::findAllocation(Value* ptr,
+                                              const sun::TypePtr& type) {
+  auto place = storagePlace(ptr);
   for (auto& scope : scopes_) {
     for (auto& alloc : scope.classAllocations) {
-      if (alloc.alloca != alloca) continue;
-      // A move nested inside a branch is a move on this path only: the paths
-      // beside it still own the value, so the drop becomes a run-time answer.
-      if (branchDepth_ > alloc.branchDepth) ensureDropFlag(alloc);
-      if (alloc.dropFlag) {
-        ctx.builder->CreateStore(ConstantInt::getFalse(ctx.getContext()),
-                                 alloc.dropFlag);
-      }
-      alloc.moved = true;
-      return;
+      if (!type && alloc.alloca != ptr) continue;
+      if (type && (!alloc.type || !alloc.type->equals(*type))) continue;
+      auto candidate = storagePlace(alloc.alloca);
+      if (place.base == candidate.base && place.fields == candidate.fields)
+        return &alloc;
     }
+  }
+  return nullptr;
+}
+
+void ScopeManager::markInitialized(Value* ptr, const sun::TypePtr& type) {
+  if (!type || !sun::typeNeedsDrop(type)) return;
+  if (auto* alloc = findAllocation(ptr, type)) {
+    setOwnership(*alloc, true);
+  }
+  auto place = storagePlace(ptr);
+  for (auto& scope : scopes_) {
+    for (auto& field : scope.classAllocations) {
+      if (!field.isField) continue;
+      auto child = storagePlace(field.alloca);
+      if (place.base == child.base &&
+          child.fields.size() > place.fields.size() &&
+          std::equal(place.fields.begin(), place.fields.end(),
+                     child.fields.begin())) {
+        setOwnership(field, true);
+      }
+    }
+  }
+}
+
+ClassAllocation* ScopeManager::trackFieldAllocation(Value* ptr,
+                                                    const sun::TypePtr& type) {
+  Value* base = storagePlace(ptr).base;
+  for (auto& scope : scopes_) {
+    for (const auto& owner : scope.classAllocations) {
+      if (owner.isField || owner.alloca != base) continue;
+      ClassAllocation field{ptr, owner.varName + ".field", false, type};
+      field.isField = true;
+      field.ownedAt = owner.ownedAt;
+      scope.classAllocations.push_back(std::move(field));
+      return &scope.classAllocations.back();
+    }
+  }
+  return nullptr;
+}
+
+void ScopeManager::setOwnership(ClassAllocation& alloc, bool owned) {
+  alloc.moved = !owned;
+  if (alloc.dropFlag)
+    ctx.builder->CreateStore(ConstantInt::getBool(ctx.getContext(), owned),
+                             alloc.dropFlag);
+}
+
+void ScopeManager::markClassAllocationAsDeinited(Value* alloca,
+                                                 sun::TypePtr type) {
+  auto* alloc = findAllocation(alloca, type);
+  if (!alloc && type) alloc = trackFieldAllocation(alloca, type);
+  if (alloc) {
+    // A later assignment may restore ownership on only some paths.
+    ensureDropFlag(*alloc);
+    setOwnership(*alloc, false);
   }
 }
 
@@ -161,7 +241,7 @@ void ScopeManager::emitFlaggedDrop(const ClassAllocation& alloc) {
   ctx.builder->CreateCondBr(owned, dropBlock, afterBlock);
 
   ctx.builder->SetInsertPoint(dropBlock);
-  emitDropInPlace(alloc.type, alloc.alloca, alloc.varName);
+  emitUnconditionalDrop(alloc.type, alloc.alloca, alloc.varName);
   // Given up here, so a later cleanup on this path finds nothing to do
   ctx.builder->CreateStore(ConstantInt::getFalse(ctx.getContext()),
                            alloc.dropFlag);
@@ -176,11 +256,7 @@ std::optional<std::string> ScopeManager::releaseBlockResult(Value* result) {
     if (alloc.alloca != result || alloc.moved) continue;
     // The block always reaches its own last statement, so ownership leaves it
     // on every path and the decision stays static in the scope that gets it.
-    if (alloc.dropFlag) {
-      ctx.builder->CreateStore(ConstantInt::getFalse(ctx.getContext()),
-                               alloc.dropFlag);
-    }
-    alloc.moved = true;
+    setOwnership(alloc, false);
     return alloc.varName;
   }
   return std::nullopt;
@@ -291,37 +367,17 @@ void ScopeManager::emitFieldDeinit(Value* objectPtr,
   StructType* structType = classType->getStructType(ctx.getContext());
 
   for (const auto& field : classType->getFields()) {
-    if (auto* nestedClass = sun::tryGetType<sun::ClassType>(field.type)) {
-      // Generate GEP to access the embedded struct field
-      Value* fieldPtr = ctx.builder->CreateStructGEP(
-          structType, objectPtr, field.index, baseName + "." + field.name);
-
-      emitDeinitCall(nestedClass, fieldPtr);
-
-      // Recursively deinit nested class fields
-      emitFieldDeinit(fieldPtr, nestedClass, baseName + "." + field.name);
-    } else if (auto* interfaceType =
-                   sun::tryGetType<sun::InterfaceType>(field.type)) {
-      Value* fieldPtr = ctx.builder->CreateStructGEP(
-          structType, objectPtr, field.index, baseName + "." + field.name);
-      emitInterfaceDrop(*interfaceType, fieldPtr);
-    } else if (field.type->isEnum() && sun::typeNeedsDrop(field.type)) {
-      Value* fieldPtr = ctx.builder->CreateStructGEP(
-          structType, objectPtr, field.index, baseName + "." + field.name);
-      gen_.enumGenerator().emitDrop(static_cast<sun::EnumType&>(*field.type),
-                                    fieldPtr);
-    } else if (field.type->isArray() && sun::typeNeedsDrop(field.type)) {
-      Value* fieldPtr = ctx.builder->CreateStructGEP(
-          structType, objectPtr, field.index, baseName + "." + field.name);
-      emitArrayDrop(static_cast<sun::ArrayType&>(*field.type), fieldPtr,
-                    baseName + "." + field.name);
-    }
+    if (!sun::typeNeedsDrop(field.type)) continue;
+    const auto name = baseName + "." + field.name;
+    Value* fieldPtr =
+        ctx.builder->CreateStructGEP(structType, objectPtr, field.index, name);
+    emitDropInPlace(field.type, fieldPtr, name);
   }
 }
 
 /**
- * Drops every element of a sized array's inline storage, in order. A
- * moved-from element is all zero, which its own drop treats as nothing.
+ * Drops every initialized element of a sized array's inline storage.
+ * Safe code cannot move individual elements out of an array.
  */
 void ScopeManager::emitArrayDrop(sun::ArrayType& arrayType, Value* storagePtr,
                                  const std::string& name) {
@@ -411,6 +467,20 @@ void ScopeManager::emitInterfaceDrop(sun::InterfaceType& interfaceType,
 void ScopeManager::emitDropInPlace(const sun::TypePtr& type, Value* ptr,
                                    const std::string& name) {
   if (!type || !ptr) return;
+  if (auto* alloc = findAllocation(ptr, type)) {
+    if (alloc->dropFlag) {
+      auto current = *alloc;
+      current.alloca = ptr;
+      emitFlaggedDrop(current);
+      return;
+    }
+    if (alloc->moved) return;
+  }
+  emitUnconditionalDrop(type, ptr, name);
+}
+
+void ScopeManager::emitUnconditionalDrop(const sun::TypePtr& type, Value* ptr,
+                                         const std::string& name) {
   if (auto* classType = sun::tryGetType<sun::ClassType>(type)) {
     emitDeinitCall(classType, ptr);
     emitFieldDeinit(ptr, classType, name);
@@ -440,6 +510,7 @@ void ScopeManager::emitCleanupForScope(CodegenScope& scope, bool unwinding) {
     for (auto it = currentClassScope.rbegin(); it != currentClassScope.rend();
          ++it) {
       if (!it->alloca || !it->type || (it->unwindOnly && !unwinding)) continue;
+      if (it->isField) continue;
       if (it->dropFlag) {
         emitFlaggedDrop(*it);
       } else if (!it->moved) {

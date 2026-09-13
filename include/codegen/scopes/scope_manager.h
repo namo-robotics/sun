@@ -13,12 +13,10 @@
 // in reverse order of acquisition. Moving a value out marks it so its drop
 // becomes a no-op.
 //
-// A move inside one arm of a branch is a move on that path only, so the paths
-// beside it still own the value. Such a value gets a drop flag: a boolean in
-// the frame saying whether this function still owns it, set where it became
-// owned, cleared where the move happens, and read by the drop. The flag sits
-// beside the value, never inside it, so class layout is untouched. Moves that
-// are not inside a branch stay a compile-time decision costing nothing.
+// A moved value gets a drop flag beside its storage. The flag is cleared on
+// a move and set on reassignment, so conditional moves and replacements leave
+// exactly one owner. Fields use separate flags and keep the class layout
+// intact.
 
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
@@ -65,19 +63,15 @@ struct ClassAllocation {
   bool moved;           // If true, ownership transferred - don't drop
   sun::TypePtr type;    // Class or payload-enum type
 
-  // Set once the value turns out to be moved inside a branch, so whether this
-  // frame still owns it is only known at run time: an i1 slot the drop reads.
-  // Null while moved-ness is the same on every path.
+  // Created on a move so later conditional assignments can restore ownership.
   llvm::AllocaInst* dropFlag = nullptr;
 
   // Where the value became owned, so a drop flag can be set there if one is
   // ever needed: an instruction to insert after, or the block to insert at the
-  // top of. Weak, because it is only consulted if a branch move shows up.
+  // top of. Weak, because it is only consulted when a move needs a flag.
   llvm::WeakTrackingVH ownedAt;
 
-  // How many branch arms were open when the value became owned. A move nested
-  // deeper than this happens on some paths only.
-  unsigned branchDepth = 0;
+  bool isField = false;  // Field cleanup belongs to the containing value.
   bool unwindOnly =
       false;  // Constructor fields belong to the caller on success.
 };
@@ -113,29 +107,6 @@ class ScopeManager {
 
   ScopeManager(const ScopeManager&) = delete;
   ScopeManager& operator=(const ScopeManager&) = delete;
-
-  // ---------------------------------------------------------------
-  // Branch arms
-  // ---------------------------------------------------------------
-
-  /**
-   * Marks the code emitted while it is alive as one arm of a branch: a side of
-   * an if/else, a match arm, a loop body, a try or catch block, the right side
-   * of `and`/`or`. A value moved inside an arm is moved on that path only, so
-   * it is given a drop flag and the paths beside it still drop it.
-   */
-  class BranchArm {
-   public:
-    explicit BranchArm(ScopeManager& scopes) : scopes_(scopes) {
-      ++scopes_.branchDepth_;
-    }
-    ~BranchArm() { --scopes_.branchDepth_; }
-    BranchArm(const BranchArm&) = delete;
-    BranchArm& operator=(const BranchArm&) = delete;
-
-   private:
-    ScopeManager& scopes_;
-  };
 
   // ---------------------------------------------------------------
   // The stack itself
@@ -248,10 +219,12 @@ class ScopeManager {
     }
   }
 
-  // Mark a class allocation as moved/deinited (don't auto-drop at scope exit).
-  // Inside a branch arm the value is only moved on this path, so it also gets
-  // a drop flag and its drop becomes a run-time decision.
-  void markClassAllocationAsDeinited(llvm::Value* alloca);
+  /** Give up ownership and track later reassignment with a drop flag. */
+  void markClassAllocationAsDeinited(llvm::Value* alloca,
+                                     sun::TypePtr type = nullptr);
+
+  /** Restore ownership after storing a new value into a moved location. */
+  void markInitialized(llvm::Value* ptr, const sun::TypePtr& type);
 
   // Mark an owned allocation as moved (ownership transferred, don't free)
   void markAsMoved(const std::string& name);
@@ -307,6 +280,20 @@ class ScopeManager {
                      const std::string& name);
 
  private:
+  /** Find ownership information for a local or one of its fields. */
+  ClassAllocation* findAllocation(llvm::Value* ptr, const sun::TypePtr& type);
+
+  /** Track a moved field in its containing local's scope. */
+  ClassAllocation* trackFieldAllocation(llvm::Value* ptr,
+                                        const sun::TypePtr& type);
+
+  /** Update static ownership and an existing runtime flag together. */
+  void setOwnership(ClassAllocation& alloc, bool owned);
+
+  /** Emit destruction after the caller has checked ownership. */
+  void emitUnconditionalDrop(const sun::TypePtr& type, llvm::Value* ptr,
+                             const std::string& name);
+
   // Give `alloc` a drop flag if it has none: an i1 slot that starts false in
   // the entry block and is set where the value became owned, so it is true
   // exactly when this frame still owns the value.
@@ -321,7 +308,4 @@ class ScopeManager {
   CodegenContext& ctx;
 
   std::vector<CodegenScope> scopes_;
-
-  // How many branch arms are currently open (see BranchArm)
-  unsigned branchDepth_ = 0;
 };

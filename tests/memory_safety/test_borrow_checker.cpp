@@ -662,7 +662,6 @@ TEST(MemorySafety_BorrowChecker, error_on_use_of_moved_field) {
     class Config {
         var line: Inner;
         init() { this.line = Inner(7); }
-        deinit() { }
     }
 
     function main() i32 {
@@ -686,7 +685,6 @@ TEST(MemorySafety_BorrowChecker, error_on_whole_object_use_after_field_move) {
     class Config {
         var line: Inner;
         init() { this.line = Inner(7); }
-        deinit() { }
     }
 
     function read(c: ref Config) i32 { return c.line.get(); }
@@ -711,7 +709,6 @@ TEST(MemorySafety_BorrowChecker, error_on_borrow_of_moved_field) {
     class Config {
         var line: Inner;
         init() { this.line = Inner(7); }
-        deinit() { }
     }
 
     function main() i32 {
@@ -724,7 +721,7 @@ TEST(MemorySafety_BorrowChecker, error_on_borrow_of_moved_field) {
                                 "Borrow check failed");
 }
 
-TEST(MemorySafety_BorrowChecker, error_on_use_of_moved_field_of_this) {
+TEST(MemorySafety_BorrowChecker, field_move_through_this_is_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Inner {
         var v: i32;
@@ -747,7 +744,7 @@ TEST(MemorySafety_BorrowChecker, error_on_use_of_moved_field_of_this) {
         return h.bad();
     }
   )"),
-                                "Borrow check failed");
+                                "Cannot move a field through a reference");
 }
 
 TEST(MemorySafety_BorrowChecker, sibling_field_and_refill_after_field_move) {
@@ -764,7 +761,6 @@ TEST(MemorySafety_BorrowChecker, sibling_field_and_refill_after_field_move) {
         var line: Inner;
         var query: Inner;
         init() { this.line = Inner(7); this.query = Inner(3); }
-        deinit() { }
     }
 
     function main() i32 {
@@ -789,7 +785,6 @@ TEST(MemorySafety_BorrowChecker, borrowing_a_field_does_not_move_it) {
     class Config {
         var line: Inner;
         init() { this.line = Inner(7); }
-        deinit() { }
     }
 
     function main() i32 {
@@ -890,7 +885,6 @@ TEST(MemorySafety_BorrowChecker, error_on_field_moved_every_iteration) {
     class Config {
         var line: Inner;
         init() { this.line = Inner(7); }
-        deinit() { }
     }
 
     function main() i32 {
@@ -942,7 +936,6 @@ TEST(MemorySafety_BorrowChecker, loop_refills_the_moved_field_before_the_end) {
     class Config {
         var line: Inner;
         init() { this.line = Inner(7); }
-        deinit() { }
     }
 
     function main() i32 {
@@ -970,7 +963,6 @@ TEST(MemorySafety_BorrowChecker, loop_body_that_returns_moves_once) {
     class Config {
         var line: Inner;
         init() { this.line = Inner(7); }
-        deinit() { }
     }
 
     function main() i32 {

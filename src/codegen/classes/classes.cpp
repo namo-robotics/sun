@@ -982,6 +982,7 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
         return;
       case sun::FieldWriteKind::ReplacesValue:
         scopes().emitDropInPlace(field->type, fieldPtr, memberName);
+        scopes().markInitialized(fieldPtr, field->type);
         return;
     }
   };
@@ -1064,9 +1065,9 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
         layout::fieldAlign(classType, fieldStructType, module->getDataLayout()),
         value, srcAlign, structSize);
     if (sourceIsAddressable) {
-      // Move: the field owns the payload now. Release the source's tracking
-      // entry and zero it so its own drop is a no-op.
-      scopes().markClassAllocationAsDeinited(value);
+      // The field owns the payload now. Release source ownership and clear
+      // the old contents.
+      scopes().markClassAllocationAsDeinited(value, valueSunType);
       ctx.builder->CreateMemSet(
           value, ConstantInt::get(Type::getInt8Ty(ctx.getContext()), 0),
           structSize, srcAlign);

@@ -7,8 +7,97 @@ using std;
 
 public module std {
   module networking_tests {
-    /** Check that closing and dropping a moved-from TcpStream preserves stdin. */
-    test_function taken_stream_preserves_stdin() {
+    /** Check socket ownership with stdin closed in an isolated process. */
+    test_function sockets_can_own_descriptor_zero() {
+      var pid: i32 = std.process.fork();
+      if (pid == 0) {
+        try {
+          check_descriptor_zero();
+        } catch (e: IError) {
+          std.process.exit_now(1);
+        }
+        std.process.exit_now(0);
+      }
+      var status: i32 = std.process.wait_pid(pid, 0);
+      std.test.assert(std.process.exited(status), "the socket child exited normally");
+      std.test.assert_eq(std.process.exit_status(status), 0);
+    }
+
+    /** Exercise every socket acquisition path with descriptor zero available. */
+    function check_descriptor_zero() void throws IError {
+      unsafe { c_close(0); };
+      for (var mode: i32 = 0; mode < 3; mode = mode + 1) {
+        var listener = TcpListener();
+        if (mode == 0) {
+          listener.bind_port(0);
+        } else if (mode == 1) {
+          listener.bind_loopback(0);
+        } else {
+          listener.bind_addr(ipv4_loopback(), 0);
+        }
+        std.test.assert_eq(listener.get_fd(), 0);
+        std.test.assert(listener.is_open(), "a listener can own descriptor zero");
+        listener.listen(1);
+        listener.close();
+        listener.close();
+        std.test.assert(not listener.is_open(), "the listener is closed");
+        std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, -1);
+      }
+
+      // Occupy zero while opening the server, then release it for each client.
+      var reserve = UdpSocket();
+      reserve.bind(ipv4_loopback(), 0);
+      var listener = TcpListener();
+      listener.bind_loopback(0);
+      listener.listen(1);
+      reserve.close();
+      for (var mode: i32 = 0; mode < 2; mode = mode + 1) {
+        var stream = TcpStream();
+        if (mode == 0) {
+          stream.connect_local(listener.local_port());
+        } else {
+          stream.connect_ip(INADDR_LOOPBACK, listener.local_port());
+        }
+        std.test.assert_eq(stream.get_fd(), 0);
+        std.test.assert(stream.is_open(), "a connected stream can own descriptor zero");
+        var peer = listener.accept();
+        std.test.assert_eq(stream.send_str("ping"), 4);
+        stream.close();
+        stream.close();
+        std.test.assert(not stream.is_open(), "the stream is closed");
+        std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, -1);
+      }
+
+      reserve.bind(ipv4_loopback(), 0);
+      var client = TcpStream();
+      client.connect_local(listener.local_port());
+      reserve.close();
+      if (true) {
+        var accepted = listener.accept();
+        std.test.assert_eq(accepted.get_fd(), 0);
+        std.test.assert(accepted.is_open(), "an accepted stream can own descriptor zero");
+        std.test.assert_eq(accepted.send_str("ping"), 4);
+      }
+      std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, -1);
+
+      if (true) {
+        var socket = UdpSocket();
+        socket.bind(ipv4_loopback(), 0);
+        std.test.assert_eq(socket.get_fd(), 0);
+        std.test.assert(socket.is_open(), "a UDP socket can own descriptor zero");
+        std.test.assert(socket.local_port() > 0, "the UDP socket is bound");
+        socket.close();
+        socket.close();
+        std.test.assert(not socket.is_open(), "the UDP socket is closed");
+        std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, -1);
+        socket.bind(ipv4_loopback(), 0);
+        std.test.assert_eq(socket.get_fd(), 0);
+      }
+      std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, -1);
+    }
+
+    /** Check that removing and dropping a TcpStream preserves stdin. */
+    test_function removed_stream_preserves_stdin() {
       var alloc = make_heap_allocator();
       var stdin_flags: i32 = unsafe { c_fcntl(0, F_GETFL); };
       std.test.assert(stdin_flags >= 0, "stdin is open before the test");
@@ -21,9 +110,8 @@ public module std {
         socket.connect_local(listener.local_port());
         var peer = listener.accept();
         sockets.push(socket);
-        var taken = sockets.take(0);
-        std.test.assert(not sockets.get(0).is_open(), "the moved-from socket is closed");
-        sockets.get(0).close();
+        var taken = sockets.remove(0);
+        std.test.assert_eq(sockets.size(), 0);
         sockets.clear();
         std.test.assert(taken.is_open(), "the taken stream is open");
         std.test.assert_eq(taken.send_str("ping"), 4);
@@ -36,8 +124,8 @@ public module std {
       std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, stdin_flags);
     }
 
-    /** Check that closing and dropping a moved-from TcpListener preserves stdin. */
-    test_function taken_listener_preserves_stdin() {
+    /** Check that removing and dropping a TcpListener preserves stdin. */
+    test_function removed_listener_preserves_stdin() {
       var alloc = make_heap_allocator();
       var stdin_flags: i32 = unsafe { c_fcntl(0, F_GETFL); };
       std.test.assert(stdin_flags >= 0, "stdin is open before the test");
@@ -46,9 +134,8 @@ public module std {
         var socket = TcpListener();
         socket.bind_loopback(0);
         sockets.push(socket);
-        var taken = sockets.take(0);
-        std.test.assert(not sockets.get(0).is_open(), "the moved-from socket is closed");
-        sockets.get(0).close();
+        var taken = sockets.remove(0);
+        std.test.assert_eq(sockets.size(), 0);
         sockets.clear();
         std.test.assert(taken.is_open(), "the taken socket is open");
         std.test.assert(taken.local_port() > 0, "the taken socket remains bound");
@@ -59,8 +146,8 @@ public module std {
       std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, stdin_flags);
     }
 
-    /** Check that closing and dropping a moved-from UdpSocket preserves stdin. */
-    test_function taken_udp_socket_preserves_stdin() {
+    /** Check that removing and dropping a UdpSocket preserves stdin. */
+    test_function removed_udp_socket_preserves_stdin() {
       var alloc = make_heap_allocator();
       var stdin_flags: i32 = unsafe { c_fcntl(0, F_GETFL); };
       std.test.assert(stdin_flags >= 0, "stdin is open before the test");
@@ -69,9 +156,8 @@ public module std {
         var socket = UdpSocket();
         socket.bind(ipv4_loopback(), 0);
         sockets.push(socket);
-        var taken = sockets.take(0);
-        std.test.assert(not sockets.get(0).is_open(), "the moved-from socket is closed");
-        sockets.get(0).close();
+        var taken = sockets.remove(0);
+        std.test.assert_eq(sockets.size(), 0);
         sockets.clear();
         std.test.assert(taken.is_open(), "the taken socket is open");
         std.test.assert(taken.local_port() > 0, "the taken socket remains bound");

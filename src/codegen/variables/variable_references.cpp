@@ -399,9 +399,11 @@ void VariableGenerator::assignToVariableSlot(Value* slot, Value* value,
       if (value == slot) return;
       scopes().emitDropInPlace(varType, slot, name);
       gen_.emitArrayTransfer(slot, value, *arrayType, /*move=*/true);
+      scopes().markInitialized(slot, varType);
       return;
     }
   }
   layout::storeIntoSlot(*ctx.builder, module->getDataLayout(), slot, value,
                         varType);
+  scopes().markInitialized(slot, varType);
 }

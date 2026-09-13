@@ -1,0 +1,9 @@
+/** Operations that transfer values without leaving empty storage behind. */
+public module std {
+  /** Replace a value and return its previous contents without destroying them. */
+  public function replace<T>(target: ref T, value: T) T {
+    var previous: T = unsafe { _load<T>(_address_of<T>(target), 0); };
+    unsafe { _store<T>(_address_of<T>(target), 0, value); };
+    return previous;
+  }
+}
