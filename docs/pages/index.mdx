@@ -281,14 +281,40 @@ Those four keys are the whole file — anything else is an error:
   self-contained
 
 Every config from the entrypoint's folder upwards is merged: the nearest
-definition of a variable wins, search directories are tried nearest-first,
-and a relative path resolves against the folder of the file that declares it.
+definition of a variable wins, search directories and entrypoints are
+concatenated nearest-first, and a relative path resolves against the folder of the file that declares it.
 So a workspace root can set shared values once while a subfolder overrides
 only what is local to it.
 
 A config wins over `--path-var` and over the environment, which is the
 opposite of the usual precedence — a checked-in file is meant to be the
 project's answer, not something a stray shell variable can quietly change.
+
+### Cross-compiling configured entrypoints
+
+`sun-config.json` has no target key. Pass `--target` to choose the target
+triple for every entrypoint built by that invocation; without it, Sun builds
+for the host:
+
+```bash
+sun -c --target aarch64-linux-gnu --no-test sun-config.json
+```
+
+Here `--no-test` skips building test binaries. Cross-compiling executables
+also requires a linker and system libraries for the target.
+
+Each dependency moon must have been built for the selected architecture and
+operating system, including `stdlib.moon`. Keep moons for different targets
+in separate directories and point `sun_path` at the directory for the build,
+for example `"sun_path": ["libs/aarch64-linux-gnu"]`. `--target` does not
+append the triple to `sun_path` or `path_variables` values, and an existing
+moon found there is not replaced by one from `--lib-path`.
+
+Likewise, `output_name` and `test_binary_name` are literal paths relative to
+the config file. Use separate output paths when keeping builds for multiple
+targets; `--target` does not add a target directory to them. See
+[Installing a Released Bundle](/modules#installing-a-released-bundle) for
+installing per-target moons.
 
 ## Moons
 

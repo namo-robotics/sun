@@ -19,8 +19,8 @@ This folder's `sun-config.json` supplies both the library search path (where
 
 ```json
 {
-    "sunPath": ["../../build"],
-    "pathVariables": { "LIBS": "libs" },
+    "sun_path": ["../../build"],
+    "path_variables": { "LIBS": "libs" },
     "root": true
 }
 ```
@@ -28,7 +28,7 @@ This folder's `sun-config.json` supplies both the library search path (where
 The compiler merges every `sun-config.json` from the entrypoint's folder up
 to the filesystem root: the nearest definition of a variable wins, search
 dirs are searched nearest-first, and relative entries resolve against their
-own config file's folder. So a workspace root can define `sunPath` and shared
+own config file's folder. So a workspace root can define `sun_path` and shared
 variables once, while each subfolder adds or overrides only what is local to
 it. A config with `"root": true` stops the upward search — this example uses
 it to stay self-contained. Config definitions override variables supplied
@@ -44,6 +44,10 @@ Using a variable that is defined nowhere is a compile error. Variables are
 expanded before path resolution, so a variable can hold a relative directory —
 which keeps a manifest portable when libraries live in a different place on
 each machine.
+
+The config can also declare build products in an `entrypoints` array. See
+[Sun Config](/#sun-config) for the entry fields and how to build or test a
+whole project.
 
 ## Build and run
 
