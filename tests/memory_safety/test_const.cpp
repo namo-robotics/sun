@@ -381,7 +381,7 @@ TEST(MemorySafety_Const, const_string_reads_and_prints) {
           println(s);
           const t = s.clone(allocator);
           if (not s.equals(t)) { return -1; }
-          return _convert<i32>(s.length()) + _convert<i32>(s.at(0));
+          return _convert<i32>(s.length()) + _convert<i32>(unsafe { s.unsafe_at(0); });
       }
     )");
   EXPECT_EQ(value, 5 + 'h');

@@ -134,12 +134,14 @@ ast::TypeAnnotation exportType(const TypePtr& type) {
   } else if (auto* value = tryGetType<FunctionType>(type)) {
     out.set_base_name("fn");
     out.set_can_error(value->canThrow());
+    out.set_requires_unsafe(value->requiresUnsafe());
     *out.mutable_return_type() = exportType(value->getReturnType());
     for (const auto& arg : value->getParamTypes())
       *out.add_param_types() = exportType(arg);
   } else if (auto* value = tryGetType<LambdaType>(type)) {
     out.set_base_name("lambda");
     out.set_can_error(value->canThrow());
+    out.set_requires_unsafe(value->requiresUnsafe());
     out.set_ref_env(value->hasRefCaptures());
     out.set_lifetime_name(value->getLifetimeName());
     *out.mutable_return_type() = exportType(value->getReturnType());

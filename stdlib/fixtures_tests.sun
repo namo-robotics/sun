@@ -45,8 +45,8 @@ public module std {
           while (i < entries.size()) {
             var entry_path = this.path.clone(this.alloc);
             entry_path.append_char(b'/');
-            entry_path.append(entries.get_unchecked(i).name());
-            if (entries.get_unchecked(i).is_dir()) {
+            entry_path.append(unsafe { entries.get_unchecked(i); }.name());
+            if (unsafe { entries.get_unchecked(i); }.is_dir()) {
               std.io.remove_dir(entry_path);
             } else {
               std.io.remove_file(entry_path);

@@ -726,7 +726,8 @@ class MessageGenerator {
       w_.open("if (" + fld + ".size() > 0) {");
       w_.line("var body = Vec<u8>(this.alloc_, 16);");
       w_.open("for (var i: i64 = 0; i < " + fld + ".size(); i = i + 1) {");
-      w_.line(T::writeStmt(f, fld + ".get_unchecked(i)", "body"));
+      w_.line(
+          T::writeStmt(f, "unsafe { " + fld + ".get_unchecked(i); }", "body"));
       w_.close();
       w_.line(tagLine("buf", number, 2));
       w_.line("proto_write_bytes(buf, body);");
@@ -734,7 +735,7 @@ class MessageGenerator {
     } else if (f->is_repeated()) {
       w_.open("for (var i: i64 = 0; i < " + fld + ".size(); i = i + 1) {");
       w_.line(tagLine("buf", number, T::wireType(f)));
-      w_.line(T::writeStmt(f, fld + ".get_unchecked(i)"));
+      w_.line(T::writeStmt(f, "unsafe { " + fld + ".get_unchecked(i); }"));
       w_.close();
     } else {
       w_.open("if (" + T::nonZeroTest(f, fld) + ") {");

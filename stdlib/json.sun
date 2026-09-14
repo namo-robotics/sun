@@ -322,7 +322,7 @@ public module std {
     // The position of a key in an object's members, or -1 when it is absent.
     method find_member_index(members: const ref Vec<JsonMember>, key: static_ptr<u8>) i64 {
       for (var i: i64 = 0; i < members.size(); i = i + 1) {
-        if (members.get(i).key.equals_literal(key)) {
+        if (unsafe { members.get_unchecked(i); }.key.equals_literal(key)) {
           return i;
         }
       }
@@ -482,7 +482,7 @@ public module std {
     out.append_char(b'"');
     var n: i64 = s.length();
     for (var i: i64 = 0; i < n; i = i + 1) {
-      var ch: u8 = s.at(i);
+      var ch: u8 = unsafe { s.unsafe_at(i); };
       if (ch == b'"') {
         out.append_literal("\\\"");
       } else if (ch == b'\\') {
@@ -518,7 +518,7 @@ public module std {
     var start: i64 = out.length();
     out.append_f64(x);
     for (var i: i64 = start; i < out.length(); i = i + 1) {
-      var ch: u8 = out.at(i);
+      var ch: u8 = unsafe { out.unsafe_at(i); };
       if (ch == b'.' or ch == b'e') {
         // '.' 'e'
         return;
@@ -554,7 +554,7 @@ public module std {
             out.append_char(b',');
           }
           write_json_indent(out, indent, level + 1);
-          write_json_value(items.get_unchecked(i), out, indent, level + 1);
+          write_json_value(unsafe { items.get_unchecked(i); }, out, indent, level + 1);
         }
         if (n > 0) {
           write_json_indent(out, indent, level);
@@ -569,12 +569,12 @@ public module std {
             out.append_char(b',');
           }
           write_json_indent(out, indent, level + 1);
-          write_json_string(members.get_unchecked(i).key, out);
+          write_json_string(unsafe { members.get_unchecked(i); }.key, out);
           out.append_char(b':');
           if (indent >= 0) {
             out.append_char(b' ');
           }
-          write_json_value(members.get_unchecked(i).value, out, indent, level + 1);
+          write_json_value(unsafe { members.get_unchecked(i); }.value, out, indent, level + 1);
         }
         if (n > 0) {
           write_json_indent(out, indent, level);
@@ -606,13 +606,13 @@ public module std {
       if (this.pos >= text.length()) {
         return -1;
       }
-      return _convert<i64>(text.at(this.pos));
+      return _convert<i64>(unsafe { text.unsafe_at(this.pos); });
     }
 
     // Step past spaces, tabs, newlines and carriage returns.
     method skip_whitespace(text: const ref String) void {
       while (this.pos < text.length()) {
-        var ch: u8 = text.at(this.pos);
+        var ch: u8 = unsafe { text.unsafe_at(this.pos); };
         if (ch == b' ' or ch == b'\t' or ch == b'\n' or ch == b'\r') {
           this.pos = this.pos + 1;
         } else {
@@ -628,7 +628,7 @@ public module std {
       var start: i64 = this.pos;
       for (var i: i64 = 0; i < n; i = i + 1) {
         var expected: u8 = unsafe { _load<u8>(data, i); };
-        if (this.pos >= text.length() or text.at(this.pos) != expected) {
+        if (this.pos >= text.length() or unsafe { text.unsafe_at(this.pos); } != expected) {
           throw JsonError(what, start);
         }
         this.pos = this.pos + 1;
@@ -829,7 +829,7 @@ public module std {
           if (code >= 55296 and code <= 56319) {
             // high surrogate
             var low: i64 = -1;
-            if (this.peek(text) == b'\\' and this.pos + 1 < text.length() and text.at(this.pos + 1) == b'u') {
+            if (this.peek(text) == b'\\' and this.pos + 1 < text.length() and unsafe { text.unsafe_at(this.pos + 1); } == b'u') {
               var save: i64 = this.pos;
               this.pos = this.pos + 2;
               low = this.parse_hex4(text);
@@ -858,7 +858,7 @@ public module std {
     // Step past a run of decimal digits and return how many there were.
     method parse_digits(text: const ref String) i64 {
       var count: i64 = 0;
-      while (this.pos < text.length() and text.at(this.pos) >= b'0' and text.at(this.pos) <= b'9') {
+      while (this.pos < text.length() and unsafe { text.unsafe_at(this.pos); } >= b'0' and unsafe { text.unsafe_at(this.pos); } <= b'9') {
         this.pos = this.pos + 1;
         count = count + 1;
       }
@@ -904,7 +904,7 @@ public module std {
       }
       var token = String(this.alloc, "");
       for (var i: i64 = start; i < this.pos; i = i + 1) {
-        token.append_char(text.at(i));
+        token.append_char(unsafe { text.unsafe_at(i); });
       }
       if (not is_float) {
         match token.parse_i64() {

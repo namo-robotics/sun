@@ -77,13 +77,13 @@ public module std {
     // Get element at indices
     public const method get(indices: const ref array<i64>) T {
       var idx: i64 = this.compute_linear_index(indices);
-      return this.data.get_unchecked(idx);
+      return unsafe { this.data.get_unchecked(idx); };
     }
 
     // Set element at indices
     public method set(indices: const ref array<i64>, value: T) void {
       var idx: i64 = this.compute_linear_index(indices);
-      this.data.set_unchecked(idx, value);
+      unsafe { this.data.set_unchecked(idx, value); };
     }
 
     // Get the size of dimension i

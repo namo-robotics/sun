@@ -354,8 +354,8 @@ TEST(Modules_ProtoImport, wire_varint_roundtrip_small_and_multibyte) {
       proto_write_varint(buf, 0);
       // 300 = 0xAC 0x02 (two bytes)
       if (buf.size() != 4) { return -1; }
-      if (buf.get_unchecked(1) != 172) { return -2; }
-      if (buf.get_unchecked(2) != 2) { return -3; }
+      if (unsafe { buf.get_unchecked(1); } != 172) { return -2; }
+      if (unsafe { buf.get_unchecked(2); } != 2) { return -3; }
       var r = ProtoReader(buf);
       var a: u64 = 0;
       var b: u64 = 0;
@@ -408,8 +408,8 @@ TEST(Modules_ProtoImport, wire_zigzag_sint_roundtrip) {
       proto_write_sint32(buf, m1);   // zigzag(-1) = 1
       proto_write_sint32(buf, p2);   // zigzag(2)  = 4
       proto_write_sint64(buf, big);
-      if (buf.get_unchecked(0) != 1) { return -1; }
-      if (buf.get_unchecked(1) != 4) { return -2; }
+      if (unsafe { buf.get_unchecked(0); } != 1) { return -1; }
+      if (unsafe { buf.get_unchecked(1); } != 4) { return -2; }
       var r = ProtoReader(buf);
       var a: i32 = 0;
       var b: i32 = 0;
@@ -443,7 +443,7 @@ TEST(Modules_ProtoImport, wire_fixed_and_float_roundtrip) {
       proto_write_float(buf, f);
       proto_write_sfixed64(buf, s);
       if (buf.size() != 4 + 8 + 4 + 8) { return -1; }
-      if (buf.get_unchecked(0) != 120) { return -2; }  // little-endian 0x78
+      if (unsafe { buf.get_unchecked(0); } != 120) { return -2; }  // little-endian 0x78
       var r = ProtoReader(buf);
       var u2: u32 = 0;
       var d2: f64 = 0.0;
@@ -487,9 +487,9 @@ TEST(Modules_ProtoImport, wire_string_and_bytes_roundtrip) {
         backBytes = r.read_bytes_field(alloc);
       } catch (e: IError) { return -2; }
       if (back.length() != 5) { return -3; }
-      if (back.at(4) != 111) { return -4; }   // 'o'
+      if (unsafe { back.unsafe_at(4); } != 111) { return -4; }   // 'o'
       if (backBytes.size() != 2) { return -5; }
-      if (backBytes.get_unchecked(1) != 9) { return -6; }
+      if (unsafe { backBytes.get_unchecked(1); } != 9) { return -6; }
       return 0;
     }
   )");
@@ -529,7 +529,7 @@ TEST(Modules_ProtoImport, wire_tags_limits_and_skip_unknown) {
       if (r.at_end() == false) { return -5; }
       // unknown holds: tag(4,2)=34, len 2, 'a','b', tag(5,5)=45, 4 bytes
       if (unknown.size() != 1 + 1 + 2 + 1 + 4) { return -6; }
-      if (unknown.get_unchecked(0) != 34) { return -7; }
+      if (unsafe { unknown.get_unchecked(0); } != 34) { return -7; }
       return 0;
     }
   )");
@@ -638,14 +638,14 @@ TEST(Modules_ProtoImport, message_roundtrip_all_field_kinds) {
         if (b.robot_id != 7) { return 1; }
         if (b.name.length() != 5) { return 2; }
         if (b.samples.size() != 3) { return 3; }
-        if (b.samples.get_unchecked(1) != 300) { return 4; }
-        if (b.samples.get_unchecked(2) != -5) { return 5; }
+        if (unsafe { b.samples.get_unchecked(1); } != 300) { return 4; }
+        if (unsafe { b.samples.get_unchecked(2); } != -5) { return 5; }
         if (proto_enum_to_i32_Mode(b.mode) != 7) { return 6; }
         if (b.pose.x != 1.5) { return 7; }
         if (b.pose.y != -2.0) { return 8; }
         if (b.blob.size() != 2) { return 9; }
         if (b.tags.size() != 2) { return 10; }
-        if (b.tags.get_unchecked(1).length() != 2) { return 11; }
+        if (unsafe { b.tags.get_unchecked(1); }.length() != 2) { return 11; }
         if (b.ok == false) { return 12; }
         if (b.delta != -3) { return 13; }
         if (b.crc != 305419896) { return 14; }
@@ -738,7 +738,7 @@ TEST(Modules_ProtoImport, unpacked_repeated_scalars_decode) {
       try {
         var m = Status_decode(alloc, wire);
         if (m.samples.size() != 3) { return 1; }
-        if (m.samples.get_unchecked(2) != 30) { return 2; }
+        if (unsafe { m.samples.get_unchecked(2); } != 30) { return 2; }
       } catch (e: IError) { return -1; }
       return 0;
     }
@@ -814,7 +814,7 @@ TEST(Modules_ProtoImport, nested_message_types_flatten_with_underscore) {
         if (b.inner.v != 5) { return 1; }
         if (proto_enum_to_i32_Outer_Kind(b.kind) != 1) { return 2; }
         if (b.more.size() != 1) { return 3; }
-        if (b.more.get_unchecked(0).v != 6) { return 4; }
+        if (unsafe { b.more.get_unchecked(0); }.v != 6) { return 4; }
       } catch (e: IError) { return -1; }
       return 0;
     }
@@ -1225,7 +1225,7 @@ TEST(Modules_ProtoImport, moon_exports_proto_messages_to_importers) {
         var back = Status_decode(alloc, buf);
         if (back.robot_id != 7) { return 1; }
         if (back.name.length() != 5) { return 2; }
-        if (back.samples.get_unchecked(0) != 300) { return 3; }
+        if (unsafe { back.samples.get_unchecked(0); } != 300) { return 3; }
         if (proto_enum_to_i32_Mode(back.mode) != 7) { return 4; }
         if (back.pose.y != -2.0) { return 5; }
       } catch (e: IError) { return -1; }

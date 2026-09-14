@@ -308,12 +308,15 @@ class PrimitiveType : public Type {
 class FunctionType : public Type {
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;
+  bool requiresUnsafe_ = false;
   bool canThrow_ = false;  // declared with 'throws IError' — may unwind
 
  public:
-  FunctionType(TypePtr ret, std::vector<TypePtr> params, bool canThrow = false)
+  FunctionType(TypePtr ret, std::vector<TypePtr> params, bool canThrow = false,
+               bool requiresUnsafe = false)
       : returnType(std::move(ret)),
         paramTypes(std::move(params)),
+        requiresUnsafe_(requiresUnsafe),
         canThrow_(canThrow) {}
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
@@ -322,6 +325,8 @@ class FunctionType : public Type {
   const TypePtr& getReturnType() const { return returnType; }
   const std::vector<TypePtr>& getParamTypes() const { return paramTypes; }
 
+  /** Whether calling this value requires an unsafe block. */
+  bool requiresUnsafe() const { return requiresUnsafe_; }
   // Whether calls through this pointer may throw.
   bool canThrow() const { return canThrow_; }
   void setCanThrow(bool v) { canThrow_ = v; }
@@ -333,6 +338,7 @@ class FunctionType : public Type {
       result += paramTypes[i]->toString();
     }
     result += ") " + returnType->toString();
+    if (requiresUnsafe_) result = "unsafe " + result;
     if (canThrow_) result += " throws IError";
     return result;
   }
@@ -344,12 +350,14 @@ class FunctionType : public Type {
       result += paramTypes[i]->toDisplayString();
     }
     result += ") " + returnType->toDisplayString();
+    if (requiresUnsafe_) result = "unsafe " + result;
     if (canThrow_) result += " throws IError";
     return result;
   }
 
   bool equals(const Type& other) const override {
     if (auto* f = dynamic_cast<const FunctionType*>(&other)) {
+      if (requiresUnsafe_ != f->requiresUnsafe_) return false;
       if (canThrow_ != f->canThrow_) return false;
       if (!returnType->equals(*f->returnType)) return false;
       if (paramTypes.size() != f->paramTypes.size()) return false;
@@ -396,6 +404,7 @@ class FunctionType : public Type {
 class LambdaType : public Type {
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;
+  bool requiresUnsafe_ = false;
   bool canThrow_ = false;  // declared with 'throws IError' — may unwind
   // Part of the type's identity: `<'_>() => T` in source. True when the
   // lambda carries a captured environment that lives in a stack frame
@@ -410,9 +419,11 @@ class LambdaType : public Type {
   std::string lifetimeName_;
 
  public:
-  LambdaType(TypePtr ret, std::vector<TypePtr> params, bool canThrow = false)
+  LambdaType(TypePtr ret, std::vector<TypePtr> params, bool canThrow = false,
+             bool requiresUnsafe = false)
       : returnType(std::move(ret)),
         paramTypes(std::move(params)),
+        requiresUnsafe_(requiresUnsafe),
         canThrow_(canThrow) {}
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
@@ -420,6 +431,8 @@ class LambdaType : public Type {
   Kind getKind() const override { return StaticKind; }
   const TypePtr& getReturnType() const { return returnType; }
   const std::vector<TypePtr>& getParamTypes() const { return paramTypes; }
+  /** Whether calling this value requires an unsafe block. */
+  bool requiresUnsafe() const { return requiresUnsafe_; }
   bool canThrow() const { return canThrow_; }
   bool hasRefCaptures() const { return hasRefCaptures_; }
   void setHasRefCaptures(bool v) { hasRefCaptures_ = v; }
@@ -433,6 +446,7 @@ class LambdaType : public Type {
       result += paramTypes[i]->toString();
     }
     result += ") => " + returnType->toString();
+    if (requiresUnsafe_) result = "unsafe " + result;
     if (canThrow_) result += " throws IError";
     return result;
   }
@@ -444,12 +458,14 @@ class LambdaType : public Type {
       result += paramTypes[i]->toDisplayString();
     }
     result += ") => " + returnType->toDisplayString();
+    if (requiresUnsafe_) result = "unsafe " + result;
     if (canThrow_) result += " throws IError";
     return result;
   }
 
   bool equals(const Type& other) const override {
     if (auto* l = dynamic_cast<const LambdaType*>(&other)) {
+      if (requiresUnsafe_ != l->requiresUnsafe_) return false;
       if (canThrow_ != l->canThrow_) return false;
       if (hasRefCaptures_ != l->hasRefCaptures_) return false;
       if (!returnType->equals(*l->returnType)) return false;
@@ -480,6 +496,7 @@ class LambdaType : public Type {
   // go where a '<'_>' one is expected — never the other way around.
   bool acceptsValueOf(const LambdaType& from) const {
     if (!equalsIgnoringThrow(from)) return false;
+    if (!requiresUnsafe_ && from.requiresUnsafe_) return false;
     if (!canThrow_ && from.canThrow_) return false;
     if (!hasRefCaptures_ && from.hasRefCaptures_) return false;
     return true;
@@ -1052,6 +1069,7 @@ struct ClassMethod {
   std::vector<TypePtr> paramTypes;  // Excludes implicit 'this' parameter
   bool isConstructor;               // true if this is the 'init' method
   bool canThrow = false;  // declared with 'throws IError' — may unwind
+  bool isUnsafe = false;  // Calls require an unsafe block.
   bool isConst = false;   // `const function`: does not change `this`
   sun::Visibility visibility = sun::Visibility::Private;
   bool isSynthesizedConstructor = false;
@@ -1642,8 +1660,9 @@ struct InterfaceMethod {
   std::vector<std::string> typeParameters;  // Generic type params: <T, U>
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;  // Excludes implicit 'this' parameter
-  bool hasDefaultImpl;   // true if this method has a default implementation
-  bool isConst = false;  // `const function`: does not change `this`
+  bool hasDefaultImpl;    // true if this method has a default implementation
+  bool isUnsafe = false;  // Calls require an unsafe block.
+  bool isConst = false;   // `const function`: does not change `this`
   sun::Visibility visibility = sun::Visibility::Private;
 
   bool isGeneric() const { return !typeParameters.empty(); }
@@ -2194,16 +2213,16 @@ class Types {
 
   // Create a function-pointer type: function () T
   static TypePtr Function(TypePtr returnType, std::vector<TypePtr> paramTypes,
-                          bool canThrow = false) {
-    return std::make_shared<FunctionType>(std::move(returnType),
-                                          std::move(paramTypes), canThrow);
+                          bool canThrow = false, bool requiresUnsafe = false) {
+    return std::make_shared<FunctionType>(
+        std::move(returnType), std::move(paramTypes), canThrow, requiresUnsafe);
   }
 
   // Create a lambda type: () => {} (anonymous function, fat pointer call)
   static TypePtr Lambda(TypePtr returnType, std::vector<TypePtr> paramTypes,
-                        bool canThrow = false) {
-    return std::make_shared<LambdaType>(std::move(returnType),
-                                        std::move(paramTypes), canThrow);
+                        bool canThrow = false, bool requiresUnsafe = false) {
+    return std::make_shared<LambdaType>(
+        std::move(returnType), std::move(paramTypes), canThrow, requiresUnsafe);
   }
 
   // Create a raw (non-owning) pointer type: raw_ptr<T> for C interop
@@ -2763,7 +2782,8 @@ inline TypePtr eraseLifetimeNames(const TypePtr& type) {
     auto ret = eraseLifetimeNames(lt->getReturnType());
     changed = changed || ret != lt->getReturnType();
     if (!changed) return type;
-    auto result = Types::Lambda(ret, std::move(params), lt->canThrow());
+    auto result = Types::Lambda(ret, std::move(params), lt->canThrow(),
+                                lt->requiresUnsafe());
     static_cast<LambdaType*>(result.get())
         ->setHasRefCaptures(lt->hasRefCaptures());
     return result;

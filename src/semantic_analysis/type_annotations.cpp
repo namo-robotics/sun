@@ -89,7 +89,8 @@ sun::TypePtr TypeInferer::substituteTypeParameters(sun::TypePtr type) {
       if (newParam != param) changed = true;
     }
     if (changed) {
-      return sun::Types::Function(newRet, std::move(newParams), ft->canThrow());
+      return sun::Types::Function(newRet, std::move(newParams), ft->canThrow(),
+                                  ft->requiresUnsafe());
     }
     return type;
   }
@@ -105,8 +106,8 @@ sun::TypePtr TypeInferer::substituteTypeParameters(sun::TypePtr type) {
       if (newParam != param) changed = true;
     }
     if (changed) {
-      auto substituted =
-          sun::Types::Lambda(newRet, std::move(newParams), lt->canThrow());
+      auto substituted = sun::Types::Lambda(
+          newRet, std::move(newParams), lt->canThrow(), lt->requiresUnsafe());
       // The <'_> marker is part of the type's identity and must survive
       // substitution, or spawn<F>'s specializations would lose it; the
       // lifetime metadata rides along with it
@@ -312,7 +313,8 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
     sun::TypePtr retType = annot.returnType
                                ? typeAnnotationToType(*annot.returnType)
                                : sun::Types::Void();
-    return sun::Types::Function(retType, std::move(paramTypes), annot.canError);
+    return sun::Types::Function(retType, std::move(paramTypes), annot.canError,
+                                annot.requiresUnsafe);
   }
 
   // Lambda types: () {} (anonymous function, fat pointer call)
@@ -336,8 +338,8 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
                                : sun::Types::Void();
     bool canThrow =
         annot.canError || (annot.returnType && annot.returnType->canError);
-    auto lambdaType =
-        sun::Types::Lambda(retType, std::move(paramTypes), canThrow);
+    auto lambdaType = sun::Types::Lambda(retType, std::move(paramTypes),
+                                         canThrow, annot.requiresUnsafe);
     // `<'_>(…) => …` admits lambdas whose captured environment lives in a
     // stack frame; a plain annotation admits only environment-free lambdas.
     // A named lifetime ('<'a>') rides along as borrow-checker metadata.

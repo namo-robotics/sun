@@ -354,7 +354,7 @@ TEST(Lambdas_BoundMethods, stdlib_class_method_as_value) {
         var allocator = make_heap_allocator();
         var v = Vec<i32>(allocator, 8);
         apply(v.push);
-        return v.get_unchecked(0);
+        return unsafe { v.get_unchecked(0); };
     }
   )");
   EXPECT_EQ(value, 42);

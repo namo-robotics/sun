@@ -46,7 +46,7 @@ public module std {
       if (index >= this.size_) {
         throw IndexOutOfBoundsError(index);
       }
-      return this.get_unchecked(index);
+      return unsafe { this.get_unchecked(index); };
     }
 
     // Set element at index (bounds-checked)
@@ -64,13 +64,13 @@ public module std {
     // Unchecked Accessors (for performance-critical code)
     // ========================================================================
 
-    // Borrow element at index (no bounds check)
-    public const method get_unchecked(index: i64) ref T {
+    /* Borrow an element. The caller must provide an initialized, in-bounds index. */
+    public const unsafe method get_unchecked(index: i64) ref T {
       return unsafe { _to_ref<T>(_ptr_as_raw<T>(_ptr_offset(this.data.get_raw(), index * _sizeof<T>()))); };
     }
 
     /** Extract raw storage that a container must exclude from future drops. */
-    method take_unchecked(index: i64) T {
+    unsafe method take_unchecked(index: i64) T {
       var value: T = unsafe { _load<T>(this.data.get_raw(), index); };
       unsafe {
         _memset(
@@ -82,8 +82,8 @@ public module std {
       return value;
     }
 
-    // Set element at index (no bounds check)
-    public method set_unchecked(index: i64, value: T) void {
+    /* Store an element. The caller must provide an in-bounds index. */
+    public unsafe method set_unchecked(index: i64, value: T) void {
       unsafe { _store<T>(this.data.get_raw(), index, value); };
     }
 
@@ -184,7 +184,7 @@ public module std {
       if (this.size_ == 0) {
         throw IndexOutOfBoundsError(0);
       }
-      return this.get_unchecked(0);
+      return unsafe { this.get_unchecked(0); };
     }
 
     // Borrow last element (bounds-checked)
@@ -192,7 +192,7 @@ public module std {
       if (this.size_ == 0) {
         throw IndexOutOfBoundsError(0);
       }
-      return this.get_unchecked(this.size_ - 1);
+      return unsafe { this.get_unchecked(this.size_ - 1); };
     }
 
     // ========================================================================
@@ -202,13 +202,13 @@ public module std {
     // Operator overload for indexing: buf[i] calls __index__([i])
     // Note: Uses unchecked access for performance; use get() for bounds checking
     public const method __index__(indices: const ref array<i64>) ref T {
-      return this.get_unchecked(indices[0]);
+      return unsafe { this.get_unchecked(indices[0]); };
     }
 
     // Operator overload for indexed assignment: buf[i] = val calls __setindex__([i], val)
     // Note: Uses unchecked access for performance; use set() for bounds checking
     public method __setindex__(indices: const ref array<i64>, value: T) void {
-      this.set_unchecked(indices[0], value);
+      unsafe { this.set_unchecked(indices[0], value); };
     }
 
     // ========================================================================
@@ -237,7 +237,7 @@ public module std {
       }
       var index: i64 = this.current;
       this.current = this.current + 1;
-      return Option.Some(buf.get_unchecked(index));
+      return Option.Some(unsafe { buf.get_unchecked(index); });
     }
   }
 

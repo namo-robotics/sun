@@ -427,7 +427,7 @@ TEST(Classes_ConstMethods, const_vec_reads) {
           var sum: i32 = 0;
           var i: i64 = 0;
           while (i < v.size()) {
-              sum = sum + v[i] + v.get_unchecked(i);
+              sum = sum + v[i] + unsafe { v.get_unchecked(i); };
               i = i + 1;
           }
           return sum;
@@ -480,7 +480,7 @@ TEST(Classes_ConstMethods, const_vec_cannot_push_or_set) {
 TEST(Classes_ConstMethods, peek_accessors_are_const_views) {
   auto value = executeStringWithStdlib(R"(
       using std;
-      function main() i32 {
+      function main() i32 throws IError {
           var allocator = make_heap_allocator();
           var v = Vec<i32>(allocator, 4);
           v.push(5);
@@ -504,7 +504,7 @@ TEST(Classes_ConstMethods, peek_accessors_are_const_views) {
   // Through a constant receiver the peeked element is read-only ...
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
       using std;
-      function main() i32 {
+      function main() i32 throws IError {
           var allocator = make_heap_allocator();
           var v = Vec<i32>(allocator, 4);
           v.push(5);
@@ -521,7 +521,7 @@ TEST(Classes_ConstMethods, peek_accessors_are_const_views) {
   // ... while a mutable receiver still hands out a writable borrow
   auto written = executeStringWithStdlib(R"(
       using std;
-      function main() i32 {
+      function main() i32 throws IError {
           var allocator = make_heap_allocator();
           var v = Vec<i32>(allocator, 4);
           v.push(5);
@@ -571,7 +571,7 @@ TEST(Classes_ConstMethods, user_const_method_returning_option_ref) {
 TEST(Classes_ConstMethods, const_map_reads) {
   auto value = executeStringWithStdlib(R"(
       using std;
-      function main() i32 {
+      function main() i32 throws IError {
           var allocator = make_heap_allocator();
           var m = Map<i64, i32>(allocator, 8);
           m.insert(1, 10);

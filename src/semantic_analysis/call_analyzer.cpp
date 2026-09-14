@@ -248,6 +248,13 @@ void CallAnalyzer::analyzeCall(CallExprAST& callExpr,
     checkArgumentTypes(callExpr, paramTypes, funcName, calleeIsIntrinsic);
   }
 
+  auto callableType = callExpr.getCallee()->getResolvedType();
+  bool requiresUnsafe = false;
+  if (auto* fn = sun::tryGetType<sun::FunctionType>(callableType))
+    requiresUnsafe = fn->requiresUnsafe();
+  else if (auto* fn = sun::tryGetType<sun::LambdaType>(callableType))
+    requiresUnsafe = fn->requiresUnsafe();
+  sema_.checkUnsafeCall(requiresUnsafe, funcName, callExpr.getLocation());
   checkThrowPropagation(callExpr, callee, funcName);
 
   // Record how each argument reaches its parameter. Codegen carries these
@@ -550,7 +557,8 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMethodCallee(
     if (const sun::ClassMethod* method =
             ctx_.accessibleMethod(*classType, methodName, loc)) {
       memberAccess.setResolvedType(
-          sun::Types::Function(method->returnType, method->paramTypes));
+          sun::Types::Function(method->returnType, method->paramTypes,
+                               method->canThrow, method->isUnsafe));
       checkReceiver(*method);
     }
     return out;
@@ -579,7 +587,8 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMethodCallee(
   if (const sun::ClassMethod* method =
           ctx_.accessibleMethodForArgs(*classType, methodName, argTypes, loc)) {
     memberAccess.setResolvedType(
-        sun::Types::Function(method->returnType, method->paramTypes));
+        sun::Types::Function(method->returnType, method->paramTypes,
+                             method->canThrow, method->isUnsafe));
     checkReceiver(*method);
     return out;
   }
@@ -701,7 +710,7 @@ void CallAnalyzer::checkThrowPropagation(const CallExprAST& callExpr,
   if (calleeThrows && !ctx_.isInTryBlock() && !ctx_.isInThrowingFunction()) {
     logAndThrowError("Call to throwing function '" + funcName +
                          "' must be in a try block or in a function declared "
-                         "with ', IError'",
+                         "with 'throws IError'",
                      callExpr.getLocation());
   }
 }
@@ -1043,6 +1052,12 @@ void CallAnalyzer::recordSpawnArgumentConversions(GenericCallAST& genericCall) {
 
   // The trampoline that runs the thread has no unwind handling, so an error
   // escaping the spawned function would take the process down mid-unwind.
+  if (lambda ? lambda->requiresUnsafe() : namedFn->requiresUnsafe()) {
+    logAndThrowError(
+        "a spawned function must be safe to call; wrap the unsafe call in a "
+        "lambda",
+        genericCall.getLocation());
+  }
   if (lambda ? lambda->canThrow() : namedFn->canThrow()) {
     logAndThrowError(
         "a spawned function must not throw; catch errors inside it and "

@@ -140,6 +140,11 @@ void SemanticAnalyzer::validateInterfaceImplementation(
                   "' and must be declared 'const method'",
               classDef.getLocation());
         }
+        if (classMethodInfo->isUnsafe && !interfaceMethod.isUnsafe) {
+          logSemanticError("unsafe method '" + interfaceMethod.name +
+                               "' cannot implement a safe interface method",
+                           classDef.getLocation());
+        }
         // Verify return type matches. A class return where the interface
         // declares an interface type it implements is accepted (IIterable's
         // iter() returns the concrete iterator), but such a method cannot be
@@ -239,6 +244,7 @@ void SemanticAnalyzer::validateInterfaceImplementation(
                                               interfaceMethod.typeParameters);
           method.visibility = interfaceMethod.visibility;
           method.isConst = interfaceMethod.isConst;
+          method.isUnsafe = interfaceMethod.isUnsafe;
 
           // Register the mangled method name as a function
           std::string mangledName =

@@ -204,7 +204,7 @@ public module std {
         var n: i64 = unsafe { c_read(this.fd, chunk.raw_data(), 4096); };
         while (n > 0) {
           for (var i: i64 = 0; i < n; i = i + 1) {
-            out.append_char(chunk.get_unchecked(i));
+            out.append_char(unsafe { chunk.get_unchecked(i); });
           }
           n = unsafe { c_read(this.fd, chunk.raw_data(), 4096); };
         }
@@ -604,7 +604,7 @@ public module std {
       var n: i64 = unsafe { c_read(STDIN_FD, byte.raw_data(), 1); };
       while (n > 0) {
         got_any = true;
-        var ch: u8 = byte.get_unchecked(0);
+        var ch: u8 = unsafe { byte.get_unchecked(0); };
         if (ch == 10) {
           return Option.Some(line);
         }
@@ -659,11 +659,11 @@ public module std {
         var removed: bool = false;
         var i: i64 = 0;
         while (i < this.fds.size()) {
-          if (this.fds.get_unchecked(i).fd == fd) {
+          if (unsafe { this.fds.get_unchecked(i); }.fd == fd) {
             var j: i64 = i;
             while (j + 1 < this.fds.size()) {
-              var next: ref PollFd = this.fds.get_unchecked(j + 1);
-              this.fds.set_unchecked(j, PollFd(next.fd, next.events));
+              var next: ref PollFd = unsafe { this.fds.get_unchecked(j + 1); };
+              unsafe { this.fds.set_unchecked(j, PollFd(next.fd, next.events)); };
               j = j + 1;
             }
             this.fds.pop();
@@ -710,7 +710,7 @@ public module std {
         }
         var ready: Vec<Event> = Vec<Event>(this.alloc, capacity);
         for (var i: i64 = 0; i < this.fds.size(); i = i + 1) {
-          var entry: ref PollFd = this.fds.get_unchecked(i);
+          var entry: ref PollFd = unsafe { this.fds.get_unchecked(i); };
           if (entry.revents != 0) {
             ready.push(Event(entry.fd, entry.revents));
           }
@@ -720,12 +720,12 @@ public module std {
 
       // The descriptor added i-th.
       public method fd_at(i: i64) i32 {
-        return this.fds.get_unchecked(i).fd;
+        return unsafe { this.fds.get_unchecked(i); }.fd;
       }
 
       // The raw POLL* bits the system reported for the descriptor added i-th.
       public method revents(i: i64) i16 {
-        return this.fds.get_unchecked(i).revents;
+        return unsafe { this.fds.get_unchecked(i); }.revents;
       }
 
       // Report whether the descriptor added i-th has data to read.

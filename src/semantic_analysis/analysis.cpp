@@ -538,6 +538,7 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
           proto.canThrow());
       method.visibility = methodVisibility(*methodDecl.function);
       method.isConst = methodDecl.isConst;
+      method.isUnsafe = methodDecl.function->getProto().isUnsafeMethod();
       std::string mangledName =
           existingClass->getMangledMethodName(proto.getName());
       std::vector<sun::TypePtr> methodParamTypes;
@@ -1535,7 +1536,7 @@ void SemanticAnalyzer::maybeResolveBoundMethodRef(MemberAccessAST& memberAccess,
                       chosen->isConstructor, memberAccess.getLocation());
 
   auto boundType = sun::Types::Lambda(chosen->returnType, chosen->paramTypes,
-                                      chosen->canThrow);
+                                      chosen->canThrow, chosen->isUnsafe);
   // A bound method holds its receiver by reference, so the value is bound
   // to the frame the receiver lives in - the same escape rules as a lambda
   // with a `[ref ...]` capture list apply to it.
@@ -1543,7 +1544,6 @@ void SemanticAnalyzer::maybeResolveBoundMethodRef(MemberAccessAST& memberAccess,
   memberAccess.setResolvedType(std::move(boundType));
   memberAccess.setIsBoundMethodRef(true);
 }
-
 
 // -------------------------------------------------------------------
 // Payload enums

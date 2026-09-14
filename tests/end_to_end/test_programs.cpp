@@ -745,7 +745,7 @@ TEST(EndToEnd_Programs, string_bytes_from_const_ref) {
       var empty = String(alloc, "");
       if (not check(s) or not check_empty(empty)) { return 1; }
       s.append_char(b'C');
-      if (s.at(3) != b'C') { return 2; }
+      if (unsafe { s.unsafe_at(3); } != b'C') { return 2; }
       return 0;
     }
   )");

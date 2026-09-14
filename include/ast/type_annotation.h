@@ -34,6 +34,7 @@ struct TypeAnnotation {
 
   // For error union types: indicates this type can also be an error
   bool canError = false;
+  bool requiresUnsafe = false;  // Calling this value needs an unsafe block.
 
   // For reference types: `const ref T` (the referent cannot be changed)
   bool constRef = false;
@@ -62,6 +63,7 @@ struct TypeAnnotation {
         baseName(other.baseName),
         arrayDimensions(other.arrayDimensions),
         canError(other.canError),
+        requiresUnsafe(other.requiresUnsafe),
         constRef(other.constRef),
         refEnv(other.refEnv),
         lifetimeName(other.lifetimeName),
@@ -86,6 +88,7 @@ struct TypeAnnotation {
       baseName = other.baseName;
       arrayDimensions = other.arrayDimensions;
       canError = other.canError;
+      requiresUnsafe = other.requiresUnsafe;
       constRef = other.constRef;
       refEnv = other.refEnv;
       lifetimeName = other.lifetimeName;
@@ -167,6 +170,7 @@ struct TypeAnnotation {
       }
       result += ") ";
       result += returnType ? returnType->toString() : "void";
+      if (requiresUnsafe) result = "unsafe " + result;
       if (canError) result += " throws IError";
       return result;
     }
@@ -180,6 +184,7 @@ struct TypeAnnotation {
       }
       result += ") => ";
       result += returnType ? returnType->toString() : "void";
+      if (requiresUnsafe) result = "unsafe " + result;
       if (canError) result += " throws IError";
       return result;
     }

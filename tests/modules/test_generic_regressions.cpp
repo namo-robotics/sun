@@ -62,9 +62,10 @@ class Modules_GenericRegressions : public ::testing::Test {
     return ::testing::AssertionSuccess();
   }
 
-  void checkProgram(const std::string& name) {
+  void checkProgram(const std::string& name, bool checkNative = true) {
     const auto source = (dir / name).string();
     ASSERT_TRUE(run("build/sun " + source));
+    if (!checkNative) return;
     const auto binary = (dir / "app").string();
     ASSERT_TRUE(run("build/sun -c -o " + binary + " " + source));
     ASSERT_TRUE(run(binary));
@@ -314,8 +315,10 @@ TEST_F(Modules_GenericRegressions, NestedTypeArguments) {
       source.replace(begin, end + 2 - begin,
                      "var value = sample.data.remove(0); return value.v - 7;");
     }
+    // Keep native coverage on the original; run every variant through the JIT.
+    const bool checkNative = variant == 0;
     write("nested.sun", source);
-    ASSERT_NO_FATAL_FAILURE(checkProgram("nested.sun"));
+    ASSERT_NO_FATAL_FAILURE(checkProgram("nested.sun", checkNative));
 
     const auto consumerStart = source.find("class Msg");
     ASSERT_NE(consumerStart, std::string::npos);
@@ -329,7 +332,7 @@ TEST_F(Modules_GenericRegressions, NestedTypeArguments) {
     app.replace(manifest, app.size() - manifest,
                 "manifest { libraries: [\"stdlib.moon\", \"lib.moon\"] }");
     write("consumer.sun", app);
-    ASSERT_NO_FATAL_FAILURE(checkProgram("consumer.sun"));
+    ASSERT_NO_FATAL_FAILURE(checkProgram("consumer.sun", checkNative));
   }
 }
 

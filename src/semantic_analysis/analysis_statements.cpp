@@ -341,8 +341,12 @@ void SemanticAnalyzer::analyzeIndexedAssignment(
     const auto& idx = static_cast<const IndexAST&>(*assignment.getTarget());
     sun::TypePtr objType = unwrapRef(idx.getTarget()->getResolvedType());
     if (objType && objType->isClass()) {
-      ctx_.accessibleMethod(static_cast<const sun::ClassType&>(*objType),
-                            "__setindex__", assignment.getLocation());
+      const auto* method =
+          ctx_.accessibleMethod(static_cast<const sun::ClassType&>(*objType),
+                                "__setindex__", assignment.getLocation());
+      if (method)
+        checkUnsafeCall(method->isUnsafe, "__setindex__",
+                        assignment.getLocation());
     }
   }
 

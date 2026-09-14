@@ -103,18 +103,18 @@ public module std {
     var i: i64 = 0;
 
     while (i < n) {
-      var c: u8 = raw.at(i);
+      var c: u8 = unsafe { raw.unsafe_at(i); };
       if (c == b' ' or c == b'\r') {
         break;
       }
       req.method.append_char(c);
       i = i + 1;
     }
-    if (i < n and raw.at(i) == b' ') {
+    if (i < n and unsafe { raw.unsafe_at(i); } == b' ') {
       i = i + 1;
     }
     while (i < n) {
-      var c: u8 = raw.at(i);
+      var c: u8 = unsafe { raw.unsafe_at(i); };
       if (c == b' ' or c == b'\r') {
         break;
       }
@@ -122,7 +122,7 @@ public module std {
       i = i + 1;
     }
     while (i < n) {
-      if (raw.at(i) == b'\n') {
+      if (unsafe { raw.unsafe_at(i); } == b'\n') {
         break;
       }
       i = i + 1;
@@ -134,7 +134,7 @@ public module std {
       end = n;
     }
     while (i < end) {
-      req.headers.append_char(raw.at(i));
+      req.headers.append_char(unsafe { raw.unsafe_at(i); });
       i = i + 1;
     }
   }
@@ -239,7 +239,7 @@ public module std {
           done = true;
         } else {
           for (var i: i64 = 0; i < n; i = i + 1) {
-            raw.append_char(chunk.get_unchecked(i));
+            raw.append_char(unsafe { chunk.get_unchecked(i); });
           }
           if (find_header_end(raw) >= 0) {
             done = true;

@@ -35,8 +35,9 @@ class PrototypeAST {
   // A compound value moves in and is dropped with the closure's scope.
   std::vector<std::string> ownedCaptureNames;
   std::optional<VariadicParam> variadicParam_;  // Trailing `args...` pack
-  bool cVariadic_ = false;    // C-style trailing `...` (extern declarations)
-  bool constMethod_ = false;  // `const method`: `this` is immutable
+  bool cVariadic_ = false;     // C-style trailing `...` (extern declarations)
+  bool unsafeMethod_ = false;  // Calls require an unsafe block.
+  bool constMethod_ = false;   // `const method`: `this` is immutable
   std::optional<std::string> linkName_;  // `as "c_symbol"` override
   Position location_;                    // Source span of the signature
   std::string doc_;  // Comment written above the declaration
@@ -213,7 +214,12 @@ class PrototypeAST {
   bool isCVariadic() const { return cVariadic_; }
   void setCVariadic(bool v) { cVariadic_ = v; }
 
-  // A class/interface method declared `const function`: its body may not
+  /** Whether callers must uphold this method's safety contract. */
+  bool isUnsafeMethod() const { return unsafeMethod_; }
+  /** Mark a method as requiring an unsafe block at each call. */
+  void setUnsafeMethod(bool v) { unsafeMethod_ = v; }
+
+  // A class/interface method declared `const method`: its body may not
   // change `this`, and it may be called on a constant receiver.
   bool isConstMethod() const { return constMethod_; }
   void setConstMethod(bool v) { constMethod_ = v; }

@@ -146,7 +146,7 @@ public module std {
     var n: i64 = data.size();
     proto_write_varint(buf, _convert<u64>(n));
     for (var i: i64 = 0; i < n; i = i + 1) {
-      buf.push(data.get_unchecked(i));
+      buf.push(unsafe { data.get_unchecked(i); });
     }
   }
 
@@ -155,7 +155,7 @@ public module std {
     var n: i64 = s.length();
     proto_write_varint(buf, _convert<u64>(n));
     for (var i: i64 = 0; i < n; i = i + 1) {
-      buf.push(s.at(i));
+      buf.push(unsafe { s.unsafe_at(i); });
     }
   }
 
@@ -164,7 +164,7 @@ public module std {
   public function proto_append_raw(buf: ref Vec<u8>, data: const ref Vec<u8>) void {
     var n: i64 = data.size();
     for (var i: i64 = 0; i < n; i = i + 1) {
-      buf.push(data.get_unchecked(i));
+      buf.push(unsafe { data.get_unchecked(i); });
     }
   }
 
@@ -361,7 +361,7 @@ public module std {
       }
       var tmp = ContiguousBuffer<u8>(alloc, n + 1);
       for (var i: i64 = 0; i < n; i = i + 1) {
-        tmp.set_unchecked(i, unsafe { _load<u8>(this.data, this.pos + i); });
+        unsafe { tmp.set_unchecked(i, unsafe { _load<u8>(this.data, this.pos + i); }); };
       }
       this.pos = this.pos + n;
       return String(alloc, tmp, n);

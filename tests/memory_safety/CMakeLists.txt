@@ -7,6 +7,7 @@ target_sources(sun_tests PRIVATE
     test_linked_list.cpp
     test_memory_safety.cpp
     test_pointers.cpp
+    test_unsafe_methods.cpp
 )
 
 add_subdirectory(drops)

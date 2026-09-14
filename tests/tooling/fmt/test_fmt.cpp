@@ -873,3 +873,43 @@ TEST(Tooling_Fmt, EnumUnderlyingTypeAndUnsignedMaximum) {
   EXPECT_EQ(fmt("enum E i8{Negative=-128,Next}"),
             "enum E i8 { Negative = -128, Next }\n");
 }
+
+TEST(Tooling_Fmt, UnsafeMethodsAndCallableTypes) {
+  const std::string source = R"(
+interface IRead { public const unsafe method read() i32; }
+class Reader {
+  public const unsafe method read() i32 { return 42; }
+}
+function invoke(f: unsafe <'_>() => i32) i32 {
+  return unsafe { f(); };
+}
+)";
+  const auto formatted = fmt(source);
+  EXPECT_NE(formatted.find("public const unsafe method read() i32"),
+            std::string::npos);
+  EXPECT_NE(formatted.find("unsafe <'_>() => i32"), std::string::npos);
+  EXPECT_EQ(fmt(formatted), formatted);
+}
+
+TEST(Tooling_Fmt, UnsafeExpressionsPreserveScope) {
+  const std::string source = R"(function f() i32 {
+  unsafe write(unsafe read());
+  var a = unsafe read() + other();
+  var b = unsafe (read() + other());
+  var c = (unsafe read()).next();
+  return unsafe -items[0];
+}
+)";
+  EXPECT_EQ(fmt(source), source);
+  EXPECT_EQ(fmt(fmt(source)), source);
+}
+
+TEST(Tooling_Fmt, UnsafeExpressionKeepsComments) {
+  const std::string source = R"(function f() i32 {
+  return unsafe /* caller checked the index */ read();
+}
+)";
+  const auto formatted = fmt(source);
+  EXPECT_NE(formatted.find("/* caller checked the index */"), std::string::npos);
+  EXPECT_EQ(fmt(formatted), formatted);
+}

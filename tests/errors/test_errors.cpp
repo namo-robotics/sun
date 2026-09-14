@@ -1112,7 +1112,7 @@ TEST(Errors, computed_error_message_survives_the_string_it_came_from) {
         var text: String = e.message();
         if (text.length() != 11) { return -2; }
         // 'g' is 103: the clone is real bytes, not freed storage.
-        if (text.at(0) != 103) { return -3; }
+        if (unsafe { text.unsafe_at(0); } != 103) { return -3; }
         return e.code();
       }
       return 0;

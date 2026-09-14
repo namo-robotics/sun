@@ -1545,6 +1545,15 @@ TypeAnnotation Parser::parseTypeAnnotation() {
 }
 
 TypeAnnotation Parser::parseTypeAnnotationImpl() {
+  if (curTok.kind == TokenKind::UNSAFE) {
+    getNextToken();
+    auto type = parseTypeAnnotation();
+    if ((!type.isFunction() && !type.isLambda()) || type.requiresUnsafe)
+      parsingError("'unsafe' must qualify a callable type exactly once");
+    type.requiresUnsafe = true;
+    return type;
+  }
+
   // Give the retired spelling a focused migration diagnostic.
   if (curTok.kind == TokenKind::UNDERSCORE) {
     parsingError(
@@ -4171,6 +4180,11 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
     sun::Visibility memberVis =
         parsePublic() ? sun::Visibility::Public : sun::Visibility::Private;
     bool isConstMethod = parseConstModifier();
+    bool isUnsafeMethod = curTok.kind == TokenKind::UNSAFE;
+    if (isUnsafeMethod) {
+      getNextToken();
+      if (!atMethodKeyword()) parsingError("'unsafe' must precede 'method'");
+    }
     if (curTok.kind == TokenKind::VAR) {
       if (isConstMethod)
         parsingError(
@@ -4244,10 +4258,12 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
       auto func = parseFunction(/*isClassMethod=*/true);
       if (!func) return nullptr;
       func->setVisibility(memberVis);
-      if (memberVis == sun::Visibility::Public || isConstMethod)
+      if (memberVis == sun::Visibility::Public || isConstMethod ||
+          isUnsafeMethod)
         extendSpanStart(*func, memberStart);
 
       func->getProtoMut().setConstMethod(isConstMethod);
+      func->getProtoMut().setUnsafeMethod(isUnsafeMethod);
 
       ClassMethodDecl method;
       method.function = std::move(func);
@@ -4316,6 +4332,11 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
     sun::Visibility memberVis =
         parsePublic() ? sun::Visibility::Public : sun::Visibility::Private;
     bool isConstMethod = parseConstModifier();
+    bool isUnsafeMethod = curTok.kind == TokenKind::UNSAFE;
+    if (isUnsafeMethod) {
+      getNextToken();
+      if (!atMethodKeyword()) parsingError("'unsafe' must precede 'method'");
+    }
     if (curTok.kind == TokenKind::VAR) {
       if (isConstMethod)
         parsingError(
@@ -4462,9 +4483,11 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
       proto->setLifetimeParameters(std::move(lifetimeParameters));
       proto->setLocation(std::move(protoLoc));
       proto->setConstMethod(isConstMethod);
+      proto->setUnsafeMethod(isUnsafeMethod);
       auto func = finishNode(
           std::make_unique<FunctionAST>(std::move(proto), std::move(body)),
-          (memberVis == sun::Visibility::Public || isConstMethod)
+          (memberVis == sun::Visibility::Public || isConstMethod ||
+           isUnsafeMethod)
               ? memberStart
               : methodStart);
       func->setVisibility(memberVis);
@@ -4649,14 +4672,24 @@ unique_ptr<ExprAST> Parser::parseThrow() {
                     start);
 }
 
-// Parse unsafe block: unsafe { ... }
+// Parse an unsafe block or a single unary expression.
 unique_ptr<ExprAST> Parser::parseUnsafeBlock() {
   Position loc = captureStart();
   getNextToken();  // eat 'unsafe'
 
   if (curTok.kind != TokenKind::BRACE_OPEN) {
-    parsingError("expected '{' after 'unsafe'");
-    return nullptr;
+    std::unique_ptr<ExprAST> operand;
+    if (isLambdaLiteralStart())
+      operand = parseLambda();
+    else
+      operand = parseUnary();
+    if (!operand) return nullptr;
+    auto body = std::make_unique<BlockExprAST>();
+    body->setKind(BlockKind::Unsafe);
+    body->setLocation(operand->getLocation());
+    body->addExpression(std::move(operand));
+    return finishNode(
+        std::make_unique<UnsafeBlockAST>(std::move(body), true), loc);
   }
 
   auto body = parseBlock(BlockKind::Unsafe);

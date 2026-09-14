@@ -231,8 +231,10 @@ and yield `char`. See [Characters and Bytes](/builtin-types#characters-and-bytes
 | `length()` | `() i64` | Current string length |
 | `capacity()` | `() i64` | Allocated capacity |
 | `is_empty()` | `() bool` | True when the string has no bytes |
-| `at(i)` | `(i64) u8` | Get byte at index |
-| `set_at(i, val)` | `(i64, u8) void` | Set byte at index |
+| `at(i)` | `(i64) u8 throws IError` | Read a byte; reject indices outside `length()` |
+| `set_at(i, val)` | `(i64, u8) void throws IError` | Write a byte; reject indices outside `length()` |
+| `unsafe_at(i)` | `(i64) u8` | Unchecked read; requires an unsafe block |
+| `unsafe_set_at(i, val)` | `(i64, u8) void` | Unchecked write; requires an unsafe block |
 | `append_char(ch)` | `(u8) void` | Append a single byte |
 | `append(other)` | `(const ref String) void` | Append another String |
 | `append_literal(s)` | `(static_ptr<u8>) void` | Append a string literal |
@@ -360,7 +362,8 @@ A non-owning view into a `String`. Provides read-only access to a substring with
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `length()` | `() i64` | View length |
-| `at(i)` | `(i64) u8` | Get byte at index (relative to view) |
+| `at(i)` | `(i64) u8 throws IError` | Read a byte; reject indices outside the view |
+| `unsafe_at(i)` | `(i64) u8` | Unchecked read relative to the view; requires an unsafe block |
 | `equals_literal(s)` | `(static_ptr<u8>) bool` | Compare with a string literal |
 | `find_char(ch)` | `(u8) Option<i64>` | Index of first occurrence; `None` if absent |
 | `rfind_char(ch)` | `(u8) Option<i64>` | Index of last occurrence; `None` if absent |

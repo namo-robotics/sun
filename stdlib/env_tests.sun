@@ -129,16 +129,16 @@ public module std {
       var arg1 = String(alloc, "alpha");
       var arg2 = String(alloc, "beta");
       var argv = ContiguousBuffer<raw_ptr<u8>>(alloc, 4);
-      argv.set_unchecked(0, arg0.c_str());
-      argv.set_unchecked(1, arg1.c_str());
-      argv.set_unchecked(2, arg2.c_str());
-      argv.set_unchecked(3, null);
+      unsafe { argv.set_unchecked(0, arg0.c_str()); };
+      unsafe { argv.set_unchecked(1, arg1.c_str()); };
+      unsafe { argv.set_unchecked(2, arg2.c_str()); };
+      unsafe { argv.set_unchecked(3, null); };
       var raw_argv: raw_ptr<raw_ptr<i8>> = unsafe { _ptr_as_raw<raw_ptr<i8>>(argv.raw_data()); };
       var cli = environment.args(3, raw_argv);
       std.test.assert_eq(cli.size(), 3);
-      std.test.assert(cli.get_unchecked(0).equals_literal("prog"), "argv[0] copied");
-      std.test.assert(cli.get_unchecked(1).equals_literal("alpha"), "argv[1] copied");
-      std.test.assert(cli.get_unchecked(2).equals_literal("beta"), "argv[2] copied");
+      std.test.assert(unsafe { cli.get_unchecked(0); }.equals_literal("prog"), "argv[0] copied");
+      std.test.assert(unsafe { cli.get_unchecked(1); }.equals_literal("alpha"), "argv[1] copied");
+      std.test.assert(unsafe { cli.get_unchecked(2); }.equals_literal("beta"), "argv[2] copied");
     }
   }  // module env_tests
 }  // module std

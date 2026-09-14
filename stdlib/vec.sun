@@ -61,7 +61,7 @@ public module std {
       if (this.size_ >= this.capacity_) {
         this.grow();
       }
-      this.data.set_unchecked(this.size_, value);
+      unsafe { this.data.set_unchecked(this.size_, value); };
       this.size_ = this.size_ + 1;
     }
 
@@ -72,7 +72,7 @@ public module std {
         return Option.None;
       }
       this.size_ = this.size_ - 1;
-      return Option.Some(this.data.take_unchecked(this.size_));
+      return Option.Some(unsafe { this.data.take_unchecked(this.size_); });
     }
 
     // Borrow the element at index (bounds-checked against size). The Vec keeps
@@ -86,12 +86,12 @@ public module std {
       if (index >= this.size_) {
         throw IndexOutOfBoundsError(index);
       }
-      return this.data.get_unchecked(index);
+      return unsafe { this.data.get_unchecked(index); };
     }
 
-    // Borrow the element at index (no bounds check)
-    public const method get_unchecked(index: i64) ref T {
-      return this.data.get_unchecked(index);
+    /* Borrow an element. The caller must provide an initialized index below size(). */
+    public const unsafe method get_unchecked(index: i64) ref T {
+      return unsafe { this.data.get_unchecked(index); };
     }
 
     // Set element at index (bounds-checked against size).
@@ -104,12 +104,12 @@ public module std {
         throw IndexOutOfBoundsError(index);
       }
       this.drop_range(index, index + 1);
-      this.data.set_unchecked(index, value);
+      unsafe { this.data.set_unchecked(index, value); };
     }
 
-    // Set element at index (no bounds check)
-    public method set_unchecked(index: i64, value: T) void {
-      this.data.set_unchecked(index, value);
+    /* Store an element. The caller must provide a nonnegative index below size(). */
+    public unsafe method set_unchecked(index: i64, value: T) void {
+      unsafe { this.data.set_unchecked(index, value); };
     }
 
     // Get current size
@@ -149,7 +149,7 @@ public module std {
     public method remove(index: i64) T throws IError {
       var value = this.extract_for_removal(index);
       for (var i: i64 = index; i < this.size_ - 1; i = i + 1) {
-        this.data.set_unchecked(i, this.data.take_unchecked(i + 1));
+        unsafe { this.data.set_unchecked(i, unsafe { this.data.take_unchecked(i + 1); }); };
       }
       this.size_ = this.size_ - 1;
       return value;
@@ -164,7 +164,7 @@ public module std {
       var value = this.extract_for_removal(index);
       this.size_ = this.size_ - 1;
       if (index < this.size_) {
-        this.data.set_unchecked(index, this.data.take_unchecked(this.size_));
+        unsafe { this.data.set_unchecked(index, unsafe { this.data.take_unchecked(this.size_); }); };
       }
       return value;
     }
@@ -172,7 +172,7 @@ public module std {
     /** Replace an element and return its previous value without changing size. */
     public method replace(index: i64, value: T) T throws IError {
       var previous = this.extract_for_removal(index);
-      this.data.set_unchecked(index, value);
+      unsafe { this.data.set_unchecked(index, value); };
       return previous;
     }
 
@@ -184,7 +184,7 @@ public module std {
       if (index >= this.size_) {
         throw IndexOutOfBoundsError(index);
       }
-      return this.data.take_unchecked(index);
+      return unsafe { this.data.take_unchecked(index); };
     }
 
     // Get raw data pointer (for interop)
@@ -197,7 +197,7 @@ public module std {
       if (this.size_ == 0) {
         return Option.None;
       }
-      return Option.Some(this.data.get_unchecked(this.size_ - 1));
+      return Option.Some(unsafe { this.data.get_unchecked(this.size_ - 1); });
     }
 
     // Borrow the first element; None when empty
@@ -205,7 +205,7 @@ public module std {
       if (this.size_ == 0) {
         return Option.None;
       }
-      return Option.Some(this.data.get_unchecked(0));
+      return Option.Some(unsafe { this.data.get_unchecked(0); });
     }
 
     // ========================================================================
@@ -226,13 +226,13 @@ public module std {
     // Operator overload for indexing: v[i] calls __index__([i])
     // Uses unchecked access for performance; use get() for bounds checking
     public const method __index__(indices: const ref array<i64>) ref T {
-      return this.data.get_unchecked(indices[0]);
+      return unsafe { this.data.get_unchecked(indices[0]); };
     }
 
     // Operator overload for indexed assignment: v[i] = val calls __setindex__([i], val)
     // Uses unchecked access for performance; use set() for bounds checking
     public method __setindex__(indices: const ref array<i64>, value: T) void {
-      this.data.set_unchecked(indices[0], value);
+      unsafe { this.data.set_unchecked(indices[0], value); };
     }
 
     // ========================================================================
@@ -261,7 +261,7 @@ public module std {
       }
       var index: i64 = this.current;
       this.current = this.current + 1;
-      return Option.Some(vec.get_unchecked(index));
+      return Option.Some(unsafe { vec.get_unchecked(index); });
     }
   }
 

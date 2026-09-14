@@ -15,8 +15,8 @@
 #include "support/error.h"
 
 using sun::unwrapRef;
-using sun::generics::mentionsTypeParameter;
 using sun::access::methodVisibility;
+using sun::generics::mentionsTypeParameter;
 using sun::names::getFunctionSignature;
 using sun::rules::isAssignableTo;
 
@@ -309,6 +309,7 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
           proto.getTypeParameterNames(), proto.canThrow());
       method.visibility = methodVisibility(*methodClone.function);
       method.isConst = methodClone.isConst;
+      method.isUnsafe = methodClone.function->getProto().isUnsafeMethod();
       method.isSynthesizedConstructor =
           methodClone.function->isSynthesizedConstructor();
     }
@@ -1184,6 +1185,7 @@ GenericSpecializer::instantiateGenericInterface(
           proto.getTypeParameterNames());
       method.visibility = methodVisibility(*methodDecl.function);
       method.isConst = methodDecl.isConst;
+      method.isUnsafe = methodDecl.function->getProto().isUnsafeMethod();
     }
 
     // Pop the scope

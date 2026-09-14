@@ -104,7 +104,7 @@ TEST(MemorySafety_GlobalAssignment,
 
     function main() i64 {
       replace();
-      if (g.at(0) != 110) {  // 'n'
+      if (unsafe { g.unsafe_at(0); } != 110) {  // 'n'
         return -1;
       }
       return g.length();
@@ -130,12 +130,12 @@ TEST(MemorySafety_GlobalAssignment,
       var out = String(alloc, "");
       if (g_queue.length() > 0) {
         var nl: i64 = 0;
-        while (nl < g_queue.length() and g_queue.at(nl) != 10) { nl = nl + 1; }
-        for (var i: i64 = 0; i < nl; i = i + 1) { out.append_char(g_queue.at(i)); }
+        while (nl < g_queue.length() and unsafe { g_queue.unsafe_at(nl); } != 10) { nl = nl + 1; }
+        for (var i: i64 = 0; i < nl; i = i + 1) { out.append_char(unsafe { g_queue.unsafe_at(i); }); }
 
         var rest = String(alloc, "");
         for (var i: i64 = nl + 1; i < g_queue.length(); i = i + 1) {
-          rest.append_char(g_queue.at(i));
+          rest.append_char(unsafe { g_queue.unsafe_at(i); });
         }
         g_queue.clear();
         append(g_queue, rest);
@@ -156,10 +156,10 @@ TEST(MemorySafety_GlobalAssignment,
       var alloc = make_heap_allocator();
       fill(alloc);
       var p1 = queue_pop(alloc);
-      if (p1.length() != 5 or p1.at(0) != 97) { return 1; }   // "alpha"
-      if (g_queue.length() != 5 or g_queue.at(0) != 98) { return 2; }  // "beta\n"
+      if (p1.length() != 5 or unsafe { p1.unsafe_at(0); } != 97) { return 1; }   // "alpha"
+      if (g_queue.length() != 5 or unsafe { g_queue.unsafe_at(0); } != 98) { return 2; }  // "beta\n"
       var p2 = queue_pop(alloc);
-      if (p2.length() != 4 or p2.at(0) != 98) { return 3; }   // "beta"
+      if (p2.length() != 4 or unsafe { p2.unsafe_at(0); } != 98) { return 3; }   // "beta"
       if (g_queue.length() != 0) { return 4; }
       var p3 = queue_pop(alloc);
       if (p3.length() != 0) { return 5; }

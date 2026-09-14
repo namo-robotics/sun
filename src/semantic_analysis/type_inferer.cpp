@@ -998,11 +998,13 @@ sun::TypePtr TypeInferer::inferClassMemberType(
           substitutedParams.push_back(substituteTypeParameters(pt));
         }
         ctx_.exitScope();
-        return sun::Types::Function(returnType, substitutedParams);
+        return sun::Types::Function(returnType, substitutedParams,
+                                    method->canThrow, method->isUnsafe);
       }
     }
 
-    return sun::Types::Function(method->returnType, method->paramTypes);
+    return sun::Types::Function(method->returnType, method->paramTypes,
+                                method->canThrow, method->isUnsafe);
   }
 
   logAndThrowError("Unknown member '" + memberName + "' on class '" +
@@ -1027,7 +1029,8 @@ sun::TypePtr TypeInferer::inferInterfaceMemberType(
   const sun::InterfaceMethod* method =
       ctx_.accessibleMethod(*ifaceType, memberName, memberAccess.getLocation());
   if (method) {
-    return sun::Types::Function(method->returnType, method->paramTypes);
+    return sun::Types::Function(method->returnType, method->paramTypes, false,
+                                method->isUnsafe);
   }
 
   logAndThrowError("Unknown member '" + memberName + "' on interface '" +
@@ -1058,7 +1061,8 @@ sun::TypePtr TypeInferer::inferTypeParameterMemberType(
         const sun::ClassMethod* method = ctx_.accessibleMethod(
             *classType, memberName, memberAccess.getLocation());
         if (method)
-          return sun::Types::Function(method->returnType, method->paramTypes);
+          return sun::Types::Function(method->returnType, method->paramTypes,
+                                      false, method->isUnsafe);
         logAndThrowError("Unknown member '" + memberName + "' on class '" +
                              classType->getDisplayName() + "'",
                          memberAccess.getLocation());
@@ -1072,7 +1076,8 @@ sun::TypePtr TypeInferer::inferTypeParameterMemberType(
         const sun::InterfaceMethod* method = ctx_.accessibleMethod(
             *ifaceType, memberName, memberAccess.getLocation());
         if (method)
-          return sun::Types::Function(method->returnType, method->paramTypes);
+          return sun::Types::Function(method->returnType, method->paramTypes,
+                                      false, method->isUnsafe);
         logAndThrowError("Unknown member '" + memberName + "' on interface '" +
                              ifaceType->toDisplayString() + "'",
                          memberAccess.getLocation());
@@ -1094,7 +1099,8 @@ sun::TypePtr TypeInferer::inferTypeParameterMemberType(
       const sun::InterfaceMethod* method = ctx_.accessibleMethod(
           *ifaceType, memberName, memberAccess.getLocation());
       if (method)
-        return sun::Types::Function(method->returnType, method->paramTypes);
+        return sun::Types::Function(method->returnType, method->paramTypes,
+                                    false, method->isUnsafe);
       logAndThrowError("Unknown member '" + memberName +
                            "' on type parameter '" + param->getName() +
                            "', which is constrained to interface '" +
