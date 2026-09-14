@@ -254,7 +254,13 @@ and yield `char`. See [Characters and Bytes](/builtin-types#characters-and-bytes
 | `append(x)` | `(f64) void`, `(f32) void`, ... | Overloads used by `${x}` interpolation for every primitive |
 | `parse_i64()` | `() Option<i64>` | Whole string as a decimal integer; `None` if malformed or out of range |
 | `parse_f64()` | `() Option<f64>` | Whole string as a decimal float; `None` if malformed |
+| `bytes()` | `() raw_ptr<u8>` (const method) | Borrow the bytes without allocating or adding a NUL terminator |
 | `c_str()` | `() raw_ptr<u8>` | NUL-terminated pointer for C, valid until the next mutation |
+
+`bytes()` works on a `const ref String`. Read only `length()` bytes and do not
+write through the pointer. The pointer remains valid until the next mutation or
+until the string is destroyed. Pass it with the length to C functions that accept
+a byte buffer.
 
 The terminator `c_str()` writes sits past the length, so the string itself is
 unchanged. `from_c_str(alloc, p)` is the other direction — it copies a
@@ -1254,9 +1260,10 @@ Overloaded `print` (no newline) and `println` (with newline) from `print.sun`. B
 |----------|-------------|
 | `i32`, `i64`, `u32`, `u64` | Print integer value |
 | `f64` | Print f64 |
+| `char` | Print a character as UTF-8 |
 | `bool` | Print `true` or `false` |
 | `static_ptr<u8>` | Print string literal |
-| `ref String` | Print a `String` |
+| `const ref String` | Print a borrowed `String` |
 | *(no argument, `println` only)* | Print a bare newline |
 
 Interpolated strings can be passed directly:
@@ -1269,10 +1276,15 @@ println();
 ```
 
 `eprint` and `eprintln` write to stderr instead, so a caller can tell
-diagnostics apart from the program's real output. They take a string literal or
-a `ref String`; interpolation covers everything else.
+diagnostics apart from the program's real output. They accept the same argument
+types as `print` and `println`, including numbers, characters, booleans and a
+`const ref String`. Numeric stderr output uses stack buffers without constructing
+a temporary `String`; floating-point values use the decimal formatting from
+`String.append_f64`. Calling `eprintln()` writes a bare newline.
 
 ```sun
 eprintln("could not open the file");
+eprint("error code: ");
+eprintln(42);
 eprintln(`giving up after ${attempts} tries`);
 ```

@@ -57,7 +57,7 @@ public module std {
 
   // Write a String to standard output. The String is borrowed, not consumed.
   public function print(s: const ref String) void {
-    _print_bytes(s.data.raw_data(), s.length());
+    _print_bytes(s.bytes(), s.length());
   }
 
   // ---- println (with newline) ----
@@ -121,22 +121,130 @@ public module std {
   }
 
   // ---- stderr ----
-  // Diagnostics belong on fd 2 so a caller can separate them from the
-  // program's real output. Literal and String only: interpolation covers
-  // everything else.
+  /* Write a signed integer to standard error. */
+  public function eprint(value: i32) void {
+    eprint(_convert<i64>(value));
+  }
 
+  /* Write a signed integer to standard error. */
+  public function eprint(value: i64) void {
+    var buffer: array<u8, 32> = [0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8];
+    var dst = unsafe { _address_of<u8>(buffer[0]); };
+    var written = unsafe { c_snprintf(dst, 32, "%lld", value); };
+    if (written > 0 and written < 32) {
+      unsafe { c_write(2, dst, written); };
+    }
+  }
+
+  /* Write an unsigned integer to standard error. */
+  public function eprint(value: u32) void {
+    eprint(_convert<u64>(value));
+  }
+
+  /* Write an unsigned integer to standard error. */
+  public function eprint(value: u64) void {
+    var buffer: array<u8, 32> = [0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8];
+    var dst = unsafe { _address_of<u8>(buffer[0]); };
+    var written = unsafe { c_snprintf(dst, 32, "%llu", value); };
+    if (written > 0 and written < 32) {
+      unsafe { c_write(2, dst, written); };
+    }
+  }
+
+  /* Write a floating-point number to standard error. */
+  public function eprint(value: f64) void {
+    var buffer: array<u8, 32> = [0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8];
+    var dst = unsafe { _address_of<u8>(buffer[0]); };
+    var written = unsafe { c_snprintf(dst, 32, "%.15g", value); };
+    var back = unsafe { c_strtod(dst, null); };
+    if (back != value) {
+      written = unsafe { c_snprintf(dst, 32, "%.16g", value); };
+      back = unsafe { c_strtod(dst, null); };
+      if (back != value) {
+        written = unsafe { c_snprintf(dst, 32, "%.17g", value); };
+      }
+    }
+    if (written > 0 and written < 32) {
+      unsafe { c_write(2, dst, written); };
+    }
+  }
+
+  /* Write one character encoded as UTF-8 to standard error. */
+  public function eprint(value: char) void {
+    var buffer: array<u8, 4> = [0u8, 0u8, 0u8, 0u8];
+    var dst = unsafe { _address_of<u8>(buffer[0]); };
+    var code = code_of(value);
+    var written = compute_utf8_len(code);
+    for (var i: i64 = 0; i < written; i = i + 1) {
+      buffer[i] = encode_utf8_byte(code, i);
+    }
+    unsafe { c_write(2, dst, written); };
+  }
+
+  /* Write "true" or "false" to standard error. */
+  public function eprint(value: bool) void {
+    if (value) {
+      eprint("true");
+    } else {
+      eprint("false");
+    }
+  }
+
+  /* Write a string literal to standard error. */
   public function eprint(s: static_ptr<u8>) void {
     unsafe { c_write(2, s.raw(), s.length()); };
   }
 
   // Write a String to standard error.
   public function eprint(s: const ref String) void {
-    unsafe { c_write(2, s.data.raw_data(), s.length()); };
+    unsafe { c_write(2, s.bytes(), s.length()); };
   }
 
   // Write a newline to standard error.
   public function eprintln() void {
     unsafe { c_write(2, "\n".raw(), 1); };
+  }
+
+  /* Write a signed integer and a newline to standard error. */
+  public function eprintln(value: i32) void {
+    eprint(value);
+    eprintln();
+  }
+
+  /* Write a signed integer and a newline to standard error. */
+  public function eprintln(value: i64) void {
+    eprint(value);
+    eprintln();
+  }
+
+  /* Write an unsigned integer and a newline to standard error. */
+  public function eprintln(value: u32) void {
+    eprint(value);
+    eprintln();
+  }
+
+  /* Write an unsigned integer and a newline to standard error. */
+  public function eprintln(value: u64) void {
+    eprint(value);
+    eprintln();
+  }
+
+  /* Write a floating-point number and a newline to standard error. */
+  public function eprintln(value: f64) void {
+    eprint(value);
+    eprintln();
+  }
+
+  /* Write one character and a newline to standard error. */
+  public function eprintln(value: char) void {
+    eprint(value);
+    eprintln();
+  }
+
+  /* Write "true" or "false" and a newline to standard error. */
+  public function eprintln(value: bool) void {
+    eprint(value);
+    eprintln();
   }
 
   // Write a string literal and a newline to standard error.

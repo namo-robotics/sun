@@ -395,6 +395,13 @@ public module std {
       }
     }
 
+    /* Borrow the bytes without allocating or adding a NUL terminator. Read only
+       length() bytes; do not write through the pointer. It remains valid until
+       the next mutation or until the String is destroyed. */
+    public const method bytes() raw_ptr<u8> {
+      return this.data.raw_data();
+    }
+
     // NUL-terminate in spare capacity and hand back a pointer to the bytes,
     // for passing a runtime path or argument to C. The terminator sits past
     // the length, so the string itself is unchanged. The pointer is only good

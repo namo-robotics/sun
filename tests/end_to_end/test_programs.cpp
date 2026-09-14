@@ -677,3 +677,77 @@ TEST(EndToEnd_Programs, function_order_does_not_matter) {
   )");
   EXPECT_EQ(value, 42);
 }
+
+TEST(EndToEnd_Programs, stderr_primitive_overloads) {
+  testing::internal::CaptureStdout();
+  testing::internal::CaptureStderr();
+  auto value = executeStringWithStdlib(R"(
+    using std;
+    function main() i32 {
+      eprint(-2147483647 - 1);
+      eprint("|");
+      eprint(-9223372036854775807i64 - 1i64);
+      eprint("|");
+      eprint(4294967295u32);
+      eprint("|");
+      eprint(18446744073709551615u64);
+      eprint("|");
+      eprint(0.1);
+      eprint("|");
+      eprint('😀');
+      eprint("|");
+      eprint(false);
+      eprintln();
+      eprintln(0);
+      eprintln(9223372036854775807i64);
+      eprintln(0u32);
+      eprintln(0u64);
+      eprintln(-3.25);
+      eprintln(1.2345678901234567);
+      eprintln('é');
+      eprintln(true);
+      var alloc = make_heap_allocator();
+      var s = String(alloc, "borrowed");
+      eprintln(s);
+      return 0;
+    }
+  )");
+  auto err = testing::internal::GetCapturedStderr();
+  auto out = testing::internal::GetCapturedStdout();
+  EXPECT_EQ(value, 0);
+  EXPECT_EQ(out, "");
+  EXPECT_EQ(err,
+            "-2147483648|-9223372036854775808|4294967295|"
+            "18446744073709551615|0.1|😀|false\n"
+            "0\n9223372036854775807\n0\n0\n-3.25\n"
+            "1.2345678901234567\né\ntrue\nborrowed\n");
+}
+
+TEST(EndToEnd_Programs, string_bytes_from_const_ref) {
+  auto value = executeStringWithStdlib(R"(
+    using std;
+    function check(s: const ref String) bool {
+      var copy: array<u8, 4> = [0u8, 0u8, 0u8, 0u8];
+      var capacity = s.capacity();
+      var bytes = s.bytes();
+      unsafe { _memcpy(_address_of<u8>(copy[0]), bytes, s.length()); };
+      return copy[0] == b'A' and copy[1] == 0 and copy[2] == b'B'
+        and s.length() == 3 and s.capacity() == capacity
+        and s.bytes() == bytes;
+    }
+    function check_empty(s: const ref String) bool {
+      var bytes = s.bytes();
+      return s.length() == 0 and bytes == s.bytes();
+    }
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var s = String(alloc, "A\0B");
+      var empty = String(alloc, "");
+      if (not check(s) or not check_empty(empty)) { return 1; }
+      s.append_char(b'C');
+      if (s.at(3) != b'C') { return 2; }
+      return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
