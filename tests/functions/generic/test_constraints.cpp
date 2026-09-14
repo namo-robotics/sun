@@ -445,3 +445,141 @@ TEST(Functions_Generic_Constraints, missing_constraint_after_colon_is_error) {
   )"),
                SunError);
 }
+
+// A generic field keeps the caller's interface constraint during analysis.
+TEST(Functions_Generic_Constraints, boxed_interface_method) {
+  for (const auto* call : {"call_boxed<Impl>(b, 41)", "call_boxed(b, 41)"}) {
+    SCOPED_TRACE(call);
+    EXPECT_EQ(executeString(std::string(R"(
+      interface IHandler { public method handle(x: i32) i32; }
+      class Impl implements IHandler {
+        init() {}
+        public method handle(x: i32) i32 { return x + 1; }
+      }
+      class Box<H: IHandler> {
+        var inner: H;
+        init(inner: H) { this.inner = inner; }
+        public method go(x: i32) i32 { return this.inner.handle(x); }
+      }
+      function call_boxed<H: IHandler>(b: ref Box<H>, x: i32) i32 {
+        return b.inner.handle(x);
+      }
+      function main() i32 {
+        var b = Box<Impl>(Impl());
+        return )") + call + "; }"),
+              42);
+  }
+}
+
+TEST(Functions_Generic_Constraints, boxed_nested_interface_field) {
+  EXPECT_EQ(executeString(R"(
+    interface INamed { public var tag: i32; }
+    class Item implements INamed {
+      public var tag: i32;
+      init() { this.tag = 42; }
+    }
+    class Box<T> {
+      var inner: T;
+      init(inner: T) { this.inner = inner; }
+    }
+    function read<H: INamed>(b: ref Box<Box<H>>) i32 {
+      return b.inner.inner.tag;
+    }
+    function main() i32 {
+      var b = Box<Box<Item>>(Box<Item>(Item()));
+      return read(b);
+    }
+  )"),
+            42);
+}
+
+// Cached Box<H> fields must not borrow another function's constraint.
+TEST(Functions_Generic_Constraints, boxed_constraints_are_local_to_function) {
+  const std::string first = R"(
+    function first<H: IFirst>(b: ref Box<H>) i32 { return b.inner.first(); }
+  )";
+  const std::string second = R"(
+    function second<H: ISecond>(b: ref Box<H>) i32 { return b.inner.second(); }
+  )";
+  for (bool reverse : {false, true}) {
+    SCOPED_TRACE(reverse);
+    EXPECT_EQ(executeString(std::string(R"(
+      interface IFirst { public method first() i32; }
+      interface ISecond { public method second() i32; }
+      class A implements IFirst {
+        init() {}
+        public method first() i32 { return 20; }
+      }
+      class B implements ISecond {
+        init() {}
+        public method second() i32 { return 22; }
+      }
+      class Box<T> {
+        var inner: T;
+        init(inner: T) { this.inner = inner; }
+      }
+    )") + (reverse ? second + first : first + second) +
+                            R"(
+      function main() i32 {
+        var a = Box<A>(A());
+        var b = Box<B>(B());
+        return first(a) + second(b);
+      }
+    )"),
+              42);
+  }
+}
+
+TEST(Functions_Generic_Constraints, boxed_unconstrained_member_is_rejected) {
+  for (bool reverse : {false, true}) {
+    SCOPED_TRACE(reverse);
+    const std::string constrained = R"(
+      function valid<H: IHandler>(b: ref Box<H>) i32 {
+        return b.inner.handle();
+      }
+    )";
+    const std::string unconstrained = R"(
+      function invalid<H>(b: ref Box<H>) i32 { return b.inner.handle(); }
+    )";
+    EXPECT_SUN_ERROR_WITH_MESSAGE(
+        executeString(std::string(R"(
+      interface IHandler { public method handle() i32; }
+      class Box<T> { var inner: T; init(inner: T) { this.inner = inner; } }
+    )") +
+                      (reverse ? unconstrained + constrained
+                               : constrained + unconstrained) +
+                      "function main() i32 { return 0; }"),
+        "unconstrained type parameter 'H'");
+  }
+}
+
+TEST(Functions_Generic_Constraints,
+     boxed_missing_interface_member_is_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
+    interface IHandler { public method handle() i32; }
+    class Box<T> { var inner: T; init(inner: T) { this.inner = inner; } }
+    function invalid<H: IHandler>(b: ref Box<H>) i32 {
+      return b.inner.missing();
+    }
+    function main() i32 { return 0; }
+  )"),
+      "Unknown member 'missing' on type parameter 'H', which is constrained "
+      "to interface 'IHandler'");
+}
+
+TEST(Functions_Generic_Constraints, boxed_nonimplementor_is_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    interface IHandler { public method handle() i32; }
+    class Other { init() {} }
+    class Box<T> { var inner: T; init(inner: T) { this.inner = inner; } }
+    function call_boxed<H: IHandler>(b: ref Box<H>) i32 {
+      return b.inner.handle();
+    }
+    function main() i32 {
+      var b = Box<Other>(Other());
+      return call_boxed(b);
+    }
+  )"),
+                                "does not satisfy constraint 'IHandler'");
+}

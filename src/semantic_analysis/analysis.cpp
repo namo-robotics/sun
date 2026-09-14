@@ -406,8 +406,7 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
     std::vector<sun::TypePtr> parameters;
     for (const auto& parameter : proto.getTypeParameters()) {
       auto bound = ctx_.findTypeParameter(parameter.name);
-      parameters.push_back(bound ? bound
-                                 : sun::Types::TypeParameter(parameter.name));
+      parameters.push_back(bound ? bound : parameter.toSunType());
     }
     ctx_.enterTypeParamScope(proto.getTypeParameterNames(), parameters);
   }
@@ -1005,12 +1004,7 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
     std::vector<sun::TypePtr> typeParamTypes;
     for (const auto& tp : proto.getTypeParameters()) {
       typeParams.push_back(tp.name);
-      typeParamTypes.push_back(sun::Types::TypeParameter(
-          tp.name, tp.constraint
-                       ? (tp.constraint->qualifiedName
-                              ? tp.constraint->qualifiedName->mangled()
-                              : tp.constraint->name)
-                       : ""));
+      typeParamTypes.push_back(tp.toSunType());
     }
     ctx_.addTypeParameterBindings(typeParams, typeParamTypes);
   }
