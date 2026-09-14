@@ -357,7 +357,7 @@ function main() i32 { return sununiqadd(3, 4); }
 )";
 
   // The breakpoint stays pending until the JIT registers the object through
-  // the GDB JIT interface (JITEventListener in SunJIT).
+  // the GDB JIT interface (DebugObjectManagerPlugin in SunJIT).
   std::string outPath = ::testing::TempDir() + "sun_debug_info_jit.out";
   std::string cmd =
       "timeout 120 gdb --batch -q -ex 'set breakpoint pending on' "

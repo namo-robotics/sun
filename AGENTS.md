@@ -33,8 +33,8 @@ A file for guiding coding agents.
 
 ## Planning
 
-- Write plains in plain english, avoiding jargon and abreviations.
-- Use simple, concrete examples in explanations when it makes sense.
+- Write plains in plain english, avoiding unnecessary jargon and abreviations.
+- Use simple, concrete examples in explanations when it makes sense to do so.
 
 ## Issues and PR Guidelinese
 

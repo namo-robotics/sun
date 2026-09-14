@@ -3,20 +3,20 @@
 #include <memory>
 
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/ExecutionEngine/JITLink/EHFrameSupport.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
+#include "llvm/ExecutionEngine/Orc/DebugObjectManagerPlugin.h"
 #include "llvm/ExecutionEngine/Orc/EHFrameRegistrationPlugin.h"
+#include "llvm/ExecutionEngine/Orc/EPCDebugObjectRegistrar.h"
 #include "llvm/ExecutionEngine/Orc/ExecutionUtils.h"
 #include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h"
 #include "llvm/ExecutionEngine/Orc/ObjectLinkingLayer.h"
-#include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
-#include "llvm/ExecutionEngine/SectionMemoryManager.h"
+#include "llvm/ExecutionEngine/Orc/TargetProcess/JITLoaderGDB.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/LLVMContext.h"
 
@@ -25,8 +25,9 @@ using namespace llvm::orc;
 
 /// The ORC JIT behind `sun file.sun`: one dylib, host-targeted, resolving
 /// unknown symbols from the compiler's own process. The object-linking layer
-/// is per-platform: JITLink for Mach-O (RuntimeDyld's Mach-O support is
-/// legacy and mishandles arm64 unwind sections), RuntimeDyld elsewhere.
+/// is JITLink on every platform, so the JIT has one linker's behavior to test
+/// and one set of quirks to learn. (RuntimeDyld is not an option: its Mach-O
+/// support is legacy and mishandles arm64 unwind sections.)
 class SunJIT {
  private:
   std::unique_ptr<ExecutionSession> ES;
@@ -42,32 +43,26 @@ class SunJIT {
 
   JITDylib& MainJD;
 
-  /// Build the object layer that fits the host's object format. On Mach-O:
-  /// JITLink, with eh-frame registration so thrown Sun errors unwind through
-  /// JITed frames. (If exception interop proves incomplete on Apple Silicon,
-  /// the known next step is MachOPlatform with the ORC runtime, which also
-  /// registers compact-unwind info.) Everywhere else: RuntimeDyld, with the
-  /// GDB registration listener so -g modules are debuggable under the JIT.
-  static std::unique_ptr<ObjectLayer> makeObjectLayer(ExecutionSession& ES,
-                                                      const Triple& TT) {
-    if (TT.isOSBinFormatMachO()) {
-      auto Layer = std::make_unique<ObjectLinkingLayer>(ES);
-      Layer->addPlugin(std::make_unique<EHFrameRegistrationPlugin>(
-          ES, std::make_unique<jitlink::InProcessEHFrameRegistrar>()));
-      return Layer;
-    }
-
-    auto Layer = std::make_unique<RTDyldObjectLinkingLayer>(
-        ES, []() { return std::make_unique<SectionMemoryManager>(); });
-    // Register JITed objects with gdb's JIT interface so -g modules are
-    // debuggable under the JIT (no-op when no debugger is attached).
-    if (auto* gdbListener = JITEventListener::createGDBRegistrationListener()) {
-      Layer->registerJITEventListener(*gdbListener);
-    }
-    if (TT.isOSBinFormatCOFF()) {
-      Layer->setOverrideObjectFlagsWithResponsibilityFlags(true);
-      Layer->setAutoClaimResponsibilityForObjectSymbols(true);
-    }
+  /// Build the JITLink object layer. Eh-frame registration lets thrown Sun
+  /// errors unwind through JITed frames. (If exception interop proves
+  /// incomplete on Apple Silicon, the known next step is MachOPlatform with
+  /// the ORC runtime, which also registers compact-unwind info.) The debug
+  /// object plugin hands each JITed ELF object to gdb's JIT interface so -g
+  /// modules are debuggable under the JIT; it is a no-op when no debugger is
+  /// attached and for non-ELF objects.
+  static std::unique_ptr<ObjectLayer> makeObjectLayer(ExecutionSession& ES) {
+    auto Layer = std::make_unique<ObjectLinkingLayer>(ES);
+    Layer->addPlugin(std::make_unique<EHFrameRegistrationPlugin>(
+        ES, std::make_unique<jitlink::InProcessEHFrameRegistrar>()));
+    // The registrar calls straight into this process's copy of LLVM's gdb
+    // loader, the same way the eh-frame registrar above does. Every object is
+    // registered, not only those with debug sections, so gdb can still place
+    // breakpoints by name and symbolize backtraces in programs run without -g.
+    Layer->addPlugin(std::make_unique<DebugObjectManagerPlugin>(
+        ES,
+        std::make_unique<EPCDebugObjectRegistrar>(
+            ES, ExecutorAddr::fromPtr(&llvm_orc_registerJITLoaderGDBWrapper)),
+        /*RequireDebugSections=*/false, /*AutoRegisterCode=*/true));
     return Layer;
   }
 
@@ -78,7 +73,7 @@ class SunJIT {
         DL(std::move(DL)),
         TT(JTMB.getTargetTriple()),
         Mangle(*this->ES, this->DL),
-        ObjLayer(makeObjectLayer(*this->ES, TT)),
+        ObjLayer(makeObjectLayer(*this->ES)),
         CompileLayer(*this->ES, *ObjLayer,
                      std::make_unique<ConcurrentIRCompiler>(std::move(JTMB))),
         MainJD(this->ES->createBareJITDylib("<main>")) {
@@ -111,6 +106,15 @@ class SunJIT {
         ES->getExecutorProcessControl().getTargetTriple());
     JTMB.setCodeGenOptLevel(optimize ? CodeGenOptLevel::Default
                                     : CodeGenOptLevel::None);
+    // The same settings LLJIT picks for JITLink. Position-independent code
+    // reaches host symbols through GOT and PLT entries; non-PIC code would
+    // instead need libc and the compiler's own globals (`environ`, for one)
+    // within 32-bit reach of the JITed code, which nothing guarantees. The
+    // small code model is spelled out because LLVM's default for a JIT on
+    // x86-64 is the large model, whose absolute-address sequences JITLink
+    // does not need.
+    JTMB.setRelocationModel(Reloc::PIC_);
+    JTMB.setCodeModel(CodeModel::Small);
 
     auto DL = JTMB.getDefaultDataLayoutForTarget();
     if (!DL) return DL.takeError();
