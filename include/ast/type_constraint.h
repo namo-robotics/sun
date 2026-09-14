@@ -38,4 +38,10 @@ struct TypeConstraint {
   }
 
   std::string toString() const { return name; }
+
+  // The name semantic analysis keys the requirement by: the mangled qualified
+  // name once resolution has attached one, otherwise the name as written.
+  std::string resolvedName() const {
+    return qualifiedName ? qualifiedName->mangled() : name;
+  }
 };

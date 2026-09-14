@@ -37,9 +37,7 @@ void GenericSpecializer::checkTypeParameterConstraints(
     const sun::TypePtr& arg = typeArgs[i];
     if (!arg || arg->isTypeParameter()) continue;
 
-    std::string requiredName = constraint->qualifiedName
-                                   ? constraint->qualifiedName->mangled()
-                                   : constraint->name;
+    std::string requiredName = constraint->resolvedName();
     if (!constraint->qualifiedName && !sun::isTypeTrait(requiredName)) {
       if (auto interfaceType = ctx_.lookupInterface(requiredName)) {
         requiredName = interfaceType->getName();

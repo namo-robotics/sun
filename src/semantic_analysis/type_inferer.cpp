@@ -1150,6 +1150,11 @@ sun::TypePtr TypeInferer::inferType(const MemberAccessAST& memberAccess) {
     objectType = inferType(*memberAccess.getObject());
   }
   objectType = unwrapRef(objectType);
+  // Cached generic fields may carry a parameter from another signature.
+  // Use this scope's binding without changing the shared class field.
+  if (objectType && objectType->isTypeParameter()) {
+    objectType = unwrapRef(substituteTypeParameters(objectType));
+  }
 
   if (!objectType) {
     logAndThrowError(

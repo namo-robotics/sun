@@ -94,6 +94,14 @@ struct TypeParameter {
   std::string toString() const {
     return constraint ? name + ": " + constraint->toString() : name;
   }
+
+  // The semantic type this parameter stands for while its generic is analyzed
+  // unspecialized: T bound to itself, carrying its constraint so a body can
+  // reach the constraint's members. Unconstrained parameters carry none.
+  sun::TypePtr toSunType() const {
+    return sun::Types::TypeParameter(
+        name, constraint ? constraint->resolvedName() : "");
+  }
 };
 
 // One lifetime parameter, as written between the angle brackets with a
