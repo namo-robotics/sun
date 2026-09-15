@@ -146,6 +146,18 @@ usual:
 ./build.sh
 ```
 
+Debian packages also include AArch64 Linux TLS and standard-library bundles.
+The compiler selects them automatically with `--target aarch64-linux-gnu`
+or `--target aarch64-linux-musl`. Linking an executable still requires a
+cross-linker and target system libraries.
+
+To build these bundles locally, fetch AArch64 archives with
+`./scripts/fetch-openssl.sh --arch aarch64`, configure CMake with
+`-DSUN_CROSS_TLS_AARCH64=ON`, and build the `tls_cross_moon` target.
+The workspace root `sun-config.json` compiles the standard library first, then TLS,
+in one compiler invocation. The archives are kept separately from the native
+archives.
+
 On Linux the archives come from Alpine's `openssl-libs-static` package:
 Alpine is musl-based, matching the toolchain Sun links static binaries with,
 and builds OpenSSL without the optional compression and jitter-entropy

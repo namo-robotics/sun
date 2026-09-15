@@ -2,6 +2,7 @@
 // variables and library search paths that override outside configuration.
 
 #include <gtest/gtest.h>
+#include <llvm/TargetParser/Host.h>
 
 #include <filesystem>
 #include <fstream>
@@ -234,4 +235,187 @@ TEST(Modules_SunConfig, absolute_config_entries_are_kept_as_is) {
   ASSERT_EQ(config.sunPath.size(), 1u);
   EXPECT_EQ(config.sunPath[0], "/opt/sun");
   EXPECT_EQ(config.pathVariables.at("LIBS"), "/opt/libs");
+}
+
+TEST(Modules_SunConfig, target_paths_and_outputs_use_normalized_triples) {
+  auto dir = freshDir("target_paths");
+  writeFile(dir / "sun-config.json", R"({
+  "root": true,
+  "sun_path": [
+    "native"
+  ],
+  "path_variables": {
+    "SSL": "native-ssl",
+    "SHARED": "shared"
+  },
+  "target": {
+    "aarch64-linux-gnu": {
+      "sun_path": [
+        "arm"
+      ],
+      "path_variables": {
+        "SSL": "arm-ssl"
+      },
+      "entrypoints": [
+        {
+          "path": "main.sun",
+          "output_name": "arm/main"
+        }
+      ]
+    }
+  },
+  "entrypoints": [
+    {
+      "path": "main.sun",
+      "output_name": "native/main",
+      "test_binary_name": "native/tests"
+    }
+  ]
+})");
+  auto native = sun::SunConfig::loadFile(dir / "sun-config.json",
+                                         "x86_64-linux-gnu");
+  EXPECT_EQ(native.entrypoints[0].outputName, (dir / "native/main").string());
+  for (const auto& target :
+       {"aarch64-linux-gnu", "aarch64-unknown-linux-gnu"}) {
+    auto config = sun::SunConfig::loadFile(dir / "sun-config.json", target);
+    ASSERT_EQ(config.entrypoints.size(), 1u);
+    EXPECT_EQ(config.sunPath, std::vector<std::string>{(dir / "arm").string()});
+    EXPECT_EQ(config.pathVariables.at("SSL"), (dir / "arm-ssl").string());
+    EXPECT_EQ(config.pathVariables.at("SHARED"), (dir / "shared").string());
+    EXPECT_EQ(config.entrypoints[0].outputName, (dir / "arm/main").string());
+    EXPECT_TRUE(config.entrypoints[0].testBinaryName.empty());
+  }
+  auto other =
+      sun::SunConfig::loadFile(dir / "sun-config.json", "aarch64-linux-musl");
+  EXPECT_EQ(other.entrypoints[0].outputName, native.entrypoints[0].outputName);
+}
+
+TEST(Modules_SunConfig,
+     target_variables_reach_manifests_and_keep_nearest_precedence) {
+  auto dir = freshDir("target_manifest");
+  writeFile(dir / "sun-config.json", R"({
+    "root": true,
+    "target": {"aarch64-linux-gnu": {"path_variables": {"SSL": "arm-ssl", "OTHER": "parent"}}}
+  })");
+  writeFile(dir / "child/sun-config.json",
+            R"({"path_variables": {"OTHER": "child"}})");
+  writeFile(dir / "child/main.sun",
+            "manifest { archives: [\"$SSL/libssl.a\"] }");
+  auto config = sun::SunConfig::findFrom(dir / "child", "aarch64-linux-gnu");
+  ASSERT_TRUE(config);
+  EXPECT_EQ(config->pathVariables.at("OTHER"), (dir / "child/child").string());
+  sun::ManifestProcessor::setPathVariable("SSL", "/cli");
+  auto manifest = sun::ManifestProcessor::fromEntrypointFile(
+      (dir / "child/main.sun").string(), "aarch64-linux-gnu");
+  sun::ManifestProcessor::clearPathVariables();
+  ASSERT_TRUE(manifest);
+  ASSERT_EQ(manifest->archiveFiles.size(), 1u);
+  EXPECT_EQ(manifest->archiveFiles[0], (dir / "arm-ssl/libssl.a").string());
+}
+
+TEST(Modules_SunConfig, target_can_name_test_binary_independently) {
+  auto dir = freshDir("target_tests");
+  writeFile(dir / "sun-config.json", R"({
+  "entrypoints": [
+    {
+      "path": "main.sun",
+      "output_name": "app"
+    }
+  ],
+  "target": {
+    "aarch64-linux-gnu": {
+      "entrypoints": [
+        {
+          "path": "main.sun",
+          "output_name": "app",
+          "test_binary_name": "arm/tests"
+        }
+      ]
+    }
+  }
+})");
+  auto config =
+      sun::SunConfig::loadFile(dir / "sun-config.json", "aarch64-linux-gnu");
+  EXPECT_EQ(config.entrypoints[0].outputName, (dir / "app").string());
+  EXPECT_EQ(config.entrypoints[0].testBinaryName, (dir / "arm/tests").string());
+}
+
+TEST(Modules_SunConfig, invalid_target_settings_are_errors_even_when_inactive) {
+  auto dir = freshDir("invalid_target");
+  for (
+      const auto& contents :
+      {R"({"target": []})", R"({"target": {"typo": {}}})",
+       R"({"target": {"aarch64-linux-gnu": {"root": true}}})",
+       R"({"target": {"aarch64-linux-gnu": {"sun_path": [42]}}})",
+       R"({"target": {"aarch64-linux-gnu": {"entrypoints": {}}}})",
+       R"({"target": {"aarch64-linux-gnu": {"entrypoints": [42]}}})",
+       R"({"target": {"aarch64-linux-gnu": {"entrypoints": [{"type": "library"}]}}})",
+       R"({"target": {"aarch64-linux-gnu": {"path_variables": {"SSL": 42}}}})",
+       R"({"target": {"aarch64-linux-gnu": {}, "aarch64-unknown-linux-gnu": {}}})",
+       R"({"entrypoints": [{"path": "a.sun", "target": {"aarch64-linux-gnu": {"output_name": 42}}}]})",
+       R"({"entrypoints": [{"path": "a.sun", "target": {"aarch64-linux-gnu": {"path": "b.sun"}}}]})"}) {
+    writeFile(dir / "sun-config.json", contents);
+    EXPECT_THROW(sun::SunConfig::loadFile(dir / "sun-config.json"), SunError)
+        << contents;
+  }
+}
+
+TEST(Modules_SunConfig, target_entrypoint_lists_replace_defaults_in_order) {
+  auto dir = freshDir("target_entrypoint_lists");
+  writeFile(dir / "sun-config.json", R"({
+    "entrypoints": [{"path": "native.sun"}],
+    "target": {
+      "aarch64-linux-gnu": {"entrypoints": [
+        {"path": "library.sun", "type": "library", "output_name": "arm/library"},
+        {"path": "app.sun", "output_name": "arm/app"}
+      ]},
+      "aarch64-linux-musl": {"entrypoints": []},
+      "arm64-apple-darwin": {"sun_path": ["mac"]}
+    }
+  })");
+  auto arm =
+      sun::SunConfig::loadFile(dir / "sun-config.json", "aarch64-linux-gnu");
+  ASSERT_EQ(arm.entrypoints.size(), 2u);
+  EXPECT_EQ(arm.entrypoints[0].path, (dir / "library.sun").string());
+  EXPECT_EQ(arm.entrypoints[0].type, sun::ConfigEntrypoint::Type::Library);
+  EXPECT_EQ(arm.entrypoints[1].path, (dir / "app.sun").string());
+  EXPECT_TRUE(
+      sun::SunConfig::loadFile(dir / "sun-config.json", "aarch64-linux-musl")
+          .entrypoints.empty());
+  auto mac =
+      sun::SunConfig::loadFile(dir / "sun-config.json", "arm64-apple-darwin");
+  ASSERT_EQ(mac.entrypoints.size(), 1u);
+  EXPECT_EQ(mac.entrypoints[0].path, (dir / "native.sun").string());
+}
+
+TEST(Modules_SunConfig, target_only_config_selects_host_without_a_flag) {
+  auto dir = freshDir("host_target_only");
+  const auto host = llvm::sys::getDefaultTargetTriple();
+  writeFile(dir / "sun-config.json",
+            "{ \"root\": true, \"target\": {\"" + host +
+                "\": {\"entrypoints\": [{\"path\": \"main.sun\", "
+                "\"output_name\": \"build/main\"}]}}}");
+  auto config = sun::SunConfig::loadFile(dir / "sun-config.json");
+  ASSERT_EQ(config.entrypoints.size(), 1u);
+  EXPECT_EQ(config.entrypoints[0].outputName, (dir / "build/main").string());
+}
+
+TEST(Modules_SunConfig, target_selection_accepts_platform_aliases) {
+  auto dir = freshDir("target_aliases");
+  writeFile(dir / "sun-config.json", R"({
+    "target": {
+      "x86_64-linux-gnu": {"entrypoints": [{"path": "linux.sun"}]},
+      "arm64-apple-darwin": {"entrypoints": [{"path": "mac.sun"}]}
+    }
+  })");
+  auto linuxConfig =
+      sun::SunConfig::loadFile(dir / "sun-config.json", "x86_64-pc-linux-gnu");
+  ASSERT_EQ(linuxConfig.entrypoints.size(), 1u);
+  EXPECT_EQ(linuxConfig.entrypoints[0].path, (dir / "linux.sun").string());
+  for (const auto& target :
+       {"aarch64-apple-darwin24.0.0", "arm64-apple-macosx15.0.0"}) {
+    auto mac = sun::SunConfig::loadFile(dir / "sun-config.json", target);
+    ASSERT_EQ(mac.entrypoints.size(), 1u);
+    EXPECT_EQ(mac.entrypoints[0].path, (dir / "mac.sun").string());
+  }
 }

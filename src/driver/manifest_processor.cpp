@@ -94,7 +94,8 @@ const ManifestAST* ManifestProcessor::findManifest(
 
 std::string ManifestProcessor::resolvePath(const std::string& path,
                                            const std::string& baseDir,
-                                           const SunConfig* config) {
+                                           const SunConfig* config,
+                                           const std::string& targetTriple) {
   std::filesystem::path p(path);
   if (p.is_absolute()) {
     return path;
@@ -115,13 +116,8 @@ std::string ManifestProcessor::resolvePath(const std::string& path,
   if (!resolved.empty()) {
     return resolved.string();
   }
-  // Bundle hashing needs the same installed dependencies as the parser.
-  for (const auto& dir : SunPath::systemInstallDirs()) {
-    auto candidate = dir / p;
-    if (std::filesystem::exists(candidate)) {
-      return candidate.lexically_normal().string();
-    }
-  }
+  resolved = SunPath::resolveInstalledBundle(path, targetTriple);
+  if (!resolved.empty()) return resolved.lexically_normal().string();
   return path;
 }
 
@@ -133,7 +129,7 @@ ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
 
   // The nearest sun-config.json overrides configuration supplied from
   // outside the folder (--path-var, editor settings, environment).
-  auto configOpt = SunConfig::findFrom(baseDir);
+  auto configOpt = SunConfig::findFrom(baseDir, targetTriple);
   const SunConfig* config = configOpt ? &*configOpt : nullptr;
 
   auto addSuns = [&](const std::vector<ManifestSunDependency>& suns) {
@@ -150,7 +146,7 @@ ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
                                  moonDep.hash)
                     .string()
               : resolvePath(expandPathVariables(moonDep.path, config), baseDir,
-                            config);
+                            config, targetTriple);
       if (moonDep.rename.has_value()) {
         out.moonImports.emplace_back(resolved, moonDep.rename.value(),
                                      moonDep.rename.value());

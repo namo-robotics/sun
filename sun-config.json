@@ -1,22 +1,105 @@
 {
-    "sun_path": ["build"],
-    "path_variables": {
-        "OPENSSL_LIBS_LINUX": "third_party/openssl/x86_64-linux-musl",
-        "OPENSSL_LIBS_MACOS": "third_party/openssl/arm64-apple-darwin"
-    },
-    "entrypoints": [
-        {
-            "path": "stdlib/stdlib.sun",
-            "type": "library",
-            "output_name": "build/stdlib",
-            "test_binary_name": "build/stdlib_tests_test"
+    "root": true,
+    "target": {
+        "x86_64-linux-gnu": {
+            "sun_path": ["build"],
+            "path_variables": {
+                "OPENSSL_LIBS_LINUX": "third_party/openssl/x86_64-linux-musl"
+            },
+            "entrypoints": [
+                {
+                    "path": "stdlib/stdlib.sun",
+                    "type": "library",
+                    "output_name": "build/stdlib",
+                    "test_binary_name": "build/stdlib_tests_test"
+                },
+                {
+                    "path": "tls/tls.sun",
+                    "type": "library",
+                    "output_name": "build/tls",
+                    "test_binary_name": "build/tls_tests_test"
+                }
+            ]
         },
-        {
-            "path": "tls/tls.sun",
-            "type": "library",
-            "output_name": "build/tls",
-            "test_binary_name": "build/tls_tests_test"
+        "x86_64-linux-musl": {
+            "sun_path": ["build/x86_64-linux-musl"],
+            "path_variables": {
+                "OPENSSL_LIBS_LINUX": "third_party/openssl/x86_64-linux-musl"
+            },
+            "entrypoints": [
+                {
+                    "path": "stdlib/stdlib.sun",
+                    "type": "library",
+                    "output_name": "build/x86_64-linux-musl/stdlib",
+                    "test_binary_name": "build/x86_64-linux-musl/stdlib_tests_test"
+                },
+                {
+                    "path": "tls/tls.sun",
+                    "type": "library",
+                    "output_name": "build/x86_64-linux-musl/tls",
+                    "test_binary_name": "build/x86_64-linux-musl/tls_tests_test"
+                }
+            ]
+        },
+        "arm64-apple-darwin": {
+            "sun_path": ["build"],
+            "path_variables": {
+                "OPENSSL_LIBS_MACOS": "third_party/openssl/arm64-apple-darwin"
+            },
+            "entrypoints": [
+                {
+                    "path": "stdlib/stdlib.sun",
+                    "type": "library",
+                    "output_name": "build/stdlib",
+                    "test_binary_name": "build/stdlib_tests_test"
+                },
+                {
+                    "path": "tls/tls.sun",
+                    "type": "library",
+                    "output_name": "build/tls",
+                    "test_binary_name": "build/tls_tests_test"
+                }
+            ]
+        },
+        "aarch64-linux-gnu": {
+            "sun_path": ["build/aarch64-linux-gnu"],
+            "path_variables": {
+                "OPENSSL_LIBS_LINUX": "third_party/openssl/aarch64-linux-musl"
+            },
+            "entrypoints": [
+                {
+                    "path": "stdlib/stdlib.sun",
+                    "type": "library",
+                    "output_name": "build/aarch64-linux-gnu/stdlib",
+                    "test_binary_name": "build/aarch64-linux-gnu/stdlib_tests_test"
+                },
+                {
+                    "path": "tls/tls.sun",
+                    "type": "library",
+                    "output_name": "build/aarch64-linux-gnu/tls",
+                    "test_binary_name": "build/aarch64-linux-gnu/tls_tests_test"
+                }
+            ]
+        },
+        "aarch64-linux-musl": {
+            "sun_path": ["build/aarch64-linux-musl"],
+            "path_variables": {
+                "OPENSSL_LIBS_LINUX": "third_party/openssl/aarch64-linux-musl"
+            },
+            "entrypoints": [
+                {
+                    "path": "stdlib/stdlib.sun",
+                    "type": "library",
+                    "output_name": "build/aarch64-linux-musl/stdlib",
+                    "test_binary_name": "build/aarch64-linux-musl/stdlib_tests_test"
+                },
+                {
+                    "path": "tls/tls.sun",
+                    "type": "library",
+                    "output_name": "build/aarch64-linux-musl/tls",
+                    "test_binary_name": "build/aarch64-linux-musl/tls_tests_test"
+                }
+            ]
         }
-    ],
-    "root": true
+    }
 }

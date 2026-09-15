@@ -23,7 +23,8 @@
 // The entrypoints list names the project's build products, so a config file
 // can stand in for an entrypoint on the command line (`sun test
 // sun-config.json`) and tools like the editor's test explorer know every
-// entrypoint without scanning.
+// entrypoint without scanning. The requested target (or host) selects matching
+// settings for search paths, path variables, and a complete entrypoint list.
 
 #pragma once
 
@@ -64,11 +65,13 @@ struct SunConfig {
   // nearest-first, a "root": true file ends the walk); nullopt when no
   // folder has one.
   static std::optional<SunConfig> findFrom(
-      const std::filesystem::path& startDir);
+      const std::filesystem::path& startDir,
+      const std::string& targetTriple = "");
 
-  // Parse one config file. Throws SunError on unreadable or malformed
-  // content, wrong value types, or an unknown key.
-  static SunConfig loadFile(const std::filesystem::path& file);
+  /* Parse a config and select settings for the requested target or host.
+   * Report malformed content, invalid target settings, and unknown keys. */
+  static SunConfig loadFile(const std::filesystem::path& file,
+                            const std::string& targetTriple = "");
 };
 
 }  // namespace sun

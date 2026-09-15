@@ -256,7 +256,7 @@ jobs:
               libraries: ["stdlib.moon"]
           }
           EOF
-          export SUN_PATH=/usr/lib/sun
+          unset SUN_PATH
           sun test.sun
           # AOT: needs a C link driver (cc), libc6-dev and libstdc++ dev files
           sun -c -o test_aot test.sun
@@ -287,6 +287,23 @@ jobs:
           EOF
           sun -c --dynamic -o tls_aot tls_test.sun
           ./tls_aot
+
+      - name: Test installed AArch64 bundles
+        run: |
+          apt-get install -y --no-install-recommends \
+            g++-aarch64-linux-gnu libc6-dev-arm64-cross binutils-aarch64-linux-gnu
+          unset SUN_PATH
+          test -f /usr/lib/sun/aarch64-linux-gnu/stdlib.moon
+          test -f /usr/lib/sun/aarch64-linux-gnu/tls.moon
+          test -f /usr/lib/sun/aarch64-linux-musl/tls.moon
+          for target in aarch64-linux-gnu aarch64-linux-musl; do
+            sun --emit-obj --target "$target" -o "stdlib-$target.o" test.sun
+            sun --emit-obj --target "$target" -o "tls-$target.o" tls_test.sun
+            aarch64-linux-gnu-readelf -h "stdlib-$target.o" | grep 'Machine:.*AArch64'
+            aarch64-linux-gnu-readelf -h "tls-$target.o" | grep 'Machine:.*AArch64'
+          done
+          sun -c --target aarch64-linux-gnu -o tls_aarch64 tls_test.sun
+          aarch64-linux-gnu-readelf -h tls_aarch64 | grep 'Machine:.*AArch64'
 
   # The deb's macOS counterpart: a tarball of the same files, which the
   # Homebrew formula unpacks. Like the deb depends on apt's libllvm20, the

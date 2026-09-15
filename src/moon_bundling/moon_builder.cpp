@@ -130,6 +130,11 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   // ---- Inputs: manifest (if any) + entrypoint itself ----
   MoonBuildReport report;
   report.moonImports = options.extraMoons;
+  // Resolve command-line imports before hashing the bundles they name.
+  for (auto& moon : report.moonImports) {
+    moon.path = ManifestProcessor::resolvePath(
+        moon.path, fs::current_path().string(), nullptr, options.targetTriple);
+  }
   if (auto manifest = ManifestProcessor::fromEntrypointFile(
           entrypoint, options.targetTriple)) {
     report.sunFiles = std::move(manifest->sunFiles);

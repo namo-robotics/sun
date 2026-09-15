@@ -458,7 +458,15 @@ sudo cp stdlib-x86_64-linux-gnu.moon /usr/lib/sun/stdlib.moon
 Any directory on `SUN_PATH` — or one passed with `--lib-path`, or listed in a
 `sun-config.json` — works as well as `/usr/lib/sun`.
 
-Keep bundles for different targets in separate directories, then pass the
+The compiler automatically searches target subdirectories of installation
+directories before their top-level bundles. For example,
+`--target aarch64-linux-musl` finds the compatible bundles installed under
+`/usr/lib/sun/aarch64-linux-gnu/`. GNU and musl spellings are compatible
+for Sun bundle selection. Explicit paths and user-supplied search directories
+retain their existing precedence; a wrong-target override still produces an error.
+
+For bundles outside installation directories, keep different targets in separate
+directories, then pass the
 matching directory with `--lib-path` or list it in `sun_path`:
 
 ```bash

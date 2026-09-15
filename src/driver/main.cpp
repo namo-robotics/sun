@@ -260,9 +260,10 @@ static bool isConfigInput(const std::string& input) {
 
 // Parse the config named on the command line and insist it declares
 // entrypoints — without them there is nothing to stand in for.
-static sun::SunConfig loadConfigInput(const std::string& input) {
+static sun::SunConfig loadConfigInput(const std::string& input,
+                                      const std::string& targetTriple = "") {
   sun::SunConfig config =
-      sun::SunConfig::loadFile(std::filesystem::absolute(input));
+      sun::SunConfig::loadFile(std::filesystem::absolute(input), targetTriple);
   if (config.entrypoints.empty()) {
     logAndThrowError(input +
                      " declares no entrypoints; add an 'entrypoints' list or "
@@ -998,7 +999,8 @@ int main(int argc, char* argv[]) {
         // The config names the outputs, so every artifact depends on it too
         depfile.addSharedInput(
             std::filesystem::absolute(inputFiles[0]).string());
-        return finish(runConfigCompile(loadConfigInput(inputFiles[0]), job));
+        return finish(runConfigCompile(
+            loadConfigInput(inputFiles[0], targetTriple), job));
       } catch (const SunError& e) {
         std::cerr << e.what() << std::endl;
         return 1;

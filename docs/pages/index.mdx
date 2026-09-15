@@ -263,7 +263,7 @@ and in every folder above it:
 }
 ```
 
-Those four keys are the whole file — anything else is an error:
+The supported keys are:
 
 - **`sun_path`** — extra directories to search for `.moon` libraries, on top
   of `SUN_PATH` and the install location
@@ -277,6 +277,7 @@ Those four keys are the whole file — anything else is an error:
   `sun -c sun-config.json` builds every product, `sun test sun-config.json`
   runs every suite — and editor tooling knows the project's entrypoints
   without scanning
+- **`target`** — settings selected by the compilation target (see below).
 - **`root`** — `true` stops the upward search at this file, keeping a project
   self-contained
 
@@ -292,9 +293,9 @@ project's answer, not something a stray shell variable can quietly change.
 
 ### Cross-compiling configured entrypoints
 
-`sun-config.json` has no target key. Pass `--target` to choose the target
-triple for every entrypoint built by that invocation; without it, Sun builds
-for the host:
+Pass `--target` to choose the target triple for every entrypoint built by
+that invocation. Without it, Sun builds for the host using its matching
+target settings:
 
 ```bash
 sun -c --target aarch64-linux-gnu --no-test sun-config.json
@@ -303,6 +304,10 @@ sun -c --target aarch64-linux-gnu --no-test sun-config.json
 Here `--no-test` skips building test binaries. Cross-compiling executables
 also requires a linker and system libraries for the target.
 
+Installed bundles are selected automatically from target subdirectories such as
+`/usr/lib/sun/aarch64-linux-gnu`. Debian packages include AArch64 Linux
+standard-library and TLS bundles for GNU and musl target spellings.
+
 Each dependency moon must have been built for the selected architecture and
 operating system, including `stdlib.moon`. Keep moons for different targets
 in separate directories and point `sun_path` at the directory for the build,
@@ -310,11 +315,58 @@ for example `"sun_path": ["libs/aarch64-linux-gnu"]`. `--target` does not
 append the triple to `sun_path` or `path_variables` values, and an existing
 moon found there is not replaced by one from `--lib-path`.
 
-Likewise, `output_name` and `test_binary_name` are literal paths relative to
-the config file. Use separate output paths when keeping builds for multiple
-targets; `--target` does not add a target directory to them. See
-[Installing a Released Bundle](/modules#installing-a-released-bundle) for
-installing per-target moons.
+A config can declare a complete entrypoint list alongside each target's
+search paths and fixed path variables:
+
+```json
+{
+    "root": true,
+    "target": {
+        "x86_64-linux-gnu": {
+            "sun_path": ["build"],
+            "path_variables": {"OPENSSL": "vendor/x86_64"},
+            "entrypoints": [{
+                "path": "app.sun",
+                "output_name": "build/app"
+            }]
+        },
+        "aarch64-linux-gnu": {
+            "sun_path": ["build/aarch64-linux-gnu"],
+            "path_variables": {"OPENSSL": "vendor/aarch64"},
+            "entrypoints": [{
+                "path": "app.sun",
+                "output_name": "build/aarch64-linux-gnu/app",
+                "test_binary_name": "build/aarch64-linux-gnu/app_test"
+            }]
+        }
+    }
+}
+```
+
+Target keys are normalized LLVM triples: `aarch64-linux-gnu` and
+`aarch64-unknown-linux-gnu` select the same settings. Vendor spellings are
+ignored; `arm64` and `aarch64` match the same
+architecture, and macOS version suffixes do not affect selection. GNU and musl
+config keys remain distinct. Duplicate normalized keys and invalid settings are
+errors, including in inactive target blocks.
+
+A matching target replaces `sun_path` and `entrypoints` when those fields
+are present, and merges its `path_variables` over the defaults in that file.
+An omitted field keeps its default; an empty entrypoint list selects no
+entrypoints from that file. Target entrypoints use the same fields as default
+entrypoints, including `path`, `type`, `output_name`, and `test_binary_name`.
+There are no per-entrypoint target blocks.
+
+Configs still merge nearest-first, and config values still take precedence
+over command-line and environment path variables. Paths remain relative to
+the file declaring them. Without `--target`, the host target is selected. If no
+target block matches, only the top-level settings apply. Paths are otherwise
+literal; the compiler does not
+automatically append a target directory.
+
+The workspace root config keeps all settings inside target blocks, including
+the native platforms. Its AArch64 Linux blocks build stdlib and TLS separately
+from the native outputs.
 
 ## Moons
 
