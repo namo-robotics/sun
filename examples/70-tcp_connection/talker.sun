@@ -2,14 +2,21 @@
 using std;
 
 function main() i32 {
-  var stream = TcpStream();
-  stream.connect_local(8080);
-  println("Connected to 127.0.0.1:8080");
+  // Socket operations can fail, so they run inside a `try` block.
+  try {
+    var stream = TcpStream();
+    stream.connect_local(8080);
+    println("Connected to 127.0.0.1:8080");
 
-  stream.send_str("Hello from talker!");
-  println("Message sent");
+    stream.send_str("Hello from talker!");
+    println("Message sent");
 
-  stream.close();
+    stream.close();
+  } catch (e: IError) {
+    println("Network error (is the listener running?):");
+    println(e.message());
+    return 1;
+  }
   return 0;
 }
 
