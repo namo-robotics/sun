@@ -806,6 +806,9 @@ void ASTSerializer::serializeClassDef(const ClassDefinitionAST& expr,
   node->mutable_class_def()->set_source_file_id(expr.getSourceFileId());
   auto* cls = node->mutable_class_def();
   cls->set_name(expr.getName());
+  for (const auto& name : expr.getCompiledSpecializations()) {
+    cls->add_compiled_specializations(name);
+  }
 
   for (const auto& tp : expr.getTypeParameters()) {
     auto* out = cls->add_type_params();

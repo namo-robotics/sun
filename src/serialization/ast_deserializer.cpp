@@ -896,6 +896,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
       proto.name(), toTypeParameters(proto), std::move(interfaces),
       std::move(fields), std::move(methods));
   classDef->setLifetimeParameters(toLifetimeParameters(proto));
+  for (const auto& name : proto.compiled_specializations()) {
+    classDef->addCompiledSpecialization(name);
+  }
   classDef->setIsPartial(proto.is_partial());
   classDef->setIsPacked(proto.is_packed());
   classDef->setVisibility(fromProto(proto.visibility()));

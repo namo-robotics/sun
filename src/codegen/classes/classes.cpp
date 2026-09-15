@@ -67,6 +67,13 @@ Value* ClassGenerator::codegenPrecompiledClass(const ClassDefinitionAST& expr,
         continue;
       }
 
+      if (specializedAST->isPrecompiled()) {
+        // Ordinary methods are in the bundle; new generic methods may need
+        // code.
+        codegen(*specializedAST);
+        continue;
+      }
+
       // Check if this specialization already exists in the precompiled library.
       // Pre-declared specializations (e.g., Vec_i32, Matrix_f64) have their
       // methods declared from the bitcode metadata.

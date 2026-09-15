@@ -524,6 +524,8 @@ message ClassDef {
   optional Position location = 10;  // Declaration span (bundle exports only)
   repeated TypeParameter type_params = 11;  // <T, U: _Numeric>
   repeated string lifetime_params = 12;     // class Bus<'a, 'b>
+  // Concrete class shapes whose ordinary methods are present in the bundle.
+  repeated string compiled_specializations = 13;
 }
 
 // Interface field declaration

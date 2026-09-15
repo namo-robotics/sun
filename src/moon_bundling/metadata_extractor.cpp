@@ -106,6 +106,12 @@ void extractClass(const ClassDefinitionAST& cls, moon::ModuleMetadata& metadata,
   *classDef = node.class_def();
   if (node.has_location()) *classDef->mutable_location() = node.location();
 
+  // The writer verifies these candidates against the emitted code.
+  for (const auto& [name, specialization] : cls.getSpecializations()) {
+    if (specialization && !cls.hasCompiledSpecialization(name))
+      classDef->add_compiled_specializations(name);
+  }
+
   // Clear bodies of non-generic methods
   clearNonGenericBodies(classDef, cls);
 }
