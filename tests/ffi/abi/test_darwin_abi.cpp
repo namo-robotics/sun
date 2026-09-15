@@ -391,7 +391,10 @@ TEST(Ffi_Abi_CrossTargetDarwin, file_open_uses_darwin_flag_values) {
       Driver::createForAOT("darwin_open_module", "arm64-apple-darwin");
   driver->compileString(R"(
     function main() i32 {
-        unsafe { __file_open("out.txt", 1); };
+        unsafe {
+          __file_open("out.txt", 1);
+          __file_open("out.txt", 2);
+        };
         return 0;
     }
   )");

@@ -77,7 +77,11 @@ public module tls {
       var dir: String;
       var server: std.process.Child;
 
-      init(allocator: ref HeapAllocator, common_name: static_ptr<u8>, port_: i32) throws IError {
+      init(allocator: ref HeapAllocator, common_name: static_ptr<u8>) throws IError {
+        // Let the OS choose a port so other test runs cannot occupy a fixed one.
+        var reservation = TcpListener();
+        reservation.bind_loopback(0);
+        var port_: i32 = reservation.local_port();
         var dir = String(allocator, "/tmp/sun_tls_");
         dir.append(port_);
         dir.append_char(b'_');
@@ -114,7 +118,7 @@ public module tls {
           throw Error(1, "could not mint a test certificate");
         }
 
-        var port_text = String(allocator, "");
+        var port_text = String(allocator, "127.0.0.1:");
         port_text.append(port_);
         var serve = std.process.Command(allocator, "openssl");
         serve.add_arg("s_server");
@@ -128,6 +132,7 @@ public module tls {
         serve.set_stdin(Stdio.Null);
         serve.set_stdout(Stdio.Null);
         serve.set_stderr(Stdio.Null);
+        reservation.close();
         this.server = serve.start();
         this.cert_path = cert;
         this.key_path = key;
@@ -139,6 +144,12 @@ public module tls {
         var attempts: i32 = 0;
         var ready: bool = false;
         while (not ready and attempts < 50) {
+          match this.server.try_wait() {
+            Option.Some(code) => {
+              throw Error(code, "the local TLS server exited during startup");
+            },
+            Option.None => {}
+          };
           var probe = TcpStream();
           try {
             probe.connect_local(port_);
@@ -193,7 +204,7 @@ public module tls {
         println("SKIP: openssl tool not available");
         return;
       }
-      var server = TlsServer(alloc, "localhost", 18443);
+      var server = TlsServer(alloc, "localhost");
       var environment = std.env.Env(alloc);
       environment.set("SSL_CERT_FILE", server.cert_path);
       var status = fetch_status(alloc, server.port);
@@ -209,7 +220,7 @@ public module tls {
         println("SKIP: openssl tool not available");
         return;
       }
-      var server = TlsServer(alloc, "localhost", 18444);
+      var server = TlsServer(alloc, "localhost");
       var environment = std.env.Env(alloc);
       environment.remove("SSL_CERT_FILE");
       std.test.assert_eq(fetch_status(alloc, server.port), -1);
@@ -223,7 +234,7 @@ public module tls {
         println("SKIP: openssl tool not available");
         return;
       }
-      var server = TlsServer(alloc, "otherhost.example", 18445);
+      var server = TlsServer(alloc, "otherhost.example");
       var environment = std.env.Env(alloc);
       environment.set("SSL_CERT_FILE", server.cert_path);
       var status = fetch_status(alloc, server.port);

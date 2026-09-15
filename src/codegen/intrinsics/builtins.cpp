@@ -84,6 +84,8 @@ const std::map<std::string, BuiltinEmitter>& builtinTable() {
        [](auto& g, const auto& e) { return g.codegenFreeIntrinsic(e); }},
       {"_memcpy",
        [](auto& g, const auto& e) { return g.codegenMemcpyIntrinsic(e); }},
+      {"_memmove",
+       [](auto& g, const auto& e) { return g.codegenMemmoveIntrinsic(e); }},
       {"_memset",
        [](auto& g, const auto& e) { return g.codegenMemsetIntrinsic(e); }},
       {"_ptr_offset",

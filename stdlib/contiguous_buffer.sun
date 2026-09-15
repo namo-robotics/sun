@@ -169,10 +169,9 @@ public module std {
       if (new_size < copy_count) {
         copy_count = new_size;
       }
-      for (var i: i64 = 0; i < copy_count; i = i + 1) {
-        var value: T = unsafe { _load<T>(this.data.get_raw(), i); };
-        unsafe { _store<T>(new_data, i, value); };
-      }
+      unsafe {
+        _memcpy(new_data, this.data.get_raw(), copy_count * _sizeof<T>());
+      };
 
       // Replace old data with new (Unique handles freeing old buffer)
       this.data = Unique<u8>(new_data);

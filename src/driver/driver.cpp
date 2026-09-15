@@ -6,6 +6,7 @@
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Transforms/IPO/GlobalDCE.h>
+#include <llvm/Transforms/IPO/Inliner.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <unistd.h>
 
@@ -963,6 +964,16 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
   // Optimize only after codegen has finished using instruction pointers.
   if (ctx->optimizationEnabled()) {
     sun::ScopedStage stage("optimize");
+    for (auto& function : *ctx->mainModule) {
+      if (!function.isDeclaration()) {
+        ctx->fpm->run(function, *ctx->fam);
+      }
+    }
+    // Inline after linking so small library accessors are visible to callers.
+    llvm::ModulePassManager inliner;
+    inliner.addPass(llvm::ModuleInlinerWrapperPass());
+    inliner.run(*ctx->mainModule, *ctx->mam);
+    // Simplify the instructions exposed by inlining.
     for (auto& function : *ctx->mainModule) {
       if (!function.isDeclaration()) {
         ctx->fpm->run(function, *ctx->fam);

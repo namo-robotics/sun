@@ -74,6 +74,8 @@ class IntrinsicsGenerator {
   llvm::Value* codegenMallocIntrinsic(const CallExprAST& expr);
   llvm::Value* codegenFreeIntrinsic(const CallExprAST& expr);
   llvm::Value* codegenMemcpyIntrinsic(const CallExprAST& expr);
+  /* Emit a byte copy that permits overlapping source and destination. */
+  llvm::Value* codegenMemmoveIntrinsic(const CallExprAST& expr);
   llvm::Value* codegenMemsetIntrinsic(const CallExprAST& expr);
   /** Decode an integer as an enum, returning None for unknown values. */
   llvm::Value* codegenEnumFromIntIntrinsic(const GenericCallAST& expr);
