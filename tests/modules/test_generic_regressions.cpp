@@ -231,7 +231,9 @@ function main() i32 {
 }
 manifest { libraries: ["lib.moon"] }
 )");
-  ASSERT_TRUE(run("build/sun " + (dir / "invalid.sun").string(), false));
+  ASSERT_TRUE(run(
+      "build/sun " + (dir / "invalid.sun").string(), false,
+      "Type mismatch in binary operation: incompatible operand types"));
 }
 
 TEST_F(Modules_GenericRegressions, ModuleGlobals) {
