@@ -46,7 +46,7 @@ TEST(Functions_Generic_ContainerSignatures, vec_return_type_and_local) {
         return v;
     }
 
-    function main() i32 {
+    function main() i32 throws IError {
         var allocator = make_heap_allocator();
         var v = build<i64>(allocator, 7);
         return v.get(0);

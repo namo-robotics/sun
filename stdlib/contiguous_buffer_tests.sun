@@ -62,11 +62,11 @@ public module std {
     test_function get_set_unchecked() {
       var alloc = make_heap_allocator();
       var buf = ContiguousBuffer<i32>(alloc, 3);
-      buf.set_unchecked(0, 10);
-      buf.set_unchecked(1, 20);
-      buf.set_unchecked(2, 30);
+      unsafe { buf.set_unchecked(0, 10); };
+      unsafe { buf.set_unchecked(1, 20); };
+      unsafe { buf.set_unchecked(2, 30); };
       std.test.assert_eq(
-        buf.get_unchecked(0) + buf.get_unchecked(1) + buf.get_unchecked(2),
+        unsafe { buf.get_unchecked(0); } + unsafe { buf.get_unchecked(1); } + unsafe { buf.get_unchecked(2); },
         60
       );
     }
@@ -77,7 +77,7 @@ public module std {
       buf.fill(7);
       var sum: i32 = 0;
       for (var i: i64 = 0; i < buf.size(); i = i + 1) {
-        sum = sum + buf.get_unchecked(i);
+        sum = sum + unsafe { buf.get_unchecked(i); };
       }
       std.test.assert_eq(sum, 35);
     }
@@ -86,17 +86,17 @@ public module std {
       var alloc = make_heap_allocator();
       var src = ContiguousBuffer<i32>(alloc, 5);
       var dst = ContiguousBuffer<i32>(alloc, 5);
-      src.set_unchecked(0, 10);
-      src.set_unchecked(1, 20);
-      src.set_unchecked(2, 30);
-      src.set_unchecked(3, 40);
-      src.set_unchecked(4, 50);
+      unsafe { src.set_unchecked(0, 10); };
+      unsafe { src.set_unchecked(1, 20); };
+      unsafe { src.set_unchecked(2, 30); };
+      unsafe { src.set_unchecked(3, 40); };
+      unsafe { src.set_unchecked(4, 50); };
       dst.fill(0);
       // Copy the middle three elements of src into the front of dst.
       dst.write_from(src, 1, 0, 3);
       // dst is now: 20, 30, 40, 0, 0
       std.test.assert_eq(
-        dst.get_unchecked(0) + dst.get_unchecked(1) + dst.get_unchecked(2),
+        unsafe { dst.get_unchecked(0); } + unsafe { dst.get_unchecked(1); } + unsafe { dst.get_unchecked(2); },
         90
       );
     }
@@ -130,10 +130,10 @@ public module std {
     test_function first_and_last() {
       var alloc = make_heap_allocator();
       var buf = ContiguousBuffer<i32>(alloc, 4);
-      buf.set_unchecked(0, 10);
-      buf.set_unchecked(1, 20);
-      buf.set_unchecked(2, 30);
-      buf.set_unchecked(3, 40);
+      unsafe { buf.set_unchecked(0, 10); };
+      unsafe { buf.set_unchecked(1, 20); };
+      unsafe { buf.set_unchecked(2, 30); };
+      unsafe { buf.set_unchecked(3, 40); };
       var f: i32 = buf.first();
       var l: i32 = buf.last();
       std.test.assert_eq(f + l, 50);

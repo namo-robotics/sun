@@ -262,6 +262,7 @@ bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
     const auto& source = static_cast<const sun::FunctionType&>(*from);
     const auto& target = static_cast<const sun::FunctionType&>(*to);
     if (source.canThrow() && !target.canThrow()) return false;
+    if (source.requiresUnsafe() && !target.requiresUnsafe()) return false;
     if (!source.getReturnType()->equals(*target.getReturnType())) return false;
     if (source.getParamTypes().size() != target.getParamTypes().size())
       return false;

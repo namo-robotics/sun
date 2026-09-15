@@ -2,33 +2,36 @@
 using std;
 
 function main() i32 {
-  var listener = TcpListener();
-  listener.bind_loopback(8080);
-  listener.listen(1);
-  println("Listening on 127.0.0.1:8080...");
-
-  var client = listener.accept();
-  println("Client connected");
-
   var alloc = make_heap_allocator();
   var buf = ContiguousBuffer<u8>(alloc, 256);
 
-  while (true) {
-    var n = client.recv(buf);
-    if (n <= 0) {
-      println("Connection closed");
-      break;
-    }
-    try {
+  // Socket operations can fail, so they run inside a `try` block.
+  try {
+    var listener = TcpListener();
+    listener.bind_loopback(8080);
+    listener.listen(1);
+    println("Listening on 127.0.0.1:8080...");
+
+    var client = listener.accept();
+    println("Client connected");
+
+    while (true) {
+      var n = client.recv(buf);
+      if (n <= 0) {
+        println("Connection closed");
+        break;
+      }
       var str = String(alloc, buf, n);
       println(str);
-    } catch (e: IError) {
-      println("Failed to create string");
     }
-  }
 
-  client.close();
-  listener.close();
+    client.close();
+    listener.close();
+  } catch (e: IError) {
+    println("Network error:");
+    println(e.message());
+    return 1;
+  }
   return 0;
 }
 

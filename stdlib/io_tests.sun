@@ -297,17 +297,17 @@ public module std {
 
       var events = p.wait(std.time.create_duration_millis(1000));
       std.test.assert_eq(events.size(), 2);
-      std.test.assert_eq(events.get_unchecked(0).fd(), second.read_fd());
-      std.test.assert(events.get_unchecked(0).is_readable(), "second pipe is readable");
-      std.test.assert(not events.get_unchecked(0).is_writable(), "not writable");
-      std.test.assert(not events.get_unchecked(0).is_priority(), "no urgent data");
-      std.test.assert(not events.get_unchecked(0).is_error(), "no error");
-      std.test.assert(not events.get_unchecked(0).is_invalid(), "descriptor is valid");
-      std.test.assert(not events.get_unchecked(0).is_hup(), "no hangup");
-      std.test.assert((events.get_unchecked(0).events() & std.io.POLLIN) != 0, "POLLIN bit set");
+      std.test.assert_eq(unsafe { events.get_unchecked(0); }.fd(), second.read_fd());
+      std.test.assert(unsafe { events.get_unchecked(0); }.is_readable(), "second pipe is readable");
+      std.test.assert(not unsafe { events.get_unchecked(0); }.is_writable(), "not writable");
+      std.test.assert(not unsafe { events.get_unchecked(0); }.is_priority(), "no urgent data");
+      std.test.assert(not unsafe { events.get_unchecked(0); }.is_error(), "no error");
+      std.test.assert(not unsafe { events.get_unchecked(0); }.is_invalid(), "descriptor is valid");
+      std.test.assert(not unsafe { events.get_unchecked(0); }.is_hup(), "no hangup");
+      std.test.assert((unsafe { events.get_unchecked(0); }.events() & std.io.POLLIN) != 0, "POLLIN bit set");
 
-      std.test.assert_eq(events.get_unchecked(1).fd(), third.read_fd());
-      std.test.assert(events.get_unchecked(1).is_readable(), "third pipe is readable");
+      std.test.assert_eq(unsafe { events.get_unchecked(1); }.fd(), third.read_fd());
+      std.test.assert(unsafe { events.get_unchecked(1); }.is_readable(), "third pipe is readable");
 
       first.close_read();
       first.close_write();

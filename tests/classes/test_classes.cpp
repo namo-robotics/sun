@@ -1825,8 +1825,8 @@ TEST(Classes, borrowed_primitive_constructor_and_method_arguments) {
       var alloc = make_heap_allocator();
       var v = Vec<i64>(alloc, 4);
       v.push(7);
-      var e = E(v.get_unchecked(0));
-      return _convert<i32>(e.add(v.get_unchecked(0)));
+      var e = E(unsafe { v.get_unchecked(0); });
+      return _convert<i32>(e.add(unsafe { v.get_unchecked(0); }));
     }
   )"),
             14);

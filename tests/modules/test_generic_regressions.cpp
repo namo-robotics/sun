@@ -7,8 +7,11 @@
 #include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <sstream>
 #include <string>
+
+#include "driver/execution_utils.h"
 
 namespace {
 
@@ -62,9 +65,10 @@ class Modules_GenericRegressions : public ::testing::Test {
     return ::testing::AssertionSuccess();
   }
 
-  void checkProgram(const std::string& name) {
+  void checkProgram(const std::string& name, bool checkNative = true) {
     const auto source = (dir / name).string();
     ASSERT_TRUE(run("build/sun " + source));
+    if (!checkNative) return;
     const auto binary = (dir / "app").string();
     ASSERT_TRUE(run("build/sun -c -o " + binary + " " + source));
     ASSERT_TRUE(run(binary));
@@ -118,8 +122,118 @@ TEST_F(Modules_GenericRegressions, ImportedMethodDependencies) {
         "}"));
 
     write("consumer.sun", consumer);
-    ASSERT_NO_FATAL_FAILURE(checkProgram("consumer.sun"));
+    // Both declaration orders use the JIT; the original also covers native
+    // code.
+    ASSERT_NO_FATAL_FAILURE(checkProgram("consumer.sun", !reverse));
   }
+}
+
+// Compiled classes keep their signatures; new types and generic methods still
+// run.
+TEST_F(Modules_GenericRegressions, CompiledClassShapes) {
+  ASSERT_NO_FATAL_FAILURE(buildLibrary(R"(
+/** Supplies a compiled class specialization. */
+public module lib {
+  /** Stores a value and accepts consumer-specific generic method calls. */
+  public class Box<T> {
+    public var value: T;
+    init(value: T) { this.value = value; }
+    init(value: T, extra: i32) { this.value = value; }
+    /** Borrows the stored value. */
+    public const method read() const ref T { return this.value; }
+    /** Returns a value whose type is chosen by the consumer. */
+    public method echo<U>(value: U) U { return value; }
+  }
+  /** Makes the library compile Box<i32>. */
+  public function make() Box<i32> { return Box<i32>(4); }
+}
+)"));
+  const std::string source = R"(
+class Msg {
+  public var value: i32;
+  init(value: i32) { this.value = value; }
+}
+function main() i32 {
+  var compiled = lib.make();
+  var overloaded = lib.Box<i32>(4, 2);
+  var fresh = lib.Box<Msg>(Msg(38));
+  var generic = compiled.echo<Msg>(Msg(2));
+  return compiled.read() + overloaded.read() + fresh.read().value +
+         generic.value - 48;
+}
+manifest { libraries: ["lib.moon"] }
+)";
+  auto driver = Driver::createForAOT();
+  driver->setMoonImports(
+      {{std::filesystem::absolute(dir / "lib.moon").string(), {}}});
+  auto analyzed =
+      driver->analyzeString(source, (dir / "consumer.sun").string());
+  ASSERT_FALSE(analyzed.error.has_value()) << analyzed.error->what();
+  ASSERT_NE(analyzed.ast, nullptr);
+  ClassDefinitionAST* box = nullptr;
+  std::function<void(ExprAST&)> findBox = [&](ExprAST& node) {
+    if (auto* cls = dynamic_cast<ClassDefinitionAST*>(&node);
+        cls && cls->getName() == "Box")
+      box = cls;
+    node.forEachChildSlot([&](auto& child) {
+      if (child) findBox(*child);
+    });
+  };
+  findBox(*analyzed.ast);
+  ASSERT_NE(box, nullptr);
+  ASSERT_EQ(box->getCompiledSpecializations().size(), 1u);
+  size_t compiled = 0;
+  size_t fresh = 0;
+  for (const auto& [name, shape] : box->getSpecializations()) {
+    ASSERT_NE(shape, nullptr);
+    if (shape->isPrecompiled()) {
+      ++compiled;
+      EXPECT_TRUE(box->hasCompiledSpecialization(name));
+      for (const auto& method : shape->getMethods()) {
+        EXPECT_EQ(method.function->hasBody(),
+                  method.function->getProto().isTemplate());
+      }
+    } else {
+      ++fresh;
+      EXPECT_FALSE(box->hasCompiledSpecialization(name));
+      for (const auto& method : shape->getMethods())
+        EXPECT_TRUE(method.function->hasBody());
+    }
+  }
+  EXPECT_EQ(compiled, 1u);
+  EXPECT_EQ(fresh, 1u);
+  write("consumer.sun", source);
+  ASSERT_NO_FATAL_FAILURE(checkProgram("consumer.sun"));
+}
+
+// A compiled numeric specialization must not hide errors for a new argument.
+TEST_F(Modules_GenericRegressions, UncompiledClassBodiesAreChecked) {
+  ASSERT_NO_FATAL_FAILURE(buildLibrary(R"(
+/** Supplies a class whose method requires arithmetic. */
+public module lib {
+  /** Stores a value that its method increments. */
+  public class Counter<T> {
+    public var value: T;
+    init(value: T) { this.value = value; }
+    /** Increments the stored value. */
+    public method increment() void { this.value = this.value + 1; }
+  }
+  /** Makes the library compile the numeric specialization. */
+  public function make() Counter<i32> { return Counter<i32>(0); }
+}
+)"));
+  write("invalid.sun", R"(
+class Msg { init() {} }
+function main() i32 {
+  var counter = lib.Counter<Msg>(Msg());
+  counter.increment();
+  return 0;
+}
+manifest { libraries: ["lib.moon"] }
+)");
+  ASSERT_TRUE(run(
+      "build/sun " + (dir / "invalid.sun").string(), false,
+      "Type mismatch in binary operation: incompatible operand types"));
 }
 
 TEST_F(Modules_GenericRegressions, ModuleGlobals) {
@@ -314,8 +428,10 @@ TEST_F(Modules_GenericRegressions, NestedTypeArguments) {
       source.replace(begin, end + 2 - begin,
                      "var value = sample.data.remove(0); return value.v - 7;");
     }
+    // Keep native coverage on the original; run every variant through the JIT.
+    const bool checkNative = variant == 0;
     write("nested.sun", source);
-    ASSERT_NO_FATAL_FAILURE(checkProgram("nested.sun"));
+    ASSERT_NO_FATAL_FAILURE(checkProgram("nested.sun", checkNative));
 
     const auto consumerStart = source.find("class Msg");
     ASSERT_NE(consumerStart, std::string::npos);
@@ -329,7 +445,7 @@ TEST_F(Modules_GenericRegressions, NestedTypeArguments) {
     app.replace(manifest, app.size() - manifest,
                 "manifest { libraries: [\"stdlib.moon\", \"lib.moon\"] }");
     write("consumer.sun", app);
-    ASSERT_NO_FATAL_FAILURE(checkProgram("consumer.sun"));
+    ASSERT_NO_FATAL_FAILURE(checkProgram("consumer.sun", checkNative));
   }
 }
 

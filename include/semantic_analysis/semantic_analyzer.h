@@ -319,6 +319,10 @@ class SemanticAnalyzer {
                            const std::vector<sun::TypePtr> &paramTypes,
                            const std::string &callee, const Position &loc);
 
+  /** Require an unsafe block when a call has a caller-side safety contract. */
+  void checkUnsafeCall(bool requiresUnsafe, const std::string &name,
+                       const Position &loc) const;
+
   /**
    * Calling `method` on `receiver`: a non-const method needs a mutable
    * receiver. Returns true when the receiver is immutable, so a `ref T`

@@ -918,8 +918,21 @@ function main() i32 {
 
 A few operations sit outside what any of this can prove — calling into C,
 reading through a raw pointer, touching a word atomically. Sun does not forbid
-them; it asks you to write them inside an `unsafe` block, so the places where
+them; it asks you to mark them with `unsafe`, so the places where
 the compiler stopped proving things are visible in the source.
+
+For a single expression, omit the braces:
+
+```sun
+var byte = unsafe text.unsafe_at(i);
+unsafe text.unsafe_set_at(i, byte);
+```
+
+`unsafe` binds like a unary operator. Calls, member access, and indexing belong
+to its operand: `unsafe reader.read() + other()` permits unsafe operations only
+in `reader.read()`. Use parentheses to include a larger expression:
+`unsafe (reader.read() + other())`. The permission ends with the operand and
+does not extend into the bodies of functions or lambdas defined there.
 
 An `unsafe` block is an **expression**, so it appears in both of the places an
 expression can, and **every statement inside the braces keeps its own
@@ -950,8 +963,10 @@ var y = unsafe {
 
 ### What requires a block
 
-Three things:
+The following operations:
 
+- **Calling an `unsafe method` or an unsafe callable value.** The caller must
+  uphold the documented safety contract.
 - **Calling an `extern "C"` function.** C is outside everything Sun proves.
   See [C FFI](/c-ffi).
 - **Reading a field through a `raw_ptr<T>`** where `T` is a class. Nothing says
@@ -967,6 +982,38 @@ An intrinsic that only *computes* needs no block: `_sizeof<T>`, `_is<T>`,
 `_address_of<T>`, `_ptr_as_raw<T>`, `_convert<T>`, `_bitcast<T>`,
 `_target_is`, the print intrinsics and the bit intrinsics. Taking an address is
 safe; reading through it is not. See [Compiler Intrinsics](/intrinsics).
+
+### Unsafe methods
+
+Declare a method `unsafe` when it relies on conditions that safe callers could
+violate. Calling it requires `unsafe <expr>` or an `unsafe { ... }` block,
+even within another unsafe method. A method body still needs explicit `unsafe`
+for raw memory access.
+
+```sun
+class ByteReader {
+    /* Read a byte from a live, initialized buffer at a valid index. */
+    public const unsafe method read(data: raw_ptr<u8>, index: i64) u8 {
+        return unsafe { _load<u8>(data, index); };
+    }
+}
+```
+
+The modifier order is `public const unsafe method`; omit modifiers that do not
+apply. Interface methods can also be unsafe. An unsafe implementation cannot
+satisfy a safe interface method.
+
+The requirement follows a stored method reference. Its type can be inferred or
+written explicitly as `unsafe <'_>(i64) => u8`; assigning it to a safe callable
+type is rejected. A generic callback does not remove the requirement. An unsafe
+callback must be wrapped in a lambda that upholds its contract before it can be
+passed to `spawn`.
+
+`String.at()` and `String.set_at()` check the index against `length()` and throw
+`IndexOutOfBoundsError` on failure. Their unchecked counterparts are
+`unsafe_at()` and `unsafe_set_at()`, both requiring explicit `unsafe`. The
+`get_unchecked()` and `set_unchecked()` methods on `Vec` and `ContiguousBuffer`
+also require explicit `unsafe`.
 
 ### What it does not turn off
 

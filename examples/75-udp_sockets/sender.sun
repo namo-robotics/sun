@@ -2,12 +2,19 @@
 using std;
 
 function main() i32 {
-  var socket = UdpSocket();
-  socket.bind(ipv4_any(), 0);  // port 0: the OS picks a free port
-  socket.send_str_to("Hello from sender!", ipv4_loopback(), 9090);
-  println("Datagram sent");
+  // Socket operations can fail, so they run inside a `try` block.
+  try {
+    var socket = UdpSocket();
+    socket.bind(ipv4_any(), 0);  // port 0: the OS picks a free port
+    socket.send_str_to("Hello from sender!", ipv4_loopback(), 9090);
+    println("Datagram sent");
 
-  socket.close();
+    socket.close();
+  } catch (e: IError) {
+    println("Network error:");
+    println(e.message());
+    return 1;
+  }
   return 0;
 }
 

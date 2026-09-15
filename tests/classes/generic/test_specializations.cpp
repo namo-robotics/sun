@@ -19,7 +19,7 @@ TEST(Classes_Generic_Specializations, vec_new_primitive_specialization) {
   auto value = executeStringWithStdlib(R"(
     using std;
 
-    function main() i32 {
+    function main() i32 throws IError {
         var allocator = make_heap_allocator();
         var v = Vec<u32>(allocator, 4);
         v.push(100);

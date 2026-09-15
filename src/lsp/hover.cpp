@@ -129,6 +129,7 @@ std::string renderPrototype(const PrototypeAST& proto,
   std::string out;
   if (isPublic && !isLifecycle) out += "public ";
   if (proto.isConstMethod()) out += "const ";
+  if (proto.isUnsafeMethod()) out += "unsafe ";
   if (!isLifecycle) {
     out += keyword;
     if (!name.empty()) out += " " + name;

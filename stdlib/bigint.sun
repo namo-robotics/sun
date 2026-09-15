@@ -39,7 +39,7 @@ public module std {
       var out = BigUint(this.alloc);
       out.limbs.reserve(this.limbs.size());
       for (var i: i64 = 0; i < this.limbs.size(); i = i + 1) {
-        out.limbs.push(this.limbs.get_unchecked(i));
+        out.limbs.push(unsafe { this.limbs.get_unchecked(i); });
       }
       return out;
     }
@@ -54,7 +54,7 @@ public module std {
       if (i < 0 or i >= this.limbs.size()) {
         return 0;
       }
-      return this.limbs.get_unchecked(i);
+      return unsafe { this.limbs.get_unchecked(i); };
     }
 
     // Report whether the value is zero. Zero is stored as an empty limb list.
@@ -68,7 +68,7 @@ public module std {
       if (n == 0) {
         return 0;
       }
-      var top: u64 = this.limbs.get_unchecked(n - 1);
+      var top: u64 = unsafe { this.limbs.get_unchecked(n - 1); };
       return (n - 1) * 64 + 64 - _convert<i64>(_ctlz_u64(top));
     }
 
@@ -102,14 +102,14 @@ public module std {
     public method assign(other: const ref BigUint) void {
       this.limbs.clear();
       for (var i: i64 = 0; i < other.limbs.size(); i = i + 1) {
-        this.limbs.push(other.limbs.get_unchecked(i));
+        this.limbs.push(unsafe { other.limbs.get_unchecked(i); });
       }
     }
 
     // Drop leading zero limbs
     method trim() void {
       while (this.limbs.size() > 0) {
-        var top: u64 = this.limbs.get_unchecked(this.limbs.size() - 1);
+        var top: u64 = unsafe { this.limbs.get_unchecked(this.limbs.size() - 1); };
         if (top != 0) {
           return;
         }
@@ -133,8 +133,8 @@ public module std {
       }
       var i: i64 = n - 1;
       while (i >= 0) {
-        var a: u64 = this.limbs.get_unchecked(i);
-        var b: u64 = other.limbs.get_unchecked(i);
+        var a: u64 = unsafe { this.limbs.get_unchecked(i); };
+        var b: u64 = unsafe { other.limbs.get_unchecked(i); };
         if (a != b) {
           if (a < b) {
             return -1;
@@ -179,9 +179,9 @@ public module std {
           this.limbs.push(carry);
           return;
         }
-        var a: u64 = this.limbs.get_unchecked(i);
+        var a: u64 = unsafe { this.limbs.get_unchecked(i); };
         var sum: u64 = a + carry;
-        this.limbs.set_unchecked(i, sum);
+        unsafe { this.limbs.set_unchecked(i, sum); };
         if (sum < a) {
           carry = 1;
         } else {
@@ -199,7 +199,7 @@ public module std {
       }
       var carry: u64 = 0;
       for (var i: i64 = 0; i < this.limbs.size(); i = i + 1) {
-        var a: u64 = this.limbs.get_unchecked(i);
+        var a: u64 = unsafe { this.limbs.get_unchecked(i); };
         var b: u64 = other.limb(i);
         var sum: u64 = a + b;
         var c: u64 = 0;
@@ -210,7 +210,7 @@ public module std {
         if (total < sum) {
           c = c + 1;
         }
-        this.limbs.set_unchecked(i, total);
+        unsafe { this.limbs.set_unchecked(i, total); };
         carry = c;
         if (i >= n - 1 and carry == 0) {
           return;
@@ -228,7 +228,7 @@ public module std {
       }
       var borrow: u64 = 0;
       for (var i: i64 = 0; i < this.limbs.size(); i = i + 1) {
-        var a: u64 = this.limbs.get_unchecked(i);
+        var a: u64 = unsafe { this.limbs.get_unchecked(i); };
         var b: u64 = other.limb(i);
         var diff: u64 = a - b;
         var next: u64 = 0;
@@ -239,7 +239,7 @@ public module std {
         if (diff < borrow) {
           next = next + 1;
         }
-        this.limbs.set_unchecked(i, result);
+        unsafe { this.limbs.set_unchecked(i, result); };
         borrow = next;
       }
       this.trim();
@@ -256,14 +256,14 @@ public module std {
       }
       var carry: u64 = 0;
       for (var i: i64 = 0; i < this.limbs.size(); i = i + 1) {
-        var a: u64 = this.limbs.get_unchecked(i);
+        var a: u64 = unsafe { this.limbs.get_unchecked(i); };
         var lo: u64 = a * value;
         var hi: u64 = _mul_hi_u64(a, value);
         var sum: u64 = lo + carry;
         if (sum < lo) {
           hi = hi + 1;
         }
-        this.limbs.set_unchecked(i, sum);
+        unsafe { this.limbs.set_unchecked(i, sum); };
         carry = hi;
       }
       if (carry != 0) {
@@ -284,16 +284,16 @@ public module std {
         result.push(0);
       }
       for (var i: i64 = 0; i < n; i = i + 1) {
-        var a: u64 = this.limbs.get_unchecked(i);
+        var a: u64 = unsafe { this.limbs.get_unchecked(i); };
         if (a == 0) {
           continue;
         }
         var carry: u64 = 0;
         for (var j: i64 = 0; j < m; j = j + 1) {
-          var b: u64 = other.limbs.get_unchecked(j);
+          var b: u64 = unsafe { other.limbs.get_unchecked(j); };
           var lo: u64 = a * b;
           var hi: u64 = _mul_hi_u64(a, b);
-          var cur: u64 = result.get_unchecked(i + j);
+          var cur: u64 = unsafe { result.get_unchecked(i + j); };
           var s1: u64 = lo + cur;
           if (s1 < lo) {
             hi = hi + 1;
@@ -302,14 +302,14 @@ public module std {
           if (s2 < s1) {
             hi = hi + 1;
           }
-          result.set_unchecked(i + j, s2);
+          unsafe { result.set_unchecked(i + j, s2); };
           carry = hi;
         }
         var k: i64 = i + m;
         while (carry != 0) {
-          var cur: u64 = result.get_unchecked(k);
+          var cur: u64 = unsafe { result.get_unchecked(k); };
           var s: u64 = cur + carry;
-          result.set_unchecked(k, s);
+          unsafe { result.set_unchecked(k, s); };
           if (s < cur) {
             carry = 1;
           } else {
@@ -353,7 +353,7 @@ public module std {
       }
       var carry: u64 = 0;
       for (var i: i64 = 0; i < n; i = i + 1) {
-        var a: u64 = this.limbs.get_unchecked(i);
+        var a: u64 = unsafe { this.limbs.get_unchecked(i); };
         if (bit_shift == 0) {
           result.push(a);
         } else {
@@ -381,13 +381,13 @@ public module std {
       }
       var result = Vec<u64>(this.alloc, n - limb_shift);
       for (var i: i64 = limb_shift; i < n; i = i + 1) {
-        var a: u64 = this.limbs.get_unchecked(i);
+        var a: u64 = unsafe { this.limbs.get_unchecked(i); };
         if (bit_shift == 0) {
           result.push(a);
         } else {
           var high: u64 = 0;
           if (i + 1 < n) {
-            high = this.limbs.get_unchecked(i + 1) << (64 - bit_shift);
+            high = unsafe { this.limbs.get_unchecked(i + 1); } << (64 - bit_shift);
           }
           result.push((a >> bit_shift) | high);
         }
@@ -410,7 +410,7 @@ public module std {
       var rem: u64 = 0;
       var i: i64 = this.limbs.size() - 1;
       while (i >= 0) {
-        var a: u64 = this.limbs.get_unchecked(i);
+        var a: u64 = unsafe { this.limbs.get_unchecked(i); };
         // Two 32-bit halves keep every intermediate below 2^64
         var high_half: u64 = (rem << 32) | (a >> 32);
         var q_high: u64 = high_half / d;
@@ -418,7 +418,7 @@ public module std {
         var low_half: u64 = (rem << 32) | (a & 4294967295);
         var q_low: u64 = low_half / d;
         rem = low_half - q_low * d;
-        this.limbs.set_unchecked(i, (q_high << 32) | q_low);
+        unsafe { this.limbs.set_unchecked(i, (q_high << 32) | q_low); };
         i = i - 1;
       }
       this.trim();
@@ -448,10 +448,10 @@ public module std {
         chunks.push(chunk);
       }
       var i: i64 = chunks.size() - 1;
-      out.append_u64(chunks.get_unchecked(i));
+      out.append_u64(unsafe { chunks.get_unchecked(i); });
       i = i - 1;
       while (i >= 0) {
-        var chunk: u64 = chunks.get_unchecked(i);
+        var chunk: u64 = unsafe { chunks.get_unchecked(i); };
         // Zero-pad inner chunks to 9 digits
         var scale: u64 = 100000000;
         while (scale > 1 and chunk < scale) {
@@ -471,7 +471,7 @@ public module std {
         return false;
       }
       for (var i: i64 = 0; i < text.length(); i = i + 1) {
-        var ch: u8 = text.at(i);
+        var ch: u8 = unsafe { text.unsafe_at(i); };
         if (ch < b'0' or ch > b'9') {
           this.limbs.clear();
           return false;

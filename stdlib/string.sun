@@ -170,8 +170,16 @@ public module std {
       return this.len;
     }
 
-    // Get byte at index (relative to view start)
-    public const method at(i: i64) u8 {
+    /* Read a byte, or throw when the index is outside the view. */
+    public const method at(i: i64) u8 throws IError {
+      if (i < 0 or i >= this.len) {
+        throw IndexOutOfBoundsError(i);
+      }
+      return unsafe { this.unsafe_at(i); };
+    }
+
+    /* Read a byte without bounds checks. The caller must ensure 0 <= i < length(). */
+    public const unsafe method unsafe_at(i: i64) u8 {
       return unsafe { _load<u8>(this.data, this.start + i); };
     }
 
@@ -186,7 +194,7 @@ public module std {
       }
 
       for (var i: i64 = 0; i < src_len; i = i + 1) {
-        var a: u8 = this.at(i);
+        var a: u8 = unsafe { this.unsafe_at(i); };
         var b: u8 = unsafe { _load<u8>(src_data, i); };
         if (a != b) {
           return false;
@@ -317,7 +325,7 @@ public module std {
 
       for (var i: i64 = 0; i < src_len; i = i + 1) {
         var byte: u8 = unsafe { _load<u8>(src_data, i); };
-        this.data.set_unchecked(i, byte);
+        unsafe { this.data.set_unchecked(i, byte); };
       }
     }
 
@@ -336,8 +344,8 @@ public module std {
 
       // Simple byte-by-byte copy (safer for debugging)
       for (var i: i64 = 0; i < length; i = i + 1) {
-        var byte: u8 = buffer.get_unchecked(i);
-        this.data.set_unchecked(i, byte);
+        var byte: u8 = unsafe { buffer.get_unchecked(i); };
+        unsafe { this.data.set_unchecked(i, byte); };
       }
     }
 
@@ -356,14 +364,30 @@ public module std {
       return this.len == 0;
     }
 
-    // Get byte at index (no bounds checking)
-    public const method at(i: i64) u8 {
-      return this.data.get_unchecked(i);
+    /* Read a byte, or throw when the index is outside the string. */
+    public const method at(i: i64) u8 throws IError {
+      if (i < 0 or i >= this.len) {
+        throw IndexOutOfBoundsError(i);
+      }
+      return unsafe { this.unsafe_at(i); };
     }
 
-    // Set byte at index (no bounds checking, must be within len)
-    public method set_at(i: i64, val: u8) void {
-      this.data.set_unchecked(i, val);
+    /* Write a byte, or throw when the index is outside the string. */
+    public method set_at(i: i64, val: u8) void throws IError {
+      if (i < 0 or i >= this.len) {
+        throw IndexOutOfBoundsError(i);
+      }
+      unsafe { this.unsafe_set_at(i, val); };
+    }
+
+    /* Read a byte without bounds checks. The caller must ensure 0 <= i < length(). */
+    public const unsafe method unsafe_at(i: i64) u8 {
+      return unsafe { this.data.get_unchecked(i); };
+    }
+
+    /* Write a byte without bounds checks. The caller must ensure 0 <= i < length(). */
+    public unsafe method unsafe_set_at(i: i64, val: u8) void {
+      unsafe { this.data.set_unchecked(i, val); };
     }
 
     // Ensure capacity for at least n bytes (doesn't change len)
@@ -395,20 +419,27 @@ public module std {
       }
     }
 
+    /* Borrow the bytes without allocating or adding a NUL terminator. Read only
+       length() bytes; do not write through the pointer. It remains valid until
+       the next mutation or until the String is destroyed. */
+    public const method bytes() raw_ptr<u8> {
+      return this.data.raw_data();
+    }
+
     // NUL-terminate in spare capacity and hand back a pointer to the bytes,
     // for passing a runtime path or argument to C. The terminator sits past
     // the length, so the string itself is unchanged. The pointer is only good
     // until the next mutation.
     public method c_str() raw_ptr<u8> {
       this.ensure_capacity(1);
-      this.data.set_unchecked(this.len, 0);
+      unsafe { this.data.set_unchecked(this.len, 0); };
       return this.data.raw_data();
     }
 
     // Append a single byte/character
     public method append_char(ch: u8) void {
       this.ensure_capacity(1);
-      this.data.set_unchecked(this.len, ch);
+      unsafe { this.data.set_unchecked(this.len, ch); };
       this.len = this.len + 1;
     }
 
@@ -506,7 +537,7 @@ public module std {
     // comparison the search and prefix/suffix methods share.
     const method match_bytes_at(at: i64, needle: raw_ptr<u8>, needle_len: i64) bool {
       for (var j: i64 = 0; j < needle_len; j = j + 1) {
-        if (this.data.get_unchecked(at + j) != unsafe { _load<u8>(needle, j); }) {
+        if (unsafe { this.data.get_unchecked(at + j); } != unsafe { _load<u8>(needle, j); }) {
           return false;
         }
       }
@@ -536,7 +567,7 @@ public module std {
         throw EmptyError();
       }
       this.len = this.len - 1;
-      return this.data.get_unchecked(this.len);
+      return unsafe { this.data.get_unchecked(this.len); };
     }
 
     // Truncate to given length (does nothing if new_len >= len)
@@ -554,11 +585,11 @@ public module std {
       if (index >= this.len) {
         throw IndexOutOfBoundsError(index);
       }
-      var removed: u8 = this.data.get_unchecked(index);
+      var removed: u8 = unsafe { this.data.get_unchecked(index); };
       // Shift remaining bytes left
       for (var i: i64 = index; i < this.len - 1; i = i + 1) {
-        var next: u8 = this.data.get_unchecked(i + 1);
-        this.data.set_unchecked(i, next);
+        var next: u8 = unsafe { this.data.get_unchecked(i + 1); };
+        unsafe { this.data.set_unchecked(i, next); };
       }
       this.len = this.len - 1;
       return removed;
@@ -575,10 +606,10 @@ public module std {
       this.ensure_capacity(1);
       // Shift bytes right from end
       for (var i: i64 = this.len; i > index; i = i - 1) {
-        var prev: u8 = this.data.get_unchecked(i - 1);
-        this.data.set_unchecked(i, prev);
+        var prev: u8 = unsafe { this.data.get_unchecked(i - 1); };
+        unsafe { this.data.set_unchecked(i, prev); };
       }
-      this.data.set_unchecked(index, ch);
+      unsafe { this.data.set_unchecked(index, ch); };
       this.len = this.len + 1;
     }
 
@@ -589,7 +620,7 @@ public module std {
     // Find first occurrence of byte; None if not found
     public const method find_char(ch: u8) Option<i64> {
       for (var i: i64 = 0; i < this.len; i = i + 1) {
-        if (this.data.get_unchecked(i) == ch) {
+        if (unsafe { this.data.get_unchecked(i); } == ch) {
           return Option.Some(i);
         }
       }
@@ -600,7 +631,7 @@ public module std {
     public const method rfind_char(ch: u8) Option<i64> {
       var i: i64 = this.len - 1;
       while (i >= 0) {
-        if (this.data.get_unchecked(i) == ch) {
+        if (unsafe { this.data.get_unchecked(i); } == ch) {
           return Option.Some(i);
         }
         i = i - 1;
@@ -674,7 +705,7 @@ public module std {
     // The caller supplies the width so it is not recomputed per position.
     const method matches_at(code: i64, width: i64, at: i64) bool {
       for (var j: i64 = 0; j < width; j = j + 1) {
-        if (this.data.get_unchecked(at + j) != encode_utf8_byte(code, j)) {
+        if (unsafe { this.data.get_unchecked(at + j); } != encode_utf8_byte(code, j)) {
           return false;
         }
       }
@@ -761,8 +792,8 @@ public module std {
       }
 
       for (var i: i64 = 0; i < min_len; i = i + 1) {
-        var a: u8 = this.data.get_unchecked(i);
-        var b: u8 = other.data.get_unchecked(i);
+        var a: u8 = unsafe { this.data.get_unchecked(i); };
+        var b: u8 = unsafe { other.data.get_unchecked(i); };
         if (a < b) {
           return -1;
         }
@@ -797,9 +828,9 @@ public module std {
       var left: i64 = 0;
       var right: i64 = this.len - 1;
       while (left < right) {
-        var tmp: u8 = this.data.get_unchecked(left);
-        this.data.set_unchecked(left, this.data.get_unchecked(right));
-        this.data.set_unchecked(right, tmp);
+        var tmp: u8 = unsafe { this.data.get_unchecked(left); };
+        unsafe { this.data.set_unchecked(left, unsafe { this.data.get_unchecked(right); }); };
+        unsafe { this.data.set_unchecked(right, tmp); };
         left = left + 1;
         right = right - 1;
       }
@@ -808,9 +839,9 @@ public module std {
     // Lowercase ASCII letters in-place; other bytes are left alone
     public method to_lower() void {
       for (var i: i64 = 0; i < this.len; i = i + 1) {
-        var ch: u8 = this.data.get_unchecked(i);
+        var ch: u8 = unsafe { this.data.get_unchecked(i); };
         if (ch >= b'A' and ch <= b'Z') {
-          this.data.set_unchecked(i, ch + (b'a' - b'A'));
+          unsafe { this.data.set_unchecked(i, ch + (b'a' - b'A')); };
         }
       }
     }
@@ -818,9 +849,9 @@ public module std {
     // Uppercase ASCII letters in-place; other bytes are left alone
     public method to_upper() void {
       for (var i: i64 = 0; i < this.len; i = i + 1) {
-        var ch: u8 = this.data.get_unchecked(i);
+        var ch: u8 = unsafe { this.data.get_unchecked(i); };
         if (ch >= b'a' and ch <= b'z') {
-          this.data.set_unchecked(i, ch - (b'a' - b'A'));
+          unsafe { this.data.set_unchecked(i, ch - (b'a' - b'A')); };
         }
       }
     }
@@ -828,7 +859,7 @@ public module std {
     // Drop leading ASCII whitespace in-place
     public method trim_start() void {
       var start: i64 = 0;
-      while (start < this.len and is_ascii_space(this.data.get_unchecked(start))) {
+      while (start < this.len and is_ascii_space(unsafe { this.data.get_unchecked(start); })) {
         start = start + 1;
       }
       if (start == 0) {
@@ -836,14 +867,14 @@ public module std {
       }
       var new_len: i64 = this.len - start;
       for (var i: i64 = 0; i < new_len; i = i + 1) {
-        this.data.set_unchecked(i, this.data.get_unchecked(start + i));
+        unsafe { this.data.set_unchecked(i, unsafe { this.data.get_unchecked(start + i); }); };
       }
       this.len = new_len;
     }
 
     // Drop trailing ASCII whitespace in-place
     public method trim_end() void {
-      while (this.len > 0 and is_ascii_space(this.data.get_unchecked(this.len - 1))) {
+      while (this.len > 0 and is_ascii_space(unsafe { this.data.get_unchecked(this.len - 1); })) {
         this.len = this.len - 1;
       }
     }
@@ -863,17 +894,17 @@ public module std {
         // Shift the tail right, back to front, so bytes are not overwritten
         var i: i64 = this.len - 1;
         while (i >= index + count) {
-          this.data.set_unchecked(i + delta, this.data.get_unchecked(i));
+          unsafe { this.data.set_unchecked(i + delta, unsafe { this.data.get_unchecked(i); }); };
           i = i - 1;
         }
       } else if (delta < 0) {
         for (var i: i64 = index + count; i < this.len; i = i + 1) {
-          this.data.set_unchecked(i + delta, this.data.get_unchecked(i));
+          unsafe { this.data.set_unchecked(i + delta, unsafe { this.data.get_unchecked(i); }); };
         }
       }
       for (var j: i64 = 0; j < repl_len; j = j + 1) {
         var b: u8 = unsafe { _load<u8>(repl, j); };
-        this.data.set_unchecked(index + j, b);
+        unsafe { this.data.set_unchecked(index + j, b); };
       }
       this.len = this.len + delta;
     }
@@ -922,7 +953,7 @@ public module std {
       var out: String = String(alloc, "");
       out.ensure_capacity(count);
       for (var i: i64 = 0; i < count; i = i + 1) {
-        out.append_char(this.data.get_unchecked(start + i));
+        out.append_char(unsafe { this.data.get_unchecked(start + i); });
       }
       return out;
     }
@@ -975,7 +1006,7 @@ public module std {
       var parts: Vec<String> = Vec<String>(alloc, 4);
       var start: i64 = 0;
       for (var i: i64 = 0; i < this.len; i = i + 1) {
-        if (is_ascii_space(this.data.get_unchecked(i))) {
+        if (is_ascii_space(unsafe { this.data.get_unchecked(i); })) {
           this.push_piece(alloc, parts, start, i, false);
           start = i + 1;
         }
@@ -998,7 +1029,7 @@ public module std {
       var parts: Vec<String> = Vec<String>(alloc, 4);
       var start: i64 = 0;
       for (var i: i64 = 0; i < this.len; i = i + 1) {
-        if (this.data.get_unchecked(i) == sep) {
+        if (unsafe { this.data.get_unchecked(i); } == sep) {
           this.push_piece(alloc, parts, start, i, keep_empty);
           start = i + 1;
         }
@@ -1100,9 +1131,9 @@ public module std {
       // Reverse the digits we just wrote
       var end: i64 = this.len - 1;
       while (start < end) {
-        var tmp: u8 = this.data.get_unchecked(start);
-        this.data.set_unchecked(start, this.data.get_unchecked(end));
-        this.data.set_unchecked(end, tmp);
+        var tmp: u8 = unsafe { this.data.get_unchecked(start); };
+        unsafe { this.data.set_unchecked(start, unsafe { this.data.get_unchecked(end); }); };
+        unsafe { this.data.set_unchecked(end, tmp); };
         start = start + 1;
         end = end - 1;
       }
@@ -1146,9 +1177,9 @@ public module std {
       // Reverse the hex digits
       var end: i64 = this.len - 1;
       while (start < end) {
-        var tmp: u8 = this.data.get_unchecked(start);
-        this.data.set_unchecked(start, this.data.get_unchecked(end));
-        this.data.set_unchecked(end, tmp);
+        var tmp: u8 = unsafe { this.data.get_unchecked(start); };
+        unsafe { this.data.set_unchecked(start, unsafe { this.data.get_unchecked(end); }); };
+        unsafe { this.data.set_unchecked(end, tmp); };
         start = start + 1;
         end = end - 1;
       }
@@ -1194,7 +1225,7 @@ public module std {
     public const method parse_i64() Option<i64> {
       var i: i64 = 0;
       var negative: bool = false;
-      if (this.len > 0 and this.at(0) == b'-') {
+      if (this.len > 0 and unsafe { this.unsafe_at(0); } == b'-') {
         negative = true;
         i = 1;
       }
@@ -1205,7 +1236,7 @@ public module std {
       var acc: i64 = 0;
       var limit: i64 = I64_MIN / 10;
       while (i < this.len) {
-        var ch: u8 = this.at(i);
+        var ch: u8 = unsafe { this.unsafe_at(i); };
         if (ch < 48) {
           return Option.None;
         }
@@ -1239,22 +1270,22 @@ public module std {
     const method is_decimal_float() bool {
       var i: i64 = 0;
       if (i < this.len) {
-        var sign: u8 = this.at(i);
+        var sign: u8 = unsafe { this.unsafe_at(i); };
         if (sign == b'-' or sign == b'+') {
           // '-' '+'
           i = i + 1;
         }
       }
       var int_digits: i64 = 0;
-      while (i < this.len and this.at(i) >= b'0' and this.at(i) <= b'9') {
+      while (i < this.len and unsafe { this.unsafe_at(i); } >= b'0' and unsafe { this.unsafe_at(i); } <= b'9') {
         i = i + 1;
         int_digits = int_digits + 1;
       }
       var frac_digits: i64 = 0;
-      if (i < this.len and this.at(i) == b'.') {
+      if (i < this.len and unsafe { this.unsafe_at(i); } == b'.') {
         // '.'
         i = i + 1;
-        while (i < this.len and this.at(i) >= b'0' and this.at(i) <= b'9') {
+        while (i < this.len and unsafe { this.unsafe_at(i); } >= b'0' and unsafe { this.unsafe_at(i); } <= b'9') {
           i = i + 1;
           frac_digits = frac_digits + 1;
         }
@@ -1262,14 +1293,14 @@ public module std {
       if (int_digits + frac_digits == 0) {
         return false;
       }
-      if (i < this.len and (this.at(i) == b'e' or this.at(i) == b'E')) {
+      if (i < this.len and (unsafe { this.unsafe_at(i); } == b'e' or unsafe { this.unsafe_at(i); } == b'E')) {
         // 'e' 'E'
         i = i + 1;
-        if (i < this.len and (this.at(i) == b'-' or this.at(i) == b'+')) {
+        if (i < this.len and (unsafe { this.unsafe_at(i); } == b'-' or unsafe { this.unsafe_at(i); } == b'+')) {
           i = i + 1;
         }
         var exp_digits: i64 = 0;
-        while (i < this.len and this.at(i) >= b'0' and this.at(i) <= b'9') {
+        while (i < this.len and unsafe { this.unsafe_at(i); } >= b'0' and unsafe { this.unsafe_at(i); } <= b'9') {
           i = i + 1;
           exp_digits = exp_digits + 1;
         }
@@ -1335,7 +1366,7 @@ public module std {
       if (i > 0) {
         out.append_literal(sep);
       }
-      out.append(parts.get_unchecked(i));
+      out.append(unsafe { parts.get_unchecked(i); });
     }
     return out;
   }

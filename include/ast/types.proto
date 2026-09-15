@@ -36,6 +36,7 @@ message TypeAnnotation {
   optional TypeAnnotation return_type = 4;      // For fn/lambda: return type
   repeated TypeAnnotation type_arguments = 5;   // For generics: Vec<i32>
   repeated uint64 array_dimensions = 6;         // For arrays: array<T, 5, 3>
+  bool requires_unsafe = 13;                   // Calls require an unsafe block.
   bool can_error = 7;                           // Error union: T, IError
   bool const_ref = 8;                           // `const ref T`
   bool ref_env = 9;                             // `<'_>() => T` lambda type

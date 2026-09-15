@@ -231,8 +231,10 @@ and yield `char`. See [Characters and Bytes](/builtin-types#characters-and-bytes
 | `length()` | `() i64` | Current string length |
 | `capacity()` | `() i64` | Allocated capacity |
 | `is_empty()` | `() bool` | True when the string has no bytes |
-| `at(i)` | `(i64) u8` | Get byte at index |
-| `set_at(i, val)` | `(i64, u8) void` | Set byte at index |
+| `at(i)` | `(i64) u8 throws IError` | Read a byte; reject indices outside `length()` |
+| `set_at(i, val)` | `(i64, u8) void throws IError` | Write a byte; reject indices outside `length()` |
+| `unsafe_at(i)` | `(i64) u8` | Unchecked read; requires an unsafe block |
+| `unsafe_set_at(i, val)` | `(i64, u8) void` | Unchecked write; requires an unsafe block |
 | `append_char(ch)` | `(u8) void` | Append a single byte |
 | `append(other)` | `(const ref String) void` | Append another String |
 | `append_literal(s)` | `(static_ptr<u8>) void` | Append a string literal |
@@ -254,7 +256,13 @@ and yield `char`. See [Characters and Bytes](/builtin-types#characters-and-bytes
 | `append(x)` | `(f64) void`, `(f32) void`, ... | Overloads used by `${x}` interpolation for every primitive |
 | `parse_i64()` | `() Option<i64>` | Whole string as a decimal integer; `None` if malformed or out of range |
 | `parse_f64()` | `() Option<f64>` | Whole string as a decimal float; `None` if malformed |
+| `bytes()` | `() raw_ptr<u8>` (const method) | Borrow the bytes without allocating or adding a NUL terminator |
 | `c_str()` | `() raw_ptr<u8>` | NUL-terminated pointer for C, valid until the next mutation |
+
+`bytes()` works on a `const ref String`. Read only `length()` bytes and do not
+write through the pointer. The pointer remains valid until the next mutation or
+until the string is destroyed. Pass it with the length to C functions that accept
+a byte buffer.
 
 The terminator `c_str()` writes sits past the length, so the string itself is
 unchanged. `from_c_str(alloc, p)` is the other direction — it copies a
@@ -354,7 +362,8 @@ A non-owning view into a `String`. Provides read-only access to a substring with
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `length()` | `() i64` | View length |
-| `at(i)` | `(i64) u8` | Get byte at index (relative to view) |
+| `at(i)` | `(i64) u8 throws IError` | Read a byte; reject indices outside the view |
+| `unsafe_at(i)` | `(i64) u8` | Unchecked read relative to the view; requires an unsafe block |
 | `equals_literal(s)` | `(static_ptr<u8>) bool` | Compare with a string literal |
 | `find_char(ch)` | `(u8) Option<i64>` | Index of first occurrence; `None` if absent |
 | `rfind_char(ch)` | `(u8) Option<i64>` | Index of last occurrence; `None` if absent |
@@ -1254,9 +1263,10 @@ Overloaded `print` (no newline) and `println` (with newline) from `print.sun`. B
 |----------|-------------|
 | `i32`, `i64`, `u32`, `u64` | Print integer value |
 | `f64` | Print f64 |
+| `char` | Print a character as UTF-8 |
 | `bool` | Print `true` or `false` |
 | `static_ptr<u8>` | Print string literal |
-| `ref String` | Print a `String` |
+| `const ref String` | Print a borrowed `String` |
 | *(no argument, `println` only)* | Print a bare newline |
 
 Interpolated strings can be passed directly:
@@ -1269,10 +1279,15 @@ println();
 ```
 
 `eprint` and `eprintln` write to stderr instead, so a caller can tell
-diagnostics apart from the program's real output. They take a string literal or
-a `ref String`; interpolation covers everything else.
+diagnostics apart from the program's real output. They accept the same argument
+types as `print` and `println`, including numbers, characters, booleans and a
+`const ref String`. Numeric stderr output uses stack buffers without constructing
+a temporary `String`; floating-point values use the decimal formatting from
+`String.append_f64`. Calling `eprintln()` writes a bare newline.
 
 ```sun
 eprintln("could not open the file");
+eprint("error code: ");
+eprintln(42);
 eprintln(`giving up after ${attempts} tries`);
 ```

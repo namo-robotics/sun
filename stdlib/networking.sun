@@ -184,7 +184,7 @@ public module std {
     var i: i64 = 0;
     var n: i64 = text.length();
     while (i < n) {
-      var ch: i32 = _convert<i32>(text.at(i));
+      var ch: i32 = _convert<i32>(unsafe { text.unsafe_at(i); });
       if (ch >= 48 and ch <= 57) {
         // '0'..'9'
         octet_value = octet_value * 10 + (ch - 48);

@@ -659,6 +659,7 @@ void DeclarationCollector::registerClassShape(
                              proto.getTypeParameterNames(), proto.canThrow());
     method.visibility = methodVisibility(*methodDecl.function);
     method.isConst = methodDecl.isConst;
+    method.isUnsafe = methodDecl.function->getProto().isUnsafeMethod();
     method.isSynthesizedConstructor =
         methodDecl.function->isSynthesizedConstructor();
   }

@@ -4,6 +4,7 @@
 
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -58,6 +59,7 @@ class ClassDefinitionAST : public ExprAST {
       implementedInterfaces;  // Interfaces with type args
   std::vector<ClassFieldDecl> fields;
   std::vector<ClassMethodDecl> methods;
+  std::set<std::string> compiledSpecializations_;
   bool isPartial_ = false;  // True for "partial class X {}" (methods only)
   bool isPacked_ = false;   // True for "packed class X {}" (no field padding)
   std::string doc_;         // Comment written above the class
@@ -178,6 +180,19 @@ class ClassDefinitionAST : public ExprAST {
     return nullptr;
   }
 
+  /** Record a specialization supplied by the imported bundle. */
+  void addCompiledSpecialization(std::string name) {
+    compiledSpecializations_.insert(std::move(name));
+  }
+  /** Return the specializations already compiled into the bundle. */
+  const std::set<std::string>& getCompiledSpecializations() const {
+    return compiledSpecializations_;
+  }
+  /** Report whether the bundle supplies this concrete class. */
+  bool hasCompiledSpecialization(const std::string& name) const {
+    return compiledSpecializations_.count(name) != 0;
+  }
+
   // Specialization storage for generic classes
   // Called by semantic analyzer when a generic class is instantiated
   void addSpecialization(
@@ -212,7 +227,10 @@ class ClassDefinitionAST : public ExprAST {
   void setIsPacked(bool v) { isPacked_ = v; }
 
   // Allow adding methods from extensions (mutable for merging)
-  std::vector<ClassMethodDecl>& getMutableMethods() { return methods; }
+  std::vector<ClassMethodDecl>& getMutableMethods() {
+    compiledSpecializations_.clear();
+    return methods;
+  }
   std::vector<ClassFieldDecl>& getMutableFields() { return fields; }
 
   // Comment written above the class (see doc_comments.h)

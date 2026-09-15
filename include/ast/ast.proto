@@ -341,6 +341,7 @@ message ReturnExpr {
 
 message UnsafeBlock {
   BlockExpr body = 1;
+  bool expression_form = 2;
 }
 
 // =============================================================================
@@ -380,6 +381,7 @@ message Prototype {
   optional Position location = 9;    // Source span of the signature
   bool c_variadic = 11;             // C-style trailing `...`
   optional string link_name = 12;   // `as "c_symbol"` override
+  bool is_unsafe_method = 19;       // Calls require an unsafe block.
   bool is_const_method = 13;        // `const function`: `this` is immutable
   string doc = 14;                  // Comment written above the function
   // The subset of ref_captures declared `[const ref x]` (read-only borrow)
@@ -522,6 +524,8 @@ message ClassDef {
   optional Position location = 10;  // Declaration span (bundle exports only)
   repeated TypeParameter type_params = 11;  // <T, U: _Numeric>
   repeated string lifetime_params = 12;     // class Bus<'a, 'b>
+  // Concrete class shapes whose ordinary methods are present in the bundle.
+  repeated string compiled_specializations = 13;
 }
 
 // Interface field declaration

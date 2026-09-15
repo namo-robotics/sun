@@ -86,6 +86,7 @@ void SemanticAnalyzer::analyzeIndexExpr(IndexAST& arrIdx) {
         static_cast<const sun::ClassType*>(targetType.get());
     const char* opName = arrIdx.hasSlices() ? "__slice__" : "__index__";
     if (const auto* method = classType->getMethod(opName)) {
+      checkUnsafeCall(method->isUnsafe, opName, arrIdx.getLocation());
       receiverImmutable =
           checkMethodReceiver(*arrIdx.getTarget(), opName, method->isConst,
                               /*isConstructor=*/false, arrIdx.getLocation());

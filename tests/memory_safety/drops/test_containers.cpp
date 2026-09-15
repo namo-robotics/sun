@@ -477,7 +477,7 @@ TEST(MemorySafety_Drops_Containers,
       var alloc = make_heap_allocator();
       var v = Vec<String>(alloc, 4);
       v.push(String(alloc, "hello"));
-      var s: String = v.get_unchecked(0);
+      var s: String = unsafe { v.get_unchecked(0); };
       return s.length();
     }
   )"),
@@ -493,7 +493,7 @@ TEST(MemorySafety_Drops_Containers,
       var alloc = make_heap_allocator();
       var v = Vec<String>(alloc, 4);
       v.push(String(alloc, "hello"));
-      return by_value(v.get_unchecked(0));
+      return by_value(unsafe { v.get_unchecked(0); });
     }
   )"),
                std::exception);
@@ -502,7 +502,7 @@ TEST(MemorySafety_Drops_Containers,
 TEST(MemorySafety_Drops_Containers, borrowed_element_is_not_returned_by_value) {
   EXPECT_THROW(executeStringWithStdlib(R"(
     using std;
-    function grab(v: ref Vec<String>) String { return v.get_unchecked(0); }
+    function grab(v: ref Vec<String>) String { return unsafe { v.get_unchecked(0); }; }
     function main() i32 { return 0; }
   )"),
                std::exception);
@@ -515,7 +515,7 @@ TEST(MemorySafety_Drops_Containers,
   EXPECT_THROW(executeStringWithStdlib(R"(
     using std;
     function grab(v: ref Vec<String>) Option<String> {
-      return Option.Some(v.get_unchecked(0));
+      return Option.Some(unsafe { v.get_unchecked(0); });
     }
     function main() i32 { return 0; }
   )"),
@@ -529,7 +529,7 @@ TEST(MemorySafety_Drops_Containers, borrowed_element_is_not_stored_in_a_field) {
       var s: String;
       init(alloc: ref HeapAllocator) { this.s = String(alloc, ""); }
       public method set_from(v: ref Vec<String>) void {
-        this.s = v.get_unchecked(0);
+        this.s = unsafe { v.get_unchecked(0); };
       }
     }
     function main() i32 { return 0; }
@@ -546,7 +546,7 @@ TEST(MemorySafety_Drops_Containers, borrowed_scalar_copies_out_normally) {
       var alloc = make_heap_allocator();
       var v = Vec<i32>(alloc, 4);
       v.push(41);
-      var copied: i32 = v.get_unchecked(0);
+      var copied: i32 = unsafe { v.get_unchecked(0); };
       return by_value(copied) - 1;
     }
   )");
@@ -573,7 +573,7 @@ TEST(MemorySafety_Drops_Containers,
       init() { this.i = 0; }
       public method next(v: ref Vec<String>) Option<String> {
         if (this.i >= v.size()) { return Option.None; }
-        var e = v.get_unchecked(this.i);
+        var e = unsafe { v.get_unchecked(this.i); };
         this.i = this.i + 1;
         return Option.Some(e);
       }
@@ -605,7 +605,7 @@ TEST(MemorySafety_Drops_Containers,
       init() { this.i = 0; }
       public method next(b: ref Bag) Option<String> {
         if (this.i >= b.count()) { return Option.None; }
-        var e = b.items.get_unchecked(this.i);
+        var e = unsafe { b.items.get_unchecked(this.i); };
         this.i = this.i + 1;
         return Option.Some(e);
       }

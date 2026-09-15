@@ -209,6 +209,7 @@ class Formatter {
 
   void printType(const TypeAnnotation& t) {
     if (t.isFunction()) {
+      if (t.requiresUnsafe) out_ += "unsafe ";
       out_ += "function (";
       for (size_t i = 0; i < t.paramTypes.size(); ++i) {
         if (i) out_ += ", ";
@@ -439,6 +440,7 @@ class Formatter {
         } else {
           printVisibility(m.method->getVisibility());
           if (m.method->getProto().isConstMethod()) out_ += "const ";
+          if (m.method->getProto().isUnsafeMethod()) out_ += "unsafe ";
           printFunction(*m.method, /*asMethod=*/true);
           if (m.method->isExtern()) out_ += ';';
         }
@@ -500,6 +502,7 @@ class Formatter {
       } else if (!m.method->hasDefaultImpl) {
         printVisibility(m.method->visibility());
         if (m.method->isConst) out_ += "const ";
+        if (m.method->function->getProto().isUnsafeMethod()) out_ += "unsafe ";
         // Signature-only method (the parser synthesizes an empty body)
         out_ += "method ";
         printProtoSig(m.method->function->getProto());
@@ -507,6 +510,7 @@ class Formatter {
       } else {
         printVisibility(m.method->visibility());
         if (m.method->isConst) out_ += "const ";
+        if (m.method->function->getProto().isUnsafeMethod()) out_ += "unsafe ";
         printFunction(*m.method->function, /*asMethod=*/true);
       }
       lastLine_ = m.endLine;
@@ -971,7 +975,10 @@ class Formatter {
       case ASTNodeType::UNSAFE_BLOCK: {
         const auto& n = static_cast<const UnsafeBlockAST&>(e);
         out_ += "unsafe ";
-        printBlockAuto(n.getBody());
+        if (n.isExpressionForm())
+          printExpr(*n.getBody().getLastExpr());
+        else
+          printBlockAuto(n.getBody());
         break;
       }
 

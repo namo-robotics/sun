@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 project(SunCompiler LANGUAGES C CXX)
 
+include(CTest)  # Defines BUILD_TESTING before creating any test targets.
+
 # ------------------------------------------------------------------
 # General settings
 # ------------------------------------------------------------------
@@ -415,9 +417,9 @@ if(NOT SKIP_STDLIB)
     # `sun -c sun-config.json` builds stdlib.moon, the stdlib test binary,
     # tls.moon and the tls test binary, exactly as a developer running the
     # same command would get (config entrypoints resolve relative to the
-    # config's folder). An out-of-tree build directory uses explicit
-    # per-artifact commands.
-    if(CMAKE_BINARY_DIR STREQUAL ${CMAKE_SOURCE_DIR}/build)
+    # config's folder). Out-of-tree builds and builds without tests use
+    # explicit per-artifact commands.
+    if(BUILD_TESTING AND CMAKE_BINARY_DIR STREQUAL ${CMAKE_SOURCE_DIR}/build)
         add_custom_command(
             OUTPUT ${STDLIB_MOON} ${STDLIB_TEST_BIN}_test ${TLS_MOON} ${TLS_TEST_BIN}_test
             COMMAND $<TARGET_FILE:sun> -c ${SUN_BUNDLE_FLAGS}
@@ -450,19 +452,21 @@ if(NOT SKIP_STDLIB)
         )
         add_custom_target(stdlib_moon ALL DEPENDS ${STDLIB_MOON})
 
-        add_custom_command(
-            OUTPUT ${STDLIB_TEST_BIN}_test
-            COMMAND $<TARGET_FILE:sun> -c ${SUN_BUNDLE_FLAGS}
-                    --depfile ${STDLIB_TEST_BIN}_test.d
-                    -o ${STDLIB_TEST_BIN} ${STDLIB_ENTRYPOINT}
-            DEPENDS sun ${STDLIB_ENTRYPOINT}
-            DEPFILE ${STDLIB_TEST_BIN}_test.d
-            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            COMMENT "Building stdlib Sun test binary"
-            COMMAND_EXPAND_LISTS
-            VERBATIM
-        )
-        add_custom_target(stdlib_sun_tests ALL DEPENDS ${STDLIB_TEST_BIN}_test)
+        if(BUILD_TESTING)
+            add_custom_command(
+                OUTPUT ${STDLIB_TEST_BIN}_test
+                COMMAND $<TARGET_FILE:sun> -c ${SUN_BUNDLE_FLAGS}
+                        --depfile ${STDLIB_TEST_BIN}_test.d
+                        -o ${STDLIB_TEST_BIN} ${STDLIB_ENTRYPOINT}
+                DEPENDS sun ${STDLIB_ENTRYPOINT}
+                DEPFILE ${STDLIB_TEST_BIN}_test.d
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                COMMENT "Building stdlib Sun test binary"
+                COMMAND_EXPAND_LISTS
+                VERBATIM
+            )
+            add_custom_target(stdlib_sun_tests ALL DEPENDS ${STDLIB_TEST_BIN}_test)
+        endif()
 
         # --lib-path points at this build directory, which in this
         # branch need not be <source>/build.
@@ -481,21 +485,23 @@ if(NOT SKIP_STDLIB)
         )
         add_custom_target(tls_moon ALL DEPENDS ${TLS_MOON})
 
-        # A library with tests compiles to just its test binary.
-        add_custom_command(
-            OUTPUT ${TLS_TEST_BIN}_test
-            COMMAND $<TARGET_FILE:sun> -c ${SUN_BUNDLE_FLAGS}
-                    --lib-path ${CMAKE_BINARY_DIR}
-                    --depfile ${TLS_TEST_BIN}_test.d
-                    -o ${TLS_TEST_BIN} ${TLS_ENTRYPOINT}
-            DEPENDS sun ${STDLIB_MOON} ${TLS_ENTRYPOINT}
-            DEPFILE ${TLS_TEST_BIN}_test.d
-            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            COMMENT "Building tls Sun test binary"
-            COMMAND_EXPAND_LISTS
-            VERBATIM
-        )
-        add_custom_target(tls_sun_tests ALL DEPENDS ${TLS_TEST_BIN}_test)
+        if(BUILD_TESTING)
+            # A library with tests compiles to just its test binary.
+            add_custom_command(
+                OUTPUT ${TLS_TEST_BIN}_test
+                COMMAND $<TARGET_FILE:sun> -c ${SUN_BUNDLE_FLAGS}
+                        --lib-path ${CMAKE_BINARY_DIR}
+                        --depfile ${TLS_TEST_BIN}_test.d
+                        -o ${TLS_TEST_BIN} ${TLS_ENTRYPOINT}
+                DEPENDS sun ${STDLIB_MOON} ${TLS_ENTRYPOINT}
+                DEPFILE ${TLS_TEST_BIN}_test.d
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                COMMENT "Building tls Sun test binary"
+                COMMAND_EXPAND_LISTS
+                VERBATIM
+            )
+            add_custom_target(tls_sun_tests ALL DEPENDS ${TLS_TEST_BIN}_test)
+        endif()
     endif()
 
     # Cross-compiled stdlib bundles live in per-target directories under the
@@ -530,10 +536,6 @@ endif()
 # ------------------------------------------------------------------
 # Testing (optional, can be disabled)
 # ------------------------------------------------------------------
-include(CTest)  # Enables add_test and creates BUILD_TESTING option
-option(BUILD_TESTING "Build the tests" ON)
-
 if(BUILD_TESTING)
-    enable_testing()
-    add_subdirectory(tests)  # We'll create this folder next
+    add_subdirectory(tests)
 endif()

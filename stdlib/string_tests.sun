@@ -54,8 +54,8 @@ public module std {
       var allocator = make_heap_allocator();
       var buf = ContiguousBuffer<u8>(allocator, 10);
       // Write "Hi" (72, 105) to the buffer
-      buf.set_unchecked(0, 72);
-      buf.set_unchecked(1, 105);
+      unsafe { buf.set_unchecked(0, 72); };
+      unsafe { buf.set_unchecked(1, 105); };
       var s = String(allocator, buf, 2);
       std.test.assert_eq(s.length(), 2);
       var h: i64 = s.at(0);
@@ -82,6 +82,73 @@ public module std {
       s.set_at(0, 74);
       var ch: i64 = s.at(0);
       std.test.assert_eq(ch, 74);
+    }
+
+    test_function checked_access_rejects_indices_outside_length() {
+      var alloc = make_heap_allocator();
+      var s = String(alloc, "abc");
+      s.reserve(32);
+      var indices: array<i64, 4> = [-1i64, 3i64, 4i64, 9223372036854775807i64];
+      for (var j: i64 = 0; j < indices.dim(0); j = j + 1) {
+        var caught_read = false;
+        try {
+          var byte = s.at(indices[j]);
+        } catch (e: IError) {
+          caught_read = true;
+          std.test.assert_eq(e.code(), 3);
+        }
+        std.test.assert(caught_read, "invalid read must throw");
+        var caught_write = false;
+        try {
+          s.set_at(indices[j], b'X');
+        } catch (e: IError) {
+          caught_write = true;
+          std.test.assert_eq(e.code(), 3);
+        }
+        std.test.assert(caught_write, "invalid write must throw");
+      }
+      std.test.assert(s.equals_literal("abc"));
+    }
+
+    test_function empty_string_has_no_valid_index() {
+      var alloc = make_heap_allocator();
+      var s = String(alloc, "");
+      var caught = false;
+      try {
+        var byte = s.at(0);
+      } catch (e: IError) {
+        caught = true;
+      }
+      std.test.assert(caught);
+      caught = false;
+      try {
+        s.set_at(0, b'X');
+      } catch (e: IError) {
+        caught = true;
+      }
+      std.test.assert(caught);
+    }
+
+    test_function unsafe_access_with_valid_indices() {
+      var alloc = make_heap_allocator();
+      var s = String(alloc, "abc");
+      unsafe { s.unsafe_set_at(2, b'Z'); };
+      std.test.assert_eq(unsafe { s.unsafe_at(2); }, b'Z');
+      std.test.assert(s.equals_literal("abZ"));
+    }
+
+    test_function view_access_checks_its_own_length() {
+      var alloc = make_heap_allocator();
+      var s = String(alloc, "abcd");
+      var view = s[1:3];
+      std.test.assert_eq(view.at(0), b'b');
+      var caught = false;
+      try {
+        var byte = view.at(2);
+      } catch (e: IError) {
+        caught = true;
+      }
+      std.test.assert(caught);
     }
 
     test_function equals_literal_true() {
@@ -444,9 +511,9 @@ public module std {
       var csv = String(alloc, "a,b,,c");
       var parts = csv.split(alloc, 44);  // ','
       std.test.assert_eq(parts.size(), 4);
-      std.test.assert(parts.get_unchecked(0).equals_literal("a"), "first piece");
-      std.test.assert(parts.get_unchecked(2).is_empty(), "empty piece kept");
-      std.test.assert(parts.get_unchecked(3).equals_literal("c"), "last piece");
+      std.test.assert(unsafe { parts.get_unchecked(0); }.equals_literal("a"), "first piece");
+      std.test.assert(unsafe { parts.get_unchecked(2); }.is_empty(), "empty piece kept");
+      std.test.assert(unsafe { parts.get_unchecked(3); }.equals_literal("c"), "last piece");
 
       var plain = String(alloc, "no separators here");
       var whole = plain.split(alloc, 44);
@@ -455,13 +522,13 @@ public module std {
       var text = String(alloc, "k1=v1;;k2=v2;");
       var fields = text.split(alloc, ";;");
       std.test.assert_eq(fields.size(), 2);
-      std.test.assert(fields.get_unchecked(0).equals_literal("k1=v1"), "first field");
-      std.test.assert(fields.get_unchecked(1).equals_literal("k2=v2;"), "second field");
+      std.test.assert(unsafe { fields.get_unchecked(0); }.equals_literal("k1=v1"), "first field");
+      std.test.assert(unsafe { fields.get_unchecked(1); }.equals_literal("k2=v2;"), "second field");
 
       var untouched = String(alloc, "abc");
       var one = untouched.split(alloc, "");
       std.test.assert_eq(one.size(), 1);
-      std.test.assert(one.get_unchecked(0).equals_literal("abc"), "empty separator");
+      std.test.assert(unsafe { one.get_unchecked(0); }.equals_literal("abc"), "empty separator");
     }
 
     test_function split_nonempty_skips_empty_pieces() {
@@ -469,8 +536,8 @@ public module std {
       var csv = String(alloc, ",a,,b,");
       var parts = csv.split_nonempty(alloc, 44);  // ','
       std.test.assert_eq(parts.size(), 2);
-      std.test.assert(parts.get_unchecked(0).equals_literal("a"), "first piece");
-      std.test.assert(parts.get_unchecked(1).equals_literal("b"), "second piece");
+      std.test.assert(unsafe { parts.get_unchecked(0); }.equals_literal("a"), "first piece");
+      std.test.assert(unsafe { parts.get_unchecked(1); }.equals_literal("b"), "second piece");
 
       var seps = String(alloc, ",,,");
       var none = seps.split_nonempty(alloc, 44);
@@ -479,13 +546,13 @@ public module std {
       var text = String(alloc, ";;k1=v1;;;;k2=v2;;");
       var fields = text.split_nonempty(alloc, ";;");
       std.test.assert_eq(fields.size(), 2);
-      std.test.assert(fields.get_unchecked(0).equals_literal("k1=v1"), "first field");
-      std.test.assert(fields.get_unchecked(1).equals_literal("k2=v2"), "second field");
+      std.test.assert(unsafe { fields.get_unchecked(0); }.equals_literal("k1=v1"), "first field");
+      std.test.assert(unsafe { fields.get_unchecked(1); }.equals_literal("k2=v2"), "second field");
 
       var abc = String(alloc, "abc");
       var one = abc.split_nonempty(alloc, "");
       std.test.assert_eq(one.size(), 1);
-      std.test.assert(one.get_unchecked(0).equals_literal("abc"), "empty separator");
+      std.test.assert(unsafe { one.get_unchecked(0); }.equals_literal("abc"), "empty separator");
 
       var blank = String(alloc, "");
       var nothing = blank.split_nonempty(alloc, "");
@@ -502,7 +569,7 @@ public module std {
       // An empty separator cuts nothing: the whole string is one piece
       var whole = s.split(alloc, "");
       std.test.assert_eq(whole.size(), 1);
-      std.test.assert(whole.get_unchecked(0).equals_literal("abc"), "one whole piece");
+      std.test.assert(unsafe { whole.get_unchecked(0); }.equals_literal("abc"), "one whole piece");
       std.test.assert_eq(s.split_nonempty(alloc, "").size(), 1);
 
       // An empty subject yields one empty piece, or none when empty pieces
@@ -519,14 +586,14 @@ public module std {
       var s = String(alloc, "  one\ttwo  \n three\r\n");
       var words = s.split_whitespace(alloc);
       std.test.assert_eq(words.size(), 3);
-      std.test.assert(words.get_unchecked(0).equals_literal("one"), "first word");
-      std.test.assert(words.get_unchecked(1).equals_literal("two"), "second word");
-      std.test.assert(words.get_unchecked(2).equals_literal("three"), "third word");
+      std.test.assert(unsafe { words.get_unchecked(0); }.equals_literal("one"), "first word");
+      std.test.assert(unsafe { words.get_unchecked(1); }.equals_literal("two"), "second word");
+      std.test.assert(unsafe { words.get_unchecked(2); }.equals_literal("three"), "third word");
 
       var solid = String(alloc, "word");
       var solo = solid.split_whitespace(alloc);
       std.test.assert_eq(solo.size(), 1);
-      std.test.assert(solo.get_unchecked(0).equals_literal("word"), "single word");
+      std.test.assert(unsafe { solo.get_unchecked(0); }.equals_literal("word"), "single word");
 
       var spaces = String(alloc, " \t\n ");
       var empty = spaces.split_whitespace(alloc);

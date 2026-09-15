@@ -391,9 +391,19 @@ function main() i64 {
     return sum;
 }
 )";
+  // Resolve every location against the same analyzed document.
+  auto analysis = analyze(source, true);
+  ASSERT_NE(analysis.program.ast, nullptr);
+  ASSERT_FALSE(analysis.program.error.has_value())
+      << analysis.program.error->what();
+  const auto definition = [&](const std::string& needle) {
+    return sun::lsp::computeDefinition(
+        *analysis.program.ast, kPath, source,
+        static_cast<int>(offsetOf(source, needle)));
+  };
   auto expectStdlib = [&](const std::string& needle, const std::string& file,
                           const std::string& name) {
-    auto def = definitionAt(source, needle, true);
+    auto def = definition(needle);
     ASSERT_TRUE(def) << "no definition for " << needle;
     EXPECT_TRUE(def->filePath.size() > file.size() &&
                 def->filePath.compare(def->filePath.size() - file.size(),
@@ -408,7 +418,7 @@ function main() i64 {
                "make_heap_allocator");
   expectStdlib("HeapAllocator)", "stdlib/allocator.sun", "HeapAllocator");
   // The loop variable is declared in the document itself
-  auto item = definitionAt(source, "item;", true);
+  auto item = definition("item;");
   ASSERT_TRUE(item);
   EXPECT_EQ(item->filePath, kPath);
   EXPECT_EQ(item->range.offset,

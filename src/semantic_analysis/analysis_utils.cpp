@@ -243,6 +243,16 @@ void SemanticAnalyzer::checkArgumentPlaces(
   }
 }
 
+void SemanticAnalyzer::checkUnsafeCall(bool requiresUnsafe,
+                                       const std::string& name,
+                                       const Position& loc) const {
+  if (!requiresUnsafe || ctx_.isInUnsafeBlock()) return;
+  logAndThrowError(
+      "Calling unsafe method '" + name +
+          "' requires an unsafe block or expression. Use `unsafe ...` or `unsafe { ... }`.",
+      loc);
+}
+
 bool SemanticAnalyzer::checkMethodReceiver(const ExprAST& receiver,
                                            const std::string& name,
                                            bool methodIsConst,

@@ -49,13 +49,13 @@ public module tls {
     }
     var i: i64 = idx + 15;
     var n: i64 = headers_lower.length();
-    while (i < n and headers_lower.at(i) == b' ') {
+    while (i < n and unsafe { headers_lower.unsafe_at(i); } == b' ') {
       i = i + 1;
     }
     var val: i64 = 0;
     var saw_digit: bool = false;
     while (i < n) {
-      var c: u8 = headers_lower.at(i);
+      var c: u8 = unsafe { headers_lower.unsafe_at(i); };
       if (c < 48 or c > 57) {
         break;
       }
@@ -78,7 +78,7 @@ public module tls {
       var size: i64 = 0;
       var saw_digit: bool = false;
       while (i < n) {
-        var c: u8 = raw.at(i);
+        var c: u8 = unsafe { raw.unsafe_at(i); };
         var digit: i64 = -1;
         if (c >= b'0' and c <= b'9') {
           digit = _convert<i64>(c - b'0');
@@ -100,7 +100,7 @@ public module tls {
         throw Error(-1, "malformed chunked body");
       }
       // Skip any chunk extension up to the end of the size line
-      while (i < n and raw.at(i) != b'\n') {
+      while (i < n and unsafe { raw.unsafe_at(i); } != b'\n') {
         i = i + 1;
       }
       i = i + 1;
@@ -112,7 +112,7 @@ public module tls {
       }
       var end: i64 = i + size;
       while (i < end) {
-        out.append_char(raw.at(i));
+        out.append_char(unsafe { raw.unsafe_at(i); });
         i = i + 1;
       }
       i = i + 2;  // CRLF after the chunk data
@@ -132,14 +132,14 @@ public module tls {
 
     // Status code: the digits after the first space of "HTTP/1.1 200 OK"
     var i: i64 = 0;
-    while (i < n and raw.at(i) != b' ') {
+    while (i < n and unsafe { raw.unsafe_at(i); } != b' ') {
       i = i + 1;
     }
     i = i + 1;
     var status: i64 = 0;
     var saw_digit: bool = false;
     while (i < n) {
-      var c: u8 = raw.at(i);
+      var c: u8 = unsafe { raw.unsafe_at(i); };
       if (c < 48 or c > 57) {
         break;
       }
@@ -153,12 +153,12 @@ public module tls {
     resp.status = _convert<i32>(status);
 
     // Header block: after the status line, up to the CRLFCRLF terminator
-    while (i < n and raw.at(i) != b'\n') {
+    while (i < n and unsafe { raw.unsafe_at(i); } != b'\n') {
       i = i + 1;
     }
     i = i + 1;
     while (i < header_end) {
-      resp.headers.append_char(raw.at(i));
+      resp.headers.append_char(unsafe { raw.unsafe_at(i); });
       i = i + 1;
     }
 
@@ -177,7 +177,7 @@ public module tls {
     }
     var j: i64 = body_start;
     while (j < body_end) {
-      resp.body.append_char(raw.at(j));
+      resp.body.append_char(unsafe { raw.unsafe_at(j); });
       j = j + 1;
     }
   }
@@ -255,7 +255,7 @@ public module tls {
           done = true;
         } else {
           for (var i: i64 = 0; i < n; i = i + 1) {
-            raw.append_char(chunk.get_unchecked(i));
+            raw.append_char(unsafe { chunk.get_unchecked(i); });
           }
         }
       }

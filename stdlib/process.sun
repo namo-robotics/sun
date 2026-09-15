@@ -203,13 +203,13 @@ public module std {
     // Create a pipe and return its two ends. Throws if the system refuses.
     public function open_pipe(alloc: ref HeapAllocator) Pipe throws IError {
       var fds: ContiguousBuffer<i32> = ContiguousBuffer<i32>(alloc, 2);
-      fds.set_unchecked(0, 0);
-      fds.set_unchecked(1, 0);
+      unsafe { fds.set_unchecked(0, 0); };
+      unsafe { fds.set_unchecked(1, 0); };
       if (unsafe { c_pipe(_ptr_as_raw<i32>(fds.raw_data())); } != 0) {
         throw Error(errno(), "failed to create pipe");
       }
-      var read_end: i32 = fds.get_unchecked(0);
-      var write_end: i32 = fds.get_unchecked(1);
+      var read_end: i32 = unsafe { fds.get_unchecked(0); };
+      var write_end: i32 = unsafe { fds.get_unchecked(1); };
       return Pipe(read_end, write_end);
     }
 
@@ -302,10 +302,10 @@ public module std {
         var argv: ContiguousBuffer<raw_ptr<u8>> = ContiguousBuffer<raw_ptr<u8>>(this.alloc, count + 1);
         var base: raw_ptr<u8> = this.blob.c_str();
         for (var i: i64 = 0; i < count; i = i + 1) {
-          var at: i64 = this.offsets.get_unchecked(i);
-          argv.set_unchecked(i, unsafe { _ptr_offset(base, at); });
+          var at: i64 = unsafe { this.offsets.get_unchecked(i); };
+          unsafe { argv.set_unchecked(i, unsafe { _ptr_offset(base, at); }); };
         }
-        argv.set_unchecked(count, null);
+        unsafe { argv.set_unchecked(count, null); };
         return argv;
       }
 
@@ -578,7 +578,7 @@ public module std {
                 out_open = false;
               } else {
                 for (var i: i64 = 0; i < n; i = i + 1) {
-                  out.append_char(buf.get_unchecked(i));
+                  out.append_char(unsafe { buf.get_unchecked(i); });
                 }
               }
             }
@@ -599,7 +599,7 @@ public module std {
                 err_open = false;
               } else {
                 for (var i: i64 = 0; i < n; i = i + 1) {
-                  err.append_char(buf.get_unchecked(i));
+                  err.append_char(unsafe { buf.get_unchecked(i); });
                 }
               }
             }

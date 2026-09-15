@@ -11,6 +11,8 @@
 
 #include <fstream>
 #include <iomanip>
+#include <map>
+#include <set>
 #include <sstream>
 
 namespace sun {
@@ -70,6 +72,36 @@ void MoonWriter::addModule(llvm::Module& module,
   }
 
   data.metadata = metadata;
+
+  // Only advertise shapes whose ordinary method implementations are present.
+  std::set<std::string> definitions;
+  for (const auto& function : module) {
+    if (!function.isDeclaration()) definitions.insert(function.getName().str());
+  }
+  for (auto& cls : *data.metadata.mutable_classes()) {
+    std::map<std::string, size_t> required;
+    for (const auto& method : cls.methods()) {
+      const auto& proto = method.function().proto();
+      if (proto.type_params().empty() && !proto.has_variadic_param_name())
+        ++required[proto.name()];
+    }
+    std::set<std::string> available;
+    for (const auto& name : cls.compiled_specializations()) {
+      bool complete = !required.empty();
+      for (const auto& [method, count] : required) {
+        const std::string prefix = name + "_" + method;
+        size_t found = definitions.count(prefix);
+        const std::string overloadPrefix = prefix + "$";
+        for (auto it = definitions.lower_bound(overloadPrefix);
+             it != definitions.end() && it->starts_with(overloadPrefix); ++it)
+          ++found;
+        if (found < count) complete = false;
+      }
+      if (complete) available.insert(name);
+    }
+    cls.clear_compiled_specializations();
+    for (const auto& name : available) cls.add_compiled_specializations(name);
+  }
 
   // Stamp the target the bitcode was compiled for; the linker refuses to mix
   // targets, since struct layouts and ABI decisions are baked into bitcode.

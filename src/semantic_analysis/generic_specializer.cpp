@@ -15,8 +15,8 @@
 #include "support/error.h"
 
 using sun::unwrapRef;
-using sun::generics::mentionsTypeParameter;
 using sun::access::methodVisibility;
+using sun::generics::mentionsTypeParameter;
 using sun::names::getFunctionSignature;
 using sun::rules::isAssignableTo;
 
@@ -128,6 +128,10 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
   // Only concrete specializations may have their bodies checked and emitted.
   const bool abstractShape =
       std::any_of(typeArgs.begin(), typeArgs.end(), mentionsTypeParameter);
+
+  const bool compiledShape =
+      !abstractShape && genericClassInfo->AST->isPrecompiled() &&
+      genericClassInfo->AST->hasCompiledSpecialization(mangledName);
 
   // Check if already instantiated (both class type AND AST specialization).
   // An abstract shape records no AST, so having the type is all there is.
@@ -275,7 +279,8 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
   for (const auto& field : genericClassInfo->AST->getFields()) {
     fieldsClone.push_back(
         {field.name, field.type, field.location, field.visibility, field.doc,
-         field.initializer ? field.initializer->clone() : nullptr});
+         field.initializer && !compiledShape ? field.initializer->clone()
+                                             : nullptr});
   }
 
   // Clone methods for specialized AST - each specialization gets its own
@@ -283,8 +288,22 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
   std::vector<ClassMethodDecl> methodsClone;
   for (const auto& methodDecl : genericClassInfo->AST->getMethods()) {
     ClassMethodDecl methodClone;
-    auto funcClone = methodDecl.function->clone();
-    methodClone.function.reset(static_cast<FunctionAST*>(funcClone.release()));
+    if (compiledShape && !methodDecl.function->getProto().isTemplate()) {
+      // Preserve the callable shape without copying or analyzing its body.
+      const auto& original = *methodDecl.function;
+      methodClone.function =
+          std::make_unique<FunctionAST>(original.getProto().clone(), nullptr);
+      methodClone.function->setPrecompiled(true);
+      methodClone.function->setVisibility(original.getVisibility());
+      methodClone.function->setLocation(original.getLocation());
+      methodClone.function->inheritSourceFile(original.getSourceFileId());
+      methodClone.function->setSynthesizedConstructor(
+          original.isSynthesizedConstructor());
+    } else {
+      auto funcClone = methodDecl.function->clone();
+      methodClone.function.reset(
+          static_cast<FunctionAST*>(funcClone.release()));
+    }
     methodClone.isConstructor = methodDecl.isConstructor;
     methodClone.isConst = methodDecl.isConst;
     methodsClone.push_back(std::move(methodClone));
@@ -309,6 +328,7 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
           proto.getTypeParameterNames(), proto.canThrow());
       method.visibility = methodVisibility(*methodClone.function);
       method.isConst = methodClone.isConst;
+      method.isUnsafe = methodClone.function->getProto().isUnsafeMethod();
       method.isSynthesizedConstructor =
           methodClone.function->isSynthesizedConstructor();
     }
@@ -347,12 +367,11 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
     }
   }
 
-  // For precompiled non-generic classes, skip PASS 2 - method bodies are
-  // already compiled in the linked bitcode BUT for generic classes (even
-  // precompiled), we need PASS 2 because method bodies contain T that needs
-  // substitution
+  // Compiled shapes need local signatures, but their bodies and constructor
+  // checks were completed when the bundle was built.
   bool needsPass2 = !genericClassInfo->typeParameters.empty();
-  if (genericClassInfo->AST->isPrecompiled() && !needsPass2) {
+  if (compiledShape ||
+      (genericClassInfo->AST->isPrecompiled() && !needsPass2)) {
     // Create specialized AST even for precompiled classes
     auto specializedAST = std::make_shared<ClassDefinitionAST>(
         mangledName, std::vector<TypeParameter>{}, std::move(interfacesClone),
@@ -1184,6 +1203,7 @@ GenericSpecializer::instantiateGenericInterface(
           proto.getTypeParameterNames());
       method.visibility = methodVisibility(*methodDecl.function);
       method.isConst = methodDecl.isConst;
+      method.isUnsafe = methodDecl.function->getProto().isUnsafeMethod();
     }
 
     // Pop the scope

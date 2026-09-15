@@ -1351,3 +1351,49 @@ TEST(Tooling_Serialization, EnumUnderlyingTypeRoundtrip) {
   EXPECT_EQ(enumDef->toString(),
             "enum Wide u64 { Max = 18446744073709551615 }");
 }
+
+TEST(Tooling_Serialization, UnsafeMethodRoundtrip) {
+  PrototypeAST original("unsafe_read", {}, TypeAnnotation("i32"));
+  original.setUnsafeMethod(true);
+  original.setConstMethod(true);
+  ASTSerializer serializer;
+  ASTDeserializer deserializer;
+  auto restored = deserializer.deserializePrototype(
+      serializer.serializePrototype(original));
+  EXPECT_TRUE(restored->isUnsafeMethod());
+  EXPECT_TRUE(restored->isConstMethod());
+}
+
+TEST(Tooling_Serialization, UnsafeCallableTypeRoundtrip) {
+  TypeAnnotation original("lambda");
+  original.returnType = std::make_unique<TypeAnnotation>("i32");
+  original.requiresUnsafe = true;
+  original.refEnv = true;
+  ASTSerializer serializer;
+  ASTDeserializer deserializer;
+  PrototypeAST prototype("consume", {{"callback", original}},
+                         TypeAnnotation("void"));
+  auto restored = deserializer.deserializePrototype(
+      serializer.serializePrototype(prototype));
+  EXPECT_TRUE(restored->getArgs()[0].second.requiresUnsafe);
+  EXPECT_TRUE(restored->getArgs()[0].second.refEnv);
+}
+
+TEST(Tooling_Serialization, UnsafeExpressionFormRoundtrip) {
+  for (bool expressionForm : {false, true}) {
+    auto body = std::make_unique<BlockExprAST>();
+    body->setKind(BlockKind::Unsafe);
+    body->addExpression(std::make_unique<NumberExprAST>(int64_t{42}));
+    UnsafeBlockAST original(std::move(body), expressionForm);
+    ASTSerializer serializer;
+    ASTDeserializer deserializer;
+    auto restored = deserializer.deserializeFromString(
+        serializer.serializeToString(original));
+    auto* unsafe = dynamic_cast<UnsafeBlockAST*>(restored.get());
+    ASSERT_NE(unsafe, nullptr);
+    EXPECT_EQ(unsafe->isExpressionForm(), expressionForm);
+    EXPECT_TRUE(unsafe->getBody().producesValue());
+    ASSERT_EQ(unsafe->getBody().getBody().size(), 1u);
+    EXPECT_EQ(unsafe->getBody().getLastExpr()->toString(), "42");
+  }
+}

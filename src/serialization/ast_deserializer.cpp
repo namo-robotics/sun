@@ -117,6 +117,7 @@ TypeAnnotation ASTDeserializer::deserializeTypeAnnotation(
   }
 
   result.canError = type.can_error();
+  result.requiresUnsafe = type.requires_unsafe();
   result.constRef = type.const_ref();
   result.refEnv = type.ref_env();
   result.lifetimeName = type.lifetime_name();
@@ -214,6 +215,7 @@ std::unique_ptr<PrototypeAST> ASTDeserializer::deserializePrototype(
 
   result->setCVariadic(proto.c_variadic());
   result->setConstMethod(proto.is_const_method());
+  result->setUnsafeMethod(proto.is_unsafe_method());
   if (proto.has_link_name()) {
     result->setLinkName(proto.link_name());
   }
@@ -712,7 +714,8 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeReturn(
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeUnsafeBlock(
     const ast::UnsafeBlock& proto) const {
   auto body = deserializeBlockExpr(proto.body());
-  return std::make_unique<UnsafeBlockAST>(std::move(body));
+  return std::make_unique<UnsafeBlockAST>(std::move(body),
+                                          proto.expression_form());
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeFunction(
@@ -893,6 +896,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
       proto.name(), toTypeParameters(proto), std::move(interfaces),
       std::move(fields), std::move(methods));
   classDef->setLifetimeParameters(toLifetimeParameters(proto));
+  for (const auto& name : proto.compiled_specializations()) {
+    classDef->addCompiledSpecialization(name);
+  }
   classDef->setIsPartial(proto.is_partial());
   classDef->setIsPacked(proto.is_packed());
   classDef->setVisibility(fromProto(proto.visibility()));

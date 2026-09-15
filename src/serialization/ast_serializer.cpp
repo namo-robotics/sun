@@ -67,6 +67,7 @@ ast::TypeAnnotation ASTSerializer::serializeTypeAnnotation(
   }
 
   proto.set_can_error(type.canError);
+  proto.set_requires_unsafe(type.requiresUnsafe);
   proto.set_const_ref(type.constRef);
   proto.set_ref_env(type.refEnv);
   proto.set_lifetime_name(type.lifetimeName);
@@ -187,6 +188,7 @@ ast::Prototype ASTSerializer::serializePrototype(
 
   result.set_c_variadic(proto.isCVariadic());
   result.set_is_const_method(proto.isConstMethod());
+  result.set_is_unsafe_method(proto.isUnsafeMethod());
   if (proto.hasLinkName()) {
     result.set_link_name(proto.getLinkName());
   }
@@ -671,6 +673,7 @@ void ASTSerializer::serializeReturn(const ReturnExprAST& expr,
 void ASTSerializer::serializeUnsafeBlock(const UnsafeBlockAST& expr,
                                          ast::ASTNode* node) const {
   auto* unsafe = node->mutable_unsafe_block();
+  unsafe->set_expression_form(expr.isExpressionForm());
   serializeBlockInto(expr.getBody(), unsafe->mutable_body());
 }
 
@@ -803,6 +806,9 @@ void ASTSerializer::serializeClassDef(const ClassDefinitionAST& expr,
   node->mutable_class_def()->set_source_file_id(expr.getSourceFileId());
   auto* cls = node->mutable_class_def();
   cls->set_name(expr.getName());
+  for (const auto& name : expr.getCompiledSpecializations()) {
+    cls->add_compiled_specializations(name);
+  }
 
   for (const auto& tp : expr.getTypeParameters()) {
     auto* out = cls->add_type_params();

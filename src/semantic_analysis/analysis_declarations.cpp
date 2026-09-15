@@ -400,6 +400,7 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
         methodDecl.hasDefaultImpl, proto.getTypeParameterNames());
     method.visibility = sun::access::methodVisibility(*methodDecl.function);
     method.isConst = methodDecl.isConst;
+    method.isUnsafe = methodDecl.function->getProto().isUnsafeMethod();
   }
 
   // Enter Interface scope to contain method scopes

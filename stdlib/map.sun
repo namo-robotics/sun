@@ -61,7 +61,7 @@ public module std {
 
     var len: i64 = s.length();
     for (var i: i64 = 0; i < len; i = i + 1) {
-      var byte: i64 = s.at(i);
+      var byte: i64 = unsafe { s.unsafe_at(i); };
       hash = hash + byte * multiplier;
       multiplier = multiplier * base;
     }
@@ -152,7 +152,7 @@ public module std {
     // the ContiguousBuffer/Unique field recursion)
     deinit() {
       for (var i: i64 = 0; i < this.capacity_; i = i + 1) {
-        if (this.states.get_unchecked(i) == 1) {
+        if (unsafe { this.states.get_unchecked(i); } == 1) {
           this.drop_key(i);
           this.drop_value(i);
         }
@@ -188,16 +188,16 @@ public module std {
       // Linear probing
       for (var i: i64 = 0; i < this.capacity_; i = i + 1) {
         var probe: i64 = compute_mod(start + i, this.capacity_);
-        var state: i8 = this.states.get(probe);
+        var state: i8 = unsafe { this.states.get_unchecked(probe); };
 
         if (state == 0) {
           // EMPTY slot - insert here (or at first deleted if found)
           if (first_deleted >= 0) {
             probe = first_deleted;
           }
-          this.keys.set(probe, key);
-          this.values.set(probe, value);
-          this.states.set(probe, 1);
+          unsafe { this.keys.set_unchecked(probe, key); };
+          unsafe { this.values.set_unchecked(probe, value); };
+          unsafe { this.states.set_unchecked(probe, 1); };
           this.size_ = this.size_ + 1;
           return;
         }
@@ -216,7 +216,7 @@ public module std {
             // Update value (dropping the old one); the incoming key is
             // dropped since the bucket keeps its own
             this.drop_value(probe);
-            this.values.set(probe, value);
+            unsafe { this.values.set_unchecked(probe, value); };
             unsafe { _deinit<K>(_address_of<K>(key)); };
             return;
           }
@@ -226,9 +226,9 @@ public module std {
       // Should not reach here if load factor is maintained
       // But if we do, use first deleted slot
       if (first_deleted >= 0) {
-        this.keys.set(first_deleted, key);
-        this.values.set(first_deleted, value);
-        this.states.set(first_deleted, 1);
+        unsafe { this.keys.set_unchecked(first_deleted, key); };
+        unsafe { this.values.set_unchecked(first_deleted, value); };
+        unsafe { this.states.set_unchecked(first_deleted, 1); };
         this.size_ = this.size_ + 1;
       }
     }
@@ -241,7 +241,7 @@ public module std {
       if (probe < 0) {
         throw NotFoundError();
       }
-      return this.values.get_unchecked(probe);
+      return unsafe { this.values.get_unchecked(probe); };
     }
 
     // Borrow the value stored under key; None if not present
@@ -250,7 +250,7 @@ public module std {
       if (probe < 0) {
         return Option.None;
       }
-      return Option.Some(this.values.get_unchecked(probe));
+      return Option.Some(unsafe { this.values.get_unchecked(probe); });
     }
 
     // Borrow the value stored under key, or the caller's default when absent
@@ -259,7 +259,7 @@ public module std {
       if (probe < 0) {
         return default_value;
       }
-      return this.values.get_unchecked(probe);
+      return unsafe { this.values.get_unchecked(probe); };
     }
 
     // Remove key and return its value, throws IError if not found
@@ -269,9 +269,9 @@ public module std {
         throw NotFoundError();
       }
 
-      var value: V = this.values.take_unchecked(probe);
+      var value: V = unsafe { this.values.take_unchecked(probe); };
       this.drop_key(probe);  // Value moved out; the key is dropped here
-      this.states.set(probe, 2);  // Mark as DELETED
+      unsafe { this.states.set_unchecked(probe, 2); };  // Mark as DELETED
       this.size_ = this.size_ - 1;
       return value;
     }
@@ -299,11 +299,11 @@ public module std {
     // Clear all entries. Live keys/values are dropped.
     public method clear() void {
       for (var i: i64 = 0; i < this.capacity_; i = i + 1) {
-        if (this.states.get_unchecked(i) == 1) {
+        if (unsafe { this.states.get_unchecked(i); } == 1) {
           this.drop_key(i);
           this.drop_value(i);
         }
-        this.states.set(i, 0);
+        unsafe { this.states.set_unchecked(i, 0); };
       }
       this.size_ = 0;
     }
@@ -319,7 +319,7 @@ public module std {
 
     // True if bucket i holds a live entry
     public const method is_bucket_occupied(i: i64) bool {
-      return this.states.get_unchecked(i) == 1;
+      return unsafe { this.states.get_unchecked(i); } == 1;
     }
 
     // Borrow the key stored in bucket i (must be occupied)
@@ -347,7 +347,7 @@ public module std {
 
       for (var i: i64 = 0; i < this.capacity_; i = i + 1) {
         var probe: i64 = compute_mod(start + i, this.capacity_);
-        var state: i8 = this.states.get(probe);
+        var state: i8 = unsafe { this.states.get_unchecked(probe); };
 
         if (state == 0) {
           // EMPTY - key not in map
@@ -386,11 +386,11 @@ public module std {
       this.size_ = 0;
 
       for (var i: i64 = 0; i < old_capacity; i = i + 1) {
-        var state: i8 = old_states.get(i);
+        var state: i8 = unsafe { old_states.get_unchecked(i); };
         if (state == 1) {
           // OCCUPIED - rehash into new table
-          var key: K = old_keys.take_unchecked(i);
-          var value: V = old_values.take_unchecked(i);
+          var key: K = unsafe { old_keys.take_unchecked(i); };
+          var value: V = unsafe { old_values.take_unchecked(i); };
           this.insert(key, value);
         }
       }
@@ -421,11 +421,11 @@ public module std {
     public method next(map: ref Map<K, V>) Option<ref V> {
       var capacity: i64 = map.capacity();
       while (this.current < capacity) {
-        var state: i8 = map.states.get_unchecked(this.current);
+        var state: i8 = unsafe { map.states.get_unchecked(this.current); };
         if (state == 1) {
           var index: i64 = this.current;
           this.current = this.current + 1;
-          return Option.Some(map.values.get_unchecked(index));
+          return Option.Some(unsafe { map.values.get_unchecked(index); });
         }
         this.current = this.current + 1;
       }
