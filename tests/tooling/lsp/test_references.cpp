@@ -495,11 +495,21 @@ function main() i64 {
     return sum;
 }
 )";
+  // Reuse the analyzed document for every reference query.
+  auto analysis = analyze(source, true);
+  ASSERT_NE(analysis.program.ast, nullptr);
+  ASSERT_FALSE(analysis.program.error.has_value())
+      << analysis.program.error->what();
+  const auto references = [&](const std::string& needle) {
+    return sun::lsp::computeReferences(
+        *analysis.program.ast, kPath, source,
+        static_cast<int>(offsetOf(source, needle)), true);
+  };
   // Uses in the document, plus the declaration in the library's source
   auto expectStdlib = [&](const std::string& needle,
                           const std::vector<ExpectedName>& expected,
                           const std::string& file, const std::string& name) {
-    auto results = referencesAt(source, needle, true, 0, true);
+    auto results = references(needle);
     std::vector<sun::lsp::SymbolLocation> library;
     std::vector<int> got;
     for (const auto& result : results) {
@@ -527,7 +537,7 @@ function main() i64 {
   expectStdlib("push(1)", {{"push(1)"}, {"push(2)"}}, "stdlib/vec.sun", "push");
   expectStdlib("Vec<i64>(", {{"Vec<i64>("}}, "stdlib/vec.sun", "Vec");
   // The loop variable is declared in the document itself
-  auto item = referencesAt(source, "item;", true, 0, true);
+  auto item = references("item;");
   ASSERT_EQ(item.size(), 2u) << describe(source, item);
   EXPECT_EQ(item[0].filePath, kPath);
   EXPECT_EQ(item[0].range.offset,

@@ -467,14 +467,24 @@ function main() i32 {
     return take(allocator);
 }
 )";
-  auto annotation = fullHoverAt(source, "HeapAllocator) i32", true);
+  // Reuse the analyzed document for every hover location.
+  auto analysis = analyze(source, true);
+  ASSERT_NE(analysis.program.ast, nullptr);
+  ASSERT_FALSE(analysis.program.error.has_value())
+      << analysis.program.error->what();
+  const auto hover = [&](const std::string& needle) {
+    return sun::lsp::computeHover(
+        *analysis.program.ast, kPath, source,
+        static_cast<int>(offsetOf(source, needle, 0)));
+  };
+  auto annotation = hover("HeapAllocator) i32");
   ASSERT_TRUE(annotation);
   EXPECT_EQ(annotation->code,
             "public class HeapAllocator implements IAllocator");
   EXPECT_NE(annotation->documentation.find("default system allocator"),
             std::string::npos)
       << annotation->documentation;
-  auto call = fullHoverAt(source, "make_heap_allocator()", true);
+  auto call = hover("make_heap_allocator()");
   ASSERT_TRUE(call);
   EXPECT_FALSE(call->documentation.empty());
 }
@@ -585,12 +595,26 @@ function main() i64 {
     return sum;
 }
 )";
-  auto vec = hoverAt(source, "v.push", true);
+  // Reuse the analyzed document for every hover location.
+  auto analysis = analyze(source, true);
+  ASSERT_NE(analysis.program.ast, nullptr);
+  ASSERT_FALSE(analysis.program.error.has_value())
+      << analysis.program.error->what();
+  const auto hover = [&](const std::string& needle) {
+    return sun::lsp::computeHover(
+        *analysis.program.ast, kPath, source,
+        static_cast<int>(offsetOf(source, needle, 0)));
+  };
+  auto vec = hover("v.push");
   ASSERT_TRUE(vec);
-  EXPECT_NE(vec->find("Vec<i64>"), std::string::npos) << *vec;
+  EXPECT_NE(vec->code.find("Vec<i64>"), std::string::npos) << vec->code;
   // Containers iterate by borrow, so the loop variable is a reference
-  EXPECT_EQ(hoverAt(source, "for (var item", true), "var item: ref i64");
-  EXPECT_EQ(hoverAt(source, "item;", true), "item: ref i64");
+  auto declaration = hover("for (var item");
+  ASSERT_TRUE(declaration);
+  EXPECT_EQ(declaration->code, "var item: ref i64");
+  auto use = hover("item;");
+  ASSERT_TRUE(use);
+  EXPECT_EQ(use->code, "item: ref i64");
 }
 
 TEST(Tooling_Lsp_Hover, FieldInitializerUsesAnalyzedExpression) {

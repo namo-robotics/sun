@@ -564,7 +564,7 @@ unique_ptr<LambdaAST> Parser::parseLambda() {
             byRef ? "expected variable name after 'ref' in capture list"
                   : "expected a variable name in the lambda capture list");
       }
-      const std::string& name = curTok.getIdentifier().value();
+      const std::string name = curTok.getIdentifier().value();
       if (byRef) {
         refCaptureNames.push_back(name);
         if (isConst) {

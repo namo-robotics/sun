@@ -119,7 +119,9 @@ TEST_F(Modules_GenericRegressions, ImportedMethodDependencies) {
         "}"));
 
     write("consumer.sun", consumer);
-    ASSERT_NO_FATAL_FAILURE(checkProgram("consumer.sun"));
+    // Both declaration orders use the JIT; the original also covers native
+    // code.
+    ASSERT_NO_FATAL_FAILURE(checkProgram("consumer.sun", !reverse));
   }
 }
 

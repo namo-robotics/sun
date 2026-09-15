@@ -529,7 +529,11 @@ TEST(Lambdas_RefCaptures, ref_and_const_ref_captures_of_one_variable_conflict) {
 // ============================================================================
 
 TEST(Lambdas_RefCaptures, capture_list_names_on_proto) {
-  std::istringstream ss("[ref a, ref b]() => void { a += b; }");
+  // Long names also exercise strings stored outside the token itself.
+  std::istringstream ss(
+      "[ref mutable_capture_with_a_long_name, "
+      "const ref shared_capture_with_a_long_name, "
+      "owned_capture_with_a_long_name]() => void {}");
   Parser parser(ss);
   parser.getNextToken();
   auto expr = parser.parseExpression();
@@ -539,8 +543,14 @@ TEST(Lambdas_RefCaptures, capture_list_names_on_proto) {
   auto* lambda = static_cast<LambdaAST*>(expr.get());
   const auto& names = lambda->getProto().getRefCaptureNames();
   ASSERT_EQ(names.size(), 2u);
-  EXPECT_EQ(names[0], "a");
-  EXPECT_EQ(names[1], "b");
+  EXPECT_EQ(names[0], "mutable_capture_with_a_long_name");
+  EXPECT_EQ(names[1], "shared_capture_with_a_long_name");
+  const auto& shared = lambda->getProto().getConstRefCaptureNames();
+  ASSERT_EQ(shared.size(), 1u);
+  EXPECT_EQ(shared[0], "shared_capture_with_a_long_name");
+  const auto& owned = lambda->getProto().getOwnedCaptureNames();
+  ASSERT_EQ(owned.size(), 1u);
+  EXPECT_EQ(owned[0], "owned_capture_with_a_long_name");
 }
 
 // ============================================================================
