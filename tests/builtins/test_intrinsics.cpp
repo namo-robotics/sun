@@ -1417,3 +1417,45 @@ TEST(Builtins_SpawnIntrinsic, rejects_a_throwing_function) {
   )"),
                                 "a spawned function must not throw");
 }
+
+TEST(Builtins_Memory, memmove_handles_overlap_and_empty_ranges) {
+  EXPECT_EQ(executeString(R"(
+    function main() i32 {
+      return unsafe {
+        var allocation = _malloc(8);
+        var data = _bitcast<raw_ptr<u8>>(allocation);
+        var expected: u8 = 1;
+        for (var i: i64 = 0; i < 8; i = i + 1) {
+          _store<u8>(data, i, expected);
+          expected = expected + 1;
+        }
+        _memmove(_ptr_offset(data, 2), data, 6);
+        var ok: bool = true;
+        expected = 1;
+        for (var i: i64 = 0; i < 6; i = i + 1) {
+          if (_load<u8>(data, i + 2) != expected) { ok = false; }
+          expected = expected + 1;
+        }
+        _memmove(data, _ptr_offset(data, 2), 6);
+        _memmove(data, data, 8);
+        _memmove(data, _ptr_offset(data, 1), 0);
+        expected = 1;
+        for (var i: i64 = 0; i < 6; i = i + 1) {
+          if (_load<u8>(data, i) != expected) { ok = false; }
+          expected = expected + 1;
+        }
+        _free(allocation);
+        if (ok) { 1; } else { 0; }
+      };
+    }
+  )"), 1);
+}
+
+TEST(Builtins_UnsafeRequirement, memmove_outside_unsafe_is_an_error) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    function move_bytes(dst: raw_ptr<u8>, src: raw_ptr<u8>) void {
+      _memmove(dst, src, 1);
+    }
+    function main() i32 { return 0; }
+  )"), "unsafe");
+}

@@ -64,6 +64,7 @@ enum class Intrinsic {
   Malloc,     // _malloc(size) -> raw_ptr<i8>
   Free,       // _free(ptr) -> void
   Memcpy,     // _memcpy(dst, src, len) -> void
+  Memmove,    // _memmove(dst, src, len) -> void
   Memset,     // _memset(dst, value, len) -> void
   PtrOffset,  // _ptr_offset(ptr, byte_offset) -> raw_ptr
 
@@ -184,6 +185,7 @@ inline Intrinsic getIntrinsic(const std::string& name) {
   if (name == "_malloc") return Intrinsic::Malloc;
   if (name == "_free") return Intrinsic::Free;
   if (name == "_memcpy") return Intrinsic::Memcpy;
+  if (name == "_memmove") return Intrinsic::Memmove;
   if (name == "_memset") return Intrinsic::Memset;
   if (name == "_ptr_offset") return Intrinsic::PtrOffset;
 
@@ -318,6 +320,7 @@ inline bool requiresUnsafeBlock(Intrinsic i) {
     case Intrinsic::LoadI64:
     case Intrinsic::StoreI64:
     case Intrinsic::Memcpy:
+    case Intrinsic::Memmove:
     case Intrinsic::Memset:
     case Intrinsic::PtrOffset:
     // Untracked heap memory

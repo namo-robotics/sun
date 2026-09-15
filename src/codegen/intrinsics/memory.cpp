@@ -120,6 +120,25 @@ Value* IntrinsicsGenerator::codegenMemcpyIntrinsic(const CallExprAST& expr) {
   return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
 }
 
+Value* IntrinsicsGenerator::codegenMemmoveIntrinsic(const CallExprAST& expr) {
+  // _memmove(dst, src, len) - copy len bytes, allowing overlapping ranges
+  const auto& args = expr.getArgs();
+  if (args.size() != 3) {
+    logAndThrowError("_memmove expects 3 arguments: (dst, src, len)");
+    return nullptr;
+  }
+
+  llvm::Value* dst = codegen(*args[0]);
+  llvm::Value* src = codegen(*args[1]);
+  llvm::Value* len = codegen(*args[2]);
+  if (!dst || !src || !len) return nullptr;
+
+  // LLVM preserves the source bytes when the ranges overlap.
+  ctx.builder->CreateMemMove(dst, llvm::MaybeAlign(1), src, llvm::MaybeAlign(1),
+                            len);
+  return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
+}
+
 Value* IntrinsicsGenerator::codegenMemsetIntrinsic(const CallExprAST& expr) {
   // _memset(dst, value, len) - set len bytes at dst to value
   const auto& args = expr.getArgs();

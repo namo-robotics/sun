@@ -198,6 +198,29 @@ public module std {
       std.test.assert_eq(buf.get(0) + buf.get(1) + buf.get(2), 6000000000);
     }
 
+    test_function resize_preserves_elements() {
+      var alloc = make_heap_allocator();
+      var buf = ContiguousBuffer<i64>(alloc, 3);
+      buf.set(0, 1000000000);
+      buf.set(1, 2000000000);
+      buf.set(2, 3000000000);
+      buf.resize_to(5);
+      std.test.assert_eq(buf.size(), 5);
+      std.test.assert_eq(buf.get(0) + buf.get(1) + buf.get(2), 6000000000);
+      buf.set(3, 4000000000);
+      buf.set(4, 5000000000);
+      buf.resize_to(2);
+      std.test.assert_eq(buf.size(), 2);
+      std.test.assert_eq(buf.get(0) + buf.get(1), 3000000000);
+      buf.resize_to(2);
+      std.test.assert_eq(buf.get(1), 2000000000);
+      buf.resize_to(0);
+      std.test.assert(buf.is_empty());
+      buf.resize_to(1);
+      buf.set(0, 42);
+      std.test.assert_eq(buf.get(0), 42);
+    }
+
     test_function raw_data_not_null() {
       var alloc = make_heap_allocator();
       var buf = ContiguousBuffer<i32>(alloc, 5);

@@ -913,6 +913,12 @@ void SemanticContext::registerBuiltinFunctions() {
                   {Types::RawPointer(Types::UInt8()),
                    Types::RawPointer(Types::UInt8()), Types::Int64()},
                   {}});
+  // _memmove(dst, src, len) - copy len bytes, allowing overlapping ranges
+  registerFunctionInCurrentScope(
+      "_memmove", {Types::Void(),
+                  {Types::RawPointer(Types::UInt8()),
+                   Types::RawPointer(Types::UInt8()), Types::Int64()},
+                  {}});
   // _memset(dst, value, len) - set len bytes at dst to value
   registerFunctionInCurrentScope("_memset", {Types::Void(),
                                              {Types::RawPointer(Types::UInt8()),
