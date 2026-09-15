@@ -29,6 +29,7 @@ override_dh_auto_configure:
 	dh_auto_configure -- \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DBUILD_TESTING=OFF \
+		-DSUN_CROSS_TLS_AARCH64=ON \
 		-DFETCHCONTENT_FULLY_DISCONNECTED=OFF \
 		$(CCACHE_ARGS)
 
@@ -42,6 +43,16 @@ override_dh_auto_install:
 	install -D -m 644 obj-*/stdlib.moon debian/sun/usr/lib/sun/stdlib.moon
 	# Install the TLS bundle (carries its own static OpenSSL)
 	install -D -m 644 obj-*/tls.moon debian/sun/usr/lib/sun/tls.moon
+	# Keep every cross bundle beside others built for the same target.
+	for dir in obj-*/*/; do \
+		for moon in stdlib tls; do \
+			if [ -f "$$dir/$$moon.moon" ]; then \
+				triple=$$(basename "$$dir"); \
+				install -D -m 644 "$$dir/$$moon.moon" "debian/sun/usr/lib/sun/$$triple/$$moon.moon"; \
+			fi; \
+		done; \
+	done
+	ln -sfn aarch64-linux-gnu debian/sun/usr/lib/sun/aarch64-linux-musl
 	# Install stdlib source files (for reference/debugging)
 	install -d debian/sun/usr/share/sun/stdlib
 	install -m 644 stdlib/*.sun debian/sun/usr/share/sun/stdlib/

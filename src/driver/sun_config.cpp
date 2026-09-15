@@ -5,9 +5,11 @@
 #include <llvm/Support/JSON.h>
 
 #include <fstream>
+#include <set>
 #include <sstream>
 
 #include "support/error.h"
+#include "support/target_os.h"
 
 namespace sun {
 
@@ -73,10 +75,82 @@ ConfigEntrypoint parseEntrypoint(const llvm::json::Value& value,
   return entrypoint;
 }
 
+// Match platform spellings without depending on vendor or macOS version.
+std::string configTargetKey(llvm::Triple triple) {
+  triple.setVendor(llvm::Triple::UnknownVendor);
+  if (triple.getArch() == llvm::Triple::aarch64) triple.setArchName("aarch64");
+  if (triple.getOS() == llvm::Triple::Darwin ||
+      triple.getOS() == llvm::Triple::MacOSX)
+    triple.setOSName("darwin");
+  return triple.str();
+}
+
+// Validate every target block, then select the requested target or the host.
+const llvm::json::Object* targetSettings(const llvm::json::Object& owner,
+                                         const std::string& targetTriple,
+                                         const std::filesystem::path& file) {
+  const auto* value = owner.get("target");
+  if (!value) return nullptr;
+  const auto* targets = value->getAsObject();
+  if (!targets)
+    logAndThrowError("'target' must be an object in " + file.string());
+  const auto selectedKey = configTargetKey(resolvedTargetTriple(targetTriple));
+  std::set<std::string> seen;
+  const llvm::json::Object* selected = nullptr;
+  for (const auto& [name, settings] : *targets) {
+    const std::string key = llvm::StringRef(name).str();
+    const auto triple = resolvedTargetTriple(key);
+    if (key.empty() || triple.getArch() == llvm::Triple::UnknownArch ||
+        triple.getOS() == llvm::Triple::UnknownOS) {
+      logAndThrowError("invalid target triple '" + llvm::StringRef(name).str() +
+                       "' in " + file.string());
+    }
+    if (!seen.insert(configTargetKey(triple)).second)
+      logAndThrowError("duplicate target triple in " + file.string());
+    const auto* object = settings.getAsObject();
+    if (!object)
+      logAndThrowError("target settings must be an object in " + file.string());
+    for (const auto& [key, setting] : *object) {
+      const std::string field = llvm::StringRef(key).str();
+      if (field == "sun_path") {
+        const auto* paths = setting.getAsArray();
+        if (!paths)
+          logAndThrowError("target sun_path must be an array in " +
+                           file.string());
+        for (const auto& path : *paths)
+          if (!path.getAsString())
+            logAndThrowError("target sun_path entries must be strings in " +
+                             file.string());
+      } else if (field == "path_variables") {
+        const auto* vars = setting.getAsObject();
+        if (!vars)
+          logAndThrowError("target path_variables must be an object in " +
+                           file.string());
+        for (const auto& [var, path] : *vars)
+          if (!path.getAsString())
+            logAndThrowError("target path variables must be strings in " +
+                             file.string());
+      } else if (field == "entrypoints") {
+        const auto* entries = setting.getAsArray();
+        if (!entries)
+          logAndThrowError("target entrypoints must be an array in " +
+                           file.string());
+        for (const auto& entry : *entries)
+          parseEntrypoint(entry, file.parent_path(), file);
+      } else {
+        logAndThrowError("unknown target setting '" + field + "' in " +
+                         file.string());
+      }
+    }
+    if (configTargetKey(triple) == selectedKey) selected = object;
+  }
+  return selected;
+}
+
 }  // namespace
 
 std::optional<SunConfig> SunConfig::findFrom(
-    const std::filesystem::path& startDir) {
+    const std::filesystem::path& startDir, const std::string& targetTriple) {
   std::error_code ec;
   auto dir = std::filesystem::weakly_canonical(startDir, ec);
   if (ec) {
@@ -86,7 +160,7 @@ std::optional<SunConfig> SunConfig::findFrom(
   while (true) {
     auto candidate = dir / kFileName;
     if (std::filesystem::exists(candidate)) {
-      SunConfig config = loadFile(candidate);
+      SunConfig config = loadFile(candidate, targetTriple);
       bool stop = config.root;
       if (!merged) {
         merged = std::move(config);
@@ -115,7 +189,8 @@ std::optional<SunConfig> SunConfig::findFrom(
   return merged;
 }
 
-SunConfig SunConfig::loadFile(const std::filesystem::path& file) {
+SunConfig SunConfig::loadFile(const std::filesystem::path& file,
+                              const std::string& targetTriple) {
   std::ifstream in(file);
   if (!in.is_open()) {
     logAndThrowError("could not read " + file.string());
@@ -132,6 +207,8 @@ SunConfig SunConfig::loadFile(const std::filesystem::path& file) {
   if (!root) {
     logAndThrowError("expected a JSON object in " + file.string());
   }
+
+  const auto* settings = targetSettings(*root, targetTriple, file);
 
   SunConfig config;
   config.configDir = file.parent_path();
@@ -180,6 +257,9 @@ SunConfig SunConfig::loadFile(const std::filesystem::path& file) {
         config.entrypoints.push_back(
             parseEntrypoint(entry, config.configDir, file));
       }
+    } else if (name == "target") {
+      // Target settings were validated above and are applied after defaults.
+      continue;
     } else if (name == "root") {
       auto flag = value.getAsBoolean();
       if (!flag) {
@@ -189,10 +269,29 @@ SunConfig SunConfig::loadFile(const std::filesystem::path& file) {
     } else {
       logAndThrowError("unknown key '" + name + "' in " + file.string() +
                        "; expected 'sun_path', 'path_variables', "
-                       "'entrypoints' or 'root'");
+                       "'entrypoints', 'target' or 'root'");
     }
   }
 
+  if (settings) {
+    if (const auto* entries = settings->getArray("entrypoints")) {
+      config.entrypoints.clear();
+      for (const auto& entry : *entries)
+        config.entrypoints.push_back(
+            parseEntrypoint(entry, config.configDir, file));
+    }
+    if (const auto* paths = settings->getArray("sun_path")) {
+      config.sunPath.clear();
+      for (const auto& path : *paths)
+        config.sunPath.push_back(
+            anchorAtConfigDir(path.getAsString()->str(), config.configDir));
+    }
+    if (const auto* vars = settings->getObject("path_variables")) {
+      for (const auto& [name, path] : *vars)
+        config.pathVariables[llvm::StringRef(name).str()] =
+            anchorAtConfigDir(path.getAsString()->str(), config.configDir);
+    }
+  }
   return config;
 }
 

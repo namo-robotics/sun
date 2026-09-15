@@ -11,28 +11,43 @@ set -euo pipefail
 # there rather than compiling OpenSSL ourselves. The macOS counterpart is
 # scripts/build-openssl-macos.sh.
 #
-# Output: third_party/openssl/x86_64-linux-musl/lib{ssl,crypto}.a
+# Output: third_party/openssl/<arch>-linux-musl/lib{ssl,crypto}.a
 #
-# Usage: ./scripts/fetch-openssl.sh [--alpine-release v3.21]
+# Usage: ./scripts/fetch-openssl.sh [--arch x86_64|aarch64] [--alpine-release v3.21]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 ALPINE_RELEASE="${SUN_ALPINE_RELEASE:-v3.21}"
+OPENSSL_ARCH=x86_64
 
 while [[ $# -gt 0 ]]; do
     case $1 in
+        --arch) OPENSSL_ARCH="$2"; shift 2 ;;
         --alpine-release) ALPINE_RELEASE="$2"; shift 2 ;;
         --help|-h)
-            echo "Usage: $0 [--alpine-release v3.21]"
+            echo "Usage: $0 [--arch x86_64|aarch64] [--alpine-release v3.21]"
             exit 0 ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
 done
 
-OUT_DIR="$PROJECT_ROOT/third_party/openssl/x86_64-linux-musl"
-WORK_DIR="$PROJECT_ROOT/tmp/openssl-alpine"
-MIRROR="https://dl-cdn.alpinelinux.org/alpine/$ALPINE_RELEASE/main/x86_64"
+case "$OPENSSL_ARCH" in
+    x86_64|aarch64) ;;
+    *) echo "error: unsupported architecture: $OPENSSL_ARCH" >&2; exit 1 ;;
+esac
+STRIP_TOOL="${SUN_OPENSSL_STRIP:-llvm-strip-20}"
+if ! command -v "$STRIP_TOOL" >/dev/null; then
+    STRIP_TOOL="${OPENSSL_ARCH}-linux-gnu-strip"
+fi
+command -v "$STRIP_TOOL" >/dev/null || {
+    echo "error: install llvm-strip-20 or $STRIP_TOOL" >&2
+    exit 1
+}
+
+OUT_DIR="$PROJECT_ROOT/third_party/openssl/$OPENSSL_ARCH-linux-musl"
+WORK_DIR="$PROJECT_ROOT/tmp/openssl-alpine-$OPENSSL_ARCH"
+MIRROR="https://dl-cdn.alpinelinux.org/alpine/$ALPINE_RELEASE/main/$OPENSSL_ARCH"
 
 rm -rf "$WORK_DIR"
 mkdir -p "$WORK_DIR"
@@ -69,7 +84,7 @@ done
 # Alpine ships these unstripped, which would roughly double tls.moon. Debug
 # info is no use inside a vendored dependency; the symbol table linking needs
 # is kept.
-strip --strip-debug usr/lib/libssl.a usr/lib/libcrypto.a
+"$STRIP_TOOL" --strip-debug usr/lib/libssl.a usr/lib/libcrypto.a
 
 mkdir -p "$OUT_DIR"
 cp usr/lib/libssl.a usr/lib/libcrypto.a "$OUT_DIR/"

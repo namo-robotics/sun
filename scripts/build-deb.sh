@@ -83,13 +83,14 @@ EOF
 
 # Fetch the static OpenSSL archives required to build tls.moon.
 ensure_openssl() {
-    if [ -f third_party/openssl/x86_64-linux-musl/libssl.a ] && \
-       [ -f third_party/openssl/x86_64-linux-musl/libcrypto.a ]; then
-        log "Static OpenSSL archives present"
-        return
-    fi
-    log "Fetching static OpenSSL archives for tls.moon..."
-    ./scripts/fetch-openssl.sh
+    local arch
+    for arch in x86_64 aarch64; do
+        if [ ! -f "third_party/openssl/$arch-linux-musl/libssl.a" ] ||
+           [ ! -f "third_party/openssl/$arch-linux-musl/libcrypto.a" ]; then
+            log "Fetching $arch static OpenSSL archives for tls.moon..."
+            ./scripts/fetch-openssl.sh --arch "$arch"
+        fi
+    done
 }
 
 # The triple this machine builds for, named the way the cross bundle

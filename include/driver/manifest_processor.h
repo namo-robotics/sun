@@ -41,7 +41,8 @@ class ManifestProcessor {
   // directories, else returned unchanged (errors surface later)
   static std::string resolvePath(const std::string& path,
                                  const std::string& baseDir,
-                                 const SunConfig* config = nullptr);
+                                 const SunConfig* config = nullptr,
+                                 const std::string& targetTriple = "");
 
   // Define a path variable for manifest entries (--path-var NAME=DIR)
   static void setPathVariable(const std::string& name,

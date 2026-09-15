@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 
+#include "support/target_os.h"
+
 namespace sun {
 
 /// Centralized SUN_PATH environment variable handling.
@@ -57,6 +59,47 @@ class SunPath {
       if (std::filesystem::exists(candidate)) {
         return candidate;
       }
+    }
+    return {};
+  }
+
+  /** Find an installed bundle, preferring directories for its target. */
+  static std::filesystem::path resolveInstalledBundle(
+      const std::string& name, const std::string& targetTriple) {
+    const std::filesystem::path path(name);
+    std::vector<std::string> targets;
+    if (!path.has_parent_path() && path.extension().string() == ".moon") {
+      auto target = resolvedTargetTriple(targetTriple);
+      auto add = [&](const std::string& triple) {
+        if (!triple.empty() && std::find(targets.begin(), targets.end(),
+                                         triple) == targets.end()) {
+          targets.push_back(triple);
+        }
+      };
+      add(targetTriple);
+      add(target.str());
+      if (target.isOSLinux()) {
+        const auto arch = target.getArchName().str();
+        add(arch + "-linux-" + target.getEnvironmentName().str());
+        if (target.getEnvironment() == llvm::Triple::GNU ||
+            target.getEnvironment() == llvm::Triple::Musl) {
+          add(arch + "-linux-gnu");
+          add(arch + "-linux-musl");
+        }
+      } else if (target.isOSDarwin()) {
+        add((target.getArch() == llvm::Triple::aarch64
+                 ? std::string("arm64")
+                 : target.getArchName().str()) +
+            "-apple-darwin");
+      }
+    }
+    for (const auto& dir : systemInstallDirs()) {
+      for (const auto& target : targets) {
+        auto candidate = dir / target / path;
+        if (std::filesystem::exists(candidate)) return candidate;
+      }
+      auto candidate = dir / path;
+      if (std::filesystem::exists(candidate)) return candidate;
     }
     return {};
   }

@@ -3429,13 +3429,8 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
     std::filesystem::path resolved = sun::SunPath::resolve(path);
     // Check system-wide installation paths (exe-relative, Debian, Homebrew)
     if (resolved.empty()) {
-      for (const auto& dir : sun::SunPath::systemInstallDirs()) {
-        auto sysPath = dir / path;
-        if (std::filesystem::exists(sysPath)) {
-          resolved = sysPath;
-          break;
-        }
-      }
+      resolved = sun::SunPath::resolveInstalledBundle(
+          path, sun::LibraryCache::instance().getTargetTriple());
     }
     // Fall back to resolving relative to current file's directory
     if (resolved.empty()) {
@@ -3447,11 +3442,8 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
     return resolved;
   };
 
-  // Bundles are resolved by the exact name given — the metadata's target
-  // triple is validation, not a resolution input. Cross builds point at a
-  // per-target bundle explicitly (e.g. build/aarch64-linux-gnu/stdlib.moon,
-  // via the path itself, --lib-path or SUN_PATH ordering); a wrong-target
-  // bundle is rejected at link time with an actionable error.
+  // Explicit paths retain their meaning; installed bare names prefer the
+  // target.
   std::filesystem::path resolved = resolveOne(moonPath);
 
   if (resolved.empty() || !std::filesystem::exists(resolved)) {
