@@ -584,3 +584,58 @@ TEST(Functions_Generic, partial_type_arguments_uninferable_is_error) {
   )"),
                                 "Cannot infer type argument 'U'");
 }
+
+TEST(Functions_Generic, duplicate_declaration_is_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    function identity<T>(x: T) T { return x; }
+    function identity<T>(x: T) T { return x; }
+    function main() i32 { return 0; }
+  )"),
+                                "Generic function 'identity' is already declared");
+}
+
+TEST(Functions_Generic, different_parameter_shapes_cannot_replace_a_template) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    function pick<T>(x: T) T { return x; }
+    function pick<T>(x: T, y: T) T { return y; }
+    function main() i32 { return 0; }
+  )"),
+                                "Generic function 'pick' is already declared");
+}
+
+TEST(Functions_Generic, duplicate_declaration_in_reopened_module_is_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    module helpers {
+      function identity<T>(x: T) T { return x; }
+    }
+    module helpers {
+      function identity<U>(x: U) U { return x; }
+    }
+    function main() i32 { return 0; }
+  )"),
+                                "Generic function 'identity' is already declared");
+}
+
+TEST(Functions_Generic, same_name_in_separate_modules_is_allowed) {
+  auto value = executeString(R"(
+    module left {
+      /** Return the first module's result. */
+      public function pick<T>(x: T) i32 { return 20; }
+    }
+    module right {
+      /** Return the second module's result. */
+      public function pick<T>(x: T) i32 { return 22; }
+    }
+    function main() i32 { return left.pick(1) + right.pick(1); }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Functions_Generic, duplicate_pack_only_declaration_is_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    function count(args...) i32 { return 1; }
+    function count(args...) i32 { return 2; }
+    function main() i32 { return 0; }
+  )"),
+                                "Generic function 'count' is already declared");
+}

@@ -130,9 +130,9 @@ need no linker flags and no OpenSSL on the target. Remaining work:
 ## Language Odds and Ends
 
 - [ ] Generic overloads that differ only in their constraint (one name, same
-      parameter shape, `<F: _Lambda>` vs `<F: _Function>`) — registration is
-      keyed by name, so the second silently replaces the first (#194);
-      `spawn` uses the union trait `_Callable` instead
+      parameter shape, `<F: _Lambda>` vs `<F: _Function>`) — duplicate generic
+      declarations are rejected until overload resolution supports constraints
+      (#194); `spawn` uses the union trait `_Callable` instead
 - [ ] Interface inheritance (`src/semantic_analysis/scope_variables.cpp:876`)
 - [ ] More sophisticated borrow tracking for ref params
       (`src/borrow_checker/borrow_checker.cpp:385`)

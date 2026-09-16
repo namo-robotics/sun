@@ -297,8 +297,9 @@ class SemanticContext : public AccessContext {
       const std::string &qualifiedName) const;
 
   /**
-   * Record a generic function template in the current scope, along with the
-   * scope it was declared in.
+   * Record a generic function template and its declaration scope. Repeated
+   * registration of the same declaration is allowed; another template with
+   * the same name in this scope is rejected.
    */
   void registerGenericFunctionInCurrentScope(FunctionAST &func);
 
