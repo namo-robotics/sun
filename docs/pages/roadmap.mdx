@@ -133,9 +133,6 @@ need no linker flags and no OpenSSL on the target. Remaining work:
       parameter shape, `<F: _Lambda>` vs `<F: _Function>`) — registration is
       keyed by name, so the second silently replaces the first (#194);
       `spawn` uses the union trait `_Callable` instead
-- [ ] Interpolating an unbound type parameter (`${x}` where `x: T`) in a
-      generic body fails at template analysis (#195); `std.test.assert_eq`
-      is per-primitive overloads until then
 - [ ] Interface inheritance (`src/semantic_analysis/scope_variables.cpp:876`)
 - [ ] More sophisticated borrow tracking for ref params
       (`src/borrow_checker/borrow_checker.cpp:385`)

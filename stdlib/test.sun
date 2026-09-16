@@ -62,46 +62,8 @@ public module std {
       throw AssertionError(message);
     }
 
-    // Throw when the two values differ, showing both in the failure text.
-    // One overload per primitive, like print; for other types write
-    // assert(a == b, "explanation").
-    public function assert_eq(expected: i32, actual: i32) void throws IError {
-      if (expected == actual) {
-        return;
-      }
-      throw AssertionError(`assertion failed: expected ${expected}, got ${actual}`);
-    }
-    public function assert_eq(expected: i64, actual: i64) void throws IError {
-      if (expected == actual) {
-        return;
-      }
-      throw AssertionError(`assertion failed: expected ${expected}, got ${actual}`);
-    }
-    public function assert_eq(expected: u32, actual: u32) void throws IError {
-      if (expected == actual) {
-        return;
-      }
-      throw AssertionError(`assertion failed: expected ${expected}, got ${actual}`);
-    }
-    public function assert_eq(expected: u64, actual: u64) void throws IError {
-      if (expected == actual) {
-        return;
-      }
-      throw AssertionError(`assertion failed: expected ${expected}, got ${actual}`);
-    }
-    public function assert_eq(expected: f64, actual: f64) void throws IError {
-      if (expected == actual) {
-        return;
-      }
-      throw AssertionError(`assertion failed: expected ${expected}, got ${actual}`);
-    }
-    public function assert_eq(expected: char, actual: char) void throws IError {
-      if (expected == actual) {
-        return;
-      }
-      throw AssertionError(`assertion failed: expected ${expected}, got ${actual}`);
-    }
-    public function assert_eq(expected: bool, actual: bool) void throws IError {
+    /* Throw when primitive values differ, showing both in the failure text. */
+    public function assert_eq<T: _Primitive>(expected: T, actual: T) void throws IError {
       if (expected == actual) {
         return;
       }
@@ -115,38 +77,8 @@ public module std {
       throw AssertionError(`assertion failed: expected ${expected}, got ${actual}`);
     }
 
-    // Throw when the two values are equal.
-    public function assert_ne(a: i32, b: i32) void throws IError {
-      if (a == b) {
-        throw AssertionError(`assertion failed: both values are ${a}`);
-      }
-    }
-    public function assert_ne(a: i64, b: i64) void throws IError {
-      if (a == b) {
-        throw AssertionError(`assertion failed: both values are ${a}`);
-      }
-    }
-    public function assert_ne(a: u32, b: u32) void throws IError {
-      if (a == b) {
-        throw AssertionError(`assertion failed: both values are ${a}`);
-      }
-    }
-    public function assert_ne(a: u64, b: u64) void throws IError {
-      if (a == b) {
-        throw AssertionError(`assertion failed: both values are ${a}`);
-      }
-    }
-    public function assert_ne(a: f64, b: f64) void throws IError {
-      if (a == b) {
-        throw AssertionError(`assertion failed: both values are ${a}`);
-      }
-    }
-    public function assert_ne(a: char, b: char) void throws IError {
-      if (a == b) {
-        throw AssertionError(`assertion failed: both values are ${a}`);
-      }
-    }
-    public function assert_ne(a: bool, b: bool) void throws IError {
+    /* Throw when primitive values are equal, showing the value in the failure text. */
+    public function assert_ne<T: _Primitive>(a: T, b: T) void throws IError {
       if (a == b) {
         throw AssertionError(`assertion failed: both values are ${a}`);
       }
