@@ -449,4 +449,43 @@ TEST_F(Modules_GenericRegressions, NestedTypeArguments) {
   }
 }
 
+// Issue #213: exported constraints accept implementations from the consumer.
+TEST_F(Modules_GenericRegressions, ExportedInterfaceConstraints) {
+  ASSERT_NO_FATAL_FAILURE(buildLibrary(R"(
+    /** Exports statically dispatched handlers. */
+    public module lib {
+      /** Handles an integer. */
+      public interface IHandler {
+        /** Transforms the input. */
+        public method handle(x: i32) i32;
+      }
+      /** Stores a handler constrained by the exported interface. */
+      public class Box<H: IHandler> {
+        var inner: H;
+        init(inner: H) { this.inner = inner; }
+        /** Passes the input to the handler. */
+        public method go(x: i32) i32 { return this.inner.handle(x); }
+      }
+      /** Calls a handler through its constraint. */
+      public function call<H: IHandler>(item: ref H, x: i32) i32 {
+        return item.handle(x);
+      }
+    }
+  )"));
+  write("consumer.sun", R"(
+    class Impl implements lib.IHandler {
+      init() {}
+      /** Returns the incremented input. */
+      public method handle(x: i32) i32 { return x + 1; }
+    }
+    function main() i32 {
+      var b = lib.Box<Impl>(Impl());
+      var item = Impl();
+      return b.go(41) + lib.call<Impl>(item, 41) - 84;
+    }
+    manifest { libraries: ["lib.moon"] }
+  )");
+  ASSERT_NO_FATAL_FAILURE(checkProgram("consumer.sun"));
+}
+
 }  // namespace

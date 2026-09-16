@@ -112,6 +112,12 @@ side is a byte and the other a scalar value.
 Above `U+007F` a byte and a scalar value stop agreeing, which is why `'\xFF'`
 is rejected and `'\u{FF}'` is the way to write U+00FF.
 
+String literals (`"…"`) and template strings also support `\xNN`. Each escape
+consumes exactly two hex digits and inserts one byte from `\x00` to `\xFF`,
+including NUL. For example, `"\x08http/1.1".length()` is `9`. Hex digits may
+use either case; missing or invalid digits are a compile error. These escapes
+insert raw bytes, so the result is not necessarily valid UTF-8.
+
 ### Converting
 
 `_convert` moves between `char` and the integer types, and refuses floats and

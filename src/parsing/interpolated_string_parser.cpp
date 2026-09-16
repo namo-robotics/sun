@@ -124,6 +124,13 @@ std::string InterpolatedStringParser::processEscapes(const std::string& raw) {
         result += next;  // \` and \$ are the template-specific escapes
       } else if (auto c = sun::escapes::simple(next)) {
         result += *c;
+      } else if (next == 'x') {
+        auto byte = sun::escapes::hexByte(std::string_view(raw).substr(i + 2));
+        if (!byte) {
+          logAndThrowError("\\x needs exactly two hex digits");
+        }
+        result += *byte;
+        i += 2;
       } else {
         // Unknown escape - keep as-is
         result += raw[i];
