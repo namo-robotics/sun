@@ -485,3 +485,103 @@ TEST(MemorySafety_Allocator, method_too_few_arguments_for_fixed_params) {
   )"),
                                 "expects at least 1 argument");
 }
+
+TEST(MemorySafety_Allocator, init_primitive_overwrites_existing_storage) {
+  for (const std::string type : {"i8", "u8", "i16", "u16", "i32", "u32", "i64",
+                                 "u64", "f32", "f64", "bool"}) {
+    SCOPED_TRACE(type);
+    const bool boolean = type == "bool";
+    const bool floating = type[0] == 'f';
+    const std::string initial = boolean ? "true" : floating ? "3.5" : "37";
+    const std::string zero = boolean ? "false" : floating ? "0.0" : "0";
+    auto value = executeString(
+        "function main() i32 { var p = unsafe { _malloc(_sizeof<" + type +
+        ">()); }; var initial: " + type + " = " + initial +
+        "; var zero: " + type + " = " + zero + R"(;
+        var result: i32 = 0;
+        unsafe {
+          _store<)" +
+        type + R"(>(p, 0, initial);
+          _init<)" +
+        type + R"(>(p, zero);
+          if (_load<)" +
+        type + R"(>(p, 0) != zero) { result = 1; }
+          _init<)" +
+        type + R"(>(p, initial);
+          if (_load<)" +
+        type + R"(>(p, 0) != initial) { result = 2; }
+          _init<)" +
+        type + R"(>(p);
+          if (_load<)" +
+        type + R"(>(p, 0) != zero) { result = 3; }
+          _free(p);
+        };
+        return result;
+      })");
+    EXPECT_EQ(value, 0);
+  }
+}
+
+TEST(MemorySafety_Allocator,
+     init_primitive_evaluates_and_widens_argument_once) {
+  EXPECT_EQ(executeString(R"(
+    var calls: i32 = 0;
+    function next() i32 { calls = calls + 1; return -42; }
+    function main() i32 {
+      var p = unsafe { _malloc(_sizeof<i64>()); };
+      var result: i32 = 0;
+      unsafe {
+        _init<i64>(p, next());
+        if (_load<i64>(p, 0) != -42) { result = 1; }
+        _free(p);
+      };
+      if (calls != 1) { result = 2; }
+      return result;
+    }
+  )"),
+            0);
+}
+
+TEST(MemorySafety_Allocator, init_primitive_rejects_invalid_arguments) {
+  EXPECT_THROW(executeString(R"(
+    function main() i32 {
+      var p = unsafe { _malloc(_sizeof<i32>()); };
+      unsafe { _init<i32>(p, 1, 2); _free(p); };
+      return 0;
+    }
+  )"),
+               std::exception);
+  EXPECT_THROW(executeString(R"(
+    function main() i32 {
+      var p = unsafe { _malloc(_sizeof<i32>()); };
+      unsafe { _init<i32>(p, 1.5); _free(p); };
+      return 0;
+    }
+  )"),
+               std::exception);
+}
+
+TEST(MemorySafety_Allocator, heap_allocator_creates_primitive_values) {
+  EXPECT_EQ(executeStringWithStdlib(R"(
+    using std;
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var p = alloc.create<i32>(42);
+      var result: i32 = 0;
+      unsafe {
+        if (_load<i32>(p, 0) != 42) { result = 1; }
+      };
+      alloc.dealloc<i32>(p, 1);
+      var zero = alloc.create_unique<i32>(0);
+      var negative = alloc.create_unique<i64>(-42);
+      var floating = alloc.create_unique<f64>(3.5);
+      var boolean = alloc.create_unique<bool>(true);
+      if (zero.get() != 0) { result = 2; }
+      if (negative.get() != -42) { result = 3; }
+      if (floating.get() != 3.5) { result = 4; }
+      if (boolean.get() == false) { result = 5; }
+      return result;
+    }
+  )"),
+            0);
+}
