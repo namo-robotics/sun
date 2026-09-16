@@ -655,3 +655,14 @@ TEST(Functions_Generic_Constraints, module_field_uses_file_scope_interface) {
   )"),
             42);
 }
+
+TEST(Functions_Generic_Constraints, constraint_only_overloads_are_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    function run<F: _Lambda>(f: F, args...: _params_of<F>) i32 { return 1; }
+    function run<F: _Function>(f: F, args...: _params_of<F>) i32 { return 2; }
+    function main() i32 { return 0; }
+  )"),
+                                "Generic function 'run' is already declared in "
+                                "this scope; generic function overloads are "
+                                "not supported");
+}

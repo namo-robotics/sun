@@ -785,6 +785,18 @@ void SemanticContext::registerFunctionInCurrentScope(const std::string& name,
 
 void SemanticContext::registerGenericFunctionInCurrentScope(FunctionAST& func) {
   PrototypeAST& proto = const_cast<PrototypeAST&>(func.getProto());
+  sun::QualifiedName qname(getCurrentScopePath(), proto.getName(),
+                           currentModulePath());
+  auto existing = currentScope_->genericFunctions.find(qname);
+  // The declaration and analysis passes register the same template again.
+  // A different declaration must not silently replace it.
+  if (existing != currentScope_->genericFunctions.end() &&
+      existing->second.AST != &func) {
+    logAndThrowError("Generic function '" + proto.getName() +
+                         "' is already declared in this scope; generic "
+                         "function overloads are not supported",
+                     func.getLocation());
+  }
 
   GenericFunctionInfo genInfo;
   genInfo.AST = &func;
@@ -793,9 +805,6 @@ void SemanticContext::registerGenericFunctionInCurrentScope(FunctionAST& func) {
     genInfo.returnType = *proto.getReturnType();
   }
   genInfo.params = proto.getArgs();
-
-  sun::QualifiedName qname(getCurrentScopePath(), proto.getName(),
-                           currentModulePath());
   genInfo.qualifiedName = qname;
   genInfo.definitionScope = currentScope_->shared_from_this();
   currentScope_->genericFunctions[qname] = genInfo;
