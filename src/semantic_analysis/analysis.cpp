@@ -1,6 +1,7 @@
 // analysis.cpp — Main analysis entry points for semantic analyzer
 
 #include <algorithm>
+#include <cassert>
 #include <set>
 
 #include "semantic_analysis/c_abi_types.h"
@@ -20,12 +21,6 @@ using sun::names::isReservedIdentifier;
 using sun::rules::isAssignableTo;
 using sun::rules::isBorrowableLvalue;
 using sun::rules::tryCoerceIntegerLiteral;
-
-// -------------------------------------------------------------------
-// Main analysis entry point
-// -------------------------------------------------------------------
-
-void SemanticAnalyzer::analyze(ExprAST& expr) { analyzeExpr(expr); }
 
 // -------------------------------------------------------------------
 // Borrow targets
@@ -201,7 +196,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
 
     case ASTNodeType::BLOCK: {
       auto& block = static_cast<BlockExprAST&>(expr);
-      analyzeBlock(block);
+      pipeline_.bodies().run(block);
       expr.setResolvedType(types_.inferType(expr));
       break;
     }
@@ -265,7 +260,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       break;
 
     case ASTNodeType::USING: {
-      declarations_.registerUsing(static_cast<UsingAST&>(expr));
+      pipeline_.declarations().registerUsing(static_cast<UsingAST&>(expr));
       expr.setResolvedType(sun::Types::Void());
       break;
     }
@@ -335,21 +330,6 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
 
     default:
       break;
-  }
-}
-
-// -------------------------------------------------------------------
-// Block analysis
-// -------------------------------------------------------------------
-
-void SemanticAnalyzer::analyzeBlock(BlockExprAST& block) {
-  // Declaration pre-pass: register all top-level declarations so that
-  // ordering doesn't matter at module level.
-  declarations_.collectDeclarations(block);
-
-  // Sequential analysis of all statements (bodies, expressions, etc.)
-  for (const auto& expr : block.getBody()) {
-    analyzeExpr(*expr);
   }
 }
 
@@ -434,27 +414,17 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
     }
   }
 
-  // Compute qualified name (includes module path and function context for
-  // nested functions). Precompiled stubs have pre-set qualified names with
-  // content hash for symbol isolation.
-  sun::QualifiedName qualifiedName;
-  if (func.isCExtern()) {
-    // The Sun-side name is scoped to its module like any other item, so
-    // `public` and privacy mean what they say. Only the emitted symbol is
-    // fixed by C — codegen takes that from the link name, never from here.
-    // No overload suffix: C has no overloading.
-    qualifiedName = ctx_.makeQualifiedName(proto.getName());
-  } else if (proto.hasQualifiedName()) {
-    qualifiedName = proto.getQualifiedName();
-  } else {
-    qualifiedName = ctx_.makeQualifiedName(proto.getName());
-  }
+  // Declaration naming establishes identity before signature resolution.
+  assert(proto.hasQualifiedName() &&
+         "Function declaration must be named first");
+  sun::QualifiedName qualifiedName = proto.getQualifiedName();
 
   // Add param type suffix for overload disambiguation (unified with methods)
   // Skip for 'main' — it's an entry point with a fixed ABI name — and for
-  // externs, whose ABI name is fixed by C.
+  // externs, whose ABI name is fixed by C. Templates keep their declaration
+  // name until specialization supplies concrete type arguments.
   if (qualifiedName.paramSuffix.empty() && proto.getName() != "main" &&
-      !func.isCExtern()) {
+      !func.isCExtern() && !proto.isTemplate()) {
     qualifiedName.setParamSuffix(paramTypes);
   }
 
@@ -476,6 +446,7 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
 
 void SemanticAnalyzer::applyFunctionInfoToProto(PrototypeAST& proto,
                                                 const FunctionInfo& info) {
+  proto.setQualifiedName(info.qualifiedName);
   proto.setCaptures(info.captures);
   proto.setResolvedParamTypes(info.paramTypes);
   proto.setResolvedReturnType(info.returnType);
@@ -552,7 +523,7 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
 
     // Analyze extension method bodies
     for (const auto& methodDecl : classDef.getMethods()) {
-      analyzeFunction(*methodDecl.function);
+      pipeline_.bodies().analyzeFunction(*methodDecl.function);
     }
     // The parser rejects constructors in a partial class, so this is only a
     // backstop — and like the primary path it runs after every body is
@@ -581,7 +552,7 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
     ctx_.setCurrentClass(savedClass);
   } else {
     // Primary not yet seen — stash for merging when primary is analyzed
-    declarations_.deferExtension(baseName, &classDef);
+    ctx_.declarations().deferExtension(baseName, &classDef);
   }
   expr.setResolvedType(sun::Types::Void());
 }
@@ -809,24 +780,6 @@ void SemanticAnalyzer::validateExternSignature(FunctionAST& func) {
   }
 }
 
-// Sun has no implicit returns: a function whose signature promises a value
-// must leave through an explicit `return` (or a throw) on every path. Checked
-// after the body is analyzed, so match discriminants carry their types.
-static void checkAllPathsReturn(const PrototypeAST& proto,
-                                const BlockExprAST& body,
-                                const sun::TypePtr& returnType,
-                                const Position& loc) {
-  if (!returnType || returnType->isVoid()) return;
-  if (sun::rules::alwaysExits(body)) return;
-  const std::string name =
-      proto.getName().empty() ? "lambda" : "'" + proto.getName() + "'";
-  logAndThrowError(
-      "Function " + name + " can reach the end of its body without a value: " +
-          "it must end in a `return` (or a throw) on every path. Sun has no "
-          "implicit returns.",
-      loc);
-}
-
 // An anonymous `<'_>` lambda type cannot be a return type: which frame the
 // returned value's environment lives in cannot be told apart from the frame
 // that is dying. A NAMED lifetime unpins it - 'function pick<'a>(...)
@@ -927,140 +880,6 @@ void SemanticAnalyzer::checkSignatureLifetimes(const PrototypeAST& proto,
   activeLifetimeNames_.resize(mark);
 }
 
-void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
-  PrototypeAST& proto = const_cast<PrototypeAST&>(func.getProto());
-
-  rejectRefEnvReturnType(proto.getReturnType(), func.getLocation(),
-                         /*allowNamed=*/true);
-
-  // Lifetime names in the signature must be declared; 'this needs a class
-  bool savedAllowThis = allowThisLifetime_;
-  allowThisLifetime_ = ctx_.getCurrentClass() != nullptr;
-  checkSignatureLifetimes(proto, func.getLocation());
-  allowThisLifetime_ = savedAllowThis;
-
-  // For extern functions (no body), just validate and return
-  if (func.isExtern()) {
-    if (!proto.hasReturnType()) {
-      logAndThrowError("Extern function '" + proto.getName() +
-                           "' must have an explicit return type",
-                       func.getLocation());
-    }
-    if (func.isCExtern()) validateExternSignature(func);
-    return;
-  }
-
-  // A pack's arity and types come from the call site, so a template body
-  // holding one has nothing concrete to check yet. Each specialization is
-  // analyzed on instantiation (instantiateGenericFunction/Method).
-  if (proto.hasVariadicParam()) return;
-
-  // Sun has no va_arg, so C varargs are only meaningful on an extern
-  // declaration where the callee is C code.
-  if (proto.isCVariadic()) {
-    logAndThrowError(
-        "C varargs ('...') are only allowed on 'extern function' "
-        "declarations; '" +
-            proto.getName() + "' has a body",
-        func.getLocation());
-  }
-
-  // Compute function signature from qualified name and resolved param types
-  // This signature is used to create unique names for nested functions
-  std::string funcSig = getFunctionSignature(proto.getMangledName(),
-                                             proto.getResolvedParamTypes());
-
-  // Return type for return-position inference. Some paths (class method
-  // pass 2) reach here before the proto's resolved return type is applied;
-  // resolve the annotation in the current scope (type parameter bindings for
-  // specialized classes are active here).
-  sun::TypePtr scopeReturnType = proto.getResolvedReturnType();
-  if (!scopeReturnType && proto.hasReturnType() && !proto.isGeneric()) {
-    scopeReturnType = types_.typeAnnotationToType(*proto.getReturnType());
-  }
-
-  // Enter function scope with signature for nested function qualification
-  // Pass canThrow flag so throw expressions can be validated. A const method
-  // body sees the const view of its return type: borrows of `this` are
-  // `const ref` there, and the declared `ref` result is what callers with a
-  // mutable receiver get.
-  if (proto.isConstMethod())
-    scopeReturnType = types_.createConstView(scopeReturnType);
-  ctx_.enterFunctionScope(funcSig, proto.getQualifiedName(), proto.canThrow(),
-                          scopeReturnType);
-
-  // Declare 'this' for methods (when we're inside a class context); it is
-  // immutable inside a const method
-  if (ctx_.getCurrentClass()) {
-    ctx_.declareVariable("this", ctx_.getCurrentClass(), /*isParam=*/true,
-                         /*isConst=*/proto.isConstMethod());
-  }
-
-  // If this is a generic function/method, bind each type parameter to itself
-  // so the body can be analyzed before any specialization exists. The binding
-  // carries the parameter's constraint, which is what lets `<T: IShape>` reach
-  // IShape's members on a value of type T (see inferMemberAccessType).
-  if (proto.isGeneric()) {
-    std::vector<std::string> typeParams;
-    std::vector<sun::TypePtr> typeParamTypes;
-    for (const auto& tp : proto.getTypeParameters()) {
-      typeParams.push_back(tp.name);
-      typeParamTypes.push_back(tp.toSunType());
-    }
-    ctx_.addTypeParameterBindings(typeParams, typeParamTypes);
-  }
-
-  // Field defaults see the definition scope and this, before parameters exist.
-  bool savedAllowThisForDefaults = allowThisLifetime_;
-  allowThisLifetime_ = ctx_.getCurrentClass() != nullptr;
-  const auto& statements = func.getBody().getBody();
-  for (size_t i = 0; i < func.getFieldInitializerCount(); ++i) {
-    analyzeExpr(*statements.at(i));
-  }
-  allowThisLifetime_ = savedAllowThisForDefaults;
-
-  // Declare parameters
-  for (const auto& [argName, argType] : proto.getArgs()) {
-    sun::TypePtr paramType = types_.typeAnnotationToType(argType);
-    ctx_.declareVariable(argName, paramType, /*isParam=*/true);
-  }
-
-  // Add captured variables to scope (so nested functions can see them),
-  // marked as captures so mutation checks and nested capture lists can
-  // distinguish them from ordinary locals
-  for (const auto& cap : proto.getCaptures()) {
-    ctx_.declareVariable(cap.name, cap.type);
-    if (VariableInfo* vi = ctx_.lookupVariable(cap.name)) {
-      vi->captureKind = cap.kind;
-      vi->isConst = cap.isConst;
-    }
-  }
-
-  // Analyze the function body. The signature's lifetime names stay active
-  // so annotations inside the body (locals, lambdas) can use them.
-  size_t lifetimeMark = activeLifetimeNames_.size();
-  for (const auto& lp : proto.getLifetimeParameters()) {
-    activeLifetimeNames_.push_back(lp.name);
-  }
-  bool savedAllowThisForBody = allowThisLifetime_;
-  allowThisLifetime_ = ctx_.getCurrentClass() != nullptr;
-  declarations_.collectDeclarations(const_cast<BlockExprAST&>(func.getBody()));
-  for (size_t i = func.getFieldInitializerCount(); i < statements.size(); ++i) {
-    analyzeExpr(*statements[i]);
-  }
-  allowThisLifetime_ = savedAllowThisForBody;
-  activeLifetimeNames_.resize(lifetimeMark);
-
-  // No implicit returns: a non-void signature must be met by an explicit
-  // return (or throw) on every path. Moon stubs carry no body to check.
-  if (!ctx_.isInMoonScope()) {
-    checkAllPathsReturn(proto, func.getBody(), scopeReturnType,
-                        func.getLocation());
-  }
-
-  ctx_.exitScope();
-}
-
 // -------------------------------------------------------------------
 // Lambda signature extraction (pure computation, no side effects)
 // -------------------------------------------------------------------
@@ -1086,54 +905,6 @@ FunctionInfo SemanticAnalyzer::getLambdaInfo(LambdaAST& lambda) {
   }
 
   return {returnType, paramTypes, captures};
-}
-
-// -------------------------------------------------------------------
-// Lambda body analysis
-// -------------------------------------------------------------------
-
-void SemanticAnalyzer::analyzeLambda(LambdaAST& lambda) {
-  PrototypeAST& proto = const_cast<PrototypeAST&>(lambda.getProto());
-
-  // Enter function scope (empty signature - lambdas are anonymous)
-  // Nested functions in lambdas will still get outer function prefixes
-  // Pass canThrow flag from the lambda's prototype
-  ctx_.enterFunctionScope("", sun::QualifiedName(), proto.canThrow(),
-                          proto.getResolvedReturnType());
-
-  // Lambdas don't have type parameters (no generic lambdas)
-
-  // Declare parameters
-  for (const auto& [argName, argType] : proto.getArgs()) {
-    sun::TypePtr paramType = types_.typeAnnotationToType(argType);
-    ctx_.declareVariable(argName, paramType, /*isParam=*/true);
-  }
-
-  // Add captured variables to scope (so nested functions can see them),
-  // marked as captures so mutation checks and nested capture lists can
-  // distinguish them from ordinary locals
-  for (const auto& cap : proto.getCaptures()) {
-    ctx_.declareVariable(cap.name, cap.type);
-    if (VariableInfo* vi = ctx_.lookupVariable(cap.name)) {
-      vi->captureKind = cap.kind;
-      vi->isConst = cap.isConst;
-    }
-  }
-
-  // Keep the lambda's lifetime binders active for annotations nested in
-  // its body, just as a named function does.
-  size_t lifetimeMark = activeLifetimeNames_.size();
-  for (const auto& lp : proto.getLifetimeParameters()) {
-    activeLifetimeNames_.push_back(lp.name);
-  }
-  analyzeBlock(const_cast<BlockExprAST&>(lambda.getBody()));
-  activeLifetimeNames_.resize(lifetimeMark);
-
-  // Same rule as named functions: no implicit returns
-  checkAllPathsReturn(proto, lambda.getBody(), proto.getResolvedReturnType(),
-                      lambda.getLocation());
-
-  ctx_.exitScope();
 }
 
 // -------------------------------------------------------------------
@@ -1357,92 +1128,6 @@ void SemanticAnalyzer::clearResolvedTypes(ExprAST& expr) {
       // For any other node types, just clear this node (may miss children)
       break;
   }
-}
-
-// -------------------------------------------------------------------
-// Method analysis with type bindings
-// -------------------------------------------------------------------
-
-// Analyze one (cloned) method body of a specialized class. The caller has
-// entered the specialized class's scope inside the template's definition
-// scope, so the body sees exactly the names the template was written against.
-void SemanticAnalyzer::analyzeMethodWithBindings(
-    FunctionAST& methodFunc, std::shared_ptr<sun::ClassType> classType,
-    const std::vector<std::string>& typeParams,
-    const std::vector<sun::TypePtr>& typeArgs) {
-  SemanticContext::SourceFileGuard sourceFile(ctx_,
-                                              methodFunc.getSourceFileId());
-  // Step 2: Set up scope with type parameter bindings (only if needed)
-  // For generic class methods, type bindings are already in the Class scope
-  bool needsTypeParamScope =
-      !typeParams.empty() && typeParams.size() == typeArgs.size();
-  if (needsTypeParamScope) {
-    ctx_.enterTypeParamScope(typeParams, typeArgs);
-  }
-
-  // Step 3: Set class context for 'this' member access resolution
-  auto savedClass = ctx_.getCurrentClass();
-  if (classType) {
-    ctx_.setCurrentClass(classType);
-  }
-
-  // Step 4: Enter method scope and declare 'this' parameter
-  // Compute method signature with substituted param types for nested function
-  // qualification
-  const auto& proto = methodFunc.getProto();
-  std::vector<sun::TypePtr> substitutedParamTypes;
-  for (const auto& [argName, argType] : proto.getArgs()) {
-    substitutedParamTypes.push_back(types_.typeAnnotationToType(argType));
-  }
-  std::string methodSig = getFunctionSignature(
-      classType->getMangledMethodName(proto.getName()), substitutedParamTypes);
-  std::string mangledMethodName =
-      classType->getMangledMethodName(proto.getName());
-  // Resolve the return type under the active bindings so return-position
-  // inference (e.g. `return Option.None;`) has the expected type
-  sun::TypePtr methodReturnType;
-  if (proto.hasReturnType()) {
-    methodReturnType = types_.typeAnnotationToType(*proto.getReturnType());
-  }
-  // A const method body sees the const view of its return type
-  if (proto.isConstMethod())
-    methodReturnType = types_.createConstView(methodReturnType);
-  ctx_.enterFunctionScope(
-      methodSig,
-      sun::QualifiedName(classType->getQualifiedName().scopePath,
-                         mangledMethodName),
-      proto.canThrow(), methodReturnType);
-  if (classType) {
-    ctx_.declareVariable("this", classType, /*isParam=*/true,
-                         /*isConst=*/proto.isConstMethod());
-  }
-
-  clearResolvedTypes(const_cast<BlockExprAST&>(methodFunc.getBody()));
-  const auto& statements = methodFunc.getBody().getBody();
-  for (size_t i = 0; i < methodFunc.getFieldInitializerCount(); ++i) {
-    analyzeExpr(*statements.at(i));
-  }
-
-  // Step 5: Declare method parameters with substituted types
-  for (size_t i = 0; i < proto.getArgs().size(); ++i) {
-    const auto& [argName, argType] = proto.getArgs()[i];
-    ctx_.declareVariable(argName, substitutedParamTypes[i], /*isParam=*/true);
-  }
-
-  // Analyze the source body after its parameters are in scope.
-  declarations_.collectDeclarations(
-      const_cast<BlockExprAST&>(methodFunc.getBody()));
-  for (size_t i = methodFunc.getFieldInitializerCount(); i < statements.size();
-       ++i) {
-    analyzeExpr(*statements[i]);
-  }
-
-  // Step 7: Pop scopes and restore context
-  ctx_.exitScope();  // method scope
-  if (needsTypeParamScope) {
-    ctx_.exitScope();  // type param scope
-  }
-  ctx_.setCurrentClass(savedClass);
 }
 
 // -------------------------------------------------------------------

@@ -12,7 +12,6 @@
 #include "support/error.h"
 
 void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
-  sun::prepareFieldInitializers(classDef);
   const std::string& baseName = classDef.getName();
 
   // Partial classes: add methods to the primary class.
@@ -21,20 +20,11 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
     return;
   }
 
-  // Qualify class name with module prefix if inside a module
-  // For precompiled classes (from .moon), use the qualified name from
-  // metadata (includes content hash prefix for symbol isolation)
-  sun::QualifiedName qualifiedClass;
-  if (classDef.hasQualifiedName()) {
-    qualifiedClass = classDef.getQualifiedName();
-  } else {
-    qualifiedClass = ctx_.makeQualifiedName(baseName);
-    classDef.setQualifiedName(qualifiedClass);
-  }
+  const sun::QualifiedName& qualifiedClass = classDef.getQualifiedName();
   std::string mangledClassName = qualifiedClass.mangled();
 
   // Forbid redefinition of class in same module
-  if (declarations_.isDeclared(mangledClassName)) {
+  if (ctx_.declarations().isDeclared(mangledClassName)) {
     logAndThrowError("Redefinition of class '" + baseName + "'",
                      classDef.getLocation());
   }
@@ -135,9 +125,10 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
   // Fields and method signatures are normally registered by the
   // declaration pre-pass (registerClassShape); classes analyzed outside a
   // pre-passed block register them here.
-  bool shapeRegistered = declarations_.hasClassShape(mangledClassName);
+  bool shapeRegistered = ctx_.declarations().hasClassShape(mangledClassName);
   if (!shapeRegistered) {
-    declarations_.registerClassShape(classDef, qualifiedClass, classType);
+    pipeline_.declarations().registerClassShape(classDef, qualifiedClass,
+                                                classType);
   }
 
   // Inherit interface fields BEFORE analyzing methods
@@ -147,7 +138,7 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
   // Merge methods from any pending class extensions
   // Extensions are collected during import processing and merged here
   // so all methods (primary + extensions) can call each other
-  const auto* extensions = declarations_.pendingExtensions(baseName);
+  const auto* extensions = ctx_.declarations().pendingExtensions(baseName);
   if (extensions) {
     for (ClassDefinitionAST* extDef : *extensions) {
       // Validate: check for duplicate methods
@@ -173,7 +164,7 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
       }
     }
     // Clear the pending extensions for this class (they're now merged)
-    declarations_.clearPendingExtensions(baseName);
+    ctx_.declarations().clearPendingExtensions(baseName);
   }
 
   // Save old class context and set new one
@@ -206,17 +197,9 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
                                         {returnType, methodParamTypes, {}});
   }
 
-  // PASS 2: Analyze all method bodies
-  for (size_t i = 0; i < classDef.getMethods().size(); ++i) {
-    const auto& methodDecl = classDef.getMethods()[i];
-    // Set qualified name: scopePath includes module and class context
-    PrototypeAST& proto =
-        const_cast<PrototypeAST&>(methodDecl.function->getProto());
-    std::vector<std::string> methodScopePath = qualifiedClass.scopePath;
-    methodScopePath.push_back(mangledClassName);
-    proto.setQualifiedName(
-        sun::QualifiedName(methodScopePath, proto.getName()));
-    analyzeFunction(*methodDecl.function);
+  // PASS 2: Analyze all method bodies using their assigned names.
+  for (const auto& methodDecl : classDef.getMethods()) {
+    pipeline_.bodies().analyzeFunction(*methodDecl.function);
   }
 
   // PASS 3: check constructors, now that every method body is analyzed — the
@@ -242,7 +225,7 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
   ctx_.setCurrentClass(savedClass);
 
   // Track symbol for redefinition detection
-  declarations_.noteDeclared(mangledClassName);
+  ctx_.declarations().noteDeclared(mangledClassName);
 
   // Store primary AST for partial class merging (if a partial appears
   // later)
@@ -255,20 +238,12 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
 
 void SemanticAnalyzer::analyzeInterfaceDefinition(
     InterfaceDefinitionAST& interfaceDef) {
-  // Qualify interface name with module prefix if inside a module
-  // For precompiled interfaces (from .moon), use the qualified name from
-  // metadata
-  sun::QualifiedName qualifiedInterface;
-  if (interfaceDef.hasQualifiedName()) {
-    qualifiedInterface = interfaceDef.getQualifiedName();
-  } else {
-    qualifiedInterface = ctx_.makeQualifiedName(interfaceDef.getName());
-    interfaceDef.setQualifiedName(qualifiedInterface);
-  }
+  const sun::QualifiedName& qualifiedInterface =
+      interfaceDef.getQualifiedName();
   std::string interfaceName = qualifiedInterface.mangled();
 
   // Forbid redefinition of interface in same module
-  if (declarations_.isDeclared(interfaceName)) {
+  if (ctx_.declarations().isDeclared(interfaceName)) {
     logAndThrowError(
         "Redefinition of interface '" + interfaceDef.getName() + "'",
         interfaceDef.getLocation());
@@ -414,7 +389,7 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
       ctx_.setCurrentClass(pseudoClass);
 
       // Analyze the method body
-      analyzeFunction(*methodDecl.function);
+      pipeline_.bodies().analyzeFunction(*methodDecl.function);
 
       // Restore original ctx_.getCurrentClass()
       ctx_.setCurrentClass(savedClass);
@@ -427,7 +402,7 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
   ctx_.registerInterface(interfaceDef.getName(), interfaceType);
 
   // Track symbol for redefinition detection
-  declarations_.noteDeclared(interfaceName);
+  ctx_.declarations().noteDeclared(interfaceName);
 
   activeLifetimeNames_.resize(interfaceLifetimeMark);
   interfaceDef.setResolvedType(sun::Types::Void());
@@ -442,14 +417,8 @@ void SemanticAnalyzer::analyzeFunctionDefinition(FunctionAST& func) {
 
   // Apply computed info to prototype
   applyFunctionInfoToProto(proto, funcInfo);
-  proto.setQualifiedName(funcInfo.qualifiedName);
 
-  // Register templates for later instantiation. A pack makes a function a
-  // template even with no type parameters: its arity comes from the call.
-  if (proto.isTemplate() && !ctx_.getCurrentClass()) {
-    ctx_.registerGenericFunctionInCurrentScope(func);
-  }
-
+  // Templates were registered during declaration collection.
   // Only register non-template functions in the normal function table.
   // Templates are looked up via the genericFunctions table instead.
   if (!proto.isTemplate()) {
@@ -458,7 +427,7 @@ void SemanticAnalyzer::analyzeFunctionDefinition(FunctionAST& func) {
   }
 
   // Analyze the function body
-  analyzeFunction(func);
+  pipeline_.bodies().analyzeFunction(func);
 
   // Set the function type on the function node
   func.setResolvedType(sun::Types::Function(
@@ -482,7 +451,7 @@ void SemanticAnalyzer::analyzeLambdaExpr(LambdaAST& lambda) {
   applyFunctionInfoToProto(proto, lambdaInfo);
 
   // Analyze the lambda body
-  analyzeLambda(lambda);
+  pipeline_.bodies().analyzeLambda(lambda);
 
   // Set the lambda type on the lambda node
   lambda.setResolvedType(types_.inferType(lambda));
@@ -502,25 +471,16 @@ void SemanticAnalyzer::analyzeModuleDefinition(ModuleAST& nsDecl) {
         // A global imported from a .moon: the storage and its initial
         // value live in the bundle, so there is nothing to analyze — only
         // the type to resolve and the name to register.
-        declarations_.registerPrecompiledModuleVariable(varCreate);
+        pipeline_.declarations().registerPrecompiledModuleVariable(varCreate);
         continue;
       }
       analyzeExpr(*bodyExpr);
-      sun::QualifiedName qualifiedName =
-          ctx_.makeQualifiedName(varCreate.getName());
-      varCreate.setQualifiedName(qualifiedName);
+      const sun::QualifiedName& qualifiedName = varCreate.getQualifiedName();
       if (auto type = varCreate.getResolvedType()) {
-        ctx_.registerModuleVariable(varCreate.getName(),
-                                    qualifiedName.mangled(), type,
+        ctx_.registerModuleVariable(qualifiedName, type,
                                     varCreate.getVisibility(),
                                     varCreate.isConst(), varCreate.isCExtern());
       }
-    } else if (bodyExpr->getType() == ASTNodeType::REFERENCE_CREATION) {
-      analyzeExpr(*bodyExpr);
-      auto& refCreate = static_cast<ReferenceCreationAST&>(*bodyExpr);
-      sun::QualifiedName qualifiedName =
-          ctx_.makeQualifiedName(refCreate.getName());
-      refCreate.setQualifiedName(qualifiedName);
     } else {
       analyzeExpr(*bodyExpr);
     }

@@ -1,5 +1,7 @@
 #include "driver/driver.h"
 
+#include "semantic_analysis/semantic_pipeline.h"
+
 #include <llvm/IR/DebugInfo.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Verifier.h>
@@ -841,7 +843,7 @@ void Driver::analyzeProgram(BlockExprAST& blockAst, Parser& parser) {
   // Run semantic analysis on the unified AST
   {
     sun::ScopedStage stage("sema");
-    analyzer->analyzeBlock(blockAst);
+    analyzer->pipeline().run(blockAst);
   }
 }
 

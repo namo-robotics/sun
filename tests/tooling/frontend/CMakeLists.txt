@@ -1,4 +1,5 @@
 target_sources(sun_tests PRIVATE
+    test_declaration_naming_pass.cpp
     test_lexer.cpp
     test_lowering.cpp
     test_parser.cpp

@@ -100,8 +100,7 @@ bool unifyPayloadTypeParam(const TypeAnnotation& annot,
 
 void EnumAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
   // Forbid redefinition of enum in same module
-  if (sema_.declarations().isDeclared(
-          ctx_.makeQualifiedName(enumDef.getName()).mangled())) {
+  if (ctx_.declarations().isDeclared(enumDef.getQualifiedName().mangled())) {
     logAndThrowError("Redefinition of enum '" + enumDef.getName() + "'",
                      enumDef.getLocation());
   }
@@ -141,24 +140,22 @@ void EnumAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
   // resolved per instantiation with the type arguments bound
   if (enumDef.isGeneric()) {
     if (!ctx_.lookupGenericEnum(enumDef.getName())) {
-      ctx_.registerGenericEnum(enumDef.getName(),
-                               {&enumDef, enumDef.getTypeParameters(),
-                                ctx_.makeQualifiedName(enumDef.getName())});
+      ctx_.registerGenericEnum(
+          enumDef.getName(),
+          {&enumDef, enumDef.getTypeParameters(), enumDef.getQualifiedName()});
     }
-    sema_.declarations().noteDeclared(
-        ctx_.makeQualifiedName(enumDef.getName()).mangled());
+    ctx_.declarations().noteDeclared(enumDef.getQualifiedName().mangled());
     enumDef.setResolvedType(sun::Types::Void());
     return;
   }
 
   // Create the enum type
-  auto enumType = ctx_.types()->getEnum(
-      ctx_.makeQualifiedName(enumDef.getName()).mangled());
+  auto enumType = ctx_.types()->getEnum(enumDef.getQualifiedName().mangled());
   enumType->setBaseName(enumDef.getName());
   enumType->setUnderlyingType(
       sun::Types::fromString(enumDef.getUnderlyingTypeName()));
   enumType->visibility = enumDef.getVisibility();
-  enumType->setQualifiedName(ctx_.makeQualifiedName(enumDef.getName()));
+  enumType->setQualifiedName(enumDef.getQualifiedName());
 
   // Add variants to the enum type (idempotent: declaration collection
   // already registered them)
@@ -185,8 +182,7 @@ void EnumAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
   ctx_.registerEnum(enumDef.getName(), enumType);
 
   // Track symbol for redefinition detection
-  sema_.declarations().noteDeclared(
-      ctx_.makeQualifiedName(enumDef.getName()).mangled());
+  ctx_.declarations().noteDeclared(enumDef.getQualifiedName().mangled());
 
   enumDef.setResolvedType(sun::Types::Void());
 }
