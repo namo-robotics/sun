@@ -50,10 +50,11 @@ directory layout: `support/`, `driver/`, `parsing/`, `ast/`,
 
 ## Semantic Analysis
 
-The semantic analyzer turns a merely *parsed* program into an *understood*
-one: it makes two passes over the merged AST — a shallow declaration
-collection sweep, then a deep walk that stamps every expression with a
-resolved `sun::Type`. Type inference, expected-type propagation,
+`SemanticAnalyzer` owns the shared context, checking helpers, and a persistent
+`SemanticPipeline` that owns all analysis passes. Together they turn a merely *parsed* program into an *understood* one: it prepares declarations, assigns their qualified names, and registers
+them before resolving signatures and analyzing bodies. The naming pass does
+not resolve types or register symbols. Body analysis stamps expressions with
+a resolved `sun::Type`. Type inference, expected-type propagation,
 compatibility checking, closure capture detection, and generic
 monomorphization all happen here.
 

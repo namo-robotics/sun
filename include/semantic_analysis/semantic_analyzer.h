@@ -1,18 +1,19 @@
-// semantic_analyzer.h — Pre-codegen semantic analysis pass
+// semantic_analyzer.h — Shared semantic state and checking helpers
 //
-// The analyzer delegates to these classes, each with its own header:
+// The semantic session shares state and checking helpers with these classes:
 //   SemanticContext       scopes, symbol tables, the type registry
-//   DeclarationCollector  the pre-pass, and what counts as already declared
+//   DeclarationCollectionPass  declaration registration
 //   GenericSpecializer    monomorphization and its cache
 //   TypeInferer           what type is this expression / this annotation
 //   CallAnalyzer          what a call calls, and how its arguments get there
 //   EnumAnalyzer          enum definitions, variants, and match patterns
-// They all share the one SemanticContext by reference. The analyzer itself is
-// the part that walks the AST: it checks what it finds, and stamps the
-// resolved types and conversions codegen reads back off the nodes.
+// They share SemanticContext by reference. SemanticPipeline owns the passes;
+// BodyAnalysisPass traverses prepared statements. The analyzer's expression
+// helpers check nodes and record the types and conversions codegen consumes.
 //
 // Its implementation is split by topic across src/semantic_analysis/:
-//   analysis.cpp             analyzeExpr, analyzeBlock, analyzeFunction
+//   body_analysis_pass.cpp   statement traversal and function scopes
+//   analysis.cpp             expression and signature checking
 //   analysis_utils.cpp       places, constness, `_is<T>` type guards
 //   call_analyzer.cpp        every form of call (its own class, see above)
 //   captures.cpp             free variables and closure captures
@@ -38,11 +39,13 @@
 
 #include "ast/type_annotation.h"
 #include "semantic_analysis/access_checker.h"
+#include "semantic_analysis/body_analysis_pass.h"
 #include "semantic_analysis/call_analyzer.h"
-#include "semantic_analysis/declaration_collector.h"
+#include "semantic_analysis/declaration_collection_pass.h"
 #include "semantic_analysis/enum_analyzer.h"
 #include "semantic_analysis/generic_specializer.h"
 #include "semantic_analysis/semantic_context.h"
+#include "semantic_analysis/semantic_pipeline.h"
 #include "semantic_analysis/semantic_scope.h"
 #include "semantic_analysis/type_inferer.h"
 
@@ -53,26 +56,19 @@ struct Position;
 using QualifiedName = sun::QualifiedName;
 
 /**
- * Semantic analyzer that runs before codegen to:
- * 1. Build symbol tables with proper scoping
- * 2. Resolve variable types
- * 3. Populate closure captures for each function
- * 4. Infer return types for functions without explicit annotations
- * 5. Handle namespace scoping and using statements
- * 6. Handle class definitions and member access
- * 7. Handle generic class instantiation (monomorphization)
+ * Own the semantic context, pipeline, and expression-checking helpers.
+ * The pipeline owns the passes, which share this session's state and helpers.
  */
 class SemanticAnalyzer {
   // Scopes, symbol tables, the type registry and the current class. Shared by
   // reference with everything else this analysis run is made of.
   SemanticContext ctx_;
 
-  // Builds and caches every specialization the program asks for.
-  GenericSpecializer generics_{ctx_, *this};
+  // One persistent pipeline owns all passes for this analysis session.
+  sun::SemanticPipeline pipeline_{*this};
 
-  // Registers a block's declarations before its bodies are analyzed, and
-  // remembers what has already been declared.
-  DeclarationCollector declarations_{ctx_, *this};
+  // Builds and caches every specialization the program asks for.
+  GenericSpecializer generics_{ctx_, *this, pipeline_.naming()};
 
   // What type is this expression, and what type does this annotation name.
   TypeInferer types_{ctx_, *this, generics_};
@@ -84,18 +80,26 @@ class SemanticAnalyzer {
   CallAnalyzer calls_{ctx_, *this, generics_, types_};
 
  public:
-  /** Start with an empty global scope holding the builtin functions. */
+  /** Create the shared context, checking helpers, and pipeline for a program.
+   */
   explicit SemanticAnalyzer(std::shared_ptr<sun::TypeRegistry> registry)
       : ctx_(std::move(registry)) {}
+
+  /** Keep pass and helper references tied to this session. */
+  SemanticAnalyzer(const SemanticAnalyzer &) = delete;
+  SemanticAnalyzer &operator=(const SemanticAnalyzer &) = delete;
 
   /** Scopes, symbol tables and the type registry of this analysis run. */
   SemanticContext &context() { return ctx_; }
 
+  /** The persistent pipeline that owns and orders this session's passes. */
+  sun::SemanticPipeline &pipeline() { return pipeline_; }
+
   /** Monomorphization: the specializations this run has built. */
   GenericSpecializer &generics() { return generics_; }
 
-  /** The declaration pre-pass and its record of what is already declared. */
-  DeclarationCollector &declarations() { return declarations_; }
+  /** The pass that checks prepared statements and function bodies. */
+  BodyAnalysisPass &bodies() { return pipeline_.bodies(); }
 
   /** Type inference and type-annotation resolution. */
   TypeInferer &types() { return types_; }
@@ -113,11 +117,9 @@ class SemanticAnalyzer {
    */
   void clearResolvedTypes(ExprAST &expr);
 
-  /** Main entry point: analyze a top-level expression or statement. */
-  void analyze(ExprAST &expr);
-
   /**
-   * Analyze an expression: resolve its type, check it, and record what codegen
+   * Check an expression after declaration passes have run. Resolve its type
+   * and record what codegen
    * needs. expectedType is an optional hint from the context, such as the
    * declared type of the variable being assigned.
    */
@@ -222,16 +224,6 @@ class SemanticAnalyzer {
   void applyFunctionInfoToProto(PrototypeAST &proto, const FunctionInfo &info);
 
   /**
-   * Analyze a function body. Call getFunctionInfo first to get signature info.
-   * If return type was not explicit, this infers it and updates the prototype.
-   * Does NOT register the function — caller is responsible for that.
-   */
-  void analyzeFunction(FunctionAST &func);
-
-  /** The same for a lambda body. */
-  void analyzeLambda(LambdaAST &lambda);
-
-  /**
    * Reject extern signatures that have no C spelling. Primitives, raw_ptr<T>,
    * `ref T` (C's T*) and objects by value all lower correctly; arrays,
    * slices, interfaces and lambdas do not, and must error rather than
@@ -259,25 +251,6 @@ class SemanticAnalyzer {
    */
   void validateNotReserved(const std::string &name, const std::string &kind,
                            std::optional<Position> location);
-
-  /**
-   * Analyze a method body with type bindings.
-   * Runs semantic analysis with 'this' bound to the given class type.
-   * @param methodFunc The method to analyze (must have a body)
-   * @param classType The class type for 'this' parameter binding
-   * @param typeParams Type parameter names to bind
-   * @param typeArgs Type argument values for the type parameters
-   */
-  void analyzeMethodWithBindings(FunctionAST &methodFunc,
-                                 std::shared_ptr<sun::ClassType> classType,
-                                 const std::vector<std::string> &typeParams,
-                                 const std::vector<sun::TypePtr> &typeArgs);
-
-  /**
-   * Analyze a block: register its declarations first, so their order within
-   * the block does not matter, then analyze each statement in turn.
-   */
-  void analyzeBlock(BlockExprAST &block);
 
   /**
    * Throw unless `target` is something a borrow can bind: an addressable

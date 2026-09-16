@@ -4,6 +4,7 @@
 
 #include <algorithm>
 
+#include "semantic_analysis/declaration_naming_pass.h"
 #include "semantic_analysis/field_initialization.h"
 #include "semantic_analysis/generic_type_arguments.h"
 #include "semantic_analysis/item_refs.h"
@@ -309,6 +310,15 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
     methodsClone.push_back(std::move(methodClone));
   }
 
+  // Cloning drops analysis metadata. Name the generated methods before
+  // resolving signatures, using the specialized class as their scope.
+  auto methodScope = specializedQName.scopePath;
+  methodScope.push_back(specializedQName.baseName);
+  for (const auto& method : methodsClone) {
+    declarationNamingPass_.run(*method.function, methodScope,
+                               specializedQName.owner(), false);
+  }
+
   // PASS 1: Register all methods first (so methods can call each other)
   // In astOnlyMode, we skip type-system registration but still resolve types
   // for the cloned method prototypes
@@ -336,6 +346,7 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
     // Update the cloned method's prototype with resolved types
     PrototypeAST& clonedProto =
         const_cast<PrototypeAST&>(methodClone.function->getProto());
+    clonedProto.setQualifiedName(signature.qualifiedName);
     clonedProto.setResolvedParamTypes(paramTypes);
     clonedProto.setResolvedReturnType(returnType);
 
@@ -456,7 +467,8 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
 
       // Use the unified helper (type params already in outer scope, pass
       // empty). This analyzes the CLONED method, not the shared generic one
-      sema_.analyzeMethodWithBindings(*methodFunc, specializedClass, {}, {});
+      sema_.bodies().analyzeMethodWithBindings(*methodFunc, specializedClass,
+                                               {}, {});
     }
     // Each specialization's constructors are checked against its own fields:
     // what a field's type turns out to be is only known here
@@ -507,7 +519,8 @@ void GenericSpecializer::analyzeDeferredSpecializations() {
     for (auto& methodClone : d.specializedAST->getMutableMethods()) {
       FunctionAST* methodFunc = methodClone.function.get();
       if (methodFunc->getProto().isGeneric()) continue;
-      sema_.analyzeMethodWithBindings(*methodFunc, d.specializedClass, {}, {});
+      sema_.bodies().analyzeMethodWithBindings(*methodFunc, d.specializedClass,
+                                               {}, {});
     }
     for (const auto& methodClone : d.specializedAST->getMethods()) {
       if (!methodClone.isConstructor) continue;
@@ -824,7 +837,8 @@ GenericSpecializer::instantiateGenericFunction(
     }
 
     // Analyze the body with current type parameter bindings
-    sema_.analyzeBlock(const_cast<BlockExprAST&>(clonedFunc->getBody()));
+    sema_.bodies().runInFunctionScope(
+        const_cast<BlockExprAST&>(clonedFunc->getBody()));
 
     ctx_.exitScope();  // parameter scope
 
@@ -1075,7 +1089,8 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
   }
 
   // Analyze the body
-  sema_.analyzeBlock(const_cast<BlockExprAST&>(clonedFunc->getBody()));
+  sema_.bodies().runInFunctionScope(
+      const_cast<BlockExprAST&>(clonedFunc->getBody()));
 
   ctx_.exitScope();  // method scope
   ctx_.setCurrentClass(savedClass);

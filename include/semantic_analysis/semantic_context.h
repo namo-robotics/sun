@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "semantic_analysis/access_checker.h"
+#include "semantic_analysis/declaration_state.h"
 #include "semantic_analysis/semantic_scope.h"
 
 struct Position;
@@ -31,10 +32,14 @@ struct Position;
  */
 class SemanticContext : public AccessContext {
   sun::SourceFileId sourceFileId_ = 0;
+  DeclarationState declarations_;
 
  public:
   /** Start with an empty global scope holding the builtin functions. */
   explicit SemanticContext(std::shared_ptr<sun::TypeRegistry> registry);
+
+  /** Declaration identities, registered shapes, and pending extensions. */
+  DeclarationState &declarations() { return declarations_; }
 
   // ---- Shared state ------------------------------------------------------
 
@@ -136,12 +141,6 @@ class SemanticContext : public AccessContext {
    * e.g., inside "module A { module B { } }", returns {"A", "B"}.
    */
   std::vector<std::string> getCurrentScopePath() const;
-
-  /**
-   * Create a QualifiedName for a symbol in the current module scope.
-   * Preserves module path in display form for proper error messages.
-   */
-  sun::QualifiedName makeQualifiedName(const std::string &baseName) const;
 
   /**
    * Get the fully qualified name for a symbol in current scope.
@@ -250,8 +249,7 @@ class SemanticContext : public AccessContext {
    * Record a module-level variable under both its plain and its qualified
    * name, so it can be reached from inside the module and from outside it.
    */
-  void registerModuleVariable(const std::string &baseName,
-                              const std::string &qualifiedName,
+  void registerModuleVariable(const sun::QualifiedName &qualifiedName,
                               sun::TypePtr type, sun::Visibility visibility,
                               bool isConst = false, bool isCExtern = false);
 

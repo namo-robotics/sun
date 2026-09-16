@@ -1,0 +1,73 @@
+#pragma once
+
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
+#include "ast/ast_fwd.h"
+
+/** Declaration bookkeeping shared by collection and body checking. */
+class DeclarationState {
+ public:
+  /** True when this class's shape was already registered by the pre-pass. */
+  bool hasClassShape(const std::string &mangledClassName) const {
+    return preRegisteredClassShapes_.count(mangledClassName) > 0;
+  }
+
+  /** Record a class shape and report whether it is new. */
+  bool noteClassShape(const std::string &name) {
+    return preRegisteredClassShapes_.insert(name).second;
+  }
+
+  // ---- Module-level redefinition -----------------------------------------
+  //
+  // A class, interface or enum may only be declared once per module. Names
+  // are recorded as they are analyzed, and a second declaration is an error.
+
+  /** True when this module-level name has already been declared. */
+  bool isDeclared(const std::string &name) const {
+    return definedSymbols_.count(name) > 0;
+  }
+
+  /** Record a module-level name so a later redeclaration is caught. */
+  void noteDeclared(const std::string &name) { definedSymbols_.insert(name); }
+
+  // ---- Partial classes ---------------------------------------------------
+  //
+  // A partial class adds methods to a primary declared elsewhere. When the
+  // primary has not been analyzed yet, the extension waits here for it.
+
+  /** Hold an extension until its primary class is analyzed. */
+  void deferExtension(const std::string &className,
+                      ClassDefinitionAST *extension) {
+    pendingExtensions_[className].push_back(extension);
+  }
+
+  /** The extensions waiting for this class, or nullptr when there are none. */
+  const std::vector<ClassDefinitionAST *> *pendingExtensions(
+      const std::string &className) const {
+    auto it = pendingExtensions_.find(className);
+    return it == pendingExtensions_.end() ? nullptr : &it->second;
+  }
+
+  /** Drop the extensions for a class once they have been merged into it. */
+  void clearPendingExtensions(const std::string &className) {
+    pendingExtensions_.erase(className);
+  }
+
+ private:
+  // Symbols defined at module level (depth 0) — used to detect redefinition
+  // errors for classes, interfaces, and enums.
+  std::unordered_set<std::string> definedSymbols_;
+
+  // Pending class extensions collected during import processing.
+  // Maps class name → list of extension ASTs to merge when primary is analyzed.
+  std::unordered_map<std::string, std::vector<ClassDefinitionAST *>>
+      pendingExtensions_;
+
+  // Classes (by mangled name) whose fields and method signatures were
+  // registered by the pre-pass. The sequential pass skips re-adding them and
+  // only analyzes bodies.
+  std::unordered_set<std::string> preRegisteredClassShapes_;
+};

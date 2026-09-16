@@ -156,6 +156,10 @@ std::set<std::string> SemanticAnalyzer::collectFreeVariablesInBlock(
 // The first `this` inside the expression, if any. `this` is its own node
 // type, so free-variable collection never sees it as a name.
 static const ExprAST* findThisUse(const ExprAST& expr) {
+  // A local type's receiver belongs to that type, not the enclosing lambda.
+  if (expr.getType() == ASTNodeType::CLASS_DEFINITION ||
+      expr.getType() == ASTNodeType::INTERFACE_DEFINITION)
+    return nullptr;
   if (expr.getType() == ASTNodeType::THIS) return &expr;
   const ExprAST* found = nullptr;
   forEachChild(expr, [&found](const ExprAST& child) {

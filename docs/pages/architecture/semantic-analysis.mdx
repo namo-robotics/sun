@@ -2,26 +2,58 @@
 
 The semantic analyzer's job is to turn a merely *parsed* program into an
 *understood* one: every expression gets a resolved type, every name gets a
-meaning, and anything inconsistent is rejected with an error. It never
-rewrites the program — it annotates the AST in place, and the borrow checker
-and codegen simply read those annotations.
+meaning, and anything inconsistent is rejected with an error. It prepares
+declarations and annotates the AST in place; the borrow checker and codegen
+read those annotations.
 
-## Two Passes
+## Declaration Phases
 
-It makes two passes over the merged AST:
+`SemanticAnalyzer` owns the shared `SemanticContext`, checking helpers, and one
+persistent `SemanticPipeline`. The pipeline owns all analysis passes, and the driver
+invokes it through the analyzer. Scopes, symbols, registered class shapes, and
+pending extensions live in the shared context; passes borrow that state and the
+checking helpers. The pipeline runs these phases in order:
 
-1. **Declaration collection** — a shallow sweep that registers the *names* of
-   things: classes, interfaces, enums, and function signatures. This is what
-   lets code call a function or use a type that is defined further down the
-   file. Generic definitions (classes, interfaces, enums) are registered as
-   templates, not concrete types. Bodies are not analyzed yet.
-   Before signatures and class shapes are resolved, a type-name prepass walks
-   the complete module tree. That makes a public signature able to name a type
-   from a sibling module even when a `.moon` import reconstructed those modules
-   in a different order.
-2. **Full analysis** — a deep walk of every statement and expression. Each
-   node is checked against its context and stamped with a resolved
-   `sun::Type`.
+1. **Field initializer preparation** — supply implicit constructors and lower field
+   defaults into constructor bodies (`FieldInitializerPreparationPass`). This makes
+   generated declarations available to the naming passes. Preparation traverses
+   the entire AST once, including classes inside function, method, and lambda
+   bodies. It does not need resolved signatures or types.
+2. **Declaration naming** — `DeclarationNamingPass` walks modules, bundle
+   scopes, types, functions, methods, and module storage. It assigns their
+   scope path and owning module without looking up symbols, resolving types,
+   or registering declarations. Names supplied by imported bundles and generic
+   specializations are preserved, including when a bundle module has an alias.
+3. **Declaration collection and signature resolution** —
+   `DeclarationCollectionPass` registers types and generic templates, then
+   resolves class shapes and function signatures.
+   Registration consumes the names already attached to declarations. A
+   type-name prepass covers the complete module tree before any shape or
+   signature is resolved, so sibling modules can refer to each other's types.
+   Resolved parameter types supply overload suffixes; generic templates keep
+   their unsuffixed names until specialization supplies concrete arguments.
+4. **Body analysis** — `BodyAnalysisPass` checks prepared statements in source
+   order using the shared expression-checking helpers. It resolves references,
+   infers expression types, selects overloads, and checks statements against
+   their surrounding context. It does not register declarations in advance.
+
+A function body's local declarations are named after its enclosing signature
+is resolved, before its statements are checked. `BodyAnalysisPass` enters the
+function scope and invokes `LocalDeclarationNamingPass`. This pass shares the
+name-assignment traversal with program-level naming, but uses the resolved
+function scope and leaves local variables unqualified. It does not generate
+constructors or prepare field defaults. Generic clones retain their prepared
+constructor bodies and use local naming when their function scopes are entered.
+Local declarations remain in source order. The body pass checks constructor
+field defaults before binding parameters, then checks the remaining statements.
+Preparing names in the resolved function scope keeps local types under the
+correct overload or specialization. Local variables and anonymous lambdas
+continue to use local bindings rather than module-qualified symbol names.
+
+The naming pass is independent of `SemanticContext` and the type registry.
+It can run on an AST whose annotations name unknown types; validating those
+annotations belongs to the later phases. Generic function templates are
+registered during declaration collection, not again during body analysis.
 
 C extern globals join functions in declaration collection, so a function may
 use one before its source declaration. Their `VariableInfo` records
@@ -166,11 +198,15 @@ The analyzer's source is split by concern under `src/semantic_analysis/`:
 
 | File | Responsibility |
 |------|----------------|
-| `declaration_collector.cpp` | Pass one: registering declared names |
-| `analysis.cpp`, `analysis_*.cpp` | The main walk, split by what is being walked |
+| `semantic_pipeline.cpp` | Owning and ordering all passes within the analyzer |
+| `field_initializer_preparation_pass.cpp` | Preparing field defaults and implicit constructors |
+| `declaration_naming_pass.cpp` | Program and local declaration naming with a shared traversal |
+| `declaration_collection_pass.cpp` | Registering declarations and resolving signatures |
+| `body_analysis_pass.cpp` | Function scopes, local declaration passes, and statement checking |
+| `analysis.cpp`, `analysis_*.cpp` | Shared expression and construct checking helpers |
 | `type_inferer.cpp` | Bottom-up typing |
 | `type_annotations.cpp` | Resolving written annotations, and substituting into a resolved type |
-| `semantic_context.cpp` / `scope_lookup.cpp` | The scope tree |
+| `semantic_context.cpp` / `scope_lookup.cpp` | Shared scopes, symbols, and declaration bookkeeping (`declaration_state.h`) |
 | `generic_specializer.cpp`, `generic_type_arguments.cpp` | Monomorphization, and inferring type arguments at a call |
 | `interfaces.cpp`, `enums.cpp`, `packed_classes.cpp` | Per-construct analysis |
 | `argument_conversion.cpp`, `type_rules.cpp` | How an argument reaches its parameter, and what is assignable to what |

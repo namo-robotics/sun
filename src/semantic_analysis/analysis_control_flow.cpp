@@ -304,7 +304,7 @@ void SemanticAnalyzer::analyzeTryCatch(TryCatchExprAST& tryCatchExpr) {
   ctx_.enterTryBlock();
 
   // Analyze the try block
-  analyzeBlock(const_cast<BlockExprAST&>(tryCatchExpr.getTryBlock()));
+  pipeline_.bodies().run(const_cast<BlockExprAST&>(tryCatchExpr.getTryBlock()));
 
   // Exit try block tracking
   ctx_.exitTryBlock();
@@ -365,7 +365,7 @@ void SemanticAnalyzer::analyzeTryCatch(TryCatchExprAST& tryCatchExpr) {
 
     ctx_.enterScope();
     ctx_.declareVariable(catchClause.bindingName, bindingType);
-    analyzeBlock(const_cast<BlockExprAST&>(*catchClause.body));
+    pipeline_.bodies().run(const_cast<BlockExprAST&>(*catchClause.body));
     ctx_.exitScope();
   }
 
@@ -439,7 +439,7 @@ void SemanticAnalyzer::analyzeUnsafeBlock(UnsafeBlockAST& unsafeBlock) {
   ctx_.enterUnsafeBlock();
 
   // Analyze the body
-  analyzeBlock(unsafeBlock.getBody());
+  pipeline_.bodies().run(unsafeBlock.getBody());
 
   // Exit unsafe block tracking
   ctx_.exitUnsafeBlock();

@@ -4,6 +4,7 @@
 #include "semantic_analysis/semantic_context.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -118,8 +119,6 @@ void SemanticContext::declareModule(ModuleAST& module) {
     scope->qualifiedName = module.getQualifiedName();
     scope->scopePath = scope->qualifiedName.scopePath;
     scope->scopePath.push_back(scope->qualifiedName.baseName);
-  } else {
-    module.setQualifiedName(scope->qualifiedName);
   }
   rootScope_->canonicalModules[sun::QualifiedName(scope->scopePath, "")
                                    .scopePathString()] = scope;
@@ -212,12 +211,6 @@ std::vector<std::string> SemanticContext::getCurrentScopePath() const {
     }
   }
   return {};
-}
-
-sun::QualifiedName SemanticContext::makeQualifiedName(
-    const std::string& baseName) const {
-  return sun::QualifiedName(getCurrentScopePath(), baseName,
-                            currentModulePath());
 }
 
 std::string SemanticContext::qualifyNameInCurrentModule(
@@ -784,11 +777,11 @@ void SemanticContext::registerFunctionInCurrentScope(const std::string& name,
 }
 
 void SemanticContext::registerGenericFunctionInCurrentScope(FunctionAST& func) {
-  PrototypeAST& proto = const_cast<PrototypeAST&>(func.getProto());
-  sun::QualifiedName qname(getCurrentScopePath(), proto.getName(),
-                           currentModulePath());
+  const PrototypeAST& proto = func.getProto();
+  assert(proto.hasQualifiedName() && "Generic declaration must be named first");
+  const sun::QualifiedName& qname = proto.getQualifiedName();
   auto existing = currentScope_->genericFunctions.find(qname);
-  // The declaration and analysis passes register the same template again.
+  // Repeated declaration collection may visit the same template again.
   // A different declaration must not silently replace it.
   if (existing != currentScope_->genericFunctions.end() &&
       existing->second.AST != &func) {
@@ -1093,20 +1086,20 @@ void SemanticContext::registerBuiltinFunctions() {
 // Namespace-qualified symbols (separate from scope-based lookup)
 // -------------------------------------------------------------------
 
-void SemanticContext::registerModuleVariable(const std::string& baseName,
-                                             const std::string& qualifiedName,
-                                             sun::TypePtr type,
-                                             sun::Visibility visibility,
-                                             bool isConst, bool isCExtern) {
+void SemanticContext::registerModuleVariable(
+    const sun::QualifiedName& qualifiedName, sun::TypePtr type,
+    sun::Visibility visibility, bool isConst, bool isCExtern) {
   VariableInfo info{type, true, false};
   info.visibility = visibility;
   info.isConst = isConst;
   info.isCExtern = isCExtern;
-  info.qualifiedName = makeQualifiedName(baseName);
+  info.qualifiedName = qualifiedName;
+  const std::string& baseName = qualifiedName.baseName;
+  const std::string mangledName = qualifiedName.mangled();
   // Store with qualified name for codegen lookup
-  rootScope_->namespacedVariables[qualifiedName] = info;
+  rootScope_->namespacedVariables[mangledName] = info;
   if (currentScope_ != rootScope_.get()) {
-    currentScope_->namespacedVariables[qualifiedName] = info;
+    currentScope_->namespacedVariables[mangledName] = info;
   }
   // Also store with plain name in current scope for hasSymbol lookup
   currentScope_->namespacedVariables[baseName] = info;

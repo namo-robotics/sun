@@ -175,6 +175,7 @@ add_library(sun_lib
     src/semantic_analysis/type_traits.cpp
     src/semantic_analysis/captures.cpp
     src/semantic_analysis/field_initialization.cpp
+    src/semantic_analysis/body_analysis_pass.cpp
     src/semantic_analysis/analysis.cpp
     src/semantic_analysis/analysis_declarations.cpp
     src/semantic_analysis/analysis_control_flow.cpp
@@ -182,7 +183,10 @@ add_library(sun_lib
     src/semantic_analysis/analysis_expressions.cpp
     src/semantic_analysis/analysis_utils.cpp
     src/semantic_analysis/call_analyzer.cpp
-    src/semantic_analysis/declaration_collector.cpp
+    src/semantic_analysis/field_initializer_preparation_pass.cpp
+    src/semantic_analysis/declaration_naming_pass.cpp
+    src/semantic_analysis/semantic_pipeline.cpp
+    src/semantic_analysis/declaration_collection_pass.cpp
     src/semantic_analysis/access_checker.cpp
     src/semantic_analysis/type_rules.cpp
     src/semantic_analysis/symbol_names.cpp
