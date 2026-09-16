@@ -93,3 +93,24 @@ TEST(Modules_Interpolation, hex_escapes_require_two_digits) {
         "\\x needs exactly two hex digits");
   }
 }
+
+TEST(Modules_Interpolation, unused_generic_body_accepts_unbound_value) {
+  EXPECT_EQ(executeStringWithStdlib(R"(
+    function label<T>(value: T) std.String { return `v=${value}`; }
+    function main() i32 { return 0; }
+  )"),
+            0);
+}
+
+TEST(Modules_Interpolation, generic_interpolation_rejects_unsupported_type) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeStringWithStdlib(R"(
+    class Unprintable { init() {} }
+    function label<T>(value: T) std.String { return `v=${value}`; }
+    function main() i32 {
+      var text = label(Unprintable());
+      return 0;
+    }
+  )"),
+      "Type mismatch in argument 1 of call to 'append'");
+}

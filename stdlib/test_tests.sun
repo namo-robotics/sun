@@ -1,0 +1,70 @@
+// Tests for assertion overloads and their failure messages.
+
+using std;
+
+public module std {
+  module test_tests {
+    // Check both successful and failing assertions for one primitive type.
+    function check_primitive<T: _Primitive>(a: T, b: T, equal_message: static_ptr<u8>, unequal_message: static_ptr<u8>) void throws IError {
+      std.test.assert_eq<T>(a, a);
+      std.test.assert_ne<T>(a, b);
+      var caught_equal = false;
+      try {
+        std.test.assert_eq<T>(a, b);
+      } catch (e: IError) {
+        caught_equal = true;
+        std.test.assert(e.code() == 10);
+        std.test.assert(e.message().equals_literal(equal_message));
+      }
+      std.test.assert(caught_equal);
+      var caught_unequal = false;
+      try {
+        std.test.assert_ne<T>(a, a);
+      } catch (e: IError) {
+        caught_unequal = true;
+        std.test.assert(e.code() == 10);
+        std.test.assert(e.message().equals_literal(unequal_message));
+      }
+      std.test.assert(caught_unequal);
+    }
+
+    test_function primitive_assertions() {
+      check_primitive<i8>(1, 2, "assertion failed: expected 1, got 2", "assertion failed: both values are 1");
+      check_primitive<i16>(1, 2, "assertion failed: expected 1, got 2", "assertion failed: both values are 1");
+      check_primitive<i32>(1, 2, "assertion failed: expected 1, got 2", "assertion failed: both values are 1");
+      check_primitive<i64>(1, 2, "assertion failed: expected 1, got 2", "assertion failed: both values are 1");
+      check_primitive<u8>(1, 2, "assertion failed: expected 1, got 2", "assertion failed: both values are 1");
+      check_primitive<u16>(1, 2, "assertion failed: expected 1, got 2", "assertion failed: both values are 1");
+      check_primitive<u32>(1, 2, "assertion failed: expected 1, got 2", "assertion failed: both values are 1");
+      check_primitive<u64>(1, 2, "assertion failed: expected 1, got 2", "assertion failed: both values are 1");
+      check_primitive<f32>(_convert<f32>(1.5), _convert<f32>(2.5), "assertion failed: expected 1.5, got 2.5", "assertion failed: both values are 1.5");
+      check_primitive<f64>(1.5, 2.5, "assertion failed: expected 1.5, got 2.5", "assertion failed: both values are 1.5");
+      check_primitive<bool>(true, false, "assertion failed: expected true, got false", "assertion failed: both values are true");
+      check_primitive<char>('a', 'b', "assertion failed: expected a, got b", "assertion failed: both values are a");
+    }
+
+    test_function inferred_primitive_assertions() {
+      var value: i64 = 42;
+      std.test.assert_eq(value, 42);
+      std.test.assert_ne(value, 43);
+      std.test.assert_eq(true, true);
+      std.test.assert_ne('a', 'b');
+    }
+
+    test_function string_equality_still_compares_contents() {
+      var a = String("same");
+      var b = String("same");
+      std.test.assert_eq(a, b);
+      var other = String("other");
+      var caught = false;
+      try {
+        std.test.assert_eq(a, other);
+      } catch (e: IError) {
+        caught = true;
+        std.test.assert(e.code() == 10);
+        std.test.assert(e.message().equals_literal("assertion failed: expected same, got other"));
+      }
+      std.test.assert(caught);
+    }
+  }
+}

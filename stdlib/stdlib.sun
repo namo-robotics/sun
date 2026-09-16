@@ -59,6 +59,7 @@ manifest {
         "queue_tests.sun",
         "shared_tests.sun",
         "string_tests.sun",
+        "test_tests.sun",
         "thread_tests.sun",
         "time_tests.sun",
         "udp_tests.sun",

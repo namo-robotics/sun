@@ -18,6 +18,19 @@ public module std {
       std.test.assert(s.equals_literal("v=7"), "moved interpolation lost its contents");
     }
 
+    // The append overload is resolved again for each concrete type.
+    function generic_label<T>(value: T) String {
+      return `v=${value}`;
+    }
+
+    test_function generic_interpolation_uses_concrete_overloads() {
+      std.test.assert(generic_label<i32>(42).equals_literal("v=42"));
+      std.test.assert(generic_label<bool>(true).equals_literal("v=true"));
+      std.test.assert(generic_label<char>('x').equals_literal("v=x"));
+      std.test.assert(generic_label<f64>(1.5).equals_literal("v=1.5"));
+      std.test.assert(generic_label(String("text")).equals_literal("v=text"));
+    }
+
     test_function simple_literal() {
       var s = `Hello World`;
       std.test.assert_eq(s.length(), 11);
