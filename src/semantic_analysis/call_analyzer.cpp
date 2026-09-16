@@ -1009,8 +1009,9 @@ void CallAnalyzer::analyzeIntrinsicCall(GenericCallAST& genericCall) {
 
 // Argument 0 is the destination pointer and stands in for itself; the rest
 // fill the parameters of the `init` overload they match. Without a matching
-// overload (no class, no constructor) each argument is handed over as itself,
-// and codegen reports the missing constructor when arguments are present.
+// class constructor, codegen reports unexpected arguments. Non-class values
+// accept either no argument for zero initialization or one value of the target
+// type.
 void CallAnalyzer::recordInitArgumentConversions(GenericCallAST& genericCall) {
   const auto& args = genericCall.getArgs();
   if (args.empty()) return;  // codegen reports the missing pointer
@@ -1023,6 +1024,25 @@ void CallAnalyzer::recordInitArgumentConversions(GenericCallAST& genericCall) {
   if (!typeArgs.empty() && typeArgs[0] && typeArgs[0]->isClass()) {
     init = static_cast<const sun::ClassType&>(*typeArgs[0])
                .getMethodForArgs("init", ctorArgTypes);
+  }
+
+  if (!typeArgs.empty() && typeArgs[0] && !typeArgs[0]->isClass() &&
+      !typeArgs[0]->isTypeParameter()) {
+    auto targetType = typeArgs[0];
+    if (ctorArgTypes.size() > 1) {
+      logAndThrowError("_init<T> for a non-class type takes at most one value",
+                       genericCall.getLocation());
+    }
+    if (!ctorArgTypes.empty() && !isAssignableTo(ctorArgTypes[0], targetType)) {
+      logAndThrowError("_init<T> value must be assignable to " +
+                           targetType->toDisplayString(),
+                       genericCall.getLocation());
+    }
+    std::vector<sun::TypePtr> paramTypes{argTypes[0], targetType};
+    genericCall.setArgConversions(sun::conversions::classifyArguments(
+        argTypes, paramTypes, /*cVariadic=*/false, "_init",
+        genericCall.getLocation()));
+    return;
   }
 
   std::vector<sun::TypePtr> paramTypes{argTypes[0]};

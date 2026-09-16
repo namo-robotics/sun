@@ -50,7 +50,20 @@ Value* IntrinsicsGenerator::codegenInitIntrinsic(
   // Only class types have constructors
   auto* classType = sun::tryGetType<sun::ClassType>(targetType);
   if (!classType) {
-    // For non-class types, _init is a no-op (primitives are zero-initialized)
+    // Initialize values directly; freshly allocated storage has no value yet.
+    llvm::Type* valueType = targetType->toLLVMType(ctx.getContext());
+    llvm::Value* value = llvm::Constant::getNullValue(valueType);
+    if (args.size() > 1) {
+      std::vector<Value*> values;
+      auto* initType = llvm::FunctionType::get(
+          llvm::Type::getVoidTy(ctx.getContext()), {valueType}, false);
+      if (!gen_.emitCallArguments(args, conversions, {targetType}, initType,
+                                  values, "_init", /*firstArg=*/1)) {
+        return nullptr;
+      }
+      value = values[0];
+    }
+    ctx.builder->CreateStore(value, rawPtr);
     return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
   }
 
