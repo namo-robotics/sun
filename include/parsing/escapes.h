@@ -52,6 +52,16 @@ inline int hexDigit(char c) {
   return -1;
 }
 
+/* Decode the first two hex digits as a byte, or reject missing or invalid
+ * digits. */
+inline std::optional<char> hexByte(std::string_view digits) {
+  if (digits.size() < 2) return std::nullopt;
+  int high = hexDigit(digits[0]);
+  int low = hexDigit(digits[1]);
+  if (high < 0 || low < 0) return std::nullopt;
+  return static_cast<char>(high * 16 + low);
+}
+
 // Number of bytes in the UTF-8 sequence that starts with `lead`, or 0 if
 // `lead` is not a valid leading byte.
 inline int utf8SequenceLength(unsigned char lead) {

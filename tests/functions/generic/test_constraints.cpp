@@ -583,3 +583,75 @@ TEST(Functions_Generic_Constraints, boxed_nonimplementor_is_rejected) {
   )"),
                                 "does not satisfy constraint 'IHandler'");
 }
+
+// Issue #213: module-local constraints and calls use the declaration's scope.
+TEST(Functions_Generic_Constraints, module_interface_constraints) {
+  for (const auto* call : {"call<Impl>(item, 41)", "call(item, 41)"}) {
+    SCOPED_TRACE(call);
+    EXPECT_EQ(executeString(std::string(R"(
+      /** Groups constrained handlers. */
+      module spike {
+        /** Handles an integer. */
+        public interface IHandler {
+          /** Transforms the input. */
+          public method handle(x: i32) i32;
+        }
+        /** Increments the input. */
+        public class Impl implements IHandler {
+          init() {}
+          /** Returns the incremented input. */
+          public method handle(x: i32) i32 { return x + 1; }
+        }
+        /** Stores a handler with static dispatch. */
+        public class Box<H: IHandler> {
+          var inner: H;
+          init(inner: H) { this.inner = inner; }
+          /** Passes the input to the handler. */
+          public method go(x: i32) i32 { return this.inner.handle(x); }
+        }
+        function call<H: IHandler>(item: ref H, x: i32) i32 {
+          return item.handle(x);
+        }
+        /** Exercises module-local generic calls. */
+        public function run() i32 {
+          var b = Box<Impl>(Impl());
+          var item = Impl();
+          return b.go(41) + )") +
+                            call + R"(;
+        }
+      }
+      function main() i32 { return spike.run(); }
+    )"),
+              84);
+  }
+}
+
+TEST(Functions_Generic_Constraints, module_field_uses_file_scope_interface) {
+  EXPECT_EQ(executeString(R"(
+    interface IHandler {
+      /** Transforms the input. */
+      public method handle(x: i32) i32;
+    }
+    /** Groups dynamically dispatched handlers. */
+    module spike {
+      class Impl implements IHandler {
+        init() {}
+        /** Returns the incremented input. */
+        public method handle(x: i32) i32 { return x + 1; }
+      }
+      class Box<H: IHandler> {
+        var inner: IHandler;
+        init(inner: H) { this.inner = inner; }
+        /** Passes the input through the interface field. */
+        public method go(x: i32) i32 { return this.inner.handle(x); }
+      }
+      /** Exercises the interface field. */
+      public function run() i32 {
+        var b = Box<Impl>(Impl());
+        return b.go(41);
+      }
+    }
+    function main() i32 { return spike.run(); }
+  )"),
+            42);
+}

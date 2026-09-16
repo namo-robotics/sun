@@ -826,7 +826,8 @@ class Lexer {
   // Mirrors InterpolatedStringParser::processEscapes (template strings),
   // with \" instead of the template-specific \` and \$. The shared core
   // (\n \t \r \\ \0) comes from sun::escapes::simple.
-  static std::string processStringEscapes(std::string_view raw) {
+  std::string processStringEscapes(std::string_view raw,
+                                   const Position& at) const {
     std::string result;
     result.reserve(raw.size());
     for (size_t i = 0; i < raw.size(); i++) {
@@ -836,6 +837,13 @@ class Lexer {
           result += '"';
         } else if (auto c = sun::escapes::simple(next)) {
           result += *c;
+        } else if (next == 'x') {
+          auto byte = sun::escapes::hexByte(raw.substr(i + 2));
+          if (!byte) {
+            literalError(at, "\\x needs exactly two hex digits");
+          }
+          result += *byte;
+          i += 2;
         } else {
           // Unknown escape - keep as-is
           result += raw[i];
@@ -1222,7 +1230,8 @@ class Lexer {
       case TokenKind::STRING: {
         // Drop the surrounding quotes and process escape sequences
         return Token::stringLiteral(
-            processStringEscapes(matched.substr(1, matched.size() - 2)),
+            processStringEscapes(matched.substr(1, matched.size() - 2),
+                                 startPos),
             startPos, endPos);
       }
       case TokenKind::CHAR_LITERAL:
