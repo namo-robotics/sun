@@ -537,3 +537,156 @@ TEST(Operators_Literals, string_hex_escapes_require_two_digits) {
         "\\x needs exactly two hex digits");
   }
 }
+
+TEST(Operators_Literals, negative_literal_widens_in_local_assignment) {
+  EXPECT_EQ(executeString(R"(
+      function main() i32 {
+          var initialized: i64 = -1;
+          var assigned: i64 = 0;
+          assigned = -1;
+          if (initialized != -1i64 or assigned != -1i64) { return 1; }
+          assigned = 42;
+          if (assigned != 42i64) { return 2; }
+          assigned = -1i64;
+          if (assigned != -1i64) { return 3; }
+          return 0;
+      }
+    )"),
+            0);
+}
+
+TEST(Operators_Literals, negative_literal_widens_in_field_assignment) {
+  EXPECT_EQ(executeString(R"(
+      class Box {
+          var value: i64;
+          init() { this.value = 0; }
+      }
+      function main() i32 {
+          var box = Box();
+          box.value = -1;
+          if (box.value != -1i64) { return 1; }
+          box.value = 42;
+          if (box.value != 42i64) { return 2; }
+          return 0;
+      }
+    )"),
+            0);
+}
+
+TEST(Operators_Literals, negative_literal_widens_in_field_initializer) {
+  EXPECT_EQ(executeString(R"(
+      class Box {
+          var value: i64 = -1;
+          init() {}
+      }
+      function main() i32 {
+          var box = Box();
+          if (box.value == -1i64) { return 0; }
+          return 1;
+      }
+    )"),
+            0);
+}
+
+TEST(Operators_Literals, negative_literal_widens_in_constructor_assignment) {
+  EXPECT_EQ(executeString(R"(
+      class Box {
+          var value: i64;
+          init() { this.value = -1; }
+      }
+      function main() i32 {
+          var box = Box();
+          if (box.value == -1i64) { return 0; }
+          return 1;
+      }
+    )"),
+            0);
+}
+
+TEST(Operators_Literals,
+     negative_literal_widens_through_reference_and_capture) {
+  EXPECT_EQ(executeString(R"(
+      function main() i32 {
+          var value: i64 = 0;
+          if (true) {
+              var alias: ref i64 = value;
+              alias = -1;
+          }
+          if (value != -1i64) { return 1; }
+          value = 0;
+          var assign = [ref value]() => void { value = -1; };
+          assign();
+          if (value != -1i64) { return 2; }
+          return 0;
+      }
+    )"),
+            0);
+}
+
+TEST(Operators_Literals, typed_integers_widen_in_assignments) {
+  EXPECT_EQ(executeString(R"(
+      class Box {
+          var signedValue: i64 = 0;
+          var unsignedValue: u64 = 18446744073709551615u64;
+          init() {}
+      }
+      function main() i32 {
+          var box = Box();
+          var negative: i32 = -42;
+          var high: u32 = 4294967295u32;
+          var signedValue: i64 = 0;
+          var unsignedValue: u64 = 18446744073709551615u64;
+          signedValue = negative;
+          unsignedValue = high;
+          box.signedValue = negative;
+          box.unsignedValue = high;
+          if (signedValue != -42i64 or box.signedValue != -42i64) { return 1; }
+          if (unsignedValue != 4294967295u64 or
+              box.unsignedValue != 4294967295u64) { return 2; }
+          return 0;
+      }
+    )"),
+            0);
+}
+
+TEST(Operators_Literals, typed_negative_widens_in_field_initialization) {
+  EXPECT_EQ(executeString(R"(
+      function negative() i32 { return -42; }
+      class Box {
+          var initialized: i64 = negative();
+          var assigned: i64;
+          init() { this.assigned = negative(); }
+      }
+      function main() i32 {
+          var box = Box();
+          if (box.initialized != -42i64) { return 1; }
+          if (box.assigned != -42i64) { return 2; }
+          return 0;
+      }
+    )"),
+            0);
+}
+
+TEST(Operators_Literals,
+     typed_negative_widens_in_global_reference_and_capture) {
+  EXPECT_EQ(executeString(R"(
+      var global: i64 = 0;
+      function negative() i32 { return -42; }
+      function main() i32 {
+          global = negative();
+          if (global != -42i64) { return 1; }
+          var value: i64 = 0;
+          if (true) {
+              var alias: ref i64 = value;
+              alias = negative();
+          }
+          if (value != -42i64) { return 2; }
+          value = 0;
+          var assign = [ref value]() => void { value = negative(); };
+          assign();
+          if (value != -42i64) { return 3; }
+          return 0;
+      }
+    )"),
+            0);
+}

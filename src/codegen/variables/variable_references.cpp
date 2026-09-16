@@ -3,6 +3,7 @@
 #include "ast.h"
 #include "codegen/codegen.h"
 #include "codegen/codegen_visitor.h"
+#include "codegen/support/scalar_ops.h"
 #include "codegen/support/struct_access.h"
 #include "codegen/variables/variable_generator.h"
 
@@ -297,6 +298,14 @@ Value* VariableGenerator::codegen(const VariableAssignmentAST& expr) {
     savedBlock = ctx.builder->GetInsertBlock();
   }
 
+  auto generateValue = [&]() {
+    Value* value = codegen(*expr.getValue());
+    return sun::codegen::ops::widenNumericIfNeeded(
+        *ctx.builder, typeResolver, value,
+        sun::unwrapRef(expr.getResolvedType()),
+        expr.getValue()->getResolvedType());
+  };
+
   AllocaInst* alloca = scopes().findVariable(expr.getName());
   if (alloca) {
     // Check if this is a reference type
@@ -305,12 +314,12 @@ Value* VariableGenerator::codegen(const VariableAssignmentAST& expr) {
     if (varType && varType->isReference()) {
       const auto* refType =
           static_cast<const sun::ReferenceType*>(varType.get());
-      Value* value = codegen(*expr.getValue());
+      Value* value = generateValue();
       createStoreForRef(expr.getName(), *refType, value);
       return value;
     }
 
-    Value* value = codegen(*expr.getValue());
+    Value* value = generateValue();
     if (isLambdaLiteral && savedBlock) {
       ctx.builder->SetInsertPoint(savedBlock);
       // For lambda literals, codegenLambda returns an alloca containing the
@@ -331,7 +340,7 @@ Value* VariableGenerator::codegen(const VariableAssignmentAST& expr) {
   // analysis before reaching here.
   if (Value* slotAddr =
           functionGen().createCaptureSlotAddress(expr.getName())) {
-    Value* value = codegen(*expr.getValue());
+    Value* value = generateValue();
     if (isLambdaLiteral && savedBlock) {
       ctx.builder->SetInsertPoint(savedBlock);
       // For lambda literals, codegenLambda returns an alloca containing the
@@ -354,7 +363,7 @@ Value* VariableGenerator::codegen(const VariableAssignmentAST& expr) {
   GlobalVariable* gv = globalForSunName(expr.getMangledName());
   if (!gv) gv = globalForSunName(expr.getName());
   if (gv) {
-    Value* value = codegen(*expr.getValue());
+    Value* value = generateValue();
     if (isLambdaLiteral && savedBlock) {
       ctx.builder->SetInsertPoint(savedBlock);
       // For lambda literals, codegenLambda returns an alloca containing the

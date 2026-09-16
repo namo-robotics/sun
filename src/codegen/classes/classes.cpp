@@ -963,7 +963,6 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
 
   // Get expected field type
   llvm::Type* fieldLLVMType = field->type->toLLVMType(ctx.getContext());
-  llvm::Type* valueType = value->getType();
 
   sun::TypePtr valueSunType = expr.getValue()->getResolvedType();
 
@@ -972,7 +971,6 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
   if (auto* fieldRef = sun::tryGetType<sun::ReferenceType>(field->type)) {
     if (fieldRef->isUnsizedArrayRef()) {
       value = gen_.loadArrayView(value);
-      valueType = value->getType();
     }
   }
 
@@ -1082,31 +1080,16 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
     return value;
   }
 
-  // Handle implicit widening for literals assigned to wider types
-  if (valueType != fieldLLVMType) {
-    ASTNodeType valueKind = expr.getValue()->getType();
-    bool valueIsLiteral = valueKind == ASTNodeType::NUMBER ||
-                          valueKind == ASTNodeType::CHAR_LITERAL;
+  value = ops::widenNumericIfNeeded(*ctx.builder, typeResolver, value,
+                                    field->type, valueSunType);
 
-    if (valueIsLiteral) {
-      // Integer widening
-      if (valueType->isIntegerTy() && fieldLLVMType->isIntegerTy()) {
-        unsigned valueBits = valueType->getIntegerBitWidth();
-        unsigned fieldBits = fieldLLVMType->getIntegerBitWidth();
-        if (valueBits < fieldBits) {
-          value = ops::extendInt(*ctx.builder, value, fieldLLVMType,
-                                 expr.getValue()->getResolvedType());
-        }
-      }
-      // Float widening
-      else if (valueType->isFloatTy() && fieldLLVMType->isDoubleTy()) {
-        value = ctx.builder->CreateFPExt(value, fieldLLVMType, "widen");
-      }
-      // Float literal into an f32 field: literals default to f64
-      else if (valueType->isDoubleTy() && fieldLLVMType->isFloatTy()) {
-        value = ctx.builder->CreateFPTrunc(value, fieldLLVMType, "narrow");
-      }
-    }
+  // Float literals default to f64 but may initialize an f32 field.
+  ASTNodeType valueKind = expr.getValue()->getType();
+  bool valueIsLiteral = valueKind == ASTNodeType::NUMBER ||
+                        valueKind == ASTNodeType::CHAR_LITERAL;
+  if (valueIsLiteral && value->getType()->isDoubleTy() &&
+      fieldLLVMType->isFloatTy()) {
+    value = ctx.builder->CreateFPTrunc(value, fieldLLVMType, "narrow");
   }
 
   // Store the value
