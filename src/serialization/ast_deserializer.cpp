@@ -17,9 +17,6 @@ static std::vector<std::string> toStringVector(const Repeated& field) {
   return std::vector<std::string>(field.begin(), field.end());
 }
 
-// Type parameters, from whichever field the bundle carries them in. Bundles
-// written before constraints existed only have the plain-string field, so a
-// stale one still loads — with every parameter unconstrained.
 // Lifetime parameters, from the names the bundle carries. Bundles written
 // before lifetimes existed have none, which reads back as fully elided.
 template <typename Owner>
@@ -33,17 +30,20 @@ static std::vector<LifetimeParameter> toLifetimeParameters(const Owner& owner) {
 }
 
 template <typename Owner>
-static std::vector<TypeParameter> toTypeParameters(const Owner& owner) {
+std::vector<TypeParameter> ASTDeserializer::deserializeTypeParameters(
+    const Owner& owner) const {
   std::vector<TypeParameter> params;
   if (owner.type_params_size() > 0) {
     params.reserve(owner.type_params_size());
     for (const auto& tp : owner.type_params()) {
-      params.emplace_back(tp.name(), tp.has_constraint()
-                                         ? std::optional<TypeConstraint>(
-                                               TypeConstraint(tp.constraint()))
-                                         : std::nullopt);
-      if (tp.has_qualified_name() && params.back().constraint)
-        params.back().constraint->qualifiedName =
+      auto& parameter = params.emplace_back(tp.name());
+      if (!tp.has_constraint()) continue;
+
+      auto& constraint = parameter.constraint.emplace(tp.constraint());
+      for (const auto& argument : tp.constraint_arguments())
+        constraint.typeArguments.push_back(deserializeTypeAnnotation(argument));
+      if (tp.has_qualified_name())
+        constraint.qualifiedName =
             sun::serialization::deserializeQualifiedName(tp.qualified_name());
     }
     return params;
@@ -194,7 +194,7 @@ std::unique_ptr<PrototypeAST> ASTDeserializer::deserializePrototype(
 
   auto result = std::make_unique<PrototypeAST>(
       proto.name(), std::move(args), std::move(returnType),
-      toTypeParameters(proto), std::move(variadicParam));
+      deserializeTypeParameters(proto), std::move(variadicParam));
   result->setLifetimeParameters(toLifetimeParameters(proto));
 
   // Restore captures
@@ -893,7 +893,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
   // particular changes layout, so losing it would silently corrupt memory;
   // losing visibility would make every bundled item private.
   auto classDef = std::make_unique<ClassDefinitionAST>(
-      proto.name(), toTypeParameters(proto), std::move(interfaces),
+      proto.name(), deserializeTypeParameters(proto), std::move(interfaces),
       std::move(fields), std::move(methods));
   classDef->setLifetimeParameters(toLifetimeParameters(proto));
   for (const auto& name : proto.compiled_specializations()) {
@@ -924,7 +924,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeInterfaceDef(
   }
 
   auto iface = std::make_unique<InterfaceDefinitionAST>(
-      proto.name(), toTypeParameters(proto), std::move(fields),
+      proto.name(), deserializeTypeParameters(proto), std::move(fields),
       std::move(methods));
   iface->setLifetimeParameters(toLifetimeParameters(proto));
   iface->setVisibility(fromProto(proto.visibility()));
@@ -951,7 +951,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeEnumDef(
   }
   auto enumDef = std::make_unique<EnumDefinitionAST>(
       proto.name(), std::move(variants), /*precompiled=*/false,
-      toTypeParameters(proto), proto.underlying_type());
+      deserializeTypeParameters(proto), proto.underlying_type());
   enumDef->setVisibility(fromProto(proto.visibility()));
   enumDef->setDoc(proto.doc());
   return enumDef;

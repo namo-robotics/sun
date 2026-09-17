@@ -1443,8 +1443,19 @@ TypeConstraint Parser::parseTypeConstraint(const std::string& paramName) {
   getNextToken();  // eat the constraint
   parseQualifiedNameTail(name);
 
+  TypeConstraint constraint(std::move(name));
+  if (curTok.kind == TokenKind::LESS) {
+    getNextToken();
+    constraint.typeArguments.push_back(parseTypeAnnotation());
+    while (curTok.kind == TokenKind::COMMA) {
+      getNextToken();
+      constraint.typeArguments.push_back(parseTypeAnnotation());
+    }
+    consumeGreater("expected '>' after constraint type arguments");
+  }
   start.setEnd(prevTok_.end.line, prevTok_.end.column, prevTok_.end.offset);
-  return TypeConstraint(std::move(name), std::move(start));
+  constraint.span = std::move(start);
+  return constraint;
 }
 
 // Parse the trailing value pack in a parameter list: `args...`, or

@@ -141,6 +141,32 @@ struct TypeAnnotation {
   bool isGeneric() const { return !typeArguments.empty(); }
   bool isErrorUnion() const { return canError; }
 
+  /** Compare type structure and resolved names, ignoring source locations. */
+  bool operator==(const TypeAnnotation& other) const {
+    auto equalOptional = [](const auto& left, const auto& right) {
+      return (!left && !right) || (left && right && *left == *right);
+    };
+    auto equalList = [&](const auto& left, const auto& right) {
+      if (left.size() != right.size()) return false;
+      for (size_t i = 0; i < left.size(); ++i)
+        if (!equalOptional(left[i], right[i])) return false;
+      return true;
+    };
+    return (qualifiedName || other.qualifiedName
+                ? qualifiedName == other.qualifiedName
+                : baseName == other.baseName) &&
+           equalOptional(elementType, other.elementType) &&
+           equalOptional(returnType, other.returnType) &&
+           equalList(paramTypes, other.paramTypes) &&
+           equalList(typeArguments, other.typeArguments) &&
+           arrayDimensions == other.arrayDimensions &&
+           canError == other.canError &&
+           requiresUnsafe == other.requiresUnsafe &&
+           constRef == other.constRef && refEnv == other.refEnv &&
+           lifetimeName == other.lifetimeName &&
+           lifetimeArguments == other.lifetimeArguments;
+  }
+
   std::string toString() const {
     if (isArray() && elementType) {
       std::string result = "array<" + elementType->toString();

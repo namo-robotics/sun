@@ -1397,3 +1397,44 @@ TEST(Tooling_Serialization, UnsafeExpressionFormRoundtrip) {
     EXPECT_EQ(unsafe->getBody().getLastExpr()->toString(), "42");
   }
 }
+
+TEST(Tooling_Serialization, GenericInterfaceConstraintRoundtrip) {
+  auto program = parseCode(R"(
+    function call<H: IHandler<Box<i32>, H>>(item: ref H) i32 { return 0; }
+    class Server<H: IHandler<H>> { var handler: H; }
+    interface IServer<H: IHandler<H>> { method read() i32; }
+    enum Held<H: IHandler<H>> { Some(H), None }
+  )");
+  ASTSerializer serializer;
+  ASTDeserializer deserializer;
+  const auto before = serializer.serializeToString(*program);
+  auto restored = deserializer.deserializeFromString(before);
+  const auto& original = program->getBody();
+  const auto& body = static_cast<BlockExprAST*>(restored.get())->getBody();
+  ASSERT_EQ(body.size(), original.size());
+  EXPECT_EQ(
+      static_cast<FunctionAST*>(body[0].get())->getProto().getTypeParameters(),
+      static_cast<FunctionAST*>(original[0].get())
+          ->getProto()
+          .getTypeParameters());
+  EXPECT_EQ(
+      static_cast<ClassDefinitionAST*>(body[1].get())->getTypeParameters(),
+      static_cast<ClassDefinitionAST*>(original[1].get())->getTypeParameters());
+  EXPECT_EQ(
+      static_cast<InterfaceDefinitionAST*>(body[2].get())->getTypeParameters(),
+      static_cast<InterfaceDefinitionAST*>(original[2].get())
+          ->getTypeParameters());
+  EXPECT_EQ(
+      static_cast<EnumDefinitionAST*>(body[3].get())->getTypeParameters(),
+      static_cast<EnumDefinitionAST*>(original[3].get())->getTypeParameters());
+  const auto& constraint = static_cast<FunctionAST*>(body[0].get())
+                               ->getProto()
+                               .getTypeParameters()[0]
+                               .constraint;
+  ASSERT_TRUE(constraint);
+  ASSERT_EQ(constraint->typeArguments.size(), 2u);
+  EXPECT_EQ(constraint->toString(), "IHandler<Box<i32>, H>");
+  TypeConstraint changed = *constraint;
+  changed.typeArguments[1] = TypeAnnotation("i64");
+  EXPECT_FALSE(changed == *constraint);
+}

@@ -34,6 +34,10 @@ class TypeInferer {
               GenericSpecializer &generics)
       : ctx_(ctx), sema_(sema), generics_(generics) {}
 
+  /** Resolve an interface requirement with the current parameter bindings. */
+  std::shared_ptr<sun::InterfaceType> resolveConstraintInterface(
+      const TypeConstraint &constraint);
+
   // ---- Expressions -------------------------------------------------------
 
   /**

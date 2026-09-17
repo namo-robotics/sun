@@ -1091,8 +1091,11 @@ sun::TypePtr TypeInferer::inferTypeParameterMemberType(
   const auto* param =
       static_cast<const sun::TypeParameterType*>(objectType.get());
   if (param->hasConstraint()) {
-    const std::string& constraint = param->getConstraint();
-    if (auto ifaceType = ctx_.lookupInterface(constraint)) {
+    const auto& constraint = param->getConstraint();
+    auto ifaceType = constraint.typeArguments.empty()
+                         ? ctx_.lookupInterface(constraint.resolvedName())
+                         : resolveConstraintInterface(constraint);
+    if (ifaceType) {
       const sun::InterfaceField* field = ctx_.accessibleField(
           *ifaceType, memberName, memberAccess.getLocation());
       if (field) return field->type;
@@ -1104,14 +1107,14 @@ sun::TypePtr TypeInferer::inferTypeParameterMemberType(
       logAndThrowError("Unknown member '" + memberName +
                            "' on type parameter '" + param->getName() +
                            "', which is constrained to interface '" +
-                           constraint + "'",
+                           constraint.toString() + "'",
                        memberAccess.getLocation());
     }
     // A trait such as `_Numeric`, or `lambda`: it says which types are
     // allowed, not which members they carry.
     logAndThrowError("Cannot access member '" + memberName +
                          "' on type parameter '" + param->getName() +
-                         "': its constraint '" + constraint +
+                         "': its constraint '" + constraint.toString() +
                          "' is a type trait, which promises no members. "
                          "Constrain it to an interface to call methods on "
                          "it.",

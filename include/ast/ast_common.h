@@ -99,8 +99,8 @@ struct TypeParameter {
   // unspecialized: T bound to itself, carrying its constraint so a body can
   // reach the constraint's members. Unconstrained parameters carry none.
   sun::TypePtr toSunType() const {
-    return sun::Types::TypeParameter(
-        name, constraint ? constraint->resolvedName() : "");
+    return sun::Types::TypeParameter(name,
+                                     constraint.value_or(TypeConstraint{}));
   }
 };
 
