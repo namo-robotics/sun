@@ -105,7 +105,8 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
   }
 
   // Create the class type with the qualified name
-  auto classType = ctx_.types()->getClass(qualifiedClass);
+  auto classType =
+      ctx_.types()->getClass(classDef.getDeclarationId(), qualifiedClass);
 
   // Layout must be decided before any getStructType() call memoizes it
   classType->setPacked(classDef.isPacked());
@@ -125,7 +126,8 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
   // Fields and method signatures are normally registered by the
   // declaration pre-pass (registerClassShape); classes analyzed outside a
   // pre-passed block register them here.
-  bool shapeRegistered = ctx_.declarations().hasClassShape(mangledClassName);
+  bool shapeRegistered =
+      ctx_.declarations().hasClassShape(classDef.getDeclarationId());
   if (!shapeRegistered) {
     pipeline_.declarations().registerClassShape(classDef, qualifiedClass,
                                                 classType);
@@ -199,7 +201,7 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
 
   // PASS 2: Analyze all method bodies using their assigned names.
   for (const auto& methodDecl : classDef.getMethods()) {
-    pipeline_.bodies().analyzeFunction(*methodDecl.function);
+    bodies_.analyzeFunction(*methodDecl.function);
   }
 
   // PASS 3: check constructors, now that every method body is analyzed — the
@@ -331,7 +333,8 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
   }
 
   // Non-generic interface: create the interface type directly
-  auto interfaceType = ctx_.types()->getInterface(interfaceName);
+  auto interfaceType = ctx_.types()->getInterface(
+      interfaceDef.getDeclarationId(), qualifiedInterface);
   {
     std::vector<std::string> lifetimeNames;
     for (const auto& lp : interfaceDef.getLifetimeParameters()) {
@@ -389,7 +392,7 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
       ctx_.setCurrentClass(pseudoClass);
 
       // Analyze the method body
-      pipeline_.bodies().analyzeFunction(*methodDecl.function);
+      bodies_.analyzeFunction(*methodDecl.function);
 
       // Restore original ctx_.getCurrentClass()
       ctx_.setCurrentClass(savedClass);
@@ -427,7 +430,7 @@ void SemanticAnalyzer::analyzeFunctionDefinition(FunctionAST& func) {
   }
 
   // Analyze the function body
-  pipeline_.bodies().analyzeFunction(func);
+  bodies_.analyzeFunction(func);
 
   // Set the function type on the function node
   func.setResolvedType(sun::Types::Function(
@@ -451,7 +454,7 @@ void SemanticAnalyzer::analyzeLambdaExpr(LambdaAST& lambda) {
   applyFunctionInfoToProto(proto, lambdaInfo);
 
   // Analyze the lambda body
-  pipeline_.bodies().analyzeLambda(lambda);
+  bodies_.analyzeLambda(lambda);
 
   // Set the lambda type on the lambda node
   lambda.setResolvedType(types_.inferType(lambda));
@@ -477,9 +480,9 @@ void SemanticAnalyzer::analyzeModuleDefinition(ModuleAST& nsDecl) {
       analyzeExpr(*bodyExpr);
       const sun::QualifiedName& qualifiedName = varCreate.getQualifiedName();
       if (auto type = varCreate.getResolvedType()) {
-        ctx_.registerModuleVariable(qualifiedName, type,
-                                    varCreate.getVisibility(),
-                                    varCreate.isConst(), varCreate.isCExtern());
+        ctx_.registerModuleVariable(
+            qualifiedName, type, varCreate.getVisibility(), varCreate.isConst(),
+            varCreate.isCExtern(), varCreate.getDeclarationId());
       }
     } else {
       analyzeExpr(*bodyExpr);

@@ -111,18 +111,17 @@ class GenericCallAST : public ExprAST {
                nullptr;
   }
 
-  // Name of the specialization this call resolved to (set by the semantic
-  // analyzer when it instantiated the template). Empty when the call is inside
-  // a generic body whose type arguments are not concrete yet.
-  void setSpecializationName(sun::QualifiedName name) const {
-    gcAnalysis().specializationName = std::move(name);
+  /** Record the instantiated callable signature used to check this call. */
+  void setResolvedCalleeType(sun::TypePtr type) const {
+    gcAnalysis().resolvedCalleeType = std::move(type);
   }
-  const sun::QualifiedName& getSpecializationName() const {
-    return gcAnalysis().specializationName;
-  }
-  bool hasSpecializationName() const {
-    return analysis_ && !static_cast<GenericCallAnalysis&>(*analysis_)
-                             .specializationName.empty();
+
+  /** Return the concrete callable signature, or null in an abstract template.
+   */
+  sun::TypePtr getResolvedCalleeType() const {
+    return analysis_ ? static_cast<const GenericCallAnalysis&>(*analysis_)
+                           .resolvedCalleeType
+                     : nullptr;
   }
 
   std::string dotLabel() const override {

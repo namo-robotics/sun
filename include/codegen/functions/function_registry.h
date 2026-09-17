@@ -1,39 +1,26 @@
 #pragma once
 
-// function_registry.h — Which functions exist, and how to call them
-//
-// Codegen keeps two books on functions, both plain bookkeeping over
-// the module being built:
-//
-//   which functions came from precompiled bitcode  — so a declaration made by
-//       codegen is never mistaken for one a .moon bundle already supplied
-//   which functions the user wrote  — so an IR dump can leave library code out
-//
-// It also owns the lookups that answer "what LLVM function does this name
-// mean", including the two cases where the answer is not simply the name: a
-// renamed extern is declared under its C symbol, and a method not yet emitted
-// is declared on demand with the closure ABI.
-
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Module.h>
+#include <llvm/IR/ValueHandle.h>
 
 #include <memory>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
-#include "codegen/abi/extern_c.h"
 #include "codegen/codegen_state.h"
 #include "semantic_analysis/types.h"
 
 /**
- * The registry of functions in the module being built: their calling
- * conventions, where they came from, and how to find them by name.
+ * Map resolved declarations to LLVM functions and track their origins.
+ * Method emission still uses symbol-based helpers during the migration.
  */
 class FunctionRegistry {
  public:
-  FunctionRegistry(CodegenState& state, sun::cabi::ExternCEmitter& externC)
-      : state_(state), externC_(externC) {}
+  /** Share the module and declaration table used by this codegen run. */
+  explicit FunctionRegistry(CodegenState& state) : state_(state) {}
 
   FunctionRegistry(const FunctionRegistry&) = delete;
   FunctionRegistry& operator=(const FunctionRegistry&) = delete;
@@ -66,11 +53,12 @@ class FunctionRegistry {
   // Finding functions
   // ---------------------------------------------------------------
 
-  /**
-   * Finds a function by its resolved Sun-side name, translating a renamed
-   * extern (`as "symbol"`) to the C symbol it was declared under.
-   */
-  llvm::Function* lookupCallTarget(const std::string& name);
+  /** Bind a source declaration to its created or imported LLVM function. */
+  void registerFunction(sun::DeclarationId declaration,
+                        llvm::Function* function);
+
+  /** Find the emitted function selected by semantic declaration resolution. */
+  llvm::Function* lookupFunctionById(sun::DeclarationId declaration);
 
   /**
    * Finds the LLVM function for a class method. Tries the mangled name with
@@ -93,8 +81,8 @@ class FunctionRegistry {
       const sun::TypePtr& returnType, bool canThrow);
 
  private:
+  std::unordered_map<sun::DeclarationId, llvm::WeakTrackingVH> functionsById_;
   CodegenState& state_;
-  sun::cabi::ExternCEmitter& externC_;
 
   // Declared from precompiled bitcode before codegen started
   std::set<std::string> precompiled_;

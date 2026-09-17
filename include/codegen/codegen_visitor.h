@@ -120,7 +120,7 @@ class CodegenVisitor {
 
   // Calling conventions, where each function came from, and name lookup.
   // Declared after externC because it resolves renamed externs through it.
-  FunctionRegistry functions{state_, externC};
+  FunctionRegistry functions{state_};
 
  public:
   explicit CodegenVisitor(CodegenContext& ctx,
@@ -433,7 +433,6 @@ class CodegenVisitor {
 
   // Handles module-qualified function calls: mymod.foo()
   llvm::Value* codegenModuleFunctionCall(const CallExprAST& expr,
-                                         sun::ModuleType* moduleType,
                                          const std::string& funcName,
                                          const MemberAccessAST& memberAccess);
 

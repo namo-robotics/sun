@@ -8,11 +8,11 @@
 //   CallAnalyzer          what a call calls, and how its arguments get there
 //   EnumAnalyzer          enum definitions, variants, and match patterns
 // They share SemanticContext by reference. SemanticPipeline owns the passes;
-// BodyAnalysisPass traverses prepared statements. The analyzer's expression
+// BodyAnalyzer traverses prepared statements. The analyzer's expression
 // helpers check nodes and record the types and conversions codegen consumes.
 //
 // Its implementation is split by topic across src/semantic_analysis/:
-//   body_analysis_pass.cpp   statement traversal and function scopes
+//   body_analyzer.cpp   statement traversal and function scopes
 //   analysis.cpp             expression and signature checking
 //   analysis_utils.cpp       places, constness, `_is<T>` type guards
 //   call_analyzer.cpp        every form of call (its own class, see above)
@@ -39,7 +39,7 @@
 
 #include "ast/type_annotation.h"
 #include "semantic_analysis/access_checker.h"
-#include "semantic_analysis/body_analysis_pass.h"
+#include "semantic_analysis/body_analyzer.h"
 #include "semantic_analysis/call_analyzer.h"
 #include "semantic_analysis/declaration_collection_pass.h"
 #include "semantic_analysis/enum_analyzer.h"
@@ -67,8 +67,11 @@ class SemanticAnalyzer {
   // One persistent pipeline owns all passes for this analysis session.
   sun::SemanticPipeline pipeline_{*this};
 
+  // Recursively checks statements and manages function scopes.
+  BodyAnalyzer bodies_{ctx_, *this};
+
   // Builds and caches every specialization the program asks for.
-  GenericSpecializer generics_{ctx_, *this, pipeline_.naming()};
+  GenericSpecializer generics_{ctx_, *this};
 
   // What type is this expression, and what type does this annotation name.
   TypeInferer types_{ctx_, *this, generics_};
@@ -95,11 +98,11 @@ class SemanticAnalyzer {
   /** The persistent pipeline that owns and orders this session's passes. */
   sun::SemanticPipeline &pipeline() { return pipeline_; }
 
+  /** Recursive statement and function-body checking. */
+  BodyAnalyzer &bodies() { return bodies_; }
+
   /** Monomorphization: the specializations this run has built. */
   GenericSpecializer &generics() { return generics_; }
-
-  /** The pass that checks prepared statements and function bodies. */
-  BodyAnalysisPass &bodies() { return pipeline_.bodies(); }
 
   /** Type inference and type-annotation resolution. */
   TypeInferer &types() { return types_; }

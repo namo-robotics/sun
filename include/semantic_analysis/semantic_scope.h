@@ -35,6 +35,7 @@ struct VariableInfo {
   sun::QualifiedName qualifiedName;  // Full qualified name (empty for locals)
   sun::Visibility visibility = sun::Visibility::Private;  // globals only
   bool isCExtern = false;  // Native code owns this global's storage
+  sun::DeclarationId declarationId;
 };
 
 // Information about a declared function
@@ -52,6 +53,7 @@ struct FunctionInfo {
   // so call sites are gated on `unsafe`.
   bool isCExtern = false;
   sun::Visibility visibility = sun::Visibility::Private;
+  sun::DeclarationId declarationId;
 };
 
 // Indexed function table: O(1) name-based overload lookup + O(1) exact sig
@@ -332,8 +334,10 @@ struct SpecializedFunctionInfo {
   // The specialization seen as an ordinary resolved function — what a call
   // site that named the template ends up calling.
   FunctionInfo asFunctionInfo() const {
-    return FunctionInfo{returnType, paramTypes, captures, qualifiedName,
-                        canThrow()};
+    FunctionInfo info{returnType, paramTypes, captures, qualifiedName,
+                      canThrow()};
+    if (specializedAST) info.declarationId = specializedAST->getDeclarationId();
+    return info;
   }
 
   // Type of the call itself, for the callee expression

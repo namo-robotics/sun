@@ -115,7 +115,36 @@ class ExprAST {
 
   // Analysis data access
   bool hasAnalysis() const { return analysis_ != nullptr; }
-  void clearAnalysis() const { analysis_.reset(); }
+  /** Read the declaration identity without allocating computed analysis. */
+  virtual sun::DeclarationId getDeclarationId() const {
+    return analysis_ ? analysis_->declaration.id : sun::DeclarationId{};
+  }
+  /** Assign the identity allocated by the owning analysis session. */
+  virtual void setDeclarationId(sun::DeclarationId id) const {
+    analysis().declaration.id = id;
+  }
+  /** Access declaration and parameter identities retained within a session. */
+  virtual sun::DeclarationIdentity& declarationIdentity() const {
+    return analysis().declaration;
+  }
+  /** Return the declaration selected by semantic resolution. */
+  sun::DeclarationId getTargetDeclarationId() const {
+    return analysis_ ? analysis_->targetDeclaration : sun::DeclarationId{};
+  }
+  /** Record a resolved reference without changing the source spelling. */
+  void setTargetDeclarationId(sun::DeclarationId id) const {
+    analysis().targetDeclaration = id;
+  }
+  /** Discard computed results while preserving this session's identities. */
+  virtual void clearComputedAnalysis() const {
+    if (!analysis_) return;
+    auto identity = std::move(analysis_->declaration);
+    analysis_.reset();
+    ensureAnalysis();
+    analysis_->declaration = std::move(identity);
+  }
+  /** Discard all annotations when the owning analysis session is discarded. */
+  virtual void resetAnalysisSession() const { analysis_.reset(); }
 
   // Type annotation set by semantic analyzer (delegates to analysis)
   void setResolvedType(sun::TypePtr type) const {

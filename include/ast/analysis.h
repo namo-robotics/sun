@@ -10,6 +10,7 @@
 
 #include "ast/ast_fwd.h"
 #include "semantic_analysis/argument_conversion.h"
+#include "semantic_analysis/declaration_id.h"
 #include "semantic_analysis/qualified_name.h"
 #include "semantic_analysis/types.h"
 
@@ -37,6 +38,9 @@ enum class FieldWriteKind {
 
 /// Base analysis data for all expression nodes
 struct ExprAnalysis {
+  virtual ~ExprAnalysis() = default;
+  sun::DeclarationIdentity declaration;
+  sun::DeclarationId targetDeclaration;
   sun::TypePtr resolvedType;  // Type determined by semantic analyzer
   bool moved = false;         // Set by borrow checker when ownership transfers
 
@@ -49,6 +53,7 @@ struct ExprAnalysis {
 
 /// Analysis data for PrototypeAST (function signatures)
 struct PrototypeAnalysis {
+  sun::DeclarationIdentity declaration;
   sun::QualifiedName qualifiedName;
   std::vector<sun::TypePtr> resolvedParamTypes;
   bool resolvedParamTypesSet = false;
@@ -152,9 +157,8 @@ struct CallAnalysis : public ExprAnalysis {
 struct GenericCallAnalysis : public ExprAnalysis {
   std::vector<sun::TypePtr> resolvedTypeArgs;
   const FunctionAST* genericFunctionAST = nullptr;
-  // Name of the specialization this call resolved to, as recorded by the
-  // semantic analyzer when it instantiated the template.
-  sun::QualifiedName specializationName;
+  // Concrete callable signature selected for this generic call.
+  sun::TypePtr resolvedCalleeType;
   // As CallAnalysis::argConversions, for `f<T>(args)` and `Box<T>(args)`
   std::vector<sun::ArgConversion> argConversions;
 

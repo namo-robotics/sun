@@ -127,6 +127,9 @@ class Driver {
   // first in runPipeline, before any analysis.
   void applyTestHandling(BlockExprAST& blockAst);
 
+  /** Start independent declaration and type storage for editor analysis. */
+  void startAnalysisSession();
+
   // Front half of the pipeline shared by compilation and analysis: lowering,
   // moon stub injection and semantic analysis (no borrow check, no codegen)
   void analyzeProgram(BlockExprAST& blockAst, Parser& parser);
@@ -208,6 +211,8 @@ class Driver {
   /// raised; the tree keeps every type resolved before it, which is what
   /// editor tooling needs while a file is mid-edit.
   struct AnalyzedProgram {
+    /** Keep declaration identities alive with the annotated syntax tree. */
+    std::shared_ptr<sun::TypeRegistry> typeRegistry;
     std::unique_ptr<BlockExprAST> ast;
     std::optional<SunError> error;
   };

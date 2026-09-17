@@ -458,23 +458,10 @@ Value* CodegenVisitor::codegenBuiltinTypeMethod(const CallExprAST& expr,
 // -------------------------------------------------------------------
 
 Value* CodegenVisitor::codegenModuleFunctionCall(
-    const CallExprAST& expr, sun::ModuleType* moduleType,
-    const std::string& funcName, const MemberAccessAST& memberAccess) {
-  // Use resolved name from semantic analysis (includes library hash prefix)
-  std::string qualifiedName;
-  if (memberAccess.hasQualifiedName()) {
-    qualifiedName = memberAccess.getQualifiedName().mangled();
-  } else {
-    qualifiedName =
-        mangleModulePath(moduleType->getModulePath()) + "_" + funcName;
-  }
-
-  // Get or declare the function
-  Function* func = functions.lookupCallTarget(qualifiedName);
-  if (!func) {
-    logAndThrowError("Unknown function: " + qualifiedName);
-    return nullptr;
-  }
+    const CallExprAST& expr, const std::string& funcName,
+    const MemberAccessAST& memberAccess) {
+  Function* func =
+      functions.lookupFunctionById(memberAccess.getTargetDeclarationId());
 
   // Build the argument list through the shared coercion path. Semantic
   // analysis records the resolved overload's signature on the member access;
@@ -726,8 +713,7 @@ Value* CodegenVisitor::codegenMethodCall(const CallExprAST& expr,
 
   // Handle module-qualified function call: mymod.foo()
   if (auto* moduleType = sun::tryGetType<sun::ModuleType>(objectType)) {
-    return codegenModuleFunctionCall(expr, moduleType, methodName,
-                                     memberAccess);
+    return codegenModuleFunctionCall(expr, methodName, memberAccess);
   }
 
   // Enum variant construction: EnumName.Variant(args...). Sema resolved the
@@ -1087,23 +1073,9 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
   // 1. Look up the llvm::Function directly
   // 2. Call it directly without any closure indirection
 
-  // Try to find the function in the module
   llvm::Function* func = nullptr;
-
-  // Check if callee is a variable reference
-  if (auto* varRef =
-          dynamic_cast<const VariableReferenceAST*>(expr.getCallee())) {
-    // A stored pointer shadows a same-named function symbol.
-    std::string resolvedName = varRef->getMangledName();
-    bool stored = scopes.findVariable(varRef->getName()) ||
-                  variables.globalForSunName(resolvedName) ||
-                  variables.globalForSunName(varRef->getName());
-    if (!stored) func = functions.lookupCallTarget(resolvedName);
-  } else if (auto* qualName =
-                 dynamic_cast<const QualifiedNameAST*>(expr.getCallee())) {
-    // Qualified name - use the mangled name (calleeName already has :: replaced
-    // with _)
-    func = functions.lookupCallTarget(calleeName);
+  if (expr.getTargetDeclarationId()) {
+    func = functions.lookupFunctionById(expr.getTargetDeclarationId());
   }
 
   if (!func) {

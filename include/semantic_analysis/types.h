@@ -15,6 +15,7 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
+#include "semantic_analysis/declaration_table.h"
 #include "semantic_analysis/qualified_name.h"
 #include "semantic_analysis/struct_names.h"
 #include "semantic_analysis/visibility.h"
@@ -1143,11 +1144,30 @@ class ScopeMethodTable {
   }
 };
 
+/** A nominal type's identity within its analysis session. */
+class NominalType : public Type {
+  friend class TypeRegistry;
+  DeclarationId declarationId_;
+  std::shared_ptr<const int> declarationSession_;
+
+ protected:
+  bool sameDeclaration(const NominalType& other, bool sameLegacyName) const {
+    if (!declarationId_ && !other.declarationId_) return sameLegacyName;
+    return declarationId_ == other.declarationId_ &&
+           declarationSession_ == other.declarationSession_;
+  }
+
+ public:
+  /** Return the source identity, or an unassigned ID for legacy types. */
+  DeclarationId getDeclarationId() const { return declarationId_; }
+};
+
 // Class type for user-defined classes
 // Classes are represented as LLVM structs with methods as separate functions
 // Generic classes have type parameters (e.g., class List<T>)
 // Specialized classes have type arguments (e.g., List<i32>)
-class ClassType : public Type {
+class ClassType : public NominalType {
+  friend class TypeRegistry;
   std::string mangledName;  // Fully qualified name (e.g., "$hash$_std_Vec")
   std::string
       baseName_;  // User-written base name (e.g., "Unique") for error messages
@@ -1559,8 +1579,7 @@ class ClassType : public Type {
 
   bool equals(const Type& other) const override {
     if (auto* c = dynamic_cast<const ClassType*>(&other)) {
-      // For specialized types, compare by mangled name
-      return mangledName == c->mangledName;
+      return sameDeclaration(*c, mangledName == c->mangledName);
     }
     return false;
   }
@@ -1677,7 +1696,8 @@ using InterfaceTypePtr = std::shared_ptr<InterfaceType>;
 
 // Interface type for user-defined interfaces
 // Interfaces define a contract that classes must implement
-class InterfaceType : public Type {
+class InterfaceType : public NominalType {
+  friend class TypeRegistry;
   std::string name;       // Fully qualified name (includes library hash)
   std::string baseName_;  // User-written base name for error messages
   std::vector<std::string> typeParameters;  // Generic type params: T, U, etc.
@@ -1867,7 +1887,7 @@ class InterfaceType : public Type {
 
   bool equals(const Type& other) const override {
     if (auto* i = dynamic_cast<const InterfaceType*>(&other)) {
-      return name == i->name;
+      return sameDeclaration(*i, name == i->name);
     }
     return false;
   }
@@ -1974,7 +1994,8 @@ using EnumTypePtr = std::shared_ptr<EnumType>;
 // Enum type for user-defined enums
 // Enums use an integer representation, with variants as named constants
 // Example: enum Color { Red, Green, Blue }
-class EnumType : public Type {
+class EnumType : public NominalType {
+  friend class TypeRegistry;
   std::string mangledName_;  // Mangled name (e.g., "$hash$_std_Color")
   std::string baseName_;     // User-written base name (e.g., "Color")
   std::vector<EnumVariant> variants;
@@ -2111,7 +2132,7 @@ class EnumType : public Type {
 
   bool equals(const Type& other) const override {
     if (auto* e = dynamic_cast<const EnumType*>(&other)) {
-      return mangledName_ == e->mangledName_;
+      return sameDeclaration(*e, mangledName_ == e->mangledName_);
     }
     return false;
   }
@@ -2405,6 +2426,23 @@ class Types {
  * and CodegenVisitor.
  */
 class TypeRegistry {
+  std::unordered_map<DeclarationId, std::shared_ptr<NominalType>> nominalTypes_;
+
+  template <typename T>
+  std::shared_ptr<T> nominalType(DeclarationId id, DeclarationKind kind) {
+    const auto& record = declarations.get(id);
+    if (record.kind != kind)
+      logAndThrowError("Declaration kind does not match nominal type");
+    auto found = nominalTypes_.find(id);
+    if (found != nominalTypes_.end())
+      return std::static_pointer_cast<T>(found->second);
+    auto type = std::make_shared<T>(record.name);
+    type->declarationId_ = id;
+    type->declarationSession_ = declarations.session();
+    nominalTypes_.emplace(id, type);
+    return type;
+  }
+
   std::unordered_map<std::string, std::shared_ptr<ClassType>> classCache;
   std::unordered_map<std::string, std::shared_ptr<ClassType>> genericClassCache;
   std::unordered_map<std::string, std::shared_ptr<ClassType>>
@@ -2418,6 +2456,9 @@ class TypeRegistry {
   std::unordered_map<std::string, std::shared_ptr<EnumType>> enumCache;
 
  public:
+  /** Declaration identities shared by semantic analysis and code generation. */
+  DeclarationTable declarations;
+
   TypeRegistry() { registerBuiltins(); }
 
   // Register built-in types (IError). The iteration protocol
@@ -2455,6 +2496,63 @@ class TypeRegistry {
   // Movable
   TypeRegistry(TypeRegistry&&) = default;
   TypeRegistry& operator=(TypeRegistry&&) = default;
+
+  /** Get a source class before its emitted name has been assigned. */
+  std::shared_ptr<ClassType> getClass(DeclarationId id) {
+    return nominalType<ClassType>(id, DeclarationKind::Class);
+  }
+
+  /** Bind the current emitted name to a source class's existing identity. */
+  std::shared_ptr<ClassType> getClass(DeclarationId id,
+                                      const QualifiedName& name) {
+    auto type = getClass(id);
+    if (!type->getQualifiedName().baseName.empty() &&
+        type->getQualifiedName() != name)
+      logAndThrowError("Cannot change a nominal type's assigned emitted name");
+    type->mangledName = name.mangled();
+    type->setQualifiedName(name);
+    type->setBaseName(name.baseName);
+    classCache.try_emplace(name.mangled(), type);
+    return type;
+  }
+
+  /** Get a source interface before its emitted name has been assigned. */
+  std::shared_ptr<InterfaceType> getInterface(DeclarationId id) {
+    return nominalType<InterfaceType>(id, DeclarationKind::Interface);
+  }
+
+  /** Bind the current emitted name to a source interface's identity. */
+  std::shared_ptr<InterfaceType> getInterface(DeclarationId id,
+                                              const QualifiedName& name) {
+    auto type = getInterface(id);
+    if (!type->getQualifiedName().baseName.empty() &&
+        type->getQualifiedName() != name)
+      logAndThrowError("Cannot change a nominal type's assigned emitted name");
+    type->name = name.mangled();
+    type->setQualifiedName(name);
+    type->setBaseName(name.baseName);
+    interfaceCache.try_emplace(name.mangled(), type);
+    return type;
+  }
+
+  /** Get a source enum before its emitted name has been assigned. */
+  std::shared_ptr<EnumType> getEnum(DeclarationId id) {
+    return nominalType<EnumType>(id, DeclarationKind::Enum);
+  }
+
+  /** Bind the current emitted name to a source enum's existing identity. */
+  std::shared_ptr<EnumType> getEnum(DeclarationId id,
+                                    const QualifiedName& name) {
+    auto type = getEnum(id);
+    if (!type->getQualifiedName().baseName.empty() &&
+        type->getQualifiedName() != name)
+      logAndThrowError("Cannot change a nominal type's assigned emitted name");
+    type->mangledName_ = name.mangled();
+    type->setQualifiedName(name);
+    type->setBaseName(name.baseName);
+    enumCache.try_emplace(name.mangled(), type);
+    return type;
+  }
 
   // Get or create a class type by qualified name
   // Sets the qualified name and base name on the class type automatically
@@ -2617,6 +2715,7 @@ class TypeRegistry {
 
   // Clear all caches (useful for REPL reset)
   void clear() {
+    nominalTypes_.clear();
     classCache.clear();
     genericClassCache.clear();
     specializedClassCache.clear();

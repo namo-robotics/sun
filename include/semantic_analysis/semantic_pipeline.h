@@ -1,6 +1,5 @@
 #pragma once
 
-#include "semantic_analysis/body_analysis_pass.h"
 #include "semantic_analysis/declaration_collection_pass.h"
 #include "semantic_analysis/declaration_naming_pass.h"
 #include "semantic_analysis/field_initializer_preparation_pass.h"
@@ -22,24 +21,25 @@ class SemanticPipeline {
   /** Prepare names, collect declarations, and check the program's bodies. */
   void run(BlockExprAST& block);
 
-  /** Name generated declarations with the same pass used for source code. */
-  const DeclarationNamingPass& naming() const { return declarationNamingPass_; }
+  /** Assign identities to newly generated syntax before resolving it. */
+  void prepareGenerated(const ExprAST& expression);
+
+  /** Prepare generated method identities and names in their enclosing scope. */
+  void prepareGenerated(ExprAST& expression,
+                        const std::vector<std::string>& scope,
+                        const std::vector<std::string>& module);
 
   /** Access the pass that registers declarations before body checking. */
   DeclarationCollectionPass& declarations() {
     return declarationCollectionPass_;
   }
 
-  /** Access the pass that checks prepared bodies. */
-  BodyAnalysisPass& bodies() { return bodyAnalysisPass_; }
-
  private:
+  SemanticAnalyzer& analyzer_;
   SemanticContext& context_;
   FieldInitializerPreparationPass fieldInitializerPreparationPass_;
   DeclarationNamingPass declarationNamingPass_;
   DeclarationCollectionPass declarationCollectionPass_;
-  LocalDeclarationNamingPass localDeclarationNamingPass_;
-  BodyAnalysisPass bodyAnalysisPass_;
 };
 
 }  // namespace sun

@@ -8,7 +8,6 @@
 #include "parsing/parser.h"
 #include "semantic_analysis/declaration_naming_pass.h"
 #include "semantic_analysis/field_initializer_preparation_pass.h"
-#include "semantic_analysis/local_declaration_naming_pass.h"
 #include "semantic_analysis/semantic_pipeline.h"
 
 namespace {
@@ -140,7 +139,8 @@ TEST(Tooling_Frontend_DeclarationNames,
   EXPECT_FALSE(choice.hasQualifiedName());
   SemanticContext context(std::make_shared<sun::TypeRegistry>());
   context.enterFunctionScope("work$i32", sun::QualifiedName({}, "work$i32"));
-  sun::LocalDeclarationNamingPass(context).run(body);
+  sun::assignLocalDeclarationName(choice, context.getCurrentScopePath(),
+                                  context.currentModulePath());
   EXPECT_EQ(choice.getQualifiedName().scopePath,
             std::vector<std::string>({"work$i32"}));
   EXPECT_FALSE(local.hasQualifiedName());
@@ -236,13 +236,14 @@ TEST(Tooling_Frontend_DeclarationNames,
   sun::DeclarationNamingPass{}.run(*program);
   SemanticAnalyzer analyzer(std::make_shared<sun::TypeRegistry>());
   auto& pipeline = analyzer.pipeline();
+  pipeline.prepareGenerated(*program);
 
   auto& collection = pipeline.declarations();
   EXPECT_NO_THROW(collection.run(*program));
   EXPECT_EQ(analyzer.context().getAllFunctions("answer").size(), 1u);
 
-  auto& bodies = pipeline.bodies();
-  EXPECT_SUN_ERROR_WITH_MESSAGE(bodies.run(*program), "Unknown variable");
+  EXPECT_SUN_ERROR_WITH_MESSAGE(analyzer.bodies().analyzeBlock(*program),
+                                "Unknown variable");
 }
 
 TEST(Tooling_Frontend_DeclarationNames,
@@ -309,4 +310,31 @@ TEST(Tooling_Frontend_DeclarationNames,
   )");
   SemanticAnalyzer analyzer(std::make_shared<sun::TypeRegistry>());
   EXPECT_NO_THROW(analyzer.pipeline().run(*program));
+}
+
+TEST(Tooling_Frontend_DeclarationNames,
+     distinct_ids_do_not_allow_duplicate_names) {
+  auto program = parseDeclarations(R"(
+    class Item { var value: i32; }
+    class Item { var value: i32; }
+  )");
+  SemanticAnalyzer analyzer(std::make_shared<sun::TypeRegistry>());
+  EXPECT_SUN_ERROR_WITH_MESSAGE(analyzer.pipeline().run(*program),
+                                "Redefinition of class 'Item'");
+}
+
+TEST(Tooling_Frontend_DeclarationNames, local_naming_does_not_walk_method_bodies) {
+  auto program = parseDeclarations(R"(
+    class Local {
+      method work() void { enum Inner { First, Second } }
+    }
+  )");
+  auto& local = static_cast<ClassDefinitionAST&>(*program->getBody()[0]);
+  sun::assignLocalDeclarationName(local, {"owner$i32"}, {});
+  EXPECT_TRUE(local.hasQualifiedName());
+  const auto& method = *local.getMethods()[0].function;
+  EXPECT_TRUE(method.getProto().hasQualifiedName());
+  const auto& inner =
+      static_cast<const EnumDefinitionAST&>(*method.getBody().getBody()[0]);
+  EXPECT_FALSE(inner.hasQualifiedName());
 }

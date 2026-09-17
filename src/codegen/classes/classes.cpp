@@ -700,9 +700,8 @@ Value* ClassGenerator::codegen(const MemberAccessAST& expr) {
                                      memberName.c_str());
     }
 
-    // Check for function in this module
-    if (Function* func = functions().lookupCallTarget(qualifiedName)) {
-      return func;
+    if (expr.getResolvedType() && expr.getResolvedType()->isFunction()) {
+      return functions().lookupFunctionById(expr.getTargetDeclarationId());
     }
 
     logAndThrowError("Cannot find member '" + memberName + "' in module '" +
@@ -1329,51 +1328,20 @@ Value* ClassGenerator::codegen(const GenericCallAST& expr) {
           funcName);
       return nullptr;
     }
-    // Call exactly what semantic analysis instantiated. Rebuilding the name
-    // here would mean reproducing the template's own mangled name (which
-    // carries enclosing function context, e.g. outer_i32_inner) plus any pack
-    // suffix, and any drift makes the call reach for a missing symbol.
-    if (!expr.hasSpecializationName()) {
-      logAndThrowError(
-          "Generic call specialization not recorded by semantic analysis: " +
-          funcName);
-      return nullptr;
-    }
-    std::string mangledName = expr.getSpecializationName().mangled();
+    auto calleeType = expr.getResolvedCalleeType();
+    if (!calleeType || !calleeType->isFunction())
+      logAndThrowError("Generic call has no resolved callable signature");
+    const auto& signature = static_cast<const sun::FunctionType&>(*calleeType);
+    Function* specializedFunc =
+        functions().lookupFunctionById(expr.getTargetDeclarationId());
 
-    // The specialized function should already exist - it was generated when
-    // we processed the generic function definition via codegenFunc
-    Function* specializedFunc = module->getFunction(mangledName);
-    if (!specializedFunc) {
-      logAndThrowError(
-          "Specialized function not found (should have been generated when "
-          "processing the generic function definition): " +
-          mangledName);
-      return nullptr;
-    }
-
-    // Generate arguments for the call
     std::vector<Value*> argValues;
-
-    // If function has captures, the env was stored in scope during codegenFunc
-    if (AllocaInst* envPtr = scopes().findVariable(mangledName)) {
+    if (AllocaInst* envPtr =
+            scopes().findVariable(specializedFunc->getName().str())) {
       argValues.push_back(envPtr);
     }
-
-    // Sun-level signature of the specialization. A `ref T` parameter wants the
-    // referent's address, a by-value compound moves — the same coercions any
-    // other direct call applies, so the argument build is shared.
-    std::vector<sun::TypePtr> specParamTypes;
-    bool canThrow = specializedFunc->hasFnAttribute("sun.canthrow");
-    if (auto specialization = genericFuncAST->getSpecialization(mangledName)) {
-      const PrototypeAST& specProto = specialization->getProto();
-      // A pack's elements are parameters too, after the fixed ones
-      specParamTypes = specProto.getAllParamTypes();
-      // The specialization may still be a forward declaration here, in which
-      // case it carries no attribute yet — its prototype is the authority.
-      canThrow = canThrow || (specProto.hasReturnType() &&
-                              specProto.getReturnType()->canError);
-    }
+    const auto& specParamTypes = signature.getParamTypes();
+    bool canThrow = signature.canThrow();
 
     if (!emitCallArguments(expr.getArgs(), expr.getArgConversions(),
                            specParamTypes, specializedFunc->getFunctionType(),

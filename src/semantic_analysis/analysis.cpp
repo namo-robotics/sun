@@ -79,6 +79,8 @@ void SemanticAnalyzer::validateBorrowTarget(const ExprAST& target,
 void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
   SemanticContext::SourceFileGuard sourceFile(ctx_, expr.getSourceFileId());
   SemanticContext::LocationGuard locationGuard(ctx_, expr.getLocation());
+  sun::assignLocalDeclarationName(expr, ctx_.getCurrentScopePath(),
+                                  ctx_.currentModulePath());
   switch (expr.getType()) {
     case ASTNodeType::NUMBER:
       analyzeNumberLiteral(expr, expectedType);
@@ -149,6 +151,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
           expr.setResolvedType(sun::Types::Function(
               match.returnType, match.paramTypes, match.canThrow));
           varRef.setQualifiedName(match.qualifiedName);
+          varRef.setTargetDeclarationId(match.declarationId);
           break;
         }
         if (!ctx_.getAllFunctions(resolved.baseName).empty()) {
@@ -164,6 +167,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
           ctx_.resolveNameWithUsings(varRef.getName());
       varRef.setQualifiedName(resolved);
       if (VariableInfo* info = ctx_.lookupVariable(varRef.getName())) {
+        varRef.setTargetDeclarationId(info->declarationId);
         checkExternVariableAccessAllowed(*info, resolved.display(),
                                          varRef.getLocation());
       }
@@ -196,7 +200,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
 
     case ASTNodeType::BLOCK: {
       auto& block = static_cast<BlockExprAST&>(expr);
-      pipeline_.bodies().run(block);
+      bodies_.analyzeBlock(block);
       expr.setResolvedType(types_.inferType(expr));
       break;
     }
@@ -373,7 +377,7 @@ std::vector<sun::TypePtr> SemanticAnalyzer::validateAndResolveParamTypes(
 }
 
 // -------------------------------------------------------------------
-// Function info extraction (pure computation, no side effects)
+// Resolve function signatures and record their emitted symbols
 // -------------------------------------------------------------------
 
 FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
@@ -433,6 +437,7 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
   info.paramTypes = std::move(paramTypes);
   info.captures = std::move(captures);
   info.qualifiedName = qualifiedName;
+  info.declarationId = proto.getDeclarationId();
   info.canThrow = proto.canThrow();
   info.isCVariadic = proto.isCVariadic();
   info.isCExtern = func.isCExtern();
@@ -523,7 +528,7 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
 
     // Analyze extension method bodies
     for (const auto& methodDecl : classDef.getMethods()) {
-      pipeline_.bodies().analyzeFunction(*methodDecl.function);
+      bodies_.analyzeFunction(*methodDecl.function);
     }
     // The parser rejects constructors in a partial class, so this is only a
     // backstop — and like the primary path it runs after every body is

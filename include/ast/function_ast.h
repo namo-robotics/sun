@@ -64,6 +64,28 @@ class FunctionAST : public ExprAST {
   // Add this method to allow moving the prototype out
   std::unique_ptr<PrototypeAST> releaseProto() { return std::move(Proto); }
 
+  /** A function and its prototype denote the same declaration. */
+  sun::DeclarationId getDeclarationId() const override {
+    return Proto->getDeclarationId();
+  }
+  /** Assign the prototype's declaration identity. */
+  void setDeclarationId(sun::DeclarationId id) const override {
+    Proto->setDeclarationId(id);
+  }
+  /** Access the identities owned by the prototype. */
+  sun::DeclarationIdentity& declarationIdentity() const override {
+    return Proto->declarationIdentity();
+  }
+  /** Clear body and signature results while retaining identities. */
+  void clearComputedAnalysis() const override {
+    ExprAST::clearComputedAnalysis();
+    Proto->clearComputedAnalysis();
+  }
+  /** Discard the function's annotations and its prototype's annotations. */
+  void resetAnalysisSession() const override {
+    ExprAST::resetAnalysisSession();
+    Proto->resetAnalysisSession();
+  }
   const PrototypeAST& getProto() const { return *Proto; }
   PrototypeAST& getProtoMut() { return *Proto; }
   const BlockExprAST& getBody() const {

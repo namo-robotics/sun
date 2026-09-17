@@ -20,6 +20,7 @@ struct InterfaceFieldDecl {
   Position location;  // Source location of field declaration
   sun::Visibility visibility = sun::Visibility::Private;
   std::string doc;  // Comment written above the field
+  mutable sun::DeclarationIdentity declaration{};
 };
 
 // Method declaration in an interface (uses FunctionAST internally)

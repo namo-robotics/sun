@@ -2,8 +2,6 @@
 
 #include "ast.h"
 #include "ast/ast_children.h"
-#include "semantic_analysis/local_declaration_naming_pass.h"
-#include "semantic_analysis/semantic_context.h"
 
 namespace sun {
 namespace {
@@ -99,9 +97,35 @@ void DeclarationNamingPass::run(ExprAST& root,
   assignNames(root, scopePath, modulePath, moduleLevel);
 }
 
-void LocalDeclarationNamingPass::run(BlockExprAST& body) const {
-  assignNames(body, context_.getCurrentScopePath(),
-              context_.currentModulePath(), false);
+void assignLocalDeclarationName(ExprAST& declaration,
+                                const std::vector<std::string>& scopePath,
+                                const std::vector<std::string>& modulePath) {
+  const auto nameType = [&](auto& type) {
+    const auto& name = nameDeclaration(type, scopePath, modulePath);
+    auto methodScope = name.scopePath;
+    methodScope.push_back(name.baseName);
+    for (const auto& method : type.getMethods())
+      nameDeclaration(method.function->getProtoMut(), methodScope,
+                      name.owner());
+  };
+  switch (declaration.getType()) {
+    case ASTNodeType::CLASS_DEFINITION:
+      nameType(static_cast<ClassDefinitionAST&>(declaration));
+      break;
+    case ASTNodeType::INTERFACE_DEFINITION:
+      nameType(static_cast<InterfaceDefinitionAST&>(declaration));
+      break;
+    case ASTNodeType::ENUM_DEFINITION:
+      nameDeclaration(static_cast<EnumDefinitionAST&>(declaration), scopePath,
+                      modulePath);
+      break;
+    case ASTNodeType::FUNCTION:
+      nameDeclaration(static_cast<FunctionAST&>(declaration).getProtoMut(),
+                      scopePath, modulePath);
+      break;
+    default:
+      break;
+  }
 }
 
 }  // namespace sun

@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <string>
 
+#include "codegen/functions/function_registry.h"
 #include "driver/driver.h"
 
 // Helper function to test compilation (without JIT)
@@ -110,4 +111,32 @@ TEST(Tooling_Backend_Compilation, error_message_contains_type_info) {
     EXPECT_TRUE(msg.find("f64") != std::string::npos)
         << "Error should mention f64";
   }
+}
+
+TEST(Tooling_Backend_Compilation, function_ids_survive_symbol_renaming) {
+  CodegenContext context("function_ids", nullptr);
+  auto types = std::make_shared<sun::TypeRegistry>();
+  CodegenState state(context, types);
+  FunctionRegistry functions(state);
+  auto first = types->declarations.add(sun::DeclarationKind::Function, "f");
+  auto second = types->declarations.add(sun::DeclarationKind::Function, "f");
+  auto* signature = llvm::FunctionType::get(
+      llvm::Type::getVoidTy(context.getContext()), false);
+  auto* original =
+      llvm::Function::Create(signature, llvm::Function::ExternalLinkage, "f",
+                             context.mainModule.get());
+  functions.registerFunction(first, original);
+  original->setName("renamed");
+  auto* replacement =
+      llvm::Function::Create(signature, llvm::Function::ExternalLinkage, "f",
+                             context.mainModule.get());
+  functions.registerFunction(second, replacement);
+  EXPECT_EQ(functions.lookupFunctionById(first), original);
+  EXPECT_EQ(functions.lookupFunctionById(second), replacement);
+  EXPECT_ANY_THROW(functions.registerFunction(first, replacement));
+  original->eraseFromParent();
+  EXPECT_ANY_THROW(functions.lookupFunctionById(first));
+  functions.registerFunction(first, replacement);
+  EXPECT_EQ(functions.lookupFunctionById(first), replacement);
+  EXPECT_ANY_THROW(functions.lookupFunctionById(sun::DeclarationId{}));
 }

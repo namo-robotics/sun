@@ -1369,9 +1369,17 @@ void Driver::compileString(const std::string& source,
   runPipeline(std::move(blockAst), parser, false);
 }
 
+void Driver::startAnalysisSession() {
+  typeRegistry = std::make_shared<sun::TypeRegistry>();
+  analyzer = std::make_unique<SemanticAnalyzer>(typeRegistry);
+  codegenVisitor = std::make_unique<CodegenVisitor>(*ctx, typeRegistry);
+}
+
 Driver::AnalyzedProgram Driver::analyzeString(const std::string& source,
                                               const std::string& filePath) {
+  startAnalysisSession();
   AnalyzedProgram result;
+  result.typeRegistry = typeRegistry;
   try {
     auto parser = prepareStringParser(source, filePath);
     result.ast = parser.parseProgram();
@@ -1390,7 +1398,9 @@ Driver::AnalyzedProgram Driver::analyzeFiles(
     const std::vector<sun::MoonImport>& moonImports,
     const std::vector<std::string>& protoFiles,
     const std::map<std::string, std::string>& sourceOverrides) {
+  startAnalysisSession();
   AnalyzedProgram result;
+  result.typeRegistry = typeRegistry;
   moonImports_ = moonImports;
   try {
     result.ast = parseAndMergeFiles(sourceFiles, protoFiles, sourceOverrides);

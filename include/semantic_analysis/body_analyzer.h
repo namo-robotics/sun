@@ -1,28 +1,19 @@
 #pragma once
 
-#include "semantic_analysis/local_declaration_naming_pass.h"
 #include "semantic_analysis/semantic_context.h"
 
 class SemanticAnalyzer;
 
-/** Check prepared statements and manage function-body scopes and local passes.
+/** Check prepared statements and manage function-body scopes.
  */
-class BodyAnalysisPass {
+class BodyAnalyzer {
  public:
-  /** Borrow the shared context, checking helpers, and local naming pass. */
-  BodyAnalysisPass(SemanticContext& context, SemanticAnalyzer& analyzer,
-                   const sun::LocalDeclarationNamingPass& localNaming)
-      : ctx_(context),
-        analyzer_(analyzer),
-        localDeclarationNamingPass_(localNaming) {}
+  /** Borrow the shared context and checking helpers. */
+  BodyAnalyzer(SemanticContext& context, SemanticAnalyzer& analyzer)
+      : ctx_(context), analyzer_(analyzer) {}
 
   /** Check a prepared block in source order. */
-  void run(BlockExprAST& block);
-
-  /** Name locals and check a specialization body in its established function
-   * scope.
-   */
-  void runInFunctionScope(BlockExprAST& body);
+  void analyzeBlock(BlockExprAST& block);
 
   /** Enter a resolved function's scope and check defaults, parameters, and
    * body. */
@@ -40,5 +31,4 @@ class BodyAnalysisPass {
  private:
   SemanticContext& ctx_;
   SemanticAnalyzer& analyzer_;
-  const sun::LocalDeclarationNamingPass& localDeclarationNamingPass_;
 };

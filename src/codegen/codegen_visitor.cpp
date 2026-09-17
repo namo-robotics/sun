@@ -161,10 +161,8 @@ Value* CodegenVisitor::codegenExpression(const ExprAST& expr) {
       std::string fullName = qn.getFullName();
       std::string mangledName = qn.getMangledName();
 
-      // Try to find as a function
-      Function* func = module->getFunction(mangledName);
-      if (func) {
-        return func;
+      if (qn.getResolvedType() && qn.getResolvedType()->isFunction()) {
+        return functions.lookupFunctionById(qn.getTargetDeclarationId());
       }
 
       // Try to find as a global variable

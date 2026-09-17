@@ -7,6 +7,12 @@
 
 namespace sun {
 
+/** Name the current local declaration and its methods without walking bodies.
+ */
+void assignLocalDeclarationName(ExprAST& declaration,
+                                const std::vector<std::string>& scopePath,
+                                const std::vector<std::string>& modulePath);
+
 /** Assign declaration names without resolving types or registering symbols. */
 class DeclarationNamingPass {
  public:

@@ -21,7 +21,6 @@
 #include <string>
 #include <vector>
 
-#include "semantic_analysis/declaration_naming_pass.h"
 #include "semantic_analysis/semantic_context.h"
 
 class SemanticAnalyzer;
@@ -34,10 +33,9 @@ class SemanticAnalyzer;
  */
 class GenericSpecializer {
  public:
-  /** Share scope state, checking helpers, and naming for generated methods. */
-  GenericSpecializer(SemanticContext &ctx, SemanticAnalyzer &sema,
-                     const sun::DeclarationNamingPass &naming)
-      : ctx_(ctx), sema_(sema), declarationNamingPass_(naming) {}
+  /** Share scope state and checking helpers. */
+  GenericSpecializer(SemanticContext &ctx, SemanticAnalyzer &sema)
+      : ctx_(ctx), sema_(sema) {}
 
   // ---- Classes -----------------------------------------------------------
 
@@ -224,7 +222,6 @@ class GenericSpecializer {
  private:
   SemanticContext &ctx_;
   SemanticAnalyzer &sema_;
-  const sun::DeclarationNamingPass &declarationNamingPass_;
 
   // Classes currently being instantiated, so a mutually recursive template
   // stops instead of specializing forever.

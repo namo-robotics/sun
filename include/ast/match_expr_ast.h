@@ -16,6 +16,7 @@ struct PatternBinding {
   // Set by semantic analysis:
   sun::TypePtr resolvedType;        // payload element type
   std::string resolvedMangledName;  // scoped name for codegen
+  mutable sun::DeclarationIdentity declaration{};
 };
 
 // A single arm in a match expression: pattern => body

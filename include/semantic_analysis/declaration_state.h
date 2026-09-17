@@ -6,18 +6,19 @@
 #include <vector>
 
 #include "ast/ast_fwd.h"
+#include "semantic_analysis/declaration_id.h"
 
 /** Declaration bookkeeping shared by collection and body checking. */
 class DeclarationState {
  public:
   /** True when this class's shape was already registered by the pre-pass. */
-  bool hasClassShape(const std::string &mangledClassName) const {
-    return preRegisteredClassShapes_.count(mangledClassName) > 0;
+  bool hasClassShape(sun::DeclarationId declaration) const {
+    return preRegisteredClassShapes_.count(declaration) > 0;
   }
 
   /** Record a class shape and report whether it is new. */
-  bool noteClassShape(const std::string &name) {
-    return preRegisteredClassShapes_.insert(name).second;
+  bool noteClassShape(sun::DeclarationId declaration) {
+    return preRegisteredClassShapes_.insert(declaration).second;
   }
 
   // ---- Module-level redefinition -----------------------------------------
@@ -66,8 +67,8 @@ class DeclarationState {
   std::unordered_map<std::string, std::vector<ClassDefinitionAST *>>
       pendingExtensions_;
 
-  // Classes (by mangled name) whose fields and method signatures were
+  // Classes (by declaration identity) whose fields and method signatures were
   // registered by the pre-pass. The sequential pass skips re-adding them and
   // only analyzes bodies.
-  std::unordered_set<std::string> preRegisteredClassShapes_;
+  std::unordered_set<sun::DeclarationId> preRegisteredClassShapes_;
 };

@@ -1,0 +1,272 @@
+#include <gtest/gtest.h>
+
+#include <set>
+#include <sstream>
+
+#include "ast.h"
+#include "ast/ast_children.h"
+#include "driver/driver.h"
+#include "parsing/parser.h"
+#include "semantic_analysis/declaration_identity_pass.h"
+
+namespace {
+
+/** Parse syntax without resolving any declaration signatures. */
+std::unique_ptr<BlockExprAST> parse(const std::string& source) {
+  std::istringstream input(source);
+  Parser parser(input);
+  return parser.parseString(source);
+}
+
+}  // namespace
+
+TEST(Tooling_Frontend_DeclarationIdentity,
+     nested_types_exist_before_signatures) {
+  auto ast = parse(R"(
+    function work(x: i32) void { class Local {} }
+    function work(x: bool) void { class Local {} }
+  )");
+  sun::DeclarationTable table;
+  sun::DeclarationIdentityPass pass(table);
+  pass.run(*ast);
+  const auto& first = static_cast<const FunctionAST&>(*ast->getBody()[0]);
+  const auto& second = static_cast<const FunctionAST&>(*ast->getBody()[1]);
+  const auto& firstLocal = *first.getBody().getBody()[0];
+  const auto& secondLocal = *second.getBody().getBody()[0];
+  EXPECT_NE(firstLocal.getDeclarationId(), secondLocal.getDeclarationId());
+  EXPECT_EQ(table.get(firstLocal.getDeclarationId()).owner,
+            first.getDeclarationId());
+  EXPECT_EQ(table.get(secondLocal.getDeclarationId()).owner,
+            second.getDeclarationId());
+  EXPECT_FALSE(first.getProto().hasResolvedParamTypes());
+  EXPECT_EQ(first.getDeclarationId(), first.getProto().getDeclarationId());
+  auto size = table.size();
+  pass.run(*ast);
+  EXPECT_EQ(table.size(), size);
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity,
+     computed_reset_preserves_only_identity) {
+  auto ast = parse("function f(x: i32) i32 { return x; }");
+  sun::DeclarationTable table;
+  sun::DeclarationIdentityPass(table).run(*ast);
+  auto& function = static_cast<FunctionAST&>(*ast->getBody()[0]);
+  const auto id = function.getDeclarationId();
+  const auto parameter = function.declarationIdentity().parameters[0];
+  function.setResolvedType(sun::Types::Int32());
+  function.setTargetDeclarationId(id);
+  function.getProtoMut().setQualifiedName({{}, "computed"});
+  sun::clearComputedAnalysis(*ast);
+  EXPECT_EQ(function.getDeclarationId(), id);
+  EXPECT_EQ(function.declarationIdentity().parameters[0], parameter);
+  EXPECT_FALSE(function.hasResolvedType());
+  EXPECT_FALSE(function.getTargetDeclarationId());
+  EXPECT_FALSE(function.getProto().hasQualifiedName());
+  sun::resetAnalysisSession(*ast);
+  EXPECT_FALSE(function.getDeclarationId());
+  EXPECT_FALSE(function.getProto().hasAnalysis());
+  sun::DeclarationTable next;
+  sun::DeclarationIdentityPass(next).run(*ast);
+  EXPECT_TRUE(function.getDeclarationId());
+  EXPECT_EQ(next.size(), table.size());
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity, cloning_does_not_copy_session_ids) {
+  auto ast = parse("function f<T>(x: T) T { class Local {} return x; }");
+  sun::DeclarationTable table;
+  sun::DeclarationIdentityPass pass(table);
+  pass.run(*ast);
+  const auto& original = static_cast<const FunctionAST&>(*ast->getBody()[0]);
+  auto clone = original.clone();
+  EXPECT_FALSE(clone->getDeclarationId());
+  pass.run(*clone);
+  const auto& copied = static_cast<const FunctionAST&>(*clone);
+  EXPECT_NE(copied.getDeclarationId(), original.getDeclarationId());
+  EXPECT_NE(copied.getBody().getBody()[0]->getDeclarationId(),
+            original.getBody().getBody()[0]->getDeclarationId());
+  EXPECT_NE(copied.declarationIdentity().parameters[0],
+            original.declarationIdentity().parameters[0]);
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity, members_retain_module_ownership) {
+  auto ast = parse(R"(
+    module m {
+      class Box<T> { var value: T; method get() T { return this.value; } }
+      enum Choice { A, B }
+    }
+  )");
+  sun::DeclarationTable table;
+  sun::DeclarationIdentityPass(table).run(*ast);
+  const auto& module = static_cast<const ModuleAST&>(*ast->getBody()[0]);
+  const auto& cls =
+      static_cast<const ClassDefinitionAST&>(*module.getBody().getBody()[0]);
+  const auto& field = cls.getFields()[0];
+  EXPECT_EQ(table.get(field.declaration.id).owner, cls.getDeclarationId());
+  EXPECT_EQ(table.get(field.declaration.id).module, module.getDeclarationId());
+  const auto& method = *cls.getMethods()[0].function;
+  EXPECT_EQ(table.get(method.getDeclarationId()).owner, cls.getDeclarationId());
+  auto fieldId = field.declaration.id;
+  sun::clearComputedAnalysis(*ast);
+  EXPECT_EQ(field.declaration.id, fieldId);
+  sun::resetAnalysisSession(*ast);
+  EXPECT_FALSE(field.declaration.id);
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity,
+     reused_tree_requires_a_session_reset) {
+  auto ast = parse("function f() void {}");
+  sun::DeclarationTable first;
+  sun::DeclarationTable second;
+  sun::DeclarationIdentityPass(first).run(*ast);
+  second.add(sun::DeclarationKind::Function, "unrelated");
+  EXPECT_ANY_THROW(sun::DeclarationIdentityPass(second).run(*ast));
+  sun::resetAnalysisSession(*ast);
+  EXPECT_NO_THROW(sun::DeclarationIdentityPass(second).run(*ast));
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity, reopened_modules_share_identity) {
+  auto ast = parse(
+      "module m { function a() void {} } module m { function b() void {} }");
+  sun::DeclarationTable table;
+  sun::DeclarationIdentityPass(table).run(*ast);
+  EXPECT_EQ(ast->getBody()[0]->getDeclarationId(),
+            ast->getBody()[1]->getDeclarationId());
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity,
+     resolved_calls_and_parameters_carry_ids) {
+  auto driver = Driver::createForJIT();
+  auto result = driver->analyzeString(R"(
+    function twice(x: i32) i32 { return x + x; }
+    function main() i32 { var value: i32 = 7; return twice(value); }
+  )");
+  ASSERT_FALSE(result.error.has_value());
+  const auto& function =
+      static_cast<const FunctionAST&>(*result.ast->getBody()[0]);
+  const auto& main = static_cast<const FunctionAST&>(*result.ast->getBody()[1]);
+  const auto variableId = main.getBody().getBody()[0]->getDeclarationId();
+  size_t checked = 0;
+  std::function<void(const ExprAST&)> visit = [&](const ExprAST& node) {
+    if (node.getType() == ASTNodeType::CALL) {
+      EXPECT_EQ(node.getTargetDeclarationId(), function.getDeclarationId());
+      ++checked;
+    }
+    if (node.getType() == ASTNodeType::VARIABLE_REFERENCE) {
+      const auto& reference = static_cast<const VariableReferenceAST&>(node);
+      if (reference.getName() == "x") {
+        EXPECT_EQ(reference.getTargetDeclarationId(),
+                  function.declarationIdentity().parameters[0]);
+        ++checked;
+      }
+      if (reference.getName() == "value") {
+        EXPECT_EQ(reference.getTargetDeclarationId(), variableId);
+        ++checked;
+      }
+    }
+    forEachChild(node, visit);
+  };
+  visit(*result.ast);
+  EXPECT_EQ(checked, 4u);
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity,
+     analyzed_snapshots_own_their_session) {
+  auto driver = Driver::createForJIT();
+  auto first = driver->analyzeString("function f() i32 { return 1; }");
+  auto second = driver->analyzeString("function f() i32 { return 2; }");
+  ASSERT_FALSE(first.error);
+  ASSERT_FALSE(second.error);
+  ASSERT_TRUE(first.typeRegistry);
+  ASSERT_TRUE(second.typeRegistry);
+  EXPECT_NE(first.typeRegistry, second.typeRegistry);
+  driver.reset();
+  const auto& function = *first.ast->getBody()[0];
+  EXPECT_EQ(
+      first.typeRegistry->declarations.get(function.getDeclarationId()).name,
+      "f");
+  EXPECT_FALSE(function.declarationIdentity().session.expired());
+  EXPECT_ANY_THROW(
+      sun::DeclarationIdentityPass(second.typeRegistry->declarations)
+          .run(*first.ast));
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity, nominal_types_precede_names) {
+  auto ast = parse(R"(
+    function work(x: i32) void { class Local {} }
+    function work(x: bool) void { class Local {} }
+  )");
+  sun::TypeRegistry types;
+  sun::DeclarationIdentityPass(types.declarations).run(*ast);
+  auto& first = static_cast<FunctionAST&>(*ast->getBody()[0]);
+  auto& second = static_cast<FunctionAST&>(*ast->getBody()[1]);
+  auto a = first.getBody().getBody()[0]->getDeclarationId();
+  auto b = second.getBody().getBody()[0]->getDeclarationId();
+  auto firstType = types.getClass(a);
+  auto secondType = types.getClass(b);
+  EXPECT_NE(firstType, secondType);
+  EXPECT_FALSE(firstType->equals(*secondType));
+  EXPECT_EQ(types.getClass(a, {{"work_i32"}, "Local"}), firstType);
+  EXPECT_EQ(types.getClass(a), firstType);
+  EXPECT_EQ(types.getClass("work_i32_Local"), firstType);
+  EXPECT_TRUE(firstType->equals(*firstType));
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity, nominal_types_distinguish_sessions) {
+  sun::TypeRegistry first;
+  sun::TypeRegistry second;
+  auto a = first.declarations.add(sun::DeclarationKind::Interface, "Local");
+  auto b = second.declarations.add(sun::DeclarationKind::Interface, "Local");
+  ASSERT_EQ(a, b);
+  EXPECT_FALSE(first.getInterface(a)->equals(*second.getInterface(b)));
+  EXPECT_FALSE(first.getInterface(a)->equals(*first.getInterface("Local")));
+  auto e = first.declarations.add(sun::DeclarationKind::Enum, "Value");
+  auto f = first.declarations.add(sun::DeclarationKind::Enum, "Value");
+  EXPECT_FALSE(first.getEnum(e)->equals(*first.getEnum(f)));
+  EXPECT_ANY_THROW(first.getClass(a));
+  EXPECT_ANY_THROW(first.getEnum(sun::DeclarationId{}));
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity,
+     generated_function_preparation_belongs_to_pipeline) {
+  auto ast = parse("function work(x: i32) i32 { return x; }");
+  auto types = std::make_shared<sun::TypeRegistry>();
+  SemanticAnalyzer analyzer(types);
+  auto& function = static_cast<FunctionAST&>(*ast->getBody()[0]);
+  analyzer.pipeline().prepareGenerated(function, {}, {});
+  auto id = function.getDeclarationId();
+  ASSERT_TRUE(id);
+  auto count = types->declarations.size();
+  auto info = analyzer.getFunctionInfo(function);
+  EXPECT_EQ(info.declarationId, id);
+  EXPECT_EQ(types->declarations.size(), count);
+  analyzer.pipeline().prepareGenerated(function, {}, {});
+  EXPECT_EQ(function.getDeclarationId(), id);
+  EXPECT_EQ(types->declarations.size(), count);
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity,
+     inferred_and_explicit_generic_calls_share_a_target) {
+  auto driver = Driver::createForJIT();
+  auto result = driver->analyzeString(R"(
+    function identity<T>(value: T) T { return value; }
+    function main() i32 { return identity(1) + identity<i32>(2); }
+  )");
+  ASSERT_FALSE(result.error);
+  const auto& generic =
+      static_cast<const FunctionAST&>(*result.ast->getBody()[0]);
+  ASSERT_EQ(generic.getSpecializations().size(), 1u);
+  const auto target =
+      generic.getSpecializations().begin()->second->getDeclarationId();
+  ASSERT_TRUE(target);
+  size_t checked = 0;
+  std::function<void(const ExprAST&)> visit = [&](const ExprAST& node) {
+    if (node.getType() == ASTNodeType::CALL ||
+        node.getType() == ASTNodeType::GENERIC_CALL) {
+      EXPECT_EQ(node.getTargetDeclarationId(), target);
+      ++checked;
+    }
+    forEachChild(node, visit);
+  };
+  visit(*result.ast->getBody()[1]);
+  EXPECT_EQ(checked, 2u);
+}

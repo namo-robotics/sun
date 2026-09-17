@@ -66,6 +66,28 @@ class LambdaAST : public ExprAST {
     return result;
   }
 
+  /** A function and its prototype denote the same declaration. */
+  sun::DeclarationId getDeclarationId() const override {
+    return Proto->getDeclarationId();
+  }
+  /** Assign the prototype's declaration identity. */
+  void setDeclarationId(sun::DeclarationId id) const override {
+    Proto->setDeclarationId(id);
+  }
+  /** Access the identities owned by the prototype. */
+  sun::DeclarationIdentity& declarationIdentity() const override {
+    return Proto->declarationIdentity();
+  }
+  /** Clear body and signature results while retaining identities. */
+  void clearComputedAnalysis() const override {
+    ExprAST::clearComputedAnalysis();
+    Proto->clearComputedAnalysis();
+  }
+  /** Discard the function's annotations and its prototype's annotations. */
+  void resetAnalysisSession() const override {
+    ExprAST::resetAnalysisSession();
+    Proto->resetAnalysisSession();
+  }
   const PrototypeAST& getProto() const { return *Proto; }
   const BlockExprAST& getBody() const { return *Body; }
   bool hasBody() const { return Body != nullptr; }

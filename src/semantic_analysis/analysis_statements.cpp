@@ -153,7 +153,7 @@ void SemanticAnalyzer::analyzeVariableCreation(VariableCreationAST& varCreate) {
 
   // Note: Move semantics tracking is handled by the borrow checker
   ctx_.declareVariable(varCreate.getName(), type, /*isParam=*/false,
-                       varCreate.isConst());
+                       varCreate.isConst(), varCreate.getDeclarationId());
   // Set the resolved type on the variable creation node itself
   varCreate.setResolvedType(type);
 }
@@ -162,6 +162,7 @@ void SemanticAnalyzer::analyzeVariableAssignment(
     VariableAssignmentAST& varAssign) {
   // Look up the variable's type first for expected type propagation
   VariableInfo* varInfo = ctx_.lookupVariable(varAssign.getName());
+  if (varInfo) varAssign.setTargetDeclarationId(varInfo->declarationId);
   // A module-level global is emitted under its mangled name; record it so
   // codegen can find the symbol (locals keep the name as written).
   if (varInfo && varInfo->isGlobal) {
@@ -378,7 +379,8 @@ void SemanticAnalyzer::analyzeReferenceCreation(
   sun::TypePtr refType =
       sun::Types::Reference(targetType, refCreate.isMutable());
   // Declare the reference variable
-  ctx_.declareVariable(refCreate.getName(), refType);
+  ctx_.declareVariable(refCreate.getName(), refType, false, false,
+                       refCreate.getDeclarationId());
   // Set the resolved type
   refCreate.setResolvedType(refType);
 }

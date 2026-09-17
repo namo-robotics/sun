@@ -1,4 +1,4 @@
-#include "semantic_analysis/body_analysis_pass.h"
+#include "semantic_analysis/body_analyzer.h"
 
 #include "ast.h"
 #include "semantic_analysis/semantic_analyzer.h"
@@ -6,15 +6,10 @@
 #include "semantic_analysis/type_rules.h"
 #include "support/error.h"
 
-void BodyAnalysisPass::run(BlockExprAST& block) {
+void BodyAnalyzer::analyzeBlock(BlockExprAST& block) {
   for (const auto& expression : block.getBody()) {
     analyzer_.analyzeExpr(*expression);
   }
-}
-
-void BodyAnalysisPass::runInFunctionScope(BlockExprAST& body) {
-  localDeclarationNamingPass_.run(body);
-  run(body);
 }
 
 // Sun has no implicit returns: a function whose signature promises a value
@@ -35,7 +30,7 @@ static void checkAllPathsReturn(const PrototypeAST& proto,
       loc);
 }
 
-void BodyAnalysisPass::analyzeFunction(FunctionAST& func) {
+void BodyAnalyzer::analyzeFunction(FunctionAST& func) {
   PrototypeAST& proto = const_cast<PrototypeAST&>(func.getProto());
 
   analyzer_.rejectRefEnvReturnType(proto.getReturnType(), func.getLocation(),
@@ -98,8 +93,6 @@ void BodyAnalysisPass::analyzeFunction(FunctionAST& func) {
   ctx_.enterFunctionScope(funcSig, proto.getQualifiedName(), proto.canThrow(),
                           scopeReturnType);
 
-  localDeclarationNamingPass_.run(const_cast<BlockExprAST&>(func.getBody()));
-
   // Declare 'this' for methods (when we're inside a class context); it is
   // immutable inside a const method
   if (ctx_.getCurrentClass()) {
@@ -131,9 +124,11 @@ void BodyAnalysisPass::analyzeFunction(FunctionAST& func) {
   analyzer_.allowThisLifetime_ = savedAllowThisForDefaults;
 
   // Declare parameters
-  for (const auto& [argName, argType] : proto.getArgs()) {
+  for (size_t i = 0; i < proto.getArgs().size(); ++i) {
+    const auto& [argName, argType] = proto.getArgs()[i];
     sun::TypePtr paramType = analyzer_.types().typeAnnotationToType(argType);
-    ctx_.declareVariable(argName, paramType, /*isParam=*/true);
+    ctx_.declareVariable(argName, paramType, true, false,
+                         proto.declarationIdentity().parameters.at(i));
   }
 
   // Add captured variables to scope (so nested functions can see them),
@@ -171,7 +166,7 @@ void BodyAnalysisPass::analyzeFunction(FunctionAST& func) {
   ctx_.exitScope();
 }
 
-void BodyAnalysisPass::analyzeLambda(LambdaAST& lambda) {
+void BodyAnalyzer::analyzeLambda(LambdaAST& lambda) {
   PrototypeAST& proto = const_cast<PrototypeAST&>(lambda.getProto());
 
   // Enter function scope (empty signature - lambdas are anonymous)
@@ -183,9 +178,11 @@ void BodyAnalysisPass::analyzeLambda(LambdaAST& lambda) {
   // Lambdas don't have type parameters (no generic lambdas)
 
   // Declare parameters
-  for (const auto& [argName, argType] : proto.getArgs()) {
+  for (size_t i = 0; i < proto.getArgs().size(); ++i) {
+    const auto& [argName, argType] = proto.getArgs()[i];
     sun::TypePtr paramType = analyzer_.types().typeAnnotationToType(argType);
-    ctx_.declareVariable(argName, paramType, /*isParam=*/true);
+    ctx_.declareVariable(argName, paramType, true, false,
+                         proto.declarationIdentity().parameters.at(i));
   }
 
   // Add captured variables to scope (so nested functions can see them),
@@ -205,7 +202,7 @@ void BodyAnalysisPass::analyzeLambda(LambdaAST& lambda) {
   for (const auto& lp : proto.getLifetimeParameters()) {
     analyzer_.activeLifetimeNames_.push_back(lp.name);
   }
-  runInFunctionScope(const_cast<BlockExprAST&>(lambda.getBody()));
+  analyzeBlock(const_cast<BlockExprAST&>(lambda.getBody()));
   analyzer_.activeLifetimeNames_.resize(lifetimeMark);
 
   // Same rule as named functions: no implicit returns
@@ -218,7 +215,7 @@ void BodyAnalysisPass::analyzeLambda(LambdaAST& lambda) {
 // Analyze one (cloned) method body of a specialized class. The caller has
 // entered the specialized class's scope inside the template's definition
 // scope, so the body sees exactly the names the template was written against.
-void BodyAnalysisPass::analyzeMethodWithBindings(
+void BodyAnalyzer::analyzeMethodWithBindings(
     FunctionAST& methodFunc, std::shared_ptr<sun::ClassType> classType,
     const std::vector<std::string>& typeParams,
     const std::vector<sun::TypePtr>& typeArgs) {
@@ -272,8 +269,6 @@ void BodyAnalysisPass::analyzeMethodWithBindings(
   }
 
   analyzer_.clearResolvedTypes(const_cast<BlockExprAST&>(methodFunc.getBody()));
-  localDeclarationNamingPass_.run(
-      const_cast<BlockExprAST&>(methodFunc.getBody()));
   const auto& statements = methodFunc.getBody().getBody();
   for (size_t i = 0; i < methodFunc.getFieldInitializerCount(); ++i) {
     analyzer_.analyzeExpr(*statements.at(i));

@@ -121,7 +121,27 @@ class PrototypeAST {
 
   // Analysis data access
   bool hasAnalysis() const { return analysis_ != nullptr; }
-  void clearAnalysis() const { analysis_.reset(); }
+  /** Return this function's identity in the current analysis session. */
+  sun::DeclarationId getDeclarationId() const {
+    return analysis_ ? analysis_->declaration.id : sun::DeclarationId{};
+  }
+  /** Assign the identity shared by the function and its prototype. */
+  void setDeclarationId(sun::DeclarationId id) const {
+    analysis().declaration.id = id;
+  }
+  /** Access identities for the function and its parameters. */
+  sun::DeclarationIdentity& declarationIdentity() const {
+    return analysis().declaration;
+  }
+  /** Clear the resolved signature while retaining declaration identities. */
+  void clearComputedAnalysis() const {
+    if (!analysis_) return;
+    auto identity = std::move(analysis_->declaration);
+    analysis_ = std::make_unique<PrototypeAnalysis>();
+    analysis_->declaration = std::move(identity);
+  }
+  /** Drop all annotations when discarding the owning session. */
+  void resetAnalysisSession() const { analysis_.reset(); }
   const PrototypeAnalysis* getAnalysis() const { return analysis_.get(); }
 
   // Qualified name (after semantic analysis qualifies it)

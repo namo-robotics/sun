@@ -28,8 +28,8 @@ void DeclarationCollectionPass::collectTypeNames(BlockExprAST& block) {
           break;
         }
         if (ctx_.lookupEnum(enumDef.getName())) break;
-        auto enumType =
-            ctx_.types()->getEnum(enumDef.getQualifiedName().mangled());
+        auto enumType = ctx_.types()->getEnum(enumDef.getDeclarationId(),
+                                              enumDef.getQualifiedName());
         for (const auto& variant : enumDef.getVariants()) {
           enumType->addVariant(variant.name, variant.value);
         }
@@ -56,7 +56,8 @@ void DeclarationCollectionPass::collectTypeNames(BlockExprAST& block) {
           sun::QualifiedName qualifiedInterface =
               interfaceDef.getQualifiedName();
           std::string interfaceName = qualifiedInterface.mangled();
-          auto interfaceType = ctx_.types()->getInterface(interfaceName);
+          auto interfaceType = ctx_.types()->getInterface(
+              interfaceDef.getDeclarationId(), qualifiedInterface);
           if (interfaceName != interfaceDef.getName()) {
             interfaceType->setBaseName(interfaceDef.getName());
           }
@@ -79,7 +80,8 @@ void DeclarationCollectionPass::collectTypeNames(BlockExprAST& block) {
           ctx_.registerGenericClass(classDef.getName(), genericInfo);
         }
         if (!classDef.isGeneric()) {
-          auto classType = ctx_.types()->getClass(qualifiedClass);
+          auto classType = ctx_.types()->getClass(classDef.getDeclarationId(),
+                                                  qualifiedClass);
           classType->setPacked(classDef.isPacked());
           classType->visibility = classDef.getVisibility();
           ctx_.registerClass(classDef.getName(), classType);
@@ -225,8 +227,8 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
         // Skip if already registered (e.g. from import)
         if (ctx_.lookupEnum(enumDef.getName())) break;
         // Create and register a minimal enum type
-        auto enumType =
-            ctx_.types()->getEnum(enumDef.getQualifiedName().mangled());
+        auto enumType = ctx_.types()->getEnum(enumDef.getDeclarationId(),
+                                              enumDef.getQualifiedName());
         for (const auto& variant : enumDef.getVariants()) {
           enumType->addVariant(variant.name, variant.value);
         }
@@ -255,7 +257,8 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
           sun::QualifiedName qualifiedInterface =
               interfaceDef.getQualifiedName();
           std::string interfaceName = qualifiedInterface.mangled();
-          auto interfaceType = ctx_.types()->getInterface(interfaceName);
+          auto interfaceType = ctx_.types()->getInterface(
+              interfaceDef.getDeclarationId(), qualifiedInterface);
           if (interfaceName != interfaceDef.getName()) {
             interfaceType->setBaseName(interfaceDef.getName());
           }
@@ -281,7 +284,8 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
           ctx_.registerGenericClass(classDef.getName(), genericInfo);
         }
         if (!classDef.isGeneric()) {
-          auto classType = ctx_.types()->getClass(qualifiedClass);
+          auto classType = ctx_.types()->getClass(classDef.getDeclarationId(),
+                                                  qualifiedClass);
           classType->setPacked(classDef.isPacked());
           classType->visibility = classDef.getVisibility();
           ctx_.registerClass(classDef.getName(), classType);
@@ -322,9 +326,13 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
     auto& classDef = static_cast<ClassDefinitionAST&>(*expr);
     if (classDef.isPartial() || classDef.isGeneric()) continue;
     sun::QualifiedName qualifiedClass = classDef.getQualifiedName();
-    if (ctx_.declarations().hasClassShape(qualifiedClass.mangled())) continue;
+    if (ctx_.declarations().hasClassShape(classDef.getDeclarationId()))
+      continue;
     auto classType = ctx_.lookupClass(classDef.getName());
     if (!classType) continue;
+    // A duplicate name resolves to the first declaration. Body checking
+    // reports the duplicate; do not register its fields on that first type.
+    if (classType->getDeclarationId() != classDef.getDeclarationId()) continue;
     registerClassShape(classDef, qualifiedClass, classType);
   }
 
@@ -448,6 +456,7 @@ void DeclarationCollectionPass::collectFunctionSignature(FunctionAST& func) {
   info.returnType = returnType;
   info.paramTypes = std::move(paramTypes);
   info.qualifiedName = qualifiedName;
+  info.declarationId = proto.getDeclarationId();
   info.canThrow = proto.canThrow();
   info.isCVariadic = proto.isCVariadic();
   info.isCExtern = func.isCExtern();
@@ -481,12 +490,13 @@ void DeclarationCollectionPass::collectExternVariable(
   }
 
   VariableInfo info{type, true, false, false};
+  info.declarationId = varCreate.getDeclarationId();
   info.visibility = varCreate.getVisibility();
   info.qualifiedName = qualified;
   info.isCExtern = true;
   ctx_.scope()->variables[varCreate.getName()] = info;
   ctx_.registerModuleVariable(qualified, type, varCreate.getVisibility(), false,
-                              true);
+                              true, varCreate.getDeclarationId());
 }
 
 void DeclarationCollectionPass::registerPrecompiledModuleVariable(
@@ -507,6 +517,7 @@ void DeclarationCollectionPass::registerPrecompiledModuleVariable(
   // normally populate; there is no body to analyze here.
   const std::string& name = varCreate.getName();
   VariableInfo info{type, true, false, false};
+  info.declarationId = varCreate.getDeclarationId();
   info.visibility = varCreate.getVisibility();
   info.isConst = varCreate.isConst();
   info.isCExtern = varCreate.isCExtern();
@@ -515,9 +526,9 @@ void DeclarationCollectionPass::registerPrecompiledModuleVariable(
 
   // The stub's qualified name is already scoped by content hash; it must be
   // the one registered, since that is the symbol the bundle defines.
-  ctx_.registerModuleVariable(varCreate.getQualifiedName(), type,
-                              varCreate.getVisibility(), varCreate.isConst(),
-                              varCreate.isCExtern());
+  ctx_.registerModuleVariable(
+      varCreate.getQualifiedName(), type, varCreate.getVisibility(),
+      varCreate.isConst(), varCreate.isCExtern(), varCreate.getDeclarationId());
 }
 
 void DeclarationCollectionPass::registerUsing(UsingAST& usingDecl) {
@@ -557,8 +568,7 @@ void DeclarationCollectionPass::registerUsing(UsingAST& usingDecl) {
 void DeclarationCollectionPass::registerClassShape(
     ClassDefinitionAST& classDef, const sun::QualifiedName& qualifiedClass,
     std::shared_ptr<sun::ClassType> classType) {
-  std::string mangledClassName = qualifiedClass.mangled();
-  if (!ctx_.declarations().noteClassShape(mangledClassName)) return;
+  if (!ctx_.declarations().noteClassShape(classDef.getDeclarationId())) return;
 
   // The class's declared lifetimes must be visible before any signature
   // that applies them ('ref Bus<'this>') resolves
@@ -645,7 +655,8 @@ void DeclarationCollectionPass::collectEnumDeclarations(const BlockExprAST& bloc
       continue;
     }
     if (ctx_.lookupEnum(enumDef.getName())) continue;
-    auto enumType = ctx_.types()->getEnum(enumDef.getQualifiedName().mangled());
+    auto enumType = ctx_.types()->getEnum(enumDef.getDeclarationId(),
+                                          enumDef.getQualifiedName());
     for (const auto& variant : enumDef.getVariants()) {
       enumType->addVariant(variant.name, variant.value);
     }

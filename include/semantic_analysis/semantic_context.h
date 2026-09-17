@@ -240,7 +240,8 @@ class SemanticContext : public AccessContext {
 
   /** Record a variable in the current scope under the given type. */
   void declareVariable(const std::string &name, sun::TypePtr type,
-                       bool isParam = false, bool isConst = false);
+                       bool isParam = false, bool isConst = false,
+                       sun::DeclarationId declarationId = {});
 
   /** Find a variable by name in the scope chain. */
   VariableInfo *lookupVariable(const std::string &name);
@@ -251,7 +252,8 @@ class SemanticContext : public AccessContext {
    */
   void registerModuleVariable(const sun::QualifiedName &qualifiedName,
                               sun::TypePtr type, sun::Visibility visibility,
-                              bool isConst = false, bool isCExtern = false);
+                              bool isConst = false, bool isCExtern = false,
+                              sun::DeclarationId declarationId = {});
 
   /**
    * Find a variable by its dotted name (`a.b.x`). An undotted name is an

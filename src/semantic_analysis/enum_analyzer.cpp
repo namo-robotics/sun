@@ -150,7 +150,8 @@ void EnumAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
   }
 
   // Create the enum type
-  auto enumType = ctx_.types()->getEnum(enumDef.getQualifiedName().mangled());
+  auto enumType = ctx_.types()->getEnum(enumDef.getDeclarationId(),
+                                        enumDef.getQualifiedName());
   enumType->setBaseName(enumDef.getName());
   enumType->setUnderlyingType(
       sun::Types::fromString(enumDef.getUnderlyingTypeName()));

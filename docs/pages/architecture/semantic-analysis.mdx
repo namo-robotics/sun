@@ -19,12 +19,17 @@ checking helpers. The pipeline runs these phases in order:
    generated declarations available to the naming passes. Preparation traverses
    the entire AST once, including classes inside function, method, and lambda
    bodies. It does not need resolved signatures or types.
-2. **Declaration naming** — `DeclarationNamingPass` walks modules, bundle
+2. **Declaration identity** — `DeclarationIdentityPass` assigns session IDs
+   throughout the tree, including declarations inside function bodies, without
+   resolving signatures. The declaration table belongs to the shared type
+   registry. Repeating the pass preserves IDs, and reopened modules share an
+   identity. IDs do not change declaration visibility or duplicate checks.
+3. **Declaration naming** — `DeclarationNamingPass` walks modules, bundle
    scopes, types, functions, methods, and module storage. It assigns their
    scope path and owning module without looking up symbols, resolving types,
    or registering declarations. Names supplied by imported bundles and generic
    specializations are preserved, including when a bundle module has an alias.
-3. **Declaration collection and signature resolution** —
+4. **Declaration collection and signature resolution** —
    `DeclarationCollectionPass` registers types and generic templates, then
    resolves class shapes and function signatures.
    Registration consumes the names already attached to declarations. A
@@ -32,23 +37,22 @@ checking helpers. The pipeline runs these phases in order:
    signature is resolved, so sibling modules can refer to each other's types.
    Resolved parameter types supply overload suffixes; generic templates keep
    their unsuffixed names until specialization supplies concrete arguments.
-4. **Body analysis** — `BodyAnalysisPass` checks prepared statements in source
+5. **Body analysis** — `BodyAnalyzer` checks prepared statements in source
    order using the shared expression-checking helpers. It resolves references,
    infers expression types, selects overloads, and checks statements against
    their surrounding context. It does not register declarations in advance.
 
-A function body's local declarations are named after its enclosing signature
-is resolved, before its statements are checked. `BodyAnalysisPass` enters the
-function scope and invokes `LocalDeclarationNamingPass`. This pass shares the
-name-assignment traversal with program-level naming, but uses the resolved
-function scope and leaves local variables unqualified. It does not generate
-constructors or prepare field defaults. Generic clones retain their prepared
-constructor bodies and use local naming when their function scopes are entered.
-Local declarations remain in source order. The body pass checks constructor
-field defaults before binding parameters, then checks the remaining statements.
-Preparing names in the resolved function scope keeps local types under the
-correct overload or specialization. Local variables and anonymous lambdas
-continue to use local bindings rather than module-qualified symbol names.
+Local declarations receive their emitted names when expression checking reaches
+them in the resolved enclosing scope. Naming a class or interface also names its
+method declarations before their signatures are checked; it does not walk method
+bodies. Local variables remain unqualified. There is no separate local naming
+pass and no repeated preparation walk over an existing function body.
+
+`BodyAnalyzer` is a recursive checking helper owned by `SemanticAnalyzer`. The
+pipeline starts body checking once after preparation and collection. Nested
+blocks, functions, and lambdas use ordinary helper calls, without restarting
+analysis passes. Generic clones go through the pipeline's explicit generated
+syntax preparation boundary before their signatures or bodies are checked.
 
 The naming pass is independent of `SemanticContext` and the type registry.
 It can run on an AST whose annotations name unknown types; validating those
@@ -60,6 +64,60 @@ use one before its source declaration. Their `VariableInfo` records
 `isCExtern`; bare, imported, and module-qualified reads and writes all consult
 that one flag and require `unsafe`. `c_abi_types.h` supplies the shared
 C-layout predicate used by extern function parameters and globals.
+
+## Declaration identities
+
+`DeclarationId` is a typed integer meaningful only in its owning analysis
+session. An analyzed-program snapshot retains its type registry and declaration
+table after the driver is released; each editor analysis creates a new session.
+Declaration annotations hold the ID; a function forwards access to
+its prototype so both denote the same declaration. Parameters and members also
+receive IDs. Literals and other expressions that declare nothing do not.
+
+`clearComputedAnalysis()` drops inferred results and resolved targets while
+preserving declaration identities. `resetAnalysisSession()` drops both. The
+subtree helpers apply those operations to child declarations and struct-backed
+bindings as well. A session marker rejects accidental reuse of an annotated
+tree with another declaration table. Serialization-based cloning does not copy
+session IDs, so cloned declarations are registered afresh. The specializer sends
+new syntax through `SemanticPipeline::prepareGenerated()` before resolving it;
+signature helpers and body passes do not run declaration identity passes.
+
+Ordinary resolved calls and variable references carry target IDs. Direct and
+module-qualified function calls and named function values use an ID-to-LLVM-function
+map. Codegen binds IDs when declaring or importing functions, including forward
+declarations, externs, and generic specializations. Resolved function lookup does
+not fall back to symbol names. Declaration records contain no emitted symbols.
+Concrete generic calls retain their selected ID and callable signature, so codegen
+and return-type inference do not reconstruct specialization names.
+
+Ordinary source classes, interfaces, and enums are interned by declaration ID.
+Their equality compares the session and ID, and class shape registration also
+uses the ID. A nominal type can be obtained before its qualified name exists;
+binding its emitted name later preserves the same type object. Name lookup
+aliases remain for current backend consumers. Generic specializations and
+synthetic types still use legacy name identity. Duplicate declaration checks and local symbol emission still depend on names;
+local names are assigned during ordinary declaration checking.
+
+`PortableDeclarationKey` provides the separate representation for artifact
+identity: an original declaration uses a full SHA-256 bundle digest and a
+bundle-local declaration number. Instances use template and structural type
+keys; generated declarations use an origin, role, and structural slot. A
+session table can bind each portable key to exactly one declaration ID.
+
+The canonical encoder represents each tuple with a one-byte kind tag, an
+unsigned big-endian field count, and an unsigned big-endian byte length before
+each field. Counts, lengths, and integer values occupy eight bytes. Original
+keys, instances, enclosing-instance bindings, and generated declarations use
+`D`, `S`, `I`, and `G`. Type keys use `P`, `N`, `R`, `Q`, `A`, `F`, and `U`;
+ordered type lists use `L`. Symbol encoding hashes an `E` tuple containing
+`SUN1`, the key, and the emission role, and prefixes the full hexadecimal
+SHA-256 digest with `_SUN1_`. Tests freeze the encoding independently of
+protobuf, display strings, and session allocation.
+
+The portable encoder and table are migration infrastructure. Bundle files
+still use their existing metadata and symbol format until import/export and
+all symbol consumers have migrated together.
 
 ## Scope Tree
 
@@ -200,9 +258,9 @@ The analyzer's source is split by concern under `src/semantic_analysis/`:
 |------|----------------|
 | `semantic_pipeline.cpp` | Owning and ordering all passes within the analyzer |
 | `field_initializer_preparation_pass.cpp` | Preparing field defaults and implicit constructors |
-| `declaration_naming_pass.cpp` | Program and local declaration naming with a shared traversal |
+| `declaration_naming_pass.cpp` | Program naming traversal and individual local declaration names |
 | `declaration_collection_pass.cpp` | Registering declarations and resolving signatures |
-| `body_analysis_pass.cpp` | Function scopes, local declaration passes, and statement checking |
+| `body_analyzer.cpp` | Recursive statement checking and function scopes |
 | `analysis.cpp`, `analysis_*.cpp` | Shared expression and construct checking helpers |
 | `type_inferer.cpp` | Bottom-up typing |
 | `type_annotations.cpp` | Resolving written annotations, and substituting into a resolved type |

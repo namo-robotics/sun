@@ -667,7 +667,8 @@ SymbolMatch SemanticContext::findSymbolInModule(
 
 void SemanticContext::declareVariable(const std::string& name,
                                       sun::TypePtr type, bool isParam,
-                                      bool isConst) {
+                                      bool isConst,
+                                      sun::DeclarationId declarationId) {
   // Block user-defined identifiers starting with underscore
   if (isReservedIdentifier(name)) {
     logAndThrowError(
@@ -688,6 +689,7 @@ void SemanticContext::declareVariable(const std::string& name,
     }
   }
   VariableInfo info{type, isAtModuleLevel(), isParam, false};
+  info.declarationId = declarationId;
   info.isConst = isConst;
   currentScope_->variables[name] = info;
 }
@@ -1088,8 +1090,10 @@ void SemanticContext::registerBuiltinFunctions() {
 
 void SemanticContext::registerModuleVariable(
     const sun::QualifiedName& qualifiedName, sun::TypePtr type,
-    sun::Visibility visibility, bool isConst, bool isCExtern) {
+    sun::Visibility visibility, bool isConst, bool isCExtern,
+    sun::DeclarationId declarationId) {
   VariableInfo info{type, true, false};
+  info.declarationId = declarationId;
   info.visibility = visibility;
   info.isConst = isConst;
   info.isCExtern = isCExtern;

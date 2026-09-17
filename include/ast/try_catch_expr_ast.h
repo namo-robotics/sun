@@ -26,6 +26,7 @@ struct CatchClause {
   CatchClause() = default;
   CatchClause(CatchClause&&) = default;
   CatchClause& operator=(CatchClause&&) = default;
+  mutable sun::DeclarationIdentity declaration{};
 };
 
 // Try-catch expression: try { ... } catch (e: A) { ... } catch (e: IError) {

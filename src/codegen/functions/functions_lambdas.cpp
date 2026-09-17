@@ -356,6 +356,7 @@ std::pair<Function*, llvm::StructType*> FunctionGenerator::codegen(
     func =
         Function::Create(funcType, Function::ExternalLinkage, funcName, module);
   }
+  functions().registerFunction(proto.getDeclarationId(), func);
   if (anonymous) func->setLinkage(Function::InternalLinkage);
 
   // Name the arguments
@@ -379,7 +380,10 @@ void FunctionGenerator::forwardDeclareFunction(const PrototypeAST& proto) {
   if (proto.getName().empty()) return;
 
   std::string funcName = proto.getMangledName();
-  if (module->getFunction(funcName)) return;
+  if (auto* existing = module->getFunction(funcName)) {
+    functions().registerFunction(proto.getDeclarationId(), existing);
+    return;
+  }
 
   // Build LLVM function type from resolved semantic types
   if (!proto.hasResolvedReturnType() || !proto.hasResolvedParamTypes()) return;
@@ -387,13 +391,14 @@ void FunctionGenerator::forwardDeclareFunction(const PrototypeAST& proto) {
   llvm::Type* retType =
       typeResolver.resolveForReturn(proto.getResolvedReturnType());
   std::vector<llvm::Type*> paramTypes;
-  for (const auto& sunType : proto.getResolvedParamTypes()) {
+  for (const auto& sunType : proto.getAllParamTypes()) {
     paramTypes.push_back(typeResolver.resolve(sunType));
   }
   llvm::FunctionType* funcType =
       llvm::FunctionType::get(retType, paramTypes, false);
-  llvm::Function::Create(funcType, llvm::Function::ExternalLinkage, funcName,
-                         module);
+  auto* function = llvm::Function::Create(
+      funcType, llvm::Function::ExternalLinkage, funcName, module);
+  functions().registerFunction(proto.getDeclarationId(), function);
 }
 
 // Pre-pass over a block: declare everything it defines before any body is
@@ -438,14 +443,11 @@ void FunctionGenerator::declareBlockSignatures(const BlockExprAST& block) {
 
     // C externs declare under their raw C symbol, not a mangled name, so
     // they can be called before their declaration appears in the file.
-    // `declare` forward declarations are skipped: the real definition later
-    // in the block supplies the mangled symbol.
+    // Sun forward declarations bind their own IDs to the shared symbol.
     if (funcAST.isCExtern()) {
       codegenExternFunc(funcAST);
       continue;
     }
-    if (funcAST.isExtern()) continue;
-
     forwardDeclareFunction(proto);
   }
 }
@@ -509,14 +511,9 @@ Value* FunctionGenerator::codegenExternFunc(FunctionAST& funcAst) {
     paramTypes.push_back(typeResolver.resolve(sunType));
   }
 
-  // A C extern's Sun-side name is module-scoped like any other item, so call
-  // sites resolve through a mangled name the C symbol never matches. Guarded:
-  // codegenFunc sends every bodyless function here, and a `declare` forward
-  // declaration keeps normal Sun mangling.
-  if (funcAst.isCExtern()) {
-    externC().mapSunName(proto.getMangledName(), proto.getLinkName());
-  }
-  return externC().declare(proto, returnType, paramTypes);
+  auto* function = externC().declare(proto, returnType, paramTypes);
+  functions().registerFunction(proto.getDeclarationId(), function);
+  return function;
 }
 
 // -------------------------------------------------------------------
@@ -575,7 +572,10 @@ Value* FunctionGenerator::codegenFunc(FunctionAST& funcAst) {
   }
 
   if (funcAst.isExtern()) {
-    return codegenExternFunc(funcAst);
+    if (funcAst.isCExtern()) return codegenExternFunc(funcAst);
+    const auto& proto = funcAst.getProto();
+    forwardDeclareFunction(proto);
+    return functions().lookupFunctionById(proto.getDeclarationId());
   }
 
   // Precompiled functions are linked from bitcode — skip codegen

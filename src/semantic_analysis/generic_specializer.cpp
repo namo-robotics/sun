@@ -327,8 +327,8 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
   auto methodScope = specializedQName.scopePath;
   methodScope.push_back(specializedQName.baseName);
   for (const auto& method : methodsClone) {
-    declarationNamingPass_.run(*method.function, methodScope,
-                               specializedQName.owner(), false);
+    sema_.pipeline().prepareGenerated(*method.function, methodScope,
+                                      specializedQName.owner());
   }
 
   // PASS 1: Register all methods first (so methods can call each other)
@@ -825,6 +825,7 @@ GenericSpecializer::instantiateGenericFunction(
 
     // Clear resolved types for fresh analysis
     sema_.clearResolvedTypes(*clonedFunc);
+    sema_.pipeline().prepareGenerated(*clonedFunc);
 
     // Compute function signature for nested function qualification
     std::string funcSig = getFunctionSignature(mangledName, paramTypes);
@@ -849,7 +850,7 @@ GenericSpecializer::instantiateGenericFunction(
     }
 
     // Analyze the body with current type parameter bindings
-    sema_.bodies().runInFunctionScope(
+    sema_.bodies().analyzeBlock(
         const_cast<BlockExprAST&>(clonedFunc->getBody()));
 
     ctx_.exitScope();  // parameter scope
@@ -1070,6 +1071,7 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
 
   // Clear any stale resolved types from previous specializations
   sema_.clearResolvedTypes(*clonedFunc);
+  sema_.pipeline().prepareGenerated(*clonedFunc);
 
   // Analyze the method body
   auto savedClass = ctx_.getCurrentClass();
@@ -1101,8 +1103,7 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
   }
 
   // Analyze the body
-  sema_.bodies().runInFunctionScope(
-      const_cast<BlockExprAST&>(clonedFunc->getBody()));
+  sema_.bodies().analyzeBlock(const_cast<BlockExprAST&>(clonedFunc->getBody()));
 
   ctx_.exitScope();  // method scope
   ctx_.setCurrentClass(savedClass);

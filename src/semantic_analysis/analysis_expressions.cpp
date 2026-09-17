@@ -220,6 +220,7 @@ void SemanticAnalyzer::analyzeMemberAccess(MemberAccessAST& memberAccess,
       checkExternVariableAccessAllowed(*match.variableInfo, match.display(),
                                        memberAccess.getLocation());
       memberAccess.setQualifiedName(match.variableInfo->qualifiedName);
+      memberAccess.setTargetDeclarationId(match.variableInfo->declarationId);
     }
   }
   if (objectType && objectType->isModule() && expectedType &&
@@ -237,6 +238,7 @@ void SemanticAnalyzer::analyzeMemberAccess(MemberAccessAST& memberAccess,
           match.functionInfo->canThrow);
       if (sun::rules::isAssignableTo(candidate, expectedType)) {
         memberAccess.setQualifiedName(match.functionInfo->qualifiedName);
+        memberAccess.setTargetDeclarationId(match.functionInfo->declarationId);
         memberAccess.setResolvedType(candidate);
         return;
       }
@@ -278,6 +280,7 @@ void SemanticAnalyzer::analyzeQualifiedName(QualifiedNameAST& qualName) {
     if (!funcInfo->qualifiedName.empty()) {
       qualName.setResolvedMangledName(funcInfo->qualifiedName.mangled());
     }
+    qualName.setTargetDeclarationId(funcInfo->declarationId);
     qualName.setResolvedType(sun::Types::Function(
         funcInfo->returnType, funcInfo->paramTypes, funcInfo->canThrow));
     return;

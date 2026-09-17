@@ -272,11 +272,8 @@ Value* VariableGenerator::codegen(const VariableReferenceAST& expr) {
   llvm::LoadInst* loadInst = createLoadForGlobalVar(expr.getMangledName());
   if (loadInst) return loadInst;
 
-  // Check for named functions using qualified name from semantic analysis
-  // The qualified name handles using imports (e.g., hash_i64 -> sun_hash_i64)
-  const std::string& funcName = expr.getMangledName();
-  if (Function* func = functions().lookupCallTarget(funcName)) {
-    return func;
+  if (expr.getResolvedType() && expr.getResolvedType()->isFunction()) {
+    return functions().lookupFunctionById(expr.getTargetDeclarationId());
   }
 
   // Enhanced error with both names for debugging

@@ -1,21 +1,27 @@
-// function_registry.cpp — Finding functions by name (see function_registry.h)
-//
-// The three lookups where the answer is not simply "the function with this
-// name": a renamed extern, a class method under its mangled name, and a
-// method the module has not been given yet.
+// Function declarations map directly to their LLVM functions.
 
 #include "codegen/functions/function_registry.h"
 
 using namespace llvm;
 
-Function* FunctionRegistry::lookupCallTarget(const std::string& name) {
-  // A renamed extern is declared under its C symbol, not the Sun-side name
-  // the call site resolved to.
-  const std::string& symbol = externC_.symbolFor(name);
-  if (symbol != name) {
-    if (Function* f = state_.module->getFunction(symbol)) return f;
-  }
-  return state_.module->getFunction(name);
+void FunctionRegistry::registerFunction(sun::DeclarationId declaration,
+                                        Function* function) {
+  const auto& record = state_.typeRegistry->declarations.get(declaration);
+  if (record.kind != sun::DeclarationKind::Function &&
+      record.kind != sun::DeclarationKind::Lambda)
+    logAndThrowError("Function registration requires a callable declaration");
+  if (!function) logAndThrowError("Cannot register a missing LLVM function");
+  auto& existing = functionsById_[declaration];
+  if (existing && existing != function)
+    logAndThrowError("Declaration already has a different LLVM function");
+  existing = function;
+}
+
+Function* FunctionRegistry::lookupFunctionById(sun::DeclarationId declaration) {
+  auto found = functionsById_.find(declaration);
+  if (found == functionsById_.end() || !found->second)
+    logAndThrowError("Resolved function declaration has not been emitted");
+  return llvm::cast<Function>(static_cast<llvm::Value*>(found->second));
 }
 
 Function* FunctionRegistry::findClassMethod(

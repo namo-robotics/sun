@@ -223,6 +223,7 @@ sun::TypePtr TypeInferer::inferVariableReferenceType(
   // Check if it's a named function
   auto funcs = ctx_.getAllFunctions(resolved.baseName);
   if (funcs.size() == 1) {
+    varRef.setTargetDeclarationId(funcs[0].declarationId);
     return sun::Types::Function(funcs[0].returnType, funcs[0].paramTypes,
                                 funcs[0].canThrow);
   }
@@ -666,6 +667,7 @@ sun::TypePtr TypeInferer::inferType(const ExprAST& expr) {
       // Look up in namespaced functions
       const FunctionInfo* funcInfo = ctx_.lookupQualifiedFunction(fullName);
       if (funcInfo) {
+        qualName.setTargetDeclarationId(funcInfo->declarationId);
         return sun::Types::Function(funcInfo->returnType, funcInfo->paramTypes,
                                     funcInfo->canThrow);
       }
@@ -889,6 +891,7 @@ sun::TypePtr TypeInferer::inferModuleMemberType(
       case SymbolKind::Enum:
         return match.enumType;
       case SymbolKind::Function:
+        memberAccess.setTargetDeclarationId(match.functionInfo->declarationId);
         return sun::Types::Function(match.functionInfo->returnType,
                                     match.functionInfo->paramTypes,
                                     match.functionInfo->canThrow);
@@ -926,6 +929,8 @@ sun::TypePtr TypeInferer::inferModuleMemberType(
                                                    typeArgs, memberName,
                                                    memberAccess.getLocation());
         memberAccess.setQualifiedName(specialized.qualifiedName);
+        memberAccess.setTargetDeclarationId(
+            specialized.asFunctionInfo().declarationId);
         return specialized.functionType();
       }
       case SymbolKind::Variable:
@@ -1436,6 +1441,9 @@ sun::TypePtr TypeInferer::inferStaticPtrMethodType(
 
 sun::TypePtr TypeInferer::inferGenericFunctionCallType(
     const GenericCallAST& genericCall) {
+  if (auto calleeType = genericCall.getResolvedCalleeType()) {
+    return static_cast<const sun::FunctionType&>(*calleeType).getReturnType();
+  }
   const auto& typeArgs = genericCall.getResolvedTypeArgs();
   const std::string& funcName = genericCall.getFunctionName();
   sun::QualifiedName resolved = ctx_.resolveNameWithUsings(funcName);
@@ -1445,29 +1453,6 @@ sun::TypePtr TypeInferer::inferGenericFunctionCallType(
   if (!genFuncInfo) {
     logAndThrowError("Unknown generic function: '" + funcName + "'",
                      genericCall.getLocation());
-  }
-
-  // The name the call was actually instantiated under, when analysis has
-  // already recorded it — the only form that carries a pack's argument-type
-  // suffix. Otherwise rebuild the plain type-argument form off the template's
-  // registered name, the same base requireGenericSpecialization keys
-  // specializations on. The call's own spelling is not that name: a qualified
-  // call reads "m.inner" where the specialization is "m_inner_i32".
-  std::string mangledName;
-  if (genericCall.hasSpecializationName()) {
-    mangledName = genericCall.getSpecializationName().mangled();
-  } else {
-    // The qualified name is never empty: it is also the template's key in the
-    // scope's table, so a lookup that found it found it by this name.
-    mangledName = sun::QualifiedName::specializationOf(
-                      genFuncInfo->qualifiedName, typeArgs)
-                      .mangled();
-  }
-
-  // If specialization exists (type args were concrete), use its return type
-  if (genFuncInfo->AST && genFuncInfo->AST->hasSpecialization(mangledName)) {
-    const auto& funcAST = genFuncInfo->AST->getSpecialization(mangledName);
-    return funcAST->getProto().getResolvedReturnType();
   }
 
   // No specialization - type args contain type parameters

@@ -23,6 +23,7 @@ struct ClassFieldDecl {
   sun::Visibility visibility = sun::Visibility::Private;
   std::string doc;  // Comment written above the field
   std::unique_ptr<ExprAST> initializer;
+  mutable sun::DeclarationIdentity declaration{};
 };
 
 // Method qualifiedName in a class (uses FunctionAST internally)

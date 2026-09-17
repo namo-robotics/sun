@@ -27,6 +27,7 @@ struct EnumVariantDecl {
   bool hasExplicitValue = false;
 
   bool hasPayload() const { return !payloadTypes.empty(); }
+  mutable sun::DeclarationIdentity declaration{};
 };
 
 // Enum definition: enum Name { Variant1, Variant2(T1, T2), ... }
@@ -96,6 +97,18 @@ class EnumDefinitionAST : public ExprAST {
   const std::map<std::string, std::shared_ptr<sun::EnumType>>&
   getSpecializations() const {
     return specializations_;
+  }
+
+  /** Drop computed enum instances while retaining the declaration identity. */
+  void clearComputedAnalysis() const override {
+    ExprAST::clearComputedAnalysis();
+    specializations_.clear();
+  }
+
+  /** Drop instances and annotations belonging to the discarded session. */
+  void resetAnalysisSession() const override {
+    ExprAST::resetAnalysisSession();
+    specializations_.clear();
   }
 
   ASTNodeType getType() const override { return ASTNodeType::ENUM_DEFINITION; }

@@ -343,6 +343,8 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveCallee(
       // Not a simple variable reference or method call - analyze the callee
       // expression
       sema_.analyzeExpr(callee);
+      if (callee.getType() == ASTNodeType::QUALIFIED_NAME)
+        callExpr.setTargetDeclarationId(callee.getTargetDeclarationId());
       return {};
   }
 }
@@ -353,6 +355,10 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveNamedCallee(
     CallExprAST& callExpr, VariableReferenceAST& varRef,
     const std::vector<sun::TypePtr>& argTypes) {
   CalleeResolution out;
+  if (ctx_.lookupVariable(varRef.getName())) {
+    sema_.analyzeExpr(varRef);
+    return out;
+  }
   // Resolve the name through using imports (e.g., Vec -> sun_Vec)
   sun::QualifiedName resolved = ctx_.resolveNameWithUsings(varRef.getName());
 
@@ -377,6 +383,8 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveNamedCallee(
     // Set qualified name from the resolved function (handles import scopes)
     if (!out.function->qualifiedName.empty()) {
       varRef.setQualifiedName(out.function->qualifiedName);
+      varRef.setTargetDeclarationId(out.function->declarationId);
+      callExpr.setTargetDeclarationId(out.function->declarationId);
     }
     return out;
   }
@@ -400,6 +408,8 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveNamedCallee(
     if (target.specialized) {
       out.function = target.specialized->asFunctionInfo();
       varRef.setQualifiedName(target.specialized->qualifiedName);
+      varRef.setTargetDeclarationId(out.function->declarationId);
+      callExpr.setTargetDeclarationId(out.function->declarationId);
     }
     varRef.setResolvedType(target.calleeType);
     return out;
@@ -837,6 +847,7 @@ const FunctionInfo* CallAnalyzer::resolveModuleQualifiedCall(
   checkExternCallAllowed(*match.functionInfo, memberAccess.getMemberName(),
                          memberAccess.getLocation());
   memberAccess.setQualifiedName(match.functionInfo->qualifiedName);
+  memberAccess.setTargetDeclarationId(match.functionInfo->declarationId);
   return match.functionInfo;
 }
 
@@ -858,6 +869,8 @@ CallAnalyzer::resolveModuleQualifiedGenericCall(
   if (target.specialized) {
     // Codegen calls the name recorded here; it never spells one itself.
     memberAccess.setQualifiedName(target.specialized->qualifiedName);
+    memberAccess.setTargetDeclarationId(
+        target.specialized->asFunctionInfo().declarationId);
   }
   memberAccess.setResolvedType(target.calleeType);
 
@@ -1177,8 +1190,9 @@ void CallAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
     // Fixed parameters followed by the pack's elements, so the checks below
     // line up positionally with the expanded argument list.
     expectedParamTypes = specializedFunc.paramTypes;
-    // Record the name so codegen calls exactly what was instantiated
-    genericCall.setSpecializationName(specializedFunc.qualifiedName);
+    genericCall.setResolvedCalleeType(specializedFunc.functionType());
+    genericCall.setTargetDeclarationId(
+        specializedFunc.asFunctionInfo().declarationId);
   }
 
   hintArrayLiteralArguments(args, expectedParamTypes);
