@@ -488,4 +488,61 @@ TEST_F(Modules_GenericRegressions, ExportedInterfaceConstraints) {
   ASSERT_NO_FATAL_FAILURE(checkProgram("consumer.sun"));
 }
 
+// Generic interface constraints keep their arguments through compiled modules.
+TEST_F(Modules_GenericRegressions, ExportedGenericInterfaceConstraints) {
+  ASSERT_NO_FATAL_FAILURE(buildLibrary(R"(
+    /** Exports handlers with an explicit clone type. */
+    public module lib {
+      /** Describes a handler that can copy itself. */
+      public interface IHandler<Self> {
+        /** Returns a copy. */
+        public const method clone() Self;
+        /** Returns the stored value. */
+        public const method value() i32;
+      }
+      /** Stores a handler satisfying its own interface specialization. */
+      public class Server<H: IHandler<H>> {
+        var handler: H;
+        init(handler: H) { this.handler = handler; }
+        /** Reads a copied handler. */
+        public const method read() i32 {
+          var copied = this.handler.clone();
+          return copied.value();
+        }
+      }
+      /** Reads a copied handler using static dispatch. */
+      public function read<H: IHandler<H>>(handler: const ref H) i32 {
+        var copied: H = handler.clone();
+        return copied.value();
+      }
+    }
+  )"));
+  write("consumer.sun", R"(
+    class Handler implements lib.IHandler<Handler> {
+      init() {}
+      /** Returns another handler. */
+      public const method clone() Handler { return Handler(); }
+      /** Returns the test value. */
+      public const method value() i32 { return 42; }
+    }
+    function main() i32 {
+      var server = lib.Server<Handler>(Handler());
+      var handler = Handler();
+      return server.read() + lib.read(handler) - 84;
+    }
+    manifest { libraries: ["lib.moon"] }
+  )");
+  ASSERT_NO_FATAL_FAILURE(checkProgram("consumer.sun"));
+  write("invalid.sun", R"(
+    class Other { init() {} }
+    function main() i32 {
+      var other = Other();
+      return lib.read(other);
+    }
+    manifest { libraries: ["lib.moon"] }
+  )");
+  ASSERT_TRUE(run("build/sun " + (dir / "invalid.sun").string(), false,
+                  "does not satisfy constraint 'IHandler<H>'"));
+}
+
 }  // namespace

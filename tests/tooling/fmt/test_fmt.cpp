@@ -913,3 +913,17 @@ TEST(Tooling_Fmt, UnsafeExpressionKeepsComments) {
   EXPECT_NE(formatted.find("/* caller checked the index */"), std::string::npos);
   EXPECT_EQ(fmt(formatted), formatted);
 }
+
+TEST(Tooling_Fmt, GenericInterfaceConstraint) {
+  const auto formatted = fmt("class Server<H:IHandler<H> >{var handler:H;}");
+  EXPECT_NE(formatted.find("H: IHandler<H>"), std::string::npos);
+  EXPECT_EQ(fmt(formatted), formatted);
+}
+
+TEST(Tooling_Fmt, GenericConstraintKeepsTypeArgumentSyntax) {
+  const auto formatted =
+      fmt("function read<H:IValue<raw_ptr<i32>, const ref H>>(item:ref H) void {}");
+  EXPECT_NE(formatted.find("IValue<raw_ptr<i32>, const ref H>"),
+            std::string::npos);
+  EXPECT_EQ(fmt(formatted), formatted);
+}

@@ -35,6 +35,17 @@ sun::TypePtr returnTypeOf(const sun::TypePtr& target,
 
 }  // namespace
 
+std::shared_ptr<sun::InterfaceType> TypeInferer::resolveConstraintInterface(
+    const TypeConstraint& constraint) {
+  auto type = typeAnnotationToType(constraint.toAnnotation());
+  if (!type || !type->isInterface()) {
+    logAndThrowError(
+        "constraint '" + constraint.toString() + "' must name an interface",
+        constraint.span);
+  }
+  return std::static_pointer_cast<sun::InterfaceType>(type);
+}
+
 sun::TypePtr TypeInferer::substituteTypeParameters(sun::TypePtr type) {
   if (!type) return nullptr;
 

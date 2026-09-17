@@ -1070,3 +1070,36 @@ TEST(Modules_FileImports, field_initializers_survive_source_and_moon_imports) {
   )"),
             5);
 }
+
+TEST_F(MoonExactTypes, generic_constraint_arguments_keep_dependency_identity) {
+  auto api = bundle("generic_constraint", R"(
+    using b;
+    /** Provides a contract whose argument belongs to a dependency. */
+    public module api {
+      /** Marks a type with its associated value type. */
+      public interface IValue<T> { public var value: T; }
+      /** Requires the exact dependency's value type. */
+      public function read<H: IValue<Value>>(item: const ref H) i32 { return 42; }
+    }
+  )",
+                    {sun::MoonImport(b1)});
+  const std::vector<sun::MoonImport> imports = {
+      sun::MoonImport(api), sun::MoonImport(b1, "b", "old_b"),
+      sun::MoonImport(b2, "b", "new_b")};
+  EXPECT_EQ(run(imports, R"(
+    class Item implements api.IValue<old_b.Value> { public var value: old_b.Value; }
+    function main() i32 {
+      var item: Item = { value: old_b.Value() };
+      return api.read(item);
+    }
+  )"),
+            42);
+  EXPECT_SUN_ERROR_WITH_MESSAGE(run(imports, R"(
+    class Item implements api.IValue<new_b.Value> { public var value: new_b.Value; }
+    function main() i32 {
+      var item: Item = { value: new_b.Value() };
+      return api.read(item);
+    }
+  )"),
+                                "does not satisfy constraint 'IValue<Value>'");
+}

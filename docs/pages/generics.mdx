@@ -114,6 +114,31 @@ interface IStore<T: _Numeric> { public method get() T; }
 function run<F: _Lambda>(f: F) i32 { ... }
 ```
 
+An interface constraint can include type arguments, including the constrained
+parameter itself:
+
+```sun
+interface IHandler<Self> {
+    /** Returns an explicit copy of the handler. */
+    public const method clone() Self;
+}
+
+class Server<H: IHandler<H>> {
+    var handler: H;
+    init(handler: H) { this.handler = handler; }
+
+    /** Returns an explicit copy of the stored handler. */
+    public const method cloneHandler() H { return this.handler.clone(); }
+}
+```
+
+`Server<MyHandler>` requires `MyHandler` to implement `IHandler<MyHandler>`.
+`Self` is an ordinary interface type parameter: substituting `MyHandler` makes
+`clone()` return `MyHandler`. The requirement applies to `H`, not to `Server`.
+Interface arguments can also refer to other parameters, as in
+`<H: IValue<T>, T>`. The exact interface arguments must match; implementing
+`IValue<i32>` does not satisfy `IValue<i64>`.
+
 Only some parameters need constraining — `<T, U: _Numeric>` leaves `T` open.
 
 A constraint and `_is<T>` ask the same question and use the same vocabulary;

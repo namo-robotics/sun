@@ -666,3 +666,233 @@ TEST(Functions_Generic_Constraints, constraint_only_overloads_are_rejected) {
                                 "this scope; generic function overloads are "
                                 "not supported");
 }
+
+namespace {
+const std::string genericHandler = R"(
+  interface IHandler<Self> {
+    /** Copies the handler explicitly. */
+    public const method clone() Self;
+    /** Returns the stored value. */
+    public const method value() i32;
+  }
+  class Handler implements IHandler<Handler> {
+    var n: i32;
+    init(n: i32) { this.n = n; }
+    /** Copies the stored value. */
+    public const method clone() Handler { return Handler(this.n); }
+    /** Returns the stored value. */
+    public const method value() i32 { return this.n; }
+  }
+)";
+}
+
+TEST(Functions_Generic_Constraints, generic_interface_self_clone) {
+  for (const auto* closing : {">>", "> >"}) {
+    SCOPED_TRACE(closing);
+    EXPECT_EQ(executeString(genericHandler + "function read<H: IHandler<H" +
+                            closing + R"((item: const ref H) i32 {
+          var copied: H = item.clone();
+          return copied.value();
+        }
+        function main() i32 {
+          var item = Handler(42);
+          return read(item);
+        }
+      )"),
+              42);
+  }
+}
+
+TEST(Functions_Generic_Constraints, generic_interface_server_class) {
+  EXPECT_EQ(executeString(genericHandler + R"(
+    class Server<H: IHandler<H>> {
+      var handler: H;
+      init(handler: H) { this.handler = handler; }
+      /** Reads a copied handler. */
+      public const method read() i32 {
+        var copied = this.handler.clone();
+        return copied.value();
+      }
+    }
+    function main() i32 {
+      var server = Server<Handler>(Handler(42));
+      return server.read();
+    }
+  )"),
+            42);
+}
+
+TEST(Functions_Generic_Constraints,
+     generic_interface_forward_parameter_and_field) {
+  EXPECT_EQ(executeString(R"(
+    interface IValue<T, Self> {
+      public var value: T;
+      /** Copies the value container. */
+      public const method clone() Self;
+    }
+    class Value implements IValue<i32, Value> {
+      public var value: i32;
+      init(value: i32) { this.value = value; }
+      /** Copies the value container. */
+      public const method clone() Value { return Value(this.value); }
+    }
+    function read<H: IValue<T, H>, T>(item: const ref H) T {
+      var copied: H = item.clone();
+      return copied.value;
+    }
+    function main() i32 {
+      var item = Value(42);
+      return read<Value, i32>(item);
+    }
+  )"),
+            42);
+}
+
+TEST(Functions_Generic_Constraints, generic_interface_nested_arguments) {
+  EXPECT_EQ(executeString(R"(
+    class Box<T> {
+      public var value: T;
+      init(value: T) { this.value = value; }
+    }
+    interface IBox<T> { public var box: T; }
+    class Item implements IBox<Box<i32>> {
+      public var box: Box<i32>;
+      init() { this.box = Box<i32>(42); }
+    }
+    function read<H: IBox<Box<T>>, T>(item: const ref H) T {
+      return item.box.value;
+    }
+    function main() i32 { var item = Item(); return read<Item, i32>(item); }
+  )"),
+            42);
+}
+
+TEST(Functions_Generic_Constraints,
+     generic_interface_method_uses_class_parameter) {
+  EXPECT_EQ(executeString(R"(
+    interface IValue<T> { public var value: T; }
+    class Value implements IValue<i32> { public var value: i32; }
+    class Reader<T> {
+      init() {}
+      /** Reads an implementation of the class's value type. */
+      public method read<H: IValue<T>>(item: const ref H) T { return item.value; }
+    }
+    function main() i32 {
+      var reader = Reader<i32>();
+      var item: Value = { value: 42 };
+      return reader.read<Value>(item);
+    }
+  )"),
+            42);
+}
+
+TEST(Functions_Generic_Constraints, generic_interface_enum_and_interface) {
+  EXPECT_EQ(executeString(genericHandler + R"(
+    enum Held<H: IHandler<H>> { Some(H), None }
+    interface IServer<H: IHandler<H>> {
+      /** Reads the server. */
+      public method read() i32;
+    }
+    class Server implements IServer<Handler> {
+      init() {}
+      /** Returns the server value. */
+      public method read() i32 { return 42; }
+    }
+    function main() i32 {
+      var held: Held<Handler> = Held.Some(Handler(42));
+      var server = Server();
+      return server.read();
+    }
+  )"),
+            42);
+}
+
+TEST(Functions_Generic_Constraints, generic_interface_deferred_specialization) {
+  EXPECT_EQ(executeString(genericHandler + R"(
+    function inner<H: IHandler<H>>(item: const ref H) i32 {
+      return item.value();
+    }
+    function outer<T: IHandler<T>>(item: const ref T) i32 { return inner<T>(item); }
+    function main() i32 { var item = Handler(42); return outer(item); }
+  )"),
+            42);
+}
+
+TEST(Functions_Generic_Constraints, generic_interface_wrong_specialization) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    interface IValue<T> { public var value: T; }
+    class Value implements IValue<i32> { public var value: i32; }
+    function read<H: IValue<i64>>(item: const ref H) i64 { return item.value; }
+    function main() i32 { var item: Value = { value: 42 }; read(item); return 0; }
+  )"),
+                                "does not satisfy constraint 'IValue<i64>'");
+}
+
+TEST(Functions_Generic_Constraints, generic_interface_missing_implementation) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(genericHandler + R"(
+    class Other { init() {} }
+    function read<H: IHandler<H>>(item: const ref H) i32 { return item.value(); }
+    function main() i32 { var item = Other(); return read(item); }
+  )"),
+                                "does not satisfy constraint 'IHandler<H>'");
+}
+
+TEST(Functions_Generic_Constraints, generic_interface_invalid_requirements) {
+  for (const auto& [constraint, diagnostic] :
+       {std::pair{"IHandler<i32, i64>", "expects 1 type arguments, got 2"},
+        std::pair{"Missing<i32>", "Unknown generic type 'Missing'"},
+        std::pair{"_Numeric<i32>", "must name an interface"}}) {
+    SCOPED_TRACE(constraint);
+    EXPECT_SUN_ERROR_WITH_MESSAGE(
+        executeString(genericHandler + "function read<H: " + constraint +
+                      R"(>(item: const ref H) i32 { return 0; }
+        function main() i32 { var item = Handler(42); return read(item); }
+      )"),
+        diagnostic);
+  }
+}
+
+TEST(Functions_Generic_Constraints, generic_interface_malformed_arguments) {
+  for (const auto* constraint :
+       {"IHandler<>", "IHandler<i32,>", "IHandler<i32"}) {
+    SCOPED_TRACE(constraint);
+    EXPECT_THROW(executeString(std::string("class Server<H: ") + constraint +
+                               "> {} function main() i32 { return 0; }"),
+                 SunError);
+  }
+}
+
+TEST(Functions_Generic_Constraints, generic_interface_deferred_violation) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(genericHandler + R"(
+    class Other { init() {} }
+    function inner<H: IHandler<H>>(item: const ref H) i32 { return item.value(); }
+    function outer<T>(item: const ref T) i32 { return inner<T>(item); }
+    function main() i32 { var item = Other(); return outer(item); }
+  )"),
+                                "does not satisfy constraint 'IHandler<H>'");
+}
+
+TEST(Functions_Generic_Constraints,
+     generic_interface_rejected_on_other_declarations) {
+  for (const auto* program : {
+           R"(
+        class Gate<H: IValue<i64>> { init() {} }
+        function main() i32 { var gate = Gate<Item>(); return 0; }
+      )",
+           R"(
+        enum Held<H: IValue<i64>> { Some(H), None }
+        function main() i32 { var held: Held<Item> = Held.None; return 0; }
+      )",
+           R"(
+        interface IGate<H: IValue<i64>> { public var value: i32; }
+        class Gate implements IGate<Item> { public var value: i32; }
+        function main() i32 { return 0; }
+      )"}) {
+    SCOPED_TRACE(program);
+    EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(std::string(R"(
+      interface IValue<T> { public var value: T; }
+      class Item implements IValue<i32> { public var value: i32; }
+    )") + program),
+                                  "does not satisfy constraint 'IValue<i64>'");
+  }
+}

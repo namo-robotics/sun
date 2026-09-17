@@ -11,6 +11,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "ast/type_constraint.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
@@ -176,10 +177,11 @@ class TypeParameterType : public Type {
   // intentionally excluded from equals()/toString() so it never disturbs
   // substitution or identity. It travels with the parameter so a body being
   // analyzed with T still standing for itself can see what T is known to be.
-  std::string constraint_;
+  TypeConstraint constraint_;
 
  public:
-  explicit TypeParameterType(std::string paramName, std::string constraint = "",
+  explicit TypeParameterType(std::string paramName,
+                             TypeConstraint constraint = {},
                              TypeProjection projection = TypeProjection::None)
       : name(paramName),
         base_(std::move(paramName)),
@@ -196,8 +198,9 @@ class TypeParameterType : public Type {
   const std::string& getName() const { return name; }
   const std::string& getProjectionBase() const { return base_; }
   TypeProjection getProjection() const { return projection_; }
-  const std::string& getConstraint() const { return constraint_; }
-  bool hasConstraint() const { return !constraint_.empty(); }
+  /** The complete requirement carried by this parameter. */
+  const TypeConstraint& getConstraint() const { return constraint_; }
+  bool hasConstraint() const { return !constraint_.name.empty(); }
 
   std::string toString() const override { return name; }
 
@@ -2314,17 +2317,16 @@ class Types {
     return result;
   }
 
-  // Create a type parameter type. `constraint` is the name written after the
-  // colon in `<T: Trait>`, empty when the parameter is unconstrained.
+  /** Create a type parameter carrying its optional requirement. */
   static TypePtr TypeParameter(const std::string& name,
-                               const std::string& constraint = "") {
-    return std::make_shared<TypeParameterType>(name, constraint);
+                               TypeConstraint constraint = {}) {
+    return std::make_shared<TypeParameterType>(name, std::move(constraint));
   }
 
   // `_return_type_of<F>` where F is not bound yet: what F returns, carried as
   // F plus the projection until a specialization says what F is.
   static TypePtr TypeParameterProjection(const std::string& base,
-                                         const std::string& constraint,
+                                         const TypeConstraint& constraint,
                                          TypeProjection projection) {
     return std::make_shared<TypeParameterType>(base, constraint, projection);
   }

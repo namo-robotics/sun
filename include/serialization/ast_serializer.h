@@ -41,6 +41,10 @@ class ASTSerializer {
  private:
   SerializerConfig config_;
 
+  // Store a parameter and its optional constraint for any declaration kind.
+  void serializeTypeParameterInto(const TypeParameter& parameter,
+                                  ast::TypeParameter* proto) const;
+
   // Type annotation serialization
   ast::TypeAnnotation serializeTypeAnnotation(const TypeAnnotation& type) const;
 

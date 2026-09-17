@@ -46,6 +46,11 @@ class ASTDeserializer {
  private:
   DeserializerConfig config_;
 
+  // Restore parameters from current metadata or the legacy names-only field.
+  template <typename Owner>
+  std::vector<TypeParameter> deserializeTypeParameters(
+      const Owner& owner) const;
+
   // Type annotation deserialization
   TypeAnnotation deserializeTypeAnnotation(
       const ast::TypeAnnotation& type) const;

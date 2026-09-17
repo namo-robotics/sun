@@ -129,21 +129,27 @@ void ASTSerializer::serializeBlockInto(const BlockExprAST& block,
   }
 }
 
+void ASTSerializer::serializeTypeParameterInto(
+    const TypeParameter& parameter, ast::TypeParameter* proto) const {
+  proto->set_name(parameter.name);
+  if (!parameter.constraint) return;
+
+  const auto& constraint = *parameter.constraint;
+  proto->set_constraint(constraint.name);
+  for (const auto& argument : constraint.typeArguments)
+    *proto->add_constraint_arguments() = serializeTypeAnnotation(argument);
+  if (constraint.qualifiedName)
+    *proto->mutable_qualified_name() =
+        sun::serialization::serializeQualifiedName(*constraint.qualifiedName);
+}
+
 ast::Prototype ASTSerializer::serializePrototype(
     const PrototypeAST& proto) const {
   ast::Prototype result;
   result.set_name(proto.getName());
 
-  for (const auto& tp : proto.getTypeParameters()) {
-    auto* out = result.add_type_params();
-    out->set_name(tp.name);
-    if (tp.constraint) {
-      out->set_constraint(tp.constraint->name);
-      if (tp.constraint->qualifiedName)
-        *out->mutable_qualified_name() =
-            sun::serialization::serializeQualifiedName(
-                *tp.constraint->qualifiedName);
-    }
+  for (const auto& parameter : proto.getTypeParameters()) {
+    serializeTypeParameterInto(parameter, result.add_type_params());
   }
 
   for (const auto& lp : proto.getLifetimeParameters()) {
@@ -810,16 +816,8 @@ void ASTSerializer::serializeClassDef(const ClassDefinitionAST& expr,
     cls->add_compiled_specializations(name);
   }
 
-  for (const auto& tp : expr.getTypeParameters()) {
-    auto* out = cls->add_type_params();
-    out->set_name(tp.name);
-    if (tp.constraint) {
-      out->set_constraint(tp.constraint->name);
-      if (tp.constraint->qualifiedName)
-        *out->mutable_qualified_name() =
-            sun::serialization::serializeQualifiedName(
-                *tp.constraint->qualifiedName);
-    }
+  for (const auto& parameter : expr.getTypeParameters()) {
+    serializeTypeParameterInto(parameter, cls->add_type_params());
   }
 
   for (const auto& lp : expr.getLifetimeParameters()) {
@@ -863,16 +861,8 @@ void ASTSerializer::serializeInterfaceDef(const InterfaceDefinitionAST& expr,
   auto* iface = node->mutable_interface_def();
   iface->set_name(expr.getName());
 
-  for (const auto& tp : expr.getTypeParameters()) {
-    auto* out = iface->add_type_params();
-    out->set_name(tp.name);
-    if (tp.constraint) {
-      out->set_constraint(tp.constraint->name);
-      if (tp.constraint->qualifiedName)
-        *out->mutable_qualified_name() =
-            sun::serialization::serializeQualifiedName(
-                *tp.constraint->qualifiedName);
-    }
+  for (const auto& parameter : expr.getTypeParameters()) {
+    serializeTypeParameterInto(parameter, iface->add_type_params());
   }
 
   for (const auto& lp : expr.getLifetimeParameters()) {
@@ -901,16 +891,8 @@ void ASTSerializer::serializeEnumDef(const EnumDefinitionAST& expr,
   enumDef->set_underlying_type(expr.getUnderlyingType());
   enumDef->set_visibility(toProto(expr.getVisibility()));
   enumDef->set_doc(expr.getDoc());
-  for (const auto& tp : expr.getTypeParameters()) {
-    auto* out = enumDef->add_type_params();
-    out->set_name(tp.name);
-    if (tp.constraint) {
-      out->set_constraint(tp.constraint->name);
-      if (tp.constraint->qualifiedName)
-        *out->mutable_qualified_name() =
-            sun::serialization::serializeQualifiedName(
-                *tp.constraint->qualifiedName);
-    }
+  for (const auto& parameter : expr.getTypeParameters()) {
+    serializeTypeParameterInto(parameter, enumDef->add_type_params());
   }
 
   for (const auto& variant : expr.getVariants()) {

@@ -245,7 +245,19 @@ class Formatter {
     }
     for (const auto& typeParam : typeParams) {
       if (!first) out_ += ", ";
-      out_ += typeParam.toString();
+      out_ += typeParam.name;
+      if (typeParam.constraint) {
+        const auto& constraint = *typeParam.constraint;
+        out_ += ": " + constraint.name;
+        if (!constraint.typeArguments.empty()) {
+          out_ += '<';
+          for (size_t i = 0; i < constraint.typeArguments.size(); ++i) {
+            if (i) out_ += ", ";
+            printType(constraint.typeArguments[i]);
+          }
+          out_ += '>';
+        }
+      }
       first = false;
     }
     out_ += '>';

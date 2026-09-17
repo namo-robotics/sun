@@ -362,6 +362,7 @@ message TypeParameter {
   optional QualifiedName qualified_name = 3;
   string name = 1;
   optional string constraint = 2;
+  repeated TypeAnnotation constraint_arguments = 4;
 }
 
 // Function prototype (signature)

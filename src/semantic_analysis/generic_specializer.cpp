@@ -29,6 +29,12 @@ void GenericSpecializer::checkTypeParameterConstraints(
     const std::vector<TypeParameter>& typeParams,
     const std::vector<sun::TypePtr>& typeArgs, const std::string& what,
     const std::string& name, std::optional<Position> loc) {
+  if (std::none_of(typeParams.begin(), typeParams.end(), [](const auto& param) {
+        return param.constraint.has_value();
+      }))
+    return;
+  SemanticContext::ScopeSwitchGuard bindings(ctx_, ctx_.scope());
+  ctx_.enterTypeParamScope(typeParameterNames(typeParams), typeArgs);
   for (size_t i = 0; i < typeParams.size() && i < typeArgs.size(); ++i) {
     const auto& constraint = typeParams[i].constraint;
     if (!constraint) continue;
@@ -36,14 +42,20 @@ void GenericSpecializer::checkTypeParameterConstraints(
     // Inside a template body the argument is still a type parameter; the
     // real check happens when the enclosing generic is specialized.
     const sun::TypePtr& arg = typeArgs[i];
-    if (!arg || arg->isTypeParameter()) continue;
+    if (!arg) continue;
 
     std::string requiredName = constraint->resolvedName();
-    if (!constraint->qualifiedName && !sun::isTypeTrait(requiredName)) {
+    if (!constraint->typeArguments.empty()) {
+      auto interfaceType =
+          sema_.types().resolveConstraintInterface(*constraint);
+      if (mentionsTypeParameter(interfaceType)) continue;
+      requiredName = interfaceType->getName();
+    } else if (!constraint->qualifiedName && !sun::isTypeTrait(requiredName)) {
       if (auto interfaceType = ctx_.lookupInterface(requiredName)) {
         requiredName = interfaceType->getName();
       }
     }
+    if (mentionsTypeParameter(arg)) continue;
     if (!sun::traits::satisfies(arg, requiredName)) {
       // Point at the constraint itself when it carries a span; a declaration
       // parsed from a bundle has none, so fall back to the caller's location.
@@ -1008,10 +1020,10 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
       ctx_, classDefinitionScope(*classType));
   SemanticContext::SourceFileGuard definitionFile(
       ctx_, genericMethodAST->getSourceFileId());
+  ctx_.enterTypeParamScope(allTypeParams, allTypeArgs);
   checkTypeParameterConstraints(methodTypeParams, methodTypeArgs,
                                 "generic method", methodName,
                                 genericMethodAST->getLocation());
-  ctx_.enterTypeParamScope(allTypeParams, allTypeArgs);
 
   // Substitute types in parameters
   std::vector<sun::TypePtr> paramTypes;
