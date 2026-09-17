@@ -56,9 +56,8 @@ GlobalVariable* ClassGenerator::getOrCreateInterfaceVtable(
   for (const auto& m : ifaceType->getMethods()) {
     if (m.isGeneric()) continue;
 
-    std::string mangled = classType->getMangledMethodName(m.name, m.paramTypes);
-    vtableEntries.push_back(functions().getOrDeclareMethodFunction(
-        mangled, m.paramTypes, m.returnType, /*canThrow=*/false));
+    vtableEntries.push_back(functions().lookupFunctionById(
+        classType->getInterfaceMethod(m.declarationId)));
   }
   vtableEntries.push_back(getOrCreateInterfaceDropFunction(classType));
 

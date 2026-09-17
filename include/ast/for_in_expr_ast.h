@@ -28,14 +28,13 @@ class ForInExprAST : public ExprAST {
     }
   }
 
- private:
-  // Access as ForInAnalysis
+ public:
+  /** Access the resolved iterator protocol and loop binding. */
   ForInAnalysis& forInAnalysis() const {
     ensureAnalysis();
     return static_cast<ForInAnalysis&>(*analysis_);
   }
 
- public:
   ForInExprAST(std::string LoopVar, TypeAnnotation LoopVarType,
                std::unique_ptr<ExprAST> Iterable, std::unique_ptr<ExprAST> Body,
                bool isConst = false)

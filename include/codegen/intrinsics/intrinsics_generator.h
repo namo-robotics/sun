@@ -53,7 +53,8 @@ class IntrinsicsGenerator {
   llvm::Value* codegenSizeofIntrinsic(sun::TypePtr typeArg);
   llvm::Value* codegenInitIntrinsic(
       sun::TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args,
-      const std::vector<sun::ArgConversion>& conversions);
+      const std::vector<sun::ArgConversion>& conversions,
+      sun::DeclarationId constructor);
   llvm::Value* codegenLoadIntrinsic(
       sun::TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args);
   llvm::Value* codegenStoreIntrinsic(

@@ -319,11 +319,14 @@ Value* VariableGenerator::codegen(const CompoundAssignmentAST& expr) {
       llvm::Value* idxArr = gen_.boxIndicesToArrayRef(indexExpr);
       if (!idxArr) return nullptr;
 
-      Value* cur = gen_.emitClassIndexCall(objPtr, idxArr, classType);
+      Value* cur = gen_.emitClassIndexCall(objPtr, idxArr,
+                                           indexExpr.getTargetDeclarationId());
       if (!cur) return nullptr;
       Value* result = emitCompoundOpValue(expr, cur, slotTy, slotSunType);
       if (!result) return nullptr;
-      return gen_.emitClassSetIndexCall(objPtr, idxArr, result, classType);
+      return gen_.emitClassSetIndexCall(
+          objPtr, idxArr, result,
+          classType->getMethod(expr.getTargetDeclarationId()));
     }
   }
 

@@ -619,6 +619,9 @@ void DeclarationCollectionPass::registerClassShape(
         classType->addMethod(proto.getName(), methodInfo.returnType,
                              methodInfo.paramTypes, methodDecl.isConstructor,
                              proto.getTypeParameterNames(), proto.canThrow());
+    method.declarationId = proto.getDeclarationId();
+    if (proto.getName() == "deinit")
+      classType->deinitializer = method.declarationId;
     method.visibility = methodVisibility(*methodDecl.function);
     method.isConst = methodDecl.isConst;
     method.isUnsafe = methodDecl.function->getProto().isUnsafeMethod();

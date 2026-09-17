@@ -159,7 +159,7 @@ class CallAnalyzer {
    */
   std::optional<std::vector<sun::TypePtr>> resolveConstructorParams(
       const sun::ClassType &classType,
-      const std::vector<sun::TypePtr> &argTypes, const Position &loc);
+      const std::vector<sun::TypePtr> &argTypes, const ExprAST &call);
 
   /**
    * Give array-literal arguments their element type before analysis, from

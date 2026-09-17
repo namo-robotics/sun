@@ -425,6 +425,21 @@ void FunctionGenerator::declareBlockSignatures(const BlockExprAST& block) {
           static_cast<const ClassDefinitionAST&>(*expr));
       continue;
     }
+    if (expr->getType() == ASTNodeType::INTERFACE_DEFINITION) {
+      const auto& definition =
+          static_cast<const InterfaceDefinitionAST&>(*expr);
+      if (definition.isGeneric()) continue;
+      const auto type =
+          state_.typeRegistry->getInterface(definition.getDeclarationId());
+      for (const auto& method : definition.getMethods()) {
+        if (!method.hasDefaultImpl || method.function->getProto().isGeneric())
+          continue;
+        classes().declareMethodFromAST(
+            *method.function, type->getMangledDefaultMethodName(
+                                  method.function->getProto().getName()));
+      }
+      continue;
+    }
     if (!expr->isFunction()) continue;
     auto& funcAST = static_cast<FunctionAST&>(*expr);
     const PrototypeAST& proto = funcAST.getProto();

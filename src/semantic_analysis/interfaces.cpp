@@ -113,12 +113,15 @@ void SemanticAnalyzer::validateInterfaceImplementation(
         if (classMethod.function->getProto().getName() ==
             interfaceMethod.name) {
           // Found override - get the method info from the class type
-          classMethodInfo = classType->getMethod(interfaceMethod.name);
+          classMethodInfo = classType->getMethodForArgs(
+              interfaceMethod.name, interfaceMethod.paramTypes);
           break;
         }
       }
 
       if (classMethodInfo) {
+        classType->bindInterfaceMethod(interfaceMethod.declarationId,
+                                       classMethodInfo->declarationId);
         // A public interface member is reachable through the interface, so
         // the implementing method must be public too
         if (interfaceMethod.visibility == sun::Visibility::Public &&
@@ -242,6 +245,14 @@ void SemanticAnalyzer::validateInterfaceImplementation(
                                               interfaceMethod.returnType,
                                               interfaceMethod.paramTypes, false,
                                               interfaceMethod.typeParameters);
+          method.declarationId = ctx_.types()->declarations.add(
+              sun::DeclarationKind::Function, interfaceMethod.name,
+              classType->getDeclarationId());
+          if (method.name == "deinit")
+            classType->deinitializer = method.declarationId;
+          method.defaultImplementation = interfaceMethod.declarationId;
+          classType->bindInterfaceMethod(interfaceMethod.declarationId,
+                                         method.declarationId);
           method.visibility = interfaceMethod.visibility;
           method.isConst = interfaceMethod.isConst;
           method.isUnsafe = interfaceMethod.isUnsafe;

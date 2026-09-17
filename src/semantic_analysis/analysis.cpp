@@ -512,6 +512,9 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
           proto.getName(), methodInfo.returnType, methodInfo.paramTypes,
           methodDecl.isConstructor, proto.getTypeParameterNames(),
           proto.canThrow());
+      method.declarationId = proto.getDeclarationId();
+      if (proto.getName() == "deinit")
+        existingClass->deinitializer = method.declarationId;
       method.visibility = methodVisibility(*methodDecl.function);
       method.isConst = methodDecl.isConst;
       method.isUnsafe = methodDecl.function->getProto().isUnsafeMethod();
@@ -1232,6 +1235,7 @@ void SemanticAnalyzer::maybeResolveBoundMethodRef(MemberAccessAST& memberAccess,
   // with a `[ref ...]` capture list apply to it.
   static_cast<sun::LambdaType*>(boundType.get())->setHasRefCaptures(true);
   memberAccess.setResolvedType(std::move(boundType));
+  memberAccess.setTargetDeclarationId(chosen->declarationId);
   memberAccess.setIsBoundMethodRef(true);
 }
 

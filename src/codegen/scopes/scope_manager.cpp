@@ -348,12 +348,9 @@ void ScopeManager::emitFieldCleanup(Value* objectPtr,
 
 void ScopeManager::emitDeinitCall(const sun::ClassType* classType,
                                   Value* receiver) {
-  const sun::ClassMethod* deinitMethod = classType->getMethod("deinit");
-  if (!deinitMethod) return;
-
-  Function* deinitFunc = gen_.functionRegistry().getOrDeclareMethodFunction(
-      classType->getMangledMethodName("deinit"), deinitMethod->paramTypes,
-      deinitMethod->returnType, deinitMethod->canThrow);
+  if (!classType->deinitializer) return;
+  Function* deinitFunc =
+      gen_.functionRegistry().lookupFunctionById(classType->deinitializer);
   ctx.builder->CreateCall(
       deinitFunc,
       {gen_.materializeMethodClosure(deinitFunc, receiver, "deinit.closure")});

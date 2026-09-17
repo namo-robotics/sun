@@ -322,7 +322,8 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
     // Create a generic interface type (for type checking generic
     // references)
     auto interfaceType = ctx_.types()->getGenericInterface(
-        interfaceDef.getName(), interfaceDef.getTypeParameterNames());
+        interfaceDef.getDeclarationId(), qualifiedInterface,
+        interfaceDef.getTypeParameterNames());
     interfaceType->visibility = interfaceDef.getVisibility();
     interfaceType->setQualifiedName(qualifiedInterface);
     ctx_.registerInterface(interfaceDef.getName(), interfaceType);
@@ -376,6 +377,7 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
     auto& method = interfaceType->addMethod(
         proto.getName(), methodInfo.returnType, methodInfo.paramTypes,
         methodDecl.hasDefaultImpl, proto.getTypeParameterNames());
+    method.declarationId = proto.getDeclarationId();
     method.visibility = sun::access::methodVisibility(*methodDecl.function);
     method.isConst = methodDecl.isConst;
     method.isUnsafe = methodDecl.function->getProto().isUnsafeMethod();

@@ -137,6 +137,23 @@ void ClassGenerator::declareClassMethods(
     // Declare the non-generic method using the shared helper
     declareMethodFromAST(methodFunc, mangledName);
   }
+  for (const auto& method : classType->getMethods()) {
+    if (!method.defaultImplementation || method.isGeneric()) continue;
+    const auto symbol =
+        classType->getMangledMethodName(method.name, method.paramTypes);
+    auto* function = module->getFunction(symbol);
+    if (!function) {
+      std::vector<llvm::Type*> parameters{
+          PointerType::getUnqual(ctx.getContext())};
+      for (const auto& parameter : method.paramTypes)
+        parameters.push_back(typeResolver.resolve(parameter));
+      auto* signature = FunctionType::get(
+          typeResolver.resolveForReturn(method.returnType), parameters, false);
+      function = Function::Create(signature, Function::ExternalLinkage, symbol,
+                                  module);
+    }
+    functions().registerFunction(method.declarationId, function);
+  }
 }
 
 // Declare the methods of every class a block defines, before any body is
@@ -280,95 +297,39 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
     }
   }
 
-  // Generate wrapper methods for interface default implementations
-  // that are not explicitly overridden in the class
-  // Use classType's implemented interfaces (these have mangled names for
-  // generics)
-  for (const auto& interfaceName : classType->getImplementedInterfaces()) {
-    auto interfaceType = typeRegistry->getInterface(interfaceName);
-    if (!interfaceType) {
-      llvm::errs() << "Warning: Interface not found for class " << className
-                   << ": " << interfaceName << "\n";
-      continue;
+  // Each inherited default has a class-owned wrapper with its own identity.
+  for (const auto& method : classType->getMethods()) {
+    if (!method.defaultImplementation || method.isGeneric()) continue;
+    Function* func = functions().lookupFunctionById(method.declarationId);
+    if (!func->empty()) continue;
+    Function* defaultFunc =
+        functions().lookupFunctionById(method.defaultImplementation);
+    llvm::Type* returnType = func->getReturnType();
+    BasicBlock* BB = BasicBlock::Create(ctx.getContext(), "entry", func);
+    ctx.builder->SetInsertPoint(BB);
+    debugInfo.clearLocation(*ctx.builder);
+
+    // Build argument list (just forward all arguments). The closure arg
+    // (arg 0) is passed through verbatim: its func slot points at this
+    // wrapper, not the default impl, which is fine because method bodies
+    // only ever read the env slot (field 1).
+    std::vector<Value*> args;
+    for (auto& arg : func->args()) {
+      args.push_back(&arg);
     }
 
-    for (const auto& interfaceMethod : interfaceType->getMethods()) {
-      // Skip methods without default implementations
-      if (!interfaceMethod.hasDefaultImpl) continue;
+    // Call the default implementation
+    Value* result = ctx.builder->CreateCall(defaultFunc, args);
 
-      // Check if class already implements this method
-      bool hasOverride = false;
-      for (const auto& classMethod : expr.getMethods()) {
-        if (classMethod.function->getProto().getName() ==
-            interfaceMethod.name) {
-          hasOverride = true;
-          break;
-        }
-      }
-      if (hasOverride) continue;
-
-      // Generate wrapper method that calls the interface default
-      // Include param types for overload disambiguation
-      std::string mangledName = classType->getMangledMethodName(
-          interfaceMethod.name, interfaceMethod.paramTypes);
-      std::string defaultMangledName =
-          interfaceType->getMangledDefaultMethodName(interfaceMethod.name);
-
-      // Build parameter types (closure ptr as first parameter)
-      std::vector<llvm::Type*> paramTypes;
-      paramTypes.push_back(
-          PointerType::getUnqual(ctx.getContext()));  // closure
-      for (const auto& pt : interfaceMethod.paramTypes) {
-        paramTypes.push_back(typeResolver.resolve(pt));
-      }
-
-      // Get return type - use resolveForReturn for compound types by value
-      llvm::Type* returnType =
-          typeResolver.resolveForReturn(interfaceMethod.returnType);
-
-      // Create the wrapper function type
-      FunctionType* funcType = FunctionType::get(returnType, paramTypes, false);
-
-      // Create the wrapper function
-      Function* func = Function::Create(funcType, Function::ExternalLinkage,
-                                        mangledName, module);
-
-      // Create entry basic block
-      BasicBlock* BB = BasicBlock::Create(ctx.getContext(), "entry", func);
-      ctx.builder->SetInsertPoint(BB);
-      // No subprogram on this wrapper: it must carry no debug locations
-      debugInfo.clearLocation(*ctx.builder);
-
-      // Get the default implementation function
-      Function* defaultFunc = module->getFunction(defaultMangledName);
-      if (!defaultFunc) {
-        logAndThrowError("Default implementation not found: " +
-                         defaultMangledName);
-        continue;
-      }
-
-      // Build argument list (just forward all arguments). The closure arg
-      // (arg 0) is passed through verbatim: its func slot points at this
-      // wrapper, not the default impl, which is fine because method bodies
-      // only ever read the env slot (field 1).
-      std::vector<Value*> args;
-      for (auto& arg : func->args()) {
-        args.push_back(&arg);
-      }
-
-      // Call the default implementation
-      Value* result = ctx.builder->CreateCall(defaultFunc, args);
-
-      // Return the result
-      if (returnType->isVoidTy()) {
-        ctx.builder->CreateRetVoid();
-      } else {
-        ctx.builder->CreateRet(result);
-      }
-
-      // Verify the wrapper function
-      verifyFunction(*func);
+    // Return the result
+    if (returnType->isVoidTy()) {
+      ctx.builder->CreateRetVoid();
+    } else {
+      ctx.builder->CreateRet(result);
     }
+
+    // Verify the wrapper function
+    verifyFunction(*func);
   }
 
   // PASS 3: Generate pre-computed specializations for generic methods
@@ -419,12 +380,11 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
 
 Function* ClassGenerator::declareMethodFromAST(
     const FunctionAST& specializedAST, const std::string& mangledName) {
-  // Skip if already declared
+  const PrototypeAST& proto = specializedAST.getProto();
   if (Function* existing = module->getFunction(mangledName)) {
+    functions().registerFunction(proto.getDeclarationId(), existing);
     return existing;
   }
-
-  const PrototypeAST& proto = specializedAST.getProto();
 
   // Build parameter types: closure ptr first ({ func, env } with the
   // receiver in env), then regular params
@@ -462,6 +422,7 @@ Function* ClassGenerator::declareMethodFromAST(
   FunctionType* funcType = FunctionType::get(returnType, paramTypes, false);
   Function* func = Function::Create(funcType, Function::ExternalLinkage,
                                     mangledName, module);
+  functions().registerFunction(proto.getDeclarationId(), func);
   // Tag throwing methods so call sites emit `invoke` inside a try block.
   if (canError) {
     func->addFnAttr("sun.canthrow");
@@ -514,9 +475,7 @@ void ClassGenerator::generateMethodBody(const FunctionAST& methodFunc,
                                         const std::string& mangledName) {
   const PrototypeAST& proto = methodFunc.getProto();
 
-  // Get the function (must already be declared)
-  Function* func = module->getFunction(mangledName);
-  if (!func) return;
+  Function* func = functions().lookupFunctionById(proto.getDeclarationId());
 
   // Skip if the function already has a body
   if (!func->empty()) return;
@@ -754,7 +713,7 @@ Value* ClassGenerator::codegen(const MemberAccessAST& expr) {
   // Bound method reference: a method in value position materializes the
   // closure value { methodFn, objectPtr }
   if (expr.isBoundMethodRef()) {
-    return codegenBoundMethodReference(expr, objectPtr, classType);
+    return codegenBoundMethodReference(expr, objectPtr);
   }
 
   // It's a method - just return the object pointer
@@ -768,25 +727,9 @@ Value* ClassGenerator::codegen(const MemberAccessAST& expr) {
 // -------------------------------------------------------------------
 
 Value* ClassGenerator::codegenBoundMethodReference(const MemberAccessAST& expr,
-                                                   Value* objectPtr,
-                                                   sun::ClassType* classType) {
-  auto& lambdaType =
-      sun::requireType<sun::LambdaType>(expr, "bound method reference");
-  const std::string& methodName = expr.getMemberName();
-
-  // Semantic analysis picked the exact overload; its param types are the
-  // lambda's param types.
-  const sun::ClassMethod* method =
-      classType->getMethodForArgs(methodName, lambdaType.getParamTypes());
-  if (!method) {
-    logAndThrowError("Unknown method: " + methodName + " on class " +
-                     classType->getDisplayName());
-    return nullptr;
-  }
-
-  Function* methodFunc = functions().getOrDeclareMethodFunction(
-      classType->getMangledMethodName(methodName, method->paramTypes),
-      method->paramTypes, method->returnType, method->canThrow);
+                                                   Value* objectPtr) {
+  Function* methodFunc =
+      functions().lookupFunctionById(expr.getTargetDeclarationId());
 
   return materializeMethodClosureValue(methodFunc, objectPtr);
 }
@@ -822,33 +765,21 @@ Value* ClassGenerator::codegenStackClassInstance(const CallExprAST& expr,
        ConstantInt::get(Type::getInt64Ty(ctx.getContext()), structSize)});
 
   // Call the constructor (init method) if it exists
-  ConstructorLookup ctor = lookupConstructor(&classType, expr.getArgs());
-
-  Function* ctorFunc = nullptr;
+  const auto* ctor = classType.getMethod(expr.getTargetDeclarationId());
+  Function* ctorFunc =
+      ctor ? functions().lookupFunctionById(ctor->declarationId) : nullptr;
   size_t argCount = expr.getArgs().size();
-
-  // Find the constructor; declare an external if the init method exists but
-  // isn't in the module yet (precompiled classes linked later)
-  Function* candidate =
-      ctor.method ? functions().getOrDeclareMethodFunction(
-                        ctor.mangledName, ctor.method->paramTypes,
-                        ctor.method->returnType, ctor.method->canThrow)
-                  : module->getFunction(ctor.mangledName);
-
-  if (candidate && candidate->arg_size() == argCount + 1) {
-    ctorFunc = candidate;
-  }
 
   if (ctorFunc) {
     const auto& paramTypes =
-        ctor.method ? ctor.method->paramTypes : std::vector<sun::TypePtr>{};
+        ctor ? ctor->paramTypes : std::vector<sun::TypePtr>{};
 
     std::vector<Value*> ctorArgs = generateCtorArgs(
         ctorFunc, alloca, expr.getArgs(), expr.getArgConversions(), paramTypes);
     // A throwing constructor unwinds like any other call: inside a try it
     // must be invoked so the exception reaches the landing pad.
-    bool ctorCanThrow = (ctor.method && ctor.method->canThrow) ||
-                        ctorFunc->hasFnAttribute("sun.canthrow");
+    bool ctorCanThrow =
+        (ctor && ctor->canThrow) || ctorFunc->hasFnAttribute("sun.canthrow");
     gen_.errorGenerator().emitPossiblyThrowingCall(ctorFunc, ctorArgs,
                                                    ctorCanThrow, "");
   }
@@ -883,42 +814,6 @@ std::vector<Value*> ClassGenerator::generateCtorArgs(
     return {};
   }
   return ctorArgs;
-}
-
-// -------------------------------------------------------------------
-// Constructor lookup helpers
-// -------------------------------------------------------------------
-
-ClassGenerator::ConstructorLookup ClassGenerator::lookupConstructor(
-    sun::ClassType* classType,
-    const std::vector<std::unique_ptr<ExprAST>>& args) {
-  // Collect argument types from AST nodes
-  std::vector<sun::TypePtr> argTypes;
-  argTypes.reserve(args.size());
-  for (const auto& arg : args) {
-    argTypes.push_back(arg->getResolvedType());
-  }
-  return lookupConstructor(classType, argTypes);
-}
-
-ClassGenerator::ConstructorLookup ClassGenerator::lookupConstructor(
-    sun::ClassType* classType, const std::vector<sun::TypePtr>& argTypes) {
-  ConstructorLookup result;
-
-  // Look up the init method that matches the argument types
-  const sun::ClassMethod* initMethod =
-      classType->getMethodForArgs("init", argTypes);
-
-  if (initMethod) {
-    result.method = initMethod;
-    result.mangledName =
-        classType->getMangledMethodName("init", initMethod->paramTypes);
-  } else {
-    // No matching overload - use default mangled name (no params)
-    result.mangledName = classType->getMangledMethodName("init");
-  }
-
-  return result;
 }
 
 // -------------------------------------------------------------------
@@ -1133,44 +1028,9 @@ Value* ClassGenerator::codegen(const InterfaceDefinitionAST& expr) {
     std::string mangledName =
         interfaceType->getMangledDefaultMethodName(methodName);
 
-    // Build the method parameter types (closure ptr first - the receiver
-    // lives in the closure's env slot)
-    std::vector<llvm::Type*> paramTypes;
-    paramTypes.push_back(PointerType::getUnqual(ctx.getContext()));  // closure
-
-    // Interface default methods must have resolved param types from semantic
-    // analysis
-    if (!proto.hasResolvedParamTypes()) {
-      logAndThrowError(
-          "Interface default method parameter types not resolved by semantic "
-          "analysis: " +
-          mangledName);
-      continue;
-    }
-    for (const auto& sunType : proto.getResolvedParamTypes()) {
-      paramTypes.push_back(typeResolver.resolve(sunType));
-    }
-
-    // Get return type (must be resolved by semantic analysis)
-    llvm::Type* returnType;
-    if (proto.hasResolvedReturnType()) {
-      returnType = typeResolver.resolveForReturn(proto.getResolvedReturnType());
-    } else if (!proto.hasReturnType()) {
-      returnType = Type::getVoidTy(ctx.getContext());
-    } else {
-      logAndThrowError(
-          "Interface default method return type not resolved by semantic "
-          "analysis: " +
-          mangledName);
-      continue;
-    }
-
-    // Create the function type
-    FunctionType* funcType = FunctionType::get(returnType, paramTypes, false);
-
-    // Create the function
-    Function* func = Function::Create(funcType, Function::ExternalLinkage,
-                                      mangledName, module);
+    Function* func = declareMethodFromAST(methodFunc, mangledName);
+    if (!func->empty()) continue;
+    llvm::Type* returnType = func->getReturnType();
 
     // Set parameter names
     auto argIt = func->arg_begin();
@@ -1272,7 +1132,8 @@ Value* ClassGenerator::codegen(const GenericCallAST& expr) {
       return intrinsics().codegenSizeofIntrinsic(getFirstTypeArg());
     case sun::Intrinsic::Init:
       return intrinsics().codegenInitIntrinsic(
-          getFirstTypeArg(), expr.getArgs(), expr.getArgConversions());
+          getFirstTypeArg(), expr.getArgs(), expr.getArgConversions(),
+          expr.getTargetDeclarationId());
     case sun::Intrinsic::Load:
       return intrinsics().codegenLoadIntrinsic(getFirstTypeArg(),
                                                expr.getArgs());
@@ -1400,38 +1261,22 @@ Value* ClassGenerator::codegen(const GenericCallAST& expr) {
           {alloca, ConstantInt::get(Type::getInt32Ty(ctx.getContext()), 0),
            ConstantInt::get(Type::getInt64Ty(ctx.getContext()), structSize)});
 
-      // Call the constructor the arguments select. Resolving on the name
-      // alone would always pick the first `init`, so a class with several
-      // of them would construct through the wrong one — or, when the arity
-      // did not match, through none at all.
-      ConstructorLookup ctor =
-          lookupConstructor(classType.get(), expr.getArgs());
-
-      Function* ctorFunc = nullptr;
+      // Call the constructor selected during semantic analysis.
+      const auto* ctor = classType->getMethod(expr.getTargetDeclarationId());
+      Function* ctorFunc =
+          ctor ? functions().lookupFunctionById(ctor->declarationId) : nullptr;
       size_t argCount = expr.getArgs().size();
-
-      // Find the constructor; declare an external if the init method exists
-      // but isn't in the module yet (class codegen hasn't run)
-      Function* candidate =
-          ctor.method ? functions().getOrDeclareMethodFunction(
-                            ctor.mangledName, ctor.method->paramTypes,
-                            ctor.method->returnType, ctor.method->canThrow)
-                      : module->getFunction(ctor.mangledName);
-
-      if (candidate && candidate->arg_size() == argCount + 1) {
-        ctorFunc = candidate;
-      }
 
       if (ctorFunc) {
         const auto& paramTypes =
-            ctor.method ? ctor.method->paramTypes : std::vector<sun::TypePtr>{};
+            ctor ? ctor->paramTypes : std::vector<sun::TypePtr>{};
 
         std::vector<Value*> ctorArgs =
             generateCtorArgs(ctorFunc, alloca, expr.getArgs(),
                              expr.getArgConversions(), paramTypes);
         // See codegenStackClassInstance: a throwing constructor must be
         // invoked so its exception reaches the enclosing try's landing pad.
-        bool ctorCanThrow = (ctor.method && ctor.method->canThrow) ||
+        bool ctorCanThrow = (ctor && ctor->canThrow) ||
                             ctorFunc->hasFnAttribute("sun.canthrow");
         gen_.errorGenerator().emitPossiblyThrowingCall(ctorFunc, ctorArgs,
                                                        ctorCanThrow, "");
@@ -1484,38 +1329,24 @@ Value* ClassGenerator::codegen(const GenericCallAST& expr) {
         {alloca, ConstantInt::get(Type::getInt32Ty(ctx.getContext()), 0),
          ConstantInt::get(Type::getInt64Ty(ctx.getContext()), structSize)});
 
-    // Call constructor (init method) if it exists
-    // Resolve on the argument types, not the name alone — see the matching
-    // comment above.
-    ConstructorLookup ctor =
-        lookupConstructor(fallbackClassType.get(), expr.getArgs());
-
-    Function* ctorFunc = nullptr;
+    // Call the constructor selected during semantic analysis.
+    const auto* ctor =
+        fallbackClassType->getMethod(expr.getTargetDeclarationId());
+    Function* ctorFunc =
+        ctor ? functions().lookupFunctionById(ctor->declarationId) : nullptr;
     size_t argCount = expr.getArgs().size();
-
-    // Find the constructor; declare an external if the init method exists
-    // but isn't in the module yet
-    Function* candidate =
-        ctor.method ? functions().getOrDeclareMethodFunction(
-                          ctor.mangledName, ctor.method->paramTypes,
-                          ctor.method->returnType, ctor.method->canThrow)
-                    : module->getFunction(ctor.mangledName);
-
-    if (candidate && candidate->arg_size() == argCount + 1) {
-      ctorFunc = candidate;
-    }
 
     if (ctorFunc) {
       const auto& paramTypes =
-          ctor.method ? ctor.method->paramTypes : std::vector<sun::TypePtr>{};
+          ctor ? ctor->paramTypes : std::vector<sun::TypePtr>{};
 
       std::vector<Value*> ctorArgs =
           generateCtorArgs(ctorFunc, alloca, expr.getArgs(),
                            expr.getArgConversions(), paramTypes);
       // See codegenStackClassInstance: a throwing constructor must be
       // invoked so its exception reaches the enclosing try's landing pad.
-      bool ctorCanThrow = (ctor.method && ctor.method->canThrow) ||
-                          ctorFunc->hasFnAttribute("sun.canthrow");
+      bool ctorCanThrow =
+          (ctor && ctor->canThrow) || ctorFunc->hasFnAttribute("sun.canthrow");
       gen_.errorGenerator().emitPossiblyThrowingCall(ctorFunc, ctorArgs,
                                                      ctorCanThrow, "");
     } else if (argCount > 0) {

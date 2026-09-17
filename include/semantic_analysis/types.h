@@ -1077,6 +1077,8 @@ struct ClassMethod {
   bool isConst = false;   // `const function`: does not change `this`
   sun::Visibility visibility = sun::Visibility::Private;
   bool isSynthesizedConstructor = false;
+  DeclarationId declarationId;
+  DeclarationId defaultImplementation;
 
   bool isGeneric() const { return !typeParameters.empty(); }
 };
@@ -1181,6 +1183,7 @@ class ClassType : public NominalType {
       genericQualifiedName_;  // For specialized: the generic's qualified name
   std::vector<ClassField> fields;
   std::vector<ClassMethod> methods;
+  std::unordered_map<DeclarationId, DeclarationId> interfaceImplementations_;
   ScopeMethodTable
       methodTable_;  // Indexed method table for overload resolution
   std::vector<std::string>
@@ -1283,7 +1286,24 @@ class ClassType : public NominalType {
   bool isGenericDefinition() const { return !typeParameters.empty(); }
   bool isSpecialized() const { return !typeArguments.empty(); }
   const std::vector<ClassField>& getFields() const { return fields; }
+  /** The selected cleanup method, if this class defines one. */
+  DeclarationId deinitializer;
+
   const std::vector<ClassMethod>& getMethods() const { return methods; }
+
+  /** Record the concrete method selected for an interface declaration. */
+  void bindInterfaceMethod(DeclarationId requirement,
+                           DeclarationId implementation) {
+    interfaceImplementations_[requirement] = implementation;
+  }
+
+  /** Retrieve the concrete method selected during conformance checking. */
+  DeclarationId getInterfaceMethod(DeclarationId requirement) const {
+    auto found = interfaceImplementations_.find(requirement);
+    if (found == interfaceImplementations_.end())
+      logAndThrowError("Interface method implementation has not been resolved");
+    return found->second;
+  }
   const std::vector<std::string>& getImplementedInterfaces() const {
     return implementedInterfaces;
   }
@@ -1347,6 +1367,15 @@ class ClassType : public NominalType {
       if (field.name == fieldName) return &field;
     }
     return nullptr;
+  }
+
+  /** Retrieve a selected method without repeating overload resolution. */
+  const ClassMethod* getMethod(DeclarationId declaration) const {
+    if (!declaration) return nullptr;
+    for (const auto& method : methods) {
+      if (method.declarationId == declaration) return &method;
+    }
+    logAndThrowError("Selected method does not belong to this class");
   }
 
   const ClassMethod* getMethod(const std::string& methodName) const {
@@ -1687,6 +1716,8 @@ struct InterfaceMethod {
   bool isConst = false;   // `const function`: does not change `this`
   sun::Visibility visibility = sun::Visibility::Private;
 
+  DeclarationId declarationId;
+
   bool isGeneric() const { return !typeParameters.empty(); }
 };
 
@@ -1941,13 +1972,13 @@ class InterfaceType : public NominalType {
   // Get the slot index for a method in the vtable.
   // Returns -1 if method not found or if the method is generic.
   // Only non-generic methods can be dispatched via vtable.
-  int getMethodIndex(const std::string& methodName) const {
+  int getMethodIndex(DeclarationId declaration) const {
     int index = 0;
     for (const auto& method : methods) {
       if (method.isGeneric()) {
         continue;  // Skip generic methods - they're not in the vtable
       }
-      if (method.name == methodName) {
+      if (method.declarationId == declaration) {
         return index;
       }
       ++index;
@@ -2278,54 +2309,6 @@ class Types {
                                        std::move(dimensions));
   }
 
-  // Create a class type (cached by name)
-  static std::shared_ptr<ClassType> Class(const std::string& name) {
-    auto& cache = getClassCache();
-    auto it = cache.find(name);
-    if (it != cache.end()) {
-      return it->second;
-    }
-    auto type = std::make_shared<ClassType>(name);
-    cache[name] = type;
-    return type;
-  }
-
-  // Create a generic class type with type parameters
-  static std::shared_ptr<ClassType> GenericClass(
-      const std::string& name, std::vector<std::string> typeParams) {
-    std::string key = name + "<";
-    for (size_t i = 0; i < typeParams.size(); ++i) {
-      if (i > 0) key += ",";
-      key += typeParams[i];
-    }
-    key += ">";
-
-    auto& cache = getGenericClassCache();
-    auto it = cache.find(key);
-    if (it != cache.end()) {
-      return it->second;
-    }
-    auto type = std::make_shared<ClassType>(name, std::move(typeParams));
-    cache[key] = type;
-    return type;
-  }
-
-  // Create a specialized generic class (e.g., List<i32>)
-  static std::shared_ptr<ClassType> SpecializedClass(
-      const std::string& baseName, std::vector<TypePtr> typeArgs) {
-    std::string mangledName = mangleGenericClassName(baseName, typeArgs);
-
-    auto& cache = getSpecializedClassCache();
-    auto it = cache.find(mangledName);
-    if (it != cache.end()) {
-      return it->second;
-    }
-    auto type =
-        std::make_shared<ClassType>(mangledName, baseName, std::move(typeArgs));
-    cache[mangledName] = type;
-    return type;
-  }
-
   // Generate mangled name for a specialized generic class: the generic's
   // mangled name with each type argument spelled the way every symbol
   // spells types (QualifiedName::canonicalTypeString)
@@ -2352,52 +2335,6 @@ class Types {
     return std::make_shared<TypeParameterType>(base, constraint, projection);
   }
 
-  // Create an interface type (cached by name)
-  static std::shared_ptr<InterfaceType> Interface(const std::string& name) {
-    auto& cache = getInterfaceCache();
-    auto it = cache.find(name);
-    if (it != cache.end()) {
-      return it->second;
-    }
-    auto type = std::make_shared<InterfaceType>(name);
-    cache[name] = type;
-    return type;
-  }
-
-  // Clear all type caches - must be called between independent compilation
-  // units (e.g., between tests)
-  static void clearCaches() {
-    getClassCache().clear();
-    getGenericClassCache().clear();
-    getSpecializedClassCache().clear();
-    getInterfaceCache().clear();
-  }
-
- private:
-  // Cache accessors for clearCaches() support
-  static std::unordered_map<std::string, std::shared_ptr<ClassType>>&
-  getClassCache() {
-    static std::unordered_map<std::string, std::shared_ptr<ClassType>> cache;
-    return cache;
-  }
-  static std::unordered_map<std::string, std::shared_ptr<ClassType>>&
-  getGenericClassCache() {
-    static std::unordered_map<std::string, std::shared_ptr<ClassType>> cache;
-    return cache;
-  }
-  static std::unordered_map<std::string, std::shared_ptr<ClassType>>&
-  getSpecializedClassCache() {
-    static std::unordered_map<std::string, std::shared_ptr<ClassType>> cache;
-    return cache;
-  }
-  static std::unordered_map<std::string, std::shared_ptr<InterfaceType>>&
-  getInterfaceCache() {
-    static std::unordered_map<std::string, std::shared_ptr<InterfaceType>>
-        cache;
-    return cache;
-  }
-
- public:
   // Parse a type name string to TypePtr
   static TypePtr fromString(const std::string& name) {
     if (name == "void") return Void();
@@ -2444,13 +2381,10 @@ class TypeRegistry {
   }
 
   std::unordered_map<std::string, std::shared_ptr<ClassType>> classCache;
-  std::unordered_map<std::string, std::shared_ptr<ClassType>> genericClassCache;
   std::unordered_map<std::string, std::shared_ptr<ClassType>>
       specializedClassCache;
   std::unordered_map<std::string, std::shared_ptr<InterfaceType>>
       interfaceCache;
-  std::unordered_map<std::string, std::shared_ptr<InterfaceType>>
-      genericInterfaceCache;
   std::unordered_map<std::string, std::shared_ptr<InterfaceType>>
       specializedInterfaceCache;
   std::unordered_map<std::string, std::shared_ptr<EnumType>> enumCache;
@@ -2470,11 +2404,14 @@ class TypeRegistry {
     // the return type is retargeted to it (an owned clone of the message), so
     // errors can carry text composed at runtime. Without the stdlib, message()
     // stays literal-only.
-    auto ierror = std::make_shared<InterfaceType>("IError");
+    auto id = declarations.add(DeclarationKind::Interface, "IError");
+    auto ierror = nominalType<InterfaceType>(id, DeclarationKind::Interface);
     // Not const: every user error class would then have to spell
     // `const function code()`, and errors are caught into plain variables.
-    ierror->addMethod("code", Types::Int32(), {}, true);
-    ierror->addMethod("message", Types::String(), {}, true);
+    ierror->addMethod("code", Types::Int32(), {}, true).declarationId =
+        declarations.add(DeclarationKind::Function, "code", id);
+    ierror->addMethod("message", Types::String(), {}, true).declarationId =
+        declarations.add(DeclarationKind::Function, "message", id);
     interfaceCache["IError"] = ierror;
   }
 
@@ -2593,25 +2530,6 @@ class TypeRegistry {
     return type;
   }
 
-  // Get or create a generic class type with type parameters
-  std::shared_ptr<ClassType> getGenericClass(
-      const std::string& name, std::vector<std::string> typeParams) {
-    std::string key = name + "<";
-    for (size_t i = 0; i < typeParams.size(); ++i) {
-      if (i > 0) key += ",";
-      key += typeParams[i];
-    }
-    key += ">";
-
-    auto it = genericClassCache.find(key);
-    if (it != genericClassCache.end()) {
-      return it->second;
-    }
-    auto type = std::make_shared<ClassType>(name, std::move(typeParams));
-    genericClassCache[key] = type;
-    return type;
-  }
-
   // Get or create a specialized generic class (e.g., List<i32>)
   std::shared_ptr<ClassType> getSpecializedClass(
       const std::string& baseName, std::vector<TypePtr> typeArgs) {
@@ -2663,22 +2581,12 @@ class TypeRegistry {
     return nullptr;
   }
 
-  // Get or create a generic interface type with type parameters
+  /** Intern a generic interface template by its source declaration. */
   std::shared_ptr<InterfaceType> getGenericInterface(
-      const std::string& name, std::vector<std::string> typeParams) {
-    std::string key = name + "<";
-    for (size_t i = 0; i < typeParams.size(); ++i) {
-      if (i > 0) key += ",";
-      key += typeParams[i];
-    }
-    key += ">";
-
-    auto it = genericInterfaceCache.find(key);
-    if (it != genericInterfaceCache.end()) {
-      return it->second;
-    }
-    auto type = std::make_shared<InterfaceType>(name, std::move(typeParams));
-    genericInterfaceCache[key] = type;
+      DeclarationId declaration, const QualifiedName& name,
+      std::vector<std::string> typeParams) {
+    auto type = getInterface(declaration, name);
+    type->typeParameters = std::move(typeParams);
     return type;
   }
 
@@ -2717,10 +2625,8 @@ class TypeRegistry {
   void clear() {
     nominalTypes_.clear();
     classCache.clear();
-    genericClassCache.clear();
     specializedClassCache.clear();
     interfaceCache.clear();
-    genericInterfaceCache.clear();
     specializedInterfaceCache.clear();
     enumCache.clear();
   }

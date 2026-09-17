@@ -100,6 +100,9 @@ struct InterfaceAnalysis : public ExprAnalysis {
 /// Analysis data for ForInExprAST
 struct ForInAnalysis : public ExprAnalysis {
   sun::TypePtr resolvedLoopVarType;
+  sun::DeclarationId iteratorFactory;
+  sun::DeclarationId iteratorNext;
+  sun::TypePtr iteratorResultType;
 
   ForInAnalysis() = default;
   ForInAnalysis(const ForInAnalysis&) = default;

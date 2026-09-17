@@ -15,7 +15,6 @@
 
 /**
  * Map resolved declarations to LLVM functions and track their origins.
- * Method emission still uses symbol-based helpers during the migration.
  */
 class FunctionRegistry {
  public:
@@ -59,26 +58,6 @@ class FunctionRegistry {
 
   /** Find the emitted function selected by semantic declaration resolution. */
   llvm::Function* lookupFunctionById(sun::DeclarationId declaration);
-
-  /**
-   * Finds the LLVM function for a class method. Tries the mangled name with
-   * its parameter suffix first, then the plain "TypeName_methodName" form
-   * that simple and legacy cases use.
-   */
-  llvm::Function* findClassMethod(
-      const std::shared_ptr<sun::ClassType>& classType,
-      const std::string& typeName, const std::string& methodName);
-
-  /**
-   * Finds a method by mangled name, declaring it as an external with the
-   * closure ABI signature if the module does not have it yet. The external
-   * resolves from the defining module at link or JIT time, which is how an
-   * imported or precompiled class's methods are reached.
-   */
-  llvm::Function* getOrDeclareMethodFunction(
-      const std::string& mangledName,
-      const std::vector<sun::TypePtr>& paramTypes,
-      const sun::TypePtr& returnType, bool canThrow);
 
  private:
   std::unordered_map<sun::DeclarationId, llvm::WeakTrackingVH> functionsById_;

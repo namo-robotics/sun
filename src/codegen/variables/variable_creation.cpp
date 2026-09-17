@@ -812,22 +812,10 @@ void VariableGenerator::emitStaticInitFunction() {
         continue;
       }
 
-      // Look up constructor with overload resolution
-      std::vector<sun::TypePtr> argTypes;
-      argTypes.reserve(ctorArgs->size());
-      for (const auto& arg : *ctorArgs) {
-        argTypes.push_back(arg->getResolvedType());
-      }
-      ClassGenerator::ConstructorLookup ctor =
-          classes().lookupConstructor(classType, argTypes);
-
-      // Find the constructor; declare an external if the init method exists
-      // but isn't in the module yet
+      const auto* ctor =
+          classType->getMethod(init.initExpr->getTargetDeclarationId());
       Function* ctorFunc =
-          ctor.method ? functions().getOrDeclareMethodFunction(
-                            ctor.mangledName, ctor.method->paramTypes,
-                            ctor.method->returnType, ctor.method->canThrow)
-                      : module->getFunction(ctor.mangledName);
+          ctor ? functions().lookupFunctionById(ctor->declarationId) : nullptr;
 
       // A class with no constructor at all is fully described by the zeroed
       // storage; anything else must reach its constructor, so a lookup that
@@ -843,7 +831,7 @@ void VariableGenerator::emitStaticInitFunction() {
       }
 
       const auto& paramTypes =
-          ctor.method ? ctor.method->paramTypes : std::vector<sun::TypePtr>{};
+          ctor ? ctor->paramTypes : std::vector<sun::TypePtr>{};
 
       std::vector<Value*> ctorArgValues;
       // Method closure; the receiver is the global variable

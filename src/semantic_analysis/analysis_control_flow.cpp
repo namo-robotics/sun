@@ -215,6 +215,8 @@ void SemanticAnalyzer::analyzeForInLoop(ForInExprAST& forInExpr) {
   std::shared_ptr<sun::ClassType> iteratorType = classType;
   if (!implementsIterator) {
     const auto* iterMethod = classType->getMethod("iter");
+    if (iterMethod)
+      forInExpr.forInAnalysis().iteratorFactory = iterMethod->declarationId;
     iteratorType = iterMethod ? std::dynamic_pointer_cast<sun::ClassType>(
                                     sun::unwrapRef(iterMethod->returnType))
                               : nullptr;
@@ -233,6 +235,9 @@ void SemanticAnalyzer::analyzeForInLoop(ForInExprAST& forInExpr) {
                          classType->getDisplayName() + ") Option<T>",
                      forInExpr.getLocation());
   }
+
+  forInExpr.forInAnalysis().iteratorNext = nextMethod->declarationId;
+  forInExpr.forInAnalysis().iteratorResultType = nextMethod->returnType;
 
   // next() takes exactly the iterable by ref: codegen passes the
   // iterable's address, so any other parameter type would reinterpret it

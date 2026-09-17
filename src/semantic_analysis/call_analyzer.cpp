@@ -557,11 +557,10 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMethodCallee(
 
     auto mutableClassType =
         std::static_pointer_cast<sun::ClassType>(objectType);
-    // Point the call at the specialization, under the name given where
-    // it was instantiated (pack suffix included).
+    // Retain the selected specialization independently of its symbol.
     if (auto specialized = generics_.instantiateGenericMethod(
             mutableClassType, methodName, typeArgPtrs, packArgTypes)) {
-      memberAccess.setQualifiedName(specialized->getProto().getQualifiedName());
+      memberAccess.setTargetDeclarationId(specialized->getDeclarationId());
     }
 
     if (const sun::ClassMethod* method =
@@ -596,6 +595,7 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMethodCallee(
   // Try to find a method overload matching the argument types
   if (const sun::ClassMethod* method =
           ctx_.accessibleMethodForArgs(*classType, methodName, argTypes, loc)) {
+    memberAccess.setTargetDeclarationId(method->declarationId);
     memberAccess.setResolvedType(
         sun::Types::Function(method->returnType, method->paramTypes,
                              method->canThrow, method->isUnsafe));
@@ -651,8 +651,8 @@ CallAnalyzer::CallSignature CallAnalyzer::resolveCallSignature(
     signature.paramTypes = lambda->getParamTypes();
     signature.known = true;
   } else if (callee.classType && callee.classType->isClass()) {
-    if (auto params = resolveConstructorParams(*callee.classType, argTypes,
-                                               callExpr.getLocation())) {
+    if (auto params =
+            resolveConstructorParams(*callee.classType, argTypes, callExpr)) {
       signature.paramTypes = std::move(*params);
       signature.known = true;
     }
@@ -731,9 +731,11 @@ void CallAnalyzer::checkThrowPropagation(const CallExprAST& callExpr,
 
 std::optional<std::vector<sun::TypePtr>> CallAnalyzer::resolveConstructorParams(
     const sun::ClassType& classType, const std::vector<sun::TypePtr>& argTypes,
-    const Position& loc) {
+    const ExprAST& call) {
+  const auto& loc = call.getLocation();
   if (const auto* initMethod =
           ctx_.accessibleMethodForArgs(classType, "init", argTypes, loc)) {
+    call.setTargetDeclarationId(initMethod->declarationId);
     return initMethod->paramTypes;
   }
   if (!classType.getMethod("init")) {
@@ -1058,6 +1060,7 @@ void CallAnalyzer::recordInitArgumentConversions(GenericCallAST& genericCall) {
     return;
   }
 
+  if (init) genericCall.setTargetDeclarationId(init->declarationId);
   std::vector<sun::TypePtr> paramTypes{argTypes[0]};
   for (size_t i = 0; i < ctorArgTypes.size(); ++i) {
     paramTypes.push_back(init ? init->paramTypes[i] : ctorArgTypes[i]);
@@ -1255,9 +1258,8 @@ void CallAnalyzer::analyzeGenericClassConstruction(
   // non-generic class. Without this, a call with the wrong argument count
   // would silently skip the constructor in codegen.
   if (specializedClass) {
-    if (auto params =
-            resolveConstructorParams(*specializedClass, resolvedTypesOf(args),
-                                     genericCall.getLocation())) {
+    if (auto params = resolveConstructorParams(
+            *specializedClass, resolvedTypesOf(args), genericCall)) {
       expectedParamTypes = std::move(*params);
     }
   }

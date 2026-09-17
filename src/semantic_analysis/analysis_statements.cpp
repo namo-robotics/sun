@@ -248,6 +248,19 @@ void SemanticAnalyzer::analyzeCompoundAssignment(
                       compound.getLocation());
   sun::TypePtr targetType =
       sun::unwrapRef(compound.getTarget()->getResolvedType());
+  if (compound.getTarget()->getType() == ASTNodeType::INDEX) {
+    const auto& index = static_cast<const IndexAST&>(*compound.getTarget());
+    auto receiver = sun::unwrapRef(index.getTarget()->getResolvedType());
+    if (const auto* cls = sun::tryGetType<sun::ClassType>(receiver)) {
+      const auto* method =
+          ctx_.accessibleMethod(*cls, "__setindex__", compound.getLocation());
+      if (!method)
+        logAndThrowError("Class does not implement __setindex__ for assignment",
+                         compound.getLocation());
+      checkUnsafeCall(method->isUnsafe, "__setindex__", compound.getLocation());
+      compound.setTargetDeclarationId(method->declarationId);
+    }
+  }
 
   // Analyze the value with the target's type as expected
   analyzeExpr(const_cast<ExprAST&>(*compound.getValue()), targetType);
@@ -336,8 +349,7 @@ void SemanticAnalyzer::analyzeIndexedAssignment(
   analyzeExpr(const_cast<ExprAST&>(*assignment.getValue()));
   checkMoveSource(*assignment.getValue(), assignment.getLocation());
 
-  // `obj[i] = v` on a class dispatches to __setindex__ (resolved in
-  // codegen); it must be accessible from here like any other member
+  // Retain the setter selected for a class indexed assignment.
   if (assignment.getTarget()->getType() == ASTNodeType::INDEX) {
     const auto& idx = static_cast<const IndexAST&>(*assignment.getTarget());
     sun::TypePtr objType = unwrapRef(idx.getTarget()->getResolvedType());
@@ -345,9 +357,12 @@ void SemanticAnalyzer::analyzeIndexedAssignment(
       const auto* method =
           ctx_.accessibleMethod(static_cast<const sun::ClassType&>(*objType),
                                 "__setindex__", assignment.getLocation());
-      if (method)
-        checkUnsafeCall(method->isUnsafe, "__setindex__",
-                        assignment.getLocation());
+      if (!method)
+        logAndThrowError("Class does not implement __setindex__ for assignment",
+                         assignment.getLocation());
+      assignment.setTargetDeclarationId(method->declarationId);
+      checkUnsafeCall(method->isUnsafe, "__setindex__",
+                      assignment.getLocation());
     }
   }
 

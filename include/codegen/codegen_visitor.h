@@ -308,14 +308,10 @@ class CodegenVisitor {
   // The boxed indices are a `ref array<i64>` view value.
   llvm::Value* boxIndicesToArrayRef(const IndexAST& expr);
   llvm::Value* emitClassIndexCall(llvm::Value* objectPtr, llvm::Value* idxView,
-                                  sun::ClassType* classType);
+                                  sun::DeclarationId declaration);
   llvm::Value* emitClassSetIndexCall(llvm::Value* objectPtr,
                                      llvm::Value* idxView, llvm::Value* value,
-                                     sun::ClassType* classType);
-  llvm::Function* declareIndexProtocolMethod(sun::ClassType* classType,
-                                             const sun::ClassMethod& method,
-                                             const std::string& mangledName,
-                                             llvm::Type* valueParamType);
+                                     const sun::ClassMethod* method);
 
   // `arr.ndims()` and `arr.dim(i)` on a sized array or a view
   llvm::Value* codegenArrayQuery(const CallExprAST& call,
@@ -427,7 +423,6 @@ class CodegenVisitor {
   // Handles class method dispatch (regular and generic)
   llvm::Value* codegenClassMethodCall(const CallExprAST& expr,
                                       llvm::Value* objectPtr,
-                                      sun::ClassType* classType,
                                       const std::string& methodName,
                                       const MemberAccessAST* memberAccess);
 
@@ -505,7 +500,7 @@ class CodegenVisitor {
                                  sun::ClassType* classType);
   llvm::Value* codegenClassSetIndex(const IndexAST& indexExpr,
                                     const ExprAST* valueExpr,
-                                    sun::ClassType* classType);
+                                    const sun::ClassMethod* method);
 
   // Attach a #dbg_declare for a user variable (no-op without -g)
   void debugDeclareLocal(llvm::AllocaInst* alloca, const std::string& name,

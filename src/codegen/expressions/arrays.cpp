@@ -314,12 +314,9 @@ Value* CodegenVisitor::codegen(const IndexedAssignmentAST& expr) {
       sun::unwrapRef(indexExpr.getTarget()->getResolvedType());
 
   if (auto* classType = sun::tryGetType<sun::ClassType>(targetType)) {
-    if (classType->getMethod("__setindex__")) {
-      return codegenClassSetIndex(indexExpr, expr.getValue(), classType);
-    }
-    logAndThrowError("Class " + classType->getDisplayName() +
-                     " does not implement __setindex__ for indexed assignment");
-    return nullptr;
+    return codegenClassSetIndex(
+        indexExpr, expr.getValue(),
+        classType->getMethod(expr.getTargetDeclarationId()));
   }
 
   auto& sunArrayType = sun::requireType<sun::ArrayType>(
@@ -430,41 +427,10 @@ Value* CodegenVisitor::boxIndicesToArrayRef(const IndexAST& expr) {
 
 // Declare a class's __index__/__slice__/__setindex__ method on demand when
 // it has not been emitted yet: (closure, view [, value]) -> return type
-Function* CodegenVisitor::declareIndexProtocolMethod(
-    sun::ClassType* classType, const sun::ClassMethod& method,
-    const std::string& mangledName, llvm::Type* valueParamType) {
-  if (Function* existing = module->getFunction(mangledName)) return existing;
-  std::vector<llvm::Type*> paramTypes;
-  paramTypes.push_back(PointerType::getUnqual(ctx.getContext()));  // closure
-  paramTypes.push_back(
-      sun::ArrayType::getArrayStructType(ctx.getContext()));  // the view
-  if (valueParamType) paramTypes.push_back(valueParamType);
-
-  llvm::Type* returnType;
-  if (method.returnType && method.returnType->toString() != "void") {
-    returnType = typeResolver.resolveForReturn(method.returnType);
-  } else {
-    returnType = Type::getVoidTy(ctx.getContext());
-  }
-  FunctionType* funcType = FunctionType::get(returnType, paramTypes, false);
-  return Function::Create(funcType, Function::ExternalLinkage, mangledName,
-                          module);
-}
-
 // Call obj.__index__(indices) with a pre-boxed index view
 Value* CodegenVisitor::emitClassIndexCall(Value* objectPtr, Value* idxView,
-                                          sun::ClassType* classType) {
-  const sun::ClassMethod* method = classType->getMethod("__index__");
-  if (!method) {
-    logAndThrowError("Class " + classType->getDisplayName() +
-                     " does not have __index__ method");
-    return nullptr;
-  }
-
-  std::string mangledName =
-      classType->getMangledMethodName("__index__", method->paramTypes);
-  Function* methodFunc =
-      declareIndexProtocolMethod(classType, *method, mangledName, nullptr);
+                                          sun::DeclarationId declaration) {
+  Function* methodFunc = functions.lookupFunctionById(declaration);
 
   std::vector<Value*> argValues;
   argValues.push_back(materializeMethodClosure(methodFunc, objectPtr));
@@ -479,7 +445,7 @@ Value* CodegenVisitor::codegenClassIndex(const IndexAST& expr, Value* objectPtr,
                                          sun::ClassType* classType) {
   Value* idxView = boxIndicesToArrayRef(expr);
   if (!idxView) return nullptr;
-  return emitClassIndexCall(objectPtr, idxView, classType);
+  return emitClassIndexCall(objectPtr, idxView, expr.getTargetDeclarationId());
 }
 
 // -------------------------------------------------------------------
@@ -492,13 +458,6 @@ Value* CodegenVisitor::codegenClassSlice(const IndexAST& expr, Value* objectPtr,
   const auto& indices = expr.getIndices();
   llvm::Type* i64Ty = llvm::Type::getInt64Ty(ctx.getContext());
   llvm::Type* i1Ty = llvm::Type::getInt1Ty(ctx.getContext());
-
-  const sun::ClassMethod* method = classType->getMethod("__slice__");
-  if (!method) {
-    logAndThrowError("Class " + classType->getDisplayName() +
-                     " does not have __slice__ method");
-    return nullptr;
-  }
 
   // SliceRange struct type matches Sun's definition: { i64 start, i64 end, i1
   // hasStart, i1 hasEnd } Use named struct type for compatibility with
@@ -591,10 +550,8 @@ Value* CodegenVisitor::codegenClassSlice(const IndexAST& expr, Value* objectPtr,
 
   Value* rangesView = emitArrayView(rangesData, {numSlices});
 
-  std::string mangledName =
-      classType->getMangledMethodName("__slice__", method->paramTypes);
   Function* methodFunc =
-      declareIndexProtocolMethod(classType, *method, mangledName, nullptr);
+      functions.lookupFunctionById(expr.getTargetDeclarationId());
 
   std::vector<Value*> argValues;
   argValues.push_back(materializeMethodClosure(methodFunc, objectPtr));
@@ -613,21 +570,9 @@ Value* CodegenVisitor::codegenClassSlice(const IndexAST& expr, Value* objectPtr,
 // Call obj.__setindex__(indices, value) with a pre-boxed index view
 Value* CodegenVisitor::emitClassSetIndexCall(Value* objectPtr, Value* idxView,
                                              Value* value,
-                                             sun::ClassType* classType) {
-  const sun::ClassMethod* method = classType->getMethod("__setindex__");
-  if (!method) {
-    logAndThrowError("Class " + classType->getDisplayName() +
-                     " does not have __setindex__ method");
-    return nullptr;
-  }
-
-  std::string mangledName =
-      classType->getMangledMethodName("__setindex__", method->paramTypes);
-  llvm::Type* valueParamType = method->paramTypes.size() >= 2
-                                   ? typeResolver.resolve(method->paramTypes[1])
-                                   : value->getType();
-  Function* methodFunc = declareIndexProtocolMethod(
-      classType, *method, mangledName, valueParamType);
+                                             const sun::ClassMethod* method) {
+  if (!method) logAndThrowError("Indexed assignment has no selected setter");
+  Function* methodFunc = functions.lookupFunctionById(method->declarationId);
 
   // Coerce the value to the __setindex__ value-parameter type (e.g. an i64
   // loop counter assigned into a Vec<i32>)
@@ -653,7 +598,7 @@ Value* CodegenVisitor::emitClassSetIndexCall(Value* objectPtr, Value* idxView,
 
 Value* CodegenVisitor::codegenClassSetIndex(const IndexAST& indexExpr,
                                             const ExprAST* valueExpr,
-                                            sun::ClassType* classType) {
+                                            const sun::ClassMethod* method) {
   Value* objectPtr = codegen(*indexExpr.getTarget());
   if (!objectPtr) return nullptr;
 
@@ -663,5 +608,5 @@ Value* CodegenVisitor::codegenClassSetIndex(const IndexAST& indexExpr,
   Value* valueVal = codegen(*valueExpr);
   if (!valueVal) return nullptr;
 
-  return emitClassSetIndexCall(objectPtr, idxView, valueVal, classType);
+  return emitClassSetIndexCall(objectPtr, idxView, valueVal, method);
 }

@@ -99,22 +99,6 @@ class ClassGenerator {
                                          const std::string& className,
                                          sun::ClassType& classType);
 
-  // Result of constructor lookup - contains method info and mangled name
-  struct ConstructorLookup {
-    const sun::ClassMethod* method = nullptr;
-    std::string mangledName;
-    bool found() const { return method != nullptr || !mangledName.empty(); }
-  };
-
-  // Look up a constructor (init method) that matches the given argument types
-  ConstructorLookup lookupConstructor(
-      sun::ClassType* classType,
-      const std::vector<std::unique_ptr<ExprAST>>& args);
-
-  // Overload for pre-collected argument types
-  ConstructorLookup lookupConstructor(
-      sun::ClassType* classType, const std::vector<sun::TypePtr>& argTypes);
-
   // ---------------------------------------------------------------
   // Generic instantiation
   // ---------------------------------------------------------------
@@ -216,8 +200,7 @@ class ClassGenerator {
 
   // Bound method reference: obj.method in value position (lambda-typed).
   llvm::Value* codegenBoundMethodReference(const MemberAccessAST& expr,
-                                           llvm::Value* objectPtr,
-                                           sun::ClassType* classType);
+                                           llvm::Value* objectPtr);
 
   // The frame currently being emitted; class codegen is what sets the
   // receiver and the return contract for a method body

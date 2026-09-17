@@ -238,28 +238,12 @@ Value* LoopGenerator::codegen(const ForInExprAST& expr) {
   // The container object is passed to next()
   Value* containerObj = iterableObj;
 
-  // Class name for method lookup (includes hash prefix for imported types)
-  auto iterableClassType = sun::requireTypePtr<sun::ClassType>(
-      iterableType, "for-in iterable (needs a next() method)",
-      expr.getIterable()->getLocation());
-  std::string iterableTypeName = iterableClassType->getMangledName();
-
-  // The iterable is either the iterator itself (has next()) or a container
-  // whose iter() produces one
-  Function* nextFunc =
-      functions().findClassMethod(iterableClassType, iterableTypeName, "next");
-
+  const auto& protocol = expr.forInAnalysis();
+  Function* nextFunc = functions().lookupFunctionById(protocol.iteratorNext);
   Value* iteratorObj = iterableObj;
-  std::shared_ptr<sun::ClassType> iteratorClassType = iterableClassType;
-
-  if (!nextFunc) {
-    Function* iterFunc = functions().findClassMethod(iterableClassType,
-                                                     iterableTypeName, "iter");
-    if (!iterFunc) {
-      logAndThrowError("for-in loop: " + iterableTypeName +
-                       " must have a next() method or an iter() method");
-      return nullptr;
-    }
+  if (protocol.iteratorFactory) {
+    Function* iterFunc =
+        functions().lookupFunctionById(protocol.iteratorFactory);
 
     Value* actualIterator = ctx.builder->CreateCall(
         iterFunc,
@@ -275,31 +259,10 @@ Value* LoopGenerator::codegen(const ForInExprAST& expr) {
         func, "iter.alloca", cast<StructType>(iterRetType));
     ctx.builder->CreateStore(actualIterator, iterAlloca);
     iteratorObj = iterAlloca;
-
-    // The iterator's sun type comes from iter()'s return type (carries the
-    // correct hash prefix, unlike LLVM struct names)
-    const auto* iterMethod = iterableClassType->getMethod("iter");
-    iteratorClassType =
-        iterMethod ? sun::tryGetTypePtr<sun::ClassType>(iterMethod->returnType)
-                   : nullptr;
-    if (!iteratorClassType) {
-      logAndThrowError("iter() must return a class type with a next() method");
-      return nullptr;
-    }
-    nextFunc = functions().findClassMethod(
-        iteratorClassType, iteratorClassType->getMangledName(), "next");
-    if (!nextFunc) {
-      logAndThrowError("Iterator returned by iter() must have next() method");
-      return nullptr;
-    }
   }
 
-  // next() returns Option<T>: sema verified the shape and that T matches the
-  // loop variable annotation
-  const auto* nextMethod = iteratorClassType->getMethod("next");
-  auto optionType = nextMethod ? sun::tryGetTypePtr<sun::EnumType>(
-                                     sun::unwrapRef(nextMethod->returnType))
-                               : nullptr;
+  auto optionType = sun::tryGetTypePtr<sun::EnumType>(
+      sun::unwrapRef(protocol.iteratorResultType));
   if (!optionType || !optionType->getVariant("Some") ||
       !optionType->getVariant("None")) {
     logAndThrowError("for-in loop: next() must return Option<T>");

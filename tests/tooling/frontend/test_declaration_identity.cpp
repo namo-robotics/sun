@@ -270,3 +270,25 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   visit(*result.ast->getBody()[1]);
   EXPECT_EQ(checked, 2u);
 }
+
+TEST(Tooling_Frontend_DeclarationIdentity,
+     generic_interface_templates_use_ids) {
+  auto driver = Driver::createForJIT();
+  auto result = driver->analyzeString(R"(
+    module first { interface Item<T> { method get() T; } }
+    module second { interface Item<T> { method get() T; } }
+  )");
+  ASSERT_FALSE(result.error);
+  const auto& first = static_cast<const ModuleAST&>(*result.ast->getBody()[0]);
+  const auto& second = static_cast<const ModuleAST&>(*result.ast->getBody()[1]);
+  auto firstId = first.getBody().getBody()[0]->getDeclarationId();
+  auto secondId = second.getBody().getBody()[0]->getDeclarationId();
+  auto firstType = result.typeRegistry->getInterface(firstId);
+  auto secondType = result.typeRegistry->getInterface(secondId);
+  EXPECT_NE(firstType, secondType);
+  EXPECT_FALSE(firstType->equals(*secondType));
+  EXPECT_EQ(firstType->getDeclarationId(), firstId);
+  EXPECT_EQ(secondType->getDeclarationId(), secondId);
+  EXPECT_EQ(result.typeRegistry->getInterface("first_Item"), firstType);
+  EXPECT_EQ(result.typeRegistry->getInterface("second_Item"), secondType);
+}

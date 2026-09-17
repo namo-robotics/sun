@@ -348,6 +348,9 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
       auto& method = specializedClass->addMethod(
           proto.getName(), returnType, paramTypes, methodClone.isConstructor,
           proto.getTypeParameterNames(), proto.canThrow());
+      method.declarationId = proto.getDeclarationId();
+      if (proto.getName() == "deinit")
+        specializedClass->deinitializer = method.declarationId;
       method.visibility = methodVisibility(*methodClone.function);
       method.isConst = methodClone.isConst;
       method.isUnsafe = methodClone.function->getProto().isUnsafeMethod();
@@ -1229,6 +1232,9 @@ GenericSpecializer::instantiateGenericInterface(
       auto& method = specializedInterface->addMethod(
           proto.getName(), returnType, paramTypes, methodDecl.hasDefaultImpl,
           proto.getTypeParameterNames());
+      method.declarationId = ctx_.types()->declarations.add(
+          sun::DeclarationKind::Function, proto.getName(),
+          specializedInterface->getDeclarationId());
       method.visibility = methodVisibility(*methodDecl.function);
       method.isConst = methodDecl.isConst;
       method.isUnsafe = methodDecl.function->getProto().isUnsafeMethod();

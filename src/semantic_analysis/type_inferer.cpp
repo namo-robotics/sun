@@ -264,6 +264,7 @@ sun::TypePtr TypeInferer::inferIndexType(const IndexAST& arrIdx) {
       const sun::ClassMethod* sliceMethod =
           ctx_.accessibleMethod(*classType, "__slice__", arrIdx.getLocation());
       if (sliceMethod) {
+        arrIdx.setTargetDeclarationId(sliceMethod->declarationId);
         return sliceMethod->returnType;
       }
       logAndThrowError("Class " + classType->getDisplayName() +
@@ -275,6 +276,7 @@ sun::TypePtr TypeInferer::inferIndexType(const IndexAST& arrIdx) {
       const sun::ClassMethod* indexMethod =
           ctx_.accessibleMethod(*classType, "__index__", arrIdx.getLocation());
       if (indexMethod) {
+        arrIdx.setTargetDeclarationId(indexMethod->declarationId);
         return indexMethod->returnType;
       }
       logAndThrowError("Class " + classType->getDisplayName() +
@@ -961,6 +963,8 @@ sun::TypePtr TypeInferer::inferClassMemberType(
   const sun::ClassMethod* method =
       ctx_.accessibleMethod(*classType, memberName, memberAccess.getLocation());
   if (method) {
+    if (!method->isGeneric())
+      memberAccess.setTargetDeclarationId(method->declarationId);
     sun::TypePtr returnType = method->returnType;
 
     // Generic method calls: the type arguments written at the call,
@@ -988,12 +992,10 @@ sun::TypePtr TypeInferer::inferClassMemberType(
         // specialized FunctionAST on the generic method for codegen access
         auto mutableClassType =
             std::static_pointer_cast<sun::ClassType>(objectType);
-        // Point the call at the specialization, under the name given
-        // where it was instantiated.
+        // Retain the selected specialization independently of its symbol.
         if (auto specialized = generics_.instantiateGenericMethod(
                 mutableClassType, memberName, typeArgPtrs)) {
-          memberAccess.setQualifiedName(
-              specialized->getProto().getQualifiedName());
+          memberAccess.setTargetDeclarationId(specialized->getDeclarationId());
         }
 
         ctx_.enterTypeParamScope(typeParams, typeArgPtrs);
@@ -1034,6 +1036,7 @@ sun::TypePtr TypeInferer::inferInterfaceMemberType(
   const sun::InterfaceMethod* method =
       ctx_.accessibleMethod(*ifaceType, memberName, memberAccess.getLocation());
   if (method) {
+    memberAccess.setTargetDeclarationId(method->declarationId);
     return sun::Types::Function(method->returnType, method->paramTypes, false,
                                 method->isUnsafe);
   }

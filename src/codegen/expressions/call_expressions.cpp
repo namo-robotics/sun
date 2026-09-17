@@ -498,25 +498,10 @@ Value* CodegenVisitor::codegenModuleFunctionCall(
 Value* CodegenVisitor::codegenInterfaceMethodCall(
     const CallExprAST& expr, Value* objectPtr, sun::InterfaceType* ifaceType,
     const std::string& methodName) {
-  // Get the method info from the interface
-  const sun::InterfaceMethod* ifaceMethod = ifaceType->getMethod(methodName);
-  if (!ifaceMethod) {
-    logAndThrowError("Unknown method: " + methodName + " on interface " +
-                     ifaceType->getName());
-    return nullptr;
-  }
-
-  // Generic interface methods cannot be dispatched via vtable
-  if (ifaceMethod->isGeneric()) {
-    logAndThrowError(
-        "Cannot dynamically dispatch generic method '" + methodName +
-        "' on interface type '" + ifaceType->getName() +
-        "'. Generic methods require compile-time type information.");
-    return nullptr;
-  }
-
-  // Get the vtable slot index for this method
-  int methodIndex = ifaceType->getMethodIndex(methodName);
+  const auto& signature = sun::requireType<sun::FunctionType>(
+      *expr.getCallee(), "interface method call");
+  int methodIndex =
+      ifaceType->getMethodIndex(expr.getCallee()->getTargetDeclarationId());
   if (methodIndex < 0) {
     logAndThrowError("Method not in vtable: " + methodName + " on interface " +
                      ifaceType->getName());
@@ -546,11 +531,11 @@ Value* CodegenVisitor::codegenInterfaceMethodCall(
   // Parameters: closure ptr, then method params
   std::vector<llvm::Type*> paramTypes;
   paramTypes.push_back(ptrTy);  // closure
-  for (const auto& pt : ifaceMethod->paramTypes) {
+  for (const auto& pt : signature.getParamTypes()) {
     paramTypes.push_back(typeResolver.resolve(pt));
   }
   llvm::Type* returnType =
-      typeResolver.resolveForReturn(ifaceMethod->returnType);
+      typeResolver.resolveForReturn(signature.getReturnType());
   llvm::FunctionType* funcType =
       FunctionType::get(returnType, paramTypes, false);
 
@@ -561,7 +546,7 @@ Value* CodegenVisitor::codegenInterfaceMethodCall(
       materializeMethodClosure(funcPtr, dataPtr, "iface.closure"));
 
   if (!emitCallArguments(expr.getArgs(), expr.getArgConversions(),
-                         ifaceMethod->paramTypes, funcType, argValues,
+                         signature.getParamTypes(), funcType, argValues,
                          methodName)) {
     return nullptr;
   }
@@ -581,113 +566,27 @@ Value* CodegenVisitor::codegenInterfaceMethodCall(
 // -------------------------------------------------------------------
 
 Value* CodegenVisitor::codegenClassMethodCall(
-    const CallExprAST& expr, Value* objectPtr, sun::ClassType* classType,
-    const std::string& methodName, const MemberAccessAST* memberAccess) {
-  // Semantic analysis must have resolved the method overload and stored
-  // its signature in the member access's resolved type (a FunctionType).
-  const sun::ClassMethod* method = nullptr;
-
-  if (!memberAccess) {
+    const CallExprAST& expr, Value* objectPtr, const std::string& methodName,
+    const MemberAccessAST* memberAccess) {
+  if (!memberAccess)
     logAndThrowError("Internal error: method call without member access AST");
-    return nullptr;
-  }
-
-  // Use the param types from semantic analysis to find the exact method
-  const auto& paramTypes =
-      sun::requireType<sun::FunctionType>(
-          *memberAccess,
-          "method '" + methodName + "' on class " + classType->getDisplayName())
-          .getParamTypes();
-  method = classType->getMethodForArgs(methodName, paramTypes);
-
-  // Fallback: for generic methods, type parameters won't match concrete args,
-  // so look up by name alone
-  if (!method) {
-    method = classType->getMethod(methodName);
-  }
-
-  if (!method) {
-    logAndThrowError("Unknown method: " + methodName + " on class " +
-                     classType->getDisplayName());
-    return nullptr;
-  }
-
-  // Handle generic method calls with type arguments
-  // e.g., allocator.create<Point>(3, 4)
-  if (memberAccess && memberAccess->hasResolvedTypeArgs() &&
-      method->isGeneric()) {
-    // Call exactly what semantic analysis instantiated. Codegen never spells
-    // the name itself: it would have to reproduce the type arguments and the
-    // pack suffix, and any drift makes the call reach for a missing symbol.
-    if (!memberAccess->hasQualifiedName()) {
-      logAndThrowError(
-          "Generic method specialization not recorded by semantic analysis: " +
-          methodName);
-      return nullptr;
-    }
-    std::string mangledName = memberAccess->getQualifiedName().mangled();
-
-    // Look up the specialized method function
-    Function* specializedFunc = module->getFunction(mangledName);
-    if (!specializedFunc) {
-      logAndThrowError("Generic method specialization not found: " +
-                       mangledName);
-      return nullptr;
-    }
-
-    // Build arguments: method closure first, then user arguments. The
-    // parameter types are the specialization's (type arguments substituted),
-    // recorded by semantic analysis as the callee's type; a `ref U` parameter
-    // takes the argument's address like any other ref parameter.
-    std::vector<Value*> argValues;
-    argValues.push_back(materializeMethodClosure(specializedFunc, objectPtr));
-
-    const auto& paramTypes =
-        sun::requireType<sun::FunctionType>(
-            *expr.getCallee(), "generic method call '" + methodName + "'")
-            .getParamTypes();
-    if (!emitCallArguments(expr.getArgs(), expr.getArgConversions(), paramTypes,
-                           specializedFunc->getFunctionType(), argValues,
-                           methodName)) {
-      return nullptr;
-    }
-
-    Value* result = errors.emitPossiblyThrowingCall(
-        specializedFunc->getFunctionType(), specializedFunc, argValues,
-        method->canThrow, "method.call");
-    return materializeStructReturn(result);
-  }
-
-  // Get the mangled method name for regular (non-generic) call
-  // Include parameter types for overload disambiguation
-  std::string mangledName =
-      classType->getMangledMethodName(methodName, method->paramTypes);
-  Function* methodFunc = module->getFunction(mangledName);
-  if (!methodFunc) {
-    logAndThrowError(
-        "Method function not found: " + classType->getDisplayName() + "." +
-        methodName + " (mangled: " + mangledName + ")");
-    return nullptr;
-  }
-
-  // Build arguments: method closure first, then user arguments
+  const auto& signature = sun::requireType<sun::FunctionType>(
+      *memberAccess, "method '" + methodName + "'");
+  Function* methodFunc =
+      functions.lookupFunctionById(memberAccess->getTargetDeclarationId());
   std::vector<Value*> argValues;
   argValues.push_back(materializeMethodClosure(methodFunc, objectPtr));
-
-  if (!emitCallArguments(expr.getArgs(), expr.getArgConversions(),
-                         method->paramTypes, methodFunc->getFunctionType(),
-                         argValues, methodName)) {
+  if (!emitCallArguments(
+          expr.getArgs(), expr.getArgConversions(), signature.getParamTypes(),
+          methodFunc->getFunctionType(), argValues, methodName)) {
     return nullptr;
   }
-
-  // If this is an explicit deinit() call, mark as already deinited
   if (methodName == "deinit") {
     scopes.markClassAllocationAsDeinited(objectPtr);
   }
-
   Value* result = errors.emitPossiblyThrowingCall(
-      methodFunc->getFunctionType(), methodFunc, argValues, method->canThrow,
-      "method.call");
+      methodFunc->getFunctionType(), methodFunc, argValues,
+      signature.canThrow(), "method.call");
   return materializeStructReturn(result);
 }
 
@@ -779,8 +678,7 @@ Value* CodegenVisitor::codegenMethodCall(const CallExprAST& expr,
   auto& classType = sun::requireType<sun::ClassType>(
       objectType, "method call receiver", memberAccess.getLocation());
 
-  return codegenClassMethodCall(expr, objectPtr, &classType, methodName,
-                                &memberAccess);
+  return codegenClassMethodCall(expr, objectPtr, methodName, &memberAccess);
 }
 
 // -------------------------------------------------------------------

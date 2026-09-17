@@ -32,7 +32,8 @@ Value* IntrinsicsGenerator::codegenSizeofIntrinsic(sun::TypePtr targetType) {
 
 Value* IntrinsicsGenerator::codegenInitIntrinsic(
     sun::TypePtr targetType, const std::vector<std::unique_ptr<ExprAST>>& args,
-    const std::vector<sun::ArgConversion>& conversions) {
+    const std::vector<sun::ArgConversion>& conversions,
+    sun::DeclarationId constructor) {
   // _init<T>(ptr, args...) constructs T at ptr with forwarded arguments
   if (args.empty()) {
     logAndThrowError("_init<T>() requires a pointer argument");
@@ -78,26 +79,11 @@ Value* IntrinsicsGenerator::codegenInitIntrinsic(
         DL.getTypeAllocSize(structTy), llvm::MaybeAlign(1));
   }
 
-  // Resolve the constructor the arguments select (variadic packs are already
-  // expanded into concrete typed args by semantic analysis). Declare it if
-  // the class is processed later in codegen order.
-  std::vector<sun::TypePtr> argTypes;
-  for (size_t i = 1; i < args.size(); ++i) {
-    argTypes.push_back(args[i]->getResolvedType());
-  }
-  ClassGenerator::ConstructorLookup ctor =
-      gen_.classGenerator().lookupConstructor(classType, argTypes);
-  const size_t ctorArgCount = args.size();  // 'this' replaces the pointer
-
-  Function* ctorFunc = nullptr;
-  Function* candidate =
-      ctor.method ? gen_.functionRegistry().getOrDeclareMethodFunction(
-                        ctor.mangledName, ctor.method->paramTypes,
-                        ctor.method->returnType, ctor.method->canThrow)
-                  : module->getFunction(ctor.mangledName);
-  if (candidate && candidate->arg_size() == ctorArgCount) {
-    ctorFunc = candidate;
-  }
+  const auto* ctor = classType->getMethod(constructor);
+  const size_t ctorArgCount = args.size();
+  Function* ctorFunc =
+      ctor ? gen_.functionRegistry().lookupFunctionById(ctor->declarationId)
+           : nullptr;
 
   if (!ctorFunc) {
     // Zeroed storage fully describes a class with no constructor. Arguments
@@ -118,7 +104,7 @@ Value* IntrinsicsGenerator::codegenInitIntrinsic(
   std::vector<Value*> ctorArgs{
       gen_.materializeMethodClosure(ctorFunc, rawPtr, "init.closure")};
   const auto& paramTypes =
-      ctor.method ? ctor.method->paramTypes : std::vector<sun::TypePtr>{};
+      ctor ? ctor->paramTypes : std::vector<sun::TypePtr>{};
   if (!gen_.emitCallArguments(args, conversions, paramTypes,
                               ctorFunc->getFunctionType(), ctorArgs, "_init",
                               /*firstArg=*/1)) {
