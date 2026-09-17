@@ -532,10 +532,10 @@ if(NOT SKIP_STDLIB)
                 COMMAND_EXPAND_LISTS
                 VERBATIM
             )
+            list(APPEND CROSS_MOONS ${CROSS_MOON})
         endif()
-        list(APPEND CROSS_MOONS ${CROSS_MOON})
     endforeach()
-    if(CROSS_MOONS)
+    if(CROSS_MOONS OR SUN_CROSS_TLS_AARCH64)
         add_custom_target(stdlib_cross_moons ALL DEPENDS ${CROSS_MOONS})
     endif()
 
@@ -582,6 +582,9 @@ if(NOT SKIP_STDLIB)
             )
         endif()
         add_custom_target(tls_cross_moon ALL DEPENDS ${CROSS_PACKAGE_DIR}/tls.moon)
+        # One target owns the shared outputs so parallel Make builds cannot
+        # run the bundle command twice or delete an output still in use.
+        add_dependencies(stdlib_cross_moons tls_cross_moon)
     endif()
 
 endif()
