@@ -628,3 +628,75 @@ TEST(Tooling_Lsp_Hover, FieldInitializerUsesAnalyzedExpression) {
   )";
   EXPECT_EQ(hoverAt(source, "seed +"), "seed: i32");
 }
+
+TEST(Tooling_Lsp_Hover, DottedModuleDocumentation) {
+  const std::string source =
+      "/** Readers. */\npublic module a.b.c {\n"
+      "  /** Reads a value. */\n"
+      "  public function read() i32 { return 1; }\n}\n";
+  EXPECT_EQ(hoverAt(source, "a.b"), "public module a");
+  EXPECT_EQ(docAt(source, "a.b"), "");
+  EXPECT_EQ(hoverAt(source, "b.c"), "public module b");
+  EXPECT_EQ(docAt(source, "b.c"), "");
+  EXPECT_EQ(hoverAt(source, "c {"), "public module c");
+  EXPECT_EQ(docAt(source, "c {"), "Readers.");
+  EXPECT_EQ(docAt(source, "function read"), "Reads a value.");
+  auto hover = fullHoverAt(source, "b.c");
+  ASSERT_TRUE(hover);
+  EXPECT_EQ(hover->range.offset, source.find("b.c"));
+  EXPECT_EQ(hover->range.endOffset, source.find("b.c") + 1);
+  EXPECT_FALSE(hoverAt(source, ".b"));
+}
+
+TEST(Tooling_Lsp_Hover, MultilineRepeatedModuleNames) {
+  const std::string source = "/** Inner. */\npublic\nmodule a.\n  a {}\n";
+  EXPECT_EQ(docAt(source, "a."), "");
+  auto hover = fullHoverAt(source, "a {}");
+  ASSERT_TRUE(hover);
+  EXPECT_EQ(hover->code, "public module a");
+  EXPECT_EQ(hover->documentation, "Inner.");
+  EXPECT_EQ(hover->range.line, 4);
+  EXPECT_EQ(hover->range.column, 3);
+  EXPECT_EQ(hover->range.endColumn, 4);
+  EXPECT_EQ(hover->range.offset, source.find("a {}"));
+}
+
+TEST(Tooling_Lsp_Hover, ExplicitModuleDocumentation) {
+  const std::string source =
+      "// Outer.\nmodule outer {\n"
+      "  // Inner.\n  module inner {}\n}\n"
+      "// Detached.\n\nmodule other {}\n";
+  EXPECT_EQ(hoverAt(source, "outer {"), "module outer");
+  EXPECT_EQ(docAt(source, "outer {"), "Outer.");
+  EXPECT_EQ(docAt(source, "inner {"), "Inner.");
+  EXPECT_EQ(docAt(source, "other {"), "");
+}
+
+TEST(Tooling_Lsp_Hover, MergedModuleKeepsOriginDocumentation) {
+  initTestEnvironment();
+  std::filesystem::create_directories("tmp");
+  const auto path =
+      std::filesystem::absolute("tmp/hover_module_origin.sun").string();
+  const std::string source =
+      "/** First. */\npublic module shared {}\n"
+      "/** Later. */\npublic module shared {}\n"
+      "/** Leaf. */\npublic module a.b.c {}\n";
+  {
+    std::ofstream file(path);
+    file << source;
+  }
+  auto driver = Driver::createForAOT("hover_test");
+  auto program = driver->analyzeFiles({path}, {}, {}, {});
+  std::filesystem::remove(path);
+  ASSERT_TRUE(program.ast);
+  ASSERT_FALSE(program.error.has_value());
+  for (const auto& entry :
+       {std::pair{"shared {}", "First."}, std::pair{"a.b", ""},
+        std::pair{"b.c", ""}, std::pair{"c {}", "Leaf."}}) {
+    auto hover = sun::lsp::computeHover(
+        *program.ast, path, source, static_cast<int>(source.find(entry.first)));
+    ASSERT_TRUE(hover) << entry.first;
+    EXPECT_EQ(hover->documentation, entry.second);
+    EXPECT_EQ(hover->range.offset, source.find(entry.first));
+  }
+}

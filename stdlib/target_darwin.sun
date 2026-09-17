@@ -57,28 +57,31 @@ public module std {
   // the 5th pointer-sized slot (byte 32). The full layout is documented at
   // the getaddrinfo declaration in sys.sun.
   var ADDRINFO_ADDR_INDEX: i64 = 4;
+}
 
-  public module io {
-    // open(2) composables: O_CREAT=0x200, O_TRUNC=0x400, O_APPEND=0x8, over
-    // O_WRONLY=1.
-    var O_WRONLY_CREAT_TRUNC: i32 = 1537;  // 0x601
-    var O_WRONLY_CREAT_APPEND: i32 = 521;  // 0x209
+/** File and directory constants for macOS. */
+public module std.io {
+  // open(2) composables: O_CREAT=0x200, O_TRUNC=0x400, O_APPEND=0x8, over
+  // O_WRONLY=1.
+  var O_WRONLY_CREAT_TRUNC: i32 = 1537;  // 0x601
+  var O_WRONLY_CREAT_APPEND: i32 = 521;  // 0x209
 
-    // struct dirent's fixed head: u64 d_ino, u64 d_seekoff, u16 d_reclen,
-    // u16 d_namlen, u8 d_type at byte 20, then the d_name characters.
-    var DIRENT_TYPE_OFFSET: i64 = 20;
-    var DIRENT_NAME_OFFSET: i64 = 21;
-  }
+  // struct dirent's fixed head: u64 d_ino, u64 d_seekoff, u16 d_reclen,
+  // u16 d_namlen, u8 d_type at byte 20, then the d_name characters.
+  var DIRENT_TYPE_OFFSET: i64 = 20;
+  var DIRENT_NAME_OFFSET: i64 = 21;
+}
 
-  public module time {
-    // clockid_t: macOS numbers CLOCK_MONOTONIC 6.
-    var CLOCK_MONOTONIC: i32 = 6;
-  }
+/** Clock constants for macOS. */
+public module std.time {
+  // clockid_t: macOS numbers CLOCK_MONOTONIC 6.
+  var CLOCK_MONOTONIC: i32 = 6;
+}
 
-  public module process {
-    // The job-control signals above 15, where Linux and macOS disagree.
-    public var SIGCHLD: i32 = 20;
-    public var SIGCONT: i32 = 19;
-    public var SIGSTOP: i32 = 17;
-  }
+/** Process signal constants for macOS. */
+public module std.process {
+  // The job-control signals above 15, where Linux and macOS disagree.
+  public var SIGCHLD: i32 = 20;
+  public var SIGCONT: i32 = 19;
+  public var SIGSTOP: i32 = 17;
 }

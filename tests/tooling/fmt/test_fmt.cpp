@@ -927,3 +927,27 @@ TEST(Tooling_Fmt, GenericConstraintKeepsTypeArgumentSyntax) {
             std::string::npos);
   EXPECT_EQ(fmt(formatted), formatted);
 }
+
+TEST(Tooling_Fmt, DocumentedPublicDottedModule) {
+  const std::string expected =
+      "/** Readers. */\n"
+      "public module a.b.c {\n"
+      "  // Reads a value.\n"
+      "  public function read() i32 {\n"
+      "    return 1;\n"
+      "  }\n"
+      "}\n";
+  EXPECT_EQ(fmt("/** Readers. */\npublic module a.b.c{\n"
+                "// Reads a value.\npublic function read()i32{return 1;}\n}"),
+            expected);
+  EXPECT_EQ(fmt(expected), expected);
+}
+
+TEST(Tooling_Fmt, PublicNestedModulesStayNested) {
+  const std::string source =
+      "// Outer.\npublic module a {\n"
+      "  // Inner.\n  public module b {\n"
+      "    function f() void {}\n  }\n}\n";
+  EXPECT_EQ(fmt(source), source);
+  EXPECT_EQ(fmt(fmt(source)), source);
+}

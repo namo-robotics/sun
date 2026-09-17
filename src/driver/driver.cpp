@@ -1375,7 +1375,10 @@ Driver::AnalyzedProgram Driver::analyzeString(const std::string& source,
   try {
     auto parser = prepareStringParser(source, filePath);
     result.ast = parser.parseProgram();
-    if (result.ast) analyzeProgram(*result.ast, parser);
+    if (result.ast) {
+      sun::attachDocComments(*result.ast, source);
+      analyzeProgram(*result.ast, parser);
+    }
   } catch (const SunError& error) {
     result.error = error;
   }
@@ -1516,9 +1519,13 @@ static std::unique_ptr<BlockExprAST> mergeASTs(
     auto modBody =
         std::make_unique<BlockExprAST>(std::move(contents), BlockKind::Module);
     auto mergedMod = std::make_unique<ModuleAST>(modName, std::move(modBody));
-    mergedMod->setVisibility(moduleOrigins[modName]->getVisibility());
-    mergedMod->setLocation(moduleOrigins[modName]->getLocation());
-    mergedMod->setSourceFileId(moduleOrigins[modName]->getSourceFileId());
+    const auto& origin = *moduleOrigins.at(modName);
+    mergedMod->setVisibility(origin.getVisibility());
+    mergedMod->setDoc(origin.getDoc());
+    if (origin.getNameLocation())
+      mergedMod->setNameLocation(*origin.getNameLocation());
+    mergedMod->setLocation(origin.getLocation());
+    mergedMod->setSourceFileId(origin.getSourceFileId());
     mergedBody.push_back(std::move(mergedMod));
   }
 

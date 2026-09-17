@@ -8,6 +8,7 @@
 #include <string>
 
 #include "ast.h"
+#include "parsing/doc_comments.h"
 #include "parsing/lexer.h"
 #include "parsing/parser.h"
 #include "semantic_analysis/field_initialization.h"
@@ -1437,4 +1438,44 @@ TEST(Tooling_Serialization, GenericInterfaceConstraintRoundtrip) {
   TypeConstraint changed = *constraint;
   changed.typeArguments[1] = TypeAnnotation("i64");
   EXPECT_FALSE(changed == *constraint);
+}
+
+TEST(Tooling_Serialization, DottedModuleDocumentationAndNamesSurviveCloning) {
+  const std::string source = "/** Inner. */\npublic module a.a {}";
+  auto program = parseCode(source);
+  ASSERT_TRUE(program);
+  sun::attachDocComments(*program, source);
+  auto clone = program->getBody()[0]->clone();
+  const auto& outer = static_cast<const ModuleAST&>(*clone);
+  const auto& inner =
+      static_cast<const ModuleAST&>(*outer.getBody().getBody()[0]);
+  EXPECT_EQ(outer.getDoc(), "");
+  EXPECT_EQ(inner.getDoc(), "Inner.");
+  ASSERT_TRUE(outer.getNameLocation());
+  ASSERT_TRUE(inner.getNameLocation());
+  EXPECT_EQ(outer.getNameLocation()->offset, source.find("a.a"));
+  EXPECT_EQ(inner.getNameLocation()->offset, source.find("a {}"));
+  EXPECT_EQ(inner.getNameLocation()->endOffset, source.find("a {}") + 1);
+  EXPECT_EQ(inner.getNameLocation()->line, 2);
+  EXPECT_TRUE(outer.isPublic());
+  EXPECT_TRUE(inner.isPublic());
+  EXPECT_EQ(outer.getLocation().offset, inner.getLocation().offset);
+}
+
+TEST(Tooling_Serialization, ModuleMetadataDefaultsAndLocationOmission) {
+  sun::ast::ASTNode legacy;
+  legacy.mutable_module_def()->set_name("legacy");
+  legacy.mutable_module_def()->mutable_body();
+  ASTDeserializer deserializer;
+  auto restored = deserializer.deserialize(legacy);
+  const auto& module = static_cast<const ModuleAST&>(*restored);
+  EXPECT_TRUE(module.getDoc().empty());
+  EXPECT_FALSE(module.getNameLocation());
+
+  auto program = parseCode("/** Module docs. */\nmodule example {}");
+  sun::attachDocComments(*program, "/** Module docs. */\nmodule example {}");
+  ASTSerializer serializer(SerializerConfig{false});
+  auto serialized = serializer.serialize(*program->getBody()[0]);
+  EXPECT_FALSE(serialized.module_def().has_name_location());
+  EXPECT_EQ(serialized.module_def().doc(), "Module docs.");
 }

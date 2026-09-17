@@ -9,6 +9,8 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "ast.h"
 #include "parsing/parser.h"
@@ -318,4 +320,33 @@ TEST(Tooling_Frontend_TypeSpans, ThrowingFunctionType) {
   EXPECT_TRUE(args[0].second.canError);
   EXPECT_EQ(spanText(src, args[0].second.span),
             "function (i32) i32 throws IError");
+}
+
+TEST(Tooling_Frontend_Positions, DottedModuleNamesAndVisibility) {
+  for (bool isPublic : {false, true}) {
+    std::string source = std::string(isPublic ? "public " : "") +
+                         "module a.\n  a.c { module child {} }";
+    auto program = parseSource(source);
+    ASSERT_TRUE(program);
+    const auto* module =
+        dynamic_cast<const ModuleAST*>(program->getBody()[0].get());
+    const std::vector<std::pair<std::string, size_t>> segments = {
+        {"a", source.find("a.")},
+        {"a", source.find("a.c")},
+        {"c", source.find("c {")}};
+    for (const auto& [name, nameOffset] : segments) {
+      ASSERT_NE(module, nullptr);
+      EXPECT_EQ(module->getName(), name);
+      EXPECT_EQ(module->isPublic(), isPublic);
+      EXPECT_EQ(spanText(source, *module), source);
+      ASSERT_TRUE(module->getNameLocation());
+      EXPECT_EQ(spanText(source, *module->getNameLocation()), name);
+      EXPECT_EQ(module->getNameLocation()->offset, nameOffset);
+      module =
+          dynamic_cast<const ModuleAST*>(module->getBody().getBody()[0].get());
+    }
+    ASSERT_NE(module, nullptr);
+    EXPECT_FALSE(module->isPublic());
+    EXPECT_EQ(spanText(source, *module), "module child {}");
+  }
 }

@@ -24,7 +24,8 @@ const ExprAST* findInnermostNodeAt(const BlockExprAST& program,
 
 // Hover text for the construct at byteOffset in an analyzed program:
 // `name: T` for variables and members, full signatures for functions,
-// `class Name` for definitions, the type alone for literals and operators.
+// `class Name` for definitions, `module Name` for module name tokens,
+// and the type alone for literals and operators.
 // Inside a generic class or function body, types come from the first
 // specialization and are printed in terms of the type parameters.
 // `source` is the document text; declarations whose types were never

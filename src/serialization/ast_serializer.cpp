@@ -785,6 +785,9 @@ void ASTSerializer::serializeModule(const ModuleAST& expr,
                                     ast::ASTNode* node) const {
   auto* mod = node->mutable_module_def();
   mod->set_name(expr.getName());
+  mod->set_doc(expr.getDoc());
+  if (config_.include_location && expr.getNameLocation())
+    *mod->mutable_name_location() = serializePosition(*expr.getNameLocation());
   mod->set_visibility(toProto(expr.getVisibility()));
   serializeBlockInto(expr.getBody(), mod->mutable_body());
 }
