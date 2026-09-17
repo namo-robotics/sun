@@ -470,6 +470,8 @@ message ModuleDef {
   string name = 1;
   BlockExpr body = 2;
   Visibility visibility = 3;
+  string doc = 4;
+  Position name_location = 5;
 }
 
 message UsingStmt {

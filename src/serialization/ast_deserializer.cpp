@@ -820,6 +820,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeModule(
   auto body = deserializeBlockExpr(proto.body());
   auto mod = std::make_unique<ModuleAST>(proto.name(), std::move(body));
   mod->setVisibility(fromProto(proto.visibility()));
+  mod->setDoc(proto.doc());
+  if (proto.has_name_location())
+    mod->setNameLocation(deserializePosition(proto.name_location()));
   return mod;
 }
 

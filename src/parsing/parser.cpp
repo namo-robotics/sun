@@ -2328,20 +2328,14 @@ unique_ptr<ExprAST> Parser::parseStatement() {
   if (node) {
     if (node->getType() == ASTNodeType::REFERENCE_CREATION)
       parsingError("'public' cannot be applied to a reference");
-    node->setVisibility(sun::Visibility::Public);
-    // `public module a.b.c` desugars to nested modules sharing one span;
-    // every synthesized level is public.
-    for (auto* mod = dynamic_cast<ModuleAST*>(node.get()); mod;) {
-      const auto& stmts = mod->getBody().getBody();
-      auto* inner = stmts.size() == 1
-                        ? dynamic_cast<ModuleAST*>(stmts.front().get())
-                        : nullptr;
-      if (!inner || inner->getLocation().offset != mod->getLocation().offset)
-        break;
-      inner->setVisibility(sun::Visibility::Public);
-      mod = inner;
+    // Apply the modifier to every module written in a dotted declaration.
+    for (auto* current = node.get(); current;) {
+      auto* module = dynamic_cast<ModuleAST*>(current);
+      auto* inner = module ? module->getShorthandChild() : nullptr;
+      current->setVisibility(sun::Visibility::Public);
+      extendSpanStart(*current, start);
+      current = inner;
     }
-    extendSpanStart(*node, start);  // span covers the modifier
   }
   return node;
 }
@@ -3279,18 +3273,20 @@ unique_ptr<ModuleAST> Parser::parseModuleDecl() {
 
   expectCurrentTokenKind(TokenKind::IDENTIFIER, "expected module name");
 
-  // Collect dotted module path (e.g., "std.io" becomes ["std", "io"])
-  std::vector<std::string> names;
-  names.push_back(curTok.getIdentifier().value());
-  getNextToken();  // eat first module name
-
-  // Parse additional dotted segments: .identifier
-  while (curTok.kind == TokenKind::DOT) {
+  struct Segment {
+    std::string name;
+    Position location;
+  };
+  std::vector<Segment> segments;
+  while (true) {
+    Position location = captureStart();
+    location.setEnd(curTok.end.line, curTok.end.column, curTok.end.offset);
+    segments.push_back({curTok.getIdentifier().value(), std::move(location)});
+    getNextToken();  // eat identifier
+    if (curTok.kind != TokenKind::DOT) break;
     getNextToken();  // eat '.'
     expectCurrentTokenKind(TokenKind::IDENTIFIER,
                            "expected identifier after '.' in module name");
-    names.push_back(curTok.getIdentifier().value());
-    getNextToken();  // eat identifier
   }
 
   expectCurrentTokenKind(TokenKind::BRACE_OPEN,
@@ -3299,23 +3295,19 @@ unique_ptr<ModuleAST> Parser::parseModuleDecl() {
   auto body = parseBlock(BlockKind::Module, /*itemLevel=*/true);
   if (!body) return nullptr;
 
-  // Build nested modules from innermost to outermost
-  // For "module a.b.c { body }", create:
-  //   ModuleAST("a") { ModuleAST("b") { ModuleAST("c") { body } } }
-  auto innermost =
-      std::make_unique<ModuleAST>(std::move(names.back()), std::move(body));
-  names.pop_back();
-
-  std::unique_ptr<ModuleAST> result = finishNode(std::move(innermost), start);
-  for (auto it = names.rbegin(); it != names.rend(); ++it) {
-    // Wrap current result in a new block containing just this module
-    std::vector<std::unique_ptr<ExprAST>> stmts;
-    stmts.push_back(std::move(result));
-    auto wrapperBody =
-        std::make_unique<BlockExprAST>(std::move(stmts), BlockKind::Module);
+  // Wrap the body from the last path segment to the first.
+  std::unique_ptr<ModuleAST> result;
+  for (auto it = segments.rbegin(); it != segments.rend(); ++it) {
+    if (result) {
+      std::vector<std::unique_ptr<ExprAST>> statements;
+      statements.push_back(std::move(result));
+      body = std::make_unique<BlockExprAST>(std::move(statements),
+                                            BlockKind::Module);
+    }
     result = finishNode(
-        std::make_unique<ModuleAST>(std::move(*it), std::move(wrapperBody)),
+        std::make_unique<ModuleAST>(std::move(it->name), std::move(body)),
         start);
+    result->setNameLocation(std::move(it->location));
   }
 
   return result;

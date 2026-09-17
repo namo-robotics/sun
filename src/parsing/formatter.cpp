@@ -589,21 +589,12 @@ class Formatter {
   }
 
   void printModule(const ModuleAST& m) {
-    // module a.b.c parses to nested ModuleASTs sharing the same span start;
-    // genuinely nested modules have distinct starts
     const ModuleAST* cur = &m;
     std::string dotted = cur->getName();
-    while (true) {
-      const auto& body = cur->getBody().getBody();
-      if (body.size() == 1 && body[0] &&
-          body[0]->getType() == ASTNodeType::MODULE &&
-          body[0]->getLocation().offset == cur->getLocation().offset) {
-        cur = static_cast<const ModuleAST*>(body[0].get());
-        dotted += '.';
-        dotted += cur->getName();
-      } else {
-        break;
-      }
+    while (const auto* inner = cur->getShorthandChild()) {
+      dotted += '.';
+      dotted += inner->getName();
+      cur = inner;
     }
     out_ += "module ";
     out_ += dotted;

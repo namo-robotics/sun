@@ -482,6 +482,18 @@ std::optional<Hover> computeHover(const BlockExprAST& program,
   std::optional<Target> target = locate(program, documentPath, byteOffset);
   if (!target) return std::nullopt;
 
+  // Synthesized modules share a declaration span but have distinct names.
+  for (const auto* node : target->chain) {
+    if (node->getType() != ASTNodeType::MODULE) continue;
+    const auto& module = static_cast<const ModuleAST&>(*node);
+    const auto& name = module.getNameLocation();
+    if (name && spanContains(*name, byteOffset)) {
+      return Hover{std::string(module.isPublic() ? "public " : "") + "module " +
+                       module.getName(),
+                   module.getDoc(), *name};
+    }
+  }
+
   // A type name written in an annotation stands for its definition
   std::optional<Declaration> declaration;
   std::optional<Hover> hover;

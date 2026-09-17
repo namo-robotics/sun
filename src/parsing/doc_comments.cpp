@@ -91,10 +91,14 @@ class DocAttacher {
 
   void visit(ExprAST& node) {
     switch (node.getType()) {
-      case ASTNodeType::MODULE:
-        visitBlock(
-            const_cast<BlockExprAST&>(static_cast<ModuleAST&>(node).getBody()));
+      case ASTNodeType::MODULE: {
+        auto& module = static_cast<ModuleAST&>(node);
+        // Only the last segment of a dotted declaration owns its comment.
+        module.setDoc(module.getShorthandChild() ? ""
+                                                 : docAt(module.getLocation()));
+        visitBlock(module.mutableBody());
         break;
+      }
       case ASTNodeType::FUNCTION: {
         auto& fn = static_cast<FunctionAST&>(node);
         fn.getProtoMut().setDoc(docAt(fn.getLocation()));

@@ -5,6 +5,26 @@ import PathVariablesExample from '../generated/path_variables.mdx'
 
 Sun uses a **manifest-based** module system where programs declare their dependencies in a `manifest` block. Multiple source files are merged into a single AST before compilation, enabling efficient cross-file optimization.
 
+## Module declarations
+
+Dotted names are shorthand for nested modules. For example,
+`public module a.b.c { ... }` is equivalent to three nested public modules:
+`public module a { public module b { public module c { ... } } }`.
+Without `public`, each module in the path uses the default private visibility.
+Declarations inside the body keep their own visibility.
+
+A comment above a dotted declaration documents only its innermost module:
+
+```sun
+/** Helpers for reading files. */
+public module app.files.readers {
+}
+```
+
+Here the comment documents `readers`, not `app` or `files`. Hovering over each
+name in the declaration shows that module; only `readers` shows this comment.
+Use explicit nesting to give each module a separate comment.
+
 ## Using statements
 
 A `using` statement makes names available only to code in the same source file

@@ -1631,3 +1631,12 @@ TEST(Modules, moon_symbols_carry_the_bundle_hash) {
     EXPECT_EQ(name.rfind(prefix, 0), 0u) << "unprefixed global: " << name;
   }
 }
+
+TEST(Modules, malformed_dotted_module_names) {
+  for (const auto* source : {"module a. {}", "module a..b {}",
+                             "public module .a {}", "module a.b;"}) {
+    SCOPED_TRACE(source);
+    auto parser = Parser::createStringParser(source);
+    EXPECT_THROW(parser.parseProgram(), std::exception);
+  }
+}
