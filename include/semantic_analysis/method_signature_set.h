@@ -23,11 +23,12 @@ class MethodSignatureSet {
     const auto& binders = prototype.getTypeParameters();
     if (!binders.empty()) {
       for (size_t i = binders_.size(); i < binders.size(); ++i)
-        binders_.push_back(binders[i].toSunType(
-            context_.declarationTable(),
-            prototype.declarationIdentity().typeParameters.at(i)));
-      std::vector<sun::TypePtr> bindings(binders_.begin(),
-                                         binders_.begin() + binders.size());
+        binders_.push_back(
+            prototype.declarationIdentity().typeParameters.at(i));
+      std::vector<sun::TypePtr> bindings;
+      for (size_t i = 0; i < binders.size(); ++i)
+        bindings.push_back(
+            binders[i].toSunType(context_.declarationTable(), binders_[i]));
       context_.enterTypeParamScope(prototype.getTypeParameterNames(), bindings);
       signature.parameters.clear();
       for (const auto& [name, annotation] : prototype.getArgs())
@@ -39,7 +40,7 @@ class MethodSignatureSet {
  private:
   SemanticContext& context_;
   TypeInferer& types_;
-  std::vector<sun::TypePtr> binders_;
+  std::vector<sun::DeclarationId> binders_;
   std::unordered_set<sun::CallableSignature, sun::CallableSignatureHash>
       signatures_;
 };
