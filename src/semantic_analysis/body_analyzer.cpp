@@ -114,7 +114,7 @@ void BodyAnalyzer::analyzeFunction(FunctionAST& func) {
           tp.toSunType(ctx_.types()->declarations,
                        proto.declarationIdentity().typeParameters.at(i)));
     }
-    ctx_.addTypeParameterBindings(typeParams, typeParamTypes);
+    ctx_.currentScope().declareTypeParameters(typeParams, typeParamTypes);
   }
 
   // Field defaults see the definition scope and this, before parameters exist.

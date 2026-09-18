@@ -411,7 +411,83 @@ struct SemanticScopeBase
   std::map<std::string, std::shared_ptr<SemanticScopeBase>> childModules;
   std::map<std::string, VariableInfo> namespacedVariables;
 
-  // ===== Transient state (all scopes) =====
+  // ===== Declaration registration =====
+  /** Create or reuse a child module without entering it. */
+  ModuleScope& declareModule(const std::string& name);
+
+  /** Record a module declaration and validate visibility on reopening. */
+  ModuleScope& declareModule(const ModuleAST& module);
+
+  /** Record the source class body associated with a name. */
+  void declareClassDefinition(const std::string& name,
+                              ClassDefinitionAST& definition);
+
+  /** Record a type alias, rejecting a duplicate in this scope. */
+  void declareTypeAlias(const std::string& name, sun::TypePtr type,
+                        std::optional<Position> loc = std::nullopt);
+
+  /** Register a function prototype (key = name + param types for overloads). */
+  void declareFunction(const std::string& name, const FunctionInfo& info,
+                       std::optional<Position> loc = std::nullopt);
+
+  /**
+   * Record a generic function template and its declaration scope. Repeated
+   * registration of the same declaration is allowed; another template with
+   * the same name in this scope is rejected.
+   */
+  void declareGenericFunction(FunctionAST& func);
+
+  /**
+   * Record a module-level variable by source name with its visibility.
+   */
+  void declareModuleVariable(const sun::QualifiedName& qualifiedName,
+                             sun::TypePtr type, sun::Visibility visibility,
+                             bool isConst = false, bool isCExtern = false,
+                             sun::DeclarationId declarationId = {});
+
+  /**
+   * Record a class in the current scope. A repeated registration of the same
+   * name is ignored, which is what a diamond import produces.
+   */
+  void declareClass(const std::string& name,
+                    std::shared_ptr<sun::ClassType> classType,
+                    std::optional<Position> loc = std::nullopt);
+
+  /**
+   * Record a generic class template in the current scope, along with the
+   * scope it was declared in, so its bodies resolve names as written there.
+   */
+  void declareGenericClass(const std::string& name,
+                           const GenericClassInfo& info,
+                           std::optional<Position> loc = std::nullopt);
+
+  /**
+   * Record an interface in the current scope. A repeated registration of the
+   * same name is ignored, which is what a diamond import produces.
+   */
+  void declareInterface(const std::string& name,
+                        std::shared_ptr<sun::InterfaceType> interfaceType,
+                        std::optional<Position> loc = std::nullopt);
+
+  /** Record a generic interface template in the current scope. */
+  void declareGenericInterface(const std::string& name,
+                               const GenericInterfaceInfo& info,
+                               std::optional<Position> loc = std::nullopt);
+
+  /** Record an enum in the current scope. */
+  void declareEnum(const std::string& name,
+                   std::shared_ptr<sun::EnumType> enumType);
+
+  /**
+   * Record a generic enum template in the current scope, along with the scope
+   * it was declared in.
+   */
+  void declareGenericEnum(const std::string& name, GenericEnumInfo info);
+
+  /** Bind type parameter names to concrete types in the current scope. */
+  void declareTypeParameters(const std::vector<std::string>& params,
+                             const std::vector<sun::TypePtr>& args);
+
   /** Record a variable here, checking reserved names and global shadowing. */
   void declareVariable(const std::string& name, sun::TypePtr type,
                        bool isParam = false, bool isConst = false,
@@ -424,6 +500,7 @@ struct SemanticScopeBase
     return true;
   }
 
+  // ===== Transient state (all scopes) =====
   std::map<std::string, VariableInfo> variables;
   std::map<std::string, sun::TypePtr> typeParameters;
   std::map<std::string, sun::TypePtr> typeAliases;

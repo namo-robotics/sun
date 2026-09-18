@@ -22,9 +22,9 @@ void DeclarationCollectionPass::collectTypeNames(BlockExprAST& block) {
         auto& enumDef = static_cast<EnumDefinitionAST&>(*expr);
         if (enumDef.isGeneric()) {
           if (!ctx_.scope()->findGenericEnum(enumDef.getName())) {
-            ctx_.registerGenericEnum(enumDef.getName(),
-                                     {&enumDef, enumDef.getTypeParameters(),
-                                      enumDef.getQualifiedName()});
+            ctx_.currentScope().declareGenericEnum(
+                enumDef.getName(), {&enumDef, enumDef.getTypeParameters(),
+                                    enumDef.getQualifiedName()});
           }
           break;
         }
@@ -40,7 +40,7 @@ void DeclarationCollectionPass::collectTypeNames(BlockExprAST& block) {
             sun::Types::fromString(enumDef.getUnderlyingTypeName()));
         enumType->visibility = enumDef.getVisibility();
         enumType->setQualifiedName(enumDef.getQualifiedName());
-        ctx_.registerEnum(enumDef.getName(), enumType);
+        ctx_.currentScope().declareEnum(enumDef.getName(), enumType);
         break;
       }
       case ASTNodeType::INTERFACE_DEFINITION: {
@@ -52,7 +52,8 @@ void DeclarationCollectionPass::collectTypeNames(BlockExprAST& block) {
             info.AST = &interfaceDef;
             info.typeParameters = interfaceDef.getTypeParameters();
             info.qualifiedName = interfaceDef.getQualifiedName();
-            ctx_.registerGenericInterface(interfaceDef.getName(), info);
+            ctx_.currentScope().declareGenericInterface(interfaceDef.getName(),
+                                                        info);
           }
         } else {
           sun::QualifiedName qualifiedInterface =
@@ -65,7 +66,8 @@ void DeclarationCollectionPass::collectTypeNames(BlockExprAST& block) {
           }
           interfaceType->visibility = interfaceDef.getVisibility();
           interfaceType->setQualifiedName(qualifiedInterface);
-          ctx_.registerInterface(interfaceDef.getName(), interfaceType);
+          ctx_.currentScope().declareInterface(interfaceDef.getName(),
+                                               interfaceType);
         }
         break;
       }
@@ -79,20 +81,21 @@ void DeclarationCollectionPass::collectTypeNames(BlockExprAST& block) {
           genericInfo.typeParameters = classDef.getTypeParameters();
           genericInfo.definitionScope = ctx_.scope()->shared_from_this();
           genericInfo.qualifiedName = qualifiedClass;
-          ctx_.registerGenericClass(classDef.getName(), genericInfo);
+          ctx_.currentScope().declareGenericClass(classDef.getName(),
+                                                  genericInfo);
         }
         if (!classDef.isGeneric()) {
           auto classType = ctx_.types()->getClass(classDef.getDeclarationId(),
                                                   qualifiedClass);
           classType->setPacked(classDef.isPacked());
           classType->visibility = classDef.getVisibility();
-          ctx_.registerClass(classDef.getName(), classType);
+          ctx_.currentScope().declareClass(classDef.getName(), classType);
         }
         break;
       }
       case ASTNodeType::MODULE: {
         auto& module = static_cast<ModuleAST&>(*expr);
-        ctx_.declareModule(module);
+        ctx_.enterScope(ctx_.currentScope().declareModule(module));
         collectTypeNames(const_cast<BlockExprAST&>(module.getBody()));
         ctx_.exitScope();
         break;
@@ -198,9 +201,9 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
         // Generic enums register as templates, instantiated at use sites
         if (enumDef.isGeneric()) {
           if (!ctx_.scope()->findGenericEnum(enumDef.getName())) {
-            ctx_.registerGenericEnum(enumDef.getName(),
-                                     {&enumDef, enumDef.getTypeParameters(),
-                                      enumDef.getQualifiedName()});
+            ctx_.currentScope().declareGenericEnum(
+                enumDef.getName(), {&enumDef, enumDef.getTypeParameters(),
+                                    enumDef.getQualifiedName()});
           }
           break;
         }
@@ -218,7 +221,7 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
             sun::Types::fromString(enumDef.getUnderlyingTypeName()));
         enumType->visibility = enumDef.getVisibility();
         enumType->setQualifiedName(enumDef.getQualifiedName());
-        ctx_.registerEnum(enumDef.getName(), enumType);
+        ctx_.currentScope().declareEnum(enumDef.getName(), enumType);
         break;
       }
       case ASTNodeType::INTERFACE_DEFINITION: {
@@ -231,7 +234,8 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
             info.AST = &interfaceDef;
             info.typeParameters = interfaceDef.getTypeParameters();
             info.qualifiedName = interfaceDef.getQualifiedName();
-            ctx_.registerGenericInterface(interfaceDef.getName(), info);
+            ctx_.currentScope().declareGenericInterface(interfaceDef.getName(),
+                                                        info);
           }
         } else {
           // Precompiled stubs carry their qualified name (content-hash scoped)
@@ -245,7 +249,8 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
           }
           interfaceType->visibility = interfaceDef.getVisibility();
           interfaceType->setQualifiedName(qualifiedInterface);
-          ctx_.registerInterface(interfaceDef.getName(), interfaceType);
+          ctx_.currentScope().declareInterface(interfaceDef.getName(),
+                                               interfaceType);
         }
         break;
       }
@@ -262,20 +267,21 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
           genericInfo.typeParameters = classDef.getTypeParameters();
           genericInfo.definitionScope = ctx_.scope()->shared_from_this();
           genericInfo.qualifiedName = qualifiedClass;
-          ctx_.registerGenericClass(classDef.getName(), genericInfo);
+          ctx_.currentScope().declareGenericClass(classDef.getName(),
+                                                  genericInfo);
         }
         if (!classDef.isGeneric()) {
           auto classType = ctx_.types()->getClass(classDef.getDeclarationId(),
                                                   qualifiedClass);
           classType->setPacked(classDef.isPacked());
           classType->visibility = classDef.getVisibility();
-          ctx_.registerClass(classDef.getName(), classType);
+          ctx_.currentScope().declareClass(classDef.getName(), classType);
         }
         break;
       }
       case ASTNodeType::MODULE: {
         auto& nsDecl = static_cast<ModuleAST&>(*expr);
-        ctx_.declareModule(nsDecl);
+        ctx_.enterScope(ctx_.currentScope().declareModule(nsDecl));
         run(const_cast<BlockExprAST&>(nsDecl.getBody()));
         ctx_.exitScope();
         break;
@@ -412,7 +418,7 @@ void DeclarationCollectionPass::collectFunctionSignature(FunctionAST& func) {
   // A pack makes a function a template even with no type parameters: its
   // arity comes from the call, so it is emitted once per argument tuple.
   if (proto.isTemplate()) {
-    ctx_.registerGenericFunctionInCurrentScope(func);
+    ctx_.currentScope().declareGenericFunction(func);
     return;
   }
 
@@ -440,7 +446,8 @@ void DeclarationCollectionPass::collectFunctionSignature(FunctionAST& func) {
       func.isExtern() && !func.isCExtern() && !func.isPrecompiled();
   info.visibility = func.getVisibility();
 
-  ctx_.registerFunctionInCurrentScope(qualifiedName.baseName, info);
+  ctx_.currentScope().declareFunction(qualifiedName.baseName, info,
+                                      ctx_.currentLocation());
 }
 
 void DeclarationCollectionPass::collectExternVariable(
@@ -473,8 +480,9 @@ void DeclarationCollectionPass::collectExternVariable(
   info.qualifiedName = qualified;
   info.isCExtern = true;
   ctx_.scope()->variables[varCreate.getName()] = info;
-  ctx_.registerModuleVariable(qualified, type, varCreate.getVisibility(), false,
-                              true, varCreate.getDeclarationId());
+  ctx_.currentScope().declareModuleVariable(qualified, type,
+                                            varCreate.getVisibility(), false,
+                                            true, varCreate.getDeclarationId());
 }
 
 void DeclarationCollectionPass::registerPrecompiledModuleVariable(
@@ -504,7 +512,7 @@ void DeclarationCollectionPass::registerPrecompiledModuleVariable(
 
   // The stub's qualified name is already scoped by content hash; it must be
   // the one registered, since that is the symbol the bundle defines.
-  ctx_.registerModuleVariable(
+  ctx_.currentScope().declareModuleVariable(
       varCreate.getQualifiedName(), type, varCreate.getVisibility(),
       varCreate.isConst(), varCreate.isCExtern(), varCreate.getDeclarationId());
 }
@@ -644,9 +652,9 @@ void DeclarationCollectionPass::collectEnumDeclarations(const BlockExprAST& bloc
     auto& enumDef = static_cast<EnumDefinitionAST&>(*expr);
     if (enumDef.isGeneric()) {
       if (!ctx_.scope()->findGenericEnum(enumDef.getName())) {
-        ctx_.registerGenericEnum(enumDef.getName(),
-                                 {&enumDef, enumDef.getTypeParameters(),
-                                  enumDef.getQualifiedName()});
+        ctx_.currentScope().declareGenericEnum(
+            enumDef.getName(), {&enumDef, enumDef.getTypeParameters(),
+                                enumDef.getQualifiedName()});
       }
       continue;
     }
@@ -661,6 +669,6 @@ void DeclarationCollectionPass::collectEnumDeclarations(const BlockExprAST& bloc
         sun::Types::fromString(enumDef.getUnderlyingTypeName()));
     enumType->visibility = enumDef.getVisibility();
     enumType->setQualifiedName(enumDef.getQualifiedName());
-    ctx_.registerEnum(enumDef.getName(), enumType);
+    ctx_.currentScope().declareEnum(enumDef.getName(), enumType);
   }
 }

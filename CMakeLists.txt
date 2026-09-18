@@ -167,6 +167,7 @@ add_library(sun_lib
     src/semantic_analysis/specialization_key.cpp
     src/semantic_analysis/declaration_identity_pass.cpp
     src/semantic_analysis/semantic_context.cpp
+    src/semantic_analysis/scope_declarations.cpp
     src/semantic_analysis/scope_lookup.cpp
     src/semantic_analysis/packed_classes.cpp
     src/semantic_analysis/generic_specializer.cpp

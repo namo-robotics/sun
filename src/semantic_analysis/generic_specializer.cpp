@@ -151,7 +151,7 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
 
   // Push a scope for class-level type parameter bindings
   ctx_.enterClassScope(specializedQName);
-  ctx_.addTypeParameterBindings(
+  ctx_.currentScope().declareTypeParameters(
       typeParameterNames(genericClassInfo->typeParameters), typeArgs);
 
   // Layout is a property of the generic definition, so every specialization
@@ -313,7 +313,8 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
     }
     FunctionInfo methodInfo{returnType, methodParamTypes, {}};
     methodInfo.declarationId = proto.getDeclarationId();
-    ctx_.registerFunctionInCurrentScope(methodNameForScope, methodInfo);
+    ctx_.currentScope().declareFunction(methodNameForScope, methodInfo,
+                                        ctx_.currentLocation());
   }
 
   sun::DeclarationIdentity identity;
@@ -455,7 +456,7 @@ void GenericSpecializer::analyzeDeferredSpecializations() {
         ctx_, d.genericInfo->AST->getSourceFileId());
 
     ctx_.enterClassScope(d.specializedClass->getQualifiedName());
-    ctx_.addTypeParameterBindings(
+    ctx_.currentScope().declareTypeParameters(
         typeParameterNames(d.genericInfo->typeParameters), d.typeArgs);
     auto savedClass = ctx_.getCurrentClass();
     ctx_.setCurrentClass(d.specializedClass);

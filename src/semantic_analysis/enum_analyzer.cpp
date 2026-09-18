@@ -140,7 +140,7 @@ void EnumAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
   // resolved per instantiation with the type arguments bound
   if (enumDef.isGeneric()) {
     if (!ctx_.scope()->findGenericEnum(enumDef.getName())) {
-      ctx_.registerGenericEnum(
+      ctx_.currentScope().declareGenericEnum(
           enumDef.getName(),
           {&enumDef, enumDef.getTypeParameters(), enumDef.getQualifiedName()});
     }
@@ -180,7 +180,7 @@ void EnumAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
   }
 
   // Register the enum in the namespace
-  ctx_.registerEnum(enumDef.getName(), enumType);
+  ctx_.currentScope().declareEnum(enumDef.getName(), enumType);
 
   // Track symbol for redefinition detection
   ctx_.declarations().noteDeclared(enumDef.getName(), ctx_.scope());

@@ -96,7 +96,7 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
     genericInfo.typeParameters = classDef.getTypeParameters();
     genericInfo.definitionScope = ctx_.scope()->shared_from_this();
     genericInfo.qualifiedName = qualifiedClass;
-    ctx_.registerGenericClass(baseName, genericInfo);
+    ctx_.currentScope().declareGenericClass(baseName, genericInfo);
 
     // Generic class templates are not analyzed further until instantiated
     if (classDef.isGeneric()) {
@@ -122,7 +122,7 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
 
   // Register the class BEFORE processing fields to allow self-referential
   // types (e.g., var next: raw_ptr<Node> inside class Node)
-  ctx_.registerClass(baseName, classType);
+  ctx_.currentScope().declareClass(baseName, classType);
 
   // Fields and method signatures are normally registered by the
   // declaration pre-pass (registerClassShape); classes analyzed outside a
@@ -198,7 +198,8 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
                                   : sun::Types::Void();
     FunctionInfo methodInfo{returnType, methodParamTypes, {}};
     methodInfo.declarationId = proto.getDeclarationId();
-    ctx_.registerFunctionInCurrentScope(methodNameForScope, methodInfo);
+    ctx_.currentScope().declareFunction(methodNameForScope, methodInfo,
+                                        ctx_.currentLocation());
   }
 
   // PASS 2: Analyze all method bodies using their assigned names.
@@ -233,7 +234,7 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
 
   // Store primary AST for partial class merging (if a partial appears
   // later)
-  ctx_.scope()->classDefinitions[baseName] = &classDef;
+  ctx_.currentScope().declareClassDefinition(baseName, classDef);
 
   // Set resolved type to the class type so codegen can get the qualified
   // name
@@ -319,7 +320,7 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
     info.AST = &interfaceDef;
     info.typeParameters = interfaceDef.getTypeParameters();
     info.qualifiedName = qualifiedInterface;
-    ctx_.registerGenericInterface(interfaceDef.getName(), info);
+    ctx_.currentScope().declareGenericInterface(interfaceDef.getName(), info);
 
     // Create a generic interface type (for type checking generic
     // references)
@@ -328,7 +329,7 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
         interfaceDef.getTypeParameterNames());
     interfaceType->visibility = interfaceDef.getVisibility();
     interfaceType->setQualifiedName(qualifiedInterface);
-    ctx_.registerInterface(interfaceDef.getName(), interfaceType);
+    ctx_.currentScope().declareInterface(interfaceDef.getName(), interfaceType);
 
     interfaceDef.setResolvedType(sun::Types::Void());
     activeLifetimeNames_.resize(interfaceLifetimeMark);
@@ -416,7 +417,7 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
   ctx_.exitScope();  // Interface scope
 
   // Register the interface
-  ctx_.registerInterface(interfaceDef.getName(), interfaceType);
+  ctx_.currentScope().declareInterface(interfaceDef.getName(), interfaceType);
 
   // Track symbol for redefinition detection
   ctx_.declarations().noteDeclared(interfaceDef.getName(), ctx_.scope());
@@ -453,8 +454,8 @@ void SemanticAnalyzer::analyzeFunctionDefinition(FunctionAST& func) {
   // Only register non-template functions in the normal function table.
   // Templates are looked up via the genericFunctions table instead.
   if (!proto.isTemplate()) {
-    ctx_.registerFunctionInCurrentScope(funcInfo.qualifiedName.baseName,
-                                        funcInfo);
+    ctx_.currentScope().declareFunction(funcInfo.qualifiedName.baseName,
+                                        funcInfo, ctx_.currentLocation());
   }
 
   // Analyze the function body
@@ -490,7 +491,7 @@ void SemanticAnalyzer::analyzeLambdaExpr(LambdaAST& lambda) {
 
 void SemanticAnalyzer::analyzeModuleDefinition(ModuleAST& nsDecl) {
   // Enter the namespace scope
-  ctx_.declareModule(nsDecl);
+  ctx_.enterScope(ctx_.currentScope().declareModule(nsDecl));
 
   // Analyze the body of the namespace
   // Functions handle their own qualified name registration in FUNCTION case
@@ -508,7 +509,7 @@ void SemanticAnalyzer::analyzeModuleDefinition(ModuleAST& nsDecl) {
       analyzeExpr(*bodyExpr);
       const sun::QualifiedName& qualifiedName = varCreate.getQualifiedName();
       if (auto type = varCreate.getResolvedType()) {
-        ctx_.registerModuleVariable(
+        ctx_.currentScope().declareModuleVariable(
             qualifiedName, type, varCreate.getVisibility(), varCreate.isConst(),
             varCreate.isCExtern(), varCreate.getDeclarationId());
       }
@@ -554,16 +555,8 @@ void SemanticAnalyzer::analyzeDeclareType(DeclareTypeAST& declareExpr) {
   // If there's an alias, register it
   if (declareExpr.hasAlias()) {
     const std::string& aliasName = declareExpr.getAliasName();
-    // Check current scope only for redefinition (shadowing is allowed)
-    if (ctx_.scope()->typeAliases.find(aliasName) !=
-        ctx_.scope()->typeAliases.end()) {
-      logAndThrowError(
-          "Type alias '" + aliasName + "' is already defined in this scope",
-          declareExpr.getLocation());
-    }
-    if (resolvedType) {
-      ctx_.scope()->typeAliases[aliasName] = resolvedType;
-    }
+    ctx_.currentScope().declareTypeAlias(aliasName, resolvedType,
+                                         declareExpr.getLocation());
   }
 
   declareExpr.setResolvedType(sun::Types::Void());

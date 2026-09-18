@@ -520,7 +520,8 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
         methodParamTypes.push_back(pt);
       }
       methodInfo.paramTypes = std::move(methodParamTypes);
-      ctx_.registerFunctionInCurrentScope(methodNameForScope, methodInfo);
+      ctx_.currentScope().declareFunction(methodNameForScope, methodInfo,
+                                          ctx_.currentLocation());
     }
 
     // Analyze extension method bodies

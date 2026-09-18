@@ -258,7 +258,8 @@ void SemanticAnalyzer::validateInterfaceImplementation(
           FunctionInfo methodInfo{
               interfaceMethod.returnType, methodParamTypes, {}};
           methodInfo.declarationId = method.declarationId;
-          ctx_.registerFunctionInCurrentScope(methodNameForScope, methodInfo);
+          ctx_.currentScope().declareFunction(methodNameForScope, methodInfo,
+                                              ctx_.currentLocation());
         } else {
           // Required method not implemented
           logAndThrowError("Class '" + classType->getDisplayName() +

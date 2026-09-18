@@ -70,9 +70,12 @@ class SemanticContext : public AccessContext {
   /** Push a new scope of the given kind and make it current. */
   void enterScope(ScopeType type = ScopeType::Block);
 
+  /** Make an existing scope current; exitScope returns to its parent. */
+  void enterScope(SemanticScope &scope) { currentScope_ = &scope; }
+
   /**
    * Enter a type parameter scope with bindings (combines enterScope +
-   * addTypeParameterBindings).
+   * currentScope().declareTypeParameters).
    */
   void enterTypeParamScope(const std::vector<std::string> &params,
                            const std::vector<sun::TypePtr> &args);
@@ -82,12 +85,6 @@ class SemanticContext : public AccessContext {
    * is opened. Re-opening a module returns to the same scope.
    */
   void enterModuleScope(const std::string &moduleName);
-
-  /**
-   * Enter (creating or reusing) a module scope and record its visibility;
-   * re-openings must agree.
-   */
-  void declareModule(ModuleAST &module);
 
   /** Enter a class scope with qualified name for proper scope path. */
   void enterClassScope(const sun::QualifiedName &className);
@@ -135,7 +132,6 @@ class SemanticContext : public AccessContext {
    * e.g., inside "module A { module B { } }", returns {"A", "B"}.
    */
   std::vector<std::string> getCurrentScopePath() const;
-
 
   /**
    * True when the name refers to a module, so `x.y` can be read as a
@@ -228,15 +224,6 @@ class SemanticContext : public AccessContext {
   // ---- Variables ---------------------------------------------------------
 
   /**
-   * Record a module-level variable under both its plain and its qualified
-   * name, so it can be reached from inside the module and from outside it.
-   */
-  void registerModuleVariable(const sun::QualifiedName &qualifiedName,
-                              sun::TypePtr type, sun::Visibility visibility,
-                              bool isConst = false, bool isCExtern = false,
-                              sun::DeclarationId declarationId = {});
-
-  /**
    * Find a variable by its dotted name (`a.b.x`). An undotted name is an
    * ordinary variable lookup.
    */
@@ -257,10 +244,6 @@ class SemanticContext : public AccessContext {
 
   // ---- Functions ---------------------------------------------------------
 
-  /** Register a function prototype (key = name + param types for overloads). */
-  void registerFunctionInCurrentScope(const std::string &name,
-                                      const FunctionInfo &info);
-
   /**
    * Select an overload by preferred argument types, then by their alternatives.
    * Returns nullopt when no overload matches.
@@ -278,13 +261,6 @@ class SemanticContext : public AccessContext {
       const std::string &qualifiedName) const;
 
   /**
-   * Record a generic function template and its declaration scope. Repeated
-   * registration of the same declaration is allowed; another template with
-   * the same name in this scope is rejected.
-   */
-  void registerGenericFunctionInCurrentScope(FunctionAST &func);
-
-  /**
    * Look up a generic function by name. Tries the direct name first, then
    * falls back to enclosing function prefix + name (for nested generic
    * functions).
@@ -294,24 +270,8 @@ class SemanticContext : public AccessContext {
 
   // ---- Types: classes, interfaces, enums and their templates -------------
 
-  /**
-   * Record a class in the current scope. A repeated registration of the same
-   * name is ignored, which is what a diamond import produces.
-   */
-  void registerClass(const std::string &name,
-                     std::shared_ptr<sun::ClassType> classType,
-                     std::optional<Position> loc = std::nullopt);
-
   /** Find a class by name in the scope chain (null when there is none). */
   std::shared_ptr<sun::ClassType> lookupClass(const std::string &name) const;
-
-  /**
-   * Record a generic class template in the current scope, along with the
-   * scope it was declared in, so its bodies resolve names as written there.
-   */
-  void registerGenericClass(const std::string &name,
-                            const GenericClassInfo &info,
-                            std::optional<Position> loc = std::nullopt);
 
   /** Find a generic class template by name in the scope chain. */
   const GenericClassInfo *lookupGenericClass(const std::string &name) const;
@@ -320,24 +280,11 @@ class SemanticContext : public AccessContext {
   const GenericClassInfo *lookupGenericClass(sun::DeclarationId id) const;
 
   /**
-   * Record an interface in the current scope. A repeated registration of the
-   * same name is ignored, which is what a diamond import produces.
-   */
-  void registerInterface(const std::string &name,
-                         std::shared_ptr<sun::InterfaceType> interfaceType,
-                         std::optional<Position> loc = std::nullopt);
-
-  /**
    * Find an interface by name in the scope chain, falling back to the builtin
    * interfaces (IError).
    */
   std::shared_ptr<sun::InterfaceType> lookupInterface(
       const std::string &name) const;
-
-  /** Record a generic interface template in the current scope. */
-  void registerGenericInterface(const std::string &name,
-                                const GenericInterfaceInfo &info,
-                                std::optional<Position> loc = std::nullopt);
 
   /** Find a generic interface template by name in the scope chain. */
   const GenericInterfaceInfo *lookupGenericInterface(
@@ -347,18 +294,8 @@ class SemanticContext : public AccessContext {
   const GenericInterfaceInfo *lookupGenericInterface(
       sun::DeclarationId id) const;
 
-  /** Record an enum in the current scope. */
-  void registerEnum(const std::string &name,
-                    std::shared_ptr<sun::EnumType> enumType);
-
   /** Find an enum by name in the scope chain (null when there is none). */
   std::shared_ptr<sun::EnumType> lookupEnum(const std::string &name) const;
-
-  /**
-   * Record a generic enum template in the current scope, along with the scope
-   * it was declared in.
-   */
-  void registerGenericEnum(const std::string &name, GenericEnumInfo info);
 
   /** Find a generic enum template by name in the scope chain. */
   const GenericEnumInfo *lookupGenericEnum(const std::string &name) const;
@@ -376,10 +313,6 @@ class SemanticContext : public AccessContext {
       const std::string &displayName = "") const;
 
   // ---- Type parameters and aliases ---------------------------------------
-
-  /** Bind type parameter names to concrete types in the current scope. */
-  void addTypeParameterBindings(const std::vector<std::string> &params,
-                                const std::vector<sun::TypePtr> &args);
 
   /** The type a type parameter is bound to, searching outwards (null if none).
    */
