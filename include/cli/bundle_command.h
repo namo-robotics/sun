@@ -10,19 +10,17 @@
 #include <string>
 
 #include "cli/options.h"
-#include "driver/depfile.h"
 #include "moon_bundling/moon_builder.h"
 
 namespace sun::cli {
 
 // Build one .moon bundle from an entrypoint with a manifest, printing what
-// went into it. With a depfile, records the bundle's inputs: its sources,
-// the bundles it imports, its proto schemas and the native archives it
-// carries. Returns the exit code.
+// went into it. With buildOptions.skipIfUnchanged, a bundle already built
+// from the same inputs is left alone and reported as up to date. Returns the
+// exit code.
 int buildMoonBundle(const std::string& entrypoint,
                     const std::filesystem::path& outputPath,
-                    const sun::MoonBuildOptions& buildOptions,
-                    sun::Depfile* depfile);
+                    const sun::MoonBuildOptions& buildOptions);
 
 // sun --emit-moon [-o <file>] <entrypoint.sun>
 // Bundles the first input file, to the -o path or a default next to it.

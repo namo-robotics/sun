@@ -4,6 +4,11 @@
 // object file. A program that declares tests also gets a second executable,
 // its test binary, unless --no-test was given. It is separate from bundling:
 // nothing here builds a .moon library.
+//
+// With --skip-if-unchanged, each artifact records the hash of the inputs it
+// was built from (see driver/input_hash.h), and an artifact whose recorded
+// hash matches what this run would build from is left alone. Without it,
+// everything is built and nothing is recorded.
 
 #pragma once
 
@@ -12,7 +17,6 @@
 
 #include "cli/options.h"
 #include "driver/compiler.h"
-#include "driver/depfile.h"
 #include "moon_bundling/moon_import.h"
 
 namespace sun::cli {
@@ -35,7 +39,8 @@ struct CompileJob {
   bool optimize = true;
   bool dumpProtoSun = false;
   bool noTest = false;
-  sun::Depfile* depfile = nullptr;  // records output -> inputs when given
+  // Record each artifact's input hash, and skip one that is up to date
+  bool skipIfUnchanged = false;
 };
 
 // The default artifact name for an entrypoint: its path without the .sun
@@ -43,9 +48,8 @@ struct CompileJob {
 std::string deriveOutputName(const std::string& entrypoint);
 
 // Fill a job from the command-line options. The output names are copied as
-// given, so the caller still has to settle them. `depfile` may be null.
-CompileJob makeCompileJob(const BuildRunOptions& options,
-                          sun::Depfile* depfile);
+// given, so the caller still has to settle them.
+CompileJob makeCompileJob(const BuildRunOptions& options);
 
 // Compile one entrypoint: the production executable (when there is a main,
 // or when there are no tests to build instead) plus the test binary (when
@@ -54,10 +58,12 @@ CompileJob makeCompileJob(const BuildRunOptions& options,
 int compileEntrypoint(const CompileJob& job);
 
 // Compile only the job's test binary: tests kept, the runner synthesized,
-// linked to the job's test binary name. Throws SunError like any compile —
-// including "no test functions found" when the program has no tests; the
-// caller decides what that means for it.
-int compileTestBinary(const CompileJob& job);
+// linked to the job's test binary name. `hasExecutable` says whether the
+// program also yields an executable, which the test binary records for later
+// runs. Throws SunError like any compile — including "no test functions
+// found" when the program has no tests; the caller decides what that means
+// for it.
+int compileTestBinary(const CompileJob& job, bool hasExecutable = true);
 
 // sun -c [-o <file>] <script.sun>...  and  sun --emit-obj ...
 // Compiles the input files, naming the output after the first one unless -o

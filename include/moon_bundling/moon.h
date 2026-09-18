@@ -65,9 +65,11 @@ std::string computeSha256Hex(llvm::StringRef data);
 /// Creates .moon bundle files containing multiple modules
 class MoonWriter {
  public:
-  /// @param bundleHash The bundle's content hash, chosen before its code was
-  /// compiled so the compiler could spell every exported symbol with the
-  /// `$hash$_` prefix. Recorded in each module's metadata for importers.
+  /// @param bundleHash The bundle's input hash (see driver/input_hash.h),
+  /// computed before its code was compiled so the compiler could spell every
+  /// exported symbol with the `$hash$_` prefix. Recorded in each module's
+  /// metadata, for importers and for skipping a build whose inputs are
+  /// unchanged.
   explicit MoonWriter(std::string bundleHash);
 
   /// Add a compiled module to the bundle

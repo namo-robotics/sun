@@ -51,17 +51,6 @@ void applyBuildRunSettings(const BuildRunOptions& options) {
   applySharedSettings(options.shared);
 }
 
-int writeDepfileOnSuccess(int exitCode, const sun::Depfile& depfile,
-                          const std::string& depfilePath) {
-  if (exitCode != 0 || depfilePath.empty()) return exitCode;
-  try {
-    depfile.write(depfilePath);
-  } catch (const SunError& e) {
-    return reportSunError(e);
-  }
-  return 0;
-}
-
 int reportEarlyExit(const EarlyExit& earlyExit) {
   if (earlyExit.stream == EarlyExit::Stream::Out) {
     llvm::outs() << earlyExit.text;

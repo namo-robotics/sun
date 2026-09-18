@@ -1672,14 +1672,6 @@ void Driver::compileFiles(const std::vector<std::string>& sourceFiles,
                           const std::vector<std::string>& protoFiles) {
   auto mergedAst = parseAndMergeFiles(sourceFiles, protoFiles, {});
 
-  // What this compilation read, for --depfile: sources, then the bundles
-  // and schemas the manifest named, then the archives it declared.
-  inputFiles_ = sourceFiles;
-  for (const auto& import : moonImports) inputFiles_.push_back(import.path);
-  inputFiles_.insert(inputFiles_.end(), protoFiles.begin(), protoFiles.end());
-  inputFiles_.insert(inputFiles_.end(), manifestArchivePaths_.begin(),
-                     manifestArchivePaths_.end());
-
   // Create a parser for runPipeline (used for precompiled imports lookup)
   auto stubParser = Parser::createStringParser("");
 

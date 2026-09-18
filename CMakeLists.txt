@@ -146,7 +146,8 @@ add_library(sun_lib
     ${PROTO_SRCS}
     # Driver: pipeline orchestration
     src/driver/driver.cpp
-    src/driver/depfile.cpp
+    src/driver/build_record.cpp
+    src/driver/input_hash.cpp
     src/driver/manifest_processor.cpp
     src/driver/sun_config.cpp
     # Parsing
@@ -406,9 +407,13 @@ option(SKIP_STDLIB "Skip building the precompiled stdlib.moon" OFF)
 if(NOT SKIP_STDLIB)
     # Only the entrypoints are named here. Which .sun files, bundles, protos
     # and archives each artifact is built from is decided by the manifests,
-    # so every bundle command below asks the compiler to write a depfile
-    # (--depfile) and hands it to the build tool as DEPFILE: editing any
-    # file a manifest names rebuilds exactly the artifacts that read it.
+    # which only the compiler reads. So the commands below are custom
+    # targets, which run on every build, and pass --skip-if-unchanged so the
+    # compiler decides whether there is work to do: each artifact records a
+    # hash of the inputs it was built from, and one whose inputs are
+    # unchanged is left untouched. The
+    # artifacts are declared as BYPRODUCTS so rules that consume them still
+    # know where they come from.
 
     # Release packages ship optimized Sun bundles as well as the compiler.
     # Other configurations retain debug info; Debug also skips optimization.
@@ -438,84 +443,76 @@ if(NOT SKIP_STDLIB)
     # retain the native CMake output paths on those hosts.
     if(BUILD_TESTING AND CMAKE_BINARY_DIR STREQUAL ${CMAKE_SOURCE_DIR}/build
        AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$"))
-        add_custom_command(
-            OUTPUT ${STDLIB_MOON} ${STDLIB_TEST_BIN}_test ${TLS_MOON} ${TLS_TEST_BIN}_test
-            COMMAND $<TARGET_FILE:sun> -c ${SUN_BUNDLE_FLAGS}
-                    --depfile ${CMAKE_BINARY_DIR}/sun-config.d
+        add_custom_target(sun_config_products ALL
+            COMMAND $<TARGET_FILE:sun> -c --skip-if-unchanged ${SUN_BUNDLE_FLAGS}
                     ${CMAKE_SOURCE_DIR}/sun-config.json
-            DEPENDS sun ${CMAKE_SOURCE_DIR}/sun-config.json
-                    ${STDLIB_ENTRYPOINT} ${TLS_ENTRYPOINT}
-            DEPFILE ${CMAKE_BINARY_DIR}/sun-config.d
+            BYPRODUCTS ${STDLIB_MOON} ${STDLIB_TEST_BIN}_test ${TLS_MOON} ${TLS_TEST_BIN}_test
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            COMMENT "Building sun-config.json products (stdlib.moon, stdlib tests, tls.moon, tls tests)"
+            COMMENT "Checking sun-config.json products (stdlib.moon, stdlib tests, tls.moon, tls tests)"
             COMMAND_EXPAND_LISTS
             VERBATIM
         )
-        add_custom_target(stdlib_moon ALL DEPENDS ${STDLIB_MOON})
-        add_custom_target(stdlib_sun_tests ALL DEPENDS ${STDLIB_TEST_BIN}_test)
-        add_custom_target(tls_moon ALL DEPENDS ${TLS_MOON})
-        add_custom_target(tls_sun_tests ALL DEPENDS ${TLS_TEST_BIN}_test)
+        add_dependencies(sun_config_products sun)
+        # One target owns the shared command; the per-artifact names other
+        # rules depend on all lead to it.
+        foreach(product stdlib_moon stdlib_sun_tests tls_moon tls_sun_tests)
+            add_custom_target(${product} ALL)
+            add_dependencies(${product} sun_config_products)
+        endforeach()
     else()
-        add_custom_command(
-            OUTPUT ${STDLIB_MOON}
+        add_custom_target(stdlib_moon ALL
             COMMAND bash ${BUILD_MOON_SCRIPT} $<TARGET_FILE:sun>
                     ${STDLIB_ENTRYPOINT} ${STDLIB_MOON} ${SUN_BUNDLE_FLAGS}
-            DEPENDS sun ${STDLIB_ENTRYPOINT} ${BUILD_MOON_SCRIPT}
-            DEPFILE ${STDLIB_MOON}.d
+            BYPRODUCTS ${STDLIB_MOON}
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            COMMENT "Building precompiled stdlib.moon"
+            COMMENT "Checking precompiled stdlib.moon"
             COMMAND_EXPAND_LISTS
             VERBATIM
         )
-        add_custom_target(stdlib_moon ALL DEPENDS ${STDLIB_MOON})
+        add_dependencies(stdlib_moon sun)
 
         if(BUILD_TESTING)
-            add_custom_command(
-                OUTPUT ${STDLIB_TEST_BIN}_test
-                COMMAND $<TARGET_FILE:sun> -c ${SUN_BUNDLE_FLAGS}
-                        --depfile ${STDLIB_TEST_BIN}_test.d
+            add_custom_target(stdlib_sun_tests ALL
+                COMMAND $<TARGET_FILE:sun> -c --skip-if-unchanged
+                        ${SUN_BUNDLE_FLAGS}
                         -o ${STDLIB_TEST_BIN} ${STDLIB_ENTRYPOINT}
-                DEPENDS sun ${STDLIB_ENTRYPOINT}
-                DEPFILE ${STDLIB_TEST_BIN}_test.d
+                BYPRODUCTS ${STDLIB_TEST_BIN}_test
                 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-                COMMENT "Building stdlib Sun test binary"
+                COMMENT "Checking stdlib Sun test binary"
                 COMMAND_EXPAND_LISTS
                 VERBATIM
             )
-            add_custom_target(stdlib_sun_tests ALL DEPENDS ${STDLIB_TEST_BIN}_test)
+            add_dependencies(stdlib_sun_tests sun)
         endif()
 
         # --lib-path points at this build directory, which in this
         # branch need not be <source>/build.
-        add_custom_command(
-            OUTPUT ${TLS_MOON}
+        add_custom_target(tls_moon ALL
             COMMAND bash ${BUILD_MOON_SCRIPT} $<TARGET_FILE:sun>
                     ${TLS_ENTRYPOINT} ${TLS_MOON} ${SUN_BUNDLE_FLAGS}
-            DEPENDS sun ${STDLIB_MOON} ${TLS_ENTRYPOINT} ${BUILD_MOON_SCRIPT}
-            DEPFILE ${TLS_MOON}.d
+            BYPRODUCTS ${TLS_MOON}
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            COMMENT "Building precompiled tls.moon (with static OpenSSL)"
+            COMMENT "Checking precompiled tls.moon (with static OpenSSL)"
             COMMAND_EXPAND_LISTS
             VERBATIM
         )
-        add_custom_target(tls_moon ALL DEPENDS ${TLS_MOON})
+        # tls imports stdlib.moon, so that has to be current first
+        add_dependencies(tls_moon sun stdlib_moon)
 
         if(BUILD_TESTING)
             # A library with tests compiles to just its test binary.
-            add_custom_command(
-                OUTPUT ${TLS_TEST_BIN}_test
-                COMMAND $<TARGET_FILE:sun> -c ${SUN_BUNDLE_FLAGS}
+            add_custom_target(tls_sun_tests ALL
+                COMMAND $<TARGET_FILE:sun> -c --skip-if-unchanged
+                        ${SUN_BUNDLE_FLAGS}
                         --lib-path ${CMAKE_BINARY_DIR}
-                        --depfile ${TLS_TEST_BIN}_test.d
                         -o ${TLS_TEST_BIN} ${TLS_ENTRYPOINT}
-                DEPENDS sun ${STDLIB_MOON} ${TLS_ENTRYPOINT}
-                DEPFILE ${TLS_TEST_BIN}_test.d
+                BYPRODUCTS ${TLS_TEST_BIN}_test
                 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-                COMMENT "Building tls Sun test binary"
+                COMMENT "Checking tls Sun test binary"
                 COMMAND_EXPAND_LISTS
                 VERBATIM
             )
-            add_custom_target(tls_sun_tests ALL DEPENDS ${TLS_TEST_BIN}_test)
+            add_dependencies(tls_sun_tests sun stdlib_moon)
         endif()
     endif()
 
@@ -525,28 +522,30 @@ if(NOT SKIP_STDLIB)
     set(SUN_CROSS_STDLIB_TARGETS "aarch64-linux-gnu;arm64-apple-darwin" CACHE STRING
         "Triples to build cross stdlib .moon bundles for (empty disables)")
     option(SUN_CROSS_TLS_AARCH64 "Build the AArch64 Linux TLS bundle" OFF)
-    set(CROSS_MOONS "")
+    set(CROSS_MOON_TARGETS "")
     foreach(cross_triple ${SUN_CROSS_STDLIB_TARGETS})
         set(CROSS_MOON ${CMAKE_BINARY_DIR}/${cross_triple}/stdlib.moon)
         # The combined config owns both AArch64 outputs when TLS is enabled.
         if(NOT (SUN_CROSS_TLS_AARCH64 AND cross_triple STREQUAL "aarch64-linux-gnu"))
-            add_custom_command(
-                OUTPUT ${CROSS_MOON}
+            add_custom_target(stdlib_cross_moon_${cross_triple}
                 COMMAND bash ${BUILD_MOON_SCRIPT} $<TARGET_FILE:sun>
                         ${STDLIB_ENTRYPOINT} ${CROSS_MOON}
                         ${SUN_BUNDLE_FLAGS} --target ${cross_triple}
-                DEPENDS sun ${STDLIB_ENTRYPOINT} ${BUILD_MOON_SCRIPT}
-                DEPFILE ${CROSS_MOON}.d
+                BYPRODUCTS ${CROSS_MOON}
                 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-                COMMENT "Building precompiled ${cross_triple}/stdlib.moon"
+                COMMENT "Checking precompiled ${cross_triple}/stdlib.moon"
                 COMMAND_EXPAND_LISTS
                 VERBATIM
             )
-            list(APPEND CROSS_MOONS ${CROSS_MOON})
+            add_dependencies(stdlib_cross_moon_${cross_triple} sun)
+            list(APPEND CROSS_MOON_TARGETS stdlib_cross_moon_${cross_triple})
         endif()
     endforeach()
-    if(CROSS_MOONS OR SUN_CROSS_TLS_AARCH64)
-        add_custom_target(stdlib_cross_moons ALL DEPENDS ${CROSS_MOONS})
+    if(CROSS_MOON_TARGETS OR SUN_CROSS_TLS_AARCH64)
+        add_custom_target(stdlib_cross_moons ALL)
+        if(CROSS_MOON_TARGETS)
+            add_dependencies(stdlib_cross_moons ${CROSS_MOON_TARGETS})
+        endif()
     endif()
 
     if(SUN_CROSS_TLS_AARCH64)
@@ -561,22 +560,16 @@ if(NOT SKIP_STDLIB)
             endif()
         endforeach()
         set(BUILD_CROSS_BUNDLES_SCRIPT ${CMAKE_SOURCE_DIR}/scripts/build-cross-bundles.sh)
-        set(CROSS_BUNDLES_CONFIG ${CMAKE_SOURCE_DIR}/sun-config.json)
-        file(GLOB CROSS_BUNDLE_SOURCES CONFIGURE_DEPENDS
-            ${CMAKE_SOURCE_DIR}/stdlib/*.sun ${CMAKE_SOURCE_DIR}/tls/*.sun)
-        add_custom_command(
-            OUTPUT ${CROSS_BUNDLE_DIR}/stdlib.moon ${CROSS_BUNDLE_DIR}/tls.moon
+        add_custom_target(cross_bundles_aarch64
             COMMAND bash ${BUILD_CROSS_BUNDLES_SCRIPT} $<TARGET_FILE:sun>
                     ${SUN_BUNDLE_FLAGS}
-            DEPENDS sun ${CROSS_BUNDLE_SOURCES}
-                    ${BUILD_CROSS_BUNDLES_SCRIPT} ${CROSS_BUNDLES_CONFIG}
-                    ${CROSS_OPENSSL_DIR}/libssl.a ${CROSS_OPENSSL_DIR}/libcrypto.a
-            DEPFILE ${CROSS_BUNDLE_DIR}/sun-config.d
-            COMMENT "Building AArch64 stdlib and TLS from sun-config.json"
+            BYPRODUCTS ${CROSS_BUNDLE_DIR}/stdlib.moon ${CROSS_BUNDLE_DIR}/tls.moon
+            COMMENT "Checking AArch64 stdlib and TLS from sun-config.json"
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
             COMMAND_EXPAND_LISTS
             VERBATIM
         )
+        add_dependencies(cross_bundles_aarch64 sun)
         # The shared config names source-relative outputs. Package builds
         # collect those artifacts in their separate CMake build directory.
         set(CROSS_PACKAGE_DIR ${CMAKE_BINARY_DIR}/aarch64-linux-gnu)
@@ -592,6 +585,7 @@ if(NOT SKIP_STDLIB)
             )
         endif()
         add_custom_target(tls_cross_moon ALL DEPENDS ${CROSS_PACKAGE_DIR}/tls.moon)
+        add_dependencies(tls_cross_moon cross_bundles_aarch64)
         # One target owns the shared outputs so parallel Make builds cannot
         # run the bundle command twice or delete an output still in use.
         add_dependencies(stdlib_cross_moons tls_cross_moon)

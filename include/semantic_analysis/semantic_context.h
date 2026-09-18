@@ -51,6 +51,10 @@ class SemanticContext : public AccessContext {
   /** The scope currently being analyzed. */
   SemanticScope *scope() const { return currentScope_; }
 
+  /** Access the scope currently being analyzed. */
+  SemanticScope &currentScope() { return *currentScope_; }
+  const SemanticScope &currentScope() const { return *currentScope_; }
+
   /** The global scope, for debugging and visualization. */
   SemanticScope &rootScope() { return *rootScope_; }
   const SemanticScope &rootScope() const { return *rootScope_; }
@@ -108,11 +112,7 @@ class SemanticContext : public AccessContext {
   void exitScope();
 
   /** True when not inside any function scope (i.e. at module/global level). */
-  bool isAtModuleLevel() const {
-    for (auto *s = currentScope_; s != nullptr; s = s->parent)
-      if (s->getType() == ScopeType::Function) return false;
-    return true;
-  }
+  bool isAtModuleLevel() const { return currentScope().isAtModuleLevel(); }
 
   /** Nearest enclosing function scope, or nullptr at module/global level. */
   FunctionScope *currentFunctionScope() const {
@@ -226,14 +226,6 @@ class SemanticContext : public AccessContext {
   }
 
   // ---- Variables ---------------------------------------------------------
-
-  /** Record a variable in the current scope under the given type. */
-  void declareVariable(const std::string &name, sun::TypePtr type,
-                       bool isParam = false, bool isConst = false,
-                       sun::DeclarationId declarationId = {});
-
-  /** Find a variable by name in the scope chain. */
-  VariableInfo *lookupVariable(const std::string &name);
 
   /**
    * Record a module-level variable under both its plain and its qualified

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Compile a bundle and record its inputs for CMake.
+# Compile a bundle next to the bundles it imports. Safe to run on every
+# build: --skip-if-unchanged leaves a bundle alone when its inputs are
+# unchanged.
 # Usage: scripts/build-moon.sh <sun> <entrypoint> <output.moon> [compiler flags...]
 
 if [ "$#" -lt 3 ]; then
@@ -17,7 +19,6 @@ shift 3
 BUNDLE_DIR="$(dirname "$OUTPUT")"
 mkdir -p "$BUNDLE_DIR"
 
-exec "$SUN_COMPILER" --emit-moon \
+exec "$SUN_COMPILER" --emit-moon --skip-if-unchanged \
     --lib-path "$BUNDLE_DIR" \
-    --depfile "$OUTPUT.d" \
     -o "$OUTPUT" "$@" "$ENTRYPOINT"

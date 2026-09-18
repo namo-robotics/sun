@@ -111,14 +111,14 @@ std::string SemanticAnalyzer::immutableBaseOf(const ExprAST& place) {
     }
 
     case ASTNodeType::THIS: {
-      VariableInfo* info = ctx_.lookupVariable("this");
+      VariableInfo* info = ctx_.currentScope().lookupVariable("this");
       if (info && info->isConst) return "'this' inside a const method";
       return "";
     }
 
     case ASTNodeType::VARIABLE_REFERENCE: {
       const auto& ref = static_cast<const VariableReferenceAST&>(place);
-      VariableInfo* info = ctx_.lookupVariable(ref.getName());
+      VariableInfo* info = ctx_.currentScope().lookupVariable(ref.getName());
       if (!info) return "";
       if (info->isConst) return "constant '" + ref.getName() + "'";
       if (sun::isConstRef(info->type))
@@ -208,7 +208,7 @@ void SemanticAnalyzer::checkMoveSource(const ExprAST& value,
     }
   } else if (source->getType() == ASTNodeType::VARIABLE_REFERENCE) {
     const auto& ref = static_cast<const VariableReferenceAST&>(*source);
-    VariableInfo* info = ctx_.lookupVariable(ref.getName());
+    VariableInfo* info = ctx_.currentScope().lookupVariable(ref.getName());
     if (info && info->isConst && info->isGlobal) {
       logAndThrowError("Cannot move constant global '" + ref.getName() +
                            "'; borrow it with 'const ref' or copy it with "

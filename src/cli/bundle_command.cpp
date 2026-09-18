@@ -10,11 +10,17 @@ namespace sun::cli {
 
 int buildMoonBundle(const std::string& entrypoint,
                     const std::filesystem::path& outputPath,
-                    const sun::MoonBuildOptions& buildOptions,
-                    sun::Depfile* depfile) {
-  llvm::outs() << "Creating moon: " << outputPath.string() << "\n";
+                    const sun::MoonBuildOptions& buildOptions) {
   try {
-    auto report = sun::MoonBuilder::build(entrypoint, outputPath, buildOptions);
+    sun::MoonBuildOptions announced = buildOptions;
+    announced.onBuildStart = [&] {
+      llvm::outs() << "Creating moon: " << outputPath.string() << "\n";
+    };
+    auto report = sun::MoonBuilder::build(entrypoint, outputPath, announced);
+    if (report.upToDate) {
+      llvm::outs() << "Up to date: " << outputPath.string() << "\n";
+      return 0;
+    }
     for (const auto& f : report.sunFiles) {
       llvm::outs() << "  Including: " << f << "\n";
     }
@@ -25,15 +31,6 @@ int buildMoonBundle(const std::string& entrypoint,
       llvm::outs() << "  Moon import: " << m.path << "\n";
     }
     llvm::outs() << "Successfully created: " << outputPath.string() << "\n";
-    if (depfile) {
-      std::vector<std::string> inputs = report.sunFiles;
-      for (const auto& m : report.moonImports) inputs.push_back(m.path);
-      inputs.insert(inputs.end(), report.protoFiles.begin(),
-                    report.protoFiles.end());
-      inputs.insert(inputs.end(), report.archiveFiles.begin(),
-                    report.archiveFiles.end());
-      depfile->addOutput(outputPath.string(), inputs);
-    }
     return 0;
   } catch (const SunError& e) {
     // Unlike the other commands, bundling prefixes compile errors with
@@ -60,12 +57,9 @@ int runBundleCommand(const BuildRunOptions& options) {
   buildOptions.optimize = options.shared.optimize;
   buildOptions.dumpProtoSun = options.dumpProtoSun;
   buildOptions.extraMoons = options.shared.moonImports;
+  buildOptions.skipIfUnchanged = options.skipIfUnchanged;
 
-  sun::Depfile depfile;
-  int exitCode =
-      buildMoonBundle(entrypoint, outputPath, buildOptions,
-                      options.depfilePath.empty() ? nullptr : &depfile);
-  return writeDepfileOnSuccess(exitCode, depfile, options.depfilePath);
+  return buildMoonBundle(entrypoint, outputPath, buildOptions);
 }
 
 }  // namespace sun::cli

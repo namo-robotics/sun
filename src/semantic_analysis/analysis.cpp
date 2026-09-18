@@ -29,7 +29,7 @@ void SemanticAnalyzer::rejectBorrowOfByValueCapture(const ExprAST& target,
                                                     const Position& loc) {
   if (target.getType() != ASTNodeType::VARIABLE_REFERENCE) return;
   const auto& varRef = static_cast<const VariableReferenceAST&>(target);
-  VariableInfo* varInfo = ctx_.lookupVariable(varRef.getName());
+  VariableInfo* varInfo = ctx_.currentScope().lookupVariable(varRef.getName());
   if (!varInfo || varInfo->captureKind != CaptureKind::ByValue) return;
   const std::string& name = varRef.getName();
   logAndThrowError(
@@ -133,7 +133,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       // An expected function-pointer type selects one overload without
       // changing ordinary call-site overload resolution.
       if (expectedType && expectedType->isFunction() &&
-          !ctx_.lookupVariable(varRef.getName())) {
+          !ctx_.currentScope().lookupVariable(varRef.getName())) {
         sun::QualifiedName resolved =
             ctx_.resolveNameWithUsings(varRef.getName());
         std::vector<FunctionInfo> matches;
@@ -164,7 +164,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       sun::QualifiedName resolved =
           ctx_.resolveNameWithUsings(varRef.getName());
       varRef.setQualifiedName(resolved);
-      if (VariableInfo* info = ctx_.lookupVariable(varRef.getName())) {
+      if (VariableInfo* info =
+              ctx_.currentScope().lookupVariable(varRef.getName())) {
         varRef.setTargetDeclarationId(info->declarationId);
         checkExternVariableAccessAllowed(*info, resolved.display(),
                                          varRef.getLocation());

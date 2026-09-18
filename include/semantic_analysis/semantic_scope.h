@@ -412,6 +412,18 @@ struct SemanticScopeBase
   std::map<std::string, VariableInfo> namespacedVariables;
 
   // ===== Transient state (all scopes) =====
+  /** Record a variable here, checking reserved names and global shadowing. */
+  void declareVariable(const std::string& name, sun::TypePtr type,
+                       bool isParam = false, bool isConst = false,
+                       sun::DeclarationId declarationId = {});
+
+  /** Report whether this scope is outside every function body. */
+  bool isAtModuleLevel() const {
+    for (auto* scope = this; scope; scope = scope->parent)
+      if (scope->getType() == ScopeType::Function) return false;
+    return true;
+  }
+
   std::map<std::string, VariableInfo> variables;
   std::map<std::string, sun::TypePtr> typeParameters;
   std::map<std::string, sun::TypePtr> typeAliases;

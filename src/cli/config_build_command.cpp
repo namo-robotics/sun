@@ -33,6 +33,7 @@ sun::MoonBuildOptions makeMoonBuildOptions(const CompileJob& job) {
   buildOptions.optimize = job.optimize;
   buildOptions.dumpProtoSun = job.dumpProtoSun;
   buildOptions.extraMoons = job.moonImports;
+  buildOptions.skipIfUnchanged = job.skipIfUnchanged;
   return buildOptions;
 }
 
@@ -44,8 +45,8 @@ int buildLibrary(const CompileJob& job) {
   if (moonPath.extension() != ".moon") {
     moonPath += ".moon";
   }
-  if (buildMoonBundle(job.inputFiles[0], moonPath, makeMoonBuildOptions(job),
-                      job.depfile) != 0) {
+  if (buildMoonBundle(job.inputFiles[0], moonPath, makeMoonBuildOptions(job)) !=
+      0) {
     return 1;
   }
   if (job.noTest) {
@@ -87,15 +88,10 @@ int buildEntrypoints(const sun::SunConfig& config, const CompileJob& base) {
 
 int runConfigBuildCommand(const BuildRunOptions& options) {
   const std::string& configFile = options.inputFiles[0];
-  sun::Depfile depfile;
-  CompileJob base =
-      makeCompileJob(options, options.depfilePath.empty() ? nullptr : &depfile);
+  CompileJob base = makeCompileJob(options);
   try {
-    // The config names the outputs, so every artifact depends on it too
-    depfile.addSharedInput(std::filesystem::absolute(configFile).string());
     sun::SunConfig config = loadConfigInput(configFile, options.targetTriple);
-    return writeDepfileOnSuccess(buildEntrypoints(config, base), depfile,
-                                 options.depfilePath);
+    return buildEntrypoints(config, base);
   } catch (const SunError& e) {
     return reportSunError(e);
   }

@@ -359,7 +359,7 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveNamedCallee(
     CallExprAST& callExpr, VariableReferenceAST& varRef,
     const std::vector<sun::TypePtr>& argTypes) {
   CalleeResolution out;
-  if (ctx_.lookupVariable(varRef.getName())) {
+  if (ctx_.currentScope().lookupVariable(varRef.getName())) {
     sema_.analyzeExpr(varRef);
     return out;
   }
@@ -823,7 +823,8 @@ void CallAnalyzer::expandPackArguments(
       for (size_t i = 0; i < types.size(); ++i) {
         auto vref = std::make_unique<VariableReferenceAST>(packName + "." +
                                                            std::to_string(i));
-        const auto* binding = ctx_.lookupVariable(vref->getName());
+        const auto* binding =
+            ctx_.currentScope().lookupVariable(vref->getName());
         if (!binding || !binding->declarationId)
           logAndThrowError("Variadic element has no declaration identity");
         vref->setTargetDeclarationId(binding->declarationId);

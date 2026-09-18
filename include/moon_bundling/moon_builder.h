@@ -9,6 +9,7 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -23,6 +24,12 @@ struct MoonBuildOptions {
   bool optimize = true;                // disabled by -O0
   bool dumpProtoSun = false;           // print synthesized proto source
   std::vector<MoonImport> extraMoons;  // CLI --moon imports
+  // Leave the bundle on disk alone when it was made from the same inputs
+  // (--skip-if-unchanged)
+  bool skipIfUnchanged = false;
+  // Called once the build is known to go ahead, before anything is compiled,
+  // so a caller can announce it. Not called for a skipped build.
+  std::function<void()> onBuildStart;
 };
 
 // What went into a bundle (for logging / assertions)
@@ -37,12 +44,17 @@ struct MoonBuildReport {
   // File names of archives taken over from imported bundles whose code was
   // linked in, so the bundle stays self-contained for its importers
   std::vector<std::string> inheritedArchives;
+  // True when the bundle on disk already recorded the same input hash, so
+  // nothing was compiled or written
+  bool upToDate = false;
 };
 
 class MoonBuilder {
  public:
-  // Build `outputPath` from `entrypoint`. Throws SunError on any failure
-  // (manifest, proto import, compilation, bundle write).
+  // Build `outputPath` from `entrypoint`. With options.skipIfUnchanged, a
+  // bundle already there and built from the same inputs is left alone (see
+  // input_hash.h). Throws SunError on any failure (manifest, proto import,
+  // compilation, bundle write).
   static MoonBuildReport build(const std::string& entrypoint,
                                const std::filesystem::path& outputPath,
                                const MoonBuildOptions& options = {});

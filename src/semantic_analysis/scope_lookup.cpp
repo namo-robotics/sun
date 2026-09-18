@@ -18,6 +18,35 @@
 using sun::names::isIntrinsic;
 using sun::rules::isAssignableTo;
 
+void SemanticScopeBase::declareVariable(const std::string& name,
+                                        sun::TypePtr type, bool isParam,
+                                        bool isConst,
+                                        sun::DeclarationId declarationId) {
+  // Block user-defined identifiers starting with underscore
+  if (sun::names::isReservedIdentifier(name)) {
+    logAndThrowError(
+        "Identifier '" + name +
+        "' is invalid: names starting with '_' are reserved for builtins");
+  }
+  // Check for shadowing of global/module variables
+  for (auto* s = this; s != nullptr; s = s->parent) {
+    if (s->getType() == ScopeType::Global ||
+        s->getType() == ScopeType::Module) {
+      if (s->variables.contains(name)) {
+        logAndThrowError("Cannot shadow " +
+                         std::string(s->getType() == ScopeType::Global
+                                         ? "global"
+                                         : "module") +
+                         " variable '" + name + "'");
+      }
+    }
+  }
+  VariableInfo info{type, isAtModuleLevel(), isParam, false};
+  info.declarationId = declarationId;
+  info.isConst = isConst;
+  variables[name] = info;
+}
+
 namespace {
 
 // A module-qualified name split at its last dot: "std.io.File" names the

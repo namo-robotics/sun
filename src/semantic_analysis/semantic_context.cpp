@@ -21,7 +21,6 @@ using sun::unwrapRef;
 using sun::access::fieldRef;
 using sun::access::methodRef;
 using sun::access::moduleRef;
-using sun::names::isReservedIdentifier;
 
 // isLibraryScope() is provided by semantic_scope.h
 
@@ -644,39 +643,6 @@ SymbolMatch SemanticContext::findSymbolInModule(
 // -------------------------------------------------------------------
 // Variable management
 // -------------------------------------------------------------------
-
-void SemanticContext::declareVariable(const std::string& name,
-                                      sun::TypePtr type, bool isParam,
-                                      bool isConst,
-                                      sun::DeclarationId declarationId) {
-  // Block user-defined identifiers starting with underscore
-  if (isReservedIdentifier(name)) {
-    logAndThrowError(
-        "Identifier '" + name +
-        "' is invalid: names starting with '_' are reserved for builtins");
-  }
-  // Check for shadowing of global/module variables
-  for (auto* s = currentScope_; s != nullptr; s = s->parent) {
-    if (s->getType() == ScopeType::Global ||
-        s->getType() == ScopeType::Module) {
-      if (s->variables.contains(name)) {
-        logAndThrowError("Cannot shadow " +
-                         std::string(s->getType() == ScopeType::Global
-                                         ? "global"
-                                         : "module") +
-                         " variable '" + name + "'");
-      }
-    }
-  }
-  VariableInfo info{type, isAtModuleLevel(), isParam, false};
-  info.declarationId = declarationId;
-  info.isConst = isConst;
-  currentScope_->variables[name] = info;
-}
-
-VariableInfo* SemanticContext::lookupVariable(const std::string& name) {
-  return currentScope_->lookupVariable(name);
-}
 
 // -------------------------------------------------------------------
 // Type narrowing (from _is<T> type guards)

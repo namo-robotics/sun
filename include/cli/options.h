@@ -60,7 +60,7 @@ struct BuildRunOptions {
   bool emitMoon = false;                 // --emit-moon
   bool dumpProtoSun = false;             // --dump-proto-sun
   bool noTest = false;                   // --no-test
-  std::string depfilePath;               // --depfile <file>
+  bool skipIfUnchanged = false;          // --skip-if-unchanged
   std::string githubToken;               // --gh-token <tok>
   std::vector<std::string> programArgs;  // everything after --
   // True when the single input is a sun-config.json standing in for the

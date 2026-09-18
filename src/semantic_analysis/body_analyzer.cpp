@@ -95,8 +95,9 @@ void BodyAnalyzer::analyzeFunction(FunctionAST& func) {
   // Declare 'this' for methods (when we're inside a class context); it is
   // immutable inside a const method
   if (ctx_.getCurrentClass()) {
-    ctx_.declareVariable("this", ctx_.getCurrentClass(), /*isParam=*/true,
-                         /*isConst=*/proto.isConstMethod());
+    ctx_.currentScope().declareVariable("this", ctx_.getCurrentClass(),
+                                        /*isParam=*/true,
+                                        /*isConst=*/proto.isConstMethod());
   }
 
   // If this is a generic function/method, bind each type parameter to itself
@@ -129,17 +130,18 @@ void BodyAnalyzer::analyzeFunction(FunctionAST& func) {
   for (size_t i = 0; i < proto.getArgs().size(); ++i) {
     const auto& [argName, argType] = proto.getArgs()[i];
     sun::TypePtr paramType = analyzer_.types().typeAnnotationToType(argType);
-    ctx_.declareVariable(argName, paramType, true, false,
-                         proto.declarationIdentity().parameters.at(i));
+    ctx_.currentScope().declareVariable(
+        argName, paramType, true, false,
+        proto.declarationIdentity().parameters.at(i));
   }
 
   // Add captured variables to scope (so nested functions can see them),
   // marked as captures so mutation checks and nested capture lists can
   // distinguish them from ordinary locals
   for (const auto& cap : proto.getCaptures()) {
-    ctx_.declareVariable(cap.name, cap.type, false, cap.isConst,
-                         cap.declarationId);
-    if (VariableInfo* vi = ctx_.lookupVariable(cap.name)) {
+    ctx_.currentScope().declareVariable(cap.name, cap.type, false, cap.isConst,
+                                        cap.declarationId);
+    if (VariableInfo* vi = ctx_.currentScope().lookupVariable(cap.name)) {
       vi->captureKind = cap.kind;
       vi->isConst = cap.isConst;
     }
@@ -184,17 +186,18 @@ void BodyAnalyzer::analyzeLambda(LambdaAST& lambda) {
   for (size_t i = 0; i < proto.getArgs().size(); ++i) {
     const auto& [argName, argType] = proto.getArgs()[i];
     sun::TypePtr paramType = analyzer_.types().typeAnnotationToType(argType);
-    ctx_.declareVariable(argName, paramType, true, false,
-                         proto.declarationIdentity().parameters.at(i));
+    ctx_.currentScope().declareVariable(
+        argName, paramType, true, false,
+        proto.declarationIdentity().parameters.at(i));
   }
 
   // Add captured variables to scope (so nested functions can see them),
   // marked as captures so mutation checks and nested capture lists can
   // distinguish them from ordinary locals
   for (const auto& cap : proto.getCaptures()) {
-    ctx_.declareVariable(cap.name, cap.type, false, cap.isConst,
-                         cap.declarationId);
-    if (VariableInfo* vi = ctx_.lookupVariable(cap.name)) {
+    ctx_.currentScope().declareVariable(cap.name, cap.type, false, cap.isConst,
+                                        cap.declarationId);
+    if (VariableInfo* vi = ctx_.currentScope().lookupVariable(cap.name)) {
       vi->captureKind = cap.kind;
       vi->isConst = cap.isConst;
     }
@@ -264,8 +267,8 @@ void BodyAnalyzer::analyzeMethodWithBindings(
       methodSig, classType->getQualifiedName().memberNamed(proto.getName()),
       proto.canThrow(), methodReturnType);
   if (classType) {
-    ctx_.declareVariable("this", classType, /*isParam=*/true,
-                         /*isConst=*/proto.isConstMethod());
+    ctx_.currentScope().declareVariable("this", classType, /*isParam=*/true,
+                                        /*isConst=*/proto.isConstMethod());
   }
 
   analyzer_.clearResolvedTypes(const_cast<BlockExprAST&>(methodFunc.getBody()));
@@ -277,8 +280,9 @@ void BodyAnalyzer::analyzeMethodWithBindings(
   // Step 5: Declare method parameters with substituted types
   for (size_t i = 0; i < proto.getArgs().size(); ++i) {
     const auto& [argName, argType] = proto.getArgs()[i];
-    ctx_.declareVariable(argName, substitutedParamTypes[i], true, false,
-                         proto.declarationIdentity().parameters.at(i));
+    ctx_.currentScope().declareVariable(
+        argName, substitutedParamTypes[i], true, false,
+        proto.declarationIdentity().parameters.at(i));
   }
 
   // Analyze the source body after its parameters are in scope.

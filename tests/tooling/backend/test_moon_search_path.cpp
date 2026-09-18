@@ -82,12 +82,11 @@ public module library {
   }
 
   void checkBuild(const std::string& arguments) {
-    ASSERT_EQ(run(quote(dir / "bin/sun") + " --depfile " +
-                  quote(dir / "output.d") + " " + arguments),
-              0)
+    ASSERT_EQ(run(quote(dir / "bin/sun") + " " + arguments), 0)
         << readFile(dir / "log");
     EXPECT_TRUE(fs::exists(dir / "project/library.moon"));
-    EXPECT_NE(readFile(dir / "output.d").find(dependencyPath.string()),
+    // The build names each bundle it imported
+    EXPECT_NE(readFile(dir / "log").find(dependencyPath.string()),
               std::string::npos);
   }
 };
@@ -227,14 +226,13 @@ TEST_P(MoonSearchPath, config_target_selects_outputs_and_dependencies) {
   ]
 })";
   ASSERT_EQ(run(quote(dir / "bin/sun") +
-                " -c --target aarch64-unknown-linux-gnu --no-test --depfile " +
-                quote(dir / "output.d") + " " +
+                " -c --target aarch64-unknown-linux-gnu --no-test " +
                 quote(dir / "project/sun-config.json")),
             0)
       << readFile(dir / "log");
   EXPECT_TRUE(fs::exists(dir / "project/cross/library.moon"));
   EXPECT_FALSE(fs::exists(dir / "project/native/library.moon"));
-  EXPECT_NE(readFile(dir / "output.d").find(dependencyPath.string()),
+  EXPECT_NE(readFile(dir / "log").find(dependencyPath.string()),
             std::string::npos);
 }
 

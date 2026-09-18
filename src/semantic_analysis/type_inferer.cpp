@@ -102,7 +102,7 @@ sun::TypePtr TypeInferer::inferCallType(const CallExprAST& callExpr) {
         ASTNodeType::VARIABLE_REFERENCE) {
       const auto& objRef =
           static_cast<const VariableReferenceAST&>(*memberAccess.getObject());
-      if (!ctx_.lookupVariable(objRef.getName()) &&
+      if (!ctx_.currentScope().lookupVariable(objRef.getName()) &&
           !ctx_.lookupEnum(objRef.getName()) &&
           ctx_.scope()->lookupGenericEnum(objRef.getName())) {
         if (auto resolved = callExpr.getResolvedType()) {
@@ -195,7 +195,7 @@ sun::TypePtr TypeInferer::inferVariableReferenceType(
   const std::string& name = varRef.getName();
 
   // Look up as variable
-  VariableInfo* info = ctx_.lookupVariable(name);
+  VariableInfo* info = ctx_.currentScope().lookupVariable(name);
   if (info) {
     varRef.setTargetDeclarationId(info->declarationId);
     // Substitute type parameters to get concrete type (e.g., T -> Box)
@@ -1164,7 +1164,7 @@ sun::TypePtr TypeInferer::inferType(const MemberAccessAST& memberAccess) {
     // the specialization from context
     const auto& varRef =
         static_cast<const VariableReferenceAST&>(*memberAccess.getObject());
-    if (!ctx_.lookupVariable(varRef.getName()) &&
+    if (!ctx_.currentScope().lookupVariable(varRef.getName()) &&
         ctx_.scope()->lookupGenericEnum(varRef.getName())) {
       if (auto resolved = memberAccess.getResolvedType()) {
         return resolved;

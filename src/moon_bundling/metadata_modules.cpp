@@ -75,7 +75,7 @@ void bindModules(google::protobuf::Message& message, SemanticContext& ctx,
     auto path = moduleSpelling(node);
     auto first = path.substr(0, path.find('.'));
     if (!path.empty() && !locals.contains(first) &&
-        !ctx.lookupVariable(first) && !ctx.lookupEnum(first) &&
+        !ctx.currentScope().lookupVariable(first) && !ctx.lookupEnum(first) &&
         ctx.getAllFunctions(first).empty()) {
       if (auto* module = ctx.lookupModuleScope(path)) {
         node.set_module_declaration_key(

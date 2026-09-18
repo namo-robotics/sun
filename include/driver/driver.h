@@ -80,11 +80,6 @@ class Driver {
   // Whether the last compilation saw any test functions or test_files
   bool hasTests_ = false;
 
-  // Every file the last compilation read, for `--depfile`: the source files
-  // in compile order, then imported bundles and proto schemas. Archives are
-  // reported separately by getNativeArchivePaths.
-  std::vector<std::string> inputFiles_;
-
   // Static archives the program's own manifest declares under `archives:`,
   // resolved to paths. A bundle build packs them into the .moon; a program
   // build (including a library's test binary) links them directly.
@@ -251,10 +246,11 @@ class Driver {
   /// Print the Sun source synthesized from each imported .proto to stdout
   void setDumpProtoSun(bool dump) { dumpProtoSun_ = dump; }
 
-  /// Compile as the body of a .moon bundle with this content hash: the
-  /// program's own declarations are analyzed under a `$hash$` module scope,
-  /// so every symbol and struct type is spelled the way importers of the
-  /// bundle will spell it. Must be set before compileFiles.
+  /// Compile as the body of a .moon bundle with this hash, which is the
+  /// bundle's input hash (see input_hash.h): the program's own declarations are
+  /// analyzed under a `$hash$` module scope, so every symbol and struct type is
+  /// spelled the way importers of the bundle will spell it. Must be set before
+  /// compileFiles.
   void setOwnBundleHash(std::string hash) { ownBundleHash_ = std::move(hash); }
 
   /// C symbols the bundle being built carries in its archives, mapped to
@@ -295,11 +291,6 @@ class Driver {
   const std::vector<std::string>& getNativeArchivePaths() const {
     return nativeArchivePaths_;
   }
-
-  // Every file the last compilation read (sources, bundles, protos), so a
-  // build system can be told what the artifact depends on. Valid after
-  // compileFile/compileFiles/executeFile.
-  const std::vector<std::string>& getInputFiles() const { return inputFiles_; }
 
   /// Enable/disable LLVM IR dumping to stdout
   void setDumpIR(bool dump) { dumpIR = dump; }

@@ -91,7 +91,7 @@ TEST(Tooling_Cli_OptionParser, plain_script_runs_with_the_jit) {
 TEST(Tooling_Cli_OptionParser, compile_flags_set_their_fields) {
   auto parsed = parseBuildRun({"-c", "-o", "out", "app.sun", "-g", "-O0",
                                "--debug", "--emit-ir", "--no-test",
-                               "--dump-proto-sun", "--depfile", "out.d"});
+                               "--dump-proto-sun", "--skip-if-unchanged"});
   ASSERT_FALSE(parsed.early.has_value());
   EXPECT_TRUE(parsed.options.compileMode);
   EXPECT_FALSE(parsed.options.emitObjOnly);
@@ -102,7 +102,7 @@ TEST(Tooling_Cli_OptionParser, compile_flags_set_their_fields) {
   EXPECT_TRUE(parsed.options.shared.emitIR);
   EXPECT_TRUE(parsed.options.noTest);
   EXPECT_TRUE(parsed.options.dumpProtoSun);
-  EXPECT_EQ(parsed.options.depfilePath, "out.d");
+  EXPECT_TRUE(parsed.options.skipIfUnchanged);
 }
 
 TEST(Tooling_Cli_OptionParser, emit_obj_implies_compile_mode) {
@@ -238,9 +238,8 @@ TEST(Tooling_Cli_OptionParser, unknown_option_prints_usage_and_fails) {
 // A flag missing its value is reported as unknown; so is -S, which the help
 // text lists but nothing implements.
 TEST(Tooling_Cli_OptionParser, value_flag_without_a_value_is_unknown) {
-  for (const char* flag :
-       {"-o", "--target", "--sysroot", "--depfile", "--lib-path", "-l", "-L",
-        "--moon", "--gh-token", "--path-var", "-S"}) {
+  for (const char* flag : {"-o", "--target", "--sysroot", "--lib-path", "-l",
+                           "-L", "--moon", "--gh-token", "--path-var", "-S"}) {
     auto parsed = parseBuildRun({"app.sun", flag});
     expectRejected(parsed.early, std::string("Unknown option: ") + flag + "\n" +
                                      sun::cli::renderUsage(kProgram));
@@ -326,11 +325,11 @@ TEST(Tooling_Cli_OptionParser, static_is_not_supported_for_macos) {
                  "Error: --static is not supported for macOS targets\n");
 }
 
-TEST(Tooling_Cli_OptionParser, depfile_needs_a_build_mode) {
-  expectRejected(parseBuildRun({"--depfile", "a.d", "a.sun"}).early,
-                 "Error: --depfile describes built artifacts; use it with -c "
-                 "or --emit-moon\n");
-  EXPECT_FALSE(parseBuildRun({"--emit-moon", "--depfile", "a.d", "a.sun"})
+TEST(Tooling_Cli_OptionParser, skip_if_unchanged_needs_a_build_mode) {
+  expectRejected(parseBuildRun({"--skip-if-unchanged", "a.sun"}).early,
+                 "Error: --skip-if-unchanged is about built artifacts; use it "
+                 "with -c or --emit-moon\n");
+  EXPECT_FALSE(parseBuildRun({"--emit-moon", "--skip-if-unchanged", "a.sun"})
                    .early.has_value());
 }
 

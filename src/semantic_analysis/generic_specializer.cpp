@@ -516,8 +516,9 @@ void GenericSpecializer::declareVariadicPack(const PrototypeAST& proto) {
   // Its elements, under the names codegen gives the parameters. The expansion
   // rewrites `args...` into references to exactly these.
   for (size_t i = 0; i < types.size(); ++i) {
-    ctx_.declareVariable(pack.elementName(i), types[i], true, false,
-                         proto.declarationIdentity().variadicParameters.at(i));
+    ctx_.currentScope().declareVariable(
+        pack.elementName(i), types[i], true, false,
+        proto.declarationIdentity().variadicParameters.at(i));
   }
 }
 
@@ -768,14 +769,15 @@ GenericSpecializer::instantiateGenericFunction(
     for (size_t i = 0; i < paramTypes.size(); ++i) {
       // Use parameter names from the cloned prototype
       std::string argName = proto.getArgs()[i].first;
-      ctx_.declareVariable(argName, paramTypes[i], true, false,
-                           clonedProto.declarationIdentity().parameters.at(i));
+      ctx_.currentScope().declareVariable(
+          argName, paramTypes[i], true, false,
+          clonedProto.declarationIdentity().parameters.at(i));
     }
 
     // Add captures to scope
     for (const auto& cap : substitutedCaptures) {
-      ctx_.declareVariable(cap.name, cap.type, false, cap.isConst,
-                           cap.declarationId);
+      ctx_.currentScope().declareVariable(cap.name, cap.type, false,
+                                          cap.isConst, cap.declarationId);
     }
 
     // Analyze the body with current type parameter bindings
@@ -1008,14 +1010,15 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
   declareVariadicPack(clonedProto);
 
   // Declare 'this' parameter (immutable inside a const method)
-  ctx_.declareVariable("this", classType, /*isParam=*/true,
-                       /*isConst=*/clonedProto.isConstMethod());
+  ctx_.currentScope().declareVariable("this", classType, /*isParam=*/true,
+                                      /*isConst=*/clonedProto.isConstMethod());
 
   // Declare regular parameters
   for (size_t i = 0; i < paramTypes.size(); ++i) {
     const auto& [argName, argType] = proto.getArgs()[i];
-    ctx_.declareVariable(argName, paramTypes[i], true, false,
-                         clonedProto.declarationIdentity().parameters.at(i));
+    ctx_.currentScope().declareVariable(
+        argName, paramTypes[i], true, false,
+        clonedProto.declarationIdentity().parameters.at(i));
   }
 
   // Analyze the body

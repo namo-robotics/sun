@@ -2,8 +2,7 @@
 //
 // The commands share a few chores: recognising a sun-config.json given in
 // place of an entrypoint, pointing the library search at the folders the user
-// named, writing the dependency file once a build has succeeded, and printing
-// errors the same way everywhere.
+// named, and printing errors the same way everywhere.
 
 #pragma once
 
@@ -11,7 +10,6 @@
 #include <string>
 
 #include "cli/options.h"
-#include "driver/depfile.h"
 #include "driver/sun_config.h"
 #include "support/error.h"
 
@@ -34,12 +32,6 @@ void applySharedSettings(const SharedOptions& shared);
 // Put the default command's options into effect: the GitHub token, the
 // target the library search is for, and the shared settings.
 void applyBuildRunSettings(const BuildRunOptions& options);
-
-// Write the depfile once every artifact has been built, so the rules it holds
-// describe a build that actually succeeded. Returns the exit code to use:
-// exitCode unchanged when the build failed or no depfile was asked for.
-int writeDepfileOnSuccess(int exitCode, const sun::Depfile& depfile,
-                          const std::string& depfilePath);
 
 // Print an early exit's text on its stream and return its exit code.
 int reportEarlyExit(const EarlyExit& earlyExit);

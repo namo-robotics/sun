@@ -128,8 +128,8 @@ std::optional<EarlyExit> parseBuildRunArguments(
       options.dumpProtoSun = true;
     } else if (arg == "--no-test") {
       options.noTest = true;
-    } else if (cursor.takeValueOf("--depfile", value)) {
-      options.depfilePath = value;
+    } else if (arg == "--skip-if-unchanged") {
+      options.skipIfUnchanged = true;
     } else if (cursor.takeValueOf("-l", value)) {
       options.linkOptions.libraries.push_back(value);
     } else if (arg.rfind("-l", 0) == 0 && arg.size() > 2) {
@@ -194,11 +194,10 @@ std::optional<EarlyExit> validateBuildRunOptions(
         "Error: --static only applies when linking; use it "
         "with -c\n");
   }
-  if (!options.depfilePath.empty() && !options.compileMode &&
-      !options.emitMoon) {
+  if (options.skipIfUnchanged && !options.compileMode && !options.emitMoon) {
     return makeFailure(
-        "Error: --depfile describes built artifacts; use it "
-        "with -c or --emit-moon\n");
+        "Error: --skip-if-unchanged is about built artifacts; use it with -c "
+        "or --emit-moon\n");
   }
   // macOS has no fully static binaries: Apple ships no static libSystem or
   // startup objects, and its linker rejects -static for executables.

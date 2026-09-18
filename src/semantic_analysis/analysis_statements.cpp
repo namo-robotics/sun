@@ -152,8 +152,9 @@ void SemanticAnalyzer::analyzeVariableCreation(VariableCreationAST& varCreate) {
   }
 
   // Note: Move semantics tracking is handled by the borrow checker
-  ctx_.declareVariable(varCreate.getName(), type, /*isParam=*/false,
-                       varCreate.isConst(), varCreate.getDeclarationId());
+  ctx_.currentScope().declareVariable(varCreate.getName(), type,
+                                      /*isParam=*/false, varCreate.isConst(),
+                                      varCreate.getDeclarationId());
   // Set the resolved type on the variable creation node itself
   varCreate.setResolvedType(type);
 }
@@ -161,7 +162,8 @@ void SemanticAnalyzer::analyzeVariableCreation(VariableCreationAST& varCreate) {
 void SemanticAnalyzer::analyzeVariableAssignment(
     VariableAssignmentAST& varAssign) {
   // Look up the variable's type first for expected type propagation
-  VariableInfo* varInfo = ctx_.lookupVariable(varAssign.getName());
+  VariableInfo* varInfo =
+      ctx_.currentScope().lookupVariable(varAssign.getName());
   if (varInfo) varAssign.setTargetDeclarationId(varInfo->declarationId);
   // A module-level global is emitted using its declaration ID; record it so
   // codegen can find the symbol (locals keep the name as written).
@@ -231,7 +233,8 @@ void SemanticAnalyzer::analyzeCompoundAssignment(
   if (compound.getTarget()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
     const auto& varRef =
         static_cast<const VariableReferenceAST&>(*compound.getTarget());
-    VariableInfo* varInfo = ctx_.lookupVariable(varRef.getName());
+    VariableInfo* varInfo =
+        ctx_.currentScope().lookupVariable(varRef.getName());
     if (varInfo && varInfo->captureKind == CaptureKind::ByValue) {
       logAndThrowError("Cannot mutate by-value captured variable '" +
                            varRef.getName() +
@@ -407,8 +410,8 @@ void SemanticAnalyzer::analyzeReferenceCreation(
   sun::TypePtr refType =
       sun::Types::Reference(targetType, refCreate.isMutable());
   // Declare the reference variable
-  ctx_.declareVariable(refCreate.getName(), refType, false, false,
-                       refCreate.getDeclarationId());
+  ctx_.currentScope().declareVariable(refCreate.getName(), refType, false,
+                                      false, refCreate.getDeclarationId());
   // Set the resolved type
   refCreate.setResolvedType(refType);
 }
