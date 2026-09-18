@@ -31,6 +31,8 @@
 #include "codegen/llvm_type_resolver.h"
 #include "semantic_analysis/types.h"
 
+namespace sun::codegen {
+
 /**
  * The function body currently being emitted: its receiver, and what its
  * return statements are allowed to do. Nested emission (a method body inside
@@ -42,7 +44,7 @@ struct FunctionFrame {
   llvm::Value* thisPtr = nullptr;
 
   // Class owning the method being compiled, for method name resolution
-  std::shared_ptr<sun::ClassType> currentClass = nullptr;
+  std::shared_ptr<sun::semantic_analysis::ClassType> currentClass = nullptr;
 
   // True when the function is declared to return errors, so division and
   // modulo take the checked path and calls may unwind
@@ -69,18 +71,19 @@ class CodegenState {
   llvm::Module* module;
 
   // Class and interface types, shared with the semantic analyzer
-  std::shared_ptr<sun::TypeRegistry> typeRegistry;
+  std::shared_ptr<sun::semantic_analysis::TypeRegistry> typeRegistry;
 
-  // sun::Type -> llvm::Type conversion, with its own cache
+  // sun::semantic_analysis::Type -> llvm::Type conversion, with its own cache
   LLVMTypeResolver typeResolver;
 
   // DWARF metadata emission; no-op unless -g
-  sun::DebugInfoBuilder debugInfo;
+  sun::codegen::DebugInfoBuilder debugInfo;
 
   // Where the emitter currently is
   FunctionFrame frame;
 
-  CodegenState(CodegenContext& ctx, std::shared_ptr<sun::TypeRegistry> registry)
+  CodegenState(CodegenContext& ctx,
+               std::shared_ptr<sun::semantic_analysis::TypeRegistry> registry)
       : ctx(ctx),
         module(ctx.mainModule.get()),
         typeRegistry(std::move(registry)),
@@ -93,13 +96,15 @@ class CodegenState {
 
   /** Derive the linker spelling for an analyzed declaration and emission role.
    */
-  std::string declarationSymbol(sun::DeclarationId id,
+  std::string declarationSymbol(sun::semantic_analysis::DeclarationId id,
                                 const std::string& role = "function") const {
     const auto& table = typeRegistry->declarations;
     const auto& record = table.get(id);
     if (role == "function" && record.name == "main" && !record.owner)
       return "main";
-    return sun::PortableDeclarationKey::fromDeclaration(id, table).symbol(role);
+    return sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
+               id, table)
+        .symbol(role);
   }
 
   llvm::IRBuilder<>& builder() { return *ctx.builder; }
@@ -112,7 +117,7 @@ class CodegenState {
   struct ReceiverGuard {
     CodegenState& state;
     llvm::Value* savedThisPtr;
-    std::shared_ptr<sun::ClassType> savedClass;
+    std::shared_ptr<sun::semantic_analysis::ClassType> savedClass;
 
     explicit ReceiverGuard(CodegenState& s)
         : state(s),
@@ -171,3 +176,5 @@ class CodegenState {
     InsertPointGuard& operator=(const InsertPointGuard&) = delete;
   };
 };
+
+}  // namespace sun::codegen

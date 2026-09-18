@@ -7,6 +7,8 @@
 
 #include "ast/expr_ast.h"
 
+namespace sun::ast {
+
 class WhileExprAST : public ExprAST {
   std::unique_ptr<ExprAST> Condition, Body;
 
@@ -33,3 +35,5 @@ class WhileExprAST : public ExprAST {
 
   std::string dotLabel() const override { return "While"; }
 };
+
+}  // namespace sun::ast

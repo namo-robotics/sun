@@ -8,6 +8,8 @@
 
 #include "ast/expr_ast.h"
 
+namespace sun::ast {
+
 // Array indexing: x[i] or x[i, j, k] for n-dimensional arrays (legacy)
 // Uses comma-separated indices: x[0, 1] instead of x[0][1]
 class ArrayIndexAST : public ExprAST {
@@ -34,3 +36,5 @@ class ArrayIndexAST : public ExprAST {
   size_t numIndices() const { return indices.size(); }
   std::string dotLabel() const override { return "ArrayIndex"; }
 };
+
+}  // namespace sun::ast

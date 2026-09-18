@@ -4,6 +4,15 @@
 #include "semantic_analysis/semantic_analyzer.h"
 #include "support/error.h"
 
+using sun::semantic_analysis::ClassType;
+using sun::semantic_analysis::InterfaceType;
+using sun::semantic_analysis::TypePtr;
+
+using sun::support::logAndThrowError;
+using sun::support::logSemanticError;
+
+namespace sun::semantic_analysis {
+
 // -------------------------------------------------------------------
 // Enum lookup (the rest of enum analysis lives in enums.cpp)
 // -------------------------------------------------------------------
@@ -13,10 +22,10 @@
 // -------------------------------------------------------------------
 
 void SemanticAnalyzer::inheritInterfaceFields(
-    const ClassDefinitionAST& classDef,
-    std::shared_ptr<sun::ClassType> classType) {
+    const sun::ast::ClassDefinitionAST& classDef,
+    std::shared_ptr<ClassType> classType) {
   for (const auto& ifaceRef : classDef.getImplementedInterfaces()) {
-    auto interfaceType = std::dynamic_pointer_cast<sun::InterfaceType>(
+    auto interfaceType = std::dynamic_pointer_cast<InterfaceType>(
         types_.typeAnnotationToType(ifaceRef.toAnnotation()));
     if (!interfaceType)
       logAndThrowError("Class '" + classDef.getName() +
@@ -28,7 +37,8 @@ void SemanticAnalyzer::inheritInterfaceFields(
     // Add interface fields to class (interface fields are inherited)
     for (const auto& field : interfaceType->getFields()) {
       // Check if class already has this field
-      const sun::ClassField* existingField = classType->getField(field.name);
+      const sun::semantic_analysis::ClassField* existingField =
+          classType->getField(field.name);
       if (existingField) {
         // Field already declared in class - verify type matches
         if (!existingField->type->equals(*field.type)) {
@@ -45,7 +55,7 @@ void SemanticAnalyzer::inheritInterfaceFields(
       // Add interface field to class with the interface's visibility
       const auto owner = classType->getDeclarationId();
       auto id = ctx_.types()->declarations.add(
-          sun::DeclarationKind::Field, field.name, owner,
+          sun::semantic_analysis::DeclarationKind::Field, field.name, owner,
           ctx_.types()->declarations.get(owner).module, {},
           field.declarationId);
       classType->addField(field.name, field.type, id).visibility =
@@ -60,17 +70,17 @@ void SemanticAnalyzer::inheritInterfaceFields(
 }
 
 void SemanticAnalyzer::validateInterfaceImplementation(
-    const ClassDefinitionAST& classDef,
-    std::shared_ptr<sun::ClassType> classType) {
+    const sun::ast::ClassDefinitionAST& classDef,
+    std::shared_ptr<ClassType> classType) {
   for (const auto& ifaceRef : classDef.getImplementedInterfaces()) {
-    auto interfaceType = std::dynamic_pointer_cast<sun::InterfaceType>(
+    auto interfaceType = std::dynamic_pointer_cast<InterfaceType>(
         types_.typeAnnotationToType(ifaceRef.toAnnotation()));
     if (!interfaceType) continue;
     std::string interfaceDisplayName = interfaceType->toDisplayString();
 
     // Check that class implements all required methods and add default methods
     for (const auto& interfaceMethod : interfaceType->getMethods()) {
-      const sun::ClassMethod* classMethodInfo = nullptr;
+      const sun::semantic_analysis::ClassMethod* classMethodInfo = nullptr;
       auto requiredReturnType = interfaceMethod.returnType;
       auto requiredParamTypes = interfaceMethod.paramTypes;
       for (const auto& classMethod : classDef.getMethods()) {
@@ -87,7 +97,7 @@ void SemanticAnalyzer::validateInterfaceImplementation(
         // candidate's.
         SemanticContext::ScopeSwitchGuard candidateScope(ctx_, ctx_.scope());
         if (!interfaceMethod.typeParameters.empty()) {
-          std::vector<sun::TypePtr> parameters;
+          std::vector<TypePtr> parameters;
           for (size_t i = 0; i < proto.getTypeParameters().size(); ++i)
             parameters.push_back(proto.getTypeParameters()[i].toSunType(
                 ctx_.types()->declarations,
@@ -111,8 +121,10 @@ void SemanticAnalyzer::validateInterfaceImplementation(
                                        classMethodInfo->declarationId);
         // A public interface member is reachable through the interface, so
         // the implementing method must be public too
-        if (interfaceMethod.visibility == sun::Visibility::Public &&
-            classMethodInfo->visibility != sun::Visibility::Public) {
+        if (interfaceMethod.visibility ==
+                sun::semantic_analysis::Visibility::Public &&
+            classMethodInfo->visibility !=
+                sun::semantic_analysis::Visibility::Public) {
           logSemanticError("method '" + interfaceMethod.name + "' of class '" +
                                classType->getDisplayName() +
                                "' implements public member '" +
@@ -146,9 +158,9 @@ void SemanticAnalyzer::validateInterfaceImplementation(
         if (!returnOk && requiredReturnType->isInterface() &&
             classMethodInfo->returnType->isClass()) {
           auto* required =
-              static_cast<const sun::InterfaceType*>(requiredReturnType.get());
-          auto* returned = static_cast<const sun::ClassType*>(
-              classMethodInfo->returnType.get());
+              static_cast<const InterfaceType*>(requiredReturnType.get());
+          auto* returned =
+              static_cast<const ClassType*>(classMethodInfo->returnType.get());
           if (returned->implementsInterface(*required)) {
             returnOk = true;
             classType->markStaticOnlyInterface(*interfaceType);
@@ -182,11 +194,13 @@ void SemanticAnalyzer::validateInterfaceImplementation(
           // names, so the implementation must promise the same ties.
           // Names match verbatim - 'this is 'this, and declared names
           // match by spelling.
-          auto lifetimeContractOf = [](const sun::TypePtr& t) -> std::string {
-            if (auto* lt = sun::tryGetType<sun::LambdaType>(t)) {
+          auto lifetimeContractOf = [](const TypePtr& t) -> std::string {
+            if (auto* lt = sun::codegen::support::tryGetType<
+                    sun::semantic_analysis::LambdaType>(t)) {
               return lt->getLifetimeName();
             }
-            if (auto* rt = sun::tryGetType<sun::ReferenceType>(t)) {
+            if (auto* rt = sun::codegen::support::tryGetType<
+                    sun::semantic_analysis::ReferenceType>(t)) {
               std::string contract = rt->getLifetimeName();
               for (const auto& applied : rt->getClassLifetimeArgs()) {
                 contract += "<" + applied + ">";
@@ -233,8 +247,8 @@ void SemanticAnalyzer::validateInterfaceImplementation(
                                               interfaceMethod.paramTypes, false,
                                               interfaceMethod.typeParameters);
           method.declarationId = ctx_.types()->declarations.add(
-              sun::DeclarationKind::Function, interfaceMethod.name,
-              classType->getDeclarationId(),
+              sun::semantic_analysis::DeclarationKind::Function,
+              interfaceMethod.name, classType->getDeclarationId(),
               ctx_.types()
                   ->declarations.get(classType->getDeclarationId())
                   .module,
@@ -250,7 +264,7 @@ void SemanticAnalyzer::validateInterfaceImplementation(
 
           // Register the source method name as a function
           std::string methodNameForScope = interfaceMethod.name;
-          std::vector<sun::TypePtr> methodParamTypes;
+          std::vector<TypePtr> methodParamTypes;
           methodParamTypes.push_back(classType);  // this parameter
           for (const auto& pt : interfaceMethod.paramTypes) {
             methodParamTypes.push_back(pt);
@@ -275,3 +289,5 @@ void SemanticAnalyzer::validateInterfaceImplementation(
     classType->addImplementedInterface(*interfaceType);
   }
 }
+
+}  // namespace sun::semantic_analysis

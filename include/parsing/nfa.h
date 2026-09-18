@@ -15,6 +15,8 @@
 
 #include "support/position.h"
 
+namespace sun::parsing {
+
 struct State {
   bool isAccepting = false;
   std::map<unsigned char, std::unordered_set<State*>>
@@ -32,8 +34,8 @@ struct State {
 // A group match recorded during a scan. The matched text is NOT stored;
 // callers slice it from their own buffer via [start.offset, end.offset).
 struct RegexCapture {
-  Position start;
-  Position end;
+  sun::support::Position start;
+  sun::support::Position end;
   int groupIdx = -1;
   const std::string* groupName = nullptr;  // owned by the matching State
   int groupNameNum = -1;                   // groupName as int (-1 unnamed)
@@ -430,10 +432,10 @@ class DFA {
   // Embedded capture scanner. The Lexer never touches any of this; it exists
   // for the regex-level API (matches/step/captureFor/bestCapture).
   int32_t cur_ = kDead;
-  Position position_;
+  sun::support::Position position_;
   std::vector<RegexCapture> captureSlots_;
   std::vector<uint32_t> captureGen_;
-  std::vector<Position> candidateStart_;
+  std::vector<sun::support::Position> candidateStart_;
   std::vector<uint32_t> candidateGen_;
   uint32_t gen_ = 0;
 
@@ -549,14 +551,14 @@ class DFA {
 
   // --- capture-tracking scanner (regex-level API) -------------------------
 
-  void resetToPosition(Position pos) {
+  void resetToPosition(sun::support::Position pos) {
     position_ = pos;
     ++gen_;  // invalidates capture/candidate slots in O(1)
     cur_ = start_;
     isAccepting = accepting_[cur_] != 0;
   }
 
-  void fullReset() { resetToPosition(Position()); }
+  void fullReset() { resetToPosition(sun::support::Position()); }
 
   bool step(char c) {
     // Group entry is read off the pre-transition state at the pre-transition
@@ -903,3 +905,4 @@ class RegexParser {
   // Parse and determinize. DFA states are materialized lazily on first use.
   DFA parse(const std::string& r) { return DFA(parseToNFA(r)); }
 };
+}  // namespace sun::parsing

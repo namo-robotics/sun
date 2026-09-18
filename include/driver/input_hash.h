@@ -23,7 +23,7 @@
 
 #include "moon_bundling/moon_import.h"
 
-namespace sun {
+namespace sun::driver {
 
 /*
  * Everything one build reads, reduced to digests and settings. Sources and
@@ -39,7 +39,7 @@ struct BuildInputs {
   // Native archives, each as its file name and a digest of its bytes
   std::vector<std::pair<std::string, std::string>> archives;
   // Imported bundles, with their paths already resolved
-  std::vector<MoonImport> moonImports;
+  std::vector<sun::moon_bundling::MoonImport> moonImports;
   std::string targetTriple;  // empty = host
   bool debugInfo = false;
   bool optimize = true;
@@ -70,4 +70,4 @@ void addSourceDigests(BuildInputs& inputs,
                       const std::vector<std::string>& protoFiles,
                       const std::string& baseDir);
 
-}  // namespace sun
+}  // namespace sun::driver

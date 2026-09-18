@@ -4,7 +4,7 @@
 #include <optional>
 #include <string>
 
-namespace sun {
+namespace sun::moon_bundling {
 
 /// Download cache for .moon bundles referenced by URL in a manifest:
 ///
@@ -49,4 +49,4 @@ class MoonCache {
                                const std::filesystem::path& dest);
 };
 
-}  // namespace sun
+}  // namespace sun::moon_bundling

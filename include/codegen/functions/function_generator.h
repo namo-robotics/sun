@@ -1,5 +1,15 @@
 #pragma once
 
+namespace sun::codegen {
+class CodegenVisitor;
+}
+namespace sun::codegen::classes {
+class ClassGenerator;
+}
+namespace sun::codegen::scopes {
+class ScopeManager;
+}
+
 // function_generator.h — Functions, lambdas, closures and returns
 //
 // Named functions are thin pointers. Lambdas and bound methods use a fat
@@ -25,10 +35,13 @@
 #include "codegen/abi/extern_c.h"
 #include "codegen/codegen_state.h"
 
-class CodegenVisitor;
-class ClassGenerator;
+namespace sun::codegen::functions {
+using sun::ast::BlockExprAST;
+using sun::ast::ExprAST;
+using sun::ast::FunctionAST;
+using sun::ast::PrototypeAST;
+
 class FunctionRegistry;
-class ScopeManager;
 
 /**
  * The closure environment in scope while a function body is emitted.
@@ -37,7 +50,7 @@ struct ClosureContext {
   llvm::StructType* fatType;  // Only used for lambdas
   llvm::StructType* envType;
   llvm::Value* fatPtr;
-  std::vector<Capture> captures;
+  std::vector<sun::ast::Capture> captures;
 };
 
 /**
@@ -57,7 +70,8 @@ struct FuncDeclResult {
  */
 class FunctionGenerator {
  public:
-  FunctionGenerator(CodegenState& state, CodegenVisitor& gen)
+  FunctionGenerator(sun::codegen::CodegenState& state,
+                    sun::codegen::CodegenVisitor& gen)
       : state_(state),
         gen_(gen),
         ctx(state.ctx),
@@ -78,7 +92,7 @@ class FunctionGenerator {
   llvm::Value* codegenFunc(FunctionAST& func);
   llvm::Value* codegenGenericFunc(FunctionAST& func);
   llvm::Value* codegenExternFunc(FunctionAST& func);
-  llvm::Value* codegenLambda(LambdaAST& lambda);
+  llvm::Value* codegenLambda(sun::ast::LambdaAST& lambda);
 
   // Declare a prototype's LLVM signature, body to follow
   std::pair<llvm::Function*, llvm::StructType*> codegen(
@@ -97,7 +111,7 @@ class FunctionGenerator {
   // Returns
   // ---------------------------------------------------------------
 
-  llvm::Value* codegen(const ReturnExprAST& expr);
+  llvm::Value* codegen(const sun::ast::ReturnExprAST& expr);
 
   // ---------------------------------------------------------------
   // Captures
@@ -108,26 +122,27 @@ class FunctionGenerator {
    * by-value capture, the stored pointer for a `[ref x]` capture. Returns
    * nullptr when the name is not a capture.
    */
-  llvm::Value* createCaptureSlotAddress(sun::DeclarationId id,
-                                        llvm::Type** valueTypeOut = nullptr,
-                                        bool* byRefOut = nullptr,
-                                        bool* ownedOut = nullptr);
+  llvm::Value* createCaptureSlotAddress(
+      sun::semantic_analysis::DeclarationId id,
+      llvm::Type** valueTypeOut = nullptr, bool* byRefOut = nullptr,
+      bool* ownedOut = nullptr);
 
   /**
    * Loads a variable from the closure context if it is one.
    */
-  llvm::LoadInst* createLoadVarFromClosure(sun::DeclarationId id);
+  llvm::LoadInst* createLoadVarFromClosure(
+      sun::semantic_analysis::DeclarationId id);
 
  private:
-  CodegenState& state_;
-  CodegenVisitor& gen_;
+  sun::codegen::CodegenState& state_;
+  sun::codegen::CodegenVisitor& gen_;
 
   // Aliases into the shared state, so the emission code reads the same way
   // the rest of codegen does
-  CodegenContext& ctx;
+  sun::codegen::CodegenContext& ctx;
   llvm::Module* module;
-  LLVMTypeResolver& typeResolver;
-  sun::DebugInfoBuilder& debugInfo;
+  sun::codegen::LLVMTypeResolver& typeResolver;
+  sun::codegen::DebugInfoBuilder& debugInfo;
   bool& currentFunctionCanError;
   bool& currentFunctionReturnsRef;
   llvm::Type*& currentFunctionValueType;
@@ -140,7 +155,7 @@ class FunctionGenerator {
 
   // Environment slot initializer at closure creation: the value for a
   // by-value capture, the referent's address for a `[ref x]` capture
-  llvm::Value* computeCaptureInitValue(const Capture& cap);
+  llvm::Value* computeCaptureInitValue(const sun::ast::Capture& cap);
 
   llvm::StructType* createEnvTypeForFunc(const PrototypeAST& proto);
   llvm::StructType* createFatTypeForFunc(llvm::Function* func,
@@ -167,14 +182,16 @@ class FunctionGenerator {
   // ExprAST forwarder above. Make it a compile error instead.
   template <typename T>
     requires(!std::is_same_v<T, ExprAST> && !std::is_same_v<T, BlockExprAST> &&
-             !std::is_same_v<T, ReturnExprAST> && std::is_base_of_v<ExprAST, T>)
+             !std::is_same_v<T, sun::ast::ReturnExprAST> &&
+             std::is_base_of_v<ExprAST, T>)
   llvm::Value* codegen(const T&) = delete;
 
-  ScopeManager& scopes();
-  sun::cabi::ExternCEmitter& externC();
-  llvm::Value* applyMoveSemantics(llvm::Value* argVal, sun::TypePtr argSunType);
+  sun::codegen::scopes::ScopeManager& scopes();
+  sun::codegen::abi::ExternCEmitter& externC();
+  llvm::Value* applyMoveSemantics(llvm::Value* argVal,
+                                  sun::semantic_analysis::TypePtr argSunType);
   FunctionRegistry& functions();
-  ClassGenerator& classes();
+  sun::codegen::classes::ClassGenerator& classes();
   llvm::AllocaInst* createEntryBlockAlloca(llvm::Function* func,
                                            llvm::StringRef varName,
                                            llvm::Type* type);
@@ -182,3 +199,5 @@ class FunctionGenerator {
                          const PrototypeAST& proto, unsigned userArgIdx,
                          unsigned argNoBase = 1);
 };
+
+}  // namespace sun::codegen::functions

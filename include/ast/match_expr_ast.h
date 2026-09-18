@@ -8,14 +8,16 @@
 
 #include "ast/expr_ast.h"
 
+namespace sun::ast {
+
 // A payload binding position in a destructuring pattern: Shape.Circle(r)
 struct PatternBinding {
   std::string name;         // empty when isWildcard
   bool isWildcard = false;  // '_' in this position
-  Position location;
+  sun::support::Position location;
   // Set by semantic analysis:
-  sun::TypePtr resolvedType;        // payload element type
-  mutable sun::DeclarationIdentity declaration{};
+  sun::semantic_analysis::TypePtr resolvedType;  // payload element type
+  mutable sun::semantic_analysis::DeclarationIdentity declaration{};
 };
 
 // A single arm in a match expression: pattern => body
@@ -83,3 +85,5 @@ class MatchExprAST : public ExprAST {
   }
   std::string dotLabel() const override { return "Match"; }
 };
+
+}  // namespace sun::ast

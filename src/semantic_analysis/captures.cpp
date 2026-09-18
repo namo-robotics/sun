@@ -6,6 +6,13 @@
 #include "ast/ast_children.h"
 #include "semantic_analysis/semantic_analyzer.h"
 
+using sun::ast::ASTNodeType;
+using sun::ast::CaptureKind;
+using sun::ast::ExprAST;
+using sun::support::logAndThrowError;
+
+namespace sun::semantic_analysis {
+
 // -------------------------------------------------------------------
 // Free variable collection
 // -------------------------------------------------------------------
@@ -30,7 +37,8 @@ std::set<std::string> SemanticAnalyzer::collectFreeVariables(
 
   switch (expr.getType()) {
     case ASTNodeType::VARIABLE_REFERENCE: {
-      const auto& varRef = static_cast<const VariableReferenceAST&>(expr);
+      const auto& varRef =
+          static_cast<const sun::ast::VariableReferenceAST&>(expr);
       if (!bound.count(varRef.getName())) {
         free.insert(varRef.getName());
       }
@@ -38,7 +46,8 @@ std::set<std::string> SemanticAnalyzer::collectFreeVariables(
     }
 
     case ASTNodeType::VARIABLE_ASSIGNMENT: {
-      const auto& varAssign = static_cast<const VariableAssignmentAST&>(expr);
+      const auto& varAssign =
+          static_cast<const sun::ast::VariableAssignmentAST&>(expr);
       // Writing to a name uses it just as reading does
       if (!bound.count(varAssign.getName())) {
         free.insert(varAssign.getName());
@@ -48,22 +57,22 @@ std::set<std::string> SemanticAnalyzer::collectFreeVariables(
     }
 
     case ASTNodeType::BLOCK: {
-      const auto& block = static_cast<const BlockExprAST&>(expr);
+      const auto& block = static_cast<const sun::ast::BlockExprAST&>(expr);
       auto blockFree = collectFreeVariablesInBlock(block, bound);
       free.insert(blockFree.begin(), blockFree.end());
       break;
     }
 
     case ASTNodeType::FOR_LOOP: {
-      const auto& forExpr = static_cast<const ForExprAST&>(expr);
+      const auto& forExpr = static_cast<const sun::ast::ForExprAST&>(expr);
       std::set<std::string> innerBound = bound;
       if (forExpr.getInit()) {
         collectFrom(*forExpr.getInit(), bound);
         // A loop counter declared in the header is visible to the rest of it
         if (forExpr.getInit()->getType() == ASTNodeType::VARIABLE_CREATION) {
-          innerBound.insert(
-              static_cast<const VariableCreationAST&>(*forExpr.getInit())
-                  .getName());
+          innerBound.insert(static_cast<const sun::ast::VariableCreationAST&>(
+                                *forExpr.getInit())
+                                .getName());
         }
       }
       if (forExpr.getCondition())
@@ -75,7 +84,7 @@ std::set<std::string> SemanticAnalyzer::collectFreeVariables(
     }
 
     case ASTNodeType::FOR_IN_LOOP: {
-      const auto& forInExpr = static_cast<const ForInExprAST&>(expr);
+      const auto& forInExpr = static_cast<const sun::ast::ForInExprAST&>(expr);
       collectFrom(*forInExpr.getIterable(), bound);
       // The loop variable is declared by the loop, not captured from outside
       std::set<std::string> bodyBound = bound;
@@ -85,7 +94,8 @@ std::set<std::string> SemanticAnalyzer::collectFreeVariables(
     }
 
     case ASTNodeType::TRY_CATCH: {
-      const auto& tryCatch = static_cast<const TryCatchExprAST&>(expr);
+      const auto& tryCatch =
+          static_cast<const sun::ast::TryCatchExprAST&>(expr);
       collectFrom(tryCatch.getTryBlock(), bound);
       for (const auto& clause : tryCatch.getCatchClauses()) {
         // The caught error is declared by the clause
@@ -100,7 +110,7 @@ std::set<std::string> SemanticAnalyzer::collectFreeVariables(
       // A nested lambda's free variables (minus its own params) are free in
       // the enclosing scope too: the enclosing closure must capture them so
       // the inner closure can initialize its env from the enclosing one
-      const auto& lambda = static_cast<const LambdaAST&>(expr);
+      const auto& lambda = static_cast<const sun::ast::LambdaAST&>(expr);
       std::set<std::string> innerBound = bound;
       for (const auto& arg : lambda.getProto().getArgNames()) {
         innerBound.insert(arg);
@@ -122,8 +132,8 @@ std::set<std::string> SemanticAnalyzer::collectFreeVariables(
       break;
 
     default:
-      forEachChild(expr,
-                   [&](const ExprAST& child) { collectFrom(child, bound); });
+      sun::ast::forEachChild(
+          expr, [&](const ExprAST& child) { collectFrom(child, bound); });
       break;
   }
 
@@ -131,7 +141,7 @@ std::set<std::string> SemanticAnalyzer::collectFreeVariables(
 }
 
 std::set<std::string> SemanticAnalyzer::collectFreeVariablesInBlock(
-    const BlockExprAST& block, std::set<std::string> bound) {
+    const sun::ast::BlockExprAST& block, std::set<std::string> bound) {
   std::set<std::string> free;
 
   for (const auto& expr : block.getBody()) {
@@ -145,7 +155,8 @@ std::set<std::string> SemanticAnalyzer::collectFreeVariablesInBlock(
 
     // Variable creation adds to bound set for subsequent expressions
     if (expr->getType() == ASTNodeType::VARIABLE_CREATION) {
-      const auto& varCreate = static_cast<const VariableCreationAST&>(*expr);
+      const auto& varCreate =
+          static_cast<const sun::ast::VariableCreationAST&>(*expr);
       bound.insert(varCreate.getName());
     }
   }
@@ -162,14 +173,15 @@ static const ExprAST* findThisUse(const ExprAST& expr) {
     return nullptr;
   if (expr.getType() == ASTNodeType::THIS) return &expr;
   const ExprAST* found = nullptr;
-  forEachChild(expr, [&found](const ExprAST& child) {
+  sun::ast::forEachChild(expr, [&found](const ExprAST& child) {
     if (!found) found = findThisUse(child);
   });
   return found;
 }
 
-std::vector<Capture> SemanticAnalyzer::buildCaptures(const LambdaAST& lambda) {
-  const PrototypeAST& proto = lambda.getProto();
+std::vector<sun::ast::Capture> SemanticAnalyzer::buildCaptures(
+    const sun::ast::LambdaAST& lambda) {
+  const sun::ast::PrototypeAST& proto = lambda.getProto();
 
   // A lambda body compiles as its own function and cannot reach the
   // enclosing method's receiver, and `this` cannot be named in a capture
@@ -245,7 +257,7 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const LambdaAST& lambda) {
     checkListedName(ownedName, /*byRef=*/false);
   }
 
-  std::vector<Capture> captures;
+  std::vector<sun::ast::Capture> captures;
   for (const auto& var : freeVars) {
     // Look up the variable's type
     VariableInfo* varInfo = ctx_.currentScope().lookupVariable(var);
@@ -260,7 +272,7 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const LambdaAST& lambda) {
       // silently break aliasing. Naming it in the capture list says which of
       // the three things you meant.
       if (kind == CaptureKind::ByValue &&
-          sun::unwrapRef(varInfo->type)->isCompound()) {
+          sun::semantic_analysis::unwrapRef(varInfo->type)->isCompound()) {
         logAndThrowError("Cannot capture '" + var + "' of compound type '" +
                              varInfo->type->toDisplayString() +
                              "' by value; capture it by reference with '[ref " +
@@ -286,7 +298,8 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const LambdaAST& lambda) {
       bool isConst =
           kind != CaptureKind::Owned &&
           ((kind == CaptureKind::Borrow && proto.isConstRefCapture(var)) ||
-           varInfo->isConst || sun::isConstRef(varInfo->type));
+           varInfo->isConst ||
+           sun::semantic_analysis::isConstRef(varInfo->type));
       captures.push_back(
           {var, varInfo->type, kind, isConst, varInfo->declarationId});
     }
@@ -294,3 +307,5 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const LambdaAST& lambda) {
 
   return captures;
 }
+
+}  // namespace sun::semantic_analysis

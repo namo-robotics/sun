@@ -4,7 +4,11 @@
 #include "codegen/codegen.h"
 #include "codegen/codegen_visitor.h"
 
+using sun::support::logAndThrowError;
+
 using namespace llvm;
+
+namespace sun::codegen {
 
 Value* coerceCondToBool(CodegenContext& ctx, Value* CondV) {
   if (CondV->getType()->isIntegerTy(1)) return CondV;
@@ -19,7 +23,7 @@ Value* coerceCondToBool(CodegenContext& ctx, Value* CondV) {
   return CondV;
 }
 
-Value* CodegenVisitor::codegen(const IfExprAST& expr) {
+Value* CodegenVisitor::codegen(const sun::ast::IfExprAST& expr) {
   Value* CondV = codegen(*expr.getCond());
   if (!CondV) return nullptr;
 
@@ -33,7 +37,8 @@ Value* CodegenVisitor::codegen(const IfExprAST& expr) {
   // marking stays so drop-flag decisions match what the borrow checker
   // assumed for a two-armed if.
   if (auto* constCond = dyn_cast<ConstantInt>(CondV)) {
-    const ExprAST* live = constCond->isZero() ? expr.getElse() : expr.getThen();
+    const sun::ast::ExprAST* live =
+        constCond->isZero() ? expr.getElse() : expr.getThen();
     if (!live) {
       // `if (false) { ... }` with no else: nothing to emit.
       return ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
@@ -156,7 +161,7 @@ Value* CodegenVisitor::codegen(const IfExprAST& expr) {
   return PN;
 }
 
-Value* CodegenVisitor::codegen(const TernaryExprAST& expr) {
+Value* CodegenVisitor::codegen(const sun::ast::TernaryExprAST& expr) {
   Value* CondV = codegen(*expr.getCond());
   if (!CondV) return nullptr;
 
@@ -167,7 +172,8 @@ Value* CodegenVisitor::codegen(const TernaryExprAST& expr) {
   // `var X: i32 = _target_is("macos") ? 6 : 1;` folds here into the plain
   // constant a global initializer needs, where there is no current function.
   if (auto* constCond = dyn_cast<ConstantInt>(CondV)) {
-    const ExprAST* live = constCond->isZero() ? expr.getElse() : expr.getThen();
+    const sun::ast::ExprAST* live =
+        constCond->isZero() ? expr.getElse() : expr.getThen();
     Value* liveV = codegen(*live);
     if (!liveV) {
       logAndThrowError("Failed to generate code for the ternary's live arm");
@@ -194,7 +200,7 @@ Value* CodegenVisitor::codegen(const TernaryExprAST& expr) {
   // Unified result type of the whole expression (set by semantic analysis).
   // Branches are pure expressions, so no per-branch scope: class temporaries
   // must survive until the enclosing scope ends, past the merge.
-  sun::TypePtr resultType = expr.getResolvedType();
+  sun::semantic_analysis::TypePtr resultType = expr.getResolvedType();
 
   ctx.builder->SetInsertPoint(ThenBB);
   Value* ThenV = codegen(*expr.getThen());
@@ -249,3 +255,5 @@ Value* CodegenVisitor::codegen(const TernaryExprAST& expr) {
   PN->addIncoming(ElseV, ElseBB);
   return PN;
 }
+
+}  // namespace sun::codegen

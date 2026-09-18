@@ -8,6 +8,9 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+using sun::support::SunError;
+
 TEST(Functions, by_value_primitive_param) {
   auto value = executeString(R"(
     function double_it(x: i32) i32 {

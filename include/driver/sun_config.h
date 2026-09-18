@@ -34,7 +34,7 @@
 #include <string>
 #include <vector>
 
-namespace sun {
+namespace sun::driver {
 
 // One build product declared by a config: an entrypoint file, what kind of
 // artifact it compiles to, and what to call the outputs. Paths are absolute
@@ -74,4 +74,4 @@ struct SunConfig {
                             const std::string& targetTriple = "");
 };
 
-}  // namespace sun
+}  // namespace sun::driver

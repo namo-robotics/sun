@@ -59,8 +59,8 @@ struct Scratch {
 
 bool haveSunBinary() { return std::filesystem::exists("build/sun"); }
 
-sun::BuildInputs makeInputs() {
-  sun::BuildInputs inputs;
+sun::driver::BuildInputs makeInputs() {
+  sun::driver::BuildInputs inputs;
   inputs.artifactKind = "executable";
   inputs.sourceDigests = {"aaa", "bbb"};
   inputs.archives = {{"libx.a", "ccc"}};
@@ -75,47 +75,47 @@ sun::BuildInputs makeInputs() {
 // ============================================================================
 
 TEST(Tooling_Backend_InputHash, same_inputs_same_hash) {
-  EXPECT_EQ(sun::computeInputHash(makeInputs()),
-            sun::computeInputHash(makeInputs()));
+  EXPECT_EQ(sun::driver::computeInputHash(makeInputs()),
+            sun::driver::computeInputHash(makeInputs()));
 }
 
 TEST(Tooling_Backend_InputHash, source_order_does_not_matter) {
   auto reordered = makeInputs();
   reordered.sourceDigests = {"bbb", "aaa"};
-  EXPECT_EQ(sun::computeInputHash(makeInputs()),
-            sun::computeInputHash(reordered));
+  EXPECT_EQ(sun::driver::computeInputHash(makeInputs()),
+            sun::driver::computeInputHash(reordered));
 }
 
 TEST(Tooling_Backend_InputHash, every_input_changes_the_hash) {
-  const std::string base = sun::computeInputHash(makeInputs());
+  const std::string base = sun::driver::computeInputHash(makeInputs());
 
   auto changed = makeInputs();
   changed.artifactKind = "tests";
-  EXPECT_NE(sun::computeInputHash(changed), base);
+  EXPECT_NE(sun::driver::computeInputHash(changed), base);
 
   changed = makeInputs();
   changed.sourceDigests[0] = "aab";
-  EXPECT_NE(sun::computeInputHash(changed), base);
+  EXPECT_NE(sun::driver::computeInputHash(changed), base);
 
   changed = makeInputs();
   changed.archives[0].second = "ccd";
-  EXPECT_NE(sun::computeInputHash(changed), base);
+  EXPECT_NE(sun::driver::computeInputHash(changed), base);
 
   changed = makeInputs();
   changed.targetTriple = "aarch64-unknown-linux-gnu";
-  EXPECT_NE(sun::computeInputHash(changed), base);
+  EXPECT_NE(sun::driver::computeInputHash(changed), base);
 
   changed = makeInputs();
   changed.debugInfo = true;
-  EXPECT_NE(sun::computeInputHash(changed), base);
+  EXPECT_NE(sun::driver::computeInputHash(changed), base);
 
   changed = makeInputs();
   changed.optimize = false;
-  EXPECT_NE(sun::computeInputHash(changed), base);
+  EXPECT_NE(sun::driver::computeInputHash(changed), base);
 
   changed = makeInputs();
   changed.settings[0].second = "z";
-  EXPECT_NE(sun::computeInputHash(changed), base);
+  EXPECT_NE(sun::driver::computeInputHash(changed), base);
 }
 
 // A value cannot slide from one field into its neighbour and hash the same.
@@ -124,21 +124,24 @@ TEST(Tooling_Backend_InputHash, fields_do_not_run_together) {
   left.settings = {{"library", "ab"}, {"library", "c"}};
   auto right = makeInputs();
   right.settings = {{"library", "a"}, {"library", "bc"}};
-  EXPECT_NE(sun::computeInputHash(left), sun::computeInputHash(right));
+  EXPECT_NE(sun::driver::computeInputHash(left),
+            sun::driver::computeInputHash(right));
 }
 
 TEST(Tooling_Backend_InputHash, compiler_digest_is_stable) {
-  EXPECT_EQ(sun::getCompilerDigest().size(), 64u);
-  EXPECT_EQ(sun::getCompilerDigest(), sun::getCompilerDigest());
+  EXPECT_EQ(sun::driver::getCompilerDigest().size(), 64u);
+  EXPECT_EQ(sun::driver::getCompilerDigest(), sun::driver::getCompilerDigest());
 }
 
 TEST(Tooling_Backend_InputHash, missing_artifacts_have_no_record) {
-  EXPECT_FALSE(sun::readBuildRecord("/nonexistent/app").has_value());
-  EXPECT_FALSE(sun::readMoonInputHash("/nonexistent/lib.moon").has_value());
+  EXPECT_FALSE(sun::driver::readBuildRecord("/nonexistent/app").has_value());
+  EXPECT_FALSE(
+      sun::driver::readMoonInputHash("/nonexistent/lib.moon").has_value());
   // A file that is not an object file carries no record either
   Scratch scratch("not_object");
   writeFile(scratch.path("notes.txt"), "plain text\n");
-  EXPECT_FALSE(sun::readBuildRecord(scratch.path("notes.txt")).has_value());
+  EXPECT_FALSE(
+      sun::driver::readBuildRecord(scratch.path("notes.txt")).has_value());
 }
 
 // ============================================================================
@@ -167,7 +170,7 @@ manifest { source_files: ["util.sun"] }
   const std::string build = "--skip-if-unchanged " + always;
 
   EXPECT_TRUE(contains(scratch.runSun(build), "Successfully created"));
-  const auto firstHash = sun::readMoonInputHash(moon);
+  const auto firstHash = sun::driver::readMoonInputHash(moon);
   ASSERT_TRUE(firstHash.has_value());
 
   const auto written = std::filesystem::last_write_time(moon);
@@ -175,7 +178,7 @@ manifest { source_files: ["util.sun"] }
   EXPECT_EQ(std::filesystem::last_write_time(moon), written);
 
   EXPECT_TRUE(contains(scratch.runSun(always), "Successfully created"));
-  EXPECT_EQ(sun::readMoonInputHash(moon), firstHash);
+  EXPECT_EQ(sun::driver::readMoonInputHash(moon), firstHash);
 
   writeFile(scratch.path("util.sun"), R"(
 public module input_hash_lib {
@@ -183,7 +186,7 @@ public module input_hash_lib {
 }
 )");
   EXPECT_TRUE(contains(scratch.runSun(build), "Successfully created"));
-  EXPECT_NE(sun::readMoonInputHash(moon), firstHash);
+  EXPECT_NE(sun::driver::readMoonInputHash(moon), firstHash);
 }
 
 // Flags are inputs too: the same sources with -g are a different bundle.
@@ -241,10 +244,10 @@ manifest {
   EXPECT_TRUE(contains(log, "Successfully compiled to: " + app)) << log;
   EXPECT_TRUE(contains(log, "Successfully compiled test binary to")) << log;
 
-  auto record = sun::readBuildRecord(app);
+  auto record = sun::driver::readBuildRecord(app);
   ASSERT_TRUE(record.has_value());
   EXPECT_TRUE(record->hasTests);
-  auto testRecord = sun::readBuildRecord(app + "_test");
+  auto testRecord = sun::driver::readBuildRecord(app + "_test");
   ASSERT_TRUE(testRecord.has_value());
   EXPECT_TRUE(testRecord->hasExecutable);
   EXPECT_NE(record->inputHash, testRecord->inputHash);
@@ -279,7 +282,7 @@ TEST(Tooling_Backend_InputHash, program_without_tests_is_skipped) {
       "-c --skip-if-unchanged -o " + app + " " + scratch.path("app.sun");
 
   scratch.runSun(build);
-  auto record = sun::readBuildRecord(app);
+  auto record = sun::driver::readBuildRecord(app);
   ASSERT_TRUE(record.has_value());
   EXPECT_FALSE(record->hasTests);
 
@@ -302,7 +305,7 @@ TEST(Tooling_Backend_InputHash, nothing_is_skipped_or_recorded_by_default) {
   const std::string build = "-c -o " + app + " " + scratch.path("app.sun");
 
   EXPECT_TRUE(contains(scratch.runSun(build), "Successfully compiled to"));
-  EXPECT_FALSE(sun::readBuildRecord(app).has_value());
+  EXPECT_FALSE(sun::driver::readBuildRecord(app).has_value());
   const std::string log = scratch.runSun(build);
   EXPECT_TRUE(contains(log, "Successfully compiled to")) << log;
   EXPECT_FALSE(contains(log, "Up to date")) << log;

@@ -8,6 +8,8 @@
 
 #include "ast/expr_ast.h"
 
+namespace sun::ast {
+
 // Which construct a block is the body of. In the language, only two kinds
 // evaluate to their last statement — a match arm's body and an unsafe
 // block's body. Every other kind is a statement body whose trailing
@@ -78,3 +80,5 @@ class BlockExprAST : public ExprAST {
   }
   std::string dotLabel() const override { return "Block"; }
 };
+
+}  // namespace sun::ast

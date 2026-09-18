@@ -4,12 +4,19 @@
 #include "semantic_analysis/symbol_names.h"
 #include "support/error.h"
 
-void SemanticScopeBase::declareVariable(const std::string& name,
-                                        sun::TypePtr type, bool isParam,
-                                        bool isConst,
-                                        sun::DeclarationId declarationId) {
+using sun::semantic_analysis::QualifiedName;
+using sun::semantic_analysis::TypePtr;
+
+using sun::support::logAndThrowError;
+using sun::support::Position;
+
+namespace sun::semantic_analysis {
+
+void SemanticScopeBase::declareVariable(
+    const std::string& name, TypePtr type, bool isParam, bool isConst,
+    sun::semantic_analysis::DeclarationId declarationId) {
   // Block user-defined identifiers starting with underscore
-  if (sun::names::isReservedIdentifier(name)) {
+  if (sun::semantic_analysis::isReservedIdentifier(name)) {
     logAndThrowError(
         "Identifier '" + name +
         "' is invalid: names starting with '_' are reserved for builtins");
@@ -41,24 +48,25 @@ ModuleScope& SemanticScopeBase::declareModule(const std::string& name) {
     module->parent = this;
     module->scopePath = scopePath;
     module->scopePath.push_back(name);
-    module->qualifiedName = sun::QualifiedName(scopePath, name);
+    module->qualifiedName = QualifiedName(scopePath, name);
     child = module;
   }
   auto* root = this;
   while (root->parent) root = root->parent;
-  root->canonicalModules[sun::QualifiedName(child->scopePath, "")
+  root->canonicalModules[QualifiedName(child->scopePath, "")
                              .scopePathString()] = child.get();
   return static_cast<ModuleScope&>(*child);
 }
 
-ModuleScope& SemanticScopeBase::declareModule(const ModuleAST& declaration) {
+ModuleScope& SemanticScopeBase::declareModule(
+    const sun::ast::ModuleAST& declaration) {
   auto& module = declareModule(declaration.getName());
   module.declarationId = declaration.getDeclarationId();
   if (module.visibilityDeclared &&
       module.visibility != declaration.getVisibility())
-    logSemanticError(
+    sun::support::logSemanticError(
         "module '" + declaration.getName() + "' was previously declared " +
-            sun::visibilityKeyword(module.visibility) +
+            sun::semantic_analysis::visibilityKeyword(module.visibility) +
             "; all declarations of a module must agree on its visibility",
         declaration.getLocation());
   if (declaration.hasQualifiedName()) {
@@ -68,20 +76,19 @@ ModuleScope& SemanticScopeBase::declareModule(const ModuleAST& declaration) {
   }
   auto* root = this;
   while (root->parent) root = root->parent;
-  root->canonicalModules[sun::QualifiedName(module.scopePath, "")
+  root->canonicalModules[QualifiedName(module.scopePath, "")
                              .scopePathString()] = &module;
   module.visibility = declaration.getVisibility();
   module.visibilityDeclared = true;
   return module;
 }
 
-void SemanticScopeBase::declareClassDefinition(const std::string& name,
-                                               ClassDefinitionAST& definition) {
+void SemanticScopeBase::declareClassDefinition(
+    const std::string& name, sun::ast::ClassDefinitionAST& definition) {
   classDefinitions[name] = &definition;
 }
 
-void SemanticScopeBase::declareTypeAlias(const std::string& name,
-                                         sun::TypePtr type,
+void SemanticScopeBase::declareTypeAlias(const std::string& name, TypePtr type,
                                          std::optional<Position> loc) {
   if (typeAliases.contains(name))
     logAndThrowError(
@@ -95,7 +102,7 @@ void SemanticScopeBase::declareFunction(const std::string& name,
   // Functions are registered in their enclosing scope. For nested functions,
   // this is the parent function's scope - the scope hierarchy naturally
   // disambiguates between different generic instantiations.
-  sun::CallableSignature sig{name, info.paramTypes};
+  sun::semantic_analysis::CallableSignature sig{name, info.paramTypes};
   auto existing = functions.find(sig);
   if (existing != functions.end() && info.isForwardDeclaration &&
       !existing->second.isForwardDeclaration)
@@ -111,10 +118,10 @@ void SemanticScopeBase::declareFunction(const std::string& name,
   functions[sig] = info;
 }
 
-void SemanticScopeBase::declareGenericFunction(FunctionAST& func) {
-  const PrototypeAST& proto = func.getProto();
+void SemanticScopeBase::declareGenericFunction(sun::ast::FunctionAST& func) {
+  const sun::ast::PrototypeAST& proto = func.getProto();
   assert(proto.hasQualifiedName() && "Generic declaration must be named first");
-  const sun::QualifiedName& qname = proto.getQualifiedName();
+  const QualifiedName& qname = proto.getQualifiedName();
   auto existing = genericFunctions.find(proto.getName());
   // Repeated declaration collection may visit the same template again.
   // A different declaration must not silently replace it.
@@ -138,9 +145,9 @@ void SemanticScopeBase::declareGenericFunction(FunctionAST& func) {
 }
 
 void SemanticScopeBase::declareModuleVariable(
-    const sun::QualifiedName& qualifiedName, sun::TypePtr type,
-    sun::Visibility visibility, bool isConst, bool isCExtern,
-    sun::DeclarationId declarationId) {
+    const QualifiedName& qualifiedName, TypePtr type,
+    sun::semantic_analysis::Visibility visibility, bool isConst, bool isCExtern,
+    sun::semantic_analysis::DeclarationId declarationId) {
   VariableInfo info{type, true, false};
   info.declarationId = declarationId;
   info.visibility = visibility;
@@ -159,9 +166,10 @@ void SemanticScopeBase::declareModuleVariable(
   }
 }
 
-void SemanticScopeBase::declareClass(const std::string& name,
-                                     std::shared_ptr<sun::ClassType> classType,
-                                     std::optional<Position> loc) {
+void SemanticScopeBase::declareClass(
+    const std::string& name,
+    std::shared_ptr<sun::semantic_analysis::ClassType> classType,
+    std::optional<Position> loc) {
   // Skip if already registered (diamond import re-registration)
   if (classes.contains(name)) {
     return;
@@ -184,7 +192,8 @@ void SemanticScopeBase::declareGenericClass(const std::string& name,
 }
 
 void SemanticScopeBase::declareInterface(
-    const std::string& name, std::shared_ptr<sun::InterfaceType> interfaceType,
+    const std::string& name,
+    std::shared_ptr<sun::semantic_analysis::InterfaceType> interfaceType,
     std::optional<Position> loc) {
   // Skip if already registered (diamond import re-registration)
   if (interfaces.contains(name)) {
@@ -207,8 +216,9 @@ void SemanticScopeBase::declareGenericInterface(
   slot.definitionScope = shared_from_this();
 }
 
-void SemanticScopeBase::declareEnum(const std::string& name,
-                                    std::shared_ptr<sun::EnumType> enumType) {
+void SemanticScopeBase::declareEnum(
+    const std::string& name,
+    std::shared_ptr<sun::semantic_analysis::EnumType> enumType) {
   // Register in current scope
   enums[name] = enumType;
 }
@@ -220,13 +230,15 @@ void SemanticScopeBase::declareGenericEnum(const std::string& name,
 }
 
 void SemanticScopeBase::declareTypeParameters(
-    const std::vector<std::string>& params,
-    const std::vector<sun::TypePtr>& args) {
+    const std::vector<std::string>& params, const std::vector<TypePtr>& args) {
   auto& scope = *this;
   for (size_t i = 0; i < params.size() && i < args.size(); ++i) {
     // Lifetime names are relative to the signature that wrote the type
     // argument; the specialization the binding builds is shared by every
     // caller, so the names must not leak into it
-    scope.typeParameters[params[i]] = sun::eraseLifetimeNames(args[i]);
+    scope.typeParameters[params[i]] =
+        sun::semantic_analysis::eraseLifetimeNames(args[i]);
   }
 }
+
+}  // namespace sun::semantic_analysis

@@ -13,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-namespace sun {
+namespace sun::support {
 
 class StageTimings {
  public:
@@ -62,13 +62,11 @@ class StageTimings {
   }
 };
 
-namespace detail {
 // Prints the report when the process ends, whichever exit it takes
 struct StageTimingsReporter {
   ~StageTimingsReporter() { StageTimings::report(); }
 };
 inline const StageTimingsReporter stageTimingsReporter;
-}  // namespace detail
 
 // Times the enclosing scope and records it under `name`
 class ScopedStage {
@@ -91,4 +89,4 @@ class ScopedStage {
   std::chrono::steady_clock::time_point start_;
 };
 
-}  // namespace sun
+}  // namespace sun::support

@@ -15,7 +15,7 @@
 #include "semantic_analysis/types.h"
 #include "support/position.h"
 
-namespace sun {
+namespace sun::semantic_analysis {
 
 enum class ArgConversion : uint8_t {
   PassValue,         // the value as it is: scalars, pointers and lambda values
@@ -37,8 +37,6 @@ enum class ArgConversion : uint8_t {
                         // C's default argument promotions
 };
 
-namespace conversions {
-
 const char* toString(ArgConversion conversion);
 
 // The conversion that hands an argument of `argType` to a parameter of
@@ -56,7 +54,6 @@ std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
 std::vector<ArgConversion> classifyArguments(
     const std::vector<TypePtr>& argTypes,
     const std::vector<TypePtr>& paramTypes, bool cVariadic,
-    const std::string& calleeName, std::optional<Position> loc);
+    const std::string& calleeName, std::optional<sun::support::Position> loc);
 
-}  // namespace conversions
-}  // namespace sun
+}  // namespace sun::semantic_analysis

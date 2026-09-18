@@ -9,6 +9,8 @@
 
 #include "ast/expr_ast.h"
 
+namespace sun::ast {
+
 // A numeric literal. An integer literal is kept as a magnitude and a sign
 // rather than a signed 64-bit value so the whole u64 range is representable:
 // 18446744073709551615 has no int64_t form, yet it is a valid u64 literal. The
@@ -85,3 +87,5 @@ class NumberExprAST : public ExprAST {
     return std::get<double>(value_);
   }
 };
+
+}  // namespace sun::ast

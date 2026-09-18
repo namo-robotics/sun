@@ -46,8 +46,8 @@ TEST(Modules_ManifestTestFiles, test_files_stay_out_of_source_files) {
             "}\n"
             "function main() i32 { return 0; }\n");
 
-  auto resolved =
-      sun::ManifestProcessor::fromEntrypointFile((dir / "main.sun").string());
+  auto resolved = sun::driver::ManifestProcessor::fromEntrypointFile(
+      (dir / "main.sun").string());
   ASSERT_TRUE(resolved.has_value());
   EXPECT_TRUE(includes(resolved->sunFiles, "lib.sun"));
   EXPECT_FALSE(includes(resolved->sunFiles, "lib_tests.sun"));
@@ -72,7 +72,7 @@ TEST(Modules_ManifestTestFiles, target_blocks_take_test_files_too) {
             "}\n"
             "function main() i32 { return 0; }\n");
 
-  auto forLinux = sun::ManifestProcessor::fromEntrypointFile(
+  auto forLinux = sun::driver::ManifestProcessor::fromEntrypointFile(
       (dir / "main.sun").string(), "x86_64-linux-gnu");
   ASSERT_TRUE(forLinux.has_value());
   EXPECT_TRUE(includes(forLinux->testSunFiles, "linux_tests.sun"));

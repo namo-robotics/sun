@@ -12,6 +12,9 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+using sun::support::SunError;
+
 // ============================================================================
 // Accepted spellings
 // ============================================================================

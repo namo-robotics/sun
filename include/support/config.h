@@ -1,7 +1,7 @@
 // config.h - Compile-time configuration for Sun language features
 #pragma once
 
-namespace sun {
+namespace sun::support {
 
 /// Compile-time configuration for Sun language behavior.
 /// Modify these settings to enable/disable experimental features.
@@ -53,4 +53,4 @@ struct Config {
   static constexpr bool DUMP_IR_ON_JIT = true;
 };
 
-}  // namespace sun
+}  // namespace sun::support

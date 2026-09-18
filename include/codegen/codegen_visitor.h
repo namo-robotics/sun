@@ -26,8 +26,8 @@
 // (dispatch, literals, operators) plus src/codegen/expressions/.
 //
 // Rules that need no codegen state live outside the class so other passes can
-// reach the same answers: sun::codegen::ops (support/scalar_ops.h) and
-// sun::codegen::layout (support/struct_access.h).
+// reach the same answers: sun::codegen::support (support/scalar_ops.h) and
+// sun::codegen::support (support/struct_access.h).
 
 #include <llvm/IR/Function.h>
 #include <llvm/IR/IRBuilder.h>
@@ -57,6 +57,15 @@
 #include "semantic_analysis/types.h"               // Type system
 #include "support/error.h"                         // Error handling
 
+/** Translates analyzed Sun programs into LLVM code. */
+namespace sun::codegen {
+using sun::ast::CallExprAST;
+using sun::ast::ExprAST;
+using sun::ast::IndexAST;
+using sun::ast::MemberAccessAST;
+using sun::semantic_analysis::ClassType;
+using sun::semantic_analysis::TypePtr;
+
 // Convert a condition value to i1 (non-zero test for numeric conditions)
 llvm::Value* coerceCondToBool(CodegenContext& ctx, llvm::Value* condV);
 
@@ -76,11 +85,11 @@ class CodegenVisitor {
   // alias state_ — the state lives there, not here.
   CodegenContext& ctx;
   llvm::Module* module;
-  std::shared_ptr<sun::TypeRegistry>& typeRegistry;
+  std::shared_ptr<sun::semantic_analysis::TypeRegistry>& typeRegistry;
   LLVMTypeResolver& typeResolver;
-  sun::DebugInfoBuilder& debugInfo;
+  sun::codegen::DebugInfoBuilder& debugInfo;
   llvm::Value*& thisPtr;
-  std::shared_ptr<sun::ClassType>& currentClass;
+  std::shared_ptr<ClassType>& currentClass;
   bool& currentFunctionCanError;
   bool& currentFunctionReturnsRef;
   llvm::Type*& currentFunctionValueType;
@@ -91,40 +100,41 @@ class CodegenVisitor {
 
   // The scope stack for the function being emitted, and the drop code for
   // everything it owns. Container-shaped: scopes.back(), scopes.size().
-  ScopeManager scopes{state_, *this};
+  scopes::ScopeManager scopes{state_, *this};
 
   // Classes, interfaces, and generic instantiation
-  ClassGenerator classes{state_, *this};
+  classes::ClassGenerator classes{state_, *this};
 
   // Enum definitions, variants, matches, and payload cleanup
-  EnumGenerator enums{state_, *this};
+  enums::EnumGenerator enums{state_, *this};
 
   // Functions, lambdas, closures and returns
-  FunctionGenerator functions_{state_, *this};
+  functions::FunctionGenerator functions_{state_, *this};
 
   // Variables: creation, reference, assignment, lvalues and globals
-  VariableGenerator variables{state_, *this};
+  variables::VariableGenerator variables{state_, *this};
 
   // Loops, and the jumps out of them
-  LoopGenerator loops{state_, *this};
+  loops::LoopGenerator loops{state_, *this};
 
   // throw, try/catch, and every call that may unwind
-  ErrorGenerator errors{state_, *this};
+  errors::ErrorGenerator errors{state_, *this};
 
   // Compiler intrinsics and libc built-ins; owns the thread helpers they need
-  IntrinsicsGenerator intrinsics{state_, *this};
+  intrinsics::IntrinsicsGenerator intrinsics{state_, *this};
 
   // Everything specific to the `extern "C"` boundary: symbol renames, C ABI
   // signature lowering, and argument marshalling. See extern_c.h.
-  sun::cabi::ExternCEmitter externC;
+  sun::codegen::abi::ExternCEmitter externC;
 
   // Calling conventions, where each function came from, and name lookup.
   // Declared after externC because it resolves renamed externs through it.
-  FunctionRegistry functions{state_};
+  functions::FunctionRegistry functions{state_};
 
  public:
-  explicit CodegenVisitor(CodegenContext& ctx,
-                          std::shared_ptr<sun::TypeRegistry> registry)
+  explicit CodegenVisitor(
+      CodegenContext& ctx,
+      std::shared_ptr<sun::semantic_analysis::TypeRegistry> registry)
       : state_(ctx, std::move(registry)),
         ctx(state_.ctx),
         module(state_.module),
@@ -144,7 +154,7 @@ class CodegenVisitor {
 
   /** Emits a block, optionally skipping a prefix already emitted by its caller.
    */
-  llvm::Value* codegen(const BlockExprAST& block, size_t start = 0);
+  llvm::Value* codegen(const sun::ast::BlockExprAST& block, size_t start = 0);
   llvm::Value* codegen(const ExprAST& expr);
 
   // A node kind whose codegen lives on a component must be dispatched to that
@@ -186,16 +196,16 @@ class CodegenVisitor {
   // The state every codegen component shares
   CodegenState& state() { return state_; }
 
-  ScopeManager& scopeManager() { return scopes; }
-  ClassGenerator& classGenerator() { return classes; }
+  scopes::ScopeManager& scopeManager() { return scopes; }
+  classes::ClassGenerator& classGenerator() { return classes; }
   /** Gives codegen components access to enum generation. */
-  EnumGenerator& enumGenerator() { return enums; }
-  FunctionGenerator& functionGenerator() { return functions_; }
-  VariableGenerator& variableGenerator() { return variables; }
-  ErrorGenerator& errorGenerator() { return errors; }
-  IntrinsicsGenerator& intrinsicsGenerator() { return intrinsics; }
-  FunctionRegistry& functionRegistry() { return functions; }
-  sun::cabi::ExternCEmitter& externCEmitter() { return externC; }
+  enums::EnumGenerator& enumGenerator() { return enums; }
+  functions::FunctionGenerator& functionGenerator() { return functions_; }
+  variables::VariableGenerator& variableGenerator() { return variables; }
+  errors::ErrorGenerator& errorGenerator() { return errors; }
+  intrinsics::IntrinsicsGenerator& intrinsicsGenerator() { return intrinsics; }
+  functions::FunctionRegistry& functionRegistry() { return functions; }
+  sun::codegen::abi::ExternCEmitter& externCEmitter() { return externC; }
 
   // ---------------------------------------------------------------
   // Helpers the components share
@@ -207,9 +217,10 @@ class CodegenVisitor {
   llvm::Value* codegenExpression(const ExprAST& expr);
 
   // Payload enums: struct-valued like classes, handled by pointer
-  static bool isPayloadEnum(const sun::TypePtr& t) {
+  static bool isPayloadEnum(const TypePtr& t) {
     return t && t->isEnum() &&
-           static_cast<const sun::EnumType*>(t.get())->hasPayload();
+           static_cast<const sun::semantic_analysis::EnumType*>(t.get())
+               ->hasPayload();
   }
 
   /**
@@ -217,7 +228,7 @@ class CodegenVisitor {
    * Loads the struct value and zeros the source memory to prevent double-free.
    * If the argument is not a pointer to a class, returns it unchanged.
    */
-  llvm::Value* applyMoveSemantics(llvm::Value* argVal, sun::TypePtr argSunType);
+  llvm::Value* applyMoveSemantics(llvm::Value* argVal, TypePtr argSunType);
 
   /**
    * Materializes a struct or array return value to the caller's stack.
@@ -245,16 +256,14 @@ class CodegenVisitor {
   // global). Compound values (classes, payload enums) drop the overwritten
   // value first and MOVE the source in; self-assignment emits nothing.
   void assignToVariableSlot(llvm::Value* slot, llvm::Value* value,
-                            const sun::TypePtr& varType,
-                            const std::string& name) {
+                            const TypePtr& varType, const std::string& name) {
     variables.assignToVariableSlot(slot, value, varType, name);
   }
 
   // Codegen a member-access object down to (objectPtr, ClassType*), applying
   // the generic-`this` fixup and unwrapping raw_ptr/static_ptr/ref to class.
   // ClassType* is null when the object is not class-shaped.
-  std::pair<llvm::Value*, sun::ClassType*> codegenObjectPtr(
-      const ExprAST& object) {
+  std::pair<llvm::Value*, ClassType*> codegenObjectPtr(const ExprAST& object) {
     return variables.codegenObjectPtr(object);
   }
 
@@ -277,23 +286,24 @@ class CodegenVisitor {
   // needs one, `calleeTy` the LLVM parameter types for closure values.
   // `firstArg` skips leading arguments the caller lowered itself.
   // Returns false if an argument failed to codegen.
-  bool emitCallArguments(const std::vector<std::unique_ptr<ExprAST>>& args,
-                         const std::vector<sun::ArgConversion>& conversions,
-                         const std::vector<sun::TypePtr>& paramTypes,
-                         llvm::FunctionType* calleeTy,
-                         std::vector<llvm::Value*>& argValues,
-                         const std::string& calleeName, size_t firstArg = 0);
+  bool emitCallArguments(
+      const std::vector<std::unique_ptr<ExprAST>>& args,
+      const std::vector<sun::semantic_analysis::ArgConversion>& conversions,
+      const std::vector<TypePtr>& paramTypes, llvm::FunctionType* calleeTy,
+      std::vector<llvm::Value*>& argValues, const std::string& calleeName,
+      size_t firstArg = 0);
 
   // Bring two scalar operands to a common type (int/float widening); throws
   // on incompatible types
   void unifyBinaryOperands(llvm::Value*& L, llvm::Value*& R,
-                           const sun::TypePtr& lhsSunType,
-                           const sun::TypePtr& rhsSunType, const Position& loc);
+                           const TypePtr& lhsSunType, const TypePtr& rhsSunType,
+                           const sun::support::Position& loc);
 
   // Emit an arithmetic/bitwise/shift op on unified operands; shared by
   // binary expressions and compound assignment
-  llvm::Value* emitBinaryOp(TokenKind op, llvm::Value* L, llvm::Value* R,
-                            bool unsignedOp, const Position& loc);
+  llvm::Value* emitBinaryOp(sun::parsing::TokenKind op, llvm::Value* L,
+                            llvm::Value* R, bool unsignedOp,
+                            const sun::support::Position& loc);
 
   // Integer division/remainder with signedness; shared by the plain binary
   // path and codegenSafeDivision
@@ -307,11 +317,12 @@ class CodegenVisitor {
   // assignment can box the indices and resolve the receiver exactly once.
   // The boxed indices are a `ref array<i64>` view value.
   llvm::Value* boxIndicesToArrayRef(const IndexAST& expr);
-  llvm::Value* emitClassIndexCall(llvm::Value* objectPtr, llvm::Value* idxView,
-                                  sun::DeclarationId declaration);
-  llvm::Value* emitClassSetIndexCall(llvm::Value* objectPtr,
-                                     llvm::Value* idxView, llvm::Value* value,
-                                     const sun::ClassMethod* method);
+  llvm::Value* emitClassIndexCall(
+      llvm::Value* objectPtr, llvm::Value* idxView,
+      sun::semantic_analysis::DeclarationId declaration);
+  llvm::Value* emitClassSetIndexCall(
+      llvm::Value* objectPtr, llvm::Value* idxView, llvm::Value* value,
+      const sun::semantic_analysis::ClassMethod* method);
 
   // `arr.ndims()` and `arr.dim(i)` on a sized array or a view
   llvm::Value* codegenArrayQuery(const CallExprAST& call,
@@ -329,16 +340,17 @@ class CodegenVisitor {
   // Copy a sized array's inline storage from src to dest; a move also
   // invalidates the source so its own drop releases nothing
   void emitArrayTransfer(llvm::Value* dest, llvm::Value* src,
-                         const sun::ArrayType& type, bool move);
+                         const sun::semantic_analysis::ArrayType& type,
+                         bool move);
   // Store one element into a slot of inline storage (compounds move in)
   void storeArrayElement(llvm::Value* slotPtr, llvm::Value* elemVal,
-                         const sun::TypePtr& elemSunType, llvm::Type* slotType);
+                         const TypePtr& elemSunType, llvm::Type* slotType);
 
   // An alloca in the function's entry block, so loops don't grow the stack
   AllocaInst* createEntryBlockAlloca(Function* func, StringRef varName,
                                      llvm::Type* type = nullptr) {
     IRBuilder<> builder(&func->getEntryBlock(), func->getEntryBlock().begin());
-    if (!type) type = Type::getDoubleTy(ctx.getContext());
+    if (!type) type = llvm::Type::getDoubleTy(ctx.getContext());
     return builder.CreateAlloca(type, nullptr, varName);
   }
 
@@ -351,13 +363,12 @@ class CodegenVisitor {
   // DWARF argNo is 1-based; argNoBase is 2 for methods, whose slot 1 is the
   // artificial 'this'.
   void debugDeclareParam(llvm::AllocaInst* alloca, const std::string& name,
-                         const PrototypeAST& proto, unsigned userArgIdx,
-                         unsigned argNoBase = 1) {
-    sun::TypePtr type =
-        proto.hasResolvedParamTypes() &&
-                userArgIdx < proto.getResolvedParamTypes().size()
-            ? proto.getResolvedParamTypes()[userArgIdx]
-            : nullptr;
+                         const sun::ast::PrototypeAST& proto,
+                         unsigned userArgIdx, unsigned argNoBase = 1) {
+    TypePtr type = proto.hasResolvedParamTypes() &&
+                           userArgIdx < proto.getResolvedParamTypes().size()
+                       ? proto.getResolvedParamTypes()[userArgIdx]
+                       : nullptr;
     debugInfo.declareParameter(*ctx.builder, alloca, name, type,
                                proto.getLocation(), argNoBase + userArgIdx);
   }
@@ -367,27 +378,27 @@ class CodegenVisitor {
   // Literals and operators (codegen_visitor.cpp)
   // ---------------------------------------------------------------
 
-  llvm::Value* codegen(const NumberExprAST& expr);
-  llvm::Value* codegen(const CharLiteralAST& expr);
-  llvm::Value* codegen(const StringLiteralAST& expr);
-  llvm::Value* codegen(const UnaryExprAST& expr);
-  llvm::Value* codegen(const BinaryExprAST& expr);
+  llvm::Value* codegen(const sun::ast::NumberExprAST& expr);
+  llvm::Value* codegen(const sun::ast::CharLiteralAST& expr);
+  llvm::Value* codegen(const sun::ast::StringLiteralAST& expr);
+  llvm::Value* codegen(const sun::ast::UnaryExprAST& expr);
+  llvm::Value* codegen(const sun::ast::BinaryExprAST& expr);
 
   // Short-circuit logical operators (and, or)
-  llvm::Value* codegenLogicalOp(const BinaryExprAST& expr);
+  llvm::Value* codegenLogicalOp(const sun::ast::BinaryExprAST& expr);
 
   // Widen an integer value to destTy; the source expression's Sun type
   // decides zero- vs sign-extension (unsigned -> zext).
   llvm::Value* extendInt(llvm::Value* value, llvm::Type* destTy,
-                         const sun::TypePtr& sourceType);
+                         const TypePtr& sourceType);
 
   // ---------------------------------------------------------------
   // Conditionals, match and enum destructuring
   // ---------------------------------------------------------------
 
-  llvm::Value* codegen(const IfExprAST& expr);
-  llvm::Value* codegen(const TernaryExprAST& expr);
-  llvm::Value* codegen(const MatchExprAST& expr);
+  llvm::Value* codegen(const sun::ast::IfExprAST& expr);
+  llvm::Value* codegen(const sun::ast::TernaryExprAST& expr);
+  llvm::Value* codegen(const sun::ast::MatchExprAST& expr);
 
   // ---------------------------------------------------------------
   // Calls (call_expressions.cpp)
@@ -396,12 +407,12 @@ class CodegenVisitor {
   llvm::Value* codegen(const CallExprAST& expr);
 
   // Call helpers for different calling conventions
-  llvm::Value* codegenFunctionCall(const CallExprAST& expr,
-                                   const std::string& calleeName,
-                                   const sun::FunctionType& funcType);
-  llvm::Value* codegenLambdaCall(const CallExprAST& expr,
-                                 const std::string& calleeName,
-                                 const sun::LambdaType& lambdaType);
+  llvm::Value* codegenFunctionCall(
+      const CallExprAST& expr, const std::string& calleeName,
+      const sun::semantic_analysis::FunctionType& funcType);
+  llvm::Value* codegenLambdaCall(
+      const CallExprAST& expr, const std::string& calleeName,
+      const sun::semantic_analysis::LambdaType& lambdaType);
 
   // Top-level method call handler: dispatches to the sub-handlers below
   llvm::Value* codegenMethodCall(const CallExprAST& expr,
@@ -411,14 +422,14 @@ class CodegenVisitor {
   // Returns nullptr if not a builtin type method (caller should continue).
   llvm::Value* codegenBuiltinTypeMethod(const CallExprAST& expr,
                                         llvm::Value* objectPtr,
-                                        sun::TypePtr objectType,
+                                        TypePtr objectType,
                                         const std::string& methodName);
 
   // Handles interface method dispatch via vtable
-  llvm::Value* codegenInterfaceMethodCall(const CallExprAST& expr,
-                                          llvm::Value* objectPtr,
-                                          sun::InterfaceType* ifaceType,
-                                          const std::string& methodName);
+  llvm::Value* codegenInterfaceMethodCall(
+      const CallExprAST& expr, llvm::Value* objectPtr,
+      sun::semantic_analysis::InterfaceType* ifaceType,
+      const std::string& methodName);
 
   // Handles class method dispatch (regular and generic)
   llvm::Value* codegenClassMethodCall(const CallExprAST& expr,
@@ -435,76 +446,77 @@ class CodegenVisitor {
   // Handles i32->i64, f32->f64, etc. Returns the original value if no widening
   // needed.
   llvm::Value* widenNumericIfNeeded(llvm::Value* argVal,
-                                    const sun::TypePtr& paramType,
-                                    const sun::TypePtr& sourceType);
+                                    const TypePtr& paramType,
+                                    const TypePtr& sourceType);
 
   // Narrows a static_ptr<T> fat { ptr, i64 } argument to the bare data
   // pointer a raw_ptr<T> parameter expects. No-op for any other type pairing.
   llvm::Value* coerceStaticPtrToRawPtr(llvm::Value* argVal,
-                                       const sun::TypePtr& argSunType,
-                                       const sun::TypePtr& paramType);
+                                       const TypePtr& argSunType,
+                                       const TypePtr& paramType);
 
   // Generate the arguments for a call across the C boundary, carrying out
   // only Sun's own conversions. C-specific marshalling is ExternCEmitter's job.
   bool emitExternArguments(const CallExprAST& expr,
-                           const std::vector<sun::TypePtr>& paramTypes,
-                           std::vector<sun::cabi::PreparedArg>& out);
+                           const std::vector<TypePtr>& paramTypes,
+                           std::vector<sun::codegen::abi::PreparedArg>& out);
 
   // Emit a call to a C function whose signature needed ABI rewriting: its
   // LLVM parameters no longer line up one-to-one with the Sun arguments, so
   // the normal argument path cannot be used. Shared by plain and
   // module-qualified call sites.
-  llvm::Value* emitMarshalledExternCall(
-      const CallExprAST& expr, const std::vector<sun::TypePtr>& paramTypes,
-      llvm::Function* func);
+  llvm::Value* emitMarshalledExternCall(const CallExprAST& expr,
+                                        const std::vector<TypePtr>& paramTypes,
+                                        llvm::Function* func);
 
   // Read through a reference where a plain value is wanted. A reference is
   // an address until something consumes it; this is what does the consuming.
-  llvm::Value* loadIfRef(llvm::Value* value, const sun::TypePtr& type);
+  llvm::Value* loadIfRef(llvm::Value* value, const TypePtr& type);
 
   // Coerces a lambda argument to the callee's closure struct param type:
   // loads lambda literals (alloca ptr) and rebuilds closure values carrying
   // a differently-named but structurally identical struct type.
-  llvm::Value* loadClosureForLambdaParam(llvm::Value* argVal,
-                                         sun::TypePtr paramType,
+  llvm::Value* loadClosureForLambdaParam(llvm::Value* argVal, TypePtr paramType,
                                          llvm::Type* expectedTy);
 
   // Field 0 (data) or 1 (length) of a static_ptr fat pointer, whether it
   // arrived as the struct value or as its address
   llvm::Value* extractStaticPtrField(llvm::Value* fatPtr, unsigned index,
-                                     const sun::TypePtr& staticPtrType,
+                                     const TypePtr& staticPtrType,
                                      const char* name);
 
   /**
    * Prepares an argument value for a reference parameter.
    * Handles variable references, member access, arrays, and raw_ptr auto-deref.
    */
-  llvm::Value* prepareRefArgument(const ExprAST* argExpr,
-                                  sun::TypePtr argSunType,
+  llvm::Value* prepareRefArgument(const ExprAST* argExpr, TypePtr argSunType,
                                   bool allowTemporaryCopy = true);
 
   // ---------------------------------------------------------------
   // Arrays and indexing (arrays.cpp)
   // ---------------------------------------------------------------
 
-  llvm::Value* codegen(const ArrayLiteralAST& expr);
-  llvm::Value* codegen(const ArrayIndexAST& expr);  // Legacy
-  llvm::Value* codegen(const IndexAST& expr);       // New slice-aware indexing
-  llvm::Value* codegen(const IndexedAssignmentAST& expr);
-  llvm::Value* codegenArrayElementPtr(const ArrayIndexAST& expr);
+  llvm::Value* codegen(const sun::ast::ArrayLiteralAST& expr);
+  llvm::Value* codegen(const sun::ast::ArrayIndexAST& expr);  // Legacy
+  llvm::Value* codegen(const IndexAST& expr);  // New slice-aware indexing
+  llvm::Value* codegen(const sun::ast::IndexedAssignmentAST& expr);
+  llvm::Value* codegenArrayElementPtr(const sun::ast::ArrayIndexAST& expr);
 
   // Class indexing via __index__ and __slice__ methods
   llvm::Value* codegenClassIndex(const IndexAST& expr, llvm::Value* objectPtr,
-                                 sun::ClassType* classType);
+                                 ClassType* classType);
   llvm::Value* codegenClassSlice(const IndexAST& expr, llvm::Value* objectPtr,
-                                 sun::ClassType* classType);
-  llvm::Value* codegenClassSetIndex(const IndexAST& indexExpr,
-                                    const ExprAST* valueExpr,
-                                    const sun::ClassMethod* method);
+                                 ClassType* classType);
+  llvm::Value* codegenClassSetIndex(
+      const IndexAST& indexExpr, const ExprAST* valueExpr,
+      const sun::semantic_analysis::ClassMethod* method);
 
   // Attach a #dbg_declare for a user variable (no-op without -g)
   void debugDeclareLocal(llvm::AllocaInst* alloca, const std::string& name,
-                         const sun::TypePtr& type, const Position& loc) {
+                         const TypePtr& type,
+                         const sun::support::Position& loc) {
     debugInfo.declareLocal(*ctx.builder, alloca, name, type, loc);
   }
 };
+
+}  // namespace sun::codegen

@@ -6,7 +6,7 @@
 
 #include "semantic_analysis/type_traits.h"
 
-namespace sun::traits {
+namespace sun::semantic_analysis {
 
 bool satisfies(const TypePtr& type, const TypePtr& requirement) {
   if (!type || !requirement) return false;
@@ -51,4 +51,4 @@ bool satisfies(const TypePtr& type, const TypePtr& requirement) {
   return valueType->equals(*requirement);
 }
 
-}  // namespace sun::traits
+}  // namespace sun::semantic_analysis

@@ -11,6 +11,8 @@
 #include "ast/expr_ast.h"
 #include "ast/type_annotation.h"
 
+namespace sun::ast {
+
 // Catch clause for try-catch expression
 // Represents: catch (name: Type) { body }
 struct CatchClause {
@@ -20,12 +22,12 @@ struct CatchClause {
 
   // Filled in by semantic analysis, consumed by codegen for typed matching:
   bool isCatchAll = false;  // true for `catch (e: IError)` (matches any)
-  sun::TypePtr resolvedType;
+  sun::semantic_analysis::TypePtr resolvedType;
 
   CatchClause() = default;
   CatchClause(CatchClause&&) = default;
   CatchClause& operator=(CatchClause&&) = default;
-  mutable sun::DeclarationIdentity declaration{};
+  mutable sun::semantic_analysis::DeclarationIdentity declaration{};
 };
 
 // Try-catch expression: try { ... } catch (e: A) { ... } catch (e: IError) {
@@ -64,3 +66,5 @@ class TryCatchExprAST : public ExprAST {
   }
   std::string dotLabel() const override { return "TryCatch"; }
 };
+
+}  // namespace sun::ast

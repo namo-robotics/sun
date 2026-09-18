@@ -12,6 +12,9 @@
 #include "ast/expr_ast.h"
 #include "ast/prototype_ast.h"
 
+namespace sun::ast {
+using sun::semantic_analysis::DeclarationId;
+
 class FunctionAST : public ExprAST {
   std::unique_ptr<PrototypeAST> Proto;
   std::unique_ptr<BlockExprAST> Body;
@@ -65,15 +68,16 @@ class FunctionAST : public ExprAST {
   std::unique_ptr<PrototypeAST> releaseProto() { return std::move(Proto); }
 
   /** A function and its prototype denote the same declaration. */
-  sun::DeclarationId getDeclarationId() const override {
+  DeclarationId getDeclarationId() const override {
     return Proto->getDeclarationId();
   }
   /** Assign the prototype's declaration identity. */
-  void setDeclarationId(sun::DeclarationId id) const override {
+  void setDeclarationId(DeclarationId id) const override {
     Proto->setDeclarationId(id);
   }
   /** Access the identities owned by the prototype. */
-  sun::DeclarationIdentity& declarationIdentity() const override {
+  sun::semantic_analysis::DeclarationIdentity& declarationIdentity()
+      const override {
     return Proto->declarationIdentity();
   }
   /** Clear body and signature results while retaining identities. */
@@ -132,21 +136,21 @@ class FunctionAST : public ExprAST {
 
   // Specialization storage for generic functions
   // Called by semantic analyzer when a generic function is instantiated
-  void addSpecialization(sun::DeclarationId id,
+  void addSpecialization(DeclarationId id,
                          std::shared_ptr<FunctionAST> specializedAST) const {
     funcAnalysis().specializations[id] = std::move(specializedAST);
   }
-  const std::map<sun::DeclarationId, std::shared_ptr<FunctionAST>>&
+  const std::map<DeclarationId, std::shared_ptr<FunctionAST>>&
   getSpecializations() const {
     return funcAnalysis().specializations;
   }
-  bool hasSpecialization(sun::DeclarationId id) const {
+  bool hasSpecialization(DeclarationId id) const {
     return analysis_ &&
            static_cast<FunctionAnalysis&>(*analysis_)
                    .specializations.find(id) !=
                static_cast<FunctionAnalysis&>(*analysis_).specializations.end();
   }
-  std::shared_ptr<FunctionAST> getSpecialization(sun::DeclarationId id) const {
+  std::shared_ptr<FunctionAST> getSpecialization(DeclarationId id) const {
     if (!analysis_) return nullptr;
     auto& specs = static_cast<FunctionAnalysis&>(*analysis_).specializations;
     auto it = specs.find(id);
@@ -162,3 +166,5 @@ class FunctionAST : public ExprAST {
     return label;
   }
 };
+
+}  // namespace sun::ast

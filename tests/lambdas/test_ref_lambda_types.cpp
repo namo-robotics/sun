@@ -11,6 +11,9 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+using sun::support::SunError;
+
 // ============================================================================
 // Assignability: clean widens into <'_>, never the reverse
 // ============================================================================
@@ -126,7 +129,7 @@ TEST(Lambdas_RefLambdaTypes, ref_param_accepts_and_calls_capturing_values) {
 // The throws marker and the <'_> marker widen independently: a
 // non-throwing capture-list lambda fits a throwing '<'_>' parameter.
 TEST(Lambdas_RefLambdaTypes, ref_and_throws_widen_together) {
-  auto value = executeStringWithStdlib(R"(
+  auto value = sun::driver::executeStringWithStdlib(R"(
     using std;
     function run_guarded(f: <'_>(i32) => i32 throws IError, x: i32) i32 {
         try {

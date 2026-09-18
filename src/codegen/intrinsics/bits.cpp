@@ -13,7 +13,12 @@
 #include "codegen/intrinsics/intrinsics_generator.h"
 #include "support/error.h"
 
+using sun::ast::CallExprAST;
+using sun::support::logAndThrowError;
+
 using namespace llvm;
+
+namespace sun::codegen::intrinsics {
 
 Value* IntrinsicsGenerator::codegenMulHiU64Intrinsic(const CallExprAST& expr) {
   const auto& args = expr.getArgs();
@@ -25,8 +30,8 @@ Value* IntrinsicsGenerator::codegenMulHiU64Intrinsic(const CallExprAST& expr) {
   Value* b = codegen(*args[1]);
   if (!a || !b) return nullptr;
 
-  auto* i64Ty = Type::getInt64Ty(ctx.getContext());
-  auto* i128Ty = Type::getInt128Ty(ctx.getContext());
+  auto* i64Ty = llvm::Type::getInt64Ty(ctx.getContext());
+  auto* i128Ty = llvm::Type::getInt128Ty(ctx.getContext());
   a = ctx.builder->CreateZExtOrTrunc(a, i64Ty, "mulhi.a");
   b = ctx.builder->CreateZExtOrTrunc(b, i64Ty, "mulhi.b");
   Value* wideA = ctx.builder->CreateZExt(a, i128Ty, "mulhi.a.wide");
@@ -48,10 +53,10 @@ Value* IntrinsicsGenerator::codegenCountZerosIntrinsic(const CallExprAST& expr,
   Value* x = codegen(*args[0]);
   if (!x) return nullptr;
 
-  auto* i64Ty = Type::getInt64Ty(ctx.getContext());
+  auto* i64Ty = llvm::Type::getInt64Ty(ctx.getContext());
   x = ctx.builder->CreateZExtOrTrunc(x, i64Ty, "ctz.x");
-  Function* fn = Intrinsic::getOrInsertDeclaration(
-      module, leading ? Intrinsic::ctlz : Intrinsic::cttz, {i64Ty});
+  Function* fn = llvm::Intrinsic::getOrInsertDeclaration(
+      module, leading ? llvm::Intrinsic::ctlz : llvm::Intrinsic::cttz, {i64Ty});
   // is_zero_poison = false: 0 yields 64
   Value* isZeroPoison = ConstantInt::getFalse(ctx.getContext());
   return ctx.builder->CreateCall(fn, {x, isZeroPoison},
@@ -71,9 +76,11 @@ Value* IntrinsicsGenerator::codegenBswapIntrinsic(const CallExprAST& expr,
   Value* x = codegen(*args[0]);
   if (!x) return nullptr;
 
-  auto* intTy = Type::getIntNTy(ctx.getContext(), bitWidth);
+  auto* intTy = llvm::Type::getIntNTy(ctx.getContext(), bitWidth);
   x = ctx.builder->CreateZExtOrTrunc(x, intTy, "bswap.x");
-  Function* fn =
-      Intrinsic::getOrInsertDeclaration(module, Intrinsic::bswap, {intTy});
+  Function* fn = llvm::Intrinsic::getOrInsertDeclaration(
+      module, llvm::Intrinsic::bswap, {intTy});
   return ctx.builder->CreateCall(fn, {x}, "bswap");
 }
+
+}  // namespace sun::codegen::intrinsics

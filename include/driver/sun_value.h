@@ -8,7 +8,7 @@
 #include <string>
 #include <variant>
 
-namespace sun {
+namespace sun::driver {
 
 // Represents a void return (no value)
 struct VoidValue {
@@ -114,4 +114,4 @@ bool operator==(T expected, const SunValue& v) {
   return v == expected;
 }
 
-}  // namespace sun
+}  // namespace sun::driver

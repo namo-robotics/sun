@@ -17,6 +17,8 @@
 #include "parsing/nfa.h"
 #include "support/error.h"
 
+namespace sun::parsing {
+
 enum class TokenKind {
   TOK_EOF,
   COMMENT,        // // comment (skipped unless emitComments is set)
@@ -457,8 +459,8 @@ struct Token {
                double           // FLOAT
                >
       value;
-  Position start;
-  Position end;
+  sun::support::Position start;
+  sun::support::Position end;
   std::string text;
   int precedence = -1;
   // Type suffix of a TYPED_INTEGER/TYPED_FLOAT literal ("u8", "f32"); empty
@@ -469,7 +471,8 @@ struct Token {
   // Indexes a flat array rather than searching getTokenInfo()'s std::map:
   // this runs once per operator/keyword/punctuation token, and a red-black
   // tree walk per token was measurable in the lexer's profile.
-  static Token make(TokenKind k, const Position& s, const Position& e) {
+  static Token make(TokenKind k, const sun::support::Position& s,
+                    const sun::support::Position& e) {
     static const std::array<const TokenInfo*,
                             static_cast<size_t>(TokenKind::COUNT)>
         byKind = [] {
@@ -490,75 +493,80 @@ struct Token {
   }
 
   // Factories for value-carrying tokens
-  static Token eof(const Position& pos) {
+  static Token eof(const sun::support::Position& pos) {
     return make(TokenKind::TOK_EOF, pos, pos);
   }
 
-  static Token identifier(std::string id, const Position& s,
-                          const Position& e) {
+  static Token identifier(std::string id, const sun::support::Position& s,
+                          const sun::support::Position& e) {
     return {TokenKind::IDENTIFIER, id, s, e, std::move(id)};
   }
 
-  static Token intrinsicIdentifier(std::string id, const Position& s,
-                                   const Position& e) {
+  static Token intrinsicIdentifier(std::string id,
+                                   const sun::support::Position& s,
+                                   const sun::support::Position& e) {
     return {TokenKind::INTRINSIC_IDENTIFIER, id, s, e, std::move(id)};
   }
 
-  static Token integer(uint64_t num, const Position& s, const Position& e,
-                       std::string txt) {
+  static Token integer(uint64_t num, const sun::support::Position& s,
+                       const sun::support::Position& e, std::string txt) {
     return {TokenKind::INTEGER, num, s, e, std::move(txt)};
   }
 
-  static Token floatNum(double num, const Position& s, const Position& e,
-                        std::string txt) {
+  static Token floatNum(double num, const sun::support::Position& s,
+                        const sun::support::Position& e, std::string txt) {
     return {TokenKind::FLOAT, num, s, e, std::move(txt)};
   }
 
   // Factories for suffixed numeric literals (21u8, 1.5f32); the lexer has
   // already validated the suffix.
-  static Token typedInteger(uint64_t num, std::string suffix, const Position& s,
-                            const Position& e, std::string txt) {
+  static Token typedInteger(uint64_t num, std::string suffix,
+                            const sun::support::Position& s,
+                            const sun::support::Position& e, std::string txt) {
     Token t{TokenKind::TYPED_INTEGER, num, s, e, std::move(txt)};
     t.suffix = std::move(suffix);
     return t;
   }
 
-  static Token typedFloat(double num, std::string suffix, const Position& s,
-                          const Position& e, std::string txt) {
+  static Token typedFloat(double num, std::string suffix,
+                          const sun::support::Position& s,
+                          const sun::support::Position& e, std::string txt) {
     Token t{TokenKind::TYPED_FLOAT, num, s, e, std::move(txt)};
     t.suffix = std::move(suffix);
     return t;
   }
 
-  static Token stringLiteral(std::string str, const Position& s,
-                             const Position& e) {
+  static Token stringLiteral(std::string str, const sun::support::Position& s,
+                             const sun::support::Position& e) {
     return {TokenKind::STRING, std::move(str), s, e, ""};
   }
 
   // Character ('a') and byte (b'a') literal factory; `value` is the decoded
   // Unicode scalar value or byte.
-  static Token charLiteral(TokenKind k, uint64_t value, const Position& s,
-                           const Position& e, std::string txt) {
+  static Token charLiteral(TokenKind k, uint64_t value,
+                           const sun::support::Position& s,
+                           const sun::support::Position& e, std::string txt) {
     return {k, value, s, e, std::move(txt)};
   }
 
   // Lifetime name factory; `name` carries the bare name without the
   // apostrophe ('a lexes as LIFETIME with name "a").
-  static Token lifetime(std::string name, const Position& s,
-                        const Position& e) {
+  static Token lifetime(std::string name, const sun::support::Position& s,
+                        const sun::support::Position& e) {
     return {TokenKind::LIFETIME, name, s, e, "'" + std::move(name)};
   }
 
   // Comment token factory (COMMENT or BLOCK_COMMENT); text is the raw
   // comment including delimiters
-  static Token comment(TokenKind k, std::string txt, const Position& s,
-                       const Position& e) {
+  static Token comment(TokenKind k, std::string txt,
+                       const sun::support::Position& s,
+                       const sun::support::Position& e) {
     return {k, txt, s, e, std::move(txt)};
   }
 
   // Template string token factory
-  static Token templateString(std::string str, const Position& s,
-                              const Position& e) {
+  static Token templateString(std::string str, const sun::support::Position& s,
+                              const sun::support::Position& e) {
     return {TokenKind::TEMPLATE_STRING, std::move(str), s, e, ""};
   }
 
@@ -629,7 +637,7 @@ class Lexer {
   // char at a time); a slurped buffer makes advance() a load and two adds.
   int currentChar = ' ';
   DFA* dfa_ = &getTokenDFA();
-  Position currentPos{1, 1, 0};
+  sun::support::Position currentPos{1, 1, 0};
   // When set, comments are returned as tokens instead of skipped
   // (deliberately preserved across resetInput)
   bool emitComments_ = false;
@@ -651,10 +659,11 @@ class Lexer {
     return s == "f32" || s == "f64";
   }
 
-  [[noreturn]] void literalError(const Position& at,
+  [[noreturn]] void literalError(const sun::support::Position& at,
                                  const std::string& message) const {
-    logParsingError(at, message, getSourceLine(at.line),
-                    at.line > 1 ? getSourceLine(at.line - 1) : "");
+    sun::support::logParsingError(
+        at, message, getSourceLine(at.line),
+        at.line > 1 ? getSourceLine(at.line - 1) : "");
   }
 
   // Decode the body of a character literal ('a') or a byte literal (b'a') --
@@ -664,7 +673,7 @@ class Lexer {
   // \xNN reaches U+0000..U+007F, and \u{...} names anything above that. A byte
   // literal holds one byte: the source must be ASCII and \xNN covers 00..FF.
   uint64_t decodeLiteralBody(std::string_view body, bool isByte,
-                             const Position& at) const {
+                             const sun::support::Position& at) const {
     const std::string what = isByte ? "byte literal" : "character literal";
     const std::string quoted = isByte ? "b'...'" : "'...'";
 
@@ -688,7 +697,7 @@ class Lexer {
         }
         value = static_cast<unsigned char>(body[0]);
       } else {
-        auto scalar = sun::escapes::decodeUtf8(body, length);
+        auto scalar = sun::parsing::decodeUtf8(body, length);
         if (!scalar) {
           literalError(at, "Character literal is not valid UTF-8");
         }
@@ -706,16 +715,16 @@ class Lexer {
         value = '\'';
       } else if (next == '"') {
         value = '"';
-      } else if (auto simple = sun::escapes::simple(next)) {
+      } else if (auto simple = sun::parsing::simple(next)) {
         value = static_cast<unsigned char>(*simple);
       } else if (next == 'x') {
-        if (body.size() < 4 || sun::escapes::hexDigit(body[2]) < 0 ||
-            sun::escapes::hexDigit(body[3]) < 0) {
+        if (body.size() < 4 || sun::parsing::hexDigit(body[2]) < 0 ||
+            sun::parsing::hexDigit(body[3]) < 0) {
           literalError(at, "\\x needs exactly two hex digits, as in " +
                                std::string(isByte ? "b'\\x7F'" : "'\\x7F'"));
         }
-        value = static_cast<uint32_t>(sun::escapes::hexDigit(body[2]) * 16 +
-                                      sun::escapes::hexDigit(body[3]));
+        value = static_cast<uint32_t>(sun::parsing::hexDigit(body[2]) * 16 +
+                                      sun::parsing::hexDigit(body[3]));
         // Above 0x7F a byte and a scalar value stop agreeing, so a character
         // literal spells those with \u{...} instead.
         if (!isByte && value > 0x7F) {
@@ -740,7 +749,7 @@ class Lexer {
         int digits = 0;
         uint32_t scalar = 0;
         while (i < body.size() && body[i] != '}') {
-          int digit = sun::escapes::hexDigit(body[i]);
+          int digit = sun::parsing::hexDigit(body[i]);
           if (digit < 0) {
             literalError(at, "'" + std::string(1, body[i]) +
                                  "' is not a hex digit in \\u{...}");
@@ -753,12 +762,12 @@ class Lexer {
         }
         if (digits == 0) literalError(at, "\\u{} needs at least one hex digit");
         if (i >= body.size()) literalError(at, "\\u{...} is missing its '}'");
-        if (scalar > sun::escapes::kMaxScalar) {
+        if (scalar > sun::parsing::kMaxScalar) {
           literalError(at, "U+" + toHex(scalar) +
                                " is above the highest Unicode scalar value, "
                                "U+10FFFF");
         }
-        if (sun::escapes::isSurrogate(scalar)) {
+        if (sun::parsing::isSurrogate(scalar)) {
           literalError(at, "U+" + toHex(scalar) +
                                " is a UTF-16 surrogate, not a Unicode scalar "
                                "value");
@@ -780,21 +789,22 @@ class Lexer {
   }
 
   // Decode an integer body while checking separators and overflow.
-  uint64_t decodeIntegerDigits(const std::string& digits, const Position& at,
-                               int base = 10, size_t start = 0) const {
+  uint64_t decodeIntegerDigits(const std::string& digits,
+                               const sun::support::Position& at, int base = 10,
+                               size_t start = 0) const {
     uint64_t value = 0;
     bool previousDigit = false;
     for (size_t i = start; i < digits.size(); ++i) {
       if (digits[i] == '_') {
         int next =
-            i + 1 < digits.size() ? sun::escapes::hexDigit(digits[i + 1]) : -1;
+            i + 1 < digits.size() ? sun::parsing::hexDigit(digits[i + 1]) : -1;
         if (!previousDigit || next < 0 || next >= base) {
           literalError(at, "Digit separators must appear between digits");
         }
         previousDigit = false;
         continue;
       }
-      int digit = sun::escapes::hexDigit(digits[i]);
+      int digit = sun::parsing::hexDigit(digits[i]);
       if (digit < 0 || digit >= base) {
         literalError(at, "Malformed integer literal '" + digits + "'");
       }
@@ -825,9 +835,9 @@ class Lexer {
   // Process escape sequences in regular string literals.
   // Mirrors InterpolatedStringParser::processEscapes (template strings),
   // with \" instead of the template-specific \` and \$. The shared core
-  // (\n \t \r \\ \0) comes from sun::escapes::simple.
+  // (\n \t \r \\ \0) comes from sun::parsing::simple.
   std::string processStringEscapes(std::string_view raw,
-                                   const Position& at) const {
+                                   const sun::support::Position& at) const {
     std::string result;
     result.reserve(raw.size());
     for (size_t i = 0; i < raw.size(); i++) {
@@ -835,10 +845,10 @@ class Lexer {
         char next = raw[i + 1];
         if (next == '"') {
           result += '"';
-        } else if (auto c = sun::escapes::simple(next)) {
+        } else if (auto c = sun::parsing::simple(next)) {
           result += *c;
         } else if (next == 'x') {
-          auto byte = sun::escapes::hexByte(raw.substr(i + 2));
+          auto byte = sun::parsing::hexByte(raw.substr(i + 2));
           if (!byte) {
             literalError(at, "\\x needs exactly two hex digits");
           }
@@ -908,14 +918,14 @@ class Lexer {
   }
 
  public:
-  void setPosition(const Position& pos) {
+  void setPosition(const sun::support::Position& pos) {
     currentPos = pos;
     // pos.offset == buffer.size() is routine (rewinding to the end of the last
     // token at EOF); indexing the terminating null there is well-defined.
     currentChar = static_cast<unsigned char>(buffer[pos.offset]);
   }
 
-  Position getPosition() const { return currentPos; }
+  sun::support::Position getPosition() const { return currentPos; }
 
   // Extract source text substring from buffer (for storing generic method
   // source)
@@ -1005,7 +1015,7 @@ class Lexer {
   // the buffer and position; the token DFA is shared and stateless.
   void resetInput(std::istream& in) {
     currentChar = ' ';
-    currentPos = Position{1, 1, 0};
+    currentPos = sun::support::Position{1, 1, 0};
     slurp(in);
   }
 
@@ -1077,8 +1087,8 @@ class Lexer {
       if (nameEnd >= size || data[nameEnd] != '\'') {
         std::string name(data + off + 1,
                          static_cast<size_t>(nameEnd - off - 1));
-        Position startPos{line, col, off};
-        Position endPos{line, col + (nameEnd - off), nameEnd};
+        sun::support::Position startPos{line, col, off};
+        sun::support::Position endPos{line, col + (nameEnd - off), nameEnd};
         commitPosition(line, col + (nameEnd - off), nameEnd);
         return Token::lifetime(std::move(name), startPos, endPos);
       }
@@ -1116,17 +1126,17 @@ class Lexer {
     }
 
     if (bestKind < 0 || bestOffset == startOffset) {
-      Position at{startLine, startCol, startOffset};
+      sun::support::Position at{startLine, startCol, startOffset};
       commitPosition(startLine, startCol, startOffset);
       std::string sourceLine = getSourceLine(at.line);
-      logParsingError(
+      sun::support::logParsingError(
           at,
           "Unrecognized token '" + std::string(1, buffer[startOffset]) + "'",
           sourceLine, at.line > 1 ? getSourceLine(at.line - 1) : "");
     }
 
-    Position startPos{startLine, startCol, startOffset};
-    Position endPos{bestLine, bestCol, bestOffset};
+    sun::support::Position startPos{startLine, startCol, startOffset};
+    sun::support::Position endPos{bestLine, bestCol, bestOffset};
     TokenKind kind = static_cast<TokenKind>(bestKind);
     commitPosition(bestLine, bestCol, bestOffset);
 
@@ -1168,7 +1178,7 @@ class Lexer {
         }
         size_t cut = start;
         while (cut < text.size()) {
-          int digit = sun::escapes::hexDigit(text[cut]);
+          int digit = sun::parsing::hexDigit(text[cut]);
           if (text[cut] != '_' && (digit < 0 || digit >= base)) break;
           ++cut;
         }
@@ -1256,3 +1266,4 @@ class Lexer {
     }
   }
 };
+}  // namespace sun::parsing

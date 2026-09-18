@@ -7,23 +7,29 @@
 
 #include "codegen/codegen_visitor.h"
 
-llvm::Value* VariableGenerator::codegen(const ExprAST& expr) {
+namespace sun::codegen::variables {
+
+llvm::Value* VariableGenerator::codegen(const sun::ast::ExprAST& expr) {
   return gen_.codegen(expr);
 }
 
-llvm::Value* VariableGenerator::codegen(const BlockExprAST& block) {
+llvm::Value* VariableGenerator::codegen(const sun::ast::BlockExprAST& block) {
   return gen_.codegen(block);
 }
 
-ScopeManager& VariableGenerator::scopes() { return gen_.scopeManager(); }
+sun::codegen::scopes::ScopeManager& VariableGenerator::scopes() {
+  return gen_.scopeManager();
+}
 
-FunctionRegistry& VariableGenerator::functions() {
+sun::codegen::functions::FunctionRegistry& VariableGenerator::functions() {
   return gen_.functionRegistry();
 }
 
-ClassGenerator& VariableGenerator::classes() { return gen_.classGenerator(); }
+sun::codegen::classes::ClassGenerator& VariableGenerator::classes() {
+  return gen_.classGenerator();
+}
 
-FunctionGenerator& VariableGenerator::functionGen() {
+sun::codegen::functions::FunctionGenerator& VariableGenerator::functionGen() {
   return gen_.functionGenerator();
 }
 
@@ -32,9 +38,11 @@ llvm::AllocaInst* VariableGenerator::createEntryBlockAlloca(
   return gen_.createEntryBlockAlloca(func, name, type);
 }
 
-void VariableGenerator::debugDeclareLocal(llvm::AllocaInst* alloca,
-                                          const std::string& name,
-                                          const sun::TypePtr& type,
-                                          const Position& loc) {
+void VariableGenerator::debugDeclareLocal(
+    llvm::AllocaInst* alloca, const std::string& name,
+    const sun::semantic_analysis::TypePtr& type,
+    const sun::support::Position& loc) {
   state_.debugInfo.declareLocal(*ctx.builder, alloca, name, type, loc);
 }
+
+}  // namespace sun::codegen::variables

@@ -11,6 +11,8 @@
 #include "ast/type_annotation.h"
 #include "semantic_analysis/qualified_name.h"
 
+namespace sun::ast {
+
 class VariableCreationAST : public ExprAST {
   std::string name;
   std::unique_ptr<ExprAST> value;
@@ -92,10 +94,10 @@ class VariableCreationAST : public ExprAST {
   }
 
   // Qualified name (after semantic analysis qualifies it)
-  const sun::QualifiedName& getQualifiedName() const {
+  const sun::semantic_analysis::QualifiedName& getQualifiedName() const {
     return varAnalysis().qualifiedName;
   }
-  void setQualifiedName(sun::QualifiedName qname) {
+  void setQualifiedName(sun::semantic_analysis::QualifiedName qname) {
     varAnalysis().qualifiedName = std::move(qname);
   }
   bool hasQualifiedName() const {
@@ -103,3 +105,5 @@ class VariableCreationAST : public ExprAST {
            !static_cast<VariableAnalysis&>(*analysis_).qualifiedName.empty();
   }
 };
+
+}  // namespace sun::ast

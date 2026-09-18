@@ -8,6 +8,8 @@
 
 #include "ast/expr_ast.h"
 
+namespace sun::ast {
+
 // Using declaration: using Namespace::name; or using Namespace::*;
 // Also supports: using Module; (imports all from module)
 class UsingAST : public ExprAST {
@@ -54,3 +56,5 @@ class UsingAST : public ExprAST {
     return "Using\n" + getNamespacePathString() + "." + target;
   }
 };
+
+}  // namespace sun::ast

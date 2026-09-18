@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-namespace sun {
+namespace sun::moon_bundling {
 
 struct SynthesizedProtoModule {
   std::string sunSource;   // generated Sun text
@@ -36,4 +36,4 @@ class ProtoImporter {
       const std::vector<std::string>& protoFiles, const std::string& baseDir);
 };
 
-}  // namespace sun
+}  // namespace sun::moon_bundling

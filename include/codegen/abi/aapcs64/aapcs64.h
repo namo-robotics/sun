@@ -32,7 +32,7 @@
 
 #include "codegen/abi/c_abi.h"
 
-namespace sun::abi::aapcs64 {
+namespace sun::codegen::abi::aapcs64 {
 
 // Which flavor of AAPCS64 to apply. Aggregate rules are shared; Darwin adds
 // caller-side integer extension and drops the HFA alignstack attribute.
@@ -40,19 +40,21 @@ enum class Variant { Elf, Darwin };
 
 /// Classify one type as it would be passed as a parameter. `isSigned` only
 /// matters for the Darwin variant's small-integer extension.
-ArgLowering lowerArgument(llvm::Type* type, const llvm::DataLayout& dl,
-                          Variant variant = Variant::Elf,
-                          bool isSigned = false);
+sun::codegen::abi::ArgLowering lowerArgument(llvm::Type* type,
+                                             const llvm::DataLayout& dl,
+                                             Variant variant = Variant::Elf,
+                                             bool isSigned = false);
 
 /// Classify one type as it would be returned.
-ArgLowering lowerReturn(llvm::Type* type, const llvm::DataLayout& dl,
-                        Variant variant = Variant::Elf, bool isSigned = false);
+sun::codegen::abi::ArgLowering lowerReturn(llvm::Type* type,
+                                           const llvm::DataLayout& dl,
+                                           Variant variant = Variant::Elf,
+                                           bool isSigned = false);
 
 /// Classify a whole signature.
-SignatureLowering lowerCSignature(llvm::Type* returnType,
-                                  llvm::ArrayRef<llvm::Type*> paramTypes,
-                                  const llvm::DataLayout& dl,
-                                  Variant variant = Variant::Elf,
-                                  const SignednessInfo* signs = nullptr);
+sun::codegen::abi::SignatureLowering lowerCSignature(
+    llvm::Type* returnType, llvm::ArrayRef<llvm::Type*> paramTypes,
+    const llvm::DataLayout& dl, Variant variant = Variant::Elf,
+    const sun::codegen::abi::SignednessInfo* signs = nullptr);
 
-}  // namespace sun::abi::aapcs64
+}  // namespace sun::codegen::abi::aapcs64

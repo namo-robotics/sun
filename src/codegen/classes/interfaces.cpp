@@ -10,7 +10,13 @@
 #include "codegen/codegen_visitor.h"
 #include "codegen/intrinsics/libc.h"
 
+using sun::semantic_analysis::ClassType;
+using sun::semantic_analysis::InterfaceType;
+using sun::semantic_analysis::PortableDeclarationKey;
+
 using namespace llvm;
+
+namespace sun::codegen::classes {
 
 // -------------------------------------------------------------------
 
@@ -18,39 +24,38 @@ using namespace llvm;
  * Emits the concrete destructor stored in an interface vtable's final slot.
  */
 Function* ClassGenerator::getOrCreateInterfaceDropFunction(
-    sun::ClassType* classType) {
+    ClassType* classType) {
   std::string name =
       state_.declarationSymbol(classType->getDeclarationId(), "interface-drop");
   if (Function* existing = module->getFunction(name)) return existing;
 
   auto* ptrTy = PointerType::getUnqual(ctx.getContext());
-  FunctionType* fnTy =
-      FunctionType::get(Type::getVoidTy(ctx.getContext()), {ptrTy}, false);
+  llvm::FunctionType* fnTy = llvm::FunctionType::get(
+      llvm::Type::getVoidTy(ctx.getContext()), {ptrTy}, false);
   Function* fn =
       Function::Create(fnTy, Function::LinkOnceODRLinkage, name, module);
 
-  CodegenState::InsertPointGuard here(state_);
+  sun::codegen::CodegenState::InsertPointGuard here(state_);
   BasicBlock* entry = BasicBlock::Create(ctx.getContext(), "entry", fn);
   ctx.builder->SetInsertPoint(entry);
   Value* object = fn->getArg(0);
   scopes().emitDeinitCall(classType, object);
   scopes().emitFieldDeinit(object, classType, "interface.owner");
-  ctx.builder->CreateCall(sun::libc::free(module), {object});
+  ctx.builder->CreateCall(sun::codegen::intrinsics::free(module), {object});
   ctx.builder->CreateRetVoid();
   return fn;
 }
 
 GlobalVariable* ClassGenerator::getOrCreateInterfaceVtable(
-    sun::ClassType* classType, sun::InterfaceType* ifaceType) {
+    ClassType* classType, InterfaceType* ifaceType) {
   if (!classType->belongsTo(typeRegistry->declarations) ||
       !ifaceType->belongsTo(typeRegistry->declarations)) {
-    logAndThrowError(
+    sun::support::logAndThrowError(
         "Interface dispatch types belong to another analysis session");
   }
   auto& tables = vtableGlobals[{classType->getDeclarationId(),
                                 ifaceType->getDeclarationId()}];
   if (tables.owning) return tables.owning;
-
 
   auto* ptrTy = PointerType::getUnqual(ctx.getContext());
 
@@ -71,11 +76,11 @@ GlobalVariable* ClassGenerator::getOrCreateInterfaceVtable(
       llvm::StructType::get(ctx.getContext(), slotTypes);
 
   std::string vtableName =
-      sun::PortableDeclarationKey::inInstance(
-          sun::PortableDeclarationKey::fromDeclaration(
-              ifaceType->getDeclarationId(), typeRegistry->declarations),
-          sun::PortableDeclarationKey::fromDeclaration(
-              classType->getDeclarationId(), typeRegistry->declarations))
+      PortableDeclarationKey::inInstance(
+          PortableDeclarationKey::fromDeclaration(ifaceType->getDeclarationId(),
+                                                  typeRegistry->declarations),
+          PortableDeclarationKey::fromDeclaration(classType->getDeclarationId(),
+                                                  typeRegistry->declarations))
           .symbol("owning-vtable");
   Constant* vtableInit = ConstantStruct::get(vtableType, vtableEntries);
   auto* vtableGlobal =
@@ -90,7 +95,7 @@ GlobalVariable* ClassGenerator::getOrCreateInterfaceVtable(
  * Builds a dispatch-equivalent vtable whose final drop slot is a no-op.
  */
 GlobalVariable* ClassGenerator::getOrCreateBorrowedInterfaceVtable(
-    sun::ClassType* classType, sun::InterfaceType* ifaceType) {
+    ClassType* classType, InterfaceType* ifaceType) {
   GlobalVariable* owning = getOrCreateInterfaceVtable(classType, ifaceType);
   auto& tables = vtableGlobals.at(
       {classType->getDeclarationId(), ifaceType->getDeclarationId()});
@@ -105,8 +110,8 @@ GlobalVariable* ClassGenerator::getOrCreateBorrowedInterfaceVtable(
   Function* noOpDrop = module->getFunction(dropName);
   if (!noOpDrop) {
     auto* ptrTy = PointerType::getUnqual(ctx.getContext());
-    FunctionType* fnTy =
-        FunctionType::get(Type::getVoidTy(ctx.getContext()), {ptrTy}, false);
+    llvm::FunctionType* fnTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(ctx.getContext()), {ptrTy}, false);
     noOpDrop =
         Function::Create(fnTy, Function::LinkOnceODRLinkage, dropName, module);
     BasicBlock* entry = BasicBlock::Create(ctx.getContext(), "entry", noOpDrop);
@@ -119,11 +124,11 @@ GlobalVariable* ClassGenerator::getOrCreateBorrowedInterfaceVtable(
   std::vector<llvm::Type*> slots(entries.size(), ptrTy);
   StructType* type = StructType::get(ctx.getContext(), slots);
   std::string name =
-      sun::PortableDeclarationKey::inInstance(
-          sun::PortableDeclarationKey::fromDeclaration(
-              ifaceType->getDeclarationId(), typeRegistry->declarations),
-          sun::PortableDeclarationKey::fromDeclaration(
-              classType->getDeclarationId(), typeRegistry->declarations))
+      PortableDeclarationKey::inInstance(
+          PortableDeclarationKey::fromDeclaration(ifaceType->getDeclarationId(),
+                                                  typeRegistry->declarations),
+          PortableDeclarationKey::fromDeclaration(classType->getDeclarationId(),
+                                                  typeRegistry->declarations))
           .symbol("borrowed-vtable");
   auto* result =
       new GlobalVariable(*module, type, true, GlobalValue::InternalLinkage,
@@ -132,22 +137,22 @@ GlobalVariable* ClassGenerator::getOrCreateBorrowedInterfaceVtable(
   return result;
 }
 
-Value* ClassGenerator::createInterfaceFatPointer(
-    Value* objectPtr, sun::ClassType* classType,
-    sun::InterfaceType* ifaceType) {
+Value* ClassGenerator::createInterfaceFatPointer(Value* objectPtr,
+                                                 ClassType* classType,
+                                                 InterfaceType* ifaceType) {
   // Look up (or build) the vtable for this (class, interface) pair.
   GlobalVariable* vtableGlobal =
       getOrCreateBorrowedInterfaceVtable(classType, ifaceType);
   if (!vtableGlobal) {
-    logAndThrowError("Vtable not found for class " +
-                     classType->getDisplayName() + " implementing interface " +
-                     ifaceType->getName());
+    sun::support::logAndThrowError(
+        "Vtable not found for class " + classType->getDisplayName() +
+        " implementing interface " + ifaceType->getName());
     return nullptr;
   }
 
   // Create the fat pointer struct { ptr data, ptr vtable }
   llvm::StructType* fatPtrType =
-      sun::InterfaceType::getFatPointerType(ctx.getContext());
+      InterfaceType::getFatPointerType(ctx.getContext());
   Value* fatPtr = UndefValue::get(fatPtrType);
 
   // Insert the data pointer (element 0)
@@ -164,8 +169,7 @@ Value* ClassGenerator::createInterfaceFatPointer(
  * Moves a concrete class into stable storage owned by an interface value.
  */
 Value* ClassGenerator::createOwnedInterfaceFatPointer(
-    Value* objectPtr, sun::ClassType* classType,
-    sun::InterfaceType* ifaceType) {
+    Value* objectPtr, ClassType* classType, InterfaceType* ifaceType) {
   if (!objectPtr || !objectPtr->getType()->isPointerTy()) return nullptr;
 
   Value* fatPtr = createInterfaceFatPointer(objectPtr, classType, ifaceType);
@@ -184,8 +188,9 @@ Value* ClassGenerator::createOwnedInterfaceFatPointer(
   // Interface ownership uses the same system heap that backs HeapAllocator.
   // The source is moved into the box and zeroed so its pending drop is inert.
   Value* box = ctx.builder->CreateCall(
-      sun::libc::malloc(module),
-      {ConstantInt::get(Type::getInt64Ty(ctx.getContext()), allocationSize)},
+      sun::codegen::intrinsics::malloc(module),
+      {ConstantInt::get(llvm::Type::getInt64Ty(ctx.getContext()),
+                        allocationSize)},
       "iface.box");
   Value* moved = ctx.builder->CreateAlignedLoad(objectType, objectPtr,
                                                 objectAlign, "iface.move");
@@ -193,7 +198,7 @@ Value* ClassGenerator::createOwnedInterfaceFatPointer(
   ctx.builder->CreateMemSet(objectPtr, ctx.builder->getInt8(0), objectSize,
                             MaybeAlign(objectAlign));
   scopes().markClassAllocationAsDeinited(
-      objectPtr, std::make_shared<sun::ClassType>(*classType));
+      objectPtr, std::make_shared<ClassType>(*classType));
 
   return ctx.builder->CreateInsertValue(fatPtr, box, 0, "iface.owner");
 }
@@ -207,18 +212,20 @@ Value* ClassGenerator::createOwnedInterfaceFatPointer(
 // Creates fat pointer on stack and returns pointer to it
 // -------------------------------------------------------------------
 
-Value* ClassGenerator::prepareClassForRefInterface(Value* classPtr,
-                                                   sun::TypePtr argType,
-                                                   sun::TypePtr paramType) {
+Value* ClassGenerator::prepareClassForRefInterface(
+    Value* classPtr, sun::semantic_analysis::TypePtr argType,
+    sun::semantic_analysis::TypePtr paramType) {
   // Check if conversion is needed: param is ref Interface and arg is class
-  auto* refType = sun::tryGetType<sun::ReferenceType>(paramType);
+  auto* refType =
+      sun::codegen::support::tryGetType<sun::semantic_analysis::ReferenceType>(
+          paramType);
   if (!refType) return nullptr;  // Not a ref param
 
-  auto* ifaceType =
-      sun::tryGetType<sun::InterfaceType>(refType->getReferencedType());
+  auto* ifaceType = sun::codegen::support::tryGetType<InterfaceType>(
+      refType->getReferencedType());
   if (!ifaceType) return nullptr;  // Not ref Interface
 
-  auto* classType = sun::tryGetType<sun::ClassType>(argType);
+  auto* classType = sun::codegen::support::tryGetType<ClassType>(argType);
   if (!classType) return nullptr;  // Arg is not a class
 
   // Create interface fat pointer value
@@ -236,3 +243,5 @@ Value* ClassGenerator::prepareClassForRefInterface(Value* classPtr,
 // -------------------------------------------------------------------
 // Helper: Load closure struct for lambda-typed parameters
 // Lambda literals codegen to an alloca; params take the closure by value
+
+}  // namespace sun::codegen::classes

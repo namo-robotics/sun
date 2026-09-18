@@ -23,5 +23,6 @@
   "c-ffi": "C FFI",
   "formatting": "Formatting",
   "architecture": "Architecture",
+  "compiler-api": "Compiler API Reference",
   "roadmap": "Roadmap"
 }

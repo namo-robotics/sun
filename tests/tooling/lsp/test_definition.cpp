@@ -18,6 +18,8 @@
 #include "driver/execution_utils.h"
 #include "lsp/definition.h"
 
+using sun::driver::Driver;
+
 namespace {
 
 // The file never exists on disk; nodes carry the path exactly as given
@@ -25,14 +27,15 @@ const char* kPath = "/definition_test.sun";
 
 struct Analysis {
   std::unique_ptr<Driver> driver;
-  Driver::AnalyzedProgram program;
+  sun::driver::Driver::AnalyzedProgram program;
 };
 
 Analysis analyze(const std::string& source, bool withStdlib = false) {
-  initTestEnvironment();
+  sun::driver::initTestEnvironment();
   Analysis analysis;
   analysis.driver = Driver::createForAOT("definition_test");
-  if (withStdlib) analysis.driver->setMoonImports(getStdlibMoonImports());
+  if (withStdlib)
+    analysis.driver->setMoonImports(sun::driver::getStdlibMoonImports());
   analysis.program = analysis.driver->analyzeString(source, kPath);
   return analysis;
 }
@@ -334,7 +337,7 @@ function main() i32 {
 }
 
 TEST(Tooling_Lsp_Definition, MergedFiles) {
-  initTestEnvironment();
+  sun::driver::initTestEnvironment();
   std::filesystem::create_directories("tmp");
   std::string mainPath =
       std::filesystem::absolute("tmp/definition_main.sun").string();
@@ -373,7 +376,8 @@ TEST(Tooling_Lsp_Definition, MergedFiles) {
 }
 
 TEST(Tooling_Lsp_Definition, StdlibDeclarations) {
-  if (getStdlibMoonImports().empty()) GTEST_SKIP() << "stdlib.moon not built";
+  if (sun::driver::getStdlibMoonImports().empty())
+    GTEST_SKIP() << "stdlib.moon not built";
   std::string source = R"(
 using std;
 class Config {

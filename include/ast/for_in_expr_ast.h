@@ -9,6 +9,8 @@
 #include "ast/expr_ast.h"
 #include "ast/type_annotation.h"
 
+namespace sun::ast {
+
 // for (var x: T in iterable) { ... }
 // Iterates over iterable by calling iter() -> IIterator<T, C> (when the
 // iterable is not itself an iterator), then next(ref C) -> Option<T> until
@@ -66,10 +68,10 @@ class ForInExprAST : public ExprAST {
   std::unique_ptr<ExprAST>& bodySlot() { return Body; }
 
   // Resolved loop variable type (set by semantic analyzer)
-  void setResolvedLoopVarType(sun::TypePtr type) const {
+  void setResolvedLoopVarType(sun::semantic_analysis::TypePtr type) const {
     forInAnalysis().resolvedLoopVarType = std::move(type);
   }
-  sun::TypePtr getResolvedLoopVarType() const {
+  sun::semantic_analysis::TypePtr getResolvedLoopVarType() const {
     return analysis_
                ? static_cast<ForInAnalysis&>(*analysis_).resolvedLoopVarType
                : nullptr;
@@ -82,3 +84,5 @@ class ForInExprAST : public ExprAST {
 
   std::string dotLabel() const override { return "ForIn\n" + LoopVar; }
 };
+
+}  // namespace sun::ast

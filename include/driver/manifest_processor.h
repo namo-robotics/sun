@@ -18,11 +18,12 @@
 #include "driver/sun_config.h"
 #include "moon_bundling/moon_import.h"
 
-namespace sun {
+namespace sun::driver {
 
 struct ResolvedManifest {
   std::vector<std::string> sunFiles;    // resolved .sun paths (manifest order)
-  std::vector<MoonImport> moonImports;  // resolved .moon imports
+  std::vector<sun::moon_bundling::MoonImport>
+      moonImports;                      // resolved .moon imports
   std::vector<std::string> protoFiles;  // resolved .proto paths
   std::vector<std::string> archiveFiles;  // resolved native .a archives
   // resolved `test_files:` paths; merged into the source set only when
@@ -34,7 +35,8 @@ struct ResolvedManifest {
 class ManifestProcessor {
  public:
   // The manifest block among a program's top-level statements, or nullptr
-  static const ManifestAST* findManifest(const BlockExprAST& program);
+  static const sun::ast::ManifestAST* findManifest(
+      const sun::ast::BlockExprAST& program);
 
   // Resolve a manifest path: absolute as-is, else relative to baseDir, else
   // through the config's sunPath dirs, --lib-path, SUN_PATH and installation
@@ -62,7 +64,7 @@ class ManifestProcessor {
   // --target value, host when empty) selects which of the manifest's
   // `target: { <os>: ... }` blocks contribute their entries — the manifest
   // itself never decides the target, the compilation does.
-  static ResolvedManifest process(const ManifestAST& manifest,
+  static ResolvedManifest process(const sun::ast::ManifestAST& manifest,
                                   const std::string& baseDir,
                                   const std::string& targetTriple = "");
 
@@ -73,4 +75,4 @@ class ManifestProcessor {
       const std::string& entrypointPath, const std::string& targetTriple = "");
 };
 
-}  // namespace sun
+}  // namespace sun::driver

@@ -17,6 +17,8 @@
 #include "driver/driver.h"
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+
 // ============================================================================
 // Layout
 // ============================================================================
@@ -476,10 +478,11 @@ TEST(Classes_Packed, rejects_partial_combined_with_packed) {
 namespace {
 // Compile `source` in debug mode and return the generated LLVM IR.
 std::string irFor(const std::string& source) {
-  initTestEnvironment();
+  sun::driver::initTestEnvironment();
   std::string debugName = "test_packed_" + std::to_string(getpid());
-  auto driver = Driver::createForJIT("packed_ir", /*debugInfo=*/true,
-                                     /*optimize=*/false);
+  auto driver =
+      sun::driver::Driver::createForJIT("packed_ir", /*debugInfo=*/true,
+                                        /*optimize=*/false);
   driver->setDebugMode(true, debugName);
   driver->executeString(source);
 

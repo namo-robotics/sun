@@ -65,7 +65,7 @@ bool parseSharedOption(ArgumentCursor& cursor, SharedOptions& shared,
   } else if (cursor.takeValueOf("--lib-path", value)) {
     shared.libPaths.push_back(value);
   } else if (cursor.takeValueOf("--moon", value)) {
-    auto moonImport = sun::parseMoonImportSpec(value);
+    auto moonImport = sun::moon_bundling::parseMoonImportSpec(value);
     if (!moonImport) {
       failure = makeFailure("Invalid --moon format: " + value +
                             "\nExpected: path.moon or "
@@ -156,7 +156,7 @@ std::optional<EarlyExit> parseBuildRunArguments(
   // shape embedded targets want. --dynamic restores shared-library linking
   // (needed for .so-only vendor libraries). macOS is always dynamic.
   bool darwinTarget =
-      sun::effectiveLinkTriple(options.targetTriple).isOSDarwin();
+      sun::driver::effectiveLinkTriple(options.targetTriple).isOSDarwin();
   options.linkOptions.staticLink = !options.dynamicRequested && !darwinTarget;
 
   // A sun-config.json named as the input stands in for its declared
@@ -202,7 +202,7 @@ std::optional<EarlyExit> validateBuildRunOptions(
   // macOS has no fully static binaries: Apple ships no static libSystem or
   // startup objects, and its linker rejects -static for executables.
   if (options.staticRequested &&
-      sun::effectiveLinkTriple(options.targetTriple).isOSDarwin()) {
+      sun::driver::effectiveLinkTriple(options.targetTriple).isOSDarwin()) {
     return makeFailure("Error: --static is not supported for macOS targets\n");
   }
   if (options.configInput && (options.emitMoon || options.emitObjOnly)) {

@@ -6,9 +6,12 @@
 
 using namespace llvm;
 
+namespace sun::codegen {
+
 // A block is a scope: it declares what it defines before emitting any body,
 // then drops whatever it still owns on the way out.
-Value* CodegenVisitor::codegen(const BlockExprAST& block, size_t start) {
+Value* CodegenVisitor::codegen(const sun::ast::BlockExprAST& block,
+                               size_t start) {
   if (block.isEmpty()) return ConstantFP::get(ctx.getContext(), APFloat(0.0));
 
   variables.declareBlockExternalGlobals(block);
@@ -28,7 +31,7 @@ Value* CodegenVisitor::codegen(const BlockExprAST& block, size_t start) {
       // Save current insertion point before generating function
       auto currentBlock = ctx.builder->GetInsertBlock();
 
-      auto& funcAST = static_cast<FunctionAST&>(*expr);
+      auto& funcAST = static_cast<sun::ast::FunctionAST&>(*expr);
       functions_.codegenFunc(funcAST);
 
       // Function emission changes the builder's insertion point.
@@ -41,8 +44,8 @@ Value* CodegenVisitor::codegen(const BlockExprAST& block, size_t start) {
 
     // Class/interface definitions generate functions/methods that change
     // the IR builder insertion point. Save/restore around them.
-    if (expr->getType() == ASTNodeType::CLASS_DEFINITION ||
-        expr->getType() == ASTNodeType::INTERFACE_DEFINITION) {
+    if (expr->getType() == sun::ast::ASTNodeType::CLASS_DEFINITION ||
+        expr->getType() == sun::ast::ASTNodeType::INTERFACE_DEFINITION) {
       auto currentBlock = ctx.builder->GetInsertBlock();
 
       lastValue = codegen(*expr);
@@ -94,3 +97,5 @@ Value* CodegenVisitor::codegen(const BlockExprAST& block, size_t start) {
   return lastValue ? lastValue
                    : ConstantFP::get(ctx.getContext(), APFloat(0.0));
 }
+
+}  // namespace sun::codegen

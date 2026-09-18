@@ -15,11 +15,16 @@
 #include "parsing/parser.h"
 #include "serialization/ast_serializer.h"
 
+using sun::ast::ASTNodeType;
+using sun::ast::BlockExprAST;
+using sun::ast::VariableCreationAST;
+using sun::parsing::LoweringPass;
+
 namespace {
 
 std::unique_ptr<BlockExprAST> parseProgram(const std::string& source) {
   std::istringstream ss(source);
-  Parser parser(ss);
+  sun::parsing::Parser parser(ss);
   return parser.parseString(source);
 }
 
@@ -29,9 +34,9 @@ std::string serialize(const BlockExprAST& block) {
 }
 
 // Count nodes of the given type anywhere in the tree
-int countNodes(ExprAST& node, ASTNodeType type) {
+int countNodes(sun::ast::ExprAST& node, ASTNodeType type) {
   int count = node.getType() == type ? 1 : 0;
-  node.forEachChildSlot([&](std::unique_ptr<ExprAST>& child) {
+  node.forEachChildSlot([&](std::unique_ptr<sun::ast::ExprAST>& child) {
     if (child) count += countNodes(*child, type);
   });
   return count;
@@ -150,11 +155,11 @@ TEST(Tooling_Frontend_Lowering, ParenStrippingPreservesInner) {
   pass.run(*block);
 
   auto* var = static_cast<VariableCreationAST*>(block->getBody()[0].get());
-  auto* mul = static_cast<const BinaryExprAST*>(var->getValue());
+  auto* mul = static_cast<const sun::ast::BinaryExprAST*>(var->getValue());
   ASSERT_EQ(mul->getType(), ASTNodeType::BINARY);
   // The doubly-parenthesized LHS is now the bare addition
   ASSERT_EQ(mul->getLHS()->getType(), ASTNodeType::BINARY);
-  auto* add = static_cast<const BinaryExprAST*>(mul->getLHS());
+  auto* add = static_cast<const sun::ast::BinaryExprAST*>(mul->getLHS());
   EXPECT_EQ(add->getLHS()->getType(), ASTNodeType::NUMBER);
   EXPECT_EQ(add->getRHS()->getType(), ASTNodeType::NUMBER);
 }
@@ -216,7 +221,7 @@ TEST(Tooling_Frontend_Lowering,
   auto* var = static_cast<VariableCreationAST*>(block->getBody()[0].get());
   ASSERT_EQ(var->getValue()->getType(), ASTNodeType::INTERPOLATED_STRING);
   const auto* interp =
-      static_cast<const InterpolatedStringAST*>(var->getValue());
+      static_cast<const sun::ast::InterpolatedStringAST*>(var->getValue());
   const auto& segments = interp->getSegments();
   ASSERT_EQ(segments.size(), 2u);
   ASSERT_FALSE(segments[1].isLiteral);

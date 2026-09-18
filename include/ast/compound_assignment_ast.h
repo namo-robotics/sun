@@ -8,6 +8,9 @@
 #include "ast/expr_ast.h"
 #include "parsing/lexer.h"
 
+namespace sun::ast {
+using sun::parsing::Token;
+
 // Compound assignment: target op= value (e.g. x += 1, obj.f *= 2,
 // arr[i] |= mask). Kept as a single node through analysis and lowered in
 // codegen as address-once -> load -> op -> store, so the target is
@@ -41,10 +44,12 @@ class CompoundAssignmentAST : public ExprAST {
   const Token& getOp() const { return op; }
 
   // The underlying binary operator (e.g. PLUS for PLUS_ASSIGN)
-  TokenKind binaryOpKind() const {
-    auto binOp = compoundToBinaryOp(op.kind);
-    return binOp ? *binOp : TokenKind::UNKNOWN;
+  sun::parsing::TokenKind binaryOpKind() const {
+    auto binOp = sun::parsing::compoundToBinaryOp(op.kind);
+    return binOp ? *binOp : sun::parsing::TokenKind::UNKNOWN;
   }
 
   std::string dotLabel() const override { return "CompoundAssign\n" + op.text; }
 };
+
+}  // namespace sun::ast

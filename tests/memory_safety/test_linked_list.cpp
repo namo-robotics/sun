@@ -8,6 +8,8 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeStringWithStdlib;
+
 // ============================================================================
 // C-style Linked List Tests using allocator.create<T> for heap allocation
 // ============================================================================

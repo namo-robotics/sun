@@ -20,7 +20,7 @@
 #include <system_error>
 #include <vector>
 
-namespace sun {
+namespace sun::driver {
 
 /// Native libraries to link against, from -l / -L on the command line.
 /// Distinct from LibraryCache's search paths, which locate Sun .moon
@@ -412,4 +412,4 @@ inline bool compileToExecutable(llvm::Module& module,
   return true;
 }
 
-}  // namespace sun
+}  // namespace sun::driver

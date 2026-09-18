@@ -7,10 +7,9 @@
 
 namespace sun::lsp {
 
-std::optional<SymbolLocation> computeDefinition(const BlockExprAST& program,
-                                                const std::string& filePath,
-                                                const std::string& source,
-                                                int byteOffset) {
+std::optional<SymbolLocation> computeDefinition(
+    const sun::ast::BlockExprAST& program, const std::string& filePath,
+    const std::string& source, int byteOffset) {
   std::string documentPath = normalizePath(filePath);
   std::optional<Declaration> declaration =
       findDeclarationAt(program, documentPath, source, byteOffset);

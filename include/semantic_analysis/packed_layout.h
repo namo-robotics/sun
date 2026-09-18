@@ -20,7 +20,8 @@
 #include "ast/member_access_ast.h"
 #include "semantic_analysis/types.h"
 
-namespace sun::packed {
+namespace sun::semantic_analysis {
+using sun::ast::ExprAST;
 
 // The class a member access reads through, seeing past ref/raw_ptr/static_ptr.
 // Returns nullptr when the object is not class-shaped.
@@ -45,8 +46,8 @@ inline const ClassType* accessedClass(const ExprAST& object) {
 inline bool isFieldAccess(const ExprAST& expr,
                           std::string* ownerName = nullptr) {
   const ExprAST* cur = &expr;
-  while (cur && cur->getType() == ASTNodeType::MEMBER_ACCESS) {
-    const auto& access = static_cast<const MemberAccessAST&>(*cur);
+  while (cur && cur->getType() == sun::ast::ASTNodeType::MEMBER_ACCESS) {
+    const auto& access = static_cast<const sun::ast::MemberAccessAST&>(*cur);
     const ExprAST* object = access.getObject();
     if (!object) break;
 
@@ -116,4 +117,4 @@ inline std::string borrowRejection(const std::string& what,
          remedy;
 }
 
-}  // namespace sun::packed
+}  // namespace sun::semantic_analysis

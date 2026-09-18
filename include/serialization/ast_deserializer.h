@@ -8,11 +8,15 @@
 #include "ast.h"
 #include "ast.pb.h"
 
-namespace sun {
-namespace serialization {
+namespace sun::serialization {
+namespace pbc = sun::proto::ast;
 
-inline sun::Visibility fromProto(ast::Visibility v) {
-  return v == ast::PUBLIC ? sun::Visibility::Public : sun::Visibility::Private;
+using sun::ast::BlockExprAST;
+using sun::ast::ExprAST;
+using sun::semantic_analysis::Visibility;
+
+inline Visibility fromProto(pbc::Visibility v) {
+  return v == pbc::PUBLIC ? Visibility::Public : Visibility::Private;
 }
 
 // Configuration for AST deserialization
@@ -30,14 +34,14 @@ class ASTDeserializer {
 
   // Deserialize a complete program
   std::unique_ptr<BlockExprAST> deserializeProgram(
-      const ast::Program& program) const;
+      const pbc::Program& program) const;
 
   // Deserialize any expression node
-  std::unique_ptr<ExprAST> deserialize(const ast::ASTNode& node) const;
+  std::unique_ptr<ExprAST> deserialize(const pbc::ASTNode& node) const;
 
   // Deserialize a prototype
-  std::unique_ptr<PrototypeAST> deserializePrototype(
-      const ast::Prototype& proto) const;
+  std::unique_ptr<sun::ast::PrototypeAST> deserializePrototype(
+      const pbc::Prototype& proto) const;
 
   // Deserialize from bytes (convenience)
   std::unique_ptr<ExprAST> deserializeFromString(const std::string& data) const;
@@ -49,33 +53,34 @@ class ASTDeserializer {
 
   // Restore parameters from current metadata or the legacy names-only field.
   template <typename Owner>
-  std::vector<TypeParameter> deserializeTypeParameters(
+  std::vector<sun::ast::TypeParameter> deserializeTypeParameters(
       const Owner& owner) const;
 
   // Retain validated portable identities until the declaration pass interns
   // them.
-  void deserializeIdentity(const ast::DeclarationIdentity& proto,
-                           sun::DeclarationIdentity& identity) const;
+  void deserializeIdentity(
+      const pbc::DeclarationIdentity& proto,
+      sun::semantic_analysis::DeclarationIdentity& identity) const;
 
   // Type annotation deserialization
-  TypeAnnotation deserializeTypeAnnotation(
-      const ast::TypeAnnotation& type) const;
+  sun::ast::TypeAnnotation deserializeTypeAnnotation(
+      const pbc::TypeAnnotation& type) const;
 
   // Position deserialization
-  Position deserializePosition(const ast::Position& pos) const;
+  sun::support::Position deserializePosition(const pbc::Position& pos) const;
 
   // Token deserialization
-  Token deserializeToken(const ast::Token& token) const;
+  sun::parsing::Token deserializeToken(const pbc::Token& token) const;
 
   // Restore common ExprAST fields from the proto message
-  void deserializeExprBase(const ast::ASTNode& node, ExprAST* expr) const;
+  void deserializeExprBase(const pbc::ASTNode& node, ExprAST* expr) const;
 
   // The function behind a class or interface method. An interface method
   // with no statements is a bare declaration, so it comes back without a
   // body; a class method with no statements has an empty body, and dropping
   // that would leave the method looking like an extern declaration.
-  std::unique_ptr<FunctionAST> deserializeMethodFunction(
-      const ast::FunctionDef& proto, bool emptyBodyMeansNone) const;
+  std::unique_ptr<sun::ast::FunctionAST> deserializeMethodFunction(
+      const pbc::FunctionDef& proto, bool emptyBodyMeansNone) const;
 
   // Class and interface fields are declared alike, so they load alike
   template <typename FieldDecl, typename FieldProto>
@@ -95,94 +100,93 @@ class ASTDeserializer {
 
   // Individual node type deserializers
   std::unique_ptr<ExprAST> deserializeNumber(
-      const ast::NumberExpr& proto) const;
+      const pbc::NumberExpr& proto) const;
   std::unique_ptr<ExprAST> deserializeCharLiteral(
-      const ast::CharLiteral& proto) const;
+      const pbc::CharLiteral& proto) const;
   std::unique_ptr<ExprAST> deserializeString(
-      const ast::StringLiteral& proto) const;
-  std::unique_ptr<ExprAST> deserializeBool(const ast::BoolLiteral& proto) const;
+      const pbc::StringLiteral& proto) const;
+  std::unique_ptr<ExprAST> deserializeBool(const pbc::BoolLiteral& proto) const;
   std::unique_ptr<ExprAST> deserializeStructLiteral(
-      const ast::StructLiteral& proto) const;
+      const pbc::StructLiteral& proto) const;
   std::unique_ptr<ExprAST> deserializeArray(
-      const ast::ArrayLiteral& proto) const;
+      const pbc::ArrayLiteral& proto) const;
 
-  std::unique_ptr<SliceExprAST> deserializeSliceExpr(
-      const ast::SliceExpr& proto) const;
-  std::unique_ptr<ExprAST> deserializeSlice(const ast::SliceExpr& proto) const;
-  std::unique_ptr<ExprAST> deserializeIndex(const ast::IndexExpr& proto) const;
+  std::unique_ptr<sun::ast::SliceExprAST> deserializeSliceExpr(
+      const pbc::SliceExpr& proto) const;
+  std::unique_ptr<ExprAST> deserializeSlice(const pbc::SliceExpr& proto) const;
+  std::unique_ptr<ExprAST> deserializeIndex(const pbc::IndexExpr& proto) const;
   std::unique_ptr<ExprAST> deserializeArrayIndex(
-      const ast::ArrayIndexExpr& proto) const;
+      const pbc::ArrayIndexExpr& proto) const;
 
   std::unique_ptr<ExprAST> deserializeVariableRef(
-      const ast::VariableReference& proto) const;
+      const pbc::VariableReference& proto) const;
   std::unique_ptr<ExprAST> deserializeVariableCreation(
-      const ast::VariableCreation& proto) const;
+      const pbc::VariableCreation& proto) const;
   std::unique_ptr<ExprAST> deserializeVariableAssignment(
-      const ast::VariableAssignment& proto) const;
+      const pbc::VariableAssignment& proto) const;
   std::unique_ptr<ExprAST> deserializeReferenceCreation(
-      const ast::ReferenceCreation& proto) const;
+      const pbc::ReferenceCreation& proto) const;
   std::unique_ptr<ExprAST> deserializeIndexedAssignment(
-      const ast::IndexedAssignment& proto) const;
+      const pbc::IndexedAssignment& proto) const;
   std::unique_ptr<ExprAST> deserializeMemberAssignment(
-      const ast::MemberAssignment& proto) const;
+      const pbc::MemberAssignment& proto) const;
   std::unique_ptr<ExprAST> deserializeCompoundAssignment(
-      const ast::CompoundAssignment& proto) const;
+      const pbc::CompoundAssignment& proto) const;
 
   std::unique_ptr<ExprAST> deserializeBinary(
-      const ast::BinaryExpr& proto) const;
-  std::unique_ptr<ExprAST> deserializeUnary(const ast::UnaryExpr& proto) const;
+      const pbc::BinaryExpr& proto) const;
+  std::unique_ptr<ExprAST> deserializeUnary(const pbc::UnaryExpr& proto) const;
   std::unique_ptr<ExprAST> deserializeTernary(
-      const ast::TernaryExpr& proto) const;
-  std::unique_ptr<ExprAST> deserializeParen(const ast::ParenExpr& proto) const;
+      const pbc::TernaryExpr& proto) const;
+  std::unique_ptr<ExprAST> deserializeParen(const pbc::ParenExpr& proto) const;
   std::unique_ptr<ExprAST> deserializeInterpolatedString(
-      const ast::InterpolatedString& proto) const;
+      const pbc::InterpolatedString& proto) const;
   std::unique_ptr<ExprAST> deserializePackExpansion(
-      const ast::PackExpansion& proto) const;
+      const pbc::PackExpansion& proto) const;
 
-  std::unique_ptr<ExprAST> deserializeBlock(const ast::BlockExpr& proto) const;
-  std::unique_ptr<ExprAST> deserializeIf(const ast::IfExpr& proto) const;
-  std::unique_ptr<ExprAST> deserializeMatch(const ast::MatchExpr& proto) const;
-  std::unique_ptr<ExprAST> deserializeFor(const ast::ForExpr& proto) const;
-  std::unique_ptr<ExprAST> deserializeForIn(const ast::ForInExpr& proto) const;
-  std::unique_ptr<ExprAST> deserializeWhile(const ast::WhileExpr& proto) const;
+  std::unique_ptr<ExprAST> deserializeBlock(const pbc::BlockExpr& proto) const;
+  std::unique_ptr<ExprAST> deserializeIf(const pbc::IfExpr& proto) const;
+  std::unique_ptr<ExprAST> deserializeMatch(const pbc::MatchExpr& proto) const;
+  std::unique_ptr<ExprAST> deserializeFor(const pbc::ForExpr& proto) const;
+  std::unique_ptr<ExprAST> deserializeForIn(const pbc::ForInExpr& proto) const;
+  std::unique_ptr<ExprAST> deserializeWhile(const pbc::WhileExpr& proto) const;
   std::unique_ptr<ExprAST> deserializeReturn(
-      const ast::ReturnExpr& proto) const;
+      const pbc::ReturnExpr& proto) const;
   std::unique_ptr<ExprAST> deserializeUnsafeBlock(
-      const ast::UnsafeBlock& proto) const;
+      const pbc::UnsafeBlock& proto) const;
 
   std::unique_ptr<ExprAST> deserializeFunction(
-      const ast::FunctionDef& proto) const;
+      const pbc::FunctionDef& proto) const;
   std::unique_ptr<ExprAST> deserializeLambda(
-      const ast::LambdaExpr& proto) const;
-  std::unique_ptr<ExprAST> deserializeCall(const ast::CallExpr& proto) const;
+      const pbc::LambdaExpr& proto) const;
+  std::unique_ptr<ExprAST> deserializeCall(const pbc::CallExpr& proto) const;
   std::unique_ptr<ExprAST> deserializeGenericCall(
-      const ast::GenericCallExpr& proto) const;
+      const pbc::GenericCallExpr& proto) const;
 
   std::unique_ptr<ExprAST> deserializeManifest(
-      const ast::Manifest& proto) const;
-  std::unique_ptr<ExprAST> deserializeModule(const ast::ModuleDef& proto) const;
-  std::unique_ptr<ExprAST> deserializeUsing(const ast::UsingStmt& proto) const;
+      const pbc::Manifest& proto) const;
+  std::unique_ptr<ExprAST> deserializeModule(const pbc::ModuleDef& proto) const;
+  std::unique_ptr<ExprAST> deserializeUsing(const pbc::UsingStmt& proto) const;
   std::unique_ptr<ExprAST> deserializeQualifiedName(
-      const ast::QualifiedNameExpr& proto) const;
+      const pbc::QualifiedNameExpr& proto) const;
 
   std::unique_ptr<ExprAST> deserializeClassDef(
-      const ast::ClassDef& proto) const;
+      const pbc::ClassDef& proto) const;
   std::unique_ptr<ExprAST> deserializeInterfaceDef(
-      const ast::InterfaceDef& proto) const;
-  std::unique_ptr<ExprAST> deserializeEnumDef(const ast::EnumDef& proto) const;
+      const pbc::InterfaceDef& proto) const;
+  std::unique_ptr<ExprAST> deserializeEnumDef(const pbc::EnumDef& proto) const;
   std::unique_ptr<ExprAST> deserializeMemberAccess(
-      const ast::MemberAccess& proto) const;
+      const pbc::MemberAccess& proto) const;
 
   std::unique_ptr<ExprAST> deserializeTryCatch(
-      const ast::TryCatch& proto) const;
-  std::unique_ptr<ExprAST> deserializeThrow(const ast::ThrowExpr& proto) const;
+      const pbc::TryCatch& proto) const;
+  std::unique_ptr<ExprAST> deserializeThrow(const pbc::ThrowExpr& proto) const;
   std::unique_ptr<ExprAST> deserializeDeclareType(
-      const ast::DeclareType& proto) const;
+      const pbc::DeclareType& proto) const;
 
   // Helper to deserialize a BlockExpr specifically
   std::unique_ptr<BlockExprAST> deserializeBlockExpr(
-      const ast::BlockExpr& proto) const;
+      const pbc::BlockExpr& proto) const;
 };
 
-}  // namespace serialization
-}  // namespace sun
+}  // namespace sun::serialization

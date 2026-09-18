@@ -11,7 +11,7 @@
 
 #include "moon.pb.h"
 
-namespace sun {
+namespace sun::moon_bundling {
 
 // =============================================================================
 // Binary format structures
@@ -189,4 +189,4 @@ inline std::string getSymbolPrefix(const moon::ModuleMetadata& metadata) {
                                          : "$" + metadata.content_hash() + "$";
 }
 
-}  // namespace sun
+}  // namespace sun::moon_bundling

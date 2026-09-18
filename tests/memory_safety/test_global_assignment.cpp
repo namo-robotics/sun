@@ -8,6 +8,9 @@
 #include "driver/execution_utils.h"
 #include "support/error.h"
 
+using sun::driver::executeString;
+using sun::driver::executeStringWithStdlib;
+
 namespace {
 
 // Owner models a heap-owning class: like Unique<T>, deinit is a no-op on
@@ -85,7 +88,7 @@ TEST(MemorySafety_GlobalAssignment, use_after_move_into_global_rejected) {
       return fresh.get_id();
     }
   )")),
-               SunError);
+               sun::support::SunError);
 }
 
 // Issue #70: assigning a String to a global used to store the source's

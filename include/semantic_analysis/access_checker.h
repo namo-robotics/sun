@@ -12,7 +12,7 @@
 #include "semantic_analysis/visibility.h"
 #include "support/position.h"
 
-namespace sun::access {
+namespace sun::semantic_analysis {
 
 /** Describe a declaration for access checks and diagnostics. */
 struct ItemRef {
@@ -34,11 +34,13 @@ bool isAccessible(DeclarationId from, const ItemRef& item,
                   const DeclarationTable& table);
 
 /** Report an inaccessible declaration at its use site. */
-[[noreturn]] void denyAccess(const ItemRef& item, const Position& loc,
+[[noreturn]] void denyAccess(const ItemRef& item,
+                             const sun::support::Position& loc,
                              const DeclarationTable& table);
 
 /** Reject a use outside the declaration's allowed module scope. */
 void requireAccessible(DeclarationId from, const ItemRef& item,
-                       const Position& loc, const DeclarationTable& table);
+                       const sun::support::Position& loc,
+                       const DeclarationTable& table);
 
-}  // namespace sun::access
+}  // namespace sun::semantic_analysis

@@ -1,5 +1,21 @@
 #pragma once
 
+namespace sun::codegen {
+class CodegenVisitor;
+}
+namespace sun::codegen::classes {
+class ClassGenerator;
+}
+namespace sun::codegen::functions {
+class FunctionGenerator;
+}
+namespace sun::codegen::functions {
+class FunctionRegistry;
+}
+namespace sun::codegen::scopes {
+class ScopeManager;
+}
+
 // variable_generator.h — Variables: creating them, reading them, writing them
 //
 // Locals, globals and borrows, plus the lvalue machinery every assignment
@@ -29,11 +45,14 @@
 #include "ast.h"
 #include "codegen/codegen_state.h"
 
-class CodegenVisitor;
-class ClassGenerator;
-class FunctionGenerator;
-class FunctionRegistry;
-class ScopeManager;
+namespace sun::codegen::variables {
+using sun::ast::BlockExprAST;
+using sun::ast::CompoundAssignmentAST;
+using sun::ast::ExprAST;
+using sun::ast::VariableCreationAST;
+using sun::semantic_analysis::ClassType;
+using sun::semantic_analysis::DeclarationId;
+using sun::semantic_analysis::TypePtr;
 
 /**
  * Emits variable creation, reference and assignment, the lvalue addresses
@@ -41,7 +60,8 @@ class ScopeManager;
  */
 class VariableGenerator {
  public:
-  VariableGenerator(CodegenState& state, CodegenVisitor& gen)
+  VariableGenerator(sun::codegen::CodegenState& state,
+                    sun::codegen::CodegenVisitor& gen)
       : state_(state),
         gen_(gen),
         ctx(state.ctx),
@@ -57,9 +77,9 @@ class VariableGenerator {
   // ---------------------------------------------------------------
 
   llvm::Value* codegen(const VariableCreationAST& expr);
-  llvm::Value* codegen(const VariableReferenceAST& expr);
-  llvm::Value* codegen(const VariableAssignmentAST& expr);
-  llvm::Value* codegen(const ReferenceCreationAST& expr);
+  llvm::Value* codegen(const sun::ast::VariableReferenceAST& expr);
+  llvm::Value* codegen(const sun::ast::VariableAssignmentAST& expr);
+  llvm::Value* codegen(const sun::ast::ReferenceCreationAST& expr);
   llvm::Value* codegen(const CompoundAssignmentAST& expr);
 
   /**
@@ -68,18 +88,17 @@ class VariableGenerator {
    * in; self-assignment emits nothing.
    */
   void assignToVariableSlot(llvm::Value* slot, llvm::Value* value,
-                            const sun::TypePtr& varType,
-                            const std::string& name);
+                            const TypePtr& varType, const std::string& name);
 
   llvm::GlobalVariable* createGlobalVariable(
-      sun::DeclarationId id, const std::string& name, llvm::Type* type,
+      DeclarationId id, const std::string& name, llvm::Type* type,
       llvm::Constant* initializer = nullptr);
 
   /** Declare imported and C globals before emitting dependent bodies. */
   void declareBlockExternalGlobals(const BlockExprAST& block);
 
   /** Find storage for the global selected during semantic analysis. */
-  llvm::GlobalVariable* findGlobal(sun::DeclarationId id) const;
+  llvm::GlobalVariable* findGlobal(DeclarationId id) const;
 
   /**
    * Emits the static initialization function for the globals that could not
@@ -111,34 +130,34 @@ class VariableGenerator {
    * the generic-`this` fixup and unwrapping raw_ptr/static_ptr/ref to class.
    * ClassType* is null when the object is not class-shaped.
    */
-  std::pair<llvm::Value*, sun::ClassType*> codegenObjectPtr(
-      const ExprAST& object);
+  std::pair<llvm::Value*, ClassType*> codegenObjectPtr(const ExprAST& object);
 
   // ---------------------------------------------------------------
   // Reading and writing through a reference
   // ---------------------------------------------------------------
 
-  llvm::LoadInst* createLoadForLocalVar(sun::DeclarationId id);
-  llvm::LoadInst* createLoadForGlobalVar(sun::DeclarationId id);
-  llvm::Value* createLoadForRef(sun::DeclarationId id,
-                                const sun::ReferenceType& refType);
-  void createStoreForRef(sun::DeclarationId id,
-                         const sun::ReferenceType& refType, llvm::Value* value);
+  llvm::LoadInst* createLoadForLocalVar(DeclarationId id);
+  llvm::LoadInst* createLoadForGlobalVar(DeclarationId id);
+  llvm::Value* createLoadForRef(
+      DeclarationId id, const sun::semantic_analysis::ReferenceType& refType);
+  void createStoreForRef(DeclarationId id,
+                         const sun::semantic_analysis::ReferenceType& refType,
+                         llvm::Value* value);
 
  private:
   /** Bind a created or imported global to its source declaration. */
-  llvm::GlobalVariable* bindGlobal(sun::DeclarationId id,
+  llvm::GlobalVariable* bindGlobal(DeclarationId id,
                                    llvm::GlobalVariable* global);
-  std::unordered_map<sun::DeclarationId, llvm::WeakTrackingVH> globals_;
-  CodegenState& state_;
-  CodegenVisitor& gen_;
+  std::unordered_map<DeclarationId, llvm::WeakTrackingVH> globals_;
+  sun::codegen::CodegenState& state_;
+  sun::codegen::CodegenVisitor& gen_;
 
   // Aliases into the shared state, so the emission code reads the same way
   // the rest of codegen does
-  CodegenContext& ctx;
+  sun::codegen::CodegenContext& ctx;
   llvm::Module* module;
-  LLVMTypeResolver& typeResolver;
-  sun::DebugInfoBuilder& debugInfo;
+  sun::codegen::LLVMTypeResolver& typeResolver;
+  sun::codegen::DebugInfoBuilder& debugInfo;
 
   /**
    * A global variable whose initializer has to run at program start.
@@ -146,11 +165,11 @@ class VariableGenerator {
   struct StaticInitInfo {
     llvm::GlobalVariable* globalVar;  // The global variable
     std::string varName;              // Variable name (for diagnostics)
-    sun::TypePtr varType;             // Variable type
-    std::shared_ptr<sun::ClassType>
+    TypePtr varType;                  // Variable type
+    std::shared_ptr<ClassType>
         classType;            // Class type (if class, else nullptr)
     const ExprAST* initExpr;  // The initialization expression
-    Position location;        // Declaration site (for diagnostics)
+    sun::support::Position location;  // Declaration site (for diagnostics)
   };
 
   // Globals still waiting for their initializer to be emitted
@@ -163,14 +182,14 @@ class VariableGenerator {
   llvm::Constant* genGlobalVarForConstantExpr(const VariableCreationAST& expr,
                                               llvm::Type* varType);
   llvm::GlobalVariable* genGlobalClassVar(const VariableCreationAST& expr,
-                                          sun::ClassType& classType);
+                                          ClassType& classType);
   llvm::GlobalVariable* genGlobalVarWithRuntimeInit(
       const VariableCreationAST& expr, llvm::Type* varType);
 
   // Compound assignment: address-once -> load -> op -> store
   llvm::Value* emitCompoundOpValue(const CompoundAssignmentAST& expr,
                                    llvm::Value* cur, llvm::Type* slotTy,
-                                   const sun::TypePtr& slotSunType);
+                                   const TypePtr& slotSunType);
 
   // What variable codegen borrows from the rest of codegen.
   // The BlockExprAST overload matters: without it a block would bind to
@@ -184,20 +203,23 @@ class VariableGenerator {
   template <typename T>
     requires(!std::is_same_v<T, ExprAST> && !std::is_same_v<T, BlockExprAST> &&
              !std::is_same_v<T, VariableCreationAST> &&
-             !std::is_same_v<T, VariableReferenceAST> &&
-             !std::is_same_v<T, VariableAssignmentAST> &&
-             !std::is_same_v<T, ReferenceCreationAST> &&
+             !std::is_same_v<T, sun::ast::VariableReferenceAST> &&
+             !std::is_same_v<T, sun::ast::VariableAssignmentAST> &&
+             !std::is_same_v<T, sun::ast::ReferenceCreationAST> &&
              !std::is_same_v<T, CompoundAssignmentAST> &&
              std::is_base_of_v<ExprAST, T>)
   llvm::Value* codegen(const T&) = delete;
 
-  ScopeManager& scopes();
-  FunctionRegistry& functions();
-  ClassGenerator& classes();
-  FunctionGenerator& functionGen();
+  sun::codegen::scopes::ScopeManager& scopes();
+  sun::codegen::functions::FunctionRegistry& functions();
+  sun::codegen::classes::ClassGenerator& classes();
+  sun::codegen::functions::FunctionGenerator& functionGen();
   llvm::AllocaInst* createEntryBlockAlloca(llvm::Function* func,
                                            llvm::StringRef varName,
                                            llvm::Type* type);
   void debugDeclareLocal(llvm::AllocaInst* alloca, const std::string& name,
-                         const sun::TypePtr& type, const Position& loc);
+                         const TypePtr& type,
+                         const sun::support::Position& loc);
 };
+
+}  // namespace sun::codegen::variables

@@ -7,6 +7,8 @@
 
 #include "ast/expr_ast.h"
 
+namespace sun::ast {
+
 // Grouping parentheses: (expr). Preserved by the parser for a lossless parse
 // tree; the lowering pass unwraps it before semantic analysis, so it never
 // reaches the borrow checker or codegen.
@@ -31,3 +33,5 @@ class ParenExprAST : public ExprAST {
   }
   std::string dotLabel() const override { return "ParenExpr"; }
 };
+
+}  // namespace sun::ast

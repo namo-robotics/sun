@@ -17,7 +17,7 @@
 
 #include <vector>
 
-namespace sun::libc {
+namespace sun::codegen::intrinsics {
 
 inline llvm::FunctionCallee get(llvm::Module* module, llvm::StringRef name,
                                 llvm::Type* ret,
@@ -243,4 +243,4 @@ inline llvm::FunctionCallee ulockWake(llvm::Module* m) {
   return get(m, "__ulock_wake", i32(m), {i32(m), ptr(m), i64(m)});
 }
 
-}  // namespace sun::libc
+}  // namespace sun::codegen::intrinsics

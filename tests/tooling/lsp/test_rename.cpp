@@ -22,6 +22,12 @@
 #include "driver/execution_utils.h"
 #include "lsp/rename.h"
 
+using sun::lsp::Rename;
+using sun::lsp::SymbolLocation;
+
+using sun::driver::Driver;
+using sun::driver::getStdlibMoonImports;
+
 namespace {
 
 // The file never exists on disk; nodes carry the path exactly as given
@@ -29,11 +35,11 @@ const char* kPath = "/rename_test.sun";
 
 struct Analysis {
   std::unique_ptr<Driver> driver;
-  Driver::AnalyzedProgram program;
+  sun::driver::Driver::AnalyzedProgram program;
 };
 
 Analysis analyze(const std::string& source, bool withStdlib = false) {
-  initTestEnvironment();
+  sun::driver::initTestEnvironment();
   Analysis analysis;
   analysis.driver = Driver::createForAOT("rename_test");
   if (withStdlib) analysis.driver->setMoonImports(getStdlibMoonImports());
@@ -55,10 +61,9 @@ size_t offsetOf(const std::string& source, const std::string& needle,
   return pos;
 }
 
-std::optional<sun::lsp::Rename> renameAt(const std::string& source,
-                                         const std::string& needle,
-                                         int occurrence = 0,
-                                         bool withStdlib = false) {
+std::optional<Rename> renameAt(const std::string& source,
+                               const std::string& needle, int occurrence = 0,
+                               bool withStdlib = false) {
   size_t pos = offsetOf(source, needle, occurrence);
   if (pos == std::string::npos) return std::nullopt;
   Analysis analysis = analyze(source, withStdlib);
@@ -72,8 +77,7 @@ std::optional<sun::lsp::Rename> renameAt(const std::string& source,
                                  static_cast<int>(pos));
 }
 
-std::string rangeText(const std::string& text,
-                      const sun::lsp::SymbolLocation& location) {
+std::string rangeText(const std::string& text, const SymbolLocation& location) {
   return text.substr(location.range.offset,
                      location.range.endOffset.value_or(location.range.offset) -
                          location.range.offset);
@@ -91,7 +95,7 @@ std::string identifierOf(const std::string& snippet) {
 }
 
 std::string describe(const std::string& source,
-                     const std::vector<sun::lsp::SymbolLocation>& sites) {
+                     const std::vector<SymbolLocation>& sites) {
   std::string text;
   for (const auto& site : sites) {
     if (!text.empty()) text += ", ";
@@ -115,8 +119,7 @@ testing::AssertionResult renames(const std::string& source,
                                  const std::string& needle,
                                  const std::vector<ExpectedName>& expected,
                                  int needleOccurrence = 0) {
-  std::optional<sun::lsp::Rename> rename =
-      renameAt(source, needle, needleOccurrence);
+  std::optional<Rename> rename = renameAt(source, needle, needleOccurrence);
   if (!rename) {
     return testing::AssertionFailure() << "nothing to rename at " << needle;
   }
@@ -169,7 +172,7 @@ testing::AssertionResult renames(const std::string& source,
 
 // The text with every site of the document replaced by newName
 std::string applyEdits(const std::string& text,
-                       const std::vector<sun::lsp::SymbolLocation>& sites,
+                       const std::vector<SymbolLocation>& sites,
                        const std::string& newName) {
   std::string edited = text;
   for (auto site = sites.rbegin(); site != sites.rend(); ++site) {
@@ -355,7 +358,7 @@ function main() i32 {
     return e.code();
 }
 )";
-  std::optional<sun::lsp::Rename> rename = renameAt(source, "code() i32");
+  std::optional<Rename> rename = renameAt(source, "code() i32");
   ASSERT_TRUE(rename);
   EXPECT_FALSE(rename->refusal.empty());
   EXPECT_NE(rename->refusal.find("IError"), std::string::npos);
@@ -366,7 +369,7 @@ function main() i32 {
 }
 
 TEST(Tooling_Lsp_Rename, RoundTrip) {
-  std::optional<sun::lsp::Rename> rename = renameAt(kProgram, "area() i32;");
+  std::optional<Rename> rename = renameAt(kProgram, "area() i32;");
   ASSERT_TRUE(rename);
   std::string renamed = applyEdits(kProgram, rename->sites, "surface");
   // Only Field.area, which implements nothing, keeps its name
@@ -387,7 +390,7 @@ TEST(Tooling_Lsp_Rename, RoundTrip) {
       << analysis.program.error->what();
 
   // Renaming back at the same place restores the text
-  std::optional<sun::lsp::Rename> back =
+  std::optional<Rename> back =
       sun::lsp::computeRename(*analysis.program.ast, kPath, renamed,
                               static_cast<int>(offsetOf(renamed, "surface")));
   ASSERT_TRUE(back);
@@ -402,11 +405,11 @@ TEST(Tooling_Lsp_Rename, PrepareRename) {
   int start = static_cast<int>(offsetOf(source, "total + 1"));
   // Start, middle and end of the identifier
   for (int offset : {start, start + 2, start + 5}) {
-    std::optional<sun::lsp::Rename> rename =
+    std::optional<Rename> rename =
         sun::lsp::computeRename(*analysis.program.ast, kPath, source, offset);
     ASSERT_TRUE(rename) << "at " << offset;
     EXPECT_EQ(rename->name, "total");
-    std::optional<sun::lsp::SymbolLocation> site =
+    std::optional<SymbolLocation> site =
         sun::lsp::siteAt(*rename, kPath, offset);
     ASSERT_TRUE(site) << "at " << offset;
     EXPECT_EQ(site->range.offset, start);
@@ -459,7 +462,7 @@ function main() i32 {
 }
 
 TEST(Tooling_Lsp_Rename, MergedFiles) {
-  initTestEnvironment();
+  sun::driver::initTestEnvironment();
   std::filesystem::create_directories("tmp");
   std::string mainPath =
       std::filesystem::absolute("tmp/rename_main.sun").string();
@@ -486,7 +489,7 @@ TEST(Tooling_Lsp_Rename, MergedFiles) {
   EXPECT_FALSE(program.error.has_value());
 
   int offset = static_cast<int>(offsetOf(mainText, "helper()"));
-  std::optional<sun::lsp::Rename> rename =
+  std::optional<Rename> rename =
       sun::lsp::computeRename(*program.ast, mainPath, mainText, offset);
   ASSERT_TRUE(rename);
   EXPECT_TRUE(rename->refusal.empty()) << rename->refusal;
@@ -506,7 +509,7 @@ TEST(Tooling_Lsp_Rename, MergedFiles) {
   EXPECT_EQ(rename->sites[3].start.line, 1);
   EXPECT_EQ(rename->sites[3].start.character, 11);
 
-  std::optional<sun::lsp::SymbolLocation> site =
+  std::optional<SymbolLocation> site =
       sun::lsp::siteAt(*rename, mainPath, offset + 3);
   ASSERT_TRUE(site);
   EXPECT_EQ(site->filePath, canonicalMain);
@@ -538,8 +541,7 @@ function main() i64 {
     return 0;
 }
 )";
-  std::optional<sun::lsp::Rename> rename =
-      renameAt(source, "next(container", 0, true);
+  std::optional<Rename> rename = renameAt(source, "next(container", 0, true);
   ASSERT_TRUE(rename);
   EXPECT_NE(rename->refusal.find("library"), std::string::npos)
       << rename->refusal;
@@ -561,8 +563,7 @@ function main() i64 {
     return item;
 }
 )";
-  std::optional<sun::lsp::Rename> rename =
-      renameAt(source, "Vec<i64>", 0, true);
+  std::optional<Rename> rename = renameAt(source, "Vec<i64>", 0, true);
   ASSERT_TRUE(rename);
   EXPECT_EQ(rename->name, "Vec");
   EXPECT_NE(rename->refusal.find("library"), std::string::npos)

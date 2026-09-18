@@ -1,20 +1,28 @@
 #pragma once
 
+namespace sun::ast {
+class BlockExprAST;
+}
+namespace sun::semantic_analysis {
+class SemanticAnalyzer;
+}
+
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "moon.pb.h"
 
-class BlockExprAST;
-class SemanticAnalyzer;
+namespace sun::moon_bundling {}
+namespace sun::moon_bundling {}
 
-namespace sun {
+namespace sun::moon_bundling {
 
 /** Export the bundle's own declarations from the successfully analyzed program.
  */
 std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
-    const BlockExprAST& program, SemanticAnalyzer& analyzer,
+    const sun::ast::BlockExprAST& program,
+    sun::semantic_analysis::SemanticAnalyzer& analyzer,
     const std::string& bundleHash);
 
 /// Parse a source file and extract module metadata without full compilation.
@@ -44,4 +52,4 @@ std::optional<std::vector<moon::ModuleMetadata>> extractAllMetadataFromSource(
     const std::string& source, const std::string& displayName,
     const std::string& baseDir = "");
 
-}  // namespace sun
+}  // namespace sun::moon_bundling

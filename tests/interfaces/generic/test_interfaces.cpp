@@ -4,6 +4,8 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+
 TEST(Interfaces_Generic, simple_generic_interface_definition) {
   auto value = executeString(R"(
     interface IBox<T> {

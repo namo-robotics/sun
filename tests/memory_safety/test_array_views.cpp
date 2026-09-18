@@ -9,6 +9,8 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+
 namespace {
 
 const char* kViewRule = "may only be used behind ref";
@@ -61,7 +63,7 @@ TEST(MemorySafety_ArrayViews, bare_unsized_global_rejected) {
 }
 
 TEST(MemorySafety_ArrayViews, bare_unsized_generic_argument_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::executeStringWithStdlib(R"(
     using std;
     function count(rows: const ref Vec<array<i64>>) i64 { return rows.size(); }
     function main() i32 { return 0; }

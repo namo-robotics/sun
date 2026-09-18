@@ -13,7 +13,7 @@
 #include "moon_bundling/library_cache.h"
 #include "moon_bundling/moon_import.h"
 
-namespace sun {
+namespace sun::moon_bundling {
 
 /// Links precompiled .moon modules into a target LLVM module
 class ModuleLinker {
@@ -78,4 +78,4 @@ class ModuleLinker {
   std::string error_;
 };
 
-}  // namespace sun
+}  // namespace sun::moon_bundling

@@ -7,6 +7,8 @@
 
 #include "ast/expr_ast.h"
 
+namespace sun::ast {
+
 // Break statement: break;
 // Exits the innermost enclosing loop
 class BreakAST : public ExprAST {
@@ -17,3 +19,5 @@ class BreakAST : public ExprAST {
   std::string toString() const override { return "break"; }
   std::string dotLabel() const override { return "Break"; }
 };
+
+}  // namespace sun::ast

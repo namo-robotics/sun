@@ -7,6 +7,8 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+
 namespace {
 
 // Shared preamble: a global counter and a class whose deinit increments it.

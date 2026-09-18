@@ -24,9 +24,9 @@ int runTestEntrypoint(const std::string& inputFile, const TestOptions& options,
   ProgramArguments programArgs(inputFile, options.forwardedArgs);
 
   try {
-    auto driver = Driver::createForJIT("main_module", /*debugInfo=*/true,
-                                       options.shared.optimize);
-    driver->setTestHandling(Driver::TestHandling::Compile);
+    auto driver = sun::driver::Driver::createForJIT(
+        "main_module", /*debugInfo=*/true, options.shared.optimize);
+    driver->setTestHandling(sun::driver::Driver::TestHandling::Compile);
     driver->setDumpIR(options.shared.emitIR);
     if (options.shared.debugMode) {
       driver->setDebugMode(true, inputFile);
@@ -38,7 +38,7 @@ int runTestEntrypoint(const std::string& inputFile, const TestOptions& options,
     if (auto* code = std::get_if<int32_t>(&result)) {
       return *code;
     }
-  } catch (const SunError& e) {
+  } catch (const sun::support::SunError& e) {
     if (skipWhenNoTests && isNoTestsError(e)) {
       llvm::outs() << "no tests\n";
       return 0;
@@ -54,7 +54,7 @@ int runTestEntrypoint(const std::string& inputFile, const TestOptions& options,
 // only when every suite passes.
 int runConfigTests(const TestOptions& options) {
   try {
-    sun::SunConfig config = loadConfigInput(options.inputFile);
+    sun::driver::SunConfig config = loadConfigInput(options.inputFile);
     int failures = 0;
     for (const auto& entry : config.entrypoints) {
       if (config.entrypoints.size() > 1) {
@@ -68,7 +68,7 @@ int runConfigTests(const TestOptions& options) {
       }
     }
     return failures > 0 ? 1 : 0;
-  } catch (const SunError& e) {
+  } catch (const sun::support::SunError& e) {
     return reportSunError(e);
   }
 }

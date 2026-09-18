@@ -10,7 +10,7 @@
 
 #include "borrow_checker/loan.h"
 
-namespace sun {
+namespace sun::borrow_checker {
 
 /// Tracks the borrow state of all variables during analysis
 /// Enforces Rust-style borrow rules:
@@ -27,7 +27,8 @@ class BorrowState {
   /// Returns error if this would violate borrow rules
   BorrowCheckResult addBorrow(const std::string& borrowedVar,
                               const std::string& refName, BorrowKind kind,
-                              size_t scopeDepth, const Position& loc);
+                              size_t scopeDepth,
+                              const sun::support::Position& loc);
 
   /// Check if we can mutate a variable directly (not through a reference)
   /// Mutation is blocked if there are any active borrows
@@ -82,4 +83,4 @@ class BorrowState {
   std::unordered_map<std::string, Lifetime> lifetimes_;
 };
 
-}  // namespace sun
+}  // namespace sun::borrow_checker

@@ -7,6 +7,8 @@
 
 #include "ast/expr_ast.h"
 
+namespace sun::ast {
+
 // Pack expansion expression: args...
 // Expands a variadic parameter pack in a call expression
 class PackExpansionAST : public ExprAST {
@@ -19,3 +21,5 @@ class PackExpansionAST : public ExprAST {
   std::string dotLabel() const override { return "PackExpand\n..."; }
   const std::string& getPackName() const { return packName; }
 };
+
+}  // namespace sun::ast

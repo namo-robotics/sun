@@ -16,7 +16,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace sun {
+namespace sun::moon_bundling {
 
 /// Configuration for importing a single .moon precompiled library
 struct MoonImport {
@@ -96,4 +96,4 @@ inline std::optional<MoonImport> parseMoonImportSpec(const std::string& spec) {
   return MoonImport(path, std::move(remap));
 }
 
-}  // namespace sun
+}  // namespace sun::moon_bundling

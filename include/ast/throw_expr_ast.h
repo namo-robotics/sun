@@ -7,6 +7,8 @@
 
 #include "ast/expr_ast.h"
 
+namespace sun::ast {
+
 // Throw expression: throw <expr>
 // Used to throw an error from a function declared with "throws IError"
 class ThrowExprAST : public ExprAST {
@@ -27,3 +29,5 @@ class ThrowExprAST : public ExprAST {
   bool hasErrorExpr() const { return errorExpr != nullptr; }
   std::string dotLabel() const override { return "Throw"; }
 };
+
+}  // namespace sun::ast

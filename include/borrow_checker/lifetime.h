@@ -10,7 +10,7 @@
 #include <cstdint>
 #include <string>
 
-namespace sun {
+namespace sun::borrow_checker {
 
 /// Represents the lifetime of a reference - how long it remains valid.
 /// Lifetimes form a partial order based on scope containment.
@@ -157,4 +157,4 @@ class Lifetime {
   size_t scopeDepth_;  // For Local lifetimes - nesting level
 };
 
-}  // namespace sun
+}  // namespace sun::borrow_checker

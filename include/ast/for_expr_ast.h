@@ -7,6 +7,8 @@
 
 #include "ast/expr_ast.h"
 
+namespace sun::ast {
+
 class ForExprAST : public ExprAST {
   std::unique_ptr<ExprAST> Init;       // Initialization (can be null)
   std::unique_ptr<ExprAST> Condition;  // Condition (can be null for infinite)
@@ -50,3 +52,5 @@ class ForExprAST : public ExprAST {
 
   std::string dotLabel() const override { return "For"; }
 };
+
+}  // namespace sun::ast

@@ -19,10 +19,10 @@ namespace {
 // nothing when there is no single answer.
 std::optional<std::string> findConfigBinary(const std::string& configFile) {
   try {
-    sun::SunConfig config = loadConfigInput(configFile);
-    std::vector<const sun::ConfigEntrypoint*> binaries;
+    sun::driver::SunConfig config = loadConfigInput(configFile);
+    std::vector<const sun::driver::ConfigEntrypoint*> binaries;
     for (const auto& entry : config.entrypoints) {
-      if (entry.type == sun::ConfigEntrypoint::Type::Binary) {
+      if (entry.type == sun::driver::ConfigEntrypoint::Type::Binary) {
         binaries.push_back(&entry);
       }
     }
@@ -32,7 +32,7 @@ std::optional<std::string> findConfigBinary(const std::string& configFile) {
       return std::nullopt;
     }
     return binaries[0]->path;
-  } catch (const SunError& e) {
+  } catch (const sun::support::SunError& e) {
     reportSunError(e);
     return std::nullopt;
   }
@@ -60,15 +60,15 @@ int runJitCommand(const BuildRunOptions& options) {
   // resident (and glibc's libm.so is a linker script dlopen cannot read), so
   // their symbols resolve anyway. If one is genuinely missing, the JIT
   // reports the unresolved symbol with more precision than a guess here.
-  auto nativeLibs = sun::loadNativeLibraries(options.linkOptions);
+  auto nativeLibs = sun::driver::loadNativeLibraries(options.linkOptions);
   for (const auto& lib : nativeLibs.failed) {
     llvm::errs() << "Warning: could not load library '" << lib
                  << "'; continuing in case its symbols are already present\n";
   }
 
   try {
-    auto driver = Driver::createForJIT("main_module", options.shared.debugInfo,
-                                       options.shared.optimize);
+    auto driver = sun::driver::Driver::createForJIT(
+        "main_module", options.shared.debugInfo, options.shared.optimize);
     for (const auto& archive : nativeLibs.archives) {
       driver->addJITStaticLibrary(archive);
     }
@@ -79,7 +79,7 @@ int runJitCommand(const BuildRunOptions& options) {
     }
     driver->setMoonImports(options.shared.moonImports);
 
-    sun::SunValue result;
+    sun::driver::SunValue result;
     if (options.inputFiles.size() > 1) {
       result = driver->executeFiles(options.inputFiles, {}, programArgs.argc(),
                                     programArgs.argv());
@@ -91,7 +91,7 @@ int runJitCommand(const BuildRunOptions& options) {
     if (auto* code = std::get_if<int32_t>(&result)) {
       return *code;
     }
-  } catch (const SunError& e) {
+  } catch (const sun::support::SunError& e) {
     return reportSunError(e);
   } catch (const std::exception& e) {
     return reportUnexpectedError(e);

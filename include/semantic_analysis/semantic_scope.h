@@ -17,34 +17,41 @@
 #include "semantic_analysis/qualified_name.h"
 #include "semantic_analysis/types.h"
 
+namespace sun::semantic_analysis {
+using sun::ast::ClassDefinitionAST;
+using sun::ast::FunctionAST;
+using sun::support::SourceFileId;
+
 /** An argument's preferred type and other types its value can adopt. */
 struct FunctionArgumentType {
-  sun::TypePtr preferred;
-  std::vector<sun::TypePtr> alternatives;
+  sun::semantic_analysis::TypePtr preferred;
+  std::vector<sun::semantic_analysis::TypePtr> alternatives;
 };
 
 // Information about a variable in the symbol table
 struct VariableInfo {
-  sun::TypePtr type;
+  sun::semantic_analysis::TypePtr type;
   bool isGlobal;         // Declared at module level (not inside a function)
   bool isFunctionParam;  // Is it a parameter vs let binding
   bool isMoved = false;  // Has ownership been transferred (move semantics)
   // Set when the name is a lambda/function capture rather than an ordinary
   // local, and says how it was taken. Empty for everything else.
-  std::optional<CaptureKind> captureKind;
+  std::optional<sun::ast::CaptureKind> captureKind;
   bool isConst = false;  // `const x`: the binding and its value never change
-  sun::QualifiedName qualifiedName;  // Full qualified name (empty for locals)
-  sun::Visibility visibility = sun::Visibility::Private;  // globals only
+  sun::semantic_analysis::QualifiedName
+      qualifiedName;  // Full qualified name (empty for locals)
+  sun::semantic_analysis::Visibility visibility =
+      sun::semantic_analysis::Visibility::Private;  // globals only
   bool isCExtern = false;  // Native code owns this global's storage
-  sun::DeclarationId declarationId;
+  sun::semantic_analysis::DeclarationId declarationId;
 };
 
 // Information about a declared function
 struct FunctionInfo {
-  sun::TypePtr returnType;
-  std::vector<sun::TypePtr> paramTypes;
-  std::vector<Capture> captures;
-  sun::QualifiedName qualifiedName;  // Full qualified name
+  sun::semantic_analysis::TypePtr returnType;
+  std::vector<sun::semantic_analysis::TypePtr> paramTypes;
+  std::vector<sun::ast::Capture> captures;
+  sun::semantic_analysis::QualifiedName qualifiedName;  // Full qualified name
   bool canThrow = false;  // Whether this function can throw (declared with ,
                           // IError)
   // C-style trailing varargs (`extern function printf(fmt: ..., ...)`).
@@ -53,8 +60,9 @@ struct FunctionInfo {
   // Declared with `extern function` — calling it leaves Sun's checked world,
   // so call sites are gated on `unsafe`.
   bool isCExtern = false;
-  sun::Visibility visibility = sun::Visibility::Private;
-  sun::DeclarationId declarationId;
+  sun::semantic_analysis::Visibility visibility =
+      sun::semantic_analysis::Visibility::Private;
+  sun::semantic_analysis::DeclarationId declarationId;
   bool isForwardDeclaration = false;
 };
 
@@ -63,11 +71,12 @@ struct FunctionInfo {
 // scans to find overloads by name.
 class FunctionTable {
  public:
-  using iterator = std::unordered_map<sun::CallableSignature, FunctionInfo,
-                                      sun::CallableSignatureHash>::iterator;
-  using const_iterator =
-      std::unordered_map<sun::CallableSignature, FunctionInfo,
-                         sun::CallableSignatureHash>::const_iterator;
+  using iterator = std::unordered_map<
+      sun::semantic_analysis::CallableSignature, FunctionInfo,
+      sun::semantic_analysis::CallableSignatureHash>::iterator;
+  using const_iterator = std::unordered_map<
+      sun::semantic_analysis::CallableSignature, FunctionInfo,
+      sun::semantic_analysis::CallableSignatureHash>::const_iterator;
 
   FunctionTable() = default;
 
@@ -89,7 +98,8 @@ class FunctionTable {
   FunctionTable(FunctionTable&&) = default;
   FunctionTable& operator=(FunctionTable&&) = default;
 
-  FunctionInfo& operator[](const sun::CallableSignature& sig) {
+  FunctionInfo& operator[](
+      const sun::semantic_analysis::CallableSignature& sig) {
     auto [it, inserted] = bySig_.emplace(sig, FunctionInfo{});
     if (inserted) {
       const auto& name = sig.name;
@@ -98,11 +108,12 @@ class FunctionTable {
     return it->second;
   }
 
-  bool contains(const sun::CallableSignature& sig) const {
+  bool contains(const sun::semantic_analysis::CallableSignature& sig) const {
     return bySig_.count(sig) > 0;
   }
 
-  const_iterator find(const sun::CallableSignature& sig) const {
+  const_iterator find(
+      const sun::semantic_analysis::CallableSignature& sig) const {
     return bySig_.find(sig);
   }
 
@@ -135,8 +146,8 @@ class FunctionTable {
   }
 
  private:
-  std::unordered_map<sun::CallableSignature, FunctionInfo,
-                     sun::CallableSignatureHash>
+  std::unordered_map<sun::semantic_analysis::CallableSignature, FunctionInfo,
+                     sun::semantic_analysis::CallableSignatureHash>
       bySig_;
   std::unordered_map<std::string, std::vector<FunctionInfo*>> byName_;
 
@@ -166,7 +177,7 @@ enum class ScopeType {
 // Alias import from a using statement (legacy — being replaced by
 // ImportBinding)
 struct UsingImport {
-  sun::SourceFileId sourceFileId = 0;
+  SourceFileId sourceFileId = 0;
   std::string namespacePath;  // "std" or "std.nested"
   std::string target;         // "Vec" for specific, "*" for wildcard
   bool isWildcard;            // true if target == "*" (using std;)
@@ -182,7 +193,7 @@ struct SemanticScopeBase;
 
 // Scope-based import binding — a reference to a symbol in another scope
 struct ImportBinding {
-  sun::SourceFileId sourceFileId = 0;
+  SourceFileId sourceFileId = 0;
   std::string localName;  // How the symbol is referred to locally ("Vec")
   SemanticScopeBase* sourceScope;  // Pointer to the scope it was imported from
   std::string sourceName;          // Name in the source scope ("Vec")
@@ -236,9 +247,9 @@ struct SymbolMatch {
       libraryHash;  // The library scope hash (empty if not from library)
 
   // Type information (one of these will be set based on kind)
-  std::shared_ptr<sun::ClassType> classType;
-  std::shared_ptr<sun::InterfaceType> interfaceType;
-  std::shared_ptr<sun::EnumType> enumType;
+  std::shared_ptr<sun::semantic_analysis::ClassType> classType;
+  std::shared_ptr<sun::semantic_analysis::InterfaceType> interfaceType;
+  std::shared_ptr<sun::semantic_analysis::EnumType> enumType;
   const GenericClassInfo* genericClassInfo = nullptr;
   const GenericInterfaceInfo* genericInterfaceInfo = nullptr;
   const GenericFunctionInfo* genericFunctionInfo = nullptr;
@@ -276,49 +287,54 @@ struct SymbolMatch {
 
 // Information about a generic class definition (template)
 struct GenericClassInfo {
-  const ClassDefinitionAST* AST;              // Original AST node
-  std::vector<TypeParameter> typeParameters;  // <T, U: Trait>
+  const ClassDefinitionAST* AST;                        // Original AST node
+  std::vector<sun::ast::TypeParameter> typeParameters;  // <T, U: Trait>
   std::weak_ptr<SemanticScopeBase> definitionScope;
-  sun::QualifiedName qualifiedName;  // Captured at registration
+  sun::semantic_analysis::QualifiedName
+      qualifiedName;  // Captured at registration
 };
 
 // Information about a generic interface definition (template)
 struct GenericInterfaceInfo {
-  const InterfaceDefinitionAST* AST;          // Original AST node
-  std::vector<TypeParameter> typeParameters;  // <T, U: Trait>
-  sun::QualifiedName qualifiedName;           // Captured at registration
+  const sun::ast::InterfaceDefinitionAST* AST;          // Original AST node
+  std::vector<sun::ast::TypeParameter> typeParameters;  // <T, U: Trait>
+  sun::semantic_analysis::QualifiedName
+      qualifiedName;  // Captured at registration
   std::weak_ptr<SemanticScopeBase> definitionScope;
 };
 
 // Information about a generic enum definition (template)
 struct GenericEnumInfo {
-  const EnumDefinitionAST* AST;               // Original AST node
-  std::vector<TypeParameter> typeParameters;  // <T, U: Trait>
-  sun::QualifiedName qualifiedName;           // Captured at registration
+  const sun::ast::EnumDefinitionAST* AST;               // Original AST node
+  std::vector<sun::ast::TypeParameter> typeParameters;  // <T, U: Trait>
+  sun::semantic_analysis::QualifiedName
+      qualifiedName;  // Captured at registration
   std::weak_ptr<SemanticScopeBase> definitionScope;
 };
 
 // Information about a generic function definition (template)
 struct GenericFunctionInfo {
-  const FunctionAST* AST;                     // Original AST node
-  std::vector<TypeParameter> typeParameters;  // <T, U: Trait>
-  std::optional<TypeAnnotation> returnType;   // Return type annotation
-  std::vector<std::pair<std::string, TypeAnnotation>> params;  // Parameters
-  sun::QualifiedName qualifiedName;  // Captured at registration
+  const FunctionAST* AST;                               // Original AST node
+  std::vector<sun::ast::TypeParameter> typeParameters;  // <T, U: Trait>
+  std::optional<sun::ast::TypeAnnotation> returnType;  // Return type annotation
+  std::vector<std::pair<std::string, sun::ast::TypeAnnotation>>
+      params;  // Parameters
+  sun::semantic_analysis::QualifiedName
+      qualifiedName;  // Captured at registration
   std::weak_ptr<SemanticScopeBase> definitionScope;
 };
 
 // Information about a specialized (monomorphized) generic function
 struct SpecializedFunctionInfo {
-  sun::TypePtr returnType;
-  std::vector<sun::TypePtr> paramTypes;
-  std::vector<Capture> captures;  // Captures with substituted types
+  sun::semantic_analysis::TypePtr returnType;
+  std::vector<sun::semantic_analysis::TypePtr> paramTypes;
+  std::vector<sun::ast::Capture> captures;  // Captures with substituted types
   std::shared_ptr<FunctionAST> specializedAST;  // The analyzed clone
   // Name this specialization is emitted under: the template's qualified name
   // with the type arguments appended. Call sites carry it rather than
   // recomputing, so one specialization keeps one symbol no matter where the
   // call sits relative to the definition.
-  sun::QualifiedName qualifiedName;
+  sun::semantic_analysis::QualifiedName qualifiedName;
 
   // Whether the specialization's signature carries 'throws IError'
   bool canThrow() const {
@@ -335,8 +351,9 @@ struct SpecializedFunctionInfo {
   }
 
   // Type of the call itself, for the callee expression
-  sun::TypePtr functionType() const {
-    return sun::Types::Function(returnType, paramTypes, canThrow());
+  sun::semantic_analysis::TypePtr functionType() const {
+    return sun::semantic_analysis::Types::Function(returnType, paramTypes,
+                                                   canThrow());
   }
 };
 
@@ -366,13 +383,14 @@ using SemanticScope = SemanticScopeBase;
 struct AccessContext {
   virtual ~AccessContext() = default;
   /** The module whose source is being analyzed. */
-  virtual sun::DeclarationId currentModuleId() const = 0;
+  virtual sun::semantic_analysis::DeclarationId currentModuleId() const = 0;
   /** Declaration ownership for this analysis session. */
-  virtual const sun::DeclarationTable& declarationTable() const = 0;
+  virtual const sun::semantic_analysis::DeclarationTable& declarationTable()
+      const = 0;
   /** The source unit performing name lookup. */
-  virtual sun::SourceFileId currentSourceFileId() const { return 0; }
+  virtual SourceFileId currentSourceFileId() const { return 0; }
   [[noreturn]] virtual void denyAccess(
-      const sun::access::ItemRef& item) const = 0;
+      const sun::semantic_analysis::ItemRef& item) const = 0;
 };
 
 // ===================================================================
@@ -400,12 +418,15 @@ struct SemanticScopeBase
   // ===== Symbol tables (used by persistent scopes - Global/Module/Import)
   // =====
   FunctionTable functions;
-  std::map<std::string, std::shared_ptr<sun::ClassType>> classes;
+  std::map<std::string, std::shared_ptr<sun::semantic_analysis::ClassType>>
+      classes;
   std::map<std::string, ClassDefinitionAST*> classDefinitions;
   std::map<std::string, GenericClassInfo> genericClasses;
-  std::map<std::string, std::shared_ptr<sun::InterfaceType>> interfaces;
+  std::map<std::string, std::shared_ptr<sun::semantic_analysis::InterfaceType>>
+      interfaces;
   std::map<std::string, GenericInterfaceInfo> genericInterfaces;
-  std::map<std::string, std::shared_ptr<sun::EnumType>> enums;
+  std::map<std::string, std::shared_ptr<sun::semantic_analysis::EnumType>>
+      enums;
   std::map<std::string, GenericEnumInfo> genericEnums;
   std::map<std::string, GenericFunctionInfo> genericFunctions;
   std::map<std::string, std::shared_ptr<SemanticScopeBase>> childModules;
@@ -416,19 +437,21 @@ struct SemanticScopeBase
   ModuleScope& declareModule(const std::string& name);
 
   /** Record a module declaration and validate visibility on reopening. */
-  ModuleScope& declareModule(const ModuleAST& module);
+  ModuleScope& declareModule(const sun::ast::ModuleAST& module);
 
   /** Record the source class body associated with a name. */
   void declareClassDefinition(const std::string& name,
                               ClassDefinitionAST& definition);
 
   /** Record a type alias, rejecting a duplicate in this scope. */
-  void declareTypeAlias(const std::string& name, sun::TypePtr type,
-                        std::optional<Position> loc = std::nullopt);
+  void declareTypeAlias(
+      const std::string& name, sun::semantic_analysis::TypePtr type,
+      std::optional<sun::support::Position> loc = std::nullopt);
 
   /** Register a function prototype (key = name + param types for overloads). */
-  void declareFunction(const std::string& name, const FunctionInfo& info,
-                       std::optional<Position> loc = std::nullopt);
+  void declareFunction(
+      const std::string& name, const FunctionInfo& info,
+      std::optional<sun::support::Position> loc = std::nullopt);
 
   /**
    * Record a generic function template and its declaration scope. Repeated
@@ -440,43 +463,47 @@ struct SemanticScopeBase
   /**
    * Record a module-level variable by source name with its visibility.
    */
-  void declareModuleVariable(const sun::QualifiedName& qualifiedName,
-                             sun::TypePtr type, sun::Visibility visibility,
-                             bool isConst = false, bool isCExtern = false,
-                             sun::DeclarationId declarationId = {});
+  void declareModuleVariable(
+      const sun::semantic_analysis::QualifiedName& qualifiedName,
+      sun::semantic_analysis::TypePtr type,
+      sun::semantic_analysis::Visibility visibility, bool isConst = false,
+      bool isCExtern = false,
+      sun::semantic_analysis::DeclarationId declarationId = {});
 
   /**
    * Record a class in the current scope. A repeated registration of the same
    * name is ignored, which is what a diamond import produces.
    */
-  void declareClass(const std::string& name,
-                    std::shared_ptr<sun::ClassType> classType,
-                    std::optional<Position> loc = std::nullopt);
+  void declareClass(
+      const std::string& name,
+      std::shared_ptr<sun::semantic_analysis::ClassType> classType,
+      std::optional<sun::support::Position> loc = std::nullopt);
 
   /**
    * Record a generic class template in the current scope, along with the
    * scope it was declared in, so its bodies resolve names as written there.
    */
-  void declareGenericClass(const std::string& name,
-                           const GenericClassInfo& info,
-                           std::optional<Position> loc = std::nullopt);
+  void declareGenericClass(
+      const std::string& name, const GenericClassInfo& info,
+      std::optional<sun::support::Position> loc = std::nullopt);
 
   /**
    * Record an interface in the current scope. A repeated registration of the
    * same name is ignored, which is what a diamond import produces.
    */
-  void declareInterface(const std::string& name,
-                        std::shared_ptr<sun::InterfaceType> interfaceType,
-                        std::optional<Position> loc = std::nullopt);
+  void declareInterface(
+      const std::string& name,
+      std::shared_ptr<sun::semantic_analysis::InterfaceType> interfaceType,
+      std::optional<sun::support::Position> loc = std::nullopt);
 
   /** Record a generic interface template in the current scope. */
-  void declareGenericInterface(const std::string& name,
-                               const GenericInterfaceInfo& info,
-                               std::optional<Position> loc = std::nullopt);
+  void declareGenericInterface(
+      const std::string& name, const GenericInterfaceInfo& info,
+      std::optional<sun::support::Position> loc = std::nullopt);
 
   /** Record an enum in the current scope. */
   void declareEnum(const std::string& name,
-                   std::shared_ptr<sun::EnumType> enumType);
+                   std::shared_ptr<sun::semantic_analysis::EnumType> enumType);
 
   /**
    * Record a generic enum template in the current scope, along with the scope
@@ -485,13 +512,15 @@ struct SemanticScopeBase
   void declareGenericEnum(const std::string& name, GenericEnumInfo info);
 
   /** Bind type parameter names to concrete types in the current scope. */
-  void declareTypeParameters(const std::vector<std::string>& params,
-                             const std::vector<sun::TypePtr>& args);
+  void declareTypeParameters(
+      const std::vector<std::string>& params,
+      const std::vector<sun::semantic_analysis::TypePtr>& args);
 
   /** Record a variable here, checking reserved names and global shadowing. */
-  void declareVariable(const std::string& name, sun::TypePtr type,
-                       bool isParam = false, bool isConst = false,
-                       sun::DeclarationId declarationId = {});
+  void declareVariable(
+      const std::string& name, sun::semantic_analysis::TypePtr type,
+      bool isParam = false, bool isConst = false,
+      sun::semantic_analysis::DeclarationId declarationId = {});
 
   /** Report whether this scope is outside every function body. */
   bool isAtModuleLevel() const {
@@ -502,9 +531,9 @@ struct SemanticScopeBase
 
   // ===== Transient state (all scopes) =====
   std::map<std::string, VariableInfo> variables;
-  std::map<std::string, sun::TypePtr> typeParameters;
-  std::map<std::string, sun::TypePtr> typeAliases;
-  std::map<std::string, sun::TypePtr> narrowedTypes;
+  std::map<std::string, sun::semantic_analysis::TypePtr> typeParameters;
+  std::map<std::string, sun::semantic_analysis::TypePtr> typeAliases;
+  std::map<std::string, sun::semantic_analysis::TypePtr> narrowedTypes;
   std::vector<UsingImport> usingImports;
   std::vector<ImportBinding> importBindings;
 
@@ -522,7 +551,7 @@ struct SemanticScopeBase
   }
 
   /** Whether an import belongs to the source unit performing lookup. */
-  bool admitsImport(sun::SourceFileId sourceFile) const {
+  bool admitsImport(SourceFileId sourceFile) const {
     const auto* context = accessCtx();
     return sourceFile == (context ? context->currentSourceFileId() : 0);
   }
@@ -541,13 +570,15 @@ struct SemanticScopeBase
   // are recorded on the filter as denied candidates).
   bool hasAccessibleSymbol(const std::string& name,
                            class AccessFilter& filter) const;
-  std::shared_ptr<sun::ClassType> findClass(const std::string& name) const;
+  std::shared_ptr<sun::semantic_analysis::ClassType> findClass(
+      const std::string& name) const;
   const GenericClassInfo* findGenericClass(const std::string& name) const;
-  std::shared_ptr<sun::InterfaceType> findInterface(
+  std::shared_ptr<sun::semantic_analysis::InterfaceType> findInterface(
       const std::string& name) const;
   const GenericInterfaceInfo* findGenericInterface(
       const std::string& name) const;
-  std::shared_ptr<sun::EnumType> findEnum(const std::string& name) const;
+  std::shared_ptr<sun::semantic_analysis::EnumType> findEnum(
+      const std::string& name) const;
   const GenericEnumInfo* findGenericEnum(const std::string& name) const;
   void collectFunctions(const std::string& name,
                         std::vector<FunctionInfo>& results) const;
@@ -565,13 +596,14 @@ struct SemanticScopeBase
   ResultT lookupInChain(const std::string& name, Finder finder) const;
 
   // Lookup a class by name in the scope chain
-  std::shared_ptr<sun::ClassType> lookupClass(const std::string& name) const;
+  std::shared_ptr<sun::semantic_analysis::ClassType> lookupClass(
+      const std::string& name) const;
 
   // Lookup a generic class by name in the scope chain
   const GenericClassInfo* lookupGenericClass(const std::string& name) const;
 
   // Lookup an interface by name in the scope chain
-  std::shared_ptr<sun::InterfaceType> lookupInterface(
+  std::shared_ptr<sun::semantic_analysis::InterfaceType> lookupInterface(
       const std::string& name) const;
 
   // Lookup a generic interface by name in the scope chain
@@ -579,7 +611,8 @@ struct SemanticScopeBase
       const std::string& name) const;
 
   // Lookup an enum by name in the scope chain
-  std::shared_ptr<sun::EnumType> lookupEnum(const std::string& name) const;
+  std::shared_ptr<sun::semantic_analysis::EnumType> lookupEnum(
+      const std::string& name) const;
 
   // Lookup a generic enum by name in the scope chain
   const GenericEnumInfo* lookupGenericEnum(const std::string& name) const;
@@ -596,8 +629,9 @@ struct SemanticScopeBase
 
   /** Select an overload by types, then by supplied alternative types. */
   std::optional<FunctionInfo> lookupFunction(
-      const std::string& name, const std::vector<FunctionArgumentType>& argTypes,
-      std::optional<Position> loc = std::nullopt) const;
+      const std::string& name,
+      const std::vector<FunctionArgumentType>& argTypes,
+      std::optional<sun::support::Position> loc = std::nullopt) const;
 
   /**
    * Select an overload from this scope's own function table. Record inaccessible
@@ -605,9 +639,10 @@ struct SemanticScopeBase
    * pass, which lookupFunction runs only after ordinary lookup finds no match.
    */
   std::optional<FunctionInfo> lookupFunctionLocal(
-      const std::string& name, const std::vector<FunctionArgumentType>& argTypes,
+      const std::string& name,
+      const std::vector<FunctionArgumentType>& argTypes,
       class AccessFilter* filter = nullptr, bool matchAlternatives = false,
-      std::optional<Position> loc = std::nullopt) const;
+      std::optional<sun::support::Position> loc = std::nullopt) const;
 
   // Lookup module scope by dot-separated path
   SemanticScopeBase* lookupModuleScope(const std::string& dotPath) const;
@@ -616,7 +651,8 @@ struct SemanticScopeBase
   std::vector<UsingImport> getActiveUsingImports() const;
 
   // Resolve a name considering using statements and module scopes
-  sun::QualifiedName resolveNameWithUsings(const std::string& name) const;
+  sun::semantic_analysis::QualifiedName resolveNameWithUsings(
+      const std::string& name) const;
 
   // Lookup a namespaced variable (module-qualified)
   VariableInfo* lookupQualifiedVariable(const std::string& qualifiedName);
@@ -660,11 +696,12 @@ struct GlobalScope : SemanticScopeBase {
 // ModuleScope - Module/namespace scope
 // ===================================================================
 struct ModuleScope : SemanticScopeBase {
-  sun::DeclarationId declarationId;
+  sun::semantic_analysis::DeclarationId declarationId;
   ScopeType getType() const override { return ScopeType::Module; }
   // Source spelling; the declaration record identifies the parent module.
-  sun::QualifiedName qualifiedName;
-  sun::Visibility visibility = sun::Visibility::Private;
+  sun::semantic_analysis::QualifiedName qualifiedName;
+  sun::semantic_analysis::Visibility visibility =
+      sun::semantic_analysis::Visibility::Private;
   bool visibilityDeclared = false;  // A source declaration set `visibility`
 };
 
@@ -682,15 +719,17 @@ struct FunctionScope : SemanticScopeBase {
   ScopeType getType() const override { return ScopeType::Function; }
 
   std::string functionSignature;  // e.g., "outer(i32)"
-  sun::QualifiedName functionName;
+  sun::semantic_analysis::QualifiedName functionName;
   bool functionCanThrow = false;
-  sun::TypePtr functionReturnType;  // for return-position type inference
+  sun::semantic_analysis::TypePtr
+      functionReturnType;  // for return-position type inference
 
   // Variadic parameter pack for this function, when it is a specialized
   // variadic body. Holds the pack's name (e.g. "args") and the resolved type of
   // each expanded element. Used to expand `args...` into concrete, typed
   // argument nodes during call analysis.
-  std::optional<std::pair<std::string, std::vector<sun::TypePtr>>>
+  std::optional<
+      std::pair<std::string, std::vector<sun::semantic_analysis::TypePtr>>>
       variadicParam;
 };
 
@@ -784,52 +823,62 @@ inline bool isImportScope(const std::string& name) {
 // -------------------------------------------------------------------
 // Visibility comes from the record (or its AST for generic templates); the
 // declaration ID selects the owning module from the declaration table.
-inline sun::access::ItemRef accessItem(
-    const std::shared_ptr<sun::ClassType>& c) {
+inline sun::semantic_analysis::ItemRef accessItem(
+    const std::shared_ptr<sun::semantic_analysis::ClassType>& c) {
   return {"class", c->getDisplayName(), "", c->visibility,
           c->getDeclarationId()};
 }
-inline sun::access::ItemRef accessItem(const GenericClassInfo* g) {
+inline sun::semantic_analysis::ItemRef accessItem(const GenericClassInfo* g) {
   return {"class", g->qualifiedName.baseName, "",
-          g->AST ? g->AST->getVisibility() : sun::Visibility::Private,
-          g->AST ? g->AST->getDeclarationId() : sun::DeclarationId{}};
+          g->AST ? g->AST->getVisibility()
+                 : sun::semantic_analysis::Visibility::Private,
+          g->AST ? g->AST->getDeclarationId()
+                 : sun::semantic_analysis::DeclarationId{}};
 }
-inline sun::access::ItemRef accessItem(
-    const std::shared_ptr<sun::InterfaceType>& i) {
+inline sun::semantic_analysis::ItemRef accessItem(
+    const std::shared_ptr<sun::semantic_analysis::InterfaceType>& i) {
   return {"interface", i->getBaseName(), "", i->visibility,
           i->getDeclarationId()};
 }
-inline sun::access::ItemRef accessItem(const GenericInterfaceInfo* g) {
+inline sun::semantic_analysis::ItemRef accessItem(
+    const GenericInterfaceInfo* g) {
   return {"interface", g->qualifiedName.baseName, "",
-          g->AST ? g->AST->getVisibility() : sun::Visibility::Private,
-          g->AST ? g->AST->getDeclarationId() : sun::DeclarationId{}};
+          g->AST ? g->AST->getVisibility()
+                 : sun::semantic_analysis::Visibility::Private,
+          g->AST ? g->AST->getDeclarationId()
+                 : sun::semantic_analysis::DeclarationId{}};
 }
-inline sun::access::ItemRef accessItem(
-    const std::shared_ptr<sun::EnumType>& e) {
+inline sun::semantic_analysis::ItemRef accessItem(
+    const std::shared_ptr<sun::semantic_analysis::EnumType>& e) {
   return {"enum", e->getBaseName(), "", e->visibility, e->getDeclarationId()};
 }
-inline sun::access::ItemRef accessItem(const GenericEnumInfo* g) {
+inline sun::semantic_analysis::ItemRef accessItem(const GenericEnumInfo* g) {
   return {"enum", g->qualifiedName.baseName, "",
-          g->AST ? g->AST->getVisibility() : sun::Visibility::Private,
-          g->AST ? g->AST->getDeclarationId() : sun::DeclarationId{}};
+          g->AST ? g->AST->getVisibility()
+                 : sun::semantic_analysis::Visibility::Private,
+          g->AST ? g->AST->getDeclarationId()
+                 : sun::semantic_analysis::DeclarationId{}};
 }
-inline sun::access::ItemRef accessItem(const GenericFunctionInfo* g) {
+inline sun::semantic_analysis::ItemRef accessItem(
+    const GenericFunctionInfo* g) {
   return {"function", g->qualifiedName.baseName, "",
-          g->AST ? g->AST->getVisibility() : sun::Visibility::Private,
-          g->AST ? g->AST->getDeclarationId() : sun::DeclarationId{}};
+          g->AST ? g->AST->getVisibility()
+                 : sun::semantic_analysis::Visibility::Private,
+          g->AST ? g->AST->getDeclarationId()
+                 : sun::semantic_analysis::DeclarationId{}};
 }
-inline sun::access::ItemRef accessItem(const FunctionInfo& f) {
+inline sun::semantic_analysis::ItemRef accessItem(const FunctionInfo& f) {
   return {"function", f.qualifiedName.baseName, "", f.visibility,
           f.declarationId};
 }
-inline sun::access::ItemRef accessItem(const FunctionInfo* f) {
+inline sun::semantic_analysis::ItemRef accessItem(const FunctionInfo* f) {
   return accessItem(*f);
 }
-inline sun::access::ItemRef accessItem(const VariableInfo* v) {
+inline sun::semantic_analysis::ItemRef accessItem(const VariableInfo* v) {
   return {"variable", v->qualifiedName.baseName, "", v->visibility,
           v->declarationId};
 }
-inline sun::access::ItemRef accessItem(const ModuleScope& m) {
+inline sun::semantic_analysis::ItemRef accessItem(const ModuleScope& m) {
   return {"module", m.qualifiedName.baseName, "", m.visibility,
           m.declarationId};
 }
@@ -841,8 +890,8 @@ inline sun::access::ItemRef accessItem(const ModuleScope& m) {
 // -------------------------------------------------------------------
 class AccessFilter {
   const AccessContext* ctx_ = nullptr;
-  sun::DeclarationId from_;
-  std::optional<sun::access::ItemRef> denied_;
+  sun::semantic_analysis::DeclarationId from_;
+  std::optional<sun::semantic_analysis::ItemRef> denied_;
 
  public:
   explicit AccessFilter(const SemanticScopeBase* scope)
@@ -851,11 +900,11 @@ class AccessFilter {
   }
 
   bool enabled() const { return ctx_ != nullptr; }
-  sun::DeclarationId from() const { return from_; }
+  sun::semantic_analysis::DeclarationId from() const { return from_; }
 
-  bool admitItem(sun::access::ItemRef item) {
-    if (!ctx_ ||
-        sun::access::isAccessible(from_, item, ctx_->declarationTable()))
+  bool admitItem(sun::semantic_analysis::ItemRef item) {
+    if (!ctx_ || sun::semantic_analysis::isAccessible(from_, item,
+                                                      ctx_->declarationTable()))
       return true;
     if (!denied_) denied_ = std::move(item);
     return false;
@@ -916,3 +965,5 @@ ResultT SemanticScopeBase::lookupInChain(const std::string& name,
   filter.finish();
   return ResultT{};
 }
+
+}  // namespace sun::semantic_analysis

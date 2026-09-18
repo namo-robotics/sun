@@ -11,6 +11,8 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+
 namespace {
 
 // A global drop counter and a class whose deinit bumps it, for tests that

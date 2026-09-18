@@ -3,7 +3,10 @@
 #include "ast.h"
 #include "ast/ast_children.h"
 
-namespace sun {
+using sun::ast::ASTNodeType;
+using sun::ast::ExprAST;
+
+namespace sun::semantic_analysis {
 namespace {
 
 /** Fill a declaration's name while retaining imported or generated identities.
@@ -23,18 +26,19 @@ void assignNames(ExprAST& root, const std::vector<std::string>& scopePath,
                  bool moduleLevel) {
   const auto visitChildren = [&](const std::vector<std::string>& childScope,
                                  bool childModuleLevel) {
-    forEachChild(root, [&](const ExprAST& child) {
+    sun::ast::forEachChild(root, [&](const ExprAST& child) {
       assignNames(const_cast<ExprAST&>(child), childScope, childModuleLevel);
     });
   };
   const QualifiedName* namedScope = nullptr;
   switch (root.getType()) {
     case ASTNodeType::MODULE:
-      namedScope = &nameDeclaration(static_cast<ModuleAST&>(root), scopePath);
+      namedScope =
+          &nameDeclaration(static_cast<sun::ast::ModuleAST&>(root), scopePath);
       moduleLevel = true;
       break;
     case ASTNodeType::MOON_SCOPE: {
-      const auto& moon = static_cast<MoonScopeAST&>(root);
+      const auto& moon = static_cast<sun::ast::MoonScopeAST&>(root);
       auto childScope = scopePath;
       if (!moon.getContentHash().empty())
         childScope.push_back(moon.getContentHash());
@@ -42,30 +46,34 @@ void assignNames(ExprAST& root, const std::vector<std::string>& scopePath,
       return;
     }
     case ASTNodeType::CLASS_DEFINITION:
-      namedScope =
-          &nameDeclaration(static_cast<ClassDefinitionAST&>(root), scopePath);
+      namedScope = &nameDeclaration(
+          static_cast<sun::ast::ClassDefinitionAST&>(root), scopePath);
       moduleLevel = false;
       break;
     case ASTNodeType::INTERFACE_DEFINITION:
-      namedScope = &nameDeclaration(static_cast<InterfaceDefinitionAST&>(root),
-                                    scopePath);
+      namedScope = &nameDeclaration(
+          static_cast<sun::ast::InterfaceDefinitionAST&>(root), scopePath);
       moduleLevel = false;
       break;
     case ASTNodeType::ENUM_DEFINITION:
-      nameDeclaration(static_cast<EnumDefinitionAST&>(root), scopePath);
+      nameDeclaration(static_cast<sun::ast::EnumDefinitionAST&>(root),
+                      scopePath);
       return;
     case ASTNodeType::FUNCTION:
-      nameDeclaration(static_cast<FunctionAST&>(root).getProtoMut(), scopePath);
+      nameDeclaration(static_cast<sun::ast::FunctionAST&>(root).getProtoMut(),
+                      scopePath);
       return;
     case ASTNodeType::LAMBDA:
       return;
     case ASTNodeType::VARIABLE_CREATION:
       if (moduleLevel)
-        nameDeclaration(static_cast<VariableCreationAST&>(root), scopePath);
+        nameDeclaration(static_cast<sun::ast::VariableCreationAST&>(root),
+                        scopePath);
       break;
     case ASTNodeType::REFERENCE_CREATION:
       if (moduleLevel)
-        nameDeclaration(static_cast<ReferenceCreationAST&>(root), scopePath);
+        nameDeclaration(static_cast<sun::ast::ReferenceCreationAST&>(root),
+                        scopePath);
       break;
     default:
       break;
@@ -98,21 +106,23 @@ void assignLocalDeclarationName(ExprAST& declaration,
   };
   switch (declaration.getType()) {
     case ASTNodeType::CLASS_DEFINITION:
-      nameType(static_cast<ClassDefinitionAST&>(declaration));
+      nameType(static_cast<sun::ast::ClassDefinitionAST&>(declaration));
       break;
     case ASTNodeType::INTERFACE_DEFINITION:
-      nameType(static_cast<InterfaceDefinitionAST&>(declaration));
+      nameType(static_cast<sun::ast::InterfaceDefinitionAST&>(declaration));
       break;
     case ASTNodeType::ENUM_DEFINITION:
-      nameDeclaration(static_cast<EnumDefinitionAST&>(declaration), scopePath);
+      nameDeclaration(static_cast<sun::ast::EnumDefinitionAST&>(declaration),
+                      scopePath);
       break;
     case ASTNodeType::FUNCTION:
-      nameDeclaration(static_cast<FunctionAST&>(declaration).getProtoMut(),
-                      scopePath);
+      nameDeclaration(
+          static_cast<sun::ast::FunctionAST&>(declaration).getProtoMut(),
+          scopePath);
       break;
     default:
       break;
   }
 }
 
-}  // namespace sun
+}  // namespace sun::semantic_analysis

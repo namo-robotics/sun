@@ -4,6 +4,10 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::compileString;
+using sun::driver::executeString;
+using sun::driver::executeStringWithStdlib;
+
 // ============================================================================
 // Basic enum definition and variant access
 // ============================================================================
@@ -446,7 +450,7 @@ TEST(Enums, CheckedDecodingWithGenericTargetAndReference) {
 }
 
 TEST(Enums, CheckedDecodingRejectsInvalidGenericArgument) {
-  EXPECT_THROW(compileStringWithStdlib(R"(
+  EXPECT_THROW(sun::driver::compileStringWithStdlib(R"(
     using std;
     enum Kind { Data = 21 }
     function decode<T>(value: T) Option<Kind> {

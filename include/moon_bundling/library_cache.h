@@ -12,7 +12,7 @@
 
 #include "moon_bundling/moon.h"
 
-namespace sun {
+namespace sun::moon_bundling {
 
 /// Whether two triples name the same operating system for bundle-matching
 /// purposes. Struct layouts and ABI decisions are baked into a bundle's
@@ -134,4 +134,4 @@ class LibraryCache {
   bool discovered_ = false;
 };
 
-}  // namespace sun
+}  // namespace sun::moon_bundling

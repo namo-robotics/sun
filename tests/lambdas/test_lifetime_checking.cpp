@@ -13,6 +13,8 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+
 namespace {
 
 // One registry class used throughout: subscribe demands its callback

@@ -23,7 +23,7 @@
 #include <utility>
 #include <vector>
 
-namespace sun {
+namespace sun::moon_bundling {
 
 /// The global symbols of an archive, by bare name (a Mach-O leading `_`
 /// stripped), gathered from every member.
@@ -63,4 +63,4 @@ std::map<std::string, std::string> listArchiveDefinitions(
 std::string computeArchiveSetHash(
     const std::vector<std::pair<std::string, std::string>>& namesAndDigests);
 
-}  // namespace sun
+}  // namespace sun::moon_bundling

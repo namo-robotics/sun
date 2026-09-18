@@ -11,10 +11,16 @@
 #include "codegen/variables/variable_generator.h"
 #include "semantic_analysis/packed_layout.h"
 
+using sun::semantic_analysis::ClassType;
+using sun::semantic_analysis::TypePtr;
+
+using sun::ast::ASTNodeType;
+using sun::ast::ExprAST;
+using sun::support::logAndThrowError;
+
 using namespace llvm;
 
-namespace layout = sun::codegen::layout;
-namespace ops = sun::codegen::ops;
+namespace sun::codegen::variables {
 
 // -------------------------------------------------------------------
 // Field pointer helper
@@ -26,9 +32,9 @@ namespace ops = sun::codegen::ops;
 // Applies the generic-`this` fixup and unwraps raw_ptr/static_ptr/ref to
 // class. Returns {nullptr, nullptr} when the object is not class-shaped
 // (caller decides whether that is an error).
-std::pair<Value*, sun::ClassType*> VariableGenerator::codegenObjectPtr(
+std::pair<Value*, ClassType*> VariableGenerator::codegenObjectPtr(
     const ExprAST& object) {
-  sun::TypePtr objectType = object.getResolvedType();
+  TypePtr objectType = object.getResolvedType();
 
   // An element of an array of classes (`items[i].field`): codegen() would
   // load the whole struct by value, but member access wants the element's
@@ -37,7 +43,8 @@ std::pair<Value*, sun::ClassType*> VariableGenerator::codegenObjectPtr(
   if (object.getType() == ASTNodeType::INDEX && objectType &&
       objectType->isClass()) {
     if (Value* elemPtr = tryCodegenAddress(object)) {
-      return {elemPtr, sun::tryGetType<sun::ClassType>(objectType)};
+      return {elemPtr,
+              sun::codegen::support::tryGetType<ClassType>(objectType)};
     }
   }
 
@@ -46,25 +53,27 @@ std::pair<Value*, sun::ClassType*> VariableGenerator::codegenObjectPtr(
 
   // For generic method bodies, 'this' may have a type parameter type; use the
   // specialized state_.frame.currentClass instead
-  if (dynamic_cast<const ThisExprAST*>(&object) && state_.frame.currentClass) {
+  if (dynamic_cast<const sun::ast::ThisExprAST*>(&object) &&
+      state_.frame.currentClass) {
     objectType = state_.frame.currentClass;
   }
 
   // Pointer-to-class: the pointer value is already the object pointer
-  sun::TypePtr pointeeType = sun::getPointeeType(objectType);
+  TypePtr pointeeType = sun::codegen::support::getPointeeType(objectType);
   if (pointeeType && pointeeType->isClass()) {
     objectType = pointeeType;
   }
 
   // Reference-to-class: the reference value is already the object pointer
-  if (auto* refType = sun::tryGetType<sun::ReferenceType>(objectType)) {
+  if (auto* refType = sun::codegen::support::tryGetType<
+          sun::semantic_analysis::ReferenceType>(objectType)) {
     if (refType->getReferencedType() &&
         refType->getReferencedType()->isClass()) {
       objectType = refType->getReferencedType();
     }
   }
 
-  return {objectPtr, sun::tryGetType<sun::ClassType>(objectType)};
+  return {objectPtr, sun::codegen::support::tryGetType<ClassType>(objectType)};
 }
 
 // -------------------------------------------------------------------
@@ -79,7 +88,7 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
   // Expressions that are already the referent's address: a call or index that
   // borrows, and the wrappers a body puts around one. codegenExpression skips
   // the read-through that codegen() would otherwise apply.
-  sun::TypePtr exprType = expr.getResolvedType();
+  TypePtr exprType = expr.getResolvedType();
   if (exprType && exprType->isReference()) {
     switch (expr.getType()) {
       case ASTNodeType::CALL:
@@ -88,10 +97,11 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
         return gen_.codegenExpression(expr);
       case ASTNodeType::PAREN_EXPR:
         return tryCodegenAddress(
-            *static_cast<const ParenExprAST&>(expr).getInner());
+            *static_cast<const sun::ast::ParenExprAST&>(expr).getInner());
       case ASTNodeType::UNSAFE_BLOCK: {
-        const auto& body =
-            static_cast<const UnsafeBlockAST&>(expr).getBody().getBody();
+        const auto& body = static_cast<const sun::ast::UnsafeBlockAST&>(expr)
+                               .getBody()
+                               .getBody();
         if (!body.empty()) return tryCodegenAddress(*body.back());
         break;
       }
@@ -102,8 +112,9 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
 
   switch (expr.getType()) {
     case ASTNodeType::VARIABLE_REFERENCE: {
-      const auto& varRef = static_cast<const VariableReferenceAST&>(expr);
-      sun::TypePtr varType = varRef.getResolvedType();
+      const auto& varRef =
+          static_cast<const sun::ast::VariableReferenceAST&>(expr);
+      TypePtr varType = varRef.getResolvedType();
 
       // Module references read as a null-pointer sentinel - never hand that
       // out as a storage address
@@ -116,7 +127,8 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
           // Ref variable: the referent's address. Mirrors
           // createLoadForRef/createStoreForRef's isDirectAlias decision.
           const auto* refType =
-              static_cast<const sun::ReferenceType*>(varType.get());
+              static_cast<const sun::semantic_analysis::ReferenceType*>(
+                  varType.get());
           llvm::Type* referencedLLVMType =
               typeResolver.resolve(refType->getReferencedType());
           if (alloca->getAllocatedType() == referencedLLVMType) {
@@ -154,7 +166,8 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
     }
 
     case ASTNodeType::MEMBER_ACCESS: {
-      const auto& memberAccess = static_cast<const MemberAccessAST&>(expr);
+      const auto& memberAccess =
+          static_cast<const sun::ast::MemberAccessAST&>(expr);
 
       // mod.global: the module is compile-time only, so the storage is the
       // global the member's declaration emitted
@@ -167,17 +180,19 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
       auto [objectPtr, classType] = codegenObjectPtr(*memberAccess.getObject());
       if (!objectPtr || !classType) return nullptr;
 
-      const sun::ClassField* field =
+      const sun::semantic_analysis::ClassField* field =
           classType->getField(memberAccess.getTargetDeclarationId());
       if (!field) return nullptr;
 
-      return layout::fieldPtr(*ctx.builder, classType, objectPtr, *field,
-                              memberAccess.getMemberName() + ".addr");
+      return sun::codegen::support::fieldPtr(
+          *ctx.builder, classType, objectPtr, *field,
+          memberAccess.getMemberName() + ".addr");
     }
 
     case ASTNodeType::INDEX: {
-      const auto& indexExpr = static_cast<const IndexAST&>(expr);
-      auto baseType = sun::unwrapRef(indexExpr.getTarget()->getResolvedType());
+      const auto& indexExpr = static_cast<const sun::ast::IndexAST&>(expr);
+      auto baseType = sun::semantic_analysis::unwrapRef(
+          indexExpr.getTarget()->getResolvedType());
       // Class __index__/__setindex__ targets have no address - callers
       // dispatch to the method protocol instead
       if (baseType && baseType->isClass()) return nullptr;
@@ -201,10 +216,10 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
 Value* VariableGenerator::codegenBorrowAddress(const ExprAST& expr) {
   if (expr.getType() != ASTNodeType::TERNARY) return tryCodegenAddress(expr);
 
-  const auto& ternary = static_cast<const TernaryExprAST&>(expr);
+  const auto& ternary = static_cast<const sun::ast::TernaryExprAST&>(expr);
   Value* cond = codegen(*ternary.getCond());
   if (!cond) return nullptr;
-  cond = coerceCondToBool(ctx, cond);
+  cond = sun::codegen::coerceCondToBool(ctx, cond);
 
   Function* func = ctx.builder->GetInsertBlock()->getParent();
   BasicBlock* thenBB =
@@ -263,13 +278,13 @@ Value* VariableGenerator::codegenAddress(const ExprAST& expr) {
 
 // Apply `cur op rhs` for a compound assignment and coerce the result back to
 // the slot's type if operand unification widened it
-Value* VariableGenerator::emitCompoundOpValue(const CompoundAssignmentAST& expr,
-                                              Value* cur, llvm::Type* slotTy,
-                                              const sun::TypePtr& slotSunType) {
+Value* VariableGenerator::emitCompoundOpValue(
+    const sun::ast::CompoundAssignmentAST& expr, Value* cur, llvm::Type* slotTy,
+    const TypePtr& slotSunType) {
   Value* rhs = codegen(*expr.getValue());
   if (!rhs) return nullptr;
 
-  const Position& loc = expr.getLocation();
+  const sun::support::Position& loc = expr.getLocation();
   bool unsignedOp = slotSunType && slotSunType->isUnsigned();
 
   gen_.unifyBinaryOperands(cur, rhs, slotSunType,
@@ -283,7 +298,8 @@ Value* VariableGenerator::emitCompoundOpValue(const CompoundAssignmentAST& expr,
       result =
           result->getType()->getIntegerBitWidth() > slotTy->getIntegerBitWidth()
               ? ctx.builder->CreateTrunc(result, slotTy, "compound.trunc")
-              : ops::extendInt(*ctx.builder, result, slotTy, slotSunType);
+              : sun::codegen::support::extendInt(*ctx.builder, result, slotTy,
+                                                 slotSunType);
     } else if (result->getType()->isDoubleTy() && slotTy->isFloatTy()) {
       result = ctx.builder->CreateFPTrunc(result, slotTy, "compound.trunc");
     } else if (result->getType()->isFloatTy() && slotTy->isDoubleTy()) {
@@ -295,20 +311,22 @@ Value* VariableGenerator::emitCompoundOpValue(const CompoundAssignmentAST& expr,
   return result;
 }
 
-Value* VariableGenerator::codegen(const CompoundAssignmentAST& expr) {
+Value* VariableGenerator::codegen(const sun::ast::CompoundAssignmentAST& expr) {
   const ExprAST& target = *expr.getTarget();
-  const Position& loc = expr.getLocation();
+  const sun::support::Position& loc = expr.getLocation();
 
-  sun::TypePtr slotSunType = sun::unwrapRef(target.getResolvedType());
+  TypePtr slotSunType =
+      sun::semantic_analysis::unwrapRef(target.getResolvedType());
   llvm::Type* slotTy = typeResolver.resolve(slotSunType);
 
   // Class __index__/__setindex__ targets have no address: lower as
   // get-op-set with the receiver and index array computed exactly once
   if (target.getType() == ASTNodeType::INDEX) {
-    const auto& indexExpr = static_cast<const IndexAST&>(target);
-    auto baseType = sun::unwrapRef(indexExpr.getTarget()->getResolvedType());
+    const auto& indexExpr = static_cast<const sun::ast::IndexAST&>(target);
+    auto baseType = sun::semantic_analysis::unwrapRef(
+        indexExpr.getTarget()->getResolvedType());
     if (baseType && baseType->isClass()) {
-      auto* classType = static_cast<sun::ClassType*>(baseType.get());
+      auto* classType = static_cast<ClassType*>(baseType.get());
       Value* objPtr = codegen(*indexExpr.getTarget());
       if (!objPtr) return nullptr;
       llvm::Value* idxArr = gen_.boxIndicesToArrayRef(indexExpr);
@@ -327,8 +345,8 @@ Value* VariableGenerator::codegen(const CompoundAssignmentAST& expr) {
 
   // Addressable targets: address once -> load -> op -> store
   if (Value* addr = tryCodegenAddress(target)) {
-    llvm::Align align =
-        layout::lvalueAlign(target, slotTy, module->getDataLayout());
+    llvm::Align align = sun::codegen::support::lvalueAlign(
+        target, slotTy, module->getDataLayout());
     Value* cur =
         ctx.builder->CreateAlignedLoad(slotTy, addr, align, "compound.cur");
     Value* result = emitCompoundOpValue(expr, cur, slotTy, slotSunType);
@@ -342,3 +360,5 @@ Value* VariableGenerator::codegen(const CompoundAssignmentAST& expr) {
   logAndThrowError("Compound assignment target is not assignable", loc);
   return nullptr;
 }
+
+}  // namespace sun::codegen::variables

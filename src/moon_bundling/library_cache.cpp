@@ -9,7 +9,7 @@
 #include "support/error.h"
 #include "support/sun_path.h"
 
-namespace sun {
+namespace sun::moon_bundling {
 
 LibraryCache& LibraryCache::instance() {
   static LibraryCache cache;
@@ -95,7 +95,7 @@ void LibraryCache::initFromEnvironment() {
   if (initialized_) return;
 
   // Add lib/ and build/ subdirectories from each SUN_PATH entry
-  for (const auto& path : SunPath::getLibrarySearchPaths()) {
+  for (const auto& path : sun::support::SunPath::getLibrarySearchPaths()) {
     searchPaths_.push_back(path);
   }
 
@@ -109,7 +109,7 @@ void LibraryCache::initFromEnvironment() {
 
   // System-wide installation paths: next to the compiler binary, then the
   // Debian and Homebrew prefixes (see SunPath::systemInstallDirs).
-  for (const auto& dir : SunPath::systemInstallDirs()) {
+  for (const auto& dir : sun::support::SunPath::systemInstallDirs()) {
     searchPaths_.push_back(dir);
   }
 
@@ -140,7 +140,7 @@ void LibraryCache::discoverBundles() {
           std::unique_ptr<MoonReader> reader;
           try {
             reader = MoonReader::open(entry.path());
-          } catch (const SunError&) {
+          } catch (const sun::support::SunError&) {
             // Discovery may encounter stale build outputs. Explicit imports
             // still report the reader's format error through addBundle.
             continue;
@@ -283,4 +283,4 @@ void LibraryCache::clear() {
   discovered_ = false;
 }
 
-}  // namespace sun
+}  // namespace sun::moon_bundling

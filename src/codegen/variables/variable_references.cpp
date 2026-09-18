@@ -7,9 +7,16 @@
 #include "codegen/support/struct_access.h"
 #include "codegen/variables/variable_generator.h"
 
+using sun::codegen::CodegenVisitor;
+using sun::semantic_analysis::DeclarationId;
+using sun::semantic_analysis::ReferenceType;
+using sun::semantic_analysis::TypePtr;
+
+using sun::support::logAndThrowError;
+
 using namespace llvm;
 
-namespace layout = sun::codegen::layout;
+namespace sun::codegen::variables {
 
 // -------------------------------------------------------------------
 // Reference helper
@@ -25,8 +32,7 @@ static bool isDirectAlias(AllocaInst* alloca, llvm::Type* referencedType) {
 // Local variable loading
 // -------------------------------------------------------------------
 
-llvm::LoadInst* VariableGenerator::createLoadForLocalVar(
-    sun::DeclarationId id) {
+llvm::LoadInst* VariableGenerator::createLoadForLocalVar(DeclarationId id) {
   AllocaInst* alloca = scopes().findVariable(id);
   if (alloca) {
     return ctx.builder->CreateLoad(alloca->getAllocatedType(), alloca,
@@ -40,7 +46,7 @@ llvm::LoadInst* VariableGenerator::createLoadForLocalVar(
 // -------------------------------------------------------------------
 
 llvm::GlobalVariable* VariableGenerator::bindGlobal(
-    sun::DeclarationId id, llvm::GlobalVariable* global) {
+    DeclarationId id, llvm::GlobalVariable* global) {
   state_.typeRegistry->declarations.get(id);
   if (auto* existing = findGlobal(id); existing && existing != global)
     logAndThrowError("Global declaration already has different storage");
@@ -48,16 +54,14 @@ llvm::GlobalVariable* VariableGenerator::bindGlobal(
   return global;
 }
 
-llvm::GlobalVariable* VariableGenerator::findGlobal(
-    sun::DeclarationId id) const {
+llvm::GlobalVariable* VariableGenerator::findGlobal(DeclarationId id) const {
   auto found = globals_.find(id);
   return found == globals_.end()
              ? nullptr
              : llvm::dyn_cast_or_null<llvm::GlobalVariable>(found->second);
 }
 
-llvm::LoadInst* VariableGenerator::createLoadForGlobalVar(
-    sun::DeclarationId id) {
+llvm::LoadInst* VariableGenerator::createLoadForGlobalVar(DeclarationId id) {
   if (auto* global = findGlobal(id))
     return ctx.builder->CreateLoad(global->getValueType(), global,
                                    global->getName() + ".value");
@@ -68,8 +72,8 @@ llvm::LoadInst* VariableGenerator::createLoadForGlobalVar(
 // Reference variable loading
 // -------------------------------------------------------------------
 
-llvm::Value* VariableGenerator::createLoadForRef(
-    sun::DeclarationId id, const sun::ReferenceType& refType) {
+llvm::Value* VariableGenerator::createLoadForRef(DeclarationId id,
+                                                 const ReferenceType& refType) {
   const auto& varName = state_.typeRegistry->declarations.get(id).name;
   llvm::Type* referencedLLVMType =
       typeResolver.resolve(refType.getReferencedType());
@@ -92,8 +96,8 @@ llvm::Value* VariableGenerator::createLoadForRef(
   return nullptr;
 }
 
-void VariableGenerator::createStoreForRef(sun::DeclarationId id,
-                                          const sun::ReferenceType& refType,
+void VariableGenerator::createStoreForRef(DeclarationId id,
+                                          const ReferenceType& refType,
                                           llvm::Value* value) {
   const auto& varName = state_.typeRegistry->declarations.get(id).name;
   llvm::Type* referencedLLVMType =
@@ -123,9 +127,9 @@ void VariableGenerator::createStoreForRef(sun::DeclarationId id,
 // Variable reference codegen
 // -------------------------------------------------------------------
 
-Value* VariableGenerator::codegen(const VariableReferenceAST& expr) {
+Value* VariableGenerator::codegen(const sun::ast::VariableReferenceAST& expr) {
   // Check if this variable is a reference type
-  sun::TypePtr varType = expr.getResolvedType();
+  TypePtr varType = expr.getResolvedType();
 
   // Module types are resolved at compile time - return null as sentinel
   // The actual variable access happens in MemberAccessAST codegen
@@ -136,14 +140,14 @@ Value* VariableGenerator::codegen(const VariableReferenceAST& expr) {
   }
 
   if (varType && varType->isReference()) {
-    const auto* refType = static_cast<const sun::ReferenceType*>(varType.get());
+    const auto* refType = static_cast<const ReferenceType*>(varType.get());
 
     // A global reference stores the native pointer in global storage; a
     // global `ref array<T>` stores the view value itself.
     if (GlobalVariable* global = findGlobal(expr.getTargetDeclarationId())) {
       Value* pointer = ctx.builder->CreateLoad(global->getValueType(), global,
                                                expr.getName() + ".ref.ptr");
-      sun::TypePtr referenced = refType->getReferencedType();
+      TypePtr referenced = refType->getReferencedType();
       if (referenced->isArray() || referenced->isClass() ||
           referenced->isInterface() ||
           CodegenVisitor::isPayloadEnum(referenced)) {
@@ -161,7 +165,8 @@ Value* VariableGenerator::codegen(const VariableReferenceAST& expr) {
       AllocaInst* alloca = scopes().findVariable(expr.getTargetDeclarationId());
       if (alloca) {
         llvm::StructType* fatType =
-            sun::ArrayType::getArrayStructType(ctx.getContext());
+            sun::semantic_analysis::ArrayType::getArrayStructType(
+                ctx.getContext());
         if (alloca->getAllocatedType() == fatType) {
           return ctx.builder->CreateLoad(fatType, alloca,
                                          expr.getName() + ".view");
@@ -179,8 +184,9 @@ Value* VariableGenerator::codegen(const VariableReferenceAST& expr) {
               expr.getTargetDeclarationId())) {
         if (refType->isUnsizedArrayRef()) {
           return ctx.builder->CreateLoad(
-              sun::ArrayType::getArrayStructType(ctx.getContext()), addr,
-              expr.getName() + ".view");
+              sun::semantic_analysis::ArrayType::getArrayStructType(
+                  ctx.getContext()),
+              addr, expr.getName() + ".view");
         }
         return addr;
       }
@@ -302,7 +308,7 @@ Value* VariableGenerator::codegen(const VariableReferenceAST& expr) {
 // Variable assignment codegen
 // -------------------------------------------------------------------
 
-Value* VariableGenerator::codegen(const VariableAssignmentAST& expr) {
+Value* VariableGenerator::codegen(const sun::ast::VariableAssignmentAST& expr) {
   // Check if the value is a lambda literal - need special handling
   bool isLambdaLiteral = expr.getValue()->isLambda();
   BasicBlock* savedBlock = nullptr;
@@ -313,20 +319,19 @@ Value* VariableGenerator::codegen(const VariableAssignmentAST& expr) {
 
   auto generateValue = [&]() {
     Value* value = codegen(*expr.getValue());
-    return sun::codegen::ops::widenNumericIfNeeded(
+    return sun::codegen::support::widenNumericIfNeeded(
         *ctx.builder, typeResolver, value,
-        sun::unwrapRef(expr.getResolvedType()),
+        sun::semantic_analysis::unwrapRef(expr.getResolvedType()),
         expr.getValue()->getResolvedType());
   };
 
   AllocaInst* alloca = scopes().findVariable(expr.getTargetDeclarationId());
   if (alloca) {
     // Check if this is a reference type
-    sun::TypePtr varType = expr.getResolvedType();
+    TypePtr varType = expr.getResolvedType();
 
     if (varType && varType->isReference()) {
-      const auto* refType =
-          static_cast<const sun::ReferenceType*>(varType.get());
+      const auto* refType = static_cast<const ReferenceType*>(varType.get());
       Value* value = generateValue();
       createStoreForRef(expr.getTargetDeclarationId(), *refType, value);
       return value;
@@ -400,7 +405,7 @@ Value* VariableGenerator::codegen(const VariableAssignmentAST& expr) {
 // the source so its own drop is a no-op. The borrow checker already rejects
 // later uses of the source.
 void VariableGenerator::assignToVariableSlot(Value* slot, Value* value,
-                                             const sun::TypePtr& varType,
+                                             const TypePtr& varType,
                                              const std::string& name) {
   bool compound = varType &&
                   (varType->isClass() || varType->isInterface() ||
@@ -414,7 +419,9 @@ void VariableGenerator::assignToVariableSlot(Value* slot, Value* value,
     value = gen_.applyMoveSemantics(value, varType);
   }
   // A sized array moves its inline storage in after the old elements drop
-  if (auto* arrayType = sun::tryGetType<sun::ArrayType>(varType)) {
+  if (auto* arrayType =
+          sun::codegen::support::tryGetType<sun::semantic_analysis::ArrayType>(
+              varType)) {
     if (!arrayType->isUnsized()) {
       if (value == slot) return;
       scopes().emitDropInPlace(varType, slot, name);
@@ -423,7 +430,9 @@ void VariableGenerator::assignToVariableSlot(Value* slot, Value* value,
       return;
     }
   }
-  layout::storeIntoSlot(*ctx.builder, module->getDataLayout(), slot, value,
-                        varType);
+  sun::codegen::support::storeIntoSlot(*ctx.builder, module->getDataLayout(),
+                                       slot, value, varType);
   scopes().markInitialized(slot, varType);
 }
+
+}  // namespace sun::codegen::variables

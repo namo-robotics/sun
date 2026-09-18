@@ -15,7 +15,7 @@
 #include <optional>
 #include <string>
 
-namespace sun {
+namespace sun::driver {
 
 /*
  * The facts a later run needs to decide there is nothing to do. The two
@@ -41,4 +41,4 @@ std::optional<BuildRecord> readBuildRecord(const std::string& path);
 // missing or is not a readable bundle.
 std::optional<std::string> readMoonInputHash(const std::string& path);
 
-}  // namespace sun
+}  // namespace sun::driver

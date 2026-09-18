@@ -20,6 +20,10 @@
 #include "parsing/doc_comments.h"
 #include "parsing/parser.h"
 
+using sun::driver::Driver;
+using sun::driver::getStdlibMoonImports;
+using sun::driver::initTestEnvironment;
+
 namespace {
 
 // The file never exists on disk; nodes carry the path exactly as given
@@ -27,7 +31,7 @@ const char* kPath = "/hover_test.sun";
 
 struct Analysis {
   std::unique_ptr<Driver> driver;
-  Driver::AnalyzedProgram program;
+  sun::driver::Driver::AnalyzedProgram program;
 };
 
 Analysis analyze(const std::string& source, bool withStdlib = false) {
@@ -427,30 +431,32 @@ function make() Counter { return Counter(); }
 enum Level { Low, High }
 )";
   std::istringstream stream(source);
-  Parser parser(stream);
+  sun::parsing::Parser parser(stream);
   auto program = parser.parseString(source);
   ASSERT_TRUE(program);
-  sun::attachDocComments(*program, source);
+  sun::parsing::attachDocComments(*program, source);
 
   auto cls = program->getBody()[0]->clone();
-  const auto& counter = static_cast<const ClassDefinitionAST&>(*cls);
+  const auto& counter = static_cast<const sun::ast::ClassDefinitionAST&>(*cls);
   EXPECT_EQ(counter.getDoc(), "Counts things.");
   EXPECT_EQ(counter.getFields()[0].doc, "How many so far.");
   EXPECT_EQ(counter.getMethods()[1].function->getProto().getDoc(), "One more.");
 
   auto enumNode = program->getBody()[1]->clone();
-  const auto& direction = static_cast<const EnumDefinitionAST&>(*enumNode);
+  const auto& direction =
+      static_cast<const sun::ast::EnumDefinitionAST&>(*enumNode);
   EXPECT_EQ(direction.getDoc(), "Which way to go.");
   EXPECT_EQ(direction.getVariants()[0].doc, "Skyward.");
   EXPECT_EQ(direction.getVariants()[1].doc, "");
 
   auto fn = program->getBody()[2]->clone();
-  EXPECT_EQ(static_cast<const FunctionAST&>(*fn).getProto().getDoc(),
+  EXPECT_EQ(static_cast<const sun::ast::FunctionAST&>(*fn).getProto().getDoc(),
             "Ready to use.");
 
   // Variants on the enum's own line take nothing from the enum's comment
   auto level = program->getBody()[3]->clone();
-  const auto& levelEnum = static_cast<const EnumDefinitionAST&>(*level);
+  const auto& levelEnum =
+      static_cast<const sun::ast::EnumDefinitionAST&>(*level);
   EXPECT_EQ(levelEnum.getDoc(), "Flat.");
   EXPECT_EQ(levelEnum.getVariants()[0].doc, "");
 }
@@ -547,11 +553,11 @@ TEST(Tooling_Lsp_Hover, InnermostNodeWins) {
   Analysis analysis = analyze(source);
   ASSERT_TRUE(analysis.program.ast);
   // Inside `read(p)`, the argument is the innermost node, not the call
-  const ExprAST* node = sun::lsp::findInnermostNodeAt(
+  const sun::ast::ExprAST* node = sun::lsp::findInnermostNodeAt(
       *analysis.program.ast, kPath,
       static_cast<int>(offsetOf(source, "read(p)", 0) + 5));
   ASSERT_NE(node, nullptr);
-  EXPECT_EQ(node->getType(), ASTNodeType::VARIABLE_REFERENCE);
+  EXPECT_EQ(node->getType(), sun::ast::ASTNodeType::VARIABLE_REFERENCE);
 }
 
 TEST(Tooling_Lsp_Hover, MergedFilesUseInMemoryOverride) {

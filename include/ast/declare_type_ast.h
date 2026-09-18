@@ -10,6 +10,8 @@
 #include "ast/expr_ast.h"
 #include "ast/type_annotation.h"
 
+namespace sun::ast {
+
 // Declare type statement: declare [Alias =] Type<Args>;
 // Used to explicitly instantiate generic types and optionally create aliases
 class DeclareTypeAST : public ExprAST {
@@ -51,10 +53,10 @@ class DeclareTypeAST : public ExprAST {
   const TypeAnnotation& getTypeAnnotation() const { return typeAnnotation; }
 
   // Resolved declared type (set by semantic analysis)
-  void setResolvedDeclaredType(sun::TypePtr type) const {
+  void setResolvedDeclaredType(sun::semantic_analysis::TypePtr type) const {
     declAnalysis().resolvedDeclaredType = std::move(type);
   }
-  sun::TypePtr getResolvedDeclaredType() const {
+  sun::semantic_analysis::TypePtr getResolvedDeclaredType() const {
     return analysis_ ? static_cast<DeclareTypeAnalysis&>(*analysis_)
                            .resolvedDeclaredType
                      : nullptr;
@@ -71,3 +73,5 @@ class DeclareTypeAST : public ExprAST {
     return label;
   }
 };
+
+}  // namespace sun::ast

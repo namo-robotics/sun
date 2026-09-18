@@ -17,6 +17,8 @@
 
 using namespace llvm;
 
+namespace sun::codegen::intrinsics {
+
 // Futex operations
 static constexpr int64_t FUTEX_WAIT = 0;
 static constexpr int64_t FUTEX_WAKE = 1;
@@ -42,8 +44,8 @@ static int64_t futexSyscallNumber(const llvm::Module* module) {
     case llvm::Triple::aarch64:
       return 98;
     default:
-      logAndThrowError("no futex syscall number for target '" +
-                       module->getTargetTriple() + "'");
+      sun::support::logAndThrowError("no futex syscall number for target '" +
+                                     module->getTargetTriple() + "'");
   }
 }
 
@@ -53,7 +55,7 @@ static int64_t futexSyscallNumber(const llvm::Module* module) {
 
 Value* ThreadUtils::emitSyscallFutex(Value* addr, Value* op, Value* val) {
   LLVMContext& llvmCtx = ctx.getContext();
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
+  auto* i64Ty = llvm::Type::getInt64Ty(llvmCtx);
 
   // long syscall(SYS_futex, uaddr, op, val, timeout, uaddr2, val3)
   Value* sysno = ConstantInt::get(i64Ty, futexSyscallNumber(module));
@@ -62,7 +64,7 @@ Value* ThreadUtils::emitSyscallFutex(Value* addr, Value* op, Value* val) {
   Value* zero = ConstantInt::get(i64Ty, 0);
 
   return ctx.builder->CreateCall(
-      sun::libc::syscall(module),
+      sun::codegen::intrinsics::syscall(module),
       {sysno, ctx.builder->CreatePtrToInt(addr, i64Ty), opVal, valVal, zero,
        zero, zero},
       "futex_result");
@@ -73,10 +75,10 @@ void ThreadUtils::emitSyscallFutexWait(Value* addr, Value* expected) {
 
   if (isDarwinTarget(module)) {
     // int __ulock_wait(op, addr, value, timeout_us); timeout 0 waits forever.
-    auto* i32Ty = Type::getInt32Ty(llvmCtx);
-    auto* i64Ty = Type::getInt64Ty(llvmCtx);
+    auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
+    auto* i64Ty = llvm::Type::getInt64Ty(llvmCtx);
     ctx.builder->CreateCall(
-        sun::libc::ulockWait(module),
+        sun::codegen::intrinsics::ulockWait(module),
         {ConstantInt::get(i32Ty, UL_COMPARE_AND_WAIT), addr,
          ctx.builder->CreateZExt(expected, i64Ty, "ulock.expected"),
          ConstantInt::get(i32Ty, 0)},
@@ -84,19 +86,19 @@ void ThreadUtils::emitSyscallFutexWait(Value* addr, Value* expected) {
     return;
   }
 
-  Value* op = ConstantInt::get(Type::getInt64Ty(llvmCtx), FUTEX_WAIT);
+  Value* op = ConstantInt::get(llvm::Type::getInt64Ty(llvmCtx), FUTEX_WAIT);
   emitSyscallFutex(addr, op, expected);
 }
 
 void ThreadUtils::emitSyscallFutexWake(Value* addr) {
   LLVMContext& llvmCtx = ctx.getContext();
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
+  auto* i64Ty = llvm::Type::getInt64Ty(llvmCtx);
 
   if (isDarwinTarget(module)) {
     // int __ulock_wake(op, addr, wake_value); wakes one waiter, like the
     // futex path below.
-    auto* i32Ty = Type::getInt32Ty(llvmCtx);
-    ctx.builder->CreateCall(sun::libc::ulockWake(module),
+    auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
+    ctx.builder->CreateCall(sun::codegen::intrinsics::ulockWake(module),
                             {ConstantInt::get(i32Ty, UL_COMPARE_AND_WAIT), addr,
                              ConstantInt::get(i64Ty, 0)},
                             "ulock_wake_result");
@@ -112,11 +114,9 @@ void ThreadUtils::emitSyscallFutexWake(Value* addr) {
 // Thread trampoline
 // -------------------------------------------------------------------
 
-Function* ThreadUtils::getOrCreateThreadTrampoline(FunctionType* lambdaFuncType,
-                                                   StructType* fatType,
-                                                   Type* resultLLVMType,
-                                                   StructType* contextType,
-                                                   StructType* argsType) {
+Function* ThreadUtils::getOrCreateThreadTrampoline(
+    llvm::FunctionType* lambdaFuncType, StructType* fatType,
+    llvm::Type* resultLLVMType, StructType* contextType, StructType* argsType) {
   LLVMContext& llvmCtx = ctx.getContext();
 
   // Two spawns of same-typed callees share one trampoline. The argument
@@ -137,7 +137,7 @@ Function* ThreadUtils::getOrCreateThreadTrampoline(FunctionType* lambdaFuncType,
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
 
   // ptr __sun_thread_start(ptr context) — LLVM uniques the name per module.
-  FunctionType* funcType = FunctionType::get(ptrTy, {ptrTy}, false);
+  llvm::FunctionType* funcType = llvm::FunctionType::get(ptrTy, {ptrTy}, false);
   Function* func = Function::Create(funcType, Function::InternalLinkage,
                                     "__sun_thread_start", module);
 
@@ -192,7 +192,7 @@ Function* ThreadUtils::getOrCreateThreadTrampoline(FunctionType* lambdaFuncType,
   // The arguments moved into the lambda's own parameter slots, so the blob is
   // dead the moment the call returns and the thread releases it.
   if (argsBlob) {
-    builder.CreateCall(sun::libc::free(module), {argsBlob});
+    builder.CreateCall(sun::codegen::intrinsics::free(module), {argsBlob});
   }
 
   if (!resultLLVMType->isVoidTy()) {
@@ -208,3 +208,5 @@ Function* ThreadUtils::getOrCreateThreadTrampoline(FunctionType* lambdaFuncType,
   trampolineCache[keyStream.str()] = func;
   return func;
 }
+
+}  // namespace sun::codegen::intrinsics

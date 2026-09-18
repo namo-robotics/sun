@@ -9,6 +9,8 @@
 
 #include "ast/expr_ast.h"
 
+namespace sun::ast {
+
 // Struct literal: { color: "red", speed: 120 }
 //
 // Constructs a class by naming each field, for classes that declare no `init`.
@@ -23,7 +25,7 @@ class StructLiteralAST : public ExprAST {
   struct FieldInit {
     std::string name;
     std::unique_ptr<ExprAST> value;
-    Position location;  // the field name, for error reporting
+    sun::support::Position location;  // the field name, for error reporting
   };
 
  private:
@@ -36,7 +38,7 @@ class StructLiteralAST : public ExprAST {
 
  public:
   /** Retain selected fields separately from their source names. */
-  std::vector<sun::DeclarationId>& resolvedFields() const {
+  std::vector<sun::semantic_analysis::DeclarationId>& resolvedFields() const {
     return static_cast<StructLiteralAnalysis&>(analysis()).fields;
   }
 
@@ -64,3 +66,5 @@ class StructLiteralAST : public ExprAST {
 
   std::string dotLabel() const override { return "StructLiteral"; }
 };
+
+}  // namespace sun::ast

@@ -18,6 +18,8 @@
 
 using namespace sun::cli;
 
+namespace sun::cli {
+
 // The default command: bundle, compile or run, depending on the flags.
 static int runDefaultCommand(const std::string& programName,
                              const std::vector<std::string>& args) {
@@ -35,6 +37,8 @@ static int runDefaultCommand(const std::string& programName,
   return runJitCommand(options);
 }
 
+}  // namespace sun::cli
+
 int main(int argc, char* argv[]) {
   const std::string programName = argc > 0 ? argv[0] : "sun";
   std::vector<std::string> args;
@@ -43,8 +47,8 @@ int main(int argc, char* argv[]) {
   // A subcommand is only recognised as the first argument
   if (!args.empty() && (args[0] == "fmt" || args[0] == "test")) {
     std::vector<std::string> commandArgs(args.begin() + 1, args.end());
-    return args[0] == "fmt" ? runFmtCommand(commandArgs)
-                            : runTestCommand(commandArgs);
+    return args[0] == "fmt" ? sun::cli::runFmtCommand(commandArgs)
+                            : sun::cli::runTestCommand(commandArgs);
   }
-  return runDefaultCommand(programName, args);
+  return sun::cli::runDefaultCommand(programName, args);
 }

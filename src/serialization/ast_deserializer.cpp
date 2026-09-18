@@ -7,8 +7,20 @@
 #include "serialization/token_kind_proto_map.h"
 #include "types.pb.h"
 
-namespace sun {
-namespace serialization {
+using sun::semantic_analysis::PortableDeclarationKey;
+
+using sun::ast::BlockExprAST;
+using sun::ast::ExprAST;
+using sun::ast::FunctionAST;
+using sun::ast::InterpolatedStringAST;
+using sun::ast::NumberExprAST;
+using sun::ast::SliceExprAST;
+using sun::ast::StructLiteralAST;
+using sun::parsing::Token;
+using sun::support::Position;
+
+namespace sun::serialization {
+namespace pbc = sun::proto::ast;
 
 // Copy a repeated string field into a plain vector
 template <typename Repeated>
@@ -19,8 +31,9 @@ static std::vector<std::string> toStringVector(const Repeated& field) {
 // Lifetime parameters, from the names the bundle carries. Bundles written
 // before lifetimes existed have none, which reads back as fully elided.
 template <typename Owner>
-static std::vector<LifetimeParameter> toLifetimeParameters(const Owner& owner) {
-  std::vector<LifetimeParameter> params;
+static std::vector<sun::ast::LifetimeParameter> toLifetimeParameters(
+    const Owner& owner) {
+  std::vector<sun::ast::LifetimeParameter> params;
   params.reserve(owner.lifetime_params_size());
   for (const auto& name : owner.lifetime_params()) {
     params.emplace_back(name);
@@ -29,9 +42,9 @@ static std::vector<LifetimeParameter> toLifetimeParameters(const Owner& owner) {
 }
 
 template <typename Owner>
-std::vector<TypeParameter> ASTDeserializer::deserializeTypeParameters(
+std::vector<sun::ast::TypeParameter> ASTDeserializer::deserializeTypeParameters(
     const Owner& owner) const {
-  std::vector<TypeParameter> params;
+  std::vector<sun::ast::TypeParameter> params;
   if (owner.type_params_size() > 0) {
     params.reserve(owner.type_params_size());
     for (const auto& tp : owner.type_params()) {
@@ -55,16 +68,17 @@ std::vector<TypeParameter> ASTDeserializer::deserializeTypeParameters(
 }
 
 void ASTDeserializer::deserializeIdentity(
-    const ast::DeclarationIdentity& proto,
-    sun::DeclarationIdentity& identity) const {
+    const pbc::DeclarationIdentity& proto,
+    sun::semantic_analysis::DeclarationIdentity& identity) const {
   if (!config_.import_declarations) return;
   if (proto.declaration().empty())
-    logAndThrowError("Imported declaration has no portable identity");
+    sun::support::logAndThrowError(
+        "Imported declaration has no portable identity");
   auto validate = [](const std::string& value) {
-    sun::PortableDeclarationKey::parseOriginal(value);
+    PortableDeclarationKey::parseOriginal(value);
     return value;
   };
-  sun::ImportedDeclarationIdentity imported;
+  sun::semantic_analysis::ImportedDeclarationIdentity imported;
   imported.declaration = validate(proto.declaration());
   for (const auto& value : proto.parameters())
     imported.parameters.push_back(validate(value));
@@ -75,7 +89,7 @@ void ASTDeserializer::deserializeIdentity(
   identity.imported = std::move(imported);
 }
 
-Position ASTDeserializer::deserializePosition(const ast::Position& pos) const {
+Position ASTDeserializer::deserializePosition(const pbc::Position& pos) const {
   Position result;
   result.line = pos.line();
   result.column = pos.column();
@@ -97,39 +111,39 @@ Position ASTDeserializer::deserializePosition(const ast::Position& pos) const {
   return result;
 }
 
-Token ASTDeserializer::deserializeToken(const ast::Token& token) const {
+Token ASTDeserializer::deserializeToken(const pbc::Token& token) const {
   Token result;
   result.kind = fromProtoTokenKind(token.kind());
   result.text = token.text();
   return result;
 }
 
-TypeAnnotation ASTDeserializer::deserializeTypeAnnotation(
-    const ast::TypeAnnotation& type) const {
-  TypeAnnotation result;
+sun::ast::TypeAnnotation ASTDeserializer::deserializeTypeAnnotation(
+    const pbc::TypeAnnotation& type) const {
+  sun::ast::TypeAnnotation result;
   result.baseName = type.base_name();
   if (type.has_declaration_key())
     result.declarationKey =
         PortableDeclarationKey::parseOriginal(type.declaration_key());
 
   if (type.has_element_type()) {
-    result.elementType = std::make_unique<TypeAnnotation>(
+    result.elementType = std::make_unique<sun::ast::TypeAnnotation>(
         deserializeTypeAnnotation(type.element_type()));
   }
 
   for (const auto& param : type.param_types()) {
-    result.paramTypes.push_back(
-        std::make_unique<TypeAnnotation>(deserializeTypeAnnotation(param)));
+    result.paramTypes.push_back(std::make_unique<sun::ast::TypeAnnotation>(
+        deserializeTypeAnnotation(param)));
   }
 
   if (type.has_return_type()) {
-    result.returnType = std::make_unique<TypeAnnotation>(
+    result.returnType = std::make_unique<sun::ast::TypeAnnotation>(
         deserializeTypeAnnotation(type.return_type()));
   }
 
   for (const auto& arg : type.type_arguments()) {
-    result.typeArguments.push_back(
-        std::make_unique<TypeAnnotation>(deserializeTypeAnnotation(arg)));
+    result.typeArguments.push_back(std::make_unique<sun::ast::TypeAnnotation>(
+        deserializeTypeAnnotation(arg)));
   }
 
   for (auto dim : type.array_dimensions()) {
@@ -150,7 +164,7 @@ TypeAnnotation ASTDeserializer::deserializeTypeAnnotation(
   return result;
 }
 
-void ASTDeserializer::deserializeExprBase(const ast::ASTNode& node,
+void ASTDeserializer::deserializeExprBase(const pbc::ASTNode& node,
                                           ExprAST* expr) const {
   if (node.has_location()) {
     expr->setLocation(deserializePosition(node.location()));
@@ -170,23 +184,23 @@ void ASTDeserializer::deserializeExprBase(const ast::ASTNode& node,
 }
 
 std::unique_ptr<BlockExprAST> ASTDeserializer::deserializeProgram(
-    const ast::Program& program) const {
+    const pbc::Program& program) const {
   return deserializeBlockExpr(program.body());
 }
 
-std::unique_ptr<PrototypeAST> ASTDeserializer::deserializePrototype(
-    const ast::Prototype& proto) const {
-  std::vector<std::pair<std::string, TypeAnnotation>> args;
+std::unique_ptr<sun::ast::PrototypeAST> ASTDeserializer::deserializePrototype(
+    const pbc::Prototype& proto) const {
+  std::vector<std::pair<std::string, sun::ast::TypeAnnotation>> args;
   for (const auto& arg : proto.args()) {
     args.emplace_back(arg.name(), deserializeTypeAnnotation(arg.type()));
   }
 
-  std::optional<TypeAnnotation> returnType;
+  std::optional<sun::ast::TypeAnnotation> returnType;
   if (proto.has_return_type()) {
     returnType = deserializeTypeAnnotation(proto.return_type());
   }
 
-  std::optional<VariadicParam> variadicParam;
+  std::optional<sun::ast::VariadicParam> variadicParam;
   if (proto.has_variadic_param_name()) {
     variadicParam.emplace(proto.variadic_param_name());
     if (proto.has_variadic_type_annotation()) {
@@ -195,7 +209,7 @@ std::unique_ptr<PrototypeAST> ASTDeserializer::deserializePrototype(
     }
   }
 
-  auto result = std::make_unique<PrototypeAST>(
+  auto result = std::make_unique<sun::ast::PrototypeAST>(
       proto.name(), std::move(args), std::move(returnType),
       deserializeTypeParameters(proto), std::move(variadicParam));
   if (proto.has_declaration_identity())
@@ -224,155 +238,155 @@ std::unique_ptr<PrototypeAST> ASTDeserializer::deserializePrototype(
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserialize(
-    const ast::ASTNode& node) const {
+    const pbc::ASTNode& node) const {
   std::unique_ptr<ExprAST> result;
 
   switch (node.node_case()) {
-    case ast::ASTNode::kNumberExpr:
+    case pbc::ASTNode::kNumberExpr:
       result = deserializeNumber(node.number_expr());
       break;
-    case ast::ASTNode::kCharLiteral:
+    case pbc::ASTNode::kCharLiteral:
       result = deserializeCharLiteral(node.char_literal());
       break;
-    case ast::ASTNode::kStringLiteral:
+    case pbc::ASTNode::kStringLiteral:
       result = deserializeString(node.string_literal());
       break;
-    case ast::ASTNode::kNullLiteral:
-      result = std::make_unique<NullLiteralAST>();
+    case pbc::ASTNode::kNullLiteral:
+      result = std::make_unique<sun::ast::NullLiteralAST>();
       break;
-    case ast::ASTNode::kBoolLiteral:
+    case pbc::ASTNode::kBoolLiteral:
       result = deserializeBool(node.bool_literal());
       break;
-    case ast::ASTNode::kArrayLiteral:
+    case pbc::ASTNode::kArrayLiteral:
       result = deserializeArray(node.array_literal());
       break;
-    case ast::ASTNode::kStructLiteral:
+    case pbc::ASTNode::kStructLiteral:
       result = deserializeStructLiteral(node.struct_literal());
       break;
-    case ast::ASTNode::kSliceExpr:
+    case pbc::ASTNode::kSliceExpr:
       result = deserializeSlice(node.slice_expr());
       break;
-    case ast::ASTNode::kIndexExpr:
+    case pbc::ASTNode::kIndexExpr:
       result = deserializeIndex(node.index_expr());
       break;
-    case ast::ASTNode::kArrayIndexExpr:
+    case pbc::ASTNode::kArrayIndexExpr:
       result = deserializeArrayIndex(node.array_index_expr());
       break;
-    case ast::ASTNode::kVariableReference:
+    case pbc::ASTNode::kVariableReference:
       result = deserializeVariableRef(node.variable_reference());
       break;
-    case ast::ASTNode::kVariableCreation:
+    case pbc::ASTNode::kVariableCreation:
       result = deserializeVariableCreation(node.variable_creation());
       break;
-    case ast::ASTNode::kVariableAssignment:
+    case pbc::ASTNode::kVariableAssignment:
       result = deserializeVariableAssignment(node.variable_assignment());
       break;
-    case ast::ASTNode::kReferenceCreation:
+    case pbc::ASTNode::kReferenceCreation:
       result = deserializeReferenceCreation(node.reference_creation());
       break;
-    case ast::ASTNode::kIndexedAssignment:
+    case pbc::ASTNode::kIndexedAssignment:
       result = deserializeIndexedAssignment(node.indexed_assignment());
       break;
-    case ast::ASTNode::kCompoundAssignment:
+    case pbc::ASTNode::kCompoundAssignment:
       result = deserializeCompoundAssignment(node.compound_assignment());
       break;
-    case ast::ASTNode::kMemberAssignment:
+    case pbc::ASTNode::kMemberAssignment:
       result = deserializeMemberAssignment(node.member_assignment());
       break;
-    case ast::ASTNode::kBinaryExpr:
+    case pbc::ASTNode::kBinaryExpr:
       result = deserializeBinary(node.binary_expr());
       break;
-    case ast::ASTNode::kTernaryExpr:
+    case pbc::ASTNode::kTernaryExpr:
       result = deserializeTernary(node.ternary_expr());
       break;
-    case ast::ASTNode::kParenExpr:
+    case pbc::ASTNode::kParenExpr:
       result = deserializeParen(node.paren_expr());
       break;
-    case ast::ASTNode::kInterpolatedString:
+    case pbc::ASTNode::kInterpolatedString:
       result = deserializeInterpolatedString(node.interpolated_string());
       break;
-    case ast::ASTNode::kUnaryExpr:
+    case pbc::ASTNode::kUnaryExpr:
       result = deserializeUnary(node.unary_expr());
       break;
-    case ast::ASTNode::kPackExpansion:
+    case pbc::ASTNode::kPackExpansion:
       result = deserializePackExpansion(node.pack_expansion());
       break;
-    case ast::ASTNode::kBlockExpr:
+    case pbc::ASTNode::kBlockExpr:
       result = deserializeBlock(node.block_expr());
       break;
-    case ast::ASTNode::kIfExpr:
+    case pbc::ASTNode::kIfExpr:
       result = deserializeIf(node.if_expr());
       break;
-    case ast::ASTNode::kMatchExpr:
+    case pbc::ASTNode::kMatchExpr:
       result = deserializeMatch(node.match_expr());
       break;
-    case ast::ASTNode::kForExpr:
+    case pbc::ASTNode::kForExpr:
       result = deserializeFor(node.for_expr());
       break;
-    case ast::ASTNode::kForInExpr:
+    case pbc::ASTNode::kForInExpr:
       result = deserializeForIn(node.for_in_expr());
       break;
-    case ast::ASTNode::kWhileExpr:
+    case pbc::ASTNode::kWhileExpr:
       result = deserializeWhile(node.while_expr());
       break;
-    case ast::ASTNode::kBreakStmt:
-      result = std::make_unique<BreakAST>();
+    case pbc::ASTNode::kBreakStmt:
+      result = std::make_unique<sun::ast::BreakAST>();
       break;
-    case ast::ASTNode::kContinueStmt:
-      result = std::make_unique<ContinueAST>();
+    case pbc::ASTNode::kContinueStmt:
+      result = std::make_unique<sun::ast::ContinueAST>();
       break;
-    case ast::ASTNode::kReturnExpr:
+    case pbc::ASTNode::kReturnExpr:
       result = deserializeReturn(node.return_expr());
       break;
-    case ast::ASTNode::kUnsafeBlock:
+    case pbc::ASTNode::kUnsafeBlock:
       result = deserializeUnsafeBlock(node.unsafe_block());
       break;
-    case ast::ASTNode::kFunctionDef:
+    case pbc::ASTNode::kFunctionDef:
       result = deserializeFunction(node.function_def());
       break;
-    case ast::ASTNode::kLambdaExpr:
+    case pbc::ASTNode::kLambdaExpr:
       result = deserializeLambda(node.lambda_expr());
       break;
-    case ast::ASTNode::kCallExpr:
+    case pbc::ASTNode::kCallExpr:
       result = deserializeCall(node.call_expr());
       break;
-    case ast::ASTNode::kGenericCallExpr:
+    case pbc::ASTNode::kGenericCallExpr:
       result = deserializeGenericCall(node.generic_call_expr());
       break;
-    case ast::ASTNode::kModuleDef:
+    case pbc::ASTNode::kModuleDef:
       result = deserializeModule(node.module_def());
       break;
-    case ast::ASTNode::kManifest:
+    case pbc::ASTNode::kManifest:
       result = deserializeManifest(node.manifest());
       break;
-    case ast::ASTNode::kUsingStmt:
+    case pbc::ASTNode::kUsingStmt:
       result = deserializeUsing(node.using_stmt());
       break;
-    case ast::ASTNode::kQualifiedName:
+    case pbc::ASTNode::kQualifiedName:
       result = deserializeQualifiedName(node.qualified_name());
       break;
-    case ast::ASTNode::kClassDef:
+    case pbc::ASTNode::kClassDef:
       result = deserializeClassDef(node.class_def());
       break;
-    case ast::ASTNode::kInterfaceDef:
+    case pbc::ASTNode::kInterfaceDef:
       result = deserializeInterfaceDef(node.interface_def());
       break;
-    case ast::ASTNode::kEnumDef:
+    case pbc::ASTNode::kEnumDef:
       result = deserializeEnumDef(node.enum_def());
       break;
-    case ast::ASTNode::kThisExpr:
-      result = std::make_unique<ThisExprAST>();
+    case pbc::ASTNode::kThisExpr:
+      result = std::make_unique<sun::ast::ThisExprAST>();
       break;
-    case ast::ASTNode::kMemberAccess:
+    case pbc::ASTNode::kMemberAccess:
       result = deserializeMemberAccess(node.member_access());
       break;
-    case ast::ASTNode::kTryCatch:
+    case pbc::ASTNode::kTryCatch:
       result = deserializeTryCatch(node.try_catch());
       break;
-    case ast::ASTNode::kThrowExpr:
+    case pbc::ASTNode::kThrowExpr:
       result = deserializeThrow(node.throw_expr());
       break;
-    case ast::ASTNode::kDeclareType:
+    case pbc::ASTNode::kDeclareType:
       result = deserializeDeclareType(node.declare_type());
       break;
     default:
@@ -388,7 +402,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserialize(
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeFromString(
     const std::string& data) const {
-  ast::ASTNode node;
+  pbc::ASTNode node;
   if (!node.ParseFromString(data)) {
     return nullptr;
   }
@@ -397,7 +411,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeFromString(
 
 std::unique_ptr<BlockExprAST> ASTDeserializer::deserializeProgramFromString(
     const std::string& data) const {
-  ast::Program program;
+  pbc::Program program;
   if (!program.ParseFromString(data)) {
     return nullptr;
   }
@@ -409,7 +423,7 @@ std::unique_ptr<BlockExprAST> ASTDeserializer::deserializeProgramFromString(
 // =============================================================================
 
 std::unique_ptr<BlockExprAST> ASTDeserializer::deserializeBlockExpr(
-    const ast::BlockExpr& proto) const {
+    const pbc::BlockExpr& proto) const {
   std::vector<std::unique_ptr<ExprAST>> body;
   for (const auto& stmt : proto.body()) {
     body.push_back(deserialize(stmt));
@@ -417,7 +431,7 @@ std::unique_ptr<BlockExprAST> ASTDeserializer::deserializeBlockExpr(
   auto block = std::make_unique<BlockExprAST>(std::move(body));
   block->setSourceFileId(proto.source_file_id());
   if (proto.has_block_kind()) {
-    block->setKind(static_cast<BlockKind>(proto.block_kind()));
+    block->setKind(static_cast<sun::ast::BlockKind>(proto.block_kind()));
   }
   if (proto.has_location()) {
     block->setLocation(deserializePosition(proto.location()));
@@ -426,7 +440,7 @@ std::unique_ptr<BlockExprAST> ASTDeserializer::deserializeBlockExpr(
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeNumber(
-    const ast::NumberExpr& proto) const {
+    const pbc::NumberExpr& proto) const {
   if (proto.has_int_magnitude()) {
     return std::make_unique<NumberExprAST>(proto.int_magnitude(),
                                            proto.int_negative()
@@ -438,26 +452,27 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeNumber(
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeCharLiteral(
-    const ast::CharLiteral& proto) const {
-  return std::make_unique<CharLiteralAST>(proto.value(), proto.is_byte());
+    const pbc::CharLiteral& proto) const {
+  return std::make_unique<sun::ast::CharLiteralAST>(proto.value(),
+                                                    proto.is_byte());
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeString(
-    const ast::StringLiteral& proto) const {
-  return std::make_unique<StringLiteralAST>(proto.value());
+    const pbc::StringLiteral& proto) const {
+  return std::make_unique<sun::ast::StringLiteralAST>(proto.value());
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeBool(
-    const ast::BoolLiteral& proto) const {
-  return std::make_unique<BoolLiteralAST>(proto.value());
+    const pbc::BoolLiteral& proto) const {
+  return std::make_unique<sun::ast::BoolLiteralAST>(proto.value());
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeStructLiteral(
-    const ast::StructLiteral& proto) const {
-  std::vector<StructLiteralAST::FieldInit> fields;
+    const pbc::StructLiteral& proto) const {
+  std::vector<sun::ast::StructLiteralAST::FieldInit> fields;
   fields.reserve(proto.fields().size());
   for (const auto& field : proto.fields()) {
-    StructLiteralAST::FieldInit init;
+    sun::ast::StructLiteralAST::FieldInit init;
     init.name = field.name();
     init.value = deserialize(field.value());
     if (field.has_location()) {
@@ -469,16 +484,16 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeStructLiteral(
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeArray(
-    const ast::ArrayLiteral& proto) const {
+    const pbc::ArrayLiteral& proto) const {
   std::vector<std::unique_ptr<ExprAST>> elements;
   for (const auto& elem : proto.elements()) {
     elements.push_back(deserialize(elem));
   }
-  return std::make_unique<ArrayLiteralAST>(std::move(elements));
+  return std::make_unique<sun::ast::ArrayLiteralAST>(std::move(elements));
 }
 
 std::unique_ptr<SliceExprAST> ASTDeserializer::deserializeSliceExpr(
-    const ast::SliceExpr& proto) const {
+    const pbc::SliceExpr& proto) const {
   std::unique_ptr<ExprAST> start;
   std::unique_ptr<ExprAST> end;
   if (proto.has_start()) {
@@ -492,46 +507,48 @@ std::unique_ptr<SliceExprAST> ASTDeserializer::deserializeSliceExpr(
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeSlice(
-    const ast::SliceExpr& proto) const {
+    const pbc::SliceExpr& proto) const {
   return deserializeSliceExpr(proto);
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeIndex(
-    const ast::IndexExpr& proto) const {
+    const pbc::IndexExpr& proto) const {
   auto target = deserialize(proto.target());
   std::vector<std::unique_ptr<SliceExprAST>> indices;
   for (const auto& idx : proto.indices()) {
     indices.push_back(deserializeSliceExpr(idx));
   }
-  return std::make_unique<IndexAST>(std::move(target), std::move(indices));
+  return std::make_unique<sun::ast::IndexAST>(std::move(target),
+                                              std::move(indices));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeArrayIndex(
-    const ast::ArrayIndexExpr& proto) const {
+    const pbc::ArrayIndexExpr& proto) const {
   auto array = deserialize(proto.array());
   std::vector<std::unique_ptr<ExprAST>> indices;
   for (const auto& idx : proto.indices()) {
     indices.push_back(deserialize(idx));
   }
-  return std::make_unique<ArrayIndexAST>(std::move(array), std::move(indices));
+  return std::make_unique<sun::ast::ArrayIndexAST>(std::move(array),
+                                                   std::move(indices));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeVariableRef(
-    const ast::VariableReference& proto) const {
-  return std::make_unique<VariableReferenceAST>(proto.name());
+    const pbc::VariableReference& proto) const {
+  return std::make_unique<sun::ast::VariableReferenceAST>(proto.name());
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeVariableCreation(
-    const ast::VariableCreation& proto) const {
+    const pbc::VariableCreation& proto) const {
   std::unique_ptr<ExprAST> value;
   if (proto.has_value()) {
     value = deserialize(proto.value());
   }
-  std::optional<TypeAnnotation> typeAnnotation;
+  std::optional<sun::ast::TypeAnnotation> typeAnnotation;
   if (proto.has_type_annotation()) {
     typeAnnotation = deserializeTypeAnnotation(proto.type_annotation());
   }
-  auto var = std::make_unique<VariableCreationAST>(
+  auto var = std::make_unique<sun::ast::VariableCreationAST>(
       proto.name(), std::move(value), std::move(typeAnnotation),
       proto.is_const());
   var->setCExtern(proto.is_c_extern());
@@ -546,61 +563,61 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeVariableCreation(
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeVariableAssignment(
-    const ast::VariableAssignment& proto) const {
-  return std::make_unique<VariableAssignmentAST>(proto.name(),
-                                                 deserialize(proto.value()));
+    const pbc::VariableAssignment& proto) const {
+  return std::make_unique<sun::ast::VariableAssignmentAST>(
+      proto.name(), deserialize(proto.value()));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeReferenceCreation(
-    const ast::ReferenceCreation& proto) const {
-  return std::make_unique<ReferenceCreationAST>(
+    const pbc::ReferenceCreation& proto) const {
+  return std::make_unique<sun::ast::ReferenceCreationAST>(
       proto.name(), deserialize(proto.target()), proto.is_mutable());
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeIndexedAssignment(
-    const ast::IndexedAssignment& proto) const {
-  return std::make_unique<IndexedAssignmentAST>(deserialize(proto.target()),
-                                                deserialize(proto.value()));
+    const pbc::IndexedAssignment& proto) const {
+  return std::make_unique<sun::ast::IndexedAssignmentAST>(
+      deserialize(proto.target()), deserialize(proto.value()));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeMemberAssignment(
-    const ast::MemberAssignment& proto) const {
-  return std::make_unique<MemberAssignmentAST>(deserialize(proto.object()),
-                                               proto.member_name(),
-                                               deserialize(proto.value()));
+    const pbc::MemberAssignment& proto) const {
+  return std::make_unique<sun::ast::MemberAssignmentAST>(
+      deserialize(proto.object()), proto.member_name(),
+      deserialize(proto.value()));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeCompoundAssignment(
-    const ast::CompoundAssignment& proto) const {
-  return std::make_unique<CompoundAssignmentAST>(deserialize(proto.target()),
-                                                 deserializeToken(proto.op()),
-                                                 deserialize(proto.value()));
+    const pbc::CompoundAssignment& proto) const {
+  return std::make_unique<sun::ast::CompoundAssignmentAST>(
+      deserialize(proto.target()), deserializeToken(proto.op()),
+      deserialize(proto.value()));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeBinary(
-    const ast::BinaryExpr& proto) const {
+    const pbc::BinaryExpr& proto) const {
   Token token = deserializeToken(proto.op());
-  return std::make_unique<BinaryExprAST>(token, deserialize(proto.lhs()),
-                                         deserialize(proto.rhs()));
+  return std::make_unique<sun::ast::BinaryExprAST>(
+      token, deserialize(proto.lhs()), deserialize(proto.rhs()));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeTernary(
-    const ast::TernaryExpr& proto) const {
-  return std::make_unique<TernaryExprAST>(
+    const pbc::TernaryExpr& proto) const {
+  return std::make_unique<sun::ast::TernaryExprAST>(
       deserialize(proto.cond()), deserialize(proto.then_expr()),
       deserialize(proto.else_expr()), Position{});
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeParen(
-    const ast::ParenExpr& proto) const {
-  return std::make_unique<ParenExprAST>(deserialize(proto.inner()));
+    const pbc::ParenExpr& proto) const {
+  return std::make_unique<sun::ast::ParenExprAST>(deserialize(proto.inner()));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeInterpolatedString(
-    const ast::InterpolatedString& proto) const {
-  std::vector<InterpolatedStringAST::Segment> segments;
+    const pbc::InterpolatedString& proto) const {
+  std::vector<sun::ast::InterpolatedStringAST::Segment> segments;
   for (const auto& seg : proto.segments()) {
-    InterpolatedStringAST::Segment segment;
+    sun::ast::InterpolatedStringAST::Segment segment;
     segment.isLiteral = seg.is_literal();
     segment.rawText = seg.raw_text();
     segment.cookedText = seg.cooked_text();
@@ -615,37 +632,38 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeInterpolatedString(
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeUnary(
-    const ast::UnaryExpr& proto) const {
+    const pbc::UnaryExpr& proto) const {
   Token token = deserializeToken(proto.op());
-  return std::make_unique<UnaryExprAST>(token, deserialize(proto.operand()));
+  return std::make_unique<sun::ast::UnaryExprAST>(token,
+                                                  deserialize(proto.operand()));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializePackExpansion(
-    const ast::PackExpansion& proto) const {
-  return std::make_unique<PackExpansionAST>(proto.pack_name());
+    const pbc::PackExpansion& proto) const {
+  return std::make_unique<sun::ast::PackExpansionAST>(proto.pack_name());
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeBlock(
-    const ast::BlockExpr& proto) const {
+    const pbc::BlockExpr& proto) const {
   return deserializeBlockExpr(proto);
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeIf(
-    const ast::IfExpr& proto) const {
+    const pbc::IfExpr& proto) const {
   auto cond = deserialize(proto.condition());
   auto then = deserialize(proto.then_branch());
   std::unique_ptr<ExprAST> elseExpr;
   if (proto.has_else_branch()) {
     elseExpr = deserialize(proto.else_branch());
   }
-  return std::make_unique<IfExprAST>(std::move(cond), std::move(then),
-                                     std::move(elseExpr));
+  return std::make_unique<sun::ast::IfExprAST>(std::move(cond), std::move(then),
+                                               std::move(elseExpr));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeMatch(
-    const ast::MatchExpr& proto) const {
+    const pbc::MatchExpr& proto) const {
   auto discriminant = deserialize(proto.discriminant());
-  std::vector<MatchArm> arms;
+  std::vector<sun::ast::MatchArm> arms;
   for (const auto& armProto : proto.arms()) {
     std::unique_ptr<ExprAST> pattern;
     if (armProto.has_pattern()) {
@@ -656,7 +674,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeMatch(
                       std::move(body));
     arms.back().hasPayloadParens = armProto.has_payload_parens();
     for (const auto& bindingProto : armProto.bindings()) {
-      PatternBinding binding;
+      sun::ast::PatternBinding binding;
       if (bindingProto.has_declaration_identity())
         deserializeIdentity(bindingProto.declaration_identity(),
                             binding.declaration);
@@ -668,12 +686,12 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeMatch(
       arms.back().bindings.push_back(std::move(binding));
     }
   }
-  return std::make_unique<MatchExprAST>(std::move(discriminant),
-                                        std::move(arms));
+  return std::make_unique<sun::ast::MatchExprAST>(std::move(discriminant),
+                                                  std::move(arms));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeFor(
-    const ast::ForExpr& proto) const {
+    const pbc::ForExpr& proto) const {
   std::unique_ptr<ExprAST> init;
   std::unique_ptr<ExprAST> cond;
   std::unique_ptr<ExprAST> incr;
@@ -687,44 +705,44 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeFor(
     incr = deserialize(proto.increment());
   }
   auto body = deserialize(proto.body());
-  return std::make_unique<ForExprAST>(std::move(init), std::move(cond),
-                                      std::move(incr), std::move(body));
+  return std::make_unique<sun::ast::ForExprAST>(
+      std::move(init), std::move(cond), std::move(incr), std::move(body));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeForIn(
-    const ast::ForInExpr& proto) const {
+    const pbc::ForInExpr& proto) const {
   auto type = deserializeTypeAnnotation(proto.loop_var_type());
   auto iterable = deserialize(proto.iterable());
   auto body = deserialize(proto.body());
-  return std::make_unique<ForInExprAST>(proto.loop_var(), std::move(type),
-                                        std::move(iterable), std::move(body),
-                                        proto.is_const());
+  return std::make_unique<sun::ast::ForInExprAST>(
+      proto.loop_var(), std::move(type), std::move(iterable), std::move(body),
+      proto.is_const());
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeWhile(
-    const ast::WhileExpr& proto) const {
-  return std::make_unique<WhileExprAST>(deserialize(proto.condition()),
-                                        deserialize(proto.body()));
+    const pbc::WhileExpr& proto) const {
+  return std::make_unique<sun::ast::WhileExprAST>(
+      deserialize(proto.condition()), deserialize(proto.body()));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeReturn(
-    const ast::ReturnExpr& proto) const {
+    const pbc::ReturnExpr& proto) const {
   std::unique_ptr<ExprAST> value;
   if (proto.has_value()) {
     value = deserialize(proto.value());
   }
-  return std::make_unique<ReturnExprAST>(std::move(value));
+  return std::make_unique<sun::ast::ReturnExprAST>(std::move(value));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeUnsafeBlock(
-    const ast::UnsafeBlock& proto) const {
+    const pbc::UnsafeBlock& proto) const {
   auto body = deserializeBlockExpr(proto.body());
-  return std::make_unique<UnsafeBlockAST>(std::move(body),
-                                          proto.expression_form());
+  return std::make_unique<sun::ast::UnsafeBlockAST>(std::move(body),
+                                                    proto.expression_form());
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeFunction(
-    const ast::FunctionDef& proto) const {
+    const pbc::FunctionDef& proto) const {
   auto prototype = deserializePrototype(proto.proto());
   // A declaration has no body at all. Handing FunctionAST an empty block
   // instead would make isExtern() false, so a C extern would be emitted as
@@ -744,42 +762,44 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeFunction(
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeLambda(
-    const ast::LambdaExpr& proto) const {
+    const pbc::LambdaExpr& proto) const {
   auto prototype = deserializePrototype(proto.proto());
   auto body = deserializeBlockExpr(proto.body());
-  return std::make_unique<LambdaAST>(std::move(prototype), std::move(body));
+  return std::make_unique<sun::ast::LambdaAST>(std::move(prototype),
+                                               std::move(body));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeCall(
-    const ast::CallExpr& proto) const {
+    const pbc::CallExpr& proto) const {
   auto callee = deserialize(proto.callee());
   std::vector<std::unique_ptr<ExprAST>> args;
   for (const auto& arg : proto.args()) {
     args.push_back(deserialize(arg));
   }
-  return std::make_unique<CallExprAST>(std::move(callee), std::move(args));
+  return std::make_unique<sun::ast::CallExprAST>(std::move(callee),
+                                                 std::move(args));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeGenericCall(
-    const ast::GenericCallExpr& proto) const {
-  std::vector<std::unique_ptr<TypeAnnotation>> typeArgs;
+    const pbc::GenericCallExpr& proto) const {
+  std::vector<std::unique_ptr<sun::ast::TypeAnnotation>> typeArgs;
   for (const auto& typeArg : proto.type_arguments()) {
-    typeArgs.push_back(
-        std::make_unique<TypeAnnotation>(deserializeTypeAnnotation(typeArg)));
+    typeArgs.push_back(std::make_unique<sun::ast::TypeAnnotation>(
+        deserializeTypeAnnotation(typeArg)));
   }
   std::vector<std::unique_ptr<ExprAST>> args;
   for (const auto& arg : proto.args()) {
     args.push_back(deserialize(arg));
   }
-  return std::make_unique<GenericCallAST>(proto.function_name(),
-                                          std::move(typeArgs), std::move(args));
+  return std::make_unique<sun::ast::GenericCallAST>(
+      proto.function_name(), std::move(typeArgs), std::move(args));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeManifest(
-    const ast::Manifest& proto) const {
-  std::vector<ManifestSunDependency> suns;
+    const pbc::Manifest& proto) const {
+  std::vector<sun::ast::ManifestSunDependency> suns;
   for (const auto& sunProto : proto.suns()) {
-    ManifestSunDependency sun;
+    sun::ast::ManifestSunDependency sun;
     sun.path = sunProto.path();
 
     if (sunProto.has_hash()) {
@@ -789,9 +809,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeManifest(
     suns.push_back(std::move(sun));
   }
 
-  std::vector<ManifestMoonDependency> moons;
+  std::vector<sun::ast::ManifestMoonDependency> moons;
   for (const auto& moonProto : proto.moons()) {
-    ManifestMoonDependency moon;
+    sun::ast::ManifestMoonDependency moon;
     moon.path = moonProto.path();
 
     if (moonProto.has_url()) {
@@ -809,21 +829,22 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeManifest(
     moons.push_back(std::move(moon));
   }
 
-  std::vector<ManifestProtoDependency> protos;
+  std::vector<sun::ast::ManifestProtoDependency> protos;
   for (const auto& protoDep : proto.protos()) {
-    ManifestProtoDependency dep;
+    sun::ast::ManifestProtoDependency dep;
     dep.path = protoDep.path();
     protos.push_back(std::move(dep));
   }
 
-  return std::make_unique<ManifestAST>(std::move(suns), std::move(moons),
-                                       std::move(protos));
+  return std::make_unique<sun::ast::ManifestAST>(
+      std::move(suns), std::move(moons), std::move(protos));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeModule(
-    const ast::ModuleDef& proto) const {
+    const pbc::ModuleDef& proto) const {
   auto body = deserializeBlockExpr(proto.body());
-  auto mod = std::make_unique<ModuleAST>(proto.name(), std::move(body));
+  auto mod =
+      std::make_unique<sun::ast::ModuleAST>(proto.name(), std::move(body));
   mod->setVisibility(fromProto(proto.visibility()));
   mod->setDoc(proto.doc());
   if (proto.has_name_location())
@@ -835,20 +856,21 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeModule(
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeUsing(
-    const ast::UsingStmt& proto) const {
-  auto result = std::make_unique<UsingAST>(
+    const pbc::UsingStmt& proto) const {
+  auto result = std::make_unique<sun::ast::UsingAST>(
       toStringVector(proto.namespace_path()), proto.target());
   result->setModuleImport(proto.is_module_import());
   return result;
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeQualifiedName(
-    const ast::QualifiedNameExpr& proto) const {
-  return std::make_unique<QualifiedNameAST>(toStringVector(proto.parts()));
+    const pbc::QualifiedNameExpr& proto) const {
+  return std::make_unique<sun::ast::QualifiedNameAST>(
+      toStringVector(proto.parts()));
 }
 
 std::unique_ptr<FunctionAST> ASTDeserializer::deserializeMethodFunction(
-    const ast::FunctionDef& proto, bool emptyBodyMeansNone) const {
+    const pbc::FunctionDef& proto, bool emptyBodyMeansNone) const {
   auto prototype = deserializePrototype(proto.proto());
   std::unique_ptr<BlockExprAST> body;
   if (!emptyBodyMeansNone || proto.body().body_size() > 0) {
@@ -867,10 +889,10 @@ std::unique_ptr<FunctionAST> ASTDeserializer::deserializeMethodFunction(
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
-    const ast::ClassDef& proto) const {
-  std::vector<ImplementedInterfaceAST> interfaces;
+    const pbc::ClassDef& proto) const {
+  std::vector<sun::ast::ImplementedInterfaceAST> interfaces;
   for (const auto& ifaceProto : proto.implemented_interfaces()) {
-    ImplementedInterfaceAST iface;
+    sun::ast::ImplementedInterfaceAST iface;
     iface.name = ifaceProto.name();
     if (ifaceProto.has_declaration_key())
       iface.declarationKey =
@@ -881,17 +903,17 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
     interfaces.push_back(std::move(iface));
   }
 
-  std::vector<ClassFieldDecl> fields;
+  std::vector<sun::ast::ClassFieldDecl> fields;
   for (const auto& fieldProto : proto.fields()) {
-    auto field = deserializeField<ClassFieldDecl>(fieldProto);
+    auto field = deserializeField<sun::ast::ClassFieldDecl>(fieldProto);
     if (fieldProto.has_initializer())
       field.initializer = deserialize(fieldProto.initializer());
     fields.push_back(std::move(field));
   }
 
-  std::vector<ClassMethodDecl> methods;
+  std::vector<sun::ast::ClassMethodDecl> methods;
   for (const auto& methodProto : proto.methods()) {
-    ClassMethodDecl method;
+    sun::ast::ClassMethodDecl method;
     method.function = deserializeMethodFunction(methodProto.function(),
                                                 /*emptyBodyMeansNone=*/false);
     method.isConstructor = methodProto.is_constructor();
@@ -903,7 +925,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
   // class modifiers explicitly so they actually round-trip. Packing in
   // particular changes layout, so losing it would silently corrupt memory;
   // losing visibility would make every bundled item private.
-  auto classDef = std::make_unique<ClassDefinitionAST>(
+  auto classDef = std::make_unique<sun::ast::ClassDefinitionAST>(
       proto.name(), deserializeTypeParameters(proto), std::move(interfaces),
       std::move(fields), std::move(methods));
   classDef->setLifetimeParameters(toLifetimeParameters(proto));
@@ -921,15 +943,16 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeInterfaceDef(
-    const ast::InterfaceDef& proto) const {
-  std::vector<InterfaceFieldDecl> fields;
+    const pbc::InterfaceDef& proto) const {
+  std::vector<sun::ast::InterfaceFieldDecl> fields;
   for (const auto& fieldProto : proto.fields()) {
-    fields.push_back(deserializeField<InterfaceFieldDecl>(fieldProto));
+    fields.push_back(
+        deserializeField<sun::ast::InterfaceFieldDecl>(fieldProto));
   }
 
-  std::vector<InterfaceMethodDecl> methods;
+  std::vector<sun::ast::InterfaceMethodDecl> methods;
   for (const auto& methodProto : proto.methods()) {
-    InterfaceMethodDecl method;
+    sun::ast::InterfaceMethodDecl method;
     method.function = deserializeMethodFunction(methodProto.function(),
                                                 /*emptyBodyMeansNone=*/true);
     method.hasDefaultImpl = methodProto.has_default_impl();
@@ -937,7 +960,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeInterfaceDef(
     methods.push_back(std::move(method));
   }
 
-  auto iface = std::make_unique<InterfaceDefinitionAST>(
+  auto iface = std::make_unique<sun::ast::InterfaceDefinitionAST>(
       proto.name(), deserializeTypeParameters(proto), std::move(fields),
       std::move(methods));
   iface->setLifetimeParameters(toLifetimeParameters(proto));
@@ -950,10 +973,10 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeInterfaceDef(
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeEnumDef(
-    const ast::EnumDef& proto) const {
-  std::vector<EnumVariantDecl> variants;
+    const pbc::EnumDef& proto) const {
+  std::vector<sun::ast::EnumVariantDecl> variants;
   for (const auto& variantProto : proto.variants()) {
-    EnumVariantDecl variant;
+    sun::ast::EnumVariantDecl variant;
     if (variantProto.has_declaration_identity())
       deserializeIdentity(variantProto.declaration_identity(),
                           variant.declaration);
@@ -969,7 +992,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeEnumDef(
     }
     variants.push_back(std::move(variant));
   }
-  auto enumDef = std::make_unique<EnumDefinitionAST>(
+  auto enumDef = std::make_unique<sun::ast::EnumDefinitionAST>(
       proto.name(), std::move(variants), /*precompiled=*/false,
       deserializeTypeParameters(proto), proto.underlying_type());
   enumDef->setVisibility(fromProto(proto.visibility()));
@@ -981,24 +1004,24 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeEnumDef(
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeMemberAccess(
-    const ast::MemberAccess& proto) const {
+    const pbc::MemberAccess& proto) const {
   auto object = deserialize(proto.object());
-  std::vector<std::unique_ptr<TypeAnnotation>> typeArgs;
+  std::vector<std::unique_ptr<sun::ast::TypeAnnotation>> typeArgs;
   for (const auto& typeArg : proto.type_arguments()) {
-    typeArgs.push_back(
-        std::make_unique<TypeAnnotation>(deserializeTypeAnnotation(typeArg)));
+    typeArgs.push_back(std::make_unique<sun::ast::TypeAnnotation>(
+        deserializeTypeAnnotation(typeArg)));
   }
-  return std::make_unique<MemberAccessAST>(
+  return std::make_unique<sun::ast::MemberAccessAST>(
       std::move(object), proto.member_name(), std::move(typeArgs));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeTryCatch(
-    const ast::TryCatch& proto) const {
+    const pbc::TryCatch& proto) const {
   auto tryBlock = deserializeBlockExpr(proto.try_block());
 
-  std::vector<CatchClause> catchClauses;
+  std::vector<sun::ast::CatchClause> catchClauses;
   for (const auto& cc : proto.catch_clauses()) {
-    CatchClause catchClause;
+    sun::ast::CatchClause catchClause;
     if (cc.has_declaration_identity())
       deserializeIdentity(cc.declaration_identity(), catchClause.declaration);
     catchClause.bindingName = cc.binding_name();
@@ -1009,28 +1032,28 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeTryCatch(
     catchClauses.push_back(std::move(catchClause));
   }
 
-  return std::make_unique<TryCatchExprAST>(std::move(tryBlock),
-                                           std::move(catchClauses));
+  return std::make_unique<sun::ast::TryCatchExprAST>(std::move(tryBlock),
+                                                     std::move(catchClauses));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeThrow(
-    const ast::ThrowExpr& proto) const {
-  return std::make_unique<ThrowExprAST>(deserialize(proto.error_expr()));
+    const pbc::ThrowExpr& proto) const {
+  return std::make_unique<sun::ast::ThrowExprAST>(
+      deserialize(proto.error_expr()));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeDeclareType(
-    const ast::DeclareType& proto) const {
+    const pbc::DeclareType& proto) const {
   std::optional<std::string> aliasName;
   if (proto.has_alias_name()) {
     aliasName = proto.alias_name();
   }
   auto typeAnnotation = deserializeTypeAnnotation(proto.type_annotation());
   // Note: DeclareTypeAST constructor takes type first, then alias
-  auto decl = std::make_unique<DeclareTypeAST>(std::move(typeAnnotation),
-                                               std::move(aliasName));
+  auto decl = std::make_unique<sun::ast::DeclareTypeAST>(
+      std::move(typeAnnotation), std::move(aliasName));
   decl->setVisibility(fromProto(proto.visibility()));
   return decl;
 }
 
-}  // namespace serialization
-}  // namespace sun
+}  // namespace sun::serialization

@@ -6,6 +6,8 @@
 #include "semantic_analysis/semantic_context.h"
 #include "semantic_analysis/type_inferer.h"
 
+namespace sun::semantic_analysis {
+
 /** Detect duplicate method signatures, comparing generic binders by position.
  */
 class MethodSignatureSet {
@@ -16,16 +18,17 @@ class MethodSignatureSet {
 
   /** Return false when an equivalent source method has already been recorded.
    */
-  bool insert(const PrototypeAST& prototype,
-              const std::vector<sun::TypePtr>& parameters) {
-    sun::CallableSignature signature{prototype.getName(), parameters};
+  bool insert(const sun::ast::PrototypeAST& prototype,
+              const std::vector<sun::semantic_analysis::TypePtr>& parameters) {
+    sun::semantic_analysis::CallableSignature signature{prototype.getName(),
+                                                        parameters};
     SemanticContext::ScopeSwitchGuard scope(context_, context_.scope());
     const auto& binders = prototype.getTypeParameters();
     if (!binders.empty()) {
       for (size_t i = binders_.size(); i < binders.size(); ++i)
         binders_.push_back(
             prototype.declarationIdentity().typeParameters.at(i));
-      std::vector<sun::TypePtr> bindings;
+      std::vector<sun::semantic_analysis::TypePtr> bindings;
       for (size_t i = 0; i < binders.size(); ++i)
         bindings.push_back(
             binders[i].toSunType(context_.declarationTable(), binders_[i]));
@@ -40,7 +43,10 @@ class MethodSignatureSet {
  private:
   SemanticContext& context_;
   TypeInferer& types_;
-  std::vector<sun::DeclarationId> binders_;
-  std::unordered_set<sun::CallableSignature, sun::CallableSignatureHash>
+  std::vector<sun::semantic_analysis::DeclarationId> binders_;
+  std::unordered_set<sun::semantic_analysis::CallableSignature,
+                     sun::semantic_analysis::CallableSignatureHash>
       signatures_;
 };
+
+}  // namespace sun::semantic_analysis

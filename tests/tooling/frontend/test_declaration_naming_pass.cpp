@@ -11,12 +11,24 @@
 #include "semantic_analysis/semantic_pipeline.h"
 #include "semantic_analysis/type_rules.h"
 
+using sun::semantic_analysis::DeclarationNamingPass;
+using sun::semantic_analysis::FieldInitializerPreparationPass;
+using sun::semantic_analysis::TypeRegistry;
+
+using sun::ast::ClassDefinitionAST;
+using sun::ast::EnumDefinitionAST;
+using sun::ast::FunctionAST;
+using sun::ast::ModuleAST;
+using sun::driver::executeString;
+using sun::semantic_analysis::SemanticAnalyzer;
+
 namespace {
 
 /** Parse declarations without performing semantic analysis. */
-std::unique_ptr<BlockExprAST> parseDeclarations(const std::string& source) {
+std::unique_ptr<sun::ast::BlockExprAST> parseDeclarations(
+    const std::string& source) {
   std::istringstream input(source);
-  Parser parser(input);
+  sun::parsing::Parser parser(input);
   return parser.parseString(source);
 }
 
@@ -36,7 +48,7 @@ TEST(Tooling_Frontend_DeclarationNames, names_do_not_require_resolved_types) {
       function consume(value: Unknown) Unknown { return value; }
     }
   )");
-  sun::DeclarationNamingPass{}.run(*program);
+  DeclarationNamingPass{}.run(*program);
   const auto& module = static_cast<ModuleAST&>(*program->getBody()[0]);
   const auto& declarations = module.getBody().getBody();
   const auto& box = static_cast<ClassDefinitionAST&>(*declarations[0]);
@@ -47,7 +59,8 @@ TEST(Tooling_Frontend_DeclarationNames, names_do_not_require_resolved_types) {
       "library.Box.init");
   const auto& method = box.getMethods()[1].function->getProto();
   EXPECT_EQ(method.getQualifiedName().display(), "library.Box.get");
-  const auto& shape = static_cast<InterfaceDefinitionAST&>(*declarations[1]);
+  const auto& shape =
+      static_cast<sun::ast::InterfaceDefinitionAST&>(*declarations[1]);
   EXPECT_EQ(shape.getQualifiedName().display(), "library.Shape");
   EXPECT_EQ(
       shape.getMethods()[0].function->getProto().getQualifiedName().display(),
@@ -56,7 +69,7 @@ TEST(Tooling_Frontend_DeclarationNames, names_do_not_require_resolved_types) {
                 .getQualifiedName()
                 .display(),
             "library.Color");
-  EXPECT_EQ(static_cast<VariableCreationAST&>(*declarations[3])
+  EXPECT_EQ(static_cast<sun::ast::VariableCreationAST&>(*declarations[3])
                 .getQualifiedName()
                 .display(),
             "library.storage");
@@ -73,7 +86,7 @@ TEST(Tooling_Frontend_DeclarationNames, nested_and_reopened_modules) {
     module outer { module inner { function first<T>(x: T) T { return x; } } }
     module outer { module inner { function second<T>(x: T) T { return x; } } }
   )");
-  sun::DeclarationNamingPass{}.run(*program);
+  DeclarationNamingPass{}.run(*program);
   for (const auto& declaration : program->getBody()) {
     const auto& outer = static_cast<ModuleAST&>(*declaration);
     const auto& inner = static_cast<ModuleAST&>(*outer.getBody().getBody()[0]);
@@ -91,8 +104,9 @@ TEST(Tooling_Frontend_DeclarationNames, preserves_bundle_identity_under_alias) {
   )");
   auto& module = static_cast<ModuleAST&>(*program->getBody()[0]);
   module.setQualifiedName({{"$bundle$"}, "original"});
-  auto moon = MoonScopeAST::forOwnBundle("$bundle$", std::move(program));
-  sun::DeclarationNamingPass{}.run(*moon);
+  auto moon =
+      sun::ast::MoonScopeAST::forOwnBundle("$bundle$", std::move(program));
+  DeclarationNamingPass{}.run(*moon);
   const auto& function =
       static_cast<FunctionAST&>(*module.getBody().getBody()[0]);
   EXPECT_EQ(module.getQualifiedName().display(), "original");
@@ -105,10 +119,10 @@ TEST(Tooling_Frontend_DeclarationNames,
   auto program =
       parseDeclarations("function identity<T>(x: T) T { return x; }");
   auto& proto = static_cast<FunctionAST&>(*program->getBody()[0]).getProtoMut();
-  sun::QualifiedName specialized({"library"}, "identity");
+  sun::semantic_analysis::QualifiedName specialized({"library"}, "identity");
   proto.setQualifiedName(specialized);
-  sun::DeclarationNamingPass{}.run(*program);
-  sun::DeclarationNamingPass{}.run(*program);
+  DeclarationNamingPass{}.run(*program);
+  DeclarationNamingPass{}.run(*program);
   EXPECT_EQ(proto.getQualifiedName(), specialized);
 }
 
@@ -121,15 +135,18 @@ TEST(Tooling_Frontend_DeclarationNames,
       return local;
     }
   )");
-  sun::DeclarationNamingPass{}.run(*program);
+  DeclarationNamingPass{}.run(*program);
   auto& function = static_cast<FunctionAST&>(*program->getBody()[0]);
-  auto& body = const_cast<BlockExprAST&>(function.getBody());
+  auto& body = const_cast<sun::ast::BlockExprAST&>(function.getBody());
   auto& choice = static_cast<EnumDefinitionAST&>(*body.getBody()[0]);
-  auto& local = static_cast<VariableCreationAST&>(*body.getBody()[1]);
+  auto& local = static_cast<sun::ast::VariableCreationAST&>(*body.getBody()[1]);
   EXPECT_FALSE(choice.hasQualifiedName());
-  SemanticContext context(std::make_shared<sun::TypeRegistry>());
-  context.enterFunctionScope("work(i32)", sun::QualifiedName({}, "work"));
-  sun::assignLocalDeclarationName(choice, context.getCurrentScopePath());
+  sun::semantic_analysis::SemanticContext context(
+      std::make_shared<TypeRegistry>());
+  context.enterFunctionScope("work(i32)",
+                             sun::semantic_analysis::QualifiedName({}, "work"));
+  sun::semantic_analysis::assignLocalDeclarationName(
+      choice, context.getCurrentScopePath());
   EXPECT_EQ(choice.getQualifiedName().scopePath,
             std::vector<std::string>({"work"}));
   EXPECT_FALSE(local.hasQualifiedName());
@@ -159,8 +176,8 @@ TEST(Tooling_Frontend_DeclarationNames, synthesized_constructors_are_named) {
   auto program = parseDeclarations(R"(
     module library { class Box { var value: i32 = 42; } }
   )");
-  sun::FieldInitializerPreparationPass{}.run(*program);
-  sun::DeclarationNamingPass{}.run(*program);
+  FieldInitializerPreparationPass{}.run(*program);
+  DeclarationNamingPass{}.run(*program);
   const auto& module = static_cast<ModuleAST&>(*program->getBody()[0]);
   const auto& box =
       static_cast<ClassDefinitionAST&>(*module.getBody().getBody()[0]);
@@ -196,7 +213,7 @@ TEST(Tooling_Frontend_DeclarationNames,
     class Counter { var value: i32 = 42; }
     function identity<T>(value: T) T { return value; }
   )");
-  SemanticAnalyzer analyzer(std::make_shared<sun::TypeRegistry>());
+  SemanticAnalyzer analyzer(std::make_shared<TypeRegistry>());
   auto& pipeline = analyzer.pipeline();
   pipeline.run(*program);
 
@@ -220,9 +237,9 @@ TEST(Tooling_Frontend_DeclarationNames,
   auto program = parseDeclarations(R"(
     function answer() i32 { return missing; }
   )");
-  sun::FieldInitializerPreparationPass{}.run(*program);
-  sun::DeclarationNamingPass{}.run(*program);
-  SemanticAnalyzer analyzer(std::make_shared<sun::TypeRegistry>());
+  FieldInitializerPreparationPass{}.run(*program);
+  DeclarationNamingPass{}.run(*program);
+  SemanticAnalyzer analyzer(std::make_shared<TypeRegistry>());
   auto& pipeline = analyzer.pipeline();
   pipeline.prepareGenerated(*program);
 
@@ -249,10 +266,10 @@ TEST(Tooling_Frontend_DeclarationNames,
       }
     }
   )");
-  sun::FieldInitializerPreparationPass{}.run(*program);
+  FieldInitializerPreparationPass{}.run(*program);
   size_t preparedClasses = 0;
-  const auto inspect = [&](auto&& self, const ExprAST& node) -> void {
-    if (node.getType() == ASTNodeType::CLASS_DEFINITION) {
+  const auto inspect = [&](auto&& self, const sun::ast::ExprAST& node) -> void {
+    if (node.getType() == sun::ast::ASTNodeType::CLASS_DEFINITION) {
       const auto& declaration = static_cast<const ClassDefinitionAST&>(node);
       if (declaration.getName() != "Host") {
         ++preparedClasses;
@@ -264,7 +281,8 @@ TEST(Tooling_Frontend_DeclarationNames,
         EXPECT_FALSE(constructor.getProto().hasQualifiedName());
       }
     }
-    forEachChild(node, [&](const ExprAST& child) { self(self, child); });
+    sun::ast::forEachChild(
+        node, [&](const sun::ast::ExprAST& child) { self(self, child); });
   };
   inspect(inspect, *program);
   EXPECT_EQ(preparedClasses, 3u);
@@ -296,7 +314,7 @@ TEST(Tooling_Frontend_DeclarationNames,
       return value(1) + value(true) + host.value() + callback();
     }
   )");
-  SemanticAnalyzer analyzer(std::make_shared<sun::TypeRegistry>());
+  SemanticAnalyzer analyzer(std::make_shared<TypeRegistry>());
   EXPECT_NO_THROW(analyzer.pipeline().run(*program));
 }
 
@@ -306,7 +324,7 @@ TEST(Tooling_Frontend_DeclarationNames,
     class Item { var value: i32; }
     class Item { var value: i32; }
   )");
-  SemanticAnalyzer analyzer(std::make_shared<sun::TypeRegistry>());
+  SemanticAnalyzer analyzer(std::make_shared<TypeRegistry>());
   EXPECT_SUN_ERROR_WITH_MESSAGE(analyzer.pipeline().run(*program),
                                 "Redefinition of class 'Item'");
 }
@@ -318,7 +336,7 @@ TEST(Tooling_Frontend_DeclarationNames, local_naming_does_not_walk_method_bodies
     }
   )");
   auto& local = static_cast<ClassDefinitionAST&>(*program->getBody()[0]);
-  sun::assignLocalDeclarationName(local, {"owner"});
+  sun::semantic_analysis::assignLocalDeclarationName(local, {"owner"});
   EXPECT_TRUE(local.hasQualifiedName());
   const auto& method = *local.getMethods()[0].function;
   EXPECT_TRUE(method.getProto().hasQualifiedName());
@@ -341,7 +359,7 @@ TEST(Tooling_Frontend_DeclarationNames,
       enum Choice { First, Second }
     }
   )");
-  auto types = std::make_shared<sun::TypeRegistry>();
+  auto types = std::make_shared<TypeRegistry>();
   SemanticAnalyzer analyzer(types);
   ASSERT_NO_THROW(analyzer.pipeline().run(*program));
   const auto& first = static_cast<const FunctionAST&>(*program->getBody()[0]);
@@ -358,9 +376,9 @@ TEST(Tooling_Frontend_DeclarationNames,
   auto a = types->getClass(first.getBody().getBody()[0]->getDeclarationId());
   auto b = types->getClass(second.getBody().getBody()[0]->getDeclarationId());
   EXPECT_EQ(a->getQualifiedName(), b->getQualifiedName());
-  EXPECT_FALSE(sun::rules::isAssignableTo(a, b));
-  EXPECT_FALSE(sun::rules::isAssignableTo(b, a));
-  EXPECT_TRUE(sun::rules::isAssignableTo(a, a));
+  EXPECT_FALSE(sun::semantic_analysis::isAssignableTo(a, b));
+  EXPECT_FALSE(sun::semantic_analysis::isAssignableTo(b, a));
+  EXPECT_TRUE(sun::semantic_analysis::isAssignableTo(a, a));
 }
 
 TEST(Tooling_Frontend_DeclarationNames,
@@ -425,7 +443,7 @@ TEST(Tooling_Frontend_DeclarationNames,
     module library { class Local {} }
     module library { class Local {} }
   )");
-  SemanticAnalyzer analyzer(std::make_shared<sun::TypeRegistry>());
+  SemanticAnalyzer analyzer(std::make_shared<TypeRegistry>());
   EXPECT_SUN_ERROR_WITH_MESSAGE(analyzer.pipeline().run(*program),
                                 "Redefinition of class 'Local'");
 }
@@ -450,11 +468,11 @@ TEST(Tooling_Frontend_DeclarationNames, specializations_keep_source_names) {
       return first;
     }
   )");
-  SemanticAnalyzer analyzer(std::make_shared<sun::TypeRegistry>());
+  SemanticAnalyzer analyzer(std::make_shared<TypeRegistry>());
   analyzer.pipeline().run(*program);
   const auto& source = static_cast<const FunctionAST&>(*program->getBody()[0]);
   ASSERT_EQ(source.getSpecializations().size(), 2u);
-  sun::DeclarationId previous;
+  sun::semantic_analysis::DeclarationId previous;
   for (const auto& [id, instance] : source.getSpecializations()) {
     ASSERT_TRUE(instance);
     EXPECT_EQ(instance->getProto().getQualifiedName(), source.getProto().getQualifiedName());
@@ -471,7 +489,7 @@ TEST(Tooling_Frontend_DeclarationNames, duplicate_generic_methods_compare_binder
     "class Box<A> { method value<T>(x: T) T { return x; } method value<U>(x: U) U { return x; } } function main() i32 { var box = Box<i32>(); return 0; }"
   }) {
     auto program = parseDeclarations(source);
-    SemanticAnalyzer analyzer(std::make_shared<sun::TypeRegistry>());
-    EXPECT_THROW(analyzer.pipeline().run(*program), SunError);
+    SemanticAnalyzer analyzer(std::make_shared<TypeRegistry>());
+    EXPECT_THROW(analyzer.pipeline().run(*program), sun::support::SunError);
   }
 }

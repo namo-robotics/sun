@@ -7,6 +7,8 @@
 
 #include "ast/expr_ast.h"
 
+namespace sun::ast {
+
 // Continue statement: continue;
 // Jumps to the next iteration of the innermost enclosing loop
 class ContinueAST : public ExprAST {
@@ -17,3 +19,5 @@ class ContinueAST : public ExprAST {
   std::string toString() const override { return "continue"; }
   std::string dotLabel() const override { return "Continue"; }
 };
+
+}  // namespace sun::ast

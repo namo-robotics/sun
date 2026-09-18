@@ -7,6 +7,8 @@
 
 #include "ast/expr_ast.h"
 
+namespace sun::ast {
+
 class StringLiteralAST : public ExprAST {
   std::string Value;
 
@@ -17,3 +19,5 @@ class StringLiteralAST : public ExprAST {
   std::string dotLabel() const override { return "String\n" + toString(); }
   const std::string& getValue() const { return Value; }
 };
+
+}  // namespace sun::ast

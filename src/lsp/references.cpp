@@ -19,6 +19,13 @@
 #include "lsp/declarations.h"
 #include "lsp/name_ranges.h"
 
+using sun::ast::ASTNodeType;
+using sun::ast::BlockExprAST;
+using sun::ast::ClassDefinitionAST;
+using sun::ast::ExprAST;
+using sun::ast::forEachChild;
+using sun::support::Position;
+
 namespace sun::lsp {
 
 namespace {
@@ -30,7 +37,7 @@ DeclarationKey keyIn(const Declaration& declaration,
   key.file = std::move(normalizedFile);
   key.offset = declaration.location.offset;
   key.end = declaration.location.endOffset.value_or(-1);
-  const PrototypeAST* proto =
+  const sun::ast::PrototypeAST* proto =
       declaration.node ? prototypeOf(*declaration.node) : nullptr;
   if (proto && declaresParameter(*proto, declaration.name)) {
     key.parameter = declaration.name;
@@ -141,8 +148,8 @@ class Collector {
 // An annotation and every one nested in it: type arguments, element,
 // parameter and return types
 void forEachNestedAnnotation(
-    const TypeAnnotation& annotation,
-    const std::function<void(const TypeAnnotation&)>& fn) {
+    const sun::ast::TypeAnnotation& annotation,
+    const std::function<void(const sun::ast::TypeAnnotation&)>& fn) {
   fn(annotation);
   for (const auto& arg : annotation.typeArguments) {
     if (arg) forEachNestedAnnotation(*arg, fn);
@@ -196,14 +203,15 @@ class DeclaredNameFinder {
 
   void collectAnnotations(const ExprAST& node, const std::string& file,
                           const std::string& text) {
-    forEachAnnotation(node, [&](const TypeAnnotation& written) {
-      forEachNestedAnnotation(written, [&](const TypeAnnotation& annotation) {
-        if (!annotation.span.endOffset) return;
-        const ExprAST* decl = findAnnotatedType(program_, annotation);
-        if (!decl || !out_.matches(declarationOf(*decl), file)) return;
-        addWord(file, text, declarationName(*decl), annotation.span.offset,
-                *annotation.span.endOffset);
-      });
+    forEachAnnotation(node, [&](const sun::ast::TypeAnnotation& written) {
+      forEachNestedAnnotation(
+          written, [&](const sun::ast::TypeAnnotation& annotation) {
+            if (!annotation.span.endOffset) return;
+            const ExprAST* decl = findAnnotatedType(program_, annotation);
+            if (!decl || !out_.matches(declarationOf(*decl), file)) return;
+            addWord(file, text, declarationName(*decl), annotation.span.offset,
+                    *annotation.span.endOffset);
+          });
     });
   }
 
@@ -243,7 +251,7 @@ class DeclaredNameFinder {
         consider(declarationOf(node));
         [[fallthrough]];
       case ASTNodeType::LAMBDA: {
-        const PrototypeAST& proto = *prototypeOf(node);
+        const sun::ast::PrototypeAST& proto = *prototypeOf(node);
         for (const auto& arg : proto.getArgs()) {
           consider(Declaration{node.getLocation(), "", &node, arg.first});
         }
@@ -264,7 +272,8 @@ class DeclaredNameFinder {
       case ASTNodeType::INTERFACE_DEFINITION: {
         consider(declarationOf(node));
         for (const auto& field :
-             static_cast<const InterfaceDefinitionAST&>(node).getFields()) {
+             static_cast<const sun::ast::InterfaceDefinitionAST&>(node)
+                 .getFields()) {
           consider(Declaration{field.location, "", nullptr, field.name});
         }
         break;
@@ -272,7 +281,8 @@ class DeclaredNameFinder {
       case ASTNodeType::ENUM_DEFINITION: {
         consider(declarationOf(node));
         for (const auto& variant :
-             static_cast<const EnumDefinitionAST&>(node).getVariants()) {
+             static_cast<const sun::ast::EnumDefinitionAST&>(node)
+                 .getVariants()) {
           consider(Declaration{variant.location, "", nullptr, variant.name});
         }
         break;
@@ -283,13 +293,13 @@ class DeclaredNameFinder {
         consider(declarationOf(node));
         break;
       case ASTNodeType::FOR_IN_LOOP:
-        consider(
-            Declaration{node.getLocation(), "", &node,
-                        static_cast<const ForInExprAST&>(node).getLoopVar()});
+        consider(Declaration{
+            node.getLocation(), "", &node,
+            static_cast<const sun::ast::ForInExprAST&>(node).getLoopVar()});
         break;
       case ASTNodeType::MATCH: {
         for (const auto& arm :
-             static_cast<const MatchExprAST&>(node).getArms()) {
+             static_cast<const sun::ast::MatchExprAST&>(node).getArms()) {
           for (const auto& binding : arm.bindings) {
             if (!binding.isWildcard) {
               consider(Declaration{binding.location, "", &node, binding.name});
@@ -300,8 +310,8 @@ class DeclaredNameFinder {
       }
       case ASTNodeType::TRY_CATCH:
         forEachCatchBinding(
-            static_cast<const TryCatchExprAST&>(node),
-            [&](const CatchClause& clause, const Position& header) {
+            static_cast<const sun::ast::TryCatchExprAST&>(node),
+            [&](const sun::ast::CatchClause& clause, const Position& header) {
               consider(Declaration{header, "", &node, clause.bindingName});
             });
         break;
@@ -399,25 +409,31 @@ class UseFinder {
         considerRange(
             node, file,
             identifierRange(
-                loc, static_cast<const VariableReferenceAST&>(node).getName(),
+                loc,
+                static_cast<const sun::ast::VariableReferenceAST&>(node)
+                    .getName(),
                 *text));
         break;
       case ASTNodeType::VARIABLE_ASSIGNMENT:
         considerRange(
             node, file,
             identifierRange(
-                loc, static_cast<const VariableAssignmentAST&>(node).getName(),
+                loc,
+                static_cast<const sun::ast::VariableAssignmentAST&>(node)
+                    .getName(),
                 *text));
         break;
       case ASTNodeType::GENERIC_CALL:
         considerRange(
             node, file,
-            identifierRange(
-                loc, static_cast<const GenericCallAST&>(node).getFunctionName(),
-                *text));
+            identifierRange(loc,
+                            static_cast<const sun::ast::GenericCallAST&>(node)
+                                .getFunctionName(),
+                            *text));
         break;
       case ASTNodeType::MEMBER_ACCESS: {
-        const auto& access = static_cast<const MemberAccessAST&>(node);
+        const auto& access =
+            static_cast<const sun::ast::MemberAccessAST&>(node);
         if (!access.getObject()) break;
         considerRange(node, file,
                       memberRange(*access.getObject(), access.getMemberName(),
@@ -425,7 +441,8 @@ class UseFinder {
         break;
       }
       case ASTNodeType::MEMBER_ASSIGNMENT: {
-        const auto& assignment = static_cast<const MemberAssignmentAST&>(node);
+        const auto& assignment =
+            static_cast<const sun::ast::MemberAssignmentAST&>(node);
         if (!assignment.getObject()) break;
         considerRange(node, file,
                       memberRange(*assignment.getObject(),
@@ -433,7 +450,8 @@ class UseFinder {
         break;
       }
       case ASTNodeType::STRUCT_LITERAL:
-        considerFields(static_cast<const StructLiteralAST&>(node), file, *text);
+        considerFields(static_cast<const sun::ast::StructLiteralAST&>(node),
+                       file, *text);
         break;
       default:
         break;
@@ -441,9 +459,10 @@ class UseFinder {
   }
 
   // Field names in a struct literal name the fields of its type
-  void considerFields(const StructLiteralAST& literal, const std::string& file,
-                      const std::string& text) {
-    const sun::Type* type = stripReference(literal.getResolvedType().get());
+  void considerFields(const sun::ast::StructLiteralAST& literal,
+                      const std::string& file, const std::string& text) {
+    const sun::semantic_analysis::Type* type =
+        stripReference(literal.getResolvedType().get());
     if (!type) return;
     const ExprAST* definition = findTypeDefinition(program_, *type);
     if (!definition) return;

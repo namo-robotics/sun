@@ -2,11 +2,11 @@
 
 #include "codegen/abi/c_abi.h"
 
-#include "codegen/abi/aapcs64.h"
-#include "codegen/abi/sysv_x86_64.h"
+#include "codegen/abi/aapcs64/aapcs64.h"
+#include "codegen/abi/sysv/sysv_x86_64.h"
 #include "support/error.h"
 
-namespace sun::abi {
+namespace sun::codegen::abi {
 
 SignatureLowering lowerCSignature(const llvm::Triple& triple,
                                   llvm::Type* returnType,
@@ -26,8 +26,9 @@ SignatureLowering lowerCSignature(const llvm::Triple& triple,
     default:
       break;
   }
-  logAndThrowError("no C ABI rules for target '" + triple.str() +
-                   "'; extern \"C\" supports x86_64 and aarch64 only");
+  sun::support::logAndThrowError(
+      "no C ABI rules for target '" + triple.str() +
+      "'; extern \"C\" supports x86_64 and aarch64 only");
 }
 
 llvm::FunctionType* buildLoweredFunctionType(const SignatureLowering& lowering,
@@ -67,4 +68,4 @@ llvm::FunctionType* buildLoweredFunctionType(const SignatureLowering& lowering,
   return llvm::FunctionType::get(retTy, params, isVarArg);
 }
 
-}  // namespace sun::abi
+}  // namespace sun::codegen::abi

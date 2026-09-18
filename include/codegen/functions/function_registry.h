@@ -13,13 +13,17 @@
 #include "codegen/codegen_state.h"
 #include "semantic_analysis/types.h"
 
+namespace sun::codegen::functions {
+using sun::semantic_analysis::DeclarationId;
+
 /**
  * Map resolved declarations to LLVM functions and track their origins.
  */
 class FunctionRegistry {
  public:
   /** Share the module and declaration table used by this codegen run. */
-  explicit FunctionRegistry(CodegenState& state) : state_(state) {}
+  explicit FunctionRegistry(sun::codegen::CodegenState& state)
+      : state_(state) {}
 
   FunctionRegistry(const FunctionRegistry&) = delete;
   FunctionRegistry& operator=(const FunctionRegistry&) = delete;
@@ -53,15 +57,14 @@ class FunctionRegistry {
   // ---------------------------------------------------------------
 
   /** Bind a source declaration to its created or imported LLVM function. */
-  void registerFunction(sun::DeclarationId declaration,
-                        llvm::Function* function);
+  void registerFunction(DeclarationId declaration, llvm::Function* function);
 
   /** Find the emitted function selected by semantic declaration resolution. */
-  llvm::Function* lookupFunctionById(sun::DeclarationId declaration);
+  llvm::Function* lookupFunctionById(DeclarationId declaration);
 
  private:
-  std::unordered_map<sun::DeclarationId, llvm::WeakTrackingVH> functionsById_;
-  CodegenState& state_;
+  std::unordered_map<DeclarationId, llvm::WeakTrackingVH> functionsById_;
+  sun::codegen::CodegenState& state_;
 
   // Declared from precompiled bitcode before codegen started
   std::set<std::string> precompiled_;
@@ -69,3 +72,5 @@ class FunctionRegistry {
   // Written by the user, as opposed to pulled in from a library
   std::set<std::string> userDefined_;
 };
+
+}  // namespace sun::codegen::functions

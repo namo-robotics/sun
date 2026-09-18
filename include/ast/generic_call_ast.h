@@ -12,6 +12,9 @@
 #include "ast/expr_ast.h"
 #include "ast/type_annotation.h"
 
+namespace sun::ast {
+using sun::semantic_analysis::TypePtr;
+
 // Generic function call: create<Type>(args...) or create<Type1, Type2>(args...)
 // Used for generic free functions like create<T>, destroy, etc.
 class GenericCallAST : public ExprAST {
@@ -78,17 +81,19 @@ class GenericCallAST : public ExprAST {
   // substitution)
   // How each argument reaches its parameter (set by the semantic analyzer
   // once the specialization is known; one entry per argument)
-  void setArgConversions(std::vector<sun::ArgConversion> conversions) const {
+  void setArgConversions(
+      std::vector<sun::semantic_analysis::ArgConversion> conversions) const {
     gcAnalysis().argConversions = std::move(conversions);
   }
-  const std::vector<sun::ArgConversion>& getArgConversions() const {
+  const std::vector<sun::semantic_analysis::ArgConversion>& getArgConversions()
+      const {
     return gcAnalysis().argConversions;
   }
 
-  void setResolvedTypeArgs(std::vector<sun::TypePtr> types) const {
+  void setResolvedTypeArgs(std::vector<TypePtr> types) const {
     gcAnalysis().resolvedTypeArgs = std::move(types);
   }
-  const std::vector<sun::TypePtr>& getResolvedTypeArgs() const {
+  const std::vector<TypePtr>& getResolvedTypeArgs() const {
     return gcAnalysis().resolvedTypeArgs;
   }
   bool hasResolvedTypeArgs() const {
@@ -112,13 +117,13 @@ class GenericCallAST : public ExprAST {
   }
 
   /** Record the instantiated callable signature used to check this call. */
-  void setResolvedCalleeType(sun::TypePtr type) const {
+  void setResolvedCalleeType(TypePtr type) const {
     gcAnalysis().resolvedCalleeType = std::move(type);
   }
 
   /** Return the concrete callable signature, or null in an abstract template.
    */
-  sun::TypePtr getResolvedCalleeType() const {
+  TypePtr getResolvedCalleeType() const {
     return analysis_ ? static_cast<const GenericCallAnalysis&>(*analysis_)
                            .resolvedCalleeType
                      : nullptr;
@@ -128,3 +133,5 @@ class GenericCallAST : public ExprAST {
     return "GenericCall\n" + functionName + "<...>()";
   }
 };
+
+}  // namespace sun::ast

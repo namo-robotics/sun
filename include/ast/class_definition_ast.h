@@ -15,15 +15,19 @@
 #include "parsing/lexer.h"
 #include "semantic_analysis/qualified_name.h"
 
+namespace sun::ast {
+using sun::semantic_analysis::DeclarationId;
+using sun::semantic_analysis::Visibility;
+
 /** Declares a class field with its type and optional default expression. */
 struct ClassFieldDecl {
   std::string name;
   TypeAnnotation type;
-  Position location;  // Source location of field qualifiedName
-  sun::Visibility visibility = sun::Visibility::Private;
+  sun::support::Position location;  // Source location of field qualifiedName
+  Visibility visibility = Visibility::Private;
   std::string doc;  // Comment written above the field
   std::unique_ptr<ExprAST> initializer;
-  mutable sun::DeclarationIdentity declaration{};
+  mutable sun::semantic_analysis::DeclarationIdentity declaration{};
 };
 
 // Method qualifiedName in a class (uses FunctionAST internally)
@@ -31,7 +35,7 @@ struct ClassMethodDecl {
   std::unique_ptr<FunctionAST> function;
   bool isConstructor;    // true if method name is "init"
   bool isConst = false;  // `const method`: does not mutate `this`
-  sun::Visibility visibility() const { return function->getVisibility(); }
+  Visibility visibility() const { return function->getVisibility(); }
 };
 
 // Implemented interface with optional type arguments
@@ -48,7 +52,7 @@ struct ImplementedInterfaceAST {
   }
   std::string name;
   std::vector<TypeAnnotation> typeArguments;
-  std::optional<sun::PortableDeclarationKey> declarationKey;
+  std::optional<sun::semantic_analysis::PortableDeclarationKey> declarationKey;
 };
 
 // Class definition: class Name<T, U> implements Interface1<T>, Interface2 {
@@ -138,10 +142,10 @@ class ClassDefinitionAST : public ExprAST {
 
   const std::string& getName() const { return name; }
   // Qualified name (after semantic analysis qualifies it)
-  const sun::QualifiedName& getQualifiedName() const {
+  const sun::semantic_analysis::QualifiedName& getQualifiedName() const {
     return classAnalysis().qualifiedName;
   }
-  void setQualifiedName(sun::QualifiedName qname) {
+  void setQualifiedName(sun::semantic_analysis::QualifiedName qname) {
     classAnalysis().qualifiedName = std::move(qname);
   }
   bool hasQualifiedName() const {
@@ -184,7 +188,7 @@ class ClassDefinitionAST : public ExprAST {
   /** Record a specialization supplied by the imported bundle. */
   void addCompiledSpecialization(std::string key) {
     compiledSpecializations_.insert(
-        sun::PortableDeclarationKey::parse(key).encoding());
+        sun::semantic_analysis::PortableDeclarationKey::parse(key).encoding());
   }
   /** Return the specializations already compiled into the bundle. */
   const std::set<std::string>& getCompiledSpecializations() const {
@@ -198,21 +202,21 @@ class ClassDefinitionAST : public ExprAST {
   // Specialization storage for generic classes
   // Called by semantic analyzer when a generic class is instantiated
   void addSpecialization(
-      sun::DeclarationId id,
+      DeclarationId id,
       std::shared_ptr<ClassDefinitionAST> specializedAST) const {
     classAnalysis().specializations[id] = std::move(specializedAST);
   }
-  const std::map<sun::DeclarationId, std::shared_ptr<ClassDefinitionAST>>&
+  const std::map<DeclarationId, std::shared_ptr<ClassDefinitionAST>>&
   getSpecializations() const {
     return classAnalysis().specializations;
   }
-  bool hasSpecialization(sun::DeclarationId id) const {
+  bool hasSpecialization(DeclarationId id) const {
     return analysis_ &&
            static_cast<ClassAnalysis&>(*analysis_).specializations.find(id) !=
                static_cast<ClassAnalysis&>(*analysis_).specializations.end();
   }
   std::shared_ptr<ClassDefinitionAST> getSpecialization(
-      sun::DeclarationId id) const {
+      DeclarationId id) const {
     if (!analysis_) return nullptr;
     auto& specs = static_cast<ClassAnalysis&>(*analysis_).specializations;
     auto it = specs.find(id);
@@ -247,3 +251,5 @@ class ClassDefinitionAST : public ExprAST {
     return isPacked_ ? "packed_class" : "class";
   }
 };
+
+}  // namespace sun::ast

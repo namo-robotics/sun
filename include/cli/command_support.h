@@ -22,8 +22,8 @@ bool isConfigInput(const std::string& input);
 
 // Parse the config named on the command line and insist it declares
 // entrypoints — without them there is nothing to stand in for.
-sun::SunConfig loadConfigInput(const std::string& input,
-                               const std::string& targetTriple = "");
+sun::driver::SunConfig loadConfigInput(const std::string& input,
+                                       const std::string& targetTriple = "");
 
 // Put the shared options into effect: define the path variables, then set up
 // the library search from the environment and the --lib-path folders.
@@ -37,7 +37,7 @@ void applyBuildRunSettings(const BuildRunOptions& options);
 int reportEarlyExit(const EarlyExit& earlyExit);
 
 // Print a compile error and return the failing exit code.
-int reportSunError(const SunError& error);
+int reportSunError(const sun::support::SunError& error);
 
 // Print any other exception, marked as an error, and return the failing exit
 // code.
@@ -46,6 +46,6 @@ int reportUnexpectedError(const std::exception& error);
 // True when the error says the program declares no test functions. Config
 // runs treat that as "nothing to do" rather than a failure, since a library
 // may simply have no tests yet.
-bool isNoTestsError(const SunError& error);
+bool isNoTestsError(const sun::support::SunError& error);
 
 }  // namespace sun::cli

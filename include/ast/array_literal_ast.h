@@ -8,6 +8,8 @@
 
 #include "ast/expr_ast.h"
 
+namespace sun::ast {
+
 // Array literal: [1, 2, 3] or [[1, 2], [3, 4]] for nested arrays
 class ArrayLiteralAST : public ExprAST {
   std::vector<std::unique_ptr<ExprAST>> elements;
@@ -34,3 +36,5 @@ class ArrayLiteralAST : public ExprAST {
   size_t size() const { return elements.size(); }
   std::string dotLabel() const override { return "ArrayLiteral"; }
 };
+
+}  // namespace sun::ast

@@ -14,6 +14,11 @@
 #include "parsing/lexer.h"
 #include "support/error.h"
 
+/** Turns Sun source text into tokens and syntax trees. */
+namespace sun::parsing {
+using sun::ast::BlockExprAST;
+using sun::ast::ExprAST;
+
 using std::unique_ptr;
 
 // The actual C function that prints a character
@@ -24,15 +29,15 @@ static double putchard(double X) {
   return 0.0;      // Kaleidoscope externs return double
 }
 
-// A source comment collected during parsing (never part of the AST; the
-// formatter re-attaches comments to nodes by comparing spans)
+/** Stores source comments and their positions for the formatter. */
 struct Comment {
-  Position span;     // start + end{Line,Column,Offset}
+  sun::support::Position span;  // start + end{Line,Column,Offset}
   std::string text;  // raw text including delimiters ("// x", "/* x */")
   bool ownLine;      // nothing but whitespace/comments precede it on its line
   bool isBlock;      // /* */ vs //
 };
 
+/** Parses Sun source into syntax trees and collects source comments. */
 class Parser {
  private:
   Lexer lexer;
@@ -58,7 +63,7 @@ class Parser {
   }
 
   void recordComment(const Token& tok, int lastEndLine) {
-    Position span = tok.start;
+    sun::support::Position span = tok.start;
     if (!currentFilePath.empty()) span.filePath = currentFilePath;
     span.setEnd(tok.end.line, tok.end.column, tok.end.offset);
     comments_.insert_or_assign(
@@ -78,19 +83,19 @@ class Parser {
 
   // Current file being parsed (for error messages)
   std::string currentFilePath;
-  sun::SourceFileId sourceFileId_ = sun::nextSourceFileId();
+  sun::support::SourceFileId sourceFileId_ = sun::support::nextSourceFileId();
 
   // Helper: throw parsing error with source context
   [[noreturn]] void parsingError(const std::string& msg) {
     std::string sourceLine = lexer.getSourceLine(curTok.start.line);
     std::string prevLine =
         curTok.start.line > 1 ? lexer.getSourceLine(curTok.start.line - 1) : "";
-    Position loc{curTok.start.line, curTok.start.column, curTok.start.offset,
-                 currentFilePath.empty()
-                     ? std::nullopt
-                     : std::optional<std::string>(currentFilePath)};
+    sun::support::Position loc{
+        curTok.start.line, curTok.start.column, curTok.start.offset,
+        currentFilePath.empty() ? std::nullopt
+                                : std::optional<std::string>(currentFilePath)};
     loc.setEnd(curTok.end.line, curTok.end.column, curTok.end.offset);
-    logParsingError(loc, msg, sourceLine, prevLine);
+    sun::support::logParsingError(loc, msg, sourceLine, prevLine);
   }
 
   // Helper: throw the error for a missing identifier. A keyword standing
@@ -137,7 +142,7 @@ class Parser {
           curTok.kind == TokenKind::RIGHT_SHIFT     ? TokenKind::GREATER
           : curTok.kind == TokenKind::GREATER_EQUAL ? TokenKind::EQUAL
                                                     : TokenKind::GREATER_EQUAL;
-      Position mid = curTok.start;
+      sun::support::Position mid = curTok.start;
       mid.column += 1;
       mid.offset += 1;
       Token remainder = Token::make(remainderKind, mid, curTok.end);
@@ -154,7 +159,7 @@ class Parser {
   // after a generic argument list: Box<<'a>() => i32>.
   void splitLessIfShift() {
     if (curTok.kind != TokenKind::LEFT_SHIFT) return;
-    Position mid = curTok.start;
+    sun::support::Position mid = curTok.start;
     mid.column += 1;
     mid.offset += 1;
     Token remainder = Token::make(TokenKind::LESS, mid, curTok.end);
@@ -179,7 +184,7 @@ class Parser {
   void setFilePath(const std::string& path) { currentFilePath = path; }
 
   /** Parse an embedded expression in its enclosing source unit. */
-  void setSourceFileId(sun::SourceFileId id) { sourceFileId_ = id; }
+  void setSourceFileId(sun::support::SourceFileId id) { sourceFileId_ = id; }
   const std::string& getFilePath() const { return currentFilePath; }
 
   unique_ptr<BlockExprAST> parseProgram();
@@ -220,15 +225,15 @@ class Parser {
   }
 
   // Start position of the node about to be parsed (curTok is its first token)
-  Position captureStart() const {
-    Position p = curTok.start;
+  sun::support::Position captureStart() const {
+    sun::support::Position p = curTok.start;
     if (!currentFilePath.empty()) p.filePath = currentFilePath;
     return p;
   }
 
   // Move a node's span start back to `start` (e.g. over a leading modifier)
-  static void extendSpanStart(ExprAST& node, Position start) {
-    const Position& cur = node.getLocation();
+  static void extendSpanStart(ExprAST& node, sun::support::Position start) {
+    const sun::support::Position& cur = node.getLocation();
     if (cur.hasEnd())
       start.setEnd(*cur.endLine, *cur.endColumn, cur.endOffset.value_or(0));
     node.setLocation(std::move(start));
@@ -236,7 +241,8 @@ class Parser {
 
   // Stamp span [start, end-of-last-consumed-token] onto a finished node
   template <typename NodeT>
-  unique_ptr<NodeT> finishNode(unique_ptr<NodeT> node, Position start) const {
+  unique_ptr<NodeT> finishNode(unique_ptr<NodeT> node,
+                               sun::support::Position start) const {
     if (node) {
       start.setEnd(prevTok_.end.line, prevTok_.end.column, prevTok_.end.offset);
       node->setLocation(std::move(start));
@@ -247,8 +253,8 @@ class Parser {
 
   // Span variant for left-recursive constructs: start comes from an
   // already-stamped sub-node's location
-  void extendSpan(ExprAST& node, const Position& start) const {
-    Position loc = start;
+  void extendSpan(ExprAST& node, const sun::support::Position& start) const {
+    sun::support::Position loc = start;
     loc.setEnd(prevTok_.end.line, prevTok_.end.column, prevTok_.end.offset);
     node.setLocation(std::move(loc));
   }
@@ -257,24 +263,24 @@ class Parser {
   unique_ptr<ExprAST> parseUnary();
   unique_ptr<ExprAST> parsePrimary();
   unique_ptr<ExprAST> parsePostfixExpr(unique_ptr<ExprAST> base);
-  unique_ptr<VariableCreationAST> parseVarStatement();
+  unique_ptr<sun::ast::VariableCreationAST> parseVarStatement();
   // `var x = ...` or `const x = ...`, without the trailing semicolon
-  unique_ptr<VariableCreationAST> parseVarDeclaration();
+  unique_ptr<sun::ast::VariableCreationAST> parseVarDeclaration();
   // `ref r = x;` (mutable) or, after `const`, `const ref r = x;`
-  unique_ptr<ReferenceCreationAST> parseRefStatement(Position start,
-                                                     bool isMutable);
+  unique_ptr<sun::ast::ReferenceCreationAST> parseRefStatement(
+      sun::support::Position start, bool isMutable);
   // `const x = ...;` or `const ref r = x;`
   unique_ptr<ExprAST> parseConstStatement();
   unique_ptr<ExprAST> parseIdentifierExpr();
-  unique_ptr<IfExprAST> parseIfStatement();
-  unique_ptr<MatchExprAST> parseMatchExpression();
+  unique_ptr<sun::ast::IfExprAST> parseIfStatement();
+  unique_ptr<sun::ast::MatchExprAST> parseMatchExpression();
 
   // Parsed match-arm pattern; body is attached later by parseMatchExpression
   struct ParsedPattern {
     std::unique_ptr<ExprAST> pattern;  // null for wildcard
     bool isWildcard = false;
     bool hasPayloadParens = false;
-    std::vector<PatternBinding> bindings;
+    std::vector<sun::ast::PatternBinding> bindings;
     bool ok = false;
   };
   ParsedPattern parsePattern();
@@ -284,34 +290,35 @@ class Parser {
   unique_ptr<ExprAST> parseArrayLiteral();
   unique_ptr<ExprAST> parseParenExpr();
   unique_ptr<ExprAST> parseBinOpRhs(int exprPrec, unique_ptr<ExprAST> lhs);
-  unique_ptr<PrototypeAST> parsePrototype();
+  unique_ptr<sun::ast::PrototypeAST> parsePrototype();
   unique_ptr<ExprAST> parseFunctionLiteral(
       const std::string& name = "",
-      std::vector<TypeParameter> typeParameters = {}, bool isLambda = false,
-      bool isLifecycleMethod = false,
-      std::vector<LifetimeParameter> lifetimeParameters = {},
+      std::vector<sun::ast::TypeParameter> typeParameters = {},
+      bool isLambda = false, bool isLifecycleMethod = false,
+      std::vector<sun::ast::LifetimeParameter> lifetimeParameters = {},
       bool isTestFunction = false);
-  unique_ptr<FunctionAST> parseFunction(bool isClassMethod = false,
-                                        bool isTest = false);
+  unique_ptr<sun::ast::FunctionAST> parseFunction(bool isClassMethod = false,
+                                                  bool isTest = false);
   // Parse a constructor or destructor member: init(args) { } / deinit() { }.
   // They are written without 'public' or 'method' and are always public.
-  unique_ptr<FunctionAST> parseLifecycleMethod();
+  unique_ptr<sun::ast::FunctionAST> parseLifecycleMethod();
   // True when the current token begins a fat-arrow lambda. The check restores
   // all parser state before returning, so parentheses and array literals stay
   // ordinary expressions when no lambda signature follows.
   bool isLambdaLiteralStart();
-  unique_ptr<LambdaAST> parseLambda();
+  unique_ptr<sun::ast::LambdaAST> parseLambda();
   // Parse an extern function or extern variable declaration.
   unique_ptr<ExprAST> parseExtern();
-  unique_ptr<StructLiteralAST> parseStructLiteral();
+  unique_ptr<sun::ast::StructLiteralAST> parseStructLiteral();
   unique_ptr<ExprAST> parseForLoop();  // Returns ForExprAST or ForInExprAST
-  unique_ptr<WhileExprAST> parseWhileLoop();
-  unique_ptr<BreakAST> parseBreak();
-  unique_ptr<ContinueAST> parseContinue();
+  unique_ptr<sun::ast::WhileExprAST> parseWhileLoop();
+  unique_ptr<sun::ast::BreakAST> parseBreak();
+  unique_ptr<sun::ast::ContinueAST> parseContinue();
   unique_ptr<BlockExprAST> parseString(const std::string& source);
   // Every block records what construct it is the body of (see BlockKind);
   // only a match arm's or an unsafe block's body evaluates to a value.
-  unique_ptr<BlockExprAST> parseBlock(BlockKind kind, bool itemLevel = false);
+  unique_ptr<BlockExprAST> parseBlock(sun::ast::BlockKind kind,
+                                      bool itemLevel = false);
   unique_ptr<ExprAST> parseStatement();
   unique_ptr<ExprAST> parseStatementCore();
   // Consumes an optional `public`; errors on a duplicate.
@@ -330,30 +337,30 @@ class Parser {
   // satisfy: a built-in trait such as `_Numeric`, or an interface name.
   // Lifetime parameters come first and land in lifetimesOut; passing
   // nullptr rejects them for declarations that do not accept lifetimes.
-  std::vector<TypeParameter> parseTypeParameterList(
-      std::vector<LifetimeParameter>* lifetimesOut = nullptr);
+  std::vector<sun::ast::TypeParameter> parseTypeParameterList(
+      std::vector<sun::ast::LifetimeParameter>* lifetimesOut = nullptr);
 
   // Append dotted path segments after the first identifier of a name.
   void parseQualifiedNameTail(std::string& name);
 
   // The constraint after the colon in `<T: _Numeric>`. Stamps the source span
   // the way parseTypeAnnotation does, so diagnostics can point at it.
-  TypeConstraint parseTypeConstraint(const std::string& paramName);
+  sun::ast::TypeConstraint parseTypeConstraint(const std::string& paramName);
 
   // The trailing value pack in a parameter list: `args...`, or
   // `args...: _params_of<T>`. Called with the name already consumed and '...'
   // current. A pack ends the parameter list, so the caller stops after this.
-  VariadicParam parseVariadicParam(std::string name);
+  sun::ast::VariadicParam parseVariadicParam(std::string name);
 
   // Type parsing. parseTypeAnnotation stamps the source span; the Impl
   // variant holds the grammar and leaves the span unset.
-  TypeAnnotation parseTypeAnnotation();
-  TypeAnnotation parseTypeAnnotationImpl();
+  sun::ast::TypeAnnotation parseTypeAnnotation();
+  sun::ast::TypeAnnotation parseTypeAnnotationImpl();
   bool isTypeToken(TokenKind kind);
 
   unique_ptr<ExprAST> parseAssignmentOrExpression();
-  unique_ptr<ExprAST> finishVariableAssignment(const std::string& name,
-                                               const Position& namePos);
+  unique_ptr<ExprAST> finishVariableAssignment(
+      const std::string& name, const sun::support::Position& namePos);
   unique_ptr<ExprAST> finishMemberAssignment(unique_ptr<ExprAST> lhs);
   unique_ptr<ExprAST> finishIndexedAssignment(unique_ptr<ExprAST> expr);
 
@@ -367,23 +374,23 @@ class Parser {
   unique_ptr<ExprAST> parseThrow();
 
   // Class definition parsing: class Name { fields and methods }
-  unique_ptr<ClassDefinitionAST> parseClassDefinition();
+  unique_ptr<sun::ast::ClassDefinitionAST> parseClassDefinition();
 
   // Interface definition parsing: interface Name { fields and methods }
-  unique_ptr<InterfaceDefinitionAST> parseInterfaceDefinition();
+  unique_ptr<sun::ast::InterfaceDefinitionAST> parseInterfaceDefinition();
 
   // Enum definition parsing: enum Name { Variant1, Variant2, ... }
-  unique_ptr<EnumDefinitionAST> parseEnumDefinition();
+  unique_ptr<sun::ast::EnumDefinitionAST> parseEnumDefinition();
 
   // New class instance: new ClassName(args...)
   unique_ptr<ExprAST> parseNewClassInstance(const std::string& className);
 
-  unique_ptr<ManifestAST> parseManifest();
-  std::vector<ManifestSunDependency> parseManifestSuns();
-  std::vector<ManifestMoonDependency> parseManifestMoons();
-  std::vector<ManifestProtoDependency> parseManifestProtos();
-  std::vector<ManifestArchiveDependency> parseManifestArchives();
-  std::vector<ManifestTargetBlock> parseManifestTargets();
+  unique_ptr<sun::ast::ManifestAST> parseManifest();
+  std::vector<sun::ast::ManifestSunDependency> parseManifestSuns();
+  std::vector<sun::ast::ManifestMoonDependency> parseManifestMoons();
+  std::vector<sun::ast::ManifestProtoDependency> parseManifestProtos();
+  std::vector<sun::ast::ManifestArchiveDependency> parseManifestArchives();
+  std::vector<sun::ast::ManifestTargetBlock> parseManifestTargets();
 
   // Declare statement parsing:
   // - Forward function declaration: declare function name(args) RetType;
@@ -391,10 +398,10 @@ class Parser {
   unique_ptr<ExprAST> parseDeclareStatement();
 
   // Module declaration parsing: module Name { ... }
-  unique_ptr<ModuleAST> parseModuleDecl();
+  unique_ptr<sun::ast::ModuleAST> parseModuleDecl();
 
   // Using statement parsing: using Namespace::name; or using Namespace::*;
-  unique_ptr<UsingAST> parseUsingStatement();
+  unique_ptr<sun::ast::UsingAST> parseUsingStatement();
 
   // Parse a qualified name: Namespace::name or Namespace::Nested::name
   unique_ptr<ExprAST> parseQualifiedOrSimpleName();
@@ -402,8 +409,8 @@ class Parser {
   // Collect AST stubs from a precompiled .moon file
   // Returns a MoonScopeAST wrapping all module stubs with content hash
   // Returns nullptr if the moon was already imported
-  std::unique_ptr<MoonScopeAST> collectMoonImport(
-      const sun::MoonImport& moonImport);
+  std::unique_ptr<sun::ast::MoonScopeAST> collectMoonImport(
+      const sun::moon_bundling::MoonImport& moonImport);
 
   // Create AST stubs from module metadata and append to collectedAST
   // Used by both .moon imports and .sun metadata-driven imports
@@ -411,7 +418,7 @@ class Parser {
                          std::vector<std::unique_ptr<ExprAST>>& collectedAST);
 
   // Parse a type annotation from its string representation.
-  TypeAnnotation parseTypeFromString(const std::string& typeStr);
+  sun::ast::TypeAnnotation parseTypeFromString(const std::string& typeStr);
 
   // Setters for import resolution (used by Driver)
   void setBaseDir(const std::string& dir) { baseDir = dir; }
@@ -446,3 +453,4 @@ class Parser {
   // Collected comments, keyed by absolute start offset
   const std::map<int, Comment>& getComments() const { return comments_; }
 };
+}  // namespace sun::parsing

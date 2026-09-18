@@ -5,7 +5,7 @@
 
 #pragma once
 
-namespace sun {
+namespace sun::codegen::intrinsics {
 
 // File I/O intrinsic identifiers are defined in the main Intrinsic enum.
 // This header exists for organizational purposes and future expansion.
@@ -32,4 +32,4 @@ namespace sun {
 //   __mkdir(path, mode) -> i32            Create directory
 //   __rmdir(path) -> i32                  Remove directory
 
-}  // namespace sun
+}  // namespace sun::codegen::intrinsics

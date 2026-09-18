@@ -24,7 +24,7 @@ struct Rename {
 // break the program. A symbol declared in a library (loaded from a .moon
 // bundle) is refused, since its uses inside the library cannot be edited.
 // Nothing when the cursor is not on a symbol.
-std::optional<Rename> computeRename(const BlockExprAST& program,
+std::optional<Rename> computeRename(const sun::ast::BlockExprAST& program,
                                     const std::string& filePath,
                                     const std::string& source, int byteOffset);
 

@@ -6,6 +6,8 @@
 
 #include "ast/expr_ast.h"
 
+namespace sun::ast {
+
 using ChildFn = std::function<void(const ExprAST&)>;
 
 // Calls fn for each direct child expression of node, in source order. Unlike
@@ -14,3 +16,5 @@ using ChildFn = std::function<void(const ExprAST&)>;
 // and interface methods, slice bounds, match patterns and struct literal
 // values. Used by tooling that walks the tree (language server lookups).
 void forEachChild(const ExprAST& node, const ChildFn& fn);
+
+}  // namespace sun::ast

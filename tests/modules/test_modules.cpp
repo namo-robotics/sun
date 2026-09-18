@@ -20,6 +20,16 @@
 #include "parsing/parser.h"
 #include "semantic_analysis/semantic_analyzer.h"
 
+using sun::moon_bundling::MoonImport;
+
+using sun::ast::ASTNodeType;
+using sun::ast::ModuleAST;
+using sun::ast::UsingAST;
+using sun::driver::Driver;
+using sun::driver::executeString;
+using sun::driver::initTestEnvironment;
+using sun::parsing::Parser;
+
 // === Module declaration tests ===
 
 TEST(Modules, parse_module_declaration) {
@@ -59,7 +69,7 @@ TEST(Modules, module_with_using_all) {
 
 // File imports must resolve field types and constructor expressions identically.
 TEST(Modules, file_using_std_reaches_module_class_fields) {
-  auto value = executeStringWithStdlib(R"(
+  auto value = sun::driver::executeStringWithStdlib(R"(
     using std;
 
     /* Exercises a file import inside a module. */
@@ -755,7 +765,7 @@ TEST(Modules, module_qualified_call_into_moon_library) {
   // Library functions carry a content-hash scope segment
   // ("$hash$_sun_println$..."), so the resolved name must come from the
   // function's own qualified name rather than being rebuilt from the path.
-  auto value = executeStringWithStdlib(R"(
+  auto value = sun::driver::executeStringWithStdlib(R"(
     function main() i32 {
       std.println("ok");
       return 0;
@@ -806,7 +816,7 @@ std::filesystem::path writeMoonLib(const std::string& name,
   out << source;
   out.close();
   fs::path moonPath = dir / (name + ".moon");
-  sun::MoonBuilder::build(libSrc.string(), moonPath);
+  sun::moon_bundling::MoonBuilder::build(libSrc.string(), moonPath);
   return moonPath;
 }
 
@@ -826,7 +836,7 @@ TEST(Modules, moon_ref_lambda_param_survives_round_trip) {
   )");
 
   auto driver = Driver::createForJIT("moon_ref_lambda_main");
-  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  driver->setMoonImports({MoonImport(moonPath.string())});
   auto value = driver->executeString(R"(
     using reflambda;
 
@@ -852,7 +862,7 @@ TEST(Modules, moon_lifetime_param_survives_round_trip) {
   )");
 
   auto driver = Driver::createForJIT("moon_lifetime_main");
-  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  driver->setMoonImports({MoonImport(moonPath.string())});
   auto value = driver->executeString(R"(
     using lifetimelambda;
 
@@ -881,7 +891,7 @@ TEST(Modules, moon_class_lifetime_survives_round_trip) {
   )");
 
   auto driver = Driver::createForJIT("moon_class_lifetime_main");
-  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  driver->setMoonImports({MoonImport(moonPath.string())});
   auto value = driver->executeString(R"(
     using lifetimebus;
 
@@ -916,7 +926,7 @@ TEST(Modules, moon_clean_lambda_param_still_rejects_captures) {
   )");
 
   auto driver = Driver::createForJIT("moon_clean_lambda_main");
-  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  driver->setMoonImports({MoonImport(moonPath.string())});
   EXPECT_THROW(driver->executeString(R"(
     using cleanlambda;
 
@@ -925,7 +935,7 @@ TEST(Modules, moon_clean_lambda_param_still_rejects_captures) {
         return apply([ref base](n: i32) => i32 { return base + n; }, 2);
     }
   )"),
-               SunError);
+               sun::support::SunError);
 }
 
 // A throwing free function in a .moon must be invoked (not called) inside a
@@ -950,7 +960,7 @@ TEST(Modules, moon_free_function_throw_is_caught_by_importer) {
   )");
 
   auto driver = Driver::createForJIT("moon_throw_main");
-  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  driver->setMoonImports({MoonImport(moonPath.string())});
   auto value = driver->executeString(R"(
     using throwlib;
 
@@ -983,7 +993,7 @@ TEST(Modules, moon_nested_module_is_reachable_by_qualified_name) {
   )");
 
   auto driver = Driver::createForJIT("moon_nested_qualified_main");
-  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  driver->setMoonImports({MoonImport(moonPath.string())});
   auto value = driver->executeString(R"(
     using outer;
 
@@ -1006,7 +1016,7 @@ TEST(Modules, moon_nested_module_can_be_imported_on_its_own) {
   )");
 
   auto driver = Driver::createForJIT("moon_nested_using_main");
-  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  driver->setMoonImports({MoonImport(moonPath.string())});
   auto value = driver->executeString(R"(
     using outer2.inner;
 
@@ -1037,7 +1047,7 @@ TEST(Modules, moon_and_program_global_initializers_both_run) {
   )");
 
   auto driver = Driver::createForJIT("moon_global_main");
-  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  driver->setMoonImports({MoonImport(moonPath.string())});
   auto value = driver->executeString(R"(
     using globlib;
 
@@ -1112,7 +1122,7 @@ TEST(Modules, moon_method_taking_class_by_value) {
   )");
 
   auto driver = Driver::createForJIT("moon_byval_main");
-  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  driver->setMoonImports({MoonImport(moonPath.string())});
   auto value = driver->executeString(R"(
     using byvallib;
 
@@ -1155,7 +1165,7 @@ TEST(Modules, moon_nested_module_class_with_generic_field) {
   )");
 
   auto driver = Driver::createForJIT("nested_generic_main");
-  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  driver->setMoonImports({MoonImport(moonPath.string())});
   auto value = driver->executeString(R"(
     using outer.inner;
 
@@ -1185,7 +1195,7 @@ TEST(Modules, moon_exports_module_variables) {
   )");
 
   auto driver = Driver::createForJIT("globals_main");
-  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  driver->setMoonImports({MoonImport(moonPath.string())});
   auto value = driver->executeString(R"(
     using conf;
     using conf.deep;
@@ -1212,7 +1222,7 @@ TEST(Modules, moon_module_variables_are_assignable) {
   )");
 
   auto driver = Driver::createForJIT("mut_globals_main");
-  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  driver->setMoonImports({MoonImport(moonPath.string())});
   auto value = driver->executeString(R"(
     using conf;
 
@@ -1237,7 +1247,7 @@ TEST(Modules, moon_private_module_variable_is_hidden) {
   )");
 
   auto driver = Driver::createForJIT("priv_global_main");
-  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  driver->setMoonImports({MoonImport(moonPath.string())});
   // The bundle's own code still reads it.
   EXPECT_EQ(driver->executeString(R"(
     using hidden;
@@ -1246,7 +1256,7 @@ TEST(Modules, moon_private_module_variable_is_hidden) {
             7);
 
   auto driver2 = Driver::createForJIT("priv_global_main2");
-  driver2->setMoonImports({sun::MoonImport(moonPath.string())});
+  driver2->setMoonImports({MoonImport(moonPath.string())});
   EXPECT_THROW(driver2->executeString(R"(
     using hidden;
     function main() i32 { return SECRET; }
@@ -1273,7 +1283,7 @@ TEST(Modules, moon_keeps_const_declarations) {
   )");
 
   auto driver = Driver::createForJIT("moon_const_main");
-  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  driver->setMoonImports({MoonImport(moonPath.string())});
   auto value = driver->executeString(R"(
     using constlib;
 
@@ -1286,7 +1296,7 @@ TEST(Modules, moon_keeps_const_declarations) {
 
   auto rejects = [&](const std::string& body, const char* message) {
     auto d = Driver::createForJIT("moon_const_reject");
-    d->setMoonImports({sun::MoonImport(moonPath.string())});
+    d->setMoonImports({MoonImport(moonPath.string())});
     EXPECT_SUN_ERROR_WITH_MESSAGE(
         d->executeString("using constlib;\nfunction main() i32 {\n" + body +
                          "\nreturn 0;\n}\n"),
@@ -1460,7 +1470,7 @@ TEST(Modules, moon_sibling_signatures_are_source_order_independent) {
   )");
 
   auto driver = Driver::createForJIT("moon_sibling_signature_main");
-  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  driver->setMoonImports({MoonImport(moonPath.string())});
   auto value = driver->executeString(R"(
     using api;
     using ztypes;
@@ -1494,7 +1504,7 @@ TEST(Modules, moon_interface_param_links) {
   )");
 
   auto driver = Driver::createForJIT("moon_iface_param_main");
-  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  driver->setMoonImports({MoonImport(moonPath.string())});
   auto value = driver->executeString(R"(
     using handlers;
 
@@ -1552,7 +1562,7 @@ TEST(Modules, moon_generic_over_own_type_by_value_links) {
   )");
 
   auto driver = Driver::createForJIT("moon_generic_by_value_main");
-  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  driver->setMoonImports({MoonImport(moonPath.string())});
   auto value = driver->executeString(R"(
     using boxes;
 
@@ -1600,7 +1610,7 @@ TEST(Modules, moon_symbols_use_versioned_portable_identities) {
     }
   )");
 
-  auto reader = sun::MoonReader::open(moonPath);
+  auto reader = sun::moon_bundling::MoonReader::open(moonPath);
   ASSERT_NE(reader, nullptr);
   auto modules = reader->listModules();
   ASSERT_FALSE(modules.empty());

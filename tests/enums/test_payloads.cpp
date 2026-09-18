@@ -10,6 +10,8 @@
 #include "moon_bundling/moon_builder.h"
 #include "moon_bundling/moon_import.h"
 
+using sun::driver::executeString;
+
 // ============================================================================
 // Construction + destructuring
 // ============================================================================
@@ -571,7 +573,7 @@ TEST(Enums_Payloads, GlobalPayloadEnumVarIsError) {
 // ============================================================================
 
 TEST(Enums_Payloads, AOTCompile) {
-  EXPECT_NO_THROW(compileFile("tests/programs/enum_payload.sun"));
+  EXPECT_NO_THROW(sun::driver::compileFile("tests/programs/enum_payload.sun"));
 }
 
 // ============================================================================
@@ -580,7 +582,7 @@ TEST(Enums_Payloads, AOTCompile) {
 
 TEST(Enums_Payloads, CrossModuleMoonBundle) {
   namespace fs = std::filesystem;
-  initTestEnvironment();
+  sun::driver::initTestEnvironment();
 
   fs::path dir = fs::temp_directory_path() / "sun_enum_moon_test";
   fs::create_directories(dir);
@@ -604,11 +606,11 @@ TEST(Enums_Payloads, CrossModuleMoonBundle) {
 
   // Build the .moon bundle the same way `sun --emit-moon` does
   fs::path moonPath = dir / "shapes.moon";
-  sun::MoonBuilder::build(libSrc.string(), moonPath);
+  sun::moon_bundling::MoonBuilder::build(libSrc.string(), moonPath);
 
   // Import it: construct and destructure the payload enum across the boundary
-  auto driver = Driver::createForJIT("moon_main");
-  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  auto driver = sun::driver::Driver::createForJIT("moon_main");
+  driver->setMoonImports({sun::moon_bundling::MoonImport(moonPath.string())});
   auto value = driver->executeString(R"(
     using shapes;
 
@@ -647,7 +649,7 @@ TEST(Enums_Payloads, QualifiedPayloadConstructionAndMatch) {
 
 TEST(Enums_Payloads, QualifiedVariantsAcrossMoonBundle) {
   namespace fs = std::filesystem;
-  initTestEnvironment();
+  sun::driver::initTestEnvironment();
 
   fs::path dir = fs::temp_directory_path() / "sun_enum_qualified_moon_test";
   fs::create_directories(dir);
@@ -661,11 +663,11 @@ TEST(Enums_Payloads, QualifiedVariantsAcrossMoonBundle) {
     )";
   }
   fs::path moonPath = dir / "shapes.moon";
-  sun::MoonBuilder::build(libSrc.string(), moonPath);
+  sun::moon_bundling::MoonBuilder::build(libSrc.string(), moonPath);
 
   // No `using shapes;`: every variant is reached through the module path
-  auto driver = Driver::createForJIT("moon_main");
-  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  auto driver = sun::driver::Driver::createForJIT("moon_main");
+  driver->setMoonImports({sun::moon_bundling::MoonImport(moonPath.string())});
   auto value = driver->executeString(R"(
     function area(s: ref shapes.Shape) f64 {
         return match s {

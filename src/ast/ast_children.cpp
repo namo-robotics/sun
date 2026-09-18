@@ -4,6 +4,8 @@
 
 #include "ast.h"
 
+namespace sun::ast {
+
 namespace {
 
 void visit(const ExprAST* child, const ChildFn& fn) {
@@ -222,3 +224,5 @@ void forEachChild(const ExprAST& node, const ChildFn& fn) {
       break;
   }
 }
+
+}  // namespace sun::ast

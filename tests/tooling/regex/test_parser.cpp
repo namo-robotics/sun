@@ -8,6 +8,9 @@
 
 #include "parsing/nfa.h"
 
+using sun::parsing::DFA;
+using sun::parsing::RegexParser;
+
 // ------------------------------------------------------------------
 TEST(Tooling_Regex_Parser, Integers) {
   RegexParser parser;

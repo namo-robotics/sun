@@ -8,6 +8,8 @@
 #include "ast/block_expr_ast.h"
 #include "ast/expr_ast.h"
 
+namespace sun::ast {
+
 /** Allow unsafe operations in a block or a single expression. */
 class UnsafeBlockAST : public ExprAST {
   std::unique_ptr<BlockExprAST> body;
@@ -34,3 +36,5 @@ class UnsafeBlockAST : public ExprAST {
   const BlockExprAST& getBody() const { return *body; }
   BlockExprAST& getBody() { return *body; }
 };
+
+}  // namespace sun::ast

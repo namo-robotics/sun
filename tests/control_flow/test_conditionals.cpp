@@ -8,6 +8,8 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+
 TEST(ControlFlow_Conditionals, true_branch_taken) {
   auto value = executeString(R"(
     function main() i32 {
@@ -174,7 +176,7 @@ TEST(ControlFlow_Conditionals, variable_declared_in_branch_is_scoped_to_it) {
             return b;
         }
       )"),
-               SunError);
+               sun::support::SunError);
 }
 
 TEST(ControlFlow_Conditionals, branch_shadows_outer_variable) {

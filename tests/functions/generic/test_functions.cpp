@@ -8,6 +8,8 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+
 TEST(Functions_Generic, generic_identity_function) {
   auto value = executeString(R"(
     function identity <T> (x: T) T {

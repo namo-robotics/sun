@@ -20,7 +20,13 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
 
+using sun::semantic_analysis::TypePtr;
+
+using sun::support::logAndThrowError;
+
 using namespace llvm;
+
+namespace sun::codegen::intrinsics {
 
 // -------------------------------------------------------------------
 // The thread context, as the standard library declares it
@@ -32,11 +38,15 @@ using namespace llvm;
 // codegen never has to spell the class's name (which carries a library hash
 // once std.thread arrives through a bundle).
 StructType* IntrinsicsGenerator::getThreadContextStruct(
-    const sun::TypePtr& contextPtrType) {
-  auto* pointer = sun::tryGetType<sun::RawPointerType>(contextPtrType);
+    const TypePtr& contextPtrType) {
+  auto* pointer =
+      sun::codegen::support::tryGetType<sun::semantic_analysis::RawPointerType>(
+          contextPtrType);
   auto* contextClass =
-      pointer ? sun::tryGetType<sun::ClassType>(pointer->getPointeeType())
-              : nullptr;
+      pointer
+          ? sun::codegen::support::tryGetType<
+                sun::semantic_analysis::ClassType>(pointer->getPointeeType())
+          : nullptr;
   StructType* contextType =
       contextClass ? contextClass->getStructType(ctx.getContext()) : nullptr;
   if (!contextType || contextType->getNumElements() != 5) {
@@ -56,20 +66,24 @@ StructType* IntrinsicsGenerator::getThreadContextStruct(
 // the arguments into it, and starts the thread. Hands back the context
 // pointer; stdlib `spawn` wraps that in the Thread<T> handle that owns it.
 Value* IntrinsicsGenerator::codegenSpawnIntrinsic(
-    const sun::TypePtr& lambdaSunType, const sun::TypePtr& contextPtrType,
-    const std::vector<std::unique_ptr<ExprAST>>& args,
-    const std::vector<sun::ArgConversion>& conversions) {
+    const TypePtr& lambdaSunType, const TypePtr& contextPtrType,
+    const std::vector<std::unique_ptr<sun::ast::ExprAST>>& args,
+    const std::vector<sun::semantic_analysis::ArgConversion>& conversions) {
   LLVMContext& llvmCtx = ctx.getContext();
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
+  auto* i64Ty = llvm::Type::getInt64Ty(llvmCtx);
 
   if (args.empty()) {
     logAndThrowError("_spawn<F>() requires the function to run");
   }
   // F is either a lambda (fat pointer, hidden environment argument) or a
   // named-function value (bare one-word pointer, no environment).
-  auto* lambdaType = sun::tryGetType<sun::LambdaType>(lambdaSunType);
-  auto* namedFnType = sun::tryGetType<sun::FunctionType>(lambdaSunType);
+  auto* lambdaType =
+      sun::codegen::support::tryGetType<sun::semantic_analysis::LambdaType>(
+          lambdaSunType);
+  auto* namedFnType =
+      sun::codegen::support::tryGetType<sun::semantic_analysis::FunctionType>(
+          lambdaSunType);
   if (!lambdaType && !namedFnType) {
     logAndThrowError("_spawn<F>() requires a lambda or function type argument");
   }
@@ -83,14 +97,14 @@ Value* IntrinsicsGenerator::codegenSpawnIntrinsic(
         "return them as part of its result");
   }
 
-  sun::TypePtr returnType =
+  TypePtr returnType =
       lambdaType ? lambdaType->getReturnType() : namedFnType->getReturnType();
-  Type* resultLLVMType = typeResolver.resolveForReturn(returnType);
+  llvm::Type* resultLLVMType = typeResolver.resolveForReturn(returnType);
   StructType* fatType =
       lambdaType ? cast<StructType>(lambdaType->toLLVMType(llvmCtx)) : nullptr;
-  FunctionType* calleeFuncType = lambdaType
-                                     ? lambdaType->toLLVMFunctionType(llvmCtx)
-                                     : namedFnType->toLLVMFunctionType(llvmCtx);
+  llvm::FunctionType* calleeFuncType =
+      lambdaType ? lambdaType->toLLVMFunctionType(llvmCtx)
+                 : namedFnType->toLLVMFunctionType(llvmCtx);
   StructType* contextType = getThreadContextStruct(contextPtrType);
 
   Value* funcPtr = nullptr;
@@ -132,7 +146,7 @@ Value* IntrinsicsGenerator::codegenSpawnIntrinsic(
     logAndThrowError("Failed to generate the arguments for _spawn");
   }
 
-  FunctionCallee mallocFunc = sun::libc::malloc(module);
+  FunctionCallee mallocFunc = sun::codegen::intrinsics::malloc(module);
   const DataLayout& layout = module->getDataLayout();
 
   // The argument block: one field per parameter, in declared order. A
@@ -141,7 +155,7 @@ Value* IntrinsicsGenerator::codegenSpawnIntrinsic(
   StructType* argsType = nullptr;
   Value* argsBlob = ConstantPointerNull::get(cast<PointerType>(ptrTy));
   if (argValues.size() > 1) {
-    std::vector<Type*> fieldTypes(
+    std::vector<llvm::Type*> fieldTypes(
         calleeFuncType->param_begin() + (lambdaType ? 1 : 0),
         calleeFuncType->param_end());
     argsType = StructType::get(llvmCtx, fieldTypes);
@@ -188,11 +202,13 @@ Value* IntrinsicsGenerator::codegenSpawnIntrinsic(
   // explicit size makes spawn behave the same however the binary is linked.
   // pthread_attr_t is at most 64 bytes on every supported libc.
   Value* attr = ctx.builder->CreateAlloca(
-      ArrayType::get(Type::getInt8Ty(module->getContext()), 64), nullptr,
-      "spawn.attr");
-  ctx.builder->CreateCall(sun::libc::pthreadAttrInit(module), {attr});
-  ctx.builder->CreateCall(sun::libc::pthreadAttrSetstacksize(module),
-                          {attr, ConstantInt::get(i64Ty, 8ull * 1024 * 1024)});
+      llvm::ArrayType::get(llvm::Type::getInt8Ty(module->getContext()), 64),
+      nullptr, "spawn.attr");
+  ctx.builder->CreateCall(sun::codegen::intrinsics::pthreadAttrInit(module),
+                          {attr});
+  ctx.builder->CreateCall(
+      sun::codegen::intrinsics::pthreadAttrSetstacksize(module),
+      {attr, ConstantInt::get(i64Ty, 8ull * 1024 * 1024)});
 
   // pthread_create writes the thread id straight into the context (field 3)
   Value* tidFieldPtr =
@@ -200,9 +216,10 @@ Value* IntrinsicsGenerator::codegenSpawnIntrinsic(
   Function* trampoline = threadUtils.getOrCreateThreadTrampoline(
       calleeFuncType, fatType, resultLLVMType, contextType, argsType);
   Value* createResult = ctx.builder->CreateCall(
-      sun::libc::pthreadCreate(module),
+      sun::codegen::intrinsics::pthreadCreate(module),
       {tidFieldPtr, attr, trampoline, contextPtr}, "pthread_create_result");
-  ctx.builder->CreateCall(sun::libc::pthreadAttrDestroy(module), {attr});
+  ctx.builder->CreateCall(sun::codegen::intrinsics::pthreadAttrDestroy(module),
+                          {attr});
 
   // A failed pthread_create leaves the thread id unset, and joining that
   // later crashes without a word. Say what happened and abort instead.
@@ -219,10 +236,10 @@ Value* IntrinsicsGenerator::codegenSpawnIntrinsic(
       "spawn: the OS refused to create a thread (pthread_create failed)\n";
   Value* message = ctx.builder->CreateGlobalString(kMessage, "spawn.fail.msg");
   ctx.builder->CreateCall(
-      sun::libc::write(module),
-      {ConstantInt::get(Type::getInt32Ty(llvmCtx), 2), message,
+      sun::codegen::intrinsics::write(module),
+      {ConstantInt::get(llvm::Type::getInt32Ty(llvmCtx), 2), message,
        ConstantInt::get(i64Ty, sizeof(kMessage) - 1)});
-  ctx.builder->CreateCall(sun::libc::abort(module));
+  ctx.builder->CreateCall(sun::codegen::intrinsics::abort(module));
   ctx.builder->CreateUnreachable();
 
   ctx.builder->SetInsertPoint(okBB);
@@ -244,11 +261,12 @@ Value* IntrinsicsGenerator::codegenSpawnIntrinsic(
 // deinit joining a handle that was never joined by hand — `dropResultType`
 // says what the slot holds so its deinit still runs.
 Value* IntrinsicsGenerator::codegenThreadJoinIntrinsic(
-    const sun::TypePtr& resultType,
-    const std::vector<std::unique_ptr<ExprAST>>& args, bool dropResult) {
+    const TypePtr& resultType,
+    const std::vector<std::unique_ptr<sun::ast::ExprAST>>& args,
+    bool dropResult) {
   LLVMContext& llvmCtx = ctx.getContext();
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
+  auto* i64Ty = llvm::Type::getInt64Ty(llvmCtx);
   if (args.size() != 1) {
     logAndThrowError("_thread_join<T>() takes the thread context");
   }
@@ -263,7 +281,7 @@ Value* IntrinsicsGenerator::codegenThreadJoinIntrinsic(
       i64Ty, ctx.builder->CreateStructGEP(contextType, contextPtr, 3),
       "join.tid");
   ctx.builder->CreateCall(
-      sun::libc::pthreadJoin(module),
+      sun::codegen::intrinsics::pthreadJoin(module),
       {tid, ConstantPointerNull::get(cast<PointerType>(ptrTy))},
       "pthread_join_result");
 
@@ -273,20 +291,22 @@ Value* IntrinsicsGenerator::codegenThreadJoinIntrinsic(
       "join.result_ptr");
 
   Value* result = nullptr;
-  Type* resultLLVMType =
+  llvm::Type* resultLLVMType =
       resultType ? typeResolver.resolveForReturn(resultType) : nullptr;
   if (!dropResult && resultLLVMType && !resultLLVMType->isVoidTy()) {
     result =
         ctx.builder->CreateLoad(resultLLVMType, resultSlotPtr, "join.result");
-  } else if (dropResult && sun::typeNeedsDrop(resultType)) {
+  } else if (dropResult && sun::semantic_analysis::typeNeedsDrop(resultType)) {
     scopes().emitDropInPlace(resultType, resultSlotPtr, "join.result");
   }
 
   // Free the result slot (null for void threads — free(null) is a no-op) and
   // the context itself
-  FunctionCallee freeFunc = sun::libc::free(module);
+  FunctionCallee freeFunc = sun::codegen::intrinsics::free(module);
   ctx.builder->CreateCall(freeFunc, {resultSlotPtr});
   Value* freeContext = ctx.builder->CreateCall(freeFunc, {contextPtr});
 
   return result ? result : freeContext;
 }
+
+}  // namespace sun::codegen::intrinsics

@@ -10,10 +10,12 @@
 
 #include "ast.h"
 
+namespace sun::parsing {
+
 class LoweringPass {
  public:
   // Lower the program in place (recursive, bottom-up)
-  void run(BlockExprAST& program);
+  void run(sun::ast::BlockExprAST& program);
 
   // True if any string interpolation was desugared by this pass
   bool usedInterpolation() const { return usedInterpolation_; }
@@ -21,7 +23,9 @@ class LoweringPass {
  private:
   // Recurse into the slot's children, then rewrite the slot itself if it
   // holds a node the core pipeline doesn't understand
-  void lowerSlot(std::unique_ptr<ExprAST>& slot);
+  void lowerSlot(std::unique_ptr<sun::ast::ExprAST>& slot);
 
   bool usedInterpolation_ = false;
 };
+
+}  // namespace sun::parsing

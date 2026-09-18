@@ -10,6 +10,8 @@
 #include "driver/execution_utils.h"
 #include "driver/sun_value.h"
 
+using sun::driver::executeString;
+
 // ============================================================================
 // Basic Arithmetic: Addition (+)
 // ============================================================================
@@ -60,7 +62,7 @@ TEST(Operators_Arithmetic, add_f64) {
           return 3.14 + 2.86;
       }
     )");
-  EXPECT_DOUBLE_EQ(sun::toDouble(value), 6.0);
+  EXPECT_DOUBLE_EQ(sun::driver::toDouble(value), 6.0);
 }
 
 TEST(Operators_Arithmetic, add_f64_variables) {
@@ -71,7 +73,7 @@ TEST(Operators_Arithmetic, add_f64_variables) {
           return x + y;
       }
     )");
-  EXPECT_DOUBLE_EQ(sun::toDouble(value), 4.0);
+  EXPECT_DOUBLE_EQ(sun::driver::toDouble(value), 4.0);
 }
 
 // ============================================================================
@@ -113,7 +115,7 @@ TEST(Operators_Arithmetic, sub_f64) {
           return 10.5 - 4.5;
       }
     )");
-  EXPECT_DOUBLE_EQ(sun::toDouble(value), 6.0);
+  EXPECT_DOUBLE_EQ(sun::driver::toDouble(value), 6.0);
 }
 
 // ============================================================================
@@ -164,7 +166,7 @@ TEST(Operators_Arithmetic, mul_f64) {
           return 3.0 * 2.5;
       }
     )");
-  EXPECT_DOUBLE_EQ(sun::toDouble(value), 7.5);
+  EXPECT_DOUBLE_EQ(sun::driver::toDouble(value), 7.5);
 }
 
 TEST(Operators_Arithmetic, mul_by_zero) {
@@ -224,7 +226,7 @@ TEST(Operators_Arithmetic, div_f64) {
           return 21.0 / 2.0;
       }
     )");
-  EXPECT_DOUBLE_EQ(sun::toDouble(value), 10.5);
+  EXPECT_DOUBLE_EQ(sun::driver::toDouble(value), 10.5);
 }
 
 TEST(Operators_Arithmetic, div_f64_precise) {
@@ -233,7 +235,7 @@ TEST(Operators_Arithmetic, div_f64_precise) {
           return 85.0 / 2.0;
       }
     )");
-  EXPECT_DOUBLE_EQ(sun::toDouble(value), 42.5);
+  EXPECT_DOUBLE_EQ(sun::driver::toDouble(value), 42.5);
 }
 
 // ============================================================================
@@ -391,7 +393,7 @@ TEST(Operators_Arithmetic, i32_to_f64_explicit_cast) {
           return x + y;
       }
     )");
-  EXPECT_DOUBLE_EQ(sun::toDouble(value), 6.5);
+  EXPECT_DOUBLE_EQ(sun::driver::toDouble(value), 6.5);
 }
 
 TEST(Operators_Arithmetic, i32_to_i64_widening) {

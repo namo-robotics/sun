@@ -9,6 +9,8 @@
 #include "ast/expr_ast.h"
 #include "semantic_analysis/qualified_name.h"
 
+namespace sun::ast {
+
 class VariableAssignmentAST : public ExprAST {
   std::string name;
   std::unique_ptr<ExprAST> value;
@@ -46,10 +48,12 @@ class VariableAssignmentAST : public ExprAST {
   // Qualified name (after semantic analysis qualifies it). A module-level
   // global is emitted using its declaration ID, so codegen looks the symbol up
   // by this rather than by the name written at the assignment.
-  const sun::QualifiedName& getQualifiedName() const {
+  const sun::semantic_analysis::QualifiedName& getQualifiedName() const {
     return varAnalysis().qualifiedName;
   }
-  void setQualifiedName(sun::QualifiedName qname) {
+  void setQualifiedName(sun::semantic_analysis::QualifiedName qname) {
     varAnalysis().qualifiedName = std::move(qname);
   }
 };
+
+}  // namespace sun::ast

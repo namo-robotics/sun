@@ -8,7 +8,7 @@
 
 #include "semantic_analysis/types.h"
 
-namespace sun::names {
+namespace sun::semantic_analysis {
 
 /**
  * True for a name starting with '_', which is reserved for builtins. User code
@@ -27,6 +27,7 @@ inline bool isIntrinsic(const std::string& name) {
 
 /** Format a function signature for diagnostics and scope inspection. */
 std::string formatFunctionSignature(
-    const std::string& name, const std::vector<sun::TypePtr>& paramTypes);
+    const std::string& name,
+    const std::vector<sun::semantic_analysis::TypePtr>& paramTypes);
 
-}  // namespace sun::names
+}  // namespace sun::semantic_analysis

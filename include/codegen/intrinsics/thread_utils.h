@@ -16,6 +16,8 @@
 #include "codegen/codegen.h"
 #include "semantic_analysis/types.h"
 
+namespace sun::codegen::intrinsics {
+
 /**
  * Utility class for thread-related code generation.
  *
@@ -28,14 +30,14 @@
  * used independently for thread-related IR generation.
  */
 class ThreadUtils {
-  CodegenContext& ctx;
+  sun::codegen::CodegenContext& ctx;
   llvm::Module* module;
 
   // Cache for thread trampoline functions (keyed by lambda signature)
   std::map<std::string, llvm::Function*> trampolineCache;
 
  public:
-  ThreadUtils(CodegenContext& ctx, llvm::Module* module)
+  ThreadUtils(sun::codegen::CodegenContext& ctx, llvm::Module* module)
       : ctx(ctx), module(module) {}
 
   // -------------------------------------------------------------------
@@ -93,3 +95,5 @@ class ThreadUtils {
       llvm::Type* resultLLVMType, llvm::StructType* contextType,
       llvm::StructType* argsType);
 };
+
+}  // namespace sun::codegen::intrinsics

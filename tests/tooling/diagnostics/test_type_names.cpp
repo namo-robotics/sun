@@ -16,8 +16,8 @@ namespace {
 // Compile `source` expecting failure, and return the error message.
 std::string errorFor(const std::string& source) {
   try {
-    compileString(source, /*includeStdlib=*/true);
-  } catch (const SunError& e) {
+    sun::driver::compileString(source, /*includeStdlib=*/true);
+  } catch (const sun::support::SunError& e) {
     return e.what();
   }
   ADD_FAILURE() << "expected the program to fail to compile";

@@ -11,10 +11,16 @@
 #include "driver/execution_utils.h"
 #include "parsing/parser.h"
 
+using sun::ast::ASTNodeType;
+using sun::ast::CompoundAssignmentAST;
+using sun::driver::executeString;
+using sun::parsing::TokenKind;
+
 // Parse a single assignment-or-expression statement and return its AST
-static std::unique_ptr<ExprAST> parseStatementToAst(const std::string& source) {
+static std::unique_ptr<sun::ast::ExprAST> parseStatementToAst(
+    const std::string& source) {
   std::istringstream ss(source);
-  Parser parser(ss);
+  sun::parsing::Parser parser(ss);
   parser.getNextToken();
   return parser.parseAssignmentOrExpression();
 }

@@ -8,6 +8,9 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+using sun::driver::executeStringWithStdlib;
+
 // ============================================================================
 // Basic try/catch Tests
 // ============================================================================
@@ -1246,7 +1249,7 @@ TEST(Errors, binding_a_try_catch_is_an_error) {
     }
     function main() i32 { return f(); }
   )"),
-               SunError);
+               sun::support::SunError);
 }
 
 // The supported shape: return from inside the try.

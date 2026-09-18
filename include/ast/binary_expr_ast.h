@@ -8,6 +8,9 @@
 #include "ast/expr_ast.h"
 #include "parsing/lexer.h"
 
+namespace sun::ast {
+using sun::parsing::Token;
+
 class BinaryExprAST : public ExprAST {
   Token op;
   std::unique_ptr<ExprAST> LHS, RHS;
@@ -30,3 +33,5 @@ class BinaryExprAST : public ExprAST {
   }
   std::string dotLabel() const override { return "Binary\n" + op.text; }
 };
+
+}  // namespace sun::ast

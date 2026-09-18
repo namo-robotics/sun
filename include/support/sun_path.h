@@ -12,7 +12,7 @@
 
 #include "support/target_os.h"
 
-namespace sun {
+namespace sun::support {
 
 /// Centralized SUN_PATH environment variable handling.
 /// SUN_PATH is a colon-separated list of directories used to resolve imports.
@@ -158,4 +158,4 @@ class SunPath {
   }
 };
 
-}  // namespace sun
+}  // namespace sun::support

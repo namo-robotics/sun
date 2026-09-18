@@ -22,6 +22,14 @@
 #include "serialization/ast_deserializer.h"
 #include "serialization/ast_serializer.h"
 
+using sun::driver::LinkOptions;
+
+using sun::ast::FunctionAST;
+using sun::driver::Driver;
+using sun::driver::executeString;
+using sun::driver::initTestEnvironment;
+using sun::support::SunError;
+
 // ============================================================================
 // Calling C functions
 // ============================================================================
@@ -379,18 +387,18 @@ std::string ffiTestLibDir() {
 TEST(Ffi_Link, shell_quote_neutralises_metacharacters) {
   // -l/-L values reach the linker through std::system, so they must not be
   // able to inject shell syntax.
-  EXPECT_EQ(sun::shellQuote("plain"), "'plain'");
-  EXPECT_EQ(sun::shellQuote("a b"), "'a b'");
-  EXPECT_EQ(sun::shellQuote("x; rm -rf /"), "'x; rm -rf /'");
-  EXPECT_EQ(sun::shellQuote("$(id)"), "'$(id)'");
+  EXPECT_EQ(sun::driver::shellQuote("plain"), "'plain'");
+  EXPECT_EQ(sun::driver::shellQuote("a b"), "'a b'");
+  EXPECT_EQ(sun::driver::shellQuote("x; rm -rf /"), "'x; rm -rf /'");
+  EXPECT_EQ(sun::driver::shellQuote("$(id)"), "'$(id)'");
   // A quote must close, escape, and reopen so it cannot terminate the string.
-  EXPECT_EQ(sun::shellQuote("it's"), "'it'\\''s'");
+  EXPECT_EQ(sun::driver::shellQuote("it's"), "'it'\\''s'");
 }
 
 TEST(Ffi_Link, missing_library_is_reported_not_thrown) {
-  sun::LinkOptions opts;
+  LinkOptions opts;
   opts.libraries = {"definitely_not_a_real_library_xyz"};
-  auto libs = sun::loadNativeLibraries(opts);
+  auto libs = sun::driver::loadNativeLibraries(opts);
   ASSERT_EQ(libs.failed.size(), 1u);
   EXPECT_EQ(libs.failed[0], "definitely_not_a_real_library_xyz");
   EXPECT_TRUE(libs.archives.empty());
@@ -409,10 +417,10 @@ TEST(Ffi_Link, symbols_are_unavailable_before_the_library_is_loaded) {
 TEST(Ffi_Link, loads_library_from_search_path_and_calls_into_it) {
   if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
 
-  sun::LinkOptions opts;
+  LinkOptions opts;
   opts.libraries = {"sun_ffi_testlib"};
   opts.searchPaths = {ffiTestLibDir()};
-  auto libs = sun::loadNativeLibraries(opts);
+  auto libs = sun::driver::loadNativeLibraries(opts);
   ASSERT_TRUE(libs.failed.empty()) << "could not load sun_ffi_testlib";
 
   auto value = executeString(R"(
@@ -429,7 +437,7 @@ TEST(Ffi_Link, loads_library_from_search_path_and_calls_into_it) {
 TEST(Ffi_Link, loads_library_given_as_an_explicit_path) {
   if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
 
-  sun::LinkOptions opts;
+  LinkOptions opts;
   // The host's shared-library extension: CMake builds the fixture as .dylib
   // on macOS and .so elsewhere.
 #ifdef __APPLE__
@@ -437,7 +445,7 @@ TEST(Ffi_Link, loads_library_given_as_an_explicit_path) {
 #else
   opts.libraries = {ffiTestLibDir() + "/libsun_ffi_testlib.so"};
 #endif
-  auto libs = sun::loadNativeLibraries(opts);
+  auto libs = sun::driver::loadNativeLibraries(opts);
   EXPECT_TRUE(libs.failed.empty());
 }
 
@@ -446,10 +454,10 @@ TEST(Ffi_Link, finds_static_archive_when_no_shared_library_exists) {
   // archive comes back by path instead of being dlopen'd (issue #133).
   if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
 
-  sun::LinkOptions opts;
+  LinkOptions opts;
   opts.libraries = {"sun_ffi_static_testlib"};
   opts.searchPaths = {ffiTestLibDir()};
-  auto libs = sun::loadNativeLibraries(opts);
+  auto libs = sun::driver::loadNativeLibraries(opts);
   EXPECT_TRUE(libs.failed.empty());
   ASSERT_EQ(libs.archives.size(), 1u);
   EXPECT_EQ(libs.archives[0], ffiTestLibDir() + "/libsun_ffi_static_testlib.a");
@@ -459,9 +467,9 @@ TEST(Ffi_Link, accepts_static_archive_given_as_an_explicit_path) {
   if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
 
   std::string path = ffiTestLibDir() + "/libsun_ffi_static_testlib.a";
-  sun::LinkOptions opts;
+  LinkOptions opts;
   opts.libraries = {path};
-  auto libs = sun::loadNativeLibraries(opts);
+  auto libs = sun::driver::loadNativeLibraries(opts);
   EXPECT_TRUE(libs.failed.empty());
   ASSERT_EQ(libs.archives.size(), 1u);
   EXPECT_EQ(libs.archives[0], path);
@@ -572,10 +580,10 @@ TEST(Ffi_Struct, ref_param_accepted_in_extern_signature) {
 
 TEST(Ffi_Struct, c_writes_through_a_ref_to_a_sun_object) {
   if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
-  sun::LinkOptions opts;
+  LinkOptions opts;
   opts.libraries = {"sun_ffi_testlib"};
   opts.searchPaths = {ffiTestLibDir()};
-  ASSERT_TRUE(sun::loadNativeLibraries(opts).failed.empty());
+  ASSERT_TRUE(sun::driver::loadNativeLibraries(opts).failed.empty());
 
   auto value = executeString(R"(
     class TS { var sec: i64; var nsec: i64; }
@@ -611,7 +619,7 @@ TEST(Ffi_Struct, ref_return_is_still_rejected) {
 TEST(Ffi_Moon, extern_survives_serialization_roundtrip) {
   using namespace sun::serialization;
 
-  auto parser = Parser::createStringParser(R"(
+  auto parser = sun::parsing::Parser::createStringParser(R"(
     extern "C" function c_strlen(s: raw_ptr<u8>) i64 as "strlen";
     extern "C" function c_printf(fmt: raw_ptr<u8>, ...) i32 as "printf";
     declare function later(n: i32) bool;
@@ -620,9 +628,9 @@ TEST(Ffi_Moon, extern_survives_serialization_roundtrip) {
   ASSERT_NE(ast, nullptr);
   ASSERT_EQ(ast->getBody().size(), 3u);
 
-  ASTSerializer serializer;
-  ASTDeserializer deserializer;
-  auto roundTrip = [&](const ExprAST& e) {
+  sun::serialization::ASTSerializer serializer;
+  sun::serialization::ASTDeserializer deserializer;
+  auto roundTrip = [&](const sun::ast::ExprAST& e) {
     return deserializer.deserialize(serializer.serialize(e));
   };
 
@@ -664,10 +672,10 @@ namespace {
 // Loads the fixture library once; the tests below all need its symbols.
 bool loadFfiTestLib() {
   if (ffiTestLibDir().empty()) return false;
-  sun::LinkOptions opts;
+  LinkOptions opts;
   opts.libraries = {"sun_ffi_testlib"};
   opts.searchPaths = {ffiTestLibDir()};
-  return sun::loadNativeLibraries(opts).failed.empty();
+  return sun::driver::loadNativeLibraries(opts).failed.empty();
 }
 
 }  // namespace
@@ -948,29 +956,29 @@ TEST(Ffi_StructValue, predeclared_function_still_registers_marshalling) {
   // declare() used to return early for a Function that already existed (e.g.
   // created by .moon bitcode linking) without registering its lowering, so
   // needsMarshalling() silently answered no.
-  auto parser = Parser::createStringParser(R"(
+  auto parser = sun::parsing::Parser::createStringParser(R"(
     extern "C" function pre_pair(p: i32) i32;
   )");
   auto ast = parser.parseProgram();
   ASSERT_NE(ast, nullptr);
   auto* fn = static_cast<FunctionAST*>(ast->getBody()[0].get());
-  const PrototypeAST& proto = fn->getProto();
+  const sun::ast::PrototypeAST& proto = fn->getProto();
 
-  CodegenContext cgctx("predecl_test", nullptr);
+  sun::codegen::CodegenContext cgctx("predecl_test", nullptr);
   llvm::LLVMContext& lctx = cgctx.getContext();
   llvm::Module* module = cgctx.mainModule.get();
-  sun::cabi::ExternCEmitter emitter(cgctx, module);
+  sun::codegen::abi::ExternCEmitter emitter(cgctx, module);
 
   llvm::Type* i32Ty = llvm::Type::getInt32Ty(lctx);
   auto* pairTy = llvm::StructType::get(lctx, {i32Ty, i32Ty});
   llvm::Type* params[] = {pairTy};
 
   // Pre-create the function with the lowered type, as bitcode linking would.
-  auto lowering =
-      sun::abi::lowerCSignature(llvm::Triple(module->getTargetTriple()), i32Ty,
-                                params, module->getDataLayout());
-  auto* loweredTy =
-      sun::abi::buildLoweredFunctionType(lowering, lctx, /*isVarArg=*/false);
+  auto lowering = sun::codegen::abi::lowerCSignature(
+      llvm::Triple(module->getTargetTriple()), i32Ty, params,
+      module->getDataLayout());
+  auto* loweredTy = sun::codegen::abi::buildLoweredFunctionType(
+      lowering, lctx, /*isVarArg=*/false);
   llvm::Function::Create(loweredTy, llvm::Function::ExternalLinkage, "pre_pair",
                          module);
 
@@ -1013,10 +1021,10 @@ TEST(Ffi, extern_global_emits_exact_symbol_after_use) {
 
 TEST(Ffi_Link, extern_globals_read_write_pointer_and_struct) {
   if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
-  sun::LinkOptions opts;
+  LinkOptions opts;
   opts.libraries = {"sun_ffi_testlib"};
   opts.searchPaths = {ffiTestLibDir()};
-  auto libs = sun::loadNativeLibraries(opts);
+  auto libs = sun::driver::loadNativeLibraries(opts);
   ASSERT_TRUE(libs.failed.empty());
 
   auto value = executeString(R"(
@@ -1042,10 +1050,10 @@ TEST(Ffi_Link, extern_globals_read_write_pointer_and_struct) {
 
 TEST(Ffi_Link, compatible_native_global_redeclarations_are_idempotent) {
   if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
-  sun::LinkOptions opts;
+  LinkOptions opts;
   opts.libraries = {"sun_ffi_testlib"};
   opts.searchPaths = {ffiTestLibDir()};
-  auto libs = sun::loadNativeLibraries(opts);
+  auto libs = sun::driver::loadNativeLibraries(opts);
   ASSERT_TRUE(libs.failed.empty());
 
   auto value = executeString(R"(
@@ -1168,11 +1176,11 @@ TEST(Ffi, extern_symbol_survives_moon_bundling) {
   }
 
   fs::path moonPath = dir / "cwrap.moon";
-  sun::MoonBuilder::build(libSrc.string(), moonPath);
+  sun::moon_bundling::MoonBuilder::build(libSrc.string(), moonPath);
 
   // The C symbol must still be spelled `labs` in the bundled bitcode.
   {
-    auto reader = sun::MoonReader::open(moonPath);
+    auto reader = sun::moon_bundling::MoonReader::open(moonPath);
     ASSERT_NE(reader, nullptr);
     auto modules = reader->listModules();
     ASSERT_FALSE(modules.empty());
@@ -1188,7 +1196,7 @@ TEST(Ffi, extern_symbol_survives_moon_bundling) {
   }
 
   auto driver = Driver::createForJIT("ffi_moon_main");
-  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  driver->setMoonImports({sun::moon_bundling::MoonImport(moonPath.string())});
   auto value = driver->executeString(R"(
     using cwrap;
 

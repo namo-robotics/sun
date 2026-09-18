@@ -8,11 +8,11 @@
 #include "ast/class_definition_ast.h"
 #include "semantic_analysis/types.h"
 
-namespace sun {
+namespace sun::semantic_analysis {
 
 /** Supplies default constructors and lowers field defaults before body
  * analysis. */
-void prepareFieldInitializers(ClassDefinitionAST& classDef);
+void prepareFieldInitializers(sun::ast::ClassDefinitionAST& classDef);
 
 /**
  * Checks a constructor against Sun's two-phase rule, and decides what each
@@ -39,8 +39,8 @@ void prepareFieldInitializers(ClassDefinitionAST& classDef);
  * drops nothing, and every other write drops what it replaces. Nothing is
  * decided at run time.
  */
-void checkFieldInitialization(const FunctionAST& constructor,
-                              const ClassType& classType,
-                              const std::vector<ClassMethodDecl>& methods);
+void checkFieldInitialization(
+    const sun::ast::FunctionAST& constructor, const ClassType& classType,
+    const std::vector<sun::ast::ClassMethodDecl>& methods);
 
-}  // namespace sun
+}  // namespace sun::semantic_analysis

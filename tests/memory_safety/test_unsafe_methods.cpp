@@ -4,6 +4,9 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+using sun::driver::executeStringWithStdlib;
+
 TEST(MemorySafety_UnsafeMethods, direct_call_requires_block) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Reader {

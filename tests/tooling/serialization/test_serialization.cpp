@@ -16,12 +16,35 @@
 #include "serialization/ast_serializer.h"
 #include "serialization/token_kind_proto_map.h"
 
+using sun::serialization::ASTDeserializer;
+using sun::serialization::ASTSerializer;
+
+using sun::ast::ASTNodeType;
+using sun::ast::BinaryExprAST;
+using sun::ast::BlockExprAST;
+using sun::ast::BoolLiteralAST;
+using sun::ast::CharLiteralAST;
+using sun::ast::ClassDefinitionAST;
+using sun::ast::EnumDefinitionAST;
+using sun::ast::EnumVariantDecl;
+using sun::ast::ExprAST;
+using sun::ast::FunctionAST;
+using sun::ast::ModuleAST;
+using sun::ast::NumberExprAST;
+using sun::ast::PrototypeAST;
+using sun::ast::StringLiteralAST;
+using sun::ast::VariableCreationAST;
+using sun::ast::VariableReferenceAST;
+using sun::parsing::Token;
+using sun::parsing::TokenKind;
+using sun::support::Position;
+
 using namespace sun::serialization;
 
 // Helper to parse a string and return the AST
 std::unique_ptr<BlockExprAST> parseCode(const std::string& source) {
   std::istringstream ss(source);
-  Parser parser(ss);
+  sun::parsing::Parser parser(ss);
   return parser.parseString(source);
 }
 
@@ -198,7 +221,7 @@ TEST(Tooling_Serialization, ByteLiteralRoundtrip) {
 }
 
 TEST(Tooling_Serialization, NullLiteralRoundtrip) {
-  auto ast = std::make_unique<NullLiteralAST>();
+  auto ast = std::make_unique<sun::ast::NullLiteralAST>();
 
   ASTSerializer serializer;
   std::string data = serializer.serializeToString(*ast);
@@ -231,7 +254,7 @@ TEST(Tooling_Serialization, VariableReferenceRoundtrip) {
 
 TEST(Tooling_Serialization, VariableCreationRoundtrip) {
   auto value = std::make_unique<NumberExprAST>(static_cast<int64_t>(100));
-  TypeAnnotation type;
+  sun::ast::TypeAnnotation type;
   type.baseName = "i32";
   auto ast = std::make_unique<VariableCreationAST>("x", std::move(value), type);
 
@@ -253,7 +276,8 @@ TEST(Tooling_Serialization, VariableCreationRoundtrip) {
 
 TEST(Tooling_Serialization, VariableAssignmentRoundtrip) {
   auto value = std::make_unique<NumberExprAST>(static_cast<int64_t>(42));
-  auto ast = std::make_unique<VariableAssignmentAST>("x", std::move(value));
+  auto ast =
+      std::make_unique<sun::ast::VariableAssignmentAST>("x", std::move(value));
 
   ASTSerializer serializer;
   std::string data = serializer.serializeToString(*ast);
@@ -263,7 +287,7 @@ TEST(Tooling_Serialization, VariableAssignmentRoundtrip) {
 
   ASSERT_NE(restored, nullptr);
   ASSERT_EQ(restored->getType(), ASTNodeType::VARIABLE_ASSIGNMENT);
-  auto* va = static_cast<VariableAssignmentAST*>(restored.get());
+  auto* va = static_cast<sun::ast::VariableAssignmentAST*>(restored.get());
   EXPECT_EQ(va->getName(), "x");
 }
 
@@ -297,7 +321,7 @@ TEST(Tooling_Serialization, BinaryExprRoundtrip) {
 // Every kind in the shared TokenKind<->proto table must survive a roundtrip,
 // so a newly mapped operator is covered automatically
 TEST(Tooling_Serialization, MappedOpTokenKindsRoundtrip) {
-  for (const auto& [kind, protoKind] : kTokenKindProtoMap) {
+  for (const auto& [kind, protoKind] : sun::serialization::kTokenKindProtoMap) {
     auto lhs = std::make_unique<NumberExprAST>(static_cast<int64_t>(10));
     auto rhs = std::make_unique<NumberExprAST>(static_cast<int64_t>(3));
     Token op = Token::make(kind, Position{}, Position{});
@@ -314,7 +338,7 @@ TEST(Tooling_Serialization, MappedOpTokenKindsRoundtrip) {
     ASSERT_EQ(restored->getType(), ASTNodeType::BINARY);
     auto* bin = static_cast<BinaryExprAST*>(restored.get());
     EXPECT_EQ(bin->getOp().kind, kind)
-        << "operator " << getTokenInfo().at(kind).text;
+        << "operator " << sun::parsing::getTokenInfo().at(kind).text;
   }
 }
 
@@ -322,8 +346,8 @@ TEST(Tooling_Serialization, CompoundAssignmentRoundtrip) {
   auto target = std::make_unique<VariableReferenceAST>("x");
   auto value = std::make_unique<NumberExprAST>(static_cast<int64_t>(5));
   Token op = Token::make(TokenKind::PLUS_ASSIGN, Position{}, Position{});
-  auto ast = std::make_unique<CompoundAssignmentAST>(std::move(target), op,
-                                                     std::move(value));
+  auto ast = std::make_unique<sun::ast::CompoundAssignmentAST>(
+      std::move(target), op, std::move(value));
 
   ASTSerializer serializer;
   std::string data = serializer.serializeToString(*ast);
@@ -333,7 +357,8 @@ TEST(Tooling_Serialization, CompoundAssignmentRoundtrip) {
 
   ASSERT_NE(restored, nullptr);
   ASSERT_EQ(restored->getType(), ASTNodeType::COMPOUND_ASSIGNMENT);
-  auto* compound = static_cast<CompoundAssignmentAST*>(restored.get());
+  auto* compound =
+      static_cast<sun::ast::CompoundAssignmentAST*>(restored.get());
   EXPECT_EQ(compound->getOp().kind, TokenKind::PLUS_ASSIGN);
   EXPECT_EQ(compound->binaryOpKind(), TokenKind::PLUS);
   EXPECT_EQ(compound->getTarget()->getType(), ASTNodeType::VARIABLE_REFERENCE);
@@ -344,7 +369,7 @@ TEST(Tooling_Serialization, TernaryExprRoundtrip) {
   auto cond = std::make_unique<VariableReferenceAST>("c");
   auto thenExpr = std::make_unique<NumberExprAST>(static_cast<int64_t>(1));
   auto elseExpr = std::make_unique<NumberExprAST>(static_cast<int64_t>(2));
-  auto ast = std::make_unique<TernaryExprAST>(
+  auto ast = std::make_unique<sun::ast::TernaryExprAST>(
       std::move(cond), std::move(thenExpr), std::move(elseExpr), Position{});
 
   ASTSerializer serializer;
@@ -355,7 +380,7 @@ TEST(Tooling_Serialization, TernaryExprRoundtrip) {
 
   ASSERT_NE(restored, nullptr);
   ASSERT_EQ(restored->getType(), ASTNodeType::TERNARY);
-  auto* ternary = static_cast<TernaryExprAST*>(restored.get());
+  auto* ternary = static_cast<sun::ast::TernaryExprAST*>(restored.get());
   EXPECT_EQ(ternary->getCond()->getType(), ASTNodeType::VARIABLE_REFERENCE);
   EXPECT_EQ(ternary->getThen()->getType(), ASTNodeType::NUMBER);
   EXPECT_EQ(ternary->getElse()->getType(), ASTNodeType::NUMBER);
@@ -410,8 +435,8 @@ TEST(Tooling_Serialization, IfExprRoundtrip) {
   elseBody.push_back(std::make_unique<NumberExprAST>(static_cast<int64_t>(2)));
   auto elseBlock = std::make_unique<BlockExprAST>(std::move(elseBody));
 
-  auto ast = std::make_unique<IfExprAST>(std::move(cond), std::move(thenBlock),
-                                         std::move(elseBlock));
+  auto ast = std::make_unique<sun::ast::IfExprAST>(
+      std::move(cond), std::move(thenBlock), std::move(elseBlock));
 
   ASTSerializer serializer;
   std::string data = serializer.serializeToString(*ast);
@@ -421,7 +446,7 @@ TEST(Tooling_Serialization, IfExprRoundtrip) {
 
   ASSERT_NE(restored, nullptr);
   ASSERT_EQ(restored->getType(), ASTNodeType::IF);
-  auto* ifExpr = static_cast<IfExprAST*>(restored.get());
+  auto* ifExpr = static_cast<sun::ast::IfExprAST*>(restored.get());
   EXPECT_NE(ifExpr->getCond(), nullptr);
   EXPECT_NE(ifExpr->getThen(), nullptr);
   EXPECT_NE(ifExpr->getElse(), nullptr);
@@ -430,10 +455,11 @@ TEST(Tooling_Serialization, IfExprRoundtrip) {
 TEST(Tooling_Serialization, WhileExprRoundtrip) {
   auto cond = std::make_unique<BoolLiteralAST>(true);
   std::vector<std::unique_ptr<ExprAST>> body;
-  body.push_back(std::make_unique<BreakAST>());
+  body.push_back(std::make_unique<sun::ast::BreakAST>());
   auto block = std::make_unique<BlockExprAST>(std::move(body));
 
-  auto ast = std::make_unique<WhileExprAST>(std::move(cond), std::move(block));
+  auto ast = std::make_unique<sun::ast::WhileExprAST>(std::move(cond),
+                                                      std::move(block));
 
   ASTSerializer serializer;
   std::string data = serializer.serializeToString(*ast);
@@ -446,8 +472,8 @@ TEST(Tooling_Serialization, WhileExprRoundtrip) {
 }
 
 TEST(Tooling_Serialization, BreakContinueRoundtrip) {
-  auto breakAst = std::make_unique<BreakAST>();
-  auto continueAst = std::make_unique<ContinueAST>();
+  auto breakAst = std::make_unique<sun::ast::BreakAST>();
+  auto continueAst = std::make_unique<sun::ast::ContinueAST>();
 
   ASTSerializer serializer;
   ASTDeserializer deserializer;
@@ -466,7 +492,7 @@ TEST(Tooling_Serialization, BreakContinueRoundtrip) {
 
 TEST(Tooling_Serialization, ReturnExprRoundtrip) {
   auto value = std::make_unique<NumberExprAST>(static_cast<int64_t>(42));
-  auto ast = std::make_unique<ReturnExprAST>(std::move(value));
+  auto ast = std::make_unique<sun::ast::ReturnExprAST>(std::move(value));
 
   ASTSerializer serializer;
   std::string data = serializer.serializeToString(*ast);
@@ -476,7 +502,7 @@ TEST(Tooling_Serialization, ReturnExprRoundtrip) {
 
   ASSERT_NE(restored, nullptr);
   ASSERT_EQ(restored->getType(), ASTNodeType::RETURN);
-  auto* ret = static_cast<ReturnExprAST*>(restored.get());
+  auto* ret = static_cast<sun::ast::ReturnExprAST*>(restored.get());
   ASSERT_NE(ret->getValue(), nullptr);
   EXPECT_EQ(ret->getValue()->getType(), ASTNodeType::NUMBER);
 }
@@ -486,19 +512,19 @@ TEST(Tooling_Serialization, ReturnExprRoundtrip) {
 // =============================================================================
 
 TEST(Tooling_Serialization, PrototypeRoundtrip) {
-  std::vector<std::pair<std::string, TypeAnnotation>> args;
-  TypeAnnotation argType;
+  std::vector<std::pair<std::string, sun::ast::TypeAnnotation>> args;
+  sun::ast::TypeAnnotation argType;
   argType.baseName = "i32";
   args.push_back({"x", argType});
   args.push_back({"y", argType});
 
-  TypeAnnotation retType;
+  sun::ast::TypeAnnotation retType;
   retType.baseName = "i32";
 
   auto proto = std::make_unique<PrototypeAST>("add", std::move(args), retType);
 
   ASTSerializer serializer;
-  sun::ast::Prototype protoMsg = serializer.serializePrototype(*proto);
+  sun::proto::ast::Prototype protoMsg = serializer.serializePrototype(*proto);
 
   ASTDeserializer deserializer;
   auto restored = deserializer.deserializePrototype(protoMsg);
@@ -707,7 +733,7 @@ TEST(Tooling_Serialization, ArrayLiteralRoundtrip) {
   elements.push_back(std::make_unique<NumberExprAST>(static_cast<int64_t>(1)));
   elements.push_back(std::make_unique<NumberExprAST>(static_cast<int64_t>(2)));
   elements.push_back(std::make_unique<NumberExprAST>(static_cast<int64_t>(3)));
-  auto ast = std::make_unique<ArrayLiteralAST>(std::move(elements));
+  auto ast = std::make_unique<sun::ast::ArrayLiteralAST>(std::move(elements));
 
   ASTSerializer serializer;
   std::string data = serializer.serializeToString(*ast);
@@ -717,7 +743,7 @@ TEST(Tooling_Serialization, ArrayLiteralRoundtrip) {
 
   ASSERT_NE(restored, nullptr);
   ASSERT_EQ(restored->getType(), ASTNodeType::ARRAY_LITERAL);
-  auto* arr = static_cast<ArrayLiteralAST*>(restored.get());
+  auto* arr = static_cast<sun::ast::ArrayLiteralAST*>(restored.get());
   EXPECT_EQ(arr->getElements().size(), 3);
 }
 
@@ -771,7 +797,7 @@ TEST(Tooling_Serialization, TryCatchRoundtrip) {
 
 TEST(Tooling_Serialization, ThrowExprRoundtrip) {
   auto errorVal = std::make_unique<NumberExprAST>(static_cast<int64_t>(1));
-  auto ast = std::make_unique<ThrowExprAST>(std::move(errorVal));
+  auto ast = std::make_unique<sun::ast::ThrowExprAST>(std::move(errorVal));
 
   ASTSerializer serializer;
   std::string data = serializer.serializeToString(*ast);
@@ -801,7 +827,7 @@ TEST(Tooling_Serialization, ParenExprRoundtrip) {
 
   ASSERT_NE(restored, nullptr);
   ASSERT_EQ(restored->getType(), ASTNodeType::PAREN_EXPR);
-  auto* paren = static_cast<ParenExprAST*>(restored.get());
+  auto* paren = static_cast<sun::ast::ParenExprAST*>(restored.get());
   ASSERT_NE(paren->getInner(), nullptr);
   EXPECT_EQ(paren->getInner()->getType(), ASTNodeType::BINARY);
 
@@ -825,7 +851,7 @@ TEST(Tooling_Serialization, InterpolatedStringRoundtrip) {
 
   ASSERT_NE(restored, nullptr);
   ASSERT_EQ(restored->getType(), ASTNodeType::INTERPOLATED_STRING);
-  auto* interp = static_cast<InterpolatedStringAST*>(restored.get());
+  auto* interp = static_cast<sun::ast::InterpolatedStringAST*>(restored.get());
   EXPECT_EQ(interp->getRawContent(), "Hello ${name}!");
   const auto& segments = interp->getSegments();
   ASSERT_EQ(segments.size(), 3u);
@@ -852,7 +878,7 @@ TEST(Tooling_Serialization, LocationPreservation) {
   pos.setEnd(10, 7, 2);
   ast->setLocation(pos);
 
-  SerializerConfig config;
+  sun::serialization::SerializerConfig config;
   config.include_location = true;
   ASTSerializer serializer(config);
   std::string data = serializer.serializeToString(*ast);
@@ -965,13 +991,14 @@ TEST(Tooling_Serialization, ProgramRoundtrip) {
 // =============================================================================
 
 TEST(Tooling_Serialization, GenericTypeAnnotation) {
-  TypeAnnotation type;
+  sun::ast::TypeAnnotation type;
   type.baseName = "Vec";
-  TypeAnnotation param;
+  sun::ast::TypeAnnotation param;
   param.baseName = "i32";
-  type.typeArguments.push_back(std::make_unique<TypeAnnotation>(param));
+  type.typeArguments.push_back(
+      std::make_unique<sun::ast::TypeAnnotation>(param));
 
-  auto value = std::make_unique<NullLiteralAST>();
+  auto value = std::make_unique<sun::ast::NullLiteralAST>();
   auto ast = std::make_unique<VariableCreationAST>("v", std::move(value), type);
 
   ASTSerializer serializer;
@@ -1112,10 +1139,10 @@ TEST(Tooling_Serialization, UnicodeStringLiteral) {
 TEST(Tooling_Serialization, EnumPayloadRoundtrip) {
   std::vector<EnumVariantDecl> variants;
   variants.push_back({"Circle", 0, Position{}, {}});
-  variants.back().payloadTypes.push_back(TypeAnnotation("f64"));
+  variants.back().payloadTypes.push_back(sun::ast::TypeAnnotation("f64"));
   variants.push_back({"Rect", 1, Position{}, {}});
-  variants.back().payloadTypes.push_back(TypeAnnotation("f64"));
-  variants.back().payloadTypes.push_back(TypeAnnotation("f64"));
+  variants.back().payloadTypes.push_back(sun::ast::TypeAnnotation("f64"));
+  variants.back().payloadTypes.push_back(sun::ast::TypeAnnotation("f64"));
   variants.push_back({"Empty", 2, Position{}, {}});
   auto ast = std::make_unique<EnumDefinitionAST>("Shape", std::move(variants));
 
@@ -1145,20 +1172,21 @@ TEST(Tooling_Serialization, EnumPayloadRoundtrip) {
 TEST(Tooling_Serialization, MatchBindingsRoundtrip) {
   // match x { Shape.Circle(r, _) => r, _ => y }
   auto disc = std::make_unique<VariableReferenceAST>("x");
-  std::vector<MatchArm> arms;
-  auto pattern = std::make_unique<MemberAccessAST>(
+  std::vector<sun::ast::MatchArm> arms;
+  auto pattern = std::make_unique<sun::ast::MemberAccessAST>(
       std::make_unique<VariableReferenceAST>("Shape"), "Circle");
   arms.emplace_back(std::move(pattern), false,
                     std::make_unique<VariableReferenceAST>("r"));
   arms.back().hasPayloadParens = true;
-  PatternBinding b1;
+  sun::ast::PatternBinding b1;
   b1.name = "r";
   arms.back().bindings.push_back(std::move(b1));
-  PatternBinding b2;
+  sun::ast::PatternBinding b2;
   b2.isWildcard = true;
   arms.back().bindings.push_back(std::move(b2));
   arms.emplace_back(nullptr, true, std::make_unique<VariableReferenceAST>("y"));
-  auto ast = std::make_unique<MatchExprAST>(std::move(disc), std::move(arms));
+  auto ast = std::make_unique<sun::ast::MatchExprAST>(std::move(disc),
+                                                      std::move(arms));
 
   ASTSerializer serializer;
   std::string data = serializer.serializeToString(*ast);
@@ -1168,7 +1196,7 @@ TEST(Tooling_Serialization, MatchBindingsRoundtrip) {
 
   ASSERT_NE(restored, nullptr);
   ASSERT_EQ(restored->getType(), ASTNodeType::MATCH);
-  auto* match = static_cast<MatchExprAST*>(restored.get());
+  auto* match = static_cast<sun::ast::MatchExprAST*>(restored.get());
   ASSERT_EQ(match->getArms().size(), 2u);
   const auto& arm = match->getArms()[0];
   EXPECT_TRUE(arm.hasPayloadParens);
@@ -1182,11 +1210,12 @@ TEST(Tooling_Serialization, MatchBindingsRoundtrip) {
 TEST(Tooling_Serialization, GenericEnumTypeParamsRoundtrip) {
   std::vector<EnumVariantDecl> variants;
   variants.push_back({"Some", 0, Position{}, {}});
-  variants.back().payloadTypes.push_back(TypeAnnotation("T"));
+  variants.back().payloadTypes.push_back(sun::ast::TypeAnnotation("T"));
   variants.push_back({"None", 1, Position{}, {}});
   auto ast = std::make_unique<EnumDefinitionAST>(
       "Option", std::move(variants),
-      /*precompiled=*/false, std::vector<TypeParameter>{TypeParameter("T")});
+      /*precompiled=*/false,
+      std::vector<sun::ast::TypeParameter>{sun::ast::TypeParameter("T")});
 
   ASTSerializer serializer;
   std::string data = serializer.serializeToString(*ast);
@@ -1212,12 +1241,12 @@ TEST(Tooling_Serialization, GenericEnumTypeParamsRoundtrip) {
 TEST(Tooling_Serialization, TypeParameterConstraintRoundtrip) {
   std::vector<EnumVariantDecl> variants;
   variants.push_back({"Some", 0, Position{}, {}});
-  variants.back().payloadTypes.push_back(TypeAnnotation("T"));
+  variants.back().payloadTypes.push_back(sun::ast::TypeAnnotation("T"));
   variants.push_back({"None", 1, Position{}, {}});
   auto ast = std::make_unique<EnumDefinitionAST>(
       "Maybe", std::move(variants), /*precompiled=*/false,
-      std::vector<TypeParameter>{
-          TypeParameter("T", TypeConstraint("_Numeric"))});
+      std::vector<sun::ast::TypeParameter>{
+          sun::ast::TypeParameter("T", sun::ast::TypeConstraint("_Numeric"))});
 
   ASTSerializer serializer;
   std::string data = serializer.serializeToString(*ast);
@@ -1240,7 +1269,7 @@ TEST(Tooling_Serialization, UnconstrainedTypeParameterStaysUnconstrained) {
   variants.push_back({"None", 0, Position{}, {}});
   auto ast = std::make_unique<EnumDefinitionAST>(
       "Plain", std::move(variants), /*precompiled=*/false,
-      std::vector<TypeParameter>{TypeParameter("T")});
+      std::vector<sun::ast::TypeParameter>{sun::ast::TypeParameter("T")});
 
   ASTSerializer serializer;
   ASTDeserializer deserializer;
@@ -1271,14 +1300,15 @@ TEST(Tooling_Serialization, ExternGlobalMetadataRoundtrip) {
   EXPECT_TRUE(variable->hasExplicitCAbi());
   EXPECT_FALSE(variable->hasValue());
   EXPECT_EQ(variable->getLinkName(), "native_name");
-  EXPECT_EQ(variable->getVisibility(), sun::Visibility::Public);
+  EXPECT_EQ(variable->getVisibility(),
+            sun::semantic_analysis::Visibility::Public);
 }
 
 // Source identity is semantic state even when diagnostics are omitted.
 TEST(Tooling_Serialization, SourceFilesSurviveCloningWithoutLocations) {
   // Keep construction independent of the test runner's standard input.
   std::istringstream input;
-  Parser parser(input);
+  sun::parsing::Parser parser(input);
   auto first =
       parser.parseString("using lib; function f() i32 { return answer(); }");
   auto second = parser.parseString("function g() i32 { return 0; }");
@@ -1300,7 +1330,7 @@ TEST(Tooling_Serialization, SourceFilesSurviveCloningWithoutLocations) {
 TEST(Tooling_Serialization, ClassFieldInitializersAndLoweredPrefixRoundtrip) {
   auto program = parseCode("class Foo { var x: i32 = 42; }");
   auto& cls = static_cast<ClassDefinitionAST&>(*program->getBody()[0]);
-  sun::prepareFieldInitializers(cls);
+  sun::semantic_analysis::prepareFieldInitializers(cls);
   ASSERT_NE(cls.getConstructor(), nullptr);
   auto clone = cls.clone();
   auto& restored = static_cast<ClassDefinitionAST&>(*clone);
@@ -1310,7 +1340,7 @@ TEST(Tooling_Serialization, ClassFieldInitializersAndLoweredPrefixRoundtrip) {
   EXPECT_TRUE(constructor.isSynthesizedConstructor());
   EXPECT_EQ(constructor.getFieldInitializerCount(), 1u);
   EXPECT_EQ(constructor.getBody().getBody().size(), 1u);
-  sun::prepareFieldInitializers(restored);
+  sun::semantic_analysis::prepareFieldInitializers(restored);
   EXPECT_EQ(constructor.getBody().getBody().size(), 1u);
   EXPECT_NE(restored.getFields()[0].initializer.get(),
             cls.getFields()[0].initializer.get());
@@ -1354,7 +1384,7 @@ TEST(Tooling_Serialization, EnumUnderlyingTypeRoundtrip) {
 }
 
 TEST(Tooling_Serialization, UnsafeMethodRoundtrip) {
-  PrototypeAST original("unsafe_read", {}, TypeAnnotation("i32"));
+  PrototypeAST original("unsafe_read", {}, sun::ast::TypeAnnotation("i32"));
   original.setUnsafeMethod(true);
   original.setConstMethod(true);
   ASTSerializer serializer;
@@ -1366,14 +1396,14 @@ TEST(Tooling_Serialization, UnsafeMethodRoundtrip) {
 }
 
 TEST(Tooling_Serialization, UnsafeCallableTypeRoundtrip) {
-  TypeAnnotation original("lambda");
-  original.returnType = std::make_unique<TypeAnnotation>("i32");
+  sun::ast::TypeAnnotation original("lambda");
+  original.returnType = std::make_unique<sun::ast::TypeAnnotation>("i32");
   original.requiresUnsafe = true;
   original.refEnv = true;
   ASTSerializer serializer;
   ASTDeserializer deserializer;
   PrototypeAST prototype("consume", {{"callback", original}},
-                         TypeAnnotation("void"));
+                         sun::ast::TypeAnnotation("void"));
   auto restored = deserializer.deserializePrototype(
       serializer.serializePrototype(prototype));
   EXPECT_TRUE(restored->getArgs()[0].second.requiresUnsafe);
@@ -1383,14 +1413,14 @@ TEST(Tooling_Serialization, UnsafeCallableTypeRoundtrip) {
 TEST(Tooling_Serialization, UnsafeExpressionFormRoundtrip) {
   for (bool expressionForm : {false, true}) {
     auto body = std::make_unique<BlockExprAST>();
-    body->setKind(BlockKind::Unsafe);
+    body->setKind(sun::ast::BlockKind::Unsafe);
     body->addExpression(std::make_unique<NumberExprAST>(int64_t{42}));
-    UnsafeBlockAST original(std::move(body), expressionForm);
+    sun::ast::UnsafeBlockAST original(std::move(body), expressionForm);
     ASTSerializer serializer;
     ASTDeserializer deserializer;
     auto restored = deserializer.deserializeFromString(
         serializer.serializeToString(original));
-    auto* unsafe = dynamic_cast<UnsafeBlockAST*>(restored.get());
+    auto* unsafe = dynamic_cast<sun::ast::UnsafeBlockAST*>(restored.get());
     ASSERT_NE(unsafe, nullptr);
     EXPECT_EQ(unsafe->isExpressionForm(), expressionForm);
     EXPECT_TRUE(unsafe->getBody().producesValue());
@@ -1421,10 +1451,10 @@ TEST(Tooling_Serialization, GenericInterfaceConstraintRoundtrip) {
   EXPECT_EQ(
       static_cast<ClassDefinitionAST*>(body[1].get())->getTypeParameters(),
       static_cast<ClassDefinitionAST*>(original[1].get())->getTypeParameters());
-  EXPECT_EQ(
-      static_cast<InterfaceDefinitionAST*>(body[2].get())->getTypeParameters(),
-      static_cast<InterfaceDefinitionAST*>(original[2].get())
-          ->getTypeParameters());
+  EXPECT_EQ(static_cast<sun::ast::InterfaceDefinitionAST*>(body[2].get())
+                ->getTypeParameters(),
+            static_cast<sun::ast::InterfaceDefinitionAST*>(original[2].get())
+                ->getTypeParameters());
   EXPECT_EQ(
       static_cast<EnumDefinitionAST*>(body[3].get())->getTypeParameters(),
       static_cast<EnumDefinitionAST*>(original[3].get())->getTypeParameters());
@@ -1435,8 +1465,8 @@ TEST(Tooling_Serialization, GenericInterfaceConstraintRoundtrip) {
   ASSERT_TRUE(constraint);
   ASSERT_EQ(constraint->typeArguments.size(), 2u);
   EXPECT_EQ(constraint->toString(), "IHandler<Box<i32>, H>");
-  TypeConstraint changed = *constraint;
-  changed.typeArguments[1] = TypeAnnotation("i64");
+  sun::ast::TypeConstraint changed = *constraint;
+  changed.typeArguments[1] = sun::ast::TypeAnnotation("i64");
   EXPECT_FALSE(changed == *constraint);
 }
 
@@ -1444,7 +1474,7 @@ TEST(Tooling_Serialization, DottedModuleDocumentationAndNamesSurviveCloning) {
   const std::string source = "/** Inner. */\npublic module a.a {}";
   auto program = parseCode(source);
   ASSERT_TRUE(program);
-  sun::attachDocComments(*program, source);
+  sun::parsing::attachDocComments(*program, source);
   auto clone = program->getBody()[0]->clone();
   const auto& outer = static_cast<const ModuleAST&>(*clone);
   const auto& inner =
@@ -1463,7 +1493,7 @@ TEST(Tooling_Serialization, DottedModuleDocumentationAndNamesSurviveCloning) {
 }
 
 TEST(Tooling_Serialization, ModuleMetadataDefaultsAndLocationOmission) {
-  sun::ast::ASTNode legacy;
+  sun::proto::ast::ASTNode legacy;
   legacy.mutable_module_def()->set_name("legacy");
   legacy.mutable_module_def()->mutable_body();
   ASTDeserializer deserializer;
@@ -1473,8 +1503,10 @@ TEST(Tooling_Serialization, ModuleMetadataDefaultsAndLocationOmission) {
   EXPECT_FALSE(module.getNameLocation());
 
   auto program = parseCode("/** Module docs. */\nmodule example {}");
-  sun::attachDocComments(*program, "/** Module docs. */\nmodule example {}");
-  ASTSerializer serializer(SerializerConfig{.include_location = false});
+  sun::parsing::attachDocComments(*program,
+                                  "/** Module docs. */\nmodule example {}");
+  ASTSerializer serializer(
+      sun::serialization::SerializerConfig{.include_location = false});
   auto serialized = serializer.serialize(*program->getBody()[0]);
   EXPECT_FALSE(serialized.module_def().has_name_location());
   EXPECT_EQ(serialized.module_def().doc(), "Module docs.");

@@ -26,8 +26,9 @@ void createOutputFolders(const CompileJob& job) {
 }
 
 // The bundling flags that match a compile job's flags.
-sun::MoonBuildOptions makeMoonBuildOptions(const CompileJob& job) {
-  sun::MoonBuildOptions buildOptions;
+sun::moon_bundling::MoonBuildOptions makeMoonBuildOptions(
+    const CompileJob& job) {
+  sun::moon_bundling::MoonBuildOptions buildOptions;
   buildOptions.targetTriple = job.targetTriple;
   buildOptions.debugInfo = job.debugInfo;
   buildOptions.optimize = job.optimize;
@@ -54,7 +55,7 @@ int buildLibrary(const CompileJob& job) {
   }
   try {
     return compileTestBinary(job);
-  } catch (const SunError& e) {
+  } catch (const sun::support::SunError& e) {
     if (isNoTestsError(e)) {
       return 0;
     }
@@ -65,7 +66,8 @@ int buildLibrary(const CompileJob& job) {
 }
 
 // Build every entrypoint the config declares, stopping at the first failure.
-int buildEntrypoints(const sun::SunConfig& config, const CompileJob& base) {
+int buildEntrypoints(const sun::driver::SunConfig& config,
+                     const CompileJob& base) {
   for (const auto& entry : config.entrypoints) {
     CompileJob job = base;
     job.inputFiles = {entry.path};
@@ -74,7 +76,7 @@ int buildEntrypoints(const sun::SunConfig& config, const CompileJob& base) {
     job.testBinaryName = entry.testBinaryName;
     createOutputFolders(job);
 
-    int exitCode = entry.type == sun::ConfigEntrypoint::Type::Library
+    int exitCode = entry.type == sun::driver::ConfigEntrypoint::Type::Library
                        ? buildLibrary(job)
                        : compileEntrypoint(job);
     if (exitCode != 0) {
@@ -90,9 +92,10 @@ int runConfigBuildCommand(const BuildRunOptions& options) {
   const std::string& configFile = options.inputFiles[0];
   CompileJob base = makeCompileJob(options);
   try {
-    sun::SunConfig config = loadConfigInput(configFile, options.targetTriple);
+    sun::driver::SunConfig config =
+        loadConfigInput(configFile, options.targetTriple);
     return buildEntrypoints(config, base);
-  } catch (const SunError& e) {
+  } catch (const sun::support::SunError& e) {
     return reportSunError(e);
   }
 }

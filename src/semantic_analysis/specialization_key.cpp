@@ -1,6 +1,6 @@
 #include "semantic_analysis/types.h"
 
-namespace sun {
+namespace sun::semantic_analysis {
 
 /** Compare identity recursively without accepting implicit conversions. */
 bool sameTypeIdentity(const TypePtr& left, const TypePtr& right) {
@@ -72,4 +72,4 @@ bool SpecializationKey::operator==(const SpecializationKey& other) const {
          (!variadic || sameTypeArguments(*variadic, *other.variadic));
 }
 
-}  // namespace sun
+}  // namespace sun::semantic_analysis

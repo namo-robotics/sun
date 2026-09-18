@@ -8,6 +8,11 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::compileString;
+using sun::driver::executeString;
+using sun::driver::executeStringWithStdlib;
+using sun::support::SunError;
+
 // ============================================================================
 // Basic Class Definition Tests
 // ============================================================================

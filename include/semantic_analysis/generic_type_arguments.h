@@ -25,7 +25,7 @@
 #include "semantic_analysis/types.h"
 #include "support/position.h"
 
-namespace sun::generics {
+namespace sun::semantic_analysis {
 
 // Infer `f<...>` for a call written without type arguments, by matching the
 // template's parameter annotations against the argument types. A call may
@@ -34,9 +34,9 @@ namespace sun::generics {
 // may still be a type parameter when the call sits in a template body.
 // Throws a compile error naming the type parameter that could not be bound.
 std::vector<TypePtr> inferGenericTypeArguments(
-    const GenericFunctionInfo& genericInfo,
+    const sun::semantic_analysis::GenericFunctionInfo& genericInfo,
     const std::vector<TypePtr>& argTypes, const std::string& displayName,
-    std::optional<Position> loc,
+    std::optional<sun::support::Position> loc,
     const std::vector<TypePtr>& explicitTypeArgs = {});
 
 // The same for a class method (`obj.m(x)`, `obj.m<i32>(x)`), matching the
@@ -44,12 +44,13 @@ std::vector<TypePtr> inferGenericTypeArguments(
 // appear as TypeParameterType.
 std::vector<TypePtr> inferMethodTypeArguments(
     const ClassMethod& method, const std::vector<TypePtr>& argTypes,
-    const std::string& displayName, std::optional<Position> loc,
+    const std::string& displayName, std::optional<sun::support::Position> loc,
     const std::vector<TypePtr>& explicitTypeArgs = {});
 
 // Match a parameter annotation against the type of the argument it receives,
 // binding any type parameter it names.
-void bindTypeParameters(const TypeAnnotation& param, const TypePtr& argType,
+void bindTypeParameters(const sun::ast::TypeAnnotation& param,
+                        const TypePtr& argType,
                         const std::vector<std::string>& typeParams,
                         std::map<std::string, TypePtr>& bindings);
 
@@ -64,4 +65,4 @@ void bindTypeParameters(const TypePtr& param, const TypePtr& argType,
 // can be specialized now.
 bool mentionsTypeParameter(const TypePtr& type);
 
-}  // namespace sun::generics
+}  // namespace sun::semantic_analysis

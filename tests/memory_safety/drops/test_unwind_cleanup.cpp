@@ -6,6 +6,8 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+
 namespace {
 
 const char* kOwnerPreamble = R"(

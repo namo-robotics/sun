@@ -5,7 +5,7 @@
 
 #pragma once
 
-namespace sun {
+namespace sun::codegen::intrinsics {
 
 // Atomic intrinsic identifiers are defined in the main Intrinsic enum.
 // This header exists for organizational purposes and future expansion.
@@ -32,4 +32,4 @@ namespace sun {
 //   _futex_wake(ptr) -> void
 //     Wake one thread waiting on the futex
 
-}  // namespace sun
+}  // namespace sun::codegen::intrinsics

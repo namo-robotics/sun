@@ -17,7 +17,7 @@
 
 #include "semantic_analysis/types.h"
 
-namespace sun {
+namespace sun::semantic_analysis {
 
 // The built-in traits. Every one of these is a set of types, not a declared
 // interface, so a primitive can satisfy it without implementing anything.
@@ -55,10 +55,7 @@ inline bool isTypeTrait(const std::string& name) {
   return getTypeTrait(name) != TypeTrait::None;
 }
 
-namespace traits {
-
 /** Test a resolved trait or type requirement, unwrapping a borrowed value. */
 bool satisfies(const TypePtr& type, const TypePtr& requirement);
 
-}  // namespace traits
-}  // namespace sun
+}  // namespace sun::semantic_analysis

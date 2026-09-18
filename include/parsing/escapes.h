@@ -11,7 +11,7 @@
 #include <optional>
 #include <string_view>
 
-namespace sun::escapes {
+namespace sun::parsing {
 
 // The escapes every literal form shares: \n \t \r \\ \0.
 // Returns the character the escape stands for, or nullopt if `c` does not
@@ -123,4 +123,4 @@ inline int encodeUtf8(uint32_t scalar, char* out) {
   return 4;
 }
 
-}  // namespace sun::escapes
+}  // namespace sun::parsing

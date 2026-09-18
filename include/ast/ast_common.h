@@ -12,6 +12,8 @@
 #include "ast/type_constraint.h"
 #include "semantic_analysis/types.h"
 
+namespace sun::ast {
+
 enum class ASTNodeType {
   NUMBER,
   STRING_LITERAL,
@@ -98,10 +100,11 @@ struct TypeParameter {
   // The semantic type this parameter stands for while its generic is analyzed
   // unspecialized: T bound to itself, carrying its constraint so a body can
   // reach the constraint's members. Unconstrained parameters carry none.
-  sun::TypePtr toSunType(const sun::DeclarationTable& table,
-                         sun::DeclarationId id) const {
+  sun::semantic_analysis::TypePtr toSunType(
+      const sun::semantic_analysis::DeclarationTable& table,
+      sun::semantic_analysis::DeclarationId id) const {
     table.get(id);
-    return sun::Types::TypeParameter(
+    return sun::semantic_analysis::Types::TypeParameter(
         name, constraint.value_or(TypeConstraint{}), id, table.session());
   }
 };
@@ -118,10 +121,10 @@ struct TypeParameter {
 // distinguish types, emitted symbols, or generic specializations.
 struct LifetimeParameter {
   std::string name;
-  Position span;
+  sun::support::Position span;
 
   LifetimeParameter() = default;
-  explicit LifetimeParameter(std::string n, Position s = {})
+  explicit LifetimeParameter(std::string n, sun::support::Position s = {})
       : name(std::move(n)), span(std::move(s)) {}
 
   bool operator==(const LifetimeParameter& other) const {
@@ -198,11 +201,13 @@ enum class CaptureKind {
 
 struct Capture {
   std::string name;
-  sun::TypePtr type;
+  sun::semantic_analysis::TypePtr type;
   CaptureKind kind = CaptureKind::ByValue;
   // The binding cannot be written inside the lambda. Always true for
   // `[const ref x]`; also true when a by-value capture picked up a `const`
   // variable, which stays constant however it was captured.
   bool isConst = false;
-  sun::DeclarationId declarationId;
+  sun::semantic_analysis::DeclarationId declarationId;
 };
+
+}  // namespace sun::ast

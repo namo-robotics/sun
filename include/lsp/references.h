@@ -10,6 +10,7 @@
 #include "lsp/symbol_location.h"
 
 namespace sun::lsp {
+using sun::ast::BlockExprAST;
 
 // Identity of a declaration: where it is. Specialization clones keep the
 // template's spans, so a declaration reached through a clone and through

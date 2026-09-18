@@ -11,7 +11,8 @@
 #include "semantic_analysis/portable_declaration_key.h"
 #include "support/error.h"
 
-namespace sun {
+namespace sun::semantic_analysis {
+using sun::support::logAndThrowError;
 
 struct SpecializationKey;
 
@@ -172,4 +173,4 @@ class DeclarationTable {
   size_t size() const { return records_.size(); }
 };
 
-}  // namespace sun
+}  // namespace sun::semantic_analysis

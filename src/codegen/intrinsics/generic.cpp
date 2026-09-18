@@ -9,14 +9,22 @@
 #include "codegen/intrinsics/intrinsics_generator.h"
 #include "support/error.h"
 
+using sun::semantic_analysis::EnumType;
+using sun::semantic_analysis::TypePtr;
+
+using sun::ast::ExprAST;
+using sun::support::logAndThrowError;
+
 using namespace llvm;
+
+namespace sun::codegen::intrinsics {
 
 // -------------------------------------------------------------------
 // Generic intrinsics codegen
 // Called from codegen(GenericCallAST) for _sizeof, _own, _init, _load, _store
 // -------------------------------------------------------------------
 
-Value* IntrinsicsGenerator::codegenSizeofIntrinsic(sun::TypePtr targetType) {
+Value* IntrinsicsGenerator::codegenSizeofIntrinsic(TypePtr targetType) {
   // _sizeof<T>() returns the byte size of type T as i64
   if (!targetType) {
     logAndThrowError("Type argument not resolved for _sizeof<T>");
@@ -31,9 +39,9 @@ Value* IntrinsicsGenerator::codegenSizeofIntrinsic(sun::TypePtr targetType) {
 }
 
 Value* IntrinsicsGenerator::codegenInitIntrinsic(
-    sun::TypePtr targetType, const std::vector<std::unique_ptr<ExprAST>>& args,
-    const std::vector<sun::ArgConversion>& conversions,
-    sun::DeclarationId constructor) {
+    TypePtr targetType, const std::vector<std::unique_ptr<ExprAST>>& args,
+    const std::vector<sun::semantic_analysis::ArgConversion>& conversions,
+    sun::semantic_analysis::DeclarationId constructor) {
   // _init<T>(ptr, args...) constructs T at ptr with forwarded arguments
   if (args.empty()) {
     logAndThrowError("_init<T>() requires a pointer argument");
@@ -49,7 +57,9 @@ Value* IntrinsicsGenerator::codegenInitIntrinsic(
   }
 
   // Only class types have constructors
-  auto* classType = sun::tryGetType<sun::ClassType>(targetType);
+  auto* classType =
+      sun::codegen::support::tryGetType<sun::semantic_analysis::ClassType>(
+          targetType);
   if (!classType) {
     // Initialize values directly; freshly allocated storage has no value yet.
     llvm::Type* valueType = targetType->toLLVMType(ctx.getContext());
@@ -75,7 +85,7 @@ Value* IntrinsicsGenerator::codegenInitIntrinsic(
     llvm::StructType* structTy = classType->getStructType(ctx.getContext());
     const DataLayout& DL = module->getDataLayout();
     ctx.builder->CreateMemSet(
-        rawPtr, ConstantInt::get(Type::getInt8Ty(ctx.getContext()), 0),
+        rawPtr, ConstantInt::get(llvm::Type::getInt8Ty(ctx.getContext()), 0),
         DL.getTypeAllocSize(structTy), llvm::MaybeAlign(1));
   }
 
@@ -103,8 +113,7 @@ Value* IntrinsicsGenerator::codegenInitIntrinsic(
   // destination pointer, which becomes the method closure.
   std::vector<Value*> ctorArgs{
       gen_.materializeMethodClosure(ctorFunc, rawPtr, "init.closure")};
-  const auto& paramTypes =
-      ctor ? ctor->paramTypes : std::vector<sun::TypePtr>{};
+  const auto& paramTypes = ctor ? ctor->paramTypes : std::vector<TypePtr>{};
   if (!gen_.emitCallArguments(args, conversions, paramTypes,
                               ctorFunc->getFunctionType(), ctorArgs, "_init",
                               /*firstArg=*/1)) {
@@ -116,8 +125,7 @@ Value* IntrinsicsGenerator::codegenInitIntrinsic(
 }
 
 Value* IntrinsicsGenerator::codegenLoadIntrinsic(
-    sun::TypePtr targetType,
-    const std::vector<std::unique_ptr<ExprAST>>& args) {
+    TypePtr targetType, const std::vector<std::unique_ptr<ExprAST>>& args) {
   // _load<T>(ptr, index) loads element T at ptr[index]
   if (args.size() != 2) {
     logAndThrowError("_load<T>(ptr, index) requires 2 arguments");
@@ -141,7 +149,7 @@ Value* IntrinsicsGenerator::codegenLoadIntrinsic(
 
   // Compound elements stay addressable so the consumer can move or borrow.
   if (targetType->isClass() || targetType->isInterface() ||
-      CodegenVisitor::isPayloadEnum(targetType)) {
+      sun::codegen::CodegenVisitor::isPayloadEnum(targetType)) {
     return elemPtr;
   }
 
@@ -149,8 +157,7 @@ Value* IntrinsicsGenerator::codegenLoadIntrinsic(
 }
 
 Value* IntrinsicsGenerator::codegenStoreIntrinsic(
-    sun::TypePtr targetType,
-    const std::vector<std::unique_ptr<ExprAST>>& args) {
+    TypePtr targetType, const std::vector<std::unique_ptr<ExprAST>>& args) {
   // _store<T>(ptr, index, value) stores value at ptr[index]
   if (args.size() != 3) {
     logAndThrowError("_store<T>(ptr, index, value) requires 3 arguments");
@@ -176,7 +183,7 @@ Value* IntrinsicsGenerator::codegenStoreIntrinsic(
   // Compound values may arrive by address or as a by-value parameter. An
   // addressable source moves into the slot and is invalidated.
   if (targetType->isClass() || targetType->isInterface() ||
-      CodegenVisitor::isPayloadEnum(targetType)) {
+      sun::codegen::CodegenVisitor::isPayloadEnum(targetType)) {
     llvm::Value* structVal = value;
     if (value->getType()->isPointerTy()) {
       structVal = gen_.applyMoveSemantics(value, targetType);
@@ -251,10 +258,9 @@ Value* IntrinsicsGenerator::codegenToRefIntrinsic(
 }
 
 Value* IntrinsicsGenerator::codegenIsIntrinsic(
-    const sun::TypePtr& target,
-    const std::vector<std::unique_ptr<ExprAST>>& args) {
+    const TypePtr& target, const std::vector<std::unique_ptr<ExprAST>>& args) {
   // _is<T>(value) - compile-time type check, folded to a constant here.
-  // Which types satisfy which trait is sun::traits::satisfies (see
+  // Which types satisfy which trait is sun::semantic_analysis::satisfies (see
   // semantic_analysis/type_traits.h); a `<T: Trait>` constraint asks that same
   // predicate at a signature.
 
@@ -263,19 +269,19 @@ Value* IntrinsicsGenerator::codegenIsIntrinsic(
     return nullptr;
   }
 
-  sun::TypePtr valueType = args[0]->getResolvedType();
+  TypePtr valueType = args[0]->getResolvedType();
   if (!valueType) {
     logAndThrowError("Cannot determine type of argument to _is<T>");
     return nullptr;
   }
 
-  bool result = sun::traits::satisfies(valueType, target);
+  bool result = sun::semantic_analysis::satisfies(valueType, target);
   return llvm::ConstantInt::get(llvm::Type::getInt1Ty(ctx.getContext()),
                                 result ? 1 : 0);
 }
 
 Value* IntrinsicsGenerator::codegenDeinitIntrinsic(
-    sun::TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args) {
+    TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args) {
   // _deinit<T>(raw_ptr<T>) - call T.deinit() on the pointee if T is a class
   // with a deinit method, then recursively deinit class fields. No-op for
   // non-class types or classes without deinit.
@@ -287,22 +293,23 @@ Value* IntrinsicsGenerator::codegenDeinitIntrinsic(
   llvm::Value* ptr = codegen(*args[0]);
   if (!ptr) return nullptr;
 
-  if (auto* classType = sun::tryGetType<sun::ClassType>(typeArg)) {
+  if (auto* classType =
+          sun::codegen::support::tryGetType<sun::semantic_analysis::ClassType>(
+              typeArg)) {
     scopes().emitDeinitCall(classType, ptr);
 
     // Recursively deinit class fields that have deinit methods
     scopes().emitFieldDeinit(ptr, classType, "deinit.intrinsic");
   } else if (typeArg && typeArg->isEnum()) {
     // Payload enums with owning payloads drop through their drop function
-    gen_.enumGenerator().emitDrop(static_cast<sun::EnumType&>(*typeArg), ptr);
+    gen_.enumGenerator().emitDrop(static_cast<EnumType&>(*typeArg), ptr);
   }
 
   return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
 }
 
 Value* IntrinsicsGenerator::codegenConvertIntrinsic(
-    sun::TypePtr targetType,
-    const std::vector<std::unique_ptr<ExprAST>>& args) {
+    TypePtr targetType, const std::vector<std::unique_ptr<ExprAST>>& args) {
   // _convert<T>(value) - explicit numeric conversion. Integers truncate or
   // extend (sign-extending from signed sources, zero-extending from unsigned);
   // int<->float convert by value. The one escape hatch Sun offers for
@@ -319,16 +326,17 @@ Value* IntrinsicsGenerator::codegenConvertIntrinsic(
     logAndThrowError("_convert<T>: T must be a numeric type or char");
     return nullptr;
   }
-  sun::TypePtr srcType = sun::unwrapRef(args[0]->getResolvedType());
+  TypePtr srcType =
+      sun::semantic_analysis::unwrapRef(args[0]->getResolvedType());
   if (srcType && srcType->isEnum()) {
-    if (static_cast<sun::EnumType*>(srcType.get())->hasPayload() ||
+    if (static_cast<EnumType*>(srcType.get())->hasPayload() ||
         !targetType->isIntegral()) {
       logAndThrowError(
           "_convert<T>: enums without payloads convert to integers only");
     }
   }
   if (targetType->isChar() || (srcType && srcType->isChar())) {
-    const sun::TypePtr& other = targetType->isChar() ? srcType : targetType;
+    const TypePtr& other = targetType->isChar() ? srcType : targetType;
     if (other && (other->isFloatingPoint() || other->isBool())) {
       logAndThrowError(
           "_convert<T>: char converts to and from the integer "
@@ -345,7 +353,7 @@ Value* IntrinsicsGenerator::codegenConvertIntrinsic(
 
   // Enum conversions use the signedness of their integer representation.
   if (srcType && srcType->isEnum()) {
-    srcType = static_cast<sun::EnumType*>(srcType.get())->getUnderlyingType();
+    srcType = static_cast<EnumType*>(srcType.get())->getUnderlyingType();
   }
   // A char is a non-negative scalar value, so it always zero-extends.
   bool srcSigned = srcType && srcType->isIntegral() && !srcType->isUnsigned();
@@ -370,8 +378,7 @@ Value* IntrinsicsGenerator::codegenConvertIntrinsic(
 }
 
 Value* IntrinsicsGenerator::codegenBitcastIntrinsic(
-    sun::TypePtr targetType,
-    const std::vector<std::unique_ptr<ExprAST>>& args) {
+    TypePtr targetType, const std::vector<std::unique_ptr<ExprAST>>& args) {
   // _bitcast<T>(value) - reinterpret a value's bits as a same-size type T.
   //
   // Two shapes, and a bitcast never mixes them:
@@ -394,7 +401,7 @@ Value* IntrinsicsGenerator::codegenBitcastIntrinsic(
     logAndThrowError("_bitcast<T>: T must be a numeric type or a raw_ptr");
     return nullptr;
   }
-  sun::TypePtr srcType = args[0]->getResolvedType();
+  TypePtr srcType = args[0]->getResolvedType();
   if (srcType && srcType->isRawPointer() != targetIsPointer) {
     std::string hint =
         srcType->isStaticPointer()
@@ -421,12 +428,11 @@ Value* IntrinsicsGenerator::codegenBitcastIntrinsic(
 }
 
 Value* IntrinsicsGenerator::codegenEnumFromIntIntrinsic(
-    const GenericCallAST& expr) {
-  auto& target =
-      *static_cast<sun::EnumType*>(expr.getResolvedTypeArgs()[0].get());
-  auto& result = *static_cast<sun::EnumType*>(expr.getResolvedType().get());
+    const sun::ast::GenericCallAST& expr) {
+  auto& target = *static_cast<EnumType*>(expr.getResolvedTypeArgs()[0].get());
+  auto& result = *static_cast<EnumType*>(expr.getResolvedType().get());
   const auto& arg = expr.getArgs()[0];
-  auto sourceType = sun::unwrapRef(arg->getResolvedType());
+  auto sourceType = sun::semantic_analysis::unwrapRef(arg->getResolvedType());
   Value* value = codegen(*arg);
   // Compare before narrowing, preserving both signed and unsigned inputs.
   auto* comparisonType = IntegerType::get(ctx.getContext(), 65);
@@ -448,7 +454,7 @@ Value* IntrinsicsGenerator::codegenEnumFromIntIntrinsic(
   auto* storage =
       gen_.createEntryBlockAlloca(function, "enum.option", storageType);
   ctx.builder->CreateStore(Constant::getNullValue(storageType), storage);
-  auto* tagType = Type::getInt32Ty(ctx.getContext());
+  auto* tagType = llvm::Type::getInt32Ty(ctx.getContext());
   Value* tag = ctx.builder->CreateSelect(
       valid, ConstantInt::get(tagType, result.getVariant("Some")->value),
       ConstantInt::get(tagType, result.getVariant("None")->value));
@@ -461,3 +467,5 @@ Value* IntrinsicsGenerator::codegenEnumFromIntIntrinsic(
       ctx.builder->CreateStructGEP(someType, storage, field));
   return storage;
 }
+
+}  // namespace sun::codegen::intrinsics

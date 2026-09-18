@@ -14,7 +14,11 @@
 #include "support/error.h"
 #include "support/target_os.h"
 
+using sun::ast::CallExprAST;
+
 using namespace llvm;
+
+namespace sun::codegen::intrinsics {
 
 namespace {
 
@@ -257,8 +261,9 @@ Value* IntrinsicsGenerator::codegenTargetIsIntrinsic(const CallExprAST& expr) {
   // which is what lets per-OS stdlib code declare externs (like Darwin's
   // __error) that other targets could not link.
   const auto& args = expr.getArgs();
-  if (args.size() != 1 || args[0]->getType() != ASTNodeType::STRING_LITERAL) {
-    logAndThrowError(
+  if (args.size() != 1 ||
+      args[0]->getType() != sun::ast::ASTNodeType::STRING_LITERAL) {
+    sun::support::logAndThrowError(
         "_target_is expects one string literal argument, e.g. "
         "_target_is(\"macos\")",
         expr.getLocation());
@@ -266,17 +271,20 @@ Value* IntrinsicsGenerator::codegenTargetIsIntrinsic(const CallExprAST& expr) {
   }
 
   const std::string& name =
-      static_cast<const StringLiteralAST&>(*args[0]).getValue();
-  if (!sun::isKnownTargetOs(name)) {
-    logAndThrowError("_target_is does not know the target '" + name +
-                         "'; it accepts \"linux\", \"macos\" and \"windows\"",
-                     expr.getLocation());
+      static_cast<const sun::ast::StringLiteralAST&>(*args[0]).getValue();
+  if (!sun::support::isKnownTargetOs(name)) {
+    sun::support::logAndThrowError(
+        "_target_is does not know the target '" + name +
+            "'; it accepts \"linux\", \"macos\" and \"windows\"",
+        expr.getLocation());
     return nullptr;
   }
 
-  auto osName =
-      sun::targetOsName(sun::resolvedTargetTriple(module->getTargetTriple()));
+  auto osName = sun::support::targetOsName(
+      sun::support::resolvedTargetTriple(module->getTargetTriple()));
   bool result = osName && *osName == name;
   return ConstantInt::get(llvm::Type::getInt1Ty(ctx.getContext()),
                           result ? 1 : 0);
 }
+
+}  // namespace sun::codegen::intrinsics

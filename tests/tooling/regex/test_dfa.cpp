@@ -17,6 +17,11 @@
 #include "parsing/lexer.h"  // for Lexer::getStaticFullRegex()
 #include "parsing/nfa.h"
 
+using sun::parsing::DFA;
+using sun::parsing::Lexer;
+using sun::parsing::RegexParser;
+using sun::parsing::TokenKind;
+
 namespace {
 
 struct MatchCase {
@@ -141,7 +146,7 @@ TEST(Tooling_Regex_Dfa, CaptureOffsetsOnMasterRegex) {
   dfa.fullReset();
   for (char c : std::string("  function")) dfa.step(c);
 
-  const RegexCapture* best = dfa.bestCapture();
+  const sun::parsing::RegexCapture* best = dfa.bestCapture();
   ASSERT_NE(best, nullptr);
   EXPECT_EQ(best->groupNameNum, static_cast<int>(TokenKind::FUNCTION));
   EXPECT_EQ(best->start.offset, 2);

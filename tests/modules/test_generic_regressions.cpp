@@ -163,22 +163,23 @@ function main() i32 {
 }
 manifest { libraries: ["lib.moon"] }
 )";
-  auto driver = Driver::createForAOT();
+  auto driver = sun::driver::Driver::createForAOT();
   driver->setMoonImports(
       {{std::filesystem::absolute(dir / "lib.moon").string(), {}}});
   auto analyzed =
       driver->analyzeString(source, (dir / "consumer.sun").string());
   ASSERT_FALSE(analyzed.error.has_value()) << analyzed.error->what();
   ASSERT_NE(analyzed.ast, nullptr);
-  ClassDefinitionAST* box = nullptr;
-  std::function<void(ExprAST&)> findBox = [&](ExprAST& node) {
-    if (auto* cls = dynamic_cast<ClassDefinitionAST*>(&node);
-        cls && cls->getName() == "Box")
-      box = cls;
-    node.forEachChildSlot([&](auto& child) {
-      if (child) findBox(*child);
-    });
-  };
+  sun::ast::ClassDefinitionAST* box = nullptr;
+  std::function<void(sun::ast::ExprAST&)> findBox =
+      [&](sun::ast::ExprAST& node) {
+        if (auto* cls = dynamic_cast<sun::ast::ClassDefinitionAST*>(&node);
+            cls && cls->getName() == "Box")
+          box = cls;
+        node.forEachChildSlot([&](auto& child) {
+          if (child) findBox(*child);
+        });
+      };
   findBox(*analyzed.ast);
   ASSERT_NE(box, nullptr);
   ASSERT_EQ(box->getCompiledSpecializations().size(), 1u);
@@ -189,7 +190,7 @@ manifest { libraries: ["lib.moon"] }
     if (shape->isPrecompiled()) {
       ++compiled;
       EXPECT_TRUE(box->hasCompiledSpecialization(
-          sun::PortableDeclarationKey::fromDeclaration(
+          sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
               instanceId, analyzed.typeRegistry->declarations)
               .encoding()));
       for (const auto& method : shape->getMethods()) {
@@ -199,7 +200,7 @@ manifest { libraries: ["lib.moon"] }
     } else {
       ++fresh;
       EXPECT_FALSE(box->hasCompiledSpecialization(
-          sun::PortableDeclarationKey::fromDeclaration(
+          sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
               instanceId, analyzed.typeRegistry->declarations)
               .encoding()));
       for (const auto& method : shape->getMethods())

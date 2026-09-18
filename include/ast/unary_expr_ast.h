@@ -8,6 +8,9 @@
 #include "ast/expr_ast.h"
 #include "parsing/lexer.h"
 
+namespace sun::ast {
+using sun::parsing::Token;
+
 class UnaryExprAST : public ExprAST {
   Token op;
   std::unique_ptr<ExprAST> Operand;
@@ -25,3 +28,5 @@ class UnaryExprAST : public ExprAST {
   const ExprAST* getOperand() const { return Operand.get(); }
   std::string dotLabel() const override { return "Unary\n" + op.text; }
 };
+
+}  // namespace sun::ast

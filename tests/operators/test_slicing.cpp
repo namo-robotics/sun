@@ -10,6 +10,8 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeStringWithStdlib;
+
 TEST(Operators_Slicing, slice_syntax_calls_the_class_slice_method) {
   auto value = executeStringWithStdlib(R"(
     using std;

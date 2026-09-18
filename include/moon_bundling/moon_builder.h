@@ -16,7 +16,7 @@
 
 #include "moon_bundling/moon_import.h"
 
-namespace sun {
+namespace sun::moon_bundling {
 
 struct MoonBuildOptions {
   std::string targetTriple;            // empty = host
@@ -63,4 +63,4 @@ class MoonBuilder {
   static std::filesystem::path defaultOutputPath(const std::string& entrypoint);
 };
 
-}  // namespace sun
+}  // namespace sun::moon_bundling

@@ -8,18 +8,26 @@
 #include "codegen/support/struct_access.h"
 #include "codegen/variables/variable_generator.h"
 
+using sun::semantic_analysis::ClassType;
+using sun::semantic_analysis::ReferenceType;
+using sun::semantic_analysis::TypePtr;
+
+using sun::ast::ASTNodeType;
+using sun::ast::ExprAST;
+using sun::ast::VariableCreationAST;
+using sun::support::logAndThrowError;
+
 using namespace llvm;
 
-namespace layout = sun::codegen::layout;
-namespace ops = sun::codegen::ops;
+namespace sun::codegen::variables {
 
 // -------------------------------------------------------------------
 // Global variable creation
 // -------------------------------------------------------------------
 
 GlobalVariable* VariableGenerator::createGlobalVariable(
-    sun::DeclarationId id, const std::string& name, llvm::Type* type,
-    llvm::Constant* initializer) {
+    sun::semantic_analysis::DeclarationId id, const std::string& name,
+    llvm::Type* type, llvm::Constant* initializer) {
   // Create appropriate zero initializer if none provided
   if (!initializer) {
     if (type->isDoubleTy()) {
@@ -45,16 +53,17 @@ GlobalVariable* VariableGenerator::createGlobalVariable(
 // Variable creation codegen
 // -------------------------------------------------------------------
 
-void VariableGenerator::declareBlockExternalGlobals(const BlockExprAST& block) {
+void VariableGenerator::declareBlockExternalGlobals(
+    const sun::ast::BlockExprAST& block) {
   for (const auto& node : block.getBody()) {
     if (node->getType() == ASTNodeType::MODULE) {
       declareBlockExternalGlobals(
-          static_cast<const ModuleAST&>(*node).getBody());
+          static_cast<const sun::ast::ModuleAST&>(*node).getBody());
       continue;
     }
     if (node->getType() == ASTNodeType::MOON_SCOPE) {
       declareBlockExternalGlobals(
-          static_cast<const MoonScopeAST&>(*node).getBody());
+          static_cast<const sun::ast::MoonScopeAST&>(*node).getBody());
       continue;
     }
     if (node->getType() != ASTNodeType::VARIABLE_CREATION) continue;
@@ -72,7 +81,7 @@ void VariableGenerator::declareBlockExternalGlobals(const BlockExprAST& block) {
 
 Value* VariableGenerator::codegen(const VariableCreationAST& expr) {
   // Get the type from the resolved type set by semantic analyzer
-  sun::TypePtr varSunType = expr.getResolvedType();
+  TypePtr varSunType = expr.getResolvedType();
   if (!varSunType) {
     logAndThrowError(
         "Variable declaration has no type (semantic analysis may have failed)");
@@ -137,14 +146,15 @@ Value* VariableGenerator::codegen(const VariableCreationAST& expr) {
     if (varSunType->isArray()) {
       return genGlobalArray(expr);
     }
-    if (CodegenVisitor::isPayloadEnum(varSunType)) {
+    if (sun::codegen::CodegenVisitor::isPayloadEnum(varSunType)) {
       logAndThrowError(
           "Global variables of payload-carrying enum types are not yet "
           "supported",
           expr.getLocation());
     }
     // Global class variables need runtime initialization
-    if (auto* classType = sun::tryGetType<sun::ClassType>(varSunType)) {
+    if (auto* classType =
+            sun::codegen::support::tryGetType<ClassType>(varSunType)) {
       return genGlobalClassVar(expr, *classType);
     }
     return genGlobalVarForConstantExpr(expr, varType);
@@ -171,7 +181,7 @@ Value* VariableGenerator::genFunctionVariable(const VariableCreationAST& expr) {
 
   // Generate the lambda
   auto& lambdaAst =
-      static_cast<LambdaAST&>(const_cast<ExprAST&>(*expr.getValue()));
+      static_cast<sun::ast::LambdaAST&>(const_cast<ExprAST&>(*expr.getValue()));
   llvm::Value* resultPtr = functionGen().codegenLambda(lambdaAst);
 
   if (!resultPtr) {
@@ -224,7 +234,7 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
   // A reference variable binds the referent's address rather than reading
   // through it — that is what makes `var r = v.get(i); r = 5;` write into
   // the Vec. codegen() would read instead (see loadIfRef).
-  sun::TypePtr declaredType = expr.getResolvedType();
+  TypePtr declaredType = expr.getResolvedType();
   Value* value = declaredType && declaredType->isReference()
                      ? codegenBorrowAddress(*expr.getValue())
                      : nullptr;
@@ -234,14 +244,15 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
   // Inside a function: use local alloca
   auto& scope = scopes().back().variables;
   Function* func = ctx.builder->GetInsertBlock()->getParent();
-  sun::TypePtr varSunType = expr.getResolvedType();
+  TypePtr varSunType = expr.getResolvedType();
 
   // Payload enums: struct values handled by pointer. The variable OWNS its
   // storage: fresh temporaries are adopted, named sources are MOVED (never
   // implicitly copied), and the result is drop-tracked when payloads own
   // heap resources.
-  if (varSunType && CodegenVisitor::isPayloadEnum(varSunType)) {
-    auto& enumType = static_cast<sun::EnumType&>(*varSunType);
+  if (varSunType && sun::codegen::CodegenVisitor::isPayloadEnum(varSunType)) {
+    auto& enumType =
+        static_cast<sun::semantic_analysis::EnumType&>(*varSunType);
     llvm::StructType* storageTy = typeResolver.getEnumStorageType(enumType);
 
     // A fresh temporary (construction, materialized call return) can be
@@ -276,13 +287,15 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
   }
 
   // Handle interface types
-  if (auto* ifaceType = sun::tryGetType<sun::InterfaceType>(varSunType)) {
+  if (auto* ifaceType = sun::codegen::support::tryGetType<
+          sun::semantic_analysis::InterfaceType>(varSunType)) {
     // Unwrap reference if needed
-    sun::TypePtr valueSunType =
-        sun::unwrapRef(expr.getValue()->getResolvedType());
+    TypePtr valueSunType =
+        sun::semantic_analysis::unwrapRef(expr.getValue()->getResolvedType());
 
     // A concrete value is moved into stable storage owned by the interface.
-    if (auto* classType = sun::tryGetType<sun::ClassType>(valueSunType)) {
+    if (auto* classType =
+            sun::codegen::support::tryGetType<ClassType>(valueSunType)) {
       Value* fatPtr =
           classes().createOwnedInterfaceFatPointer(value, classType, ifaceType);
       if (!fatPtr) return nullptr;
@@ -299,7 +312,8 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
     // An interface source transfers its existing erased owner.
     if (valueSunType && valueSunType->isInterface()) {
       llvm::StructType* fatPtrType =
-          sun::InterfaceType::getFatPointerType(ctx.getContext());
+          sun::semantic_analysis::InterfaceType::getFatPointerType(
+              ctx.getContext());
       Value* fatPtrVal = value;
       if (value->getType()->isPointerTy()) {
         fatPtrVal = gen_.applyMoveSemantics(value, valueSunType);
@@ -318,7 +332,9 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
   // Sized arrays own their inline storage. A fresh temporary (a literal, a
   // materialized call result) is adopted as the variable's storage; a named
   // source MOVES its elements into new storage, never aliasing it.
-  if (auto* arrayType = sun::tryGetType<sun::ArrayType>(varSunType)) {
+  if (auto* arrayType =
+          sun::codegen::support::tryGetType<sun::semantic_analysis::ArrayType>(
+              varSunType)) {
     if (!arrayType->isUnsized()) {
       ASTNodeType valueKind = expr.getValue()->getType();
       bool valueIsFreshTemp = valueKind == ASTNodeType::ARRAY_LITERAL ||
@@ -346,11 +362,13 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
   }
 
   // A `ref array<T>` local bound to a sized array: the view of its storage
-  if (auto* refType = sun::tryGetType<sun::ReferenceType>(varSunType)) {
+  if (auto* refType =
+          sun::codegen::support::tryGetType<ReferenceType>(varSunType)) {
     if (refType->isUnsizedArrayRef() && value->getType()->isPointerTy()) {
-      sun::TypePtr valueType =
-          sun::unwrapRef(expr.getValue()->getResolvedType());
-      if (auto* sized = sun::tryGetType<sun::ArrayType>(valueType)) {
+      TypePtr valueType =
+          sun::semantic_analysis::unwrapRef(expr.getValue()->getResolvedType());
+      if (auto* sized = sun::codegen::support::tryGetType<
+              sun::semantic_analysis::ArrayType>(valueType)) {
         if (!sized->isUnsized()) {
           value = gen_.emitArrayView(value, sized->getDimensions());
         } else {
@@ -372,7 +390,8 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
                         expr.getLocation());
 
       // Track class allocation for automatic deinit at scope exit
-      if (auto classType = sun::tryGetTypePtr<sun::ClassType>(varSunType)) {
+      if (auto classType =
+              sun::codegen::support::tryGetTypePtr<ClassType>(varSunType)) {
         scopes().trackClassAllocation(allocaValue, expr.getName(), classType);
       }
       return allocaValue;
@@ -389,7 +408,8 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
       debugDeclareLocal(alloca, expr.getName(), varSunType, expr.getLocation());
 
       // Track class allocation for automatic deinit at scope exit
-      if (auto classType = sun::tryGetTypePtr<sun::ClassType>(varSunType)) {
+      if (auto classType =
+              sun::codegen::support::tryGetTypePtr<ClassType>(varSunType)) {
         scopes().trackClassAllocation(alloca, expr.getName(), classType);
       }
       return alloca;
@@ -397,7 +417,8 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
 
     // Transfer a local or field into independently owned storage.
     if (value->getType()->isPointerTy()) {
-      if (auto classType = sun::tryGetTypePtr<sun::ClassType>(varSunType)) {
+      if (auto classType =
+              sun::codegen::support::tryGetTypePtr<ClassType>(varSunType)) {
         llvm::StructType* structType =
             classType->getStructType(ctx.getContext());
         Value* structVal = gen_.applyMoveSemantics(value, varSunType);
@@ -424,7 +445,7 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
       unsigned valueBits = valueType->getIntegerBitWidth();
       unsigned varBits = varType->getIntegerBitWidth();
       if (valueBits < varBits) {
-        value = ops::extendInt(
+        value = sun::codegen::support::extendInt(
             *ctx.builder, value, varType,
             expr.getValue() ? expr.getValue()->getResolvedType() : nullptr);
       } else if (valueBits > varBits) {
@@ -456,7 +477,8 @@ static llvm::Constant* genConstantElement(const ExprAST* elemExpr,
                                           llvm::LLVMContext& llvmCtx) {
   switch (elemExpr->getType()) {
     case ASTNodeType::NUMBER: {
-      const auto& numExpr = static_cast<const NumberExprAST&>(*elemExpr);
+      const auto& numExpr =
+          static_cast<const sun::ast::NumberExprAST&>(*elemExpr);
       auto elemType = elemExpr->getResolvedType();
       if (!elemType) return nullptr;
 
@@ -474,7 +496,7 @@ static llvm::Constant* genConstantElement(const ExprAST* elemExpr,
       }
     }
     case ASTNodeType::CHAR_LITERAL: {
-      const auto& lit = static_cast<const CharLiteralAST&>(*elemExpr);
+      const auto& lit = static_cast<const sun::ast::CharLiteralAST&>(*elemExpr);
       auto elemType = elemExpr->getResolvedType();
       if (!elemType) return nullptr;
       return llvm::ConstantInt::get(elemType->toLLVMType(llvmCtx),
@@ -501,7 +523,8 @@ static llvm::Constant* buildConstantArray(
   for (const auto& elem : elements) {
     if (elem->getType() == ASTNodeType::ARRAY_LITERAL) {
       // Nested array - recurse
-      const auto& nestedArray = static_cast<const ArrayLiteralAST&>(*elem);
+      const auto& nestedArray =
+          static_cast<const sun::ast::ArrayLiteralAST&>(*elem);
       llvm::Constant* nestedConst = buildConstantArray(
           nestedArray.getElements(), dims, dimIndex + 1, elementType, llvmCtx);
       if (!nestedConst) return nullptr;
@@ -530,8 +553,9 @@ llvm::Constant* VariableGenerator::genGlobalArray(
   assert(scopes().empty() &&
          "genGlobalArray should only be called at top-level");
 
-  auto* arrayType = &sun::requireType<sun::ArrayType>(
-      expr, "global array '" + expr.getName() + "'");
+  auto* arrayType =
+      &sun::codegen::support::requireType<sun::semantic_analysis::ArrayType>(
+          expr, "global array '" + expr.getName() + "'");
   const auto& dims = arrayType->getDimensions();
 
   if (dims.empty()) {
@@ -543,7 +567,8 @@ llvm::Constant* VariableGenerator::genGlobalArray(
     logAndThrowError("Global array must be initialized with array literal: " +
                      expr.getName());
   }
-  const auto& arrayLit = static_cast<const ArrayLiteralAST&>(*expr.getValue());
+  const auto& arrayLit =
+      static_cast<const sun::ast::ArrayLiteralAST&>(*expr.getValue());
 
   // Build the constant data array
   llvm::Type* elementLLVMType =
@@ -636,9 +661,9 @@ llvm::Constant* VariableGenerator::genGlobalVarForConstantExpr(
 // Reference creation codegen
 // -------------------------------------------------------------------
 
-Value* VariableGenerator::codegen(const ReferenceCreationAST& expr) {
-  sun::TypePtr refSunType = expr.getResolvedType();
-  sun::requireType<sun::ReferenceType>(expr, "reference creation");
+Value* VariableGenerator::codegen(const sun::ast::ReferenceCreationAST& expr) {
+  TypePtr refSunType = expr.getResolvedType();
+  sun::codegen::support::requireType<ReferenceType>(expr, "reference creation");
 
   // A reference stores a pointer to the target's storage. Any addressable
   // lvalue qualifies: variables, fields (obj.f), and array elements (arr[i]).
@@ -674,7 +699,7 @@ Value* VariableGenerator::codegen(const ReferenceCreationAST& expr) {
 // -------------------------------------------------------------------
 
 GlobalVariable* VariableGenerator::genGlobalClassVar(
-    const VariableCreationAST& expr, sun::ClassType& classType) {
+    const VariableCreationAST& expr, ClassType& classType) {
   assert(scopes().empty() &&
          "genGlobalClassVar should only be called at top-level");
 
@@ -696,7 +721,7 @@ GlobalVariable* VariableGenerator::genGlobalClassVar(
   info.globalVar = gv;
   info.varName = expr.getName();
   info.varType = expr.getResolvedType();
-  info.classType = sun::tryGetTypePtr<sun::ClassType>(expr);
+  info.classType = sun::codegen::support::tryGetTypePtr<ClassType>(expr);
   info.initExpr = expr.getValue();
   info.location = expr.getLocation();
   staticInits.push_back(std::move(info));
@@ -749,16 +774,18 @@ GlobalVariable* VariableGenerator::genGlobalVarWithRuntimeInit(
 static const std::vector<std::unique_ptr<ExprAST>>* constructorArgsForGlobal(
     const ExprAST& initExpr) {
   if (initExpr.getType() == ASTNodeType::CALL) {
-    const auto& call = static_cast<const CallExprAST&>(initExpr);
-    if (sun::tryGetType<sun::ClassType>(*call.getCallee()))
+    const auto& call = static_cast<const sun::ast::CallExprAST&>(initExpr);
+    if (sun::codegen::support::tryGetType<ClassType>(*call.getCallee()))
       return &call.getArgs();
     return nullptr;
   }
   if (initExpr.getType() == ASTNodeType::GENERIC_CALL) {
-    const auto& call = static_cast<const GenericCallAST&>(initExpr);
+    const auto& call = static_cast<const sun::ast::GenericCallAST&>(initExpr);
     if (call.getGenericFunctionAST()) return nullptr;
-    if (sun::isIntrinsic(call.getFunctionName())) return nullptr;
-    if (sun::tryGetType<sun::ClassType>(call)) return &call.getArgs();
+    if (sun::codegen::intrinsics::isIntrinsic(call.getFunctionName()))
+      return nullptr;
+    if (sun::codegen::support::tryGetType<ClassType>(call))
+      return &call.getArgs();
   }
   return nullptr;
 }
@@ -772,8 +799,8 @@ void VariableGenerator::emitStaticInitFunction() {
   // With internal linkage the IR linker renames one instead of silently
   // replacing the other; llvm.global_ctors (below) is the shared merge point
   // that runs every copy.
-  FunctionType* initFuncType =
-      FunctionType::get(Type::getVoidTy(ctx.getContext()), false);
+  llvm::FunctionType* initFuncType =
+      llvm::FunctionType::get(llvm::Type::getVoidTy(ctx.getContext()), false);
   Function* initFunc = Function::Create(initFuncType, Function::InternalLinkage,
                                         "__sun_static_init", module);
 
@@ -791,7 +818,7 @@ void VariableGenerator::emitStaticInitFunction() {
 
     if (init.classType && init.initExpr) {
       // Class type: call constructor
-      sun::ClassType* classType = init.classType.get();
+      ClassType* classType = init.classType.get();
       llvm::StructType* structType = classType->getStructType(ctx.getContext());
 
       // Zero-initialize the memory using memset
@@ -799,24 +826,26 @@ void VariableGenerator::emitStaticInitFunction() {
       uint64_t structSize = DL.getTypeAllocSize(structType);
 
       llvm::FunctionCallee memsetFn = module->getOrInsertFunction(
-          "memset", FunctionType::get(PointerType::getUnqual(ctx.getContext()),
-                                      {PointerType::getUnqual(ctx.getContext()),
-                                       Type::getInt32Ty(ctx.getContext()),
-                                       Type::getInt64Ty(ctx.getContext())},
-                                      false));
+          "memset",
+          llvm::FunctionType::get(PointerType::getUnqual(ctx.getContext()),
+                                  {PointerType::getUnqual(ctx.getContext()),
+                                   llvm::Type::getInt32Ty(ctx.getContext()),
+                                   llvm::Type::getInt64Ty(ctx.getContext())},
+                                  false));
       ctx.builder->CreateCall(
           memsetFn,
-          {gv, ConstantInt::get(Type::getInt32Ty(ctx.getContext()), 0),
-           ConstantInt::get(Type::getInt64Ty(ctx.getContext()), structSize)});
+          {gv, ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0),
+           ConstantInt::get(llvm::Type::getInt64Ty(ctx.getContext()),
+                            structSize)});
 
       // A struct literal names its fields, so store them straight into the
       // global rather than looking for a constructor.
       if (init.initExpr->getType() == ASTNodeType::STRUCT_LITERAL) {
         const auto& literal =
-            *static_cast<const StructLiteralAST*>(init.initExpr);
+            *static_cast<const sun::ast::StructLiteralAST*>(init.initExpr);
         for (size_t i = 0; i < literal.getFields().size(); ++i) {
           const auto& field = literal.getFields()[i];
-          const sun::ClassField* classField =
+          const sun::semantic_analysis::ClassField* classField =
               classType->getField(literal.resolvedFields().at(i));
           if (!classField)
             logAndThrowError(
@@ -827,14 +856,15 @@ void VariableGenerator::emitStaticInitFunction() {
             logAndThrowError("Failed to generate field '" + field.name +
                              "' for global: " + init.varName);
           }
-          value = ops::widenNumericIfNeeded(*ctx.builder, typeResolver, value,
-                                            classField->type,
-                                            field.value->getResolvedType());
+          value = sun::codegen::support::widenNumericIfNeeded(
+              *ctx.builder, typeResolver, value, classField->type,
+              field.value->getResolvedType());
 
           Value* fieldPtr = ctx.builder->CreateStructGEP(
               structType, gv, classField->index, field.name + ".ptr");
-          layout::storeIntoSlot(*ctx.builder, module->getDataLayout(), fieldPtr,
-                                value, classField->type, classType);
+          sun::codegen::support::storeIntoSlot(
+              *ctx.builder, module->getDataLayout(), fieldPtr, value,
+              classField->type, classType);
         }
         continue;
       }
@@ -875,8 +905,7 @@ void VariableGenerator::emitStaticInitFunction() {
         continue;
       }
 
-      const auto& paramTypes =
-          ctor ? ctor->paramTypes : std::vector<sun::TypePtr>{};
+      const auto& paramTypes = ctor ? ctor->paramTypes : std::vector<TypePtr>{};
 
       std::vector<Value*> ctorArgValues;
       // Method closure; the receiver is the global variable
@@ -885,7 +914,7 @@ void VariableGenerator::emitStaticInitFunction() {
 
       size_t argIdx = 0;
       for (const auto& arg : *ctorArgs) {
-        sun::TypePtr paramType =
+        TypePtr paramType =
             argIdx < paramTypes.size() ? paramTypes[argIdx] : nullptr;
         bool isRefParam = paramType && paramType->isReference();
 
@@ -900,10 +929,10 @@ void VariableGenerator::emitStaticInitFunction() {
           // Reference parameters take the argument's address; a sized array
           // handed to a `ref array<T>` parameter is viewed with its rank
           // erased
-          auto* paramRef =
-              static_cast<const sun::ReferenceType*>(paramType.get());
-          auto* sizedArg = sun::tryGetType<sun::ArrayType>(
-              sun::unwrapRef(arg->getResolvedType()));
+          auto* paramRef = static_cast<const ReferenceType*>(paramType.get());
+          auto* sizedArg = sun::codegen::support::tryGetType<
+              sun::semantic_analysis::ArrayType>(
+              sun::semantic_analysis::unwrapRef(arg->getResolvedType()));
           if (paramRef->isUnsizedArrayRef() && sizedArg &&
               !sizedArg->isUnsized()) {
             argVal = gen_.emitArrayView(argVal, sizedArg->getDimensions());
@@ -918,8 +947,9 @@ void VariableGenerator::emitStaticInitFunction() {
         } else {
           // By-value compound arguments move into the constructor
           argVal = gen_.applyMoveSemantics(argVal, arg->getResolvedType());
-          argVal = ops::widenNumericIfNeeded(*ctx.builder, typeResolver, argVal,
-                                             paramType, arg->getResolvedType());
+          argVal = sun::codegen::support::widenNumericIfNeeded(
+              *ctx.builder, typeResolver, argVal, paramType,
+              arg->getResolvedType());
         }
 
         ctorArgValues.push_back(argVal);
@@ -945,13 +975,14 @@ void VariableGenerator::emitStaticInitFunction() {
   // Register the init function in llvm.global_ctors
   // This is an array of { i32 priority, ptr function, ptr data }
   llvm::StructType* ctorStructType = llvm::StructType::get(
-      ctx.getContext(), {Type::getInt32Ty(ctx.getContext()),
+      ctx.getContext(), {llvm::Type::getInt32Ty(ctx.getContext()),
                          PointerType::getUnqual(ctx.getContext()),
                          PointerType::getUnqual(ctx.getContext())});
 
   llvm::Constant* ctorEntry = llvm::ConstantStruct::get(
       ctorStructType,
-      {ConstantInt::get(Type::getInt32Ty(ctx.getContext()), 65535),  // priority
+      {ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()),
+                        65535),  // priority
        initFunc,
        ConstantPointerNull::get(PointerType::getUnqual(ctx.getContext()))});
 
@@ -989,3 +1020,5 @@ void VariableGenerator::emitStaticInitFunction() {
   // Clear the queue
   staticInits.clear();
 }
+
+}  // namespace sun::codegen::variables

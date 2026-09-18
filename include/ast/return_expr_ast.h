@@ -7,6 +7,8 @@
 
 #include "ast/expr_ast.h"
 
+namespace sun::ast {
+
 // Return statement: return <expr>;
 class ReturnExprAST : public ExprAST {
   std::unique_ptr<ExprAST>
@@ -28,3 +30,5 @@ class ReturnExprAST : public ExprAST {
   void forEachChildSlot(const ChildSlotFn& fn) override { fn(Value); }
   std::string dotLabel() const override { return "Return"; }
 };
+
+}  // namespace sun::ast

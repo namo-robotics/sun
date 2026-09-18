@@ -7,27 +7,31 @@
 #include "semantic_analysis/types.h"
 
 namespace sun::serialization {
+namespace pbc = sun::proto::ast;
+
 /** Visit portable nominal references, retaining names only for diagnostics. */
 inline void visitDeclarationKeys(
     const google::protobuf::Message& message,
-    const std::function<void(const PortableDeclarationKey&,
-                             std::optional<Type::Kind>, const std::string&)>&
+    const std::function<void(
+        const sun::semantic_analysis::PortableDeclarationKey&,
+        std::optional<sun::semantic_analysis::Type::Kind>, const std::string&)>&
         visit) {
   const auto* descriptor = message.GetDescriptor();
-  if (descriptor == ast::CompiledSpecialization::descriptor()) return;
+  if (descriptor == pbc::CompiledSpecialization::descriptor()) return;
   const auto* reflection = message.GetReflection();
   if (const auto* field = descriptor->FindFieldByName("declaration_key")) {
     if (reflection->HasField(message, field)) {
       const bool interface =
-          descriptor == ast::ImplementedInterface::descriptor() ||
-          descriptor == ast::TypeParameter::descriptor();
+          descriptor == pbc::ImplementedInterface::descriptor() ||
+          descriptor == pbc::TypeParameter::descriptor();
       const auto* name = descriptor->FindFieldByName(
-          descriptor == ast::TypeAnnotation::descriptor()  ? "base_name"
-          : descriptor == ast::TypeParameter::descriptor() ? "constraint"
+          descriptor == pbc::TypeAnnotation::descriptor()  ? "base_name"
+          : descriptor == pbc::TypeParameter::descriptor() ? "constraint"
                                                            : "name");
-      visit(PortableDeclarationKey::parseOriginal(
+      visit(sun::semantic_analysis::PortableDeclarationKey::parseOriginal(
                 reflection->GetString(message, field)),
-            interface ? std::optional<Type::Kind>(Type::Kind::Interface)
+            interface ? std::optional<sun::semantic_analysis::Type::Kind>(
+                            sun::semantic_analysis::Type::Kind::Interface)
                       : std::nullopt,
             name ? reflection->GetString(message, name) : "");
     }

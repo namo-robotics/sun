@@ -23,6 +23,8 @@
 using namespace llvm;
 using namespace llvm::orc;
 
+namespace sun::driver {
+
 /// The ORC JIT behind `sun file.sun`: one dylib, host-targeted, resolving
 /// unknown symbols from the compiler's own process. The object-linking layer
 /// is JITLink on every platform, so the JIT has one linker's behavior to test
@@ -145,3 +147,5 @@ class SunJIT {
 
   ExecutionSession& getExecutionSession() { return *ES; }
 };
+
+}  // namespace sun::driver

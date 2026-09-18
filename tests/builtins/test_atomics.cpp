@@ -12,14 +12,16 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+
 namespace {
 
 /*
  * Compiles a Sun program ahead of time and returns its LLVM IR as text.
  */
 std::string atomicIrFor(const std::string& source) {
-  initTestEnvironment();
-  auto driver = Driver::createForAOT("atomic_ir");
+  sun::driver::initTestEnvironment();
+  auto driver = sun::driver::Driver::createForAOT("atomic_ir");
   driver->compileString(source);
   std::string text;
   llvm::raw_string_ostream stream(text);

@@ -6,6 +6,8 @@
 #include "ast/block_expr_ast.h"
 #include "ast/expr_ast.h"
 
+namespace sun::ast {
+
 struct ManifestMoonDependency {
   std::string path;                 // local path; empty when url is set
   std::optional<std::string> url;   // downloaded to the moon cache
@@ -86,3 +88,5 @@ class ManifestAST : public ExprAST {
   }
   std::string dotLabel() const override { return "Manifest"; }
 };
+
+}  // namespace sun::ast

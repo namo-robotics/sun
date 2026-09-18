@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-namespace sun {
+namespace sun::semantic_analysis {
 
 /** Identifies a declaration within its owning analysis session. */
 class DeclarationId {
@@ -62,11 +62,11 @@ struct DeclarationIdentity {
   }
 };
 
-}  // namespace sun
+}  // namespace sun::semantic_analysis
 
 template <>
-struct std::hash<sun::DeclarationId> {
-  size_t operator()(sun::DeclarationId id) const noexcept {
+struct std::hash<sun::semantic_analysis::DeclarationId> {
+  size_t operator()(sun::semantic_analysis::DeclarationId id) const noexcept {
     return std::hash<uint64_t>{}(id.index());
   }
 };

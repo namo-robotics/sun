@@ -9,6 +9,9 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+using sun::driver::executeStringWithStdlib;
+
 // ============================================================================
 // var r: ref T = <lvalue>
 // ============================================================================

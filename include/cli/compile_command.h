@@ -30,8 +30,8 @@ struct CompileJob {
   std::string outputFile;      // production artifact (resolved, non-empty)
   std::string testBinaryName;  // empty: outputFile + "_test"
   std::string targetTriple;
-  sun::LinkOptions baseLinkOpts;
-  std::vector<sun::MoonImport> moonImports;
+  sun::driver::LinkOptions baseLinkOpts;
+  std::vector<sun::moon_bundling::MoonImport> moonImports;
   bool emitObjOnly = false;
   bool emitIR = false;
   bool debugMode = false;

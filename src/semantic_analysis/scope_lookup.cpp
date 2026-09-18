@@ -15,8 +15,17 @@
 #include "semantic_analysis/type_rules.h"
 #include "support/error.h"
 
-using sun::names::isIntrinsic;
-using sun::rules::isAssignableTo;
+using sun::semantic_analysis::CallableSignature;
+using sun::semantic_analysis::ClassType;
+using sun::semantic_analysis::EnumType;
+using sun::semantic_analysis::InterfaceType;
+using sun::semantic_analysis::QualifiedName;
+using sun::semantic_analysis::ReferenceType;
+
+namespace sun::semantic_analysis {
+
+using sun::semantic_analysis::isAssignableTo;
+using sun::semantic_analysis::isIntrinsic;
 
 namespace {
 
@@ -99,7 +108,7 @@ bool SemanticScope::hasAccessibleSymbol(const std::string& name,
   return false;
 }
 
-std::shared_ptr<sun::ClassType> SemanticScope::findClass(
+std::shared_ptr<ClassType> SemanticScope::findClass(
     const std::string& name) const {
   auto it = classes.find(name);
   if (it != classes.end()) return it->second;
@@ -113,7 +122,7 @@ const GenericClassInfo* SemanticScope::findGenericClass(
   return nullptr;
 }
 
-std::shared_ptr<sun::InterfaceType> SemanticScope::findInterface(
+std::shared_ptr<InterfaceType> SemanticScope::findInterface(
     const std::string& name) const {
   auto it = interfaces.find(name);
   if (it != interfaces.end()) return it->second;
@@ -127,7 +136,7 @@ const GenericInterfaceInfo* SemanticScope::findGenericInterface(
   return nullptr;
 }
 
-std::shared_ptr<sun::EnumType> SemanticScope::findEnum(
+std::shared_ptr<EnumType> SemanticScope::findEnum(
     const std::string& name) const {
   auto it = enums.find(name);
   if (it != enums.end()) return it->second;
@@ -201,14 +210,14 @@ std::shared_ptr<SemanticScopeBase> SemanticScopeBase::cloneSymbols(
 // -------------------------------------------------------------------
 // lookupClass — find a class in the scope chain
 // -------------------------------------------------------------------
-std::shared_ptr<sun::ClassType> SemanticScopeBase::lookupClass(
+std::shared_ptr<ClassType> SemanticScopeBase::lookupClass(
     const std::string& name) const {
   if (auto dotted = splitDotted(name)) {
     if (auto* modScope = lookupModuleScope(dotted.modulePath)) {
       if (auto found = modScope->findClass(dotted.symbol)) return found;
     }
   }
-  return lookupInChain<std::shared_ptr<sun::ClassType>>(
+  return lookupInChain<std::shared_ptr<ClassType>>(
       name,
       [&](const SemanticScopeBase* scope) { return scope->findClass(name); });
 }
@@ -235,14 +244,14 @@ const GenericClassInfo* SemanticScopeBase::lookupGenericClass(
 // -------------------------------------------------------------------
 // lookupInterface — find an interface in the scope chain
 // -------------------------------------------------------------------
-std::shared_ptr<sun::InterfaceType> SemanticScopeBase::lookupInterface(
+std::shared_ptr<InterfaceType> SemanticScopeBase::lookupInterface(
     const std::string& name) const {
   if (auto dotted = splitDotted(name)) {
     if (auto* modScope = lookupModuleScope(dotted.modulePath)) {
       if (auto found = modScope->findInterface(dotted.symbol)) return found;
     }
   }
-  return lookupInChain<std::shared_ptr<sun::InterfaceType>>(
+  return lookupInChain<std::shared_ptr<InterfaceType>>(
       name, [&](const SemanticScopeBase* scope) {
         return scope->findInterface(name);
       });
@@ -271,7 +280,7 @@ const GenericInterfaceInfo* SemanticScopeBase::lookupGenericInterface(
 // -------------------------------------------------------------------
 // lookupEnum — find an enum in the scope chain
 // -------------------------------------------------------------------
-std::shared_ptr<sun::EnumType> SemanticScopeBase::lookupEnum(
+std::shared_ptr<EnumType> SemanticScopeBase::lookupEnum(
     const std::string& name) const {
   if (auto dotted = splitDotted(name)) {
     if (auto* modScope = lookupModuleScope(dotted.modulePath)) {
@@ -281,7 +290,7 @@ std::shared_ptr<sun::EnumType> SemanticScopeBase::lookupEnum(
       }
     }
   }
-  return lookupInChain<std::shared_ptr<sun::EnumType>>(
+  return lookupInChain<std::shared_ptr<EnumType>>(
       name,
       [&](const SemanticScopeBase* scope) { return scope->findEnum(name); });
 }
@@ -380,10 +389,11 @@ std::vector<FunctionInfo> SemanticScopeBase::getAllFunctions(
   std::vector<FunctionInfo> results;
 
   // Track seen signatures to avoid duplicates
-  std::unordered_set<sun::CallableSignature, sun::CallableSignatureHash>
+  std::unordered_set<CallableSignature,
+                     sun::semantic_analysis::CallableSignatureHash>
       seenSignatures;
   auto addIfUnique = [&](const FunctionInfo& info) {
-    sun::CallableSignature sig{name, info.paramTypes};
+    CallableSignature sig{name, info.paramTypes};
     if (seenSignatures.insert(sig).second) {
       results.push_back(info);
     }
@@ -436,13 +446,13 @@ std::vector<FunctionInfo> SemanticScopeBase::getAllFunctions(
 std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
     const std::string& name, const std::vector<FunctionArgumentType>& argTypes,
     AccessFilter* filter, bool matchAlternatives,
-    std::optional<Position> loc) const {
+    std::optional<sun::support::Position> loc) const {
   const FunctionTable& funcs = functions;
   auto admit = [&](const FunctionInfo& info) {
     return !filter || filter->admit(info);
   };
 
-  sun::CallableSignature sig{name, {}};
+  CallableSignature sig{name, {}};
   for (const auto& argument : argTypes)
     sig.parameters.push_back(argument.preferred);
 
@@ -479,7 +489,7 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
           if (matchAlternatives) {
             const auto& alternatives = argTypes[i].alternatives;
             if (std::any_of(alternatives.begin(), alternatives.end(),
-                            [&](const sun::TypePtr& type) {
+                            [&](const sun::semantic_analysis::TypePtr& type) {
                               return type && info->paramTypes[i]->equals(*type);
                             })) {
               continue;
@@ -487,25 +497,27 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
           }
 
           if (info->paramTypes[i]->isReference()) {
-            auto* refType = static_cast<const sun::ReferenceType*>(
-                info->paramTypes[i].get());
+            auto* refType =
+                static_cast<const ReferenceType*>(info->paramTypes[i].get());
             if (refType->getReferencedType()->equals(*argType)) continue;
             // A borrow handed to a parameter of the other mutability: only
             // ref -> const ref is allowed
             if (argType->isReference()) {
-              auto* argRef =
-                  static_cast<const sun::ReferenceType*>(argType.get());
-              if (sun::refMutabilityConvertible(*argRef, *refType) &&
+              auto* argRef = static_cast<const ReferenceType*>(argType.get());
+              if (sun::semantic_analysis::refMutabilityConvertible(*argRef,
+                                                                   *refType) &&
                   refType->getReferencedType()->equals(
                       *argRef->getReferencedType()))
                 continue;
             }
             if (refType->getReferencedType()->isArray() &&
                 argType->isArray()) {
-              auto* paramArray = static_cast<const sun::ArrayType*>(
-                  refType->getReferencedType().get());
+              auto* paramArray =
+                  static_cast<const sun::semantic_analysis::ArrayType*>(
+                      refType->getReferencedType().get());
               auto* argArray =
-                  static_cast<const sun::ArrayType*>(argType.get());
+                  static_cast<const sun::semantic_analysis::ArrayType*>(
+                      argType.get());
               if (paramArray->isUnsized() &&
                   paramArray->getElementType()->equals(
                       *argArray->getElementType()))
@@ -514,12 +526,11 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
           }
 
           if (argType->isReference()) {
-            auto* refType =
-                static_cast<const sun::ReferenceType*>(argType.get());
+            auto* refType = static_cast<const ReferenceType*>(argType.get());
             // Reading the value out of the borrow, so only for a scalar
             // parameter type (see isAssignableTo above)
             if (info->paramTypes[i]->equals(*refType->getReferencedType()) &&
-                sun::typeCopiesByRead(info->paramTypes[i]))
+                sun::semantic_analysis::typeCopiesByRead(info->paramTypes[i]))
               continue;
           }
 
@@ -531,9 +542,11 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
           if (argType->isStaticPointer() &&
               info->paramTypes[i]->isRawPointer()) {
             auto* staticPtr =
-                static_cast<const sun::StaticPointerType*>(argType.get());
-            auto* rawPtr = static_cast<const sun::RawPointerType*>(
-                info->paramTypes[i].get());
+                static_cast<const sun::semantic_analysis::StaticPointerType*>(
+                    argType.get());
+            auto* rawPtr =
+                static_cast<const sun::semantic_analysis::RawPointerType*>(
+                    info->paramTypes[i].get());
             if (staticPtr->getPointeeType()->equals(
                     *rawPtr->getPointeeType())) {
               continue;
@@ -544,15 +557,16 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
           // for intrinsics
           if (argType->isRawPointer() &&
               info->paramTypes[i]->isRawPointer() && isIntrinsic(baseName)) {
-            auto* paramRawPtr = static_cast<const sun::RawPointerType*>(
-                info->paramTypes[i].get());
+            auto* paramRawPtr =
+                static_cast<const sun::semantic_analysis::RawPointerType*>(
+                    info->paramTypes[i].get());
             if (paramRawPtr->getPointeeType()->isInt8() ||
                 paramRawPtr->getPointeeType()->isUInt8()) {
               continue;
             }
           }
 
-          if (::isAssignableTo(argType, info->paramTypes[i])) {
+          if (isAssignableTo(argType, info->paramTypes[i])) {
             continue;
           }
 
@@ -563,7 +577,7 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
         if (compatible) {
           if (!matchAlternatives) return *info;
           if (alternativeMatch) {
-            logAndThrowError(
+            sun::support::logAndThrowError(
                 "Ambiguous overload of '" + name +
                     "' for integer literal arguments; add a type suffix",
                 loc);
@@ -580,7 +594,7 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
 
 std::optional<FunctionInfo> SemanticScopeBase::lookupFunction(
     const std::string& name, const std::vector<FunctionArgumentType>& argTypes,
-    std::optional<Position> loc) const {
+    std::optional<sun::support::Position> loc) const {
   AccessFilter filter(this);
   bool matchAlternatives = false;
   auto findInScope =
@@ -851,14 +865,14 @@ static std::vector<SemanticScopeBase*> collectAllModuleScopes(
   return results;
 }
 
-sun::QualifiedName SemanticScopeBase::resolveNameWithUsings(
+QualifiedName SemanticScopeBase::resolveNameWithUsings(
     const std::string& name) const {
   // Handle qualified (dotted) names like "std.String"
   if (auto dotted = splitDotted(name)) {
     if (auto* modScope = lookupModuleScope(dotted.modulePath)) {
       AccessFilter qualifiedFilter(this);
       if (modScope->hasAccessibleSymbol(dotted.symbol, qualifiedFilter)) {
-        return sun::QualifiedName(modScope->scopePath, dotted.symbol);
+        return QualifiedName(modScope->scopePath, dotted.symbol);
       }
       qualifiedFilter.finish();
     }
@@ -901,7 +915,7 @@ sun::QualifiedName SemanticScopeBase::resolveNameWithUsings(
 
   // 2. If inside a module, check the module scope hierarchy via path lookup
   if (!visiblePath.empty()) {
-    std::string visPathStr = sun::QualifiedName::joinPath(visiblePath);
+    std::string visPathStr = QualifiedName::joinPath(visiblePath);
     auto allScopes = collectAllModuleScopes(this, visPathStr);
     for (auto* modScope : allScopes) {
       if (modScope->hasAccessibleSymbol(name, filter)) {
@@ -942,11 +956,10 @@ sun::QualifiedName SemanticScopeBase::resolveNameWithUsings(
     std::string paths;
     for (const auto& [visPath, info] : candidates) {
       if (!paths.empty()) paths += " or ";
-      paths +=
-          visPath.empty() ? "<global>" : sun::QualifiedName::joinPath(visPath);
+      paths += visPath.empty() ? "<global>" : QualifiedName::joinPath(visPath);
     }
-    logAndThrowError("Ambiguous reference to '" + name +
-                     "'. Could be: " + paths);
+    sun::support::logAndThrowError("Ambiguous reference to '" + name +
+                                   "'. Could be: " + paths);
   }
 
   // Return the single match, or unqualified name if no match
@@ -961,13 +974,13 @@ sun::QualifiedName SemanticScopeBase::resolveNameWithUsings(
         }
       }
     }
-    return sun::QualifiedName(info.first, name);
+    return QualifiedName(info.first, name);
   }
 
   // No match found: report a private candidate if that is all there was,
   // otherwise return the unqualified name
   filter.finish();
-  return sun::QualifiedName(std::vector<std::string>{}, name);
+  return QualifiedName(std::vector<std::string>{}, name);
 }
 
 // -------------------------------------------------------------------
@@ -1023,3 +1036,5 @@ const FunctionInfo* SemanticScopeBase::lookupQualifiedFunction(
   filter.finish();
   return nullptr;
 }
+
+}  // namespace sun::semantic_analysis
