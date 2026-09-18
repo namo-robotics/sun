@@ -233,24 +233,14 @@ void forEachDeclaration(const ExprAST& node,
   }
 }
 
-// Module-level declaration whose analyzer-given name mangles to `mangled`,
-// falling back to the first one called `name`
-const ExprAST* findDeclarationByMangledName(const BlockExprAST& program,
-                                            const std::string& name,
-                                            const std::string& mangled) {
-  const ExprAST* byName = nullptr;
-  const ExprAST* byMangledName = nullptr;
-  forEachDeclaration(program, [&](const ExprAST& decl) {
-    if (declarationName(decl) != name) return;
-    if (!byName) byName = &decl;
-    if (!mangled.empty() && !byMangledName) {
-      sun::QualifiedName qualified = declarationQualifiedName(decl);
-      if (!qualified.empty() && qualified.mangled() == mangled) {
-        byMangledName = &decl;
-      }
-    }
+/** Find analyzed source syntax by its selected declaration identity. */
+const ExprAST* findDeclarationById(const ExprAST& node, sun::DeclarationId id) {
+  if (node.getDeclarationId() == id) return &node;
+  const ExprAST* found = nullptr;
+  forEachChild(node, [&](const ExprAST& child) {
+    if (!found) found = findDeclarationById(child, id);
   });
-  return byMangledName ? byMangledName : byName;
+  return found;
 }
 
 }  // namespace
@@ -301,8 +291,6 @@ const ExprAST* findTypeDefinition(const BlockExprAST& program,
       const auto& cls = static_cast<const sun::ClassType&>(type);
       qualified = cls.isSpecialized() ? cls.getGenericQualifiedName()
                                       : cls.getQualifiedName();
-      // The generic's base name may be a mangled symbol (a bundle's
-      // `$hash$_std_Vec`); the qualified name keeps the plain spelling
       if (!qualified.empty()) {
         name = qualified.baseName;
       } else if (cls.isSpecialized() && !cls.getBaseGenericName().empty()) {
@@ -453,7 +441,7 @@ std::optional<Declaration> findLocalDeclaration(
 
 std::optional<Declaration> findMemberDeclaration(
     const BlockExprAST& program, const ExprAST& object,
-    const std::string& member, const std::string& qualifiedName) {
+    const std::string& member, const sun::QualifiedName& qualifiedName) {
   const sun::Type* objectType = stripReference(object.getResolvedType().get());
   if (!objectType) {
     // A match pattern's object is never typed: `Shape.Circle(r)` names the
@@ -471,8 +459,7 @@ std::optional<Declaration> findMemberDeclaration(
   }
   if (objectType->getKind() == sun::Type::Kind::Module) {
     // `m.f`: the analyzer recorded which module's `f` was meant
-    if (const ExprAST* decl =
-            findDeclarationByMangledName(program, member, qualifiedName)) {
+    if (const ExprAST* decl = findDeclaration(program, member, qualifiedName)) {
       return declarationOf(*decl);
     }
     return std::nullopt;
@@ -485,6 +472,10 @@ std::optional<Declaration> findMemberDeclaration(
 std::optional<Declaration> findDeclarationOf(
     const BlockExprAST& program, const std::vector<const ExprAST*>& chain,
     const ExprAST& node) {
+  if (auto target = node.getTargetDeclarationId()) {
+    if (const auto* declaration = findDeclarationById(program, target))
+      return declarationOf(*declaration);
+  }
   switch (node.getType()) {
     case ASTNodeType::VARIABLE_REFERENCE: {
       const auto& ref = static_cast<const VariableReferenceAST&>(node);
@@ -523,13 +514,13 @@ std::optional<Declaration> findDeclarationOf(
       if (!access.getObject()) return std::nullopt;
       return findMemberDeclaration(program, *access.getObject(),
                                    access.getMemberName(),
-                                   access.getQualifiedName().mangled());
+                                   access.getQualifiedName());
     }
     case ASTNodeType::MEMBER_ASSIGNMENT: {
       const auto& assignment = static_cast<const MemberAssignmentAST&>(node);
       if (!assignment.getObject()) return std::nullopt;
       return findMemberDeclaration(program, *assignment.getObject(),
-                                   assignment.getMemberName(), "");
+                                   assignment.getMemberName(), {});
     }
     default:
       return std::nullopt;

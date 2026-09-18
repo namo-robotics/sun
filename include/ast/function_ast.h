@@ -117,8 +117,8 @@ class FunctionAST : public ExprAST {
   bool isExtern() const { return Body == nullptr; }
 
   // True only for `extern function` — a C symbol linked by its exact name,
-  // with no module scope and no overload suffix. `declare function` is a
-  // forward declaration of a Sun function and keeps normal mangling, so the
+  // with no module scope. `declare function` is a forward declaration of a
+  // Sun function and keeps the symbol derived from its declaration, so the
   // two must not be conflated even though both are bodyless.
   bool isCExtern() const { return CAbi; }
   void setCExtern(bool v) { CAbi = v; }

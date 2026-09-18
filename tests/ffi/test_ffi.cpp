@@ -94,8 +94,8 @@ TEST(Ffi, extern_inside_module_via_using) {
 }
 
 TEST(Ffi, extern_coexists_with_sun_overload) {
-  // The extern keeps the bare C symbol while the Sun function keeps its
-  // mangled, param-suffixed name; overload resolution picks between them.
+  // The extern keeps the bare C symbol while the Sun function is emitted under
+  // its own declaration's symbol; overload resolution picks between them.
   auto value = executeString(R"(
     extern function abs(x: i32) i32;
     function abs(x: f64) f64 { return 100.0; }
@@ -113,10 +113,10 @@ TEST(Ffi, extern_coexists_with_sun_overload) {
 // `declare` must not be treated as a C extern
 // ============================================================================
 
-TEST(Ffi, declare_forward_decl_keeps_sun_mangling) {
+TEST(Ffi, declare_forward_decl_keeps_sun_symbol) {
   // `declare function` and `extern function` are both bodyless, but only the
   // latter is a C symbol. A `declare` must still resolve to the Sun
-  // definition's mangled name.
+  // definition's symbol.
   auto value = executeString(R"(
     declare function isOdd(n: i32) bool;
 
@@ -605,7 +605,7 @@ TEST(Ffi_Struct, ref_return_is_still_rejected) {
 // Externs through .moon libraries
 // ============================================================================
 // A bodyless declaration used to deserialize as an ordinary Sun function with
-// an empty body, which meant it picked up Sun name mangling and lost the C
+// an empty body, which meant it was emitted under a Sun symbol and lost the C
 // symbol. See ModuleTest for the plain module-scope cases.
 
 TEST(Ffi_Moon, extern_survives_serialization_roundtrip) {
@@ -640,7 +640,7 @@ TEST(Ffi_Moon, extern_survives_serialization_roundtrip) {
   EXPECT_TRUE(printfFn->getProto().isCVariadic());
 
   // `declare` is bodyless too but is NOT a C extern; conflating them would
-  // strip Sun mangling from a forward declaration.
+  // bind a forward declaration to a C symbol instead of its Sun definition.
   auto* declareFn =
       static_cast<FunctionAST*>(roundTrip(*ast->getBody()[2]).release());
   EXPECT_TRUE(declareFn->isExtern());

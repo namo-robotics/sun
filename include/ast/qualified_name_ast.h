@@ -13,21 +13,6 @@
 class QualifiedNameAST : public ExprAST {
   std::vector<std::string> parts;  // ["std", "Vec"] for std.Vec
 
- protected:
-  // Override to allocate QualifiedNameExprAnalysis instead of base ExprAnalysis
-  void ensureAnalysis() const override {
-    if (!analysis_) {
-      analysis_ = std::make_unique<QualifiedNameExprAnalysis>();
-    }
-  }
-
- private:
-  // Access as QualifiedNameExprAnalysis
-  QualifiedNameExprAnalysis& qnAnalysis() const {
-    ensureAnalysis();
-    return static_cast<QualifiedNameExprAnalysis&>(*analysis_);
-  }
-
  public:
   explicit QualifiedNameAST(std::vector<std::string> parts)
       : parts(std::move(parts)) {}
@@ -54,27 +39,6 @@ class QualifiedNameAST : public ExprAST {
       result += parts[i];
     }
     return result;
-  }
-
-  // Get mangled name for LLVM symbols (e.g., "sun_Vec")
-  // Uses resolved name if set by semantic analyzer, otherwise computes from
-  // parts
-  std::string getMangledName() const {
-    if (analysis_ && !static_cast<QualifiedNameExprAnalysis&>(*analysis_)
-                          .resolvedMangledName.empty()) {
-      return static_cast<QualifiedNameExprAnalysis&>(*analysis_)
-          .resolvedMangledName;
-    }
-    std::string result;
-    for (size_t i = 0; i < parts.size(); ++i) {
-      if (i > 0) result += "_";
-      result += parts[i];
-    }
-    return result;
-  }
-
-  void setResolvedMangledName(std::string name) const {
-    qnAnalysis().resolvedMangledName = std::move(name);
   }
 
   std::string dotLabel() const override { return "QualName\n" + getFullName(); }

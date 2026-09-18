@@ -1306,7 +1306,7 @@ TEST(Modules, moon_keeps_const_declarations) {
 //
 // A module-level `var` is shared mutable state: it is written from inside its
 // module, through a `using` import, and by its qualified name. All three reach
-// the same global, which is emitted under the module-mangled name.
+// the same global, which is emitted once under its declaration's symbol.
 
 TEST(Modules, module_variable_assigned_within_module) {
   auto value = executeString(R"(
@@ -1476,9 +1476,9 @@ TEST(Modules, moon_sibling_signatures_are_source_order_independent) {
 
 // === Names must agree on both sides of a .moon boundary ===
 
-// An interface-typed parameter is mangled into the method's symbol. The
-// bundle and its importer must spell it the same way, or the importer asks
-// the linker for a symbol the bundle never defined (issue #216).
+// A method taking an interface-typed parameter. The bundle and its importer
+// must derive the same symbol for it, or the importer asks the linker for a
+// symbol the bundle never defined (issue #216).
 TEST(Modules, moon_interface_param_links) {
   initTestEnvironment();
   auto moonPath = writeMoonLib("ifaceparam", R"(
@@ -1514,11 +1514,10 @@ TEST(Modules, moon_interface_param_links) {
 }
 
 // A generic specialized over one of the bundle's own types, passed by value:
-// the specialization's LLVM struct type is named after its mangled name, and
-// the importer pre-declares the bundle's functions with struct types unified
-// by name. Both sides must therefore name the specialization identically
-// (issue #217). The importer then also reuses the bundle's precompiled
-// specialization instead of instantiating its own.
+// the importer pre-declares the bundle's functions, so both sides must agree
+// on the specialization's struct layout and symbol (issue #217). The importer
+// then also reuses the bundle's precompiled specialization instead of
+// instantiating its own.
 TEST(Modules, moon_generic_over_own_type_by_value_links) {
   initTestEnvironment();
   auto moonPath = writeMoonLib("boxes", R"(

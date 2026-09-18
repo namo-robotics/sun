@@ -710,8 +710,8 @@ void ASTSerializer::serializeFunction(const FunctionAST& expr,
   func->set_synthesized_constructor(expr.isSynthesizedConstructor());
   func->set_visibility(toProto(expr.getVisibility()));
   // An empty body and no body are different things: the latter is a
-  // declaration, and reconstructing it as the former would give a C extern
-  // Sun name mangling and lose its symbol.
+  // declaration, and reconstructing it as the former would emit a C extern
+  // under a Sun-derived symbol and lose its C symbol.
   func->set_body_present(expr.hasBody());
   auto* body = func->mutable_body();
   if (expr.hasBody()) serializeBlockInto(expr.getBody(), body);

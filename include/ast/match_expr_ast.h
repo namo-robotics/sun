@@ -15,7 +15,6 @@ struct PatternBinding {
   Position location;
   // Set by semantic analysis:
   sun::TypePtr resolvedType;        // payload element type
-  std::string resolvedMangledName;  // scoped name for codegen
   mutable sun::DeclarationIdentity declaration{};
 };
 

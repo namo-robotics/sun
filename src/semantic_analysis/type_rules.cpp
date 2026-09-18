@@ -393,14 +393,6 @@ bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
     return isAssignableTo(fromRef->getReferencedType(), to);
   }
 
-  // Class-to-class: compare by mangled name (unique identifier)
-  // This handles cases where equals() fails due to different type instances
-  if (to->isClass() && from->isClass()) {
-    auto* toClass = static_cast<const sun::ClassType*>(to.get());
-    auto* fromClass = static_cast<const sun::ClassType*>(from.get());
-    return toClass->getMangledName() == fromClass->getMangledName();
-  }
-
   return false;
 }
 

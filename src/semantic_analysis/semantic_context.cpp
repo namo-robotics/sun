@@ -21,10 +21,9 @@ using sun::unwrapRef;
 using sun::access::fieldRef;
 using sun::access::methodRef;
 using sun::access::moduleRef;
-using sun::names::getFunctionSignature;
 using sun::names::isReservedIdentifier;
 
-// isLibraryScope() and mangleModulePath() are provided by semantic_scope.h
+// isLibraryScope() is provided by semantic_scope.h
 
 SemanticContext::SemanticContext(std::shared_ptr<sun::TypeRegistry> registry)
     : typeRegistry_(std::move(registry)) {
@@ -96,8 +95,8 @@ void SemanticContext::enterModuleScope(const std::string& moduleName) {
     // Compute full scope path by extending parent's path
     modScope->scopePath = currentScope_->scopePath;
     modScope->scopePath.push_back(moduleName);
-    modScope->qualifiedName = sun::QualifiedName(
-        currentScope_->scopePath, moduleName, currentScope_->scopePath);
+    modScope->qualifiedName =
+        sun::QualifiedName(currentScope_->scopePath, moduleName);
     child = modScope;
   }
   currentScope_ = child.get();
@@ -134,7 +133,6 @@ void SemanticContext::declareModule(ModuleAST& module) {
 void SemanticContext::enterClassScope(const sun::QualifiedName& className) {
   auto classScope = std::make_shared<ClassScope>();
   classScope->classBaseName = className.baseName;
-  classScope->classMangledName = className.mangled();
   // Use the class's scope path directly
   classScope->scopePath = className.scopePath;
   classScope->scopePath.push_back(className.baseName);
@@ -147,7 +145,6 @@ void SemanticContext::enterInterfaceScope(
     const sun::QualifiedName& interfaceName) {
   auto ifaceScope = std::make_shared<InterfaceScope>();
   ifaceScope->interfaceBaseName = interfaceName.baseName;
-  ifaceScope->interfaceMangledName = interfaceName.mangled();
   // Use the interface's scope path directly
   ifaceScope->scopePath = interfaceName.scopePath;
   ifaceScope->scopePath.push_back(interfaceName.baseName);
@@ -167,10 +164,10 @@ void SemanticContext::enterFunctionScope(const std::string& funcSig,
   funcScope->functionReturnType = std::move(returnType);
   funcScope->parent = currentScope_;
 
-  // Set scopePath to include the function's mangled name so nested functions
-  // get unique qualified names (e.g., inner inside outer_i32 ->
-  // outer_i32_inner)
-  funcScope->scopePath = {funcName.mangled()};
+  // Nested declarations inherit the source spelling; IDs distinguish overloads.
+  funcScope->scopePath = funcName.scopePath;
+  if (!funcName.baseName.empty())
+    funcScope->scopePath.push_back(funcName.baseName);
 
   currentScope_->children.push_back(funcScope);
   currentScope_ = funcScope.get();
@@ -194,20 +191,6 @@ void SemanticContext::exitScope() {
   }
 }
 
-std::string SemanticContext::getCurrentModulePrefix() const {
-  // Get module path from scope and mangle it for symbol prefixing
-  auto scopePath = getCurrentScopePath();
-  if (scopePath.empty()) return "";
-
-  // Join path segments with underscores for mangled name prefix
-  std::string result;
-  for (const auto& seg : scopePath) {
-    if (!result.empty()) result += "_";
-    result += seg;
-  }
-  return result + "_";
-}
-
 std::vector<std::string> SemanticContext::getCurrentScopePath() const {
   // Walk up to find the nearest scope with a scopePath (Module or Import).
   for (auto* s = currentScope_; s != nullptr; s = s->parent) {
@@ -216,12 +199,6 @@ std::vector<std::string> SemanticContext::getCurrentScopePath() const {
     }
   }
   return {};
-}
-
-std::string SemanticContext::qualifyNameInCurrentModule(
-    const std::string& name) const {
-  std::string prefix = getCurrentModulePrefix();
-  return prefix + name;
 }
 
 bool SemanticContext::isInThrowingFunction() const {
@@ -541,7 +518,7 @@ SymbolMatch SemanticContext::findSymbolInModule(
             if (!resolved) return std::nullopt;
             info = nullptr;
             for (const auto* candidate : *overloads) {
-              if (candidate->qualifiedName == resolved->qualifiedName) {
+              if (candidate->declarationId == resolved->declarationId) {
                 info = candidate;
                 break;
               }
@@ -570,9 +547,9 @@ SymbolMatch SemanticContext::findSymbolInModule(
       }
     }
 
-    // Check generic functions (templates, keyed by qualified name)
+    // Check generic functions by source name.
     if (matchesFilter(SymbolKind::GenericFunction)) {
-      auto genFuncIt = scope->genericFunctions.find({scope->scopePath, name});
+      auto genFuncIt = scope->genericFunctions.find(name);
       if (genFuncIt != scope->genericFunctions.end()) {
         SymbolMatch match;
         match.kind = SymbolKind::GenericFunction;
@@ -587,9 +564,7 @@ SymbolMatch SemanticContext::findSymbolInModule(
 
     // Check namespaced variables
     if (matchesFilter(SymbolKind::Variable)) {
-      std::string mangledPath = mangleModulePath(fullPath);
-      std::string qualifiedVarName = mangledPath + "_" + name;
-      auto varIt = scope->namespacedVariables.find(qualifiedVarName);
+      auto varIt = scope->namespacedVariables.find(name);
       if (varIt != scope->namespacedVariables.end()) {
         SymbolMatch match;
         match.kind = SymbolKind::Variable;
@@ -764,7 +739,7 @@ void SemanticContext::registerFunctionInCurrentScope(const std::string& name,
   // Functions are registered in their enclosing scope. For nested functions,
   // this is the parent function's scope - the scope hierarchy naturally
   // disambiguates between different generic instantiations.
-  std::string sig = getFunctionSignature(name, info.paramTypes);
+  sun::CallableSignature sig{name, info.paramTypes};
   auto existing = currentScope_->functions.find(sig);
   if (existing != currentScope_->functions.end() && info.isForwardDeclaration &&
       !existing->second.isForwardDeclaration)
@@ -784,7 +759,7 @@ void SemanticContext::registerGenericFunctionInCurrentScope(FunctionAST& func) {
   const PrototypeAST& proto = func.getProto();
   assert(proto.hasQualifiedName() && "Generic declaration must be named first");
   const sun::QualifiedName& qname = proto.getQualifiedName();
-  auto existing = currentScope_->genericFunctions.find(qname);
+  auto existing = currentScope_->genericFunctions.find(proto.getName());
   // Repeated declaration collection may visit the same template again.
   // A different declaration must not silently replace it.
   if (existing != currentScope_->genericFunctions.end() &&
@@ -804,7 +779,7 @@ void SemanticContext::registerGenericFunctionInCurrentScope(FunctionAST& func) {
   genInfo.params = proto.getArgs();
   genInfo.qualifiedName = qname;
   genInfo.definitionScope = currentScope_->shared_from_this();
-  currentScope_->genericFunctions[qname] = genInfo;
+  currentScope_->genericFunctions[proto.getName()] = genInfo;
 }
 
 const GenericFunctionInfo* SemanticContext::lookupGenericFunction(
@@ -1101,13 +1076,6 @@ void SemanticContext::registerModuleVariable(
   info.isCExtern = isCExtern;
   info.qualifiedName = qualifiedName;
   const std::string& baseName = qualifiedName.baseName;
-  const std::string mangledName = qualifiedName.mangled();
-  // Store with qualified name for codegen lookup
-  rootScope_->namespacedVariables[mangledName] = info;
-  if (currentScope_ != rootScope_.get()) {
-    currentScope_->namespacedVariables[mangledName] = info;
-  }
-  // Also store with plain name in current scope for hasSymbol lookup
   currentScope_->namespacedVariables[baseName] = info;
   // The plain-name entry created by declareVariable during body analysis
   if (auto it = currentScope_->variables.find(baseName);
@@ -1344,16 +1312,17 @@ const GenericEnumInfo* SemanticContext::lookupGenericEnum(
   return currentScope_->lookupGenericEnum(name);
 }
 
-sun::ModulePath SemanticContext::currentModulePath() const {
+sun::DeclarationId SemanticContext::currentModuleId() const {
   for (auto* s = currentScope_; s != nullptr; s = s->parent) {
-    if (s->getType() == ScopeType::Module) return s->scopePath;
+    if (s->getType() == ScopeType::Module)
+      return static_cast<const ModuleScope*>(s)->declarationId;
   }
   return {};
 }
 
 void SemanticContext::denyAccess(const sun::access::ItemRef& item) const {
   auto loc = currentLocation();
-  logSemanticError(sun::access::denialMessage(item), loc);
+  logSemanticError(sun::access::denialMessage(item, declarationTable()), loc);
 }
 
 const sun::ClassField* SemanticContext::accessibleField(

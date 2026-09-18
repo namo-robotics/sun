@@ -8,6 +8,8 @@
 #include "ast/ast_fwd.h"
 #include "semantic_analysis/declaration_id.h"
 
+class SemanticScopeBase;
+
 /** Declaration bookkeeping shared by collection and body checking. */
 class DeclarationState {
  public:
@@ -21,18 +23,19 @@ class DeclarationState {
     return preRegisteredClassShapes_.insert(declaration).second;
   }
 
-  // ---- Module-level redefinition -----------------------------------------
-  //
-  // A class, interface or enum may only be declared once per module. Names
-  // are recorded as they are analyzed, and a second declaration is an error.
-
-  /** True when this module-level name has already been declared. */
-  bool isDeclared(const std::string &name) const {
-    return definedSymbols_.count(name) > 0;
+  /** Check whether a source name has already been declared in this scope.
+   */
+  bool isDeclared(const std::string &name,
+                  const SemanticScopeBase *scopeIdentity) const {
+    auto scope = definedSymbols_.find(scopeIdentity);
+    return scope != definedSymbols_.end() && scope->second.count(name) > 0;
   }
 
-  /** Record a module-level name so a later redeclaration is caught. */
-  void noteDeclared(const std::string &name) { definedSymbols_.insert(name); }
+  /** Record a source name in its scope; reopened modules reuse their scope. */
+  void noteDeclared(const std::string &name,
+                    const SemanticScopeBase *scopeIdentity) {
+    definedSymbols_[scopeIdentity].insert(name);
+  }
 
   // ---- Partial classes ---------------------------------------------------
   //
@@ -58,9 +61,8 @@ class DeclarationState {
   }
 
  private:
-  // Symbols defined at module level (depth 0) — used to detect redefinition
-  // errors for classes, interfaces, and enums.
-  std::unordered_set<std::string> definedSymbols_;
+  std::unordered_map<const SemanticScopeBase *, std::unordered_set<std::string>>
+      definedSymbols_;
 
   // Pending class extensions collected during import processing.
   // Maps class name → list of extension ASTs to merge when primary is analyzed.

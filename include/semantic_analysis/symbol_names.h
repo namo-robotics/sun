@@ -25,12 +25,8 @@ inline bool isIntrinsic(const std::string& name) {
   return !name.empty() && name[0] == '_';
 }
 
-/**
- * The key an overload is registered under: "name(type1,type2,...)". Two
- * functions with the same name and different parameter types get different
- * keys, which is what makes overloading work.
- */
-std::string getFunctionSignature(const std::string& name,
-                                 const std::vector<sun::TypePtr>& paramTypes);
+/** Format a function signature for diagnostics and scope inspection. */
+std::string formatFunctionSignature(
+    const std::string& name, const std::vector<sun::TypePtr>& paramTypes);
 
 }  // namespace sun::names

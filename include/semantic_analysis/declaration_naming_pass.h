@@ -10,8 +10,7 @@ namespace sun {
 /** Name the current local declaration and its methods without walking bodies.
  */
 void assignLocalDeclarationName(ExprAST& declaration,
-                                const std::vector<std::string>& scopePath,
-                                const std::vector<std::string>& modulePath);
+                                const std::vector<std::string>& scopePath);
 
 /** Assign declaration names without resolving types or registering symbols. */
 class DeclarationNamingPass {
@@ -21,7 +20,6 @@ class DeclarationNamingPass {
    * after their enclosing signatures resolve; local variables stay local.
    */
   void run(ExprAST& root, const std::vector<std::string>& scopePath = {},
-           const std::vector<std::string>& modulePath = {},
            bool moduleLevel = true) const;
 
 };

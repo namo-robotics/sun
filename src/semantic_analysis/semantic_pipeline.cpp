@@ -16,7 +16,6 @@ void SemanticPipeline::run(BlockExprAST& block,
   DeclarationIdentityPass(context_.types()->declarations).run(block);
   if (declarationsReady) declarationsReady();
   declarationNamingPass_.run(block, context_.getCurrentScopePath(),
-                             context_.currentModulePath(),
                              context_.isAtModuleLevel());
   declarationCollectionPass_.run(block);
   analyzer_.bodies().analyzeBlock(block);
@@ -33,11 +32,10 @@ void SemanticPipeline::prepareGenerated(const ExprAST& expression,
 
 void SemanticPipeline::prepareGenerated(ExprAST& expression,
                                         const std::vector<std::string>& scope,
-                                        const std::vector<std::string>& module,
                                         DeclarationId owner,
                                         const ExprAST* origin) {
   prepareGenerated(expression, owner, origin);
-  declarationNamingPass_.run(expression, scope, module, false);
+  declarationNamingPass_.run(expression, scope, false);
 }
 
 }  // namespace sun

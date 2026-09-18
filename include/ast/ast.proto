@@ -412,8 +412,8 @@ message FunctionDef {
   BlockExpr body = 2;
   string source_text = 3;  // Original source for generic specialization
   // A bodyless `extern "C" function`. Without this the declaration comes back
-  // as an ordinary Sun function with an empty body and gets Sun name
-  // mangling, so the C symbol is lost.
+  // as an ordinary Sun function with an empty body and is emitted under a
+  // Sun-derived symbol, so the C symbol is lost.
   bool is_c_extern = 4;
   bool body_present = 5;  // Distinguishes "no body" from "empty body"
   Visibility visibility = 6;

@@ -835,8 +835,8 @@ sun::TypePtr TypeInferer::inferModuleMemberType(
     // A kind that carries no name of its own (a nested module, say) still
     // needs one a lookup can use.
     if (resolvedName.empty()) {
-      resolvedName = sun::QualifiedName(
-          {}, mangleModulePath(match.modulePath) + "_" + memberName);
+      resolvedName = sun::QualifiedName(sun::splitModulePath(match.modulePath),
+                                        memberName);
     }
     memberAccess.setQualifiedName(resolvedName);
 

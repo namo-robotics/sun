@@ -165,7 +165,6 @@ add_library(sun_lib
     src/semantic_analysis/portable_declaration_key.cpp
     src/semantic_analysis/specialization_key.cpp
     src/semantic_analysis/declaration_identity_pass.cpp
-    src/semantic_analysis/qualified_name.cpp
     src/semantic_analysis/semantic_context.cpp
     src/semantic_analysis/scope_lookup.cpp
     src/semantic_analysis/packed_classes.cpp

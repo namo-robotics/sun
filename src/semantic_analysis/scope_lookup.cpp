@@ -141,11 +141,8 @@ const GenericEnumInfo* SemanticScope::findGenericEnum(
   return nullptr;
 }
 
-void SemanticScope::collectFunctions(const std::string& prefix,
+void SemanticScope::collectFunctions(const std::string& name,
                                      std::vector<FunctionInfo>& results) const {
-  // prefix is "name(" — extract the name part for indexed lookup
-  std::string name =
-      prefix.substr(0, prefix.size() - 1);  // remove trailing '('
   if (auto* overloads = functions.getOverloads(name)) {
     for (const auto* info : *overloads) {
       results.push_back(*info);
@@ -344,41 +341,31 @@ VariableInfo* SemanticScopeBase::lookupVariable(const std::string& name) {
 // -------------------------------------------------------------------
 const GenericFunctionInfo* SemanticScopeBase::lookupGenericFunction(
     const std::string& name) const {
-  auto scopePath = getCurrentScopePath();
   AccessFilter filter(this);
-  auto probe = [&](const SemanticScopeBase* s,
-                   const sun::QualifiedName& qn) -> const GenericFunctionInfo* {
-    auto found = s->genericFunctions.find(qn);
-    if (found == s->genericFunctions.end()) return nullptr;
+  auto probe =
+      [&](const SemanticScopeBase* scope,
+          const std::string& sourceName) -> const GenericFunctionInfo* {
+    auto found = scope->genericFunctions.find(sourceName);
+    if (found == scope->genericFunctions.end()) return nullptr;
     return filter.admit(&found->second) ? &found->second : nullptr;
   };
-
-  for (auto* s = this; s != nullptr; s = s->parent) {
-    // A sibling template is registered under its declaring scope.
-    if (auto* g = probe(s, {s->scopePath, name})) return g;
-    // Try global scope (empty scope path)
-    if (!scopePath.empty()) {
-      if (auto* g = probe(s, sun::QualifiedName({}, name))) return g;
-    }
-    // Search direct import-scope children
-    for (const auto& [modName, child] : s->childModules) {
+  for (auto* scope = this; scope; scope = scope->parent) {
+    if (auto* result = probe(scope, name)) return result;
+    for (const auto& [moduleName, child] : scope->childModules) {
       if (!child || child->getType() != ScopeType::Import) continue;
-      if (auto* g = probe(child.get(), {child->scopePath, name})) return g;
+      if (auto* result = probe(child.get(), name)) return result;
       for (const auto& [subName, subChild] : child->childModules) {
-        if (!subChild || subChild->getType() == ScopeType::Import) continue;
-        if (auto* g = probe(subChild.get(), {subChild->scopePath, name}))
-          return g;
+        if (subChild && subChild->getType() == ScopeType::Module)
+          if (auto* result = probe(subChild.get(), name)) return result;
       }
     }
-    // Search import bindings
-    for (const auto& binding : s->importBindings) {
-      if (!s->admitsImport(binding.sourceFileId)) continue;
-      if (!binding.sourceScope ||
+    for (const auto& binding : scope->importBindings) {
+      if (!scope->admitsImport(binding.sourceFileId) || !binding.sourceScope ||
           (!binding.isWildcard && binding.localName != name))
         continue;
-      if (auto* g = probe(binding.sourceScope,
-                          {binding.sourceScope->scopePath, name}))
-        return g;
+      if (auto* result = probe(binding.sourceScope,
+                               binding.isWildcard ? name : binding.sourceName))
+        return result;
     }
   }
   filter.finish();
@@ -391,18 +378,12 @@ const GenericFunctionInfo* SemanticScopeBase::lookupGenericFunction(
 std::vector<FunctionInfo> SemanticScopeBase::getAllFunctions(
     const std::string& name) const {
   std::vector<FunctionInfo> results;
-  std::string prefix = name + "(";
 
   // Track seen signatures to avoid duplicates
-  std::set<std::string> seenSignatures;
+  std::unordered_set<sun::CallableSignature, sun::CallableSignatureHash>
+      seenSignatures;
   auto addIfUnique = [&](const FunctionInfo& info) {
-    // Build signature for dedup
-    std::string sig = name + "(";
-    for (size_t i = 0; i < info.paramTypes.size(); ++i) {
-      if (i > 0) sig += ",";
-      sig += info.paramTypes[i] ? info.paramTypes[i]->toString() : "?";
-    }
-    sig += ")";
+    sun::CallableSignature sig{name, info.paramTypes};
     if (seenSignatures.insert(sig).second) {
       results.push_back(info);
     }
@@ -411,13 +392,13 @@ std::vector<FunctionInfo> SemanticScopeBase::getAllFunctions(
   std::vector<FunctionInfo> allResults;
 
   auto collectFrom = [&](const SemanticScopeBase* s) {
-    s->collectFunctions(prefix, allResults);
+    s->collectFunctions(name, allResults);
     for (const auto& [childName, child] : s->childModules) {
       if (child && child->getType() == ScopeType::Import) {
-        child->collectFunctions(prefix, allResults);
+        child->collectFunctions(name, allResults);
         for (const auto& [modName, modChild] : child->childModules) {
           if (modChild && modChild->getType() == ScopeType::Module) {
-            modChild->collectFunctions(prefix, allResults);
+            modChild->collectFunctions(name, allResults);
           }
         }
       }
@@ -427,7 +408,8 @@ std::vector<FunctionInfo> SemanticScopeBase::getAllFunctions(
       if (!binding.sourceScope ||
           (!binding.isWildcard && binding.localName != name))
         continue;
-      binding.sourceScope->collectFunctions(prefix, allResults);
+      binding.sourceScope->collectFunctions(
+          binding.isWildcard ? name : binding.sourceName, allResults);
     }
   };
 
@@ -460,13 +442,9 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
     return !filter || filter->admit(info);
   };
 
-  std::string sig = name + "(";
-  for (size_t i = 0; i < argTypes.size(); ++i) {
-    if (i > 0) sig += ",";
-    sig += argTypes[i].preferred ? argTypes[i].preferred->toString() : "?";
-  }
-  sig += ")";
-  std::string prefix = name + "(";
+  sun::CallableSignature sig{name, {}};
+  for (const auto& argument : argTypes)
+    sig.parameters.push_back(argument.preferred);
 
   {
     // Try exact match first
@@ -596,8 +574,7 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
       return alternativeMatch;
     };
 
-    std::string baseName = prefix.substr(0, prefix.size() - 1);
-    return checkOverloads(baseName);
+    return checkOverloads(name);
   }
 }
 
@@ -976,7 +953,7 @@ sun::QualifiedName SemanticScopeBase::resolveNameWithUsings(
   if (candidates.size() == 1) {
     const auto& [visPath, info] = *candidates.begin();
     // If the symbol is a unique function in the matched scope, return its
-    // actual qualified name (which includes paramSuffix for overload mangling)
+    // source qualified name.
     if (info.second) {
       if (auto* overloads = info.second->functions.getOverloads(name)) {
         if (overloads->size() == 1 && !(*overloads)[0]->qualifiedName.empty()) {

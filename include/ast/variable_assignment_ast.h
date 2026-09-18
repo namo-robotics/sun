@@ -44,14 +44,10 @@ class VariableAssignmentAST : public ExprAST {
   std::string dotLabel() const override { return "VarAssign\n" + name; }
 
   // Qualified name (after semantic analysis qualifies it). A module-level
-  // global is emitted under its mangled name, so codegen looks the symbol up
+  // global is emitted using its declaration ID, so codegen looks the symbol up
   // by this rather than by the name written at the assignment.
   const sun::QualifiedName& getQualifiedName() const {
     return varAnalysis().qualifiedName;
-  }
-  std::string getMangledName() const {
-    auto& qn = varAnalysis().qualifiedName;
-    return qn.empty() ? name : qn.mangled();
   }
   void setQualifiedName(sun::QualifiedName qname) {
     varAnalysis().qualifiedName = std::move(qname);

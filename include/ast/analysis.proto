@@ -17,13 +17,13 @@ option cc_enable_arenas = true;
 // Note: Specialization maps are serialized by key only, not full AST
 message FunctionAnalysis {
   string qualified_name = 1;
-  repeated string specialization_keys = 2;  // Mangled names of specializations
+  repeated string specialization_keys = 2;  // Serialized specialization keys
 }
 
 // Analysis for ClassDefinitionAST nodes
 message ClassAnalysis {
   string qualified_name = 1;
-  repeated string specialization_keys = 2;  // Mangled names of specializations
+  repeated string specialization_keys = 2;  // Serialized specialization keys
 }
 
 // Analysis for InterfaceDefinitionAST nodes
@@ -38,7 +38,8 @@ message ForInAnalysis {
 
 // Analysis for QualifiedNameAST nodes
 message QualifiedNameExprAnalysis {
-  string resolved_mangled_name = 1;
+  reserved 1;
+  reserved "resolved_mangled_name";
 }
 
 // Analysis for MemberAccessAST nodes

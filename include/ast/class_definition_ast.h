@@ -141,11 +141,6 @@ class ClassDefinitionAST : public ExprAST {
   const sun::QualifiedName& getQualifiedName() const {
     return classAnalysis().qualifiedName;
   }
-  // Returns mangled form for codegen symbol lookup
-  std::string getMangledName() const {
-    auto& qn = classAnalysis().qualifiedName;
-    return qn.empty() ? name : qn.mangled();
-  }
   void setQualifiedName(sun::QualifiedName qname) {
     classAnalysis().qualifiedName = std::move(qname);
   }

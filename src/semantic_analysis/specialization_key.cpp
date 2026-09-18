@@ -1,22 +1,21 @@
 #include "semantic_analysis/types.h"
 
 namespace sun {
-namespace {
 
 /** Compare identity recursively without accepting implicit conversions. */
-bool sameType(const TypePtr& left, const TypePtr& right) {
+bool sameTypeIdentity(const TypePtr& left, const TypePtr& right) {
   if (left == right) return true;
   if (!left || !right || left->getKind() != right->getKind()) return false;
   auto parameters = [](const auto& a, const auto& b) {
     if (a.size() != b.size()) return false;
     for (size_t i = 0; i < a.size(); ++i)
-      if (!sameType(a[i], b[i])) return false;
+      if (!sameTypeIdentity(a[i], b[i])) return false;
     return true;
   };
   auto callable = [&](const auto& a, const auto& b) {
     return a.canThrow() == b.canThrow() &&
            a.requiresUnsafe() == b.requiresUnsafe() &&
-           sameType(a.getReturnType(), b.getReturnType()) &&
+           sameTypeIdentity(a.getReturnType(), b.getReturnType()) &&
            parameters(a.getParamTypes(), b.getParamTypes());
   };
   switch (left->getKind()) {
@@ -24,21 +23,21 @@ bool sameType(const TypePtr& left, const TypePtr& right) {
       const auto& a = static_cast<const ReferenceType&>(*left);
       const auto& b = static_cast<const ReferenceType&>(*right);
       return a.isMutable() == b.isMutable() &&
-             sameType(a.getReferencedType(), b.getReferencedType());
+             sameTypeIdentity(a.getReferencedType(), b.getReferencedType());
     }
     case Type::Kind::RawPointer:
-      return sameType(
+      return sameTypeIdentity(
           static_cast<const RawPointerType&>(*left).getPointeeType(),
           static_cast<const RawPointerType&>(*right).getPointeeType());
     case Type::Kind::StaticPointer:
-      return sameType(
+      return sameTypeIdentity(
           static_cast<const StaticPointerType&>(*left).getPointeeType(),
           static_cast<const StaticPointerType&>(*right).getPointeeType());
     case Type::Kind::Array: {
       const auto& a = static_cast<const ArrayType&>(*left);
       const auto& b = static_cast<const ArrayType&>(*right);
       return a.getDimensions() == b.getDimensions() &&
-             sameType(a.getElementType(), b.getElementType());
+             sameTypeIdentity(a.getElementType(), b.getElementType());
     }
     case Type::Kind::Function:
       return callable(static_cast<const FunctionType&>(*left),
@@ -49,7 +48,7 @@ bool sameType(const TypePtr& left, const TypePtr& right) {
       return a.hasRefCaptures() == b.hasRefCaptures() && callable(a, b);
     }
     case Type::Kind::ErrorUnion:
-      return sameType(
+      return sameTypeIdentity(
           static_cast<const ErrorUnionType&>(*left).getValueType(),
           static_cast<const ErrorUnionType&>(*right).getValueType());
     default:
@@ -58,21 +57,19 @@ bool sameType(const TypePtr& left, const TypePtr& right) {
 }
 
 /** Compare concrete argument lists in their declared order. */
-bool sameArguments(const std::vector<TypePtr>& left,
-                   const std::vector<TypePtr>& right) {
+bool sameTypeArguments(const std::vector<TypePtr>& left,
+                       const std::vector<TypePtr>& right) {
   if (left.size() != right.size()) return false;
   for (size_t i = 0; i < left.size(); ++i)
-    if (!sameType(left[i], right[i])) return false;
+    if (!sameTypeIdentity(left[i], right[i])) return false;
   return true;
 }
 
-}  // namespace
-
 bool SpecializationKey::operator==(const SpecializationKey& other) const {
   return source == other.source && enclosing == other.enclosing &&
-         sameArguments(arguments, other.arguments) &&
+         sameTypeArguments(arguments, other.arguments) &&
          variadic.has_value() == other.variadic.has_value() &&
-         (!variadic || sameArguments(*variadic, *other.variadic));
+         (!variadic || sameTypeArguments(*variadic, *other.variadic));
 }
 
 }  // namespace sun

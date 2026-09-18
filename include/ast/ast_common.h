@@ -115,7 +115,7 @@ struct TypeParameter {
 // A lifetime names the stack frame a `<'a>` lambda's environment or a
 // `ref 'a T` referent lives in, so two positions in one signature can be
 // declared to share it. Lifetimes are erased before codegen: they never
-// distinguish types, mangled names, or generic specializations.
+// distinguish types, emitted symbols, or generic specializations.
 struct LifetimeParameter {
   std::string name;
   Position span;
@@ -133,7 +133,7 @@ struct LifetimeParameter {
 };
 
 // The names alone, for the many places that only care what a parameter is
-// called (substitution, mangling, scope registration).
+// called (substitution, scope registration).
 inline std::vector<std::string> typeParameterNames(
     const std::vector<TypeParameter>& params) {
   std::vector<std::string> names;

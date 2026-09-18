@@ -24,16 +24,16 @@ std::string errorFor(const std::string& source) {
   return "";
 }
 
-// Every mangled name carries the bundle hash between two '$'.
-void expectNoMangledName(const std::string& message) {
+// Internal names carry the bundle hash between two '$'; source names never do.
+void expectNoInternalName(const std::string& message) {
   EXPECT_EQ(message.find('$'), std::string::npos)
-      << "diagnostic leaks a mangled name: " << message;
+      << "diagnostic leaks an internal name: " << message;
 }
 
 void expectNames(const std::string& message, const std::string& expected) {
   EXPECT_NE(message.find(expected), std::string::npos)
       << "expected '" << expected << "' in: " << message;
-  expectNoMangledName(message);
+  expectNoInternalName(message);
 }
 
 }  // namespace

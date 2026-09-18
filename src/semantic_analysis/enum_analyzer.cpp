@@ -99,8 +99,8 @@ bool unifyPayloadTypeParam(const TypeAnnotation& annot,
 // -------------------------------------------------------------------
 
 void EnumAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
-  // Forbid redefinition of enum in same module
-  if (ctx_.declarations().isDeclared(enumDef.getQualifiedName().mangled())) {
+  // Forbid redefinition of an enum in the same scope
+  if (ctx_.declarations().isDeclared(enumDef.getName(), ctx_.scope())) {
     logAndThrowError("Redefinition of enum '" + enumDef.getName() + "'",
                      enumDef.getLocation());
   }
@@ -144,7 +144,7 @@ void EnumAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
           enumDef.getName(),
           {&enumDef, enumDef.getTypeParameters(), enumDef.getQualifiedName()});
     }
-    ctx_.declarations().noteDeclared(enumDef.getQualifiedName().mangled());
+    ctx_.declarations().noteDeclared(enumDef.getName(), ctx_.scope());
     enumDef.setResolvedType(sun::Types::Void());
     return;
   }
@@ -183,7 +183,7 @@ void EnumAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
   ctx_.registerEnum(enumDef.getName(), enumType);
 
   // Track symbol for redefinition detection
-  ctx_.declarations().noteDeclared(enumDef.getQualifiedName().mangled());
+  ctx_.declarations().noteDeclared(enumDef.getName(), ctx_.scope());
 
   enumDef.setResolvedType(sun::Types::Void());
 }

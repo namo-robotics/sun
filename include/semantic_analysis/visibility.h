@@ -6,7 +6,8 @@
 // enclosing module is M or a descendant of M. Class members are owned by the
 // module that defines the class. Contents of an imported `.moon` live under a
 // `$hash$` scope segment, so importer code is never a descendant of a bundle
-// module and bundle-private items are hidden by the same prefix rule.
+// module and bundle-private items remain hidden through their declaration
+// ownership.
 
 #pragma once
 
@@ -18,27 +19,8 @@ namespace sun {
 
 enum class Visibility : uint8_t { Private = 0, Public = 1 };
 
-// Module path as segments, e.g. {"$hash$", "std"}; root = {}. An item's owner
-// is its QualifiedName::owner() (the scope path it was declared in); a
-// private item owned by root is reachable from every context in a
-// compilation — root is a prefix of every path — so internal/synthesized
-// symbols fail open, while anything declared under a real module or a bundle
-// fails closed unless marked public.
+/** Module path segments used for source lookup and diagnostic display. */
 using ModulePath = std::vector<std::string>;
-
-inline bool isModulePrefix(const ModulePath& prefix, const ModulePath& path) {
-  if (prefix.size() > path.size()) return false;
-  for (size_t i = 0; i < prefix.size(); ++i) {
-    if (prefix[i] != path[i]) return false;
-  }
-  return true;
-}
-
-// The single access predicate: public, or `from` is inside the owner.
-inline bool isAccessibleFrom(const ModulePath& from, Visibility visibility,
-                             const ModulePath& owner) {
-  return visibility == Visibility::Public || isModulePrefix(owner, from);
-}
 
 inline bool isLibraryHashSegment(const std::string& seg) {
   return seg.size() >= 2 && seg.front() == '$' && seg.back() == '$';

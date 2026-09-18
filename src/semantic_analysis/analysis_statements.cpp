@@ -163,7 +163,7 @@ void SemanticAnalyzer::analyzeVariableAssignment(
   // Look up the variable's type first for expected type propagation
   VariableInfo* varInfo = ctx_.lookupVariable(varAssign.getName());
   if (varInfo) varAssign.setTargetDeclarationId(varInfo->declarationId);
-  // A module-level global is emitted under its mangled name; record it so
+  // A module-level global is emitted using its declaration ID; record it so
   // codegen can find the symbol (locals keep the name as written).
   if (varInfo && varInfo->isGlobal) {
     varAssign.setQualifiedName(ctx_.resolveNameWithUsings(varAssign.getName()));

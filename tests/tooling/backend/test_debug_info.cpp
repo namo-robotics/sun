@@ -127,8 +127,8 @@ TEST(Tooling_Backend_DebugInfo, subprograms_attached_to_functions) {
   ASSERT_NE(mainSP, nullptr);
   EXPECT_GT(mainSP->getLine(), 0u);
 
-  // Overloadable functions get mangled symbols (add$i32$i32); find by the
-  // subprogram's source name, which is what debuggers match on.
+  // Emitted symbols are derived from declaration identity, not spelled like
+  // the source; find by the subprogram's source name, which debuggers match.
   llvm::DISubprogram* addSP = nullptr;
   for (auto& func : module) {
     if (auto* sp = func.getSubprogram(); sp && sp->getName() == "add") {

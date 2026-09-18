@@ -103,31 +103,21 @@ std::string ScopeTreeGenerator::generateJson(const SemanticScope& scope,
         << escapeJson(sun::QualifiedName::joinPath(scope.scopePath)) << "\"";
   }
 
-  // For class scopes, show baseName and mangledName
+  // For class scopes, show the source name
   if (auto* classScope = scope.asClass()) {
     if (!classScope->classBaseName.empty()) {
       out << ",\n"
           << pad2 << "\"className\": \""
           << escapeJson(classScope->classBaseName) << "\"";
     }
-    if (!classScope->classMangledName.empty()) {
-      out << ",\n"
-          << pad2 << "\"mangledName\": \""
-          << escapeJson(classScope->classMangledName) << "\"";
-    }
   }
 
-  // For interface scopes, show baseName and mangledName
+  // For interface scopes, show the source name
   if (auto* ifaceScope = scope.asInterface()) {
     if (!ifaceScope->interfaceBaseName.empty()) {
       out << ",\n"
           << pad2 << "\"interfaceName\": \""
           << escapeJson(ifaceScope->interfaceBaseName) << "\"";
-    }
-    if (!ifaceScope->interfaceMangledName.empty()) {
-      out << ",\n"
-          << pad2 << "\"mangledName\": \""
-          << escapeJson(ifaceScope->interfaceMangledName) << "\"";
     }
   }
 
@@ -139,11 +129,11 @@ std::string ScopeTreeGenerator::generateJson(const SemanticScope& scope,
           << escapeJson(funcScope->functionSignature) << "\"";
     }
 
-    // For function scopes, show the fully qualified mangled name
+    // For function scopes, show the qualified source name
     if (!funcScope->functionName.baseName.empty()) {
       out << ",\n"
-          << pad2 << "\"functionMangled\": \""
-          << escapeJson(funcScope->functionName.mangled()) << "\"";
+          << pad2 << "\"functionName\": \""
+          << escapeJson(funcScope->functionName.display()) << "\"";
     }
 
     // Function can throw

@@ -3648,7 +3648,7 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
           while (std::getline(original, part, '.')) path.push_back(part);
           auto name = path.back();
           path.pop_back();
-          nsAST->setQualifiedName(sun::QualifiedName(path, name, path));
+          nsAST->setQualifiedName(sun::QualifiedName(path, name));
           if (auto key = moduleKeys.find(originalModule->second);
               key != moduleKeys.end())
             nsAST->declarationIdentity().imported =
@@ -3733,7 +3733,7 @@ void Parser::createModuleStubs(
       if (auto* ifaceDef = dynamic_cast<InterfaceDefinitionAST*>(ast.get())) {
         ifaceDef->setPrecompiled(true);
         ifaceDef->setQualifiedName(
-            sun::QualifiedName(scopePath, ifaceDef->getName(), scopePath));
+            sun::QualifiedName(scopePath, ifaceDef->getName()));
       }
       moduleAST.push_back(std::move(ast));
     }
@@ -3753,7 +3753,7 @@ void Parser::createModuleStubs(
       if (auto* classDef = dynamic_cast<ClassDefinitionAST*>(ast.get())) {
         classDef->setPrecompiled(true);
         classDef->setQualifiedName(
-            sun::QualifiedName(scopePath, classDef->getName(), scopePath));
+            sun::QualifiedName(scopePath, classDef->getName()));
       }
       moduleAST.push_back(std::move(ast));
     }
@@ -3771,7 +3771,7 @@ void Parser::createModuleStubs(
       if (auto* varDef = dynamic_cast<VariableCreationAST*>(ast.get())) {
         varDef->setPrecompiled(true);
         varDef->setQualifiedName(
-            sun::QualifiedName(scopePath, varDef->getName(), scopePath));
+            sun::QualifiedName(scopePath, varDef->getName()));
       }
       moduleAST.push_back(std::move(ast));
     }
@@ -3790,7 +3790,7 @@ void Parser::createModuleStubs(
     auto ast = deserializer.deserialize(node);
     if (ast) {
       static_cast<EnumDefinitionAST&>(*ast).setQualifiedName(
-          sun::QualifiedName(scopePath, metadata.enums(i).name(), scopePath));
+          sun::QualifiedName(scopePath, metadata.enums(i).name()));
       moduleAST.push_back(std::move(ast));
     }
   }
@@ -3808,8 +3808,8 @@ void Parser::createModuleStubs(
     if (ast) {
       if (auto* funcAST = dynamic_cast<FunctionAST*>(ast.get())) {
         funcAST->setPrecompiled(true);
-        funcAST->getProtoMut().setQualifiedName(sun::QualifiedName(
-            scopePath, funcAST->getProto().getName(), scopePath));
+        funcAST->getProtoMut().setQualifiedName(
+            sun::QualifiedName(scopePath, funcAST->getProto().getName()));
       }
       moduleAST.push_back(std::move(ast));
     }

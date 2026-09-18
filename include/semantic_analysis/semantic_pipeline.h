@@ -31,7 +31,6 @@ class SemanticPipeline {
   /** Prepare generated method identities and names in their enclosing scope. */
   void prepareGenerated(ExprAST& expression,
                         const std::vector<std::string>& scope,
-                        const std::vector<std::string>& module,
                         DeclarationId owner = {},
                         const ExprAST* origin = nullptr);
 

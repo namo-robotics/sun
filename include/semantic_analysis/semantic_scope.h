@@ -13,6 +13,7 @@
 
 #include "ast.h"
 #include "semantic_analysis/access_checker.h"
+#include "semantic_analysis/callable_signature.h"
 #include "semantic_analysis/qualified_name.h"
 #include "semantic_analysis/types.h"
 
@@ -62,9 +63,11 @@ struct FunctionInfo {
 // scans to find overloads by name.
 class FunctionTable {
  public:
-  using iterator = std::unordered_map<std::string, FunctionInfo>::iterator;
+  using iterator = std::unordered_map<sun::CallableSignature, FunctionInfo,
+                                      sun::CallableSignatureHash>::iterator;
   using const_iterator =
-      std::unordered_map<std::string, FunctionInfo>::const_iterator;
+      std::unordered_map<sun::CallableSignature, FunctionInfo,
+                         sun::CallableSignatureHash>::const_iterator;
 
   FunctionTable() = default;
 
@@ -86,18 +89,22 @@ class FunctionTable {
   FunctionTable(FunctionTable&&) = default;
   FunctionTable& operator=(FunctionTable&&) = default;
 
-  FunctionInfo& operator[](const std::string& sig) {
+  FunctionInfo& operator[](const sun::CallableSignature& sig) {
     auto [it, inserted] = bySig_.emplace(sig, FunctionInfo{});
     if (inserted) {
-      std::string name = extractName(sig);
+      const auto& name = sig.name;
       byName_[name].push_back(&it->second);
     }
     return it->second;
   }
 
-  bool contains(const std::string& sig) const { return bySig_.count(sig) > 0; }
+  bool contains(const sun::CallableSignature& sig) const {
+    return bySig_.count(sig) > 0;
+  }
 
-  const_iterator find(const std::string& sig) const { return bySig_.find(sig); }
+  const_iterator find(const sun::CallableSignature& sig) const {
+    return bySig_.find(sig);
+  }
 
   const_iterator end() const { return bySig_.end(); }
   const_iterator begin() const { return bySig_.begin(); }
@@ -128,23 +135,20 @@ class FunctionTable {
   }
 
  private:
-  std::unordered_map<std::string, FunctionInfo> bySig_;
+  std::unordered_map<sun::CallableSignature, FunctionInfo,
+                     sun::CallableSignatureHash>
+      bySig_;
   std::unordered_map<std::string, std::vector<FunctionInfo*>> byName_;
 
   // Rebuild byName_ index from bySig_ (used after copy)
   void rebuildByName() {
     byName_.clear();
     for (auto& [sig, info] : bySig_) {
-      std::string name = extractName(sig);
+      const auto& name = sig.name;
       byName_[name].push_back(&info);
     }
   }
 
-  // Extract function name from signature "name(type1,type2)"
-  static std::string extractName(const std::string& sig) {
-    auto paren = sig.find('(');
-    return paren != std::string::npos ? sig.substr(0, paren) : sig;
-  }
 };
 
 // Type of scope in the scope tree
@@ -226,7 +230,7 @@ struct GenericFunctionInfo;
 // Result of a symbol lookup - contains the symbol and where it was found
 struct SymbolMatch {
   SymbolKind kind = SymbolKind::None;
-  std::string name;        // The symbol name as registered (may be mangled)
+  std::string name;        // The source symbol name
   std::string modulePath;  // Full dot-separated path including library hashes
   std::string
       libraryHash;  // The library scope hash (empty if not from library)
@@ -243,17 +247,6 @@ struct SymbolMatch {
 
   bool empty() const { return kind == SymbolKind::None; }
   explicit operator bool() const { return kind != SymbolKind::None; }
-
-  // Get mangled name for codegen (modulePath with dots→underscores + "_" +
-  // name)
-  std::string mangled() const {
-    if (modulePath.empty()) return name;
-    std::string result = modulePath;
-    for (char& c : result) {
-      if (c == '.') c = '_';
-    }
-    return result + "_" + name;
-  }
 
   // Get display name for error messages (hides library hashes)
   std::string display() const {
@@ -372,7 +365,10 @@ using SemanticScope = SemanticScopeBase;
 // ===================================================================
 struct AccessContext {
   virtual ~AccessContext() = default;
-  virtual sun::ModulePath currentModulePath() const = 0;
+  /** The module whose source is being analyzed. */
+  virtual sun::DeclarationId currentModuleId() const = 0;
+  /** Declaration ownership for this analysis session. */
+  virtual const sun::DeclarationTable& declarationTable() const = 0;
   /** The source unit performing name lookup. */
   virtual sun::SourceFileId currentSourceFileId() const { return 0; }
   [[noreturn]] virtual void denyAccess(
@@ -411,7 +407,7 @@ struct SemanticScopeBase
   std::map<std::string, GenericInterfaceInfo> genericInterfaces;
   std::map<std::string, std::shared_ptr<sun::EnumType>> enums;
   std::map<std::string, GenericEnumInfo> genericEnums;
-  std::map<sun::QualifiedName, GenericFunctionInfo> genericFunctions;
+  std::map<std::string, GenericFunctionInfo> genericFunctions;
   std::map<std::string, std::shared_ptr<SemanticScopeBase>> childModules;
   std::map<std::string, VariableInfo> namespacedVariables;
 
@@ -464,7 +460,7 @@ struct SemanticScopeBase
       const std::string& name) const;
   std::shared_ptr<sun::EnumType> findEnum(const std::string& name) const;
   const GenericEnumInfo* findGenericEnum(const std::string& name) const;
-  void collectFunctions(const std::string& prefix,
+  void collectFunctions(const std::string& name,
                         std::vector<FunctionInfo>& results) const;
 
   // Clone symbol tables (for diamond import handling)
@@ -577,7 +573,7 @@ struct GlobalScope : SemanticScopeBase {
 struct ModuleScope : SemanticScopeBase {
   sun::DeclarationId declarationId;
   ScopeType getType() const override { return ScopeType::Module; }
-  // Structured name: owner() is the parent module path
+  // Source spelling; the declaration record identifies the parent module.
   sun::QualifiedName qualifiedName;
   sun::Visibility visibility = sun::Visibility::Private;
   bool visibilityDeclared = false;  // A source declaration set `visibility`
@@ -616,7 +612,6 @@ struct ClassScope : SemanticScopeBase {
   ScopeType getType() const override { return ScopeType::Class; }
 
   std::string classBaseName;     // Display name (e.g., "Vec")
-  std::string classMangledName;  // Full mangled name (e.g., "sun_Vec_i32")
 };
 
 // ===================================================================
@@ -626,7 +621,6 @@ struct InterfaceScope : SemanticScopeBase {
   ScopeType getType() const override { return ScopeType::Interface; }
 
   std::string interfaceBaseName;     // Display name (e.g., "IShape")
-  std::string interfaceMangledName;  // Full mangled name
 };
 
 // ===================================================================
@@ -696,70 +690,59 @@ inline bool isImportScope(const std::string& name) {
          name.back() == '$';
 }
 
-// Mangle a dot-separated module path to underscore-separated
-// e.g., "$hash$.b" -> "$hash$_b"
-inline std::string mangleModulePath(const std::string& dotPath) {
-  std::string result = dotPath;
-  for (char& c : result) {
-    if (c == '.') c = '_';
-  }
-  return result;
-}
-
 // -------------------------------------------------------------------
 // accessItem — describe a lookup result for the access predicate
 // -------------------------------------------------------------------
 // Visibility comes from the record (or its AST for generic templates); the
-// owner is the record's QualifiedName::owner().
+// declaration ID selects the owning module from the declaration table.
 inline sun::access::ItemRef accessItem(
     const std::shared_ptr<sun::ClassType>& c) {
   return {"class", c->getDisplayName(), "", c->visibility,
-          c->getQualifiedName().owner()};
+          c->getDeclarationId()};
 }
 inline sun::access::ItemRef accessItem(const GenericClassInfo* g) {
   return {"class", g->qualifiedName.baseName, "",
           g->AST ? g->AST->getVisibility() : sun::Visibility::Private,
-          g->qualifiedName.owner()};
+          g->AST ? g->AST->getDeclarationId() : sun::DeclarationId{}};
 }
 inline sun::access::ItemRef accessItem(
     const std::shared_ptr<sun::InterfaceType>& i) {
   return {"interface", i->getBaseName(), "", i->visibility,
-          i->getQualifiedName().owner()};
+          i->getDeclarationId()};
 }
 inline sun::access::ItemRef accessItem(const GenericInterfaceInfo* g) {
   return {"interface", g->qualifiedName.baseName, "",
           g->AST ? g->AST->getVisibility() : sun::Visibility::Private,
-          g->qualifiedName.owner()};
+          g->AST ? g->AST->getDeclarationId() : sun::DeclarationId{}};
 }
 inline sun::access::ItemRef accessItem(
     const std::shared_ptr<sun::EnumType>& e) {
-  return {"enum", e->getBaseName(), "", e->visibility,
-          e->getQualifiedName().owner()};
+  return {"enum", e->getBaseName(), "", e->visibility, e->getDeclarationId()};
 }
 inline sun::access::ItemRef accessItem(const GenericEnumInfo* g) {
   return {"enum", g->qualifiedName.baseName, "",
           g->AST ? g->AST->getVisibility() : sun::Visibility::Private,
-          g->qualifiedName.owner()};
+          g->AST ? g->AST->getDeclarationId() : sun::DeclarationId{}};
 }
 inline sun::access::ItemRef accessItem(const GenericFunctionInfo* g) {
   return {"function", g->qualifiedName.baseName, "",
           g->AST ? g->AST->getVisibility() : sun::Visibility::Private,
-          g->qualifiedName.owner()};
+          g->AST ? g->AST->getDeclarationId() : sun::DeclarationId{}};
 }
 inline sun::access::ItemRef accessItem(const FunctionInfo& f) {
   return {"function", f.qualifiedName.baseName, "", f.visibility,
-          f.qualifiedName.owner()};
+          f.declarationId};
 }
 inline sun::access::ItemRef accessItem(const FunctionInfo* f) {
   return accessItem(*f);
 }
 inline sun::access::ItemRef accessItem(const VariableInfo* v) {
   return {"variable", v->qualifiedName.baseName, "", v->visibility,
-          v->qualifiedName.owner()};
+          v->declarationId};
 }
 inline sun::access::ItemRef accessItem(const ModuleScope& m) {
   return {"module", m.qualifiedName.baseName, "", m.visibility,
-          m.qualifiedName.owner()};
+          m.declarationId};
 }
 
 // -------------------------------------------------------------------
@@ -769,20 +752,22 @@ inline sun::access::ItemRef accessItem(const ModuleScope& m) {
 // -------------------------------------------------------------------
 class AccessFilter {
   const AccessContext* ctx_ = nullptr;
-  sun::ModulePath from_;
+  sun::DeclarationId from_;
   std::optional<sun::access::ItemRef> denied_;
 
  public:
   explicit AccessFilter(const SemanticScopeBase* scope)
       : ctx_(scope ? scope->accessCtx() : nullptr) {
-    if (ctx_) from_ = ctx_->currentModulePath();
+    if (ctx_) from_ = ctx_->currentModuleId();
   }
 
   bool enabled() const { return ctx_ != nullptr; }
-  const sun::ModulePath& from() const { return from_; }
+  sun::DeclarationId from() const { return from_; }
 
   bool admitItem(sun::access::ItemRef item) {
-    if (!ctx_ || sun::access::isAccessible(from_, item)) return true;
+    if (!ctx_ ||
+        sun::access::isAccessible(from_, item, ctx_->declarationTable()))
+      return true;
     if (!denied_) denied_ = std::move(item);
     return false;
   }

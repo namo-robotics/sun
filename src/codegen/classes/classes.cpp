@@ -24,8 +24,7 @@ namespace ops = sun::codegen::ops;
 // Precompiled class codegen (from linked bitcode)
 // -------------------------------------------------------------------
 
-Value* ClassGenerator::codegenPrecompiledClass(const ClassDefinitionAST& expr,
-                                               const std::string& className) {
+Value* ClassGenerator::codegenPrecompiledClass(const ClassDefinitionAST& expr) {
   // Still need to register the class type for type checking
   auto classType = typeRegistry->getClass(expr.getDeclarationId());
   if (classType) {
@@ -141,10 +140,6 @@ void ClassGenerator::declareBlockClassMethods(const ClassDefinitionAST& expr) {
     return;
   }
 
-  std::string className = expr.getName();
-  if (auto* resolvedClass = sun::tryGetType<sun::ClassType>(expr)) {
-    className = resolvedClass->getMangledName();
-  }
   declareClassMethods(expr, typeRegistry->getClass(expr.getDeclarationId()));
 }
 
@@ -153,16 +148,9 @@ void ClassGenerator::declareBlockClassMethods(const ClassDefinitionAST& expr) {
 // -------------------------------------------------------------------
 
 Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
-  // Get the class name - check if there's a qualified name via resolved type
-  // The semantic analyzer may have qualified the name (e.g., sun_SliceRange)
-  std::string className = expr.getName();
-  if (auto* resolvedClass = sun::tryGetType<sun::ClassType>(expr)) {
-    className = resolvedClass->getMangledName();
-  }
-
   // Skip precompiled classes - they come from linked bitcode
   if (expr.isPrecompiled()) {
-    return codegenPrecompiledClass(expr, className);
+    return codegenPrecompiledClass(expr);
   }
 
   // Skip partial classes - their methods are merged into the primary class
@@ -197,7 +185,7 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
   // Error if codegen sees an unmarked duplicate — this is a compiler bug
   if (codegenedClasses.count(expr.getDeclarationId())) {
     logAndThrowError("Duplicate class definition reached codegen: " +
-                     className);
+                     expr.getName());
   }
 
   // Mark this class as being codegenned
@@ -231,25 +219,25 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
       for (const auto& [instanceId, specializedAST] :
            methodFunc.getSpecializations()) {
         if (!specializedAST) continue;
-        const auto specMangledName =
+        const auto specSymbol =
             state_.declarationSymbol(specializedAST->getDeclarationId());
         if (specializedAST) {
           generateMethodBody(*specializedAST);
           // Track user-defined method specializations for IR filtering
           if (isUserDefined) {
-            functions().noteUserDefined(specMangledName);
+            functions().noteUserDefined(specSymbol);
           }
         }
       }
       continue;
     }
 
-    std::string mangledName =
+    std::string symbol =
         state_.declarationSymbol(proto.getDeclarationId());
     generateMethodBody(methodFunc);
     // Track user-defined methods for IR filtering
     if (isUserDefined) {
-      functions().noteUserDefined(mangledName);
+      functions().noteUserDefined(symbol);
     }
   }
 
@@ -304,11 +292,6 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
     for (const auto& [instanceId, specializedAST] :
          methodFunc.getSpecializations()) {
       if (!specializedAST) continue;
-      const auto mangledName =
-          state_.declarationSymbol(specializedAST->getDeclarationId());
-      if (!specializedAST) {
-        continue;
-      }
 
       // Declare if not already declared, then generate body
       declareMethodFromAST(*specializedAST);
@@ -339,10 +322,10 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
 
 Function* ClassGenerator::declareMethodFromAST(
     const FunctionAST& specializedAST) {
-  const auto mangledName =
+  const auto symbol =
       state_.declarationSymbol(specializedAST.getDeclarationId());
   const PrototypeAST& proto = specializedAST.getProto();
-  if (Function* existing = module->getFunction(mangledName)) {
+  if (Function* existing = module->getFunction(symbol)) {
     functions().registerFunction(proto.getDeclarationId(), existing);
     return existing;
   }
@@ -355,7 +338,7 @@ Function* ClassGenerator::declareMethodFromAST(
   if (!proto.hasResolvedParamTypes()) {
     logAndThrowError(
         "Method parameter types not resolved by semantic analysis: " +
-        mangledName);
+        symbol);
     return nullptr;
   }
   // The fixed parameters, then the elements of any `args...` pack
@@ -372,7 +355,7 @@ Function* ClassGenerator::declareMethodFromAST(
     returnType = Type::getVoidTy(ctx.getContext());
   } else {
     logAndThrowError("Method return type not resolved by semantic analysis: " +
-                     mangledName);
+                     symbol);
     return nullptr;
   }
 
@@ -382,7 +365,7 @@ Function* ClassGenerator::declareMethodFromAST(
   // Create the function declaration
   FunctionType* funcType = FunctionType::get(returnType, paramTypes, false);
   Function* func = Function::Create(funcType, Function::ExternalLinkage,
-                                    mangledName, module);
+                                    symbol, module);
   functions().registerFunction(proto.getDeclarationId(), func);
   // Tag throwing methods so call sites emit `invoke` inside a try block.
   if (canError) {
@@ -431,7 +414,7 @@ void ClassGenerator::emitMethodPrologueThis(Function* func) {
 // -------------------------------------------------------------------
 
 void ClassGenerator::generateMethodBody(const FunctionAST& methodFunc) {
-  const auto mangledName =
+  const auto symbol =
       state_.declarationSymbol(methodFunc.getDeclarationId());
   const PrototypeAST& proto = methodFunc.getProto();
 
@@ -479,7 +462,7 @@ void ClassGenerator::generateMethodBody(const FunctionAST& methodFunc) {
       paramTypes.size() != paramNames.size()) {
     logAndThrowError(
         "Method parameter types not resolved by semantic analysis: " +
-        mangledName);
+        symbol);
     return;
   }
   const size_t fixedCount = proto.getArgs().size();
@@ -689,7 +672,6 @@ Value* ClassGenerator::codegenBoundMethodReference(const MemberAccessAST& expr,
 // -------------------------------------------------------------------
 
 Value* ClassGenerator::codegenStackClassInstance(const CallExprAST& expr,
-                                                 const std::string& className,
                                                  sun::ClassType& classType) {
   // Get the LLVM struct type for the class
   llvm::StructType* structType = classType.getStructType(ctx.getContext());
@@ -973,7 +955,7 @@ Value* ClassGenerator::codegen(const InterfaceDefinitionAST& expr) {
     const FunctionAST& methodFunc = *methodDecl.function;
     const PrototypeAST& proto = methodFunc.getProto();
 
-    std::string mangledName =
+    std::string symbol =
         state_.declarationSymbol(proto.getDeclarationId());
 
     Function* func = declareMethodFromAST(methodFunc);
@@ -1013,7 +995,7 @@ Value* ClassGenerator::codegen(const InterfaceDefinitionAST& expr) {
       if (paramIdx >= resolvedParamTypes.size()) {
         logAndThrowError(
             "Interface default method parameter type not resolved: " +
-            mangledName + " param " + argName);
+            symbol + " param " + argName);
         break;
       }
       llvm::Type* argLLVMType =

@@ -294,7 +294,7 @@ Value* VariableGenerator::codegen(const VariableReferenceAST& expr) {
 
   // Enhanced error with both names for debugging
   logAndThrowError("Global variable not found in module: " + expr.getName() +
-                       " (qualifiedName='" + expr.getMangledName() + "')",
+                       " (qualifiedName='" + expr.getQualifiedName().display() + "')",
                    expr.getLocation());
 }
 

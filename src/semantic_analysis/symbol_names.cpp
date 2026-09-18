@@ -20,8 +20,8 @@ bool isReservedIdentifier(const std::string& name) {
   return true;
 }
 
-std::string getFunctionSignature(const std::string& name,
-                                 const std::vector<sun::TypePtr>& paramTypes) {
+std::string formatFunctionSignature(
+    const std::string& name, const std::vector<sun::TypePtr>& paramTypes) {
   std::string sig = name + "(";
   for (size_t i = 0; i < paramTypes.size(); ++i) {
     if (i > 0) sig += ",";

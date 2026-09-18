@@ -134,7 +134,7 @@ std::optional<Declaration> findDeclarationOf(
 // name there is looked up as a type.
 std::optional<Declaration> findMemberDeclaration(
     const BlockExprAST& program, const ExprAST& object,
-    const std::string& member, const std::string& qualifiedName);
+    const std::string& member, const sun::QualifiedName& qualifiedName);
 
 // The nearest enclosing function or lambda declaring `name` as a parameter
 std::optional<Declaration> findParameter(

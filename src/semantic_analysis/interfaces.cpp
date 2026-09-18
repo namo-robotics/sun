@@ -248,9 +248,8 @@ void SemanticAnalyzer::validateInterfaceImplementation(
           method.isConst = interfaceMethod.isConst;
           method.isUnsafe = interfaceMethod.isUnsafe;
 
-          // Register the mangled method name as a function
-          std::string mangledName =
-              classType->getMethodScopeName(interfaceMethod.name);
+          // Register the source method name as a function
+          std::string methodNameForScope = interfaceMethod.name;
           std::vector<sun::TypePtr> methodParamTypes;
           methodParamTypes.push_back(classType);  // this parameter
           for (const auto& pt : interfaceMethod.paramTypes) {
@@ -259,7 +258,7 @@ void SemanticAnalyzer::validateInterfaceImplementation(
           FunctionInfo methodInfo{
               interfaceMethod.returnType, methodParamTypes, {}};
           methodInfo.declarationId = method.declarationId;
-          ctx_.registerFunctionInCurrentScope(mangledName, methodInfo);
+          ctx_.registerFunctionInCurrentScope(methodNameForScope, methodInfo);
         } else {
           // Required method not implemented
           logAndThrowError("Class '" + classType->getDisplayName() +

@@ -1,3 +1,4 @@
+#include "semantic_analysis/method_signature_set.h"
 // generic_specializer.cpp — Monomorphization (see generic_specializer.h)
 
 #include "semantic_analysis/generic_specializer.h"
@@ -18,7 +19,7 @@
 using sun::unwrapRef;
 using sun::access::methodVisibility;
 using sun::generics::mentionsTypeParameter;
-using sun::names::getFunctionSignature;
+using sun::names::formatFunctionSignature;
 using sun::rules::isAssignableTo;
 
 // -------------------------------------------------------------------
@@ -120,16 +121,7 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
   checkTypeParameterConstraints(genericClassInfo->typeParameters, typeArgs,
                                 "generic class", baseName);
 
-  // Construct the specialized QualifiedName from the generic's qualified name
-  // with type arguments mangled into the base name
-  sun::QualifiedName specializedQName;
-  specializedQName.scopePath = genericClassInfo->qualifiedName.scopePath;
-  specializedQName.modulePath = genericClassInfo->qualifiedName.modulePath;
-  specializedQName.baseName = sun::Types::mangleGenericClassName(
-      genericClassInfo->qualifiedName.baseName, typeArgs);
-
-  // Derive the mangled name from the qualified name
-  std::string mangledName = specializedQName.mangled();
+  const auto& specializedQName = genericClassInfo->qualifiedName;
 
   // Resolve members of shapes such as Vec<Sample<T>> for template signatures.
   // Only concrete specializations may have their bodies checked and emitted.
@@ -140,7 +132,6 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
       genericClassInfo->AST->getDeclarationId(), {}, typeArgs, std::nullopt};
   if (auto existingId = ctx_.types()->findSpecialization(key)) {
     auto existing = ctx_.types()->getClass(existingId);
-    ctx_.registerClass(existing->getQualifiedName().baseName, existing);
     return existing;
   }
   auto instanceId = ctx_.types()->specialize(key);
@@ -152,7 +143,6 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
                                      .encoding());
   auto specializedClass = ctx_.types()->getSpecializedClass(
       instanceId, specializedQName, genericClassInfo->qualifiedName, typeArgs);
-  ctx_.registerClass(specializedQName.baseName, specializedClass);
 
   std::vector<std::string> lifetimeNames;
   for (const auto& lp : genericClassInfo->AST->getLifetimeParameters())
@@ -261,11 +251,12 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
   methodScope.push_back(specializedQName.baseName);
   for (size_t i = 0; i < methodsClone.size(); ++i) {
     sema_.pipeline().prepareGenerated(
-        *methodsClone[i].function, methodScope, specializedQName.owner(),
-        instanceId, genericClassInfo->AST->getMethods()[i].function.get());
+        *methodsClone[i].function, methodScope, instanceId,
+        genericClassInfo->AST->getMethods()[i].function.get());
   }
 
   // PASS 1: Register all methods first (so methods can call each other)
+  MethodSignatureSet methodSignatures(ctx_, sema_.types());
   for (size_t i = 0; i < methodsClone.size(); ++i) {
     const auto& methodClone = methodsClone[i];
     const auto& proto = methodClone.function->getProto();
@@ -274,6 +265,10 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
     auto signature = sema_.getFunctionInfo(*methodClone.function);
     sun::TypePtr returnType = signature.returnType;
     std::vector<sun::TypePtr> paramTypes = std::move(signature.paramTypes);
+    if (!methodSignatures.insert(proto, paramTypes))
+      logAndThrowError(
+          "Function '" + proto.getName() + "' is already defined in this scope",
+          methodClone.function->getLocation());
 
     // Attach the resolved method to this concrete class.
     auto& method = specializedClass->addMethod(
@@ -306,10 +301,9 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
     }
     clonedProto.setTypeBindings(std::move(bindings));
 
-    // Register the method as a function with mangled name (skip if type already
+    // Register the method by its source name (skip if type already
     // exists)
-    std::string methodMangledName =
-        specializedClass->getMethodScopeName(proto.getName());
+    std::string methodNameForScope = proto.getName();
 
     // For methods, add 'this' as first parameter type
     std::vector<sun::TypePtr> methodParamTypes;
@@ -319,7 +313,7 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
     }
     FunctionInfo methodInfo{returnType, methodParamTypes, {}};
     methodInfo.declarationId = proto.getDeclarationId();
-    ctx_.registerFunctionInCurrentScope(methodMangledName, methodInfo);
+    ctx_.registerFunctionInCurrentScope(methodNameForScope, methodInfo);
   }
 
   sun::DeclarationIdentity identity;
@@ -340,7 +334,7 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
       (genericClassInfo->AST->isPrecompiled() && !needsPass2)) {
     // Create specialized AST even for precompiled classes
     auto specializedAST = std::make_shared<ClassDefinitionAST>(
-        mangledName, std::vector<TypeParameter>{}, std::move(interfacesClone),
+        baseName, std::vector<TypeParameter>{}, std::move(interfacesClone),
         std::move(fieldsClone), std::move(methodsClone),
         genericClassInfo->AST->isPrecompiled());
     specializedAST->declarationIdentity() = identity;
@@ -367,8 +361,7 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
   // type args (e.g., Unique<Point>) need codegen since they don't exist in
   // the library bitcode.
   auto specializedAST = std::make_shared<ClassDefinitionAST>(
-      mangledName,                   // e.g., "Vec_i32" instead of "Vec"
-      std::vector<TypeParameter>{},  // empty - no longer generic
+      baseName, std::vector<TypeParameter>{},  // empty - no longer generic
       std::move(interfacesClone), std::move(fieldsClone),
       std::move(methodsClone),  // cloned methods
       false);                   // NOT precompiled - needs codegen
@@ -634,29 +627,11 @@ GenericSpecializer::instantiateGenericFunction(
     return std::nullopt;
   }
 
-  // Name the specialization off the template's registration, which includes
-  // enclosing function context (e.g. outer_i32_inner) and is fixed from the
-  // moment the template is collected. The prototype's own mangled name only
-  // gains its overload suffix once its definition is analyzed, so using it
-  // would name the same specialization differently depending on whether the
-  // call site sits above or below the definition.
   std::vector<std::string> typeParams = proto.getTypeParameterNames();
-  // How the template is named in diagnostics below — as it was written, not
-  // as it is emitted, so a stdlib template arriving through a bundle reads as
-  // `std.thread.spawn` rather than `$ce09fa07$_std_thread_spawn`.
   const std::string funcName = genericInfo.qualifiedName.empty()
-                                   ? proto.getMangledName()
+                                   ? proto.getName()
                                    : genericInfo.qualifiedName.display();
-
-  // The name the specialization is emitted under: the template's scope and
-  // module, with the type arguments folded into the base name. Codegen calls
-  // the name semantic analysis records on the call.
-  const sun::QualifiedName specializedName =
-      sun::QualifiedName::specializationOf(
-          genericInfo.qualifiedName, typeArgs,
-          variadicArgTypes.value_or(std::vector<sun::TypePtr>{}));
-  // Symbols are assigned only for emission.
-  std::string mangledName = specializedName.mangled();
+  const auto& specializedName = genericInfo.qualifiedName;
 
   sun::SpecializationKey key{
       proto.getDeclarationId(), {}, typeArgs, variadicArgTypes};
@@ -737,7 +712,7 @@ GenericSpecializer::instantiateGenericFunction(
         static_cast<FunctionAST*>(cloned.release()));
 
     // Update the prototype for the specialized function:
-    // - Set the mangled name (e.g., "foo_i32" instead of "foo")
+    // - Preserve the written name
     // - Clear type parameters so it's no longer treated as generic
     // - Set resolved types so codegen can use them directly
     // - Store type bindings for nested generic call resolution
@@ -779,9 +754,10 @@ GenericSpecializer::instantiateGenericFunction(
     specializedFunctionCache_.emplace(instanceId, result);
 
     // Compute function signature for nested function qualification
-    std::string funcSig = getFunctionSignature(mangledName, paramTypes);
+    std::string funcSig =
+        formatFunctionSignature(specializedName.display(), paramTypes);
 
-    // Declare parameters in scope for body analysis - use the mangled qualified
+    // Declare parameters in scope for body analysis - use the source qualified
     // name so nested functions get correct context
     ctx_.enterFunctionScope(funcSig, clonedProto.getQualifiedName(),
                             proto.canThrow(),
@@ -875,13 +851,9 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
     return nullptr;
   }
 
-  // Include the class, method arguments, and variadic pack in the emitted
-  // symbol.
-  const sun::QualifiedName specializedName =
-      sun::QualifiedName::specializationOf(
-          classType->getQualifiedName().memberNamed(methodName), methodTypeArgs,
-          variadicArgTypes.value_or(std::vector<sun::TypePtr>{}));
-  std::string mangledName = specializedName.mangled();
+  // Preserve the source name; the specialization key identifies arguments.
+  const auto specializedName =
+      classType->getQualifiedName().memberNamed(methodName);
 
   // Find the method's FunctionAST from the class definition
   FunctionAST* genericMethodAST =
@@ -1022,17 +994,16 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
   ctx_.setCurrentClass(classType);
 
   // Compute method signature for nested function qualification
-  std::string methodSig = getFunctionSignature(mangledName, paramTypes);
+  std::string methodSig =
+      formatFunctionSignature(specializedName.display(), paramTypes);
 
   // Enter method scope and declare parameters. A const method body sees the
   // const view of its return type (borrows of `this` are `const ref` there).
   sun::TypePtr bodyReturnType = proto.getResolvedReturnType();
   if (proto.isConstMethod())
     bodyReturnType = sema_.types().createConstView(bodyReturnType);
-  ctx_.enterFunctionScope(
-      methodSig,
-      sun::QualifiedName(classType->getQualifiedName().scopePath, mangledName),
-      proto.canThrow(), bodyReturnType);
+  ctx_.enterFunctionScope(methodSig, specializedName, proto.canThrow(),
+                          bodyReturnType);
 
   declareVariadicPack(clonedProto);
 
@@ -1083,8 +1054,6 @@ GenericSpecializer::instantiateGenericInterface(
   if (!genericInfo->AST)
     logAndThrowError("Generic interface has no declaration");
   const auto baseName = genericInfo->qualifiedName.display();
-  std::string mangledName = sun::Types::mangleGenericClassName(
-      genericInfo->qualifiedName.mangled(), typeArgs);
 
   // Verify type argument count matches
   if (typeArgs.size() != genericInfo->typeParameters.size()) {
@@ -1105,18 +1074,14 @@ GenericSpecializer::instantiateGenericInterface(
       genericInfo->AST->getDeclarationId(), {}, typeArgs, std::nullopt};
   if (auto existingId = ctx_.types()->findSpecialization(key)) {
     auto existing = ctx_.types()->getInterface(existingId);
-    ctx_.registerInterface(existing->getName(), existing);
+
     return existing;
   }
   auto instanceId = ctx_.types()->specialize(key);
-  auto name =
-      sun::QualifiedName(genericInfo->qualifiedName.scopePath,
-                         sun::Types::mangleGenericClassName(
-                             genericInfo->qualifiedName.baseName, typeArgs),
-                         genericInfo->qualifiedName.modulePath);
+  auto name = genericInfo->qualifiedName;
   auto specializedInterface = ctx_.types()->getSpecializedInterface(
       instanceId, name, genericInfo->qualifiedName, typeArgs);
-  ctx_.registerInterface(mangledName, specializedInterface);
+
   specializedInterface->visibility = genericInfo->AST->getVisibility();
 
   {
@@ -1190,9 +1155,6 @@ GenericSpecializer::instantiateGenericInterface(
     ctx_.exitScope();
   }
 
-  // Register the specialized interface
-  ctx_.registerInterface(mangledName, specializedInterface);
-
   return specializedInterface;
 }
 
@@ -1215,8 +1177,6 @@ std::shared_ptr<sun::EnumType> GenericSpecializer::instantiateGenericEnum(
   if (!genericInfo->AST) logAndThrowError("Generic enum has no declaration");
   const auto baseName = genericInfo->qualifiedName.display();
   const auto& templateName = genericInfo->qualifiedName.baseName;
-  std::string mangledName = sun::Types::mangleGenericClassName(
-      genericInfo->qualifiedName.mangled(), typeArgs);
 
   if (typeArgs.size() != genericInfo->typeParameters.size()) {
     logAndThrowError("Generic enum '" + baseName + "' expects " +
@@ -1242,28 +1202,20 @@ std::shared_ptr<sun::EnumType> GenericSpecializer::instantiateGenericEnum(
       genericInfo->AST->getDeclarationId(), {}, typeArgs, std::nullopt};
   if (auto existingId = ctx_.types()->findSpecialization(key)) {
     auto existing = ctx_.types()->getEnum(existingId);
-    ctx_.registerEnum(existing->getQualifiedName().mangled(), existing);
+
     return existing;
   }
   auto instanceId = ctx_.types()->specialize(key);
-  auto specialized = ctx_.types()->getEnum(
-      instanceId,
-      sun::QualifiedName(genericInfo->qualifiedName.scopePath,
-                         sun::Types::mangleGenericClassName(
-                             genericInfo->qualifiedName.baseName, typeArgs),
-                         genericInfo->qualifiedName.modulePath));
-  ctx_.registerEnum(mangledName, specialized);
+  auto specialized =
+      ctx_.types()->getEnum(instanceId, genericInfo->qualifiedName);
+
   specialized->setUnderlyingType(
       sun::Types::fromString(genericInfo->AST->getUnderlyingTypeName()));
   specialized->setGenericQualifiedName(genericInfo->qualifiedName);
   specialized->setBaseName(templateName);
   specialized->setGenericOrigin(templateName, typeArgs);
   specialized->visibility = genericInfo->AST->getVisibility();
-  specialized->setQualifiedName(
-      sun::QualifiedName(genericInfo->qualifiedName.scopePath,
-                         sun::Types::mangleGenericClassName(
-                             genericInfo->qualifiedName.baseName, typeArgs),
-                         genericInfo->qualifiedName.modulePath));
+  specialized->setQualifiedName(genericInfo->qualifiedName);
 
   {
     // Payload annotations resolve in the enum's definition scope; the result
@@ -1296,7 +1248,6 @@ std::shared_ptr<sun::EnumType> GenericSpecializer::instantiateGenericEnum(
     ctx_.exitScope();
   }
 
-  ctx_.registerEnum(mangledName, specialized);
   // Record on the template AST (mirrors generic classes); codegen walks
   // these to build storage structs
   if (!abstractShape) {

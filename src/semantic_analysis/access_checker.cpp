@@ -6,18 +6,35 @@ namespace sun::access {
 
 namespace {
 
-bool isBundleOwned(const ModulePath& owner) {
-  return !owner.empty() && isLibraryHashSegment(owner.front());
+/** Read the declaring module from semantic ownership, including imported items.
+ */
+DeclarationId ownerModule(const ItemRef& item, const DeclarationTable& table) {
+  return item.declaration ? table.get(item.declaration).module
+                          : DeclarationId{};
+}
+
+/** Build a diagnostic path from the module ownership chain. */
+ModulePath ownerPath(const ItemRef& item, const DeclarationTable& table) {
+  ModulePath path;
+  for (auto module = ownerModule(item, table); module;
+       module = table.get(module).owner) {
+    const auto& record = table.get(module);
+    if (record.kind != DeclarationKind::Module)
+      logAndThrowError("Visibility ownership must refer to a module");
+    path.insert(path.begin(), record.name);
+  }
+  return path;
 }
 
 }  // namespace
 
-std::string describeOwner(const ItemRef& item) {
+std::string describeOwner(const ItemRef& item, const DeclarationTable& table) {
+  const auto owner = ownerPath(item, table);
   std::string modulePart;
-  std::string moduleName = displayModulePath(item.owner);
+  std::string moduleName = displayModulePath(owner);
   if (!moduleName.empty()) {
     modulePart = "module '" + moduleName + "'";
-  } else if (isBundleOwned(item.owner)) {
+  } else if (!owner.empty() && isLibraryHashSegment(owner.front())) {
     modulePart = "the top-level scope of its bundle";
   } else {
     modulePart = "the top-level scope";
@@ -26,26 +43,34 @@ std::string describeOwner(const ItemRef& item) {
   return item.ownerTypeName + " in " + modulePart;
 }
 
-std::string denialMessage(const ItemRef& item) {
+std::string denialMessage(const ItemRef& item, const DeclarationTable& table) {
   std::string kind = item.kind ? item.kind : "item";
   std::string subject = kind == "field" || kind == "method"
                             ? "'" + item.name + "'"
                             : kind + " '" + item.name + "'";
-  return subject + " is private to " + describeOwner(item) +
+  return subject + " is private to " + describeOwner(item, table) +
          " and cannot be accessed here";
 }
 
-bool isAccessible(const ModulePath& from, const ItemRef& item) {
-  return isAccessibleFrom(from, item.visibility, item.owner);
+bool isAccessible(DeclarationId from, const ItemRef& item,
+                  const DeclarationTable& table) {
+  if (item.visibility == Visibility::Public) return true;
+  auto owner = ownerModule(item, table);
+  if (!owner) return true;
+  for (auto module = from; module; module = table.get(module).owner) {
+    if (module == owner) return true;
+  }
+  return false;
 }
 
-void denyAccess(const ItemRef& item, const Position& loc) {
-  logSemanticError(denialMessage(item), loc);
+void denyAccess(const ItemRef& item, const Position& loc,
+                const DeclarationTable& table) {
+  logSemanticError(denialMessage(item, table), loc);
 }
 
-void requireAccessible(const ModulePath& from, const ItemRef& item,
-                       const Position& loc) {
-  if (!isAccessible(from, item)) denyAccess(item, loc);
+void requireAccessible(DeclarationId from, const ItemRef& item,
+                       const Position& loc, const DeclarationTable& table) {
+  if (!isAccessible(from, item, table)) denyAccess(item, loc, table);
 }
 
 }  // namespace sun::access
@@ -87,25 +112,25 @@ Visibility methodVisibility(const FunctionAST& method) {
 ItemRef fieldRef(const sun::ClassType& cls, const sun::ClassField& f) {
   return {"field", f.name,
           "class '" + cleanTypeName(cls.getDisplayName()) + "'", f.visibility,
-          cls.getQualifiedName().owner()};
+          cls.getDeclarationId()};
 }
 
 ItemRef methodRef(const sun::ClassType& cls, const sun::ClassMethod& m) {
   return {"method", m.name,
           "class '" + cleanTypeName(cls.getDisplayName()) + "'", m.visibility,
-          cls.getQualifiedName().owner()};
+          cls.getDeclarationId()};
 }
 
 ItemRef fieldRef(const sun::InterfaceType& iface,
                  const sun::InterfaceField& f) {
   return {"field", f.name, "interface '" + iface.getBaseName() + "'",
-          f.visibility, iface.getQualifiedName().owner()};
+          f.visibility, iface.getDeclarationId()};
 }
 
 ItemRef methodRef(const sun::InterfaceType& iface,
                   const sun::InterfaceMethod& m) {
   return {"method", m.name, "interface '" + iface.getBaseName() + "'",
-          m.visibility, iface.getQualifiedName().owner()};
+          m.visibility, iface.getDeclarationId()};
 }
 
 }  // namespace sun::access

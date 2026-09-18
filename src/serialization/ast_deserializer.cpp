@@ -727,8 +727,8 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeFunction(
     const ast::FunctionDef& proto) const {
   auto prototype = deserializePrototype(proto.proto());
   // A declaration has no body at all. Handing FunctionAST an empty block
-  // instead would make isExtern() false, so a C extern would be re-mangled as
-  // an ordinary Sun function and its symbol lost.
+  // instead would make isExtern() false, so a C extern would be emitted as
+  // an ordinary Sun function and its C symbol lost.
   std::unique_ptr<BlockExprAST> body;
   if (proto.body_present()) {
     body = deserializeBlockExpr(proto.body());

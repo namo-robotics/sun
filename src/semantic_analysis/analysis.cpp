@@ -16,7 +16,6 @@
 
 using sun::unwrapRef;
 using sun::access::methodVisibility;
-using sun::names::getFunctionSignature;
 using sun::names::isReservedIdentifier;
 using sun::rules::isAssignableTo;
 using sun::rules::isBorrowableLvalue;
@@ -79,8 +78,7 @@ void SemanticAnalyzer::validateBorrowTarget(const ExprAST& target,
 void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
   SemanticContext::SourceFileGuard sourceFile(ctx_, expr.getSourceFileId());
   SemanticContext::LocationGuard locationGuard(ctx_, expr.getLocation());
-  sun::assignLocalDeclarationName(expr, ctx_.getCurrentScopePath(),
-                                  ctx_.currentModulePath());
+  sun::assignLocalDeclarationName(expr, ctx_.getCurrentScopePath());
   switch (expr.getType()) {
     case ASTNodeType::NUMBER:
       analyzeNumberLiteral(expr, expectedType);
@@ -421,19 +419,9 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
     }
   }
 
-  // Declaration naming establishes identity before signature resolution.
   assert(proto.hasQualifiedName() &&
          "Function declaration must be named first");
-  sun::QualifiedName qualifiedName = proto.getQualifiedName();
-
-  // Add param type suffix for overload disambiguation (unified with methods)
-  // Skip for 'main' — it's an entry point with a fixed ABI name — and for
-  // externs, whose ABI name is fixed by C. Templates keep their declaration
-  // name until specialization supplies concrete type arguments.
-  if (qualifiedName.paramSuffix.empty() && proto.getName() != "main" &&
-      !func.isCExtern() && !proto.isTemplate()) {
-    qualifiedName.setParamSuffix(paramTypes);
-  }
+  const auto& qualifiedName = proto.getQualifiedName();
 
   FunctionInfo info;
   info.returnType = returnType;
@@ -524,15 +512,14 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
       method.visibility = methodVisibility(*methodDecl.function);
       method.isConst = methodDecl.isConst;
       method.isUnsafe = methodDecl.function->getProto().isUnsafeMethod();
-      std::string mangledName =
-          existingClass->getMethodScopeName(proto.getName());
+      std::string methodNameForScope = proto.getName();
       std::vector<sun::TypePtr> methodParamTypes;
       methodParamTypes.push_back(existingClass);
       for (const auto& pt : methodInfo.paramTypes) {
         methodParamTypes.push_back(pt);
       }
       methodInfo.paramTypes = std::move(methodParamTypes);
-      ctx_.registerFunctionInCurrentScope(mangledName, methodInfo);
+      ctx_.registerFunctionInCurrentScope(methodNameForScope, methodInfo);
     }
 
     // Analyze extension method bodies
@@ -1128,7 +1115,6 @@ void SemanticAnalyzer::clearResolvedTypes(ExprAST& expr) {
         arm.resolvedVariantTag = -1;
         for (auto& binding : arm.bindings) {
           binding.resolvedType = nullptr;
-          binding.resolvedMangledName.clear();
         }
         clearResolvedTypes(*arm.body);
       }

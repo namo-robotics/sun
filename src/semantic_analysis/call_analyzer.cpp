@@ -367,9 +367,7 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveNamedCallee(
   sun::QualifiedName resolved = ctx_.resolveNameWithUsings(varRef.getName());
 
   // Store the qualified name so codegen doesn't need to do name resolution
-  if (resolved.mangled() != varRef.getName()) {
-    varRef.setQualifiedName(resolved);
-  }
+  varRef.setQualifiedName(resolved);
 
   const auto& args = callExpr.getArgs();
   const auto lookupTypes = functionArgumentTypes(args);
@@ -533,7 +531,7 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMethodCallee(
   // Generic method ending in an `args...` pack (e.g.
   // allocator.create<Point>(...)): specialize HERE, where the actual call
   // argument types are known, so overloaded constructors resolve and the
-  // specialization is keyed (mangled) by the pack's arg types. The
+  // specialization is keyed by the pack's arg types. The
   // inferType trigger defers variadic methods to this path.
   FunctionAST* genericMethod =
       generics_.findGenericMethodAST(classType, methodName);

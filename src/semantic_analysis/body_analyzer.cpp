@@ -68,10 +68,9 @@ void BodyAnalyzer::analyzeFunction(FunctionAST& func) {
         func.getLocation());
   }
 
-  // Compute function signature from qualified name and resolved param types
-  // This signature is used to create unique names for nested functions
-  std::string funcSig = sun::names::getFunctionSignature(
-      proto.getMangledName(), proto.getResolvedParamTypes());
+  // Format the function signature for scope diagnostics.
+  std::string funcSig = sun::names::formatFunctionSignature(
+      proto.getQualifiedName().display(), proto.getResolvedParamTypes());
 
   // Return type for return-position inference. Some paths (class method
   // pass 2) reach here before the proto's resolved return type is applied;
@@ -83,7 +82,7 @@ void BodyAnalyzer::analyzeFunction(FunctionAST& func) {
         analyzer_.types().typeAnnotationToType(*proto.getReturnType());
   }
 
-  // Enter function scope with signature for nested function qualification
+  // Enter the function scope with its diagnostic signature.
   // Pass canThrow flag so throw expressions can be validated. A const method
   // body sees the const view of its return type: borrows of `this` are
   // `const ref` there, and the declared `ref` result is what callers with a
@@ -249,10 +248,8 @@ void BodyAnalyzer::analyzeMethodWithBindings(
     substitutedParamTypes.push_back(
         analyzer_.types().typeAnnotationToType(argType));
   }
-  std::string methodSig = sun::names::getFunctionSignature(
-      classType->getMethodScopeName(proto.getName()), substitutedParamTypes);
-  std::string mangledMethodName =
-      classType->getMethodScopeName(proto.getName());
+  std::string methodSig = sun::names::formatFunctionSignature(
+      proto.getName(), substitutedParamTypes);
   // Resolve the return type under the active bindings so return-position
   // inference (e.g. `return Option.None;`) has the expected type
   sun::TypePtr methodReturnType;
@@ -264,9 +261,7 @@ void BodyAnalyzer::analyzeMethodWithBindings(
   if (proto.isConstMethod())
     methodReturnType = analyzer_.types().createConstView(methodReturnType);
   ctx_.enterFunctionScope(
-      methodSig,
-      sun::QualifiedName(classType->getQualifiedName().scopePath,
-                         mangledMethodName),
+      methodSig, classType->getQualifiedName().memberNamed(proto.getName()),
       proto.canThrow(), methodReturnType);
   if (classType) {
     ctx_.declareVariable("this", classType, /*isParam=*/true,

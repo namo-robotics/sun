@@ -117,28 +117,18 @@ struct ForInAnalysis : public ExprAnalysis {
   ForInAnalysis& operator=(const ForInAnalysis&) = default;
 };
 
-/// Analysis data for QualifiedNameAST
-struct QualifiedNameExprAnalysis : public ExprAnalysis {
-  std::string resolvedMangledName;
-
-  QualifiedNameExprAnalysis() = default;
-  QualifiedNameExprAnalysis(const QualifiedNameExprAnalysis&) = default;
-  QualifiedNameExprAnalysis& operator=(const QualifiedNameExprAnalysis&) =
-      default;
-};
-
 /// Analysis data for MemberAccessAST
 struct MemberAccessAnalysis : public ExprAnalysis {
   std::vector<sun::TypePtr> resolvedTypeArgs;
   // For a generic method call whose last param is an `args...` pack,
   // the resolved types of the actual variadic arguments. Used to key the
-  // specialization (mangled name) so different call arities/types get distinct
+  // specialization key so different call arities/types get distinct
   // specializations.
   std::vector<sun::TypePtr> resolvedVariadicArgTypes;
   // The symbol this access denotes, when it denotes one: a module's function
   // or variable, or the specialization the analyzer instantiated for a
-  // generic call. Codegen emits a call to exactly this name rather than
-  // rebuilding it. Empty for an ordinary field or method access.
+  // generic call. Declaration IDs select emitted symbols. Empty for an
+  // ordinary field or method access.
   sun::QualifiedName qualifiedName;
   // True when this member access is a method used in value position (bound
   // method reference); its resolved type is then a LambdaType.

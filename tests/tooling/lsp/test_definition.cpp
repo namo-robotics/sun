@@ -437,3 +437,23 @@ TEST(Tooling_Lsp_Definition, FieldInitializerIgnoresConstructorParameter) {
   )";
   EXPECT_TRUE(definedAt(source, "seed +", "seed: i32"));
 }
+
+TEST(Tooling_Lsp_Definition, OverloadsUseSelectedDeclarations) {
+  const std::string source = R"(
+function value(x: i32) i32 { return 20; }
+function value(x: bool) i32 { return 22; }
+module library {
+  public function value(x: i32) i32 { return 20; }
+  public function value(x: bool) i32 { return 22; }
+}
+function main() i32 {
+  return value(1) + value(true) + library.value(2) + library.value(false);
+}
+)";
+  auto analysis = analyze(source);
+  ASSERT_FALSE(analysis.program.error.has_value());
+  EXPECT_TRUE(definedAt(source, "value(1)", "value(x: i32)"));
+  EXPECT_TRUE(definedAt(source, "value(true)", "value(x: bool)"));
+  EXPECT_TRUE(definedAt(source, "value(2)", "value(x: i32)", 1));
+  EXPECT_TRUE(definedAt(source, "value(false)", "value(x: bool)", 1));
+}

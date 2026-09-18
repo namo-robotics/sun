@@ -530,7 +530,7 @@ public module math {
 }
 ```
 
-Symbols inside a module are mangled with the module name prefix (e.g., `math_square`).
+From outside the module, its symbols are reached by qualified name (e.g., `math.square`).
 
 ### Using Statements
 
@@ -551,7 +551,7 @@ manifest {
 }
 ```
 
-Without `using`, you would need to reference symbols by their mangled names.
+Without `using`, you would need to write each symbol's qualified name, such as `std.Vec<i32>`.
 
 ### Module Scope
 

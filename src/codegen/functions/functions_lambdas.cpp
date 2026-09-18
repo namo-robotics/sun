@@ -436,14 +436,14 @@ void FunctionGenerator::declareBlockSignatures(const BlockExprAST& block) {
     // (a generic class method above the helper it calls, one generic function
     // calling another) finds the symbol.
     if (proto.isTemplate()) {
-      for (const auto& [mangledName, specializedAST] :
+      for (const auto& [instanceId, specializedAST] :
            funcAST.getSpecializations()) {
         if (specializedAST) forwardDeclareFunction(specializedAST->getProto());
       }
       continue;
     }
 
-    // C externs declare under their raw C symbol, not a mangled name, so
+    // C externs declare under their raw C symbol, not a Sun-derived one, so
     // they can be called before their declaration appears in the file.
     // Sun forward declarations bind their own IDs to the shared symbol.
     if (funcAST.isCExtern()) {
@@ -466,11 +466,11 @@ Value* FunctionGenerator::codegenGenericFunc(FunctionAST& funcAst) {
   for (const auto& [instanceId, specializedAST] :
        funcAst.getSpecializations()) {
     if (!specializedAST) continue;
-    const auto mangledName =
+    const auto symbol =
         state_.declarationSymbol(specializedAST->getDeclarationId());
     // A forward declaration from the block pre-pass still needs its body;
     // only an already-defined function is skipped.
-    llvm::Function* existing = module->getFunction(mangledName);
+    llvm::Function* existing = module->getFunction(symbol);
     if (existing && !existing->empty()) continue;
     // Recursively generate the specialized function using the same codegen
     codegenFunc(*specializedAST);

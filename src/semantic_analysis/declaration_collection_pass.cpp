@@ -1,3 +1,4 @@
+#include "semantic_analysis/method_signature_set.h"
 // declaration_collection_pass.cpp — The declaration pre-pass (see
 // declaration_collection_pass.h)
 
@@ -56,7 +57,7 @@ void DeclarationCollectionPass::collectTypeNames(BlockExprAST& block) {
         } else {
           sun::QualifiedName qualifiedInterface =
               interfaceDef.getQualifiedName();
-          std::string interfaceName = qualifiedInterface.mangled();
+          std::string interfaceName = qualifiedInterface.lookupName();
           auto interfaceType = ctx_.types()->getInterface(
               interfaceDef.getDeclarationId(), qualifiedInterface);
           if (interfaceName != interfaceDef.getName()) {
@@ -236,7 +237,7 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
           // Precompiled stubs carry their qualified name (content-hash scoped)
           sun::QualifiedName qualifiedInterface =
               interfaceDef.getQualifiedName();
-          std::string interfaceName = qualifiedInterface.mangled();
+          std::string interfaceName = qualifiedInterface.lookupName();
           auto interfaceType = ctx_.types()->getInterface(
               interfaceDef.getDeclarationId(), qualifiedInterface);
           if (interfaceName != interfaceDef.getName()) {
@@ -424,12 +425,7 @@ void DeclarationCollectionPass::collectFunctionSignature(FunctionAST& func) {
     returnType = sema_.types().typeAnnotationToType(*proto.getReturnType());
   }
 
-  // A C extern is scoped to its module like any other item; only its emitted
-  // symbol is fixed by C. No overload suffix: C has no overloading.
-  sun::QualifiedName qualifiedName = proto.getQualifiedName();
-  if (!func.isCExtern() && proto.getName() != "main")
-    qualifiedName.setParamSuffix(paramTypes);
-  proto.setQualifiedName(qualifiedName);
+  const auto& qualifiedName = proto.getQualifiedName();
 
   // Minimal FunctionInfo (no captures — those require body analysis)
   FunctionInfo info;
@@ -601,10 +597,15 @@ void DeclarationCollectionPass::registerClassShape(
   // Method signatures ('this' resolves against the class being shaped)
   auto savedClass = ctx_.getCurrentClass();
   ctx_.setCurrentClass(classType);
+  MethodSignatureSet methodSignatures(ctx_, sema_.types());
   for (const auto& methodDecl : classDef.getMethods()) {
     FunctionInfo methodInfo = sema_.getFunctionInfo(*methodDecl.function);
     PrototypeAST& proto =
         const_cast<PrototypeAST&>(methodDecl.function->getProto());
+    if (!methodSignatures.insert(proto, methodInfo.paramTypes))
+      logAndThrowError(
+          "Function '" + proto.getName() + "' is already defined in this scope",
+          methodDecl.function->getLocation());
     sema_.applyFunctionInfoToProto(proto, methodInfo);
     auto& method =
         classType->addMethod(proto.getName(), methodInfo.returnType,
@@ -626,9 +627,10 @@ void DeclarationCollectionPass::registerClassShape(
   // that point. The stdlib upgrades the contract: once std.String is known,
   // IError.message() returns an owned String clone, and every implementation
   // compiled after this line must match that signature.
-  if (ctx_.types() && qualifiedClass.baseName == "String" &&
-      !qualifiedClass.owner().empty() &&
-      qualifiedClass.owner().back() == "std") {
+  const auto module =
+      ctx_.types()->declarations.get(classDef.getDeclarationId()).module;
+  if (qualifiedClass.baseName == "String" && module &&
+      ctx_.types()->declarations.get(module).name == "std") {
     if (auto ierror = ctx_.types()->errorInterface) {
       ierror->setMethodReturnType("message", classType);
     }

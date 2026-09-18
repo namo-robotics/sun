@@ -8,7 +8,9 @@
 #include "codegen/codegen_visitor.h"
 #include "driver/driver.h"
 #include "parsing/parser.h"
+#include "semantic_analysis/callable_signature.h"
 #include "semantic_analysis/declaration_identity_pass.h"
+#include "semantic_analysis/item_refs.h"
 #include "serialization/ast_deserializer.h"
 #include "serialization/ast_serializer.h"
 
@@ -845,4 +847,56 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   auto clone = function.clone();
   EXPECT_FALSE(clone->getDeclarationId());
   EXPECT_FALSE(clone->declarationIdentity().imported);
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity,
+     visibility_follows_module_ids_instead_of_qualified_names) {
+  sun::TypeRegistry types;
+  auto& table = types.declarations;
+  auto library = table.module("library");
+  auto child = table.module("nested", library);
+  auto unrelated = table.module("unrelated");
+  auto source = table.add(sun::DeclarationKind::Class, "Box", library, library);
+  auto type = types.getClass(source, {{"unrelated", "SomeClass"}, "Renamed"});
+  auto& field = type->addField("hidden", sun::Types::Int32());
+  field.visibility = sun::Visibility::Private;
+  const auto item = sun::access::fieldRef(*type, field);
+  EXPECT_TRUE(sun::access::isAccessible(library, item, table));
+  EXPECT_TRUE(sun::access::isAccessible(child, item, table));
+  EXPECT_FALSE(sun::access::isAccessible(unrelated, item, table));
+  EXPECT_FALSE(sun::access::isAccessible({}, item, table));
+  EXPECT_NE(sun::access::denialMessage(item, table).find("module 'library'"),
+            std::string::npos);
+
+  auto instance =
+      types.specialize({source, {}, {sun::Types::Int32()}, std::nullopt});
+  auto specialized = types.getClass(instance, {{"alias"}, "Box_i32"});
+  auto& specializedField = specialized->addField("hidden", sun::Types::Int32());
+  specializedField.visibility = sun::Visibility::Private;
+  const auto specializedItem =
+      sun::access::fieldRef(*specialized, specializedField);
+  EXPECT_EQ(table.get(instance).module, library);
+  EXPECT_TRUE(sun::access::isAccessible(child, specializedItem, table));
+  EXPECT_FALSE(sun::access::isAccessible(unrelated, specializedItem, table));
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity,
+     overload_keys_use_exact_type_identity) {
+  sun::TypeRegistry types;
+  auto firstId = types.declarations.add(sun::DeclarationKind::Class, "Same");
+  auto secondId = types.declarations.add(sun::DeclarationKind::Class, "Same");
+  auto first = types.getClass(firstId, {{}, "Same"});
+  auto second = types.getClass(secondId, {{}, "Same"});
+  std::unordered_map<sun::CallableSignature, int, sun::CallableSignatureHash>
+      keys;
+  keys.emplace(sun::CallableSignature{"accept", {first}}, 1);
+  keys.emplace(sun::CallableSignature{"accept", {second}}, 2);
+  first->setQualifiedName({{"renamed"}, "Display"});
+  EXPECT_EQ(keys.size(), 2u);
+  EXPECT_EQ(keys.at(sun::CallableSignature{"accept", {first}}), 1);
+  EXPECT_EQ(keys.at(sun::CallableSignature{"accept", {second}}), 2);
+  EXPECT_FALSE((sun::CallableSignature{
+                    "accept", {sun::Types::RawPointer(sun::Types::Int32())}} ==
+                sun::CallableSignature{
+                    "accept", {sun::Types::RawPointer(sun::Types::Void())}}));
 }

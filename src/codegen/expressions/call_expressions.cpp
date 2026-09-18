@@ -606,7 +606,7 @@ Value* CodegenVisitor::codegenMethodCall(const CallExprAST& expr,
   // `t.join()` on a Thread<Res> — resolves the same way but is a call.
   if (auto* memberClass = sun::tryGetType<sun::ClassType>(memberAccess)) {
     if (!objectType || objectType->isModule()) {
-      return classes.codegenStackClassInstance(expr, methodName, *memberClass);
+      return classes.codegenStackClassInstance(expr, *memberClass);
     }
   }
 
@@ -660,7 +660,7 @@ Value* CodegenVisitor::codegenMethodCall(const CallExprAST& expr,
     auto registeredClass = typeRegistry->getClass(cls->getDeclarationId());
     if (!registeredClass) {
       logAndThrowError("Class not found in type registry: " +
-                       cls->getMangledName());
+                       cls->getDisplayName());
       return nullptr;
     }
     objectType = registeredClass;
@@ -718,11 +718,11 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
     // ClassName(args...)
     if (auto* calleeClass =
             sun::tryGetType<sun::ClassType>(*expr.getCallee())) {
-      return classes.codegenStackClassInstance(expr, calleeName, *calleeClass);
+      return classes.codegenStackClassInstance(expr, *calleeClass);
     }
   } else if (auto* qualName =
                  dynamic_cast<const QualifiedNameAST*>(expr.getCallee())) {
-    // Qualified name like Math::square - mangle :: to _ for LLVM name
+    // Resolve the qualified call through its selected declaration.
     std::string fullName = qualName->getFullName();
     calleeName = fullName;
     size_t pos;

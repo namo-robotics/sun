@@ -308,7 +308,7 @@ but cannot be returned or become a global (see
 Lifetime parameters share the angle brackets, written first
 (`function pick<'a, T>`), but they are not type parameters: they never
 distinguish types, never mint a specialization, and never appear in
-mangled names. `<'a>() => i32` and `<'b>() => i32` are one type,
+emitted symbol names. `<'a>() => i32` and `<'b>() => i32` are one type,
 and an explicit instantiation names only the type arguments
 (`combine<i32>(...)` — lifetime arguments are always inferred).
 

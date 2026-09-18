@@ -40,11 +40,6 @@ class VariableReferenceAST : public ExprAST {
   const sun::QualifiedName& getQualifiedName() const {
     return varAnalysis().qualifiedName;
   }
-  // Returns mangled form for codegen symbol lookup
-  std::string getMangledName() const {
-    auto& qn = varAnalysis().qualifiedName;
-    return qn.empty() ? Name : qn.mangled();
-  }
   void setQualifiedName(sun::QualifiedName qname) {
     varAnalysis().qualifiedName = std::move(qname);
   }

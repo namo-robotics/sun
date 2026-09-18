@@ -387,7 +387,7 @@ Value* EnumGenerator::codegen(const EnumDefinitionAST& expr) {
   // recorded by the semantic analyzer (mirrors generic classes) and build
   // their storage structs.
   if (expr.isGeneric()) {
-    for (const auto& [mangledName, specialized] : expr.getSpecializations()) {
+    for (const auto& [instanceId, specialized] : expr.getSpecializations()) {
       if (specialized && specialized->hasPayload()) {
         typeResolver.getEnumStorageType(*specialized);
       }

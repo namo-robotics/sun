@@ -38,8 +38,9 @@ change source visibility and duplicate-name checks.
 
 ### Declaration Naming
 
-`DeclarationNamingPass` assigns scope paths and owning modules to declarations
-without resolving types or registering symbols. It preserves names supplied by
+`DeclarationNamingPass` assigns source names and scope paths without resolving
+types or registering symbols. Declaration identity assignment already recorded
+the owning modules. It preserves names supplied by
 imports and specializations, including aliased bundle modules. Local declarations
 receive names later, when body checking reaches their resolved enclosing scope;
 local variables remain unqualified.
@@ -48,10 +49,12 @@ local variables remain unqualified.
 
 `DeclarationCollectionPass` registers types and generic templates, then resolves
 class shapes and function signatures. It collects type names across the module
-tree first, allowing sibling modules to refer to each other's types. Resolved
-parameter types supply overload suffixes; generic templates retain unsuffixed
-names until specialization. Sun forward declarations retain the selected
-definition ID and cannot replace an available definition during body checking.
+tree first, allowing sibling modules to refer to each other's types. Overloads
+share a source qualified name and are selected using resolved parameter types;
+declaration IDs distinguish the selected targets. Sun forward declarations retain
+the selected definition ID and cannot replace an available definition during
+body checking. Duplicate type declarations are checked by source name within
+their semantic scope; reopened modules reuse that scope.
 
 C extern globals are also registered here so functions can use them before their
 source declarations. Their `isCExtern` flag governs unsafe access, and
@@ -132,7 +135,9 @@ expanded variadic arguments, references, and loop/pattern/catch bindings use the
 same rule. Captures retain the selected binding ID; their environment slot is a
 separate layout decision. Field access retains a selected field ID, which the
 resolved class maps to its layout index. Struct initializers retain their field
-selections in source order. The method frame holds the implicit receiver.
+selections in source order. The method frame holds the implicit receiver. LLVM
+class and enum layouts are shared by their fields and packing rather than source
+names, so same-named local types can have different layouts.
 
 A source block has its own semantic scope. Once that scope closes, its resolved
 result type can be reused without repeating lookup of its locals. Constructor
@@ -297,20 +302,18 @@ Recording and validation both happen when `count<i32>` builds `Vec<i32>`.
 
 ## Access Control
 
-Every declaration record (`FunctionInfo`, `ClassType`, `InterfaceType`,
-`EnumType`, the `Generic*Info`s, `ModuleScope`, class/interface members)
-carries a `sun::Visibility` and — except members, which use their type's — a
-`QualifiedName` whose `owner()` (`modulePath`) is the module that declared it.
-`modulePath` differs from `scopePath` for nested items: it never contains
-class or function segments. The single predicate is
-`isAccessibleFrom(from, visibility, owner)` (`include/semantic_analysis/visibility.h`): public,
-or `from` is the owner module or one of its descendants. Contents of an imported `.moon` live
-under a `$hash$` scope segment, so importer code is never inside a bundle
-module and bundle-private items are hidden by the same rule. A bundle being
-built (`--emit-moon`) compiles its own sources under that same segment — the
-hash is fixed before compilation from the sources, dependencies, target and
-compiler — so every symbol and struct type it emits is already spelled the
-way importers will spell it, with no renaming of the bitcode afterwards.
+Declarations carry visibility and a declaration ID. `QualifiedName` contains only
+`scopePath` and `baseName`; it describes source spelling, not module ownership.
+`DeclarationRecord::module` identifies the declaring module, including for nested
+classes, members, generated specializations, and imported declarations.
+
+`sun::access::isAccessible` accepts public items, or private items whose declaring
+module is the asking module or one of its ancestors. It compares declaration IDs
+and follows the module ownership chain. Top-level source items belong to the
+root; imported bundle roots have distinct module IDs, so bundle-private items
+remain inaccessible to importers. Import aliases change source lookup without
+changing ownership. Diagnostic module paths are reconstructed from declaration
+records instead of copied from qualified names.
 
 Enforcement lives in two places:
 
@@ -352,3 +355,11 @@ The analyzer's source is split by concern under `src/semantic_analysis/`:
 | `access_checker.cpp` | Visibility |
 | `captures.cpp` | Closure captures |
 | `field_initialization.cpp` | The two-phase constructor rule, and what each field write drops |
+
+Overload tables use the source name and exact structural parameter types. Nominal
+parameter types compare declaration IDs, so identical spellings in different
+scopes remain distinct. Generic instances retain their source qualified names;
+`SpecializationKey` and declaration IDs distinguish their concrete arguments.
+Module variables are indexed by source name within their owning scope. Encoded
+portable declaration keys are used only where emitted symbols need stable names
+across compilation sessions.

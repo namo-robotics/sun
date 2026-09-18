@@ -131,22 +131,11 @@ class SemanticContext : public AccessContext {
   // ---- Names and module paths -------------------------------------------
 
   /**
-   * Get the current module prefix for name mangling (e.g., "sun_").
-   * Returns empty string if not inside any module scope.
-   */
-  std::string getCurrentModulePrefix() const;
-
-  /**
    * Get the current scope path as a vector of segments.
    * e.g., inside "module A { module B { } }", returns {"A", "B"}.
    */
   std::vector<std::string> getCurrentScopePath() const;
 
-  /**
-   * Get the fully qualified name for a symbol in current scope.
-   * e.g., inside "module std { }", qualifyName("Vec") returns "sun_Vec".
-   */
-  std::string qualifyNameInCurrentModule(const std::string &name) const;
 
   /**
    * True when the name refers to a module, so `x.y` can be read as a
@@ -480,7 +469,12 @@ class SemanticContext : public AccessContext {
   // ScopeSwitchGuard), so no override is needed.
 
   /** The module asking for access: the nearest module scope on the stack. */
-  sun::ModulePath currentModulePath() const override;
+  sun::DeclarationId currentModuleId() const override;
+
+  /** Declaration ownership for visibility checks in this session. */
+  const sun::DeclarationTable &declarationTable() const override {
+    return typeRegistry_->declarations;
+  }
 
   /** Report that `item` is not reachable from here, pointing at source. */
   [[noreturn]] void denyAccess(const sun::access::ItemRef &item) const override;
@@ -488,7 +482,8 @@ class SemanticContext : public AccessContext {
   /** Throw at `loc` unless `item` is reachable from the current module. */
   void requireAccessible(const sun::access::ItemRef &item,
                          const Position &loc) const {
-    sun::access::requireAccessible(currentModulePath(), item, loc);
+    sun::access::requireAccessible(currentModuleId(), item, loc,
+                                   declarationTable());
   }
 
   /** The same, pointing at the innermost recorded location. */
@@ -498,7 +493,8 @@ class SemanticContext : public AccessContext {
 
   /** True when `item` is reachable from the current module. */
   bool isAccessible(const sun::access::ItemRef &item) const {
-    return sun::access::isAccessible(currentModulePath(), item);
+    return sun::access::isAccessible(currentModuleId(), item,
+                                     declarationTable());
   }
 
   /**

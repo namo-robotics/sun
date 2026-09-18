@@ -28,6 +28,12 @@ class Type;
 class ArrayType;  // Forward declared for ReferenceType
 using TypePtr = std::shared_ptr<Type>;
 
+/** Compare semantic types exactly, without accepting implicit conversions. */
+bool sameTypeIdentity(const TypePtr& left, const TypePtr& right);
+/** Compare ordered parameter or specialization argument types exactly. */
+bool sameTypeArguments(const std::vector<TypePtr>& left,
+                       const std::vector<TypePtr>& right);
+
 // Base Type class
 class Type {
  public:
@@ -194,8 +200,7 @@ class TypeParameterType : public Type {
         declaration_(declaration),
         session_(std::move(session)),
         constraint_(std::move(constraint)) {
-    // A projection needs a name of its own, or `Thread<F>` and
-    // `Thread<_return_type_of<F>>` would mangle to one specialization.
+    // Give projected parameters a distinct diagnostic spelling.
     if (projection_ == TypeProjection::ReturnType) name = base_ + "$ret";
   }
 
@@ -434,7 +439,7 @@ class LambdaType : public Type {
   // Metadata, NOT identity: the lifetime name written on this position
   // ('<'a>(i32) => i32'), empty when elided. Names only mean something
   // relative to one signature's lifetime list, so equals(), toString() and
-  // mangling ignore them - '<'a>' and '<'b>' are one type.
+  // specialization identity ignore them - '<'a>' and '<'b>' are one type.
   std::string lifetimeName_;
 
  public:
@@ -1099,69 +1104,6 @@ struct ClassMethod {
   bool isGeneric() const { return !typeParameters.empty(); }
 };
 
-// Method info for ClassType/InterfaceType method tables.
-// Lightweight alternative to FunctionInfo (no Capture dependency).
-// Stores enough for overload resolution and codegen name lookup.
-struct ScopeMethodInfo {
-  TypePtr returnType;
-  std::vector<TypePtr> paramTypes;  // Excludes implicit 'this' parameter
-  std::string
-      qualifiedName;     // Mangled name for LLVM codegen (e.g., "MyClass_foo")
-  std::string baseName;  // User-written method name (e.g., "foo")
-};
-
-// Indexed method table: O(1) name-based overload lookup + O(1) exact sig
-// lookup. Used on ClassType and InterfaceType for method resolution.
-class ScopeMethodTable {
- public:
-  using iterator = std::unordered_map<std::string, ScopeMethodInfo>::iterator;
-  using const_iterator =
-      std::unordered_map<std::string, ScopeMethodInfo>::const_iterator;
-
-  ScopeMethodInfo& operator[](const std::string& sig) {
-    auto [it, inserted] = bySig_.emplace(sig, ScopeMethodInfo{});
-    if (inserted) {
-      std::string name = extractName(sig);
-      byName_[name].push_back(&it->second);
-    }
-    return it->second;
-  }
-
-  bool contains(const std::string& sig) const { return bySig_.count(sig) > 0; }
-
-  const_iterator find(const std::string& sig) const { return bySig_.find(sig); }
-
-  const_iterator end() const { return bySig_.end(); }
-  const_iterator begin() const { return bySig_.begin(); }
-  iterator end() { return bySig_.end(); }
-  iterator begin() { return bySig_.begin(); }
-  bool empty() const { return bySig_.empty(); }
-  size_t size() const { return bySig_.size(); }
-
-  // Check if any method with this base name exists (O(1))
-  bool hasName(const std::string& name) const {
-    return byName_.count(name) > 0;
-  }
-
-  // Get all overloads for a given base name (O(1) lookup)
-  const std::vector<ScopeMethodInfo*>* getOverloads(
-      const std::string& name) const {
-    auto it = byName_.find(name);
-    if (it != byName_.end()) return &it->second;
-    return nullptr;
-  }
-
- private:
-  std::unordered_map<std::string, ScopeMethodInfo> bySig_;
-  std::unordered_map<std::string, std::vector<ScopeMethodInfo*>> byName_;
-
-  // Extract method name from signature "name(type1,type2)"
-  static std::string extractName(const std::string& sig) {
-    auto paren = sig.find('(');
-    return paren != std::string::npos ? sig.substr(0, paren) : sig;
-  }
-};
-
 /** A nominal type's identity within its analysis session. */
 class NominalType : public Type {
   friend class TypeRegistry;
@@ -1199,7 +1141,8 @@ class InterfaceType;
 // Specialized classes have type arguments (e.g., List<i32>)
 class ClassType : public NominalType {
   friend class TypeRegistry;
-  std::string mangledName;  // Fully qualified name (e.g., "$hash$_std_Vec")
+  std::string
+      name_;  // Source-qualified spelling for diagnostic type signatures.
   std::string
       baseName_;  // User-written base name (e.g., "Unique") for error messages
   sun::QualifiedName qualifiedName_;  // Structured qualified name for scoping
@@ -1213,8 +1156,6 @@ class ClassType : public NominalType {
   std::vector<ClassField> fields;
   std::vector<ClassMethod> methods;
   std::unordered_map<DeclarationId, DeclarationId> interfaceImplementations_;
-  ScopeMethodTable
-      methodTable_;  // Indexed method table for overload resolution
   std::vector<DeclarationId>
       implementedInterfaces;  // Interfaces this class implements
   std::vector<DeclarationId>
@@ -1237,28 +1178,26 @@ class ClassType : public NominalType {
     lifetimeParams_ = std::move(names);
   }
 
-  ClassType(std::string className) : mangledName(std::move(className)) {}
+  ClassType(std::string className) : name_(std::move(className)) {}
 
   // Constructor for generic class definition
   ClassType(std::string className, std::vector<std::string> typeParams)
-      : mangledName(std::move(className)),
-        typeParameters(std::move(typeParams)) {}
+      : name_(std::move(className)), typeParameters(std::move(typeParams)) {}
 
   // Constructor for specialized generic class
-  ClassType(std::string mangledName, std::string baseName,
+  ClassType(std::string name_, std::string baseName,
             std::vector<TypePtr> typeArgs)
-      : mangledName(std::move(mangledName)),
+      : name_(std::move(name_)),
         typeArguments(std::move(typeArgs)),
         baseGenericName(std::move(baseName)) {}
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::Class;
   Kind getKind() const override { return StaticKind; }
-  const std::string& getMangledName() const { return mangledName; }
 
   // Base name accessors (user-written name for error messages)
   const std::string& getBaseName() const {
-    return baseName_.empty() ? mangledName : baseName_;
+    return baseName_.empty() ? name_ : baseName_;
   }
   void setBaseName(std::string bn) { baseName_ = std::move(bn); }
   bool hasBaseName() const { return !baseName_.empty(); }
@@ -1272,7 +1211,7 @@ class ClassType : public NominalType {
 
   // Get user-friendly display name for error messages
   // For specialized classes: "Vec<i32>" or "std.Vec<i32>"
-  // For non-specialized: baseName or name with underscores converted to dots
+  // For non-specialized classes, preserve the source spelling.
   std::string getDisplayName() const {
     // Prefer the structured name: QualifiedName::display() spells the scope
     // path with dots and drops bundle hash segments. A specialization shows
@@ -1285,7 +1224,7 @@ class ClassType : public NominalType {
     } else if (hasQualifiedName()) {
       base = qualifiedName_.display();
     } else {
-      base = mangledName;
+      base = name_;
     }
     if (isSpecialized() && !typeArguments.empty()) {
       std::string result = base + "<";
@@ -1611,7 +1550,7 @@ class ClassType : public NominalType {
     }
     if (isGenericDefinition()) {
       // Show generic definition like "List<T>"
-      std::string result = mangledName + "<";
+      std::string result = name_ + "<";
       for (size_t i = 0; i < typeParameters.size(); ++i) {
         if (i > 0) result += ", ";
         result += typeParameters[i];
@@ -1619,7 +1558,7 @@ class ClassType : public NominalType {
       result += ">";
       return result;
     }
-    return mangledName;
+    return name_;
   }
 
   std::string toDisplayString() const override { return getDisplayName(); }
@@ -1640,18 +1579,8 @@ class ClassType : public NominalType {
   llvm::StructType* getStructType(llvm::LLVMContext& ctx) const {
     if (cachedLLVMType) return cachedLLVMType;
 
-    // Several ClassType objects can describe the same class (e.g. a type
-    // resolved inside a .moon and the same type seen by its importer). The
-    // mangled name identifies the layout, so share one LLVM struct per name
-    // rather than letting LLVM mint "name.1", "name.2" duplicates that then
-    // fail to match across call boundaries.
-    llvm::StructType* existing =
-        llvm::StructType::getTypeByName(ctx, mangledName + "_struct");
-    if (existing && !existing->isOpaque()) {
-      cachedLLVMType = existing;
-      return cachedLLVMType;
-    }
-
+    // LLVM shares layouts by their fields and packing. Source names do not
+    // identify layouts: separate declarations may have the same spelling.
     std::vector<llvm::Type*> fieldTypes;
     for (const auto& field : fields) {
       // For class-typed fields, embed the struct directly (not a pointer)
@@ -1662,14 +1591,7 @@ class ClassType : public NominalType {
         fieldTypes.push_back(field.type->toLLVMType(ctx));
       }
     }
-    if (existing) {
-      // Opaque placeholder minted by the module linker: fill it in
-      existing->setBody(fieldTypes, isPacked_);
-      cachedLLVMType = existing;
-      return cachedLLVMType;
-    }
-    cachedLLVMType = llvm::StructType::create(
-        ctx, fieldTypes, mangledName + "_struct", isPacked_);
+    cachedLLVMType = llvm::StructType::get(ctx, fieldTypes, isPacked_);
     return cachedLLVMType;
   }
 
@@ -1678,32 +1600,8 @@ class ClassType : public NominalType {
   bool isPacked() const { return isPacked_; }
   void setPacked(bool v) { isPacked_ = v; }
 
-  /** Return a readable scope label for checking method bodies. */
-  std::string getMethodScopeName(const std::string& methodName) const {
-    return mangledName + "_" + methodName;
-  }
 
-  // --- ScopeMethodTable accessors ---
-  ScopeMethodTable& getMethodTable() { return methodTable_; }
-  const ScopeMethodTable& getMethodTable() const { return methodTable_; }
 
-  // Register a method in the indexed method table (by signature)
-  void registerMethod(const std::string& sig, ScopeMethodInfo info) {
-    methodTable_[sig] = std::move(info);
-  }
-
-  // Look up a method by exact signature
-  const ScopeMethodInfo* lookupMethod(const std::string& sig) const {
-    auto it = methodTable_.find(sig);
-    if (it != methodTable_.end()) return &it->second;
-    return nullptr;
-  }
-
-  // Get all overloads for a method name
-  const std::vector<ScopeMethodInfo*>* getMethodOverloads(
-      const std::string& methodName) const {
-    return methodTable_.getOverloads(methodName);
-  }
 };
 
 // Interface field information
@@ -1747,8 +1645,6 @@ class InterfaceType : public NominalType {
       baseGenericName;  // For specialized: original generic interface name
   std::vector<InterfaceField> fields;
   std::vector<InterfaceMethod> methods;
-  ScopeMethodTable
-      methodTable_;  // Indexed method table for default implementations
   sun::QualifiedName qualifiedName_;
   // Lifetime names the interface DECLARES ('interface ISink<'a>').
   // Declarations only, never bindings - see ClassType::lifetimeParams_.
@@ -1778,7 +1674,7 @@ class InterfaceType : public NominalType {
 
   InterfaceType(std::string interfaceName) : name(std::move(interfaceName)) {}
 
-  // Structured name: owner() is the declaring module (unit of visibility)
+  // Source spelling; declaration records carry module ownership.
   const sun::QualifiedName& getQualifiedName() const { return qualifiedName_; }
   void setQualifiedName(sun::QualifiedName qn) {
     qualifiedName_ = std::move(qn);
@@ -1789,9 +1685,9 @@ class InterfaceType : public NominalType {
       : name(std::move(interfaceName)), typeParameters(std::move(typeParams)) {}
 
   // Constructor for specialized generic interface
-  InterfaceType(std::string mangledName, std::string baseName,
+  InterfaceType(std::string name_, std::string baseName,
                 std::vector<TypePtr> typeArgs)
-      : name(std::move(mangledName)),
+      : name(std::move(name_)),
         typeArguments(std::move(typeArgs)),
         baseGenericName(std::move(baseName)) {}
 
@@ -1964,14 +1860,9 @@ class InterfaceType : public NominalType {
   // Contains one function pointer per method in declaration order.
   // Vtable layout: [method0_ptr, method1_ptr, ...]
   llvm::StructType* getVtableType(llvm::LLVMContext& ctx) const {
-    std::string vtableName = name + "_vtable_type";
-    // Check for existing named type
-    if (auto* existing = llvm::StructType::getTypeByName(ctx, vtableName)) {
-      return existing;
-    }
     auto* ptrTy = llvm::PointerType::getUnqual(ctx);
     std::vector<llvm::Type*> slotTypes(methods.size(), ptrTy);
-    return llvm::StructType::create(ctx, slotTypes, vtableName);
+    return llvm::StructType::get(ctx, slotTypes);
   }
 
   // Get the slot index for a method in the vtable.
@@ -1991,27 +1882,6 @@ class InterfaceType : public NominalType {
     return -1;  // Method not found or is generic
   }
 
-  // --- ScopeMethodTable accessors ---
-  ScopeMethodTable& getMethodTable() { return methodTable_; }
-  const ScopeMethodTable& getMethodTable() const { return methodTable_; }
-
-  // Register a method in the indexed method table (by signature)
-  void registerMethod(const std::string& sig, ScopeMethodInfo info) {
-    methodTable_[sig] = std::move(info);
-  }
-
-  // Look up a method by exact signature
-  const ScopeMethodInfo* lookupMethod(const std::string& sig) const {
-    auto it = methodTable_.find(sig);
-    if (it != methodTable_.end()) return &it->second;
-    return nullptr;
-  }
-
-  // Get all overloads for a method name
-  const std::vector<ScopeMethodInfo*>* getMethodOverloads(
-      const std::string& methodName) const {
-    return methodTable_.getOverloads(methodName);
-  }
 };
 
 inline void ClassType::addImplementedInterface(const InterfaceType& interface) {
@@ -2064,7 +1934,8 @@ using EnumTypePtr = std::shared_ptr<EnumType>;
 // Example: enum Color { Red, Green, Blue }
 class EnumType : public NominalType {
   friend class TypeRegistry;
-  std::string mangledName_;  // Mangled name (e.g., "$hash$_std_Color")
+  std::string
+      name_;  // Source-qualified spelling for diagnostic type signatures.
   std::string baseName_;     // User-written base name (e.g., "Color")
   std::vector<EnumVariant> variants;
   TypePtr underlyingType_ = std::make_shared<PrimitiveType>(Kind::Int32);
@@ -2087,18 +1958,18 @@ class EnumType : public NominalType {
 
   sun::Visibility visibility = sun::Visibility::Private;
 
-  // Structured name: owner() is the declaring module (unit of visibility)
+  // Source spelling; declaration records carry module ownership.
   const sun::QualifiedName& getQualifiedName() const { return qualifiedName_; }
   void setQualifiedName(sun::QualifiedName qn) {
     qualifiedName_ = std::move(qn);
   }
 
-  EnumType(std::string mangledName, std::string baseName = "")
-      : mangledName_(std::move(mangledName)), baseName_(std::move(baseName)) {}
+  EnumType(std::string name_, std::string baseName = "")
+      : name_(std::move(name_)), baseName_(std::move(baseName)) {}
 
-  EnumType(std::string mangledName, std::vector<EnumVariant> vars,
+  EnumType(std::string name_, std::vector<EnumVariant> vars,
            std::string baseName = "")
-      : mangledName_(std::move(mangledName)),
+      : name_(std::move(name_)),
         variants(std::move(vars)),
         baseName_(std::move(baseName)) {}
 
@@ -2113,12 +1984,12 @@ class EnumType : public NominalType {
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::Enum;
   Kind getKind() const override { return StaticKind; }
-  const std::string& getName() const { return mangledName_; }
+  const std::string& getName() const { return name_; }
   const std::vector<EnumVariant>& getVariants() const { return variants; }
 
   // Base name accessor
   const std::string& getBaseName() const {
-    return baseName_.empty() ? mangledName_ : baseName_;
+    return baseName_.empty() ? name_ : baseName_;
   }
   bool hasBaseName() const { return !baseName_.empty(); }
   void setBaseName(std::string baseName) { baseName_ = std::move(baseName); }
@@ -2145,7 +2016,7 @@ class EnumType : public NominalType {
     }
     if (!baseName_.empty()) return baseName_;
     if (!qualifiedName_.empty()) return qualifiedName_.display();
-    return mangledName_;
+    return name_;
   }
 
   std::string toDisplayString() const override { return getDisplayName(); }
@@ -2196,7 +2067,7 @@ class EnumType : public NominalType {
   // Get the number of variants
   size_t getNumVariants() const { return variants.size(); }
 
-  std::string toString() const override { return mangledName_; }
+  std::string toString() const override { return name_; }
 
   bool equals(const Type& other) const override {
     if (auto* e = dynamic_cast<const EnumType*>(&other)) {
@@ -2217,11 +2088,6 @@ class EnumType : public NominalType {
                        "LLVMTypeResolver first");
     }
     return underlyingType_->toLLVMType(ctx);
-  }
-
-  // Get the mangled variant name: EnumName_VariantName
-  std::string getMangledVariantName(const std::string& variantName) const {
-    return mangledName_ + "_" + variantName;
   }
 
   // LLVM struct caches, populated by LLVMTypeResolver (mirrors
@@ -2344,18 +2210,6 @@ class Types {
   static TypePtr Array(TypePtr elementType, std::vector<size_t> dimensions) {
     return std::make_shared<ArrayType>(std::move(elementType),
                                        std::move(dimensions));
-  }
-
-  // Generate mangled name for a specialized generic class: the generic's
-  // mangled name with each type argument spelled the way every symbol
-  // spells types (QualifiedName::canonicalTypeString)
-  static std::string mangleGenericClassName(
-      const std::string& baseName, const std::vector<TypePtr>& typeArgs) {
-    std::string result = baseName;
-    for (const auto& arg : typeArgs) {
-      result += "_" + QualifiedName::canonicalTypeString(arg);
-    }
-    return result;
   }
 
   /** Create a type parameter carrying its optional requirement. */
@@ -2516,55 +2370,55 @@ class TypeRegistry {
   TypeRegistry(TypeRegistry&&) = default;
   TypeRegistry& operator=(TypeRegistry&&) = default;
 
-  /** Get a source class before its emitted name has been assigned. */
+  /** Get a source class before its source name has been assigned. */
   std::shared_ptr<ClassType> getClass(DeclarationId id) {
     return nominalType<ClassType>(id, DeclarationKind::Class);
   }
 
-  /** Bind the current emitted name to a source class's existing identity. */
+  /** Bind the current source name to a source class's existing identity. */
   std::shared_ptr<ClassType> getClass(DeclarationId id,
                                       const QualifiedName& name) {
     auto type = getClass(id);
     if (!type->getQualifiedName().baseName.empty() &&
         type->getQualifiedName() != name)
-      logAndThrowError("Cannot change a nominal type's assigned emitted name");
-    type->mangledName = name.mangled();
+      logAndThrowError("Cannot change a nominal type's assigned source name");
+    type->name_ = name.lookupName();
     type->setQualifiedName(name);
     type->setBaseName(name.baseName);
     return type;
   }
 
-  /** Get a source interface before its emitted name has been assigned. */
+  /** Get a source interface before its source name has been assigned. */
   std::shared_ptr<InterfaceType> getInterface(DeclarationId id) {
     return nominalType<InterfaceType>(id, DeclarationKind::Interface);
   }
 
-  /** Bind the current emitted name to a source interface's identity. */
+  /** Bind the current source name to a source interface's identity. */
   std::shared_ptr<InterfaceType> getInterface(DeclarationId id,
                                               const QualifiedName& name) {
     auto type = getInterface(id);
     if (!type->getQualifiedName().baseName.empty() &&
         type->getQualifiedName() != name)
-      logAndThrowError("Cannot change a nominal type's assigned emitted name");
-    type->name = name.mangled();
+      logAndThrowError("Cannot change a nominal type's assigned source name");
+    type->name = name.lookupName();
     type->setQualifiedName(name);
     type->setBaseName(name.baseName);
     return type;
   }
 
-  /** Get a source enum before its emitted name has been assigned. */
+  /** Get a source enum before its source name has been assigned. */
   std::shared_ptr<EnumType> getEnum(DeclarationId id) {
     return nominalType<EnumType>(id, DeclarationKind::Enum);
   }
 
-  /** Bind the current emitted name to a source enum's existing identity. */
+  /** Bind the current source name to a source enum's existing identity. */
   std::shared_ptr<EnumType> getEnum(DeclarationId id,
                                     const QualifiedName& name) {
     auto type = getEnum(id);
     if (!type->getQualifiedName().baseName.empty() &&
         type->getQualifiedName() != name)
-      logAndThrowError("Cannot change a nominal type's assigned emitted name");
-    type->mangledName_ = name.mangled();
+      logAndThrowError("Cannot change a nominal type's assigned source name");
+    type->name_ = name.lookupName();
     type->setQualifiedName(name);
     type->setBaseName(name.baseName);
     return type;
@@ -2594,7 +2448,7 @@ class TypeRegistry {
       DeclarationId id, const QualifiedName& name, const QualifiedName& source,
       const std::vector<TypePtr>& arguments) {
     auto type = getClass(id, name);
-    type->baseGenericName = source.mangled();
+    type->baseGenericName = source.lookupName();
     type->setBaseName(source.display());
     type->typeArguments = arguments;
     type->setGenericQualifiedName(source);
@@ -2615,7 +2469,7 @@ class TypeRegistry {
       DeclarationId id, const QualifiedName& name, const QualifiedName& source,
       const std::vector<TypePtr>& arguments) {
     auto type = getInterface(id, name);
-    type->baseGenericName = source.mangled();
+    type->baseGenericName = source.lookupName();
     type->setBaseName(source.baseName);
     type->typeArguments = arguments;
     type->setGenericQualifiedName(source);

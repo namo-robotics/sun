@@ -263,10 +263,6 @@ void SemanticAnalyzer::analyzeQualifiedName(QualifiedNameAST& qualName) {
   if (varInfo) {
     checkExternVariableAccessAllowed(*varInfo, fullName,
                                      qualName.getLocation());
-    // Set resolved mangled name from the variable's qualified name
-    if (!varInfo->qualifiedName.empty()) {
-      qualName.setResolvedMangledName(varInfo->qualifiedName.mangled());
-    }
     qualName.setTargetDeclarationId(varInfo->declarationId);
     qualName.setResolvedType(varInfo->type);
     return;
@@ -276,11 +272,6 @@ void SemanticAnalyzer::analyzeQualifiedName(QualifiedNameAST& qualName) {
   // scopes (including same-named modules in different import scopes)
   const FunctionInfo* funcInfo = ctx_.lookupQualifiedFunction(fullName);
   if (funcInfo) {
-    // Set resolved mangled name from the function's actual qualified name
-    // This handles same-named modules in different import scopes correctly
-    if (!funcInfo->qualifiedName.empty()) {
-      qualName.setResolvedMangledName(funcInfo->qualifiedName.mangled());
-    }
     qualName.setTargetDeclarationId(funcInfo->declarationId);
     qualName.setResolvedType(sun::Types::Function(
         funcInfo->returnType, funcInfo->paramTypes, funcInfo->canThrow));

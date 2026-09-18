@@ -51,9 +51,8 @@ class CallAnalyzer {
 
   /**
    * Resolve a module-qualified call `mod.foo(args...)` against the actual
-   * argument types and stamp the chosen overload's own mangled name onto the
-   * member access. Rebuilding the name from the module path instead would
-   * drop the overload param suffix and name a symbol codegen never emits.
+   * argument types and stamp the chosen overload's declaration ID onto the
+   * member access so codegen calls exactly the selected declaration.
    * Returns nullptr if the module has no overload matching those arguments.
    */
   const FunctionInfo *resolveModuleQualifiedCall(

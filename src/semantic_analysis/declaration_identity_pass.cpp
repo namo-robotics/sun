@@ -99,7 +99,6 @@ void resetBindings(const ExprAST& root, bool resetIdentity) {
         arm.resolvedVariantTag = -1;
         for (auto& value : arm.bindings) {
           value.resolvedType.reset();
-          value.resolvedMangledName.clear();
           if (resetIdentity) value.declaration.resetSession();
         }
       }

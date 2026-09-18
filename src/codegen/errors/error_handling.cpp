@@ -97,8 +97,9 @@ void ErrorGenerator::emitCxaThrowAndUnreachable(Value* excPtr) {
 // Boxes the thrown IError object into a C++ ABI exception and __cxa_throws it.
 // Exception buffer layout: { i64 typeId, InterfaceFat fat, <object bytes> }
 // where fat.data points at the embedded object copy so it survives unwinding,
-// and typeId (FNV-1a of the concrete class's mangled name) lets typed catches
-// match without RTTI. See the matching landing pad in codegen(TryCatchExprAST).
+// and typeId (FNV-1a of the concrete class's portable symbol) lets typed
+// catches match without RTTI. See the matching landing pad in
+// codegen(TryCatchExprAST).
 Value* ErrorGenerator::codegen(const ThrowExprAST& expr) {
   if (!currentFunctionCanError()) {
     logAndThrowError(

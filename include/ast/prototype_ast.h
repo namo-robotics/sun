@@ -160,11 +160,6 @@ class PrototypeAST {
   const sun::QualifiedName& getQualifiedName() const {
     return analysis().qualifiedName;
   }
-  // Returns mangled form for codegen symbol lookup
-  std::string getMangledName() const {
-    auto& qn = analysis().qualifiedName;
-    return qn.empty() ? Name : qn.mangled();
-  }
   void setQualifiedName(sun::QualifiedName qname) {
     analysis().qualifiedName = std::move(qname);
   }

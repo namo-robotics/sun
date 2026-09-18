@@ -90,8 +90,8 @@ class GenericSpecializer {
    * cached specialization when there is one. Empty when it cannot be built.
    * variadicArgTypes carries the types filling an `args...` pack at the call
    * site; like the method path, they drive the specialization's arity and its
-   * mangled name, and `std::nullopt` defers a pack-bearing template until a
-   * call site supplies them.
+   * specialization key, and `std::nullopt` defers a pack-bearing template until
+   * a call site supplies them.
    */
   std::optional<SpecializedFunctionInfo> instantiateGenericFunction(
       const GenericFunctionInfo &genericInfo,
@@ -138,9 +138,9 @@ class GenericSpecializer {
    * variadicArgTypes carries the resolved types of the actual variadic
    * arguments at the call site (for a method ending in a pack). When
    * the method is variadic, these drive the specialization's arity, its init
-   * overload selection, and its mangled name. `std::nullopt` means "no call
-   * info available" (e.g. from type inference): a variadic method is then not
-   * specialized here and the call-site trigger, which supplies the types
+   * overload selection, and its specialization key. `std::nullopt` means "no
+   * call info available" (e.g. from type inference): a variadic method is then
+   * not specialized here and the call-site trigger, which supplies the types
    * (possibly an empty vector for a zero-arg call), does the real work.
    */
   std::shared_ptr<FunctionAST> instantiateGenericMethod(

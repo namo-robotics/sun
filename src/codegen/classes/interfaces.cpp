@@ -51,8 +51,6 @@ GlobalVariable* ClassGenerator::getOrCreateInterfaceVtable(
                                 ifaceType->getDeclarationId()}];
   if (tables.owning) return tables.owning;
 
-  std::string className = classType->getMangledName();
-  std::string interfaceName = ifaceType->getName();
 
   auto* ptrTy = PointerType::getUnqual(ctx.getContext());
 
@@ -68,10 +66,9 @@ GlobalVariable* ClassGenerator::getOrCreateInterfaceVtable(
   }
   vtableEntries.push_back(getOrCreateInterfaceDropFunction(classType));
 
-  std::string vtableTypeName = className + "_" + interfaceName + "_vtable_t";
   std::vector<llvm::Type*> slotTypes(vtableEntries.size(), ptrTy);
   llvm::StructType* vtableType =
-      llvm::StructType::create(ctx.getContext(), slotTypes, vtableTypeName);
+      llvm::StructType::get(ctx.getContext(), slotTypes);
 
   std::string vtableName =
       sun::PortableDeclarationKey::inInstance(
@@ -94,8 +91,6 @@ GlobalVariable* ClassGenerator::getOrCreateInterfaceVtable(
  */
 GlobalVariable* ClassGenerator::getOrCreateBorrowedInterfaceVtable(
     sun::ClassType* classType, sun::InterfaceType* ifaceType) {
-  std::string className = classType->getMangledName();
-  std::string interfaceName = ifaceType->getName();
   GlobalVariable* owning = getOrCreateInterfaceVtable(classType, ifaceType);
   auto& tables = vtableGlobals.at(
       {classType->getDeclarationId(), ifaceType->getDeclarationId()});
@@ -122,8 +117,7 @@ GlobalVariable* ClassGenerator::getOrCreateBorrowedInterfaceVtable(
 
   auto* ptrTy = PointerType::getUnqual(ctx.getContext());
   std::vector<llvm::Type*> slots(entries.size(), ptrTy);
-  std::string typeName = className + "_" + interfaceName + "_borrowed_vtable_t";
-  StructType* type = StructType::create(ctx.getContext(), slots, typeName);
+  StructType* type = StructType::get(ctx.getContext(), slots);
   std::string name =
       sun::PortableDeclarationKey::inInstance(
           sun::PortableDeclarationKey::fromDeclaration(

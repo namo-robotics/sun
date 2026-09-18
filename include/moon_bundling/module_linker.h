@@ -73,7 +73,7 @@ class ModuleLinker {
       linkedContentHashes_;  // Content hashes of linked bitcode
   std::set<std::string> availableModules_;
   std::unordered_map<std::string, std::string>
-      symbolToModule_;  // mangled name -> moduleKey
+      symbolToModule_;  // emitted symbol -> moduleKey
 
   std::string error_;
 };

@@ -804,6 +804,32 @@ void Driver::applyTestHandling(BlockExprAST& blockAst) {
   }
 }
 
+// Appends the serialized form of every statement the program wrote itself to
+// `out`. Blocks are flattened and imported moon scopes are skipped. Each
+// statement is prefixed with its length so neighbours cannot run together.
+static void appendOwnSourceBytes(const ExprAST& node,
+                                 sun::serialization::ASTSerializer& serializer,
+                                 std::string& out) {
+  if (node.getType() == ASTNodeType::MOON_SCOPE) return;
+  if (node.getType() == ASTNodeType::BLOCK) {
+    forEachChild(node, [&](const ExprAST& child) {
+      appendOwnSourceBytes(child, serializer, out);
+    });
+    return;
+  }
+  auto bytes = serializer.serialize(node).SerializeAsString();
+  out += std::to_string(bytes.size()) + ":" + bytes;
+}
+
+// Returns a hash that identifies a program by its own statements. Imported
+// moon scopes are left out because they already carry their own identity.
+static std::string computeOwnSourceHash(const BlockExprAST& blockAst) {
+  sun::serialization::ASTSerializer serializer;
+  std::string source;
+  appendOwnSourceBytes(blockAst, serializer, source);
+  return sun::computeSha256Hex(source);
+}
+
 void Driver::analyzeProgram(BlockExprAST& blockAst, Parser& parser) {
   // Lower the lossless parse tree into the core AST before semantic analysis
   LoweringPass lowering;
@@ -846,21 +872,7 @@ void Driver::analyzeProgram(BlockExprAST& blockAst, Parser& parser) {
     sun::ScopedStage stage("sema");
     // Executables have an artifact identity too; imported trees retain theirs.
     std::string artifactHash = ownBundleHash_;
-    if (artifactHash.empty()) {
-      sun::serialization::ASTSerializer serializer;
-      std::string source;
-      auto append = [&](auto&& self, const ExprAST& node) -> void {
-        if (node.getType() == ASTNodeType::MOON_SCOPE) return;
-        if (node.getType() == ASTNodeType::BLOCK) {
-          forEachChild(node, [&](const ExprAST& child) { self(self, child); });
-          return;
-        }
-        auto bytes = serializer.serialize(node).SerializeAsString();
-        source += std::to_string(bytes.size()) + ":" + bytes;
-      };
-      append(append, blockAst);
-      artifactHash = sun::computeSha256Hex(source);
-    }
+    if (artifactHash.empty()) artifactHash = computeOwnSourceHash(blockAst);
     analyzer->pipeline().run(blockAst, [&] {
       sun::PortableDeclarationKey::assignOriginals(
           blockAst, typeRegistry->declarations, artifactHash);

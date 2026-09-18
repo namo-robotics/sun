@@ -69,8 +69,7 @@ class ClassGenerator {
 
   // A class that arrived from precompiled bitcode: register its type and
   // emit only the generic specializations this program asked for.
-  llvm::Value* codegenPrecompiledClass(const ClassDefinitionAST& expr,
-                                       const std::string& className);
+  llvm::Value* codegenPrecompiledClass(const ClassDefinitionAST& expr);
 
   // Declare the methods of a class a block defines — including each
   // specialization of a generic class — before any body is emitted
@@ -96,7 +95,6 @@ class ClassGenerator {
 
   // Build a class instance in a stack slot and run its constructor
   llvm::Value* codegenStackClassInstance(const CallExprAST& expr,
-                                         const std::string& className,
                                          sun::ClassType& classType);
 
   // ---------------------------------------------------------------

@@ -1,3 +1,4 @@
+#include "semantic_analysis/method_signature_set.h"
 // analysis_declarations.cpp — Declarations: classes, interfaces, functions,
 // modules and type aliases
 //
@@ -22,10 +23,9 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
   }
 
   const sun::QualifiedName& qualifiedClass = classDef.getQualifiedName();
-  std::string mangledClassName = qualifiedClass.mangled();
 
-  // Forbid redefinition of class in same module
-  if (ctx_.declarations().isDeclared(mangledClassName)) {
+  // Forbid redefinition of a class in the same scope
+  if (ctx_.declarations().isDeclared(baseName, ctx_.scope())) {
     logAndThrowError("Redefinition of class '" + baseName + "'",
                      classDef.getLocation());
   }
@@ -184,10 +184,10 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
   }
 
   // PASS 1: Make the (already registered) method signatures resolvable
-  // by mangled name inside the class scope
+  // by source name inside the class scope
   for (const auto& methodDecl : classDef.getMethods()) {
     const PrototypeAST& proto = methodDecl.function->getProto();
-    std::string mangledName = classType->getMethodScopeName(proto.getName());
+    std::string methodNameForScope = proto.getName();
     std::vector<sun::TypePtr> methodParamTypes;
     methodParamTypes.push_back(classType);  // this parameter
     for (const auto& pt : proto.getResolvedParamTypes()) {
@@ -198,7 +198,7 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
                                   : sun::Types::Void();
     FunctionInfo methodInfo{returnType, methodParamTypes, {}};
     methodInfo.declarationId = proto.getDeclarationId();
-    ctx_.registerFunctionInCurrentScope(mangledName, methodInfo);
+    ctx_.registerFunctionInCurrentScope(methodNameForScope, methodInfo);
   }
 
   // PASS 2: Analyze all method bodies using their assigned names.
@@ -229,7 +229,7 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
   ctx_.setCurrentClass(savedClass);
 
   // Track symbol for redefinition detection
-  ctx_.declarations().noteDeclared(mangledClassName);
+  ctx_.declarations().noteDeclared(baseName, ctx_.scope());
 
   // Store primary AST for partial class merging (if a partial appears
   // later)
@@ -244,10 +244,10 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
     InterfaceDefinitionAST& interfaceDef) {
   const sun::QualifiedName& qualifiedInterface =
       interfaceDef.getQualifiedName();
-  std::string interfaceName = qualifiedInterface.mangled();
+  std::string interfaceName = qualifiedInterface.lookupName();
 
-  // Forbid redefinition of interface in same module
-  if (ctx_.declarations().isDeclared(interfaceName)) {
+  // Forbid redefinition of an interface in the same scope
+  if (ctx_.declarations().isDeclared(interfaceDef.getName(), ctx_.scope())) {
     logAndThrowError(
         "Redefinition of interface '" + interfaceDef.getName() + "'",
         interfaceDef.getLocation());
@@ -371,7 +371,7 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
   }
 
   // Add methods to the interface type, rejecting duplicate signatures.
-  std::set<std::string> methodSignatures;
+  MethodSignatureSet methodSignatures(ctx_, types_);
   for (const auto& methodDecl : interfaceDef.getMethods()) {
     // Get method signature info (pure computation)
     FunctionInfo methodInfo = getFunctionInfo(*methodDecl.function);
@@ -381,10 +381,7 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
     // Apply computed info to prototype
     applyFunctionInfoToProto(proto, methodInfo);
 
-    if (!methodSignatures
-             .insert(sun::names::getFunctionSignature(proto.getName(),
-                                                      methodInfo.paramTypes))
-             .second)
+    if (!methodSignatures.insert(proto, methodInfo.paramTypes))
       logAndThrowError(
           "Interface method '" + proto.getName() + "' is already defined",
           methodDecl.function->getLocation());
@@ -422,7 +419,7 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
   ctx_.registerInterface(interfaceDef.getName(), interfaceType);
 
   // Track symbol for redefinition detection
-  ctx_.declarations().noteDeclared(interfaceName);
+  ctx_.declarations().noteDeclared(interfaceDef.getName(), ctx_.scope());
 
   activeLifetimeNames_.resize(interfaceLifetimeMark);
   interfaceDef.setResolvedType(sun::Types::Void());
@@ -436,8 +433,8 @@ void SemanticAnalyzer::analyzeFunctionDefinition(FunctionAST& func) {
   FunctionInfo funcInfo = getFunctionInfo(func);
 
   if (funcInfo.isForwardDeclaration) {
-    const auto signature = sun::names::getFunctionSignature(
-        funcInfo.qualifiedName.baseName, funcInfo.paramTypes);
+    const sun::CallableSignature signature{funcInfo.qualifiedName.baseName,
+                                           funcInfo.paramTypes};
     const auto definition = ctx_.scope()->functions.find(signature);
     if (definition != ctx_.scope()->functions.end() &&
         !definition->second.isForwardDeclaration) {

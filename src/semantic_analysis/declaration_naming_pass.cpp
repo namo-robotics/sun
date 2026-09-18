@@ -10,31 +10,27 @@ namespace {
  */
 template <typename Declaration>
 const QualifiedName& nameDeclaration(
-    Declaration& declaration, const std::vector<std::string>& scopePath,
-    const std::vector<std::string>& modulePath) {
+    Declaration& declaration, const std::vector<std::string>& scopePath) {
   if (!declaration.hasQualifiedName()) {
     declaration.setQualifiedName(
-        QualifiedName(scopePath, declaration.getName(), modulePath));
+        QualifiedName(scopePath, declaration.getName()));
   }
   return declaration.getQualifiedName();
 }
 
 /** Share name assignment while each pass supplies its own scope boundary. */
 void assignNames(ExprAST& root, const std::vector<std::string>& scopePath,
-                 const std::vector<std::string>& modulePath, bool moduleLevel) {
+                 bool moduleLevel) {
   const auto visitChildren = [&](const std::vector<std::string>& childScope,
-                                 const std::vector<std::string>& childModule,
                                  bool childModuleLevel) {
     forEachChild(root, [&](const ExprAST& child) {
-      assignNames(const_cast<ExprAST&>(child), childScope, childModule,
-                  childModuleLevel);
+      assignNames(const_cast<ExprAST&>(child), childScope, childModuleLevel);
     });
   };
   const QualifiedName* namedScope = nullptr;
   switch (root.getType()) {
     case ASTNodeType::MODULE:
-      namedScope = &nameDeclaration(static_cast<ModuleAST&>(root), scopePath,
-                                    modulePath);
+      namedScope = &nameDeclaration(static_cast<ModuleAST&>(root), scopePath);
       moduleLevel = true;
       break;
     case ASTNodeType::MOON_SCOPE: {
@@ -42,38 +38,34 @@ void assignNames(ExprAST& root, const std::vector<std::string>& scopePath,
       auto childScope = scopePath;
       if (!moon.getContentHash().empty())
         childScope.push_back(moon.getContentHash());
-      visitChildren(childScope, childScope, moduleLevel);
+      visitChildren(childScope, moduleLevel);
       return;
     }
     case ASTNodeType::CLASS_DEFINITION:
-      namedScope = &nameDeclaration(static_cast<ClassDefinitionAST&>(root),
-                                    scopePath, modulePath);
+      namedScope =
+          &nameDeclaration(static_cast<ClassDefinitionAST&>(root), scopePath);
       moduleLevel = false;
       break;
     case ASTNodeType::INTERFACE_DEFINITION:
       namedScope = &nameDeclaration(static_cast<InterfaceDefinitionAST&>(root),
-                                    scopePath, modulePath);
+                                    scopePath);
       moduleLevel = false;
       break;
     case ASTNodeType::ENUM_DEFINITION:
-      nameDeclaration(static_cast<EnumDefinitionAST&>(root), scopePath,
-                      modulePath);
+      nameDeclaration(static_cast<EnumDefinitionAST&>(root), scopePath);
       return;
     case ASTNodeType::FUNCTION:
-      nameDeclaration(static_cast<FunctionAST&>(root).getProtoMut(), scopePath,
-                      modulePath);
+      nameDeclaration(static_cast<FunctionAST&>(root).getProtoMut(), scopePath);
       return;
     case ASTNodeType::LAMBDA:
       return;
     case ASTNodeType::VARIABLE_CREATION:
       if (moduleLevel)
-        nameDeclaration(static_cast<VariableCreationAST&>(root), scopePath,
-                        modulePath);
+        nameDeclaration(static_cast<VariableCreationAST&>(root), scopePath);
       break;
     case ASTNodeType::REFERENCE_CREATION:
       if (moduleLevel)
-        nameDeclaration(static_cast<ReferenceCreationAST&>(root), scopePath,
-                        modulePath);
+        nameDeclaration(static_cast<ReferenceCreationAST&>(root), scopePath);
       break;
     default:
       break;
@@ -81,10 +73,9 @@ void assignNames(ExprAST& root, const std::vector<std::string>& scopePath,
   if (namedScope) {
     auto childScope = namedScope->scopePath;
     childScope.push_back(namedScope->baseName);
-    visitChildren(childScope, moduleLevel ? childScope : namedScope->owner(),
-                  moduleLevel);
+    visitChildren(childScope, moduleLevel);
   } else {
-    visitChildren(scopePath, modulePath, moduleLevel);
+    visitChildren(scopePath, moduleLevel);
   }
 }
 
@@ -92,21 +83,18 @@ void assignNames(ExprAST& root, const std::vector<std::string>& scopePath,
 
 void DeclarationNamingPass::run(ExprAST& root,
                                 const std::vector<std::string>& scopePath,
-                                const std::vector<std::string>& modulePath,
                                 bool moduleLevel) const {
-  assignNames(root, scopePath, modulePath, moduleLevel);
+  assignNames(root, scopePath, moduleLevel);
 }
 
 void assignLocalDeclarationName(ExprAST& declaration,
-                                const std::vector<std::string>& scopePath,
-                                const std::vector<std::string>& modulePath) {
+                                const std::vector<std::string>& scopePath) {
   const auto nameType = [&](auto& type) {
-    const auto& name = nameDeclaration(type, scopePath, modulePath);
+    const auto& name = nameDeclaration(type, scopePath);
     auto methodScope = name.scopePath;
     methodScope.push_back(name.baseName);
     for (const auto& method : type.getMethods())
-      nameDeclaration(method.function->getProtoMut(), methodScope,
-                      name.owner());
+      nameDeclaration(method.function->getProtoMut(), methodScope);
   };
   switch (declaration.getType()) {
     case ASTNodeType::CLASS_DEFINITION:
@@ -116,12 +104,11 @@ void assignLocalDeclarationName(ExprAST& declaration,
       nameType(static_cast<InterfaceDefinitionAST&>(declaration));
       break;
     case ASTNodeType::ENUM_DEFINITION:
-      nameDeclaration(static_cast<EnumDefinitionAST&>(declaration), scopePath,
-                      modulePath);
+      nameDeclaration(static_cast<EnumDefinitionAST&>(declaration), scopePath);
       break;
     case ASTNodeType::FUNCTION:
       nameDeclaration(static_cast<FunctionAST&>(declaration).getProtoMut(),
-                      scopePath, modulePath);
+                      scopePath);
       break;
     default:
       break;

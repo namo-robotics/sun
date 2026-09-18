@@ -95,11 +95,6 @@ class InterfaceDefinitionAST : public ExprAST {
   const sun::QualifiedName& getQualifiedName() const {
     return ifaceAnalysis().qualifiedName;
   }
-  // Returns mangled form for codegen symbol lookup
-  std::string getMangledName() const {
-    auto& qn = ifaceAnalysis().qualifiedName;
-    return qn.empty() ? name : qn.mangled();
-  }
   void setQualifiedName(sun::QualifiedName qname) {
     ifaceAnalysis().qualifiedName = std::move(qname);
   }
