@@ -1205,8 +1205,19 @@ const GenericClassInfo* SemanticContext::lookupGenericClass(
 }
 
 const GenericClassInfo* SemanticContext::lookupGenericClass(
-    const sun::QualifiedName& qualifiedName) const {
-  return currentScope_->lookupGenericClass(qualifiedName);
+    sun::DeclarationId id) const {
+  typeRegistry_->declarations.get(id);
+  auto find = [&](auto&& self,
+                  const SemanticScope* scope) -> const GenericClassInfo* {
+    for (const auto& [name, info] : scope->genericClasses)
+      if (info.AST && info.AST->getDeclarationId() == id) return &info;
+    for (const auto& [name, child] : scope->childModules)
+      if (auto* info = self(self, child.get())) return info;
+    for (const auto& child : scope->children)
+      if (auto* info = self(self, child.get())) return info;
+    return nullptr;
+  };
+  return find(find, rootScope_.get());
 }
 
 void SemanticContext::addTypeParameterBindings(

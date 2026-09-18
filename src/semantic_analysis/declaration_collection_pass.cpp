@@ -31,7 +31,8 @@ void DeclarationCollectionPass::collectTypeNames(BlockExprAST& block) {
         auto enumType = ctx_.types()->getEnum(enumDef.getDeclarationId(),
                                               enumDef.getQualifiedName());
         for (const auto& variant : enumDef.getVariants()) {
-          enumType->addVariant(variant.name, variant.value);
+          enumType->addVariant(variant.name, variant.value,
+                               variant.declaration.id);
         }
         enumType->setBaseName(enumDef.getName());
         enumType->setUnderlyingType(
@@ -230,7 +231,8 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
         auto enumType = ctx_.types()->getEnum(enumDef.getDeclarationId(),
                                               enumDef.getQualifiedName());
         for (const auto& variant : enumDef.getVariants()) {
-          enumType->addVariant(variant.name, variant.value);
+          enumType->addVariant(variant.name, variant.value,
+                               variant.declaration.id);
         }
         enumType->setBaseName(enumDef.getName());
         enumType->setUnderlyingType(
@@ -662,7 +664,7 @@ void DeclarationCollectionPass::collectEnumDeclarations(const BlockExprAST& bloc
     auto enumType = ctx_.types()->getEnum(enumDef.getDeclarationId(),
                                           enumDef.getQualifiedName());
     for (const auto& variant : enumDef.getVariants()) {
-      enumType->addVariant(variant.name, variant.value);
+      enumType->addVariant(variant.name, variant.value, variant.declaration.id);
     }
     enumType->setBaseName(enumDef.getName());
     enumType->setUnderlyingType(

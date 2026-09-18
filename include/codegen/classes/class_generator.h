@@ -156,14 +156,11 @@ class ClassGenerator {
   sun::DebugInfoBuilder& debugInfo;
 
   // Classes that have actually been code-generated
-  std::set<std::string> codegenedClasses;
+  std::set<sun::DeclarationId> codegenedClasses;
 
   // Class specializations from precompiled generics (library code).
   // These need codegen but shouldn't show in an IR dump.
   std::set<std::string> librarySpecializations;
-
-  // Generic class AST registry: baseName -> ClassDefinitionAST
-  std::map<std::string, const ClassDefinitionAST*> genericClassASTs;
 
   // Vtable globals for interface dispatch, keyed by (class, interface).
   // Each holds method pointers in declaration order, then the concrete drop

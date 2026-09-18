@@ -73,7 +73,11 @@ void GenericSpecializer::checkTypeParameterConstraints(
 
 const GenericClassInfo* GenericSpecializer::lookupGenericClassOf(
     const sun::ClassType& specialized) const {
-  return ctx_.lookupGenericClass(specialized.getGenericQualifiedName());
+  const auto& record =
+      ctx_.types()->declarations.get(specialized.getDeclarationId());
+  auto source = record.specialization ? record.specialization->source
+                                      : specialized.getDeclarationId();
+  return ctx_.lookupGenericClass(source);
 }
 
 // Scope a class's template was declared in: for a specialization, the
@@ -81,10 +85,7 @@ const GenericClassInfo* GenericSpecializer::lookupGenericClassOf(
 // (hasGenericMethods() registers a GenericClassInfo too). nullptr if unknown.
 SemanticScope* GenericSpecializer::classDefinitionScope(
     const sun::ClassType& classType) const {
-  const GenericClassInfo* info =
-      classType.isSpecialized()
-          ? lookupGenericClassOf(classType)
-          : ctx_.lookupGenericClass(classType.getQualifiedName());
+  const GenericClassInfo* info = lookupGenericClassOf(classType);
   return info ? SemanticContext::definitionScopeOf(*info) : nullptr;
 }
 
@@ -851,7 +852,7 @@ FunctionAST* GenericSpecializer::findGenericMethodAST(
     }
   } else {
     // Plain classes can also declare generic methods.
-    auto* genericInfo = ctx_.lookupGenericClass(classType->getQualifiedName());
+    auto* genericInfo = lookupGenericClassOf(*classType);
     if (genericInfo) classDef = genericInfo->AST;
   }
 
@@ -1286,7 +1287,11 @@ std::shared_ptr<sun::EnumType> GenericSpecializer::instantiateGenericEnum(
     ctx_.enterTypeParamScope(typeParameterNames(genericInfo->typeParameters),
                              typeArgs);
     for (const auto& variant : genericInfo->AST->getVariants()) {
-      specialized->addVariant(variant.name, variant.value);
+      auto variantId = ctx_.types()->declarations.add(
+          sun::DeclarationKind::Variant, variant.name, instanceId,
+          ctx_.types()->declarations.get(instanceId).module, {},
+          variant.declaration.id);
+      specialized->addVariant(variant.name, variant.value, variantId);
       if (!variant.hasPayload()) continue;
       std::vector<sun::TypePtr> payloadTypes;
       for (const auto& annot : variant.payloadTypes) {

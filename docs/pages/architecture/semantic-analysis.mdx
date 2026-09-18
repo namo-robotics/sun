@@ -97,6 +97,11 @@ implemented interfaces also use IDs. Specializations are interned by their
 source declaration, enclosing instance, semantic type arguments, and variadic
 arguments. Abstract type parameters compare their binder IDs. Names remain in
 source scopes for lookup, overload selection, visibility, and duplicate checks.
+Resolved generic classes retrieve their template from the retained scope tree by
+ID, following the specialization record to its source declaration. This also
+works for local classes after their source scopes close. Class emission tracks
+completed declarations by ID. Enum variants retain their IDs in semantic types;
+specialized variants have concrete enum owners and source-variant origins.
 
 Codegen registers local and global storage under declaration IDs. Parameters,
 expanded variadic arguments, references, and loop/pattern/catch bindings use the

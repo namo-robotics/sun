@@ -161,7 +161,7 @@ void EnumAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
   // Add variants to the enum type (idempotent: declaration collection
   // already registered them)
   for (const auto& variant : enumDef.getVariants()) {
-    enumType->addVariant(variant.name, variant.value);
+    enumType->addVariant(variant.name, variant.value, variant.declaration.id);
   }
 
   // Resolve payload type annotations. This runs in full analysis (not

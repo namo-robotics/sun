@@ -56,10 +56,8 @@ Value* ClassGenerator::codegenPrecompiledClass(const ClassDefinitionAST& expr,
     }
   }
 
-  // If the class is also generic, store the AST for later instantiation
+  // Emit concrete instances of imported generic classes.
   if (expr.isGeneric()) {
-    genericClassASTs[className] = &expr;
-
     // Generate specializations that were added during semantic analysis.
     // Some may be library specializations (already in bitcode) - skip those.
     // Others may be user specializations (e.g., Vec<MyUserClass>) - codegen
@@ -67,7 +65,7 @@ Value* ClassGenerator::codegenPrecompiledClass(const ClassDefinitionAST& expr,
     for (const auto& [instanceId, specializedAST] : expr.getSpecializations()) {
       if (!specializedAST) continue;
       const auto mangledName = specializedAST->getMangledName();
-      if (!specializedAST || codegenedClasses.count(mangledName)) {
+      if (!specializedAST || codegenedClasses.count(instanceId)) {
         continue;
       }
 
@@ -216,18 +214,13 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
   // Skip generic class definitions (templates) - they are instantiated on
   // demand
   if (expr.isGeneric()) {
-    // Store the generic class AST for later instantiation (needed for generic
-    // method lookup)
-    genericClassASTs[className] = &expr;
-
     // Generate all specializations that were created during semantic analysis
     // This mirrors how generic functions work - specializations are
     // pre-computed and stored on the AST
     for (const auto& [instanceId, specializedAST] : expr.getSpecializations()) {
       if (!specializedAST) continue;
-      const auto mangledName = specializedAST->getMangledName();
       // Check if already codegenned (not just type-registered)
-      if (!specializedAST || codegenedClasses.count(mangledName)) continue;
+      if (!specializedAST || codegenedClasses.count(instanceId)) continue;
       // Resolving a template's own signature instantiates the shape it names
       // — `ref Pair<T>` in `unwrap<T>` yields Pair<T>, whose T is still a
       // type parameter. That shape has no layout to emit; the class the code
@@ -243,13 +236,13 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
   }
 
   // Error if codegen sees an unmarked duplicate — this is a compiler bug
-  if (codegenedClasses.count(className)) {
+  if (codegenedClasses.count(expr.getDeclarationId())) {
     logAndThrowError("Duplicate class definition reached codegen: " +
                      className);
   }
 
   // Mark this class as being codegenned
-  codegenedClasses.insert(className);
+  codegenedClasses.insert(expr.getDeclarationId());
 
   // Get the class type (already fully built by semantic analyzer)
   auto classType = typeRegistry->getClass(expr.getDeclarationId());

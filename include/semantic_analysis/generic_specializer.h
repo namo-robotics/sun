@@ -50,7 +50,7 @@ class GenericSpecializer {
       const GenericClassInfo &genericClassInfo,
       const std::vector<sun::TypePtr> &typeArgs);
 
-  /** The generic definition a specialized class was instantiated from. */
+  /** Retrieve the template or generic-method definition by declaration ID. */
   const GenericClassInfo *lookupGenericClassOf(
       const sun::ClassType &specialized) const;
 

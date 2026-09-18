@@ -335,9 +335,8 @@ class SemanticContext : public AccessContext {
   /** Find a generic class template by name in the scope chain. */
   const GenericClassInfo *lookupGenericClass(const std::string &name) const;
 
-  /** The same by qualified name, for a template in a known module. */
-  const GenericClassInfo *lookupGenericClass(
-      const sun::QualifiedName &qualifiedName) const;
+  /** Retrieve an already selected template from the retained scope tree. */
+  const GenericClassInfo *lookupGenericClass(sun::DeclarationId id) const;
 
   /**
    * Record an interface in the current scope. A repeated registration of the
@@ -459,13 +458,6 @@ class SemanticContext : public AccessContext {
   static SemanticScope *definitionScopeOf(const GenericInfo &info) {
     return info.definitionScope.lock().get();
   }
-
-  /**
-   * The scope a class's template was declared in: for a specialization, the
-   * generic's; for a plain class with generic methods, its own registration.
-   * Null when the class has no template.
-   */
-  SemanticScope *classDefinitionScope(const sun::ClassType &classType) const;
 
   // ---- Access control ----------------------------------------------------
   //

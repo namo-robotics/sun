@@ -2060,6 +2060,7 @@ struct EnumVariant {
   std::string name;
   int64_t value;  // Tag bits; the enum representation determines signedness
   std::vector<TypePtr> payloadTypes;  // empty = unit variant
+  DeclarationId declarationId;
 
   bool hasPayload() const { return !payloadTypes.empty(); }
 };
@@ -2159,13 +2160,13 @@ class EnumType : public NominalType {
 
   std::string toDisplayString() const override { return getDisplayName(); }
 
-  // Idempotent: declaration collection and full analysis both register
-  // variants; the second registration must not duplicate them.
-  void addVariant(const std::string& variantName, int64_t value) {
+  /** Register a variant once, retaining its declaration identity. */
+  void addVariant(const std::string& variantName, int64_t value,
+                  DeclarationId declarationId = {}) {
     for (const auto& v : variants) {
       if (v.name == variantName) return;
     }
-    variants.push_back({variantName, value, {}});
+    variants.push_back({variantName, value, {}, declarationId});
   }
 
   // Attach resolved payload types to a variant (full-analysis phase; payload

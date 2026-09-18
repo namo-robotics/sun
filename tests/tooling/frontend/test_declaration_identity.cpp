@@ -473,3 +473,117 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   pass.run(*clone, {}, {}, &source);
   EXPECT_EQ(table.size(), size);
 }
+
+TEST(Tooling_Frontend_DeclarationIdentity,
+     resolved_generic_templates_ignore_names_and_request_scope) {
+  auto ast = parse(R"(
+    module first { public class Box<T> { method echo<U>(value: U) U { return value; } } }
+    module second { class Box<T> {} }
+    function use(value: ref first.Box<i32>) void {}
+  )");
+  auto types = std::make_shared<sun::TypeRegistry>();
+  SemanticAnalyzer analyzer(types);
+  analyzer.pipeline().run(*ast);
+  const auto& first = static_cast<const ModuleAST&>(*ast->getBody()[0]);
+  const auto& generic =
+      static_cast<const ClassDefinitionAST&>(*first.getBody().getBody()[0]);
+  ASSERT_EQ(generic.getSpecializations().size(), 1u);
+  auto instance = types->getClass(generic.getSpecializations().begin()->first);
+  instance->setGenericQualifiedName({{"second"}, "Box"});
+  instance->setQualifiedName({{"second"}, "Box"});
+  analyzer.context().enterModuleScope("second");
+  auto* info = analyzer.generics().lookupGenericClassOf(*instance);
+  ASSERT_NE(info, nullptr);
+  EXPECT_EQ(info->AST, &generic);
+  EXPECT_EQ(analyzer.generics().classDefinitionScope(*instance),
+            SemanticContext::definitionScopeOf(*info));
+  EXPECT_NE(analyzer.generics().findGenericMethodAST(instance.get(), "echo"),
+            nullptr);
+  auto unknown = types->getClass(
+      types->declarations.add(sun::DeclarationKind::Class, "Box"));
+  unknown->setQualifiedName({{"first"}, "Box"});
+  EXPECT_EQ(analyzer.generics().lookupGenericClassOf(*unknown), nullptr);
+  analyzer.context().exitScope();
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity,
+     resolved_local_generic_definitions_survive_closed_scopes) {
+  auto ast = parse(R"(
+    function first() void { class Local { method echo<T>(x: T) T { return x; } } }
+    function second() void { class Local { method echo<T>(x: T) T { return x; } } }
+  )");
+  auto types = std::make_shared<sun::TypeRegistry>();
+  SemanticAnalyzer analyzer(types);
+  analyzer.pipeline().run(*ast);
+  for (const auto& declaration : ast->getBody()) {
+    const auto& function = static_cast<const FunctionAST&>(*declaration);
+    const auto& local = static_cast<const ClassDefinitionAST&>(
+        *function.getBody().getBody()[0]);
+    auto type = types->getClass(local.getDeclarationId());
+    type->setQualifiedName({{}, "unrelated"});
+    auto* info = analyzer.generics().lookupGenericClassOf(*type);
+    ASSERT_NE(info, nullptr);
+    EXPECT_EQ(info->AST, &local);
+    EXPECT_EQ(analyzer.generics().findGenericMethodAST(type.get(), "echo"),
+              local.getMethods()[0].function.get());
+  }
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity,
+     enum_variants_retain_concrete_owners_and_source_origins) {
+  auto driver = Driver::createForJIT();
+  auto result = driver->analyzeString(R"(
+    enum Color { Red, Blue }
+    enum Choice<T> { Some(T), None }
+    function integer(value: Choice<i32>) void {}
+    function boolean(value: Choice<bool>) void {}
+  )");
+  ASSERT_FALSE(result.error);
+  const auto& plain =
+      static_cast<const EnumDefinitionAST&>(*result.ast->getBody()[0]);
+  auto plainType = result.typeRegistry->getEnum(plain.getDeclarationId());
+  for (size_t i = 0; i < plain.getVariants().size(); ++i)
+    EXPECT_EQ(plainType->getVariants()[i].declarationId,
+              plain.getVariants()[i].declaration.id);
+  const auto& generic =
+      static_cast<const EnumDefinitionAST&>(*result.ast->getBody()[1]);
+  ASSERT_EQ(generic.getSpecializations().size(), 2u);
+  std::set<sun::DeclarationId> variants;
+  for (const auto& [id, type] : generic.getSpecializations()) {
+    for (size_t i = 0; i < type->getVariants().size(); ++i) {
+      auto variantId = type->getVariants()[i].declarationId;
+      EXPECT_TRUE(variants.insert(variantId).second);
+      const auto& record = result.typeRegistry->declarations.get(variantId);
+      EXPECT_EQ(record.owner, id);
+      EXPECT_EQ(record.origin, generic.getVariants()[i].declaration.id);
+    }
+  }
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity,
+     cloned_method_lifetimes_retain_their_source_binder) {
+  auto ast = parse(R"(
+    class Box<T> {
+      method apply<'a, U>(callback: <'a>(U) => U, value: U) U {
+        return callback(value);
+      }
+    }
+  )");
+  sun::DeclarationTable table;
+  sun::DeclarationIdentityPass pass(table);
+  pass.run(*ast);
+  const auto& original =
+      static_cast<const ClassDefinitionAST&>(*ast->getBody()[0]);
+  auto clone = original.clone();
+  pass.run(*clone, {}, {}, &original);
+  const auto& instance = static_cast<const ClassDefinitionAST&>(*clone);
+  const auto& sourceMethod = *original.getMethods()[0].function;
+  const auto& method = *instance.getMethods()[0].function;
+  ASSERT_EQ(method.declarationIdentity().lifetimeParameters.size(), 1u);
+  auto lifetime = method.declarationIdentity().lifetimeParameters[0];
+  EXPECT_EQ(table.get(lifetime).owner, method.getDeclarationId());
+  EXPECT_EQ(table.get(lifetime).origin,
+            sourceMethod.declarationIdentity().lifetimeParameters[0]);
+  EXPECT_EQ(table.get(method.getDeclarationId()).owner,
+            instance.getDeclarationId());
+}
