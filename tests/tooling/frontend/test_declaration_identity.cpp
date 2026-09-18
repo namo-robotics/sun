@@ -684,3 +684,85 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   EXPECT_ANY_THROW(
       classes.getOrCreateInterfaceVtable(cls.get(), foreignInterface.get()));
 }
+
+TEST(Tooling_Frontend_DeclarationIdentity,
+     resolved_enum_and_interface_templates_survive_closed_scopes) {
+  auto ast = parse(R"(
+    function define() void {
+      enum Choice<T> { Some(T), None }
+      interface View<T> { method get() T; }
+    }
+  )");
+  auto types = std::make_shared<sun::TypeRegistry>();
+  SemanticAnalyzer analyzer(types);
+  analyzer.pipeline().run(*ast);
+  const auto& function = static_cast<const FunctionAST&>(*ast->getBody()[0]);
+  const auto& enumeration = *function.getBody().getBody()[0];
+  const auto& interface = *function.getBody().getBody()[1];
+  auto* enumInfo =
+      analyzer.context().lookupGenericEnum(enumeration.getDeclarationId());
+  auto* interfaceInfo =
+      analyzer.context().lookupGenericInterface(interface.getDeclarationId());
+  ASSERT_NE(enumInfo, nullptr);
+  ASSERT_NE(interfaceInfo, nullptr);
+  auto binder =
+      types->declarations.add(sun::DeclarationKind::TypeParameter, "U");
+  auto argument =
+      sun::Types::TypeParameter("U", {}, binder, types->declarations.session());
+  auto abstractEnum =
+      analyzer.generics().instantiateGenericEnum(*enumInfo, {argument});
+  auto abstractInterface = analyzer.generics().instantiateGenericInterface(
+      *interfaceInfo, {argument});
+  abstractEnum->setGenericQualifiedName({{}, "unrelated"});
+  abstractInterface->setGenericQualifiedName({{}, "unrelated"});
+  analyzer.context().enterTypeParamScope({"U"}, {sun::Types::Int32()});
+  auto concreteEnum = analyzer.types().substituteTypeParameters(abstractEnum);
+  auto concreteInterface =
+      analyzer.types().substituteTypeParameters(abstractInterface);
+  EXPECT_EQ(concreteEnum, analyzer.generics().instantiateGenericEnum(
+                              *enumInfo, {sun::Types::Int32()}));
+  EXPECT_EQ(concreteInterface, analyzer.generics().instantiateGenericInterface(
+                                   *interfaceInfo, {sun::Types::Int32()}));
+  analyzer.context().exitScope();
+
+  auto borrowed = analyzer.generics().instantiateGenericEnum(
+      *enumInfo, {sun::Types::Reference(sun::Types::Int32())});
+  borrowed->setGenericQualifiedName({{}, "unrelated"});
+  EXPECT_EQ(
+      analyzer.types().createConstView(borrowed),
+      analyzer.generics().instantiateGenericEnum(
+          *enumInfo, {sun::Types::Reference(sun::Types::Int32(), false)}));
+  auto variant = parse("Choice.None;");
+  {
+    SemanticContext::ScopeSwitchGuard scope(
+        analyzer.context(), SemanticContext::definitionScopeOf(*enumInfo));
+    EXPECT_TRUE(analyzer.enums().tryAnalyzeGenericEnumUnitVariant(
+        static_cast<MemberAccessAST&>(*variant->getBody()[0]), borrowed));
+    EXPECT_EQ(variant->getBody()[0]->getResolvedType(), borrowed);
+  }
+  sun::TypeRegistry foreign;
+  EXPECT_ANY_THROW(borrowed->sourceDeclaration(foreign.declarations));
+  EXPECT_ANY_THROW(abstractInterface->sourceDeclaration(foreign.declarations));
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity,
+     enum_patterns_do_not_match_shadowed_template_names) {
+  auto driver = Driver::createForJIT();
+  auto result = driver->analyzeString(R"(
+    enum Choice<T> { Some(T), None }
+    function main() i32 {
+      var item = Choice.Some(7);
+      if (true) {
+        enum Choice<T> { Some(T), None }
+        return match item {
+          Choice.Some(value) => value,
+          Choice.None => 0
+        };
+      }
+      return 0;
+    }
+  )");
+  ASSERT_TRUE(result.error);
+  EXPECT_NE(std::string(result.error->what()).find("Pattern does not match"),
+            std::string::npos);
+}

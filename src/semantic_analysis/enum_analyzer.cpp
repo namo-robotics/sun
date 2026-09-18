@@ -28,7 +28,7 @@ bool embedsEnumByValue(const sun::TypePtr& type, const sun::EnumType* self,
   if (!type || !visited.insert(type.get()).second) return false;
   if (type->isEnum()) {
     auto* e = static_cast<const sun::EnumType*>(type.get());
-    if (e == self || e->getName() == self->getName()) return true;
+    if (e->equals(*self)) return true;
     for (const auto& v : e->getVariants()) {
       for (const auto& pt : v.payloadTypes) {
         if (embedsEnumByValue(pt, self, visited)) return true;
@@ -139,7 +139,7 @@ void EnumAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
   // Generic enums register as templates only; payload annotations are
   // resolved per instantiation with the type arguments bound
   if (enumDef.isGeneric()) {
-    if (!ctx_.lookupGenericEnum(enumDef.getName())) {
+    if (!ctx_.scope()->findGenericEnum(enumDef.getName())) {
       ctx_.registerGenericEnum(
           enumDef.getName(),
           {&enumDef, enumDef.getTypeParameters(), enumDef.getQualifiedName()});
@@ -381,7 +381,8 @@ void EnumAnalyzer::analyzeGenericEnumConstruction(
     sun::TypePtr expected = unwrapRef(expectedType);
     if (expected && expected->isEnum()) {
       auto* et = static_cast<sun::EnumType*>(expected.get());
-      if (et->getGenericQualifiedName() == genericInfo.qualifiedName) {
+      if (et->sourceDeclaration(ctx_.types()->declarations) ==
+          genericInfo.AST->getDeclarationId()) {
         expectedEnum = et;
       }
     }
@@ -418,7 +419,7 @@ void EnumAnalyzer::analyzeGenericEnumConstruction(
                      callExpr.getLocation());
   }
 
-  auto specialized = generics_.instantiateGenericEnum(genericName, typeArgs);
+  auto specialized = generics_.instantiateGenericEnum(genericInfo, typeArgs);
   if (!specialized) {
     logAndThrowError("Failed to instantiate generic enum '" + genericName + "'",
                      callExpr.getLocation());
@@ -444,7 +445,8 @@ bool EnumAnalyzer::tryAnalyzeGenericEnumUnitVariant(
   sun::EnumType* expectedEnum = nullptr;
   if (expected && expected->isEnum()) {
     auto* et = static_cast<sun::EnumType*>(expected.get());
-    if (et->getGenericQualifiedName() == genericEnum->qualifiedName) {
+    if (et->sourceDeclaration(ctx_.types()->declarations) ==
+        genericEnum->AST->getDeclarationId()) {
       expectedEnum = et;
     }
   }
@@ -517,14 +519,15 @@ void EnumAnalyzer::analyzeEnumMatch(
     std::string enumName = enumPathOf(*patternAccess.getObject());
     if (!enumName.empty()) {
       objectType = ctx_.lookupEnum(enumName);
-      if (!objectType && (enumName == enumType->getGenericBase() ||
-                          enumName == enumType->getBaseName())) {
-        objectType = enumType;
-      }
       if (!objectType) {
         const auto* genericEnum = ctx_.lookupGenericEnum(enumName);
-        if (genericEnum &&
-            genericEnum->qualifiedName == enumType->getGenericQualifiedName()) {
+        if (genericEnum) {
+          if (genericEnum->AST->getDeclarationId() !=
+              enumType->sourceDeclaration(ctx_.types()->declarations)) {
+            logAndThrowError("Pattern does not match discriminant enum '" +
+                                 enumType->getDisplayName() + "'",
+                             arm.pattern->getLocation());
+          }
           objectType = enumType;
         }
       }

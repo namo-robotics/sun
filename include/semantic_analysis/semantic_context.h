@@ -362,6 +362,10 @@ class SemanticContext : public AccessContext {
   const GenericInterfaceInfo *lookupGenericInterface(
       const std::string &name) const;
 
+  /** Retrieve an already selected template from the retained scope tree. */
+  const GenericInterfaceInfo *lookupGenericInterface(
+      sun::DeclarationId id) const;
+
   /** Record an enum in the current scope. */
   void registerEnum(const std::string &name,
                     std::shared_ptr<sun::EnumType> enumType);
@@ -377,6 +381,9 @@ class SemanticContext : public AccessContext {
 
   /** Find a generic enum template by name in the scope chain. */
   const GenericEnumInfo *lookupGenericEnum(const std::string &name) const;
+
+  /** Retrieve an already selected template from the retained scope tree. */
+  const GenericEnumInfo *lookupGenericEnum(sun::DeclarationId id) const;
 
   /** Require the original nominal declaration, without source-name fallback. */
   void requireDeclaration(

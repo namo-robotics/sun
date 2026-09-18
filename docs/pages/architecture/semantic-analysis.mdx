@@ -6,64 +6,68 @@ meaning, and anything inconsistent is rejected with an error. It prepares
 declarations and annotates the AST in place; the borrow checker and codegen
 read those annotations.
 
-## Declaration Phases
+## Semantic Analyzer
 
-`SemanticAnalyzer` owns the shared `SemanticContext`, checking helpers, and one
-persistent `SemanticPipeline`. The pipeline owns all analysis passes, and the driver
-invokes it through the analyzer. Scopes, symbols, registered class shapes, and
-pending extensions live in the shared context; passes borrow that state and the
-checking helpers. The pipeline runs these phases in order:
+`SemanticAnalyzer` owns the shared `SemanticContext`, checking helpers, and
+`SemanticPipeline`. The context holds scopes, symbols, class shapes, and pending
+extensions; the shared type registry owns semantic types and declaration IDs.
+Helpers handle type inference, calls, generics, enums, and recursive body checking.
 
-1. **Field initializer preparation** — supply implicit constructors and lower field
-   defaults into constructor bodies (`FieldInitializerPreparationPass`). This makes
-   generated declarations available to the naming passes. Preparation traverses
-   the entire AST once, including classes inside function, method, and lambda
-   bodies. It does not need resolved signatures or types.
-2. **Declaration identity** — `DeclarationIdentityPass` assigns session IDs
-   throughout the tree, including declarations inside function bodies, without
-   resolving signatures. The declaration table belongs to the shared type
-   registry. Repeating the pass preserves IDs, and reopened modules share an
-   identity. IDs do not change declaration visibility or duplicate checks.
-3. **Declaration naming** — `DeclarationNamingPass` walks modules, bundle
-   scopes, types, functions, methods, and module storage. It assigns their
-   scope path and owning module without looking up symbols, resolving types,
-   or registering declarations. Names supplied by imported bundles and generic
-   specializations are preserved, including when a bundle module has an alias.
-4. **Declaration collection and signature resolution** —
-   `DeclarationCollectionPass` registers types and generic templates, then
-   resolves class shapes and function signatures.
-   Registration consumes the names already attached to declarations. A
-   type-name prepass covers the complete module tree before any shape or
-   signature is resolved, so sibling modules can refer to each other's types.
-   Resolved parameter types supply overload suffixes; generic templates keep
-   their unsuffixed names until specialization supplies concrete arguments.
-5. **Body analysis** — `BodyAnalyzer` checks prepared statements in source
-   order using the shared expression-checking helpers. It resolves references,
-   infers expression types, selects overloads, and checks statements against
-   their surrounding context. It does not register declarations in advance.
+The driver invokes the pipeline to prepare declarations and check bodies in
+order. Passes and helpers annotate the same AST using the shared context.
+Generated generic syntax enters through `SemanticPipeline::prepareGenerated()`;
+nested bodies use recursive helper calls without restarting the pipeline.
 
-Local declarations receive their emitted names when expression checking reaches
-them in the resolved enclosing scope. Naming a class or interface also names its
-method declarations before their signatures are checked; it does not walk method
-bodies. Local variables remain unqualified. There is no separate local naming
-pass and no repeated preparation walk over an existing function body.
+## Analysis Passes
 
-`BodyAnalyzer` is a recursive checking helper owned by `SemanticAnalyzer`. The
-pipeline starts body checking once after preparation and collection. Nested
-blocks, functions, and lambdas use ordinary helper calls, without restarting
-analysis passes. Generic clones go through the pipeline's explicit generated
-syntax preparation boundary before their signatures or bodies are checked.
+The pipeline runs the following steps in order.
 
-The naming pass is independent of `SemanticContext` and the type registry.
-It can run on an AST whose annotations name unknown types; validating those
-annotations belongs to the later phases. Generic function templates are
-registered during declaration collection, not again during body analysis.
+### Field Initializer Preparation
 
-C extern globals join functions in declaration collection, so a function may
-use one before its source declaration. Their `VariableInfo` records
-`isCExtern`; bare, imported, and module-qualified reads and writes all consult
-that one flag and require `unsafe`. `c_abi_types.h` supplies the shared
-C-layout predicate used by extern function parameters and globals.
+`FieldInitializerPreparationPass` supplies implicit constructors and lowers field
+defaults into constructor bodies. It traverses the entire AST, including local
+classes, so generated declarations exist before identity assignment and naming.
+It does not require resolved signatures or types.
+
+### Declaration Identity
+
+`DeclarationIdentityPass` assigns session IDs to declarations and their binders
+throughout the tree, including function bodies. Repeated runs preserve IDs, and
+reopened modules share an identity. Assignment does not resolve signatures or
+change source visibility and duplicate-name checks.
+
+### Declaration Naming
+
+`DeclarationNamingPass` assigns scope paths and owning modules to declarations
+without resolving types or registering symbols. It preserves names supplied by
+imports and specializations, including aliased bundle modules. Local declarations
+receive names later, when body checking reaches their resolved enclosing scope;
+local variables remain unqualified.
+
+### Declaration Collection and Signature Resolution
+
+`DeclarationCollectionPass` registers types and generic templates, then resolves
+class shapes and function signatures. It collects type names across the module
+tree first, allowing sibling modules to refer to each other's types. Resolved
+parameter types supply overload suffixes; generic templates retain unsuffixed
+names until specialization.
+
+C extern globals are also registered here so functions can use them before their
+source declarations. Their `isCExtern` flag governs unsafe access, and
+`c_abi_types.h` provides the shared C-layout checks for extern parameters and
+globals.
+
+### Body Analysis
+
+`BodyAnalyzer` checks prepared statements in source order, resolving references,
+inferring types, selecting overloads, and validating statements in context. It is
+a recursive helper owned by `SemanticAnalyzer`; the pipeline starts it after
+preparation and collection.
+
+Body checking names local classes and interfaces, including their methods, before
+resolving method signatures. Nested blocks, functions, and lambdas are checked
+through ordinary recursion. Generic templates registered during collection are not
+registered again here.
 
 ## Declaration identities
 
@@ -104,9 +108,17 @@ implemented interfaces also use IDs. Specializations are interned by their
 source declaration, enclosing instance, semantic type arguments, and variadic
 arguments. Abstract type parameters compare their binder IDs. Names remain in
 source scopes for lookup, overload selection, visibility, and duplicate checks.
-Resolved generic classes retrieve their template from the retained scope tree by
-ID, following the specialization record to its source declaration. This also
-works for local classes after their source scopes close. Class emission tracks
+Resolved generic classes, interfaces, and enums retrieve their templates from
+the retained scope tree by ID, following the specialization record to its source
+declaration. The same traversal handles all three kinds without another
+registry. This works after local source scopes close, including type-argument
+substitution and enum const views. Source-declaration retrieval checks the owning
+session before using the ID. Enum expected-type matching and match patterns also
+compare declarations, so a same-named enum in an inner scope cannot stand in for
+the selected template. Generic enum registration checks the current scope, so
+an outer declaration does not prevent an inner declaration from being registered.
+Generic names remain for diagnostics, editor navigation,
+and the legacy artifact representation. Class emission tracks
 completed declarations by ID. Interface dispatch caches owning and borrowed
 vtables together under the concrete class and interface IDs, and rejects types
 from another session. The cache belongs to one codegen run; its LLVM globals are

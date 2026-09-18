@@ -20,7 +20,7 @@ void DeclarationCollectionPass::collectTypeNames(BlockExprAST& block) {
       case ASTNodeType::ENUM_DEFINITION: {
         auto& enumDef = static_cast<EnumDefinitionAST&>(*expr);
         if (enumDef.isGeneric()) {
-          if (!ctx_.lookupGenericEnum(enumDef.getName())) {
+          if (!ctx_.scope()->findGenericEnum(enumDef.getName())) {
             ctx_.registerGenericEnum(enumDef.getName(),
                                      {&enumDef, enumDef.getTypeParameters(),
                                       enumDef.getQualifiedName()});
@@ -218,7 +218,7 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
         auto& enumDef = static_cast<EnumDefinitionAST&>(*expr);
         // Generic enums register as templates, instantiated at use sites
         if (enumDef.isGeneric()) {
-          if (!ctx_.lookupGenericEnum(enumDef.getName())) {
+          if (!ctx_.scope()->findGenericEnum(enumDef.getName())) {
             ctx_.registerGenericEnum(enumDef.getName(),
                                      {&enumDef, enumDef.getTypeParameters(),
                                       enumDef.getQualifiedName()});
@@ -653,7 +653,7 @@ void DeclarationCollectionPass::collectEnumDeclarations(const BlockExprAST& bloc
     if (expr->getType() != ASTNodeType::ENUM_DEFINITION) continue;
     auto& enumDef = static_cast<EnumDefinitionAST&>(*expr);
     if (enumDef.isGeneric()) {
-      if (!ctx_.lookupGenericEnum(enumDef.getName())) {
+      if (!ctx_.scope()->findGenericEnum(enumDef.getName())) {
         ctx_.registerGenericEnum(enumDef.getName(),
                                  {&enumDef, enumDef.getTypeParameters(),
                                   enumDef.getQualifiedName()});

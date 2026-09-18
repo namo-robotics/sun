@@ -73,11 +73,8 @@ void GenericSpecializer::checkTypeParameterConstraints(
 
 const GenericClassInfo* GenericSpecializer::lookupGenericClassOf(
     const sun::ClassType& specialized) const {
-  const auto& record =
-      ctx_.types()->declarations.get(specialized.getDeclarationId());
-  auto source = record.specialization ? record.specialization->source
-                                      : specialized.getDeclarationId();
-  return ctx_.lookupGenericClass(source);
+  return ctx_.lookupGenericClass(
+      specialized.sourceDeclaration(ctx_.types()->declarations));
 }
 
 // Scope a class's template was declared in: for a specialization, the
@@ -1081,21 +1078,21 @@ using sun::access::methodVisibility;
 std::shared_ptr<sun::InterfaceType>
 GenericSpecializer::instantiateGenericInterface(
     const std::string& baseName, const std::vector<sun::TypePtr>& typeArgs) {
-  // Look up the generic interface definition first
-  auto* genericInfo = ctx_.lookupGenericInterface(baseName);
+  auto* info = ctx_.lookupGenericInterface(baseName);
+  if (!info) logAndThrowError("Unknown generic interface '" + baseName + "'");
+  return instantiateGenericInterface(*info, typeArgs);
+}
 
-  // Use the AST's mangled name for generating specialized interface name
-  std::string effectiveBase = (genericInfo && genericInfo->AST)
-                                  ? genericInfo->qualifiedName.mangled()
-                                  : baseName;
-
-  // Generate mangled name for the specialized interface
-  std::string mangledName =
-      sun::Types::mangleGenericClassName(effectiveBase, typeArgs);
-
-  if (!genericInfo || !genericInfo->AST) {
-    logAndThrowError("Unknown generic interface '" + baseName + "'");
-  }
+std::shared_ptr<sun::InterfaceType>
+GenericSpecializer::instantiateGenericInterface(
+    const GenericInterfaceInfo& info,
+    const std::vector<sun::TypePtr>& typeArgs) {
+  const auto* genericInfo = &info;
+  if (!genericInfo->AST)
+    logAndThrowError("Generic interface has no declaration");
+  const auto baseName = genericInfo->qualifiedName.display();
+  std::string mangledName = sun::Types::mangleGenericClassName(
+      genericInfo->qualifiedName.mangled(), typeArgs);
 
   // Verify type argument count matches
   if (typeArgs.size() != genericInfo->typeParameters.size()) {
@@ -1216,17 +1213,16 @@ GenericSpecializer::instantiateGenericInterface(
 
 std::shared_ptr<sun::EnumType> GenericSpecializer::instantiateGenericEnum(
     const std::string& baseName, const std::vector<sun::TypePtr>& typeArgs) {
-  auto* genericInfo = ctx_.lookupGenericEnum(baseName);
-  if (!genericInfo || !genericInfo->AST) {
-    return nullptr;
-  }
+  auto* info = ctx_.lookupGenericEnum(baseName);
+  return info ? instantiateGenericEnum(*info, typeArgs) : nullptr;
+}
 
-  // Mangle from the template's registered name, not the spelling the caller
-  // used: `std.Option<i32>` and `Option<i32>` name the same specialization
-  // (generic classes derive their name the same way).
-  const std::string& templateName = genericInfo->qualifiedName.baseName.empty()
-                                        ? baseName
-                                        : genericInfo->qualifiedName.baseName;
+std::shared_ptr<sun::EnumType> GenericSpecializer::instantiateGenericEnum(
+    const GenericEnumInfo& info, const std::vector<sun::TypePtr>& typeArgs) {
+  const auto* genericInfo = &info;
+  if (!genericInfo->AST) logAndThrowError("Generic enum has no declaration");
+  const auto baseName = genericInfo->qualifiedName.display();
+  const auto& templateName = genericInfo->qualifiedName.baseName;
   std::string mangledName = sun::Types::mangleGenericClassName(
       genericInfo->qualifiedName.mangled(), typeArgs);
 

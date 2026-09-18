@@ -1204,20 +1204,41 @@ const GenericClassInfo* SemanticContext::lookupGenericClass(
   return currentScope_->lookupGenericClass(name);
 }
 
+namespace {
+
+/** Retrieve selected templates, including declarations in closed local scopes.
+ */
+template <typename Info>
+const Info* findTemplate(
+    const SemanticScopeBase& scope, sun::DeclarationId id,
+    std::map<std::string, Info> SemanticScopeBase::* members) {
+  for (const auto& [name, info] : scope.*members)
+    if (info.AST && info.AST->getDeclarationId() == id) return &info;
+  for (const auto& [name, child] : scope.childModules)
+    if (auto* info = findTemplate(*child, id, members)) return info;
+  for (const auto& child : scope.children)
+    if (auto* info = findTemplate(*child, id, members)) return info;
+  return nullptr;
+}
+
+}  // namespace
+
 const GenericClassInfo* SemanticContext::lookupGenericClass(
     sun::DeclarationId id) const {
   typeRegistry_->declarations.get(id);
-  auto find = [&](auto&& self,
-                  const SemanticScope* scope) -> const GenericClassInfo* {
-    for (const auto& [name, info] : scope->genericClasses)
-      if (info.AST && info.AST->getDeclarationId() == id) return &info;
-    for (const auto& [name, child] : scope->childModules)
-      if (auto* info = self(self, child.get())) return info;
-    for (const auto& child : scope->children)
-      if (auto* info = self(self, child.get())) return info;
-    return nullptr;
-  };
-  return find(find, rootScope_.get());
+  return findTemplate(*rootScope_, id, &SemanticScopeBase::genericClasses);
+}
+
+const GenericInterfaceInfo* SemanticContext::lookupGenericInterface(
+    sun::DeclarationId id) const {
+  typeRegistry_->declarations.get(id);
+  return findTemplate(*rootScope_, id, &SemanticScopeBase::genericInterfaces);
+}
+
+const GenericEnumInfo* SemanticContext::lookupGenericEnum(
+    sun::DeclarationId id) const {
+  typeRegistry_->declarations.get(id);
+  return findTemplate(*rootScope_, id, &SemanticScopeBase::genericEnums);
 }
 
 void SemanticContext::addTypeParameterBindings(

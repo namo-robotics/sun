@@ -169,13 +169,11 @@ sun::TypePtr TypeInferer::substituteTypeParameters(sun::TypePtr type) {
         if (newArg != arg) changed = true;
       }
       if (changed) {
-        // Need to re-instantiate the generic interface with substituted type
-        // args
-        std::string baseName = it->getGenericQualifiedName().lookupName();
-        if (baseName.empty()) {
-          baseName = it->getName();
-        }
-        return generics_.instantiateGenericInterface(baseName, newArgs);
+        auto* info = ctx_.lookupGenericInterface(
+            it->sourceDeclaration(ctx_.types()->declarations));
+        if (!info)
+          logAndThrowError("Selected generic interface is not registered");
+        return generics_.instantiateGenericInterface(*info, newArgs);
       }
     }
     return type;
@@ -195,8 +193,10 @@ sun::TypePtr TypeInferer::substituteTypeParameters(sun::TypePtr type) {
         if (newArg != arg) changed = true;
       }
       if (changed) {
-        return generics_.instantiateGenericEnum(
-            et->getGenericQualifiedName().lookupName(), newArgs);
+        auto* info = ctx_.lookupGenericEnum(
+            et->sourceDeclaration(ctx_.types()->declarations));
+        if (!info) logAndThrowError("Selected generic enum is not registered");
+        return generics_.instantiateGenericEnum(*info, newArgs);
       }
     }
     return type;
@@ -434,18 +434,17 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
                                  : resolved.baseName;
     // Generic enum (e.g., Option<i32>) — checked first to avoid the noisy
     // unknown-class/interface fallthrough below
-    if (ctx_.scope()->lookupGenericEnum(lookupName)) {
-      auto specializedEnum =
-          generics_.instantiateGenericEnum(lookupName, typeArgs);
+    if (auto* info = ctx_.lookupGenericEnum(lookupName)) {
+      auto specializedEnum = generics_.instantiateGenericEnum(*info, typeArgs);
       if (specializedEnum) {
         return specializedEnum;
       }
     }
 
     // Generic interface (e.g., IIterator<i32, Range>)
-    if (ctx_.lookupGenericInterface(lookupName)) {
+    if (auto* info = ctx_.lookupGenericInterface(lookupName)) {
       auto specializedInterface =
-          generics_.instantiateGenericInterface(lookupName, typeArgs);
+          generics_.instantiateGenericInterface(*info, typeArgs);
       if (specializedInterface) {
         return specializedInterface;
       }
@@ -546,10 +545,10 @@ sun::TypePtr TypeInferer::createConstView(sun::TypePtr type) {
       args.push_back(viewed);
     }
     if (!changed) return type;
-    if (auto viewed = generics_.instantiateGenericEnum(
-            enumType->getGenericQualifiedName().lookupName(), args)) {
-      return viewed;
-    }
+    auto* info = ctx_.lookupGenericEnum(
+        enumType->sourceDeclaration(ctx_.types()->declarations));
+    if (!info) logAndThrowError("Selected generic enum is not registered");
+    return generics_.instantiateGenericEnum(*info, args);
   }
   return type;
 }

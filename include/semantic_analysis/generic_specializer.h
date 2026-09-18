@@ -164,10 +164,20 @@ class GenericSpecializer {
   std::shared_ptr<sun::InterfaceType> instantiateGenericInterface(
       const std::string &baseName, const std::vector<sun::TypePtr> &typeArgs);
 
+  /** Instantiate an already selected template without repeating name lookup. */
+  std::shared_ptr<sun::InterfaceType> instantiateGenericInterface(
+      const GenericInterfaceInfo &genericInfo,
+      const std::vector<sun::TypePtr> &typeArgs);
+
   /** Instantiate Option<i32> from a generic enum template (monomorphization).
    */
   std::shared_ptr<sun::EnumType> instantiateGenericEnum(
       const std::string &baseName, const std::vector<sun::TypePtr> &typeArgs);
+
+  /** Instantiate an already selected template without repeating name lookup. */
+  std::shared_ptr<sun::EnumType> instantiateGenericEnum(
+      const GenericEnumInfo &genericInfo,
+      const std::vector<sun::TypePtr> &typeArgs);
 
   // ---- Constraints and variadic packs ------------------------------------
 
