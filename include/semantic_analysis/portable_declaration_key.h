@@ -1,13 +1,18 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "semantic_analysis/declaration_id.h"
+
 namespace sun {
 
 class PortableDeclarationKey;
+class DeclarationTable;
+class Type;
 
 /** Structural type identity for independently compiled generic instances. */
 class PortableTypeKey {
@@ -16,6 +21,9 @@ class PortableTypeKey {
       : encoded_(std::move(encoded)) {}
 
  public:
+  /** Encode a concrete semantic type at an artifact boundary. */
+  static PortableTypeKey fromType(const Type& type,
+                                  const DeclarationTable& table);
   /** Identify a primitive by its stable language spelling. */
   static PortableTypeKey primitive(const std::string& name);
   /** Identify a nominal type without recursively expanding its fields. */
@@ -33,7 +41,8 @@ class PortableTypeKey {
   static PortableTypeKey function(
       const PortableTypeKey& result,
       const std::vector<PortableTypeKey>& parameters, bool canThrow,
-      bool isLambda = false, bool hasRefEnvironment = false);
+      bool isLambda = false, bool hasRefEnvironment = false,
+      bool requiresUnsafe = false);
   /** Identify a value paired with an error alternative. */
   static PortableTypeKey errorUnion(const PortableTypeKey& value);
   /** Return the canonical structural encoding. */
@@ -52,6 +61,10 @@ class PortableDeclarationKey {
  public:
   /** Construct an unset key for declarations not yet assigned an artifact. */
   PortableDeclarationKey() = default;
+  /** Derive a key from assigned source keys and concrete specialization inputs.
+   */
+  static PortableDeclarationKey fromDeclaration(DeclarationId id,
+                                                const DeclarationTable& table);
   /** Identify an original declaration in a content-addressed artifact. */
   static PortableDeclarationKey original(const std::string& bundleHash,
                                          uint64_t declarationNumber);
@@ -59,7 +72,8 @@ class PortableDeclarationKey {
   static PortableDeclarationKey specialization(
       const PortableDeclarationKey& origin,
       const std::vector<PortableTypeKey>& arguments,
-      const std::vector<PortableTypeKey>& variadicArguments = {});
+      const std::optional<std::vector<PortableTypeKey>>& variadicArguments =
+          std::nullopt);
   /** Identify a declaration cloned within one specific enclosing instance. */
   static PortableDeclarationKey inInstance(
       const PortableDeclarationKey& origin,

@@ -4,6 +4,7 @@
 #include <set>
 
 #include "llvm/Support/SHA256.h"
+#include "semantic_analysis/types.h"
 #include "support/error.h"
 
 namespace sun {
@@ -46,6 +47,113 @@ const std::string& require(const PortableDeclarationKey& key) {
 
 }  // namespace
 
+PortableDeclarationKey PortableDeclarationKey::fromDeclaration(
+    DeclarationId id, const DeclarationTable& table) {
+  const auto& record = table.get(id);
+  if (record.portableKey) return *record.portableKey;
+  if (record.specialization) {
+    const auto& instance = *record.specialization;
+    auto origin = fromDeclaration(instance.source, table);
+    if (instance.enclosing)
+      origin = inInstance(origin, fromDeclaration(instance.enclosing, table));
+    std::vector<PortableTypeKey> arguments;
+    for (const auto& type : instance.arguments) {
+      if (!type)
+        logAndThrowError("Portable specialization has an unresolved argument");
+      arguments.push_back(PortableTypeKey::fromType(*type, table));
+    }
+    std::optional<std::vector<PortableTypeKey>> variadic;
+    if (instance.variadic) {
+      variadic.emplace();
+      for (const auto& type : *instance.variadic) {
+        if (!type)
+          logAndThrowError(
+              "Portable specialization has an unresolved pack element");
+        variadic->push_back(PortableTypeKey::fromType(*type, table));
+      }
+    }
+    return specialization(origin, arguments, variadic);
+  }
+  if (record.origin && record.owner) {
+    auto origin = fromDeclaration(record.origin, table);
+    auto owner = fromDeclaration(record.owner, table);
+    auto member = inInstance(origin, owner);
+    if (!record.generatedRole.empty())
+      return generated(member, record.generatedRole, record.generatedSlot);
+    if (record.kind != table.get(record.origin).kind)
+      logAndThrowError(
+          "Generated portable declaration requires an explicit role");
+    return member;
+  }
+  logAndThrowError("Declaration has no portable source identity: " +
+                   record.name);
+}
+
+PortableTypeKey PortableTypeKey::fromType(const Type& type,
+                                          const DeclarationTable& table) {
+  if (type.isPrimitive()) return primitive(type.toString());
+  auto encode = [&](const TypePtr& value) {
+    if (!value) logAndThrowError("Cannot export an unresolved type identity");
+    return fromType(*value, table);
+  };
+  auto parameters = [&](const auto& callable) {
+    std::vector<PortableTypeKey> result;
+    for (const auto& param : callable.getParamTypes())
+      result.push_back(encode(param));
+    return result;
+  };
+  switch (type.getKind()) {
+    case Type::Kind::Slice:
+      return primitive("slice");
+    case Type::Kind::NullPointer:
+      return primitive("null");
+    case Type::Kind::Class:
+    case Type::Kind::Interface:
+    case Type::Kind::Enum: {
+      const auto& value = static_cast<const NominalType&>(type);
+      if (!value.belongsTo(table))
+        logAndThrowError(
+            "Portable type identity belongs to another analysis session");
+      return nominal(PortableDeclarationKey::fromDeclaration(
+          value.getDeclarationId(), table));
+    }
+    case Type::Kind::Reference: {
+      const auto& value = static_cast<const ReferenceType&>(type);
+      return reference(encode(value.getReferencedType()), value.isMutable());
+    }
+    case Type::Kind::RawPointer:
+      return pointer(
+          encode(static_cast<const RawPointerType&>(type).getPointeeType()),
+          false);
+    case Type::Kind::StaticPointer:
+      return pointer(
+          encode(static_cast<const StaticPointerType&>(type).getPointeeType()),
+          true);
+    case Type::Kind::Array: {
+      const auto& value = static_cast<const ArrayType&>(type);
+      return array(
+          encode(value.getElementType()),
+          {value.getDimensions().begin(), value.getDimensions().end()});
+    }
+    case Type::Kind::Function: {
+      const auto& value = static_cast<const FunctionType&>(type);
+      return function(encode(value.getReturnType()), parameters(value),
+                      value.canThrow(), false, false, value.requiresUnsafe());
+    }
+    case Type::Kind::Lambda: {
+      const auto& value = static_cast<const LambdaType&>(type);
+      return function(encode(value.getReturnType()), parameters(value),
+                      value.canThrow(), true, value.hasRefCaptures(),
+                      value.requiresUnsafe());
+    }
+    case Type::Kind::ErrorUnion:
+      return errorUnion(
+          encode(static_cast<const ErrorUnionType&>(type).getValueType()));
+    default:
+      logAndThrowError("Portable identity requires a concrete value type");
+  }
+}
+
 PortableDeclarationKey PortableDeclarationKey::original(
     const std::string& bundleHash, uint64_t declarationNumber) {
   if (bundleHash.size() != 64 ||
@@ -62,9 +170,10 @@ PortableDeclarationKey PortableDeclarationKey::original(
 PortableDeclarationKey PortableDeclarationKey::specialization(
     const PortableDeclarationKey& origin,
     const std::vector<PortableTypeKey>& arguments,
-    const std::vector<PortableTypeKey>& variadicArguments) {
+    const std::optional<std::vector<PortableTypeKey>>& variadicArguments) {
   return PortableDeclarationKey(tuple(
-      'S', {require(origin), types(arguments), types(variadicArguments)}));
+      'S', {require(origin), types(arguments),
+            variadicArguments ? types(*variadicArguments) : tuple('V', {})}));
 }
 
 PortableDeclarationKey PortableDeclarationKey::inInstance(
@@ -130,12 +239,13 @@ PortableTypeKey PortableTypeKey::array(
 PortableTypeKey PortableTypeKey::function(
     const PortableTypeKey& result,
     const std::vector<PortableTypeKey>& parameters, bool canThrow,
-    bool isLambda, bool hasRefEnvironment) {
+    bool isLambda, bool hasRefEnvironment, bool requiresUnsafe) {
   if (hasRefEnvironment && !isLambda)
     logAndThrowError("Only lambda types can carry a reference environment");
   return PortableTypeKey(
       tuple('F', {result.encoding(), types(parameters), integer(canThrow),
-                  integer(isLambda), integer(hasRefEnvironment)}));
+                  integer(isLambda), integer(hasRefEnvironment),
+                  integer(requiresUnsafe)}));
 }
 
 PortableTypeKey PortableTypeKey::errorUnion(const PortableTypeKey& value) {

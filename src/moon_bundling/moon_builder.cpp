@@ -52,6 +52,18 @@ struct OwnArchive {
   std::string digest;
 };
 
+/** Frame each input so arbitrary names cannot become field separators. */
+std::string hashField(const std::string& tag, const std::string& value) {
+  std::string result;
+  for (const auto* field : {&tag, &value}) {
+    const uint64_t size = field->size();
+    for (int shift = 56; shift >= 0; shift -= 8)
+      result.push_back(static_cast<char>((size >> shift) & 255));
+    result += *field;
+  }
+  return result;
+}
+
 // The bundle's content hash, decided before anything is compiled so the
 // compiler can spell the bundle's own symbols with it. It has to change
 // whenever the code image would: it covers every source, every bundle the
@@ -65,18 +77,18 @@ std::string computeBundleHash(std::vector<std::string> sources,
                               const std::vector<MoonImport>& moonImports,
                               const std::vector<OwnArchive>& archives,
                               const MoonBuildOptions& options) {
-  std::string input;
+  std::string input = "sun.bundle.v1";
   // Sorted, so the hash does not depend on manifest order
   std::sort(sources.begin(), sources.end());
-  for (const auto& h : sources) input += "source:" + h + "\n";
+  for (const auto& h : sources) input += hashField("source", h);
 
   std::vector<std::string> archiveLines;
   for (const auto& archive : archives) {
-    archiveLines.push_back("archive:" + archive.name + ":" + archive.digest +
-                           "\n");
+    archiveLines.push_back(hashField("name", archive.name) +
+                           hashField("digest", archive.digest));
   }
   std::sort(archiveLines.begin(), archiveLines.end());
-  for (const auto& line : archiveLines) input += line;
+  for (const auto& line : archiveLines) input += hashField("archive", line);
 
   std::vector<std::string> dependencies;
   for (const auto& import : moonImports) {
@@ -86,26 +98,26 @@ std::string computeBundleHash(std::vector<std::string> sources,
     const auto* first =
         modules.empty() ? nullptr : reader->getMetadata(modules[0]);
     if (!first) fail("Imported moon has no modules: " + import.path);
-    std::string dependency = "moon:" + first->content_hash() + "\n";
+    std::string dependency = hashField("digest", first->content_hash());
     // An alias changes which symbols this bundle's code refers to
     for (const auto& [from, to] : std::map<std::string, std::string>(
              import.moduleRemap.begin(), import.moduleRemap.end())) {
-      dependency += "alias:" + from + "=" + to + "\n";
+      dependency +=
+          hashField("alias", hashField("from", from) + hashField("to", to));
     }
     dependencies.push_back(std::move(dependency));
   }
   std::sort(dependencies.begin(), dependencies.end());
-  for (const auto& dependency : dependencies) input += dependency;
-  input += "format:" + std::to_string(MoonHeader::VERSION) + "\n";
-
-  input += "target:" +
-           (options.targetTriple.empty() ? llvm::sys::getDefaultTargetTriple()
-                                         : options.targetTriple) +
-           "\n";
-  input += std::string("debug:") + (options.debugInfo ? "1" : "0") + "\n";
-  input += std::string("optimize:") + (options.optimize ? "1" : "0") + "\n";
-  input += std::string("compiler:") + SUN_VERSION + "-" + SUN_GIT_HASH + "\n";
-  return computeContentHash(input);
+  for (const auto& dependency : dependencies)
+    input += hashField("moon", dependency);
+  input += hashField("format", std::to_string(MoonHeader::VERSION));
+  input += hashField("target", options.targetTriple.empty()
+                                   ? llvm::sys::getDefaultTargetTriple()
+                                   : options.targetTriple);
+  input += hashField("debug", options.debugInfo ? "1" : "0");
+  input += hashField("optimize", options.optimize ? "1" : "0");
+  input += hashField("compiler", std::string(SUN_VERSION) + "-" + SUN_GIT_HASH);
+  return computeSha256Hex(input);
 }
 
 }  // namespace

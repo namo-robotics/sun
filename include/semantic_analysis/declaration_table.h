@@ -43,6 +43,8 @@ struct DeclarationRecord {
   std::optional<PortableDeclarationKey> portableKey;
   std::shared_ptr<const SpecializationKey> specialization;
   DeclarationId origin;
+  std::string generatedRole;
+  uint64_t generatedSlot = 0;
 };
 
 /** Allocate and retain declarations independently of symbol spelling. */
@@ -78,12 +80,14 @@ class DeclarationTable {
       DeclarationKind kind, std::string name, DeclarationId owner = {},
       DeclarationId module = {},
       std::shared_ptr<const SpecializationKey> specialization = {},
-      DeclarationId origin = {}) {
+      DeclarationId origin = {}, std::string generatedRole = {},
+      uint64_t generatedSlot = 0) {
     if (owner) get(owner);
     if (module) get(module);
     if (origin) get(origin);
     records_.push_back({kind, std::move(name), owner, module, std::nullopt,
-                        std::move(specialization), origin});
+                        std::move(specialization), origin,
+                        std::move(generatedRole), generatedSlot});
     return DeclarationId(records_.size());
   }
 

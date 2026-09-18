@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <fstream>
 
+#include "support/error.h"
 #include "support/sun_path.h"
 
 namespace sun {
@@ -136,7 +137,14 @@ void LibraryCache::discoverBundles() {
         }
 
         if (!alreadyLoaded) {
-          auto reader = MoonReader::open(entry.path());
+          std::unique_ptr<MoonReader> reader;
+          try {
+            reader = MoonReader::open(entry.path());
+          } catch (const SunError&) {
+            // Discovery may encounter stale build outputs. Explicit imports
+            // still report the reader's format error through addBundle.
+            continue;
+          }
           if (reader) {
             for (const auto& modPath : reader->listModules()) {
               moduleToBundle_[modPath].push_back(reader.get());

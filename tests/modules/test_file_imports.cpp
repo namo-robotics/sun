@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "driver/execution_utils.h"
+#include "moon_bundling/library_cache.h"
 #include "moon_bundling/moon.h"
 #include "moon_bundling/moon_builder.h"
 #include "serialization/ast_deserializer.h"
@@ -729,7 +730,8 @@ TEST_F(MoonExactTypes, old_format_is_rejected) {
   file.seekp(0);
   file.write(reinterpret_cast<const char*>(&header), sizeof(header));
   file.close();
-  EXPECT_FALSE(sun::MoonReader::open(output));
+  EXPECT_SUN_ERROR_WITH_MESSAGE(sun::MoonReader::open(output),
+                                "Unsupported moon bundle format version");
 }
 
 TEST(MoonMetadata,
@@ -1102,4 +1104,116 @@ TEST_F(MoonExactTypes, generic_constraint_arguments_keep_dependency_identity) {
     }
   )"),
                                 "does not satisfy constraint 'IValue<Value>'");
+}
+
+TEST_F(MoonExactTypes,
+       bundle_digest_is_full_sha256_and_ignores_dependency_order) {
+  auto c = bundle("c", R"(
+    public module c { public function value() i32 { return 41; } }
+  )");
+  const std::string source = R"(
+    public module consumer {
+      public function answer() i32 { return b.version() + c.value(); }
+    }
+  )";
+  auto first = bundle("consumer_first", source,
+                      {sun::MoonImport(b1), sun::MoonImport(c)});
+  auto second = bundle("consumer_second", source,
+                       {sun::MoonImport(c), sun::MoonImport(b1)});
+  auto digest = [](const std::string& path) {
+    auto reader = sun::MoonReader::open(path);
+    return reader->getMetadata(reader->listModules()[0])->content_hash();
+  };
+  auto key = digest(first);
+  EXPECT_EQ(key.size(), 64u);
+  EXPECT_TRUE(std::all_of(key.begin(), key.end(), [](char value) {
+    return (value >= '0' && value <= '9') || (value >= 'a' && value <= 'f');
+  }));
+  EXPECT_EQ(key, digest(second));
+  EXPECT_NE(digest(b1), digest(b2));
+  EXPECT_EQ(run({sun::MoonImport(first)},
+                "function main() i32 { return consumer.answer(); }"),
+            42);
+  EXPECT_EQ(run({sun::MoonImport(second)},
+                "function main() i32 { return consumer.answer(); }"),
+            42);
+}
+
+TEST_F(MoonExactTypes,
+       discovery_skips_old_bundles_but_explicit_import_reports_version) {
+  auto stale = dir / "stale.moon";
+  std::filesystem::copy_file(b1, stale,
+                             std::filesystem::copy_options::overwrite_existing);
+  std::fstream file(stale, std::ios::in | std::ios::out | std::ios::binary);
+  sun::MoonHeader header;
+  file.read(reinterpret_cast<char*>(&header), sizeof(header));
+  --header.version;
+  file.seekp(0);
+  file.write(reinterpret_cast<const char*>(&header), sizeof(header));
+  file.close();
+  auto reader = sun::MoonReader::open(b1);
+  ASSERT_TRUE(reader);
+  auto key = reader->listModules()[0];
+  auto& cache = sun::LibraryCache::instance();
+  cache.clear();
+  struct ResetCache {
+    ~ResetCache() { sun::LibraryCache::instance().clear(); }
+  } reset;
+  cache.addSearchPath(dir);
+  EXPECT_NO_THROW(cache.preloadAll());
+  EXPECT_TRUE(cache.hasModule(key));
+  EXPECT_SUN_ERROR_WITH_MESSAGE(cache.addBundle(stale),
+                                "Unsupported moon bundle format version");
+}
+
+TEST_F(MoonExactTypes, bundle_digest_includes_aliases_and_codegen_options) {
+  const std::string source = R"(
+    public module config { public function answer() i32 { return 42; } }
+  )";
+  auto first = bundle("config", source, {sun::MoonImport(b1)});
+  auto alias =
+      bundle("config_alias", source, {sun::MoonImport(b1, "b", "renamed")});
+  auto digest = [](const std::string& path) {
+    auto reader = sun::MoonReader::open(path);
+    return reader->getMetadata(reader->listModules()[0])->content_hash();
+  };
+  EXPECT_NE(digest(first), digest(alias));
+  sun::MoonBuildOptions options;
+  options.extraMoons = {sun::MoonImport(b1)};
+  options.optimize = false;
+  auto unoptimized = dir / "unoptimized.moon";
+  sun::MoonBuilder::build((dir / "config.sun").string(), unoptimized, options);
+  EXPECT_NE(digest(first), digest(unoptimized.string()));
+  options.debugInfo = true;
+  auto debug = dir / "debug.moon";
+  sun::MoonBuilder::build((dir / "config.sun").string(), debug, options);
+  EXPECT_NE(digest(unoptimized.string()), digest(debug.string()));
+}
+
+TEST_F(MoonExactTypes, malformed_bundle_digest_is_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(sun::MoonWriter("short"),
+                                "full lowercase SHA-256 digest");
+  auto reader = sun::MoonReader::open(b1);
+  ASSERT_TRUE(reader);
+  const auto key = reader->listModules()[0];
+  const auto hash = reader->getMetadata(key)->content_hash();
+  std::ifstream input(b1, std::ios::binary);
+  std::string bytes((std::istreambuf_iterator<char>(input)), {});
+  size_t offset = 0;
+  bool changed = false;
+  while ((offset = bytes.find(hash, offset)) != std::string::npos) {
+    bytes.replace(offset, hash.size(), std::string(hash.size(), 'z'));
+    offset += hash.size();
+    changed = true;
+  }
+  ASSERT_TRUE(changed);
+  auto path = dir / "malformed_digest.moon";
+  std::ofstream output(path, std::ios::binary);
+  output.write(bytes.data(), bytes.size());
+  output.close();
+  auto malformed = sun::MoonReader::open(path);
+  ASSERT_TRUE(malformed);
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      malformed->getMetadata(malformed->listModules()[0]),
+      "full lowercase SHA-256 digest");
 }

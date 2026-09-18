@@ -159,7 +159,8 @@ void DeclarationIdentityPass::run(const ExprAST& root, DeclarationId owner,
               proto.getVariadicParam().elementName(i), owner, module, {},
               sourceIdentity
                   ? sourceIdentity->parameters.at(proto.getArgs().size())
-                  : DeclarationId{}));
+                  : DeclarationId{},
+              "variadic-element", i));
       }
       lifetimes(proto, identity, table_, module, sourceIdentity);
       if (identity.parameters.empty()) {

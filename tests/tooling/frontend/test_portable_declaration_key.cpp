@@ -2,6 +2,7 @@
 
 #include "semantic_analysis/declaration_table.h"
 #include "semantic_analysis/portable_declaration_key.h"
+#include "semantic_analysis/types.h"
 
 namespace {
 using sun::PortableDeclarationKey;
@@ -41,7 +42,8 @@ TEST(Tooling_Frontend_PortableIdentity,
   auto b = PortableDeclarationKey::specialization(origin, {boolean});
   EXPECT_NE(a.symbol("function"), b.symbol("function"));
   EXPECT_EQ(a, PortableDeclarationKey::specialization(origin, {i32}));
-  EXPECT_NE(PortableDeclarationKey::specialization(origin, {i32}, {boolean})
+  EXPECT_NE(PortableDeclarationKey::specialization(
+                origin, {i32}, std::vector<PortableTypeKey>{boolean})
                 .symbol("function"),
             PortableDeclarationKey::specialization(origin, {i32, boolean})
                 .symbol("function"));
@@ -97,4 +99,157 @@ TEST(Tooling_Frontend_PortableIdentity,
   another.bindPortable(imported, key);
   EXPECT_NE(first, imported);
   EXPECT_EQ(table.get(first).portableKey, another.get(imported).portableKey);
+}
+
+TEST(Tooling_Frontend_PortableIdentity,
+     semantic_instances_ignore_allocation_order) {
+  auto make = [&](bool reverse) {
+    sun::TypeRegistry registry;
+    auto& table = registry.declarations;
+    if (reverse) table.add(sun::DeclarationKind::Variable, "unrelated");
+    auto source = table.add(sun::DeclarationKind::Class, "Box");
+    auto argument = table.add(sun::DeclarationKind::Class, "Private");
+    table.bindPortable(source, PortableDeclarationKey::original(bundle, 1));
+    table.bindPortable(argument, PortableDeclarationKey::original(bundle, 2));
+    auto nominal = registry.getClass(argument);
+    nominal->addField("recursive", sun::Types::RawPointer(nominal));
+    if (reverse)
+      registry.specialize({source, {}, {sun::Types::Bool()}, std::nullopt});
+    auto instance = registry.specialize({source, {}, {nominal}, std::nullopt});
+    return PortableDeclarationKey::fromDeclaration(instance, table);
+  };
+  EXPECT_EQ(make(false), make(true));
+}
+
+TEST(Tooling_Frontend_PortableIdentity,
+     semantic_packs_and_enclosing_owners_are_distinct) {
+  sun::TypeRegistry registry;
+  auto& table = registry.declarations;
+  auto source = table.add(sun::DeclarationKind::Function, "apply");
+  auto owner = table.add(sun::DeclarationKind::Class, "Owner");
+  table.bindPortable(source, PortableDeclarationKey::original(bundle, 1));
+  table.bindPortable(owner, PortableDeclarationKey::original(bundle, 2));
+  auto absent = registry.specialize({source, {}, {}, std::nullopt});
+  auto empty =
+      registry.specialize({source, {}, {}, std::vector<sun::TypePtr>{}});
+  auto enclosed = registry.specialize({source, owner, {}, std::nullopt});
+  auto key = [&](sun::DeclarationId id) {
+    return PortableDeclarationKey::fromDeclaration(id, table).symbol(
+        "function");
+  };
+  EXPECT_NE(key(absent), key(empty));
+  EXPECT_NE(key(absent), key(enclosed));
+  auto parameter = table.add(sun::DeclarationKind::Parameter, "args", source);
+  table.bindPortable(parameter, PortableDeclarationKey::original(bundle, 3));
+  auto first = table.add(sun::DeclarationKind::Parameter, "args.0", enclosed,
+                         {}, {}, parameter, "variadic-element", 0);
+  auto second = table.add(sun::DeclarationKind::Parameter, "args.1", enclosed,
+                          {}, {}, parameter, "variadic-element", 1);
+  EXPECT_NE(key(first), key(second));
+}
+
+TEST(Tooling_Frontend_PortableIdentity,
+     semantic_type_encoding_matches_identity) {
+  sun::DeclarationTable table;
+  auto i32 = sun::Types::Int32();
+  auto lambda =
+      std::make_shared<sun::LambdaType>(i32, std::vector<sun::TypePtr>{i32});
+  auto borrowed =
+      std::make_shared<sun::LambdaType>(i32, std::vector<sun::TypePtr>{i32});
+  borrowed->setHasRefCaptures(true);
+  std::vector<sun::TypePtr> types{
+      i32,
+      sun::Types::Bool(),
+      sun::Types::Slice(),
+      sun::Types::NullPointer(),
+      sun::Types::RawPointer(i32),
+      sun::Types::StaticPointer(i32),
+      sun::Types::Reference(i32),
+      sun::Types::Reference(i32, false),
+      sun::Types::Array(i32, {}),
+      sun::Types::Array(i32, {2, 3}),
+      sun::Types::Array(i32, {3, 2}),
+      sun::Types::Array(sun::Types::RawPointer(i32), {2}),
+      sun::Types::Array(sun::Types::StaticPointer(i32), {2}),
+      sun::Types::Reference(sun::Types::RawPointer(i32)),
+      sun::Types::Reference(sun::Types::StaticPointer(i32)),
+      std::make_shared<sun::ErrorUnionType>(i32),
+      std::make_shared<sun::FunctionType>(i32, std::vector<sun::TypePtr>{i32}),
+      std::make_shared<sun::FunctionType>(i32, std::vector<sun::TypePtr>{i32},
+                                          true),
+      std::make_shared<sun::FunctionType>(i32, std::vector<sun::TypePtr>{i32},
+                                          false, true),
+      lambda,
+      borrowed};
+  for (size_t i = 0; i < types.size(); ++i)
+    for (size_t j = 0; j < types.size(); ++j) {
+      SCOPED_TRACE(std::to_string(i) + "," + std::to_string(j));
+      sun::SpecializationKey left{{}, {}, {types[i]}, std::nullopt};
+      sun::SpecializationKey right{{}, {}, {types[j]}, std::nullopt};
+      EXPECT_EQ(left == right, PortableTypeKey::fromType(*types[i], table) ==
+                                   PortableTypeKey::fromType(*types[j], table));
+    }
+  auto lifetime = PortableTypeKey::fromType(*borrowed, table);
+  borrowed->setLifetimeName("renamed");
+  EXPECT_EQ(lifetime, PortableTypeKey::fromType(*borrowed, table));
+  auto reference = std::make_shared<sun::ReferenceType>(i32);
+  auto refKey = PortableTypeKey::fromType(*reference, table);
+  reference->setLifetimeName("different");
+  reference->setClassLifetimeArgs({"a", "b"});
+  EXPECT_EQ(refKey, PortableTypeKey::fromType(*reference, table));
+}
+
+TEST(Tooling_Frontend_PortableIdentity,
+     semantic_conversion_rejects_missing_and_foreign_identity) {
+  sun::TypeRegistry registry;
+  auto& table = registry.declarations;
+  auto id = table.add(sun::DeclarationKind::Class, "Private");
+  auto type = registry.getClass(id);
+  EXPECT_ANY_THROW(PortableTypeKey::fromType(*type, table));
+  table.bindPortable(id, PortableDeclarationKey::original(bundle, 1));
+  EXPECT_NO_THROW(PortableTypeKey::fromType(*type, table));
+  sun::TypeRegistry other;
+  auto otherId = other.declarations.add(sun::DeclarationKind::Class, "Private");
+  EXPECT_EQ(id, otherId);
+  other.declarations.bindPortable(otherId,
+                                  PortableDeclarationKey::original(bundle, 1));
+  EXPECT_ANY_THROW(PortableTypeKey::fromType(*type, other.declarations));
+  EXPECT_ANY_THROW(
+      PortableTypeKey::fromType(*sun::Types::TypeParameter("T"), table));
+}
+
+TEST(Tooling_Frontend_PortableIdentity,
+     pack_presence_and_unsafe_symbols_are_frozen) {
+  auto origin = PortableDeclarationKey::original(bundle, 6);
+  auto i32 = PortableTypeKey::primitive("i32");
+  EXPECT_EQ(
+      PortableDeclarationKey::specialization(origin, {i32}).symbol("function"),
+      "_SUN1_e93f546e0d3015d7566a8c6d260e66173c7a4b0af496be025830700d4b537315");
+  EXPECT_EQ(
+      PortableDeclarationKey::specialization(origin, {i32},
+                                             std::vector<PortableTypeKey>{})
+          .symbol("function"),
+      "_SUN1_8bb3c1b199a59ddd486d59650fc59f211ded8cc2e91caa0916896bcdd6cfb114");
+  auto callable =
+      PortableTypeKey::function(i32, {i32}, false, false, false, true);
+  EXPECT_EQ(
+      PortableDeclarationKey::specialization(origin, {callable})
+          .symbol("function"),
+      "_SUN1_eedd001944694044fb231fa2ffff36acc8c87f60f6f06f293f80976f0fba5c87");
+}
+
+TEST(Tooling_Frontend_PortableIdentity,
+     interned_instances_preserve_nested_pointer_layouts) {
+  sun::TypeRegistry registry;
+  auto source = registry.declarations.add(sun::DeclarationKind::Class, "Box");
+  auto raw =
+      sun::Types::Array(sun::Types::RawPointer(sun::Types::Int32()), {2});
+  auto immortal =
+      sun::Types::Array(sun::Types::StaticPointer(sun::Types::Int32()), {2});
+  auto first = registry.specialize({source, {}, {raw}, std::nullopt});
+  auto second = registry.specialize({source, {}, {immortal}, std::nullopt});
+  EXPECT_NE(first, second);
+  EXPECT_EQ(first, registry.specialize({source, {}, {raw}, std::nullopt}));
+  EXPECT_EQ(second,
+            registry.specialize({source, {}, {immortal}, std::nullopt}));
 }

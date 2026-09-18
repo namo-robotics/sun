@@ -127,14 +127,35 @@ unsigned big-endian field count, and an unsigned big-endian byte length before
 each field. Counts, lengths, and integer values occupy eight bytes. Original
 keys, instances, enclosing-instance bindings, and generated declarations use
 `D`, `S`, `I`, and `G`. Type keys use `P`, `N`, `R`, `Q`, `A`, `F`, and `U`;
-ordered type lists use `L`. Symbol encoding hashes an `E` tuple containing
+ordered type lists use `L`. An absent variadic pack uses `V`, so it differs from
+an empty `L` pack. Callable keys include throwing, unsafe-call, lambda, and
+reference-environment flags. Lifetime spelling is deliberately erased, matching
+specialization identity. Symbol encoding hashes an `E` tuple containing
 `SUN1`, the key, and the emission role, and prefixes the full hexadecimal
 SHA-256 digest with `_SUN1_`. Tests freeze the encoding independently of
 protobuf, display strings, and session allocation.
 
-The portable encoder and table are migration infrastructure. Bundle files
-still use their existing metadata and symbol format until import/export and
-all symbol consumers have migrated together.
+At an artifact boundary, the encoder converts concrete semantic types and
+specialization records directly. Nominal types refer to declaration keys without
+expanding recursive fields, and conversion rejects types from another session or
+sources without assigned keys. Generated variadic elements retain explicit slots;
+interface receiver helpers retain a generated role. Internal specialization
+comparison uses exact recursive type identity, so pointer conversions cannot
+merge instances with different layouts.
+
+Bundle format 3 uses a full SHA-256 digest computed before code emission. Its
+input begins with `sun.bundle.v1`, followed by tagged, length-prefixed records.
+Source fingerprints, archive name/digest pairs, and dependency digest/alias
+records are sorted before hashing. Format version, target triple, debug and
+optimization settings, and compiler version/revision follow. Lengths are unsigned
+big-endian integers. Emitted symbols and bitcode are excluded, avoiding a circular
+identity definition. Writers and imported metadata require full lowercase digest
+strings. Explicit imports reject unsupported versions; directory
+discovery skips them so stale build outputs do not prevent rebuilding.
+
+Portable key conversion is migration infrastructure. Declaration metadata and
+external symbols still use their existing representation until original-key
+assignment, import/export, and symbol consumers migrate together.
 
 ## Scope Tree
 

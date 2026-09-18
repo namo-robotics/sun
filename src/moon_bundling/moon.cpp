@@ -9,28 +9,26 @@
 #include <llvm/Support/SHA256.h>
 #include <llvm/Support/raw_ostream.h>
 
+#include <algorithm>
 #include <fstream>
-#include <iomanip>
 #include <map>
 #include <set>
 #include <sstream>
 
+#include "support/error.h"
+
 namespace sun {
+namespace {
 
-std::string computeContentHash(const std::string& data) {
-  constexpr uint64_t FNV_OFFSET = 14695981039346656037ULL;
-  constexpr uint64_t FNV_PRIME = 1099511628211ULL;
-
-  uint64_t hash = FNV_OFFSET;
-  for (unsigned char c : data) {
-    hash ^= c;
-    hash *= FNV_PRIME;
-  }
-
-  std::ostringstream oss;
-  oss << std::hex << std::setfill('0') << std::setw(8) << (hash & 0xFFFFFFFF);
-  return oss.str();
+/** Reject incomplete or malformed identities at bundle boundaries. */
+void validateBundleHash(const std::string& hash) {
+  if (hash.size() != 64 || !std::all_of(hash.begin(), hash.end(), [](char c) {
+        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+      }))
+    logAndThrowError("Bundle identity must be a full lowercase SHA-256 digest");
 }
+
+}  // namespace
 
 std::string computeSha256Hex(llvm::StringRef data) {
   llvm::SHA256 sha;
@@ -49,7 +47,9 @@ std::string computeSha256Hex(llvm::StringRef data) {
 //===----------------------------------------------------------------------===//
 
 MoonWriter::MoonWriter(std::string bundleHash)
-    : bundleHash_(std::move(bundleHash)) {}
+    : bundleHash_(std::move(bundleHash)) {
+  validateBundleHash(bundleHash_);
+}
 
 void MoonWriter::addModule(llvm::Module& module,
                            const moon::ModuleMetadata& metadata) {
@@ -255,12 +255,15 @@ std::unique_ptr<MoonReader> MoonReader::open(
   MoonHeader header;
   in.read(reinterpret_cast<char*>(&header), sizeof(header));
 
-  if (header.magic != MoonHeader::MAGIC) {
+  if (!in || header.magic != MoonHeader::MAGIC) {
     return nullptr;
   }
   // Reject bundles built for a different ABI/format version
   if (header.version != MoonHeader::VERSION) {
-    return nullptr;
+    logAndThrowError("Unsupported moon bundle format version " +
+                     std::to_string(header.version) + " in '" + path.string() +
+                     "'; expected " + std::to_string(MoonHeader::VERSION) +
+                     ". Rebuild the bundle.");
   }
 
   auto reader = std::unique_ptr<MoonReader>(new MoonReader());
@@ -387,6 +390,7 @@ const moon::ModuleMetadata* MoonReader::getMetadata(
     return nullptr;
   }
 
+  validateBundleHash(metadata.content_hash());
   metadataCache_[moduleKey] = std::move(metadata);
   return &metadataCache_[moduleKey];
 }

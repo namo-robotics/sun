@@ -1183,6 +1183,10 @@ class NominalType : public Type {
  public:
   /** Return the declaration identity within this analysis session. */
   DeclarationId getDeclarationId() const { return declarationId_; }
+  /** Check that a boundary is using this nominal type's owning session. */
+  bool belongsTo(const DeclarationTable& table) const {
+    return declarationSession_ == table.session();
+  }
 };
 
 class InterfaceType;
@@ -2406,20 +2410,7 @@ struct SpecializationKey {
   std::optional<std::vector<TypePtr>> variadic;
 
   /** Compare semantic types, including nominal declaration identities. */
-  bool operator==(const SpecializationKey& other) const {
-    auto equal = [](const auto& left, const auto& right) {
-      if (left.size() != right.size()) return false;
-      for (size_t i = 0; i < left.size(); ++i)
-        if (left[i] != right[i] &&
-            (!left[i] || !right[i] || !left[i]->equals(*right[i])))
-          return false;
-      return true;
-    };
-    return source == other.source && enclosing == other.enclosing &&
-           equal(arguments, other.arguments) &&
-           variadic.has_value() == other.variadic.has_value() &&
-           (!variadic || equal(*variadic, *other.variadic));
-  }
+  bool operator==(const SpecializationKey& other) const;
 };
 
 /** Bucket instances by template and argument kinds; equality checks structure.

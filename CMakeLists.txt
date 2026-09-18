@@ -163,6 +163,7 @@ add_library(sun_lib
     src/ast/control_flow.cpp
     # Semantic analysis
     src/semantic_analysis/portable_declaration_key.cpp
+    src/semantic_analysis/specialization_key.cpp
     src/semantic_analysis/declaration_identity_pass.cpp
     src/semantic_analysis/qualified_name.cpp
     src/semantic_analysis/semantic_context.cpp
