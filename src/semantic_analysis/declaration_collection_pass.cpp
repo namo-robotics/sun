@@ -601,7 +601,8 @@ void DeclarationCollectionPass::registerClassShape(
     }
 
     sema_.checkPackedFieldType(classDef, field, fieldType);
-    classType->addField(field.name, fieldType).visibility = field.visibility;
+    classType->addField(field.name, fieldType, field.declaration.id)
+        .visibility = field.visibility;
   }
 
   // Implemented interfaces (fields inherited, implementation recorded)

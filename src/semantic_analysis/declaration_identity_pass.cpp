@@ -152,6 +152,15 @@ void DeclarationIdentityPass::run(const ExprAST& root, DeclarationId owner,
                       proto.getName());
       auto& identity = proto.declarationIdentity();
       parameters(proto, identity, table_, module, sourceIdentity);
+      if (proto.hasVariadicParam() && identity.variadicParameters.empty()) {
+        for (size_t i = 0; i < proto.getResolvedVariadicTypes().size(); ++i)
+          identity.variadicParameters.push_back(table_.add(
+              DeclarationKind::Parameter,
+              proto.getVariadicParam().elementName(i), owner, module, {},
+              sourceIdentity
+                  ? sourceIdentity->parameters.at(proto.getArgs().size())
+                  : DeclarationId{}));
+      }
       lifetimes(proto, identity, table_, module, sourceIdentity);
       if (identity.parameters.empty()) {
         for (size_t i = 0; i < proto.getArgs().size(); ++i)

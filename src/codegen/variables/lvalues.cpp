@@ -109,7 +109,8 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
       // out as a storage address
       if (varType && varType->isModule()) return nullptr;
 
-      AllocaInst* alloca = scopes().findVariable(varRef.getName());
+      AllocaInst* alloca =
+          scopes().findVariable(varRef.getTargetDeclarationId());
       if (alloca) {
         if (varType && varType->isReference()) {
           // Ref variable: the referent's address. Mirrors
@@ -126,7 +127,7 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
               varRef.getName() + ".ptr");
         }
         // Compound match-payload bindings hold the borrowed slot's address
-        return scopes().compoundStorageAddress(varRef.getName());
+        return scopes().compoundStorageAddress(varRef.getTargetDeclarationId());
       }
 
       // [ref x] captures have a genuine storage address (the pointer stored
@@ -137,19 +138,16 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
         bool byRef = false;
         bool owned = false;
         Value* slotAddr = functionGen().createCaptureSlotAddress(
-            varRef.getName(), nullptr, &byRef, &owned);
+            varRef.getTargetDeclarationId(), nullptr, &byRef, &owned);
         if (slotAddr && (byRef || owned)) return slotAddr;
       }
 
-      // Globals: mangled name first (module-qualified), then plain
-      if (GlobalVariable* gv = globalForSunName(varRef.getMangledName())) {
+      // Retrieve the selected global storage.
+      if (GlobalVariable* gv = findGlobal(varRef.getTargetDeclarationId())) {
         if (varType && varType->isReference()) {
           return ctx.builder->CreateLoad(gv->getValueType(), gv,
                                          varRef.getName() + ".ref.ptr");
         }
-        return gv;
-      }
-      if (GlobalVariable* gv = globalForSunName(varRef.getName())) {
         return gv;
       }
       return nullptr;
@@ -162,7 +160,7 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
       // global the member's declaration emitted
       if (llvm::GlobalVariable* gv = classes().moduleMemberGlobal(
               *memberAccess.getObject(),
-              memberAccess.getQualifiedName().mangled())) {
+              memberAccess.getTargetDeclarationId())) {
         return gv;
       }
 
@@ -170,7 +168,7 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
       if (!objectPtr || !classType) return nullptr;
 
       const sun::ClassField* field =
-          classType->getField(memberAccess.getMemberName());
+          classType->getField(memberAccess.getTargetDeclarationId());
       if (!field) return nullptr;
 
       return layout::fieldPtr(*ctx.builder, classType, objectPtr, *field,
@@ -188,10 +186,7 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
     }
 
     case ASTNodeType::THIS: {
-      AllocaInst* thisAlloca = scopes().findVariable("this");
-      if (!thisAlloca) return nullptr;
-      return ctx.builder->CreateLoad(
-          llvm::PointerType::getUnqual(ctx.getContext()), thisAlloca, "this");
+      return state_.frame.thisPtr;
     }
 
     default:

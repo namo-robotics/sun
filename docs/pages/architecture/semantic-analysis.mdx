@@ -91,13 +91,25 @@ not fall back to symbol names. Declaration records contain no emitted symbols.
 Concrete generic calls retain their selected ID and callable signature, so codegen
 and return-type inference do not reconstruct specialization names.
 
-Ordinary source classes, interfaces, and enums are interned by declaration ID.
-Their equality compares the session and ID, and class shape registration also
-uses the ID. A nominal type can be obtained before its qualified name exists;
-binding its emitted name later preserves the same type object. Name lookup
-aliases remain for current backend consumers. Generic specializations and
-synthetic types still use legacy name identity. Duplicate declaration checks and local symbol emission still depend on names;
-local names are assigned during ordinary declaration checking.
+Source, specialized, builtin, and synthetic nominal types are interned by
+session declaration ID. Equality compares the session and ID; class shapes and
+implemented interfaces also use IDs. Specializations are interned by their
+source declaration, enclosing instance, semantic type arguments, and variadic
+arguments. Abstract type parameters compare their binder IDs. Names remain in
+source scopes for lookup, overload selection, visibility, and duplicate checks.
+
+Codegen registers local and global storage under declaration IDs. Parameters,
+expanded variadic arguments, references, and loop/pattern/catch bindings use the
+same rule. Captures retain the selected binding ID; their environment slot is a
+separate layout decision. Field access retains a selected field ID, which the
+resolved class maps to its layout index. Struct initializers retain their field
+selections in source order. The method frame holds the implicit receiver.
+
+A source block has its own semantic scope. Once that scope closes, its resolved
+result type can be reused without repeating lookup of its locals. Constructor
+field defaults already refer to the bindings selected before constructor
+parameters became visible, so codegen does not hide and restore parameters by
+name. Imported and C globals are registered before dependent bodies are emitted.
 
 `PortableDeclarationKey` provides the separate representation for artifact
 identity: an original declaration uses a full SHA-256 bundle digest and a
@@ -196,10 +208,9 @@ in every type parameter as it walks, so what it returns is already final.
 `substituteTypeParameters` starts from a type with no annotation behind it,
 worked out somewhere earlier: a variable's recorded type, a generic method's
 signature stored on its class, the type of a captured value. Applying both to
-one type is not a harmless repeat. Type parameters are told apart by name
-alone, so a `T` that arrived inside a type built for one template, read again
-while a different template's bindings are in scope, becomes that template's
-`T`. `IIterable` names its own first parameter `T`, so
+one type is not a harmless repeat. Type parameter equality uses binder IDs,
+but substitution still uses the bindings in the active definition scope.
+Repeating substitution in a different template's scope can select its `T`. `IIterable` names its own first parameter `T`, so
 `class Vec<T> implements IIterable<ref T, Vec<T>>` puts two unrelated `T`s
 within reach of a single lookup.
 

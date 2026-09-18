@@ -199,6 +199,7 @@ sun::TypePtr TypeInferer::inferVariableReferenceType(
   // Look up as variable
   VariableInfo* info = ctx_.lookupVariable(name);
   if (info) {
+    varRef.setTargetDeclarationId(info->declarationId);
     // Substitute type parameters to get concrete type (e.g., T -> Box)
     sun::TypePtr originalType = substituteTypeParameters(info->type);
 
@@ -543,6 +544,7 @@ sun::TypePtr TypeInferer::inferType(const ExprAST& expr) {
     }
 
     case ASTNodeType::BLOCK: {
+      if (auto resolved = expr.getResolvedType()) return resolved;
       const auto& block = static_cast<const BlockExprAST&>(expr);
       if (block.isEmpty()) {
         return sun::Types::Void();
@@ -664,6 +666,7 @@ sun::TypePtr TypeInferer::inferType(const ExprAST& expr) {
       // Look up in namespaced variables
       VariableInfo* varInfo = ctx_.lookupQualifiedVariable(fullName);
       if (varInfo) {
+        qualName.setTargetDeclarationId(varInfo->declarationId);
         return varInfo->type;
       }
 
@@ -937,6 +940,7 @@ sun::TypePtr TypeInferer::inferModuleMemberType(
         return specialized.functionType();
       }
       case SymbolKind::Variable:
+        memberAccess.setTargetDeclarationId(match.variableInfo->declarationId);
         return match.variableInfo->type;
       default:
         break;
@@ -957,6 +961,7 @@ sun::TypePtr TypeInferer::inferClassMemberType(
   const sun::ClassField* field =
       ctx_.accessibleField(*classType, memberName, memberAccess.getLocation());
   if (field) {
+    memberAccess.setTargetDeclarationId(field->declarationId);
     return field->type;
   }
 
@@ -1030,6 +1035,7 @@ sun::TypePtr TypeInferer::inferInterfaceMemberType(
   const sun::InterfaceField* field =
       ctx_.accessibleField(*ifaceType, memberName, memberAccess.getLocation());
   if (field) {
+    memberAccess.setTargetDeclarationId(field->declarationId);
     return field->type;
   }
 
@@ -1066,7 +1072,10 @@ sun::TypePtr TypeInferer::inferTypeParameterMemberType(
             static_cast<const sun::ClassType*>(narrowedType.get());
         const sun::ClassField* field = ctx_.accessibleField(
             *classType, memberName, memberAccess.getLocation());
-        if (field) return field->type;
+        if (field) {
+          memberAccess.setTargetDeclarationId(field->declarationId);
+          return field->type;
+        }
         const sun::ClassMethod* method = ctx_.accessibleMethod(
             *classType, memberName, memberAccess.getLocation());
         if (method)
@@ -1081,7 +1090,10 @@ sun::TypePtr TypeInferer::inferTypeParameterMemberType(
             static_cast<const sun::InterfaceType*>(narrowedType.get());
         const sun::InterfaceField* field = ctx_.accessibleField(
             *ifaceType, memberName, memberAccess.getLocation());
-        if (field) return field->type;
+        if (field) {
+          memberAccess.setTargetDeclarationId(field->declarationId);
+          return field->type;
+        }
         const sun::InterfaceMethod* method = ctx_.accessibleMethod(
             *ifaceType, memberName, memberAccess.getLocation());
         if (method)
@@ -1107,7 +1119,10 @@ sun::TypePtr TypeInferer::inferTypeParameterMemberType(
     if (ifaceType) {
       const sun::InterfaceField* field = ctx_.accessibleField(
           *ifaceType, memberName, memberAccess.getLocation());
-      if (field) return field->type;
+      if (field) {
+        memberAccess.setTargetDeclarationId(field->declarationId);
+        return field->type;
+      }
       const sun::InterfaceMethod* method = ctx_.accessibleMethod(
           *ifaceType, memberName, memberAccess.getLocation());
       if (method)

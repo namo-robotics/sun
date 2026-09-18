@@ -476,8 +476,6 @@ void ClassGenerator::emitMethodPrologueThis(Function* func) {
   thisPtr = ctx.builder->CreateLoad(PointerType::getUnqual(ctx.getContext()),
                                     thisAlloca, "this");
 
-  // Register 'this' in the current scope so the body can find it
-  scopes().back().variables["this"] = thisAlloca;
   debugInfo.declareThisParameter(*ctx.builder, thisAlloca, currentClass);
 }
 
@@ -545,7 +543,12 @@ void ClassGenerator::generateMethodBody(const FunctionAST& methodFunc,
     AllocaInst* alloca =
         ctx.builder->CreateAlloca(argLLVMType, nullptr, argName);
     ctx.builder->CreateStore(&*argIt, alloca);
-    scopes().back().variables[argName] = alloca;
+    scopes()
+        .back()
+        .variables[i < fixedCount
+                       ? proto.declarationIdentity().parameters.at(i)
+                       : proto.declarationIdentity().variadicParameters.at(
+                             i - fixedCount)] = alloca;
     // A pack element has no annotation in the source to point a debug entry at
     if (i < fixedCount) {
       debugDeclareParam(alloca, argName, proto, static_cast<unsigned>(i),
@@ -555,21 +558,15 @@ void ClassGenerator::generateMethodBody(const FunctionAST& methodFunc,
     ++argIt;
   }
 
-  // Parameters own their arguments during defaults, but their names are not
-  // visible until the source body starts.
+  // Defaults retain the bindings selected before parameters became visible.
   const size_t prefixCount = methodFunc.getFieldInitializerCount();
   if (prefixCount) {
-    std::vector<std::pair<std::string, AllocaInst*>> hiddenParameters;
-    for (const auto& name : paramNames) {
-      auto& variables = scopes().back().variables;
-      hiddenParameters.emplace_back(name, variables.at(name));
-      variables.erase(name);
-    }
     for (size_t i = 0; i < prefixCount; ++i) {
       const auto& assignment = static_cast<const MemberAssignmentAST&>(
           *methodFunc.getBody().getBody().at(i));
       codegen(static_cast<const ExprAST&>(assignment));
-      const auto* field = currentClass->getField(assignment.getMemberName());
+      const auto* field =
+          currentClass->getField(assignment.getTargetDeclarationId());
       if (field && sun::typeNeedsDrop(field->type)) {
         auto* address =
             layout::fieldPtr(*ctx.builder, currentClass.get(), thisPtr, *field,
@@ -578,9 +575,6 @@ void ClassGenerator::generateMethodBody(const FunctionAST& methodFunc,
                                       field->type,
                                       /*unwindOnly=*/true);
       }
-    }
-    for (const auto& [name, storage] : hiddenParameters) {
-      scopes().back().variables[name] = storage;
     }
   }
 
@@ -625,17 +619,12 @@ Value* ClassGenerator::codegen(const ThisExprAST& expr) {
 // Module member helpers
 // -------------------------------------------------------------------
 
-// The global backing `mod.name`, or null when the object is not a module or
-// the member names something other than a global variable. `symbol` is the
-// name semantic analysis took from the member's own declaration; codegen never
-// rebuilds it from the module path, since only the declaration knows the
-// library-hash scope the symbol was emitted under.
+// Retrieve the selected global when the receiver denotes a module.
 GlobalVariable* ClassGenerator::moduleMemberGlobal(const ExprAST& object,
-                                                   const std::string& symbol) {
+                                                   sun::DeclarationId id) {
   sun::TypePtr objectType = object.getResolvedType();
-  if (!objectType || !objectType->isModule() || symbol.empty()) return nullptr;
-  const std::string& nativeSymbol = gen_.externCEmitter().symbolFor(symbol);
-  return module->getGlobalVariable(nativeSymbol);
+  if (!objectType || !objectType->isModule()) return nullptr;
+  return gen_.variableGenerator().findGlobal(id);
 }
 
 // -------------------------------------------------------------------
@@ -660,9 +649,8 @@ Value* ClassGenerator::codegen(const MemberAccessAST& expr) {
     const std::string qualifiedName = expr.getQualifiedName().mangled();
 
     // Check for global variable in this module
-    const std::string& globalName =
-        gen_.externCEmitter().symbolFor(qualifiedName);
-    GlobalVariable* gv = module->getGlobalVariable(globalName);
+    GlobalVariable* gv =
+        gen_.variableGenerator().findGlobal(expr.getTargetDeclarationId());
     if (gv) {
       sun::TypePtr varType = expr.getResolvedType();
       // Classes and interfaces return the pointer, not a load
@@ -701,7 +689,8 @@ Value* ClassGenerator::codegen(const MemberAccessAST& expr) {
   }
 
   // Check if it's a field access
-  const sun::ClassField* field = classType->getField(memberName);
+  const sun::ClassField* field =
+      classType->getField(expr.getTargetDeclarationId());
   if (field) {
     Value* fieldPtr = layout::fieldPtr(*ctx.builder, classType, objectPtr,
                                        *field, memberName);
@@ -730,8 +719,11 @@ Value* ClassGenerator::codegen(const MemberAccessAST& expr) {
     return codegenBoundMethodReference(expr, objectPtr);
   }
 
-  // It's a method - just return the object pointer
-  // The actual method call will be handled in CallExprAST
+  if (!expr.getResolvedType() || !expr.getResolvedType()->isCallable())
+    logAndThrowError("Field access has no registered target",
+                     expr.getLocation());
+
+  // Calls consume the selected method separately from its receiver.
   return objectPtr;
 }
 
@@ -837,8 +829,8 @@ std::vector<Value*> ClassGenerator::generateCtorArgs(
 Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
   // mod.global = value: the module is compile-time only, so this writes the
   // global directly
-  if (GlobalVariable* gv = moduleMemberGlobal(
-          *expr.getObject(), expr.getQualifiedName().mangled())) {
+  if (GlobalVariable* gv = moduleMemberGlobal(*expr.getObject(),
+                                              expr.getTargetDeclarationId())) {
     Value* value = codegen(*expr.getValue());
     if (!value) return nullptr;
     assignToVariableSlot(gv, value,
@@ -859,7 +851,8 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
   const std::string& memberName = expr.getMemberName();
 
   // Get the field info
-  const sun::ClassField* field = classType->getField(memberName);
+  const sun::ClassField* field =
+      classType->getField(expr.getTargetDeclarationId());
   if (!field) {
     logAndThrowError("Unknown field: " + memberName);
     return nullptr;
@@ -1088,7 +1081,8 @@ Value* ClassGenerator::codegen(const InterfaceDefinitionAST& expr) {
       AllocaInst* alloca =
           ctx.builder->CreateAlloca(argLLVMType, nullptr, argName);
       ctx.builder->CreateStore(&*argIt, alloca);
-      scopes().back().variables[argName] = alloca;
+      scopes().back().variables[proto.declarationIdentity().parameters.at(
+          paramIdx)] = alloca;
       debugDeclareParam(alloca, argName, proto, static_cast<unsigned>(paramIdx),
                         /*argNoBase=*/2);
       ++argIt;
@@ -1210,7 +1204,7 @@ Value* ClassGenerator::codegen(const GenericCallAST& expr) {
 
     std::vector<Value*> argValues;
     if (AllocaInst* envPtr =
-            scopes().findVariable(specializedFunc->getName().str())) {
+            scopes().findVariable(expr.getTargetDeclarationId())) {
       argValues.push_back(envPtr);
     }
     const auto& specParamTypes = signature.getParamTypes();
@@ -1322,9 +1316,12 @@ Value* ClassGenerator::codegen(const StructLiteralAST& expr) {
       createEntryBlockAlloca(parentFunc, "struct.lit", structType);
 
   // Every field is assigned below, so no zeroing pass is needed.
-  for (const auto& field : expr.getFields()) {
-    const sun::ClassField* classField = classType->getField(field.name);
-    if (!classField) continue;  // rejected in semantic analysis
+  for (size_t i = 0; i < expr.getFields().size(); ++i) {
+    const auto& field = expr.getFields()[i];
+    const sun::ClassField* classField =
+        classType->getField(expr.resolvedFields().at(i));
+    if (!classField)
+      logAndThrowError("Struct literal field target is not registered");
 
     Value* value = codegen(*field.value);
     if (!value) return nullptr;

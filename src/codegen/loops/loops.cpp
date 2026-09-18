@@ -285,7 +285,7 @@ Value* LoopGenerator::codegen(const ForInExprAST& expr) {
   Type* llvmLoopVarType = typeResolver.resolve(loopVarType);
   AllocaInst* loopVarAlloca =
       createEntryBlockAlloca(func, expr.getLoopVar(), llvmLoopVarType);
-  scopes().back().variables[expr.getLoopVar()] = loopVarAlloca;
+  scopes().back().variables[expr.getDeclarationId()] = loopVarAlloca;
   debugDeclareLocal(loopVarAlloca, expr.getLoopVar(), loopVarType,
                     expr.getLocation());
 

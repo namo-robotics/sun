@@ -204,4 +204,5 @@ struct Capture {
   // `[const ref x]`; also true when a by-value capture picked up a `const`
   // variable, which stays constant however it was captured.
   bool isConst = false;
+  sun::DeclarationId declarationId;
 };

@@ -138,7 +138,8 @@ void BodyAnalyzer::analyzeFunction(FunctionAST& func) {
   // marked as captures so mutation checks and nested capture lists can
   // distinguish them from ordinary locals
   for (const auto& cap : proto.getCaptures()) {
-    ctx_.declareVariable(cap.name, cap.type);
+    ctx_.declareVariable(cap.name, cap.type, false, cap.isConst,
+                         cap.declarationId);
     if (VariableInfo* vi = ctx_.lookupVariable(cap.name)) {
       vi->captureKind = cap.kind;
       vi->isConst = cap.isConst;
@@ -192,7 +193,8 @@ void BodyAnalyzer::analyzeLambda(LambdaAST& lambda) {
   // marked as captures so mutation checks and nested capture lists can
   // distinguish them from ordinary locals
   for (const auto& cap : proto.getCaptures()) {
-    ctx_.declareVariable(cap.name, cap.type);
+    ctx_.declareVariable(cap.name, cap.type, false, cap.isConst,
+                         cap.declarationId);
     if (VariableInfo* vi = ctx_.lookupVariable(cap.name)) {
       vi->captureKind = cap.kind;
       vi->isConst = cap.isConst;
@@ -280,7 +282,8 @@ void BodyAnalyzer::analyzeMethodWithBindings(
   // Step 5: Declare method parameters with substituted types
   for (size_t i = 0; i < proto.getArgs().size(); ++i) {
     const auto& [argName, argType] = proto.getArgs()[i];
-    ctx_.declareVariable(argName, substitutedParamTypes[i], /*isParam=*/true);
+    ctx_.declareVariable(argName, substitutedParamTypes[i], true, false,
+                         proto.declarationIdentity().parameters.at(i));
   }
 
   // Analyze the source body after its parameters are in scope.

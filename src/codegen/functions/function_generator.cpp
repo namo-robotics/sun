@@ -40,16 +40,6 @@ sun::cabi::ExternCEmitter& FunctionGenerator::externC() {
   return gen_.externCEmitter();
 }
 
-llvm::LoadInst* FunctionGenerator::createLoadForLocalVar(
-    const std::string& name) {
-  return gen_.variableGenerator().createLoadForLocalVar(name);
-}
-
-llvm::LoadInst* FunctionGenerator::createLoadForGlobalVar(
-    const std::string& varName) {
-  return gen_.variableGenerator().createLoadForGlobalVar(varName);
-}
-
 llvm::Value* FunctionGenerator::applyMoveSemantics(llvm::Value* argVal,
                                                    sun::TypePtr argSunType) {
   return gen_.applyMoveSemantics(argVal, std::move(argSunType));

@@ -177,7 +177,11 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
       // Checked per specialization: whether a type argument is packable is
       // only knowable once T is substituted
       sema_.checkPackedFieldType(*genericClassInfo->AST, field, fieldType);
-      specializedClass->addField(field.name, fieldType).visibility =
+      auto id = ctx_.types()->declarations.add(
+          sun::DeclarationKind::Field, field.name, instanceId,
+          ctx_.types()->declarations.get(instanceId).module, {},
+          field.declaration.id);
+      specializedClass->addField(field.name, fieldType, id).visibility =
           field.visibility;
     }
   }
@@ -231,10 +235,8 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
 
   for (size_t i = 0; i < fieldsClone.size(); ++i) {
     auto& field = fieldsClone[i];
-    field.declaration.id = ctx_.types()->declarations.add(
-        sun::DeclarationKind::Field, field.name, instanceId,
-        ctx_.types()->declarations.get(instanceId).module, {},
-        genericClassInfo->AST->getFields()[i].declaration.id);
+    field.declaration.id =
+        specializedClass->getField(field.name)->declarationId;
     field.declaration.session = ctx_.types()->declarations.session();
   }
 
@@ -531,7 +533,8 @@ void GenericSpecializer::declareVariadicPack(const PrototypeAST& proto) {
   // Its elements, under the names codegen gives the parameters. The expansion
   // rewrites `args...` into references to exactly these.
   for (size_t i = 0; i < types.size(); ++i) {
-    ctx_.declareVariable(pack.elementName(i), types[i], /*isParam=*/true);
+    ctx_.declareVariable(pack.elementName(i), types[i], true, false,
+                         proto.declarationIdentity().variadicParameters.at(i));
   }
 }
 
@@ -799,12 +802,14 @@ GenericSpecializer::instantiateGenericFunction(
     for (size_t i = 0; i < paramTypes.size(); ++i) {
       // Use parameter names from the cloned prototype
       std::string argName = proto.getArgs()[i].first;
-      ctx_.declareVariable(argName, paramTypes[i], /*isParam=*/true);
+      ctx_.declareVariable(argName, paramTypes[i], true, false,
+                           clonedProto.declarationIdentity().parameters.at(i));
     }
 
     // Add captures to scope
     for (const auto& cap : substitutedCaptures) {
-      ctx_.declareVariable(cap.name, cap.type);
+      ctx_.declareVariable(cap.name, cap.type, false, cap.isConst,
+                           cap.declarationId);
     }
 
     // Analyze the body with current type parameter bindings
@@ -1048,7 +1053,8 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
   // Declare regular parameters
   for (size_t i = 0; i < paramTypes.size(); ++i) {
     const auto& [argName, argType] = proto.getArgs()[i];
-    ctx_.declareVariable(argName, paramTypes[i], /*isParam=*/true);
+    ctx_.declareVariable(argName, paramTypes[i], true, false,
+                         clonedProto.declarationIdentity().parameters.at(i));
   }
 
   // Analyze the body
@@ -1137,7 +1143,11 @@ GenericSpecializer::instantiateGenericInterface(
     // Add fields with substituted types
     for (const auto& field : genericInfo->AST->getFields()) {
       auto fieldType = sema_.types().typeAnnotationToType(field.type);
-      specializedInterface->addField(field.name, fieldType).visibility =
+      auto id = ctx_.types()->declarations.add(
+          sun::DeclarationKind::Field, field.name, instanceId,
+          ctx_.types()->declarations.get(instanceId).module, {},
+          field.declaration.id);
+      specializedInterface->addField(field.name, fieldType, id).visibility =
           field.visibility;
     }
 

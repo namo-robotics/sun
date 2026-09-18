@@ -66,7 +66,13 @@ void SemanticAnalyzer::inheritInterfaceFields(
         continue;
       }
       // Add interface field to class with the interface's visibility
-      classType->addField(field.name, field.type).visibility = field.visibility;
+      const auto owner = classType->getDeclarationId();
+      auto id = ctx_.types()->declarations.add(
+          sun::DeclarationKind::Field, field.name, owner,
+          ctx_.types()->declarations.get(owner).module, {},
+          field.declarationId);
+      classType->addField(field.name, field.type, id).visibility =
+          field.visibility;
     }
 
     // Record the implementation now (conformance is validated after the

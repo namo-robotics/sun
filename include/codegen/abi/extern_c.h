@@ -66,17 +66,6 @@ class ExternCEmitter {
   llvm::GlobalVariable* declareGlobal(const VariableCreationAST& variable,
                                       llvm::Type* valueType);
 
-  /// Record that a Sun-side name resolves to `symbol`. Call sites resolve
-  /// through the module-scoped mangled name, which the C symbol never
-  /// matches; only the C-extern path knows a name is one of these, so it
-  /// registers the mapping rather than declare() guessing.
-  void mapSunName(const std::string& sunName, const std::string& symbol);
-
-  /// Translate a resolved Sun-side name to the C symbol it was declared
-  /// under, for `extern function f(...) T as "g"`. Returns the name unchanged
-  /// when it is not a renamed extern.
-  const std::string& symbolFor(const std::string& sunName) const;
-
   /// Whether calls to `func` must go through emitCall: true when its
   /// signature needed ABI rewriting, so its LLVM parameters no longer line up
   /// one-to-one with the Sun arguments.
@@ -130,7 +119,6 @@ class ExternCEmitter {
 
   /// Sun-side extern name -> C symbol. Name resolution rewrites call sites
   /// through the Sun name, so this is where it becomes the real symbol.
-  std::map<std::string, std::string> symbolNames_;
 
   /// C symbol -> how its signature was lowered. Call sites need the same plan
   /// the declaration was built from; recomputing it independently would risk

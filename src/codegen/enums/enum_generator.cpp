@@ -244,7 +244,7 @@ Value* EnumGenerator::codegenMatch(const MatchExprAST& expr,
           ctx.builder->CreateStore(ctx.builder->CreateLoad(fieldTy, fieldPtr),
                                    alloca);
           if (!binding.isWildcard)
-            scopes().back().variables[binding.name] = alloca;
+            scopes().back().variables[binding.declaration.id] = alloca;
           scopes().trackClassAllocation(alloca, name, binding.resolvedType);
         } else if (binding.isWildcard) {
           continue;
@@ -256,8 +256,8 @@ Value* EnumGenerator::codegenMatch(const MatchExprAST& expr,
               TheFunction, binding.name + ".ref",
               PointerType::getUnqual(ctx.getContext()));
           ctx.builder->CreateStore(fieldPtr, alloca);
-          scopes().back().variables[binding.name] = alloca;
-          scopes().back().indirectBindings.insert(binding.name);
+          scopes().back().variables[binding.declaration.id] = alloca;
+          scopes().back().indirectBindings.insert(binding.declaration.id);
         } else {
           // Scalar payload: fresh local copy
           AllocaInst* alloca =
@@ -265,7 +265,7 @@ Value* EnumGenerator::codegenMatch(const MatchExprAST& expr,
           Value* fieldVal =
               ctx.builder->CreateLoad(fieldTy, fieldPtr, binding.name);
           ctx.builder->CreateStore(fieldVal, alloca);
-          scopes().back().variables[binding.name] = alloca;
+          scopes().back().variables[binding.declaration.id] = alloca;
           state_.debugInfo.declareLocal(*ctx.builder, alloca, binding.name,
                                         binding.resolvedType, binding.location);
         }

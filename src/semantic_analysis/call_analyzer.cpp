@@ -343,7 +343,11 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveCallee(
       // Not a simple variable reference or method call - analyze the callee
       // expression
       sema_.analyzeExpr(callee);
-      if (callee.getType() == ASTNodeType::QUALIFIED_NAME)
+      if (callee.getType() == ASTNodeType::QUALIFIED_NAME &&
+          callee.getTargetDeclarationId() &&
+          ctx_.types()
+                  ->declarations.get(callee.getTargetDeclarationId())
+                  .kind == sun::DeclarationKind::Function)
         callExpr.setTargetDeclarationId(callee.getTargetDeclarationId());
       return {};
   }
@@ -538,6 +542,7 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMethodCallee(
   const sun::ClassField* callableField = classType->getField(methodName);
   if (callableField && callableField->type &&
       callableField->type->isCallable()) {
+    memberAccess.setTargetDeclarationId(callableField->declarationId);
     memberAccess.setResolvedType(callableField->type);
     return out;
   }
@@ -820,6 +825,10 @@ void CallAnalyzer::expandPackArguments(
       for (size_t i = 0; i < types.size(); ++i) {
         auto vref = std::make_unique<VariableReferenceAST>(packName + "." +
                                                            std::to_string(i));
+        const auto* binding = ctx_.lookupVariable(vref->getName());
+        if (!binding || !binding->declarationId)
+          logAndThrowError("Variadic element has no declaration identity");
+        vref->setTargetDeclarationId(binding->declarationId);
         vref->setResolvedType(types[i]);
         rebuilt.push_back(std::move(vref));
       }

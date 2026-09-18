@@ -695,8 +695,9 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
         sun::unwrapRef(memberAccess->getObject()->getResolvedType());
     auto* ownerClass = sun::tryGetType<sun::ClassType>(ownerType);
     const sun::ClassField* field =
-        ownerClass ? ownerClass->getField(memberAccess->getMemberName())
-                   : nullptr;
+        ownerClass
+            ? ownerClass->getField(memberAccess->getTargetDeclarationId())
+            : nullptr;
     if (!field || !field->type || !field->type->isCallable()) {
       return scopes.trackCallTemporary(codegenMethodCall(expr, *memberAccess),
                                        expr.getResolvedType());
@@ -1049,12 +1050,13 @@ Value* CodegenVisitor::codegenLambdaCall(const CallExprAST& expr,
   if (auto* varRef =
           dynamic_cast<const VariableReferenceAST*>(expr.getCallee())) {
     // Check local variable (alloca)
-    if (AllocaInst* alloca = scopes.findVariable(varRef->getName())) {
+    if (AllocaInst* alloca =
+            scopes.findVariable(varRef->getTargetDeclarationId())) {
       closurePtr = alloca;
     }
     // Check global variable
     else if (GlobalVariable* gv =
-                 variables.globalForSunName(varRef->getMangledName())) {
+                 variables.findGlobal(varRef->getTargetDeclarationId())) {
       closurePtr = gv;
     }
   }

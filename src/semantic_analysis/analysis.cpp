@@ -200,8 +200,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
 
     case ASTNodeType::BLOCK: {
       auto& block = static_cast<BlockExprAST&>(expr);
+      ctx_.enterScope();
       bodies_.analyzeBlock(block);
       expr.setResolvedType(types_.inferType(expr));
+      ctx_.exitScope();
       break;
     }
 
@@ -483,6 +485,7 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
 
   auto existingClass = ctx_.lookupClass(baseName);
   if (existingClass) {
+    classDef.setTargetDeclarationId(existingClass->getDeclarationId());
     // Primary already analyzed — validate and merge methods now
     for (const auto& extMethod : classDef.getMethods()) {
       const std::string& methodName = extMethod.function->getProto().getName();
@@ -549,7 +552,11 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
 
     // Merge methods into primary AST so codegen generates them
     for (auto* s = ctx_.scope(); s != nullptr; s = s->parent) {
-      auto it = s->classDefinitions.find(baseName);
+      auto it = std::find_if(s->classDefinitions.begin(),
+                             s->classDefinitions.end(), [&](const auto& entry) {
+                               return entry.second->getDeclarationId() ==
+                                      classDef.getTargetDeclarationId();
+                             });
       if (it != s->classDefinitions.end()) {
         for (auto& extMethod : classDef.getMutableMethods()) {
           it->second->getMutableMethods().push_back(std::move(extMethod));
@@ -595,6 +602,7 @@ void SemanticAnalyzer::analyzeStructLiteral(StructLiteralAST& literal,
     return;
   }
 
+  literal.resolvedFields().clear();
   std::set<std::string> seen;
   for (auto& field : literal.getMutableFields()) {
     const sun::ClassField* classField =
@@ -612,6 +620,7 @@ void SemanticAnalyzer::analyzeStructLiteral(StructLiteralAST& literal,
       continue;
     }
 
+    literal.resolvedFields().push_back(classField->declarationId);
     analyzeExpr(*field.value, classField->type);
     sun::TypePtr valueType = field.value->getResolvedType();
     checkMoveSource(*field.value, field.location);
@@ -695,6 +704,7 @@ void SemanticAnalyzer::analyzeModuleGlobalAssignment(
   // The declaration's own qualified name is the symbol codegen emitted the
   // global under, so that is what the write is pointed at
   assign.setQualifiedName(target.qualifiedName);
+  assign.setTargetDeclarationId(target.declarationId);
 
   sun::TypePtr expectedType = unwrapRef(target.type);
   analyzeExpr(const_cast<ExprAST&>(*assign.getValue()), expectedType);

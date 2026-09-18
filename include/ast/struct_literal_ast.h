@@ -29,7 +29,17 @@ class StructLiteralAST : public ExprAST {
  private:
   std::vector<FieldInit> fields_;
 
+ protected:
+  void ensureAnalysis() const override {
+    if (!analysis_) analysis_ = std::make_unique<StructLiteralAnalysis>();
+  }
+
  public:
+  /** Retain selected fields separately from their source names. */
+  std::vector<sun::DeclarationId>& resolvedFields() const {
+    return static_cast<StructLiteralAnalysis&>(analysis()).fields;
+  }
+
   explicit StructLiteralAST(std::vector<FieldInit> fields)
       : fields_(std::move(fields)) {}
 

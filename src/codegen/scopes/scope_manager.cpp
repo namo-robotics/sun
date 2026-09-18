@@ -40,10 +40,10 @@ void ScopeManager::pop() {
 // Finding variables
 // -------------------------------------------------------------------
 
-AllocaInst* ScopeManager::findVariable(const std::string& name) {
+AllocaInst* ScopeManager::findVariable(sun::DeclarationId id) {
   // Search from innermost scope to outermost
   for (auto it = scopes_.rbegin(); it != scopes_.rend(); ++it) {
-    auto found = it->variables.find(name);
+    auto found = it->variables.find(id);
     if (found != it->variables.end()) {
       return found->second;
     }
@@ -56,20 +56,20 @@ AllocaInst* ScopeManager::findVariable(const std::string& name) {
   return nullptr;
 }
 
-bool ScopeManager::isIndirectBinding(const std::string& name) const {
+bool ScopeManager::isIndirectBinding(sun::DeclarationId id) const {
   for (auto it = scopes_.rbegin(); it != scopes_.rend(); ++it) {
-    if (it->variables.count(name)) return it->indirectBindings.count(name);
+    if (it->variables.count(id)) return it->indirectBindings.count(id);
     if (it->isFunctionBoundary) break;
   }
   return false;
 }
 
-Value* ScopeManager::compoundStorageAddress(const std::string& name) {
-  AllocaInst* alloca = findVariable(name);
+Value* ScopeManager::compoundStorageAddress(sun::DeclarationId id) {
+  AllocaInst* alloca = findVariable(id);
   if (!alloca) return nullptr;
-  if (isIndirectBinding(name)) {
+  if (isIndirectBinding(id)) {
     return ctx.builder->CreateLoad(PointerType::getUnqual(ctx.getContext()),
-                                   alloca, name + ".borrow");
+                                   alloca, alloca->getName() + ".borrow");
   }
   return alloca;
 }
@@ -260,17 +260,6 @@ std::optional<std::string> ScopeManager::releaseBlockResult(Value* result) {
     return alloc.varName;
   }
   return std::nullopt;
-}
-
-void ScopeManager::markAsMoved(const std::string& name) {
-  for (auto& scope : scopes_) {
-    for (auto& alloc : scope.ownedAllocations) {
-      if (alloc.varName == name) {
-        alloc.moved = true;
-        return;
-      }
-    }
-  }
 }
 
 bool ScopeManager::hasLiveOwners(size_t depth) const {

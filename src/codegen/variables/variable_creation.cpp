@@ -18,7 +18,8 @@ namespace ops = sun::codegen::ops;
 // -------------------------------------------------------------------
 
 GlobalVariable* VariableGenerator::createGlobalVariable(
-    const std::string& name, llvm::Type* type, llvm::Constant* initializer) {
+    sun::DeclarationId id, const std::string& name, llvm::Type* type,
+    llvm::Constant* initializer) {
   // Create appropriate zero initializer if none provided
   if (!initializer) {
     if (type->isDoubleTy()) {
@@ -37,20 +38,35 @@ GlobalVariable* VariableGenerator::createGlobalVariable(
   // Create new global variable
   GlobalVariable* gv = new GlobalVariable(
       *module, type, false, GlobalValue::ExternalLinkage, initializer, name);
-  return gv;
+  return bindGlobal(id, gv);
 }
 
 // -------------------------------------------------------------------
 // Variable creation codegen
 // -------------------------------------------------------------------
 
-void VariableGenerator::declareBlockExternGlobals(const BlockExprAST& block) {
+void VariableGenerator::declareBlockExternalGlobals(const BlockExprAST& block) {
   for (const auto& node : block.getBody()) {
+    if (node->getType() == ASTNodeType::MODULE) {
+      declareBlockExternalGlobals(
+          static_cast<const ModuleAST&>(*node).getBody());
+      continue;
+    }
+    if (node->getType() == ASTNodeType::MOON_SCOPE) {
+      declareBlockExternalGlobals(
+          static_cast<const MoonScopeAST&>(*node).getBody());
+      continue;
+    }
     if (node->getType() != ASTNodeType::VARIABLE_CREATION) continue;
     const auto& variable = static_cast<const VariableCreationAST&>(*node);
+    if (variable.isPrecompiled() && !variable.isCExtern()) {
+      codegen(variable);
+      continue;
+    }
     if (!variable.isCExtern()) continue;
     llvm::Type* type = typeResolver.resolve(variable.getResolvedType());
-    gen_.externCEmitter().declareGlobal(variable, type);
+    bindGlobal(variable.getDeclarationId(),
+               gen_.externCEmitter().declareGlobal(variable, type));
   }
 }
 
@@ -71,8 +87,9 @@ Value* VariableGenerator::codegen(const VariableCreationAST& expr) {
   std::string varName = expr.getMangledName();
 
   if (expr.isCExtern()) {
-    return gen_.externCEmitter().declareGlobal(
-        expr, typeResolver.resolve(varSunType));
+    return bindGlobal(expr.getDeclarationId(),
+                      gen_.externCEmitter().declareGlobal(
+                          expr, typeResolver.resolve(varSunType)));
   }
 
   // A global imported from a .moon is defined in the bundle's bitcode, which
@@ -80,12 +97,13 @@ Value* VariableGenerator::codegen(const VariableCreationAST& expr) {
   // give the program a second, uninitialized copy.
   if (expr.isPrecompiled()) {
     if (GlobalVariable* existing = module->getGlobalVariable(varName)) {
-      return existing;
+      return bindGlobal(expr.getDeclarationId(), existing);
     }
-    return new GlobalVariable(*module, typeResolver.resolve(varSunType),
-                              /*isConstant=*/false,
-                              GlobalValue::ExternalLinkage,
-                              /*Initializer=*/nullptr, varName);
+    return bindGlobal(
+        expr.getDeclarationId(),
+        new GlobalVariable(*module, typeResolver.resolve(varSunType),
+                           /*isConstant=*/false, GlobalValue::ExternalLinkage,
+                           /*Initializer=*/nullptr, varName));
   }
 
   // Check if we're creating a global variable and if it already exists
@@ -160,7 +178,7 @@ Value* VariableGenerator::genFunctionVariable(const VariableCreationAST& expr) {
 
   if (scopes().empty()) {
     // Top-level: use global variable for closure struct
-    createGlobalVariable(varName, varType,
+    createGlobalVariable(expr.getDeclarationId(), varName, varType,
                          llvm::dyn_cast<llvm::Constant>(resultPtr));
   } else {
     // Inside a function: resultPtr is already an alloca from createFatClosure
@@ -170,7 +188,7 @@ Value* VariableGenerator::genFunctionVariable(const VariableCreationAST& expr) {
       // resultPtr is already an alloca containing the closure struct - use it
       // directly
       fatAlloca->setName(varName);
-      scope[expr.getName()] = fatAlloca;
+      scope[expr.getDeclarationId()] = fatAlloca;
       debugDeclareLocal(fatAlloca, expr.getName(), expr.getResolvedType(),
                         expr.getLocation());
     } else {
@@ -179,7 +197,7 @@ Value* VariableGenerator::genFunctionVariable(const VariableCreationAST& expr) {
       AllocaInst* alloca =
           createEntryBlockAlloca(currentFunc, varName, varType);
       ctx.builder->CreateStore(resultPtr, alloca);
-      scope[expr.getName()] = alloca;
+      scope[expr.getDeclarationId()] = alloca;
       debugDeclareLocal(alloca, expr.getName(), expr.getResolvedType(),
                         expr.getLocation());
     }
@@ -228,7 +246,7 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
     if (valueIsFreshTemp) {
       if (auto* allocaValue = dyn_cast<AllocaInst>(value)) {
         allocaValue->setName(expr.getName());
-        scope[expr.getName()] = allocaValue;
+        scope[expr.getDeclarationId()] = allocaValue;
         debugDeclareLocal(allocaValue, expr.getName(), varSunType,
                           expr.getLocation());
         scopes().trackClassAllocation(allocaValue, expr.getName(), varSunType);
@@ -245,7 +263,7 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
       structVal = gen_.applyMoveSemantics(value, varSunType);
     }
     ctx.builder->CreateStore(structVal, alloca);
-    scope[expr.getName()] = alloca;
+    scope[expr.getDeclarationId()] = alloca;
     debugDeclareLocal(alloca, expr.getName(), varSunType, expr.getLocation());
     scopes().trackClassAllocation(alloca, expr.getName(), varSunType);
     return alloca;
@@ -266,7 +284,7 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
       AllocaInst* alloca =
           createEntryBlockAlloca(func, expr.getName(), fatPtr->getType());
       ctx.builder->CreateStore(fatPtr, alloca);
-      scope[expr.getName()] = alloca;
+      scope[expr.getDeclarationId()] = alloca;
       debugDeclareLocal(alloca, expr.getName(), varSunType, expr.getLocation());
       scopes().trackClassAllocation(alloca, expr.getName(), varSunType);
       return fatPtr;
@@ -284,7 +302,7 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
       AllocaInst* alloca =
           createEntryBlockAlloca(func, expr.getName(), fatPtrType);
       ctx.builder->CreateStore(fatPtrVal, alloca);
-      scope[expr.getName()] = alloca;
+      scope[expr.getDeclarationId()] = alloca;
       debugDeclareLocal(alloca, expr.getName(), varSunType, expr.getLocation());
       scopes().trackClassAllocation(alloca, expr.getName(), varSunType);
       return fatPtrVal;
@@ -303,7 +321,7 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
       if (valueIsFreshTemp) {
         if (auto* allocaValue = dyn_cast<AllocaInst>(value)) {
           allocaValue->setName(expr.getName());
-          scope[expr.getName()] = allocaValue;
+          scope[expr.getDeclarationId()] = allocaValue;
           debugDeclareLocal(allocaValue, expr.getName(), varSunType,
                             expr.getLocation());
           scopes().trackClassAllocation(allocaValue, expr.getName(),
@@ -314,7 +332,7 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
       AllocaInst* alloca =
           createEntryBlockAlloca(func, expr.getName(), varType);
       gen_.emitArrayTransfer(alloca, value, *arrayType, /*move=*/true);
-      scope[expr.getName()] = alloca;
+      scope[expr.getDeclarationId()] = alloca;
       debugDeclareLocal(alloca, expr.getName(), varSunType, expr.getLocation());
       scopes().trackClassAllocation(alloca, expr.getName(), varSunType);
       return alloca;
@@ -343,7 +361,7 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
     if (allocaValue && (valueKind == ASTNodeType::CALL ||
                         valueKind == ASTNodeType::GENERIC_CALL)) {
       allocaValue->setName(expr.getName());
-      scope[expr.getName()] = allocaValue;
+      scope[expr.getDeclarationId()] = allocaValue;
       debugDeclareLocal(allocaValue, expr.getName(), varSunType,
                         expr.getLocation());
 
@@ -361,7 +379,7 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
       AllocaInst* alloca =
           createEntryBlockAlloca(func, expr.getName(), structType);
       ctx.builder->CreateStore(value, alloca);
-      scope[expr.getName()] = alloca;
+      scope[expr.getDeclarationId()] = alloca;
       debugDeclareLocal(alloca, expr.getName(), varSunType, expr.getLocation());
 
       // Track class allocation for automatic deinit at scope exit
@@ -381,7 +399,7 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
         AllocaInst* alloca =
             createEntryBlockAlloca(func, expr.getName(), structType);
         ctx.builder->CreateStore(structVal, alloca);
-        scope[expr.getName()] = alloca;
+        scope[expr.getDeclarationId()] = alloca;
         debugDeclareLocal(alloca, expr.getName(), varSunType,
                           expr.getLocation());
 
@@ -417,7 +435,7 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
 
   AllocaInst* alloca = createEntryBlockAlloca(func, expr.getName(), varType);
   ctx.builder->CreateStore(value, alloca);
-  scope[expr.getName()] = alloca;
+  scope[expr.getDeclarationId()] = alloca;
   debugDeclareLocal(alloca, expr.getName(), varSunType, expr.getLocation());
 
   return value;
@@ -533,7 +551,8 @@ llvm::Constant* VariableGenerator::genGlobalArray(
   }
 
   // The global IS the inline storage
-  createGlobalVariable(expr.getMangledName(), dataConst->getType(), dataConst);
+  createGlobalVariable(expr.getDeclarationId(), expr.getMangledName(),
+                       dataConst->getType(), dataConst);
   return dataConst;
 }
 
@@ -596,7 +615,7 @@ llvm::Constant* VariableGenerator::genGlobalVarForConstantExpr(
 
   // Create global variable with the constant initializer
   std::string varName = expr.getMangledName();
-  createGlobalVariable(varName, varType, constValue);
+  createGlobalVariable(expr.getDeclarationId(), varName, varType, constValue);
   return constValue;
 }
 
@@ -628,7 +647,7 @@ Value* VariableGenerator::codegen(const ReferenceCreationAST& expr) {
   ctx.builder->CreateStore(targetPtr, refAlloca);
 
   if (!scopes().empty()) {
-    scopes().back().variables[refName] = refAlloca;
+    scopes().back().variables[expr.getDeclarationId()] = refAlloca;
     debugDeclareLocal(refAlloca, refName, refSunType, expr.getLocation());
   }
   return refAlloca;
@@ -663,7 +682,7 @@ GlobalVariable* VariableGenerator::genGlobalClassVar(
   info.location = expr.getLocation();
   staticInits.push_back(std::move(info));
 
-  return gv;
+  return bindGlobal(expr.getDeclarationId(), gv);
 }
 
 // -------------------------------------------------------------------
@@ -692,7 +711,7 @@ GlobalVariable* VariableGenerator::genGlobalVarWithRuntimeInit(
   info.location = expr.getLocation();
   staticInits.push_back(std::move(info));
 
-  return gv;
+  return bindGlobal(expr.getDeclarationId(), gv);
 }
 
 // -------------------------------------------------------------------
@@ -773,9 +792,13 @@ void VariableGenerator::emitStaticInitFunction() {
       if (init.initExpr->getType() == ASTNodeType::STRUCT_LITERAL) {
         const auto& literal =
             *static_cast<const StructLiteralAST*>(init.initExpr);
-        for (const auto& field : literal.getFields()) {
-          const sun::ClassField* classField = classType->getField(field.name);
-          if (!classField) continue;  // rejected in semantic analysis
+        for (size_t i = 0; i < literal.getFields().size(); ++i) {
+          const auto& field = literal.getFields()[i];
+          const sun::ClassField* classField =
+              classType->getField(literal.resolvedFields().at(i));
+          if (!classField)
+            logAndThrowError(
+                "Global initializer field target is not registered");
 
           Value* value = codegen(*field.value);
           if (!value) {

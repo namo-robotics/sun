@@ -302,12 +302,25 @@ void SemanticAnalyzer::analyzeMemberAssignment(
     return;
   }
 
+  if (objectType && objectType->isRawPointer()) {
+    if (!ctx_.isInUnsafeBlock())
+      logAndThrowError(
+          "Dereferencing 'raw_ptr' can only be done in an unsafe block",
+          memberAssign.getLocation());
+    objectType =
+        static_cast<const sun::RawPointerType&>(*objectType).getPointeeType();
+  } else if (objectType && objectType->isStaticPointer()) {
+    objectType = static_cast<const sun::StaticPointerType&>(*objectType)
+                     .getPointeeType();
+  }
+
   sun::TypePtr expectedFieldType;
   if (objectType && objectType->isClass()) {
     auto* classType = static_cast<sun::ClassType*>(objectType.get());
     if (const sun::ClassField* field =
             ctx_.accessibleField(*classType, memberAssign.getMemberName(),
                                  memberAssign.getLocation())) {
+      memberAssign.setTargetDeclarationId(field->declarationId);
       expectedFieldType = field->type;
     }
   }

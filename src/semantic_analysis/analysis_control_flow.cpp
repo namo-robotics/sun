@@ -291,7 +291,7 @@ void SemanticAnalyzer::analyzeForInLoop(ForInExprAST& forInExpr) {
   // Create scope for loop body with loop variable
   ctx_.enterScope();
   ctx_.declareVariable(forInExpr.getLoopVar(), loopVarType, /*isParam=*/false,
-                       forInExpr.isConst());
+                       forInExpr.isConst(), forInExpr.getDeclarationId());
   analyzeExpr(const_cast<ExprAST&>(*forInExpr.getBody()));
   ctx_.exitScope();
 
@@ -360,7 +360,8 @@ void SemanticAnalyzer::analyzeTryCatch(TryCatchExprAST& tryCatchExpr) {
     catchClause.resolvedType = bindingType;
 
     ctx_.enterScope();
-    ctx_.declareVariable(catchClause.bindingName, bindingType);
+    ctx_.declareVariable(catchClause.bindingName, bindingType, false, false,
+                         catchClause.declaration.id);
     bodies_.analyzeBlock(const_cast<BlockExprAST&>(*catchClause.body));
     ctx_.exitScope();
   }

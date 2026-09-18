@@ -337,7 +337,7 @@ Value* ErrorGenerator::codegen(const TryCatchExprAST& expr) {
         AllocaInst* alloca =
             tmpBuilder.CreateAlloca(fatTy, nullptr, clause.bindingName);
         ctx.builder->CreateStore(fat, alloca);
-        scopes().back().variables[clause.bindingName] = alloca;
+        scopes().back().variables[clause.declaration.id] = alloca;
         debugDeclareLocal(alloca, clause.bindingName, nullptr,
                           expr.getLocation());
       } else {
@@ -353,7 +353,7 @@ Value* ErrorGenerator::codegen(const TryCatchExprAST& expr) {
         Value* objVal =
             ctx.builder->CreateLoad(classStruct, dataPtr, "err.obj");
         ctx.builder->CreateStore(objVal, alloca);
-        scopes().back().variables[clause.bindingName] = alloca;
+        scopes().back().variables[clause.declaration.id] = alloca;
         debugDeclareLocal(alloca, clause.bindingName, classType,
                           expr.getLocation());
       }

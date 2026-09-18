@@ -362,9 +362,10 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
   // Add fields to the interface type and pseudo-class
   for (const auto& field : interfaceDef.getFields()) {
     sun::TypePtr fieldType = types_.typeAnnotationToType(field.type);
-    interfaceType->addField(field.name, fieldType).visibility =
-        field.visibility;
-    pseudoClass->addField(field.name, fieldType).visibility = field.visibility;
+    interfaceType->addField(field.name, fieldType, field.declaration.id)
+        .visibility = field.visibility;
+    pseudoClass->addField(field.name, fieldType, field.declaration.id)
+        .visibility = field.visibility;
   }
 
   // Add methods to the interface type

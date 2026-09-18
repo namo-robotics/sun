@@ -287,7 +287,8 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const LambdaAST& lambda) {
           kind != CaptureKind::Owned &&
           ((kind == CaptureKind::Borrow && proto.isConstRefCapture(var)) ||
            varInfo->isConst || sun::isConstRef(varInfo->type));
-      captures.push_back({var, varInfo->type, kind, isConst});
+      captures.push_back(
+          {var, varInfo->type, kind, isConst, varInfo->declarationId});
     }
   }
 

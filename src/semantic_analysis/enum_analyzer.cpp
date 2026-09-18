@@ -588,7 +588,8 @@ void EnumAnalyzer::analyzeEnumMatch(
       binding.resolvedType = variant->payloadTypes[i];
       if (!binding.isWildcard) {
         // Registered by plain name, like catch-clause bindings
-        ctx_.declareVariable(binding.name, binding.resolvedType);
+        ctx_.declareVariable(binding.name, binding.resolvedType, false, false,
+                             binding.declaration.id);
       }
     }
     sema_.analyzeExpr(const_cast<ExprAST&>(*arm.body), expectedType);

@@ -14,23 +14,24 @@ using namespace llvm;
 // Address of the storage a captured variable refers to: for by-value
 // captures the env slot itself (the closure's private copy); for by-ref
 // captures, the pointer stored in the slot (the original variable's
-// storage). Returns nullptr when name is not a capture of any enclosing
+// storage). Returns nullptr when the binding is not captured by an enclosing
 // closure. valueTypeOut receives the capture's value type; byRefOut whether
 // the capture was declared [ref name]; ownedOut whether it was listed without
 // `ref`, which makes the slot the value's own storage rather than a copy.
 llvm::Value* FunctionGenerator::createCaptureSlotAddress(
-    const std::string& name, llvm::Type** valueTypeOut, bool* byRefOut,
+    sun::DeclarationId id, llvm::Type** valueTypeOut, bool* byRefOut,
     bool* ownedOut) {
   // Search from innermost -> outermost closure
   for (auto it = closureStack.rbegin(); it != closureStack.rend(); ++it) {
     auto& closure = *it;
 
-    auto captureIt = closure.captureIndex.find(name);
-    if (captureIt == closure.captureIndex.end()) {
-      continue;
-    }
-
-    unsigned envFieldIndex = captureIt->second;  // index inside env struct
+    auto captureIt = std::find_if(
+        closure.captures.begin(), closure.captures.end(),
+        [id](const Capture& capture) { return capture.declarationId == id; });
+    if (captureIt == closure.captures.end()) continue;
+    const auto& capture = *captureIt;
+    const auto& name = capture.name;
+    unsigned envFieldIndex = captureIt - closure.captures.begin();
     llvm::Value* envPtr;
 
     llvm::Value* envPtrPtr = ctx.builder->CreateStructGEP(
@@ -43,16 +44,9 @@ llvm::Value* FunctionGenerator::createCaptureSlotAddress(
     llvm::Value* slotPtr = ctx.builder->CreateStructGEP(
         closure.envType, envPtr, envFieldIndex, name + ".slot");
 
-    bool byRef = false;
-    bool owned = false;
-    for (const auto& cap : closure.captures) {
-      if (cap.name == name) {
-        byRef = cap.kind == CaptureKind::Borrow;
-        owned = cap.kind == CaptureKind::Owned;
-        break;
-      }
-    }
-    if (valueTypeOut) *valueTypeOut = closure.captureTypes[name];
+    bool byRef = capture.kind == CaptureKind::Borrow;
+    bool owned = capture.kind == CaptureKind::Owned;
+    if (valueTypeOut) *valueTypeOut = typeResolver.resolve(capture.type);
     if (byRefOut) *byRefOut = byRef;
     if (ownedOut) *ownedOut = owned;
 
@@ -69,11 +63,11 @@ llvm::Value* FunctionGenerator::createCaptureSlotAddress(
 }
 
 llvm::LoadInst* FunctionGenerator::createLoadVarFromClosure(
-    const std::string& name) {
+    sun::DeclarationId id) {
   llvm::Type* valueType = nullptr;
-  llvm::Value* addr = createCaptureSlotAddress(name, &valueType);
+  llvm::Value* addr = createCaptureSlotAddress(id, &valueType);
   if (!addr) return nullptr;
-  return ctx.builder->CreateLoad(valueType, addr, name);
+  return ctx.builder->CreateLoad(valueType, addr, "capture");
 }
 
 // Value stored into an env slot at closure creation: the current value for
@@ -84,7 +78,7 @@ llvm::Value* FunctionGenerator::computeCaptureInitValue(const Capture& cap) {
   const std::string& varName = cap.name;
 
   if (cap.kind == CaptureKind::Borrow) {
-    if (AllocaInst* alloca = scopes().findVariable(varName)) {
+    if (AllocaInst* alloca = scopes().findVariable(cap.declarationId)) {
       // Ref-typed variables hold a pointer; flatten so the env points at the
       // referent, not the ref cell (mirror tryCodegenAddress)
       if (cap.type && cap.type->isReference()) {
@@ -103,19 +97,17 @@ llvm::Value* FunctionGenerator::computeCaptureInitValue(const Capture& cap) {
     // Nested capture: the enclosing closure's slot. An enclosing by-ref
     // capture propagates the original address (no indirection stacking);
     // by-ref-of-by-value is rejected in semantic analysis.
-    if (Value* addr = createCaptureSlotAddress(varName)) {
+    if (Value* addr = createCaptureSlotAddress(cap.declarationId)) {
       return addr;
     }
     logAndThrowError("Cannot capture variable by reference: " + varName);
     return nullptr;
   }
 
-  Value* capturedValue = createLoadForLocalVar(varName);
+  Value* capturedValue =
+      gen_.variableGenerator().createLoadForLocalVar(cap.declarationId);
   if (!capturedValue) {
-    capturedValue = createLoadVarFromClosure(varName);
-  }
-  if (!capturedValue) {
-    capturedValue = createLoadForGlobalVar(varName);
+    capturedValue = createLoadVarFromClosure(cap.declarationId);
   }
   if (!capturedValue) {
     logAndThrowError("Cannot capture variable for closure: " + varName);
@@ -241,8 +233,8 @@ bool FunctionGenerator::fillCaptureSlots(StructType* envType,
 
     // Compounds are carried by address, so the source is the variable's
     // storage; applyMoveSemantics loads it and invalidates the source.
-    Value* sourceAddr = scopes().findVariable(cap.name);
-    if (!sourceAddr) sourceAddr = createCaptureSlotAddress(cap.name);
+    Value* sourceAddr = scopes().findVariable(cap.declarationId);
+    if (!sourceAddr) sourceAddr = createCaptureSlotAddress(cap.declarationId);
     if (!sourceAddr) {
       logAndThrowError("Cannot move variable into closure: " + cap.name);
       return false;
@@ -630,7 +622,10 @@ Value* FunctionGenerator::codegenFunc(FunctionAST& funcAst) {
     std::string argName = arg.getName().str();
     AllocaInst* alloca = createEntryBlockAlloca(func, argName, arg.getType());
     ctx.builder->CreateStore(&arg, alloca);
-    scope.variables[argName] = alloca;
+    scope.variables[argIdx < proto.getArgs().size()
+                        ? proto.declarationIdentity().parameters.at(argIdx)
+                        : proto.declarationIdentity().variadicParameters.at(
+                              argIdx - proto.getArgs().size())] = alloca;
     debugDeclareParam(alloca, argName, proto, argIdx);
     scopes().trackOwnedParam(alloca, argName, proto.paramTypeNamed(argName));
     argIdx++;
@@ -768,11 +763,6 @@ llvm::Value* FunctionGenerator::codegenLambda(LambdaAST& lambdaAst) {
     closureCtx.envType = envType;
     closureCtx.fatPtr = firstArg;
     closureCtx.captures = proto.getCaptures();
-    for (size_t i = 0; i < proto.getCaptures().size(); i++) {
-      const auto& cap = proto.getCaptures()[i];
-      closureCtx.captureIndex[cap.name] = i;
-      closureCtx.captureTypes[cap.name] = typeResolver.resolve(cap.type);
-    }
     closureStack.push_back(closureCtx);
   }
 
@@ -796,7 +786,8 @@ llvm::Value* FunctionGenerator::codegenLambda(LambdaAST& lambdaAst) {
     std::string argName = arg.getName().str();
     AllocaInst* alloca = createEntryBlockAlloca(func, argName, arg.getType());
     ctx.builder->CreateStore(&arg, alloca);
-    scope.variables[argName] = alloca;
+    scope.variables[proto.declarationIdentity().parameters.at(argIdx - 1)] =
+        alloca;
     debugDeclareParam(alloca, argName, proto, argIdx - 1);
     scopes().trackOwnedParam(alloca, argName, proto.paramTypeNamed(argName));
     argIdx++;

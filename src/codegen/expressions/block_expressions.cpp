@@ -11,7 +11,7 @@ using namespace llvm;
 Value* CodegenVisitor::codegen(const BlockExprAST& block, size_t start) {
   if (block.isEmpty()) return ConstantFP::get(ctx.getContext(), APFloat(0.0));
 
-  variables.declareBlockExternGlobals(block);
+  variables.declareBlockExternalGlobals(block);
   functions_.declareBlockSignatures(block);
 
   Value* lastValue = nullptr;

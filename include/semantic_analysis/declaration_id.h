@@ -30,6 +30,7 @@ struct DeclarationIdentity {
   DeclarationId id;
   std::weak_ptr<const int> session;
   std::vector<DeclarationId> parameters;
+  std::vector<DeclarationId> variadicParameters;
   std::vector<DeclarationId> typeParameters;
   std::vector<DeclarationId> lifetimeParameters;
 };

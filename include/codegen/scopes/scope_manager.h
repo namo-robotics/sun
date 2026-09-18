@@ -36,7 +36,6 @@
 
 class CodegenVisitor;
 
-using NamedValueMap = std::map<std::string, llvm::AllocaInst*>;
 
 /**
  * A heap allocation the current scope owns and must free on the way out.
@@ -80,14 +79,14 @@ struct ClassAllocation {
  * One scope's variables and the values it is responsible for releasing.
  */
 struct CodegenScope {
-  NamedValueMap variables;
+  std::map<sun::DeclarationId, llvm::AllocaInst*> variables;
   bool isFunctionBoundary = false;  // True for scopes marking function entry
   bool hasDebugScope = false;  // True when a DILexicalBlock was opened with it
   std::vector<OwnedAllocation> ownedAllocations;
   std::vector<ClassAllocation> classAllocations;
-  // Names whose alloca holds a POINTER to the value rather than the value
+  // Bindings whose alloca holds a pointer to the value rather than the value
   // itself (compound match-payload bindings borrow the payload slot in place)
-  std::set<std::string> indirectBindings;
+  std::set<sun::DeclarationId> indirectBindings;
 };
 
 /**
@@ -150,15 +149,15 @@ class ScopeManager {
    * Respects function boundaries - doesn't search past outer function scopes.
    * Variables from outer functions should be accessed via closures instead.
    */
-  llvm::AllocaInst* findVariable(const std::string& name);
+  llvm::AllocaInst* findVariable(sun::DeclarationId id);
 
-  // True if `name` resolves (in the current function) to an indirect binding
+  // True if this declaration has indirect storage in the current function
   // — its alloca holds the value's address, not the value
-  bool isIndirectBinding(const std::string& name) const;
+  bool isIndirectBinding(sun::DeclarationId id) const;
 
   // Storage address of a compound local: the alloca itself, or for an
   // indirect binding the pointer it holds
-  llvm::Value* compoundStorageAddress(const std::string& name);
+  llvm::Value* compoundStorageAddress(sun::DeclarationId id);
 
   // ---------------------------------------------------------------
   // Taking and giving up ownership
@@ -226,8 +225,6 @@ class ScopeManager {
   /** Restore ownership after storing a new value into a moved location. */
   void markInitialized(llvm::Value* ptr, const sun::TypePtr& type);
 
-  // Mark an owned allocation as moved (ownership transferred, don't free)
-  void markAsMoved(const std::string& name);
 
   // True if any scope at or above `depth` holds a live (non-moved) owner —
   // i.e. unwinding past this point would need cleanup

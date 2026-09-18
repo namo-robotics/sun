@@ -26,11 +26,11 @@ static bool isDirectAlias(AllocaInst* alloca, llvm::Type* referencedType) {
 // -------------------------------------------------------------------
 
 llvm::LoadInst* VariableGenerator::createLoadForLocalVar(
-    const std::string& varName) {
-  AllocaInst* alloca = scopes().findVariable(varName);
+    sun::DeclarationId id) {
+  AllocaInst* alloca = scopes().findVariable(id);
   if (alloca) {
     return ctx.builder->CreateLoad(alloca->getAllocatedType(), alloca,
-                                   varName.c_str());
+                                   alloca->getName());
   }
   return nullptr;
 }
@@ -39,19 +39,28 @@ llvm::LoadInst* VariableGenerator::createLoadForLocalVar(
 // Global variable loading
 // -------------------------------------------------------------------
 
-llvm::GlobalVariable* VariableGenerator::globalForSunName(
-    const std::string& name) const {
-  const std::string& symbol = gen_.externCEmitter().symbolFor(name);
-  return module->getGlobalVariable(symbol);
+llvm::GlobalVariable* VariableGenerator::bindGlobal(
+    sun::DeclarationId id, llvm::GlobalVariable* global) {
+  state_.typeRegistry->declarations.get(id);
+  if (auto* existing = findGlobal(id); existing && existing != global)
+    logAndThrowError("Global declaration already has different storage");
+  globals_[id] = global;
+  return global;
+}
+
+llvm::GlobalVariable* VariableGenerator::findGlobal(
+    sun::DeclarationId id) const {
+  auto found = globals_.find(id);
+  return found == globals_.end()
+             ? nullptr
+             : llvm::dyn_cast_or_null<llvm::GlobalVariable>(found->second);
 }
 
 llvm::LoadInst* VariableGenerator::createLoadForGlobalVar(
-    const std::string& varName) {
-  GlobalVariable* globalVar = globalForSunName(varName);
-  if (globalVar) {
-    return ctx.builder->CreateLoad(globalVar->getValueType(), globalVar,
-                                   varName.c_str());
-  }
+    sun::DeclarationId id) {
+  if (auto* global = findGlobal(id))
+    return ctx.builder->CreateLoad(global->getValueType(), global,
+                                   global->getName() + ".value");
   return nullptr;
 }
 
@@ -60,11 +69,12 @@ llvm::LoadInst* VariableGenerator::createLoadForGlobalVar(
 // -------------------------------------------------------------------
 
 llvm::Value* VariableGenerator::createLoadForRef(
-    const std::string& varName, const sun::ReferenceType& refType) {
+    sun::DeclarationId id, const sun::ReferenceType& refType) {
+  const auto& varName = state_.typeRegistry->declarations.get(id).name;
   llvm::Type* referencedLLVMType =
       typeResolver.resolve(refType.getReferencedType());
 
-  AllocaInst* alloca = scopes().findVariable(varName);
+  AllocaInst* alloca = scopes().findVariable(id);
   if (alloca) {
     if (isDirectAlias(alloca, referencedLLVMType)) {
       // Direct alias - just load from the alloca (same as target variable)
@@ -82,13 +92,14 @@ llvm::Value* VariableGenerator::createLoadForRef(
   return nullptr;
 }
 
-void VariableGenerator::createStoreForRef(const std::string& varName,
+void VariableGenerator::createStoreForRef(sun::DeclarationId id,
                                           const sun::ReferenceType& refType,
                                           llvm::Value* value) {
+  const auto& varName = state_.typeRegistry->declarations.get(id).name;
   llvm::Type* referencedLLVMType =
       typeResolver.resolve(refType.getReferencedType());
 
-  AllocaInst* alloca = scopes().findVariable(varName);
+  AllocaInst* alloca = scopes().findVariable(id);
   if (!alloca) {
     logAndThrowError("Reference variable not found: " + varName);
   }
@@ -129,7 +140,7 @@ Value* VariableGenerator::codegen(const VariableReferenceAST& expr) {
 
     // A global reference stores the native pointer in global storage; a
     // global `ref array<T>` stores the view value itself.
-    if (GlobalVariable* global = globalForSunName(expr.getMangledName())) {
+    if (GlobalVariable* global = findGlobal(expr.getTargetDeclarationId())) {
       Value* pointer = ctx.builder->CreateLoad(global->getValueType(), global,
                                                expr.getName() + ".ref.ptr");
       sun::TypePtr referenced = refType->getReferencedType();
@@ -147,7 +158,7 @@ Value* VariableGenerator::codegen(const VariableReferenceAST& expr) {
     // the view value itself (a parameter's slot), or the address of one (a
     // local re-borrowing another view)
     if (refType->getReferencedType()->isArray()) {
-      AllocaInst* alloca = scopes().findVariable(expr.getName());
+      AllocaInst* alloca = scopes().findVariable(expr.getTargetDeclarationId());
       if (alloca) {
         llvm::StructType* fatType =
             sun::ArrayType::getArrayStructType(ctx.getContext());
@@ -164,8 +175,8 @@ Value* VariableGenerator::codegen(const VariableReferenceAST& expr) {
         }
         return pointer;
       }
-      if (Value* addr =
-              functionGen().createCaptureSlotAddress(expr.getName())) {
+      if (Value* addr = functionGen().createCaptureSlotAddress(
+              expr.getTargetDeclarationId())) {
         if (refType->isUnsizedArrayRef()) {
           return ctx.builder->CreateLoad(
               sun::ArrayType::getArrayStructType(ctx.getContext()), addr,
@@ -183,7 +194,7 @@ Value* VariableGenerator::codegen(const VariableReferenceAST& expr) {
     if (refType->getReferencedType()->isClass() ||
         refType->getReferencedType()->isInterface() ||
         CodegenVisitor::isPayloadEnum(refType->getReferencedType())) {
-      AllocaInst* alloca = scopes().findVariable(expr.getName());
+      AllocaInst* alloca = scopes().findVariable(expr.getTargetDeclarationId());
       if (alloca) {
         llvm::Type* ptrType = llvm::PointerType::getUnqual(ctx.getContext());
         return ctx.builder->CreateLoad(ptrType, alloca,
@@ -192,7 +203,8 @@ Value* VariableGenerator::codegen(const VariableReferenceAST& expr) {
       logAndThrowError("Class ref variable not found: " + expr.getName());
     }
 
-    if (Value* val = createLoadForRef(expr.getName(), *refType)) {
+    if (Value* val =
+            createLoadForRef(expr.getTargetDeclarationId(), *refType)) {
       return val;
     }
     logAndThrowError("Reference variable not found: " + expr.getName());
@@ -201,17 +213,16 @@ Value* VariableGenerator::codegen(const VariableReferenceAST& expr) {
   // A sized array is carried by the address of its inline storage, like a
   // class: the local's alloca, the global, or the capture slot
   if (varType && varType->isArray()) {
-    if (Value* addr = scopes().compoundStorageAddress(expr.getName())) {
+    if (Value* addr =
+            scopes().compoundStorageAddress(expr.getTargetDeclarationId())) {
       return addr;
     }
-    if (GlobalVariable* gv = globalForSunName(expr.getMangledName())) {
-      return gv;
-    }
-    if (GlobalVariable* gv = globalForSunName(expr.getName())) {
+    if (GlobalVariable* gv = findGlobal(expr.getTargetDeclarationId())) {
       return gv;
     }
     // [ref arr] and owned captures: the slot address is the storage
-    if (Value* addr = functionGen().createCaptureSlotAddress(expr.getName())) {
+    if (Value* addr = functionGen().createCaptureSlotAddress(
+            expr.getTargetDeclarationId())) {
       return addr;
     }
     logAndThrowError("Array variable not found: " + expr.getName());
@@ -225,18 +236,19 @@ Value* VariableGenerator::codegen(const VariableReferenceAST& expr) {
   // instead.
   if (varType &&
       (varType->isClass() || CodegenVisitor::isPayloadEnum(varType))) {
-    if (Value* addr = scopes().compoundStorageAddress(expr.getName())) {
+    if (Value* addr =
+            scopes().compoundStorageAddress(expr.getTargetDeclarationId())) {
       return addr;
     }
     // Check for global class variables
-    GlobalVariable* gv = globalForSunName(expr.getMangledName());
-    if (!gv) gv = globalForSunName(expr.getName());
+    GlobalVariable* gv = findGlobal(expr.getTargetDeclarationId());
     if (gv) {
       // Return the global variable pointer directly (same semantics as alloca)
       return gv;
     }
     // [ref c] capture: the slot address is the original object pointer
-    if (Value* addr = functionGen().createCaptureSlotAddress(expr.getName())) {
+    if (Value* addr = functionGen().createCaptureSlotAddress(
+            expr.getTargetDeclarationId())) {
       return addr;
     }
     // Fall through to error if not found
@@ -246,30 +258,34 @@ Value* VariableGenerator::codegen(const VariableReferenceAST& expr) {
   // Interface method dispatch expects a pointer to the fat struct { ptr, ptr }
   // so it can load and extract data/vtable pointers
   if (varType && varType->isInterface()) {
-    if (Value* addr = scopes().compoundStorageAddress(expr.getName())) {
+    if (Value* addr =
+            scopes().compoundStorageAddress(expr.getTargetDeclarationId())) {
       return addr;
     }
-    GlobalVariable* gv = globalForSunName(expr.getMangledName());
-    if (!gv) gv = globalForSunName(expr.getName());
+    GlobalVariable* gv = findGlobal(expr.getTargetDeclarationId());
     if (gv) {
       return gv;
     }
     // [ref i] capture: the slot address is the original fat pointer address
-    if (Value* addr = functionGen().createCaptureSlotAddress(expr.getName())) {
+    if (Value* addr = functionGen().createCaptureSlotAddress(
+            expr.getTargetDeclarationId())) {
       return addr;
     }
     // Fall through to error if not found
   }
 
   // Non-reference variable - regular load
-  llvm::LoadInst* loadVarInst = createLoadForLocalVar(expr.getName());
+  llvm::LoadInst* loadVarInst =
+      createLoadForLocalVar(expr.getTargetDeclarationId());
   if (loadVarInst) return loadVarInst;
 
-  Value* cv = functionGen().createLoadVarFromClosure(expr.getName());
+  Value* cv =
+      functionGen().createLoadVarFromClosure(expr.getTargetDeclarationId());
   if (cv) return cv;
 
-  // Use qualified name for module-qualified globals
-  llvm::LoadInst* loadInst = createLoadForGlobalVar(expr.getMangledName());
+  // Module globals use the same declaration lookup as root globals.
+  llvm::LoadInst* loadInst =
+      createLoadForGlobalVar(expr.getTargetDeclarationId());
   if (loadInst) return loadInst;
 
   if (expr.getResolvedType() && expr.getResolvedType()->isFunction()) {
@@ -303,7 +319,7 @@ Value* VariableGenerator::codegen(const VariableAssignmentAST& expr) {
         expr.getValue()->getResolvedType());
   };
 
-  AllocaInst* alloca = scopes().findVariable(expr.getName());
+  AllocaInst* alloca = scopes().findVariable(expr.getTargetDeclarationId());
   if (alloca) {
     // Check if this is a reference type
     sun::TypePtr varType = expr.getResolvedType();
@@ -312,7 +328,7 @@ Value* VariableGenerator::codegen(const VariableAssignmentAST& expr) {
       const auto* refType =
           static_cast<const sun::ReferenceType*>(varType.get());
       Value* value = generateValue();
-      createStoreForRef(expr.getName(), *refType, value);
+      createStoreForRef(expr.getTargetDeclarationId(), *refType, value);
       return value;
     }
 
@@ -335,8 +351,8 @@ Value* VariableGenerator::codegen(const VariableAssignmentAST& expr) {
   // that is the original variable's storage, and for an owned capture it is
   // the closure's own; an implicit by-value capture is rejected in semantic
   // analysis before reaching here.
-  if (Value* slotAddr =
-          functionGen().createCaptureSlotAddress(expr.getName())) {
+  if (Value* slotAddr = functionGen().createCaptureSlotAddress(
+          expr.getTargetDeclarationId())) {
     Value* value = generateValue();
     if (isLambdaLiteral && savedBlock) {
       ctx.builder->SetInsertPoint(savedBlock);
@@ -355,10 +371,8 @@ Value* VariableGenerator::codegen(const VariableAssignmentAST& expr) {
     return value;
   }
 
-  // Check for global variable: mangled name first (module-qualified), then
-  // the name as written (root-level globals)
-  GlobalVariable* gv = globalForSunName(expr.getMangledName());
-  if (!gv) gv = globalForSunName(expr.getName());
+  // Retrieve the global selected during analysis.
+  GlobalVariable* gv = findGlobal(expr.getTargetDeclarationId());
   if (gv) {
     Value* value = generateValue();
     if (isLambdaLiteral && savedBlock) {

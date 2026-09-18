@@ -38,8 +38,6 @@ struct ClosureContext {
   llvm::StructType* envType;
   llvm::Value* fatPtr;
   std::vector<Capture> captures;
-  std::map<std::string, unsigned> captureIndex;
-  std::map<std::string, llvm::Type*> captureTypes;
 };
 
 /**
@@ -110,7 +108,7 @@ class FunctionGenerator {
    * by-value capture, the stored pointer for a `[ref x]` capture. Returns
    * nullptr when the name is not a capture.
    */
-  llvm::Value* createCaptureSlotAddress(const std::string& name,
+  llvm::Value* createCaptureSlotAddress(sun::DeclarationId id,
                                         llvm::Type** valueTypeOut = nullptr,
                                         bool* byRefOut = nullptr,
                                         bool* ownedOut = nullptr);
@@ -118,7 +116,7 @@ class FunctionGenerator {
   /**
    * Loads a variable from the closure context if it is one.
    */
-  llvm::LoadInst* createLoadVarFromClosure(const std::string& name);
+  llvm::LoadInst* createLoadVarFromClosure(sun::DeclarationId id);
 
  private:
   CodegenState& state_;
@@ -174,8 +172,6 @@ class FunctionGenerator {
 
   ScopeManager& scopes();
   sun::cabi::ExternCEmitter& externC();
-  llvm::LoadInst* createLoadForLocalVar(const std::string& name);
-  llvm::LoadInst* createLoadForGlobalVar(const std::string& varName);
   llvm::Value* applyMoveSemantics(llvm::Value* argVal, sun::TypePtr argSunType);
   FunctionRegistry& functions();
   ClassGenerator& classes();

@@ -105,12 +105,6 @@ void attachLoweringAttributes(Target* target,
 llvm::Function* ExternCEmitter::declare(
     const PrototypeAST& proto, llvm::Type* returnType,
     llvm::ArrayRef<llvm::Type*> paramTypes) {
-  // Record the rename before anything else, so call sites resolve even when
-  // the declaration itself was already emitted and we return early below.
-  if (proto.hasLinkName()) {
-    symbolNames_[proto.getName()] = proto.getLinkName();
-  }
-
   const std::string& symbol = proto.getLinkName();
   if (llvm::GlobalValue* named = module_->getNamedValue(symbol);
       named && !llvm::isa<llvm::Function>(named)) {
@@ -178,7 +172,6 @@ llvm::Function* ExternCEmitter::declare(
 llvm::GlobalVariable* ExternCEmitter::declareGlobal(
     const VariableCreationAST& variable, llvm::Type* valueType) {
   const std::string& symbol = variable.getLinkName();
-  mapSunName(variable.getMangledName(), symbol);
 
   if (llvm::GlobalValue* named = module_->getNamedValue(symbol)) {
     auto* existing = llvm::dyn_cast<llvm::GlobalVariable>(named);
@@ -205,15 +198,7 @@ llvm::GlobalVariable* ExternCEmitter::declareGlobal(
   return global;
 }
 
-void ExternCEmitter::mapSunName(const std::string& sunName,
-                                const std::string& symbol) {
-  symbolNames_[sunName] = symbol;
-}
 
-const std::string& ExternCEmitter::symbolFor(const std::string& sunName) const {
-  auto it = symbolNames_.find(sunName);
-  return it == symbolNames_.end() ? sunName : it->second;
-}
 
 const abi::SignatureLowering* ExternCEmitter::loweringFor(
     const llvm::Function* func) const {

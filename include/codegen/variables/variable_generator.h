@@ -19,9 +19,11 @@
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Value.h>
+#include <llvm/IR/ValueHandle.h>
 
 #include <string>
 #include <type_traits>
+#include <unordered_map>
 #include <vector>
 
 #include "ast.h"
@@ -70,14 +72,14 @@ class VariableGenerator {
                             const std::string& name);
 
   llvm::GlobalVariable* createGlobalVariable(
-      const std::string& name, llvm::Type* type,
+      sun::DeclarationId id, const std::string& name, llvm::Type* type,
       llvm::Constant* initializer = nullptr);
 
-  /** Declare every extern global in a block before emitting its bodies. */
-  void declareBlockExternGlobals(const BlockExprAST& block);
+  /** Declare imported and C globals before emitting dependent bodies. */
+  void declareBlockExternalGlobals(const BlockExprAST& block);
 
-  /** Find a global after translating its resolved Sun name to a C symbol. */
-  llvm::GlobalVariable* globalForSunName(const std::string& name) const;
+  /** Find storage for the global selected during semantic analysis. */
+  llvm::GlobalVariable* findGlobal(sun::DeclarationId id) const;
 
   /**
    * Emits the static initialization function for the globals that could not
@@ -116,14 +118,18 @@ class VariableGenerator {
   // Reading and writing through a reference
   // ---------------------------------------------------------------
 
-  llvm::LoadInst* createLoadForLocalVar(const std::string& name);
-  llvm::LoadInst* createLoadForGlobalVar(const std::string& varName);
-  llvm::Value* createLoadForRef(const std::string& varName,
+  llvm::LoadInst* createLoadForLocalVar(sun::DeclarationId id);
+  llvm::LoadInst* createLoadForGlobalVar(sun::DeclarationId id);
+  llvm::Value* createLoadForRef(sun::DeclarationId id,
                                 const sun::ReferenceType& refType);
-  void createStoreForRef(const std::string& varName,
+  void createStoreForRef(sun::DeclarationId id,
                          const sun::ReferenceType& refType, llvm::Value* value);
 
  private:
+  /** Bind a created or imported global to its source declaration. */
+  llvm::GlobalVariable* bindGlobal(sun::DeclarationId id,
+                                   llvm::GlobalVariable* global);
+  std::unordered_map<sun::DeclarationId, llvm::WeakTrackingVH> globals_;
   CodegenState& state_;
   CodegenVisitor& gen_;
 

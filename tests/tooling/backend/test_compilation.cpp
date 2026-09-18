@@ -298,3 +298,136 @@ TEST(Tooling_Backend_Compilation, default_wrappers_have_distinct_targets) {
   EXPECT_EQ(result, 42);
   EXPECT_EQ(targets.size(), 2u);
 }
+
+TEST(Tooling_Backend_Compilation, storage_targets_ignore_reference_spelling) {
+  auto driver = Driver::createForJIT();
+  size_t checked = 0;
+  driver->setMetadataCallback([&](const BlockExprAST& ast, SemanticAnalyzer&) {
+    std::function<void(const ExprAST&)> visit = [&](const ExprAST& node) {
+      if (node.getType() == ASTNodeType::VARIABLE_REFERENCE) {
+        const auto& reference = static_cast<const VariableReferenceAST&>(node);
+        if (reference.getName() == "value" ||
+            reference.getName() == "counter") {
+          EXPECT_TRUE(reference.getTargetDeclarationId());
+          const_cast<std::string&>(reference.getName()) = "changed_reference";
+          ++checked;
+        }
+      }
+      forEachChild(node, visit);
+    };
+    visit(ast);
+  });
+  EXPECT_EQ(driver->executeString(R"(
+    var counter: i32 = 10;
+    function read(value: i32) i32 {
+      var outer = [ref value]() => i32 { return value; };
+      if (true) { var value: i32 = 7; counter = counter + value; }
+      return outer() + counter;
+    }
+    function main() i32 { return read(25); }
+  )"),
+            42);
+  EXPECT_GE(checked, 3u);
+}
+
+TEST(Tooling_Backend_Compilation, field_targets_ignore_reference_spelling) {
+  auto driver = Driver::createForJIT();
+  driver->setMetadataCallback([](const BlockExprAST& ast, SemanticAnalyzer&) {
+    std::function<void(const ExprAST&)> visit = [&](const ExprAST& node) {
+      if (node.getType() == ASTNodeType::MEMBER_ACCESS) {
+        const auto& access = static_cast<const MemberAccessAST&>(node);
+        if (access.getMemberName() == "left" ||
+            access.getMemberName() == "right") {
+          EXPECT_TRUE(access.getTargetDeclarationId());
+          const_cast<std::string&>(access.getMemberName()) = "changed_field";
+        }
+      }
+      if (node.getType() == ASTNodeType::MEMBER_ASSIGNMENT) {
+        const auto& assignment = static_cast<const MemberAssignmentAST&>(node);
+        EXPECT_TRUE(assignment.getTargetDeclarationId());
+        const_cast<std::string&>(assignment.getMemberName()) = "changed_field";
+      }
+      if (node.getType() == ASTNodeType::STRUCT_LITERAL) {
+        auto& literal = const_cast<StructLiteralAST&>(
+            static_cast<const StructLiteralAST&>(node));
+        for (auto& field : literal.getMutableFields())
+          field.name = "changed_field";
+      }
+      forEachChild(node, visit);
+    };
+    visit(ast);
+  });
+  EXPECT_EQ(driver->executeString(R"(
+    class Pair { public var left: i32; public var right: i32; }
+    function main() i32 {
+      var pair: Pair = { left: 20, right: 1 };
+      pair.right = 22;
+      return pair.left + pair.right;
+    }
+  )"),
+            42);
+}
+
+TEST(Tooling_Backend_Compilation, storage_requires_selected_targets) {
+  auto driver = Driver::createForJIT();
+  driver->setMetadataCallback([](const BlockExprAST& ast, SemanticAnalyzer&) {
+    std::function<void(const ExprAST&)> visit = [&](const ExprAST& node) {
+      if (node.getType() == ASTNodeType::VARIABLE_REFERENCE)
+        node.setTargetDeclarationId({});
+      forEachChild(node, visit);
+    };
+    visit(ast);
+  });
+  EXPECT_THROW(driver->executeString(R"(
+    var stored: i32 = 42;
+    function main() i32 { return stored; }
+  )"),
+               SunError);
+}
+
+TEST(Tooling_Backend_Compilation, field_access_requires_selected_target) {
+  auto driver = Driver::createForJIT();
+  driver->setMetadataCallback([](const BlockExprAST& ast, SemanticAnalyzer&) {
+    std::function<void(const ExprAST&)> visit = [&](const ExprAST& node) {
+      if (node.getType() == ASTNodeType::MEMBER_ACCESS)
+        node.setTargetDeclarationId({});
+      forEachChild(node, visit);
+    };
+    visit(ast);
+  });
+  EXPECT_THROW(driver->executeString(R"(
+    class Box { public var value: i32; }
+    function main() i32 {
+      var box: Box = { value: 42 };
+      return box.value;
+    }
+  )"),
+               SunError);
+}
+
+TEST(Tooling_Backend_Compilation, callable_field_uses_selected_storage) {
+  auto driver = Driver::createForJIT();
+  driver->setMetadataCallback([](const BlockExprAST& ast, SemanticAnalyzer&) {
+    std::function<void(const ExprAST&)> visit = [&](const ExprAST& node) {
+      if (node.getType() == ASTNodeType::MEMBER_ACCESS) {
+        const auto& member = static_cast<const MemberAccessAST&>(node);
+        if (member.getMemberName() == "callback") {
+          EXPECT_TRUE(member.getTargetDeclarationId());
+          const_cast<std::string&>(member.getMemberName()) = "changed_field";
+        }
+      }
+      forEachChild(node, visit);
+    };
+    visit(ast);
+  });
+  EXPECT_EQ(driver->executeString(R"(
+    function twice(value: i32) i32 { return value * 2; }
+    class Handler {
+      var callback: function (i32) i32;
+      init(callback: function (i32) i32) { this.callback = callback; }
+      method run(value: i32) i32 { return this.callback(value); }
+    }
+    function main() i32 { var handler = Handler(twice); return handler.run(21); }
+  )"),
+            42);
+}

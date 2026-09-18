@@ -1078,6 +1078,7 @@ struct ClassField {
   TypePtr type;
   size_t index;  // Index in the struct
   sun::Visibility visibility = sun::Visibility::Private;
+  DeclarationId declarationId;
 };
 
 // Class method information
@@ -1335,9 +1336,11 @@ class ClassType : public NominalType {
   }
 
   // Returns the new record so callers can set its access info.
-  ClassField& addField(const std::string& fieldName, TypePtr fieldType) {
+  ClassField& addField(const std::string& fieldName, TypePtr fieldType,
+                       DeclarationId id = {}) {
     // Caller should check hasField() first and report error with position
-    fields.push_back({fieldName, std::move(fieldType), fields.size()});
+    fields.push_back({fieldName, std::move(fieldType), fields.size(),
+                      sun::Visibility::Private, id});
     return fields.back();
   }
 
@@ -1362,6 +1365,14 @@ class ClassType : public NominalType {
 
   /** Report whether a resolved interface can be used as a fat pointer. */
   bool convertibleToInterface(const InterfaceType& interface) const;
+
+  /** Retrieve a selected field independently of its spelling and layout. */
+  const ClassField* getField(DeclarationId id) const {
+    if (!id) return nullptr;
+    for (const auto& field : fields)
+      if (field.declarationId == id) return &field;
+    return nullptr;
+  }
 
   const ClassField* getField(const std::string& fieldName) const {
     for (const auto& field : fields) {
@@ -1704,6 +1715,7 @@ struct InterfaceField {
   std::string name;
   TypePtr type;
   sun::Visibility visibility = sun::Visibility::Private;
+  DeclarationId declarationId;
 };
 
 // Interface method information
@@ -1810,11 +1822,13 @@ class InterfaceType : public NominalType {
   const std::vector<InterfaceMethod>& getMethods() const { return methods; }
 
   // Returns the (possibly pre-existing) record so callers can set access.
-  InterfaceField& addField(const std::string& fieldName, TypePtr fieldType) {
+  InterfaceField& addField(const std::string& fieldName, TypePtr fieldType,
+                           DeclarationId id = {}) {
     for (auto& existingField : fields) {
       if (existingField.name == fieldName) return existingField;
     }
-    fields.push_back({fieldName, std::move(fieldType)});
+    fields.push_back(
+        {fieldName, std::move(fieldType), sun::Visibility::Private, id});
     return fields.back();
   }
 

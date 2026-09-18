@@ -51,6 +51,11 @@ struct ExprAnalysis {
   ExprAnalysis& operator=(ExprAnalysis&&) = default;
 };
 
+/** Selected fields in source order for a struct literal. */
+struct StructLiteralAnalysis : public ExprAnalysis {
+  std::vector<sun::DeclarationId> fields;
+};
+
 /// Analysis data for PrototypeAST (function signatures)
 struct PrototypeAnalysis {
   sun::DeclarationIdentity declaration;

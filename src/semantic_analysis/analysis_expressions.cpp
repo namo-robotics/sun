@@ -267,6 +267,7 @@ void SemanticAnalyzer::analyzeQualifiedName(QualifiedNameAST& qualName) {
     if (!varInfo->qualifiedName.empty()) {
       qualName.setResolvedMangledName(varInfo->qualifiedName.mangled());
     }
+    qualName.setTargetDeclarationId(varInfo->declarationId);
     qualName.setResolvedType(varInfo->type);
     return;
   }

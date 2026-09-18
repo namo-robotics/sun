@@ -161,16 +161,16 @@ Value* CodegenVisitor::codegenExpression(const ExprAST& expr) {
       std::string fullName = qn.getFullName();
       std::string mangledName = qn.getMangledName();
 
-      if (qn.getResolvedType() && qn.getResolvedType()->isFunction()) {
-        return functions.lookupFunctionById(qn.getTargetDeclarationId());
-      }
-
       // Try to find as a global variable
-      const std::string& globalName = externC.symbolFor(mangledName);
-      GlobalVariable* gv = module->getGlobalVariable(globalName);
+      GlobalVariable* gv =
+          variableGenerator().findGlobal(qn.getTargetDeclarationId());
       if (gv) {
         return ctx.builder->CreateLoad(gv->getValueType(), gv,
                                        mangledName + ".val");
+      }
+
+      if (qn.getResolvedType() && qn.getResolvedType()->isFunction()) {
+        return functions.lookupFunctionById(qn.getTargetDeclarationId());
       }
 
       logAndThrowError("Unknown qualified name: " + fullName);
