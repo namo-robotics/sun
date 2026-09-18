@@ -1,6 +1,6 @@
 # Writes SUN_GIT_HASH / SUN_VERSION into OUTPUT_FILE. Runs at every build so
 # the hash tracks HEAD; the file is only rewritten when the content changes so
-# main.cpp is not needlessly recompiled.
+# the files that include it are not needlessly recompiled.
 #
 # Inputs: SOURCE_DIR, OUTPUT_FILE, and optionally SUN_VERSION (defaults to the
 # top entry in debian/changelog, then "dev").

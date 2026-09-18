@@ -144,7 +144,7 @@ message(STATUS "Proto headers: ${PROTO_HDRS}")
 add_library(sun_lib
     # Generated protobuf sources
     ${PROTO_SRCS}
-    # Driver: pipeline orchestration (the sun executable is src/driver/main.cpp)
+    # Driver: pipeline orchestration
     src/driver/driver.cpp
     src/driver/depfile.cpp
     src/driver/manifest_processor.cpp
@@ -265,6 +265,16 @@ add_library(sun_lib
     src/lsp/references.cpp
     src/lsp/rename.cpp
     src/lsp/tests.cpp
+    # Command-line front end (the sun executable is src/cli/main.cpp)
+    src/cli/option_parser.cpp
+    src/cli/usage.cpp
+    src/cli/command_support.cpp
+    src/cli/fmt_command.cpp
+    src/cli/test_command.cpp
+    src/cli/bundle_command.cpp
+    src/cli/compile_command.cpp
+    src/cli/config_build_command.cpp
+    src/cli/jit_command.cpp
     # Add other implementation files here (but NOT main.cpp)
 )
 
@@ -379,9 +389,7 @@ add_custom_target(sun_version
 # (moon_builder.cpp), so the library needs the header too.
 add_dependencies(sun_lib sun_version)
 
-add_executable(sun src/driver/main.cpp)
-add_dependencies(sun sun_version)
-target_include_directories(sun PRIVATE ${CMAKE_BINARY_DIR}/generated)
+add_executable(sun src/cli/main.cpp)
 target_link_libraries(sun PRIVATE sun_lib)
 
 # ------------------------------------------------------------------
