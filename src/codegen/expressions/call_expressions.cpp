@@ -657,7 +657,7 @@ Value* CodegenVisitor::codegenMethodCall(const CallExprAST& expr,
   // Handle pointer-to-class: unwrap to get the underlying class type
   if (auto* cls =
           sun::tryGetType<sun::ClassType>(sun::getPointeeType(objectType))) {
-    auto registeredClass = typeRegistry->getClass(cls->getMangledName());
+    auto registeredClass = typeRegistry->getClass(cls->getDeclarationId());
     if (!registeredClass) {
       logAndThrowError("Class not found in type registry: " +
                        cls->getMangledName());

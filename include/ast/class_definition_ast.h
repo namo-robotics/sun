@@ -197,25 +197,24 @@ class ClassDefinitionAST : public ExprAST {
   // Specialization storage for generic classes
   // Called by semantic analyzer when a generic class is instantiated
   void addSpecialization(
-      const std::string& mangledName,
+      sun::DeclarationId id,
       std::shared_ptr<ClassDefinitionAST> specializedAST) const {
-    classAnalysis().specializations[mangledName] = std::move(specializedAST);
+    classAnalysis().specializations[id] = std::move(specializedAST);
   }
-  const std::map<std::string, std::shared_ptr<ClassDefinitionAST>>&
+  const std::map<sun::DeclarationId, std::shared_ptr<ClassDefinitionAST>>&
   getSpecializations() const {
     return classAnalysis().specializations;
   }
-  bool hasSpecialization(const std::string& mangledName) const {
+  bool hasSpecialization(sun::DeclarationId id) const {
     return analysis_ &&
-           static_cast<ClassAnalysis&>(*analysis_)
-                   .specializations.find(mangledName) !=
+           static_cast<ClassAnalysis&>(*analysis_).specializations.find(id) !=
                static_cast<ClassAnalysis&>(*analysis_).specializations.end();
   }
   std::shared_ptr<ClassDefinitionAST> getSpecialization(
-      const std::string& mangledName) const {
+      sun::DeclarationId id) const {
     if (!analysis_) return nullptr;
     auto& specs = static_cast<ClassAnalysis&>(*analysis_).specializations;
-    auto it = specs.find(mangledName);
+    auto it = specs.find(id);
     return it != specs.end() ? it->second : nullptr;
   }
 

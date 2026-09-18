@@ -132,25 +132,24 @@ class FunctionAST : public ExprAST {
 
   // Specialization storage for generic functions
   // Called by semantic analyzer when a generic function is instantiated
-  void addSpecialization(const std::string& mangledName,
+  void addSpecialization(sun::DeclarationId id,
                          std::shared_ptr<FunctionAST> specializedAST) const {
-    funcAnalysis().specializations[mangledName] = std::move(specializedAST);
+    funcAnalysis().specializations[id] = std::move(specializedAST);
   }
-  const std::map<std::string, std::shared_ptr<FunctionAST>>&
+  const std::map<sun::DeclarationId, std::shared_ptr<FunctionAST>>&
   getSpecializations() const {
     return funcAnalysis().specializations;
   }
-  bool hasSpecialization(const std::string& mangledName) const {
+  bool hasSpecialization(sun::DeclarationId id) const {
     return analysis_ &&
            static_cast<FunctionAnalysis&>(*analysis_)
-                   .specializations.find(mangledName) !=
+                   .specializations.find(id) !=
                static_cast<FunctionAnalysis&>(*analysis_).specializations.end();
   }
-  std::shared_ptr<FunctionAST> getSpecialization(
-      const std::string& mangledName) const {
+  std::shared_ptr<FunctionAST> getSpecialization(sun::DeclarationId id) const {
     if (!analysis_) return nullptr;
     auto& specs = static_cast<FunctionAnalysis&>(*analysis_).specializations;
-    auto it = specs.find(mangledName);
+    auto it = specs.find(id);
     return it != specs.end() ? it->second : nullptr;
   }
 

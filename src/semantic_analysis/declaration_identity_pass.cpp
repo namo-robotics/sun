@@ -78,7 +78,7 @@ void resetBindings(const ExprAST& root, bool resetIdentity) {
                               static_cast<const TryCatchExprAST&>(root))
                               .getCatchClausesMutable()) {
         clause.isCatchAll = false;
-        clause.resolvedMangledName.clear();
+        clause.resolvedType.reset();
         if (resetIdentity) clause.declaration = {};
       }
       break;

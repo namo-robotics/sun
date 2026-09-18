@@ -399,8 +399,7 @@ Value* EnumGenerator::codegen(const EnumDefinitionAST& expr) {
   // ClassType::getStructType embedding an enum field (which cannot reach the
   // resolver) can serve it from the EnumType cache.
   if (expr.hasAnyPayload()) {
-    if (auto enumType =
-            state_.typeRegistry->getEnum(expr.getQualifiedName().mangled())) {
+    if (auto enumType = state_.typeRegistry->getEnum(expr.getDeclarationId())) {
       typeResolver.getEnumStorageType(*enumType);
     }
   }

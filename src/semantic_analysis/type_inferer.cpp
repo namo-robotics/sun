@@ -1496,16 +1496,6 @@ sun::TypePtr TypeInferer::inferGenericClassConstructionType(
                      genericCall.getLocation());
   }
 
-  std::string genericMangledName = genericClassInfo->AST->getMangledName();
-  std::string specializedMangledName =
-      sun::Types::mangleGenericClassName(genericMangledName, typeArgs);
-
-  auto existing = ctx_.lookupClass(specializedMangledName);
-  if (existing &&
-      genericClassInfo->AST->hasSpecialization(specializedMangledName)) {
-    return existing;
-  }
-
   // Class not yet instantiated - instantiate it now
   auto specializedClass =
       generics_.instantiateGenericClass(lookupName, typeArgs);

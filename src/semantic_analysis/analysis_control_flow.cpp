@@ -363,10 +363,7 @@ void SemanticAnalyzer::analyzeTryCatch(TryCatchExprAST& tryCatchExpr) {
 
     // Record resolution for codegen's typed matching.
     catchClause.isCatchAll = isCatchAll;
-    catchClause.resolvedMangledName =
-        isCatchAll
-            ? std::string()
-            : static_cast<sun::ClassType*>(bindingType.get())->getMangledName();
+    catchClause.resolvedType = bindingType;
 
     ctx_.enterScope();
     ctx_.declareVariable(catchClause.bindingName, bindingType);

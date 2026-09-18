@@ -3,10 +3,9 @@
 //
 // Sun has no runtime generics. Every `Vec<i32>`, every `spawn<T>(...)` call and
 // every `Option<ref T>` payload is a distinct specialization, built the first
-// time it is asked for and cached under its mangled name. This class owns that
-// cache, the recursion guard that stops a mutually recursive template from
-// instantiating forever, and the queue of specializations whose bodies the
-// declaration pre-pass deferred.
+// time it is asked for and interned by its semantic arguments. This class owns
+// the completed callable cache and the queue of specializations whose bodies
+// the declaration pre-pass deferred.
 //
 // Specializing means analyzing a body, so this holds a reference back to the
 // analyzer. The direction that matters is the other one: nothing else needs to
@@ -223,12 +222,9 @@ class GenericSpecializer {
   SemanticContext &ctx_;
   SemanticAnalyzer &sema_;
 
-  // Classes currently being instantiated, so a mutually recursive template
-  // stops instead of specializing forever.
-  std::set<std::string> classesBeingInstantiated_;
-
-  // Specialized (monomorphized) functions by mangled name.
-  std::map<std::string, SpecializedFunctionInfo> specializedFunctionCache_;
+  // Completed callable instances by their declaration identity.
+  std::map<sun::DeclarationId, SpecializedFunctionInfo>
+      specializedFunctionCache_;
 
   // A class specialization whose type and method signatures are registered
   // but whose method bodies are not analyzed yet.

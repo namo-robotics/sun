@@ -27,7 +27,7 @@ namespace ops = sun::codegen::ops;
 Value* ClassGenerator::codegenPrecompiledClass(const ClassDefinitionAST& expr,
                                                const std::string& className) {
   // Still need to register the class type for type checking
-  auto classType = typeRegistry->getClass(className);
+  auto classType = typeRegistry->getClass(expr.getDeclarationId());
   if (classType) {
     // Generate specializations for generic methods on this non-generic
     // precompiled class (e.g., HeapAllocator.create<T>)
@@ -40,8 +40,11 @@ Value* ClassGenerator::codegenPrecompiledClass(const ClassDefinitionAST& expr,
 
       if (proto.isGeneric()) {
         // Generate any pre-computed specializations from semantic analysis
-        for (const auto& [specMangledName, specializedAST] :
+        for (const auto& [instanceId, specializedAST] :
              methodFunc.getSpecializations()) {
+          if (!specializedAST) continue;
+          const auto specMangledName =
+              specializedAST->getProto().getMangledName();
           if (specializedAST) {
             declareMethodFromAST(*specializedAST, specMangledName);
             generateMethodBody(*specializedAST, specMangledName);
@@ -61,8 +64,9 @@ Value* ClassGenerator::codegenPrecompiledClass(const ClassDefinitionAST& expr,
     // Some may be library specializations (already in bitcode) - skip those.
     // Others may be user specializations (e.g., Vec<MyUserClass>) - codegen
     // those.
-    for (const auto& [mangledName, specializedAST] :
-         expr.getSpecializations()) {
+    for (const auto& [instanceId, specializedAST] : expr.getSpecializations()) {
+      if (!specializedAST) continue;
+      const auto mangledName = specializedAST->getMangledName();
       if (!specializedAST || codegenedClasses.count(mangledName)) {
         continue;
       }
@@ -114,8 +118,11 @@ void ClassGenerator::declareClassMethods(
     // A generic method has no signature of its own — declare the
     // specializations semantic analysis created instead.
     if (proto.isGeneric()) {
-      for (const auto& [specMangledName, specializedAST] :
+      for (const auto& [instanceId, specializedAST] :
            methodFunc.getSpecializations()) {
+        if (!specializedAST) continue;
+        const auto specMangledName =
+            specializedAST->getProto().getMangledName();
         if (specializedAST) {
           declareMethodFromAST(*specializedAST, specMangledName);
         }
@@ -165,11 +172,12 @@ void ClassGenerator::declareBlockClassMethods(const ClassDefinitionAST& expr) {
   // Imported templates can acquire new specializations in this consumer.
   // Their callers need declarations before any library body is emitted.
   if (expr.isGeneric()) {
-    for (const auto& [mangledName, specializedAST] :
-         expr.getSpecializations()) {
+    for (const auto& [instanceId, specializedAST] : expr.getSpecializations()) {
+      if (!specializedAST) continue;
+      const auto mangledName = specializedAST->getMangledName();
       if (!specializedAST) continue;
       if (sun::generics::mentionsTypeParameter(
-              typeRegistry->getClass(mangledName)))
+              typeRegistry->getClass(instanceId)))
         continue;
       declareBlockClassMethods(*specializedAST);
     }
@@ -180,7 +188,7 @@ void ClassGenerator::declareBlockClassMethods(const ClassDefinitionAST& expr) {
   if (auto* resolvedClass = sun::tryGetType<sun::ClassType>(expr)) {
     className = resolvedClass->getMangledName();
   }
-  declareClassMethods(expr, typeRegistry->getClass(className));
+  declareClassMethods(expr, typeRegistry->getClass(expr.getDeclarationId()));
 }
 
 // -------------------------------------------------------------------
@@ -215,8 +223,9 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
     // Generate all specializations that were created during semantic analysis
     // This mirrors how generic functions work - specializations are
     // pre-computed and stored on the AST
-    for (const auto& [mangledName, specializedAST] :
-         expr.getSpecializations()) {
+    for (const auto& [instanceId, specializedAST] : expr.getSpecializations()) {
+      if (!specializedAST) continue;
+      const auto mangledName = specializedAST->getMangledName();
       // Check if already codegenned (not just type-registered)
       if (!specializedAST || codegenedClasses.count(mangledName)) continue;
       // Resolving a template's own signature instantiates the shape it names
@@ -224,7 +233,7 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
       // type parameter. That shape has no layout to emit; the class the code
       // actually uses is instantiated when unwrap<i32> is.
       if (sun::generics::mentionsTypeParameter(
-              typeRegistry->getClass(mangledName)))
+              typeRegistry->getClass(instanceId)))
         continue;
       codegen(*specializedAST);
     }
@@ -243,7 +252,7 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
   codegenedClasses.insert(className);
 
   // Get the class type (already fully built by semantic analyzer)
-  auto classType = typeRegistry->getClass(className);
+  auto classType = typeRegistry->getClass(expr.getDeclarationId());
 
   // Track if this class is user-defined (not from precompiled library)
   // Check both the precompiled flag and if this is a library specialization
@@ -267,8 +276,11 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
 
     // For generic methods, generate bodies for all pre-computed specializations
     if (proto.isGeneric()) {
-      for (const auto& [specMangledName, specializedAST] :
+      for (const auto& [instanceId, specializedAST] :
            methodFunc.getSpecializations()) {
+        if (!specializedAST) continue;
+        const auto specMangledName =
+            specializedAST->getProto().getMangledName();
         if (specializedAST) {
           generateMethodBody(*specializedAST, specMangledName);
           // Track user-defined method specializations for IR filtering
@@ -345,8 +357,10 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
     }
 
     // Iterate all specializations stored on this generic method's AST
-    for (const auto& [mangledName, specializedAST] :
+    for (const auto& [instanceId, specializedAST] :
          methodFunc.getSpecializations()) {
+      if (!specializedAST) continue;
+      const auto mangledName = specializedAST->getProto().getMangledName();
       if (!specializedAST) {
         continue;
       }
@@ -1008,7 +1022,7 @@ Value* ClassGenerator::codegen(const InterfaceDefinitionAST& expr) {
   }
 
   // Get the interface type (already fully built by semantic analyzer)
-  auto interfaceType = typeRegistry->getInterface(interfaceName);
+  auto interfaceType = typeRegistry->getInterface(expr.getDeclarationId());
 
   // Generate default method implementations
   for (const auto& methodDecl : expr.getMethods()) {
@@ -1227,90 +1241,10 @@ Value* ClassGenerator::codegen(const GenericCallAST& expr) {
         funcName);
     return nullptr;
   }
-  const std::vector<sun::TypePtr>& resolvedTypeArgs =
-      expr.getResolvedTypeArgs();
-
-  // Get the mangled class name - use resolved type if available to handle
-  // qualified names from using imports (e.g., Unique -> std_Unique)
-  std::string baseName = funcName;
   if (auto* resolvedClass = sun::tryGetType<sun::ClassType>(expr)) {
-    baseName = resolvedClass->getMangledName();
-    // Strip any trailing template params that may already be in the name
-    size_t parenPos = baseName.find('_');
-    // Actually the ClassType name should already be the full mangled name
-    // e.g., "std_Unique_Point" - so we can use it directly
-    auto classType = typeRegistry->getClass(baseName);
-    if (classType) {
-      // Create a stack-allocated instance and call constructor
-      llvm::StructType* structType = classType->getStructType(ctx.getContext());
-      Function* currentFunc = ctx.builder->GetInsertBlock()->getParent();
-      AllocaInst* alloca =
-          createEntryBlockAlloca(currentFunc, "stack.obj", structType);
-
-      // Zero-initialize
-      const DataLayout& DL = module->getDataLayout();
-      uint64_t structSize = DL.getTypeAllocSize(structType);
-      llvm::FunctionCallee memsetFn = module->getOrInsertFunction(
-          "memset", FunctionType::get(PointerType::getUnqual(ctx.getContext()),
-                                      {PointerType::getUnqual(ctx.getContext()),
-                                       Type::getInt32Ty(ctx.getContext()),
-                                       Type::getInt64Ty(ctx.getContext())},
-                                      false));
-      ctx.builder->CreateCall(
-          memsetFn,
-          {alloca, ConstantInt::get(Type::getInt32Ty(ctx.getContext()), 0),
-           ConstantInt::get(Type::getInt64Ty(ctx.getContext()), structSize)});
-
-      // Call the constructor selected during semantic analysis.
-      const auto* ctor = classType->getMethod(expr.getTargetDeclarationId());
-      Function* ctorFunc =
-          ctor ? functions().lookupFunctionById(ctor->declarationId) : nullptr;
-      size_t argCount = expr.getArgs().size();
-
-      if (ctorFunc) {
-        const auto& paramTypes =
-            ctor ? ctor->paramTypes : std::vector<sun::TypePtr>{};
-
-        std::vector<Value*> ctorArgs =
-            generateCtorArgs(ctorFunc, alloca, expr.getArgs(),
-                             expr.getArgConversions(), paramTypes);
-        // See codegenStackClassInstance: a throwing constructor must be
-        // invoked so its exception reaches the enclosing try's landing pad.
-        bool ctorCanThrow = (ctor && ctor->canThrow) ||
-                            ctorFunc->hasFnAttribute("sun.canthrow");
-        gen_.errorGenerator().emitPossiblyThrowingCall(ctorFunc, ctorArgs,
-                                                       ctorCanThrow, "");
-      } else if (argCount > 0) {
-        // Zeroed storage fully describes a class with no constructor, so an
-        // argument-free miss is fine. Arguments that reach no constructor
-        // would be dropped on the floor, which is a miscompile.
-        logAndThrowError("No constructor to initialize " +
-                             classType->getDisplayName() + " with " +
-                             std::to_string(argCount) + " argument(s)",
-                         expr.getLocation());
-      }
-
-      // Track the temporary for deinit ONLY if not moved (ownership
-      // transferred)
-      if (!expr.isMoved()) {
-        auto classTypePtr = std::make_shared<sun::ClassType>(*classType);
-        scopes().trackClassAllocation(alloca, "stack.obj", classTypePtr);
-      }
-
-      return alloca;
-    }
-  }
-
-  // Fallback: mangle from funcName if resolved type didn't have the class name
-  std::string mangledName =
-      sun::Types::mangleGenericClassName(funcName, resolvedTypeArgs);
-
-  // Look up the specialized class type from the registry
-  auto fallbackClassType = typeRegistry->getClass(mangledName);
-  if (fallbackClassType) {
+    auto classType = typeRegistry->getClass(resolvedClass->getDeclarationId());
     // Create a stack-allocated instance and call constructor
-    llvm::StructType* structType =
-        fallbackClassType->getStructType(ctx.getContext());
+    llvm::StructType* structType = classType->getStructType(ctx.getContext());
     Function* currentFunc = ctx.builder->GetInsertBlock()->getParent();
     AllocaInst* alloca =
         createEntryBlockAlloca(currentFunc, "stack.obj", structType);
@@ -1330,8 +1264,7 @@ Value* ClassGenerator::codegen(const GenericCallAST& expr) {
          ConstantInt::get(Type::getInt64Ty(ctx.getContext()), structSize)});
 
     // Call the constructor selected during semantic analysis.
-    const auto* ctor =
-        fallbackClassType->getMethod(expr.getTargetDeclarationId());
+    const auto* ctor = classType->getMethod(expr.getTargetDeclarationId());
     Function* ctorFunc =
         ctor ? functions().lookupFunctionById(ctor->declarationId) : nullptr;
     size_t argCount = expr.getArgs().size();
@@ -1350,8 +1283,11 @@ Value* ClassGenerator::codegen(const GenericCallAST& expr) {
       gen_.errorGenerator().emitPossiblyThrowingCall(ctorFunc, ctorArgs,
                                                      ctorCanThrow, "");
     } else if (argCount > 0) {
+      // Zeroed storage fully describes a class with no constructor, so an
+      // argument-free miss is fine. Arguments that reach no constructor
+      // would be dropped on the floor, which is a miscompile.
       logAndThrowError("No constructor to initialize " +
-                           fallbackClassType->getDisplayName() + " with " +
+                           classType->getDisplayName() + " with " +
                            std::to_string(argCount) + " argument(s)",
                        expr.getLocation());
     }
@@ -1359,7 +1295,7 @@ Value* ClassGenerator::codegen(const GenericCallAST& expr) {
     // Track the temporary for deinit ONLY if not moved (ownership
     // transferred)
     if (!expr.isMoved()) {
-      auto classTypePtr = std::make_shared<sun::ClassType>(*fallbackClassType);
+      auto classTypePtr = std::make_shared<sun::ClassType>(*classType);
       scopes().trackClassAllocation(alloca, "stack.obj", classTypePtr);
     }
 

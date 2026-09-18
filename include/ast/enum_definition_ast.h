@@ -40,7 +40,7 @@ class EnumDefinitionAST : public ExprAST {
   std::string doc_;                           // Comment written above the enum
   // Populated during semantic analysis (mutable, like ClassAnalysis
   // specializations on ClassDefinitionAST)
-  mutable std::map<std::string, std::shared_ptr<sun::EnumType>>
+  mutable std::map<sun::DeclarationId, std::shared_ptr<sun::EnumType>>
       specializations_;
 
  public:
@@ -90,11 +90,11 @@ class EnumDefinitionAST : public ExprAST {
   // EnumType itself (payload types substituted). Called by the semantic
   // analyzer when the generic enum is instantiated; codegen walks these to
   // build the storage structs.
-  void addSpecialization(const std::string& mangledName,
+  void addSpecialization(sun::DeclarationId id,
                          std::shared_ptr<sun::EnumType> specialized) const {
-    specializations_[mangledName] = std::move(specialized);
+    specializations_[id] = std::move(specialized);
   }
-  const std::map<std::string, std::shared_ptr<sun::EnumType>>&
+  const std::map<sun::DeclarationId, std::shared_ptr<sun::EnumType>>&
   getSpecializations() const {
     return specializations_;
   }

@@ -13,6 +13,8 @@
 
 namespace sun {
 
+struct SpecializationKey;
+
 /** The source role of a declaration, independent of its resolved type. */
 enum class DeclarationKind {
   Module,
@@ -39,6 +41,7 @@ struct DeclarationRecord {
   DeclarationId owner;
   DeclarationId module;
   std::optional<PortableDeclarationKey> portableKey;
+  std::shared_ptr<const SpecializationKey> specialization;
 };
 
 /** Allocate and retain declarations independently of symbol spelling. */
@@ -70,11 +73,14 @@ class DeclarationTable {
   }
 
   /** Allocate an identity without making the declaration visible in a scope. */
-  DeclarationId add(DeclarationKind kind, std::string name,
-                    DeclarationId owner = {}, DeclarationId module = {}) {
+  DeclarationId add(
+      DeclarationKind kind, std::string name, DeclarationId owner = {},
+      DeclarationId module = {},
+      std::shared_ptr<const SpecializationKey> specialization = {}) {
     if (owner) get(owner);
     if (module) get(module);
-    records_.push_back({kind, std::move(name), owner, module, std::nullopt});
+    records_.push_back({kind, std::move(name), owner, module, std::nullopt,
+                        std::move(specialization)});
     return DeclarationId(records_.size());
   }
 

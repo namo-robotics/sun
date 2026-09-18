@@ -184,18 +184,18 @@ manifest { libraries: ["lib.moon"] }
   ASSERT_EQ(box->getCompiledSpecializations().size(), 1u);
   size_t compiled = 0;
   size_t fresh = 0;
-  for (const auto& [name, shape] : box->getSpecializations()) {
+  for (const auto& [instanceId, shape] : box->getSpecializations()) {
     ASSERT_NE(shape, nullptr);
     if (shape->isPrecompiled()) {
       ++compiled;
-      EXPECT_TRUE(box->hasCompiledSpecialization(name));
+      EXPECT_TRUE(box->hasCompiledSpecialization(shape->getMangledName()));
       for (const auto& method : shape->getMethods()) {
         EXPECT_EQ(method.function->hasBody(),
                   method.function->getProto().isTemplate());
       }
     } else {
       ++fresh;
-      EXPECT_FALSE(box->hasCompiledSpecialization(name));
+      EXPECT_FALSE(box->hasCompiledSpecialization(shape->getMangledName()));
       for (const auto& method : shape->getMethods())
         EXPECT_TRUE(method.function->hasBody());
     }

@@ -1153,14 +1153,15 @@ class NominalType : public Type {
   std::shared_ptr<const int> declarationSession_;
 
  protected:
-  bool sameDeclaration(const NominalType& other, bool sameLegacyName) const {
-    if (!declarationId_ && !other.declarationId_) return sameLegacyName;
+  bool sameDeclaration(const NominalType& other) const {
+    if (!declarationId_ || !other.declarationId_)
+      logAndThrowError("Nominal equality requires declaration identities");
     return declarationId_ == other.declarationId_ &&
            declarationSession_ == other.declarationSession_;
   }
 
  public:
-  /** Return the source identity, or an unassigned ID for legacy types. */
+  /** Return the declaration identity within this analysis session. */
   DeclarationId getDeclarationId() const { return declarationId_; }
 };
 
@@ -1608,7 +1609,7 @@ class ClassType : public NominalType {
 
   bool equals(const Type& other) const override {
     if (auto* c = dynamic_cast<const ClassType*>(&other)) {
-      return sameDeclaration(*c, mangledName == c->mangledName);
+      return sameDeclaration(*c);
     }
     return false;
   }
@@ -1918,7 +1919,7 @@ class InterfaceType : public NominalType {
 
   bool equals(const Type& other) const override {
     if (auto* i = dynamic_cast<const InterfaceType*>(&other)) {
-      return sameDeclaration(*i, name == i->name);
+      return sameDeclaration(*i);
     }
     return false;
   }
@@ -2163,7 +2164,7 @@ class EnumType : public NominalType {
 
   bool equals(const Type& other) const override {
     if (auto* e = dynamic_cast<const EnumType*>(&other)) {
-      return sameDeclaration(*e, mangledName_ == e->mangledName_);
+      return sameDeclaration(*e);
     }
     return false;
   }
@@ -2355,6 +2356,50 @@ class Types {
   }
 };
 
+/** The semantic inputs that distinguish instances of one template. */
+struct SpecializationKey {
+  DeclarationId source;
+  DeclarationId enclosing;
+  std::vector<TypePtr> arguments;
+  std::optional<std::vector<TypePtr>> variadic;
+
+  /** Compare semantic types, including nominal declaration identities. */
+  bool operator==(const SpecializationKey& other) const {
+    auto equal = [](const auto& left, const auto& right) {
+      if (left.size() != right.size()) return false;
+      for (size_t i = 0; i < left.size(); ++i)
+        if (left[i] != right[i] &&
+            (!left[i] || !right[i] || !left[i]->equals(*right[i])))
+          return false;
+      return true;
+    };
+    return source == other.source && enclosing == other.enclosing &&
+           equal(arguments, other.arguments) &&
+           variadic.has_value() == other.variadic.has_value() &&
+           (!variadic || equal(*variadic, *other.variadic));
+  }
+};
+
+/** Bucket instances by template and argument kinds; equality checks structure.
+ */
+struct SpecializationKeyHash {
+  size_t operator()(const SpecializationKey& key) const {
+    size_t hash = key.source.index();
+    auto combine = [&](size_t value) { hash = hash * 31 + value; };
+    combine(key.enclosing.index());
+    combine(key.arguments.size());
+    for (const auto& arg : key.arguments)
+      combine(arg ? static_cast<size_t>(arg->getKind()) + 1 : 0);
+    combine(key.variadic.has_value());
+    if (key.variadic) {
+      combine(key.variadic->size());
+      for (const auto& arg : *key.variadic)
+        combine(arg ? static_cast<size_t>(arg->getKind()) + 1 : 0);
+    }
+    return hash;
+  }
+};
+
 /**
  * TypeRegistry - Per-compilation-unit registry for class and interface types.
  *
@@ -2380,14 +2425,10 @@ class TypeRegistry {
     return type;
   }
 
-  std::unordered_map<std::string, std::shared_ptr<ClassType>> classCache;
-  std::unordered_map<std::string, std::shared_ptr<ClassType>>
-      specializedClassCache;
+  std::unordered_map<SpecializationKey, DeclarationId, SpecializationKeyHash>
+      specializations_;
   std::unordered_map<std::string, std::shared_ptr<InterfaceType>>
       interfaceCache;
-  std::unordered_map<std::string, std::shared_ptr<InterfaceType>>
-      specializedInterfaceCache;
-  std::unordered_map<std::string, std::shared_ptr<EnumType>> enumCache;
 
  public:
   /** Declaration identities shared by semantic analysis and code generation. */
@@ -2449,7 +2490,6 @@ class TypeRegistry {
     type->mangledName = name.mangled();
     type->setQualifiedName(name);
     type->setBaseName(name.baseName);
-    classCache.try_emplace(name.mangled(), type);
     return type;
   }
 
@@ -2487,92 +2527,53 @@ class TypeRegistry {
     type->mangledName_ = name.mangled();
     type->setQualifiedName(name);
     type->setBaseName(name.baseName);
-    enumCache.try_emplace(name.mangled(), type);
     return type;
   }
 
-  // Get or create a class type by qualified name
-  // Sets the qualified name and base name on the class type automatically
-  std::shared_ptr<ClassType> getClass(const sun::QualifiedName& qualifiedName) {
-    std::string name = qualifiedName.mangled();
-    auto classType = getClass(name);
-    // Set qualified name if not already set
-    if (!classType->hasQualifiedName()) {
-      classType->setQualifiedName(qualifiedName);
-    }
-    // Set base name for error messages if there's a scope path. A
-    // specialization derives its display name from the generic's, so leave
-    // it alone (its mangled base name would read "Vec_i32<i32>").
-    if (!classType->hasBaseName() && !classType->isSpecialized() &&
-        !qualifiedName.scopePath.empty()) {
-      classType->setBaseName(qualifiedName.baseName);
-    }
-    return classType;
+  /** Intern an instance before resolving its members or body. */
+  DeclarationId specialize(const SpecializationKey& key) {
+    auto found = specializations_.find(key);
+    if (found != specializations_.end()) return found->second;
+    const auto& source = declarations.get(key.source);
+    auto id = declarations.add(
+        source.kind, source.name, key.enclosing ? key.enclosing : source.owner,
+        source.module, std::make_shared<const SpecializationKey>(key));
+    specializations_.emplace(key, id);
+    return id;
   }
 
-  // Get or create a class type by mangled name
-  // Also checks specializedClassCache for generic instantiations
-  std::shared_ptr<ClassType> getClass(const std::string& name) {
-    // First check specialized class cache (for generic instantiations like
-    // Box_i32)
-    auto specIt = specializedClassCache.find(name);
-    if (specIt != specializedClassCache.end()) {
-      return specIt->second;
-    }
-
-    // Then check regular class cache
-    auto it = classCache.find(name);
-    if (it != classCache.end()) {
-      return it->second;
-    }
-    auto type = std::make_shared<ClassType>(name);
-    classCache[name] = type;
-    return type;
+  /** Return an existing instance without allocating a declaration. */
+  DeclarationId findSpecialization(const SpecializationKey& key) const {
+    auto found = specializations_.find(key);
+    return found == specializations_.end() ? DeclarationId{} : found->second;
   }
 
-  // Get or create a specialized generic class (e.g., List<i32>)
+  /** Configure the class attached to an interned specialization. */
   std::shared_ptr<ClassType> getSpecializedClass(
-      const std::string& baseName, std::vector<TypePtr> typeArgs) {
-    std::string mangledName = Types::mangleGenericClassName(baseName, typeArgs);
-
-    auto it = specializedClassCache.find(mangledName);
-    if (it != specializedClassCache.end()) {
-      return it->second;
-    }
-    auto type =
-        std::make_shared<ClassType>(mangledName, baseName, std::move(typeArgs));
-    specializedClassCache[mangledName] = type;
+      DeclarationId id, const QualifiedName& name, const QualifiedName& source,
+      const std::vector<TypePtr>& arguments) {
+    auto type = getClass(id, name);
+    type->baseGenericName = source.mangled();
+    type->setBaseName(source.display());
+    type->typeArguments = arguments;
+    type->setGenericQualifiedName(source);
     return type;
   }
 
-  // Get or create an interface type by name
-  // Also checks specializedInterfaceCache for generic instantiations
+  /** Look up an emitted interface symbol without creating a declaration. */
   std::shared_ptr<InterfaceType> getInterface(const std::string& name) {
-    // First check specialized interface cache
-    auto specIt = specializedInterfaceCache.find(name);
-    if (specIt != specializedInterfaceCache.end()) {
-      return specIt->second;
-    }
-
     // Then check regular interface cache
     auto it = interfaceCache.find(name);
     if (it != interfaceCache.end()) {
       return it->second;
     }
-    auto type = std::make_shared<InterfaceType>(name);
-    interfaceCache[name] = type;
-    return type;
+    logAndThrowError("Unknown registered interface symbol: " + name);
   }
 
   // Look up an interface by name without auto-creating
   // Returns nullptr if not found
   std::shared_ptr<InterfaceType> lookupInterface(
       const std::string& name) const {
-    // Check specialized interface cache first
-    auto specIt = specializedInterfaceCache.find(name);
-    if (specIt != specializedInterfaceCache.end()) {
-      return specIt->second;
-    }
     // Then check regular interface cache
     auto it = interfaceCache.find(name);
     if (it != interfaceCache.end()) {
@@ -2590,45 +2591,23 @@ class TypeRegistry {
     return type;
   }
 
-  // Get or create a specialized generic interface (e.g., IIterator<i32>)
+  /** Configure the interface attached to an interned specialization. */
   std::shared_ptr<InterfaceType> getSpecializedInterface(
-      const std::string& baseName, std::vector<TypePtr> typeArgs) {
-    std::string mangledName = Types::mangleGenericClassName(baseName, typeArgs);
-
-    auto it = specializedInterfaceCache.find(mangledName);
-    if (it != specializedInterfaceCache.end()) {
-      return it->second;
-    }
-    auto type = std::make_shared<InterfaceType>(mangledName, baseName,
-                                                std::move(typeArgs));
-    specializedInterfaceCache[mangledName] = type;
+      DeclarationId id, const QualifiedName& name, const QualifiedName& source,
+      const std::vector<TypePtr>& arguments) {
+    auto type = getInterface(id, name);
+    type->baseGenericName = source.mangled();
+    type->setBaseName(source.baseName);
+    type->typeArguments = arguments;
+    type->setGenericQualifiedName(source);
     return type;
-  }
-
-  // Get or create an enum type by name
-  std::shared_ptr<EnumType> getEnum(const std::string& name) {
-    auto it = enumCache.find(name);
-    if (it != enumCache.end()) {
-      return it->second;
-    }
-    auto type = std::make_shared<EnumType>(name);
-    enumCache[name] = type;
-    return type;
-  }
-
-  // Check if an enum type exists
-  bool hasEnum(const std::string& name) const {
-    return enumCache.find(name) != enumCache.end();
   }
 
   // Clear all caches (useful for REPL reset)
   void clear() {
     nominalTypes_.clear();
-    classCache.clear();
-    specializedClassCache.clear();
+    specializations_.clear();
     interfaceCache.clear();
-    specializedInterfaceCache.clear();
-    enumCache.clear();
   }
 };
 

@@ -352,8 +352,11 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
 
   // Create a pseudo-class type for 'this' during interface method analysis
   // This allows default implementations to access interface fields
-  auto pseudoClass =
-      ctx_.types()->getClass("__interface_" + interfaceDef.getName());
+  auto pseudoId = ctx_.types()->declarations.add(
+      sun::DeclarationKind::Class, "__interface_" + interfaceDef.getName(),
+      interfaceDef.getDeclarationId(),
+      ctx_.types()->declarations.get(interfaceDef.getDeclarationId()).module);
+  auto pseudoClass = ctx_.types()->getClass(pseudoId);
 
   // Add fields to the interface type and pseudo-class
   for (const auto& field : interfaceDef.getFields()) {

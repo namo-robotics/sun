@@ -207,7 +207,6 @@ TEST(Tooling_Frontend_DeclarationIdentity, nominal_types_precede_names) {
   EXPECT_FALSE(firstType->equals(*secondType));
   EXPECT_EQ(types.getClass(a, {{"work_i32"}, "Local"}), firstType);
   EXPECT_EQ(types.getClass(a), firstType);
-  EXPECT_EQ(types.getClass("work_i32_Local"), firstType);
   EXPECT_TRUE(firstType->equals(*firstType));
 }
 
@@ -218,7 +217,7 @@ TEST(Tooling_Frontend_DeclarationIdentity, nominal_types_distinguish_sessions) {
   auto b = second.declarations.add(sun::DeclarationKind::Interface, "Local");
   ASSERT_EQ(a, b);
   EXPECT_FALSE(first.getInterface(a)->equals(*second.getInterface(b)));
-  EXPECT_FALSE(first.getInterface(a)->equals(*first.getInterface("Local")));
+  EXPECT_ANY_THROW(first.getInterface("Local"));
   auto e = first.declarations.add(sun::DeclarationKind::Enum, "Value");
   auto f = first.declarations.add(sun::DeclarationKind::Enum, "Value");
   EXPECT_FALSE(first.getEnum(e)->equals(*first.getEnum(f)));
@@ -291,4 +290,101 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   EXPECT_EQ(secondType->getDeclarationId(), secondId);
   EXPECT_EQ(result.typeRegistry->getInterface("first_Item"), firstType);
   EXPECT_EQ(result.typeRegistry->getInterface("second_Item"), secondType);
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity,
+     specialization_keys_distinguish_nominal_arguments_and_templates) {
+  sun::TypeRegistry types;
+  auto templateId = types.declarations.add(sun::DeclarationKind::Class, "Box");
+  auto otherTemplate =
+      types.declarations.add(sun::DeclarationKind::Class, "Box");
+  auto first = types.getClass(
+      types.declarations.add(sun::DeclarationKind::Class, "Local"));
+  auto second = types.getClass(
+      types.declarations.add(sun::DeclarationKind::Class, "Local"));
+  sun::SpecializationKey key{templateId, {}, {first}, std::nullopt};
+  auto instance = types.specialize(key);
+  EXPECT_EQ(types.specialize(key), instance);
+  EXPECT_NE(types.specialize({templateId, {}, {second}, std::nullopt}),
+            instance);
+  EXPECT_NE(types.specialize({otherTemplate, {}, {first}, std::nullopt}),
+            instance);
+  ASSERT_TRUE(types.declarations.get(instance).specialization);
+  EXPECT_EQ(types.declarations.get(instance).specialization->source,
+            templateId);
+  first->addField("recursive", sun::Types::Reference(first));
+  EXPECT_EQ(types.specialize(key), instance);
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity,
+     specialization_keys_compare_structure_and_variadic_packs) {
+  sun::TypeRegistry types;
+  auto source = types.declarations.add(sun::DeclarationKind::Function, "work");
+  auto owner = types.declarations.add(sun::DeclarationKind::Class, "Owner");
+  sun::SpecializationKey key{
+      source, {}, {sun::Types::Reference(sun::Types::Int32())}, std::nullopt};
+  auto instance = types.specialize(key);
+  sun::SpecializationKey equal{
+      source, {}, {sun::Types::Reference(sun::Types::Int32())}, std::nullopt};
+  EXPECT_EQ(types.specialize(equal), instance);
+  EXPECT_EQ(sun::SpecializationKeyHash{}(key),
+            sun::SpecializationKeyHash{}(equal));
+  equal.arguments = {sun::Types::Reference(sun::Types::Int32(), false)};
+  EXPECT_NE(types.specialize(equal), instance);
+  equal = key;
+  equal.enclosing = owner;
+  auto owned = types.specialize(equal);
+  EXPECT_NE(owned, instance);
+  EXPECT_EQ(types.declarations.get(owned).owner, owner);
+  equal = key;
+  equal.variadic = std::vector<sun::TypePtr>{};
+  auto emptyPack = types.specialize(equal);
+  EXPECT_NE(emptyPack, instance);
+  equal.variadic = std::vector<sun::TypePtr>{sun::Types::Int32()};
+  EXPECT_NE(types.specialize(equal), emptyPack);
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity,
+     specialized_members_belong_to_the_concrete_class) {
+  auto driver = Driver::createForJIT();
+  auto result = driver->analyzeString(R"(
+    class Box<T> { var value: T; init(value: T) { this.value = value; } }
+    function main() i32 { var box = Box<i32>(7); return box.value; }
+  )");
+  ASSERT_FALSE(result.error);
+  const auto& generic =
+      static_cast<const ClassDefinitionAST&>(*result.ast->getBody()[0]);
+  ASSERT_EQ(generic.getSpecializations().size(), 1u);
+  const auto& [id, instance] = *generic.getSpecializations().begin();
+  EXPECT_EQ(instance->getDeclarationId(), id);
+  EXPECT_EQ(result.typeRegistry->getClass(id)->getDeclarationId(), id);
+  EXPECT_EQ(result.typeRegistry->declarations.get(id).specialization->source,
+            generic.getDeclarationId());
+  for (const auto& method : instance->getMethods())
+    EXPECT_EQ(result.typeRegistry->declarations
+                  .get(method.function->getDeclarationId())
+                  .owner,
+              id);
+  for (const auto& field : instance->getFields())
+    EXPECT_EQ(result.typeRegistry->declarations.get(field.declaration.id).owner,
+              id);
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity,
+     recursive_generic_types_reuse_the_allocated_instance) {
+  auto driver = Driver::createForJIT();
+  auto result = driver->analyzeString(R"(
+    class Node<T> { var next: raw_ptr<Node<T>>; }
+    function inspect(node: ref Node<i32>) void {}
+  )");
+  ASSERT_FALSE(result.error);
+  const auto& generic =
+      static_cast<const ClassDefinitionAST&>(*result.ast->getBody()[0]);
+  ASSERT_EQ(generic.getSpecializations().size(), 1u);
+  const auto id = generic.getSpecializations().begin()->first;
+  auto type = result.typeRegistry->getClass(id);
+  ASSERT_EQ(type->getFields().size(), 1u);
+  auto next =
+      std::static_pointer_cast<sun::RawPointerType>(type->getFields()[0].type);
+  EXPECT_EQ(next->getPointeeType(), type);
 }

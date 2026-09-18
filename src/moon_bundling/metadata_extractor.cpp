@@ -107,8 +107,10 @@ void extractClass(const ClassDefinitionAST& cls, moon::ModuleMetadata& metadata,
   if (node.has_location()) *classDef->mutable_location() = node.location();
 
   // The writer verifies these candidates against the emitted code.
-  for (const auto& [name, specialization] : cls.getSpecializations()) {
-    if (specialization && !cls.hasCompiledSpecialization(name))
+  for (const auto& [instanceId, specialization] : cls.getSpecializations()) {
+    if (!specialization) continue;
+    const auto name = specialization->getMangledName();
+    if (!cls.hasCompiledSpecialization(name))
       classDef->add_compiled_specializations(name);
   }
 

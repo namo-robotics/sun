@@ -317,8 +317,10 @@ Value* ErrorGenerator::codegen(const TryCatchExprAST& expr) {
     if (clause.isCatchAll) {
       ctx.builder->CreateBr(bodyBBs[i]);
     } else {
-      Value* want =
-          ConstantInt::get(i64Ty, sunTypeId(clause.resolvedMangledName));
+      Value* want = ConstantInt::get(
+          i64Ty, sunTypeId(sun::requireType<sun::ClassType>(clause.resolvedType,
+                                                            "catch type")
+                               .getMangledName()));
       Value* m = ctx.builder->CreateICmpEQ(typeId, want, "catch.match");
       BasicBlock* elseBB = (i + 1 < n) ? testBBs[i + 1] : nomatchBB;
       ctx.builder->CreateCondBr(m, bodyBBs[i], elseBB);
@@ -341,7 +343,8 @@ Value* ErrorGenerator::codegen(const TryCatchExprAST& expr) {
       } else {
         // Concrete type: copy the object out of the exception buffer into a
         // fresh stack slot so it survives __cxa_end_catch, then bind e to it.
-        auto classType = typeRegistry()->getClass(clause.resolvedMangledName);
+        auto classType =
+            std::static_pointer_cast<sun::ClassType>(clause.resolvedType);
         llvm::StructType* classStruct =
             classType->getStructType(ctx.getContext());
         Value* dataPtr = ctx.builder->CreateExtractValue(fat, 0, "err.data");

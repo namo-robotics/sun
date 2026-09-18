@@ -71,7 +71,7 @@ struct PrototypeAnalysis {
 
 /// Analysis data for FunctionAST (includes specializations)
 struct FunctionAnalysis : public ExprAnalysis {
-  std::map<std::string, std::shared_ptr<FunctionAST>> specializations;
+  std::map<sun::DeclarationId, std::shared_ptr<FunctionAST>> specializations;
 
   FunctionAnalysis() = default;
   FunctionAnalysis(const FunctionAnalysis&) = default;
@@ -81,7 +81,8 @@ struct FunctionAnalysis : public ExprAnalysis {
 /// Analysis data for ClassDefinitionAST
 struct ClassAnalysis : public ExprAnalysis {
   sun::QualifiedName qualifiedName;
-  std::map<std::string, std::shared_ptr<ClassDefinitionAST>> specializations;
+  std::map<sun::DeclarationId, std::shared_ptr<ClassDefinitionAST>>
+      specializations;
 
   ClassAnalysis() = default;
   ClassAnalysis(const ClassAnalysis&) = default;

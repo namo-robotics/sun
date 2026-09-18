@@ -476,9 +476,10 @@ Value* FunctionGenerator::codegenGenericFunc(FunctionAST& funcAst) {
   CodegenState::InsertPointGuard here(state_);
 
   // Generate all specializations that were created during semantic analysis
-  for (const auto& [mangledName, specializedAST] :
+  for (const auto& [instanceId, specializedAST] :
        funcAst.getSpecializations()) {
     if (!specializedAST) continue;
+    const auto mangledName = specializedAST->getProto().getMangledName();
     // A forward declaration from the block pre-pass still needs its body;
     // only an already-defined function is skipped.
     llvm::Function* existing = module->getFunction(mangledName);

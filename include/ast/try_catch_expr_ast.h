@@ -20,8 +20,7 @@ struct CatchClause {
 
   // Filled in by semantic analysis, consumed by codegen for typed matching:
   bool isCatchAll = false;  // true for `catch (e: IError)` (matches any)
-  std::string resolvedMangledName;  // concrete error class's mangled name
-                                    // (empty when isCatchAll)
+  sun::TypePtr resolvedType;
 
   CatchClause() = default;
   CatchClause(CatchClause&&) = default;
