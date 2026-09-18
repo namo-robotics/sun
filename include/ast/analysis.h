@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "ast/ast_common.h"
 #include "ast/ast_fwd.h"
 #include "semantic_analysis/argument_conversion.h"
 #include "semantic_analysis/declaration_id.h"
@@ -58,6 +59,7 @@ struct StructLiteralAnalysis : public ExprAnalysis {
 
 /// Analysis data for PrototypeAST (function signatures)
 struct PrototypeAnalysis {
+  std::vector<Capture> captures;
   sun::DeclarationIdentity declaration;
   sun::QualifiedName qualifiedName;
   std::vector<sun::TypePtr> resolvedParamTypes;

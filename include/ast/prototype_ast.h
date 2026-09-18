@@ -26,7 +26,6 @@ class PrototypeAST {
   std::vector<LifetimeParameter> lifetimeParameters;
   std::vector<std::pair<std::string, TypeAnnotation>> args;
   std::optional<TypeAnnotation> returnType;
-  std::vector<Capture> captures;
   std::vector<std::string> refCaptureNames;  // Declared [ref x, ...] list
   // The subset of refCaptureNames written `[const ref x]`: a read-only
   // borrow, so several lambdas may capture the same variable
@@ -65,9 +64,17 @@ class PrototypeAST {
         returnType(std::move(retType)),
         variadicParam_(std::move(variadicParam)) {}
 
-  void setCaptures(const std::vector<Capture>& caps) { captures = caps; }
-  const std::vector<Capture>& getCaptures() const { return captures; }
-  bool hasClosure() const { return !captures.empty(); }
+  /** Record the bindings selected for this closure in the current session. */
+  void setCaptures(const std::vector<Capture>& caps) {
+    analysis().captures = caps;
+  }
+  /** Return computed captures, or an empty list before analysis. */
+  const std::vector<Capture>& getCaptures() const {
+    static const std::vector<Capture> empty;
+    return analysis_ ? analysis_->captures : empty;
+  }
+  /** Report whether analysis found a closure environment. */
+  bool hasClosure() const { return !getCaptures().empty(); }
 
   // Names declared in the lambda's [ref x, ...] capture list (parser-derived
   // source of truth; Capture::kind is derived from it during analysis)
@@ -103,7 +110,7 @@ class PrototypeAST {
   // borrow of a local, or a value it owns and drops there. Either way the
   // closure must not outlive that frame.
   bool hasRefCaptures() const {
-    for (const auto& cap : captures) {
+    for (const auto& cap : getCaptures()) {
       if (cap.kind != CaptureKind::ByValue) return true;
     }
     return false;

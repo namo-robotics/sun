@@ -5,6 +5,7 @@
 
 #include "ast.h"
 #include "ast/ast_children.h"
+#include "codegen/codegen_visitor.h"
 #include "driver/driver.h"
 #include "parsing/parser.h"
 #include "semantic_analysis/declaration_identity_pass.h"
@@ -586,4 +587,100 @@ TEST(Tooling_Frontend_DeclarationIdentity,
             sourceMethod.declarationIdentity().lifetimeParameters[0]);
   EXPECT_EQ(table.get(method.getDeclarationId()).owner,
             instance.getDeclarationId());
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity, captures_follow_analysis_lifetime) {
+  auto driver = Driver::createForJIT();
+  const std::string source = R"(
+    function main() i32 {
+      var value: i32 = 7;
+      var read = [const ref value]() => i32 { return value; };
+      return read();
+    }
+  )";
+  auto first = driver->analyzeString(source);
+  ASSERT_FALSE(first.error);
+  const LambdaAST* lambda = nullptr;
+  std::function<void(const ExprAST&)> visit = [&](const ExprAST& node) {
+    if (node.getType() == ASTNodeType::LAMBDA)
+      lambda = &static_cast<const LambdaAST&>(node);
+    forEachChild(node, visit);
+  };
+  visit(*first.ast);
+  ASSERT_NE(lambda, nullptr);
+  const auto& proto = lambda->getProto();
+  ASSERT_EQ(proto.getCaptures().size(), 1u);
+  const auto capture = proto.getCaptures()[0];
+  const auto id = lambda->getDeclarationId();
+  EXPECT_EQ(first.typeRegistry->declarations.get(capture.declarationId).name,
+            "value");
+  EXPECT_TRUE(capture.type->equals(*sun::Types::Int32()));
+
+  auto clone = lambda->clone();
+  const auto& cloned = static_cast<const LambdaAST&>(*clone).getProto();
+  EXPECT_FALSE(cloned.hasClosure());
+  EXPECT_FALSE(cloned.hasAnalysis());
+  EXPECT_EQ(cloned.getRefCaptureNames(), proto.getRefCaptureNames());
+  EXPECT_EQ(cloned.getConstRefCaptureNames(), proto.getConstRefCaptureNames());
+
+  auto second = driver->analyzeString(source);
+  ASSERT_FALSE(second.error);
+  driver.reset();
+  EXPECT_EQ(proto.getCaptures()[0].declarationId, capture.declarationId);
+  EXPECT_EQ(first.typeRegistry->declarations.get(capture.declarationId).name,
+            "value");
+  EXPECT_FALSE(proto.declarationIdentity().session.expired());
+  EXPECT_NE(first.typeRegistry, second.typeRegistry);
+
+  sun::clearComputedAnalysis(*first.ast);
+  EXPECT_EQ(lambda->getDeclarationId(), id);
+  EXPECT_FALSE(proto.hasClosure());
+  EXPECT_FALSE(proto.hasRefCaptures());
+  EXPECT_EQ(proto.getConstRefCaptureNames(), std::vector<std::string>{"value"});
+
+  visit(*second.ast);
+  ASSERT_EQ(lambda->getProto().getCaptures().size(), 1u);
+  sun::resetAnalysisSession(*second.ast);
+  EXPECT_FALSE(lambda->getDeclarationId());
+  EXPECT_FALSE(lambda->getProto().hasClosure());
+  EXPECT_FALSE(lambda->getProto().hasAnalysis());
+  EXPECT_EQ(lambda->getProto().getConstRefCaptureNames(),
+            std::vector<std::string>{"value"});
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity,
+     vtables_distinguish_ids_and_sessions) {
+  auto types = std::make_shared<sun::TypeRegistry>();
+  auto classId = types->declarations.add(sun::DeclarationKind::Class, "Box");
+  auto firstId =
+      types->declarations.add(sun::DeclarationKind::Interface, "View");
+  auto secondId =
+      types->declarations.add(sun::DeclarationKind::Interface, "View");
+  auto cls = types->getClass(classId, {{}, "Box"});
+  auto first = types->getInterface(firstId, {{}, "View"});
+  auto second = types->getInterface(secondId, {{}, "View"});
+  CodegenContext context("vtable_identity", nullptr);
+  CodegenVisitor gen(context, types);
+  auto& classes = gen.classGenerator();
+  auto* firstTable = classes.getOrCreateInterfaceVtable(cls.get(), first.get());
+  auto* secondTable =
+      classes.getOrCreateInterfaceVtable(cls.get(), second.get());
+  EXPECT_NE(firstTable, secondTable);
+  EXPECT_EQ(firstTable,
+            classes.getOrCreateInterfaceVtable(cls.get(), first.get()));
+
+  sun::TypeRegistry foreign;
+  auto foreignClassId =
+      foreign.declarations.add(sun::DeclarationKind::Class, "Box");
+  auto foreignInterfaceId =
+      foreign.declarations.add(sun::DeclarationKind::Interface, "View");
+  auto foreignClass = foreign.getClass(foreignClassId, {{}, "Box"});
+  auto foreignInterface =
+      foreign.getInterface(foreignInterfaceId, {{}, "View"});
+  ASSERT_EQ(foreignClassId, classId);
+  ASSERT_EQ(foreignInterfaceId, firstId);
+  EXPECT_ANY_THROW(
+      classes.getOrCreateInterfaceVtable(foreignClass.get(), first.get()));
+  EXPECT_ANY_THROW(
+      classes.getOrCreateInterfaceVtable(cls.get(), foreignInterface.get()));
 }

@@ -54,9 +54,6 @@ class ASTSerializer {
   // Token serialization (for operators)
   ast::Token serializeToken(const Token& token) const;
 
-  // Capture serialization
-  ast::Capture serializeCapture(const Capture& cap) const;
-
   // Set common ExprAST fields on the proto message
   void serializeExprBase(const ExprAST& expr, ast::ASTNode* node) const;
 

@@ -44,21 +44,6 @@ message TypeAnnotation {
   repeated string lifetime_arguments = 11;      // `Bus<'a>` application
 }
 
-// How a lambda takes hold of a variable (mirrors CaptureKind in ast_common.h)
-enum CaptureKind {
-  CAPTURE_BY_VALUE = 0;  // Not in the capture list: a copy it may only read
-  CAPTURE_OWNED = 1;     // [x]: the closure owns it; a compound moves in
-  CAPTURE_BORROW = 2;    // [ref x], or [const ref x] when is_const
-}
-
-// Lambda capture (mirrors Capture in ast_common.h)
-message Capture {
-  reserved 3, 5;  // was by_ref / owned, now folded into kind
-  string name = 1;
-  bool is_const = 4;  // The binding is immutable inside the lambda
-  CaptureKind kind = 6;
-}
-
 // Token kind enumeration (mirrors TokenKind in lexer.h)
 // Only includes kinds used in AST (operators, literals)
 enum TokenKind {

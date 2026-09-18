@@ -373,7 +373,8 @@ message Prototype {
   repeated string type_parameters = 2 [deprecated = true];
   repeated FunctionArg args = 3;
   optional TypeAnnotation return_type = 4;
-  repeated Capture captures = 5;
+  reserved 5;  // Computed captures belong to analysis, not source syntax.
+  reserved "captures";
   // The trailing `args...` value pack: its name, and the annotation after its
   // colon in `args...: _params_of<T>`.
   optional string variadic_param_name = 6;

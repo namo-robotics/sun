@@ -8,7 +8,6 @@
 // (e.g., {"$abc123$", "std", "submodule"}).
 //
 // All name mangling logic is centralized here:
-// - extractHashPrefix: get "$hash$_" prefix from a mangled name
 // - canonicalTypeString: stable type string for mangling
 // - buildParamSuffix: "$type1$type2$..." for overload disambiguation
 
@@ -140,20 +139,6 @@ struct QualifiedName {
   // Centralized name mangling utilities
   // =========================================================================
 
-  // Extract "$hash$_" prefix from a mangled name.
-  // Returns empty string if no hash prefix found.
-  // E.g., "$abc123$_sun_Foo" -> "$abc123$_"
-  static std::string extractHashPrefix(const std::string& name) {
-    if (name.size() > 2 && name[0] == '$') {
-      size_t secondDollar = name.find('$', 1);
-      if (secondDollar != std::string::npos && secondDollar + 1 < name.size() &&
-          name[secondDollar + 1] == '_') {
-        return name.substr(0, secondDollar + 2);  // includes "$hash$_"
-      }
-    }
-    return "";
-  }
-
   // The one way a type is spelled inside a symbol name: overload suffixes
   // and the type arguments of every specialization use it. A bundle and its
   // importers name every type identically (library hash included), so the
@@ -184,10 +169,8 @@ struct QualifiedName {
   // by the type arguments and then the pack's argument types when the
   // template ends in one — "make_vec_i32", "create_Point$v$$i32$i32".
   //
-  // The single place this name is built. Semantic analysis names each
-  // specialization here and records the result on the call, and codegen calls
-  // that name; the type arguments are the specialization's identity, so it
-  // carries no overload suffix of its own.
+  // This spelling supports diagnostics and legacy bundle symbols. Calls select
+  // declaration IDs; SpecializationKey determines specialization identity.
   static QualifiedName specializationOf(
       const QualifiedName& templateName, const std::vector<TypePtr>& typeArgs,
       const std::vector<TypePtr>& packArgTypes = {});

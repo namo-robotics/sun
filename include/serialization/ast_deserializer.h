@@ -61,9 +61,6 @@ class ASTDeserializer {
   // Token deserialization
   Token deserializeToken(const ast::Token& token) const;
 
-  // Capture deserialization
-  Capture deserializeCapture(const ast::Capture& cap) const;
-
   // Restore common ExprAST fields from the proto message
   void deserializeExprBase(const ast::ASTNode& node, ExprAST* expr) const;
 

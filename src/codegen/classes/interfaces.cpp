@@ -41,11 +41,17 @@ Function* ClassGenerator::getOrCreateInterfaceDropFunction(
 
 GlobalVariable* ClassGenerator::getOrCreateInterfaceVtable(
     sun::ClassType* classType, sun::InterfaceType* ifaceType) {
+  if (!classType->belongsTo(typeRegistry->declarations) ||
+      !ifaceType->belongsTo(typeRegistry->declarations)) {
+    logAndThrowError(
+        "Interface dispatch types belong to another analysis session");
+  }
+  auto& tables = vtableGlobals[{classType->getDeclarationId(),
+                                ifaceType->getDeclarationId()}];
+  if (tables.owning) return tables.owning;
+
   std::string className = classType->getMangledName();
   std::string interfaceName = ifaceType->getName();
-
-  auto it = vtableGlobals.find({className, interfaceName});
-  if (it != vtableGlobals.end()) return it->second;
 
   auto* ptrTy = PointerType::getUnqual(ctx.getContext());
 
@@ -72,7 +78,7 @@ GlobalVariable* ClassGenerator::getOrCreateInterfaceVtable(
       new GlobalVariable(*module, vtableType, /*isConstant=*/true,
                          GlobalValue::InternalLinkage, vtableInit, vtableName);
 
-  vtableGlobals[{className, interfaceName}] = vtableGlobal;
+  tables.owning = vtableGlobal;
   return vtableGlobal;
 }
 
@@ -83,11 +89,10 @@ GlobalVariable* ClassGenerator::getOrCreateBorrowedInterfaceVtable(
     sun::ClassType* classType, sun::InterfaceType* ifaceType) {
   std::string className = classType->getMangledName();
   std::string interfaceName = ifaceType->getName();
-  auto key = std::make_pair(className, interfaceName);
-  auto it = borrowedVtableGlobals.find(key);
-  if (it != borrowedVtableGlobals.end()) return it->second;
-
   GlobalVariable* owning = getOrCreateInterfaceVtable(classType, ifaceType);
+  auto& tables = vtableGlobals.at(
+      {classType->getDeclarationId(), ifaceType->getDeclarationId()});
+  if (tables.borrowed) return tables.borrowed;
   auto* owningInit = cast<ConstantStruct>(owning->getInitializer());
   std::vector<Constant*> entries;
   for (unsigned i = 0; i + 1 < owningInit->getNumOperands(); ++i) {
@@ -116,7 +121,7 @@ GlobalVariable* ClassGenerator::getOrCreateBorrowedInterfaceVtable(
   auto* result =
       new GlobalVariable(*module, type, true, GlobalValue::InternalLinkage,
                          ConstantStruct::get(type, entries), name);
-  borrowedVtableGlobals[key] = result;
+  tables.borrowed = result;
   return result;
 }
 

@@ -162,16 +162,13 @@ class ClassGenerator {
   // These need codegen but shouldn't show in an IR dump.
   std::set<std::string> librarySpecializations;
 
-  // Vtable globals for interface dispatch, keyed by (class, interface).
-  // Each holds method pointers in declaration order, then the concrete drop
-  // routine in its final slot.
-  std::map<std::pair<std::string, std::string>, llvm::GlobalVariable*>
+  /** Owning and borrowed dispatch tables for the same concrete type pair. */
+  struct InterfaceVtables {
+    llvm::GlobalVariable* owning = nullptr;
+    llvm::GlobalVariable* borrowed = nullptr;
+  };
+  std::map<std::pair<sun::DeclarationId, sun::DeclarationId>, InterfaceVtables>
       vtableGlobals;
-
-  // Borrowed interface vtables share method slots with owning vtables but end
-  // in a no-op drop routine.
-  std::map<std::pair<std::string, std::string>, llvm::GlobalVariable*>
-      borrowedVtableGlobals;
 
   llvm::GlobalVariable* getOrCreateBorrowedInterfaceVtable(
       sun::ClassType* classType, sun::InterfaceType* ifaceType);

@@ -130,26 +130,6 @@ TypeAnnotation ASTDeserializer::deserializeTypeAnnotation(
   return result;
 }
 
-Capture ASTDeserializer::deserializeCapture(const ast::Capture& cap) const {
-  Capture result;
-  result.name = cap.name();
-  result.isConst = cap.is_const();
-  switch (cap.kind()) {
-    case ast::CAPTURE_OWNED:
-      result.kind = CaptureKind::Owned;
-      break;
-    case ast::CAPTURE_BORROW:
-      result.kind = CaptureKind::Borrow;
-      break;
-    default:
-      result.kind = CaptureKind::ByValue;
-      break;
-  }
-  // Note: type is stored as string signature, not reconstructed as TypePtr
-  // The semantic analyzer will need to re-resolve the type
-  return result;
-}
-
 void ASTDeserializer::deserializeExprBase(const ast::ASTNode& node,
                                           ExprAST* expr) const {
   if (node.has_location()) {
@@ -196,13 +176,6 @@ std::unique_ptr<PrototypeAST> ASTDeserializer::deserializePrototype(
       proto.name(), std::move(args), std::move(returnType),
       deserializeTypeParameters(proto), std::move(variadicParam));
   result->setLifetimeParameters(toLifetimeParameters(proto));
-
-  // Restore captures
-  std::vector<Capture> captures;
-  for (const auto& cap : proto.captures()) {
-    captures.push_back(deserializeCapture(cap));
-  }
-  result->setCaptures(captures);
 
   // Restore the declared capture list, as written
   result->setRefCaptureNames(toStringVector(proto.ref_captures()));

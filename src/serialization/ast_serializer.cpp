@@ -77,24 +77,6 @@ ast::TypeAnnotation ASTSerializer::serializeTypeAnnotation(
   return proto;
 }
 
-ast::Capture ASTSerializer::serializeCapture(const Capture& cap) const {
-  ast::Capture proto;
-  proto.set_name(cap.name);
-  proto.set_is_const(cap.isConst);
-  switch (cap.kind) {
-    case CaptureKind::Owned:
-      proto.set_kind(ast::CAPTURE_OWNED);
-      break;
-    case CaptureKind::Borrow:
-      proto.set_kind(ast::CAPTURE_BORROW);
-      break;
-    case CaptureKind::ByValue:
-      proto.set_kind(ast::CAPTURE_BY_VALUE);
-      break;
-  }
-  return proto;
-}
-
 void ASTSerializer::serializeExprBase(const ExprAST& expr,
                                       ast::ASTNode* node) const {
   if (config_.include_location) {
@@ -165,10 +147,6 @@ ast::Prototype ASTSerializer::serializePrototype(
   if (proto.hasReturnType()) {
     *result.mutable_return_type() =
         serializeTypeAnnotation(*proto.getReturnType());
-  }
-
-  for (const auto& cap : proto.getCaptures()) {
-    *result.add_captures() = serializeCapture(cap);
   }
 
   for (const auto& refName : proto.getRefCaptureNames()) {

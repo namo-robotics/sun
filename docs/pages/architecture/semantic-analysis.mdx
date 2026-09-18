@@ -83,6 +83,13 @@ session IDs, so cloned declarations are registered afresh. The specializer sends
 new syntax through `SemanticPipeline::prepareGenerated()` before resolving it;
 signature helpers and body passes do not run declaration identity passes.
 
+Computed closure captures live in prototype analysis alongside the resolved
+signature. Both reset operations discard their binding IDs and semantic types.
+Cloning and bundle serialization preserve the written capture lists, including
+ownership and const borrows, but omit computed captures. Analysis reconstructs
+those records in the destination session. Retained snapshots keep their original
+captures and declaration table alive independently of later driver analyses.
+
 Ordinary resolved calls and variable references carry target IDs. Direct and
 module-qualified function calls and named function values use an ID-to-LLVM-function
 map. Codegen binds IDs when declaring or importing functions, including forward
@@ -100,7 +107,10 @@ source scopes for lookup, overload selection, visibility, and duplicate checks.
 Resolved generic classes retrieve their template from the retained scope tree by
 ID, following the specialization record to its source declaration. This also
 works for local classes after their source scopes close. Class emission tracks
-completed declarations by ID. Enum variants retain their IDs in semantic types;
+completed declarations by ID. Interface dispatch caches owning and borrowed
+vtables together under the concrete class and interface IDs, and rejects types
+from another session. The cache belongs to one codegen run; its LLVM globals are
+owned by that run's module. Enum variants retain their IDs in semantic types;
 specialized variants have concrete enum owners and source-variant origins.
 
 Codegen registers local and global storage under declaration IDs. Parameters,
