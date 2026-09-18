@@ -355,7 +355,8 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
   auto pseudoId = ctx_.types()->declarations.add(
       sun::DeclarationKind::Class, "__interface_" + interfaceDef.getName(),
       interfaceDef.getDeclarationId(),
-      ctx_.types()->declarations.get(interfaceDef.getDeclarationId()).module);
+      ctx_.types()->declarations.get(interfaceDef.getDeclarationId()).module,
+      {}, interfaceDef.getDeclarationId());
   auto pseudoClass = ctx_.types()->getClass(pseudoId);
 
   // Add fields to the interface type and pseudo-class

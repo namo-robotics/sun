@@ -638,7 +638,7 @@ void DeclarationCollectionPass::registerClassShape(
   if (ctx_.types() && qualifiedClass.baseName == "String" &&
       !qualifiedClass.owner().empty() &&
       qualifiedClass.owner().back() == "std") {
-    if (auto ierror = ctx_.types()->getInterface("IError")) {
+    if (auto ierror = ctx_.types()->errorInterface) {
       ierror->setMethodReturnType("message", classType);
     }
   }

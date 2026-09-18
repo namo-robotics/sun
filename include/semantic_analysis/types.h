@@ -174,6 +174,8 @@ class TypeParameterType : public Type {
   std::string name;   // Parameter name: T, U, etc. (F$ret when projected)
   std::string base_;  // The parameter the projection applies to
   TypeProjection projection_ = TypeProjection::None;
+  DeclarationId declaration_;
+  std::shared_ptr<const int> session_;
   // What `<T: Trait>` promised about whatever T stands for. Metadata only —
   // intentionally excluded from equals()/toString() so it never disturbs
   // substitution or identity. It travels with the parameter so a body being
@@ -183,10 +185,14 @@ class TypeParameterType : public Type {
  public:
   explicit TypeParameterType(std::string paramName,
                              TypeConstraint constraint = {},
-                             TypeProjection projection = TypeProjection::None)
+                             TypeProjection projection = TypeProjection::None,
+                             DeclarationId declaration = {},
+                             std::shared_ptr<const int> session = {})
       : name(paramName),
         base_(std::move(paramName)),
         projection_(projection),
+        declaration_(declaration),
+        session_(std::move(session)),
         constraint_(std::move(constraint)) {
     // A projection needs a name of its own, or `Thread<F>` and
     // `Thread<_return_type_of<F>>` would mangle to one specialization.
@@ -212,9 +218,18 @@ class TypeParameterType : public Type {
   }
 
   bool equals(const Type& other) const override {
-    if (auto* p = dynamic_cast<const TypeParameterType*>(&other))
-      return name == p->name;
+    if (auto* p = dynamic_cast<const TypeParameterType*>(&other)) {
+      if (!declaration_ || !p->declaration_) return this == p;
+      return declaration_ == p->declaration_ && session_ == p->session_ &&
+             projection_ == p->projection_;
+    }
     return false;
+  }
+
+  /** Retain the binder identity when projecting its eventual concrete type. */
+  TypePtr project(TypeProjection projection) const {
+    return std::make_shared<TypeParameterType>(base_, constraint_, projection,
+                                               declaration_, session_);
   }
 
   // Type parameters can't be directly converted to LLVM types
@@ -1153,6 +1168,10 @@ class NominalType : public Type {
   std::shared_ptr<const int> declarationSession_;
 
  protected:
+  bool sameSession(const NominalType& other) const {
+    return declarationSession_ == other.declarationSession_;
+  }
+
   bool sameDeclaration(const NominalType& other) const {
     if (!declarationId_ || !other.declarationId_)
       logAndThrowError("Nominal equality requires declaration identities");
@@ -1164,6 +1183,8 @@ class NominalType : public Type {
   /** Return the declaration identity within this analysis session. */
   DeclarationId getDeclarationId() const { return declarationId_; }
 };
+
+class InterfaceType;
 
 // Class type for user-defined classes
 // Classes are represented as LLVM structs with methods as separate functions
@@ -1187,9 +1208,9 @@ class ClassType : public NominalType {
   std::unordered_map<DeclarationId, DeclarationId> interfaceImplementations_;
   ScopeMethodTable
       methodTable_;  // Indexed method table for overload resolution
-  std::vector<std::string>
-      implementedInterfaces;  // Names of interfaces this class implements
-  std::vector<std::string>
+  std::vector<DeclarationId>
+      implementedInterfaces;  // Interfaces this class implements
+  std::vector<DeclarationId>
       staticOnlyInterfaces;  // Implemented, but not convertible to (see below)
   bool isPacked_ = false;    // "packed class": lay fields out with no padding
   // Lifetime names the class DECLARES ('class Bus<'a>'). Declarations only,
@@ -1305,7 +1326,7 @@ class ClassType : public NominalType {
       logAndThrowError("Interface method implementation has not been resolved");
     return found->second;
   }
-  const std::vector<std::string>& getImplementedInterfaces() const {
+  const std::vector<DeclarationId>& getImplementedInterfaces() const {
     return implementedInterfaces;
   }
 
@@ -1330,38 +1351,17 @@ class ClassType : public NominalType {
     return methods.back();
   }
 
-  void addImplementedInterface(const std::string& interfaceName) {
-    if (implementsInterface(interfaceName)) return;
-    implementedInterfaces.push_back(interfaceName);
-  }
+  /** Record a resolved interface implemented by this class. */
+  void addImplementedInterface(const InterfaceType& interface);
 
-  bool implementsInterface(const std::string& interfaceName) const {
-    for (const auto& iface : implementedInterfaces) {
-      if (iface == interfaceName) return true;
-    }
-    return false;
-  }
+  /** Check conformance using the interface's session and declaration ID. */
+  bool implementsInterface(const InterfaceType& interface) const;
 
-  // An interface implemented with a covariant (class-typed) return where the
-  // interface declares an interface type cannot be dispatched through a fat
-  // pointer (the ABI differs), so the class is not convertible to it. It is
-  // still usable statically (e.g. IIterable for for-in).
-  void markStaticOnlyInterface(const std::string& interfaceName) {
-    if (!isStaticOnlyInterface(interfaceName)) {
-      staticOnlyInterfaces.push_back(interfaceName);
-    }
-  }
-  bool isStaticOnlyInterface(const std::string& interfaceName) const {
-    for (const auto& iface : staticOnlyInterfaces) {
-      if (iface == interfaceName) return true;
-    }
-    return false;
-  }
-  // Class value/ref may be converted to an interface fat pointer
-  bool convertibleToInterface(const std::string& interfaceName) const {
-    return implementsInterface(interfaceName) &&
-           !isStaticOnlyInterface(interfaceName);
-  }
+  /** Mark an implementation whose return ABI prevents dynamic dispatch. */
+  void markStaticOnlyInterface(const InterfaceType& interface);
+
+  /** Report whether a resolved interface can be used as a fat pointer. */
+  bool convertibleToInterface(const InterfaceType& interface) const;
 
   const ClassField* getField(const std::string& fieldName) const {
     for (const auto& field : fields) {
@@ -2010,6 +2010,37 @@ class InterfaceType : public NominalType {
   }
 };
 
+inline void ClassType::addImplementedInterface(const InterfaceType& interface) {
+  if (!sameSession(interface))
+    logAndThrowError(
+        "Interface implementation belongs to another analysis session");
+  if (!implementsInterface(interface))
+    implementedInterfaces.push_back(interface.getDeclarationId());
+}
+
+inline bool ClassType::implementsInterface(
+    const InterfaceType& interface) const {
+  return sameSession(interface) &&
+         std::find(implementedInterfaces.begin(), implementedInterfaces.end(),
+                   interface.getDeclarationId()) != implementedInterfaces.end();
+}
+
+inline void ClassType::markStaticOnlyInterface(const InterfaceType& interface) {
+  if (!sameSession(interface))
+    logAndThrowError(
+        "Interface implementation belongs to another analysis session");
+  if (std::find(staticOnlyInterfaces.begin(), staticOnlyInterfaces.end(),
+                interface.getDeclarationId()) == staticOnlyInterfaces.end())
+    staticOnlyInterfaces.push_back(interface.getDeclarationId());
+}
+
+inline bool ClassType::convertibleToInterface(
+    const InterfaceType& interface) const {
+  return implementsInterface(interface) &&
+         std::find(staticOnlyInterfaces.begin(), staticOnlyInterfaces.end(),
+                   interface.getDeclarationId()) == staticOnlyInterfaces.end();
+}
+
 // Enum variant information
 struct EnumVariant {
   std::string name;
@@ -2324,16 +2355,12 @@ class Types {
 
   /** Create a type parameter carrying its optional requirement. */
   static TypePtr TypeParameter(const std::string& name,
-                               TypeConstraint constraint = {}) {
-    return std::make_shared<TypeParameterType>(name, std::move(constraint));
-  }
-
-  // `_return_type_of<F>` where F is not bound yet: what F returns, carried as
-  // F plus the projection until a specialization says what F is.
-  static TypePtr TypeParameterProjection(const std::string& base,
-                                         const TypeConstraint& constraint,
-                                         TypeProjection projection) {
-    return std::make_shared<TypeParameterType>(base, constraint, projection);
+                               TypeConstraint constraint = {},
+                               DeclarationId declaration = {},
+                               std::shared_ptr<const int> session = {}) {
+    return std::make_shared<TypeParameterType>(name, std::move(constraint),
+                                               TypeProjection::None,
+                                               declaration, std::move(session));
   }
 
   // Parse a type name string to TypePtr
@@ -2427,12 +2454,13 @@ class TypeRegistry {
 
   std::unordered_map<SpecializationKey, DeclarationId, SpecializationKeyHash>
       specializations_;
-  std::unordered_map<std::string, std::shared_ptr<InterfaceType>>
-      interfaceCache;
 
  public:
   /** Declaration identities shared by semantic analysis and code generation. */
   DeclarationTable declarations;
+
+  /** The builtin error interface shared throughout this analysis session. */
+  std::shared_ptr<InterfaceType> errorInterface;
 
   TypeRegistry() { registerBuiltins(); }
 
@@ -2453,7 +2481,7 @@ class TypeRegistry {
         declarations.add(DeclarationKind::Function, "code", id);
     ierror->addMethod("message", Types::String(), {}, true).declarationId =
         declarations.add(DeclarationKind::Function, "message", id);
-    interfaceCache["IError"] = ierror;
+    errorInterface = ierror;
   }
 
   // Check if a type name is a builtin type that cannot be redefined
@@ -2508,7 +2536,6 @@ class TypeRegistry {
     type->name = name.mangled();
     type->setQualifiedName(name);
     type->setBaseName(name.baseName);
-    interfaceCache.try_emplace(name.mangled(), type);
     return type;
   }
 
@@ -2537,7 +2564,8 @@ class TypeRegistry {
     const auto& source = declarations.get(key.source);
     auto id = declarations.add(
         source.kind, source.name, key.enclosing ? key.enclosing : source.owner,
-        source.module, std::make_shared<const SpecializationKey>(key));
+        source.module, std::make_shared<const SpecializationKey>(key),
+        key.source);
     specializations_.emplace(key, id);
     return id;
   }
@@ -2558,28 +2586,6 @@ class TypeRegistry {
     type->typeArguments = arguments;
     type->setGenericQualifiedName(source);
     return type;
-  }
-
-  /** Look up an emitted interface symbol without creating a declaration. */
-  std::shared_ptr<InterfaceType> getInterface(const std::string& name) {
-    // Then check regular interface cache
-    auto it = interfaceCache.find(name);
-    if (it != interfaceCache.end()) {
-      return it->second;
-    }
-    logAndThrowError("Unknown registered interface symbol: " + name);
-  }
-
-  // Look up an interface by name without auto-creating
-  // Returns nullptr if not found
-  std::shared_ptr<InterfaceType> lookupInterface(
-      const std::string& name) const {
-    // Then check regular interface cache
-    auto it = interfaceCache.find(name);
-    if (it != interfaceCache.end()) {
-      return it->second;
-    }
-    return nullptr;
   }
 
   /** Intern a generic interface template by its source declaration. */
@@ -2607,7 +2613,7 @@ class TypeRegistry {
   void clear() {
     nominalTypes_.clear();
     specializations_.clear();
-    interfaceCache.clear();
+    errorInterface.reset();
   }
 };
 
@@ -2734,7 +2740,7 @@ inline bool ClassType::isInterfaceConvertible(const TypePtr& from,
     if (!from->isClass() || typeIsFrameCarrying(from)) return false;
     auto* iface = static_cast<const InterfaceType*>(to.get());
     return static_cast<const ClassType*>(from.get())
-        ->convertibleToInterface(iface->getName());
+        ->convertibleToInterface(*iface);
   }
 
   // Class -> ref Interface: the class is borrowed through the fat pointer
@@ -2743,7 +2749,7 @@ inline bool ClassType::isInterfaceConvertible(const TypePtr& from,
     if (!target || !target->isInterface()) return false;
     auto* iface = static_cast<const InterfaceType*>(target.get());
     return static_cast<const ClassType*>(from.get())
-        ->convertibleToInterface(iface->getName());
+        ->convertibleToInterface(*iface);
   }
 
   return false;

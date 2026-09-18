@@ -72,7 +72,7 @@ void SemanticAnalyzer::inheritInterfaceFields(
     // Record the implementation now (conformance is validated after the
     // class body is analyzed) so `throw`/interface conversions on this class
     // work in any body analyzed before its definition is reached
-    classType->addImplementedInterface(interfaceType->getName());
+    classType->addImplementedInterface(*interfaceType);
   }
 }
 
@@ -107,14 +107,38 @@ void SemanticAnalyzer::validateInterfaceImplementation(
 
     // Check that class implements all required methods and add default methods
     for (const auto& interfaceMethod : interfaceType->getMethods()) {
-      // Check if class already has a method with this name
       const sun::ClassMethod* classMethodInfo = nullptr;
+      auto requiredReturnType = interfaceMethod.returnType;
+      auto requiredParamTypes = interfaceMethod.paramTypes;
       for (const auto& classMethod : classDef.getMethods()) {
-        if (classMethod.function->getProto().getName() ==
-            interfaceMethod.name) {
-          // Found override - get the method info from the class type
-          classMethodInfo = classType->getMethodForArgs(
-              interfaceMethod.name, interfaceMethod.paramTypes);
+        const auto& proto = classMethod.function->getProto();
+        if (proto.getName() != interfaceMethod.name ||
+            proto.getTypeParameters().size() !=
+                interfaceMethod.typeParameters.size())
+          continue;
+
+        requiredReturnType = interfaceMethod.returnType;
+        requiredParamTypes = interfaceMethod.paramTypes;
+        // Corresponding generic method parameters have different identities.
+        // Compare the requirement after binding its parameters to this
+        // candidate's.
+        SemanticContext::ScopeSwitchGuard candidateScope(ctx_, ctx_.scope());
+        if (!interfaceMethod.typeParameters.empty()) {
+          std::vector<sun::TypePtr> parameters;
+          for (size_t i = 0; i < proto.getTypeParameters().size(); ++i)
+            parameters.push_back(proto.getTypeParameters()[i].toSunType(
+                ctx_.types()->declarations,
+                proto.declarationIdentity().typeParameters.at(i)));
+          ctx_.enterTypeParamScope(interfaceMethod.typeParameters, parameters);
+          requiredReturnType =
+              types_.substituteTypeParameters(requiredReturnType);
+          for (auto& type : requiredParamTypes)
+            type = types_.substituteTypeParameters(type);
+        }
+        auto* candidate = classType->getMethodForArgs(interfaceMethod.name,
+                                                      requiredParamTypes);
+        if (candidate && candidate->declarationId == proto.getDeclarationId()) {
+          classMethodInfo = candidate;
           break;
         }
       }
@@ -154,28 +178,28 @@ void SemanticAnalyzer::validateInterfaceImplementation(
         // dispatched through a fat pointer, so the class is not convertible
         // to this interface.
         bool returnOk =
-            !classMethodInfo->returnType || !interfaceMethod.returnType ||
-            classMethodInfo->returnType->equals(*interfaceMethod.returnType);
-        if (!returnOk && interfaceMethod.returnType->isInterface() &&
+            !classMethodInfo->returnType || !requiredReturnType ||
+            classMethodInfo->returnType->equals(*requiredReturnType);
+        if (!returnOk && requiredReturnType->isInterface() &&
             classMethodInfo->returnType->isClass()) {
-          auto* required = static_cast<const sun::InterfaceType*>(
-              interfaceMethod.returnType.get());
+          auto* required =
+              static_cast<const sun::InterfaceType*>(requiredReturnType.get());
           auto* returned = static_cast<const sun::ClassType*>(
               classMethodInfo->returnType.get());
-          if (returned->implementsInterface(required->getName())) {
+          if (returned->implementsInterface(*required)) {
             returnOk = true;
-            classType->markStaticOnlyInterface(interfaceType->getName());
+            classType->markStaticOnlyInterface(*interfaceType);
           }
         }
         if (!returnOk) {
-          logAndThrowError(
-              "Class '" + classType->getDisplayName() + "' method '" +
-                  interfaceMethod.name + "' has return type '" +
-                  classMethodInfo->returnType->toDisplayString() +
-                  "' but interface '" + interfaceDisplayName +
-                  "' requires return type '" +
-                  interfaceMethod.returnType->toDisplayString() + "'",
-              classDef.getLocation());
+          logAndThrowError("Class '" + classType->getDisplayName() +
+                               "' method '" + interfaceMethod.name +
+                               "' has return type '" +
+                               classMethodInfo->returnType->toDisplayString() +
+                               "' but interface '" + interfaceDisplayName +
+                               "' requires return type '" +
+                               requiredReturnType->toDisplayString() + "'",
+                           classDef.getLocation());
         }
         // Verify parameter count matches
         if (classMethodInfo->paramTypes.size() !=
@@ -211,7 +235,7 @@ void SemanticAnalyzer::validateInterfaceImplementation(
           // Verify each parameter type matches
           for (size_t i = 0; i < classMethodInfo->paramTypes.size(); ++i) {
             if (!classMethodInfo->paramTypes[i]->equals(
-                    *interfaceMethod.paramTypes[i])) {
+                    *requiredParamTypes[i])) {
               logAndThrowError(
                   "Class '" + classType->getDisplayName() + "' method '" +
                       interfaceMethod.name + "' parameter " +
@@ -247,7 +271,11 @@ void SemanticAnalyzer::validateInterfaceImplementation(
                                               interfaceMethod.typeParameters);
           method.declarationId = ctx_.types()->declarations.add(
               sun::DeclarationKind::Function, interfaceMethod.name,
-              classType->getDeclarationId());
+              classType->getDeclarationId(),
+              ctx_.types()
+                  ->declarations.get(classType->getDeclarationId())
+                  .module,
+              {}, interfaceMethod.declarationId);
           if (method.name == "deinit")
             classType->deinitializer = method.declarationId;
           method.defaultImplementation = interfaceMethod.declarationId;
@@ -278,8 +306,7 @@ void SemanticAnalyzer::validateInterfaceImplementation(
       }
     }
 
-    // Track that this class implements this interface (use mangled name for
-    // generics)
-    classType->addImplementedInterface(interfaceType->getName());
+    // Retain the resolved interface for conformance and conversion checks.
+    classType->addImplementedInterface(*interfaceType);
   }
 }

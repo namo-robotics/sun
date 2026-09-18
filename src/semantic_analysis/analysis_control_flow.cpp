@@ -186,21 +186,15 @@ void SemanticAnalyzer::analyzeForInLoop(ForInExprAST& forInExpr) {
   }
   bool implementsIterator = false;
   bool implementsIterable = false;
-  // Interface names are mangled and may be module-qualified
-  // (sun_IIterator_i32_Range); match on the base name
-  for (const auto& ifaceName : classType->getImplementedInterfaces()) {
-    if (ifaceName.find("IIterator_") != std::string::npos ||
-        ifaceName.find("IIterator<") != std::string::npos ||
-        ifaceName == "IIterator") {
-      implementsIterator = true;
-      break;
-    }
-    if (ifaceName.find("IIterable_") != std::string::npos ||
-        ifaceName.find("IIterable<") != std::string::npos ||
-        ifaceName == "IIterable") {
-      implementsIterable = true;
-      break;
-    }
+  // The iteration protocols are recognized by their declarations' source names.
+  for (auto interfaceId : classType->getImplementedInterfaces()) {
+    const auto& instance = ctx_.types()->declarations.get(interfaceId);
+    const auto& source =
+        instance.specialization
+            ? ctx_.types()->declarations.get(instance.specialization->source)
+            : instance;
+    if (source.name == "IIterator") implementsIterator = true;
+    if (source.name == "IIterable") implementsIterable = true;
   }
   if (!implementsIterator && !implementsIterable) {
     logAndThrowError(
@@ -315,7 +309,7 @@ void SemanticAnalyzer::analyzeTryCatch(TryCatchExprAST& tryCatchExpr) {
   ctx_.exitTryBlock();
 
   // Analyze each catch clause, tested in source order.
-  auto builtinIError = ctx_.types()->getInterface("IError");
+  auto builtinIError = ctx_.types()->errorInterface;
   bool sawCatchAll = false;
   auto& clauses = tryCatchExpr.getCatchClausesMutable();
   for (auto& catchClause : clauses) {
@@ -340,7 +334,7 @@ void SemanticAnalyzer::analyzeTryCatch(TryCatchExprAST& tryCatchExpr) {
       }
     } else if (bindingType && bindingType->isClass()) {
       valid = static_cast<sun::ClassType*>(bindingType.get())
-                  ->implementsInterface("IError");
+                  ->implementsInterface(*builtinIError);
     }
     if (!valid) {
       logAndThrowError(
@@ -393,7 +387,7 @@ void SemanticAnalyzer::analyzeThrowExpr(ThrowExprAST& throwExpr) {
     bool implementsIError = false;
 
     // Get the builtin IError interface for comparison
-    auto builtinIError = ctx_.types()->getInterface("IError");
+    auto builtinIError = ctx_.types()->errorInterface;
 
     // Check if it's the IError interface itself (e.g., re-throwing caught
     // error)
@@ -406,7 +400,7 @@ void SemanticAnalyzer::analyzeThrowExpr(ThrowExprAST& throwExpr) {
     // Check if it's a class that implements IError
     else if (errorType->isClass()) {
       auto* classType = static_cast<sun::ClassType*>(errorType.get());
-      implementsIError = classType->implementsInterface("IError");
+      implementsIError = classType->implementsInterface(*builtinIError);
     }
     // Check if it's a reference to a class that implements IError
     else if (errorType->isReference()) {
@@ -414,7 +408,7 @@ void SemanticAnalyzer::analyzeThrowExpr(ThrowExprAST& throwExpr) {
       sun::TypePtr innerType = refType->getReferencedType();
       if (innerType && innerType->isClass()) {
         auto* classType = static_cast<sun::ClassType*>(innerType.get());
-        implementsIError = classType->implementsInterface("IError");
+        implementsIError = classType->implementsInterface(*builtinIError);
       }
       // Also allow reference to IError interface
       else if (innerType && innerType->isInterface()) {

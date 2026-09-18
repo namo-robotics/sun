@@ -10,6 +10,7 @@
 #include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/type_rules.h"
+#include "semantic_analysis/type_traits.h"
 #include "semantic_analysis/visibility.h"
 #include "support/error.h"
 
@@ -1100,8 +1101,8 @@ sun::TypePtr TypeInferer::inferTypeParameterMemberType(
       static_cast<const sun::TypeParameterType*>(objectType.get());
   if (param->hasConstraint()) {
     const auto& constraint = param->getConstraint();
-    auto ifaceType = constraint.typeArguments.empty()
-                         ? ctx_.lookupInterface(constraint.resolvedName())
+    auto ifaceType = sun::isTypeTrait(constraint.resolvedName())
+                         ? nullptr
                          : resolveConstraintInterface(constraint);
     if (ifaceType) {
       const sun::InterfaceField* field = ctx_.accessibleField(

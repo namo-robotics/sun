@@ -251,7 +251,7 @@ Value* IntrinsicsGenerator::codegenToRefIntrinsic(
 }
 
 Value* IntrinsicsGenerator::codegenIsIntrinsic(
-    const std::string& targetName,
+    const sun::TypePtr& target,
     const std::vector<std::unique_ptr<ExprAST>>& args) {
   // _is<T>(value) - compile-time type check, folded to a constant here.
   // Which types satisfy which trait is sun::traits::satisfies (see
@@ -269,7 +269,7 @@ Value* IntrinsicsGenerator::codegenIsIntrinsic(
     return nullptr;
   }
 
-  bool result = sun::traits::satisfies(valueType, targetName);
+  bool result = sun::traits::satisfies(valueType, target);
   return llvm::ConstantInt::get(llvm::Type::getInt1Ty(ctx.getContext()),
                                 result ? 1 : 0);
 }

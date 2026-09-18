@@ -22,13 +22,15 @@ class SemanticPipeline {
   void run(BlockExprAST& block);
 
   /** Assign identities to newly generated syntax before resolving it. */
-  void prepareGenerated(const ExprAST& expression, DeclarationId owner = {});
+  void prepareGenerated(const ExprAST& expression, DeclarationId owner = {},
+                        const ExprAST* origin = nullptr);
 
   /** Prepare generated method identities and names in their enclosing scope. */
   void prepareGenerated(ExprAST& expression,
                         const std::vector<std::string>& scope,
                         const std::vector<std::string>& module,
-                        DeclarationId owner = {});
+                        DeclarationId owner = {},
+                        const ExprAST* origin = nullptr);
 
   /** Access the pass that registers declarations before body checking. */
   DeclarationCollectionPass& declarations() {

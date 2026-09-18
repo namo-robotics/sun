@@ -44,19 +44,15 @@ void GenericSpecializer::checkTypeParameterConstraints(
     const sun::TypePtr& arg = typeArgs[i];
     if (!arg) continue;
 
-    std::string requiredName = constraint->resolvedName();
-    if (!constraint->typeArguments.empty()) {
-      auto interfaceType =
-          sema_.types().resolveConstraintInterface(*constraint);
-      if (mentionsTypeParameter(interfaceType)) continue;
-      requiredName = interfaceType->getName();
-    } else if (!constraint->qualifiedName && !sun::isTypeTrait(requiredName)) {
-      if (auto interfaceType = ctx_.lookupInterface(requiredName)) {
-        requiredName = interfaceType->getName();
-      }
-    }
+    auto requirement =
+        constraint->typeArguments.empty()
+            ? sema_.types().typeAnnotationToType(constraint->toAnnotation())
+            : sema_.types().resolveConstraintInterface(*constraint);
     if (mentionsTypeParameter(arg)) continue;
-    if (!sun::traits::satisfies(arg, requiredName)) {
+    if (!constraint->typeArguments.empty() &&
+        mentionsTypeParameter(requirement))
+      continue;
+    if (!sun::traits::satisfies(arg, requirement)) {
       // Point at the constraint itself when it carries a span; a declaration
       // parsed from a bundle has none, so fall back to the caller's location.
       std::optional<Position> at =
@@ -206,7 +202,7 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
     }
 
     if (interfaceType) {
-      specializedClass->addImplementedInterface(interfaceType->getName());
+      specializedClass->addImplementedInterface(*interfaceType);
     }
 
     // Clone interface reference for specialized AST
@@ -233,10 +229,12 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
                                              : nullptr});
   }
 
-  for (auto& field : fieldsClone) {
+  for (size_t i = 0; i < fieldsClone.size(); ++i) {
+    auto& field = fieldsClone[i];
     field.declaration.id = ctx_.types()->declarations.add(
         sun::DeclarationKind::Field, field.name, instanceId,
-        ctx_.types()->declarations.get(instanceId).module);
+        ctx_.types()->declarations.get(instanceId).module, {},
+        genericClassInfo->AST->getFields()[i].declaration.id);
     field.declaration.session = ctx_.types()->declarations.session();
   }
 
@@ -270,9 +268,10 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
   // resolving signatures, using the specialized class as their scope.
   auto methodScope = specializedQName.scopePath;
   methodScope.push_back(specializedQName.baseName);
-  for (const auto& method : methodsClone) {
-    sema_.pipeline().prepareGenerated(*method.function, methodScope,
-                                      specializedQName.owner(), instanceId);
+  for (size_t i = 0; i < methodsClone.size(); ++i) {
+    sema_.pipeline().prepareGenerated(
+        *methodsClone[i].function, methodScope, specializedQName.owner(),
+        instanceId, genericClassInfo->AST->getMethods()[i].function.get());
   }
 
   // PASS 1: Register all methods first (so methods can call each other)
@@ -331,6 +330,17 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
                                           {returnType, methodParamTypes, {}});
   }
 
+  sun::DeclarationIdentity identity;
+  identity.id = instanceId;
+  identity.session = ctx_.types()->declarations.session();
+  for (auto source :
+       genericClassInfo->AST->declarationIdentity().lifetimeParameters) {
+    const auto& parameter = ctx_.types()->declarations.get(source);
+    identity.lifetimeParameters.push_back(ctx_.types()->declarations.add(
+        sun::DeclarationKind::LifetimeParameter, parameter.name, instanceId,
+        ctx_.types()->declarations.get(instanceId).module, {}, source));
+  }
+
   // Compiled shapes need local signatures, but their bodies and constructor
   // checks were completed when the bundle was built.
   bool needsPass2 = !genericClassInfo->typeParameters.empty();
@@ -341,9 +351,7 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
         mangledName, std::vector<TypeParameter>{}, std::move(interfacesClone),
         std::move(fieldsClone), std::move(methodsClone),
         genericClassInfo->AST->isPrecompiled());
-    specializedAST->setDeclarationId(instanceId);
-    specializedAST->declarationIdentity().session =
-        ctx_.types()->declarations.session();
+    specializedAST->declarationIdentity() = identity;
     specializedAST->setLifetimeParameters(
         genericClassInfo->AST->getLifetimeParameters());
     specializedAST->setIsPacked(genericClassInfo->AST->isPacked());
@@ -372,9 +380,7 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
       std::move(interfacesClone), std::move(fieldsClone),
       std::move(methodsClone),  // cloned methods
       false);                   // NOT precompiled - needs codegen
-  specializedAST->setDeclarationId(instanceId);
-  specializedAST->declarationIdentity().session =
-      ctx_.types()->declarations.session();
+  specializedAST->declarationIdentity() = identity;
   // Lifetime declarations are erased from specialization keys but stay on
   // the specialized definition: the borrow checker reads them per class
   specializedAST->setLifetimeParameters(
@@ -723,11 +729,18 @@ GenericSpecializer::instantiateGenericFunction(
   }
 
   // Clone the function AST and re-analyze with type parameter bindings
-  std::shared_ptr<FunctionAST> specializedAST = nullptr;
+  SpecializedFunctionInfo result;
+  result.qualifiedName = specializedName;
+  result.returnType = returnType;
+  result.paramTypes = paramTypes;
+  if (variadicArgTypes)
+    result.paramTypes.insert(result.paramTypes.end(), variadicArgTypes->begin(),
+                             variadicArgTypes->end());
+  result.captures = substitutedCaptures;
   if (genericFunc->hasBody()) {
     // Clone the entire function AST
     auto cloned = genericFunc->clone();
-    auto clonedFunc = std::unique_ptr<FunctionAST>(
+    auto clonedFunc = std::shared_ptr<FunctionAST>(
         static_cast<FunctionAST*>(cloned.release()));
 
     // Update the prototype for the specialized function:
@@ -764,7 +777,13 @@ GenericSpecializer::instantiateGenericFunction(
     clonedFunc->setDeclarationId(instanceId);
     clonedFunc->declarationIdentity().session =
         ctx_.types()->declarations.session();
-    sema_.pipeline().prepareGenerated(*clonedFunc);
+    sema_.pipeline().prepareGenerated(*clonedFunc, {}, genericFunc);
+
+    // Publish the prepared callable before recursion can request it again.
+    clonedFunc->setPrecompiled(false);
+    result.specializedAST = clonedFunc;
+    genericFunc->addSpecialization(instanceId, clonedFunc);
+    specializedFunctionCache_.emplace(instanceId, result);
 
     // Compute function signature for nested function qualification
     std::string funcSig = getFunctionSignature(mangledName, paramTypes);
@@ -794,37 +813,13 @@ GenericSpecializer::instantiateGenericFunction(
 
     ctx_.exitScope();  // parameter scope
 
-    specializedAST = std::move(clonedFunc);
-    // Specializations are NOT precompiled - even if the generic function
-    // came from a precompiled .moon file, new specializations need codegen
-    // since they don't exist in the library bitcode.
-    specializedAST->setPrecompiled(false);
+
   }
 
   ctx_.exitScope();  // type parameter scope
 
-  // Build result. A pack's elements are ordinary positional parameters after
-  // the fixed ones, so the call's signature is the two lists joined — that is
-  // the order codegen emits them in, and what every argument check downstream
-  // lines up against.
-  SpecializedFunctionInfo result;
-  result.qualifiedName = specializedName;
-  result.returnType = returnType;
-  if (variadicArgTypes) {
-    paramTypes.insert(paramTypes.end(), variadicArgTypes->begin(),
-                      variadicArgTypes->end());
-  }
-  result.paramTypes = std::move(paramTypes);
-  result.captures = std::move(substitutedCaptures);
-  result.specializedAST = specializedAST;
-
-  // Store specialization on the generic function AST for codegen access
-  if (specializedAST) {
-    genericFunc->addSpecialization(instanceId, specializedAST);
-  }
-
-  // Cache and return
-  specializedFunctionCache_[instanceId] = result;
+  if (!genericFunc->hasBody())
+    specializedFunctionCache_.emplace(instanceId, result);
   return result;
 }
 
@@ -902,13 +897,6 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
 
   const PrototypeAST& proto = genericMethodAST->getProto();
   const auto& methodTypeParams = proto.getTypeParameters();
-  sun::SpecializationKey key{proto.getDeclarationId(),
-                             classType->getDeclarationId(), methodTypeArgs,
-                             variadicArgTypes};
-  auto instanceId = ctx_.types()->specialize(key);
-  auto cacheIt = specializedFunctionCache_.find(instanceId);
-  if (cacheIt != specializedFunctionCache_.end())
-    return cacheIt->second.specializedAST;
 
   // A variadic method's arity/types come from the actual call arguments. If we
   // weren't given them (nullopt, e.g. invoked from type inference), defer: the
@@ -923,6 +911,14 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
         genericMethodAST->getLocation());
     return nullptr;
   }
+
+  sun::SpecializationKey key{proto.getDeclarationId(),
+                             classType->getDeclarationId(), methodTypeArgs,
+                             variadicArgTypes};
+  auto instanceId = ctx_.types()->specialize(key);
+  auto cacheIt = specializedFunctionCache_.find(instanceId);
+  if (cacheIt != specializedFunctionCache_.end())
+    return cacheIt->second.specializedAST;
 
   // Set up scopes for type substitution:
   // 1. Class-level type parameters (if specialized generic class)
@@ -979,7 +975,7 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
   // clone() returns unique_ptr<ExprAST>, so cast to FunctionAST
   auto cloned = genericMethodAST->clone();
   auto clonedFunc =
-      std::unique_ptr<FunctionAST>(static_cast<FunctionAST*>(cloned.release()));
+      std::shared_ptr<FunctionAST>(static_cast<FunctionAST*>(cloned.release()));
 
   PrototypeAST& clonedProto = const_cast<PrototypeAST&>(clonedFunc->getProto());
 
@@ -1011,7 +1007,20 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
   clonedFunc->setDeclarationId(instanceId);
   clonedFunc->declarationIdentity().session =
       ctx_.types()->declarations.session();
-  sema_.pipeline().prepareGenerated(*clonedFunc);
+  sema_.pipeline().prepareGenerated(*clonedFunc, {}, genericMethodAST);
+
+  // Recursive calls must see this same prototype and its prepared binders.
+  clonedFunc->setPrecompiled(false);
+  SpecializedFunctionInfo result;
+  result.qualifiedName = specializedName;
+  result.returnType = returnType;
+  result.paramTypes = paramTypes;
+  if (variadicArgTypes)
+    result.paramTypes.insert(result.paramTypes.end(), variadicArgTypes->begin(),
+                             variadicArgTypes->end());
+  result.specializedAST = clonedFunc;
+  genericMethodAST->addSpecialization(instanceId, clonedFunc);
+  specializedFunctionCache_.emplace(instanceId, result);
 
   // Analyze the method body
   auto savedClass = ctx_.getCurrentClass();
@@ -1049,22 +1058,7 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
   ctx_.setCurrentClass(savedClass);
   ctx_.exitScope();  // type parameter scope
 
-  // Convert to shared_ptr for storage
-  std::shared_ptr<FunctionAST> specializedAST = std::move(clonedFunc);
-  // Specializations are NOT precompiled - they need codegen
-  specializedAST->setPrecompiled(false);
-
-  // Store specialization on the generic method AST for codegen access
-  genericMethodAST->addSpecialization(instanceId, specializedAST);
-
-  // Cache the result
-  SpecializedFunctionInfo result;
-  result.returnType = returnType;
-  result.paramTypes = paramTypes;
-  result.specializedAST = specializedAST;
-  specializedFunctionCache_[instanceId] = result;
-
-  return specializedAST;
+  return clonedFunc;
 }
 
 using sun::access::methodVisibility;
@@ -1151,6 +1145,22 @@ GenericSpecializer::instantiateGenericInterface(
     for (const auto& methodDecl : genericInfo->AST->getMethods()) {
       const PrototypeAST& proto = methodDecl.function->getProto();
 
+      auto& declarations = ctx_.types()->declarations;
+      auto methodId = declarations.add(
+          sun::DeclarationKind::Function, proto.getName(), instanceId,
+          declarations.get(instanceId).module, {}, proto.getDeclarationId());
+      SemanticContext::ScopeSwitchGuard methodScope(ctx_, ctx_.scope());
+      std::vector<sun::TypePtr> methodArguments;
+      for (size_t i = 0; i < proto.getTypeParameters().size(); ++i) {
+        const auto& parameter = proto.getTypeParameters()[i];
+        auto binder = declarations.add(
+            sun::DeclarationKind::TypeParameter, parameter.name, methodId,
+            declarations.get(instanceId).module, {},
+            proto.declarationIdentity().typeParameters.at(i));
+        methodArguments.push_back(parameter.toSunType(declarations, binder));
+      }
+      ctx_.enterTypeParamScope(proto.getTypeParameterNames(), methodArguments);
+
       // Get return type with substitution
       sun::TypePtr returnType;
       if (proto.getReturnType()) {
@@ -1170,10 +1180,7 @@ GenericSpecializer::instantiateGenericInterface(
       auto& method = specializedInterface->addMethod(
           proto.getName(), returnType, paramTypes, methodDecl.hasDefaultImpl,
           proto.getTypeParameterNames());
-      method.declarationId = ctx_.types()->declarations.add(
-          sun::DeclarationKind::Function, proto.getName(),
-          specializedInterface->getDeclarationId(),
-          ctx_.types()->declarations.get(instanceId).module);
+      method.declarationId = methodId;
       method.visibility = methodVisibility(*methodDecl.function);
       method.isConst = methodDecl.isConst;
       method.isUnsafe = methodDecl.function->getProto().isUnsafeMethod();

@@ -42,6 +42,7 @@ struct DeclarationRecord {
   DeclarationId module;
   std::optional<PortableDeclarationKey> portableKey;
   std::shared_ptr<const SpecializationKey> specialization;
+  DeclarationId origin;
 };
 
 /** Allocate and retain declarations independently of symbol spelling. */
@@ -76,11 +77,13 @@ class DeclarationTable {
   DeclarationId add(
       DeclarationKind kind, std::string name, DeclarationId owner = {},
       DeclarationId module = {},
-      std::shared_ptr<const SpecializationKey> specialization = {}) {
+      std::shared_ptr<const SpecializationKey> specialization = {},
+      DeclarationId origin = {}) {
     if (owner) get(owner);
     if (module) get(module);
+    if (origin) get(origin);
     records_.push_back({kind, std::move(name), owner, module, std::nullopt,
-                        std::move(specialization)});
+                        std::move(specialization), origin});
     return DeclarationId(records_.size());
   }
 

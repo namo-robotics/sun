@@ -363,7 +363,7 @@ bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
     if (sun::typeIsFrameCarrying(from)) return false;
     auto* ifaceType = static_cast<const sun::InterfaceType*>(to.get());
     auto* classType = static_cast<const sun::ClassType*>(from.get());
-    return classType->convertibleToInterface(ifaceType->getName());
+    return classType->convertibleToInterface(*ifaceType);
   }
 
   // Class -> ref Interface (class can be passed as ref to interface it
@@ -374,7 +374,7 @@ bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
     if (innerTo && innerTo->isInterface()) {
       auto* ifaceType = static_cast<const sun::InterfaceType*>(innerTo.get());
       auto* classType = static_cast<const sun::ClassType*>(from.get());
-      return classType->convertibleToInterface(ifaceType->getName());
+      return classType->convertibleToInterface(*ifaceType);
     }
   }
 

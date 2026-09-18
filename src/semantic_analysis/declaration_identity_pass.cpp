@@ -9,29 +9,36 @@ namespace {
 /** Allocate identities for the parameters attached to one declaration. */
 template <typename Declaration>
 void parameters(const Declaration& node, DeclarationIdentity& identity,
-                DeclarationTable& table, DeclarationId module) {
+                DeclarationTable& table, DeclarationId module,
+                const DeclarationIdentity* origin) {
   if (identity.typeParameters.empty())
-    for (const auto& param : node.getTypeParameters())
-      identity.typeParameters.push_back(table.add(
-          DeclarationKind::TypeParameter, param.name, identity.id, module));
+    for (size_t i = 0; i < node.getTypeParameters().size(); ++i)
+      identity.typeParameters.push_back(
+          table.add(DeclarationKind::TypeParameter,
+                    node.getTypeParameters()[i].name, identity.id, module, {},
+                    origin ? origin->typeParameters.at(i) : DeclarationId{}));
 }
 
 /** Allocate identities for lifetime parameters without resolving lifetimes. */
 template <typename Declaration>
 void lifetimes(const Declaration& node, DeclarationIdentity& identity,
-               DeclarationTable& table, DeclarationId module) {
+               DeclarationTable& table, DeclarationId module,
+               const DeclarationIdentity* origin) {
   if (identity.lifetimeParameters.empty())
-    for (const auto& param : node.getLifetimeParameters())
+    for (size_t i = 0; i < node.getLifetimeParameters().size(); ++i)
       identity.lifetimeParameters.push_back(table.add(
-          DeclarationKind::LifetimeParameter, param.name, identity.id, module));
+          DeclarationKind::LifetimeParameter,
+          node.getLifetimeParameters()[i].name, identity.id, module, {},
+          origin ? origin->lifetimeParameters.at(i) : DeclarationId{}));
 }
 
 /** Register struct-backed declarations while preserving their existing IDs. */
 void binding(DeclarationIdentity& identity, DeclarationKind kind,
              const std::string& name, DeclarationTable& table,
-             DeclarationId owner, DeclarationId module) {
+             DeclarationId owner, DeclarationId module,
+             DeclarationId origin = {}) {
   if (!identity.id) {
-    identity.id = table.add(kind, name, owner, module);
+    identity.id = table.add(kind, name, owner, module, {}, origin);
     identity.session = table.session();
   } else {
     if (identity.session.lock() != table.session())
@@ -90,13 +97,25 @@ void resetBindings(const ExprAST& root, bool resetIdentity) {
 }  // namespace
 
 void DeclarationIdentityPass::run(const ExprAST& root, DeclarationId owner,
-                                  DeclarationId module) const {
+                                  DeclarationId module,
+                                  const ExprAST* origin) const {
+  if (origin && origin->getType() != root.getType())
+    logAndThrowError("Generated declaration does not match its source syntax");
+  const auto* sourceIdentity = origin && origin->getDeclarationId()
+                                   ? &origin->declarationIdentity()
+                                   : nullptr;
+  if (sourceIdentity && sourceIdentity->id &&
+      sourceIdentity->session.lock() != table_.session())
+    logAndThrowError(
+        "Generated declaration origin belongs to another analysis session");
   auto declare = [&](DeclarationKind kind, const std::string& name) {
     auto id = root.getDeclarationId();
     if (!id) {
       id = kind == DeclarationKind::Module
                ? table_.module(name, module)
-               : table_.add(kind, name, owner, module);
+               : table_.add(
+                     kind, name, owner, module, {},
+                     origin ? origin->getDeclarationId() : DeclarationId{});
       root.setDeclarationId(id);
       root.declarationIdentity().session = table_.session();
     } else {
@@ -132,46 +151,76 @@ void DeclarationIdentityPass::run(const ExprAST& root, DeclarationId owner,
                           : DeclarationKind::Lambda,
                       proto.getName());
       auto& identity = proto.declarationIdentity();
-      parameters(proto, identity, table_, module);
-      lifetimes(proto, identity, table_, module);
+      parameters(proto, identity, table_, module, sourceIdentity);
+      lifetimes(proto, identity, table_, module, sourceIdentity);
       if (identity.parameters.empty()) {
-        for (const auto& arg : proto.getArgs())
+        for (size_t i = 0; i < proto.getArgs().size(); ++i)
           identity.parameters.push_back(
-              table_.add(DeclarationKind::Parameter, arg.first, owner, module));
+              table_.add(DeclarationKind::Parameter, proto.getArgs()[i].first,
+                         owner, module, {},
+                         sourceIdentity ? sourceIdentity->parameters.at(i)
+                                        : DeclarationId{}));
         if (proto.hasVariadicParam())
-          identity.parameters.push_back(table_.add(DeclarationKind::Parameter,
-                                                   proto.getVariadicParamName(),
-                                                   owner, module));
+          identity.parameters.push_back(table_.add(
+              DeclarationKind::Parameter, proto.getVariadicParamName(), owner,
+              module, {},
+              sourceIdentity
+                  ? sourceIdentity->parameters.at(proto.getArgs().size())
+                  : DeclarationId{}));
       }
       break;
     }
     case ASTNodeType::CLASS_DEFINITION: {
       const auto& node = static_cast<const ClassDefinitionAST&>(root);
       owner = declare(DeclarationKind::Class, node.getName());
-      parameters(node, node.declarationIdentity(), table_, module);
-      lifetimes(node, node.declarationIdentity(), table_, module);
-      for (const auto& field : node.getFields())
+      parameters(node, node.declarationIdentity(), table_, module,
+                 sourceIdentity);
+      lifetimes(node, node.declarationIdentity(), table_, module,
+                sourceIdentity);
+      for (size_t i = 0; i < node.getFields().size(); ++i) {
+        const auto& field = node.getFields()[i];
+        auto source = origin ? static_cast<const ClassDefinitionAST&>(*origin)
+                                   .getFields()[i]
+                                   .declaration.id
+                             : DeclarationId{};
         binding(field.declaration, DeclarationKind::Field, field.name, table_,
-                owner, module);
+                owner, module, source);
+      }
       break;
     }
     case ASTNodeType::INTERFACE_DEFINITION: {
       const auto& node = static_cast<const InterfaceDefinitionAST&>(root);
       owner = declare(DeclarationKind::Interface, node.getName());
-      parameters(node, node.declarationIdentity(), table_, module);
-      lifetimes(node, node.declarationIdentity(), table_, module);
-      for (const auto& field : node.getFields())
+      parameters(node, node.declarationIdentity(), table_, module,
+                 sourceIdentity);
+      lifetimes(node, node.declarationIdentity(), table_, module,
+                sourceIdentity);
+      for (size_t i = 0; i < node.getFields().size(); ++i) {
+        const auto& field = node.getFields()[i];
+        auto source = origin
+                          ? static_cast<const InterfaceDefinitionAST&>(*origin)
+                                .getFields()[i]
+                                .declaration.id
+                          : DeclarationId{};
         binding(field.declaration, DeclarationKind::Field, field.name, table_,
-                owner, module);
+                owner, module, source);
+      }
       break;
     }
     case ASTNodeType::ENUM_DEFINITION: {
       const auto& node = static_cast<const EnumDefinitionAST&>(root);
       owner = declare(DeclarationKind::Enum, node.getName());
-      parameters(node, node.declarationIdentity(), table_, module);
-      for (const auto& variant : node.getVariants())
+      parameters(node, node.declarationIdentity(), table_, module,
+                 sourceIdentity);
+      for (size_t i = 0; i < node.getVariants().size(); ++i) {
+        const auto& variant = node.getVariants()[i];
+        auto source = origin ? static_cast<const EnumDefinitionAST&>(*origin)
+                                   .getVariants()[i]
+                                   .declaration.id
+                             : DeclarationId{};
         binding(variant.declaration, DeclarationKind::Variant, variant.name,
-                table_, owner, module);
+                table_, owner, module, source);
+      }
       break;
     }
     case ASTNodeType::VARIABLE_CREATION:
@@ -191,23 +240,47 @@ void DeclarationIdentityPass::run(const ExprAST& root, DeclarationId owner,
       if (node.hasAlias()) declare(DeclarationKind::Alias, node.getAliasName());
       break;
     }
-    case ASTNodeType::MATCH:
-      for (const auto& arm : static_cast<const MatchExprAST&>(root).getArms())
-        for (const auto& value : arm.bindings)
+    case ASTNodeType::MATCH: {
+      const auto& arms = static_cast<const MatchExprAST&>(root).getArms();
+      for (size_t i = 0; i < arms.size(); ++i)
+        for (size_t j = 0; j < arms[i].bindings.size(); ++j) {
+          const auto& value = arms[i].bindings[j];
+          auto source = origin ? static_cast<const MatchExprAST&>(*origin)
+                                     .getArms()[i]
+                                     .bindings[j]
+                                     .declaration.id
+                               : DeclarationId{};
           if (!value.isWildcard)
             binding(value.declaration, DeclarationKind::Binding, value.name,
-                    table_, owner, module);
+                    table_, owner, module, source);
+        }
       break;
-    case ASTNodeType::TRY_CATCH:
-      for (const auto& clause :
-           static_cast<const TryCatchExprAST&>(root).getCatchClauses())
-        binding(clause.declaration, DeclarationKind::Binding,
-                clause.bindingName, table_, owner, module);
+    }
+    case ASTNodeType::TRY_CATCH: {
+      const auto& clauses =
+          static_cast<const TryCatchExprAST&>(root).getCatchClauses();
+      for (size_t i = 0; i < clauses.size(); ++i) {
+        auto source = origin ? static_cast<const TryCatchExprAST&>(*origin)
+                                   .getCatchClauses()[i]
+                                   .declaration.id
+                             : DeclarationId{};
+        binding(clauses[i].declaration, DeclarationKind::Binding,
+                clauses[i].bindingName, table_, owner, module, source);
+      }
       break;
+    }
     default:
       break;
   }
-  forEachChild(root, [&](const ExprAST& child) { run(child, owner, module); });
+  std::vector<const ExprAST*> sourceChildren;
+  if (origin)
+    forEachChild(*origin, [&](const ExprAST& child) {
+      sourceChildren.push_back(&child);
+    });
+  size_t index = 0;
+  forEachChild(root, [&](const ExprAST& child) {
+    run(child, owner, module, origin ? sourceChildren.at(index++) : nullptr);
+  });
 }
 
 void clearComputedAnalysis(const ExprAST& root) {

@@ -179,3 +179,33 @@ TEST(Interfaces_Generic, interface_field_inherited) {
   )");
   EXPECT_EQ(value, 55);
 }
+
+TEST(Interfaces_Generic, type_test_uses_resolved_specialization) {
+  EXPECT_EQ(executeString(R"(
+    interface Readable<T> { method get() T; }
+    class Value implements Readable<i32> { init() {} method get() i32 { return 7; } }
+    function main() i32 {
+      var value = Value();
+      if (_is<Readable<i32>>(value) == false) { return 1; }
+      if (_is<Readable<i64>>(value)) { return 2; }
+      return 0;
+    }
+  )"),
+            0);
+}
+
+TEST(Interfaces_Generic, generic_method_binders_match_by_position) {
+  auto value = executeString(R"(
+    interface Factory<A> {
+      method identity<T>(value: T) T;
+    }
+    class IntFactory implements Factory<i32> {
+      method identity<U>(value: U) U { return value; }
+    }
+    function main() i32 {
+      var factory = IntFactory();
+      return factory.identity<i32>(42);
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}

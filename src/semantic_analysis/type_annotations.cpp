@@ -23,9 +23,7 @@ sun::TypePtr returnTypeOf(const sun::TypePtr& target,
     return func->getReturnType();
   }
   if (auto* param = sun::tryGetType<sun::TypeParameterType>(target)) {
-    return sun::Types::TypeParameterProjection(param->getProjectionBase(),
-                                               param->getConstraint(),
-                                               sun::TypeProjection::ReturnType);
+    return param->project(sun::TypeProjection::ReturnType);
   }
   logAndThrowError("_return_type_of<" + target->toDisplayString() +
                        "> requires a lambda or function type",
@@ -497,7 +495,9 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
     // This is a reference to a generic class without type arguments
     // Return a type parameter type (this should really be an error in most
     // contexts)
-    return sun::Types::TypeParameter(annot.baseName);
+    return sun::Types::TypeParameter(annot.baseName, {},
+                                     genericInfo->AST->getDeclarationId(),
+                                     ctx_.types()->declarations.session());
   }
 
   // Check for user-defined interface types

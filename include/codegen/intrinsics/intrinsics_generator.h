@@ -66,7 +66,7 @@ class IntrinsicsGenerator {
   llvm::Value* codegenToRefIntrinsic(
       const std::vector<std::unique_ptr<ExprAST>>& args);
   llvm::Value* codegenIsIntrinsic(
-      const std::string& targetName,
+      const sun::TypePtr& target,
       const std::vector<std::unique_ptr<ExprAST>>& args);
   llvm::Value* codegenDeinitIntrinsic(
       sun::TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args);

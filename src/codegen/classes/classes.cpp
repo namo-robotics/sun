@@ -376,8 +376,8 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
   // declaration order, allowing dynamic dispatch on interface-typed values.
   // Note: Generic methods cannot be included in vtables (they require
   // compile-time type information). Only non-generic methods are included.
-  for (const auto& interfaceName : classType->getImplementedInterfaces()) {
-    auto interfaceType = typeRegistry->getInterface(interfaceName);
+  for (auto interfaceId : classType->getImplementedInterfaces()) {
+    auto interfaceType = typeRegistry->getInterface(interfaceId);
     if (!interfaceType) {
       continue;
     }
@@ -1161,9 +1161,7 @@ Value* ClassGenerator::codegen(const GenericCallAST& expr) {
     case sun::Intrinsic::ToRef:
       return intrinsics().codegenToRefIntrinsic(expr.getArgs());
     case sun::Intrinsic::Is:
-      // _is<T> uses the type name for type trait checks (e.g., "_Integer")
-      return intrinsics().codegenIsIntrinsic(typeArgs[0]->baseName,
-                                             expr.getArgs());
+      return intrinsics().codegenIsIntrinsic(getFirstTypeArg(), expr.getArgs());
     case sun::Intrinsic::Deinit:
       return intrinsics().codegenDeinitIntrinsic(getFirstTypeArg(),
                                                  expr.getArgs());

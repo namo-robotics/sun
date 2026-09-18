@@ -98,9 +98,11 @@ struct TypeParameter {
   // The semantic type this parameter stands for while its generic is analyzed
   // unspecialized: T bound to itself, carrying its constraint so a body can
   // reach the constraint's members. Unconstrained parameters carry none.
-  sun::TypePtr toSunType() const {
-    return sun::Types::TypeParameter(name,
-                                     constraint.value_or(TypeConstraint{}));
+  sun::TypePtr toSunType(const sun::DeclarationTable& table,
+                         sun::DeclarationId id) const {
+    table.get(id);
+    return sun::Types::TypeParameter(
+        name, constraint.value_or(TypeConstraint{}), id, table.session());
   }
 };
 

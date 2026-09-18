@@ -107,9 +107,12 @@ void BodyAnalyzer::analyzeFunction(FunctionAST& func) {
   if (proto.isGeneric()) {
     std::vector<std::string> typeParams;
     std::vector<sun::TypePtr> typeParamTypes;
-    for (const auto& tp : proto.getTypeParameters()) {
+    for (size_t i = 0; i < proto.getTypeParameters().size(); ++i) {
+      const auto& tp = proto.getTypeParameters()[i];
       typeParams.push_back(tp.name);
-      typeParamTypes.push_back(tp.toSunType());
+      typeParamTypes.push_back(
+          tp.toSunType(ctx_.types()->declarations,
+                       proto.declarationIdentity().typeParameters.at(i)));
     }
     ctx_.addTypeParameterBindings(typeParams, typeParamTypes);
   }

@@ -149,7 +149,7 @@ Value* ErrorGenerator::codegen(const ThrowExprAST& expr) {
     Value* objVal = ctx.builder->CreateLoad(classStruct, objPtr, "throw.obj");
     ctx.builder->CreateStore(objVal, objSlot);
 
-    auto ierror = typeRegistry()->getInterface("IError");
+    auto ierror = typeRegistry()->errorInterface;
     Value* fat = gen_.classGenerator().createInterfaceFatPointer(
         objSlot, classType, ierror.get());
     storeAt(exc, fatOffset, fat);

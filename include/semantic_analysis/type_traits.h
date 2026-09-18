@@ -57,14 +57,8 @@ inline bool isTypeTrait(const std::string& name) {
 
 namespace traits {
 
-/**
- * Does `type` satisfy `name`? The name is a built-in trait, an interface the
- * type implements, or a type name to match exactly. A `ref T` is unwrapped
- * first, so a borrow satisfies whatever its referent does.
- *
- * A null type satisfies nothing.
- */
-bool satisfies(const TypePtr& type, const std::string& name);
+/** Test a resolved trait or type requirement, unwrapping a borrowed value. */
+bool satisfies(const TypePtr& type, const TypePtr& requirement);
 
 }  // namespace traits
 }  // namespace sun

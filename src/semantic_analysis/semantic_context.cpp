@@ -29,6 +29,7 @@ using sun::names::isReservedIdentifier;
 SemanticContext::SemanticContext(std::shared_ptr<sun::TypeRegistry> registry)
     : typeRegistry_(std::move(registry)) {
   rootScope_->accessContext = this;  // lookups filter by visibility
+  rootScope_->interfaces["IError"] = typeRegistry_->errorInterface;
   registerBuiltinFunctions();
 }
 
@@ -730,26 +731,14 @@ sun::TypePtr SemanticContext::getNarrowedType(const std::string& varName,
       if (originalType->isInterface() && narrowedType->isClass()) {
         auto* classType = static_cast<sun::ClassType*>(narrowedType.get());
         auto* ifaceType = static_cast<sun::InterfaceType*>(originalType.get());
-        // Check if class implements the interface
-        for (const auto& impl : classType->getImplementedInterfaces()) {
-          if (impl == ifaceType->getName() ||
-              impl.rfind(ifaceType->getName() + "_", 0) == 0) {
-            return narrowedType;  // Class is more specific
-          }
-        }
+        if (classType->implementsInterface(*ifaceType)) return narrowedType;
       }
 
       // Class -> Interface: Class is more specific, return the class
       if (originalType->isClass() && narrowedType->isInterface()) {
         auto* classType = static_cast<sun::ClassType*>(originalType.get());
         auto* ifaceType = static_cast<sun::InterfaceType*>(narrowedType.get());
-        // Check if class implements the interface
-        for (const auto& impl : classType->getImplementedInterfaces()) {
-          if (impl == ifaceType->getName() ||
-              impl.rfind(ifaceType->getName() + "_", 0) == 0) {
-            return originalType;  // Class is more specific
-          }
-        }
+        if (classType->implementsInterface(*ifaceType)) return originalType;
       }
 
       // Interface -> more specific Interface (TODO: interface inheritance)
@@ -1267,16 +1256,7 @@ void SemanticContext::registerInterface(
 
 std::shared_ptr<sun::InterfaceType> SemanticContext::lookupInterface(
     const std::string& name) const {
-  auto result = currentScope_->lookupInterface(name);
-  if (result) return result;
-
-  // Check builtin interfaces in type registry (IError)
-  if (typeRegistry_) {
-    auto builtinInterface = typeRegistry_->lookupInterface(name);
-    if (builtinInterface) return builtinInterface;
-  }
-
-  return nullptr;
+  return currentScope_->lookupInterface(name);
 }
 
 void SemanticContext::registerGenericInterface(const std::string& name,

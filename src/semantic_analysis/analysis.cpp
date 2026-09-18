@@ -388,9 +388,10 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
   SemanticContext::ScopeSwitchGuard signatureScope(ctx_, ctx_.scope());
   if (!proto.getTypeParameters().empty()) {
     std::vector<sun::TypePtr> parameters;
-    for (const auto& parameter : proto.getTypeParameters()) {
-      auto bound = ctx_.findTypeParameter(parameter.name);
-      parameters.push_back(bound ? bound : parameter.toSunType());
+    for (size_t i = 0; i < proto.getTypeParameters().size(); ++i) {
+      parameters.push_back(proto.getTypeParameters()[i].toSunType(
+          ctx_.types()->declarations,
+          proto.declarationIdentity().typeParameters.at(i)));
     }
     ctx_.enterTypeParamScope(proto.getTypeParameterNames(), parameters);
   }

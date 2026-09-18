@@ -217,7 +217,6 @@ TEST(Tooling_Frontend_DeclarationIdentity, nominal_types_distinguish_sessions) {
   auto b = second.declarations.add(sun::DeclarationKind::Interface, "Local");
   ASSERT_EQ(a, b);
   EXPECT_FALSE(first.getInterface(a)->equals(*second.getInterface(b)));
-  EXPECT_ANY_THROW(first.getInterface("Local"));
   auto e = first.declarations.add(sun::DeclarationKind::Enum, "Value");
   auto f = first.declarations.add(sun::DeclarationKind::Enum, "Value");
   EXPECT_FALSE(first.getEnum(e)->equals(*first.getEnum(f)));
@@ -231,14 +230,16 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   auto types = std::make_shared<sun::TypeRegistry>();
   SemanticAnalyzer analyzer(types);
   auto& function = static_cast<FunctionAST&>(*ast->getBody()[0]);
-  analyzer.pipeline().prepareGenerated(function, {}, {});
+  analyzer.pipeline().prepareGenerated(function, std::vector<std::string>{},
+                                       {});
   auto id = function.getDeclarationId();
   ASSERT_TRUE(id);
   auto count = types->declarations.size();
   auto info = analyzer.getFunctionInfo(function);
   EXPECT_EQ(info.declarationId, id);
   EXPECT_EQ(types->declarations.size(), count);
-  analyzer.pipeline().prepareGenerated(function, {}, {});
+  analyzer.pipeline().prepareGenerated(function, std::vector<std::string>{},
+                                       {});
   EXPECT_EQ(function.getDeclarationId(), id);
   EXPECT_EQ(types->declarations.size(), count);
 }
@@ -288,8 +289,6 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   EXPECT_FALSE(firstType->equals(*secondType));
   EXPECT_EQ(firstType->getDeclarationId(), firstId);
   EXPECT_EQ(secondType->getDeclarationId(), secondId);
-  EXPECT_EQ(result.typeRegistry->getInterface("first_Item"), firstType);
-  EXPECT_EQ(result.typeRegistry->getInterface("second_Item"), secondType);
 }
 
 TEST(Tooling_Frontend_DeclarationIdentity,
@@ -387,4 +386,90 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   auto next =
       std::static_pointer_cast<sun::RawPointerType>(type->getFields()[0].type);
   EXPECT_EQ(next->getPointeeType(), type);
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity,
+     interface_conformance_uses_session_ids) {
+  sun::TypeRegistry types;
+  auto first = types.getInterface(
+      types.declarations.add(sun::DeclarationKind::Interface, "Readable"));
+  auto second = types.getInterface(
+      types.declarations.add(sun::DeclarationKind::Interface, "Readable"));
+  auto implementation = types.getClass(
+      types.declarations.add(sun::DeclarationKind::Class, "Value"));
+  implementation->addImplementedInterface(*first);
+  EXPECT_TRUE(implementation->implementsInterface(*first));
+  EXPECT_FALSE(implementation->implementsInterface(*second));
+  first->setQualifiedName({{"renamed"}, "Readable"});
+  EXPECT_TRUE(implementation->convertibleToInterface(*first));
+  implementation->markStaticOnlyInterface(*first);
+  EXPECT_FALSE(implementation->convertibleToInterface(*first));
+  EXPECT_TRUE(implementation->implementsInterface(*first));
+  sun::TypeRegistry other;
+  auto foreign = other.getInterface(
+      other.declarations.add(sun::DeclarationKind::Interface, "Readable"));
+  ASSERT_EQ(first->getDeclarationId(), foreign->getDeclarationId());
+  EXPECT_FALSE(implementation->implementsInterface(*foreign));
+  EXPECT_ANY_THROW(implementation->addImplementedInterface(*foreign));
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity,
+     abstract_arguments_use_binder_identity) {
+  sun::TypeRegistry types;
+  TypeParameter parameter("T");
+  auto a = types.declarations.add(sun::DeclarationKind::TypeParameter, "T");
+  auto b = types.declarations.add(sun::DeclarationKind::TypeParameter, "T");
+  auto first = parameter.toSunType(types.declarations, a);
+  auto repeated = parameter.toSunType(types.declarations, a);
+  auto second = parameter.toSunType(types.declarations, b);
+  EXPECT_TRUE(first->equals(*repeated));
+  EXPECT_FALSE(first->equals(*second));
+  auto source = types.declarations.add(sun::DeclarationKind::Class, "Box");
+  auto instance = types.specialize({source, {}, {first}, std::nullopt});
+  EXPECT_EQ(instance, types.specialize({source, {}, {repeated}, std::nullopt}));
+  EXPECT_NE(instance, types.specialize({source, {}, {second}, std::nullopt}));
+  auto projection = static_cast<const sun::TypeParameterType&>(*first).project(
+      sun::TypeProjection::ReturnType);
+  auto repeatedProjection =
+      static_cast<const sun::TypeParameterType&>(*repeated).project(
+          sun::TypeProjection::ReturnType);
+  EXPECT_TRUE(projection->equals(*repeatedProjection));
+  EXPECT_FALSE(projection->equals(*first));
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity,
+     generated_binders_retain_their_source) {
+  auto ast = parse(R"(
+    function outer<T>(value: T) T {
+      class Local { var field: i32; }
+      var copy = value;
+      return copy;
+    }
+  )");
+  sun::DeclarationTable table;
+  sun::DeclarationIdentityPass pass(table);
+  pass.run(*ast);
+  const auto& source = static_cast<const FunctionAST&>(*ast->getBody()[0]);
+  auto clone = source.clone();
+  pass.run(*clone, {}, {}, &source);
+  const auto& generated = static_cast<const FunctionAST&>(*clone);
+  EXPECT_EQ(table.get(generated.getDeclarationId()).origin,
+            source.getDeclarationId());
+  EXPECT_EQ(table.get(generated.declarationIdentity().parameters[0]).origin,
+            source.declarationIdentity().parameters[0]);
+  EXPECT_EQ(table.get(generated.declarationIdentity().typeParameters[0]).origin,
+            source.declarationIdentity().typeParameters[0]);
+  auto& local =
+      static_cast<const ClassDefinitionAST&>(*generated.getBody().getBody()[0]);
+  auto& originalLocal =
+      static_cast<const ClassDefinitionAST&>(*source.getBody().getBody()[0]);
+  EXPECT_EQ(table.get(local.getDeclarationId()).owner,
+            generated.getDeclarationId());
+  EXPECT_EQ(table.get(local.getDeclarationId()).origin,
+            originalLocal.getDeclarationId());
+  EXPECT_EQ(table.get(local.getFields()[0].declaration.id).origin,
+            originalLocal.getFields()[0].declaration.id);
+  auto size = table.size();
+  pass.run(*clone, {}, {}, &source);
+  EXPECT_EQ(table.size(), size);
 }

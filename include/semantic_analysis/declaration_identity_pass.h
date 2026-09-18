@@ -15,7 +15,7 @@ class DeclarationIdentityPass {
   /** Register source or generated declarations, retaining assigned identities.
    */
   void run(const ExprAST& root, DeclarationId owner = {},
-           DeclarationId module = {}) const;
+           DeclarationId module = {}, const ExprAST* origin = nullptr) const;
 };
 
 /** Clear computed annotations throughout a tree while preserving identities. */

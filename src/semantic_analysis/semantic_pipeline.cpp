@@ -21,17 +21,20 @@ void SemanticPipeline::run(BlockExprAST& block) {
 }
 
 void SemanticPipeline::prepareGenerated(const ExprAST& expression,
-                                        DeclarationId owner) {
+                                        DeclarationId owner,
+                                        const ExprAST* origin) {
   auto& table = context_.types()->declarations;
   DeclarationIdentityPass(table).run(
-      expression, owner, owner ? table.get(owner).module : DeclarationId{});
+      expression, owner, owner ? table.get(owner).module : DeclarationId{},
+      origin);
 }
 
 void SemanticPipeline::prepareGenerated(ExprAST& expression,
                                         const std::vector<std::string>& scope,
                                         const std::vector<std::string>& module,
-                                        DeclarationId owner) {
-  prepareGenerated(expression, owner);
+                                        DeclarationId owner,
+                                        const ExprAST* origin) {
+  prepareGenerated(expression, owner, origin);
   declarationNamingPass_.run(expression, scope, module, false);
 }
 
