@@ -257,13 +257,9 @@ bool FunctionGenerator::fillCaptureSlots(StructType* envType,
 std::pair<Function*, llvm::StructType*> FunctionGenerator::codegen(
     const PrototypeAST& proto, llvm::StructType* envType, bool isLambda,
     llvm::Type* returnType) {
-  // The qualified name semantic analysis gave it. An anonymous lambda has
-  // none to mangle, so give each one its own. That name is only unique
-  // within this module, so the function stays internal (see below): nothing
-  // outside the module can name it, and two modules' `lambda0`s never clash
-  // when a bundle is linked into a program.
-  std::string funcName = proto.getMangledName();
-  const bool anonymous = funcName.empty();
+  // Named declarations use portable symbols; anonymous closures stay internal.
+  std::string funcName = state_.declarationSymbol(proto.getDeclarationId());
+  const bool anonymous = proto.getName().empty();
   if (anonymous) {
     funcName = "lambda" + std::to_string(lambdaCounter++);
   }
@@ -371,7 +367,7 @@ std::pair<Function*, llvm::StructType*> FunctionGenerator::codegen(
 void FunctionGenerator::forwardDeclareFunction(const PrototypeAST& proto) {
   if (proto.getName().empty()) return;
 
-  std::string funcName = proto.getMangledName();
+  std::string funcName = state_.declarationSymbol(proto.getDeclarationId());
   if (auto* existing = module->getFunction(funcName)) {
     functions().registerFunction(proto.getDeclarationId(), existing);
     return;
@@ -426,14 +422,13 @@ void FunctionGenerator::declareBlockSignatures(const BlockExprAST& block) {
       for (const auto& method : definition.getMethods()) {
         if (!method.hasDefaultImpl || method.function->getProto().isGeneric())
           continue;
-        classes().declareMethodFromAST(
-            *method.function, type->getMangledDefaultMethodName(
-                                  method.function->getProto().getName()));
+        classes().declareMethodFromAST(*method.function);
       }
       continue;
     }
     if (!expr->isFunction()) continue;
     auto& funcAST = static_cast<FunctionAST&>(*expr);
+    if (funcAST.isExtern() && funcAST.getTargetDeclarationId()) continue;
     const PrototypeAST& proto = funcAST.getProto();
 
     // A template has no signature of its own — it is emitted as one function
@@ -471,7 +466,8 @@ Value* FunctionGenerator::codegenGenericFunc(FunctionAST& funcAst) {
   for (const auto& [instanceId, specializedAST] :
        funcAst.getSpecializations()) {
     if (!specializedAST) continue;
-    const auto mangledName = specializedAST->getProto().getMangledName();
+    const auto mangledName =
+        state_.declarationSymbol(specializedAST->getDeclarationId());
     // A forward declaration from the block pre-pass still needs its body;
     // only an already-defined function is skipped.
     llvm::Function* existing = module->getFunction(mangledName);
@@ -581,6 +577,8 @@ Value* FunctionGenerator::codegenFunc(FunctionAST& funcAst) {
 
   if (funcAst.isExtern()) {
     if (funcAst.isCExtern()) return codegenExternFunc(funcAst);
+    if (funcAst.getTargetDeclarationId())
+      return functions().lookupFunctionById(funcAst.getTargetDeclarationId());
     const auto& proto = funcAst.getProto();
     forwardDeclareFunction(proto);
     return functions().lookupFunctionById(proto.getDeclarationId());

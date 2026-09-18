@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 #include "semantic_analysis/declaration_collection_pass.h"
 #include "semantic_analysis/declaration_naming_pass.h"
 #include "semantic_analysis/field_initializer_preparation_pass.h"
@@ -19,7 +21,8 @@ class SemanticPipeline {
   SemanticPipeline& operator=(const SemanticPipeline&) = delete;
 
   /** Prepare names, collect declarations, and check the program's bodies. */
-  void run(BlockExprAST& block);
+  void run(BlockExprAST& block,
+           const std::function<void()>& declarationsReady = {});
 
   /** Assign identities to newly generated syntax before resolving it. */
   void prepareGenerated(const ExprAST& expression, DeclarationId owner = {},

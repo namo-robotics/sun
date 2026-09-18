@@ -21,7 +21,7 @@ namespace sun {
 struct MoonHeader {
   static constexpr uint32_t MAGIC = 0x53554E4C;  // "SUNL"
   // Bundle identities use the full digest of canonically framed build inputs.
-  static constexpr uint32_t VERSION = 3;
+  static constexpr uint32_t VERSION = 4;
 
   uint32_t magic = MAGIC;
   uint32_t version = VERSION;

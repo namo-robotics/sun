@@ -17,21 +17,21 @@ struct SpecializationKey;
 
 /** The source role of a declaration, independent of its resolved type. */
 enum class DeclarationKind {
-  Module,
-  Function,
-  Lambda,
-  Class,
-  Interface,
-  Enum,
-  Variable,
-  Reference,
-  Parameter,
-  TypeParameter,
-  LifetimeParameter,
-  Field,
-  Variant,
-  Binding,
-  Alias
+  Module = 0,
+  Function = 1,
+  Lambda = 2,
+  Class = 3,
+  Interface = 4,
+  Enum = 5,
+  Variable = 6,
+  Reference = 7,
+  Parameter = 8,
+  TypeParameter = 9,
+  LifetimeParameter = 10,
+  Field = 11,
+  Variant = 12,
+  Binding = 13,
+  Alias = 14
 };
 
 /** The identity and ownership of a declaration in one analysis session. */
@@ -89,6 +89,54 @@ class DeclarationTable {
                         std::move(specialization), origin,
                         std::move(generatedRole), generatedSlot});
     return DeclarationId(records_.size());
+  }
+
+  /** Intern a source declaration from an artifact, validating its ownership. */
+  DeclarationId importOriginal(const std::string& encoded, DeclarationKind kind,
+                               const std::string& name, DeclarationId owner,
+                               DeclarationId module) {
+    auto key = PortableDeclarationKey::parseOriginal(encoded);
+    if (auto existing = findPortable(key)) {
+      const auto& record = get(existing);
+      if (record.kind != kind || record.name != name || record.owner != owner ||
+          record.module != module)
+        logAndThrowError("Conflicting imported declaration identity");
+      return existing;
+    }
+    auto id = kind == DeclarationKind::Module ? this->module(name, owner)
+                                              : add(kind, name, owner, module);
+    bindPortable(id, key);
+    return id;
+  }
+
+  /** Restore an artifact's ownership graph before registering its syntax. */
+  void importRecords(const std::vector<ImportedDeclarationRecord>& records) {
+    auto reference = [&](const std::string& encoded) {
+      if (encoded.empty()) return DeclarationId{};
+      auto id = findPortable(PortableDeclarationKey::parseOriginal(encoded));
+      if (!id)
+        logAndThrowError("Imported declaration refers to a missing owner");
+      return id;
+    };
+    for (const auto& record : records) {
+      if (record.kind > static_cast<uint32_t>(DeclarationKind::Alias))
+        logAndThrowError("Imported declaration has an unknown kind");
+      importOriginal(record.key, static_cast<DeclarationKind>(record.kind),
+                     record.name, reference(record.owner),
+                     reference(record.module));
+    }
+  }
+
+  /** Attach imported syntax to its previously interned original declaration. */
+  DeclarationId importedSyntax(const std::string& encoded, DeclarationKind kind,
+                               const std::string& name) const {
+    auto id = findPortable(PortableDeclarationKey::parseOriginal(encoded));
+    if (!id) logAndThrowError("Imported syntax has no declaration record");
+    const auto& record = get(id);
+    if (record.kind != kind ||
+        (kind != DeclarationKind::Module && record.name != name))
+      logAndThrowError("Imported syntax does not match its declaration record");
+    return id;
   }
 
   /** Find a declaration in this session; unassigned identities are errors. */

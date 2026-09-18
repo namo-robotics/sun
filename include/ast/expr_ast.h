@@ -26,7 +26,7 @@ class ExprAST {
    * source aliases in the caller. Source spelling is kept for formatting and
    * diagnostics.
    */
-  std::optional<sun::QualifiedName> moduleQualifiedName_;
+  std::optional<sun::PortableDeclarationKey> moduleDeclaration_;
   Position location_;         // Original source location
   bool precompiled_ = false;  // True if from precompiled library
   bool skipCodegen_ = false;  // Set by semantic analyzer for diamond duplicates
@@ -51,7 +51,7 @@ class ExprAST {
   // Copy base class fields to a cloned node. Called by derived clone() methods.
   void cloneBase(ExprAST& dest) const {
     dest.sourceFileId_ = sourceFileId_;
-    dest.moduleQualifiedName_ = moduleQualifiedName_;
+    dest.moduleDeclaration_ = moduleDeclaration_;
     dest.location_ = location_;
     dest.precompiled_ = precompiled_;
     dest.skipCodegen_ = skipCodegen_;
@@ -68,13 +68,14 @@ class ExprAST {
 
   /** The original module denoted by this expression or retained using target.
    */
-  const std::optional<sun::QualifiedName>& getModuleQualifiedName() const {
-    return moduleQualifiedName_;
+  const std::optional<sun::PortableDeclarationKey>& getModuleDeclaration()
+      const {
+    return moduleDeclaration_;
   }
 
   /** Bind a module reference without changing its source spelling. */
-  void setModuleQualifiedName(sun::QualifiedName name) {
-    moduleQualifiedName_ = std::move(name);
+  void setModuleDeclaration(sun::PortableDeclarationKey name) {
+    moduleDeclaration_ = std::move(name);
   }
 
   /** The source unit whose imports apply to this node. */
@@ -144,7 +145,12 @@ class ExprAST {
     analysis_->declaration = std::move(identity);
   }
   /** Discard all annotations when the owning analysis session is discarded. */
-  virtual void resetAnalysisSession() const { analysis_.reset(); }
+  virtual void resetAnalysisSession() const {
+    if (!analysis_) return;
+    auto imported = std::move(analysis_->declaration.imported);
+    analysis_.reset();
+    if (imported) analysis().declaration.imported = std::move(imported);
+  }
 
   // Type annotation set by semantic analyzer (delegates to analysis)
   void setResolvedType(sun::TypePtr type) const {

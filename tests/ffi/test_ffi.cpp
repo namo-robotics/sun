@@ -1116,14 +1116,21 @@ TEST(Ffi, native_function_and_global_kind_collision_fails) {
       std::exception);
 }
 
-TEST(Ffi, native_global_and_sun_definition_collision_fails) {
-  EXPECT_THROW(Driver::createForAOT("extern_global_definition_collision")
-                   ->compileString(R"(
+TEST(Ffi, native_global_and_sun_definition_have_distinct_symbols) {
+  auto driver = Driver::createForAOT("extern_global_definition_collision");
+  ASSERT_NO_THROW(driver->compileString(R"(
     var defined: i32 = 1;
     extern "C" var imported: i32 as "defined";
     function main() i32 { return defined; }
-  )"),
-               std::exception);
+  )"));
+  auto* native = driver->getModule().getGlobalVariable("defined");
+  ASSERT_NE(native, nullptr);
+  EXPECT_TRUE(native->isDeclaration());
+  size_t sunDefinitions = 0;
+  for (const auto& global : driver->getModule().globals())
+    if (!global.isDeclaration() && global.getName().starts_with("_SUN1_"))
+      ++sunDefinitions;
+  EXPECT_EQ(sunDefinitions, 1u);
 }
 
 // ============================================================================

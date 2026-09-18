@@ -2,7 +2,6 @@
 
 #include "ast.pb.h"
 #include "moon_bundling/metadata_types.h"
-#include "serialization/qualified_name.h"
 
 namespace sun {
 namespace {
@@ -41,13 +40,11 @@ void bindModules(google::protobuf::Message& message, SemanticContext& ctx,
   SemanticContext::SourceFileGuard file(
       ctx, source ? reflection->GetUInt64(message, source) : 0);
 
-  if (desc == ast::TypeAnnotation::descriptor() ||
-      desc == ast::QualifiedName::descriptor())
-    return;
+  if (desc == ast::TypeAnnotation::descriptor()) return;
 
   if (desc == ast::ASTNode::descriptor()) {
     auto& node = static_cast<ast::ASTNode&>(message);
-    if (node.has_module_qualified_name()) return;
+    if (node.has_module_declaration_key()) return;
     if (node.has_using_stmt()) {
       auto& use = *node.mutable_using_stmt();
       auto path = QualifiedName::joinPath(
@@ -60,9 +57,11 @@ void bindModules(google::protobuf::Message& message, SemanticContext& ctx,
       }
       if (!module) module = ctx.lookupModuleScope(path);
       if (module) {
-        *node.mutable_module_qualified_name() =
-            serialization::serializeQualifiedName(
-                static_cast<const ModuleScope&>(*module).qualifiedName);
+        node.set_module_declaration_key(
+            PortableDeclarationKey::fromDeclaration(
+                static_cast<const ModuleScope&>(*module).declarationId,
+                ctx.types()->declarations)
+                .encoding());
         auto target = use.is_module_import() ? "*" : use.target();
         ctx.addUsingImport(UsingImport(
             static_cast<const ModuleScope&>(*module).qualifiedName.lookupName(),
@@ -79,9 +78,11 @@ void bindModules(google::protobuf::Message& message, SemanticContext& ctx,
         !ctx.lookupVariable(first) && !ctx.lookupEnum(first) &&
         ctx.getAllFunctions(first).empty()) {
       if (auto* module = ctx.lookupModuleScope(path)) {
-        *node.mutable_module_qualified_name() =
-            serialization::serializeQualifiedName(
-                static_cast<const ModuleScope&>(*module).qualifiedName);
+        node.set_module_declaration_key(
+            PortableDeclarationKey::fromDeclaration(
+                static_cast<const ModuleScope&>(*module).declarationId,
+                ctx.types()->declarations)
+                .encoding());
         return;
       }
     }
@@ -163,9 +164,7 @@ void bindModules(google::protobuf::Message& message, SemanticContext& ctx,
   std::vector<const google::protobuf::FieldDescriptor*> fields;
   reflection->ListFields(message, &fields);
   for (const auto* field : fields) {
-    if (field->cpp_type() !=
-            google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE ||
-        field->name() == "module_qualified_name")
+    if (field->cpp_type() != google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE)
       continue;
     if (field->is_repeated()) {
       for (int i = 0; i < reflection->FieldSize(message, field); ++i)

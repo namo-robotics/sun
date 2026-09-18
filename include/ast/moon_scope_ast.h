@@ -28,7 +28,8 @@ class MoonScopeAST : public ExprAST {
  public:
   /** A referenced declaration and the type kind required by this use. */
   struct DeclarationRequirement {
-    sun::QualifiedName qualifiedName;
+    sun::PortableDeclarationKey key;
+    std::string displayName;
     // Empty accepts any nominal type; implements and constraints require
     // Interface.
     std::optional<sun::Type::Kind> expectedKind;
@@ -39,6 +40,8 @@ class MoonScopeAST : public ExprAST {
    * are indexed, including generic declarations that are never instantiated.
    */
   std::vector<DeclarationRequirement> requiredDeclarations;
+  // Consumed at the import boundary before any signatures are resolved.
+  std::vector<sun::ImportedDeclarationRecord> importedDeclarations;
 
   MoonScopeAST(std::string contentHash, std::string moduleName,
                std::optional<std::string> alias, std::string moonPath,

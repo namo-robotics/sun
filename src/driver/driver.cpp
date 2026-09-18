@@ -1,7 +1,5 @@
 #include "driver/driver.h"
 
-#include "semantic_analysis/semantic_pipeline.h"
-
 #include <llvm/IR/DebugInfo.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Verifier.h>
@@ -18,6 +16,7 @@
 #include <inja/inja.hpp>
 #include <sstream>
 
+#include "ast/ast_children.h"
 #include "ast/manifest_ast.h"
 #include "borrow_checker/borrow_checker.h"
 #include "debug/ast_dot_generator.h"
@@ -30,6 +29,8 @@
 #include "moon_bundling/proto_importer.h"
 #include "parsing/doc_comments.h"
 #include "parsing/lowering_pass.h"
+#include "semantic_analysis/semantic_pipeline.h"
+#include "serialization/ast_serializer.h"
 #include "support/error.h"
 #include "support/source_manager.h"
 #include "support/stage_timer.h"
@@ -843,7 +844,27 @@ void Driver::analyzeProgram(BlockExprAST& blockAst, Parser& parser) {
   // Run semantic analysis on the unified AST
   {
     sun::ScopedStage stage("sema");
-    analyzer->pipeline().run(blockAst);
+    // Executables have an artifact identity too; imported trees retain theirs.
+    std::string artifactHash = ownBundleHash_;
+    if (artifactHash.empty()) {
+      sun::serialization::ASTSerializer serializer;
+      std::string source;
+      auto append = [&](auto&& self, const ExprAST& node) -> void {
+        if (node.getType() == ASTNodeType::MOON_SCOPE) return;
+        if (node.getType() == ASTNodeType::BLOCK) {
+          forEachChild(node, [&](const ExprAST& child) { self(self, child); });
+          return;
+        }
+        auto bytes = serializer.serialize(node).SerializeAsString();
+        source += std::to_string(bytes.size()) + ":" + bytes;
+      };
+      append(append, blockAst);
+      artifactHash = sun::computeSha256Hex(source);
+    }
+    analyzer->pipeline().run(blockAst, [&] {
+      sun::PortableDeclarationKey::assignOriginals(
+          blockAst, typeRegistry->declarations, artifactHash);
+    });
   }
 }
 

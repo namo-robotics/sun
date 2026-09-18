@@ -9,6 +9,8 @@
 #include "driver/driver.h"
 #include "parsing/parser.h"
 #include "semantic_analysis/declaration_identity_pass.h"
+#include "serialization/ast_deserializer.h"
+#include "serialization/ast_serializer.h"
 
 namespace {
 
@@ -659,6 +661,10 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   auto cls = types->getClass(classId, {{}, "Box"});
   auto first = types->getInterface(firstId, {{}, "View"});
   auto second = types->getInterface(secondId, {{}, "View"});
+  uint64_t ordinal = 1;
+  for (auto id : {classId, firstId, secondId})
+    types->declarations.bindPortable(id, sun::PortableDeclarationKey::original(
+                                             std::string(64, 'a'), ordinal++));
   CodegenContext context("vtable_identity", nullptr);
   CodegenVisitor gen(context, types);
   auto& classes = gen.classGenerator();
@@ -765,4 +771,78 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   ASSERT_TRUE(result.error);
   EXPECT_NE(std::string(result.error->what()).find("Pattern does not match"),
             std::string::npos);
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity,
+     portable_source_ordinals_ignore_session_allocations) {
+  const std::string source = R"(
+    public module lib {
+      public function work<T>(value: T) i32 {
+        class Local { var n: i32; }
+        return 1;
+      }
+    }
+  )";
+  auto first = parse(source), second = parse(source);
+  sun::DeclarationTable a, b;
+  b.add(sun::DeclarationKind::Variable, "unrelated");
+  sun::DeclarationIdentityPass(a).run(*first);
+  sun::DeclarationIdentityPass(b).run(*second);
+  sun::PortableDeclarationKey::assignOriginals(*first, a, std::string(64, 'a'));
+  sun::PortableDeclarationKey::assignOriginals(*second, b,
+                                               std::string(64, 'a'));
+  for (uint64_t i = 1; i <= a.size(); ++i) {
+    const auto key =
+        sun::PortableDeclarationKey::fromDeclaration(sun::DeclarationId(i), a);
+    const auto imported = b.findPortable(key);
+    ASSERT_TRUE(imported);
+    EXPECT_NE(imported, sun::DeclarationId(i));
+    EXPECT_EQ(a.get(sun::DeclarationId(i)).name, b.get(imported).name);
+  }
+}
+
+TEST(Tooling_Frontend_DeclarationIdentity,
+     imported_declarations_survive_session_reset_but_not_cloning) {
+  auto source = parse("function work<T>(value: T) i32 { return 1; }");
+  sun::DeclarationTable original;
+  sun::DeclarationIdentityPass(original).run(*source);
+  sun::PortableDeclarationKey::assignOriginals(*source, original,
+                                               std::string(64, 'a'));
+  sun::serialization::ASTSerializer serializer({.declarations = &original});
+  sun::serialization::ASTDeserializer deserializer(
+      {.import_declarations = true});
+  auto imported = deserializer.deserialize(serializer.serialize(*source));
+  std::vector<sun::ImportedDeclarationRecord> records;
+  auto key = [&](sun::DeclarationId id) {
+    return id ? sun::PortableDeclarationKey::fromDeclaration(id, original)
+                    .encoding()
+              : std::string{};
+  };
+  for (uint64_t i = 1; i <= original.size(); ++i) {
+    const auto& record = original.get(sun::DeclarationId(i));
+    records.push_back({key(sun::DeclarationId(i)),
+                       static_cast<uint32_t>(record.kind), record.name,
+                       key(record.owner), key(record.module)});
+  }
+  sun::DeclarationTable first;
+  first.importRecords(records);
+  sun::DeclarationIdentityPass(first).run(*imported);
+  auto& function = *static_cast<BlockExprAST&>(*imported).getBody()[0];
+  const auto portable = sun::PortableDeclarationKey::fromDeclaration(
+      function.getDeclarationId(), first);
+  const auto oldId = function.getDeclarationId();
+  sun::resetAnalysisSession(*imported);
+  ASSERT_FALSE(function.getDeclarationId());
+  ASSERT_TRUE(function.declarationIdentity().imported);
+  sun::DeclarationTable second;
+  second.add(sun::DeclarationKind::Variable, "unrelated");
+  second.importRecords(records);
+  sun::DeclarationIdentityPass(second).run(*imported);
+  EXPECT_NE(function.getDeclarationId(), oldId);
+  EXPECT_EQ(sun::PortableDeclarationKey::fromDeclaration(
+                function.getDeclarationId(), second),
+            portable);
+  auto clone = function.clone();
+  EXPECT_FALSE(clone->getDeclarationId());
+  EXPECT_FALSE(clone->declarationIdentity().imported);
 }

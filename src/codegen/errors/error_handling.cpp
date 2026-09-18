@@ -14,17 +14,14 @@
 using namespace llvm;
 
 namespace {
-// Stable, module-independent type identity for an error class: FNV-1a 64-bit
-// hash of its (canonical) mangled name. Computed identically at the throw site
-// and every catch site, so typed catches can match without RTTI and without
-// relying on per-module vtable pointer identity.
-uint64_t sunTypeId(const std::string& mangledName) {
-  uint64_t h = 1469598103934665603ull;  // FNV offset basis
-  for (unsigned char c : mangledName) {
-    h ^= static_cast<uint64_t>(c);
-    h *= 1099511628211ull;  // FNV prime
-  }
-  return h;
+/** Retain the runtime tag width while deriving it from the portable identity.
+ */
+uint64_t sunTypeId(const sun::ClassType& type,
+                   const sun::DeclarationTable& table) {
+  const auto symbol = sun::PortableDeclarationKey::fromDeclaration(
+                          type.getDeclarationId(), table)
+                          .symbol("error-type");
+  return std::stoull(symbol.substr(6, 16), nullptr, 16);
 }
 }  // namespace
 
@@ -142,7 +139,9 @@ Value* ErrorGenerator::codegen(const ThrowExprAST& expr) {
         {ConstantInt::get(i64Ty, objOffset + objSize)}, "exc");
     // typeId at offset 0.
     ctx.builder->CreateStore(
-        ConstantInt::get(i64Ty, sunTypeId(classType->getMangledName())), exc);
+        ConstantInt::get(i64Ty,
+                         sunTypeId(*classType, typeRegistry()->declarations)),
+        exc);
     // Object copy after the header; fat.data references it.
     Value* objSlot = ctx.builder->CreateGEP(
         i8Ty, exc, {ConstantInt::get(i64Ty, objOffset)}, "exc.obj");
@@ -319,8 +318,8 @@ Value* ErrorGenerator::codegen(const TryCatchExprAST& expr) {
     } else {
       Value* want = ConstantInt::get(
           i64Ty, sunTypeId(sun::requireType<sun::ClassType>(clause.resolvedType,
-                                                            "catch type")
-                               .getMangledName()));
+                                                            "catch type"),
+                           typeRegistry()->declarations));
       Value* m = ctx.builder->CreateICmpEQ(typeId, want, "catch.match");
       BasicBlock* elseBB = (i + 1 < n) ? testBBs[i + 1] : nomatchBB;
       ctx.builder->CreateCondBr(m, bodyBBs[i], elseBB);

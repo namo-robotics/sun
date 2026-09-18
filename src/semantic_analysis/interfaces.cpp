@@ -16,37 +16,14 @@ void SemanticAnalyzer::inheritInterfaceFields(
     const ClassDefinitionAST& classDef,
     std::shared_ptr<sun::ClassType> classType) {
   for (const auto& ifaceRef : classDef.getImplementedInterfaces()) {
-    std::shared_ptr<sun::InterfaceType> interfaceType;
-    std::string interfaceDisplayName = ifaceRef.name;
-
-    if (!ifaceRef.typeArguments.empty()) {
-      // Generic interface with type arguments: IIterator<T>
-      // Convert type arguments, substituting any class type parameters
-      std::vector<sun::TypePtr> typeArgs;
-      for (const auto& typeArg : ifaceRef.typeArguments) {
-        typeArgs.push_back(types_.typeAnnotationToType(typeArg));
-      }
-
-      // Instantiate the generic interface
-      interfaceType = generics_.instantiateGenericInterface(
-          ifaceRef.lookupName(), typeArgs);
-      if (!interfaceType) {
-        logAndThrowError("Class '" + classDef.getName() +
-                             "' implements unknown generic interface '" +
-                             ifaceRef.name + "'",
-                         classDef.getLocation());
-      }
-      interfaceDisplayName = interfaceType->toDisplayString();
-    } else {
-      // Non-generic interface
-      interfaceType = ctx_.lookupInterface(ifaceRef.lookupName());
-      if (!interfaceType) {
-        logAndThrowError("Class '" + classDef.getName() +
-                             "' implements unknown interface '" +
-                             ifaceRef.name + "'",
-                         classDef.getLocation());
-      }
-    }
+    auto interfaceType = std::dynamic_pointer_cast<sun::InterfaceType>(
+        types_.typeAnnotationToType(ifaceRef.toAnnotation()));
+    if (!interfaceType)
+      logAndThrowError("Class '" + classDef.getName() +
+                           "' implements unknown interface '" + ifaceRef.name +
+                           "'",
+                       classDef.getLocation());
+    std::string interfaceDisplayName = interfaceType->toDisplayString();
 
     // Add interface fields to class (interface fields are inherited)
     for (const auto& field : interfaceType->getFields()) {
@@ -86,30 +63,10 @@ void SemanticAnalyzer::validateInterfaceImplementation(
     const ClassDefinitionAST& classDef,
     std::shared_ptr<sun::ClassType> classType) {
   for (const auto& ifaceRef : classDef.getImplementedInterfaces()) {
-    std::shared_ptr<sun::InterfaceType> interfaceType;
-    std::string interfaceDisplayName = ifaceRef.name;
-
-    if (!ifaceRef.typeArguments.empty()) {
-      // Generic interface with type arguments
-      std::vector<sun::TypePtr> typeArgs;
-      for (const auto& typeArg : ifaceRef.typeArguments) {
-        typeArgs.push_back(types_.typeAnnotationToType(typeArg));
-      }
-
-      interfaceType = generics_.instantiateGenericInterface(
-          ifaceRef.lookupName(), typeArgs);
-      if (!interfaceType) {
-        // Already reported in inheritInterfaceFields
-        continue;
-      }
-      interfaceDisplayName = interfaceType->toDisplayString();
-    } else {
-      interfaceType = ctx_.lookupInterface(ifaceRef.lookupName());
-      if (!interfaceType) {
-        // Already reported in inheritInterfaceFields
-        continue;
-      }
-    }
+    auto interfaceType = std::dynamic_pointer_cast<sun::InterfaceType>(
+        types_.typeAnnotationToType(ifaceRef.toAnnotation()));
+    if (!interfaceType) continue;
+    std::string interfaceDisplayName = interfaceType->toDisplayString();
 
     // Check that class implements all required methods and add default methods
     for (const auto& interfaceMethod : interfaceType->getMethods()) {
@@ -293,14 +250,16 @@ void SemanticAnalyzer::validateInterfaceImplementation(
 
           // Register the mangled method name as a function
           std::string mangledName =
-              classType->getMangledMethodName(interfaceMethod.name);
+              classType->getMethodScopeName(interfaceMethod.name);
           std::vector<sun::TypePtr> methodParamTypes;
           methodParamTypes.push_back(classType);  // this parameter
           for (const auto& pt : interfaceMethod.paramTypes) {
             methodParamTypes.push_back(pt);
           }
-          ctx_.registerFunctionInCurrentScope(
-              mangledName, {interfaceMethod.returnType, methodParamTypes, {}});
+          FunctionInfo methodInfo{
+              interfaceMethod.returnType, methodParamTypes, {}};
+          methodInfo.declarationId = method.declarationId;
+          ctx_.registerFunctionInCurrentScope(mangledName, methodInfo);
         } else {
           // Required method not implemented
           logAndThrowError("Class '" + classType->getDisplayName() +

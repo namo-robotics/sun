@@ -19,7 +19,8 @@ using namespace llvm;
  */
 Function* ClassGenerator::getOrCreateInterfaceDropFunction(
     sun::ClassType* classType) {
-  std::string name = "__sun_interface_drop$" + classType->getMangledName();
+  std::string name =
+      state_.declarationSymbol(classType->getDeclarationId(), "interface-drop");
   if (Function* existing = module->getFunction(name)) return existing;
 
   auto* ptrTy = PointerType::getUnqual(ctx.getContext());
@@ -72,7 +73,13 @@ GlobalVariable* ClassGenerator::getOrCreateInterfaceVtable(
   llvm::StructType* vtableType =
       llvm::StructType::create(ctx.getContext(), slotTypes, vtableTypeName);
 
-  std::string vtableName = className + "_" + interfaceName + "_vtable";
+  std::string vtableName =
+      sun::PortableDeclarationKey::inInstance(
+          sun::PortableDeclarationKey::fromDeclaration(
+              ifaceType->getDeclarationId(), typeRegistry->declarations),
+          sun::PortableDeclarationKey::fromDeclaration(
+              classType->getDeclarationId(), typeRegistry->declarations))
+          .symbol("owning-vtable");
   Constant* vtableInit = ConstantStruct::get(vtableType, vtableEntries);
   auto* vtableGlobal =
       new GlobalVariable(*module, vtableType, /*isConstant=*/true,
@@ -117,7 +124,13 @@ GlobalVariable* ClassGenerator::getOrCreateBorrowedInterfaceVtable(
   std::vector<llvm::Type*> slots(entries.size(), ptrTy);
   std::string typeName = className + "_" + interfaceName + "_borrowed_vtable_t";
   StructType* type = StructType::create(ctx.getContext(), slots, typeName);
-  std::string name = className + "_" + interfaceName + "_borrowed_vtable";
+  std::string name =
+      sun::PortableDeclarationKey::inInstance(
+          sun::PortableDeclarationKey::fromDeclaration(
+              ifaceType->getDeclarationId(), typeRegistry->declarations),
+          sun::PortableDeclarationKey::fromDeclaration(
+              classType->getDeclarationId(), typeRegistry->declarations))
+          .symbol("borrowed-vtable");
   auto* result =
       new GlobalVariable(*module, type, true, GlobalValue::InternalLinkage,
                          ConstantStruct::get(type, entries), name);

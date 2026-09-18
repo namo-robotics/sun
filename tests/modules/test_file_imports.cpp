@@ -309,12 +309,12 @@ namespace {
 /** Inspect canonical module annotations throughout exported metadata. */
 void visitModuleReferences(
     const google::protobuf::Message& message,
-    const std::function<void(const sun::QualifiedName&)>& visit) {
+    const std::function<void(const sun::PortableDeclarationKey&)>& visit) {
   if (message.GetDescriptor() == sun::ast::ASTNode::descriptor()) {
     const auto& node = static_cast<const sun::ast::ASTNode&>(message);
-    if (node.has_module_qualified_name())
-      visit(sun::serialization::deserializeQualifiedName(
-          node.module_qualified_name()));
+    if (node.has_module_declaration_key())
+      visit(sun::PortableDeclarationKey::parseOriginal(
+          node.module_declaration_key()));
   }
   auto* reflection = message.GetReflection();
   std::vector<const google::protobuf::FieldDescriptor*> fields;
@@ -329,6 +329,16 @@ void visitModuleReferences(
     } else
       visitModuleReferences(reflection->GetMessage(message, field), visit);
   }
+}
+
+/** Find the original key exported for a source declaration. */
+sun::PortableDeclarationKey exportedKey(sun::MoonReader& reader,
+                                        const std::string& name) {
+  for (const auto& module : reader.listModules())
+    for (const auto& record : reader.getMetadata(module)->declarations())
+      if (record.name() == name)
+        return sun::PortableDeclarationKey::parseOriginal(record.key());
+  throw std::runtime_error("Missing exported declaration: " + name);
 }
 
 /** Independent bundle versions used to test nominal metadata identities. */
@@ -495,18 +505,17 @@ TEST_F(MoonExactTypes,
   bool symbolic = false, inferred = false, array = false;
   for (const auto& key : reader->listModules()) {
     const auto* md = reader->getMetadata(key);
-    sun::serialization::visitQualifiedNames(*md, [&](const auto& ref, auto) {
-      if (ref.baseName != "Value") return;
-      EXPECT_EQ(ref.bundleHash(), requiredHash);
-      EXPECT_EQ(ref.scopePath,
-                (std::vector<std::string>{"$" + requiredHash + "$", "b"}));
-      ++references;
-    });
+    sun::serialization::visitDeclarationKeys(
+        *md, [&](const auto& ref, auto, const auto& name) {
+          if (name.find("Value") == std::string::npos) return;
+          EXPECT_EQ(ref, exportedKey(*dependency, "Value"));
+          ++references;
+        });
     for (const auto& cls : md->classes()) {
       for (const auto& field : cls.fields()) {
         if (field.name() == "parameter") {
           symbolic = field.type().base_name() == "T" &&
-                     !field.type().has_qualified_name();
+                     !field.type().has_declaration_key();
         }
         if (field.name() == "values") {
           array = field.type().array_dimensions_size() == 2 &&
@@ -517,7 +526,7 @@ TEST_F(MoonExactTypes,
     }
     for (const auto& global : md->globals()) {
       inferred = global.has_type_annotation() &&
-                 global.type_annotation().has_qualified_name() &&
+                 global.type_annotation().has_declaration_key() &&
                  !global.has_value();
     }
   }
@@ -647,7 +656,7 @@ TEST_F(MoonExactTypes, incorrect_declaration_kind_is_rejected_before_codegen) {
   ASSERT_TRUE(dependency);
   auto hash =
       dependency->getMetadata(dependency->listModules()[0])->content_hash();
-  sun::QualifiedName wrongName({"$" + hash + "$", "b"}, "Value");
+  auto wrongName = exportedKey(*dependency, "Value");
   for (bool constraint : {false, true}) {
     SCOPED_TRACE(constraint ? "constraint" : "implemented interface");
     auto reader = sun::MoonReader::open(contracts);
@@ -663,16 +672,14 @@ TEST_F(MoonExactTypes, incorrect_declaration_kind_is_rejected_before_codegen) {
       if (constraint) {
         for (auto& function : *md.mutable_functions()) {
           for (auto& param : *function.mutable_proto()->mutable_type_params()) {
-            *param.mutable_qualified_name() =
-                sun::serialization::serializeQualifiedName(wrongName);
+            param.set_declaration_key(wrongName.encoding());
             changed = true;
           }
         }
       } else {
         for (auto& cls : *md.mutable_classes()) {
           for (auto& impl : *cls.mutable_implemented_interfaces()) {
-            *impl.mutable_qualified_name() =
-                sun::serialization::serializeQualifiedName(wrongName);
+            impl.set_declaration_key(wrongName.encoding());
             changed = true;
           }
         }
@@ -697,7 +704,8 @@ TEST_F(MoonExactTypes, aliases_leave_compiled_function_names_unchanged) {
   ASSERT_TRUE(original);
   std::string originalName;
   for (const auto& function : original->functions()) {
-    if (function.getName().contains("_b_version"))
+    if (function.getName() ==
+        exportedKey(*reader, "version").symbol("function"))
       originalName = function.getName().str();
   }
   ASSERT_FALSE(originalName.empty());
@@ -737,10 +745,8 @@ TEST_F(MoonExactTypes, old_format_is_rejected) {
 TEST(MoonMetadata,
      canonical_type_round_trip_preserves_spelling_and_qualifiers) {
   TypeAnnotation nominal("build_alias.Value");
-  nominal.qualifiedName =
-      sun::QualifiedName{{"$1234abcd$", "original", "nested"},
-                         "Value",
-                         {"$1234abcd$", "original", "nested"}};
+  nominal.declarationKey =
+      sun::PortableDeclarationKey::original(std::string(64, 'a'), 3);
   nominal.typeArguments.push_back(std::make_unique<TypeAnnotation>("T"));
   nominal.lifetimeArguments = {"a"};
   TypeAnnotation reference("ref");
@@ -769,37 +775,24 @@ TEST(MoonMetadata,
           .type_annotation()
           .SerializeAsString(),
       serialized.variable_creation().type_annotation().SerializeAsString());
-  ASSERT_TRUE(assigned.returnType->qualifiedName);
-  EXPECT_EQ(assigned.returnType->qualifiedName->modulePath,
-            nominal.qualifiedName->modulePath);
+  ASSERT_TRUE(assigned.returnType->declarationKey);
+  EXPECT_EQ(assigned.returnType->declarationKey, nominal.declarationKey);
   EXPECT_EQ(assigned.returnType->baseName, "build_alias.Value");
-  EXPECT_EQ(assigned.returnType->qualifiedName->lookupName(),
-            "$1234abcd$.original.nested.Value");
-}
-
-TEST(MoonMetadata, qualified_name_round_trip_preserves_owner_and_overload) {
-  sun::QualifiedName name({"$1234abcd$", "original", "Container"}, "read",
-                          {"$1234abcd$", "original"});
-  name.paramSuffix = "$i32";
-  auto restored = sun::serialization::deserializeQualifiedName(
-      sun::serialization::serializeQualifiedName(name));
-  EXPECT_EQ(restored, name);
-  EXPECT_EQ(restored.modulePath, name.modulePath);
 }
 
 TEST(MoonMetadata, interface_requirement_does_not_apply_to_type_arguments) {
-  sun::QualifiedName view({"$1234abcd$", "dep"}, "View");
-  sun::QualifiedName value({"$1234abcd$", "dep"}, "Value");
+  auto view = sun::PortableDeclarationKey::original(std::string(64, 'a'), 2);
+  auto value = sun::PortableDeclarationKey::original(std::string(64, 'a'), 3);
   sun::ast::ImplementedInterface impl;
-  *impl.mutable_qualified_name() =
-      sun::serialization::serializeQualifiedName(view);
-  *impl.add_type_arguments()->mutable_qualified_name() =
-      sun::serialization::serializeQualifiedName(value);
-  std::vector<std::pair<sun::QualifiedName, std::optional<sun::Type::Kind>>>
+  impl.set_declaration_key(view.encoding());
+  impl.add_type_arguments()->set_declaration_key(value.encoding());
+  std::vector<
+      std::pair<sun::PortableDeclarationKey, std::optional<sun::Type::Kind>>>
       uses;
-  sun::serialization::visitQualifiedNames(
-      impl,
-      [&](const auto& name, auto kind) { uses.emplace_back(name, kind); });
+  sun::serialization::visitDeclarationKeys(
+      impl, [&](const auto& name, auto kind, const auto&) {
+        uses.emplace_back(name, kind);
+      });
   ASSERT_EQ(uses.size(), 2);
   for (const auto& [name, kind] : uses) {
     if (name == view)
@@ -872,8 +865,7 @@ TEST_F(MoonExactTypes, module_references_are_canonical_in_all_source_files) {
   size_t references = 0;
   for (const auto& key : reader->listModules()) {
     visitModuleReferences(*reader->getMetadata(key), [&](const auto& name) {
-      EXPECT_TRUE(name.lookupName().ends_with(".outer.inner.deep"));
-      EXPECT_FALSE(name.bundleHash().empty());
+      EXPECT_EQ(name, exportedKey(*sun::MoonReader::open(dep), "deep"));
       ++references;
     });
   }
@@ -911,7 +903,7 @@ TEST_F(MoonExactTypes, explicit_nested_alias_preserves_ordinary_children) {
     size_t references = 0;
     for (const auto& key : reader->listModules()) {
       visitModuleReferences(*reader->getMetadata(key), [&](const auto& name) {
-        EXPECT_TRUE(name.lookupName().ends_with(".outer.inner.deep"));
+        EXPECT_EQ(name, exportedKey(*sun::MoonReader::open(dep), "deep"));
         ++references;
       });
     }
@@ -926,20 +918,19 @@ TEST_F(MoonExactTypes, explicit_nested_alias_preserves_ordinary_children) {
 }
 
 TEST(MoonMetadata, module_reference_round_trip_preserves_source_spelling) {
-  sun::QualifiedName module({"$1234abcd$", "original"}, "inner",
-                            {"$1234abcd$", "original"});
+  auto module = sun::PortableDeclarationKey::original(std::string(64, 'a'), 4);
   VariableReferenceAST reference("build_alias.inner");
-  reference.setModuleQualifiedName(module);
+  reference.setModuleDeclaration(module);
   auto clone = reference.clone();
-  ASSERT_TRUE(clone->getModuleQualifiedName());
-  EXPECT_EQ(*clone->getModuleQualifiedName(), module);
+  ASSERT_TRUE(clone->getModuleDeclaration());
+  EXPECT_EQ(*clone->getModuleDeclaration(), module);
   EXPECT_EQ(clone->toString(), "build_alias.inner");
   UsingAST use({"build_alias"}, "renamed_inner");
-  use.setModuleQualifiedName(module);
+  use.setModuleDeclaration(module);
   use.setModuleImport(true);
   auto imported = use.clone();
-  ASSERT_TRUE(imported->getModuleQualifiedName());
-  EXPECT_EQ(*imported->getModuleQualifiedName(), module);
+  ASSERT_TRUE(imported->getModuleDeclaration());
+  EXPECT_EQ(*imported->getModuleDeclaration(), module);
   EXPECT_EQ(imported->toString(), "using build_alias.renamed_inner");
   EXPECT_TRUE(static_cast<const UsingAST&>(*imported).isModuleImport());
 }
@@ -1216,4 +1207,97 @@ TEST_F(MoonExactTypes, malformed_bundle_digest_is_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       malformed->getMetadata(malformed->listModules()[0]),
       "full lowercase SHA-256 digest");
+}
+
+TEST_F(MoonExactTypes,
+       portable_symbols_survive_independent_specialization_order) {
+  auto shared = bundle("shared", R"(
+    public module shared {
+      public class Box<T> {
+        var value: T;
+        init(value: T) { this.value = value; }
+        public method get() T { return this.value; }
+      }
+      public function constant<T>() i32 { return 1; }
+    }
+  )");
+  auto first = bundle("first", R"(
+    public module first {
+      class Secret { var value: i32; }
+      public function answer() i32 {
+        var box = shared.Box<i32>(19);
+        return box.get() + shared.constant<Secret>();
+      }
+    }
+  )",
+                      {sun::MoonImport(shared)});
+  auto second = bundle("second", R"(
+    public module second {
+      class Secret { var value: i64; }
+      public function answer() i32 {
+        var flag = shared.Box<bool>(true);
+        var box = shared.Box<i32>(21);
+        return box.get() + shared.constant<Secret>();
+      }
+    }
+  )",
+                       {sun::MoonImport(shared)});
+  auto dependency = sun::MoonReader::open(shared);
+  auto firstReader = sun::MoonReader::open(first);
+  auto secondReader = sun::MoonReader::open(second);
+  ASSERT_TRUE(dependency && firstReader && secondReader);
+  const auto instance = sun::PortableDeclarationKey::specialization(
+      exportedKey(*dependency, "Box"),
+      {sun::PortableTypeKey::primitive("i32")});
+  const auto getter = sun::PortableDeclarationKey::inInstance(
+                          exportedKey(*dependency, "get"), instance)
+                          .symbol("function");
+  llvm::LLVMContext firstContext, secondContext;
+  auto firstModule =
+      firstReader->loadModule(firstReader->listModules()[0], firstContext);
+  auto secondModule =
+      secondReader->loadModule(secondReader->listModules()[0], secondContext);
+  ASSERT_TRUE(firstModule && secondModule);
+  ASSERT_NE(firstModule->getFunction(getter), nullptr);
+  ASSERT_NE(secondModule->getFunction(getter), nullptr);
+  const auto constant = exportedKey(*dependency, "constant");
+  const auto privateFirst =
+      sun::PortableDeclarationKey::specialization(
+          constant,
+          {sun::PortableTypeKey::nominal(exportedKey(*firstReader, "Secret"))})
+          .symbol("function");
+  const auto privateSecond =
+      sun::PortableDeclarationKey::specialization(
+          constant,
+          {sun::PortableTypeKey::nominal(exportedKey(*secondReader, "Secret"))})
+          .symbol("function");
+  EXPECT_NE(privateFirst, privateSecond);
+  EXPECT_NE(firstModule->getFunction(privateFirst), nullptr);
+  EXPECT_NE(secondModule->getFunction(privateSecond), nullptr);
+  std::vector<sun::MoonImport> imports{
+      sun::MoonImport(first), sun::MoonImport(second), sun::MoonImport(shared)};
+  for (int order = 0; order < 2; ++order) {
+    EXPECT_EQ(
+        run(imports,
+            "function main() i32 { return first.answer() + second.answer(); }"),
+        42);
+    std::reverse(imports.begin(), imports.end());
+  }
+}
+
+TEST_F(MoonExactTypes, forward_declarations_export_the_selected_definition) {
+  auto library = bundle("forwards", R"(
+    public module api {
+      public declare function answer(value: i32) i32;
+      public function call() i32 { return answer(42); }
+      public function answer(value: i32) i32 { return value; }
+      public declare function answer(value: i32) i32;
+    }
+  )");
+  EXPECT_EQ(run({sun::MoonImport(library)},
+                "function main() i32 { return api.call(); }"),
+            42);
+  EXPECT_EQ(run({sun::MoonImport(library)},
+                "function main() i32 { return api.answer(42); }"),
+            42);
 }

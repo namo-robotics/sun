@@ -4,7 +4,6 @@
 
 #include "ast.h"
 #include "ast.pb.h"
-#include "serialization/qualified_name.h"
 #include "serialization/token_kind_proto_map.h"
 #include "types.pb.h"
 
@@ -42,9 +41,9 @@ std::vector<TypeParameter> ASTDeserializer::deserializeTypeParameters(
       auto& constraint = parameter.constraint.emplace(tp.constraint());
       for (const auto& argument : tp.constraint_arguments())
         constraint.typeArguments.push_back(deserializeTypeAnnotation(argument));
-      if (tp.has_qualified_name())
-        constraint.qualifiedName =
-            sun::serialization::deserializeQualifiedName(tp.qualified_name());
+      if (tp.has_declaration_key())
+        constraint.declarationKey =
+            PortableDeclarationKey::parseOriginal(tp.declaration_key());
     }
     return params;
   }
@@ -53,6 +52,27 @@ std::vector<TypeParameter> ASTDeserializer::deserializeTypeParameters(
     params.emplace_back(name);
   }
   return params;
+}
+
+void ASTDeserializer::deserializeIdentity(
+    const ast::DeclarationIdentity& proto,
+    sun::DeclarationIdentity& identity) const {
+  if (!config_.import_declarations) return;
+  if (proto.declaration().empty())
+    logAndThrowError("Imported declaration has no portable identity");
+  auto validate = [](const std::string& value) {
+    sun::PortableDeclarationKey::parseOriginal(value);
+    return value;
+  };
+  sun::ImportedDeclarationIdentity imported;
+  imported.declaration = validate(proto.declaration());
+  for (const auto& value : proto.parameters())
+    imported.parameters.push_back(validate(value));
+  for (const auto& value : proto.type_parameters())
+    imported.typeParameters.push_back(validate(value));
+  for (const auto& value : proto.lifetime_parameters())
+    imported.lifetimeParameters.push_back(validate(value));
+  identity.imported = std::move(imported);
 }
 
 Position ASTDeserializer::deserializePosition(const ast::Position& pos) const {
@@ -88,9 +108,9 @@ TypeAnnotation ASTDeserializer::deserializeTypeAnnotation(
     const ast::TypeAnnotation& type) const {
   TypeAnnotation result;
   result.baseName = type.base_name();
-  if (type.has_qualified_name())
-    result.qualifiedName =
-        sun::serialization::deserializeQualifiedName(type.qualified_name());
+  if (type.has_declaration_key())
+    result.declarationKey =
+        PortableDeclarationKey::parseOriginal(type.declaration_key());
 
   if (type.has_element_type()) {
     result.elementType = std::make_unique<TypeAnnotation>(
@@ -135,10 +155,13 @@ void ASTDeserializer::deserializeExprBase(const ast::ASTNode& node,
   if (node.has_location()) {
     expr->setLocation(deserializePosition(node.location()));
   }
+  if (node.has_declaration_identity())
+    deserializeIdentity(node.declaration_identity(),
+                        expr->declarationIdentity());
   expr->setSourceFileId(node.source_file_id());
-  if (node.has_module_qualified_name())
-    expr->setModuleQualifiedName(sun::serialization::deserializeQualifiedName(
-        node.module_qualified_name()));
+  if (node.has_module_declaration_key())
+    expr->setModuleDeclaration(
+        PortableDeclarationKey::parseOriginal(node.module_declaration_key()));
   expr->setPrecompiled(node.precompiled());
   expr->setSkipCodegen(node.skip_codegen());
   expr->setSymbolPrefix(node.symbol_prefix());
@@ -175,6 +198,9 @@ std::unique_ptr<PrototypeAST> ASTDeserializer::deserializePrototype(
   auto result = std::make_unique<PrototypeAST>(
       proto.name(), std::move(args), std::move(returnType),
       deserializeTypeParameters(proto), std::move(variadicParam));
+  if (proto.has_declaration_identity())
+    deserializeIdentity(proto.declaration_identity(),
+                        result->declarationIdentity());
   result->setLifetimeParameters(toLifetimeParameters(proto));
 
   // Restore the declared capture list, as written
@@ -513,6 +539,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeVariableCreation(
   if (proto.has_link_name()) var->setLinkName(proto.link_name());
   var->setVisibility(fromProto(proto.visibility()));
   var->setDoc(proto.doc());
+  if (proto.has_declaration_identity())
+    deserializeIdentity(proto.declaration_identity(),
+                        var->declarationIdentity());
   return var;
 }
 
@@ -628,6 +657,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeMatch(
     arms.back().hasPayloadParens = armProto.has_payload_parens();
     for (const auto& bindingProto : armProto.bindings()) {
       PatternBinding binding;
+      if (bindingProto.has_declaration_identity())
+        deserializeIdentity(bindingProto.declaration_identity(),
+                            binding.declaration);
       binding.name = bindingProto.name();
       binding.isWildcard = bindingProto.is_wildcard();
       if (bindingProto.has_location()) {
@@ -796,6 +828,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeModule(
   mod->setDoc(proto.doc());
   if (proto.has_name_location())
     mod->setNameLocation(deserializePosition(proto.name_location()));
+  if (proto.has_declaration_identity())
+    deserializeIdentity(proto.declaration_identity(),
+                        mod->declarationIdentity());
   return mod;
 }
 
@@ -837,9 +872,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
   for (const auto& ifaceProto : proto.implemented_interfaces()) {
     ImplementedInterfaceAST iface;
     iface.name = ifaceProto.name();
-    if (ifaceProto.has_qualified_name())
-      iface.qualifiedName = sun::serialization::deserializeQualifiedName(
-          ifaceProto.qualified_name());
+    if (ifaceProto.has_declaration_key())
+      iface.declarationKey =
+          PortableDeclarationKey::parseOriginal(ifaceProto.declaration_key());
     for (const auto& typeArg : ifaceProto.type_arguments()) {
       iface.typeArguments.push_back(deserializeTypeAnnotation(typeArg));
     }
@@ -873,12 +908,15 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
       std::move(fields), std::move(methods));
   classDef->setLifetimeParameters(toLifetimeParameters(proto));
   for (const auto& name : proto.compiled_specializations()) {
-    classDef->addCompiledSpecialization(name);
+    classDef->addCompiledSpecialization(name.declaration_key());
   }
   classDef->setIsPartial(proto.is_partial());
   classDef->setIsPacked(proto.is_packed());
   classDef->setVisibility(fromProto(proto.visibility()));
   classDef->setDoc(proto.doc());
+  if (proto.has_declaration_identity())
+    deserializeIdentity(proto.declaration_identity(),
+                        classDef->declarationIdentity());
   return classDef;
 }
 
@@ -905,6 +943,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeInterfaceDef(
   iface->setLifetimeParameters(toLifetimeParameters(proto));
   iface->setVisibility(fromProto(proto.visibility()));
   iface->setDoc(proto.doc());
+  if (proto.has_declaration_identity())
+    deserializeIdentity(proto.declaration_identity(),
+                        iface->declarationIdentity());
   return iface;
 }
 
@@ -913,6 +954,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeEnumDef(
   std::vector<EnumVariantDecl> variants;
   for (const auto& variantProto : proto.variants()) {
     EnumVariantDecl variant;
+    if (variantProto.has_declaration_identity())
+      deserializeIdentity(variantProto.declaration_identity(),
+                          variant.declaration);
     variant.name = variantProto.name();
     variant.value = variantProto.value();
     variant.hasExplicitValue = variantProto.has_explicit_value();
@@ -930,6 +974,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeEnumDef(
       deserializeTypeParameters(proto), proto.underlying_type());
   enumDef->setVisibility(fromProto(proto.visibility()));
   enumDef->setDoc(proto.doc());
+  if (proto.has_declaration_identity())
+    deserializeIdentity(proto.declaration_identity(),
+                        enumDef->declarationIdentity());
   return enumDef;
 }
 
@@ -952,6 +999,8 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeTryCatch(
   std::vector<CatchClause> catchClauses;
   for (const auto& cc : proto.catch_clauses()) {
     CatchClause catchClause;
+    if (cc.has_declaration_identity())
+      deserializeIdentity(cc.declaration_identity(), catchClause.declaration);
     catchClause.bindingName = cc.binding_name();
     if (cc.has_binding_type()) {
       catchClause.bindingType = deserializeTypeAnnotation(cc.binding_type());

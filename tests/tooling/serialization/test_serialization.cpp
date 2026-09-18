@@ -1474,7 +1474,7 @@ TEST(Tooling_Serialization, ModuleMetadataDefaultsAndLocationOmission) {
 
   auto program = parseCode("/** Module docs. */\nmodule example {}");
   sun::attachDocComments(*program, "/** Module docs. */\nmodule example {}");
-  ASTSerializer serializer(SerializerConfig{false});
+  ASTSerializer serializer(SerializerConfig{.include_location = false});
   auto serialized = serializer.serialize(*program->getBody()[0]);
   EXPECT_FALSE(serialized.module_def().has_name_location());
   EXPECT_EQ(serialized.module_def().doc(), "Module docs.");

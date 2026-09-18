@@ -1578,7 +1578,7 @@ TEST(Modules, moon_generic_over_own_type_by_value_links) {
 // compiles them; nothing renames symbols afterwards. So every function the
 // bundle defines must carry the hash its metadata records — a symbol without
 // it is one the importer could never find.
-TEST(Modules, moon_symbols_carry_the_bundle_hash) {
+TEST(Modules, moon_symbols_use_versioned_portable_identities) {
   initTestEnvironment();
   auto moonPath = writeMoonLib("hashed", R"(
     public module hashed {
@@ -1607,8 +1607,7 @@ TEST(Modules, moon_symbols_carry_the_bundle_hash) {
   ASSERT_FALSE(modules.empty());
   const auto* metadata = reader->getMetadata(modules[0]);
   ASSERT_NE(metadata, nullptr);
-  const std::string prefix = sun::getSymbolPrefix(*metadata) + "_";
-  ASSERT_GT(prefix.size(), 3u);
+  const std::string prefix = "_SUN1_";
 
   llvm::LLVMContext context;
   auto bundled = reader->loadModule(modules[0], context);
@@ -1619,14 +1618,14 @@ TEST(Modules, moon_symbols_carry_the_bundle_hash) {
     // their names need no prefix
     if (func.hasLocalLinkage()) continue;
     std::string name = func.getName().str();
-    if (name.empty() || name[0] == '_') continue;  // runtime helpers
     if (func.hasFnAttribute("sun.cabi")) continue;
     EXPECT_EQ(name.rfind(prefix, 0), 0u) << "unprefixed symbol: " << name;
   }
   for (const auto& global : bundled->globals()) {
     if (!global.hasInitializer()) continue;
     std::string name = global.getName().str();
-    if (name.empty() || name[0] == '_') continue;  // literals and helpers
+    if (global.hasLocalLinkage() || global.getName().starts_with("llvm."))
+      continue;
     if (global.getMetadata("sun.cabi")) continue;
     EXPECT_EQ(name.rfind(prefix, 0), 0u) << "unprefixed global: " << name;
   }

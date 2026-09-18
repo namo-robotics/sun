@@ -4,12 +4,31 @@
 
 #include "ast.h"
 #include "ast.pb.h"
-#include "serialization/qualified_name.h"
 #include "serialization/token_kind_proto_map.h"
 #include "types.pb.h"
 
 namespace sun {
 namespace serialization {
+
+ast::DeclarationIdentity ASTSerializer::serializeIdentity(
+    const sun::DeclarationIdentity& identity) const {
+  ast::DeclarationIdentity result;
+  if (!config_.declarations || !identity.id) return result;
+  if (identity.session.lock() != config_.declarations->session())
+    logAndThrowError(
+        "Cannot export declarations from another analysis session");
+  auto key = [&](sun::DeclarationId id) {
+    return sun::PortableDeclarationKey::fromDeclaration(id,
+                                                        *config_.declarations)
+        .encoding();
+  };
+  result.set_declaration(key(identity.id));
+  for (auto id : identity.parameters) result.add_parameters(key(id));
+  for (auto id : identity.typeParameters) result.add_type_parameters(key(id));
+  for (auto id : identity.lifetimeParameters)
+    result.add_lifetime_parameters(key(id));
+  return result;
+}
 
 ast::Position ASTSerializer::serializePosition(const Position& pos) const {
   ast::Position proto;
@@ -42,9 +61,8 @@ ast::TypeAnnotation ASTSerializer::serializeTypeAnnotation(
     const TypeAnnotation& type) const {
   ast::TypeAnnotation proto;
   proto.set_base_name(type.baseName);
-  if (type.qualifiedName)
-    *proto.mutable_qualified_name() =
-        sun::serialization::serializeQualifiedName(*type.qualifiedName);
+  if (type.declarationKey)
+    proto.set_declaration_key(type.declarationKey->encoding());
 
   if (type.elementType) {
     *proto.mutable_element_type() = serializeTypeAnnotation(*type.elementType);
@@ -82,11 +100,12 @@ void ASTSerializer::serializeExprBase(const ExprAST& expr,
   if (config_.include_location) {
     *node->mutable_location() = serializePosition(expr.getLocation());
   }
+  if (config_.declarations && expr.getDeclarationId())
+    *node->mutable_declaration_identity() =
+        serializeIdentity(expr.declarationIdentity());
   node->set_source_file_id(expr.getSourceFileId());
-  if (expr.getModuleQualifiedName())
-    *node->mutable_module_qualified_name() =
-        sun::serialization::serializeQualifiedName(
-            *expr.getModuleQualifiedName());
+  if (expr.getModuleDeclaration())
+    node->set_module_declaration_key(expr.getModuleDeclaration()->encoding());
   node->set_precompiled(expr.isPrecompiled());
   node->set_skip_codegen(expr.shouldSkipCodegen());
   node->set_symbol_prefix(expr.getSymbolPrefix());
@@ -120,14 +139,16 @@ void ASTSerializer::serializeTypeParameterInto(
   proto->set_constraint(constraint.name);
   for (const auto& argument : constraint.typeArguments)
     *proto->add_constraint_arguments() = serializeTypeAnnotation(argument);
-  if (constraint.qualifiedName)
-    *proto->mutable_qualified_name() =
-        sun::serialization::serializeQualifiedName(*constraint.qualifiedName);
+  if (constraint.declarationKey)
+    proto->set_declaration_key(constraint.declarationKey->encoding());
 }
 
 ast::Prototype ASTSerializer::serializePrototype(
     const PrototypeAST& proto) const {
   ast::Prototype result;
+  if (config_.declarations)
+    *result.mutable_declaration_identity() =
+        serializeIdentity(proto.declarationIdentity());
   result.set_name(proto.getName());
 
   for (const auto& parameter : proto.getTypeParameters()) {
@@ -360,6 +381,20 @@ ast::ASTNode ASTSerializer::serialize(const ExprAST& expr) const {
       break;
   }
 
+  if (node.has_declaration_identity()) {
+    const auto* descriptor = node.GetDescriptor();
+    const auto* reflection = node.GetReflection();
+    const auto* selected = reflection->GetOneofFieldDescriptor(
+        node, descriptor->FindOneofByName("node"));
+    if (selected) {
+      auto* definition = reflection->MutableMessage(&node, selected);
+      if (const auto* field = definition->GetDescriptor()->FindFieldByName(
+              "declaration_identity"))
+        definition->GetReflection()
+            ->MutableMessage(definition, field)
+            ->CopyFrom(node.declaration_identity());
+    }
+  }
   return node;
 }
 
@@ -604,6 +639,9 @@ void ASTSerializer::serializeMatch(const MatchExprAST& expr,
     armProto->set_has_payload_parens(arm.hasPayloadParens);
     for (const auto& binding : arm.bindings) {
       auto* bindingProto = armProto->add_bindings();
+      if (config_.declarations && binding.declaration.id)
+        *bindingProto->mutable_declaration_identity() =
+            serializeIdentity(binding.declaration);
       bindingProto->set_name(binding.name);
       bindingProto->set_is_wildcard(binding.isWildcard);
       if (config_.include_location) {
@@ -794,7 +832,7 @@ void ASTSerializer::serializeClassDef(const ClassDefinitionAST& expr,
   auto* cls = node->mutable_class_def();
   cls->set_name(expr.getName());
   for (const auto& name : expr.getCompiledSpecializations()) {
-    cls->add_compiled_specializations(name);
+    cls->add_compiled_specializations()->set_declaration_key(name);
   }
 
   for (const auto& parameter : expr.getTypeParameters()) {
@@ -808,9 +846,8 @@ void ASTSerializer::serializeClassDef(const ClassDefinitionAST& expr,
   for (const auto& iface : expr.getImplementedInterfaces()) {
     auto* ifaceProto = cls->add_implemented_interfaces();
     ifaceProto->set_name(iface.name);
-    if (iface.qualifiedName)
-      *ifaceProto->mutable_qualified_name() =
-          sun::serialization::serializeQualifiedName(*iface.qualifiedName);
+    if (iface.declarationKey)
+      ifaceProto->set_declaration_key(iface.declarationKey->encoding());
     for (const auto& typeArg : iface.typeArguments) {
       *ifaceProto->add_type_arguments() = serializeTypeAnnotation(typeArg);
     }
@@ -878,6 +915,9 @@ void ASTSerializer::serializeEnumDef(const EnumDefinitionAST& expr,
 
   for (const auto& variant : expr.getVariants()) {
     auto* variantProto = enumDef->add_variants();
+    if (config_.declarations)
+      *variantProto->mutable_declaration_identity() =
+          serializeIdentity(variant.declaration);
     variantProto->set_name(variant.name);
     variantProto->set_value(variant.value);
     variantProto->set_has_explicit_value(variant.hasExplicitValue);
@@ -911,6 +951,9 @@ void ASTSerializer::serializeTryCatch(const TryCatchExprAST& expr,
   // Serialize catch clauses (source order)
   for (const auto& cc : expr.getCatchClauses()) {
     auto* catchClause = tryCatch->add_catch_clauses();
+    if (config_.declarations)
+      *catchClause->mutable_declaration_identity() =
+          serializeIdentity(cc.declaration);
     catchClause->set_binding_name(cc.bindingName);
     if (cc.bindingType) {
       *catchClause->mutable_binding_type() =

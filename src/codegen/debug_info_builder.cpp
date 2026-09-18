@@ -73,8 +73,13 @@ DISubprogram* DebugInfoBuilder::enterFunction(llvm::IRBuilderBase& builder,
   ensureCompileUnit(loc.filePath);
   DIFile* file = getFile(loc.filePath);
   auto* spType = di_->createSubroutineType(di_->getOrCreateTypeArray({}));
+  // Portable hashes are not C++ mangled names. Omitting that optional DWARF
+  // attribute lets debuggers index the written name instead of the hash.
+  const auto linkageName = func->getName().starts_with("_SUN1_")
+                               ? llvm::StringRef{}
+                               : func->getName();
   auto* sp =
-      di_->createFunction(file, name, func->getName(), file, loc.line, spType,
+      di_->createFunction(file, name, linkageName, file, loc.line, spType,
                           /*ScopeLine=*/loc.line, DINode::FlagPrototyped,
                           DISubprogram::SPFlagDefinition |
                               (optimized_ ? DISubprogram::SPFlagOptimized

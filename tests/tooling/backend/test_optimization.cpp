@@ -9,6 +9,18 @@ TEST(Tooling_Backend_Optimization, buffer_accessor_inlines_after_moon_linking) {
   for (bool optimize : {false, true}) {
     auto driver = Driver::createForAOT("buffer_inline", "", false, optimize);
     driver->setMoonImports(getStdlibMoonImports());
+    std::string readerSymbol;
+    driver->setMetadataCallback(
+        [&](const BlockExprAST& program, SemanticAnalyzer& analyzer) {
+          for (const auto& node : program.getBody()) {
+            auto* function = dynamic_cast<const FunctionAST*>(node.get());
+            if (function && function->getProto().getName() == "read_byte")
+              readerSymbol = sun::PortableDeclarationKey::fromDeclaration(
+                                 function->getDeclarationId(),
+                                 analyzer.context().types()->declarations)
+                                 .symbol("function");
+          }
+        });
     driver->compileString(R"(
       using std;
       function read_byte(buf: const ref ContiguousBuffer<u8>, index: i64) u8 {
@@ -16,12 +28,8 @@ TEST(Tooling_Backend_Optimization, buffer_accessor_inlines_after_moon_linking) {
       }
       function main() i32 { return 0; }
     )");
-    llvm::Function* reader = nullptr;
-    for (auto& function : driver->getModule()) {
-      if (function.getName().starts_with("read_byte$") && !function.isDeclaration()) {
-        reader = &function;
-      }
-    }
+    ASSERT_FALSE(readerSymbol.empty());
+    llvm::Function* reader = driver->getModule().getFunction(readerSymbol);
     ASSERT_NE(reader, nullptr);
     unsigned calls = 0;
     unsigned byteLoads = 0;

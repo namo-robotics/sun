@@ -253,3 +253,68 @@ TEST(Tooling_Frontend_PortableIdentity,
   EXPECT_EQ(second,
             registry.specialize({source, {}, {immortal}, std::nullopt}));
 }
+
+TEST(Tooling_Frontend_PortableIdentity,
+     original_import_rejects_malformed_keys) {
+  const auto key = PortableDeclarationKey::original(bundle, 7);
+  EXPECT_EQ(PortableDeclarationKey::parseOriginal(key.encoding()), key);
+  auto bytes = key.encoding();
+  EXPECT_ANY_THROW(PortableDeclarationKey::parseOriginal(bytes.substr(1)));
+  EXPECT_ANY_THROW(PortableDeclarationKey::parseOriginal(bytes + "extra"));
+  bytes[17] = 'G';
+  EXPECT_ANY_THROW(PortableDeclarationKey::parseOriginal(bytes));
+  bytes = key.encoding();
+  bytes.back() = 0;
+  EXPECT_ANY_THROW(PortableDeclarationKey::parseOriginal(bytes));
+}
+
+TEST(Tooling_Frontend_PortableIdentity, imported_ownership_is_interned_once) {
+  auto owner = PortableDeclarationKey::original(bundle, 1).encoding();
+  auto child = PortableDeclarationKey::original(bundle, 2).encoding();
+  std::vector<sun::ImportedDeclarationRecord> records{
+      {owner,
+       static_cast<uint32_t>(sun::DeclarationKind::Module),
+       "lib",
+       {},
+       {}},
+      {child, static_cast<uint32_t>(sun::DeclarationKind::Function), "read",
+       owner, owner}};
+  sun::DeclarationTable first, second;
+  second.add(sun::DeclarationKind::Variable, "unrelated");
+  first.importRecords(records);
+  second.importRecords(records);
+  auto firstId =
+      first.findPortable(PortableDeclarationKey::parseOriginal(child));
+  auto secondId =
+      second.findPortable(PortableDeclarationKey::parseOriginal(child));
+  EXPECT_NE(firstId, secondId);
+  EXPECT_EQ(PortableDeclarationKey::fromDeclaration(firstId, first),
+            PortableDeclarationKey::fromDeclaration(secondId, second));
+  auto size = first.size();
+  first.importRecords(records);
+  EXPECT_EQ(first.size(), size);
+  records[1].name = "conflicting";
+  EXPECT_ANY_THROW(first.importRecords(records));
+  records[1].name = "read";
+  records[1].owner = PortableDeclarationKey::original(bundle, 9).encoding();
+  EXPECT_ANY_THROW(first.importRecords(records));
+}
+
+TEST(Tooling_Frontend_PortableIdentity,
+     derived_import_validates_nested_encodings) {
+  const auto instance = PortableDeclarationKey::specialization(
+      PortableDeclarationKey::original(bundle, 2),
+      {PortableTypeKey::reference(PortableTypeKey::primitive("i32"), true)},
+      std::vector<PortableTypeKey>{});
+  EXPECT_EQ(PortableDeclarationKey::parse(instance.encoding()), instance);
+  const auto generated =
+      PortableDeclarationKey::generated(instance, "receiver", 0);
+  EXPECT_EQ(PortableDeclarationKey::parse(generated.encoding()), generated);
+  auto bytes = instance.encoding();
+  bytes[8] = static_cast<char>(255);
+  EXPECT_ANY_THROW(PortableDeclarationKey::parse(bytes));
+  EXPECT_ANY_THROW(
+      PortableDeclarationKey::parse(instance.encoding() + "extra"));
+  EXPECT_ANY_THROW(PortableDeclarationKey::parse(
+      PortableTypeKey::primitive("i32").encoding()));
+}

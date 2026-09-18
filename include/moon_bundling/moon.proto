@@ -9,8 +9,19 @@ import "ast.proto";
 
 option cc_enable_arenas = true;
 
+// Original declaration ownership, independent of import aliases and load order.
+message DeclarationRecord {
+  bytes key = 1;
+  uint32 kind = 2;
+  string name = 3;
+  bytes owner = 4;
+  bytes module = 5;
+}
+
 // Module metadata stored in .moon bundle files.
 message ModuleMetadata {
+  repeated bytes module_declarations = 17;
+  repeated DeclarationRecord declarations = 18;
   reserved 16;  // Former module binding table; references now carry canonical names.
   // Source identification
   string source_hash = 1;     // Unique key for this declaration entry

@@ -6,7 +6,7 @@
 using namespace llvm;
 
 // -------------------------------------------------------------------
-// Enum drop glue: void __sun_enum_drop$<Enum>(ptr storage)
+// Enum drop glue: void drop(ptr storage)
 // Switches on the tag, drops each owning payload (class deinit + field
 // recursion, or a nested enum's drop function), then poisons the tag with -1
 // so a second drop falls through the switch as a no-op.
@@ -15,7 +15,8 @@ using namespace llvm;
 Function* EnumGenerator::getOrCreateDropFunction(sun::EnumType& enumType) {
   if (!sun::typeNeedsDrop(&enumType)) return nullptr;
 
-  std::string name = "__sun_enum_drop$" + enumType.getName();
+  std::string name =
+      state_.declarationSymbol(enumType.getDeclarationId(), "enum-drop");
   if (Function* existing = state_.module->getFunction(name)) return existing;
 
   auto* voidTy = llvm::Type::getVoidTy(ctx.getContext());

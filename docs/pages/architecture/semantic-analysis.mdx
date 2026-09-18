@@ -50,7 +50,8 @@ local variables remain unqualified.
 class shapes and function signatures. It collects type names across the module
 tree first, allowing sibling modules to refer to each other's types. Resolved
 parameter types supply overload suffixes; generic templates retain unsuffixed
-names until specialization.
+names until specialization. Sun forward declarations retain the selected
+definition ID and cannot replace an available definition during body checking.
 
 C extern globals are also registered here so functions can use them before their
 source declarations. Their `isCExtern` flag governs unsafe access, and
@@ -79,7 +80,8 @@ its prototype so both denote the same declaration. Parameters and members also
 receive IDs. Literals and other expressions that declare nothing do not.
 
 `clearComputedAnalysis()` drops inferred results and resolved targets while
-preserving declaration identities. `resetAnalysisSession()` drops both. The
+preserving declaration identities. `resetAnalysisSession()` drops both while
+retaining imported source keys for registration in a new session. The
 subtree helpers apply those operations to child declarations and struct-backed
 bindings as well. A session marker rejects accidental reuse of an annotated
 tree with another declaration table. Serialization-based cloning does not copy
@@ -165,7 +167,7 @@ interface receiver helpers retain a generated role. Internal specialization
 comparison uses exact recursive type identity, so pointer conversions cannot
 merge instances with different layouts.
 
-Bundle format 3 uses a full SHA-256 digest computed before code emission. Its
+Bundle format 4 uses a full SHA-256 digest computed before code emission. Its
 input begins with `sun.bundle.v1`, followed by tagged, length-prefixed records.
 Source fingerprints, archive name/digest pairs, and dependency digest/alias
 records are sorted before hashing. Format version, target triple, debug and
@@ -175,9 +177,29 @@ identity definition. Writers and imported metadata require full lowercase digest
 strings. Explicit imports reject unsupported versions; directory
 discovery skips them so stale build outputs do not prevent rebuilding.
 
-Portable key conversion is migration infrastructure. Declaration metadata and
-external symbols still use their existing representation until original-key
-assignment, import/export, and symbol consumers migrate together.
+The driver supplies an artifact callback immediately after source identity
+assignment. It assigns original keys before imported templates can be
+instantiated. The bundle scope uses ordinal one; declarations and their binders
+follow in source traversal order, with sibling nodes ordered by source file and
+offset. Reopened modules receive one key, imported trees keep their existing
+keys, and generated instances derive their keys from their original declarations.
+Executable sources receive a digest of their serialized source syntax. Compiler
+builtins have a fixed ABI identity independent of session allocation.
+
+Format 4 metadata carries original declaration records, portable ownership links,
+and keys for nominal and module references. Import restores these records before
+attaching syntax or resolving signatures, so repeated imports share session IDs.
+Imported source keys survive an analysis-session reset. Ordinary AST clones
+omit declaration identities while retaining written portable
+references to dependencies. Qualified names remain for source lookup, visibility,
+and diagnostics; they no longer identify declarations in bundle metadata.
+
+Emission derives Sun function, method, global, vtable, and interface/enum drop symbols
+from portable keys and explicit roles. The program entry point and explicit C ABI
+names retain their required spellings. Runtime exception tags derive from the
+same portable identity. Compiled class inventories contain canonical instance
+keys and exact required method symbols; the bundle writer advertises an instance
+only when all its method definitions are present.
 
 ## Scope Tree
 

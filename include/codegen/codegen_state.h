@@ -91,6 +91,17 @@ class CodegenState {
   CodegenState(const CodegenState&) = delete;
   CodegenState& operator=(const CodegenState&) = delete;
 
+  /** Derive the linker spelling for an analyzed declaration and emission role.
+   */
+  std::string declarationSymbol(sun::DeclarationId id,
+                                const std::string& role = "function") const {
+    const auto& table = typeRegistry->declarations;
+    const auto& record = table.get(id);
+    if (role == "function" && record.name == "main" && !record.owner)
+      return "main";
+    return sun::PortableDeclarationKey::fromDeclaration(id, table).symbol(role);
+  }
+
   llvm::IRBuilder<>& builder() { return *ctx.builder; }
   llvm::LLVMContext& llvmContext() { return ctx.getContext(); }
 

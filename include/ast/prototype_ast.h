@@ -148,7 +148,12 @@ class PrototypeAST {
     analysis_->declaration = std::move(identity);
   }
   /** Drop all annotations when discarding the owning session. */
-  void resetAnalysisSession() const { analysis_.reset(); }
+  void resetAnalysisSession() const {
+    if (!analysis_) return;
+    auto imported = std::move(analysis_->declaration.imported);
+    analysis_.reset();
+    if (imported) analysis().declaration.imported = std::move(imported);
+  }
   const PrototypeAnalysis* getAnalysis() const { return analysis_.get(); }
 
   // Qualified name (after semantic analysis qualifies it)

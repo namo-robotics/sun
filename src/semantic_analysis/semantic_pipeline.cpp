@@ -10,9 +10,11 @@ SemanticPipeline::SemanticPipeline(SemanticAnalyzer& analyzer)
       context_(analyzer.context()),
       declarationCollectionPass_(context_, analyzer) {}
 
-void SemanticPipeline::run(BlockExprAST& block) {
+void SemanticPipeline::run(BlockExprAST& block,
+                           const std::function<void()>& declarationsReady) {
   fieldInitializerPreparationPass_.run(block);
   DeclarationIdentityPass(context_.types()->declarations).run(block);
+  if (declarationsReady) declarationsReady();
   declarationNamingPass_.run(block, context_.getCurrentScopePath(),
                              context_.currentModulePath(),
                              context_.isAtModuleLevel());

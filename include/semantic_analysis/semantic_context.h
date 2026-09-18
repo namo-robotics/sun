@@ -385,10 +385,14 @@ class SemanticContext : public AccessContext {
   /** Retrieve an already selected template from the retained scope tree. */
   const GenericEnumInfo *lookupGenericEnum(sun::DeclarationId id) const;
 
+  /** Retrieve a module already selected by its declaration identity. */
+  SemanticScopeBase *lookupModuleScope(sun::DeclarationId id) const;
+
   /** Require the original nominal declaration, without source-name fallback. */
-  void requireDeclaration(
-      const sun::QualifiedName &name, const std::string &exporter = "",
-      std::optional<sun::Type::Kind> expectedKind = std::nullopt) const;
+  sun::DeclarationId requireDeclaration(
+      const sun::PortableDeclarationKey &key, const std::string &exporter = "",
+      std::optional<sun::Type::Kind> expectedKind = std::nullopt,
+      const std::string &displayName = "") const;
 
   // ---- Type parameters and aliases ---------------------------------------
 

@@ -144,35 +144,13 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
   // class shape or public method signature is resolved.
   if (prepassGuard.outermost) {
     collectTypeNames(block);
-    auto* root = &ctx_.rootScope();
-    std::function<void(SemanticScopeBase*)> index =
-        [&](SemanticScopeBase* scope) {
-          auto add = [&](const sun::QualifiedName& name, sun::Type::Kind kind) {
-            root->canonicalDeclarations[name] = kind;
-            root->canonicalModules[name.scopePathString()] = scope;
-          };
-          using Kind = sun::Type::Kind;
-          for (const auto& [_, type] : scope->classes)
-            add(type->getQualifiedName(), Kind::Class);
-          for (const auto& [_, type] : scope->interfaces)
-            add(type->getQualifiedName(), Kind::Interface);
-          for (const auto& [_, type] : scope->enums)
-            add(type->getQualifiedName(), Kind::Enum);
-          for (const auto& [_, info] : scope->genericClasses)
-            add(info.qualifiedName, Kind::Class);
-          for (const auto& [_, info] : scope->genericInterfaces)
-            add(info.qualifiedName, Kind::Interface);
-          for (const auto& [_, info] : scope->genericEnums)
-            add(info.qualifiedName, Kind::Enum);
-          for (const auto& [_, child] : scope->childModules) index(child.get());
-        };
-    index(root);
     for (const auto& expr : block.getBody()) {
       auto* moon = dynamic_cast<MoonScopeAST*>(expr.get());
       if (!moon || moon->isOwnBundle()) continue;
       for (const auto& requirement : moon->requiredDeclarations)
-        ctx_.requireDeclaration(requirement.qualifiedName, moon->getMoonPath(),
-                                requirement.expectedKind);
+        ctx_.requireDeclaration(requirement.key, moon->getMoonPath(),
+                                requirement.expectedKind,
+                                requirement.displayName);
     }
   }
 
@@ -462,6 +440,8 @@ void DeclarationCollectionPass::collectFunctionSignature(FunctionAST& func) {
   info.canThrow = proto.canThrow();
   info.isCVariadic = proto.isCVariadic();
   info.isCExtern = func.isCExtern();
+  info.isForwardDeclaration =
+      func.isExtern() && !func.isCExtern() && !func.isPrecompiled();
   info.visibility = func.getVisibility();
 
   ctx_.registerFunctionInCurrentScope(qualifiedName.baseName, info);
@@ -537,12 +517,20 @@ void DeclarationCollectionPass::registerUsing(UsingAST& usingDecl) {
   // "using A.B;" where A.B is a module name means "import all from A.B"
   std::string namespacePath = usingDecl.getNamespacePathString();
   std::string target = usingDecl.getTarget();
-  if (usingDecl.getModuleQualifiedName()) {
-    namespacePath = usingDecl.getModuleQualifiedName()->lookupName();
+  if (usingDecl.getModuleDeclaration()) {
+    auto id = ctx_.types()->declarations.findPortable(
+        *usingDecl.getModuleDeclaration());
+    // A retained using may serve only a body already compiled into the bundle.
+    // Actual nominal and module references still require their exact
+    // dependency.
+    if (!id) return;
+    auto* scope = ctx_.lookupModuleScope(id);
+    namespacePath =
+        static_cast<const ModuleScope&>(*scope).qualifiedName.lookupName();
     if (usingDecl.isModuleImport()) target = "*";
   }
 
-  if (!usingDecl.getModuleQualifiedName() && !usingDecl.isModuleImport()) {
+  if (!usingDecl.getModuleDeclaration() && !usingDecl.isModuleImport()) {
     std::string displayPath =
         namespacePath.empty() ? target : namespacePath + "." + target;
     if (auto* modScope = ctx_.lookupModuleScope(displayPath)) {

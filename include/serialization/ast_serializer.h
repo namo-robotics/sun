@@ -17,6 +17,7 @@ inline ast::Visibility toProto(sun::Visibility v) {
 
 // Configuration for AST serialization
 struct SerializerConfig {
+  const sun::DeclarationTable* declarations = nullptr;
   bool include_location = true;  // Include source locations
 };
 
@@ -44,6 +45,10 @@ class ASTSerializer {
   // Store a parameter and its optional constraint for any declaration kind.
   void serializeTypeParameterInto(const TypeParameter& parameter,
                                   ast::TypeParameter* proto) const;
+
+  // Export declaration and binder keys only at the artifact boundary.
+  ast::DeclarationIdentity serializeIdentity(
+      const sun::DeclarationIdentity& identity) const;
 
   // Type annotation serialization
   ast::TypeAnnotation serializeTypeAnnotation(const TypeAnnotation& type) const;
@@ -73,6 +78,9 @@ class ASTSerializer {
   // Class and interface fields are declared alike, so they store alike
   template <typename FieldDecl, typename FieldProto>
   void serializeFieldInto(const FieldDecl& field, FieldProto* proto) const {
+    if (config_.declarations)
+      *proto->mutable_declaration_identity() =
+          serializeIdentity(field.declaration);
     proto->set_name(field.name);
     *proto->mutable_type() = serializeTypeAnnotation(field.type);
     if (config_.include_location) {

@@ -1678,19 +1678,9 @@ class ClassType : public NominalType {
   bool isPacked() const { return isPacked_; }
   void setPacked(bool v) { isPacked_ = v; }
 
-  // Get mangled method name: ClassName_methodName
-  // Class name already includes module path and library hash
-  std::string getMangledMethodName(const std::string& methodName) const {
+  /** Return a readable scope label for checking method bodies. */
+  std::string getMethodScopeName(const std::string& methodName) const {
     return mangledName + "_" + methodName;
-  }
-
-  // Get mangled method name with parameter types for overload disambiguation
-  // Delegates to QualifiedName::buildParamSuffix for consistent mangling
-  std::string getMangledMethodName(
-      const std::string& methodName,
-      const std::vector<TypePtr>& paramTypes) const {
-    return mangledName + "_" + methodName +
-           QualifiedName::buildParamSuffix(paramTypes);
   }
 
   // --- ScopeMethodTable accessors ---
@@ -1949,12 +1939,6 @@ class InterfaceType : public NominalType {
   // no-op for a borrow), so an owning interface remains two pointers.
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
     return getFatPointerType(ctx);
-  }
-
-  // Get mangled method name for default implementation:
-  // InterfaceName_default_methodName (name already includes library hash)
-  std::string getMangledDefaultMethodName(const std::string& methodName) const {
-    return name + "_default_" + methodName;
   }
 
   // ===================================================================
@@ -2491,6 +2475,11 @@ class TypeRegistry {
     // errors can carry text composed at runtime. Without the stdlib, message()
     // stays literal-only.
     auto id = declarations.add(DeclarationKind::Interface, "IError");
+    declarations.bindPortable(
+        id,
+        PortableDeclarationKey::original(
+            "4c7b23a9e50e3bb484c7f661e4700d156bac371ed9dd5d23c3d22e2fefc263c1",
+            1));
     auto ierror = nominalType<InterfaceType>(id, DeclarationKind::Interface);
     // Not const: every user error class would then have to spell
     // `const function code()`, and errors are caught into plain variables.
@@ -2498,6 +2487,13 @@ class TypeRegistry {
         declarations.add(DeclarationKind::Function, "code", id);
     ierror->addMethod("message", Types::String(), {}, true).declarationId =
         declarations.add(DeclarationKind::Function, "message", id);
+    uint64_t ordinal = 2;
+    for (const auto& method : ierror->getMethods())
+      declarations.bindPortable(
+          method.declarationId,
+          PortableDeclarationKey::original("4c7b23a9e50e3bb484c7f661e4700d156ba"
+                                           "c371ed9dd5d23c3d22e2fefc263c1",
+                                           ordinal++));
     errorInterface = ierror;
   }
 

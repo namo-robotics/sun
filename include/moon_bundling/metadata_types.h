@@ -7,7 +7,8 @@
 namespace sun {
 /** Convert a resolved type to an exportable annotation with exact nominal
  * identities. */
-ast::TypeAnnotation exportType(const TypePtr& type);
+ast::TypeAnnotation exportType(const TypePtr& type,
+                               const DeclarationTable& declarations);
 /** Bind serialized declarations in their definition context without
  * specializing templates. */
 void bindMetadataTypes(google::protobuf::Message& message,

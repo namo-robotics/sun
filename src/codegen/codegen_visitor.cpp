@@ -135,7 +135,6 @@ Value* CodegenVisitor::codegenExpression(const ExprAST& expr) {
     }
     case ASTNodeType::MODULE: {
       // Module declarations: generate code for all declarations inside
-      // Name mangling is handled by semantic analysis (qualified names on AST)
       const auto& ns = static_cast<const ModuleAST&>(expr);
       return codegen(ns.getBody());
     }
@@ -159,14 +158,13 @@ Value* CodegenVisitor::codegenExpression(const ExprAST& expr) {
       // Qualified name lookup (e.g., std.Vec)
       const auto& qn = static_cast<const QualifiedNameAST&>(expr);
       std::string fullName = qn.getFullName();
-      std::string mangledName = qn.getMangledName();
 
       // Try to find as a global variable
       GlobalVariable* gv =
           variableGenerator().findGlobal(qn.getTargetDeclarationId());
       if (gv) {
         return ctx.builder->CreateLoad(gv->getValueType(), gv,
-                                       mangledName + ".val");
+                                       fullName + ".val");
       }
 
       if (qn.getResolvedType() && qn.getResolvedType()->isFunction()) {

@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
+#include <string>
 #include <vector>
 
 namespace sun {
@@ -25,14 +27,39 @@ class DeclarationId {
   bool operator<(DeclarationId other) const { return value_ < other.value_; }
 };
 
+/** Portable source identities retained across importing analysis sessions.
+ */
+struct ImportedDeclarationIdentity {
+  std::string declaration;
+  std::vector<std::string> parameters;
+  std::vector<std::string> typeParameters;
+  std::vector<std::string> lifetimeParameters;
+};
+
+/** One original declaration exported with its portable ownership links. */
+struct ImportedDeclarationRecord {
+  std::string key;
+  uint32_t kind = 0;
+  std::string name;
+  std::string owner;
+  std::string module;
+};
+
 /** Annotation data that survives recomputing types within one session. */
 struct DeclarationIdentity {
+  std::optional<ImportedDeclarationIdentity> imported;
   DeclarationId id;
   std::weak_ptr<const int> session;
   std::vector<DeclarationId> parameters;
   std::vector<DeclarationId> variadicParameters;
   std::vector<DeclarationId> typeParameters;
   std::vector<DeclarationId> lifetimeParameters;
+  /** Discard session state while retaining the artifact's source identities. */
+  void resetSession() {
+    auto source = std::move(imported);
+    *this = {};
+    imported = std::move(source);
+  }
 };
 
 }  // namespace sun

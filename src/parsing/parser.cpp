@@ -3484,6 +3484,8 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
   // Track the primary module name (first non-empty module found)
   std::string primaryModuleName;
   std::map<std::string, std::string> originalModules;
+  std::map<std::string, std::string> moduleKeys;
+  std::vector<sun::ImportedDeclarationRecord> declarationRecords;
   std::vector<MoonScopeAST::DeclarationRequirement> requirements;
 
   for (const auto& moduleKey : reader->listModules()) {
@@ -3505,6 +3507,21 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
       continue;
     }
 
+    for (const auto& record : metadata->declarations())
+      declarationRecords.push_back({record.key(), record.kind(), record.name(),
+                                    record.owner(), record.module()});
+    {
+      std::istringstream path(metadata->module_name());
+      std::string part, prefix;
+      size_t index = 0;
+      while (std::getline(path, part, '.')) {
+        if (!prefix.empty()) prefix += ".";
+        prefix += part;
+        if (index < static_cast<size_t>(metadata->module_declarations_size()))
+          moduleKeys[prefix] = metadata->module_declarations(index++);
+      }
+    }
+
     // Capture content hash from first module (all share the same hash)
     if (contentHash.empty()) {
       contentHash = sun::getSymbolPrefix(*metadata);
@@ -3519,9 +3536,9 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
     // declarations come first so the stubs' field/parameter types resolve
     // the same names their source did (e.g. Vec<u8> from stdlib.moon).
     std::vector<std::unique_ptr<ExprAST>> stubs;
-    sun::serialization::visitQualifiedNames(
-        *metadata, [&](const auto& name, auto expectedKind) {
-          requirements.push_back({name, expectedKind});
+    sun::serialization::visitDeclarationKeys(
+        *metadata, [&](const auto& key, auto expectedKind, const auto& name) {
+          requirements.push_back({key, name, expectedKind});
         });
     auto scopedMetadata = *metadata;
     sun::serialization::remapSourceFiles(
@@ -3632,6 +3649,10 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
           auto name = path.back();
           path.pop_back();
           nsAST->setQualifiedName(sun::QualifiedName(path, name, path));
+          if (auto key = moduleKeys.find(originalModule->second);
+              key != moduleKeys.end())
+            nsAST->declarationIdentity().imported =
+                sun::ImportedDeclarationIdentity{key->second};
         }
         nsAST->setVisibility(visibilityOf(prefix));
         current = std::move(nsAST);
@@ -3663,6 +3684,9 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
   auto result = std::make_unique<MoonScopeAST>(
       contentHash, primaryModuleName, alias, resolvedStr, std::move(body));
   result->requiredDeclarations = std::move(requirements);
+  std::sort(declarationRecords.begin(), declarationRecords.end(),
+            [](const auto& a, const auto& b) { return a.key < b.key; });
+  result->importedDeclarations = std::move(declarationRecords);
   return result;
 }
 
@@ -3674,7 +3698,8 @@ void Parser::createModuleStubs(
   // Use ASTDeserializer to convert proto nodes. Positions inside the bundle
   // carry no file of their own; they all belong to the module's source file
   sun::serialization::ASTDeserializer deserializer(
-      {.default_file_path = metadata.source_path()});
+      {.import_declarations = true,
+       .default_file_path = metadata.source_path()});
 
   // Build the scope path for qualified names:
   // Content hash ensures symbol isolation between library versions

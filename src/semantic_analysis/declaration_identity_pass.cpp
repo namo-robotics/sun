@@ -6,17 +6,32 @@
 namespace sun {
 namespace {
 
+/** Register one imported binder or allocate a new source binder. */
+DeclarationId parameter(DeclarationTable& table, DeclarationKind kind,
+                        const std::string& name, DeclarationId owner,
+                        DeclarationId module, DeclarationId origin,
+                        const std::vector<std::string>* imported,
+                        size_t index) {
+  return imported ? table.importedSyntax(imported->at(index), kind, name)
+                  : table.add(kind, name, owner, module, {}, origin);
+}
+
 /** Allocate identities for the parameters attached to one declaration. */
 template <typename Declaration>
 void parameters(const Declaration& node, DeclarationIdentity& identity,
                 DeclarationTable& table, DeclarationId module,
                 const DeclarationIdentity* origin) {
+  if (identity.imported && identity.imported->typeParameters.size() !=
+                               node.getTypeParameters().size())
+    logAndThrowError(
+        "Imported type parameter identities do not match the declaration");
   if (identity.typeParameters.empty())
     for (size_t i = 0; i < node.getTypeParameters().size(); ++i)
-      identity.typeParameters.push_back(
-          table.add(DeclarationKind::TypeParameter,
-                    node.getTypeParameters()[i].name, identity.id, module, {},
-                    origin ? origin->typeParameters.at(i) : DeclarationId{}));
+      identity.typeParameters.push_back(parameter(
+          table, DeclarationKind::TypeParameter,
+          node.getTypeParameters()[i].name, identity.id, module,
+          origin ? origin->typeParameters.at(i) : DeclarationId{},
+          identity.imported ? &identity.imported->typeParameters : nullptr, i));
 }
 
 /** Allocate identities for lifetime parameters without resolving lifetimes. */
@@ -24,12 +39,18 @@ template <typename Declaration>
 void lifetimes(const Declaration& node, DeclarationIdentity& identity,
                DeclarationTable& table, DeclarationId module,
                const DeclarationIdentity* origin) {
+  if (identity.imported && identity.imported->lifetimeParameters.size() !=
+                               node.getLifetimeParameters().size())
+    logAndThrowError(
+        "Imported lifetime identities do not match the declaration");
   if (identity.lifetimeParameters.empty())
     for (size_t i = 0; i < node.getLifetimeParameters().size(); ++i)
-      identity.lifetimeParameters.push_back(table.add(
-          DeclarationKind::LifetimeParameter,
-          node.getLifetimeParameters()[i].name, identity.id, module, {},
-          origin ? origin->lifetimeParameters.at(i) : DeclarationId{}));
+      identity.lifetimeParameters.push_back(parameter(
+          table, DeclarationKind::LifetimeParameter,
+          node.getLifetimeParameters()[i].name, identity.id, module,
+          origin ? origin->lifetimeParameters.at(i) : DeclarationId{},
+          identity.imported ? &identity.imported->lifetimeParameters : nullptr,
+          i));
 }
 
 /** Register struct-backed declarations while preserving their existing IDs. */
@@ -38,7 +59,10 @@ void binding(DeclarationIdentity& identity, DeclarationKind kind,
              DeclarationId owner, DeclarationId module,
              DeclarationId origin = {}) {
   if (!identity.id) {
-    identity.id = table.add(kind, name, owner, module, {}, origin);
+    identity.id =
+        identity.imported
+            ? table.importedSyntax(identity.imported->declaration, kind, name)
+            : table.add(kind, name, owner, module, {}, origin);
     identity.session = table.session();
   } else {
     if (identity.session.lock() != table.session())
@@ -56,17 +80,17 @@ void resetBindings(const ExprAST& root, bool resetIdentity) {
     case ASTNodeType::CLASS_DEFINITION:
       for (const auto& field :
            static_cast<const ClassDefinitionAST&>(root).getFields())
-        if (resetIdentity) field.declaration = {};
+        if (resetIdentity) field.declaration.resetSession();
       break;
     case ASTNodeType::INTERFACE_DEFINITION:
       for (const auto& field :
            static_cast<const InterfaceDefinitionAST&>(root).getFields())
-        if (resetIdentity) field.declaration = {};
+        if (resetIdentity) field.declaration.resetSession();
       break;
     case ASTNodeType::ENUM_DEFINITION:
       for (const auto& variant :
            static_cast<const EnumDefinitionAST&>(root).getVariants())
-        if (resetIdentity) variant.declaration = {};
+        if (resetIdentity) variant.declaration.resetSession();
       break;
     case ASTNodeType::MATCH:
       for (auto& arm :
@@ -76,7 +100,7 @@ void resetBindings(const ExprAST& root, bool resetIdentity) {
         for (auto& value : arm.bindings) {
           value.resolvedType.reset();
           value.resolvedMangledName.clear();
-          if (resetIdentity) value.declaration = {};
+          if (resetIdentity) value.declaration.resetSession();
         }
       }
       break;
@@ -86,7 +110,7 @@ void resetBindings(const ExprAST& root, bool resetIdentity) {
                               .getCatchClausesMutable()) {
         clause.isCatchAll = false;
         clause.resolvedType.reset();
-        if (resetIdentity) clause.declaration = {};
+        if (resetIdentity) clause.declaration.resetSession();
       }
       break;
     default:
@@ -111,7 +135,10 @@ void DeclarationIdentityPass::run(const ExprAST& root, DeclarationId owner,
   auto declare = [&](DeclarationKind kind, const std::string& name) {
     auto id = root.getDeclarationId();
     if (!id) {
-      id = kind == DeclarationKind::Module
+      auto& identity = root.declarationIdentity();
+      id = identity.imported ? table_.importedSyntax(
+                                   identity.imported->declaration, kind, name)
+           : kind == DeclarationKind::Module
                ? table_.module(name, module)
                : table_.add(
                      kind, name, owner, module, {},
@@ -130,8 +157,16 @@ void DeclarationIdentityPass::run(const ExprAST& root, DeclarationId owner,
   switch (root.getType()) {
     case ASTNodeType::MOON_SCOPE: {
       const auto& moon = static_cast<const MoonScopeAST&>(root);
+      table_.importRecords(moon.importedDeclarations);
       if (!moon.getContentHash().empty()) {
         owner = table_.module(moon.getContentHash(), module);
+        root.setDeclarationId(owner);
+        root.declarationIdentity().session = table_.session();
+        auto hash = moon.getContentHash();
+        if (hash.starts_with("$") && hash.ends_with("$"))
+          hash = hash.substr(1, hash.size() - 2);
+        if (hash.size() == 64)
+          table_.bindPortable(owner, PortableDeclarationKey::original(hash, 1));
         module = owner;
       }
       break;
@@ -163,20 +198,23 @@ void DeclarationIdentityPass::run(const ExprAST& root, DeclarationId owner,
               "variadic-element", i));
       }
       lifetimes(proto, identity, table_, module, sourceIdentity);
+      const size_t parameterCount =
+          proto.getArgs().size() + proto.hasVariadicParam();
+      if (identity.imported &&
+          identity.imported->parameters.size() != parameterCount)
+        logAndThrowError(
+            "Imported parameter identities do not match the signature");
       if (identity.parameters.empty()) {
-        for (size_t i = 0; i < proto.getArgs().size(); ++i)
-          identity.parameters.push_back(
-              table_.add(DeclarationKind::Parameter, proto.getArgs()[i].first,
-                         owner, module, {},
-                         sourceIdentity ? sourceIdentity->parameters.at(i)
-                                        : DeclarationId{}));
-        if (proto.hasVariadicParam())
-          identity.parameters.push_back(table_.add(
-              DeclarationKind::Parameter, proto.getVariadicParamName(), owner,
-              module, {},
-              sourceIdentity
-                  ? sourceIdentity->parameters.at(proto.getArgs().size())
-                  : DeclarationId{}));
+        for (size_t i = 0; i < parameterCount; ++i) {
+          const auto& name = i < proto.getArgs().size()
+                                 ? proto.getArgs()[i].first
+                                 : proto.getVariadicParamName();
+          identity.parameters.push_back(parameter(
+              table_, DeclarationKind::Parameter, name, owner, module,
+              sourceIdentity ? sourceIdentity->parameters.at(i)
+                             : DeclarationId{},
+              identity.imported ? &identity.imported->parameters : nullptr, i));
+        }
       }
       break;
     }

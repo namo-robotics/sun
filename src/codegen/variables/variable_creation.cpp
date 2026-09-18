@@ -84,7 +84,10 @@ Value* VariableGenerator::codegen(const VariableCreationAST& expr) {
   }
 
   // Use qualified name from semantic analysis
-  std::string varName = expr.getMangledName();
+  std::string varName =
+      (scopes().empty()
+           ? state_.declarationSymbol(expr.getDeclarationId(), "global")
+           : expr.getName());
 
   if (expr.isCExtern()) {
     return bindGlobal(expr.getDeclarationId(),
@@ -161,7 +164,10 @@ Value* VariableGenerator::genFunctionVariable(const VariableCreationAST& expr) {
   }
 
   // Use qualified name from semantic analysis
-  std::string varName = expr.getMangledName();
+  std::string varName =
+      (scopes().empty()
+           ? state_.declarationSymbol(expr.getDeclarationId(), "global")
+           : expr.getName());
 
   // Generate the lambda
   auto& lambdaAst =
@@ -551,8 +557,12 @@ llvm::Constant* VariableGenerator::genGlobalArray(
   }
 
   // The global IS the inline storage
-  createGlobalVariable(expr.getDeclarationId(), expr.getMangledName(),
-                       dataConst->getType(), dataConst);
+  createGlobalVariable(
+      expr.getDeclarationId(),
+      (scopes().empty()
+           ? state_.declarationSymbol(expr.getDeclarationId(), "global")
+           : expr.getName()),
+      dataConst->getType(), dataConst);
   return dataConst;
 }
 
@@ -614,7 +624,10 @@ llvm::Constant* VariableGenerator::genGlobalVarForConstantExpr(
   }
 
   // Create global variable with the constant initializer
-  std::string varName = expr.getMangledName();
+  std::string varName =
+      (scopes().empty()
+           ? state_.declarationSymbol(expr.getDeclarationId(), "global")
+           : expr.getName());
   createGlobalVariable(expr.getDeclarationId(), varName, varType, constValue);
   return constValue;
 }
@@ -640,7 +653,10 @@ Value* VariableGenerator::codegen(const ReferenceCreationAST& expr) {
   }
 
   // Create an alloca that holds a pointer to the target
-  std::string refName = expr.getMangledName();
+  std::string refName =
+      (scopes().empty()
+           ? state_.declarationSymbol(expr.getDeclarationId(), "global")
+           : expr.getName());
   llvm::Type* ptrType = llvm::PointerType::getUnqual(ctx.getContext());
   Function* func = ctx.builder->GetInsertBlock()->getParent();
   AllocaInst* refAlloca = createEntryBlockAlloca(func, refName, ptrType);
@@ -666,7 +682,10 @@ GlobalVariable* VariableGenerator::genGlobalClassVar(
   llvm::StructType* structType = classType.getStructType(ctx.getContext());
 
   // Create zero-initialized global variable for the class instance
-  std::string varName = expr.getMangledName();
+  std::string varName =
+      (scopes().empty()
+           ? state_.declarationSymbol(expr.getDeclarationId(), "global")
+           : expr.getName());
   llvm::Constant* zeroInit = llvm::ConstantAggregateZero::get(structType);
   GlobalVariable* gv = new GlobalVariable(
       *module, structType,
@@ -695,7 +714,10 @@ GlobalVariable* VariableGenerator::genGlobalVarWithRuntimeInit(
          "genGlobalVarWithRuntimeInit should only be called at top-level");
 
   // Create zero-initialized global variable
-  std::string varName = expr.getMangledName();
+  std::string varName =
+      (scopes().empty()
+           ? state_.declarationSymbol(expr.getDeclarationId(), "global")
+           : expr.getName());
   llvm::Constant* zeroInit = Constant::getNullValue(varType);
   GlobalVariable* gv = new GlobalVariable(
       *module, varType,

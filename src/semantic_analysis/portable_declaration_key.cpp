@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <set>
 
+#include "ast.h"
+#include "ast/ast_children.h"
 #include "llvm/Support/SHA256.h"
 #include "semantic_analysis/types.h"
 #include "support/error.h"
@@ -46,6 +48,58 @@ const std::string& require(const PortableDeclarationKey& key) {
 }
 
 }  // namespace
+
+void PortableDeclarationKey::assignOriginals(const ExprAST& root,
+                                             DeclarationTable& table,
+                                             const std::string& artifactHash) {
+  std::set<DeclarationId> seen;
+  uint64_t ordinal = 1;  // The bundle scope occupies the first ordinal.
+  auto assign = [&](DeclarationId id) {
+    if (!id || !seen.insert(id).second) return;
+    const auto& record = table.get(id);
+    if (record.specialization || record.origin) return;
+    auto key = original(artifactHash, ++ordinal);
+    if (record.portableKey) return;
+    table.bindPortable(id, key);
+  };
+  auto identity = [&](const DeclarationIdentity& value) {
+    assign(value.id);
+    for (auto id : value.typeParameters) assign(id);
+    for (auto id : value.lifetimeParameters) assign(id);
+    for (auto id : value.parameters) assign(id);
+  };
+  auto walk = [&](auto&& self, const ExprAST& node) -> void {
+    if (auto* moon = dynamic_cast<const MoonScopeAST*>(&node)) {
+      if (!moon->isOwnBundle()) return;
+    } else if (node.getDeclarationId())
+      identity(node.declarationIdentity());
+    if (auto* cls = dynamic_cast<const ClassDefinitionAST*>(&node))
+      for (const auto& field : cls->getFields()) identity(field.declaration);
+    if (auto* iface = dynamic_cast<const InterfaceDefinitionAST*>(&node))
+      for (const auto& field : iface->getFields()) identity(field.declaration);
+    if (auto* enumeration = dynamic_cast<const EnumDefinitionAST*>(&node))
+      for (const auto& variant : enumeration->getVariants())
+        identity(variant.declaration);
+    if (auto* match = dynamic_cast<const MatchExprAST*>(&node))
+      for (const auto& arm : match->getArms())
+        for (const auto& binding : arm.bindings) identity(binding.declaration);
+    if (auto* expression = dynamic_cast<const TryCatchExprAST*>(&node))
+      for (const auto& clause : expression->getCatchClauses())
+        identity(clause.declaration);
+    std::vector<const ExprAST*> children;
+    forEachChild(node,
+                 [&](const ExprAST& child) { children.push_back(&child); });
+    std::stable_sort(children.begin(), children.end(),
+                     [](const auto* a, const auto* b) {
+                       const auto& first = a->getLocation();
+                       const auto& second = b->getLocation();
+                       return std::tie(first.filePath, first.offset) <
+                              std::tie(second.filePath, second.offset);
+                     });
+    for (const auto* child : children) self(self, *child);
+  };
+  walk(walk, root);
+}
 
 PortableDeclarationKey PortableDeclarationKey::fromDeclaration(
     DeclarationId id, const DeclarationTable& table) {
@@ -152,6 +206,126 @@ PortableTypeKey PortableTypeKey::fromType(const Type& type,
     default:
       logAndThrowError("Portable identity requires a concrete value type");
   }
+}
+
+PortableDeclarationKey PortableDeclarationKey::parse(
+    const std::string& encoded) {
+  auto invalid = [] {
+    logAndThrowError("Malformed portable declaration identity");
+  };
+  auto validate = [&](auto&& self, std::string_view bytes,
+                      std::string_view allowed, unsigned depth) -> void {
+    if (depth > 128 || bytes.size() < 9 ||
+        allowed.find(bytes[0]) == std::string_view::npos)
+      invalid();
+    size_t offset = 1;
+    auto number = [&]() {
+      if (bytes.size() - offset < 8) invalid();
+      uint64_t value = 0;
+      for (int i = 0; i < 8; ++i)
+        value = (value << 8) | static_cast<unsigned char>(bytes[offset++]);
+      return value;
+    };
+    const auto count = number();
+    if (count > (bytes.size() - offset) / 8) invalid();
+    std::vector<std::string_view> fields;
+    for (uint64_t i = 0; i < count; ++i) {
+      const auto length = number();
+      if (length > bytes.size() - offset) invalid();
+      fields.push_back(bytes.substr(offset, length));
+      offset += length;
+    }
+    if (offset != bytes.size()) invalid();
+    auto arity = [&](size_t size) {
+      if (fields.size() != size) invalid();
+    };
+    auto child = [&](size_t index, std::string_view kinds) {
+      self(self, fields[index], kinds, depth + 1);
+    };
+    auto integerField = [&](size_t index, bool boolean = false) {
+      if (fields[index].size() != 8) invalid();
+      if (boolean && fields[index] != integer(0) && fields[index] != integer(1))
+        invalid();
+    };
+    constexpr std::string_view declarations = "DSIG";
+    constexpr std::string_view types = "PNRQAFU";
+    switch (bytes[0]) {
+      case 'D':
+        parseOriginal(std::string(bytes));
+        break;
+      case 'S':
+        arity(3);
+        child(0, declarations);
+        child(1, "L");
+        child(2, "LV");
+        break;
+      case 'I':
+        arity(2);
+        child(0, declarations);
+        child(1, declarations);
+        break;
+      case 'G':
+        arity(3);
+        child(0, declarations);
+        if (fields[1].empty()) invalid();
+        integerField(2);
+        break;
+      case 'P':
+        arity(1);
+        PortableTypeKey::primitive(std::string(fields[0]));
+        break;
+      case 'N':
+        arity(1);
+        child(0, declarations);
+        break;
+      case 'R':
+      case 'Q':
+        arity(2);
+        child(0, types);
+        integerField(1, true);
+        break;
+      case 'A':
+        if (fields.empty()) invalid();
+        child(0, types);
+        for (size_t i = 1; i < fields.size(); ++i) integerField(i);
+        break;
+      case 'F':
+        arity(6);
+        child(0, types);
+        child(1, "L");
+        for (size_t i = 2; i < fields.size(); ++i) integerField(i, true);
+        if (fields[4] == integer(1) && fields[3] != integer(1)) invalid();
+        break;
+      case 'U':
+        arity(1);
+        child(0, types);
+        break;
+      case 'V':
+        arity(0);
+        break;
+      case 'L':
+        for (size_t i = 0; i < fields.size(); ++i) child(i, types);
+        break;
+      default:
+        invalid();
+    }
+  };
+  validate(validate, encoded, "DSIG", 0);
+  return PortableDeclarationKey(encoded);
+}
+
+PortableDeclarationKey PortableDeclarationKey::parseOriginal(
+    const std::string& encoded) {
+  constexpr size_t ordinalOffset = 89;
+  if (encoded.size() != ordinalOffset + 8)
+    logAndThrowError("Malformed original declaration identity");
+  uint64_t ordinal = 0;
+  for (size_t i = ordinalOffset; i < encoded.size(); ++i)
+    ordinal = (ordinal << 8) | static_cast<unsigned char>(encoded[i]);
+  auto key = original(encoded.substr(17, 64), ordinal);
+  if (key.encoding() != encoded)
+    logAndThrowError("Malformed original declaration identity");
+  return key;
 }
 
 PortableDeclarationKey PortableDeclarationKey::original(

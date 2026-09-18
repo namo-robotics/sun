@@ -81,6 +81,7 @@ void clearNonGenericBodies(ast::InterfaceDef* iface,
 // Extract a function and add to metadata
 void extractFunction(const FunctionAST& func, moon::ModuleMetadata& metadata,
                      const ASTSerializer& serializer) {
+  if (func.isExtern() && func.getTargetDeclarationId()) return;
   // Serialize the function AST to proto
   ast::ASTNode node = serializer.serialize(func);
 
@@ -97,7 +98,8 @@ void extractFunction(const FunctionAST& func, moon::ModuleMetadata& metadata,
 
 // Extract a class and add to metadata
 void extractClass(const ClassDefinitionAST& cls, moon::ModuleMetadata& metadata,
-                  const ASTSerializer& serializer) {
+                  const ASTSerializer& serializer,
+                  sun::TypeRegistry* types = nullptr) {
   // Serialize the class AST to proto
   ast::ASTNode node = serializer.serialize(cls);
 
@@ -108,10 +110,18 @@ void extractClass(const ClassDefinitionAST& cls, moon::ModuleMetadata& metadata,
 
   // The writer verifies these candidates against the emitted code.
   for (const auto& [instanceId, specialization] : cls.getSpecializations()) {
-    if (!specialization) continue;
-    const auto name = specialization->getMangledName();
-    if (!cls.hasCompiledSpecialization(name))
-      classDef->add_compiled_specializations(name);
+    if (!specialization || !types) continue;
+    const auto& declarations = types->declarations;
+    auto* candidate = classDef->add_compiled_specializations();
+    candidate->set_declaration_key(
+        PortableDeclarationKey::fromDeclaration(instanceId, declarations)
+            .encoding());
+    for (const auto& method : types->getClass(instanceId)->getMethods()) {
+      if (method.isGeneric()) continue;
+      candidate->add_method_symbols(PortableDeclarationKey::fromDeclaration(
+                                        method.declarationId, declarations)
+                                        .symbol("function"));
+    }
   }
 
   // Clear bodies of non-generic methods
@@ -285,9 +295,13 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
     const BlockExprAST& program, SemanticAnalyzer& analyzer,
     const std::string& bundleHash) {
   auto& ctx = analyzer.context();
-  ASTSerializer serializer({.include_location = true});
+  auto& declarations = ctx.types()->declarations;
+  PortableDeclarationKey::assignOriginals(program, declarations, bundleHash);
+  ASTSerializer serializer(
+      {.declarations = &declarations, .include_location = true});
   std::vector<moon::ModuleMetadata> result;
   std::map<std::pair<std::string, SourceFileId>, size_t> entries;
+  std::map<std::string, DeclarationId> moduleIdentities;
   auto entry = [&](const std::string& path,
                    const ExprAST& stmt) -> moon::ModuleMetadata& {
     auto [it, added] =
@@ -299,6 +313,18 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
       md.set_source_hash(bundleHash + "-" + std::to_string(it->second));
       md.set_source_path(stmt.getLocation().filePath.value_or(""));
       md.set_version("1.0.0");
+      auto module = moduleIdentities[path];
+      std::vector<std::string> modules;
+      while (module) {
+        const auto& record = declarations.get(module);
+        if (record.name.starts_with("$")) break;
+        modules.push_back(
+            PortableDeclarationKey::fromDeclaration(module, declarations)
+                .encoding());
+        module = record.owner;
+      }
+      for (auto it = modules.rbegin(); it != modules.rend(); ++it)
+        md.add_module_declarations(*it);
     }
     return result[it->second];
   };
@@ -317,6 +343,7 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
           if (auto* module = dynamic_cast<const ModuleAST*>(stmt.get())) {
             auto nested = path.empty() ? module->getName()
                                        : path + "." + module->getName();
+            moduleIdentities[nested] = module->getDeclarationId();
             entry(nested, *module)
                 .set_visibility(module->isPublic() ? ast::PUBLIC
                                                    : ast::PRIVATE);
@@ -331,7 +358,7 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
             extractFunction(*function, temporary, serializer);
           } else if (auto* cls =
                          dynamic_cast<const ClassDefinitionAST*>(stmt.get())) {
-            extractClass(*cls, temporary, serializer);
+            extractClass(*cls, temporary, serializer, ctx.types().get());
           } else if (auto* iface = dynamic_cast<const InterfaceDefinitionAST*>(
                          stmt.get())) {
             extractInterface(*iface, temporary, serializer);
@@ -344,7 +371,7 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
             auto* global = temporary.mutable_globals(0);
             if (!global->has_type_annotation())
               *global->mutable_type_annotation() =
-                  exportType(variable->getResolvedType());
+                  exportType(variable->getResolvedType(), declarations);
             global->clear_value();
           } else if (stmt->getType() == ASTNodeType::USING) {
             *temporary.add_using_declarations() = serializer.serialize(*stmt);
@@ -359,6 +386,30 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
         }
       };
   walk(program, "", Visibility::Private);
+  if (!result.empty()) {
+    std::map<PortableDeclarationKey, DeclarationId> originals;
+    for (size_t i = 1; i <= declarations.size(); ++i) {
+      const auto id = DeclarationId(i);
+      const auto& record = declarations.get(id);
+      if (record.portableKey &&
+          record.portableKey->encoding().substr(17, 64) == bundleHash)
+        originals.emplace(*record.portableKey, id);
+    }
+    auto key = [&](DeclarationId id) {
+      return id ? PortableDeclarationKey::fromDeclaration(id, declarations)
+                      .encoding()
+                : std::string{};
+    };
+    for (const auto& [portable, id] : originals) {
+      const auto& record = declarations.get(id);
+      auto* out = result.front().add_declarations();
+      out->set_key(portable.encoding());
+      out->set_kind(static_cast<uint32_t>(record.kind));
+      out->set_name(record.name);
+      out->set_owner(key(record.owner));
+      out->set_module(key(record.module));
+    }
+  }
   return result;
 }
 

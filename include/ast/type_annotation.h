@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include "semantic_analysis/qualified_name.h"
+#include "semantic_analysis/portable_declaration_key.h"
 #include "support/position.h"
 
 // Type annotation structure for parsed type info
@@ -16,7 +16,7 @@
 // Array types: array<T, N> or array<T, M, N> for fixed-size arrays
 // Error union types: T, error (value or error)
 struct TypeAnnotation {
-  std::optional<sun::QualifiedName> qualifiedName;
+  std::optional<sun::PortableDeclarationKey> declarationKey;
   std::string baseName;  // "i32", "f64", "ptr", "fn", "lambda", "array", etc.
   std::unique_ptr<TypeAnnotation>
       elementType;  // For ptr/ref/array: element type
@@ -59,7 +59,7 @@ struct TypeAnnotation {
   TypeAnnotation() = default;
   TypeAnnotation(std::string name) : baseName(std::move(name)) {}
   TypeAnnotation(const TypeAnnotation& other)
-      : qualifiedName(other.qualifiedName),
+      : declarationKey(other.declarationKey),
         baseName(other.baseName),
         arrayDimensions(other.arrayDimensions),
         canError(other.canError),
@@ -84,7 +84,7 @@ struct TypeAnnotation {
   }
   TypeAnnotation& operator=(const TypeAnnotation& other) {
     if (this != &other) {
-      qualifiedName = other.qualifiedName;
+      declarationKey = other.declarationKey;
       baseName = other.baseName;
       arrayDimensions = other.arrayDimensions;
       canError = other.canError;
@@ -152,8 +152,8 @@ struct TypeAnnotation {
         if (!equalOptional(left[i], right[i])) return false;
       return true;
     };
-    return (qualifiedName || other.qualifiedName
-                ? qualifiedName == other.qualifiedName
+    return (declarationKey || other.declarationKey
+                ? declarationKey == other.declarationKey
                 : baseName == other.baseName) &&
            equalOptional(elementType, other.elementType) &&
            equalOptional(returnType, other.returnType) &&

@@ -17,6 +17,7 @@ inline sun::Visibility fromProto(ast::Visibility v) {
 
 // Configuration for AST deserialization
 struct DeserializerConfig {
+  bool import_declarations = false;
   // File given to positions that carry none (a .moon bundle stores the
   // module's source path once rather than on every position)
   std::string default_file_path;
@@ -51,6 +52,11 @@ class ASTDeserializer {
   std::vector<TypeParameter> deserializeTypeParameters(
       const Owner& owner) const;
 
+  // Retain validated portable identities until the declaration pass interns
+  // them.
+  void deserializeIdentity(const ast::DeclarationIdentity& proto,
+                           sun::DeclarationIdentity& identity) const;
+
   // Type annotation deserialization
   TypeAnnotation deserializeTypeAnnotation(
       const ast::TypeAnnotation& type) const;
@@ -75,6 +81,8 @@ class ASTDeserializer {
   template <typename FieldDecl, typename FieldProto>
   FieldDecl deserializeField(const FieldProto& proto) const {
     FieldDecl field;
+    if (proto.has_declaration_identity())
+      deserializeIdentity(proto.declaration_identity(), field.declaration);
     field.name = proto.name();
     field.type = deserializeTypeAnnotation(proto.type());
     if (proto.has_location()) {

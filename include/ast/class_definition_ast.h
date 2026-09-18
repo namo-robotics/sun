@@ -37,13 +37,18 @@ struct ClassMethodDecl {
 // Implemented interface with optional type arguments
 // e.g., IIterator<T> or IComparable<i32>
 struct ImplementedInterfaceAST {
-  /** Resolve a compiled interface independently of source aliases. */
-  std::string lookupName() const {
-    return qualifiedName ? qualifiedName->lookupName() : name;
+  /** Represent an implemented interface using ordinary type syntax. */
+  TypeAnnotation toAnnotation() const {
+    TypeAnnotation result(name);
+    result.declarationKey = declarationKey;
+    for (const auto& argument : typeArguments)
+      result.typeArguments.push_back(
+          std::make_unique<TypeAnnotation>(argument));
+    return result;
   }
-  std::string name;                           // Interface name: "IIterator"
-  std::vector<TypeAnnotation> typeArguments;  // Type args: [T] or [i32]
-  std::optional<sun::QualifiedName> qualifiedName;
+  std::string name;
+  std::vector<TypeAnnotation> typeArguments;
+  std::optional<sun::PortableDeclarationKey> declarationKey;
 };
 
 // Class definition: class Name<T, U> implements Interface1<T>, Interface2 {
@@ -182,16 +187,17 @@ class ClassDefinitionAST : public ExprAST {
   }
 
   /** Record a specialization supplied by the imported bundle. */
-  void addCompiledSpecialization(std::string name) {
-    compiledSpecializations_.insert(std::move(name));
+  void addCompiledSpecialization(std::string key) {
+    compiledSpecializations_.insert(
+        sun::PortableDeclarationKey::parse(key).encoding());
   }
   /** Return the specializations already compiled into the bundle. */
   const std::set<std::string>& getCompiledSpecializations() const {
     return compiledSpecializations_;
   }
   /** Report whether the bundle supplies this concrete class. */
-  bool hasCompiledSpecialization(const std::string& name) const {
-    return compiledSpecializations_.count(name) != 0;
+  bool hasCompiledSpecialization(const std::string& key) const {
+    return compiledSpecializations_.count(key) != 0;
   }
 
   // Specialization storage for generic classes

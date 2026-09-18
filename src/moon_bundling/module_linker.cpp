@@ -193,10 +193,6 @@ void ModuleLinker::declareAvailableFunctions() {
 
       std::string funcName = func.getName().str();
 
-      // Skip internal helper functions (start with underscore or llvm.)
-      if (funcName[0] == '_' && funcName.size() > 1 && funcName[1] == '_') {
-        continue;  // Skip __sun_* helper functions
-      }
 
       std::string declaredName = funcName;
 
@@ -221,7 +217,7 @@ void ModuleLinker::declareAvailableFunctions() {
         decl->addFnAttr("sun.cabi");
       }
 
-      // Map the aliased name to the module for linking
+      // Index the emitted symbol directly for lazy linking
       symbolToModule_[declaredName] = moduleKey;
     }
 
@@ -235,7 +231,6 @@ void ModuleLinker::declareAvailableFunctions() {
       if (!global.hasName() || global.getName().empty()) continue;
 
       std::string globalName = global.getName().str();
-      if (globalName[0] == '_') continue;  // internal helpers and literals
 
       if (!target_.getNamedGlobal(globalName)) {
         auto* declaration = new llvm::GlobalVariable(

@@ -106,12 +106,10 @@ class ClassGenerator {
   llvm::Value* codegen(const GenericCallAST& expr);
 
   // Generate a method body for an already-declared function
-  void generateMethodBody(const FunctionAST& methodFunc,
-                          const std::string& mangledName);
+  void generateMethodBody(const FunctionAST& methodFunc);
 
   // Declare a method function from a specialized AST (no body generated)
-  llvm::Function* declareMethodFromAST(const FunctionAST& specializedAST,
-                                       const std::string& mangledName);
+  llvm::Function* declareMethodFromAST(const FunctionAST& specializedAST);
 
   // ---------------------------------------------------------------
   // Interface dispatch
@@ -160,7 +158,7 @@ class ClassGenerator {
 
   // Class specializations from precompiled generics (library code).
   // These need codegen but shouldn't show in an IR dump.
-  std::set<std::string> librarySpecializations;
+  std::set<sun::DeclarationId> librarySpecializations;
 
   /** Owning and borrowed dispatch tables for the same concrete type pair. */
   struct InterfaceVtables {

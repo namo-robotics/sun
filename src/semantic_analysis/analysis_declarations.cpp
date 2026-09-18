@@ -9,6 +9,7 @@
 #include "semantic_analysis/field_initialization.h"
 #include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/semantic_analyzer.h"
+#include "semantic_analysis/symbol_names.h"
 #include "support/error.h"
 
 void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
@@ -186,7 +187,7 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
   // by mangled name inside the class scope
   for (const auto& methodDecl : classDef.getMethods()) {
     const PrototypeAST& proto = methodDecl.function->getProto();
-    std::string mangledName = classType->getMangledMethodName(proto.getName());
+    std::string mangledName = classType->getMethodScopeName(proto.getName());
     std::vector<sun::TypePtr> methodParamTypes;
     methodParamTypes.push_back(classType);  // this parameter
     for (const auto& pt : proto.getResolvedParamTypes()) {
@@ -195,8 +196,9 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
     sun::TypePtr returnType = proto.hasResolvedReturnType()
                                   ? proto.getResolvedReturnType()
                                   : sun::Types::Void();
-    ctx_.registerFunctionInCurrentScope(mangledName,
-                                        {returnType, methodParamTypes, {}});
+    FunctionInfo methodInfo{returnType, methodParamTypes, {}};
+    methodInfo.declarationId = proto.getDeclarationId();
+    ctx_.registerFunctionInCurrentScope(mangledName, methodInfo);
   }
 
   // PASS 2: Analyze all method bodies using their assigned names.
@@ -368,7 +370,8 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
         .visibility = field.visibility;
   }
 
-  // Add methods to the interface type
+  // Add methods to the interface type, rejecting duplicate signatures.
+  std::set<std::string> methodSignatures;
   for (const auto& methodDecl : interfaceDef.getMethods()) {
     // Get method signature info (pure computation)
     FunctionInfo methodInfo = getFunctionInfo(*methodDecl.function);
@@ -378,6 +381,13 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
     // Apply computed info to prototype
     applyFunctionInfoToProto(proto, methodInfo);
 
+    if (!methodSignatures
+             .insert(sun::names::getFunctionSignature(proto.getName(),
+                                                      methodInfo.paramTypes))
+             .second)
+      logAndThrowError(
+          "Interface method '" + proto.getName() + "' is already defined",
+          methodDecl.function->getLocation());
     // Add method to interface type (include generic type parameters)
     auto& method = interfaceType->addMethod(
         proto.getName(), methodInfo.returnType, methodInfo.paramTypes,
@@ -424,6 +434,20 @@ void SemanticAnalyzer::analyzeFunctionDefinition(FunctionAST& func) {
   // Get function signature info (includes qualified name with function
   // context)
   FunctionInfo funcInfo = getFunctionInfo(func);
+
+  if (funcInfo.isForwardDeclaration) {
+    const auto signature = sun::names::getFunctionSignature(
+        funcInfo.qualifiedName.baseName, funcInfo.paramTypes);
+    const auto definition = ctx_.scope()->functions.find(signature);
+    if (definition != ctx_.scope()->functions.end() &&
+        !definition->second.isForwardDeclaration) {
+      if (!definition->second.returnType->equals(*funcInfo.returnType) ||
+          definition->second.canThrow != funcInfo.canThrow)
+        logAndThrowError("Forward declaration does not match its definition",
+                         func.getLocation());
+      func.setTargetDeclarationId(definition->second.declarationId);
+    }
+  }
 
   // Apply computed info to prototype
   applyFunctionInfoToProto(proto, funcInfo);

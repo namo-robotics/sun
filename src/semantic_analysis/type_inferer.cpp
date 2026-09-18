@@ -19,19 +19,17 @@ using sun::rules::promoteBinaryOperands;
 using sun::rules::unifyTernaryTypes;
 
 namespace {
-// Resolve an exported module reference using only its defining qualified name.
+// Resolve an exported module through its portable declaration identity.
 sun::TypePtr inferModuleReference(const ExprAST& expr,
                                   SemanticContext& context) {
-  const auto& name = *expr.getModuleQualifiedName();
-  auto* module = context.lookupModuleScope(name.lookupName());
-  if (!module)
-    logAndThrowError("moon exact dependency: requires module '" +
-                         name.display() + "' from bundle " + name.bundleHash() +
-                         ". Explicitly import the required exact bundle.",
-                     expr.getLocation());
+  auto id =
+      context.types()->declarations.findPortable(*expr.getModuleDeclaration());
+  auto* module = context.lookupModuleScope(id);
   context.requireModuleAccessible(*module, expr.getLocation());
-  return sun::Types::Module(name.lookupName());
+  return sun::Types::Module(
+      static_cast<const ModuleScope&>(*module).qualifiedName.lookupName());
 }
+
 }  // namespace
 
 sun::TypePtr TypeInferer::inferCallType(const CallExprAST& callExpr) {
@@ -424,8 +422,7 @@ sun::TypePtr TypeInferer::inferType(const ExprAST& expr) {
     case ASTNodeType::INDEX:
       return inferIndexType(static_cast<const IndexAST&>(expr));
     case ASTNodeType::VARIABLE_REFERENCE:
-      if (expr.getModuleQualifiedName())
-        return inferModuleReference(expr, ctx_);
+      if (expr.getModuleDeclaration()) return inferModuleReference(expr, ctx_);
       return inferVariableReferenceType(
           static_cast<const VariableReferenceAST&>(expr));
     case ASTNodeType::VARIABLE_CREATION: {
@@ -658,8 +655,7 @@ sun::TypePtr TypeInferer::inferType(const ExprAST& expr) {
     }
 
     case ASTNodeType::QUALIFIED_NAME: {
-      if (expr.getModuleQualifiedName())
-        return inferModuleReference(expr, ctx_);
+      if (expr.getModuleDeclaration()) return inferModuleReference(expr, ctx_);
       const auto& qualName = static_cast<const QualifiedNameAST&>(expr);
       std::string fullName = qualName.getFullName();
 
@@ -1113,7 +1109,7 @@ sun::TypePtr TypeInferer::inferTypeParameterMemberType(
       static_cast<const sun::TypeParameterType*>(objectType.get());
   if (param->hasConstraint()) {
     const auto& constraint = param->getConstraint();
-    auto ifaceType = sun::isTypeTrait(constraint.resolvedName())
+    auto ifaceType = sun::isTypeTrait(constraint.name)
                          ? nullptr
                          : resolveConstraintInterface(constraint);
     if (ifaceType) {
@@ -1152,7 +1148,7 @@ sun::TypePtr TypeInferer::inferTypeParameterMemberType(
 }
 
 sun::TypePtr TypeInferer::inferType(const MemberAccessAST& memberAccess) {
-  if (memberAccess.getModuleQualifiedName())
+  if (memberAccess.getModuleDeclaration())
     return inferModuleReference(memberAccess, ctx_);
   const std::string& memberName = memberAccess.getMemberName();
 

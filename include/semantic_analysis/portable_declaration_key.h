@@ -8,6 +8,8 @@
 
 #include "semantic_analysis/declaration_id.h"
 
+class ExprAST;
+
 namespace sun {
 
 class PortableDeclarationKey;
@@ -61,10 +63,19 @@ class PortableDeclarationKey {
  public:
   /** Construct an unset key for declarations not yet assigned an artifact. */
   PortableDeclarationKey() = default;
+  /** Assign source ordinals at the artifact boundary, excluding imported trees.
+   */
+  static void assignOriginals(const ExprAST& root, DeclarationTable& table,
+                              const std::string& artifactHash);
   /** Derive a key from assigned source keys and concrete specialization inputs.
    */
   static PortableDeclarationKey fromDeclaration(DeclarationId id,
                                                 const DeclarationTable& table);
+  /** Validate a canonical original or derived declaration key from an artifact.
+   */
+  static PortableDeclarationKey parse(const std::string& encoded);
+  /** Validate and decode an original declaration received from an artifact. */
+  static PortableDeclarationKey parseOriginal(const std::string& encoded);
   /** Identify an original declaration in a content-addressed artifact. */
   static PortableDeclarationKey original(const std::string& bundleHash,
                                          uint64_t declarationNumber);

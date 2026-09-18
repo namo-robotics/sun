@@ -250,9 +250,9 @@ void BodyAnalyzer::analyzeMethodWithBindings(
         analyzer_.types().typeAnnotationToType(argType));
   }
   std::string methodSig = sun::names::getFunctionSignature(
-      classType->getMangledMethodName(proto.getName()), substitutedParamTypes);
+      classType->getMethodScopeName(proto.getName()), substitutedParamTypes);
   std::string mangledMethodName =
-      classType->getMangledMethodName(proto.getName());
+      classType->getMethodScopeName(proto.getName());
   // Resolve the return type under the active bindings so return-position
   // inference (e.g. `return Option.None;`) has the expected type
   sun::TypePtr methodReturnType;

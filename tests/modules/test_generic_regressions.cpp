@@ -188,14 +188,20 @@ manifest { libraries: ["lib.moon"] }
     ASSERT_NE(shape, nullptr);
     if (shape->isPrecompiled()) {
       ++compiled;
-      EXPECT_TRUE(box->hasCompiledSpecialization(shape->getMangledName()));
+      EXPECT_TRUE(box->hasCompiledSpecialization(
+          sun::PortableDeclarationKey::fromDeclaration(
+              instanceId, analyzed.typeRegistry->declarations)
+              .encoding()));
       for (const auto& method : shape->getMethods()) {
         EXPECT_EQ(method.function->hasBody(),
                   method.function->getProto().isTemplate());
       }
     } else {
       ++fresh;
-      EXPECT_FALSE(box->hasCompiledSpecialization(shape->getMangledName()));
+      EXPECT_FALSE(box->hasCompiledSpecialization(
+          sun::PortableDeclarationKey::fromDeclaration(
+              instanceId, analyzed.typeRegistry->declarations)
+              .encoding()));
       for (const auto& method : shape->getMethods())
         EXPECT_TRUE(method.function->hasBody());
     }

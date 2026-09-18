@@ -126,7 +126,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       break;
 
     case ASTNodeType::VARIABLE_REFERENCE: {
-      if (expr.getModuleQualifiedName()) {
+      if (expr.getModuleDeclaration()) {
         expr.setResolvedType(types_.inferType(expr));
         break;
       }
@@ -272,7 +272,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
     }
 
     case ASTNodeType::QUALIFIED_NAME:
-      if (expr.getModuleQualifiedName())
+      if (expr.getModuleDeclaration())
         expr.setResolvedType(types_.inferType(expr));
       else
         analyzeQualifiedName(static_cast<QualifiedNameAST&>(expr));
@@ -297,7 +297,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
     }
 
     case ASTNodeType::MEMBER_ACCESS:
-      if (expr.getModuleQualifiedName())
+      if (expr.getModuleDeclaration())
         expr.setResolvedType(types_.inferType(expr));
       else
         analyzeMemberAccess(static_cast<MemberAccessAST&>(expr), expectedType);
@@ -444,6 +444,8 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
   info.canThrow = proto.canThrow();
   info.isCVariadic = proto.isCVariadic();
   info.isCExtern = func.isCExtern();
+  info.isForwardDeclaration =
+      func.isExtern() && !func.isCExtern() && !func.isPrecompiled();
   info.visibility = func.getVisibility();
   return info;
 }
@@ -523,14 +525,14 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
       method.isConst = methodDecl.isConst;
       method.isUnsafe = methodDecl.function->getProto().isUnsafeMethod();
       std::string mangledName =
-          existingClass->getMangledMethodName(proto.getName());
+          existingClass->getMethodScopeName(proto.getName());
       std::vector<sun::TypePtr> methodParamTypes;
       methodParamTypes.push_back(existingClass);
       for (const auto& pt : methodInfo.paramTypes) {
         methodParamTypes.push_back(pt);
       }
-      ctx_.registerFunctionInCurrentScope(
-          mangledName, {methodInfo.returnType, methodParamTypes, {}});
+      methodInfo.paramTypes = std::move(methodParamTypes);
+      ctx_.registerFunctionInCurrentScope(mangledName, methodInfo);
     }
 
     // Analyze extension method bodies

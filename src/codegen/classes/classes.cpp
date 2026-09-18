@@ -43,14 +43,8 @@ Value* ClassGenerator::codegenPrecompiledClass(const ClassDefinitionAST& expr,
         for (const auto& [instanceId, specializedAST] :
              methodFunc.getSpecializations()) {
           if (!specializedAST) continue;
-          const auto specMangledName =
-              specializedAST->getProto().getMangledName();
-          if (specializedAST) {
-            declareMethodFromAST(*specializedAST, specMangledName);
-            generateMethodBody(*specializedAST, specMangledName);
-            // Don't add to userDefinedFunctions - these are library
-            // specializations
-          }
+          declareMethodFromAST(*specializedAST);
+          generateMethodBody(*specializedAST);
         }
       }
     }
@@ -64,8 +58,7 @@ Value* ClassGenerator::codegenPrecompiledClass(const ClassDefinitionAST& expr,
     // those.
     for (const auto& [instanceId, specializedAST] : expr.getSpecializations()) {
       if (!specializedAST) continue;
-      const auto mangledName = specializedAST->getMangledName();
-      if (!specializedAST || codegenedClasses.count(instanceId)) {
+      if (codegenedClasses.count(instanceId)) {
         continue;
       }
 
@@ -76,21 +69,7 @@ Value* ClassGenerator::codegenPrecompiledClass(const ClassDefinitionAST& expr,
         continue;
       }
 
-      // Check if this specialization already exists in the precompiled library.
-      // Pre-declared specializations (e.g., Vec_i32, Matrix_f64) have their
-      // methods declared from the bitcode metadata.
-      // New user-triggered specializations (e.g., Vec<u32>, Vec<MyClass>) won't
-      // have declarations and need codegen.
-      std::string initMethodName = mangledName + "_init";
-      if (isPrecompiledFunction(initMethodName)) {
-        // Pre-declared library specialization - skip, bitcode will be linked
-        continue;
-      }
-
-      // New specialization - needs codegen
-      // Mark as library specialization for IR filtering (still comes from
-      // library generic, just with user type args)
-      librarySpecializations.insert(mangledName);
+      librarySpecializations.insert(instanceId);
       codegen(*specializedAST);
     }
   }
@@ -111,7 +90,6 @@ void ClassGenerator::declareClassMethods(
   for (const auto& methodDecl : expr.getMethods()) {
     const FunctionAST& methodFunc = *methodDecl.function;
     const PrototypeAST& proto = methodFunc.getProto();
-    const std::string& methodName = proto.getName();
 
     // A generic method has no signature of its own — declare the
     // specializations semantic analysis created instead.
@@ -119,33 +97,16 @@ void ClassGenerator::declareClassMethods(
       for (const auto& [instanceId, specializedAST] :
            methodFunc.getSpecializations()) {
         if (!specializedAST) continue;
-        const auto specMangledName =
-            specializedAST->getProto().getMangledName();
-        if (specializedAST) {
-          declareMethodFromAST(*specializedAST, specMangledName);
-        }
+        declareMethodFromAST(*specializedAST);
       }
       continue;
     }
 
-    // Get resolved parameter types for mangled name (overload disambiguation)
-    std::vector<sun::TypePtr> paramTypes;
-    if (proto.hasResolvedParamTypes()) {
-      paramTypes = proto.getResolvedParamTypes();
-    }
-
-    // Create mangled method name with param types:
-    // ClassName_methodName$type1$type2
-    std::string mangledName =
-        classType->getMangledMethodName(methodName, paramTypes);
-
-    // Declare the non-generic method using the shared helper
-    declareMethodFromAST(methodFunc, mangledName);
+    declareMethodFromAST(methodFunc);
   }
   for (const auto& method : classType->getMethods()) {
     if (!method.defaultImplementation || method.isGeneric()) continue;
-    const auto symbol =
-        classType->getMangledMethodName(method.name, method.paramTypes);
+    const auto symbol = state_.declarationSymbol(method.declarationId);
     auto* function = module->getFunction(symbol);
     if (!function) {
       std::vector<llvm::Type*> parameters{
@@ -171,8 +132,6 @@ void ClassGenerator::declareBlockClassMethods(const ClassDefinitionAST& expr) {
   // Their callers need declarations before any library body is emitted.
   if (expr.isGeneric()) {
     for (const auto& [instanceId, specializedAST] : expr.getSpecializations()) {
-      if (!specializedAST) continue;
-      const auto mangledName = specializedAST->getMangledName();
       if (!specializedAST) continue;
       if (sun::generics::mentionsTypeParameter(
               typeRegistry->getClass(instanceId)))
@@ -249,8 +208,8 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
 
   // Track if this class is user-defined (not from precompiled library)
   // Check both the precompiled flag and if this is a library specialization
-  bool isUserDefined =
-      !expr.isPrecompiled() && !librarySpecializations.count(className);
+  bool isUserDefined = !expr.isPrecompiled() &&
+                       !librarySpecializations.count(expr.getDeclarationId());
 
   // Create the LLVM struct type for the class
   llvm::StructType* structType = classType->getStructType(ctx.getContext());
@@ -273,9 +232,9 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
            methodFunc.getSpecializations()) {
         if (!specializedAST) continue;
         const auto specMangledName =
-            specializedAST->getProto().getMangledName();
+            state_.declarationSymbol(specializedAST->getDeclarationId());
         if (specializedAST) {
-          generateMethodBody(*specializedAST, specMangledName);
+          generateMethodBody(*specializedAST);
           // Track user-defined method specializations for IR filtering
           if (isUserDefined) {
             functions().noteUserDefined(specMangledName);
@@ -285,17 +244,9 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
       continue;
     }
 
-    // Get resolved parameter types for mangled name (overload disambiguation)
-    std::vector<sun::TypePtr> paramTypes;
-    if (proto.hasResolvedParamTypes()) {
-      paramTypes = proto.getResolvedParamTypes();
-    }
-
-    // Create mangled method name with param types:
-    // ClassName_methodName$type1$type2
     std::string mangledName =
-        classType->getMangledMethodName(proto.getName(), paramTypes);
-    generateMethodBody(methodFunc, mangledName);
+        state_.declarationSymbol(proto.getDeclarationId());
+    generateMethodBody(methodFunc);
     // Track user-defined methods for IR filtering
     if (isUserDefined) {
       functions().noteUserDefined(mangledName);
@@ -353,14 +304,15 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
     for (const auto& [instanceId, specializedAST] :
          methodFunc.getSpecializations()) {
       if (!specializedAST) continue;
-      const auto mangledName = specializedAST->getProto().getMangledName();
+      const auto mangledName =
+          state_.declarationSymbol(specializedAST->getDeclarationId());
       if (!specializedAST) {
         continue;
       }
 
       // Declare if not already declared, then generate body
-      declareMethodFromAST(*specializedAST, mangledName);
-      generateMethodBody(*specializedAST, mangledName);
+      declareMethodFromAST(*specializedAST);
+      generateMethodBody(*specializedAST);
     }
   }
 
@@ -386,7 +338,9 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
 // -------------------------------------------------------------------
 
 Function* ClassGenerator::declareMethodFromAST(
-    const FunctionAST& specializedAST, const std::string& mangledName) {
+    const FunctionAST& specializedAST) {
+  const auto mangledName =
+      state_.declarationSymbol(specializedAST.getDeclarationId());
   const PrototypeAST& proto = specializedAST.getProto();
   if (Function* existing = module->getFunction(mangledName)) {
     functions().registerFunction(proto.getDeclarationId(), existing);
@@ -476,8 +430,9 @@ void ClassGenerator::emitMethodPrologueThis(Function* func) {
 // Generate a method body for an already-declared function
 // -------------------------------------------------------------------
 
-void ClassGenerator::generateMethodBody(const FunctionAST& methodFunc,
-                                        const std::string& mangledName) {
+void ClassGenerator::generateMethodBody(const FunctionAST& methodFunc) {
+  const auto mangledName =
+      state_.declarationSymbol(methodFunc.getDeclarationId());
   const PrototypeAST& proto = methodFunc.getProto();
 
   Function* func = functions().lookupFunctionById(proto.getDeclarationId());
@@ -636,10 +591,6 @@ Value* ClassGenerator::codegen(const MemberAccessAST& expr) {
       return llvm::ConstantPointerNull::get(
           llvm::PointerType::getUnqual(ctx.getContext()));
     }
-
-    // Semantic analysis took this from the member's own declaration, so it
-    // names the symbol that declaration emitted, library-hash scope included
-    const std::string qualifiedName = expr.getQualifiedName().mangled();
 
     // Check for global variable in this module
     GlobalVariable* gv =
@@ -1021,14 +972,11 @@ Value* ClassGenerator::codegen(const InterfaceDefinitionAST& expr) {
     // Generate default implementation
     const FunctionAST& methodFunc = *methodDecl.function;
     const PrototypeAST& proto = methodFunc.getProto();
-    const std::string& methodName = proto.getName();
 
-    // Create mangled method name for default implementation:
-    // InterfaceName_default_methodName
     std::string mangledName =
-        interfaceType->getMangledDefaultMethodName(methodName);
+        state_.declarationSymbol(proto.getDeclarationId());
 
-    Function* func = declareMethodFromAST(methodFunc, mangledName);
+    Function* func = declareMethodFromAST(methodFunc);
     if (!func->empty()) continue;
     llvm::Type* returnType = func->getReturnType();
 

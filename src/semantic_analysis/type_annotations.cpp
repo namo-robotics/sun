@@ -229,12 +229,32 @@ std::vector<sun::TypePtr> TypeInferer::resolveTypeArguments(
 // -------------------------------------------------------------------
 
 sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
-  if (annot.qualifiedName) {
-    ctx_.requireDeclaration(*annot.qualifiedName);
-    TypeAnnotation canonical(annot);
-    canonical.baseName = annot.qualifiedName->lookupName();
-    canonical.qualifiedName.reset();
-    return typeAnnotationToType(canonical);
+  if (annot.declarationKey) {
+    auto id = ctx_.requireDeclaration(*annot.declarationKey, "", std::nullopt,
+                                      annot.baseName);
+    std::vector<sun::TypePtr> arguments;
+    for (const auto& argument : annot.typeArguments)
+      arguments.push_back(typeAnnotationToType(*argument));
+    auto kind = ctx_.types()->declarations.get(id).kind;
+    if (!arguments.empty()) {
+      if (kind == sun::DeclarationKind::Class) {
+        auto* info = ctx_.lookupGenericClass(id);
+        if (info) return generics_.instantiateGenericClass(*info, arguments);
+      } else if (kind == sun::DeclarationKind::Interface) {
+        auto* info = ctx_.lookupGenericInterface(id);
+        if (info)
+          return generics_.instantiateGenericInterface(*info, arguments);
+      } else if (kind == sun::DeclarationKind::Enum) {
+        auto* info = ctx_.lookupGenericEnum(id);
+        if (info) return generics_.instantiateGenericEnum(*info, arguments);
+      }
+      logAndThrowError("Imported generic type has no registered template",
+                       annot.span);
+    }
+    if (kind == sun::DeclarationKind::Class) return ctx_.types()->getClass(id);
+    if (kind == sun::DeclarationKind::Interface)
+      return ctx_.types()->getInterface(id);
+    return ctx_.types()->getEnum(id);
   }
   // Raw pointer types: raw_ptr<T> non-owning pointer for C interop
   if (annot.isRawPointer()) {

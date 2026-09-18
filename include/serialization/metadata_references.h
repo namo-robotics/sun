@@ -5,43 +5,44 @@
 
 #include "ast.pb.h"
 #include "semantic_analysis/types.h"
-#include "serialization/qualified_name.h"
 
 namespace sun::serialization {
-/** Visit canonical names and identify requirements imposed by interface uses.
- */
-inline void visitQualifiedNames(
+/** Visit portable nominal references, retaining names only for diagnostics. */
+inline void visitDeclarationKeys(
     const google::protobuf::Message& message,
-    const std::function<void(const QualifiedName&, std::optional<Type::Kind>)>&
+    const std::function<void(const PortableDeclarationKey&,
+                             std::optional<Type::Kind>, const std::string&)>&
         visit) {
-  if (message.GetDescriptor() == ast::QualifiedName::descriptor()) {
-    visit(deserializeQualifiedName(
-              static_cast<const ast::QualifiedName&>(message)),
-          std::nullopt);
-    return;
-  }
-  const bool requiresInterface =
-      message.GetDescriptor() == ast::ImplementedInterface::descriptor() ||
-      message.GetDescriptor() == ast::TypeParameter::descriptor();
+  const auto* descriptor = message.GetDescriptor();
+  if (descriptor == ast::CompiledSpecialization::descriptor()) return;
   const auto* reflection = message.GetReflection();
+  if (const auto* field = descriptor->FindFieldByName("declaration_key")) {
+    if (reflection->HasField(message, field)) {
+      const bool interface =
+          descriptor == ast::ImplementedInterface::descriptor() ||
+          descriptor == ast::TypeParameter::descriptor();
+      const auto* name = descriptor->FindFieldByName(
+          descriptor == ast::TypeAnnotation::descriptor()  ? "base_name"
+          : descriptor == ast::TypeParameter::descriptor() ? "constraint"
+                                                           : "name");
+      visit(PortableDeclarationKey::parseOriginal(
+                reflection->GetString(message, field)),
+            interface ? std::optional<Type::Kind>(Type::Kind::Interface)
+                      : std::nullopt,
+            name ? reflection->GetString(message, name) : "");
+    }
+  }
   std::vector<const google::protobuf::FieldDescriptor*> fields;
   reflection->ListFields(message, &fields);
   for (const auto* field : fields) {
-    if (field->name() == "module_qualified_name") continue;
     if (field->cpp_type() != google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE)
       continue;
-    if (requiresInterface && field->name() == "qualified_name") {
-      visit(deserializeQualifiedName(static_cast<const ast::QualifiedName&>(
-                reflection->GetMessage(message, field))),
-            Type::Kind::Interface);
-      continue;
-    }
     if (field->is_repeated()) {
       for (int i = 0; i < reflection->FieldSize(message, field); ++i)
-        visitQualifiedNames(reflection->GetRepeatedMessage(message, field, i),
-                            visit);
+        visitDeclarationKeys(reflection->GetRepeatedMessage(message, field, i),
+                             visit);
     } else
-      visitQualifiedNames(reflection->GetMessage(message, field), visit);
+      visitDeclarationKeys(reflection->GetMessage(message, field), visit);
   }
 }
 }  // namespace sun::serialization

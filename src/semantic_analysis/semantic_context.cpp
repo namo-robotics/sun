@@ -101,6 +101,9 @@ void SemanticContext::enterModuleScope(const std::string& moduleName) {
     child = modScope;
   }
   currentScope_ = child.get();
+  if (isLibraryScope(moduleName))
+    static_cast<ModuleScope*>(currentScope_)->declarationId =
+        typeRegistry_->declarations.module(moduleName);
   rootScope_->canonicalModules[sun::QualifiedName(currentScope_->scopePath, "")
                                    .scopePathString()] = currentScope_;
 }
@@ -108,6 +111,7 @@ void SemanticContext::enterModuleScope(const std::string& moduleName) {
 void SemanticContext::declareModule(ModuleAST& module) {
   enterModuleScope(module.getName());
   auto* scope = static_cast<ModuleScope*>(currentScope_);
+  scope->declarationId = module.getDeclarationId();
   if (scope->visibilityDeclared &&
       scope->visibility != module.getVisibility()) {
     logSemanticError(
@@ -761,9 +765,18 @@ void SemanticContext::registerFunctionInCurrentScope(const std::string& name,
   // this is the parent function's scope - the scope hierarchy naturally
   // disambiguates between different generic instantiations.
   std::string sig = getFunctionSignature(name, info.paramTypes);
-  // Always overwrite: the declaration pre-pass registers with minimal info
-  // (no captures), and the normal pass overwrites with complete info.
-  // This also handles diamond import re-registration gracefully.
+  auto existing = currentScope_->functions.find(sig);
+  if (existing != currentScope_->functions.end() && info.isForwardDeclaration &&
+      !existing->second.isForwardDeclaration)
+    return;
+  if (existing != currentScope_->functions.end() && info.declarationId &&
+      existing->second.declarationId &&
+      existing->second.declarationId != info.declarationId &&
+      !info.isForwardDeclaration && !existing->second.isForwardDeclaration &&
+      !(info.isCExtern && existing->second.isCExtern))
+    logAndThrowError("Function '" + name + "' is already defined in this scope",
+                     currentLocation());
+  // Body checking replaces the collected signature with complete information.
   currentScope_->functions[sig] = info;
 }
 
@@ -1393,23 +1406,65 @@ void SemanticContext::requireModuleAccessible(
   }
 }
 
-void SemanticContext::requireDeclaration(
-    const sun::QualifiedName& name, const std::string& exporter,
-    std::optional<sun::Type::Kind> expectedKind) const {
-  const auto& index = rootScope_->canonicalDeclarations;
-  auto found = index.find(name);
-  if (found != index.end() && (!expectedKind || found->second == *expectedKind))
-    return;
+SemanticScopeBase* SemanticContext::lookupModuleScope(
+    sun::DeclarationId id) const {
+  if (!id)
+    logAndThrowError(
+        "Imported module identity is missing; import the required exact "
+        "bundle");
+  if (typeRegistry_->declarations.get(id).kind != sun::DeclarationKind::Module)
+    logAndThrowError(
+        "Imported module reference has the wrong declaration kind");
+  auto find = [&](auto&& self, SemanticScopeBase* scope) -> SemanticScopeBase* {
+    if (auto* module = dynamic_cast<ModuleScope*>(scope);
+        module && module->declarationId == id)
+      return module;
+    for (auto& [name, child] : scope->childModules)
+      if (auto* found = self(self, child.get())) return found;
+    for (auto& child : scope->children)
+      if (auto* found = self(self, child.get())) return found;
+    return nullptr;
+  };
+  auto* result = find(find, rootScope_.get());
+  if (!result)
+    logAndThrowError("Imported module declaration has no registered scope");
+  return result;
+}
+
+sun::DeclarationId SemanticContext::requireDeclaration(
+    const sun::PortableDeclarationKey& key, const std::string& exporter,
+    std::optional<sun::Type::Kind> expectedKind,
+    const std::string& displayName) const {
+  auto id = typeRegistry_->declarations.findPortable(key);
+  bool wrongKind = false;
+  if (id) {
+    auto kind = typeRegistry_->declarations.get(id).kind;
+    auto actual = kind == sun::DeclarationKind::Class ? sun::Type::Kind::Class
+                  : kind == sun::DeclarationKind::Interface
+                      ? sun::Type::Kind::Interface
+                  : kind == sun::DeclarationKind::Enum ? sun::Type::Kind::Enum
+                                                       : sun::Type::Kind::Void;
+    wrongKind = actual == sun::Type::Kind::Void ||
+                (expectedKind && actual != *expectedKind);
+    if (!wrongKind) return id;
+  }
   std::string message = "moon exact dependency: ";
   if (!exporter.empty()) message += "library '" + exporter + "' ";
-  message += "requires declaration '" + name.display() + "' from bundle " +
-             name.bundleHash();
-  if (found != index.end()) message += " (declaration has the wrong type kind)";
-  for (const auto& [candidate, kind] : index) {
-    if (candidate.display() == name.display() &&
-        candidate.bundleHash() != name.bundleHash()) {
-      message += "; conflicting bundle supplied: " + candidate.bundleHash();
-      break;
+  message += "requires declaration '" + displayName + "' from bundle " +
+             key.encoding().substr(17, 64);
+  if (wrongKind) message += " (declaration has the wrong type kind)";
+  if (!id) {
+    const auto& table = typeRegistry_->declarations;
+    for (uint64_t i = 1; i <= table.size(); ++i) {
+      const auto& candidate = table.get(sun::DeclarationId(i));
+      if (candidate.portableKey &&
+          (candidate.name == displayName ||
+           displayName.ends_with("." + candidate.name)) &&
+          candidate.portableKey->encoding().substr(17, 64) !=
+              key.encoding().substr(17, 64)) {
+        message += " (conflicting bundle supplied)";
+        break;
+      }
     }
   }
   logAndThrowError(message + ". Explicitly import the required exact bundle.",

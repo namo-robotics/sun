@@ -54,6 +54,7 @@ struct FunctionInfo {
   bool isCExtern = false;
   sun::Visibility visibility = sun::Visibility::Private;
   sun::DeclarationId declarationId;
+  bool isForwardDeclaration = false;
 };
 
 // Indexed function table: O(1) name-based overload lookup + O(1) exact sig
@@ -394,7 +395,6 @@ struct SemanticScopeBase
   /** Original module paths and nominal declarations, indexed on the root scope.
    */
   std::map<std::string, SemanticScopeBase*> canonicalModules;
-  std::map<sun::QualifiedName, sun::Type::Kind> canonicalDeclarations;
 
   // ===== Identification (for persistent scopes) =====
   std::string scopeName;  // Display name (module name, source file, etc.)
@@ -575,6 +575,7 @@ struct GlobalScope : SemanticScopeBase {
 // ModuleScope - Module/namespace scope
 // ===================================================================
 struct ModuleScope : SemanticScopeBase {
+  sun::DeclarationId declarationId;
   ScopeType getType() const override { return ScopeType::Module; }
   // Structured name: owner() is the parent module path
   sun::QualifiedName qualifiedName;

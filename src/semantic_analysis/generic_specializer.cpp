@@ -136,10 +136,6 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
   const bool abstractShape =
       std::any_of(typeArgs.begin(), typeArgs.end(), mentionsTypeParameter);
 
-  const bool compiledShape =
-      !abstractShape && genericClassInfo->AST->isPrecompiled() &&
-      genericClassInfo->AST->hasCompiledSpecialization(mangledName);
-
   sun::SpecializationKey key{
       genericClassInfo->AST->getDeclarationId(), {}, typeArgs, std::nullopt};
   if (auto existingId = ctx_.types()->findSpecialization(key)) {
@@ -148,6 +144,12 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
     return existing;
   }
   auto instanceId = ctx_.types()->specialize(key);
+  const bool compiledShape = !abstractShape &&
+                             genericClassInfo->AST->isPrecompiled() &&
+                             genericClassInfo->AST->hasCompiledSpecialization(
+                                 sun::PortableDeclarationKey::fromDeclaration(
+                                     instanceId, ctx_.types()->declarations)
+                                     .encoding());
   auto specializedClass = ctx_.types()->getSpecializedClass(
       instanceId, specializedQName, genericClassInfo->qualifiedName, typeArgs);
   ctx_.registerClass(specializedQName.baseName, specializedClass);
@@ -189,19 +191,8 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
   std::vector<ImplementedInterfaceAST> interfacesClone;
   for (const auto& ifaceRef :
        genericClassInfo->AST->getImplementedInterfaces()) {
-    std::shared_ptr<sun::InterfaceType> interfaceType;
-
-    if (!ifaceRef.typeArguments.empty()) {
-      // Generic interface with type arguments - substitute and instantiate
-      std::vector<sun::TypePtr> ifaceTypeArgs;
-      for (const auto& typeArg : ifaceRef.typeArguments) {
-        ifaceTypeArgs.push_back(sema_.types().typeAnnotationToType(typeArg));
-      }
-      interfaceType =
-          instantiateGenericInterface(ifaceRef.lookupName(), ifaceTypeArgs);
-    } else {
-      interfaceType = ctx_.lookupInterface(ifaceRef.lookupName());
-    }
+    auto interfaceType = std::dynamic_pointer_cast<sun::InterfaceType>(
+        sema_.types().typeAnnotationToType(ifaceRef.toAnnotation()));
 
     if (interfaceType) {
       specializedClass->addImplementedInterface(*interfaceType);
@@ -210,7 +201,7 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
     // Clone interface reference for specialized AST
     ImplementedInterfaceAST ifaceClone;
     ifaceClone.name = ifaceRef.name;
-    ifaceClone.qualifiedName = ifaceRef.qualifiedName;
+    ifaceClone.declarationKey = ifaceRef.declarationKey;
     for (const auto& ta : ifaceRef.typeArguments) {
       ifaceClone.typeArguments.push_back(ta);
     }
@@ -318,7 +309,7 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
     // Register the method as a function with mangled name (skip if type already
     // exists)
     std::string methodMangledName =
-        specializedClass->getMangledMethodName(proto.getName());
+        specializedClass->getMethodScopeName(proto.getName());
 
     // For methods, add 'this' as first parameter type
     std::vector<sun::TypePtr> methodParamTypes;
@@ -326,8 +317,9 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
     for (const auto& pt : paramTypes) {
       methodParamTypes.push_back(pt);
     }
-      ctx_.registerFunctionInCurrentScope(methodMangledName,
-                                          {returnType, methodParamTypes, {}});
+    FunctionInfo methodInfo{returnType, methodParamTypes, {}};
+    methodInfo.declarationId = proto.getDeclarationId();
+    ctx_.registerFunctionInCurrentScope(methodMangledName, methodInfo);
   }
 
   sun::DeclarationIdentity identity;

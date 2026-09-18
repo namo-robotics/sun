@@ -20,9 +20,18 @@ enum Visibility {
   PUBLIC = 1;
 }
 
+// Portable declarations are exported explicitly; ordinary AST clones omit them.
+message DeclarationIdentity {
+  bytes declaration = 1;
+  repeated bytes parameters = 2;
+  repeated bytes type_parameters = 3;
+  repeated bytes lifetime_parameters = 4;
+}
+
 message ASTNode {
+  DeclarationIdentity declaration_identity = 102;
   // Canonical module identity for expressions and retained using targets.
-  optional QualifiedName module_qualified_name = 101;
+  optional bytes module_declaration_key = 101;
   uint64 source_file_id = 100;
   Position location = 1;
   bool precompiled = 2;
@@ -197,6 +206,7 @@ message VariableReference {
 }
 
 message VariableCreation {
+  DeclarationIdentity declaration_identity = 102;
   uint64 source_file_id = 100;
   string name = 1;
   optional ASTNode value = 2;
@@ -289,6 +299,7 @@ message IfExpr {
 
 // A payload binding position in a destructuring pattern: Shape.Circle(r, _)
 message PatternBinding {
+  DeclarationIdentity declaration_identity = 102;
   string name = 1;  // empty when is_wildcard
   bool is_wildcard = 2;
   Position location = 3;
@@ -359,7 +370,7 @@ message FunctionArg {
 // Mirrors TypeParameter/TypeConstraint. User-defined constraints retain the
 // exact interface identity alongside their source spelling.
 message TypeParameter {
-  optional QualifiedName qualified_name = 3;
+  optional bytes declaration_key = 3;
   string name = 1;
   optional string constraint = 2;
   repeated TypeAnnotation constraint_arguments = 4;
@@ -367,6 +378,7 @@ message TypeParameter {
 
 // Function prototype (signature)
 message Prototype {
+  DeclarationIdentity declaration_identity = 102;
   string name = 1;
   // Superseded by type_params; still read so bundles built before
   // constraints existed keep loading.
@@ -468,6 +480,7 @@ message Manifest {
 }
 
 message ModuleDef {
+  DeclarationIdentity declaration_identity = 102;
   string name = 1;
   BlockExpr body = 2;
   Visibility visibility = 3;
@@ -492,6 +505,7 @@ message QualifiedNameExpr {
 
 // Class field declaration
 message ClassField {
+  DeclarationIdentity declaration_identity = 102;
   optional ASTNode initializer = 6;
   string name = 1;
   TypeAnnotation type = 2;
@@ -509,12 +523,18 @@ message ClassMethod {
 
 // Implemented interface with type arguments
 message ImplementedInterface {
-  optional QualifiedName qualified_name = 3;
+  optional bytes declaration_key = 3;
   string name = 1;
   repeated TypeAnnotation type_arguments = 2;
 }
 
+message CompiledSpecialization {
+  bytes declaration_key = 1;
+  repeated string method_symbols = 2;
+}
+
 message ClassDef {
+  DeclarationIdentity declaration_identity = 102;
   uint64 source_file_id = 100;
   string name = 1;
   repeated string type_parameters = 2 [deprecated = true];  // see type_params
@@ -529,11 +549,12 @@ message ClassDef {
   repeated TypeParameter type_params = 11;  // <T, U: _Numeric>
   repeated string lifetime_params = 12;     // class Bus<'a, 'b>
   // Concrete class shapes whose ordinary methods are present in the bundle.
-  repeated string compiled_specializations = 13;
+  repeated CompiledSpecialization compiled_specializations = 13;
 }
 
 // Interface field declaration
 message InterfaceField {
+  DeclarationIdentity declaration_identity = 102;
   string name = 1;
   TypeAnnotation type = 2;
   Position location = 3;
@@ -549,6 +570,7 @@ message InterfaceMethod {
 }
 
 message InterfaceDef {
+  DeclarationIdentity declaration_identity = 102;
   uint64 source_file_id = 100;
   string name = 1;
   repeated string type_parameters = 2 [deprecated = true];  // see type_params
@@ -563,6 +585,7 @@ message InterfaceDef {
 
 // Enum variant declaration
 message EnumVariant {
+  DeclarationIdentity declaration_identity = 102;
   string name = 1;
   int64 value = 2;
   Position location = 3;
@@ -572,6 +595,7 @@ message EnumVariant {
 }
 
 message EnumDef {
+  DeclarationIdentity declaration_identity = 102;
   uint64 source_file_id = 100;
   string name = 1;
   repeated EnumVariant variants = 2;
@@ -598,6 +622,7 @@ message MemberAccess {
 // =============================================================================
 
 message CatchClause {
+  DeclarationIdentity declaration_identity = 102;
   string binding_name = 1;
   optional TypeAnnotation binding_type = 2;
   BlockExpr body = 3;
