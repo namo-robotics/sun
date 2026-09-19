@@ -5,6 +5,7 @@
 
 #include <algorithm>
 
+/** Checks ownership and lifetimes so references cannot outlive their values. */
 namespace sun::borrow_checker {
 
 BorrowCheckResult BorrowState::addBorrow(const std::string& borrowedVar,

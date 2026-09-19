@@ -37,6 +37,7 @@ using sun::ast::VariableReferenceAST;
 using sun::support::Position;
 using sun::support::SunError;
 
+/** Checks ownership and lifetimes so references cannot outlive their values. */
 namespace sun::borrow_checker {
 
 BorrowChecker::BorrowChecker() {}

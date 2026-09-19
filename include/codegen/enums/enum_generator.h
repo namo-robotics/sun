@@ -1,8 +1,10 @@
 #pragma once
 
+/** Translates analyzed Sun programs into LLVM instructions. */
 namespace sun::codegen {
 class CodegenVisitor;
 }
+/** Provides the scope manager responsible for variable storage and cleanup. */
 namespace sun::codegen::scopes {
 class ScopeManager;
 }
@@ -10,6 +12,7 @@ class ScopeManager;
 #include "ast.h"
 #include "codegen/codegen_state.h"
 
+/** Generates enum representations and operations on enum values. */
 namespace sun::codegen::enums {
 using sun::semantic_analysis::EnumType;
 
@@ -24,7 +27,9 @@ class EnumGenerator {
         ctx(state.ctx),
         typeResolver(state.typeResolver) {}
 
+  /** Disallows copying so the owned state cannot be duplicated. */
   EnumGenerator(const EnumGenerator&) = delete;
+  /** Disallows assignment so ownership and object identity cannot be duplicated. */
   EnumGenerator& operator=(const EnumGenerator&) = delete;
 
   /** Prepares enum layouts, including generic specializations. */
@@ -47,7 +52,9 @@ class EnumGenerator {
   void emitDrop(EnumType& enumType, llvm::Value* storagePtr);
 
  private:
+  /** Returns the or create drop function stored by this object. */
   llvm::Function* getOrCreateDropFunction(EnumType& enumType);
+  /** Provides the scope manager responsible for variable storage and cleanup. */
   sun::codegen::scopes::ScopeManager& scopes();
 
   sun::codegen::CodegenState& state_;

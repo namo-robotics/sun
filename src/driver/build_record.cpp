@@ -13,8 +13,10 @@
 
 #include "moon_bundling/moon.h"
 
+/** Coordinates compilation, dependency loading, linking, and program execution. */
 namespace sun::driver {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
 constexpr const char* kRecordHeader = "sun-build-record 1";
@@ -24,6 +26,7 @@ constexpr const char* kElfSection = ".sun_build";
 constexpr const char* kMachOSection = "__TEXT,__sun_build";
 constexpr const char* kMachOSectionName = "__sun_build";
 
+/** Serializes a build record for embedding in a compiled artifact. */
 std::string renderRecord(const BuildRecord& record) {
   std::string text = kRecordHeader;
   text += "\nhash=" + record.inputHash;
@@ -33,6 +36,7 @@ std::string renderRecord(const BuildRecord& record) {
   return text;
 }
 
+/** Reads a build record from its serialized text representation. */
 std::optional<BuildRecord> parseRecord(const std::string& text) {
   std::istringstream lines(text);
   std::string line;
@@ -53,6 +57,7 @@ std::optional<BuildRecord> parseRecord(const std::string& text) {
 
 }  // namespace
 
+/** Stores build provenance in the generated LLVM module. */
 void embedBuildRecord(llvm::Module& module, const BuildRecord& record) {
   auto* data = llvm::ConstantDataArray::getString(
       module.getContext(), renderRecord(record), /*AddNull=*/false);
@@ -68,6 +73,7 @@ void embedBuildRecord(llvm::Module& module, const BuildRecord& record) {
   llvm::appendToUsed(module, {global});
 }
 
+/** Reads build provenance from a compiled artifact. */
 std::optional<BuildRecord> readBuildRecord(const std::string& path) {
   std::error_code ec;
   if (!std::filesystem::is_regular_file(path, ec)) return std::nullopt;
@@ -93,6 +99,7 @@ std::optional<BuildRecord> readBuildRecord(const std::string& path) {
   return std::nullopt;
 }
 
+/** Reads the recorded input digest from a Moon library. */
 std::optional<std::string> readMoonInputHash(const std::string& path) {
   std::error_code ec;
   if (!std::filesystem::is_regular_file(path, ec)) return std::nullopt;

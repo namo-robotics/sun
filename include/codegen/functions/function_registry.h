@@ -13,6 +13,7 @@
 #include "codegen/codegen_state.h"
 #include "semantic_analysis/types.h"
 
+/** Provides the registry of generated functions and their metadata. */
 namespace sun::codegen::functions {
 using sun::semantic_analysis::DeclarationId;
 
@@ -25,31 +26,41 @@ class FunctionRegistry {
   explicit FunctionRegistry(sun::codegen::CodegenState& state)
       : state_(state) {}
 
+  /** Disallows copying so the owned state cannot be duplicated. */
   FunctionRegistry(const FunctionRegistry&) = delete;
+  /** Disallows assignment so ownership and object identity cannot be duplicated. */
   FunctionRegistry& operator=(const FunctionRegistry&) = delete;
 
   // ---------------------------------------------------------------
   // Where functions came from
   // ---------------------------------------------------------------
 
-  // Snapshot the module's current declarations. Call after the precompiled
-  // bitcode has been declared but before codegen starts.
+  /**
+   * Snapshot the module's current declarations. Call after the precompiled
+   * bitcode has been declared but before codegen starts.
+   */
   void snapshotPrecompiled(llvm::Module& module) {
     for (auto& f : module) {
       if (!f.getName().empty()) precompiled_.insert(f.getName().str());
     }
   }
 
-  // True if the function was declared from precompiled bitcode rather than
-  // by codegen itself
+  /**
+   * True if the function was declared from precompiled bitcode rather than
+   * by codegen itself
+   */
   bool isPrecompiled(const std::string& name) const {
     return precompiled_.count(name) > 0;
   }
 
-  // Note a function as user-written, so an IR dump includes it
+  /**
+   * Note a function as user-written, so an IR dump includes it
+   */
   void noteUserDefined(const std::string& name) { userDefined_.insert(name); }
 
-  // The user-written function names, for filtering an IR dump
+  /**
+   * The user-written function names, for filtering an IR dump
+   */
   const std::set<std::string>& userDefined() const { return userDefined_; }
 
   // ---------------------------------------------------------------

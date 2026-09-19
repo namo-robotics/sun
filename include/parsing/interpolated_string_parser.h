@@ -15,6 +15,7 @@
 #include "ast.h"
 #include "support/position.h"
 
+/** Turns source text into syntax trees and provides source formatting. */
 namespace sun::parsing {
 using sun::ast::ExprAST;
 using sun::support::SourceFileId;
@@ -22,78 +23,105 @@ using sun::support::SourceFileId;
 // Forward declaration
 class Parser;
 
-// Parser for interpolated template strings.
-// parseToAst: `Hello ${name}!` -> InterpolatedStringAST (kept in parse tree)
-// desugar (called by LoweringPass):
-// {
-//   var interp_alloc_ = std.HeapAllocator();
-//   var interp_result_ = std.String(interp_alloc_, "");
-//   interp_result_.append_literal("Hello ");
-//   interp_result_.append(name);
-//   interp_result_.append_literal("!");
-//   interp_result_
-// }
+/**
+ * Parser for interpolated template strings.
+ * parseToAst: `Hello ${name}!` -> InterpolatedStringAST (kept in parse tree)
+ * desugar (called by LoweringPass):
+ * {
+ *   var interp_alloc_ = std.HeapAllocator();
+ *   var interp_result_ = std.String(interp_alloc_, "");
+ *   interp_result_.append_literal("Hello ");
+ *   interp_result_.append(name);
+ *   interp_result_.append_literal("!");
+ *   interp_result_
+ * }
+ */
 class InterpolatedStringParser {
  public:
-  // Parse a template string token into the lossless AST node.
-  // content: inner text without backticks (escapes unprocessed).
-  // start/end: the TEMPLATE_STRING token's span (backticks included).
-  // Sub-expression positions inside ${...} are rebased to absolute file
-  // positions (best-effort; exact for offsets).
+  /**
+   * Parse a template string token into the lossless AST node.
+   * content: inner text without backticks (escapes unprocessed).
+   * start/end: the TEMPLATE_STRING token's span (backticks included).
+   * Sub-expression positions inside ${...} are rebased to absolute file
+   * positions (best-effort; exact for offsets).
+   */
   static std::unique_ptr<sun::ast::InterpolatedStringAST> parseToAst(
       const std::string& content, const sun::support::Position& start,
       const sun::support::Position& end, const std::string& filePath,
       SourceFileId sourceFile);
 
-  // Desugar the node into the runtime block (consumes segment expressions).
-  // Synthetic nodes are stamped with the template's location.
+  /**
+   * Desugar the node into the runtime block (consumes segment expressions).
+   * Synthetic nodes are stamped with the template's location.
+   */
   static std::unique_ptr<sun::ast::BlockExprAST> desugar(
       sun::ast::InterpolatedStringAST& node);
 
  private:
-  // Split the template string into segments (alternating literals and
-  // expressions). start = template token start (for position rebasing).
+  /**
+   * Split the template string into segments (alternating literals and
+   * expressions). start = template token start (for position rebasing).
+   */
   static std::vector<sun::ast::InterpolatedStringAST::Segment> tokenize(
       const std::string& content, const sun::support::Position& start,
       const std::string& filePath, SourceFileId sourceFile);
 
-  // Process escape sequences in a literal segment
+  /**
+   * Process escape sequences in a literal segment
+   */
   static std::string processEscapes(const std::string& raw);
 
-  // Find the matching closing brace for an expression, accounting for nesting
+  /**
+   * Find the matching closing brace for an expression, accounting for nesting
+   */
   static size_t findMatchingBrace(const std::string& content, size_t start);
 
-  // Parse an expression string using a sub-parser
+  /**
+   * Parse an expression string using a sub-parser
+   */
   static std::unique_ptr<ExprAST> parseExpression(const std::string& exprText,
                                                   SourceFileId sourceFile);
 
-  // Rebase fragment-relative positions in a sub-expression tree to absolute
-  // file positions
+  /**
+   * Rebase fragment-relative positions in a sub-expression tree to absolute
+   * file positions
+   */
   static void rebasePositions(ExprAST& expr, int lineBase, int colBase,
                               int offsetBase, const std::string& filePath);
 
-  // Helper: create variable reference AST
+  /**
+   * Helper: create variable reference AST
+   */
   static std::unique_ptr<sun::ast::VariableReferenceAST> makeVarRef(
       const std::string& name, const sun::support::Position& loc);
 
-  // Helper: create string literal AST
+  /**
+   * Helper: create string literal AST
+   */
   static std::unique_ptr<sun::ast::NumberExprAST> makeNumberLiteral(
       int64_t value, const sun::support::Position& loc);
+  /** Creates a string literal node retaining its source position. */
   static std::unique_ptr<sun::ast::StringLiteralAST> makeStringLiteral(
       const std::string& value, const sun::support::Position& loc);
 
-  // Helper: create member access AST (obj.member)
+  /**
+   * Helper: create member access AST (obj.member)
+   */
   static std::unique_ptr<sun::ast::MemberAccessAST> makeMemberAccess(
       std::unique_ptr<ExprAST> object, const std::string& member,
       const sun::support::Position& loc);
 
-  // Helper: create call expression AST
+  /**
+   * Helper: create call expression AST
+   */
   static std::unique_ptr<sun::ast::CallExprAST> makeCall(
       std::unique_ptr<ExprAST> callee,
       std::vector<std::unique_ptr<ExprAST>> args,
       const sun::support::Position& loc);
 
-  // Helper: create variable creation AST
+  /**
+   * Helper: create variable creation AST
+   */
   static std::unique_ptr<sun::ast::VariableCreationAST> makeVarCreate(
       const std::string& name, std::unique_ptr<ExprAST> value,
       const sun::support::Position& loc);

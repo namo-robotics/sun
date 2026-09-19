@@ -2,8 +2,10 @@
 
 #include "support/error.h"
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
 /** Read the declaring module from semantic ownership, including imported items.
@@ -64,6 +66,7 @@ bool isAccessible(DeclarationId from, const ItemRef& item,
   return false;
 }
 
+/** Reports why the current scope cannot access the supplied declaration. */
 void denyAccess(const ItemRef& item, const sun::support::Position& loc,
                 const DeclarationTable& table) {
   sun::support::logSemanticError(denialMessage(item, table), loc);
@@ -83,12 +86,16 @@ void requireAccessible(DeclarationId from, const ItemRef& item,
 
 #include "semantic_analysis/item_refs.h"
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// Display name without library-hash prefixes ("$hash$.std.Vec<i32>" ->
-// "std.Vec<i32>")
+/**
+ * Display name without library-hash prefixes ("$hash$.std.Vec<i32>" ->
+ * "std.Vec<i32>")
+ */
 std::string cleanTypeName(std::string name) {
   while (!name.empty() && name.front() == '$') {
     size_t close = name.find('$', 1);
@@ -102,15 +109,19 @@ std::string cleanTypeName(std::string name) {
 
 }  // namespace
 
-// Constructors and destructors are always public: they are declared without
-// a visibility keyword, and scope exit must be able to run deinit anywhere.
+/**
+ * Constructors and destructors are always public: they are declared without
+ * a visibility keyword, and scope exit must be able to run deinit anywhere.
+ */
 Visibility methodVisibility(const sun::ast::FunctionAST& method) {
   const std::string& name = method.getProto().getName();
   if (name == "init" || name == "deinit") return Visibility::Public;
   return method.getVisibility();
 }
 
-// Members are owned by their type's module
+/**
+ * Members are owned by their type's module
+ */
 ItemRef fieldRef(const sun::semantic_analysis::ClassType& cls,
                  const sun::semantic_analysis::ClassField& f) {
   return {"field", f.name,

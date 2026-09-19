@@ -22,6 +22,7 @@
 using sun::driver::Driver;
 using sun::driver::initTestEnvironment;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 constexpr const char* kSimpleProgram = R"(
@@ -60,6 +61,7 @@ function main() i32 {
 }
 )";
 
+/** Compiles fixture source with source-level debug metadata enabled. */
 std::unique_ptr<Driver> compileWithDebug(const std::string& source,
                                          const std::string& triple = "") {
   initTestEnvironment();
@@ -69,6 +71,7 @@ std::unique_ptr<Driver> compileWithDebug(const std::string& source,
   return driver;
 }
 
+/** Returns the LLVM module text used by debug metadata assertions. */
 std::string printModule(llvm::Module& module) {
   std::string text;
   llvm::raw_string_ostream os(text);
@@ -76,10 +79,12 @@ std::string printModule(llvm::Module& module) {
   return text;
 }
 
+/** Reports whether the named external validation tool is available. */
 bool haveTool(const std::string& tool) {
   return std::system(("command -v " + tool + " >/dev/null 2>&1").c_str()) == 0;
 }
 
+/** Finds an installed validation tool under its supported executable names. */
 std::string findTool(const std::vector<std::string>& candidates) {
   for (const auto& tool : candidates) {
     if (haveTool(tool)) return tool;
@@ -87,6 +92,7 @@ std::string findTool(const std::vector<std::string>& candidates) {
   return "";
 }
 
+/** Reads a fixture file into a string for comparison. */
 std::string readFile(const std::string& path) {
   std::ifstream in(path);
   std::stringstream ss;
@@ -94,8 +100,10 @@ std::string readFile(const std::string& path) {
   return ss.str();
 }
 
-// Emit an object file and run llvm-dwarfdump --verify on it; returns the
-// verifier's exit code, or -1 when llvm-dwarfdump is unavailable.
+/**
+ * Emit an object file and run llvm-dwarfdump --verify on it; returns the
+ * verifier's exit code, or -1 when llvm-dwarfdump is unavailable.
+ */
 int dwarfdumpVerify(llvm::Module& module, const std::string& objPath) {
   std::string tool = findTool({"llvm-dwarfdump-20", "llvm-dwarfdump"});
   if (tool.empty()) return -1;
@@ -275,6 +283,7 @@ TEST(Tooling_Backend_DebugInfo, object_file_dwarf_verifies) {
   std::string objPath = ::testing::TempDir() + "sun_debug_info_test.o";
   int rc = dwarfdumpVerify(driver->getModule(), objPath);
   if (rc < 0) GTEST_SKIP() << "llvm-dwarfdump not installed";
+  /** Builds a small executable used to inspect linked debug information. */
   EXPECT_EQ(rc, 0);
 }
 
@@ -290,6 +299,7 @@ TEST(Tooling_Backend_DebugInfo, cross_target_object_dwarf_verifies) {
 // End-to-end: gdb / lldb against a linked executable
 // ============================================================================
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 // Link kSimpleProgram with -g; returns "" (and records a skip reason) when the

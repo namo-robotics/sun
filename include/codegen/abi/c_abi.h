@@ -25,8 +25,10 @@
 #include <cstdint>
 #include <vector>
 
+/** Adapts Sun values and calls to the target C calling convention. */
 namespace sun::codegen::abi {
 
+/** Describes how an argument crosses the target C calling convention. */
 enum class ArgKind {
   // Passed unchanged: scalars, pointers, and anything already ABI-correct.
   Direct,
@@ -39,21 +41,26 @@ enum class ArgKind {
   Indirect,
 };
 
-// How an integer narrower than 32 bits must be widened at the boundary.
-// Darwin arm64 requires the caller to extend such arguments (and the callee
-// such returns), spelled as the signext/zeroext attributes; ELF leaves the
-// upper bits unspecified and needs neither.
+/**
+ * How an integer narrower than 32 bits must be widened at the boundary.
+ * Darwin arm64 requires the caller to extend such arguments (and the callee
+ * such returns), spelled as the signext/zeroext attributes; ELF leaves the
+ * upper bits unspecified and needs neither.
+ */
 enum class Extend : uint8_t { None, Zero, Sign };
 
-// Which values in a signature are signed integers, for targets whose rules
-// need to pick between sign- and zero-extension. Parallel to the parameter
-// list. Callers that cannot answer pass nothing and get no extension, which
-// matches every target that ignores signedness.
+/**
+ * Which values in a signature are signed integers, for targets whose rules
+ * need to pick between sign- and zero-extension. Parallel to the parameter
+ * list. Callers that cannot answer pass nothing and get no extension, which
+ * matches every target that ignores signedness.
+ */
 struct SignednessInfo {
   bool retSigned = false;
   llvm::SmallVector<bool, 8> paramSigned;
 };
 
+/** The LLVM representation and passing rules for one C argument. */
 struct ArgLowering {
   ArgKind kind = ArgKind::Direct;
   // Coerced: the register piece types (empty for a zero-sized aggregate,
@@ -77,22 +84,30 @@ struct ArgLowering {
   // emitted as signext/zeroext on the declaration and every call site.
   Extend extend = Extend::None;
 
+  /** Reports whether the calling convention passes the value unchanged. */
   bool isDirect() const { return kind == ArgKind::Direct; }
+  /** Reports whether the calling convention changes the value representation. */
   bool isCoerced() const { return kind == ArgKind::Coerced; }
+  /** Reports whether the calling convention passes an address to the value. */
   bool isIndirect() const { return kind == ArgKind::Indirect; }
 };
 
+/** The lowered result and parameter representations for a C function. */
 struct SignatureLowering {
   ArgLowering ret;
   std::vector<ArgLowering> params;
 
-  // True when the return value travels through a caller-allocated buffer
-  // passed as a prepended pointer argument.
+  /**
+   * True when the return value travels through a caller-allocated buffer
+   * passed as a prepended pointer argument.
+   */
   bool usesSret() const { return ret.isIndirect(); }
 
-  // True when nothing needed rewriting, so the naive signature is already
-  // correct and callers can take their existing fast path. A required
-  // extension counts as rewriting: the call site must carry the attribute.
+  /**
+   * True when nothing needed rewriting, so the naive signature is already
+   * correct and callers can take their existing fast path. A required
+   * extension counts as rewriting: the call site must carry the attribute.
+   */
   bool isTrivial() const {
     if (!ret.isDirect() || ret.extend != Extend::None) return false;
     for (const auto& p : params)

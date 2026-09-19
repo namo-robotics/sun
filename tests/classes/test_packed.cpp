@@ -475,6 +475,7 @@ TEST(Classes_Packed, rejects_partial_combined_with_packed) {
 // Emitted IR
 // ============================================================================
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 // Compile `source` in debug mode and return the generated LLVM IR.
 std::string irFor(const std::string& source) {

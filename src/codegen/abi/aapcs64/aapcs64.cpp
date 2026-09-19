@@ -7,18 +7,23 @@ using sun::codegen::abi::ArgKind;
 using sun::codegen::abi::ArgLowering;
 using sun::codegen::abi::Extend;
 
+/** Lowers C calls and values using the AArch64 calling convention. */
 namespace sun::codegen::abi::aapcs64 {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
+/** Reports whether an LLVM type groups multiple values in an array or structure. */
 bool isAggregate(llvm::Type* type) {
   return type && (type->isStructTy() || type->isArrayTy());
 }
 
-// Walk the leaves of an aggregate collecting HFA evidence: every leaf must
-// be the same floating-point type. Sun's only FP leaves are float and double
-// (no fp16, no vectors, no long double). Returns false as soon as the type
-// cannot be an HFA; `count` may exceed 4, which the caller rejects.
+/**
+ * Walk the leaves of an aggregate collecting HFA evidence: every leaf must
+ * be the same floating-point type. Sun's only FP leaves are float and double
+ * (no fp16, no vectors, no long double). Returns false as soon as the type
+ * cannot be an HFA; `count` may exceed 4, which the caller rejects.
+ */
 bool collectHFALeaves(llvm::Type* type, llvm::Type*& base, unsigned& count) {
   if (auto* structTy = llvm::dyn_cast<llvm::StructType>(type)) {
     for (unsigned i = 0; i < structTy->getNumElements(); ++i) {
@@ -45,9 +50,11 @@ bool collectHFALeaves(llvm::Type* type, llvm::Type*& base, unsigned& count) {
   return true;
 }
 
-// A Homogeneous Floating-point Aggregate: 1-4 members, all the same FP type
-// after flattening nested structs and arrays. HFAs travel in FP registers
-// regardless of total size (four doubles is 32 bytes and still not memory).
+/**
+ * A Homogeneous Floating-point Aggregate: 1-4 members, all the same FP type
+ * after flattening nested structs and arrays. HFAs travel in FP registers
+ * regardless of total size (four doubles is 32 bytes and still not memory).
+ */
 bool isHFA(llvm::Type* type, llvm::Type*& base, unsigned& count) {
   base = nullptr;
   count = 0;
@@ -55,9 +62,11 @@ bool isHFA(llvm::Type* type, llvm::Type*& base, unsigned& count) {
   return count >= 1 && count <= 4;
 }
 
-// The extension Darwin requires on an integer narrower than 32 bits: the
-// caller widens arguments and the callee widens returns, so the other side
-// may rely on the upper bits. ELF specifies no such contract and gets None.
+/**
+ * The extension Darwin requires on an integer narrower than 32 bits: the
+ * caller widens arguments and the callee widens returns, so the other side
+ * may rely on the upper bits. ELF specifies no such contract and gets None.
+ */
 Extend extendFor(llvm::Type* type, Variant variant, bool isSigned) {
   if (variant != Variant::Darwin) return Extend::None;
   if (!type || !type->isIntegerTy()) return Extend::None;
@@ -65,6 +74,7 @@ Extend extendFor(llvm::Type* type, Variant variant, bool isSigned) {
   return isSigned ? Extend::Sign : Extend::Zero;
 }
 
+/** Chooses the target calling-convention representation of an aggregate value. */
 ArgLowering lowerAggregate(llvm::Type* type, const llvm::DataLayout& dl,
                            bool isReturn, Variant variant) {
   ArgLowering result;

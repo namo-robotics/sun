@@ -9,29 +9,38 @@
 #include "ast/expr_ast.h"
 #include "parsing/escapes.h"
 
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 
-// A character literal ('a', type char) or a byte literal (b'a', type u8).
-//
-// Both are their own node rather than a flag on NumberExprAST: an integer
-// literal takes its type from context, and these two do not. A char is always
-// a char and b'a' is always a u8, so they must be immune to the literal
-// coercion that keys off ASTNodeType::NUMBER.
+/**
+ * A character literal ('a', type char) or a byte literal (b'a', type u8).
+ *
+ * Both are their own node rather than a flag on NumberExprAST: an integer
+ * literal takes its type from context, and these two do not. A char is always
+ * a char and b'a' is always a u8, so they must be immune to the literal
+ * coercion that keys off ASTNodeType::NUMBER.
+ */
 class CharLiteralAST : public ExprAST {
   uint32_t value_;  // Unicode scalar value, or the byte for a byte literal
   bool isByte_;
 
  public:
+  /** Creates this syntax node from its operands and declaration information. */
   CharLiteralAST(uint32_t value, bool isByte)
       : value_(value), isByte_(isByte) {}
 
+  /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::CHAR_LITERAL; }
 
+  /** Returns the value represented by this object. */
   uint32_t getValue() const { return value_; }
+  /** Reports whether this syntax node represents byte. */
   bool isByte() const { return isByte_; }
 
-  // A readable spelling for diagnostics and the AST dump. The formatter does
-  // not use this — it reprints literals verbatim from the source.
+  /**
+   * A readable spelling for diagnostics and the AST dump. The formatter does
+   * not use this — it reprints literals verbatim from the source.
+   */
   std::string toString() const override {
     std::string out = isByte_ ? "b'" : "'";
     switch (value_) {
@@ -71,6 +80,7 @@ class CharLiteralAST : public ExprAST {
     return out + "'";
   }
 
+  /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override {
     return std::string(isByte_ ? "Byte\n" : "Char\n") + toString();
   }

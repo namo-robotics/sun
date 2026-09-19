@@ -7,6 +7,7 @@
 
 #include "parsing/parser.h"
 
+/** Turns source text into syntax trees and provides source formatting. */
 namespace sun::parsing {
 
 // Parse source and reprint it in the canonical style (2-space indent,

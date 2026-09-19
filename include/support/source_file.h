@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cstdint>
 
+/** Provides shared diagnostics, source tracking, and compiler utilities. */
 namespace sun::support {
 
 /** Identifies a source unit independently of its diagnostic path. Zero is

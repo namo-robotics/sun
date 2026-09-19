@@ -2,14 +2,17 @@
 
 #pragma once
 
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 class BlockExprAST;
 }
 
 #include <string>
 
+/** Turns source text into syntax trees and provides source formatting. */
 namespace sun::parsing {}
 
+/** Turns source text into syntax trees and provides source formatting. */
 namespace sun::parsing {
 
 // The comment block written directly above a line (1-based): consecutive

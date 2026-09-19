@@ -1,5 +1,7 @@
 // module_b.sun - Second file extending the same module
+/** Groups declarations used by this compiler regression test. */
 public module math {
+  /** Returns the product of two numbers for module-resolution tests. */
   public function multiply(a: i32, b: i32) i32 {
     return a * b;
   }

@@ -30,6 +30,7 @@
 
 #pragma once
 
+/** Provides shared diagnostics, source tracking, and compiler utilities. */
 namespace sun::support {
 struct Position;
 }
@@ -55,6 +56,7 @@ struct Position;
 #include "semantic_analysis/type_inferer.h"
 
 // Forward declarations
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 using sun::ast::ClassDefinitionAST;
 using sun::ast::ExprAST;
@@ -67,7 +69,9 @@ using sun::ast::PrototypeAST;
 /** Resolves names and types and checks program semantics. */
 namespace sun::semantic_analysis {
 
-// Alias for use in this header and semantic analyzer implementations
+/**
+ * Alias for use in this header and semantic analyzer implementations
+ */
 using QualifiedName = sun::semantic_analysis::QualifiedName;
 
 /**
@@ -106,6 +110,7 @@ class SemanticAnalyzer {
 
   /** Keep pass and helper references tied to this session. */
   SemanticAnalyzer(const SemanticAnalyzer &) = delete;
+  /** Disallows assignment so ownership and object identity cannot be duplicated. */
   SemanticAnalyzer &operator=(const SemanticAnalyzer &) = delete;
 
   /** Scopes, symbol tables and the type registry of this analysis run. */
@@ -185,50 +190,162 @@ class SemanticAnalyzer {
   void checkSignatureLifetimes(const PrototypeAST &proto,
                                const sun::support::Position &location);
 
-  // Declarations (analysis_declarations.cpp)
+  /**
+   * Declarations (analysis_declarations.cpp)
+   */
   void analyzeClassDefinition(ClassDefinitionAST &classDef);
+  /**
+   * Resolves declarations and checks types in this interface definition, recording the
+   * results on its syntax nodes.
+   */
   void analyzeInterfaceDefinition(
       sun::ast::InterfaceDefinitionAST &interfaceDef);
+  /**
+   * Resolves declarations and checks types in this function definition, recording the
+   * results on its syntax nodes.
+   */
   void analyzeFunctionDefinition(FunctionAST &func);
+  /**
+   * Resolves declarations and checks types in this lambda expression, recording the
+   * results on its syntax nodes.
+   */
   void analyzeLambdaExpr(LambdaAST &lambda);
+  /**
+   * Resolves declarations and checks types in this module definition, recording the
+   * results on its syntax nodes.
+   */
   void analyzeModuleDefinition(sun::ast::ModuleAST &nsDecl);
+  /**
+   * Resolves declarations and checks types in this moon scope, recording the results on
+   * its syntax nodes.
+   */
   void analyzeMoonScope(ExprAST &expr);
+  /**
+   * Resolves declarations and checks types in this declare type, recording the results
+   * on its syntax nodes.
+   */
   void analyzeDeclareType(sun::ast::DeclareTypeAST &declareExpr);
 
-  // Control flow (analysis_control_flow.cpp)
+  /**
+   * Control flow (analysis_control_flow.cpp)
+   */
   void analyzeIfExpr(sun::ast::IfExprAST &ifExpr);
+  /**
+   * Resolves declarations and checks types in this match expression, recording the
+   * results on its syntax nodes.
+   */
   void analyzeMatchExpr(sun::ast::MatchExprAST &matchExpr,
                         sun::semantic_analysis::TypePtr expectedType);
+  /**
+   * Resolves declarations and checks types in this ternary expression, recording the
+   * results on its syntax nodes.
+   */
   void analyzeTernaryExpr(sun::ast::TernaryExprAST &ternary,
                           sun::semantic_analysis::TypePtr expectedType);
+  /**
+   * Resolves declarations and checks types in this for loop, recording the results on
+   * its syntax nodes.
+   */
   void analyzeForLoop(sun::ast::ForExprAST &forExpr);
+  /**
+   * Resolves declarations and checks types in this for in loop, recording the results on
+   * its syntax nodes.
+   */
   void analyzeForInLoop(sun::ast::ForInExprAST &forInExpr);
+  /**
+   * Resolves declarations and checks types in this try catch, recording the results on
+   * its syntax nodes.
+   */
   void analyzeTryCatch(sun::ast::TryCatchExprAST &tryCatchExpr);
+  /**
+   * Resolves declarations and checks types in this throw expression, recording the
+   * results on its syntax nodes.
+   */
   void analyzeThrowExpr(sun::ast::ThrowExprAST &throwExpr);
+  /**
+   * Resolves declarations and checks types in this unsafe block, recording the results
+   * on its syntax nodes.
+   */
   void analyzeUnsafeBlock(sun::ast::UnsafeBlockAST &unsafeBlock);
+  /**
+   * Resolves declarations and checks types in this return expression, recording the
+   * results on its syntax nodes.
+   */
   void analyzeReturnExpr(sun::ast::ReturnExprAST &returnExpr);
 
-  // Bindings and assignments (analysis_statements.cpp)
+  /**
+   * Bindings and assignments (analysis_statements.cpp)
+   */
   void analyzeVariableCreation(sun::ast::VariableCreationAST &varCreate);
+  /**
+   * Resolves declarations and checks types in this variable assignment, recording the
+   * results on its syntax nodes.
+   */
   void analyzeVariableAssignment(sun::ast::VariableAssignmentAST &varAssign);
+  /**
+   * Resolves declarations and checks types in this compound assignment, recording the
+   * results on its syntax nodes.
+   */
   void analyzeCompoundAssignment(sun::ast::CompoundAssignmentAST &compound);
+  /**
+   * Resolves declarations and checks types in this member assignment, recording the
+   * results on its syntax nodes.
+   */
   void analyzeMemberAssignment(sun::ast::MemberAssignmentAST &memberAssign);
+  /**
+   * Resolves declarations and checks types in this indexed assignment, recording the
+   * results on its syntax nodes.
+   */
   void analyzeIndexedAssignment(sun::ast::IndexedAssignmentAST &assignment);
+  /**
+   * Resolves declarations and checks types in this reference creation, recording the
+   * results on its syntax nodes.
+   */
   void analyzeReferenceCreation(sun::ast::ReferenceCreationAST &refCreate);
 
-  // Value expressions (analysis_expressions.cpp)
+  /**
+   * Value expressions (analysis_expressions.cpp)
+   */
   void analyzeNumberLiteral(ExprAST &expr,
                             sun::semantic_analysis::TypePtr expectedType);
+  /**
+   * Resolves declarations and checks types in this array literal, recording the results
+   * on its syntax nodes.
+   */
   void analyzeArrayLiteral(
       sun::ast::ArrayLiteralAST &arrLit,
       sun::semantic_analysis::TypePtr expectedType = nullptr);
+  /**
+   * Resolves declarations and checks types in this index expression, recording the
+   * results on its syntax nodes.
+   */
   void analyzeIndexExpr(sun::ast::IndexAST &arrIdx);
+  /**
+   * Resolves declarations and checks types in this slice expression, recording the
+   * results on its syntax nodes.
+   */
   void analyzeSliceExpr(ExprAST &expr);
+  /**
+   * Resolves declarations and checks types in this binary expression, recording the
+   * results on its syntax nodes.
+   */
   void analyzeBinaryExpr(sun::ast::BinaryExprAST &binExpr,
                          sun::semantic_analysis::TypePtr expectedType);
+  /**
+   * Resolves declarations and checks types in this unary expression, recording the
+   * results on its syntax nodes.
+   */
   void analyzeUnaryExpr(sun::ast::UnaryExprAST &unaryExpr);
+  /**
+   * Resolves declarations and checks types in this member access, recording the results
+   * on its syntax nodes.
+   */
   void analyzeMemberAccess(sun::ast::MemberAccessAST &memberAccess,
                            sun::semantic_analysis::TypePtr expectedType);
+  /**
+   * Resolves declarations and checks types in this qualified name, recording the results
+   * on its syntax nodes.
+   */
   void analyzeQualifiedName(sun::ast::QualifiedNameAST &qualName);
 
   /**

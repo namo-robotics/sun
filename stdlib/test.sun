@@ -19,34 +19,46 @@
 
 /** Assertions and helpers for running tests. */
 public module std.test {
-  // Raised by a failed assertion; carries the explanation text.
+  /**
+   * Raised by a failed assertion; carries the explanation text.
+   */
   public class AssertionError implements IError {
     var message_: String;
 
-    // Build the error from a literal explanation.
+    /**
+     * Build the error from a literal explanation.
+     */
     init(message: static_ptr<u8>) {
       this.message_ = String(message);
     }
 
-    // Build the error from text composed at runtime; the text is copied.
+    /**
+     * Build the error from text composed at runtime; the text is copied.
+     */
     init(message: const ref String) {
       var alloc: HeapAllocator = HeapAllocator();
       this.message_ = message.clone(alloc);
     }
 
-    // Error code 10: assertion failure.
+    /**
+     * Error code 10: assertion failure.
+     */
     public method code() i32 {
       return 10;
     }
 
-    // A fresh copy of the explanation, owned by the caller.
+    /**
+     * A fresh copy of the explanation, owned by the caller.
+     */
     public method message() String {
       var alloc: HeapAllocator = HeapAllocator();
       return this.message_.clone(alloc);
     }
   }
 
-  // Throw AssertionError when the condition is false.
+  /**
+   * Throw AssertionError when the condition is false.
+   */
   public function assert(condition: bool) void throws IError {
     if (condition) {
       return;
@@ -54,7 +66,9 @@ public module std.test {
     throw AssertionError("assertion failed");
   }
 
-  // Same, with an explanation shown in the failure output.
+  /**
+   * Same, with an explanation shown in the failure output.
+   */
   public function assert(condition: bool, message: static_ptr<u8>) void throws IError {
     if (condition) {
       return;
@@ -62,14 +76,16 @@ public module std.test {
     throw AssertionError(message);
   }
 
-  /* Throw when primitive values differ, showing both in the failure text. */
+  /** Throw when primitive values differ, showing both in the failure text. */
   public function assert_eq<T: _Primitive>(expected: T, actual: T) void throws IError {
     if (expected == actual) {
       return;
     }
     throw AssertionError(`assertion failed: expected ${expected}, got ${actual}`);
   }
-  // Compare two strings by content.
+  /**
+   * Compare two strings by content.
+   */
   public function assert_eq(expected: const ref String, actual: const ref String) void throws IError {
     if (expected.equals(actual)) {
       return;
@@ -77,25 +93,30 @@ public module std.test {
     throw AssertionError(`assertion failed: expected ${expected}, got ${actual}`);
   }
 
-  /* Throw when primitive values are equal, showing the value in the failure text. */
+  /** Throw when primitive values are equal, showing the value in the failure text. */
   public function assert_ne<T: _Primitive>(a: T, b: T) void throws IError {
     if (a == b) {
       throw AssertionError(`assertion failed: both values are ${a}`);
     }
   }
 
-  // Unconditionally fail with the given message.
+  /**
+   * Unconditionally fail with the given message.
+   */
   public function fail(message: static_ptr<u8>) void throws IError {
     throw AssertionError(message);
   }
 
-  // The outcome of one test, produced on the test's thread and moved back
-  // to the main thread through join. The message is empty on a pass.
+  /**
+   * The outcome of one test, produced on the test's thread and moved back
+   * to the main thread through join. The message is empty on a pass.
+   */
   public class TestResult {
     public var name: static_ptr<u8>;
     public var passed: bool;
     public var message: String;
 
+    /** Initializes the fixture fields used by this example or regression test. */
     init(name: static_ptr<u8>, passed: bool, message: String) {
       this.name = name;
       this.passed = passed;
@@ -103,9 +124,11 @@ public module std.test {
     }
   }
 
-  // Run one test: call it and catch anything it throws. Never throws
-  // itself, so it is safe to run on a spawned thread (nothing may unwind
-  // across a spawn boundary).
+  /**
+   * Run one test: call it and catch anything it throws. Never throws
+   * itself, so it is safe to run on a spawned thread (nothing may unwind
+   * across a spawn boundary).
+   */
   public function run_one(name: static_ptr<u8>, fn: function () void throws IError) TestResult {
     try {
       fn();
@@ -115,9 +138,11 @@ public module std.test {
     }
   }
 
-  // Print one result line: "PASS name" or "FAIL name: message". Returns
-  // whether the test passed. Only the main thread reports, so lines from
-  // parallel runs never interleave.
+  /**
+   * Print one result line: "PASS name" or "FAIL name: message". Returns
+   * whether the test passed. Only the main thread reports, so lines from
+   * parallel runs never interleave.
+   */
   public function report(result: const ref TestResult) bool {
     if (result.passed) {
       println(`PASS ${result.name}`);
@@ -127,8 +152,10 @@ public module std.test {
     return false;
   }
 
-  // Print the summary line and hand back the process exit code: 0 when
-  // every test passed, 1 otherwise.
+  /**
+   * Print the summary line and hand back the process exit code: 0 when
+   * every test passed, 1 otherwise.
+   */
   public function finish(total: i64, failed: i64) i32 {
     var passed: i64 = total - failed;
     println(`${passed} passed, ${failed} failed`);
@@ -138,8 +165,10 @@ public module std.test {
     return 0;
   }
 
-  // True when the test binary's arguments ask for sequential execution
-  // ("--test-sequential" anywhere in argv).
+  /**
+   * True when the test binary's arguments ask for sequential execution
+   * ("--test-sequential" anywhere in argv).
+   */
   public function wants_sequential(argc: i32, argv: raw_ptr<raw_ptr<i8>>) bool {
     var alloc: HeapAllocator = HeapAllocator();
     var env = std.env.Env(alloc);
@@ -154,9 +183,11 @@ public module std.test {
     return false;
   }
 
-  // True when the dotted test name matches one filter pattern: the exact
-  // name, a trailing-star prefix ("geometry.*"), or a module prefix
-  // ("geometry" selects everything under it).
+  /**
+   * True when the dotted test name matches one filter pattern: the exact
+   * name, a trailing-star prefix ("geometry.*"), or a module prefix
+   * ("geometry" selects everything under it).
+   */
   function matches(name: const ref String, pattern: const ref String) bool {
     if (name.equals(pattern)) {
       return true;
@@ -176,10 +207,12 @@ public module std.test {
     return name.length() > plen and name.starts_with(pattern) and unsafe { name.unsafe_at(plen); } == b'.';
   }
 
-  // True when the test named `name` should run, given the test binary's
-  // arguments. Every "--test-filter <pattern>" in argv contributes one
-  // pattern; a test runs when it matches any of them, and no patterns at
-  // all runs every test.
+  /**
+   * True when the test named `name` should run, given the test binary's
+   * arguments. Every "--test-filter <pattern>" in argv contributes one
+   * pattern; a test runs when it matches any of them, and no patterns at
+   * all runs every test.
+   */
   public function is_selected(name: static_ptr<u8>, argc: i32, argv: raw_ptr<raw_ptr<i8>>) bool {
     var alloc: HeapAllocator = HeapAllocator();
     var env = std.env.Env(alloc);

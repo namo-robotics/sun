@@ -24,6 +24,7 @@
 #include "semantic_analysis/type_inferer.h"
 #include "support/position.h"
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 using sun::ast::CallExprAST;
 using sun::ast::ExprAST;
@@ -38,6 +39,10 @@ class SemanticAnalyzer;
  */
 class CallAnalyzer {
  public:
+  /**
+   * Connects call checking to semantic analysis, generic specialization, and type
+   * inference.
+   */
   CallAnalyzer(SemanticContext &ctx, SemanticAnalyzer &sema,
                GenericSpecializer &generics, TypeInferer &types)
       : ctx_(ctx), sema_(sema), generics_(generics), types_(types) {}

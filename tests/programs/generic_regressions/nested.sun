@@ -4,15 +4,18 @@ public module m {
   /** Stores sample metadata. */
   public class Info {
     public var n: i32 = 0;
+    /** Creates an empty fixture value for this example or regression test. */
     init() {}
   }
   /** Represents a decoder passed to a callback. */
   public class Decoder {
+    /** Creates an empty fixture value for this example or regression test. */
     init() {}
   }
   /** Stores a decoding callback. */
   public class TypeSupport<T> {
     public var decode: function (ref Decoder, const ref HeapAllocator) T throws IError;
+    /** Initializes the fixture fields used by this example or regression test. */
     init(decode: function (ref Decoder, const ref HeapAllocator) T throws IError) {
       this.decode = decode;
     }
@@ -21,6 +24,7 @@ public module m {
   public class Sample<T> {
     public var info: Info;
     public var data: Option<T>;
+    /** Initializes the fixture fields used by this example or regression test. */
     init(info: Info, data: Option<T>) {
       this.info = info;
       this.data = data;
@@ -30,6 +34,7 @@ public module m {
   public class Reader<T> {
     public var support: TypeSupport<T>;
     public var state: Shared<Info>;
+    /** Initializes the fixture fields used by this example or regression test. */
     init(support: TypeSupport<T>, state: Shared<Info>) {
       this.support = support;
       this.state = state;
@@ -51,6 +56,7 @@ public module m {
   }
   /** Constructs a reader through a generic method. */
   public class Subscriber {
+    /** Creates an empty fixture value for this example or regression test. */
     init() {}
     /** Constructs a reader for the supplied type. */
     public method create_datareader<T>(support: TypeSupport<T>, state: Shared<Info>) Reader<T> {
@@ -58,15 +64,19 @@ public module m {
     }
   }
 }
+/** A message fixture used to test nested generic callback types. */
 class Msg {
   public var v: i32;
+  /** Initializes the fixture fields used by this example or regression test. */
   init(v: i32) {
     this.v = v;
   }
 }
+/** Returns a message fixture through the generic decoder callback signature. */
 function decode(d: ref m.Decoder, a: const ref HeapAllocator) Msg throws IError {
   return Msg(7);
 }
+/** Runs the regression scenario and returns its observable result to the test harness. */
 function main() i32 throws IError {
   var a = make_heap_allocator();
   var s = m.Subscriber();

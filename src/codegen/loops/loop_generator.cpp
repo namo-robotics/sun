@@ -7,6 +7,7 @@
 
 #include "codegen/codegen_visitor.h"
 
+/** Generates loop control flow and iteration operations. */
 namespace sun::codegen::loops {
 
 sun::codegen::scopes::ScopeManager& LoopGenerator::scopes() {

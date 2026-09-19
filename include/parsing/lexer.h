@@ -17,8 +17,10 @@
 #include "parsing/nfa.h"
 #include "support/error.h"
 
+/** Turns source text into syntax trees and provides source formatting. */
 namespace sun::parsing {
 
+/** Identifies the lexical categories recognized by the Sun parser. */
 enum class TokenKind {
   TOK_EOF,
   COMMENT,        // // comment (skipped unless emitComments is set)
@@ -274,9 +276,11 @@ static const std::map<TokenKind, std::string> tokenRegexes = {
     {TokenKind::ELLIPSIS, "\\.\\.\\."},
     {TokenKind::DOT, "\\."}};
 
-// Map compound-assignment token kinds (+=, -=, ...) to the underlying
-// binary operator; nullopt for anything else. Shared by the parser,
-// semantic analysis, and codegen.
+/**
+ * Map compound-assignment token kinds (+=, -=, ...) to the underlying
+ * binary operator; nullopt for anything else. Shared by the parser,
+ * semantic analysis, and codegen.
+ */
 inline std::optional<TokenKind> compoundToBinaryOp(TokenKind kind) {
   switch (kind) {
     case TokenKind::PLUS_ASSIGN:
@@ -304,9 +308,11 @@ inline std::optional<TokenKind> compoundToBinaryOp(TokenKind kind) {
   }
 }
 
-// The spelling of a keyword token (a token whose regex is a bare word, so it
-// would otherwise lex as an identifier); nullopt for any other kind. Derived
-// from the regex table so a new keyword is covered without a second list.
+/**
+ * The spelling of a keyword token (a token whose regex is a bare word, so it
+ * would otherwise lex as an identifier); nullopt for any other kind. Derived
+ * from the regex table so a new keyword is covered without a second list.
+ */
 inline std::optional<std::string_view> getKeywordSpelling(TokenKind kind) {
   static const std::array<std::optional<std::string_view>,
                           static_cast<size_t>(TokenKind::COUNT)>
@@ -332,16 +338,20 @@ inline std::optional<std::string_view> getKeywordSpelling(TokenKind kind) {
   return table[static_cast<size_t>(kind)];
 }
 
+/** Reports whether the token category is a language keyword. */
 inline bool isKeyword(TokenKind kind) {
   return getKeywordSpelling(kind).has_value();
 }
 
-// Lookup table for simple token metadata (text and precedence)
+/**
+ * Lookup table for simple token metadata (text and precedence)
+ */
 struct TokenInfo {
   std::string_view text;
   int precedence = -1;
 };
 
+/** Returns the token info stored by this object. */
 inline const std::map<TokenKind, TokenInfo>& getTokenInfo() {
   static const std::map<TokenKind, TokenInfo> tokenInfo = {
       {TokenKind::TOK_EOF, {""}},
@@ -450,6 +460,7 @@ inline const std::map<TokenKind, TokenInfo>& getTokenInfo() {
   return tokenInfo;
 }
 
+/** A scanned token with its category, source position, and spelling. */
 struct Token {
   TokenKind kind;
   std::variant<std::monostate,  // No value: EOF, keywords, operators, UNKNOWN
@@ -467,10 +478,12 @@ struct Token {
   // for every other kind.
   std::string suffix;
 
-  // Generic factory for simple tokens (uses lookup table).
-  // Indexes a flat array rather than searching getTokenInfo()'s std::map:
-  // this runs once per operator/keyword/punctuation token, and a red-black
-  // tree walk per token was measurable in the lexer's profile.
+  /**
+   * Generic factory for simple tokens (uses lookup table).
+   * Indexes a flat array rather than searching getTokenInfo()'s std::map:
+   * this runs once per operator/keyword/punctuation token, and a red-black
+   * tree walk per token was measurable in the lexer's profile.
+   */
   static Token make(TokenKind k, const sun::support::Position& s,
                     const sun::support::Position& e) {
     static const std::array<const TokenInfo*,
@@ -492,34 +505,42 @@ struct Token {
     return {k, std::monostate{}, s, e, "", -1};
   }
 
-  // Factories for value-carrying tokens
+  /**
+   * Factories for value-carrying tokens
+   */
   static Token eof(const sun::support::Position& pos) {
     return make(TokenKind::TOK_EOF, pos, pos);
   }
 
+  /** Creates an identifier token with its spelling and source range. */
   static Token identifier(std::string id, const sun::support::Position& s,
                           const sun::support::Position& e) {
     return {TokenKind::IDENTIFIER, id, s, e, std::move(id)};
   }
 
+  /** Creates a built-in identifier token with its source range. */
   static Token intrinsicIdentifier(std::string id,
                                    const sun::support::Position& s,
                                    const sun::support::Position& e) {
     return {TokenKind::INTRINSIC_IDENTIFIER, id, s, e, std::move(id)};
   }
 
+  /** Creates an integer token retaining its value and original spelling. */
   static Token integer(uint64_t num, const sun::support::Position& s,
                        const sun::support::Position& e, std::string txt) {
     return {TokenKind::INTEGER, num, s, e, std::move(txt)};
   }
 
+  /** Creates a floating-point token retaining its value and spelling. */
   static Token floatNum(double num, const sun::support::Position& s,
                         const sun::support::Position& e, std::string txt) {
     return {TokenKind::FLOAT, num, s, e, std::move(txt)};
   }
 
-  // Factories for suffixed numeric literals (21u8, 1.5f32); the lexer has
-  // already validated the suffix.
+  /**
+   * Factories for suffixed numeric literals (21u8, 1.5f32); the lexer has
+   * already validated the suffix.
+   */
   static Token typedInteger(uint64_t num, std::string suffix,
                             const sun::support::Position& s,
                             const sun::support::Position& e, std::string txt) {
@@ -528,6 +549,7 @@ struct Token {
     return t;
   }
 
+  /** Creates a floating-point token with an explicit numeric type suffix. */
   static Token typedFloat(double num, std::string suffix,
                           const sun::support::Position& s,
                           const sun::support::Position& e, std::string txt) {
@@ -536,42 +558,53 @@ struct Token {
     return t;
   }
 
+  /** Creates a string token with its decoded contents and source range. */
   static Token stringLiteral(std::string str, const sun::support::Position& s,
                              const sun::support::Position& e) {
     return {TokenKind::STRING, std::move(str), s, e, ""};
   }
 
-  // Character ('a') and byte (b'a') literal factory; `value` is the decoded
-  // Unicode scalar value or byte.
+  /**
+   * Character ('a') and byte (b'a') literal factory; `value` is the decoded
+   * Unicode scalar value or byte.
+   */
   static Token charLiteral(TokenKind k, uint64_t value,
                            const sun::support::Position& s,
                            const sun::support::Position& e, std::string txt) {
     return {k, value, s, e, std::move(txt)};
   }
 
-  // Lifetime name factory; `name` carries the bare name without the
-  // apostrophe ('a lexes as LIFETIME with name "a").
+  /**
+   * Lifetime name factory; `name` carries the bare name without the
+   * apostrophe ('a lexes as LIFETIME with name "a").
+   */
   static Token lifetime(std::string name, const sun::support::Position& s,
                         const sun::support::Position& e) {
     return {TokenKind::LIFETIME, name, s, e, "'" + std::move(name)};
   }
 
-  // Comment token factory (COMMENT or BLOCK_COMMENT); text is the raw
-  // comment including delimiters
+  /**
+   * Comment token factory (COMMENT or BLOCK_COMMENT); text is the raw
+   * comment including delimiters
+   */
   static Token comment(TokenKind k, std::string txt,
                        const sun::support::Position& s,
                        const sun::support::Position& e) {
     return {k, txt, s, e, std::move(txt)};
   }
 
-  // Template string token factory
+  /**
+   * Template string token factory
+   */
   static Token templateString(std::string str, const sun::support::Position& s,
                               const sun::support::Position& e) {
     return {TokenKind::TEMPLATE_STRING, std::move(str), s, e, ""};
   }
 
+  /** Reports whether this token marks the end of the input. */
   bool isEof() const { return kind == TokenKind::TOK_EOF; }
 
+  /** Returns the identifier stored by this object. */
   std::optional<std::string> getIdentifier() const {
     if (kind == TokenKind::IDENTIFIER ||
         kind == TokenKind::INTRINSIC_IDENTIFIER)
@@ -579,43 +612,54 @@ struct Token {
     return std::nullopt;
   }
 
+  /** Reports whether this token names a built-in operation. */
   bool isIntrinsicIdentifier() const {
     return kind == TokenKind::INTRINSIC_IDENTIFIER;
   }
 
-  // Digits of an integer literal as a value. The lexer has already rejected
-  // anything above the u64 maximum, and a leading minus is a separate token.
+  /**
+   * Digits of an integer literal as a value. The lexer has already rejected
+   * anything above the u64 maximum, and a leading minus is a separate token.
+   */
   std::optional<uint64_t> getInteger() const {
     if (kind == TokenKind::INTEGER || kind == TokenKind::TYPED_INTEGER)
       return std::get<uint64_t>(value);
     return std::nullopt;
   }
 
+  /** Returns the float stored by this object. */
   std::optional<double> getFloat() const {
     if (kind == TokenKind::FLOAT || kind == TokenKind::TYPED_FLOAT)
       return std::get<double>(value);
     return std::nullopt;
   }
 
-  // Bare name of a lifetime token ('a yields "a").
+  /**
+   * Bare name of a lifetime token ('a yields "a").
+   */
   std::optional<std::string> getLifetimeName() const {
     if (kind == TokenKind::LIFETIME) return std::get<std::string>(value);
     return std::nullopt;
   }
 
-  // Decoded scalar value of a character literal, or byte of a byte literal.
+  /**
+   * Decoded scalar value of a character literal, or byte of a byte literal.
+   */
   std::optional<uint64_t> getCharValue() const {
     if (kind == TokenKind::CHAR_LITERAL || kind == TokenKind::BYTE_LITERAL)
       return std::get<uint64_t>(value);
     return std::nullopt;
   }
 
+  /** Returns the string stored by this object. */
   std::optional<std::string> getString() const {
     if (kind == TokenKind::STRING) return std::get<std::string>(value);
     return std::nullopt;
   }
 
-  // Get template string content
+  /**
+   * Get template string content
+   */
   std::optional<std::string> getTemplateString() const {
     if (kind == TokenKind::TEMPLATE_STRING) {
       return std::get<std::string>(value);
@@ -624,6 +668,7 @@ struct Token {
   }
 };
 
+/** Creates a token scanner reading from the supplied input stream. */
 class Lexer {
  public:
   // End of input. Distinct from any byte value: currentChar is an int so that
@@ -644,21 +689,26 @@ class Lexer {
 
   std::string buffer;
 
+  /** Reports whether a byte separates tokens as whitespace. */
   static bool isTokenWhitespace(int c) {
     return c == ' ' || c == '\n' || c == '\t' || c == '\r';
   }
 
-  // The valid type suffixes of a numeric literal: one per integer type
-  // (21u8), and f32/f64 for floats (1.5f32).
+  /**
+   * The valid type suffixes of a numeric literal: one per integer type
+   * (21u8), and f32/f64 for floats (1.5f32).
+   */
   static bool isIntegerSuffix(std::string_view s) {
     return s == "i8" || s == "i16" || s == "i32" || s == "i64" || s == "u8" ||
            s == "u16" || s == "u32" || s == "u64";
   }
 
+  /** Reports whether a literal suffix denotes a floating-point type. */
   static bool isFloatSuffix(std::string_view s) {
     return s == "f32" || s == "f64";
   }
 
+  /** Reports a malformed literal at its source position. */
   [[noreturn]] void literalError(const sun::support::Position& at,
                                  const std::string& message) const {
     sun::support::logParsingError(
@@ -666,12 +716,14 @@ class Lexer {
         at.line > 1 ? getSourceLine(at.line - 1) : "");
   }
 
-  // Decode the body of a character literal ('a') or a byte literal (b'a') --
-  // the text between the quotes, which the token regex has already delimited.
-  //
-  // A character literal holds one Unicode scalar value: the source is UTF-8,
-  // \xNN reaches U+0000..U+007F, and \u{...} names anything above that. A byte
-  // literal holds one byte: the source must be ASCII and \xNN covers 00..FF.
+  /**
+   * Decode the body of a character literal ('a') or a byte literal (b'a') --
+   * the text between the quotes, which the token regex has already delimited.
+   *
+   * A character literal holds one Unicode scalar value: the source is UTF-8,
+   * \xNN reaches U+0000..U+007F, and \u{...} names anything above that. A byte
+   * literal holds one byte: the source must be ASCII and \xNN covers 00..FF.
+   */
   uint64_t decodeLiteralBody(std::string_view body, bool isByte,
                              const sun::support::Position& at) const {
     const std::string what = isByte ? "byte literal" : "character literal";
@@ -788,7 +840,9 @@ class Lexer {
     return value;
   }
 
-  // Decode an integer body while checking separators and overflow.
+  /**
+   * Decode an integer body while checking separators and overflow.
+   */
   uint64_t decodeIntegerDigits(const std::string& digits,
                                const sun::support::Position& at, int base = 10,
                                size_t start = 0) const {
@@ -822,6 +876,7 @@ class Lexer {
     return value;
   }
 
+  /** Formats a code point as hexadecimal for diagnostic messages. */
   static std::string toHex(uint32_t value) {
     static const char* kDigits = "0123456789ABCDEF";
     std::string out;
@@ -832,10 +887,12 @@ class Lexer {
     return out;
   }
 
-  // Process escape sequences in regular string literals.
-  // Mirrors InterpolatedStringParser::processEscapes (template strings),
-  // with \" instead of the template-specific \` and \$. The shared core
-  // (\n \t \r \\ \0) comes from sun::parsing::simple.
+  /**
+   * Process escape sequences in regular string literals.
+   * Mirrors InterpolatedStringParser::processEscapes (template strings),
+   * with \" instead of the template-specific \` and \$. The shared core
+   * (\n \t \r \\ \0) comes from sun::parsing::simple.
+   */
   std::string processStringEscapes(std::string_view raw,
                                    const sun::support::Position& at) const {
     std::string result;
@@ -867,11 +924,13 @@ class Lexer {
     return result;
   }
 
-  // Read the entire stream into buffer. Called once per input.
-  // Bulk reads, not istreambuf_iterator: the iterator form goes through the
-  // streambuf one character at a time and cost ~20% of total lexing
-  // instructions, which is the very per-byte overhead the slurp exists to
-  // avoid. istream::read() hands off to sgetn() and memcpys whole chunks.
+  /**
+   * Read the entire stream into buffer. Called once per input.
+   * Bulk reads, not istreambuf_iterator: the iterator form goes through the
+   * streambuf one character at a time and cost ~20% of total lexing
+   * instructions, which is the very per-byte overhead the slurp exists to
+   * avoid. istream::read() hands off to sgetn() and memcpys whole chunks.
+   */
   void slurp(std::istream& in) {
     buffer.clear();
     char chunk[64 * 1024];
@@ -880,9 +939,11 @@ class Lexer {
     }
   }
 
-  // Consume one byte and advance line/column. Returns kEof at end of input,
-  // otherwise the byte value in 0..255. This is the single owner of the
-  // lexer's position: nothing else moves currentPos forward.
+  /**
+   * Consume one byte and advance line/column. Returns kEof at end of input,
+   * otherwise the byte value in 0..255. This is the single owner of the
+   * lexer's position: nothing else moves currentPos forward.
+   */
   int advance() {
     if (currentPos.offset >= static_cast<int>(buffer.size())) {
       currentChar = kEof;
@@ -901,15 +962,18 @@ class Lexer {
     return currentChar;
   }
 
+  /** Reads the next input byte without consuming it. */
   int peekByte() const {
     if (currentPos.offset >= static_cast<int>(buffer.size())) return kEof;
     return static_cast<unsigned char>(buffer[currentPos.offset]);
   }
 
-  // Commit a scan position without a whole-Position copy-assign. Position
-  // carries an optional<std::string> filePath and three optional<int>s that
-  // the lexer never sets, and assigning them cost one optional<string>
-  // copy-assignment per token. Only the three coordinates actually change.
+  /**
+   * Commit a scan position without a whole-Position copy-assign. Position
+   * carries an optional<std::string> filePath and three optional<int>s that
+   * the lexer never sets, and assigning them cost one optional<string>
+   * copy-assignment per token. Only the three coordinates actually change.
+   */
   void commitPosition(int line, int col, int off) {
     currentPos.line = line;
     currentPos.column = col;
@@ -918,6 +982,7 @@ class Lexer {
   }
 
  public:
+  /** Updates the position stored by this object. */
   void setPosition(const sun::support::Position& pos) {
     currentPos = pos;
     // pos.offset == buffer.size() is routine (rewinding to the end of the last
@@ -925,10 +990,13 @@ class Lexer {
     currentChar = static_cast<unsigned char>(buffer[pos.offset]);
   }
 
+  /** Returns the position stored by this object. */
   sun::support::Position getPosition() const { return currentPos; }
 
-  // Extract source text substring from buffer (for storing generic method
-  // source)
+  /**
+   * Extract source text substring from buffer (for storing generic method
+   * source)
+   */
   std::string getSourceText(int startOffset, int endOffset) const {
     if (startOffset < 0 || endOffset > static_cast<int>(buffer.size()) ||
         startOffset >= endOffset) {
@@ -937,7 +1005,9 @@ class Lexer {
     return buffer.substr(startOffset, endOffset - startOffset);
   }
 
-  // Get a specific line from the source buffer (1-indexed)
+  /**
+   * Get a specific line from the source buffer (1-indexed)
+   */
   std::string getSourceLine(int lineNum) const {
     if (lineNum < 1 || buffer.empty()) return "";
 
@@ -971,8 +1041,10 @@ class Lexer {
   }
 
  public:
-  // Build the full regex string once (expensive string operations).
-  // Public so tests can determinize the same pattern the lexer uses.
+  /**
+   * Build the full regex string once (expensive string operations).
+   * Public so tests can determinize the same pattern the lexer uses.
+   */
   static const std::string& getStaticFullRegex() {
     static std::string fullRegex = []() {
       std::string regex = "[ \n\t\r]*(";
@@ -996,36 +1068,50 @@ class Lexer {
     return fullRegex;
   }
 
-  // One process-wide token DFA, shared by every Lexer. Per-scan state is just
-  // an int, so nothing here is per-instance; scanning only grows the lazily
-  // built transition cache. That mutation is safe because the compiler and the
-  // LSP are single-threaded. If that ever changes, make this thread_local or
-  // guard DFA::step()'s miss path with a mutex.
+  /**
+   * One process-wide token DFA, shared by every Lexer. Per-scan state is just
+   * an int, so nothing here is per-instance; scanning only grows the lazily
+   * built transition cache. That mutation is safe because the compiler and the
+   * LSP are single-threaded. If that ever changes, make this thread_local or
+   * guard DFA::step()'s miss path with a mutex.
+   */
   static DFA& getTokenDFA() {
     static DFA tokenDFA = RegexParser().parse(getStaticFullRegex());
     return tokenDFA;
   }
 
+  /** Creates a token scanner reading from the supplied input stream. */
   explicit Lexer(std::istream& in) { slurp(in); }
 
+  /** Updates the emit comments stored by this object. */
   void setEmitComments(bool emit) { emitComments_ = emit; }
+  /** Reports whether scanning retains comments as tokens. */
   bool emitComments() const { return emitComments_; }
 
-  // Point the lexer at a new input. There is no per-lexer scan state beyond
-  // the buffer and position; the token DFA is shared and stateless.
+  /**
+   * Point the lexer at a new input. There is no per-lexer scan state beyond
+   * the buffer and position; the token DFA is shared and stateless.
+   */
   void resetInput(std::istream& in) {
     currentChar = ' ';
     currentPos = sun::support::Position{1, 1, 0};
     slurp(in);
   }
 
-  // Copying a Lexer would duplicate a position into a shared stream; move only
+  /**
+   * Copying a Lexer would duplicate a position into a shared stream; move only
+   */
   Lexer(const Lexer&) = delete;
+  /** Disallows assignment so ownership and object identity cannot be duplicated. */
   Lexer& operator=(const Lexer&) = delete;
+  /** Creates a token scanner reading from the supplied input stream. */
   Lexer(Lexer&&) noexcept = default;
+  /** Transfers the stored state from another instance during move assignment. */
   Lexer& operator=(Lexer&&) noexcept = default;
+  /** Destroys this object and releases its owned members. */
   ~Lexer() = default;
 
+  /** Returns the next token stored by this object. */
   Token getNextToken() {
     // Cached at construction: getTokenDFA() is a function-local static, so
     // calling it per token pays the thread-safe-init guard every time.

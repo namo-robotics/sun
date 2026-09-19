@@ -11,6 +11,7 @@
 #include "semantic_analysis/semantic_scope.h"
 #include "semantic_analysis/types.h"
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 /** Name a class field for a uniform access-denial message. */

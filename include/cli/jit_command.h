@@ -4,6 +4,7 @@
 
 #include "cli/options.h"
 
+/** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
 
 // sun [options] <script.sun>... [-- args...]

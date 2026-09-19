@@ -17,27 +17,32 @@ using sun::cli::EarlyExit;
 using sun::cli::FmtOptions;
 using sun::cli::TestOptions;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 using Args = std::vector<std::string>;
 
 const char* const kProgram = "prog";
 
+/** Holds parsed build/run options and an optional early-exit result. */
 struct ParsedBuildRun {
   BuildRunOptions options;
   std::optional<EarlyExit> early;
 };
 
+/** Holds parsed test-command options and an optional early-exit result. */
 struct ParsedTest {
   TestOptions options;
   std::optional<EarlyExit> early;
 };
 
+/** Holds parsed formatter options and an optional early-exit result. */
 struct ParsedFmt {
   FmtOptions options;
   std::optional<EarlyExit> early;
 };
 
+/** Parses fixture arguments using the build/run command parser. */
 ParsedBuildRun parseBuildRun(const Args& args) {
   ParsedBuildRun parsed;
   parsed.early =
@@ -45,19 +50,23 @@ ParsedBuildRun parseBuildRun(const Args& args) {
   return parsed;
 }
 
+/** Parses fixture arguments using the test-command parser. */
 ParsedTest parseTest(const Args& args) {
   ParsedTest parsed;
   parsed.early = sun::cli::parseTestArguments(args, parsed.options);
   return parsed;
 }
 
+/** Parses fixture arguments using the formatter-command parser. */
 ParsedFmt parseFmt(const Args& args) {
   ParsedFmt parsed;
   parsed.early = sun::cli::parseFmtArguments(args, parsed.options);
   return parsed;
 }
 
-// The command line was turned away on stderr with exactly this message.
+/**
+ * The command line was turned away on stderr with exactly this message.
+ */
 void expectRejected(const std::optional<EarlyExit>& early,
                     const std::string& message, int exitCode = 1) {
   ASSERT_TRUE(early.has_value());
@@ -66,6 +75,7 @@ void expectRejected(const std::optional<EarlyExit>& early,
   EXPECT_EQ(early->text, message);
 }
 
+/** Reports whether text begins with the expected prefix. */
 bool startsWith(const std::string& text, const std::string& prefix) {
   return text.rfind(prefix, 0) == 0;
 }

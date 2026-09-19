@@ -13,15 +13,21 @@
 #include "parsing/formatter.h"
 #include "support/error.h"
 
+/** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// What happened to one file.
+/**
+ * What happened to one file.
+ */
 enum class FormatOutcome { Unchanged, Changed, Failed };
 
-// Collect .sun files under a directory, skipping hidden directories
-// (.git, .cache, ...). Sorted so output order is deterministic.
+/**
+ * Collect .sun files under a directory, skipping hidden directories
+ * (.git, .cache, ...). Sorted so output order is deterministic.
+ */
 bool collectSunFiles(const std::string& dir, std::vector<std::string>& out) {
   std::error_code ec;
   std::filesystem::recursive_directory_iterator it(dir, ec), end;
@@ -52,10 +58,12 @@ bool collectSunFiles(const std::string& dir, std::vector<std::string>& out) {
   return true;
 }
 
-// Turn the inputs into the list of files to format. Directories are
-// expanded; explicitly named non-.sun files are reported (a directory walk
-// filters them silently instead). Returns false when any input could not be
-// read.
+/**
+ * Turn the inputs into the list of files to format. Directories are
+ * expanded; explicitly named non-.sun files are reported (a directory walk
+ * filters them silently instead). Returns false when any input could not be
+ * read.
+ */
 bool expandInputs(const std::vector<std::string>& inputs,
                   std::vector<std::string>& files) {
   bool ok = true;
@@ -75,8 +83,10 @@ bool expandInputs(const std::vector<std::string>& inputs,
   return ok;
 }
 
-// Replace a file's contents in one step: write a temp file in the same
-// directory, then rename it over the original.
+/**
+ * Replace a file's contents in one step: write a temp file in the same
+ * directory, then rename it over the original.
+ */
 bool rewriteFile(const std::string& file, const std::string& contents) {
   std::string tmpPath = file + ".fmt-tmp";
   {
@@ -97,7 +107,9 @@ bool rewriteFile(const std::string& file, const std::string& contents) {
   return true;
 }
 
-// Format one file. In check mode a file that would change is only reported.
+/**
+ * Format one file. In check mode a file that would change is only reported.
+ */
 FormatOutcome formatFile(const std::string& file, bool checkMode) {
   std::ifstream in(file);
   if (!in) {
@@ -128,6 +140,7 @@ FormatOutcome formatFile(const std::string& file, bool checkMode) {
 
 }  // namespace
 
+/** Runs the fmt command and returns its process exit status. */
 int runFmtCommand(const std::vector<std::string>& args) {
   FmtOptions options;
   if (auto earlyExit = parseFmtArguments(args, options)) {

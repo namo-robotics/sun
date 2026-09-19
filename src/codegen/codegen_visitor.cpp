@@ -16,6 +16,7 @@ using sun::ast::ExprAST;
 using sun::parsing::TokenKind;
 using sun::support::logAndThrowError;
 
+/** Translates analyzed Sun programs into LLVM instructions. */
 namespace sun::codegen {
 
 static ExitOnError ExitOnErr;
@@ -24,6 +25,7 @@ static ExitOnError ExitOnErr;
 
 using namespace llvm;
 
+/** Translates analyzed Sun programs into LLVM instructions. */
 namespace sun::codegen {
 
 // -------------------------------------------------------------------
@@ -311,8 +313,10 @@ Value* CodegenVisitor::codegen(const sun::ast::StringLiteralAST& expr) {
 // Binary and unary expressions
 // -------------------------------------------------------------------
 
-// True if the expression's resolved Sun type is an unsigned integer.
-// Floats, bool, and enums answer false and take the signed/default path.
+/**
+ * True if the expression's resolved Sun type is an unsigned integer.
+ * Floats, bool, and enums answer false and take the signed/default path.
+ */
 static bool isUnsignedExpr(const ExprAST& expr) {
   auto type = sun::semantic_analysis::unwrapRef(expr.getResolvedType());
   return type && type->isUnsigned();

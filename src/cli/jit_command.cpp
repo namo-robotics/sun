@@ -10,13 +10,17 @@
 #include "driver/driver.h"
 #include "llvm/Support/raw_ostream.h"
 
+/** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// A config input resolves to its one binary entrypoint; a config with
-// several is ambiguous about what to run. Reports the problem and returns
-// nothing when there is no single answer.
+/**
+ * A config input resolves to its one binary entrypoint; a config with
+ * several is ambiguous about what to run. Reports the problem and returns
+ * nothing when there is no single answer.
+ */
 std::optional<std::string> findConfigBinary(const std::string& configFile) {
   try {
     sun::driver::SunConfig config = loadConfigInput(configFile);
@@ -40,6 +44,7 @@ std::optional<std::string> findConfigBinary(const std::string& configFile) {
 
 }  // namespace
 
+/** Runs the jit command and returns its process exit status. */
 int runJitCommand(const BuildRunOptions& options) {
   std::string inputFile = options.inputFiles[0];
   if (options.configInput) {

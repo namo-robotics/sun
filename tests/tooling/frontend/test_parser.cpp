@@ -31,8 +31,10 @@ using sun::parsing::Parser;
 using sun::parsing::TokenKind;
 using sun::support::SunError;
 
-// Helper to parse a string and return the parsed AST (for top-level
-// expressions)
+/**
+ * Helper to parse a string and return the parsed AST (for top-level
+ * expressions)
+ */
 std::unique_ptr<sun::ast::ExprAST> parseStringToExpr(
     const std::string& source) {
   std::istringstream ss(source);
@@ -45,8 +47,10 @@ std::unique_ptr<sun::ast::ExprAST> parseStringToExpr(
   return parser.parseExpression();
 }
 
-// Helper to parse a string and return the parsed AST (for top-level
-// expressions)
+/**
+ * Helper to parse a string and return the parsed AST (for top-level
+ * expressions)
+ */
 std::unique_ptr<BlockExprAST> parseString(const std::string& source) {
   std::istringstream ss(source);
   Parser parser(ss);
@@ -214,9 +218,11 @@ TEST(Tooling_Frontend_Parser, ParseBinaryWithPrecedence) {
   EXPECT_EQ(inner->getOp().kind, TokenKind::STAR);
 }
 
-// ------------------------------------------------------------------
-// Function prototype
-// ------------------------------------------------------------------
+/**
+ * ------------------------------------------------------------------
+ * Function prototype
+ * ------------------------------------------------------------------
+ */
 std::unique_ptr<sun::ast::PrototypeAST> parsePrototype(
     const std::string& source) {
   std::istringstream ss(source);
@@ -615,6 +621,7 @@ TEST(Tooling_Frontend_Parser, ParseLargeCodeBlock) {
 
   // Log parsing time for profiling
   std::cout << "[PARSER PERF] Large code block (" << src.size()
+            /** Returns the diagnostic produced by malformed fixture source. */
             << " chars, 13 functions) "
             << "parsed in " << duration.count() << "ms" << std::endl;
 
@@ -895,6 +902,7 @@ function main() i32 {
 // Uses compileString which goes through the full driver pipeline
 // ------------------------------------------------------------------
 
+/** Parses a fixture while retaining comments for attachment checks. */
 TEST(Tooling_Frontend_Parser_ErrorDriver, MissingSemicolonLogsEnhancedError) {
   // This test verifies that parsing errors through the driver
   // include enhanced error messages with source context

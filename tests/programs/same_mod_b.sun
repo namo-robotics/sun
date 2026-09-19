@@ -1,4 +1,6 @@
+/** Groups declarations used by this compiler regression test. */
 public module mymod {
+  /** Returns the fixture marker used to check module lookup and imported calls. */
   public function bar() i32 {
     return 2;
   }

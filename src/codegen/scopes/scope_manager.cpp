@@ -18,6 +18,7 @@ using sun::semantic_analysis::TypePtr;
 
 using namespace llvm;
 
+/** Provides the scope manager responsible for variable storage and cleanup. */
 namespace sun::codegen::scopes {
 
 // -------------------------------------------------------------------
@@ -109,6 +110,7 @@ void ScopeManager::trackClassAllocation(Value* alloca, const std::string& name,
   scopes_.back().classAllocations.push_back(std::move(entry));
 }
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
 /** Identify fields by their path, since empty fields can share an address. */

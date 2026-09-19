@@ -22,9 +22,13 @@ A file for guiding coding agents.
 - Errors: `logError()` / `logAndThrowError()` for compilation errors.
 
 ## Code Comments (all code, including .sun files)
-- All code comments should be concise, plain-english written for a general audience of software engineers.
-- Every public function, class, module, etc should have a concise, plain-english block comment describing what it does.
-- Do not hard-code numeric values that subject to change in comments.
+- Write concise comments in plain English for a general audience of software engineers.
+- Every namespace, function, and type definition must have a documentation block comment (`/** ... */`) describing what it does or what it is for. This applies to all first-party source code, including C++ and `.sun` files, regardless of visibility.
+- Cover private and internal helpers, methods, constructors, destructors, anonymous namespaces, classes, structs, interfaces, enums, and type aliases, as well as public APIs. Document modules too.
+- Put the comment immediately before the declaration or definition it documents. For a function declared in a header and implemented separately, document the declaration; add implementation comments when they explain details beyond that contract.
+- Explain the purpose or behavior instead of merely restating the symbol name. Mention ownership, side effects, constraints, or failure behavior when needed to understand correct use.
+- Preserve useful existing documentation and keep it accurate when changing code. Do not edit generated code or third-party dependencies to add comments.
+- Do not hard-code numeric values that are subject to change in comments.
 
 ## Commit messages
 - Subject: `<scope>: <description>` (scope = subsystem/package/area; imperative; no `feat`/`fix` types).

@@ -20,6 +20,7 @@ using sun::support::logAndThrowError;
 
 using namespace llvm;
 
+/** Generates storage and access operations for Sun variables. */
 namespace sun::codegen::variables {
 
 // -------------------------------------------------------------------

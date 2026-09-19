@@ -38,21 +38,28 @@ public module std.process {
   // Identity
   // -------------------------------------------------------------------
 
+  /** Returns the operating-system identifier of the current process. */
   public function pid() i32 {
     return unsafe { c_getpid(); };
   }
 
-  // The process id of this process's parent.
+  /**
+   * The process id of this process's parent.
+   */
   public function parent_pid() i32 {
     return unsafe { c_getppid(); };
   }
 
-  // The real user id this process runs as.
+  /**
+   * The real user id this process runs as.
+   */
   public function uid() u32 {
     return unsafe { c_getuid(); };
   }
 
-  // The effective user id, which differs from uid() for a setuid program.
+  /**
+   * The effective user id, which differs from uid() for a setuid program.
+   */
   public function euid() u32 {
     return unsafe { c_geteuid(); };
   }
@@ -61,21 +68,26 @@ public module std.process {
   // Signals, process groups, exit
   // -------------------------------------------------------------------
 
+  /** Sends a signal to the selected process or process group and throws on failure. */
   public function kill(target: i32, sig: i32) void throws IError {
     if (unsafe { c_kill(target, sig); } != 0) {
       throw Error(errno(), "failed to signal process");
     }
   }
 
-  // Put a process in a process group. pid or pgid of 0 means "this one".
+  /**
+   * Put a process in a process group. pid or pgid of 0 means "this one".
+   */
   public function set_pgid(target: i32, pgid: i32) void throws IError {
     if (unsafe { c_setpgid(target, pgid); } != 0) {
       throw Error(errno(), "failed to set process group");
     }
   }
 
-  // Start a new session, detaching from the controlling terminal.
-  // Returns the new session id.
+  /**
+   * Start a new session, detaching from the controlling terminal.
+   * Returns the new session id.
+   */
   public function create_new_session() i32 throws IError {
     var sid: i32 = unsafe { c_setsid(); };
     if (sid < 0) {
@@ -84,14 +96,18 @@ public module std.process {
     return sid;
   }
 
-  // Leave the program, running atexit handlers and flushing streams.
+  /**
+   * Leave the program, running atexit handlers and flushing streams.
+   */
   public function exit(code: i32) void {
     unsafe { c_exit(code); };
   }
 
-  // Leave immediately, running nothing. This is what a forked child must
-  // use when its exec fails: the parent's atexit handlers and buffered
-  // output are not the child's to run.
+  /**
+   * Leave immediately, running nothing. This is what a forked child must
+   * use when its exec fails: the parent's atexit handlers and buffered
+   * output are not the child's to run.
+   */
   public function exit_now(code: i32) void {
     unsafe { c_exit_now(code); };
   }
@@ -100,12 +116,14 @@ public module std.process {
   // Raw process control
   // -------------------------------------------------------------------
 
-  // Duplicate this process. Returns 0 in the child and the child's pid in
-  // the parent.
-  //
-  // Between fork and exec the child may only call things that are safe in a
-  // signal handler — no allocation, no method calls that might allocate. Use
-  // Command below unless you have a reason not to.
+  /**
+   * Duplicate this process. Returns 0 in the child and the child's pid in
+   * the parent.
+   *
+   * Between fork and exec the child may only call things that are safe in a
+   * signal handler — no allocation, no method calls that might allocate. Use
+   * Command below unless you have a reason not to.
+   */
   public function fork() i32 throws IError {
     var result: i32 = unsafe { c_fork(); };
     if (result < 0) {
@@ -114,18 +132,22 @@ public module std.process {
     return result;
   }
 
-  // Replace this process with `cmd`, searching PATH. Only returns on
-  // failure.
+  /**
+   * Replace this process with `cmd`, searching PATH. Only returns on
+   * failure.
+   */
   public function exec(cmd: ref Command) void throws IError {
     var argv: ContiguousBuffer<raw_ptr<u8>> = cmd.build_argv_array();
     unsafe { c_execvp(cmd.program(), argv.raw_data()); };
     throw Error(errno(), "failed to exec");
   }
 
-  // Wait for a child. `target` of -1 means any child. Returns the raw wait
-  // status; read it with exited / exit_status / is_signaled / get_term_signal.
-  // With WNOHANG and no child ready, returns 0 for the pid, so the status
-  // is meaningless — use Child.try_wait for that case.
+  /**
+   * Wait for a child. `target` of -1 means any child. Returns the raw wait
+   * status; read it with exited / exit_status / is_signaled / get_term_signal.
+   * With WNOHANG and no child ready, returns 0 for the pid, so the status
+   * is meaningless — use Child.try_wait for that case.
+   */
   public function wait_pid(target: i32, options: i32) i32 throws IError {
     var status: i32 = 0;
     var got: i32 = unsafe {
@@ -141,49 +163,67 @@ public module std.process {
     return status;
   }
 
-  // Did the child exit normally, rather than dying from a signal?
+  /**
+   * Did the child exit normally, rather than dying from a signal?
+   */
   public function exited(status: i32) bool {
     return (status & 127) == 0;
   }
 
-  // The code the child passed to exit(). Only meaningful when exited().
+  /**
+   * The code the child passed to exit(). Only meaningful when exited().
+   */
   public function exit_status(status: i32) i32 {
     return (status >> 8) & 255;
   }
 
-  // Report whether a wait status says the child was killed by a signal.
+  /**
+   * Report whether a wait status says the child was killed by a signal.
+   */
   public function is_signaled(status: i32) bool {
     return not exited(status) and (status & 127) != 127;
   }
 
-  // The signal that killed the child. Only meaningful when is_signaled().
+  /**
+   * The signal that killed the child. Only meaningful when is_signaled().
+   */
   public function get_term_signal(status: i32) i32 {
     return status & 127;
   }
 
-  // A pipe's two ends. Closing is manual: the ends usually outlive this
-  // object, having been handed to a child.
+  /**
+   * A pipe's two ends. Closing is manual: the ends usually outlive this
+   * object, having been handed to a child.
+   */
   public class Pipe {
     var read_fd_: i32;
     var write_fd_: i32;
 
-    // Build a pipe object around two already-open file descriptors.
+    /**
+     * Build a pipe object around two already-open file descriptors.
+     */
     init(read_fd: i32, write_fd: i32) {
       this.read_fd_ = read_fd;
       this.write_fd_ = write_fd;
     }
 
-    // The descriptor to read from.
+    /**
+     * The descriptor to read from.
+     */
     public method read_fd() i32 {
       return this.read_fd_;
     }
 
-    // The descriptor to write to.
+    /**
+     * The descriptor to write to.
+     */
     public method write_fd() i32 {
       return this.write_fd_;
     }
 
-    // Close the read end. Closing twice is harmless.
+    /**
+     * Close the read end. Closing twice is harmless.
+     */
     public method close_read() void {
       if (this.read_fd_ > 0) {
         unsafe { c_close(this.read_fd_); };
@@ -191,7 +231,9 @@ public module std.process {
       }
     }
 
-    // Close the write end. Closing twice is harmless.
+    /**
+     * Close the write end. Closing twice is harmless.
+     */
     public method close_write() void {
       if (this.write_fd_ > 0) {
         unsafe { c_close(this.write_fd_); };
@@ -200,7 +242,9 @@ public module std.process {
     }
   }
 
-  // Create a pipe and return its two ends. Throws if the system refuses.
+  /**
+   * Create a pipe and return its two ends. Throws if the system refuses.
+   */
   public function open_pipe(alloc: ref HeapAllocator) Pipe throws IError {
     var fds: ContiguousBuffer<i32> = ContiguousBuffer<i32>(alloc, 2);
     unsafe { fds.set_unchecked(0, 0); };
@@ -213,7 +257,9 @@ public module std.process {
     return Pipe(read_end, write_end);
   }
 
-  // Point `new_fd` at whatever `old_fd` refers to, closing `new_fd` first.
+  /**
+   * Point `new_fd` at whatever `old_fd` refers to, closing `new_fd` first.
+   */
   public function dup_fd(old_fd: i32, new_fd: i32) void throws IError {
     if (unsafe { c_dup2(old_fd, new_fd); } < 0) {
       throw Error(errno(), "failed to duplicate descriptor");
@@ -224,14 +270,18 @@ public module std.process {
   // Command / Child / Output
   // -------------------------------------------------------------------
 
-  // What to do with one of a child's standard streams.
+  /**
+   * What to do with one of a child's standard streams.
+   */
   public enum Stdio {
     Inherit,  // share this process's
     Piped,  // give the parent a pipe to it
     Null  // /dev/null
   }
 
-  // A program and its arguments, ready to run.
+  /**
+   * A program and its arguments, ready to run.
+   */
   public class Command {
     var alloc: HeapAllocator;
     // "prog\0arg1\0arg2\0" in one allocation, with the offset of each
@@ -243,8 +293,10 @@ public module std.process {
     var stdout_mode: Stdio = Stdio.Inherit;
     var stderr_mode: Stdio = Stdio.Inherit;
 
-    // Build a command for a program named by a literal. The name also becomes
-    // argv[0].
+    /**
+     * Build a command for a program named by a literal. The name also becomes
+     * argv[0].
+     */
     init(allocator: ref HeapAllocator, program: static_ptr<u8>) {
       this.alloc = allocator.copy();
       this.blob = String(allocator, "");
@@ -252,8 +304,10 @@ public module std.process {
       this.add_arg(program);
     }
 
-    // Build a command for a program named at runtime. The name also becomes
-    // argv[0].
+    /**
+     * Build a command for a program named at runtime. The name also becomes
+     * argv[0].
+     */
     init(allocator: ref HeapAllocator, program: const ref String) {
       this.alloc = allocator.copy();
       this.blob = String(allocator, "");
@@ -261,42 +315,56 @@ public module std.process {
       this.add_arg(program);
     }
 
-    // Append one argument. The program itself is argv[0].
+    /**
+     * Append one argument. The program itself is argv[0].
+     */
     public method add_arg(value: static_ptr<u8>) void {
       this.offsets.push(this.blob.length());
       this.blob.append(value);
       this.blob.append_char(b'\0');
     }
 
-    // Append one argument built at runtime. The text is copied in.
+    /**
+     * Append one argument built at runtime. The text is copied in.
+     */
     public method add_arg(value: const ref String) void {
       this.offsets.push(this.blob.length());
       this.blob.append(value);
       this.blob.append_char(b'\0');
     }
 
-    // Choose where the child's standard input comes from.
+    /**
+     * Choose where the child's standard input comes from.
+     */
     public method set_stdin(mode: Stdio) void {
       this.stdin_mode = mode;
     }
 
-    // Choose where the child's standard output goes.
+    /**
+     * Choose where the child's standard output goes.
+     */
     public method set_stdout(mode: Stdio) void {
       this.stdout_mode = mode;
     }
 
-    // Choose where the child's standard error goes.
+    /**
+     * Choose where the child's standard error goes.
+     */
     public method set_stderr(mode: Stdio) void {
       this.stderr_mode = mode;
     }
 
-    // The program name as a C string.
+    /**
+     * The program name as a C string.
+     */
     public method program() raw_ptr<u8> {
       return this.blob.c_str();
     }
 
-    // A NUL-terminated char** for execvp. Built from one base pointer, so
-    // it stays valid as long as the blob is not appended to.
+    /**
+     * A NUL-terminated char** for execvp. Built from one base pointer, so
+     * it stays valid as long as the blob is not appended to.
+     */
     public method build_argv_array() ContiguousBuffer<raw_ptr<u8>> {
       var count: i64 = this.offsets.size();
       var argv: ContiguousBuffer<raw_ptr<u8>> = ContiguousBuffer<raw_ptr<u8>>(this.alloc, count + 1);
@@ -309,8 +377,10 @@ public module std.process {
       return argv;
     }
 
-    // Run the program in a new process. The child's end of every pipe is
-    // closed here, so reading from Child hits end-of-file when it exits.
+    /**
+     * Run the program in a new process. The child's end of every pipe is
+     * closed here, so reading from Child hits end-of-file when it exits.
+     */
     public method start() Child throws IError {
       // Everything the child touches is prepared first: after fork it may
       // only call things that are safe in a signal handler.
@@ -418,13 +488,17 @@ public module std.process {
       return Child(child, in_write, out_read, err_read);
     }
 
-    // Run to completion, inheriting the streams. Returns the exit code.
+    /**
+     * Run to completion, inheriting the streams. Returns the exit code.
+     */
     public method status() i32 throws IError {
       var child: Child = this.start();
       return child.wait();
     }
 
-    // Run to completion with stdout and stderr captured.
+    /**
+     * Run to completion with stdout and stderr captured.
+     */
     public method output() Output throws IError {
       this.stdout_mode = Stdio.Piped;
       this.stderr_mode = Stdio.Piped;
@@ -433,7 +507,9 @@ public module std.process {
     }
   }
 
-  // A running (or finished) child process.
+  /**
+   * A running (or finished) child process.
+   */
   public class Child {
     // 0 means "no child". Never -1: a moved-from Child is zeroed, and
     // waiting on -1 would reap somebody else's child while signalling 0
@@ -443,8 +519,10 @@ public module std.process {
     var stdout_fd: i32;
     var stderr_fd: i32;
 
-    // Build a handle to a running child from its pid and pipe descriptors. A
-    // descriptor of 0 means that stream was not piped.
+    /**
+     * Build a handle to a running child from its pid and pipe descriptors. A
+     * descriptor of 0 means that stream was not piped.
+     */
     init(child_pid: i32, stdin_fd: i32, stdout_fd: i32, stderr_fd: i32) {
       this.pid_ = child_pid;
       this.stdin_fd = stdin_fd;
@@ -452,12 +530,16 @@ public module std.process {
       this.stderr_fd = stderr_fd;
     }
 
-    // The child's process id.
+    /**
+     * The child's process id.
+     */
     public method id() i32 {
       return this.pid_;
     }
 
-    // Write to the child's stdin. Requires stdin(Stdio.Piped).
+    /**
+     * Write to the child's stdin. Requires stdin(Stdio.Piped).
+     */
     public method write_stdin(data: ref String) i64 {
       if (this.stdin_fd <= 0) {
         return -1;
@@ -465,7 +547,9 @@ public module std.process {
       return unsafe { c_write(this.stdin_fd, data.c_str(), data.length()); };
     }
 
-    // Close the child's stdin, so a program reading to end-of-input stops.
+    /**
+     * Close the child's stdin, so a program reading to end-of-input stops.
+     */
     public method close_stdin() void {
       if (this.stdin_fd > 0) {
         unsafe { c_close(this.stdin_fd); };
@@ -473,8 +557,10 @@ public module std.process {
       }
     }
 
-    // Wait for the child and return its exit code. A child killed by a
-    // signal reports 128 + the signal, as a shell does.
+    /**
+     * Wait for the child and return its exit code. A child killed by a
+     * signal reports 128 + the signal, as a shell does.
+     */
     public method wait() i32 throws IError {
       if (this.pid_ <= 0) {
         throw Error(-1, "no child to wait for");
@@ -488,8 +574,10 @@ public module std.process {
       return exit_status(status);
     }
 
-    // The exit code if the child has already finished, None if it is still
-    // running.
+    /**
+     * The exit code if the child has already finished, None if it is still
+     * running.
+     */
     public method try_wait() Option<i32> throws IError {
       if (this.pid_ <= 0) {
         return Option.None;
@@ -515,8 +603,10 @@ public module std.process {
       return Option.Some(exit_status(status));
     }
 
-    // Send a signal to the child. Throws if there is no child or the system
-    // refuses.
+    /**
+     * Send a signal to the child. Throws if there is no child or the system
+     * refuses.
+     */
     public method kill(sig: i32) void throws IError {
       if (this.pid_ <= 0) {
         throw Error(-1, "no child to signal");
@@ -526,23 +616,29 @@ public module std.process {
       }
     }
 
-    // Hand the stdout pipe over. The Child stops owning it.
+    /**
+     * Hand the stdout pipe over. The Child stops owning it.
+     */
     public method take_stdout() i32 {
       var fd: i32 = this.stdout_fd;
       this.stdout_fd = 0;
       return fd;
     }
 
-    // Hand the stderr pipe over. The Child stops owning it.
+    /**
+     * Hand the stderr pipe over. The Child stops owning it.
+     */
     public method take_stderr() i32 {
       var fd: i32 = this.stderr_fd;
       this.stderr_fd = 0;
       return fd;
     }
 
-    // Drain both pipes and wait. Polls rather than draining one then the
-    // other: a child that fills the stderr pipe while the parent is stuck
-    // reading stdout would deadlock.
+    /**
+     * Drain both pipes and wait. Polls rather than draining one then the
+     * other: a child that fills the stderr pipe while the parent is stuck
+     * reading stdout would deadlock.
+     */
     public method collect(alloc: ref HeapAllocator) Output throws IError {
       var out: String = String(alloc, "");
       var err: String = String(alloc, "");
@@ -610,9 +706,11 @@ public module std.process {
       return Output(code, out, err);
     }
 
-    // Releases the pipes this Child still holds. It never waits and never
-    // signals: a moved-from Child is all zeroes, and reaping or killing on
-    // that would touch a process this object no longer stands for.
+    /**
+     * Releases the pipes this Child still holds. It never waits and never
+     * signals: a moved-from Child is all zeroes, and reaping or killing on
+     * that would touch a process this object no longer stands for.
+     */
     deinit() {
       this.close_stdin();
       if (this.stdout_fd > 0) {
@@ -626,31 +724,41 @@ public module std.process {
     }
   }
 
-  // What a finished child produced.
+  /**
+   * What a finished child produced.
+   */
   public class Output {
     var status_: i32;
     var out: String;
     var err: String;
 
-    // Build a result from an exit status and the text the child produced. Both
-    // Strings move in.
+    /**
+     * Build a result from an exit status and the text the child produced. Both
+     * Strings move in.
+     */
     init(status: i32, out: String, err: String) {
       this.status_ = status;
       this.out = out;
       this.err = err;
     }
 
-    // The child's exit status.
+    /**
+     * The child's exit status.
+     */
     public method status() i32 {
       return this.status_;
     }
 
-    // Borrowed: the Output keeps them.
+    /**
+     * Borrowed: the Output keeps them.
+     */
     public method stdout() ref String {
       return unsafe { _to_ref<String>(_address_of<String>(this.out)); };
     }
 
-    // Everything the child wrote to standard error, borrowed.
+    /**
+     * Everything the child wrote to standard error, borrowed.
+     */
     public method stderr() ref String {
       return unsafe { _to_ref<String>(_address_of<String>(this.err)); };
     }

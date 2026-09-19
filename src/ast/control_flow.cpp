@@ -4,6 +4,7 @@
 
 #include "ast.h"
 
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 
 bool exprDiverges(const ExprAST& expr) {

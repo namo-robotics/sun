@@ -12,15 +12,19 @@
 // When has_start=false, start should be treated as 0 (beginning of dimension).
 // When has_end=false, end should be treated as dimension size (end of dimension).
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** Describes the start, end, and step used to select a range of elements. */
   public class SliceRange {
     public var start: i64;  // Start index (ignored if has_start=false)
     public var end: i64;  // End index, exclusive (ignored if has_end=false)
     public var has_start: bool;  // true if explicit start was provided
     public var has_end: bool;  // true if explicit end was provided
 
-    // Build a range from all four fields. The compiler emits this shape
-    // directly, so the field order here is part of the slicing ABI.
+    /**
+     * Build a range from all four fields. The compiler emits this shape
+     * directly, so the field order here is part of the slicing ABI.
+     */
     init(start_: i64, end_: i64, has_start_: bool, has_end_: bool) {
       this.start = start_;
       this.end = end_;
@@ -28,8 +32,10 @@ public module std {
       this.has_end = has_end_;
     }
 
-    // Return the index this range starts at, or 0 when the slice left the
-    // start blank.
+    /**
+     * Return the index this range starts at, or 0 when the slice left the
+     * start blank.
+     */
     public const method get_start() i64 {
       if (this.has_start) {
         return this.start;
@@ -37,8 +43,10 @@ public module std {
       return 0;
     }
 
-    // Return the index this range stops before, or the dimension's size when
-    // the slice left the end blank.
+    /**
+     * Return the index this range stops before, or the dimension's size when
+     * the slice left the end blank.
+     */
     public const method get_end(dim_size: i64) i64 {
       if (this.has_end) {
         return this.end;
@@ -46,7 +54,9 @@ public module std {
       return dim_size;
     }
 
-    // Report whether this range covers a whole dimension, as a bare ':' does.
+    /**
+     * Report whether this range covers a whole dimension, as a bare ':' does.
+     */
     public const method is_full_range() bool {
       if (this.has_start) {
         return false;
@@ -57,8 +67,10 @@ public module std {
       return true;
     }
 
-    // Return how many elements this range selects out of a dimension of the
-    // given size.
+    /**
+     * Return how many elements this range selects out of a dimension of the
+     * given size.
+     */
     public const method compute_size(dim_size: i64) i64 {
       var s: i64 = this.get_start();
       var e: i64 = this.get_end(dim_size);
@@ -66,26 +78,34 @@ public module std {
     }
   }
 
-  // Build the range written ':' — every element of the dimension.
+  /**
+   * Build the range written ':' — every element of the dimension.
+   */
   public function create_full_range() SliceRange {
     var zero: i64 = 0;
     return SliceRange(zero, zero, false, false);
   }
 
-  // Build the range written 'start:end', with both ends given.
+  /**
+   * Build the range written 'start:end', with both ends given.
+   */
   public function create_range(start: i64, end: i64) SliceRange {
     return SliceRange(start, end, true, true);
   }
 
-  // Build the range written 'start:' — from an index to the end of the
-  // dimension.
+  /**
+   * Build the range written 'start:' — from an index to the end of the
+   * dimension.
+   */
   public function create_range_from(start: i64) SliceRange {
     var zero: i64 = 0;
     return SliceRange(start, zero, true, false);
   }
 
-  // Build the range written ':end' — from the start of the dimension up to an
-  // index.
+  /**
+   * Build the range written ':end' — from the start of the dimension up to an
+   * index.
+   */
   public function create_range_to(end: i64) SliceRange {
     var zero: i64 = 0;
     return SliceRange(zero, end, false, true);

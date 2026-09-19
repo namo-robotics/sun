@@ -11,11 +11,14 @@
 #include "ast/expr_ast.h"
 #include "semantic_analysis/qualified_name.h"
 
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 using sun::semantic_analysis::QualifiedName;
 
-// Module declaration: module Name { declarations... }
-// Also supports legacy 'namespace' keyword
+/**
+ * Module declaration: module Name { declarations... }
+ * Also supports legacy 'namespace' keyword
+ */
 class ModuleAST : public ExprAST {
   std::string name;
   std::unique_ptr<BlockExprAST> body;
@@ -24,19 +27,24 @@ class ModuleAST : public ExprAST {
   std::optional<sun::support::Position> nameLocation;
 
  public:
+  /** Creates this syntax node from its operands and declaration information. */
   ModuleAST(std::string name, std::unique_ptr<BlockExprAST> body)
       : name(std::move(name)), body(std::move(body)) {}
 
+  /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::MODULE; }
 
+  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     if (body) body->forEachChildSlot(fn);
   }
+  /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     return std::string(isPublic() ? "public " : "") + "module " + name + " " +
            body->toString();
   }
 
+  /** Returns the declared name used to identify this object. */
   const std::string& getName() const { return name; }
   /** Return the comment documenting this module. */
   const std::string& getDoc() const { return doc; }
@@ -72,8 +80,11 @@ class ModuleAST : public ExprAST {
   ModuleAST* getShorthandChild() {
     return const_cast<ModuleAST*>(std::as_const(*this).getShorthandChild());
   }
+  /** Provides access to the expressions that make up the body. */
   const BlockExprAST& getBody() const { return *body; }
+  /** Provides mutable access to the body so compiler passes can rewrite it. */
   BlockExprAST& mutableBody() { return *body; }
+  /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "Module\n" + name; }
 };
 

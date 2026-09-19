@@ -8,8 +8,10 @@
 #include "ast/block_expr_ast.h"
 #include "support/position.h"
 
+/** Provides compiler-backed editor features through the language server protocol. */
 namespace sun::lsp {
 
+/** The text and source range shown when hovering over a symbol. */
 struct Hover {
   std::string code;           // Sun-syntax text shown to the user
   std::string documentation;  // Comment written above the symbol's declaration

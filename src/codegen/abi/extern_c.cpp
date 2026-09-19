@@ -13,17 +13,22 @@ using sun::semantic_analysis::TypePtr;
 
 using sun::support::logAndThrowError;
 
+/** Adapts Sun values and calls to the target C calling convention. */
 namespace sun::codegen::abi {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
+/** Returns the target architecture and platform recorded on an LLVM module. */
 llvm::Triple targetTriple(const llvm::Module* module) {
   std::string triple = module->getTargetTriple();
   if (triple.empty()) triple = llvm::sys::getDefaultTargetTriple();
   return llvm::Triple(triple);
 }
 
-// Use an enum's representation when choosing integer ABI extensions.
+/**
+ * Use an enum's representation when choosing integer ABI extensions.
+ */
 TypePtr integerRepresentation(const TypePtr& type) {
   if (type && type->isEnum()) {
     return static_cast<sun::semantic_analysis::EnumType*>(type.get())
@@ -32,9 +37,11 @@ TypePtr integerRepresentation(const TypePtr& type) {
   return type;
 }
 
-// Which of the signature's integers are signed, read off the Sun-level types
-// the analyzer resolved. Darwin arm64 needs this to pick between signext and
-// zeroext; targets that never extend ignore it.
+/**
+ * Which of the signature's integers are signed, read off the Sun-level types
+ * the analyzer resolved. Darwin arm64 needs this to pick between signext and
+ * zeroext; targets that never extend ignore it.
+ */
 SignednessInfo signednessOf(const sun::ast::PrototypeAST& proto) {
   SignednessInfo signs;
   if (auto ret = integerRepresentation(proto.getResolvedReturnType())) {
@@ -48,12 +55,14 @@ SignednessInfo signednessOf(const sun::ast::PrototypeAST& proto) {
   return signs;
 }
 
-// Attach the attributes a lowered signature requires — sret, byval and their
-// alignments, HFA alignstack, and integer extension. Applied to both the
-// declaration and every call site: LLVM lowers a call from the call site's
-// attributes, so a declaration-only sret or signext would silently vanish.
-// `Target` is llvm::Function or llvm::CallBase; both spell the setters the
-// same way.
+/**
+ * Attach the attributes a lowered signature requires — sret, byval and their
+ * alignments, HFA alignstack, and integer extension. Applied to both the
+ * declaration and every call site: LLVM lowers a call from the call site's
+ * attributes, so a declaration-only sret or signext would silently vanish.
+ * `Target` is llvm::Function or llvm::CallBase; both spell the setters the
+ * same way.
+ */
 template <typename Target>
 void attachLoweringAttributes(Target* target, const SignatureLowering& lowering,
                               llvm::LLVMContext& llvmCtx) {

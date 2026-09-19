@@ -21,14 +21,16 @@
 
 /** Run tasks on threads and synchronize shared access. */
 public module std.thread {
-  // What a running thread and whoever joins it share. spawn fills in the
-  // code pointer, the environment and the result slot; the OS writes the
-  // thread id; and the thread reads its arguments, releases them, and
-  // leaves its result behind before it exits.
-  //
-  // Raw runtime memory rather than allocator memory: spawn builds it and
-  // whoever joins releases it, so it has no deinit of its own. The compiler
-  // writes these five fields directly, so their order is load-bearing.
+  /**
+   * What a running thread and whoever joins it share. spawn fills in the
+   * code pointer, the environment and the result slot; the OS writes the
+   * thread id; and the thread reads its arguments, releases them, and
+   * leaves its result behind before it exits.
+   *
+   * Raw runtime memory rather than allocator memory: spawn builds it and
+   * whoever joins releases it, so it has no deinit of its own. The compiler
+   * writes these five fields directly, so their order is load-bearing.
+   */
   class ThreadContext {
     var func: raw_ptr<i8>;  // the lambda's code pointer
     var env: raw_ptr<i8>;  // the lambda's captured environment
@@ -37,30 +39,38 @@ public module std.thread {
     var args: raw_ptr<i8>;  // the arguments moved in, or null
   }
 
-  // A running OS thread, and the right to its result. The handle owns the
-  // thread, so binding it to a second name moves it and only the new name
-  // can join.
+  /**
+   * A running OS thread, and the right to its result. The handle owns the
+   * thread, so binding it to a second name moves it and only the new name
+   * can join.
+   */
   public class Thread<T> {
     var ctx: raw_ptr<ThreadContext>;  // null once the thread is joined
 
-    // Built only by spawn(): a handle cannot be forged, and there is no way
-    // to reach a thread except through the one spawn handed back.
+    /**
+     * Built only by spawn(): a handle cannot be forged, and there is no way
+     * to reach a thread except through the one spawn handed back.
+     */
     init(ctx: raw_ptr<ThreadContext>) {
       this.ctx = ctx;
     }
 
-    // Wait for the thread to finish, and take what it returned. The result
-    // is yours from then on, and dropped at the end of your scope like any
-    // other value you own.
+    /**
+     * Wait for the thread to finish, and take what it returned. The result
+     * is yours from then on, and dropped at the end of your scope like any
+     * other value you own.
+     */
     public method join() T {
       var c = this.ctx;
       this.ctx = null;
       return unsafe { _thread_join<T>(c); };
     }
 
-    // Dropping a handle joins the thread it still holds. Nobody is taking
-    // the result, so it is dropped where it lies. A moved-from handle is
-    // all-zero, which reads as null, so there is nothing left to release.
+    /**
+     * Dropping a handle joins the thread it still holds. Nobody is taking
+     * the result, so it is dropped where it lies. A moved-from handle is
+     * all-zero, which reads as null, so there is nothing left to release.
+     */
     deinit() {
       if (this.ctx != null) {
         unsafe { _thread_join_drop<T>(this.ctx); };
@@ -69,13 +79,15 @@ public module std.thread {
     }
   }
 
-  // Run `fn` on a new OS thread, with `args`, and hand back a handle to it.
-  //
-  // The arguments move into the thread, which owns them from the moment it
-  // starts — so a thread body can be an ordinary lambda taking what it
-  // works on, rather than a closure that had to capture it.
-  // `fn` may be a lambda or a named function passed as a value; it must
-  // not throw — catch inside it and carry any failure in the result.
+  /**
+   * Run `fn` on a new OS thread, with `args`, and hand back a handle to it.
+   *
+   * The arguments move into the thread, which owns them from the moment it
+   * starts — so a thread body can be an ordinary lambda taking what it
+   * works on, rather than a closure that had to capture it.
+   * `fn` may be a lambda or a named function passed as a value; it must
+   * not throw — catch inside it and carry any failure in the result.
+   */
   public function spawn<F: _Callable>(fn: F, args...: _params_of<F>) Thread<_return_type_of<F>> {
     return Thread<_return_type_of<F>>(unsafe { _spawn<F>(fn, args...); });
   }
@@ -92,7 +104,9 @@ public module std.thread {
     // Lock state: 0=unlocked, 1=locked, 2=locked+waiters
     var state: i32 = 0;
 
-    // Acquire the lock. Blocks until the lock is available.
+    /**
+     * Acquire the lock. Blocks until the lock is available.
+     */
     public method lock() void {
       // Fast path: try to acquire uncontended lock (0 -> 1)
       var old = unsafe { _atomic_cmpxchg_i32(_address_of<i32>(this.state), 0, 1); };
@@ -105,7 +119,9 @@ public module std.thread {
       this.lock_slow();
     }
 
-    // Slow path for lock acquisition with futex waiting
+    /**
+     * Slow path for lock acquisition with futex waiting
+     */
     method lock_slow() void {
       // Spin a few times before blocking (helps on short critical sections)
       var spin_count = 0;
@@ -140,7 +156,9 @@ public module std.thread {
       }
     }
 
-    // Release the lock. Must only be called by the thread holding the lock.
+    /**
+     * Release the lock. Must only be called by the thread holding the lock.
+     */
     public method unlock() void {
       // Get the old state and set to 0 (unlocked)
       var old = unsafe { _atomic_cmpxchg_i32(_address_of<i32>(this.state), 1, 0); };
@@ -156,8 +174,10 @@ public module std.thread {
       unsafe { _futex_wake(_address_of<i32>(this.state)); };
     }
 
-    // Wait for the lock, then hand back a guard that holds it. The guard
-    // unlocks when it goes out of scope, however the scope is left.
+    /**
+     * Wait for the lock, then hand back a guard that holds it. The guard
+     * unlocks when it goes out of scope, however the scope is left.
+     */
     public method acquire() LockGuard {
       this.lock();
       return LockGuard(this, LockKey());
@@ -172,17 +192,23 @@ public module std.thread {
     var unused: i8 = 0;
   }
 
-  // Holds a Mutex locked for as long as it lives. Built only by
-  // Mutex.acquire(), so a guard always holds the lock it names.
+  /**
+   * Holds a Mutex locked for as long as it lives. Built only by
+   * Mutex.acquire(), so a guard always holds the lock it names.
+   */
   public class LockGuard {
     var mutex: ref Mutex;
 
-    // Take custody of an already-locked mutex.
+    /**
+     * Take custody of an already-locked mutex.
+     */
     init(mutex: ref Mutex, key: LockKey) {
       this.mutex = mutex;
     }
 
-    // Release the lock.
+    /**
+     * Release the lock.
+     */
     deinit() {
       this.mutex.unlock();
     }

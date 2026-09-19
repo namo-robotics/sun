@@ -18,6 +18,7 @@
 
 #include "cli/options.h"
 
+/** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
 
 // Parse the default command (run, compile or bundle) and check the result

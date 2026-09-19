@@ -1,5 +1,7 @@
 // module_a.sun - First file with module declaration
+/** Groups declarations used by this compiler regression test. */
 public module math {
+  /** Returns the sum of two numbers for module-resolution tests. */
   public function add(a: i32, b: i32) i32 {
     return a + b;
   }

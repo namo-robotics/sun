@@ -16,6 +16,7 @@
 #include "codegen/codegen.h"
 #include "semantic_analysis/types.h"
 
+/** Provides the generator for built-in operations. */
 namespace sun::codegen::intrinsics {
 
 /**
@@ -37,6 +38,7 @@ class ThreadUtils {
   std::map<std::string, llvm::Function*> trampolineCache;
 
  public:
+  /** Binds thread runtime helpers to the current LLVM context and module. */
   ThreadUtils(sun::codegen::CodegenContext& ctx, llvm::Module* module)
       : ctx(ctx), module(module) {}
 

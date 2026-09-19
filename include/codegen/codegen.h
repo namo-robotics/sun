@@ -1,5 +1,6 @@
 #pragma once
 
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 class PrototypeAST;
 }
@@ -33,12 +34,16 @@ class PrototypeAST;
 #include "llvm/Transforms/Scalar/SimplifyCFG.h"
 #include "llvm/Transforms/Utils/Mem2Reg.h"
 
+/** Declares LLVM types referenced by the compiler interfaces. */
 using namespace llvm;
 
+/** Translates analyzed Sun programs into LLVM instructions. */
 namespace sun::codegen {}  // namespace sun::codegen
 
+/** Translates analyzed Sun programs into LLVM instructions. */
 namespace sun::codegen {
 
+/** Creates the LLVM generation context for the requested module and target. */
 class CodegenContext {
  public:
   std::unique_ptr<LLVMContext> context;
@@ -67,6 +72,7 @@ class CodegenContext {
   bool optimize_ = true;
 
  public:
+  /** Creates the LLVM generation context for the requested module and target. */
   explicit CodegenContext(std::string moduleName,
                           const std::shared_ptr<sun::driver::SunJIT>& jit,
                           LLVMContext* existingContext = nullptr,
@@ -85,6 +91,7 @@ class CodegenContext {
     }
   }
 
+  /** Starts code generation in a new or supplied LLVM module. */
   void createNewModule(std::unique_ptr<Module> existingModule = nullptr) {
     context = std::make_unique<LLVMContext>();
     if (existingModule) {
@@ -99,12 +106,14 @@ class CodegenContext {
   }
 
  private:
+  /** Sets up the LLVM module and its target-dependent state. */
   void initializeModule(LLVMContext& ctx) {
     mainModule = std::make_unique<Module>(moduleName, ctx);
     builder = std::make_unique<IRBuilder<>>(ctx);
     initializePasses(ctx);
   }
 
+  /** Configures the LLVM passes used to optimize generated code. */
   void initializePasses(LLVMContext& ctx) {
     fpm = std::make_unique<FunctionPassManager>();
     lam = std::make_unique<LoopAnalysisManager>();
@@ -174,26 +183,40 @@ class CodegenContext {
   }
 
  public:
-  // Always use this to get the LLVM context - handles both owned and borrowed
-  // cases
+  /**
+   * Always use this to get the LLVM context - handles both owned and borrowed
+   * cases
+   */
   LLVMContext& getContext() const { return mainModule->getContext(); }
 
+  /** Reports whether source-level debug metadata should be emitted. */
   bool debugInfoEnabled() const { return debugInfo_; }
 
-  /// Whether to run IR optimization passes. Independent of debug info.
+  /**
+   * Whether to run IR optimization passes. Independent of debug info.
+   */
   bool optimizationEnabled() const { return optimize_; }
 
+  /** Destroys this object and releases its owned members. */
   ~CodegenContext() = default;
 
-  // Delete copy operations (LLVMContext cannot be shared/copied this way)
+  /**
+   * Delete copy operations (LLVMContext cannot be shared/copied this way)
+   */
   CodegenContext(const CodegenContext&) = delete;
+  /** Disallows assignment so ownership and object identity cannot be duplicated. */
   CodegenContext& operator=(const CodegenContext&) = delete;
 
-  // Allow move semantics if needed
+  /**
+   * Allow move semantics if needed
+   */
   CodegenContext(CodegenContext&&) = default;
+  /** Transfers the stored state from another instance during move assignment. */
   CodegenContext& operator=(CodegenContext&&) = default;
 
-  // Helper for temporary expression evaluation
+  /**
+   * Helper for temporary expression evaluation
+   */
   std::unique_ptr<llvm::orc::ThreadSafeModule> createTempExpressionModule() {
     auto tempCtx = std::make_unique<LLVMContext>();
     auto tempMod = std::make_unique<Module>("__anon_expr", *tempCtx);

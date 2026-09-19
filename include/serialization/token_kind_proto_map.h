@@ -12,6 +12,7 @@
 #include "parsing/lexer.h"
 #include "types.pb.h"
 
+/** Converts syntax trees to and from the compiler protobuf representation. */
 namespace sun::serialization {
 namespace pbc = sun::proto::ast;
 
@@ -51,6 +52,7 @@ inline constexpr std::pair<TokenKind, pbc::TokenKind> kTokenKindProtoMap[] = {
     {TokenKind::RIGHT_SHIFT_ASSIGN, pbc::TOKEN_KIND_SHIFT_RIGHT_ASSIGN},
 };
 
+/** Converts a lexer token category to its protobuf representation. */
 inline pbc::TokenKind toProtoTokenKind(TokenKind kind) {
   for (const auto& [cppKind, protoKind] : kTokenKindProtoMap) {
     if (cppKind == kind) return protoKind;
@@ -58,6 +60,7 @@ inline pbc::TokenKind toProtoTokenKind(TokenKind kind) {
   return pbc::TOKEN_KIND_UNKNOWN;
 }
 
+/** Converts a protobuf token category to the lexer representation. */
 inline TokenKind fromProtoTokenKind(pbc::TokenKind kind) {
   for (const auto& [cppKind, protoKind] : kTokenKindProtoMap) {
     if (protoKind == kind) return cppKind;

@@ -17,7 +17,7 @@
 
 using sun::driver::executeString;
 
-/*
+/**
  * A scratch directory per test process, removed with its files afterwards.
  * Unique per process so parallel ctest runs never delete each other's files.
  */
@@ -25,19 +25,21 @@ class Builtins_FileIntrinsics : public ::testing::Test {
  protected:
   std::string testDir;
 
+  /** Prepares the files and compiler state needed by each test. */
   void SetUp() override {
     testDir = "/tmp/sun_file_intrinsics_" + std::to_string(getpid());
     std::filesystem::create_directories(testDir);
   }
 
+  /** Releases the temporary files and state created for each test. */
   void TearDown() override { std::filesystem::remove_all(testDir); }
 
-  /*
+  /**
    * The path of a file named `name` inside the scratch directory.
    */
   std::string testFile(const std::string& name) { return testDir + "/" + name; }
 
-  /*
+  /**
    * Reads a whole file back as a string.
    */
   std::string readFileContents(const std::string& path) {
@@ -47,7 +49,7 @@ class Builtins_FileIntrinsics : public ::testing::Test {
     return buffer.str();
   }
 
-  /*
+  /**
    * Creates or overwrites a file with the given contents.
    */
   void writeFileContents(const std::string& path, const std::string& contents) {

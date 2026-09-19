@@ -13,7 +13,9 @@ using sun::ast::MatchExprAST;
 using sun::ast::TryCatchExprAST;
 using sun::support::logAndThrowError;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
 /** Register one imported binder or allocate a new source binder. */

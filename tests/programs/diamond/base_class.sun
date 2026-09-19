@@ -1,9 +1,13 @@
-// base_class.sun - Shared class imported by left_class and right_class
+/**
+ * base_class.sun - Shared class imported by left_class and right_class
+ */
 class Point {
+  /** Initializes the fixture fields used by this example or regression test. */
   init(x: i32, y: i32) {
     this.x = x;
     this.y = y;
   }
+  /** Returns the sum of the numeric fields in this test value. */
   public method sum() i32 {
     return this.x + this.y;
   }

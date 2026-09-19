@@ -11,6 +11,7 @@ using sun::semantic_analysis::TypePtr;
 using sun::support::logAndThrowError;
 using sun::support::logSemanticError;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 // -------------------------------------------------------------------

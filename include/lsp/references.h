@@ -9,18 +9,22 @@
 #include "lsp/declarations.h"
 #include "lsp/symbol_location.h"
 
+/** Provides compiler-backed editor features through the language server protocol. */
 namespace sun::lsp {
 using sun::ast::BlockExprAST;
 
-// Identity of a declaration: where it is. Specialization clones keep the
-// template's spans, so a declaration reached through a clone and through
-// the template compare equal. Parameters share their function's span and
-// are told apart by name.
+/**
+ * Identity of a declaration: where it is. Specialization clones keep the
+ * template's spans, so a declaration reached through a clone and through
+ * the template compare equal. Parameters share their function's span and
+ * are told apart by name.
+ */
 struct DeclarationKey {
   std::string file;
   int offset = 0;
   int end = -1;
   std::string parameter;
+  /** Compares the stored values for equality. */
   bool operator==(const DeclarationKey&) const = default;
 };
 
@@ -28,11 +32,13 @@ struct DeclarationKey {
 DeclarationKey declarationKey(const Declaration& declaration,
                               const std::string& file);
 
-// A member and the members it shares a name with across an `implements`
-// relation: an interface member with the member of every implementing
-// class, or a class member with the interface member it implements and the
-// other implementers. They are one symbol to references and rename, since
-// changing one side alone would break the program.
+/**
+ * A member and the members it shares a name with across an `implements`
+ * relation: an interface member with the member of every implementing
+ * class, or a class member with the interface member it implements and the
+ * other implementers. They are one symbol to references and rename, since
+ * changing one side alone would break the program.
+ */
 struct MemberGroup {
   std::vector<Declaration> members;  // The declaration itself when no group
   // Name of a builtin interface (declared by the compiler, with no node in
@@ -45,6 +51,7 @@ MemberGroup memberGroupOf(const BlockExprAST& program,
                           const Declaration& declaration,
                           const std::string& documentPath);
 
+/** Source locations referring to the same resolved declaration. */
 struct Occurrences {
   std::vector<SymbolLocation> locations;  // Sorted by file then offset
   // Every target's declaration sits in the walked tree; false when one was

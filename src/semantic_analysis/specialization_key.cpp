@@ -1,5 +1,6 @@
 #include "semantic_analysis/types.h"
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 /** Compare identity recursively without accepting implicit conversions. */

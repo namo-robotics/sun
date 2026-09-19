@@ -8,16 +8,22 @@
 using sun::codegen::abi::ArgKind;
 using sun::codegen::abi::ArgLowering;
 
+/** Lowers C calls and values using the System V x86-64 calling convention. */
 namespace sun::codegen::abi::sysv {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// psABI classes, restricted to the ones reachable from Sun's type system.
-// X87/COMPLEX_X87 would require long double, which Sun does not have.
+/**
+ * psABI classes, restricted to the ones reachable from Sun's type system.
+ * X87/COMPLEX_X87 would require long double, which Sun does not have.
+ */
 enum class EightbyteClass { NoClass, SSE, Integer, Memory };
 
-// psABI merge rule, simplified to the classes above: Memory wins over
-// Integer, which wins over SSE, which wins over NoClass.
+/**
+ * psABI merge rule, simplified to the classes above: Memory wins over
+ * Integer, which wins over SSE, which wins over NoClass.
+ */
 EightbyteClass merge(EightbyteClass a, EightbyteClass b) {
   if (a == b) return a;
   if (a == EightbyteClass::NoClass) return b;
@@ -29,6 +35,7 @@ EightbyteClass merge(EightbyteClass a, EightbyteClass b) {
   return EightbyteClass::SSE;
 }
 
+/** Classification data for one register-sized part of a System V argument. */
 struct EightbyteInfo {
   EightbyteClass cls = EightbyteClass::NoClass;
   // Highest byte offset used within this eightbyte. Determines the width of
@@ -40,9 +47,11 @@ struct EightbyteInfo {
   bool allFloat32 = true;
 };
 
-// Walk the leaves of an aggregate, folding each into the eightbyte it lands
-// in. Returns false if the type cannot be classified in registers (a field
-// straddling an eightbyte boundary, which packed layouts can produce).
+/**
+ * Walk the leaves of an aggregate, folding each into the eightbyte it lands
+ * in. Returns false if the type cannot be classified in registers (a field
+ * straddling an eightbyte boundary, which packed layouts can produce).
+ */
 bool classifyLeaves(llvm::Type* type, uint64_t offset,
                     const llvm::DataLayout& dl, EightbyteInfo eightbytes[2]) {
   if (auto* structTy = llvm::dyn_cast<llvm::StructType>(type)) {
@@ -90,13 +99,15 @@ bool classifyLeaves(llvm::Type* type, uint64_t offset,
   return true;
 }
 
-// The scalar an eightbyte is coerced to.
-//
-// Integers take the exact width of the bytes actually occupied, so a
-// three-byte eightbyte is i24 rather than i32 — this is what clang emits, and
-// matching it exactly avoids relying on the callee ignoring stray high bits.
-// SSE eightbytes are `float` when half-full, `<2 x float>` when two floats
-// share them, and `double` otherwise.
+/**
+ * The scalar an eightbyte is coerced to.
+ *
+ * Integers take the exact width of the bytes actually occupied, so a
+ * three-byte eightbyte is i24 rather than i32 — this is what clang emits, and
+ * matching it exactly avoids relying on the callee ignoring stray high bits.
+ * SSE eightbytes are `float` when half-full, `<2 x float>` when two floats
+ * share them, and `double` otherwise.
+ */
 llvm::Type* pieceType(const EightbyteInfo& eb, llvm::LLVMContext& ctx) {
   if (eb.cls == EightbyteClass::SSE) {
     llvm::Type* floatTy = llvm::Type::getFloatTy(ctx);
@@ -109,10 +120,12 @@ llvm::Type* pieceType(const EightbyteInfo& eb, llvm::LLVMContext& ctx) {
   return llvm::IntegerType::get(ctx, static_cast<unsigned>(eb.usedBytes * 8));
 }
 
+/** Reports whether an LLVM type groups multiple values in an array or structure. */
 bool isAggregate(llvm::Type* type) {
   return type && (type->isStructTy() || type->isArrayTy());
 }
 
+/** Chooses the target calling-convention representation of an aggregate value. */
 ArgLowering lowerAggregate(llvm::Type* type, const llvm::DataLayout& dl) {
   ArgLowering result;
   result.type = type;

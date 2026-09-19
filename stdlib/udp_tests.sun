@@ -3,8 +3,11 @@
 
 using std;
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** Groups tests for the udp library behavior. */
   module udp_tests {
+    /** Checks roundtrip loopback. */
     test_function roundtrip_loopback() {
       var alloc = make_heap_allocator();
       var here = ipv4_loopback();
@@ -27,6 +30,7 @@ public module std {
       receiver.close();
     }
 
+    /** Checks bind is exclusive and can retry. */
     test_function bind_is_exclusive_and_can_retry() {
       var here = ipv4_loopback();
       var owner = UdpSocket();
@@ -49,6 +53,7 @@ public module std {
       std.test.assert_eq(contender.local_port(), port);
     }
 
+    /** Checks bind reuse is explicit. */
     test_function bind_reuse_is_explicit() {
       var group = Ipv4Addr(239, 255, 0, 1);
       var first = UdpSocket();
@@ -69,6 +74,7 @@ public module std {
       std.test.assert(not exclusive.is_open(), "failed bind should close the socket");
     }
 
+    /** Checks recv timeout reports would block. */
     test_function recv_timeout_reports_would_block() {
       var alloc = make_heap_allocator();
       var here = ipv4_loopback();
@@ -86,6 +92,7 @@ public module std {
       socket.close();
     }
 
+    /** Checks multicsyntax tree options smoke. */
     test_function multicast_options_smoke() {
       var socket = UdpSocket();
       var wildcard = ipv4_any();
@@ -100,6 +107,7 @@ public module std {
       socket.close();
     }
 
+    /** Checks ipv4addr roundtrip. */
     test_function ipv4addr_roundtrip() {
       var alloc = make_heap_allocator();
       var loopback = Ipv4Addr(127, 0, 0, 1);
@@ -129,6 +137,7 @@ public module std {
       std.test.assert(threw_overflow, "octet above 255 should not parse");
     }
 
+    /** Checks send on closed socket reports errno. */
     test_function send_on_closed_socket_reports_errno() {
       var socket = UdpSocket();
       var dest = ipv4_loopback();

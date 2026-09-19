@@ -6,7 +6,9 @@
 using sun::ast::ASTNodeType;
 using sun::ast::ExprAST;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
 /** Fill a declaration's name while retaining imported or generated identities.

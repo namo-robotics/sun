@@ -14,9 +14,10 @@
 
 using sun::driver::executeString;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
-/*
+/**
  * Compiles a Sun program ahead of time and returns its LLVM IR as text.
  */
 std::string atomicIrFor(const std::string& source) {

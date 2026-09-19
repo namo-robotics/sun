@@ -16,15 +16,18 @@
 #include "semantic_analysis/types.h"
 #include "support/error.h"
 
+/** Checks ownership and lifetimes so references cannot outlive their values. */
 namespace sun::borrow_checker {
 using sun::ast::CallExprAST;
 using sun::ast::ExprAST;
 using sun::ast::MatchExprAST;
 using sun::semantic_analysis::TypePtr;
 
-/// A single borrow checking error with source location and optional related
-/// locations. Rendering in the standard compiler format (source line and
-/// caret) is done by the driver, which has the source text at hand.
+/**
+ * A single borrow checking error with source location and optional related
+ * locations. Rendering in the standard compiler format (source line and
+ * caret) is done by the driver, which has the source text at hand.
+ */
 struct BorrowError {
   std::string message;
   sun::support::Position location;
@@ -40,132 +43,252 @@ struct BorrowError {
 sun::support::SunError buildBorrowCheckError(
     const std::vector<BorrowError>& errors);
 
-/// Main borrow checker class
-/// Validates reference safety by tracking borrows across the AST
-///
-/// Configuration is taken from sun::support::Config compile-time constants:
-/// - FORBID_REF_RETURNS: If true, functions cannot return references
-/// - FORBID_REF_FIELDS_IN_CLASSES: If true, classes cannot have ref fields
-/// - STRICT_MUTATION_CHECKING: If true, disallow mutating borrowed variables
+/**
+ * Main borrow checker class
+ * Validates reference safety by tracking borrows across the AST
+ *
+ * Configuration is taken from sun::support::Config compile-time constants:
+ * - FORBID_REF_RETURNS: If true, functions cannot return references
+ * - FORBID_REF_FIELDS_IN_CLASSES: If true, classes cannot have ref fields
+ * - STRICT_MUTATION_CHECKING: If true, disallow mutating borrowed variables
+ */
 class BorrowChecker {
  public:
+  /** Initializes ownership checking with an empty scope and loan state. */
   BorrowChecker();
 
-  /// Main entry point - check an entire program (BlockExprAST)
-  /// Returns a list of borrow errors (empty if valid)
+  /**
+   * Main entry point - check an entire program (BlockExprAST)
+   * Returns a list of borrow errors (empty if valid)
+   */
   std::vector<BorrowError> check(const sun::ast::BlockExprAST& program);
 
  private:
-  // AST traversal methods
+  /**
+   * AST traversal methods
+   */
   void checkExpr(const ExprAST& expr);
 
-  // Specific node handlers
+  /**
+   * Specific node handlers
+   */
   void checkVariableCreation(const sun::ast::VariableCreationAST& var);
+  /**
+   * Checks ownership and lifetime rules for this reference creation and updates active
+   * loans.
+   */
   void checkReferenceCreation(const sun::ast::ReferenceCreationAST& ref);
-  // Shared by `ref r = lvalue` and `var r: ref T = lvalue`: both bind a
-  // borrow of the lvalue's storage rather than moving a value into r.
+  /**
+   * Shared by `ref r = lvalue` and `var r: ref T = lvalue`: both bind a
+   * borrow of the lvalue's storage rather than moving a value into r.
+   */
   void checkBorrowBinding(const std::string& refName, const ExprAST& targetExpr,
                           bool isMutable, const sun::support::Position& refPos);
-  // Binding a ref-returning call's result to a name borrows every named
-  // variable the call could hand back a reference into: the receiver and
-  // each argument bound to a ref parameter.
+  /**
+   * Binding a ref-returning call's result to a name borrows every named
+   * variable the call could hand back a reference into: the receiver and
+   * each argument bound to a ref parameter.
+   */
   void borrowRefCallInputs(const std::string& refName, const CallExprAST& call,
                            bool isMutable,
                            const sun::support::Position& refPos);
+  /** Rejects borrowing a value whose ownership has already been moved. */
   void checkBorrowTargetIntact(const ExprAST& target,
                                const sun::support::Position& refPos);
+  /**
+   * Checks ownership and lifetime rules for this variable assignment and updates active
+   * loans.
+   */
   void checkVariableAssignment(const sun::ast::VariableAssignmentAST& assign);
+  /**
+   * Checks ownership and lifetime rules for this variable reference and updates active
+   * loans.
+   */
   void checkVariableReference(const sun::ast::VariableReferenceAST& varRef);
+  /**
+   * Checks ownership and lifetime rules for this binary expression and updates active
+   * loans.
+   */
   void checkBinaryExpr(const sun::ast::BinaryExprAST& binary);
+  /**
+   * Checks ownership and lifetime rules for this call expression and updates active
+   * loans.
+   */
   void checkCallExpr(const CallExprAST& call);
+  /** Checks ownership and lifetime rules for this if expression and updates active loans. */
   void checkIfExpr(const sun::ast::IfExprAST& ifExpr);
+  /**
+   * Checks ownership and lifetime rules for this ternary expression and updates active
+   * loans.
+   */
   void checkTernaryExpr(const sun::ast::TernaryExprAST& ternary);
+  /**
+   * Checks ownership and lifetime rules for this match expression and updates active
+   * loans.
+   */
   void checkMatchExpr(const MatchExprAST& matchExpr);
 
   /** Records ownership transfers through expressions, including blocks and
    * parentheses. */
   void consumeOwnedValue(const ExprAST& value);
+  /**
+   * Checks ownership and lifetime rules for this while expression and updates active
+   * loans.
+   */
   void checkWhileExpr(const sun::ast::WhileExprAST& whileExpr);
+  /** Checks ownership and lifetime rules for this for expression and updates active loans. */
   void checkForExpr(const sun::ast::ForExprAST& forExpr);
+  /**
+   * Checks ownership and lifetime rules for this for in expression and updates active
+   * loans.
+   */
   void checkForInExpr(const sun::ast::ForInExprAST& forInExpr);
+  /**
+   * Checks ownership and lifetime rules for this block expression and updates active
+   * loans.
+   */
   void checkBlockExpr(const sun::ast::BlockExprAST& block, size_t start = 0);
+  /**
+   * Checks ownership and lifetime rules for this return statement and updates active
+   * loans.
+   */
   void checkReturnStmt(const sun::ast::ReturnExprAST& ret);
+  /**
+   * Checks ownership and lifetime rules for this function definition and updates active
+   * loans.
+   */
   void checkFunctionDef(const sun::ast::FunctionAST& func);
+  /**
+   * Checks ownership and lifetime rules for this lambda definition and updates active
+   * loans.
+   */
   void checkLambdaDef(const sun::ast::LambdaAST& lambda);
+  /**
+   * Checks ownership and lifetime rules for this class definition and updates active
+   * loans.
+   */
   void checkClassDef(const sun::ast::ClassDefinitionAST& classDef);
+  /** Checks ownership and lifetime rules for this member access and updates active loans. */
   void checkMemberAccess(const sun::ast::MemberAccessAST& access);
+  /**
+   * Checks ownership and lifetime rules for this member assignment and updates active
+   * loans.
+   */
   void checkMemberAssignment(const sun::ast::MemberAssignmentAST& assign);
+  /**
+   * Checks ownership and lifetime rules for this indexed assignment and updates active
+   * loans.
+   */
   void checkIndexedAssignment(const sun::ast::IndexedAssignmentAST& assign);
+  /** Checks ownership and lifetime rules for this array literal and updates active loans. */
   void checkArrayLiteral(const sun::ast::ArrayLiteralAST& literal);
+  /**
+   * Checks ownership and lifetime rules for this index expression and updates active
+   * loans.
+   */
   void checkIndexExpr(const sun::ast::IndexAST& index);
+  /**
+   * Checks ownership and lifetime rules for this compound assignment and updates active
+   * loans.
+   */
   void checkCompoundAssignment(const sun::ast::CompoundAssignmentAST& assign);
+  /** Checks whether active loans permit replacing the named variable. */
   void checkVariableWrite(const std::string& varName, const TypePtr& valueType,
                           const sun::support::Position& pos);
+  /** Reports whether a lambda expression retains borrowed captures. */
   bool isRefCapturingLambdaExpr(const ExprAST& expr) const;
-  // A value that must not leave this frame: a call result built from a
-  // lambda with a capture list (spawn stores that lambda inside the Thread
-  // handle it returns), a local such a result was moved into, or a literal
-  // holding one. See frameBoundVars_.
+  /**
+   * A value that must not leave this frame: a call result built from a
+   * lambda with a capture list (spawn stores that lambda inside the Thread
+   * handle it returns), a local such a result was moved into, or a literal
+   * holding one. See frameBoundVars_.
+   */
   bool isFrameBoundExpr(const ExprAST& expr) const;
-  // Reject frame-bound arguments bound to by-value parameters: the callee
-  // could keep them past this frame's death, and nothing in the parameter
-  // type says so.
+  /**
+   * Reject frame-bound arguments bound to by-value parameters: the callee
+   * could keep them past this frame's death, and nothing in the parameter
+   * type says so.
+   */
   void forbidFrameBoundByValueArgs(const CallExprAST& call,
                                    const std::vector<TypePtr>& paramTypes);
+  /** Reports a call that could let a frame-bound value escape its lifetime. */
   void reportFrameBoundEscapeThroughCall(const sun::support::Position& pos);
-  // A lambda value whose captured environment provably lives in THIS frame:
-  // a capture-list literal, a bound method of a frame-local receiver, or a
-  // local one of those was assigned to. See frameSourcedLambdas_.
+  /**
+   * A lambda value whose captured environment provably lives in THIS frame:
+   * a capture-list literal, a bound method of a frame-local receiver, or a
+   * local one of those was assigned to. See frameSourcedLambdas_.
+   */
   bool isFrameSourcedLambdaExpr(const ExprAST& expr) const;
-  // True when the named place outlives this frame: `this`, a ref
-  // parameter's referent, or a global (any name this frame did not declare)
+  /**
+   * True when the named place outlives this frame: `this`, a ref
+   * parameter's referent, or a global (any name this frame did not declare)
+   */
   bool nameOutlivesFrame(const std::string& base) const;
-  // The scope depth the named storage was declared at, resolving ref
-  // aliases to their ultimate target. Names that outlive the frame -
-  // `this`, ref parameters, globals - rank as 0: outer than every local.
+  /**
+   * The scope depth the named storage was declared at, resolving ref
+   * aliases to their ultimate target. Names that outlive the frame -
+   * `this`, ref parameters, globals - rank as 0: outer than every local.
+   */
   size_t lookupDeclDepth(const std::string& name) const;
-  // The scope depth a frame-sourced value's environment is pinned to: the
-  // deepest declaration among a capture list's borrowed variables, a bound
-  // method's receiver's declaration, or a tracked local's recorded bound.
-  // An environment that only depends on storage outliving the frame ranks
-  // as functionScopeDepth_, valid anywhere in the frame.
+  /**
+   * The scope depth a frame-sourced value's environment is pinned to: the
+   * deepest declaration among a capture list's borrowed variables, a bound
+   * method's receiver's declaration, or a tracked local's recorded bound.
+   * An environment that only depends on storage outliving the frame ranks
+   * as functionScopeDepth_, valid anywhere in the frame.
+   */
   size_t inferEnvDepth(const ExprAST& expr) const;
-  // A frame-sourced environment pinned at envDepth is entering the named
-  // frame-local destination. Rejects the store when the destination's scope
-  // outlives the environment's - it would hold a dangling environment once
-  // the inner scope ends. Returns true when the store is allowed.
+  /**
+   * A frame-sourced environment pinned at envDepth is entering the named
+   * frame-local destination. Rejects the store when the destination's scope
+   * outlives the environment's - it would hold a dangling environment once
+   * the inner scope ends. Returns true when the store is allowed.
+   */
   bool checkFrameStoreDepth(const std::string& destBase, size_t envDepth,
                             const sun::support::Position& pos);
-  // A lifetime as the caller-side checker sees it. Concrete: pinned to a
-  // scope depth of this frame (deeper dies sooner). Symbolic: one of the
-  // current signature's named lifetimes - valid in some ancestor frame the
-  // name stands for. Outlives: outlives this frame with no name relating
-  // it to anything (the elided, trusted case - today's semantics).
+  /**
+   * A lifetime as the caller-side checker sees it. Concrete: pinned to a
+   * scope depth of this frame (deeper dies sooner). Symbolic: one of the
+   * current signature's named lifetimes - valid in some ancestor frame the
+   * name stands for. Outlives: outlives this frame with no name relating
+   * it to anything (the elided, trusted case - today's semantics).
+   */
   struct LifetimeValue {
+    /** Identifies the storage path component used to track a borrow target. */
     enum class Kind { Outlives, Concrete, Symbolic };
     Kind kind = Kind::Outlives;
     size_t depth = 0;       // Concrete: declaration/environment scope depth
     std::string name;       // Symbolic: the signature lifetime's name
     std::string described;  // the variable it came from, for messages
   };
-  // Does a value with lifetime src provably live at least as long as
-  // storage with lifetime dst?
+  /**
+   * Does a value with lifetime src provably live at least as long as
+   * storage with lifetime dst?
+   */
   static bool lifetimeValueOutlives(const LifetimeValue& src,
                                     const LifetimeValue& dst);
-  // The lifetime of the captured environment an expression's value
-  // carries: concrete for frame-sourced values, symbolic for named
-  // parameters and calls composed of them, outlives for everything else.
+  /**
+   * The lifetime of the captured environment an expression's value
+   * carries: concrete for frame-sourced values, symbolic for named
+   * parameters and calls composed of them, outlives for everything else.
+   */
   LifetimeValue inferEnvLifetimeValue(const ExprAST& expr) const;
-  // The lifetime of the storage a call argument lets the callee write
-  // into: the referent's declaration for a local, symbolic for a named
-  // ref parameter, outlives for an elided one.
+  /**
+   * The lifetime of the storage a call argument lets the callee write
+   * into: the referent's declaration for a local, symbolic for a named
+   * ref parameter, outlives for an elided one.
+   */
   LifetimeValue inferDestLifetimeValue(const ExprAST& arg) const;
-  // The same, for a plain name (an assignment target).
+  /**
+   * The same, for a plain name (an assignment target).
+   */
   LifetimeValue destLifetimeValueForName(const std::string& base) const;
-  // Enforce a callee's named-lifetime relations at one call: bind each
-  // name to its contributing arguments, require every source to outlive
-  // every destination sharing the name, and mark caller-local
-  // destinations frame-bound at the sources' depth.
+  /**
+   * Enforce a callee's named-lifetime relations at one call: bind each
+   * name to its contributing arguments, require every source to outlive
+   * every destination sharing the name, and mark caller-local
+   * destinations frame-bound at the sources' depth.
+   */
   void checkNamedLifetimesAtCall(const CallExprAST& call,
                                  const std::vector<TypePtr>& paramTypes);
 
@@ -173,85 +296,124 @@ class BorrowChecker {
   void checkCallMoveConflicts(const CallExprAST& call,
                               const std::vector<TypePtr>& paramTypes);
 
-  // A frame-sourced lambda is being stored into the named destination:
-  // reject if the destination outlives the frame or was declared in an
-  // outer scope than the lambda's environment, otherwise mark the
-  // destination frame-bound so the carrier cannot cross a call boundary
+  /**
+   * A frame-sourced lambda is being stored into the named destination:
+   * reject if the destination outlives the frame or was declared in an
+   * outer scope than the lambda's environment, otherwise mark the
+   * destination frame-bound so the carrier cannot cross a call boundary
+   */
   void noteFrameSourcedLambdaStore(const std::string& destBase, size_t envDepth,
                                    const sun::support::Position& pos);
-  // A ref-storing class value is landing in the named destination (a fresh
-  // construction, or a holder local moved in). Rejects a destination that
-  // outlives what the value borrows, and records the destination's own
-  // bound so later moves keep the whole journey in check.
+  /**
+   * A ref-storing class value is landing in the named destination (a fresh
+   * construction, or a holder local moved in). Rejects a destination that
+   * outlives what the value borrows, and records the destination's own
+   * bound so later moves keep the whole journey in check.
+   */
   void trackRefHolderStore(const std::string& destName, size_t destDepth,
                            const ExprAST& value,
                            const sun::support::Position& pos);
-  // Conservatively relate callbacks whose generic parameters lost lifetime
-  // names to every receiver and mutable-ref destination the callee can keep.
+  /**
+   * Conservatively relate callbacks whose generic parameters lost lifetime
+   * names to every receiver and mutable-ref destination the callee can keep.
+   */
   void checkErasedLifetimeLambdaArgs(const CallExprAST& call,
                                      const std::vector<TypePtr>& paramTypes);
-  // Does this type point into storage it does not own - a reference in any
-  // field, transitively, or a '<'_>' lambda environment it can carry?
+  /**
+   * Does this type point into storage it does not own - a reference in any
+   * field, transitively, or a '<'_>' lambda environment it can carry?
+   */
   bool classStoresRefs(const TypePtr& type) const;
+  /** Recursively checks class fields for references while avoiding type cycles. */
   bool classStoresRefsWalk(
       const TypePtr& type,
       std::unordered_set<const sun::semantic_analysis::Type*>& visited) const;
-  // Does this class hold a mutable reference anywhere in its fields?
+  /**
+   * Does this class hold a mutable reference anywhere in its fields?
+   */
   bool classStoresMutableRefs(const TypePtr& type) const;
-  // Visit the by-ref inputs a holder-producing call keeps pointing into: a
-  // constructor of a ref-storing class visits the arguments bound to its ref
-  // init parameters; a call returning such a class by value visits the
-  // receiver and the arguments bound to ref parameters. `mutableRef` says
-  // whether the holder may write through that input. Returns false when the
-  // call produces no holder.
+  /**
+   * Visit the by-ref inputs a holder-producing call keeps pointing into: a
+   * constructor of a ref-storing class visits the arguments bound to its ref
+   * init parameters; a call returning such a class by value visits the
+   * receiver and the arguments bound to ref parameters. `mutableRef` says
+   * whether the holder may write through that input. Returns false when the
+   * call produces no holder.
+   */
   bool forEachHolderInput(
       const CallExprAST& call,
       const std::function<void(const ExprAST& input, bool mutableRef)>& visit)
       const;
-  // A holder-producing call keeps pointing into its by-ref inputs after it
-  // returns, so the value holds a loan on each until scope exit.
+  /**
+   * A holder-producing call keeps pointing into its by-ref inputs after it
+   * returns, so the value holds a loan on each until scope exit.
+   */
   void borrowHolderInputs(const CallExprAST& call);
-  // Does a ref-storing value point into this frame? A construction or
-  // holder-returning call fed a frame-local (or a temporary) by ref, or a
-  // local whose recorded bound names one. A holder built only from `this`,
-  // ref parameters and globals points at storage the caller owns.
+  /**
+   * Does a ref-storing value point into this frame? A construction or
+   * holder-returning call fed a frame-local (or a temporary) by ref, or a
+   * local whose recorded bound names one. A holder built only from `this`,
+   * ref parameters and globals points at storage the caller owns.
+   */
   bool holderPointsIntoFrame(const ExprAST& value) const;
 
   // Protos of the lambdas whose bodies are currently being checked
   // (innermost last) - nested by-ref captures alias their loans
   std::vector<const sun::ast::PrototypeAST*> lambdaProtoStack_;
+  /** Checks ownership and lifetime rules for this try catch and updates active loans. */
   void checkTryCatch(const sun::ast::TryCatchExprAST& tryCatch);
+  /** Checks ownership and lifetime rules for this unsafe block and updates active loans. */
   void checkUnsafeBlock(const sun::ast::UnsafeBlockAST& unsafeBlock);
 
-  // Scope management
+  /**
+   * Scope management
+   */
   void enterScope();
+  /** Leaves the current lexical scope and ends the loans created within it. */
   void exitScope();
+  /** Starts ownership tracking for the named function. */
   void enterFunctionScope(const std::string& funcName);
+  /** Leaves the current function and clears its function-local borrow state. */
   void exitFunctionScope();
 
-  // Error reporting - positions carry the file path so the driver can
-  // render the standard source-line-and-caret format
+  /**
+   * Error reporting - positions carry the file path so the driver can
+   * render the standard source-line-and-caret format
+   */
   void reportError(const std::string& msg, const sun::support::Position& pos);
+  /** Reports an ownership violation together with the loan that caused it. */
   void reportConflict(const std::string& msg, const sun::support::Position& pos,
                       const Loan& conflict);
 
-  // Helper to check if a type is or contains a reference
+  /**
+   * Helper to check if a type is or contains a reference
+   */
   bool isReferenceType(const TypePtr& type) const;
+  /** Reports whether a value of this type can contain a borrowed reference. */
   bool typeContainsReference(const TypePtr& type) const;
 
-  // Track reference variables in current scope
+  /**
+   * Track reference variables in current scope
+   */
   void trackRef(const std::string& refName, const std::string& targetVar,
                 BorrowKind kind = BorrowKind::Mutable);
 
-  // Check if an expression evaluates to a reference
+  /**
+   * Check if an expression evaluates to a reference
+   */
   bool isRefExpr(const ExprAST& expr) const;
 
-  // Get the name of the variable being referenced (if expression is a variable
-  // ref)
+  /**
+   * Get the name of the variable being referenced (if expression is a variable
+   * ref)
+   */
   const std::string* getVariableName(const ExprAST& expr) const;
+  /** Returns the base variable name stored by this object. */
   const std::string* getBaseVariableName(const ExprAST& expr) const;
 
-  // Result of resolving a reference target
+  /**
+   * Result of resolving a reference target
+   */
   struct RefTargetInfo {
     std::string actualTarget;  // The ultimate variable being borrowed
     bool isRebind = false;     // True if rebinding through another ref
@@ -260,8 +422,10 @@ class BorrowChecker {
     bool isRefParam = false;  // True if target is a ref-typed parameter
   };
 
-  // Resolve the actual target of a reference creation
-  // Handles rebinding through refs, ref params, and direct variable refs
+  /**
+   * Resolve the actual target of a reference creation
+   * Handles rebinding through refs, ref params, and direct variable refs
+   */
   RefTargetInfo resolveRefTarget(const std::string& targetVarName) const;
 
   BorrowState state_;
@@ -339,8 +503,10 @@ class BorrowChecker {
   // assignment, no move) while their arms borrow payloads.
   std::unordered_set<std::string> frozenDiscriminants_;
 
-  // Reject moving out of a match binding / frozen discriminant. Returns
-  // true if `name` may be moved.
+  /**
+   * Reject moving out of a match binding / frozen discriminant. Returns
+   * true if `name` may be moved.
+   */
   bool checkMoveAllowed(const std::string& name,
                         const sun::support::Position& pos);
 
@@ -353,22 +519,32 @@ class BorrowChecker {
   // handle them the same way. A path is forgotten again when a value is
   // assigned back into the field.
 
-  // "cfg.line" for a read of a field of a named object; empty when the
-  // expression is not one (a temporary, a call result, an enum constant, a
-  // module-qualified name, a method).
+  /**
+   * "cfg.line" for a read of a field of a named object; empty when the
+   * expression is not one (a temporary, a call result, an enum constant, a
+   * module-qualified name, a method).
+   */
   std::string fieldPath(const ExprAST& expr) const;
 
-  // Record that `value` moved a compound field out of its object.
+  /**
+   * Record that `value` moved a compound field out of its object.
+   */
   void noteFieldMove(const ExprAST& value);
 
-  // Forget every field path under `base` (it was reassigned or moved away).
+  /**
+   * Forget every field path under `base` (it was reassigned or moved away).
+   */
   void clearFieldPaths(const std::string& base);
 
-  // The field of `name` that is currently moved out, if any.
+  /**
+   * The field of `name` that is currently moved out, if any.
+   */
   const std::string* movedFieldOf(const std::string& name) const;
 
-  // Reject moving a whole object whose field was moved out. Returns true if
-  // `name` may be moved.
+  /**
+   * Reject moving a whole object whose field was moved out. Returns true if
+   * `name` may be moved.
+   */
   bool checkFieldsIntact(const std::string& name,
                          const sun::support::Position& pos);
 
@@ -381,7 +557,9 @@ class BorrowChecker {
   // Loop-carried moves
   // =========================================================================
 
-  // Record that `place` (a variable name or a field path) was moved here.
+  /**
+   * Record that `place` (a variable name or a field path) was moved here.
+   */
   void recordMove(const std::string& place, const sun::support::Position& pos);
 
   // Where each still-standing move happened, for the loop report below.
@@ -391,11 +569,15 @@ class BorrowChecker {
   // last). Such a name is fresh on every iteration, so moving it is fine.
   std::vector<std::unordered_set<std::string>> loopLocals_;
 
-  // Note a declaration in every enclosing loop body.
+  /**
+   * Note a declaration in every enclosing loop body.
+   */
   void noteLoopLocal(const std::string& name);
 
-  // Check a loop body: a move that is still standing when the body ends would
-  // run again on the next iteration, using a value that is already gone.
+  /**
+   * Check a loop body: a move that is still standing when the body ends would
+   * run again on the next iteration, using a value that is already gone.
+   */
   void checkLoopBody(const ExprAST* body,
                      const std::vector<std::string>& loopVars = {});
 
@@ -436,19 +618,25 @@ class BorrowChecker {
   // Lifetime Inference
   // =========================================================================
 
-  /// Infer the lifetime of an expression.
-  /// - Variable references return the variable's lifetime
-  /// - Member access inherits the object's lifetime
-  /// - Parameters have param lifetimes (outlive function body)
-  /// - Locals have local lifetimes (bound to their scope)
+  /**
+   * Infer the lifetime of an expression.
+   * - Variable references return the variable's lifetime
+   * - Member access inherits the object's lifetime
+   * - Parameters have param lifetimes (outlive function body)
+   * - Locals have local lifetimes (bound to their scope)
+   */
   Lifetime inferExprLifetime(const ExprAST& expr);
 
-  /// Check that a return statement's lifetime is valid.
-  /// A ref return is only valid if the returned value's lifetime
-  /// is tied to a parameter (not a local variable).
+  /**
+   * Check that a return statement's lifetime is valid.
+   * A ref return is only valid if the returned value's lifetime
+   * is tied to a parameter (not a local variable).
+   */
   void checkReturnLifetime(const sun::ast::ReturnExprAST& ret);
 
-  /// Report a dangling reference error
+  /**
+   * Report a dangling reference error
+   */
   void reportDanglingRef(const std::string& varName,
                          const sun::support::Position& pos);
 
@@ -477,8 +665,10 @@ class BorrowChecker {
   /// This tracks whether the current expression being analyzed came from
   /// a call where temporaries were passed to ref params.
 
-  /// Infer the lifetime of a call expression's return value,
-  /// considering whether temporaries were passed to ref params.
+  /**
+   * Infer the lifetime of a call expression's return value,
+   * considering whether temporaries were passed to ref params.
+   */
   Lifetime inferCallReturnLifetime(const CallExprAST& call);
 };
 

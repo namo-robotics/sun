@@ -13,12 +13,16 @@
 
 using sun::support::logAndThrowError;
 
+/** Coordinates compilation, dependency loading, linking, and program execution. */
 namespace sun::driver {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// Relative config entries are anchored at the config file's folder, so a
-// committed sun-config.json works from any working directory.
+/**
+ * Relative config entries are anchored at the config file's folder, so a
+ * committed sun-config.json works from any working directory.
+ */
 std::string anchorAtConfigDir(const std::string& value,
                               const std::filesystem::path& configDir) {
   std::filesystem::path p(value);
@@ -28,9 +32,11 @@ std::string anchorAtConfigDir(const std::string& value,
   return (configDir / p).lexically_normal().string();
 }
 
-// One entry of the entrypoints array: an object naming the entrypoint file
-// and, optionally, what kind of artifact it is and what its outputs are
-// called. Every path-like value is anchored at the config's folder.
+/**
+ * One entry of the entrypoints array: an object naming the entrypoint file
+ * and, optionally, what kind of artifact it is and what its outputs are
+ * called. Every path-like value is anchored at the config's folder.
+ */
 ConfigEntrypoint parseEntrypoint(const llvm::json::Value& value,
                                  const std::filesystem::path& configDir,
                                  const std::filesystem::path& file) {
@@ -77,7 +83,9 @@ ConfigEntrypoint parseEntrypoint(const llvm::json::Value& value,
   return entrypoint;
 }
 
-// Match platform spellings without depending on vendor or macOS version.
+/**
+ * Match platform spellings without depending on vendor or macOS version.
+ */
 std::string configTargetKey(llvm::Triple triple) {
   triple.setVendor(llvm::Triple::UnknownVendor);
   if (triple.getArch() == llvm::Triple::aarch64) triple.setArchName("aarch64");
@@ -87,7 +95,9 @@ std::string configTargetKey(llvm::Triple triple) {
   return triple.str();
 }
 
-// Validate every target block, then select the requested target or the host.
+/**
+ * Validate every target block, then select the requested target or the host.
+ */
 const llvm::json::Object* targetSettings(const llvm::json::Object& owner,
                                          const std::string& targetTriple,
                                          const std::filesystem::path& file) {

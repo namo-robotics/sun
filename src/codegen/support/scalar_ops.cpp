@@ -5,6 +5,7 @@
 
 using sun::semantic_analysis::TypePtr;
 
+/** Provides shared diagnostics, source tracking, and compiler utilities. */
 namespace sun::codegen::support {
 
 llvm::Value* extendInt(llvm::IRBuilder<>& builder, llvm::Value* value,
@@ -15,6 +16,7 @@ llvm::Value* extendInt(llvm::IRBuilder<>& builder, llvm::Value* value,
              : builder.CreateSExt(value, destTy, "widen");
 }
 
+/** Emits integer division or remainder with the required error checks. */
 llvm::Value* createIntDivRem(llvm::IRBuilder<>& builder, llvm::Value* L,
                              llvm::Value* R, bool isModulo, bool isUnsigned) {
   if (isModulo) {

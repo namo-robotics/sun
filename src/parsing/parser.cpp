@@ -59,6 +59,7 @@ using sun::ast::VariadicParam;
 using sun::support::logAndThrowError;
 using sun::support::Position;
 
+/** Turns source text into syntax trees and provides source formatting. */
 namespace sun::parsing {
 
 #define PARSER_TIMER_START(name) \
@@ -1961,7 +1962,9 @@ sun::ast::TypeAnnotation Parser::parseTypeAnnotationImpl() {
   return type;
 }
 
-// True for '=' and every compound-assignment operator
+/**
+ * True for '=' and every compound-assignment operator
+ */
 static bool isAssignmentOp(TokenKind kind) {
   return kind == TokenKind::EQUAL || compoundToBinaryOp(kind).has_value();
 }
@@ -2339,7 +2342,9 @@ bool Parser::parseConstModifier() {
   return true;
 }
 
-// Statement kinds that may carry a `public` modifier at item level.
+/**
+ * Statement kinds that may carry a `public` modifier at item level.
+ */
 static bool isPublicableStatementStart(TokenKind kind) {
   switch (kind) {
     case TokenKind::MODULE:

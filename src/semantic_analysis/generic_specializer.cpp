@@ -30,6 +30,7 @@ using sun::ast::typeParameterNames;
 using sun::support::logAndThrowError;
 using sun::support::Position;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 using sun::semantic_analysis::formatFunctionSignature;

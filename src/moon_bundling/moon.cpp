@@ -17,7 +17,9 @@
 
 #include "support/error.h"
 
+/** Builds and loads compiled Moon libraries and their declaration metadata. */
 namespace sun::moon_bundling {
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
 /** Reject incomplete or malformed identities at bundle boundaries. */
@@ -31,6 +33,7 @@ void validateBundleHash(const std::string& hash) {
 
 }  // namespace
 
+/** Returns the hexadecimal SHA-256 digest of the supplied contents. */
 std::string computeSha256Hex(llvm::StringRef data) {
   llvm::SHA256 sha;
   sha.update(data);

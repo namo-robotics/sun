@@ -15,6 +15,7 @@ using sun::support::logAndThrowError;
 
 using namespace llvm;
 
+/** Generates enum representations and operations on enum values. */
 namespace sun::codegen::enums {
 
 sun::codegen::scopes::ScopeManager& EnumGenerator::scopes() {

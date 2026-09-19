@@ -1,5 +1,6 @@
 #pragma once
 
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 class ExprAST;
 }
@@ -12,8 +13,10 @@ class ExprAST;
 
 #include "semantic_analysis/declaration_id.h"
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {}
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 class PortableDeclarationKey;
@@ -23,6 +26,7 @@ class Type;
 /** Structural type identity for independently compiled generic instances. */
 class PortableTypeKey {
   std::string encoded_;
+  /** Stores an encoded type identity that can cross compilation sessions. */
   explicit PortableTypeKey(std::string encoded)
       : encoded_(std::move(encoded)) {}
 
@@ -53,6 +57,7 @@ class PortableTypeKey {
   static PortableTypeKey errorUnion(const PortableTypeKey& value);
   /** Return the canonical structural encoding. */
   const std::string& encoding() const { return encoded_; }
+  /** Compares the stored values for equality. */
   bool operator==(const PortableTypeKey& other) const {
     return encoded_ == other.encoded_;
   }
@@ -61,6 +66,7 @@ class PortableTypeKey {
 /** Identifies a declaration independently of any compiler session. */
 class PortableDeclarationKey {
   std::string encoded_;
+  /** Stores an encoded declaration identity that can cross compilation sessions. */
   explicit PortableDeclarationKey(std::string encoded)
       : encoded_(std::move(encoded)) {}
 
@@ -104,9 +110,11 @@ class PortableDeclarationKey {
   bool empty() const { return encoded_.empty(); }
   /** Derive a linker symbol for one explicitly named emission role. */
   std::string symbol(const std::string& role) const;
+  /** Compares the stored values for equality. */
   bool operator==(const PortableDeclarationKey& other) const {
     return encoded_ == other.encoded_;
   }
+  /** Orders values for use in sorted containers. */
   bool operator<(const PortableDeclarationKey& other) const {
     return encoded_ < other.encoded_;
   }

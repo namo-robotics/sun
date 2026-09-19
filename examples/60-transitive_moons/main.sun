@@ -1,5 +1,6 @@
 using std;
 
+/** Runs the example that calls through transitive compiled-library dependencies. */
 function main() void {
   println(moon1.moon1());
 }

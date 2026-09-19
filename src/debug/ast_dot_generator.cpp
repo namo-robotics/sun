@@ -7,6 +7,7 @@
 using sun::ast::ASTNodeType;
 using sun::ast::ExprAST;
 
+/** Produces readable views of syntax trees and semantic scopes. */
 namespace sun::debug {
 
 std::string AstDotGenerator::generate(const ExprAST* root) {

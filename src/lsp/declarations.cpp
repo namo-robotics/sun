@@ -28,8 +28,10 @@ using sun::ast::VariableCreationAST;
 using sun::ast::VariableReferenceAST;
 using sun::support::Position;
 
+/** Provides compiler-backed editor features through the language server protocol. */
 namespace sun::lsp {
 
+/** Converts a path to the normalized form used for document comparisons. */
 std::string normalizePath(const std::string& path) {
   try {
     if (std::filesystem::exists(path)) {
@@ -40,11 +42,13 @@ std::string normalizePath(const std::string& path) {
   return path;
 }
 
+/** Reports whether a source span contains the requested byte offset. */
 bool spanContains(const Position& loc, int offset) {
   return loc.endOffset.has_value() && loc.offset <= offset &&
          offset < *loc.endOffset;
 }
 
+/** Returns the source text covered by a recorded span. */
 std::string sliceSpan(const std::string& source, const Position& loc) {
   if (!loc.endOffset || loc.offset < 0 || *loc.endOffset < loc.offset ||
       static_cast<size_t>(*loc.endOffset) > source.size()) {
@@ -99,6 +103,7 @@ bool NodeFinder::isDocumentFile(const Position& loc) {
   return matches;
 }
 
+/** Finds a concrete generic instance and its type bindings for editor lookup. */
 const ExprAST* firstSpecialization(const ExprAST& node, Bindings& bindings) {
   if (node.getType() == ASTNodeType::CLASS_DEFINITION) {
     const auto& cls = static_cast<const ClassDefinitionAST&>(node);
@@ -125,6 +130,7 @@ const ExprAST* firstSpecialization(const ExprAST& node, Bindings& bindings) {
   return nullptr;
 }
 
+/** Finds the syntax node and ancestor chain at a document offset. */
 std::optional<Target> locate(const BlockExprAST& program,
                              const std::string& documentPath, int offset) {
   NodeFinder finder(documentPath, offset);
@@ -157,6 +163,7 @@ std::optional<Target> locate(const BlockExprAST& program,
 // Finding the declaration behind a symbol
 // ---------------------------------------------------------------------------
 
+/** Reports whether the syntax-node kind introduces a declaration. */
 bool isDefinition(ASTNodeType kind) {
   switch (kind) {
     case ASTNodeType::FUNCTION:
@@ -174,6 +181,7 @@ bool isDefinition(ASTNodeType kind) {
   }
 }
 
+/** Returns the unqualified name introduced by a declaration node. */
 std::string declarationName(const ExprAST& node) {
   switch (node.getType()) {
     case ASTNodeType::FUNCTION:
@@ -197,6 +205,7 @@ std::string declarationName(const ExprAST& node) {
   }
 }
 
+/** Returns the declaration name together with its enclosing scopes. */
 QualifiedName declarationQualifiedName(const ExprAST& node) {
   switch (node.getType()) {
     case ASTNodeType::FUNCTION:
@@ -215,9 +224,12 @@ QualifiedName declarationQualifiedName(const ExprAST& node) {
   }
 }
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// Comment stored on a declaration node (see doc_comments.h)
+/**
+ * Comment stored on a declaration node (see doc_comments.h)
+ */
 std::string storedDoc(const ExprAST& node) {
   switch (node.getType()) {
     case ASTNodeType::FUNCTION:
@@ -235,7 +247,9 @@ std::string storedDoc(const ExprAST& node) {
   }
 }
 
-// Walks module-level declarations (through modules and moon stubs)
+/**
+ * Walks module-level declarations (through modules and moon stubs)
+ */
 void forEachDeclaration(const ExprAST& node,
                         const std::function<void(const ExprAST&)>& fn) {
   switch (node.getType()) {
@@ -264,6 +278,7 @@ const ExprAST* findDeclarationById(const ExprAST& node,
 
 }  // namespace
 
+/** Extracts declaration information from a syntax node. */
 Declaration declarationOf(const ExprAST& node) {
   Declaration declaration{node.getLocation(), storedDoc(node), &node,
                           declarationName(node)};
@@ -278,6 +293,7 @@ Declaration declarationOf(const ExprAST& node) {
   return declaration;
 }
 
+/** Finds a declaration by its local and qualified names. */
 const ExprAST* findDeclaration(const BlockExprAST& program,
                                const std::string& name,
                                const QualifiedName& qualified) {
@@ -293,6 +309,7 @@ const ExprAST* findDeclaration(const BlockExprAST& program,
   return byQualifiedName ? byQualifiedName : byName;
 }
 
+/** Unwraps reference types to inspect the underlying value type. */
 const sun::semantic_analysis::Type* stripReference(
     const sun::semantic_analysis::Type* type) {
   while (type &&
@@ -304,6 +321,7 @@ const sun::semantic_analysis::Type* stripReference(
   return type;
 }
 
+/** Finds the syntax declaration corresponding to a semantic type. */
 const ExprAST* findTypeDefinition(const BlockExprAST& program,
                                   const sun::semantic_analysis::Type& type) {
   std::string name;
@@ -349,6 +367,7 @@ const ExprAST* findTypeDefinition(const BlockExprAST& program,
   return findDeclaration(program, name, qualified);
 }
 
+/** Finds a named member in a type definition. */
 std::optional<Declaration> findMember(const ExprAST& definition,
                                       const std::string& member) {
   switch (definition.getType()) {
@@ -391,6 +410,7 @@ std::optional<Declaration> findMember(const ExprAST& definition,
   }
 }
 
+/** Searches enclosing lexical scopes for a local declaration. */
 std::optional<Declaration> findLocalDeclaration(
     const std::vector<const ExprAST*>& chain, const ExprAST& node,
     const std::string& name) {
@@ -465,6 +485,7 @@ std::optional<Declaration> findLocalDeclaration(
   return std::nullopt;
 }
 
+/** Resolves the named member on the receiver's type. */
 std::optional<Declaration> findMemberDeclaration(
     const BlockExprAST& program, const ExprAST& object,
     const std::string& member, const QualifiedName& qualifiedName) {
@@ -496,6 +517,7 @@ std::optional<Declaration> findMemberDeclaration(
   return findMember(*definition, member);
 }
 
+/** Resolves the declaration referenced by a node in its enclosing scopes. */
 std::optional<Declaration> findDeclarationOf(
     const BlockExprAST& program, const std::vector<const ExprAST*>& chain,
     const ExprAST& node) {
@@ -556,6 +578,7 @@ std::optional<Declaration> findDeclarationOf(
   }
 }
 
+/** Loads declaration source, reusing the open document text when possible. */
 std::string sourceFor(const Position& declaration,
                       const std::string& documentPath,
                       const std::string& documentSource) {
@@ -579,10 +602,13 @@ std::string sourceFor(const Position& declaration,
 // Type names written in annotations
 // ---------------------------------------------------------------------------
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// Innermost annotation containing the offset (type arguments, element and
-// function types nest inside the outer one), or null
+/**
+ * Innermost annotation containing the offset (type arguments, element and
+ * function types nest inside the outer one), or null
+ */
 const sun::ast::TypeAnnotation* annotationAt(
     const sun::ast::TypeAnnotation& annotation, int offset) {
   if (!spanContains(annotation.span, offset)) return nullptr;
@@ -618,6 +644,7 @@ const sun::ast::TypeAnnotation* annotationAt(
 
 }  // namespace
 
+/** Visits type annotations directly associated with a syntax node. */
 void forEachAnnotation(const ExprAST& node, const AnnotationFn& fn) {
   auto visitProto = [&](const PrototypeAST& proto) {
     for (const auto& arg : proto.getArgs()) fn(arg.second);
@@ -693,6 +720,7 @@ void forEachAnnotation(const ExprAST& node, const AnnotationFn& fn) {
   }
 }
 
+/** Finds the type annotation covering the requested byte offset. */
 const sun::ast::TypeAnnotation* annotationIn(const ExprAST& node, int offset) {
   const sun::ast::TypeAnnotation* hit = nullptr;
   forEachAnnotation(node, [&](const sun::ast::TypeAnnotation& annotation) {
@@ -701,6 +729,7 @@ const sun::ast::TypeAnnotation* annotationIn(const ExprAST& node, int offset) {
   return hit;
 }
 
+/** Resolves the type named by a source annotation. */
 const ExprAST* findAnnotatedType(const BlockExprAST& program,
                                  const sun::ast::TypeAnnotation& annotation) {
   const sun::ast::TypeAnnotation* named = &annotation;
@@ -731,6 +760,7 @@ const ExprAST* findAnnotatedType(const BlockExprAST& program,
 // Resolving the symbol a node names
 // ---------------------------------------------------------------------------
 
+/** Finds a named parameter in the enclosing function signatures. */
 std::optional<Declaration> findParameter(
     const std::vector<const ExprAST*>& chain, const std::string& name) {
   for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
@@ -742,6 +772,7 @@ std::optional<Declaration> findParameter(
   return std::nullopt;
 }
 
+/** Visits the error bindings introduced by catch clauses. */
 void forEachCatchBinding(const TryCatchExprAST& tryCatch,
                          const CatchBindingFn& fn) {
   const Position* previous = &tryCatch.getTryBlock().getLocation();
@@ -760,15 +791,20 @@ void forEachCatchBinding(const TryCatchExprAST& tryCatch,
   }
 }
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// True when the offset lies in a definition's header, before its body
+/**
+ * True when the offset lies in a definition's header, before its body
+ */
 bool inHeader(const ExprAST& node, int offset, const std::string& source) {
   size_t brace = source.find('{', node.getLocation().offset);
   return brace == std::string::npos || offset < static_cast<int>(brace);
 }
 
-// The parameter written at the offset in a function or lambda signature
+/**
+ * The parameter written at the offset in a function or lambda signature
+ */
 std::optional<Declaration> parameterUnder(const ExprAST& owner, int offset,
                                           const std::string& source) {
   const PrototypeAST* proto = prototypeOf(owner);
@@ -786,6 +822,7 @@ std::optional<Declaration> parameterUnder(const ExprAST& owner, int offset,
 
 }  // namespace
 
+/** Finds a declaration introduced at the selected position within a node. */
 std::optional<Declaration> ownDeclaration(const ExprAST& node, int offset,
                                           const std::string& source) {
   switch (node.getType()) {
@@ -870,6 +907,7 @@ std::optional<Declaration> ownDeclaration(const ExprAST& node, int offset,
   return declarationOf(node);
 }
 
+/** Resolves a syntax node to the declaration it denotes. */
 std::optional<Declaration> resolveSymbol(
     const BlockExprAST& program, const std::vector<const ExprAST*>& chain,
     const ExprAST& node) {
@@ -890,10 +928,13 @@ std::optional<Declaration> resolveSymbol(
   return declarationOf(*decl);
 }
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// The field a struct literal names at the offset: `{ x: 1 }` names the `x`
-// of the literal's type
+/**
+ * The field a struct literal names at the offset: `{ x: 1 }` names the `x`
+ * of the literal's type
+ */
 std::optional<Declaration> findLiteralField(
     const BlockExprAST& program, const sun::ast::StructLiteralAST& literal,
     int offset, const std::string& source) {
@@ -914,6 +955,7 @@ std::optional<Declaration> findLiteralField(
 
 }  // namespace
 
+/** Resolves the declaration under a selected source position. */
 std::optional<Declaration> declarationUnder(const BlockExprAST& program,
                                             const Target& target, int offset,
                                             const std::string& source) {
@@ -927,6 +969,7 @@ std::optional<Declaration> declarationUnder(const BlockExprAST& program,
   return resolveSymbol(program, target.chain, node);
 }
 
+/** Finds the declaration associated with a document byte offset. */
 std::optional<Declaration> findDeclarationAt(const BlockExprAST& program,
                                              const std::string& documentPath,
                                              const std::string& source,

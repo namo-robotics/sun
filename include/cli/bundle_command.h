@@ -12,6 +12,7 @@
 #include "cli/options.h"
 #include "moon_bundling/moon_builder.h"
 
+/** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
 
 // Build one .moon bundle from an entrypoint with a manifest, printing what

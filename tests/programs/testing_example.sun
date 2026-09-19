@@ -2,20 +2,25 @@
 // EndToEnd_Testing to check the production compile ignores all of it.
 using std;
 
+/** Groups declarations used by this compiler regression test. */
 module arithmetic {
+  /** Doubles a value through a private module helper. */
   function double_it(n: i32) i32 {
     return n * 2;
   }
 
+  /** Applies the doubling helper twice to test private-name resolution. */
   public function quadruple(n: i32) i32 {
     return arithmetic.double_it(arithmetic.double_it(n));
   }
 
+  /** Checks doubles. */
   test_function doubles() {
     std.test.assert_eq(arithmetic.double_it(2), 4);
   }
 }
 
+/** Runs the regression scenario and returns its observable result to the test harness. */
 function main() i32 {
   return arithmetic.quadruple(2);
 }

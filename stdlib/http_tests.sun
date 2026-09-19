@@ -4,9 +4,13 @@
 
 using std;
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** Groups tests for the http library behavior. */
   module http_tests {
-    // Builds "GET /index.html HTTP/1.1\r\nHost: x\r\n\r\n"
+    /**
+     * Builds "GET /index.html HTTP/1.1\r\nHost: x\r\n\r\n"
+     */
     function build_request(alloc: ref HeapAllocator) String {
       var raw = String(alloc, "GET /index.html HTTP/1.1");
       append_crlf(raw);
@@ -16,6 +20,7 @@ public module std {
       return raw;
     }
 
+    /** Checks parse request method and path. */
     test_function parse_request_method_and_path() {
       var alloc = make_heap_allocator();
       var raw = build_request(alloc);
@@ -26,6 +31,7 @@ public module std {
       std.test.assert(req.headers.starts_with("Host: x"), "headers should start with Host: x");
     }
 
+    /** Checks find header end finds terminator. */
     test_function find_header_end_finds_terminator() {
       var alloc = make_heap_allocator();
       var complete = build_request(alloc);
@@ -41,8 +47,10 @@ public module std {
       );
     }
 
-    // The terminator is CRLFCRLF, so the lone CRLFs that end each header line
-    // must not match, and the index returned is the start of the run.
+    /**
+     * The terminator is CRLFCRLF, so the lone CRLFs that end each header line
+     * must not match, and the index returned is the start of the run.
+     */
     test_function find_header_end_returns_the_run_start() {
       var alloc = make_heap_allocator();
       var s = String(alloc, "GET / HTTP/1.1\r\nHost: x\r\n\r\nbody");
@@ -67,6 +75,7 @@ public module std {
       std.test.assert(std.find_header_end(empty) < 0, "empty text has no terminator");
     }
 
+    /** Checks response defaults and setters. */
     test_function response_defaults_and_setters() {
       var alloc = make_heap_allocator();
       var resp = HttpResponse(alloc);
@@ -88,6 +97,7 @@ public module std {
       std.test.assert(resp.body.equals_literal("{}"), "body setter");
     }
 
+    /** Checks status reason phrases. */
     test_function status_reason_phrases() {
       var alloc = make_heap_allocator();
       var ok = String(alloc, "");
@@ -103,6 +113,7 @@ public module std {
       std.test.assert(unknown.equals_literal("Status"), "unknown codes say Status");
     }
 
+    /** Checks server handler lambda compiles. */
     test_function server_handler_lambda_compiles() {
       // Full serve() loop needs a live socket; this verifies the lambda-based
       // API wires up (bind to port 0 is skipped - just construct and stop).

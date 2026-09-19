@@ -17,16 +17,19 @@
 
 using sun::driver::Driver;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 // The file never exists on disk; nodes carry the path exactly as given
 const char* kPath = "/tests_test.sun";
 
+/** Keeps the syntax tree and semantic context alive for editor-feature tests. */
 struct Analysis {
   std::unique_ptr<Driver> driver;
   sun::driver::Driver::AnalyzedProgram program;
 };
 
+/** Parses and analyzes fixture source before querying editor features. */
 Analysis analyze(const std::string& source, bool withStdlib = false) {
   sun::driver::initTestEnvironment();
   Analysis analysis;

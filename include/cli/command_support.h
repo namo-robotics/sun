@@ -13,6 +13,7 @@
 #include "driver/sun_config.h"
 #include "support/error.h"
 
+/** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
 
 // True when the input argument is a sun-config.json rather than a .sun

@@ -8,14 +8,18 @@
 #include "moon_bundling/moon.h"
 #include "semantic_analysis/struct_names.h"
 
+/** Builds and loads compiled Moon libraries and their declaration metadata. */
 namespace sun::moon_bundling {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-/// The canonical name a struct from a scanned module should unify under in
-/// the target: well-known runtime structs map to their unsuffixed name, and a
-/// trailing ".N" that LLVM added to keep same-named types apart is stripped
-/// (codegen mints the unsuffixed one from the Sun type).
+/**
+ * The canonical name a struct from a scanned module should unify under in
+ * the target: well-known runtime structs map to their unsuffixed name, and a
+ * trailing ".N" that LLVM added to keep same-named types apart is stripped
+ * (codegen mints the unsuffixed one from the Sun type).
+ */
 std::string canonicalStructName(llvm::StringRef name) {
   for (const auto& info : sun::semantic_analysis::All) {
     if (name.starts_with(info.name)) return info.name;
@@ -29,10 +33,12 @@ std::string canonicalStructName(llvm::StringRef name) {
   return name.str();
 }
 
-/// Map a type from a scanned module to the target context. Scanned modules
-/// live in their own LLVMContext, so every type is rebuilt: named structs
-/// unify by canonical name, everything else structurally. `visited` carries
-/// in-progress structs so recursive types terminate.
+/**
+ * Map a type from a scanned module to the target context. Scanned modules
+ * live in their own LLVMContext, so every type is rebuilt: named structs
+ * unify by canonical name, everything else structurally. `visited` carries
+ * in-progress structs so recursive types terminate.
+ */
 llvm::Type* mapTypeToTarget(
     llvm::Type* srcType, llvm::LLVMContext& ctx,
     std::unordered_map<llvm::Type*, llvm::Type*>& visited) {
@@ -111,8 +117,10 @@ llvm::Type* mapTypeToTarget(
   return mapped;
 }
 
-/// Create a function type in the target context with mapped parameter and
-/// return types
+/**
+ * Create a function type in the target context with mapped parameter and
+ * return types
+ */
 llvm::FunctionType* remapFunctionType(
     llvm::FunctionType* srcFuncType, llvm::LLVMContext& ctx,
     std::unordered_map<llvm::Type*, llvm::Type*>& visited) {

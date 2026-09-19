@@ -5,7 +5,9 @@
 
 using std;
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** Groups tests for the networking library behavior. */
   module networking_tests {
     /** Check socket ownership with stdin closed in an isolated process. */
     test_function sockets_can_own_descriptor_zero() {
@@ -168,8 +170,10 @@ public module std {
       std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, stdin_flags);
     }
 
-    // A non-blocking read on a connected stream with nothing to read fails
-    // with a would-block code instead of waiting.
+    /**
+     * A non-blocking read on a connected stream with nothing to read fails
+     * with a would-block code instead of waiting.
+     */
     test_function nonblocking_recv_reports_would_block() {
       var alloc = make_heap_allocator();
       var listener = TcpListener();
@@ -191,9 +195,11 @@ public module std {
       listener.close();
     }
 
-    // A socket that was never opened has no descriptor, so the OS answers
-    // EBADF (9 on every supported target), which is not a would-block code.
-    // The error carries the real errno, whatever the operation.
+    /**
+     * A socket that was never opened has no descriptor, so the OS answers
+     * EBADF (9 on every supported target), which is not a would-block code.
+     * The error carries the real errno, whatever the operation.
+     */
     test_function unopened_sockets_report_ebadf() {
       var alloc = make_heap_allocator();
       var stream = TcpStream();
@@ -217,12 +223,14 @@ public module std {
       std.test.assert_eq(listener_code, 9);
     }
 
+    /** Checks resolves localhost to loopback. */
     test_function resolves_localhost_to_loopback() {
       var alloc = make_heap_allocator();
       var host = String(alloc, "localhost");
       std.test.assert_eq(resolve_host_ipv4(host), INADDR_LOOPBACK);
     }
 
+    /** Checks unresolvable host throws. */
     test_function unresolvable_host_throws() {
       var alloc = make_heap_allocator();
       var host = String(alloc, "no-such-host.invalid");

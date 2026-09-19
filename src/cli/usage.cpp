@@ -4,8 +4,10 @@
 
 #include "generated/sun_version.h"
 
+/** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
 // Everything in the help text below its first line, which names the program.
@@ -106,11 +108,13 @@ const char* const kTestUsageBrief =
     "Usage: sun test [--test-sequential] "
     "[--test-filter <pattern>] <script.sun> [-- args...]\n";
 
+/** Returns the command-line help text for the supplied program name. */
 std::string renderUsage(const std::string& programName) {
   return "Usage: " + programName + " [options] <script.sun> [-- args...]\n" +
          kUsageBody;
 }
 
+/** Returns the compiler version text displayed by the command line. */
 std::string renderVersionLine() {
   return std::string("sun ") + SUN_VERSION + " (" + SUN_GIT_HASH + ")\n";
 }

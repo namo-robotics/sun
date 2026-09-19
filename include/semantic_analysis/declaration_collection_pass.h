@@ -18,6 +18,7 @@
 
 #include "semantic_analysis/semantic_context.h"
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 using sun::ast::BlockExprAST;
 

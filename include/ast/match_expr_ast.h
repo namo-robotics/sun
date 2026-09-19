@@ -8,9 +8,12 @@
 
 #include "ast/expr_ast.h"
 
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 
-// A payload binding position in a destructuring pattern: Shape.Circle(r)
+/**
+ * A payload binding position in a destructuring pattern: Shape.Circle(r)
+ */
 struct PatternBinding {
   std::string name;         // empty when isWildcard
   bool isWildcard = false;  // '_' in this position
@@ -20,7 +23,9 @@ struct PatternBinding {
   mutable sun::semantic_analysis::DeclarationIdentity declaration{};
 };
 
-// A single arm in a match expression: pattern => body
+/**
+ * A single arm in a match expression: pattern => body
+ */
 struct MatchArm {
   std::unique_ptr<ExprAST> pattern;  // nullptr for wildcard _
   bool isWildcard;                   // true if this arm is _
@@ -31,32 +36,43 @@ struct MatchArm {
   // Valid tags may be negative; the pattern type identifies enum arms.
   int64_t resolvedVariantTag = -1;
 
+  /** Creates a match branch owning its pattern and body. */
   MatchArm(std::unique_ptr<ExprAST> pattern, bool isWildcard,
            std::unique_ptr<ExprAST> body)
       : pattern(std::move(pattern)),
         isWildcard(isWildcard),
         body(std::move(body)) {}
 
-  // Move constructor
+  /**
+   * Move constructor
+   */
   MatchArm(MatchArm&& other) = default;
+  /** Transfers the stored state from another instance during move assignment. */
   MatchArm& operator=(MatchArm&& other) = default;
 
-  // No copy
+  /**
+   * No copy
+   */
   MatchArm(const MatchArm&) = delete;
+  /** Disallows assignment so ownership and object identity cannot be duplicated. */
   MatchArm& operator=(const MatchArm&) = delete;
 };
 
+/** A match expression containing the value to inspect and its pattern arms. */
 class MatchExprAST : public ExprAST {
   std::unique_ptr<ExprAST> discriminant;  // The value being matched
   std::vector<MatchArm> arms;             // Match arms
 
  public:
+  /** Creates this syntax node from its operands and declaration information. */
   MatchExprAST(std::unique_ptr<ExprAST> discriminant,
                std::vector<MatchArm> arms)
       : discriminant(std::move(discriminant)), arms(std::move(arms)) {}
 
+  /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::MATCH; }
 
+  /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     std::string result = "match " + discriminant->toString() + " {";
     for (size_t i = 0; i < arms.size(); ++i) {
@@ -72,10 +88,14 @@ class MatchExprAST : public ExprAST {
     return result;
   }
 
+  /** Returns the discriminant stored by this object. */
   const ExprAST* getDiscriminant() const { return discriminant.get(); }
+  /** Returns the arms stored by this object. */
   const std::vector<MatchArm>& getArms() const { return arms; }
+  /** Returns the arms mutable stored by this object. */
   std::vector<MatchArm>& getArmsMutable() { return arms; }
 
+  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     fn(discriminant);
     for (auto& arm : arms) {
@@ -83,6 +103,7 @@ class MatchExprAST : public ExprAST {
       fn(arm.body);
     }
   }
+  /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "Match"; }
 };
 

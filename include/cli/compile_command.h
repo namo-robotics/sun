@@ -19,9 +19,10 @@
 #include "driver/compiler.h"
 #include "moon_bundling/moon_import.h"
 
+/** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
 
-/*
+/**
  * One compilation: which files, what to call the outputs, and the flags that
  * shape the build.
  */

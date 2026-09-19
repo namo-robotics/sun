@@ -8,6 +8,7 @@
 #include "ast/block_expr_ast.h"
 #include "lsp/symbol_location.h"
 
+/** Provides compiler-backed editor features through the language server protocol. */
 namespace sun::lsp {
 
 // Where the symbol at byteOffset was declared: a local, a parameter, a loop

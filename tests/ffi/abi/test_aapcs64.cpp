@@ -35,8 +35,10 @@ using sun::driver::LinkOptions;
 
 using sun::driver::Driver;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
+/** Provides the LLVM state and helpers used by these calling-convention tests. */
 class Ffi_Abi_Aapcs64 : public ::testing::Test {
  protected:
   llvm::LLVMContext ctx;
@@ -46,18 +48,27 @@ class Ffi_Abi_Aapcs64 : public ::testing::Test {
       "e-m:e-p270:32:32-p271:32:32-p272:64:64-i8:8:32-"
       "i16:16:32-i64:64-i128:128-n32:64-S128-Fn32"};
 
+  /** Returns the LLVM scalar type used to construct calling-convention fixtures. */
   llvm::Type* i8() { return llvm::Type::getInt8Ty(ctx); }
+  /** Returns the LLVM scalar type used to construct calling-convention fixtures. */
   llvm::Type* i16() { return llvm::Type::getInt16Ty(ctx); }
+  /** Returns the LLVM scalar type used to construct calling-convention fixtures. */
   llvm::Type* i32() { return llvm::Type::getInt32Ty(ctx); }
+  /** Returns the LLVM scalar type used to construct calling-convention fixtures. */
   llvm::Type* i64() { return llvm::Type::getInt64Ty(ctx); }
+  /** Returns the LLVM scalar type used to construct calling-convention fixtures. */
   llvm::Type* f32() { return llvm::Type::getFloatTy(ctx); }
+  /** Returns the LLVM scalar type used to construct calling-convention fixtures. */
   llvm::Type* f64() { return llvm::Type::getDoubleTy(ctx); }
+  /** Returns the LLVM pointer type used by the calling-convention fixture. */
   llvm::Type* ptr() { return llvm::PointerType::getUnqual(ctx); }
 
+  /** Creates an LLVM structure with the field types required by an ABI test. */
   llvm::StructType* structOf(std::initializer_list<llvm::Type*> fields) {
     return llvm::StructType::get(ctx, std::vector<llvm::Type*>(fields));
   }
 
+  /** Creates an LLVM array with the element layout required by an ABI test. */
   llvm::Type* arrayOf(llvm::Type* elem, uint64_t n) {
     return llvm::ArrayType::get(elem, n);
   }
@@ -342,8 +353,10 @@ TEST_F(Ffi_Abi_Aapcs64, signature_with_an_aggregate_is_not_trivial) {
 // Triple dispatch
 // ============================================================================
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
+/** Provides the LLVM state and helpers used by these calling-convention tests. */
 class Ffi_Abi_CDispatch : public Ffi_Abi_Aapcs64 {};
 
 }  // namespace
@@ -430,6 +443,7 @@ TEST(Ffi_Abi_CrossTarget, emits_an_aarch64_elf_object) {
   EXPECT_EQ(header[3], 'F');
   // e_machine at offset 18, little-endian: EM_AARCH64 == 183.
   uint16_t machine = static_cast<uint16_t>(header[18]) |
+                     /** Reports whether the tools needed to execute cross-compiled tests are available. */
                      (static_cast<uint16_t>(header[19]) << 8);
   EXPECT_EQ(machine, 183u);
 }
@@ -438,6 +452,7 @@ TEST(Ffi_Abi_CrossTarget, emits_an_aarch64_elf_object) {
 // Execution under qemu (needs g++-aarch64-linux-gnu + qemu-user, in Dockerfile)
 // ============================================================================
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 constexpr const char* kQemuSysroot = "/usr/aarch64-linux-gnu";
@@ -534,6 +549,7 @@ TEST(Ffi_Abi_CrossTarget, extern_struct_call_runs_under_qemu) {
 // Static linking
 // ============================================================================
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 // True when the ELF at `path` needs no dynamic loader (no PT_INTERP segment).
@@ -616,6 +632,7 @@ TEST_F(Ffi_Abi_CDispatch, musl_environment_uses_the_same_arch_rules) {
   ASSERT_EQ(sysv.params[0].pieces.size(), 2u);
 }
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 bool haveHostMuslToolchain() {

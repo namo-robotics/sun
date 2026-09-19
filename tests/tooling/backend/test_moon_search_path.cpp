@@ -7,10 +7,12 @@
 #include <sstream>
 #include <string>
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 namespace fs = std::filesystem;
 
+/** Quotes a shell argument without changing its literal contents. */
 std::string quote(const fs::path& path) {
   std::string result = "'";
   for (char c : path.string()) {
@@ -19,6 +21,7 @@ std::string quote(const fs::path& path) {
   return result + "'";
 }
 
+/** Reads a fixture file into a string for comparison. */
 std::string readFile(const fs::path& path) {
   std::ifstream in(path);
   std::stringstream text;
@@ -26,12 +29,15 @@ std::string readFile(const fs::path& path) {
   return text.str();
 }
 
-// A relocated installation keeps these tests independent of system packages.
+/**
+ * A relocated installation keeps these tests independent of system packages.
+ */
 class MoonSearchPath : public testing::TestWithParam<const char*> {
  protected:
   fs::path dir;
   fs::path dependencyPath;
 
+  /** Prepares the files and compiler state needed by each test. */
   void SetUp() override {
     ASSERT_TRUE(fs::exists("build/sun"));
     dir = fs::absolute(fs::path("tmp") /
@@ -55,8 +61,10 @@ public module installed_dependency {
     ASSERT_EQ(run("build/sun --emit-moon -o " + quote(dependencyPath) + " " +
                   quote(dir / "dependency.sun")),
               0)
+        /** Releases the temporary files and state created for each test. */
         << readFile(dir / "log");
 
+    /** Executes the fixture program and returns its observable result. */
     std::ofstream(dir / "project/lib.sun") << R"(
 manifest { libraries: ["stdlib.moon"] }
 // A library that calls its installed dependency.

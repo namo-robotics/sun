@@ -5,6 +5,7 @@
 
 #pragma once
 
+/** Provides the generator for built-in operations. */
 namespace sun::codegen::intrinsics {
 
 // Network intrinsic identifiers are defined in the main Intrinsic enum.

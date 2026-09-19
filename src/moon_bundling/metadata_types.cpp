@@ -5,11 +5,14 @@
 #include "ast.pb.h"
 #include "semantic_analysis/type_traits.h"
 
+/** Builds and loads compiled Moon libraries and their declaration metadata. */
 namespace sun::moon_bundling {
 namespace pbc = sun::proto::ast;
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
+/** Serializes a named type with its declaration identity and generic arguments. */
 void nominal(pbc::TypeAnnotation& out,
              const sun::semantic_analysis::NominalType& type,
              const std::string& display,
@@ -25,7 +28,9 @@ void nominal(pbc::TypeAnnotation& out,
     *out.add_type_arguments() = exportType(arg, declarations);
 }
 
-// A template's parameters are names, even when no specialization was requested.
+/**
+ * A template's parameters are names, even when no specialization was requested.
+ */
 void parameters(const google::protobuf::Message& message,
                 std::set<std::string>& names) {
   const auto* desc = message.GetDescriptor();
@@ -41,6 +46,7 @@ void parameters(const google::protobuf::Message& message,
     parameters(reflection->GetMessage(message, field), names);
 }
 
+/** Binds serialized type references to declarations in the current analysis context. */
 void bindDeclarationTypes(google::protobuf::Message& message,
                           sun::semantic_analysis::SemanticContext& ctx,
                           std::set<std::string> names, bool inBody = false) {

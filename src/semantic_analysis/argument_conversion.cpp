@@ -6,11 +6,15 @@
 #include "semantic_analysis/generic_type_arguments.h"
 #include "support/error.h"
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// Bit width of a numeric primitive; 0 for anything else.
+/**
+ * Bit width of a numeric primitive; 0 for anything else.
+ */
 int numericBits(const Type& type) {
   switch (type.getKind()) {
     case Type::Kind::Int8:
@@ -32,26 +36,32 @@ int numericBits(const Type& type) {
   }
 }
 
+/** Reports whether the semantic type is a floating-point number. */
 bool isFloat(const Type& type) {
   return type.getKind() == Type::Kind::Float32 ||
          type.getKind() == Type::Kind::Float64;
 }
 
+/** Reports whether an enum carries data in addition to its tag. */
 bool isPayloadEnum(const TypePtr& type) {
   return type && type->isEnum() &&
          static_cast<const EnumType*>(type.get())->hasPayload();
 }
 
-// A value handed over as itself: an owning compound moves, anything else is
-// passed as is. A value read out of a borrow never moves (only types that copy
-// by read get this far, checked by isAssignableTo).
+/**
+ * A value handed over as itself: an owning compound moves, anything else is
+ * passed as is. A value read out of a borrow never moves (only types that copy
+ * by read get this far, checked by isAssignableTo).
+ */
 ArgConversion byValue(const TypePtr& argType) {
   if (typeMovesOnRead(argType)) return ArgConversion::Move;
   return ArgConversion::PassValue;
 }
 
-// True if `target` is an unsized array<T> and `value` a sized array of the
-// same element type: the argument's storage is viewed with its rank erased.
+/**
+ * True if `target` is an unsized array<T> and `value` a sized array of the
+ * same element type: the argument's storage is viewed with its rank erased.
+ */
 bool decaysToView(const TypePtr& value, const TypePtr& target) {
   if (!value || !target || !value->isArray() || !target->isArray())
     return false;
@@ -63,6 +73,7 @@ bool decaysToView(const TypePtr& value, const TypePtr& target) {
 
 }  // namespace
 
+/** Returns a readable representation for diagnostics and debugging. */
 const char* toString(ArgConversion conversion) {
   switch (conversion) {
     case ArgConversion::PassValue:
@@ -91,6 +102,7 @@ const char* toString(ArgConversion conversion) {
   return "?";
 }
 
+/** Chooses the conversion needed to pass one argument to a parameter. */
 std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
                                               const TypePtr& paramType,
                                               bool cVariadicTail) {
@@ -164,6 +176,7 @@ std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
   return byValue(argType);
 }
 
+/** Checks argument types and records the conversions required by a call. */
 std::vector<ArgConversion> classifyArguments(
     const std::vector<TypePtr>& argTypes,
     const std::vector<TypePtr>& paramTypes, bool cVariadic,

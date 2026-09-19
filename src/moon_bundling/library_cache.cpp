@@ -9,6 +9,7 @@
 #include "support/error.h"
 #include "support/sun_path.h"
 
+/** Builds and loads compiled Moon libraries and their declaration metadata. */
 namespace sun::moon_bundling {
 
 LibraryCache& LibraryCache::instance() {

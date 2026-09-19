@@ -14,12 +14,14 @@ using sun::ast::NumberExprAST;
 using sun::parsing::TokenKind;
 using sun::support::logAndThrowError;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 using sun::semantic_analysis::unwrapRef;
 
 }  // namespace sun::semantic_analysis
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 bool literalFitsInType(uint64_t magnitude, bool negative,
@@ -57,9 +59,12 @@ bool literalFitsInType(uint64_t magnitude, bool negative,
   }
 }
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// Bit width of an integer primitive, 0 for anything else.
+/**
+ * Bit width of an integer primitive, 0 for anything else.
+ */
 int integerBitWidth(const TypePtr& type) {
   if (!type || !type->isPrimitive()) return 0;
   switch (type->getKind()) {
@@ -80,8 +85,10 @@ int integerBitWidth(const TypePtr& type) {
   }
 }
 
-// True for the six comparison operators, whose result is a bool regardless of
-// what the operands are.
+/**
+ * True for the six comparison operators, whose result is a bool regardless of
+ * what the operands are.
+ */
 bool isComparisonOp(TokenKind op) {
   return op == TokenKind::LESS || op == TokenKind::GREATER ||
          op == TokenKind::LESS_EQUAL || op == TokenKind::GREATER_EQUAL ||
@@ -121,9 +128,11 @@ bool tryCoerceIntegerLiteral(ExprAST* expr, TypePtr targetType,
   return false;
 }
 
-// A char is a Unicode scalar value, not a small number: it compares with
-// another char and does nothing else. Both are an i32 underneath, so without
-// this check `'a' + 1` and `c == 65` would quietly take the integer path.
+/**
+ * A char is a Unicode scalar value, not a small number: it compares with
+ * another char and does nothing else. Both are an i32 underneath, so without
+ * this check `'a' + 1` and `c == 65` would quietly take the integer path.
+ */
 void checkCharOperands(const sun::ast::BinaryExprAST& binExpr) {
   const ExprAST* lhs = binExpr.getLHS();
   const ExprAST* rhs = binExpr.getRHS();
@@ -157,11 +166,13 @@ void checkCharOperands(const sun::ast::BinaryExprAST& binExpr) {
   }
 }
 
-// An untyped numeric literal takes its type from context: the type the
-// surrounding expression expects, or failing that the operand it is combined
-// with. Without this the literal keeps its default i32/f64 type and codegen
-// widens the other operand to match, so `u8_var + 32` would produce an i32
-// value where semantic analysis promised a u8.
+/**
+ * An untyped numeric literal takes its type from context: the type the
+ * surrounding expression expects, or failing that the operand it is combined
+ * with. Without this the literal keeps its default i32/f64 type and codegen
+ * widens the other operand to match, so `u8_var + 32` would produce an i32
+ * value where semantic analysis promised a u8.
+ */
 void coerceBinaryLiteralOperands(const sun::ast::BinaryExprAST& binExpr,
                                  const TypePtr& expectedType) {
   // Returns true if the literal took the target type

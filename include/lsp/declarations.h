@@ -17,12 +17,15 @@
 #include "semantic_analysis/types.h"
 #include "support/position.h"
 
+/** Provides compiler-backed editor features through the language server protocol. */
 namespace sun::lsp {
 using sun::ast::BlockExprAST;
 using sun::ast::ExprAST;
 using sun::semantic_analysis::QualifiedName;
 
-// Type parameter name -> the type it stands for in one specialization
+/**
+ * Type parameter name -> the type it stands for in one specialization
+ */
 using Bindings =
     std::vector<std::pair<std::string, sun::semantic_analysis::TypePtr>>;
 
@@ -39,19 +42,27 @@ std::string sliceSpan(const std::string& source,
 // Locating the node under the cursor
 // ---------------------------------------------------------------------------
 
-// Descends to the innermost node containing the offset, keeping its ancestors
+/**
+ * Descends to the innermost node containing the offset, keeping its ancestors
+ */
 class NodeFinder {
  public:
+  /** Selects the document and byte offset to search in a syntax tree. */
   NodeFinder(std::string documentPath, int offset)
       : documentPath_(std::move(documentPath)), offset_(offset) {}
 
-  // Ancestors of the innermost node, outermost first
+  /**
+   * Ancestors of the innermost node, outermost first
+   */
   const std::vector<const ExprAST*>& chain() const { return chain_; }
 
-  // True when the subtree rooted at node covers the offset
+  /**
+   * True when the subtree rooted at node covers the offset
+   */
   bool visit(const ExprAST& node);
 
  private:
+  /** Reports whether a source position belongs to the requested editor document. */
   bool isDocumentFile(const sun::support::Position& loc);
 
   std::string documentPath_;
@@ -60,11 +71,14 @@ class NodeFinder {
   std::vector<const ExprAST*> chain_;
 };
 
-// The node under the cursor with its ancestors (outermost first) and the type
-// parameter bindings in effect when it sits inside a generic body
+/**
+ * The node under the cursor with its ancestors (outermost first) and the type
+ * parameter bindings in effect when it sits inside a generic body
+ */
 struct Target {
   std::vector<const ExprAST*> chain;
   Bindings bindings;
+  /** Returns the syntax node selected at the requested source offset. */
   const ExprAST& node() const { return *chain.back(); }
 };
 
@@ -83,9 +97,11 @@ const ExprAST* firstSpecialization(const ExprAST& node, Bindings& bindings);
 // Finding the declaration behind a symbol
 // ---------------------------------------------------------------------------
 
-// A declaration found for a symbol: where it is, and the comment stored on
-// it when the tree carries one (declarations loaded from a bundle). When the
-// stored comment is empty, the source at the location is consulted.
+/**
+ * A declaration found for a symbol: where it is, and the comment stored on
+ * it when the tree carries one (declarations loaded from a bundle). When the
+ * stored comment is empty, the source at the location is consulted.
+ */
 struct Declaration {
   sun::support::Position location;
   std::string doc;
@@ -170,9 +186,11 @@ std::optional<Declaration> findDeclarationAt(const BlockExprAST& program,
                                              const std::string& source,
                                              int byteOffset);
 
-// Catch clauses with the span that declares each one's binding: a binding
-// has no position of its own, so it is the text between the previous block
-// and the clause's body
+/**
+ * Catch clauses with the span that declares each one's binding: a binding
+ * has no position of its own, so it is the text between the previous block
+ * and the clause's body
+ */
 using CatchBindingFn = std::function<void(
     const sun::ast::CatchClause&, const sun::support::Position& header)>;
 void forEachCatchBinding(const sun::ast::TryCatchExprAST& tryCatch,
@@ -185,9 +203,11 @@ std::string sourceFor(const sun::support::Position& declaration,
                       const std::string& documentPath,
                       const std::string& documentSource);
 
-// Every annotation written on a node: parameter and return types, a
-// variable's or loop variable's type, field and payload types, type
-// arguments, catch binding types
+/**
+ * Every annotation written on a node: parameter and return types, a
+ * variable's or loop variable's type, field and payload types, type
+ * arguments, catch binding types
+ */
 using AnnotationFn = std::function<void(const sun::ast::TypeAnnotation&)>;
 void forEachAnnotation(const ExprAST& node, const AnnotationFn& fn);
 

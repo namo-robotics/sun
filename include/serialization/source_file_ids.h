@@ -9,6 +9,7 @@
 
 #include "support/source_file.h"
 
+/** Converts syntax trees to and from the compiler protobuf representation. */
 namespace sun::serialization {
 using sun::support::SourceFileId;
 

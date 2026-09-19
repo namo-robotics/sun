@@ -10,6 +10,7 @@ using sun::semantic_analysis::TypePtr;
 using sun::semantic_analysis::TypeRegistry;
 using sun::semantic_analysis::Types;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 using sun::semantic_analysis::PortableDeclarationKey;
 using sun::semantic_analysis::PortableTypeKey;

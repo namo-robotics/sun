@@ -5,6 +5,7 @@
 
 #include "ast/ast_fwd.h"
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 /** Name the current local declaration and its methods without walking bodies.

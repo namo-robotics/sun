@@ -12,6 +12,7 @@ using std;
 using std.test;
 using std.thread;
 
+/** Runs the generated test cases and returns their combined exit status. */
 function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
     var alloc = make_heap_allocator();
     var total: i64 = 0;

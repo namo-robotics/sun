@@ -10,19 +10,24 @@
 #include <cstdint>
 #include <string>
 
+/** Checks ownership and lifetimes so references cannot outlive their values. */
 namespace sun::borrow_checker {
 
-/// Represents the lifetime of a reference - how long it remains valid.
-/// Lifetimes form a partial order based on scope containment.
-///
-/// Key invariants:
-/// - Static lifetime outlives everything
-/// - Param lifetimes outlive the function body (caller's scope)
-/// - Local lifetimes are bounded by their declaring scope
-/// - A reference's lifetime must not exceed its target's lifetime
+/**
+ * Represents the lifetime of a reference - how long it remains valid.
+ * Lifetimes form a partial order based on scope containment.
+ *
+ * Key invariants:
+ * - Static lifetime outlives everything
+ * - Param lifetimes outlive the function body (caller's scope)
+ * - Local lifetimes are bounded by their declaring scope
+ * - A reference's lifetime must not exceed its target's lifetime
+ */
 class Lifetime {
  public:
-  /// The kind of lifetime determines its scope behavior
+  /**
+   * The kind of lifetime determines its scope behavior
+   */
   enum class Kind {
     /// 'static - lives for the entire program (e.g., string literals, globals)
     Static,
@@ -38,57 +43,81 @@ class Lifetime {
     Anonymous,
   };
 
-  /// Create a static lifetime (outlives everything)
+  /**
+   * Create a static lifetime (outlives everything)
+   */
   static Lifetime static_() { return Lifetime(Kind::Static, 0, "", 0); }
 
-  /// Create a lifetime bound to a function parameter
-  /// @param paramName The parameter name (for error messages)
+  /**
+   * Create a lifetime bound to a function parameter
+   * @param paramName The parameter name (for error messages)
+   */
   static Lifetime param(const std::string& paramName) {
     return Lifetime(Kind::Param, 0, paramName, 0);
   }
 
-  /// Create a lifetime bound to a local variable
-  /// @param varName The variable name (for error messages)
-  /// @param scopeDepth The scope nesting level where declared
+  /**
+   * Create a lifetime bound to a local variable
+   * @param varName The variable name (for error messages)
+   * @param scopeDepth The scope nesting level where declared
+   */
   static Lifetime local(const std::string& varName, size_t scopeDepth) {
     return Lifetime(Kind::Local, 0, varName, scopeDepth);
   }
 
-  /// Create an anonymous lifetime with unique ID
-  /// @param id Unique identifier for this lifetime
+  /**
+   * Create an anonymous lifetime with unique ID
+   * @param id Unique identifier for this lifetime
+   */
   static Lifetime anonymous(uint32_t id) {
     return Lifetime(Kind::Anonymous, id, "", 0);
   }
 
-  // Default constructor creates an anonymous lifetime
+  /**
+   * Default constructor creates an anonymous lifetime
+   */
   Lifetime() : kind_(Kind::Anonymous), id_(0), name_(), scopeDepth_(0) {}
 
   // Accessors
+  /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const { return kind_; }
+  /** Returns the id stored by this object. */
   uint32_t getId() const { return id_; }
+  /** Returns the declared name used to identify this object. */
   const std::string& getName() const { return name_; }
+  /** Returns the scope depth stored by this object. */
   size_t getScopeDepth() const { return scopeDepth_; }
 
-  /// Check if this is a static lifetime
+  /**
+   * Check if this is a static lifetime
+   */
   bool isStatic() const { return kind_ == Kind::Static; }
 
-  /// Check if this is a parameter lifetime
+  /**
+   * Check if this is a parameter lifetime
+   */
   bool isParam() const { return kind_ == Kind::Param; }
 
-  /// Check if this is a local variable lifetime
+  /**
+   * Check if this is a local variable lifetime
+   */
   bool isLocal() const { return kind_ == Kind::Local; }
 
-  /// Check if this is an anonymous lifetime
+  /**
+   * Check if this is an anonymous lifetime
+   */
   bool isAnonymous() const { return kind_ == Kind::Anonymous; }
 
-  /// Check if this lifetime outlives another.
-  /// Returns true if `this` is valid everywhere `other` is valid.
-  ///
-  /// Outlives relationships:
-  /// - Static outlives everything
-  /// - Param outlives Local (param lives in caller's scope)
-  /// - Local at depth N outlives Local at depth M where N < M
-  /// - Same-kind lifetimes with same name/id are equal (outlive each other)
+  /**
+   * Check if this lifetime outlives another.
+   * Returns true if `this` is valid everywhere `other` is valid.
+   *
+   * Outlives relationships:
+   * - Static outlives everything
+   * - Param outlives Local (param lives in caller's scope)
+   * - Local at depth N outlives Local at depth M where N < M
+   * - Same-kind lifetimes with same name/id are equal (outlive each other)
+   */
   bool outlives(const Lifetime& other) const {
     // Static outlives everything
     if (kind_ == Kind::Static) return true;
@@ -126,12 +155,16 @@ class Lifetime {
     return false;
   }
 
-  /// Check if two lifetimes are equivalent (mutually outlive)
+  /**
+   * Check if two lifetimes are equivalent (mutually outlive)
+   */
   bool equals(const Lifetime& other) const {
     return outlives(other) && other.outlives(*this);
   }
 
-  /// Format lifetime for error messages
+  /**
+   * Format lifetime for error messages
+   */
   std::string toString() const {
     switch (kind_) {
       case Kind::Static:
@@ -148,6 +181,7 @@ class Lifetime {
   }
 
  private:
+  /** Creates a lifetime identity with its scope depth and optional name. */
   Lifetime(Kind k, uint32_t id, std::string name, size_t depth)
       : kind_(k), id_(id), name_(std::move(name)), scopeDepth_(depth) {}
 

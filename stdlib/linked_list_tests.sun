@@ -5,54 +5,72 @@
 
 using std;
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** Groups tests for the linked list library behavior. */
   module linked_list_tests {
-    // A 2-D point used by the class-element tests.
+    /**
+     * A 2-D point used by the class-element tests.
+     */
     class Point {
       var x: i32;
       var y: i32;
 
+      /** Initializes the fixture fields used by this example or regression test. */
       init(x_: i32, y_: i32) {
         this.x = x_;
         this.y = y_;
       }
 
-      // The sum of both coordinates.
+      /**
+       * The sum of both coordinates.
+       */
       method sum() i32 {
         return this.x + this.y;
       }
     }
 
-    // A pair of factors used by the class-element tests.
+    /**
+     * A pair of factors used by the class-element tests.
+     */
     class Pair {
       var a: i32;
       var b: i32;
 
+      /** Initializes the fixture fields used by this example or regression test. */
       init(a_: i32, b_: i32) {
         this.a = a_;
         this.b = b_;
       }
 
-      // The product of both factors.
+      /**
+       * The product of both factors.
+       */
       method product() i32 {
         return this.a * this.b;
       }
     }
 
-    // A wrapped weight value used by the class-element iteration test.
+    /**
+     * A wrapped weight value used by the class-element iteration test.
+     */
     class Weight {
       var value: i32;
 
+      /** Initializes the fixture fields used by this example or regression test. */
       init(v: i32) {
         this.value = v;
       }
 
-      // The wrapped value.
+      /**
+       * The wrapped value.
+       */
       method get_value() i32 {
         return this.value;
       }
     }
 
+    /** Checks empty list. */
     test_function empty_list() {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
@@ -60,6 +78,7 @@ public module std {
       std.test.assert_eq(ll.size(), 0);
     }
 
+    /** Checks push back. */
     test_function push_back() {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
@@ -79,6 +98,7 @@ public module std {
       std.test.assert_eq(ll.size(), 3);
     }
 
+    /** Checks push front. */
     test_function push_front() {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
@@ -98,6 +118,7 @@ public module std {
       std.test.assert_eq(l, 3);
     }
 
+    /** Checks pop front. */
     test_function pop_front() {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
@@ -108,6 +129,7 @@ public module std {
       std.test.assert_eq(ll.size(), 2);
     }
 
+    /** Checks pop back. */
     test_function pop_back() {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
@@ -118,6 +140,7 @@ public module std {
       std.test.assert_eq(ll.size(), 2);
     }
 
+    /** Checks pop empty throws. */
     test_function pop_empty_throws() {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
@@ -131,6 +154,7 @@ public module std {
       } catch (e: IError) {}
     }
 
+    /** Checks drain list. */
     test_function drain_list() {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
@@ -145,6 +169,7 @@ public module std {
       std.test.assert(ll.is_empty());
     }
 
+    /** Checks get and set. */
     test_function get_and_set() {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
@@ -161,6 +186,7 @@ public module std {
       std.test.assert_eq(first + last + modified, 149);
     }
 
+    /** Checks get out of bounds. */
     test_function get_out_of_bounds() {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
@@ -171,6 +197,7 @@ public module std {
       } catch (e: IError) {}
     }
 
+    /** Checks remove nodes. */
     test_function remove_nodes() {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
@@ -189,6 +216,7 @@ public module std {
       std.test.assert_eq(ll.size(), 2);
     }
 
+    /** Checks clear and reuse. */
     test_function clear_and_reuse() {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
@@ -205,6 +233,7 @@ public module std {
       std.test.assert_eq(ll.size(), 1);
     }
 
+    /** Checks for in iteration. */
     test_function for_in_iteration() {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
@@ -223,6 +252,7 @@ public module std {
       std.test.assert_eq(result, 8421);
     }
 
+    /** Checks iterate empty. */
     test_function iterate_empty() {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
@@ -233,6 +263,7 @@ public module std {
       std.test.assert_eq(sum, 0);
     }
 
+    /** Checks mixed push front back. */
     test_function mixed_push_front_back() {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
@@ -249,6 +280,7 @@ public module std {
       std.test.assert_eq(ll.size(), 4);
     }
 
+    /** Checks i64 type. */
     test_function i64_type() {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i64>(allocator);
@@ -259,6 +291,7 @@ public module std {
       std.test.assert_eq(sum, 400);
     }
 
+    /** Checks list of class objects. */
     test_function list_of_class_objects() {
       var allocator = make_heap_allocator();
       var list = LinkedList<Point>(allocator);
@@ -273,6 +306,7 @@ public module std {
       );
     }
 
+    /** Checks class objects push front pop. */
     test_function class_objects_push_front_pop() {
       var allocator = make_heap_allocator();
       var list = LinkedList<Pair>(allocator);
@@ -285,6 +319,7 @@ public module std {
       std.test.assert_eq(front.product() + back.product(), 30);
     }
 
+    /** Checks iterate class objects. */
     test_function iterate_class_objects() {
       var allocator = make_heap_allocator();
       var list = LinkedList<Weight>(allocator);

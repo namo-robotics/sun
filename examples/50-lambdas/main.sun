@@ -1,5 +1,6 @@
 using std;
 
+/** Runs the example that creates and invokes captured functions. */
 function main() i32 {
   var multiplier: i32 = 10;
 

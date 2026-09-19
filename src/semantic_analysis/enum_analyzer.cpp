@@ -21,6 +21,7 @@ using sun::ast::MemberAccessAST;
 using sun::support::logAndThrowError;
 using sun::support::logWarning;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 using sun::semantic_analysis::isAssignableTo;
@@ -31,10 +32,13 @@ using sun::semantic_analysis::unwrapRef;
 // Local helpers
 // -------------------------------------------------------------------
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// True if `type` embeds enum `self` by value, walking enum payloads and class
-// fields. Pointers break the cycle (indirection is the fix we suggest).
+/**
+ * True if `type` embeds enum `self` by value, walking enum payloads and class
+ * fields. Pointers break the cycle (indirection is the fix we suggest).
+ */
 bool embedsEnumByValue(const TypePtr& type, const EnumType* self,
                        std::set<const sun::semantic_analysis::Type*>& visited) {
   if (!type || !visited.insert(type.get()).second) return false;
@@ -55,10 +59,12 @@ bool embedsEnumByValue(const TypePtr& type, const EnumType* self,
   return false;
 }
 
-// Unify a payload annotation against an argument type, binding directly
-// mentioned type parameters (T, raw_ptr<T>, static_ptr<T>). Nested generic
-// payloads contribute no bindings (annotate the target instead). Returns
-// false on a conflicting binding.
+/**
+ * Unify a payload annotation against an argument type, binding directly
+ * mentioned type parameters (T, raw_ptr<T>, static_ptr<T>). Nested generic
+ * payloads contribute no bindings (annotate the target instead). Returns
+ * false on a conflicting binding.
+ */
 bool unifyPayloadTypeParam(const sun::ast::TypeAnnotation& annot,
                            const TypePtr& argType,
                            const std::vector<std::string>& typeParams,

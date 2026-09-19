@@ -8,16 +8,21 @@
 
 #include <cstddef>
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
-// Layout patterns for well-known struct types
+/**
+ * Layout patterns for well-known struct types
+ */
 enum class Layout {
   PtrPtr,     // { ptr, ptr }       - closure, interface_fat
   PtrI64,     // { ptr, i64 }       - static_ptr_struct
   PtrI32Ptr,  // { ptr, i32, ptr }  - array_struct
 };
 
-// Info about a well-known struct type
+/**
+ * Info about a well-known struct type
+ */
 struct StructInfo {
   const char* name;
   Layout layout;

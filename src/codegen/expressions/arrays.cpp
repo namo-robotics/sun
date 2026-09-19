@@ -25,6 +25,7 @@ using sun::support::logAndThrowError;
 
 using namespace llvm;
 
+/** Translates analyzed Sun programs into LLVM instructions. */
 namespace sun::codegen {
 
 // -------------------------------------------------------------------

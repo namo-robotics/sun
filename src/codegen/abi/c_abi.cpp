@@ -6,6 +6,7 @@
 #include "codegen/abi/sysv/sysv_x86_64.h"
 #include "support/error.h"
 
+/** Adapts Sun values and calls to the target C calling convention. */
 namespace sun::codegen::abi {
 
 SignatureLowering lowerCSignature(const llvm::Triple& triple,

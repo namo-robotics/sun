@@ -15,8 +15,10 @@
 
 #include "support/position.h"
 
+/** Turns source text into syntax trees and provides source formatting. */
 namespace sun::parsing {
 
+/** A state and its outgoing transitions in a nondeterministic finite automaton. */
 struct State {
   bool isAccepting = false;
   std::map<unsigned char, std::unordered_set<State*>>
@@ -31,8 +33,10 @@ struct State {
   std::string groupName = "";
   int groupNameNum = -1;  // groupName parsed as int (-1 when unnamed)
 };
-// A group match recorded during a scan. The matched text is NOT stored;
-// callers slice it from their own buffer via [start.offset, end.offset).
+/**
+ * A group match recorded during a scan. The matched text is NOT stored;
+ * callers slice it from their own buffer via [start.offset, end.offset).
+ */
 struct RegexCapture {
   sun::support::Position start;
   sun::support::Position end;
@@ -40,11 +44,13 @@ struct RegexCapture {
   const std::string* groupName = nullptr;  // owned by the matching State
   int groupNameNum = -1;                   // groupName as int (-1 unnamed)
 
+  /** Returns the length of the input span matched so far. */
   int length() const { return end.offset - start.offset; }
 };
 
 class DFA;
 
+/** Creates an empty nondeterministic automaton ready for pattern construction. */
 class NFA {
  private:
   // The DFA reads the compiled arrays below to run lazy subset construction.
@@ -67,6 +73,7 @@ class NFA {
   std::vector<int> startClosure_;
   int maxGroupId_ = 0;  // highest group id; sizes the DFA's capture slots
 
+  /** Creates an automaton state owned by this NFA. */
   State* createState() {
     compiled_ = false;
     allStates.emplace_back(std::make_unique<State>());
@@ -76,12 +83,14 @@ class NFA {
  public:
   State* startState;
   State* acceptingState;
+  /** Creates an empty nondeterministic automaton ready for pattern construction. */
   NFA() {
     startState = createState();
     acceptingState = createState();
     acceptingState->isAccepting = true;
   }
 
+  /** Transfers another automaton's states into this one. */
   void acquireStatesFrom(NFA& other) {
     compiled_ = false;
     for (auto& state : other.allStates) {
@@ -90,12 +99,14 @@ class NFA {
     other.allStates.clear();
   }
 
+  /** Creates an automaton that accepts the empty string. */
   static NFA createForEpsilon() {
     NFA nfa;
     nfa.startState->epsilonTransitions.insert(nfa.acceptingState);
     return nfa;
   }
 
+  /** Creates an automaton that accepts the supplied character. */
   static NFA createForChar(char c) {
     NFA nfa;
     nfa.startState->transitions[static_cast<unsigned char>(c)].insert(
@@ -103,8 +114,10 @@ class NFA {
     return nfa;
   }
 
-  // Negation spans the full 0-255 byte range, so [^"\\] and friends accept
-  // UTF-8 continuation bytes inside string literals and comments.
+  /**
+   * Negation spans the full 0-255 byte range, so [^"\\] and friends accept
+   * UTF-8 continuation bytes inside string literals and comments.
+   */
   static NFA createForCharClass(const std::set<unsigned char>& charSet,
                                 bool negated = false) {
     NFA nfa;
@@ -123,12 +136,14 @@ class NFA {
     return nfa;
   }
 
+  /** Creates an automaton accepting characters in, or outside, a character class. */
   static NFA createForCharClass(const std::string& chars,
                                 bool negated = false) {
     std::set<unsigned char> set(chars.begin(), chars.end());
     return createForCharClass(set, negated);
   }
 
+  /** Combines two automata so either pattern can match. */
   static NFA createForUnion(NFA& n1, NFA& n2) {
     NFA nfa;
     n1.acceptingState->isAccepting = false;
@@ -142,6 +157,7 @@ class NFA {
     return nfa;
   }
 
+  /** Combines two automata so their patterns match in sequence. */
   static NFA createForConcatenation(NFA& n1, NFA& n2) {
     NFA nfa;
     n1.acceptingState->epsilonTransitions.insert(n2.startState);
@@ -153,6 +169,7 @@ class NFA {
     return nfa;
   }
 
+  /** Creates an automaton accepting zero or more repetitions of a pattern. */
   static NFA createForKleeneStar(NFA& n) {
     NFA nfa;
     nfa.startState->epsilonTransitions.insert(n.startState);
@@ -164,11 +181,13 @@ class NFA {
     return nfa;
   }
 
+  /** Creates an automaton accepting one or more repetitions of a pattern. */
   static NFA createForPlus(NFA& n) {
     NFA star = createForKleeneStar(n);
     return createForConcatenation(n, star);
   }
 
+  /** Creates an automaton accepting a pattern or the empty string. */
   static NFA createForOptional(NFA& n) {
     NFA nfa;
     // Bypass: start -> accepting (zero times)
@@ -181,6 +200,7 @@ class NFA {
     return nfa;
   }
 
+  /** Creates an automaton that accepts any input character. */
   static NFA createForAnyChar() {
     NFA nfa;
     nfa.startState->anyCharTransitions.insert(nfa.acceptingState);
@@ -195,6 +215,7 @@ class NFA {
   // Built lazily on first use and invalidated whenever the graph grows
   // (construction goes through the static factories).
 
+  /** Builds the transition representation used to execute this automaton. */
   void compile() {
     numStates_ = static_cast<int>(allStates.size());
     idOf_.clear();
@@ -279,12 +300,15 @@ class NFA {
     compiled_ = true;
   }
 
+  /** Builds the compiled transition tables when they are first needed. */
   void ensureCompiled() {
     if (!compiled_) compile();
   }
 
  private:
-  // States that can reach an accepting state via a non-empty path
+  /**
+   * States that can reach an accepting state via a non-empty path
+   */
   void computeReachability() {
     std::vector<std::vector<int>> revEps(numStates_);
     std::vector<std::vector<int>> revOther(numStates_);
@@ -363,26 +387,28 @@ class NFA {
   }
 };
 
-// ------------------------------------------------------------------
-// Lazily determinized NFA (subset construction with a transition cache)
-// ------------------------------------------------------------------
-//
-// A DFA state is a set of NFA states. Transitions are materialized the first
-// time they are taken and then cached, so a scan costs one array load per
-// input byte instead of a walk over the NFA's active set. The state count is
-// bounded by the regex, not by the input.
-//
-// Captures survive determinization because the NFA's capture bookkeeping only
-// ever depended on *which states are active*, not on the path taken: a group's
-// candidate start is written by any active enterGroup state and its end is
-// committed by any active exitGroup state (both single global slots per group
-// id). Those are properties of the state set, so they are precomputed per DFA
-// state. This reproduces the NFA's semantics exactly, including its
-// "last writer wins per group id" approximation. Path-accurate captures would
-// need a tagged DFA with per-transition register copies; that is not built
-// here.
-//
-// The Lexer bypasses captures entirely and uses acceptKind()/step() directly.
+/**
+ * ------------------------------------------------------------------
+ * Lazily determinized NFA (subset construction with a transition cache)
+ * ------------------------------------------------------------------
+ *
+ * A DFA state is a set of NFA states. Transitions are materialized the first
+ * time they are taken and then cached, so a scan costs one array load per
+ * input byte instead of a walk over the NFA's active set. The state count is
+ * bounded by the regex, not by the input.
+ *
+ * Captures survive determinization because the NFA's capture bookkeeping only
+ * ever depended on *which states are active*, not on the path taken: a group's
+ * candidate start is written by any active enterGroup state and its end is
+ * committed by any active exitGroup state (both single global slots per group
+ * id). Those are properties of the state set, so they are precomputed per DFA
+ * state. This reproduces the NFA's semantics exactly, including its
+ * "last writer wins per group id" approximation. Path-accurate captures would
+ * need a tagged DFA with per-transition register copies; that is not built
+ * here.
+ *
+ * The Lexer bypasses captures entirely and uses acceptKind()/step() directly.
+ */
 class DFA {
  public:
   static constexpr int kAlphabet = 256;
@@ -391,7 +417,9 @@ class DFA {
   static constexpr int32_t kNoAccept = -1;    // acceptKind_ of a non-accepting
 
  private:
+  /** Hashes sets of automaton states during deterministic-state construction. */
   struct SetHash {
+    /** Hashes a set of NFA state identifiers for deterministic-state lookup. */
     size_t operator()(const std::vector<int32_t>& v) const noexcept {
       size_t h = 1469598103934665603ull;  // FNV-1a over the state ids
       for (int32_t x : v) {
@@ -402,6 +430,7 @@ class DFA {
     }
   };
 
+  /** Token acceptance information associated with an automaton state. */
   struct ExitInfo {
     int32_t groupId;
     const std::string* groupName;
@@ -439,6 +468,7 @@ class DFA {
   std::vector<uint32_t> candidateGen_;
   uint32_t gen_ = 0;
 
+  /** Adds a state and the states reachable through empty transitions. */
   void addClosure(int32_t id) {
     for (int k = nfa_.epsOff_[id]; k < nfa_.epsOff_[id + 1]; ++k) {
       int t = nfa_.epsTargets_[k];
@@ -449,7 +479,9 @@ class DFA {
     }
   }
 
-  // Look up a sorted state set, creating the DFA state if it is new
+  /**
+   * Look up a sorted state set, creating the DFA state if it is new
+   */
   int32_t intern(const std::vector<int32_t>& set) {
     if (auto it = interner_.find(set); it != interner_.end()) return it->second;
 
@@ -481,7 +513,9 @@ class DFA {
     return id;
   }
 
-  // Compute and cache the transition out of `from` on byte `c`
+  /**
+   * Compute and cache the transition out of `from` on byte `c`
+   */
   int32_t materialize(int32_t from, unsigned char c) {
     ++misses_;
     scratch_.clear();
@@ -509,6 +543,7 @@ class DFA {
  public:
   bool isAccepting = false;
 
+  /** Creates a deterministic matcher from a nondeterministic automaton. */
   explicit DFA(NFA nfa) : nfa_(std::move(nfa)) {
     nfa_.ensureCompiled();
     mark_.assign(nfa_.numStates_, 0);
@@ -534,23 +569,32 @@ class DFA {
 
   // --- driver API (the Lexer uses only these) -----------------------------
 
+  /** Returns the state from which matching begins. */
   int32_t startState() const { return start_; }
+  /** Reports whether a state cannot continue a match. */
   static bool isDead(int32_t s) { return s == kDead; }
 
+  /** Consumes a character and advances to the corresponding automaton state. */
   int32_t step(int32_t s, unsigned char c) {
     int32_t t = trans_[static_cast<size_t>(s) * kAlphabet + c];
     return t >= 0 ? t : materialize(s, c);  // negative == not yet computed
   }
 
-  // Token kind of the alternative accepted in this state, or kNoAccept
+  /**
+   * Token kind of the alternative accepted in this state, or kNoAccept
+   */
   int32_t acceptKind(int32_t s) const { return acceptKind_[s]; }
+  /** Returns the acceptance information for a deterministic state. */
   bool acceptingState(int32_t s) const { return accepting_[s] != 0; }
 
+  /** Returns the number of deterministic states created so far. */
   int stateCount() const { return static_cast<int>(sets_.size()); }
+  /** Returns the number of transitions requiring uncached computation. */
   long long transitionMisses() const { return misses_; }
 
   // --- capture-tracking scanner (regex-level API) -------------------------
 
+  /** Restarts matching at the supplied source position. */
   void resetToPosition(sun::support::Position pos) {
     position_ = pos;
     ++gen_;  // invalidates capture/candidate slots in O(1)
@@ -558,8 +602,10 @@ class DFA {
     isAccepting = accepting_[cur_] != 0;
   }
 
+  /** Clears matching progress and restores the initial position. */
   void fullReset() { resetToPosition(sun::support::Position()); }
 
+  /** Consumes a character and advances to the corresponding automaton state. */
   bool step(char c) {
     // Group entry is read off the pre-transition state at the pre-transition
     // position, exactly as NFA::step did.
@@ -597,7 +643,9 @@ class DFA {
     return isAccepting;
   }
 
-  // Capture recorded for a group in the current scan, or nullptr.
+  /**
+   * Capture recorded for a group in the current scan, or nullptr.
+   */
   const RegexCapture* captureFor(int groupIdx) const {
     if (groupIdx < 0 || groupIdx >= static_cast<int>(captureSlots_.size()) ||
         captureGen_[groupIdx] != gen_) {
@@ -606,8 +654,10 @@ class DFA {
     return &captureSlots_[groupIdx];
   }
 
-  // Winning capture of the current scan: longest match among NAMED groups,
-  // ties broken by lowest numeric group name (= token declaration order)
+  /**
+   * Winning capture of the current scan: longest match among NAMED groups,
+   * ties broken by lowest numeric group name (= token declaration order)
+   */
   const RegexCapture* bestCapture() const {
     const RegexCapture* best = nullptr;
     int bestLen = -1;
@@ -626,6 +676,7 @@ class DFA {
     return best;
   }
 
+  /** Runs the automaton over the supplied input text. */
   void simulate(const std::string& input) {
     fullReset();
     for (char c : input) {
@@ -634,30 +685,37 @@ class DFA {
     }
   }
 
+  /** Reports whether the automaton accepts the complete input string. */
   bool matches(const std::string& input) {
     simulate(input);
     return isAccepting;
   }
 
+  /** Reports whether a nonempty continuation can reach an accepting state. */
   bool canReachAcceptingWithNonEmptyInput() const { return canExtend_[cur_]; }
 };
 
-// ------------------------------------------------------------------
-// Escape-aware token character
-// ------------------------------------------------------------------
+/**
+ * ------------------------------------------------------------------
+ * Escape-aware token character
+ * ------------------------------------------------------------------
+ */
 struct TokenChar {
   char ch;
   bool escaped;
 
+  /** Reports whether the regular-expression input has been consumed. */
   bool isEnd() const { return ch == '\0'; }
 };
 
+/** Parses regular expressions into nondeterministic finite automata. */
 class RegexParser {
  private:
   std::string regex;
   size_t pos = 0;
   int nextGroupId = 0;
 
+  /** Returns the next regular-expression character without consuming it. */
   TokenChar peek() const {
     if (pos >= regex.size()) return {'\0', false};
 
@@ -667,6 +725,7 @@ class RegexParser {
     return {regex[pos], false};
   }
 
+  /** Returns the next regular-expression character and advances the cursor. */
   TokenChar consume() {
     if (pos >= regex.size()) return {'\0', false};
 
@@ -679,9 +738,11 @@ class RegexParser {
     return {regex[pos++], false};
   }
 
-  // ------------------------------------------------------------------
-  // Parse a character class like [a-zA-Z0-9] or [^...] with escapes
-  // ------------------------------------------------------------------
+  /**
+   * ------------------------------------------------------------------
+   * Parse a character class like [a-zA-Z0-9] or [^...] with escapes
+   * ------------------------------------------------------------------
+   */
   NFA parseCharClass() {
     TokenChar open = consume();
     if (open.ch != '[' || open.escaped)
@@ -732,9 +793,11 @@ class RegexParser {
     return NFA::createForCharClass(chars, negated);
   }
 
-  // ------------------------------------------------------------------
-  // Parse a single atom (literal char, ., (, [, escaped char)
-  // ------------------------------------------------------------------
+  /**
+   * ------------------------------------------------------------------
+   * Parse a single atom (literal char, ., (, [, escaped char)
+   * ------------------------------------------------------------------
+   */
   NFA parseAtom() {
     TokenChar tc = peek();
 
@@ -831,7 +894,9 @@ class RegexParser {
     }
   }
 
-  // Handles *, +
+  /**
+   * Handles *, +
+   */
   NFA parsePostfix() {
     NFA n = parseAtom();
 
@@ -855,6 +920,7 @@ class RegexParser {
     return n;
   }
 
+  /** Parses consecutive regex terms into a concatenated automaton. */
   NFA parseConcatenation() {
     NFA n = parsePostfix();
 
@@ -872,6 +938,7 @@ class RegexParser {
     return n;
   }
 
+  /** Parses regex alternatives into an automaton that accepts any branch. */
   NFA parseUnion() {
     NFA n = parseConcatenation();
 
@@ -889,7 +956,9 @@ class RegexParser {
   }
 
  public:
-  // Thompson construction only; the caller determinizes.
+  /**
+   * Thompson construction only; the caller determinizes.
+   */
   NFA parseToNFA(const std::string& r) {
     regex = r;
     pos = 0;
@@ -902,7 +971,9 @@ class RegexParser {
     return nfa;
   }
 
-  // Parse and determinize. DFA states are materialized lazily on first use.
+  /**
+   * Parse and determinize. DFA states are materialized lazily on first use.
+   */
   DFA parse(const std::string& r) { return DFA(parseToNFA(r)); }
 };
 }  // namespace sun::parsing

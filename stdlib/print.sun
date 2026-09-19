@@ -8,40 +8,54 @@
 //   println("Hello");       // prints "Hello\n"
 //   println(`x = ${x}`);    // prints interpolated string with newline
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
   // ---- print (no newline) ----
 
+  /** Writes a signed integer to standard output without a trailing newline. */
   public function print(value: i32) void {
     _print_i32(value);
   }
 
-  // Write a signed 64-bit number to standard output.
+  /**
+   * Write a signed 64-bit number to standard output.
+   */
   public function print(value: i64) void {
     _print_i64(value);
   }
 
-  // Write an unsigned 32-bit number to standard output.
+  /**
+   * Write an unsigned 32-bit number to standard output.
+   */
   public function print(value: u32) void {
     _print_u64(value);
   }
 
-  // Write an unsigned 64-bit number to standard output. The unsigned print
-  // intrinsic keeps values above the i64 maximum from showing up negative.
+  /**
+   * Write an unsigned 64-bit number to standard output. The unsigned print
+   * intrinsic keeps values above the i64 maximum from showing up negative.
+   */
   public function print(value: u64) void {
     _print_u64(value);
   }
 
-  // Write a floating-point number to standard output.
+  /**
+   * Write a floating-point number to standard output.
+   */
   public function print(value: f64) void {
     _print_f64(value);
   }
 
-  // Write one character to standard output, encoded as UTF-8.
+  /**
+   * Write one character to standard output, encoded as UTF-8.
+   */
   public function print(value: char) void {
     _print_char(value);
   }
 
-  // Write "true" or "false" to standard output.
+  /**
+   * Write "true" or "false" to standard output.
+   */
   public function print(value: bool) void {
     if (value) {
       print("true");
@@ -50,83 +64,106 @@ public module std {
     }
   }
 
-  // Write a string literal to standard output.
+  /**
+   * Write a string literal to standard output.
+   */
   public function print(s: static_ptr<u8>) void {
     _print_bytes(s.raw(), s.length());
   }
 
-  // Write a String to standard output. The String is borrowed, not consumed.
+  /**
+   * Write a String to standard output. The String is borrowed, not consumed.
+   */
   public function print(s: const ref String) void {
     _print_bytes(s.bytes(), s.length());
   }
 
   // ---- println (with newline) ----
 
+  /** Writes a newline to standard output. */
   public function println() void {
     _print_newline();
   }
 
-  // Write a signed 32-bit number and a newline to standard output.
+  /**
+   * Write a signed 32-bit number and a newline to standard output.
+   */
   public function println(value: i32) void {
     print(value);
     _print_newline();
   }
 
-  // Write a signed 64-bit number and a newline to standard output.
+  /**
+   * Write a signed 64-bit number and a newline to standard output.
+   */
   public function println(value: i64) void {
     print(value);
     _print_newline();
   }
 
-  // Write an unsigned 32-bit number and a newline to standard output.
+  /**
+   * Write an unsigned 32-bit number and a newline to standard output.
+   */
   public function println(value: u32) void {
     print(value);
     _print_newline();
   }
 
-  // Write an unsigned 64-bit number and a newline to standard output.
+  /**
+   * Write an unsigned 64-bit number and a newline to standard output.
+   */
   public function println(value: u64) void {
     print(value);
     _print_newline();
   }
 
-  // Write a floating-point number and a newline to standard output.
+  /**
+   * Write a floating-point number and a newline to standard output.
+   */
   public function println(value: f64) void {
     print(value);
     _print_newline();
   }
 
-  // Write one character and a newline to standard output.
+  /**
+   * Write one character and a newline to standard output.
+   */
   public function println(value: char) void {
     print(value);
     _print_newline();
   }
 
-  // Write "true" or "false" and a newline to standard output.
+  /**
+   * Write "true" or "false" and a newline to standard output.
+   */
   public function println(value: bool) void {
     print(value);
     _print_newline();
   }
 
-  // Write a string literal and a newline to standard output.
+  /**
+   * Write a string literal and a newline to standard output.
+   */
   public function println(s: static_ptr<u8>) void {
     print(s);
     _print_newline();
   }
 
-  // Write a String and a newline to standard output.
+  /**
+   * Write a String and a newline to standard output.
+   */
   public function println(s: const ref String) void {
     print(s);
     _print_newline();
   }
 
   // ---- stderr ----
-  /* Write a signed integer to standard error. */
+  /** Write a signed integer to standard error. */
   public function eprint(value: i32) void {
     eprint(_convert<i64>(value));
   }
 
-  /* Write a signed integer to standard error. */
+  /** Write a signed integer to standard error. */
   public function eprint(value: i64) void {
     var buffer: array<u8, 32> = [0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8];
     var dst = unsafe { _address_of<u8>(buffer[0]); };
@@ -136,12 +173,12 @@ public module std {
     }
   }
 
-  /* Write an unsigned integer to standard error. */
+  /** Write an unsigned integer to standard error. */
   public function eprint(value: u32) void {
     eprint(_convert<u64>(value));
   }
 
-  /* Write an unsigned integer to standard error. */
+  /** Write an unsigned integer to standard error. */
   public function eprint(value: u64) void {
     var buffer: array<u8, 32> = [0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8];
     var dst = unsafe { _address_of<u8>(buffer[0]); };
@@ -151,7 +188,7 @@ public module std {
     }
   }
 
-  /* Write a floating-point number to standard error. */
+  /** Write a floating-point number to standard error. */
   public function eprint(value: f64) void {
     var buffer: array<u8, 32> = [0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8];
     var dst = unsafe { _address_of<u8>(buffer[0]); };
@@ -169,7 +206,7 @@ public module std {
     }
   }
 
-  /* Write one character encoded as UTF-8 to standard error. */
+  /** Write one character encoded as UTF-8 to standard error. */
   public function eprint(value: char) void {
     var buffer: array<u8, 4> = [0u8, 0u8, 0u8, 0u8];
     var dst = unsafe { _address_of<u8>(buffer[0]); };
@@ -181,7 +218,7 @@ public module std {
     unsafe { c_write(2, dst, written); };
   }
 
-  /* Write "true" or "false" to standard error. */
+  /** Write "true" or "false" to standard error. */
   public function eprint(value: bool) void {
     if (value) {
       eprint("true");
@@ -190,70 +227,78 @@ public module std {
     }
   }
 
-  /* Write a string literal to standard error. */
+  /** Write a string literal to standard error. */
   public function eprint(s: static_ptr<u8>) void {
     unsafe { c_write(2, s.raw(), s.length()); };
   }
 
-  // Write a String to standard error.
+  /**
+   * Write a String to standard error.
+   */
   public function eprint(s: const ref String) void {
     unsafe { c_write(2, s.bytes(), s.length()); };
   }
 
-  // Write a newline to standard error.
+  /**
+   * Write a newline to standard error.
+   */
   public function eprintln() void {
     unsafe { c_write(2, "\n".raw(), 1); };
   }
 
-  /* Write a signed integer and a newline to standard error. */
+  /** Write a signed integer and a newline to standard error. */
   public function eprintln(value: i32) void {
     eprint(value);
     eprintln();
   }
 
-  /* Write a signed integer and a newline to standard error. */
+  /** Write a signed integer and a newline to standard error. */
   public function eprintln(value: i64) void {
     eprint(value);
     eprintln();
   }
 
-  /* Write an unsigned integer and a newline to standard error. */
+  /** Write an unsigned integer and a newline to standard error. */
   public function eprintln(value: u32) void {
     eprint(value);
     eprintln();
   }
 
-  /* Write an unsigned integer and a newline to standard error. */
+  /** Write an unsigned integer and a newline to standard error. */
   public function eprintln(value: u64) void {
     eprint(value);
     eprintln();
   }
 
-  /* Write a floating-point number and a newline to standard error. */
+  /** Write a floating-point number and a newline to standard error. */
   public function eprintln(value: f64) void {
     eprint(value);
     eprintln();
   }
 
-  /* Write one character and a newline to standard error. */
+  /** Write one character and a newline to standard error. */
   public function eprintln(value: char) void {
     eprint(value);
     eprintln();
   }
 
-  /* Write "true" or "false" and a newline to standard error. */
+  /** Write "true" or "false" and a newline to standard error. */
   public function eprintln(value: bool) void {
     eprint(value);
     eprintln();
   }
 
-  // Write a string literal and a newline to standard error.
+  /**
+   * Write a string literal and a newline to standard error.
+   */
   public function eprintln(s: static_ptr<u8>) void {
     eprint(s);
     eprintln();
   }
 
-  // Write a String and a newline to standard error.
+  /**
+   * Write a String and a newline to standard error.
+   */
   public function eprintln(s: const ref String) void {
     eprint(s);
     eprintln();

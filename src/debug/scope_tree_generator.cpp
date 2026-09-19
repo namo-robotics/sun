@@ -11,6 +11,7 @@
 
 using sun::semantic_analysis::ScopeType;
 
+/** Produces readable views of syntax trees and semantic scopes. */
 namespace sun::debug {
 
 std::string ScopeTreeGenerator::generateHtml(

@@ -2,9 +2,13 @@
 
 using std;
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** Groups tests for the test library behavior. */
   module test_tests {
-    // Check both successful and failing assertions for one primitive type.
+    /**
+     * Check both successful and failing assertions for one primitive type.
+     */
     function check_primitive<T: _Primitive>(a: T, b: T, equal_message: static_ptr<u8>, unequal_message: static_ptr<u8>) void throws IError {
       std.test.assert_eq<T>(a, a);
       std.test.assert_ne<T>(a, b);
@@ -28,6 +32,7 @@ public module std {
       std.test.assert(caught_unequal);
     }
 
+    /** Checks primitive assertions. */
     test_function primitive_assertions() {
       check_primitive<i8>(1, 2, "assertion failed: expected 1, got 2", "assertion failed: both values are 1");
       check_primitive<i16>(1, 2, "assertion failed: expected 1, got 2", "assertion failed: both values are 1");
@@ -43,6 +48,7 @@ public module std {
       check_primitive<char>('a', 'b', "assertion failed: expected a, got b", "assertion failed: both values are a");
     }
 
+    /** Checks inferred primitive assertions. */
     test_function inferred_primitive_assertions() {
       var value: i64 = 42;
       std.test.assert_eq(value, 42);
@@ -51,6 +57,7 @@ public module std {
       std.test.assert_ne('a', 'b');
     }
 
+    /** Checks string equality still compares contents. */
     test_function string_equality_still_compares_contents() {
       var a = String("same");
       var b = String("same");

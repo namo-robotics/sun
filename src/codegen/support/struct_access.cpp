@@ -6,6 +6,7 @@
 
 using sun::semantic_analysis::ClassType;
 
+/** Provides shared diagnostics, source tracking, and compiler utilities. */
 namespace sun::codegen::support {
 
 llvm::Value* fieldPtr(llvm::IRBuilder<>& builder, ClassType* classType,

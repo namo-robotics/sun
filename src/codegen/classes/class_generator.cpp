@@ -9,6 +9,7 @@
 
 using sun::ast::ExprAST;
 
+/** Provides the generator for class storage and method operations. */
 namespace sun::codegen::classes {
 
 llvm::Value* ClassGenerator::codegen(const ExprAST& expr) {

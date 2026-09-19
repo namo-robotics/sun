@@ -13,6 +13,7 @@ using sun::ast::ExprAST;
 using sun::ast::FunctionAST;
 using sun::ast::SliceExprAST;
 
+/** Converts syntax trees to and from the compiler protobuf representation. */
 namespace sun::serialization {
 namespace pbc = sun::proto::ast;
 

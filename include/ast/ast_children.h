@@ -6,8 +6,10 @@
 
 #include "ast/expr_ast.h"
 
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 
+/** A callback invoked for each directly owned syntax-tree child. */
 using ChildFn = std::function<void(const ExprAST&)>;
 
 // Calls fn for each direct child expression of node, in source order. Unlike

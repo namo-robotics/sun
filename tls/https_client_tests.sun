@@ -12,12 +12,15 @@ using std;
 using std.process;
 using tls;
 
+/** Groups declarations used by this compiler regression test. */
 public module tls {
+  /** Groups tests for the https client library behavior. */
   module https_client_tests {
     // ------------------------------------------------------------------
     // Response parsing (no network)
     // ------------------------------------------------------------------
 
+    /** Checks parses status headers and body. */
     test_function parses_status_headers_and_body() {
       var alloc = make_heap_allocator();
       var raw = String(alloc, "HTTP/1.1 404 Not Found\r\nContent-Length: 5\r\n\r\nhello");
@@ -28,6 +31,7 @@ public module tls {
       std.test.assert(resp.headers.starts_with("Content-Length: 5"), "headers keep the raw header block");
     }
 
+    /** Checks decodes chunked body. */
     test_function decodes_chunked_body() {
       var alloc = make_heap_allocator();
       var raw = String(alloc, "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n");
@@ -37,6 +41,7 @@ public module tls {
       std.test.assert(resp.body.equals_literal("hello world"), "chunks are joined without their sizes");
     }
 
+    /** Checks rejects response without header terminator. */
     test_function rejects_response_without_header_terminator() {
       var alloc = make_heap_allocator();
       var raw = String(alloc, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n");
@@ -54,7 +59,9 @@ public module tls {
     // Handshake and certificate verification (local TLS server)
     // ------------------------------------------------------------------
 
-    // Whether the openssl command-line tool is on the path.
+    /**
+     * Whether the openssl command-line tool is on the path.
+     */
     function have_openssl_tool(alloc: ref HeapAllocator) bool {
       var cmd = std.process.Command(alloc, "openssl");
       cmd.add_arg("version");
@@ -67,9 +74,11 @@ public module tls {
       }
     }
 
-    // A self-signed certificate for `common_name` plus an `openssl s_server`
-    // serving it on `port`, both torn down with the fixture. Trusting the
-    // certificate means pointing SSL_CERT_FILE at cert_path.
+    /**
+     * A self-signed certificate for `common_name` plus an `openssl s_server`
+     * serving it on `port`, both torn down with the fixture. Trusting the
+     * certificate means pointing SSL_CERT_FILE at cert_path.
+     */
     class TlsServer {
       public var cert_path: String;
       public var port: i32;
@@ -77,6 +86,7 @@ public module tls {
       var dir: String;
       var server: std.process.Child;
 
+      /** Initializes the fixture fields used by this example or regression test. */
       init(allocator: ref HeapAllocator, common_name: static_ptr<u8>) throws IError {
         // Let the OS choose a port so other test runs cannot occupy a fixed one.
         var reservation = TcpListener();
@@ -166,6 +176,7 @@ public module tls {
         }
       }
 
+      /** Records fixture destruction so tests can verify ownership and cleanup. */
       deinit() {
         // Best-effort teardown; deinit must not throw.
         try {
@@ -184,8 +195,10 @@ public module tls {
       }
     }
 
-    // Fetch "/" over TLS from the local server: the status code, or -1 when
-    // connecting or verification failed.
+    /**
+     * Fetch "/" over TLS from the local server: the status code, or -1 when
+     * connecting or verification failed.
+     */
     function fetch_status(alloc: ref HeapAllocator, port: i32) i32 {
       var client = HttpsClient(alloc);
       var host = String(alloc, "localhost");
@@ -197,7 +210,9 @@ public module tls {
       }
     }
 
-    // Trusting the throwaway certificate is what makes verification succeed.
+    /**
+     * Trusting the throwaway certificate is what makes verification succeed.
+     */
     test_function connects_to_server_with_trusted_certificate() {
       var alloc = make_heap_allocator();
       if (not have_openssl_tool(alloc)) {
@@ -212,8 +227,10 @@ public module tls {
       std.test.assert_eq(status, 200);
     }
 
-    // With no SSL_CERT_FILE the self-signed certificate chains to nothing
-    // trusted.
+    /**
+     * With no SSL_CERT_FILE the self-signed certificate chains to nothing
+     * trusted.
+     */
     test_function rejects_untrusted_certificate_by_default() {
       var alloc = make_heap_allocator();
       if (not have_openssl_tool(alloc)) {
@@ -226,8 +243,10 @@ public module tls {
       std.test.assert_eq(fetch_status(alloc, server.port), -1);
     }
 
-    // Valid and trusted, but issued for another name than the one connected
-    // to.
+    /**
+     * Valid and trusted, but issued for another name than the one connected
+     * to.
+     */
     test_function rejects_certificate_for_a_different_hostname() {
       var alloc = make_heap_allocator();
       if (not have_openssl_tool(alloc)) {

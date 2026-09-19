@@ -8,15 +8,19 @@
 #include "driver/driver.h"
 #include "llvm/Support/raw_ostream.h"
 
+/** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// Compile one entrypoint with tests enabled and JIT-run the synthesized
-// runner. Returns its exit code: 0 iff every selected test passed. With
-// skipWhenNoTests (config runs, where a library may simply have no tests
-// yet) an entrypoint without tests reports itself and counts as passing;
-// without it that stays the usual error.
+/**
+ * Compile one entrypoint with tests enabled and JIT-run the synthesized
+ * runner. Returns its exit code: 0 iff every selected test passed. With
+ * skipWhenNoTests (config runs, where a library may simply have no tests
+ * yet) an entrypoint without tests reports itself and counts as passing;
+ * without it that stays the usual error.
+ */
 int runTestEntrypoint(const std::string& inputFile, const TestOptions& options,
                       bool skipWhenNoTests = false) {
   // The runner reads its flags from main(argc, argv), argv[0] being the
@@ -50,8 +54,10 @@ int runTestEntrypoint(const std::string& inputFile, const TestOptions& options,
   return 0;
 }
 
-// Run the tests of every entrypoint a config declares, in turn. Returns 0
-// only when every suite passes.
+/**
+ * Run the tests of every entrypoint a config declares, in turn. Returns 0
+ * only when every suite passes.
+ */
 int runConfigTests(const TestOptions& options) {
   try {
     sun::driver::SunConfig config = loadConfigInput(options.inputFile);
@@ -75,6 +81,7 @@ int runConfigTests(const TestOptions& options) {
 
 }  // namespace
 
+/** Runs the test command and returns its process exit status. */
 int runTestCommand(const std::vector<std::string>& args) {
   TestOptions options;
   if (auto earlyExit = parseTestArguments(args, options)) {

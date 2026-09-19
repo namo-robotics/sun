@@ -56,34 +56,41 @@ using sun::support::logAndThrowError;
 using sun::support::SourceManager;
 using sun::support::SunError;
 
+/** Coordinates compilation, dependency loading, linking, and program execution. */
 namespace sun::driver {
 
-// ---------------------------------------------------------------------------
-// Exit handlers registered by JIT-compiled code
-//
-// A program run under the JIT lives inside the compiler process. C code it
-// brings along (an archive carried by a bundle) may call atexit, as OpenSSL
-// does for its cleanup. The real atexit would run that handler when the
-// compiler exits, long after the JIT's code memory is gone, and crash. So the
-// JIT resolves atexit to a shim that keeps the handlers here, and they run
-// when the program's main returns (its exit, as far as it can tell) while
-// its code is still mapped. A program that calls exit() itself ends the
-// whole process from inside the JIT'd code; a real exit handler drains the
-// same list then, with the memory still there.
-// ---------------------------------------------------------------------------
+/**
+ * ---------------------------------------------------------------------------
+ * Exit handlers registered by JIT-compiled code
+ *
+ * A program run under the JIT lives inside the compiler process. C code it
+ * brings along (an archive carried by a bundle) may call atexit, as OpenSSL
+ * does for its cleanup. The real atexit would run that handler when the
+ * compiler exits, long after the JIT's code memory is gone, and crash. So the
+ * JIT resolves atexit to a shim that keeps the handlers here, and they run
+ * when the program's main returns (its exit, as far as it can tell) while
+ * its code is still mapped. A program that calls exit() itself ends the
+ * whole process from inside the JIT'd code; a real exit handler drains the
+ * same list then, with the memory still there.
+ * ---------------------------------------------------------------------------
+ */
 namespace {
 
+/** Provides the mutex protecting registered JIT exit handlers. */
 std::mutex& jitExitMutex() {
   static std::mutex mutex;
   return mutex;
 }
 
+/** Provides the exit handlers registered by JIT-compiled code. */
 std::vector<void (*)()>& jitExitHandlers() {
   static std::vector<void (*)()> handlers;
   return handlers;
 }
 
-// Reverse registration order, like atexit; a handler may register another
+/**
+ * Reverse registration order, like atexit; a handler may register another
+ */
 void runJITExitHandlers() {
   for (;;) {
     void (*handler)() = nullptr;
@@ -97,7 +104,9 @@ void runJITExitHandlers() {
   }
 }
 
-// Stands in for atexit and at_quick_exit inside the JIT
+/**
+ * Stands in for atexit and at_quick_exit inside the JIT
+ */
 int jitAtExit(void (*handler)()) {
   {
     std::lock_guard<std::mutex> lock(jitExitMutex());
@@ -110,13 +119,18 @@ int jitAtExit(void (*handler)()) {
   return 0;
 }
 
-// Fork handlers registered by JIT'd code would outlive it the same way and
-// fire on the compiler's own later forks. A program run this way does not
-// fork, so they are accepted and dropped.
+/**
+ * Fork handlers registered by JIT'd code would outlive it the same way and
+ * fire on the compiler's own later forks. A program run this way does not
+ * fork, so they are accepted and dropped.
+ */
 int jitAtFork(void (*)(), void (*)(), void (*)()) { return 0; }
 
-// Runs the program's exit handlers when its run ends, however it ends
+/**
+ * Runs the program's exit handlers when its run ends, however it ends
+ */
 struct JITExitScope {
+  /** Runs and releases exit handlers registered during this JIT execution. */
   ~JITExitScope() { runJITExitHandlers(); }
 };
 
@@ -125,11 +139,13 @@ struct JITExitScope {
 static llvm::ExitOnError ExitOnErr;
 using llvm::orc::ThreadSafeModule;
 
-/// Strip library code the program never uses before handing a module to the
-/// JIT. ORC eagerly compiles every defined function in an added module, so
-/// linked-but-unused stdlib code would dominate JIT time. Internalize
-/// everything except the entry points, then GlobalDCE drops whatever main
-/// can't reach (references through vtables/globals are preserved).
+/**
+ * Strip library code the program never uses before handing a module to the
+ * JIT. ORC eagerly compiles every defined function in an added module, so
+ * linked-but-unused stdlib code would dominate JIT time. Internalize
+ * everything except the entry points, then GlobalDCE drops whatever main
+ * can't reach (references through vtables/globals are preserved).
+ */
 static void stripUnreachableForJIT(llvm::Module& module) {
   for (auto& F : module) {
     // Global initializers need no exemption: they are internal already, and
@@ -160,13 +176,15 @@ static void stripUnreachableForJIT(llvm::Module& module) {
   mpm.run(module, mam);
 }
 
-/// Make a module's global initializers callable under the JIT. They are
-/// internal functions registered in llvm.global_ctors — one per linked module,
-/// uniquified by the IR linker — and the JIT resolves symbols by name, which
-/// cannot reach an internal function. So wrap every ctor entry in a single
-/// external runner for the driver to look up and call before main, in the
-/// same order the AOT init_array would use. Returns false when the module has
-/// no constructors and there is nothing to run.
+/**
+ * Make a module's global initializers callable under the JIT. They are
+ * internal functions registered in llvm.global_ctors — one per linked module,
+ * uniquified by the IR linker — and the JIT resolves symbols by name, which
+ * cannot reach an internal function. So wrap every ctor entry in a single
+ * external runner for the driver to look up and call before main, in the
+ * same order the AOT init_array would use. Returns false when the module has
+ * no constructors and there is nothing to run.
+ */
 static bool wrapStaticCtorsForJIT(llvm::Module& module) {
   auto* ctors = module.getGlobalVariable("llvm.global_ctors");
   if (!ctors || !ctors->hasInitializer()) return false;
@@ -202,7 +220,9 @@ static bool wrapStaticCtorsForJIT(llvm::Module& module) {
   return true;
 }
 
-/// Check if stdlib.moon is included in moon imports
+/**
+ * Check if stdlib.moon is included in moon imports
+ */
 static bool hasStdlibImport(const std::vector<MoonImport>& moonImports) {
   for (const auto& moonImport : moonImports) {
     // Check if the path ends with stdlib.moon
@@ -213,10 +233,12 @@ static bool hasStdlibImport(const std::vector<MoonImport>& moonImports) {
   return false;
 }
 
-/// Does this block declare `class String` directly inside `module std`?
-/// Interpolation desugars to `std.String` and `std.HeapAllocator`, so the
-/// stdlib's own sources satisfy it without importing stdlib.moon — which
-/// they cannot do, being that library.
+/**
+ * Does this block declare `class String` directly inside `module std`?
+ * Interpolation desugars to `std.String` and `std.HeapAllocator`, so the
+ * stdlib's own sources satisfy it without importing stdlib.moon — which
+ * they cannot do, being that library.
+ */
 static bool declaresStdlibString(const BlockExprAST& block) {
   for (const auto& stmt : block.getBody()) {
     if (!stmt || stmt->getType() != ASTNodeType::MODULE) continue;
@@ -370,7 +392,9 @@ void Driver::printUserDefinedIR() {
   llvm::outs() << reset;
 }
 
-// Helper: recursively collect all functions reachable from a given function
+/**
+ * Helper: recursively collect all functions reachable from a given function
+ */
 static void collectReachableFunctions(llvm::Function* func,
                                       std::set<llvm::Function*>& visited) {
   if (!func || func->isDeclaration() || visited.count(func)) return;
@@ -460,8 +484,10 @@ void Driver::writeUserDefinedIR(const std::string& path) {
 // Moon import processing
 // ---------------------------------------------------------------------------
 
-/// Process moon imports: collect stubs, deduplicate, check for collisions
-/// with source modules and between moons, then prepend to AST.
+/**
+ * Process moon imports: collect stubs, deduplicate, check for collisions
+ * with source modules and between moons, then prepend to AST.
+ */
 static void processMoonImports(BlockExprAST& blockAst, Parser& parser,
                                const std::vector<MoonImport>& moonImports) {
   if (moonImports.empty()) {
@@ -539,9 +565,11 @@ static void processMoonImports(BlockExprAST& blockAst, Parser& parser,
   }
 }
 
-/// Move everything the program declares itself (every top-level node that is
-/// not an imported bundle's scope) into one MoonScopeAST for the bundle being
-/// built, named by its `$hash$` prefix. Imported scopes stay where they are.
+/**
+ * Move everything the program declares itself (every top-level node that is
+ * not an imported bundle's scope) into one MoonScopeAST for the bundle being
+ * built, named by its `$hash$` prefix. Imported scopes stay where they are.
+ */
 static void wrapOwnBundle(BlockExprAST& blockAst,
                           const std::string& scopeName) {
   auto ownBody = std::make_unique<BlockExprAST>();
@@ -558,11 +586,13 @@ static void wrapOwnBundle(BlockExprAST& blockAst,
       sun::ast::MoonScopeAST::forOwnBundle(scopeName, std::move(ownBody)));
 }
 
-/// Bind the program's own C externs to the archives the bundle being built
-/// carries: an extern whose link name is a key of `renames` is emitted, and
-/// recorded in the bundle's metadata, under the prefixed value. Imported
-/// bundles' scopes are left alone; their externs were bound when they were
-/// built. Link names no rename applies to are collected in `unmapped`.
+/**
+ * Bind the program's own C externs to the archives the bundle being built
+ * carries: an extern whose link name is a key of `renames` is emitted, and
+ * recorded in the bundle's metadata, under the prefixed value. Imported
+ * bundles' scopes are left alone; their externs were bound when they were
+ * built. Link names no rename applies to are collected in `unmapped`.
+ */
 static void renameOwnExterns(BlockExprAST& block,
                              const std::map<std::string, std::string>& renames,
                              std::vector<std::string>& unmapped) {
@@ -602,11 +632,13 @@ static void renameOwnExterns(BlockExprAST& block,
   }
 }
 
-/// What the linker will not say. Two archives with one file name under
-/// different hashes mean two versions of a library go into the program,
-/// each bound to the code that came with it. A plain extern naming a symbol
-/// that a bundle carries only in prefixed form binds to whatever the final
-/// link provides under the bare name, which is rarely what was meant.
+/**
+ * What the linker will not say. Two archives with one file name under
+ * different hashes mean two versions of a library go into the program,
+ * each bound to the code that came with it. A plain extern naming a symbol
+ * that a bundle carries only in prefixed form binds to whatever the final
+ * link provides under the bare name, which is rarely what was meant.
+ */
 static void warnAboutArchiveSet(const std::vector<std::string>& archives,
                                 const std::vector<std::string>& bareExterns) {
   std::map<std::string, std::vector<std::string>> byName;
@@ -699,14 +731,17 @@ void Driver::addJITStaticLibrary(const std::string& path) {
   }
 }
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// Walk the item-level statements of a merged program, recursing through
-// module bodies. Strip mode erases every test function; collect mode makes
-// each one public — along with every module on the way down to it — because
-// the synthesized runner lives at root scope and could not name anything
-// module-private. Records each test's dotted path. Runs before moon-stub
-// injection, so only user-written modules are visited.
+/**
+ * Walk the item-level statements of a merged program, recursing through
+ * module bodies. Strip mode erases every test function; collect mode makes
+ * each one public — along with every module on the way down to it — because
+ * the synthesized runner lives at root scope and could not name anything
+ * module-private. Records each test's dotted path. Runs before moon-stub
+ * injection, so only user-written modules are visited.
+ */
 void visitTests(BlockExprAST& block, std::vector<std::string>& modulePath,
                 bool strip, std::vector<std::string>* found, bool& sawAny) {
   auto& body = block.mutableBody();
@@ -745,7 +780,9 @@ void visitTests(BlockExprAST& block, std::vector<std::string>& modulePath,
   }
 }
 
-// Remove a root-level `main` so the synthesized runner can take its place.
+/**
+ * Remove a root-level `main` so the synthesized runner can take its place.
+ */
 void removeRootMain(BlockExprAST& block) {
   auto& body = block.mutableBody();
   for (auto it = body.begin(); it != body.end(); ++it) {
@@ -758,10 +795,12 @@ void removeRootMain(BlockExprAST& block) {
   }
 }
 
-// The test binary's entry point, rendered from the embedded runner template
-// (src/driver/test_runner_template.inja.sun) with the collected dotted test
-// names. The template documents the runner's behavior; this only feeds in
-// the names.
+/**
+ * The test binary's entry point, rendered from the embedded runner template
+ * (src/driver/test_runner_template.inja.sun) with the collected dotted test
+ * names. The template documents the runner's behavior; this only feeds in
+ * the names.
+ */
 std::string synthesizeTestRunner(const std::vector<std::string>& tests) {
   inja::Environment env;
   // Jinja-style whitespace handling, so the template's {% for %} lines
@@ -827,9 +866,11 @@ void Driver::applyTestHandling(BlockExprAST& blockAst) {
   }
 }
 
-// Appends the serialized form of every statement the program wrote itself to
-// `out`. Blocks are flattened and imported moon scopes are skipped. Each
-// statement is prefixed with its length so neighbours cannot run together.
+/**
+ * Appends the serialized form of every statement the program wrote itself to
+ * `out`. Blocks are flattened and imported moon scopes are skipped. Each
+ * statement is prefixed with its length so neighbours cannot run together.
+ */
 static void appendOwnSourceBytes(const ExprAST& node,
                                  sun::serialization::ASTSerializer& serializer,
                                  std::string& out) {
@@ -844,8 +885,10 @@ static void appendOwnSourceBytes(const ExprAST& node,
   out += std::to_string(bytes.size()) + ":" + bytes;
 }
 
-// Returns a hash that identifies a program by its own statements. Imported
-// moon scopes are left out because they already carry their own identity.
+/**
+ * Returns a hash that identifies a program by its own statements. Imported
+ * moon scopes are left out because they already carry their own identity.
+ */
 static std::string computeOwnSourceHash(const BlockExprAST& blockAst) {
   sun::serialization::ASTSerializer serializer;
   std::string source;
@@ -1521,8 +1564,10 @@ void Driver::compileFile(const std::string& filename) {
 // Merged-AST compilation: compile multiple source files together
 // ---------------------------------------------------------------------------
 
-/// Merge multiple parsed BlockExprASTs into a single unified AST.
-/// Same-named modules are merged together.
+/**
+ * Merge multiple parsed BlockExprASTs into a single unified AST.
+ * Same-named modules are merged together.
+ */
 static std::unique_ptr<BlockExprAST> mergeASTs(
     std::vector<std::unique_ptr<BlockExprAST>>& parsedFiles) {
   std::vector<std::unique_ptr<ExprAST>> mergedBody;

@@ -8,8 +8,10 @@
 
 using sun::moon_bundling::MoonBuildOptions;
 
+/** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
 
+/** Builds a compiled Moon library from an entrypoint and bundle settings. */
 int buildMoonBundle(const std::string& entrypoint,
                     const std::filesystem::path& outputPath,
                     const MoonBuildOptions& buildOptions) {
@@ -47,6 +49,7 @@ int buildMoonBundle(const std::string& entrypoint,
   }
 }
 
+/** Runs the bundle command and returns its process exit status. */
 int runBundleCommand(const BuildRunOptions& options) {
   const std::string& entrypoint = options.inputFiles[0];
   std::filesystem::path outputPath =

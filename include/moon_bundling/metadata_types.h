@@ -4,6 +4,7 @@
 #include "semantic_analysis/semantic_context.h"
 #include "types.pb.h"
 
+/** Builds and loads compiled Moon libraries and their declaration metadata. */
 namespace sun::moon_bundling {
 /** Convert a resolved type to an exportable annotation with exact nominal
  * identities. */

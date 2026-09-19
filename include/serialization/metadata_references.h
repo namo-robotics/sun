@@ -6,6 +6,7 @@
 #include "ast.pb.h"
 #include "semantic_analysis/types.h"
 
+/** Converts syntax trees to and from the compiler protobuf representation. */
 namespace sun::serialization {
 namespace pbc = sun::proto::ast;
 

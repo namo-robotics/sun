@@ -14,12 +14,15 @@
 using sun::driver::SunConfig;
 using sun::moon_bundling::LibraryCache;
 
+/** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
 
+/** Reports whether the input names a project configuration file. */
 bool isConfigInput(const std::string& input) {
   return std::filesystem::path(input).filename() == SunConfig::kFileName;
 }
 
+/** Loads project configuration for the selected compilation target. */
 SunConfig loadConfigInput(const std::string& input,
                           const std::string& targetTriple) {
   SunConfig config =
@@ -33,6 +36,7 @@ SunConfig loadConfigInput(const std::string& input,
   return config;
 }
 
+/** Applies command-line settings shared by compiler commands. */
 void applySharedSettings(const SharedOptions& shared) {
   for (const auto& [name, value] : shared.pathVariables) {
     sun::driver::ManifestProcessor::setPathVariable(name, value);
@@ -46,6 +50,7 @@ void applySharedSettings(const SharedOptions& shared) {
   }
 }
 
+/** Applies the build and execution settings selected on the command line. */
 void applyBuildRunSettings(const BuildRunOptions& options) {
   if (!options.githubToken.empty()) {
     sun::moon_bundling::MoonCache::setGithubToken(options.githubToken);
@@ -55,6 +60,7 @@ void applyBuildRunSettings(const BuildRunOptions& options) {
   applySharedSettings(options.shared);
 }
 
+/** Prints an early-exit message to its selected output stream. */
 int reportEarlyExit(const EarlyExit& earlyExit) {
   if (earlyExit.stream == EarlyExit::Stream::Out) {
     llvm::outs() << earlyExit.text;
@@ -64,16 +70,19 @@ int reportEarlyExit(const EarlyExit& earlyExit) {
   return earlyExit.exitCode;
 }
 
+/** Prints a compiler diagnostic for the command-line user. */
 int reportSunError(const sun::support::SunError& error) {
   std::cerr << error.what() << std::endl;
   return 1;
 }
 
+/** Prints an unexpected exception as a command-line failure. */
 int reportUnexpectedError(const std::exception& error) {
   std::cerr << "Error: " << error.what() << std::endl;
   return 1;
 }
 
+/** Recognizes the diagnostic produced when no tests are available. */
 bool isNoTestsError(const sun::support::SunError& error) {
   return std::string(error.what()).find("no test functions found") !=
          std::string::npos;

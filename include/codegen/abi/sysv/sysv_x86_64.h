@@ -19,6 +19,7 @@
 
 #include "codegen/abi/c_abi.h"
 
+/** Lowers C calls and values using the System V x86-64 calling convention. */
 namespace sun::codegen::abi::sysv {
 
 /// Classify one type as it would be passed as a parameter.

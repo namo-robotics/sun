@@ -19,13 +19,17 @@
 // ContiguousBuffer<T> - Fixed-size Bounds-checked Array
 // ============================================================================
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** Owns a fixed-size allocation of contiguous element storage. */
   public class ContiguousBuffer<T> implements IIterable<ref T, ContiguousBuffer<T>> {
     var data: Unique<u8>;  // Element storage (owned, auto-freed)
     var alloc: HeapAllocator;  // Allocator (stored via copy)
     var size_: i64;  // Number of elements (fixed after init)
 
-    // Constructor with allocator and size
+    /**
+     * Constructor with allocator and size
+     */
     init(allocator: const ref HeapAllocator, size: i64) {
       this.alloc = allocator.copy();
       this.size_ = size;
@@ -36,9 +40,11 @@ public module std {
     // Bounds-checked Accessors
     // ========================================================================
 
-    // Borrow element at index (bounds-checked). The buffer keeps ownership, so
-    // this hands back a reference — copying the element out would leave two
-    // owners of anything it holds.
+    /**
+     * Borrow element at index (bounds-checked). The buffer keeps ownership, so
+     * this hands back a reference — copying the element out would leave two
+     * owners of anything it holds.
+     */
     public const method get(index: i64) ref T throws IError {
       if (index < 0) {
         throw IndexOutOfBoundsError(index);
@@ -49,7 +55,9 @@ public module std {
       return unsafe { this.get_unchecked(index); };
     }
 
-    // Set element at index (bounds-checked)
+    /**
+     * Set element at index (bounds-checked)
+     */
     public method set(index: i64, value: T) void throws IError {
       if (index < 0) {
         throw IndexOutOfBoundsError(index);
@@ -64,7 +72,7 @@ public module std {
     // Unchecked Accessors (for performance-critical code)
     // ========================================================================
 
-    /* Borrow an element. The caller must provide an initialized, in-bounds index. */
+    /** Borrow an element. The caller must provide an initialized, in-bounds index. */
     public const unsafe method get_unchecked(index: i64) ref T {
       return unsafe { _to_ref<T>(_ptr_as_raw<T>(_ptr_offset(this.data.get_raw(), index * _sizeof<T>()))); };
     }
@@ -82,7 +90,7 @@ public module std {
       return value;
     }
 
-    /* Store an element. The caller must provide an in-bounds index. */
+    /** Store an element. The caller must provide an in-bounds index. */
     public unsafe method set_unchecked(index: i64, value: T) void {
       unsafe { _store<T>(this.data.get_raw(), index, value); };
     }
@@ -91,17 +99,23 @@ public module std {
     // Utility Methods
     // ========================================================================
 
-    // Get buffer size
+    /**
+     * Get buffer size
+     */
     public const method size() i64 {
       return this.size_;
     }
 
-    // Check if buffer is empty
+    /**
+     * Check if buffer is empty
+     */
     public const method is_empty() bool {
       return this.size_ == 0;
     }
 
-    // Create a deep copy of this buffer
+    /**
+     * Create a deep copy of this buffer
+     */
     public const method clone() ContiguousBuffer<T> {
       var copy: ContiguousBuffer<T> = ContiguousBuffer<T>(this.alloc, this.size_);
       var byte_count: i64 = this.size_ * _sizeof<T>();
@@ -111,14 +125,18 @@ public module std {
       return copy;
     }
 
-    // Fill entire buffer with value
+    /**
+     * Fill entire buffer with value
+     */
     public method fill(value: T) void {
       for (var i: i64 = 0; i < this.size_; i = i + 1) {
         unsafe { _store<T>(this.data.get_raw(), i, value); };
       }
     }
 
-    // Write elements from another buffer into this buffer (bounds-checked)
+    /**
+     * Write elements from another buffer into this buffer (bounds-checked)
+     */
     public method write_from(source: const ref ContiguousBuffer<T>, src_offset: i64, dst_offset: i64, count: i64) void throws IError {
       // Validate source bounds
       if (src_offset < 0) {
@@ -149,13 +167,17 @@ public module std {
       };
     }
 
-    // Get raw data pointer (escape hatch for interop)
+    /**
+     * Get raw data pointer (escape hatch for interop)
+     */
     public const method raw_data() raw_ptr<u8> {
       return this.data.get_raw();
     }
 
-    // Resize buffer to new size, preserving min(old_size, new_size) elements
-    // New elements (if growing) are uninitialized
+    /**
+     * Resize buffer to new size, preserving min(old_size, new_size) elements
+     * New elements (if growing) are uninitialized
+     */
     public method resize_to(new_size: i64) void {
       if (new_size == this.size_) {
         return;
@@ -178,7 +200,9 @@ public module std {
       this.size_ = new_size;
     }
 
-    // Borrow first element (bounds-checked)
+    /**
+     * Borrow first element (bounds-checked)
+     */
     public const method first() ref T throws IError {
       if (this.size_ == 0) {
         throw IndexOutOfBoundsError(0);
@@ -186,7 +210,9 @@ public module std {
       return unsafe { this.get_unchecked(0); };
     }
 
-    // Borrow last element (bounds-checked)
+    /**
+     * Borrow last element (bounds-checked)
+     */
     public const method last() ref T throws IError {
       if (this.size_ == 0) {
         throw IndexOutOfBoundsError(0);
@@ -198,14 +224,18 @@ public module std {
     // Indexing Support
     // ========================================================================
 
-    // Operator overload for indexing: buf[i] calls __index__([i])
-    // Note: Uses unchecked access for performance; use get() for bounds checking
+    /**
+     * Operator overload for indexing: buf[i] calls __index__([i])
+     * Note: Uses unchecked access for performance; use get() for bounds checking
+     */
     public const method __index__(indices: const ref array<i64>) ref T {
       return unsafe { this.get_unchecked(indices[0]); };
     }
 
-    // Operator overload for indexed assignment: buf[i] = val calls __setindex__([i], val)
-    // Note: Uses unchecked access for performance; use set() for bounds checking
+    /**
+     * Operator overload for indexed assignment: buf[i] = val calls __setindex__([i], val)
+     * Note: Uses unchecked access for performance; use set() for bounds checking
+     */
     public method __setindex__(indices: const ref array<i64>, value: T) void {
       unsafe { this.set_unchecked(indices[0], value); };
     }
@@ -214,7 +244,9 @@ public module std {
     // Iteration Support
     // ========================================================================
 
-    // Return iterator over elements
+    /**
+     * Return iterator over elements
+     */
     public const method iter() ContiguousBufferIterator<T> {
       return ContiguousBufferIterator<T>();
     }
@@ -228,8 +260,10 @@ public module std {
   public class ContiguousBufferIterator<T> implements IIterator<ref T, ContiguousBuffer<T>> {
     var current: i64 = 0;
 
-    // Next element, or None once the buffer is exhausted. Elements are
-    // borrowed: the buffer still owns them.
+    /**
+     * Next element, or None once the buffer is exhausted. Elements are
+     * borrowed: the buffer still owns them.
+     */
     public method next(buf: ref ContiguousBuffer<T>) Option<ref T> {
       if (this.current >= buf.size()) {
         return Option.None;

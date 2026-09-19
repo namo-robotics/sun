@@ -1,13 +1,16 @@
 // math_module.sun - A module that exports math functions
 
+/** Returns the sum of two numbers for module-resolution tests. */
 function add(a: i32, b: i32) i32 {
   return a + b;
 }
 
+/** Returns the product of two numbers for module-resolution tests. */
 function multiply(a: i32, b: i32) i32 {
   return a * b;
 }
 
+/** Returns the square of the supplied number for module-resolution tests. */
 function square(x: i32) i32 {
   return x * x;
 }

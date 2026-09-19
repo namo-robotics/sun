@@ -28,6 +28,7 @@ using sun::driver::executeString;
 using sun::parsing::TokenKind;
 using sun::support::SunError;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 // A module exposing one public and one private member of every kind
@@ -52,10 +53,12 @@ const char* kLib = R"(
   }
 )";
 
+/** Builds a complete test program around the supplied scenario. */
 std::string program(const std::string& body) {
   return std::string(kLib) + "\nfunction main() i32 {\n" + body + "\n}\n";
 }
 
+/** Builds a program that exercises visibility through a using declaration. */
 std::string usingProgram(const std::string& body) {
   return std::string(kLib) + "\nusing m;\nfunction main() i32 {\n" + body +
          "\n}\n";
@@ -457,6 +460,7 @@ TEST(Modules_AccessModifiers,
 // .moon bundles: private items are carried but hidden; roots must be public
 // ---------------------------------------------------------------------------
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 namespace fs = std::filesystem;
 

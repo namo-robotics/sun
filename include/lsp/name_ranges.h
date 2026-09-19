@@ -13,6 +13,7 @@
 #include "lsp/symbol_location.h"
 #include "support/position.h"
 
+/** Provides compiler-backed editor features through the language server protocol. */
 namespace sun::lsp {
 
 // Offset of the first whole word `name` in text[from, to), or -1

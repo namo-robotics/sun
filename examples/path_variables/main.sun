@@ -1,6 +1,7 @@
 using std;
 using mathlib;
 
+/** Runs the example that calls a library imported using a path variable. */
 function main() void {
   println(triple(14));
 }

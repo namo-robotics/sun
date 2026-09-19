@@ -15,9 +15,10 @@
 #include <optional>
 #include <string>
 
+/** Coordinates compilation, dependency loading, linking, and program execution. */
 namespace sun::driver {
 
-/*
+/**
  * The facts a later run needs to decide there is nothing to do. The two
  * flags say which artifacts the program yields, which is otherwise known
  * only after compiling it: a program without tests has no test binary to

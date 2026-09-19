@@ -10,9 +10,11 @@
 
 using std;
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** Groups tests for the env library behavior. */
   module env_tests {
-    /*
+    /**
      * A set value can be read back, the split happens at the first equals
      * sign only, and an empty value round-trips as an empty String.
      */
@@ -34,7 +36,7 @@ public module std {
       environment.remove("SUN_TEST_ENV_CAPTURES");
     }
 
-    /*
+    /**
      * An Env is a snapshot: a change made outside it (here through a second
      * Env) is invisible until refresh() rebuilds it.
      */
@@ -55,7 +57,7 @@ public module std {
       outside.remove("SUN_TEST_ENV_REFRESH");
     }
 
-    /*
+    /**
      * set/has/remove keep the snapshot and the native environment in step,
      * and iteration visits the entry exactly once.
      */
@@ -79,7 +81,7 @@ public module std {
       std.test.assert(not fresh.has("SUN_TEST_ENV_SYNC"), "removal reached the native environment");
     }
 
-    /*
+    /**
      * The String-typed name and value overloads of set/get/has/remove work
      * like the literal ones.
      */
@@ -99,7 +101,7 @@ public module std {
       std.test.assert(not environment.has(name), "String remove works");
     }
 
-    /*
+    /**
      * cwd() reads and set_cwd() changes the working directory. The working
      * directory is process-global, so this is written set-and-restore; it is
      * only fully deterministic under --test-sequential (which is how CI runs
@@ -117,7 +119,7 @@ public module std {
       std.test.assert(restored.equals(before), "original working directory restored");
     }
 
-    /*
+    /**
      * args() copies every argv entry, including argv[0], into owned Strings.
      * The C++ harness passed a real argv into main; here one is built by hand
      * from NUL-terminated Strings.

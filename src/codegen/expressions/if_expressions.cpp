@@ -8,8 +8,10 @@ using sun::support::logAndThrowError;
 
 using namespace llvm;
 
+/** Translates analyzed Sun programs into LLVM instructions. */
 namespace sun::codegen {
 
+/** Converts a generated condition to the LLVM boolean used for branching. */
 Value* coerceCondToBool(CodegenContext& ctx, Value* CondV) {
   if (CondV->getType()->isIntegerTy(1)) return CondV;
   if (CondV->getType()->isFloatingPointTy()) {

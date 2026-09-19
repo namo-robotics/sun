@@ -34,35 +34,47 @@ using sun::ast::InterfaceDefinitionAST;
 using sun::ast::VariableCreationAST;
 using sun::semantic_analysis::SemanticContext;
 
+/** Builds and loads compiled Moon libraries and their declaration metadata. */
 namespace sun::moon_bundling {
 namespace pbc = sun::proto::ast;
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
 using sun::serialization::ASTSerializer;
 
-// Check if a function/method is generic (has type parameters)
+/**
+ * Check if a function/method is generic (has type parameters)
+ */
 bool isGeneric(const sun::ast::PrototypeAST& proto) {
   return proto.isTemplate();
 }
 
-// Check if a class is generic
+/**
+ * Check if a class is generic
+ */
 bool isGeneric(const ClassDefinitionAST& cls) {
   return !cls.getTypeParameters().empty();
 }
 
-// Check if an interface is generic
+/**
+ * Check if an interface is generic
+ */
 bool isGeneric(const InterfaceDefinitionAST& iface) {
   return !iface.getTypeParameters().empty();
 }
 
-// Clear the body of a FunctionDef proto (keep only signature)
+/**
+ * Clear the body of a FunctionDef proto (keep only signature)
+ */
 void clearBody(pbc::FunctionDef* func) {
   func->mutable_body()->clear_body();
   func->set_field_initializer_count(0);
 }
 
-// Clear bodies of non-generic methods in a ClassDef
+/**
+ * Clear bodies of non-generic methods in a ClassDef
+ */
 void clearNonGenericBodies(pbc::ClassDef* cls,
                            const ClassDefinitionAST& original) {
   const auto& methods = original.getMethods();
@@ -78,7 +90,9 @@ void clearNonGenericBodies(pbc::ClassDef* cls,
   }
 }
 
-// Clear bodies of non-generic methods in an InterfaceDef
+/**
+ * Clear bodies of non-generic methods in an InterfaceDef
+ */
 void clearNonGenericBodies(pbc::InterfaceDef* iface,
                            const InterfaceDefinitionAST& original) {
   const auto& methods = original.getMethods();
@@ -94,7 +108,9 @@ void clearNonGenericBodies(pbc::InterfaceDef* iface,
   }
 }
 
-// Extract a function and add to metadata
+/**
+ * Extract a function and add to metadata
+ */
 void extractFunction(const FunctionAST& func, moon::ModuleMetadata& metadata,
                      const ASTSerializer& serializer) {
   if (func.isExtern() && func.getTargetDeclarationId()) return;
@@ -112,7 +128,9 @@ void extractFunction(const FunctionAST& func, moon::ModuleMetadata& metadata,
   }
 }
 
-// Extract a class and add to metadata
+/**
+ * Extract a class and add to metadata
+ */
 void extractClass(const ClassDefinitionAST& cls, moon::ModuleMetadata& metadata,
                   const ASTSerializer& serializer,
                   sun::semantic_analysis::TypeRegistry* types = nullptr) {
@@ -144,7 +162,9 @@ void extractClass(const ClassDefinitionAST& cls, moon::ModuleMetadata& metadata,
   clearNonGenericBodies(classDef, cls);
 }
 
-// Extract an interface and add to metadata
+/**
+ * Extract an interface and add to metadata
+ */
 void extractInterface(const InterfaceDefinitionAST& iface,
                       moon::ModuleMetadata& metadata,
                       const ASTSerializer& serializer) {
@@ -160,12 +180,14 @@ void extractInterface(const InterfaceDefinitionAST& iface,
   clearNonGenericBodies(ifaceDef, iface);
 }
 
-// Extract a module-level variable and add to metadata.
-// The initializer is dropped where the declaration states a type: this
-// bundle's bitcode already holds the initialized storage, and importers
-// reference that symbol rather than defining their own copy. Where the type
-// was inferred the initializer is kept, since extraction runs on the parse
-// tree and there is nothing else to read the type from.
+/**
+ * Extract a module-level variable and add to metadata.
+ * The initializer is dropped where the declaration states a type: this
+ * bundle's bitcode already holds the initialized storage, and importers
+ * reference that symbol rather than defining their own copy. Where the type
+ * was inferred the initializer is kept, since extraction runs on the parse
+ * tree and there is nothing else to read the type from.
+ */
 void extractGlobal(const VariableCreationAST& var,
                    moon::ModuleMetadata& metadata,
                    const ASTSerializer& serializer) {
@@ -175,7 +197,9 @@ void extractGlobal(const VariableCreationAST& var,
   if (global->has_type_annotation()) global->clear_value();
 }
 
-// Extract an enum and add to metadata
+/**
+ * Extract an enum and add to metadata
+ */
 void extractEnum(const EnumDefinitionAST& enumDef,
                  moon::ModuleMetadata& metadata,
                  const ASTSerializer& serializer) {
@@ -188,13 +212,16 @@ void extractEnum(const EnumDefinitionAST& enumDef,
   if (node.has_location()) *enumProto->mutable_location() = node.location();
 }
 
-// Recursively extract from statements
-// Collects definitions into one ModuleMetadata per dotted module path
-// ("a.b" for `module a { module b { ... } }`); file-level definitions go
-// under the empty name. Vector order = first-seen order.
+/**
+ * Recursively extract from statements
+ * Collects definitions into one ModuleMetadata per dotted module path
+ * ("a.b" for `module a { module b { ... } }`); file-level definitions go
+ * under the empty name. Vector order = first-seen order.
+ */
 struct ModuleCollector {
   std::vector<std::pair<std::string, moon::ModuleMetadata>> modules;
 
+  /** Returns the metadata being collected for the named module. */
   moon::ModuleMetadata& forModule(const std::string& dotted) {
     for (auto& [name, md] : modules) {
       if (name == dotted) return md;
@@ -205,6 +232,7 @@ struct ModuleCollector {
   }
 };
 
+/** Collects exported declaration metadata from a sequence of statements. */
 void extractFromStatements(
     const std::vector<std::unique_ptr<sun::ast::ExprAST>>& stmts,
     ModuleCollector& collector, const std::string& modulePath,
@@ -265,6 +293,7 @@ void extractFromStatements(
   }
 }
 
+/** Collects module metadata and build identity from a parsed source file. */
 std::vector<moon::ModuleMetadata> extractAllMetadata(
     const std::string& filePath, const BlockExprAST& ast,
     const std::string& sourceHash) {
@@ -454,6 +483,7 @@ std::optional<std::vector<moon::ModuleMetadata>> extractAllMetadataFromFile(
       std::filesystem::path(sourcePath).parent_path().string());
 }
 
+/** Parses source text and collects the metadata needed to build a library. */
 std::optional<std::vector<moon::ModuleMetadata>> extractAllMetadataFromSource(
     const std::string& source, const std::string& displayName,
     const std::string& baseDir) {

@@ -1,5 +1,6 @@
 #pragma once
 
+/** Translates analyzed Sun programs into LLVM instructions. */
 namespace sun::codegen {
 class CodegenVisitor;
 }
@@ -38,6 +39,7 @@ class CodegenVisitor;
 #include "semantic_analysis/types.h"
 #include "support/position.h"
 
+/** Provides the scope manager responsible for variable storage and cleanup. */
 namespace sun::codegen::scopes {
 using sun::semantic_analysis::ClassType;
 using sun::semantic_analysis::DeclarationId;
@@ -107,39 +109,54 @@ struct CodegenScope {
  */
 class ScopeManager {
  public:
+  /** Creates the manager that tracks generated scopes and their cleanup. */
   ScopeManager(sun::codegen::CodegenState& state,
                sun::codegen::CodegenVisitor& gen)
       : state_(state), gen_(gen), ctx(state.ctx) {}
 
+  /** Creates the manager that tracks generated scopes and their cleanup. */
   ScopeManager(const ScopeManager&) = delete;
+  /** Disallows assignment so ownership and object identity cannot be duplicated. */
   ScopeManager& operator=(const ScopeManager&) = delete;
 
   // ---------------------------------------------------------------
   // The stack itself
   // ---------------------------------------------------------------
 
+  /** Reports whether this object contains no entries. */
   bool empty() const { return scopes_.empty(); }
+  /** Returns the number of stored entries. */
   size_t size() const { return scopes_.size(); }
+  /** Provides access to the most recently entered scope. */
   CodegenScope& back() { return scopes_.back(); }
+  /** Provides indexed access to the stored elements. */
   CodegenScope& operator[](size_t i) { return scopes_[i]; }
 
-  // Open a scope that holds no source block of its own
+  /**
+   * Open a scope that holds no source block of its own
+   */
   CodegenScope& push() {
     scopes_.emplace_back();
     return scopes_.back();
   }
 
-  // Open a scope for a source block (if/else, loop, try/catch). Also opens a
-  // DILexicalBlock so debuggers see block-accurate variable visibility (no-op
-  // without -g); pop() closes it symmetrically.
+  /**
+   * Open a scope for a source block (if/else, loop, try/catch). Also opens a
+   * DILexicalBlock so debuggers see block-accurate variable visibility (no-op
+   * without -g); pop() closes it symmetrically.
+   */
   CodegenScope& push(const sun::support::Position& loc);
 
-  // Close the innermost scope, dropping whatever it still owns
+  /**
+   * Close the innermost scope, dropping whatever it still owns
+   */
   void pop();
 
-  // Index of the innermost function-boundary scope. Falls back to the
-  // innermost scope (old single-scope cleanup behavior) if none is marked,
-  // so an unmarked context can never emit references into another function.
+  /**
+   * Index of the innermost function-boundary scope. Falls back to the
+   * innermost scope (old single-scope cleanup behavior) if none is marked,
+   * so an unmarked context can never emit references into another function.
+   */
   size_t functionBoundaryDepth() const {
     for (size_t i = scopes_.size(); i-- > 0;) {
       if (scopes_[i].isFunctionBoundary) return i;
@@ -158,19 +175,25 @@ class ScopeManager {
    */
   llvm::AllocaInst* findVariable(DeclarationId id);
 
-  // True if this declaration has indirect storage in the current function
-  // — its alloca holds the value's address, not the value
+  /**
+   * True if this declaration has indirect storage in the current function
+   * — its alloca holds the value's address, not the value
+   */
   bool isIndirectBinding(DeclarationId id) const;
 
-  // Storage address of a compound local: the alloca itself, or for an
-  // indirect binding the pointer it holds
+  /**
+   * Storage address of a compound local: the alloca itself, or for an
+   * indirect binding the pointer it holds
+   */
   llvm::Value* compoundStorageAddress(DeclarationId id);
 
   // ---------------------------------------------------------------
   // Taking and giving up ownership
   // ---------------------------------------------------------------
 
-  // Track a new owned allocation in the current scope
+  /**
+   * Track a new owned allocation in the current scope
+   */
   void trackOwnedAllocation(llvm::Value* ptrAlloca, const std::string& name,
                             TypePtr pointeeType = nullptr) {
     if (!scopes_.empty()) {
@@ -179,31 +202,37 @@ class ScopeManager {
     }
   }
 
-  // Track a class or payload-enum allocation in the current scope for
-  // automatic drop at scope exit. Enums are tracked only when they actually
-  // need drop code. An alloca already tracked (e.g. a constructor temporary
-  // later adopted by a variable) keeps its single entry — double-tracking
-  // would double-drop.
+  /**
+   * Track a class or payload-enum allocation in the current scope for
+   * automatic drop at scope exit. Enums are tracked only when they actually
+   * need drop code. An alloca already tracked (e.g. a constructor temporary
+   * later adopted by a variable) keeps its single entry — double-tracking
+   * would double-drop.
+   */
   void trackClassAllocation(llvm::Value* alloca, const std::string& name,
                             TypePtr type, bool unwindOnly = false);
 
-  // A block used as a value hands its result to the enclosing expression, and
-  // ownership goes with it — the block's own scope must not drop it. Marks the
-  // result moved out of the innermost scope and hands back the name it was
-  // tracked under, so the caller can re-track it in the scope that owns it now
-  // without losing the name its drop blocks are labelled with. Nothing means
-  // that scope did not own it and there is nothing to hand on. Call this after
-  // generating the body and before popping its scope.
+  /**
+   * A block used as a value hands its result to the enclosing expression, and
+   * ownership goes with it — the block's own scope must not drop it. Marks the
+   * result moved out of the innermost scope and hands back the name it was
+   * tracked under, so the caller can re-track it in the scope that owns it now
+   * without losing the name its drop blocks are labelled with. Nothing means
+   * that scope did not own it and there is nothing to hand on. Call this after
+   * generating the body and before popping its scope.
+   */
   std::optional<std::string> releaseBlockResult(llvm::Value* result);
 
-  // A call that hands back a compound by value hands back something the
-  // caller now owns. `var x = f();` adopts the very same slot and
-  // trackClassAllocation de-duplicates by alloca, and moving the result on
-  // marks it deinited, so this only decides what happens when nobody takes
-  // it: the temporary is dropped at the end of the scope that made it,
-  // rather than leaked. Only a materialized return (an alloca) is a
-  // temporary — a borrow handed back by a peek accessor is a pointer into
-  // storage someone else owns, and typeNeedsDrop already says no to `ref T`.
+  /**
+   * A call that hands back a compound by value hands back something the
+   * caller now owns. `var x = f();` adopts the very same slot and
+   * trackClassAllocation de-duplicates by alloca, and moving the result on
+   * marks it deinited, so this only decides what happens when nobody takes
+   * it: the temporary is dropped at the end of the scope that made it,
+   * rather than leaked. Only a materialized return (an alloca) is a
+   * temporary — a borrow handed back by a peek accessor is a pointer into
+   * storage someone else owns, and typeNeedsDrop already says no to `ref T`.
+   */
   llvm::Value* trackCallTemporary(llvm::Value* result,
                                   const TypePtr& resultType) {
     if (result && sun::semantic_analysis::typeNeedsDrop(resultType) &&
@@ -213,11 +242,13 @@ class ScopeManager {
     return result;
   }
 
-  // A by-value compound parameter arrives moved: the caller gave up its
-  // ownership at the call, so this frame is the one that drops it. Passing it
-  // on — into another call, a field, a container slot, a return — marks the
-  // slot deinited, so this only decides what happens when the body keeps it
-  // to the end. A `ref T` parameter is a borrow and answers false here.
+  /**
+   * A by-value compound parameter arrives moved: the caller gave up its
+   * ownership at the call, so this frame is the one that drops it. Passing it
+   * on — into another call, a field, a container slot, a return — marks the
+   * slot deinited, so this only decides what happens when the body keeps it
+   * to the end. A `ref T` parameter is a borrow and answers false here.
+   */
   void trackOwnedParam(llvm::Value* alloca, const std::string& name,
                        const TypePtr& type) {
     if (alloca && sun::semantic_analysis::typeNeedsDrop(type)) {
@@ -232,53 +263,73 @@ class ScopeManager {
   /** Restore ownership after storing a new value into a moved location. */
   void markInitialized(llvm::Value* ptr, const TypePtr& type);
 
-  // True if any scope at or above `depth` holds a live (non-moved) owner —
-  // i.e. unwinding past this point would need cleanup
+  /**
+   * True if any scope at or above `depth` holds a live (non-moved) owner —
+   * i.e. unwinding past this point would need cleanup
+   */
   bool hasLiveOwners(size_t depth) const;
 
   // ---------------------------------------------------------------
   // Emitting drops
   // ---------------------------------------------------------------
 
-  // Emit cleanup for every scope from the innermost down to the innermost
-  // function boundary. Used by return paths and function ends.
+  /**
+   * Emit cleanup for every scope from the innermost down to the innermost
+   * function boundary. Used by return paths and function ends.
+   */
   void emitScopeCleanup() { emitCleanupToDepth(functionBoundaryDepth()); }
 
-  // Emit cleanup for all scopes from the innermost down to index `depth`
-  // (inclusive), without popping any. Used by break/continue/throw paths that
-  // jump out of several scopes at once.
+  /**
+   * Emit cleanup for all scopes from the innermost down to index `depth`
+   * (inclusive), without popping any. Used by break/continue/throw paths that
+   * jump out of several scopes at once.
+   */
   void emitCleanupToDepth(size_t depth, bool unwinding = false);
 
-  // Emit cleanup for a single scope's allocations (LIFO), without popping it
+  /**
+   * Emit cleanup for a single scope's allocations (LIFO), without popping it
+   */
   void emitCleanupForScope(CodegenScope& scope, bool unwinding = false);
 
-  // Drop whatever value of `type` lives at `ptr`, in place: class recursion,
-  // interface vtable drop glue, or the enum drop function.
+  /**
+   * Drop whatever value of `type` lives at `ptr`, in place: class recursion,
+   * interface vtable drop glue, or the enum drop function.
+   */
   void emitDropInPlace(const TypePtr& type, llvm::Value* ptr,
                        const std::string& name = "drop");
 
-  // Call classType's deinit() on receiver if it defines one (declares the
-  // external on demand).
+  /**
+   * Call classType's deinit() on receiver if it defines one (declares the
+   * external on demand).
+   */
   void emitDeinitCall(const ClassType* classType, llvm::Value* receiver);
 
-  // Emit deinit calls for class fields that have deinit methods. Recursively
-  // deinits nested class fields; enum-typed fields with owning payloads are
-  // dropped through their synthesized drop function.
+  /**
+   * Emit deinit calls for class fields that have deinit methods. Recursively
+   * deinits nested class fields; enum-typed fields with owning payloads are
+   * dropped through their synthesized drop function.
+   */
   void emitFieldDeinit(llvm::Value* objectPtr, const ClassType* classType,
                        const std::string& baseName);
 
-  // Emit cleanup code for raw_ptr<T> fields in a class, recursively freeing
-  // pointer fields before the containing object is freed.
+  /**
+   * Emit cleanup code for raw_ptr<T> fields in a class, recursively freeing
+   * pointer fields before the containing object is freed.
+   */
   void emitFieldCleanup(llvm::Value* objectPtr, const ClassType* classType,
                         const std::string& baseName,
                         llvm::FunctionCallee freeFunc);
 
-  // Drops the concrete owner held by an interface fat pointer, then clears
-  // both fields so a later drop is a no-op.
+  /**
+   * Drops the concrete owner held by an interface fat pointer, then clears
+   * both fields so a later drop is a no-op.
+   */
   void emitInterfaceDrop(sun::semantic_analysis::InterfaceType& interfaceType,
                          llvm::Value* storagePtr);
 
-  // Drop every element of a sized array's inline storage
+  /**
+   * Drop every element of a sized array's inline storage
+   */
   void emitArrayDrop(sun::semantic_analysis::ArrayType& arrayType,
                      llvm::Value* storagePtr, const std::string& name);
 
@@ -296,13 +347,17 @@ class ScopeManager {
   void emitUnconditionalDrop(const TypePtr& type, llvm::Value* ptr,
                              const std::string& name);
 
-  // Give `alloc` a drop flag if it has none: an i1 slot that starts false in
-  // the entry block and is set where the value became owned, so it is true
-  // exactly when this frame still owns the value.
+  /**
+   * Give `alloc` a drop flag if it has none: an i1 slot that starts false in
+   * the entry block and is set where the value became owned, so it is true
+   * exactly when this frame still owns the value.
+   */
   void ensureDropFlag(ClassAllocation& alloc);
 
-  // Drop `alloc` only if its drop flag says this frame still owns it, then
-  // clear the flag.
+  /**
+   * Drop `alloc` only if its drop flag says this frame still owns it, then
+   * clear the flag.
+   */
   void emitFlaggedDrop(const ClassAllocation& alloc);
 
   sun::codegen::CodegenState& state_;

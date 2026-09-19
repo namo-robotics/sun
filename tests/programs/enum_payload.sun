@@ -1,11 +1,13 @@
 // AOT compilation test for payload-carrying enums
 
+/** Provides payload and payload-free alternatives for the enum regression program. */
 enum Shape {
   Circle(f64),
   Rect(f64, f64),
   Empty
 }
 
+/** Computes a test value from the payload of the selected shape alternative. */
 function area(s: ref Shape) f64 {
   return match s {
     Shape.Circle(r) => 3.0 * r * r,
@@ -14,6 +16,7 @@ function area(s: ref Shape) f64 {
   };
 }
 
+/** Constructs the shape alternative selected by the test input. */
 function pick(kind: i32) Shape {
   if (kind == 0) {
     return Shape.Circle(1.5);
@@ -24,6 +27,7 @@ function pick(kind: i32) Shape {
   return Shape.Empty;
 }
 
+/** Runs the regression scenario and returns its observable result to the test harness. */
 function main() i32 {
   var c = pick(0);
   var r = pick(1);

@@ -6,6 +6,7 @@
 #include "semantic_analysis/semantic_context.h"
 #include "semantic_analysis/type_inferer.h"
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 /** Detect duplicate method signatures, comparing generic binders by position.

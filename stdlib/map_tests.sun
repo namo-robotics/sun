@@ -3,14 +3,18 @@
 
 using std;
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** Groups tests for the map library behavior. */
   module map_tests {
+    /** Checks create empty map. */
     test_function create_empty_map() {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
       std.test.assert_eq(m.size(), 0);
     }
 
+    /** Checks insert and get. */
     test_function insert_and_get() {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
@@ -18,6 +22,7 @@ public module std {
       std.test.assert_eq(m.get(42), 100);
     }
 
+    /** Checks insert multiple and get. */
     test_function insert_multiple_and_get() {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
@@ -27,6 +32,7 @@ public module std {
       std.test.assert_eq(m.get(1) + m.get(2) + m.get(3), 60);
     }
 
+    /** Checks update existing key. */
     test_function update_existing_key() {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
@@ -35,6 +41,7 @@ public module std {
       std.test.assert_eq(m.get(42), 200);
     }
 
+    /** Checks contains key. */
     test_function contains_key() {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
@@ -43,6 +50,7 @@ public module std {
       std.test.assert(m.contains(99) == false);
     }
 
+    /** Checks size tracking. */
     test_function size_tracking() {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
@@ -55,6 +63,7 @@ public module std {
       std.test.assert_eq(m.size(), 2);
     }
 
+    /** Checks get or default found. */
     test_function get_or_default_found() {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
@@ -63,6 +72,7 @@ public module std {
       std.test.assert_eq(m.get_or_default(42, fallback), 100);
     }
 
+    /** Checks get or default not found. */
     test_function get_or_default_not_found() {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
@@ -71,6 +81,7 @@ public module std {
       std.test.assert_eq(m.get_or_default(99, fallback), -1);
     }
 
+    /** Checks remove existing. */
     test_function remove_existing() {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
@@ -80,6 +91,7 @@ public module std {
       std.test.assert_eq(m.size(), 0);
     }
 
+    /** Checks remove then contains. */
     test_function remove_then_contains() {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
@@ -88,6 +100,7 @@ public module std {
       std.test.assert(m.contains(42) == false);
     }
 
+    /** Checks remove and reinsert. */
     test_function remove_and_reinsert() {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
@@ -97,6 +110,7 @@ public module std {
       std.test.assert_eq(m.get(42), 200);
     }
 
+    /** Checks clear. */
     test_function clear() {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
@@ -108,6 +122,7 @@ public module std {
       std.test.assert(m.contains(1) == false);
     }
 
+    /** Checks auto grow. */
     test_function auto_grow() {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
@@ -123,6 +138,7 @@ public module std {
       std.test.assert_eq(sum, 1900);
     }
 
+    /** Checks many elements. */
     test_function many_elements() {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
@@ -137,12 +153,14 @@ public module std {
       std.test.assert_eq(m.size(), 100);
     }
 
+    /** Checks custom capacity. */
     test_function custom_capacity() {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 64);
       std.test.assert_eq(m.capacity(), 64);
     }
 
+    /** Checks get missing key throws. */
     test_function get_missing_key_throws() {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
@@ -153,6 +171,7 @@ public module std {
       } catch (e: IError) {}
     }
 
+    /** Checks remove missing key throws. */
     test_function remove_missing_key_throws() {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
@@ -163,6 +182,7 @@ public module std {
       } catch (e: IError) {}
     }
 
+    /** Checks hash collision handling. */
     test_function hash_collision_handling() {
       var allocator = make_heap_allocator();
       // Small capacity to force keys into the same bucket.
@@ -174,6 +194,7 @@ public module std {
       std.test.assert_eq(m.get(0) + m.get(4) + m.get(8) + m.get(12), 10);
     }
 
+    /** Checks iteration sum values. */
     test_function iteration_sum_values() {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
@@ -187,6 +208,7 @@ public module std {
       std.test.assert_eq(sum, 60);
     }
 
+    /** Checks iteration empty map. */
     test_function iteration_empty_map() {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);

@@ -1,6 +1,7 @@
 // Receiver: binds a UDP port and prints one datagram and its sender
 using std;
 
+/** Runs the example that exchanges datagrams over UDP. */
 function main() i32 {
   var alloc = make_heap_allocator();
   var buf = ContiguousBuffer<u8>(alloc, 256);

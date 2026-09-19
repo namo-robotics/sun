@@ -124,12 +124,16 @@ export function renderSymbolTree(title, entries, namespaces, refs) {
     }
     return node
   }
-  for (const [name, href, owner = ''] of entries) {
+  for (const [name, href, owner = '', file = ''] of entries) {
     // Anonymous scopes belong under their nearest named namespace.
     const parts = owner.split('::')
     while (parts.length && !namedSunNamespace(parts.join('::'))) parts.pop()
     const namespace = parts.join('::')
-    const node = namespace ? branch(namespace) : branch('File scope')
+    let node = namespace ? branch(namespace) : branch('File scope')
+    if (!namespace && file) {
+      if (!node.children.has(file)) node.children.set(file, { name: file, children: new Map(), entries: [] })
+      node = node.children.get(file)
+    }
     const display = visibleName(name)
     node.entries.push([namespace && display.startsWith(`${namespace}::`) ? display.slice(namespace.length + 2) : display, href])
   }
@@ -289,17 +293,15 @@ export function renderReference(compounds, revision) {
   }
   for (const [slug, label, source, kind] of groups) {
     const entries = source === 'compound'
-      ? compounds.filter(n => attr(n, 'kind') === kind && (kind !== 'namespace' || namedSunNamespace(compoundName(n)))).map(n => [compoundName(n) + (compoundName(n).includes('anonymous_namespace{') ? ` (${attr(child(n, 'location'), 'file')})` : ''), url(n), namespaceFor(n)]) : []
+      ? compounds.filter(n => attr(n, 'kind') === kind && (kind !== 'namespace' || namedSunNamespace(compoundName(n)))).map(n => [compoundName(n), url(n), namespaceFor(n), attr(child(n, 'location'), 'file')]) : []
     if (source === 'member') {
       for (const compound of compounds) {
         // Methods and fields remain on their owning type's page.
         if (['function', 'variable'].includes(kind) && !['namespace', 'file'].includes(attr(compound, 'kind'))) continue
         for (const member of descendants(compound, 'memberdef')) {
           if (attr(member, 'kind') !== kind || owners.get(attr(member, 'id')) !== compound || aliases.has(attr(member, 'id'))) continue
-          let name = value(member, 'qualifiedname') || (attr(compound, 'kind') === 'file' ? value(member, 'name') : `${compoundName(compound)}::${value(member, 'name')}`)
-          if (kind === 'function') name += value(member, 'argsstring')
-          if (attr(compound, 'kind') === 'file') name += ` (${compoundName(compound)})`
-          entries.push([name, refs.get(attr(member, 'id')), attr(member, 'data-sun-namespace') || namespaceFor(compound)])
+          const name = value(member, 'qualifiedname') || (attr(compound, 'kind') === 'file' ? value(member, 'name') : `${compoundName(compound)}::${value(member, 'name')}`)
+          entries.push([name, refs.get(attr(member, 'id')), attr(member, 'data-sun-namespace') || namespaceFor(compound), attr(child(member, 'location'), 'file') || attr(child(compound, 'location'), 'file') || (attr(compound, 'kind') === 'file' ? compoundName(compound) : '')])
         }
       }
     }
@@ -312,7 +314,9 @@ export function renderReference(compounds, revision) {
   }
   // Build one hierarchy, attaching nested types and members to their canonical owner.
   const tree = []
-  const fileNodes = new Map(compounds.filter(n => attr(n, 'kind') === 'file').map(n => [compoundName(n), { label: compoundName(n), href: url(n), children: [] }]))
+  const fileNodes = new Map()
+  const fileEntries = compounds.filter(n => attr(n, 'kind') === 'file').map(n => ({ label: compoundName(n), href: url(n), children: [] }))
+  const fileLinks = new Map(fileEntries.map(node => [node.label, node.href]))
   const namespaceNodes = new Map()
   const nodes = new Map()
   const group = (parent, label) => {
@@ -331,6 +335,11 @@ export function renderReference(compounds, revision) {
     else scope(name.slice(0, split)).children.push(node)
     return node
   }
+  const fileScope = file => {
+    if (!file) return scope('')
+    if (!fileNodes.has(file)) fileNodes.set(file, { label: file, ...(fileLinks.has(file) ? { href: fileLinks.get(file) } : {}), children: [] })
+    return fileNodes.get(file)
+  }
   for (const namespace of namespaces.filter(n => namedSunNamespace(compoundName(n)))) {
     scope(compoundName(namespace)).href = url(namespace)
   }
@@ -340,12 +349,11 @@ export function renderReference(compounds, revision) {
     const name = compoundName(type)
     const parentType = types.filter(n => n !== type && name.startsWith(`${compoundName(n)}::`)).sort((a, b) => compoundName(b).length - compoundName(a).length)[0]
     const namespace = namespaceFor(type)
-    const parent = parentType ? nodes.get(attr(parentType, 'id')) : namespace ? scope(namespace) : fileNodes.get(attr(child(type, 'location'), 'file')) || scope('')
+    const parent = parentType ? nodes.get(attr(parentType, 'id')) : namespace ? scope(namespace) : fileScope(attr(child(type, 'location'), 'file'))
     const label = { class: 'Classes', struct: 'Structs', union: 'Unions' }[attr(type, 'kind')]
     const node = nodes.get(attr(type, 'id'))
     const ownerName = parentType ? visibleName(compoundName(parentType)) : namespace
     if (ownerName && node.label.startsWith(`${ownerName}::`)) node.label = node.label.slice(ownerName.length + 2)
-    if (name.includes('anonymous_namespace{')) node.label += ` (${attr(child(type, 'location'), 'file')})`
     group(parent, label).children.push(node)
   }
   for (const compound of compounds) {
@@ -353,16 +361,17 @@ export function renderReference(compounds, revision) {
       const id = attr(member, 'id')
       if (owners.get(id) !== compound || aliases.has(id)) continue
       const type = nodes.get(attr(compound, 'id'))
-      const parent = type || scope(attr(member, 'data-sun-namespace') || namespaceFor(compound))
+      const namespace = attr(member, 'data-sun-namespace') || namespaceFor(compound)
+      const parent = type || (namespace && namedSunNamespace(visibleName(namespace)) ? scope(namespace) : fileScope(attr(child(member, 'location'), 'file') || attr(child(compound, 'location'), 'file') || (attr(compound, 'kind') === 'file' ? compoundName(compound) : '')))
       const label = type ? memberGroup(member, attr(compound, 'kind')) : ({ variable: 'Variables', define: 'Macros' }[attr(member, 'kind')] || memberKinds[attr(member, 'kind')] || 'Other Symbols')
-      const node = { label: value(member, 'name') + value(member, 'argsstring'), href: refs.get(id), children: [] }
-      if (attr(compound, 'kind') === 'file') node.label += ` (${compoundName(compound)})`
+      const node = { label: value(member, 'name'), href: refs.get(id), children: [] }
       const values = children(member, 'enumvalue')
       if (values.length) group(node, 'Enum Values').children.push(...values.map(entry => ({ label: value(entry, 'name'), href: refs.get(attr(entry, 'id')), children: [] })))
       group(parent, label).children.push(node)
     }
   }
-  if (fileNodes.size) tree.push({ label: 'Files', children: [...fileNodes.values()] })
+  if (fileNodes.size) scope('').children.push(...fileNodes.values())
+  if (fileEntries.length) tree.push({ label: 'Files', children: fileEntries })
   const categoryOrder = ['Classes', 'Structs', 'Unions', 'Functions', 'Variables', 'Enums', 'Type Aliases', 'Macros', ...['Public', 'Protected', 'Private'].flatMap(access => Object.values(memberKinds).map(kind => `${access} ${kind}`))]
   const sortTree = nodes => {
     const rank = node => node.href || !categoryOrder.includes(node.label) ? -1 : categoryOrder.indexOf(node.label)
@@ -402,7 +411,7 @@ export function renderReference(compounds, revision) {
     }
     const sectionOrder = isNamespace ? ['Functions', 'Variables', 'Enums', 'Type Aliases', 'Macros', 'Friends', 'Other Symbols'] : ['Public', 'Protected', 'Private'].flatMap(access => [...Object.values(memberKinds), 'Other Members'].map(kind => `${access} ${kind}`))
     for (const [label, entries] of [...memberGroups].sort(([a], [b]) => sectionOrder.indexOf(a) - sectionOrder.indexOf(b))) {
-      page += `## ${label}\n\n${entries.map(n => `- ${link(value(n, 'name') + value(n, 'argsstring'), refs.get(attr(n, 'id')))}`).join('\n')}\n\n`
+      page += `## ${label}\n\n${entries.map(n => `- ${link(value(n, 'name'), refs.get(attr(n, 'id')))}`).join('\n')}\n\n`
       for (const member of entries) {
         const memberId = attr(member, 'id')
         if (owners.get(memberId) !== compound || aliases.has(memberId)) continue

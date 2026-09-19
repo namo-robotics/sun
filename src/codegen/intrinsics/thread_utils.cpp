@@ -17,6 +17,7 @@
 
 using namespace llvm;
 
+/** Provides the generator for built-in operations. */
 namespace sun::codegen::intrinsics {
 
 // Futex operations
@@ -28,14 +29,18 @@ static constexpr int64_t FUTEX_WAKE = 1;
 // wake one, matching the futex path.)
 static constexpr uint64_t UL_COMPARE_AND_WAIT = 1;
 
-// Whether this module compiles for an OS that uses ulock instead of futex.
+/**
+ * Whether this module compiles for an OS that uses ulock instead of futex.
+ */
 static bool isDarwinTarget(const llvm::Module* module) {
   return llvm::Triple(module->getTargetTriple()).isOSDarwin();
 }
 
-// The futex syscall number is the one per-target constant left in thread
-// support — it is data, not assembly, so each Linux target is one table row.
-// Darwin never reaches this: its targets take the ulock path instead.
+/**
+ * The futex syscall number is the one per-target constant left in thread
+ * support — it is data, not assembly, so each Linux target is one table row.
+ * Darwin never reaches this: its targets take the ulock path instead.
+ */
 static int64_t futexSyscallNumber(const llvm::Module* module) {
   llvm::Triple triple(module->getTargetTriple());
   switch (triple.getArch()) {

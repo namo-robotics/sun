@@ -25,6 +25,7 @@
 #include "semantic_analysis/types.h"
 #include "support/position.h"
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 // Infer `f<...>` for a call written without type arguments, by matching the

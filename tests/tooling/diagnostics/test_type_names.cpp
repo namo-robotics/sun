@@ -11,9 +11,12 @@
 
 #include "driver/execution_utils.h"
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
-// Compile `source` expecting failure, and return the error message.
+/**
+ * Compile `source` expecting failure, and return the error message.
+ */
 std::string errorFor(const std::string& source) {
   try {
     sun::driver::compileString(source, /*includeStdlib=*/true);
@@ -24,12 +27,15 @@ std::string errorFor(const std::string& source) {
   return "";
 }
 
-// Internal names carry the bundle hash between two '$'; source names never do.
+/**
+ * Internal names carry the bundle hash between two '$'; source names never do.
+ */
 void expectNoInternalName(const std::string& message) {
   EXPECT_EQ(message.find('$'), std::string::npos)
       << "diagnostic leaks an internal name: " << message;
 }
 
+/** Checks the readable type names included in a diagnostic. */
 void expectNames(const std::string& message, const std::string& expected) {
   EXPECT_NE(message.find(expected), std::string::npos)
       << "expected '" << expected << "' in: " << message;

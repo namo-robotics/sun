@@ -22,30 +22,38 @@ using sun::semantic_analysis::InterfaceType;
 using sun::semantic_analysis::QualifiedName;
 using sun::semantic_analysis::ReferenceType;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 using sun::semantic_analysis::isAssignableTo;
 using sun::semantic_analysis::isIntrinsic;
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// A module-qualified name split at its last dot: "std.io.File" names the
-// symbol "File" in module "std.io". Falsy when the name carries no module.
-// Purely syntactic — finding the module is the caller's step, since callers
-// differ on what an unknown module should mean.
+/**
+ * A module-qualified name split at its last dot: "std.io.File" names the
+ * symbol "File" in module "std.io". Falsy when the name carries no module.
+ * Purely syntactic — finding the module is the caller's step, since callers
+ * differ on what an unknown module should mean.
+ */
 struct DottedName {
   std::string modulePath;
   std::string symbol;
+  /** Reports whether this lookup result refers to a declaration. */
   explicit operator bool() const { return !modulePath.empty(); }
 };
 
+/** Splits a qualified module name into its component names. */
 DottedName splitDotted(const std::string& name) {
   size_t lastDot = name.rfind('.');
   if (lastDot == std::string::npos) return {};
   return {name.substr(0, lastDot), name.substr(lastDot + 1)};
 }
 
-// Check the enum and every module in its qualified path before returning it.
+/**
+ * Check the enum and every module in its qualified path before returning it.
+ */
 template <typename Enum>
 void requireQualifiedEnumAccess(const SemanticScopeBase* from,
                                 const SemanticScopeBase* module,
@@ -764,7 +772,9 @@ bool SemanticScopeBase::isModuleName(const std::string& name) const {
 // resolveNameWithUsings — resolve a name through module scopes and usings
 // -------------------------------------------------------------------
 
-// Helper: collect ALL module scopes matching a path across import scopes
+/**
+ * Helper: collect ALL module scopes matching a path across import scopes
+ */
 static std::vector<SemanticScopeBase*> collectAllModuleScopes(
     const SemanticScopeBase* startScope, const std::string& dotPath) {
   std::vector<SemanticScopeBase*> results;

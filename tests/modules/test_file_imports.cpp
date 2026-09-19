@@ -28,6 +28,7 @@ using sun::driver::executeString;
 using sun::driver::initTestEnvironment;
 using sun::support::SunError;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 /** Write independent source files for one import-scoping test. */
@@ -214,6 +215,7 @@ TEST(Modules_FileImports, imports_preserve_lexical_scope) {
 
 TEST(Modules_FileImports,
      bundle_keeps_file_imports_and_generic_definition_context) {
+  /** Prepares the files and compiler state needed by each test. */
   auto paths = writeImportSources({R"(
     manifest { source_files: ["1.sun", "2.sun"] }
   )",
@@ -318,6 +320,7 @@ TEST(Modules_FileImports, targeted_import_does_not_import_other_symbols) {
                SunError);
 }
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 /** Inspect canonical module annotations throughout exported metadata. */
 void visitModuleReferences(

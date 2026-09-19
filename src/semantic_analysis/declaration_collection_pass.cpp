@@ -24,6 +24,7 @@ using sun::ast::PrototypeAST;
 using sun::ast::VariableCreationAST;
 using sun::support::logAndThrowError;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 /*

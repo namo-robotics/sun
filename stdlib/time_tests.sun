@@ -6,9 +6,11 @@
 
 using std;
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** Groups tests for the time library behavior. */
   module time_tests {
-    /*
+    /**
      * A Duration converts between seconds, milliseconds, microseconds and
      * nanoseconds consistently, keeping the sub-second remainder.
      */
@@ -26,7 +28,7 @@ public module std {
       std.test.assert_eq(std.time.create_duration_nanos(1).as_nanos(), 1);
     }
 
-    /*
+    /**
      * Two back-to-back readings of the monotonic clock never run backwards;
      * since() clamps the reverse difference at zero.
      */
@@ -37,7 +39,7 @@ public module std {
       std.test.assert_eq(first.since(second).as_nanos(), 0);
     }
 
-    /*
+    /**
      * sleep() waits at least the requested time, with slack for clock
      * granularity. Lower bound only.
      */
@@ -47,7 +49,7 @@ public module std {
       std.test.assert(start.elapsed().as_millis() >= 40, "slept for roughly the requested time");
     }
 
-    /*
+    /**
      * read_unix_time() agrees with the host clock. The C++ harness compared
      * against std::time(); here `date +%s` reports the host's view instead.
      */
@@ -69,7 +71,7 @@ public module std {
       std.test.assert(host <= after + 5, "host clock is not ahead of ours");
     }
 
-    /*
+    /**
      * The millisecond wall clock stays within rounding of the second one.
      */
     test_function unix_time_millis_is_consistent_with_seconds() {
@@ -80,7 +82,7 @@ public module std {
       std.test.assert(derived <= secs + 2, "millis not ahead of seconds");
     }
 
-    /*
+    /**
      * convert_to_utc breaks a fixed timestamp into calendar fields.
      * 1700000000 = 2023-11-14 22:13:20 UTC, a Tuesday.
      */
@@ -96,7 +98,7 @@ public module std {
       std.test.assert_eq(d.utc_offset, 0);
     }
 
-    /*
+    /**
      * to_unix_utc inverts convert_to_utc, and a hand-built epoch DateTime
      * maps to timestamp zero.
      */
@@ -107,7 +109,7 @@ public module std {
       std.test.assert_eq(std.time.to_unix_utc(d), 0);
     }
 
-    /*
+    /**
      * format() renders a fixed timestamp with a strftime format string.
      */
     test_function format_renders_a_fixed_timestamp() {
@@ -119,7 +121,7 @@ public module std {
       std.test.assert(day.equals_literal("2023-11-14"), "date-only format renders");
     }
 
-    /*
+    /**
      * convert_to_local applies the timezone. The C++ test pinned TZ=UTC with
      * tzset(), but environment variables are process-global and these tests
      * share one process, so this asserts timezone-independent invariants

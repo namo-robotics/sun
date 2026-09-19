@@ -23,9 +23,10 @@
 
 #include "moon_bundling/moon_import.h"
 
+/** Coordinates compilation, dependency loading, linking, and program execution. */
 namespace sun::driver {
 
-/*
+/**
  * Everything one build reads, reduced to digests and settings. Sources and
  * archives are given by content, not by path, so moving a project or saving
  * a file unchanged leaves the hash alone.

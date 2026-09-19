@@ -16,6 +16,7 @@ using sun::semantic_analysis::Types;
 using sun::ast::ExprAST;
 using sun::support::logAndThrowError;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 using sun::semantic_analysis::tryCoerceIntegerLiteral;

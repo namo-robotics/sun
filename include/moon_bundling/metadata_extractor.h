@@ -1,8 +1,10 @@
 #pragma once
 
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 class BlockExprAST;
 }
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 class SemanticAnalyzer;
 }
@@ -13,9 +15,12 @@ class SemanticAnalyzer;
 
 #include "moon.pb.h"
 
+/** Builds and loads compiled Moon libraries and their declaration metadata. */
 namespace sun::moon_bundling {}
+/** Builds and loads compiled Moon libraries and their declaration metadata. */
 namespace sun::moon_bundling {}
 
+/** Builds and loads compiled Moon libraries and their declaration metadata. */
 namespace sun::moon_bundling {
 
 /** Export the bundle's own declarations from the successfully analyzed program.

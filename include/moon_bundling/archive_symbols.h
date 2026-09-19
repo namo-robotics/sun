@@ -23,10 +23,13 @@
 #include <utility>
 #include <vector>
 
+/** Builds and loads compiled Moon libraries and their declaration metadata. */
 namespace sun::moon_bundling {
 
-/// The global symbols of an archive, by bare name (a Mach-O leading `_`
-/// stripped), gathered from every member.
+/**
+ * The global symbols of an archive, by bare name (a Mach-O leading `_`
+ * stripped), gathered from every member.
+ */
 struct ArchiveSymbolScan {
   std::set<std::string> defined;    // provided by some member
   std::set<std::string> undefined;  // expected from outside the archive

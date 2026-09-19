@@ -30,6 +30,7 @@ using sun::ast::VariableReferenceAST;
 using sun::support::logAndThrowError;
 using sun::support::Position;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 using sun::semantic_analysis::formatTypeList;
@@ -37,10 +38,13 @@ using sun::semantic_analysis::isAssignableTo;
 using sun::semantic_analysis::tryCoerceIntegerLiteral;
 using sun::semantic_analysis::unwrapRef;
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// "\n  - trim()\n  - trim(ref HeapAllocator)" — the candidate list shown
-// after "No matching overload".
+/**
+ * "\n  - trim()\n  - trim(ref HeapAllocator)" — the candidate list shown
+ * after "No matching overload".
+ */
 std::string formatCandidates(
     const std::string& name,
     const std::vector<std::vector<TypePtr>>& candidates) {
@@ -51,7 +55,9 @@ std::string formatCandidates(
   return out;
 }
 
-// The resolved types of a call's arguments, in order.
+/**
+ * The resolved types of a call's arguments, in order.
+ */
 std::vector<TypePtr> resolvedTypesOf(
     const std::vector<std::unique_ptr<ExprAST>>& args) {
   std::vector<TypePtr> types;
@@ -60,7 +66,9 @@ std::vector<TypePtr> resolvedTypesOf(
   return types;
 }
 
-// Precompute contextual types for each unsuffixed integer argument.
+/**
+ * Precompute contextual types for each unsuffixed integer argument.
+ */
 std::vector<FunctionArgumentType> functionArgumentTypes(
     const std::vector<std::unique_ptr<ExprAST>>& args) {
   std::vector<FunctionArgumentType> types(args.size());
@@ -81,8 +89,10 @@ std::vector<FunctionArgumentType> functionArgumentTypes(
   return types;
 }
 
-// What to call the callee in diagnostics: a plain call gives its function
-// name, a method call its member name.
+/**
+ * What to call the callee in diagnostics: a plain call gives its function
+ * name, a method call its member name.
+ */
 std::string calleeDisplayName(const CallExprAST& callExpr) {
   const ExprAST& callee = *callExpr.getCallee();
   if (callee.getType() == ASTNodeType::VARIABLE_REFERENCE) {
@@ -94,10 +104,12 @@ std::string calleeDisplayName(const CallExprAST& callExpr) {
   return "<unknown>";
 }
 
-// Whether an argument of one type may be passed to a parameter of another
-// when the two are not equal: the implicit conversions a call site allows.
-// `calleeIsIntrinsic` unlocks the byte-pointer erasure only intrinsics may
-// use.
+/**
+ * Whether an argument of one type may be passed to a parameter of another
+ * when the two are not equal: the implicit conversions a call site allows.
+ * `calleeIsIntrinsic` unlocks the byte-pointer erasure only intrinsics may
+ * use.
+ */
 bool isImplicitlyConvertibleArgument(const TypePtr& argType,
                                      const TypePtr& paramType,
                                      bool calleeIsIntrinsic) {

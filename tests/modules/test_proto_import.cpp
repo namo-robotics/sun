@@ -28,9 +28,12 @@ using proto_test::LibprotobufSchema;
 using proto_test::ProtoProject;
 using proto_test::runWithProto;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
-// Parse a program and return its manifest block (nullptr if none)
+/**
+ * Parse a program and return its manifest block (nullptr if none)
+ */
 const ManifestAST* parseManifest(const std::string& source,
                                  std::unique_ptr<BlockExprAST>& keepAlive) {
   auto parser = sun::parsing::Parser::createStringParser(source);
@@ -474,6 +477,7 @@ TEST(Modules_ProtoImport, wire_fixed_and_float_roundtrip) {
 }
 
 TEST(Modules_ProtoImport, wire_string_and_bytes_roundtrip) {
+  /** Runs the Sun encoder and returns its protobuf bytes for comparison. */
   auto value = executeStringWithStdlib(R"(
     using std;
     function main() i32 {
@@ -589,6 +593,7 @@ TEST(Modules_ProtoImport, map_string_keys) {
 // Synthesized messages: encode/decode round-trips
 // ============================================================================
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 const char* kTelemetryProto = R"(
@@ -916,6 +921,7 @@ TEST(Modules_ProtoImport, missing_proto_file_is_reported) {
 // Cross-validation against libprotobuf (linked into the test binary)
 // ============================================================================
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 // Encode a Status with fixed values in Sun and return the wire bytes
@@ -977,6 +983,7 @@ TEST(Modules_ProtoImport, libprotobuf_parses_sun_encoded_message) {
 // Full fidelity: optional, oneof, map, proto imports
 // ============================================================================
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 const char* kFullProto = R"(
 syntax = "proto3";

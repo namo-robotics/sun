@@ -18,8 +18,10 @@ using sun::ast::ExprAST;
 using sun::ast::InterfaceDefinitionAST;
 using sun::support::Position;
 
+/** Provides compiler-backed editor features through the language server protocol. */
 namespace sun::lsp {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
 // ---------------------------------------------------------------------------
@@ -29,8 +31,10 @@ namespace {
 std::string renderType(const sun::semantic_analysis::Type& type,
                        const Bindings& bindings);
 
-// Render a function pointer or lambda. `prefix` carries either the
-// `function ` keyword or a lambda lifetime marker such as `<'_>`.
+/**
+ * Render a function pointer or lambda. `prefix` carries either the
+ * `function ` keyword or a lambda lifetime marker such as `<'_>`.
+ */
 std::string renderCallable(const std::string& prefix,
                            const std::vector<TypePtr>& params,
                            const TypePtr& returnType, bool canThrow,
@@ -46,8 +50,10 @@ std::string renderCallable(const std::string& prefix,
   return out;
 }
 
-// `Vec<T>`: the display name's base with each type argument re-rendered so
-// bound type parameters show by name
+/**
+ * `Vec<T>`: the display name's base with each type argument re-rendered so
+ * bound type parameters show by name
+ */
 std::string renderWithArguments(const sun::semantic_analysis::Type& type,
                                 const std::vector<TypePtr>& arguments,
                                 const Bindings& bindings) {
@@ -61,9 +67,11 @@ std::string renderWithArguments(const sun::semantic_analysis::Type& type,
   return out + ">";
 }
 
-// Sun-syntax spelling of a type. A type bound to a type parameter prints as
-// the parameter; function types print as written in Sun (`(i32) i32`);
-// everything else uses the type's display name.
+/**
+ * Sun-syntax spelling of a type. A type bound to a type parameter prints as
+ * the parameter; function types print as written in Sun (`(i32) i32`);
+ * everything else uses the type's display name.
+ */
 std::string renderType(const sun::semantic_analysis::Type& type,
                        const Bindings& bindings) {
   for (const auto& [name, bound] : bindings) {
@@ -120,13 +128,16 @@ std::string renderType(const sun::semantic_analysis::Type& type,
   }
 }
 
-// The annotation as the user wrote it, when the source span is available
+/**
+ * The annotation as the user wrote it, when the source span is available
+ */
 std::string annotationText(const sun::ast::TypeAnnotation& annotation,
                            const std::string& source) {
   std::string text = sliceSpan(source, annotation.span);
   return text.empty() ? annotation.toString() : text;
 }
 
+/** Formats generic parameters for editor hover text. */
 std::string renderTypeParameters(
     const std::vector<sun::ast::TypeParameter>& params) {
   if (params.empty()) return "";
@@ -138,8 +149,10 @@ std::string renderTypeParameters(
   return out + ">";
 }
 
-// `function name(a: i32, b: i32) i32` — resolved types when the analyzer
-// recorded them (specializations), otherwise the annotations as written
+/**
+ * `function name(a: i32, b: i32) i32` — resolved types when the analyzer
+ * recorded them (specializations), otherwise the annotations as written
+ */
 std::string renderPrototype(const sun::ast::PrototypeAST& proto,
                             const std::string& keyword, const std::string& name,
                             bool isPublic, const std::string& source,
@@ -196,9 +209,11 @@ std::string renderPrototype(const sun::ast::PrototypeAST& proto,
   return out;
 }
 
-// Hovers on definitions carry the comment stored on the node when the tree
-// has one (declarations loaded from a bundle); otherwise the caller looks it
-// up in the source.
+/**
+ * Hovers on definitions carry the comment stored on the node when the tree
+ * has one (declarations loaded from a bundle); otherwise the caller looks it
+ * up in the source.
+ */
 std::optional<Hover> hoverClass(const ClassDefinitionAST& cls, int offset,
                                 const std::string& source,
                                 const Bindings& bindings) {
@@ -241,6 +256,7 @@ std::optional<Hover> hoverClass(const ClassDefinitionAST& cls, int offset,
   return Hover{out, cls.getDoc(), cls.getLocation()};
 }
 
+/** Builds hover details for an interface declaration or its members. */
 std::optional<Hover> hoverInterface(const InterfaceDefinitionAST& iface,
                                     int offset, const std::string& source) {
   for (const auto& field : iface.getFields()) {
@@ -257,6 +273,7 @@ std::optional<Hover> hoverInterface(const InterfaceDefinitionAST& iface,
   return Hover{out, iface.getDoc(), iface.getLocation()};
 }
 
+/** Builds hover details for an enum declaration or its variants. */
 std::optional<Hover> hoverEnum(const EnumDefinitionAST& enumDef, int offset,
                                const std::string& source) {
   for (const auto& variant : enumDef.getVariants()) {
@@ -275,6 +292,7 @@ std::optional<Hover> hoverEnum(const EnumDefinitionAST& enumDef, int offset,
   return Hover{out, enumDef.getDoc(), enumDef.getLocation()};
 }
 
+/** Builds hover details for the selected syntax node. */
 std::optional<Hover> hoverNode(const Target& target, int offset,
                                const std::string& source) {
   const ExprAST& node = target.node();
@@ -460,8 +478,10 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
   }
 }
 
-// Hover for a type name written in an annotation: the definition's header
-// and its comment, with the annotation itself as the range
+/**
+ * Hover for a type name written in an annotation: the definition's header
+ * and its comment, with the annotation itself as the range
+ */
 std::optional<Hover> hoverAnnotation(const ExprAST& decl,
                                      const sun::ast::TypeAnnotation& annotation,
                                      const std::string& source) {
@@ -497,6 +517,7 @@ std::optional<Hover> hoverAnnotation(const ExprAST& decl,
 
 }  // namespace
 
+/** Finds the most deeply nested syntax node covering a document offset. */
 const ExprAST* findInnermostNodeAt(const sun::ast::BlockExprAST& program,
                                    const std::string& filePath,
                                    int byteOffset) {
@@ -505,6 +526,7 @@ const ExprAST* findInnermostNodeAt(const sun::ast::BlockExprAST& program,
   return finder.chain().empty() ? nullptr : finder.chain().back();
 }
 
+/** Returns documentation and type details for the symbol under the cursor. */
 std::optional<Hover> computeHover(const sun::ast::BlockExprAST& program,
                                   const std::string& filePath,
                                   const std::string& source, int byteOffset) {

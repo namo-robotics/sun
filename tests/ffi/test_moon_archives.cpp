@@ -36,14 +36,17 @@ using sun::moon_bundling::MoonReader;
 
 using sun::driver::Driver;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 namespace fs = std::filesystem;
 
 constexpr const char* kArchiveName = "libsun_ffi_static_testlib.a";
 
-// Directories holding the two built versions of the test archive, baked in
-// by CMake. Empty when the define is absent (e.g. an ad-hoc build).
+/**
+ * Directories holding the two built versions of the test archive, baked in
+ * by CMake. Empty when the define is absent (e.g. an ad-hoc build).
+ */
 std::string ffiTestLibDir() {
 #ifdef SUN_FFI_TESTLIB_DIR
   return SUN_FFI_TESTLIB_DIR;
@@ -52,6 +55,7 @@ std::string ffiTestLibDir() {
 #endif
 }
 
+/** Returns the alternate native library directory used to test archive replacement. */
 std::string ffiTestLibV2Dir() {
 #ifdef SUN_FFI_TESTLIB_V2_DIR
   return SUN_FFI_TESTLIB_V2_DIR;
@@ -60,7 +64,9 @@ std::string ffiTestLibV2Dir() {
 #endif
 }
 
-// A module wrapping the two C entry points of the fixture archive
+/**
+ * A module wrapping the two C entry points of the fixture archive
+ */
 std::string wrapperSource(const std::string& moduleName,
                           const std::string& archive) {
   return "public module " + moduleName + R"( {
@@ -109,6 +115,7 @@ struct BundleChain {
 
     std::ofstream(dir / "leaf.sun")
         << wrapperSource("slot_lib", ffiTestLibDir() + "/" + kArchiveName);
+    /** Removes the temporary files owned by the bundle-chain fixture. */
     std::ofstream(dir / "twin.sun")
         << wrapperSource("slot_twin", ffiTestLibDir() + "/" + kArchiveName);
     std::ofstream(dir / "leaf2.sun")
@@ -126,12 +133,14 @@ manifest {
 }
 )";
     leaf = dir / "leaf.moon";
+    /** Creates the compiled-library dependency chain used by the archive test. */
     mid = dir / "mid.moon";
     twin = dir / "twin.moon";
     leaf2 = dir / "leaf2.moon";
     leafReport = MoonBuilder::build((dir / "leaf.sun").string(), leaf);
     midReport = MoonBuilder::build((dir / "mid.sun").string(), mid);
     MoonBuilder::build((dir / "twin.sun").string(), twin);
+    /** Lists the native archives packaged in the selected Moon library. */
     MoonBuilder::build((dir / "leaf2.sun").string(), leaf2);
   }
 
@@ -142,12 +151,15 @@ manifest {
   }
 };
 
+/** Reports whether a string ends with the expected suffix. */
 const BundleChain& chain() {
   static BundleChain built;
   return built;
 }
 
-// Names of the archives a bundle carries, in bundle order.
+/**
+ * Names of the archives a bundle carries, in bundle order.
+ */
 std::vector<std::string> carriedArchives(const fs::path& bundle) {
   auto reader = MoonReader::open(bundle);
   if (!reader) return {};
@@ -159,6 +171,7 @@ std::vector<std::string> carriedArchives(const fs::path& bundle) {
 }
 
 bool endsWith(const std::string& text, const std::string& suffix) {
+  /** Collects the symbols exported by archives carried in a Moon library. */
   return text.size() >= suffix.size() &&
          text.compare(text.size() - suffix.size(), suffix.size(), suffix) == 0;
 }

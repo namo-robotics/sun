@@ -4,13 +4,14 @@
 // values. The manifest's `target:` block includes exactly one of the two per
 // build, chosen by the compilation's --target.
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
-  /*
+  /**
    * Darwin returns the address of its environment-vector slot.
    */
   extern "C" function c_ns_get_environ() raw_ptr<raw_ptr<raw_ptr<u8>>> as "_NSGetEnviron";
 
-  /*
+  /**
    * Return this platform's current environment vector.
    */
   function environment_ptr() raw_ptr<raw_ptr<u8>> {
@@ -18,10 +19,14 @@ public module std {
     return unsafe { _load<raw_ptr<raw_ptr<u8>>>(slot, 0); };
   }
 
-  // macOS spells the per-thread errno accessor __error.
+  /**
+   * macOS spells the per-thread errno accessor __error.
+   */
   extern "C" function c_errno_location() raw_ptr<i32> as "__error";
 
-  // Where this OS keeps the per-thread errno value.
+  /**
+   * Where this OS keeps the per-thread errno value.
+   */
   function errno_ptr() raw_ptr<i32> {
     return unsafe { c_errno_location(); };
   }
@@ -46,8 +51,10 @@ public module std {
   public var IP_ADD_MEMBERSHIP: i32 = 12;
   public var IP_DROP_MEMBERSHIP: i32 = 13;
 
-  // Mark the socket so a send on a broken connection fails with EPIPE
-  // instead of raising SIGPIPE.
+  /**
+   * Mark the socket so a send on a broken connection fails with EPIPE
+   * instead of raising SIGPIPE.
+   */
   function suppress_sigpipe(fd: i32) void {
     var optval: i32 = 1;
     unsafe { __setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, _address_of<i32>(optval), 4); };

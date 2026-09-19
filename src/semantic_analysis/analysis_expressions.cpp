@@ -16,6 +16,7 @@ using sun::ast::ExprAST;
 using sun::parsing::TokenKind;
 using sun::support::logAndThrowError;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 using sun::semantic_analysis::checkCharOperands;

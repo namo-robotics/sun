@@ -12,6 +12,7 @@
 
 using sun::support::logAndThrowError;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 // `ref p.field` would hand out an address the borrower accesses at the field

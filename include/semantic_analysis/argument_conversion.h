@@ -15,8 +15,10 @@
 #include "semantic_analysis/types.h"
 #include "support/position.h"
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
+/** The conversion applied when an argument is matched to a parameter. */
 enum class ArgConversion : uint8_t {
   PassValue,         // the value as it is: scalars, pointers and lambda values
                      // (and anything read out of a borrow)

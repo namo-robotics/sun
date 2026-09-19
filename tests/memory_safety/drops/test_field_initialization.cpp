@@ -11,6 +11,7 @@
 using sun::driver::compileString;
 using sun::driver::executeString;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 // Res counts every deinit call unconditionally — the point of these tests is
@@ -34,6 +35,7 @@ const char* kResPreamble = R"(
     }
 )";
 
+/** Prepends shared fixture declarations to a test program. */
 std::string withPreamble(const std::string& body) {
   return std::string(kResPreamble) + body;
 }

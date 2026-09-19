@@ -18,6 +18,7 @@
 //   var n = stream.recv(buf);
 //   stream.close();
 
+/** Groups the tls declarations exported by this source file. */
 public module tls {
   using std;
 
@@ -38,34 +39,42 @@ public module tls {
   // SSL_R_UNEXPECTED_EOF_WHILE_READING
   var SSL_REASON_UNEXPECTED_EOF: u64 = 294;
 
-  // Error carrying the OpenSSL error-queue text (or the X.509 verification
-  // failure reason) for the operation that failed.
+  /**
+   * Error carrying the OpenSSL error-queue text (or the X.509 verification
+   * failure reason) for the operation that failed.
+   */
   public class TlsError implements IError {
     var code_: i32;
     var message_: String;
 
+    /** Creates a TLS error retaining the supplied failure information. */
     init(code: i32, message: const ref String) {
       var alloc: HeapAllocator = HeapAllocator();
       this.code_ = code;
       this.message_ = message.clone(alloc);
     }
 
+    /** Creates a TLS error retaining the supplied failure information. */
     init(code: i32, message: static_ptr<u8>) {
       this.code_ = code;
       this.message_ = String(message);
     }
 
+    /** Returns the error category used by the test fixture. */
     public method code() i32 {
       return this.code_;
     }
 
+    /** Returns an owned explanation of the fixture's error. */
     public method message() String {
       var alloc: HeapAllocator = HeapAllocator();
       return this.message_.clone(alloc);
     }
   }
 
-  // The queued OpenSSL error as text, with a fallback for an empty queue.
+  /**
+   * The queued OpenSSL error as text, with a fallback for an empty queue.
+   */
   function take_openssl_error(context: static_ptr<u8>) String {
     var alloc: HeapAllocator = HeapAllocator();
     var out = String(alloc, "");
@@ -92,11 +101,14 @@ public module tls {
     var ctx: raw_ptr<u8> = null;  // SSL_CTX*
     var ssl: raw_ptr<u8> = null;  // SSL*
 
+    /** Closes the TLS session and releases the resources still owned by the stream. */
     deinit() {
       this.close();
     }
 
-    // Resolve the host, connect, and complete a verified TLS handshake.
+    /**
+     * Resolve the host, connect, and complete a verified TLS handshake.
+     */
     public method connect(host: ref String, port: i32) void throws IError {
       this.tcp.connect_host(host, port);
 
@@ -152,19 +164,25 @@ public module tls {
       }
     }
 
-    // Send string data
+    /**
+     * Send string data
+     */
     public method send_str(data: static_ptr<u8>) i64 throws IError {
       return this.send_bytes(data.raw(), data.length());
     }
 
-    // Send a String's contents. Takes ref (not const ref) because c_str()
-    // may append the terminating NUL.
+    /**
+     * Send a String's contents. Takes ref (not const ref) because c_str()
+     * may append the terminating NUL.
+     */
     public method send_string(data: ref String) i64 throws IError {
       return this.send_bytes(data.c_str(), data.length());
     }
 
-    // Send raw bytes; on a blocking socket SSL_write writes everything or
-    // fails.
+    /**
+     * Send raw bytes; on a blocking socket SSL_write writes everything or
+     * fails.
+     */
     public method send_bytes(data: raw_ptr<u8>, len: i64) i64 throws IError {
       var result: i32 = unsafe { c_ssl_write(this.ssl, data, _convert<i32>(len)); };
       if (result <= 0) {
@@ -174,8 +192,10 @@ public module tls {
       return _convert<i64>(result);
     }
 
-    // Receive into a ContiguousBuffer. Returns the byte count, or 0 once
-    // the peer has closed the connection.
+    /**
+     * Receive into a ContiguousBuffer. Returns the byte count, or 0 once
+     * the peer has closed the connection.
+     */
     public method recv(buf: ref ContiguousBuffer<u8>) i64 throws IError {
       var result: i32 = unsafe { c_ssl_read(this.ssl, buf.raw_data(), _convert<i32>(buf.size())); };
       if (result > 0) {
@@ -203,7 +223,9 @@ public module tls {
       throw TlsError(reason, err_read);
     }
 
-    // Shut the session down and release the handles. Safe to call twice.
+    /**
+     * Shut the session down and release the handles. Safe to call twice.
+     */
     public method close() void {
       if (this.ssl != null) {
         unsafe { c_ssl_shutdown(this.ssl); };
@@ -217,6 +239,7 @@ public module tls {
       this.tcp.close();
     }
 
+    /** Reports whether this TLS stream still owns an open connection. */
     public method is_open() bool {
       return this.ssl != null;
     }

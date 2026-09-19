@@ -7,6 +7,7 @@
 #include "parsing/formatter.h"
 #include "support/error.h"
 
+/** Formats fixture source for comparison with the expected output. */
 static std::string fmt(const std::string& src) {
   return sun::parsing::formatSource(src);
 }
@@ -623,8 +624,10 @@ TEST(Tooling_Fmt, MultipleFilesOneParserNoCommentBleed) {
 
 using sun::ast::BlockExprAST;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
+/** Lists the source files included in the formatter regression corpus. */
 std::vector<std::filesystem::path> corpusFiles() {
   std::vector<std::filesystem::path> files;
   for (const char* dir : {"tests/programs", "stdlib", "examples"}) {
@@ -636,6 +639,7 @@ std::vector<std::filesystem::path> corpusFiles() {
   return files;
 }
 
+/** Reads a fixture file into a string for comparison. */
 std::string readFile(const std::filesystem::path& p) {
   std::ifstream in(p);
   std::stringstream ss;
@@ -643,8 +647,10 @@ std::string readFile(const std::filesystem::path& p) {
   return ss.str();
 }
 
-// Post-lowering, position-free serialization for structural comparison.
-// Mutates the tree (lowering runs in place); use only when done with it.
+/**
+ * Post-lowering, position-free serialization for structural comparison.
+ * Mutates the tree (lowering runs in place); use only when done with it.
+ */
 std::string loweredFingerprint(BlockExprAST& ast) {
   sun::parsing::LoweringPass lowering;
   lowering.run(ast);

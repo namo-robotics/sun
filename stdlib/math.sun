@@ -1,4 +1,5 @@
 // math.sun - Generic math utility functions and numeric limits
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
   // Numeric limits
   public var I64_MAX: i64 = 9223372036854775807;
@@ -7,7 +8,9 @@ public module std {
   public var F64_MIN_POSITIVE: f64 = 2.2250738585072014e-308;  // smallest normal
   public var F64_EPSILON: f64 = 2.220446049250313e-16;
 
-  // Return whichever of the two values is smaller.
+  /**
+   * Return whichever of the two values is smaller.
+   */
   public function compute_min<T>(a: T, b: T) T {
     if (a < b) {
       return a;
@@ -15,7 +18,9 @@ public module std {
     return b;
   }
 
-  // Return whichever of the two values is larger.
+  /**
+   * Return whichever of the two values is larger.
+   */
   public function compute_max<T>(a: T, b: T) T {
     if (a > b) {
       return a;
@@ -23,8 +28,10 @@ public module std {
     return b;
   }
 
-  // Return the value with its sign removed. T must support comparison and
-  // negation.
+  /**
+   * Return the value with its sign removed. T must support comparison and
+   * negation.
+   */
   public function compute_abs<T>(x: T) T {
     if (x < 0) {
       return 0 - x;
@@ -32,8 +39,10 @@ public module std {
     return x;
   }
 
-  // Pull a value into the range lo..hi, returning lo or hi when it falls
-  // outside.
+  /**
+   * Pull a value into the range lo..hi, returning lo or hi when it falls
+   * outside.
+   */
   public function clamp<T>(x: T, lo: T, hi: T) T {
     if (x < lo) {
       return lo;
@@ -44,7 +53,9 @@ public module std {
     return x;
   }
 
-  // Return -1 for a negative value, 1 for a positive one, and 0 for zero.
+  /**
+   * Return -1 for a negative value, 1 for a positive one, and 0 for zero.
+   */
   public function compute_sign<T>(x: T) i32 {
     if (x < 0) {
       return -1;
@@ -55,13 +66,17 @@ public module std {
     return 0;
   }
 
-  // Report whether a value sits between lo and hi, counting both ends.
+  /**
+   * Report whether a value sits between lo and hi, counting both ends.
+   */
   public function is_in_range<T>(x: T, lo: T, hi: T) bool {
     return x >= lo and x <= hi;
   }
 
-  // Return 2 raised to `bits` as an f64. Powers of two are exact in binary
-  // floating point, so the result is never rounded.
+  /**
+   * Return 2 raised to `bits` as an f64. Powers of two are exact in binary
+   * floating point, so the result is never rounded.
+   */
   function compute_power_of_two(bits: i64) f64 {
     var r: f64 = 1.0;
     var i: i64 = 0;
@@ -72,12 +87,14 @@ public module std {
     return r;
   }
 
-  // Convert a number to another numeric type, checking that the value fits.
-  // Throws ConversionError for an integer outside T's range, a float that is
-  // NaN or outside T's range, and an f64 too large for f32. A fraction is
-  // dropped (truncated toward zero), as _convert does.
-  //
-  //   var t: i32 = safe_convert<i32>(ms);   // ms: i64
+  /**
+   * Convert a number to another numeric type, checking that the value fits.
+   * Throws ConversionError for an integer outside T's range, a float that is
+   * NaN or outside T's range, and an f64 too large for f32. A fraction is
+   * dropped (truncated toward zero), as _convert does.
+   *
+   *   var t: i32 = safe_convert<i32>(ms);   // ms: i64
+   */
   public function safe_convert<T, U>(x: U) T throws IError {
     var zero: T = _convert<T>(0);
     if (_is<_Integer>(x) and _is<_Integer>(zero)) {

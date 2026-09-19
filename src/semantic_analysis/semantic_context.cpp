@@ -27,6 +27,7 @@ using sun::semantic_analysis::TypePtr;
 using sun::support::logAndThrowError;
 using sun::support::Position;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 using sun::semantic_analysis::fieldRef;
@@ -253,10 +254,12 @@ std::vector<UsingImport> SemanticContext::getActiveUsingImports() const {
 // Throws on ambiguity (same name in multiple library scopes)
 // -------------------------------------------------------------------
 
-// Helper: collect ALL module scopes matching a path across import scopes
-// and using statements. This handles the case where two .sun imports define
-// the same module name, or where a module is brought in via `using`.
-// Also collects parent module scopes (e.g., for path "A.B", also collects "A").
+/**
+ * Helper: collect ALL module scopes matching a path across import scopes
+ * and using statements. This handles the case where two .sun imports define
+ * the same module name, or where a module is brought in via `using`.
+ * Also collects parent module scopes (e.g., for path "A.B", also collects "A").
+ */
 static std::vector<SemanticScope*> collectAllModuleScopes(
     const SemanticScope* startScope, const std::string& dotPath) {
   std::vector<SemanticScope*> results;
@@ -1029,6 +1032,7 @@ const GenericClassInfo* SemanticContext::lookupGenericClass(
   return currentScope_->lookupGenericClass(name);
 }
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
 /** Retrieve selected templates, including declarations in closed local scopes.

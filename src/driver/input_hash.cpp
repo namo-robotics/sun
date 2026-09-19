@@ -17,10 +17,13 @@
 #include "moon_bundling/proto_importer.h"
 #include "support/error.h"
 
+/** Coordinates compilation, dependency loading, linking, and program execution. */
 namespace sun::driver {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
+/** Reports the operation's failure as a compiler error and stops processing. */
 [[noreturn]] void fail(const std::string& message) {
   throw sun::support::SunError(sun::support::SunError::Kind::Compile, message);
 }
@@ -37,17 +40,21 @@ std::string hashField(const std::string& tag, const std::string& value) {
   return result;
 }
 
-// Digest of a whole file's bytes. Files can be large (the compiler itself,
-// native archives) and are read on every run, so this uses BLAKE3, which is
-// several times faster than SHA-256 and just as fit for telling files apart.
+/**
+ * Digest of a whole file's bytes. Files can be large (the compiler itself,
+ * native archives) and are read on every run, so this uses BLAKE3, which is
+ * several times faster than SHA-256 and just as fit for telling files apart.
+ */
 std::string digestBytes(llvm::StringRef bytes) {
   llvm::BLAKE3 hasher;
   hasher.update(bytes);
   return llvm::toHex(hasher.final(), /*LowerCase=*/true);
 }
 
-// One imported bundle's part of the hash: the hash it was built from, which
-// already covers everything inside it, and how its modules are renamed here.
+/**
+ * One imported bundle's part of the hash: the hash it was built from, which
+ * already covers everything inside it, and how its modules are renamed here.
+ */
 std::string hashMoonImport(const sun::moon_bundling::MoonImport& import) {
   auto reader = sun::moon_bundling::MoonReader::open(import.path);
   if (!reader) fail("Cannot open imported moon: " + import.path);
@@ -67,6 +74,7 @@ std::string hashMoonImport(const sun::moon_bundling::MoonImport& import) {
 
 }  // namespace
 
+/** Returns the compiler digest stored by this object. */
 const std::string& getCompilerDigest() {
   static const std::string digest = [] {
     const std::string exe = llvm::sys::fs::getMainExecutable(
@@ -85,6 +93,7 @@ const std::string& getCompilerDigest() {
   return digest;
 }
 
+/** Reads an input file and computes its content digest. */
 std::string computeFileDigest(const std::string& path, const char* what) {
   auto buffer = llvm::MemoryBuffer::getFile(path, /*IsText=*/false,
                                             /*RequiresNullTerminator=*/false);
@@ -92,6 +101,7 @@ std::string computeFileDigest(const std::string& path, const char* what) {
   return digestBytes((*buffer)->getBuffer());
 }
 
+/** Adds source and protobuf content digests to the build inputs. */
 void addSourceDigests(BuildInputs& inputs,
                       const std::vector<std::string>& sourceFiles,
                       const std::vector<std::string>& protoFiles,
@@ -105,6 +115,7 @@ void addSourceDigests(BuildInputs& inputs,
   }
 }
 
+/** Computes a digest covering the inputs and settings of a build. */
 std::string computeInputHash(const BuildInputs& inputs) {
   std::string input = "sun.inputs.v1";
   input += hashField("kind", inputs.artifactKind);

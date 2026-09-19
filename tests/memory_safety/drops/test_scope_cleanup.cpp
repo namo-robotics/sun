@@ -9,6 +9,7 @@
 
 using sun::driver::executeString;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 // Shared preamble: a global counter and a class whose deinit increments it.
@@ -23,6 +24,7 @@ const char* kOwnerPreamble = R"(
     }
 )";
 
+/** Prepends shared fixture declarations to a test program. */
 std::string withPreamble(const std::string& body) {
   return std::string(kOwnerPreamble) + body;
 }

@@ -20,20 +20,25 @@ using sun::ast::BlockExprAST;
 using sun::ast::VariableCreationAST;
 using sun::parsing::LoweringPass;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
+/** Parses fixture source into a complete program syntax tree. */
 std::unique_ptr<BlockExprAST> parseProgram(const std::string& source) {
   std::istringstream ss(source);
   sun::parsing::Parser parser(ss);
   return parser.parseString(source);
 }
 
+/** Encodes a syntax tree so lowering results can be compared. */
 std::string serialize(const BlockExprAST& block) {
   sun::serialization::ASTSerializer serializer;
   return serializer.serializeProgramToString(block);
 }
 
-// Count nodes of the given type anywhere in the tree
+/**
+ * Count nodes of the given type anywhere in the tree
+ */
 int countNodes(sun::ast::ExprAST& node, ASTNodeType type) {
   int count = node.getType() == type ? 1 : 0;
   node.forEachChildSlot([&](std::unique_ptr<sun::ast::ExprAST>& child) {

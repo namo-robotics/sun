@@ -3,16 +3,22 @@
 
 using std;
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** Groups tests for the string library behavior. */
   module string_tests {
-    // True when appending x as f64 text produces exactly the expected bytes.
+    /**
+     * True when appending x as f64 text produces exactly the expected bytes.
+     */
     function check_f64(alloc: const ref HeapAllocator, x: f64, expected: static_ptr<u8>) bool {
       var s = String(alloc, "");
       s.append_f64(x);
       return s.equals_literal(expected);
     }
 
-    // Parse text as an i64, or hand back the fallback when parsing fails.
+    /**
+     * Parse text as an i64, or hand back the fallback when parsing fails.
+     */
     function parse_int_or(alloc: const ref HeapAllocator, text: static_ptr<u8>, fallback: i64) i64 {
       var s = String(alloc, text);
       return match s.parse_i64() {
@@ -21,7 +27,9 @@ public module std {
       };
     }
 
-    // Parse text as an f64, or hand back the fallback when parsing fails.
+    /**
+     * Parse text as an f64, or hand back the fallback when parsing fails.
+     */
     function parse_float_or(alloc: const ref HeapAllocator, text: static_ptr<u8>, fallback: f64) f64 {
       var s = String(alloc, text);
       return match s.parse_f64() {
@@ -30,7 +38,9 @@ public module std {
       };
     }
 
-    // Byte index of the needle in s, or -1 when absent.
+    /**
+     * Byte index of the needle in s, or -1 when absent.
+     */
     function find_index(s: const ref String, needle: static_ptr<u8>) i64 {
       return match s.find(needle) {
         Option.Some(i) => i,
@@ -38,18 +48,21 @@ public module std {
       };
     }
 
+    /** Checks construct from literal. */
     test_function construct_from_literal() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "Hello");
       std.test.assert_eq(s.length(), 5);
     }
 
+    /** Checks construct empty. */
     test_function construct_empty() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "");
       std.test.assert_eq(s.length(), 0);
     }
 
+    /** Checks construct from buffer. */
     test_function construct_from_buffer() {
       var allocator = make_heap_allocator();
       var buf = ContiguousBuffer<u8>(allocator, 10);
@@ -64,6 +77,7 @@ public module std {
       std.test.assert_eq(i, 105);
     }
 
+    /** Checks at access. */
     test_function at_access() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "ABCDE");
@@ -75,6 +89,7 @@ public module std {
       std.test.assert_eq(e, 69);
     }
 
+    /** Checks set at modify. */
     test_function set_at_modify() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "Hello");
@@ -84,6 +99,7 @@ public module std {
       std.test.assert_eq(ch, 74);
     }
 
+    /** Checks checked access rejects indices outside length. */
     test_function checked_access_rejects_indices_outside_length() {
       var alloc = make_heap_allocator();
       var s = String(alloc, "abc");
@@ -110,6 +126,7 @@ public module std {
       std.test.assert(s.equals_literal("abc"));
     }
 
+    /** Checks empty string has no valid index. */
     test_function empty_string_has_no_valid_index() {
       var alloc = make_heap_allocator();
       var s = String(alloc, "");
@@ -129,6 +146,7 @@ public module std {
       std.test.assert(caught);
     }
 
+    /** Checks unsafe access with valid indices. */
     test_function unsafe_access_with_valid_indices() {
       var alloc = make_heap_allocator();
       var s = String(alloc, "abc");
@@ -137,6 +155,7 @@ public module std {
       std.test.assert(s.equals_literal("abZ"));
     }
 
+    /** Checks view access checks its own length. */
     test_function view_access_checks_its_own_length() {
       var alloc = make_heap_allocator();
       var s = String(alloc, "abcd");
@@ -151,24 +170,28 @@ public module std {
       std.test.assert(caught);
     }
 
+    /** Checks equals literal true. */
     test_function equals_literal_true() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "Hello");
       std.test.assert(s.equals_literal("Hello"));
     }
 
+    /** Checks equals literal false content. */
     test_function equals_literal_false_content() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "Hello");
       std.test.assert(not s.equals_literal("World"));
     }
 
+    /** Checks equals literal false length. */
     test_function equals_literal_false_length() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "Hello");
       std.test.assert(not s.equals_literal("Hell"));
     }
 
+    /** Checks append char. */
     test_function append_char() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "Hi");
@@ -176,6 +199,7 @@ public module std {
       std.test.assert_eq(s.length(), 3);
     }
 
+    /** Checks append char content. */
     test_function append_char_content() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "Hi");
@@ -184,6 +208,7 @@ public module std {
       std.test.assert_eq(ch, 33);
     }
 
+    /** Checks append literal. */
     test_function append_literal() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "Hello");
@@ -191,6 +216,7 @@ public module std {
       std.test.assert_eq(s.length(), 12);
     }
 
+    /** Checks append string. */
     test_function append_string() {
       var allocator = make_heap_allocator();
       var s1 = String(allocator, "Hello");
@@ -199,6 +225,7 @@ public module std {
       std.test.assert_eq(s1.length(), 11);
     }
 
+    /** Checks slice basic. */
     test_function slice_basic() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "Hello World");
@@ -206,6 +233,7 @@ public module std {
       std.test.assert_eq(view.length(), 5);
     }
 
+    /** Checks slice middle. */
     test_function slice_middle() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "Hello World");
@@ -213,6 +241,7 @@ public module std {
       std.test.assert_eq(view.length(), 5);
     }
 
+    /** Checks slice content. */
     test_function slice_content() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "Hello World");
@@ -223,6 +252,7 @@ public module std {
       std.test.assert_eq(o, 111);  // 'o'
     }
 
+    /** Checks slice equals literal. */
     test_function slice_equals_literal() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "Hello World");
@@ -230,12 +260,14 @@ public module std {
       std.test.assert(view.equals_literal("World"));
     }
 
+    /** Checks initial capacity. */
     test_function initial_capacity() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "Hello");
       std.test.assert(s.capacity() >= s.length());
     }
 
+    /** Checks clear. */
     test_function clear() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "Hello");
@@ -243,6 +275,7 @@ public module std {
       std.test.assert_eq(s.length(), 0);
     }
 
+    /** Checks append i64 positive. */
     test_function append_i64_positive() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "");
@@ -250,6 +283,7 @@ public module std {
       std.test.assert(s.equals_literal("12345"));
     }
 
+    /** Checks append i64 negative. */
     test_function append_i64_negative() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "");
@@ -257,6 +291,7 @@ public module std {
       std.test.assert(s.equals_literal("-42"));
     }
 
+    /** Checks append i64 zero. */
     test_function append_i64_zero() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "");
@@ -264,6 +299,7 @@ public module std {
       std.test.assert(s.equals_literal("0"));
     }
 
+    /** Checks append i64 min. */
     test_function append_i64_min() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "");
@@ -271,8 +307,10 @@ public module std {
       std.test.assert(s.equals_literal("-9223372036854775808"));
     }
 
-    // A u64 above the i64 maximum keeps its full digits rather than printing
-    // as a negative number.
+    /**
+     * A u64 above the i64 maximum keeps its full digits rather than printing
+     * as a negative number.
+     */
     test_function append_u64_above_i64_max() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "");
@@ -280,12 +318,14 @@ public module std {
       std.test.assert(s.equals_literal("18446744073709551615"));
     }
 
+    /** Checks interpolating a u64 above i64 max. */
     test_function interpolating_a_u64_above_i64_max() {
       var v: u64 = 14627333968358193854;
       var s = `${v}`;
       std.test.assert(s.equals_literal("14627333968358193854"));
     }
 
+    /** Checks append hex. */
     test_function append_hex() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "");
@@ -293,6 +333,7 @@ public module std {
       std.test.assert(s.equals_literal("ff"));
     }
 
+    /** Checks append bool true. */
     test_function append_bool_true() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "");
@@ -300,6 +341,7 @@ public module std {
       std.test.assert(s.equals_literal("true"));
     }
 
+    /** Checks append bool false. */
     test_function append_bool_false() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "");
@@ -307,6 +349,7 @@ public module std {
       std.test.assert(s.equals_literal("false"));
     }
 
+    /** Checks find char. */
     test_function find_char() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "hello world");
@@ -318,6 +361,7 @@ public module std {
       std.test.assert_eq(idx, 4);
     }
 
+    /** Checks find char not found. */
     test_function find_char_not_found() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "hello");
@@ -329,18 +373,21 @@ public module std {
       std.test.assert_eq(idx, -1);
     }
 
+    /** Checks starts with. */
     test_function starts_with() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "hello world");
       std.test.assert(s.starts_with("hello"));
     }
 
+    /** Checks ends with. */
     test_function ends_with() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "hello world");
       std.test.assert(s.ends_with("world"));
     }
 
+    /** Checks reverse. */
     test_function reverse() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "abc");
@@ -348,6 +395,7 @@ public module std {
       std.test.assert(s.equals_literal("cba"));
     }
 
+    /** Checks growth beyond initial capacity. */
     test_function growth_beyond_initial_capacity() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "");
@@ -357,6 +405,7 @@ public module std {
       std.test.assert_eq(s.length(), 100);
     }
 
+    /** Checks literal escape newline tab. */
     test_function literal_escape_newline_tab() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "a\nb\tc");
@@ -365,6 +414,7 @@ public module std {
       std.test.assert(s.at(3) == 9, "tab byte");
     }
 
+    /** Checks literal escape crlf. */
     test_function literal_escape_crlf() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "\r\n");
@@ -373,6 +423,7 @@ public module std {
       std.test.assert(s.at(1) == 10, "newline byte");
     }
 
+    /** Checks literal escape quote and backslash. */
     test_function literal_escape_quote_and_backslash() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "say \"hi\" \\ done");
@@ -382,6 +433,7 @@ public module std {
       std.test.assert(s.at(9) == 92, "backslash byte");
     }
 
+    /** Checks literal unknown escape preserved. */
     test_function literal_unknown_escape_preserved() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "a\qb");
@@ -391,6 +443,7 @@ public module std {
       std.test.assert(s.at(2) == 113, "q byte");
     }
 
+    /** Checks append f64 shortest round trip. */
     test_function append_f64_shortest_round_trip() {
       var alloc = make_heap_allocator();
       std.test.assert(check_f64(alloc, 0.1, "0.1"), "0.1");
@@ -408,6 +461,7 @@ public module std {
       std.test.assert(s.equals_literal("2.50.25"), "f32 and f64 append");
     }
 
+    /** Checks parse i64 and parse f64. */
     test_function parse_i64_and_parse_f64() {
       var alloc = make_heap_allocator();
       std.test.assert_eq(parse_int_or(alloc, "42", -1), 42);
@@ -429,6 +483,7 @@ public module std {
       std.test.assert_eq(parse_float_or(alloc, ".", -1.0), -1.0);
     }
 
+    /** Checks to lower and to upper. */
     test_function to_lower_and_to_upper() {
       var alloc = make_heap_allocator();
       var s = String(alloc, "Hello, World 42!");
@@ -444,6 +499,7 @@ public module std {
       std.test.assert(one.equals_literal("a"), "byte case conversion");
     }
 
+    /** Checks trim variants. */
     test_function trim_variants() {
       var alloc = make_heap_allocator();
       var s = String(alloc, "  \t hi \n ");
@@ -467,6 +523,7 @@ public module std {
       std.test.assert(none.equals_literal("hi"), "trim nothing to remove");
     }
 
+    /** Checks find and contains. */
     test_function find_and_contains() {
       var alloc = make_heap_allocator();
       var s = String(alloc, "hello world");
@@ -487,6 +544,7 @@ public module std {
       std.test.assert(not s.starts_with(String(alloc, "world")), "wrong prefix");
     }
 
+    /** Checks substr and clone. */
     test_function substr_and_clone() {
       var alloc = make_heap_allocator();
       var s = String(alloc, "abcdef");
@@ -506,6 +564,7 @@ public module std {
       } catch (e: IError) {}
     }
 
+    /** Checks split on byte and string. */
     test_function split_on_byte_and_string() {
       var alloc = make_heap_allocator();
       var csv = String(alloc, "a,b,,c");
@@ -531,6 +590,7 @@ public module std {
       std.test.assert(unsafe { one.get_unchecked(0); }.equals_literal("abc"), "empty separator");
     }
 
+    /** Checks split nonempty skips empty pieces. */
     test_function split_nonempty_skips_empty_pieces() {
       var alloc = make_heap_allocator();
       var csv = String(alloc, ",a,,b,");
@@ -559,8 +619,10 @@ public module std {
       std.test.assert_eq(nothing.size(), 0);
     }
 
-    // The five split entry points share one implementation, so the empty
-    // separator and empty subject cases are pinned here.
+    /**
+     * The five split entry points share one implementation, so the empty
+     * separator and empty subject cases are pinned here.
+     */
     test_function split_edge_cases() {
       var alloc = make_heap_allocator();
       var s = String(alloc, "abc");
@@ -581,6 +643,7 @@ public module std {
       std.test.assert_eq(empty.split_whitespace(alloc).size(), 0);
     }
 
+    /** Checks split whitespace collapses runs. */
     test_function split_whitespace_collapses_runs() {
       var alloc = make_heap_allocator();
       var s = String(alloc, "  one\ttwo  \n three\r\n");
@@ -600,6 +663,7 @@ public module std {
       std.test.assert_eq(empty.size(), 0);
     }
 
+    /** Checks join parts. */
     test_function join_parts() {
       var alloc = make_heap_allocator();
       var csv = String(alloc, "a,b,,c");
@@ -615,6 +679,7 @@ public module std {
       std.test.assert(alone.equals_literal("solo"), "single part");
     }
 
+    /** Checks replace literal and string. */
     test_function replace_literal_and_string() {
       var alloc = make_heap_allocator();
       // Replacement longer than the match: buffer has to grow
@@ -657,6 +722,7 @@ public module std {
       std.test.assert(text.equals_literal("bird dog bird"), "String overloads");
     }
 
+    /** Checks c str terminates without changing the string. */
     test_function c_str_terminates_without_changing_the_string() {
       var alloc = make_heap_allocator();
       var s = String(alloc, "abc");
@@ -679,6 +745,7 @@ public module std {
       std.test.assert_eq(s.length(), 7);
     }
 
+    /** Checks from c str copies the bytes. */
     test_function from_c_str_copies_the_bytes() {
       var alloc = make_heap_allocator();
       var src = String(alloc, "round trip");
@@ -690,6 +757,7 @@ public module std {
       std.test.assert_eq(copy.length(), 10);
     }
 
+    /** Checks from c str handles empty and null. */
     test_function from_c_str_handles_empty_and_null() {
       var alloc = make_heap_allocator();
       var empty = String(alloc, "");
@@ -699,6 +767,7 @@ public module std {
       std.test.assert(b.is_empty(), "null C string");
     }
 
+    /** Checks push encodes UTF-8. */
     test_function push_encodes_utf8() {
       var alloc = make_heap_allocator();
       var s = String(alloc, "");
@@ -714,6 +783,7 @@ public module std {
       std.test.assert(s.at(1) == b'\xC3' and s.at(2) == b'\xA9', "é bytes");
     }
 
+    /** Checks char count counts scalars not bytes. */
     test_function char_count_counts_scalars_not_bytes() {
       var alloc = make_heap_allocator();
       var s = String(alloc, "héllo😀");
@@ -721,6 +791,7 @@ public module std {
       std.test.assert_eq(s.count_chars(), 6);  // scalar values
     }
 
+    /** Checks chars round trips through push. */
     test_function chars_round_trips_through_push() {
       var alloc = make_heap_allocator();
       var s = String(alloc, "héllo😀");
@@ -732,6 +803,7 @@ public module std {
       std.test.assert(out.equals(s), "round trip");
     }
 
+    /** Checks chars yields the scalar values. */
     test_function chars_yields_the_scalar_values() {
       var alloc = make_heap_allocator();
       var s = String(alloc, "a😀");
@@ -749,8 +821,10 @@ public module std {
       std.test.assert_eq(seen, 2);
     }
 
-    // Malformed bytes must not stall or overrun iteration: each bad byte
-    // becomes one U+FFFD and the scan moves on.
+    /**
+     * Malformed bytes must not stall or overrun iteration: each bad byte
+     * becomes one U+FFFD and the scan moves on.
+     */
     test_function chars_replaces_malformed_bytes() {
       var alloc = make_heap_allocator();
       var s = String(alloc, "a");
@@ -769,6 +843,7 @@ public module std {
       std.test.assert_eq(replacements, 2);
     }
 
+    /** Checks find returns the byte index of a char. */
     test_function find_returns_the_byte_index_of_a_char() {
       var alloc = make_heap_allocator();
       var s = String(alloc, "héllo😀");
@@ -796,6 +871,7 @@ public module std {
       std.test.assert(not s.contains('z'), "missing char");
     }
 
+    /** Checks char of rejects non scalar values. */
     test_function char_of_rejects_non_scalar_values() {
       var ok = match char_of(65) {
         Option.Some(c) => c == 'A',
@@ -815,6 +891,7 @@ public module std {
       std.test.assert_eq(code_of('😀'), 128512);
     }
 
+    /** Checks interpolating a char writes UTF-8. */
     test_function interpolating_a_char_writes_utf8() {
       var c: char = '😀';
       var s = `[${c}]`;

@@ -17,36 +17,56 @@
 // or the extern declaration is rejected. `open` is C-variadic there, so it is
 // C-variadic here.
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
   // --- file descriptors ----------------------------------------------------
 
+  /** Opens a null-terminated path and returns a file descriptor or a failure code. */
   extern "C" function c_open(path: raw_ptr<u8>, flags: i32, ...) i32 as "open";
+  /** Reads or changes descriptor flags through the C runtime. */
   extern "C" function c_fcntl(fd: i32, command: i32, ...) i32 as "fcntl";
+  /** Closes a file descriptor and returns the operating-system result. */
   extern "C" function c_close(fd: i32) i32 as "close";
+  /** Reads bytes from a descriptor into caller-provided storage. */
   extern "C" function c_read(fd: i32, buf: raw_ptr<u8>, count: i64) i64 as "read";
+  /** Writes bytes from caller-provided storage to a descriptor. */
   extern "C" function c_write(fd: i32, buf: raw_ptr<u8>, count: i64) i64 as "write";
+  /** Changes or queries the current offset of a file descriptor. */
   extern "C" function c_lseek(fd: i32, offset: i64, whence: i32) i64 as "lseek";
+  /** Flushes a file descriptor's pending changes to persistent storage. */
   extern "C" function c_fsync(fd: i32) i32 as "fsync";
+  /** Changes a file descriptor's file to the requested length. */
   extern "C" function c_ftruncate(fd: i32, length: i64) i32 as "ftruncate";
+  /** Duplicates a descriptor onto a specified descriptor number. */
   extern "C" function c_dup2(oldfd: i32, newfd: i32) i32 as "dup2";
+  /** Creates a pipe and writes its read and write descriptors into caller-provided storage. */
   extern "C" function c_pipe(fds: raw_ptr<i32>) i32 as "pipe";
 
   // --- paths ---------------------------------------------------------------
 
+  /** Removes a filesystem entry named by a null-terminated path. */
   extern "C" function c_unlink(path: raw_ptr<u8>) i32 as "unlink";
+  /** Renames a filesystem entry between two null-terminated paths. */
   extern "C" function c_rename(old_path: raw_ptr<u8>, new_path: raw_ptr<u8>) i32 as "rename";
+  /** Creates a directory with the requested permissions. */
   extern "C" function c_mkdir(path: raw_ptr<u8>, mode: i32) i32 as "mkdir";
+  /** Removes an empty directory named by a null-terminated path. */
   extern "C" function c_rmdir(path: raw_ptr<u8>) i32 as "rmdir";
+  /** Checks whether a path satisfies the requested access permissions. */
   extern "C" function c_access(path: raw_ptr<u8>, mode: i32) i32 as "access";
 
   // --- directories ---------------------------------------------------------
 
+  /** Opens a directory stream that the caller must later close. */
   extern "C" function c_opendir(path: raw_ptr<u8>) raw_ptr<u8> as "opendir";
+  /** Returns the next entry in a directory stream or a null pointer at its end. */
   extern "C" function c_readdir(dir: raw_ptr<u8>) raw_ptr<u8> as "readdir";
+  /** Closes a directory stream and releases its resources. */
   extern "C" function c_closedir(dir: raw_ptr<u8>) i32 as "closedir";
 
   // --- polling -------------------------------------------------------------
 
+  /** Waits for descriptor events until they occur or the timeout expires. */
   extern "C" function c_poll(fds: raw_ptr<u8>, nfds: i64, timeout_ms: i32) i32 as "poll";
 
   // --- dns -------------------------------------------------------------------
@@ -57,51 +77,83 @@ public module std {
   //   ai_addr@32, ai_next@40. Callers walk the result list with _load at
   //   those offsets (guarded by _target_is), so no struct mirror is needed.
 
+  /** Resolves a host and service into an allocated list of socket addresses. */
   extern "C" function c_getaddrinfo(node: raw_ptr<u8>, service: raw_ptr<u8>, hints: raw_ptr<u8>, res: raw_ptr<raw_ptr<u8>>) i32 as "getaddrinfo";
+  /** Releases an address list returned by the resolver. */
   extern "C" function c_freeaddrinfo(res: raw_ptr<u8>) void as "freeaddrinfo";
+  /** Returns the runtime's message describing an address-resolution error. */
   extern "C" function c_gai_strerror(code: i32) raw_ptr<u8> as "gai_strerror";
 
   // --- environment ---------------------------------------------------------
 
+  /** Returns borrowed storage for a process environment variable when it exists. */
   extern "C" function c_getenv(name: raw_ptr<u8>) raw_ptr<u8> as "getenv";
+  /** Sets a process environment variable with the requested overwrite policy. */
   extern "C" function c_setenv(name: raw_ptr<u8>, value: raw_ptr<u8>, overwrite: i32) i32 as "setenv";
+  /** Removes a variable from the process environment. */
   extern "C" function c_unsetenv(name: raw_ptr<u8>) i32 as "unsetenv";
+  /** Writes the current working directory into caller-provided storage. */
   extern "C" function c_getcwd(buf: raw_ptr<u8>, size: i64) raw_ptr<u8> as "getcwd";
+  /** Changes the process working directory to the supplied path. */
   extern "C" function c_chdir(path: raw_ptr<u8>) i32 as "chdir";
 
   // --- processes -----------------------------------------------------------
 
+  /** Creates a child process and returns the process-specific fork result. */
   extern "C" function c_fork() i32 as "fork";
+  /** Replaces the process with the selected program using a null-terminated argument array. */
   extern "C" function c_execvp(file: raw_ptr<u8>, argv: raw_ptr<u8>) i32 as "execvp";
+  /** Waits for a child process state change and writes its status. */
   extern "C" function c_waitpid(pid: i32, status: raw_ptr<i32>, options: i32) i32 as "waitpid";
+  /** Sends an operating-system signal to a process or process group. */
   extern "C" function c_kill(pid: i32, sig: i32) i32 as "kill";
-  // The handler is a function pointer in C; it travels as an integer here
-  // because the only values the stdlib passes are SIG_DFL (0) and SIG_IGN (1),
-  // and a pointer and an i64 ride in the same register on every target.
+  /**
+   * The handler is a function pointer in C; it travels as an integer here
+   * because the only values the stdlib passes are SIG_DFL (0) and SIG_IGN (1),
+   * and a pointer and an i64 ride in the same register on every target.
+   */
   extern "C" function c_signal(sig: i32, handler: i64) i64 as "signal";
+  /** Assigns a process to a process group. */
   extern "C" function c_setpgid(pid: i32, pgid: i32) i32 as "setpgid";
+  /** Creates a new session and process group for the calling process. */
   extern "C" function c_setsid() i32 as "setsid";
+  /** Returns the identifier of the current process. */
   extern "C" function c_getpid() i32 as "getpid";
+  /** Returns the identifier of the parent process. */
   extern "C" function c_getppid() i32 as "getppid";
+  /** Returns the real user identifier of the current process. */
   extern "C" function c_getuid() u32 as "getuid";
+  /** Returns the effective user identifier of the current process. */
   extern "C" function c_geteuid() u32 as "geteuid";
+  /** Terminates the process after running normal C runtime cleanup. */
   extern "C" function c_exit(code: i32) void as "exit";
+  /** Terminates the process without running normal C runtime cleanup. */
   extern "C" function c_exit_now(code: i32) void as "_exit";
 
   // --- time ----------------------------------------------------------------
 
+  /** Writes the current reading of the selected operating-system clock. */
   extern "C" function c_clock_gettime(clock_id: i32, ts: ref Timespec) i32 as "clock_gettime";
+  /** Suspends the current thread for the requested interval. */
   extern "C" function c_nanosleep(req: ref Timespec, rem: raw_ptr<u8>) i32 as "nanosleep";
+  /** Converts a timestamp to UTC calendar fields in caller-provided storage. */
   extern "C" function c_gmtime_r(t: raw_ptr<i64>, out: ref CTm) raw_ptr<u8> as "gmtime_r";
+  /** Converts a timestamp to local calendar fields in caller-provided storage. */
   extern "C" function c_localtime_r(t: raw_ptr<i64>, out: ref CTm) raw_ptr<u8> as "localtime_r";
+  /** Converts local calendar fields to a timestamp. */
   extern "C" function c_mktime(tm: ref CTm) i64 as "mktime";
+  /** Converts UTC calendar fields to a timestamp. */
   extern "C" function c_timegm(tm: ref CTm) i64 as "timegm";
+  /** Formats calendar fields into a bounded caller-provided character buffer. */
   extern "C" function c_strftime(buf: raw_ptr<u8>, size: i64, fmt: raw_ptr<u8>, tm: ref CTm) i64 as "strftime";
 
   // --- strings and numbers -------------------------------------------------
 
+  /** Returns the byte length of a null-terminated string. */
   extern "C" function c_strlen(s: raw_ptr<u8>) i64 as "strlen";
+  /** Formats C arguments into a bounded caller-provided character buffer. */
   extern "C" function c_snprintf(buf: raw_ptr<u8>, n: i64, fmt: raw_ptr<u8>, ...) i32 as "snprintf";
+  /** Parses a floating-point number from a null-terminated string. */
   extern "C" function c_strtod(s: raw_ptr<u8>, end: raw_ptr<u8>) f64 as "strtod";
 
   // --- errno ---------------------------------------------------------------
@@ -109,8 +161,10 @@ public module std {
   // macOS __error); each target_<os>.sun declares its own and wraps it as
   // errno_ptr().
 
-  // The last error a C call reported. Only meaningful right after a call that
-  // signalled failure.
+  /**
+   * The last error a C call reported. Only meaningful right after a call that
+   * signalled failure.
+   */
   function errno() i32 {
     return unsafe { _load<i32>(errno_ptr(), 0); };
   }
@@ -124,12 +178,16 @@ public module std {
   // padding differ between x86-64 and aarch64 glibc), which is why std.io
   // answers metadata questions with access/opendir/lseek instead.
 
-  // struct timespec — { i64, i64 } on every 64-bit Linux.
+  /**
+   * struct timespec — { i64, i64 } on every 64-bit Linux.
+   */
   class Timespec {
     var sec: i64;
     var nsec: i64;
 
-    // Build a timespec from whole seconds plus a nanosecond remainder.
+    /**
+     * Build a timespec from whole seconds plus a nanosecond remainder.
+     */
     init(sec: i64, nsec: i64) {
       this.sec = sec;
       this.nsec = nsec;

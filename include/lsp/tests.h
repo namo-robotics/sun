@@ -10,11 +10,14 @@
 #include "ast/block_expr_ast.h"
 #include "lsp/symbol_location.h"
 
+/** Provides compiler-backed editor features through the language server protocol. */
 namespace sun::lsp {
 
-// One test_function: its dotted runner name (module path plus function
-// name, the exact string --test-filter matches) and where its name is
-// written in the document.
+/**
+ * One test_function: its dotted runner name (module path plus function
+ * name, the exact string --test-filter matches) and where its name is
+ * written in the document.
+ */
 struct TestItem {
   std::string id;
   std::string label;
@@ -29,10 +32,12 @@ std::vector<TestItem> collectTests(const sun::ast::BlockExprAST& ast,
                                    const std::string& documentPath,
                                    const std::string& source);
 
-// One test_function anywhere in an analyzed program: its dotted name, the
-// declaration span, and the file holding it. The caller narrows spans to
-// name tokens with each file's own text (workspace-wide discovery has no
-// single document to borrow text from).
+/**
+ * One test_function anywhere in an analyzed program: its dotted name, the
+ * declaration span, and the file holding it. The caller narrows spans to
+ * name tokens with each file's own text (workspace-wide discovery has no
+ * single document to borrow text from).
+ */
 struct TestSpan {
   std::string id;
   std::string label;

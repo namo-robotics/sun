@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+/** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
 
 // sun fmt [--check] <file.sun|directory>...

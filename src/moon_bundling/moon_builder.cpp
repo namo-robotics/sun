@@ -22,14 +22,18 @@
 
 using sun::support::SourceFileId;
 
+/** Builds and loads compiled Moon libraries and their declaration metadata. */
 namespace sun::moon_bundling {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
+/** Reports the operation's failure as a compiler error and stops processing. */
 [[noreturn]] void fail(const std::string& message) {
   throw sun::support::SunError(sun::support::SunError::Kind::Compile, message);
 }
 
+/** Reads all bytes from an input file or reports a compiler error. */
 std::string readWholeFile(const std::string& path, const char* what) {
   std::ifstream in(path, std::ios::binary);
   if (!in) fail(std::string("Cannot read ") + what + ": " + path);
@@ -37,10 +41,12 @@ std::string readWholeFile(const std::string& path, const char* what) {
                      std::istreambuf_iterator<char>());
 }
 
-// A native archive named by the manifest's `archives:`, read once: its
-// digest joins the input hash and the archive set hash, its symbols decide
-// which externs bind to it, and its bytes are rewritten under the set hash
-// when the bundle is written.
+/**
+ * A native archive named by the manifest's `archives:`, read once: its
+ * digest joins the input hash and the archive set hash, its symbols decide
+ * which externs bind to it, and its bytes are rewritten under the set hash
+ * when the bundle is written.
+ */
 struct OwnArchive {
   std::string path;
   std::string name;  // file name carried in the bundle
@@ -48,9 +54,11 @@ struct OwnArchive {
   std::string digest;
 };
 
-// Fill in what a build would have reported about the bundle already on disk:
-// the modules it exports and the archives it took over from its imports.
-// Archives under `ownArchiveSetHash` are the bundle's own.
+/**
+ * Fill in what a build would have reported about the bundle already on disk:
+ * the modules it exports and the archives it took over from its imports.
+ * Archives under `ownArchiveSetHash` are the bundle's own.
+ */
 void describeExistingBundle(const std::filesystem::path& bundlePath,
                             const std::string& ownArchiveSetHash,
                             MoonBuildReport& report) {

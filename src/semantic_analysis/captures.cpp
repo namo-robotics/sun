@@ -11,6 +11,7 @@ using sun::ast::CaptureKind;
 using sun::ast::ExprAST;
 using sun::support::logAndThrowError;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 // -------------------------------------------------------------------
@@ -164,8 +165,10 @@ std::set<std::string> SemanticAnalyzer::collectFreeVariablesInBlock(
   return free;
 }
 
-// The first `this` inside the expression, if any. `this` is its own node
-// type, so free-variable collection never sees it as a name.
+/**
+ * The first `this` inside the expression, if any. `this` is its own node
+ * type, so free-variable collection never sees it as a name.
+ */
 static const ExprAST* findThisUse(const ExprAST& expr) {
   // A local type's receiver belongs to that type, not the enclosing lambda.
   if (expr.getType() == ASTNodeType::CLASS_DEFINITION ||

@@ -35,6 +35,7 @@ using sun::driver::Driver;
 using sun::semantic_analysis::SemanticAnalyzer;
 using sun::semantic_analysis::SemanticContext;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 /** Parse syntax without resolving any declaration signatures. */

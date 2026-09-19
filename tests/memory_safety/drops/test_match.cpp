@@ -6,6 +6,7 @@
 
 using sun::driver::executeString;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 const char* preamble = R"(
   var drops: i32 = 0;
@@ -18,6 +19,7 @@ const char* preamble = R"(
   enum Triple { Left(Res, Res, Res), Right(Res, Res, Res) }
 )";
 
+/** Builds a complete test program around the supplied scenario. */
 std::string program(const std::string& body) {
   return std::string(preamble) + body;
 }

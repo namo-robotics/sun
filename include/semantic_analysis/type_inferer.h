@@ -22,6 +22,7 @@
 #include "semantic_analysis/generic_specializer.h"
 #include "semantic_analysis/semantic_context.h"
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 using sun::ast::GenericCallAST;
 using sun::ast::MemberAccessAST;
@@ -34,6 +35,7 @@ class SemanticAnalyzer;
  */
 class TypeInferer {
  public:
+  /** Connects type inference to the active analyzer and generic specializer. */
   TypeInferer(SemanticContext &ctx, SemanticAnalyzer &sema,
               GenericSpecializer &generics)
       : ctx_(ctx), sema_(sema), generics_(generics) {}
@@ -176,14 +178,23 @@ class TypeInferer {
       const MemberAccessAST &memberAccess,
       const sun::semantic_analysis::TypePtr &objectType,
       const std::string &memberName);
+  /** Determines the semantic type of the class member from its declarations and context. */
   sun::semantic_analysis::TypePtr inferClassMemberType(
       const MemberAccessAST &memberAccess,
       const sun::semantic_analysis::TypePtr &objectType,
       const std::string &memberName);
+  /**
+   * Determines the semantic type of the interface member from its declarations and
+   * context.
+   */
   sun::semantic_analysis::TypePtr inferInterfaceMemberType(
       const MemberAccessAST &memberAccess,
       const sun::semantic_analysis::TypePtr &objectType,
       const std::string &memberName);
+  /**
+   * Determines the semantic type of the parameter member from its declarations and
+   * context.
+   */
   sun::semantic_analysis::TypePtr inferTypeParameterMemberType(
       const MemberAccessAST &memberAccess,
       const sun::semantic_analysis::TypePtr &objectType,
@@ -196,10 +207,16 @@ class TypeInferer {
    */
   sun::semantic_analysis::TypePtr inferCallType(
       const sun::ast::CallExprAST &callExpr);
+  /**
+   * Determines the semantic type of the variable reference from its declarations and
+   * context.
+   */
   sun::semantic_analysis::TypePtr inferVariableReferenceType(
       const sun::ast::VariableReferenceAST &varRef);
+  /** Determines the semantic type of the index from its declarations and context. */
   sun::semantic_analysis::TypePtr inferIndexType(
       const sun::ast::IndexAST &arrIdx);
+  /** Determines the semantic type of the array literal from its declarations and context. */
   sun::semantic_analysis::TypePtr inferArrayLiteralType(
       const sun::ast::ArrayLiteralAST &arrLit);
 

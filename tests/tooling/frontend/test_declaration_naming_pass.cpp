@@ -22,6 +22,7 @@ using sun::ast::ModuleAST;
 using sun::driver::executeString;
 using sun::semantic_analysis::SemanticAnalyzer;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 /** Parse declarations without performing semantic analysis. */

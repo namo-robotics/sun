@@ -5,6 +5,7 @@
 
 using namespace llvm;
 
+/** Generates enum representations and operations on enum values. */
 namespace sun::codegen::enums {
 
 // -------------------------------------------------------------------
