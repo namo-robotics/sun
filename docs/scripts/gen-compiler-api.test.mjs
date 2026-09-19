@@ -5,6 +5,7 @@ import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, rmSyn
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import { compile } from '@mdx-js/mdx'
+import { remarkHeadings } from 'nextra/mdx-plugins/remark-headings'
 import { parseXml, renderReference, renderNamespaceTree, renderSymbolTree, writeReference } from './gen-compiler-api.mjs'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
@@ -109,8 +110,8 @@ test('builds one categorized tree with nested types, members, enum values and st
   assert.equal(get(get(get(files, 'src/demo.cpp'), 'Structs'), 'std::hash< sun::demo::Box >').href, '/compiler-api/hash_box')
   const box = get(get(demo, 'Classes'), 'Box')
   assert.equal(box.kind, undefined)
-  assert.equal(get(get(box, 'Public Functions'), 'read').href, '/compiler-api/class_demo#read_bool')
-  assert.equal(get(get(box, 'Private Functions'), 'read').href, '/compiler-api/class_demo#read_int')
+  assert.equal(get(get(box, 'Functions'), 'read').href, '/compiler-api/class_demo#read_bool-overloads')
+  assert.equal(get(box, 'Functions').children.length, 1)
   assert.equal(get(get(box, 'Structs'), 'Nested').href, '/compiler-api/nested')
   assert.equal(get(get(get(get(box, 'Public Enums'), 'Mode'), 'Enum Values'), 'Ready').href, '/compiler-api/class_demo#ready')
   assert.equal(get(get(demo, 'Functions'), 'helper').href, '/compiler-api/namespace_demo#helper')
@@ -309,7 +310,8 @@ static int helper() { int localOnly = 1; return localOnly; }
     const pages = renderReference(compounds, revision)
     const all = [...pages.values()].join('\n')
     const box = [...pages.values()].find(p => p.startsWith('# sun::demo::Box\n'))
-    assert.equal((box.match(/### read\n/g) || []).length, 2)
+    assert.equal((box.match(/^### read\n/gm) || []).length, 1)
+    assert.equal((box.match(/^<h4[^>]*>read\(/gm) || []).length, 2)
     assert.ok(!pages.has('classsun_1_1deep_1_1imports_1_1Box.mdx'))
     assert.ok(!pages.has('classBox.mdx'), 'using declarations must not create duplicate type pages')
     assert.doesNotMatch(pages.get('classes.mdx'), /File scope/)
@@ -329,4 +331,44 @@ static int helper() { int localOnly = 1; return localOnly; }
     checkLinks(pages)
     for (const [name, page] of pages) if (name.endsWith('.mdx')) await compile(page)
   } finally { rmSync(work, { recursive: true, force: true }) }
+})
+
+
+test('lists overloaded functions once and preserves each signature, comment and anchor', async () => {
+  const input = fixture()
+  const namespace = input[0]
+  const first = namespace.getElementsByTagName('memberdef')[0]
+  const second = first.cloneNode(true)
+  second.setAttribute('id', 'helper_value')
+  second.getElementsByTagName('argsstring')[0].textContent = '(int value)'
+  second.getElementsByTagName('briefdescription')[0].textContent = 'Find a box by its value.'
+  first.parentNode.appendChild(second)
+  const pages = renderReference(input, revision)
+  const page = pages.get('namespace_demo.mdx')
+  assert.equal((page.match(/^- \[helper\]/gm) || []).length, 1)
+  assert.equal((page.match(/^### helper$/gm) || []).length, 1)
+  assert.match(page, /^<h4[^>]*>helper\(\)<\/h4>$/m)
+  assert.match(page, /^<h4[^>]*>helper\(int value\)<\/h4>$/m)
+  assert.match(page, /Find a box by its value/)
+  assert.match(page, /id="helper"/)
+  assert.match(page, /id="helper_value"/)
+  assert.match(page, /id="helper-overloads"/)
+  const compiled = await compile(page, { remarkPlugins: [[remarkHeadings, { isRemoteContent: true }]] })
+  assert.equal(compiled.data.headings.filter(heading => heading.value === 'helper').length, 1)
+  assert.ok(!compiled.data.headings.some(heading => heading.value.startsWith('helper(')))
+  assert.equal((pages.get('functions.mdx').match(/>helper</g) || []).length, 1)
+  assert.equal((pages.get('file_demo.mdx').match(/^- \[helper\]/gm) || []).length, 1)
+  assert.match(pages.get('file_demo.mdx'), /namespace_demo#helper-overloads/)
+  const tree = JSON.parse(pages.get('tree.json'))
+  const functions = tree.find(n => n.label === 'sun').children.find(n => n.label === 'demo').children.find(n => n.label === 'Functions')
+  assert.deepEqual(functions.children, [{ label: 'helper', href: '/compiler-api/namespace_demo#helper-overloads', children: [] }])
+  const box = pages.get('class_demo.mdx')
+  assert.equal((box.match(/^### read$/gm) || []).length, 1)
+  assert.match(box, /^<h4[^>]*>read\(bool value\)<\/h4>$/m)
+  assert.match(box, /^<h4[^>]*>read\(int value\)<\/h4>$/m)
+  assert.match(box, /private · function/)
+  assert.match(box, /public · function/)
+  checkLinks(pages)
+  for (const [name, content] of pages) if (name.endsWith('.mdx')) await compile(content)
+  assert.deepEqual(renderReference([...input].reverse(), revision), pages)
 })

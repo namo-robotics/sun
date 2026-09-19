@@ -301,6 +301,41 @@ export function renderReference(compounds, revision) {
       }
     }
   }
+  // Navigation points to overload groups; references retain their exact signatures.
+  const listRefs = new Map(refs)
+  const overloads = new Map()
+  const functionCategories = new Map()
+  const seenFunctions = new Set()
+  for (const { compound: owner, member } of declarationMembers) {
+    const id = attr(member, 'id')
+    if (owners.get(id) !== owner || aliases.has(id) || seenFunctions.has(id) || attr(member, 'kind') !== 'function') continue
+    seenFunctions.add(id)
+    const key = JSON.stringify([attr(owner, 'id'), attr(member, 'data-sun-namespace'), value(member, 'qualifiedname') || value(member, 'name')])
+    if (!overloads.has(key)) overloads.set(key, [])
+    overloads.get(key).push(member)
+  }
+  for (const entries of overloads.values()) {
+    if (entries.length < 2) continue
+    entries.sort((a, b) => compare(attr(a, 'id'), attr(b, 'id')))
+    const firstId = attr(entries[0], 'id')
+    const href = `${refs.get(firstId)}-overloads`
+    const owner = owners.get(firstId)
+    const categories = new Set(entries.map(n => memberGroup(n, attr(owner, 'kind'))))
+    for (const member of entries) {
+      listRefs.set(attr(member, 'id'), href)
+      // Mixed-access overloads share a neutral category and retain access in their details.
+      if (categories.size > 1) functionCategories.set(attr(member, 'id'), 'Functions')
+    }
+  }
+  for (const [id] of aliases) {
+    const target = canonicalId(id)
+    if (listRefs.has(target)) listRefs.set(id, listRefs.get(target))
+    if (functionCategories.has(target)) functionCategories.set(id, functionCategories.get(target))
+  }
+  /** Selects a member category without splitting mixed-access overloads. */
+  const typeMemberGroup = (member, kind) => functionCategories.get(attr(member, 'id')) || memberGroup(member, kind)
+  /** Keeps one navigation entry for each destination. */
+  const uniqueMembers = entries => [...new Map(entries.map(n => [listRefs.get(attr(n, 'id')), n])).values()]
   const pages = new Map()
   const meta = {}
   const groups = [
@@ -332,7 +367,7 @@ export function renderReference(compounds, revision) {
         for (const member of descendants(compound, 'memberdef')) {
           if (attr(member, 'kind') !== kind || owners.get(attr(member, 'id')) !== compound || aliases.has(attr(member, 'id'))) continue
           const name = value(member, 'qualifiedname') || (attr(compound, 'kind') === 'file' ? value(member, 'name') : `${compoundName(compound)}::${value(member, 'name')}`)
-          entries.push([name, refs.get(attr(member, 'id')), attr(member, 'data-sun-namespace') || namespaceFor(compound), attr(child(member, 'location'), 'file') || attr(child(compound, 'location'), 'file') || (attr(compound, 'kind') === 'file' ? compoundName(compound) : '')])
+          entries.push([name, listRefs.get(attr(member, 'id')), attr(member, 'data-sun-namespace') || namespaceFor(compound), attr(child(member, 'location'), 'file') || attr(child(compound, 'location'), 'file') || (attr(compound, 'kind') === 'file' ? compoundName(compound) : '')])
         }
       }
     }
@@ -341,7 +376,7 @@ export function renderReference(compounds, revision) {
     entries.sort((a, b) => compare(a[0], b[0]) || compare(a[1], b[1]))
     pages.set(`${slug}.mdx`, slug === 'namespaces'
       ? renderNamespaceTree(compounds.filter(n => attr(n, 'kind') === 'namespace'), refs)
-      : slug === 'files' ? `# ${label}\n\n${entries.map(([name, href]) => `- ${link(name, href)}`).join('\n')}\n` : renderSymbolTree(label, entries, namespaces, refs))
+      : slug === 'files' ? `# ${label}\n\n${entries.map(([name, href]) => `- ${link(name, href)}`).join('\n')}\n` : renderSymbolTree(label, [...new Map(entries.map(entry => [entry[1], entry])).values()], namespaces, refs))
   }
   // Build one hierarchy, attaching nested types and members to their canonical owner.
   const tree = []
@@ -397,8 +432,9 @@ export function renderReference(compounds, revision) {
       const type = nodes.get(attr(compound, 'id'))
       const namespace = attr(member, 'data-sun-namespace') || namespaceFor(compound)
       const parent = type || (namespace && namedSunNamespace(visibleName(namespace)) ? scope(namespace) : fileScope(attr(child(member, 'location'), 'file') || attr(child(compound, 'location'), 'file') || (attr(compound, 'kind') === 'file' ? compoundName(compound) : '')))
-      const label = type ? memberGroup(member, attr(compound, 'kind')) : ({ variable: 'Variables', define: 'Macros' }[attr(member, 'kind')] || memberKinds[attr(member, 'kind')] || 'Other Symbols')
-      const node = { label: value(member, 'name'), href: refs.get(id), children: [] }
+      const label = type ? typeMemberGroup(member, attr(compound, 'kind')) : ({ variable: 'Variables', define: 'Macros' }[attr(member, 'kind')] || memberKinds[attr(member, 'kind')] || 'Other Symbols')
+      const node = { label: value(member, 'name'), href: listRefs.get(id), children: [] }
+      if (group(parent, label).children.some(entry => entry.href === node.href)) continue
       const values = children(member, 'enumvalue')
       if (values.length) group(node, 'Enum Values').children.push(...values.map(entry => ({ label: value(entry, 'name'), href: refs.get(attr(entry, 'id')), children: [] })))
       group(parent, label).children.push(node)
@@ -438,20 +474,29 @@ export function renderReference(compounds, revision) {
       }
     }
     const members = [...new Map(descendants(compound, 'memberdef').map(n => [attr(n, 'id'), n])).values()]
-      .sort((a, b) => compare(attr(a, 'kind'), attr(b, 'kind')) || compare(value(a, 'name'), value(b, 'name')) || compare(attr(a, 'id'), attr(b, 'id')))
+      .sort((a, b) => compare(attr(a, 'kind'), attr(b, 'kind')) || compare(value(a, 'name'), value(b, 'name')) || compare(listRefs.get(attr(a, 'id')), listRefs.get(attr(b, 'id'))) || compare(attr(a, 'id'), attr(b, 'id')))
     const memberGroups = new Map()
     for (const member of members) {
-      const label = declaration ? memberGroup(member, attr(compound, 'kind')) : isNamespace ? ({ variable: 'Variables', define: 'Macros' }[attr(member, 'kind')] || memberKinds[attr(member, 'kind')] || 'Other Symbols') : 'Members'
+      const label = declaration ? typeMemberGroup(member, attr(compound, 'kind')) : isNamespace ? ({ variable: 'Variables', define: 'Macros' }[attr(member, 'kind')] || memberKinds[attr(member, 'kind')] || 'Other Symbols') : 'Members'
       if (!memberGroups.has(label)) memberGroups.set(label, [])
       memberGroups.get(label).push(member)
     }
     const sectionOrder = isNamespace ? ['Functions', 'Variables', 'Enums', 'Type Aliases', 'Macros', 'Friends', 'Other Symbols'] : ['Public', 'Protected', 'Private'].flatMap(access => [...Object.values(memberKinds), 'Other Members'].map(kind => `${access} ${kind}`))
     for (const [label, entries] of [...memberGroups].sort(([a], [b]) => sectionOrder.indexOf(a) - sectionOrder.indexOf(b))) {
-      page += `## ${label}\n\n${entries.map(n => `- ${link(value(n, 'name'), refs.get(attr(n, 'id')))}`).join('\n')}\n\n`
+      page += `## ${label}\n\n${uniqueMembers(entries).map(n => `- ${link(value(n, 'name'), listRefs.get(attr(n, 'id')))}`).join('\n')}\n\n`
+      const renderedGroups = new Set()
       for (const member of entries) {
         const memberId = attr(member, 'id')
         if (owners.get(memberId) !== compound || aliases.has(memberId)) continue
-        page += `<a id="${memberId}" />\n\n### ${escape(value(member, 'name'))}\n\n${[attr(member, 'prot'), attr(member, 'kind'), attr(member, 'static') === 'yes' ? 'static' : ''].filter(Boolean).join(' · ')} · ${sourceLink(member, revision)}\n${fence(visibleName(signature(member)))}${description(member, refs)}\n\n`
+        const groupHref = listRefs.get(memberId)
+        const grouped = groupHref !== refs.get(memberId)
+        if (grouped && !renderedGroups.has(groupHref)) {
+          page += `<a id="${groupHref.split('#')[1]}" />\n\n### ${escape(value(member, 'name'))}\n\n`
+          renderedGroups.add(groupHref)
+        }
+        // Explicit headings keep overload details out of Nextra's generated table of contents.
+        const heading = grouped ? `<h4 className="nx-mt-8 nx-text-xl nx-font-semibold nx-tracking-tight">${escape(value(member, 'name') + value(member, 'argsstring')).replace(/\s+/g, ' ')}</h4>` : `### ${escape(value(member, 'name'))}`
+        page += `<a id="${memberId}" />\n\n${heading}\n\n${[attr(member, 'prot'), attr(member, 'kind'), attr(member, 'static') === 'yes' ? 'static' : ''].filter(Boolean).join(' · ')} · ${sourceLink(member, revision)}\n${fence(visibleName(signature(member)))}${description(member, refs)}\n\n`
         const typeRefs = [...new Map(descendants(member, 'ref').filter(n => refs.has(attr(n, 'refid'))).map(n => [attr(n, 'refid'), n])).values()]
         if (typeRefs.length) page += `Related: ${typeRefs.map(n => link(visibleName(n.textContent), refs.get(attr(n, 'refid')))).join(', ')}\n\n`
         for (const entry of children(member, 'enumvalue')) page += `<a id="${safeId(attr(entry, 'id'))}" />\n\n#### ${escape(value(entry, 'name'))}\n\n${code(`${value(entry, 'name')} ${value(entry, 'initializer')}`.trim())}\n\n${description(entry, refs)}\n\n`
