@@ -21,7 +21,9 @@
 #include "semantic_analysis/visibility.h"
 #include "support/error.h"
 
-namespace sun {
+namespace sun::semantic_analysis {
+using sun::ast::TypeConstraint;
+using sun::support::logAndThrowError;
 
 // Forward declarations
 class Type;
@@ -632,13 +634,13 @@ class StaticPointerType : public Type {
     if (!cachedLLVMType) {
       // Check if the type already exists in the context (avoids creating
       // duplicates like static_ptr_struct.0, static_ptr_struct.1, etc.)
-      cachedLLVMType =
-          llvm::StructType::getTypeByName(ctx, sun::StructNames::StaticPtr);
+      cachedLLVMType = llvm::StructType::getTypeByName(
+          ctx, sun::semantic_analysis::StaticPtr);
       if (!cachedLLVMType) {
         cachedLLVMType = llvm::StructType::create(
             ctx,
             {llvm::PointerType::getUnqual(ctx), llvm::Type::getInt64Ty(ctx)},
-            sun::StructNames::StaticPtr);
+            sun::semantic_analysis::StaticPtr);
       }
     }
     return cachedLLVMType;
@@ -950,7 +952,7 @@ class ArrayType : public Type {
   static llvm::StructType* getArrayStructType(llvm::LLVMContext& ctx) {
     // Check for existing named type to avoid duplicates
     if (auto* existing = llvm::StructType::getTypeByName(
-            ctx, sun::StructNames::ArrayStruct)) {
+            ctx, sun::semantic_analysis::ArrayStruct)) {
       return existing;
     }
     return llvm::StructType::create(
@@ -960,7 +962,7 @@ class ArrayType : public Type {
             llvm::Type::getInt32Ty(ctx),        // ndims
             llvm::PointerType::getUnqual(ctx)   // dims ptr (points to i64[])
         },
-        sun::StructNames::ArrayStruct);
+        sun::semantic_analysis::ArrayStruct);
   }
 
   // A sized array is its inline storage; an unsized one is the view struct
@@ -1082,7 +1084,8 @@ struct ClassField {
   std::string name;
   TypePtr type;
   size_t index;  // Index in the struct
-  sun::Visibility visibility = sun::Visibility::Private;
+  sun::semantic_analysis::Visibility visibility =
+      sun::semantic_analysis::Visibility::Private;
   DeclarationId declarationId;
 };
 
@@ -1096,7 +1099,8 @@ struct ClassMethod {
   bool canThrow = false;  // declared with 'throws IError' — may unwind
   bool isUnsafe = false;  // Calls require an unsafe block.
   bool isConst = false;   // `const function`: does not change `this`
-  sun::Visibility visibility = sun::Visibility::Private;
+  sun::semantic_analysis::Visibility visibility =
+      sun::semantic_analysis::Visibility::Private;
   bool isSynthesizedConstructor = false;
   DeclarationId declarationId;
   DeclarationId defaultImplementation;
@@ -1145,13 +1149,14 @@ class ClassType : public NominalType {
       name_;  // Source-qualified spelling for diagnostic type signatures.
   std::string
       baseName_;  // User-written base name (e.g., "Unique") for error messages
-  sun::QualifiedName qualifiedName_;  // Structured qualified name for scoping
+  sun::semantic_analysis::QualifiedName
+      qualifiedName_;  // Structured qualified name for scoping
   std::vector<std::string>
       typeParameters;  // Type params: ["T", "U"] for generic definitions
   std::vector<TypePtr>
       typeArguments;            // Type args: [i32] for specialized classes
   std::string baseGenericName;  // For specialized: original generic class name
-  sun::QualifiedName
+  sun::semantic_analysis::QualifiedName
       genericQualifiedName_;  // For specialized: the generic's qualified name
   std::vector<ClassField> fields;
   std::vector<ClassMethod> methods;
@@ -1169,7 +1174,8 @@ class ClassType : public NominalType {
   mutable llvm::StructType* cachedLLVMType = nullptr;
 
  public:
-  sun::Visibility visibility = sun::Visibility::Private;
+  sun::semantic_analysis::Visibility visibility =
+      sun::semantic_analysis::Visibility::Private;
 
   const std::vector<std::string>& getLifetimeParams() const {
     return lifetimeParams_;
@@ -1203,8 +1209,10 @@ class ClassType : public NominalType {
   bool hasBaseName() const { return !baseName_.empty(); }
 
   // Qualified name accessors
-  const sun::QualifiedName& getQualifiedName() const { return qualifiedName_; }
-  void setQualifiedName(sun::QualifiedName qn) {
+  const sun::semantic_analysis::QualifiedName& getQualifiedName() const {
+    return qualifiedName_;
+  }
+  void setQualifiedName(sun::semantic_analysis::QualifiedName qn) {
     qualifiedName_ = std::move(qn);
   }
   bool hasQualifiedName() const { return !qualifiedName_.baseName.empty(); }
@@ -1245,10 +1253,10 @@ class ClassType : public NominalType {
   const std::string& getBaseGenericName() const { return baseGenericName; }
   // Qualified name of the generic this specialization was instantiated from
   // (scope path + plain base name), for scope-tree lookups
-  const sun::QualifiedName& getGenericQualifiedName() const {
+  const sun::semantic_analysis::QualifiedName& getGenericQualifiedName() const {
     return genericQualifiedName_;
   }
-  void setGenericQualifiedName(sun::QualifiedName qn) {
+  void setGenericQualifiedName(sun::semantic_analysis::QualifiedName qn) {
     genericQualifiedName_ = std::move(qn);
   }
   bool isGenericDefinition() const { return !typeParameters.empty(); }
@@ -1285,7 +1293,7 @@ class ClassType : public NominalType {
                        DeclarationId id = {}) {
     // Caller should check hasField() first and report error with position
     fields.push_back({fieldName, std::move(fieldType), fields.size(),
-                      sun::Visibility::Private, id});
+                      sun::semantic_analysis::Visibility::Private, id});
     return fields.back();
   }
 
@@ -1600,15 +1608,14 @@ class ClassType : public NominalType {
   bool isPacked() const { return isPacked_; }
   void setPacked(bool v) { isPacked_ = v; }
 
-
-
 };
 
 // Interface field information
 struct InterfaceField {
   std::string name;
   TypePtr type;
-  sun::Visibility visibility = sun::Visibility::Private;
+  sun::semantic_analysis::Visibility visibility =
+      sun::semantic_analysis::Visibility::Private;
   DeclarationId declarationId;
 };
 
@@ -1621,7 +1628,8 @@ struct InterfaceMethod {
   bool hasDefaultImpl;    // true if this method has a default implementation
   bool isUnsafe = false;  // Calls require an unsafe block.
   bool isConst = false;   // `const function`: does not change `this`
-  sun::Visibility visibility = sun::Visibility::Private;
+  sun::semantic_analysis::Visibility visibility =
+      sun::semantic_analysis::Visibility::Private;
 
   DeclarationId declarationId;
 
@@ -1645,25 +1653,26 @@ class InterfaceType : public NominalType {
       baseGenericName;  // For specialized: original generic interface name
   std::vector<InterfaceField> fields;
   std::vector<InterfaceMethod> methods;
-  sun::QualifiedName qualifiedName_;
+  sun::semantic_analysis::QualifiedName qualifiedName_;
   // Lifetime names the interface DECLARES ('interface ISink<'a>').
   // Declarations only, never bindings - see ClassType::lifetimeParams_.
   std::vector<std::string> lifetimeParams_;
 
-  sun::QualifiedName genericQualifiedName_;
+  sun::semantic_analysis::QualifiedName genericQualifiedName_;
 
  public:
   /** The original template name, independent of specialization and source
    * aliases. */
-  const sun::QualifiedName& getGenericQualifiedName() const {
+  const sun::semantic_analysis::QualifiedName& getGenericQualifiedName() const {
     return genericQualifiedName_;
   }
   /** Record the template that produced this type. */
-  void setGenericQualifiedName(sun::QualifiedName name) {
+  void setGenericQualifiedName(sun::semantic_analysis::QualifiedName name) {
     genericQualifiedName_ = std::move(name);
   }
 
-  sun::Visibility visibility = sun::Visibility::Private;
+  sun::semantic_analysis::Visibility visibility =
+      sun::semantic_analysis::Visibility::Private;
 
   const std::vector<std::string>& getLifetimeParams() const {
     return lifetimeParams_;
@@ -1675,8 +1684,10 @@ class InterfaceType : public NominalType {
   InterfaceType(std::string interfaceName) : name(std::move(interfaceName)) {}
 
   // Source spelling; declaration records carry module ownership.
-  const sun::QualifiedName& getQualifiedName() const { return qualifiedName_; }
-  void setQualifiedName(sun::QualifiedName qn) {
+  const sun::semantic_analysis::QualifiedName& getQualifiedName() const {
+    return qualifiedName_;
+  }
+  void setQualifiedName(sun::semantic_analysis::QualifiedName qn) {
     qualifiedName_ = std::move(qn);
   }
 
@@ -1719,8 +1730,8 @@ class InterfaceType : public NominalType {
     for (auto& existingField : fields) {
       if (existingField.name == fieldName) return existingField;
     }
-    fields.push_back(
-        {fieldName, std::move(fieldType), sun::Visibility::Private, id});
+    fields.push_back({fieldName, std::move(fieldType),
+                      sun::semantic_analysis::Visibility::Private, id});
     return fields.back();
   }
 
@@ -1848,12 +1859,12 @@ class InterfaceType : public NominalType {
   static llvm::StructType* getFatPointerType(llvm::LLVMContext& ctx) {
     // Check for existing named type to avoid duplicates
     if (auto* existing = llvm::StructType::getTypeByName(
-            ctx, sun::StructNames::InterfaceFat)) {
+            ctx, sun::semantic_analysis::InterfaceFat)) {
       return existing;
     }
     auto* ptrTy = llvm::PointerType::getUnqual(ctx);
     return llvm::StructType::create(ctx, {ptrTy, ptrTy},
-                                    sun::StructNames::InterfaceFat);
+                                    sun::semantic_analysis::InterfaceFat);
   }
 
   // Get the vtable struct type for this interface.
@@ -1941,26 +1952,29 @@ class EnumType : public NominalType {
   TypePtr underlyingType_ = std::make_shared<PrimitiveType>(Kind::Int32);
   std::string genericBase_;           // e.g. "Option" for Option_i32
   std::vector<TypePtr> genericArgs_;  // e.g. [i32] for Option_i32
-  sun::QualifiedName qualifiedName_;
+  sun::semantic_analysis::QualifiedName qualifiedName_;
 
-  sun::QualifiedName genericQualifiedName_;
+  sun::semantic_analysis::QualifiedName genericQualifiedName_;
 
  public:
   /** The original template name, independent of specialization and source
    * aliases. */
-  const sun::QualifiedName& getGenericQualifiedName() const {
+  const sun::semantic_analysis::QualifiedName& getGenericQualifiedName() const {
     return genericQualifiedName_;
   }
   /** Record the template that produced this type. */
-  void setGenericQualifiedName(sun::QualifiedName name) {
+  void setGenericQualifiedName(sun::semantic_analysis::QualifiedName name) {
     genericQualifiedName_ = std::move(name);
   }
 
-  sun::Visibility visibility = sun::Visibility::Private;
+  sun::semantic_analysis::Visibility visibility =
+      sun::semantic_analysis::Visibility::Private;
 
   // Source spelling; declaration records carry module ownership.
-  const sun::QualifiedName& getQualifiedName() const { return qualifiedName_; }
-  void setQualifiedName(sun::QualifiedName qn) {
+  const sun::semantic_analysis::QualifiedName& getQualifiedName() const {
+    return qualifiedName_;
+  }
+  void setQualifiedName(sun::semantic_analysis::QualifiedName qn) {
     qualifiedName_ = std::move(qn);
   }
 
@@ -2702,4 +2716,4 @@ inline bool RawPointerType::equals(const Type& other) const {
   return false;
 }
 
-}  // namespace sun
+}  // namespace sun::semantic_analysis

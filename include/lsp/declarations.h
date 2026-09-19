@@ -18,17 +18,22 @@
 #include "support/position.h"
 
 namespace sun::lsp {
+using sun::ast::BlockExprAST;
+using sun::ast::ExprAST;
+using sun::semantic_analysis::QualifiedName;
 
 // Type parameter name -> the type it stands for in one specialization
-using Bindings = std::vector<std::pair<std::string, sun::TypePtr>>;
+using Bindings =
+    std::vector<std::pair<std::string, sun::semantic_analysis::TypePtr>>;
 
 // Canonical form of a path that exists on disk; other paths are unchanged
 std::string normalizePath(const std::string& path);
 
-bool spanContains(const Position& loc, int offset);
+bool spanContains(const sun::support::Position& loc, int offset);
 
 // Text covered by a span, or empty when the span is missing or out of range
-std::string sliceSpan(const std::string& source, const Position& loc);
+std::string sliceSpan(const std::string& source,
+                      const sun::support::Position& loc);
 
 // ---------------------------------------------------------------------------
 // Locating the node under the cursor
@@ -47,7 +52,7 @@ class NodeFinder {
   bool visit(const ExprAST& node);
 
  private:
-  bool isDocumentFile(const Position& loc);
+  bool isDocumentFile(const sun::support::Position& loc);
 
   std::string documentPath_;
   int offset_;
@@ -82,7 +87,7 @@ const ExprAST* firstSpecialization(const ExprAST& node, Bindings& bindings);
 // it when the tree carries one (declarations loaded from a bundle). When the
 // stored comment is empty, the source at the location is consulted.
 struct Declaration {
-  Position location;
+  sun::support::Position location;
   std::string doc;
   const ExprAST* node = nullptr;  // Declaring node, when there is one
   // Declared name; empty when `location` already is the name token (a field,
@@ -90,13 +95,13 @@ struct Declaration {
   std::string name;
 };
 
-bool isDefinition(ASTNodeType kind);
+bool isDefinition(sun::ast::ASTNodeType kind);
 
 // Name a module-level declaration is known by, or empty for other nodes
 std::string declarationName(const ExprAST& node);
 
 // Qualified name the analyzer gave a declaration, or empty
-sun::QualifiedName declarationQualifiedName(const ExprAST& node);
+QualifiedName declarationQualifiedName(const ExprAST& node);
 
 Declaration declarationOf(const ExprAST& node);
 
@@ -104,13 +109,14 @@ Declaration declarationOf(const ExprAST& node);
 // a plain name match when the reference was resolved by the analyzer
 const ExprAST* findDeclaration(const BlockExprAST& program,
                                const std::string& name,
-                               const sun::QualifiedName& qualified);
+                               const QualifiedName& qualified);
 
-const sun::Type* stripReference(const sun::Type* type);
+const sun::semantic_analysis::Type* stripReference(
+    const sun::semantic_analysis::Type* type);
 
 // Definition node (class, interface or enum) behind a type
 const ExprAST* findTypeDefinition(const BlockExprAST& program,
-                                  const sun::Type& type);
+                                  const sun::semantic_analysis::Type& type);
 
 // A member (method, field or variant) inside a definition
 std::optional<Declaration> findMember(const ExprAST& definition,
@@ -134,7 +140,7 @@ std::optional<Declaration> findDeclarationOf(
 // name there is looked up as a type.
 std::optional<Declaration> findMemberDeclaration(
     const BlockExprAST& program, const ExprAST& object,
-    const std::string& member, const sun::QualifiedName& qualifiedName);
+    const std::string& member, const QualifiedName& qualifiedName);
 
 // The nearest enclosing function or lambda declaring `name` as a parameter
 std::optional<Declaration> findParameter(
@@ -167,30 +173,30 @@ std::optional<Declaration> findDeclarationAt(const BlockExprAST& program,
 // Catch clauses with the span that declares each one's binding: a binding
 // has no position of its own, so it is the text between the previous block
 // and the clause's body
-using CatchBindingFn =
-    std::function<void(const CatchClause&, const Position& header)>;
-void forEachCatchBinding(const TryCatchExprAST& tryCatch,
+using CatchBindingFn = std::function<void(
+    const sun::ast::CatchClause&, const sun::support::Position& header)>;
+void forEachCatchBinding(const sun::ast::TryCatchExprAST& tryCatch,
                          const CatchBindingFn& fn);
 
 // Text of the file a declaration lives in: the document itself, or a file
 // registered during compilation (another file of the same manifest); empty
 // when neither
-std::string sourceFor(const Position& declaration,
+std::string sourceFor(const sun::support::Position& declaration,
                       const std::string& documentPath,
                       const std::string& documentSource);
 
 // Every annotation written on a node: parameter and return types, a
 // variable's or loop variable's type, field and payload types, type
 // arguments, catch binding types
-using AnnotationFn = std::function<void(const TypeAnnotation&)>;
+using AnnotationFn = std::function<void(const sun::ast::TypeAnnotation&)>;
 void forEachAnnotation(const ExprAST& node, const AnnotationFn& fn);
 
 // The annotation under the cursor among those written on a node, or null
-const TypeAnnotation* annotationIn(const ExprAST& node, int offset);
+const sun::ast::TypeAnnotation* annotationIn(const ExprAST& node, int offset);
 
 // The user-defined type an annotation names, looking through `ref`,
 // pointer and array wrappers when their element has no span of its own
 const ExprAST* findAnnotatedType(const BlockExprAST& program,
-                                 const TypeAnnotation& annotation);
+                                 const sun::ast::TypeAnnotation& annotation);
 
 }  // namespace sun::lsp

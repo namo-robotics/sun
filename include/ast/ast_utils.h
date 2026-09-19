@@ -9,6 +9,8 @@
 #include "ast/expr_ast.h"  // Required for ExprAST::clone()
 #include "ast/type_annotation.h"
 
+namespace sun::ast {
+
 // Helper to clone a vector of unique_ptr<ExprAST>
 inline std::vector<std::unique_ptr<ExprAST>> cloneExprVector(
     const std::vector<std::unique_ptr<ExprAST>>& vec) {
@@ -30,3 +32,5 @@ inline std::vector<std::unique_ptr<TypeAnnotation>> cloneTypeAnnotationVector(
   }
   return result;
 }
+
+}  // namespace sun::ast

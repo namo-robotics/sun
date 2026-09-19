@@ -7,6 +7,8 @@
 
 #include "ast/expr_ast.h"
 
+namespace sun::ast {
+
 class IfExprAST : public ExprAST {
   std::unique_ptr<ExprAST> Cond, Then, Else;
 
@@ -35,3 +37,5 @@ class IfExprAST : public ExprAST {
   }
   std::string dotLabel() const override { return "If"; }
 };
+
+}  // namespace sun::ast

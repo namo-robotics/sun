@@ -4,6 +4,9 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+using sun::support::SunError;
+
 // ============================================================================
 // _is<T> Intrinsic Tests - Type Trait Checks
 // ============================================================================
@@ -1402,7 +1405,7 @@ TEST(Builtins_BitIntrinsics, bswap_u16_u32_u64) {
 // recordSpawnArgumentConversions). _spawn is only written inside
 // std.thread.spawn, so the program goes through the stdlib.
 TEST(Builtins_SpawnIntrinsic, rejects_a_throwing_function) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(compileStringWithStdlib(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::compileStringWithStdlib(R"(
     using std;
     using std.thread;
 

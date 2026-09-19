@@ -9,6 +9,23 @@
 #include "support/config.h"
 #include "support/error.h"
 
+using sun::semantic_analysis::QualifiedName;
+using sun::semantic_analysis::TypePtr;
+using sun::semantic_analysis::Types;
+
+using sun::ast::ASTNodeType;
+using sun::ast::BlockExprAST;
+using sun::ast::ClassDefinitionAST;
+using sun::ast::EnumDefinitionAST;
+using sun::ast::FunctionAST;
+using sun::ast::ModuleAST;
+using sun::ast::MoonScopeAST;
+using sun::ast::PrototypeAST;
+using sun::ast::VariableCreationAST;
+using sun::support::logAndThrowError;
+
+namespace sun::semantic_analysis {
+
 /*
  * Registers every type name in a module tree before class shapes are resolved.
  */
@@ -37,14 +54,15 @@ void DeclarationCollectionPass::collectTypeNames(BlockExprAST& block) {
         }
         enumType->setBaseName(enumDef.getName());
         enumType->setUnderlyingType(
-            sun::Types::fromString(enumDef.getUnderlyingTypeName()));
+            Types::fromString(enumDef.getUnderlyingTypeName()));
         enumType->visibility = enumDef.getVisibility();
         enumType->setQualifiedName(enumDef.getQualifiedName());
         ctx_.currentScope().declareEnum(enumDef.getName(), enumType);
         break;
       }
       case ASTNodeType::INTERFACE_DEFINITION: {
-        auto& interfaceDef = static_cast<InterfaceDefinitionAST&>(*expr);
+        auto& interfaceDef =
+            static_cast<sun::ast::InterfaceDefinitionAST&>(*expr);
         if (ctx_.lookupInterface(interfaceDef.getName())) break;
         if (interfaceDef.isGeneric()) {
           if (!ctx_.lookupGenericInterface(interfaceDef.getName())) {
@@ -56,8 +74,7 @@ void DeclarationCollectionPass::collectTypeNames(BlockExprAST& block) {
                                                         info);
           }
         } else {
-          sun::QualifiedName qualifiedInterface =
-              interfaceDef.getQualifiedName();
+          QualifiedName qualifiedInterface = interfaceDef.getQualifiedName();
           std::string interfaceName = qualifiedInterface.lookupName();
           auto interfaceType = ctx_.types()->getInterface(
               interfaceDef.getDeclarationId(), qualifiedInterface);
@@ -74,7 +91,7 @@ void DeclarationCollectionPass::collectTypeNames(BlockExprAST& block) {
       case ASTNodeType::CLASS_DEFINITION: {
         auto& classDef = static_cast<ClassDefinitionAST&>(*expr);
         if (classDef.isPartial() || ctx_.lookupClass(classDef.getName())) break;
-        sun::QualifiedName qualifiedClass = classDef.getQualifiedName();
+        QualifiedName qualifiedClass = classDef.getQualifiedName();
         if (classDef.isGeneric() || classDef.hasGenericMethods()) {
           GenericClassInfo genericInfo;
           genericInfo.AST = &classDef;
@@ -114,7 +131,7 @@ void DeclarationCollectionPass::collectTypeNames(BlockExprAST& block) {
   }
 }
 
-using sun::access::methodVisibility;
+using sun::semantic_analysis::methodVisibility;
 
 void DeclarationCollectionPass::run(BlockExprAST& block) {
   // Only hoist at module level (not inside function bodies where captures
@@ -182,7 +199,7 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
   for (const auto& expr : block.getBody()) {
     SemanticContext::SourceFileGuard sourceFile(ctx_, expr->getSourceFileId());
     if (expr->getType() == ASTNodeType::USING) {
-      registerUsing(static_cast<UsingAST&>(*expr));
+      registerUsing(static_cast<sun::ast::UsingAST&>(*expr));
     }
   }
 
@@ -218,14 +235,15 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
         }
         enumType->setBaseName(enumDef.getName());
         enumType->setUnderlyingType(
-            sun::Types::fromString(enumDef.getUnderlyingTypeName()));
+            Types::fromString(enumDef.getUnderlyingTypeName()));
         enumType->visibility = enumDef.getVisibility();
         enumType->setQualifiedName(enumDef.getQualifiedName());
         ctx_.currentScope().declareEnum(enumDef.getName(), enumType);
         break;
       }
       case ASTNodeType::INTERFACE_DEFINITION: {
-        auto& interfaceDef = static_cast<InterfaceDefinitionAST&>(*expr);
+        auto& interfaceDef =
+            static_cast<sun::ast::InterfaceDefinitionAST&>(*expr);
         // Skip if already registered
         if (ctx_.lookupInterface(interfaceDef.getName())) break;
         if (interfaceDef.isGeneric()) {
@@ -239,8 +257,7 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
           }
         } else {
           // Precompiled stubs carry their qualified name (content-hash scoped)
-          sun::QualifiedName qualifiedInterface =
-              interfaceDef.getQualifiedName();
+          QualifiedName qualifiedInterface = interfaceDef.getQualifiedName();
           std::string interfaceName = qualifiedInterface.lookupName();
           auto interfaceType = ctx_.types()->getInterface(
               interfaceDef.getDeclarationId(), qualifiedInterface);
@@ -260,7 +277,7 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
         // Skip if already registered
         if (ctx_.lookupClass(classDef.getName())) break;
         // Precompiled stubs carry their qualified name (content-hash scoped)
-        sun::QualifiedName qualifiedClass = classDef.getQualifiedName();
+        QualifiedName qualifiedClass = classDef.getQualifiedName();
         if (classDef.isGeneric() || classDef.hasGenericMethods()) {
           GenericClassInfo genericInfo;
           genericInfo.AST = &classDef;
@@ -312,7 +329,7 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
     if (expr->getType() != ASTNodeType::CLASS_DEFINITION) continue;
     auto& classDef = static_cast<ClassDefinitionAST&>(*expr);
     if (classDef.isPartial() || classDef.isGeneric()) continue;
-    sun::QualifiedName qualifiedClass = classDef.getQualifiedName();
+    QualifiedName qualifiedClass = classDef.getQualifiedName();
     if (ctx_.declarations().hasClassShape(classDef.getDeclarationId()))
       continue;
     auto classType = ctx_.lookupClass(classDef.getName());
@@ -422,11 +439,11 @@ void DeclarationCollectionPass::collectFunctionSignature(FunctionAST& func) {
     return;
   }
 
-  std::vector<sun::TypePtr> paramTypes;
+  std::vector<TypePtr> paramTypes;
   for (auto& [argName, argType] : proto.getMutableArgs()) {
     paramTypes.push_back(sema_.types().typeAnnotationToType(argType));
   }
-  sun::TypePtr returnType = sun::Types::Void();
+  TypePtr returnType = Types::Void();
   if (proto.hasReturnType()) {
     returnType = sema_.types().typeAnnotationToType(*proto.getReturnType());
   }
@@ -458,9 +475,9 @@ void DeclarationCollectionPass::collectExternVariable(
                      varCreate.getLocation());
   }
 
-  sun::TypePtr type =
+  TypePtr type =
       sema_.types().typeAnnotationToType(*varCreate.getTypeAnnotation());
-  sun::QualifiedName qualified = varCreate.getQualifiedName();
+  QualifiedName qualified = varCreate.getQualifiedName();
   varCreate.setResolvedType(type);
 
   auto found = ctx_.scope()->variables.find(varCreate.getName());
@@ -487,13 +504,13 @@ void DeclarationCollectionPass::collectExternVariable(
 
 void DeclarationCollectionPass::registerPrecompiledModuleVariable(
     VariableCreationAST& varCreate) {
-  sun::TypePtr type;
+  TypePtr type;
   if (varCreate.hasTypeAnnotation()) {
     type = sema_.types().typeAnnotationToType(*varCreate.getTypeAnnotation());
   } else if (varCreate.hasValue()) {
     // The declaration inferred its type, so the bundle kept the initializer
     // for its type alone. Codegen still only declares the symbol.
-    sema_.analyzeExpr(const_cast<ExprAST&>(*varCreate.getValue()));
+    sema_.analyzeExpr(const_cast<sun::ast::ExprAST&>(*varCreate.getValue()));
     type = varCreate.getValue()->getResolvedType();
   }
   if (!type) return;
@@ -517,7 +534,7 @@ void DeclarationCollectionPass::registerPrecompiledModuleVariable(
       varCreate.isConst(), varCreate.isCExtern(), varCreate.getDeclarationId());
 }
 
-void DeclarationCollectionPass::registerUsing(UsingAST& usingDecl) {
+void DeclarationCollectionPass::registerUsing(sun::ast::UsingAST& usingDecl) {
   // "using A.B;" where A.B is a module name means "import all from A.B"
   std::string namespacePath = usingDecl.getNamespacePathString();
   std::string target = usingDecl.getTarget();
@@ -560,8 +577,8 @@ void DeclarationCollectionPass::registerUsing(UsingAST& usingDecl) {
 }
 
 void DeclarationCollectionPass::registerClassShape(
-    ClassDefinitionAST& classDef, const sun::QualifiedName& qualifiedClass,
-    std::shared_ptr<sun::ClassType> classType) {
+    ClassDefinitionAST& classDef, const QualifiedName& qualifiedClass,
+    std::shared_ptr<sun::semantic_analysis::ClassType> classType) {
   if (!ctx_.declarations().noteClassShape(classDef.getDeclarationId())) return;
 
   // The class's declared lifetimes must be visible before any signature
@@ -581,9 +598,9 @@ void DeclarationCollectionPass::registerClassShape(
                            classDef.getName() + "'",
                        field.location);
     }
-    sun::TypePtr fieldType = sema_.types().typeAnnotationToType(field.type);
+    TypePtr fieldType = sema_.types().typeAnnotationToType(field.type);
 
-    if constexpr (sun::Config::FORBID_REF_FIELDS_IN_CLASSES) {
+    if constexpr (sun::support::Config::FORBID_REF_FIELDS_IN_CLASSES) {
       if (fieldType && fieldType->isReference()) {
         logAndThrowError("Field '" + field.name + "' in class '" +
                              classDef.getName() + "' has reference type '" +
@@ -666,9 +683,11 @@ void DeclarationCollectionPass::collectEnumDeclarations(const BlockExprAST& bloc
     }
     enumType->setBaseName(enumDef.getName());
     enumType->setUnderlyingType(
-        sun::Types::fromString(enumDef.getUnderlyingTypeName()));
+        Types::fromString(enumDef.getUnderlyingTypeName()));
     enumType->visibility = enumDef.getVisibility();
     enumType->setQualifiedName(enumDef.getQualifiedName());
     ctx_.currentScope().declareEnum(enumDef.getName(), enumType);
   }
 }
+
+}  // namespace sun::semantic_analysis

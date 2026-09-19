@@ -5,7 +5,7 @@
 
 #pragma once
 
-namespace sun {
+namespace sun::codegen::intrinsics {
 
 // Network intrinsic identifiers are defined in the main Intrinsic enum.
 // This header exists for organizational purposes and future expansion.
@@ -68,4 +68,4 @@ namespace sun {
 // SOCK_STREAM = 1, SOCK_DGRAM = 2
 // SOL_SOCKET = 1, SO_REUSEADDR = 2
 
-}  // namespace sun
+}  // namespace sun::codegen::intrinsics

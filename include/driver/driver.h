@@ -20,6 +20,14 @@
 #include "semantic_analysis/semantic_analyzer.h"
 #include "support/error.h"
 
+/** Coordinates compiler inputs, analysis, code generation, and execution. */
+namespace sun::driver {
+using sun::ast::BlockExprAST;
+using sun::moon_bundling::MoonImport;
+using sun::parsing::Parser;
+using sun::semantic_analysis::SemanticAnalyzer;
+using sun::semantic_analysis::TypeRegistry;
+
 /// Driver orchestrates the compilation pipeline: parse → analyze → codegen →
 /// execute. It owns all compilation components and provides static factory
 /// methods for easy construction.
@@ -42,9 +50,9 @@ class Driver {
 
  private:
   // Owned components
-  std::unique_ptr<CodegenContext> ctx;
-  std::shared_ptr<sun::TypeRegistry> typeRegistry;
-  std::unique_ptr<CodegenVisitor> codegenVisitor;
+  std::unique_ptr<sun::codegen::CodegenContext> ctx;
+  std::shared_ptr<TypeRegistry> typeRegistry;
+  std::unique_ptr<sun::codegen::CodegenVisitor> codegenVisitor;
   std::unique_ptr<SemanticAnalyzer> analyzer;
 
   // Base directory for resolving relative imports
@@ -64,7 +72,7 @@ class Driver {
   TestHandling testHandling_ = TestHandling::Strip;
 
   // Moon libraries to preload for single-file compilation modes
-  std::vector<sun::MoonImport> moonImports_;
+  std::vector<MoonImport> moonImports_;
   std::vector<std::string> protoFiles_;
   bool dumpProtoSun_ = false;
 
@@ -103,9 +111,9 @@ class Driver {
   void registerArchivesWithJIT();
 
   // Private constructor - use factory methods
-  Driver(std::unique_ptr<CodegenContext> ctx,
-         std::shared_ptr<sun::TypeRegistry> typeRegistry,
-         std::unique_ptr<CodegenVisitor> codegenVisitor,
+  Driver(std::unique_ptr<sun::codegen::CodegenContext> ctx,
+         std::shared_ptr<TypeRegistry> typeRegistry,
+         std::unique_ptr<sun::codegen::CodegenVisitor> codegenVisitor,
          std::unique_ptr<SemanticAnalyzer> analyzer)
       : ctx(std::move(ctx)),
         typeRegistry(std::move(typeRegistry)),
@@ -113,9 +121,9 @@ class Driver {
         analyzer(std::move(analyzer)) {}
 
   // Internal helper: run full pipeline on parsed AST
-  sun::SunValue runPipeline(std::unique_ptr<BlockExprAST> blockAst,
-                            Parser& parser, bool execute, int argc = 0,
-                            char** argv = nullptr);
+  sun::driver::SunValue runPipeline(std::unique_ptr<BlockExprAST> blockAst,
+                                    Parser& parser, bool execute, int argc = 0,
+                                    char** argv = nullptr);
 
   // Strip test functions (production builds) or collect them, make them
   // public and splice in the synthesized runner main (test builds). Runs
@@ -184,14 +192,14 @@ class Driver {
 
   /// Execute a source string with optional command-line arguments
   /// filePath is used for error messages (optional)
-  sun::SunValue executeString(const std::string& source, int argc = 0,
-                              char** argv = nullptr,
-                              const std::string& filePath = "");
+  sun::driver::SunValue executeString(const std::string& source, int argc = 0,
+                                      char** argv = nullptr,
+                                      const std::string& filePath = "");
 
   /// Execute a file with optional command-line arguments; returns main()'s
   /// value (VoidValue for void main)
-  sun::SunValue executeFile(const std::string& filename, int argc = 0,
-                            char** argv = nullptr);
+  sun::driver::SunValue executeFile(const std::string& filename, int argc = 0,
+                                    char** argv = nullptr);
 
   /// Compile a source string to IR without executing
   /// filePath is used for error messages (optional)
@@ -207,9 +215,9 @@ class Driver {
   /// editor tooling needs while a file is mid-edit.
   struct AnalyzedProgram {
     /** Keep declaration identities alive with the annotated syntax tree. */
-    std::shared_ptr<sun::TypeRegistry> typeRegistry;
+    std::shared_ptr<TypeRegistry> typeRegistry;
     std::unique_ptr<BlockExprAST> ast;
-    std::optional<SunError> error;
+    std::optional<sun::support::SunError> error;
   };
 
   /// Parse and analyze a source string without generating code
@@ -221,7 +229,7 @@ class Driver {
   /// used instead of the file on disk.
   AnalyzedProgram analyzeFiles(
       const std::vector<std::string>& sourceFiles,
-      const std::vector<sun::MoonImport>& moonImports = {},
+      const std::vector<MoonImport>& moonImports = {},
       const std::vector<std::string>& protoFiles = {},
       const std::map<std::string, std::string>& sourceOverrides = {});
 
@@ -233,7 +241,7 @@ class Driver {
 
   /// Set moon libraries to preload for single-file compilation modes
   /// (executeString, compileFile, etc.)
-  void setMoonImports(std::vector<sun::MoonImport> imports) {
+  void setMoonImports(std::vector<MoonImport> imports) {
     moonImports_ = std::move(imports);
   }
 
@@ -269,7 +277,7 @@ class Driver {
   /// @param moonImports Precompiled .moon libraries with optional aliasing
   /// @param protoFiles .proto schemas to synthesize into Sun modules
   void compileFiles(const std::vector<std::string>& sourceFiles,
-                    const std::vector<sun::MoonImport>& moonImports = {},
+                    const std::vector<MoonImport>& moonImports = {},
                     const std::vector<std::string>& protoFiles = {});
 
   /// Execute multiple source files with optional precompiled moon libraries
@@ -277,9 +285,9 @@ class Driver {
   /// @param moonImports Precompiled .moon libraries with optional aliasing
   /// @param argc Argument count for main()
   /// @param argv Argument vector for main()
-  sun::SunValue executeFiles(
+  sun::driver::SunValue executeFiles(
       const std::vector<std::string>& sourceFiles,
-      const std::vector<sun::MoonImport>& moonImports = {}, int argc = 0,
+      const std::vector<MoonImport>& moonImports = {}, int argc = 0,
       char** argv = nullptr, const std::vector<std::string>& protoFiles = {});
 
   /// Access the underlying module (for emitting object code after compilation)
@@ -308,3 +316,5 @@ class Driver {
   /// Print IR for all functions reachable from main() (includes stdlib)
   void printReachableIR();
 };
+
+}  // namespace sun::driver

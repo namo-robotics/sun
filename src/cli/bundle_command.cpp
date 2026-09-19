@@ -6,17 +6,20 @@
 #include "llvm/Support/raw_ostream.h"
 #include "support/error.h"
 
+using sun::moon_bundling::MoonBuildOptions;
+
 namespace sun::cli {
 
 int buildMoonBundle(const std::string& entrypoint,
                     const std::filesystem::path& outputPath,
-                    const sun::MoonBuildOptions& buildOptions) {
+                    const MoonBuildOptions& buildOptions) {
   try {
-    sun::MoonBuildOptions announced = buildOptions;
+    MoonBuildOptions announced = buildOptions;
     announced.onBuildStart = [&] {
       llvm::outs() << "Creating moon: " << outputPath.string() << "\n";
     };
-    auto report = sun::MoonBuilder::build(entrypoint, outputPath, announced);
+    auto report = sun::moon_bundling::MoonBuilder::build(entrypoint, outputPath,
+                                                         announced);
     if (report.upToDate) {
       llvm::outs() << "Up to date: " << outputPath.string() << "\n";
       return 0;
@@ -32,7 +35,7 @@ int buildMoonBundle(const std::string& entrypoint,
     }
     llvm::outs() << "Successfully created: " << outputPath.string() << "\n";
     return 0;
-  } catch (const SunError& e) {
+  } catch (const sun::support::SunError& e) {
     // Unlike the other commands, bundling prefixes compile errors with
     // "Error: ". The difference is deliberate: it keeps the output people
     // and scripts already see.
@@ -48,10 +51,10 @@ int runBundleCommand(const BuildRunOptions& options) {
   const std::string& entrypoint = options.inputFiles[0];
   std::filesystem::path outputPath =
       options.outputFile.empty()
-          ? sun::MoonBuilder::defaultOutputPath(entrypoint)
+          ? sun::moon_bundling::MoonBuilder::defaultOutputPath(entrypoint)
           : std::filesystem::path(options.outputFile);
 
-  sun::MoonBuildOptions buildOptions;
+  MoonBuildOptions buildOptions;
   buildOptions.targetTriple = options.targetTriple;
   buildOptions.debugInfo = options.shared.debugInfo;
   buildOptions.optimize = options.shared.optimize;

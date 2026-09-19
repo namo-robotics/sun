@@ -20,14 +20,15 @@
 #include "semantic_analysis/types.h"
 #include "support/position.h"
 
-namespace sun {
+namespace sun::codegen {
+using sun::semantic_analysis::TypePtr;
 
 class DebugInfoBuilder {
   llvm::Module* module_ = nullptr;
   std::unique_ptr<llvm::DIBuilder> di_;
   llvm::DICompileUnit* cu_ = nullptr;
   std::map<std::string, llvm::DIFile*> fileCache_;
-  std::map<const Type*, llvm::DIType*> typeCache_;
+  std::map<const sun::semantic_analysis::Type*, llvm::DIType*> typeCache_;
   // Innermost-last stack of subprogram / lexical block scopes for the
   // function currently being emitted (mirrors CodegenVisitor's scopes).
   std::vector<llvm::DIScope*> scopeStack_;
@@ -47,7 +48,7 @@ class DebugInfoBuilder {
   llvm::DISubprogram* enterFunction(llvm::IRBuilderBase& builder,
                                     llvm::Function* func,
                                     const std::string& name,
-                                    const Position& loc);
+                                    const sun::support::Position& loc);
   // Pop scopes down through this function's subprogram and finalize it.
   void exitFunction(llvm::Function* func);
 
@@ -56,14 +57,15 @@ class DebugInfoBuilder {
   // Returns true when a block was pushed (caller must pair with
   // popLexicalBlock); false when disabled or the insert point is in a
   // function without a subprogram.
-  bool pushLexicalBlock(llvm::IRBuilderBase& builder, const Position& loc);
+  bool pushLexicalBlock(llvm::IRBuilderBase& builder,
+                        const sun::support::Position& loc);
   void popLexicalBlock();
 
   // Set the builder's debug location for the expression about to be emitted:
   // scoped to the insert-point function's subprogram, or cleared when that
   // function has none. Call once per expression dispatch.
   void attachExpressionLocation(llvm::IRBuilderBase& builder,
-                                const Position& loc);
+                                const sun::support::Position& loc);
 
   // Drop the builder's debug location. Required when switching the insert
   // point into a function that has no subprogram (wrappers, init functions):
@@ -72,14 +74,14 @@ class DebugInfoBuilder {
 
   void declareParameter(llvm::IRBuilderBase& builder, llvm::AllocaInst* alloca,
                         const std::string& name, const TypePtr& type,
-                        const Position& loc, unsigned argNo,
+                        const sun::support::Position& loc, unsigned argNo,
                         bool artificial = false);
   // 'this' receiver: a pointer to the class struct, marked artificial.
   void declareThisParameter(llvm::IRBuilderBase& builder,
                             llvm::AllocaInst* alloca, const TypePtr& classType);
   void declareLocal(llvm::IRBuilderBase& builder, llvm::AllocaInst* alloca,
                     const std::string& name, const TypePtr& type,
-                    const Position& loc);
+                    const sun::support::Position& loc);
 
   llvm::DIType* resolveType(const TypePtr& type);
 
@@ -94,14 +96,15 @@ class DebugInfoBuilder {
   llvm::DICompileUnit* ensureCompileUnit(
       const std::optional<std::string>& hint);
   llvm::DILocalScope* currentLocalScope(llvm::Function* func) const;
-  llvm::DIType* resolveTypeImpl(const Type& type);
+  llvm::DIType* resolveTypeImpl(const sun::semantic_analysis::Type& type);
   llvm::DIType* pointerTo(llvm::DIType* pointee);
   llvm::DIType* structFor(
       const std::string& name, llvm::StructType* st,
       const std::vector<std::pair<std::string, llvm::DIType*>>& members);
   void declareVariable(llvm::IRBuilderBase& builder, llvm::AllocaInst* alloca,
-                       llvm::DILocalVariable* var, const Position& loc,
+                       llvm::DILocalVariable* var,
+                       const sun::support::Position& loc,
                        llvm::DILocalScope* scope);
 };
 
-}  // namespace sun
+}  // namespace sun::codegen

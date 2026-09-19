@@ -6,7 +6,7 @@
 #include "semantic_analysis/generic_type_arguments.h"
 #include "support/error.h"
 
-namespace sun::conversions {
+namespace sun::semantic_analysis {
 
 namespace {
 
@@ -103,8 +103,7 @@ std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
 
   // A template body is analyzed with its type parameters unbound; the real
   // decision is made when it is instantiated.
-  if (generics::mentionsTypeParameter(argType) ||
-      generics::mentionsTypeParameter(paramType)) {
+  if (mentionsTypeParameter(argType) || mentionsTypeParameter(paramType)) {
     return ArgConversion::PassValue;
   }
 
@@ -168,7 +167,7 @@ std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
 std::vector<ArgConversion> classifyArguments(
     const std::vector<TypePtr>& argTypes,
     const std::vector<TypePtr>& paramTypes, bool cVariadic,
-    const std::string& calleeName, std::optional<Position> loc) {
+    const std::string& calleeName, std::optional<sun::support::Position> loc) {
   std::vector<ArgConversion> conversions;
   conversions.reserve(argTypes.size());
   for (size_t i = 0; i < argTypes.size(); ++i) {
@@ -176,7 +175,7 @@ std::vector<ArgConversion> classifyArguments(
     bool tail = !paramType && cVariadic;
     auto conversion = classifyArgument(argTypes[i], paramType, tail);
     if (!conversion) {
-      logAndThrowError(
+      sun::support::logAndThrowError(
           "Type mismatch in argument " + std::to_string(i + 1) +
               " of call to '" + calleeName + "': expected " +
               (paramType ? paramType->toDisplayString() : "?") + ", got " +
@@ -190,4 +189,4 @@ std::vector<ArgConversion> classifyArguments(
   return conversions;
 }
 
-}  // namespace sun::conversions
+}  // namespace sun::semantic_analysis

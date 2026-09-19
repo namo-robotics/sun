@@ -13,14 +13,17 @@
 #include "parsing/lexer.h"
 #include "semantic_analysis/qualified_name.h"
 
+namespace sun::ast {
+using sun::semantic_analysis::Visibility;
+
 // Field declaration in an interface: var name: type;
 struct InterfaceFieldDecl {
   std::string name;
   TypeAnnotation type;
-  Position location;  // Source location of field declaration
-  sun::Visibility visibility = sun::Visibility::Private;
+  sun::support::Position location;  // Source location of field declaration
+  Visibility visibility = Visibility::Private;
   std::string doc;  // Comment written above the field
-  mutable sun::DeclarationIdentity declaration{};
+  mutable sun::semantic_analysis::DeclarationIdentity declaration{};
 };
 
 // Method declaration in an interface (uses FunctionAST internally)
@@ -29,7 +32,7 @@ struct InterfaceMethodDecl {
   std::unique_ptr<FunctionAST> function;
   bool hasDefaultImpl;   // true if method has a body (default implementation)
   bool isConst = false;  // `const function`: does not mutate `this`
-  sun::Visibility visibility() const { return function->getVisibility(); }
+  Visibility visibility() const { return function->getVisibility(); }
 };
 
 // Interface definition: interface Name<T, U> { fields and methods }
@@ -92,10 +95,10 @@ class InterfaceDefinitionAST : public ExprAST {
 
   const std::string& getName() const { return name; }
   // Qualified name (after semantic analysis qualifies it)
-  const sun::QualifiedName& getQualifiedName() const {
+  const sun::semantic_analysis::QualifiedName& getQualifiedName() const {
     return ifaceAnalysis().qualifiedName;
   }
-  void setQualifiedName(sun::QualifiedName qname) {
+  void setQualifiedName(sun::semantic_analysis::QualifiedName qname) {
     ifaceAnalysis().qualifiedName = std::move(qname);
   }
   bool hasQualifiedName() const {
@@ -149,3 +152,5 @@ class InterfaceDefinitionAST : public ExprAST {
   }
   std::string dotLabel() const override { return "Interface\n" + name; }
 };
+
+}  // namespace sun::ast

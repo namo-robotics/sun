@@ -8,7 +8,12 @@
 #include "codegen/intrinsics/intrinsics_generator.h"
 #include "support/error.h"
 
+using sun::ast::CallExprAST;
+using sun::support::logAndThrowError;
+
 using namespace llvm;
+
+namespace sun::codegen::intrinsics {
 
 // -------------------------------------------------------------------
 // Non-generic memory intrinsics: _load_i64, _store_i64, _malloc, _free
@@ -177,3 +182,5 @@ Value* IntrinsicsGenerator::codegenPtrOffsetIntrinsic(const CallExprAST& expr) {
   auto* i8Ty = llvm::Type::getInt8Ty(ctx.getContext());
   return ctx.builder->CreateGEP(i8Ty, ptr, offset, "ptr.offset");
 }
+
+}  // namespace sun::codegen::intrinsics

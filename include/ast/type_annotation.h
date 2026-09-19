@@ -10,13 +10,15 @@
 #include "semantic_analysis/portable_declaration_key.h"
 #include "support/position.h"
 
+namespace sun::ast {
+
 // Type annotation structure for parsed type info
 // Supports: i32, f64, bool, void, ptr<T>, ref T, function, lambda
 // Generic types: ClassName<T, U> for class instantiation
 // Array types: array<T, N> or array<T, M, N> for fixed-size arrays
 // Error union types: T, error (value or error)
 struct TypeAnnotation {
-  std::optional<sun::PortableDeclarationKey> declarationKey;
+  std::optional<sun::semantic_analysis::PortableDeclarationKey> declarationKey;
   std::string baseName;  // "i32", "f64", "ptr", "fn", "lambda", "array", etc.
   std::unique_ptr<TypeAnnotation>
       elementType;  // For ptr/ref/array: element type
@@ -54,7 +56,7 @@ struct TypeAnnotation {
 
   // Source span (includes the "throws IError" suffix when present); not
   // serialized
-  Position span{};
+  sun::support::Position span{};
 
   TypeAnnotation() = default;
   TypeAnnotation(std::string name) : baseName(std::move(name)) {}
@@ -237,3 +239,5 @@ struct TypeAnnotation {
     return result;
   }
 };
+
+}  // namespace sun::ast

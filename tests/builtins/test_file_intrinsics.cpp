@@ -15,6 +15,8 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+
 /*
  * A scratch directory per test process, removed with its files afterwards.
  * Unique per process so parallel ctest runs never delete each other's files.

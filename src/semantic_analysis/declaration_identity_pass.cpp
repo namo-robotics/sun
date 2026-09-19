@@ -3,7 +3,17 @@
 #include "ast.h"
 #include "ast/ast_children.h"
 
-namespace sun {
+using sun::ast::ASTNodeType;
+using sun::ast::ClassDefinitionAST;
+using sun::ast::EnumDefinitionAST;
+using sun::ast::ExprAST;
+using sun::ast::forEachChild;
+using sun::ast::InterfaceDefinitionAST;
+using sun::ast::MatchExprAST;
+using sun::ast::TryCatchExprAST;
+using sun::support::logAndThrowError;
+
+namespace sun::semantic_analysis {
 namespace {
 
 /** Register one imported binder or allocate a new source binder. */
@@ -155,7 +165,7 @@ void DeclarationIdentityPass::run(const ExprAST& root, DeclarationId owner,
   };
   switch (root.getType()) {
     case ASTNodeType::MOON_SCOPE: {
-      const auto& moon = static_cast<const MoonScopeAST&>(root);
+      const auto& moon = static_cast<const sun::ast::MoonScopeAST&>(root);
       table_.importRecords(moon.importedDeclarations);
       if (!moon.getContentHash().empty()) {
         owner = table_.module(moon.getContentHash(), module);
@@ -172,14 +182,15 @@ void DeclarationIdentityPass::run(const ExprAST& root, DeclarationId owner,
     }
     case ASTNodeType::MODULE:
       owner = declare(DeclarationKind::Module,
-                      static_cast<const ModuleAST&>(root).getName());
+                      static_cast<const sun::ast::ModuleAST&>(root).getName());
       module = owner;
       break;
     case ASTNodeType::FUNCTION:
     case ASTNodeType::LAMBDA: {
-      const auto& proto = root.getType() == ASTNodeType::FUNCTION
-                              ? static_cast<const FunctionAST&>(root).getProto()
-                              : static_cast<const LambdaAST&>(root).getProto();
+      const auto& proto =
+          root.getType() == ASTNodeType::FUNCTION
+              ? static_cast<const sun::ast::FunctionAST&>(root).getProto()
+              : static_cast<const sun::ast::LambdaAST&>(root).getProto();
       owner = declare(root.getType() == ASTNodeType::FUNCTION
                           ? DeclarationKind::Function
                           : DeclarationKind::Lambda,
@@ -271,19 +282,21 @@ void DeclarationIdentityPass::run(const ExprAST& root, DeclarationId owner,
       break;
     }
     case ASTNodeType::VARIABLE_CREATION:
-      declare(DeclarationKind::Variable,
-              static_cast<const VariableCreationAST&>(root).getName());
+      declare(
+          DeclarationKind::Variable,
+          static_cast<const sun::ast::VariableCreationAST&>(root).getName());
       break;
     case ASTNodeType::REFERENCE_CREATION:
-      declare(DeclarationKind::Reference,
-              static_cast<const ReferenceCreationAST&>(root).getName());
+      declare(
+          DeclarationKind::Reference,
+          static_cast<const sun::ast::ReferenceCreationAST&>(root).getName());
       break;
     case ASTNodeType::FOR_IN_LOOP:
       declare(DeclarationKind::Binding,
-              static_cast<const ForInExprAST&>(root).getLoopVar());
+              static_cast<const sun::ast::ForInExprAST&>(root).getLoopVar());
       break;
     case ASTNodeType::DECLARE_TYPE: {
-      const auto& node = static_cast<const DeclareTypeAST&>(root);
+      const auto& node = static_cast<const sun::ast::DeclareTypeAST&>(root);
       if (node.hasAlias()) declare(DeclarationKind::Alias, node.getAliasName());
       break;
     }
@@ -343,4 +356,4 @@ void resetAnalysisSession(const ExprAST& root) {
   root.resetAnalysisSession();
 }
 
-}  // namespace sun
+}  // namespace sun::semantic_analysis

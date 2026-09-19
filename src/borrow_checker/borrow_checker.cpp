@@ -12,7 +12,32 @@
 #include "support/config.h"
 #include "support/error.h"
 
-namespace sun {
+using sun::semantic_analysis::ClassType;
+using sun::semantic_analysis::LambdaType;
+using sun::semantic_analysis::ReferenceType;
+using sun::semantic_analysis::TypePtr;
+using sun::support::Config;
+
+using sun::ast::ArrayLiteralAST;
+using sun::ast::ASTNodeType;
+using sun::ast::BlockExprAST;
+using sun::ast::CallExprAST;
+using sun::ast::CaptureKind;
+using sun::ast::ExprAST;
+using sun::ast::exprDiverges;
+using sun::ast::GenericCallAST;
+using sun::ast::IndexAST;
+using sun::ast::LambdaAST;
+using sun::ast::MemberAccessAST;
+using sun::ast::ParenExprAST;
+using sun::ast::ReturnExprAST;
+using sun::ast::TernaryExprAST;
+using sun::ast::UnsafeBlockAST;
+using sun::ast::VariableReferenceAST;
+using sun::support::Position;
+using sun::support::SunError;
+
+namespace sun::borrow_checker {
 
 BorrowChecker::BorrowChecker() {}
 
@@ -50,15 +75,18 @@ std::vector<BorrowError> BorrowChecker::check(const BlockExprAST& program) {
 void BorrowChecker::checkExpr(const ExprAST& expr) {
   switch (expr.getType()) {
     case ASTNodeType::VARIABLE_CREATION:
-      checkVariableCreation(static_cast<const VariableCreationAST&>(expr));
+      checkVariableCreation(
+          static_cast<const sun::ast::VariableCreationAST&>(expr));
       break;
 
     case ASTNodeType::REFERENCE_CREATION:
-      checkReferenceCreation(static_cast<const ReferenceCreationAST&>(expr));
+      checkReferenceCreation(
+          static_cast<const sun::ast::ReferenceCreationAST&>(expr));
       break;
 
     case ASTNodeType::VARIABLE_ASSIGNMENT:
-      checkVariableAssignment(static_cast<const VariableAssignmentAST&>(expr));
+      checkVariableAssignment(
+          static_cast<const sun::ast::VariableAssignmentAST&>(expr));
       break;
 
     case ASTNodeType::VARIABLE_REFERENCE:
@@ -66,7 +94,7 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
       break;
 
     case ASTNodeType::BINARY:
-      checkBinaryExpr(static_cast<const BinaryExprAST&>(expr));
+      checkBinaryExpr(static_cast<const sun::ast::BinaryExprAST&>(expr));
       break;
 
     case ASTNodeType::CALL:
@@ -74,7 +102,7 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
       break;
 
     case ASTNodeType::IF:
-      checkIfExpr(static_cast<const IfExprAST&>(expr));
+      checkIfExpr(static_cast<const sun::ast::IfExprAST&>(expr));
       break;
 
     case ASTNodeType::TERNARY:
@@ -82,19 +110,19 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
       break;
 
     case ASTNodeType::MATCH:
-      checkMatchExpr(static_cast<const MatchExprAST&>(expr));
+      checkMatchExpr(static_cast<const sun::ast::MatchExprAST&>(expr));
       break;
 
     case ASTNodeType::WHILE_LOOP:
-      checkWhileExpr(static_cast<const WhileExprAST&>(expr));
+      checkWhileExpr(static_cast<const sun::ast::WhileExprAST&>(expr));
       break;
 
     case ASTNodeType::FOR_LOOP:
-      checkForExpr(static_cast<const ForExprAST&>(expr));
+      checkForExpr(static_cast<const sun::ast::ForExprAST&>(expr));
       break;
 
     case ASTNodeType::FOR_IN_LOOP:
-      checkForInExpr(static_cast<const ForInExprAST&>(expr));
+      checkForInExpr(static_cast<const sun::ast::ForInExprAST&>(expr));
       break;
 
     case ASTNodeType::BLOCK:
@@ -102,7 +130,7 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
       break;
 
     case ASTNodeType::THROW: {
-      const auto& thrown = static_cast<const ThrowExprAST&>(expr);
+      const auto& thrown = static_cast<const sun::ast::ThrowExprAST&>(expr);
       if (thrown.hasErrorExpr()) {
         checkExpr(thrown.getErrorExpr());
         consumeOwnedValue(thrown.getErrorExpr());
@@ -115,7 +143,7 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
       break;
 
     case ASTNodeType::FUNCTION:
-      checkFunctionDef(static_cast<const FunctionAST&>(expr));
+      checkFunctionDef(static_cast<const sun::ast::FunctionAST&>(expr));
       break;
 
     case ASTNodeType::LAMBDA:
@@ -123,7 +151,7 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
       break;
 
     case ASTNodeType::CLASS_DEFINITION:
-      checkClassDef(static_cast<const ClassDefinitionAST&>(expr));
+      checkClassDef(static_cast<const sun::ast::ClassDefinitionAST&>(expr));
       break;
 
     case ASTNodeType::MEMBER_ACCESS:
@@ -139,19 +167,22 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
       break;
 
     case ASTNodeType::MEMBER_ASSIGNMENT:
-      checkMemberAssignment(static_cast<const MemberAssignmentAST&>(expr));
+      checkMemberAssignment(
+          static_cast<const sun::ast::MemberAssignmentAST&>(expr));
       break;
 
     case ASTNodeType::INDEXED_ASSIGNMENT:
-      checkIndexedAssignment(static_cast<const IndexedAssignmentAST&>(expr));
+      checkIndexedAssignment(
+          static_cast<const sun::ast::IndexedAssignmentAST&>(expr));
       break;
 
     case ASTNodeType::COMPOUND_ASSIGNMENT:
-      checkCompoundAssignment(static_cast<const CompoundAssignmentAST&>(expr));
+      checkCompoundAssignment(
+          static_cast<const sun::ast::CompoundAssignmentAST&>(expr));
       break;
 
     case ASTNodeType::TRY_CATCH:
-      checkTryCatch(static_cast<const TryCatchExprAST&>(expr));
+      checkTryCatch(static_cast<const sun::ast::TryCatchExprAST&>(expr));
       break;
 
     case ASTNodeType::UNSAFE_BLOCK:
@@ -159,15 +190,16 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
       break;
 
     case ASTNodeType::MODULE:
-      checkBlockExpr(static_cast<const ModuleAST&>(expr).getBody());
+      checkBlockExpr(static_cast<const sun::ast::ModuleAST&>(expr).getBody());
       break;
 
     case ASTNodeType::MOON_SCOPE:
-      checkBlockExpr(static_cast<const MoonScopeAST&>(expr).getBody());
+      checkBlockExpr(
+          static_cast<const sun::ast::MoonScopeAST&>(expr).getBody());
       break;
 
     case ASTNodeType::UNARY:
-      checkExpr(*static_cast<const UnaryExprAST&>(expr).getOperand());
+      checkExpr(*static_cast<const sun::ast::UnaryExprAST&>(expr).getOperand());
       break;
 
     case ASTNodeType::GENERIC_CALL: {
@@ -198,7 +230,7 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
         for (const auto& arg : gcall.getArgs()) {
           if (!arg || isFrameSourcedLambdaExpr(*arg)) continue;
           auto argType = arg->getResolvedType();
-          if (!typeMovesOnRead(argType)) continue;
+          if (!sun::semantic_analysis::typeMovesOnRead(argType)) continue;
           const std::string* base = getBaseVariableName(*arg);
           if (base) {
             noteFrameSourcedLambdaStore(*base, envDepth, arg->getLocation());
@@ -236,7 +268,8 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
   }
 }
 
-void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
+void BorrowChecker::checkVariableCreation(
+    const sun::ast::VariableCreationAST& var) {
   // Check the initializer expression
   if (var.getValue()) {
     checkExpr(*var.getValue());
@@ -296,7 +329,8 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
     auto valueType = var.getValue()->getResolvedType();
     if (valueType && !valueType->isReference()) {
       checkBorrowBinding(var.getName(), *var.getValue(),
-                         isMutableRef(declaredType), var.getLocation());
+                         sun::semantic_analysis::isMutableRef(declaredType),
+                         var.getLocation());
       matchPayloadSources_.erase(var.getName());
       return;
     }
@@ -310,9 +344,11 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
     }
     if (init->getType() == ASTNodeType::CALL) {
       borrowRefCallInputs(var.getName(), static_cast<const CallExprAST&>(*init),
-                          isMutableRef(declaredType), var.getLocation());
+                          sun::semantic_analysis::isMutableRef(declaredType),
+                          var.getLocation());
     } else if (init->getType() == ASTNodeType::VARIABLE_REFERENCE) {
-      checkBorrowBinding(var.getName(), *init, isMutableRef(declaredType),
+      checkBorrowBinding(var.getName(), *init,
+                         sun::semantic_analysis::isMutableRef(declaredType),
                          var.getLocation());
       matchPayloadSources_.erase(var.getName());
       return;
@@ -329,7 +365,7 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
       var.getValue()->setMoved(true);
     }
     // For variable references of compound types, mark as moved
-    else if (typeMovesOnRead(srcType) &&
+    else if (sun::semantic_analysis::typeMovesOnRead(srcType) &&
              var.getValue()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
       const auto& srcRef =
           static_cast<const VariableReferenceAST&>(*var.getValue());
@@ -368,7 +404,8 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
   }
 }
 
-void BorrowChecker::checkReferenceCreation(const ReferenceCreationAST& ref) {
+void BorrowChecker::checkReferenceCreation(
+    const sun::ast::ReferenceCreationAST& ref) {
   checkBorrowBinding(ref.getName(), *ref.getTarget(), ref.isMutable(),
                      ref.getLocation());
   matchPayloadSources_.erase(ref.getName());
@@ -508,7 +545,8 @@ void BorrowChecker::borrowRefCallInputs(const std::string& refName,
     if (auto* lambdaType = dynamic_cast<const LambdaType*>(calleeType.get())) {
       paramTypes = lambdaType->getParamTypes();
     } else if (auto* funcType =
-                   dynamic_cast<const FunctionType*>(calleeType.get())) {
+                   dynamic_cast<const sun::semantic_analysis::FunctionType*>(
+                       calleeType.get())) {
       paramTypes = funcType->getParamTypes();
     }
   }
@@ -555,7 +593,7 @@ void BorrowChecker::checkVariableWrite(const std::string& varName,
 }
 
 void BorrowChecker::checkVariableAssignment(
-    const VariableAssignmentAST& assign) {
+    const sun::ast::VariableAssignmentAST& assign) {
   const std::string& varName = assign.getName();
 
   // Check the value expression first
@@ -635,7 +673,7 @@ void BorrowChecker::checkVariableAssignment(
     const auto& srcRef =
         static_cast<const VariableReferenceAST&>(*assign.getValue());
     auto srcType = assign.getValue()->getResolvedType();
-    if (typeMovesOnRead(srcType) &&
+    if (sun::semantic_analysis::typeMovesOnRead(srcType) &&
         checkMoveAllowed(srcRef.getName(), srcRef.getLocation()) &&
         checkFieldsIntact(srcRef.getName(), srcRef.getLocation())) {
       recordMove(srcRef.getName(), srcRef.getLocation());
@@ -662,7 +700,7 @@ void BorrowChecker::checkVariableAssignment(
 }
 
 void BorrowChecker::checkCompoundAssignment(
-    const CompoundAssignmentAST& assign) {
+    const sun::ast::CompoundAssignmentAST& assign) {
   // The value is only read - compound ops work on scalars, so no move
   // semantics apply (`x += y` must not mark y as moved)
   if (assign.getValue()) {
@@ -712,7 +750,7 @@ void BorrowChecker::checkVariableReference(const VariableReferenceAST& varRef) {
   // Reading a non-ref variable is always allowed
 }
 
-void BorrowChecker::checkBinaryExpr(const BinaryExprAST& binary) {
+void BorrowChecker::checkBinaryExpr(const sun::ast::BinaryExprAST& binary) {
   if (binary.getLHS()) {
     checkExpr(*binary.getLHS());
   }
@@ -769,12 +807,13 @@ void BorrowChecker::checkErasedLifetimeLambdaArgs(
       if (paramTypes[i]->isReference()) continue;
       // Explicit lifetimes are handled by the named-lifetime checker or by
       // the callee's anonymous-lifetime store checks.
-      if (auto* lt = tryGetType<LambdaType>(paramTypes[i])) {
+      if (auto* lt =
+              sun::codegen::support::tryGetType<LambdaType>(paramTypes[i])) {
         if (!lt->getLifetimeName().empty()) continue;
       }
     }
     TypePtr argType = args[i]->getResolvedType();
-    auto* argLambda = tryGetType<LambdaType>(argType);
+    auto* argLambda = sun::codegen::support::tryGetType<LambdaType>(argType);
     if (!argLambda || !argLambda->hasRefCaptures()) continue;
     LifetimeValue source = inferEnvLifetimeValue(*args[i]);
     if (source.kind != LifetimeValue::Kind::Outlives) {
@@ -814,7 +853,7 @@ void BorrowChecker::checkErasedLifetimeLambdaArgs(
   // Arguments passed by mutable ref (a const ref cannot be written).
   for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
     if (!args[i] || !paramTypes[i] || !paramTypes[i]->isReference()) continue;
-    if (!isMutableRef(paramTypes[i])) continue;
+    if (!sun::semantic_analysis::isMutableRef(paramTypes[i])) continue;
     const std::string* base = getBaseVariableName(*args[i]);
     if (base) checkDestination(*base, args[i]->getLocation());
   }
@@ -854,7 +893,7 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
     for (const auto& arg : args) {
       if (!arg) continue;
       TypePtr argType = arg->getResolvedType();
-      if (!typeMovesOnRead(argType)) continue;
+      if (!sun::semantic_analysis::typeMovesOnRead(argType)) continue;
       if (arg->getType() != ASTNodeType::VARIABLE_REFERENCE) {
         noteFieldMove(*arg);
         continue;
@@ -886,12 +925,14 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
     for (const auto& arg : args) {
       argTypes.push_back(arg ? arg->getResolvedType() : nullptr);
     }
-    const ClassMethod* init = static_cast<const ClassType&>(*calleeType)
-                                  .getMethodForArgs("init", argTypes);
+    const sun::semantic_analysis::ClassMethod* init =
+        static_cast<const ClassType&>(*calleeType)
+            .getMethodForArgs("init", argTypes);
     if (!init) return;
     paramTypes = init->paramTypes;
   } else if (auto* funcType =
-                 dynamic_cast<const FunctionType*>(calleeType.get())) {
+                 dynamic_cast<const sun::semantic_analysis::FunctionType*>(
+                     calleeType.get())) {
     // Direct calls and method calls carry a FunctionType
     paramTypes = funcType->getParamTypes();
   } else if (auto* lambdaCallee =
@@ -932,7 +973,8 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
 
     // If argument is compound type AND parameter is NOT a reference (by-value)
     // then we move the argument
-    if (typeMovesOnRead(argType) && !paramType->isReference() &&
+    if (sun::semantic_analysis::typeMovesOnRead(argType) &&
+        !paramType->isReference() &&
         checkMoveAllowed(varRef.getName(), varRef.getLocation()) &&
         checkFieldsIntact(varRef.getName(), varRef.getLocation())) {
       recordMove(varRef.getName(), varRef.getLocation());
@@ -942,7 +984,7 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
   }
 }
 
-void BorrowChecker::checkIfExpr(const IfExprAST& ifExpr) {
+void BorrowChecker::checkIfExpr(const sun::ast::IfExprAST& ifExpr) {
   // Check condition
   if (ifExpr.getCond()) {
     checkExpr(*ifExpr.getCond());
@@ -993,7 +1035,7 @@ void BorrowChecker::checkTernaryExpr(const TernaryExprAST& ternary) {
 }
 
 void BorrowChecker::consumeOwnedValue(const ExprAST& value) {
-  if (!typeMovesOnRead(value.getResolvedType())) return;
+  if (!sun::semantic_analysis::typeMovesOnRead(value.getResolvedType())) return;
   value.setMoved(true);
   if (value.getType() == ASTNodeType::PAREN_EXPR) {
     consumeOwnedValue(*static_cast<const ParenExprAST&>(value).getInner());
@@ -1014,7 +1056,7 @@ void BorrowChecker::consumeOwnedValue(const ExprAST& value) {
   }
 }
 
-void BorrowChecker::checkMatchExpr(const MatchExprAST& matchExpr) {
+void BorrowChecker::checkMatchExpr(const sun::ast::MatchExprAST& matchExpr) {
   const auto& discriminant = *matchExpr.getDiscriminant();
   checkExpr(discriminant);
 
@@ -1105,8 +1147,8 @@ void BorrowChecker::checkMatchExpr(const MatchExprAST& matchExpr) {
     }
     if (arm.body) {
       checkExpr(*arm.body);
-      if (!exprDiverges(*arm.body) &&
-          typeMovesOnRead(matchExpr.getResolvedType())) {
+      if (!exprDiverges(*arm.body) && sun::semantic_analysis::typeMovesOnRead(
+                                          matchExpr.getResolvedType())) {
         if (arm.body->getResolvedType()->isReference()) {
           reportError("cannot move a borrowed value into a match result",
                       arm.body->getLocation());
@@ -1194,7 +1236,7 @@ void BorrowChecker::checkCallMoveConflicts(
   }
   for (size_t i = 0; i < count; ++i) {
     if (!args[i] || !paramTypes[i] || paramTypes[i]->isReference() ||
-        !typeMovesOnRead(args[i]->getResolvedType()))
+        !sun::semantic_analysis::typeMovesOnRead(args[i]->getResolvedType()))
       continue;
     auto moved = placePath(*args[i]);
     if (moved.empty()) continue;
@@ -1253,7 +1295,7 @@ std::string BorrowChecker::fieldPath(const ExprAST& expr) const {
 
 void BorrowChecker::noteFieldMove(const ExprAST& value) {
   TypePtr type = value.getResolvedType();
-  if (!typeMovesOnRead(type)) return;
+  if (!sun::semantic_analysis::typeMovesOnRead(type)) return;
 
   std::string path = fieldPath(value);
   // A plain variable move is recorded by the caller; only field paths here
@@ -1299,14 +1341,15 @@ const std::string* BorrowChecker::movedFieldOf(const std::string& name) const {
 // over a <'_> lambda type, a payload enum holding one). Such a value is
 // itself borrow-like and must not leave the frame.
 bool BorrowChecker::classStoresRefs(const TypePtr& type) const {
-  if (sun::typeIsFrameCarrying(type)) return true;
-  std::unordered_set<const Type*> visited;
+  if (sun::semantic_analysis::typeIsFrameCarrying(type)) return true;
+  std::unordered_set<const sun::semantic_analysis::Type*> visited;
   return classStoresRefsWalk(type, visited);
 }
 
 bool BorrowChecker::classStoresRefsWalk(
-    const TypePtr& type, std::unordered_set<const Type*>& visited) const {
-  const auto* classType = tryGetType<ClassType>(type);
+    const TypePtr& type,
+    std::unordered_set<const sun::semantic_analysis::Type*>& visited) const {
+  const auto* classType = sun::codegen::support::tryGetType<ClassType>(type);
   if (!classType || !visited.insert(classType).second) return false;
   for (const auto& field : classType->getFields()) {
     if (!field.type) continue;
@@ -1317,17 +1360,21 @@ bool BorrowChecker::classStoresRefsWalk(
 }
 
 bool BorrowChecker::classStoresMutableRefs(const TypePtr& type) const {
-  std::unordered_set<const Type*> visited;
+  std::unordered_set<const sun::semantic_analysis::Type*> visited;
   std::vector<const ClassType*> pending;
-  if (const auto* root = tryGetType<ClassType>(type)) pending.push_back(root);
+  if (const auto* root = sun::codegen::support::tryGetType<ClassType>(type))
+    pending.push_back(root);
   while (!pending.empty()) {
     const ClassType* classType = pending.back();
     pending.pop_back();
     if (!visited.insert(classType).second) continue;
     for (const auto& field : classType->getFields()) {
       if (!field.type) continue;
-      if (field.type->isReference() && isMutableRef(field.type)) return true;
-      if (const auto* inner = tryGetType<ClassType>(field.type)) {
+      if (field.type->isReference() &&
+          sun::semantic_analysis::isMutableRef(field.type))
+        return true;
+      if (const auto* inner =
+              sun::codegen::support::tryGetType<ClassType>(field.type)) {
         pending.push_back(inner);
       }
     }
@@ -1351,8 +1398,9 @@ bool BorrowChecker::forEachHolderInput(
     for (const auto& arg : args) {
       argTypes.push_back(arg ? arg->getResolvedType() : nullptr);
     }
-    const ClassMethod* init = static_cast<const ClassType&>(*calleeType)
-                                  .getMethodForArgs("init", argTypes);
+    const sun::semantic_analysis::ClassMethod* init =
+        static_cast<const ClassType&>(*calleeType)
+            .getMethodForArgs("init", argTypes);
     if (!init) return false;
     paramTypes = init->paramTypes;
   } else {
@@ -1361,9 +1409,11 @@ bool BorrowChecker::forEachHolderInput(
         !classStoresRefs(resultType)) {
       return false;
     }
-    if (auto* funcType = tryGetType<FunctionType>(calleeType)) {
+    if (auto* funcType = sun::codegen::support::tryGetType<
+            sun::semantic_analysis::FunctionType>(calleeType)) {
       paramTypes = funcType->getParamTypes();
-    } else if (auto* lambdaType = tryGetType<LambdaType>(calleeType)) {
+    } else if (auto* lambdaType =
+                   sun::codegen::support::tryGetType<LambdaType>(calleeType)) {
       paramTypes = lambdaType->getParamTypes();
     } else {
       return false;
@@ -1380,7 +1430,7 @@ bool BorrowChecker::forEachHolderInput(
 
   for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
     if (!args[i] || !paramTypes[i] || !paramTypes[i]->isReference()) continue;
-    visit(*args[i], isMutableRef(paramTypes[i]));
+    visit(*args[i], sun::semantic_analysis::isMutableRef(paramTypes[i]));
   }
   return true;
 }
@@ -1517,7 +1567,7 @@ bool BorrowChecker::checkFieldsIntact(const std::string& name,
   return false;
 }
 
-void BorrowChecker::checkWhileExpr(const WhileExprAST& whileExpr) {
+void BorrowChecker::checkWhileExpr(const sun::ast::WhileExprAST& whileExpr) {
   // Check condition
   if (whileExpr.getCondition()) {
     checkExpr(*whileExpr.getCondition());
@@ -1529,7 +1579,7 @@ void BorrowChecker::checkWhileExpr(const WhileExprAST& whileExpr) {
   exitScope();
 }
 
-void BorrowChecker::checkForExpr(const ForExprAST& forExpr) {
+void BorrowChecker::checkForExpr(const sun::ast::ForExprAST& forExpr) {
   // Enter scope for loop variables
   enterScope();
 
@@ -1549,7 +1599,7 @@ void BorrowChecker::checkForExpr(const ForExprAST& forExpr) {
   exitScope();
 }
 
-void BorrowChecker::checkForInExpr(const ForInExprAST& forInExpr) {
+void BorrowChecker::checkForInExpr(const sun::ast::ForInExprAST& forInExpr) {
   // Check the iterable expression first (outside the loop scope)
   if (forInExpr.getIterable()) {
     checkExpr(*forInExpr.getIterable());
@@ -1629,7 +1679,8 @@ void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
   // call's by-ref inputs cover it, as they do for a returned `ref`.
   if (!returnMatchesNamedLifetime && retType && !retType->isReference() &&
       classStoresRefs(retType) &&
-      (sun::typeIsFrameCarrying(retType) || holderPointsIntoFrame(*value))) {
+      (sun::semantic_analysis::typeIsFrameCarrying(retType) ||
+       holderPointsIntoFrame(*value))) {
     const auto& pos = ret.getLocation();
     reportError(
         "cannot return a value that stores references or a '<'_>' lambda - "
@@ -1637,7 +1688,8 @@ void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
         "returns",
         pos);
   }
-  if (typeMovesOnRead(retType) && !currentFunctionReturnsRef_) {
+  if (sun::semantic_analysis::typeMovesOnRead(retType) &&
+      !currentFunctionReturnsRef_) {
     if (value->getType() == ASTNodeType::PAREN_EXPR) {
       consumeOwnedValue(*value);
       return;
@@ -1663,7 +1715,7 @@ void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
   }
 }
 
-void BorrowChecker::checkFunctionDef(const FunctionAST& func) {
+void BorrowChecker::checkFunctionDef(const sun::ast::FunctionAST& func) {
   const auto& proto = func.getProto();
   const std::string& funcName = proto.getName();
 
@@ -1755,7 +1807,7 @@ bool BorrowChecker::isRefCapturingLambdaExpr(const ExprAST& expr) const {
   }
   auto type = expr.getResolvedType();
   if (type && type->isLambda()) {
-    return static_cast<const sun::LambdaType*>(type.get())->hasRefCaptures();
+    return static_cast<const LambdaType*>(type.get())->hasRefCaptures();
   }
   return false;
 }
@@ -1785,7 +1837,7 @@ bool BorrowChecker::isFrameBoundExpr(const ExprAST& expr) const {
   }
   if (e->getType() == ASTNodeType::STRUCT_LITERAL) {
     for (const auto& field :
-         static_cast<const StructLiteralAST&>(*e).getFields()) {
+         static_cast<const sun::ast::StructLiteralAST&>(*e).getFields()) {
       if (field.value && isFrameBoundExpr(*field.value)) return true;
     }
     return false;
@@ -1832,7 +1884,7 @@ bool BorrowChecker::isFrameSourcedLambdaExpr(const ExprAST& expr) const {
   if (e->getType() == ASTNodeType::MEMBER_ACCESS) {
     auto type = e->getResolvedType();
     if (type && type->isLambda() &&
-        static_cast<const sun::LambdaType*>(type.get())->hasRefCaptures()) {
+        static_cast<const LambdaType*>(type.get())->hasRefCaptures()) {
       const auto& access = static_cast<const MemberAccessAST&>(*e);
       const std::string* base = access.getObject()
                                     ? getBaseVariableName(*access.getObject())
@@ -1845,7 +1897,7 @@ bool BorrowChecker::isFrameSourcedLambdaExpr(const ExprAST& expr) const {
   if (e->getType() == ASTNodeType::CALL) {
     auto type = e->getResolvedType();
     if (type && type->isLambda() &&
-        static_cast<const sun::LambdaType*>(type.get())->hasRefCaptures()) {
+        static_cast<const LambdaType*>(type.get())->hasRefCaptures()) {
       return inferEnvLifetimeValue(*e).kind == LifetimeValue::Kind::Concrete;
     }
   }
@@ -1928,7 +1980,7 @@ size_t BorrowChecker::inferEnvDepth(const ExprAST& expr) const {
     case ASTNodeType::STRUCT_LITERAL: {
       size_t depth = functionScopeDepth_;
       for (const auto& field :
-           static_cast<const StructLiteralAST&>(*e).getFields()) {
+           static_cast<const sun::ast::StructLiteralAST&>(*e).getFields()) {
         if (!field.value) continue;
         if (isFrameBoundExpr(*field.value) ||
             isFrameSourcedLambdaExpr(*field.value)) {
@@ -2051,7 +2103,7 @@ BorrowChecker::LifetimeValue BorrowChecker::inferEnvLifetimeValue(
     // A value that carries a named lifetime in its type - a parameter, or
     // a local it was copied into - stays symbolic
     TypePtr type = e->getResolvedType();
-    if (auto* lt = tryGetType<LambdaType>(type)) {
+    if (auto* lt = sun::codegen::support::tryGetType<LambdaType>(type)) {
       if (lt->hasRefCaptures() && !lt->getLifetimeName().empty()) {
         return {LifetimeValue::Kind::Symbolic, 0, lt->getLifetimeName(), name};
       }
@@ -2069,7 +2121,7 @@ BorrowChecker::LifetimeValue BorrowChecker::inferEnvLifetimeValue(
   if (e->getType() == ASTNodeType::MEMBER_ACCESS) {
     // A bound method's environment is its receiver
     TypePtr type = e->getResolvedType();
-    auto* lt = tryGetType<LambdaType>(type);
+    auto* lt = sun::codegen::support::tryGetType<LambdaType>(type);
     if (!lt || !lt->hasRefCaptures()) {
       return {LifetimeValue::Kind::Outlives, 0, "", ""};
     }
@@ -2102,7 +2154,8 @@ BorrowChecker::LifetimeValue BorrowChecker::inferEnvLifetimeValue(
     // lifetime among the arguments the signature ties to 'a
     const auto& call = static_cast<const CallExprAST&>(*e);
     TypePtr resultType = call.getResolvedType();
-    auto* resultLambda = tryGetType<LambdaType>(resultType);
+    auto* resultLambda =
+        sun::codegen::support::tryGetType<LambdaType>(resultType);
     if (!resultLambda || !resultLambda->hasRefCaptures()) {
       return {LifetimeValue::Kind::Outlives, 0, "", ""};
     }
@@ -2113,9 +2166,11 @@ BorrowChecker::LifetimeValue BorrowChecker::inferEnvLifetimeValue(
     std::vector<TypePtr> paramTypes;
     TypePtr calleeType =
         call.getCallee() ? call.getCallee()->getResolvedType() : nullptr;
-    if (auto* ft = tryGetType<FunctionType>(calleeType)) {
+    if (auto* ft = sun::codegen::support::tryGetType<
+            sun::semantic_analysis::FunctionType>(calleeType)) {
       paramTypes = ft->getParamTypes();
-    } else if (auto* clt = tryGetType<LambdaType>(calleeType)) {
+    } else if (auto* clt =
+                   sun::codegen::support::tryGetType<LambdaType>(calleeType)) {
       paramTypes = clt->getParamTypes();
     }
     const auto& args = call.getArgs();
@@ -2134,11 +2189,13 @@ BorrowChecker::LifetimeValue BorrowChecker::inferEnvLifetimeValue(
     };
     for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
       if (!args[i] || !paramTypes[i]) continue;
-      if (auto* plt = tryGetType<LambdaType>(paramTypes[i])) {
+      if (auto* plt =
+              sun::codegen::support::tryGetType<LambdaType>(paramTypes[i])) {
         if (plt->getLifetimeName() == retName) {
           addContribution(inferEnvLifetimeValue(*args[i]));
         }
-      } else if (auto* prt = tryGetType<ReferenceType>(paramTypes[i])) {
+      } else if (auto* prt = sun::codegen::support::tryGetType<ReferenceType>(
+                     paramTypes[i])) {
         if (prt->getLifetimeName() == retName) {
           addContribution(inferDestLifetimeValue(*args[i]));
         }
@@ -2226,7 +2283,8 @@ void BorrowChecker::checkNamedLifetimesAtCall(
 
   for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
     if (!args[i] || !paramTypes[i]) continue;
-    if (auto* lt = tryGetType<LambdaType>(paramTypes[i])) {
+    if (auto* lt =
+            sun::codegen::support::tryGetType<LambdaType>(paramTypes[i])) {
       if (!lt->hasRefCaptures() || lt->getLifetimeName().empty() ||
           lt->getLifetimeName() == "_") {
         continue;
@@ -2235,7 +2293,8 @@ void BorrowChecker::checkNamedLifetimesAtCall(
       sources[name].push_back(
           {inferEnvLifetimeValue(*args[i]), args[i]->getLocation(), i});
       if (name == "this") usesThis = true;
-    } else if (auto* rt = tryGetType<ReferenceType>(paramTypes[i])) {
+    } else if (auto* rt = sun::codegen::support::tryGetType<ReferenceType>(
+                   paramTypes[i])) {
       // Names this argument binds: the ref position's own name
       // ('dst: ref 'a Holder') and each class-application binding
       // ('bus: ref Bus<'this>' binds Bus's slot to 'this)
@@ -2304,17 +2363,20 @@ void BorrowChecker::checkNamedLifetimesAtCall(
     std::vector<std::string> receiverNames;
     if (usesThis) receiverNames.push_back("this");
     TypePtr receiverType = receiver->getResolvedType();
-    if (auto* rrt = tryGetType<ReferenceType>(receiverType)) {
+    if (auto* rrt =
+            sun::codegen::support::tryGetType<ReferenceType>(receiverType)) {
       receiverType = rrt->getReferencedType();
     }
-    if (auto* rct = tryGetType<ClassType>(receiverType)) {
+    if (auto* rct =
+            sun::codegen::support::tryGetType<ClassType>(receiverType)) {
       for (const auto& className : rct->getLifetimeParams()) {
         if (sources.count(className) || dests.count(className)) {
           receiverNames.push_back(className);
         }
       }
     }
-    if (auto* rit = tryGetType<InterfaceType>(receiverType)) {
+    if (auto* rit = sun::codegen::support::tryGetType<
+            sun::semantic_analysis::InterfaceType>(receiverType)) {
       for (const auto& ifaceName : rit->getLifetimeParams()) {
         if (sources.count(ifaceName) || dests.count(ifaceName)) {
           receiverNames.push_back(ifaceName);
@@ -2336,10 +2398,12 @@ void BorrowChecker::checkNamedLifetimesAtCall(
       if (info.isRefParam && bindIt != refParamClassBindings_.end()) {
         receiverBindings = &bindIt->second;
         TypePtr receiverType = receiver->getResolvedType();
-        if (auto* rrt = tryGetType<ReferenceType>(receiverType)) {
+        if (auto* rrt = sun::codegen::support::tryGetType<ReferenceType>(
+                receiverType)) {
           receiverType = rrt->getReferencedType();
         }
-        if (auto* rct = tryGetType<ClassType>(receiverType)) {
+        if (auto* rct =
+                sun::codegen::support::tryGetType<ClassType>(receiverType)) {
           receiverClassNames = rct->getLifetimeParams();
         }
       }
@@ -2533,7 +2597,9 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
   // into the closure's environment, so the name it came from is gone from
   // here on and the enclosing scope no longer drops it.
   for (const auto& cap : proto.getCaptures()) {
-    if (cap.kind != CaptureKind::Owned || !typeMovesOnRead(cap.type)) continue;
+    if (cap.kind != CaptureKind::Owned ||
+        !sun::semantic_analysis::typeMovesOnRead(cap.type))
+      continue;
     if (!state_.getActiveLoans(cap.name).empty()) {
       reportError(
           "cannot move '" + cap.name + "' into the lambda while it is borrowed",
@@ -2685,7 +2751,8 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
   currentFunction_ = savedFunction;
 }
 
-void BorrowChecker::checkClassDef(const ClassDefinitionAST& classDef) {
+void BorrowChecker::checkClassDef(
+    const sun::ast::ClassDefinitionAST& classDef) {
   // The class's declared lifetimes govern what its methods may store into
   // 'this' fields (see checkMemberAssignment)
   auto savedClassLifetimes = activeClassLifetimes_;
@@ -2752,7 +2819,8 @@ void BorrowChecker::checkMemberAccess(const MemberAccessAST& access) {
   }
 }
 
-void BorrowChecker::checkMemberAssignment(const MemberAssignmentAST& assign) {
+void BorrowChecker::checkMemberAssignment(
+    const sun::ast::MemberAssignmentAST& assign) {
   if (assign.getObject()) {
     // Storing into a field is not a use of the object as a whole: a field of
     // a partially moved object can still be filled back in
@@ -2841,7 +2909,7 @@ void BorrowChecker::checkMemberAssignment(const MemberAssignmentAST& assign) {
       assign.getValue()->setMoved(true);
     }
     // For variable references of compound types, mark as moved
-    else if (typeMovesOnRead(srcType) &&
+    else if (sun::semantic_analysis::typeMovesOnRead(srcType) &&
              assign.getValue()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
       const auto& srcRef =
           static_cast<const VariableReferenceAST&>(*assign.getValue());
@@ -2857,7 +2925,8 @@ void BorrowChecker::checkMemberAssignment(const MemberAssignmentAST& assign) {
   }
 }
 
-void BorrowChecker::checkIndexedAssignment(const IndexedAssignmentAST& assign) {
+void BorrowChecker::checkIndexedAssignment(
+    const sun::ast::IndexedAssignmentAST& assign) {
   if (assign.getTarget()) {
     checkExpr(*assign.getTarget());
   }
@@ -2893,7 +2962,8 @@ void BorrowChecker::checkIndexedAssignment(const IndexedAssignmentAST& assign) {
                ASTNodeType::VARIABLE_REFERENCE) {
       const auto& srcRef =
           static_cast<const VariableReferenceAST&>(*assign.getValue());
-      if (typeMovesOnRead(assign.getValue()->getResolvedType()) &&
+      if (sun::semantic_analysis::typeMovesOnRead(
+              assign.getValue()->getResolvedType()) &&
           checkMoveAllowed(srcRef.getName(), srcRef.getLocation()) &&
           checkFieldsIntact(srcRef.getName(), srcRef.getLocation())) {
         recordMove(srcRef.getName(), srcRef.getLocation());
@@ -2913,7 +2983,8 @@ void BorrowChecker::checkArrayLiteral(const ArrayLiteralAST& literal) {
   for (const auto& elem : literal.getElements()) {
     if (!elem) continue;
     checkExpr(*elem);
-    if (!typeMovesOnRead(elem->getResolvedType())) continue;
+    if (!sun::semantic_analysis::typeMovesOnRead(elem->getResolvedType()))
+      continue;
     if (elem->getType() != ASTNodeType::VARIABLE_REFERENCE) {
       if (elem->isTemporary()) {
         elem->setMoved(true);
@@ -2942,7 +3013,7 @@ void BorrowChecker::checkIndexExpr(const IndexAST& index) {
   }
 }
 
-void BorrowChecker::checkTryCatch(const TryCatchExprAST& tryCatch) {
+void BorrowChecker::checkTryCatch(const sun::ast::TryCatchExprAST& tryCatch) {
   enterScope();
   checkBlockExpr(tryCatch.getTryBlock());
   exitScope();
@@ -3348,7 +3419,8 @@ Lifetime BorrowChecker::inferCallReturnLifetime(const CallExprAST& call) {
   }
 
   // Check if function returns a reference type
-  auto* funcType = dynamic_cast<const FunctionType*>(calleeType.get());
+  auto* funcType = dynamic_cast<const sun::semantic_analysis::FunctionType*>(
+      calleeType.get());
   if (!funcType) {
     if (auto lt = receiverLifetime()) return *lt;
     return Lifetime::local("$temp", currentScope_);
@@ -3396,22 +3468,23 @@ SunError buildBorrowCheckError(const std::vector<BorrowError>& errors) {
 
   const BorrowError& first = errors.front();
   auto [sourceLine, prevLine] =
-      SourceManager::instance().getLineWithContext(first.location);
+      sun::support::SourceManager::instance().getLineWithContext(
+          first.location);
   SunError error(SunError::Kind::Borrow, first.message, first.location,
                  sourceLine, prevLine);
   auto addRelatedBorrows = [&error](const BorrowError& err) {
     for (const auto& related : err.relatedLocations) {
       error.addRelated("related borrow here", related,
-                       RelatedDiagnostic::Level::Note);
+                       sun::support::RelatedDiagnostic::Level::Note);
     }
   };
   addRelatedBorrows(first);
   for (size_t i = 1; i < errors.size(); ++i) {
     error.addRelated(errors[i].message, errors[i].location,
-                     RelatedDiagnostic::Level::Error);
+                     sun::support::RelatedDiagnostic::Level::Error);
     addRelatedBorrows(errors[i]);
   }
   return error;
 }
 
-}  // namespace sun
+}  // namespace sun::borrow_checker

@@ -5,7 +5,16 @@
 #include "codegen/codegen_visitor.h"
 #include "codegen/functions/function_generator.h"
 
+using sun::ast::ASTNodeType;
+using sun::ast::Capture;
+using sun::ast::CaptureKind;
+using sun::ast::FunctionAST;
+using sun::ast::PrototypeAST;
+using sun::support::logAndThrowError;
+
 using namespace llvm;
+
+namespace sun::codegen::functions {
 
 // -------------------------------------------------------------------
 // Closure helpers
@@ -19,8 +28,8 @@ using namespace llvm;
 // the capture was declared [ref name]; ownedOut whether it was listed without
 // `ref`, which makes the slot the value's own storage rather than a copy.
 llvm::Value* FunctionGenerator::createCaptureSlotAddress(
-    sun::DeclarationId id, llvm::Type** valueTypeOut, bool* byRefOut,
-    bool* ownedOut) {
+    sun::semantic_analysis::DeclarationId id, llvm::Type** valueTypeOut,
+    bool* byRefOut, bool* ownedOut) {
   // Search from innermost -> outermost closure
   for (auto it = closureStack.rbegin(); it != closureStack.rend(); ++it) {
     auto& closure = *it;
@@ -63,7 +72,7 @@ llvm::Value* FunctionGenerator::createCaptureSlotAddress(
 }
 
 llvm::LoadInst* FunctionGenerator::createLoadVarFromClosure(
-    sun::DeclarationId id) {
+    sun::semantic_analysis::DeclarationId id) {
   llvm::Type* valueType = nullptr;
   llvm::Value* addr = createCaptureSlotAddress(id, &valueType);
   if (!addr) return nullptr;
@@ -83,7 +92,8 @@ llvm::Value* FunctionGenerator::computeCaptureInitValue(const Capture& cap) {
       // referent, not the ref cell (mirror tryCodegenAddress)
       if (cap.type && cap.type->isReference()) {
         const auto* refType =
-            static_cast<const sun::ReferenceType*>(cap.type.get());
+            static_cast<const sun::semantic_analysis::ReferenceType*>(
+                cap.type.get());
         llvm::Type* referencedLLVMType =
             typeResolver.resolve(refType->getReferencedType());
         if (alloca->getAllocatedType() != referencedLLVMType) {
@@ -210,7 +220,7 @@ bool FunctionGenerator::fillCaptureSlots(StructType* envType,
     // An owned capture of anything a read cannot honestly duplicate — a class
     // or a payload enum — takes the value rather than a copy of it.
     bool movesIn = cap.kind == CaptureKind::Owned && cap.type &&
-                   !sun::typeCopiesByRead(cap.type);
+                   !sun::semantic_analysis::typeCopiesByRead(cap.type);
     if (!movesIn) {
       Value* capturedValue = computeCaptureInitValue(cap);
       if (!capturedValue) return false;
@@ -220,15 +230,17 @@ bool FunctionGenerator::fillCaptureSlots(StructType* envType,
 
     llvm::Type* slotType = typeResolver.resolve(cap.type);
     llvm::FunctionCallee memsetFn = module->getOrInsertFunction(
-        "memset", FunctionType::get(PointerType::getUnqual(ctx.getContext()),
-                                    {PointerType::getUnqual(ctx.getContext()),
-                                     Type::getInt32Ty(ctx.getContext()),
-                                     Type::getInt64Ty(ctx.getContext())},
-                                    false));
+        "memset",
+        llvm::FunctionType::get(PointerType::getUnqual(ctx.getContext()),
+                                {PointerType::getUnqual(ctx.getContext()),
+                                 llvm::Type::getInt32Ty(ctx.getContext()),
+                                 llvm::Type::getInt64Ty(ctx.getContext())},
+                                false));
     entryBuilder.CreateCall(
         memsetFn,
-        {fieldPtr, ConstantInt::get(Type::getInt32Ty(ctx.getContext()), 0),
-         ConstantInt::get(Type::getInt64Ty(ctx.getContext()),
+        {fieldPtr,
+         ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0),
+         ConstantInt::get(llvm::Type::getInt64Ty(ctx.getContext()),
                           DL.getTypeAllocSize(slotType))});
 
     // Compounds are carried by address, so the source is the variable's
@@ -298,7 +310,7 @@ std::pair<Function*, llvm::StructType*> FunctionGenerator::codegen(
   bool needsClosureArg = isLambda;
 
   // Build the arg types for the function
-  std::vector<Type*> argTypes;
+  std::vector<llvm::Type*> argTypes;
 
   // Add the lambda fat pointer as the first argument when needed.
   if (needsClosureArg) {
@@ -309,7 +321,8 @@ std::pair<Function*, llvm::StructType*> FunctionGenerator::codegen(
   // elements of any `args...` pack. Semantic analysis must have resolved
   // every one of them.
   std::vector<std::string> argNames = proto.getAllParamNames();
-  std::vector<sun::TypePtr> paramTypes = proto.getAllParamTypes();
+  std::vector<sun::semantic_analysis::TypePtr> paramTypes =
+      proto.getAllParamTypes();
   if (!proto.hasResolvedParamTypes() || paramTypes.size() != argNames.size()) {
     logAndThrowError(
         "Function parameter types not resolved by semantic analysis: " +
@@ -319,11 +332,12 @@ std::pair<Function*, llvm::StructType*> FunctionGenerator::codegen(
   for (const auto& sunType : paramTypes) {
     llvm::Type* llvmType = typeResolver.resolve(sunType);
     argTypes.push_back(llvmType ? llvmType
-                                : Type::getDoubleTy(ctx.getContext()));
+                                : llvm::Type::getDoubleTy(ctx.getContext()));
   }
 
   // Create the function type
-  FunctionType* funcType = FunctionType::get(returnType, argTypes, false);
+  llvm::FunctionType* funcType =
+      llvm::FunctionType::get(returnType, argTypes, false);
 
   // Reuse existing forward declaration if type matches, otherwise replace it
   Function* func = module->getFunction(funcName);
@@ -393,29 +407,30 @@ void FunctionGenerator::forwardDeclareFunction(const PrototypeAST& proto) {
 // emitted, so a call may name something defined further down — mutual
 // recursion between functions, a method calling one of a class below it, a
 // generic helper declared after its caller.
-void FunctionGenerator::declareBlockSignatures(const BlockExprAST& block) {
+void FunctionGenerator::declareBlockSignatures(
+    const sun::ast::BlockExprAST& block) {
   for (const auto& expr : block.getBody()) {
     // Included source files are merged into one AST, but their declarations
     // may remain under separate module nodes. Descend through those wrappers
     // so every signature exists before the first module body is emitted.
     if (expr->getType() == ASTNodeType::MODULE) {
-      const auto& module = static_cast<const ModuleAST&>(*expr);
+      const auto& module = static_cast<const sun::ast::ModuleAST&>(*expr);
       declareBlockSignatures(module.getBody());
       continue;
     }
     if (expr->getType() == ASTNodeType::MOON_SCOPE) {
-      const auto& moonScope = static_cast<const MoonScopeAST&>(*expr);
+      const auto& moonScope = static_cast<const sun::ast::MoonScopeAST&>(*expr);
       declareBlockSignatures(moonScope.getBody());
       continue;
     }
     if (expr->getType() == ASTNodeType::CLASS_DEFINITION) {
       classes().declareBlockClassMethods(
-          static_cast<const ClassDefinitionAST&>(*expr));
+          static_cast<const sun::ast::ClassDefinitionAST&>(*expr));
       continue;
     }
     if (expr->getType() == ASTNodeType::INTERFACE_DEFINITION) {
       const auto& definition =
-          static_cast<const InterfaceDefinitionAST&>(*expr);
+          static_cast<const sun::ast::InterfaceDefinitionAST&>(*expr);
       if (definition.isGeneric()) continue;
       const auto type =
           state_.typeRegistry->getInterface(definition.getDeclarationId());
@@ -460,7 +475,7 @@ void FunctionGenerator::declareBlockSignatures(const BlockExprAST& block) {
 
 Value* FunctionGenerator::codegenGenericFunc(FunctionAST& funcAst) {
   // Specialization codegen moves the insert point; put it back on the way out
-  CodegenState::InsertPointGuard here(state_);
+  sun::codegen::CodegenState::InsertPointGuard here(state_);
 
   // Generate all specializations that were created during semantic analysis
   for (const auto& [instanceId, specializedAST] :
@@ -632,7 +647,7 @@ Value* FunctionGenerator::codegenFunc(FunctionAST& funcAst) {
   // Generate body — may recursively create many other functions().
   // The guard puts the enclosing function's return contract back.
   {
-    CodegenState::ReturnGuard returns(state_);
+    sun::codegen::CodegenState::ReturnGuard returns(state_);
     currentFunctionCanError = canError;
     currentFunctionValueType = canError ? valueType : nullptr;
     currentFunctionReturnsRef =
@@ -647,7 +662,7 @@ Value* FunctionGenerator::codegenFunc(FunctionAST& funcAst) {
     // Emit scope cleanup before implicit return (deinit classes, free ptrs)
     scopes().emitScopeCleanup();
 
-    Type* retType = func->getReturnType();
+    llvm::Type* retType = func->getReturnType();
     if (retType->isVoidTy()) {
       // Void functions get an implicit return
       ctx.builder->CreateRetVoid();
@@ -686,9 +701,9 @@ Value* FunctionGenerator::codegenFunc(FunctionAST& funcAst) {
 // Lambda codegen (for LambdaAST)
 // -------------------------------------------------------------------
 
-llvm::Value* FunctionGenerator::codegenLambda(LambdaAST& lambdaAst) {
+llvm::Value* FunctionGenerator::codegenLambda(sun::ast::LambdaAST& lambdaAst) {
   // Lambda codegen moves the insert point; put it back on the way out
-  CodegenState::InsertPointGuard here(state_);
+  sun::codegen::CodegenState::InsertPointGuard here(state_);
   // The enclosing expression's debug location, restored on the way out so
   // the instructions after this lambda (the closure load, the call it is an
   // argument of) stay located — a call without a location is a verifier
@@ -793,7 +808,7 @@ llvm::Value* FunctionGenerator::codegenLambda(LambdaAST& lambdaAst) {
 
   // Generate body; the guard puts the enclosing function's contract back
   {
-    CodegenState::ReturnGuard returns(state_);
+    sun::codegen::CodegenState::ReturnGuard returns(state_);
     currentFunctionCanError = canError;
     currentFunctionValueType = canError ? valueType : nullptr;
     currentFunctionReturnsRef =
@@ -845,3 +860,5 @@ llvm::Value* FunctionGenerator::codegenLambda(LambdaAST& lambdaAst) {
 
   return resultPtr;
 }
+
+}  // namespace sun::codegen::functions

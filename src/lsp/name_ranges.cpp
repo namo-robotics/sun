@@ -8,6 +8,11 @@
 
 #include "ast.h"
 
+using sun::ast::ASTNodeType;
+using sun::ast::ExprAST;
+using sun::ast::PrototypeAST;
+using sun::support::Position;
+
 namespace sun::lsp {
 
 namespace {
@@ -25,8 +30,10 @@ std::optional<Position> signatureSpan(const ExprAST& owner) {
   if (span.endOffset) return span;
   if (owner.getType() != ASTNodeType::LAMBDA) return std::nullopt;
   span = owner.getLocation();
-  span.endOffset =
-      static_cast<const LambdaAST&>(owner).getBody().getLocation().offset;
+  span.endOffset = static_cast<const sun::ast::LambdaAST&>(owner)
+                       .getBody()
+                       .getLocation()
+                       .offset;
   return span;
 }
 
@@ -83,10 +90,10 @@ Position nameRange(const Position& span, const std::string& name,
 
 const PrototypeAST* prototypeOf(const ExprAST& node) {
   if (node.getType() == ASTNodeType::FUNCTION) {
-    return &static_cast<const FunctionAST&>(node).getProto();
+    return &static_cast<const sun::ast::FunctionAST&>(node).getProto();
   }
   if (node.getType() == ASTNodeType::LAMBDA) {
-    return &static_cast<const LambdaAST&>(node).getProto();
+    return &static_cast<const sun::ast::LambdaAST&>(node).getProto();
   }
   return nullptr;
 }

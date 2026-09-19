@@ -8,18 +8,21 @@
 #include "ast/ast_fwd.h"
 #include "semantic_analysis/declaration_id.h"
 
+namespace sun::semantic_analysis {
+using sun::ast::ClassDefinitionAST;
+
 class SemanticScopeBase;
 
 /** Declaration bookkeeping shared by collection and body checking. */
 class DeclarationState {
  public:
   /** True when this class's shape was already registered by the pre-pass. */
-  bool hasClassShape(sun::DeclarationId declaration) const {
+  bool hasClassShape(sun::semantic_analysis::DeclarationId declaration) const {
     return preRegisteredClassShapes_.count(declaration) > 0;
   }
 
   /** Record a class shape and report whether it is new. */
-  bool noteClassShape(sun::DeclarationId declaration) {
+  bool noteClassShape(sun::semantic_analysis::DeclarationId declaration) {
     return preRegisteredClassShapes_.insert(declaration).second;
   }
 
@@ -72,5 +75,8 @@ class DeclarationState {
   // Classes (by declaration identity) whose fields and method signatures were
   // registered by the pre-pass. The sequential pass skips re-adding them and
   // only analyzes bodies.
-  std::unordered_set<sun::DeclarationId> preRegisteredClassShapes_;
+  std::unordered_set<sun::semantic_analysis::DeclarationId>
+      preRegisteredClassShapes_;
 };
+
+}  // namespace sun::semantic_analysis

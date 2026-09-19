@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-namespace sun {
+namespace sun::semantic_analysis {
 
 /** Describe a source name and its scope independently of declaration identity.
  */
@@ -94,12 +94,13 @@ struct QualifiedName {
   }
 };
 
-}  // namespace sun
+}  // namespace sun::semantic_analysis
 
 // Hash specialization for std::unordered_map/set support
 template <>
-struct std::hash<sun::QualifiedName> {
-  size_t operator()(const sun::QualifiedName& qn) const noexcept {
+struct std::hash<sun::semantic_analysis::QualifiedName> {
+  size_t operator()(
+      const sun::semantic_analysis::QualifiedName& qn) const noexcept {
     size_t h = std::hash<std::string>{}(qn.baseName);
     for (const auto& seg : qn.scopePath) {
       h ^= std::hash<std::string>{}(seg) + 0x9e3779b9 + (h << 6) + (h >> 2);

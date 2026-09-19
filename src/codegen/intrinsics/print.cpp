@@ -11,15 +11,20 @@
 #include "codegen/intrinsics/intrinsics_generator.h"
 #include "codegen/intrinsics/libc.h"
 
+using sun::ast::CallExprAST;
+using sun::support::logAndThrowError;
+
 using namespace llvm;
+
+namespace sun::codegen::intrinsics {
 
 static Value* emitLibcWriteInline(IRBuilder<>& builder, llvm::Module* module,
                                   Value* fd, Value* buf, Value* len) {
   LLVMContext& llvmCtx = module->getContext();
-  Value* fdI32 =
-      builder.CreateIntCast(fd, Type::getInt32Ty(llvmCtx), /*isSigned=*/true);
-  return builder.CreateCall(sun::libc::write(module), {fdI32, buf, len},
-                            "write_ret");
+  Value* fdI32 = builder.CreateIntCast(fd, llvm::Type::getInt32Ty(llvmCtx),
+                                       /*isSigned=*/true);
+  return builder.CreateCall(sun::codegen::intrinsics::write(module),
+                            {fdI32, buf, len}, "write_ret");
 }
 
 // -------------------------------------------------------------------
@@ -33,8 +38,8 @@ static Function* getOrCreatePrintI32Helper(llvm::Module* module,
   if (func) return func;
 
   // Create function: void __sun_print_i32(i32 %val)
-  FunctionType* funcType = FunctionType::get(
-      Type::getVoidTy(llvmCtx), {Type::getInt32Ty(llvmCtx)}, false);
+  llvm::FunctionType* funcType = llvm::FunctionType::get(
+      llvm::Type::getVoidTy(llvmCtx), {llvm::Type::getInt32Ty(llvmCtx)}, false);
   func = Function::Create(funcType, Function::InternalLinkage,
                           "__sun_print_i32", module);
 
@@ -48,45 +53,48 @@ static Function* getOrCreatePrintI32Helper(llvm::Module* module,
   Value* val = func->arg_begin();
 
   // Buffer on stack
-  llvm::Type* bufArrayType = ArrayType::get(Type::getInt8Ty(llvmCtx), 12);
+  llvm::Type* bufArrayType =
+      llvm::ArrayType::get(llvm::Type::getInt8Ty(llvmCtx), 12);
   AllocaInst* buffer = builder.CreateAlloca(bufArrayType, nullptr, "buf");
 
-  AllocaInst* idxAlloca = builder.CreateAlloca(Type::getInt32Ty(llvmCtx));
-  builder.CreateStore(ConstantInt::get(Type::getInt32Ty(llvmCtx), 11),
+  AllocaInst* idxAlloca = builder.CreateAlloca(llvm::Type::getInt32Ty(llvmCtx));
+  builder.CreateStore(ConstantInt::get(llvm::Type::getInt32Ty(llvmCtx), 11),
                       idxAlloca);
 
   Value* isNegative = builder.CreateICmpSLT(
-      val, ConstantInt::get(Type::getInt32Ty(llvmCtx), 0), "is_neg");
+      val, ConstantInt::get(llvm::Type::getInt32Ty(llvmCtx), 0), "is_neg");
   Value* absVal = builder.CreateSelect(
       isNegative, builder.CreateNeg(val, "neg"), val, "abs");
 
-  AllocaInst* numAlloca = builder.CreateAlloca(Type::getInt32Ty(llvmCtx));
+  AllocaInst* numAlloca = builder.CreateAlloca(llvm::Type::getInt32Ty(llvmCtx));
   builder.CreateStore(absVal, numAlloca);
   builder.CreateBr(loopBB);
 
   // Loop: extract digits right to left
   builder.SetInsertPoint(loopBB);
-  Value* num = builder.CreateLoad(Type::getInt32Ty(llvmCtx), numAlloca);
-  Value* idx = builder.CreateLoad(Type::getInt32Ty(llvmCtx), idxAlloca);
+  Value* num = builder.CreateLoad(llvm::Type::getInt32Ty(llvmCtx), numAlloca);
+  Value* idx = builder.CreateLoad(llvm::Type::getInt32Ty(llvmCtx), idxAlloca);
 
-  Value* digit =
-      builder.CreateURem(num, ConstantInt::get(Type::getInt32Ty(llvmCtx), 10));
+  Value* digit = builder.CreateURem(
+      num, ConstantInt::get(llvm::Type::getInt32Ty(llvmCtx), 10));
   Value* digitChar = builder.CreateAdd(
-      digit, ConstantInt::get(Type::getInt32Ty(llvmCtx), '0'));
-  Value* digitChar8 = builder.CreateTrunc(digitChar, Type::getInt8Ty(llvmCtx));
+      digit, ConstantInt::get(llvm::Type::getInt32Ty(llvmCtx), '0'));
+  Value* digitChar8 =
+      builder.CreateTrunc(digitChar, llvm::Type::getInt8Ty(llvmCtx));
 
-  Value* charPtr = builder.CreateGEP(Type::getInt8Ty(llvmCtx), buffer, idx);
+  Value* charPtr =
+      builder.CreateGEP(llvm::Type::getInt8Ty(llvmCtx), buffer, idx);
   builder.CreateStore(digitChar8, charPtr);
 
-  Value* newIdx =
-      builder.CreateSub(idx, ConstantInt::get(Type::getInt32Ty(llvmCtx), 1));
+  Value* newIdx = builder.CreateSub(
+      idx, ConstantInt::get(llvm::Type::getInt32Ty(llvmCtx), 1));
   builder.CreateStore(newIdx, idxAlloca);
-  Value* newNum =
-      builder.CreateUDiv(num, ConstantInt::get(Type::getInt32Ty(llvmCtx), 10));
+  Value* newNum = builder.CreateUDiv(
+      num, ConstantInt::get(llvm::Type::getInt32Ty(llvmCtx), 10));
   builder.CreateStore(newNum, numAlloca);
 
   Value* cont = builder.CreateICmpUGT(
-      newNum, ConstantInt::get(Type::getInt32Ty(llvmCtx), 0));
+      newNum, ConstantInt::get(llvm::Type::getInt32Ty(llvmCtx), 0));
   builder.CreateCondBr(cont, loopBB, afterLoopBB);
 
   // After loop: check if negative
@@ -95,28 +103,30 @@ static Function* getOrCreatePrintI32Helper(llvm::Module* module,
 
   // Add minus sign
   builder.SetInsertPoint(addMinusBB);
-  Value* minusIdx = builder.CreateLoad(Type::getInt32Ty(llvmCtx), idxAlloca);
+  Value* minusIdx =
+      builder.CreateLoad(llvm::Type::getInt32Ty(llvmCtx), idxAlloca);
   Value* minusPtr =
-      builder.CreateGEP(Type::getInt8Ty(llvmCtx), buffer, minusIdx);
-  builder.CreateStore(ConstantInt::get(Type::getInt8Ty(llvmCtx), '-'),
+      builder.CreateGEP(llvm::Type::getInt8Ty(llvmCtx), buffer, minusIdx);
+  builder.CreateStore(ConstantInt::get(llvm::Type::getInt8Ty(llvmCtx), '-'),
                       minusPtr);
   builder.CreateStore(
       builder.CreateSub(minusIdx,
-                        ConstantInt::get(Type::getInt32Ty(llvmCtx), 1)),
+                        ConstantInt::get(llvm::Type::getInt32Ty(llvmCtx), 1)),
       idxAlloca);
   builder.CreateBr(writeBB);
 
   // Write to stdout
   builder.SetInsertPoint(writeBB);
-  Value* finalIdx = builder.CreateLoad(Type::getInt32Ty(llvmCtx), idxAlloca);
+  Value* finalIdx =
+      builder.CreateLoad(llvm::Type::getInt32Ty(llvmCtx), idxAlloca);
   Value* startIdx = builder.CreateAdd(
-      finalIdx, ConstantInt::get(Type::getInt32Ty(llvmCtx), 1));
+      finalIdx, ConstantInt::get(llvm::Type::getInt32Ty(llvmCtx), 1));
   Value* startPtr =
-      builder.CreateGEP(Type::getInt8Ty(llvmCtx), buffer, startIdx);
+      builder.CreateGEP(llvm::Type::getInt8Ty(llvmCtx), buffer, startIdx);
   Value* length = builder.CreateSub(
-      ConstantInt::get(Type::getInt32Ty(llvmCtx), 12), startIdx);
-  Value* length64 = builder.CreateZExt(length, Type::getInt64Ty(llvmCtx));
-  Value* fd = ConstantInt::get(Type::getInt32Ty(llvmCtx), 1);
+      ConstantInt::get(llvm::Type::getInt32Ty(llvmCtx), 12), startIdx);
+  Value* length64 = builder.CreateZExt(length, llvm::Type::getInt64Ty(llvmCtx));
+  Value* fd = ConstantInt::get(llvm::Type::getInt32Ty(llvmCtx), 1);
 
   emitLibcWriteInline(builder, module, fd, startPtr, length64);
   builder.CreateRetVoid();
@@ -139,8 +149,8 @@ static Function* getOrCreatePrint64Helper(llvm::Module* module,
 
   constexpr int kBufSize = 24;
 
-  FunctionType* funcType = FunctionType::get(
-      Type::getVoidTy(llvmCtx), {Type::getInt64Ty(llvmCtx)}, false);
+  llvm::FunctionType* funcType = llvm::FunctionType::get(
+      llvm::Type::getVoidTy(llvmCtx), {llvm::Type::getInt64Ty(llvmCtx)}, false);
   func = Function::Create(funcType, Function::InternalLinkage, name, module);
 
   BasicBlock* entryBB = BasicBlock::Create(llvmCtx, "entry", func);
@@ -150,12 +160,12 @@ static Function* getOrCreatePrint64Helper(llvm::Module* module,
   BasicBlock* writeBB = BasicBlock::Create(llvmCtx, "write", func);
 
   IRBuilder<> builder(entryBB);
-  llvm::Type* i64Ty = Type::getInt64Ty(llvmCtx);
-  llvm::Type* i32Ty = Type::getInt32Ty(llvmCtx);
-  llvm::Type* i8Ty = Type::getInt8Ty(llvmCtx);
+  llvm::Type* i64Ty = llvm::Type::getInt64Ty(llvmCtx);
+  llvm::Type* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
+  llvm::Type* i8Ty = llvm::Type::getInt8Ty(llvmCtx);
   Value* val = func->arg_begin();
 
-  llvm::Type* bufArrayType = ArrayType::get(i8Ty, kBufSize);
+  llvm::Type* bufArrayType = llvm::ArrayType::get(i8Ty, kBufSize);
   AllocaInst* buffer = builder.CreateAlloca(bufArrayType, nullptr, "buf");
 
   AllocaInst* idxAlloca = builder.CreateAlloca(i32Ty);
@@ -231,19 +241,20 @@ static Function* getOrCreatePrintNewlineHelper(llvm::Module* module,
   Function* func = module->getFunction("__sun_print_newline");
   if (func) return func;
 
-  FunctionType* funcType =
-      FunctionType::get(Type::getVoidTy(llvmCtx), {}, false);
+  llvm::FunctionType* funcType =
+      llvm::FunctionType::get(llvm::Type::getVoidTy(llvmCtx), {}, false);
   func = Function::Create(funcType, Function::InternalLinkage,
                           "__sun_print_newline", module);
 
   BasicBlock* entryBB = BasicBlock::Create(llvmCtx, "entry", func);
   IRBuilder<> builder(entryBB);
 
-  AllocaInst* buffer = builder.CreateAlloca(Type::getInt8Ty(llvmCtx));
-  builder.CreateStore(ConstantInt::get(Type::getInt8Ty(llvmCtx), '\n'), buffer);
+  AllocaInst* buffer = builder.CreateAlloca(llvm::Type::getInt8Ty(llvmCtx));
+  builder.CreateStore(ConstantInt::get(llvm::Type::getInt8Ty(llvmCtx), '\n'),
+                      buffer);
 
-  Value* fd = ConstantInt::get(Type::getInt32Ty(llvmCtx), 1);
-  Value* len = ConstantInt::get(Type::getInt64Ty(llvmCtx), 1);
+  Value* fd = ConstantInt::get(llvm::Type::getInt32Ty(llvmCtx), 1);
+  Value* len = ConstantInt::get(llvm::Type::getInt64Ty(llvmCtx), 1);
   emitLibcWriteInline(builder, module, fd, buffer, len);
   builder.CreateRetVoid();
 
@@ -258,8 +269,8 @@ static Function* getOrCreatePrintStringHelper(llvm::Module* module,
   if (func) return func;
 
   // Create function: void __sun_print_string(i8* %str)
-  FunctionType* funcType = FunctionType::get(
-      Type::getVoidTy(llvmCtx), {PointerType::getUnqual(llvmCtx)}, false);
+  llvm::FunctionType* funcType = llvm::FunctionType::get(
+      llvm::Type::getVoidTy(llvmCtx), {PointerType::getUnqual(llvmCtx)}, false);
   func = Function::Create(funcType, Function::InternalLinkage,
                           "__sun_print_string", module);
 
@@ -271,30 +282,32 @@ static Function* getOrCreatePrintStringHelper(llvm::Module* module,
   Value* strPtr = func->arg_begin();
 
   // Calculate string length using a loop (manual strlen)
-  AllocaInst* lenAlloca = builder.CreateAlloca(Type::getInt64Ty(llvmCtx));
-  builder.CreateStore(ConstantInt::get(Type::getInt64Ty(llvmCtx), 0),
+  AllocaInst* lenAlloca = builder.CreateAlloca(llvm::Type::getInt64Ty(llvmCtx));
+  builder.CreateStore(ConstantInt::get(llvm::Type::getInt64Ty(llvmCtx), 0),
                       lenAlloca);
   builder.CreateBr(loopBB);
 
   // strlen loop
   builder.SetInsertPoint(loopBB);
-  Value* len = builder.CreateLoad(Type::getInt64Ty(llvmCtx), lenAlloca);
-  Value* charPtr = builder.CreateGEP(Type::getInt8Ty(llvmCtx), strPtr, len);
-  Value* ch = builder.CreateLoad(Type::getInt8Ty(llvmCtx), charPtr);
-  Value* isNull =
-      builder.CreateICmpEQ(ch, ConstantInt::get(Type::getInt8Ty(llvmCtx), 0));
-  Value* newLen =
-      builder.CreateAdd(len, ConstantInt::get(Type::getInt64Ty(llvmCtx), 1));
+  Value* len = builder.CreateLoad(llvm::Type::getInt64Ty(llvmCtx), lenAlloca);
+  Value* charPtr =
+      builder.CreateGEP(llvm::Type::getInt8Ty(llvmCtx), strPtr, len);
+  Value* ch = builder.CreateLoad(llvm::Type::getInt8Ty(llvmCtx), charPtr);
+  Value* isNull = builder.CreateICmpEQ(
+      ch, ConstantInt::get(llvm::Type::getInt8Ty(llvmCtx), 0));
+  Value* newLen = builder.CreateAdd(
+      len, ConstantInt::get(llvm::Type::getInt64Ty(llvmCtx), 1));
   builder.CreateStore(newLen, lenAlloca);
   builder.CreateCondBr(isNull, writeBB, loopBB);
 
   // Write to stdout
   builder.SetInsertPoint(writeBB);
-  Value* finalLen = builder.CreateLoad(Type::getInt64Ty(llvmCtx), lenAlloca);
+  Value* finalLen =
+      builder.CreateLoad(llvm::Type::getInt64Ty(llvmCtx), lenAlloca);
   // Subtract 1 because we incremented past the null terminator
-  finalLen = builder.CreateSub(finalLen,
-                               ConstantInt::get(Type::getInt64Ty(llvmCtx), 1));
-  Value* fd = ConstantInt::get(Type::getInt32Ty(llvmCtx), 1);
+  finalLen = builder.CreateSub(
+      finalLen, ConstantInt::get(llvm::Type::getInt64Ty(llvmCtx), 1));
+  Value* fd = ConstantInt::get(llvm::Type::getInt32Ty(llvmCtx), 1);
   emitLibcWriteInline(builder, module, fd, strPtr, finalLen);
   builder.CreateRetVoid();
 
@@ -317,7 +330,7 @@ Value* IntrinsicsGenerator::codegenPrintI32(const CallExprAST& expr) {
   if (!val) return nullptr;
 
   if (!val->getType()->isIntegerTy(32)) {
-    val = ctx.builder->CreateSExtOrTrunc(val, Type::getInt32Ty(llvmCtx));
+    val = ctx.builder->CreateSExtOrTrunc(val, llvm::Type::getInt32Ty(llvmCtx));
   }
 
   Function* helper = getOrCreatePrintI32Helper(module, llvmCtx);
@@ -336,7 +349,7 @@ Value* IntrinsicsGenerator::codegenPrintI64(const CallExprAST& expr) {
   if (!val) return nullptr;
 
   if (!val->getType()->isIntegerTy(64)) {
-    val = ctx.builder->CreateSExtOrTrunc(val, Type::getInt64Ty(llvmCtx));
+    val = ctx.builder->CreateSExtOrTrunc(val, llvm::Type::getInt64Ty(llvmCtx));
   }
 
   Function* helper =
@@ -357,7 +370,7 @@ Value* IntrinsicsGenerator::codegenPrintU64(const CallExprAST& expr) {
   if (!val) return nullptr;
 
   if (!val->getType()->isIntegerTy(64)) {
-    val = ctx.builder->CreateZExtOrTrunc(val, Type::getInt64Ty(llvmCtx));
+    val = ctx.builder->CreateZExtOrTrunc(val, llvm::Type::getInt64Ty(llvmCtx));
   }
 
   Function* helper =
@@ -378,7 +391,7 @@ Value* IntrinsicsGenerator::codegenPrintF64(const CallExprAST& expr) {
   Value* val = codegen(*expr.getArgs()[0]);
   if (!val) return nullptr;
 
-  val = ctx.builder->CreateFPToSI(val, Type::getInt32Ty(llvmCtx));
+  val = ctx.builder->CreateFPToSI(val, llvm::Type::getInt32Ty(llvmCtx));
   Function* helper = getOrCreatePrintI32Helper(module, llvmCtx);
   return ctx.builder->CreateCall(helper, {val});
 }
@@ -423,15 +436,15 @@ static Function* getOrCreatePrintCharHelper(llvm::Module* module,
   Function* func = module->getFunction("__sun_print_char");
   if (func) return func;
 
-  FunctionType* funcType = FunctionType::get(
-      Type::getVoidTy(llvmCtx), {Type::getInt32Ty(llvmCtx)}, false);
+  llvm::FunctionType* funcType = llvm::FunctionType::get(
+      llvm::Type::getVoidTy(llvmCtx), {llvm::Type::getInt32Ty(llvmCtx)}, false);
   func = Function::Create(funcType, Function::InternalLinkage,
                           "__sun_print_char", module);
 
   BasicBlock* entryBB = BasicBlock::Create(llvmCtx, "entry", func);
   IRBuilder<> builder(entryBB);
-  llvm::Type* i32 = Type::getInt32Ty(llvmCtx);
-  llvm::Type* i8 = Type::getInt8Ty(llvmCtx);
+  llvm::Type* i32 = llvm::Type::getInt32Ty(llvmCtx);
+  llvm::Type* i8 = llvm::Type::getInt8Ty(llvmCtx);
   auto k = [&](uint32_t v) { return ConstantInt::get(i32, v); };
 
   Value* raw = func->arg_begin();
@@ -474,7 +487,7 @@ static Function* getOrCreatePrintCharHelper(llvm::Module* module,
   Value* b2 = builder.CreateSelect(is3, cont(0), cont(6), "b2");
   Value* b3 = cont(0);
 
-  llvm::Type* bufType = ArrayType::get(i8, 4);
+  llvm::Type* bufType = llvm::ArrayType::get(i8, 4);
   AllocaInst* buffer = builder.CreateAlloca(bufType, nullptr, "utf8");
   Value* bytes[4] = {b0, b1, b2, b3};
   for (unsigned i = 0; i < 4; ++i) {
@@ -483,7 +496,7 @@ static Function* getOrCreatePrintCharHelper(llvm::Module* module,
   }
 
   emitLibcWriteInline(builder, module, ConstantInt::get(i32, 1), buffer,
-                      builder.CreateZExt(len, Type::getInt64Ty(llvmCtx)));
+                      builder.CreateZExt(len, llvm::Type::getInt64Ty(llvmCtx)));
   builder.CreateRetVoid();
   return func;
 }
@@ -517,11 +530,13 @@ Value* IntrinsicsGenerator::codegenPrintBytes(const CallExprAST& expr) {
 
   // Ensure len is i64
   if (!len->getType()->isIntegerTy(64)) {
-    len = ctx.builder->CreateSExtOrTrunc(len, Type::getInt64Ty(llvmCtx));
+    len = ctx.builder->CreateSExtOrTrunc(len, llvm::Type::getInt64Ty(llvmCtx));
   }
 
   // Write to stdout (fd = 1$)
-  Value* fd = ConstantInt::get(Type::getInt32Ty(llvmCtx), 1);
+  Value* fd = ConstantInt::get(llvm::Type::getInt32Ty(llvmCtx), 1);
   emitLibcWriteInline(*ctx.builder, module, fd, ptr, len);
-  return ConstantInt::get(Type::getInt32Ty(llvmCtx), 0);
+  return ConstantInt::get(llvm::Type::getInt32Ty(llvmCtx), 0);
 }
+
+}  // namespace sun::codegen::intrinsics

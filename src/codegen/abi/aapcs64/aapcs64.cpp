@@ -1,9 +1,13 @@
 // abi/aapcs64.cpp — AArch64 AAPCS64 argument classification (ELF and
 // Darwin). See abi/aapcs64.h.
 
-#include "codegen/abi/aapcs64.h"
+#include "codegen/abi/aapcs64/aapcs64.h"
 
-namespace sun::abi::aapcs64 {
+using sun::codegen::abi::ArgKind;
+using sun::codegen::abi::ArgLowering;
+using sun::codegen::abi::Extend;
+
+namespace sun::codegen::abi::aapcs64 {
 
 namespace {
 
@@ -140,11 +144,11 @@ ArgLowering lowerReturn(llvm::Type* type, const llvm::DataLayout& dl,
   return lowerAggregate(type, dl, /*isReturn=*/true, variant);
 }
 
-SignatureLowering lowerCSignature(llvm::Type* returnType,
-                                  llvm::ArrayRef<llvm::Type*> paramTypes,
-                                  const llvm::DataLayout& dl, Variant variant,
-                                  const SignednessInfo* signs) {
-  SignatureLowering lowering;
+sun::codegen::abi::SignatureLowering lowerCSignature(
+    llvm::Type* returnType, llvm::ArrayRef<llvm::Type*> paramTypes,
+    const llvm::DataLayout& dl, Variant variant,
+    const sun::codegen::abi::SignednessInfo* signs) {
+  sun::codegen::abi::SignatureLowering lowering;
   lowering.ret =
       lowerReturn(returnType, dl, variant, signs && signs->retSigned);
   lowering.params.reserve(paramTypes.size());
@@ -157,4 +161,4 @@ SignatureLowering lowerCSignature(llvm::Type* returnType,
   return lowering;
 }
 
-}  // namespace sun::abi::aapcs64
+}  // namespace sun::codegen::abi::aapcs64

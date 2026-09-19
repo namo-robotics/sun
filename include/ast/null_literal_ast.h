@@ -7,6 +7,8 @@
 
 #include "ast/expr_ast.h"
 
+namespace sun::ast {
+
 class NullLiteralAST : public ExprAST {
  public:
   NullLiteralAST() = default;
@@ -14,3 +16,5 @@ class NullLiteralAST : public ExprAST {
   std::string toString() const override { return "null"; }
   std::string dotLabel() const override { return "null"; }
 };
+
+}  // namespace sun::ast

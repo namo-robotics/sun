@@ -20,7 +20,10 @@
 // These encapsulate all metadata added to AST nodes during analysis passes.
 // ============================================================================
 
-namespace sun {
+namespace sun::ast {
+using sun::semantic_analysis::DeclarationId;
+using sun::semantic_analysis::QualifiedName;
+using sun::semantic_analysis::TypePtr;
 
 /**
  * What a write to a field does to whatever the field held before it. The
@@ -35,14 +38,16 @@ enum class FieldWriteKind {
   StartsLife,
 };
 
-}  // namespace sun
+}  // namespace sun::ast
+
+namespace sun::ast {
 
 /// Base analysis data for all expression nodes
 struct ExprAnalysis {
   virtual ~ExprAnalysis() = default;
-  sun::DeclarationIdentity declaration;
-  sun::DeclarationId targetDeclaration;
-  sun::TypePtr resolvedType;  // Type determined by semantic analyzer
+  sun::semantic_analysis::DeclarationIdentity declaration;
+  DeclarationId targetDeclaration;
+  TypePtr resolvedType;       // Type determined by semantic analyzer
   bool moved = false;         // Set by borrow checker when ownership transfers
 
   ExprAnalysis() = default;
@@ -54,22 +59,22 @@ struct ExprAnalysis {
 
 /** Selected fields in source order for a struct literal. */
 struct StructLiteralAnalysis : public ExprAnalysis {
-  std::vector<sun::DeclarationId> fields;
+  std::vector<DeclarationId> fields;
 };
 
 /// Analysis data for PrototypeAST (function signatures)
 struct PrototypeAnalysis {
   std::vector<Capture> captures;
-  sun::DeclarationIdentity declaration;
-  sun::QualifiedName qualifiedName;
-  std::vector<sun::TypePtr> resolvedParamTypes;
+  sun::semantic_analysis::DeclarationIdentity declaration;
+  QualifiedName qualifiedName;
+  std::vector<TypePtr> resolvedParamTypes;
   bool resolvedParamTypesSet = false;
-  sun::TypePtr resolvedReturnType;
-  std::vector<sun::TypePtr> resolvedVariadicTypes;
+  TypePtr resolvedReturnType;
+  std::vector<TypePtr> resolvedVariadicTypes;
   // Distinguishes a specialization whose pack turned out to be empty from a
   // template whose pack is not resolved yet — both hold no types.
   bool resolvedVariadicTypesSet = false;
-  std::vector<std::pair<std::string, sun::TypePtr>> typeBindings;
+  std::vector<std::pair<std::string, TypePtr>> typeBindings;
 
   PrototypeAnalysis() = default;
   PrototypeAnalysis(const PrototypeAnalysis&) = default;
@@ -78,7 +83,7 @@ struct PrototypeAnalysis {
 
 /// Analysis data for FunctionAST (includes specializations)
 struct FunctionAnalysis : public ExprAnalysis {
-  std::map<sun::DeclarationId, std::shared_ptr<FunctionAST>> specializations;
+  std::map<DeclarationId, std::shared_ptr<FunctionAST>> specializations;
 
   FunctionAnalysis() = default;
   FunctionAnalysis(const FunctionAnalysis&) = default;
@@ -87,9 +92,8 @@ struct FunctionAnalysis : public ExprAnalysis {
 
 /// Analysis data for ClassDefinitionAST
 struct ClassAnalysis : public ExprAnalysis {
-  sun::QualifiedName qualifiedName;
-  std::map<sun::DeclarationId, std::shared_ptr<ClassDefinitionAST>>
-      specializations;
+  QualifiedName qualifiedName;
+  std::map<DeclarationId, std::shared_ptr<ClassDefinitionAST>> specializations;
 
   ClassAnalysis() = default;
   ClassAnalysis(const ClassAnalysis&) = default;
@@ -98,7 +102,7 @@ struct ClassAnalysis : public ExprAnalysis {
 
 /// Analysis data for InterfaceDefinitionAST
 struct InterfaceAnalysis : public ExprAnalysis {
-  sun::QualifiedName qualifiedName;
+  QualifiedName qualifiedName;
 
   InterfaceAnalysis() = default;
   InterfaceAnalysis(const InterfaceAnalysis&) = default;
@@ -107,10 +111,10 @@ struct InterfaceAnalysis : public ExprAnalysis {
 
 /// Analysis data for ForInExprAST
 struct ForInAnalysis : public ExprAnalysis {
-  sun::TypePtr resolvedLoopVarType;
-  sun::DeclarationId iteratorFactory;
-  sun::DeclarationId iteratorNext;
-  sun::TypePtr iteratorResultType;
+  TypePtr resolvedLoopVarType;
+  DeclarationId iteratorFactory;
+  DeclarationId iteratorNext;
+  TypePtr iteratorResultType;
 
   ForInAnalysis() = default;
   ForInAnalysis(const ForInAnalysis&) = default;
@@ -119,24 +123,24 @@ struct ForInAnalysis : public ExprAnalysis {
 
 /// Analysis data for MemberAccessAST
 struct MemberAccessAnalysis : public ExprAnalysis {
-  std::vector<sun::TypePtr> resolvedTypeArgs;
+  std::vector<TypePtr> resolvedTypeArgs;
   // For a generic method call whose last param is an `args...` pack,
   // the resolved types of the actual variadic arguments. Used to key the
   // specialization key so different call arities/types get distinct
   // specializations.
-  std::vector<sun::TypePtr> resolvedVariadicArgTypes;
+  std::vector<TypePtr> resolvedVariadicArgTypes;
   // The symbol this access denotes, when it denotes one: a module's function
   // or variable, or the specialization the analyzer instantiated for a
   // generic call. Declaration IDs select emitted symbols. Empty for an
   // ordinary field or method access.
-  sun::QualifiedName qualifiedName;
+  QualifiedName qualifiedName;
   // True when this member access is a method used in value position (bound
   // method reference); its resolved type is then a LambdaType.
   bool isBoundMethodRef = false;
   // For a field write: what happens to the value the field held before it.
   // Decided by checkFieldInitialization; anywhere it has not looked, a write
   // replaces a live value, which is the safe reading.
-  sun::FieldWriteKind fieldWrite = sun::FieldWriteKind::ReplacesValue;
+  sun::ast::FieldWriteKind fieldWrite = sun::ast::FieldWriteKind::ReplacesValue;
 
   MemberAccessAnalysis() = default;
   MemberAccessAnalysis(const MemberAccessAnalysis&) = default;
@@ -147,7 +151,7 @@ struct MemberAccessAnalysis : public ExprAnalysis {
 struct CallAnalysis : public ExprAnalysis {
   // How each argument reaches its parameter, decided by the semantic analyzer
   // once the callee's signature is known; codegen carries these out.
-  std::vector<sun::ArgConversion> argConversions;
+  std::vector<sun::semantic_analysis::ArgConversion> argConversions;
 
   CallAnalysis() = default;
   CallAnalysis(const CallAnalysis&) = default;
@@ -156,12 +160,12 @@ struct CallAnalysis : public ExprAnalysis {
 
 /// Analysis data for GenericCallAST
 struct GenericCallAnalysis : public ExprAnalysis {
-  std::vector<sun::TypePtr> resolvedTypeArgs;
+  std::vector<TypePtr> resolvedTypeArgs;
   const FunctionAST* genericFunctionAST = nullptr;
   // Concrete callable signature selected for this generic call.
-  sun::TypePtr resolvedCalleeType;
+  TypePtr resolvedCalleeType;
   // As CallAnalysis::argConversions, for `f<T>(args)` and `Box<T>(args)`
-  std::vector<sun::ArgConversion> argConversions;
+  std::vector<sun::semantic_analysis::ArgConversion> argConversions;
 
   GenericCallAnalysis() = default;
   GenericCallAnalysis(const GenericCallAnalysis&) = default;
@@ -170,7 +174,7 @@ struct GenericCallAnalysis : public ExprAnalysis {
 
 /// Analysis data for DeclareTypeAST
 struct DeclareTypeAnalysis : public ExprAnalysis {
-  sun::TypePtr resolvedDeclaredType;
+  TypePtr resolvedDeclaredType;
 
   DeclareTypeAnalysis() = default;
   DeclareTypeAnalysis(const DeclareTypeAnalysis&) = default;
@@ -179,9 +183,11 @@ struct DeclareTypeAnalysis : public ExprAnalysis {
 
 /// Analysis data for variable nodes (VarRef, VarCreate, RefCreate)
 struct VariableAnalysis : public ExprAnalysis {
-  sun::QualifiedName qualifiedName;
+  QualifiedName qualifiedName;
 
   VariableAnalysis() = default;
   VariableAnalysis(const VariableAnalysis&) = default;
   VariableAnalysis& operator=(const VariableAnalysis&) = default;
 };
+
+}  // namespace sun::ast

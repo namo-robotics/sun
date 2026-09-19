@@ -21,14 +21,30 @@
 #include "parsing/parser.h"
 #include "serialization/ast_serializer.h"
 
-namespace sun {
+using sun::semantic_analysis::DeclarationId;
+using sun::semantic_analysis::PortableDeclarationKey;
+using sun::semantic_analysis::Visibility;
+
+using sun::ast::ASTNodeType;
+using sun::ast::BlockExprAST;
+using sun::ast::ClassDefinitionAST;
+using sun::ast::EnumDefinitionAST;
+using sun::ast::FunctionAST;
+using sun::ast::InterfaceDefinitionAST;
+using sun::ast::VariableCreationAST;
+using sun::semantic_analysis::SemanticContext;
+
+namespace sun::moon_bundling {
+namespace pbc = sun::proto::ast;
 
 namespace {
 
-using serialization::ASTSerializer;
+using sun::serialization::ASTSerializer;
 
 // Check if a function/method is generic (has type parameters)
-bool isGeneric(const PrototypeAST& proto) { return proto.isTemplate(); }
+bool isGeneric(const sun::ast::PrototypeAST& proto) {
+  return proto.isTemplate();
+}
 
 // Check if a class is generic
 bool isGeneric(const ClassDefinitionAST& cls) {
@@ -41,13 +57,13 @@ bool isGeneric(const InterfaceDefinitionAST& iface) {
 }
 
 // Clear the body of a FunctionDef proto (keep only signature)
-void clearBody(ast::FunctionDef* func) {
+void clearBody(pbc::FunctionDef* func) {
   func->mutable_body()->clear_body();
   func->set_field_initializer_count(0);
 }
 
 // Clear bodies of non-generic methods in a ClassDef
-void clearNonGenericBodies(ast::ClassDef* cls,
+void clearNonGenericBodies(pbc::ClassDef* cls,
                            const ClassDefinitionAST& original) {
   const auto& methods = original.getMethods();
   for (int i = 0; i < cls->methods_size() && i < (int)methods.size(); ++i) {
@@ -63,7 +79,7 @@ void clearNonGenericBodies(ast::ClassDef* cls,
 }
 
 // Clear bodies of non-generic methods in an InterfaceDef
-void clearNonGenericBodies(ast::InterfaceDef* iface,
+void clearNonGenericBodies(pbc::InterfaceDef* iface,
                            const InterfaceDefinitionAST& original) {
   const auto& methods = original.getMethods();
   for (int i = 0; i < iface->methods_size() && i < (int)methods.size(); ++i) {
@@ -83,10 +99,10 @@ void extractFunction(const FunctionAST& func, moon::ModuleMetadata& metadata,
                      const ASTSerializer& serializer) {
   if (func.isExtern() && func.getTargetDeclarationId()) return;
   // Serialize the function AST to proto
-  ast::ASTNode node = serializer.serialize(func);
+  pbc::ASTNode node = serializer.serialize(func);
 
   // Add to metadata
-  ast::FunctionDef* funcDef = metadata.add_functions();
+  pbc::FunctionDef* funcDef = metadata.add_functions();
   *funcDef = node.function_def();
   if (node.has_location()) *funcDef->mutable_location() = node.location();
 
@@ -99,12 +115,12 @@ void extractFunction(const FunctionAST& func, moon::ModuleMetadata& metadata,
 // Extract a class and add to metadata
 void extractClass(const ClassDefinitionAST& cls, moon::ModuleMetadata& metadata,
                   const ASTSerializer& serializer,
-                  sun::TypeRegistry* types = nullptr) {
+                  sun::semantic_analysis::TypeRegistry* types = nullptr) {
   // Serialize the class AST to proto
-  ast::ASTNode node = serializer.serialize(cls);
+  pbc::ASTNode node = serializer.serialize(cls);
 
   // Add to metadata
-  ast::ClassDef* classDef = metadata.add_classes();
+  pbc::ClassDef* classDef = metadata.add_classes();
   *classDef = node.class_def();
   if (node.has_location()) *classDef->mutable_location() = node.location();
 
@@ -133,10 +149,10 @@ void extractInterface(const InterfaceDefinitionAST& iface,
                       moon::ModuleMetadata& metadata,
                       const ASTSerializer& serializer) {
   // Serialize the interface AST to proto
-  ast::ASTNode node = serializer.serialize(iface);
+  pbc::ASTNode node = serializer.serialize(iface);
 
   // Add to metadata
-  ast::InterfaceDef* ifaceDef = metadata.add_interfaces();
+  pbc::InterfaceDef* ifaceDef = metadata.add_interfaces();
   *ifaceDef = node.interface_def();
   if (node.has_location()) *ifaceDef->mutable_location() = node.location();
 
@@ -153,8 +169,8 @@ void extractInterface(const InterfaceDefinitionAST& iface,
 void extractGlobal(const VariableCreationAST& var,
                    moon::ModuleMetadata& metadata,
                    const ASTSerializer& serializer) {
-  ast::ASTNode node = serializer.serialize(var);
-  ast::VariableCreation* global = metadata.add_globals();
+  pbc::ASTNode node = serializer.serialize(var);
+  pbc::VariableCreation* global = metadata.add_globals();
   *global = node.variable_creation();
   if (global->has_type_annotation()) global->clear_value();
 }
@@ -164,10 +180,10 @@ void extractEnum(const EnumDefinitionAST& enumDef,
                  moon::ModuleMetadata& metadata,
                  const ASTSerializer& serializer) {
   // Serialize the enum AST to proto
-  ast::ASTNode node = serializer.serialize(enumDef);
+  pbc::ASTNode node = serializer.serialize(enumDef);
 
   // Add to metadata
-  ast::EnumDef* enumProto = metadata.add_enums();
+  pbc::EnumDef* enumProto = metadata.add_enums();
   *enumProto = node.enum_def();
   if (node.has_location()) *enumProto->mutable_location() = node.location();
 }
@@ -189,11 +205,10 @@ struct ModuleCollector {
   }
 };
 
-void extractFromStatements(const std::vector<std::unique_ptr<ExprAST>>& stmts,
-                           ModuleCollector& collector,
-                           const std::string& modulePath,
-                           const ASTSerializer& serializer,
-                           const std::filesystem::path& moduleDir) {
+void extractFromStatements(
+    const std::vector<std::unique_ptr<sun::ast::ExprAST>>& stmts,
+    ModuleCollector& collector, const std::string& modulePath,
+    const ASTSerializer& serializer, const std::filesystem::path& moduleDir) {
   for (const auto& stmt : stmts) {
     if (!stmt) continue;
 
@@ -205,13 +220,13 @@ void extractFromStatements(const std::vector<std::unique_ptr<ExprAST>>& stmts,
 
     // Handle module/namespace blocks (nested modules become dotted paths)
     if (stmt->getType() == ASTNodeType::MODULE) {
-      const auto& nsDecl = static_cast<const ModuleAST&>(*stmt);
+      const auto& nsDecl = static_cast<const sun::ast::ModuleAST&>(*stmt);
       std::string nested = modulePath.empty()
                                ? nsDecl.getName()
                                : modulePath + "." + nsDecl.getName();
       auto& md = collector.forModule(nested);
       // Visibility is per module, agreed across all of its openings
-      if (nsDecl.isPublic()) md.set_visibility(ast::PUBLIC);
+      if (nsDecl.isPublic()) md.set_visibility(pbc::PUBLIC);
       extractFromStatements(nsDecl.getBody().getBody(), collector, nested,
                             serializer, moduleDir);
     }
@@ -292,7 +307,8 @@ std::vector<moon::ModuleMetadata> extractAllMetadata(
 }  // namespace
 
 std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
-    const BlockExprAST& program, SemanticAnalyzer& analyzer,
+    const BlockExprAST& program,
+    sun::semantic_analysis::SemanticAnalyzer& analyzer,
     const std::string& bundleHash) {
   auto& ctx = analyzer.context();
   auto& declarations = ctx.types()->declarations;
@@ -300,10 +316,10 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
   ASTSerializer serializer(
       {.declarations = &declarations, .include_location = true});
   std::vector<moon::ModuleMetadata> result;
-  std::map<std::pair<std::string, SourceFileId>, size_t> entries;
+  std::map<std::pair<std::string, sun::support::SourceFileId>, size_t> entries;
   std::map<std::string, DeclarationId> moduleIdentities;
   auto entry = [&](const std::string& path,
-                   const ExprAST& stmt) -> moon::ModuleMetadata& {
+                   const sun::ast::ExprAST& stmt) -> moon::ModuleMetadata& {
     auto [it, added] =
         entries.try_emplace({path, stmt.getSourceFileId()}, result.size());
     if (added) {
@@ -331,23 +347,27 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
   std::function<void(const BlockExprAST&, std::string, Visibility)> walk =
       [&](const BlockExprAST& block, std::string path, Visibility visibility) {
         for (const auto& stmt : block.getBody()) {
-          SemanticContext::SourceFileGuard file(ctx, stmt->getSourceFileId());
-          SemanticContext::LocationGuard location(ctx, stmt->getLocation());
-          if (auto* moon = dynamic_cast<const MoonScopeAST*>(stmt.get())) {
+          sun::semantic_analysis::SemanticContext::SourceFileGuard file(
+              ctx, stmt->getSourceFileId());
+          sun::semantic_analysis::SemanticContext::LocationGuard location(
+              ctx, stmt->getLocation());
+          if (auto* moon =
+                  dynamic_cast<const sun::ast::MoonScopeAST*>(stmt.get())) {
             if (!moon->isOwnBundle()) continue;
-            SemanticContext::ScopeSwitchGuard scope(
+            sun::semantic_analysis::SemanticContext::ScopeSwitchGuard scope(
                 ctx, ctx.lookupModuleScope(moon->getContentHash()));
             walk(moon->getBody(), "", Visibility::Private);
             continue;
           }
-          if (auto* module = dynamic_cast<const ModuleAST*>(stmt.get())) {
+          if (auto* module =
+                  dynamic_cast<const sun::ast::ModuleAST*>(stmt.get())) {
             auto nested = path.empty() ? module->getName()
                                        : path + "." + module->getName();
             moduleIdentities[nested] = module->getDeclarationId();
             entry(nested, *module)
-                .set_visibility(module->isPublic() ? ast::PUBLIC
-                                                   : ast::PRIVATE);
-            SemanticContext::ScopeSwitchGuard scope(
+                .set_visibility(module->isPublic() ? pbc::PUBLIC
+                                                   : pbc::PRIVATE);
+            sun::semantic_analysis::SemanticContext::ScopeSwitchGuard scope(
                 ctx, ctx.scope()->childModules.at(module->getName()).get());
             walk(module->getBody(), nested, module->getVisibility());
             continue;
@@ -380,8 +400,8 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
           bindMetadataTypes(temporary, ctx);
           bindMetadataModules(temporary, ctx);
           auto& md = entry(path, *stmt);
-          md.set_visibility(visibility == Visibility::Public ? ast::PUBLIC
-                                                             : ast::PRIVATE);
+          md.set_visibility(visibility == Visibility::Public ? pbc::PUBLIC
+                                                             : pbc::PRIVATE);
           md.MergeFrom(temporary);
         }
       };
@@ -450,7 +470,7 @@ std::optional<std::vector<moon::ModuleMetadata>> extractAllMetadataFromSource(
   }
 
   std::istringstream ss(source);
-  Parser parser(ss);
+  sun::parsing::Parser parser(ss);
   parser.setBaseDir(baseDir);
   parser.getNextToken();
 
@@ -461,12 +481,12 @@ std::optional<std::vector<moon::ModuleMetadata>> extractAllMetadataFromSource(
 
   // Lower the parse tree so extracted generic function bodies contain only
   // core AST nodes (paren/template-string nodes never reach .moon files)
-  LoweringPass lowering;
+  sun::parsing::LoweringPass lowering;
   lowering.run(*ast);
 
   // Doc comments ride along in the bundle so editors can show them for
   // imported declarations without the library's source at hand
-  attachDocComments(*ast, source);
+  sun::parsing::attachDocComments(*ast, source);
 
   return extractAllMetadata(displayName, *ast, sourceHash);
 }
@@ -486,4 +506,4 @@ std::optional<moon::ModuleMetadata> extractMetadataFromSource(
   return (*all)[0];
 }
 
-}  // namespace sun
+}  // namespace sun::moon_bundling

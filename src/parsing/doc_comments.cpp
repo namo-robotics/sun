@@ -6,7 +6,10 @@
 
 #include "ast.h"
 
-namespace sun {
+using sun::ast::ASTNodeType;
+using sun::support::Position;
+
+namespace sun::parsing {
 
 namespace {
 
@@ -71,7 +74,7 @@ class DocAttacher {
   explicit DocAttacher(const std::string& source)
       : lines_(splitLines(source)) {}
 
-  void visitBlock(BlockExprAST& block) {
+  void visitBlock(sun::ast::BlockExprAST& block) {
     for (auto& stmt : block.mutableBody()) {
       if (stmt) visit(*stmt);
     }
@@ -89,10 +92,10 @@ class DocAttacher {
     return member.line == parent.line ? "" : docAt(member);
   }
 
-  void visit(ExprAST& node) {
+  void visit(sun::ast::ExprAST& node) {
     switch (node.getType()) {
       case ASTNodeType::MODULE: {
-        auto& module = static_cast<ModuleAST&>(node);
+        auto& module = static_cast<sun::ast::ModuleAST&>(node);
         // Only the last segment of a dotted declaration owns its comment.
         module.setDoc(module.getShorthandChild() ? ""
                                                  : docAt(module.getLocation()));
@@ -100,12 +103,12 @@ class DocAttacher {
         break;
       }
       case ASTNodeType::FUNCTION: {
-        auto& fn = static_cast<FunctionAST&>(node);
+        auto& fn = static_cast<sun::ast::FunctionAST&>(node);
         fn.getProtoMut().setDoc(docAt(fn.getLocation()));
         break;
       }
       case ASTNodeType::CLASS_DEFINITION: {
-        auto& cls = static_cast<ClassDefinitionAST&>(node);
+        auto& cls = static_cast<sun::ast::ClassDefinitionAST&>(node);
         cls.setDoc(docAt(cls.getLocation()));
         for (auto& field : cls.getMutableFields()) {
           field.doc = memberDocAt(field.location, cls.getLocation());
@@ -118,7 +121,8 @@ class DocAttacher {
         break;
       }
       case ASTNodeType::INTERFACE_DEFINITION: {
-        auto& iface = static_cast<InterfaceDefinitionAST&>(node);
+        auto& iface =
+            static_cast<sun::ast::InterfaceDefinitionAST&>(node);
         iface.setDoc(docAt(iface.getLocation()));
         for (auto& field : iface.getMutableFields()) {
           field.doc = memberDocAt(field.location, iface.getLocation());
@@ -131,7 +135,7 @@ class DocAttacher {
         break;
       }
       case ASTNodeType::ENUM_DEFINITION: {
-        auto& enumDef = static_cast<EnumDefinitionAST&>(node);
+        auto& enumDef = static_cast<sun::ast::EnumDefinitionAST&>(node);
         enumDef.setDoc(docAt(enumDef.getLocation()));
         for (auto& variant : enumDef.getMutableVariants()) {
           variant.doc = memberDocAt(variant.location, enumDef.getLocation());
@@ -139,7 +143,7 @@ class DocAttacher {
         break;
       }
       case ASTNodeType::VARIABLE_CREATION: {
-        auto& var = static_cast<VariableCreationAST&>(node);
+        auto& var = static_cast<sun::ast::VariableCreationAST&>(node);
         var.setDoc(docAt(var.getLocation()));
         break;
       }
@@ -175,7 +179,8 @@ class DocAttacher {
     return joinCollected(collected);
   }
 
-  friend std::string sun::docCommentAbove(const std::string& source, int line);
+  friend std::string sun::parsing::docCommentAbove(const std::string& source,
+                                                   int line);
 
   std::vector<std::string> lines_;
 };
@@ -186,9 +191,10 @@ std::string docCommentAbove(const std::string& source, int line) {
   return DocAttacher::commentAbove(splitLines(source), line);
 }
 
-void attachDocComments(BlockExprAST& program, const std::string& source) {
+void attachDocComments(sun::ast::BlockExprAST& program,
+                       const std::string& source) {
   DocAttacher attacher(source);
   attacher.visitBlock(program);
 }
 
-}  // namespace sun
+}  // namespace sun::parsing

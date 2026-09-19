@@ -6,6 +6,14 @@
 #include "semantic_analysis/type_rules.h"
 #include "support/error.h"
 
+using sun::semantic_analysis::TypePtr;
+
+using sun::ast::BlockExprAST;
+using sun::ast::PrototypeAST;
+using sun::support::logAndThrowError;
+
+namespace sun::semantic_analysis {
+
 void BodyAnalyzer::analyzeBlock(BlockExprAST& block) {
   for (const auto& expression : block.getBody()) {
     analyzer_.analyzeExpr(*expression);
@@ -17,10 +25,10 @@ void BodyAnalyzer::analyzeBlock(BlockExprAST& block) {
 // after the body is analyzed, so match discriminants carry their types.
 static void checkAllPathsReturn(const PrototypeAST& proto,
                                 const BlockExprAST& body,
-                                const sun::TypePtr& returnType,
-                                const Position& loc) {
+                                const TypePtr& returnType,
+                                const sun::support::Position& loc) {
   if (!returnType || returnType->isVoid()) return;
-  if (sun::rules::alwaysExits(body)) return;
+  if (sun::semantic_analysis::alwaysExits(body)) return;
   const std::string name =
       proto.getName().empty() ? "lambda" : "'" + proto.getName() + "'";
   logAndThrowError(
@@ -30,7 +38,7 @@ static void checkAllPathsReturn(const PrototypeAST& proto,
       loc);
 }
 
-void BodyAnalyzer::analyzeFunction(FunctionAST& func) {
+void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
   PrototypeAST& proto = const_cast<PrototypeAST&>(func.getProto());
 
   analyzer_.rejectRefEnvReturnType(proto.getReturnType(), func.getLocation(),
@@ -69,14 +77,14 @@ void BodyAnalyzer::analyzeFunction(FunctionAST& func) {
   }
 
   // Format the function signature for scope diagnostics.
-  std::string funcSig = sun::names::formatFunctionSignature(
+  std::string funcSig = sun::semantic_analysis::formatFunctionSignature(
       proto.getQualifiedName().display(), proto.getResolvedParamTypes());
 
   // Return type for return-position inference. Some paths (class method
   // pass 2) reach here before the proto's resolved return type is applied;
   // resolve the annotation in the current scope (type parameter bindings for
   // specialized classes are active here).
-  sun::TypePtr scopeReturnType = proto.getResolvedReturnType();
+  TypePtr scopeReturnType = proto.getResolvedReturnType();
   if (!scopeReturnType && proto.hasReturnType() && !proto.isGeneric()) {
     scopeReturnType =
         analyzer_.types().typeAnnotationToType(*proto.getReturnType());
@@ -106,7 +114,7 @@ void BodyAnalyzer::analyzeFunction(FunctionAST& func) {
   // IShape's members on a value of type T (see inferMemberAccessType).
   if (proto.isGeneric()) {
     std::vector<std::string> typeParams;
-    std::vector<sun::TypePtr> typeParamTypes;
+    std::vector<TypePtr> typeParamTypes;
     for (size_t i = 0; i < proto.getTypeParameters().size(); ++i) {
       const auto& tp = proto.getTypeParameters()[i];
       typeParams.push_back(tp.name);
@@ -129,7 +137,7 @@ void BodyAnalyzer::analyzeFunction(FunctionAST& func) {
   // Declare parameters
   for (size_t i = 0; i < proto.getArgs().size(); ++i) {
     const auto& [argName, argType] = proto.getArgs()[i];
-    sun::TypePtr paramType = analyzer_.types().typeAnnotationToType(argType);
+    TypePtr paramType = analyzer_.types().typeAnnotationToType(argType);
     ctx_.currentScope().declareVariable(
         argName, paramType, true, false,
         proto.declarationIdentity().parameters.at(i));
@@ -171,21 +179,21 @@ void BodyAnalyzer::analyzeFunction(FunctionAST& func) {
   ctx_.exitScope();
 }
 
-void BodyAnalyzer::analyzeLambda(LambdaAST& lambda) {
+void BodyAnalyzer::analyzeLambda(sun::ast::LambdaAST& lambda) {
   PrototypeAST& proto = const_cast<PrototypeAST&>(lambda.getProto());
 
   // Enter function scope (empty signature - lambdas are anonymous)
   // Nested functions in lambdas will still get outer function prefixes
   // Pass canThrow flag from the lambda's prototype
-  ctx_.enterFunctionScope("", sun::QualifiedName(), proto.canThrow(),
-                          proto.getResolvedReturnType());
+  ctx_.enterFunctionScope("", sun::semantic_analysis::QualifiedName(),
+                          proto.canThrow(), proto.getResolvedReturnType());
 
   // Lambdas don't have type parameters (no generic lambdas)
 
   // Declare parameters
   for (size_t i = 0; i < proto.getArgs().size(); ++i) {
     const auto& [argName, argType] = proto.getArgs()[i];
-    sun::TypePtr paramType = analyzer_.types().typeAnnotationToType(argType);
+    TypePtr paramType = analyzer_.types().typeAnnotationToType(argType);
     ctx_.currentScope().declareVariable(
         argName, paramType, true, false,
         proto.declarationIdentity().parameters.at(i));
@@ -223,9 +231,10 @@ void BodyAnalyzer::analyzeLambda(LambdaAST& lambda) {
 // entered the specialized class's scope inside the template's definition
 // scope, so the body sees exactly the names the template was written against.
 void BodyAnalyzer::analyzeMethodWithBindings(
-    FunctionAST& methodFunc, std::shared_ptr<sun::ClassType> classType,
+    sun::ast::FunctionAST& methodFunc,
+    std::shared_ptr<sun::semantic_analysis::ClassType> classType,
     const std::vector<std::string>& typeParams,
-    const std::vector<sun::TypePtr>& typeArgs) {
+    const std::vector<TypePtr>& typeArgs) {
   SemanticContext::SourceFileGuard sourceFile(ctx_,
                                               methodFunc.getSourceFileId());
   // Step 2: Set up scope with type parameter bindings (only if needed)
@@ -246,16 +255,16 @@ void BodyAnalyzer::analyzeMethodWithBindings(
   // Compute method signature with substituted param types for nested function
   // qualification
   const auto& proto = methodFunc.getProto();
-  std::vector<sun::TypePtr> substitutedParamTypes;
+  std::vector<TypePtr> substitutedParamTypes;
   for (const auto& [argName, argType] : proto.getArgs()) {
     substitutedParamTypes.push_back(
         analyzer_.types().typeAnnotationToType(argType));
   }
-  std::string methodSig = sun::names::formatFunctionSignature(
+  std::string methodSig = sun::semantic_analysis::formatFunctionSignature(
       proto.getName(), substitutedParamTypes);
   // Resolve the return type under the active bindings so return-position
   // inference (e.g. `return Option.None;`) has the expected type
-  sun::TypePtr methodReturnType;
+  TypePtr methodReturnType;
   if (proto.hasReturnType()) {
     methodReturnType =
         analyzer_.types().typeAnnotationToType(*proto.getReturnType());
@@ -298,3 +307,5 @@ void BodyAnalyzer::analyzeMethodWithBindings(
   }
   ctx_.setCurrentClass(savedClass);
 }
+
+}  // namespace sun::semantic_analysis

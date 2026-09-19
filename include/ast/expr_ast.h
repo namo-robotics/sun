@@ -14,10 +14,16 @@
 #include "semantic_analysis/visibility.h"
 #include "support/source_file.h"
 
+namespace sun::ast {
+using sun::semantic_analysis::DeclarationId;
+using sun::semantic_analysis::PortableDeclarationKey;
+using sun::semantic_analysis::Visibility;
+using sun::support::SourceFileId;
+
 class ExprAST {
  protected:
   mutable std::unique_ptr<ExprAnalysis> analysis_;  // Analysis metadata
-  sun::SourceFileId sourceFileId_ = 0;
+  SourceFileId sourceFileId_ = 0;
   /** When set, this expression IS a fully qualified module name, identified by
    * its defining bundle and original module path. For a using statement, this
    * identifies its target module instead of the statement itself.
@@ -26,13 +32,12 @@ class ExprAST {
    * source aliases in the caller. Source spelling is kept for formatting and
    * diagnostics.
    */
-  std::optional<sun::PortableDeclarationKey> moduleDeclaration_;
-  Position location_;         // Original source location
+  std::optional<PortableDeclarationKey> moduleDeclaration_;
+  sun::support::Position location_;  // Original source location
   bool precompiled_ = false;  // True if from precompiled library
   bool skipCodegen_ = false;  // Set by semantic analyzer for diamond duplicates
   std::string symbolPrefix_;  // Hash prefix for moon symbol isolation
-  sun::Visibility visibility_ =
-      sun::Visibility::Private;  // Declaration visibility
+  Visibility visibility_ = Visibility::Private;  // Declaration visibility
 
   // Virtual method to ensure analysis is allocated with the correct type
   // Derived classes with specialized analysis types should override this
@@ -68,24 +73,23 @@ class ExprAST {
 
   /** The original module denoted by this expression or retained using target.
    */
-  const std::optional<sun::PortableDeclarationKey>& getModuleDeclaration()
-      const {
+  const std::optional<PortableDeclarationKey>& getModuleDeclaration() const {
     return moduleDeclaration_;
   }
 
   /** Bind a module reference without changing its source spelling. */
-  void setModuleDeclaration(sun::PortableDeclarationKey name) {
+  void setModuleDeclaration(PortableDeclarationKey name) {
     moduleDeclaration_ = std::move(name);
   }
 
   /** The source unit whose imports apply to this node. */
-  sun::SourceFileId getSourceFileId() const { return sourceFileId_; }
+  SourceFileId getSourceFileId() const { return sourceFileId_; }
 
   /** Preserve the source context when parsing or synthesizing a node. */
-  void setSourceFileId(sun::SourceFileId id) { sourceFileId_ = id; }
+  void setSourceFileId(SourceFileId id) { sourceFileId_ = id; }
 
   /** Fill missing source identities without changing imported subtrees. */
-  void inheritSourceFile(sun::SourceFileId id);
+  void inheritSourceFile(SourceFileId id);
   virtual ASTNodeType getType() const = 0;
 
   // Debug representation of this AST node
@@ -110,30 +114,31 @@ class ExprAST {
   virtual void forEachChildSlot(const ChildSlotFn&) {}
 
   // Declaration visibility (meaningful on declaration nodes only)
-  sun::Visibility getVisibility() const { return visibility_; }
-  void setVisibility(sun::Visibility v) { visibility_ = v; }
-  bool isPublic() const { return visibility_ == sun::Visibility::Public; }
+  Visibility getVisibility() const { return visibility_; }
+  void setVisibility(Visibility v) { visibility_ = v; }
+  bool isPublic() const { return visibility_ == Visibility::Public; }
 
   // Analysis data access
   bool hasAnalysis() const { return analysis_ != nullptr; }
   /** Read the declaration identity without allocating computed analysis. */
-  virtual sun::DeclarationId getDeclarationId() const {
-    return analysis_ ? analysis_->declaration.id : sun::DeclarationId{};
+  virtual DeclarationId getDeclarationId() const {
+    return analysis_ ? analysis_->declaration.id : DeclarationId{};
   }
   /** Assign the identity allocated by the owning analysis session. */
-  virtual void setDeclarationId(sun::DeclarationId id) const {
+  virtual void setDeclarationId(DeclarationId id) const {
     analysis().declaration.id = id;
   }
   /** Access declaration and parameter identities retained within a session. */
-  virtual sun::DeclarationIdentity& declarationIdentity() const {
+  virtual sun::semantic_analysis::DeclarationIdentity& declarationIdentity()
+      const {
     return analysis().declaration;
   }
   /** Return the declaration selected by semantic resolution. */
-  sun::DeclarationId getTargetDeclarationId() const {
-    return analysis_ ? analysis_->targetDeclaration : sun::DeclarationId{};
+  DeclarationId getTargetDeclarationId() const {
+    return analysis_ ? analysis_->targetDeclaration : DeclarationId{};
   }
   /** Record a resolved reference without changing the source spelling. */
-  void setTargetDeclarationId(sun::DeclarationId id) const {
+  void setTargetDeclarationId(DeclarationId id) const {
     analysis().targetDeclaration = id;
   }
   /** Discard computed results while preserving this session's identities. */
@@ -153,10 +158,10 @@ class ExprAST {
   }
 
   // Type annotation set by semantic analyzer (delegates to analysis)
-  void setResolvedType(sun::TypePtr type) const {
+  void setResolvedType(sun::semantic_analysis::TypePtr type) const {
     analysis().resolvedType = std::move(type);
   }
-  sun::TypePtr getResolvedType() const {
+  sun::semantic_analysis::TypePtr getResolvedType() const {
     return analysis_ ? analysis_->resolvedType : nullptr;
   }
   bool hasResolvedType() const {
@@ -167,12 +172,12 @@ class ExprAST {
   }
 
   // Source location tracking
-  void setLocation(Position loc) { location_ = loc; }
+  void setLocation(sun::support::Position loc) { location_ = loc; }
   void setLocation(int line, int column) {
     location_.line = line;
     location_.column = column;
   }
-  const Position& getLocation() const { return location_; }
+  const sun::support::Position& getLocation() const { return location_; }
   int getLine() const { return location_.line; }
   int getColumn() const { return location_.column; }
 
@@ -227,5 +232,7 @@ class ExprAST {
 
  protected:
   ExprAST() = default;
-  explicit ExprAST(Position loc) : location_(loc) {}
+  explicit ExprAST(sun::support::Position loc) : location_(loc) {}
 };
+
+}  // namespace sun::ast

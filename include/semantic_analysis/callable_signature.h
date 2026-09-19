@@ -6,7 +6,7 @@
 
 #include "semantic_analysis/types.h"
 
-namespace sun {
+namespace sun::semantic_analysis {
 
 /** Identify an overload by its source name and exact semantic parameter types.
  */
@@ -37,4 +37,4 @@ struct CallableSignatureHash {
   }
 };
 
-}  // namespace sun
+}  // namespace sun::semantic_analysis

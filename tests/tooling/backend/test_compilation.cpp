@@ -13,6 +13,15 @@
 #include "codegen/functions/function_registry.h"
 #include "driver/driver.h"
 
+using sun::ast::ASTNodeType;
+using sun::ast::BlockExprAST;
+using sun::ast::ExprAST;
+using sun::ast::forEachChild;
+using sun::ast::MemberAccessAST;
+using sun::driver::Driver;
+using sun::semantic_analysis::SemanticAnalyzer;
+using sun::support::SunError;
+
 // Helper function to test compilation (without JIT)
 void compileString(const std::string& source) {
   Driver::createForAOT()->compileString(source);
@@ -116,12 +125,14 @@ TEST(Tooling_Backend_Compilation, error_message_contains_type_info) {
 }
 
 TEST(Tooling_Backend_Compilation, function_ids_survive_symbol_renaming) {
-  CodegenContext context("function_ids", nullptr);
-  auto types = std::make_shared<sun::TypeRegistry>();
-  CodegenState state(context, types);
-  FunctionRegistry functions(state);
-  auto first = types->declarations.add(sun::DeclarationKind::Function, "f");
-  auto second = types->declarations.add(sun::DeclarationKind::Function, "f");
+  sun::codegen::CodegenContext context("function_ids", nullptr);
+  auto types = std::make_shared<sun::semantic_analysis::TypeRegistry>();
+  sun::codegen::CodegenState state(context, types);
+  sun::codegen::functions::FunctionRegistry functions(state);
+  auto first = types->declarations.add(
+      sun::semantic_analysis::DeclarationKind::Function, "f");
+  auto second = types->declarations.add(
+      sun::semantic_analysis::DeclarationKind::Function, "f");
   auto* signature = llvm::FunctionType::get(
       llvm::Type::getVoidTy(context.getContext()), false);
   auto* original =
@@ -140,7 +151,8 @@ TEST(Tooling_Backend_Compilation, function_ids_survive_symbol_renaming) {
   EXPECT_ANY_THROW(functions.lookupFunctionById(first));
   functions.registerFunction(first, replacement);
   EXPECT_EQ(functions.lookupFunctionById(first), replacement);
-  EXPECT_ANY_THROW(functions.lookupFunctionById(sun::DeclarationId{}));
+  EXPECT_ANY_THROW(
+      functions.lookupFunctionById(sun::semantic_analysis::DeclarationId{}));
 }
 
 TEST(Tooling_Backend_Compilation, generic_method_target_ignores_call_symbol) {
@@ -271,7 +283,7 @@ TEST(Tooling_Backend_Compilation, selected_methods_ignore_reference_spelling) {
 
 TEST(Tooling_Backend_Compilation, default_wrappers_have_distinct_targets) {
   auto driver = Driver::createForJIT();
-  std::set<sun::DeclarationId> targets;
+  std::set<sun::semantic_analysis::DeclarationId> targets;
   driver->setMetadataCallback([&](const BlockExprAST& ast, SemanticAnalyzer&) {
     std::function<void(const ExprAST&)> visit = [&](const ExprAST& node) {
       if (node.getType() == ASTNodeType::MEMBER_ACCESS) {
@@ -305,7 +317,8 @@ TEST(Tooling_Backend_Compilation, storage_targets_ignore_reference_spelling) {
   driver->setMetadataCallback([&](const BlockExprAST& ast, SemanticAnalyzer&) {
     std::function<void(const ExprAST&)> visit = [&](const ExprAST& node) {
       if (node.getType() == ASTNodeType::VARIABLE_REFERENCE) {
-        const auto& reference = static_cast<const VariableReferenceAST&>(node);
+        const auto& reference =
+            static_cast<const sun::ast::VariableReferenceAST&>(node);
         if (reference.getName() == "value" ||
             reference.getName() == "counter") {
           EXPECT_TRUE(reference.getTargetDeclarationId());
@@ -343,13 +356,14 @@ TEST(Tooling_Backend_Compilation, field_targets_ignore_reference_spelling) {
         }
       }
       if (node.getType() == ASTNodeType::MEMBER_ASSIGNMENT) {
-        const auto& assignment = static_cast<const MemberAssignmentAST&>(node);
+        const auto& assignment =
+            static_cast<const sun::ast::MemberAssignmentAST&>(node);
         EXPECT_TRUE(assignment.getTargetDeclarationId());
         const_cast<std::string&>(assignment.getMemberName()) = "changed_field";
       }
       if (node.getType() == ASTNodeType::STRUCT_LITERAL) {
-        auto& literal = const_cast<StructLiteralAST&>(
-            static_cast<const StructLiteralAST&>(node));
+        auto& literal = const_cast<sun::ast::StructLiteralAST&>(
+            static_cast<const sun::ast::StructLiteralAST&>(node));
         for (auto& field : literal.getMutableFields())
           field.name = "changed_field";
       }

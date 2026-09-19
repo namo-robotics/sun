@@ -25,7 +25,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace sun::abi {
+namespace sun::codegen::abi {
 
 enum class ArgKind {
   // Passed unchanged: scalars, pointers, and anything already ABI-correct.
@@ -118,4 +118,4 @@ llvm::FunctionType* buildLoweredFunctionType(const SignatureLowering& lowering,
                                              llvm::LLVMContext& ctx,
                                              bool isVarArg);
 
-}  // namespace sun::abi
+}  // namespace sun::codegen::abi

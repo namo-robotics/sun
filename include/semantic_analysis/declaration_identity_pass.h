@@ -3,7 +3,8 @@
 #include "ast/ast_fwd.h"
 #include "semantic_analysis/declaration_table.h"
 
-namespace sun {
+namespace sun::semantic_analysis {
+using sun::ast::ExprAST;
 
 /** Assign identities throughout a syntax tree without resolving signatures. */
 class DeclarationIdentityPass {
@@ -24,4 +25,4 @@ void clearComputedAnalysis(const ExprAST& root);
 /** Discard tree annotations before attaching it to a new analysis session. */
 void resetAnalysisSession(const ExprAST& root);
 
-}  // namespace sun
+}  // namespace sun::semantic_analysis

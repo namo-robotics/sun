@@ -8,7 +8,7 @@
 #include "moon_bundling/moon.h"
 #include "semantic_analysis/struct_names.h"
 
-namespace sun {
+namespace sun::moon_bundling {
 
 namespace {
 
@@ -17,7 +17,7 @@ namespace {
 /// trailing ".N" that LLVM added to keep same-named types apart is stripped
 /// (codegen mints the unsuffixed one from the Sun type).
 std::string canonicalStructName(llvm::StringRef name) {
-  for (const auto& info : sun::StructNames::All) {
+  for (const auto& info : sun::semantic_analysis::All) {
     if (name.starts_with(info.name)) return info.name;
   }
   size_t dot = name.rfind('.');
@@ -193,7 +193,6 @@ void ModuleLinker::declareAvailableFunctions() {
 
       std::string funcName = func.getName().str();
 
-
       std::string declaredName = funcName;
 
       // Skip if already declared in target
@@ -316,7 +315,7 @@ bool ModuleLinker::linkModuleRecursive(const std::string& moduleKey) {
 
   // Check content hash for deduplication
   // If we've already linked bitcode with this hash, skip it
-  std::string contentHash = sun::getSymbolPrefix(*metadata);
+  std::string contentHash = sun::moon_bundling::getSymbolPrefix(*metadata);
   if (!contentHash.empty() && linkedContentHashes_.count(contentHash)) {
     // Mark as linked (for moduleKey tracking) but don't link bitcode again
     linkedModules_.insert(moduleKey);
@@ -395,4 +394,4 @@ void ModuleLinker::registerAvailableBundle(const MoonImport& moonImport) {
   }
 }
 
-}  // namespace sun
+}  // namespace sun::moon_bundling

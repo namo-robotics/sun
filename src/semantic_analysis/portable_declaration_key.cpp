@@ -9,7 +9,10 @@
 #include "semantic_analysis/types.h"
 #include "support/error.h"
 
-namespace sun {
+using sun::ast::ExprAST;
+using sun::support::logAndThrowError;
+
+namespace sun::semantic_analysis {
 namespace {
 
 /** Encode integers in a fixed width and byte order on every host. */
@@ -69,26 +72,29 @@ void PortableDeclarationKey::assignOriginals(const ExprAST& root,
     for (auto id : value.parameters) assign(id);
   };
   auto walk = [&](auto&& self, const ExprAST& node) -> void {
-    if (auto* moon = dynamic_cast<const MoonScopeAST*>(&node)) {
+    if (auto* moon = dynamic_cast<const sun::ast::MoonScopeAST*>(&node)) {
       if (!moon->isOwnBundle()) return;
     } else if (node.getDeclarationId())
       identity(node.declarationIdentity());
-    if (auto* cls = dynamic_cast<const ClassDefinitionAST*>(&node))
+    if (auto* cls = dynamic_cast<const sun::ast::ClassDefinitionAST*>(&node))
       for (const auto& field : cls->getFields()) identity(field.declaration);
-    if (auto* iface = dynamic_cast<const InterfaceDefinitionAST*>(&node))
+    if (auto* iface =
+            dynamic_cast<const sun::ast::InterfaceDefinitionAST*>(&node))
       for (const auto& field : iface->getFields()) identity(field.declaration);
-    if (auto* enumeration = dynamic_cast<const EnumDefinitionAST*>(&node))
+    if (auto* enumeration =
+            dynamic_cast<const sun::ast::EnumDefinitionAST*>(&node))
       for (const auto& variant : enumeration->getVariants())
         identity(variant.declaration);
-    if (auto* match = dynamic_cast<const MatchExprAST*>(&node))
+    if (auto* match = dynamic_cast<const sun::ast::MatchExprAST*>(&node))
       for (const auto& arm : match->getArms())
         for (const auto& binding : arm.bindings) identity(binding.declaration);
-    if (auto* expression = dynamic_cast<const TryCatchExprAST*>(&node))
+    if (auto* expression =
+            dynamic_cast<const sun::ast::TryCatchExprAST*>(&node))
       for (const auto& clause : expression->getCatchClauses())
         identity(clause.declaration);
     std::vector<const ExprAST*> children;
-    forEachChild(node,
-                 [&](const ExprAST& child) { children.push_back(&child); });
+    sun::ast::forEachChild(
+        node, [&](const ExprAST& child) { children.push_back(&child); });
     std::stable_sort(children.begin(), children.end(),
                      [](const auto* a, const auto* b) {
                        const auto& first = a->getLocation();
@@ -426,4 +432,4 @@ PortableTypeKey PortableTypeKey::errorUnion(const PortableTypeKey& value) {
   return PortableTypeKey(tuple('U', {value.encoding()}));
 }
 
-}  // namespace sun
+}  // namespace sun::semantic_analysis

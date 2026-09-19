@@ -14,8 +14,6 @@ struct LspPosition {
   int character = 0;
 };
 
-namespace detail {
-
 // Number of bytes in the UTF-8 sequence that starts with this byte
 inline size_t utf8Length(unsigned char lead) {
   if (lead < 0x80) return 1;
@@ -40,19 +38,16 @@ inline size_t lineStart(const std::string& text, int line) {
   return offset;
 }
 
-}  // namespace detail
-
 // Byte offset for a protocol position. A column past the end of the line
 // stops at the line break; a line past the end of the text stops at the end.
 // A column inside a surrogate pair snaps to the start of that character.
 inline int byteOffsetFromLspPosition(const std::string& text, int line,
                                      int character) {
-  size_t offset = detail::lineStart(text, line);
+  size_t offset = lineStart(text, line);
   int units = 0;
   while (offset < text.size() && text[offset] != '\n') {
-    size_t length =
-        detail::utf8Length(static_cast<unsigned char>(text[offset]));
-    int width = detail::utf16Units(length);
+    size_t length = utf8Length(static_cast<unsigned char>(text[offset]));
+    int width = utf16Units(length);
     if (units + width > character) break;
     units += width;
     offset += length;
@@ -75,9 +70,8 @@ inline LspPosition lspPositionFromByteOffset(const std::string& text,
       ++current;
       continue;
     }
-    size_t length =
-        detail::utf8Length(static_cast<unsigned char>(text[current]));
-    position.character += detail::utf16Units(length);
+    size_t length = utf8Length(static_cast<unsigned char>(text[current]));
+    position.character += utf16Units(length);
     current += length;
   }
   return position;

@@ -9,6 +9,8 @@
 #include "ast/expr_ast.h"
 #include "ast/prototype_ast.h"
 
+namespace sun::ast {
+
 // Lambda expression (anonymous function)
 class LambdaAST : public ExprAST {
   std::unique_ptr<PrototypeAST> Proto;
@@ -67,15 +69,17 @@ class LambdaAST : public ExprAST {
   }
 
   /** A function and its prototype denote the same declaration. */
-  sun::DeclarationId getDeclarationId() const override {
+  sun::semantic_analysis::DeclarationId getDeclarationId() const override {
     return Proto->getDeclarationId();
   }
   /** Assign the prototype's declaration identity. */
-  void setDeclarationId(sun::DeclarationId id) const override {
+  void setDeclarationId(
+      sun::semantic_analysis::DeclarationId id) const override {
     Proto->setDeclarationId(id);
   }
   /** Access the identities owned by the prototype. */
-  sun::DeclarationIdentity& declarationIdentity() const override {
+  sun::semantic_analysis::DeclarationIdentity& declarationIdentity()
+      const override {
     return Proto->declarationIdentity();
   }
   /** Clear body and signature results while retaining identities. */
@@ -94,3 +98,5 @@ class LambdaAST : public ExprAST {
 
   std::string dotLabel() const override { return "Lambda"; }
 };
+
+}  // namespace sun::ast

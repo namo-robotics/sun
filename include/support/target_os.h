@@ -13,7 +13,7 @@
 #include <optional>
 #include <string>
 
-namespace sun {
+namespace sun::support {
 
 /// The triple a compilation is actually for: the explicit --target, or the
 /// host when none was given. Normalized first: a raw llvm::Triple parses
@@ -41,4 +41,4 @@ inline bool isKnownTargetOs(const std::string& name) {
   return name == "linux" || name == "macos" || name == "windows";
 }
 
-}  // namespace sun
+}  // namespace sun::support

@@ -1,5 +1,12 @@
 #pragma once
 
+namespace sun::codegen {
+class CodegenVisitor;
+}
+namespace sun::codegen::scopes {
+class ScopeManager;
+}
+
 // intrinsics_generator.h — Compiler intrinsics and libc built-ins
 //
 // Two families of call that never reach a user-written function body:
@@ -28,8 +35,10 @@
 #include "semantic_analysis/argument_conversion.h"
 #include "semantic_analysis/types.h"
 
-class CodegenVisitor;
-class ScopeManager;
+namespace sun::codegen::intrinsics {
+using sun::ast::CallExprAST;
+using sun::ast::ExprAST;
+using sun::semantic_analysis::TypePtr;
 
 /**
  * Emits every intrinsic and built-in call. Holds the thread helpers it needs
@@ -38,7 +47,8 @@ class ScopeManager;
  */
 class IntrinsicsGenerator {
  public:
-  IntrinsicsGenerator(CodegenState& state, CodegenVisitor& gen)
+  IntrinsicsGenerator(sun::codegen::CodegenState& state,
+                      sun::codegen::CodegenVisitor& gen)
       : state_(state),
         gen_(gen),
         ctx(state.ctx),
@@ -50,15 +60,15 @@ class IntrinsicsGenerator {
   IntrinsicsGenerator& operator=(const IntrinsicsGenerator&) = delete;
 
   // Generic intrinsics codegen (in intrinsics/generic.cpp)
-  llvm::Value* codegenSizeofIntrinsic(sun::TypePtr typeArg);
+  llvm::Value* codegenSizeofIntrinsic(TypePtr typeArg);
   llvm::Value* codegenInitIntrinsic(
-      sun::TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args,
-      const std::vector<sun::ArgConversion>& conversions,
-      sun::DeclarationId constructor);
+      TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args,
+      const std::vector<sun::semantic_analysis::ArgConversion>& conversions,
+      sun::semantic_analysis::DeclarationId constructor);
   llvm::Value* codegenLoadIntrinsic(
-      sun::TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args);
+      TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args);
   llvm::Value* codegenStoreIntrinsic(
-      sun::TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args);
+      TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args);
   llvm::Value* codegenPtrAsRawIntrinsic(
       const std::vector<std::unique_ptr<ExprAST>>& args);
   llvm::Value* codegenAddressOfIntrinsic(
@@ -66,10 +76,9 @@ class IntrinsicsGenerator {
   llvm::Value* codegenToRefIntrinsic(
       const std::vector<std::unique_ptr<ExprAST>>& args);
   llvm::Value* codegenIsIntrinsic(
-      const sun::TypePtr& target,
-      const std::vector<std::unique_ptr<ExprAST>>& args);
+      const TypePtr& target, const std::vector<std::unique_ptr<ExprAST>>& args);
   llvm::Value* codegenDeinitIntrinsic(
-      sun::TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args);
+      TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args);
   llvm::Value* codegenLoadI64Intrinsic(const CallExprAST& expr);
   llvm::Value* codegenStoreI64Intrinsic(const CallExprAST& expr);
   llvm::Value* codegenMallocIntrinsic(const CallExprAST& expr);
@@ -79,13 +88,12 @@ class IntrinsicsGenerator {
   llvm::Value* codegenMemmoveIntrinsic(const CallExprAST& expr);
   llvm::Value* codegenMemsetIntrinsic(const CallExprAST& expr);
   /** Decode an integer as an enum, returning None for unknown values. */
-  llvm::Value* codegenEnumFromIntIntrinsic(const GenericCallAST& expr);
+  llvm::Value* codegenEnumFromIntIntrinsic(
+      const sun::ast::GenericCallAST& expr);
   llvm::Value* codegenConvertIntrinsic(
-      sun::TypePtr targetType,
-      const std::vector<std::unique_ptr<ExprAST>>& args);
+      TypePtr targetType, const std::vector<std::unique_ptr<ExprAST>>& args);
   llvm::Value* codegenBitcastIntrinsic(
-      sun::TypePtr targetType,
-      const std::vector<std::unique_ptr<ExprAST>>& args);
+      TypePtr targetType, const std::vector<std::unique_ptr<ExprAST>>& args);
   llvm::Value* codegenPtrOffsetIntrinsic(const CallExprAST& expr);
 
   // Bit intrinsics (in intrinsics/bits.cpp)
@@ -192,9 +200,9 @@ class IntrinsicsGenerator {
    * @return The thread context pointer.
    */
   llvm::Value* codegenSpawnIntrinsic(
-      const sun::TypePtr& lambdaSunType, const sun::TypePtr& contextPtrType,
+      const TypePtr& lambdaSunType, const TypePtr& contextPtrType,
       const std::vector<std::unique_ptr<ExprAST>>& args,
-      const std::vector<sun::ArgConversion>& conversions);
+      const std::vector<sun::semantic_analysis::ArgConversion>& conversions);
 
   /**
    * Generates IR for _thread_join<T>(ctx) and _thread_join_drop<T>(ctx).
@@ -211,7 +219,7 @@ class IntrinsicsGenerator {
    * @return The thread's result, or a non-null placeholder for void.
    */
   llvm::Value* codegenThreadJoinIntrinsic(
-      const sun::TypePtr& resultType,
+      const TypePtr& resultType,
       const std::vector<std::unique_ptr<ExprAST>>& args, bool dropResult);
 
   /**
@@ -219,17 +227,17 @@ class IntrinsicsGenerator {
    * semantic analysis resolved rather than synthesized here, so there is one
    * definition of it and codegen never spells the class's name.
    */
-  llvm::StructType* getThreadContextStruct(const sun::TypePtr& contextPtrType);
+  llvm::StructType* getThreadContextStruct(const TypePtr& contextPtrType);
 
  private:
-  CodegenState& state_;
-  CodegenVisitor& gen_;
+  sun::codegen::CodegenState& state_;
+  sun::codegen::CodegenVisitor& gen_;
 
   // Aliases into the shared state, so the emission code below reads the same
   // way the rest of codegen does
-  CodegenContext& ctx;
+  sun::codegen::CodegenContext& ctx;
   llvm::Module* module;
-  LLVMTypeResolver& typeResolver;
+  sun::codegen::LLVMTypeResolver& typeResolver;
 
   // Thread syscalls and types, used by _spawn and _thread_join
   ThreadUtils threadUtils;
@@ -238,5 +246,7 @@ class IntrinsicsGenerator {
   llvm::Value* codegen(const ExprAST& expr);
 
   // The scope stack, for the intrinsics that drop a value in place
-  ScopeManager& scopes();
+  sun::codegen::scopes::ScopeManager& scopes();
 };
+
+}  // namespace sun::codegen::intrinsics

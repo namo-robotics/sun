@@ -7,8 +7,14 @@
 
 #include "codegen/codegen_visitor.h"
 
-llvm::Value* IntrinsicsGenerator::codegen(const ExprAST& expr) {
+namespace sun::codegen::intrinsics {
+
+llvm::Value* IntrinsicsGenerator::codegen(const sun::ast::ExprAST& expr) {
   return gen_.codegen(expr);
 }
 
-ScopeManager& IntrinsicsGenerator::scopes() { return gen_.scopeManager(); }
+sun::codegen::scopes::ScopeManager& IntrinsicsGenerator::scopes() {
+  return gen_.scopeManager();
+}
+
+}  // namespace sun::codegen::intrinsics

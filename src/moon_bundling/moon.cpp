@@ -17,7 +17,7 @@
 
 #include "support/error.h"
 
-namespace sun {
+namespace sun::moon_bundling {
 namespace {
 
 /** Reject incomplete or malformed identities at bundle boundaries. */
@@ -25,7 +25,8 @@ void validateBundleHash(const std::string& hash) {
   if (hash.size() != 64 || !std::all_of(hash.begin(), hash.end(), [](char c) {
         return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
       }))
-    logAndThrowError("Bundle identity must be a full lowercase SHA-256 digest");
+    sun::support::logAndThrowError(
+        "Bundle identity must be a full lowercase SHA-256 digest");
 }
 
 }  // namespace
@@ -246,10 +247,11 @@ std::unique_ptr<MoonReader> MoonReader::open(
   }
   // Reject bundles built for a different ABI/format version
   if (header.version != MoonHeader::VERSION) {
-    logAndThrowError("Unsupported moon bundle format version " +
-                     std::to_string(header.version) + " in '" + path.string() +
-                     "'; expected " + std::to_string(MoonHeader::VERSION) +
-                     ". Rebuild the bundle.");
+    sun::support::logAndThrowError("Unsupported moon bundle format version " +
+                                   std::to_string(header.version) + " in '" +
+                                   path.string() + "'; expected " +
+                                   std::to_string(MoonHeader::VERSION) +
+                                   ". Rebuild the bundle.");
   }
 
   auto reader = std::unique_ptr<MoonReader>(new MoonReader());
@@ -431,4 +433,4 @@ std::unique_ptr<llvm::Module> MoonReader::loadModule(
   return std::move(*moduleOrErr);
 }
 
-}  // namespace sun
+}  // namespace sun::moon_bundling

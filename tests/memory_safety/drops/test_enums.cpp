@@ -7,6 +7,8 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+
 namespace {
 
 // Owner models a resource holder: deinit is a no-op on moved-from (zeroed)
@@ -438,7 +440,7 @@ TEST(MemorySafety_Drops_Enums, taken_and_discarded_enum_results_drop_once) {
 }
 
 TEST(MemorySafety_Drops_Enums, option_of_string_via_stdlib) {
-  auto value = executeStringWithStdlib(R"(
+  auto value = sun::driver::executeStringWithStdlib(R"(
     using std;
 
     function main() i32 {
@@ -458,7 +460,7 @@ TEST(MemorySafety_Drops_Enums, option_of_string_via_stdlib) {
 }
 
 TEST(MemorySafety_Drops_Enums, vec_of_option_of_owner_drops_elements) {
-  auto value = executeStringWithStdlib(withPreamble(R"(
+  auto value = sun::driver::executeStringWithStdlib(withPreamble(R"(
     using std;
 
     function helper() i32 {
@@ -508,7 +510,7 @@ TEST(MemorySafety_Drops_Enums,
 
 TEST(MemorySafety_Drops_Enums, cross_moon_owning_enum_drops_once) {
   namespace fs = std::filesystem;
-  initTestEnvironment();
+  sun::driver::initTestEnvironment();
 
   fs::path dir = fs::temp_directory_path() / "sun_enum_drop_moon_test";
   fs::create_directories(dir);
@@ -550,10 +552,10 @@ TEST(MemorySafety_Drops_Enums, cross_moon_owning_enum_drops_once) {
   }
 
   fs::path moonPath = dir / "droplib.moon";
-  sun::MoonBuilder::build(libSrc.string(), moonPath);
+  sun::moon_bundling::MoonBuilder::build(libSrc.string(), moonPath);
 
-  auto driver = Driver::createForJIT("moon_main");
-  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  auto driver = sun::driver::Driver::createForJIT("moon_main");
+  driver->setMoonImports({sun::moon_bundling::MoonImport(moonPath.string())});
   auto value = driver->executeString(R"(
     using droplib;
 

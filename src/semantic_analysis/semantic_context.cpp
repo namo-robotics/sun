@@ -17,14 +17,27 @@
 #include "semantic_analysis/visibility.h"
 #include "support/error.h"
 
-using sun::unwrapRef;
-using sun::access::fieldRef;
-using sun::access::methodRef;
-using sun::access::moduleRef;
+using sun::semantic_analysis::ClassType;
+using sun::semantic_analysis::DeclarationId;
+using sun::semantic_analysis::DeclarationKind;
+using sun::semantic_analysis::InterfaceType;
+using sun::semantic_analysis::QualifiedName;
+using sun::semantic_analysis::TypePtr;
+
+using sun::support::logAndThrowError;
+using sun::support::Position;
+
+namespace sun::semantic_analysis {
+
+using sun::semantic_analysis::fieldRef;
+using sun::semantic_analysis::methodRef;
+using sun::semantic_analysis::moduleRef;
+using sun::semantic_analysis::unwrapRef;
 
 // isLibraryScope() is provided by semantic_scope.h
 
-SemanticContext::SemanticContext(std::shared_ptr<sun::TypeRegistry> registry)
+SemanticContext::SemanticContext(
+    std::shared_ptr<sun::semantic_analysis::TypeRegistry> registry)
     : typeRegistry_(std::move(registry)) {
   rootScope_->accessContext = this;  // lookups filter by visibility
   rootScope_->interfaces["IError"] = typeRegistry_->errorInterface;
@@ -41,8 +54,7 @@ std::optional<Position> SemanticContext::currentLocation() const {
 // -------------------------------------------------------------------
 
 void SemanticContext::enterTypeParamScope(
-    const std::vector<std::string>& params,
-    const std::vector<sun::TypePtr>& args) {
+    const std::vector<std::string>& params, const std::vector<TypePtr>& args) {
   enterScope(ScopeType::TypeParams);
   currentScope().declareTypeParameters(params, args);
 }
@@ -91,7 +103,7 @@ void SemanticContext::enterModuleScope(const std::string& moduleName) {
         typeRegistry_->declarations.module(moduleName);
 }
 
-void SemanticContext::enterClassScope(const sun::QualifiedName& className) {
+void SemanticContext::enterClassScope(const QualifiedName& className) {
   auto classScope = std::make_shared<ClassScope>();
   classScope->classBaseName = className.baseName;
   // Use the class's scope path directly
@@ -102,8 +114,7 @@ void SemanticContext::enterClassScope(const sun::QualifiedName& className) {
   currentScope_ = classScope.get();
 }
 
-void SemanticContext::enterInterfaceScope(
-    const sun::QualifiedName& interfaceName) {
+void SemanticContext::enterInterfaceScope(const QualifiedName& interfaceName) {
   auto ifaceScope = std::make_shared<InterfaceScope>();
   ifaceScope->interfaceBaseName = interfaceName.baseName;
   // Use the interface's scope path directly
@@ -115,9 +126,8 @@ void SemanticContext::enterInterfaceScope(
 }
 
 void SemanticContext::enterFunctionScope(const std::string& funcSig,
-                                         const sun::QualifiedName& funcName,
-                                         bool canThrow,
-                                         sun::TypePtr returnType) {
+                                         const QualifiedName& funcName,
+                                         bool canThrow, TypePtr returnType) {
   auto funcScope = std::make_shared<FunctionScope>();
   funcScope->functionSignature = funcSig;
   funcScope->functionName = funcName;
@@ -134,7 +144,7 @@ void SemanticContext::enterFunctionScope(const std::string& funcSig,
   currentScope_ = funcScope.get();
 }
 
-sun::TypePtr SemanticContext::currentFunctionReturnType() const {
+TypePtr SemanticContext::currentFunctionReturnType() const {
   for (auto* s = currentScope_; s != nullptr; s = s->parent) {
     if (s->getType() == ScopeType::Function) {
       return static_cast<const FunctionScope*>(s)->functionReturnType;
@@ -367,9 +377,10 @@ static std::vector<SemanticScope*> collectAllModuleScopes(
 
 SymbolMatch SemanticContext::findSymbolInModule(
     const std::string& modulePath, const std::string& name,
-    SymbolKind filterKind, const std::vector<sun::TypePtr>* argTypes) const {
+    SymbolKind filterKind, const std::vector<TypePtr>* argTypes) const {
   // Get visible module path for searching across all matching scopes
-  std::string visiblePath = sun::displayModulePath(modulePath);
+  std::string visiblePath =
+      sun::semantic_analysis::displayModulePath(modulePath);
 
   // Access filtering: private symbols of other modules are skipped; if that
   // leaves nothing, the denial is reported instead of "unknown member".
@@ -377,7 +388,7 @@ SymbolMatch SemanticContext::findSymbolInModule(
 
   // Helper to search a single scope for all symbol types
   auto searchInScope = [&](SemanticScope* scope) -> std::optional<SymbolMatch> {
-    std::string fullPath = sun::QualifiedName::joinPath(scope->scopePath);
+    std::string fullPath = QualifiedName::joinPath(scope->scopePath);
     std::string libHash;
     if (!scope->scopePath.empty() && scope->scopePath[0].size() >= 2 &&
         scope->scopePath[0].front() == '$') {
@@ -473,7 +484,8 @@ SymbolMatch SemanticContext::findSymbolInModule(
           if (argTypes) {
             std::vector<FunctionArgumentType> lookupTypes;
             lookupTypes.reserve(argTypes->size());
-            for (const auto& type : *argTypes) lookupTypes.push_back({type, {}});
+            for (const auto& type : *argTypes)
+              lookupTypes.push_back({type, {}});
             auto resolved =
                 scope->lookupFunctionLocal(name, lookupTypes, &accessFilter);
             if (!resolved) return std::nullopt;
@@ -587,7 +599,7 @@ SymbolMatch SemanticContext::findSymbolInModule(
     std::string paths;
     for (const auto& m : allMatches) {
       if (!paths.empty()) paths += " or ";
-      paths += sun::displayModulePath(m.modulePath);
+      paths += sun::semantic_analysis::displayModulePath(m.modulePath);
     }
     logAndThrowError("Ambiguous reference to '" + visiblePath + "." + name +
                      "'. Could be: " + paths);
@@ -611,17 +623,17 @@ SymbolMatch SemanticContext::findSymbolInModule(
 // -------------------------------------------------------------------
 
 void SemanticContext::narrowVariable(const std::string& varName,
-                                     sun::TypePtr narrowedType) {
+                                     TypePtr narrowedType) {
   currentScope_->narrowedTypes[varName] = std::move(narrowedType);
 }
 
-sun::TypePtr SemanticContext::getNarrowedType(const std::string& varName,
-                                              sun::TypePtr originalType) const {
+TypePtr SemanticContext::getNarrowedType(const std::string& varName,
+                                         TypePtr originalType) const {
   // Search from innermost to outermost scope
   for (auto* s = currentScope_; s != nullptr; s = s->parent) {
     auto found = s->narrowedTypes.find(varName);
     if (found != s->narrowedTypes.end()) {
-      sun::TypePtr narrowedType = found->second;
+      TypePtr narrowedType = found->second;
 
       // Return the MORE SPECIFIC type between originalType and narrowedType.
       // Specificity order: Class > Interface > TypeParameter
@@ -636,15 +648,15 @@ sun::TypePtr SemanticContext::getNarrowedType(const std::string& varName,
 
       // Interface -> Class that implements it is more specific
       if (originalType->isInterface() && narrowedType->isClass()) {
-        auto* classType = static_cast<sun::ClassType*>(narrowedType.get());
-        auto* ifaceType = static_cast<sun::InterfaceType*>(originalType.get());
+        auto* classType = static_cast<ClassType*>(narrowedType.get());
+        auto* ifaceType = static_cast<InterfaceType*>(originalType.get());
         if (classType->implementsInterface(*ifaceType)) return narrowedType;
       }
 
       // Class -> Interface: Class is more specific, return the class
       if (originalType->isClass() && narrowedType->isInterface()) {
-        auto* classType = static_cast<sun::ClassType*>(originalType.get());
-        auto* ifaceType = static_cast<sun::InterfaceType*>(narrowedType.get());
+        auto* classType = static_cast<ClassType*>(originalType.get());
+        auto* ifaceType = static_cast<InterfaceType*>(narrowedType.get());
         if (classType->implementsInterface(*ifaceType)) return originalType;
       }
 
@@ -683,7 +695,7 @@ std::optional<FunctionInfo> SemanticContext::lookupFunction(
 // -------------------------------------------------------------------
 
 void SemanticContext::registerBuiltinFunctions() {
-  using sun::Types;
+  using sun::semantic_analysis::Types;
 
   // Low-level print intrinsics (used by stdlib print functions)
   currentScope().declareFunction("_print_i32",
@@ -794,7 +806,7 @@ void SemanticContext::registerBuiltinFunctions() {
   // Atomic intrinsics use acquire/release ordering and operate on matching
   // pointer and value types.
   auto registerAtomicInteger = [this](const std::string& suffix,
-                                      const sun::TypePtr& type) {
+                                      const TypePtr& type) {
     const std::string prefix = "_atomic_";
     currentScope().declareFunction(
         prefix + "cmpxchg_" + suffix,
@@ -955,7 +967,7 @@ VariableInfo* SemanticContext::lookupQualifiedVariable(
 std::string SemanticContext::getFullModulePath(
     const std::string& visiblePath) const {
   if (auto* scope = lookupModuleScope(visiblePath))
-    return sun::QualifiedName(scope->scopePath, "").scopePathString();
+    return QualifiedName(scope->scopePath, "").scopePathString();
   return visiblePath;
 }
 
@@ -964,7 +976,7 @@ const FunctionInfo* SemanticContext::lookupQualifiedFunction(
   return currentScope_->lookupQualifiedFunction(qualifiedName);
 }
 
-sun::QualifiedName SemanticContext::resolveNameWithUsings(
+QualifiedName SemanticContext::resolveNameWithUsings(
     const std::string& name) const {
   return currentScope_->resolveNameWithUsings(name);
 }
@@ -999,17 +1011,16 @@ void SemanticContext::addImportBinding(const ImportBinding& binding) {
   currentScope_->importBindings.push_back(std::move(scopedBinding));
 }
 
-std::shared_ptr<sun::ClassType> SemanticContext::lookupClass(
+std::shared_ptr<ClassType> SemanticContext::lookupClass(
     const std::string& name) const {
   return currentScope_->lookupClass(name);
 }
 
-void SemanticContext::setCurrentClass(
-    std::shared_ptr<sun::ClassType> classType) {
+void SemanticContext::setCurrentClass(std::shared_ptr<ClassType> classType) {
   currentClass_ = std::move(classType);
 }
 
-std::shared_ptr<sun::ClassType> SemanticContext::getCurrentClass() const {
+std::shared_ptr<ClassType> SemanticContext::getCurrentClass() const {
   return currentClass_;
 }
 
@@ -1024,7 +1035,7 @@ namespace {
  */
 template <typename Info>
 const Info* findTemplate(
-    const SemanticScopeBase& scope, sun::DeclarationId id,
+    const SemanticScopeBase& scope, DeclarationId id,
     std::map<std::string, Info> SemanticScopeBase::* members) {
   for (const auto& [name, info] : scope.*members)
     if (info.AST && info.AST->getDeclarationId() == id) return &info;
@@ -1038,24 +1049,24 @@ const Info* findTemplate(
 }  // namespace
 
 const GenericClassInfo* SemanticContext::lookupGenericClass(
-    sun::DeclarationId id) const {
+    DeclarationId id) const {
   typeRegistry_->declarations.get(id);
   return findTemplate(*rootScope_, id, &SemanticScopeBase::genericClasses);
 }
 
 const GenericInterfaceInfo* SemanticContext::lookupGenericInterface(
-    sun::DeclarationId id) const {
+    DeclarationId id) const {
   typeRegistry_->declarations.get(id);
   return findTemplate(*rootScope_, id, &SemanticScopeBase::genericInterfaces);
 }
 
 const GenericEnumInfo* SemanticContext::lookupGenericEnum(
-    sun::DeclarationId id) const {
+    DeclarationId id) const {
   typeRegistry_->declarations.get(id);
   return findTemplate(*rootScope_, id, &SemanticScopeBase::genericEnums);
 }
 
-sun::TypePtr SemanticContext::findTypeParameter(const std::string& name) const {
+TypePtr SemanticContext::findTypeParameter(const std::string& name) const {
   // Search from innermost to outermost scope
   for (auto* s = currentScope_; s != nullptr; s = s->parent) {
     auto found = s->typeParameters.find(name);
@@ -1066,7 +1077,7 @@ sun::TypePtr SemanticContext::findTypeParameter(const std::string& name) const {
   return nullptr;
 }
 
-sun::TypePtr SemanticContext::findTypeAlias(const std::string& name) const {
+TypePtr SemanticContext::findTypeAlias(const std::string& name) const {
   // Search from innermost to outermost scope
   for (auto* s = currentScope_; s != nullptr; s = s->parent) {
     auto found = s->typeAliases.find(name);
@@ -1077,7 +1088,7 @@ sun::TypePtr SemanticContext::findTypeAlias(const std::string& name) const {
   return nullptr;
 }
 
-std::shared_ptr<sun::InterfaceType> SemanticContext::lookupInterface(
+std::shared_ptr<InterfaceType> SemanticContext::lookupInterface(
     const std::string& name) const {
   return currentScope_->lookupInterface(name);
 }
@@ -1087,7 +1098,7 @@ const GenericInterfaceInfo* SemanticContext::lookupGenericInterface(
   return currentScope_->lookupGenericInterface(name);
 }
 
-std::shared_ptr<sun::EnumType> SemanticContext::lookupEnum(
+std::shared_ptr<sun::semantic_analysis::EnumType> SemanticContext::lookupEnum(
     const std::string& name) const {
   return currentScope_->lookupEnum(name);
 }
@@ -1097,7 +1108,7 @@ const GenericEnumInfo* SemanticContext::lookupGenericEnum(
   return currentScope_->lookupGenericEnum(name);
 }
 
-sun::DeclarationId SemanticContext::currentModuleId() const {
+DeclarationId SemanticContext::currentModuleId() const {
   for (auto* s = currentScope_; s != nullptr; s = s->parent) {
     if (s->getType() == ScopeType::Module)
       return static_cast<const ModuleScope*>(s)->declarationId;
@@ -1105,46 +1116,49 @@ sun::DeclarationId SemanticContext::currentModuleId() const {
   return {};
 }
 
-void SemanticContext::denyAccess(const sun::access::ItemRef& item) const {
+void SemanticContext::denyAccess(
+    const sun::semantic_analysis::ItemRef& item) const {
   auto loc = currentLocation();
-  logSemanticError(sun::access::denialMessage(item, declarationTable()), loc);
+  sun::support::logSemanticError(
+      sun::semantic_analysis::denialMessage(item, declarationTable()), loc);
 }
 
-const sun::ClassField* SemanticContext::accessibleField(
-    const sun::ClassType& cls, const std::string& name,
-    const Position& loc) const {
+const sun::semantic_analysis::ClassField* SemanticContext::accessibleField(
+    const ClassType& cls, const std::string& name, const Position& loc) const {
   const auto* f = cls.getField(name);
   if (f) requireAccessible(fieldRef(cls, *f), loc);
   return f;
 }
 
-const sun::ClassMethod* SemanticContext::accessibleMethod(
-    const sun::ClassType& cls, const std::string& name,
-    const Position& loc) const {
+const sun::semantic_analysis::ClassMethod* SemanticContext::accessibleMethod(
+    const ClassType& cls, const std::string& name, const Position& loc) const {
   const auto* m = cls.getMethod(name);
   if (m) requireAccessible(methodRef(cls, *m), loc);
   return m;
 }
 
-const sun::ClassMethod* SemanticContext::accessibleMethodForArgs(
-    const sun::ClassType& cls, const std::string& name,
-    const std::vector<sun::TypePtr>& argTypes, const Position& loc) const {
+const sun::semantic_analysis::ClassMethod*
+SemanticContext::accessibleMethodForArgs(const ClassType& cls,
+                                         const std::string& name,
+                                         const std::vector<TypePtr>& argTypes,
+                                         const Position& loc) const {
   const auto* m = cls.getMethodForArgs(name, argTypes);
   if (m) requireAccessible(methodRef(cls, *m), loc);
   return m;
 }
 
-const sun::InterfaceField* SemanticContext::accessibleField(
-    const sun::InterfaceType& iface, const std::string& name,
+const sun::semantic_analysis::InterfaceField* SemanticContext::accessibleField(
+    const InterfaceType& iface, const std::string& name,
     const Position& loc) const {
   const auto* f = iface.getField(name);
   if (f) requireAccessible(fieldRef(iface, *f), loc);
   return f;
 }
 
-const sun::InterfaceMethod* SemanticContext::accessibleMethod(
-    const sun::InterfaceType& iface, const std::string& name,
-    const Position& loc) const {
+const sun::semantic_analysis::InterfaceMethod*
+SemanticContext::accessibleMethod(const InterfaceType& iface,
+                                  const std::string& name,
+                                  const Position& loc) const {
   const auto* m = iface.getMethod(name);
   if (m) requireAccessible(methodRef(iface, *m), loc);
   return m;
@@ -1160,13 +1174,12 @@ void SemanticContext::requireModuleAccessible(
   }
 }
 
-SemanticScopeBase* SemanticContext::lookupModuleScope(
-    sun::DeclarationId id) const {
+SemanticScopeBase* SemanticContext::lookupModuleScope(DeclarationId id) const {
   if (!id)
     logAndThrowError(
         "Imported module identity is missing; import the required exact "
         "bundle");
-  if (typeRegistry_->declarations.get(id).kind != sun::DeclarationKind::Module)
+  if (typeRegistry_->declarations.get(id).kind != DeclarationKind::Module)
     logAndThrowError(
         "Imported module reference has the wrong declaration kind");
   auto find = [&](auto&& self, SemanticScopeBase* scope) -> SemanticScopeBase* {
@@ -1185,20 +1198,23 @@ SemanticScopeBase* SemanticContext::lookupModuleScope(
   return result;
 }
 
-sun::DeclarationId SemanticContext::requireDeclaration(
-    const sun::PortableDeclarationKey& key, const std::string& exporter,
-    std::optional<sun::Type::Kind> expectedKind,
+DeclarationId SemanticContext::requireDeclaration(
+    const sun::semantic_analysis::PortableDeclarationKey& key,
+    const std::string& exporter,
+    std::optional<sun::semantic_analysis::Type::Kind> expectedKind,
     const std::string& displayName) const {
   auto id = typeRegistry_->declarations.findPortable(key);
   bool wrongKind = false;
   if (id) {
     auto kind = typeRegistry_->declarations.get(id).kind;
-    auto actual = kind == sun::DeclarationKind::Class ? sun::Type::Kind::Class
-                  : kind == sun::DeclarationKind::Interface
-                      ? sun::Type::Kind::Interface
-                  : kind == sun::DeclarationKind::Enum ? sun::Type::Kind::Enum
-                                                       : sun::Type::Kind::Void;
-    wrongKind = actual == sun::Type::Kind::Void ||
+    auto actual = kind == DeclarationKind::Class
+                      ? sun::semantic_analysis::Type::Kind::Class
+                  : kind == DeclarationKind::Interface
+                      ? sun::semantic_analysis::Type::Kind::Interface
+                  : kind == DeclarationKind::Enum
+                      ? sun::semantic_analysis::Type::Kind::Enum
+                      : sun::semantic_analysis::Type::Kind::Void;
+    wrongKind = actual == sun::semantic_analysis::Type::Kind::Void ||
                 (expectedKind && actual != *expectedKind);
     if (!wrongKind) return id;
   }
@@ -1210,7 +1226,7 @@ sun::DeclarationId SemanticContext::requireDeclaration(
   if (!id) {
     const auto& table = typeRegistry_->declarations;
     for (uint64_t i = 1; i <= table.size(); ++i) {
-      const auto& candidate = table.get(sun::DeclarationId(i));
+      const auto& candidate = table.get(DeclarationId(i));
       if (candidate.portableKey &&
           (candidate.name == displayName ||
            displayName.ends_with("." + candidate.name)) &&
@@ -1224,3 +1240,5 @@ sun::DeclarationId SemanticContext::requireDeclaration(
   logAndThrowError(message + ". Explicitly import the required exact bundle.",
                    currentLocation());
 }
+
+}  // namespace sun::semantic_analysis

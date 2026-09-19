@@ -10,6 +10,10 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+using sun::driver::executeStringWithStdlib;
+using sun::support::SunError;
+
 TEST(Lambdas_BoundMethods, pass_method_as_callback) {
   auto value = executeString(R"(
     class Counter {

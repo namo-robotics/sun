@@ -5,12 +5,12 @@
 
 #include <algorithm>
 
-namespace sun {
+namespace sun::borrow_checker {
 
 BorrowCheckResult BorrowState::addBorrow(const std::string& borrowedVar,
                                          const std::string& refName,
                                          BorrowKind kind, size_t scopeDepth,
-                                         const Position& loc) {
+                                         const sun::support::Position& loc) {
   auto& varLoans = loans_[borrowedVar];
 
   // Check existing borrows on this variable
@@ -225,4 +225,4 @@ void BorrowState::clear() {
   lifetimes_.clear();
 }
 
-}  // namespace sun
+}  // namespace sun::borrow_checker

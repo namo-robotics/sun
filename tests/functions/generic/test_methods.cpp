@@ -8,6 +8,8 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+
 TEST(Functions_Generic_Methods, generic_identity_method) {
   auto value = executeString(R"(
     class Util {

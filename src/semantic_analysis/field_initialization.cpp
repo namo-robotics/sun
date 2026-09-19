@@ -41,9 +41,24 @@
 #include "ast/control_flow.h"
 #include "support/error.h"
 
-namespace sun {
+using sun::ast::FieldWriteKind;
 
-void prepareFieldInitializers(ClassDefinitionAST& classDef) {
+using sun::ast::ASTNodeType;
+using sun::ast::CallExprAST;
+using sun::ast::ClassMethodDecl;
+using sun::ast::ExprAST;
+using sun::ast::exprDiverges;
+using sun::ast::forEachChild;
+using sun::ast::FunctionAST;
+using sun::ast::MemberAccessAST;
+using sun::ast::MemberAssignmentAST;
+using sun::ast::TryCatchExprAST;
+using sun::support::logAndThrowError;
+using sun::support::Position;
+
+namespace sun::semantic_analysis {
+
+void prepareFieldInitializers(sun::ast::ClassDefinitionAST& classDef) {
   if (classDef.isPartial() || classDef.isPrecompiled()) return;
   size_t count = 0;
   for (const auto& field : classDef.getFields()) {
@@ -58,15 +73,16 @@ void prepareFieldInitializers(ClassDefinitionAST& classDef) {
               "' needs an explicit init to initialize fields without defaults",
           classDef.getLocation());
     }
-    auto proto = std::make_unique<PrototypeAST>(
-        "init", std::vector<std::pair<std::string, TypeAnnotation>>{});
+    auto proto = std::make_unique<sun::ast::PrototypeAST>(
+        "init",
+        std::vector<std::pair<std::string, sun::ast::TypeAnnotation>>{});
     proto->setLocation(classDef.getLocation());
-    auto body = std::make_unique<BlockExprAST>();
-    body->setKind(BlockKind::Function);
+    auto body = std::make_unique<sun::ast::BlockExprAST>();
+    body->setKind(sun::ast::BlockKind::Function);
     body->setLocation(classDef.getLocation());
     auto function =
         std::make_unique<FunctionAST>(std::move(proto), std::move(body));
-    function->setVisibility(sun::Visibility::Public);
+    function->setVisibility(sun::semantic_analysis::Visibility::Public);
     function->setLocation(classDef.getLocation());
     function->setSynthesizedConstructor(true);
     function->inheritSourceFile(classDef.getSourceFileId());
@@ -81,7 +97,7 @@ void prepareFieldInitializers(ClassDefinitionAST& classDef) {
     std::vector<std::unique_ptr<ExprAST>> prefix;
     for (const auto& field : classDef.getFields()) {
       if (!field.initializer) continue;
-      auto receiver = std::make_unique<ThisExprAST>();
+      auto receiver = std::make_unique<sun::ast::ThisExprAST>();
       receiver->setLocation(field.location);
       auto assignment = std::make_unique<MemberAssignmentAST>(
           std::move(receiver), field.name, field.initializer->clone());
@@ -89,7 +105,7 @@ void prepareFieldInitializers(ClassDefinitionAST& classDef) {
       assignment->inheritSourceFile(classDef.getSourceFileId());
       prefix.push_back(std::move(assignment));
     }
-    const_cast<BlockExprAST&>(function.getBody())
+    const_cast<sun::ast::BlockExprAST&>(function.getBody())
         .prependExpressions(std::move(prefix));
     function.setFieldInitializerCount(count);
   }
@@ -549,7 +565,7 @@ void BodyWalk::walk(const ExprAST& expr) {
       noteObjectUse("use 'this'", expr.getLocation());
       return;
     case ASTNodeType::RETURN: {
-      const auto& ret = static_cast<const ReturnExprAST&>(expr);
+      const auto& ret = static_cast<const sun::ast::ReturnExprAST&>(expr);
       if (ret.getValue()) walk(*ret.getValue());
       // Only the constructor's own returns owe the whole object
       if (inMethodBody_) return;
@@ -565,19 +581,19 @@ void BodyWalk::walk(const ExprAST& expr) {
       return;
     }
     case ASTNodeType::IF: {
-      const auto& ifExpr = static_cast<const IfExprAST&>(expr);
+      const auto& ifExpr = static_cast<const sun::ast::IfExprAST&>(expr);
       if (ifExpr.getCond()) walk(*ifExpr.getCond());
       walkBranches({ifExpr.getThen(), ifExpr.getElse()});
       return;
     }
     case ASTNodeType::TERNARY: {
-      const auto& ternary = static_cast<const TernaryExprAST&>(expr);
+      const auto& ternary = static_cast<const sun::ast::TernaryExprAST&>(expr);
       if (ternary.getCond()) walk(*ternary.getCond());
       walkBranches({ternary.getThen(), ternary.getElse()});
       return;
     }
     case ASTNodeType::MATCH: {
-      const auto& match = static_cast<const MatchExprAST&>(expr);
+      const auto& match = static_cast<const sun::ast::MatchExprAST&>(expr);
       if (match.getDiscriminant()) walk(*match.getDiscriminant());
       std::vector<const ExprAST*> arms;
       for (const auto& arm : match.getArms()) arms.push_back(arm.body.get());
@@ -589,18 +605,18 @@ void BodyWalk::walk(const ExprAST& expr) {
       return;
     }
     case ASTNodeType::WHILE_LOOP: {
-      const auto& loop = static_cast<const WhileExprAST&>(expr);
+      const auto& loop = static_cast<const sun::ast::WhileExprAST&>(expr);
       walkLoop({loop.getCondition()}, loop.getBody(), nullptr);
       return;
     }
     case ASTNodeType::FOR_LOOP: {
-      const auto& loop = static_cast<const ForExprAST&>(expr);
+      const auto& loop = static_cast<const sun::ast::ForExprAST&>(expr);
       walkLoop({loop.getInit(), loop.getCondition()}, loop.getBody(),
                loop.getIncrement());
       return;
     }
     case ASTNodeType::FOR_IN_LOOP: {
-      const auto& loop = static_cast<const ForInExprAST&>(expr);
+      const auto& loop = static_cast<const sun::ast::ForInExprAST&>(expr);
       walkLoop({loop.getIterable()}, loop.getBody(), nullptr);
       return;
     }
@@ -640,4 +656,4 @@ void checkFieldInitialization(const FunctionAST& constructor,
   walk.requireEveryFieldAtEnd(constructor.getBody(), constructor.getLocation());
 }
 
-}  // namespace sun
+}  // namespace sun::semantic_analysis

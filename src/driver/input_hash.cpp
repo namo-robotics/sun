@@ -17,12 +17,12 @@
 #include "moon_bundling/proto_importer.h"
 #include "support/error.h"
 
-namespace sun {
+namespace sun::driver {
 
 namespace {
 
 [[noreturn]] void fail(const std::string& message) {
-  throw SunError(SunError::Kind::Compile, message);
+  throw sun::support::SunError(sun::support::SunError::Kind::Compile, message);
 }
 
 /** Frame each input so arbitrary names cannot become field separators. */
@@ -48,8 +48,8 @@ std::string digestBytes(llvm::StringRef bytes) {
 
 // One imported bundle's part of the hash: the hash it was built from, which
 // already covers everything inside it, and how its modules are renamed here.
-std::string hashMoonImport(const MoonImport& import) {
-  auto reader = MoonReader::open(import.path);
+std::string hashMoonImport(const sun::moon_bundling::MoonImport& import) {
+  auto reader = sun::moon_bundling::MoonReader::open(import.path);
   if (!reader) fail("Cannot open imported moon: " + import.path);
   const auto modules = reader->listModules();
   const auto* first =
@@ -99,7 +99,8 @@ void addSourceDigests(BuildInputs& inputs,
   for (const auto& path : sourceFiles) {
     inputs.sourceDigests.push_back(computeFileDigest(path, "source"));
   }
-  for (const auto& source : ProtoImporter::importAll(protoFiles, baseDir)) {
+  for (const auto& source :
+       sun::moon_bundling::ProtoImporter::importAll(protoFiles, baseDir)) {
     inputs.sourceDigests.push_back(digestBytes(source.sunSource));
   }
 }
@@ -143,7 +144,7 @@ std::string computeInputHash(const BuildInputs& inputs) {
   // library the executable's bytes say nothing about.
   input += hashField("compiler", getCompilerDigest());
   input += hashField("llvm", LLVM_VERSION_STRING);
-  return computeSha256Hex(input);
+  return sun::moon_bundling::computeSha256Hex(input);
 }
 
-}  // namespace sun
+}  // namespace sun::driver

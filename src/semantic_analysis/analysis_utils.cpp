@@ -8,18 +8,30 @@
 #include "semantic_analysis/semantic_analyzer.h"
 #include "support/error.h"
 
-using sun::unwrapRef;
+using sun::semantic_analysis::TypePtr;
+
+using sun::ast::ASTNodeType;
+using sun::ast::ExprAST;
+using sun::ast::MemberAccessAST;
+using sun::ast::VariableReferenceAST;
+using sun::support::logAndThrowError;
+using sun::support::Position;
+
+namespace sun::semantic_analysis {
+
+using sun::semantic_analysis::unwrapRef;
 
 // Helper: extract type guard pattern from condition
 // If condition is `_is<T>(var)`, returns (varName, narrowedType)
 // Works for concrete types, interfaces, and type traits
-std::optional<std::pair<std::string, sun::TypePtr>>
+std::optional<std::pair<std::string, TypePtr>>
 SemanticAnalyzer::extractTypeGuard(const ExprAST& cond) {
   // Must be a GenericCallAST with function name "_is"
   if (cond.getType() != ASTNodeType::GENERIC_CALL) return std::nullopt;
 
-  const auto& genericCall = static_cast<const GenericCallAST&>(cond);
-  if (sun::getIntrinsic(genericCall.getFunctionName()) != sun::Intrinsic::Is) {
+  const auto& genericCall = static_cast<const sun::ast::GenericCallAST&>(cond);
+  if (sun::codegen::intrinsics::getIntrinsic(genericCall.getFunctionName()) !=
+      sun::codegen::intrinsics::Intrinsic::Is) {
     return std::nullopt;
   }
 
@@ -38,7 +50,7 @@ SemanticAnalyzer::extractTypeGuard(const ExprAST& cond) {
 
   // Skip type traits (_Integer, _Float, etc.) - they don't narrow to a concrete
   // type
-  if (sun::isTypeTrait(typeName)) {
+  if (sun::semantic_analysis::isTypeTrait(typeName)) {
     return std::nullopt;
   }
 
@@ -55,7 +67,7 @@ SemanticAnalyzer::extractTypeGuard(const ExprAST& cond) {
   }
 
   // Check if it's a primitive type
-  sun::TypePtr primType = sun::Types::fromString(typeName);
+  TypePtr primType = sun::semantic_analysis::Types::fromString(typeName);
   if (primType) {
     return std::make_pair(varName, primType);
   }
@@ -71,15 +83,16 @@ std::string SemanticAnalyzer::immutableBaseOf(const ExprAST& place) {
   switch (place.getType()) {
     case ASTNodeType::PAREN_EXPR:
       return immutableBaseOf(
-          *static_cast<const ParenExprAST&>(place).getInner());
+          *static_cast<const sun::ast::ParenExprAST&>(place).getInner());
 
     case ASTNodeType::MEMBER_ACCESS: {
       const auto& access = static_cast<const MemberAccessAST&>(place);
-      sun::TypePtr objectType = access.getObject()->getResolvedType();
+      TypePtr objectType = access.getObject()->getResolvedType();
       // mod.name names the module's own variable, so its own constness
       // decides — a module has no mutability of its own to inherit
       if (objectType && objectType->isModule()) {
-        const auto& mod = static_cast<const sun::ModuleType&>(*objectType);
+        const auto& mod =
+            static_cast<const sun::semantic_analysis::ModuleType&>(*objectType);
         SymbolMatch match = ctx_.findSymbolInModule(mod.getModulePath(),
                                                     access.getMemberName());
         if (match.kind != SymbolKind::Variable || !match.variableInfo) {
@@ -88,24 +101,26 @@ std::string SemanticAnalyzer::immutableBaseOf(const ExprAST& place) {
         // display() names the declaring module without any library-hash scope
         std::string full = match.variableInfo->qualifiedName.display();
         if (match.variableInfo->isConst) return "constant '" + full + "'";
-        if (sun::isConstRef(match.variableInfo->type)) {
+        if (sun::semantic_analysis::isConstRef(match.variableInfo->type)) {
           return "const reference '" + full + "'";
         }
         return "";
       }
       // Through a mutable borrow the referent may be changed
-      if (sun::isMutableRef(objectType)) return "";
+      if (sun::semantic_analysis::isMutableRef(objectType)) return "";
       return immutableBaseOf(*access.getObject());
     }
 
     case ASTNodeType::INDEX: {
-      const auto& index = static_cast<const IndexAST&>(place);
-      if (sun::isMutableRef(index.getTarget()->getResolvedType())) return "";
+      const auto& index = static_cast<const sun::ast::IndexAST&>(place);
+      if (sun::semantic_analysis::isMutableRef(
+              index.getTarget()->getResolvedType()))
+        return "";
       return immutableBaseOf(*index.getTarget());
     }
 
     case ASTNodeType::TERNARY: {
-      const auto& ternary = static_cast<const TernaryExprAST&>(place);
+      const auto& ternary = static_cast<const sun::ast::TernaryExprAST&>(place);
       std::string why = immutableBaseOf(*ternary.getThen());
       return why.empty() ? immutableBaseOf(*ternary.getElse()) : why;
     }
@@ -121,14 +136,14 @@ std::string SemanticAnalyzer::immutableBaseOf(const ExprAST& place) {
       VariableInfo* info = ctx_.currentScope().lookupVariable(ref.getName());
       if (!info) return "";
       if (info->isConst) return "constant '" + ref.getName() + "'";
-      if (sun::isConstRef(info->type))
+      if (sun::semantic_analysis::isConstRef(info->type))
         return "const reference '" + ref.getName() + "'";
       return "";
     }
 
     default:
       // A call result or other temporary: only a const borrow is frozen
-      if (sun::isConstRef(place.getResolvedType())) {
+      if (sun::semantic_analysis::isConstRef(place.getResolvedType())) {
         return "a const reference";
       }
       return "";
@@ -148,17 +163,17 @@ void SemanticAnalyzer::checkMoveSource(const ExprAST& value,
                                        const Position& loc) {
   const ExprAST* source = &value;
   while (source->getType() == ASTNodeType::PAREN_EXPR) {
-    source = static_cast<const ParenExprAST*>(source)->getInner();
+    source = static_cast<const sun::ast::ParenExprAST*>(source)->getInner();
   }
-  sun::TypePtr type = source->getResolvedType();
+  TypePtr type = source->getResolvedType();
   // Only an owned compound value moves; scalars copy and borrows stay put
-  if (!sun::typeMovesOnRead(type)) return;
+  if (!sun::semantic_analysis::typeMovesOnRead(type)) return;
 
   // An array owns its elements the way a container does: an element is
   // reached by borrowing it, never by moving it out of the middle
   if (source->getType() == ASTNodeType::INDEX) {
-    const auto& index = static_cast<const IndexAST&>(*source);
-    sun::TypePtr targetType = unwrapRef(index.getTarget()->getResolvedType());
+    const auto& index = static_cast<const sun::ast::IndexAST&>(*source);
+    TypePtr targetType = unwrapRef(index.getTarget()->getResolvedType());
     if (targetType && targetType->isArray()) {
       logAndThrowError(
           "Cannot move an element out of an array; borrow it "
@@ -181,7 +196,8 @@ void SemanticAnalyzer::checkMoveSource(const ExprAST& value,
             loc);
       }
       auto ownerType = unwrapRef(owner->getResolvedType());
-      if (auto* cls = sun::tryGetType<sun::ClassType>(ownerType)) {
+      if (auto* cls = sun::codegen::support::tryGetType<
+              sun::semantic_analysis::ClassType>(ownerType)) {
         if (cls->getMethod("deinit")) {
           logAndThrowError(
               "Cannot move a field out of a class with deinit; replace the "
@@ -220,16 +236,16 @@ void SemanticAnalyzer::checkMoveSource(const ExprAST& value,
 
 void SemanticAnalyzer::checkArgumentPlaces(
     const std::vector<std::unique_ptr<ExprAST>>& args,
-    const std::vector<sun::TypePtr>& paramTypes, const std::string& callee,
+    const std::vector<TypePtr>& paramTypes, const std::string& callee,
     const Position& loc) {
   for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
     if (!args[i] || !paramTypes[i]) continue;
-    sun::TypePtr argType = args[i]->getResolvedType();
+    TypePtr argType = args[i]->getResolvedType();
     // Any reference parameter borrows its argument, const or not
     if (paramTypes[i]->isReference()) {
       rejectBorrowOfByValueCapture(*args[i], loc);
     }
-    if (sun::isMutableRef(paramTypes[i])) {
+    if (sun::semantic_analysis::isMutableRef(paramTypes[i])) {
       // A reference argument is checked by assignability (const ref never
       // becomes ref); a place argument is borrowed here
       if (argType && argType->isReference()) continue;
@@ -268,3 +284,5 @@ bool SemanticAnalyzer::checkMethodReceiver(const ExprAST& receiver,
   }
   return true;
 }
+
+}  // namespace sun::semantic_analysis

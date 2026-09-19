@@ -111,8 +111,8 @@ FormatOutcome formatFile(const std::string& file, bool checkMode) {
 
   std::string formatted;
   try {
-    formatted = sun::formatSource(source, file);
-  } catch (const SunError& e) {
+    formatted = sun::parsing::formatSource(source, file);
+  } catch (const sun::support::SunError& e) {
     llvm::errs() << file << ": " << e.what() << "\n";
     return FormatOutcome::Failed;
   }

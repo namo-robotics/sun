@@ -9,6 +9,8 @@
 
 #include "support/position.h"
 
+namespace sun::support {
+
 /// Global source text manager for error reporting.
 /// Stores source text for all compiled files so that error messages
 /// can display source line previews even after parsing is complete.
@@ -137,3 +139,5 @@ class SourceManager {
   std::map<std::string, std::vector<size_t>> lineOffsets_;
   int anonymousCounter_ = 0;
 };
+
+}  // namespace sun::support

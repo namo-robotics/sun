@@ -1,5 +1,12 @@
 #pragma once
 
+namespace sun::codegen {
+class CodegenVisitor;
+}
+namespace sun::codegen::scopes {
+class ScopeManager;
+}
+
 // error_generator.h — throw, try/catch, and calls that may unwind
 //
 // Sun's error unions are native LLVM exceptions: a function declared
@@ -25,8 +32,8 @@
 #include "ast.h"
 #include "codegen/codegen_state.h"
 
-class CodegenVisitor;
-class ScopeManager;
+namespace sun::codegen::errors {
+using sun::ast::ExprAST;
 
 /**
  * One open try block. Throwing calls inside it are emitted as `invoke`s that
@@ -46,18 +53,19 @@ struct TryContext {
  */
 class ErrorGenerator {
  public:
-  ErrorGenerator(CodegenState& state, CodegenVisitor& gen)
+  ErrorGenerator(sun::codegen::CodegenState& state,
+                 sun::codegen::CodegenVisitor& gen)
       : state_(state), gen_(gen), ctx(state.ctx), module(state.module) {}
 
   ErrorGenerator(const ErrorGenerator&) = delete;
   ErrorGenerator& operator=(const ErrorGenerator&) = delete;
 
-  llvm::Value* codegen(const TryCatchExprAST& expr);
-  llvm::Value* codegen(const ThrowExprAST& expr);
+  llvm::Value* codegen(const sun::ast::TryCatchExprAST& expr);
+  llvm::Value* codegen(const sun::ast::ThrowExprAST& expr);
 
   // The body is emitted as written, in a scope of its own; the block's value
   // is handed out to the enclosing scope. Safety checks are done in sema.
-  llvm::Value* codegen(const UnsafeBlockAST& expr);
+  llvm::Value* codegen(const sun::ast::UnsafeBlockAST& expr);
 
   /**
    * Emits a call that may unwind. If `canThrow` and we are inside a try
@@ -80,9 +88,9 @@ class ErrorGenerator {
                                    bool isUnsigned = false);
 
  private:
-  CodegenState& state_;
-  CodegenVisitor& gen_;
-  CodegenContext& ctx;
+  sun::codegen::CodegenState& state_;
+  sun::codegen::CodegenVisitor& gen_;
+  sun::codegen::CodegenContext& ctx;
 
   // Stack of try contexts for error propagation to catch blocks
   std::vector<TryContext> tryStack;
@@ -93,21 +101,23 @@ class ErrorGenerator {
 
   // What throwing and catching borrow from the rest of codegen
   llvm::Value* codegen(const ExprAST& expr);
-  llvm::Value* codegen(const BlockExprAST& block);
+  llvm::Value* codegen(const sun::ast::BlockExprAST& block);
 
   // A node kind with its own overload must not silently bind to the
   // ExprAST forwarder above: that path attaches an expression debug location,
   // so a block routed through it changes DWARF output. Make it a compile
   // error instead. Add an overload here when a new kind is needed.
   template <typename T>
-    requires(!std::is_same_v<T, ExprAST> && !std::is_same_v<T, BlockExprAST> &&
+    requires(!std::is_same_v<T, ExprAST> &&
+             !std::is_same_v<T, sun::ast::BlockExprAST> &&
              std::is_base_of_v<ExprAST, T>)
   llvm::Value* codegen(const T&) = delete;
 
-  ScopeManager& scopes();
-  std::shared_ptr<sun::TypeRegistry>& typeRegistry();
+  sun::codegen::scopes::ScopeManager& scopes();
+  std::shared_ptr<sun::semantic_analysis::TypeRegistry>& typeRegistry();
   void debugDeclareLocal(llvm::AllocaInst* alloca, const std::string& name,
-                         const sun::TypePtr& type, const Position& loc);
+                         const sun::semantic_analysis::TypePtr& type,
+                         const sun::support::Position& loc);
   llvm::Value* createIntDivRem(llvm::Value* L, llvm::Value* R, bool isModulo,
                                bool isUnsigned);
 
@@ -133,3 +143,5 @@ class ErrorGenerator {
   // block.
   void emitCxaThrowAndUnreachable(llvm::Value* excPtr);
 };
+
+}  // namespace sun::codegen::errors

@@ -32,6 +32,15 @@
 #include "support/error.h"
 #include "support/sun_path.h"
 
+using sun::driver::ManifestProcessor;
+using sun::lsp::SymbolLocation;
+
+using sun::driver::Driver;
+using sun::parsing::TokenKind;
+using sun::support::SunError;
+
+namespace sun::lsp {
+
 // =============================================================================
 // Diagnostics Cache
 // =============================================================================
@@ -88,17 +97,6 @@ class DiagnosticsCache {
 
 static DiagnosticsCache diagnosticsCache;
 
-// Canonical form of a path when it exists on disk, otherwise unchanged
-static std::string normalizePath(const std::string& path) {
-  try {
-    if (std::filesystem::exists(path)) {
-      return std::filesystem::canonical(path).string();
-    }
-  } catch (const std::filesystem::filesystem_error&) {
-  }
-  return path;
-}
-
 // =============================================================================
 // Entrypoint Configuration
 // =============================================================================
@@ -109,7 +107,8 @@ static std::string normalizePath(const std::string& path) {
 struct EntrypointConfig {
   std::string entrypointPath;                // Absolute path to entrypoint
   std::vector<std::string> sunFiles;         // All .sun files from manifest
-  std::vector<sun::MoonImport> moonImports;  // Moon imports from manifest
+  std::vector<sun::moon_bundling::MoonImport>
+      moonImports;                           // Moon imports from manifest
   std::vector<std::string> protoFiles;       // .proto schemas from manifest
   std::set<std::string> coveredFiles;        // Quick lookup of covered files
 };
@@ -178,10 +177,9 @@ class EntrypointManager {
       return std::nullopt;
     }
 
-    std::optional<sun::ResolvedManifest> resolved;
+    std::optional<sun::driver::ResolvedManifest> resolved;
     try {
-      resolved =
-          sun::ManifestProcessor::fromEntrypointFile(entrypointPath.string());
+      resolved = ManifestProcessor::fromEntrypointFile(entrypointPath.string());
     } catch (const std::exception&) {
       // A failed moon download degrades to per-file mode instead of
       // crashing the server.
@@ -225,7 +223,8 @@ static EntrypointManager entrypointManager;
 // listing.
 static std::vector<std::string> configuredSunConfigs;
 static std::vector<std::string> explicitEntrypoints;
-static std::map<std::string, sun::ConfigEntrypoint> configEntrypointInfo;
+static std::map<std::string, sun::driver::ConfigEntrypoint>
+    configEntrypointInfo;
 
 // Re-read the configured sun-config files and hand the manager the union of
 // their entrypoints and the explicitly configured ones (configs first, so a
@@ -236,7 +235,8 @@ static void refreshEntrypoints() {
   configEntrypointInfo.clear();
   for (const auto& configPath : configuredSunConfigs) {
     try {
-      sun::SunConfig config = sun::SunConfig::loadFile(configPath);
+      sun::driver::SunConfig config =
+          sun::driver::SunConfig::loadFile(configPath);
       for (const auto& entry : config.entrypoints) {
         combined.push_back(entry.path);
         configEntrypointInfo.emplace(normalizePath(entry.path), entry);
@@ -257,11 +257,11 @@ static void refreshEntrypoints() {
 static bool applyPathVariables(const llvm::json::Object& config) {
   const llvm::json::Object* vars = config.getObject("pathVariables");
   if (!vars) return false;
-  sun::ManifestProcessor::clearPathVariables();
+  ManifestProcessor::clearPathVariables();
   for (const auto& [name, value] : *vars) {
     if (auto str = value.getAsString()) {
-      sun::ManifestProcessor::setPathVariable(llvm::StringRef(name).str(),
-                                              str->str());
+      ManifestProcessor::setPathVariable(llvm::StringRef(name).str(),
+                                         str->str());
     }
   }
   return true;
@@ -302,7 +302,7 @@ static std::optional<std::vector<std::string>> readSunConfigs(
 }
 
 // LSP semantic token type indices (must match legend in initialize response)
-namespace LSPTokenType {
+
 constexpr int Module = 0;
 constexpr int Type = 1;
 constexpr int Class = 2;
@@ -327,7 +327,6 @@ constexpr int Regexp = 20;
 constexpr int Operator = 21;
 // Constructors and destructors use the extension's function color mapping.
 constexpr int Lifecycle = 22;
-}  // namespace LSPTokenType
 
 // Map TokenKind to LSP semantic token type index (-1 = skip)
 int tokenKindToLSPType(TokenKind kind) {
@@ -338,12 +337,12 @@ int tokenKindToLSPType(TokenKind kind) {
     case TokenKind::FLOAT:
     case TokenKind::TYPED_INTEGER:
     case TokenKind::TYPED_FLOAT:
-      return LSPTokenType::Number;
+      return Number;
 
     case TokenKind::STRING:
     case TokenKind::CHAR_LITERAL:
     case TokenKind::BYTE_LITERAL:
-      return LSPTokenType::String;
+      return String;
 
     case TokenKind::PLUS:
     case TokenKind::MINUS:
@@ -366,14 +365,14 @@ int tokenKindToLSPType(TokenKind kind) {
     case TokenKind::CARET_ASSIGN:
     case TokenKind::LEFT_SHIFT_ASSIGN:
     case TokenKind::RIGHT_SHIFT_ASSIGN:
-      return LSPTokenType::Operator;
+      return Operator;
 
     case TokenKind::INTRINSIC_IDENTIFIER:
-      return LSPTokenType::Function;
+      return Function;
 
     case TokenKind::COMMENT:
     case TokenKind::BLOCK_COMMENT:
-      return LSPTokenType::Comment;
+      return Comment;
 
     default:
       return -1;
@@ -512,7 +511,7 @@ llvm::json::Object makeRange(int startLine, int startCharacter, int endLine,
 std::vector<int> computeSemanticTokens(const std::string& source) {
   std::vector<int> data;
   std::istringstream stream(source);
-  Lexer lexer(stream);
+  sun::parsing::Lexer lexer(stream);
   lexer.setEmitComments(true);
 
   // Track context for classifying identifiers as type vs value
@@ -547,7 +546,7 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
   } lastIdent;
 
   while (true) {
-    Token tok = lexer.getNextToken();
+    sun::parsing::Token tok = lexer.getNextToken();
     if (tok.kind == TokenKind::TOK_EOF) break;
 
     if (tok.kind == TokenKind::COMMENT ||
@@ -564,8 +563,7 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
         while (segEnd > pos && tok.text[segEnd - 1] == '\r') --segEnd;
         int segLen = static_cast<int>(segEnd - pos);
         if (segLen > 0) {
-          tokens.push_back(
-              {commentLine, commentCol, segLen, LSPTokenType::Comment, 0});
+          tokens.push_back({commentLine, commentCol, segLen, Comment, 0});
         }
         if (nl == std::string::npos) break;
         pos = nl + 1;
@@ -597,8 +595,7 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
             lastIdent.text == "init" || lastIdent.text == "deinit";
         for (auto& t : tokens) {
           if (t.line == lastIdent.line && t.startChar == lastIdent.col) {
-            t.tokenType =
-                isLifecycle ? LSPTokenType::Lifecycle : LSPTokenType::Function;
+            t.tokenType = isLifecycle ? Lifecycle : Function;
             break;
           }
         }
@@ -676,36 +673,36 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
         tokenType = -1;
         afterFunction = true;
       } else if (afterEnum) {
-        tokenType = LSPTokenType::Enum;
+        tokenType = Enum;
         afterEnum = false;
       } else if (afterModule) {
-        tokenType = LSPTokenType::Module;
+        tokenType = Module;
         afterModule = false;
       } else if (afterClass) {
-        tokenType = LSPTokenType::Class;
+        tokenType = Class;
         afterClass = false;
       } else if (afterInterface) {
-        tokenType = LSPTokenType::Interface;
+        tokenType = Interface;
         afterInterface = false;
       } else if (afterFunction) {
-        tokenType = LSPTokenType::Function;
+        tokenType = Function;
         afterFunction = false;
         // Track this - might be followed by < for generics
         lastIdent = {true, line, col, length, tok.text};
       } else if (isTypeContext) {
         if (angleBracketDepth > 0 && tok.text.size() <= 2 &&
             std::isupper(tok.text[0]))
-          tokenType = LSPTokenType::TypeParameter;
+          tokenType = TypeParameter;
         else
-          tokenType = LSPTokenType::Type;
+          tokenType = Type;
       } else if (afterDot) {
         // Member access - could be property or method
         // Default to property, will be reclassified to method if followed by (
-        tokenType = LSPTokenType::Property;
+        tokenType = Property;
         lastIdent = {true, line, col, length, tok.text};
         afterDot = false;
       } else {
-        tokenType = LSPTokenType::Variable;
+        tokenType = Variable;
         // Track for potential function call: foo() or foo<T>()
         lastIdent = {true, line, col, length, tok.text};
       }
@@ -753,8 +750,8 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
 // of this document, naming where it came from.
 void appendDiagnostic(llvm::json::Array& diagnostics,
                       const OpenDocument& document, const std::string& message,
-                      const std::optional<Position>& location, int severity,
-                      const std::string& knownSourceLine = "") {
+                      const std::optional<sun::support::Position>& location,
+                      int severity, const std::string& knownSourceLine = "") {
   bool isFromCurrentFile = true;
   if (location && location->filePath) {
     isFromCurrentFile =
@@ -791,7 +788,7 @@ void appendDiagnostic(llvm::json::Array& diagnostics,
       // Span the word at the column, so the squiggle covers the whole name
       std::string sourceLine = knownSourceLine;
       if (sourceLine.empty()) {
-        sourceLine = SourceManager::instance().getLine(*location);
+        sourceLine = sun::support::SourceManager::instance().getLine(*location);
       }
       int tokenLength = 1;
       if (!sourceLine.empty() &&
@@ -867,7 +864,7 @@ llvm::json::Array analyzeDiagnostics(const OpenDocument& document) {
     // label that names the pass rather than repeating "error" — leads the
     // message
     std::string message = error.getMessage();
-    if (error.getKind() == SunError::Kind::Borrow) {
+    if (error.getKind() == sun::support::SunError::Kind::Borrow) {
       message = error.getLabel() + ": " + message;
     }
     appendDiagnostic(diagnostics, document, message, error.getLocation(),
@@ -875,7 +872,9 @@ llvm::json::Array analyzeDiagnostics(const OpenDocument& document) {
     // A pass that finds several problems at once (the borrow checker) lists
     // the rest on the error, each with its own place in the source
     for (const auto& related : error.getRelated()) {
-      int severity = related.level == RelatedDiagnostic::Level::Error ? 1 : 3;
+      int severity =
+          related.level == sun::support::RelatedDiagnostic::Level::Error ? 1
+                                                                         : 3;
       appendDiagnostic(diagnostics, document, related.message, related.location,
                        severity);
     }
@@ -915,7 +914,7 @@ llvm::json::Array analyzeDiagnostics(const OpenDocument& document) {
 struct AnalyzedDocument {
   std::string contentHash;
   std::unique_ptr<Driver> driver;
-  std::unique_ptr<BlockExprAST> ast;
+  std::unique_ptr<sun::ast::BlockExprAST> ast;
 };
 
 static std::unordered_map<std::string, AnalyzedDocument> analyzedDocuments;
@@ -933,7 +932,7 @@ const AnalyzedDocument* getAnalyzedDocument(const OpenDocument& document) {
 
   try {
     auto driver = Driver::createForAOT("sun-lsp");
-    Driver::AnalyzedProgram program;
+    sun::driver::Driver::AnalyzedProgram program;
     const EntrypointConfig* entrypoint =
         entrypointManager.findEntrypointForFile(document.path);
     if (entrypoint && !entrypoint->sunFiles.empty()) {
@@ -1010,7 +1009,10 @@ std::optional<std::string> readMessageBody() {
 
 }  // namespace
 
+}  // namespace sun::lsp
+
 int main() {
+  using namespace sun::lsp;
   std::unordered_map<std::string, OpenDocument> openDocuments;
   bool shutdownRequested = false;
 
@@ -1048,14 +1050,15 @@ int main() {
         if (llvm::json::Object* params = rawParams->getAsObject()) {
           if (const llvm::json::Object* initOptions =
                   params->getObject("initializationOptions")) {
-            applyPathVariables(*initOptions);
-            if (auto configPaths = readSunConfigs(*initOptions)) {
-              configuredSunConfigs = std::move(*configPaths);
+            sun::lsp::applyPathVariables(*initOptions);
+            if (auto configPaths = sun::lsp::readSunConfigs(*initOptions)) {
+              sun::lsp::configuredSunConfigs = std::move(*configPaths);
             }
-            if (auto entrypointPaths = readEntrypoints(*initOptions)) {
-              explicitEntrypoints = std::move(*entrypointPaths);
+            if (auto entrypointPaths =
+                    sun::lsp::readEntrypoints(*initOptions)) {
+              sun::lsp::explicitEntrypoints = std::move(*entrypointPaths);
             }
-            refreshEntrypoints();
+            sun::lsp::refreshEntrypoints();
           }
         }
       }
@@ -1228,7 +1231,7 @@ int main() {
 
       OpenDocument& document = documentIter->second;
       // Clear cache to force re-read from disk for manifest-based compilation
-      diagnosticsCache.clear();
+      sun::lsp::diagnosticsCache.clear();
       analyzedDocuments.clear();
       publishDiagnostics(document.uri, analyzeDiagnostics(document),
                          document.version);
@@ -1259,21 +1262,21 @@ int main() {
       if (const llvm::json::Object* settings = params->getObject("settings")) {
         if (const llvm::json::Object* sunSettings =
                 settings->getObject("sun")) {
-          bool variablesChanged = applyPathVariables(*sunSettings);
-          auto configPaths = readSunConfigs(*sunSettings);
-          auto entrypointPaths = readEntrypoints(*sunSettings);
+          bool variablesChanged = sun::lsp::applyPathVariables(*sunSettings);
+          auto configPaths = sun::lsp::readSunConfigs(*sunSettings);
+          auto entrypointPaths = sun::lsp::readEntrypoints(*sunSettings);
           if (variablesChanged || configPaths || entrypointPaths) {
             if (configPaths) {
-              configuredSunConfigs = std::move(*configPaths);
+              sun::lsp::configuredSunConfigs = std::move(*configPaths);
             }
             if (entrypointPaths) {
-              explicitEntrypoints = std::move(*entrypointPaths);
+              sun::lsp::explicitEntrypoints = std::move(*entrypointPaths);
             }
             // Re-reads the config files too, so a client can resend the
             // same settings to pick up an edited sun-config.json.
-            refreshEntrypoints();
+            sun::lsp::refreshEntrypoints();
             // Clear caches since context may have changed
-            diagnosticsCache.clear();
+            sun::lsp::diagnosticsCache.clear();
             analyzedDocuments.clear();
             // Re-analyze all open documents
             for (auto& [docUri, document] : openDocuments) {
@@ -1351,7 +1354,7 @@ int main() {
       const OpenDocument& document = documentIter->second;
       std::string formatted;
       try {
-        formatted = sun::formatSource(document.text, document.path);
+        formatted = sun::parsing::formatSource(document.text, document.path);
       } catch (const SunError&) {
         // Unparseable code: a null result avoids error popups on every save
         sendResponse(*id, llvm::json::Value(nullptr));
@@ -1496,7 +1499,7 @@ int main() {
 
       const OpenDocument& document = documentIter->second;
       const AnalyzedDocument* analyzed = getAnalyzedDocument(document);
-      std::optional<sun::lsp::SymbolLocation> definition;
+      std::optional<SymbolLocation> definition;
       if (analyzed) {
         int offset =
             sun::lsp::byteOffsetFromLspPosition(document.text, line, character);
@@ -1565,7 +1568,7 @@ int main() {
 
       const OpenDocument& document = documentIter->second;
       const AnalyzedDocument* analyzed = getAnalyzedDocument(document);
-      std::vector<sun::lsp::SymbolLocation> references;
+      std::vector<SymbolLocation> references;
       if (analyzed) {
         int offset =
             sun::lsp::byteOffsetFromLspPosition(document.text, line, character);
@@ -1666,7 +1669,7 @@ int main() {
 
       if (!isRename) {
         // The identifier under the cursor, with its current name to edit
-        std::optional<sun::lsp::SymbolLocation> site =
+        std::optional<SymbolLocation> site =
             sun::lsp::siteAt(*rename, document.path, offset);
         if (!site || !rename->refusal.empty()) {
           sendResponse(*id, llvm::json::Value(nullptr));
@@ -1739,12 +1742,12 @@ int main() {
         continue;
       }
 
-      refreshEntrypoints();
-      diagnosticsCache.clear();
+      sun::lsp::refreshEntrypoints();
+      sun::lsp::diagnosticsCache.clear();
       analyzedDocuments.clear();
       const OpenDocument& document = documentIter->second;
-      const EntrypointConfig* entrypoint =
-          entrypointManager.findEntrypointForFile(document.path);
+      const sun::lsp::EntrypointConfig* entrypoint =
+          sun::lsp::entrypointManager.findEntrypointForFile(document.path);
       if (!entrypoint) {
         llvm::json::Object result;
         result["entrypoint"] = nullptr;
@@ -1785,19 +1788,19 @@ int main() {
     if (methodName == "sun/workspaceTests") {
       if (!id) continue;
 
-      refreshEntrypoints();
-      diagnosticsCache.clear();
+      sun::lsp::refreshEntrypoints();
+      sun::lsp::diagnosticsCache.clear();
       analyzedDocuments.clear();
 
       // Unsaved edits in open documents stand in for their files, the same
       // way per-document analysis treats the requested buffer.
       std::map<std::string, std::string> overrides;
       for (const auto& [docUri, document] : openDocuments) {
-        overrides[normalizePath(document.path)] = document.text;
+        overrides[sun::lsp::normalizePath(document.path)] = document.text;
       }
 
       llvm::json::Array entrypointsJson;
-      for (const auto& entrypoint : entrypointManager.entrypoints()) {
+      for (const auto& entrypoint : sun::lsp::entrypointManager.entrypoints()) {
         std::vector<sun::lsp::TestSpan> spans;
         try {
           auto driver = Driver::createForAOT("sun-lsp");
@@ -1854,9 +1857,9 @@ int main() {
 
         llvm::json::Object entryJson;
         entryJson["entrypoint"] = entrypoint.entrypointPath;
-        auto info =
-            configEntrypointInfo.find(normalizePath(entrypoint.entrypointPath));
-        if (info != configEntrypointInfo.end() &&
+        auto info = sun::lsp::configEntrypointInfo.find(
+            sun::lsp::normalizePath(entrypoint.entrypointPath));
+        if (info != sun::lsp::configEntrypointInfo.end() &&
             !info->second.testBinaryName.empty()) {
           entryJson["test_binary"] = info->second.testBinaryName;
         } else {

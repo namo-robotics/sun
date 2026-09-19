@@ -11,43 +11,47 @@
 #include "moon_bundling/moon_cache.h"
 #include "support/sun_path.h"
 
+using sun::driver::SunConfig;
+using sun::moon_bundling::LibraryCache;
+
 namespace sun::cli {
 
 bool isConfigInput(const std::string& input) {
-  return std::filesystem::path(input).filename() == sun::SunConfig::kFileName;
+  return std::filesystem::path(input).filename() == SunConfig::kFileName;
 }
 
-sun::SunConfig loadConfigInput(const std::string& input,
-                               const std::string& targetTriple) {
-  sun::SunConfig config =
-      sun::SunConfig::loadFile(std::filesystem::absolute(input), targetTriple);
+SunConfig loadConfigInput(const std::string& input,
+                          const std::string& targetTriple) {
+  SunConfig config =
+      SunConfig::loadFile(std::filesystem::absolute(input), targetTriple);
   if (config.entrypoints.empty()) {
-    logAndThrowError(input +
-                     " declares no entrypoints; add an 'entrypoints' list or "
-                     "name a .sun file directly");
+    sun::support::logAndThrowError(
+        input +
+        " declares no entrypoints; add an 'entrypoints' list or "
+        "name a .sun file directly");
   }
   return config;
 }
 
 void applySharedSettings(const SharedOptions& shared) {
   for (const auto& [name, value] : shared.pathVariables) {
-    sun::ManifestProcessor::setPathVariable(name, value);
+    sun::driver::ManifestProcessor::setPathVariable(name, value);
   }
-  sun::LibraryCache::instance().initFromEnvironment();
+  LibraryCache::instance().initFromEnvironment();
   for (const auto& libPath : shared.libPaths) {
-    sun::LibraryCache::instance().addSearchPath(libPath);
+    LibraryCache::instance().addSearchPath(libPath);
     // Manifest `libraries:` entries resolve through SunPath, so --lib-path
     // has to reach it too, not just the bundle cache.
-    sun::SunPath::addSearchPath(libPath);
+    sun::support::SunPath::addSearchPath(libPath);
   }
 }
 
 void applyBuildRunSettings(const BuildRunOptions& options) {
   if (!options.githubToken.empty()) {
-    sun::MoonCache::setGithubToken(options.githubToken);
+    sun::moon_bundling::MoonCache::setGithubToken(options.githubToken);
   }
   // The target has to be known before the search paths are read
-  sun::LibraryCache::instance().setTargetTriple(options.targetTriple);
+  LibraryCache::instance().setTargetTriple(options.targetTriple);
   applySharedSettings(options.shared);
 }
 
@@ -60,7 +64,7 @@ int reportEarlyExit(const EarlyExit& earlyExit) {
   return earlyExit.exitCode;
 }
 
-int reportSunError(const SunError& error) {
+int reportSunError(const sun::support::SunError& error) {
   std::cerr << error.what() << std::endl;
   return 1;
 }
@@ -70,7 +74,7 @@ int reportUnexpectedError(const std::exception& error) {
   return 1;
 }
 
-bool isNoTestsError(const SunError& error) {
+bool isNoTestsError(const sun::support::SunError& error) {
   return std::string(error.what()).find("no test functions found") !=
          std::string::npos;
 }

@@ -9,6 +9,8 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+
 TEST(Lambdas_Generic, lambda_body_uses_the_type_parameter) {
   auto value = executeString(R"(
     function apply<T>(x: T) T {
@@ -126,5 +128,5 @@ TEST(Lambdas_Generic, lambda_type_parameters_are_rejected) {
             return 0;
         }
       )"),
-               SunError);
+               sun::support::SunError);
 }

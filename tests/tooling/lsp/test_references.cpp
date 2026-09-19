@@ -22,6 +22,10 @@
 #include "driver/execution_utils.h"
 #include "lsp/references.h"
 
+using sun::lsp::SymbolLocation;
+
+using sun::driver::Driver;
+
 namespace {
 
 // The file never exists on disk; nodes carry the path exactly as given
@@ -29,14 +33,15 @@ const char* kPath = "/references_test.sun";
 
 struct Analysis {
   std::unique_ptr<Driver> driver;
-  Driver::AnalyzedProgram program;
+  sun::driver::Driver::AnalyzedProgram program;
 };
 
 Analysis analyze(const std::string& source, bool withStdlib = false) {
-  initTestEnvironment();
+  sun::driver::initTestEnvironment();
   Analysis analysis;
   analysis.driver = Driver::createForAOT("references_test");
-  if (withStdlib) analysis.driver->setMoonImports(getStdlibMoonImports());
+  if (withStdlib)
+    analysis.driver->setMoonImports(sun::driver::getStdlibMoonImports());
   analysis.program = analysis.driver->analyzeString(source, kPath);
   return analysis;
 }
@@ -55,11 +60,11 @@ size_t offsetOf(const std::string& source, const std::string& needle,
   return pos;
 }
 
-std::vector<sun::lsp::SymbolLocation> referencesAt(const std::string& source,
-                                                   const std::string& needle,
-                                                   bool includeDeclaration,
-                                                   int occurrence = 0,
-                                                   bool withStdlib = false) {
+std::vector<SymbolLocation> referencesAt(const std::string& source,
+                                         const std::string& needle,
+                                         bool includeDeclaration,
+                                         int occurrence = 0,
+                                         bool withStdlib = false) {
   size_t pos = offsetOf(source, needle, occurrence);
   if (pos == std::string::npos) return {};
   Analysis analysis = analyze(source, withStdlib);
@@ -73,8 +78,7 @@ std::vector<sun::lsp::SymbolLocation> referencesAt(const std::string& source,
                                      static_cast<int>(pos), includeDeclaration);
 }
 
-std::string rangeText(const std::string& text,
-                      const sun::lsp::SymbolLocation& location) {
+std::string rangeText(const std::string& text, const SymbolLocation& location) {
   return text.substr(location.range.offset,
                      location.range.endOffset.value_or(location.range.offset) -
                          location.range.offset);
@@ -92,7 +96,7 @@ std::string identifierOf(const std::string& snippet) {
 }
 
 std::string describe(const std::string& source,
-                     const std::vector<sun::lsp::SymbolLocation>& results) {
+                     const std::vector<SymbolLocation>& results) {
   std::string text;
   for (const auto& result : results) {
     if (!text.empty()) text += ", ";
@@ -426,7 +430,7 @@ function main() i32 {
 }
 
 TEST(Tooling_Lsp_References, MergedFiles) {
-  initTestEnvironment();
+  sun::driver::initTestEnvironment();
   std::filesystem::create_directories("tmp");
   std::string mainPath =
       std::filesystem::absolute("tmp/references_main.sun").string();
@@ -480,7 +484,8 @@ TEST(Tooling_Lsp_References, MergedFiles) {
 }
 
 TEST(Tooling_Lsp_References, StdlibReferences) {
-  if (getStdlibMoonImports().empty()) GTEST_SKIP() << "stdlib.moon not built";
+  if (sun::driver::getStdlibMoonImports().empty())
+    GTEST_SKIP() << "stdlib.moon not built";
   std::string source = R"(
 using std;
 function main() i64 {
@@ -510,7 +515,7 @@ function main() i64 {
                           const std::vector<ExpectedName>& expected,
                           const std::string& file, const std::string& name) {
     auto results = references(needle);
-    std::vector<sun::lsp::SymbolLocation> library;
+    std::vector<SymbolLocation> library;
     std::vector<int> got;
     for (const auto& result : results) {
       if (result.filePath == kPath) {

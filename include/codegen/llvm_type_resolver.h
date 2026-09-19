@@ -1,8 +1,10 @@
-// llvm_type_resolver.h — Resolves sun::Type to llvm::Type for codegen
+// llvm_type_resolver.h — Resolves sun::semantic_analysis::Type to llvm::Type
+// for codegen
 //
 // This pass runs after semantic analysis and before codegen.
-// It creates a mapping from sun::Type to the appropriate llvm::Type,
-// handling special cases like function types becoming closure structs.
+// It creates a mapping from sun::semantic_analysis::Type to the appropriate
+// llvm::Type, handling special cases like function types becoming closure
+// structs.
 
 #pragma once
 
@@ -15,8 +17,14 @@
 #include "semantic_analysis/struct_names.h"
 #include "semantic_analysis/types.h"
 
+namespace sun::codegen {
+using sun::semantic_analysis::EnumType;
+using sun::semantic_analysis::LambdaType;
+using sun::semantic_analysis::TypePtr;
+
 /**
- * LLVMTypeResolver converts sun::Type to llvm::Type with proper handling of:
+ * LLVMTypeResolver converts sun::semantic_analysis::Type to llvm::Type with
+ * proper handling of:
  * - Primitive types (i32 -> i32, f64 -> double, etc.)
  * - Function types -> closure struct { ptr, ptr }
  * - Function and lambda types
@@ -37,7 +45,7 @@ class LLVMTypeResolver {
   llvm::StructType* staticPtrType = nullptr;
 
   // Cache of resolved types to avoid recreating them
-  std::map<sun::Type*, llvm::Type*> typeCache;
+  std::map<sun::semantic_analysis::Type*, llvm::Type*> typeCache;
 
  public:
   explicit LLVMTypeResolver(llvm::LLVMContext& context,
@@ -50,7 +58,7 @@ class LLVMTypeResolver {
    * payload area. Named "<QualifiedEnum>_struct" (not a well-known internal
    * struct, so materializeStructReturn treats returns like class values).
    */
-  llvm::StructType* getEnumStorageType(const sun::EnumType& enumType);
+  llvm::StructType* getEnumStorageType(const EnumType& enumType);
 
   /**
    * Per-variant view struct { i32 tag, T1, T2, ... }. Construction and
@@ -59,23 +67,25 @@ class LLVMTypeResolver {
    */
   // Field index of payload `i` in a variant view struct (field 0 is the
   // tag; a padding field may follow it — see getEnumVariantStruct)
-  unsigned enumPayloadFieldIndex(const sun::EnumType& enumType,
+  unsigned enumPayloadFieldIndex(const EnumType& enumType,
                                  const std::string& variantName, size_t i) {
     llvm::StructType* vt = getEnumVariantStruct(enumType, variantName);
-    const sun::EnumVariant* v = enumType.getVariant(variantName);
+    const sun::semantic_analysis::EnumVariant* v =
+        enumType.getVariant(variantName);
     unsigned base =
         vt->getNumElements() - static_cast<unsigned>(v->payloadTypes.size());
     return base + static_cast<unsigned>(i);
   }
 
-  llvm::StructType* getEnumVariantStruct(const sun::EnumType& enumType,
+  llvm::StructType* getEnumVariantStruct(const EnumType& enumType,
                                          const std::string& variantName);
 
   /**
    * Build storage structs for payload-enum fields (transitively) so
    * ClassType::getStructType can embed them from the enum's cache.
    */
-  void prepareEnumFieldStorage(const sun::ClassType& classType);
+  void prepareEnumFieldStorage(
+      const sun::semantic_analysis::ClassType& classType);
 
   /**
    * Get or create the shared closure struct type { ptr, ptr }.
@@ -90,98 +100,106 @@ class LLVMTypeResolver {
   llvm::StructType* getStaticPtrType();
 
   /**
-   * Resolve a sun::Type to its corresponding llvm::Type.
+   * Resolve a sun::semantic_analysis::Type to its corresponding llvm::Type.
    * - Function types become the closure struct type
    * - Primitives map directly
    * - Class types become LLVM struct types
    */
-  llvm::Type* resolve(const sun::Type& type);
-  llvm::Type* resolve(const sun::TypePtr& type);
+  llvm::Type* resolve(const sun::semantic_analysis::Type& type);
+  llvm::Type* resolve(const TypePtr& type);
 
   /**
    * Resolve a function type's return type.
    * If the return type is itself a function, returns closure type.
    */
-  llvm::Type* resolveReturnType(const sun::FunctionType& funcType);
+  llvm::Type* resolveReturnType(
+      const sun::semantic_analysis::FunctionType& funcType);
 
   /**
    * Resolve function parameter types.
    * Function parameters become closure struct types.
    */
-  std::vector<llvm::Type*> resolveParamTypes(const sun::FunctionType& funcType);
+  std::vector<llvm::Type*> resolveParamTypes(
+      const sun::semantic_analysis::FunctionType& funcType);
 
   /**
-   * Get the LLVM function type for a sun::FunctionType with closure.
-   * This includes the hidden closure pointer as the first parameter.
+   * Get the LLVM function type for a sun::semantic_analysis::FunctionType with
+   * closure. This includes the hidden closure pointer as the first parameter.
    * Signature: (ptr, user_params...) -> return_type
    */
   llvm::FunctionType* resolveFunctionSignature(
-      const sun::FunctionType& funcType);
+      const sun::semantic_analysis::FunctionType& funcType);
 
   /**
-   * Get the LLVM function type for a sun::FunctionType WITHOUT closure.
-   * This is a direct function with no hidden parameter.
+   * Get the LLVM function type for a sun::semantic_analysis::FunctionType
+   * WITHOUT closure. This is a direct function with no hidden parameter.
    * Signature: (user_params...) -> return_type
    */
   llvm::FunctionType* resolveDirectFunctionSignature(
-      const sun::FunctionType& funcType);
+      const sun::semantic_analysis::FunctionType& funcType);
 
   /**
-   * Get the LLVM function type for a sun::LambdaType.
+   * Get the LLVM function type for a sun::semantic_analysis::LambdaType.
    * This includes the hidden fat pointer as the first parameter.
    * Signature: (ptr, user_params...) -> return_type
    */
-  llvm::FunctionType* resolveLambdaSignature(const sun::LambdaType& lambdaType);
+  llvm::FunctionType* resolveLambdaSignature(const LambdaType& lambdaType);
 
   /**
    * Resolve a lambda type's return type.
    */
-  llvm::Type* resolveReturnType(const sun::LambdaType& lambdaType);
+  llvm::Type* resolveReturnType(const LambdaType& lambdaType);
 
   /**
    * Resolve lambda parameter types.
    */
-  std::vector<llvm::Type*> resolveParamTypes(const sun::LambdaType& lambdaType);
+  std::vector<llvm::Type*> resolveParamTypes(const LambdaType& lambdaType);
 
   /**
    * Resolve a type for use as a function return type.
    * For compound types (classes), this returns the struct type by value
    * rather than a pointer, enabling proper return-by-value semantics.
    */
-  llvm::Type* resolveForReturn(const sun::TypePtr& type);
-  llvm::Type* resolveForReturn(const sun::Type& type);
+  llvm::Type* resolveForReturn(const TypePtr& type);
+  llvm::Type* resolveForReturn(const sun::semantic_analysis::Type& type);
 
   /**
-   * Check if a sun::Type is a function type (named function, direct call).
+   * Check if a sun::semantic_analysis::Type is a function type (named function,
+   * direct call).
    */
-  static bool isFunctionType(const sun::Type& type) {
-    return type.getKind() == sun::Type::Kind::Function;
+  static bool isFunctionType(const sun::semantic_analysis::Type& type) {
+    return type.getKind() == sun::semantic_analysis::Type::Kind::Function;
   }
 
-  static bool isFunctionType(const sun::TypePtr& type) {
-    return type && type->getKind() == sun::Type::Kind::Function;
-  }
-
-  /**
-   * Check if a sun::Type is a lambda type (anonymous function, fat pointer
-   * call).
-   */
-  static bool isLambdaType(const sun::Type& type) {
-    return type.getKind() == sun::Type::Kind::Lambda;
-  }
-
-  static bool isLambdaType(const sun::TypePtr& type) {
-    return type && type->getKind() == sun::Type::Kind::Lambda;
+  static bool isFunctionType(const TypePtr& type) {
+    return type &&
+           type->getKind() == sun::semantic_analysis::Type::Kind::Function;
   }
 
   /**
-   * Check if a sun::Type is callable (either function or lambda).
+   * Check if a sun::semantic_analysis::Type is a lambda type (anonymous
+   * function, fat pointer call).
    */
-  static bool isCallable(const sun::Type& type) {
+  static bool isLambdaType(const sun::semantic_analysis::Type& type) {
+    return type.getKind() == sun::semantic_analysis::Type::Kind::Lambda;
+  }
+
+  static bool isLambdaType(const TypePtr& type) {
+    return type &&
+           type->getKind() == sun::semantic_analysis::Type::Kind::Lambda;
+  }
+
+  /**
+   * Check if a sun::semantic_analysis::Type is callable (either function or
+   * lambda).
+   */
+  static bool isCallable(const sun::semantic_analysis::Type& type) {
     return isFunctionType(type) || isLambdaType(type);
   }
 
-  static bool isCallable(const sun::TypePtr& type) {
+  static bool isCallable(const TypePtr& type) {
     return type && (isFunctionType(type) || isLambdaType(type));
   }
 };
+
+}  // namespace sun::codegen

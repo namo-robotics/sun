@@ -7,24 +7,29 @@
 
 #include "codegen/codegen_visitor.h"
 
-ScopeManager& ErrorGenerator::scopes() { return gen_.scopeManager(); }
+namespace sun::codegen::errors {
 
-llvm::Value* ErrorGenerator::codegen(const ExprAST& expr) {
+sun::codegen::scopes::ScopeManager& ErrorGenerator::scopes() {
+  return gen_.scopeManager();
+}
+
+llvm::Value* ErrorGenerator::codegen(const sun::ast::ExprAST& expr) {
   return gen_.codegen(expr);
 }
 
-llvm::Value* ErrorGenerator::codegen(const BlockExprAST& block) {
+llvm::Value* ErrorGenerator::codegen(const sun::ast::BlockExprAST& block) {
   return gen_.codegen(block);
 }
 
-std::shared_ptr<sun::TypeRegistry>& ErrorGenerator::typeRegistry() {
+std::shared_ptr<sun::semantic_analysis::TypeRegistry>&
+ErrorGenerator::typeRegistry() {
   return state_.typeRegistry;
 }
 
-void ErrorGenerator::debugDeclareLocal(llvm::AllocaInst* alloca,
-                                       const std::string& name,
-                                       const sun::TypePtr& type,
-                                       const Position& loc) {
+void ErrorGenerator::debugDeclareLocal(
+    llvm::AllocaInst* alloca, const std::string& name,
+    const sun::semantic_analysis::TypePtr& type,
+    const sun::support::Position& loc) {
   state_.debugInfo.declareLocal(*ctx.builder, alloca, name, type, loc);
 }
 
@@ -32,3 +37,5 @@ llvm::Value* ErrorGenerator::createIntDivRem(llvm::Value* L, llvm::Value* R,
                                              bool isModulo, bool isUnsigned) {
   return gen_.createIntDivRem(L, R, isModulo, isUnsigned);
 }
+
+}  // namespace sun::codegen::errors

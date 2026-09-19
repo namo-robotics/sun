@@ -2,6 +2,10 @@
 
 #pragma once
 
+namespace sun::semantic_analysis {
+class EnumType;
+}
+
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -12,22 +16,26 @@
 #include "ast/type_annotation.h"
 #include "parsing/lexer.h"
 
-namespace sun {
-class EnumType;
-}
+namespace sun::ast {
+using sun::semantic_analysis::DeclarationId;
+using sun::semantic_analysis::QualifiedName;
+
+}  // namespace sun::ast
+
+namespace sun::ast {
 
 // Enum variant declaration: Red, Circle(f64), Rect(f64, f64)
 struct EnumVariantDecl {
   std::string name;
   int64_t value;      // Tag bits; the enum type determines signedness
-  Position location;  // Source location of variant declaration
+  sun::support::Position location;  // Source location of variant declaration
   std::vector<TypeAnnotation> payloadTypes;  // empty = unit variant
   std::string doc;  // Comment written above the variant
 
   bool hasExplicitValue = false;
 
   bool hasPayload() const { return !payloadTypes.empty(); }
-  mutable sun::DeclarationIdentity declaration{};
+  mutable sun::semantic_analysis::DeclarationIdentity declaration{};
 };
 
 // Enum definition: enum Name { Variant1, Variant2(T1, T2), ... }
@@ -40,19 +48,18 @@ class EnumDefinitionAST : public ExprAST {
   std::string doc_;                           // Comment written above the enum
   // Populated during semantic analysis (mutable, like ClassAnalysis
   // specializations on ClassDefinitionAST)
-  mutable std::map<sun::DeclarationId, std::shared_ptr<sun::EnumType>>
+  mutable std::map<DeclarationId,
+                   std::shared_ptr<sun::semantic_analysis::EnumType>>
       specializations_;
 
  public:
-  sun::QualifiedName qualifiedName;
+  QualifiedName qualifiedName;
   /** The original declaration name, retained by imported enums. */
-  const sun::QualifiedName& getQualifiedName() const { return qualifiedName; }
+  const QualifiedName& getQualifiedName() const { return qualifiedName; }
   /** Whether this enum already carries its defining name. */
   bool hasQualifiedName() const { return !qualifiedName.baseName.empty(); }
   /** Record the defining name independently of visible aliases. */
-  void setQualifiedName(sun::QualifiedName name) {
-    qualifiedName = std::move(name);
-  }
+  void setQualifiedName(QualifiedName name) { qualifiedName = std::move(name); }
   EnumDefinitionAST(std::string name, std::vector<EnumVariantDecl> variants,
                     bool precompiled = false,
                     std::vector<TypeParameter> typeParams = {},
@@ -90,11 +97,13 @@ class EnumDefinitionAST : public ExprAST {
   // EnumType itself (payload types substituted). Called by the semantic
   // analyzer when the generic enum is instantiated; codegen walks these to
   // build the storage structs.
-  void addSpecialization(sun::DeclarationId id,
-                         std::shared_ptr<sun::EnumType> specialized) const {
+  void addSpecialization(
+      DeclarationId id,
+      std::shared_ptr<sun::semantic_analysis::EnumType> specialized) const {
     specializations_[id] = std::move(specialized);
   }
-  const std::map<sun::DeclarationId, std::shared_ptr<sun::EnumType>>&
+  const std::map<DeclarationId,
+                 std::shared_ptr<sun::semantic_analysis::EnumType>>&
   getSpecializations() const {
     return specializations_;
   }
@@ -163,3 +172,5 @@ class EnumDefinitionAST : public ExprAST {
   size_t getNumVariants() const { return variants.size(); }
   std::string dotLabel() const override { return "Enum\n" + name; }
 };
+
+}  // namespace sun::ast

@@ -7,6 +7,9 @@
 
 #include "ast.h"
 
+namespace sun::debug {
+using sun::ast::ExprAST;
+
 /// Generates a Graphviz DOT graph from an AST tree.
 /// Usage:
 ///   AstDotGenerator gen;
@@ -32,3 +35,5 @@ class AstDotGenerator {
   /// Visit children of a node and emit edges
   void visitChildren(const ExprAST* node, int parentId);
 };
+
+}  // namespace sun::debug

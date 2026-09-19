@@ -12,14 +12,14 @@ namespace sun::lsp {
 
 struct SymbolLocation {
   std::string filePath;  // Absolute path of the file holding the name
-  Position range;        // Byte offsets of the name in that file
+  sun::support::Position range;  // Byte offsets of the name in that file
   LspPosition start;     // The same range in protocol coordinates
   LspPosition end;
 };
 
 // Protocol form of a byte range inside `text`
 SymbolLocation makeSymbolLocation(const std::string& filePath,
-                                  const Position& range,
+                                  const sun::support::Position& range,
                                   const std::string& text);
 
 }  // namespace sun::lsp

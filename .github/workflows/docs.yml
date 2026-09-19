@@ -38,8 +38,20 @@ jobs:
           cache: 'npm'
           cache-dependency-path: docs/package-lock.json
 
+      - name: Install Doxygen
+        working-directory: .
+        run: |
+          mkdir -p tmp/doxygen
+          curl --fail --location --retry 3 https://www.doxygen.nl/files/doxygen-1.15.0.linux.bin.tar.gz -o tmp/doxygen/archive.tar.gz
+          echo "0ec2e5b2c3cd82b7106d19cb42d8466450730b8cb7a9e85af712be38bf4523a1  tmp/doxygen/archive.tar.gz" | sha256sum --check
+          tar -xzf tmp/doxygen/archive.tar.gz -C tmp/doxygen
+          echo "$GITHUB_WORKSPACE/tmp/doxygen/doxygen-1.15.0/bin" >> "$GITHUB_PATH"
+
       - name: Install dependencies
         run: npm ci
+
+      - name: Test documentation generators
+        run: npm test
 
       - name: Build
         run: npm run build

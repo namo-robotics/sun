@@ -10,6 +10,7 @@
 #include "support/source_file.h"
 
 namespace sun::serialization {
+using sun::support::SourceFileId;
 
 /** Remap source identities throughout a serialized tree. */
 template <typename Remap>
@@ -44,7 +45,7 @@ inline SourceFileId loadedSourceFileId(const std::string& bundle,
   static std::map<std::pair<std::string, SourceFileId>, SourceFileId> files;
   std::lock_guard<std::mutex> lock(mutex);
   auto [it, inserted] = files.try_emplace({bundle, local}, 0);
-  if (inserted) it->second = nextSourceFileId();
+  if (inserted) it->second = sun::support::nextSourceFileId();
   return it->second;
 }
 

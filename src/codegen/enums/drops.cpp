@@ -5,6 +5,8 @@
 
 using namespace llvm;
 
+namespace sun::codegen::enums {
+
 // -------------------------------------------------------------------
 // Enum drop glue: void drop(ptr storage)
 // Switches on the tag, drops each owning payload (class deinit + field
@@ -12,8 +14,9 @@ using namespace llvm;
 // so a second drop falls through the switch as a no-op.
 // -------------------------------------------------------------------
 
-Function* EnumGenerator::getOrCreateDropFunction(sun::EnumType& enumType) {
-  if (!sun::typeNeedsDrop(&enumType)) return nullptr;
+Function* EnumGenerator::getOrCreateDropFunction(
+    sun::semantic_analysis::EnumType& enumType) {
+  if (!sun::semantic_analysis::typeNeedsDrop(&enumType)) return nullptr;
 
   std::string name =
       state_.declarationSymbol(enumType.getDeclarationId(), "enum-drop");
@@ -22,13 +25,13 @@ Function* EnumGenerator::getOrCreateDropFunction(sun::EnumType& enumType) {
   auto* voidTy = llvm::Type::getVoidTy(ctx.getContext());
   auto* ptrTy = PointerType::getUnqual(ctx.getContext());
   auto* i32Ty = llvm::Type::getInt32Ty(ctx.getContext());
-  FunctionType* fnTy = FunctionType::get(voidTy, {ptrTy}, false);
+  llvm::FunctionType* fnTy = llvm::FunctionType::get(voidTy, {ptrTy}, false);
   // LinkOnceODR: the same specialization may be emitted by several modules
   // (main program + .moon bundles); identical bodies merge at link/JIT time.
   Function* fn =
       Function::Create(fnTy, Function::LinkOnceODRLinkage, name, state_.module);
 
-  CodegenState::InsertPointGuard here(state_);
+  sun::codegen::CodegenState::InsertPointGuard here(state_);
   BasicBlock* entry = BasicBlock::Create(ctx.getContext(), "entry", fn);
   ctx.builder->SetInsertPoint(entry);
   Value* storage = fn->getArg(0);
@@ -45,7 +48,7 @@ Function* EnumGenerator::getOrCreateDropFunction(sun::EnumType& enumType) {
     if (!variant.hasPayload()) continue;
     bool owns = false;
     for (const auto& pt : variant.payloadTypes) {
-      if (pt && sun::typeNeedsDrop(pt)) {
+      if (pt && sun::semantic_analysis::typeNeedsDrop(pt)) {
         owns = true;
         break;
       }
@@ -60,8 +63,8 @@ Function* EnumGenerator::getOrCreateDropFunction(sun::EnumType& enumType) {
     StructType* variantTy =
         typeResolver.getEnumVariantStruct(enumType, variant.name);
     for (size_t i = 0; i < variant.payloadTypes.size(); ++i) {
-      const sun::TypePtr& pt = variant.payloadTypes[i];
-      if (!pt || !sun::typeNeedsDrop(pt)) continue;
+      const sun::semantic_analysis::TypePtr& pt = variant.payloadTypes[i];
+      if (!pt || !sun::semantic_analysis::typeNeedsDrop(pt)) continue;
       unsigned idx =
           typeResolver.enumPayloadFieldIndex(enumType, variant.name, i);
       Value* fieldPtr = ctx.builder->CreateStructGEP(
@@ -79,8 +82,11 @@ Function* EnumGenerator::getOrCreateDropFunction(sun::EnumType& enumType) {
   return fn;
 }
 
-void EnumGenerator::emitDrop(sun::EnumType& enumType, Value* storagePtr) {
+void EnumGenerator::emitDrop(sun::semantic_analysis::EnumType& enumType,
+                             Value* storagePtr) {
   if (Function* drop = getOrCreateDropFunction(enumType)) {
     ctx.builder->CreateCall(drop, {storagePtr});
   }
 }
+
+}  // namespace sun::codegen::enums

@@ -13,6 +13,8 @@
 #include "support/error.h"
 #include "support/target_os.h"
 
+using sun::driver::ManifestProcessor;
+
 namespace fs = std::filesystem;
 
 namespace {
@@ -66,14 +68,14 @@ TEST(Modules_ManifestTargets, target_block_follows_the_compilation_target) {
   std::string entry = (dir / "main.sun").string();
 
   auto forLinux =
-      sun::ManifestProcessor::fromEntrypointFile(entry, "aarch64-linux-gnu");
+      ManifestProcessor::fromEntrypointFile(entry, "aarch64-linux-gnu");
   ASSERT_TRUE(forLinux.has_value());
   EXPECT_TRUE(includes(forLinux->sunFiles, "shared.sun"));
   EXPECT_TRUE(includes(forLinux->sunFiles, "linux_only.sun"));
   EXPECT_FALSE(includes(forLinux->sunFiles, "darwin_only.sun"));
 
   auto forDarwin =
-      sun::ManifestProcessor::fromEntrypointFile(entry, "arm64-apple-darwin");
+      ManifestProcessor::fromEntrypointFile(entry, "arm64-apple-darwin");
   ASSERT_TRUE(forDarwin.has_value());
   EXPECT_TRUE(includes(forDarwin->sunFiles, "shared.sun"));
   EXPECT_TRUE(includes(forDarwin->sunFiles, "darwin_only.sun"));
@@ -85,7 +87,7 @@ TEST(Modules_ManifestTargets, target_sources_come_before_the_shared_list) {
   // options), and later files may reference earlier ones but not the other
   // way round — so the matching block's sources lead.
   fs::path dir = writeTargetedManifest("ordering");
-  auto resolved = sun::ManifestProcessor::fromEntrypointFile(
+  auto resolved = ManifestProcessor::fromEntrypointFile(
       (dir / "main.sun").string(), "x86_64-linux-gnu");
   ASSERT_TRUE(resolved.has_value());
   ASSERT_EQ(resolved->sunFiles.size(), 2u);
@@ -96,10 +98,11 @@ TEST(Modules_ManifestTargets, target_sources_come_before_the_shared_list) {
 TEST(Modules_ManifestTargets, empty_triple_selects_the_host_os) {
   fs::path dir = writeTargetedManifest("host_default");
   auto resolved =
-      sun::ManifestProcessor::fromEntrypointFile((dir / "main.sun").string());
+      ManifestProcessor::fromEntrypointFile((dir / "main.sun").string());
   ASSERT_TRUE(resolved.has_value());
 
-  auto hostOs = sun::targetOsName(sun::resolvedTargetTriple(""));
+  auto hostOs =
+      sun::support::targetOsName(sun::support::resolvedTargetTriple(""));
   ASSERT_TRUE(hostOs.has_value());
   EXPECT_EQ(includes(resolved->sunFiles, "linux_only.sun"), *hostOs == "linux");
   EXPECT_EQ(includes(resolved->sunFiles, "darwin_only.sun"),
@@ -107,13 +110,13 @@ TEST(Modules_ManifestTargets, empty_triple_selects_the_host_os) {
 }
 
 TEST(Modules_ManifestTargets, unknown_os_name_is_a_parse_error) {
-  auto parser = Parser::createStringParser(
+  auto parser = sun::parsing::Parser::createStringParser(
       "manifest {\n"
       "    target: {\n"
       "        maos: { source_files: [ \"x.sun\" ] }\n"
       "    }\n"
       "}\n");
-  EXPECT_THROW(parser.parseProgram(), SunError);
+  EXPECT_THROW(parser.parseProgram(), sun::support::SunError);
 }
 
 TEST(Modules_ManifestTargets, target_blocks_may_carry_archives) {
@@ -129,13 +132,13 @@ TEST(Modules_ManifestTargets, target_blocks_may_carry_archives) {
             "    }\n"
             "}\n");
 
-  auto forDarwin = sun::ManifestProcessor::fromEntrypointFile(
+  auto forDarwin = ManifestProcessor::fromEntrypointFile(
       (dir / "main.sun").string(), "arm64-apple-darwin");
   ASSERT_TRUE(forDarwin.has_value());
   ASSERT_EQ(forDarwin->archiveFiles.size(), 1u);
   EXPECT_EQ(fs::path(forDarwin->archiveFiles[0]).filename(), "libmac.a");
 
-  auto forLinux = sun::ManifestProcessor::fromEntrypointFile(
+  auto forLinux = ManifestProcessor::fromEntrypointFile(
       (dir / "main.sun").string(), "x86_64-linux-gnu");
   ASSERT_TRUE(forLinux.has_value());
   EXPECT_TRUE(forLinux->archiveFiles.empty());

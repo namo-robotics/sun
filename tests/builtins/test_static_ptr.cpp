@@ -8,6 +8,8 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+
 static std::string capturePrintedOutput(const std::string& source) {
   testing::internal::CaptureStdout();
   executeString(source);

@@ -7,6 +7,9 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+using sun::driver::executeStringWithStdlib;
+
 namespace {
 
 const char* kCounter = R"(

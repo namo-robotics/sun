@@ -11,6 +11,12 @@
 #include "driver/sun_config.h"
 #include "support/error.h"
 
+using sun::driver::ConfigEntrypoint;
+using sun::driver::ManifestProcessor;
+using sun::driver::SunConfig;
+
+using sun::support::SunError;
+
 namespace fs = std::filesystem;
 
 namespace {
@@ -41,11 +47,11 @@ TEST(Modules_SunConfig, config_variables_override_cli_and_environment) {
             "manifest { libraries: [\"$LIBS/lib.moon\"] }\n"
             "function main() i32 { return 0; }\n");
 
-  sun::ManifestProcessor::setPathVariable("LIBS", "/from-cli");
+  ManifestProcessor::setPathVariable("LIBS", "/from-cli");
   setenv("LIBS", "/from-env", 1);
   auto resolved =
-      sun::ManifestProcessor::fromEntrypointFile((dir / "main.sun").string());
-  sun::ManifestProcessor::clearPathVariables();
+      ManifestProcessor::fromEntrypointFile((dir / "main.sun").string());
+  ManifestProcessor::clearPathVariables();
   unsetenv("LIBS");
 
   ASSERT_TRUE(resolved.has_value());
@@ -62,7 +68,7 @@ TEST(Modules_SunConfig, config_is_found_in_a_parent_folder) {
             "manifest { source_files: [\"$SHARED/util.sun\"] }\n"
             "function main() i32 { return 0; }\n");
 
-  auto resolved = sun::ManifestProcessor::fromEntrypointFile(
+  auto resolved = ManifestProcessor::fromEntrypointFile(
       (dir / "src" / "main.sun").string());
 
   ASSERT_TRUE(resolved.has_value());
@@ -81,7 +87,7 @@ TEST(Modules_SunConfig, config_sun_path_resolves_manifest_entries) {
             "function main() i32 { return 0; }\n");
 
   auto resolved =
-      sun::ManifestProcessor::fromEntrypointFile((dir / "main.sun").string());
+      ManifestProcessor::fromEntrypointFile((dir / "main.sun").string());
 
   ASSERT_TRUE(resolved.has_value());
   ASSERT_EQ(resolved->moonImports.size(), 1u);
@@ -99,7 +105,7 @@ TEST(Modules_SunConfig, configs_merge_up_the_parent_chain) {
             "{ \"sun_path\": [\"cdeps\"], "
             "\"path_variables\": { \"LIBS\": \"libs\" } }\n");
 
-  auto config = sun::SunConfig::findFrom(dir / "sub");
+  auto config = SunConfig::findFrom(dir / "sub");
   ASSERT_TRUE(config.has_value());
   // The nearest definition of a variable wins; others are inherited
   EXPECT_EQ(config->pathVariables.at("LIBS"),
@@ -120,7 +126,7 @@ TEST(Modules_SunConfig, root_true_stops_the_parent_walk) {
   writeFile(dir / "sub" / "sun-config.json",
             "{ \"root\": true, \"path_variables\": { \"LIBS\": \"libs\" } }\n");
 
-  auto config = sun::SunConfig::findFrom(dir / "sub");
+  auto config = SunConfig::findFrom(dir / "sub");
   ASSERT_TRUE(config.has_value());
   EXPECT_EQ(config->pathVariables.count("LIBS"), 1u);
   EXPECT_EQ(config->pathVariables.count("SHARED"), 0u);
@@ -129,7 +135,7 @@ TEST(Modules_SunConfig, root_true_stops_the_parent_walk) {
 TEST(Modules_SunConfig, root_must_be_boolean) {
   fs::path dir = freshDir("root_type");
   writeFile(dir / "sun-config.json", "{ \"root\": \"yes\" }\n");
-  EXPECT_THROW(sun::SunConfig::loadFile(dir / "sun-config.json"), SunError);
+  EXPECT_THROW(SunConfig::loadFile(dir / "sun-config.json"), SunError);
 }
 
 TEST(Modules_SunConfig, malformed_config_is_an_error) {
@@ -140,7 +146,7 @@ TEST(Modules_SunConfig, malformed_config_is_an_error) {
             "function main() i32 { return 0; }\n");
 
   EXPECT_THROW(
-      sun::ManifestProcessor::fromEntrypointFile((dir / "main.sun").string()),
+      ManifestProcessor::fromEntrypointFile((dir / "main.sun").string()),
       SunError);
 }
 
@@ -149,7 +155,7 @@ TEST(Modules_SunConfig, unknown_config_key_is_an_error) {
   writeFile(dir / "sun-config.json", "{ \"pathVars\": {} }\n");
 
   try {
-    sun::SunConfig::loadFile(dir / "sun-config.json");
+    SunConfig::loadFile(dir / "sun-config.json");
     FAIL() << "expected an unknown-key error";
   } catch (const SunError& e) {
     EXPECT_NE(std::string(e.what()).find("pathVars"), std::string::npos);
@@ -166,17 +172,17 @@ TEST(Modules_SunConfig, entrypoints_parse_with_anchored_paths) {
             "{ \"path\": \"app.sun\" }"
             "] }\n");
 
-  auto config = sun::SunConfig::loadFile(dir / "sun-config.json");
+  auto config = SunConfig::loadFile(dir / "sun-config.json");
   ASSERT_EQ(config.entrypoints.size(), 2u);
   EXPECT_EQ(config.entrypoints[0].path,
             (dir / "stdlib" / "stdlib.sun").lexically_normal().string());
-  EXPECT_EQ(config.entrypoints[0].type, sun::ConfigEntrypoint::Type::Library);
+  EXPECT_EQ(config.entrypoints[0].type, ConfigEntrypoint::Type::Library);
   EXPECT_EQ(config.entrypoints[0].outputName,
             (dir / "build" / "stdlib").lexically_normal().string());
   EXPECT_EQ(config.entrypoints[0].testBinaryName,
             (dir / "build" / "stdlib_test").lexically_normal().string());
   // Defaults: binary type, names derived later from the entrypoint
-  EXPECT_EQ(config.entrypoints[1].type, sun::ConfigEntrypoint::Type::Binary);
+  EXPECT_EQ(config.entrypoints[1].type, ConfigEntrypoint::Type::Binary);
   EXPECT_TRUE(config.entrypoints[1].outputName.empty());
   EXPECT_TRUE(config.entrypoints[1].testBinaryName.empty());
 }
@@ -185,7 +191,7 @@ TEST(Modules_SunConfig, entrypoint_without_path_is_an_error) {
   fs::path dir = freshDir("entrypoint_no_path");
   writeFile(dir / "sun-config.json",
             "{ \"entrypoints\": [{ \"type\": \"library\" }] }\n");
-  EXPECT_THROW(sun::SunConfig::loadFile(dir / "sun-config.json"), SunError);
+  EXPECT_THROW(SunConfig::loadFile(dir / "sun-config.json"), SunError);
 }
 
 TEST(Modules_SunConfig, entrypoint_type_must_be_binary_or_library) {
@@ -193,7 +199,7 @@ TEST(Modules_SunConfig, entrypoint_type_must_be_binary_or_library) {
   writeFile(dir / "sun-config.json",
             "{ \"entrypoints\": "
             "[{ \"path\": \"a.sun\", \"type\": \"plugin\" }] }\n");
-  EXPECT_THROW(sun::SunConfig::loadFile(dir / "sun-config.json"), SunError);
+  EXPECT_THROW(SunConfig::loadFile(dir / "sun-config.json"), SunError);
 }
 
 TEST(Modules_SunConfig, unknown_entrypoint_key_is_an_error) {
@@ -202,7 +208,7 @@ TEST(Modules_SunConfig, unknown_entrypoint_key_is_an_error) {
             "{ \"entrypoints\": "
             "[{ \"path\": \"a.sun\", \"binaryName\": \"a\" }] }\n");
   try {
-    sun::SunConfig::loadFile(dir / "sun-config.json");
+    SunConfig::loadFile(dir / "sun-config.json");
     FAIL() << "expected an unknown-key error";
   } catch (const SunError& e) {
     EXPECT_NE(std::string(e.what()).find("binaryName"), std::string::npos);
@@ -216,7 +222,7 @@ TEST(Modules_SunConfig, entrypoints_concatenate_up_the_parent_chain) {
   writeFile(dir / "sub" / "sun-config.json",
             "{ \"entrypoints\": [{ \"path\": \"child.sun\" }] }\n");
 
-  auto config = sun::SunConfig::findFrom(dir / "sub");
+  auto config = SunConfig::findFrom(dir / "sub");
   ASSERT_TRUE(config.has_value());
   ASSERT_EQ(config->entrypoints.size(), 2u);
   EXPECT_EQ(config->entrypoints[0].path,
@@ -231,7 +237,7 @@ TEST(Modules_SunConfig, absolute_config_entries_are_kept_as_is) {
             "{ \"sun_path\": [\"/opt/sun\"], "
             "\"path_variables\": { \"LIBS\": \"/opt/libs\" } }\n");
 
-  auto config = sun::SunConfig::loadFile(dir / "sun-config.json");
+  auto config = SunConfig::loadFile(dir / "sun-config.json");
   ASSERT_EQ(config.sunPath.size(), 1u);
   EXPECT_EQ(config.sunPath[0], "/opt/sun");
   EXPECT_EQ(config.pathVariables.at("LIBS"), "/opt/libs");
@@ -272,12 +278,12 @@ TEST(Modules_SunConfig, target_paths_and_outputs_use_normalized_triples) {
     }
   ]
 })");
-  auto native = sun::SunConfig::loadFile(dir / "sun-config.json",
-                                         "x86_64-linux-gnu");
+  auto native =
+      SunConfig::loadFile(dir / "sun-config.json", "x86_64-linux-gnu");
   EXPECT_EQ(native.entrypoints[0].outputName, (dir / "native/main").string());
   for (const auto& target :
        {"aarch64-linux-gnu", "aarch64-unknown-linux-gnu"}) {
-    auto config = sun::SunConfig::loadFile(dir / "sun-config.json", target);
+    auto config = SunConfig::loadFile(dir / "sun-config.json", target);
     ASSERT_EQ(config.entrypoints.size(), 1u);
     EXPECT_EQ(config.sunPath, std::vector<std::string>{(dir / "arm").string()});
     EXPECT_EQ(config.pathVariables.at("SSL"), (dir / "arm-ssl").string());
@@ -286,7 +292,7 @@ TEST(Modules_SunConfig, target_paths_and_outputs_use_normalized_triples) {
     EXPECT_TRUE(config.entrypoints[0].testBinaryName.empty());
   }
   auto other =
-      sun::SunConfig::loadFile(dir / "sun-config.json", "aarch64-linux-musl");
+      SunConfig::loadFile(dir / "sun-config.json", "aarch64-linux-musl");
   EXPECT_EQ(other.entrypoints[0].outputName, native.entrypoints[0].outputName);
 }
 
@@ -301,13 +307,13 @@ TEST(Modules_SunConfig,
             R"({"path_variables": {"OTHER": "child"}})");
   writeFile(dir / "child/main.sun",
             "manifest { archives: [\"$SSL/libssl.a\"] }");
-  auto config = sun::SunConfig::findFrom(dir / "child", "aarch64-linux-gnu");
+  auto config = SunConfig::findFrom(dir / "child", "aarch64-linux-gnu");
   ASSERT_TRUE(config);
   EXPECT_EQ(config->pathVariables.at("OTHER"), (dir / "child/child").string());
-  sun::ManifestProcessor::setPathVariable("SSL", "/cli");
-  auto manifest = sun::ManifestProcessor::fromEntrypointFile(
+  ManifestProcessor::setPathVariable("SSL", "/cli");
+  auto manifest = ManifestProcessor::fromEntrypointFile(
       (dir / "child/main.sun").string(), "aarch64-linux-gnu");
-  sun::ManifestProcessor::clearPathVariables();
+  ManifestProcessor::clearPathVariables();
   ASSERT_TRUE(manifest);
   ASSERT_EQ(manifest->archiveFiles.size(), 1u);
   EXPECT_EQ(manifest->archiveFiles[0], (dir / "arm-ssl/libssl.a").string());
@@ -335,7 +341,7 @@ TEST(Modules_SunConfig, target_can_name_test_binary_independently) {
   }
 })");
   auto config =
-      sun::SunConfig::loadFile(dir / "sun-config.json", "aarch64-linux-gnu");
+      SunConfig::loadFile(dir / "sun-config.json", "aarch64-linux-gnu");
   EXPECT_EQ(config.entrypoints[0].outputName, (dir / "app").string());
   EXPECT_EQ(config.entrypoints[0].testBinaryName, (dir / "arm/tests").string());
 }
@@ -355,7 +361,7 @@ TEST(Modules_SunConfig, invalid_target_settings_are_errors_even_when_inactive) {
        R"({"entrypoints": [{"path": "a.sun", "target": {"aarch64-linux-gnu": {"output_name": 42}}}]})",
        R"({"entrypoints": [{"path": "a.sun", "target": {"aarch64-linux-gnu": {"path": "b.sun"}}}]})"}) {
     writeFile(dir / "sun-config.json", contents);
-    EXPECT_THROW(sun::SunConfig::loadFile(dir / "sun-config.json"), SunError)
+    EXPECT_THROW(SunConfig::loadFile(dir / "sun-config.json"), SunError)
         << contents;
   }
 }
@@ -373,17 +379,14 @@ TEST(Modules_SunConfig, target_entrypoint_lists_replace_defaults_in_order) {
       "arm64-apple-darwin": {"sun_path": ["mac"]}
     }
   })");
-  auto arm =
-      sun::SunConfig::loadFile(dir / "sun-config.json", "aarch64-linux-gnu");
+  auto arm = SunConfig::loadFile(dir / "sun-config.json", "aarch64-linux-gnu");
   ASSERT_EQ(arm.entrypoints.size(), 2u);
   EXPECT_EQ(arm.entrypoints[0].path, (dir / "library.sun").string());
-  EXPECT_EQ(arm.entrypoints[0].type, sun::ConfigEntrypoint::Type::Library);
+  EXPECT_EQ(arm.entrypoints[0].type, ConfigEntrypoint::Type::Library);
   EXPECT_EQ(arm.entrypoints[1].path, (dir / "app.sun").string());
-  EXPECT_TRUE(
-      sun::SunConfig::loadFile(dir / "sun-config.json", "aarch64-linux-musl")
-          .entrypoints.empty());
-  auto mac =
-      sun::SunConfig::loadFile(dir / "sun-config.json", "arm64-apple-darwin");
+  EXPECT_TRUE(SunConfig::loadFile(dir / "sun-config.json", "aarch64-linux-musl")
+                  .entrypoints.empty());
+  auto mac = SunConfig::loadFile(dir / "sun-config.json", "arm64-apple-darwin");
   ASSERT_EQ(mac.entrypoints.size(), 1u);
   EXPECT_EQ(mac.entrypoints[0].path, (dir / "native.sun").string());
 }
@@ -395,7 +398,7 @@ TEST(Modules_SunConfig, target_only_config_selects_host_without_a_flag) {
             "{ \"root\": true, \"target\": {\"" + host +
                 "\": {\"entrypoints\": [{\"path\": \"main.sun\", "
                 "\"output_name\": \"build/main\"}]}}}");
-  auto config = sun::SunConfig::loadFile(dir / "sun-config.json");
+  auto config = SunConfig::loadFile(dir / "sun-config.json");
   ASSERT_EQ(config.entrypoints.size(), 1u);
   EXPECT_EQ(config.entrypoints[0].outputName, (dir / "build/main").string());
 }
@@ -409,12 +412,12 @@ TEST(Modules_SunConfig, target_selection_accepts_platform_aliases) {
     }
   })");
   auto linuxConfig =
-      sun::SunConfig::loadFile(dir / "sun-config.json", "x86_64-pc-linux-gnu");
+      SunConfig::loadFile(dir / "sun-config.json", "x86_64-pc-linux-gnu");
   ASSERT_EQ(linuxConfig.entrypoints.size(), 1u);
   EXPECT_EQ(linuxConfig.entrypoints[0].path, (dir / "linux.sun").string());
   for (const auto& target :
        {"aarch64-apple-darwin24.0.0", "arm64-apple-macosx15.0.0"}) {
-    auto mac = sun::SunConfig::loadFile(dir / "sun-config.json", target);
+    auto mac = SunConfig::loadFile(dir / "sun-config.json", target);
     ASSERT_EQ(mac.entrypoints.size(), 1u);
     EXPECT_EQ(mac.entrypoints[0].path, (dir / "mac.sun").string());
   }

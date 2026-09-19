@@ -31,6 +31,8 @@ RUN apt-get update --error-on=any && apt-get install -y --no-install-recommends 
     libcurl4-openssl-dev libpfm4-dev libdw-dev libcapstone-dev \
     # TLS tests generate certificates and run a local OpenSSL server.
     openssl ca-certificates \
+    # Compiler API reference generation
+    doxygen \
     # Quality-of-life tools
     gdb ccache vim less htop wget curl unzip \
     # Profilers. valgrind (with callgrind_annotate) works unprivileged and

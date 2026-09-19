@@ -7,6 +7,8 @@
 
 #include "ast/expr_ast.h"
 
+namespace sun::ast {
+
 class BoolLiteralAST : public ExprAST {
   bool Value;
 
@@ -17,3 +19,5 @@ class BoolLiteralAST : public ExprAST {
   std::string dotLabel() const override { return "Bool\n" + toString(); }
   bool getValue() const { return Value; }
 };
+
+}  // namespace sun::ast

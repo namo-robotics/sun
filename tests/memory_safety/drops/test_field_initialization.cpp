@@ -8,6 +8,9 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::compileString;
+using sun::driver::executeString;
+
 namespace {
 
 // Res counts every deinit call unconditionally — the point of these tests is

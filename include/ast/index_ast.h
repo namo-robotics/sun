@@ -9,6 +9,8 @@
 #include "ast/expr_ast.h"
 #include "ast/slice_expr_ast.h"
 
+namespace sun::ast {
+
 // Index expression: x[i] or x[i, j, k] for n-dimensional indexing
 // Applies to arrays or any type implementing IIndexable
 // Each index can be a single value or a slice range
@@ -55,3 +57,5 @@ class IndexAST : public ExprAST {
   }
   std::string dotLabel() const override { return "Index"; }
 };
+
+}  // namespace sun::ast

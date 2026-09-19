@@ -7,19 +7,25 @@
 #include "serialization/token_kind_proto_map.h"
 #include "types.pb.h"
 
-namespace sun {
-namespace serialization {
+using sun::ast::ASTNodeType;
+using sun::ast::BlockExprAST;
+using sun::ast::ExprAST;
+using sun::ast::FunctionAST;
+using sun::ast::SliceExprAST;
 
-ast::DeclarationIdentity ASTSerializer::serializeIdentity(
-    const sun::DeclarationIdentity& identity) const {
-  ast::DeclarationIdentity result;
+namespace sun::serialization {
+namespace pbc = sun::proto::ast;
+
+pbc::DeclarationIdentity ASTSerializer::serializeIdentity(
+    const sun::semantic_analysis::DeclarationIdentity& identity) const {
+  pbc::DeclarationIdentity result;
   if (!config_.declarations || !identity.id) return result;
   if (identity.session.lock() != config_.declarations->session())
-    logAndThrowError(
+    sun::support::logAndThrowError(
         "Cannot export declarations from another analysis session");
-  auto key = [&](sun::DeclarationId id) {
-    return sun::PortableDeclarationKey::fromDeclaration(id,
-                                                        *config_.declarations)
+  auto key = [&](sun::semantic_analysis::DeclarationId id) {
+    return sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
+               id, *config_.declarations)
         .encoding();
   };
   result.set_declaration(key(identity.id));
@@ -30,8 +36,9 @@ ast::DeclarationIdentity ASTSerializer::serializeIdentity(
   return result;
 }
 
-ast::Position ASTSerializer::serializePosition(const Position& pos) const {
-  ast::Position proto;
+pbc::Position ASTSerializer::serializePosition(
+    const sun::support::Position& pos) const {
+  pbc::Position proto;
   proto.set_line(pos.line);
   proto.set_column(pos.column);
   proto.set_offset(pos.offset);
@@ -50,16 +57,17 @@ ast::Position ASTSerializer::serializePosition(const Position& pos) const {
   return proto;
 }
 
-ast::Token ASTSerializer::serializeToken(const Token& token) const {
-  ast::Token proto;
+pbc::Token ASTSerializer::serializeToken(
+    const sun::parsing::Token& token) const {
+  pbc::Token proto;
   proto.set_kind(toProtoTokenKind(token.kind));
   proto.set_text(token.text);
   return proto;
 }
 
-ast::TypeAnnotation ASTSerializer::serializeTypeAnnotation(
-    const TypeAnnotation& type) const {
-  ast::TypeAnnotation proto;
+pbc::TypeAnnotation ASTSerializer::serializeTypeAnnotation(
+    const sun::ast::TypeAnnotation& type) const {
+  pbc::TypeAnnotation proto;
   proto.set_base_name(type.baseName);
   if (type.declarationKey)
     proto.set_declaration_key(type.declarationKey->encoding());
@@ -96,7 +104,7 @@ ast::TypeAnnotation ASTSerializer::serializeTypeAnnotation(
 }
 
 void ASTSerializer::serializeExprBase(const ExprAST& expr,
-                                      ast::ASTNode* node) const {
+                                      pbc::ASTNode* node) const {
   if (config_.include_location) {
     *node->mutable_location() = serializePosition(expr.getLocation());
   }
@@ -111,15 +119,15 @@ void ASTSerializer::serializeExprBase(const ExprAST& expr,
   node->set_symbol_prefix(expr.getSymbolPrefix());
 }
 
-ast::Program ASTSerializer::serializeProgram(const BlockExprAST& root) const {
-  ast::Program program;
+pbc::Program ASTSerializer::serializeProgram(const BlockExprAST& root) const {
+  pbc::Program program;
   program.set_version(1);
   serializeBlockInto(root, program.mutable_body());
   return program;
 }
 
 void ASTSerializer::serializeBlockInto(const BlockExprAST& block,
-                                       ast::BlockExpr* proto) const {
+                                       pbc::BlockExpr* proto) const {
   proto->set_source_file_id(block.getSourceFileId());
   proto->set_block_kind(static_cast<uint32_t>(block.getKind()));
   for (const auto& stmt : block.getBody()) {
@@ -131,7 +139,7 @@ void ASTSerializer::serializeBlockInto(const BlockExprAST& block,
 }
 
 void ASTSerializer::serializeTypeParameterInto(
-    const TypeParameter& parameter, ast::TypeParameter* proto) const {
+    const sun::ast::TypeParameter& parameter, pbc::TypeParameter* proto) const {
   proto->set_name(parameter.name);
   if (!parameter.constraint) return;
 
@@ -143,9 +151,9 @@ void ASTSerializer::serializeTypeParameterInto(
     proto->set_declaration_key(constraint.declarationKey->encoding());
 }
 
-ast::Prototype ASTSerializer::serializePrototype(
-    const PrototypeAST& proto) const {
-  ast::Prototype result;
+pbc::Prototype ASTSerializer::serializePrototype(
+    const sun::ast::PrototypeAST& proto) const {
+  pbc::Prototype result;
   if (config_.declarations)
     *result.mutable_declaration_identity() =
         serializeIdentity(proto.declarationIdentity());
@@ -206,105 +214,112 @@ ast::Prototype ASTSerializer::serializePrototype(
   return result;
 }
 
-ast::ASTNode ASTSerializer::serialize(const ExprAST& expr) const {
-  ast::ASTNode node;
+pbc::ASTNode ASTSerializer::serialize(const ExprAST& expr) const {
+  pbc::ASTNode node;
   serializeExprBase(expr, &node);
 
   switch (expr.getType()) {
     case ASTNodeType::NUMBER:
-      serializeNumber(static_cast<const NumberExprAST&>(expr), &node);
+      serializeNumber(static_cast<const sun::ast::NumberExprAST&>(expr), &node);
       break;
     case ASTNodeType::CHAR_LITERAL:
-      serializeCharLiteral(static_cast<const CharLiteralAST&>(expr), &node);
+      serializeCharLiteral(static_cast<const sun::ast::CharLiteralAST&>(expr),
+                           &node);
       break;
     case ASTNodeType::STRING_LITERAL:
-      serializeString(static_cast<const StringLiteralAST&>(expr), &node);
+      serializeString(static_cast<const sun::ast::StringLiteralAST&>(expr),
+                      &node);
       break;
     case ASTNodeType::NULL_LITERAL:
       node.mutable_null_literal();
       break;
     case ASTNodeType::BOOL_LITERAL:
-      serializeBool(static_cast<const BoolLiteralAST&>(expr), &node);
+      serializeBool(static_cast<const sun::ast::BoolLiteralAST&>(expr), &node);
       break;
     case ASTNodeType::ARRAY_LITERAL:
-      serializeArray(static_cast<const ArrayLiteralAST&>(expr), &node);
+      serializeArray(static_cast<const sun::ast::ArrayLiteralAST&>(expr),
+                     &node);
       break;
     case ASTNodeType::STRUCT_LITERAL:
-      serializeStructLiteral(static_cast<const StructLiteralAST&>(expr), &node);
+      serializeStructLiteral(
+          static_cast<const sun::ast::StructLiteralAST&>(expr), &node);
       break;
     case ASTNodeType::SLICE:
       serializeSlice(static_cast<const SliceExprAST&>(expr), &node);
       break;
     case ASTNodeType::INDEX:
-      serializeIndex(static_cast<const IndexAST&>(expr), &node);
+      serializeIndex(static_cast<const sun::ast::IndexAST&>(expr), &node);
       break;
     case ASTNodeType::ARRAY_INDEX:
-      serializeArrayIndex(static_cast<const ArrayIndexAST&>(expr), &node);
+      serializeArrayIndex(static_cast<const sun::ast::ArrayIndexAST&>(expr),
+                          &node);
       break;
     case ASTNodeType::VARIABLE_REFERENCE:
-      serializeVariableRef(static_cast<const VariableReferenceAST&>(expr),
-                           &node);
+      serializeVariableRef(
+          static_cast<const sun::ast::VariableReferenceAST&>(expr), &node);
       break;
     case ASTNodeType::VARIABLE_CREATION:
-      serializeVariableCreation(static_cast<const VariableCreationAST&>(expr),
-                                &node);
+      serializeVariableCreation(
+          static_cast<const sun::ast::VariableCreationAST&>(expr), &node);
       break;
     case ASTNodeType::VARIABLE_ASSIGNMENT:
       serializeVariableAssignment(
-          static_cast<const VariableAssignmentAST&>(expr), &node);
+          static_cast<const sun::ast::VariableAssignmentAST&>(expr), &node);
       break;
     case ASTNodeType::REFERENCE_CREATION:
-      serializeReferenceCreation(static_cast<const ReferenceCreationAST&>(expr),
-                                 &node);
+      serializeReferenceCreation(
+          static_cast<const sun::ast::ReferenceCreationAST&>(expr), &node);
       break;
     case ASTNodeType::INDEXED_ASSIGNMENT:
-      serializeIndexedAssignment(static_cast<const IndexedAssignmentAST&>(expr),
-                                 &node);
+      serializeIndexedAssignment(
+          static_cast<const sun::ast::IndexedAssignmentAST&>(expr), &node);
       break;
     case ASTNodeType::COMPOUND_ASSIGNMENT:
       serializeCompoundAssignment(
-          static_cast<const CompoundAssignmentAST&>(expr), &node);
+          static_cast<const sun::ast::CompoundAssignmentAST&>(expr), &node);
       break;
     case ASTNodeType::MEMBER_ASSIGNMENT:
-      serializeMemberAssignment(static_cast<const MemberAssignmentAST&>(expr),
-                                &node);
+      serializeMemberAssignment(
+          static_cast<const sun::ast::MemberAssignmentAST&>(expr), &node);
       break;
     case ASTNodeType::BINARY:
-      serializeBinary(static_cast<const BinaryExprAST&>(expr), &node);
+      serializeBinary(static_cast<const sun::ast::BinaryExprAST&>(expr), &node);
       break;
     case ASTNodeType::UNARY:
-      serializeUnary(static_cast<const UnaryExprAST&>(expr), &node);
+      serializeUnary(static_cast<const sun::ast::UnaryExprAST&>(expr), &node);
       break;
     case ASTNodeType::TERNARY:
-      serializeTernary(static_cast<const TernaryExprAST&>(expr), &node);
+      serializeTernary(static_cast<const sun::ast::TernaryExprAST&>(expr),
+                       &node);
       break;
     case ASTNodeType::PAREN_EXPR:
-      serializeParen(static_cast<const ParenExprAST&>(expr), &node);
+      serializeParen(static_cast<const sun::ast::ParenExprAST&>(expr), &node);
       break;
     case ASTNodeType::INTERPOLATED_STRING:
       serializeInterpolatedString(
-          static_cast<const InterpolatedStringAST&>(expr), &node);
+          static_cast<const sun::ast::InterpolatedStringAST&>(expr), &node);
       break;
     case ASTNodeType::PACK_EXPANSION:
-      serializePackExpansion(static_cast<const PackExpansionAST&>(expr), &node);
+      serializePackExpansion(
+          static_cast<const sun::ast::PackExpansionAST&>(expr), &node);
       break;
     case ASTNodeType::BLOCK:
       serializeBlock(static_cast<const BlockExprAST&>(expr), &node);
       break;
     case ASTNodeType::IF:
-      serializeIf(static_cast<const IfExprAST&>(expr), &node);
+      serializeIf(static_cast<const sun::ast::IfExprAST&>(expr), &node);
       break;
     case ASTNodeType::MATCH:
-      serializeMatch(static_cast<const MatchExprAST&>(expr), &node);
+      serializeMatch(static_cast<const sun::ast::MatchExprAST&>(expr), &node);
       break;
     case ASTNodeType::FOR_LOOP:
-      serializeFor(static_cast<const ForExprAST&>(expr), &node);
+      serializeFor(static_cast<const sun::ast::ForExprAST&>(expr), &node);
       break;
     case ASTNodeType::FOR_IN_LOOP:
-      serializeForIn(static_cast<const ForInExprAST&>(expr), &node);
+      serializeForIn(static_cast<const sun::ast::ForInExprAST&>(expr), &node);
       break;
     case ASTNodeType::WHILE_LOOP:
-      serializeWhile(static_cast<const WhileExprAST&>(expr), &node);
+      serializeWhile(static_cast<const sun::ast::WhileExprAST&>(expr), &node);
       break;
     case ASTNodeType::BREAK_STMT:
       node.mutable_break_stmt();
@@ -313,28 +328,30 @@ ast::ASTNode ASTSerializer::serialize(const ExprAST& expr) const {
       node.mutable_continue_stmt();
       break;
     case ASTNodeType::RETURN:
-      serializeReturn(static_cast<const ReturnExprAST&>(expr), &node);
+      serializeReturn(static_cast<const sun::ast::ReturnExprAST&>(expr), &node);
       break;
     case ASTNodeType::UNSAFE_BLOCK:
-      serializeUnsafeBlock(static_cast<const UnsafeBlockAST&>(expr), &node);
+      serializeUnsafeBlock(static_cast<const sun::ast::UnsafeBlockAST&>(expr),
+                           &node);
       break;
     case ASTNodeType::FUNCTION:
       serializeFunction(static_cast<const FunctionAST&>(expr), &node);
       break;
     case ASTNodeType::LAMBDA:
-      serializeLambda(static_cast<const LambdaAST&>(expr), &node);
+      serializeLambda(static_cast<const sun::ast::LambdaAST&>(expr), &node);
       break;
     case ASTNodeType::CALL:
-      serializeCall(static_cast<const CallExprAST&>(expr), &node);
+      serializeCall(static_cast<const sun::ast::CallExprAST&>(expr), &node);
       break;
     case ASTNodeType::GENERIC_CALL:
-      serializeGenericCall(static_cast<const GenericCallAST&>(expr), &node);
+      serializeGenericCall(static_cast<const sun::ast::GenericCallAST&>(expr),
+                           &node);
       break;
     case ASTNodeType::MODULE:
-      serializeModule(static_cast<const ModuleAST&>(expr), &node);
+      serializeModule(static_cast<const sun::ast::ModuleAST&>(expr), &node);
       break;
     case ASTNodeType::MANIFEST:
-      serializeManifest(static_cast<const ManifestAST&>(expr), &node);
+      serializeManifest(static_cast<const sun::ast::ManifestAST&>(expr), &node);
       break;
     case ASTNodeType::MOON_SCOPE:
       // An ephemeral wrapper around already-precompiled imports, so it never
@@ -342,35 +359,41 @@ ast::ASTNode ASTSerializer::serialize(const ExprAST& expr) const {
       node.mutable_block_expr();
       break;
     case ASTNodeType::USING:
-      serializeUsing(static_cast<const UsingAST&>(expr), &node);
+      serializeUsing(static_cast<const sun::ast::UsingAST&>(expr), &node);
       break;
     case ASTNodeType::QUALIFIED_NAME:
-      serializeQualifiedName(static_cast<const QualifiedNameAST&>(expr), &node);
+      serializeQualifiedName(
+          static_cast<const sun::ast::QualifiedNameAST&>(expr), &node);
       break;
     case ASTNodeType::CLASS_DEFINITION:
-      serializeClassDef(static_cast<const ClassDefinitionAST&>(expr), &node);
+      serializeClassDef(static_cast<const sun::ast::ClassDefinitionAST&>(expr),
+                        &node);
       break;
     case ASTNodeType::INTERFACE_DEFINITION:
-      serializeInterfaceDef(static_cast<const InterfaceDefinitionAST&>(expr),
-                            &node);
+      serializeInterfaceDef(
+          static_cast<const sun::ast::InterfaceDefinitionAST&>(expr), &node);
       break;
     case ASTNodeType::ENUM_DEFINITION:
-      serializeEnumDef(static_cast<const EnumDefinitionAST&>(expr), &node);
+      serializeEnumDef(static_cast<const sun::ast::EnumDefinitionAST&>(expr),
+                       &node);
       break;
     case ASTNodeType::THIS:
       node.mutable_this_expr();
       break;
     case ASTNodeType::MEMBER_ACCESS:
-      serializeMemberAccess(static_cast<const MemberAccessAST&>(expr), &node);
+      serializeMemberAccess(static_cast<const sun::ast::MemberAccessAST&>(expr),
+                            &node);
       break;
     case ASTNodeType::TRY_CATCH:
-      serializeTryCatch(static_cast<const TryCatchExprAST&>(expr), &node);
+      serializeTryCatch(static_cast<const sun::ast::TryCatchExprAST&>(expr),
+                        &node);
       break;
     case ASTNodeType::THROW:
-      serializeThrow(static_cast<const ThrowExprAST&>(expr), &node);
+      serializeThrow(static_cast<const sun::ast::ThrowExprAST&>(expr), &node);
       break;
     case ASTNodeType::DECLARE_TYPE:
-      serializeDeclareType(static_cast<const DeclareTypeAST&>(expr), &node);
+      serializeDeclareType(static_cast<const sun::ast::DeclareTypeAST&>(expr),
+                           &node);
       break;
     case ASTNodeType::PROTOTYPE:
       // Prototypes are not standalone expressions
@@ -411,8 +434,8 @@ std::string ASTSerializer::serializeProgramToString(
 // Individual node serializers
 // =============================================================================
 
-void ASTSerializer::serializeNumber(const NumberExprAST& expr,
-                                    ast::ASTNode* node) const {
+void ASTSerializer::serializeNumber(const sun::ast::NumberExprAST& expr,
+                                    pbc::ASTNode* node) const {
   auto* num = node->mutable_number_expr();
   if (expr.isInteger()) {
     num->set_int_magnitude(expr.getMagnitude());
@@ -425,25 +448,25 @@ void ASTSerializer::serializeNumber(const NumberExprAST& expr,
   }
 }
 
-void ASTSerializer::serializeCharLiteral(const CharLiteralAST& expr,
-                                         ast::ASTNode* node) const {
+void ASTSerializer::serializeCharLiteral(const sun::ast::CharLiteralAST& expr,
+                                         pbc::ASTNode* node) const {
   auto* lit = node->mutable_char_literal();
   lit->set_value(expr.getValue());
   lit->set_is_byte(expr.isByte());
 }
 
-void ASTSerializer::serializeString(const StringLiteralAST& expr,
-                                    ast::ASTNode* node) const {
+void ASTSerializer::serializeString(const sun::ast::StringLiteralAST& expr,
+                                    pbc::ASTNode* node) const {
   node->mutable_string_literal()->set_value(expr.getValue());
 }
 
-void ASTSerializer::serializeBool(const BoolLiteralAST& expr,
-                                  ast::ASTNode* node) const {
+void ASTSerializer::serializeBool(const sun::ast::BoolLiteralAST& expr,
+                                  pbc::ASTNode* node) const {
   node->mutable_bool_literal()->set_value(expr.getValue());
 }
 
-void ASTSerializer::serializeStructLiteral(const StructLiteralAST& expr,
-                                           ast::ASTNode* node) const {
+void ASTSerializer::serializeStructLiteral(
+    const sun::ast::StructLiteralAST& expr, pbc::ASTNode* node) const {
   auto* literal = node->mutable_struct_literal();
   for (const auto& field : expr.getFields()) {
     auto* out = literal->add_fields();
@@ -455,8 +478,8 @@ void ASTSerializer::serializeStructLiteral(const StructLiteralAST& expr,
   }
 }
 
-void ASTSerializer::serializeArray(const ArrayLiteralAST& expr,
-                                   ast::ASTNode* node) const {
+void ASTSerializer::serializeArray(const sun::ast::ArrayLiteralAST& expr,
+                                   pbc::ASTNode* node) const {
   auto* arr = node->mutable_array_literal();
   for (const auto& elem : expr.getElements()) {
     *arr->add_elements() = serialize(*elem);
@@ -464,7 +487,7 @@ void ASTSerializer::serializeArray(const ArrayLiteralAST& expr,
 }
 
 void ASTSerializer::serializeSliceInto(const SliceExprAST& slice,
-                                       ast::SliceExpr* proto) const {
+                                       pbc::SliceExpr* proto) const {
   if (slice.getStart()) {
     *proto->mutable_start() = serialize(*slice.getStart());
   }
@@ -475,12 +498,12 @@ void ASTSerializer::serializeSliceInto(const SliceExprAST& slice,
 }
 
 void ASTSerializer::serializeSlice(const SliceExprAST& expr,
-                                   ast::ASTNode* node) const {
+                                   pbc::ASTNode* node) const {
   serializeSliceInto(expr, node->mutable_slice_expr());
 }
 
-void ASTSerializer::serializeIndex(const IndexAST& expr,
-                                   ast::ASTNode* node) const {
+void ASTSerializer::serializeIndex(const sun::ast::IndexAST& expr,
+                                   pbc::ASTNode* node) const {
   auto* idx = node->mutable_index_expr();
   *idx->mutable_target() = serialize(*expr.getTarget());
   for (const auto& slice : expr.getIndices()) {
@@ -488,8 +511,8 @@ void ASTSerializer::serializeIndex(const IndexAST& expr,
   }
 }
 
-void ASTSerializer::serializeArrayIndex(const ArrayIndexAST& expr,
-                                        ast::ASTNode* node) const {
+void ASTSerializer::serializeArrayIndex(const sun::ast::ArrayIndexAST& expr,
+                                        pbc::ASTNode* node) const {
   auto* idx = node->mutable_array_index_expr();
   *idx->mutable_array() = serialize(*expr.getArray());
   for (const auto& index : expr.getIndices()) {
@@ -497,13 +520,13 @@ void ASTSerializer::serializeArrayIndex(const ArrayIndexAST& expr,
   }
 }
 
-void ASTSerializer::serializeVariableRef(const VariableReferenceAST& expr,
-                                         ast::ASTNode* node) const {
+void ASTSerializer::serializeVariableRef(
+    const sun::ast::VariableReferenceAST& expr, pbc::ASTNode* node) const {
   node->mutable_variable_reference()->set_name(expr.getName());
 }
 
-void ASTSerializer::serializeVariableCreation(const VariableCreationAST& expr,
-                                              ast::ASTNode* node) const {
+void ASTSerializer::serializeVariableCreation(
+    const sun::ast::VariableCreationAST& expr, pbc::ASTNode* node) const {
   node->mutable_variable_creation()->set_source_file_id(expr.getSourceFileId());
   auto* var = node->mutable_variable_creation();
   var->set_name(expr.getName());
@@ -523,29 +546,29 @@ void ASTSerializer::serializeVariableCreation(const VariableCreationAST& expr,
 }
 
 void ASTSerializer::serializeVariableAssignment(
-    const VariableAssignmentAST& expr, ast::ASTNode* node) const {
+    const sun::ast::VariableAssignmentAST& expr, pbc::ASTNode* node) const {
   auto* assign = node->mutable_variable_assignment();
   assign->set_name(expr.getName());
   *assign->mutable_value() = serialize(*expr.getValue());
 }
 
-void ASTSerializer::serializeReferenceCreation(const ReferenceCreationAST& expr,
-                                               ast::ASTNode* node) const {
+void ASTSerializer::serializeReferenceCreation(
+    const sun::ast::ReferenceCreationAST& expr, pbc::ASTNode* node) const {
   auto* ref = node->mutable_reference_creation();
   ref->set_name(expr.getName());
   *ref->mutable_target() = serialize(*expr.getTarget());
   ref->set_is_mutable(expr.isMutable());
 }
 
-void ASTSerializer::serializeIndexedAssignment(const IndexedAssignmentAST& expr,
-                                               ast::ASTNode* node) const {
+void ASTSerializer::serializeIndexedAssignment(
+    const sun::ast::IndexedAssignmentAST& expr, pbc::ASTNode* node) const {
   auto* assign = node->mutable_indexed_assignment();
   *assign->mutable_target() = serialize(*expr.getTarget());
   *assign->mutable_value() = serialize(*expr.getValue());
 }
 
-void ASTSerializer::serializeMemberAssignment(const MemberAssignmentAST& expr,
-                                              ast::ASTNode* node) const {
+void ASTSerializer::serializeMemberAssignment(
+    const sun::ast::MemberAssignmentAST& expr, pbc::ASTNode* node) const {
   auto* assign = node->mutable_member_assignment();
   *assign->mutable_object() = serialize(*expr.getObject());
   assign->set_member_name(expr.getMemberName());
@@ -553,37 +576,37 @@ void ASTSerializer::serializeMemberAssignment(const MemberAssignmentAST& expr,
 }
 
 void ASTSerializer::serializeCompoundAssignment(
-    const CompoundAssignmentAST& expr, ast::ASTNode* node) const {
+    const sun::ast::CompoundAssignmentAST& expr, pbc::ASTNode* node) const {
   auto* assign = node->mutable_compound_assignment();
   *assign->mutable_target() = serialize(*expr.getTarget());
   *assign->mutable_op() = serializeToken(expr.getOp());
   *assign->mutable_value() = serialize(*expr.getValue());
 }
 
-void ASTSerializer::serializeBinary(const BinaryExprAST& expr,
-                                    ast::ASTNode* node) const {
+void ASTSerializer::serializeBinary(const sun::ast::BinaryExprAST& expr,
+                                    pbc::ASTNode* node) const {
   auto* bin = node->mutable_binary_expr();
   *bin->mutable_op() = serializeToken(expr.getOp());
   *bin->mutable_lhs() = serialize(*expr.getLHS());
   *bin->mutable_rhs() = serialize(*expr.getRHS());
 }
 
-void ASTSerializer::serializeTernary(const TernaryExprAST& expr,
-                                     ast::ASTNode* node) const {
+void ASTSerializer::serializeTernary(const sun::ast::TernaryExprAST& expr,
+                                     pbc::ASTNode* node) const {
   auto* tern = node->mutable_ternary_expr();
   *tern->mutable_cond() = serialize(*expr.getCond());
   *tern->mutable_then_expr() = serialize(*expr.getThen());
   *tern->mutable_else_expr() = serialize(*expr.getElse());
 }
 
-void ASTSerializer::serializeParen(const ParenExprAST& expr,
-                                   ast::ASTNode* node) const {
+void ASTSerializer::serializeParen(const sun::ast::ParenExprAST& expr,
+                                   pbc::ASTNode* node) const {
   auto* paren = node->mutable_paren_expr();
   *paren->mutable_inner() = serialize(*expr.getInner());
 }
 
 void ASTSerializer::serializeInterpolatedString(
-    const InterpolatedStringAST& expr, ast::ASTNode* node) const {
+    const sun::ast::InterpolatedStringAST& expr, pbc::ASTNode* node) const {
   auto* interp = node->mutable_interpolated_string();
   interp->set_raw_content(expr.getRawContent());
   for (const auto& segment : expr.getSegments()) {
@@ -598,25 +621,25 @@ void ASTSerializer::serializeInterpolatedString(
   }
 }
 
-void ASTSerializer::serializeUnary(const UnaryExprAST& expr,
-                                   ast::ASTNode* node) const {
+void ASTSerializer::serializeUnary(const sun::ast::UnaryExprAST& expr,
+                                   pbc::ASTNode* node) const {
   auto* un = node->mutable_unary_expr();
   *un->mutable_op() = serializeToken(expr.getOp());
   *un->mutable_operand() = serialize(*expr.getOperand());
 }
 
-void ASTSerializer::serializePackExpansion(const PackExpansionAST& expr,
-                                           ast::ASTNode* node) const {
+void ASTSerializer::serializePackExpansion(
+    const sun::ast::PackExpansionAST& expr, pbc::ASTNode* node) const {
   node->mutable_pack_expansion()->set_pack_name(expr.getPackName());
 }
 
 void ASTSerializer::serializeBlock(const BlockExprAST& expr,
-                                   ast::ASTNode* node) const {
+                                   pbc::ASTNode* node) const {
   serializeBlockInto(expr, node->mutable_block_expr());
 }
 
-void ASTSerializer::serializeIf(const IfExprAST& expr,
-                                ast::ASTNode* node) const {
+void ASTSerializer::serializeIf(const sun::ast::IfExprAST& expr,
+                                pbc::ASTNode* node) const {
   auto* ifExpr = node->mutable_if_expr();
   *ifExpr->mutable_condition() = serialize(*expr.getCond());
   *ifExpr->mutable_then_branch() = serialize(*expr.getThen());
@@ -625,8 +648,8 @@ void ASTSerializer::serializeIf(const IfExprAST& expr,
   }
 }
 
-void ASTSerializer::serializeMatch(const MatchExprAST& expr,
-                                   ast::ASTNode* node) const {
+void ASTSerializer::serializeMatch(const sun::ast::MatchExprAST& expr,
+                                   pbc::ASTNode* node) const {
   auto* match = node->mutable_match_expr();
   *match->mutable_discriminant() = serialize(*expr.getDiscriminant());
   for (const auto& arm : expr.getArms()) {
@@ -651,8 +674,8 @@ void ASTSerializer::serializeMatch(const MatchExprAST& expr,
   }
 }
 
-void ASTSerializer::serializeFor(const ForExprAST& expr,
-                                 ast::ASTNode* node) const {
+void ASTSerializer::serializeFor(const sun::ast::ForExprAST& expr,
+                                 pbc::ASTNode* node) const {
   auto* forExpr = node->mutable_for_expr();
   if (expr.getInit()) {
     *forExpr->mutable_init() = serialize(*expr.getInit());
@@ -666,8 +689,8 @@ void ASTSerializer::serializeFor(const ForExprAST& expr,
   *forExpr->mutable_body() = serialize(*expr.getBody());
 }
 
-void ASTSerializer::serializeForIn(const ForInExprAST& expr,
-                                   ast::ASTNode* node) const {
+void ASTSerializer::serializeForIn(const sun::ast::ForInExprAST& expr,
+                                   pbc::ASTNode* node) const {
   auto* forIn = node->mutable_for_in_expr();
   forIn->set_loop_var(expr.getLoopVar());
   *forIn->mutable_loop_var_type() =
@@ -677,30 +700,30 @@ void ASTSerializer::serializeForIn(const ForInExprAST& expr,
   forIn->set_is_const(expr.isConst());
 }
 
-void ASTSerializer::serializeWhile(const WhileExprAST& expr,
-                                   ast::ASTNode* node) const {
+void ASTSerializer::serializeWhile(const sun::ast::WhileExprAST& expr,
+                                   pbc::ASTNode* node) const {
   auto* whileExpr = node->mutable_while_expr();
   *whileExpr->mutable_condition() = serialize(*expr.getCondition());
   *whileExpr->mutable_body() = serialize(*expr.getBody());
 }
 
-void ASTSerializer::serializeReturn(const ReturnExprAST& expr,
-                                    ast::ASTNode* node) const {
+void ASTSerializer::serializeReturn(const sun::ast::ReturnExprAST& expr,
+                                    pbc::ASTNode* node) const {
   auto* ret = node->mutable_return_expr();
   if (expr.getValue()) {
     *ret->mutable_value() = serialize(*expr.getValue());
   }
 }
 
-void ASTSerializer::serializeUnsafeBlock(const UnsafeBlockAST& expr,
-                                         ast::ASTNode* node) const {
+void ASTSerializer::serializeUnsafeBlock(const sun::ast::UnsafeBlockAST& expr,
+                                         pbc::ASTNode* node) const {
   auto* unsafe = node->mutable_unsafe_block();
   unsafe->set_expression_form(expr.isExpressionForm());
   serializeBlockInto(expr.getBody(), unsafe->mutable_body());
 }
 
 void ASTSerializer::serializeFunction(const FunctionAST& expr,
-                                      ast::ASTNode* node) const {
+                                      pbc::ASTNode* node) const {
   node->mutable_function_def()->set_source_file_id(expr.getSourceFileId());
   auto* func = node->mutable_function_def();
   *func->mutable_proto() = serializePrototype(expr.getProto());
@@ -718,7 +741,7 @@ void ASTSerializer::serializeFunction(const FunctionAST& expr,
 }
 
 void ASTSerializer::serializeMethodFunction(const FunctionAST& function,
-                                            ast::FunctionDef* proto) const {
+                                            pbc::FunctionDef* proto) const {
   *proto->mutable_proto() = serializePrototype(function.getProto());
   if (function.hasBody()) {
     serializeBlockInto(function.getBody(), proto->mutable_body());
@@ -732,15 +755,15 @@ void ASTSerializer::serializeMethodFunction(const FunctionAST& function,
   }
 }
 
-void ASTSerializer::serializeLambda(const LambdaAST& expr,
-                                    ast::ASTNode* node) const {
+void ASTSerializer::serializeLambda(const sun::ast::LambdaAST& expr,
+                                    pbc::ASTNode* node) const {
   auto* lambda = node->mutable_lambda_expr();
   *lambda->mutable_proto() = serializePrototype(expr.getProto());
   serializeBlockInto(expr.getBody(), lambda->mutable_body());
 }
 
-void ASTSerializer::serializeCall(const CallExprAST& expr,
-                                  ast::ASTNode* node) const {
+void ASTSerializer::serializeCall(const sun::ast::CallExprAST& expr,
+                                  pbc::ASTNode* node) const {
   auto* call = node->mutable_call_expr();
   *call->mutable_callee() = serialize(*expr.getCallee());
   for (const auto& arg : expr.getArgs()) {
@@ -748,8 +771,8 @@ void ASTSerializer::serializeCall(const CallExprAST& expr,
   }
 }
 
-void ASTSerializer::serializeGenericCall(const GenericCallAST& expr,
-                                         ast::ASTNode* node) const {
+void ASTSerializer::serializeGenericCall(const sun::ast::GenericCallAST& expr,
+                                         pbc::ASTNode* node) const {
   auto* call = node->mutable_generic_call_expr();
   call->set_function_name(expr.getFunctionName());
   for (const auto& typeArg : expr.getTypeArguments()) {
@@ -760,8 +783,8 @@ void ASTSerializer::serializeGenericCall(const GenericCallAST& expr,
   }
 }
 
-void ASTSerializer::serializeManifest(const ManifestAST& expr,
-                                      ast::ASTNode* node) const {
+void ASTSerializer::serializeManifest(const sun::ast::ManifestAST& expr,
+                                      pbc::ASTNode* node) const {
   auto* manifest = node->mutable_manifest();
 
   // Suns
@@ -797,8 +820,8 @@ void ASTSerializer::serializeManifest(const ManifestAST& expr,
   }
 }
 
-void ASTSerializer::serializeModule(const ModuleAST& expr,
-                                    ast::ASTNode* node) const {
+void ASTSerializer::serializeModule(const sun::ast::ModuleAST& expr,
+                                    pbc::ASTNode* node) const {
   auto* mod = node->mutable_module_def();
   mod->set_name(expr.getName());
   mod->set_doc(expr.getDoc());
@@ -808,8 +831,8 @@ void ASTSerializer::serializeModule(const ModuleAST& expr,
   serializeBlockInto(expr.getBody(), mod->mutable_body());
 }
 
-void ASTSerializer::serializeUsing(const UsingAST& expr,
-                                   ast::ASTNode* node) const {
+void ASTSerializer::serializeUsing(const sun::ast::UsingAST& expr,
+                                   pbc::ASTNode* node) const {
   auto* using_ = node->mutable_using_stmt();
   for (const auto& part : expr.getNamespacePath()) {
     using_->add_namespace_path(part);
@@ -818,16 +841,16 @@ void ASTSerializer::serializeUsing(const UsingAST& expr,
   using_->set_is_module_import(expr.isModuleImport());
 }
 
-void ASTSerializer::serializeQualifiedName(const QualifiedNameAST& expr,
-                                           ast::ASTNode* node) const {
+void ASTSerializer::serializeQualifiedName(
+    const sun::ast::QualifiedNameAST& expr, pbc::ASTNode* node) const {
   auto* qn = node->mutable_qualified_name();
   for (const auto& part : expr.getParts()) {
     qn->add_parts(part);
   }
 }
 
-void ASTSerializer::serializeClassDef(const ClassDefinitionAST& expr,
-                                      ast::ASTNode* node) const {
+void ASTSerializer::serializeClassDef(const sun::ast::ClassDefinitionAST& expr,
+                                      pbc::ASTNode* node) const {
   node->mutable_class_def()->set_source_file_id(expr.getSourceFileId());
   auto* cls = node->mutable_class_def();
   cls->set_name(expr.getName());
@@ -873,8 +896,8 @@ void ASTSerializer::serializeClassDef(const ClassDefinitionAST& expr,
   cls->set_doc(expr.getDoc());
 }
 
-void ASTSerializer::serializeInterfaceDef(const InterfaceDefinitionAST& expr,
-                                          ast::ASTNode* node) const {
+void ASTSerializer::serializeInterfaceDef(
+    const sun::ast::InterfaceDefinitionAST& expr, pbc::ASTNode* node) const {
   node->mutable_interface_def()->set_source_file_id(expr.getSourceFileId());
   auto* iface = node->mutable_interface_def();
   iface->set_name(expr.getName());
@@ -901,8 +924,8 @@ void ASTSerializer::serializeInterfaceDef(const InterfaceDefinitionAST& expr,
   iface->set_doc(expr.getDoc());
 }
 
-void ASTSerializer::serializeEnumDef(const EnumDefinitionAST& expr,
-                                     ast::ASTNode* node) const {
+void ASTSerializer::serializeEnumDef(const sun::ast::EnumDefinitionAST& expr,
+                                     pbc::ASTNode* node) const {
   node->mutable_enum_def()->set_source_file_id(expr.getSourceFileId());
   auto* enumDef = node->mutable_enum_def();
   enumDef->set_name(expr.getName());
@@ -931,8 +954,8 @@ void ASTSerializer::serializeEnumDef(const EnumDefinitionAST& expr,
   }
 }
 
-void ASTSerializer::serializeMemberAccess(const MemberAccessAST& expr,
-                                          ast::ASTNode* node) const {
+void ASTSerializer::serializeMemberAccess(const sun::ast::MemberAccessAST& expr,
+                                          pbc::ASTNode* node) const {
   auto* access = node->mutable_member_access();
   *access->mutable_object() = serialize(*expr.getObject());
   access->set_member_name(expr.getMemberName());
@@ -941,8 +964,8 @@ void ASTSerializer::serializeMemberAccess(const MemberAccessAST& expr,
   }
 }
 
-void ASTSerializer::serializeTryCatch(const TryCatchExprAST& expr,
-                                      ast::ASTNode* node) const {
+void ASTSerializer::serializeTryCatch(const sun::ast::TryCatchExprAST& expr,
+                                      pbc::ASTNode* node) const {
   auto* tryCatch = node->mutable_try_catch();
 
   // Serialize try block
@@ -963,14 +986,14 @@ void ASTSerializer::serializeTryCatch(const TryCatchExprAST& expr,
   }
 }
 
-void ASTSerializer::serializeThrow(const ThrowExprAST& expr,
-                                   ast::ASTNode* node) const {
+void ASTSerializer::serializeThrow(const sun::ast::ThrowExprAST& expr,
+                                   pbc::ASTNode* node) const {
   auto* throwExpr = node->mutable_throw_expr();
   *throwExpr->mutable_error_expr() = serialize(expr.getErrorExpr());
 }
 
-void ASTSerializer::serializeDeclareType(const DeclareTypeAST& expr,
-                                         ast::ASTNode* node) const {
+void ASTSerializer::serializeDeclareType(const sun::ast::DeclareTypeAST& expr,
+                                         pbc::ASTNode* node) const {
   auto* decl = node->mutable_declare_type();
   if (expr.hasAlias()) {
     decl->set_alias_name(expr.getAliasName());
@@ -980,5 +1003,4 @@ void ASTSerializer::serializeDeclareType(const DeclareTypeAST& expr,
   decl->set_visibility(toProto(expr.getVisibility()));
 }
 
-}  // namespace serialization
-}  // namespace sun
+}  // namespace sun::serialization

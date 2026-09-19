@@ -10,6 +10,8 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+
 // In a production build the test is stripped and main runs untouched.
 TEST(TestFunctions, stripped_from_production_builds) {
   auto value = executeString(R"(
@@ -135,14 +137,14 @@ TEST(TestFunctions, rejects_tests_inside_function_bodies) {
 // and hit the ordinary duplicate-declaration error. The build here is a test
 // build, since production builds strip both before analysis.
 TEST(TestFunctions, duplicate_names_in_one_module_collide) {
-  EXPECT_THROW(executeTestsWithStdlib(R"(
+  EXPECT_THROW(sun::driver::executeTestsWithStdlib(R"(
     using std;
     module geometry {
         test_function same() { return; }
         test_function same() { return; }
     }
   )"),
-               SunError);
+               sun::support::SunError);
 }
 
 // "test_function" is one token; an identifier merely starting with it stays

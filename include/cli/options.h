@@ -32,7 +32,7 @@ struct EarlyExit {
  * Flags that both the default command and `sun test` accept.
  */
 struct SharedOptions {
-  std::vector<sun::MoonImport> moonImports;  // --moon <spec>
+  std::vector<sun::moon_bundling::MoonImport> moonImports;  // --moon <spec>
   std::vector<std::string> libPaths;         // --lib-path <dir>
   // --path-var NAME=<dir>, in the order given so a repeated name keeps its
   // last value
@@ -52,7 +52,7 @@ struct BuildRunOptions {
   std::vector<std::string> inputFiles;
   std::string outputFile;                // -o <file>
   std::string targetTriple;              // --target <triple>
-  sun::LinkOptions linkOptions;          // -l, -L, --sysroot, static or dynamic
+  sun::driver::LinkOptions linkOptions;  // -l, -L, --sysroot, static or dynamic
   bool compileMode = false;              // -c, implied by --emit-obj
   bool emitObjOnly = false;              // --emit-obj
   bool staticRequested = false;          // --static

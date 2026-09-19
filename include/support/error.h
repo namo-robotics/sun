@@ -9,14 +9,16 @@
 #include "support/position.h"
 #include "support/source_manager.h"
 
+/** Provides source locations, diagnostics, and shared compiler utilities. */
+namespace sun::support {
+
 // ANSI color codes for terminal output
-namespace ansi {
+
 constexpr const char* red = "\033[1;31m";
 constexpr const char* blue = "\033[1;34m";
 constexpr const char* cyan = "\033[36m";
 constexpr const char* yellow = "\033[1;33m";
 constexpr const char* reset = "\033[0m";
-}  // namespace ansi
 
 // Render a diagnostic in the standard compiler format: colored label, blue
 // file:line:column, the message, then the offending source line with a red
@@ -28,9 +30,9 @@ inline std::string formatDiagnostic(const std::string& label,
                                     const std::optional<Position>& location,
                                     const std::string& sourceLine,
                                     const std::string& prevSourceLine) {
-  std::string out = labelColor + label + ansi::reset;
+  std::string out = labelColor + label + reset;
   if (location) {
-    out += ": " + std::string(ansi::blue) + location->toString() + ansi::reset;
+    out += ": " + std::string(blue) + location->toString() + reset;
   }
   out += ": " + message;
 
@@ -42,21 +44,20 @@ inline std::string formatDiagnostic(const std::string& label,
 
     // Show previous line for context (if available)
     if (!prevSourceLine.empty() && location->line > 1) {
-      out += " " + std::string(ansi::cyan) +
-             std::to_string(location->line - 1) + ansi::reset + " | " +
-             prevSourceLine + "\n";
+      out += " " + std::string(cyan) + std::to_string(location->line - 1) +
+             reset + " | " + prevSourceLine + "\n";
     }
 
     // Show current line number (in cyan) and source
-    out += " " + std::string(ansi::cyan) + std::to_string(location->line) +
-           ansi::reset + " | " + sourceLine + "\n";
+    out += " " + std::string(cyan) + std::to_string(location->line) + reset +
+           " | " + sourceLine + "\n";
 
     // Show caret pointing to error column (in red)
     out += gutter + "| ";
     if (location->column > 1) {
       out += std::string(location->column - 1, ' ');
     }
-    out += std::string(ansi::red) + "^" + ansi::reset;
+    out += std::string(red) + "^" + reset;
   }
   return out;
 }
@@ -136,16 +137,16 @@ class SunError : public std::exception {
   }
 
   void buildFullMessage() {
-    fullMessage_ = formatDiagnostic(kindToString(), ansi::red, message_,
-                                    location_, sourceLine_, prevSourceLine_);
+    fullMessage_ = formatDiagnostic(kindToString(), red, message_, location_,
+                                    sourceLine_, prevSourceLine_);
     for (const auto& related : related_) {
       bool isNote = related.level == RelatedDiagnostic::Level::Note;
       auto [line, prevLine] =
           SourceManager::instance().getLineWithContext(related.location);
-      fullMessage_ += "\n" + formatDiagnostic(isNote ? "Note" : kindToString(),
-                                              isNote ? ansi::cyan : ansi::red,
-                                              related.message, related.location,
-                                              line, prevLine);
+      fullMessage_ +=
+          "\n" + formatDiagnostic(isNote ? "Note" : kindToString(),
+                                  isNote ? cyan : red, related.message,
+                                  related.location, line, prevLine);
     }
   }
 
@@ -230,3 +231,5 @@ inline void logWarning(const std::string& msg,
     std::cerr << "Warning: " << msg << std::endl;
   }
 }
+
+}  // namespace sun::support

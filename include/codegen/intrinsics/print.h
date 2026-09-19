@@ -5,7 +5,7 @@
 
 #pragma once
 
-namespace sun {
+namespace sun::codegen::intrinsics {
 
 // Print intrinsic identifiers are defined in the main Intrinsic enum.
 // This header exists for organizational purposes and future expansion.
@@ -19,4 +19,4 @@ namespace sun {
 //   _print_char(c) -> void         Print a char as UTF-8
 //   _println_str(str) -> void       Print string with newline
 
-}  // namespace sun
+}  // namespace sun::codegen::intrinsics

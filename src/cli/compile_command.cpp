@@ -12,6 +12,11 @@
 #include "driver/manifest_processor.h"
 #include "llvm/Support/raw_ostream.h"
 
+using sun::driver::BuildRecord;
+using sun::driver::LinkOptions;
+
+using sun::driver::Driver;
+
 namespace sun::cli {
 
 namespace {
@@ -27,8 +32,8 @@ void compileInputs(Driver& driver, const CompileJob& job) {
 
 // The job's link options plus the static libraries the driver's imported
 // bundles carry, so a program using such a bundle needs no -l flags.
-sun::LinkOptions makeLinkOptions(const CompileJob& job, const Driver& driver) {
-  sun::LinkOptions linkOpts = job.baseLinkOpts;
+LinkOptions makeLinkOptions(const CompileJob& job, const Driver& driver) {
+  LinkOptions linkOpts = job.baseLinkOpts;
   const auto& bundled = driver.getNativeArchivePaths();
   linkOpts.archives.insert(linkOpts.archives.end(), bundled.begin(),
                            bundled.end());
@@ -54,7 +59,7 @@ bool maySkip(const CompileJob& job) {
 // the driver will, so the files hashed are the files compiled.
 std::string computeJobInputHash(const CompileJob& job, bool forTests) {
   namespace fs = std::filesystem;
-  sun::BuildInputs inputs;
+  sun::driver::BuildInputs inputs;
   inputs.artifactKind = forTests          ? "tests"
                         : job.emitObjOnly ? "object"
                                           : "executable";
@@ -65,7 +70,7 @@ std::string computeJobInputHash(const CompileJob& job, bool forTests) {
 
   inputs.moonImports = job.moonImports;
   for (auto& moon : inputs.moonImports) {
-    moon.path = sun::ManifestProcessor::resolvePath(
+    moon.path = sun::driver::ManifestProcessor::resolvePath(
         moon.path, fs::current_path().string(), nullptr, job.targetTriple);
   }
 
@@ -76,7 +81,7 @@ std::string computeJobInputHash(const CompileJob& job, bool forTests) {
   // Several input files are compiled as given; one is an entrypoint whose
   // manifest names the rest.
   if (job.inputFiles.size() == 1) {
-    if (auto manifest = sun::ManifestProcessor::fromEntrypointFile(
+    if (auto manifest = sun::driver::ManifestProcessor::fromEntrypointFile(
             entrypoint, job.targetTriple)) {
       sourceFiles.insert(sourceFiles.end(), manifest->sunFiles.begin(),
                          manifest->sunFiles.end());
@@ -91,17 +96,18 @@ std::string computeJobInputHash(const CompileJob& job, bool forTests) {
       archiveFiles = std::move(manifest->archiveFiles);
     }
   }
-  sun::addSourceDigests(inputs, sourceFiles, protoFiles,
-                        fs::absolute(entrypoint).parent_path().string());
+  sun::driver::addSourceDigests(
+      inputs, sourceFiles, protoFiles,
+      fs::absolute(entrypoint).parent_path().string());
   for (const auto& archive : archiveFiles) {
     inputs.archives.emplace_back(
         fs::path(archive).filename().string(),
-        sun::computeFileDigest(archive, "native archive"));
+        sun::driver::computeFileDigest(archive, "native archive"));
   }
 
   // How the artifact is linked. Native libraries are named, not read: a
   // system library changing underneath is outside what sun can see.
-  const sun::LinkOptions& link = job.baseLinkOpts;
+  const LinkOptions& link = job.baseLinkOpts;
   for (const auto& library : link.libraries) {
     inputs.settings.emplace_back("library", library);
   }
@@ -112,14 +118,14 @@ std::string computeJobInputHash(const CompileJob& job, bool forTests) {
   inputs.settings.emplace_back("static", link.staticLink ? "1" : "0");
   const char* linkDriver = std::getenv("SUN_CC");
   inputs.settings.emplace_back("link-driver", linkDriver ? linkDriver : "");
-  return sun::computeInputHash(inputs);
+  return sun::driver::computeInputHash(inputs);
 }
 
 // True when the artifact at `path` records `inputHash`. `record` receives
 // whatever the artifact recorded.
 bool isUpToDate(const std::string& path, const std::string& inputHash,
-                std::optional<sun::BuildRecord>& record) {
-  record = sun::readBuildRecord(path);
+                std::optional<BuildRecord>& record) {
+  record = sun::driver::readBuildRecord(path);
   return record && record->inputHash == inputHash;
 }
 
@@ -160,7 +166,7 @@ int compileTestBinary(const CompileJob& job, bool hasExecutable) {
   // Empty unless skipping was asked for: nothing is hashed or recorded then
   const std::string inputHash =
       job.skipIfUnchanged ? computeJobInputHash(job, /*forTests=*/true) : "";
-  std::optional<sun::BuildRecord> existing;
+  std::optional<BuildRecord> existing;
   if (maySkip(job) && isUpToDate(testOutput, inputHash, existing)) {
     llvm::outs() << "Up to date: " << testOutput << "\n";
     return 0;
@@ -187,14 +193,14 @@ int compileTestBinary(const CompileJob& job, bool hasExecutable) {
   }
 
   if (job.skipIfUnchanged) {
-    sun::embedBuildRecord(testDriver->getModule(),
-                          {inputHash, /*hasTests=*/true, hasExecutable});
+    sun::driver::embedBuildRecord(
+        testDriver->getModule(), {inputHash, /*hasTests=*/true, hasExecutable});
   }
   std::string errorMsg;
-  if (!sun::compileToExecutable(testDriver->getModule(), testOutput, errorMsg,
-                                /*keepObjectFile=*/false,
-                                makeLinkOptions(job, *testDriver),
-                                job.optimize)) {
+  if (!sun::driver::compileToExecutable(
+          testDriver->getModule(), testOutput, errorMsg,
+          /*keepObjectFile=*/false, makeLinkOptions(job, *testDriver),
+          job.optimize)) {
     llvm::errs() << "Test compilation failed: " << errorMsg << "\n";
     return 1;
   }
@@ -216,7 +222,7 @@ int compileEntrypoint(const CompileJob& job) {
     // each one records it for the other: the executable says whether there
     // are tests, the test binary whether there is an executable.
     if (maySkip(job)) {
-      std::optional<sun::BuildRecord> built;
+      std::optional<BuildRecord> built;
       if (isUpToDate(job.outputFile, inputHash, built)) {
         llvm::outs() << "Up to date: " << job.outputFile << "\n";
         if (!wantTests || !built->hasTests) return 0;
@@ -258,19 +264,19 @@ int compileEntrypoint(const CompileJob& job) {
     bool emitProduction = hasMain || !buildTests;
 
     if (emitProduction && job.skipIfUnchanged) {
-      sun::embedBuildRecord(driver->getModule(),
-                            {inputHash, driver->programHasTests(),
-                             /*hasExecutable=*/true});
+      sun::driver::embedBuildRecord(driver->getModule(),
+                                    {inputHash, driver->programHasTests(),
+                                     /*hasExecutable=*/true});
     }
     std::string errorMsg;
     bool success = true;
     if (!emitProduction) {
       llvm::outs() << "No main() found; emitting only the test binary\n";
     } else if (job.emitObjOnly) {
-      success = sun::emitObjectFile(driver->getModule(), job.outputFile,
-                                    errorMsg, job.optimize);
+      success = sun::driver::emitObjectFile(driver->getModule(), job.outputFile,
+                                            errorMsg, job.optimize);
     } else {
-      success = sun::compileToExecutable(
+      success = sun::driver::compileToExecutable(
           driver->getModule(), job.outputFile, errorMsg,
           /*keepObjectFile=*/false, makeLinkOptions(job, *driver),
           job.optimize);
@@ -290,7 +296,7 @@ int compileEntrypoint(const CompileJob& job) {
       return compileTestBinary(job, emitProduction);
     }
     return 0;
-  } catch (const SunError& e) {
+  } catch (const sun::support::SunError& e) {
     return reportSunError(e);
   } catch (const std::exception& e) {
     return reportUnexpectedError(e);

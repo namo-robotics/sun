@@ -2,7 +2,7 @@
 
 #include "support/error.h"
 
-namespace sun::access {
+namespace sun::semantic_analysis {
 
 namespace {
 
@@ -20,7 +20,8 @@ ModulePath ownerPath(const ItemRef& item, const DeclarationTable& table) {
        module = table.get(module).owner) {
     const auto& record = table.get(module);
     if (record.kind != DeclarationKind::Module)
-      logAndThrowError("Visibility ownership must refer to a module");
+      sun::support::logAndThrowError(
+          "Visibility ownership must refer to a module");
     path.insert(path.begin(), record.name);
   }
   return path;
@@ -63,17 +64,18 @@ bool isAccessible(DeclarationId from, const ItemRef& item,
   return false;
 }
 
-void denyAccess(const ItemRef& item, const Position& loc,
+void denyAccess(const ItemRef& item, const sun::support::Position& loc,
                 const DeclarationTable& table) {
-  logSemanticError(denialMessage(item, table), loc);
+  sun::support::logSemanticError(denialMessage(item, table), loc);
 }
 
 void requireAccessible(DeclarationId from, const ItemRef& item,
-                       const Position& loc, const DeclarationTable& table) {
+                       const sun::support::Position& loc,
+                       const DeclarationTable& table) {
   if (!isAccessible(from, item, table)) denyAccess(item, loc, table);
 }
 
-}  // namespace sun::access
+}  // namespace sun::semantic_analysis
 
 // ---------------------------------------------------------------------------
 // Naming class and interface members (see item_refs.h)
@@ -81,7 +83,7 @@ void requireAccessible(DeclarationId from, const ItemRef& item,
 
 #include "semantic_analysis/item_refs.h"
 
-namespace sun::access {
+namespace sun::semantic_analysis {
 
 namespace {
 
@@ -102,35 +104,37 @@ std::string cleanTypeName(std::string name) {
 
 // Constructors and destructors are always public: they are declared without
 // a visibility keyword, and scope exit must be able to run deinit anywhere.
-Visibility methodVisibility(const FunctionAST& method) {
+Visibility methodVisibility(const sun::ast::FunctionAST& method) {
   const std::string& name = method.getProto().getName();
   if (name == "init" || name == "deinit") return Visibility::Public;
   return method.getVisibility();
 }
 
 // Members are owned by their type's module
-ItemRef fieldRef(const sun::ClassType& cls, const sun::ClassField& f) {
+ItemRef fieldRef(const sun::semantic_analysis::ClassType& cls,
+                 const sun::semantic_analysis::ClassField& f) {
   return {"field", f.name,
           "class '" + cleanTypeName(cls.getDisplayName()) + "'", f.visibility,
           cls.getDeclarationId()};
 }
 
-ItemRef methodRef(const sun::ClassType& cls, const sun::ClassMethod& m) {
+ItemRef methodRef(const sun::semantic_analysis::ClassType& cls,
+                  const sun::semantic_analysis::ClassMethod& m) {
   return {"method", m.name,
           "class '" + cleanTypeName(cls.getDisplayName()) + "'", m.visibility,
           cls.getDeclarationId()};
 }
 
-ItemRef fieldRef(const sun::InterfaceType& iface,
-                 const sun::InterfaceField& f) {
+ItemRef fieldRef(const sun::semantic_analysis::InterfaceType& iface,
+                 const sun::semantic_analysis::InterfaceField& f) {
   return {"field", f.name, "interface '" + iface.getBaseName() + "'",
           f.visibility, iface.getDeclarationId()};
 }
 
-ItemRef methodRef(const sun::InterfaceType& iface,
-                  const sun::InterfaceMethod& m) {
+ItemRef methodRef(const sun::semantic_analysis::InterfaceType& iface,
+                  const sun::semantic_analysis::InterfaceMethod& m) {
   return {"method", m.name, "interface '" + iface.getBaseName() + "'",
           m.visibility, iface.getDeclarationId()};
 }
 
-}  // namespace sun::access
+}  // namespace sun::semantic_analysis

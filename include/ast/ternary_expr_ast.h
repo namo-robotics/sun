@@ -7,6 +7,8 @@
 
 #include "ast/expr_ast.h"
 
+namespace sun::ast {
+
 // Ternary conditional: cond ? thenExpr : elseExpr. Always value-producing;
 // branch types are unified by the semantic analyzer (exact match, integer
 // literal coercion, or numeric widening).
@@ -16,7 +18,7 @@ class TernaryExprAST : public ExprAST {
  public:
   TernaryExprAST(std::unique_ptr<ExprAST> cond,
                  std::unique_ptr<ExprAST> thenExpr,
-                 std::unique_ptr<ExprAST> elseExpr, Position loc)
+                 std::unique_ptr<ExprAST> elseExpr, sun::support::Position loc)
       : ExprAST(loc),
         cond(std::move(cond)),
         thenExpr(std::move(thenExpr)),
@@ -38,3 +40,5 @@ class TernaryExprAST : public ExprAST {
   ExprAST* getElse() const { return elseExpr.get(); }
   std::string dotLabel() const override { return "Ternary\n?:"; }
 };
+
+}  // namespace sun::ast

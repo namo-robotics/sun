@@ -9,7 +9,9 @@
 #include "semantic_analysis/semantic_analyzer.h"
 #include "support/error.h"
 
-namespace sun::generics {
+using sun::support::Position;
+
+namespace sun::semantic_analysis {
 
 namespace {
 
@@ -67,7 +69,8 @@ void bindName(const std::string& name, const TypePtr& value,
 
 }  // namespace
 
-void bindTypeParameters(const TypeAnnotation& param, const TypePtr& argType,
+void bindTypeParameters(const sun::ast::TypeAnnotation& param,
+                        const TypePtr& argType,
                         const std::vector<std::string>& typeParams,
                         std::map<std::string, TypePtr>& bindings) {
   if (!argType) return;
@@ -207,11 +210,11 @@ std::vector<TypePtr> completeTypeArguments(
   for (const auto& typeParam : typeParams) {
     auto found = bindings.find(typeParam);
     if (found == bindings.end() || !found->second) {
-      logAndThrowError("Cannot infer type argument '" + typeParam + "' of " +
-                           what + " '" + displayName +
-                           "' from the arguments. Give it explicitly, e.g. " +
-                           displayName + "<i32>(...).",
-                       loc);
+      sun::support::logAndThrowError(
+          "Cannot infer type argument '" + typeParam + "' of " + what + " '" +
+              displayName + "' from the arguments. Give it explicitly, e.g. " +
+              displayName + "<i32>(...).",
+          loc);
     }
     typeArgs.push_back(found->second);
   }
@@ -221,19 +224,19 @@ std::vector<TypePtr> completeTypeArguments(
 }  // namespace
 
 std::vector<TypePtr> inferGenericTypeArguments(
-    const GenericFunctionInfo& genericInfo,
+    const sun::semantic_analysis::GenericFunctionInfo& genericInfo,
     const std::vector<TypePtr>& argTypes, const std::string& displayName,
     std::optional<Position> loc, const std::vector<TypePtr>& explicitTypeArgs) {
   std::map<std::string, TypePtr> bindings;
   for (size_t i = 0; i < genericInfo.params.size() && i < argTypes.size();
        ++i) {
     bindTypeParameters(genericInfo.params[i].second, argTypes[i],
-                       typeParameterNames(genericInfo.typeParameters),
+                       sun::ast::typeParameterNames(genericInfo.typeParameters),
                        bindings);
   }
-  return completeTypeArguments(typeParameterNames(genericInfo.typeParameters),
-                               bindings, explicitTypeArgs, "generic function",
-                               displayName, loc);
+  return completeTypeArguments(
+      sun::ast::typeParameterNames(genericInfo.typeParameters), bindings,
+      explicitTypeArgs, "generic function", displayName, loc);
 }
 
 std::vector<TypePtr> inferMethodTypeArguments(
@@ -250,4 +253,4 @@ std::vector<TypePtr> inferMethodTypeArguments(
                                loc);
 }
 
-}  // namespace sun::generics
+}  // namespace sun::semantic_analysis

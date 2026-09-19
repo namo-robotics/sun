@@ -11,9 +11,20 @@
 #include "parsing/parser.h"
 #include "support/error.h"
 
+using sun::support::SourceFileId;
+
+using sun::ast::ExprAST;
+using sun::ast::InterpolatedStringAST;
+using sun::support::logAndThrowError;
+using sun::support::Position;
+
+namespace sun::parsing {
+
+using Segment = sun::ast::InterpolatedStringAST::Segment;
+
 std::unique_ptr<InterpolatedStringAST> InterpolatedStringParser::parseToAst(
     const std::string& content, const Position& start, const Position& end,
-    const std::string& filePath, sun::SourceFileId sourceFile) {
+    const std::string& filePath, SourceFileId sourceFile) {
   auto segments = tokenize(content, start, filePath, sourceFile);
 
   auto node =
@@ -26,10 +37,10 @@ std::unique_ptr<InterpolatedStringAST> InterpolatedStringParser::parseToAst(
   return node;
 }
 
-std::vector<InterpolatedStringAST::Segment> InterpolatedStringParser::tokenize(
+std::vector<Segment> InterpolatedStringParser::tokenize(
     const std::string& content, const Position& start,
-    const std::string& filePath, sun::SourceFileId sourceFile) {
-  std::vector<InterpolatedStringAST::Segment> segments;
+    const std::string& filePath, SourceFileId sourceFile) {
+  std::vector<Segment> segments;
   // Content begins one byte past the opening backtick
   const int contentOffset = start.offset + 1;
   size_t pos = 0;
@@ -50,7 +61,7 @@ std::vector<InterpolatedStringAST::Segment> InterpolatedStringParser::tokenize(
   };
 
   auto makeLiteral = [&](size_t from, size_t len) {
-    InterpolatedStringAST::Segment seg;
+    Segment seg;
     seg.isLiteral = true;
     seg.rawText = content.substr(from, len);
     seg.cookedText = processEscapes(seg.rawText);
@@ -99,7 +110,7 @@ std::vector<InterpolatedStringAST::Segment> InterpolatedStringParser::tokenize(
       rebasePositions(*expr, lineBase, colBase,
                       contentOffset + static_cast<int>(exprStart), filePath);
 
-      InterpolatedStringAST::Segment seg;
+      Segment seg;
       seg.isLiteral = false;
       seg.rawText = std::move(exprText);
       seg.expression = std::move(expr);
@@ -122,10 +133,10 @@ std::string InterpolatedStringParser::processEscapes(const std::string& raw) {
       char next = raw[i + 1];
       if (next == '`' || next == '$') {
         result += next;  // \` and \$ are the template-specific escapes
-      } else if (auto c = sun::escapes::simple(next)) {
+      } else if (auto c = sun::parsing::simple(next)) {
         result += *c;
       } else if (next == 'x') {
-        auto byte = sun::escapes::hexByte(std::string_view(raw).substr(i + 2));
+        auto byte = sun::parsing::hexByte(std::string_view(raw).substr(i + 2));
         if (!byte) {
           logAndThrowError("\\x needs exactly two hex digits");
         }
@@ -177,7 +188,7 @@ size_t InterpolatedStringParser::findMatchingBrace(const std::string& content,
 }
 
 std::unique_ptr<ExprAST> InterpolatedStringParser::parseExpression(
-    const std::string& exprText, sun::SourceFileId sourceFile) {
+    const std::string& exprText, SourceFileId sourceFile) {
   if (exprText.empty()) {
     logAndThrowError("Empty interpolation expression");
   }
@@ -213,13 +224,13 @@ void InterpolatedStringParser::rebasePositions(ExprAST& expr, int lineBase,
   });
 }
 
-std::unique_ptr<BlockExprAST> InterpolatedStringParser::desugar(
+std::unique_ptr<sun::ast::BlockExprAST> InterpolatedStringParser::desugar(
     InterpolatedStringAST& node) {
   const Position& loc = node.getLocation();
-  auto block = std::make_unique<BlockExprAST>();
+  auto block = std::make_unique<sun::ast::BlockExprAST>();
   // A Value block: the one block kind with no syntax, so the lowering can
   // hand back the built String as the block's value
-  block->setKind(BlockKind::Value);
+  block->setKind(sun::ast::BlockKind::Value);
   block->setLocation(loc);
 
   // var interp_alloc_ = std.HeapAllocator();
@@ -291,47 +302,57 @@ std::unique_ptr<BlockExprAST> InterpolatedStringParser::desugar(
 
 // Helper implementations
 
-std::unique_ptr<VariableReferenceAST> InterpolatedStringParser::makeVarRef(
-    const std::string& name, const Position& loc) {
-  auto node = std::make_unique<VariableReferenceAST>(name);
+std::unique_ptr<sun::ast::VariableReferenceAST>
+InterpolatedStringParser::makeVarRef(const std::string& name,
+                                     const Position& loc) {
+  auto node = std::make_unique<sun::ast::VariableReferenceAST>(name);
   node->setLocation(loc);
   return node;
 }
 
-std::unique_ptr<NumberExprAST> InterpolatedStringParser::makeNumberLiteral(
-    int64_t value, const Position& loc) {
-  auto node = std::make_unique<NumberExprAST>(value);
+std::unique_ptr<sun::ast::NumberExprAST>
+InterpolatedStringParser::makeNumberLiteral(int64_t value,
+                                            const Position& loc) {
+  auto node = std::make_unique<sun::ast::NumberExprAST>(value);
   node->setLocation(loc);
   return node;
 }
 
-std::unique_ptr<StringLiteralAST> InterpolatedStringParser::makeStringLiteral(
-    const std::string& value, const Position& loc) {
-  auto node = std::make_unique<StringLiteralAST>(value);
+std::unique_ptr<sun::ast::StringLiteralAST>
+InterpolatedStringParser::makeStringLiteral(const std::string& value,
+                                            const Position& loc) {
+  auto node = std::make_unique<sun::ast::StringLiteralAST>(value);
   node->setLocation(loc);
   return node;
 }
 
-std::unique_ptr<MemberAccessAST> InterpolatedStringParser::makeMemberAccess(
-    std::unique_ptr<ExprAST> object, const std::string& member,
-    const Position& loc) {
-  auto node = std::make_unique<MemberAccessAST>(std::move(object), member);
+std::unique_ptr<sun::ast::MemberAccessAST>
+InterpolatedStringParser::makeMemberAccess(std::unique_ptr<ExprAST> object,
+                                           const std::string& member,
+                                           const Position& loc) {
+  auto node =
+      std::make_unique<sun::ast::MemberAccessAST>(std::move(object), member);
   node->setLocation(loc);
   return node;
 }
 
-std::unique_ptr<CallExprAST> InterpolatedStringParser::makeCall(
+std::unique_ptr<sun::ast::CallExprAST> InterpolatedStringParser::makeCall(
     std::unique_ptr<ExprAST> callee, std::vector<std::unique_ptr<ExprAST>> args,
     const Position& loc) {
-  auto node = std::make_unique<CallExprAST>(std::move(callee), std::move(args));
+  auto node = std::make_unique<sun::ast::CallExprAST>(std::move(callee),
+                                                      std::move(args));
   node->setLocation(loc);
   return node;
 }
 
-std::unique_ptr<VariableCreationAST> InterpolatedStringParser::makeVarCreate(
-    const std::string& name, std::unique_ptr<ExprAST> value,
-    const Position& loc) {
-  auto node = std::make_unique<VariableCreationAST>(name, std::move(value));
+std::unique_ptr<sun::ast::VariableCreationAST>
+InterpolatedStringParser::makeVarCreate(const std::string& name,
+                                        std::unique_ptr<ExprAST> value,
+                                        const Position& loc) {
+  auto node =
+      std::make_unique<sun::ast::VariableCreationAST>(name, std::move(value));
   node->setLocation(loc);
   return node;
 }
+
+}  // namespace sun::parsing

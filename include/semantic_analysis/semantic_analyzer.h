@@ -22,12 +22,17 @@
 //   packed_classes.cpp       the rules a packed class has to obey
 //
 // Rules that need no analyzer state live outside the class, so other passes
-// can reach the same answers: sun::rules (type_rules.h), sun::names
-// (symbol_names.h), sun::access (access_checker.h, item_refs.h),
-// sun::conversions (argument_conversion.h), sun::generics
-// (generic_type_arguments.h) and sun::traits (type_traits.h).
+// can reach the same answers: sun::semantic_analysis (type_rules.h),
+// sun::semantic_analysis (symbol_names.h), sun::semantic_analysis
+// (access_checker.h, item_refs.h), sun::semantic_analysis
+// (argument_conversion.h), sun::semantic_analysis (generic_type_arguments.h)
+// and sun::semantic_analysis (type_traits.h).
 
 #pragma once
+
+namespace sun::support {
+struct Position;
+}
 
 #include <map>
 #include <memory>
@@ -50,10 +55,20 @@
 #include "semantic_analysis/type_inferer.h"
 
 // Forward declarations
-struct Position;
+namespace sun::semantic_analysis {
+using sun::ast::ClassDefinitionAST;
+using sun::ast::ExprAST;
+using sun::ast::FunctionAST;
+using sun::ast::LambdaAST;
+using sun::ast::PrototypeAST;
+
+}  // namespace sun::semantic_analysis
+
+/** Resolves names and types and checks program semantics. */
+namespace sun::semantic_analysis {
 
 // Alias for use in this header and semantic analyzer implementations
-using QualifiedName = sun::QualifiedName;
+using QualifiedName = sun::semantic_analysis::QualifiedName;
 
 /**
  * Own the semantic context, pipeline, and expression-checking helpers.
@@ -65,7 +80,7 @@ class SemanticAnalyzer {
   SemanticContext ctx_;
 
   // One persistent pipeline owns all passes for this analysis session.
-  sun::SemanticPipeline pipeline_{*this};
+  sun::semantic_analysis::SemanticPipeline pipeline_{*this};
 
   // Recursively checks statements and manages function scopes.
   BodyAnalyzer bodies_{ctx_, *this};
@@ -85,7 +100,8 @@ class SemanticAnalyzer {
  public:
   /** Create the shared context, checking helpers, and pipeline for a program.
    */
-  explicit SemanticAnalyzer(std::shared_ptr<sun::TypeRegistry> registry)
+  explicit SemanticAnalyzer(
+      std::shared_ptr<sun::semantic_analysis::TypeRegistry> registry)
       : ctx_(std::move(registry)) {}
 
   /** Keep pass and helper references tied to this session. */
@@ -96,7 +112,7 @@ class SemanticAnalyzer {
   SemanticContext &context() { return ctx_; }
 
   /** The persistent pipeline that owns and orders this session's passes. */
-  sun::SemanticPipeline &pipeline() { return pipeline_; }
+  sun::semantic_analysis::SemanticPipeline &pipeline() { return pipeline_; }
 
   /** Recursive statement and function-body checking. */
   BodyAnalyzer &bodies() { return bodies_; }
@@ -126,7 +142,8 @@ class SemanticAnalyzer {
    * needs. expectedType is an optional hint from the context, such as the
    * declared type of the variable being assigned.
    */
-  void analyzeExpr(ExprAST &expr, sun::TypePtr expectedType = nullptr);
+  void analyzeExpr(ExprAST &expr,
+                   sun::semantic_analysis::TypePtr expectedType = nullptr);
 
   // ---- Per-node handlers -------------------------------------------------
   //
@@ -138,9 +155,9 @@ class SemanticAnalyzer {
    * Reject a '<'_>' lambda type in return position: its captured
    * environment lives in a stack frame that dies when the function returns.
    */
-  void rejectRefEnvReturnType(const std::optional<TypeAnnotation> &returnType,
-                              const Position &location,
-                              bool allowNamed = false);
+  void rejectRefEnvReturnType(
+      const std::optional<sun::ast::TypeAnnotation> &returnType,
+      const sun::support::Position &location, bool allowNamed = false);
 
   // Lifetime names usable at the current analysis point: the enclosing
   // class or interface's declared lifetimes, plus the enclosing function's
@@ -157,8 +174,8 @@ class SemanticAnalyzer {
    * element, parameter, return and argument positions) that is neither an
    * active declared name nor the builtin 'this where 'this is legal.
    */
-  void checkAnnotationLifetimes(const TypeAnnotation &annot,
-                                const Position &location);
+  void checkAnnotationLifetimes(const sun::ast::TypeAnnotation &annot,
+                                const sun::support::Position &location);
 
   /**
    * Validate a signature's lifetime declarations (no duplicates, no
@@ -166,47 +183,53 @@ class SemanticAnalyzer {
    * its parameter and return annotations use.
    */
   void checkSignatureLifetimes(const PrototypeAST &proto,
-                               const Position &location);
+                               const sun::support::Position &location);
 
   // Declarations (analysis_declarations.cpp)
   void analyzeClassDefinition(ClassDefinitionAST &classDef);
-  void analyzeInterfaceDefinition(InterfaceDefinitionAST &interfaceDef);
+  void analyzeInterfaceDefinition(
+      sun::ast::InterfaceDefinitionAST &interfaceDef);
   void analyzeFunctionDefinition(FunctionAST &func);
   void analyzeLambdaExpr(LambdaAST &lambda);
-  void analyzeModuleDefinition(ModuleAST &nsDecl);
+  void analyzeModuleDefinition(sun::ast::ModuleAST &nsDecl);
   void analyzeMoonScope(ExprAST &expr);
-  void analyzeDeclareType(DeclareTypeAST &declareExpr);
+  void analyzeDeclareType(sun::ast::DeclareTypeAST &declareExpr);
 
   // Control flow (analysis_control_flow.cpp)
-  void analyzeIfExpr(IfExprAST &ifExpr);
-  void analyzeMatchExpr(MatchExprAST &matchExpr, sun::TypePtr expectedType);
-  void analyzeTernaryExpr(TernaryExprAST &ternary, sun::TypePtr expectedType);
-  void analyzeForLoop(ForExprAST &forExpr);
-  void analyzeForInLoop(ForInExprAST &forInExpr);
-  void analyzeTryCatch(TryCatchExprAST &tryCatchExpr);
-  void analyzeThrowExpr(ThrowExprAST &throwExpr);
-  void analyzeUnsafeBlock(UnsafeBlockAST &unsafeBlock);
-  void analyzeReturnExpr(ReturnExprAST &returnExpr);
+  void analyzeIfExpr(sun::ast::IfExprAST &ifExpr);
+  void analyzeMatchExpr(sun::ast::MatchExprAST &matchExpr,
+                        sun::semantic_analysis::TypePtr expectedType);
+  void analyzeTernaryExpr(sun::ast::TernaryExprAST &ternary,
+                          sun::semantic_analysis::TypePtr expectedType);
+  void analyzeForLoop(sun::ast::ForExprAST &forExpr);
+  void analyzeForInLoop(sun::ast::ForInExprAST &forInExpr);
+  void analyzeTryCatch(sun::ast::TryCatchExprAST &tryCatchExpr);
+  void analyzeThrowExpr(sun::ast::ThrowExprAST &throwExpr);
+  void analyzeUnsafeBlock(sun::ast::UnsafeBlockAST &unsafeBlock);
+  void analyzeReturnExpr(sun::ast::ReturnExprAST &returnExpr);
 
   // Bindings and assignments (analysis_statements.cpp)
-  void analyzeVariableCreation(VariableCreationAST &varCreate);
-  void analyzeVariableAssignment(VariableAssignmentAST &varAssign);
-  void analyzeCompoundAssignment(CompoundAssignmentAST &compound);
-  void analyzeMemberAssignment(MemberAssignmentAST &memberAssign);
-  void analyzeIndexedAssignment(IndexedAssignmentAST &assignment);
-  void analyzeReferenceCreation(ReferenceCreationAST &refCreate);
+  void analyzeVariableCreation(sun::ast::VariableCreationAST &varCreate);
+  void analyzeVariableAssignment(sun::ast::VariableAssignmentAST &varAssign);
+  void analyzeCompoundAssignment(sun::ast::CompoundAssignmentAST &compound);
+  void analyzeMemberAssignment(sun::ast::MemberAssignmentAST &memberAssign);
+  void analyzeIndexedAssignment(sun::ast::IndexedAssignmentAST &assignment);
+  void analyzeReferenceCreation(sun::ast::ReferenceCreationAST &refCreate);
 
   // Value expressions (analysis_expressions.cpp)
-  void analyzeNumberLiteral(ExprAST &expr, sun::TypePtr expectedType);
-  void analyzeArrayLiteral(ArrayLiteralAST &arrLit,
-                           sun::TypePtr expectedType = nullptr);
-  void analyzeIndexExpr(IndexAST &arrIdx);
+  void analyzeNumberLiteral(ExprAST &expr,
+                            sun::semantic_analysis::TypePtr expectedType);
+  void analyzeArrayLiteral(
+      sun::ast::ArrayLiteralAST &arrLit,
+      sun::semantic_analysis::TypePtr expectedType = nullptr);
+  void analyzeIndexExpr(sun::ast::IndexAST &arrIdx);
   void analyzeSliceExpr(ExprAST &expr);
-  void analyzeBinaryExpr(BinaryExprAST &binExpr, sun::TypePtr expectedType);
-  void analyzeUnaryExpr(UnaryExprAST &unaryExpr);
-  void analyzeMemberAccess(MemberAccessAST &memberAccess,
-                           sun::TypePtr expectedType);
-  void analyzeQualifiedName(QualifiedNameAST &qualName);
+  void analyzeBinaryExpr(sun::ast::BinaryExprAST &binExpr,
+                         sun::semantic_analysis::TypePtr expectedType);
+  void analyzeUnaryExpr(sun::ast::UnaryExprAST &unaryExpr);
+  void analyzeMemberAccess(sun::ast::MemberAccessAST &memberAccess,
+                           sun::semantic_analysis::TypePtr expectedType);
+  void analyzeQualifiedName(sun::ast::QualifiedNameAST &qualName);
 
   /**
    * Extract function signature info (param types, captures, explicit return
@@ -246,20 +269,22 @@ class SemanticAnalyzer {
    * TypeParameterType. Throws an error with source location if the type
    * parameter is not found.
    */
-  void validateTypeParameter(const sun::TypePtr &type, const ExprAST &node);
+  void validateTypeParameter(const sun::semantic_analysis::TypePtr &type,
+                             const ExprAST &node);
 
   /**
    * Validate that an identifier name is not reserved (doesn't start with '_').
    * Throws an error if the name is reserved.
    */
   void validateNotReserved(const std::string &name, const std::string &kind,
-                           std::optional<Position> location);
+                           std::optional<sun::support::Position> location);
 
   /**
    * Throw unless `target` is something a borrow can bind: an addressable
    * lvalue that is not a slice, a class __index__ result, or a packed field.
    */
-  void validateBorrowTarget(const ExprAST &target, const Position &loc);
+  void validateBorrowTarget(const ExprAST &target,
+                            const sun::support::Position &loc);
 
   /**
    * Throw when `target` names a variable the enclosing lambda picked up
@@ -267,7 +292,8 @@ class SemanticAnalyzer {
    * borrow of it would alias the copy rather than the original. Every borrow
    * site calls this, so the explanation is worded once.
    */
-  void rejectBorrowOfByValueCapture(const ExprAST &target, const Position &loc);
+  void rejectBorrowOfByValueCapture(const ExprAST &target,
+                                    const sun::support::Position &loc);
 
   /**
    * Constness. A place (`x`, `x.f`, `x[i]`, `this.f`, `a ? x : y`, a call
@@ -279,25 +305,26 @@ class SemanticAnalyzer {
 
   /** Throws "Cannot <action> <why>" when `place` cannot be changed. */
   void requireMutablePlace(const ExprAST &place, const std::string &action,
-                           const Position &loc);
+                           const sun::support::Position &loc);
 
   /**
    * `value` is consumed by value: a compound field read out of an immutable
    * object (a partial move) or a constant global is rejected.
    */
-  void checkMoveSource(const ExprAST &value, const Position &loc);
+  void checkMoveSource(const ExprAST &value, const sun::support::Position &loc);
 
   /**
    * An argument bound to a `ref T` parameter must be a mutable place; one
    * bound to a by-value compound parameter is a move (see checkMoveSource).
    */
-  void checkArgumentPlaces(const std::vector<std::unique_ptr<ExprAST>> &args,
-                           const std::vector<sun::TypePtr> &paramTypes,
-                           const std::string &callee, const Position &loc);
+  void checkArgumentPlaces(
+      const std::vector<std::unique_ptr<ExprAST>> &args,
+      const std::vector<sun::semantic_analysis::TypePtr> &paramTypes,
+      const std::string &callee, const sun::support::Position &loc);
 
   /** Require an unsafe block when a call has a caller-side safety contract. */
   void checkUnsafeCall(bool requiresUnsafe, const std::string &name,
-                       const Position &loc) const;
+                       const sun::support::Position &loc) const;
 
   /**
    * Calling `method` on `receiver`: a non-const method needs a mutable
@@ -306,31 +333,32 @@ class SemanticAnalyzer {
    */
   bool checkMethodReceiver(const ExprAST &receiver, const std::string &name,
                            bool methodIsConst, bool isConstructor,
-                           const Position &loc);
+                           const sun::support::Position &loc);
 
   // Packed class rules (see include/packed_layout.h for what "packed" means).
   // Each rejects one way a packed field's layout guarantee could be violated.
 
   /** A packed field has no guaranteed alignment, so it cannot be borrowed. */
   void checkPackedFieldNotBorrowed(const ExprAST &target,
-                                   const Position &loc) const;
+                                   const sun::support::Position &loc) const;
 
   /** The same rule for an argument passed to a `ref T` parameter. */
   void checkPackedRefArguments(
       const std::vector<std::unique_ptr<ExprAST>> &args,
-      const std::vector<sun::TypePtr> &paramTypes) const;
+      const std::vector<sun::semantic_analysis::TypePtr> &paramTypes) const;
 
   /** Reject a field type a packed class cannot lay out. */
-  void checkPackedFieldType(const ClassDefinitionAST &classDef,
-                            const ClassFieldDecl &field,
-                            const sun::TypePtr &fieldType) const;
+  void checkPackedFieldType(
+      const ClassDefinitionAST &classDef, const sun::ast::ClassFieldDecl &field,
+      const sun::semantic_analysis::TypePtr &fieldType) const;
 
   /**
    * Copy the fields an implemented interface declares onto the class. Must run
    * before its methods are analyzed, since they may read those fields.
    */
-  void inheritInterfaceFields(const ClassDefinitionAST &classDef,
-                              std::shared_ptr<sun::ClassType> classType);
+  void inheritInterfaceFields(
+      const ClassDefinitionAST &classDef,
+      std::shared_ptr<sun::semantic_analysis::ClassType> classType);
 
   /**
    * Check that a class implements every method its interfaces require, with
@@ -338,7 +366,7 @@ class SemanticAnalyzer {
    */
   void validateInterfaceImplementation(
       const ClassDefinitionAST &classDef,
-      std::shared_ptr<sun::ClassType> classType);
+      std::shared_ptr<sun::semantic_analysis::ClassType> classType);
 
   // Module/namespace support (module scopes are tracked via the scope stack)
   // enterModuleScope() and exitScope() are used to manage module scopes
@@ -348,8 +376,8 @@ class SemanticAnalyzer {
    * Extract type guard pattern from condition (_is<T>(var)).
    * Returns (varName, narrowedType) if matched.
    */
-  std::optional<std::pair<std::string, sun::TypePtr>> extractTypeGuard(
-      const ExprAST &cond);
+  std::optional<std::pair<std::string, sun::semantic_analysis::TypePtr>>
+  extractTypeGuard(const ExprAST &cond);
 
   /**
    * Validate parameter names and resolve their types from prototype.
@@ -360,25 +388,27 @@ class SemanticAnalyzer {
    * when that policy is enabled: passing a struct by value is what the C ABI
    * specifies, so it is the callee's signature rather than a Sun choice.
    */
-  std::vector<sun::TypePtr> validateAndResolveParamTypes(
-      PrototypeAST &proto, std::optional<Position> loc = std::nullopt,
+  std::vector<sun::semantic_analysis::TypePtr> validateAndResolveParamTypes(
+      PrototypeAST &proto,
+      std::optional<sun::support::Position> loc = std::nullopt,
       bool allowByValueObjects = false);
 
   /**
    * Reject access to C-owned global storage outside an unsafe block. (Calls
    * into C and unsafe intrinsics are gated the same way by CallAnalyzer.)
    */
-  void checkExternVariableAccessAllowed(const VariableInfo &info,
-                                        const std::string &displayName,
-                                        const Position &loc) const;
+  void checkExternVariableAccessAllowed(
+      const VariableInfo &info, const std::string &displayName,
+      const sun::support::Position &loc) const;
 
   /**
    * Check `mod.name = value`: the target must be a visible, assignable
    * module-level variable, and the value must fit its type. Also records the
    * global's symbol name on the node for codegen.
    */
-  void analyzeModuleGlobalAssignment(MemberAssignmentAST &assign,
-                                     const sun::Type &objectType);
+  void analyzeModuleGlobalAssignment(
+      sun::ast::MemberAssignmentAST &assign,
+      const sun::semantic_analysis::Type &objectType);
 
   /**
    * The variables an expression reads but does not bind — what a lambda has
@@ -392,21 +422,22 @@ class SemanticAnalyzer {
    * reached so later statements do not count it as free.
    */
   std::set<std::string> collectFreeVariablesInBlock(
-      const BlockExprAST &block, std::set<std::string> bound);
+      const sun::ast::BlockExprAST &block, std::set<std::string> bound);
 
   /**
    * The same for a lambda, marking the ones its `[ref x]` list asks to
    * capture by reference.
    */
-  std::vector<Capture> buildCaptures(const LambdaAST &lambda);
+  std::vector<sun::ast::Capture> buildCaptures(const LambdaAST &lambda);
 
   /**
    * Resolve a `{ field: value }` literal against the type the context
    * expects. A struct literal has no type of its own, so without an expected
    * class type there is nothing to check the field names against.
    */
-  void analyzeStructLiteral(StructLiteralAST &literal,
-                            const sun::TypePtr &expectedType);
+  void analyzeStructLiteral(
+      sun::ast::StructLiteralAST &literal,
+      const sun::semantic_analysis::TypePtr &expectedType);
 
   /**
    * If the member access names a class method in value position, resolve it
@@ -415,7 +446,8 @@ class SemanticAnalyzer {
    * isBoundMethodRef flag. No-op for fields, non-class receivers, and
    * call-position callees (those never route through here).
    */
-  void maybeResolveBoundMethodRef(MemberAccessAST &memberAccess,
-                                  sun::TypePtr expectedType);
-
+  void maybeResolveBoundMethodRef(sun::ast::MemberAccessAST &memberAccess,
+                                  sun::semantic_analysis::TypePtr expectedType);
 };
+
+}  // namespace sun::semantic_analysis

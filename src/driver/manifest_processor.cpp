@@ -15,7 +15,9 @@
 #include "support/sun_path.h"
 #include "support/target_os.h"
 
-namespace sun {
+using sun::ast::ManifestAST;
+
+namespace sun::driver {
 
 namespace {
 std::map<std::string, std::string>& pathVariables() {
@@ -48,7 +50,7 @@ std::string ManifestProcessor::expandPathVariables(const std::string& input,
       ++nameEnd;
     }
     if (nameEnd == nameStart) {
-      logAndThrowError(
+      sun::support::logAndThrowError(
           "expected a variable name after '$' in manifest entry '" + input +
           "'");
     }
@@ -71,7 +73,7 @@ std::string ManifestProcessor::expandPathVariables(const std::string& input,
     } else if (const char* env = std::getenv(name.c_str())) {
       out += env;
     } else {
-      logAndThrowError(
+      sun::support::logAndThrowError(
           "undefined path variable '$" + name + "' in manifest entry '" +
           input + "'; define it in sun-config.json, with --path-var " + name +
           "=<dir>, the sun.pathVariables editor setting, or in "
@@ -83,9 +85,9 @@ std::string ManifestProcessor::expandPathVariables(const std::string& input,
 }
 
 const ManifestAST* ManifestProcessor::findManifest(
-    const BlockExprAST& program) {
+    const sun::ast::BlockExprAST& program) {
   for (const auto& stmt : program.getBody()) {
-    if (stmt && stmt->getType() == ASTNodeType::MANIFEST) {
+    if (stmt && stmt->getType() == sun::ast::ASTNodeType::MANIFEST) {
       return static_cast<const ManifestAST*>(stmt.get());
     }
   }
@@ -112,11 +114,11 @@ std::string ManifestProcessor::resolvePath(const std::string& path,
       }
     }
   }
-  auto resolved = SunPath::resolve(path);
+  auto resolved = sun::support::SunPath::resolve(path);
   if (!resolved.empty()) {
     return resolved.string();
   }
-  resolved = SunPath::resolveInstalledBundle(path, targetTriple);
+  resolved = sun::support::SunPath::resolveInstalledBundle(path, targetTriple);
   if (!resolved.empty()) return resolved.lexically_normal().string();
   return path;
 }
@@ -132,37 +134,39 @@ ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
   auto configOpt = SunConfig::findFrom(baseDir, targetTriple);
   const SunConfig* config = configOpt ? &*configOpt : nullptr;
 
-  auto addSuns = [&](const std::vector<ManifestSunDependency>& suns) {
+  auto addSuns = [&](const std::vector<sun::ast::ManifestSunDependency>& suns) {
     for (const auto& sunDep : suns) {
       out.sunFiles.push_back(resolvePath(
           expandPathVariables(sunDep.path, config), baseDir, config));
     }
   };
-  auto addMoons = [&](const std::vector<ManifestMoonDependency>& moons) {
-    for (const auto& moonDep : moons) {
-      std::string resolved =
-          moonDep.url
-              ? MoonCache::fetch(expandPathVariables(*moonDep.url, config),
-                                 moonDep.hash)
-                    .string()
-              : resolvePath(expandPathVariables(moonDep.path, config), baseDir,
-                            config, targetTriple);
-      if (moonDep.rename.has_value()) {
-        out.moonImports.emplace_back(resolved, moonDep.rename.value(),
-                                     moonDep.rename.value());
-      } else {
-        out.moonImports.emplace_back(resolved);
-      }
-    }
-  };
-  auto addProtos = [&](const std::vector<ManifestProtoDependency>& protos) {
-    for (const auto& protoDep : protos) {
-      out.protoFiles.push_back(resolvePath(
-          expandPathVariables(protoDep.path, config), baseDir, config));
-    }
-  };
+  auto addMoons =
+      [&](const std::vector<sun::ast::ManifestMoonDependency>& moons) {
+        for (const auto& moonDep : moons) {
+          std::string resolved =
+              moonDep.url
+                  ? sun::moon_bundling::MoonCache::fetch(
+                        expandPathVariables(*moonDep.url, config), moonDep.hash)
+                        .string()
+                  : resolvePath(expandPathVariables(moonDep.path, config),
+                                baseDir, config, targetTriple);
+          if (moonDep.rename.has_value()) {
+            out.moonImports.emplace_back(resolved, moonDep.rename.value(),
+                                         moonDep.rename.value());
+          } else {
+            out.moonImports.emplace_back(resolved);
+          }
+        }
+      };
+  auto addProtos =
+      [&](const std::vector<sun::ast::ManifestProtoDependency>& protos) {
+        for (const auto& protoDep : protos) {
+          out.protoFiles.push_back(resolvePath(
+              expandPathVariables(protoDep.path, config), baseDir, config));
+        }
+      };
   auto addArchives =
-      [&](const std::vector<ManifestArchiveDependency>& archives) {
+      [&](const std::vector<sun::ast::ManifestArchiveDependency>& archives) {
         for (const auto& archiveDep : archives) {
           out.archiveFiles.push_back(resolvePath(
               expandPathVariables(archiveDep.path, config), baseDir, config));
@@ -175,14 +179,16 @@ ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
   // they define the per-OS primitives (constants, errno, socket options)
   // that the shared files consume, and later files may reference earlier
   // ones but not the other way round.
-  auto addTestSuns = [&](const std::vector<ManifestSunDependency>& suns) {
-    for (const auto& sunDep : suns) {
-      out.testSunFiles.push_back(resolvePath(
-          expandPathVariables(sunDep.path, config), baseDir, config));
-    }
-  };
+  auto addTestSuns =
+      [&](const std::vector<sun::ast::ManifestSunDependency>& suns) {
+        for (const auto& sunDep : suns) {
+          out.testSunFiles.push_back(resolvePath(
+              expandPathVariables(sunDep.path, config), baseDir, config));
+        }
+      };
 
-  auto osName = targetOsName(resolvedTargetTriple(targetTriple));
+  auto osName = sun::support::targetOsName(
+      sun::support::resolvedTargetTriple(targetTriple));
   for (const auto& block : manifest.getTargets()) {
     if (!osName || block.os != *osName) continue;
     addSuns(block.suns);
@@ -218,9 +224,9 @@ std::optional<ResolvedManifest> ManifestProcessor::fromEntrypointFile(
   buffer << file.rdbuf();
   std::string source = buffer.str();
 
-  auto parser = Parser::createStringParser(source);
+  auto parser = sun::parsing::Parser::createStringParser(source);
   parser.setFilePath(entrypointPath);
-  std::unique_ptr<BlockExprAST> ast;
+  std::unique_ptr<sun::ast::BlockExprAST> ast;
   try {
     ast = parser.parseProgram();
   } catch (...) {
@@ -234,4 +240,4 @@ std::optional<ResolvedManifest> ManifestProcessor::fromEntrypointFile(
   return process(*manifest, baseDir, targetTriple);
 }
 
-}  // namespace sun
+}  // namespace sun::driver

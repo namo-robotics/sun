@@ -9,6 +9,8 @@
 #include "ast/expr_ast.h"
 #include "parsing/escapes.h"
 
+namespace sun::ast {
+
 // A character literal ('a', type char) or a byte literal (b'a', type u8).
 //
 // Both are their own node rather than a flag on NumberExprAST: an integer
@@ -61,7 +63,7 @@ class CharLiteralAST : public ExprAST {
           out += kDigits[value_ & 0xF];
         } else {
           char utf8[4];
-          int n = sun::escapes::encodeUtf8(value_, utf8);
+          int n = sun::parsing::encodeUtf8(value_, utf8);
           out.append(utf8, static_cast<size_t>(n));
         }
         break;
@@ -73,3 +75,5 @@ class CharLiteralAST : public ExprAST {
     return std::string(isByte_ ? "Byte\n" : "Char\n") + toString();
   }
 };
+
+}  // namespace sun::ast

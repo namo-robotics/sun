@@ -6,6 +6,8 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeStringWithStdlib;
+
 namespace {
 
 // Every constructed Owner must be destroyed exactly once, even with a zero id.

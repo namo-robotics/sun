@@ -7,6 +7,9 @@
 #include "lsp/declarations.h"
 #include "lsp/name_ranges.h"
 
+using sun::ast::ASTNodeType;
+using sun::ast::BlockExprAST;
+
 namespace sun::lsp {
 
 namespace {
@@ -19,17 +22,17 @@ void collect(const BlockExprAST& block, std::vector<std::string>& modulePath,
   for (const auto& stmt : block.getBody()) {
     if (!stmt) continue;
     if (stmt->getType() == ASTNodeType::MODULE) {
-      const auto& module = static_cast<const ModuleAST&>(*stmt);
+      const auto& module = static_cast<const sun::ast::ModuleAST&>(*stmt);
       modulePath.push_back(module.getName());
       collect(module.getBody(), modulePath, documentPath, source, out);
       modulePath.pop_back();
       continue;
     }
     if (stmt->getType() != ASTNodeType::FUNCTION) continue;
-    const auto& function = static_cast<const FunctionAST&>(*stmt);
+    const auto& function = static_cast<const sun::ast::FunctionAST&>(*stmt);
     if (!function.isTest()) continue;
 
-    const Position& span = function.getLocation();
+    const sun::support::Position& span = function.getLocation();
     if (!span.filePath || normalizePath(*span.filePath) != documentPath) {
       continue;
     }
@@ -66,17 +69,17 @@ void collectSpans(const BlockExprAST& block,
   for (const auto& stmt : block.getBody()) {
     if (!stmt) continue;
     if (stmt->getType() == ASTNodeType::MODULE) {
-      const auto& module = static_cast<const ModuleAST&>(*stmt);
+      const auto& module = static_cast<const sun::ast::ModuleAST&>(*stmt);
       modulePath.push_back(module.getName());
       collectSpans(module.getBody(), modulePath, out);
       modulePath.pop_back();
       continue;
     }
     if (stmt->getType() != ASTNodeType::FUNCTION) continue;
-    const auto& function = static_cast<const FunctionAST&>(*stmt);
+    const auto& function = static_cast<const sun::ast::FunctionAST&>(*stmt);
     if (!function.isTest()) continue;
 
-    const Position& span = function.getLocation();
+    const sun::support::Position& span = function.getLocation();
     if (!span.filePath) continue;
 
     TestSpan item;

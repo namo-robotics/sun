@@ -11,25 +11,30 @@
 #include "semantic_analysis/semantic_scope.h"
 #include "semantic_analysis/types.h"
 
-namespace sun::access {
+namespace sun::semantic_analysis {
 
 /** Name a class field for a uniform access-denial message. */
-ItemRef fieldRef(const sun::ClassType& cls, const sun::ClassField& f);
+ItemRef fieldRef(const sun::semantic_analysis::ClassType& cls,
+                 const sun::semantic_analysis::ClassField& f);
 
 /** Name a class method for a uniform access-denial message. */
-ItemRef methodRef(const sun::ClassType& cls, const sun::ClassMethod& m);
+ItemRef methodRef(const sun::semantic_analysis::ClassType& cls,
+                  const sun::semantic_analysis::ClassMethod& m);
 
 /** Name an interface field for a uniform access-denial message. */
-ItemRef fieldRef(const sun::InterfaceType& iface, const sun::InterfaceField& f);
+ItemRef fieldRef(const sun::semantic_analysis::InterfaceType& iface,
+                 const sun::semantic_analysis::InterfaceField& f);
 
 /** Name an interface method for a uniform access-denial message. */
-ItemRef methodRef(const sun::InterfaceType& iface,
-                  const sun::InterfaceMethod& m);
+ItemRef methodRef(const sun::semantic_analysis::InterfaceType& iface,
+                  const sun::semantic_analysis::InterfaceMethod& m);
 
 /** Name a module for a uniform access-denial message. */
-inline ItemRef moduleRef(const ModuleScope& scope) { return accessItem(scope); }
+inline ItemRef moduleRef(const sun::semantic_analysis::ModuleScope& scope) {
+  return sun::semantic_analysis::accessItem(scope);
+}
 
 /** `deinit` is compiler-invoked and therefore always public. */
-Visibility methodVisibility(const FunctionAST& method);
+Visibility methodVisibility(const sun::ast::FunctionAST& method);
 
-}  // namespace sun::access
+}  // namespace sun::semantic_analysis

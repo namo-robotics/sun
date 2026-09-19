@@ -14,7 +14,9 @@
 
 #include "support/error.h"
 
-namespace sun {
+using sun::support::logAndThrowError;
+
+namespace sun::moon_bundling {
 
 std::filesystem::path MoonCache::defaultCacheDir() {
   if (const char* override = std::getenv("SUN_MOON_CACHE")) {
@@ -219,4 +221,4 @@ std::filesystem::path MoonCache::fetch(
   return std::filesystem::absolute(dest);
 }
 
-}  // namespace sun
+}  // namespace sun::moon_bundling

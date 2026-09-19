@@ -1,5 +1,9 @@
 #pragma once
 
+namespace sun::ast {
+class PrototypeAST;
+}
+
 #include <map>
 #include <stdexcept>
 
@@ -31,7 +35,9 @@
 
 using namespace llvm;
 
-class PrototypeAST;  // Forward declaration
+namespace sun::codegen {}  // namespace sun::codegen
+
+namespace sun::codegen {
 
 class CodegenContext {
  public:
@@ -47,7 +53,7 @@ class CodegenContext {
   std::unique_ptr<ModuleAnalysisManager> mam;
   std::unique_ptr<PassInstrumentationCallbacks> pic;
   std::unique_ptr<StandardInstrumentations> si;
-  std::shared_ptr<SunJIT>
+  std::shared_ptr<sun::driver::SunJIT>
       jit;  // shared JIT instance, preserved across reinitializations
 
  private:
@@ -62,7 +68,7 @@ class CodegenContext {
 
  public:
   explicit CodegenContext(std::string moduleName,
-                          const std::shared_ptr<SunJIT>& jit,
+                          const std::shared_ptr<sun::driver::SunJIT>& jit,
                           LLVMContext* existingContext = nullptr,
                           std::string targetTriple = "", bool debugInfo = false,
                           bool optimize = true)
@@ -210,3 +216,4 @@ class CodegenContext {
                                                          std::move(tempCtx));
   }
 };
+}  // namespace sun::codegen

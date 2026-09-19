@@ -2,6 +2,9 @@
 
 #pragma once
 
+/** Represents parsed Sun declarations, expressions, and statements. */
+namespace sun::ast {
+
 // Forward declarations for all AST node classes
 struct TypeAnnotation;
 class ExprAST;
@@ -77,3 +80,5 @@ class QualifiedNameAST;
 
 // Type declaration
 class DeclareTypeAST;
+
+}  // namespace sun::ast

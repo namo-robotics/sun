@@ -7,6 +7,8 @@
 
 #include "ast/expr_ast.h"
 
+namespace sun::ast {
+
 // Indexed assignment: arr[i] = value
 class IndexedAssignmentAST : public ExprAST {
   std::unique_ptr<ExprAST> target;  // The indexed expression (e.g., x[0])
@@ -32,3 +34,5 @@ class IndexedAssignmentAST : public ExprAST {
   const ExprAST* getValue() const { return value.get(); }
   std::string dotLabel() const override { return "IndexedAssign"; }
 };
+
+}  // namespace sun::ast

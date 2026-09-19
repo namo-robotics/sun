@@ -20,7 +20,7 @@ namespace sun::cli {
 // exit code.
 int buildMoonBundle(const std::string& entrypoint,
                     const std::filesystem::path& outputPath,
-                    const sun::MoonBuildOptions& buildOptions);
+                    const sun::moon_bundling::MoonBuildOptions& buildOptions);
 
 // sun --emit-moon [-o <file>] <entrypoint.sun>
 // Bundles the first input file, to the -o path or a default next to it.

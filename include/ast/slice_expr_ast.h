@@ -7,6 +7,8 @@
 
 #include "ast/expr_ast.h"
 
+namespace sun::ast {
+
 // Slice expression: represents either a single index or a range slice
 // Single index: x[5] -> start=5, end=nullptr, isRange=false
 // Range slice: x[5:10] -> start=5, end=10, isRange=true
@@ -47,3 +49,5 @@ class SliceExprAST : public ExprAST {
   bool hasEnd() const { return end_ != nullptr; }
   std::string dotLabel() const override { return "Slice\n" + toString(); }
 };
+
+}  // namespace sun::ast

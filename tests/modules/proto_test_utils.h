@@ -45,7 +45,7 @@ class ProtoProject {
  public:
   explicit ProtoProject(const std::string& name)
       : dir_(fs::temp_directory_path() / name) {
-    initTestEnvironment();
+    sun::driver::initTestEnvironment();
     fs::create_directories(dir_ / "schemas");
   }
 
@@ -76,9 +76,10 @@ class ProtoProject {
   }
 
   // JIT the entrypoint (stdlib.moon preloaded) and return main()'s value
-  sun::SunValue run(std::vector<sun::MoonImport> extraMoons = {}) const {
-    auto driver = Driver::createForJIT("proto_test");
-    auto imports = getStdlibMoonImports();
+  sun::driver::SunValue run(
+      std::vector<sun::moon_bundling::MoonImport> extraMoons = {}) const {
+    auto driver = sun::driver::Driver::createForJIT("proto_test");
+    auto imports = sun::driver::getStdlibMoonImports();
     imports.insert(imports.end(), extraMoons.begin(), extraMoons.end());
     driver->setMoonImports(imports);
     return driver->executeFile((dir_ / "main.sun").string(), 0, nullptr);
@@ -96,9 +97,9 @@ class ProtoProject {
     manifest += "] }\n";
     writeFile(entry, manifest);
     fs::path out = dir_ / (libName + ".moon");
-    sun::MoonBuildOptions options;
-    options.extraMoons = getStdlibMoonImports();
-    sun::MoonBuilder::build(entry.string(), out, options);
+    sun::moon_bundling::MoonBuildOptions options;
+    options.extraMoons = sun::driver::getStdlibMoonImports();
+    sun::moon_bundling::MoonBuilder::build(entry.string(), out, options);
     return out;
   }
 
@@ -109,9 +110,9 @@ class ProtoProject {
 
 // Write a schema + program, run it, return main()'s value (the common shape
 // of most round-trip tests)
-inline sun::SunValue runWithProto(const std::string& projectName,
-                                  const std::string& proto,
-                                  const std::string& program) {
+inline sun::driver::SunValue runWithProto(const std::string& projectName,
+                                          const std::string& proto,
+                                          const std::string& program) {
   ProtoProject project(projectName);
   project.addSchema("t.proto", proto).setProgram(program);
   return project.run();

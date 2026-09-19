@@ -4,6 +4,8 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+
 // ============================================================================
 // Basic match expression with integer patterns
 // ============================================================================
@@ -422,7 +424,7 @@ TEST(ControlFlow_Match, NoMatchContinuesExecution) {
 // A non-void method whose body ends in a match where every arm returns or
 // throws has no fall-through; codegen must still terminate the tail block.
 TEST(ControlFlow_Match, method_ending_in_fully_terminating_match) {
-  auto value = executeStringWithStdlib(R"(
+  auto value = sun::driver::executeStringWithStdlib(R"(
     using std;
 
     class NotANumber implements IError {
@@ -467,7 +469,7 @@ TEST(ControlFlow_Match, method_ending_in_fully_terminating_match) {
 
 // A match arm whose body is a void statement contributes no value.
 TEST(ControlFlow_Match, statement_arms_with_void_calls) {
-  auto value = executeStringWithStdlib(R"(
+  auto value = sun::driver::executeStringWithStdlib(R"(
     using std;
 
     enum Value {

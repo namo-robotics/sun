@@ -9,11 +9,20 @@
 #include "semantic_analysis/type_rules.h"
 #include "support/error.h"
 
-using sun::unwrapRef;
-using sun::rules::tryCoerceIntegerLiteral;
-using sun::rules::unifyTernaryTypes;
+using sun::semantic_analysis::ClassType;
+using sun::semantic_analysis::TypePtr;
+using sun::semantic_analysis::Types;
 
-void SemanticAnalyzer::analyzeIfExpr(IfExprAST& ifExpr) {
+using sun::ast::ExprAST;
+using sun::support::logAndThrowError;
+
+namespace sun::semantic_analysis {
+
+using sun::semantic_analysis::tryCoerceIntegerLiteral;
+using sun::semantic_analysis::unifyTernaryTypes;
+using sun::semantic_analysis::unwrapRef;
+
+void SemanticAnalyzer::analyzeIfExpr(sun::ast::IfExprAST& ifExpr) {
   analyzeExpr(*ifExpr.getCond());
 
   // Check for type guard pattern: _is<T>(var)
@@ -36,21 +45,21 @@ void SemanticAnalyzer::analyzeIfExpr(IfExprAST& ifExpr) {
   ifExpr.setResolvedType(types_.inferType(ifExpr));
 }
 
-void SemanticAnalyzer::analyzeMatchExpr(MatchExprAST& matchExpr,
-                                        sun::TypePtr expectedType) {
+void SemanticAnalyzer::analyzeMatchExpr(sun::ast::MatchExprAST& matchExpr,
+                                        TypePtr expectedType) {
   // Analyze the discriminant expression
   analyzeExpr(const_cast<ExprAST&>(*matchExpr.getDiscriminant()));
 
   auto checkOwnedArmTypes = [&] {
     auto resultType = matchExpr.getResolvedType();
-    if (!sun::typeMovesOnRead(resultType)) return;
+    if (!sun::semantic_analysis::typeMovesOnRead(resultType)) return;
     std::set<int64_t> coveredTags;
     for (const auto& arm : matchExpr.getArms()) {
       if (!arm.isWildcard && arm.pattern && arm.pattern->getResolvedType() &&
           arm.pattern->getResolvedType()->isEnum() &&
           !coveredTags.insert(arm.resolvedVariantTag).second)
         continue;
-      if (!exprDiverges(*arm.body)) {
+      if (!sun::ast::exprDiverges(*arm.body)) {
         auto armType = unwrapRef(arm.body->getResolvedType());
         if (!armType || !armType->equals(*resultType)) {
           logAndThrowError(
@@ -64,12 +73,12 @@ void SemanticAnalyzer::analyzeMatchExpr(MatchExprAST& matchExpr,
 
   // Enum discriminants get variant patterns, payload bindings, and
   // exhaustiveness checking
-  sun::TypePtr discType =
-      unwrapRef(matchExpr.getDiscriminant()->getResolvedType());
+  TypePtr discType = unwrapRef(matchExpr.getDiscriminant()->getResolvedType());
   if (discType && discType->isEnum()) {
-    enums_.analyzeEnumMatch(matchExpr,
-                            std::static_pointer_cast<sun::EnumType>(discType),
-                            expectedType);
+    enums_.analyzeEnumMatch(
+        matchExpr,
+        std::static_pointer_cast<sun::semantic_analysis::EnumType>(discType),
+        expectedType);
     matchExpr.setResolvedType(types_.inferType(matchExpr));
     checkOwnedArmTypes();
     return;
@@ -90,13 +99,16 @@ void SemanticAnalyzer::analyzeMatchExpr(MatchExprAST& matchExpr,
   // Owned results need a value on every path; there is no empty resource
   // that code generation can safely invent for an unmatched input.
   auto checkOwnedCoverage = [&] {
-    if (!sun::typeMovesOnRead(matchExpr.getResolvedType())) return;
+    if (!sun::semantic_analysis::typeMovesOnRead(matchExpr.getResolvedType()))
+      return;
     bool hasTrue = false;
     bool hasFalse = false;
     for (const auto& arm : matchExpr.getArms()) {
       if (arm.isWildcard) return;
-      if (arm.pattern && arm.pattern->getType() == ASTNodeType::BOOL_LITERAL) {
-        if (static_cast<const BoolLiteralAST&>(*arm.pattern).getValue()) {
+      if (arm.pattern &&
+          arm.pattern->getType() == sun::ast::ASTNodeType::BOOL_LITERAL) {
+        if (static_cast<const sun::ast::BoolLiteralAST&>(*arm.pattern)
+                .getValue()) {
           hasTrue = true;
         } else {
           hasFalse = true;
@@ -124,16 +136,18 @@ void SemanticAnalyzer::analyzeMatchExpr(MatchExprAST& matchExpr,
   checkOwnedArmTypes();
 }
 
-void SemanticAnalyzer::analyzeTernaryExpr(TernaryExprAST& ternary,
-                                          sun::TypePtr expectedType) {
+void SemanticAnalyzer::analyzeTernaryExpr(sun::ast::TernaryExprAST& ternary,
+                                          TypePtr expectedType) {
   // Condition is not required to be bool (matches if/while laxness);
   // codegen coerces numeric conditions to i1.
   analyzeExpr(*ternary.getCond());
   analyzeExpr(*ternary.getThen(), expectedType);
   analyzeExpr(*ternary.getElse(), expectedType);
 
-  sun::TypePtr thenType = sun::unwrapRef(ternary.getThen()->getResolvedType());
-  sun::TypePtr elseType = sun::unwrapRef(ternary.getElse()->getResolvedType());
+  TypePtr thenType =
+      sun::semantic_analysis::unwrapRef(ternary.getThen()->getResolvedType());
+  TypePtr elseType =
+      sun::semantic_analysis::unwrapRef(ternary.getElse()->getResolvedType());
 
   // Integer literals adopt the other branch's type: c ? x : 0
   if (thenType && elseType && !thenType->equals(*elseType)) {
@@ -148,7 +162,7 @@ void SemanticAnalyzer::analyzeTernaryExpr(TernaryExprAST& ternary,
       unifyTernaryTypes(thenType, elseType, ternary.getLocation()));
 }
 
-void SemanticAnalyzer::analyzeForLoop(ForExprAST& forExpr) {
+void SemanticAnalyzer::analyzeForLoop(sun::ast::ForExprAST& forExpr) {
   // Create scope for loop variables (init may declare variables)
   ctx_.enterScope();
   if (forExpr.getInit()) {
@@ -162,10 +176,10 @@ void SemanticAnalyzer::analyzeForLoop(ForExprAST& forExpr) {
   }
   analyzeExpr(const_cast<ExprAST&>(*forExpr.getBody()));
   ctx_.exitScope();
-  forExpr.setResolvedType(sun::Types::Float64());  // for loops return 0.0
+  forExpr.setResolvedType(Types::Float64());  // for loops return 0.0
 }
 
-void SemanticAnalyzer::analyzeForInLoop(ForInExprAST& forInExpr) {
+void SemanticAnalyzer::analyzeForInLoop(sun::ast::ForInExprAST& forInExpr) {
   // Analyze the iterable expression
   analyzeExpr(const_cast<ExprAST&>(*forInExpr.getIterable()));
 
@@ -177,7 +191,7 @@ void SemanticAnalyzer::analyzeForInLoop(ForInExprAST& forInExpr) {
   forInExpr.setResolvedLoopVarType(loopVarType);
 
   // Verify the iterable type implements IIterator<T> or IIterable<T>
-  auto classType = std::dynamic_pointer_cast<sun::ClassType>(iterableType);
+  auto classType = std::dynamic_pointer_cast<ClassType>(iterableType);
   if (!classType) {
     logAndThrowError(
         "for-in loop requires a class type that implements IIterator<T> "
@@ -206,14 +220,16 @@ void SemanticAnalyzer::analyzeForInLoop(ForInExprAST& forInExpr) {
 
   // Resolve the iterator class: the iterable itself, or what iter()
   // returns. Codegen relies on these shapes, so they are all errors here.
-  std::shared_ptr<sun::ClassType> iteratorType = classType;
+  std::shared_ptr<ClassType> iteratorType = classType;
   if (!implementsIterator) {
     const auto* iterMethod = classType->getMethod("iter");
     if (iterMethod)
       forInExpr.forInAnalysis().iteratorFactory = iterMethod->declarationId;
-    iteratorType = iterMethod ? std::dynamic_pointer_cast<sun::ClassType>(
-                                    sun::unwrapRef(iterMethod->returnType))
-                              : nullptr;
+    iteratorType =
+        iterMethod
+            ? std::dynamic_pointer_cast<ClassType>(
+                  sun::semantic_analysis::unwrapRef(iterMethod->returnType))
+            : nullptr;
     if (!iteratorType) {
       logAndThrowError("for-in loop: '" + classType->getDisplayName() +
                            "' must define iter() returning an iterator "
@@ -221,7 +237,8 @@ void SemanticAnalyzer::analyzeForInLoop(ForInExprAST& forInExpr) {
                        forInExpr.getLocation());
     }
   }
-  const sun::ClassMethod* nextMethod = iteratorType->getMethod("next");
+  const sun::semantic_analysis::ClassMethod* nextMethod =
+      iteratorType->getMethod("next");
   if (!nextMethod || !nextMethod->returnType) {
     logAndThrowError("for-in loop: iterator '" +
                          iteratorType->getDisplayName() +
@@ -239,7 +256,8 @@ void SemanticAnalyzer::analyzeForInLoop(ForInExprAST& forInExpr) {
                      nextMethod->paramTypes[0] &&
                      nextMethod->paramTypes[0]->isReference();
   if (containerOk) {
-    sun::TypePtr paramType = sun::unwrapRef(nextMethod->paramTypes[0]);
+    TypePtr paramType =
+        sun::semantic_analysis::unwrapRef(nextMethod->paramTypes[0]);
     containerOk = paramType && (paramType->isTypeParameter() ||
                                 paramType->equals(*classType));
   }
@@ -254,10 +272,10 @@ void SemanticAnalyzer::analyzeForInLoop(ForInExprAST& forInExpr) {
 
   // The element type is the payload of next()'s Option<T>; the loop
   // variable annotation must agree with it
-  sun::TypePtr elementType;
-  if (auto* opt = dynamic_cast<sun::EnumType*>(
-          sun::unwrapRef(nextMethod->returnType).get())) {
-    const sun::EnumVariant* some = opt->getVariant("Some");
+  TypePtr elementType;
+  if (auto* opt = dynamic_cast<sun::semantic_analysis::EnumType*>(
+          sun::semantic_analysis::unwrapRef(nextMethod->returnType).get())) {
+    const sun::semantic_analysis::EnumVariant* some = opt->getVariant("Some");
     if (some && some->payloadTypes.size() == 1 && opt->hasVariant("None")) {
       elementType = some->payloadTypes[0];
     }
@@ -275,7 +293,7 @@ void SemanticAnalyzer::analyzeForInLoop(ForInExprAST& forInExpr) {
   // still owns. Writing `ref X` in the annotation says the same thing.
   if (elementType->isReference() && loopVarType &&
       !loopVarType->isReference() &&
-      sun::unwrapRef(elementType)->equals(*loopVarType)) {
+      sun::semantic_analysis::unwrapRef(elementType)->equals(*loopVarType)) {
     loopVarType = elementType;
     forInExpr.setResolvedLoopVarType(loopVarType);
   }
@@ -296,15 +314,17 @@ void SemanticAnalyzer::analyzeForInLoop(ForInExprAST& forInExpr) {
   analyzeExpr(const_cast<ExprAST&>(*forInExpr.getBody()));
   ctx_.exitScope();
 
-  forInExpr.setResolvedType(sun::Types::Float64());  // for-in loops return 0.0
+  forInExpr.setResolvedType(Types::Float64());  // for-in loops return 0.0
 }
 
-void SemanticAnalyzer::analyzeTryCatch(TryCatchExprAST& tryCatchExpr) {
+void SemanticAnalyzer::analyzeTryCatch(
+    sun::ast::TryCatchExprAST& tryCatchExpr) {
   // Track that we're inside a try block for error propagation checking
   ctx_.enterTryBlock();
 
   // Analyze the try block
-  bodies_.analyzeBlock(const_cast<BlockExprAST&>(tryCatchExpr.getTryBlock()));
+  bodies_.analyzeBlock(
+      const_cast<sun::ast::BlockExprAST&>(tryCatchExpr.getTryBlock()));
 
   // Exit try block tracking
   ctx_.exitTryBlock();
@@ -322,8 +342,7 @@ void SemanticAnalyzer::analyzeTryCatch(TryCatchExprAST& tryCatchExpr) {
           tryCatchExpr.getLocation());
     }
 
-    sun::TypePtr bindingType =
-        types_.typeAnnotationToType(*catchClause.bindingType);
+    TypePtr bindingType = types_.typeAnnotationToType(*catchClause.bindingType);
 
     // The catch type must be IError or a class implementing IError.
     bool isCatchAll = false;
@@ -334,7 +353,7 @@ void SemanticAnalyzer::analyzeTryCatch(TryCatchExprAST& tryCatchExpr) {
         isCatchAll = true;  // catch (e: IError) matches any error
       }
     } else if (bindingType && bindingType->isClass()) {
-      valid = static_cast<sun::ClassType*>(bindingType.get())
+      valid = static_cast<ClassType*>(bindingType.get())
                   ->implementsInterface(*builtinIError);
     }
     if (!valid) {
@@ -364,16 +383,17 @@ void SemanticAnalyzer::analyzeTryCatch(TryCatchExprAST& tryCatchExpr) {
     ctx_.currentScope().declareVariable(catchClause.bindingName, bindingType,
                                         false, false,
                                         catchClause.declaration.id);
-    bodies_.analyzeBlock(const_cast<BlockExprAST&>(*catchClause.body));
+    bodies_.analyzeBlock(
+        const_cast<sun::ast::BlockExprAST&>(*catchClause.body));
     ctx_.exitScope();
   }
 
   // A try-catch is a statement, not a value: code that wants a value out of
   // one returns from inside the try (see the block-kind rule on BlockKind)
-  tryCatchExpr.setResolvedType(sun::Types::Void());
+  tryCatchExpr.setResolvedType(Types::Void());
 }
 
-void SemanticAnalyzer::analyzeThrowExpr(ThrowExprAST& throwExpr) {
+void SemanticAnalyzer::analyzeThrowExpr(sun::ast::ThrowExprAST& throwExpr) {
   // Validate that throw is used inside a function declared with "throws IError"
   if (!ctx_.isInThrowingFunction()) {
     logAndThrowError(
@@ -385,7 +405,7 @@ void SemanticAnalyzer::analyzeThrowExpr(ThrowExprAST& throwExpr) {
   analyzeExpr(const_cast<ExprAST&>(throwExpr.getErrorExpr()));
 
   // Validate that the thrown expression implements IError
-  sun::TypePtr errorType = types_.inferType(throwExpr.getErrorExpr());
+  TypePtr errorType = types_.inferType(throwExpr.getErrorExpr());
   if (errorType) {
     bool implementsIError = false;
 
@@ -402,15 +422,16 @@ void SemanticAnalyzer::analyzeThrowExpr(ThrowExprAST& throwExpr) {
     }
     // Check if it's a class that implements IError
     else if (errorType->isClass()) {
-      auto* classType = static_cast<sun::ClassType*>(errorType.get());
+      auto* classType = static_cast<ClassType*>(errorType.get());
       implementsIError = classType->implementsInterface(*builtinIError);
     }
     // Check if it's a reference to a class that implements IError
     else if (errorType->isReference()) {
-      auto* refType = static_cast<sun::ReferenceType*>(errorType.get());
-      sun::TypePtr innerType = refType->getReferencedType();
+      auto* refType =
+          static_cast<sun::semantic_analysis::ReferenceType*>(errorType.get());
+      TypePtr innerType = refType->getReferencedType();
       if (innerType && innerType->isClass()) {
-        auto* classType = static_cast<sun::ClassType*>(innerType.get());
+        auto* classType = static_cast<ClassType*>(innerType.get());
         implementsIError = classType->implementsInterface(*builtinIError);
       }
       // Also allow reference to IError interface
@@ -430,10 +451,11 @@ void SemanticAnalyzer::analyzeThrowExpr(ThrowExprAST& throwExpr) {
   }
 
   // Throw doesn't return a value
-  throwExpr.setResolvedType(sun::Types::Void());
+  throwExpr.setResolvedType(Types::Void());
 }
 
-void SemanticAnalyzer::analyzeUnsafeBlock(UnsafeBlockAST& unsafeBlock) {
+void SemanticAnalyzer::analyzeUnsafeBlock(
+    sun::ast::UnsafeBlockAST& unsafeBlock) {
   // Track that we're inside an unsafe block
   ctx_.enterUnsafeBlock();
 
@@ -444,22 +466,22 @@ void SemanticAnalyzer::analyzeUnsafeBlock(UnsafeBlockAST& unsafeBlock) {
   ctx_.exitUnsafeBlock();
 
   // Infer the result type (inferType handles unsafe context internally)
-  sun::TypePtr resultType = types_.inferType(unsafeBlock);
-  unsafeBlock.setResolvedType(resultType ? resultType : sun::Types::Void());
+  TypePtr resultType = types_.inferType(unsafeBlock);
+  unsafeBlock.setResolvedType(resultType ? resultType : Types::Void());
 }
 
-void SemanticAnalyzer::analyzeReturnExpr(ReturnExprAST& returnExpr) {
+void SemanticAnalyzer::analyzeReturnExpr(sun::ast::ReturnExprAST& returnExpr) {
   if (returnExpr.hasValue()) {
     // Propagate the function's return type for return-position inference
     // (e.g. `return Option.None;`)
-    sun::TypePtr declaredReturn = ctx_.currentFunctionReturnType();
+    TypePtr declaredReturn = ctx_.currentFunctionReturnType();
     analyzeExpr(const_cast<ExprAST&>(*returnExpr.getValue()), declaredReturn);
-    sun::TypePtr valueType = types_.inferType(*returnExpr.getValue());
+    TypePtr valueType = types_.inferType(*returnExpr.getValue());
     // Returning by value out of a borrow would hand the caller a second
     // value backed by the borrowed storage.
     if (valueType && valueType->isReference() && declaredReturn &&
         !declaredReturn->isReference() &&
-        !sun::typeCopiesByRead(declaredReturn)) {
+        !sun::semantic_analysis::typeCopiesByRead(declaredReturn)) {
       logAndThrowError(
           "Cannot return a borrowed '" + declaredReturn->toDisplayString() +
               "' by value: reading it out of the borrow would copy it. "
@@ -475,6 +497,8 @@ void SemanticAnalyzer::analyzeReturnExpr(ReturnExprAST& returnExpr) {
     }
     returnExpr.setResolvedType(valueType);
   } else {
-    returnExpr.setResolvedType(sun::Types::Void());
+    returnExpr.setResolvedType(Types::Void());
   }
 }
+
+}  // namespace sun::semantic_analysis

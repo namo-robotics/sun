@@ -1,11 +1,15 @@
 // type_checks.h — "this expression must be a class / a lambda / an array"
 //
-// Codegen constantly needs the concrete type behind a `sun::TypePtr`: check
-// the kind, then cast. Written by hand that is four lines and a bespoke error
-// message every time. TypeCheck<T> does it in one:
+// Codegen constantly needs the concrete type behind a
+// `sun::semantic_analysis::TypePtr`: check the kind, then cast. Written by hand
+// that is four lines and a bespoke error message every time. TypeCheck<T> does
+// it in one:
 //
-//   auto& fn = sun::requireType<sun::LambdaType>(lambdaExpr, "spawn argument");
-//   if (auto* cls = sun::tryGetType<sun::ClassType>(targetType)) { ... }
+//   auto& fn =
+//   sun::codegen::support::requireType<sun::semantic_analysis::LambdaType>(lambdaExpr,
+//   "spawn argument"); if (auto* cls =
+//   sun::codegen::support::tryGetType<sun::semantic_analysis::ClassType>(targetType))
+//   { ... }
 //
 // `require*` throws a compile error naming the context; `tryGet*` hands back
 // null so the caller can take another path. The `*Ptr` forms return a shared
@@ -15,7 +19,7 @@
 // `StaticKind`, so there is nothing to register here.
 //
 // These see a type exactly as it is: a `ref T` is a reference, not a T. Pass
-// `sun::unwrapRef(type)` to look through one.
+// `sun::semantic_analysis::unwrapRef(type)` to look through one.
 
 #pragma once
 
@@ -27,38 +31,40 @@
 #include "semantic_analysis/types.h"
 #include "support/error.h"
 
-namespace sun {
+namespace sun::codegen::support {
+using sun::ast::ExprAST;
+using sun::semantic_analysis::TypePtr;
 
 // How a kind is named in an error message ("must be a class type").
-inline const char* describeKind(Type::Kind kind) {
+inline const char* describeKind(sun::semantic_analysis::Type::Kind kind) {
   switch (kind) {
-    case Type::Kind::Function:
+    case sun::semantic_analysis::Type::Kind::Function:
       return "a function type";
-    case Type::Kind::Lambda:
+    case sun::semantic_analysis::Type::Kind::Lambda:
       return "a lambda type";
-    case Type::Kind::RawPointer:
+    case sun::semantic_analysis::Type::Kind::RawPointer:
       return "a raw_ptr type";
-    case Type::Kind::StaticPointer:
+    case sun::semantic_analysis::Type::Kind::StaticPointer:
       return "a static_ptr type";
-    case Type::Kind::NullPointer:
+    case sun::semantic_analysis::Type::Kind::NullPointer:
       return "the null literal";
-    case Type::Kind::Reference:
+    case sun::semantic_analysis::Type::Kind::Reference:
       return "a reference type";
-    case Type::Kind::Class:
+    case sun::semantic_analysis::Type::Kind::Class:
       return "a class type";
-    case Type::Kind::Interface:
+    case sun::semantic_analysis::Type::Kind::Interface:
       return "an interface type";
-    case Type::Kind::Enum:
+    case sun::semantic_analysis::Type::Kind::Enum:
       return "an enum type";
-    case Type::Kind::ErrorUnion:
+    case sun::semantic_analysis::Type::Kind::ErrorUnion:
       return "an error union type";
-    case Type::Kind::Array:
+    case sun::semantic_analysis::Type::Kind::Array:
       return "an array type";
-    case Type::Kind::Slice:
+    case sun::semantic_analysis::Type::Kind::Slice:
       return "a slice type";
-    case Type::Kind::Module:
+    case sun::semantic_analysis::Type::Kind::Module:
       return "a module reference";
-    case Type::Kind::TypeParameter:
+    case sun::semantic_analysis::Type::Kind::TypeParameter:
       return "a type parameter";
     default:
       return "a primitive type";
@@ -86,31 +92,32 @@ struct TypeCheck {
   // The type as a T. Anything else is a compile error naming `what`, which
   // reads as a noun phrase: "spawn argument", "struct literal".
   static T& require(const TypePtr& type, std::string_view what,
-                    std::optional<Position> loc) {
+                    std::optional<sun::support::Position> loc) {
     if (T* concrete = tryGet(type)) return *concrete;
     throwMismatch(type, what, loc);
   }
 
-  static std::shared_ptr<T> requirePtr(const TypePtr& type,
-                                       std::string_view what,
-                                       std::optional<Position> loc) {
+  static std::shared_ptr<T> requirePtr(
+      const TypePtr& type, std::string_view what,
+      std::optional<sun::support::Position> loc) {
     if (auto concrete = tryGetPtr(type)) return concrete;
     throwMismatch(type, what, loc);
   }
 
-  [[noreturn]] static void throwMismatch(const TypePtr& actual,
-                                         std::string_view what,
-                                         std::optional<Position> loc) {
+  [[noreturn]] static void throwMismatch(
+      const TypePtr& actual, std::string_view what,
+      std::optional<sun::support::Position> loc) {
     const char* expected = describeKind(T::StaticKind);
     if (!actual) {
-      logAndThrowError(std::string(what) +
-                           " has no type from semantic analysis; expected " +
-                           expected,
-                       loc);
+      sun::support::logAndThrowError(
+          std::string(what) + " has no type from semantic analysis; expected " +
+              expected,
+          loc);
     }
-    logAndThrowError(std::string(what) + " must be " + expected +
-                         ", but has type " + actual->toDisplayString(),
-                     loc);
+    sun::support::logAndThrowError(std::string(what) + " must be " + expected +
+                                       ", but has type " +
+                                       actual->toDisplayString(),
+                                   loc);
   }
 };
 
@@ -139,7 +146,7 @@ std::shared_ptr<T> tryGetTypePtr(const ExprAST& expr) {
 
 template <typename T>
 T& requireType(const TypePtr& type, std::string_view what,
-               std::optional<Position> loc = std::nullopt) {
+               std::optional<sun::support::Position> loc = std::nullopt) {
   return TypeCheck<T>::require(type, what, loc);
 }
 
@@ -150,8 +157,9 @@ T& requireType(const ExprAST& expr, std::string_view what) {
 }
 
 template <typename T>
-std::shared_ptr<T> requireTypePtr(const TypePtr& type, std::string_view what,
-                                  std::optional<Position> loc = std::nullopt) {
+std::shared_ptr<T> requireTypePtr(
+    const TypePtr& type, std::string_view what,
+    std::optional<sun::support::Position> loc = std::nullopt) {
   return TypeCheck<T>::requirePtr(type, what, loc);
 }
 
@@ -165,12 +173,13 @@ std::shared_ptr<T> requireTypePtr(const ExprAST& expr, std::string_view what) {
 // Both spellings are just an address at a call site, so the code that looks
 // through one rarely cares which it had.
 inline TypePtr getPointeeType(const TypePtr& type) {
-  if (auto* raw = tryGetType<RawPointerType>(type))
+  if (auto* raw = tryGetType<sun::semantic_analysis::RawPointerType>(type))
     return raw->getPointeeType();
-  if (auto* stat = tryGetType<StaticPointerType>(type)) {
+  if (auto* stat =
+          tryGetType<sun::semantic_analysis::StaticPointerType>(type)) {
     return stat->getPointeeType();
   }
   return nullptr;
 }
 
-}  // namespace sun
+}  // namespace sun::codegen::support

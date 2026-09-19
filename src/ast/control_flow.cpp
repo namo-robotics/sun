@@ -4,6 +4,8 @@
 
 #include "ast.h"
 
+namespace sun::ast {
+
 bool exprDiverges(const ExprAST& expr) {
   switch (expr.getType()) {
     case ASTNodeType::RETURN:
@@ -25,3 +27,5 @@ bool exprDiverges(const ExprAST& expr) {
       return false;
   }
 }
+
+}  // namespace sun::ast

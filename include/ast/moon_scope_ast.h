@@ -9,6 +9,8 @@
 #include "ast/expr_ast.h"
 #include "semantic_analysis/types.h"
 
+namespace sun::ast {
+
 /// MoonScopeAST wraps the declarations of one bundle under its `$hash$`
 /// scope: the stubs of an imported .moon, or — when a .moon is being built —
 /// the sources being bundled. Both are analyzed under the same scope name, so
@@ -28,11 +30,11 @@ class MoonScopeAST : public ExprAST {
  public:
   /** A referenced declaration and the type kind required by this use. */
   struct DeclarationRequirement {
-    sun::PortableDeclarationKey key;
+    sun::semantic_analysis::PortableDeclarationKey key;
     std::string displayName;
     // Empty accepts any nominal type; implements and constraints require
     // Interface.
-    std::optional<sun::Type::Kind> expectedKind;
+    std::optional<sun::semantic_analysis::Type::Kind> expectedKind;
   };
 
   /** Exact declarations referenced by this bundle's metadata, with any kind
@@ -41,7 +43,8 @@ class MoonScopeAST : public ExprAST {
    */
   std::vector<DeclarationRequirement> requiredDeclarations;
   // Consumed at the import boundary before any signatures are resolved.
-  std::vector<sun::ImportedDeclarationRecord> importedDeclarations;
+  std::vector<sun::semantic_analysis::ImportedDeclarationRecord>
+      importedDeclarations;
 
   MoonScopeAST(std::string contentHash, std::string moduleName,
                std::optional<std::string> alias, std::string moonPath,
@@ -100,3 +103,5 @@ class MoonScopeAST : public ExprAST {
            "\nhash: " + contentHash_.substr(0, 8);
   }
 };
+
+}  // namespace sun::ast

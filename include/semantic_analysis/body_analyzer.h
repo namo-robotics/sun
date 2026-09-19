@@ -2,6 +2,8 @@
 
 #include "semantic_analysis/semantic_context.h"
 
+namespace sun::semantic_analysis {
+
 class SemanticAnalyzer;
 
 /** Check prepared statements and manage function-body scopes.
@@ -13,22 +15,25 @@ class BodyAnalyzer {
       : ctx_(context), analyzer_(analyzer) {}
 
   /** Check a prepared block in source order. */
-  void analyzeBlock(BlockExprAST& block);
+  void analyzeBlock(sun::ast::BlockExprAST& block);
 
   /** Enter a resolved function's scope and check defaults, parameters, and
    * body. */
-  void analyzeFunction(FunctionAST& function);
+  void analyzeFunction(sun::ast::FunctionAST& function);
 
   /** Bind a lambda's parameters and captures before checking its body. */
-  void analyzeLambda(LambdaAST& lambda);
+  void analyzeLambda(sun::ast::LambdaAST& lambda);
 
   /** Check a specialized class method under its concrete type bindings. */
-  void analyzeMethodWithBindings(FunctionAST& method,
-                                 std::shared_ptr<sun::ClassType> classType,
-                                 const std::vector<std::string>& typeParams,
-                                 const std::vector<sun::TypePtr>& typeArgs);
+  void analyzeMethodWithBindings(
+      sun::ast::FunctionAST& method,
+      std::shared_ptr<sun::semantic_analysis::ClassType> classType,
+      const std::vector<std::string>& typeParams,
+      const std::vector<sun::semantic_analysis::TypePtr>& typeArgs);
 
  private:
   SemanticContext& ctx_;
   SemanticAnalyzer& analyzer_;
 };
+
+}  // namespace sun::semantic_analysis

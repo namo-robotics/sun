@@ -11,6 +11,8 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+
 namespace {
 
 const char* kHolderReturn = "cannot return a value that stores references";

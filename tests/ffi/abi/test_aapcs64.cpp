@@ -24,12 +24,16 @@
 #include <fstream>
 #include <string>
 
-#include "codegen/abi/aapcs64.h"
+#include "codegen/abi/aapcs64/aapcs64.h"
 #include "codegen/abi/c_abi.h"
-#include "codegen/abi/sysv_x86_64.h"
+#include "codegen/abi/sysv/sysv_x86_64.h"
 #include "driver/compiler.h"
 #include "driver/driver.h"
 #include "support/error.h"
+
+using sun::driver::LinkOptions;
+
+using sun::driver::Driver;
 
 namespace {
 
@@ -65,15 +69,16 @@ class Ffi_Abi_Aapcs64 : public ::testing::Test {
 
 TEST_F(Ffi_Abi_Aapcs64, scalars_are_direct) {
   for (llvm::Type* t : {i8(), i32(), i64(), f32(), f64(), ptr()}) {
-    auto lowering = sun::abi::aapcs64::lowerArgument(t, dl);
+    auto lowering = sun::codegen::abi::aapcs64::lowerArgument(t, dl);
     EXPECT_TRUE(lowering.isDirect()) << "type should not be rewritten";
     EXPECT_EQ(lowering.type, t);
   }
 }
 
 TEST_F(Ffi_Abi_Aapcs64, void_return_is_direct) {
-  EXPECT_TRUE(sun::abi::aapcs64::lowerReturn(llvm::Type::getVoidTy(ctx), dl)
-                  .isDirect());
+  EXPECT_TRUE(
+      sun::codegen::abi::aapcs64::lowerReturn(llvm::Type::getVoidTy(ctx), dl)
+          .isDirect());
 }
 
 // --- small non-HFA aggregates coerce to whole registers ----------------------
@@ -81,7 +86,7 @@ TEST_F(Ffi_Abi_Aapcs64, void_return_is_direct) {
 TEST_F(Ffi_Abi_Aapcs64, two_ints_coerce_to_one_i64) {
   // void fp(struct { int, int }) -> declare void @fp(i64)
   auto lowering =
-      sun::abi::aapcs64::lowerArgument(structOf({i32(), i32()}), dl);
+      sun::codegen::abi::aapcs64::lowerArgument(structOf({i32(), i32()}), dl);
   ASSERT_TRUE(lowering.isCoerced());
   ASSERT_EQ(lowering.pieces.size(), 1u);
   EXPECT_EQ(lowering.pieces[0], i64());
@@ -93,7 +98,7 @@ TEST_F(Ffi_Abi_Aapcs64, small_argument_rounds_up_to_a_full_register) {
   // Unlike x86-64's exact widths, a 1- or 3-byte struct is still i64:
   // declare void @c1(i64), declare void @c3(i64)
   for (auto* small : {structOf({i8()}), structOf({i8(), i8(), i8()})}) {
-    auto lowering = sun::abi::aapcs64::lowerArgument(small, dl);
+    auto lowering = sun::codegen::abi::aapcs64::lowerArgument(small, dl);
     ASSERT_TRUE(lowering.isCoerced());
     ASSERT_EQ(lowering.pieces.size(), 1u);
     EXPECT_EQ(lowering.pieces[0], i64());
@@ -102,8 +107,8 @@ TEST_F(Ffi_Abi_Aapcs64, small_argument_rounds_up_to_a_full_register) {
 
 TEST_F(Ffi_Abi_Aapcs64, twelve_bytes_coerce_to_an_i64_pair) {
   // void ft(struct { int, int, int }) -> declare void @ft([2 x i64])
-  auto lowering =
-      sun::abi::aapcs64::lowerArgument(structOf({i32(), i32(), i32()}), dl);
+  auto lowering = sun::codegen::abi::aapcs64::lowerArgument(
+      structOf({i32(), i32(), i32()}), dl);
   ASSERT_TRUE(lowering.isCoerced());
   ASSERT_EQ(lowering.pieces.size(), 1u);
   EXPECT_EQ(lowering.pieces[0], arrayOf(i64(), 2));
@@ -111,8 +116,8 @@ TEST_F(Ffi_Abi_Aapcs64, twelve_bytes_coerce_to_an_i64_pair) {
 
 TEST_F(Ffi_Abi_Aapcs64, nine_byte_array_member_coerces_to_an_i64_pair) {
   // declare void @s9([2 x i64]) for struct { char c[9]; }
-  auto lowering =
-      sun::abi::aapcs64::lowerArgument(structOf({arrayOf(i8(), 9)}), dl);
+  auto lowering = sun::codegen::abi::aapcs64::lowerArgument(
+      structOf({arrayOf(i8(), 9)}), dl);
   ASSERT_TRUE(lowering.isCoerced());
   ASSERT_EQ(lowering.pieces.size(), 1u);
   EXPECT_EQ(lowering.pieces[0], arrayOf(i64(), 2));
@@ -122,7 +127,7 @@ TEST_F(Ffi_Abi_Aapcs64, int_and_double_use_integer_registers_not_sse) {
   // No per-eightbyte FP classes here, unlike SysV:
   // declare void @m([2 x i64]) for struct { int, double }
   auto lowering =
-      sun::abi::aapcs64::lowerArgument(structOf({i32(), f64()}), dl);
+      sun::codegen::abi::aapcs64::lowerArgument(structOf({i32(), f64()}), dl);
   ASSERT_TRUE(lowering.isCoerced());
   ASSERT_EQ(lowering.pieces.size(), 1u);
   EXPECT_EQ(lowering.pieces[0], arrayOf(i64(), 2));
@@ -131,7 +136,7 @@ TEST_F(Ffi_Abi_Aapcs64, int_and_double_use_integer_registers_not_sse) {
 TEST_F(Ffi_Abi_Aapcs64, float_beside_an_int_is_not_an_hfa) {
   // declare void @fi(i64) for struct { float, int }
   auto lowering =
-      sun::abi::aapcs64::lowerArgument(structOf({f32(), i32()}), dl);
+      sun::codegen::abi::aapcs64::lowerArgument(structOf({f32(), i32()}), dl);
   ASSERT_TRUE(lowering.isCoerced());
   ASSERT_EQ(lowering.pieces.size(), 1u);
   EXPECT_EQ(lowering.pieces[0], i64());
@@ -140,7 +145,7 @@ TEST_F(Ffi_Abi_Aapcs64, float_beside_an_int_is_not_an_hfa) {
 TEST_F(Ffi_Abi_Aapcs64, mixed_float_and_double_is_not_an_hfa) {
   // Base types differ -> integer registers: [2 x i64] for { float, double }
   auto lowering =
-      sun::abi::aapcs64::lowerArgument(structOf({f32(), f64()}), dl);
+      sun::codegen::abi::aapcs64::lowerArgument(structOf({f32(), f64()}), dl);
   ASSERT_TRUE(lowering.isCoerced());
   ASSERT_EQ(lowering.pieces.size(), 1u);
   EXPECT_EQ(lowering.pieces[0], arrayOf(i64(), 2));
@@ -151,7 +156,8 @@ TEST_F(Ffi_Abi_Aapcs64, mixed_float_and_double_is_not_an_hfa) {
 TEST_F(Ffi_Abi_Aapcs64, single_float_struct_is_a_one_element_hfa) {
   // declare void @fh1([1 x float] alignstack(8)) — yes, clang really keeps
   // the one-element array.
-  auto lowering = sun::abi::aapcs64::lowerArgument(structOf({f32()}), dl);
+  auto lowering =
+      sun::codegen::abi::aapcs64::lowerArgument(structOf({f32()}), dl);
   ASSERT_TRUE(lowering.isCoerced());
   ASSERT_EQ(lowering.pieces.size(), 1u);
   EXPECT_EQ(lowering.pieces[0], arrayOf(f32(), 1));
@@ -161,13 +167,14 @@ TEST_F(Ffi_Abi_Aapcs64, single_float_struct_is_a_one_element_hfa) {
 TEST_F(Ffi_Abi_Aapcs64, homogeneous_floats_coerce_to_a_float_array) {
   // declare void @ff([2 x float] alignstack(8)),
   // declare void @fh([3 x float] alignstack(8))
-  auto two = sun::abi::aapcs64::lowerArgument(structOf({f32(), f32()}), dl);
+  auto two =
+      sun::codegen::abi::aapcs64::lowerArgument(structOf({f32(), f32()}), dl);
   ASSERT_TRUE(two.isCoerced());
   ASSERT_EQ(two.pieces.size(), 1u);
   EXPECT_EQ(two.pieces[0], arrayOf(f32(), 2));
 
-  auto three =
-      sun::abi::aapcs64::lowerArgument(structOf({f32(), f32(), f32()}), dl);
+  auto three = sun::codegen::abi::aapcs64::lowerArgument(
+      structOf({f32(), f32(), f32()}), dl);
   ASSERT_TRUE(three.isCoerced());
   ASSERT_EQ(three.pieces.size(), 1u);
   EXPECT_EQ(three.pieces[0], arrayOf(f32(), 3));
@@ -177,7 +184,7 @@ TEST_F(Ffi_Abi_Aapcs64, homogeneous_floats_coerce_to_a_float_array) {
 TEST_F(Ffi_Abi_Aapcs64, four_doubles_are_an_hfa_despite_being_32_bytes) {
   // HFAs are exempt from the 16-byte limit:
   // declare void @fh4([4 x double] alignstack(8))
-  auto lowering = sun::abi::aapcs64::lowerArgument(
+  auto lowering = sun::codegen::abi::aapcs64::lowerArgument(
       structOf({f64(), f64(), f64(), f64()}), dl);
   ASSERT_TRUE(lowering.isCoerced());
   ASSERT_EQ(lowering.pieces.size(), 1u);
@@ -188,14 +195,14 @@ TEST_F(Ffi_Abi_Aapcs64, four_doubles_are_an_hfa_despite_being_32_bytes) {
 TEST_F(Ffi_Abi_Aapcs64, nested_structs_and_arrays_flatten_for_hfa_detection) {
   // struct { struct { float, float }, float } and struct { float[3] } both
   // -> declare void @n([3 x float] alignstack(8))
-  auto nested = sun::abi::aapcs64::lowerArgument(
+  auto nested = sun::codegen::abi::aapcs64::lowerArgument(
       structOf({structOf({f32(), f32()}), f32()}), dl);
   ASSERT_TRUE(nested.isCoerced());
   ASSERT_EQ(nested.pieces.size(), 1u);
   EXPECT_EQ(nested.pieces[0], arrayOf(f32(), 3));
 
-  auto viaArray =
-      sun::abi::aapcs64::lowerArgument(structOf({arrayOf(f32(), 3)}), dl);
+  auto viaArray = sun::codegen::abi::aapcs64::lowerArgument(
+      structOf({arrayOf(f32(), 3)}), dl);
   ASSERT_TRUE(viaArray.isCoerced());
   ASSERT_EQ(viaArray.pieces.size(), 1u);
   EXPECT_EQ(viaArray.pieces[0], arrayOf(f32(), 3));
@@ -203,7 +210,7 @@ TEST_F(Ffi_Abi_Aapcs64, nested_structs_and_arrays_flatten_for_hfa_detection) {
 
 TEST_F(Ffi_Abi_Aapcs64, five_floats_are_not_an_hfa_and_go_to_memory) {
   // 5 > 4 members disqualifies the HFA, and 20 bytes exceeds two registers.
-  auto lowering = sun::abi::aapcs64::lowerArgument(
+  auto lowering = sun::codegen::abi::aapcs64::lowerArgument(
       structOf({f32(), f32(), f32(), f32(), f32()}), dl);
   EXPECT_TRUE(lowering.isIndirect());
 }
@@ -215,7 +222,7 @@ TEST_F(Ffi_Abi_Aapcs64, aggregate_over_16_bytes_is_a_plain_pointer) {
   // declare void @fb(ptr noundef) — no byval, unlike x86-64. The caller
   // makes the copy; the pointer itself is the argument.
   auto big = structOf({i32(), i32(), i32(), i32(), i32()});
-  auto lowering = sun::abi::aapcs64::lowerArgument(big, dl);
+  auto lowering = sun::codegen::abi::aapcs64::lowerArgument(big, dl);
   ASSERT_TRUE(lowering.isIndirect());
   EXPECT_EQ(lowering.type, big);
   EXPECT_FALSE(lowering.indirectByval);
@@ -223,7 +230,7 @@ TEST_F(Ffi_Abi_Aapcs64, aggregate_over_16_bytes_is_a_plain_pointer) {
 
 TEST_F(Ffi_Abi_Aapcs64, exactly_16_bytes_still_fits_in_registers) {
   auto lowering =
-      sun::abi::aapcs64::lowerArgument(structOf({i64(), i64()}), dl);
+      sun::codegen::abi::aapcs64::lowerArgument(structOf({i64(), i64()}), dl);
   ASSERT_TRUE(lowering.isCoerced());
   ASSERT_EQ(lowering.pieces.size(), 1u);
   EXPECT_EQ(lowering.pieces[0], arrayOf(i64(), 2));
@@ -234,7 +241,7 @@ TEST_F(Ffi_Abi_Aapcs64, exactly_16_bytes_still_fits_in_registers) {
 
 TEST_F(Ffi_Abi_Aapcs64, empty_struct_passes_nothing) {
   // declare void @e() for void e(struct {})
-  auto lowering = sun::abi::aapcs64::lowerArgument(structOf({}), dl);
+  auto lowering = sun::codegen::abi::aapcs64::lowerArgument(structOf({}), dl);
   ASSERT_TRUE(lowering.isCoerced());
   EXPECT_TRUE(lowering.pieces.empty());
 }
@@ -245,13 +252,15 @@ TEST_F(Ffi_Abi_Aapcs64, empty_struct_passes_nothing) {
 TEST_F(Ffi_Abi_Aapcs64, small_return_uses_the_exact_width) {
   // Returns are NOT rounded up the way arguments are:
   // declare i24 @rc3() for struct { char a, b, c }
-  auto three = sun::abi::aapcs64::lowerReturn(structOf({i8(), i8(), i8()}), dl);
+  auto three =
+      sun::codegen::abi::aapcs64::lowerReturn(structOf({i8(), i8(), i8()}), dl);
   ASSERT_TRUE(three.isCoerced());
   ASSERT_EQ(three.pieces.size(), 1u);
   EXPECT_EQ(three.pieces[0], llvm::IntegerType::get(ctx, 24));
 
   // declare i64 @rp() for struct { int, int }
-  auto pair = sun::abi::aapcs64::lowerReturn(structOf({i32(), i32()}), dl);
+  auto pair =
+      sun::codegen::abi::aapcs64::lowerReturn(structOf({i32(), i32()}), dl);
   ASSERT_TRUE(pair.isCoerced());
   ASSERT_EQ(pair.pieces.size(), 1u);
   EXPECT_EQ(pair.pieces[0], i64());
@@ -261,7 +270,7 @@ TEST_F(Ffi_Abi_Aapcs64, nine_to_sixteen_byte_return_is_an_i64_pair) {
   // declare [2 x i64] @rm() for struct { int, double },
   // declare [2 x i64] @rs9() for struct { char c[9] }
   for (auto* t : {structOf({i32(), f64()}), structOf({arrayOf(i8(), 9)})}) {
-    auto lowering = sun::abi::aapcs64::lowerReturn(t, dl);
+    auto lowering = sun::codegen::abi::aapcs64::lowerReturn(t, dl);
     ASSERT_TRUE(lowering.isCoerced());
     ASSERT_EQ(lowering.pieces.size(), 1u);
     EXPECT_EQ(lowering.pieces[0], arrayOf(i64(), 2));
@@ -272,7 +281,7 @@ TEST_F(Ffi_Abi_Aapcs64, hfa_return_stays_the_literal_struct_type) {
   // declare %struct.FF @rff() — Direct, not an array coercion; LLVM assigns
   // the FP registers itself.
   auto hfa = structOf({f32(), f32()});
-  auto lowering = sun::abi::aapcs64::lowerReturn(hfa, dl);
+  auto lowering = sun::codegen::abi::aapcs64::lowerReturn(hfa, dl);
   EXPECT_TRUE(lowering.isDirect());
   EXPECT_EQ(lowering.type, hfa);
 }
@@ -280,7 +289,7 @@ TEST_F(Ffi_Abi_Aapcs64, hfa_return_stays_the_literal_struct_type) {
 TEST_F(Ffi_Abi_Aapcs64, large_struct_return_uses_sret) {
   // declare void @rb(ptr sret(%struct.Big) align 4)
   auto big = structOf({i32(), i32(), i32(), i32(), i32()});
-  auto lowering = sun::abi::aapcs64::lowerReturn(big, dl);
+  auto lowering = sun::codegen::abi::aapcs64::lowerReturn(big, dl);
   ASSERT_TRUE(lowering.isIndirect());
   EXPECT_EQ(lowering.type, big);
 }
@@ -291,9 +300,10 @@ TEST_F(Ffi_Abi_Aapcs64, coerced_array_stays_one_parameter) {
   // Unlike SysV's expanded eightbytes, [2 x i64] is a single LLVM argument:
   // void f(int, struct{int,int,int}, int) -> void f(i32, [2 x i64], i32)
   llvm::Type* params[] = {i32(), structOf({i32(), i32(), i32()}), i32()};
-  auto lowering = sun::abi::aapcs64::lowerCSignature(llvm::Type::getVoidTy(ctx),
-                                                     params, dl);
-  auto* fnTy = sun::abi::buildLoweredFunctionType(lowering, ctx, false);
+  auto lowering = sun::codegen::abi::aapcs64::lowerCSignature(
+      llvm::Type::getVoidTy(ctx), params, dl);
+  auto* fnTy =
+      sun::codegen::abi::buildLoweredFunctionType(lowering, ctx, false);
 
   ASSERT_EQ(fnTy->getNumParams(), 3u);
   EXPECT_EQ(fnTy->getParamType(0), i32());
@@ -304,10 +314,11 @@ TEST_F(Ffi_Abi_Aapcs64, coerced_array_stays_one_parameter) {
 TEST_F(Ffi_Abi_Aapcs64, lowered_type_prepends_the_sret_pointer) {
   auto big = structOf({i32(), i32(), i32(), i32(), i32()});
   llvm::Type* params[] = {i32()};
-  auto lowering = sun::abi::aapcs64::lowerCSignature(big, params, dl);
+  auto lowering = sun::codegen::abi::aapcs64::lowerCSignature(big, params, dl);
   ASSERT_TRUE(lowering.usesSret());
 
-  auto* fnTy = sun::abi::buildLoweredFunctionType(lowering, ctx, false);
+  auto* fnTy =
+      sun::codegen::abi::buildLoweredFunctionType(lowering, ctx, false);
   ASSERT_EQ(fnTy->getNumParams(), 2u);
   EXPECT_TRUE(fnTy->getParamType(0)->isPointerTy());
   EXPECT_EQ(fnTy->getParamType(1), i32());
@@ -316,15 +327,15 @@ TEST_F(Ffi_Abi_Aapcs64, lowered_type_prepends_the_sret_pointer) {
 
 TEST_F(Ffi_Abi_Aapcs64, all_scalar_signature_is_trivial) {
   llvm::Type* params[] = {i32(), f64(), ptr()};
-  EXPECT_TRUE(
-      sun::abi::aapcs64::lowerCSignature(i32(), params, dl).isTrivial());
+  EXPECT_TRUE(sun::codegen::abi::aapcs64::lowerCSignature(i32(), params, dl)
+                  .isTrivial());
 }
 
 TEST_F(Ffi_Abi_Aapcs64, signature_with_an_aggregate_is_not_trivial) {
   llvm::Type* params[] = {structOf({i32(), i32()})};
-  EXPECT_FALSE(
-      sun::abi::aapcs64::lowerCSignature(llvm::Type::getVoidTy(ctx), params, dl)
-          .isTrivial());
+  EXPECT_FALSE(sun::codegen::abi::aapcs64::lowerCSignature(
+                   llvm::Type::getVoidTy(ctx), params, dl)
+                   .isTrivial());
 }
 
 // ============================================================================
@@ -346,13 +357,13 @@ TEST_F(Ffi_Abi_CDispatch, same_struct_lowers_differently_per_target) {
   llvm::Type* params[] = {structOf({i32(), f64()})};
   llvm::Type* voidTy = llvm::Type::getVoidTy(ctx);
 
-  auto sysvLowering = sun::abi::lowerCSignature(
+  auto sysvLowering = sun::codegen::abi::lowerCSignature(
       llvm::Triple("x86_64-unknown-linux-gnu"), voidTy, params, x86Dl);
   ASSERT_EQ(sysvLowering.params[0].pieces.size(), 2u);
   EXPECT_EQ(sysvLowering.params[0].pieces[0], i32());
   EXPECT_EQ(sysvLowering.params[0].pieces[1], f64());
 
-  auto aapcsLowering = sun::abi::lowerCSignature(
+  auto aapcsLowering = sun::codegen::abi::lowerCSignature(
       llvm::Triple("aarch64-unknown-linux-gnu"), voidTy, params, dl);
   ASSERT_EQ(aapcsLowering.params[0].pieces.size(), 1u);
   EXPECT_EQ(aapcsLowering.params[0].pieces[0], arrayOf(i64(), 2));
@@ -360,11 +371,11 @@ TEST_F(Ffi_Abi_CDispatch, same_struct_lowers_differently_per_target) {
 
 TEST_F(Ffi_Abi_CDispatch, unimplemented_targets_are_a_compile_error) {
   llvm::Type* voidTy = llvm::Type::getVoidTy(ctx);
-  EXPECT_THROW(sun::abi::lowerCSignature(
+  EXPECT_THROW(sun::codegen::abi::lowerCSignature(
                    llvm::Triple("riscv64-unknown-linux-gnu"), voidTy, {}, dl),
-               SunError);
+               sun::support::SunError);
   // Apple arm64 has its own AAPCS64 variant — covered in test_darwin_abi.cpp.
-  EXPECT_NO_THROW(sun::abi::lowerCSignature(
+  EXPECT_NO_THROW(sun::codegen::abi::lowerCSignature(
       llvm::Triple("aarch64-apple-darwin"), voidTy, {}, dl));
 }
 
@@ -404,7 +415,7 @@ TEST(Ffi_Abi_CrossTarget, emits_an_aarch64_elf_object) {
 
   std::string path = ::testing::TempDir() + "sun_cross_target_test.o";
   std::string errorMsg;
-  ASSERT_TRUE(sun::emitObjectFile(driver->getModule(), path, errorMsg))
+  ASSERT_TRUE(sun::driver::emitObjectFile(driver->getModule(), path, errorMsg))
       << errorMsg;
 
   std::ifstream obj(path, std::ios::binary);
@@ -455,9 +466,10 @@ TEST(Ffi_Abi_CrossTarget, cross_binary_runs_under_qemu) {
 
   std::string binary = ::testing::TempDir() + "sun_qemu_run_test";
   std::string errorMsg;
-  sun::LinkOptions linkOpts;
+  LinkOptions linkOpts;
   linkOpts.targetTriple = "aarch64-linux-gnu";
-  ASSERT_TRUE(sun::compileToExecutable(driver->getModule(), binary, errorMsg,
+  ASSERT_TRUE(
+      sun::driver::compileToExecutable(driver->getModule(), binary, errorMsg,
                                        /*keepObjectFile=*/false, linkOpts))
       << errorMsg;
 
@@ -506,11 +518,12 @@ TEST(Ffi_Abi_CrossTarget, extern_struct_call_runs_under_qemu) {
 
   std::string binary = dir + "sun_qemu_ffi_test";
   std::string errorMsg;
-  sun::LinkOptions linkOpts;
+  LinkOptions linkOpts;
   linkOpts.targetTriple = "aarch64-linux-gnu";
   linkOpts.searchPaths = {dir};
   linkOpts.libraries = {"sun_cross_pair"};
-  ASSERT_TRUE(sun::compileToExecutable(driver->getModule(), binary, errorMsg,
+  ASSERT_TRUE(
+      sun::driver::compileToExecutable(driver->getModule(), binary, errorMsg,
                                        /*keepObjectFile=*/false, linkOpts))
       << errorMsg;
 
@@ -540,9 +553,10 @@ TEST(Ffi_Abi_StaticLink, host_static_binary_has_no_dynamic_dependencies) {
 
   std::string binary = ::testing::TempDir() + "sun_static_host_test";
   std::string errorMsg;
-  sun::LinkOptions linkOpts;
+  LinkOptions linkOpts;
   linkOpts.staticLink = true;
-  ASSERT_TRUE(sun::compileToExecutable(driver->getModule(), binary, errorMsg,
+  ASSERT_TRUE(
+      sun::driver::compileToExecutable(driver->getModule(), binary, errorMsg,
                                        /*keepObjectFile=*/false, linkOpts))
       << errorMsg;
 
@@ -564,10 +578,11 @@ TEST(Ffi_Abi_StaticLink, cross_static_binary_runs_under_qemu_without_sysroot) {
 
   std::string binary = ::testing::TempDir() + "sun_static_cross_test";
   std::string errorMsg;
-  sun::LinkOptions linkOpts;
+  LinkOptions linkOpts;
   linkOpts.targetTriple = "aarch64-linux-gnu";
   linkOpts.staticLink = true;
-  ASSERT_TRUE(sun::compileToExecutable(driver->getModule(), binary, errorMsg,
+  ASSERT_TRUE(
+      sun::driver::compileToExecutable(driver->getModule(), binary, errorMsg,
                                        /*keepObjectFile=*/false, linkOpts))
       << errorMsg;
 
@@ -588,16 +603,16 @@ TEST_F(Ffi_Abi_CDispatch, musl_environment_uses_the_same_arch_rules) {
   llvm::Type* params[] = {structOf({i32(), i32(), i32()})};
   llvm::Type* voidTy = llvm::Type::getVoidTy(ctx);
 
-  auto aapcs = sun::abi::lowerCSignature(llvm::Triple("aarch64-linux-musl"),
-                                         voidTy, params, dl);
+  auto aapcs = sun::codegen::abi::lowerCSignature(
+      llvm::Triple("aarch64-linux-musl"), voidTy, params, dl);
   ASSERT_EQ(aapcs.params[0].pieces.size(), 1u);
   EXPECT_EQ(aapcs.params[0].pieces[0], arrayOf(i64(), 2));
 
   llvm::DataLayout x86Dl{
       "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-"
       "i128:128-f80:128-n8:16:32:64-S128"};
-  auto sysv = sun::abi::lowerCSignature(llvm::Triple("x86_64-linux-musl"),
-                                        voidTy, params, x86Dl);
+  auto sysv = sun::codegen::abi::lowerCSignature(
+      llvm::Triple("x86_64-linux-musl"), voidTy, params, x86Dl);
   ASSERT_EQ(sysv.params[0].pieces.size(), 2u);
 }
 
@@ -641,10 +656,10 @@ TEST(Ffi_Abi_StaticLink, static_links_prefer_the_musl_toolchain) {
   if (!haveHostMuslToolchain()) {
     GTEST_SKIP() << "x86_64-linux-musl-gcc not installed";
   }
-  EXPECT_EQ(sun::linkerCommandFor("", /*staticLink=*/true),
+  EXPECT_EQ(sun::driver::linkerCommandFor("", /*staticLink=*/true),
             "x86_64-linux-musl-gcc");
   // Dynamic links stay on the host toolchain.
-  EXPECT_EQ(sun::linkerCommandFor("", /*staticLink=*/false), "cc");
+  EXPECT_EQ(sun::driver::linkerCommandFor("", /*staticLink=*/false), "cc");
 }
 
 TEST(Ffi_Abi_StaticLink, host_musl_static_binary_handles_exceptions) {
@@ -657,9 +672,10 @@ TEST(Ffi_Abi_StaticLink, host_musl_static_binary_handles_exceptions) {
 
   std::string binary = ::testing::TempDir() + "sun_musl_host_test";
   std::string errorMsg;
-  sun::LinkOptions linkOpts;
+  LinkOptions linkOpts;
   linkOpts.staticLink = true;
-  ASSERT_TRUE(sun::compileToExecutable(driver->getModule(), binary, errorMsg,
+  ASSERT_TRUE(
+      sun::driver::compileToExecutable(driver->getModule(), binary, errorMsg,
                                        /*keepObjectFile=*/false, linkOpts))
       << errorMsg;
 
@@ -679,10 +695,11 @@ TEST(Ffi_Abi_StaticLink,
 
   std::string binary = ::testing::TempDir() + "sun_musl_cross_test";
   std::string errorMsg;
-  sun::LinkOptions linkOpts;
+  LinkOptions linkOpts;
   linkOpts.targetTriple = "aarch64-linux-musl";
   linkOpts.staticLink = true;
-  ASSERT_TRUE(sun::compileToExecutable(driver->getModule(), binary, errorMsg,
+  ASSERT_TRUE(
+      sun::driver::compileToExecutable(driver->getModule(), binary, errorMsg,
                                        /*keepObjectFile=*/false, linkOpts))
       << errorMsg;
 
@@ -704,7 +721,7 @@ TEST(Ffi_Abi_StaticLink, cross_musl_stdlib_binary_runs_under_qemu) {
   auto driver =
       Driver::createForAOT("musl_stdlib_module", "aarch64-linux-musl");
   driver->setMoonImports(
-      {sun::MoonImport("build/aarch64-linux-gnu/stdlib.moon")});
+      {sun::moon_bundling::MoonImport("build/aarch64-linux-gnu/stdlib.moon")});
   driver->compileString(R"(
     using std;
     function main() i32 {
@@ -715,10 +732,11 @@ TEST(Ffi_Abi_StaticLink, cross_musl_stdlib_binary_runs_under_qemu) {
 
   std::string binary = ::testing::TempDir() + "sun_musl_stdlib_test";
   std::string errorMsg;
-  sun::LinkOptions linkOpts;
+  LinkOptions linkOpts;
   linkOpts.targetTriple = "aarch64-linux-musl";
   linkOpts.staticLink = true;
-  ASSERT_TRUE(sun::compileToExecutable(driver->getModule(), binary, errorMsg,
+  ASSERT_TRUE(
+      sun::driver::compileToExecutable(driver->getModule(), binary, errorMsg,
                                        /*keepObjectFile=*/false, linkOpts))
       << errorMsg;
 

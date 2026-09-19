@@ -25,7 +25,7 @@ struct TestItem {
 // module bodies the way the test runner does so ids match the runner's
 // dotted names. `source` is the document's text, used to narrow each
 // declaration span to the name token.
-std::vector<TestItem> collectTests(const BlockExprAST& ast,
+std::vector<TestItem> collectTests(const sun::ast::BlockExprAST& ast,
                                    const std::string& documentPath,
                                    const std::string& source);
 
@@ -36,11 +36,11 @@ std::vector<TestItem> collectTests(const BlockExprAST& ast,
 struct TestSpan {
   std::string id;
   std::string label;
-  Position span;
+  sun::support::Position span;
   std::string filePath;  // normalized
 };
 
 // Every test_function in the program, whichever file declares it.
-std::vector<TestSpan> collectTestSpans(const BlockExprAST& ast);
+std::vector<TestSpan> collectTestSpans(const sun::ast::BlockExprAST& ast);
 
 }  // namespace sun::lsp

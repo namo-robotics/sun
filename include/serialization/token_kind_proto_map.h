@@ -12,56 +12,57 @@
 #include "parsing/lexer.h"
 #include "types.pb.h"
 
-namespace sun {
-namespace serialization {
+namespace sun::serialization {
+namespace pbc = sun::proto::ast;
 
-inline constexpr std::pair<TokenKind, ast::TokenKind> kTokenKindProtoMap[] = {
-    {TokenKind::PLUS, ast::TOKEN_KIND_PLUS},
-    {TokenKind::MINUS, ast::TOKEN_KIND_MINUS},
-    {TokenKind::STAR, ast::TOKEN_KIND_STAR},
-    {TokenKind::SLASH, ast::TOKEN_KIND_SLASH},
-    {TokenKind::LESS, ast::TOKEN_KIND_LESS},
-    {TokenKind::LESS_EQUAL, ast::TOKEN_KIND_LESS_EQUAL},
-    {TokenKind::GREATER, ast::TOKEN_KIND_GREATER},
-    {TokenKind::GREATER_EQUAL, ast::TOKEN_KIND_GREATER_EQUAL},
-    {TokenKind::EQUAL_EQUAL, ast::TOKEN_KIND_EQUAL_EQUAL},
-    {TokenKind::NOT_EQUAL, ast::TOKEN_KIND_NOT_EQUAL},
-    {TokenKind::EQUAL, ast::TOKEN_KIND_EQUAL},
-    {TokenKind::AND, ast::TOKEN_KIND_AND},
-    {TokenKind::OR, ast::TOKEN_KIND_OR},
-    {TokenKind::NOT, ast::TOKEN_KIND_NOT},
-    {TokenKind::AMPERSAND, ast::TOKEN_KIND_AMPERSAND},
-    {TokenKind::PIPE, ast::TOKEN_KIND_PIPE},
-    {TokenKind::CARET, ast::TOKEN_KIND_CARET},
-    {TokenKind::PERCENT, ast::TOKEN_KIND_PERCENT},
-    {TokenKind::LEFT_SHIFT, ast::TOKEN_KIND_SHIFT_LEFT},
-    {TokenKind::RIGHT_SHIFT, ast::TOKEN_KIND_SHIFT_RIGHT},
-    {TokenKind::TILDE, ast::TOKEN_KIND_TILDE},
-    {TokenKind::PLUS_ASSIGN, ast::TOKEN_KIND_PLUS_ASSIGN},
-    {TokenKind::MINUS_ASSIGN, ast::TOKEN_KIND_MINUS_ASSIGN},
-    {TokenKind::STAR_ASSIGN, ast::TOKEN_KIND_STAR_ASSIGN},
-    {TokenKind::SLASH_ASSIGN, ast::TOKEN_KIND_SLASH_ASSIGN},
-    {TokenKind::PERCENT_ASSIGN, ast::TOKEN_KIND_PERCENT_ASSIGN},
-    {TokenKind::AMP_ASSIGN, ast::TOKEN_KIND_AMP_ASSIGN},
-    {TokenKind::PIPE_ASSIGN, ast::TOKEN_KIND_PIPE_ASSIGN},
-    {TokenKind::CARET_ASSIGN, ast::TOKEN_KIND_CARET_ASSIGN},
-    {TokenKind::LEFT_SHIFT_ASSIGN, ast::TOKEN_KIND_SHIFT_LEFT_ASSIGN},
-    {TokenKind::RIGHT_SHIFT_ASSIGN, ast::TOKEN_KIND_SHIFT_RIGHT_ASSIGN},
+using sun::parsing::TokenKind;
+
+inline constexpr std::pair<TokenKind, pbc::TokenKind> kTokenKindProtoMap[] = {
+    {TokenKind::PLUS, pbc::TOKEN_KIND_PLUS},
+    {TokenKind::MINUS, pbc::TOKEN_KIND_MINUS},
+    {TokenKind::STAR, pbc::TOKEN_KIND_STAR},
+    {TokenKind::SLASH, pbc::TOKEN_KIND_SLASH},
+    {TokenKind::LESS, pbc::TOKEN_KIND_LESS},
+    {TokenKind::LESS_EQUAL, pbc::TOKEN_KIND_LESS_EQUAL},
+    {TokenKind::GREATER, pbc::TOKEN_KIND_GREATER},
+    {TokenKind::GREATER_EQUAL, pbc::TOKEN_KIND_GREATER_EQUAL},
+    {TokenKind::EQUAL_EQUAL, pbc::TOKEN_KIND_EQUAL_EQUAL},
+    {TokenKind::NOT_EQUAL, pbc::TOKEN_KIND_NOT_EQUAL},
+    {TokenKind::EQUAL, pbc::TOKEN_KIND_EQUAL},
+    {TokenKind::AND, pbc::TOKEN_KIND_AND},
+    {TokenKind::OR, pbc::TOKEN_KIND_OR},
+    {TokenKind::NOT, pbc::TOKEN_KIND_NOT},
+    {TokenKind::AMPERSAND, pbc::TOKEN_KIND_AMPERSAND},
+    {TokenKind::PIPE, pbc::TOKEN_KIND_PIPE},
+    {TokenKind::CARET, pbc::TOKEN_KIND_CARET},
+    {TokenKind::PERCENT, pbc::TOKEN_KIND_PERCENT},
+    {TokenKind::LEFT_SHIFT, pbc::TOKEN_KIND_SHIFT_LEFT},
+    {TokenKind::RIGHT_SHIFT, pbc::TOKEN_KIND_SHIFT_RIGHT},
+    {TokenKind::TILDE, pbc::TOKEN_KIND_TILDE},
+    {TokenKind::PLUS_ASSIGN, pbc::TOKEN_KIND_PLUS_ASSIGN},
+    {TokenKind::MINUS_ASSIGN, pbc::TOKEN_KIND_MINUS_ASSIGN},
+    {TokenKind::STAR_ASSIGN, pbc::TOKEN_KIND_STAR_ASSIGN},
+    {TokenKind::SLASH_ASSIGN, pbc::TOKEN_KIND_SLASH_ASSIGN},
+    {TokenKind::PERCENT_ASSIGN, pbc::TOKEN_KIND_PERCENT_ASSIGN},
+    {TokenKind::AMP_ASSIGN, pbc::TOKEN_KIND_AMP_ASSIGN},
+    {TokenKind::PIPE_ASSIGN, pbc::TOKEN_KIND_PIPE_ASSIGN},
+    {TokenKind::CARET_ASSIGN, pbc::TOKEN_KIND_CARET_ASSIGN},
+    {TokenKind::LEFT_SHIFT_ASSIGN, pbc::TOKEN_KIND_SHIFT_LEFT_ASSIGN},
+    {TokenKind::RIGHT_SHIFT_ASSIGN, pbc::TOKEN_KIND_SHIFT_RIGHT_ASSIGN},
 };
 
-inline ast::TokenKind toProtoTokenKind(TokenKind kind) {
+inline pbc::TokenKind toProtoTokenKind(TokenKind kind) {
   for (const auto& [cppKind, protoKind] : kTokenKindProtoMap) {
     if (cppKind == kind) return protoKind;
   }
-  return ast::TOKEN_KIND_UNKNOWN;
+  return pbc::TOKEN_KIND_UNKNOWN;
 }
 
-inline TokenKind fromProtoTokenKind(ast::TokenKind kind) {
+inline TokenKind fromProtoTokenKind(pbc::TokenKind kind) {
   for (const auto& [cppKind, protoKind] : kTokenKindProtoMap) {
     if (protoKind == kind) return cppKind;
   }
   return TokenKind::UNKNOWN;
 }
 
-}  // namespace serialization
-}  // namespace sun
+}  // namespace sun::serialization

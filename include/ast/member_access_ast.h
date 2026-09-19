@@ -11,6 +11,9 @@
 #include "ast/expr_ast.h"
 #include "ast/type_annotation.h"
 
+namespace sun::ast {
+using sun::semantic_analysis::TypePtr;
+
 // Member access expression: object.fieldName or object.methodName
 // For method calls, this is wrapped in CallExprAST
 // For generic method calls like object.method<T>(), typeArguments will be
@@ -68,10 +71,10 @@ class MemberAccessAST : public ExprAST {
   }
 
   // Resolved type arguments for generic method calls (set by semantic analyzer)
-  void setResolvedTypeArgs(std::vector<sun::TypePtr> types) const {
+  void setResolvedTypeArgs(std::vector<TypePtr> types) const {
     memberAnalysis().resolvedTypeArgs = std::move(types);
   }
-  const std::vector<sun::TypePtr>& getResolvedTypeArgs() const {
+  const std::vector<TypePtr>& getResolvedTypeArgs() const {
     return memberAnalysis().resolvedTypeArgs;
   }
   bool hasResolvedTypeArgs() const {
@@ -82,10 +85,10 @@ class MemberAccessAST : public ExprAST {
   // Resolved types of the actual variadic arguments for a generic method call
   // with an `args...` pack (set by semantic analyzer). They are part of the
   // specialization's identity, and so of its name.
-  void setResolvedVariadicArgTypes(std::vector<sun::TypePtr> types) const {
+  void setResolvedVariadicArgTypes(std::vector<TypePtr> types) const {
     memberAnalysis().resolvedVariadicArgTypes = std::move(types);
   }
-  const std::vector<sun::TypePtr>& getResolvedVariadicArgTypes() const {
+  const std::vector<TypePtr>& getResolvedVariadicArgTypes() const {
     return memberAnalysis().resolvedVariadicArgTypes;
   }
 
@@ -102,10 +105,10 @@ class MemberAccessAST : public ExprAST {
   // The symbol this access denotes — a module's function or variable, or the
   // specialization instantiated for a generic call (set by the semantic
   // analyzer). Codegen calls this name; it never spells one itself.
-  void setQualifiedName(sun::QualifiedName name) const {
+  void setQualifiedName(sun::semantic_analysis::QualifiedName name) const {
     memberAnalysis().qualifiedName = std::move(name);
   }
-  const sun::QualifiedName& getQualifiedName() const {
+  const sun::semantic_analysis::QualifiedName& getQualifiedName() const {
     return memberAnalysis().qualifiedName;
   }
   bool hasQualifiedName() const {
@@ -117,3 +120,5 @@ class MemberAccessAST : public ExprAST {
     return "MemberAccess\n." + memberName;
   }
 };
+
+}  // namespace sun::ast

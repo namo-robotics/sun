@@ -8,6 +8,10 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+using sun::driver::executeStringWithStdlib;
+using sun::support::SunError;
+
 TEST(EndToEnd_Programs, vars) {
   auto value = executeStringWithStdlib(R"(
     function main() i32 {
@@ -560,7 +564,7 @@ TEST(EndToEnd_Programs, main_void_return) {
     };
   )");
   // function main() void returns void
-  EXPECT_TRUE(std::holds_alternative<sun::VoidValue>(value));
+  EXPECT_TRUE(std::holds_alternative<sun::driver::VoidValue>(value));
 }
 
 TEST(EndToEnd_Programs, main_explicit_void_return) {
@@ -571,7 +575,7 @@ TEST(EndToEnd_Programs, main_explicit_void_return) {
         println("Explicit void return");
     };
   )");
-  EXPECT_TRUE(std::holds_alternative<sun::VoidValue>(value));
+  EXPECT_TRUE(std::holds_alternative<sun::driver::VoidValue>(value));
 }
 
 // Reference tests

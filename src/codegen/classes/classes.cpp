@@ -15,10 +15,22 @@
 #include "semantic_analysis/semantic_scope.h"
 #include "semantic_analysis/visibility.h"
 
+using sun::semantic_analysis::ClassField;
+using sun::semantic_analysis::ClassType;
+using sun::semantic_analysis::TypePtr;
+
+using sun::ast::ASTNodeType;
+using sun::ast::ClassDefinitionAST;
+using sun::ast::ExprAST;
+using sun::ast::FunctionAST;
+using sun::ast::PrototypeAST;
+using sun::support::logAndThrowError;
+
 using namespace llvm;
 
-namespace layout = sun::codegen::layout;
-namespace ops = sun::codegen::ops;
+namespace sun::codegen::classes {
+
+using sun::codegen::intrinsics::Intrinsic;
 
 // -------------------------------------------------------------------
 // Precompiled class codegen (from linked bitcode)
@@ -30,7 +42,7 @@ Value* ClassGenerator::codegenPrecompiledClass(const ClassDefinitionAST& expr) {
   if (classType) {
     // Generate specializations for generic methods on this non-generic
     // precompiled class (e.g., HeapAllocator.create<T>)
-    CodegenState::ReceiverGuard receiver(state_);
+    sun::codegen::CodegenState::ReceiverGuard receiver(state_);
     currentClass = classType;
 
     for (const auto& methodDecl : expr.getMethods()) {
@@ -83,7 +95,7 @@ Value* ClassGenerator::codegenPrecompiledClass(const ClassDefinitionAST& expr) {
 
 void ClassGenerator::declareClassMethods(
     const ClassDefinitionAST& expr,
-    const std::shared_ptr<sun::ClassType>& classType) {
+    const std::shared_ptr<ClassType>& classType) {
   if (!classType) return;
 
   for (const auto& methodDecl : expr.getMethods()) {
@@ -112,7 +124,7 @@ void ClassGenerator::declareClassMethods(
           PointerType::getUnqual(ctx.getContext())};
       for (const auto& parameter : method.paramTypes)
         parameters.push_back(typeResolver.resolve(parameter));
-      auto* signature = FunctionType::get(
+      auto* signature = llvm::FunctionType::get(
           typeResolver.resolveForReturn(method.returnType), parameters, false);
       function = Function::Create(signature, Function::ExternalLinkage, symbol,
                                   module);
@@ -132,7 +144,7 @@ void ClassGenerator::declareBlockClassMethods(const ClassDefinitionAST& expr) {
   if (expr.isGeneric()) {
     for (const auto& [instanceId, specializedAST] : expr.getSpecializations()) {
       if (!specializedAST) continue;
-      if (sun::generics::mentionsTypeParameter(
+      if (sun::semantic_analysis::mentionsTypeParameter(
               typeRegistry->getClass(instanceId)))
         continue;
       declareBlockClassMethods(*specializedAST);
@@ -172,7 +184,7 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
       // — `ref Pair<T>` in `unwrap<T>` yields Pair<T>, whose T is still a
       // type parameter. That shape has no layout to emit; the class the code
       // actually uses is instantiated when unwrap<i32> is.
-      if (sun::generics::mentionsTypeParameter(
+      if (sun::semantic_analysis::mentionsTypeParameter(
               typeRegistry->getClass(instanceId)))
         continue;
       codegen(*specializedAST);
@@ -203,7 +215,7 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
   llvm::StructType* structType = classType->getStructType(ctx.getContext());
 
   // Save current class context
-  CodegenState::ReceiverGuard receiver(state_);
+  sun::codegen::CodegenState::ReceiverGuard receiver(state_);
   currentClass = classType;
 
   // PASS 1: Declare all method functions first (so methods can call each other)
@@ -352,7 +364,7 @@ Function* ClassGenerator::declareMethodFromAST(
   if (proto.hasResolvedReturnType()) {
     returnType = typeResolver.resolveForReturn(proto.getResolvedReturnType());
   } else if (!proto.hasReturnType()) {
-    returnType = Type::getVoidTy(ctx.getContext());
+    returnType = llvm::Type::getVoidTy(ctx.getContext());
   } else {
     logAndThrowError("Method return type not resolved by semantic analysis: " +
                      symbol);
@@ -363,7 +375,8 @@ Function* ClassGenerator::declareMethodFromAST(
   // T; the marker only means it may unwind.
 
   // Create the function declaration
-  FunctionType* funcType = FunctionType::get(returnType, paramTypes, false);
+  llvm::FunctionType* funcType =
+      llvm::FunctionType::get(returnType, paramTypes, false);
   Function* func = Function::Create(funcType, Function::ExternalLinkage,
                                     symbol, module);
   functions().registerFunction(proto.getDeclarationId(), func);
@@ -431,7 +444,7 @@ void ClassGenerator::generateMethodBody(const FunctionAST& methodFunc) {
 
   // Save and set error handling context. With native exceptions a throwing
   // method returns plain T, so the value type is just the return type.
-  CodegenState::ReturnGuard returns(state_);
+  sun::codegen::CodegenState::ReturnGuard returns(state_);
   currentFunctionCanError = canError;
   currentFunctionValueType = canError ? returnType : nullptr;
   currentFunctionReturnsRef =
@@ -457,7 +470,7 @@ void ClassGenerator::generateMethodBody(const FunctionAST& methodFunc) {
   // order the signature was declared in (specialized generic classes have
   // their types resolved by semantic analysis).
   const std::vector<std::string> paramNames = proto.getAllParamNames();
-  const std::vector<sun::TypePtr> paramTypes = proto.getAllParamTypes();
+  const std::vector<TypePtr> paramTypes = proto.getAllParamTypes();
   if (!proto.hasResolvedParamTypes() ||
       paramTypes.size() != paramNames.size()) {
     logAndThrowError(
@@ -493,15 +506,16 @@ void ClassGenerator::generateMethodBody(const FunctionAST& methodFunc) {
   const size_t prefixCount = methodFunc.getFieldInitializerCount();
   if (prefixCount) {
     for (size_t i = 0; i < prefixCount; ++i) {
-      const auto& assignment = static_cast<const MemberAssignmentAST&>(
-          *methodFunc.getBody().getBody().at(i));
+      const auto& assignment =
+          static_cast<const sun::ast::MemberAssignmentAST&>(
+              *methodFunc.getBody().getBody().at(i));
       codegen(static_cast<const ExprAST&>(assignment));
       const auto* field =
           currentClass->getField(assignment.getTargetDeclarationId());
-      if (field && sun::typeNeedsDrop(field->type)) {
-        auto* address =
-            layout::fieldPtr(*ctx.builder, currentClass.get(), thisPtr, *field,
-                             field->name + ".initialized");
+      if (field && sun::semantic_analysis::typeNeedsDrop(field->type)) {
+        auto* address = sun::codegen::support::fieldPtr(
+            *ctx.builder, currentClass.get(), thisPtr, *field,
+            field->name + ".initialized");
         scopes().trackClassAllocation(address, "this." + field->name,
                                       field->type,
                                       /*unwindOnly=*/true);
@@ -538,7 +552,7 @@ void ClassGenerator::generateMethodBody(const FunctionAST& methodFunc) {
 // 'this' expression codegen
 // -------------------------------------------------------------------
 
-Value* ClassGenerator::codegen(const ThisExprAST& expr) {
+Value* ClassGenerator::codegen(const sun::ast::ThisExprAST& expr) {
   if (!thisPtr) {
     logAndThrowError("'this' used outside of a class method");
     return nullptr;
@@ -551,9 +565,9 @@ Value* ClassGenerator::codegen(const ThisExprAST& expr) {
 // -------------------------------------------------------------------
 
 // Retrieve the selected global when the receiver denotes a module.
-GlobalVariable* ClassGenerator::moduleMemberGlobal(const ExprAST& object,
-                                                   sun::DeclarationId id) {
-  sun::TypePtr objectType = object.getResolvedType();
+GlobalVariable* ClassGenerator::moduleMemberGlobal(
+    const ExprAST& object, sun::semantic_analysis::DeclarationId id) {
+  TypePtr objectType = object.getResolvedType();
   if (!objectType || !objectType->isModule()) return nullptr;
   return gen_.variableGenerator().findGlobal(id);
 }
@@ -562,14 +576,17 @@ GlobalVariable* ClassGenerator::moduleMemberGlobal(const ExprAST& object,
 // Member access codegen (field read)
 // -------------------------------------------------------------------
 
-Value* ClassGenerator::codegen(const MemberAccessAST& expr) {
+Value* ClassGenerator::codegen(const sun::ast::MemberAccessAST& expr) {
   const std::string& memberName = expr.getMemberName();
 
   // Handle module member access: mod_x.mod_y or mod_x.var
-  sun::TypePtr objectType = expr.getObject()->getResolvedType();
-  if (auto* moduleType = sun::tryGetType<sun::ModuleType>(objectType)) {
+  TypePtr objectType = expr.getObject()->getResolvedType();
+  if (auto* moduleType =
+          sun::codegen::support::tryGetType<sun::semantic_analysis::ModuleType>(
+              objectType)) {
     // Check if the result type is also a module (nested module access)
-    if (sun::tryGetType<sun::ModuleType>(expr)) {
+    if (sun::codegen::support::tryGetType<sun::semantic_analysis::ModuleType>(
+            expr)) {
       // Return null sentinel - next member access will handle it
       return llvm::ConstantPointerNull::get(
           llvm::PointerType::getUnqual(ctx.getContext()));
@@ -579,7 +596,7 @@ Value* ClassGenerator::codegen(const MemberAccessAST& expr) {
     GlobalVariable* gv =
         gen_.variableGenerator().findGlobal(expr.getTargetDeclarationId());
     if (gv) {
-      sun::TypePtr varType = expr.getResolvedType();
+      TypePtr varType = expr.getResolvedType();
       // Classes and interfaces return the pointer, not a load
       if (varType && (varType->isClass() || varType->isInterface())) {
         return gv;
@@ -592,12 +609,15 @@ Value* ClassGenerator::codegen(const MemberAccessAST& expr) {
       return functions().lookupFunctionById(expr.getTargetDeclarationId());
     }
 
-    logAndThrowError("Cannot find member '" + memberName + "' in module '" +
-                     sun::displayModulePath(moduleType->getModulePath()) + "'");
+    logAndThrowError(
+        "Cannot find member '" + memberName + "' in module '" +
+        sun::semantic_analysis::displayModulePath(moduleType->getModulePath()) +
+        "'");
   }
 
   // The analyzed object identifies the enum, including qualified unit variants.
-  if (auto enumType = sun::tryGetTypePtr<sun::EnumType>(*expr.getObject())) {
+  if (auto enumType = sun::codegen::support::tryGetTypePtr<
+          sun::semantic_analysis::EnumType>(*expr.getObject())) {
     if (const auto* variant = enumType->getVariant(memberName))
       return gen_.enumGenerator().codegenVariantAccess(*enumType, *variant);
   }
@@ -616,11 +636,10 @@ Value* ClassGenerator::codegen(const MemberAccessAST& expr) {
   }
 
   // Check if it's a field access
-  const sun::ClassField* field =
-      classType->getField(expr.getTargetDeclarationId());
+  const ClassField* field = classType->getField(expr.getTargetDeclarationId());
   if (field) {
-    Value* fieldPtr = layout::fieldPtr(*ctx.builder, classType, objectPtr,
-                                       *field, memberName);
+    Value* fieldPtr = sun::codegen::support::fieldPtr(
+        *ctx.builder, classType, objectPtr, *field, memberName);
 
     // For compound fields carried by address, return their storage pointer.
     // Interface dispatch loads its fat pointer from that address, just as it
@@ -628,7 +647,8 @@ Value* ClassGenerator::codegen(const MemberAccessAST& expr) {
     // is its inline storage; a `ref array<T>` field holds a view value and
     // is loaded like any other reference.
     if (field->type->isClass() || field->type->isInterface() ||
-        field->type->isArray() || CodegenVisitor::isPayloadEnum(field->type)) {
+        field->type->isArray() ||
+        sun::codegen::CodegenVisitor::isPayloadEnum(field->type)) {
       return fieldPtr;
     }
 
@@ -636,7 +656,8 @@ Value* ClassGenerator::codegen(const MemberAccessAST& expr) {
     llvm::Type* fieldLLVMType = field->type->toLLVMType(ctx.getContext());
     return ctx.builder->CreateAlignedLoad(
         fieldLLVMType, fieldPtr,
-        layout::fieldAlign(classType, fieldLLVMType, module->getDataLayout()),
+        sun::codegen::support::fieldAlign(classType, fieldLLVMType,
+                                          module->getDataLayout()),
         memberName + ".val");
   }
 
@@ -659,8 +680,8 @@ Value* ClassGenerator::codegen(const MemberAccessAST& expr) {
 // Produces a closure struct VALUE { methodFn, objectPtr } (lambda ABI)
 // -------------------------------------------------------------------
 
-Value* ClassGenerator::codegenBoundMethodReference(const MemberAccessAST& expr,
-                                                   Value* objectPtr) {
+Value* ClassGenerator::codegenBoundMethodReference(
+    const sun::ast::MemberAccessAST& expr, Value* objectPtr) {
   Function* methodFunc =
       functions().lookupFunctionById(expr.getTargetDeclarationId());
 
@@ -671,8 +692,8 @@ Value* ClassGenerator::codegenBoundMethodReference(const MemberAccessAST& expr,
 // Stack-allocated class instance codegen: ClassName(args...)
 // -------------------------------------------------------------------
 
-Value* ClassGenerator::codegenStackClassInstance(const CallExprAST& expr,
-                                                 sun::ClassType& classType) {
+Value* ClassGenerator::codegenStackClassInstance(
+    const sun::ast::CallExprAST& expr, ClassType& classType) {
   // Get the LLVM struct type for the class
   llvm::StructType* structType = classType.getStructType(ctx.getContext());
 
@@ -686,15 +707,16 @@ Value* ClassGenerator::codegenStackClassInstance(const CallExprAST& expr,
   uint64_t structSize = DL.getTypeAllocSize(structType);
 
   llvm::FunctionCallee memsetFn = module->getOrInsertFunction(
-      "memset", FunctionType::get(PointerType::getUnqual(ctx.getContext()),
-                                  {PointerType::getUnqual(ctx.getContext()),
-                                   Type::getInt32Ty(ctx.getContext()),
-                                   Type::getInt64Ty(ctx.getContext())},
-                                  false));
+      "memset",
+      llvm::FunctionType::get(PointerType::getUnqual(ctx.getContext()),
+                              {PointerType::getUnqual(ctx.getContext()),
+                               llvm::Type::getInt32Ty(ctx.getContext()),
+                               llvm::Type::getInt64Ty(ctx.getContext())},
+                              false));
   ctx.builder->CreateCall(
       memsetFn,
-      {alloca, ConstantInt::get(Type::getInt32Ty(ctx.getContext()), 0),
-       ConstantInt::get(Type::getInt64Ty(ctx.getContext()), structSize)});
+      {alloca, ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0),
+       ConstantInt::get(llvm::Type::getInt64Ty(ctx.getContext()), structSize)});
 
   // Call the constructor (init method) if it exists
   const auto* ctor = classType.getMethod(expr.getTargetDeclarationId());
@@ -703,8 +725,7 @@ Value* ClassGenerator::codegenStackClassInstance(const CallExprAST& expr,
   size_t argCount = expr.getArgs().size();
 
   if (ctorFunc) {
-    const auto& paramTypes =
-        ctor ? ctor->paramTypes : std::vector<sun::TypePtr>{};
+    const auto& paramTypes = ctor ? ctor->paramTypes : std::vector<TypePtr>{};
 
     std::vector<Value*> ctorArgs = generateCtorArgs(
         ctorFunc, alloca, expr.getArgs(), expr.getArgConversions(), paramTypes);
@@ -722,7 +743,7 @@ Value* ClassGenerator::codegenStackClassInstance(const CallExprAST& expr,
   // destination, which will call deinit. Non-moved temporaries must be
   // deinited here.
   if (!expr.isMoved()) {
-    auto classTypePtr = std::make_shared<sun::ClassType>(classType);
+    auto classTypePtr = std::make_shared<ClassType>(classType);
     scopes().trackClassAllocation(alloca, "stack.obj", classTypePtr);
   }
 
@@ -736,8 +757,8 @@ Value* ClassGenerator::codegenStackClassInstance(const CallExprAST& expr,
 std::vector<Value*> ClassGenerator::generateCtorArgs(
     llvm::Function* ctorFunc, Value* thisPtr,
     const std::vector<std::unique_ptr<ExprAST>>& args,
-    const std::vector<sun::ArgConversion>& conversions,
-    const std::vector<sun::TypePtr>& paramTypes) {
+    const std::vector<sun::semantic_analysis::ArgConversion>& conversions,
+    const std::vector<TypePtr>& paramTypes) {
   std::vector<Value*> ctorArgs;
   ctorArgs.push_back(
       materializeMethodClosure(ctorFunc, thisPtr, "method.closure"));
@@ -752,16 +773,17 @@ std::vector<Value*> ClassGenerator::generateCtorArgs(
 // Member assignment codegen (field write)
 // -------------------------------------------------------------------
 
-Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
+Value* ClassGenerator::codegen(const sun::ast::MemberAssignmentAST& expr) {
   // mod.global = value: the module is compile-time only, so this writes the
   // global directly
   if (GlobalVariable* gv = moduleMemberGlobal(*expr.getObject(),
                                               expr.getTargetDeclarationId())) {
     Value* value = codegen(*expr.getValue());
     if (!value) return nullptr;
-    assignToVariableSlot(gv, value,
-                         sun::unwrapRef(expr.getValue()->getResolvedType()),
-                         expr.getMemberName());
+    assignToVariableSlot(
+        gv, value,
+        sun::semantic_analysis::unwrapRef(expr.getValue()->getResolvedType()),
+        expr.getMemberName());
     return value;
   }
 
@@ -777,8 +799,7 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
   const std::string& memberName = expr.getMemberName();
 
   // Get the field info
-  const sun::ClassField* field =
-      classType->getField(expr.getTargetDeclarationId());
+  const ClassField* field = classType->getField(expr.getTargetDeclarationId());
   if (!field) {
     logAndThrowError("Unknown field: " + memberName);
     return nullptr;
@@ -791,28 +812,29 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
   // Get expected field type
   llvm::Type* fieldLLVMType = field->type->toLLVMType(ctx.getContext());
 
-  sun::TypePtr valueSunType = expr.getValue()->getResolvedType();
+  TypePtr valueSunType = expr.getValue()->getResolvedType();
 
   // A `ref array<T>` field holds the view value; a view expression may
   // arrive as the value or as a pointer to where it is stored
-  if (auto* fieldRef = sun::tryGetType<sun::ReferenceType>(field->type)) {
+  if (auto* fieldRef = sun::codegen::support::tryGetType<
+          sun::semantic_analysis::ReferenceType>(field->type)) {
     if (fieldRef->isUnsizedArrayRef()) {
       value = gen_.loadArrayView(value);
     }
   }
 
   // Generate GEP to access the field
-  Value* fieldPtr = layout::fieldPtr(*ctx.builder, classType, objectPtr, *field,
-                                     memberName + ".ptr");
+  Value* fieldPtr = sun::codegen::support::fieldPtr(
+      *ctx.builder, classType, objectPtr, *field, memberName + ".ptr");
 
   // What becomes of the value the field held, as semantic analysis worked it
   // out: a constructor's first write to a field lands on storage that has
   // never held a value and releases nothing, and every other write drops.
   auto dropOverwrittenValue = [&]() {
     switch (expr.fieldWriteKind()) {
-      case sun::FieldWriteKind::StartsLife:
+      case sun::ast::FieldWriteKind::StartsLife:
         return;
-      case sun::FieldWriteKind::ReplacesValue:
+      case sun::ast::FieldWriteKind::ReplacesValue:
         scopes().emitDropInPlace(field->type, fieldPtr, memberName);
         scopes().markInitialized(fieldPtr, field->type);
         return;
@@ -822,13 +844,14 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
   // Interface fields own the complete { data, vtable } value. A concrete
   // source moves into a stable erased box; an interface source transfers its
   // existing owner and is cleared.
-  if (auto* fieldInterfaceType =
-          sun::tryGetType<sun::InterfaceType>(field->type)) {
+  if (auto* fieldInterfaceType = sun::codegen::support::tryGetType<
+          sun::semantic_analysis::InterfaceType>(field->type)) {
     if (value == fieldPtr) return value;
 
     Value* fatPtrValue = value;
-    sun::TypePtr sourceType = sun::unwrapRef(valueSunType);
-    if (auto* sourceClassType = sun::tryGetType<sun::ClassType>(sourceType)) {
+    TypePtr sourceType = sun::semantic_analysis::unwrapRef(valueSunType);
+    if (auto* sourceClassType =
+            sun::codegen::support::tryGetType<ClassType>(sourceType)) {
       fatPtrValue = createOwnedInterfaceFatPointer(value, sourceClassType,
                                                    fieldInterfaceType);
       if (!fatPtrValue) return nullptr;
@@ -840,13 +863,16 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
     dropOverwrittenValue();
     ctx.builder->CreateAlignedStore(
         fatPtrValue, fieldPtr,
-        layout::fieldAlign(classType, fieldLLVMType, module->getDataLayout()));
+        sun::codegen::support::fieldAlign(classType, fieldLLVMType,
+                                          module->getDataLayout()));
     return fatPtrValue;
   }
 
   // Sized array fields own their elements inline: the source array MOVES in
   // after the field's old elements are dropped.
-  if (auto* fieldArrayType = sun::tryGetType<sun::ArrayType>(field->type)) {
+  if (auto* fieldArrayType =
+          sun::codegen::support::tryGetType<sun::semantic_analysis::ArrayType>(
+              field->type)) {
     dropOverwrittenValue();
     gen_.emitArrayTransfer(fieldPtr, value, *fieldArrayType, /*move=*/true);
     return value;
@@ -855,7 +881,7 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
   // Payload-enum fields: the value arrives as a storage pointer. Drop the
   // overwritten field first, then MOVE the source in — never an implicit
   // copy.
-  if (CodegenVisitor::isPayloadEnum(field->type)) {
+  if (sun::codegen::CodegenVisitor::isPayloadEnum(field->type)) {
     Value* structVal = value;
     if (value->getType()->isPointerTy()) {
       dropOverwrittenValue();
@@ -868,7 +894,8 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
   // Handle class-typed fields: the source instance MOVES into the field.
   // The overwritten field value is dropped first, then the source is copied
   // in and invalidated.
-  if (auto* fieldClassType = sun::tryGetType<sun::ClassType>(field->type)) {
+  if (auto* fieldClassType =
+          sun::codegen::support::tryGetType<ClassType>(field->type)) {
     llvm::StructType* fieldStructType =
         fieldClassType->getStructType(ctx.getContext());
     const DataLayout& DL = module->getDataLayout();
@@ -894,21 +921,22 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
     // packing, not the field struct's own alignment
     ctx.builder->CreateMemCpy(
         fieldPtr,
-        layout::fieldAlign(classType, fieldStructType, module->getDataLayout()),
+        sun::codegen::support::fieldAlign(classType, fieldStructType,
+                                          module->getDataLayout()),
         value, srcAlign, structSize);
     if (sourceIsAddressable) {
       // The field owns the payload now. Release source ownership and clear
       // the old contents.
       scopes().markClassAllocationAsDeinited(value, valueSunType);
       ctx.builder->CreateMemSet(
-          value, ConstantInt::get(Type::getInt8Ty(ctx.getContext()), 0),
+          value, ConstantInt::get(llvm::Type::getInt8Ty(ctx.getContext()), 0),
           structSize, srcAlign);
     }
     return value;
   }
 
-  value = ops::widenNumericIfNeeded(*ctx.builder, typeResolver, value,
-                                    field->type, valueSunType);
+  value = sun::codegen::support::widenNumericIfNeeded(
+      *ctx.builder, typeResolver, value, field->type, valueSunType);
 
   // Float literals default to f64 but may initialize an f32 field.
   ASTNodeType valueKind = expr.getValue()->getType();
@@ -922,7 +950,8 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
   // Store the value
   ctx.builder->CreateAlignedStore(
       value, fieldPtr,
-      layout::fieldAlign(classType, fieldLLVMType, module->getDataLayout()));
+      sun::codegen::support::fieldAlign(classType, fieldLLVMType,
+                                        module->getDataLayout()));
 
   // Return the value (like C assignment)
   return value;
@@ -932,7 +961,7 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
 // Interface definition codegen
 // -------------------------------------------------------------------
 
-Value* ClassGenerator::codegen(const InterfaceDefinitionAST& expr) {
+Value* ClassGenerator::codegen(const sun::ast::InterfaceDefinitionAST& expr) {
   const std::string& interfaceName = expr.getName();
 
   // Skip precompiled interfaces - they come from linked bitcode
@@ -1044,12 +1073,12 @@ Value* ClassGenerator::codegen(const InterfaceDefinitionAST& expr) {
 // For standalone generic functions (not methods)
 // -------------------------------------------------------------------
 
-Value* ClassGenerator::codegen(const GenericCallAST& expr) {
+Value* ClassGenerator::codegen(const sun::ast::GenericCallAST& expr) {
   const std::string& funcName = expr.getFunctionName();
   const auto& typeArgs = expr.getTypeArguments();
 
   // Get first resolved type argument (semantic analysis must have set this)
-  auto getFirstTypeArg = [&]() -> sun::TypePtr {
+  auto getFirstTypeArg = [&]() -> TypePtr {
     if (!expr.hasResolvedTypeArgs() || expr.getResolvedTypeArgs().empty()) {
       logAndThrowError("Type argument not resolved by semantic analysis for: " +
                        funcName);
@@ -1058,47 +1087,47 @@ Value* ClassGenerator::codegen(const GenericCallAST& expr) {
   };
 
   // Handle generic intrinsics via switch
-  switch (sun::getIntrinsic(funcName)) {
-    case sun::Intrinsic::Sizeof:
+  switch (sun::codegen::intrinsics::getIntrinsic(funcName)) {
+    case Intrinsic::Sizeof:
       return intrinsics().codegenSizeofIntrinsic(getFirstTypeArg());
-    case sun::Intrinsic::Init:
+    case Intrinsic::Init:
       return intrinsics().codegenInitIntrinsic(
           getFirstTypeArg(), expr.getArgs(), expr.getArgConversions(),
           expr.getTargetDeclarationId());
-    case sun::Intrinsic::Load:
+    case Intrinsic::Load:
       return intrinsics().codegenLoadIntrinsic(getFirstTypeArg(),
                                                expr.getArgs());
-    case sun::Intrinsic::Store:
+    case Intrinsic::Store:
       return intrinsics().codegenStoreIntrinsic(getFirstTypeArg(),
                                                 expr.getArgs());
-    case sun::Intrinsic::PtrAsRaw:
+    case Intrinsic::PtrAsRaw:
       return intrinsics().codegenPtrAsRawIntrinsic(expr.getArgs());
-    case sun::Intrinsic::AddressOf:
+    case Intrinsic::AddressOf:
       return intrinsics().codegenAddressOfIntrinsic(expr.getArgs());
-    case sun::Intrinsic::ToRef:
+    case Intrinsic::ToRef:
       return intrinsics().codegenToRefIntrinsic(expr.getArgs());
-    case sun::Intrinsic::Is:
+    case Intrinsic::Is:
       return intrinsics().codegenIsIntrinsic(getFirstTypeArg(), expr.getArgs());
-    case sun::Intrinsic::Deinit:
+    case Intrinsic::Deinit:
       return intrinsics().codegenDeinitIntrinsic(getFirstTypeArg(),
                                                  expr.getArgs());
-    case sun::Intrinsic::EnumFromInt:
+    case Intrinsic::EnumFromInt:
       return intrinsics().codegenEnumFromIntIntrinsic(expr);
-    case sun::Intrinsic::Convert:
+    case Intrinsic::Convert:
       return intrinsics().codegenConvertIntrinsic(getFirstTypeArg(),
                                                   expr.getArgs());
-    case sun::Intrinsic::Bitcast:
+    case Intrinsic::Bitcast:
       return intrinsics().codegenBitcastIntrinsic(getFirstTypeArg(),
                                                   expr.getArgs());
-    case sun::Intrinsic::Spawn:
+    case Intrinsic::Spawn:
       return intrinsics().codegenSpawnIntrinsic(
           getFirstTypeArg(), expr.getResolvedType(), expr.getArgs(),
           expr.getArgConversions());
-    case sun::Intrinsic::ThreadJoin:
+    case Intrinsic::ThreadJoin:
       return intrinsics().codegenThreadJoinIntrinsic(getFirstTypeArg(),
                                                      expr.getArgs(),
                                                      /*dropResult=*/false);
-    case sun::Intrinsic::ThreadJoinDrop:
+    case Intrinsic::ThreadJoinDrop:
       return intrinsics().codegenThreadJoinIntrinsic(getFirstTypeArg(),
                                                      expr.getArgs(),
                                                      /*dropResult=*/true);
@@ -1121,7 +1150,8 @@ Value* ClassGenerator::codegen(const GenericCallAST& expr) {
     auto calleeType = expr.getResolvedCalleeType();
     if (!calleeType || !calleeType->isFunction())
       logAndThrowError("Generic call has no resolved callable signature");
-    const auto& signature = static_cast<const sun::FunctionType&>(*calleeType);
+    const auto& signature =
+        static_cast<const sun::semantic_analysis::FunctionType&>(*calleeType);
     Function* specializedFunc =
         functions().lookupFunctionById(expr.getTargetDeclarationId());
 
@@ -1156,7 +1186,8 @@ Value* ClassGenerator::codegen(const GenericCallAST& expr) {
         funcName);
     return nullptr;
   }
-  if (auto* resolvedClass = sun::tryGetType<sun::ClassType>(expr)) {
+  if (auto* resolvedClass =
+          sun::codegen::support::tryGetType<ClassType>(expr)) {
     auto classType = typeRegistry->getClass(resolvedClass->getDeclarationId());
     // Create a stack-allocated instance and call constructor
     llvm::StructType* structType = classType->getStructType(ctx.getContext());
@@ -1168,15 +1199,17 @@ Value* ClassGenerator::codegen(const GenericCallAST& expr) {
     const DataLayout& DL = module->getDataLayout();
     uint64_t structSize = DL.getTypeAllocSize(structType);
     llvm::FunctionCallee memsetFn = module->getOrInsertFunction(
-        "memset", FunctionType::get(PointerType::getUnqual(ctx.getContext()),
-                                    {PointerType::getUnqual(ctx.getContext()),
-                                     Type::getInt32Ty(ctx.getContext()),
-                                     Type::getInt64Ty(ctx.getContext())},
-                                    false));
+        "memset",
+        llvm::FunctionType::get(PointerType::getUnqual(ctx.getContext()),
+                                {PointerType::getUnqual(ctx.getContext()),
+                                 llvm::Type::getInt32Ty(ctx.getContext()),
+                                 llvm::Type::getInt64Ty(ctx.getContext())},
+                                false));
     ctx.builder->CreateCall(
         memsetFn,
-        {alloca, ConstantInt::get(Type::getInt32Ty(ctx.getContext()), 0),
-         ConstantInt::get(Type::getInt64Ty(ctx.getContext()), structSize)});
+        {alloca, ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0),
+         ConstantInt::get(llvm::Type::getInt64Ty(ctx.getContext()),
+                          structSize)});
 
     // Call the constructor selected during semantic analysis.
     const auto* ctor = classType->getMethod(expr.getTargetDeclarationId());
@@ -1185,8 +1218,7 @@ Value* ClassGenerator::codegen(const GenericCallAST& expr) {
     size_t argCount = expr.getArgs().size();
 
     if (ctorFunc) {
-      const auto& paramTypes =
-          ctor ? ctor->paramTypes : std::vector<sun::TypePtr>{};
+      const auto& paramTypes = ctor ? ctor->paramTypes : std::vector<TypePtr>{};
 
       std::vector<Value*> ctorArgs =
           generateCtorArgs(ctorFunc, alloca, expr.getArgs(),
@@ -1210,7 +1242,7 @@ Value* ClassGenerator::codegen(const GenericCallAST& expr) {
     // Track the temporary for deinit ONLY if not moved (ownership
     // transferred)
     if (!expr.isMoved()) {
-      auto classTypePtr = std::make_shared<sun::ClassType>(*classType);
+      auto classTypePtr = std::make_shared<ClassType>(*classType);
       scopes().trackClassAllocation(alloca, "stack.obj", classTypePtr);
     }
 
@@ -1230,8 +1262,9 @@ Value* ClassGenerator::codegen(const GenericCallAST& expr) {
 // named exactly once, and that the values are assignable — so this only has
 // to lay the bytes down. Returns the object's address, like other class-
 // valued expressions.
-Value* ClassGenerator::codegen(const StructLiteralAST& expr) {
-  auto* classType = &sun::requireType<sun::ClassType>(expr, "struct literal");
+Value* ClassGenerator::codegen(const sun::ast::StructLiteralAST& expr) {
+  auto* classType =
+      &sun::codegen::support::requireType<ClassType>(expr, "struct literal");
   llvm::StructType* structType = classType->getStructType(ctx.getContext());
 
   Function* parentFunc = ctx.builder->GetInsertBlock()->getParent();
@@ -1241,7 +1274,7 @@ Value* ClassGenerator::codegen(const StructLiteralAST& expr) {
   // Every field is assigned below, so no zeroing pass is needed.
   for (size_t i = 0; i < expr.getFields().size(); ++i) {
     const auto& field = expr.getFields()[i];
-    const sun::ClassField* classField =
+    const ClassField* classField =
         classType->getField(expr.resolvedFields().at(i));
     if (!classField)
       logAndThrowError("Struct literal field target is not registered");
@@ -1249,21 +1282,24 @@ Value* ClassGenerator::codegen(const StructLiteralAST& expr) {
     Value* value = codegen(*field.value);
     if (!value) return nullptr;
 
-    sun::TypePtr valueType = field.value->getResolvedType();
-    value = ops::widenNumericIfNeeded(*ctx.builder, typeResolver, value,
-                                      classField->type, valueType);
+    TypePtr valueType = field.value->getResolvedType();
+    value = sun::codegen::support::widenNumericIfNeeded(
+        *ctx.builder, typeResolver, value, classField->type, valueType);
 
     Value* fieldPtr = ctx.builder->CreateStructGEP(
         structType, alloca, classField->index, field.name + ".ptr");
-    layout::storeIntoSlot(*ctx.builder, module->getDataLayout(), fieldPtr,
-                          value, classField->type, classType);
+    sun::codegen::support::storeIntoSlot(*ctx.builder, module->getDataLayout(),
+                                         fieldPtr, value, classField->type,
+                                         classType);
   }
 
   // Track for deinit at scope exit unless ownership moves to a destination.
   if (!expr.isMoved()) {
-    auto classTypePtr = std::make_shared<sun::ClassType>(*classType);
+    auto classTypePtr = std::make_shared<ClassType>(*classType);
     scopes().trackClassAllocation(alloca, "struct.lit", classTypePtr);
   }
 
   return alloca;
 }
+
+}  // namespace sun::codegen::classes

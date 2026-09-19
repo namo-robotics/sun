@@ -7,6 +7,9 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+using sun::driver::executeStringWithStdlib;
+
 TEST(Lambdas_Params, lambda_param_by_value) {
   auto value = executeString(R"(
     function apply_twice(f: (i32) => i32, x: i32) i32 {
@@ -249,7 +252,7 @@ TEST(Lambdas_Throwing, uncaught_call_rejected) {
         return risky(1);
     }
   )"),
-               SunError);
+               sun::support::SunError);
 }
 
 TEST(Lambdas_Throwing, throw_in_non_throwing_lambda_rejected) {
@@ -263,7 +266,7 @@ TEST(Lambdas_Throwing, throw_in_non_throwing_lambda_rejected) {
         return bad(1);
     }
   )"),
-               SunError);
+               sun::support::SunError);
 }
 
 TEST(Lambdas_Params, extra_argument_to_zero_parameter_lambda_is_error) {

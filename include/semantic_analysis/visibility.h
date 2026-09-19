@@ -15,7 +15,7 @@
 #include <string>
 #include <vector>
 
-namespace sun {
+namespace sun::semantic_analysis {
 
 enum class Visibility : uint8_t { Private = 0, Public = 1 };
 
@@ -62,4 +62,4 @@ inline const char* visibilityKeyword(Visibility v) {
   return v == Visibility::Public ? "public" : "private";
 }
 
-}  // namespace sun
+}  // namespace sun::semantic_analysis

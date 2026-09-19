@@ -13,7 +13,7 @@
 
 #include "moon_bundling/moon.h"
 
-namespace sun {
+namespace sun::driver {
 
 namespace {
 
@@ -96,7 +96,7 @@ std::optional<BuildRecord> readBuildRecord(const std::string& path) {
 std::optional<std::string> readMoonInputHash(const std::string& path) {
   std::error_code ec;
   if (!std::filesystem::is_regular_file(path, ec)) return std::nullopt;
-  auto reader = MoonReader::open(path);
+  auto reader = sun::moon_bundling::MoonReader::open(path);
   if (!reader) return std::nullopt;
   const auto modules = reader->listModules();
   const auto* first =
@@ -105,4 +105,4 @@ std::optional<std::string> readMoonInputHash(const std::string& path) {
   return first->content_hash();
 }
 
-}  // namespace sun
+}  // namespace sun::driver

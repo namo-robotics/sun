@@ -3,14 +3,17 @@
 #include "semantic_analysis/declaration_identity_pass.h"
 #include "semantic_analysis/semantic_analyzer.h"
 
-namespace sun {
+using sun::ast::ExprAST;
 
-SemanticPipeline::SemanticPipeline(SemanticAnalyzer& analyzer)
+namespace sun::semantic_analysis {
+
+SemanticPipeline::SemanticPipeline(
+    sun::semantic_analysis::SemanticAnalyzer& analyzer)
     : analyzer_(analyzer),
       context_(analyzer.context()),
       declarationCollectionPass_(context_, analyzer) {}
 
-void SemanticPipeline::run(BlockExprAST& block,
+void SemanticPipeline::run(sun::ast::BlockExprAST& block,
                            const std::function<void()>& declarationsReady) {
   fieldInitializerPreparationPass_.run(block);
   DeclarationIdentityPass(context_.types()->declarations).run(block);
@@ -38,4 +41,4 @@ void SemanticPipeline::prepareGenerated(ExprAST& expression,
   declarationNamingPass_.run(expression, scope, false);
 }
 
-}  // namespace sun
+}  // namespace sun::semantic_analysis

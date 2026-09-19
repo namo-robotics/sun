@@ -9,6 +9,8 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+
 // ============================================================================
 // Suffixed literals carry their own type into call arguments
 // ============================================================================
@@ -512,7 +514,7 @@ TEST(Operators_Literals, string_hex_escape_alpn_length) {
 }
 
 TEST(Operators_Literals, string_hex_escapes_preserve_bytes) {
-  EXPECT_EQ(executeStringWithStdlib(R"(
+  EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
     using std;
     function main() i64 throws IError {
       var alloc = HeapAllocator();

@@ -16,15 +16,20 @@
 #include "semantic_analysis/types.h"
 #include "support/error.h"
 
-namespace sun {
+namespace sun::borrow_checker {
+using sun::ast::CallExprAST;
+using sun::ast::ExprAST;
+using sun::ast::MatchExprAST;
+using sun::semantic_analysis::TypePtr;
 
 /// A single borrow checking error with source location and optional related
 /// locations. Rendering in the standard compiler format (source line and
 /// caret) is done by the driver, which has the source text at hand.
 struct BorrowError {
   std::string message;
-  Position location;
-  std::vector<Position> relatedLocations;  // Where conflicting borrows occurred
+  sun::support::Position location;
+  std::vector<sun::support::Position>
+      relatedLocations;  // Where conflicting borrows occurred
 };
 
 /// Turn the borrow errors of one compilation into the single error the driver
@@ -32,12 +37,13 @@ struct BorrowError {
 /// and related borrow rides along as a related diagnostic, so printing the
 /// error shows them all with carets and a tool catching it (the language
 /// server) can point at each one in the source. Requires a non-empty list.
-SunError buildBorrowCheckError(const std::vector<BorrowError>& errors);
+sun::support::SunError buildBorrowCheckError(
+    const std::vector<BorrowError>& errors);
 
 /// Main borrow checker class
 /// Validates reference safety by tracking borrows across the AST
 ///
-/// Configuration is taken from sun::Config compile-time constants:
+/// Configuration is taken from sun::support::Config compile-time constants:
 /// - FORBID_REF_RETURNS: If true, functions cannot return references
 /// - FORBID_REF_FIELDS_IN_CLASSES: If true, classes cannot have ref fields
 /// - STRICT_MUTATION_CHECKING: If true, disallow mutating borrowed variables
@@ -47,52 +53,54 @@ class BorrowChecker {
 
   /// Main entry point - check an entire program (BlockExprAST)
   /// Returns a list of borrow errors (empty if valid)
-  std::vector<BorrowError> check(const BlockExprAST& program);
+  std::vector<BorrowError> check(const sun::ast::BlockExprAST& program);
 
  private:
   // AST traversal methods
   void checkExpr(const ExprAST& expr);
 
   // Specific node handlers
-  void checkVariableCreation(const VariableCreationAST& var);
-  void checkReferenceCreation(const ReferenceCreationAST& ref);
+  void checkVariableCreation(const sun::ast::VariableCreationAST& var);
+  void checkReferenceCreation(const sun::ast::ReferenceCreationAST& ref);
   // Shared by `ref r = lvalue` and `var r: ref T = lvalue`: both bind a
   // borrow of the lvalue's storage rather than moving a value into r.
   void checkBorrowBinding(const std::string& refName, const ExprAST& targetExpr,
-                          bool isMutable, const Position& refPos);
+                          bool isMutable, const sun::support::Position& refPos);
   // Binding a ref-returning call's result to a name borrows every named
   // variable the call could hand back a reference into: the receiver and
   // each argument bound to a ref parameter.
   void borrowRefCallInputs(const std::string& refName, const CallExprAST& call,
-                           bool isMutable, const Position& refPos);
-  void checkBorrowTargetIntact(const ExprAST& target, const Position& refPos);
-  void checkVariableAssignment(const VariableAssignmentAST& assign);
-  void checkVariableReference(const VariableReferenceAST& varRef);
-  void checkBinaryExpr(const BinaryExprAST& binary);
+                           bool isMutable,
+                           const sun::support::Position& refPos);
+  void checkBorrowTargetIntact(const ExprAST& target,
+                               const sun::support::Position& refPos);
+  void checkVariableAssignment(const sun::ast::VariableAssignmentAST& assign);
+  void checkVariableReference(const sun::ast::VariableReferenceAST& varRef);
+  void checkBinaryExpr(const sun::ast::BinaryExprAST& binary);
   void checkCallExpr(const CallExprAST& call);
-  void checkIfExpr(const IfExprAST& ifExpr);
-  void checkTernaryExpr(const TernaryExprAST& ternary);
+  void checkIfExpr(const sun::ast::IfExprAST& ifExpr);
+  void checkTernaryExpr(const sun::ast::TernaryExprAST& ternary);
   void checkMatchExpr(const MatchExprAST& matchExpr);
 
   /** Records ownership transfers through expressions, including blocks and
    * parentheses. */
   void consumeOwnedValue(const ExprAST& value);
-  void checkWhileExpr(const WhileExprAST& whileExpr);
-  void checkForExpr(const ForExprAST& forExpr);
-  void checkForInExpr(const ForInExprAST& forInExpr);
-  void checkBlockExpr(const BlockExprAST& block, size_t start = 0);
-  void checkReturnStmt(const ReturnExprAST& ret);
-  void checkFunctionDef(const FunctionAST& func);
-  void checkLambdaDef(const LambdaAST& lambda);
-  void checkClassDef(const ClassDefinitionAST& classDef);
-  void checkMemberAccess(const MemberAccessAST& access);
-  void checkMemberAssignment(const MemberAssignmentAST& assign);
-  void checkIndexedAssignment(const IndexedAssignmentAST& assign);
-  void checkArrayLiteral(const ArrayLiteralAST& literal);
-  void checkIndexExpr(const IndexAST& index);
-  void checkCompoundAssignment(const CompoundAssignmentAST& assign);
+  void checkWhileExpr(const sun::ast::WhileExprAST& whileExpr);
+  void checkForExpr(const sun::ast::ForExprAST& forExpr);
+  void checkForInExpr(const sun::ast::ForInExprAST& forInExpr);
+  void checkBlockExpr(const sun::ast::BlockExprAST& block, size_t start = 0);
+  void checkReturnStmt(const sun::ast::ReturnExprAST& ret);
+  void checkFunctionDef(const sun::ast::FunctionAST& func);
+  void checkLambdaDef(const sun::ast::LambdaAST& lambda);
+  void checkClassDef(const sun::ast::ClassDefinitionAST& classDef);
+  void checkMemberAccess(const sun::ast::MemberAccessAST& access);
+  void checkMemberAssignment(const sun::ast::MemberAssignmentAST& assign);
+  void checkIndexedAssignment(const sun::ast::IndexedAssignmentAST& assign);
+  void checkArrayLiteral(const sun::ast::ArrayLiteralAST& literal);
+  void checkIndexExpr(const sun::ast::IndexAST& index);
+  void checkCompoundAssignment(const sun::ast::CompoundAssignmentAST& assign);
   void checkVariableWrite(const std::string& varName, const TypePtr& valueType,
-                          const Position& pos);
+                          const sun::support::Position& pos);
   bool isRefCapturingLambdaExpr(const ExprAST& expr) const;
   // A value that must not leave this frame: a call result built from a
   // lambda with a capture list (spawn stores that lambda inside the Thread
@@ -104,7 +112,7 @@ class BorrowChecker {
   // type says so.
   void forbidFrameBoundByValueArgs(const CallExprAST& call,
                                    const std::vector<TypePtr>& paramTypes);
-  void reportFrameBoundEscapeThroughCall(const Position& pos);
+  void reportFrameBoundEscapeThroughCall(const sun::support::Position& pos);
   // A lambda value whose captured environment provably lives in THIS frame:
   // a capture-list literal, a bound method of a frame-local receiver, or a
   // local one of those was assigned to. See frameSourcedLambdas_.
@@ -127,7 +135,7 @@ class BorrowChecker {
   // outlives the environment's - it would hold a dangling environment once
   // the inner scope ends. Returns true when the store is allowed.
   bool checkFrameStoreDepth(const std::string& destBase, size_t envDepth,
-                            const Position& pos);
+                            const sun::support::Position& pos);
   // A lifetime as the caller-side checker sees it. Concrete: pinned to a
   // scope depth of this frame (deeper dies sooner). Symbolic: one of the
   // current signature's named lifetimes - valid in some ancestor frame the
@@ -170,13 +178,14 @@ class BorrowChecker {
   // outer scope than the lambda's environment, otherwise mark the
   // destination frame-bound so the carrier cannot cross a call boundary
   void noteFrameSourcedLambdaStore(const std::string& destBase, size_t envDepth,
-                                   const Position& pos);
+                                   const sun::support::Position& pos);
   // A ref-storing class value is landing in the named destination (a fresh
   // construction, or a holder local moved in). Rejects a destination that
   // outlives what the value borrows, and records the destination's own
   // bound so later moves keep the whole journey in check.
   void trackRefHolderStore(const std::string& destName, size_t destDepth,
-                           const ExprAST& value, const Position& pos);
+                           const ExprAST& value,
+                           const sun::support::Position& pos);
   // Conservatively relate callbacks whose generic parameters lost lifetime
   // names to every receiver and mutable-ref destination the callee can keep.
   void checkErasedLifetimeLambdaArgs(const CallExprAST& call,
@@ -184,8 +193,9 @@ class BorrowChecker {
   // Does this type point into storage it does not own - a reference in any
   // field, transitively, or a '<'_>' lambda environment it can carry?
   bool classStoresRefs(const TypePtr& type) const;
-  bool classStoresRefsWalk(const TypePtr& type,
-                           std::unordered_set<const Type*>& visited) const;
+  bool classStoresRefsWalk(
+      const TypePtr& type,
+      std::unordered_set<const sun::semantic_analysis::Type*>& visited) const;
   // Does this class hold a mutable reference anywhere in its fields?
   bool classStoresMutableRefs(const TypePtr& type) const;
   // Visit the by-ref inputs a holder-producing call keeps pointing into: a
@@ -209,9 +219,9 @@ class BorrowChecker {
 
   // Protos of the lambdas whose bodies are currently being checked
   // (innermost last) - nested by-ref captures alias their loans
-  std::vector<const PrototypeAST*> lambdaProtoStack_;
-  void checkTryCatch(const TryCatchExprAST& tryCatch);
-  void checkUnsafeBlock(const UnsafeBlockAST& unsafeBlock);
+  std::vector<const sun::ast::PrototypeAST*> lambdaProtoStack_;
+  void checkTryCatch(const sun::ast::TryCatchExprAST& tryCatch);
+  void checkUnsafeBlock(const sun::ast::UnsafeBlockAST& unsafeBlock);
 
   // Scope management
   void enterScope();
@@ -221,8 +231,8 @@ class BorrowChecker {
 
   // Error reporting - positions carry the file path so the driver can
   // render the standard source-line-and-caret format
-  void reportError(const std::string& msg, const Position& pos);
-  void reportConflict(const std::string& msg, const Position& pos,
+  void reportError(const std::string& msg, const sun::support::Position& pos);
+  void reportConflict(const std::string& msg, const sun::support::Position& pos,
                       const Loan& conflict);
 
   // Helper to check if a type is or contains a reference
@@ -331,7 +341,8 @@ class BorrowChecker {
 
   // Reject moving out of a match binding / frozen discriminant. Returns
   // true if `name` may be moved.
-  bool checkMoveAllowed(const std::string& name, const Position& pos);
+  bool checkMoveAllowed(const std::string& name,
+                        const sun::support::Position& pos);
 
   // =========================================================================
   // Partial moves (a field moved out of its object)
@@ -358,7 +369,8 @@ class BorrowChecker {
 
   // Reject moving a whole object whose field was moved out. Returns true if
   // `name` may be moved.
-  bool checkFieldsIntact(const std::string& name, const Position& pos);
+  bool checkFieldsIntact(const std::string& name,
+                         const sun::support::Position& pos);
 
   // Depth of member-access objects being checked: reading `cfg.query` is a
   // use of that field, not of `cfg` as a whole, so a partially moved `cfg` is
@@ -370,10 +382,10 @@ class BorrowChecker {
   // =========================================================================
 
   // Record that `place` (a variable name or a field path) was moved here.
-  void recordMove(const std::string& place, const Position& pos);
+  void recordMove(const std::string& place, const sun::support::Position& pos);
 
   // Where each still-standing move happened, for the loop report below.
-  std::unordered_map<std::string, Position> moveLocations_;
+  std::unordered_map<std::string, sun::support::Position> moveLocations_;
 
   // Names declared inside the loop bodies currently being checked (innermost
   // last). Such a name is fresh on every iteration, so moving it is fine.
@@ -434,10 +446,11 @@ class BorrowChecker {
   /// Check that a return statement's lifetime is valid.
   /// A ref return is only valid if the returned value's lifetime
   /// is tied to a parameter (not a local variable).
-  void checkReturnLifetime(const ReturnExprAST& ret);
+  void checkReturnLifetime(const sun::ast::ReturnExprAST& ret);
 
   /// Report a dangling reference error
-  void reportDanglingRef(const std::string& varName, const Position& pos);
+  void reportDanglingRef(const std::string& varName,
+                         const sun::support::Position& pos);
 
   // Scope depth when current function was entered (for lifetime comparison)
   size_t functionScopeDepth_ = 0;
@@ -469,4 +482,4 @@ class BorrowChecker {
   Lifetime inferCallReturnLifetime(const CallExprAST& call);
 };
 
-}  // namespace sun
+}  // namespace sun::borrow_checker

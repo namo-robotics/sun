@@ -1,5 +1,9 @@
 #pragma once
 
+namespace sun::ast {
+class ExprAST;
+}
+
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -8,9 +12,9 @@
 
 #include "semantic_analysis/declaration_id.h"
 
-class ExprAST;
+namespace sun::semantic_analysis {}
 
-namespace sun {
+namespace sun::semantic_analysis {
 
 class PortableDeclarationKey;
 class DeclarationTable;
@@ -65,7 +69,8 @@ class PortableDeclarationKey {
   PortableDeclarationKey() = default;
   /** Assign source ordinals at the artifact boundary, excluding imported trees.
    */
-  static void assignOriginals(const ExprAST& root, DeclarationTable& table,
+  static void assignOriginals(const sun::ast::ExprAST& root,
+                              DeclarationTable& table,
                               const std::string& artifactHash);
   /** Derive a key from assigned source keys and concrete specialization inputs.
    */
@@ -107,4 +112,4 @@ class PortableDeclarationKey {
   }
 };
 
-}  // namespace sun
+}  // namespace sun::semantic_analysis

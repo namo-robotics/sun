@@ -9,19 +9,28 @@
 #include "semantic_analysis/type_rules.h"
 #include "support/error.h"
 
-using sun::unwrapRef;
-using sun::rules::checkCharOperands;
-using sun::rules::coerceBinaryLiteralOperands;
-using sun::rules::tryCoerceIntegerLiteral;
+using sun::semantic_analysis::TypePtr;
+using sun::semantic_analysis::Types;
+
+using sun::ast::ExprAST;
+using sun::parsing::TokenKind;
+using sun::support::logAndThrowError;
+
+namespace sun::semantic_analysis {
+
+using sun::semantic_analysis::checkCharOperands;
+using sun::semantic_analysis::coerceBinaryLiteralOperands;
+using sun::semantic_analysis::tryCoerceIntegerLiteral;
+using sun::semantic_analysis::unwrapRef;
 
 void SemanticAnalyzer::analyzeNumberLiteral(ExprAST& expr,
-                                            sun::TypePtr expectedType) {
+                                            TypePtr expectedType) {
   // A suffixed literal (21u8, 1.5f32) is already typed: it ignores the
   // expected type, and an integer value that does not fit its suffix is an
   // error here. Floats skip the range check — rounding is inherent to them.
-  const auto& num = static_cast<const NumberExprAST&>(expr);
+  const auto& num = static_cast<const sun::ast::NumberExprAST&>(expr);
   if (num.hasSuffix()) {
-    sun::TypePtr suffixType = sun::Types::fromString(num.getSuffix());
+    TypePtr suffixType = Types::fromString(num.getSuffix());
     if (num.isInteger()) {
       tryCoerceIntegerLiteral(&expr, suffixType, /*throwOnFail=*/true);
     } else {
@@ -43,8 +52,8 @@ void SemanticAnalyzer::analyzeNumberLiteral(ExprAST& expr,
   }
 }
 
-void SemanticAnalyzer::analyzeArrayLiteral(ArrayLiteralAST& arrLit,
-                                           sun::TypePtr expectedType) {
+void SemanticAnalyzer::analyzeArrayLiteral(sun::ast::ArrayLiteralAST& arrLit,
+                                           TypePtr expectedType) {
   // The expected element type (a field's or parameter's array type) lets a
   // literal of narrower numbers widen to it
   if (expectedType && unwrapRef(expectedType) &&
@@ -62,7 +71,7 @@ void SemanticAnalyzer::analyzeArrayLiteral(ArrayLiteralAST& arrLit,
   arrLit.setResolvedType(types_.inferType(arrLit));
 }
 
-void SemanticAnalyzer::analyzeIndexExpr(IndexAST& arrIdx) {
+void SemanticAnalyzer::analyzeIndexExpr(sun::ast::IndexAST& arrIdx) {
   // Analyze the target expression
   analyzeExpr(const_cast<ExprAST&>(*arrIdx.getTarget()));
   // Analyze each index/slice expression and set slice type
@@ -74,16 +83,16 @@ void SemanticAnalyzer::analyzeIndexExpr(IndexAST& arrIdx) {
       analyzeExpr(const_cast<ExprAST&>(*idx->getEnd()));
     }
     // Each SliceExprAST resolves to the slice type
-    const_cast<SliceExprAST&>(*idx).setResolvedType(sun::Types::Slice());
+    const_cast<sun::ast::SliceExprAST&>(*idx).setResolvedType(Types::Slice());
   }
   // `c[i]` on a class calls __index__ / __slice__, a method like any
   // other: it needs a mutable receiver unless declared const, and a
   // `ref T` result seen through a constant receiver is `const ref T`
   bool receiverImmutable = false;
-  sun::TypePtr targetType = unwrapRef(arrIdx.getTarget()->getResolvedType());
+  TypePtr targetType = unwrapRef(arrIdx.getTarget()->getResolvedType());
   if (targetType && targetType->isClass()) {
     const auto* classType =
-        static_cast<const sun::ClassType*>(targetType.get());
+        static_cast<const sun::semantic_analysis::ClassType*>(targetType.get());
     const char* opName = arrIdx.hasSlices() ? "__slice__" : "__index__";
     if (const auto* method = classType->getMethod(opName)) {
       checkUnsafeCall(method->isUnsafe, opName, arrIdx.getLocation());
@@ -93,25 +102,25 @@ void SemanticAnalyzer::analyzeIndexExpr(IndexAST& arrIdx) {
     }
   }
   // Set resolved type (element type of the array)
-  sun::TypePtr resultType = types_.inferType(arrIdx);
+  TypePtr resultType = types_.inferType(arrIdx);
   if (receiverImmutable) resultType = types_.createConstView(resultType);
   arrIdx.setResolvedType(resultType);
 }
 
 void SemanticAnalyzer::analyzeSliceExpr(ExprAST& expr) {
   // SliceExprAST can appear standalone in some contexts
-  auto& sliceExpr = static_cast<SliceExprAST&>(expr);
+  auto& sliceExpr = static_cast<sun::ast::SliceExprAST&>(expr);
   if (sliceExpr.hasStart()) {
     analyzeExpr(const_cast<ExprAST&>(*sliceExpr.getStart()));
   }
   if (sliceExpr.hasEnd()) {
     analyzeExpr(const_cast<ExprAST&>(*sliceExpr.getEnd()));
   }
-  expr.setResolvedType(sun::Types::Slice());
+  expr.setResolvedType(Types::Slice());
 }
 
-void SemanticAnalyzer::analyzeBinaryExpr(BinaryExprAST& binExpr,
-                                         sun::TypePtr expectedType) {
+void SemanticAnalyzer::analyzeBinaryExpr(sun::ast::BinaryExprAST& binExpr,
+                                         TypePtr expectedType) {
   analyzeExpr(const_cast<ExprAST&>(*binExpr.getLHS()));
   analyzeExpr(const_cast<ExprAST&>(*binExpr.getRHS()));
 
@@ -119,12 +128,14 @@ void SemanticAnalyzer::analyzeBinaryExpr(BinaryExprAST& binExpr,
   TokenKind binOp = binExpr.getOp().kind;
   if (binOp == TokenKind::EQUAL_EQUAL || binOp == TokenKind::NOT_EQUAL) {
     for (const ExprAST* side : {binExpr.getLHS(), binExpr.getRHS()}) {
-      sun::TypePtr sideType = unwrapRef(side->getResolvedType());
+      TypePtr sideType = unwrapRef(side->getResolvedType());
       if (sideType && sideType->isEnum() &&
-          static_cast<sun::EnumType*>(sideType.get())->hasPayload()) {
+          static_cast<sun::semantic_analysis::EnumType*>(sideType.get())
+              ->hasPayload()) {
         logAndThrowError(
             "Cannot compare enum '" +
-                static_cast<sun::EnumType*>(sideType.get())->getDisplayName() +
+                static_cast<sun::semantic_analysis::EnumType*>(sideType.get())
+                    ->getDisplayName() +
                 "' with '==' ; use match to inspect payload enums",
             binExpr.getLocation());
       }
@@ -135,11 +146,12 @@ void SemanticAnalyzer::analyzeBinaryExpr(BinaryExprAST& binExpr,
   binExpr.setResolvedType(types_.inferType(binExpr));
 }
 
-void SemanticAnalyzer::analyzeUnaryExpr(UnaryExprAST& unaryExpr) {
+void SemanticAnalyzer::analyzeUnaryExpr(sun::ast::UnaryExprAST& unaryExpr) {
   analyzeExpr(const_cast<ExprAST&>(*unaryExpr.getOperand()));
 
   TokenKind op = unaryExpr.getOp().kind;
-  auto operandType = sun::unwrapRef(types_.inferType(*unaryExpr.getOperand()));
+  auto operandType = sun::semantic_analysis::unwrapRef(
+      types_.inferType(*unaryExpr.getOperand()));
 
   // Unresolved generic operands are validated again at instantiation
   if (operandType && !operandType->isTypeParameter()) {
@@ -176,20 +188,20 @@ void SemanticAnalyzer::analyzeUnaryExpr(UnaryExprAST& unaryExpr) {
   }
 
   // Matches inferType's UNARY rule without re-walking the operand subtree
-  unaryExpr.setResolvedType(op == TokenKind::NOT ? sun::Types::Bool()
-                                                 : operandType);
+  unaryExpr.setResolvedType(op == TokenKind::NOT ? Types::Bool() : operandType);
 }
 
-void SemanticAnalyzer::analyzeMemberAccess(MemberAccessAST& memberAccess,
-                                           sun::TypePtr expectedType) {
+void SemanticAnalyzer::analyzeMemberAccess(
+    sun::ast::MemberAccessAST& memberAccess, TypePtr expectedType) {
   // Check for enum variant access: EnumName.VariantName
   // Don't try to analyze the "object" if it's an enum type name
   if (enums_.tryAnalyzeGenericEnumUnitVariant(memberAccess, expectedType))
     return;
   bool isEnumAccess = false;
-  if (memberAccess.getObject()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
-    const auto& varRef =
-        static_cast<const VariableReferenceAST&>(*memberAccess.getObject());
+  if (memberAccess.getObject()->getType() ==
+      sun::ast::ASTNodeType::VARIABLE_REFERENCE) {
+    const auto& varRef = static_cast<const sun::ast::VariableReferenceAST&>(
+        *memberAccess.getObject());
     if (auto enumType = ctx_.lookupEnum(varRef.getName())) {
       const_cast<ExprAST&>(*memberAccess.getObject()).setResolvedType(enumType);
       isEnumAccess = true;
@@ -209,10 +221,11 @@ void SemanticAnalyzer::analyzeMemberAccess(MemberAccessAST& memberAccess,
   // A module-qualified function name can denote an overload set. Select the
   // member from the expected function-pointer signature before ordinary type
   // inference falls back to the first overload.
-  sun::TypePtr objectType = memberAccess.getObject()->getResolvedType();
+  TypePtr objectType = memberAccess.getObject()->getResolvedType();
   if (objectType && objectType->isModule()) {
     const auto* moduleType =
-        static_cast<const sun::ModuleType*>(objectType.get());
+        static_cast<const sun::semantic_analysis::ModuleType*>(
+            objectType.get());
     SymbolMatch match = ctx_.findSymbolInModule(moduleType->getModulePath(),
                                                 memberAccess.getMemberName(),
                                                 SymbolKind::Variable);
@@ -226,17 +239,19 @@ void SemanticAnalyzer::analyzeMemberAccess(MemberAccessAST& memberAccess,
   if (objectType && objectType->isModule() && expectedType &&
       expectedType->isFunction()) {
     const auto* moduleType =
-        static_cast<const sun::ModuleType*>(objectType.get());
+        static_cast<const sun::semantic_analysis::ModuleType*>(
+            objectType.get());
     const auto* expectedFunction =
-        static_cast<const sun::FunctionType*>(expectedType.get());
+        static_cast<const sun::semantic_analysis::FunctionType*>(
+            expectedType.get());
     SymbolMatch match = ctx_.findSymbolInModule(
         moduleType->getModulePath(), memberAccess.getMemberName(),
         SymbolKind::Function, &expectedFunction->getParamTypes());
     if (match && match.functionInfo) {
-      sun::TypePtr candidate = sun::Types::Function(
-          match.functionInfo->returnType, match.functionInfo->paramTypes,
-          match.functionInfo->canThrow);
-      if (sun::rules::isAssignableTo(candidate, expectedType)) {
+      TypePtr candidate = Types::Function(match.functionInfo->returnType,
+                                          match.functionInfo->paramTypes,
+                                          match.functionInfo->canThrow);
+      if (sun::semantic_analysis::isAssignableTo(candidate, expectedType)) {
         memberAccess.setQualifiedName(match.functionInfo->qualifiedName);
         memberAccess.setTargetDeclarationId(match.functionInfo->declarationId);
         memberAccess.setResolvedType(candidate);
@@ -255,7 +270,8 @@ void SemanticAnalyzer::analyzeMemberAccess(MemberAccessAST& memberAccess,
   maybeResolveBoundMethodRef(memberAccess, expectedType);
 }
 
-void SemanticAnalyzer::analyzeQualifiedName(QualifiedNameAST& qualName) {
+void SemanticAnalyzer::analyzeQualifiedName(
+    sun::ast::QualifiedNameAST& qualName) {
   std::string fullName = qualName.getFullName();
 
   // Look up in namespaced variables first
@@ -273,11 +289,13 @@ void SemanticAnalyzer::analyzeQualifiedName(QualifiedNameAST& qualName) {
   const FunctionInfo* funcInfo = ctx_.lookupQualifiedFunction(fullName);
   if (funcInfo) {
     qualName.setTargetDeclarationId(funcInfo->declarationId);
-    qualName.setResolvedType(sun::Types::Function(
+    qualName.setResolvedType(Types::Function(
         funcInfo->returnType, funcInfo->paramTypes, funcInfo->canThrow));
     return;
   }
 
   // Unknown qualified name - default to f64
-  qualName.setResolvedType(sun::Types::Float64());
+  qualName.setResolvedType(Types::Float64());
 }
+
+}  // namespace sun::semantic_analysis

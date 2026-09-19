@@ -4,7 +4,7 @@
 
 #include <unordered_set>
 
-namespace sun::names {
+namespace sun::semantic_analysis {
 
 // Reserved identifiers are for builtins only (e.g. _is<T>, _sizeof<T>).
 // The exception is the dunder methods a class implements to overload an
@@ -21,7 +21,8 @@ bool isReservedIdentifier(const std::string& name) {
 }
 
 std::string formatFunctionSignature(
-    const std::string& name, const std::vector<sun::TypePtr>& paramTypes) {
+    const std::string& name,
+    const std::vector<sun::semantic_analysis::TypePtr>& paramTypes) {
   std::string sig = name + "(";
   for (size_t i = 0; i < paramTypes.size(); ++i) {
     if (i > 0) sig += ",";
@@ -31,4 +32,4 @@ std::string formatFunctionSignature(
   return sig;
 }
 
-}  // namespace sun::names
+}  // namespace sun::semantic_analysis

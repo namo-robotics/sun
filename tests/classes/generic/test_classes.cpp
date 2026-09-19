@@ -9,6 +9,9 @@
 #include "driver/execution_utils.h"
 #include "support/error.h"
 
+using sun::driver::executeString;
+using sun::support::SunError;
+
 // ============================================================================
 // Generic Class Definition Tests
 // ============================================================================
@@ -430,9 +433,9 @@ TEST(Classes_Generic_Errors, error_on_generic_type_not_in_scope) {
   // Nothing imports std, so Vec is not visible where the return type is
   // written. The error must be the one at that annotation, not a failure
   // surfacing later from a body analyzed against half-registered declarations.
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      compileFileWithStdlib("tests/programs/using_outside_module.sun"),
-      "Unknown generic type 'Vec'");
+  EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::compileFileWithStdlib(
+                                    "tests/programs/using_outside_module.sun"),
+                                "Unknown generic type 'Vec'");
 }
 
 // ============================================================================
@@ -446,13 +449,14 @@ TEST(Classes_Generic_Errors, error_on_generic_type_not_in_scope) {
 
 TEST(Classes_Generic_Scoping,
      file_level_using_reaches_module_fields_and_signatures) {
-  compileFileWithStdlib("tests/programs/using_reaches_module_members.sun");
+  sun::driver::compileFileWithStdlib(
+      "tests/programs/using_reaches_module_members.sun");
 }
 
 TEST(Classes_Generic_Scoping,
      file_level_using_reaches_module_members_across_merged_files) {
-  compileFiles({"tests/programs/merged_using_lib.sun",
-                "tests/programs/merged_using_app.sun"});
+  sun::driver::compileFiles({"tests/programs/merged_using_lib.sun",
+                             "tests/programs/merged_using_app.sun"});
 }
 
 TEST(Classes_Generic_Errors, error_on_unknown_generic_type_name) {
@@ -523,7 +527,7 @@ TEST(Classes_Generic_Errors,
 }
 
 TEST(Classes_Generic_Errors, using_inside_module_resolves_generic) {
-  auto value = executeStringWithStdlib(R"(
+  auto value = sun::driver::executeStringWithStdlib(R"(
     public module namo {
       using std;
 

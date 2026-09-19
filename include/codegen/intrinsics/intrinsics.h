@@ -23,7 +23,7 @@
 #include "codegen/intrinsics/network.h"
 #include "codegen/intrinsics/print.h"
 
-namespace sun {
+namespace sun::codegen::intrinsics {
 
 // Intrinsic function identifiers
 // Generic intrinsics take a type argument: _sizeof<T>(), _load<T>(ptr, idx)
@@ -392,4 +392,4 @@ inline bool requiresUnsafeBlock(const std::string& name) {
   return requiresUnsafeBlock(getIntrinsic(name));
 }
 
-}  // namespace sun
+}  // namespace sun::codegen::intrinsics

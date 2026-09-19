@@ -8,7 +8,7 @@
 #include "borrow_checker/lifetime.h"
 #include "support/position.h"
 
-namespace sun {
+namespace sun::borrow_checker {
 
 /// The kind of borrow - determines what operations are allowed
 enum class BorrowKind {
@@ -24,13 +24,14 @@ struct Loan {
   std::string refName;      // The reference variable name (e.g., "r")
   BorrowKind kind;          // Shared or Mutable
   size_t scopeDepth;        // Scope level where borrow was created
-  Position location;        // Where the borrow occurred (for error messages)
+  sun::support::Position
+      location;             // Where the borrow occurred (for error messages)
   Lifetime lifetime;        // Lifetime of the borrowed reference
   bool isActive = true;     // False when ref goes out of scope
 
   Loan() = default;
   Loan(std::string borrowed, std::string ref, BorrowKind k, size_t depth,
-       Position loc, Lifetime lt = Lifetime())
+       sun::support::Position loc, Lifetime lt = Lifetime())
       : borrowedVar(std::move(borrowed)),
         refName(std::move(ref)),
         kind(k),
@@ -55,4 +56,4 @@ struct BorrowCheckResult {
   }
 };
 
-}  // namespace sun
+}  // namespace sun::borrow_checker

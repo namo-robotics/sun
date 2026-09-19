@@ -20,7 +20,8 @@ int findWord(const std::string& text, const std::string& name, size_t from,
              size_t to);
 
 // `length` bytes at `offset` in the file of `base`
-Position rangeAt(const Position& base, int offset, int length);
+sun::support::Position rangeAt(const sun::support::Position& base, int offset,
+                               int length);
 
 // True when `word` is written at `offset`
 bool textHas(const std::string& text, int offset, const std::string& word);
@@ -29,27 +30,30 @@ bool textHas(const std::string& text, int offset, const std::string& word);
 // name, otherwise the first whole word `name` inside it, or the name just
 // before it (a signature span starts at its parenthesis). Falls back to an
 // empty range at the start of the span.
-Position nameRange(const Position& span, const std::string& name,
-                   const std::string& text);
+sun::support::Position nameRange(const sun::support::Position& span,
+                                 const std::string& name,
+                                 const std::string& text);
 
 // Signature of a function or lambda; null for other nodes
-const PrototypeAST* prototypeOf(const ExprAST& node);
+const sun::ast::PrototypeAST* prototypeOf(const sun::ast::ExprAST& node);
 
-bool declaresParameter(const PrototypeAST& proto, const std::string& name);
+bool declaresParameter(const sun::ast::PrototypeAST& proto,
+                       const std::string& name);
 
 // Where `name` is declared in a signature: `name:` or `name...` after the
 // opening parenthesis
-std::optional<Position> parameterRange(const ExprAST& owner,
-                                       const std::string& name,
-                                       const std::string& text);
+std::optional<sun::support::Position> parameterRange(
+    const sun::ast::ExprAST& owner, const std::string& name,
+    const std::string& text);
 
 // Text of the file holding a location: the document, a file of the same
 // manifest, or a library source read from disk
-std::optional<std::string> textOf(const Position& location,
+std::optional<std::string> textOf(const sun::support::Position& location,
                                   const std::string& documentPath,
                                   const std::string& source);
 
 // The declared name's range, in the declaration's own file
-Position nameRangeOf(const Declaration& declaration, const std::string& text);
+sun::support::Position nameRangeOf(const Declaration& declaration,
+                                   const std::string& text);
 
 }  // namespace sun::lsp

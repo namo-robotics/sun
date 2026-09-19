@@ -9,6 +9,9 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+using sun::driver::executeStringWithStdlib;
+
 // ============================================================================
 // Minimal Variadic Parameter Tests (no stdlib)
 // ============================================================================
@@ -317,7 +320,7 @@ TEST(MemorySafety_Allocator, create_no_matching_init_overload_errors) {
         return 0;
     }
   )"),
-               SunError);
+               sun::support::SunError);
 }
 
 // ============================================================================

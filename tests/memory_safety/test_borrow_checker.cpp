@@ -6,6 +6,10 @@
 #include "borrow_checker/borrow_checker.h"
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+using sun::driver::executeStringWithStdlib;
+using sun::support::SunError;
+
 // ============================================================================
 // Valid Borrow Patterns - Should Compile Successfully
 // ============================================================================

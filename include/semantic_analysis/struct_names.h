@@ -8,8 +8,7 @@
 
 #include <cstddef>
 
-namespace sun {
-namespace StructNames {
+namespace sun::semantic_analysis {
 
 // Layout patterns for well-known struct types
 enum class Layout {
@@ -40,5 +39,4 @@ constexpr const char* StaticPtr = "static_ptr_struct";
 constexpr const char* InterfaceFat = "interface_fat";
 constexpr const char* ArrayStruct = "array_struct";
 
-}  // namespace StructNames
-}  // namespace sun
+}  // namespace sun::semantic_analysis

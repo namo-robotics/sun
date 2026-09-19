@@ -4,12 +4,15 @@
 
 #include "semantic_analysis/types.h"
 
-namespace sun::c_abi {
+/** Checks compatible C types and emits calls across the C ABI boundary. */
+namespace sun::codegen::abi {
+using sun::semantic_analysis::TypePtr;
 
 /** Return whether an enum uses C's integer representation. */
 inline bool isCStyleEnum(const TypePtr& type) {
   return type && type->isEnum() &&
-         !static_cast<const EnumType*>(type.get())->hasPayload();
+         !static_cast<const sun::semantic_analysis::EnumType*>(type.get())
+              ->hasPayload();
 }
 
 /** Return whether a C function pointer can accept this parameter type. */
@@ -27,7 +30,9 @@ inline bool isCallbackReturn(const TypePtr& type) {
 
 /** Return whether a function type is a non-throwing C function pointer. */
 inline bool isFunctionPointer(const TypePtr& type) {
-  const auto* function = tryGetType<FunctionType>(type);
+  const auto* function =
+      sun::codegen::support::tryGetType<sun::semantic_analysis::FunctionType>(
+          type);
   if (!function || function->canThrow() ||
       !isCallbackReturn(function->getReturnType())) {
     return false;
@@ -51,4 +56,4 @@ inline bool isReturn(const TypePtr& type) {
                   type->isClass() || isCStyleEnum(type));
 }
 
-}  // namespace sun::c_abi
+}  // namespace sun::codegen::abi

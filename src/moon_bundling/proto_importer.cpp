@@ -46,7 +46,7 @@
 #include "support/error.h"
 #include "support/sun_path.h"
 
-namespace sun {
+namespace sun::moon_bundling {
 
 namespace {
 
@@ -55,7 +55,8 @@ namespace pbc = google::protobuf::compiler;
 using FD = pb::FieldDescriptor;
 
 [[noreturn]] void fail(const std::string& message) {
-  throw SunError(SunError::Kind::Compile, "proto import: " + message);
+  throw sun::support::SunError(sun::support::SunError::Kind::Compile,
+                               "proto import: " + message);
 }
 
 // Descriptor accessors returned `const std::string&` before protobuf 23 and
@@ -953,7 +954,8 @@ std::vector<std::string> ProtoImporter::importDirsFor(
     const std::string& baseDir) {
   std::vector<std::string> dirs;
   if (!baseDir.empty()) dirs.push_back(baseDir);
-  for (const auto& dir : SunPath::getPaths()) dirs.push_back(dir.string());
+  for (const auto& dir : sun::support::SunPath::getPaths())
+    dirs.push_back(dir.string());
   return dirs;
 }
 
@@ -1014,4 +1016,4 @@ SynthesizedProtoModule ProtoImporter::import(
   return out;
 }
 
-}  // namespace sun
+}  // namespace sun::moon_bundling

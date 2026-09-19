@@ -7,6 +7,8 @@
 
 #include "ast/expr_ast.h"
 
+namespace sun::ast {
+
 // this keyword - reference to current object instance
 class ThisExprAST : public ExprAST {
  public:
@@ -16,3 +18,5 @@ class ThisExprAST : public ExprAST {
   std::string toString() const override { return "this"; }
   std::string dotLabel() const override { return "this"; }
 };
+
+}  // namespace sun::ast

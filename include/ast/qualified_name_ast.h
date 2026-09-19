@@ -9,6 +9,8 @@
 #include "ast/analysis.h"
 #include "ast/expr_ast.h"
 
+namespace sun::ast {
+
 // Qualified name expression: Module.name or Namespace::name
 class QualifiedNameAST : public ExprAST {
   std::vector<std::string> parts;  // ["std", "Vec"] for std.Vec
@@ -43,3 +45,5 @@ class QualifiedNameAST : public ExprAST {
 
   std::string dotLabel() const override { return "QualName\n" + getFullName(); }
 };
+
+}  // namespace sun::ast

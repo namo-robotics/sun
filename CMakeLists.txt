@@ -227,10 +227,10 @@ add_library(sun_lib
     src/codegen/loops/loops.cpp
     src/codegen/errors/error_generator.cpp
     src/codegen/errors/error_handling.cpp
-    src/codegen/abi/aapcs64.cpp
+    src/codegen/abi/aapcs64/aapcs64.cpp
     src/codegen/abi/c_abi.cpp
     src/codegen/abi/extern_c.cpp
-    src/codegen/abi/sysv_x86_64.cpp
+    src/codegen/abi/sysv/sysv_x86_64.cpp
     src/codegen/intrinsics/atomic.cpp
     src/codegen/intrinsics/bits.cpp
     src/codegen/intrinsics/builtins.cpp

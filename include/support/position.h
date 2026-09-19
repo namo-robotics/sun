@@ -3,6 +3,8 @@
 #include <optional>
 #include <string>
 
+namespace sun::support {
+
 // Source location tracking for error messages and debugging
 struct Position {
   int line = 1;
@@ -45,3 +47,5 @@ struct Position {
     return result;
   }
 };
+
+}  // namespace sun::support

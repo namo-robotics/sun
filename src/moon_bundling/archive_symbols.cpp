@@ -20,7 +20,7 @@
 
 #include "moon_bundling/moon.h"
 
-namespace sun {
+namespace sun::moon_bundling {
 
 namespace {
 
@@ -253,4 +253,4 @@ std::map<std::string, std::string> listArchiveDefinitions(
   return definitions;
 }
 
-}  // namespace sun
+}  // namespace sun::moon_bundling

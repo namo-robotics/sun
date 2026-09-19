@@ -11,6 +11,8 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+
 // ============================================================================
 // Hole 1: a destination in an outer scope outlives a source in an inner one
 // ============================================================================

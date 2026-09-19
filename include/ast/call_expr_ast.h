@@ -9,6 +9,8 @@
 #include "ast/expr_ast.h"
 #include "semantic_analysis/types.h"
 
+namespace sun::ast {
+
 // Forward declaration for dotLabel()
 class MemberAccessAST;
 class VariableReferenceAST;
@@ -55,10 +57,12 @@ class CallExprAST : public ExprAST {
 
   // How each argument reaches its parameter (set by the semantic analyzer
   // once the callee's signature is known; one entry per argument)
-  void setArgConversions(std::vector<sun::ArgConversion> conversions) const {
+  void setArgConversions(
+      std::vector<sun::semantic_analysis::ArgConversion> conversions) const {
     callAnalysis().argConversions = std::move(conversions);
   }
-  const std::vector<sun::ArgConversion>& getArgConversions() const {
+  const std::vector<sun::semantic_analysis::ArgConversion>& getArgConversions()
+      const {
     return callAnalysis().argConversions;
   }
 
@@ -69,8 +73,8 @@ class CallExprAST : public ExprAST {
 
   // Returns the resolved types of all arguments (for constructor overload
   // resolution)
-  std::vector<sun::TypePtr> getResolvedArgTypes() const {
-    std::vector<sun::TypePtr> types;
+  std::vector<sun::semantic_analysis::TypePtr> getResolvedArgTypes() const {
+    std::vector<sun::semantic_analysis::TypePtr> types;
     types.reserve(Args.size());
     for (const auto& arg : Args) {
       types.push_back(arg->getResolvedType());
@@ -80,3 +84,5 @@ class CallExprAST : public ExprAST {
 
   std::string dotLabel() const override;
 };
+
+}  // namespace sun::ast

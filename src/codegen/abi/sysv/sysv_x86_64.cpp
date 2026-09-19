@@ -1,11 +1,14 @@
 // abi/sysv_x86_64.cpp — System V AMD64 argument classification.
 // See abi/sysv_x86_64.h.
 
-#include "codegen/abi/sysv_x86_64.h"
+#include "codegen/abi/sysv/sysv_x86_64.h"
 
 #include <algorithm>
 
-namespace sun::abi::sysv {
+using sun::codegen::abi::ArgKind;
+using sun::codegen::abi::ArgLowering;
+
+namespace sun::codegen::abi::sysv {
 
 namespace {
 
@@ -177,10 +180,10 @@ ArgLowering lowerReturn(llvm::Type* type, const llvm::DataLayout& dl) {
   return lowerAggregate(type, dl);
 }
 
-SignatureLowering lowerCSignature(llvm::Type* returnType,
-                                  llvm::ArrayRef<llvm::Type*> paramTypes,
-                                  const llvm::DataLayout& dl) {
-  SignatureLowering lowering;
+sun::codegen::abi::SignatureLowering lowerCSignature(
+    llvm::Type* returnType, llvm::ArrayRef<llvm::Type*> paramTypes,
+    const llvm::DataLayout& dl) {
+  sun::codegen::abi::SignatureLowering lowering;
   lowering.ret = lowerReturn(returnType, dl);
   lowering.params.reserve(paramTypes.size());
   for (llvm::Type* p : paramTypes) {
@@ -189,4 +192,4 @@ SignatureLowering lowerCSignature(llvm::Type* returnType,
   return lowering;
 }
 
-}  // namespace sun::abi::sysv
+}  // namespace sun::codegen::abi::sysv

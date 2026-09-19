@@ -16,6 +16,10 @@
 #include "semantic_analysis/types.h"
 #include "support/position.h"
 
+namespace sun::ast {
+using sun::semantic_analysis::DeclarationId;
+using sun::semantic_analysis::TypePtr;
+
 // Top-level nodes (not derived from ExprAST)
 class PrototypeAST {
   std::string Name;  // Source name as written by user (for error messages)
@@ -38,7 +42,7 @@ class PrototypeAST {
   bool unsafeMethod_ = false;  // Calls require an unsafe block.
   bool constMethod_ = false;   // `const method`: `this` is immutable
   std::optional<std::string> linkName_;  // `as "c_symbol"` override
-  Position location_;                    // Source span of the signature
+  sun::support::Position location_;      // Source span of the signature
   std::string doc_;  // Comment written above the declaration
 
   // Analysis data populated by semantic analyzer
@@ -119,8 +123,8 @@ class PrototypeAST {
   const std::string& getName() const { return Name; }
   void setName(std::string name) { Name = std::move(name); }
 
-  void setLocation(Position loc) { location_ = std::move(loc); }
-  const Position& getLocation() const { return location_; }
+  void setLocation(sun::support::Position loc) { location_ = std::move(loc); }
+  const sun::support::Position& getLocation() const { return location_; }
 
   // Comment written above the function (see doc_comments.h)
   const std::string& getDoc() const { return doc_; }
@@ -129,15 +133,15 @@ class PrototypeAST {
   // Analysis data access
   bool hasAnalysis() const { return analysis_ != nullptr; }
   /** Return this function's identity in the current analysis session. */
-  sun::DeclarationId getDeclarationId() const {
-    return analysis_ ? analysis_->declaration.id : sun::DeclarationId{};
+  DeclarationId getDeclarationId() const {
+    return analysis_ ? analysis_->declaration.id : DeclarationId{};
   }
   /** Assign the identity shared by the function and its prototype. */
-  void setDeclarationId(sun::DeclarationId id) const {
+  void setDeclarationId(DeclarationId id) const {
     analysis().declaration.id = id;
   }
   /** Access identities for the function and its parameters. */
-  sun::DeclarationIdentity& declarationIdentity() const {
+  sun::semantic_analysis::DeclarationIdentity& declarationIdentity() const {
     return analysis().declaration;
   }
   /** Clear the resolved signature while retaining declaration identities. */
@@ -157,10 +161,10 @@ class PrototypeAST {
   const PrototypeAnalysis* getAnalysis() const { return analysis_.get(); }
 
   // Qualified name (after semantic analysis qualifies it)
-  const sun::QualifiedName& getQualifiedName() const {
+  const sun::semantic_analysis::QualifiedName& getQualifiedName() const {
     return analysis().qualifiedName;
   }
-  void setQualifiedName(sun::QualifiedName qname) {
+  void setQualifiedName(sun::semantic_analysis::QualifiedName qname) {
     analysis().qualifiedName = std::move(qname);
   }
   bool hasQualifiedName() const {
@@ -263,21 +267,21 @@ class PrototypeAST {
   // Resolved types for specialized generic functions
   // Set during instantiation, used by codegen to skip type annotation
   // conversion
-  void setResolvedParamTypes(std::vector<sun::TypePtr> types) {
+  void setResolvedParamTypes(std::vector<TypePtr> types) {
     analysis().resolvedParamTypes = std::move(types);
     analysis().resolvedParamTypesSet = true;
   }
-  const std::vector<sun::TypePtr>& getResolvedParamTypes() const {
+  const std::vector<TypePtr>& getResolvedParamTypes() const {
     return analysis().resolvedParamTypes;
   }
   bool hasResolvedParamTypes() const {
     return analysis_ && analysis_->resolvedParamTypesSet;
   }
 
-  void setResolvedReturnType(sun::TypePtr type) {
+  void setResolvedReturnType(TypePtr type) {
     analysis().resolvedReturnType = std::move(type);
   }
-  sun::TypePtr getResolvedReturnType() const {
+  TypePtr getResolvedReturnType() const {
     return analysis_ ? analysis_->resolvedReturnType : nullptr;
   }
   bool hasResolvedReturnType() const {
@@ -286,11 +290,11 @@ class PrototypeAST {
 
   // The pack's element types for this specialization, in order. An empty
   // list is still a resolved pack — the call simply passed nothing.
-  void setResolvedVariadicTypes(std::vector<sun::TypePtr> types) {
+  void setResolvedVariadicTypes(std::vector<TypePtr> types) {
     analysis().resolvedVariadicTypes = std::move(types);
     analysis().resolvedVariadicTypesSet = true;
   }
-  const std::vector<sun::TypePtr>& getResolvedVariadicTypes() const {
+  const std::vector<TypePtr>& getResolvedVariadicTypes() const {
     return analysis().resolvedVariadicTypes;
   }
   bool hasResolvedVariadicTypes() const {
@@ -300,8 +304,8 @@ class PrototypeAST {
   // The full parameter list this specialization is emitted with: the fixed
   // parameters followed by the pack's elements. Codegen appends them in this
   // order, so every argument check lines up against the same list.
-  std::vector<sun::TypePtr> getAllParamTypes() const {
-    std::vector<sun::TypePtr> all = getResolvedParamTypes();
+  std::vector<TypePtr> getAllParamTypes() const {
+    std::vector<TypePtr> all = getResolvedParamTypes();
     const auto& pack = getResolvedVariadicTypes();
     all.insert(all.end(), pack.begin(), pack.end());
     return all;
@@ -324,15 +328,15 @@ class PrototypeAST {
   // named from getAllParamNames(), so asking by name rather than by index
   // keeps the two lists from drifting — and a closure or fat-pointer
   // argument, which is not a parameter at all, simply answers null.
-  sun::TypePtr paramTypeNamed(const std::string& name) const {
+  TypePtr paramTypeNamed(const std::string& name) const {
     if (!hasResolvedParamTypes()) return nullptr;
-    const std::vector<sun::TypePtr>& fixed = getResolvedParamTypes();
+    const std::vector<TypePtr>& fixed = getResolvedParamTypes();
     for (size_t i = 0; i < args.size() && i < fixed.size(); ++i) {
       if (args[i].first == name) return fixed[i];
     }
     if (!hasVariadicParam()) return nullptr;
     const VariadicParam& pack = getVariadicParam();
-    const std::vector<sun::TypePtr>& packTypes = getResolvedVariadicTypes();
+    const std::vector<TypePtr>& packTypes = getResolvedVariadicTypes();
     for (size_t i = 0; i < packTypes.size(); ++i) {
       if (pack.elementName(i) == name) return packTypes[i];
     }
@@ -340,12 +344,10 @@ class PrototypeAST {
   }
 
   // Type parameter bindings for specialized generic functions
-  void setTypeBindings(
-      std::vector<std::pair<std::string, sun::TypePtr>> bindings) {
+  void setTypeBindings(std::vector<std::pair<std::string, TypePtr>> bindings) {
     analysis().typeBindings = std::move(bindings);
   }
-  const std::vector<std::pair<std::string, sun::TypePtr>>& getTypeBindings()
-      const {
+  const std::vector<std::pair<std::string, TypePtr>>& getTypeBindings() const {
     return analysis().typeBindings;
   }
   bool hasTypeBindings() const {
@@ -360,3 +362,5 @@ class PrototypeAST {
   // Clone the prototype via protobuf serialization (deep copy)
   std::unique_ptr<PrototypeAST> clone() const;
 };
+
+}  // namespace sun::ast

@@ -24,7 +24,7 @@ bool isIdentifierChar(char c) {
 
 }  // namespace
 
-std::optional<Rename> computeRename(const BlockExprAST& program,
+std::optional<Rename> computeRename(const sun::ast::BlockExprAST& program,
                                     const std::string& filePath,
                                     const std::string& source, int byteOffset) {
   std::string documentPath = normalizePath(filePath);
@@ -85,11 +85,12 @@ std::string checkNewName(const std::string& newName) {
   // identifier.
   try {
     std::istringstream stream(newName);
-    Lexer lexer(stream);
-    Token first = lexer.getNextToken();
-    if (isKeyword(first.kind)) return "'" + newName + "' is a keyword";
-    if (first.kind != TokenKind::IDENTIFIER || first.text != newName ||
-        !lexer.getNextToken().isEof()) {
+    sun::parsing::Lexer lexer(stream);
+    sun::parsing::Token first = lexer.getNextToken();
+    if (sun::parsing::isKeyword(first.kind))
+      return "'" + newName + "' is a keyword";
+    if (first.kind != sun::parsing::TokenKind::IDENTIFIER ||
+        first.text != newName || !lexer.getNextToken().isEof()) {
       return "'" + newName + "' is not a valid name";
     }
   } catch (const std::exception&) {

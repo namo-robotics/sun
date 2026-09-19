@@ -13,14 +13,15 @@ namespace sun::lsp {
 struct Hover {
   std::string code;           // Sun-syntax text shown to the user
   std::string documentation;  // Comment written above the symbol's declaration
-  Position range;             // Span of the hovered construct (byte offsets)
+  sun::support::Position range;  // Span of the hovered construct (byte offsets)
 };
 
 // Innermost node from `filePath` whose span contains byteOffset, or null.
 // Nodes without a span (module wrappers from merged compilation) are looked
 // through; moon import stubs and nodes from other files are skipped.
-const ExprAST* findInnermostNodeAt(const BlockExprAST& program,
-                                   const std::string& filePath, int byteOffset);
+const sun::ast::ExprAST* findInnermostNodeAt(
+    const sun::ast::BlockExprAST& program, const std::string& filePath,
+    int byteOffset);
 
 // Hover text for the construct at byteOffset in an analyzed program:
 // `name: T` for variables and members, full signatures for functions,
@@ -33,7 +34,7 @@ const ExprAST* findInnermostNodeAt(const BlockExprAST& program,
 // used) fall back to the type annotation written there. The comment directly
 // above the symbol's declaration is returned as documentation. Returns
 // nothing for statements and untyped nodes.
-std::optional<Hover> computeHover(const BlockExprAST& program,
+std::optional<Hover> computeHover(const sun::ast::BlockExprAST& program,
                                   const std::string& filePath,
                                   const std::string& source, int byteOffset);
 

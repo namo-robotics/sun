@@ -19,6 +19,9 @@
 #include "driver/driver.h"
 #include "driver/execution_utils.h"
 
+using sun::driver::Driver;
+using sun::driver::initTestEnvironment;
+
 namespace {
 
 constexpr const char* kSimpleProgram = R"(
@@ -97,7 +100,8 @@ int dwarfdumpVerify(llvm::Module& module, const std::string& objPath) {
   std::string tool = findTool({"llvm-dwarfdump-20", "llvm-dwarfdump"});
   if (tool.empty()) return -1;
   std::string errorMsg;
-  EXPECT_TRUE(sun::emitObjectFile(module, objPath, errorMsg)) << errorMsg;
+  EXPECT_TRUE(sun::driver::emitObjectFile(module, objPath, errorMsg))
+      << errorMsg;
   int rc =
       std::system((tool + " --verify " + objPath + " >/dev/null 2>&1").c_str());
   return WEXITSTATUS(rc);
@@ -191,7 +195,7 @@ function main() i32 {
 
 TEST(Tooling_Backend_DebugInfo, moon_bundle_carries_debug_info_into_g_compile) {
   initTestEnvironment();
-  auto imports = getStdlibMoonImports();
+  auto imports = sun::driver::getStdlibMoonImports();
   if (imports.empty()) GTEST_SKIP() << "stdlib.moon not built";
 
   auto driver = Driver::createForAOT("moon_debug_test", "", /*debugInfo=*/true);
@@ -218,7 +222,7 @@ function main() i32 {
 
 TEST(Tooling_Backend_DebugInfo, moon_debug_info_stripped_from_non_g_compile) {
   initTestEnvironment();
-  auto imports = getStdlibMoonImports();
+  auto imports = sun::driver::getStdlibMoonImports();
   if (imports.empty()) GTEST_SKIP() << "stdlib.moon not built";
 
   auto driver = Driver::createForAOT("moon_strip_test");
@@ -304,10 +308,10 @@ std::string linkSimpleDebugBinary(const std::string& name,
 
   std::string binary = ::testing::TempDir() + name + "_bin";
   std::string errorMsg;
-  sun::LinkOptions linkOpts;
-  if (!sun::compileToExecutable(driver->getModule(), binary, errorMsg,
-                                /*keepObjectFile=*/false, linkOpts,
-                                /*optimize=*/false)) {
+  sun::driver::LinkOptions linkOpts;
+  if (!sun::driver::compileToExecutable(driver->getModule(), binary, errorMsg,
+                                        /*keepObjectFile=*/false, linkOpts,
+                                        /*optimize=*/false)) {
     skipReason = "host link failed: " + errorMsg;
     return "";
   }

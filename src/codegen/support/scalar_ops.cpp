@@ -3,11 +3,13 @@
 
 #include "codegen/support/scalar_ops.h"
 
-namespace sun::codegen::ops {
+using sun::semantic_analysis::TypePtr;
+
+namespace sun::codegen::support {
 
 llvm::Value* extendInt(llvm::IRBuilder<>& builder, llvm::Value* value,
-                       llvm::Type* destTy, const sun::TypePtr& sourceType) {
-  auto srcType = sun::unwrapRef(sourceType);
+                       llvm::Type* destTy, const TypePtr& sourceType) {
+  auto srcType = sun::semantic_analysis::unwrapRef(sourceType);
   return srcType && srcType->isUnsigned()
              ? builder.CreateZExt(value, destTy, "widen")
              : builder.CreateSExt(value, destTy, "widen");
@@ -24,9 +26,9 @@ llvm::Value* createIntDivRem(llvm::IRBuilder<>& builder, llvm::Value* L,
 }
 
 llvm::Value* widenNumericIfNeeded(llvm::IRBuilder<>& builder,
-                                  LLVMTypeResolver& types, llvm::Value* argVal,
-                                  const sun::TypePtr& paramType,
-                                  const sun::TypePtr& sourceType) {
+                                  sun::codegen::LLVMTypeResolver& types,
+                                  llvm::Value* argVal, const TypePtr& paramType,
+                                  const TypePtr& sourceType) {
   if (!paramType) {
     return argVal;
   }
@@ -49,4 +51,4 @@ llvm::Value* widenNumericIfNeeded(llvm::IRBuilder<>& builder,
   return argVal;
 }
 
-}  // namespace sun::codegen::ops
+}  // namespace sun::codegen::support

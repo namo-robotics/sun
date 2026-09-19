@@ -11,7 +11,9 @@
 #include "support/error.h"
 #include "support/target_os.h"
 
-namespace sun {
+using sun::support::logAndThrowError;
+
+namespace sun::driver {
 
 namespace {
 
@@ -94,12 +96,13 @@ const llvm::json::Object* targetSettings(const llvm::json::Object& owner,
   const auto* targets = value->getAsObject();
   if (!targets)
     logAndThrowError("'target' must be an object in " + file.string());
-  const auto selectedKey = configTargetKey(resolvedTargetTriple(targetTriple));
+  const auto selectedKey =
+      configTargetKey(sun::support::resolvedTargetTriple(targetTriple));
   std::set<std::string> seen;
   const llvm::json::Object* selected = nullptr;
   for (const auto& [name, settings] : *targets) {
     const std::string key = llvm::StringRef(name).str();
-    const auto triple = resolvedTargetTriple(key);
+    const auto triple = sun::support::resolvedTargetTriple(key);
     if (key.empty() || triple.getArch() == llvm::Triple::UnknownArch ||
         triple.getOS() == llvm::Triple::UnknownOS) {
       logAndThrowError("invalid target triple '" + llvm::StringRef(name).str() +
@@ -295,4 +298,4 @@ SunConfig SunConfig::loadFile(const std::filesystem::path& file,
   return config;
 }
 
-}  // namespace sun
+}  // namespace sun::driver

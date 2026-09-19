@@ -9,6 +9,8 @@
 #include "ast/expr_ast.h"
 #include "semantic_analysis/qualified_name.h"
 
+namespace sun::ast {
+
 // Reference creation: ref x = y (mutable) or const ref x = y (immutable)
 // Creates a reference variable x that points to the address of y
 class ReferenceCreationAST : public ExprAST {
@@ -34,7 +36,8 @@ class ReferenceCreationAST : public ExprAST {
  public:
   explicit ReferenceCreationAST(std::string name,
                                 std::unique_ptr<ExprAST> target,
-                                bool isMutable = true, Position loc = {})
+                                bool isMutable = true,
+                                sun::support::Position loc = {})
       : ExprAST(loc),
         name(std::move(name)),
         target(std::move(target)),
@@ -54,10 +57,10 @@ class ReferenceCreationAST : public ExprAST {
   std::string dotLabel() const override { return "RefCreate\n" + name; }
 
   // Qualified name (after semantic analysis qualifies it)
-  const sun::QualifiedName& getQualifiedName() const {
+  const sun::semantic_analysis::QualifiedName& getQualifiedName() const {
     return varAnalysis().qualifiedName;
   }
-  void setQualifiedName(sun::QualifiedName qname) {
+  void setQualifiedName(sun::semantic_analysis::QualifiedName qname) {
     varAnalysis().qualifiedName = std::move(qname);
   }
   bool hasQualifiedName() const {
@@ -65,3 +68,5 @@ class ReferenceCreationAST : public ExprAST {
            !static_cast<VariableAnalysis&>(*analysis_).qualifiedName.empty();
   }
 };
+
+}  // namespace sun::ast

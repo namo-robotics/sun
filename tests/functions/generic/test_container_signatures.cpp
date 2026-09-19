@@ -13,6 +13,10 @@
 #include "driver/execution_utils.h"
 #include "semantic_analysis/generic_type_arguments.h"
 
+using sun::semantic_analysis::Types;
+
+using sun::driver::executeStringWithStdlib;
+
 // ============================================================================
 // Stdlib containers in a generic function's signature
 // ============================================================================
@@ -120,7 +124,7 @@ TEST(Functions_Generic_ContainerSignatures, uncalled_vec_signature_resolves) {
 // interface's own first parameter is also called T. Nothing here comes from a
 // bundle, so a regression cannot hide behind the stdlib.
 TEST(Functions_Generic_ContainerSignatures, self_referential_interface) {
-  auto value = executeString(R"(
+  auto value = sun::driver::executeString(R"(
     interface IPeeker<T, Container> {
         method peek(container: ref Container) T;
     }
@@ -158,13 +162,13 @@ TEST(Functions_Generic_ContainerSignatures, self_referential_interface) {
 
 // Callback parameters and return types can hide unresolved type arguments.
 TEST(Functions_Generic_ContainerSignatures, unresolved_callback_types) {
-  auto parameter = sun::Types::TypeParameter("T");
-  EXPECT_TRUE(sun::generics::mentionsTypeParameter(
-      sun::Types::Function(parameter, {})));
-  EXPECT_TRUE(sun::generics::mentionsTypeParameter(sun::Types::Function(
-      sun::Types::Void(), {sun::Types::Reference(parameter)})));
-  EXPECT_TRUE(sun::generics::mentionsTypeParameter(sun::Types::Array(
-      sun::Types::Function(parameter, {}), {2})));
-  EXPECT_FALSE(sun::generics::mentionsTypeParameter(
-      sun::Types::Function(sun::Types::Void(), {sun::Types::Int32()})));
+  auto parameter = Types::TypeParameter("T");
+  EXPECT_TRUE(sun::semantic_analysis::mentionsTypeParameter(
+      Types::Function(parameter, {})));
+  EXPECT_TRUE(sun::semantic_analysis::mentionsTypeParameter(
+      Types::Function(Types::Void(), {Types::Reference(parameter)})));
+  EXPECT_TRUE(sun::semantic_analysis::mentionsTypeParameter(
+      Types::Array(Types::Function(parameter, {}), {2})));
+  EXPECT_FALSE(sun::semantic_analysis::mentionsTypeParameter(
+      Types::Function(Types::Void(), {Types::Int32()})));
 }

@@ -9,7 +9,11 @@
 #include "ast.h"
 #include "support/error.h"
 
-namespace sun::cabi {
+using sun::semantic_analysis::TypePtr;
+
+using sun::support::logAndThrowError;
+
+namespace sun::codegen::abi {
 
 namespace {
 
@@ -20,9 +24,10 @@ llvm::Triple targetTriple(const llvm::Module* module) {
 }
 
 // Use an enum's representation when choosing integer ABI extensions.
-sun::TypePtr integerRepresentation(const sun::TypePtr& type) {
+TypePtr integerRepresentation(const TypePtr& type) {
   if (type && type->isEnum()) {
-    return static_cast<sun::EnumType*>(type.get())->getUnderlyingType();
+    return static_cast<sun::semantic_analysis::EnumType*>(type.get())
+        ->getUnderlyingType();
   }
   return type;
 }
@@ -30,12 +35,12 @@ sun::TypePtr integerRepresentation(const sun::TypePtr& type) {
 // Which of the signature's integers are signed, read off the Sun-level types
 // the analyzer resolved. Darwin arm64 needs this to pick between signext and
 // zeroext; targets that never extend ignore it.
-abi::SignednessInfo signednessOf(const PrototypeAST& proto) {
-  abi::SignednessInfo signs;
+SignednessInfo signednessOf(const sun::ast::PrototypeAST& proto) {
+  SignednessInfo signs;
   if (auto ret = integerRepresentation(proto.getResolvedReturnType())) {
     signs.retSigned = ret->isIntegral() && ret->isSigned();
   }
-  for (const sun::TypePtr& parameter : proto.getResolvedParamTypes()) {
+  for (const TypePtr& parameter : proto.getResolvedParamTypes()) {
     auto param = integerRepresentation(parameter);
     signs.paramSigned.push_back(param && param->isIntegral() &&
                                 param->isSigned());
@@ -50,8 +55,7 @@ abi::SignednessInfo signednessOf(const PrototypeAST& proto) {
 // `Target` is llvm::Function or llvm::CallBase; both spell the setters the
 // same way.
 template <typename Target>
-void attachLoweringAttributes(Target* target,
-                              const abi::SignatureLowering& lowering,
+void attachLoweringAttributes(Target* target, const SignatureLowering& lowering,
                               llvm::LLVMContext& llvmCtx) {
   unsigned idx = 0;
 
@@ -59,9 +63,9 @@ void attachLoweringAttributes(Target* target,
     target->addParamAttr(at, llvm::Attribute::getWithAlignment(
                                  llvmCtx, llvm::Align(align ? align : 1)));
   };
-  auto extension = [](abi::Extend extend) {
-    return extend == abi::Extend::Sign ? llvm::Attribute::SExt
-                                       : llvm::Attribute::ZExt;
+  auto extension = [](Extend extend) {
+    return extend == Extend::Sign ? llvm::Attribute::SExt
+                                  : llvm::Attribute::ZExt;
   };
 
   if (lowering.usesSret()) {
@@ -69,7 +73,7 @@ void attachLoweringAttributes(Target* target,
         idx, llvm::Attribute::getWithStructRetType(llvmCtx, lowering.ret.type));
     addAlign(idx, lowering.ret.align);
     ++idx;
-  } else if (lowering.ret.extend != abi::Extend::None) {
+  } else if (lowering.ret.extend != Extend::None) {
     target->addRetAttr(extension(lowering.ret.extend));
   }
 
@@ -92,7 +96,7 @@ void attachLoweringAttributes(Target* target,
         }
       }
     } else {
-      if (param.extend != abi::Extend::None) {
+      if (param.extend != Extend::None) {
         target->addParamAttr(idx, extension(param.extend));
       }
       ++idx;
@@ -103,7 +107,7 @@ void attachLoweringAttributes(Target* target,
 }  // namespace
 
 llvm::Function* ExternCEmitter::declare(
-    const PrototypeAST& proto, llvm::Type* returnType,
+    const sun::ast::PrototypeAST& proto, llvm::Type* returnType,
     llvm::ArrayRef<llvm::Type*> paramTypes) {
   const std::string& symbol = proto.getLinkName();
   if (llvm::GlobalValue* named = module_->getNamedValue(symbol);
@@ -117,11 +121,11 @@ llvm::Function* ExternCEmitter::declare(
     // needsMarshalling() would silently answer no and calls would skip the
     // ABI rewriting the signature was built with.
     if (!lowerings_.count(symbol)) {
-      abi::SignednessInfo signs = signednessOf(proto);
+      SignednessInfo signs = signednessOf(proto);
       auto lowering =
-          abi::lowerCSignature(targetTriple(module_), returnType, paramTypes,
-                               module_->getDataLayout(), &signs);
-      llvm::FunctionType* expected = abi::buildLoweredFunctionType(
+          lowerCSignature(targetTriple(module_), returnType, paramTypes,
+                          module_->getDataLayout(), &signs);
+      llvm::FunctionType* expected = buildLoweredFunctionType(
           lowering, ctx_.getContext(), proto.isCVariadic());
       if (expected != existing->getFunctionType()) {
         logAndThrowError("extern \"C\" declaration of '" + symbol +
@@ -140,11 +144,10 @@ llvm::Function* ExternCEmitter::declare(
   // Apply the C ABI to the signature. Scalars and pointers come back
   // unchanged; aggregates are coerced into register-sized pieces or passed
   // through memory. LLVM does none of this on its own.
-  abi::SignednessInfo signs = signednessOf(proto);
-  auto lowering =
-      abi::lowerCSignature(targetTriple(module_), returnType, paramTypes,
-                           module_->getDataLayout(), &signs);
-  llvm::FunctionType* funcType = abi::buildLoweredFunctionType(
+  SignednessInfo signs = signednessOf(proto);
+  auto lowering = lowerCSignature(targetTriple(module_), returnType, paramTypes,
+                                  module_->getDataLayout(), &signs);
+  llvm::FunctionType* funcType = buildLoweredFunctionType(
       lowering, ctx_.getContext(), proto.isCVariadic());
 
   llvm::Function* func = llvm::Function::Create(
@@ -170,7 +173,7 @@ llvm::Function* ExternCEmitter::declare(
 }
 
 llvm::GlobalVariable* ExternCEmitter::declareGlobal(
-    const VariableCreationAST& variable, llvm::Type* valueType) {
+    const sun::ast::VariableCreationAST& variable, llvm::Type* valueType) {
   const std::string& symbol = variable.getLinkName();
 
   if (llvm::GlobalValue* named = module_->getNamedValue(symbol)) {
@@ -198,9 +201,7 @@ llvm::GlobalVariable* ExternCEmitter::declareGlobal(
   return global;
 }
 
-
-
-const abi::SignatureLowering* ExternCEmitter::loweringFor(
+const SignatureLowering* ExternCEmitter::loweringFor(
     const llvm::Function* func) const {
   if (!func) return nullptr;
   auto it = lowerings_.find(func->getName().str());
@@ -208,12 +209,12 @@ const abi::SignatureLowering* ExternCEmitter::loweringFor(
 }
 
 bool ExternCEmitter::needsMarshalling(const llvm::Function* func) const {
-  const abi::SignatureLowering* lowering = loweringFor(func);
+  const SignatureLowering* lowering = loweringFor(func);
   return lowering && !lowering->isTrivial();
 }
 
-void ExternCEmitter::applyAttributes(
-    llvm::Function* func, const abi::SignatureLowering& lowering) const {
+void ExternCEmitter::applyAttributes(llvm::Function* func,
+                                     const SignatureLowering& lowering) const {
   attachLoweringAttributes(func, lowering, ctx_.getContext());
 }
 
@@ -234,7 +235,7 @@ llvm::Value* ExternCEmitter::addressOf(llvm::Value* value,
 }
 
 llvm::Value* ExternCEmitter::promoteVararg(llvm::Value* value,
-                                           const sun::TypePtr& sunType) const {
+                                           const TypePtr& sunType) const {
   if (!value) return value;
   llvm::LLVMContext& llvmCtx = ctx_.getContext();
 
@@ -314,7 +315,7 @@ void ExternCEmitter::storePiece(llvm::Value* piece, llvm::Value* aggregateAddr,
 llvm::Value* ExternCEmitter::emitCall(llvm::Function* func,
                                       llvm::ArrayRef<PreparedArg> args,
                                       CallEmitter emitCallInsn) {
-  const abi::SignatureLowering* lowering = loweringFor(func);
+  const SignatureLowering* lowering = loweringFor(func);
   if (!lowering) return nullptr;
 
   const llvm::DataLayout& dl = module_->getDataLayout();
@@ -330,7 +331,7 @@ llvm::Value* ExternCEmitter::emitCall(llvm::Function* func,
 
   for (size_t i = 0; i < args.size(); ++i) {
     const PreparedArg& arg = args[i];
-    const abi::ArgLowering* plan =
+    const ArgLowering* plan =
         i < lowering->params.size() ? &lowering->params[i] : nullptr;
 
     // Past the declared parameters: a `...` tail, where C's promotions apply.
@@ -411,4 +412,4 @@ llvm::Value* ExternCEmitter::emitCall(llvm::Function* func,
   return result;
 }
 
-}  // namespace sun::cabi
+}  // namespace sun::codegen::abi
