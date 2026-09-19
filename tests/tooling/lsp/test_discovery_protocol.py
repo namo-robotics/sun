@@ -180,6 +180,52 @@ class DiscoveryProtocolTests(unittest.TestCase):
         self.configure([])
         self.assertEqual(self.workspace_tests(), [])
 
+    def test_language_features_in_merged_modules(self):
+        """Every file in a shared module supports symbol lookup and edits."""
+        first = self.directory / "first.sun"
+        second = self.directory / "second.sun"
+        first.write_text(
+            "/** Shares declarations. */ module shared { "
+            "/** Returns one. */ function first() i32 { return 1; } }\n"
+        )
+        second.write_text(
+            "// Exercise a symbol in a later file of the shared module.\n"
+            "/** Shares declarations. */ module shared {\n"
+            "    /** Returns two. */ function value() i32 { return 2; }\n"
+            "    /** Calls the shared function. */ function use() i32 { return value(); }\n"
+            "}\n"
+        )
+        self.entry.write_text(
+            'manifest { source_files: ["first.sun", "second.sun"] }\n'
+        )
+        self.configure([self.entry])
+        for file, line, symbol in ((first, 0, "first"), (second, 2, "value")):
+            self.open_document(file)
+            character = file.read_text().splitlines()[line].index(symbol)
+            params = {
+                "textDocument": {"uri": file.as_uri()},
+                "position": {"line": line, "character": character},
+            }
+            with self.subTest(file=file.name):
+                hover = self.request("textDocument/hover", params)
+                self.assertIsNotNone(hover)
+                self.assertIn(symbol, hover["contents"]["value"])
+                definition = self.request("textDocument/definition", params)
+                self.assertIsNotNone(definition)
+                references = self.request("textDocument/references", {
+                    **params, "context": {"includeDeclaration": True},
+                })
+                expected = 1 if file == first else 2
+                self.assertEqual(len(references), expected)
+                prepared = self.request("textDocument/prepareRename", params)
+                self.assertEqual(prepared["placeholder"], symbol)
+                renamed = self.request("textDocument/rename", {
+                    **params, "newName": "renamed",
+                })
+                edits = renamed["changes"][file.as_uri()]
+                self.assertEqual(len(edits), expected)
+                self.assertTrue(all(edit["newText"] == "renamed" for edit in edits))
+
     def test_test_file_runs_through_its_configured_entrypoint(self):
         """The discovered entrypoint and dotted name form a working test command."""
         self.configure([self.entry])

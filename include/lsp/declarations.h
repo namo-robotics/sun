@@ -23,6 +23,10 @@ using sun::ast::BlockExprAST;
 using sun::ast::ExprAST;
 using sun::semantic_analysis::QualifiedName;
 
+/** Maps declaration identities to their first syntax node in a live program. */
+using DeclarationIndex = std::unordered_map<
+    sun::semantic_analysis::DeclarationId, const ExprAST*>;
+
 /**
  * Type parameter name -> the type it stands for in one specialization
  */
@@ -168,11 +172,12 @@ std::optional<Declaration> findLocalDeclaration(
     const std::string& name);
 
 /**
- * Where the symbol under `node` was declared, or nothing
+ * Where the symbol under `node` was declared, or nothing. An optional index
+ * must cover the same program and is used for repeated reference lookups.
  */
 std::optional<Declaration> findDeclarationOf(
     const BlockExprAST& program, const std::vector<const ExprAST*>& chain,
-    const ExprAST& node);
+    const ExprAST& node, const DeclarationIndex* declarations = nullptr);
 
 /**
  * The member behind `object.member`: a module's item (the analyzer records
@@ -193,11 +198,12 @@ std::optional<Declaration> findParameter(
 /**
  * The declaration a name-bearing node refers to: a local, a parameter, or
  * what findDeclarationOf finds. Used for the cursor and for every candidate
- * reference alike, so both land on the same declaration.
+ * reference alike, so both land on the same declaration. The optional index
+ * must cover the same program.
  */
 std::optional<Declaration> resolveSymbol(
     const BlockExprAST& program, const std::vector<const ExprAST*>& chain,
-    const ExprAST& node);
+    const ExprAST& node, const DeclarationIndex* declarations = nullptr);
 
 /**
  * The declaration for a cursor on a definition's own header: the definition,
