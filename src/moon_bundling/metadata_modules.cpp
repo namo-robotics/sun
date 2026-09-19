@@ -3,12 +3,13 @@
 #include "ast.pb.h"
 #include "moon_bundling/metadata_types.h"
 
-using ScopeSwitchGuard = sun::semantic_analysis::SemanticContext::ScopeSwitchGuard;
 
 using sun::semantic_analysis::ModuleScope;
 using sun::semantic_analysis::SemanticContext;
 
 namespace sun::moon_bundling {
+
+using ScopeSwitchGuard = sun::semantic_analysis::SemanticContext::ScopeSwitchGuard;
 namespace pbc = sun::proto::ast;
 
 namespace {

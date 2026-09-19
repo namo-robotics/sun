@@ -63,12 +63,21 @@ variables, generated protobuf code, dependencies, and tests are excluded. File
 and namespace listings link to the canonical member entry instead of repeating
 it. Separate indexes list namespaces, classes, structs, enums, free functions, type
 aliases, unions, global variables, macros, and files. Empty categories are omitted.
-Every symbol index groups entries into a collapsible tree of named Sun namespaces.
-Root namespaces start expanded, and deeper branches start collapsed. Anonymous
+The main Compiler API Reference entry contains one tree of named Sun namespaces,
+categorized types and variables, and their members. Member categories distinguish
+public, protected, and private functions, fields, enums, and aliases. Enum entries
+expand to their values. Separate indexes remain linkable but are hidden from the
+sidebar. The Sun root starts expanded, and deeper branches start collapsed. Anonymous
 helpers are documented on their file pages and grouped under their nearest named
 namespace in symbol indexes. Anonymous namespace pages are not generated. Declarations outside named Sun namespaces appear under File scope.
 Methods and fields stay with their owning types. These indexes expose declarations
 without filling the sidebar with hundreds of entries.
+
+Compiler namespaces follow the directory of their declaring header: for example,
+`include/parsing/` uses `sun::parsing`. Implementations keep that namespace even
+when their source files are split into deeper directories. Compiler AST types use
+`sun::ast`; generated protobuf AST types use `sun::proto::ast` and are excluded
+from the reference.
 
 ## Validation
 

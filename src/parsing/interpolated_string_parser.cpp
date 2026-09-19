@@ -11,7 +11,6 @@
 #include "parsing/parser.h"
 #include "support/error.h"
 
-using Segment = sun::ast::InterpolatedStringAST::Segment;
 using sun::support::SourceFileId;
 
 using sun::ast::ExprAST;
@@ -20,6 +19,8 @@ using sun::support::logAndThrowError;
 using sun::support::Position;
 
 namespace sun::parsing {
+
+using Segment = sun::ast::InterpolatedStringAST::Segment;
 
 std::unique_ptr<InterpolatedStringAST> InterpolatedStringParser::parseToAst(
     const std::string& content, const Position& start, const Position& end,

@@ -102,6 +102,12 @@ function signature(node) {
   return template(node) + definition + value(node, 'argsstring') + (initializer ? ` ${initializer}` : '')
 }
 
+const memberKinds = { function: 'Functions', variable: 'Fields', enum: 'Enums', typedef: 'Type Aliases', friend: 'Friends' }
+const memberGroup = (member, kind) => {
+  const access = attr(member, 'prot') || (kind === 'class' ? 'private' : 'public')
+  return `${access[0].toUpperCase() + access.slice(1)} ${memberKinds[attr(member, 'kind')] || 'Other Members'}`
+}
+
 const namedSunNamespace = name => /^sun(?:::[A-Za-z_]\w*)*$/.test(name)
 
 /** Groups symbols under named Sun namespaces, keeping file-local entries accessible. */
@@ -281,7 +287,6 @@ export function renderReference(compounds, revision) {
     if (attr(compound, 'kind') === 'namespace') return name
     return namespaces.map(compoundName).filter(ns => name.startsWith(`${ns}::`)).sort((a, b) => b.length - a.length)[0] || ''
   }
-  const indexes = []
   for (const [slug, label, source, kind] of groups) {
     const entries = source === 'compound'
       ? compounds.filter(n => attr(n, 'kind') === kind && (kind !== 'namespace' || namedSunNamespace(compoundName(n)))).map(n => [compoundName(n) + (compoundName(n).includes('anonymous_namespace{') ? ` (${attr(child(n, 'location'), 'file')})` : ''), url(n), namespaceFor(n)]) : []
@@ -299,17 +304,80 @@ export function renderReference(compounds, revision) {
       }
     }
     if (!entries.length) continue
-    indexes.push(`- ${link(label, `${ROUTE}/${slug}`)}`)
-    meta[slug] = label
+    meta[slug] = { title: label, display: 'hidden' }
     entries.sort((a, b) => compare(a[0], b[0]) || compare(a[1], b[1]))
     pages.set(`${slug}.mdx`, slug === 'namespaces'
       ? renderNamespaceTree(compounds.filter(n => attr(n, 'kind') === 'namespace'), refs)
       : slug === 'files' ? `# ${label}\n\n${entries.map(([name, href]) => `- ${link(name, href)}`).join('\n')}\n` : renderSymbolTree(label, entries, namespaces, refs))
   }
-  pages.set('index.mdx', `# Compiler API Reference\n\n${indexes.join('\n')}\n`)
+  // Build one hierarchy, attaching nested types and members to their canonical owner.
+  const tree = []
+  const fileNodes = new Map(compounds.filter(n => attr(n, 'kind') === 'file').map(n => [compoundName(n), { label: compoundName(n), href: url(n), children: [] }]))
+  const namespaceNodes = new Map()
+  const nodes = new Map()
+  const group = (parent, label) => {
+    let node = parent.children.find(n => n.label === label && !n.href)
+    if (!node) parent.children.push(node = { label, children: [] })
+    return node
+  }
+  const scope = name => {
+    name = visibleName(name)
+    if (!namedSunNamespace(name)) name = 'File scope'
+    if (namespaceNodes.has(name)) return namespaceNodes.get(name)
+    const split = name.lastIndexOf('::')
+    const node = { label: split < 0 ? name : name.slice(split + 2), ...(namedSunNamespace(name) ? { kind: 'namespace' } : {}), children: [] }
+    namespaceNodes.set(name, node)
+    if (split < 0) tree.push(node)
+    else scope(name.slice(0, split)).children.push(node)
+    return node
+  }
+  for (const namespace of namespaces.filter(n => namedSunNamespace(compoundName(n)))) {
+    scope(compoundName(namespace)).href = url(namespace)
+  }
+  const types = compounds.filter(n => ['class', 'struct', 'union'].includes(attr(n, 'kind')))
+  for (const type of types) nodes.set(attr(type, 'id'), { label: visibleName(compoundName(type)), href: url(type), children: [] })
+  for (const type of types) {
+    const name = compoundName(type)
+    const parentType = types.filter(n => n !== type && name.startsWith(`${compoundName(n)}::`)).sort((a, b) => compoundName(b).length - compoundName(a).length)[0]
+    const namespace = namespaceFor(type)
+    const parent = parentType ? nodes.get(attr(parentType, 'id')) : namespace ? scope(namespace) : fileNodes.get(attr(child(type, 'location'), 'file')) || scope('')
+    const label = { class: 'Classes', struct: 'Structs', union: 'Unions' }[attr(type, 'kind')]
+    const node = nodes.get(attr(type, 'id'))
+    const ownerName = parentType ? visibleName(compoundName(parentType)) : namespace
+    if (ownerName && node.label.startsWith(`${ownerName}::`)) node.label = node.label.slice(ownerName.length + 2)
+    if (name.includes('anonymous_namespace{')) node.label += ` (${attr(child(type, 'location'), 'file')})`
+    group(parent, label).children.push(node)
+  }
+  for (const compound of compounds) {
+    for (const member of new Map(descendants(compound, 'memberdef').map(n => [attr(n, 'id'), n])).values()) {
+      const id = attr(member, 'id')
+      if (owners.get(id) !== compound || aliases.has(id)) continue
+      const type = nodes.get(attr(compound, 'id'))
+      const parent = type || scope(attr(member, 'data-sun-namespace') || namespaceFor(compound))
+      const label = type ? memberGroup(member, attr(compound, 'kind')) : ({ variable: 'Variables', define: 'Macros' }[attr(member, 'kind')] || memberKinds[attr(member, 'kind')] || 'Other Symbols')
+      const node = { label: value(member, 'name') + value(member, 'argsstring'), href: refs.get(id), children: [] }
+      if (attr(compound, 'kind') === 'file') node.label += ` (${compoundName(compound)})`
+      const values = children(member, 'enumvalue')
+      if (values.length) group(node, 'Enum Values').children.push(...values.map(entry => ({ label: value(entry, 'name'), href: refs.get(attr(entry, 'id')), children: [] })))
+      group(parent, label).children.push(node)
+    }
+  }
+  if (fileNodes.size) tree.push({ label: 'Files', children: [...fileNodes.values()] })
+  const categoryOrder = ['Classes', 'Structs', 'Unions', 'Functions', 'Variables', 'Enums', 'Type Aliases', 'Macros', ...['Public', 'Protected', 'Private'].flatMap(access => Object.values(memberKinds).map(kind => `${access} ${kind}`))]
+  const sortTree = nodes => {
+    const rank = node => node.href || !categoryOrder.includes(node.label) ? -1 : categoryOrder.indexOf(node.label)
+    nodes.sort((a, b) => rank(a) - rank(b) || compare(a.label, b.label) || compare(a.href || '', b.href || ''))
+    for (const node of nodes) sortTree(node.children)
+  }
+  for (const node of tree) sortTree(node.children)
+  tree.sort((a, b) => Number(b.label === 'sun') - Number(a.label === 'sun') || compare(a.label, b.label))
+  pages.set('tree.json', JSON.stringify(tree))
+  pages.set('index.mdx', `import { CompilerApiTree } from '../components/compiler-api-tree'\nimport tree from './compiler-api/tree.json'\n\n# Compiler API Reference\n\n<CompilerApiTree nodes={tree} />\n`)
+  const compoundKinds = new Map(compounds.map(n => [attr(n, 'id'), attr(n, 'kind')]))
   for (const compound of compounds) {
     const id = attr(compound, 'id')
     const name = visibleName(compoundName(compound))
+    const isNamespace = attr(compound, 'kind') === 'namespace'
     // Indexes provide navigation without adding hundreds of sidebar entries.
     meta[id] = { title: name, display: 'hidden' }
     const declaration = ['class', 'struct', 'union'].includes(attr(compound, 'kind'))
@@ -317,18 +385,32 @@ export function renderReference(compounds, revision) {
     let page = `# ${escape(name)}\n\n${escape(attr(compound, 'kind'))}${compoundName(compound).includes('anonymous_namespace{') ? ' · file-local' : ''} · ${sourceLink(compound, revision)}\n\n${declaration}${description(compound, refs)}\n\n`
     for (const [tag, label] of [['basecompoundref', 'Inherits'], ['derivedcompoundref', 'Inherited by'], ['innernamespace', 'Namespaces'], ['innerclass', 'Types']]) {
       const entries = children(compound, tag).filter(n => (tag !== 'innernamespace' || namedSunNamespace(n.textContent)) && (tag !== 'innerclass' || !aliases.has(attr(n, 'refid'))))
-      if (entries.length) page += `## ${label}\n\n${entries.map(n => `- ${refs.has(attr(n, 'refid')) ? link(visibleName(n.textContent), refs.get(attr(n, 'refid'))) : escape(visibleName(n.textContent))}${attr(n, 'prot') ? ` (${escape(attr(n, 'prot'))})` : ''}`).join('\n')}\n\n`
+      const entryGroups = isNamespace && tag === 'innerclass'
+        ? ['class', 'struct', 'union'].map(kind => [{ class: 'Classes', struct: 'Structs', union: 'Unions' }[kind], entries.filter(n => compoundKinds.get(attr(n, 'refid')) === kind)])
+        : [[label, entries]]
+      for (const [heading, items] of entryGroups) {
+        if (items.length) page += `## ${heading}\n\n${items.map(n => `- ${refs.has(attr(n, 'refid')) ? link(visibleName(n.textContent), refs.get(attr(n, 'refid'))) : escape(visibleName(n.textContent))}${attr(n, 'prot') ? ` (${escape(attr(n, 'prot'))})` : ''}`).join('\n')}\n\n`
+      }
     }
     const members = [...new Map(descendants(compound, 'memberdef').map(n => [attr(n, 'id'), n])).values()]
       .sort((a, b) => compare(attr(a, 'kind'), attr(b, 'kind')) || compare(value(a, 'name'), value(b, 'name')) || compare(attr(a, 'id'), attr(b, 'id')))
-    if (members.length) page += `## Members\n\n${members.map(n => `- ${link(value(n, 'name') + value(n, 'argsstring'), refs.get(attr(n, 'id')))}`).join('\n')}\n\n`
+    const memberGroups = new Map()
     for (const member of members) {
-      const memberId = attr(member, 'id')
-      if (owners.get(memberId) !== compound || aliases.has(memberId)) continue
-      page += `<a id="${memberId}" />\n\n### ${escape(value(member, 'name'))}\n\n${[attr(member, 'prot'), attr(member, 'kind'), attr(member, 'static') === 'yes' ? 'static' : ''].filter(Boolean).join(' · ')} · ${sourceLink(member, revision)}\n${fence(visibleName(signature(member)))}${description(member, refs)}\n\n`
-      const typeRefs = [...new Map(descendants(member, 'ref').filter(n => refs.has(attr(n, 'refid'))).map(n => [attr(n, 'refid'), n])).values()]
-      if (typeRefs.length) page += `Related: ${typeRefs.map(n => link(visibleName(n.textContent), refs.get(attr(n, 'refid')))).join(', ')}\n\n`
-      for (const entry of children(member, 'enumvalue')) page += `<a id="${safeId(attr(entry, 'id'))}" />\n\n#### ${escape(value(entry, 'name'))}\n\n${code(`${value(entry, 'name')} ${value(entry, 'initializer')}`.trim())}\n\n${description(entry, refs)}\n\n`
+      const label = declaration ? memberGroup(member, attr(compound, 'kind')) : isNamespace ? ({ variable: 'Variables', define: 'Macros' }[attr(member, 'kind')] || memberKinds[attr(member, 'kind')] || 'Other Symbols') : 'Members'
+      if (!memberGroups.has(label)) memberGroups.set(label, [])
+      memberGroups.get(label).push(member)
+    }
+    const sectionOrder = isNamespace ? ['Functions', 'Variables', 'Enums', 'Type Aliases', 'Macros', 'Friends', 'Other Symbols'] : ['Public', 'Protected', 'Private'].flatMap(access => [...Object.values(memberKinds), 'Other Members'].map(kind => `${access} ${kind}`))
+    for (const [label, entries] of [...memberGroups].sort(([a], [b]) => sectionOrder.indexOf(a) - sectionOrder.indexOf(b))) {
+      page += `## ${label}\n\n${entries.map(n => `- ${link(value(n, 'name') + value(n, 'argsstring'), refs.get(attr(n, 'id')))}`).join('\n')}\n\n`
+      for (const member of entries) {
+        const memberId = attr(member, 'id')
+        if (owners.get(memberId) !== compound || aliases.has(memberId)) continue
+        page += `<a id="${memberId}" />\n\n### ${escape(value(member, 'name'))}\n\n${[attr(member, 'prot'), attr(member, 'kind'), attr(member, 'static') === 'yes' ? 'static' : ''].filter(Boolean).join(' · ')} · ${sourceLink(member, revision)}\n${fence(visibleName(signature(member)))}${description(member, refs)}\n\n`
+        const typeRefs = [...new Map(descendants(member, 'ref').filter(n => refs.has(attr(n, 'refid'))).map(n => [attr(n, 'refid'), n])).values()]
+        if (typeRefs.length) page += `Related: ${typeRefs.map(n => link(visibleName(n.textContent), refs.get(attr(n, 'refid')))).join(', ')}\n\n`
+        for (const entry of children(member, 'enumvalue')) page += `<a id="${safeId(attr(entry, 'id'))}" />\n\n#### ${escape(value(entry, 'name'))}\n\n${code(`${value(entry, 'name')} ${value(entry, 'initializer')}`.trim())}\n\n${description(entry, refs)}\n\n`
+      }
     }
     pages.set(`${id}.mdx`, page)
   }

@@ -79,6 +79,100 @@ test('renders source descriptions, internals, overloads, inheritance, enums, ali
   assert.deepEqual(renderReference(fixture().reverse(), revision), pages)
 })
 
+test('builds one categorized tree with nested types, members, enum values and stable links', async () => {
+  const input = fixture()
+  input.push(compound('<compounddef id="nested" kind="struct"><compoundname>sun::demo::Box::Nested</compoundname></compounddef>'))
+  input.push(compound('<compounddef id="hash_box" kind="struct"><compoundname>std::hash&lt; sun::demo::Box &gt;</compoundname><location file="src/demo.cpp" line="20" /></compounddef>'))
+  input.push(compound('<compounddef id="templated" kind="struct"><compoundname>sun::demo::Wrapper&lt; sun::demo::Box &gt;</compoundname></compounddef>'))
+  const section = input[1].getElementsByTagName('sectiondef')[0]
+  section.appendChild(section.getElementsByTagName('memberdef')[0].cloneNode(true))
+  const pages = renderReference(input, revision)
+  const landing = pages.get('index.mdx')
+  const tree = JSON.parse(pages.get('tree.json'))
+  assert.ok(landing.length < 300)
+  assert.match(landing, /import tree from '.\/compiler-api\/tree.json'/)
+  const get = (node, label) => {
+    const found = node.children.find(child => child.label === label)
+    assert.ok(found, `Missing ${label} under ${node.label}`)
+    return found
+  }
+  const sun = tree.find(node => node.label === 'sun')
+  assert.equal(sun.kind, 'namespace')
+  const demo = get(sun, 'demo')
+  assert.equal(demo.kind, 'namespace')
+  assert.equal(get(get(demo, 'Structs'), 'Wrapper< sun::demo::Box >').href, '/compiler-api/templated')
+  const files = tree.find(node => node.label === 'Files')
+  assert.equal(get(get(get(files, 'src/demo.cpp'), 'Structs'), 'std::hash< sun::demo::Box >').href, '/compiler-api/hash_box')
+  const box = get(get(demo, 'Classes'), 'Box')
+  assert.equal(box.kind, undefined)
+  assert.equal(get(get(box, 'Public Functions'), 'read(bool value)').href, '/compiler-api/class_demo#read_bool')
+  assert.equal(get(get(box, 'Private Functions'), 'read(int value)').href, '/compiler-api/class_demo#read_int')
+  assert.equal(get(get(box, 'Structs'), 'Nested').href, '/compiler-api/nested')
+  assert.equal(get(get(get(get(box, 'Public Enums'), 'Mode'), 'Enum Values'), 'Ready').href, '/compiler-api/class_demo#ready')
+  assert.equal(get(get(demo, 'Functions'), 'helper()').href, '/compiler-api/namespace_demo#helper')
+  const links = new Set()
+  const visit = node => {
+    if (node.href) {
+      assert.ok(!links.has(node.href), `Duplicate ${node.href}`)
+      links.add(node.href)
+      const [slug, anchor] = node.href.replace('/compiler-api/', '').split('#')
+      const target = pages.get(`${slug}.mdx`)
+      assert.ok(target, node.href)
+      if (anchor) assert.ok(target.includes(`id="${anchor}"`), node.href)
+    }
+    node.children.forEach(visit)
+  }
+  tree.forEach(visit)
+  assert.ok(Object.values(JSON.parse(pages.get('_meta.json'))).every(entry => entry.display === 'hidden'))
+  assert.deepEqual(renderReference(input.reverse(), revision), pages)
+  await compile(landing)
+})
+
+test('splits namespace types and members into symbol categories', async () => {
+  const types = ['class', 'struct', 'union'].map(kind => compound(`<compounddef id="${kind}_item" kind="${kind}"><compoundname>sun::demo::${kind}Item</compoundname></compounddef>`))
+  const members = ['function', 'variable', 'enum', 'typedef'].map(kind => `<memberdef id="${kind}_member" kind="${kind}"><definition>${kind}Item</definition><name>${kind}Item</name></memberdef>`).join('')
+  const namespace = compound(`<compounddef id="namespace_demo" kind="namespace"><compoundname>sun::demo</compoundname>${['class', 'struct', 'union'].map(kind => `<innerclass refid="${kind}_item">sun::demo::${kind}Item</innerclass>`).join('')}<sectiondef>${members}</sectiondef></compounddef>`)
+  const pages = renderReference([namespace, ...types], revision)
+  const page = pages.get('namespace_demo.mdx')
+  assert.doesNotMatch(page, /^## (Types|Members)$/m)
+  const sections = new Map(page.split(/^## /m).slice(1).map(section => [section.split('\n')[0], section]))
+  assert.deepEqual([...sections.keys()], ['Classes', 'Structs', 'Unions', 'Functions', 'Variables', 'Enums', 'Type Aliases'])
+  for (const [kind, title] of [['class', 'Classes'], ['struct', 'Structs'], ['union', 'Unions']]) assert.ok(sections.get(title).includes(`/compiler-api/${kind}_item`))
+  for (const [kind, title] of [['function', 'Functions'], ['variable', 'Variables'], ['enum', 'Enums'], ['typedef', 'Type Aliases']]) {
+    assert.ok(sections.get(title).includes(`id="${kind}_member"`))
+    assert.equal((sections.get(title).match(/<a id=/g) || []).length, 1)
+  }
+  checkLinks(pages)
+  await compile(page)
+})
+
+test('groups type members and their documentation by access and kind', async () => {
+  for (const kind of ['class', 'struct', 'union']) {
+    const members = ['public', 'protected', 'private'].flatMap(access => ['function', 'variable', 'enum', 'typedef'].map(memberKind => {
+      const id = `${access}_${memberKind}`
+      return `<memberdef id="${id}" kind="${memberKind}" prot="${access}"><definition>${id}</definition><name>${id}</name><briefdescription><para>Documentation for ${id}.</para></briefdescription></memberdef>`
+    })).join('')
+    const pages = renderReference([compound(`<compounddef id="example" kind="${kind}"><compoundname>sun::Example</compoundname><sectiondef>${members}</sectiondef></compounddef>`)], revision)
+    const page = pages.get('example.mdx')
+    assert.doesNotMatch(page, /^## Members$/m)
+    const sections = new Map(page.split(/^## /m).slice(1).map(section => [section.split('\n')[0], section]))
+    assert.equal(sections.size, 12)
+    for (const access of ['public', 'protected', 'private']) {
+      for (const [memberKind, label] of [['function', 'Functions'], ['variable', 'Fields'], ['enum', 'Enums'], ['typedef', 'Type Aliases']]) {
+        const section = sections.get(`${access[0].toUpperCase() + access.slice(1)} ${label}`)
+        assert.ok(section)
+        const id = `${access}_${memberKind}`
+        assert.ok(section.includes(`id="${id}"`))
+        assert.ok(section.includes(`#${id})`))
+        assert.equal((section.match(/<a id=/g) || []).length, 1)
+        assert.ok(section.includes(`Documentation for ${id.replaceAll('_', '&#95;')}.`))
+      }
+    }
+    checkLinks(pages)
+    await compile(page)
+  }
+})
+
 test('groups every symbol category under named Sun namespaces', async () => {
   const namespaces = [
     compound('<compounddef id="sun" kind="namespace"><compoundname>sun</compoundname></compounddef>'),
