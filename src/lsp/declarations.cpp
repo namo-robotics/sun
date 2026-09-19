@@ -64,10 +64,13 @@ std::string sliceSpan(const std::string& source, const Position& loc) {
 bool NodeFinder::visit(const ExprAST& node) {
   if (node.getType() == ASTNodeType::MOON_SCOPE) return false;
   const Position& loc = node.getLocation();
-  if (!isDocumentFile(loc)) return false;
-  // Nodes without a span (merged module wrappers) are looked through
-  bool hasSpan = loc.endOffset.has_value();
-  if (hasSpan && !spanContains(loc, offset_)) return false;
+  // A merged module keeps its first declaration's location, but its children
+  // can come from other files or later declarations in the same file.
+  bool isModule = node.getType() == ASTNodeType::MODULE;
+  bool matchesFile = isDocumentFile(loc);
+  bool hasSpan = matchesFile && loc.endOffset.has_value() &&
+                 spanContains(loc, offset_);
+  if (!isModule && (!matchesFile || (loc.endOffset && !hasSpan))) return false;
   if (hasSpan) chain_.push_back(&node);
   bool found = false;
   // Defaults live in class scope. Their analyzed copies are in constructor
@@ -515,10 +518,16 @@ std::optional<Declaration> findMemberDeclaration(
 /** Resolves the declaration referenced by a node in its enclosing scopes. */
 std::optional<Declaration> findDeclarationOf(
     const BlockExprAST& program, const std::vector<const ExprAST*>& chain,
-    const ExprAST& node) {
+    const ExprAST& node, const DeclarationIndex* declarations) {
   if (auto target = node.getTargetDeclarationId()) {
-    if (const auto* declaration = findDeclarationById(program, target))
-      return declarationOf(*declaration);
+    const ExprAST* declaration = nullptr;
+    if (declarations) {
+      auto found = declarations->find(target);
+      if (found != declarations->end()) declaration = found->second;
+    } else {
+      declaration = findDeclarationById(program, target);
+    }
+    if (declaration) return declarationOf(*declaration);
   }
   switch (node.getType()) {
     case ASTNodeType::VARIABLE_REFERENCE: {
@@ -545,7 +554,8 @@ std::optional<Declaration> findDeclarationOf(
     case ASTNodeType::CALL:
       return findDeclarationOf(
           program, chain,
-          *static_cast<const sun::ast::CallExprAST&>(node).getCallee());
+          *static_cast<const sun::ast::CallExprAST&>(node).getCallee(),
+          declarations);
     case ASTNodeType::THIS: {
       for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
         if ((*it)->getType() == ASTNodeType::CLASS_DEFINITION) {
@@ -905,18 +915,19 @@ std::optional<Declaration> ownDeclaration(const ExprAST& node, int offset,
 /** Resolves a syntax node to the declaration it denotes. */
 std::optional<Declaration> resolveSymbol(
     const BlockExprAST& program, const std::vector<const ExprAST*>& chain,
-    const ExprAST& node) {
+    const ExprAST& node, const DeclarationIndex* declarations) {
   std::string name;
   if (node.getType() == ASTNodeType::VARIABLE_REFERENCE) {
     name = static_cast<const VariableReferenceAST&>(node).getName();
   } else if (node.getType() == ASTNodeType::VARIABLE_ASSIGNMENT) {
     name = static_cast<const sun::ast::VariableAssignmentAST&>(node).getName();
   }
-  if (name.empty()) return findDeclarationOf(program, chain, node);
+  if (name.empty())
+    return findDeclarationOf(program, chain, node, declarations);
   if (auto local = findLocalDeclaration(chain, node, name)) return local;
   if (auto parameter = findParameter(chain, name)) return parameter;
   if (node.getType() == ASTNodeType::VARIABLE_REFERENCE) {
-    return findDeclarationOf(program, chain, node);
+    return findDeclarationOf(program, chain, node, declarations);
   }
   const ExprAST* decl = findDeclaration(program, name, {});
   if (!decl) return std::nullopt;

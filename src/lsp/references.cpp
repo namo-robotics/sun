@@ -369,7 +369,9 @@ class UseFinder {
  public:
   /** Connects a symbol-use walk to the shared reference collector. */
   UseFinder(const BlockExprAST& program, Collector& out)
-      : program_(program), out_(out) {}
+      : program_(program), out_(out) {
+    indexDeclarations(program);
+  }
 
   /** Visits expressions to collect references to the selected declarations. */
   void visit(const ExprAST& node, const std::string& inheritedFile) {
@@ -439,7 +441,7 @@ class UseFinder {
                      const std::optional<Position>& range) {
     if (!range) return;
     std::optional<Declaration> declaration =
-        resolveSymbol(program_, chain_, node);
+        resolveSymbol(program_, chain_, node, &declarations_);
     if (!declaration || !out_.matches(*declaration, file)) return;
     out_.add(file, range->offset, *range->endOffset);
   }
@@ -523,8 +525,15 @@ class UseFinder {
     }
   }
 
+  /** Indexes declarations in traversal order, matching single-symbol lookup. */
+  void indexDeclarations(const ExprAST& node) {
+    if (auto id = node.getDeclarationId()) declarations_.emplace(id, &node);
+    forEachChild(node, [&](const ExprAST& child) { indexDeclarations(child); });
+  }
+
   const BlockExprAST& program_;
   Collector& out_;
+  DeclarationIndex declarations_;
   std::vector<const ExprAST*> chain_;
   std::string chainFile_;
 };
