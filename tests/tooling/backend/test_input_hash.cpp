@@ -7,6 +7,7 @@
 // look at what it rebuilt.
 
 #include <gtest/gtest.h>
+#include <sys/wait.h>
 
 #include <cstdlib>
 #include <filesystem>
@@ -268,7 +269,10 @@ manifest {
   EXPECT_TRUE(contains(log, "Successfully compiled test binary to")) << log;
 
   // The rebuilt executable still runs
-  EXPECT_EQ(WEXITSTATUS(std::system(app.c_str())), 0);
+  int status = std::system(app.c_str());
+  ASSERT_NE(status, -1);
+  ASSERT_TRUE(WIFEXITED(status));
+  EXPECT_EQ(WEXITSTATUS(status), 0);
 }
 
 // A program without tests records that, so a later run does not compile it
