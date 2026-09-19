@@ -13,11 +13,11 @@
 #include <llvm/IR/Value.h>
 
 #include "codegen/llvm_type_resolver.h"
-#include "semantic_analysis/types.h"
+#include "types/types.h"
 
 /** Provides shared diagnostics, source tracking, and compiler utilities. */
 namespace sun::codegen::support {
-using sun::semantic_analysis::TypePtr;
+using sun::types::TypePtr;
 
 /**
  * Widens an integer to destTy. The source expression's Sun type decides zero-

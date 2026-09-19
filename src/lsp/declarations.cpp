@@ -310,11 +310,9 @@ const ExprAST* findDeclaration(const BlockExprAST& program,
 }
 
 /** Unwraps reference types to inspect the underlying value type. */
-const sun::semantic_analysis::Type* stripReference(
-    const sun::semantic_analysis::Type* type) {
-  while (type &&
-         type->getKind() == sun::semantic_analysis::Type::Kind::Reference) {
-    type = static_cast<const sun::semantic_analysis::ReferenceType*>(type)
+const sun::types::Type* stripReference(const sun::types::Type* type) {
+  while (type && type->getKind() == sun::types::Type::Kind::Reference) {
+    type = static_cast<const sun::types::ReferenceType*>(type)
                ->getReferencedType()
                .get();
   }
@@ -323,13 +321,12 @@ const sun::semantic_analysis::Type* stripReference(
 
 /** Finds the syntax declaration corresponding to a semantic type. */
 const ExprAST* findTypeDefinition(const BlockExprAST& program,
-                                  const sun::semantic_analysis::Type& type) {
+                                  const sun::types::Type& type) {
   std::string name;
   QualifiedName qualified;
   switch (type.getKind()) {
-    case sun::semantic_analysis::Type::Kind::Class: {
-      const auto& cls =
-          static_cast<const sun::semantic_analysis::ClassType&>(type);
+    case sun::types::Type::Kind::Class: {
+      const auto& cls = static_cast<const sun::types::ClassType&>(type);
       qualified = cls.isSpecialized() ? cls.getGenericQualifiedName()
                                       : cls.getQualifiedName();
       if (!qualified.empty()) {
@@ -341,18 +338,16 @@ const ExprAST* findTypeDefinition(const BlockExprAST& program,
       }
       break;
     }
-    case sun::semantic_analysis::Type::Kind::Interface: {
-      const auto& iface =
-          static_cast<const sun::semantic_analysis::InterfaceType&>(type);
+    case sun::types::Type::Kind::Interface: {
+      const auto& iface = static_cast<const sun::types::InterfaceType&>(type);
       name = iface.isSpecialized() && !iface.getBaseGenericName().empty()
                  ? iface.getBaseGenericName()
                  : iface.getBaseName();
       qualified = iface.getQualifiedName();
       break;
     }
-    case sun::semantic_analysis::Type::Kind::Enum: {
-      const auto& enumType =
-          static_cast<const sun::semantic_analysis::EnumType&>(type);
+    case sun::types::Type::Kind::Enum: {
+      const auto& enumType = static_cast<const sun::types::EnumType&>(type);
       name = enumType.isGenericSpecialization() ? enumType.getGenericBase()
                                                 : enumType.getBaseName();
       qualified = enumType.getQualifiedName();
@@ -489,7 +484,7 @@ std::optional<Declaration> findLocalDeclaration(
 std::optional<Declaration> findMemberDeclaration(
     const BlockExprAST& program, const ExprAST& object,
     const std::string& member, const QualifiedName& qualifiedName) {
-  const sun::semantic_analysis::Type* objectType =
+  const sun::types::Type* objectType =
       stripReference(object.getResolvedType().get());
   if (!objectType) {
     // A match pattern's object is never typed: `Shape.Circle(r)` names the
@@ -505,7 +500,7 @@ std::optional<Declaration> findMemberDeclaration(
     if (!definition) return std::nullopt;
     return findMember(*definition, member);
   }
-  if (objectType->getKind() == sun::semantic_analysis::Type::Kind::Module) {
+  if (objectType->getKind() == sun::types::Type::Kind::Module) {
     // `m.f`: the analyzer recorded which module's `f` was meant
     if (const ExprAST* decl = findDeclaration(program, member, qualifiedName)) {
       return declarationOf(*decl);
@@ -938,7 +933,7 @@ namespace {
 std::optional<Declaration> findLiteralField(
     const BlockExprAST& program, const sun::ast::StructLiteralAST& literal,
     int offset, const std::string& source) {
-  const sun::semantic_analysis::Type* type =
+  const sun::types::Type* type =
       stripReference(literal.getResolvedType().get());
   if (!type) return std::nullopt;
   const ExprAST* definition = findTypeDefinition(program, *type);

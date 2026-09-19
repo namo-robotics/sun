@@ -17,8 +17,8 @@
 #include "codegen/codegen_visitor.h"
 #include "support/error.h"
 
-using sun::semantic_analysis::ClassType;
-using sun::semantic_analysis::TypePtr;
+using sun::types::ClassType;
+using sun::types::TypePtr;
 
 using sun::ast::IndexAST;
 using sun::support::logAndThrowError;
@@ -56,7 +56,7 @@ Constant* CodegenVisitor::arrayDimsTable(const std::vector<size_t>& dims) {
 Value* CodegenVisitor::emitArrayView(Value* storagePtr,
                                      const std::vector<size_t>& dims) {
   StructType* fatType =
-      sun::semantic_analysis::ArrayType::getArrayStructType(ctx.getContext());
+      sun::types::ArrayType::getArrayStructType(ctx.getContext());
   Value* view = UndefValue::get(fatType);
   view = ctx.builder->CreateInsertValue(view, storagePtr, 0, "view.data");
   view = ctx.builder->CreateInsertValue(
@@ -71,7 +71,7 @@ Value* CodegenVisitor::loadArrayView(Value* value) {
   if (!value) return nullptr;
   if (!value->getType()->isPointerTy()) return value;
   StructType* fatType =
-      sun::semantic_analysis::ArrayType::getArrayStructType(ctx.getContext());
+      sun::types::ArrayType::getArrayStructType(ctx.getContext());
   return ctx.builder->CreateLoad(fatType, value, "view.load");
 }
 
@@ -79,9 +79,9 @@ Value* CodegenVisitor::loadArrayView(Value* value) {
 // Moving and copying inline storage
 // -------------------------------------------------------------------
 
-void CodegenVisitor::emitArrayTransfer(
-    Value* dest, Value* src, const sun::semantic_analysis::ArrayType& type,
-    bool move) {
+void CodegenVisitor::emitArrayTransfer(Value* dest, Value* src,
+                                       const sun::types::ArrayType& type,
+                                       bool move) {
   llvm::Type* storageType = type.getDataStorageType(ctx.getContext());
   const DataLayout& DL = module->getDataLayout();
   uint64_t size = DL.getTypeAllocSize(storageType);
@@ -101,8 +101,8 @@ void CodegenVisitor::emitArrayTransfer(
   // The destination owns the elements now. The source's own drop must
   // release nothing; ownership tracking excludes the moved storage.
   scopes.markClassAllocationAsDeinited(
-      src, std::make_shared<sun::semantic_analysis::ArrayType>(type));
-  if (sun::semantic_analysis::typeNeedsDrop(&type)) {
+      src, std::make_shared<sun::types::ArrayType>(type));
+  if (sun::types::typeNeedsDrop(&type)) {
     ctx.builder->CreateMemSet(
         src, ConstantInt::get(llvm::Type::getInt8Ty(ctx.getContext()), 0), size,
         align);
@@ -115,13 +115,12 @@ void CodegenVisitor::emitArrayTransfer(
 void CodegenVisitor::storeArrayElement(Value* slotPtr, Value* elemVal,
                                        const TypePtr& elemSunType,
                                        llvm::Type* slotType) {
-  if (auto* nested =
-          sun::codegen::support::tryGetType<sun::semantic_analysis::ArrayType>(
-              elemSunType)) {
+  if (auto* nested = sun::codegen::support::tryGetType<sun::types::ArrayType>(
+          elemSunType)) {
     emitArrayTransfer(slotPtr, elemVal, *nested, /*move=*/true);
     return;
   }
-  TypePtr valueType = sun::semantic_analysis::unwrapRef(elemSunType);
+  TypePtr valueType = sun::types::unwrapRef(elemSunType);
   if (valueType && (valueType->isClass() || valueType->isInterface() ||
                     isPayloadEnum(valueType))) {
     Value* moved = applyMoveSemantics(elemVal, valueType);
@@ -165,7 +164,7 @@ Value* CodegenVisitor::codegen(const sun::ast::ArrayLiteralAST& expr) {
 
   TypePtr arraySunType = expr.getResolvedType();
   auto* sunArrayType =
-      &sun::codegen::support::requireType<sun::semantic_analysis::ArrayType>(
+      &sun::codegen::support::requireType<sun::types::ArrayType>(
           expr, "array literal");
   const auto& dims = sunArrayType->getDimensions();
 
@@ -198,7 +197,7 @@ Value* CodegenVisitor::codegen(const sun::ast::ArrayLiteralAST& expr) {
 
   // A literal of owning elements is a temporary that drops them unless a
   // variable, field or call adopts it
-  if (sun::semantic_analysis::typeNeedsDrop(arraySunType)) {
+  if (sun::types::typeNeedsDrop(arraySunType)) {
     scopes.trackClassAllocation(storage, "array.literal", arraySunType);
   }
   return storage;
@@ -211,7 +210,7 @@ Value* CodegenVisitor::codegen(const sun::ast::ArrayLiteralAST& expr) {
 
 Value* CodegenVisitor::codegen(const IndexAST& expr) {
   TypePtr targetType =
-      sun::semantic_analysis::unwrapRef(expr.getTarget()->getResolvedType());
+      sun::types::unwrapRef(expr.getTarget()->getResolvedType());
 
   // Class targets dispatch to the __index__/__slice__ method protocol
   if (auto* classType =
@@ -225,7 +224,7 @@ Value* CodegenVisitor::codegen(const IndexAST& expr) {
   }
 
   auto& sunArrayType =
-      sun::codegen::support::requireType<sun::semantic_analysis::ArrayType>(
+      sun::codegen::support::requireType<sun::types::ArrayType>(
           targetType, "index target", expr.getLocation());
 
   Value* elemPtr = codegenIndexElementPtr(expr);
@@ -253,9 +252,9 @@ Value* CodegenVisitor::codegenIndexElementPtr(const IndexAST& expr) {
   if (!base) return nullptr;
 
   TypePtr arrayType =
-      sun::semantic_analysis::unwrapRef(expr.getTarget()->getResolvedType());
+      sun::types::unwrapRef(expr.getTarget()->getResolvedType());
   auto* sunArrayType =
-      &sun::codegen::support::requireType<sun::semantic_analysis::ArrayType>(
+      &sun::codegen::support::requireType<sun::types::ArrayType>(
           arrayType, "index target", expr.getLocation());
   const auto& indices = expr.getIndices();
   llvm::Type* i64Ty = llvm::Type::getInt64Ty(ctx.getContext());
@@ -331,8 +330,8 @@ Value* CodegenVisitor::codegen(const sun::ast::IndexedAssignmentAST& expr) {
   }
 
   const auto& indexExpr = static_cast<const IndexAST&>(*indexTarget);
-  TypePtr targetType = sun::semantic_analysis::unwrapRef(
-      indexExpr.getTarget()->getResolvedType());
+  TypePtr targetType =
+      sun::types::unwrapRef(indexExpr.getTarget()->getResolvedType());
 
   if (auto* classType =
           sun::codegen::support::tryGetType<ClassType>(targetType)) {
@@ -342,7 +341,7 @@ Value* CodegenVisitor::codegen(const sun::ast::IndexedAssignmentAST& expr) {
   }
 
   auto& sunArrayType =
-      sun::codegen::support::requireType<sun::semantic_analysis::ArrayType>(
+      sun::codegen::support::requireType<sun::types::ArrayType>(
           targetType, "index target", indexExpr.getLocation());
 
   Value* elemPtr = codegenIndexElementPtr(indexExpr);
@@ -353,7 +352,7 @@ Value* CodegenVisitor::codegen(const sun::ast::IndexedAssignmentAST& expr) {
 
   // The slot held a value: release it before the new one moves in
   const TypePtr& elemSunType = sunArrayType.getElementType();
-  if (sun::semantic_analysis::typeNeedsDrop(elemSunType)) {
+  if (sun::types::typeNeedsDrop(elemSunType)) {
     scopes.emitDropInPlace(elemSunType, elemPtr, "elem");
   }
   storeArrayElement(elemPtr, value, expr.getValue()->getResolvedType(),
@@ -371,10 +370,9 @@ Value* CodegenVisitor::codegenArrayQuery(
     const sun::ast::MemberAccessAST& member) {
   const std::string& name = member.getMemberName();
   TypePtr objectType =
-      sun::semantic_analysis::unwrapRef(member.getObject()->getResolvedType());
-  auto* arrayType =
-      &sun::codegen::support::requireType<sun::semantic_analysis::ArrayType>(
-          objectType, name + "() receiver", member.getLocation());
+      sun::types::unwrapRef(member.getObject()->getResolvedType());
+  auto* arrayType = &sun::codegen::support::requireType<sun::types::ArrayType>(
+      objectType, name + "() receiver", member.getLocation());
   llvm::Type* i64Ty = llvm::Type::getInt64Ty(ctx.getContext());
   const auto& dims = arrayType->getDimensions();
 
@@ -596,7 +594,7 @@ Value* CodegenVisitor::codegenClassSlice(const IndexAST& expr, Value* objectPtr,
 // Call obj.__setindex__(indices, value) with a pre-boxed index view
 Value* CodegenVisitor::emitClassSetIndexCall(
     Value* objectPtr, Value* idxView, Value* value,
-    const sun::semantic_analysis::ClassMethod* method) {
+    const sun::types::ClassMethod* method) {
   if (!method) logAndThrowError("Indexed assignment has no selected setter");
   Function* methodFunc = functions.lookupFunctionById(method->declarationId);
 
@@ -624,7 +622,7 @@ Value* CodegenVisitor::emitClassSetIndexCall(
 
 Value* CodegenVisitor::codegenClassSetIndex(
     const IndexAST& indexExpr, const sun::ast::ExprAST* valueExpr,
-    const sun::semantic_analysis::ClassMethod* method) {
+    const sun::types::ClassMethod* method) {
   Value* objectPtr = codegen(*indexExpr.getTarget());
   if (!objectPtr) return nullptr;
 

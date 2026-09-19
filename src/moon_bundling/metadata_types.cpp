@@ -3,7 +3,7 @@
 #include <set>
 
 #include "ast.pb.h"
-#include "semantic_analysis/type_traits.h"
+#include "semantic_analysis/type_analysis/type_traits.h"
 
 /** Builds and loads compiled Moon libraries and their declaration metadata. */
 namespace sun::moon_bundling {
@@ -13,10 +13,9 @@ namespace pbc = sun::proto::ast;
 namespace {
 
 /** Serializes a named type with its declaration identity and generic arguments. */
-void nominal(pbc::TypeAnnotation& out,
-             const sun::semantic_analysis::NominalType& type,
+void nominal(pbc::TypeAnnotation& out, const sun::types::NominalType& type,
              const std::string& display,
-             const std::vector<sun::semantic_analysis::TypePtr>& args,
+             const std::vector<sun::types::TypePtr>& args,
              const sun::semantic_analysis::DeclarationTable& declarations) {
   out.set_base_name(display);
   if (display != "IError")
@@ -55,11 +54,11 @@ void bindDeclarationTypes(google::protobuf::Message& message,
     auto& annotation = static_cast<pbc::TypeAnnotation&>(message);
     const auto& name = annotation.base_name();
     if (!annotation.has_declaration_key() && !names.contains(name) &&
-        !sun::semantic_analysis::Types::fromString(name) &&
-        !sun::semantic_analysis::isTypeTrait(name) && name != "IError" &&
-        name != "_return_type_of" && name != "_params_of" && name != "ref" &&
-        name != "raw_ptr" && name != "static_ptr" && name != "array" &&
-        name != "fn" && name != "lambda") {
+        !sun::types::Types::fromString(name) &&
+        !sun::semantic_analysis::type_analysis::isTypeTrait(name) &&
+        name != "IError" && name != "_return_type_of" && name != "_params_of" &&
+        name != "ref" && name != "raw_ptr" && name != "static_ptr" &&
+        name != "array" && name != "fn" && name != "lambda") {
       sun::semantic_analysis::DeclarationId ref;
       if (auto* generic = ctx.lookupGenericClass(name))
         ref = generic->AST->getDeclarationId();
@@ -100,7 +99,8 @@ void bindDeclarationTypes(google::protobuf::Message& message,
   } else if (message.GetDescriptor() == pbc::TypeParameter::descriptor()) {
     auto& param = static_cast<pbc::TypeParameter&>(message);
     if (param.has_constraint() &&
-        !sun::semantic_analysis::isTypeTrait(param.constraint())) {
+        !sun::semantic_analysis::type_analysis::isTypeTrait(
+            param.constraint())) {
       pbc::TypeAnnotation annotation;
       annotation.set_base_name(param.constraint());
       bindDeclarationTypes(annotation, ctx, names);
@@ -129,12 +129,12 @@ void bindDeclarationTypes(google::protobuf::Message& message,
 
 /** Serializes a semantic type with its portable declaration identity. */
 pbc::TypeAnnotation exportType(
-    const sun::semantic_analysis::TypePtr& type,
+    const sun::types::TypePtr& type,
     const sun::semantic_analysis::DeclarationTable& declarations) {
   pbc::TypeAnnotation out;
   if (!type) sun::support::logAndThrowError("Cannot export an unresolved type");
-  if (auto* value = sun::codegen::support::tryGetType<
-          sun::semantic_analysis::ReferenceType>(type)) {
+  if (auto* value =
+          sun::codegen::support::tryGetType<sun::types::ReferenceType>(type)) {
     out.set_base_name("ref");
     out.set_const_ref(!value->isMutable());
     out.set_lifetime_name(value->getLifetimeName());
@@ -142,24 +142,27 @@ pbc::TypeAnnotation exportType(
         exportType(value->getReferencedType(), declarations);
     for (const auto& lifetime : value->getClassLifetimeArgs())
       out.mutable_element_type()->add_lifetime_arguments(lifetime);
-  } else if (auto* value = sun::codegen::support::tryGetType<
-                 sun::semantic_analysis::RawPointerType>(type)) {
+  } else if (auto* value =
+                 sun::codegen::support::tryGetType<sun::types::RawPointerType>(
+                     type)) {
     out.set_base_name("raw_ptr");
     *out.mutable_element_type() =
         exportType(value->getPointeeType(), declarations);
   } else if (auto* value = sun::codegen::support::tryGetType<
-                 sun::semantic_analysis::StaticPointerType>(type)) {
+                 sun::types::StaticPointerType>(type)) {
     out.set_base_name("static_ptr");
     *out.mutable_element_type() =
         exportType(value->getPointeeType(), declarations);
-  } else if (auto* value = sun::codegen::support::tryGetType<
-                 sun::semantic_analysis::ArrayType>(type)) {
+  } else if (auto* value =
+                 sun::codegen::support::tryGetType<sun::types::ArrayType>(
+                     type)) {
     out.set_base_name("array");
     *out.mutable_element_type() =
         exportType(value->getElementType(), declarations);
     for (auto dim : value->getDimensions()) out.add_array_dimensions(dim);
-  } else if (auto* value = sun::codegen::support::tryGetType<
-                 sun::semantic_analysis::FunctionType>(type)) {
+  } else if (auto* value =
+                 sun::codegen::support::tryGetType<sun::types::FunctionType>(
+                     type)) {
     out.set_base_name("fn");
     out.set_can_error(value->canThrow());
     out.set_requires_unsafe(value->requiresUnsafe());
@@ -167,8 +170,9 @@ pbc::TypeAnnotation exportType(
         exportType(value->getReturnType(), declarations);
     for (const auto& arg : value->getParamTypes())
       *out.add_param_types() = exportType(arg, declarations);
-  } else if (auto* value = sun::codegen::support::tryGetType<
-                 sun::semantic_analysis::LambdaType>(type)) {
+  } else if (auto* value =
+                 sun::codegen::support::tryGetType<sun::types::LambdaType>(
+                     type)) {
     out.set_base_name("lambda");
     out.set_can_error(value->canThrow());
     out.set_requires_unsafe(value->requiresUnsafe());
@@ -178,20 +182,24 @@ pbc::TypeAnnotation exportType(
         exportType(value->getReturnType(), declarations);
     for (const auto& arg : value->getParamTypes())
       *out.add_param_types() = exportType(arg, declarations);
-  } else if (auto* value = sun::codegen::support::tryGetType<
-                 sun::semantic_analysis::ClassType>(type)) {
+  } else if (auto* value =
+                 sun::codegen::support::tryGetType<sun::types::ClassType>(
+                     type)) {
     nominal(out, *value, value->toDisplayString(), value->getTypeArguments(),
             declarations);
-  } else if (auto* value = sun::codegen::support::tryGetType<
-                 sun::semantic_analysis::InterfaceType>(type)) {
+  } else if (auto* value =
+                 sun::codegen::support::tryGetType<sun::types::InterfaceType>(
+                     type)) {
     nominal(out, *value, value->toDisplayString(), value->getTypeArguments(),
             declarations);
-  } else if (auto* value = sun::codegen::support::tryGetType<
-                 sun::semantic_analysis::EnumType>(type)) {
+  } else if (auto* value =
+                 sun::codegen::support::tryGetType<sun::types::EnumType>(
+                     type)) {
     nominal(out, *value, value->getDisplayName(), value->getGenericArgs(),
             declarations);
-  } else if (auto* value = sun::codegen::support::tryGetType<
-                 sun::semantic_analysis::ErrorUnionType>(type)) {
+  } else if (auto* value =
+                 sun::codegen::support::tryGetType<sun::types::ErrorUnionType>(
+                     type)) {
     out = exportType(value->getValueType(), declarations);
     out.set_can_error(true);
   } else

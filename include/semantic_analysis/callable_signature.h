@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "semantic_analysis/types.h"
+#include "types/types.h"
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
@@ -13,12 +13,12 @@ namespace sun::semantic_analysis {
  */
 struct CallableSignature {
   std::string name;
-  std::vector<TypePtr> parameters;
+  std::vector<sun::types::TypePtr> parameters;
 
   /** Compare types structurally, including nominal declaration identities. */
   bool operator==(const CallableSignature& other) const {
     return name == other.name &&
-           sameTypeArguments(parameters, other.parameters);
+           sun::types::sameTypeArguments(parameters, other.parameters);
   }
 };
 

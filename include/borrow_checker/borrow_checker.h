@@ -13,15 +13,15 @@
 #include "ast.h"
 #include "borrow_checker/borrow_state.h"
 #include "borrow_checker/loan.h"
-#include "semantic_analysis/types.h"
 #include "support/error.h"
+#include "types/types.h"
 
 /** Checks ownership and lifetimes so references cannot outlive their values. */
 namespace sun::borrow_checker {
 using sun::ast::CallExprAST;
 using sun::ast::ExprAST;
 using sun::ast::MatchExprAST;
-using sun::semantic_analysis::TypePtr;
+using sun::types::TypePtr;
 
 /**
  * A single borrow checking error with source location and optional related
@@ -329,7 +329,7 @@ class BorrowChecker {
   /** Recursively checks class fields for references while avoiding type cycles. */
   bool classStoresRefsWalk(
       const TypePtr& type,
-      std::unordered_set<const sun::semantic_analysis::Type*>& visited) const;
+      std::unordered_set<const sun::types::Type*>& visited) const;
   /**
    * Does this class hold a mutable reference anywhere in its fields?
    */

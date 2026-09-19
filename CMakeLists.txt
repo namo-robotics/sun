@@ -162,6 +162,14 @@ add_library(sun_lib
     src/ast/call_expr_ast.cpp
     src/ast/ast_children.cpp
     src/ast/control_flow.cpp
+    # Shared types
+    src/types/type.cpp
+    src/types/type_identity.cpp
+    src/types/nominal_type.cpp
+    src/types/reference_type.cpp
+    src/types/pointer_types.cpp
+    src/types/class_type.cpp
+    src/types/type_utils.cpp
     # Semantic analysis
     src/semantic_analysis/portable_declaration_key.cpp
     src/semantic_analysis/specialization_key.cpp
@@ -174,9 +182,12 @@ add_library(sun_lib
     src/semantic_analysis/argument_conversion.cpp
     src/semantic_analysis/generic_type_arguments.cpp
     src/semantic_analysis/interfaces.cpp
-    src/semantic_analysis/type_annotations.cpp
-    src/semantic_analysis/type_inferer.cpp
-    src/semantic_analysis/type_traits.cpp
+    src/semantic_analysis/type_analysis/type_resolver.cpp
+    src/semantic_analysis/type_analysis/type_inferer.cpp
+    src/semantic_analysis/type_analysis/generic_type_arguments.cpp
+    src/semantic_analysis/expression_resolution.cpp
+    src/semantic_analysis/call_result_resolution.cpp
+    src/semantic_analysis/type_analysis/type_traits.cpp
     src/semantic_analysis/captures.cpp
     src/semantic_analysis/field_initialization.cpp
     src/semantic_analysis/body_analyzer.cpp
@@ -192,7 +203,9 @@ add_library(sun_lib
     src/semantic_analysis/semantic_pipeline.cpp
     src/semantic_analysis/passes/declaration_collection_pass.cpp
     src/semantic_analysis/access_checker.cpp
-    src/semantic_analysis/type_rules.cpp
+    src/semantic_analysis/type_analysis/type_rules.cpp
+    src/semantic_analysis/expression_properties.cpp
+    src/semantic_analysis/type_analysis/type_checking.cpp
     src/semantic_analysis/symbol_names.cpp
     src/semantic_analysis/enum_analyzer.cpp
     # Borrow checker

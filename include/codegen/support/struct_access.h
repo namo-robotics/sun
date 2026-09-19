@@ -17,18 +17,18 @@
 #include <string>
 
 #include "ast.h"
-#include "semantic_analysis/types.h"
+#include "types/types.h"
 
 /** Provides shared diagnostics, source tracking, and compiler utilities. */
 namespace sun::codegen::support {
-using sun::semantic_analysis::ClassType;
+using sun::types::ClassType;
 
 /**
  * Address of one field of a class instance.
  */
 llvm::Value* fieldPtr(llvm::IRBuilder<>& builder, ClassType* classType,
                       llvm::Value* objectPtr,
-                      const sun::semantic_analysis::ClassField& field,
+                      const sun::types::ClassField& field,
                       const std::string& name);
 
 /**
@@ -58,7 +58,7 @@ llvm::Align lvalueAlign(const sun::ast::ExprAST& target, llvm::Type* slotTy,
  */
 void storeIntoSlot(llvm::IRBuilder<>& builder, const llvm::DataLayout& dl,
                    llvm::Value* dest, llvm::Value* value,
-                   const sun::semantic_analysis::TypePtr& slotType,
+                   const sun::types::TypePtr& slotType,
                    const ClassType* owner = nullptr);
 
 }  // namespace sun::codegen::support

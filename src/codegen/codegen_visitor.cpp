@@ -6,9 +6,9 @@
 
 #include "codegen/codegen.h"
 #include "codegen/support/scalar_ops.h"
-#include "semantic_analysis/type_rules.h"
+#include "semantic_analysis/type_analysis/type_rules.h"
 
-using sun::semantic_analysis::TypePtr;
+using sun::types::TypePtr;
 
 using sun::ast::ASTNodeType;
 using sun::ast::BinaryExprAST;
@@ -245,22 +245,21 @@ Value* CodegenVisitor::codegen(const sun::ast::NumberExprAST& expr) {
     TypePtr resolvedType = expr.getResolvedType();
     if (resolvedType && resolvedType->isPrimitive()) {
       const auto* primType =
-          static_cast<const sun::semantic_analysis::PrimitiveType*>(
-              resolvedType.get());
+          static_cast<const sun::types::PrimitiveType*>(resolvedType.get());
       switch (primType->getKind()) {
-        case sun::semantic_analysis::Type::Kind::Int8:
-        case sun::semantic_analysis::Type::Kind::UInt8:
+        case sun::types::Type::Kind::Int8:
+        case sun::types::Type::Kind::UInt8:
           return constant(8);
-        case sun::semantic_analysis::Type::Kind::Int16:
-        case sun::semantic_analysis::Type::Kind::UInt16:
+        case sun::types::Type::Kind::Int16:
+        case sun::types::Type::Kind::UInt16:
           return constant(16);
-        case sun::semantic_analysis::Type::Kind::Int32:
-        case sun::semantic_analysis::Type::Kind::UInt32:
+        case sun::types::Type::Kind::Int32:
+        case sun::types::Type::Kind::UInt32:
           return constant(32);
-        case sun::semantic_analysis::Type::Kind::Int64:
-        case sun::semantic_analysis::Type::Kind::UInt64:
+        case sun::types::Type::Kind::Int64:
+        case sun::types::Type::Kind::UInt64:
           return constant(64);
-        case sun::semantic_analysis::Type::Kind::Bool:
+        case sun::types::Type::Kind::Bool:
           return ConstantInt::get(llvm::Type::getInt1Ty(ctx.getContext()),
                                   bits != 0);
         default:
@@ -269,9 +268,9 @@ Value* CodegenVisitor::codegen(const sun::ast::NumberExprAST& expr) {
     }
 
     // Default behavior: i32 when the value fits, otherwise a 64-bit constant
-    if (sun::semantic_analysis::literalFitsInType(
+    if (sun::semantic_analysis::type_analysis::literalFitsInType(
             expr.getMagnitude(), expr.isNegative(),
-            sun::semantic_analysis::Type::Kind::Int32)) {
+            sun::types::Type::Kind::Int32)) {
       return constant(32);
     }
     return constant(64);
@@ -318,7 +317,7 @@ Value* CodegenVisitor::codegen(const sun::ast::StringLiteralAST& expr) {
  * Floats, bool, and enums answer false and take the signed/default path.
  */
 static bool isUnsignedExpr(const ExprAST& expr) {
-  auto type = sun::semantic_analysis::unwrapRef(expr.getResolvedType());
+  auto type = sun::types::unwrapRef(expr.getResolvedType());
   return type && type->isUnsigned();
 }
 

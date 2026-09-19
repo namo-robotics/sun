@@ -93,8 +93,7 @@ llvm::Value* FunctionGenerator::computeCaptureInitValue(const Capture& cap) {
       // referent, not the ref cell (mirror tryCodegenAddress)
       if (cap.type && cap.type->isReference()) {
         const auto* refType =
-            static_cast<const sun::semantic_analysis::ReferenceType*>(
-                cap.type.get());
+            static_cast<const sun::types::ReferenceType*>(cap.type.get());
         llvm::Type* referencedLLVMType =
             typeResolver.resolve(refType->getReferencedType());
         if (alloca->getAllocatedType() != referencedLLVMType) {
@@ -221,7 +220,7 @@ bool FunctionGenerator::fillCaptureSlots(StructType* envType,
     // An owned capture of anything a read cannot honestly duplicate — a class
     // or a payload enum — takes the value rather than a copy of it.
     bool movesIn = cap.kind == CaptureKind::Owned && cap.type &&
-                   !sun::semantic_analysis::typeCopiesByRead(cap.type);
+                   !sun::types::typeCopiesByRead(cap.type);
     if (!movesIn) {
       Value* capturedValue = computeCaptureInitValue(cap);
       if (!capturedValue) return false;
@@ -322,8 +321,7 @@ std::pair<Function*, llvm::StructType*> FunctionGenerator::codegen(
   // elements of any `args...` pack. Semantic analysis must have resolved
   // every one of them.
   std::vector<std::string> argNames = proto.getAllParamNames();
-  std::vector<sun::semantic_analysis::TypePtr> paramTypes =
-      proto.getAllParamTypes();
+  std::vector<sun::types::TypePtr> paramTypes = proto.getAllParamTypes();
   if (!proto.hasResolvedParamTypes() || paramTypes.size() != argNames.size()) {
     logAndThrowError(
         "Function parameter types not resolved by semantic analysis: " +

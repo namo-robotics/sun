@@ -25,7 +25,7 @@ struct CatchClause {
 
   // Filled in by semantic analysis, consumed by codegen for typed matching:
   bool isCatchAll = false;  // true for `catch (e: IError)` (matches any)
-  sun::semantic_analysis::TypePtr resolvedType;
+  sun::types::TypePtr resolvedType;
 
   /** Creates an instance with its default state. */
   CatchClause() = default;

@@ -14,7 +14,7 @@
 
 /** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
-using sun::semantic_analysis::TypePtr;
+using sun::types::TypePtr;
 
 /**
  * Generic function call: create<Type>(args...) or create<Type1, Type2>(args...)

@@ -15,16 +15,17 @@ namespace sun::ast {
 /**
  * One requirement written on a generic type parameter, after the colon:
  *
- *   <T: _Numeric>   a built-in trait (see semantic_analysis/type_traits.h)
- *   <T: IShape>     an interface the type argument must implement
- *   <T: IClone&lt;T&gt;>  an interface with type arguments
- *   <F: _Lambda>    any closure type
+ *   <T: _Numeric>   a built-in trait (see
+ * semantic_analysis/type_analysis/type_traits.h) <T: IShape>     an interface
+ * the type argument must implement <T: IClone&lt;T&gt;>  an interface with type
+ * arguments <F: _Lambda>    any closure type
  *
  * Parsing records the name, type arguments and source location. Deciding
  * whether the name is a trait or an interface, and whether a given type
  * argument satisfies it, is semantic analysis' job
- * (`sun::semantic_analysis::satisfies`), which is what lets `_is<T>` in a body
- * and a constraint on a signature answer with one vocabulary.
+ * (`sun::semantic_analysis::type_analysis::satisfies`), which is what lets
+ * `_is<T>` in a body and a constraint on a signature answer with one
+ * vocabulary.
  */
 struct TypeConstraint {
   std::string name;  // "_Numeric", "IShape", "_Lambda"

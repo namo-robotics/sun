@@ -8,12 +8,12 @@
 #include <set>
 
 #include "semantic_analysis/semantic_analyzer.h"
-#include "semantic_analysis/type_rules.h"
+#include "semantic_analysis/type_analysis/type_rules.h"
 #include "support/error.h"
 
-using sun::semantic_analysis::EnumType;
-using sun::semantic_analysis::TypePtr;
-using sun::semantic_analysis::Types;
+using sun::types::EnumType;
+using sun::types::TypePtr;
+using sun::types::Types;
 
 using sun::ast::CallExprAST;
 using sun::ast::ExprAST;
@@ -24,9 +24,9 @@ using sun::support::logWarning;
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
-using sun::semantic_analysis::isAssignableTo;
-using sun::semantic_analysis::tryCoerceIntegerLiteral;
-using sun::semantic_analysis::unwrapRef;
+using sun::semantic_analysis::type_analysis::isAssignableTo;
+using sun::semantic_analysis::type_analysis::tryCoerceIntegerLiteral;
+using sun::types::unwrapRef;
 
 // -------------------------------------------------------------------
 // Local helpers
@@ -40,7 +40,7 @@ namespace {
  * fields. Pointers break the cycle (indirection is the fix we suggest).
  */
 bool embedsEnumByValue(const TypePtr& type, const EnumType* self,
-                       std::set<const sun::semantic_analysis::Type*>& visited) {
+                       std::set<const sun::types::Type*>& visited) {
   if (!type || !visited.insert(type.get()).second) return false;
   if (type->isEnum()) {
     auto* e = static_cast<const EnumType*>(type.get());
@@ -51,7 +51,7 @@ bool embedsEnumByValue(const TypePtr& type, const EnumType* self,
       }
     }
   } else if (type->isClass()) {
-    auto* c = static_cast<const sun::semantic_analysis::ClassType*>(type.get());
+    auto* c = static_cast<const sun::types::ClassType*>(type.get());
     for (const auto& field : c->getFields()) {
       if (embedsEnumByValue(field.type, self, visited)) return true;
     }
@@ -71,7 +71,7 @@ bool unifyPayloadTypeParam(const sun::ast::TypeAnnotation& annot,
                            std::map<std::string, TypePtr>& bindings,
                            std::string& conflictParam) {
   if (!argType) return true;
-  TypePtr arg = sun::semantic_analysis::unwrapRef(argType);
+  TypePtr arg = sun::types::unwrapRef(argType);
 
   bool isParam = false;
   for (const auto& p : typeParams) {
@@ -97,14 +97,13 @@ bool unifyPayloadTypeParam(const sun::ast::TypeAnnotation& annot,
     if (annot.baseName == "raw_ptr" && arg->isRawPointer()) {
       return unifyPayloadTypeParam(
           *annot.elementType,
-          static_cast<sun::semantic_analysis::RawPointerType*>(arg.get())
-              ->getPointeeType(),
+          static_cast<sun::types::RawPointerType*>(arg.get())->getPointeeType(),
           typeParams, bindings, conflictParam);
     }
     if (annot.baseName == "static_ptr" && arg->isStaticPointer()) {
       return unifyPayloadTypeParam(
           *annot.elementType,
-          static_cast<sun::semantic_analysis::StaticPointerType*>(arg.get())
+          static_cast<sun::types::StaticPointerType*>(arg.get())
               ->getPointeeType(),
           typeParams, bindings, conflictParam);
     }
@@ -191,7 +190,7 @@ void EnumAnalyzer::analyzeEnumDefinition(sun::ast::EnumDefinitionAST& enumDef) {
     if (!variant.hasPayload()) continue;
     std::vector<TypePtr> payloadTypes;
     for (const auto& annot : variant.payloadTypes) {
-      auto payloadType = types_.typeAnnotationToType(annot);
+      auto payloadType = resolver_.typeAnnotationToType(annot);
       validateEnumPayloadType(payloadType, enumType, variant.name,
                               variant.location);
       payloadTypes.push_back(std::move(payloadType));
@@ -237,7 +236,7 @@ void EnumAnalyzer::validateEnumPayloadType(
                      location);
   }
 
-  std::set<const sun::semantic_analysis::Type*> visited;
+  std::set<const sun::types::Type*> visited;
   if (embedsEnumByValue(type, enumType.get(), visited)) {
     logAndThrowError("Recursive enum '" + enumType->getDisplayName() +
                          "' requires indirection (raw_ptr)",
@@ -555,7 +554,8 @@ void EnumAnalyzer::analyzeEnumMatch(sun::ast::MatchExprAST& matchExpr,
       }
     }
     if (!objectType) {
-      objectType = types_.inferType(*patternAccess.getObject());
+      sema_.analyzeExpr(const_cast<ExprAST&>(*patternAccess.getObject()));
+      objectType = sema_.requireResolvedType(*patternAccess.getObject());
     }
     if (!objectType || !objectType->isEnum() ||
         !objectType->equals(*enumType)) {

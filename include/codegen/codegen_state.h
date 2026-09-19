@@ -29,7 +29,8 @@
 #include "codegen/codegen.h"
 #include "codegen/debug_info_builder.h"
 #include "codegen/llvm_type_resolver.h"
-#include "semantic_analysis/types.h"
+#include "semantic_analysis/type_registry.h"
+#include "types/types.h"
 
 /** Translates analyzed Sun programs into LLVM instructions. */
 namespace sun::codegen {
@@ -45,7 +46,7 @@ struct FunctionFrame {
   llvm::Value* thisPtr = nullptr;
 
   // Class owning the method being compiled, for method name resolution
-  std::shared_ptr<sun::semantic_analysis::ClassType> currentClass = nullptr;
+  std::shared_ptr<sun::types::ClassType> currentClass = nullptr;
 
   // True when the function is declared to return errors, so division and
   // modulo take the checked path and calls may unwind
@@ -74,7 +75,7 @@ class CodegenState {
   // Class and interface types, shared with the semantic analyzer
   std::shared_ptr<sun::semantic_analysis::TypeRegistry> typeRegistry;
 
-  // sun::semantic_analysis::Type -> llvm::Type conversion, with its own cache
+  // sun::types::Type -> llvm::Type conversion, with its own cache
   LLVMTypeResolver typeResolver;
 
   // DWARF metadata emission; no-op unless -g
@@ -123,7 +124,7 @@ class CodegenState {
   struct ReceiverGuard {
     CodegenState& state;
     llvm::Value* savedThisPtr;
-    std::shared_ptr<sun::semantic_analysis::ClassType> savedClass;
+    std::shared_ptr<sun::types::ClassType> savedClass;
 
     /** Saves the active method receiver for restoration when the guard leaves scope. */
     explicit ReceiverGuard(CodegenState& s)

@@ -1,12 +1,13 @@
 #include "semantic_analysis/body_analyzer.h"
 
 #include "ast.h"
+#include "semantic_analysis/expression_properties.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/symbol_names.h"
-#include "semantic_analysis/type_rules.h"
+#include "semantic_analysis/type_analysis/type_rules.h"
 #include "support/error.h"
 
-using sun::semantic_analysis::TypePtr;
+using sun::types::TypePtr;
 
 using sun::ast::BlockExprAST;
 using sun::ast::PrototypeAST;
@@ -90,7 +91,7 @@ void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
   TypePtr scopeReturnType = proto.getResolvedReturnType();
   if (!scopeReturnType && proto.hasReturnType() && !proto.isGeneric()) {
     scopeReturnType =
-        analyzer_.types().typeAnnotationToType(*proto.getReturnType());
+        analyzer_.typeResolver().typeAnnotationToType(*proto.getReturnType());
   }
 
   // Enter the function scope with its diagnostic signature.
@@ -99,7 +100,7 @@ void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
   // `const ref` there, and the declared `ref` result is what callers with a
   // mutable receiver get.
   if (proto.isConstMethod())
-    scopeReturnType = analyzer_.types().createConstView(scopeReturnType);
+    scopeReturnType = analyzer_.typeResolver().createConstView(scopeReturnType);
   ctx_.enterFunctionScope(funcSig, proto.getQualifiedName(), proto.canThrow(),
                           scopeReturnType);
 
@@ -140,7 +141,7 @@ void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
   // Declare parameters
   for (size_t i = 0; i < proto.getArgs().size(); ++i) {
     const auto& [argName, argType] = proto.getArgs()[i];
-    TypePtr paramType = analyzer_.types().typeAnnotationToType(argType);
+    TypePtr paramType = analyzer_.typeResolver().typeAnnotationToType(argType);
     ctx_.currentScope().declareVariable(
         argName, paramType, true, false,
         proto.declarationIdentity().parameters.at(i));
@@ -196,7 +197,7 @@ void BodyAnalyzer::analyzeLambda(sun::ast::LambdaAST& lambda) {
   // Declare parameters
   for (size_t i = 0; i < proto.getArgs().size(); ++i) {
     const auto& [argName, argType] = proto.getArgs()[i];
-    TypePtr paramType = analyzer_.types().typeAnnotationToType(argType);
+    TypePtr paramType = analyzer_.typeResolver().typeAnnotationToType(argType);
     ctx_.currentScope().declareVariable(
         argName, paramType, true, false,
         proto.declarationIdentity().parameters.at(i));
@@ -235,7 +236,7 @@ void BodyAnalyzer::analyzeLambda(sun::ast::LambdaAST& lambda) {
 // scope, so the body sees exactly the names the template was written against.
 void BodyAnalyzer::analyzeMethodWithBindings(
     sun::ast::FunctionAST& methodFunc,
-    std::shared_ptr<sun::semantic_analysis::ClassType> classType,
+    std::shared_ptr<sun::types::ClassType> classType,
     const std::vector<std::string>& typeParams,
     const std::vector<TypePtr>& typeArgs) {
   SemanticContext::SourceFileGuard sourceFile(ctx_,
@@ -261,7 +262,7 @@ void BodyAnalyzer::analyzeMethodWithBindings(
   std::vector<TypePtr> substitutedParamTypes;
   for (const auto& [argName, argType] : proto.getArgs()) {
     substitutedParamTypes.push_back(
-        analyzer_.types().typeAnnotationToType(argType));
+        analyzer_.typeResolver().typeAnnotationToType(argType));
   }
   std::string methodSig = sun::semantic_analysis::formatFunctionSignature(
       proto.getName(), substitutedParamTypes);
@@ -270,11 +271,12 @@ void BodyAnalyzer::analyzeMethodWithBindings(
   TypePtr methodReturnType;
   if (proto.hasReturnType()) {
     methodReturnType =
-        analyzer_.types().typeAnnotationToType(*proto.getReturnType());
+        analyzer_.typeResolver().typeAnnotationToType(*proto.getReturnType());
   }
   // A const method body sees the const view of its return type
   if (proto.isConstMethod())
-    methodReturnType = analyzer_.types().createConstView(methodReturnType);
+    methodReturnType =
+        analyzer_.typeResolver().createConstView(methodReturnType);
   ctx_.enterFunctionScope(
       methodSig, classType->getQualifiedName().memberNamed(proto.getName()),
       proto.canThrow(), methodReturnType);

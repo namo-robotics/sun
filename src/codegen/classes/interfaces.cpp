@@ -10,9 +10,9 @@
 #include "codegen/codegen_visitor.h"
 #include "codegen/intrinsics/libc.h"
 
-using sun::semantic_analysis::ClassType;
-using sun::semantic_analysis::InterfaceType;
 using sun::semantic_analysis::PortableDeclarationKey;
+using sun::types::ClassType;
+using sun::types::InterfaceType;
 
 using namespace llvm;
 
@@ -214,12 +214,11 @@ Value* ClassGenerator::createOwnedInterfaceFatPointer(
 // -------------------------------------------------------------------
 
 Value* ClassGenerator::prepareClassForRefInterface(
-    Value* classPtr, sun::semantic_analysis::TypePtr argType,
-    sun::semantic_analysis::TypePtr paramType) {
+    Value* classPtr, sun::types::TypePtr argType,
+    sun::types::TypePtr paramType) {
   // Check if conversion is needed: param is ref Interface and arg is class
   auto* refType =
-      sun::codegen::support::tryGetType<sun::semantic_analysis::ReferenceType>(
-          paramType);
+      sun::codegen::support::tryGetType<sun::types::ReferenceType>(paramType);
   if (!refType) return nullptr;  // Not a ref param
 
   auto* ifaceType = sun::codegen::support::tryGetType<InterfaceType>(

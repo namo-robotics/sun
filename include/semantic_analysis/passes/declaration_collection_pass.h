@@ -64,7 +64,7 @@ class DeclarationCollectionPass {
   void registerClassShape(
       sun::ast::ClassDefinitionAST &classDef,
       const sun::semantic_analysis::QualifiedName &qualifiedClass,
-      std::shared_ptr<sun::semantic_analysis::ClassType> classType);
+      std::shared_ptr<sun::types::ClassType> classType);
 
   /**
    * Register a module-level variable imported from a .moon bundle. The stub

@@ -14,8 +14,8 @@
 #include "ast/try_catch_expr_ast.h"
 #include "ast/type_annotation.h"
 #include "semantic_analysis/qualified_name.h"
-#include "semantic_analysis/types.h"
 #include "support/position.h"
+#include "types/types.h"
 
 /** Provides compiler-backed editor features through the language server protocol. */
 namespace sun::lsp {
@@ -26,8 +26,7 @@ using sun::semantic_analysis::QualifiedName;
 /**
  * Type parameter name -> the type it stands for in one specialization
  */
-using Bindings =
-    std::vector<std::pair<std::string, sun::semantic_analysis::TypePtr>>;
+using Bindings = std::vector<std::pair<std::string, sun::types::TypePtr>>;
 
 /**
  * Canonical form of a path that exists on disk; other paths are unchanged
@@ -145,14 +144,13 @@ const ExprAST* findDeclaration(const BlockExprAST& program,
                                const QualifiedName& qualified);
 
 /** Unwraps reference types to inspect the underlying value type. */
-const sun::semantic_analysis::Type* stripReference(
-    const sun::semantic_analysis::Type* type);
+const sun::types::Type* stripReference(const sun::types::Type* type);
 
 /**
  * Definition node (class, interface or enum) behind a type
  */
 const ExprAST* findTypeDefinition(const BlockExprAST& program,
-                                  const sun::semantic_analysis::Type& type);
+                                  const sun::types::Type& type);
 
 /**
  * A member (method, field or variant) inside a definition

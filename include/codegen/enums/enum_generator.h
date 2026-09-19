@@ -14,7 +14,7 @@ class ScopeManager;
 
 /** Generates enum representations and operations on enum values. */
 namespace sun::codegen::enums {
-using sun::semantic_analysis::EnumType;
+using sun::types::EnumType;
 
 /** Emits enum definitions, variants, matches, and payload cleanup. */
 class EnumGenerator {
@@ -38,11 +38,11 @@ class EnumGenerator {
   /** Constructs a variant and transfers its arguments into payload storage. */
   llvm::Value* codegenVariantConstruction(
       const sun::ast::CallExprAST& expr, EnumType& enumType,
-      const sun::semantic_analysis::EnumVariant& variant);
+      const sun::types::EnumVariant& variant);
 
   /** Emits a payload-free variant or a unit variant of a payload enum. */
-  llvm::Value* codegenVariantAccess(
-      EnumType& enumType, const sun::semantic_analysis::EnumVariant& variant);
+  llvm::Value* codegenVariantAccess(EnumType& enumType,
+                                    const sun::types::EnumVariant& variant);
 
   /** Matches the enum tag and emits the selected arm's payload bindings. */
   llvm::Value* codegenMatch(const sun::ast::MatchExprAST& expr,

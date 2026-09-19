@@ -6,6 +6,7 @@
 #include "codegen/errors/error_generator.h"
 
 #include "codegen/codegen_visitor.h"
+#include "semantic_analysis/type_registry.h"
 
 /** Generates control flow for throwing and catching Sun errors. */
 namespace sun::codegen::errors {
@@ -27,10 +28,10 @@ ErrorGenerator::typeRegistry() {
   return state_.typeRegistry;
 }
 
-void ErrorGenerator::debugDeclareLocal(
-    llvm::AllocaInst* alloca, const std::string& name,
-    const sun::semantic_analysis::TypePtr& type,
-    const sun::support::Position& loc) {
+void ErrorGenerator::debugDeclareLocal(llvm::AllocaInst* alloca,
+                                       const std::string& name,
+                                       const sun::types::TypePtr& type,
+                                       const sun::support::Position& loc) {
   state_.debugInfo.declareLocal(*ctx.builder, alloca, name, type, loc);
 }
 

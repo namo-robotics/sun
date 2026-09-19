@@ -11,12 +11,51 @@ read those annotations.
 `SemanticAnalyzer` owns the shared `SemanticContext`, checking helpers, and
 `SemanticPipeline`. The context holds scopes, symbols, class shapes, and pending
 extensions; the shared type registry owns semantic types and declaration IDs.
-Helpers handle type inference, calls, generics, enums, and recursive body checking.
+Semantic helpers handle type resolution, calls, generics, enums, and recursive
+body checking. Pure type computation and compatibility checking live in the
+nested `sun::semantic_analysis::type_analysis` module.
 
 The driver invokes the pipeline to prepare declarations and check bodies in
 order. Passes and helpers annotate the same AST using the shared context.
 Generated generic syntax enters through `SemanticPipeline::prepareGenerated()`;
 nested bodies use recursive helper calls without restarting the pipeline.
+
+## Type analysis boundary
+
+`include/semantic_analysis/type_analysis/` and
+`src/semantic_analysis/type_analysis/` group type inference, compatibility checks,
+written-type resolution, and contextual type rules in
+`sun::semantic_analysis::type_analysis`.
+
+The pure components are `type_inferer`, `generic_type_arguments`, `type_checking`,
+and `type_traits`. They receive prepared type descriptions, literal facts,
+parameter shapes, and compatibility results. Inference returns a value or an
+`InferenceFailure`; compatibility predicates return booleans. These components do
+not traverse expression syntax, look up names, report diagnostics, or request
+specializations. Source comments document this convention: pure components
+must not depend on the contextual components, even though they share a folder
+and namespace.
+
+`TypeResolver` resolves annotations, scoped substitutions, constraints, and const
+views, including any nominal specialization they require. `type_rules` applies
+contextual literal coercions and reports source-located type errors. Semantic
+handlers prepare facts, select callable signatures, and record results on the AST.
+Storage and control-flow queries live separately in `expression_properties`.
+
+Shared type descriptions live in `include/types/` and `src/types/`, in namespace
+`sun::types`. `types.h` is a small umbrella header; the base interface, concrete
+types, factories, identity comparisons, and shared queries have focused headers.
+Implementations that require several concrete types live in `.cpp` files so each
+header can be included independently. Pure analysis treats supplied descriptions
+as read-only and may construct new structural types. The session-owned `TypeRegistry` and its
+specialization keys live in `semantic_analysis/type_registry.h`; registration
+remains a semantic responsibility. Declaration identities and serialization
+formats are unchanged.
+
+Expected types are arguments to semantic checking, separate from an expression's
+resolved type. For example, an array argument receives its parameter's type as a
+hint; only after its elements have been checked is its computed type recorded.
+Inference remains part of body checking rather than a new compilation pass.
 
 ## Analysis Passes
 
@@ -346,12 +385,15 @@ The analyzer's source is split by concern under `src/semantic_analysis/`:
 | `declaration_collection_pass.cpp` | Registering declarations and resolving signatures |
 | `body_analyzer.cpp` | Recursive statement checking and function scopes |
 | `analysis.cpp`, `analysis_*.cpp` | Shared expression and construct checking helpers |
-| `type_inferer.cpp` | Bottom-up typing |
-| `type_annotations.cpp` | Resolving written annotations, and substituting into a resolved type |
+| `type_analysis/type_inferer.cpp`, `type_analysis/generic_type_arguments.cpp` | Pure expression type computation and generic argument deduction |
+| `type_analysis/type_checking.cpp`, `type_analysis/type_traits.cpp` | Assignability, literal range checks, and type-trait predicates |
+| `expression_resolution.cpp`, `call_result_resolution.cpp` | Name/member resolution and call-result preparation |
+| `expression_properties.cpp` | Storage and control-flow queries on analyzed expressions |
+| `type_analysis/type_resolver.cpp` | Resolving written annotations, and substituting into a resolved type |
 | `semantic_context.cpp` / `scope_lookup.cpp` | Shared scopes, symbols, and declaration bookkeeping (`declaration_state.h`) |
-| `generic_specializer.cpp`, `generic_type_arguments.cpp` | Monomorphization, and inferring type arguments at a call |
+| `generic_specializer.cpp`, `generic_type_arguments.cpp` | Monomorphization and semantic adapters for generic deduction |
 | `interfaces.cpp`, `enums.cpp`, `packed_classes.cpp` | Per-construct analysis |
-| `argument_conversion.cpp`, `type_rules.cpp` | How an argument reaches its parameter, and what is assignable to what |
+| `argument_conversion.cpp`, `type_analysis/type_rules.cpp` | Argument conversions, syntax coercion, and diagnostic adapters |
 | `access_checker.cpp` | Visibility |
 | `captures.cpp` | Closure captures |
 | `field_initialization.cpp` | The two-phase constructor rule, and what each field write drops |

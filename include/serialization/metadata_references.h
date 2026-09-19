@@ -4,7 +4,7 @@
 #include <functional>
 
 #include "ast.pb.h"
-#include "semantic_analysis/types.h"
+#include "types/types.h"
 
 /** Converts syntax trees to and from the compiler protobuf representation. */
 namespace sun::serialization {
@@ -15,8 +15,7 @@ inline void visitDeclarationKeys(
     const google::protobuf::Message& message,
     const std::function<void(
         const sun::semantic_analysis::PortableDeclarationKey&,
-        std::optional<sun::semantic_analysis::Type::Kind>, const std::string&)>&
-        visit) {
+        std::optional<sun::types::Type::Kind>, const std::string&)>& visit) {
   const auto* descriptor = message.GetDescriptor();
   if (descriptor == pbc::CompiledSpecialization::descriptor()) return;
   const auto* reflection = message.GetReflection();
@@ -31,8 +30,8 @@ inline void visitDeclarationKeys(
                                                            : "name");
       visit(sun::semantic_analysis::PortableDeclarationKey::parseOriginal(
                 reflection->GetString(message, field)),
-            interface ? std::optional<sun::semantic_analysis::Type::Kind>(
-                            sun::semantic_analysis::Type::Kind::Interface)
+            interface ? std::optional<sun::types::Type::Kind>(
+                            sun::types::Type::Kind::Interface)
                       : std::nullopt,
             name ? reflection->GetString(message, name) : "");
     }

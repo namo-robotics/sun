@@ -17,7 +17,7 @@
 #include "semantic_analysis/argument_conversion.h"
 #include "semantic_analysis/declaration_id.h"
 #include "semantic_analysis/qualified_name.h"
-#include "semantic_analysis/types.h"
+#include "types/types.h"
 
 // ============================================================================
 // Analysis structures - populated by semantic analyzer, borrow checker, etc.
@@ -28,7 +28,7 @@
 namespace sun::ast {
 using sun::semantic_analysis::DeclarationId;
 using sun::semantic_analysis::QualifiedName;
-using sun::semantic_analysis::TypePtr;
+using sun::types::TypePtr;
 
 /**
  * What a write to a field does to whatever the field held before it. The

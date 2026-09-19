@@ -54,8 +54,9 @@
 #include "codegen/scopes/scope_manager.h"  // Scope stack and drop emission
 #include "codegen/support/type_checks.h"   // requireType / tryGetType helpers
 #include "codegen/variables/variable_generator.h"  // Variables, lvalues and globals
-#include "semantic_analysis/types.h"               // Type system
-#include "support/error.h"                         // Error handling
+#include "semantic_analysis/type_registry.h"
+#include "support/error.h"  // Error handling
+#include "types/types.h"    // Type system
 
 /** Translates analyzed Sun programs into LLVM code. */
 namespace sun::codegen {
@@ -63,8 +64,8 @@ using sun::ast::CallExprAST;
 using sun::ast::ExprAST;
 using sun::ast::IndexAST;
 using sun::ast::MemberAccessAST;
-using sun::semantic_analysis::ClassType;
-using sun::semantic_analysis::TypePtr;
+using sun::types::ClassType;
+using sun::types::TypePtr;
 
 /**
  * Convert a condition value to i1 (non-zero test for numeric conditions)
@@ -249,8 +250,7 @@ class CodegenVisitor {
    */
   static bool isPayloadEnum(const TypePtr& t) {
     return t && t->isEnum() &&
-           static_cast<const sun::semantic_analysis::EnumType*>(t.get())
-               ->hasPayload();
+           static_cast<const sun::types::EnumType*>(t.get())->hasPayload();
   }
 
   /**
@@ -376,9 +376,9 @@ class CodegenVisitor {
       llvm::Value* objectPtr, llvm::Value* idxView,
       sun::semantic_analysis::DeclarationId declaration);
   /** Emits a call to the class method implementing indexed assignment. */
-  llvm::Value* emitClassSetIndexCall(
-      llvm::Value* objectPtr, llvm::Value* idxView, llvm::Value* value,
-      const sun::semantic_analysis::ClassMethod* method);
+  llvm::Value* emitClassSetIndexCall(llvm::Value* objectPtr,
+                                     llvm::Value* idxView, llvm::Value* value,
+                                     const sun::types::ClassMethod* method);
 
   /**
    * `arr.ndims()` and `arr.dim(i)` on a sized array or a view
@@ -405,8 +405,7 @@ class CodegenVisitor {
    * invalidates the source so its own drop releases nothing
    */
   void emitArrayTransfer(llvm::Value* dest, llvm::Value* src,
-                         const sun::semantic_analysis::ArrayType& type,
-                         bool move);
+                         const sun::types::ArrayType& type, bool move);
   /**
    * Store one element into a slot of inline storage (compounds move in)
    */
@@ -496,13 +495,13 @@ class CodegenVisitor {
   /**
    * Call helpers for different calling conventions
    */
-  llvm::Value* codegenFunctionCall(
-      const CallExprAST& expr, const std::string& calleeName,
-      const sun::semantic_analysis::FunctionType& funcType);
+  llvm::Value* codegenFunctionCall(const CallExprAST& expr,
+                                   const std::string& calleeName,
+                                   const sun::types::FunctionType& funcType);
   /** Emits a lambda invocation with its captured environment. */
-  llvm::Value* codegenLambdaCall(
-      const CallExprAST& expr, const std::string& calleeName,
-      const sun::semantic_analysis::LambdaType& lambdaType);
+  llvm::Value* codegenLambdaCall(const CallExprAST& expr,
+                                 const std::string& calleeName,
+                                 const sun::types::LambdaType& lambdaType);
 
   /**
    * Top-level method call handler: dispatches to the sub-handlers below
@@ -522,10 +521,10 @@ class CodegenVisitor {
   /**
    * Handles interface method dispatch via vtable
    */
-  llvm::Value* codegenInterfaceMethodCall(
-      const CallExprAST& expr, llvm::Value* objectPtr,
-      sun::semantic_analysis::InterfaceType* ifaceType,
-      const std::string& methodName);
+  llvm::Value* codegenInterfaceMethodCall(const CallExprAST& expr,
+                                          llvm::Value* objectPtr,
+                                          sun::types::InterfaceType* ifaceType,
+                                          const std::string& methodName);
 
   /**
    * Handles class method dispatch (regular and generic)
@@ -630,9 +629,9 @@ class CodegenVisitor {
   llvm::Value* codegenClassSlice(const IndexAST& expr, llvm::Value* objectPtr,
                                  ClassType* classType);
   /** Emits indexed assignment through the selected class method. */
-  llvm::Value* codegenClassSetIndex(
-      const IndexAST& indexExpr, const ExprAST* valueExpr,
-      const sun::semantic_analysis::ClassMethod* method);
+  llvm::Value* codegenClassSetIndex(const IndexAST& indexExpr,
+                                    const ExprAST* valueExpr,
+                                    const sun::types::ClassMethod* method);
 
   /**
    * Attach a dbg_declare for a user variable (no-op without -g)

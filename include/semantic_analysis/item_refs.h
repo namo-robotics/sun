@@ -9,26 +9,26 @@
 #include "ast.h"
 #include "semantic_analysis/access_checker.h"
 #include "semantic_analysis/semantic_scope.h"
-#include "semantic_analysis/types.h"
+#include "types/types.h"
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 /** Name a class field for a uniform access-denial message. */
-ItemRef fieldRef(const sun::semantic_analysis::ClassType& cls,
-                 const sun::semantic_analysis::ClassField& f);
+ItemRef fieldRef(const sun::types::ClassType& cls,
+                 const sun::types::ClassField& f);
 
 /** Name a class method for a uniform access-denial message. */
-ItemRef methodRef(const sun::semantic_analysis::ClassType& cls,
-                  const sun::semantic_analysis::ClassMethod& m);
+ItemRef methodRef(const sun::types::ClassType& cls,
+                  const sun::types::ClassMethod& m);
 
 /** Name an interface field for a uniform access-denial message. */
-ItemRef fieldRef(const sun::semantic_analysis::InterfaceType& iface,
-                 const sun::semantic_analysis::InterfaceField& f);
+ItemRef fieldRef(const sun::types::InterfaceType& iface,
+                 const sun::types::InterfaceField& f);
 
 /** Name an interface method for a uniform access-denial message. */
-ItemRef methodRef(const sun::semantic_analysis::InterfaceType& iface,
-                  const sun::semantic_analysis::InterfaceMethod& m);
+ItemRef methodRef(const sun::types::InterfaceType& iface,
+                  const sun::types::InterfaceMethod& m);
 
 /** Name a module for a uniform access-denial message. */
 inline ItemRef moduleRef(const sun::semantic_analysis::ModuleScope& scope) {

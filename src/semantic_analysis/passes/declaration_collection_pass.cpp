@@ -10,8 +10,8 @@
 #include "support/error.h"
 
 using sun::semantic_analysis::QualifiedName;
-using sun::semantic_analysis::TypePtr;
-using sun::semantic_analysis::Types;
+using sun::types::TypePtr;
+using sun::types::Types;
 
 using sun::ast::ASTNodeType;
 using sun::ast::BlockExprAST;
@@ -446,11 +446,12 @@ void DeclarationCollectionPass::collectFunctionSignature(FunctionAST& func) {
 
   std::vector<TypePtr> paramTypes;
   for (auto& [argName, argType] : proto.getMutableArgs()) {
-    paramTypes.push_back(sema_.types().typeAnnotationToType(argType));
+    paramTypes.push_back(sema_.typeResolver().typeAnnotationToType(argType));
   }
   TypePtr returnType = Types::Void();
   if (proto.hasReturnType()) {
-    returnType = sema_.types().typeAnnotationToType(*proto.getReturnType());
+    returnType =
+        sema_.typeResolver().typeAnnotationToType(*proto.getReturnType());
   }
 
   const auto& qualifiedName = proto.getQualifiedName();
@@ -481,7 +482,7 @@ void DeclarationCollectionPass::collectExternVariable(
   }
 
   TypePtr type =
-      sema_.types().typeAnnotationToType(*varCreate.getTypeAnnotation());
+      sema_.typeResolver().typeAnnotationToType(*varCreate.getTypeAnnotation());
   QualifiedName qualified = varCreate.getQualifiedName();
   varCreate.setResolvedType(type);
 
@@ -511,7 +512,8 @@ void DeclarationCollectionPass::registerPrecompiledModuleVariable(
     VariableCreationAST& varCreate) {
   TypePtr type;
   if (varCreate.hasTypeAnnotation()) {
-    type = sema_.types().typeAnnotationToType(*varCreate.getTypeAnnotation());
+    type = sema_.typeResolver().typeAnnotationToType(
+        *varCreate.getTypeAnnotation());
   } else if (varCreate.hasValue()) {
     // The declaration inferred its type, so the bundle kept the initializer
     // for its type alone. Codegen still only declares the symbol.
@@ -583,7 +585,7 @@ void DeclarationCollectionPass::registerUsing(sun::ast::UsingAST& usingDecl) {
 
 void DeclarationCollectionPass::registerClassShape(
     ClassDefinitionAST& classDef, const QualifiedName& qualifiedClass,
-    std::shared_ptr<sun::semantic_analysis::ClassType> classType) {
+    std::shared_ptr<sun::types::ClassType> classType) {
   if (!ctx_.declarations().noteClassShape(classDef.getDeclarationId())) return;
 
   // The class's declared lifetimes must be visible before any signature
@@ -603,7 +605,7 @@ void DeclarationCollectionPass::registerClassShape(
                            classDef.getName() + "'",
                        field.location);
     }
-    TypePtr fieldType = sema_.types().typeAnnotationToType(field.type);
+    TypePtr fieldType = sema_.typeResolver().typeAnnotationToType(field.type);
 
     if constexpr (sun::support::Config::FORBID_REF_FIELDS_IN_CLASSES) {
       if (fieldType && fieldType->isReference()) {
@@ -627,7 +629,7 @@ void DeclarationCollectionPass::registerClassShape(
   // Method signatures ('this' resolves against the class being shaped)
   auto savedClass = ctx_.getCurrentClass();
   ctx_.setCurrentClass(classType);
-  MethodSignatureSet methodSignatures(ctx_, sema_.types());
+  MethodSignatureSet methodSignatures(ctx_, sema_.typeResolver());
   for (const auto& methodDecl : classDef.getMethods()) {
     FunctionInfo methodInfo = sema_.getFunctionInfo(*methodDecl.function);
     PrototypeAST& proto =

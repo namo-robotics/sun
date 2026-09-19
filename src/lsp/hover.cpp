@@ -9,7 +9,7 @@
 #include "lsp/declarations.h"
 #include "parsing/doc_comments.h"
 
-using sun::semantic_analysis::TypePtr;
+using sun::types::TypePtr;
 
 using sun::ast::ASTNodeType;
 using sun::ast::ClassDefinitionAST;
@@ -29,8 +29,7 @@ namespace {
 // ---------------------------------------------------------------------------
 
 /** Formats a semantic type for editor hover text. */
-std::string renderType(const sun::semantic_analysis::Type& type,
-                       const Bindings& bindings);
+std::string renderType(const sun::types::Type& type, const Bindings& bindings);
 
 /**
  * Render a function pointer or lambda. `prefix` carries either the
@@ -55,7 +54,7 @@ std::string renderCallable(const std::string& prefix,
  * `Vec<T>`: the display name's base with each type argument re-rendered so
  * bound type parameters show by name
  */
-std::string renderWithArguments(const sun::semantic_analysis::Type& type,
+std::string renderWithArguments(const sun::types::Type& type,
                                 const std::vector<TypePtr>& arguments,
                                 const Bindings& bindings) {
   std::string display = type.toDisplayString();
@@ -73,21 +72,18 @@ std::string renderWithArguments(const sun::semantic_analysis::Type& type,
  * the parameter; function types print as written in Sun (`(i32) i32`);
  * everything else uses the type's display name.
  */
-std::string renderType(const sun::semantic_analysis::Type& type,
-                       const Bindings& bindings) {
+std::string renderType(const sun::types::Type& type, const Bindings& bindings) {
   for (const auto& [name, bound] : bindings) {
     if (bound && bound->equals(type)) return name;
   }
   switch (type.getKind()) {
-    case sun::semantic_analysis::Type::Kind::Function: {
-      const auto& fn =
-          static_cast<const sun::semantic_analysis::FunctionType&>(type);
+    case sun::types::Type::Kind::Function: {
+      const auto& fn = static_cast<const sun::types::FunctionType&>(type);
       return renderCallable("function ", fn.getParamTypes(), fn.getReturnType(),
                             fn.canThrow(), false, bindings);
     }
-    case sun::semantic_analysis::Type::Kind::Lambda: {
-      const auto& lambda =
-          static_cast<const sun::semantic_analysis::LambdaType&>(type);
+    case sun::types::Type::Kind::Lambda: {
+      const auto& lambda = static_cast<const sun::types::LambdaType&>(type);
       // A lambda that carries a captured environment is written with the
       // lifetime it is bound to, by name when the signature gave it one
       std::string prefix;
@@ -99,30 +95,26 @@ std::string renderType(const sun::semantic_analysis::Type& type,
                             lambda.getReturnType(), lambda.canThrow(), true,
                             bindings);
     }
-    case sun::semantic_analysis::Type::Kind::Reference: {
-      const auto& ref =
-          static_cast<const sun::semantic_analysis::ReferenceType&>(type);
+    case sun::types::Type::Kind::Reference: {
+      const auto& ref = static_cast<const sun::types::ReferenceType&>(type);
       if (!ref.getReferencedType()) return type.toDisplayString();
       return std::string(ref.isMutable() ? "ref " : "const ref ") +
              renderType(*ref.getReferencedType(), bindings);
     }
-    case sun::semantic_analysis::Type::Kind::Class:
+    case sun::types::Type::Kind::Class:
       return renderWithArguments(
           type,
-          static_cast<const sun::semantic_analysis::ClassType&>(type)
+          static_cast<const sun::types::ClassType&>(type).getTypeArguments(),
+          bindings);
+    case sun::types::Type::Kind::Interface:
+      return renderWithArguments(
+          type,
+          static_cast<const sun::types::InterfaceType&>(type)
               .getTypeArguments(),
           bindings);
-    case sun::semantic_analysis::Type::Kind::Interface:
+    case sun::types::Type::Kind::Enum:
       return renderWithArguments(
-          type,
-          static_cast<const sun::semantic_analysis::InterfaceType&>(type)
-              .getTypeArguments(),
-          bindings);
-    case sun::semantic_analysis::Type::Kind::Enum:
-      return renderWithArguments(
-          type,
-          static_cast<const sun::semantic_analysis::EnumType&>(type)
-              .getGenericArgs(),
+          type, static_cast<const sun::types::EnumType&>(type).getGenericArgs(),
           bindings);
     default:
       return type.toDisplayString();
@@ -219,8 +211,7 @@ std::optional<Hover> hoverClass(const ClassDefinitionAST& cls, int offset,
                                 const std::string& source,
                                 const Bindings& bindings) {
   const auto* classType =
-      dynamic_cast<const sun::semantic_analysis::ClassType*>(
-          cls.getResolvedType().get());
+      dynamic_cast<const sun::types::ClassType*>(cls.getResolvedType().get());
   for (const auto& field : cls.getFields()) {
     Position span = field.location;
     if (field.type.span.endOffset) span.endOffset = field.type.span.endOffset;
@@ -339,12 +330,11 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
       const auto& ref =
           static_cast<const sun::ast::ReferenceCreationAST&>(node);
       if (!type) return std::nullopt;
-      const sun::semantic_analysis::Type* referent = type.get();
-      if (type->getKind() == sun::semantic_analysis::Type::Kind::Reference) {
-        referent =
-            static_cast<const sun::semantic_analysis::ReferenceType&>(*type)
-                .getReferencedType()
-                .get();
+      const sun::types::Type* referent = type.get();
+      if (type->getKind() == sun::types::Type::Kind::Reference) {
+        referent = static_cast<const sun::types::ReferenceType&>(*type)
+                       .getReferencedType()
+                       .get();
       }
       if (!referent) return std::nullopt;
       std::string prefix = ref.isMutable() ? "ref " : "const ref ";

@@ -36,14 +36,14 @@ class CodegenVisitor;
 #include <vector>
 
 #include "codegen/codegen_state.h"
-#include "semantic_analysis/types.h"
 #include "support/position.h"
+#include "types/types.h"
 
 /** Provides the scope manager responsible for variable storage and cleanup. */
 namespace sun::codegen::scopes {
-using sun::semantic_analysis::ClassType;
 using sun::semantic_analysis::DeclarationId;
-using sun::semantic_analysis::TypePtr;
+using sun::types::ClassType;
+using sun::types::TypePtr;
 
 /**
  * A heap allocation the current scope owns and must free on the way out.
@@ -235,7 +235,7 @@ class ScopeManager {
    */
   llvm::Value* trackCallTemporary(llvm::Value* result,
                                   const TypePtr& resultType) {
-    if (result && sun::semantic_analysis::typeNeedsDrop(resultType) &&
+    if (result && sun::types::typeNeedsDrop(resultType) &&
         llvm::isa<llvm::AllocaInst>(result)) {
       trackClassAllocation(result, "call.result", resultType);
     }
@@ -251,7 +251,7 @@ class ScopeManager {
    */
   void trackOwnedParam(llvm::Value* alloca, const std::string& name,
                        const TypePtr& type) {
-    if (alloca && sun::semantic_analysis::typeNeedsDrop(type)) {
+    if (alloca && sun::types::typeNeedsDrop(type)) {
       trackClassAllocation(alloca, name, type);
     }
   }
@@ -324,14 +324,14 @@ class ScopeManager {
    * Drops the concrete owner held by an interface fat pointer, then clears
    * both fields so a later drop is a no-op.
    */
-  void emitInterfaceDrop(sun::semantic_analysis::InterfaceType& interfaceType,
+  void emitInterfaceDrop(sun::types::InterfaceType& interfaceType,
                          llvm::Value* storagePtr);
 
   /**
    * Drop every element of a sized array's inline storage
    */
-  void emitArrayDrop(sun::semantic_analysis::ArrayType& arrayType,
-                     llvm::Value* storagePtr, const std::string& name);
+  void emitArrayDrop(sun::types::ArrayType& arrayType, llvm::Value* storagePtr,
+                     const std::string& name);
 
  private:
   /** Find ownership information for a local or one of its fields. */

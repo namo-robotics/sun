@@ -12,9 +12,9 @@
 #include "codegen/codegen_visitor.h"
 #include "semantic_analysis/packed_layout.h"
 
-using sun::semantic_analysis::ClassType;
 using sun::semantic_analysis::DeclarationId;
-using sun::semantic_analysis::TypePtr;
+using sun::types::ClassType;
+using sun::types::TypePtr;
 
 using namespace llvm;
 
@@ -89,7 +89,7 @@ void ScopeManager::trackClassAllocation(Value* alloca, const std::string& name,
                                         TypePtr type, bool unwindOnly) {
   if (scopes_.empty()) return;
   if (type && (type->isEnum() || type->isArray()) &&
-      !sun::semantic_analysis::typeNeedsDrop(type))
+      !sun::types::typeNeedsDrop(type))
     return;
   for (auto& scope : scopes_) {
     for (auto& alloc : scope.classAllocations) {
@@ -153,7 +153,7 @@ ClassAllocation* ScopeManager::findAllocation(Value* ptr, const TypePtr& type) {
 }
 
 void ScopeManager::markInitialized(Value* ptr, const TypePtr& type) {
-  if (!type || !sun::semantic_analysis::typeNeedsDrop(type)) return;
+  if (!type || !sun::types::typeNeedsDrop(type)) return;
   if (auto* alloc = findAllocation(ptr, type)) {
     setOwnership(*alloc, true);
   }
@@ -360,7 +360,7 @@ void ScopeManager::emitFieldDeinit(Value* objectPtr, const ClassType* classType,
   StructType* structType = classType->getStructType(ctx.getContext());
 
   for (const auto& field : classType->getFields()) {
-    if (!sun::semantic_analysis::typeNeedsDrop(field.type)) continue;
+    if (!sun::types::typeNeedsDrop(field.type)) continue;
     const auto name = baseName + "." + field.name;
     Value* fieldPtr =
         ctx.builder->CreateStructGEP(structType, objectPtr, field.index, name);
@@ -372,11 +372,9 @@ void ScopeManager::emitFieldDeinit(Value* objectPtr, const ClassType* classType,
  * Drops every initialized element of a sized array's inline storage.
  * Safe code cannot move individual elements out of an array.
  */
-void ScopeManager::emitArrayDrop(sun::semantic_analysis::ArrayType& arrayType,
+void ScopeManager::emitArrayDrop(sun::types::ArrayType& arrayType,
                                  Value* storagePtr, const std::string& name) {
-  if (arrayType.isUnsized() ||
-      !sun::semantic_analysis::typeNeedsDrop(&arrayType))
-    return;
+  if (arrayType.isUnsized() || !sun::types::typeNeedsDrop(&arrayType)) return;
   const TypePtr& elemType = arrayType.getElementType();
   llvm::Type* elemLLVMType = elemType->toLLVMType(ctx.getContext());
   size_t count = arrayType.getTotalElements();
@@ -420,8 +418,8 @@ void ScopeManager::emitArrayDrop(sun::semantic_analysis::ArrayType& arrayType,
 /**
  * Drops the erased concrete owner referenced by an interface value.
  */
-void ScopeManager::emitInterfaceDrop(
-    sun::semantic_analysis::InterfaceType& interfaceType, Value* storagePtr) {
+void ScopeManager::emitInterfaceDrop(sun::types::InterfaceType& interfaceType,
+                                     Value* storagePtr) {
   StructType* fatType = interfaceType.getFatPointerType(ctx.getContext());
   Value* fat = ctx.builder->CreateLoad(fatType, storagePtr, "iface.drop.fat");
   Value* data = ctx.builder->CreateExtractValue(fat, 0, "iface.drop.data");
@@ -479,15 +477,15 @@ void ScopeManager::emitUnconditionalDrop(const TypePtr& type, Value* ptr,
   if (auto* classType = sun::codegen::support::tryGetType<ClassType>(type)) {
     emitDeinitCall(classType, ptr);
     emitFieldDeinit(ptr, classType, name);
-  } else if (auto* interfaceType = sun::codegen::support::tryGetType<
-                 sun::semantic_analysis::InterfaceType>(type)) {
+  } else if (auto* interfaceType =
+                 sun::codegen::support::tryGetType<sun::types::InterfaceType>(
+                     type)) {
     emitInterfaceDrop(*interfaceType, ptr);
   } else if (type->isEnum()) {
-    gen_.enumGenerator().emitDrop(
-        static_cast<sun::semantic_analysis::EnumType&>(*type), ptr);
+    gen_.enumGenerator().emitDrop(static_cast<sun::types::EnumType&>(*type),
+                                  ptr);
   } else if (type->isArray()) {
-    emitArrayDrop(static_cast<sun::semantic_analysis::ArrayType&>(*type), ptr,
-                  name);
+    emitArrayDrop(static_cast<sun::types::ArrayType&>(*type), ptr, name);
   }
 }
 

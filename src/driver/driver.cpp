@@ -30,6 +30,7 @@
 #include "parsing/doc_comments.h"
 #include "parsing/lowering_pass.h"
 #include "semantic_analysis/semantic_pipeline.h"
+#include "semantic_analysis/type_registry.h"
 #include "serialization/ast_serializer.h"
 #include "support/error.h"
 #include "support/source_manager.h"

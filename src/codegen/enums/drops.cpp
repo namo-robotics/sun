@@ -16,8 +16,8 @@ namespace sun::codegen::enums {
 // -------------------------------------------------------------------
 
 Function* EnumGenerator::getOrCreateDropFunction(
-    sun::semantic_analysis::EnumType& enumType) {
-  if (!sun::semantic_analysis::typeNeedsDrop(&enumType)) return nullptr;
+    sun::types::EnumType& enumType) {
+  if (!sun::types::typeNeedsDrop(&enumType)) return nullptr;
 
   std::string name =
       state_.declarationSymbol(enumType.getDeclarationId(), "enum-drop");
@@ -49,7 +49,7 @@ Function* EnumGenerator::getOrCreateDropFunction(
     if (!variant.hasPayload()) continue;
     bool owns = false;
     for (const auto& pt : variant.payloadTypes) {
-      if (pt && sun::semantic_analysis::typeNeedsDrop(pt)) {
+      if (pt && sun::types::typeNeedsDrop(pt)) {
         owns = true;
         break;
       }
@@ -64,8 +64,8 @@ Function* EnumGenerator::getOrCreateDropFunction(
     StructType* variantTy =
         typeResolver.getEnumVariantStruct(enumType, variant.name);
     for (size_t i = 0; i < variant.payloadTypes.size(); ++i) {
-      const sun::semantic_analysis::TypePtr& pt = variant.payloadTypes[i];
-      if (!pt || !sun::semantic_analysis::typeNeedsDrop(pt)) continue;
+      const sun::types::TypePtr& pt = variant.payloadTypes[i];
+      if (!pt || !sun::types::typeNeedsDrop(pt)) continue;
       unsigned idx =
           typeResolver.enumPayloadFieldIndex(enumType, variant.name, i);
       Value* fieldPtr = ctx.builder->CreateStructGEP(
@@ -83,7 +83,7 @@ Function* EnumGenerator::getOrCreateDropFunction(
   return fn;
 }
 
-void EnumGenerator::emitDrop(sun::semantic_analysis::EnumType& enumType,
+void EnumGenerator::emitDrop(sun::types::EnumType& enumType,
                              Value* storagePtr) {
   if (Function* drop = getOrCreateDropFunction(enumType)) {
     ctx.builder->CreateCall(drop, {storagePtr});

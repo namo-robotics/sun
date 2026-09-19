@@ -7,7 +7,7 @@
 
 #include "ast/block_expr_ast.h"
 #include "ast/expr_ast.h"
-#include "semantic_analysis/types.h"
+#include "types/types.h"
 
 /** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
@@ -37,7 +37,7 @@ class MoonScopeAST : public ExprAST {
     std::string displayName;
     // Empty accepts any nominal type; implements and constraints require
     // Interface.
-    std::optional<sun::semantic_analysis::Type::Kind> expectedKind;
+    std::optional<sun::types::Type::Kind> expectedKind;
   };
 
   /** Exact declarations referenced by this bundle's metadata, with any kind

@@ -21,11 +21,11 @@ Value* FunctionGenerator::codegen(const sun::ast::ReturnExprAST& expr) {
       // A `ref array<T>` return hands back the view value: a sized array is
       // viewed with its rank erased, a view is passed on as it is
       if (retType->isStructTy()) {
-        sun::semantic_analysis::TypePtr valType =
-            sun::semantic_analysis::unwrapRef(
-                expr.getValue()->getResolvedType());
-        if (auto* arrayType = sun::codegen::support::tryGetType<
-                sun::semantic_analysis::ArrayType>(valType)) {
+        sun::types::TypePtr valType =
+            sun::types::unwrapRef(expr.getValue()->getResolvedType());
+        if (auto* arrayType =
+                sun::codegen::support::tryGetType<sun::types::ArrayType>(
+                    valType)) {
           Value* view = nullptr;
           if (arrayType->isUnsized()) {
             view = gen_.loadArrayView(codegen(*expr.getValue()));
@@ -49,8 +49,7 @@ Value* FunctionGenerator::codegen(const sun::ast::ReturnExprAST& expr) {
       if (!addr) {
         // Expressions that are themselves reference-typed codegen directly
         // to the address: _to_ref<T>(ptr), and a call forwarding a borrow.
-        sun::semantic_analysis::TypePtr valType =
-            expr.getValue()->getResolvedType();
+        sun::types::TypePtr valType = expr.getValue()->getResolvedType();
         if (valType && valType->isReference()) {
           Value* v = codegen(*expr.getValue());
           if (v && v->getType()->isPointerTy()) {
@@ -76,8 +75,7 @@ Value* FunctionGenerator::codegen(const sun::ast::ReturnExprAST& expr) {
 
     // Move semantics: borrow checker marks expressions as "moved" when
     // ownership transfers (return, assignment, pass-by-value). Skip deinit.
-    if (sun::semantic_analysis::typeMovesOnRead(
-            expr.getValue()->getResolvedType()) &&
+    if (sun::types::typeMovesOnRead(expr.getValue()->getResolvedType()) &&
         retVal->getType()->isPointerTy()) {
       scopes().markClassAllocationAsDeinited(
           retVal, expr.getValue()->getResolvedType());

@@ -7,8 +7,9 @@
 #include "codegen/codegen.h"
 #include "codegen/codegen_visitor.h"
 #include "codegen/support/scalar_ops.h"
+#include "semantic_analysis/type_registry.h"
 
-using sun::semantic_analysis::EnumType;
+using sun::types::EnumType;
 
 using sun::ast::MatchArm;
 using sun::support::logAndThrowError;
@@ -28,7 +29,7 @@ sun::codegen::scopes::ScopeManager& EnumGenerator::scopes() {
 
 Value* EnumGenerator::codegenVariantConstruction(
     const sun::ast::CallExprAST& expr, EnumType& enumType,
-    const sun::semantic_analysis::EnumVariant& variant) {
+    const sun::types::EnumVariant& variant) {
   StructType* storageTy = typeResolver.getEnumStorageType(enumType);
   StructType* variantTy =
       typeResolver.getEnumVariantStruct(enumType, variant.name);
@@ -52,8 +53,7 @@ Value* EnumGenerator::codegenVariantConstruction(
     llvm::Type* fieldTy = variantTy->getElementType(idx);
     Value* fieldPtr = ctx.builder->CreateStructGEP(variantTy, storage, idx,
                                                    "payload." + variant.name);
-    const sun::semantic_analysis::TypePtr& payloadType =
-        variant.payloadTypes[i];
+    const sun::types::TypePtr& payloadType = variant.payloadTypes[i];
 
     // A reference payload stores the referent's ADDRESS: the variant borrows,
     // it does not own, so nothing moves and nothing is dropped later.
@@ -160,15 +160,15 @@ Value* EnumGenerator::codegenMatch(const sun::ast::MatchExprAST& expr,
     Value* owned =
         gen_.createEntryBlockAlloca(TheFunction, "match.input", storageTy);
     ctx.builder->CreateStore(
-        gen_.applyMoveSemantics(discPtr,
-                                sun::semantic_analysis::unwrapRef(
-                                    expr.getDiscriminant()->getResolvedType())),
+        gen_.applyMoveSemantics(
+            discPtr,
+            sun::types::unwrapRef(expr.getDiscriminant()->getResolvedType())),
         owned);
     discPtr = owned;
   }
   const auto matchType = expr.getResolvedType();
   AllocaInst* resultStorage = nullptr;
-  if (sun::semantic_analysis::typeMovesOnRead(matchType)) {
+  if (sun::types::typeMovesOnRead(matchType)) {
     resultStorage = gen_.createEntryBlockAlloca(
         TheFunction, "match.result", typeResolver.resolve(matchType));
   }
@@ -197,7 +197,7 @@ Value* EnumGenerator::codegenMatch(const sun::ast::MatchExprAST& expr,
   // arms mixing integer widths (e.g. an i64 binding and literal 0) converge
   // on one PHI type instead of hitting the type-mismatch fallback.
   llvm::Type* resultLLVMType = nullptr;
-  if (sun::semantic_analysis::TypePtr matchType = expr.getResolvedType()) {
+  if (sun::types::TypePtr matchType = expr.getResolvedType()) {
     if (!matchType->isVoid() && !matchType->isCompound()) {
       resultLLVMType = typeResolver.resolve(matchType);
     }
@@ -248,7 +248,7 @@ Value* EnumGenerator::codegenMatch(const sun::ast::MatchExprAST& expr,
                                                        binding.name + ".ptr");
         llvm::Type* fieldTy = variantTy->getElementType(idx);
         if (consuming && binding.resolvedType &&
-            sun::semantic_analysis::typeMovesOnRead(binding.resolvedType)) {
+            sun::types::typeMovesOnRead(binding.resolvedType)) {
           const std::string name =
               binding.isWildcard ? "match.ignored" : binding.name;
           AllocaInst* alloca =
@@ -366,7 +366,7 @@ Value* EnumGenerator::codegenMatch(const sun::ast::MatchExprAST& expr,
 // -------------------------------------------------------------------
 
 Value* EnumGenerator::codegenVariantAccess(
-    EnumType& enumType, const sun::semantic_analysis::EnumVariant& variant) {
+    EnumType& enumType, const sun::types::EnumVariant& variant) {
   // Unit variant of a payload enum: materialize tagged storage and return
   // the pointer (compound convention). Payload variants are constructed
   // through the call path.

@@ -1,24 +1,26 @@
-// type_traits.h — Built-in type traits, and the one predicate that tests them
-//
-// A trait is a pseudo-interface that types "implement" without declaring it:
-// `_Numeric` covers every number, `_Lambda` covers every closure type. The same
-// vocabulary is used in two places, and `satisfies()` is what keeps them from
-// drifting apart:
-//
-//   _is<_Numeric>(x)              — asked in a function body, about a value
-//   function f<T: _Numeric>(...)  — asked at a signature, about a type argument
-//
-// Beyond the built-in traits, a name here may be an interface the type
-// implements, or the type's own name for an exact match.
+/**
+ * type_traits.h — Built-in type traits, and the one predicate that tests them
+ *
+ * A trait is a pseudo-interface that types "implement" without declaring it:
+ * `_Numeric` covers every number, `_Lambda` covers every closure type. The same
+ * vocabulary is used in two places, and `satisfies()` is what keeps them from
+ * drifting apart:
+ *
+ * _is<_Numeric>(x)              — asked in a function body, about a value
+ * function f<T: _Numeric>(...)  — asked at a signature, about a type argument
+ *
+ * Beyond the built-in traits, a name here may be an interface the type
+ * implements, or the type's own name for an exact match.
+ */
 
 #pragma once
 
 #include <string>
 
-#include "semantic_analysis/types.h"
+#include "types/types.h"
 
-/** Resolves declarations and checks the types and meaning of Sun programs. */
-namespace sun::semantic_analysis {
+/** Checks built-in traits and requirements using resolved type descriptions. */
+namespace sun::semantic_analysis::type_analysis {
 
 /**
  * The built-in traits. Every one of these is a set of types, not a declared
@@ -63,6 +65,7 @@ inline bool isTypeTrait(const std::string& name) {
 }
 
 /** Test a resolved trait or type requirement, unwrapping a borrowed value. */
-bool satisfies(const TypePtr& type, const TypePtr& requirement);
+bool satisfies(const sun::types::TypePtr& type,
+               const sun::types::TypePtr& requirement);
 
-}  // namespace sun::semantic_analysis
+}  // namespace sun::semantic_analysis::type_analysis

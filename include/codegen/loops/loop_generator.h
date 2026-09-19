@@ -118,7 +118,7 @@ class LoopGenerator {
                                            llvm::Type* type);
   /** Associates local storage with its source variable for debugging. */
   void debugDeclareLocal(llvm::AllocaInst* alloca, const std::string& name,
-                         const sun::semantic_analysis::TypePtr& type,
+                         const sun::types::TypePtr& type,
                          const sun::support::Position& loc);
   /** Builds a callable value that retains the method receiver. */
   llvm::Value* materializeMethodClosure(llvm::Value* fnPtr,

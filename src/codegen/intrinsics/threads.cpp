@@ -20,7 +20,7 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
 
-using sun::semantic_analysis::TypePtr;
+using sun::types::TypePtr;
 
 using sun::support::logAndThrowError;
 
@@ -40,14 +40,12 @@ namespace sun::codegen::intrinsics {
 // once std.thread arrives through a bundle).
 StructType* IntrinsicsGenerator::getThreadContextStruct(
     const TypePtr& contextPtrType) {
-  auto* pointer =
-      sun::codegen::support::tryGetType<sun::semantic_analysis::RawPointerType>(
-          contextPtrType);
+  auto* pointer = sun::codegen::support::tryGetType<sun::types::RawPointerType>(
+      contextPtrType);
   auto* contextClass =
-      pointer
-          ? sun::codegen::support::tryGetType<
-                sun::semantic_analysis::ClassType>(pointer->getPointeeType())
-          : nullptr;
+      pointer ? sun::codegen::support::tryGetType<sun::types::ClassType>(
+                    pointer->getPointeeType())
+              : nullptr;
   StructType* contextType =
       contextClass ? contextClass->getStructType(ctx.getContext()) : nullptr;
   if (!contextType || contextType->getNumElements() != 5) {
@@ -80,10 +78,9 @@ Value* IntrinsicsGenerator::codegenSpawnIntrinsic(
   // F is either a lambda (fat pointer, hidden environment argument) or a
   // named-function value (bare one-word pointer, no environment).
   auto* lambdaType =
-      sun::codegen::support::tryGetType<sun::semantic_analysis::LambdaType>(
-          lambdaSunType);
+      sun::codegen::support::tryGetType<sun::types::LambdaType>(lambdaSunType);
   auto* namedFnType =
-      sun::codegen::support::tryGetType<sun::semantic_analysis::FunctionType>(
+      sun::codegen::support::tryGetType<sun::types::FunctionType>(
           lambdaSunType);
   if (!lambdaType && !namedFnType) {
     logAndThrowError("_spawn<F>() requires a lambda or function type argument");
@@ -297,7 +294,7 @@ Value* IntrinsicsGenerator::codegenThreadJoinIntrinsic(
   if (!dropResult && resultLLVMType && !resultLLVMType->isVoidTy()) {
     result =
         ctx.builder->CreateLoad(resultLLVMType, resultSlotPtr, "join.result");
-  } else if (dropResult && sun::semantic_analysis::typeNeedsDrop(resultType)) {
+  } else if (dropResult && sun::types::typeNeedsDrop(resultType)) {
     scopes().emitDropInPlace(resultType, resultSlotPtr, "join.result");
   }
 

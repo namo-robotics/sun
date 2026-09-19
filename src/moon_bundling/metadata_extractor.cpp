@@ -1,5 +1,6 @@
 #include "moon_bundling/metadata_types.h"
 #include "semantic_analysis/semantic_analyzer.h"
+#include "semantic_analysis/type_registry.h"
 // metadata_extractor.cpp — Extract module metadata as protobuf from source
 // files
 

@@ -9,7 +9,7 @@ namespace sun::moon_bundling {
 /** Convert a resolved type to an exportable annotation with exact nominal
  * identities. */
 sun::proto::ast::TypeAnnotation exportType(
-    const sun::semantic_analysis::TypePtr& type,
+    const sun::types::TypePtr& type,
     const sun::semantic_analysis::DeclarationTable& declarations);
 /** Bind serialized declarations in their definition context without
  * specializing templates. */

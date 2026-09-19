@@ -266,9 +266,8 @@ Value* LoopGenerator::codegen(const sun::ast::ForInExprAST& expr) {
     iteratorObj = iterAlloca;
   }
 
-  auto optionType =
-      sun::codegen::support::tryGetTypePtr<sun::semantic_analysis::EnumType>(
-          sun::semantic_analysis::unwrapRef(protocol.iteratorResultType));
+  auto optionType = sun::codegen::support::tryGetTypePtr<sun::types::EnumType>(
+      sun::types::unwrapRef(protocol.iteratorResultType));
   if (!optionType || !optionType->getVariant("Some") ||
       !optionType->getVariant("None")) {
     logAndThrowError("for-in loop: next() must return Option<T>");
@@ -287,7 +286,7 @@ Value* LoopGenerator::codegen(const sun::ast::ForInExprAST& expr) {
         "analysis");
     return nullptr;
   }
-  sun::semantic_analysis::TypePtr loopVarType = expr.getResolvedLoopVarType();
+  sun::types::TypePtr loopVarType = expr.getResolvedLoopVarType();
   llvm::Type* llvmLoopVarType = typeResolver.resolve(loopVarType);
   AllocaInst* loopVarAlloca =
       createEntryBlockAlloca(func, expr.getLoopVar(), llvmLoopVarType);

@@ -6,7 +6,7 @@
 
 #include "ast/ast_fwd.h"
 #include "ast/class_definition_ast.h"
-#include "semantic_analysis/types.h"
+#include "types/types.h"
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
@@ -41,7 +41,8 @@ void prepareFieldInitializers(sun::ast::ClassDefinitionAST& classDef);
  * decided at run time.
  */
 void checkFieldInitialization(
-    const sun::ast::FunctionAST& constructor, const ClassType& classType,
+    const sun::ast::FunctionAST& constructor,
+    const sun::types::ClassType& classType,
     const std::vector<sun::ast::ClassMethodDecl>& methods);
 
 }  // namespace sun::semantic_analysis

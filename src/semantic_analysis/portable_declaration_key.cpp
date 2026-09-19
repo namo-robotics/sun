@@ -6,14 +6,25 @@
 #include "ast.h"
 #include "ast/ast_children.h"
 #include "llvm/Support/SHA256.h"
-#include "semantic_analysis/types.h"
 #include "support/error.h"
+#include "types/types.h"
 
 using sun::ast::ExprAST;
 using sun::support::logAndThrowError;
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
+using sun::types::ArrayType;
+using sun::types::ErrorUnionType;
+using sun::types::FunctionType;
+using sun::types::LambdaType;
+using sun::types::NominalType;
+using sun::types::RawPointerType;
+using sun::types::ReferenceType;
+using sun::types::StaticPointerType;
+using sun::types::Type;
+using sun::types::TypePtr;
+
 /** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 

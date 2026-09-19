@@ -126,31 +126,31 @@ Visibility methodVisibility(const sun::ast::FunctionAST& method) {
 /**
  * Members are owned by their type's module
  */
-ItemRef fieldRef(const sun::semantic_analysis::ClassType& cls,
-                 const sun::semantic_analysis::ClassField& f) {
+ItemRef fieldRef(const sun::types::ClassType& cls,
+                 const sun::types::ClassField& f) {
   return {"field", f.name,
           "class '" + cleanTypeName(cls.getDisplayName()) + "'", f.visibility,
           cls.getDeclarationId()};
 }
 
 /** Creates the declaration reference used to check access to a method. */
-ItemRef methodRef(const sun::semantic_analysis::ClassType& cls,
-                  const sun::semantic_analysis::ClassMethod& m) {
+ItemRef methodRef(const sun::types::ClassType& cls,
+                  const sun::types::ClassMethod& m) {
   return {"method", m.name,
           "class '" + cleanTypeName(cls.getDisplayName()) + "'", m.visibility,
           cls.getDeclarationId()};
 }
 
 /** Creates the declaration reference used to check access to a field. */
-ItemRef fieldRef(const sun::semantic_analysis::InterfaceType& iface,
-                 const sun::semantic_analysis::InterfaceField& f) {
+ItemRef fieldRef(const sun::types::InterfaceType& iface,
+                 const sun::types::InterfaceField& f) {
   return {"field", f.name, "interface '" + iface.getBaseName() + "'",
           f.visibility, iface.getDeclarationId()};
 }
 
 /** Creates the declaration reference used to check access to a method. */
-ItemRef methodRef(const sun::semantic_analysis::InterfaceType& iface,
-                  const sun::semantic_analysis::InterfaceMethod& m) {
+ItemRef methodRef(const sun::types::InterfaceType& iface,
+                  const sun::types::InterfaceMethod& m) {
   return {"method", m.name, "interface '" + iface.getBaseName() + "'",
           m.visibility, iface.getDeclarationId()};
 }

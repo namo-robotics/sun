@@ -39,10 +39,10 @@ llvm::AllocaInst* VariableGenerator::createEntryBlockAlloca(
   return gen_.createEntryBlockAlloca(func, name, type);
 }
 
-void VariableGenerator::debugDeclareLocal(
-    llvm::AllocaInst* alloca, const std::string& name,
-    const sun::semantic_analysis::TypePtr& type,
-    const sun::support::Position& loc) {
+void VariableGenerator::debugDeclareLocal(llvm::AllocaInst* alloca,
+                                          const std::string& name,
+                                          const sun::types::TypePtr& type,
+                                          const sun::support::Position& loc) {
   state_.debugInfo.declareLocal(*ctx.builder, alloca, name, type, loc);
 }
 

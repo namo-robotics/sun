@@ -18,6 +18,7 @@
 #include "moon_bundling/moon_import.h"
 #include "parsing/parser.h"
 #include "semantic_analysis/semantic_analyzer.h"
+#include "semantic_analysis/type_registry.h"
 #include "support/error.h"
 
 /** Coordinates compiler inputs, analysis, code generation, and execution. */

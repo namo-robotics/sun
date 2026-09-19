@@ -9,7 +9,8 @@
 #include "semantic_analysis/passes/declaration_naming_pass.h"
 #include "semantic_analysis/passes/field_initializer_preparation_pass.h"
 #include "semantic_analysis/semantic_pipeline.h"
-#include "semantic_analysis/type_rules.h"
+#include "semantic_analysis/type_analysis/type_rules.h"
+#include "semantic_analysis/type_registry.h"
 
 using sun::semantic_analysis::passes::DeclarationNamingPass;
 using sun::semantic_analysis::passes::FieldInitializerPreparationPass;
@@ -377,9 +378,9 @@ TEST(Tooling_Frontend_DeclarationNames,
   auto a = types->getClass(first.getBody().getBody()[0]->getDeclarationId());
   auto b = types->getClass(second.getBody().getBody()[0]->getDeclarationId());
   EXPECT_EQ(a->getQualifiedName(), b->getQualifiedName());
-  EXPECT_FALSE(sun::semantic_analysis::isAssignableTo(a, b));
-  EXPECT_FALSE(sun::semantic_analysis::isAssignableTo(b, a));
-  EXPECT_TRUE(sun::semantic_analysis::isAssignableTo(a, a));
+  EXPECT_FALSE(sun::semantic_analysis::type_analysis::isAssignableTo(a, b));
+  EXPECT_FALSE(sun::semantic_analysis::type_analysis::isAssignableTo(b, a));
+  EXPECT_TRUE(sun::semantic_analysis::type_analysis::isAssignableTo(a, a));
 }
 
 TEST(Tooling_Frontend_DeclarationNames,

@@ -14,14 +14,15 @@
 #include "support/error.h"
 
 using sun::semantic_analysis::QualifiedName;
-using sun::semantic_analysis::TypePtr;
-using sun::semantic_analysis::Types;
+using sun::types::TypePtr;
+using sun::types::Types;
 
 using sun::ast::PrototypeAST;
 using sun::support::logAndThrowError;
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
+using sun::types::LambdaType;
 
 void SemanticAnalyzer::analyzeClassDefinition(
     sun::ast::ClassDefinitionAST& classDef) {
@@ -374,7 +375,7 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
 
   // Add fields to the interface type and pseudo-class
   for (const auto& field : interfaceDef.getFields()) {
-    TypePtr fieldType = types_.typeAnnotationToType(field.type);
+    TypePtr fieldType = resolver_.typeAnnotationToType(field.type);
     interfaceType->addField(field.name, fieldType, field.declaration.id)
         .visibility = field.visibility;
     pseudoClass->addField(field.name, fieldType, field.declaration.id)
@@ -382,7 +383,7 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
   }
 
   // Add methods to the interface type, rejecting duplicate signatures.
-  MethodSignatureSet methodSignatures(ctx_, types_);
+  MethodSignatureSet methodSignatures(ctx_, resolver_);
   for (const auto& methodDecl : interfaceDef.getMethods()) {
     // Get method signature info (pure computation)
     FunctionInfo methodInfo = getFunctionInfo(*methodDecl.function);
@@ -497,7 +498,13 @@ void SemanticAnalyzer::analyzeLambdaExpr(sun::ast::LambdaAST& lambda) {
   bodies_.analyzeLambda(lambda);
 
   // Set the lambda type on the lambda node
-  lambda.setResolvedType(types_.inferType(lambda));
+  auto lambdaType =
+      Types::Lambda(lambdaInfo.returnType, lambdaInfo.paramTypes,
+                    proto.hasReturnType() && proto.getReturnType()->canError);
+  if (proto.hasRefCaptures() || !proto.getRefCaptureNames().empty() ||
+      !proto.getOwnedCaptureNames().empty())
+    static_cast<LambdaType&>(*lambdaType).setHasRefCaptures(true);
+  lambda.setResolvedType(lambdaType);
 }
 
 void SemanticAnalyzer::analyzeModuleDefinition(sun::ast::ModuleAST& nsDecl) {
@@ -561,7 +568,7 @@ void SemanticAnalyzer::analyzeDeclareType(
     sun::ast::DeclareTypeAST& declareExpr) {
   // Trigger generic instantiation by resolving the type annotation
   TypePtr resolvedType =
-      types_.typeAnnotationToType(declareExpr.getTypeAnnotation());
+      resolver_.typeAnnotationToType(declareExpr.getTypeAnnotation());
   declareExpr.setResolvedDeclaredType(resolvedType);
 
   // If there's an alias, register it

@@ -1,27 +1,28 @@
 #include "semantic_analysis/method_signature_set.h"
+#include "semantic_analysis/type_analysis/generic_type_arguments.h"
+#include "semantic_analysis/type_registry.h"
 // generic_specializer.cpp — Monomorphization (see generic_specializer.h)
-
-#include "semantic_analysis/generic_specializer.h"
 
 #include <algorithm>
 
-#include "semantic_analysis/passes/declaration_naming_pass.h"
 #include "semantic_analysis/field_initialization.h"
+#include "semantic_analysis/generic_specializer.h"
 #include "semantic_analysis/generic_type_arguments.h"
 #include "semantic_analysis/item_refs.h"
+#include "semantic_analysis/passes/declaration_naming_pass.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/symbol_names.h"
-#include "semantic_analysis/type_rules.h"
-#include "semantic_analysis/type_traits.h"
+#include "semantic_analysis/type_analysis/type_rules.h"
+#include "semantic_analysis/type_analysis/type_traits.h"
 #include "support/config.h"
 #include "support/error.h"
 
-using sun::semantic_analysis::ClassType;
 using sun::semantic_analysis::DeclarationKind;
-using sun::semantic_analysis::InterfaceType;
 using sun::semantic_analysis::SpecializationKey;
-using sun::semantic_analysis::TypePtr;
-using sun::semantic_analysis::Types;
+using sun::types::ClassType;
+using sun::types::InterfaceType;
+using sun::types::TypePtr;
+using sun::types::Types;
 
 using sun::ast::ClassDefinitionAST;
 using sun::ast::FunctionAST;
@@ -32,12 +33,14 @@ using sun::support::Position;
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
+using sun::types::EnumType;
+using sun::types::Type;
 
 using sun::semantic_analysis::formatFunctionSignature;
-using sun::semantic_analysis::isAssignableTo;
-using sun::semantic_analysis::mentionsTypeParameter;
 using sun::semantic_analysis::methodVisibility;
-using sun::semantic_analysis::unwrapRef;
+using sun::semantic_analysis::type_analysis::isAssignableTo;
+using sun::semantic_analysis::type_analysis::mentionsTypeParameter;
+using sun::types::unwrapRef;
 
 // -------------------------------------------------------------------
 // Generic type parameter constraints
@@ -64,13 +67,14 @@ void GenericSpecializer::checkTypeParameterConstraints(
 
     auto requirement =
         constraint->typeArguments.empty()
-            ? sema_.types().typeAnnotationToType(constraint->toAnnotation())
-            : sema_.types().resolveConstraintInterface(*constraint);
+            ? sema_.typeResolver().typeAnnotationToType(
+                  constraint->toAnnotation())
+            : sema_.typeResolver().resolveConstraintInterface(*constraint);
     if (mentionsTypeParameter(arg)) continue;
     if (!constraint->typeArguments.empty() &&
         mentionsTypeParameter(requirement))
       continue;
-    if (!sun::semantic_analysis::satisfies(arg, requirement)) {
+    if (!sun::semantic_analysis::type_analysis::satisfies(arg, requirement)) {
       // Point at the constraint itself when it carries a span; a declaration
       // parsed from a bundle has none, so fall back to the caller's location.
       std::optional<Position> at =
@@ -182,7 +186,7 @@ std::shared_ptr<ClassType> GenericSpecializer::instantiateGenericClass(
   // has fields from a previous instantiation in another scope)
   if (specializedClass->getFields().empty()) {
     for (const auto& field : genericClassInfo->AST->getFields()) {
-      auto fieldType = sema_.types().typeAnnotationToType(field.type);
+      auto fieldType = sema_.typeResolver().typeAnnotationToType(field.type);
       // Checked per specialization: whether a type argument is packable is
       // only knowable once T is substituted
       sema_.checkPackedFieldType(*genericClassInfo->AST, field, fieldType);
@@ -201,7 +205,7 @@ std::shared_ptr<ClassType> GenericSpecializer::instantiateGenericClass(
   for (const auto& ifaceRef :
        genericClassInfo->AST->getImplementedInterfaces()) {
     auto interfaceType = std::dynamic_pointer_cast<InterfaceType>(
-        sema_.types().typeAnnotationToType(ifaceRef.toAnnotation()));
+        sema_.typeResolver().typeAnnotationToType(ifaceRef.toAnnotation()));
 
     if (interfaceType) {
       specializedClass->addImplementedInterface(*interfaceType);
@@ -275,7 +279,7 @@ std::shared_ptr<ClassType> GenericSpecializer::instantiateGenericClass(
   }
 
   // PASS 1: Register all methods first (so methods can call each other)
-  MethodSignatureSet methodSignatures(ctx_, sema_.types());
+  MethodSignatureSet methodSignatures(ctx_, sema_.typeResolver());
   for (size_t i = 0; i < methodsClone.size(); ++i) {
     const auto& methodClone = methodsClone[i];
     const auto& proto = methodClone.function->getProto();
@@ -556,11 +560,12 @@ void GenericSpecializer::applyVariadicParamTypes(
   const sun::ast::TypeAnnotation& annot = proto.getVariadicTypeAnnotation();
   if (annot.baseName != "_params_of" || annot.typeArguments.empty()) return;
 
-  TypePtr target = sema_.types().typeAnnotationToType(*annot.typeArguments[0]);
+  TypePtr target =
+      sema_.typeResolver().typeAnnotationToType(*annot.typeArguments[0]);
   if (!target) return;
 
   const std::string got =
-      "(" + sun::semantic_analysis::formatTypeList(variadicArgTypes) + ")";
+      "(" + sun::types::formatTypeList(variadicArgTypes) + ")";
 
   // `_params_of<C>` for a class: the parameters of C's constructor. Which
   // overload is selected happens downstream at _init, via lookupConstructor;
@@ -582,11 +587,11 @@ void GenericSpecializer::applyVariadicParamTypes(
   // rather than a failed overload match.
   const std::vector<TypePtr>* params = nullptr;
   if (target->isLambda()) {
-    params = &static_cast<sun::semantic_analysis::LambdaType*>(target.get())
-                  ->getParamTypes();
+    params =
+        &static_cast<sun::types::LambdaType*>(target.get())->getParamTypes();
   } else if (target->isFunction()) {
-    params = &static_cast<sun::semantic_analysis::FunctionType*>(target.get())
-                  ->getParamTypes();
+    params =
+        &static_cast<sun::types::FunctionType*>(target.get())->getParamTypes();
   }
   if (params) {
     bool matches = params->size() == variadicArgTypes.size();
@@ -597,8 +602,8 @@ void GenericSpecializer::applyVariadicParamTypes(
       logAndThrowError("Pack '" + proto.getVariadicParamName() +
                            "' fills the parameters of " +
                            target->toDisplayString() + ", which takes (" +
-                           sun::semantic_analysis::formatTypeList(*params) +
-                           "); got " + got,
+                           sun::types::formatTypeList(*params) + "); got " +
+                           got,
                        loc);
     }
   }
@@ -689,11 +694,11 @@ GenericSpecializer::instantiateGenericFunction(
   // Substitute parameter types
   std::vector<TypePtr> paramTypes;
   for (const auto& [argName, argType] : proto.getArgs()) {
-    TypePtr paramType = sema_.types().typeAnnotationToType(argType);
+    TypePtr paramType = sema_.typeResolver().typeAnnotationToType(argType);
 
     // Generic functions follow the same ownership rules as ordinary functions.
     if (sun::support::Config::REQUIRE_REF_FOR_COMPOUND_PARAMS && paramType &&
-        sun::semantic_analysis::typeMovesOnRead(paramType)) {
+        sun::types::typeMovesOnRead(paramType)) {
       logAndThrowError("Parameter '" + argName + "' has compound type '" +
                            paramType->toDisplayString() +
                            "' which cannot be passed by value. Use 'ref " +
@@ -707,7 +712,8 @@ GenericSpecializer::instantiateGenericFunction(
   // Substitute return type
   TypePtr returnType;
   if (proto.hasReturnType()) {
-    returnType = sema_.types().typeAnnotationToType(*proto.getReturnType());
+    returnType =
+        sema_.typeResolver().typeAnnotationToType(*proto.getReturnType());
   } else {
     returnType = Types::Void();
   }
@@ -716,7 +722,7 @@ GenericSpecializer::instantiateGenericFunction(
   std::vector<sun::ast::Capture> substitutedCaptures;
   for (const auto& cap : proto.getCaptures()) {
     sun::ast::Capture subCap = cap;
-    subCap.type = sema_.types().substituteTypeParameters(cap.type);
+    subCap.type = sema_.typeResolver().substituteTypeParameters(cap.type);
     substitutedCaptures.push_back(subCap);
   }
 
@@ -954,13 +960,13 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
   // Substitute types in parameters
   std::vector<TypePtr> paramTypes;
   for (const auto& [argName, argType] : proto.getArgs()) {
-    paramTypes.push_back(sema_.types().typeAnnotationToType(argType));
+    paramTypes.push_back(sema_.typeResolver().typeAnnotationToType(argType));
   }
 
   // Substitute return type
   TypePtr returnType =
       proto.hasReturnType()
-          ? sema_.types().typeAnnotationToType(*proto.getReturnType())
+          ? sema_.typeResolver().typeAnnotationToType(*proto.getReturnType())
           : Types::Void();
 
   // Clone the function AST for specialization
@@ -1026,7 +1032,7 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
   // const view of its return type (borrows of `this` are `const ref` there).
   TypePtr bodyReturnType = proto.getResolvedReturnType();
   if (proto.isConstMethod())
-    bodyReturnType = sema_.types().createConstView(bodyReturnType);
+    bodyReturnType = sema_.typeResolver().createConstView(bodyReturnType);
   ctx_.enterFunctionScope(methodSig, specializedName, proto.canThrow(),
                           bodyReturnType);
 
@@ -1123,7 +1129,7 @@ std::shared_ptr<InterfaceType> GenericSpecializer::instantiateGenericInterface(
 
     // Add fields with substituted types
     for (const auto& field : genericInfo->AST->getFields()) {
-      auto fieldType = sema_.types().typeAnnotationToType(field.type);
+      auto fieldType = sema_.typeResolver().typeAnnotationToType(field.type);
       auto id = ctx_.types()->declarations.add(
           DeclarationKind::Field, field.name, instanceId,
           ctx_.types()->declarations.get(instanceId).module, {},
@@ -1155,7 +1161,8 @@ std::shared_ptr<InterfaceType> GenericSpecializer::instantiateGenericInterface(
       // Get return type with substitution
       TypePtr returnType;
       if (proto.getReturnType()) {
-        returnType = sema_.types().typeAnnotationToType(*proto.getReturnType());
+        returnType =
+            sema_.typeResolver().typeAnnotationToType(*proto.getReturnType());
       } else {
         returnType = Types::Void();
       }
@@ -1163,7 +1170,8 @@ std::shared_ptr<InterfaceType> GenericSpecializer::instantiateGenericInterface(
       // Get parameter types with substitution
       std::vector<TypePtr> paramTypes;
       for (const auto& [argName, argType] : proto.getArgs()) {
-        paramTypes.push_back(sema_.types().typeAnnotationToType(argType));
+        paramTypes.push_back(
+            sema_.typeResolver().typeAnnotationToType(argType));
       }
 
       // Add method to interface type (preserve method-level generic type
@@ -1191,14 +1199,14 @@ std::shared_ptr<InterfaceType> GenericSpecializer::instantiateGenericInterface(
 // recorded on the template AST, like other generic ASTs.
 // -------------------------------------------------------------------
 
-std::shared_ptr<sun::semantic_analysis::EnumType>
+std::shared_ptr<sun::types::EnumType>
 GenericSpecializer::instantiateGenericEnum(
     const std::string& baseName, const std::vector<TypePtr>& typeArgs) {
   auto* info = ctx_.lookupGenericEnum(baseName);
   return info ? instantiateGenericEnum(*info, typeArgs) : nullptr;
 }
 
-std::shared_ptr<sun::semantic_analysis::EnumType>
+std::shared_ptr<sun::types::EnumType>
 GenericSpecializer::instantiateGenericEnum(
     const GenericEnumInfo& info, const std::vector<TypePtr>& typeArgs) {
   const auto* genericInfo = &info;
@@ -1265,7 +1273,7 @@ GenericSpecializer::instantiateGenericEnum(
       if (!variant.hasPayload()) continue;
       std::vector<TypePtr> payloadTypes;
       for (const auto& annot : variant.payloadTypes) {
-        auto payloadType = sema_.types().typeAnnotationToType(annot);
+        auto payloadType = sema_.typeResolver().typeAnnotationToType(annot);
         if (!abstractShape) {
           sema_.enums().validateEnumPayloadType(payloadType, specialized,
                                                 variant.name, variant.location);
@@ -1293,11 +1301,11 @@ TypePtr GenericSpecializer::genericFunctionSignature(
                            typeArgs);
   std::vector<TypePtr> paramTypes;
   for (const auto& [name, annot] : genericInfo.params) {
-    paramTypes.push_back(sema_.types().typeAnnotationToType(annot));
+    paramTypes.push_back(sema_.typeResolver().typeAnnotationToType(annot));
   }
   TypePtr returnType =
       genericInfo.returnType
-          ? sema_.types().typeAnnotationToType(*genericInfo.returnType)
+          ? sema_.typeResolver().typeAnnotationToType(*genericInfo.returnType)
           : Types::Void();
   ctx_.exitScope();
   bool canThrow = genericInfo.AST && genericInfo.AST->getProto().canThrow();
@@ -1307,8 +1315,9 @@ TypePtr GenericSpecializer::genericFunctionSignature(
 bool GenericSpecializer::templateStillAbstract(
     const GenericFunctionInfo& genericInfo,
     const std::vector<TypePtr>& typeArgs) {
-  if (std::any_of(typeArgs.begin(), typeArgs.end(),
-                  sun::semantic_analysis::mentionsTypeParameter)) {
+  if (std::any_of(
+          typeArgs.begin(), typeArgs.end(),
+          sun::semantic_analysis::type_analysis::mentionsTypeParameter)) {
     return true;
   }
   // A template with no type parameters of its own still cannot be
@@ -1326,8 +1335,9 @@ bool GenericSpecializer::templateStillAbstract(
                            typeArgs);
   bool abstract = false;
   for (const auto& arg : annot.typeArguments) {
-    abstract = abstract || sun::semantic_analysis::mentionsTypeParameter(
-                               sema_.types().typeAnnotationToType(*arg));
+    abstract = abstract ||
+               sun::semantic_analysis::type_analysis::mentionsTypeParameter(
+                   sema_.typeResolver().typeAnnotationToType(*arg));
   }
   ctx_.exitScope();
   return abstract;

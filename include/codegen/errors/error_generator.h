@@ -33,6 +33,7 @@ class ScopeManager;
 
 #include "ast.h"
 #include "codegen/codegen_state.h"
+#include "semantic_analysis/type_registry.h"
 
 /** Generates control flow for throwing and catching Sun errors. */
 namespace sun::codegen::errors {
@@ -137,7 +138,7 @@ class ErrorGenerator {
   std::shared_ptr<sun::semantic_analysis::TypeRegistry>& typeRegistry();
   /** Associates local storage with its source variable for debugging. */
   void debugDeclareLocal(llvm::AllocaInst* alloca, const std::string& name,
-                         const sun::semantic_analysis::TypePtr& type,
+                         const sun::types::TypePtr& type,
                          const sun::support::Position& loc);
   /** Emits integer division or remainder with the required error checks. */
   llvm::Value* createIntDivRem(llvm::Value* L, llvm::Value* R, bool isModulo,

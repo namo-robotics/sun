@@ -4,7 +4,7 @@
 
 #include "semantic_analysis/packed_layout.h"
 
-using sun::semantic_analysis::ClassType;
+using sun::types::ClassType;
 
 /** Provides shared diagnostics, source tracking, and compiler utilities. */
 namespace sun::codegen::support {
@@ -12,7 +12,7 @@ namespace sun::codegen::support {
 /** Computes the LLVM address of a field in class storage. */
 llvm::Value* fieldPtr(llvm::IRBuilder<>& builder, ClassType* classType,
                       llvm::Value* objectPtr,
-                      const sun::semantic_analysis::ClassField& field,
+                      const sun::types::ClassField& field,
                       const std::string& name) {
   llvm::StructType* structType = classType->getStructType(builder.getContext());
   return builder.CreateStructGEP(structType, objectPtr, field.index, name);
@@ -33,7 +33,7 @@ llvm::Align lvalueAlign(const sun::ast::ExprAST& target, llvm::Type* slotTy,
 /** Stores a generated value with the alignment required by its storage. */
 void storeIntoSlot(llvm::IRBuilder<>& builder, const llvm::DataLayout& dl,
                    llvm::Value* dest, llvm::Value* value,
-                   const sun::semantic_analysis::TypePtr& slotType,
+                   const sun::types::TypePtr& slotType,
                    const ClassType* owner) {
   if (slotType && slotType->isClass() && value->getType()->isPointerTy()) {
     const auto* classType = static_cast<const ClassType*>(slotType.get());
@@ -45,8 +45,7 @@ void storeIntoSlot(llvm::IRBuilder<>& builder, const llvm::DataLayout& dl,
   }
   // A sized array arrives as the address of its inline storage
   if (auto* arrayType =
-          sun::codegen::support::tryGetType<sun::semantic_analysis::ArrayType>(
-              slotType)) {
+          sun::codegen::support::tryGetType<sun::types::ArrayType>(slotType)) {
     if (!arrayType->isUnsized() && value->getType()->isPointerTy()) {
       llvm::Type* storageTy =
           arrayType->getDataStorageType(builder.getContext());

@@ -10,7 +10,7 @@
 #include "ast/ast_fwd.h"
 #include "ast/type_annotation.h"
 #include "ast/type_constraint.h"
-#include "semantic_analysis/types.h"
+#include "types/types.h"
 
 /** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
@@ -111,11 +111,11 @@ struct TypeParameter {
    * unspecialized: T bound to itself, carrying its constraint so a body can
    * reach the constraint's members. Unconstrained parameters carry none.
    */
-  sun::semantic_analysis::TypePtr toSunType(
+  sun::types::TypePtr toSunType(
       const sun::semantic_analysis::DeclarationTable& table,
       sun::semantic_analysis::DeclarationId id) const {
     table.get(id);
-    return sun::semantic_analysis::Types::TypeParameter(
+    return sun::types::Types::TypeParameter(
         name, constraint.value_or(TypeConstraint{}), id, table.session());
   }
 };
@@ -231,7 +231,7 @@ enum class CaptureKind {
 /** A variable captured from an enclosing scope by a lambda. */
 struct Capture {
   std::string name;
-  sun::semantic_analysis::TypePtr type;
+  sun::types::TypePtr type;
   CaptureKind kind = CaptureKind::ByValue;
   // The binding cannot be written inside the lambda. Always true for
   // `[const ref x]`; also true when a by-value capture picked up a `const`

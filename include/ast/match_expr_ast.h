@@ -19,7 +19,7 @@ struct PatternBinding {
   bool isWildcard = false;  // '_' in this position
   sun::support::Position location;
   // Set by semantic analysis:
-  sun::semantic_analysis::TypePtr resolvedType;  // payload element type
+  sun::types::TypePtr resolvedType;  // payload element type
   mutable sun::semantic_analysis::DeclarationIdentity declaration{};
 };
 

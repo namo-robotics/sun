@@ -11,8 +11,8 @@
 #include "codegen/codegen_visitor.h"
 #include "codegen/errors/error_generator.h"
 
-using sun::semantic_analysis::ClassType;
-using sun::semantic_analysis::InterfaceType;
+using sun::types::ClassType;
+using sun::types::InterfaceType;
 
 using namespace llvm;
 
@@ -130,7 +130,7 @@ Value* ErrorGenerator::codegen(const sun::ast::ThrowExprAST& expr) {
     ctx.builder->CreateStore(val, slot);
   };
 
-  sun::semantic_analysis::TypePtr errType =
+  sun::types::TypePtr errType =
       expr.hasErrorExpr() ? expr.getErrorExpr().getResolvedType() : nullptr;
 
   if (auto* classType = sun::codegen::support::tryGetType<ClassType>(errType)) {

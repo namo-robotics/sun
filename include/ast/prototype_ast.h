@@ -13,13 +13,13 @@
 #include "ast/ast_common.h"
 #include "ast/type_annotation.h"
 #include "semantic_analysis/qualified_name.h"
-#include "semantic_analysis/types.h"
 #include "support/position.h"
+#include "types/types.h"
 
 /** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 using sun::semantic_analysis::DeclarationId;
-using sun::semantic_analysis::TypePtr;
+using sun::types::TypePtr;
 
 /**
  * Top-level nodes (not derived from ExprAST)

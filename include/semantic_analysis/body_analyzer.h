@@ -28,9 +28,9 @@ class BodyAnalyzer {
   /** Check a specialized class method under its concrete type bindings. */
   void analyzeMethodWithBindings(
       sun::ast::FunctionAST& method,
-      std::shared_ptr<sun::semantic_analysis::ClassType> classType,
+      std::shared_ptr<sun::types::ClassType> classType,
       const std::vector<std::string>& typeParams,
-      const std::vector<sun::semantic_analysis::TypePtr>& typeArgs);
+      const std::vector<sun::types::TypePtr>& typeArgs);
 
  private:
   SemanticContext& ctx_;

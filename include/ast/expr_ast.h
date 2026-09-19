@@ -186,11 +186,11 @@ class ExprAST {
   /**
    * Type annotation set by semantic analyzer (delegates to analysis)
    */
-  void setResolvedType(sun::semantic_analysis::TypePtr type) const {
+  void setResolvedType(sun::types::TypePtr type) const {
     analysis().resolvedType = std::move(type);
   }
   /** Returns the type assigned by semantic analysis, if available. */
-  sun::semantic_analysis::TypePtr getResolvedType() const {
+  sun::types::TypePtr getResolvedType() const {
     return analysis_ ? analysis_->resolvedType : nullptr;
   }
   /** Reports whether semantic analysis has assigned a type. */

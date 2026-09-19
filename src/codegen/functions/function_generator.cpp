@@ -48,7 +48,7 @@ sun::codegen::abi::ExternCEmitter& FunctionGenerator::externC() {
 }
 
 llvm::Value* FunctionGenerator::applyMoveSemantics(
-    llvm::Value* argVal, sun::semantic_analysis::TypePtr argSunType) {
+    llvm::Value* argVal, sun::types::TypePtr argSunType) {
   return gen_.applyMoveSemantics(argVal, std::move(argSunType));
 }
 

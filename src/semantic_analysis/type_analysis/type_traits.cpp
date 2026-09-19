@@ -1,15 +1,24 @@
-// type_traits.cpp — testing a type against a trait, an interface, or a name
-//
-// One predicate, shared by `_is<T>(value)` in a body and by a `<T: Trait>`
-// constraint on a signature, so the two can never disagree about what
-// `_Numeric` means.
+/**
+ * type_traits.cpp — testing a type against a trait, an interface, or a name
+ *
+ * One predicate, shared by `_is<T>(value)` in a body and by a `<T: Trait>`
+ * constraint on a signature, so the two can never disagree about what
+ * `_Numeric` means. Keep these predicates read-only and independent of
+ * semantic sessions, expression ASTs, diagnostics, and specialization services.
+ */
 
-#include "semantic_analysis/type_traits.h"
+#include "semantic_analysis/type_analysis/type_traits.h"
 
-/** Resolves declarations and checks the types and meaning of Sun programs. */
-namespace sun::semantic_analysis {
+/** Checks built-in traits and requirements using resolved type descriptions. */
+namespace sun::semantic_analysis::type_analysis {
+using sun::types::ClassType;
+using sun::types::InterfaceType;
+using sun::types::TypeParameterType;
+using sun::types::TypePtr;
+using sun::types::unwrapRef;
 
-/** Reports whether a semantic type meets the requested type-trait requirement. */
+/** Reports whether a semantic type meets the requested type-trait requirement.
+ */
 bool satisfies(const TypePtr& type, const TypePtr& requirement) {
   if (!type || !requirement) return false;
 
@@ -53,4 +62,4 @@ bool satisfies(const TypePtr& type, const TypePtr& requirement) {
   return valueType->equals(*requirement);
 }
 
-}  // namespace sun::semantic_analysis
+}  // namespace sun::semantic_analysis::type_analysis

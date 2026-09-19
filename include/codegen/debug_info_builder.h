@@ -17,12 +17,12 @@
 #include <string>
 #include <vector>
 
-#include "semantic_analysis/types.h"
 #include "support/position.h"
+#include "types/types.h"
 
 /** Translates analyzed Sun programs into LLVM instructions. */
 namespace sun::codegen {
-using sun::semantic_analysis::TypePtr;
+using sun::types::TypePtr;
 
 /** Builds source-level debug metadata for generated LLVM code. */
 class DebugInfoBuilder {
@@ -30,7 +30,7 @@ class DebugInfoBuilder {
   std::unique_ptr<llvm::DIBuilder> di_;
   llvm::DICompileUnit* cu_ = nullptr;
   std::map<std::string, llvm::DIFile*> fileCache_;
-  std::map<const sun::semantic_analysis::Type*, llvm::DIType*> typeCache_;
+  std::map<const sun::types::Type*, llvm::DIType*> typeCache_;
   // Innermost-last stack of subprogram / lexical block scopes for the
   // function currently being emitted (mirrors CodegenVisitor's scopes).
   std::vector<llvm::DIScope*> scopeStack_;
@@ -124,7 +124,7 @@ class DebugInfoBuilder {
   /** Returns the debug scope active within the supplied function. */
   llvm::DILocalScope* currentLocalScope(llvm::Function* func) const;
   /** Constructs debug metadata describing a semantic type. */
-  llvm::DIType* resolveTypeImpl(const sun::semantic_analysis::Type& type);
+  llvm::DIType* resolveTypeImpl(const sun::types::Type& type);
   /** Creates debug metadata for a pointer to the supplied type. */
   llvm::DIType* pointerTo(llvm::DIType* pointee);
   /** Creates debug metadata describing the fields of an LLVM structure. */

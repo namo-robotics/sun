@@ -1,14 +1,14 @@
 // type_checks.h — "this expression must be a class / a lambda / an array"
 //
 // Codegen constantly needs the concrete type behind a
-// `sun::semantic_analysis::TypePtr`: check the kind, then cast. Written by hand
+// `sun::types::TypePtr`: check the kind, then cast. Written by hand
 // that is four lines and a bespoke error message every time. TypeCheck<T> does
 // it in one:
 //
 //   auto& fn =
-//   sun::codegen::support::requireType<sun::semantic_analysis::LambdaType>(lambdaExpr,
+//   sun::codegen::support::requireType<sun::types::LambdaType>(lambdaExpr,
 //   "spawn argument"); if (auto* cls =
-//   sun::codegen::support::tryGetType<sun::semantic_analysis::ClassType>(targetType))
+//   sun::codegen::support::tryGetType<sun::types::ClassType>(targetType))
 //   { ... }
 //
 // `require*` throws a compile error naming the context; `tryGet*` hands back
@@ -19,7 +19,7 @@
 // `StaticKind`, so there is nothing to register here.
 //
 // These see a type exactly as it is: a `ref T` is a reference, not a T. Pass
-// `sun::semantic_analysis::unwrapRef(type)` to look through one.
+// `sun::types::unwrapRef(type)` to look through one.
 
 #pragma once
 
@@ -28,46 +28,46 @@
 #include <string>
 
 #include "ast/expr_ast.h"
-#include "semantic_analysis/types.h"
 #include "support/error.h"
+#include "types/types.h"
 
 /** Provides shared diagnostics, source tracking, and compiler utilities. */
 namespace sun::codegen::support {
 using sun::ast::ExprAST;
-using sun::semantic_analysis::TypePtr;
+using sun::types::TypePtr;
 
 /**
  * How a kind is named in an error message ("must be a class type").
  */
-inline const char* describeKind(sun::semantic_analysis::Type::Kind kind) {
+inline const char* describeKind(sun::types::Type::Kind kind) {
   switch (kind) {
-    case sun::semantic_analysis::Type::Kind::Function:
+    case sun::types::Type::Kind::Function:
       return "a function type";
-    case sun::semantic_analysis::Type::Kind::Lambda:
+    case sun::types::Type::Kind::Lambda:
       return "a lambda type";
-    case sun::semantic_analysis::Type::Kind::RawPointer:
+    case sun::types::Type::Kind::RawPointer:
       return "a raw_ptr type";
-    case sun::semantic_analysis::Type::Kind::StaticPointer:
+    case sun::types::Type::Kind::StaticPointer:
       return "a static_ptr type";
-    case sun::semantic_analysis::Type::Kind::NullPointer:
+    case sun::types::Type::Kind::NullPointer:
       return "the null literal";
-    case sun::semantic_analysis::Type::Kind::Reference:
+    case sun::types::Type::Kind::Reference:
       return "a reference type";
-    case sun::semantic_analysis::Type::Kind::Class:
+    case sun::types::Type::Kind::Class:
       return "a class type";
-    case sun::semantic_analysis::Type::Kind::Interface:
+    case sun::types::Type::Kind::Interface:
       return "an interface type";
-    case sun::semantic_analysis::Type::Kind::Enum:
+    case sun::types::Type::Kind::Enum:
       return "an enum type";
-    case sun::semantic_analysis::Type::Kind::ErrorUnion:
+    case sun::types::Type::Kind::ErrorUnion:
       return "an error union type";
-    case sun::semantic_analysis::Type::Kind::Array:
+    case sun::types::Type::Kind::Array:
       return "an array type";
-    case sun::semantic_analysis::Type::Kind::Slice:
+    case sun::types::Type::Kind::Slice:
       return "a slice type";
-    case sun::semantic_analysis::Type::Kind::Module:
+    case sun::types::Type::Kind::Module:
       return "a module reference";
-    case sun::semantic_analysis::Type::Kind::TypeParameter:
+    case sun::types::Type::Kind::TypeParameter:
       return "a type parameter";
     default:
       return "a primitive type";
@@ -197,10 +197,9 @@ std::shared_ptr<T> requireTypePtr(const ExprAST& expr, std::string_view what) {
  * through one rarely cares which it had.
  */
 inline TypePtr getPointeeType(const TypePtr& type) {
-  if (auto* raw = tryGetType<sun::semantic_analysis::RawPointerType>(type))
+  if (auto* raw = tryGetType<sun::types::RawPointerType>(type))
     return raw->getPointeeType();
-  if (auto* stat =
-          tryGetType<sun::semantic_analysis::StaticPointerType>(type)) {
+  if (auto* stat = tryGetType<sun::types::StaticPointerType>(type)) {
     return stat->getPointeeType();
   }
   return nullptr;

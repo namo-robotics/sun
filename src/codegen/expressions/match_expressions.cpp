@@ -15,11 +15,10 @@ Value* CodegenVisitor::codegen(const sun::ast::MatchExprAST& expr) {
   // All enum matches lower as a tag switch (sema guarantees variant patterns
   // and exhaustiveness); the equality chain below handles scalar
   // discriminants (ints, floats, strings).
-  sun::semantic_analysis::TypePtr discType = sun::semantic_analysis::unwrapRef(
-      expr.getDiscriminant()->getResolvedType());
+  sun::types::TypePtr discType =
+      sun::types::unwrapRef(expr.getDiscriminant()->getResolvedType());
   if (auto* enumType =
-          sun::codegen::support::tryGetType<sun::semantic_analysis::EnumType>(
-              discType)) {
+          sun::codegen::support::tryGetType<sun::types::EnumType>(discType)) {
     return enums.codegenMatch(expr, *enumType);
   }
 
@@ -40,7 +39,7 @@ Value* CodegenVisitor::codegen(const sun::ast::MatchExprAST& expr) {
 
   const auto matchType = expr.getResolvedType();
   AllocaInst* resultStorage = nullptr;
-  if (sun::semantic_analysis::typeMovesOnRead(matchType)) {
+  if (sun::types::typeMovesOnRead(matchType)) {
     resultStorage = createEntryBlockAlloca(TheFunction, "match.result",
                                            typeResolver.resolve(matchType));
   }

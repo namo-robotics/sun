@@ -3,7 +3,7 @@
 #pragma once
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
-namespace sun::semantic_analysis {
+namespace sun::types {
 class EnumType;
 }
 
@@ -56,8 +56,7 @@ class EnumDefinitionAST : public ExprAST {
   std::string doc_;                           // Comment written above the enum
   // Populated during semantic analysis (mutable, like ClassAnalysis
   // specializations on ClassDefinitionAST)
-  mutable std::map<DeclarationId,
-                   std::shared_ptr<sun::semantic_analysis::EnumType>>
+  mutable std::map<DeclarationId, std::shared_ptr<sun::types::EnumType>>
       specializations_;
 
  public:
@@ -113,11 +112,10 @@ class EnumDefinitionAST : public ExprAST {
    */
   void addSpecialization(
       DeclarationId id,
-      std::shared_ptr<sun::semantic_analysis::EnumType> specialized) const {
+      std::shared_ptr<sun::types::EnumType> specialized) const {
     specializations_[id] = std::move(specialized);
   }
-  const std::map<DeclarationId,
-                 std::shared_ptr<sun::semantic_analysis::EnumType>>&
+  const std::map<DeclarationId, std::shared_ptr<sun::types::EnumType>>&
   /** Provides the concrete instances created from this generic declaration. */
   getSpecializations() const {
     return specializations_;
