@@ -30,14 +30,23 @@
 #include "moon_bundling/moon_builder.h"
 #include "moon_bundling/moon_import.h"
 
+using sun::moon_bundling::MoonBuilder;
+using sun::moon_bundling::MoonImport;
+using sun::moon_bundling::MoonReader;
+
+using sun::driver::Driver;
+
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 namespace fs = std::filesystem;
 
 constexpr const char* kArchiveName = "libsun_ffi_static_testlib.a";
 
-// Directories holding the two built versions of the test archive, baked in
-// by CMake. Empty when the define is absent (e.g. an ad-hoc build).
+/**
+ * Directories holding the two built versions of the test archive, baked in
+ * by CMake. Empty when the define is absent (e.g. an ad-hoc build).
+ */
 std::string ffiTestLibDir() {
 #ifdef SUN_FFI_TESTLIB_DIR
   return SUN_FFI_TESTLIB_DIR;
@@ -46,6 +55,7 @@ std::string ffiTestLibDir() {
 #endif
 }
 
+/** Returns the alternate native library directory used to test archive replacement. */
 std::string ffiTestLibV2Dir() {
 #ifdef SUN_FFI_TESTLIB_V2_DIR
   return SUN_FFI_TESTLIB_V2_DIR;
@@ -54,7 +64,9 @@ std::string ffiTestLibV2Dir() {
 #endif
 }
 
-// A module wrapping the two C entry points of the fixture archive
+/**
+ * A module wrapping the two C entry points of the fixture archive
+ */
 std::string wrapperSource(const std::string& moduleName,
                           const std::string& archive) {
   return "public module " + moduleName + R"( {
@@ -76,26 +88,29 @@ manifest {
 )";
 }
 
-// Four bundles in a scratch directory: `leaf.moon` wraps the C archive and
-// carries it; `mid.moon` is built on leaf and names no archive itself;
-// `twin.moon` wraps the same archive file independently of leaf;
-// `leaf2.moon` wraps the second version of the archive. Built once per
-// process (see chain()): the library cache is a singleton that keeps every
-// bundle it has opened, so rebuilding under a fresh path per test would
-// leave it holding readers for files that no longer exist. The directory is
-// per process too: ctest runs each test as its own process, several at a
-// time, and they must not wipe each other's bundles.
+/**
+ * Four bundles in a scratch directory: `leaf.moon` wraps the C archive and
+ * carries it; `mid.moon` is built on leaf and names no archive itself;
+ * `twin.moon` wraps the same archive file independently of leaf;
+ * `leaf2.moon` wraps the second version of the archive. Built once per
+ * process (see chain()): the library cache is a singleton that keeps every
+ * bundle it has opened, so rebuilding under a fresh path per test would
+ * leave it holding readers for files that no longer exist. The directory is
+ * per process too: ctest runs each test as its own process, several at a
+ * time, and they must not wipe each other's bundles.
+ */
 struct BundleChain {
   fs::path dir;
   fs::path leaf;
   fs::path mid;
   fs::path twin;
   fs::path leaf2;
-  sun::MoonBuildReport leafReport;
-  sun::MoonBuildReport midReport;
+  sun::moon_bundling::MoonBuildReport leafReport;
+  sun::moon_bundling::MoonBuildReport midReport;
 
+  /** Owns the temporary libraries and paths used to test transitive archive dependencies. */
   BundleChain() {
-    initTestEnvironment();
+    sun::driver::initTestEnvironment();
     dir = fs::path(::testing::TempDir()) /
           ("sun_moon_archives_" + std::to_string(::getpid()));
     fs::remove_all(dir);
@@ -123,27 +138,32 @@ manifest {
     mid = dir / "mid.moon";
     twin = dir / "twin.moon";
     leaf2 = dir / "leaf2.moon";
-    leafReport = sun::MoonBuilder::build((dir / "leaf.sun").string(), leaf);
-    midReport = sun::MoonBuilder::build((dir / "mid.sun").string(), mid);
-    sun::MoonBuilder::build((dir / "twin.sun").string(), twin);
-    sun::MoonBuilder::build((dir / "leaf2.sun").string(), leaf2);
+    leafReport = MoonBuilder::build((dir / "leaf.sun").string(), leaf);
+    midReport = MoonBuilder::build((dir / "mid.sun").string(), mid);
+    MoonBuilder::build((dir / "twin.sun").string(), twin);
+    MoonBuilder::build((dir / "leaf2.sun").string(), leaf2);
   }
 
-  // Runs at process exit, after every test in this process is done with it
+  /**
+   * Runs at process exit, after every test in this process is done with it
+   */
   ~BundleChain() {
     std::error_code ignored;
     fs::remove_all(dir, ignored);
   }
 };
 
+/** Creates the compiled-library dependency chain used by the archive test. */
 const BundleChain& chain() {
   static BundleChain built;
   return built;
 }
 
-// Names of the archives a bundle carries, in bundle order.
+/**
+ * Names of the archives a bundle carries, in bundle order.
+ */
 std::vector<std::string> carriedArchives(const fs::path& bundle) {
-  auto reader = sun::MoonReader::open(bundle);
+  auto reader = MoonReader::open(bundle);
   if (!reader) return {};
   std::vector<std::string> names;
   for (const auto& entry : reader->getNativeArchives()) {
@@ -152,43 +172,51 @@ std::vector<std::string> carriedArchives(const fs::path& bundle) {
   return names;
 }
 
+/** Reports whether a string ends with the expected suffix. */
 bool endsWith(const std::string& text, const std::string& suffix) {
   return text.size() >= suffix.size() &&
          text.compare(text.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
 
-// The `$hash$_` prefix of a bundle's symbols
+/**
+ * The `$hash$_` prefix of a bundle's symbols
+ */
 std::string symbolPrefix(const fs::path& bundle) {
-  auto reader = sun::MoonReader::open(bundle);
+  auto reader = MoonReader::open(bundle);
   if (!reader) return {};
   auto modules = reader->listModules();
   if (modules.empty()) return {};
   const auto* metadata = reader->getMetadata(modules[0]);
-  return metadata ? sun::getSymbolPrefix(*metadata) + "_" : "";
+  return metadata ? sun::moon_bundling::getSymbolPrefix(*metadata) + "_" : "";
 }
 
-// The names in the symbol index of the first archive a bundle carries, as C
-// code spells them
+/**
+ * The names in the symbol index of the first archive a bundle carries, as C
+ * code spells them
+ */
 std::vector<std::string> carriedArchiveSymbols(const fs::path& bundle) {
-  auto reader = sun::MoonReader::open(bundle);
+  auto reader = MoonReader::open(bundle);
   if (!reader || reader->getNativeArchives().empty()) return {};
   std::vector<char> bytes;
   if (!reader->readNativeArchive(reader->getNativeArchives()[0], bytes)) {
     return {};
   }
-  return sun::listArchiveIndex(
+  return sun::moon_bundling::listArchiveIndex(
       llvm::MemoryBufferRef(llvm::StringRef(bytes.data(), bytes.size()), ""));
 }
 
-// Build and run a program as a native executable; the exit code, or -1
-// when the host cannot link (recorded in `skipReason`).
+/**
+ * Build and run a program as a native executable; the exit code, or -1
+ * when the host cannot link (recorded in `skipReason`).
+ */
 int runCompiled(Driver& driver, const fs::path& binary,
                 std::string& skipReason) {
   std::string errorMsg;
-  sun::LinkOptions linkOpts;
+  sun::driver::LinkOptions linkOpts;
   linkOpts.archives = driver.getNativeArchivePaths();
-  if (!sun::compileToExecutable(driver.getModule(), binary.string(), errorMsg,
-                                /*keepObjectFile=*/false, linkOpts)) {
+  if (!sun::driver::compileToExecutable(driver.getModule(), binary.string(),
+                                        errorMsg,
+                                        /*keepObjectFile=*/false, linkOpts)) {
     skipReason = "host link failed: " + errorMsg;
     return -1;
   }
@@ -234,7 +262,7 @@ TEST(Ffi_MoonArchives, consumer_of_a_transitive_bundle_links_the_archive) {
   const BundleChain& bundles = chain();
 
   auto driver = Driver::createForAOT("moon_archives_link");
-  driver->setMoonImports({sun::MoonImport(bundles.mid.string())});
+  driver->setMoonImports({MoonImport(bundles.mid.string())});
   driver->compileString(R"(
     function main() i32 {
       return slot_mid.answer();
@@ -258,8 +286,8 @@ TEST(Ffi_MoonArchives, identical_archives_from_two_bundles_are_extracted_once) {
   const BundleChain& bundles = chain();
 
   auto driver = Driver::createForAOT("moon_archives_dedup");
-  driver->setMoonImports({sun::MoonImport(bundles.leaf.string()),
-                          sun::MoonImport(bundles.mid.string())});
+  driver->setMoonImports(
+      {MoonImport(bundles.leaf.string()), MoonImport(bundles.mid.string())});
   driver->compileString(R"(
     function main() i32 {
       slot_lib.store(1);
@@ -277,7 +305,7 @@ TEST(Ffi_MoonArchives, jit_resolves_a_transitively_carried_archive) {
   const BundleChain& bundles = chain();
 
   auto driver = Driver::createForJIT("moon_archives_jit");
-  driver->setMoonImports({sun::MoonImport(bundles.mid.string())});
+  driver->setMoonImports({MoonImport(bundles.mid.string())});
   auto value = driver->executeString(R"(
     function main() i32 {
       return slot_mid.answer();
@@ -298,7 +326,7 @@ TEST(Ffi_MoonArchives, carried_archive_symbols_carry_the_archive_set_hash) {
   if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
   const BundleChain& bundles = chain();
 
-  auto reader = sun::MoonReader::open(bundles.leaf);
+  auto reader = MoonReader::open(bundles.leaf);
   ASSERT_NE(reader, nullptr);
   ASSERT_EQ(reader->getNativeArchives().size(), 1u);
   const std::string prefix =
@@ -333,8 +361,8 @@ TEST(Ffi_MoonArchives, independent_bundles_carrying_the_same_bytes_share_one) {
             carriedArchiveSymbols(bundles.twin));
 
   auto driver = Driver::createForAOT("moon_archives_twin");
-  driver->setMoonImports({sun::MoonImport(bundles.leaf.string()),
-                          sun::MoonImport(bundles.twin.string())});
+  driver->setMoonImports(
+      {MoonImport(bundles.leaf.string()), MoonImport(bundles.twin.string())});
   driver->compileString(R"(
     function main() i32 {
       slot_lib.store(42);
@@ -358,8 +386,8 @@ TEST(Ffi_MoonArchives, two_bundles_with_different_versions_link_both) {
   const BundleChain& bundles = chain();
 
   auto driver = Driver::createForAOT("moon_archives_two_versions");
-  driver->setMoonImports({sun::MoonImport(bundles.leaf.string()),
-                          sun::MoonImport(bundles.leaf2.string())});
+  driver->setMoonImports(
+      {MoonImport(bundles.leaf.string()), MoonImport(bundles.leaf2.string())});
   driver->compileString(kTwoVersionsProgram);
 
   const auto& archives = driver->getNativeArchivePaths();
@@ -385,8 +413,8 @@ TEST(Ffi_MoonArchives, jit_runs_two_versions_like_the_compiled_program) {
   const BundleChain& bundles = chain();
 
   auto driver = Driver::createForJIT("moon_archives_two_versions_jit");
-  driver->setMoonImports({sun::MoonImport(bundles.leaf.string()),
-                          sun::MoonImport(bundles.leaf2.string())});
+  driver->setMoonImports(
+      {MoonImport(bundles.leaf.string()), MoonImport(bundles.leaf2.string())});
   auto value = driver->executeString(kTwoVersionsProgram);
   EXPECT_EQ(value, 42);
 }

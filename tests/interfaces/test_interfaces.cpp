@@ -8,6 +8,9 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+using sun::driver::executeStringWithStdlib;
+
 // ============================================================================
 // Basic Interface Definition Tests
 // ============================================================================
@@ -899,6 +902,7 @@ TEST(Interfaces, borrowed_class_does_not_assign_to_interface_variable) {
 // conversion a single known signature does.
 // ============================================================================
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 // A handler interface with one implementation, shared by the tests below.

@@ -3,14 +3,30 @@
 
 syntax = "proto3";
 
+/** Groups the serialized compiler data defined by this schema. */
 package sun.moon;
 
 import "ast.proto";
 
 option cc_enable_arenas = true;
 
-// Module metadata stored in .moon bundle files.
+/**
+ * Original declaration ownership, independent of import aliases and load order.
+ */
+message DeclarationRecord {
+  bytes key = 1;
+  uint32 kind = 2;
+  string name = 3;
+  bytes owner = 4;
+  bytes module = 5;
+}
+
+/**
+ * Module metadata stored in .moon bundle files.
+ */
 message ModuleMetadata {
+  repeated bytes module_declarations = 17;
+  repeated DeclarationRecord declarations = 18;
   reserved 16;  // Former module binding table; references now carry canonical names.
   // Source identification
   string source_hash = 1;     // Unique key for this declaration entry
@@ -23,7 +39,7 @@ message ModuleMetadata {
 
   // Source imports retain their target and file identity within this module.
   reserved 11;
-  repeated sun.ast.ASTNode using_declarations = 15;
+  repeated sun.proto.ast.ASTNode using_declarations = 15;
 
   // Target the bitcode was compiled for (LLVM triple, e.g.
   // "x86_64-pc-linux-gnu"). Linking a bundle into a different target is an
@@ -33,19 +49,19 @@ message ModuleMetadata {
   // The module's own visibility. Bundle-private items are carried (generic
   // bodies shipped in the bundle may reference them) but importers cannot
   // reach them; every top-level module of a bundle must be public.
-  sun.ast.Visibility visibility = 12;
+  sun.proto.ast.Visibility visibility = 12;
 
   // Exported definitions (bodies included only for generics)
-  repeated sun.ast.FunctionDef functions = 6;
-  repeated sun.ast.ClassDef classes = 7;
-  repeated sun.ast.InterfaceDef interfaces = 8;
-  repeated sun.ast.EnumDef enums = 9;
+  repeated sun.proto.ast.FunctionDef functions = 6;
+  repeated sun.proto.ast.ClassDef classes = 7;
+  repeated sun.proto.ast.InterfaceDef interfaces = 8;
+  repeated sun.proto.ast.EnumDef enums = 9;
 
   // Module-level variables. The initializer is dropped: the storage lives in
   // this bundle's bitcode, already initialized, and importers reference it.
   // Private ones are carried like other private items — bodies shipped in the
   // bundle may read them — but importers cannot reach them.
-  repeated sun.ast.VariableCreation globals = 13;
+  repeated sun.proto.ast.VariableCreation globals = 13;
 
   // Absolute path of the source file the module was extracted from. Positions
   // inside the exported definitions are offsets into that file; editors use

@@ -5,6 +5,9 @@
 #include "ast/member_access_ast.h"
 #include "ast/variable_reference_ast.h"
 
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
+namespace sun::ast {
+
 std::string CallExprAST::dotLabel() const {
   // Try to get a readable name from the callee
   if (Callee->getType() == ASTNodeType::VARIABLE_REFERENCE) {
@@ -17,3 +20,5 @@ std::string CallExprAST::dotLabel() const {
   }
   return "Call";
 }
+
+}  // namespace sun::ast

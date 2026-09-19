@@ -8,6 +8,9 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+using sun::driver::executeStringWithStdlib;
+
 // ============================================================================
 // Basic try/catch Tests
 // ============================================================================
@@ -168,6 +171,7 @@ TEST(Errors, catch_binding_dispatches_to_concrete_type) {
 // Typed catch clauses: multiple handlers matched by concrete error type
 // ============================================================================
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 constexpr const char* kTypedErrors = R"(
     class ErrA implements IError {
@@ -1246,7 +1250,7 @@ TEST(Errors, binding_a_try_catch_is_an_error) {
     }
     function main() i32 { return f(); }
   )"),
-               SunError);
+               sun::support::SunError);
 }
 
 // The supported shape: return from inside the try.

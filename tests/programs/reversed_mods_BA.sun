@@ -1,5 +1,8 @@
+/** Groups declarations used by this compiler regression test. */
 public module B {
+  /** Groups declarations used by this compiler regression test. */
   public module A {
+    /** Returns the fixture marker used to check module lookup and imported calls. */
     public function foo() i32 {
       return 1;
     }

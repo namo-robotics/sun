@@ -1,10 +1,18 @@
-// llvm_type_resolver.cpp — Implementation of sun::Type to llvm::Type resolution
+// llvm_type_resolver.cpp — Implementation of sun::semantic_analysis::Type to
+// llvm::Type resolution
 
 #include "codegen/llvm_type_resolver.h"
 
 #include "llvm/IR/DerivedTypes.h"
 
+using sun::semantic_analysis::ClassType;
+using sun::semantic_analysis::EnumType;
+using sun::semantic_analysis::LambdaType;
+
 using namespace llvm;
+
+/** Translates analyzed Sun programs into LLVM instructions. */
+namespace sun::codegen {
 
 // -----------------------------------------------------------------------------
 // Closure type management
@@ -12,7 +20,7 @@ using namespace llvm;
 
 StructType* LLVMTypeResolver::getClosureType() {
   if (!closureType) {
-    closureType = StructType::create(ctx, sun::StructNames::Closure);
+    closureType = StructType::create(ctx, sun::semantic_analysis::Closure);
     closureType->setBody({
         PointerType::getUnqual(ctx),  // func*
         PointerType::getUnqual(ctx)   // env*
@@ -24,7 +32,8 @@ StructType* LLVMTypeResolver::getClosureType() {
 StructType* LLVMTypeResolver::getStaticPtrType() {
   if (!staticPtrType) {
     // Delegate to StaticPointerType::toLLVMType which handles deduplication
-    sun::StaticPointerType tempType(sun::Types::UInt8());
+    sun::semantic_analysis::StaticPointerType tempType(
+        sun::semantic_analysis::Types::UInt8());
     staticPtrType = llvm::cast<StructType>(tempType.toLLVMType(ctx));
   }
   return staticPtrType;
@@ -34,25 +43,24 @@ StructType* LLVMTypeResolver::getStaticPtrType() {
 // Payload enum layout
 // -----------------------------------------------------------------------------
 
-void LLVMTypeResolver::prepareEnumFieldStorage(
-    const sun::ClassType& classType) {
+void LLVMTypeResolver::prepareEnumFieldStorage(const ClassType& classType) {
   for (const auto& field : classType.getFields()) {
     if (!field.type) continue;
     if (field.type->isEnum()) {
-      const auto& enumType = static_cast<const sun::EnumType&>(*field.type);
+      const auto& enumType = static_cast<const EnumType&>(*field.type);
       if (enumType.hasPayload()) getEnumStorageType(enumType);
     } else if (field.type->isClass()) {
-      prepareEnumFieldStorage(static_cast<const sun::ClassType&>(*field.type));
+      prepareEnumFieldStorage(static_cast<const ClassType&>(*field.type));
     }
   }
 }
 
-StructType* LLVMTypeResolver::getEnumStorageType(
-    const sun::EnumType& enumType) {
+StructType* LLVMTypeResolver::getEnumStorageType(const EnumType& enumType) {
   if (enumType.cachedStorageType) return enumType.cachedStorageType;
   if (!dataLayout) {
-    logAndThrowError("payload enum '" + enumType.getDisplayName() +
-                     "' layout requires a module DataLayout (compiler bug)");
+    sun::support::logAndThrowError(
+        "payload enum '" + enumType.getDisplayName() +
+        "' layout requires a module DataLayout (compiler bug)");
   }
 
   uint64_t maxSize = 8;  // at least { i32 tag } rounded to a unit
@@ -66,21 +74,15 @@ StructType* LLVMTypeResolver::getEnumStorageType(
   }
 
   const uint64_t unitBytes = maxAlign.value();
-  Type* unitTy = Type::getIntNTy(ctx, unitBytes * 8);
+  llvm::Type* unitTy = llvm::Type::getIntNTy(ctx, unitBytes * 8);
   const uint64_t tagArea = alignTo(4, unitBytes);
   const uint64_t payloadBytes = maxSize > tagArea ? maxSize - tagArea : 0;
   const uint64_t numUnits = (payloadBytes + unitBytes - 1) / unitBytes;
 
-  // Share one storage struct per enum name (see ClassType::getStructType)
-  std::string storageName = enumType.getName() + "_struct";
-  StructType* storage = StructType::getTypeByName(ctx, storageName);
-  if (storage && storage->isOpaque()) {
-    storage->setBody({Type::getInt32Ty(ctx), ArrayType::get(unitTy, numUnits)});
-  } else if (!storage) {
-    storage = StructType::create(
-        ctx, {Type::getInt32Ty(ctx), ArrayType::get(unitTy, numUnits)},
-        storageName);
-  }
+  // Share equal layouts without merging different same-named declarations.
+  StructType* storage = StructType::get(
+      ctx,
+      {llvm::Type::getInt32Ty(ctx), llvm::ArrayType::get(unitTy, numUnits)});
 
   // The storage must be able to hold every variant view
   for (const auto& [name, variantStruct] : enumType.cachedVariantStructs) {
@@ -95,11 +97,12 @@ StructType* LLVMTypeResolver::getEnumStorageType(
 }
 
 StructType* LLVMTypeResolver::getEnumVariantStruct(
-    const sun::EnumType& enumType, const std::string& variantName) {
+    const EnumType& enumType, const std::string& variantName) {
   auto it = enumType.cachedVariantStructs.find(variantName);
   if (it != enumType.cachedVariantStructs.end()) return it->second;
 
-  const sun::EnumVariant* variant = enumType.getVariant(variantName);
+  const sun::semantic_analysis::EnumVariant* variant =
+      enumType.getVariant(variantName);
   assert(variant && variant->hasPayload() &&
          "variant struct requested for unknown or unit variant");
 
@@ -118,16 +121,16 @@ StructType* LLVMTypeResolver::getEnumVariantStruct(
   }
   const uint64_t tagArea = alignTo(4, maxAlign.value());
 
-  std::vector<Type*> fields;
-  fields.push_back(Type::getInt32Ty(ctx));  // tag
+  std::vector<llvm::Type*> fields;
+  fields.push_back(llvm::Type::getInt32Ty(ctx));  // tag
   if (tagArea > 4) {
-    fields.push_back(ArrayType::get(Type::getInt8Ty(ctx), tagArea - 4));
+    fields.push_back(
+        llvm::ArrayType::get(llvm::Type::getInt8Ty(ctx), tagArea - 4));
   }
   for (const auto& payloadType : variant->payloadTypes) {
     fields.push_back(resolve(payloadType));
   }
-  auto* variantStruct = StructType::create(
-      ctx, fields, enumType.getName() + "_" + variantName + "_struct");
+  auto* variantStruct = StructType::get(ctx, fields);
   enumType.cachedVariantStructs[variantName] = variantStruct;
   return variantStruct;
 }
@@ -136,92 +139,94 @@ StructType* LLVMTypeResolver::getEnumVariantStruct(
 // Type resolution
 // -----------------------------------------------------------------------------
 
-Type* LLVMTypeResolver::resolve(const sun::TypePtr& type) {
+llvm::Type* LLVMTypeResolver::resolve(
+    const sun::semantic_analysis::TypePtr& type) {
   if (!type) return nullptr;
   return resolve(*type);
 }
 
-Type* LLVMTypeResolver::resolve(const sun::Type& type) {
+llvm::Type* LLVMTypeResolver::resolve(
+    const sun::semantic_analysis::Type& type) {
   // Check cache first
-  auto* typePtr = const_cast<sun::Type*>(&type);
+  auto* typePtr = const_cast<sun::semantic_analysis::Type*>(&type);
   auto cacheIt = typeCache.find(typePtr);
   if (cacheIt != typeCache.end()) {
     return cacheIt->second;
   }
 
-  Type* result = nullptr;
+  llvm::Type* result = nullptr;
 
   switch (type.getKind()) {
     // Primitive types - all use their built-in toLLVMType
-    case sun::Type::Kind::Void:
-    case sun::Type::Kind::Bool:
-    case sun::Type::Kind::Int8:
-    case sun::Type::Kind::Int16:
-    case sun::Type::Kind::Int32:
-    case sun::Type::Kind::Int64:
-    case sun::Type::Kind::UInt8:
-    case sun::Type::Kind::UInt16:
-    case sun::Type::Kind::UInt32:
-    case sun::Type::Kind::UInt64:
-    case sun::Type::Kind::Float32:
-    case sun::Type::Kind::Float64:
-    case sun::Type::Kind::Char: {
+    case sun::semantic_analysis::Type::Kind::Void:
+    case sun::semantic_analysis::Type::Kind::Bool:
+    case sun::semantic_analysis::Type::Kind::Int8:
+    case sun::semantic_analysis::Type::Kind::Int16:
+    case sun::semantic_analysis::Type::Kind::Int32:
+    case sun::semantic_analysis::Type::Kind::Int64:
+    case sun::semantic_analysis::Type::Kind::UInt8:
+    case sun::semantic_analysis::Type::Kind::UInt16:
+    case sun::semantic_analysis::Type::Kind::UInt32:
+    case sun::semantic_analysis::Type::Kind::UInt64:
+    case sun::semantic_analysis::Type::Kind::Float32:
+    case sun::semantic_analysis::Type::Kind::Float64:
+    case sun::semantic_analysis::Type::Kind::Char: {
       result = type.toLLVMType(ctx);
       break;
     }
 
-    case sun::Type::Kind::Function: {
+    case sun::semantic_analysis::Type::Kind::Function: {
       // Named function type: stored as a direct function pointer
       result = PointerType::getUnqual(ctx);
       break;
     }
 
-    case sun::Type::Kind::Lambda: {
+    case sun::semantic_analysis::Type::Kind::Lambda: {
       // Lambda type: stored as a closure struct { ptr, ptr }
       result = getClosureType();
       break;
     }
 
-    case sun::Type::Kind::RawPointer: {
+    case sun::semantic_analysis::Type::Kind::RawPointer: {
       // Raw pointer is stored as a regular pointer
       result = PointerType::getUnqual(ctx);
       break;
     }
 
-    case sun::Type::Kind::StaticPointer: {
+    case sun::semantic_analysis::Type::Kind::StaticPointer: {
       // Static pointer is a fat pointer struct { ptr data, i64 length }
       // Use shared type for LLVM type equality across module
       result = getStaticPtrType();
       break;
     }
 
-    case sun::Type::Kind::Reference: {
+    case sun::semantic_analysis::Type::Kind::Reference: {
       // A reference is the referent's address; a `ref array<T>` to an
       // unsized array is the view struct itself
       result = type.toLLVMType(ctx);
       break;
     }
 
-    case sun::Type::Kind::Class: {
+    case sun::semantic_analysis::Type::Kind::Class: {
       // Class instances are value types represented as structs. Payload-enum
       // fields embed their storage struct, which needs the DataLayout — build
       // those first so ClassType::getStructType can serve them from cache.
-      prepareEnumFieldStorage(static_cast<const sun::ClassType&>(type));
+      prepareEnumFieldStorage(static_cast<const ClassType&>(type));
       result = type.toLLVMType(ctx);
       break;
     }
 
-    case sun::Type::Kind::Interface: {
+    case sun::semantic_analysis::Type::Kind::Interface: {
       // Interface values are fat pointers: { ptr data, ptr vtable }
       // This enables dynamic dispatch via vtable lookup
       result = type.toLLVMType(ctx);
       break;
     }
 
-    case sun::Type::Kind::Enum: {
+    case sun::semantic_analysis::Type::Kind::Enum: {
       // Payload-free enums use their integer type; payload enums are tagged
       // unions
-      const auto& enumType = static_cast<const sun::EnumType&>(type);
+      const auto& enumType = static_cast<const EnumType&>(type);
       if (enumType.hasPayload()) {
         result = getEnumStorageType(enumType);
       } else {
@@ -230,38 +235,38 @@ Type* LLVMTypeResolver::resolve(const sun::Type& type) {
       break;
     }
 
-    case sun::Type::Kind::NullPointer: {
+    case sun::semantic_analysis::Type::Kind::NullPointer: {
       // Null pointer literal resolves to opaque pointer
       result = PointerType::getUnqual(ctx);
       break;
     }
 
-    case sun::Type::Kind::ErrorUnion: {
+    case sun::semantic_analysis::Type::Kind::ErrorUnion: {
       // Error union uses its built-in toLLVMType (creates struct type)
       result = type.toLLVMType(ctx);
       break;
     }
 
-    case sun::Type::Kind::Array: {
+    case sun::semantic_analysis::Type::Kind::Array: {
       // Fixed-size array uses its built-in toLLVMType
       result = type.toLLVMType(ctx);
       break;
     }
 
-    case sun::Type::Kind::Slice: {
+    case sun::semantic_analysis::Type::Kind::Slice: {
       // Slice type: { i64 start, i64 end }
       result = type.toLLVMType(ctx);
       break;
     }
 
-    case sun::Type::Kind::TypeParameter: {
+    case sun::semantic_analysis::Type::Kind::TypeParameter: {
       // Type parameters should be substituted before codegen
       // This is an error condition - return nullptr
       result = nullptr;
       break;
     }
 
-    case sun::Type::Kind::Module: {
+    case sun::semantic_analysis::Type::Kind::Module: {
       // A module name is only ever the left side of `m.item`; it has no
       // runtime value
       result = nullptr;
@@ -281,24 +286,25 @@ Type* LLVMTypeResolver::resolve(const sun::Type& type) {
 // Function type helpers
 // -----------------------------------------------------------------------------
 
-Type* LLVMTypeResolver::resolveReturnType(const sun::FunctionType& funcType) {
+llvm::Type* LLVMTypeResolver::resolveReturnType(
+    const sun::semantic_analysis::FunctionType& funcType) {
   const auto& retType = funcType.getReturnType();
   return resolve(retType);
 }
 
-std::vector<Type*> LLVMTypeResolver::resolveParamTypes(
-    const sun::FunctionType& funcType) {
-  std::vector<Type*> result;
+std::vector<llvm::Type*> LLVMTypeResolver::resolveParamTypes(
+    const sun::semantic_analysis::FunctionType& funcType) {
+  std::vector<llvm::Type*> result;
   for (const auto& param : funcType.getParamTypes()) {
     result.push_back(resolve(param));
   }
   return result;
 }
 
-FunctionType* LLVMTypeResolver::resolveFunctionSignature(
-    const sun::FunctionType& funcType) {
+llvm::FunctionType* LLVMTypeResolver::resolveFunctionSignature(
+    const sun::semantic_analysis::FunctionType& funcType) {
   // Build parameter types: first is hidden closure pointer, then user params
-  std::vector<Type*> paramTypes;
+  std::vector<llvm::Type*> paramTypes;
   paramTypes.push_back(PointerType::getUnqual(ctx));  // Hidden closure ptr
 
   for (const auto& param : funcType.getParamTypes()) {
@@ -306,48 +312,48 @@ FunctionType* LLVMTypeResolver::resolveFunctionSignature(
   }
 
   // Resolve return type
-  Type* returnType = resolveReturnType(funcType);
+  llvm::Type* returnType = resolveReturnType(funcType);
 
-  return FunctionType::get(returnType, paramTypes, false);
+  return llvm::FunctionType::get(returnType, paramTypes, false);
 }
 
-FunctionType* LLVMTypeResolver::resolveDirectFunctionSignature(
-    const sun::FunctionType& funcType) {
+llvm::FunctionType* LLVMTypeResolver::resolveDirectFunctionSignature(
+    const sun::semantic_analysis::FunctionType& funcType) {
   // Build parameter types: NO hidden closure pointer, just user params
-  std::vector<Type*> paramTypes;
+  std::vector<llvm::Type*> paramTypes;
 
   for (const auto& param : funcType.getParamTypes()) {
     paramTypes.push_back(resolve(param));
   }
 
   // Resolve return type
-  Type* returnType = resolveReturnType(funcType);
+  llvm::Type* returnType = resolveReturnType(funcType);
 
-  return FunctionType::get(returnType, paramTypes, false);
+  return llvm::FunctionType::get(returnType, paramTypes, false);
 }
 
 // -----------------------------------------------------------------------------
 // Lambda type helpers
 // -----------------------------------------------------------------------------
 
-Type* LLVMTypeResolver::resolveReturnType(const sun::LambdaType& lambdaType) {
+llvm::Type* LLVMTypeResolver::resolveReturnType(const LambdaType& lambdaType) {
   const auto& retType = lambdaType.getReturnType();
   return resolve(retType);
 }
 
-std::vector<Type*> LLVMTypeResolver::resolveParamTypes(
-    const sun::LambdaType& lambdaType) {
-  std::vector<Type*> result;
+std::vector<llvm::Type*> LLVMTypeResolver::resolveParamTypes(
+    const LambdaType& lambdaType) {
+  std::vector<llvm::Type*> result;
   for (const auto& param : lambdaType.getParamTypes()) {
     result.push_back(resolve(param));
   }
   return result;
 }
 
-FunctionType* LLVMTypeResolver::resolveLambdaSignature(
-    const sun::LambdaType& lambdaType) {
+llvm::FunctionType* LLVMTypeResolver::resolveLambdaSignature(
+    const LambdaType& lambdaType) {
   // Build parameter types: first is hidden fat pointer, then user params
-  std::vector<Type*> paramTypes;
+  std::vector<llvm::Type*> paramTypes;
   paramTypes.push_back(PointerType::getUnqual(ctx));  // Hidden fat ptr
 
   for (const auto& param : lambdaType.getParamTypes()) {
@@ -355,23 +361,27 @@ FunctionType* LLVMTypeResolver::resolveLambdaSignature(
   }
 
   // Resolve return type
-  Type* returnType = resolveReturnType(lambdaType);
+  llvm::Type* returnType = resolveReturnType(lambdaType);
 
-  return FunctionType::get(returnType, paramTypes, false);
+  return llvm::FunctionType::get(returnType, paramTypes, false);
 }
 
 // -----------------------------------------------------------------------------
 // Return type resolution (for function return values)
 // -----------------------------------------------------------------------------
 
-Type* LLVMTypeResolver::resolveForReturn(const sun::TypePtr& type) {
+llvm::Type* LLVMTypeResolver::resolveForReturn(
+    const sun::semantic_analysis::TypePtr& type) {
   if (!type) return nullptr;
   return resolveForReturn(*type);
 }
 
-Type* LLVMTypeResolver::resolveForReturn(const sun::Type& type) {
+llvm::Type* LLVMTypeResolver::resolveForReturn(
+    const sun::semantic_analysis::Type& type) {
   // Now that resolve() returns struct for class types and
   // ErrorUnionType::toLLVMType() embeds the correct struct type,
   // resolveForReturn is equivalent to resolve().
   return resolve(type);
 }
+
+}  // namespace sun::codegen

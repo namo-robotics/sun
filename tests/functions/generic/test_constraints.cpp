@@ -12,6 +12,9 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+using sun::support::SunError;
+
 // -------------------------------------------------------------------
 // Built-in traits
 // -------------------------------------------------------------------
@@ -667,6 +670,7 @@ TEST(Functions_Generic_Constraints, constraint_only_overloads_are_rejected) {
                                 "not supported");
 }
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 const std::string genericHandler = R"(
   interface IHandler<Self> {

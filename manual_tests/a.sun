@@ -1,4 +1,6 @@
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** Returns the fixture marker used to check module lookup and imported calls. */
   public function a() i32 {
     return 1;
   }

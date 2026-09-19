@@ -19,18 +19,29 @@
 #include "lsp/declarations.h"
 #include "lsp/name_ranges.h"
 
+using sun::ast::ASTNodeType;
+using sun::ast::BlockExprAST;
+using sun::ast::ClassDefinitionAST;
+using sun::ast::ExprAST;
+using sun::ast::forEachChild;
+using sun::support::Position;
+
+/** Provides compiler-backed editor features through the language server protocol. */
 namespace sun::lsp {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// The key of a declaration known to live in `normalizedFile`
+/**
+ * The key of a declaration known to live in `normalizedFile`
+ */
 DeclarationKey keyIn(const Declaration& declaration,
                      std::string normalizedFile) {
   DeclarationKey key;
   key.file = std::move(normalizedFile);
   key.offset = declaration.location.offset;
   key.end = declaration.location.endOffset.value_or(-1);
-  const PrototypeAST* proto =
+  const sun::ast::PrototypeAST* proto =
       declaration.node ? prototypeOf(*declaration.node) : nullptr;
   if (proto && declaresParameter(*proto, declaration.name)) {
     key.parameter = declaration.name;
@@ -40,21 +51,27 @@ DeclarationKey keyIn(const Declaration& declaration,
 
 }  // namespace
 
+/** Builds the key used to group references to the same declaration. */
 DeclarationKey declarationKey(const Declaration& declaration,
                               const std::string& file) {
   return keyIn(declaration,
                normalizePath(declaration.location.filePath.value_or(file)));
 }
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// Gathers the ranges naming any of the targets, one per span, with the
-// text of each file
+/**
+ * Gathers the ranges naming any of the targets, one per span, with the
+ * text of each file
+ */
 class Collector {
  public:
+  /** Creates a reference collector using the open document's current source text. */
   Collector(std::string documentPath, const std::string& source)
       : documentPath_(std::move(documentPath)), source_(source) {}
 
+  /** Adds a declaration to the set whose references are being collected. */
   void addTarget(const Declaration& declaration, const std::string& file) {
     DeclarationKey key = keyOf(declaration, file);
     if (std::find(targets_.begin(), targets_.end(), key) == targets_.end()) {
@@ -62,9 +79,12 @@ class Collector {
     }
   }
 
+  /** Returns the number of declarations selected for reference collection. */
   size_t targetCount() const { return targets_.size(); }
 
-  // Index of the target a declaration is, or -1
+  /**
+   * Index of the target a declaration is, or -1
+   */
   int indexOf(const Declaration& declaration, const std::string& file) {
     DeclarationKey key = keyOf(declaration, file);
     for (size_t i = 0; i < targets_.size(); ++i) {
@@ -73,11 +93,14 @@ class Collector {
     return -1;
   }
 
+  /** Reports whether a declaration belongs to the selected reference targets. */
   bool matches(const Declaration& declaration, const std::string& file) {
     return indexOf(declaration, file) >= 0;
   }
 
-  // Text of a file, or null when it cannot be read
+  /**
+   * Text of a file, or null when it cannot be read
+   */
   const std::string* text(const std::string& file) {
     auto cached = texts_.find(file);
     if (cached == texts_.end()) {
@@ -89,6 +112,7 @@ class Collector {
     return cached->second ? &*cached->second : nullptr;
   }
 
+  /** Adds a source range to the collected declaration or use locations. */
   void add(const std::string& file, int offset, int end,
            bool isDeclaration = false) {
     if (end <= offset) return;
@@ -97,6 +121,7 @@ class Collector {
     if (!inserted && !isDeclaration) entry->second = false;
   }
 
+  /** Returns collected reference locations, optionally including declarations. */
   std::vector<SymbolLocation> results(bool includeDeclarations) {
     std::vector<SymbolLocation> locations;
     for (const auto& [span, isDeclaration] : ranges_) {
@@ -114,6 +139,7 @@ class Collector {
   }
 
  private:
+  /** Normalizes a path before comparing reference locations. */
   const std::string& normalize(const std::string& path) {
     auto cached = normalized_.find(path);
     if (cached == normalized_.end()) {
@@ -122,7 +148,9 @@ class Collector {
     return cached->second;
   }
 
-  // declarationKey with the path normalization cached
+  /**
+   * declarationKey with the path normalization cached
+   */
   DeclarationKey keyOf(const Declaration& declaration,
                        const std::string& file) {
     return keyIn(declaration,
@@ -138,11 +166,13 @@ class Collector {
   std::map<std::tuple<std::string, int, int>, bool> ranges_;
 };
 
-// An annotation and every one nested in it: type arguments, element,
-// parameter and return types
+/**
+ * An annotation and every one nested in it: type arguments, element,
+ * parameter and return types
+ */
 void forEachNestedAnnotation(
-    const TypeAnnotation& annotation,
-    const std::function<void(const TypeAnnotation&)>& fn) {
+    const sun::ast::TypeAnnotation& annotation,
+    const std::function<void(const sun::ast::TypeAnnotation&)>& fn) {
   fn(annotation);
   for (const auto& arg : annotation.typeArguments) {
     if (arg) forEachNestedAnnotation(*arg, fn);
@@ -158,19 +188,25 @@ void forEachNestedAnnotation(
   }
 }
 
-// Finds names written in the tree as parsed: type names in annotations and
-// `implements` lists, and the declarations themselves. Specialization
-// clones carry no annotation spans, so this walks the templates.
+/**
+ * Finds names written in the tree as parsed: type names in annotations and
+ * `implements` lists, and the declarations themselves. Specialization
+ * clones carry no annotation spans, so this walks the templates.
+ */
 class DeclaredNameFinder {
  public:
+  /** Connects a declaration-name walk to the shared reference collector. */
   DeclaredNameFinder(const BlockExprAST& program, Collector& out)
       : program_(program), out_(out) {}
 
-  // Every target's declaration was met in the tree
+  /**
+   * Every target's declaration was met in the tree
+   */
   bool foundAllDeclarations() const {
     return found_.size() == out_.targetCount();
   }
 
+  /** Visits declarations to collect the source ranges of their names. */
   void visit(const ExprAST& node, const std::string& inheritedFile) {
     if (node.getType() == ASTNodeType::MOON_SCOPE) return;
     const Position& loc = node.getLocation();
@@ -188,26 +224,31 @@ class DeclaredNameFinder {
   }
 
  private:
+  /** Adds identifier occurrences within a specified source span. */
   void addWord(const std::string& file, const std::string& text,
                const std::string& name, int from, int to) {
     int at = findWord(text, name, from, to);
     if (at >= 0) out_.add(file, at, at + static_cast<int>(name.size()));
   }
 
+  /** Collects references found in a node's type annotations. */
   void collectAnnotations(const ExprAST& node, const std::string& file,
                           const std::string& text) {
-    forEachAnnotation(node, [&](const TypeAnnotation& written) {
-      forEachNestedAnnotation(written, [&](const TypeAnnotation& annotation) {
-        if (!annotation.span.endOffset) return;
-        const ExprAST* decl = findAnnotatedType(program_, annotation);
-        if (!decl || !out_.matches(declarationOf(*decl), file)) return;
-        addWord(file, text, declarationName(*decl), annotation.span.offset,
-                *annotation.span.endOffset);
-      });
+    forEachAnnotation(node, [&](const sun::ast::TypeAnnotation& written) {
+      forEachNestedAnnotation(
+          written, [&](const sun::ast::TypeAnnotation& annotation) {
+            if (!annotation.span.endOffset) return;
+            const ExprAST* decl = findAnnotatedType(program_, annotation);
+            if (!decl || !out_.matches(declarationOf(*decl), file)) return;
+            addWord(file, text, declarationName(*decl), annotation.span.offset,
+                    *annotation.span.endOffset);
+          });
     });
   }
 
-  // Interface names follow the class name in the header, before its body
+  /**
+   * Interface names follow the class name in the header, before its body
+   */
   void collectImplements(const ClassDefinitionAST& cls, const std::string& file,
                          const std::string& text) {
     if (cls.getImplementedInterfaces().empty()) return;
@@ -227,7 +268,9 @@ class DeclaredNameFinder {
     }
   }
 
-  // The declarations a node makes, built as the cursor lookup builds them
+  /**
+   * The declarations a node makes, built as the cursor lookup builds them
+   */
   void collectDeclarations(const ExprAST& node, const std::string& file,
                            const std::string& text) {
     auto consider = [&](const Declaration& declaration) {
@@ -243,7 +286,7 @@ class DeclaredNameFinder {
         consider(declarationOf(node));
         [[fallthrough]];
       case ASTNodeType::LAMBDA: {
-        const PrototypeAST& proto = *prototypeOf(node);
+        const sun::ast::PrototypeAST& proto = *prototypeOf(node);
         for (const auto& arg : proto.getArgs()) {
           consider(Declaration{node.getLocation(), "", &node, arg.first});
         }
@@ -264,7 +307,8 @@ class DeclaredNameFinder {
       case ASTNodeType::INTERFACE_DEFINITION: {
         consider(declarationOf(node));
         for (const auto& field :
-             static_cast<const InterfaceDefinitionAST&>(node).getFields()) {
+             static_cast<const sun::ast::InterfaceDefinitionAST&>(node)
+                 .getFields()) {
           consider(Declaration{field.location, "", nullptr, field.name});
         }
         break;
@@ -272,7 +316,8 @@ class DeclaredNameFinder {
       case ASTNodeType::ENUM_DEFINITION: {
         consider(declarationOf(node));
         for (const auto& variant :
-             static_cast<const EnumDefinitionAST&>(node).getVariants()) {
+             static_cast<const sun::ast::EnumDefinitionAST&>(node)
+                 .getVariants()) {
           consider(Declaration{variant.location, "", nullptr, variant.name});
         }
         break;
@@ -283,13 +328,13 @@ class DeclaredNameFinder {
         consider(declarationOf(node));
         break;
       case ASTNodeType::FOR_IN_LOOP:
-        consider(
-            Declaration{node.getLocation(), "", &node,
-                        static_cast<const ForInExprAST&>(node).getLoopVar()});
+        consider(Declaration{
+            node.getLocation(), "", &node,
+            static_cast<const sun::ast::ForInExprAST&>(node).getLoopVar()});
         break;
       case ASTNodeType::MATCH: {
         for (const auto& arm :
-             static_cast<const MatchExprAST&>(node).getArms()) {
+             static_cast<const sun::ast::MatchExprAST&>(node).getArms()) {
           for (const auto& binding : arm.bindings) {
             if (!binding.isWildcard) {
               consider(Declaration{binding.location, "", &node, binding.name});
@@ -300,8 +345,8 @@ class DeclaredNameFinder {
       }
       case ASTNodeType::TRY_CATCH:
         forEachCatchBinding(
-            static_cast<const TryCatchExprAST&>(node),
-            [&](const CatchClause& clause, const Position& header) {
+            static_cast<const sun::ast::TryCatchExprAST&>(node),
+            [&](const sun::ast::CatchClause& clause, const Position& header) {
               consider(Declaration{header, "", &node, clause.bindingName});
             });
         break;
@@ -315,14 +360,18 @@ class DeclaredNameFinder {
   std::set<int> found_;  // Indices of the targets whose declaration was met
 };
 
-// Finds the uses: every expression naming a symbol, resolved the way the
-// cursor is. A generic body is visited through its first specialization,
-// the only analyzed copy; it keeps the template's spans.
+/**
+ * Finds the uses: every expression naming a symbol, resolved the way the
+ * cursor is. A generic body is visited through its first specialization,
+ * the only analyzed copy; it keeps the template's spans.
+ */
 class UseFinder {
  public:
+  /** Connects a symbol-use walk to the shared reference collector. */
   UseFinder(const BlockExprAST& program, Collector& out)
       : program_(program), out_(out) {}
 
+  /** Visits expressions to collect references to the selected declarations. */
   void visit(const ExprAST& node, const std::string& inheritedFile) {
     if (node.getType() == ASTNodeType::MOON_SCOPE) return;
     Bindings bindings;
@@ -357,8 +406,10 @@ class UseFinder {
   }
 
  private:
-  // The name's own range: the span when it is exactly the name, else the
-  // name at the span's start
+  /**
+   * The name's own range: the span when it is exactly the name, else the
+   * name at the span's start
+   */
   static std::optional<Position> identifierRange(const Position& loc,
                                                  const std::string& name,
                                                  const std::string& text) {
@@ -369,7 +420,9 @@ class UseFinder {
     return std::nullopt;
   }
 
-  // The member name after the object in `object.member`
+  /**
+   * The member name after the object in `object.member`
+   */
   static std::optional<Position> memberRange(const ExprAST& object,
                                              const std::string& member,
                                              const Position& loc,
@@ -381,6 +434,7 @@ class UseFinder {
     return rangeAt(loc, at, static_cast<int>(member.size()));
   }
 
+  /** Collects a resolved reference within an optional source range. */
   void considerRange(const ExprAST& node, const std::string& file,
                      const std::optional<Position>& range) {
     if (!range) return;
@@ -390,6 +444,7 @@ class UseFinder {
     out_.add(file, range->offset, *range->endOffset);
   }
 
+  /** Checks whether a node refers to one of the selected declarations. */
   void consider(const ExprAST& node, const std::string& file) {
     const std::string* text = file.empty() ? nullptr : out_.text(file);
     if (!text) return;
@@ -399,25 +454,31 @@ class UseFinder {
         considerRange(
             node, file,
             identifierRange(
-                loc, static_cast<const VariableReferenceAST&>(node).getName(),
+                loc,
+                static_cast<const sun::ast::VariableReferenceAST&>(node)
+                    .getName(),
                 *text));
         break;
       case ASTNodeType::VARIABLE_ASSIGNMENT:
         considerRange(
             node, file,
             identifierRange(
-                loc, static_cast<const VariableAssignmentAST&>(node).getName(),
+                loc,
+                static_cast<const sun::ast::VariableAssignmentAST&>(node)
+                    .getName(),
                 *text));
         break;
       case ASTNodeType::GENERIC_CALL:
         considerRange(
             node, file,
-            identifierRange(
-                loc, static_cast<const GenericCallAST&>(node).getFunctionName(),
-                *text));
+            identifierRange(loc,
+                            static_cast<const sun::ast::GenericCallAST&>(node)
+                                .getFunctionName(),
+                            *text));
         break;
       case ASTNodeType::MEMBER_ACCESS: {
-        const auto& access = static_cast<const MemberAccessAST&>(node);
+        const auto& access =
+            static_cast<const sun::ast::MemberAccessAST&>(node);
         if (!access.getObject()) break;
         considerRange(node, file,
                       memberRange(*access.getObject(), access.getMemberName(),
@@ -425,7 +486,8 @@ class UseFinder {
         break;
       }
       case ASTNodeType::MEMBER_ASSIGNMENT: {
-        const auto& assignment = static_cast<const MemberAssignmentAST&>(node);
+        const auto& assignment =
+            static_cast<const sun::ast::MemberAssignmentAST&>(node);
         if (!assignment.getObject()) break;
         considerRange(node, file,
                       memberRange(*assignment.getObject(),
@@ -433,17 +495,21 @@ class UseFinder {
         break;
       }
       case ASTNodeType::STRUCT_LITERAL:
-        considerFields(static_cast<const StructLiteralAST&>(node), file, *text);
+        considerFields(static_cast<const sun::ast::StructLiteralAST&>(node),
+                       file, *text);
         break;
       default:
         break;
     }
   }
 
-  // Field names in a struct literal name the fields of its type
-  void considerFields(const StructLiteralAST& literal, const std::string& file,
-                      const std::string& text) {
-    const sun::Type* type = stripReference(literal.getResolvedType().get());
+  /**
+   * Field names in a struct literal name the fields of its type
+   */
+  void considerFields(const sun::ast::StructLiteralAST& literal,
+                      const std::string& file, const std::string& text) {
+    const sun::semantic_analysis::Type* type =
+        stripReference(literal.getResolvedType().get());
     if (!type) return;
     const ExprAST* definition = findTypeDefinition(program_, *type);
     if (!definition) return;
@@ -465,9 +531,12 @@ class UseFinder {
 
 }  // namespace
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// Every class and interface definition in the tree, templates included
+/**
+ * Every class and interface definition in the tree, templates included
+ */
 void forEachTypeDefinition(const ExprAST& node,
                            const std::function<void(const ExprAST&)>& fn) {
   if (node.getType() == ASTNodeType::MOON_SCOPE) return;
@@ -479,19 +548,25 @@ void forEachTypeDefinition(const ExprAST& node,
                [&](const ExprAST& child) { forEachTypeDefinition(child, fn); });
 }
 
-// Members of the interfaces the compiler declares itself, with no node in
-// any tree
+/**
+ * Members of the interfaces the compiler declares itself, with no node in
+ * any tree
+ */
 bool isBuiltinInterfaceMember(const std::string& interface,
                               const std::string& member) {
   return interface == "IError" && (member == "code" || member == "message");
 }
 
-// Builds a MemberGroup, deduplicating by declaration key
+/**
+ * Builds a MemberGroup, deduplicating by declaration key
+ */
 class GroupBuilder {
  public:
+  /** Creates a collector for member declarations that must be renamed together. */
   GroupBuilder(const BlockExprAST& program, const std::string& documentPath)
       : program_(program), documentPath_(documentPath) {}
 
+  /** Builds the group of related members that must be renamed together. */
   MemberGroup around(const Declaration& member) {
     if (member.name.empty()) return {{member}, ""};
     const ExprAST* owner = nullptr;
@@ -524,10 +599,12 @@ class GroupBuilder {
   }
 
  private:
+  /** Reports whether both nominal types refer to the same declaration identity. */
   bool sameDeclaration(const Declaration& a, const Declaration& b) const {
     return declarationKey(a, documentPath_) == declarationKey(b, documentPath_);
   }
 
+  /** Adds a declaration to the related-member rename group. */
   void add(const Declaration& declaration) {
     DeclarationKey key = declarationKey(declaration, documentPath_);
     if (std::find(keys_.begin(), keys_.end(), key) != keys_.end()) return;
@@ -535,7 +612,9 @@ class GroupBuilder {
     group_.members.push_back(declaration);
   }
 
-  // The member in every class implementing `interface`
+  /**
+   * The member in every class implementing `interface`
+   */
   void addImplementers(const ExprAST& interface) {
     forEachTypeDefinition(program_, [&](const ExprAST& def) {
       if (def.getType() != ASTNodeType::CLASS_DEFINITION) return;
@@ -563,12 +642,14 @@ class GroupBuilder {
 
 }  // namespace
 
+/** Finds related member declarations that share a rename operation. */
 MemberGroup memberGroupOf(const BlockExprAST& program,
                           const Declaration& declaration,
                           const std::string& documentPath) {
   return GroupBuilder(program, documentPath).around(declaration);
 }
 
+/** Collects source occurrences of the selected declarations. */
 Occurrences findOccurrences(const BlockExprAST& program,
                             const std::string& documentPath,
                             const std::string& source,
@@ -589,6 +670,7 @@ Occurrences findOccurrences(const BlockExprAST& program,
   return occurrences;
 }
 
+/** Returns references to the symbol selected at a document offset. */
 std::vector<SymbolLocation> computeReferences(const BlockExprAST& program,
                                               const std::string& filePath,
                                               const std::string& source,

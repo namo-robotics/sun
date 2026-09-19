@@ -15,19 +15,30 @@
 #include "serialization/ast_deserializer.h"
 #include "serialization/ast_serializer.h"
 
+using sun::driver::ManifestProcessor;
+using sun::moon_bundling::MoonImport;
+
+using sun::ast::BlockExprAST;
+using sun::ast::ManifestAST;
+using sun::ast::ManifestMoonDependency;
+using sun::driver::executeStringWithStdlib;
+
 namespace fs = std::filesystem;
 using proto_test::LibprotobufSchema;
 using proto_test::ProtoProject;
 using proto_test::runWithProto;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
-// Parse a program and return its manifest block (nullptr if none)
+/**
+ * Parse a program and return its manifest block (nullptr if none)
+ */
 const ManifestAST* parseManifest(const std::string& source,
                                  std::unique_ptr<BlockExprAST>& keepAlive) {
-  auto parser = Parser::createStringParser(source);
+  auto parser = sun::parsing::Parser::createStringParser(source);
   keepAlive = parser.parseProgram();
-  return sun::ManifestProcessor::findManifest(*keepAlive);
+  return ManifestProcessor::findManifest(*keepAlive);
 }
 
 }  // namespace
@@ -168,9 +179,9 @@ TEST(Modules_ProtoImport, manifest_moon_requires_path_or_url) {
 // ============================================================================
 
 TEST(Modules_ProtoImport, manifest_protos_serialization_roundtrip) {
-  std::vector<ManifestSunDependency> suns;
+  std::vector<sun::ast::ManifestSunDependency> suns;
   std::vector<ManifestMoonDependency> moons;
-  std::vector<ManifestProtoDependency> protos;
+  std::vector<sun::ast::ManifestProtoDependency> protos;
   protos.push_back({"schemas/telemetry.proto"});
   protos.push_back({"schemas/control.proto"});
   auto ast = std::make_unique<ManifestAST>(std::move(suns), std::move(moons),
@@ -183,7 +194,7 @@ TEST(Modules_ProtoImport, manifest_protos_serialization_roundtrip) {
   auto restored = deserializer.deserializeFromString(data);
 
   ASSERT_NE(restored, nullptr);
-  ASSERT_EQ(restored->getType(), ASTNodeType::MANIFEST);
+  ASSERT_EQ(restored->getType(), sun::ast::ASTNodeType::MANIFEST);
   const auto& manifest = static_cast<const ManifestAST&>(*restored);
   ASSERT_EQ(manifest.getProtos().size(), 2u);
   EXPECT_EQ(manifest.getProtos()[0].path, "schemas/telemetry.proto");
@@ -191,9 +202,9 @@ TEST(Modules_ProtoImport, manifest_protos_serialization_roundtrip) {
 }
 
 TEST(Modules_ProtoImport, manifest_moon_url_serialization_roundtrip) {
-  std::vector<ManifestSunDependency> suns;
+  std::vector<sun::ast::ManifestSunDependency> suns;
   std::vector<ManifestMoonDependency> moons;
-  std::vector<ManifestProtoDependency> protos;
+  std::vector<sun::ast::ManifestProtoDependency> protos;
   ManifestMoonDependency dep;
   dep.url = "https://example.com/lib.moon";
   dep.hash = "abc123";
@@ -208,7 +219,7 @@ TEST(Modules_ProtoImport, manifest_moon_url_serialization_roundtrip) {
   auto restored = deserializer.deserializeFromString(data);
 
   ASSERT_NE(restored, nullptr);
-  ASSERT_EQ(restored->getType(), ASTNodeType::MANIFEST);
+  ASSERT_EQ(restored->getType(), sun::ast::ASTNodeType::MANIFEST);
   const auto& manifest = static_cast<const ManifestAST&>(*restored);
   ASSERT_EQ(manifest.getMoons().size(), 1u);
   const auto& moon = manifest.getMoons()[0];
@@ -238,7 +249,7 @@ TEST(Modules_ProtoImport, manifest_processor_resolves_protos_relative_to_base) {
   }
 
   auto resolved =
-      sun::ManifestProcessor::fromEntrypointFile((dir / "main.sun").string());
+      ManifestProcessor::fromEntrypointFile((dir / "main.sun").string());
   ASSERT_TRUE(resolved.has_value());
   ASSERT_EQ(resolved->protoFiles.size(), 1u);
   EXPECT_EQ(fs::path(resolved->protoFiles[0]).lexically_normal(),
@@ -268,10 +279,10 @@ TEST(Modules_ProtoImport, manifest_path_variables_expand_in_all_entry_kinds) {
            "function main() i32 { return 0; }\n";
   }
 
-  sun::ManifestProcessor::setPathVariable("TESTLIBS", (dir / "libs").string());
+  ManifestProcessor::setPathVariable("TESTLIBS", (dir / "libs").string());
   auto resolved =
-      sun::ManifestProcessor::fromEntrypointFile((dir / "main.sun").string());
-  sun::ManifestProcessor::clearPathVariables();
+      ManifestProcessor::fromEntrypointFile((dir / "main.sun").string());
+  ManifestProcessor::clearPathVariables();
 
   ASSERT_TRUE(resolved.has_value());
   ASSERT_EQ(resolved->sunFiles.size(), 1u);
@@ -295,10 +306,10 @@ TEST(Modules_ProtoImport, manifest_path_variable_falls_back_to_environment) {
            "function main() i32 { return 0; }\n";
   }
 
-  sun::ManifestProcessor::clearPathVariables();
+  ManifestProcessor::clearPathVariables();
   setenv("SUN_TEST_ENV_LIBS", "/opt/sunlibs", 1);
   auto resolved =
-      sun::ManifestProcessor::fromEntrypointFile((dir / "main.sun").string());
+      ManifestProcessor::fromEntrypointFile((dir / "main.sun").string());
   unsetenv("SUN_TEST_ENV_LIBS");
 
   ASSERT_TRUE(resolved.has_value());
@@ -316,12 +327,12 @@ TEST(Modules_ProtoImport, manifest_undefined_path_variable_is_an_error) {
            "function main() i32 { return 0; }\n";
   }
 
-  sun::ManifestProcessor::clearPathVariables();
+  ManifestProcessor::clearPathVariables();
   unsetenv("SUN_TEST_NO_SUCH_VAR");
   try {
-    sun::ManifestProcessor::fromEntrypointFile((dir / "main.sun").string());
+    ManifestProcessor::fromEntrypointFile((dir / "main.sun").string());
     FAIL() << "expected an undefined-variable error";
-  } catch (const SunError& e) {
+  } catch (const sun::support::SunError& e) {
     EXPECT_NE(std::string(e.what()).find("SUN_TEST_NO_SUCH_VAR"),
               std::string::npos);
   }
@@ -335,7 +346,7 @@ TEST(Modules_ProtoImport, manifest_processor_returns_nullopt_without_manifest) {
     out << "function main() i32 { return 0; }\n";
   }
   auto resolved =
-      sun::ManifestProcessor::fromEntrypointFile((dir / "plain.sun").string());
+      ManifestProcessor::fromEntrypointFile((dir / "plain.sun").string());
   EXPECT_FALSE(resolved.has_value());
 }
 
@@ -581,6 +592,7 @@ TEST(Modules_ProtoImport, map_string_keys) {
 // Synthesized messages: encode/decode round-trips
 // ============================================================================
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 const char* kTelemetryProto = R"(
@@ -908,9 +920,12 @@ TEST(Modules_ProtoImport, missing_proto_file_is_reported) {
 // Cross-validation against libprotobuf (linked into the test binary)
 // ============================================================================
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
-// Encode a Status with fixed values in Sun and return the wire bytes
+/**
+ * Encode a Status with fixed values in Sun and return the wire bytes
+ */
 std::string sunEncodedStatusBytes(ProtoProject& project) {
   fs::path outFile = project.file("bytes.bin");
   project.setProgram(
@@ -969,6 +984,7 @@ TEST(Modules_ProtoImport, libprotobuf_parses_sun_encoded_message) {
 // Full fidelity: optional, oneof, map, proto imports
 // ============================================================================
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 const char* kFullProto = R"(
 syntax = "proto3";
@@ -1204,9 +1220,9 @@ TEST(Modules_ProtoImport, moon_exports_proto_messages_to_importers) {
   ASSERT_TRUE(fs::exists(moonPath));
 
   // The importing program: no .proto anywhere in its manifest or SUN_PATH
-  auto imports = getStdlibMoonImports();
-  imports.push_back(sun::MoonImport(moonPath.string()));
-  auto driver = Driver::createForJIT("proto_moon_app");
+  auto imports = sun::driver::getStdlibMoonImports();
+  imports.push_back(MoonImport(moonPath.string()));
+  auto driver = sun::driver::Driver::createForJIT("proto_moon_app");
   driver->setMoonImports(imports);
   auto value = driver->executeString(R"(
     using std;
@@ -1245,7 +1261,7 @@ TEST(Modules_ProtoImport, moon_import_plus_same_proto_is_a_collision_error) {
       "function main() i32 { var alloc = make_heap_allocator(); "
       "var s = Status(alloc); return 0; }\n");
   try {
-    project.run({sun::MoonImport(moonPath.string())});
+    project.run({MoonImport(moonPath.string())});
     FAIL() << "expected a module collision error";
   } catch (const std::exception& e) {
     EXPECT_NE(std::string(e.what()).find("collision"), std::string::npos)
@@ -1254,17 +1270,19 @@ TEST(Modules_ProtoImport, moon_import_plus_same_proto_is_a_collision_error) {
 }
 
 TEST(Modules_ProtoImport, moon_exports_nested_dotted_package_modules) {
-  // package namo.telemetry -> module namo.telemetry: importers use the
-  // dotted path
+  /**
+   * package namo.telemetry -> module namo.telemetry: importers use the
+   * dotted path
+   */
   ProtoProject lib("sun_proto_moon3");
   lib.addSchema("nested.proto",
                 "syntax = \"proto3\";\npackage namo.telemetry;\n"
                 "message Ping { int32 seq = 1; }\n");
   fs::path moonPath = lib.buildMoon("nested_lib");
 
-  auto imports = getStdlibMoonImports();
-  imports.push_back(sun::MoonImport(moonPath.string()));
-  auto app = Driver::createForJIT("proto_moon_nested");
+  auto imports = sun::driver::getStdlibMoonImports();
+  imports.push_back(MoonImport(moonPath.string()));
+  auto app = sun::driver::Driver::createForJIT("proto_moon_nested");
   app->setMoonImports(imports);
   auto value = app->executeString(R"(
     using std;

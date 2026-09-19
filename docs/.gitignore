@@ -3,6 +3,7 @@ node_modules/
 
 # Next.js
 .next/
+.next-dev/
 out/
 
 # Build
@@ -26,3 +27,7 @@ yarn-error.log*
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# Generated from compiler declarations and documentation comments
+pages/compiler-api/
+pages/compiler-api.mdx

@@ -8,14 +8,20 @@
 #include <string>
 #include <variant>
 
-namespace sun {
+/** Coordinates compilation, dependency loading, linking, and program execution. */
+namespace sun::driver {
 
-// Represents a void return (no value)
+/**
+ * Represents a void return (no value)
+ */
 struct VoidValue {
+  /** Compares the stored values for equality. */
   bool operator==(const VoidValue&) const { return true; }
 };
 
-// SunValue can hold any primitive type that main() might return
+/**
+ * SunValue can hold any primitive type that main() might return
+ */
 using SunValue = std::variant<VoidValue,   // void
                               bool,        // bool
                               int8_t,      // i8
@@ -27,15 +33,20 @@ using SunValue = std::variant<VoidValue,   // void
                               std::string  // string
                               >;
 
-// Helper to check if value is void
+/**
+ * Helper to check if value is void
+ */
 inline bool isVoid(const SunValue& v) {
   return std::holds_alternative<VoidValue>(v);
 }
 
-// Helper to get numeric value as double (for backward compatibility)
+/**
+ * Helper to get numeric value as double (for backward compatibility)
+ */
 inline double toDouble(const SunValue& v) {
   return std::visit(
       [](auto&& arg) -> double {
+        /** The value type held by the active runtime argument alternative. */
         using T = std::decay_t<decltype(arg)>;
         if constexpr (std::is_same_v<T, VoidValue>) {
           return 0.0;
@@ -50,10 +61,13 @@ inline double toDouble(const SunValue& v) {
       v);
 }
 
-// Helper to print a SunValue
+/**
+ * Helper to print a SunValue
+ */
 inline std::ostream& operator<<(std::ostream& os, const SunValue& v) {
   std::visit(
       [&os](auto&& arg) {
+        /** The value type held by the active runtime argument alternative. */
         using T = std::decay_t<decltype(arg)>;
         if constexpr (std::is_same_v<T, VoidValue>) {
           os << "void";
@@ -69,15 +83,19 @@ inline std::ostream& operator<<(std::ostream& os, const SunValue& v) {
   return os;
 }
 
-// Comparison helpers for testing
+/**
+ * Comparison helpers for testing
+ */
 template <typename T>
 bool operator==(const SunValue& v, T expected) {
   if constexpr (std::is_integral_v<T> && !std::is_same_v<T, bool>) {
-    // Compare through the fixed-width alternative matching the caller's
-    // width — never std::get_if<T> itself. `long` and `long long` alias
-    // int64_t differently per platform (long on Linux, long long on macOS),
-    // and get_if on a type the variant does not list is a compile error.
-    // A narrower expected value also matches an i64-returning program.
+    /**
+     * Compare through the fixed-width alternative matching the caller's
+     * width — never std::get_if&lt;T&gt; itself. `long` and `long long` alias
+     * int64_t differently per platform (long on Linux, long long on macOS),
+     * and get_if on a type the variant does not list is a compile error.
+     * A narrower expected value also matches an i64-returning program.
+     */
     if constexpr (sizeof(T) == 1) {
       if (auto* p = std::get_if<int8_t>(&v))
         return *p == static_cast<int8_t>(expected);
@@ -109,9 +127,10 @@ bool operator==(const SunValue& v, T expected) {
   }
 }
 
+/** Compares the stored values for equality. */
 template <typename T>
 bool operator==(T expected, const SunValue& v) {
   return v == expected;
 }
 
-}  // namespace sun
+}  // namespace sun::driver

@@ -8,6 +8,8 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+
 TEST(Functions_Generic_Methods, generic_identity_method) {
   auto value = executeString(R"(
     class Util {
@@ -206,4 +208,19 @@ TEST(Functions_Generic_Methods, normal_method_calls_generic_function) {
     }
   )");
   EXPECT_EQ(value, 42);
+}
+
+TEST(Functions_Generic_Methods,
+     recursive_specialization_reuses_prepared_callable) {
+  EXPECT_EQ(executeString(R"(
+    class Counter {
+      init() {}
+      method count<T>(value: T, n: i32) i32 {
+        if (n == 0) { return 0; }
+        return this.count<T>(value, n - 1) + 1;
+      }
+    }
+    function main() i32 { var counter = Counter(); return counter.count<i32>(7, 5); }
+  )"),
+            5);
 }

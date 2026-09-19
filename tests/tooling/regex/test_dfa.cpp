@@ -17,13 +17,21 @@
 #include "parsing/lexer.h"  // for Lexer::getStaticFullRegex()
 #include "parsing/nfa.h"
 
+using sun::parsing::DFA;
+using sun::parsing::Lexer;
+using sun::parsing::RegexParser;
+using sun::parsing::TokenKind;
+
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
+/** Pairs a lexer pattern with input strings expected to match it. */
 struct MatchCase {
   std::string input;
   bool expected;
 };
 
+/** Checks the accepted and rejected inputs for an automaton fixture. */
 void expectMatches(const std::string& regex,
                    const std::vector<MatchCase>& cases) {
   RegexParser parser;
@@ -141,7 +149,7 @@ TEST(Tooling_Regex_Dfa, CaptureOffsetsOnMasterRegex) {
   dfa.fullReset();
   for (char c : std::string("  function")) dfa.step(c);
 
-  const RegexCapture* best = dfa.bestCapture();
+  const sun::parsing::RegexCapture* best = dfa.bestCapture();
   ASSERT_NE(best, nullptr);
   EXPECT_EQ(best->groupNameNum, static_cast<int>(TokenKind::FUNCTION));
   EXPECT_EQ(best->start.offset, 2);

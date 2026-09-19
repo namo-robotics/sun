@@ -17,21 +17,28 @@
 //     Option.Some(v) => println(v),   // 1
 //     Option.None => {},
 //   };
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** Owns a first-in, first-out sequence backed by a linked list. */
   public class Queue<T> implements IIterable<ref T, Queue<T>> {
     var items: LinkedList<T>;
 
+    /** Creates an empty queue using the supplied allocator. */
     init(allocator: const ref HeapAllocator) {
       this.items = LinkedList<T>(allocator);
     }
 
-    // Add to the back of the queue. The value moves in.
+    /**
+     * Add to the back of the queue. The value moves in.
+     */
     public method push(value: T) void {
       this.items.push_back(value);
     }
 
-    // Take the front item; None when the queue is empty. Ownership moves to
-    // the caller.
+    /**
+     * Take the front item; None when the queue is empty. Ownership moves to
+     * the caller.
+     */
     public method pop() Option<T> {
       if (this.items.is_empty()) {
         return Option.None;
@@ -43,35 +50,47 @@ public module std {
       }
     }
 
-    // Borrow the front item without taking it; None when empty.
+    /**
+     * Borrow the front item without taking it; None when empty.
+     */
     public const method peek() Option<ref T> {
       return this.items.first();
     }
 
-    // Borrow the item that was added most recently; None when empty.
+    /**
+     * Borrow the item that was added most recently; None when empty.
+     */
     public const method peek_back() Option<ref T> {
       return this.items.last();
     }
 
+    /** Returns the number of elements currently held in the collection. */
     public const method size() i64 {
       return this.items.size();
     }
 
+    /** Reports whether the collection contains no elements. */
     public const method is_empty() bool {
       return this.items.is_empty();
     }
 
-    // Drop every item still queued.
+    /**
+     * Drop every item still queued.
+     */
     public method clear() void {
       this.items.clear();
     }
 
-    // The backing list, for QueueIterator. Private to the module.
+    /**
+     * The backing list, for QueueIterator. Private to the module.
+     */
     method items_ref() ref LinkedList<T> {
       return this.items;
     }
 
-    // Walk the queue front to back without taking anything out.
+    /**
+     * Walk the queue front to back without taking anything out.
+     */
     public method iter() QueueIterator<T> {
       return QueueIterator<T>();
     }
@@ -81,8 +100,10 @@ public module std {
   public class QueueIterator<T> implements IIterator<ref T, Queue<T>> {
     var inner: LinkedListIterator<T> = LinkedListIterator<T>();
 
-    // Next item, or None once the queue is exhausted. Items are borrowed: the
-    // queue still owns them.
+    /**
+     * Next item, or None once the queue is exhausted. Items are borrowed: the
+     * queue still owns them.
+     */
     public method next(queue: ref Queue<T>) Option<ref T> {
       return this.inner.next(queue.items_ref());
     }

@@ -5,8 +5,11 @@
 
 using std;
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** Groups tests for the JSON library behavior. */
   module json_tests {
+    /** Checks parse scalars. */
     test_function parse_scalars() {
       var alloc = make_heap_allocator();
       std.test.assert(parse_json(alloc, "null").is_null(), "null parses");
@@ -35,6 +38,7 @@ public module std {
       std.test.assert(s.as_string().equals_literal("hi"), "string content");
     }
 
+    /** Checks parse string escapes. */
     test_function parse_string_escapes() {
       var alloc = make_heap_allocator();
       var s = parse_json(alloc, "\"a\\\"b\\\\c\\/d\\n\\t\\r\\b\\f\"");
@@ -67,6 +71,7 @@ public module std {
       std.test.assert_eq(raw.as_string().length(), 6);
     }
 
+    /** Checks parse nested and access. */
     test_function parse_nested_and_access() {
       var alloc = make_heap_allocator();
       var doc = parse_json(alloc, "{\"name\": \"sun\", \"tags\": [1, 2.5, true, null, {\"deep\": [[]]}], \"empty\": {}}");
@@ -92,6 +97,7 @@ public module std {
       std.test.assert_eq(doc.get("name").len(), 0);
     }
 
+    /** Checks reader kind mismatch throws. */
     test_function reader_kind_mismatch_throws() {
       var alloc = make_heap_allocator();
       var codes: i32 = 0;
@@ -166,8 +172,10 @@ public module std {
       std.test.assert_eq(codes, 13);
     }
 
-    // Returns the offset outcome for a parse: -1 if the text parsed, -2 for a
-    // JsonError with a readable message, other values flag a wrong error.
+    /**
+     * Returns the offset outcome for a parse: -1 if the text parsed, -2 for a
+     * JsonError with a readable message, other values flag a wrong error.
+     */
     function classify_parse(alloc: ref HeapAllocator, text: static_ptr<u8>) i64 {
       try {
         var doc = parse_json(alloc, text);
@@ -184,6 +192,7 @@ public module std {
       }
     }
 
+    /** Checks parse errors report offsets. */
     test_function parse_errors_report_offsets() {
       var alloc = make_heap_allocator();
       std.test.assert_eq(classify_parse(alloc, ""), -2);
@@ -211,12 +220,14 @@ public module std {
       std.test.assert_eq(classify_parse(alloc, " {} "), -1);
     }
 
+    /** Checks JSON error carries offset. */
     test_function json_error_carries_offset() {
       var e = JsonError("bad", 7);
       std.test.assert_eq(e.code(), 60);
       std.test.assert_eq(e.offset(), 7);
     }
 
+    /** Checks deep nesting is rejected. */
     test_function deep_nesting_is_rejected() {
       var alloc = make_heap_allocator();
       var text = String(alloc, "");
@@ -234,6 +245,7 @@ public module std {
       }
     }
 
+    /** Checks deep but allowed nesting. */
     test_function deep_but_allowed_nesting() {
       var alloc = make_heap_allocator();
       var text = String(alloc, "");
@@ -249,6 +261,7 @@ public module std {
       std.test.assert(out.equals(text), "200 nested arrays round trip");
     }
 
+    /** Checks build and write compact. */
     test_function build_and_write_compact() {
       var alloc = make_heap_allocator();
       var obj = create_json_object(alloc);
@@ -274,16 +287,21 @@ public module std {
       std.test.assert_eq(obj.len(), 6);
     }
 
-    // A value type whose text field feeds the borrowed-string constructor.
+    /**
+     * A value type whose text field feeds the borrowed-string constructor.
+     */
     class Config {
       var model: String;
+      /** Initializes the fixture fields used by this example or regression test. */
       init(model: String) {
         this.model = model;
       }
     }
 
-    // Issue #94: Json(s) moves the String in; create_json_string(alloc, ref s)
-    // stores a copy so the caller can keep using the original.
+    /**
+     * Issue #94: Json(s) moves the String in; create_json_string(alloc, ref s)
+     * stores a copy so the caller can keep using the original.
+     */
     test_function json_string_copies_a_borrowed_string() {
       var alloc = make_heap_allocator();
       var cfg = Config(String(alloc, "sun-1"));
@@ -306,6 +324,7 @@ public module std {
       );
     }
 
+    /** Checks write pretty. */
     test_function write_pretty() {
       var alloc = make_heap_allocator();
       var doc = parse_json(alloc, "{\"a\":[1,{\"b\":null}],\"c\":{},\"d\":[]}");
@@ -319,12 +338,15 @@ public module std {
       );
     }
 
-    // True when the value writes as exactly this text.
+    /**
+     * True when the value writes as exactly this text.
+     */
     function writes_as(alloc: ref HeapAllocator, j: Json, expected: static_ptr<u8>) bool {
       var out = j.to_string(alloc);
       return out.equals_literal(expected);
     }
 
+    /** Checks number formatting. */
     test_function number_formatting() {
       var alloc = make_heap_allocator();
       std.test.assert(writes_as(alloc, Json(0.1), "0.1"), "0.1");
@@ -346,6 +368,7 @@ public module std {
       std.test.assert(writes_as(alloc, big, "1.2345678901234567e+19"), "big float text");
     }
 
+    /** Checks round trip. */
     test_function round_trip() {
       var alloc = make_heap_allocator();
       var text = String(alloc, "{\"name\":\"s\\u00fcn\",\"list\":[1,2.5,-3,true,false,null,\"\\\"\"],\"nested\":{\"a\":{\"b\":[[],{}]}},\"e\":\"\"}");
@@ -360,6 +383,7 @@ public module std {
       );
     }
 
+    /** Checks control characters are escaped on write. */
     test_function control_characters_are_escaped_on_write() {
       var alloc = make_heap_allocator();
       var s = String(alloc, "a");
@@ -373,6 +397,7 @@ public module std {
       std.test.assert_eq(back.as_string().length(), 5);
     }
 
+    /** Checks iterate object members and array items. */
     test_function iterate_object_members_and_array_items() {
       var alloc = make_heap_allocator();
       var doc = parse_json(alloc, "{\"a\": 1, \"b\": 2, \"c\": [10, 20, 30]}");
@@ -395,8 +420,10 @@ public module std {
       std.test.assert_eq(total, 63);
     }
 
-    // Owning payloads are dropped exactly once: building, overwriting and
-    // dropping a large document must not double free or crash.
+    /**
+     * Owning payloads are dropped exactly once: building, overwriting and
+     * dropping a large document must not double free or crash.
+     */
     test_function large_document_builds_and_drops() {
       var alloc = make_heap_allocator();
       var total: i64 = 0;
@@ -428,7 +455,9 @@ public module std {
       std.test.assert_eq(total, 600);
     }
 
-    // Sorts a Json into a small code by its payload kind.
+    /**
+     * Sorts a Json into a small code by its payload kind.
+     */
     function describe(j: ref Json) i32 {
       return match j.value {
         JsonValue.Null => 1,
@@ -441,6 +470,7 @@ public module std {
       };
     }
 
+    /** Checks JSON value enum is matchable. */
     test_function json_value_enum_is_matchable() {
       var alloc = make_heap_allocator();
       var doc = parse_json(alloc, "[null, true, 1, 1.5, \"s\", [], {}]");

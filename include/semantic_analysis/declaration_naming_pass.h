@@ -5,7 +5,13 @@
 
 #include "ast/ast_fwd.h"
 
-namespace sun {
+/** Resolves declarations and checks the types and meaning of Sun programs. */
+namespace sun::semantic_analysis {
+
+/** Name the current local declaration and its methods without walking bodies.
+ */
+void assignLocalDeclarationName(sun::ast::ExprAST& declaration,
+                                const std::vector<std::string>& scopePath);
 
 /** Assign declaration names without resolving types or registering symbols. */
 class DeclarationNamingPass {
@@ -14,10 +20,9 @@ class DeclarationNamingPass {
    * Preserve imported and specialized names. Function bodies are named later,
    * after their enclosing signatures resolve; local variables stay local.
    */
-  void run(ExprAST& root, const std::vector<std::string>& scopePath = {},
-           const std::vector<std::string>& modulePath = {},
+  void run(sun::ast::ExprAST& root,
+           const std::vector<std::string>& scopePath = {},
            bool moduleLevel = true) const;
-
 };
 
-}  // namespace sun
+}  // namespace sun::semantic_analysis

@@ -8,6 +8,9 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+using sun::support::SunError;
+
 TEST(Functions, by_value_primitive_param) {
   auto value = executeString(R"(
     function double_it(x: i32) i32 {
@@ -623,4 +626,16 @@ TEST(Functions, nested_function_declarations_are_rejected) {
     }
   )"),
                                 "only allowed at module scope");
+}
+
+TEST(Functions, callable_variable_shadows_direct_function_target) {
+  EXPECT_EQ(executeString(R"(
+    function target(x: i32) i32 { return 0; }
+    function replacement(x: i32) i32 { return x + 2; }
+    function main() i32 {
+      var target: function (i32) i32 = replacement;
+      return target(40);
+    }
+  )"),
+            42);
 }

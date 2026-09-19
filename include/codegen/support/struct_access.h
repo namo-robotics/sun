@@ -7,7 +7,7 @@
 // ADDRESS, so writing a class into a slot is a copy, not a store. Both take
 // only a builder and a data layout, so they hold no codegen state.
 //
-// The alignment helpers are thin wrappers over sun::packed
+// The alignment helpers are thin wrappers over sun::semantic_analysis
 // (semantic_analysis/packed_layout.h) that supply the module's DataLayout.
 
 #include <llvm/IR/IRBuilder.h>
@@ -19,13 +19,16 @@
 #include "ast.h"
 #include "semantic_analysis/types.h"
 
-namespace sun::codegen::layout {
+/** Provides shared diagnostics, source tracking, and compiler utilities. */
+namespace sun::codegen::support {
+using sun::semantic_analysis::ClassType;
 
 /**
  * Address of one field of a class instance.
  */
-llvm::Value* fieldPtr(llvm::IRBuilder<>& builder, sun::ClassType* classType,
-                      llvm::Value* objectPtr, const sun::ClassField& field,
+llvm::Value* fieldPtr(llvm::IRBuilder<>& builder, ClassType* classType,
+                      llvm::Value* objectPtr,
+                      const sun::semantic_analysis::ClassField& field,
                       const std::string& name);
 
 /**
@@ -33,13 +36,13 @@ llvm::Value* fieldPtr(llvm::IRBuilder<>& builder, sun::ClassType* classType,
  * the field belongs to; a packed owner drops the alignment to 1. Pass nullptr
  * for a standalone slot such as a local variable.
  */
-llvm::Align fieldAlign(const sun::ClassType* owner, llvm::Type* fieldTy,
+llvm::Align fieldAlign(const ClassType* owner, llvm::Type* fieldTy,
                        const llvm::DataLayout& dl);
 
 /**
  * Alignment for writing through an lvalue.
  */
-llvm::Align lvalueAlign(const ExprAST& target, llvm::Type* slotTy,
+llvm::Align lvalueAlign(const sun::ast::ExprAST& target, llvm::Type* slotTy,
                         const llvm::DataLayout& dl);
 
 /**
@@ -55,7 +58,7 @@ llvm::Align lvalueAlign(const ExprAST& target, llvm::Type* slotTy,
  */
 void storeIntoSlot(llvm::IRBuilder<>& builder, const llvm::DataLayout& dl,
                    llvm::Value* dest, llvm::Value* value,
-                   const sun::TypePtr& slotType,
-                   const sun::ClassType* owner = nullptr);
+                   const sun::semantic_analysis::TypePtr& slotType,
+                   const ClassType* owner = nullptr);
 
-}  // namespace sun::codegen::layout
+}  // namespace sun::codegen::support

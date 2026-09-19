@@ -13,6 +13,5 @@ SUN_COMPILER="$1"
 shift
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-exec "$SUN_COMPILER" -c --target aarch64-linux-gnu --no-test \
-    --depfile "$SOURCE_ROOT/build/aarch64-linux-gnu/sun-config.d" \
+exec "$SUN_COMPILER" -c --skip-if-unchanged --target aarch64-linux-gnu --no-test \
     "$@" "$SOURCE_ROOT/sun-config.json"

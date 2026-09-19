@@ -8,6 +8,9 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+using sun::driver::executeStringWithStdlib;
+
 // ============================================================================
 // Use After Move - Basic Cases
 // ============================================================================
@@ -380,7 +383,7 @@ TEST(MemorySafety, class_ref_field_allowed_when_config_permits) {
   // for ref fields in classes.
   // Note: Actually using ref fields safely requires careful lifetime management
   // which Sun doesn't enforce yet - this just tests the config flag works.
-  EXPECT_NO_THROW(compileString(R"(
+  EXPECT_NO_THROW(sun::driver::compileString(R"(
       class Holder {
           var r: ref i32;
 

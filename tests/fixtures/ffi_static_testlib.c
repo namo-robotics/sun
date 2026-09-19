@@ -8,6 +8,8 @@
 
 static int slot;
 
+/** Stores a value in the archive-local slot used to check symbol isolation. */
 void sun_ffi_slot_set(int v) { slot = v; }
 
+/** Returns the archive-local slot value used to distinguish library versions. */
 int sun_ffi_slot_get(void) { return slot; }

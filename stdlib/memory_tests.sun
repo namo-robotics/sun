@@ -2,15 +2,18 @@ using std;
 
 /** Tests for replacing owned values while keeping storage initialized. */
 public module std {
+  /** Groups tests for the memory library behavior. */
   module memory_tests {
     var drops: i32 = 0;
 
     /** Count every destruction, including values whose contents are zero. */
     class Owner {
       var id: i32;
+      /** Initializes the fixture fields used by this example or regression test. */
       init(id: i32) {
         this.id = id;
       }
+      /** Records fixture destruction so tests can verify ownership and cleanup. */
       deinit() {
         drops = drops + 1;
       }

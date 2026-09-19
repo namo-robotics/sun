@@ -3,11 +3,14 @@
 
 syntax = "proto3";
 
-package sun.ast;
+/** Groups the serialized compiler data defined by this schema. */
+package sun.proto.ast;
 
 option cc_enable_arenas = true;
 
-// Source location (mirrors Position struct in position.h)
+/**
+ * Source location (mirrors Position struct in position.h)
+ */
 message Position {
   int32 line = 1;
   int32 column = 2;
@@ -18,18 +21,12 @@ message Position {
   optional int32 end_offset = 7;
 }
 
-// Stable identity of an original nominal declaration.
-message QualifiedName {
-  repeated string scope_path = 1;
-  string base_name = 2;
-  string param_suffix = 3;
-  repeated string module_path = 4;
-}
-
-// Type annotation (mirrors TypeAnnotation in type_annotation.h)
-// Recursive structure for parsed type syntax
+/**
+ * Type annotation (mirrors TypeAnnotation in type_annotation.h)
+ * Recursive structure for parsed type syntax
+ */
 message TypeAnnotation {
-  optional QualifiedName qualified_name = 12;
+  optional bytes declaration_key = 12;
   string base_name = 1;                         // "i32", "f64", "ptr", "fn", etc.
   optional TypeAnnotation element_type = 2;     // For ptr/ref/array: element type
   repeated TypeAnnotation param_types = 3;      // For fn/lambda: parameter types
@@ -44,23 +41,10 @@ message TypeAnnotation {
   repeated string lifetime_arguments = 11;      // `Bus<'a>` application
 }
 
-// How a lambda takes hold of a variable (mirrors CaptureKind in ast_common.h)
-enum CaptureKind {
-  CAPTURE_BY_VALUE = 0;  // Not in the capture list: a copy it may only read
-  CAPTURE_OWNED = 1;     // [x]: the closure owns it; a compound moves in
-  CAPTURE_BORROW = 2;    // [ref x], or [const ref x] when is_const
-}
-
-// Lambda capture (mirrors Capture in ast_common.h)
-message Capture {
-  reserved 3, 5;  // was by_ref / owned, now folded into kind
-  string name = 1;
-  bool is_const = 4;  // The binding is immutable inside the lambda
-  CaptureKind kind = 6;
-}
-
-// Token kind enumeration (mirrors TokenKind in lexer.h)
-// Only includes kinds used in AST (operators, literals)
+/**
+ * Token kind enumeration (mirrors TokenKind in lexer.h)
+ * Only includes kinds used in AST (operators, literals)
+ */
 enum TokenKind {
   TOKEN_KIND_UNKNOWN = 0;
   
@@ -98,7 +82,9 @@ enum TokenKind {
   TOKEN_KIND_SHIFT_RIGHT_ASSIGN = 31;
 }
 
-// Token for operators in binary/unary expressions
+/**
+ * Token for operators in binary/unary expressions
+ */
 message Token {
   TokenKind kind = 1;
   string text = 2;  // Original text representation

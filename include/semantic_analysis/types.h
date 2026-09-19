@@ -15,21 +15,35 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
+#include "semantic_analysis/declaration_table.h"
 #include "semantic_analysis/qualified_name.h"
 #include "semantic_analysis/struct_names.h"
 #include "semantic_analysis/visibility.h"
 #include "support/error.h"
 
-namespace sun {
+/** Resolves declarations and checks the types and meaning of Sun programs. */
+namespace sun::semantic_analysis {
+using sun::ast::TypeConstraint;
+using sun::support::logAndThrowError;
 
 // Forward declarations
 class Type;
 class ArrayType;  // Forward declared for ReferenceType
+/** Shared ownership of a semantic type description. */
 using TypePtr = std::shared_ptr<Type>;
 
-// Base Type class
+/** Compare semantic types exactly, without accepting implicit conversions. */
+bool sameTypeIdentity(const TypePtr& left, const TypePtr& right);
+/** Compare ordered parameter or specialization argument types exactly. */
+bool sameTypeArguments(const std::vector<TypePtr>& left,
+                       const std::vector<TypePtr>& right);
+
+/**
+ * Base Type class
+ */
 class Type {
  public:
+  /** Identifies the primitive and composite type categories understood by the compiler. */
   enum class Kind {
     // Primitive types
     Void,
@@ -62,42 +76,67 @@ class Type {
     Module,         // Module/namespace reference (for mod_x.mod_y.var access)
   };
 
+  /** Destroys this object and releases its owned members. */
   virtual ~Type() = default;
+  /** Returns the type category used for semantic checks and dispatch. */
   virtual Kind getKind() const = 0;
+  /** Returns a readable representation for diagnostics and debugging. */
   virtual std::string toString() const = 0;
-  // User-friendly name for error messages (strips internal prefixes)
+  /**
+   * User-friendly name for error messages (strips internal prefixes)
+   */
   virtual std::string toDisplayString() const { return toString(); }
+  /** Reports whether the other type has the same semantic identity. */
   virtual bool equals(const Type& other) const = 0;
+  /** Returns the LLVM type used to represent values of this semantic type. */
   virtual llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const = 0;
 
-  // Convenience checks for primitive types
+  /**
+   * Convenience checks for primitive types
+   */
   bool isVoid() const { return getKind() == Kind::Void; }
+  /** Reports whether this type represents bool values. */
   bool isBool() const { return getKind() == Kind::Bool; }
+  /** Reports whether this type represents int8 values. */
   bool isInt8() const { return getKind() == Kind::Int8; }
+  /** Reports whether this type represents int16 values. */
   bool isInt16() const { return getKind() == Kind::Int16; }
+  /** Reports whether this type represents int32 values. */
   bool isInt32() const { return getKind() == Kind::Int32; }
+  /** Reports whether this type represents int64 values. */
   bool isInt64() const { return getKind() == Kind::Int64; }
+  /** Reports whether this type represents u int8 values. */
   bool isUInt8() const { return getKind() == Kind::UInt8; }
+  /** Reports whether this type represents u int16 values. */
   bool isUInt16() const { return getKind() == Kind::UInt16; }
+  /** Reports whether this type represents u int32 values. */
   bool isUInt32() const { return getKind() == Kind::UInt32; }
+  /** Reports whether this type represents u int64 values. */
   bool isUInt64() const { return getKind() == Kind::UInt64; }
+  /** Reports whether this type represents float32 values. */
   bool isFloat32() const { return getKind() == Kind::Float32; }
+  /** Reports whether this type represents float64 values. */
   bool isFloat64() const { return getKind() == Kind::Float64; }
+  /** Reports whether this type represents char values. */
   bool isChar() const { return getKind() == Kind::Char; }
+  /** Reports whether this type represents signed values. */
   bool isSigned() const {
     Kind k = getKind();
     return k == Kind::Int8 || k == Kind::Int16 || k == Kind::Int32 ||
            k == Kind::Int64;
   }
+  /** Reports whether this type represents unsigned values. */
   bool isUnsigned() const {
     Kind k = getKind();
     return k == Kind::UInt8 || k == Kind::UInt16 || k == Kind::UInt32 ||
            k == Kind::UInt64;
   }
-  // `char` is primitive (passed by value, no ownership) but deliberately not
-  // numeric or integral: arithmetic and implicit widening are keyed off
-  // isNumeric()/isIntegral(), so leaving it out of those rejects `'a' + 1`
-  // and any silent char/integer mixing.
+  /**
+   * `char` is primitive (passed by value, no ownership) but deliberately not
+   * numeric or integral: arithmetic and implicit widening are keyed off
+   * isNumeric()/isIntegral(), so leaving it out of those rejects `'a' + 1`
+   * and any silent char/integer mixing.
+   */
   bool isPrimitive() const {
     Kind k = getKind();
     return k == Kind::Void || k == Kind::Bool || k == Kind::Int8 ||
@@ -106,73 +145,112 @@ class Type {
            k == Kind::UInt64 || k == Kind::Float32 || k == Kind::Float64 ||
            k == Kind::Char;
   }
-  // Convenience checks for composite types
+  /**
+   * Convenience checks for composite types
+   */
   bool isFunction() const { return getKind() == Kind::Function; }
+  /** Reports whether this type represents lambda values. */
   bool isLambda() const { return getKind() == Kind::Lambda; }
+  /** Reports whether this type represents raw pointer values. */
   bool isRawPointer() const { return getKind() == Kind::RawPointer; }
+  /** Reports whether this type represents static pointer values. */
   bool isStaticPointer() const { return getKind() == Kind::StaticPointer; }
+  /** Reports whether this type represents null pointer values. */
   bool isNullPointer() const { return getKind() == Kind::NullPointer; }
+  /** Reports whether this type represents reference values. */
   bool isReference() const { return getKind() == Kind::Reference; }
 
-  // Returns true for any pointer-like type (raw or static)
+  /**
+   * Returns true for any pointer-like type (raw or static)
+   */
   bool isAnyPointer() const { return isRawPointer() || isStaticPointer(); }
+  /** Reports whether this type represents class values. */
   bool isClass() const { return getKind() == Kind::Class; }
+  /** Reports whether this type represents interface values. */
   bool isInterface() const { return getKind() == Kind::Interface; }
+  /** Reports whether this type represents enum values. */
   bool isEnum() const { return getKind() == Kind::Enum; }
+  /** Reports whether this type represents module values. */
   bool isModule() const { return getKind() == Kind::Module; }
+  /** Reports whether this type represents type parameter values. */
   bool isTypeParameter() const { return getKind() == Kind::TypeParameter; }
+  /** Reports whether this type represents error union values. */
   bool isErrorUnion() const { return getKind() == Kind::ErrorUnion; }
+  /** Reports whether this type represents array values. */
   bool isArray() const { return getKind() == Kind::Array; }
+  /** Reports whether this type represents slice values. */
   bool isSlice() const { return getKind() == Kind::Slice; }
+  /** Reports whether this value can be invoked as a function. */
   bool isCallable() const { return isFunction() || isLambda(); }
-  // Compound types must be passed by reference (classes, interfaces, arrays,
-  // payload-carrying enums). Payload-free enums are NOT compound - they are
-  // i32 values and passed by value. Defined out-of-line (needs EnumType).
+  /**
+   * Compound types must be passed by reference (classes, interfaces, arrays,
+   * payload-carrying enums). Payload-free enums are NOT compound - they are
+   * i32 values and passed by value. Defined out-of-line (needs EnumType).
+   */
   bool isCompound() const;
+  /** Reports whether this type represents numeric values. */
   bool isNumeric() const;
+  /** Reports whether this type represents integral values. */
   bool isIntegral() const;
+  /** Reports whether this type represents floating point values. */
   bool isFloatingPoint() const;
+  /** Reports whether this type represents string values. */
   bool isString() const;
 };
 
-// True if a read can honestly duplicate a value of this type. Scalars can:
-// primitives, pointers, functions. A class, payload enum, interface or array
-// value cannot: it has one owner, so reading one out of a borrow would hand
-// back a second value backed by the borrowed storage. Borrow it with `ref`
-// instead, or copy it explicitly with a clone method. Unbound type parameters
-// answer true; the specialization is checked with the concrete type in hand.
+/**
+ * True if a read can honestly duplicate a value of this type. Scalars can:
+ * primitives, pointers, functions. A class, payload enum, interface or array
+ * value cannot: it has one owner, so reading one out of a borrow would hand
+ * back a second value backed by the borrowed storage. Borrow it with `ref`
+ * instead, or copy it explicitly with a clone method. Unbound type parameters
+ * answer true; the specialization is checked with the concrete type in hand.
+ */
 inline bool typeCopiesByRead(const Type* type) {
   return type && !type->isCompound();
 }
 
+/**
+ * Reports whether reading this type can duplicate its value without transferring
+ * ownership.
+ */
 inline bool typeCopiesByRead(const TypePtr& type) {
   return typeCopiesByRead(type.get());
 }
 
-// True if reading a value of this type out of a place MOVES it: an owned
-// compound value. A borrow stays put and a scalar copies.
+/**
+ * True if reading a value of this type out of a place MOVES it: an owned
+ * compound value. A borrow stays put and a scalar copies.
+ */
 inline bool typeMovesOnRead(const Type* type) {
   return type && !type->isReference() && !typeCopiesByRead(type);
 }
 
+/** Reports whether reading this type transfers ownership of its value. */
 inline bool typeMovesOnRead(const TypePtr& type) {
   return typeMovesOnRead(type.get());
 }
 
-// Something computed from a type parameter rather than the parameter itself.
-// `_return_type_of<F>` names a type that is only known once F is, so until
-// then it travels as the parameter F plus the projection to apply to it.
+/**
+ * Something computed from a type parameter rather than the parameter itself.
+ * `_return_type_of<F>` names a type that is only known once F is, so until
+ * then it travels as the parameter F plus the projection to apply to it.
+ */
 enum class TypeProjection : uint8_t {
   None,        // the parameter itself
   ReturnType,  // _return_type_of<F>: what F returns
 };
 
-// Type parameter (used in generic class/function definitions)
-// Represents a type variable like T, U, V in class List<T>
+/**
+ * Type parameter (used in generic class/function definitions)
+ * Represents a type variable like T, U, V in class List&lt;T&gt;
+ */
 class TypeParameterType : public Type {
   std::string name;   // Parameter name: T, U, etc. (F$ret when projected)
   std::string base_;  // The parameter the projection applies to
   TypeProjection projection_ = TypeProjection::None;
+  DeclarationId declaration_;
+  std::shared_ptr<const int> session_;
   // What `<T: Trait>` promised about whatever T stands for. Metadata only —
   // intentionally excluded from equals()/toString() so it never disturbs
   // substitution or identity. It travels with the parameter so a body being
@@ -180,44 +258,67 @@ class TypeParameterType : public Type {
   TypeConstraint constraint_;
 
  public:
+  /** Creates a generic type parameter retaining its constraint and declaration identity. */
   explicit TypeParameterType(std::string paramName,
                              TypeConstraint constraint = {},
-                             TypeProjection projection = TypeProjection::None)
+                             TypeProjection projection = TypeProjection::None,
+                             DeclarationId declaration = {},
+                             std::shared_ptr<const int> session = {})
       : name(paramName),
         base_(std::move(paramName)),
         projection_(projection),
+        declaration_(declaration),
+        session_(std::move(session)),
         constraint_(std::move(constraint)) {
-    // A projection needs a name of its own, or `Thread<F>` and
-    // `Thread<_return_type_of<F>>` would mangle to one specialization.
+    // Give projected parameters a distinct diagnostic spelling.
     if (projection_ == TypeProjection::ReturnType) name = base_ + "$ret";
   }
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::TypeParameter;
+  /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const override { return StaticKind; }
+  /** Returns the declared name used to identify this object. */
   const std::string& getName() const { return name; }
+  /** Returns the projection base stored by this object. */
   const std::string& getProjectionBase() const { return base_; }
+  /** Returns the projection stored by this object. */
   TypeProjection getProjection() const { return projection_; }
   /** The complete requirement carried by this parameter. */
   const TypeConstraint& getConstraint() const { return constraint_; }
+  /** Reports whether this object has constraint. */
   bool hasConstraint() const { return !constraint_.name.empty(); }
 
+  /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override { return name; }
 
+  /** Returns a source-facing type name without internal compiler prefixes. */
   std::string toDisplayString() const override {
     return projection_ == TypeProjection::ReturnType
                ? "_return_type_of<" + base_ + ">"
                : name;
   }
 
+  /** Reports whether the other type has the same semantic identity. */
   bool equals(const Type& other) const override {
-    if (auto* p = dynamic_cast<const TypeParameterType*>(&other))
-      return name == p->name;
+    if (auto* p = dynamic_cast<const TypeParameterType*>(&other)) {
+      if (!declaration_ || !p->declaration_) return this == p;
+      return declaration_ == p->declaration_ && session_ == p->session_ &&
+             projection_ == p->projection_;
+    }
     return false;
   }
 
-  // Type parameters can't be directly converted to LLVM types
-  // They must be substituted first
+  /** Retain the binder identity when projecting its eventual concrete type. */
+  TypePtr project(TypeProjection projection) const {
+    return std::make_shared<TypeParameterType>(base_, constraint_, projection,
+                                               declaration_, session_);
+  }
+
+  /**
+   * Type parameters can't be directly converted to LLVM types
+   * They must be substituted first
+   */
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
     // This should never be called for unsubstituted type parameters
     assert(false && "Cannot convert type parameter to LLVM type");
@@ -225,15 +326,20 @@ class TypeParameterType : public Type {
   }
 };
 
-// Primitive types (int, float, bool, etc.)
+/**
+ * Primitive types (int, float, bool, etc.)
+ */
 class PrimitiveType : public Type {
   Kind kind;
 
  public:
+  /** Creates the semantic descriptor for a primitive type category. */
   explicit PrimitiveType(Kind k) : kind(k) {}
 
+  /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const override { return kind; }
 
+  /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     switch (kind) {
       case Kind::Void:
@@ -267,10 +373,12 @@ class PrimitiveType : public Type {
     }
   }
 
+  /** Reports whether the other type has the same semantic identity. */
   bool equals(const Type& other) const override {
     return kind == other.getKind();
   }
 
+  /** Returns the LLVM type used to represent values of this semantic type. */
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
     switch (kind) {
       case Kind::Void:
@@ -306,8 +414,10 @@ class PrimitiveType : public Type {
   }
 };
 
-// A non-null, one-word pointer to a module-scope function.
-// Type annotation: function (Args) Result
+/**
+ * A non-null, one-word pointer to a module-scope function.
+ * Type annotation: function (Args) Result
+ */
 class FunctionType : public Type {
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;
@@ -315,6 +425,7 @@ class FunctionType : public Type {
   bool canThrow_ = false;  // declared with 'throws IError' — may unwind
 
  public:
+  /** Creates a function type from its result, parameters, and calling restrictions. */
   FunctionType(TypePtr ret, std::vector<TypePtr> params, bool canThrow = false,
                bool requiresUnsafe = false)
       : returnType(std::move(ret)),
@@ -324,16 +435,23 @@ class FunctionType : public Type {
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::Function;
+  /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const override { return StaticKind; }
+  /** Returns the semantic type of the function result. */
   const TypePtr& getReturnType() const { return returnType; }
+  /** Provides the ordered semantic types of the function parameters. */
   const std::vector<TypePtr>& getParamTypes() const { return paramTypes; }
 
   /** Whether calling this value requires an unsafe block. */
   bool requiresUnsafe() const { return requiresUnsafe_; }
-  // Whether calls through this pointer may throw.
+  /**
+   * Whether calls through this pointer may throw.
+   */
   bool canThrow() const { return canThrow_; }
+  /** Records whether calls through this signature may throw an error. */
   void setCanThrow(bool v) { canThrow_ = v; }
 
+  /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     std::string result = "function (";
     for (size_t i = 0; i < paramTypes.size(); ++i) {
@@ -346,6 +464,7 @@ class FunctionType : public Type {
     return result;
   }
 
+  /** Returns a source-facing type name without internal compiler prefixes. */
   std::string toDisplayString() const override {
     std::string result = "function (";
     for (size_t i = 0; i < paramTypes.size(); ++i) {
@@ -358,6 +477,7 @@ class FunctionType : public Type {
     return result;
   }
 
+  /** Reports whether the other type has the same semantic identity. */
   bool equals(const Type& other) const override {
     if (auto* f = dynamic_cast<const FunctionType*>(&other)) {
       if (requiresUnsafe_ != f->requiresUnsafe_) return false;
@@ -372,17 +492,23 @@ class FunctionType : public Type {
     return false;
   }
 
-  // Function values use LLVM's opaque pointer representation.
+  /**
+   * Function values use LLVM's opaque pointer representation.
+   */
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
     return llvm::PointerType::getUnqual(ctx);
   }
 
-  // Returns a pointer to the function type (for function pointer variables)
+  /**
+   * Returns a pointer to the function type (for function pointer variables)
+   */
   llvm::Type* toPointerType(llvm::LLVMContext& ctx) const {
     return toLLVMType(ctx);
   }
 
-  // Get the raw LLVM FunctionType (for indirect calls)
+  /**
+   * Get the raw LLVM FunctionType (for indirect calls)
+   */
   llvm::FunctionType* toLLVMFunctionType(llvm::LLVMContext& ctx) const {
     std::vector<llvm::Type*> llvmParams;
     for (const auto& p : paramTypes) {
@@ -392,7 +518,9 @@ class FunctionType : public Type {
                                    false);
   }
 
-  // Get the closure struct type { ptr, ptr } (func*, env*)
+  /**
+   * Get the closure struct type { ptr, ptr } (func*, env*)
+   */
   llvm::StructType* toLLVMClosureType(llvm::LLVMContext& ctx) const {
     return llvm::StructType::get(
         ctx, {
@@ -402,8 +530,10 @@ class FunctionType : public Type {
   }
 };
 
-// Lambda type for anonymous functions (fat pointer call, returnable)
-// Type annotation: () => {}
+/**
+ * Lambda type for anonymous functions (fat pointer call, returnable)
+ * Type annotation: () => {}
+ */
 class LambdaType : public Type {
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;
@@ -418,10 +548,11 @@ class LambdaType : public Type {
   // Metadata, NOT identity: the lifetime name written on this position
   // ('<'a>(i32) => i32'), empty when elided. Names only mean something
   // relative to one signature's lifetime list, so equals(), toString() and
-  // mangling ignore them - '<'a>' and '<'b>' are one type.
+  // specialization identity ignore them - '<'a>' and '<'b>' are one type.
   std::string lifetimeName_;
 
  public:
+  /** Creates a captured-callable type from its result, parameters, and restrictions. */
   LambdaType(TypePtr ret, std::vector<TypePtr> params, bool canThrow = false,
              bool requiresUnsafe = false)
       : returnType(std::move(ret)),
@@ -431,17 +562,26 @@ class LambdaType : public Type {
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::Lambda;
+  /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const override { return StaticKind; }
+  /** Returns the semantic type of the function result. */
   const TypePtr& getReturnType() const { return returnType; }
+  /** Provides the ordered semantic types of the function parameters. */
   const std::vector<TypePtr>& getParamTypes() const { return paramTypes; }
   /** Whether calling this value requires an unsafe block. */
   bool requiresUnsafe() const { return requiresUnsafe_; }
+  /** Reports whether calls through this type may produce an error. */
   bool canThrow() const { return canThrow_; }
+  /** Reports whether this object has ref captures. */
   bool hasRefCaptures() const { return hasRefCaptures_; }
+  /** Records whether the callable retains any borrowed captures. */
   void setHasRefCaptures(bool v) { hasRefCaptures_ = v; }
+  /** Returns the named lifetime associated with the borrowed value. */
   const std::string& getLifetimeName() const { return lifetimeName_; }
+  /** Assigns the named lifetime associated with the borrowed value. */
   void setLifetimeName(std::string name) { lifetimeName_ = std::move(name); }
 
+  /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     std::string result = hasRefCaptures_ ? "<'_>(" : "(";
     for (size_t i = 0; i < paramTypes.size(); ++i) {
@@ -454,6 +594,7 @@ class LambdaType : public Type {
     return result;
   }
 
+  /** Returns a source-facing type name without internal compiler prefixes. */
   std::string toDisplayString() const override {
     std::string result = hasRefCaptures_ ? "<'_>(" : "(";
     for (size_t i = 0; i < paramTypes.size(); ++i) {
@@ -466,6 +607,7 @@ class LambdaType : public Type {
     return result;
   }
 
+  /** Reports whether the other type has the same semantic identity. */
   bool equals(const Type& other) const override {
     if (auto* l = dynamic_cast<const LambdaType*>(&other)) {
       if (requiresUnsafe_ != l->requiresUnsafe_) return false;
@@ -481,9 +623,11 @@ class LambdaType : public Type {
     return false;
   }
 
-  // Same signature ignoring throwing-ness and the lifetime marker. Used by the
-  // bound-method overload chooser, which picks a method by shape before the
-  // chosen value is flagged as frame-bound; assignability rejects it later.
+  /**
+   * Same signature ignoring throwing-ness and the lifetime marker. Used by the
+   * bound-method overload chooser, which picks a method by shape before the
+   * chosen value is flagged as frame-bound; assignability rejects it later.
+   */
   bool equalsIgnoringThrow(const LambdaType& other) const {
     if (!returnType->equals(*other.returnType)) return false;
     if (paramTypes.size() != other.paramTypes.size()) return false;
@@ -493,10 +637,12 @@ class LambdaType : public Type {
     return true;
   }
 
-  // Can a by-value 'from' argument bind to a parameter of this type?
-  // Same signature, and each marker only widens: a non-throwing lambda may
-  // go where a throwing one is expected, and an environment-free lambda may
-  // go where a '<'_>' one is expected — never the other way around.
+  /**
+   * Can a by-value 'from' argument bind to a parameter of this type?
+   * Same signature, and each marker only widens: a non-throwing lambda may
+   * go where a throwing one is expected, and an environment-free lambda may
+   * go where a '<'_>' one is expected — never the other way around.
+   */
   bool acceptsValueOf(const LambdaType& from) const {
     if (!equalsIgnoringThrow(from)) return false;
     if (!requiresUnsafe_ && from.requiresUnsafe_) return false;
@@ -505,7 +651,9 @@ class LambdaType : public Type {
     return true;
   }
 
-  // Returns the closure struct type { ptr, ptr } (func*, env*)
+  /**
+   * Returns the closure struct type { ptr, ptr } (func*, env*)
+   */
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
     return llvm::StructType::get(
         ctx, {
@@ -514,8 +662,10 @@ class LambdaType : public Type {
              });
   }
 
-  // Get the raw LLVM FunctionType (for the actual function signature with
-  // closure param)
+  /**
+   * Get the raw LLVM FunctionType (for the actual function signature with
+   * closure param)
+   */
   llvm::FunctionType* toLLVMFunctionType(llvm::LLVMContext& ctx) const {
     std::vector<llvm::Type*> llvmParams;
     // First param is the fat pointer (closure struct pointer)
@@ -531,68 +681,89 @@ class LambdaType : public Type {
 // Forward declaration for cross-reference in equals()
 class StaticPointerType;
 
-// Raw pointer type - non-owning pointer for C interop (no automatic cleanup)
-// Type annotation: raw_ptr<T> where T is the pointee type
-// Examples: raw_ptr<i8> = char*, raw_ptr<raw_ptr<i8>> = char** for argv
+/**
+ * Raw pointer type - non-owning pointer for C interop (no automatic cleanup)
+ * Type annotation: raw_ptr&lt;T&gt; where T is the pointee type
+ * Examples: raw_ptr<i8> = char*, raw_ptr<raw_ptr<i8>> = char** for argv
+ */
 class RawPointerType : public Type {
   TypePtr pointeeType;  // The type being pointed to
 
  public:
+  /** Creates a non-owning raw pointer type for the supplied pointee type. */
   explicit RawPointerType(TypePtr pointee) : pointeeType(std::move(pointee)) {}
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::RawPointer;
+  /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const override { return StaticKind; }
+  /** Returns the pointee type stored by this object. */
   const TypePtr& getPointeeType() const { return pointeeType; }
 
+  /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     return "raw_ptr(" + pointeeType->toString() + ")";
   }
 
+  /** Returns a source-facing type name without internal compiler prefixes. */
   std::string toDisplayString() const override {
     return "raw_ptr<" + pointeeType->toDisplayString() + ">";
   }
 
-  // Defined out-of-line below (needs StaticPointerType to be complete)
+  /**
+   * Defined out-of-line below (needs StaticPointerType to be complete)
+   */
   bool equals(const Type& other) const override;
 
-  // Returns opaque pointer in modern LLVM (all pointers are ptr)
+  /**
+   * Returns opaque pointer in modern LLVM (all pointers are ptr)
+   */
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
     return llvm::PointerType::getUnqual(ctx);
   }
 
-  // Get the LLVM type of the pointee (for load/store operations)
+  /**
+   * Get the LLVM type of the pointee (for load/store operations)
+   */
   llvm::Type* getPointeeLLVMType(llvm::LLVMContext& ctx) const {
     return pointeeType->toLLVMType(ctx);
   }
 };
 
-// Static pointer type - pointer to immortal static data (string literals,
-// globals) Type annotation: static_ptr<T> where T is the pointee type Memory
-// safe: never freed, always valid, read-only
-// Represented as a fat pointer struct: { ptr data, i64 length }
-// Can implicitly convert to raw_ptr<T> for function calls (extracts data ptr)
+/**
+ * Static pointer type - pointer to immortal static data (string literals,
+ * globals) Type annotation: static_ptr&lt;T&gt; where T is the pointee type Memory
+ * safe: never freed, always valid, read-only
+ * Represented as a fat pointer struct: { ptr data, i64 length }
+ * Can implicitly convert to raw_ptr&lt;T&gt; for function calls (extracts data ptr)
+ */
 class StaticPointerType : public Type {
   TypePtr pointeeType;  // The type being pointed to
   mutable llvm::StructType* cachedLLVMType = nullptr;
 
  public:
+  /** Creates a pointer type referring to storage with static lifetime. */
   explicit StaticPointerType(TypePtr pointee)
       : pointeeType(std::move(pointee)) {}
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::StaticPointer;
+  /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const override { return StaticKind; }
+  /** Returns the pointee type stored by this object. */
   const TypePtr& getPointeeType() const { return pointeeType; }
 
+  /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     return "static_ptr(" + pointeeType->toString() + ")";
   }
 
+  /** Returns a source-facing type name without internal compiler prefixes. */
   std::string toDisplayString() const override {
     return "static_ptr<" + pointeeType->toDisplayString() + ">";
   }
 
+  /** Reports whether the other type has the same semantic identity. */
   bool equals(const Type& other) const override {
     // Static pointer is compatible with null
     if (other.isNullPointer()) return true;
@@ -606,47 +777,59 @@ class StaticPointerType : public Type {
     return false;
   }
 
-  // Returns fat pointer struct: { ptr data, i64 length }
+  /**
+   * Returns fat pointer struct: { ptr data, i64 length }
+   */
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
     if (!cachedLLVMType) {
       // Check if the type already exists in the context (avoids creating
       // duplicates like static_ptr_struct.0, static_ptr_struct.1, etc.)
-      cachedLLVMType =
-          llvm::StructType::getTypeByName(ctx, sun::StructNames::StaticPtr);
+      cachedLLVMType = llvm::StructType::getTypeByName(
+          ctx, sun::semantic_analysis::StaticPtr);
       if (!cachedLLVMType) {
         cachedLLVMType = llvm::StructType::create(
             ctx,
             {llvm::PointerType::getUnqual(ctx), llvm::Type::getInt64Ty(ctx)},
-            sun::StructNames::StaticPtr);
+            sun::semantic_analysis::StaticPtr);
       }
     }
     return cachedLLVMType;
   }
 
-  // Get the LLVM struct type for the fat pointer
+  /**
+   * Get the LLVM struct type for the fat pointer
+   */
   llvm::StructType* getStructType(llvm::LLVMContext& ctx) const {
     toLLVMType(ctx);  // Ensure it's created
     return cachedLLVMType;
   }
 
-  // Get the LLVM type of the pointee (for load/store operations)
+  /**
+   * Get the LLVM type of the pointee (for load/store operations)
+   */
   llvm::Type* getPointeeLLVMType(llvm::LLVMContext& ctx) const {
     return pointeeType->toLLVMType(ctx);
   }
 };
 
-// Null pointer type - represents the null literal
-// Compatible with any pointer type for assignment and comparison
+/**
+ * Null pointer type - represents the null literal
+ * Compatible with any pointer type for assignment and comparison
+ */
 class NullPointerType : public Type {
  public:
+  /** Creates an instance with its default state. */
   NullPointerType() = default;
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::NullPointer;
+  /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const override { return StaticKind; }
 
+  /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override { return "null"; }
 
+  /** Reports whether the other type has the same semantic identity. */
   bool equals(const Type& other) const override {
     // Null is equal to itself
     if (other.isNullPointer()) return true;
@@ -655,17 +838,21 @@ class NullPointerType : public Type {
     return false;
   }
 
-  // Returns opaque pointer (null is a pointer value)
+  /**
+   * Returns opaque pointer (null is a pointer value)
+   */
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
     return llvm::PointerType::getUnqual(ctx);
   }
 };
 
-// Reference type - behaves like a pointer but with implicit dereferencing
-// Type annotation: ref(T) where T is the referenced type
-// Examples: ref(i32) = reference to i32
-// When reading a reference, it automatically dereferences
-// When assigning to a reference, it stores to the underlying address
+/**
+ * Reference type - behaves like a pointer but with implicit dereferencing
+ * Type annotation: ref(T) where T is the referenced type
+ * Examples: ref(i32) = reference to i32
+ * When reading a reference, it automatically dereferences
+ * When assigning to a reference, it stores to the underlying address
+ */
 class ReferenceType : public Type {
   TypePtr referencedType;  // The type being referenced
   bool mutable_;           // true = mutable ref, false = immutable ref
@@ -676,41 +863,55 @@ class ReferenceType : public Type {
   std::vector<std::string> classLifetimeArgs_;
 
  public:
+  /** Creates a borrowed reference type with the requested mutability. */
   explicit ReferenceType(TypePtr referenced, bool isMutable = true)
       : referencedType(std::move(referenced)), mutable_(isMutable) {}
 
+  /** Returns the named lifetime associated with the borrowed value. */
   const std::string& getLifetimeName() const { return lifetimeName_; }
+  /** Assigns the named lifetime associated with the borrowed value. */
   void setLifetimeName(std::string name) { lifetimeName_ = std::move(name); }
-  // Lifetime arguments applied to the referent's class ('ref Bus<'this>'):
-  // positionally binding the class's declared lifetimes. Metadata like
-  // lifetimeName_ - never part of the type's identity.
+  /**
+   * Lifetime arguments applied to the referent's class ('ref Bus<'this>'):
+   * positionally binding the class's declared lifetimes. Metadata like
+   * lifetimeName_ - never part of the type's identity.
+   */
   const std::vector<std::string>& getClassLifetimeArgs() const {
     return classLifetimeArgs_;
   }
+  /** Updates the lifetime arguments for the referenced class. */
   void setClassLifetimeArgs(std::vector<std::string> args) {
     classLifetimeArgs_ = std::move(args);
   }
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::Reference;
+  /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const override { return StaticKind; }
+  /** Returns the referenced type stored by this object. */
   const TypePtr& getReferencedType() const { return referencedType; }
+  /** Reports whether the loan grants exclusive write access to its target. */
   bool isMutable() const { return mutable_; }
 
-  // Check if this is a reference to an unsized array
-  // Implemented after ArrayType definition
+  /**
+   * Check if this is a reference to an unsized array
+   * Implemented after ArrayType definition
+   */
   inline bool isUnsizedArrayRef() const;
 
+  /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     return std::string(mutable_ ? "ref(" : "const ref(") +
            referencedType->toString() + ")";
   }
 
+  /** Returns a source-facing type name without internal compiler prefixes. */
   std::string toDisplayString() const override {
     return std::string(mutable_ ? "ref " : "const ref ") +
            referencedType->toDisplayString();
   }
 
+  /** Reports whether the other type has the same semantic identity. */
   bool equals(const Type& other) const override {
     if (auto* r = dynamic_cast<const ReferenceType*>(&other)) {
       return referencedType->equals(*r->referencedType) &&
@@ -719,17 +920,23 @@ class ReferenceType : public Type {
     return false;
   }
 
-  // Returns opaque pointer or fat pointer struct for unsized array refs
-  // Implemented after ArrayType definition
+  /**
+   * Returns opaque pointer or fat pointer struct for unsized array refs
+   * Implemented after ArrayType definition
+   */
   inline llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override;
 
-  // Get the LLVM type of the referenced value (for load/store operations)
+  /**
+   * Get the LLVM type of the referenced value (for load/store operations)
+   */
   llvm::Type* getReferencedLLVMType(llvm::LLVMContext& ctx) const {
     return referencedType->toLLVMType(ctx);
   }
 };
 
-// "i32, ref Vec<i32>" — a list of types as it reads in a diagnostic.
+/**
+ * "i32, ref Vec<i32>" — a list of types as it reads in a diagnostic.
+ */
 inline std::string formatTypeList(const std::vector<TypePtr>& types) {
   std::string out;
   for (size_t i = 0; i < types.size(); ++i) {
@@ -739,8 +946,10 @@ inline std::string formatTypeList(const std::vector<TypePtr>& types) {
   return out;
 }
 
-// Helper: unwrap reference types (ref(T) -> T, otherwise unchanged)
-// References should behave like values, transparently dereferenced
+/**
+ * Helper: unwrap reference types (ref(T) -> T, otherwise unchanged)
+ * References should behave like values, transparently dereferenced
+ */
 inline TypePtr unwrapRef(TypePtr type) {
   if (type && type->isReference()) {
     return static_cast<const ReferenceType*>(type.get())->getReferencedType();
@@ -748,50 +957,65 @@ inline TypePtr unwrapRef(TypePtr type) {
   return type;
 }
 
-// `ref T` (the referent may be changed through it)
+/**
+ * `ref T` (the referent may be changed through it)
+ */
 inline bool isMutableRef(const TypePtr& type) {
   return type && type->isReference() &&
          static_cast<const ReferenceType*>(type.get())->isMutable();
 }
 
-// `const ref T` (the referent may only be read through it)
+/**
+ * `const ref T` (the referent may only be read through it)
+ */
 inline bool isConstRef(const TypePtr& type) {
   return type && type->isReference() &&
          !static_cast<const ReferenceType*>(type.get())->isMutable();
 }
 
-// A reference of kind `from` may stand in for one of kind `to` unless that
-// would let a const borrow be written through
+/**
+ * A reference of kind `from` may stand in for one of kind `to` unless that
+ * would let a const borrow be written through
+ */
 inline bool refMutabilityConvertible(const ReferenceType& from,
                                      const ReferenceType& to) {
   return from.isMutable() || !to.isMutable();
 }
 
-// Error union type - represents a type that can be either a value or an error
-// Following Zig's model where errors are values
-// Represented as a struct { bool isError; union { ValueType value; i32
-// errorCode; } } For simplicity, we use { i1 isError, T value } where we check
-// isError first
+/**
+ * Error union type - represents a type that can be either a value or an error
+ * Following Zig's model where errors are values
+ * Represented as a struct { bool isError; union { ValueType value; i32
+ * errorCode; } } For simplicity, we use { i1 isError, T value } where we check
+ * isError first
+ */
 class ErrorUnionType : public Type {
   TypePtr valueType;  // The non-error type (e.g., i32 in "i32, error")
 
  public:
+  /** Creates a result type that can hold either a value or an error. */
   explicit ErrorUnionType(TypePtr value) : valueType(std::move(value)) {}
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::ErrorUnion;
+  /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const override { return StaticKind; }
+  /** Returns the value type stored by this object. */
   const TypePtr& getValueType() const { return valueType; }
 
+  /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     return valueType->toString() + ", error";
   }
 
-  // Spelled the way the source spells it: "i32 throws IError"
+  /**
+   * Spelled the way the source spells it: "i32 throws IError"
+   */
   std::string toDisplayString() const override {
     return valueType->toDisplayString() + " throws IError";
   }
 
+  /** Reports whether the other type has the same semantic identity. */
   bool equals(const Type& other) const override {
     if (auto* e = dynamic_cast<const ErrorUnionType*>(&other)) {
       return valueType->equals(*e->valueType);
@@ -799,8 +1023,10 @@ class ErrorUnionType : public Type {
     return false;
   }
 
-  // Error union is represented as a struct: { i1 isError, <valueType> value }
-  // If isError is true, the error code is stored in the value field (as i64)
+  /**
+   * Error union is represented as a struct: { i1 isError, &lt;valueType&gt; value }
+   * If isError is true, the error code is stored in the value field (as i64)
+   */
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
     // Create a struct type: { i1, valueType }
     // The first field indicates whether this is an error
@@ -816,48 +1042,64 @@ class ErrorUnionType : public Type {
     return llvm::StructType::get(ctx, fields);
   }
 
-  // Get the LLVM type of the value (for extracting the value when not an error)
+  /**
+   * Get the LLVM type of the value (for extracting the value when not an error)
+   */
   llvm::Type* getValueLLVMType(llvm::LLVMContext& ctx) const {
     return valueType->toLLVMType(ctx);
   }
 };
 
-// Array type: array<T, N> or array<T, M, N> for multi-dimensional.
-// A sized array OWNS its elements inline - [N x T] wherever it lives (a local,
-// a field, a global, an element of another array) - and moves like every
-// other compound value. An unsized array<T> (empty dimensions) is a view of
-// some sized array with the rank erased; it exists only behind `ref` and is
-// carried as the fat struct { ptr data, i32 ndims, ptr dims }.
+/**
+ * Array type: array<T, N> or array<T, M, N> for multi-dimensional.
+ * A sized array OWNS its elements inline - [N x T] wherever it lives (a local,
+ * a field, a global, an element of another array) - and moves like every
+ * other compound value. An unsized array&lt;T&gt; (empty dimensions) is a view of
+ * some sized array with the rank erased; it exists only behind `ref` and is
+ * carried as the fat struct { ptr data, i32 ndims, ptr dims }.
+ */
 class ArrayType : public Type {
   TypePtr elementType;             // The element type (e.g., i32)
   std::vector<size_t> dimensions;  // Fixed sizes (e.g., {5} or {3, 2}), empty
                                    // means unsized
 
  public:
+  /** Creates a fixed-size array type with the supplied element type and dimensions. */
   ArrayType(TypePtr elemType, std::vector<size_t> dims)
       : elementType(std::move(elemType)), dimensions(std::move(dims)) {}
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::Array;
+  /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const override { return StaticKind; }
+  /** Returns the element type stored by this object. */
   const TypePtr& getElementType() const { return elementType; }
+  /** Returns the array dimension sizes. */
   const std::vector<size_t>& getDimensions() const { return dimensions; }
 
-  // Check if this is an unsized array (array<T> without dimensions)
+  /**
+   * Check if this is an unsized array (array&lt;T&gt; without dimensions)
+   */
   bool isUnsized() const { return dimensions.empty(); }
 
-  // Get total number of elements (product of all dimensions)
-  // Returns 0 for unsized arrays
+  /**
+   * Get total number of elements (product of all dimensions)
+   * Returns 0 for unsized arrays
+   */
   size_t getTotalElements() const {
     if (isUnsized()) return 0;
     return std::accumulate(dimensions.begin(), dimensions.end(), size_t{1},
                            std::multiplies<size_t>());
   }
 
-  // Check if this is a 1D array
+  /**
+   * Check if this is a 1D array
+   */
   bool is1D() const { return dimensions.size() == 1; }
 
-  // Get the innermost element type (for nested arrays, recurse)
+  /**
+   * Get the innermost element type (for nested arrays, recurse)
+   */
   TypePtr getInnermostType() const {
     if (auto* inner = dynamic_cast<const ArrayType*>(elementType.get())) {
       return inner->getInnermostType();
@@ -865,9 +1107,11 @@ class ArrayType : public Type {
     return elementType;
   }
 
-  // Get the type after indexing once (removes outermost dimension)
-  // For array<i32, 3, 2>[i] -> array<i32, 2>
-  // For array<i32, 5>[i] -> i32
+  /**
+   * Get the type after indexing once (removes outermost dimension)
+   * For array<i32, 3, 2>[i] -> array<i32, 2>
+   * For array<i32, 5>[i] -> i32
+   */
   TypePtr getIndexedType() const {
     if (dimensions.size() == 1) {
       return elementType;
@@ -877,6 +1121,7 @@ class ArrayType : public Type {
     return std::make_shared<ArrayType>(elementType, std::move(remainingDims));
   }
 
+  /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     std::string result = "array<" + elementType->toString();
     for (size_t dim : dimensions) {
@@ -886,6 +1131,7 @@ class ArrayType : public Type {
     return result;
   }
 
+  /** Returns a source-facing type name without internal compiler prefixes. */
   std::string toDisplayString() const override {
     std::string result = "array<" + elementType->toDisplayString();
     for (size_t dim : dimensions) {
@@ -895,8 +1141,10 @@ class ArrayType : public Type {
     return result;
   }
 
-  // Check if a sized array is compatible with this type
-  // Used for coercion from array<T, m, n> to array<T> (unsized)
+  /**
+   * Check if a sized array is compatible with this type
+   * Used for coercion from array<T, m, n> to array&lt;T&gt; (unsized)
+   */
   bool isCompatibleWith(const ArrayType& other) const {
     if (!elementType->equals(*other.elementType)) return false;
     // Unsized array accepts any sized array with same element type
@@ -909,6 +1157,7 @@ class ArrayType : public Type {
     return true;
   }
 
+  /** Reports whether the other type has the same semantic identity. */
   bool equals(const Type& other) const override {
     if (auto* a = dynamic_cast<const ArrayType*>(&other)) {
       if (!elementType->equals(*a->elementType)) return false;
@@ -923,13 +1172,15 @@ class ArrayType : public Type {
     return false;
   }
 
-  // The view struct { ptr data, i32 ndims, ptr dims } that a `ref array<T>`
-  // is carried as: the element storage, the rank, and the dimension sizes
-  // (an i64 table that outlives the view - a private constant global).
+  /**
+   * The view struct { ptr data, i32 ndims, ptr dims } that a `ref array<T>`
+   * is carried as: the element storage, the rank, and the dimension sizes
+   * (an i64 table that outlives the view - a private constant global).
+   */
   static llvm::StructType* getArrayStructType(llvm::LLVMContext& ctx) {
     // Check for existing named type to avoid duplicates
     if (auto* existing = llvm::StructType::getTypeByName(
-            ctx, sun::StructNames::ArrayStruct)) {
+            ctx, sun::semantic_analysis::ArrayStruct)) {
       return existing;
     }
     return llvm::StructType::create(
@@ -939,18 +1190,22 @@ class ArrayType : public Type {
             llvm::Type::getInt32Ty(ctx),        // ndims
             llvm::PointerType::getUnqual(ctx)   // dims ptr (points to i64[])
         },
-        sun::StructNames::ArrayStruct);
+        sun::semantic_analysis::ArrayStruct);
   }
 
-  // A sized array is its inline storage; an unsized one is the view struct
-  // (reached only through ReferenceType::toLLVMType).
+  /**
+   * A sized array is its inline storage; an unsized one is the view struct
+   * (reached only through ReferenceType::toLLVMType).
+   */
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
     if (isUnsized()) return getArrayStructType(ctx);
     return getDataStorageType(ctx);
   }
 
-  // The inline storage type of a sized array: [3 x [2 x i32]] for
-  // array<i32, 3, 2>. Null for an unsized array.
+  /**
+   * The inline storage type of a sized array: [3 x [2 x i32]] for
+   * array<i32, 3, 2>. Null for an unsized array.
+   */
   llvm::Type* getDataStorageType(llvm::LLVMContext& ctx) const {
     if (isUnsized()) {
       // Unsized arrays have no fixed storage type
@@ -964,29 +1219,39 @@ class ArrayType : public Type {
     return result;
   }
 
-  // Get the LLVM element type
+  /**
+   * Get the LLVM element type
+   */
   llvm::Type* getElementLLVMType(llvm::LLVMContext& ctx) const {
     return elementType->toLLVMType(ctx);
   }
 };
 
-// Slice type: builtin struct for array/matrix indexing
-// Represents a range [start, end) or a single index (when end = start + 1)
-// Used with IIndexable interface for uniform slice handling
-// LLVM representation: { i64 start, i64 end }
+/**
+ * Slice type: builtin struct for array/matrix indexing
+ * Represents a range [start, end) or a single index (when end = start + 1)
+ * Used with IIndexable interface for uniform slice handling
+ * LLVM representation: { i64 start, i64 end }
+ */
 class SliceType : public Type {
  public:
+  /** Creates an instance with its default state. */
   SliceType() = default;
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::Slice;
+  /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const override { return StaticKind; }
 
+  /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override { return "slice"; }
 
+  /** Reports whether the other type has the same semantic identity. */
   bool equals(const Type& other) const override { return other.isSlice(); }
 
-  // Get the LLVM struct type for slice: { i64, i64 }
+  /**
+   * Get the LLVM struct type for slice: { i64, i64 }
+   */
   static llvm::StructType* getSliceStructType(llvm::LLVMContext& ctx) {
     return llvm::StructType::get(ctx,
                                  {
@@ -995,46 +1260,60 @@ class SliceType : public Type {
                                  });
   }
 
+  /** Returns the LLVM type used to represent values of this semantic type. */
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
     return getSliceStructType(ctx);
   }
 
-  // Helper to check if a slice is a single index (end == start + 1)
-  // This is used to distinguish m[5] from m[5:6]
+  /**
+   * Helper to check if a slice is a single index (end == start + 1)
+   * This is used to distinguish m[5] from m[5:6]
+   */
   static bool isSingleIndex(int64_t start, int64_t end) {
     return end == start + 1;
   }
 };
 
-// Module/namespace reference type
-// Used in semantic analysis when accessing module-scoped variables/functions
-// e.g., in "mod_x.mod_y.a", mod_x and mod_x.mod_y have ModuleType
+/**
+ * Module/namespace reference type
+ * Used in semantic analysis when accessing module-scoped variables/functions
+ * e.g., in "mod_x.mod_y.a", mod_x and mod_x.mod_y have ModuleType
+ */
 class ModuleType : public Type {
   std::string modulePath;  // e.g., "mod_x" or "$hash$_mod_x"
 
  public:
+  /** Creates a type describing a reference to a module path. */
   explicit ModuleType(std::string path) : modulePath(std::move(path)) {}
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::Module;
+  /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const override { return StaticKind; }
+  /** Returns the module path stored by this object. */
   const std::string& getModulePath() const { return modulePath; }
 
+  /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override { return "module<" + modulePath + ">"; }
 
-  // The path as source spells it, without the "$hash$" scope a moon import
-  // adds
+  /**
+   * The path as source spells it, without the "$hash$" scope a moon import
+   * adds
+   */
   std::string toDisplayString() const override {
     return "module<" + displayModulePath(modulePath) + ">";
   }
 
+  /** Reports whether the other type has the same semantic identity. */
   bool equals(const Type& other) const override {
     if (!other.isModule()) return false;
     return modulePath == static_cast<const ModuleType&>(other).modulePath;
   }
 
-  // Module types don't have LLVM representation - they're resolved at compile
-  // time
+  /**
+   * Module types don't have LLVM representation - they're resolved at compile
+   * time
+   */
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
     return nullptr;
   }
@@ -1056,15 +1335,21 @@ inline llvm::Type* ReferenceType::toLLVMType(llvm::LLVMContext& ctx) const {
   return llvm::PointerType::getUnqual(ctx);
 }
 
-// Class field information
+/**
+ * Class field information
+ */
 struct ClassField {
   std::string name;
   TypePtr type;
   size_t index;  // Index in the struct
-  sun::Visibility visibility = sun::Visibility::Private;
+  sun::semantic_analysis::Visibility visibility =
+      sun::semantic_analysis::Visibility::Private;
+  DeclarationId declarationId;
 };
 
-// Class method information
+/**
+ * Class method information
+ */
 struct ClassMethod {
   std::string name;
   std::vector<std::string> typeParameters;  // Generic type params: <T, U>
@@ -1074,98 +1359,76 @@ struct ClassMethod {
   bool canThrow = false;  // declared with 'throws IError' — may unwind
   bool isUnsafe = false;  // Calls require an unsafe block.
   bool isConst = false;   // `const function`: does not change `this`
-  sun::Visibility visibility = sun::Visibility::Private;
+  sun::semantic_analysis::Visibility visibility =
+      sun::semantic_analysis::Visibility::Private;
   bool isSynthesizedConstructor = false;
+  DeclarationId declarationId;
+  DeclarationId defaultImplementation;
 
+  /** Reports whether this declaration still has unbound type parameters. */
   bool isGeneric() const { return !typeParameters.empty(); }
 };
 
-// Method info for ClassType/InterfaceType method tables.
-// Lightweight alternative to FunctionInfo (no Capture dependency).
-// Stores enough for overload resolution and codegen name lookup.
-struct ScopeMethodInfo {
-  TypePtr returnType;
-  std::vector<TypePtr> paramTypes;  // Excludes implicit 'this' parameter
-  std::string
-      qualifiedName;     // Mangled name for LLVM codegen (e.g., "MyClass_foo")
-  std::string baseName;  // User-written method name (e.g., "foo")
-};
+/** A nominal type's identity within its analysis session. */
+class NominalType : public Type {
+  friend class TypeRegistry;
+  DeclarationId declarationId_;
+  std::shared_ptr<const int> declarationSession_;
 
-// Indexed method table: O(1) name-based overload lookup + O(1) exact sig
-// lookup. Used on ClassType and InterfaceType for method resolution.
-class ScopeMethodTable {
+ protected:
+  /** Reports whether both nominal types belong to the same analysis session. */
+  bool sameSession(const NominalType& other) const {
+    return declarationSession_ == other.declarationSession_;
+  }
+
+  /** Reports whether both nominal types refer to the same declaration identity. */
+  bool sameDeclaration(const NominalType& other) const {
+    if (!declarationId_ || !other.declarationId_)
+      logAndThrowError("Nominal equality requires declaration identities");
+    return declarationId_ == other.declarationId_ &&
+           declarationSession_ == other.declarationSession_;
+  }
+
  public:
-  using iterator = std::unordered_map<std::string, ScopeMethodInfo>::iterator;
-  using const_iterator =
-      std::unordered_map<std::string, ScopeMethodInfo>::const_iterator;
-
-  ScopeMethodInfo& operator[](const std::string& sig) {
-    auto [it, inserted] = bySig_.emplace(sig, ScopeMethodInfo{});
-    if (inserted) {
-      std::string name = extractName(sig);
-      byName_[name].push_back(&it->second);
-    }
-    return it->second;
-  }
-
-  bool contains(const std::string& sig) const { return bySig_.count(sig) > 0; }
-
-  const_iterator find(const std::string& sig) const { return bySig_.find(sig); }
-
-  const_iterator end() const { return bySig_.end(); }
-  const_iterator begin() const { return bySig_.begin(); }
-  iterator end() { return bySig_.end(); }
-  iterator begin() { return bySig_.begin(); }
-  bool empty() const { return bySig_.empty(); }
-  size_t size() const { return bySig_.size(); }
-
-  // Check if any method with this base name exists (O(1))
-  bool hasName(const std::string& name) const {
-    return byName_.count(name) > 0;
-  }
-
-  // Get all overloads for a given base name (O(1) lookup)
-  const std::vector<ScopeMethodInfo*>* getOverloads(
-      const std::string& name) const {
-    auto it = byName_.find(name);
-    if (it != byName_.end()) return &it->second;
-    return nullptr;
-  }
-
- private:
-  std::unordered_map<std::string, ScopeMethodInfo> bySig_;
-  std::unordered_map<std::string, std::vector<ScopeMethodInfo*>> byName_;
-
-  // Extract method name from signature "name(type1,type2)"
-  static std::string extractName(const std::string& sig) {
-    auto paren = sig.find('(');
-    return paren != std::string::npos ? sig.substr(0, paren) : sig;
+  /** Return the declaration identity within this analysis session. */
+  DeclarationId getDeclarationId() const { return declarationId_; }
+  /** Return the original template, or this declaration for a source type. */
+  DeclarationId sourceDeclaration(const DeclarationTable& table) const;
+  /** Check that a boundary is using this nominal type's owning session. */
+  bool belongsTo(const DeclarationTable& table) const {
+    return declarationSession_ == table.session();
   }
 };
 
-// Class type for user-defined classes
-// Classes are represented as LLVM structs with methods as separate functions
-// Generic classes have type parameters (e.g., class List<T>)
-// Specialized classes have type arguments (e.g., List<i32>)
-class ClassType : public Type {
-  std::string mangledName;  // Fully qualified name (e.g., "$hash$_std_Vec")
+class InterfaceType;
+
+/**
+ * Class type for user-defined classes
+ * Classes are represented as LLVM structs with methods as separate functions
+ * Generic classes have type parameters (e.g., class List&lt;T&gt;)
+ * Specialized classes have type arguments (e.g., List<i32>)
+ */
+class ClassType : public NominalType {
+  friend class TypeRegistry;
+  std::string
+      name_;  // Source-qualified spelling for diagnostic type signatures.
   std::string
       baseName_;  // User-written base name (e.g., "Unique") for error messages
-  sun::QualifiedName qualifiedName_;  // Structured qualified name for scoping
+  sun::semantic_analysis::QualifiedName
+      qualifiedName_;  // Structured qualified name for scoping
   std::vector<std::string>
       typeParameters;  // Type params: ["T", "U"] for generic definitions
   std::vector<TypePtr>
       typeArguments;            // Type args: [i32] for specialized classes
   std::string baseGenericName;  // For specialized: original generic class name
-  sun::QualifiedName
+  sun::semantic_analysis::QualifiedName
       genericQualifiedName_;  // For specialized: the generic's qualified name
   std::vector<ClassField> fields;
   std::vector<ClassMethod> methods;
-  ScopeMethodTable
-      methodTable_;  // Indexed method table for overload resolution
-  std::vector<std::string>
-      implementedInterfaces;  // Names of interfaces this class implements
-  std::vector<std::string>
+  std::unordered_map<DeclarationId, DeclarationId> interfaceImplementations_;
+  std::vector<DeclarationId>
+      implementedInterfaces;  // Interfaces this class implements
+  std::vector<DeclarationId>
       staticOnlyInterfaces;  // Implemented, but not convertible to (see below)
   bool isPacked_ = false;    // "packed class": lay fields out with no padding
   // Lifetime names the class DECLARES ('class Bus<'a>'). Declarations only,
@@ -1176,51 +1439,70 @@ class ClassType : public Type {
   mutable llvm::StructType* cachedLLVMType = nullptr;
 
  public:
-  sun::Visibility visibility = sun::Visibility::Private;
+  sun::semantic_analysis::Visibility visibility =
+      sun::semantic_analysis::Visibility::Private;
 
+  /** Provides the lifetime parameters associated with this declaration. */
   const std::vector<std::string>& getLifetimeParams() const {
     return lifetimeParams_;
   }
+  /** Stores the lifetime parameters associated with this declaration. */
   void setLifetimeParams(std::vector<std::string> names) {
     lifetimeParams_ = std::move(names);
   }
 
-  ClassType(std::string className) : mangledName(std::move(className)) {}
+  /** Creates a semantic class descriptor under its declared name. */
+  ClassType(std::string className) : name_(std::move(className)) {}
 
-  // Constructor for generic class definition
+  /**
+   * Constructor for generic class definition
+   */
   ClassType(std::string className, std::vector<std::string> typeParams)
-      : mangledName(std::move(className)),
-        typeParameters(std::move(typeParams)) {}
+      : name_(std::move(className)), typeParameters(std::move(typeParams)) {}
 
-  // Constructor for specialized generic class
-  ClassType(std::string mangledName, std::string baseName,
+  /**
+   * Constructor for specialized generic class
+   */
+  ClassType(std::string name_, std::string baseName,
             std::vector<TypePtr> typeArgs)
-      : mangledName(std::move(mangledName)),
+      : name_(std::move(name_)),
         typeArguments(std::move(typeArgs)),
         baseGenericName(std::move(baseName)) {}
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::Class;
+  /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const override { return StaticKind; }
-  const std::string& getMangledName() const { return mangledName; }
 
-  // Base name accessors (user-written name for error messages)
+  /**
+   * Base name accessors (user-written name for error messages)
+   */
   const std::string& getBaseName() const {
-    return baseName_.empty() ? mangledName : baseName_;
+    return baseName_.empty() ? name_ : baseName_;
   }
+  /** Sets the unqualified declaration name without changing its enclosing scopes. */
   void setBaseName(std::string bn) { baseName_ = std::move(bn); }
+  /** Reports whether the unqualified declaration name is available. */
   bool hasBaseName() const { return !baseName_.empty(); }
 
-  // Qualified name accessors
-  const sun::QualifiedName& getQualifiedName() const { return qualifiedName_; }
-  void setQualifiedName(sun::QualifiedName qn) {
+  /**
+   * Qualified name accessors
+   */
+  const sun::semantic_analysis::QualifiedName& getQualifiedName() const {
+    return qualifiedName_;
+  }
+  /** Records the declaration name together with its enclosing scopes. */
+  void setQualifiedName(sun::semantic_analysis::QualifiedName qn) {
     qualifiedName_ = std::move(qn);
   }
+  /** Reports whether a name including the enclosing scopes has been assigned. */
   bool hasQualifiedName() const { return !qualifiedName_.baseName.empty(); }
 
-  // Get user-friendly display name for error messages
-  // For specialized classes: "Vec<i32>" or "std.Vec<i32>"
-  // For non-specialized: baseName or name with underscores converted to dots
+  /**
+   * Get user-friendly display name for error messages
+   * For specialized classes: "Vec<i32>" or "std.Vec<i32>"
+   * For non-specialized classes, preserve the source spelling.
+   */
   std::string getDisplayName() const {
     // Prefer the structured name: QualifiedName::display() spells the scope
     // path with dots and drops bundle hash segments. A specialization shows
@@ -1233,7 +1515,7 @@ class ClassType : public Type {
     } else if (hasQualifiedName()) {
       base = qualifiedName_.display();
     } else {
-      base = mangledName;
+      base = name_;
     }
     if (isSpecialized() && !typeArguments.empty()) {
       std::string result = base + "<";
@@ -1247,38 +1529,72 @@ class ClassType : public Type {
     return base;
   }
 
+  /** Provides the generic parameters declared by this type or function. */
   const std::vector<std::string>& getTypeParameters() const {
     return typeParameters;
   }
+  /** Provides the concrete types supplied for generic specialization. */
   const std::vector<TypePtr>& getTypeArguments() const { return typeArguments; }
+  /** Returns the original generic name used to identify this specialization. */
   const std::string& getBaseGenericName() const { return baseGenericName; }
-  // Qualified name of the generic this specialization was instantiated from
-  // (scope path + plain base name), for scope-tree lookups
-  const sun::QualifiedName& getGenericQualifiedName() const {
+  /**
+   * Qualified name of the generic this specialization was instantiated from
+   * (scope path + plain base name), for scope-tree lookups
+   */
+  const sun::semantic_analysis::QualifiedName& getGenericQualifiedName() const {
     return genericQualifiedName_;
   }
-  void setGenericQualifiedName(sun::QualifiedName qn) {
+  /** Updates the generic qualified name stored by this object. */
+  void setGenericQualifiedName(sun::semantic_analysis::QualifiedName qn) {
     genericQualifiedName_ = std::move(qn);
   }
+  /** Reports whether this is a generic declaration rather than a concrete instance. */
   bool isGenericDefinition() const { return !typeParameters.empty(); }
+  /** Reports whether this type was instantiated with concrete type arguments. */
   bool isSpecialized() const { return !typeArguments.empty(); }
+  /** Provides the field declarations belonging to this type. */
   const std::vector<ClassField>& getFields() const { return fields; }
+  /** The selected cleanup method, if this class defines one. */
+  DeclarationId deinitializer;
+
+  /** Provides the method declarations belonging to this type. */
   const std::vector<ClassMethod>& getMethods() const { return methods; }
-  const std::vector<std::string>& getImplementedInterfaces() const {
+
+  /** Record the concrete method selected for an interface declaration. */
+  void bindInterfaceMethod(DeclarationId requirement,
+                           DeclarationId implementation) {
+    interfaceImplementations_[requirement] = implementation;
+  }
+
+  /** Retrieve the concrete method selected during conformance checking. */
+  DeclarationId getInterfaceMethod(DeclarationId requirement) const {
+    auto found = interfaceImplementations_.find(requirement);
+    if (found == interfaceImplementations_.end())
+      logAndThrowError("Interface method implementation has not been resolved");
+    return found->second;
+  }
+  /** Provides the interfaces implemented by this class. */
+  const std::vector<DeclarationId>& getImplementedInterfaces() const {
     return implementedInterfaces;
   }
 
+  /** Reports whether this object has field. */
   bool hasField(const std::string& fieldName) const {
     return getField(fieldName) != nullptr;
   }
 
-  // Returns the new record so callers can set its access info.
-  ClassField& addField(const std::string& fieldName, TypePtr fieldType) {
+  /**
+   * Returns the new record so callers can set its access info.
+   */
+  ClassField& addField(const std::string& fieldName, TypePtr fieldType,
+                       DeclarationId id = {}) {
     // Caller should check hasField() first and report error with position
-    fields.push_back({fieldName, std::move(fieldType), fields.size()});
+    fields.push_back({fieldName, std::move(fieldType), fields.size(),
+                      sun::semantic_analysis::Visibility::Private, id});
     return fields.back();
   }
 
+  /** Registers a method signature on this type for lookup and dispatch. */
   ClassMethod& addMethod(const std::string& methodName, TypePtr returnType,
                          std::vector<TypePtr> paramTypes,
                          bool isConstructor = false,
@@ -1289,39 +1605,27 @@ class ClassType : public Type {
     return methods.back();
   }
 
-  void addImplementedInterface(const std::string& interfaceName) {
-    if (implementsInterface(interfaceName)) return;
-    implementedInterfaces.push_back(interfaceName);
+  /** Record a resolved interface implemented by this class. */
+  void addImplementedInterface(const InterfaceType& interface);
+
+  /** Check conformance using the interface's session and declaration ID. */
+  bool implementsInterface(const InterfaceType& interface) const;
+
+  /** Mark an implementation whose return ABI prevents dynamic dispatch. */
+  void markStaticOnlyInterface(const InterfaceType& interface);
+
+  /** Report whether a resolved interface can be used as a fat pointer. */
+  bool convertibleToInterface(const InterfaceType& interface) const;
+
+  /** Retrieve a selected field independently of its spelling and layout. */
+  const ClassField* getField(DeclarationId id) const {
+    if (!id) return nullptr;
+    for (const auto& field : fields)
+      if (field.declarationId == id) return &field;
+    return nullptr;
   }
 
-  bool implementsInterface(const std::string& interfaceName) const {
-    for (const auto& iface : implementedInterfaces) {
-      if (iface == interfaceName) return true;
-    }
-    return false;
-  }
-
-  // An interface implemented with a covariant (class-typed) return where the
-  // interface declares an interface type cannot be dispatched through a fat
-  // pointer (the ABI differs), so the class is not convertible to it. It is
-  // still usable statically (e.g. IIterable for for-in).
-  void markStaticOnlyInterface(const std::string& interfaceName) {
-    if (!isStaticOnlyInterface(interfaceName)) {
-      staticOnlyInterfaces.push_back(interfaceName);
-    }
-  }
-  bool isStaticOnlyInterface(const std::string& interfaceName) const {
-    for (const auto& iface : staticOnlyInterfaces) {
-      if (iface == interfaceName) return true;
-    }
-    return false;
-  }
-  // Class value/ref may be converted to an interface fat pointer
-  bool convertibleToInterface(const std::string& interfaceName) const {
-    return implementsInterface(interfaceName) &&
-           !isStaticOnlyInterface(interfaceName);
-  }
-
+  /** Returns the field stored by this object. */
   const ClassField* getField(const std::string& fieldName) const {
     for (const auto& field : fields) {
       if (field.name == fieldName) return &field;
@@ -1329,6 +1633,16 @@ class ClassType : public Type {
     return nullptr;
   }
 
+  /** Retrieve a selected method without repeating overload resolution. */
+  const ClassMethod* getMethod(DeclarationId declaration) const {
+    if (!declaration) return nullptr;
+    for (const auto& method : methods) {
+      if (method.declarationId == declaration) return &method;
+    }
+    logAndThrowError("Selected method does not belong to this class");
+  }
+
+  /** Returns the method stored by this object. */
   const ClassMethod* getMethod(const std::string& methodName) const {
     for (const auto& method : methods) {
       if (method.name == methodName) return &method;
@@ -1336,10 +1650,12 @@ class ClassType : public Type {
     return nullptr;
   }
 
-  // Returns true if an array argument of type `from` is compatible with an
-  // array parameter of type `to` (same element type, with an unsized parameter
-  // accepting any sized array). Mirrors the array coercion allowed elsewhere so
-  // that e.g. array<i32, 3, 2> can be passed where array<i32> is expected.
+  /**
+   * Returns true if an array argument of type `from` is compatible with an
+   * array parameter of type `to` (same element type, with an unsized parameter
+   * accepting any sized array). Mirrors the array coercion allowed elsewhere so
+   * that e.g. array<i32, 3, 2> can be passed where array<i32> is expected.
+   */
   static bool isArrayCompatible(const TypePtr& from, const TypePtr& to) {
     if (!from || !to || !from->isArray() || !to->isArray()) {
       return false;
@@ -1349,11 +1665,13 @@ class ClassType : public Type {
     return toArr->isCompatibleWith(*fromArr);
   }
 
-  // Returns true if a value of type `from` can be implicitly widened to type
-  // `to` (integer-to-wider-integer or float-to-wider-float). This mirrors the
-  // numeric widening allowed by free-function overload resolution so that
-  // method/constructor overloads accept the same arguments (e.g. an i32 literal
-  // passed where an i64 parameter is expected).
+  /**
+   * Returns true if a value of type `from` can be implicitly widened to type
+   * `to` (integer-to-wider-integer or float-to-wider-float). This mirrors the
+   * numeric widening allowed by free-function overload resolution so that
+   * method/constructor overloads accept the same arguments (e.g. an i32 literal
+   * passed where an i64 parameter is expected).
+   */
   static bool isNumericWidenable(const TypePtr& from, const TypePtr& to) {
     if (!from || !to || !from->isPrimitive() || !to->isPrimitive()) {
       return false;
@@ -1393,19 +1711,23 @@ class ClassType : public Type {
     return fromFloat && toFloat;
   }
 
-  // True if an argument of type `from` reaches an interface-typed parameter
-  // `to` by conversion to a fat pointer: an owned class where the interface
-  // is taken by value, or a class where `ref Interface` is expected.
-  // Mirrors the interface rules of isAssignableTo (type_rules.cpp) so that
-  // overload selection accepts what a single known signature accepts.
-  // Defined after InterfaceType and typeIsFrameCarrying, which it needs.
+  /**
+   * True if an argument of type `from` reaches an interface-typed parameter
+   * `to` by conversion to a fat pointer: an owned class where the interface
+   * is taken by value, or a class where `ref Interface` is expected.
+   * Mirrors the interface rules of isAssignableTo (type_rules.cpp) so that
+   * overload selection accepts what a single known signature accepts.
+   * Defined after InterfaceType and typeIsFrameCarrying, which it needs.
+   */
   static bool isInterfaceConvertible(const TypePtr& from, const TypePtr& to);
 
-  // Get method with overload resolution based on argument types.
-  // Returns the method whose parameter types best match the provided arg
-  // types. An exact match wins; otherwise the first overload reachable by an
-  // implicit argument conversion (borrow, array view, numeric or lambda
-  // widening, class to interface) is chosen.
+  /**
+   * Get method with overload resolution based on argument types.
+   * Returns the method whose parameter types best match the provided arg
+   * types. An exact match wins; otherwise the first overload reachable by an
+   * implicit argument conversion (borrow, array view, numeric or lambda
+   * widening, class to interface) is chosen.
+   */
   const ClassMethod* getMethodForArgs(
       const std::string& methodName,
       const std::vector<TypePtr>& argTypes) const {
@@ -1523,7 +1845,9 @@ class ClassType : public Type {
     return bestMatch;
   }
 
-  // Get the constructor method (named "init")
+  /**
+   * Get the constructor method (named "init")
+   */
   const ClassMethod* getConstructor() const {
     for (const auto& method : methods) {
       if (method.isConstructor) return &method;
@@ -1531,6 +1855,7 @@ class ClassType : public Type {
     return nullptr;
   }
 
+  /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     if (isSpecialized() && !baseGenericName.empty()) {
       // Show specialized type like "List<i32>"
@@ -1544,7 +1869,7 @@ class ClassType : public Type {
     }
     if (isGenericDefinition()) {
       // Show generic definition like "List<T>"
-      std::string result = mangledName + "<";
+      std::string result = name_ + "<";
       for (size_t i = 0; i < typeParameters.size(); ++i) {
         if (i > 0) result += ", ";
         result += typeParameters[i];
@@ -1552,40 +1877,35 @@ class ClassType : public Type {
       result += ">";
       return result;
     }
-    return mangledName;
+    return name_;
   }
 
+  /** Returns a source-facing type name without internal compiler prefixes. */
   std::string toDisplayString() const override { return getDisplayName(); }
 
+  /** Reports whether the other type has the same semantic identity. */
   bool equals(const Type& other) const override {
     if (auto* c = dynamic_cast<const ClassType*>(&other)) {
-      // For specialized types, compare by mangled name
-      return mangledName == c->mangledName;
+      return sameDeclaration(*c);
     }
     return false;
   }
 
-  // Classes are value types represented as LLVM structs
+  /**
+   * Classes are value types represented as LLVM structs
+   */
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
     return getStructType(ctx);
   }
 
-  // Get the actual struct type for the class
+  /**
+   * Get the actual struct type for the class
+   */
   llvm::StructType* getStructType(llvm::LLVMContext& ctx) const {
     if (cachedLLVMType) return cachedLLVMType;
 
-    // Several ClassType objects can describe the same class (e.g. a type
-    // resolved inside a .moon and the same type seen by its importer). The
-    // mangled name identifies the layout, so share one LLVM struct per name
-    // rather than letting LLVM mint "name.1", "name.2" duplicates that then
-    // fail to match across call boundaries.
-    llvm::StructType* existing =
-        llvm::StructType::getTypeByName(ctx, mangledName + "_struct");
-    if (existing && !existing->isOpaque()) {
-      cachedLLVMType = existing;
-      return cachedLLVMType;
-    }
-
+    // LLVM shares layouts by their fields and packing. Source names do not
+    // identify layouts: separate declarations may have the same spelling.
     std::vector<llvm::Type*> fieldTypes;
     for (const auto& field : fields) {
       // For class-typed fields, embed the struct directly (not a pointer)
@@ -1596,68 +1916,34 @@ class ClassType : public Type {
         fieldTypes.push_back(field.type->toLLVMType(ctx));
       }
     }
-    if (existing) {
-      // Opaque placeholder minted by the module linker: fill it in
-      existing->setBody(fieldTypes, isPacked_);
-      cachedLLVMType = existing;
-      return cachedLLVMType;
-    }
-    cachedLLVMType = llvm::StructType::create(
-        ctx, fieldTypes, mangledName + "_struct", isPacked_);
+    cachedLLVMType = llvm::StructType::get(ctx, fieldTypes, isPacked_);
     return cachedLLVMType;
   }
 
-  // Packed classes have no inter-field padding and struct alignment 1.
-  // Must be set before the first getStructType() call, which memoizes.
+  /**
+   * Packed classes have no inter-field padding and struct alignment 1.
+   * Must be set before the first getStructType() call, which memoizes.
+   */
   bool isPacked() const { return isPacked_; }
+  /** Controls whether the class uses a packed memory layout. */
   void setPacked(bool v) { isPacked_ = v; }
 
-  // Get mangled method name: ClassName_methodName
-  // Class name already includes module path and library hash
-  std::string getMangledMethodName(const std::string& methodName) const {
-    return mangledName + "_" + methodName;
-  }
-
-  // Get mangled method name with parameter types for overload disambiguation
-  // Delegates to QualifiedName::buildParamSuffix for consistent mangling
-  std::string getMangledMethodName(
-      const std::string& methodName,
-      const std::vector<TypePtr>& paramTypes) const {
-    return mangledName + "_" + methodName +
-           QualifiedName::buildParamSuffix(paramTypes);
-  }
-
-  // --- ScopeMethodTable accessors ---
-  ScopeMethodTable& getMethodTable() { return methodTable_; }
-  const ScopeMethodTable& getMethodTable() const { return methodTable_; }
-
-  // Register a method in the indexed method table (by signature)
-  void registerMethod(const std::string& sig, ScopeMethodInfo info) {
-    methodTable_[sig] = std::move(info);
-  }
-
-  // Look up a method by exact signature
-  const ScopeMethodInfo* lookupMethod(const std::string& sig) const {
-    auto it = methodTable_.find(sig);
-    if (it != methodTable_.end()) return &it->second;
-    return nullptr;
-  }
-
-  // Get all overloads for a method name
-  const std::vector<ScopeMethodInfo*>* getMethodOverloads(
-      const std::string& methodName) const {
-    return methodTable_.getOverloads(methodName);
-  }
 };
 
-// Interface field information
+/**
+ * Interface field information
+ */
 struct InterfaceField {
   std::string name;
   TypePtr type;
-  sun::Visibility visibility = sun::Visibility::Private;
+  sun::semantic_analysis::Visibility visibility =
+      sun::semantic_analysis::Visibility::Private;
+  DeclarationId declarationId;
 };
 
-// Interface method information
+/**
+ * Interface method information
+ */
 struct InterfaceMethod {
   std::string name;
   std::vector<std::string> typeParameters;  // Generic type params: <T, U>
@@ -1666,18 +1952,26 @@ struct InterfaceMethod {
   bool hasDefaultImpl;    // true if this method has a default implementation
   bool isUnsafe = false;  // Calls require an unsafe block.
   bool isConst = false;   // `const function`: does not change `this`
-  sun::Visibility visibility = sun::Visibility::Private;
+  sun::semantic_analysis::Visibility visibility =
+      sun::semantic_analysis::Visibility::Private;
 
+  DeclarationId declarationId;
+
+  /** Reports whether this declaration still has unbound type parameters. */
   bool isGeneric() const { return !typeParameters.empty(); }
 };
 
 // Forward declaration for InterfaceType
 class InterfaceType;
+/** Shared ownership of a semantic interface description. */
 using InterfaceTypePtr = std::shared_ptr<InterfaceType>;
 
-// Interface type for user-defined interfaces
-// Interfaces define a contract that classes must implement
-class InterfaceType : public Type {
+/**
+ * Interface type for user-defined interfaces
+ * Interfaces define a contract that classes must implement
+ */
+class InterfaceType : public NominalType {
+  friend class TypeRegistry;
   std::string name;       // Fully qualified name (includes library hash)
   std::string baseName_;  // User-written base name for error messages
   std::vector<std::string> typeParameters;  // Generic type params: T, U, etc.
@@ -1687,85 +1981,114 @@ class InterfaceType : public Type {
       baseGenericName;  // For specialized: original generic interface name
   std::vector<InterfaceField> fields;
   std::vector<InterfaceMethod> methods;
-  ScopeMethodTable
-      methodTable_;  // Indexed method table for default implementations
-  sun::QualifiedName qualifiedName_;
+  sun::semantic_analysis::QualifiedName qualifiedName_;
   // Lifetime names the interface DECLARES ('interface ISink<'a>').
   // Declarations only, never bindings - see ClassType::lifetimeParams_.
   std::vector<std::string> lifetimeParams_;
 
-  sun::QualifiedName genericQualifiedName_;
+  sun::semantic_analysis::QualifiedName genericQualifiedName_;
 
  public:
   /** The original template name, independent of specialization and source
    * aliases. */
-  const sun::QualifiedName& getGenericQualifiedName() const {
+  const sun::semantic_analysis::QualifiedName& getGenericQualifiedName() const {
     return genericQualifiedName_;
   }
   /** Record the template that produced this type. */
-  void setGenericQualifiedName(sun::QualifiedName name) {
+  void setGenericQualifiedName(sun::semantic_analysis::QualifiedName name) {
     genericQualifiedName_ = std::move(name);
   }
 
-  sun::Visibility visibility = sun::Visibility::Private;
+  sun::semantic_analysis::Visibility visibility =
+      sun::semantic_analysis::Visibility::Private;
 
+  /** Provides the lifetime parameters associated with this declaration. */
   const std::vector<std::string>& getLifetimeParams() const {
     return lifetimeParams_;
   }
+  /** Stores the lifetime parameters associated with this declaration. */
   void setLifetimeParams(std::vector<std::string> names) {
     lifetimeParams_ = std::move(names);
   }
 
+  /** Creates a semantic interface descriptor under its declared name. */
   InterfaceType(std::string interfaceName) : name(std::move(interfaceName)) {}
 
-  // Structured name: owner() is the declaring module (unit of visibility)
-  const sun::QualifiedName& getQualifiedName() const { return qualifiedName_; }
-  void setQualifiedName(sun::QualifiedName qn) {
+  /**
+   * Source spelling; declaration records carry module ownership.
+   */
+  const sun::semantic_analysis::QualifiedName& getQualifiedName() const {
+    return qualifiedName_;
+  }
+  /** Records the declaration name together with its enclosing scopes. */
+  void setQualifiedName(sun::semantic_analysis::QualifiedName qn) {
     qualifiedName_ = std::move(qn);
   }
 
-  // Constructor for generic interface definition
+  /**
+   * Constructor for generic interface definition
+   */
   InterfaceType(std::string interfaceName, std::vector<std::string> typeParams)
       : name(std::move(interfaceName)), typeParameters(std::move(typeParams)) {}
 
-  // Constructor for specialized generic interface
-  InterfaceType(std::string mangledName, std::string baseName,
+  /**
+   * Constructor for specialized generic interface
+   */
+  InterfaceType(std::string name_, std::string baseName,
                 std::vector<TypePtr> typeArgs)
-      : name(std::move(mangledName)),
+      : name(std::move(name_)),
         typeArguments(std::move(typeArgs)),
         baseGenericName(std::move(baseName)) {}
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::Interface;
+  /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const override { return StaticKind; }
+  /** Returns the declared name used to identify this object. */
   const std::string& getName() const { return name; }
 
-  // Base name accessors (user-written name for error messages)
+  /**
+   * Base name accessors (user-written name for error messages)
+   */
   const std::string& getBaseName() const {
     return baseName_.empty() ? name : baseName_;
   }
+  /** Sets the unqualified declaration name without changing its enclosing scopes. */
   void setBaseName(std::string bn) { baseName_ = std::move(bn); }
+  /** Reports whether the unqualified declaration name is available. */
   bool hasBaseName() const { return !baseName_.empty(); }
 
+  /** Provides the generic parameters declared by this type or function. */
   const std::vector<std::string>& getTypeParameters() const {
     return typeParameters;
   }
+  /** Provides the concrete types supplied for generic specialization. */
   const std::vector<TypePtr>& getTypeArguments() const { return typeArguments; }
+  /** Returns the original generic name used to identify this specialization. */
   const std::string& getBaseGenericName() const { return baseGenericName; }
+  /** Reports whether this is a generic declaration rather than a concrete instance. */
   bool isGenericDefinition() const { return !typeParameters.empty(); }
+  /** Reports whether this type was instantiated with concrete type arguments. */
   bool isSpecialized() const { return !typeArguments.empty(); }
+  /** Provides the field declarations belonging to this type. */
   const std::vector<InterfaceField>& getFields() const { return fields; }
+  /** Provides the method declarations belonging to this type. */
   const std::vector<InterfaceMethod>& getMethods() const { return methods; }
 
-  // Returns the (possibly pre-existing) record so callers can set access.
-  InterfaceField& addField(const std::string& fieldName, TypePtr fieldType) {
+  /**
+   * Returns the (possibly pre-existing) record so callers can set access.
+   */
+  InterfaceField& addField(const std::string& fieldName, TypePtr fieldType,
+                           DeclarationId id = {}) {
     for (auto& existingField : fields) {
       if (existingField.name == fieldName) return existingField;
     }
-    fields.push_back({fieldName, std::move(fieldType)});
+    fields.push_back({fieldName, std::move(fieldType),
+                      sun::semantic_analysis::Visibility::Private, id});
     return fields.back();
   }
 
+  /** Registers a method signature on this type for lookup and dispatch. */
   InterfaceMethod& addMethod(const std::string& methodName, TypePtr returnType,
                              std::vector<TypePtr> paramTypes,
                              bool hasDefaultImpl = false,
@@ -1775,6 +2098,7 @@ class InterfaceType : public Type {
     return methods.back();
   }
 
+  /** Returns the field stored by this object. */
   const InterfaceField* getField(const std::string& fieldName) const {
     for (const auto& field : fields) {
       if (field.name == fieldName) return &field;
@@ -1782,6 +2106,7 @@ class InterfaceType : public Type {
     return nullptr;
   }
 
+  /** Returns the method stored by this object. */
   const InterfaceMethod* getMethod(const std::string& methodName) const {
     for (const auto& method : methods) {
       if (method.name == methodName) return &method;
@@ -1789,10 +2114,12 @@ class InterfaceType : public Type {
     return nullptr;
   }
 
-  // Rebind one method's return type. Exists for the builtin IError: it is
-  // registered before any source is read, so message() starts as
-  // static_ptr<u8> and is retargeted to the String class when the stdlib
-  // registers one (see SemanticAnalyzer::registerClassShape).
+  /**
+   * Rebind one method's return type. Exists for the builtin IError: it is
+   * registered before any source is read, so message() starts as
+   * static_ptr<u8> and is retargeted to the String class when the stdlib
+   * registers one (see SemanticAnalyzer::registerClassShape).
+   */
   void setMethodReturnType(const std::string& methodName, TypePtr returnType) {
     for (auto& method : methods) {
       if (method.name == methodName) {
@@ -1802,8 +2129,10 @@ class InterfaceType : public Type {
     }
   }
 
-  // Get methods that don't have default implementations (must be implemented by
-  // class)
+  /**
+   * Get methods that don't have default implementations (must be implemented by
+   * class)
+   */
   std::vector<const InterfaceMethod*> getRequiredMethods() const {
     std::vector<const InterfaceMethod*> required;
     for (const auto& method : methods) {
@@ -1814,6 +2143,7 @@ class InterfaceType : public Type {
     return required;
   }
 
+  /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     if (isSpecialized()) {
       // Show as BaseInterface<Arg1, Arg2>
@@ -1838,6 +2168,7 @@ class InterfaceType : public Type {
     return name;
   }
 
+  /** Returns a source-facing type name without internal compiler prefixes. */
   std::string toDisplayString() const override {
     std::string base;
     if (!baseName_.empty()) {
@@ -1865,69 +2196,67 @@ class InterfaceType : public Type {
     return base;
   }
 
+  /** Reports whether the other type has the same semantic identity. */
   bool equals(const Type& other) const override {
     if (auto* i = dynamic_cast<const InterfaceType*>(&other)) {
-      return name == i->name;
+      return sameDeclaration(*i);
     }
     return false;
   }
 
-  // Interfaces are represented as fat pointers: { ptr data, ptr vtable }.
-  // The vtable contains method pointers followed by concrete drop glue (or a
-  // no-op for a borrow), so an owning interface remains two pointers.
+  /**
+   * Interfaces are represented as fat pointers: { ptr data, ptr vtable }.
+   * The vtable contains method pointers followed by concrete drop glue (or a
+   * no-op for a borrow), so an owning interface remains two pointers.
+   */
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
     return getFatPointerType(ctx);
-  }
-
-  // Get mangled method name for default implementation:
-  // InterfaceName_default_methodName (name already includes library hash)
-  std::string getMangledDefaultMethodName(const std::string& methodName) const {
-    return name + "_default_" + methodName;
   }
 
   // ===================================================================
   // Dynamic Dispatch Support (vtable-based polymorphism)
   // ===================================================================
 
-  // Get the fat pointer struct type for interface values: { ptr data, ptr
-  // vtable }
-  // - data: pointer to the concrete class instance
-  // - vtable: pointer to the implementing class's vtable for this interface
+  /**
+   * Get the fat pointer struct type for interface values: { ptr data, ptr
+   * vtable }
+   * - data: pointer to the concrete class instance
+   * - vtable: pointer to the implementing class's vtable for this interface
+   */
   static llvm::StructType* getFatPointerType(llvm::LLVMContext& ctx) {
     // Check for existing named type to avoid duplicates
     if (auto* existing = llvm::StructType::getTypeByName(
-            ctx, sun::StructNames::InterfaceFat)) {
+            ctx, sun::semantic_analysis::InterfaceFat)) {
       return existing;
     }
     auto* ptrTy = llvm::PointerType::getUnqual(ctx);
     return llvm::StructType::create(ctx, {ptrTy, ptrTy},
-                                    sun::StructNames::InterfaceFat);
+                                    sun::semantic_analysis::InterfaceFat);
   }
 
-  // Get the vtable struct type for this interface.
-  // Contains one function pointer per method in declaration order.
-  // Vtable layout: [method0_ptr, method1_ptr, ...]
+  /**
+   * Get the vtable struct type for this interface.
+   * Contains one function pointer per method in declaration order.
+   * Vtable layout: [method0_ptr, method1_ptr, ...]
+   */
   llvm::StructType* getVtableType(llvm::LLVMContext& ctx) const {
-    std::string vtableName = name + "_vtable_type";
-    // Check for existing named type
-    if (auto* existing = llvm::StructType::getTypeByName(ctx, vtableName)) {
-      return existing;
-    }
     auto* ptrTy = llvm::PointerType::getUnqual(ctx);
     std::vector<llvm::Type*> slotTypes(methods.size(), ptrTy);
-    return llvm::StructType::create(ctx, slotTypes, vtableName);
+    return llvm::StructType::get(ctx, slotTypes);
   }
 
-  // Get the slot index for a method in the vtable.
-  // Returns -1 if method not found or if the method is generic.
-  // Only non-generic methods can be dispatched via vtable.
-  int getMethodIndex(const std::string& methodName) const {
+  /**
+   * Get the slot index for a method in the vtable.
+   * Returns -1 if method not found or if the method is generic.
+   * Only non-generic methods can be dispatched via vtable.
+   */
+  int getMethodIndex(DeclarationId declaration) const {
     int index = 0;
     for (const auto& method : methods) {
       if (method.isGeneric()) {
         continue;  // Skip generic methods - they're not in the vtable
       }
-      if (method.name == methodName) {
+      if (method.declarationId == declaration) {
         return index;
       }
       ++index;
@@ -1935,81 +2264,108 @@ class InterfaceType : public Type {
     return -1;  // Method not found or is generic
   }
 
-  // --- ScopeMethodTable accessors ---
-  ScopeMethodTable& getMethodTable() { return methodTable_; }
-  const ScopeMethodTable& getMethodTable() const { return methodTable_; }
-
-  // Register a method in the indexed method table (by signature)
-  void registerMethod(const std::string& sig, ScopeMethodInfo info) {
-    methodTable_[sig] = std::move(info);
-  }
-
-  // Look up a method by exact signature
-  const ScopeMethodInfo* lookupMethod(const std::string& sig) const {
-    auto it = methodTable_.find(sig);
-    if (it != methodTable_.end()) return &it->second;
-    return nullptr;
-  }
-
-  // Get all overloads for a method name
-  const std::vector<ScopeMethodInfo*>* getMethodOverloads(
-      const std::string& methodName) const {
-    return methodTable_.getOverloads(methodName);
-  }
 };
 
-// Enum variant information
+inline void ClassType::addImplementedInterface(const InterfaceType& interface) {
+  if (!sameSession(interface))
+    logAndThrowError(
+        "Interface implementation belongs to another analysis session");
+  if (!implementsInterface(interface))
+    implementedInterfaces.push_back(interface.getDeclarationId());
+}
+
+inline bool ClassType::implementsInterface(
+    const InterfaceType& interface) const {
+  return sameSession(interface) &&
+         std::find(implementedInterfaces.begin(), implementedInterfaces.end(),
+                   interface.getDeclarationId()) != implementedInterfaces.end();
+}
+
+inline void ClassType::markStaticOnlyInterface(const InterfaceType& interface) {
+  if (!sameSession(interface))
+    logAndThrowError(
+        "Interface implementation belongs to another analysis session");
+  if (std::find(staticOnlyInterfaces.begin(), staticOnlyInterfaces.end(),
+                interface.getDeclarationId()) == staticOnlyInterfaces.end())
+    staticOnlyInterfaces.push_back(interface.getDeclarationId());
+}
+
+inline bool ClassType::convertibleToInterface(
+    const InterfaceType& interface) const {
+  return implementsInterface(interface) &&
+         std::find(staticOnlyInterfaces.begin(), staticOnlyInterfaces.end(),
+                   interface.getDeclarationId()) == staticOnlyInterfaces.end();
+}
+
+/**
+ * Enum variant information
+ */
 struct EnumVariant {
   std::string name;
   int64_t value;  // Tag bits; the enum representation determines signedness
   std::vector<TypePtr> payloadTypes;  // empty = unit variant
+  DeclarationId declarationId;
 
+  /** Reports whether this object has payload. */
   bool hasPayload() const { return !payloadTypes.empty(); }
 };
 
 // Forward declaration for EnumType
 class EnumType;
+/** Shared ownership of a semantic enum description. */
 using EnumTypePtr = std::shared_ptr<EnumType>;
 
-// Enum type for user-defined enums
-// Enums use an integer representation, with variants as named constants
-// Example: enum Color { Red, Green, Blue }
-class EnumType : public Type {
-  std::string mangledName_;  // Mangled name (e.g., "$hash$_std_Color")
+/**
+ * Enum type for user-defined enums
+ * Enums use an integer representation, with variants as named constants
+ * Example: enum Color { Red, Green, Blue }
+ */
+class EnumType : public NominalType {
+  friend class TypeRegistry;
+  std::string
+      name_;  // Source-qualified spelling for diagnostic type signatures.
   std::string baseName_;     // User-written base name (e.g., "Color")
   std::vector<EnumVariant> variants;
   TypePtr underlyingType_ = std::make_shared<PrimitiveType>(Kind::Int32);
   std::string genericBase_;           // e.g. "Option" for Option_i32
   std::vector<TypePtr> genericArgs_;  // e.g. [i32] for Option_i32
-  sun::QualifiedName qualifiedName_;
+  sun::semantic_analysis::QualifiedName qualifiedName_;
 
-  sun::QualifiedName genericQualifiedName_;
+  sun::semantic_analysis::QualifiedName genericQualifiedName_;
 
  public:
   /** The original template name, independent of specialization and source
    * aliases. */
-  const sun::QualifiedName& getGenericQualifiedName() const {
+  const sun::semantic_analysis::QualifiedName& getGenericQualifiedName() const {
     return genericQualifiedName_;
   }
   /** Record the template that produced this type. */
-  void setGenericQualifiedName(sun::QualifiedName name) {
+  void setGenericQualifiedName(sun::semantic_analysis::QualifiedName name) {
     genericQualifiedName_ = std::move(name);
   }
 
-  sun::Visibility visibility = sun::Visibility::Private;
+  sun::semantic_analysis::Visibility visibility =
+      sun::semantic_analysis::Visibility::Private;
 
-  // Structured name: owner() is the declaring module (unit of visibility)
-  const sun::QualifiedName& getQualifiedName() const { return qualifiedName_; }
-  void setQualifiedName(sun::QualifiedName qn) {
+  /**
+   * Source spelling; declaration records carry module ownership.
+   */
+  const sun::semantic_analysis::QualifiedName& getQualifiedName() const {
+    return qualifiedName_;
+  }
+  /** Records the declaration name together with its enclosing scopes. */
+  void setQualifiedName(sun::semantic_analysis::QualifiedName qn) {
     qualifiedName_ = std::move(qn);
   }
 
-  EnumType(std::string mangledName, std::string baseName = "")
-      : mangledName_(std::move(mangledName)), baseName_(std::move(baseName)) {}
+  /** Creates a semantic enum descriptor with its name and optional variants. */
+  EnumType(std::string name_, std::string baseName = "")
+      : name_(std::move(name_)), baseName_(std::move(baseName)) {}
 
-  EnumType(std::string mangledName, std::vector<EnumVariant> vars,
+  /** Creates a semantic enum descriptor with its name and optional variants. */
+  EnumType(std::string name_, std::vector<EnumVariant> vars,
            std::string baseName = "")
-      : mangledName_(std::move(mangledName)),
+      : name_(std::move(name_)),
         variants(std::move(vars)),
         baseName_(std::move(baseName)) {}
 
@@ -2023,28 +2379,42 @@ class EnumType : public Type {
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::Enum;
+  /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const override { return StaticKind; }
-  const std::string& getName() const { return mangledName_; }
+  /** Returns the declared name used to identify this object. */
+  const std::string& getName() const { return name_; }
+  /** Provides the alternatives declared by this enum. */
   const std::vector<EnumVariant>& getVariants() const { return variants; }
 
-  // Base name accessor
+  /**
+   * Base name accessor
+   */
   const std::string& getBaseName() const {
-    return baseName_.empty() ? mangledName_ : baseName_;
+    return baseName_.empty() ? name_ : baseName_;
   }
+  /** Reports whether the unqualified declaration name is available. */
   bool hasBaseName() const { return !baseName_.empty(); }
+  /** Sets the unqualified declaration name without changing its enclosing scopes. */
   void setBaseName(std::string baseName) { baseName_ = std::move(baseName); }
 
-  // Generic specialization origin (e.g. Option_i32 records base "Option" and
-  // args [i32]); empty for non-generic enums.
+  /**
+   * Generic specialization origin (e.g. Option_i32 records base "Option" and
+   * args [i32]); empty for non-generic enums.
+   */
   void setGenericOrigin(std::string base, std::vector<TypePtr> args) {
     genericBase_ = std::move(base);
     genericArgs_ = std::move(args);
   }
+  /** Returns the original generic declaration. */
   const std::string& getGenericBase() const { return genericBase_; }
+  /** Returns the generic type arguments. */
   const std::vector<TypePtr>& getGenericArgs() const { return genericArgs_; }
+  /** Reports whether this type represents generic specialization values. */
   bool isGenericSpecialization() const { return !genericBase_.empty(); }
 
-  // Get user-friendly display name for error messages
+  /**
+   * Get user-friendly display name for error messages
+   */
   std::string getDisplayName() const {
     if (isGenericSpecialization()) {
       std::string result = genericBase_ + "<";
@@ -2056,23 +2426,26 @@ class EnumType : public Type {
     }
     if (!baseName_.empty()) return baseName_;
     if (!qualifiedName_.empty()) return qualifiedName_.display();
-    return mangledName_;
+    return name_;
   }
 
+  /** Returns a source-facing type name without internal compiler prefixes. */
   std::string toDisplayString() const override { return getDisplayName(); }
 
-  // Idempotent: declaration collection and full analysis both register
-  // variants; the second registration must not duplicate them.
-  void addVariant(const std::string& variantName, int64_t value) {
+  /** Register a variant once, retaining its declaration identity. */
+  void addVariant(const std::string& variantName, int64_t value,
+                  DeclarationId declarationId = {}) {
     for (const auto& v : variants) {
       if (v.name == variantName) return;
     }
-    variants.push_back({variantName, value, {}});
+    variants.push_back({variantName, value, {}, declarationId});
   }
 
-  // Attach resolved payload types to a variant (full-analysis phase; payload
-  // annotations may reference classes not yet registered during declaration
-  // collection).
+  /**
+   * Attach resolved payload types to a variant (full-analysis phase; payload
+   * annotations may reference classes not yet registered during declaration
+   * collection).
+   */
   void setVariantPayloadTypes(const std::string& variantName,
                               std::vector<TypePtr> payloadTypes) {
     for (auto& v : variants) {
@@ -2084,7 +2457,9 @@ class EnumType : public Type {
     assert(false && "setVariantPayloadTypes: unknown variant");
   }
 
-  // True if any variant carries a payload (tagged-union representation)
+  /**
+   * True if any variant carries a payload (tagged-union representation)
+   */
   bool hasPayload() const {
     for (const auto& v : variants) {
       if (v.hasPayload()) return true;
@@ -2092,6 +2467,7 @@ class EnumType : public Type {
     return false;
   }
 
+  /** Returns the variant stored by this object. */
   const EnumVariant* getVariant(const std::string& variantName) const {
     for (const auto& variant : variants) {
       if (variant.name == variantName) return &variant;
@@ -2099,27 +2475,35 @@ class EnumType : public Type {
     return nullptr;
   }
 
-  // Check if a variant exists by name
+  /**
+   * Check if a variant exists by name
+   */
   bool hasVariant(const std::string& variantName) const {
     return getVariant(variantName) != nullptr;
   }
 
-  // Get the number of variants
+  /**
+   * Get the number of variants
+   */
   size_t getNumVariants() const { return variants.size(); }
 
-  std::string toString() const override { return mangledName_; }
+  /** Returns a readable representation for diagnostics and debugging. */
+  std::string toString() const override { return name_; }
 
+  /** Reports whether the other type has the same semantic identity. */
   bool equals(const Type& other) const override {
     if (auto* e = dynamic_cast<const EnumType*>(&other)) {
-      return mangledName_ == e->mangledName_;
+      return sameDeclaration(*e);
     }
     return false;
   }
 
-  // Payload-free enums use their integer type. Payload enums need the
-  // module DataLayout for storage sizing: LLVMTypeResolver computes the
-  // storage struct and caches it here; afterwards toLLVMType serves the
-  // cache (e.g. for class field embedding via ClassType::getStructType).
+  /**
+   * Payload-free enums use their integer type. Payload enums need the
+   * module DataLayout for storage sizing: LLVMTypeResolver computes the
+   * storage struct and caches it here; afterwards toLLVMType serves the
+   * cache (e.g. for class field embedding via ClassType::getStructType).
+   */
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
     if (hasPayload()) {
       if (cachedStorageType) return cachedStorageType;
@@ -2130,11 +2514,6 @@ class EnumType : public Type {
     return underlyingType_->toLLVMType(ctx);
   }
 
-  // Get the mangled variant name: EnumName_VariantName
-  std::string getMangledVariantName(const std::string& variantName) const {
-    return mangledName_ + "_" + variantName;
-  }
-
   // LLVM struct caches, populated by LLVMTypeResolver (mirrors
   // ClassType::cachedLLVMType). storage = { i32 tag, [M x unitTy] }; per
   // variant = { i32 tag, T1, T2, ... } GEP'd on the same base pointer.
@@ -2143,241 +2522,168 @@ class EnumType : public Type {
       cachedVariantStructs;
 };
 
-// Type factory for common types (singleton pattern)
+/**
+ * Type factory for common types (singleton pattern)
+ */
 class Types {
  public:
+  /** Returns the shared semantic type descriptor for Sun void values. */
   static TypePtr Void() {
     static auto t = std::make_shared<PrimitiveType>(Type::Kind::Void);
     return t;
   }
+  /** Returns the shared semantic type descriptor for Sun bool values. */
   static TypePtr Bool() {
     static auto t = std::make_shared<PrimitiveType>(Type::Kind::Bool);
     return t;
   }
+  /** Returns the shared semantic type descriptor for Sun int8 values. */
   static TypePtr Int8() {
     static auto t = std::make_shared<PrimitiveType>(Type::Kind::Int8);
     return t;
   }
+  /** Returns the shared semantic type descriptor for Sun int16 values. */
   static TypePtr Int16() {
     static auto t = std::make_shared<PrimitiveType>(Type::Kind::Int16);
     return t;
   }
+  /** Returns the shared semantic type descriptor for Sun int32 values. */
   static TypePtr Int32() {
     static auto t = std::make_shared<PrimitiveType>(Type::Kind::Int32);
     return t;
   }
+  /** Returns the shared semantic type descriptor for Sun int64 values. */
   static TypePtr Int64() {
     static auto t = std::make_shared<PrimitiveType>(Type::Kind::Int64);
     return t;
   }
+  /** Returns the shared semantic type descriptor for Sun uint8 values. */
   static TypePtr UInt8() {
     static auto t = std::make_shared<PrimitiveType>(Type::Kind::UInt8);
     return t;
   }
+  /** Returns the shared semantic type descriptor for Sun uint16 values. */
   static TypePtr UInt16() {
     static auto t = std::make_shared<PrimitiveType>(Type::Kind::UInt16);
     return t;
   }
+  /** Returns the shared semantic type descriptor for Sun uint32 values. */
   static TypePtr UInt32() {
     static auto t = std::make_shared<PrimitiveType>(Type::Kind::UInt32);
     return t;
   }
+  /** Returns the shared semantic type descriptor for Sun uint64 values. */
   static TypePtr UInt64() {
     static auto t = std::make_shared<PrimitiveType>(Type::Kind::UInt64);
     return t;
   }
+  /** Returns the shared semantic type descriptor for Sun float32 values. */
   static TypePtr Float32() {
     static auto t = std::make_shared<PrimitiveType>(Type::Kind::Float32);
     return t;
   }
+  /** Returns the shared semantic type descriptor for Sun float64 values. */
   static TypePtr Float64() {
     static auto t = std::make_shared<PrimitiveType>(Type::Kind::Float64);
     return t;
   }
+  /** Returns the shared semantic type descriptor for Sun char values. */
   static TypePtr Char() {
     static auto t = std::make_shared<PrimitiveType>(Type::Kind::Char);
     return t;
   }
 
-  // Slice type singleton: builtin { i64 start, i64 end } for indexing
+  /**
+   * Slice type singleton: builtin { i64 start, i64 end } for indexing
+   */
   static TypePtr Slice() {
     static auto t = std::make_shared<SliceType>();
     return t;
   }
 
-  // Module reference type for qualified name resolution (mod_x.mod_y.var)
+  /**
+   * Module reference type for qualified name resolution (mod_x.mod_y.var)
+   */
   static TypePtr Module(const std::string& modulePath) {
     return std::make_shared<ModuleType>(modulePath);
   }
 
-  // String literals are represented as static_ptr<u8> - immortal, read-only
-  // data
+  /**
+   * String literals are represented as static_ptr<u8> - immortal, read-only
+   * data
+   */
   static TypePtr String() { return StaticPointer(UInt8()); }
 
-  // Create a function-pointer type: function () T
+  /**
+   * Create a function-pointer type: function () T
+   */
   static TypePtr Function(TypePtr returnType, std::vector<TypePtr> paramTypes,
                           bool canThrow = false, bool requiresUnsafe = false) {
     return std::make_shared<FunctionType>(
         std::move(returnType), std::move(paramTypes), canThrow, requiresUnsafe);
   }
 
-  // Create a lambda type: () => {} (anonymous function, fat pointer call)
+  /**
+   * Create a lambda type: () => {} (anonymous function, fat pointer call)
+   */
   static TypePtr Lambda(TypePtr returnType, std::vector<TypePtr> paramTypes,
                         bool canThrow = false, bool requiresUnsafe = false) {
     return std::make_shared<LambdaType>(
         std::move(returnType), std::move(paramTypes), canThrow, requiresUnsafe);
   }
 
-  // Create a raw (non-owning) pointer type: raw_ptr<T> for C interop
+  /**
+   * Create a raw (non-owning) pointer type: raw_ptr&lt;T&gt; for C interop
+   */
   static TypePtr RawPointer(TypePtr pointeeType) {
     return std::make_shared<RawPointerType>(std::move(pointeeType));
   }
 
-  // Create a static pointer type: static_ptr<T> for immortal data
-  // Used for string literals and global constants - memory safe
+  /**
+   * Create a static pointer type: static_ptr&lt;T&gt; for immortal data
+   * Used for string literals and global constants - memory safe
+   */
   static TypePtr StaticPointer(TypePtr pointeeType) {
     return std::make_shared<StaticPointerType>(std::move(pointeeType));
   }
 
-  // Create a null pointer type (singleton)
+  /**
+   * Create a null pointer type (singleton)
+   */
   static TypePtr NullPointer() {
     static auto t = std::make_shared<NullPointerType>();
     return t;
   }
 
-  // Create a reference type: ref(T) with implicit dereferencing
+  /**
+   * Create a reference type: ref(T) with implicit dereferencing
+   */
   static TypePtr Reference(TypePtr referencedType, bool isMutable = true) {
     return std::make_shared<ReferenceType>(std::move(referencedType),
                                            isMutable);
   }
 
-  // Create a fixed-size array type: array<T, N> or array<T, M, N>
+  /**
+   * Create a fixed-size array type: array<T, N> or array<T, M, N>
+   */
   static TypePtr Array(TypePtr elementType, std::vector<size_t> dimensions) {
     return std::make_shared<ArrayType>(std::move(elementType),
                                        std::move(dimensions));
   }
 
-  // Create a class type (cached by name)
-  static std::shared_ptr<ClassType> Class(const std::string& name) {
-    auto& cache = getClassCache();
-    auto it = cache.find(name);
-    if (it != cache.end()) {
-      return it->second;
-    }
-    auto type = std::make_shared<ClassType>(name);
-    cache[name] = type;
-    return type;
-  }
-
-  // Create a generic class type with type parameters
-  static std::shared_ptr<ClassType> GenericClass(
-      const std::string& name, std::vector<std::string> typeParams) {
-    std::string key = name + "<";
-    for (size_t i = 0; i < typeParams.size(); ++i) {
-      if (i > 0) key += ",";
-      key += typeParams[i];
-    }
-    key += ">";
-
-    auto& cache = getGenericClassCache();
-    auto it = cache.find(key);
-    if (it != cache.end()) {
-      return it->second;
-    }
-    auto type = std::make_shared<ClassType>(name, std::move(typeParams));
-    cache[key] = type;
-    return type;
-  }
-
-  // Create a specialized generic class (e.g., List<i32>)
-  static std::shared_ptr<ClassType> SpecializedClass(
-      const std::string& baseName, std::vector<TypePtr> typeArgs) {
-    std::string mangledName = mangleGenericClassName(baseName, typeArgs);
-
-    auto& cache = getSpecializedClassCache();
-    auto it = cache.find(mangledName);
-    if (it != cache.end()) {
-      return it->second;
-    }
-    auto type =
-        std::make_shared<ClassType>(mangledName, baseName, std::move(typeArgs));
-    cache[mangledName] = type;
-    return type;
-  }
-
-  // Generate mangled name for a specialized generic class: the generic's
-  // mangled name with each type argument spelled the way every symbol
-  // spells types (QualifiedName::canonicalTypeString)
-  static std::string mangleGenericClassName(
-      const std::string& baseName, const std::vector<TypePtr>& typeArgs) {
-    std::string result = baseName;
-    for (const auto& arg : typeArgs) {
-      result += "_" + QualifiedName::canonicalTypeString(arg);
-    }
-    return result;
-  }
-
   /** Create a type parameter carrying its optional requirement. */
   static TypePtr TypeParameter(const std::string& name,
-                               TypeConstraint constraint = {}) {
-    return std::make_shared<TypeParameterType>(name, std::move(constraint));
+                               TypeConstraint constraint = {},
+                               DeclarationId declaration = {},
+                               std::shared_ptr<const int> session = {}) {
+    return std::make_shared<TypeParameterType>(name, std::move(constraint),
+                                               TypeProjection::None,
+                                               declaration, std::move(session));
   }
 
-  // `_return_type_of<F>` where F is not bound yet: what F returns, carried as
-  // F plus the projection until a specialization says what F is.
-  static TypePtr TypeParameterProjection(const std::string& base,
-                                         const TypeConstraint& constraint,
-                                         TypeProjection projection) {
-    return std::make_shared<TypeParameterType>(base, constraint, projection);
-  }
-
-  // Create an interface type (cached by name)
-  static std::shared_ptr<InterfaceType> Interface(const std::string& name) {
-    auto& cache = getInterfaceCache();
-    auto it = cache.find(name);
-    if (it != cache.end()) {
-      return it->second;
-    }
-    auto type = std::make_shared<InterfaceType>(name);
-    cache[name] = type;
-    return type;
-  }
-
-  // Clear all type caches - must be called between independent compilation
-  // units (e.g., between tests)
-  static void clearCaches() {
-    getClassCache().clear();
-    getGenericClassCache().clear();
-    getSpecializedClassCache().clear();
-    getInterfaceCache().clear();
-  }
-
- private:
-  // Cache accessors for clearCaches() support
-  static std::unordered_map<std::string, std::shared_ptr<ClassType>>&
-  getClassCache() {
-    static std::unordered_map<std::string, std::shared_ptr<ClassType>> cache;
-    return cache;
-  }
-  static std::unordered_map<std::string, std::shared_ptr<ClassType>>&
-  getGenericClassCache() {
-    static std::unordered_map<std::string, std::shared_ptr<ClassType>> cache;
-    return cache;
-  }
-  static std::unordered_map<std::string, std::shared_ptr<ClassType>>&
-  getSpecializedClassCache() {
-    static std::unordered_map<std::string, std::shared_ptr<ClassType>> cache;
-    return cache;
-  }
-  static std::unordered_map<std::string, std::shared_ptr<InterfaceType>>&
-  getInterfaceCache() {
-    static std::unordered_map<std::string, std::shared_ptr<InterfaceType>>
-        cache;
-    return cache;
-  }
-
- public:
-  // Parse a type name string to TypePtr
+  /**
+   * Parse a type name string to TypePtr
+   */
   static TypePtr fromString(const std::string& name) {
     if (name == "void") return Void();
     if (name == "bool") return Bool();
@@ -2397,6 +2703,47 @@ class Types {
   }
 };
 
+/** The semantic inputs that distinguish instances of one template. */
+struct SpecializationKey {
+  DeclarationId source;
+  DeclarationId enclosing;
+  std::vector<TypePtr> arguments;
+  std::optional<std::vector<TypePtr>> variadic;
+
+  /** Compare semantic types, including nominal declaration identities. */
+  bool operator==(const SpecializationKey& other) const;
+};
+
+inline DeclarationId NominalType::sourceDeclaration(
+    const DeclarationTable& table) const {
+  if (!belongsTo(table))
+    logAndThrowError("Nominal type belongs to another analysis session");
+  const auto& record = table.get(getDeclarationId());
+  return record.specialization ? record.specialization->source
+                               : getDeclarationId();
+}
+
+/** Bucket instances by template and argument kinds; equality checks structure.
+ */
+struct SpecializationKeyHash {
+  /** Computes a hash for the supplied value for use in unordered containers. */
+  size_t operator()(const SpecializationKey& key) const {
+    size_t hash = key.source.index();
+    auto combine = [&](size_t value) { hash = hash * 31 + value; };
+    combine(key.enclosing.index());
+    combine(key.arguments.size());
+    for (const auto& arg : key.arguments)
+      combine(arg ? static_cast<size_t>(arg->getKind()) + 1 : 0);
+    combine(key.variadic.has_value());
+    if (key.variadic) {
+      combine(key.variadic->size());
+      for (const auto& arg : *key.variadic)
+        combine(arg ? static_cast<size_t>(arg->getKind()) + 1 : 0);
+    }
+    return hash;
+  }
+};
+
 /**
  * TypeRegistry - Per-compilation-unit registry for class and interface types.
  *
@@ -2405,23 +2752,41 @@ class Types {
  * and CodegenVisitor.
  */
 class TypeRegistry {
-  std::unordered_map<std::string, std::shared_ptr<ClassType>> classCache;
-  std::unordered_map<std::string, std::shared_ptr<ClassType>> genericClassCache;
-  std::unordered_map<std::string, std::shared_ptr<ClassType>>
-      specializedClassCache;
-  std::unordered_map<std::string, std::shared_ptr<InterfaceType>>
-      interfaceCache;
-  std::unordered_map<std::string, std::shared_ptr<InterfaceType>>
-      genericInterfaceCache;
-  std::unordered_map<std::string, std::shared_ptr<InterfaceType>>
-      specializedInterfaceCache;
-  std::unordered_map<std::string, std::shared_ptr<EnumType>> enumCache;
+  std::unordered_map<DeclarationId, std::shared_ptr<NominalType>> nominalTypes_;
+
+  /** Looks up the class, interface, or enum type for a declaration identity. */
+  template <typename T>
+  std::shared_ptr<T> nominalType(DeclarationId id, DeclarationKind kind) {
+    const auto& record = declarations.get(id);
+    if (record.kind != kind)
+      logAndThrowError("Declaration kind does not match nominal type");
+    auto found = nominalTypes_.find(id);
+    if (found != nominalTypes_.end())
+      return std::static_pointer_cast<T>(found->second);
+    auto type = std::make_shared<T>(record.name);
+    type->declarationId_ = id;
+    type->declarationSession_ = declarations.session();
+    nominalTypes_.emplace(id, type);
+    return type;
+  }
+
+  std::unordered_map<SpecializationKey, DeclarationId, SpecializationKeyHash>
+      specializations_;
 
  public:
+  /** Declaration identities shared by semantic analysis and code generation. */
+  DeclarationTable declarations;
+
+  /** The builtin error interface shared throughout this analysis session. */
+  std::shared_ptr<InterfaceType> errorInterface;
+
+  /** Initializes the collection of primitive and declared semantic types. */
   TypeRegistry() { registerBuiltins(); }
 
-  // Register built-in types (IError). The iteration protocol
-  // (IIterator/IIterable) lives in stdlib/iterator.sun since it names Option.
+  /**
+   * Register built-in types (IError). The iteration protocol
+   * (IIterator/IIterable) lives in stdlib/iterator.sun since it names Option.
+   */
   void registerBuiltins() {
     // Create IError interface with code() and message() methods.
     // message() starts as static_ptr<u8> — the only string type that exists
@@ -2429,16 +2794,33 @@ class TypeRegistry {
     // the return type is retargeted to it (an owned clone of the message), so
     // errors can carry text composed at runtime. Without the stdlib, message()
     // stays literal-only.
-    auto ierror = std::make_shared<InterfaceType>("IError");
+    auto id = declarations.add(DeclarationKind::Interface, "IError");
+    declarations.bindPortable(
+        id,
+        PortableDeclarationKey::original(
+            "4c7b23a9e50e3bb484c7f661e4700d156bac371ed9dd5d23c3d22e2fefc263c1",
+            1));
+    auto ierror = nominalType<InterfaceType>(id, DeclarationKind::Interface);
     // Not const: every user error class would then have to spell
     // `const function code()`, and errors are caught into plain variables.
-    ierror->addMethod("code", Types::Int32(), {}, true);
-    ierror->addMethod("message", Types::String(), {}, true);
-    interfaceCache["IError"] = ierror;
+    ierror->addMethod("code", Types::Int32(), {}, true).declarationId =
+        declarations.add(DeclarationKind::Function, "code", id);
+    ierror->addMethod("message", Types::String(), {}, true).declarationId =
+        declarations.add(DeclarationKind::Function, "message", id);
+    uint64_t ordinal = 2;
+    for (const auto& method : ierror->getMethods())
+      declarations.bindPortable(
+          method.declarationId,
+          PortableDeclarationKey::original("4c7b23a9e50e3bb484c7f661e4700d156ba"
+                                           "c371ed9dd5d23c3d22e2fefc263c1",
+                                           ordinal++));
+    errorInterface = ierror;
   }
 
-  // Check if a type name is a builtin type that cannot be redefined
-  // Includes builtin interfaces and type traits used by _is<T>
+  /**
+   * Check if a type name is a builtin type that cannot be redefined
+   * Includes builtin interfaces and type traits used by _is&lt;T&gt;
+   */
   bool isBuiltinTypeName(const std::string& name) const {
     static const std::unordered_set<std::string> builtinNames = {
         // Builtin interfaces
@@ -2448,182 +2830,133 @@ class TypeRegistry {
     return builtinNames.count(name) > 0;
   }
 
-  // Non-copyable to prevent accidental duplication
+  /**
+   * Non-copyable to prevent accidental duplication
+   */
   TypeRegistry(const TypeRegistry&) = delete;
+  /** Disallows assignment so ownership and object identity cannot be duplicated. */
   TypeRegistry& operator=(const TypeRegistry&) = delete;
 
-  // Movable
+  /**
+   * Movable
+   */
   TypeRegistry(TypeRegistry&&) = default;
+  /** Transfers the stored state from another instance during move assignment. */
   TypeRegistry& operator=(TypeRegistry&&) = default;
 
-  // Get or create a class type by qualified name
-  // Sets the qualified name and base name on the class type automatically
-  std::shared_ptr<ClassType> getClass(const sun::QualifiedName& qualifiedName) {
-    std::string name = qualifiedName.mangled();
-    auto classType = getClass(name);
-    // Set qualified name if not already set
-    if (!classType->hasQualifiedName()) {
-      classType->setQualifiedName(qualifiedName);
-    }
-    // Set base name for error messages if there's a scope path. A
-    // specialization derives its display name from the generic's, so leave
-    // it alone (its mangled base name would read "Vec_i32<i32>").
-    if (!classType->hasBaseName() && !classType->isSpecialized() &&
-        !qualifiedName.scopePath.empty()) {
-      classType->setBaseName(qualifiedName.baseName);
-    }
-    return classType;
+  /** Get a source class before its source name has been assigned. */
+  std::shared_ptr<ClassType> getClass(DeclarationId id) {
+    return nominalType<ClassType>(id, DeclarationKind::Class);
   }
 
-  // Get or create a class type by mangled name
-  // Also checks specializedClassCache for generic instantiations
-  std::shared_ptr<ClassType> getClass(const std::string& name) {
-    // First check specialized class cache (for generic instantiations like
-    // Box_i32)
-    auto specIt = specializedClassCache.find(name);
-    if (specIt != specializedClassCache.end()) {
-      return specIt->second;
-    }
-
-    // Then check regular class cache
-    auto it = classCache.find(name);
-    if (it != classCache.end()) {
-      return it->second;
-    }
-    auto type = std::make_shared<ClassType>(name);
-    classCache[name] = type;
+  /** Bind the current source name to a source class's existing identity. */
+  std::shared_ptr<ClassType> getClass(DeclarationId id,
+                                      const QualifiedName& name) {
+    auto type = getClass(id);
+    if (!type->getQualifiedName().baseName.empty() &&
+        type->getQualifiedName() != name)
+      logAndThrowError("Cannot change a nominal type's assigned source name");
+    type->name_ = name.lookupName();
+    type->setQualifiedName(name);
+    type->setBaseName(name.baseName);
     return type;
   }
 
-  // Get or create a generic class type with type parameters
-  std::shared_ptr<ClassType> getGenericClass(
-      const std::string& name, std::vector<std::string> typeParams) {
-    std::string key = name + "<";
-    for (size_t i = 0; i < typeParams.size(); ++i) {
-      if (i > 0) key += ",";
-      key += typeParams[i];
-    }
-    key += ">";
+  /** Get a source interface before its source name has been assigned. */
+  std::shared_ptr<InterfaceType> getInterface(DeclarationId id) {
+    return nominalType<InterfaceType>(id, DeclarationKind::Interface);
+  }
 
-    auto it = genericClassCache.find(key);
-    if (it != genericClassCache.end()) {
-      return it->second;
-    }
-    auto type = std::make_shared<ClassType>(name, std::move(typeParams));
-    genericClassCache[key] = type;
+  /** Bind the current source name to a source interface's identity. */
+  std::shared_ptr<InterfaceType> getInterface(DeclarationId id,
+                                              const QualifiedName& name) {
+    auto type = getInterface(id);
+    if (!type->getQualifiedName().baseName.empty() &&
+        type->getQualifiedName() != name)
+      logAndThrowError("Cannot change a nominal type's assigned source name");
+    type->name = name.lookupName();
+    type->setQualifiedName(name);
+    type->setBaseName(name.baseName);
     return type;
   }
 
-  // Get or create a specialized generic class (e.g., List<i32>)
+  /** Get a source enum before its source name has been assigned. */
+  std::shared_ptr<EnumType> getEnum(DeclarationId id) {
+    return nominalType<EnumType>(id, DeclarationKind::Enum);
+  }
+
+  /** Bind the current source name to a source enum's existing identity. */
+  std::shared_ptr<EnumType> getEnum(DeclarationId id,
+                                    const QualifiedName& name) {
+    auto type = getEnum(id);
+    if (!type->getQualifiedName().baseName.empty() &&
+        type->getQualifiedName() != name)
+      logAndThrowError("Cannot change a nominal type's assigned source name");
+    type->name_ = name.lookupName();
+    type->setQualifiedName(name);
+    type->setBaseName(name.baseName);
+    return type;
+  }
+
+  /** Intern an instance before resolving its members or body. */
+  DeclarationId specialize(const SpecializationKey& key) {
+    auto found = specializations_.find(key);
+    if (found != specializations_.end()) return found->second;
+    const auto& source = declarations.get(key.source);
+    auto id = declarations.add(
+        source.kind, source.name, key.enclosing ? key.enclosing : source.owner,
+        source.module, std::make_shared<const SpecializationKey>(key),
+        key.source);
+    specializations_.emplace(key, id);
+    return id;
+  }
+
+  /** Return an existing instance without allocating a declaration. */
+  DeclarationId findSpecialization(const SpecializationKey& key) const {
+    auto found = specializations_.find(key);
+    return found == specializations_.end() ? DeclarationId{} : found->second;
+  }
+
+  /** Configure the class attached to an interned specialization. */
   std::shared_ptr<ClassType> getSpecializedClass(
-      const std::string& baseName, std::vector<TypePtr> typeArgs) {
-    std::string mangledName = Types::mangleGenericClassName(baseName, typeArgs);
-
-    auto it = specializedClassCache.find(mangledName);
-    if (it != specializedClassCache.end()) {
-      return it->second;
-    }
-    auto type =
-        std::make_shared<ClassType>(mangledName, baseName, std::move(typeArgs));
-    specializedClassCache[mangledName] = type;
+      DeclarationId id, const QualifiedName& name, const QualifiedName& source,
+      const std::vector<TypePtr>& arguments) {
+    auto type = getClass(id, name);
+    type->baseGenericName = source.lookupName();
+    type->setBaseName(source.display());
+    type->typeArguments = arguments;
+    type->setGenericQualifiedName(source);
     return type;
   }
 
-  // Get or create an interface type by name
-  // Also checks specializedInterfaceCache for generic instantiations
-  std::shared_ptr<InterfaceType> getInterface(const std::string& name) {
-    // First check specialized interface cache
-    auto specIt = specializedInterfaceCache.find(name);
-    if (specIt != specializedInterfaceCache.end()) {
-      return specIt->second;
-    }
-
-    // Then check regular interface cache
-    auto it = interfaceCache.find(name);
-    if (it != interfaceCache.end()) {
-      return it->second;
-    }
-    auto type = std::make_shared<InterfaceType>(name);
-    interfaceCache[name] = type;
-    return type;
-  }
-
-  // Look up an interface by name without auto-creating
-  // Returns nullptr if not found
-  std::shared_ptr<InterfaceType> lookupInterface(
-      const std::string& name) const {
-    // Check specialized interface cache first
-    auto specIt = specializedInterfaceCache.find(name);
-    if (specIt != specializedInterfaceCache.end()) {
-      return specIt->second;
-    }
-    // Then check regular interface cache
-    auto it = interfaceCache.find(name);
-    if (it != interfaceCache.end()) {
-      return it->second;
-    }
-    return nullptr;
-  }
-
-  // Get or create a generic interface type with type parameters
+  /** Intern a generic interface template by its source declaration. */
   std::shared_ptr<InterfaceType> getGenericInterface(
-      const std::string& name, std::vector<std::string> typeParams) {
-    std::string key = name + "<";
-    for (size_t i = 0; i < typeParams.size(); ++i) {
-      if (i > 0) key += ",";
-      key += typeParams[i];
-    }
-    key += ">";
-
-    auto it = genericInterfaceCache.find(key);
-    if (it != genericInterfaceCache.end()) {
-      return it->second;
-    }
-    auto type = std::make_shared<InterfaceType>(name, std::move(typeParams));
-    genericInterfaceCache[key] = type;
+      DeclarationId declaration, const QualifiedName& name,
+      std::vector<std::string> typeParams) {
+    auto type = getInterface(declaration, name);
+    type->typeParameters = std::move(typeParams);
     return type;
   }
 
-  // Get or create a specialized generic interface (e.g., IIterator<i32>)
+  /** Configure the interface attached to an interned specialization. */
   std::shared_ptr<InterfaceType> getSpecializedInterface(
-      const std::string& baseName, std::vector<TypePtr> typeArgs) {
-    std::string mangledName = Types::mangleGenericClassName(baseName, typeArgs);
-
-    auto it = specializedInterfaceCache.find(mangledName);
-    if (it != specializedInterfaceCache.end()) {
-      return it->second;
-    }
-    auto type = std::make_shared<InterfaceType>(mangledName, baseName,
-                                                std::move(typeArgs));
-    specializedInterfaceCache[mangledName] = type;
+      DeclarationId id, const QualifiedName& name, const QualifiedName& source,
+      const std::vector<TypePtr>& arguments) {
+    auto type = getInterface(id, name);
+    type->baseGenericName = source.lookupName();
+    type->setBaseName(source.baseName);
+    type->typeArguments = arguments;
+    type->setGenericQualifiedName(source);
     return type;
   }
 
-  // Get or create an enum type by name
-  std::shared_ptr<EnumType> getEnum(const std::string& name) {
-    auto it = enumCache.find(name);
-    if (it != enumCache.end()) {
-      return it->second;
-    }
-    auto type = std::make_shared<EnumType>(name);
-    enumCache[name] = type;
-    return type;
-  }
-
-  // Check if an enum type exists
-  bool hasEnum(const std::string& name) const {
-    return enumCache.find(name) != enumCache.end();
-  }
-
-  // Clear all caches (useful for REPL reset)
+  /**
+   * Clear all caches (useful for REPL reset)
+   */
   void clear() {
-    classCache.clear();
-    genericClassCache.clear();
-    specializedClassCache.clear();
-    interfaceCache.clear();
-    genericInterfaceCache.clear();
-    specializedInterfaceCache.clear();
-    enumCache.clear();
+    nominalTypes_.clear();
+    specializations_.clear();
+    errorInterface.reset();
   }
 };
 
@@ -2637,9 +2970,11 @@ inline bool Type::isCompound() const {
          !isTypeParameter();
 }
 
-// True if dropping a value of this type must run cleanup code: classes with a
-// deinit method (directly, or transitively through class/enum-typed fields)
-// and payload enums with at least one payload that needs drop.
+/**
+ * True if dropping a value of this type must run cleanup code: classes with a
+ * deinit method (directly, or transitively through class/enum-typed fields)
+ * and payload enums with at least one payload that needs drop.
+ */
 inline bool typeNeedsDropImpl(const Type* type,
                               std::unordered_set<const Type*>& visited) {
   if (!type || !visited.insert(type).second) return false;
@@ -2675,22 +3010,26 @@ inline bool typeNeedsDropImpl(const Type* type,
   return false;
 }
 
+/** Reports whether values of this type require cleanup when their lifetime ends. */
 inline bool typeNeedsDrop(const Type* type) {
   std::unordered_set<const Type*> visited;
   return typeNeedsDropImpl(type, visited);
 }
 
+/** Reports whether values of this type require cleanup when their lifetime ends. */
 inline bool typeNeedsDrop(const TypePtr& type) {
   return typeNeedsDrop(type.get());
 }
 
-// True if a value of this type may carry a lambda environment that lives in
-// a stack frame: a '<'_>' lambda, or anything that can transitively hold
-// one — a class through its fields or generic type arguments (containers
-// hide elements behind raw storage, so the arguments must count), a payload
-// enum, an array. Such a value must not outlive the frame it was built in.
-// References are the sibling case, tracked by the borrow checker's
-// class-stores-refs walk.
+/**
+ * True if a value of this type may carry a lambda environment that lives in
+ * a stack frame: a '<'_>' lambda, or anything that can transitively hold
+ * one — a class through its fields or generic type arguments (containers
+ * hide elements behind raw storage, so the arguments must count), a payload
+ * enum, an array. Such a value must not outlive the frame it was built in.
+ * References are the sibling case, tracked by the borrow checker's
+ * class-stores-refs walk.
+ */
 inline bool typeIsFrameCarryingImpl(const Type* type,
                                     std::unordered_set<const Type*>& visited) {
   if (!type || !visited.insert(type).second) return false;
@@ -2729,11 +3068,13 @@ inline bool typeIsFrameCarryingImpl(const Type* type,
   return false;
 }
 
+/** Reports whether this type can retain storage tied to a stack frame. */
 inline bool typeIsFrameCarrying(const Type* type) {
   std::unordered_set<const Type*> visited;
   return typeIsFrameCarryingImpl(type, visited);
 }
 
+/** Reports whether this type can retain storage tied to a stack frame. */
 inline bool typeIsFrameCarrying(const TypePtr& type) {
   return typeIsFrameCarrying(type.get());
 }
@@ -2750,7 +3091,7 @@ inline bool ClassType::isInterfaceConvertible(const TypePtr& from,
     if (!from->isClass() || typeIsFrameCarrying(from)) return false;
     auto* iface = static_cast<const InterfaceType*>(to.get());
     return static_cast<const ClassType*>(from.get())
-        ->convertibleToInterface(iface->getName());
+        ->convertibleToInterface(*iface);
   }
 
   // Class -> ref Interface: the class is borrowed through the fat pointer
@@ -2759,17 +3100,19 @@ inline bool ClassType::isInterfaceConvertible(const TypePtr& from,
     if (!target || !target->isInterface()) return false;
     auto* iface = static_cast<const InterfaceType*>(target.get());
     return static_cast<const ClassType*>(from.get())
-        ->convertibleToInterface(iface->getName());
+        ->convertibleToInterface(*iface);
   }
 
   return false;
 }
 
-// A copy of the type with every lifetime NAME stripped, recursively.
-// Lifetime names are relative to one signature's lifetime list; a type that
-// crosses into another namespace - a generic type-parameter binding, whose
-// specialization is shared by every caller - must not carry them along.
-// The <'_> marker itself is identity and stays.
+/**
+ * A copy of the type with every lifetime NAME stripped, recursively.
+ * Lifetime names are relative to one signature's lifetime list; a type that
+ * crosses into another namespace - a generic type-parameter binding, whose
+ * specialization is shared by every caller - must not carry them along.
+ * The <'_> marker itself is identity and stays.
+ */
 inline TypePtr eraseLifetimeNames(const TypePtr& type) {
   if (!type) return type;
   if (auto* lt = dynamic_cast<const LambdaType*>(type.get())) {
@@ -2845,4 +3188,4 @@ inline bool RawPointerType::equals(const Type& other) const {
   return false;
 }
 
-}  // namespace sun
+}  // namespace sun::semantic_analysis

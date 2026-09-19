@@ -9,7 +9,13 @@
 
 #include "support/sun_path.h"
 
-std::string ScopeTreeGenerator::generateHtml(const SemanticScope& root) {
+using sun::semantic_analysis::ScopeType;
+
+/** Produces readable views of syntax trees and semantic scopes. */
+namespace sun::debug {
+
+std::string ScopeTreeGenerator::generateHtml(
+    const sun::semantic_analysis::SemanticScope& root) {
   std::string json = generateJson(root);
   std::string html = getHtmlTemplate();
 
@@ -80,8 +86,8 @@ std::string ScopeTreeGenerator::escapeJson(const std::string& s) {
   return result;
 }
 
-std::string ScopeTreeGenerator::generateJson(const SemanticScope& scope,
-                                             int indent) {
+std::string ScopeTreeGenerator::generateJson(
+    const sun::semantic_analysis::SemanticScope& scope, int indent) {
   std::ostringstream out;
   std::string pad(indent, ' ');
   std::string pad2(indent + 2, ' ');
@@ -100,34 +106,26 @@ std::string ScopeTreeGenerator::generateJson(const SemanticScope& scope,
   if (!scope.scopePath.empty()) {
     out << ",\n"
         << pad2 << "\"scopeKey\": \""
-        << escapeJson(sun::QualifiedName::joinPath(scope.scopePath)) << "\"";
+        << escapeJson(
+               sun::semantic_analysis::QualifiedName::joinPath(scope.scopePath))
+        << "\"";
   }
 
-  // For class scopes, show baseName and mangledName
+  // For class scopes, show the source name
   if (auto* classScope = scope.asClass()) {
     if (!classScope->classBaseName.empty()) {
       out << ",\n"
           << pad2 << "\"className\": \""
           << escapeJson(classScope->classBaseName) << "\"";
     }
-    if (!classScope->classMangledName.empty()) {
-      out << ",\n"
-          << pad2 << "\"mangledName\": \""
-          << escapeJson(classScope->classMangledName) << "\"";
-    }
   }
 
-  // For interface scopes, show baseName and mangledName
+  // For interface scopes, show the source name
   if (auto* ifaceScope = scope.asInterface()) {
     if (!ifaceScope->interfaceBaseName.empty()) {
       out << ",\n"
           << pad2 << "\"interfaceName\": \""
           << escapeJson(ifaceScope->interfaceBaseName) << "\"";
-    }
-    if (!ifaceScope->interfaceMangledName.empty()) {
-      out << ",\n"
-          << pad2 << "\"mangledName\": \""
-          << escapeJson(ifaceScope->interfaceMangledName) << "\"";
     }
   }
 
@@ -139,11 +137,11 @@ std::string ScopeTreeGenerator::generateJson(const SemanticScope& scope,
           << escapeJson(funcScope->functionSignature) << "\"";
     }
 
-    // For function scopes, show the fully qualified mangled name
+    // For function scopes, show the qualified source name
     if (!funcScope->functionName.baseName.empty()) {
       out << ",\n"
-          << pad2 << "\"functionMangled\": \""
-          << escapeJson(funcScope->functionName.mangled()) << "\"";
+          << pad2 << "\"functionName\": \""
+          << escapeJson(funcScope->functionName.display()) << "\"";
     }
 
     // Function can throw
@@ -236,6 +234,7 @@ std::string ScopeTreeGenerator::generateJson(const SemanticScope& scope,
       if (!child) continue;
       if (!first) out << ",";
       out << "\n" << pad4 << "\"" << escapeJson(name) << "\": ";
+      /** Generate JSON representation of a scope (recursive) */
       out << generateJson(*child, indent + 4);
       first = false;
     }
@@ -249,6 +248,7 @@ std::string ScopeTreeGenerator::generateJson(const SemanticScope& scope,
     for (const auto& child : scope.children) {
       if (!first) out << ",";
       out << "\n" << pad4;
+      /** Generate JSON representation of a scope (recursive) */
       out << generateJson(*child, indent + 4);
       first = false;
     }
@@ -261,7 +261,7 @@ std::string ScopeTreeGenerator::generateJson(const SemanticScope& scope,
 
 std::string ScopeTreeGenerator::getHtmlTemplate() {
   // Read template from external file for easier editing
-  auto paths = sun::SunPath::getPaths();
+  auto paths = sun::support::SunPath::getPaths();
   std::string templatePath;
   for (const auto& dir : paths) {
     auto candidate = dir / "src/debug/scope_tree_template.html";
@@ -293,3 +293,5 @@ std::string ScopeTreeGenerator::getHtmlTemplate() {
   ss << file.rdbuf();
   return ss.str();
 }
+
+}  // namespace sun::debug

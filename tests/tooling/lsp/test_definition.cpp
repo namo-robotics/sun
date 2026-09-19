@@ -18,26 +18,34 @@
 #include "driver/execution_utils.h"
 #include "lsp/definition.h"
 
+using sun::driver::Driver;
+
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 // The file never exists on disk; nodes carry the path exactly as given
 const char* kPath = "/definition_test.sun";
 
+/** Keeps the syntax tree and semantic context alive for editor-feature tests. */
 struct Analysis {
   std::unique_ptr<Driver> driver;
-  Driver::AnalyzedProgram program;
+  sun::driver::Driver::AnalyzedProgram program;
 };
 
+/** Parses and analyzes fixture source before querying editor features. */
 Analysis analyze(const std::string& source, bool withStdlib = false) {
-  initTestEnvironment();
+  sun::driver::initTestEnvironment();
   Analysis analysis;
   analysis.driver = Driver::createForAOT("definition_test");
-  if (withStdlib) analysis.driver->setMoonImports(getStdlibMoonImports());
+  if (withStdlib)
+    analysis.driver->setMoonImports(sun::driver::getStdlibMoonImports());
   analysis.program = analysis.driver->analyzeString(source, kPath);
   return analysis;
 }
 
-// Byte offset of the Nth occurrence of needle
+/**
+ * Byte offset of the Nth occurrence of needle
+ */
 size_t offsetOf(const std::string& source, const std::string& needle,
                 int occurrence = 0) {
   size_t pos = std::string::npos;
@@ -51,6 +59,7 @@ size_t offsetOf(const std::string& source, const std::string& needle,
   return pos;
 }
 
+/** Queries the definition location at a fixture source offset. */
 std::optional<sun::lsp::SymbolLocation> definitionAt(const std::string& source,
                                                      const std::string& needle,
                                                      bool withStdlib = false,
@@ -68,6 +77,7 @@ std::optional<sun::lsp::SymbolLocation> definitionAt(const std::string& source,
                                      static_cast<int>(pos));
 }
 
+/** Extracts the source spelling covered by an editor result range. */
 std::string rangeText(const std::string& text,
                       const sun::lsp::SymbolLocation& def) {
   return text.substr(
@@ -75,8 +85,10 @@ std::string rangeText(const std::string& text,
       def.range.endOffset.value_or(def.range.offset) - def.range.offset);
 }
 
-// The definition of the symbol at `needle` is the name starting at
-// `declaration` in the same document
+/**
+ * The definition of the symbol at `needle` is the name starting at
+ * `declaration` in the same document
+ */
 testing::AssertionResult definedAt(const std::string& source,
                                    const std::string& needle,
                                    const std::string& declaration,
@@ -105,6 +117,7 @@ testing::AssertionResult definedAt(const std::string& source,
   return testing::AssertionSuccess();
 }
 
+/** Reads a fixture file into a string for comparison. */
 std::string readFile(const std::string& path) {
   std::ifstream file(path);
   std::stringstream buffer;
@@ -334,7 +347,7 @@ function main() i32 {
 }
 
 TEST(Tooling_Lsp_Definition, MergedFiles) {
-  initTestEnvironment();
+  sun::driver::initTestEnvironment();
   std::filesystem::create_directories("tmp");
   std::string mainPath =
       std::filesystem::absolute("tmp/definition_main.sun").string();
@@ -373,7 +386,8 @@ TEST(Tooling_Lsp_Definition, MergedFiles) {
 }
 
 TEST(Tooling_Lsp_Definition, StdlibDeclarations) {
-  if (getStdlibMoonImports().empty()) GTEST_SKIP() << "stdlib.moon not built";
+  if (sun::driver::getStdlibMoonImports().empty())
+    GTEST_SKIP() << "stdlib.moon not built";
   std::string source = R"(
 using std;
 class Config {
@@ -436,4 +450,24 @@ TEST(Tooling_Lsp_Definition, FieldInitializerIgnoresConstructorParameter) {
     }
   )";
   EXPECT_TRUE(definedAt(source, "seed +", "seed: i32"));
+}
+
+TEST(Tooling_Lsp_Definition, OverloadsUseSelectedDeclarations) {
+  const std::string source = R"(
+function value(x: i32) i32 { return 20; }
+function value(x: bool) i32 { return 22; }
+module library {
+  public function value(x: i32) i32 { return 20; }
+  public function value(x: bool) i32 { return 22; }
+}
+function main() i32 {
+  return value(1) + value(true) + library.value(2) + library.value(false);
+}
+)";
+  auto analysis = analyze(source);
+  ASSERT_FALSE(analysis.program.error.has_value());
+  EXPECT_TRUE(definedAt(source, "value(1)", "value(x: i32)"));
+  EXPECT_TRUE(definedAt(source, "value(true)", "value(x: bool)"));
+  EXPECT_TRUE(definedAt(source, "value(2)", "value(x: i32)", 1));
+  EXPECT_TRUE(definedAt(source, "value(false)", "value(x: bool)", 1));
 }

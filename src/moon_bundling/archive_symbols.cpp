@@ -20,20 +20,25 @@
 
 #include "moon_bundling/moon.h"
 
-namespace sun {
+/** Builds and loads compiled Moon libraries and their declaration metadata. */
+namespace sun::moon_bundling {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
 using llvm::object::Archive;
 using llvm::object::BasicSymbolRef;
 using llvm::object::SymbolicFile;
 
+/** Creates an LLVM error describing an archive-processing failure. */
 llvm::Error makeError(const std::string& message) {
   return llvm::createStringError(llvm::inconvertibleErrorCode(), "%s",
                                  message.c_str());
 }
 
-// The name of an archive member, for messages
+/**
+ * The name of an archive member, for messages
+ */
 std::string memberName(const Archive::Child& child) {
   auto name = child.getName();
   if (!name) {
@@ -43,19 +48,24 @@ std::string memberName(const Archive::Child& child) {
   return name->str();
 }
 
-// Object symbols carry the assembler's global prefix on Mach-O; Sun code and
-// the `as "..."` names in extern declarations never do.
+/**
+ * Object symbols carry the assembler's global prefix on Mach-O; Sun code and
+ * the `as "..."` names in extern declarations never do.
+ */
 std::string bareName(llvm::StringRef objectName, bool machO) {
   if (machO && objectName.starts_with("_")) return objectName.drop_front().str();
   return objectName.str();
 }
 
+/** Applies the object-format spelling required for an external symbol. */
 std::string objectName(const std::string& bare, bool machO) {
   return machO ? "_" + bare : bare;
 }
 
-// Open one member as an object with a symbol table. Bitcode members are
-// refused by name: nothing below could rename their symbols.
+/**
+ * Open one member as an object with a symbol table. Bitcode members are
+ * refused by name: nothing below could rename their symbols.
+ */
 llvm::Expected<std::unique_ptr<llvm::object::Binary>> openMember(
     const Archive::Child& child) {
   auto buffer = child.getMemoryBufferRef();
@@ -77,7 +87,9 @@ llvm::Expected<std::unique_ptr<llvm::object::Binary>> openMember(
   return binary;
 }
 
-// One pass over every member; `visit` sees each member as an object.
+/**
+ * One pass over every member; `visit` sees each member as an object.
+ */
 llvm::Error forEachMember(
     const Archive& archive,
     llvm::function_ref<llvm::Error(const Archive::Child&,
@@ -92,7 +104,9 @@ llvm::Error forEachMember(
   return err;
 }
 
-// `$hash$_name` -> `name`; anything else unchanged.
+/**
+ * `$hash$_name` -> `name`; anything else unchanged.
+ */
 std::string stripBundlePrefix(const std::string& symbol) {
   if (symbol.size() < 3 || symbol[0] != '$') return symbol;
   size_t close = symbol.find('$', 1);
@@ -105,6 +119,7 @@ std::string stripBundlePrefix(const std::string& symbol) {
 
 }  // namespace
 
+/** Computes a stable content identity for a set of native archives. */
 std::string computeArchiveSetHash(
     const std::vector<std::pair<std::string, std::string>>& namesAndDigests) {
   std::vector<std::string> lines;
@@ -117,6 +132,7 @@ std::string computeArchiveSetHash(
   return computeSha256Hex(input).substr(0, 16);
 }
 
+/** Reads archive symbols and reports definitions requiring library isolation. */
 llvm::Expected<ArchiveSymbolScan> scanArchiveSymbols(
     llvm::MemoryBufferRef archiveBytes) {
   auto archive = Archive::create(archiveBytes);
@@ -161,6 +177,7 @@ llvm::Expected<ArchiveSymbolScan> scanArchiveSymbols(
   return scan;
 }
 
+/** Rewrites native archive symbols using the supplied name mapping. */
 llvm::Expected<std::string> renameArchiveSymbols(
     llvm::MemoryBufferRef archiveBytes,
     const std::map<std::string, std::string>& renames) {
@@ -213,8 +230,10 @@ llvm::Expected<std::string> renameArchiveSymbols(
   return (*written)->getBuffer().str();
 }
 
-// Whether the members are Mach-O objects, decided from the first one. The
-// archive format alone does not say: the BSD layout holds either kind.
+/**
+ * Whether the members are Mach-O objects, decided from the first one. The
+ * archive format alone does not say: the BSD layout holds either kind.
+ */
 bool archiveHoldsMachO(const Archive& archive) {
   bool machO = false;
   llvm::Error err = llvm::Error::success();
@@ -230,6 +249,7 @@ bool archiveHoldsMachO(const Archive& archive) {
   return machO;
 }
 
+/** Lists the symbols advertised by the archive index. */
 std::vector<std::string> listArchiveIndex(llvm::MemoryBufferRef archiveBytes) {
   std::vector<std::string> names;
   auto archive = Archive::create(archiveBytes);
@@ -244,6 +264,7 @@ std::vector<std::string> listArchiveIndex(llvm::MemoryBufferRef archiveBytes) {
   return names;
 }
 
+/** Maps defined symbols to the archive members that supply them. */
 std::map<std::string, std::string> listArchiveDefinitions(
     llvm::MemoryBufferRef archiveBytes) {
   std::map<std::string, std::string> definitions;
@@ -253,4 +274,4 @@ std::map<std::string, std::string> listArchiveDefinitions(
   return definitions;
 }
 
-}  // namespace sun
+}  // namespace sun::moon_bundling

@@ -4,6 +4,9 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+using sun::support::SunError;
+
 // ============================================================================
 // _is<T> Intrinsic Tests - Type Trait Checks
 // ============================================================================
@@ -790,6 +793,7 @@ TEST(Builtins_IsIntrinsic, module_generic_helper_definition) {
 // _print_i64 used to sign-truncate to i32 and delegate to the i32 helper, so
 // any value outside the i32 range printed as garbage.
 
+/** Runs a Sun program and captures its standard output for assertions. */
 static std::string capturePrintedOutput(const std::string& source) {
   testing::internal::CaptureStdout();
   executeString(source);
@@ -1402,7 +1406,7 @@ TEST(Builtins_BitIntrinsics, bswap_u16_u32_u64) {
 // recordSpawnArgumentConversions). _spawn is only written inside
 // std.thread.spawn, so the program goes through the stdlib.
 TEST(Builtins_SpawnIntrinsic, rejects_a_throwing_function) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(compileStringWithStdlib(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::compileStringWithStdlib(R"(
     using std;
     using std.thread;
 

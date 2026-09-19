@@ -4,6 +4,10 @@
 
 #include "ast.h"
 
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
+namespace sun::ast {
+
+/** Reports whether evaluating this expression always exits the current control-flow path. */
 bool exprDiverges(const ExprAST& expr) {
   switch (expr.getType()) {
     case ASTNodeType::RETURN:
@@ -25,3 +29,5 @@ bool exprDiverges(const ExprAST& expr) {
       return false;
   }
 }
+
+}  // namespace sun::ast

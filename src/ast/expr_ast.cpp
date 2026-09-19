@@ -5,6 +5,9 @@
 #include "serialization/ast_deserializer.h"
 #include "serialization/ast_serializer.h"
 
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
+namespace sun::ast {
+
 std::unique_ptr<ExprAST> ExprAST::clone() const {
   // Serialize this node to protobuf
   sun::serialization::ASTSerializer serializer;
@@ -15,7 +18,7 @@ std::unique_ptr<ExprAST> ExprAST::clone() const {
   return deserializer.deserializeFromString(data);
 }
 
-void ExprAST::inheritSourceFile(sun::SourceFileId id) {
+void ExprAST::inheritSourceFile(sun::support::SourceFileId id) {
   if (!sourceFileId_) sourceFileId_ = id;
   // Typed children are forwarded by forEachChildSlot rather than visited.
   // Visit their roots here as well so generated methods retain their file.
@@ -59,3 +62,5 @@ void ExprAST::inheritSourceFile(sun::SourceFileId id) {
       });
   }
 }
+
+}  // namespace sun::ast

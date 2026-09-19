@@ -6,6 +6,10 @@
 #include "ast/block_expr_ast.h"
 #include "ast/expr_ast.h"
 
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
+namespace sun::ast {
+
+/** A compiled-library dependency and its import settings. */
 struct ManifestMoonDependency {
   std::string path;                 // local path; empty when url is set
   std::optional<std::string> url;   // downloaded to the moon cache
@@ -13,29 +17,36 @@ struct ManifestMoonDependency {
   std::optional<std::string> rename;
 };
 
+/** A source dependency and the module name under which it is imported. */
 struct ManifestSunDependency {
   std::string path;
   std::optional<std::string> hash;
 };
 
-// A .proto schema imported natively: the compiler synthesizes Sun classes
-// (one per message) into a module named after the proto package.
+/**
+ * A .proto schema imported natively: the compiler synthesizes Sun classes
+ * (one per message) into a module named after the proto package.
+ */
 struct ManifestProtoDependency {
   std::string path;
 };
 
-// A native static library (.a) carried inside the .moon being built, so
-// importers link against it without naming -l flags. Only meaningful when
-// building a bundle.
+/**
+ * A native static library (.a) carried inside the .moon being built, so
+ * importers link against it without naming -l flags. Only meaningful when
+ * building a bundle.
+ */
 struct ManifestArchiveDependency {
   std::string path;
 };
 
-// Dependencies that only apply when compiling for one operating system,
-// from a `target: { <os>: { ... } }` block. The manifest never decides the
-// target — --target (or the host) does, at compile time; a block simply says
-// which sources belong to builds for that OS. This is how the stdlib carries
-// target_linux.sun and target_darwin.sun in one manifest.
+/**
+ * Dependencies that only apply when compiling for one operating system,
+ * from a `target: { <os>: { ... } }` block. The manifest never decides the
+ * target — --target (or the host) does, at compile time; a block simply says
+ * which sources belong to builds for that OS. This is how the stdlib carries
+ * target_linux.sun and target_darwin.sun in one manifest.
+ */
 struct ManifestTargetBlock {
   std::string os;  // "linux", "macos" or "windows"
   std::vector<ManifestSunDependency> suns;
@@ -46,6 +57,7 @@ struct ManifestTargetBlock {
   std::vector<ManifestSunDependency> testSuns;
 };
 
+/** Dependency declarations and target-specific settings from a Sun manifest. */
 class ManifestAST : public ExprAST {
   std::vector<ManifestSunDependency> suns;
   std::vector<ManifestMoonDependency> moons;
@@ -56,6 +68,7 @@ class ManifestAST : public ExprAST {
   std::vector<ManifestSunDependency> testSuns;
 
  public:
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   ManifestAST(std::vector<ManifestSunDependency> suns,
               std::vector<ManifestMoonDependency> moons,
               std::vector<ManifestProtoDependency> protos = {},
@@ -69,20 +82,31 @@ class ManifestAST : public ExprAST {
         targets(std::move(targets)),
         testSuns(std::move(testSuns)) {}
 
+  /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::MANIFEST; }
+  /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override { return "manifest"; }
 
+  /** Returns the source dependencies. */
   const std::vector<ManifestSunDependency>& getSuns() const { return suns; }
+  /** Returns the compiled-library dependencies. */
   const std::vector<ManifestMoonDependency>& getMoons() const { return moons; }
+  /** Returns the protobuf dependencies. */
   const std::vector<ManifestProtoDependency>& getProtos() const {
     return protos;
   }
+  /** Returns the archives stored by this object. */
   const std::vector<ManifestArchiveDependency>& getArchives() const {
     return archives;
   }
+  /** Returns the target-specific dependency settings. */
   const std::vector<ManifestTargetBlock>& getTargets() const { return targets; }
+  /** Returns the test-source dependencies. */
   const std::vector<ManifestSunDependency>& getTestSuns() const {
     return testSuns;
   }
+  /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "Manifest"; }
 };
+
+}  // namespace sun::ast

@@ -1,13 +1,17 @@
 // merged_using_lib.sun - The library half of a two-file bundle: a generic
 // class another file imports with a file-level `using`.
+/** Groups declarations used by this compiler regression test. */
 public module lib {
+  /** Owns a generic payload used to verify imported type and method resolution. */
   public class Box<T> {
     var v: T;
 
+    /** Initializes the fixture fields used by this example or regression test. */
     init(v: T) {
       this.v = v;
     }
 
+    /** Returns the payload used to check interface or generic method dispatch. */
     public method get() T {
       return this.v;
     }

@@ -13,11 +13,14 @@
 
 static int slot;
 
+/** Clears the archive-local slot when the registered exit handler runs. */
 static void sun_ffi_slot_cleanup(void) { slot = 0; }
 
+/** Stores a value in the archive-local slot used to check symbol isolation. */
 void sun_ffi_slot_set(int v) {
   slot = v;
   atexit(sun_ffi_slot_cleanup);
 }
 
+/** Returns the archive-local slot value used to distinguish library versions. */
 int sun_ffi_slot_get(void) { return slot + 1000; }

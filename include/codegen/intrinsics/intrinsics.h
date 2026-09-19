@@ -23,11 +23,14 @@
 #include "codegen/intrinsics/network.h"
 #include "codegen/intrinsics/print.h"
 
-namespace sun {
+/** Provides the generator for built-in operations. */
+namespace sun::codegen::intrinsics {
 
-// Intrinsic function identifiers
-// Generic intrinsics take a type argument: _sizeof<T>(), _load<T>(ptr, idx)
-// Non-generic intrinsics are called like regular functions: _malloc(size)
+/**
+ * Intrinsic function identifiers
+ * Generic intrinsics take a type argument: _sizeof&lt;T&gt;(), _load&lt;T&gt;(ptr, idx)
+ * Non-generic intrinsics are called like regular functions: _malloc(size)
+ */
 enum class Intrinsic {
   None,  // Not an intrinsic
 
@@ -155,8 +158,10 @@ enum class Intrinsic {
   GetSockOpt,  // __getsockopt(fd, level, opt, val, len) -> i32
 };
 
-// Convert intrinsic function name to enum
-// Returns Intrinsic::None if not recognized
+/**
+ * Convert intrinsic function name to enum
+ * Returns Intrinsic::None if not recognized
+ */
 inline Intrinsic getIntrinsic(const std::string& name) {
   // -------------------------------------------------------------------------
   // Generic intrinsics
@@ -272,7 +277,9 @@ inline Intrinsic getIntrinsic(const std::string& name) {
   return Intrinsic::None;
 }
 
-// Check if a name is a generic intrinsic (requires type argument)
+/**
+ * Check if a name is a generic intrinsic (requires type argument)
+ */
 inline bool isGenericIntrinsic(Intrinsic i) {
   switch (i) {
     case Intrinsic::Sizeof:
@@ -296,19 +303,23 @@ inline bool isGenericIntrinsic(Intrinsic i) {
   }
 }
 
-// Check if a name is any intrinsic
+/**
+ * Check if a name is any intrinsic
+ */
 inline bool isIntrinsic(const std::string& name) {
   return getIntrinsic(name) != Intrinsic::None;
 }
 
-// Does this intrinsic have to be written inside an `unsafe { }` block?
-//
-// The line is whether it reads or writes memory nothing has checked: through a
-// raw pointer, or across the boundary into libc and the kernel. Intrinsics that
-// only compute — a size, a type check, an address, a numeric conversion — are
-// safe, and so are the print intrinsics, which the standard library treats as
-// ordinary output. Semantic analysis is the one place this is applied, for
-// generic and non-generic intrinsics alike.
+/**
+ * Does this intrinsic have to be written inside an `unsafe { }` block?
+ *
+ * The line is whether it reads or writes memory nothing has checked: through a
+ * raw pointer, or across the boundary into libc and the kernel. Intrinsics that
+ * only compute — a size, a type check, an address, a numeric conversion — are
+ * safe, and so are the print intrinsics, which the standard library treats as
+ * ordinary output. Semantic analysis is the one place this is applied, for
+ * generic and non-generic intrinsics alike.
+ */
 inline bool requiresUnsafeBlock(Intrinsic i) {
   switch (i) {
     // Reads and writes through a raw pointer
@@ -380,6 +391,7 @@ inline bool requiresUnsafeBlock(Intrinsic i) {
   }
 }
 
+/** Reports whether the named intrinsic may only be called in unsafe code. */
 inline bool requiresUnsafeBlock(const std::string& name) {
   // The IPv4 shorthands dispatch by name rather than through the enum, so name
   // them here; they reach the same libc calls as __bind, __connect and
@@ -392,4 +404,4 @@ inline bool requiresUnsafeBlock(const std::string& name) {
   return requiresUnsafeBlock(getIntrinsic(name));
 }
 
-}  // namespace sun
+}  // namespace sun::codegen::intrinsics

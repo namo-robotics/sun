@@ -1,7 +1,5 @@
 #include "driver/driver.h"
 
-#include "semantic_analysis/semantic_pipeline.h"
-
 #include <llvm/IR/DebugInfo.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Verifier.h>
@@ -18,6 +16,7 @@
 #include <inja/inja.hpp>
 #include <sstream>
 
+#include "ast/ast_children.h"
 #include "ast/manifest_ast.h"
 #include "borrow_checker/borrow_checker.h"
 #include "debug/ast_dot_generator.h"
@@ -30,37 +29,68 @@
 #include "moon_bundling/proto_importer.h"
 #include "parsing/doc_comments.h"
 #include "parsing/lowering_pass.h"
+#include "semantic_analysis/semantic_pipeline.h"
+#include "serialization/ast_serializer.h"
 #include "support/error.h"
 #include "support/source_manager.h"
 #include "support/stage_timer.h"
 #include "support/sun_path.h"
 
-// ---------------------------------------------------------------------------
-// Exit handlers registered by JIT-compiled code
-//
-// A program run under the JIT lives inside the compiler process. C code it
-// brings along (an archive carried by a bundle) may call atexit, as OpenSSL
-// does for its cleanup. The real atexit would run that handler when the
-// compiler exits, long after the JIT's code memory is gone, and crash. So the
-// JIT resolves atexit to a shim that keeps the handlers here, and they run
-// when the program's main returns (its exit, as far as it can tell) while
-// its code is still mapped. A program that calls exit() itself ends the
-// whole process from inside the JIT'd code; a real exit handler drains the
-// same list then, with the memory still there.
-// ---------------------------------------------------------------------------
+using sun::driver::ManifestProcessor;
+using sun::driver::SunValue;
+using sun::driver::VoidValue;
+using sun::moon_bundling::LibraryCache;
+using sun::moon_bundling::MoonImport;
+using sun::semantic_analysis::TypeRegistry;
+using sun::support::ScopedStage;
+
+using sun::ast::ASTNodeType;
+using sun::ast::BlockExprAST;
+using sun::ast::ExprAST;
+using sun::ast::FunctionAST;
+using sun::ast::ModuleAST;
+using sun::codegen::CodegenVisitor;
+using sun::parsing::Parser;
+using sun::semantic_analysis::SemanticAnalyzer;
+using sun::support::logAndThrowError;
+using sun::support::SourceManager;
+using sun::support::SunError;
+
+/** Coordinates compilation, dependency loading, linking, and program execution. */
+namespace sun::driver {
+
+/**
+ * ---------------------------------------------------------------------------
+ * Exit handlers registered by JIT-compiled code
+ *
+ * A program run under the JIT lives inside the compiler process. C code it
+ * brings along (an archive carried by a bundle) may call atexit, as OpenSSL
+ * does for its cleanup. The real atexit would run that handler when the
+ * compiler exits, long after the JIT's code memory is gone, and crash. So the
+ * JIT resolves atexit to a shim that keeps the handlers here, and they run
+ * when the program's main returns (its exit, as far as it can tell) while
+ * its code is still mapped. A program that calls exit() itself ends the
+ * whole process from inside the JIT'd code; a real exit handler drains the
+ * same list then, with the memory still there.
+ * ---------------------------------------------------------------------------
+ */
 namespace {
 
+/** Provides the mutex protecting registered JIT exit handlers. */
 std::mutex& jitExitMutex() {
   static std::mutex mutex;
   return mutex;
 }
 
+/** Provides the exit handlers registered by JIT-compiled code. */
 std::vector<void (*)()>& jitExitHandlers() {
   static std::vector<void (*)()> handlers;
   return handlers;
 }
 
-// Reverse registration order, like atexit; a handler may register another
+/**
+ * Reverse registration order, like atexit; a handler may register another
+ */
 void runJITExitHandlers() {
   for (;;) {
     void (*handler)() = nullptr;
@@ -74,7 +104,9 @@ void runJITExitHandlers() {
   }
 }
 
-// Stands in for atexit and at_quick_exit inside the JIT
+/**
+ * Stands in for atexit and at_quick_exit inside the JIT
+ */
 int jitAtExit(void (*handler)()) {
   {
     std::lock_guard<std::mutex> lock(jitExitMutex());
@@ -87,13 +119,18 @@ int jitAtExit(void (*handler)()) {
   return 0;
 }
 
-// Fork handlers registered by JIT'd code would outlive it the same way and
-// fire on the compiler's own later forks. A program run this way does not
-// fork, so they are accepted and dropped.
+/**
+ * Fork handlers registered by JIT'd code would outlive it the same way and
+ * fire on the compiler's own later forks. A program run this way does not
+ * fork, so they are accepted and dropped.
+ */
 int jitAtFork(void (*)(), void (*)(), void (*)()) { return 0; }
 
-// Runs the program's exit handlers when its run ends, however it ends
+/**
+ * Runs the program's exit handlers when its run ends, however it ends
+ */
 struct JITExitScope {
+  /** Runs and releases exit handlers registered during this JIT execution. */
   ~JITExitScope() { runJITExitHandlers(); }
 };
 
@@ -102,11 +139,13 @@ struct JITExitScope {
 static llvm::ExitOnError ExitOnErr;
 using llvm::orc::ThreadSafeModule;
 
-/// Strip library code the program never uses before handing a module to the
-/// JIT. ORC eagerly compiles every defined function in an added module, so
-/// linked-but-unused stdlib code would dominate JIT time. Internalize
-/// everything except the entry points, then GlobalDCE drops whatever main
-/// can't reach (references through vtables/globals are preserved).
+/**
+ * Strip library code the program never uses before handing a module to the
+ * JIT. ORC eagerly compiles every defined function in an added module, so
+ * linked-but-unused stdlib code would dominate JIT time. Internalize
+ * everything except the entry points, then GlobalDCE drops whatever main
+ * can't reach (references through vtables/globals are preserved).
+ */
 static void stripUnreachableForJIT(llvm::Module& module) {
   for (auto& F : module) {
     // Global initializers need no exemption: they are internal already, and
@@ -137,13 +176,15 @@ static void stripUnreachableForJIT(llvm::Module& module) {
   mpm.run(module, mam);
 }
 
-/// Make a module's global initializers callable under the JIT. They are
-/// internal functions registered in llvm.global_ctors — one per linked module,
-/// uniquified by the IR linker — and the JIT resolves symbols by name, which
-/// cannot reach an internal function. So wrap every ctor entry in a single
-/// external runner for the driver to look up and call before main, in the
-/// same order the AOT init_array would use. Returns false when the module has
-/// no constructors and there is nothing to run.
+/**
+ * Make a module's global initializers callable under the JIT. They are
+ * internal functions registered in llvm.global_ctors — one per linked module,
+ * uniquified by the IR linker — and the JIT resolves symbols by name, which
+ * cannot reach an internal function. So wrap every ctor entry in a single
+ * external runner for the driver to look up and call before main, in the
+ * same order the AOT init_array would use. Returns false when the module has
+ * no constructors and there is nothing to run.
+ */
 static bool wrapStaticCtorsForJIT(llvm::Module& module) {
   auto* ctors = module.getGlobalVariable("llvm.global_ctors");
   if (!ctors || !ctors->hasInitializer()) return false;
@@ -179,8 +220,10 @@ static bool wrapStaticCtorsForJIT(llvm::Module& module) {
   return true;
 }
 
-/// Check if stdlib.moon is included in moon imports
-static bool hasStdlibImport(const std::vector<sun::MoonImport>& moonImports) {
+/**
+ * Check if stdlib.moon is included in moon imports
+ */
+static bool hasStdlibImport(const std::vector<MoonImport>& moonImports) {
   for (const auto& moonImport : moonImports) {
     // Check if the path ends with stdlib.moon
     if (moonImport.path.find("stdlib.moon") != std::string::npos) {
@@ -190,10 +233,12 @@ static bool hasStdlibImport(const std::vector<sun::MoonImport>& moonImports) {
   return false;
 }
 
-/// Does this block declare `class String` directly inside `module std`?
-/// Interpolation desugars to `std.String` and `std.HeapAllocator`, so the
-/// stdlib's own sources satisfy it without importing stdlib.moon — which
-/// they cannot do, being that library.
+/**
+ * Does this block declare `class String` directly inside `module std`?
+ * Interpolation desugars to `std.String` and `std.HeapAllocator`, so the
+ * stdlib's own sources satisfy it without importing stdlib.moon — which
+ * they cannot do, being that library.
+ */
 static bool declaresStdlibString(const BlockExprAST& block) {
   for (const auto& stmt : block.getBody()) {
     if (!stmt || stmt->getType() != ASTNodeType::MODULE) continue;
@@ -203,7 +248,7 @@ static bool declaresStdlibString(const BlockExprAST& block) {
       if (!member || member->getType() != ASTNodeType::CLASS_DEFINITION) {
         continue;
       }
-      if (static_cast<const ClassDefinitionAST&>(*member).getName() ==
+      if (static_cast<const sun::ast::ClassDefinitionAST&>(*member).getName() ==
           "String") {
         return true;
       }
@@ -219,7 +264,7 @@ std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
   ensureLLVMInitialized();
 
   // JIT always runs on the host; .moon bundle selection must match.
-  sun::LibraryCache::instance().setTargetTriple("");
+  LibraryCache::instance().setTargetTriple("");
 
   auto jit = SunJIT::Create(optimize);
   if (!jit) {
@@ -229,9 +274,10 @@ std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
   }
 
   auto jitShared = std::shared_ptr<SunJIT>(std::move(jit.get()));
-  auto ctx = std::make_unique<CodegenContext>(moduleName, jitShared,
-                                              /*existingContext=*/nullptr,
-                                              /*targetTriple=*/"", debugInfo, optimize);
+  auto ctx = std::make_unique<sun::codegen::CodegenContext>(
+      moduleName, jitShared,
+      /*existingContext=*/nullptr,
+      /*targetTriple=*/"", debugInfo, optimize);
 
   // Register runtime symbols for JIT
   auto& mainDylib = ctx->jit->getMainJITDylib();
@@ -240,7 +286,7 @@ std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
     runtimeSymbols[ctx->jit->mangle(name)] = ExecutorSymbolDef(
         ExecutorAddr::fromPtr(address), JITSymbolFlags::Exported);
   };
-  provide("putchard", reinterpret_cast<void*>(&putchard));
+  provide("putchard", reinterpret_cast<void*>(&sun::parsing::putchard));
   // Process-lifetime registrations must not reach the real libc from code
   // that lives only as long as this driver; see the JIT exit handlers above.
   // (On glibc these also live in libc_nonshared.a, out of dlsym's sight.)
@@ -249,7 +295,7 @@ std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
   provide("pthread_atfork", reinterpret_cast<void*>(&jitAtFork));
   cantFail(mainDylib.define(llvm::orc::absoluteSymbols(runtimeSymbols)));
 
-  auto typeRegistry = std::make_shared<sun::TypeRegistry>();
+  auto typeRegistry = std::make_shared<TypeRegistry>();
   auto codegenVisitor = std::make_unique<CodegenVisitor>(*ctx, typeRegistry);
   auto analyzer = std::make_unique<SemanticAnalyzer>(typeRegistry);
 
@@ -267,12 +313,12 @@ std::unique_ptr<Driver> Driver::createForAOT(const std::string& moduleName,
 
   // Both the parser's bundle resolution and the linker's bundle selection
   // key off this; setting it here keeps API users consistent with the CLI.
-  sun::LibraryCache::instance().setTargetTriple(targetTriple);
+  LibraryCache::instance().setTargetTriple(targetTriple);
 
-  auto ctx = std::make_unique<CodegenContext>(moduleName, nullptr,
-                                              /*existingContext=*/nullptr,
-                                              targetTriple, debugInfo, optimize);
-  auto typeRegistry = std::make_shared<sun::TypeRegistry>();
+  auto ctx = std::make_unique<sun::codegen::CodegenContext>(
+      moduleName, nullptr,
+      /*existingContext=*/nullptr, targetTriple, debugInfo, optimize);
+  auto typeRegistry = std::make_shared<TypeRegistry>();
   auto codegenVisitor = std::make_unique<CodegenVisitor>(*ctx, typeRegistry);
   auto analyzer = std::make_unique<SemanticAnalyzer>(typeRegistry);
 
@@ -346,7 +392,9 @@ void Driver::printUserDefinedIR() {
   llvm::outs() << reset;
 }
 
-// Helper: recursively collect all functions reachable from a given function
+/**
+ * Helper: recursively collect all functions reachable from a given function
+ */
 static void collectReachableFunctions(llvm::Function* func,
                                       std::set<llvm::Function*>& visited) {
   if (!func || func->isDeclaration() || visited.count(func)) return;
@@ -436,11 +484,12 @@ void Driver::writeUserDefinedIR(const std::string& path) {
 // Moon import processing
 // ---------------------------------------------------------------------------
 
-/// Process moon imports: collect stubs, deduplicate, check for collisions
-/// with source modules and between moons, then prepend to AST.
-static void processMoonImports(
-    BlockExprAST& blockAst, Parser& parser,
-    const std::vector<sun::MoonImport>& moonImports) {
+/**
+ * Process moon imports: collect stubs, deduplicate, check for collisions
+ * with source modules and between moons, then prepend to AST.
+ */
+static void processMoonImports(BlockExprAST& blockAst, Parser& parser,
+                               const std::vector<MoonImport>& moonImports) {
   if (moonImports.empty()) {
     return;
   }
@@ -471,7 +520,7 @@ static void processMoonImports(
       continue;
     }
 
-    auto& moonScope = static_cast<MoonScopeAST&>(*stub);
+    auto& moonScope = static_cast<sun::ast::MoonScopeAST&>(*stub);
     const std::string& hash = moonScope.getContentHash();
     const std::string& moonPath = moonScope.getMoonPath();
 
@@ -516,9 +565,11 @@ static void processMoonImports(
   }
 }
 
-/// Move everything the program declares itself (every top-level node that is
-/// not an imported bundle's scope) into one MoonScopeAST for the bundle being
-/// built, named by its `$hash$` prefix. Imported scopes stay where they are.
+/**
+ * Move everything the program declares itself (every top-level node that is
+ * not an imported bundle's scope) into one MoonScopeAST for the bundle being
+ * built, named by its `$hash$` prefix. Imported scopes stay where they are.
+ */
 static void wrapOwnBundle(BlockExprAST& blockAst,
                           const std::string& scopeName) {
   auto ownBody = std::make_unique<BlockExprAST>();
@@ -532,14 +583,16 @@ static void wrapOwnBundle(BlockExprAST& blockAst,
   }
   blockAst.mutableBody() = std::move(imported);
   blockAst.addExpression(
-      MoonScopeAST::forOwnBundle(scopeName, std::move(ownBody)));
+      sun::ast::MoonScopeAST::forOwnBundle(scopeName, std::move(ownBody)));
 }
 
-/// Bind the program's own C externs to the archives the bundle being built
-/// carries: an extern whose link name is a key of `renames` is emitted, and
-/// recorded in the bundle's metadata, under the prefixed value. Imported
-/// bundles' scopes are left alone; their externs were bound when they were
-/// built. Link names no rename applies to are collected in `unmapped`.
+/**
+ * Bind the program's own C externs to the archives the bundle being built
+ * carries: an extern whose link name is a key of `renames` is emitted, and
+ * recorded in the bundle's metadata, under the prefixed value. Imported
+ * bundles' scopes are left alone; their externs were bound when they were
+ * built. Link names no rename applies to are collected in `unmapped`.
+ */
 static void renameOwnExterns(BlockExprAST& block,
                              const std::map<std::string, std::string>& renames,
                              std::vector<std::string>& unmapped) {
@@ -563,7 +616,7 @@ static void renameOwnExterns(BlockExprAST& block,
         break;
       }
       case ASTNodeType::VARIABLE_CREATION: {
-        auto& variable = static_cast<VariableCreationAST&>(*stmt);
+        auto& variable = static_cast<sun::ast::VariableCreationAST&>(*stmt);
         if (!variable.isCExtern()) break;
         auto it = renames.find(variable.getLinkName());
         if (it != renames.end()) {
@@ -579,11 +632,13 @@ static void renameOwnExterns(BlockExprAST& block,
   }
 }
 
-/// What the linker will not say. Two archives with one file name under
-/// different hashes mean two versions of a library go into the program,
-/// each bound to the code that came with it. A plain extern naming a symbol
-/// that a bundle carries only in prefixed form binds to whatever the final
-/// link provides under the bare name, which is rarely what was meant.
+/**
+ * What the linker will not say. Two archives with one file name under
+ * different hashes mean two versions of a library go into the program,
+ * each bound to the code that came with it. A plain extern naming a symbol
+ * that a bundle carries only in prefixed form binds to whatever the final
+ * link provides under the bare name, which is rarely what was meant.
+ */
 static void warnAboutArchiveSet(const std::vector<std::string>& archives,
                                 const std::vector<std::string>& bareExterns) {
   std::map<std::string, std::vector<std::string>> byName;
@@ -605,7 +660,8 @@ static void warnAboutArchiveSet(const std::vector<std::string>& archives,
     auto buffer = llvm::MemoryBuffer::getFile(path);
     if (!buffer) continue;
     for (const auto& [bare, recorded] :
-         sun::listArchiveDefinitions((*buffer)->getMemBufferRef())) {
+         sun::moon_bundling::listArchiveDefinitions(
+             (*buffer)->getMemBufferRef())) {
       if (bare == recorded || !wanted.count(bare)) continue;
       if (!reported.insert(bare).second) continue;
       llvm::errs() << "Warning: extern \"C\" '" << bare
@@ -641,7 +697,7 @@ void Driver::collectNativeArchives(const std::set<std::string>& linkedModules) {
     }
   }
 
-  const auto bundled = sun::LibraryCache::instance().extractNativeArchives(
+  const auto bundled = LibraryCache::instance().extractNativeArchives(
       linkedModules, archiveTempDir_);
   nativeArchivePaths_.insert(nativeArchivePaths_.end(), bundled.begin(),
                              bundled.end());
@@ -675,14 +731,17 @@ void Driver::addJITStaticLibrary(const std::string& path) {
   }
 }
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// Walk the item-level statements of a merged program, recursing through
-// module bodies. Strip mode erases every test function; collect mode makes
-// each one public — along with every module on the way down to it — because
-// the synthesized runner lives at root scope and could not name anything
-// module-private. Records each test's dotted path. Runs before moon-stub
-// injection, so only user-written modules are visited.
+/**
+ * Walk the item-level statements of a merged program, recursing through
+ * module bodies. Strip mode erases every test function; collect mode makes
+ * each one public — along with every module on the way down to it — because
+ * the synthesized runner lives at root scope and could not name anything
+ * module-private. Records each test's dotted path. Runs before moon-stub
+ * injection, so only user-written modules are visited.
+ */
 void visitTests(BlockExprAST& block, std::vector<std::string>& modulePath,
                 bool strip, std::vector<std::string>* found, bool& sawAny) {
   auto& body = block.mutableBody();
@@ -694,7 +753,7 @@ void visitTests(BlockExprAST& block, std::vector<std::string>& modulePath,
       bool sawInModule = false;
       visitTests(module.mutableBody(), modulePath, strip, found, sawInModule);
       if (sawInModule && !strip) {
-        module.setVisibility(sun::Visibility::Public);
+        module.setVisibility(sun::semantic_analysis::Visibility::Public);
       }
       sawAny |= sawInModule;
       modulePath.pop_back();
@@ -709,7 +768,7 @@ void visitTests(BlockExprAST& block, std::vector<std::string>& modulePath,
         continue;
       }
       auto& func = static_cast<FunctionAST&>(*stmt);
-      func.setVisibility(sun::Visibility::Public);
+      func.setVisibility(sun::semantic_analysis::Visibility::Public);
       std::string path;
       for (const auto& segment : modulePath) path += segment + ".";
       path += func.getProto().getName();
@@ -721,7 +780,9 @@ void visitTests(BlockExprAST& block, std::vector<std::string>& modulePath,
   }
 }
 
-// Remove a root-level `main` so the synthesized runner can take its place.
+/**
+ * Remove a root-level `main` so the synthesized runner can take its place.
+ */
 void removeRootMain(BlockExprAST& block) {
   auto& body = block.mutableBody();
   for (auto it = body.begin(); it != body.end(); ++it) {
@@ -734,10 +795,12 @@ void removeRootMain(BlockExprAST& block) {
   }
 }
 
-// The test binary's entry point, rendered from the embedded runner template
-// (src/driver/test_runner_template.inja.sun) with the collected dotted test
-// names. The template documents the runner's behavior; this only feeds in
-// the names.
+/**
+ * The test binary's entry point, rendered from the embedded runner template
+ * (src/driver/test_runner_template.inja.sun) with the collected dotted test
+ * names. The template documents the runner's behavior; this only feeds in
+ * the names.
+ */
 std::string synthesizeTestRunner(const std::vector<std::string>& tests) {
   inja::Environment env;
   // Jinja-style whitespace handling, so the template's {% for %} lines
@@ -803,11 +866,41 @@ void Driver::applyTestHandling(BlockExprAST& blockAst) {
   }
 }
 
+/**
+ * Appends the serialized form of every statement the program wrote itself to
+ * `out`. Blocks are flattened and imported moon scopes are skipped. Each
+ * statement is prefixed with its length so neighbours cannot run together.
+ */
+static void appendOwnSourceBytes(const ExprAST& node,
+                                 sun::serialization::ASTSerializer& serializer,
+                                 std::string& out) {
+  if (node.getType() == ASTNodeType::MOON_SCOPE) return;
+  if (node.getType() == ASTNodeType::BLOCK) {
+    sun::ast::forEachChild(node, [&](const ExprAST& child) {
+      appendOwnSourceBytes(child, serializer, out);
+    });
+    return;
+  }
+  auto bytes = serializer.serialize(node).SerializeAsString();
+  out += std::to_string(bytes.size()) + ":" + bytes;
+}
+
+/**
+ * Returns a hash that identifies a program by its own statements. Imported
+ * moon scopes are left out because they already carry their own identity.
+ */
+static std::string computeOwnSourceHash(const BlockExprAST& blockAst) {
+  sun::serialization::ASTSerializer serializer;
+  std::string source;
+  appendOwnSourceBytes(blockAst, serializer, source);
+  return sun::moon_bundling::computeSha256Hex(source);
+}
+
 void Driver::analyzeProgram(BlockExprAST& blockAst, Parser& parser) {
   // Lower the lossless parse tree into the core AST before semantic analysis
-  LoweringPass lowering;
+  sun::parsing::LoweringPass lowering;
   {
-    sun::ScopedStage stage("lowering");
+    ScopedStage stage("lowering");
     lowering.run(blockAst);
   }
 
@@ -823,7 +916,7 @@ void Driver::analyzeProgram(BlockExprAST& blockAst, Parser& parser) {
 
   // Inject AST stubs from moon imports before semantic analysis
   {
-    sun::ScopedStage stage("moon imports");
+    ScopedStage stage("moon imports");
     processMoonImports(blockAst, parser, moonImports_);
   }
 
@@ -842,15 +935,21 @@ void Driver::analyzeProgram(BlockExprAST& blockAst, Parser& parser) {
 
   // Run semantic analysis on the unified AST
   {
-    sun::ScopedStage stage("sema");
-    analyzer->pipeline().run(blockAst);
+    ScopedStage stage("sema");
+    // Executables have an artifact identity too; imported trees retain theirs.
+    std::string artifactHash = ownBundleHash_;
+    if (artifactHash.empty()) artifactHash = computeOwnSourceHash(blockAst);
+    analyzer->pipeline().run(blockAst, [&] {
+      sun::semantic_analysis::PortableDeclarationKey::assignOriginals(
+          blockAst, typeRegistry->declarations, artifactHash);
+    });
   }
 }
 
-sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
-                                  Parser& parser, bool execute, int argc,
-                                  char** argv) {
-  sun::SunValue result = sun::VoidValue{};
+SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
+                             Parser& parser, bool execute, int argc,
+                             char** argv) {
+  SunValue result = VoidValue{};
 
   if (!blockAst) {
     llvm::errs() << "Error: Failed to parse program.\n";
@@ -864,7 +963,7 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
 
   // Debug mode: generate AST DOT graph (pre-lowering, lossless parse tree)
   if (debugMode_ && !debugFolder_.empty()) {
-    AstDotGenerator dotGen;
+    sun::debug::AstDotGenerator dotGen;
     std::string dot = dotGen.generate(blockAst.get());
     std::string dotPath = debugFolder_ + "/ast.dot";
     std::ofstream dotFile(dotPath);
@@ -880,7 +979,7 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
 
   // Debug mode: generate scope tree HTML after semantic analysis
   if (debugMode_ && !debugFolder_.empty()) {
-    ScopeTreeGenerator scopeGen;
+    sun::debug::ScopeTreeGenerator scopeGen;
     std::string html = scopeGen.generateHtml(analyzer->getRootScope());
     std::string scopePath = debugFolder_ + "/scope_tree.html";
     std::ofstream scopeFile(scopePath);
@@ -893,17 +992,17 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
   }
 
   // Run borrow checking on the unified AST
-  // Uses compile-time settings from sun::Config
-  sun::BorrowChecker borrowChecker;
-  std::vector<sun::BorrowError> borrowErrors;
+  // Uses compile-time settings from sun::support::Config
+  sun::borrow_checker::BorrowChecker borrowChecker;
+  std::vector<sun::borrow_checker::BorrowError> borrowErrors;
   {
-    sun::ScopedStage stage("borrow check");
+    ScopedStage stage("borrow check");
     borrowErrors = borrowChecker.check(*blockAst);
   }
   if (!borrowErrors.empty()) {
     // One error carrying every borrow error and related borrow: whoever
     // catches it renders them all, each at its own place in the source
-    throw sun::buildBorrowCheckError(borrowErrors);
+    throw sun::borrow_checker::buildBorrowCheckError(borrowErrors);
   }
 
   if (metadataCallback_) metadataCallback_(*blockAst, *analyzer);
@@ -912,7 +1011,7 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
   // This builds the symbol-to-module map without loading bitcode yet
   const auto& precompiledImports = parser.getPrecompiledImports();
 
-  sun::ModuleLinker linker(*ctx->mainModule);
+  sun::moon_bundling::ModuleLinker linker(*ctx->mainModule);
   bool hasMoonImports = !precompiledImports.empty() || !moonImports_.empty();
 
   if (!precompiledImports.empty()) {
@@ -933,7 +1032,7 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
 
   // Generate code into single module
   {
-    sun::ScopedStage stage("codegen");
+    ScopedStage stage("codegen");
     codegenVisitor->codegen(*blockAst);
     // Emit static initialization function for globals that need runtime init
     codegenVisitor->emitStaticInitFunction();
@@ -942,14 +1041,14 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
   // Link only the modules that provide symbols actually used by the code
   // This happens AFTER codegen so we know exactly which symbols are needed
   if (hasMoonImports) {
-    sun::ScopedStage stage("moon link");
+    ScopedStage stage("moon link");
     if (!linker.linkOnlyUsedSymbols()) {
       throw SunError(SunError::Kind::Semantic,
                      "Failed to link precompiled module: " + linker.getError());
     }
     // Strip imported debug info when the current build does not request it.
     if (!ctx->debugInfoEnabled()) {
-      sun::DebugInfoBuilder::stripFromModule(*ctx->mainModule);
+      sun::codegen::DebugInfoBuilder::stripFromModule(*ctx->mainModule);
     }
   }
   // The archives to link: the manifest's own `archives:` plus those carried
@@ -965,7 +1064,7 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
 
   // Optimize only after codegen has finished using instruction pointers.
   if (ctx->optimizationEnabled()) {
-    sun::ScopedStage stage("optimize");
+    ScopedStage stage("optimize");
     for (auto& function : *ctx->mainModule) {
       if (!function.isDeclaration()) {
         ctx->fpm->run(function, *ctx->fam);
@@ -1041,7 +1140,7 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
 
     // Verify the module - invalid IR is a hard compile failure
     {
-      sun::ScopedStage stage("verify");
+      ScopedStage stage("verify");
       if (llvm::verifyModule(*ctx->mainModule, &llvm::errs())) {
         throw SunError(SunError::Kind::Compile, "Module verification failed");
       }
@@ -1060,7 +1159,7 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
 
   // Verify before executing - never run invalid IR
   {
-    sun::ScopedStage stage("verify");
+    ScopedStage stage("verify");
     if (llvm::verifyModule(*ctx->mainModule, &llvm::errs())) {
       throw SunError(SunError::Kind::Compile, "Module verification failed");
     }
@@ -1077,7 +1176,7 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
   size_t mainArgCount = func->arg_size();
 
   // Create a NEW context for the JIT module
-  auto jitStage = std::make_unique<sun::ScopedStage>("jit compile");
+  auto jitStage = std::make_unique<ScopedStage>("jit compile");
   auto anonContext = std::make_unique<llvm::LLVMContext>();
 
   // Clone the module into the new context
@@ -1121,7 +1220,7 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
       void (*FP)() = ExprSymbol.getAddress().toPtr<void (*)()>();
       FP();
     }
-    result = sun::VoidValue{};
+    result = VoidValue{};
   } else if (returnType->isIntegerTy()) {
     unsigned bitWidth = returnType->getIntegerBitWidth();
     if (bitWidth == 1) {
@@ -1221,6 +1320,7 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
     if (structType->getNumElements() == 2 &&
         structType->getElementType(0)->isPointerTy() &&
         structType->getElementType(1)->isIntegerTy(64)) {
+      /** The pointer-and-length result returned by a JIT-compiled entrypoint. */
       struct StaticPtr {
         const char* data;
         int64_t len;
@@ -1258,8 +1358,8 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
   return result;
 }
 
-sun::SunValue Driver::executeString(const std::string& source, int argc,
-                                    char** argv, const std::string& filePath) {
+SunValue Driver::executeString(const std::string& source, int argc, char** argv,
+                               const std::string& filePath) {
   std::string effectivePath = filePath;
   if (!filePath.empty()) {
     std::filesystem::path sourcePath = std::filesystem::absolute(filePath);
@@ -1287,8 +1387,8 @@ sun::SunValue Driver::executeString(const std::string& source, int argc,
   return runPipeline(std::move(blockAst), parser, true, argc, argv);
 }
 
-sun::SunValue Driver::executeFile(const std::string& filename, int argc,
-                                  char** argv) {
+SunValue Driver::executeFile(const std::string& filename, int argc,
+                             char** argv) {
   std::filesystem::path filePath = std::filesystem::absolute(filename);
   std::string baseDirPath = filePath.parent_path().string();
   std::string canonical = std::filesystem::canonical(filePath).string();
@@ -1296,7 +1396,7 @@ sun::SunValue Driver::executeFile(const std::string& filename, int argc,
   std::ifstream file(filename);
   if (!file.is_open()) {
     llvm::errs() << "Error: Could not open file '" << filename << "'\n";
-    return sun::VoidValue{};
+    return VoidValue{};
   }
   std::stringstream buffer;
   buffer << file.rdbuf();
@@ -1308,13 +1408,13 @@ sun::SunValue Driver::executeFile(const std::string& filename, int argc,
   auto preAst = preParser.parseProgram();
 
   std::vector<std::string> sunFiles;
-  std::vector<sun::MoonImport> moonImports = moonImports_;
+  std::vector<MoonImport> moonImports = moonImports_;
   std::vector<std::string> protoFiles = protoFiles_;
 
-  if (const auto* manifest = sun::ManifestProcessor::findManifest(*preAst)) {
+  if (const auto* manifest = ManifestProcessor::findManifest(*preAst)) {
     // Manifest found - collect all dependencies. The module's triple picks
     // which target: blocks apply (the host's for JIT execution).
-    auto resolved = sun::ManifestProcessor::process(
+    auto resolved = ManifestProcessor::process(
         *manifest, baseDirPath, ctx->mainModule->getTargetTriple());
     sunFiles = std::move(resolved.sunFiles);
     moonImports.insert(moonImports.end(), resolved.moonImports.begin(),
@@ -1369,14 +1469,22 @@ void Driver::compileString(const std::string& source,
   runPipeline(std::move(blockAst), parser, false);
 }
 
+void Driver::startAnalysisSession() {
+  typeRegistry = std::make_shared<TypeRegistry>();
+  analyzer = std::make_unique<SemanticAnalyzer>(typeRegistry);
+  codegenVisitor = std::make_unique<CodegenVisitor>(*ctx, typeRegistry);
+}
+
 Driver::AnalyzedProgram Driver::analyzeString(const std::string& source,
                                               const std::string& filePath) {
+  startAnalysisSession();
   AnalyzedProgram result;
+  result.typeRegistry = typeRegistry;
   try {
     auto parser = prepareStringParser(source, filePath);
     result.ast = parser.parseProgram();
     if (result.ast) {
-      sun::attachDocComments(*result.ast, source);
+      sun::parsing::attachDocComments(*result.ast, source);
       analyzeProgram(*result.ast, parser);
     }
   } catch (const SunError& error) {
@@ -1387,10 +1495,12 @@ Driver::AnalyzedProgram Driver::analyzeString(const std::string& source,
 
 Driver::AnalyzedProgram Driver::analyzeFiles(
     const std::vector<std::string>& sourceFiles,
-    const std::vector<sun::MoonImport>& moonImports,
+    const std::vector<MoonImport>& moonImports,
     const std::vector<std::string>& protoFiles,
     const std::map<std::string, std::string>& sourceOverrides) {
+  startAnalysisSession();
   AnalyzedProgram result;
+  result.typeRegistry = typeRegistry;
   moonImports_ = moonImports;
   try {
     result.ast = parseAndMergeFiles(sourceFiles, protoFiles, sourceOverrides);
@@ -1422,13 +1532,13 @@ void Driver::compileFile(const std::string& filename) {
   auto preAst = preParser.parseProgram();
 
   std::vector<std::string> sunFiles;
-  std::vector<sun::MoonImport> moonImports = moonImports_;
+  std::vector<MoonImport> moonImports = moonImports_;
   std::vector<std::string> protoFiles = protoFiles_;
 
-  if (const auto* manifest = sun::ManifestProcessor::findManifest(*preAst)) {
+  if (const auto* manifest = ManifestProcessor::findManifest(*preAst)) {
     // Manifest found - collect all dependencies. The module's triple picks
     // which target: blocks apply (the host's for JIT execution).
-    auto resolved = sun::ManifestProcessor::process(
+    auto resolved = ManifestProcessor::process(
         *manifest, baseDirPath, ctx->mainModule->getTargetTriple());
     sunFiles = std::move(resolved.sunFiles);
     moonImports.insert(moonImports.end(), resolved.moonImports.begin(),
@@ -1455,8 +1565,10 @@ void Driver::compileFile(const std::string& filename) {
 // Merged-AST compilation: compile multiple source files together
 // ---------------------------------------------------------------------------
 
-/// Merge multiple parsed BlockExprASTs into a single unified AST.
-/// Same-named modules are merged together.
+/**
+ * Merge multiple parsed BlockExprASTs into a single unified AST.
+ * Same-named modules are merged together.
+ */
 static std::unique_ptr<BlockExprAST> mergeASTs(
     std::vector<std::unique_ptr<BlockExprAST>>& parsedFiles) {
   std::vector<std::unique_ptr<ExprAST>> mergedBody;
@@ -1516,8 +1628,8 @@ static std::unique_ptr<BlockExprAST> mergeASTs(
   // First add merged modules (so they're defined before using statements)
   for (const auto& modName : moduleOrder) {
     auto& contents = moduleContents[modName];
-    auto modBody =
-        std::make_unique<BlockExprAST>(std::move(contents), BlockKind::Module);
+    auto modBody = std::make_unique<BlockExprAST>(std::move(contents),
+                                                  sun::ast::BlockKind::Module);
     auto mergedMod = std::make_unique<ModuleAST>(modName, std::move(modBody));
     const auto& origin = *moduleOrigins.at(modName);
     mergedMod->setVisibility(origin.getVisibility());
@@ -1535,7 +1647,7 @@ static std::unique_ptr<BlockExprAST> mergeASTs(
   }
 
   return std::make_unique<BlockExprAST>(std::move(mergedBody),
-                                        BlockKind::Module);
+                                        sun::ast::BlockKind::Module);
 }
 
 void Driver::parseSynthesizedProtoModules(
@@ -1543,7 +1655,7 @@ void Driver::parseSynthesizedProtoModules(
     std::vector<std::unique_ptr<BlockExprAST>>& parsedFiles,
     std::vector<std::string>& canonicalPaths) {
   for (const auto& synthesized :
-       sun::ProtoImporter::importAll(protoFiles, baseDir)) {
+       sun::moon_bundling::ProtoImporter::importAll(protoFiles, baseDir)) {
     // Registered under its pseudo-path so diagnostics cite the .proto and
     // show the synthesized source line
     SourceManager::instance().addSource(synthesized.pseudoPath,
@@ -1561,7 +1673,7 @@ void Driver::parseSynthesizedProtoModules(
           "Failed to parse synthesized module for " + synthesized.pseudoPath);
     }
     canonicalPaths.push_back(synthesized.pseudoPath);
-    sun::attachDocComments(*blockAst, synthesized.sunSource);
+    sun::parsing::attachDocComments(*blockAst, synthesized.sunSource);
     parsedFiles.push_back(std::move(blockAst));
   }
 }
@@ -1611,7 +1723,7 @@ std::unique_ptr<BlockExprAST> Driver::parseAndMergeFiles(
     if (!blockAst) {
       throw SunError(SunError::Kind::Parse, "Failed to parse " + filename);
     }
-    sun::attachDocComments(*blockAst, source);
+    sun::parsing::attachDocComments(*blockAst, source);
     parsedFiles.push_back(std::move(blockAst));
   }
 
@@ -1625,17 +1737,9 @@ std::unique_ptr<BlockExprAST> Driver::parseAndMergeFiles(
 }
 
 void Driver::compileFiles(const std::vector<std::string>& sourceFiles,
-                          const std::vector<sun::MoonImport>& moonImports,
+                          const std::vector<MoonImport>& moonImports,
                           const std::vector<std::string>& protoFiles) {
   auto mergedAst = parseAndMergeFiles(sourceFiles, protoFiles, {});
-
-  // What this compilation read, for --depfile: sources, then the bundles
-  // and schemas the manifest named, then the archives it declared.
-  inputFiles_ = sourceFiles;
-  for (const auto& import : moonImports) inputFiles_.push_back(import.path);
-  inputFiles_.insert(inputFiles_.end(), protoFiles.begin(), protoFiles.end());
-  inputFiles_.insert(inputFiles_.end(), manifestArchivePaths_.begin(),
-                     manifestArchivePaths_.end());
 
   // Create a parser for runPipeline (used for precompiled imports lookup)
   auto stubParser = Parser::createStringParser("");
@@ -1648,14 +1752,14 @@ void Driver::compileFiles(const std::vector<std::string>& sourceFiles,
   runPipeline(std::move(mergedAst), stubParser, false);
 }
 
-sun::SunValue Driver::executeFiles(
-    const std::vector<std::string>& sourceFiles,
-    const std::vector<sun::MoonImport>& moonImports, int argc, char** argv,
-    const std::vector<std::string>& protoFiles) {
+SunValue Driver::executeFiles(const std::vector<std::string>& sourceFiles,
+                              const std::vector<MoonImport>& moonImports,
+                              int argc, char** argv,
+                              const std::vector<std::string>& protoFiles) {
   // For now, delegate to compileFiles then execute
   // This can be optimized later to avoid the extra JIT setup
   compileFiles(sourceFiles, moonImports, protoFiles);
-  sun::SunValue result = sun::VoidValue{};
+  SunValue result = VoidValue{};
 
   // JIT execution similar to runPipeline
   llvm::Function* func = ctx->mainModule->getFunction("main");
@@ -1669,7 +1773,7 @@ sun::SunValue Driver::executeFiles(
   size_t mainArgCount = func->arg_size();
 
   // Clone module for JIT
-  auto jitStage = std::make_unique<sun::ScopedStage>("jit compile");
+  auto jitStage = std::make_unique<ScopedStage>("jit compile");
   auto anonContext = std::make_unique<llvm::LLVMContext>();
   auto moduleClone = llvm::CloneModule(*ctx->mainModule);
   stripUnreachableForJIT(*moduleClone);
@@ -1724,3 +1828,5 @@ sun::SunValue Driver::executeFiles(
   ExitOnErr(RT->remove());
   return result;
 }
+
+}  // namespace sun::driver

@@ -9,19 +9,28 @@
 
 #include "support/position.h"
 
-/// Global source text manager for error reporting.
-/// Stores source text for all compiled files so that error messages
-/// can display source line previews even after parsing is complete.
+/** Provides shared diagnostics, source tracking, and compiler utilities. */
+namespace sun::support {
+
+/**
+ * Global source text manager for error reporting.
+ * Stores source text for all compiled files so that error messages
+ * can display source line previews even after parsing is complete.
+ */
 class SourceManager {
  public:
-  /// Get the global singleton instance
+  /**
+   * Get the global singleton instance
+   */
   static SourceManager& instance() {
     static SourceManager mgr;
     return mgr;
   }
 
-  /// Register source text for a file path.
-  /// Call this when reading a file for compilation.
+  /**
+   * Register source text for a file path.
+   * Call this when reading a file for compilation.
+   */
   void addSource(const std::string& filePath, const std::string& content) {
     std::lock_guard<std::mutex> lock(mutex_);
     sources_[filePath] = content;
@@ -29,8 +38,10 @@ class SourceManager {
     computeLineOffsets(filePath);
   }
 
-  /// Register source text without a file path (e.g., executeString).
-  /// Uses a synthetic path like "<string:N>".
+  /**
+   * Register source text without a file path (e.g., executeString).
+   * Uses a synthetic path like "<string:N>".
+   */
   std::string addAnonymousSource(const std::string& content) {
     std::lock_guard<std::mutex> lock(mutex_);
     std::string syntheticPath =
@@ -40,7 +51,9 @@ class SourceManager {
     return syntheticPath;
   }
 
-  /// Full text of a registered file, or nothing when the path is unknown
+  /**
+   * Full text of a registered file, or nothing when the path is unknown
+   */
   std::optional<std::string> getSource(const std::string& filePath) const {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = sources_.find(filePath);
@@ -48,8 +61,10 @@ class SourceManager {
     return it->second;
   }
 
-  /// Get a specific line from a file (1-indexed).
-  /// Returns empty string if file or line not found.
+  /**
+   * Get a specific line from a file (1-indexed).
+   * Returns empty string if file or line not found.
+   */
   std::string getLine(const std::string& filePath, int lineNum) const {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = sources_.find(filePath);
@@ -75,7 +90,9 @@ class SourceManager {
     return it->second.substr(start, end - start);
   }
 
-  /// Get line from a Position (uses filePath if available).
+  /**
+   * Get line from a Position (uses filePath if available).
+   */
   std::string getLine(const Position& pos) const {
     if (pos.filePath) {
       return getLine(*pos.filePath, pos.line);
@@ -83,8 +100,10 @@ class SourceManager {
     return "";
   }
 
-  /// Get source line and previous line for error preview.
-  /// Returns {currentLine, previousLine}.
+  /**
+   * Get source line and previous line for error preview.
+   * Returns {currentLine, previousLine}.
+   */
   std::pair<std::string, std::string> getLineWithContext(
       const Position& pos) const {
     std::string currentLine = getLine(pos);
@@ -95,13 +114,17 @@ class SourceManager {
     return {currentLine, prevLine};
   }
 
-  /// Check if source is available for a file path.
+  /**
+   * Check if source is available for a file path.
+   */
   bool hasSource(const std::string& filePath) const {
     std::lock_guard<std::mutex> lock(mutex_);
     return sources_.find(filePath) != sources_.end();
   }
 
-  /// Clear all stored sources. Useful for testing.
+  /**
+   * Clear all stored sources. Useful for testing.
+   */
   void clear() {
     std::lock_guard<std::mutex> lock(mutex_);
     sources_.clear();
@@ -110,11 +133,16 @@ class SourceManager {
   }
 
  private:
+  /** Creates an instance with its default state. */
   SourceManager() = default;
+  /** Disallows copying so the owned state cannot be duplicated. */
   SourceManager(const SourceManager&) = delete;
+  /** Disallows assignment so ownership and object identity cannot be duplicated. */
   SourceManager& operator=(const SourceManager&) = delete;
 
-  /// Compute line start offsets for fast line lookup.
+  /**
+   * Compute line start offsets for fast line lookup.
+   */
   void computeLineOffsets(const std::string& filePath) {
     auto it = sources_.find(filePath);
     if (it == sources_.end()) return;
@@ -137,3 +165,5 @@ class SourceManager {
   std::map<std::string, std::vector<size_t>> lineOffsets_;
   int anonymousCounter_ = 0;
 };
+
+}  // namespace sun::support

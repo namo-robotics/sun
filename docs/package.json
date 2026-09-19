@@ -4,12 +4,13 @@
   "private": true,
   "scripts": {
     "gen-examples": "node scripts/gen-examples.mjs",
-    "predev": "node scripts/gen-examples.mjs",
+    "predev": "node scripts/gen-examples.mjs && node scripts/gen-compiler-api.mjs",
     "dev": "next dev",
-    "prebuild": "node scripts/gen-examples.mjs",
+    "prebuild": "node scripts/gen-examples.mjs && node scripts/gen-compiler-api.mjs",
     "build": "next build",
     "start": "next start",
-    "test": "node --test scripts/*.test.mjs"
+    "test": "node --test scripts/*.test.mjs",
+    "gen-compiler-api": "node scripts/gen-compiler-api.mjs"
   },
   "dependencies": {
     "next": "^14.2.0",
@@ -20,6 +21,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@xmldom/xmldom": "0.9.12",
     "typescript": "^5.4.5"
   }
 }

@@ -19,6 +19,10 @@
 #include "driver/driver.h"
 #include "driver/execution_utils.h"
 
+using sun::driver::Driver;
+using sun::driver::initTestEnvironment;
+
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 constexpr const char* kSimpleProgram = R"(
@@ -57,6 +61,7 @@ function main() i32 {
 }
 )";
 
+/** Compiles fixture source with source-level debug metadata enabled. */
 std::unique_ptr<Driver> compileWithDebug(const std::string& source,
                                          const std::string& triple = "") {
   initTestEnvironment();
@@ -66,6 +71,7 @@ std::unique_ptr<Driver> compileWithDebug(const std::string& source,
   return driver;
 }
 
+/** Returns the LLVM module text used by debug metadata assertions. */
 std::string printModule(llvm::Module& module) {
   std::string text;
   llvm::raw_string_ostream os(text);
@@ -73,10 +79,12 @@ std::string printModule(llvm::Module& module) {
   return text;
 }
 
+/** Reports whether the named external validation tool is available. */
 bool haveTool(const std::string& tool) {
   return std::system(("command -v " + tool + " >/dev/null 2>&1").c_str()) == 0;
 }
 
+/** Finds an installed validation tool under its supported executable names. */
 std::string findTool(const std::vector<std::string>& candidates) {
   for (const auto& tool : candidates) {
     if (haveTool(tool)) return tool;
@@ -84,6 +92,7 @@ std::string findTool(const std::vector<std::string>& candidates) {
   return "";
 }
 
+/** Reads a fixture file into a string for comparison. */
 std::string readFile(const std::string& path) {
   std::ifstream in(path);
   std::stringstream ss;
@@ -91,13 +100,16 @@ std::string readFile(const std::string& path) {
   return ss.str();
 }
 
-// Emit an object file and run llvm-dwarfdump --verify on it; returns the
-// verifier's exit code, or -1 when llvm-dwarfdump is unavailable.
+/**
+ * Emit an object file and run llvm-dwarfdump --verify on it; returns the
+ * verifier's exit code, or -1 when llvm-dwarfdump is unavailable.
+ */
 int dwarfdumpVerify(llvm::Module& module, const std::string& objPath) {
   std::string tool = findTool({"llvm-dwarfdump-20", "llvm-dwarfdump"});
   if (tool.empty()) return -1;
   std::string errorMsg;
-  EXPECT_TRUE(sun::emitObjectFile(module, objPath, errorMsg)) << errorMsg;
+  EXPECT_TRUE(sun::driver::emitObjectFile(module, objPath, errorMsg))
+      << errorMsg;
   int rc =
       std::system((tool + " --verify " + objPath + " >/dev/null 2>&1").c_str());
   return WEXITSTATUS(rc);
@@ -127,8 +139,8 @@ TEST(Tooling_Backend_DebugInfo, subprograms_attached_to_functions) {
   ASSERT_NE(mainSP, nullptr);
   EXPECT_GT(mainSP->getLine(), 0u);
 
-  // Overloadable functions get mangled symbols (add$i32$i32); find by the
-  // subprogram's source name, which is what debuggers match on.
+  // Emitted symbols are derived from declaration identity, not spelled like
+  // the source; find by the subprogram's source name, which debuggers match.
   llvm::DISubprogram* addSP = nullptr;
   for (auto& func : module) {
     if (auto* sp = func.getSubprogram(); sp && sp->getName() == "add") {
@@ -191,7 +203,7 @@ function main() i32 {
 
 TEST(Tooling_Backend_DebugInfo, moon_bundle_carries_debug_info_into_g_compile) {
   initTestEnvironment();
-  auto imports = getStdlibMoonImports();
+  auto imports = sun::driver::getStdlibMoonImports();
   if (imports.empty()) GTEST_SKIP() << "stdlib.moon not built";
 
   auto driver = Driver::createForAOT("moon_debug_test", "", /*debugInfo=*/true);
@@ -218,7 +230,7 @@ function main() i32 {
 
 TEST(Tooling_Backend_DebugInfo, moon_debug_info_stripped_from_non_g_compile) {
   initTestEnvironment();
-  auto imports = getStdlibMoonImports();
+  auto imports = sun::driver::getStdlibMoonImports();
   if (imports.empty()) GTEST_SKIP() << "stdlib.moon not built";
 
   auto driver = Driver::createForAOT("moon_strip_test");
@@ -286,12 +298,15 @@ TEST(Tooling_Backend_DebugInfo, cross_target_object_dwarf_verifies) {
 // End-to-end: gdb / lldb against a linked executable
 // ============================================================================
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
-// Link kSimpleProgram with -g; returns "" (and records a skip reason) when the
-// host linker is unavailable. The source is written to a real file so
-// debuggers can display source lines. `name` keeps concurrently running tests
-// (ctest -j) from clobbering each other's artifacts.
+/**
+ * Link kSimpleProgram with -g; returns "" (and records a skip reason) when the
+ * host linker is unavailable. The source is written to a real file so
+ * debuggers can display source lines. `name` keeps concurrently running tests
+ * (ctest -j) from clobbering each other's artifacts.
+ */
 std::string linkSimpleDebugBinary(const std::string& name,
                                   std::string& skipReason) {
   initTestEnvironment();
@@ -304,10 +319,10 @@ std::string linkSimpleDebugBinary(const std::string& name,
 
   std::string binary = ::testing::TempDir() + name + "_bin";
   std::string errorMsg;
-  sun::LinkOptions linkOpts;
-  if (!sun::compileToExecutable(driver->getModule(), binary, errorMsg,
-                                /*keepObjectFile=*/false, linkOpts,
-                                /*optimize=*/false)) {
+  sun::driver::LinkOptions linkOpts;
+  if (!sun::driver::compileToExecutable(driver->getModule(), binary, errorMsg,
+                                        /*keepObjectFile=*/false, linkOpts,
+                                        /*optimize=*/false)) {
     skipReason = "host link failed: " + errorMsg;
     return "";
   }

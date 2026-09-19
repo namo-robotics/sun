@@ -11,8 +11,27 @@
 #include "lsp/name_ranges.h"
 #include "support/source_manager.h"
 
+using sun::semantic_analysis::QualifiedName;
+
+using sun::ast::ASTNodeType;
+using sun::ast::BlockExprAST;
+using sun::ast::ClassDefinitionAST;
+using sun::ast::EnumDefinitionAST;
+using sun::ast::ExprAST;
+using sun::ast::forEachChild;
+using sun::ast::ForInExprAST;
+using sun::ast::FunctionAST;
+using sun::ast::InterfaceDefinitionAST;
+using sun::ast::PrototypeAST;
+using sun::ast::TryCatchExprAST;
+using sun::ast::VariableCreationAST;
+using sun::ast::VariableReferenceAST;
+using sun::support::Position;
+
+/** Provides compiler-backed editor features through the language server protocol. */
 namespace sun::lsp {
 
+/** Converts a path to the normalized form used for document comparisons. */
 std::string normalizePath(const std::string& path) {
   try {
     if (std::filesystem::exists(path)) {
@@ -23,11 +42,13 @@ std::string normalizePath(const std::string& path) {
   return path;
 }
 
+/** Reports whether a source span contains the requested byte offset. */
 bool spanContains(const Position& loc, int offset) {
   return loc.endOffset.has_value() && loc.offset <= offset &&
          offset < *loc.endOffset;
 }
 
+/** Returns the source text covered by a recorded span. */
 std::string sliceSpan(const std::string& source, const Position& loc) {
   if (!loc.endOffset || loc.offset < 0 || *loc.endOffset < loc.offset ||
       static_cast<size_t>(*loc.endOffset) > source.size()) {
@@ -58,8 +79,9 @@ bool NodeFinder::visit(const ExprAST& node) {
       if (function.hasBody()) {
         for (size_t i = 0; !found && i < function.getFieldInitializerCount();
              ++i) {
-          const auto& assignment = static_cast<const MemberAssignmentAST&>(
-              *function.getBody().getBody().at(i));
+          const auto& assignment =
+              static_cast<const sun::ast::MemberAssignmentAST&>(
+                  *function.getBody().getBody().at(i));
           found = visit(*assignment.getValue());
         }
       }
@@ -81,6 +103,7 @@ bool NodeFinder::isDocumentFile(const Position& loc) {
   return matches;
 }
 
+/** Finds a concrete generic instance and its type bindings for editor lookup. */
 const ExprAST* firstSpecialization(const ExprAST& node, Bindings& bindings) {
   if (node.getType() == ASTNodeType::CLASS_DEFINITION) {
     const auto& cls = static_cast<const ClassDefinitionAST&>(node);
@@ -107,6 +130,7 @@ const ExprAST* firstSpecialization(const ExprAST& node, Bindings& bindings) {
   return nullptr;
 }
 
+/** Finds the syntax node and ancestor chain at a document offset. */
 std::optional<Target> locate(const BlockExprAST& program,
                              const std::string& documentPath, int offset) {
   NodeFinder finder(documentPath, offset);
@@ -139,6 +163,7 @@ std::optional<Target> locate(const BlockExprAST& program,
 // Finding the declaration behind a symbol
 // ---------------------------------------------------------------------------
 
+/** Reports whether the syntax-node kind introduces a declaration. */
 bool isDefinition(ASTNodeType kind) {
   switch (kind) {
     case ASTNodeType::FUNCTION:
@@ -156,6 +181,7 @@ bool isDefinition(ASTNodeType kind) {
   }
 }
 
+/** Returns the unqualified name introduced by a declaration node. */
 std::string declarationName(const ExprAST& node) {
   switch (node.getType()) {
     case ASTNodeType::FUNCTION:
@@ -169,9 +195,9 @@ std::string declarationName(const ExprAST& node) {
     case ASTNodeType::VARIABLE_CREATION:
       return static_cast<const VariableCreationAST&>(node).getName();
     case ASTNodeType::REFERENCE_CREATION:
-      return static_cast<const ReferenceCreationAST&>(node).getName();
+      return static_cast<const sun::ast::ReferenceCreationAST&>(node).getName();
     case ASTNodeType::DECLARE_TYPE: {
-      const auto& decl = static_cast<const DeclareTypeAST&>(node);
+      const auto& decl = static_cast<const sun::ast::DeclareTypeAST&>(node);
       return decl.hasAlias() ? decl.getAliasName() : "";
     }
     default:
@@ -179,7 +205,8 @@ std::string declarationName(const ExprAST& node) {
   }
 }
 
-sun::QualifiedName declarationQualifiedName(const ExprAST& node) {
+/** Returns the declaration name together with its enclosing scopes. */
+QualifiedName declarationQualifiedName(const ExprAST& node) {
   switch (node.getType()) {
     case ASTNodeType::FUNCTION:
       return static_cast<const FunctionAST&>(node)
@@ -197,9 +224,12 @@ sun::QualifiedName declarationQualifiedName(const ExprAST& node) {
   }
 }
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// Comment stored on a declaration node (see doc_comments.h)
+/**
+ * Comment stored on a declaration node (see doc_comments.h)
+ */
 std::string storedDoc(const ExprAST& node) {
   switch (node.getType()) {
     case ASTNodeType::FUNCTION:
@@ -217,7 +247,9 @@ std::string storedDoc(const ExprAST& node) {
   }
 }
 
-// Walks module-level declarations (through modules and moon stubs)
+/**
+ * Walks module-level declarations (through modules and moon stubs)
+ */
 void forEachDeclaration(const ExprAST& node,
                         const std::function<void(const ExprAST&)>& fn) {
   switch (node.getType()) {
@@ -233,28 +265,20 @@ void forEachDeclaration(const ExprAST& node,
   }
 }
 
-// Module-level declaration whose analyzer-given name mangles to `mangled`,
-// falling back to the first one called `name`
-const ExprAST* findDeclarationByMangledName(const BlockExprAST& program,
-                                            const std::string& name,
-                                            const std::string& mangled) {
-  const ExprAST* byName = nullptr;
-  const ExprAST* byMangledName = nullptr;
-  forEachDeclaration(program, [&](const ExprAST& decl) {
-    if (declarationName(decl) != name) return;
-    if (!byName) byName = &decl;
-    if (!mangled.empty() && !byMangledName) {
-      sun::QualifiedName qualified = declarationQualifiedName(decl);
-      if (!qualified.empty() && qualified.mangled() == mangled) {
-        byMangledName = &decl;
-      }
-    }
+/** Find analyzed source syntax by its selected declaration identity. */
+const ExprAST* findDeclarationById(const ExprAST& node,
+                                   sun::semantic_analysis::DeclarationId id) {
+  if (node.getDeclarationId() == id) return &node;
+  const ExprAST* found = nullptr;
+  forEachChild(node, [&](const ExprAST& child) {
+    if (!found) found = findDeclarationById(child, id);
   });
-  return byMangledName ? byMangledName : byName;
+  return found;
 }
 
 }  // namespace
 
+/** Extracts declaration information from a syntax node. */
 Declaration declarationOf(const ExprAST& node) {
   Declaration declaration{node.getLocation(), storedDoc(node), &node,
                           declarationName(node)};
@@ -269,9 +293,10 @@ Declaration declarationOf(const ExprAST& node) {
   return declaration;
 }
 
+/** Finds a declaration by its local and qualified names. */
 const ExprAST* findDeclaration(const BlockExprAST& program,
                                const std::string& name,
-                               const sun::QualifiedName& qualified) {
+                               const QualifiedName& qualified) {
   const ExprAST* byName = nullptr;
   const ExprAST* byQualifiedName = nullptr;
   forEachDeclaration(program, [&](const ExprAST& decl) {
@@ -284,25 +309,29 @@ const ExprAST* findDeclaration(const BlockExprAST& program,
   return byQualifiedName ? byQualifiedName : byName;
 }
 
-const sun::Type* stripReference(const sun::Type* type) {
-  while (type && type->getKind() == sun::Type::Kind::Reference) {
-    type =
-        static_cast<const sun::ReferenceType*>(type)->getReferencedType().get();
+/** Unwraps reference types to inspect the underlying value type. */
+const sun::semantic_analysis::Type* stripReference(
+    const sun::semantic_analysis::Type* type) {
+  while (type &&
+         type->getKind() == sun::semantic_analysis::Type::Kind::Reference) {
+    type = static_cast<const sun::semantic_analysis::ReferenceType*>(type)
+               ->getReferencedType()
+               .get();
   }
   return type;
 }
 
+/** Finds the syntax declaration corresponding to a semantic type. */
 const ExprAST* findTypeDefinition(const BlockExprAST& program,
-                                  const sun::Type& type) {
+                                  const sun::semantic_analysis::Type& type) {
   std::string name;
-  sun::QualifiedName qualified;
+  QualifiedName qualified;
   switch (type.getKind()) {
-    case sun::Type::Kind::Class: {
-      const auto& cls = static_cast<const sun::ClassType&>(type);
+    case sun::semantic_analysis::Type::Kind::Class: {
+      const auto& cls =
+          static_cast<const sun::semantic_analysis::ClassType&>(type);
       qualified = cls.isSpecialized() ? cls.getGenericQualifiedName()
                                       : cls.getQualifiedName();
-      // The generic's base name may be a mangled symbol (a bundle's
-      // `$hash$_std_Vec`); the qualified name keeps the plain spelling
       if (!qualified.empty()) {
         name = qualified.baseName;
       } else if (cls.isSpecialized() && !cls.getBaseGenericName().empty()) {
@@ -312,16 +341,18 @@ const ExprAST* findTypeDefinition(const BlockExprAST& program,
       }
       break;
     }
-    case sun::Type::Kind::Interface: {
-      const auto& iface = static_cast<const sun::InterfaceType&>(type);
+    case sun::semantic_analysis::Type::Kind::Interface: {
+      const auto& iface =
+          static_cast<const sun::semantic_analysis::InterfaceType&>(type);
       name = iface.isSpecialized() && !iface.getBaseGenericName().empty()
                  ? iface.getBaseGenericName()
                  : iface.getBaseName();
       qualified = iface.getQualifiedName();
       break;
     }
-    case sun::Type::Kind::Enum: {
-      const auto& enumType = static_cast<const sun::EnumType&>(type);
+    case sun::semantic_analysis::Type::Kind::Enum: {
+      const auto& enumType =
+          static_cast<const sun::semantic_analysis::EnumType&>(type);
       name = enumType.isGenericSpecialization() ? enumType.getGenericBase()
                                                 : enumType.getBaseName();
       qualified = enumType.getQualifiedName();
@@ -336,6 +367,7 @@ const ExprAST* findTypeDefinition(const BlockExprAST& program,
   return findDeclaration(program, name, qualified);
 }
 
+/** Finds a named member in a type definition. */
 std::optional<Declaration> findMember(const ExprAST& definition,
                                       const std::string& member) {
   switch (definition.getType()) {
@@ -378,6 +410,7 @@ std::optional<Declaration> findMember(const ExprAST& definition,
   }
 }
 
+/** Searches enclosing lexical scopes for a local declaration. */
 std::optional<Declaration> findLocalDeclaration(
     const std::vector<const ExprAST*>& chain, const ExprAST& node,
     const std::string& name) {
@@ -393,8 +426,8 @@ std::optional<Declaration> findLocalDeclaration(
             static_cast<const VariableCreationAST&>(*stmt).getName() == name) {
           latest = stmt.get();
         } else if (stmt->getType() == ASTNodeType::REFERENCE_CREATION &&
-                   static_cast<const ReferenceCreationAST&>(*stmt).getName() ==
-                       name) {
+                   static_cast<const sun::ast::ReferenceCreationAST&>(*stmt)
+                           .getName() == name) {
           latest = stmt.get();
         }
       }
@@ -406,7 +439,7 @@ std::optional<Declaration> findLocalDeclaration(
     } else if (ancestor.getType() == ASTNodeType::MATCH) {
       // A payload binding is visible in its own arm's body
       for (const auto& arm :
-           static_cast<const MatchExprAST&>(ancestor).getArms()) {
+           static_cast<const sun::ast::MatchExprAST&>(ancestor).getArms()) {
         if (!arm.body || !spanContains(arm.body->getLocation(), offset)) {
           continue;
         }
@@ -418,7 +451,8 @@ std::optional<Declaration> findLocalDeclaration(
       }
     } else if (ancestor.getType() == ASTNodeType::FOR_LOOP) {
       // `for (var i = 0; ...)`: the loop's own variable
-      const ExprAST* init = static_cast<const ForExprAST&>(ancestor).getInit();
+      const ExprAST* init =
+          static_cast<const sun::ast::ForExprAST&>(ancestor).getInit();
       if (init && init->getType() == ASTNodeType::VARIABLE_CREATION &&
           init->getLocation().offset < offset &&
           static_cast<const VariableCreationAST&>(*init).getName() == name) {
@@ -429,7 +463,7 @@ std::optional<Declaration> findLocalDeclaration(
       std::optional<Declaration> found;
       forEachCatchBinding(
           static_cast<const TryCatchExprAST&>(ancestor),
-          [&](const CatchClause& clause, const Position& header) {
+          [&](const sun::ast::CatchClause& clause, const Position& header) {
             if (!found && clause.bindingName == name &&
                 spanContains(clause.body->getLocation(), offset)) {
               found = Declaration{header, "", &ancestor, name};
@@ -442,7 +476,7 @@ std::optional<Declaration> findLocalDeclaration(
       const PrototypeAST& proto =
           ancestor.getType() == ASTNodeType::FUNCTION
               ? static_cast<const FunctionAST&>(ancestor).getProto()
-              : static_cast<const LambdaAST&>(ancestor).getProto();
+              : static_cast<const sun::ast::LambdaAST&>(ancestor).getProto();
       for (const auto& arg : proto.getArgs()) {
         if (arg.first == name) return std::nullopt;
       }
@@ -451,10 +485,12 @@ std::optional<Declaration> findLocalDeclaration(
   return std::nullopt;
 }
 
+/** Resolves the named member on the receiver's type. */
 std::optional<Declaration> findMemberDeclaration(
     const BlockExprAST& program, const ExprAST& object,
-    const std::string& member, const std::string& qualifiedName) {
-  const sun::Type* objectType = stripReference(object.getResolvedType().get());
+    const std::string& member, const QualifiedName& qualifiedName) {
+  const sun::semantic_analysis::Type* objectType =
+      stripReference(object.getResolvedType().get());
   if (!objectType) {
     // A match pattern's object is never typed: `Shape.Circle(r)` names the
     // enum directly
@@ -462,17 +498,16 @@ std::optional<Declaration> findMemberDeclaration(
       return std::nullopt;
     }
     const auto& ref = static_cast<const VariableReferenceAST&>(object);
-    sun::QualifiedName qualified;
+    QualifiedName qualified;
     if (ref.hasQualifiedName()) qualified = ref.getQualifiedName();
     const ExprAST* definition =
         findDeclaration(program, ref.getName(), qualified);
     if (!definition) return std::nullopt;
     return findMember(*definition, member);
   }
-  if (objectType->getKind() == sun::Type::Kind::Module) {
+  if (objectType->getKind() == sun::semantic_analysis::Type::Kind::Module) {
     // `m.f`: the analyzer recorded which module's `f` was meant
-    if (const ExprAST* decl =
-            findDeclarationByMangledName(program, member, qualifiedName)) {
+    if (const ExprAST* decl = findDeclaration(program, member, qualifiedName)) {
       return declarationOf(*decl);
     }
     return std::nullopt;
@@ -482,16 +517,21 @@ std::optional<Declaration> findMemberDeclaration(
   return findMember(*definition, member);
 }
 
+/** Resolves the declaration referenced by a node in its enclosing scopes. */
 std::optional<Declaration> findDeclarationOf(
     const BlockExprAST& program, const std::vector<const ExprAST*>& chain,
     const ExprAST& node) {
+  if (auto target = node.getTargetDeclarationId()) {
+    if (const auto* declaration = findDeclarationById(program, target))
+      return declarationOf(*declaration);
+  }
   switch (node.getType()) {
     case ASTNodeType::VARIABLE_REFERENCE: {
       const auto& ref = static_cast<const VariableReferenceAST&>(node);
       if (auto local = findLocalDeclaration(chain, node, ref.getName())) {
         return local;
       }
-      sun::QualifiedName qualified;
+      QualifiedName qualified;
       if (ref.hasQualifiedName()) qualified = ref.getQualifiedName();
       if (const ExprAST* decl =
               findDeclaration(program, ref.getName(), qualified)) {
@@ -500,7 +540,7 @@ std::optional<Declaration> findDeclarationOf(
       return std::nullopt;
     }
     case ASTNodeType::GENERIC_CALL: {
-      const auto& call = static_cast<const GenericCallAST&>(node);
+      const auto& call = static_cast<const sun::ast::GenericCallAST&>(node);
       if (const ExprAST* decl =
               findDeclaration(program, call.getFunctionName(), {})) {
         return declarationOf(*decl);
@@ -509,7 +549,8 @@ std::optional<Declaration> findDeclarationOf(
     }
     case ASTNodeType::CALL:
       return findDeclarationOf(
-          program, chain, *static_cast<const CallExprAST&>(node).getCallee());
+          program, chain,
+          *static_cast<const sun::ast::CallExprAST&>(node).getCallee());
     case ASTNodeType::THIS: {
       for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
         if ((*it)->getType() == ASTNodeType::CLASS_DEFINITION) {
@@ -519,23 +560,25 @@ std::optional<Declaration> findDeclarationOf(
       return std::nullopt;
     }
     case ASTNodeType::MEMBER_ACCESS: {
-      const auto& access = static_cast<const MemberAccessAST&>(node);
+      const auto& access = static_cast<const sun::ast::MemberAccessAST&>(node);
       if (!access.getObject()) return std::nullopt;
       return findMemberDeclaration(program, *access.getObject(),
                                    access.getMemberName(),
-                                   access.getQualifiedName().mangled());
+                                   access.getQualifiedName());
     }
     case ASTNodeType::MEMBER_ASSIGNMENT: {
-      const auto& assignment = static_cast<const MemberAssignmentAST&>(node);
+      const auto& assignment =
+          static_cast<const sun::ast::MemberAssignmentAST&>(node);
       if (!assignment.getObject()) return std::nullopt;
       return findMemberDeclaration(program, *assignment.getObject(),
-                                   assignment.getMemberName(), "");
+                                   assignment.getMemberName(), {});
     }
     default:
       return std::nullopt;
   }
 }
 
+/** Loads declaration source, reusing the open document text when possible. */
 std::string sourceFor(const Position& declaration,
                       const std::string& documentPath,
                       const std::string& documentSource) {
@@ -544,11 +587,12 @@ std::string sourceFor(const Position& declaration,
   if (path == documentPath || normalizePath(path) == documentPath) {
     return documentSource;
   }
-  if (auto registered = SourceManager::instance().getSource(path)) {
+  if (auto registered =
+          sun::support::SourceManager::instance().getSource(path)) {
     return *registered;
   }
-  if (auto registered =
-          SourceManager::instance().getSource(normalizePath(path))) {
+  if (auto registered = sun::support::SourceManager::instance().getSource(
+          normalizePath(path))) {
     return *registered;
   }
   return "";
@@ -558,35 +602,39 @@ std::string sourceFor(const Position& declaration,
 // Type names written in annotations
 // ---------------------------------------------------------------------------
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// Innermost annotation containing the offset (type arguments, element and
-// function types nest inside the outer one), or null
-const TypeAnnotation* annotationAt(const TypeAnnotation& annotation,
-                                   int offset) {
+/**
+ * Innermost annotation containing the offset (type arguments, element and
+ * function types nest inside the outer one), or null
+ */
+const sun::ast::TypeAnnotation* annotationAt(
+    const sun::ast::TypeAnnotation& annotation, int offset) {
   if (!spanContains(annotation.span, offset)) return nullptr;
   for (const auto& arg : annotation.typeArguments) {
     if (arg) {
-      if (const TypeAnnotation* inner = annotationAt(*arg, offset)) {
+      if (const sun::ast::TypeAnnotation* inner = annotationAt(*arg, offset)) {
         return inner;
       }
     }
   }
   for (const auto& param : annotation.paramTypes) {
     if (param) {
-      if (const TypeAnnotation* inner = annotationAt(*param, offset)) {
+      if (const sun::ast::TypeAnnotation* inner =
+              annotationAt(*param, offset)) {
         return inner;
       }
     }
   }
   if (annotation.elementType) {
-    if (const TypeAnnotation* inner =
+    if (const sun::ast::TypeAnnotation* inner =
             annotationAt(*annotation.elementType, offset)) {
       return inner;
     }
   }
   if (annotation.returnType) {
-    if (const TypeAnnotation* inner =
+    if (const sun::ast::TypeAnnotation* inner =
             annotationAt(*annotation.returnType, offset)) {
       return inner;
     }
@@ -596,6 +644,7 @@ const TypeAnnotation* annotationAt(const TypeAnnotation& annotation,
 
 }  // namespace
 
+/** Visits type annotations directly associated with a syntax node. */
 void forEachAnnotation(const ExprAST& node, const AnnotationFn& fn) {
   auto visitProto = [&](const PrototypeAST& proto) {
     for (const auto& arg : proto.getArgs()) fn(arg.second);
@@ -609,7 +658,7 @@ void forEachAnnotation(const ExprAST& node, const AnnotationFn& fn) {
       visitProto(static_cast<const FunctionAST&>(node).getProto());
       break;
     case ASTNodeType::LAMBDA:
-      visitProto(static_cast<const LambdaAST&>(node).getProto());
+      visitProto(static_cast<const sun::ast::LambdaAST&>(node).getProto());
       break;
     case ASTNodeType::VARIABLE_CREATION: {
       const auto& decl = static_cast<const VariableCreationAST&>(node);
@@ -620,7 +669,8 @@ void forEachAnnotation(const ExprAST& node, const AnnotationFn& fn) {
       fn(static_cast<const ForInExprAST&>(node).getLoopVarType());
       break;
     case ASTNodeType::DECLARE_TYPE:
-      fn(static_cast<const DeclareTypeAST&>(node).getTypeAnnotation());
+      fn(static_cast<const sun::ast::DeclareTypeAST&>(node)
+             .getTypeAnnotation());
       break;
     case ASTNodeType::CLASS_DEFINITION: {
       const auto& cls = static_cast<const ClassDefinitionAST&>(node);
@@ -645,15 +695,15 @@ void forEachAnnotation(const ExprAST& node, const AnnotationFn& fn) {
       break;
     }
     case ASTNodeType::GENERIC_CALL: {
-      for (const auto& arg :
-           static_cast<const GenericCallAST&>(node).getTypeArguments()) {
+      for (const auto& arg : static_cast<const sun::ast::GenericCallAST&>(node)
+                                 .getTypeArguments()) {
         if (arg) fn(*arg);
       }
       break;
     }
     case ASTNodeType::MEMBER_ACCESS: {
-      for (const auto& arg :
-           static_cast<const MemberAccessAST&>(node).getTypeArguments()) {
+      for (const auto& arg : static_cast<const sun::ast::MemberAccessAST&>(node)
+                                 .getTypeArguments()) {
         if (arg) fn(*arg);
       }
       break;
@@ -670,17 +720,19 @@ void forEachAnnotation(const ExprAST& node, const AnnotationFn& fn) {
   }
 }
 
-const TypeAnnotation* annotationIn(const ExprAST& node, int offset) {
-  const TypeAnnotation* hit = nullptr;
-  forEachAnnotation(node, [&](const TypeAnnotation& annotation) {
+/** Finds the type annotation covering the requested byte offset. */
+const sun::ast::TypeAnnotation* annotationIn(const ExprAST& node, int offset) {
+  const sun::ast::TypeAnnotation* hit = nullptr;
+  forEachAnnotation(node, [&](const sun::ast::TypeAnnotation& annotation) {
     if (!hit) hit = annotationAt(annotation, offset);
   });
   return hit;
 }
 
+/** Resolves the type named by a source annotation. */
 const ExprAST* findAnnotatedType(const BlockExprAST& program,
-                                 const TypeAnnotation& annotation) {
-  const TypeAnnotation* named = &annotation;
+                                 const sun::ast::TypeAnnotation& annotation) {
+  const sun::ast::TypeAnnotation* named = &annotation;
   while (named->elementType &&
          (named->baseName == "ref" || named->baseName == "raw_ptr" ||
           named->baseName == "static_ptr" || named->baseName == "ptr" ||
@@ -708,6 +760,7 @@ const ExprAST* findAnnotatedType(const BlockExprAST& program,
 // Resolving the symbol a node names
 // ---------------------------------------------------------------------------
 
+/** Finds a named parameter in the enclosing function signatures. */
 std::optional<Declaration> findParameter(
     const std::vector<const ExprAST*>& chain, const std::string& name) {
   for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
@@ -719,6 +772,7 @@ std::optional<Declaration> findParameter(
   return std::nullopt;
 }
 
+/** Visits the error bindings introduced by catch clauses. */
 void forEachCatchBinding(const TryCatchExprAST& tryCatch,
                          const CatchBindingFn& fn) {
   const Position* previous = &tryCatch.getTryBlock().getLocation();
@@ -737,15 +791,20 @@ void forEachCatchBinding(const TryCatchExprAST& tryCatch,
   }
 }
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// True when the offset lies in a definition's header, before its body
+/**
+ * True when the offset lies in a definition's header, before its body
+ */
 bool inHeader(const ExprAST& node, int offset, const std::string& source) {
   size_t brace = source.find('{', node.getLocation().offset);
   return brace == std::string::npos || offset < static_cast<int>(brace);
 }
 
-// The parameter written at the offset in a function or lambda signature
+/**
+ * The parameter written at the offset in a function or lambda signature
+ */
 std::optional<Declaration> parameterUnder(const ExprAST& owner, int offset,
                                           const std::string& source) {
   const PrototypeAST* proto = prototypeOf(owner);
@@ -763,6 +822,7 @@ std::optional<Declaration> parameterUnder(const ExprAST& owner, int offset,
 
 }  // namespace
 
+/** Finds a declaration introduced at the selected position within a node. */
 std::optional<Declaration> ownDeclaration(const ExprAST& node, int offset,
                                           const std::string& source) {
   switch (node.getType()) {
@@ -794,7 +854,8 @@ std::optional<Declaration> ownDeclaration(const ExprAST& node, int offset,
       break;
     }
     case ASTNodeType::MATCH: {
-      for (const auto& arm : static_cast<const MatchExprAST&>(node).getArms()) {
+      for (const auto& arm :
+           static_cast<const sun::ast::MatchExprAST&>(node).getArms()) {
         for (const auto& binding : arm.bindings) {
           if (!binding.isWildcard && spanContains(binding.location, offset)) {
             return Declaration{binding.location, "", nullptr, binding.name};
@@ -807,7 +868,7 @@ std::optional<Declaration> ownDeclaration(const ExprAST& node, int offset,
       std::optional<Declaration> found;
       forEachCatchBinding(
           static_cast<const TryCatchExprAST&>(node),
-          [&](const CatchClause& clause, const Position& header) {
+          [&](const sun::ast::CatchClause& clause, const Position& header) {
             if (found || !spanContains(header, offset)) return;
             int at = findWord(source, clause.bindingName, header.offset,
                               *header.endOffset);
@@ -846,6 +907,7 @@ std::optional<Declaration> ownDeclaration(const ExprAST& node, int offset,
   return declarationOf(node);
 }
 
+/** Resolves a syntax node to the declaration it denotes. */
 std::optional<Declaration> resolveSymbol(
     const BlockExprAST& program, const std::vector<const ExprAST*>& chain,
     const ExprAST& node) {
@@ -853,7 +915,7 @@ std::optional<Declaration> resolveSymbol(
   if (node.getType() == ASTNodeType::VARIABLE_REFERENCE) {
     name = static_cast<const VariableReferenceAST&>(node).getName();
   } else if (node.getType() == ASTNodeType::VARIABLE_ASSIGNMENT) {
-    name = static_cast<const VariableAssignmentAST&>(node).getName();
+    name = static_cast<const sun::ast::VariableAssignmentAST&>(node).getName();
   }
   if (name.empty()) return findDeclarationOf(program, chain, node);
   if (auto local = findLocalDeclaration(chain, node, name)) return local;
@@ -866,15 +928,18 @@ std::optional<Declaration> resolveSymbol(
   return declarationOf(*decl);
 }
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// The field a struct literal names at the offset: `{ x: 1 }` names the `x`
-// of the literal's type
-std::optional<Declaration> findLiteralField(const BlockExprAST& program,
-                                            const StructLiteralAST& literal,
-                                            int offset,
-                                            const std::string& source) {
-  const sun::Type* type = stripReference(literal.getResolvedType().get());
+/**
+ * The field a struct literal names at the offset: `{ x: 1 }` names the `x`
+ * of the literal's type
+ */
+std::optional<Declaration> findLiteralField(
+    const BlockExprAST& program, const sun::ast::StructLiteralAST& literal,
+    int offset, const std::string& source) {
+  const sun::semantic_analysis::Type* type =
+      stripReference(literal.getResolvedType().get());
   if (!type) return std::nullopt;
   const ExprAST* definition = findTypeDefinition(program, *type);
   if (!definition) return std::nullopt;
@@ -890,18 +955,21 @@ std::optional<Declaration> findLiteralField(const BlockExprAST& program,
 
 }  // namespace
 
+/** Resolves the declaration under a selected source position. */
 std::optional<Declaration> declarationUnder(const BlockExprAST& program,
                                             const Target& target, int offset,
                                             const std::string& source) {
   const ExprAST& node = target.node();
   if (node.getType() == ASTNodeType::STRUCT_LITERAL) {
-    return findLiteralField(program, static_cast<const StructLiteralAST&>(node),
-                            offset, source);
+    return findLiteralField(
+        program, static_cast<const sun::ast::StructLiteralAST&>(node), offset,
+        source);
   }
   if (auto own = ownDeclaration(node, offset, source)) return own;
   return resolveSymbol(program, target.chain, node);
 }
 
+/** Finds the declaration associated with a document byte offset. */
 std::optional<Declaration> findDeclarationAt(const BlockExprAST& program,
                                              const std::string& documentPath,
                                              const std::string& source,
@@ -912,7 +980,7 @@ std::optional<Declaration> findDeclarationAt(const BlockExprAST& program,
   NodeFinder finder(documentPath, byteOffset);
   finder.visit(program);
   if (finder.chain().empty()) return std::nullopt;
-  if (const TypeAnnotation* annotation =
+  if (const sun::ast::TypeAnnotation* annotation =
           annotationIn(*finder.chain().back(), byteOffset)) {
     if (const ExprAST* decl = findAnnotatedType(program, *annotation)) {
       return declarationOf(*decl);

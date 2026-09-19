@@ -8,17 +8,21 @@
 
 #include <cstddef>
 
-namespace sun {
-namespace StructNames {
+/** Resolves declarations and checks the types and meaning of Sun programs. */
+namespace sun::semantic_analysis {
 
-// Layout patterns for well-known struct types
+/**
+ * Layout patterns for well-known struct types
+ */
 enum class Layout {
   PtrPtr,     // { ptr, ptr }       - closure, interface_fat
   PtrI64,     // { ptr, i64 }       - static_ptr_struct
   PtrI32Ptr,  // { ptr, i32, ptr }  - array_struct
 };
 
-// Info about a well-known struct type
+/**
+ * Info about a well-known struct type
+ */
 struct StructInfo {
   const char* name;
   Layout layout;
@@ -40,5 +44,4 @@ constexpr const char* StaticPtr = "static_ptr_struct";
 constexpr const char* InterfaceFat = "interface_fat";
 constexpr const char* ArrayStruct = "array_struct";
 
-}  // namespace StructNames
-}  // namespace sun
+}  // namespace sun::semantic_analysis

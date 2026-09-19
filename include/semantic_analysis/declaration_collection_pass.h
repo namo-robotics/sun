@@ -18,6 +18,10 @@
 
 #include "semantic_analysis/semantic_context.h"
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
+namespace sun::semantic_analysis {
+using sun::ast::BlockExprAST;
+
 class SemanticAnalyzer;
 
 /**
@@ -38,7 +42,7 @@ class DeclarationCollectionPass {
   void run(BlockExprAST &block);
 
   /** Register one named function's signature in the current scope. */
-  void collectFunctionSignature(FunctionAST &func);
+  void collectFunctionSignature(sun::ast::FunctionAST &func);
 
   /**
    * Declaration-collection pre-pass: register a block's enums (and generic
@@ -53,22 +57,24 @@ class DeclarationCollectionPass {
    * generic specializations triggered from function signatures — can call
    * its methods regardless of declaration order.
    */
-  void registerClassShape(ClassDefinitionAST &classDef,
-                          const sun::QualifiedName &qualifiedClass,
-                          std::shared_ptr<sun::ClassType> classType);
+  void registerClassShape(
+      sun::ast::ClassDefinitionAST &classDef,
+      const sun::semantic_analysis::QualifiedName &qualifiedClass,
+      std::shared_ptr<sun::semantic_analysis::ClassType> classType);
 
   /**
    * Register a module-level variable imported from a .moon bundle. The stub
    * carries a type annotation and a content-hash-scoped qualified name, but
    * no initializer — the storage is in the bundle.
    */
-  void registerPrecompiledModuleVariable(VariableCreationAST &varCreate);
+  void registerPrecompiledModuleVariable(
+      sun::ast::VariableCreationAST &varCreate);
 
   /** Register one C extern global before any function body is analyzed. */
-  void collectExternVariable(VariableCreationAST &varCreate);
+  void collectExternVariable(sun::ast::VariableCreationAST &varCreate);
 
   /** Bind a `using` declaration in the current scope (idempotent). */
-  void registerUsing(UsingAST &usingDecl);
+  void registerUsing(sun::ast::UsingAST &usingDecl);
 
  private:
   /**
@@ -87,3 +93,5 @@ class DeclarationCollectionPass {
   // registered.
   int prepassDepth_ = 0;
 };
+
+}  // namespace sun::semantic_analysis

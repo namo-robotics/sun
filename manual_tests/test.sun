@@ -1,13 +1,16 @@
 using std;
 
+/** Owns a string used to check borrowing a field from a class value. */
 class Config {
   var line: String;
 
+  /** Initializes the fixture fields used by this example or regression test. */
   init(alloc: ref HeapAllocator) {
     this.line = String(alloc, "test");
   }
 }
 
+/** Runs the manual compiler regression scenario and returns its result. */
 function main() i32 {
   var alloc = make_heap_allocator();
 

@@ -4,7 +4,7 @@
 #include <cassert>
 #include <set>
 
-#include "semantic_analysis/c_abi_types.h"
+#include "codegen/abi/c_abi_types.h"
 #include "semantic_analysis/field_initialization.h"
 #include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/semantic_analyzer.h"
@@ -14,13 +14,32 @@
 #include "support/config.h"
 #include "support/error.h"
 
-using sun::unwrapRef;
-using sun::access::methodVisibility;
-using sun::names::getFunctionSignature;
-using sun::names::isReservedIdentifier;
-using sun::rules::isAssignableTo;
-using sun::rules::isBorrowableLvalue;
-using sun::rules::tryCoerceIntegerLiteral;
+using sun::semantic_analysis::ClassMethod;
+using sun::semantic_analysis::LambdaType;
+using sun::semantic_analysis::TypePtr;
+using sun::semantic_analysis::Types;
+
+using sun::ast::ASTNodeType;
+using sun::ast::BlockExprAST;
+using sun::ast::ExprAST;
+using sun::ast::FunctionAST;
+using sun::ast::IndexAST;
+using sun::ast::MemberAccessAST;
+using sun::ast::MemberAssignmentAST;
+using sun::ast::PrototypeAST;
+using sun::ast::TernaryExprAST;
+using sun::support::logAndThrowError;
+using sun::support::Position;
+
+/** Resolves declarations and checks the types and meaning of Sun programs. */
+namespace sun::semantic_analysis {
+
+using sun::semantic_analysis::isAssignableTo;
+using sun::semantic_analysis::isBorrowableLvalue;
+using sun::semantic_analysis::isReservedIdentifier;
+using sun::semantic_analysis::methodVisibility;
+using sun::semantic_analysis::tryCoerceIntegerLiteral;
+using sun::semantic_analysis::unwrapRef;
 
 // -------------------------------------------------------------------
 // Borrow targets
@@ -29,9 +48,11 @@ using sun::rules::tryCoerceIntegerLiteral;
 void SemanticAnalyzer::rejectBorrowOfByValueCapture(const ExprAST& target,
                                                     const Position& loc) {
   if (target.getType() != ASTNodeType::VARIABLE_REFERENCE) return;
-  const auto& varRef = static_cast<const VariableReferenceAST&>(target);
-  VariableInfo* varInfo = ctx_.lookupVariable(varRef.getName());
-  if (!varInfo || varInfo->captureKind != CaptureKind::ByValue) return;
+  const auto& varRef =
+      static_cast<const sun::ast::VariableReferenceAST&>(target);
+  VariableInfo* varInfo = ctx_.currentScope().lookupVariable(varRef.getName());
+  if (!varInfo || varInfo->captureKind != sun::ast::CaptureKind::ByValue)
+    return;
   const std::string& name = varRef.getName();
   logAndThrowError(
       "Cannot borrow '" + name +
@@ -58,7 +79,8 @@ void SemanticAnalyzer::validateBorrowTarget(const ExprAST& target,
   }
   if (target.getType() == ASTNodeType::INDEX) {
     const auto& indexExpr = static_cast<const IndexAST&>(target);
-    auto baseType = sun::unwrapRef(indexExpr.getTarget()->getResolvedType());
+    auto baseType = sun::semantic_analysis::unwrapRef(
+        indexExpr.getTarget()->getResolvedType());
     if (baseType && baseType->isClass()) {
       logAndThrowError(
           "Cannot create a reference to a class __index__ element - it "
@@ -76,9 +98,11 @@ void SemanticAnalyzer::validateBorrowTarget(const ExprAST& target,
 // Expression analysis
 // -------------------------------------------------------------------
 
-void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
+void SemanticAnalyzer::analyzeExpr(ExprAST& expr, TypePtr expectedType) {
   SemanticContext::SourceFileGuard sourceFile(ctx_, expr.getSourceFileId());
   SemanticContext::LocationGuard locationGuard(ctx_, expr.getLocation());
+  sun::semantic_analysis::assignLocalDeclarationName(
+      expr, ctx_.getCurrentScopePath());
   switch (expr.getType()) {
     case ASTNodeType::NUMBER:
       analyzeNumberLiteral(expr, expectedType);
@@ -107,12 +131,14 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
     }
 
     case ASTNodeType::STRUCT_LITERAL: {
-      analyzeStructLiteral(static_cast<StructLiteralAST&>(expr), expectedType);
+      analyzeStructLiteral(static_cast<sun::ast::StructLiteralAST&>(expr),
+                           expectedType);
       break;
     }
 
     case ASTNodeType::ARRAY_LITERAL:
-      analyzeArrayLiteral(static_cast<ArrayLiteralAST&>(expr), expectedType);
+      analyzeArrayLiteral(static_cast<sun::ast::ArrayLiteralAST&>(expr),
+                          expectedType);
       break;
 
     case ASTNodeType::INDEX:
@@ -124,21 +150,21 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       break;
 
     case ASTNodeType::VARIABLE_REFERENCE: {
-      if (expr.getModuleQualifiedName()) {
+      if (expr.getModuleDeclaration()) {
         expr.setResolvedType(types_.inferType(expr));
         break;
       }
-      auto& varRef = static_cast<VariableReferenceAST&>(expr);
+      auto& varRef = static_cast<sun::ast::VariableReferenceAST&>(expr);
 
       // An expected function-pointer type selects one overload without
       // changing ordinary call-site overload resolution.
       if (expectedType && expectedType->isFunction() &&
-          !ctx_.lookupVariable(varRef.getName())) {
-        sun::QualifiedName resolved =
+          !ctx_.currentScope().lookupVariable(varRef.getName())) {
+        sun::semantic_analysis::QualifiedName resolved =
             ctx_.resolveNameWithUsings(varRef.getName());
         std::vector<FunctionInfo> matches;
         for (const auto& candidate : ctx_.getAllFunctions(resolved.baseName)) {
-          auto candidateType = sun::Types::Function(
+          auto candidateType = Types::Function(
               candidate.returnType, candidate.paramTypes, candidate.canThrow);
           if (isAssignableTo(candidateType, expectedType)) {
             matches.push_back(candidate);
@@ -146,9 +172,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
         }
         if (matches.size() == 1) {
           const FunctionInfo& match = matches.front();
-          expr.setResolvedType(sun::Types::Function(
+          expr.setResolvedType(Types::Function(
               match.returnType, match.paramTypes, match.canThrow));
           varRef.setQualifiedName(match.qualifiedName);
+          varRef.setTargetDeclarationId(match.declarationId);
           break;
         }
         if (!ctx_.getAllFunctions(resolved.baseName).empty()) {
@@ -160,10 +187,12 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       }
 
       expr.setResolvedType(types_.inferType(expr));
-      sun::QualifiedName resolved =
+      sun::semantic_analysis::QualifiedName resolved =
           ctx_.resolveNameWithUsings(varRef.getName());
       varRef.setQualifiedName(resolved);
-      if (VariableInfo* info = ctx_.lookupVariable(varRef.getName())) {
+      if (VariableInfo* info =
+              ctx_.currentScope().lookupVariable(varRef.getName())) {
+        varRef.setTargetDeclarationId(info->declarationId);
         checkExternVariableAccessAllowed(*info, resolved.display(),
                                          varRef.getLocation());
       }
@@ -171,19 +200,23 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
     }
 
     case ASTNodeType::VARIABLE_CREATION:
-      analyzeVariableCreation(static_cast<VariableCreationAST&>(expr));
+      analyzeVariableCreation(
+          static_cast<sun::ast::VariableCreationAST&>(expr));
       break;
 
     case ASTNodeType::VARIABLE_ASSIGNMENT:
-      analyzeVariableAssignment(static_cast<VariableAssignmentAST&>(expr));
+      analyzeVariableAssignment(
+          static_cast<sun::ast::VariableAssignmentAST&>(expr));
       break;
 
     case ASTNodeType::COMPOUND_ASSIGNMENT:
-      analyzeCompoundAssignment(static_cast<CompoundAssignmentAST&>(expr));
+      analyzeCompoundAssignment(
+          static_cast<sun::ast::CompoundAssignmentAST&>(expr));
       break;
 
     case ASTNodeType::REFERENCE_CREATION:
-      analyzeReferenceCreation(static_cast<ReferenceCreationAST&>(expr));
+      analyzeReferenceCreation(
+          static_cast<sun::ast::ReferenceCreationAST&>(expr));
       break;
 
     case ASTNodeType::FUNCTION:
@@ -191,22 +224,25 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       break;
 
     case ASTNodeType::LAMBDA:
-      analyzeLambdaExpr(static_cast<LambdaAST&>(expr));
+      analyzeLambdaExpr(static_cast<sun::ast::LambdaAST&>(expr));
       break;
 
     case ASTNodeType::BLOCK: {
       auto& block = static_cast<BlockExprAST&>(expr);
-      pipeline_.bodies().run(block);
+      ctx_.enterScope();
+      bodies_.analyzeBlock(block);
       expr.setResolvedType(types_.inferType(expr));
+      ctx_.exitScope();
       break;
     }
 
     case ASTNodeType::IF:
-      analyzeIfExpr(static_cast<IfExprAST&>(expr));
+      analyzeIfExpr(static_cast<sun::ast::IfExprAST&>(expr));
       break;
 
     case ASTNodeType::MATCH:
-      analyzeMatchExpr(static_cast<MatchExprAST&>(expr), expectedType);
+      analyzeMatchExpr(static_cast<sun::ast::MatchExprAST&>(expr),
+                       expectedType);
       break;
 
     case ASTNodeType::TERNARY:
@@ -214,45 +250,47 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       break;
 
     case ASTNodeType::FOR_LOOP:
-      analyzeForLoop(static_cast<ForExprAST&>(expr));
+      analyzeForLoop(static_cast<sun::ast::ForExprAST&>(expr));
       break;
 
     case ASTNodeType::FOR_IN_LOOP:
-      analyzeForInLoop(static_cast<ForInExprAST&>(expr));
+      analyzeForInLoop(static_cast<sun::ast::ForInExprAST&>(expr));
       break;
 
     case ASTNodeType::WHILE_LOOP: {
-      auto& whileExpr = static_cast<WhileExprAST&>(expr);
+      auto& whileExpr = static_cast<sun::ast::WhileExprAST&>(expr);
       analyzeExpr(const_cast<ExprAST&>(*whileExpr.getCondition()));
       analyzeExpr(const_cast<ExprAST&>(*whileExpr.getBody()));
-      expr.setResolvedType(sun::Types::Float64());  // while loops return 0.0
+      expr.setResolvedType(Types::Float64());  // while loops return 0.0
       break;
     }
 
     case ASTNodeType::BINARY:
-      analyzeBinaryExpr(static_cast<BinaryExprAST&>(expr), expectedType);
+      analyzeBinaryExpr(static_cast<sun::ast::BinaryExprAST&>(expr),
+                        expectedType);
       break;
 
     case ASTNodeType::UNARY:
-      analyzeUnaryExpr(static_cast<UnaryExprAST&>(expr));
+      analyzeUnaryExpr(static_cast<sun::ast::UnaryExprAST&>(expr));
       break;
 
     case ASTNodeType::CALL: {
-      auto& callExpr = static_cast<CallExprAST&>(expr);
+      auto& callExpr = static_cast<sun::ast::CallExprAST&>(expr);
       calls_.analyzeCall(callExpr, expectedType);
       break;
     }
 
     case ASTNodeType::INDEXED_ASSIGNMENT:
-      analyzeIndexedAssignment(static_cast<IndexedAssignmentAST&>(expr));
+      analyzeIndexedAssignment(
+          static_cast<sun::ast::IndexedAssignmentAST&>(expr));
       break;
 
     case ASTNodeType::RETURN:
-      analyzeReturnExpr(static_cast<ReturnExprAST&>(expr));
+      analyzeReturnExpr(static_cast<sun::ast::ReturnExprAST&>(expr));
       break;
 
     case ASTNodeType::MODULE:
-      analyzeModuleDefinition(static_cast<ModuleAST&>(expr));
+      analyzeModuleDefinition(static_cast<sun::ast::ModuleAST&>(expr));
       break;
 
     case ASTNodeType::MOON_SCOPE:
@@ -260,28 +298,31 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       break;
 
     case ASTNodeType::USING: {
-      pipeline_.declarations().registerUsing(static_cast<UsingAST&>(expr));
-      expr.setResolvedType(sun::Types::Void());
+      pipeline_.declarations().registerUsing(
+          static_cast<sun::ast::UsingAST&>(expr));
+      expr.setResolvedType(Types::Void());
       break;
     }
 
     case ASTNodeType::QUALIFIED_NAME:
-      if (expr.getModuleQualifiedName())
+      if (expr.getModuleDeclaration())
         expr.setResolvedType(types_.inferType(expr));
       else
-        analyzeQualifiedName(static_cast<QualifiedNameAST&>(expr));
+        analyzeQualifiedName(static_cast<sun::ast::QualifiedNameAST&>(expr));
       break;
 
     case ASTNodeType::CLASS_DEFINITION:
-      analyzeClassDefinition(static_cast<ClassDefinitionAST&>(expr));
+      analyzeClassDefinition(static_cast<sun::ast::ClassDefinitionAST&>(expr));
       break;
 
     case ASTNodeType::INTERFACE_DEFINITION:
-      analyzeInterfaceDefinition(static_cast<InterfaceDefinitionAST&>(expr));
+      analyzeInterfaceDefinition(
+          static_cast<sun::ast::InterfaceDefinitionAST&>(expr));
       break;
 
     case ASTNodeType::ENUM_DEFINITION: {
-      enums_.analyzeEnumDefinition(static_cast<EnumDefinitionAST&>(expr));
+      enums_.analyzeEnumDefinition(
+          static_cast<sun::ast::EnumDefinitionAST&>(expr));
       break;
     }
 
@@ -291,7 +332,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
     }
 
     case ASTNodeType::MEMBER_ACCESS:
-      if (expr.getModuleQualifiedName())
+      if (expr.getModuleDeclaration())
         expr.setResolvedType(types_.inferType(expr));
       else
         analyzeMemberAccess(static_cast<MemberAccessAST&>(expr), expectedType);
@@ -302,30 +343,30 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       break;
 
     case ASTNodeType::TRY_CATCH:
-      analyzeTryCatch(static_cast<TryCatchExprAST&>(expr));
+      analyzeTryCatch(static_cast<sun::ast::TryCatchExprAST&>(expr));
       break;
 
     case ASTNodeType::UNSAFE_BLOCK:
-      analyzeUnsafeBlock(static_cast<UnsafeBlockAST&>(expr));
+      analyzeUnsafeBlock(static_cast<sun::ast::UnsafeBlockAST&>(expr));
       break;
 
     case ASTNodeType::THROW:
-      analyzeThrowExpr(static_cast<ThrowExprAST&>(expr));
+      analyzeThrowExpr(static_cast<sun::ast::ThrowExprAST&>(expr));
       break;
 
     case ASTNodeType::GENERIC_CALL:
-      calls_.analyzeGenericCall(static_cast<GenericCallAST&>(expr));
+      calls_.analyzeGenericCall(static_cast<sun::ast::GenericCallAST&>(expr));
       break;
 
     case ASTNodeType::PACK_EXPANSION: {
       // Pack expansion is handled at codegen time
       // Just set the resolved type for now
-      expr.setResolvedType(sun::Types::Void());
+      expr.setResolvedType(Types::Void());
       break;
     }
 
     case ASTNodeType::DECLARE_TYPE:
-      analyzeDeclareType(static_cast<DeclareTypeAST&>(expr));
+      analyzeDeclareType(static_cast<sun::ast::DeclareTypeAST&>(expr));
       break;
 
     default:
@@ -337,7 +378,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
 // Parameter names and types
 // -------------------------------------------------------------------
 
-std::vector<sun::TypePtr> SemanticAnalyzer::validateAndResolveParamTypes(
+std::vector<TypePtr> SemanticAnalyzer::validateAndResolveParamTypes(
     PrototypeAST& proto, std::optional<Position> loc,
     bool allowByValueObjects) {
   // Validate parameter names
@@ -346,12 +387,14 @@ std::vector<sun::TypePtr> SemanticAnalyzer::validateAndResolveParamTypes(
   }
 
   // Resolve parameter types
-  std::vector<sun::TypePtr> paramTypes;
+  std::vector<TypePtr> paramTypes;
   for (auto& [argName, argType] : proto.getMutableArgs()) {
-    sun::TypePtr paramType = types_.typeAnnotationToType(argType);
+    TypePtr paramType = types_.typeAnnotationToType(argType);
 
-    // Check for compound types being passed by value
-    if constexpr (sun::Config::REQUIRE_REF_FOR_COMPOUND_PARAMS) {
+    /**
+     * Check for compound types being passed by value
+     */
+    if constexpr (sun::support::Config::REQUIRE_REF_FOR_COMPOUND_PARAMS) {
       // C externs are exempt: passing a struct by value is what the C ABI
       // specifies, so it is the callee's signature rather than a Sun choice.
       if (!allowByValueObjects && paramType && paramType->isCompound()) {
@@ -373,7 +416,7 @@ std::vector<sun::TypePtr> SemanticAnalyzer::validateAndResolveParamTypes(
 }
 
 // -------------------------------------------------------------------
-// Function info extraction (pure computation, no side effects)
+// Resolve function signatures and record their emitted symbols
 // -------------------------------------------------------------------
 
 FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
@@ -383,10 +426,11 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
   // Only declared generic parameters may remain unresolved in a signature.
   SemanticContext::ScopeSwitchGuard signatureScope(ctx_, ctx_.scope());
   if (!proto.getTypeParameters().empty()) {
-    std::vector<sun::TypePtr> parameters;
-    for (const auto& parameter : proto.getTypeParameters()) {
-      auto bound = ctx_.findTypeParameter(parameter.name);
-      parameters.push_back(bound ? bound : parameter.toSunType());
+    std::vector<TypePtr> parameters;
+    for (size_t i = 0; i < proto.getTypeParameters().size(); ++i) {
+      parameters.push_back(proto.getTypeParameters()[i].toSunType(
+          ctx_.types()->declarations,
+          proto.declarationIdentity().typeParameters.at(i)));
     }
     ctx_.enterTypeParamScope(proto.getTypeParameterNames(), parameters);
   }
@@ -396,15 +440,15 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
     validateNotReserved(proto.getName(), "Function name", func.getLocation());
   }
 
-  std::vector<Capture> captures;
+  std::vector<sun::ast::Capture> captures;
 
   // Validate and resolve parameter types. Only C externs may take objects by
   // value; see validateAndResolveParamTypes.
-  std::vector<sun::TypePtr> paramTypes = validateAndResolveParamTypes(
+  std::vector<TypePtr> paramTypes = validateAndResolveParamTypes(
       proto, func.getLocation(), /*allowByValueObjects=*/func.isCExtern());
 
   // Resolve return type if specified; Void for constructors (no return type)
-  sun::TypePtr returnType = sun::Types::Void();
+  TypePtr returnType = Types::Void();
   if (proto.hasReturnType()) {
     returnType = types_.typeAnnotationToType(*proto.getReturnType());
     if (!returnType) {
@@ -414,28 +458,21 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
     }
   }
 
-  // Declaration naming establishes identity before signature resolution.
   assert(proto.hasQualifiedName() &&
          "Function declaration must be named first");
-  sun::QualifiedName qualifiedName = proto.getQualifiedName();
-
-  // Add param type suffix for overload disambiguation (unified with methods)
-  // Skip for 'main' — it's an entry point with a fixed ABI name — and for
-  // externs, whose ABI name is fixed by C. Templates keep their declaration
-  // name until specialization supplies concrete type arguments.
-  if (qualifiedName.paramSuffix.empty() && proto.getName() != "main" &&
-      !func.isCExtern() && !proto.isTemplate()) {
-    qualifiedName.setParamSuffix(paramTypes);
-  }
+  const auto& qualifiedName = proto.getQualifiedName();
 
   FunctionInfo info;
   info.returnType = returnType;
   info.paramTypes = std::move(paramTypes);
   info.captures = std::move(captures);
   info.qualifiedName = qualifiedName;
+  info.declarationId = proto.getDeclarationId();
   info.canThrow = proto.canThrow();
   info.isCVariadic = proto.isCVariadic();
   info.isCExtern = func.isCExtern();
+  info.isForwardDeclaration =
+      func.isExtern() && !func.isCExtern() && !func.isPrecompiled();
   info.visibility = func.getVisibility();
   return info;
 }
@@ -471,12 +508,13 @@ void SemanticAnalyzer::validateNotReserved(const std::string& name,
 // Class shape registration (fields + method signatures)
 // -------------------------------------------------------------------
 
-void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
-                                           ExprAST& expr) {
+void SemanticAnalyzer::analyzePartialClass(
+    sun::ast::ClassDefinitionAST& classDef, ExprAST& expr) {
   const std::string& baseName = classDef.getName();
 
   auto existingClass = ctx_.lookupClass(baseName);
   if (existingClass) {
+    classDef.setTargetDeclarationId(existingClass->getDeclarationId());
     // Primary already analyzed — validate and merge methods now
     for (const auto& extMethod : classDef.getMethods()) {
       const std::string& methodName = extMethod.function->getProto().getName();
@@ -507,23 +545,26 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
           proto.getName(), methodInfo.returnType, methodInfo.paramTypes,
           methodDecl.isConstructor, proto.getTypeParameterNames(),
           proto.canThrow());
+      method.declarationId = proto.getDeclarationId();
+      if (proto.getName() == "deinit")
+        existingClass->deinitializer = method.declarationId;
       method.visibility = methodVisibility(*methodDecl.function);
       method.isConst = methodDecl.isConst;
       method.isUnsafe = methodDecl.function->getProto().isUnsafeMethod();
-      std::string mangledName =
-          existingClass->getMangledMethodName(proto.getName());
-      std::vector<sun::TypePtr> methodParamTypes;
+      std::string methodNameForScope = proto.getName();
+      std::vector<TypePtr> methodParamTypes;
       methodParamTypes.push_back(existingClass);
       for (const auto& pt : methodInfo.paramTypes) {
         methodParamTypes.push_back(pt);
       }
-      ctx_.registerFunctionInCurrentScope(
-          mangledName, {methodInfo.returnType, methodParamTypes, {}});
+      methodInfo.paramTypes = std::move(methodParamTypes);
+      ctx_.currentScope().declareFunction(methodNameForScope, methodInfo,
+                                          ctx_.currentLocation());
     }
 
     // Analyze extension method bodies
     for (const auto& methodDecl : classDef.getMethods()) {
-      pipeline_.bodies().analyzeFunction(*methodDecl.function);
+      bodies_.analyzeFunction(*methodDecl.function);
     }
     // The parser rejects constructors in a partial class, so this is only a
     // backstop — and like the primary path it runs after every body is
@@ -531,8 +572,8 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
     if (!classDef.isPrecompiled()) {
       for (const auto& methodDecl : classDef.getMethods()) {
         if (!methodDecl.isConstructor) continue;
-        sun::checkFieldInitialization(*methodDecl.function, *existingClass,
-                                      classDef.getMethods());
+        sun::semantic_analysis::checkFieldInitialization(
+            *methodDecl.function, *existingClass, classDef.getMethods());
       }
     }
 
@@ -540,7 +581,11 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
 
     // Merge methods into primary AST so codegen generates them
     for (auto* s = ctx_.scope(); s != nullptr; s = s->parent) {
-      auto it = s->classDefinitions.find(baseName);
+      auto it = std::find_if(s->classDefinitions.begin(),
+                             s->classDefinitions.end(), [&](const auto& entry) {
+                               return entry.second->getDeclarationId() ==
+                                      classDef.getTargetDeclarationId();
+                             });
       if (it != s->classDefinitions.end()) {
         for (auto& extMethod : classDef.getMutableMethods()) {
           it->second->getMutableMethods().push_back(std::move(extMethod));
@@ -554,15 +599,15 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
     // Primary not yet seen — stash for merging when primary is analyzed
     ctx_.declarations().deferExtension(baseName, &classDef);
   }
-  expr.setResolvedType(sun::Types::Void());
+  expr.setResolvedType(Types::Void());
 }
 
 // -------------------------------------------------------------------
 // Function body analysis
 // -------------------------------------------------------------------
 
-void SemanticAnalyzer::analyzeStructLiteral(StructLiteralAST& literal,
-                                            const sun::TypePtr& expectedType) {
+void SemanticAnalyzer::analyzeStructLiteral(sun::ast::StructLiteralAST& literal,
+                                            const TypePtr& expectedType) {
   if (!expectedType || !expectedType->isClass()) {
     logAndThrowError(
         "A '{ field: value }' literal needs a known class type. Annotate the "
@@ -571,7 +616,8 @@ void SemanticAnalyzer::analyzeStructLiteral(StructLiteralAST& literal,
     return;
   }
 
-  auto* classType = static_cast<sun::ClassType*>(expectedType.get());
+  auto* classType =
+      static_cast<sun::semantic_analysis::ClassType*>(expectedType.get());
 
   // A class with its own init is constructed through it; allowing both would
   // give two ways to build one object with different invariants.
@@ -586,9 +632,10 @@ void SemanticAnalyzer::analyzeStructLiteral(StructLiteralAST& literal,
     return;
   }
 
+  literal.resolvedFields().clear();
   std::set<std::string> seen;
   for (auto& field : literal.getMutableFields()) {
-    const sun::ClassField* classField =
+    const sun::semantic_analysis::ClassField* classField =
         ctx_.accessibleField(*classType, field.name, field.location);
     if (!classField) {
       logAndThrowError("Class '" + classType->getDisplayName() +
@@ -603,8 +650,9 @@ void SemanticAnalyzer::analyzeStructLiteral(StructLiteralAST& literal,
       continue;
     }
 
+    literal.resolvedFields().push_back(classField->declarationId);
     analyzeExpr(*field.value, classField->type);
-    sun::TypePtr valueType = field.value->getResolvedType();
+    TypePtr valueType = field.value->getResolvedType();
     checkMoveSource(*field.value, field.location);
     if (valueType && classField->type &&
         !isAssignableTo(valueType, classField->type)) {
@@ -652,15 +700,18 @@ void SemanticAnalyzer::checkExternVariableAccessAllowed(
 // target is the module's own variable: it must exist, be visible, be
 // assignable, and take the value's type. Codegen writes the global directly.
 void SemanticAnalyzer::analyzeModuleGlobalAssignment(
-    MemberAssignmentAST& assign, const sun::Type& objectType) {
-  const auto& moduleType = static_cast<const sun::ModuleType&>(objectType);
+    MemberAssignmentAST& assign,
+    const sun::semantic_analysis::Type& objectType) {
+  const auto& moduleType =
+      static_cast<const sun::semantic_analysis::ModuleType&>(objectType);
   const std::string& modPath = moduleType.getModulePath();
   const std::string& memberName = assign.getMemberName();
 
   SymbolMatch match = ctx_.findSymbolInModule(modPath, memberName);
   if (!match) {
     logAndThrowError("Unknown member '" + memberName + "' in module '" +
-                         sun::displayModulePath(modPath) + "'",
+                         sun::semantic_analysis::displayModulePath(modPath) +
+                         "'",
                      assign.getLocation());
   }
   if (match.kind != SymbolKind::Variable || !match.variableInfo) {
@@ -678,7 +729,7 @@ void SemanticAnalyzer::analyzeModuleGlobalAssignment(
                          "'; declare it with 'var' if it must change",
                      assign.getLocation());
   }
-  if (sun::isConstRef(target.type)) {
+  if (sun::semantic_analysis::isConstRef(target.type)) {
     logAndThrowError("Cannot assign through const reference '" + full + "'",
                      assign.getLocation());
   }
@@ -686,12 +737,13 @@ void SemanticAnalyzer::analyzeModuleGlobalAssignment(
   // The declaration's own qualified name is the symbol codegen emitted the
   // global under, so that is what the write is pointed at
   assign.setQualifiedName(target.qualifiedName);
+  assign.setTargetDeclarationId(target.declarationId);
 
-  sun::TypePtr expectedType = unwrapRef(target.type);
+  TypePtr expectedType = unwrapRef(target.type);
   analyzeExpr(const_cast<ExprAST&>(*assign.getValue()), expectedType);
   checkMoveSource(*assign.getValue(), assign.getLocation());
 
-  sun::TypePtr rhsType = assign.getValue()->getResolvedType();
+  TypePtr rhsType = assign.getValue()->getResolvedType();
   if (rhsType && expectedType && !isAssignableTo(rhsType, expectedType)) {
     if (!tryCoerceIntegerLiteral(const_cast<ExprAST*>(assign.getValue()),
                                  expectedType, false)) {
@@ -717,25 +769,26 @@ void SemanticAnalyzer::validateExternSignature(FunctionAST& func) {
                      func.getLocation());
   }
 
-  auto describe = [](const sun::TypePtr& t) {
+  auto describe = [](const TypePtr& t) {
     return t ? t->toDisplayString() : std::string("<unresolved>");
   };
 
-  auto validateCallback = [&](const sun::FunctionType& callback,
+  auto validateCallback = [&](const sun::semantic_analysis::FunctionType&
+                                  callback,
                               const std::string& paramName) {
     if (callback.canThrow()) {
       logAndThrowError("C callback parameter '" + paramName + "' cannot throw",
                        func.getLocation());
     }
     for (const auto& callbackParam : callback.getParamTypes()) {
-      if (!sun::c_abi::isCallbackParameter(callbackParam)) {
+      if (!sun::codegen::abi::isCallbackParameter(callbackParam)) {
         logAndThrowError("C callback parameter '" + paramName +
                              "' has unsupported callback argument type '" +
                              describe(callbackParam) + "'",
                          func.getLocation());
       }
     }
-    if (!sun::c_abi::isCallbackReturn(callback.getReturnType())) {
+    if (!sun::codegen::abi::isCallbackReturn(callback.getReturnType())) {
       logAndThrowError("C callback parameter '" + paramName +
                            "' has unsupported callback return type '" +
                            describe(callback.getReturnType()) + "'",
@@ -752,10 +805,11 @@ void SemanticAnalyzer::validateExternSignature(FunctionAST& func) {
                              "' cannot be void",
                          func.getLocation());
       }
-      if (auto* callback = sun::tryGetType<sun::FunctionType>(params[i])) {
+      if (auto* callback = sun::codegen::support::tryGetType<
+              sun::semantic_analysis::FunctionType>(params[i])) {
         validateCallback(*callback, proto.getArgs()[i].first);
       }
-      if (!sun::c_abi::isValue(params[i])) {
+      if (!sun::codegen::abi::isValue(params[i])) {
         logAndThrowError(
             "Parameter '" + proto.getArgs()[i].first +
                 "' of extern function '" + proto.getName() + "' has type '" +
@@ -769,7 +823,7 @@ void SemanticAnalyzer::validateExternSignature(FunctionAST& func) {
   }
 
   if (proto.hasResolvedReturnType() &&
-      !sun::c_abi::isReturn(proto.getResolvedReturnType())) {
+      !sun::codegen::abi::isReturn(proto.getResolvedReturnType())) {
     logAndThrowError(
         "Extern function '" + proto.getName() + "' returns '" +
             describe(proto.getResolvedReturnType()) +
@@ -786,8 +840,8 @@ void SemanticAnalyzer::validateExternSignature(FunctionAST& func) {
 // <'a>() => i32' ties the result to frames the caller can see - so
 // declarations that bind their own lifetimes pass allowNamed.
 void SemanticAnalyzer::rejectRefEnvReturnType(
-    const std::optional<TypeAnnotation>& returnType, const Position& location,
-    bool allowNamed) {
+    const std::optional<sun::ast::TypeAnnotation>& returnType,
+    const Position& location, bool allowNamed) {
   if (returnType && returnType->refEnv) {
     if (allowNamed && !returnType->lifetimeName.empty() &&
         returnType->lifetimeName != "_") {
@@ -812,8 +866,8 @@ void SemanticAnalyzer::rejectRefEnvReturnType(
 // name is usable when an enclosing function, lambda, class or interface
 // declared it; the builtin 'this is usable only inside class and interface
 // members.
-void SemanticAnalyzer::checkAnnotationLifetimes(const TypeAnnotation& annot,
-                                                const Position& location) {
+void SemanticAnalyzer::checkAnnotationLifetimes(
+    const sun::ast::TypeAnnotation& annot, const Position& location) {
   auto checkName = [&](const std::string& name) {
     if (name == "_") return;
     if (name == "this") {
@@ -855,7 +909,7 @@ void SemanticAnalyzer::checkSignatureLifetimes(const PrototypeAST& proto,
   for (const auto& lp : proto.getLifetimeParameters()) {
     if (std::count_if(proto.getLifetimeParameters().begin(),
                       proto.getLifetimeParameters().end(),
-                      [&](const LifetimeParameter& other) {
+                      [&](const sun::ast::LifetimeParameter& other) {
                         return other.name == lp.name;
                       }) > 1) {
       logAndThrowError("duplicate lifetime parameter '" + lp.name, lp.span);
@@ -884,18 +938,18 @@ void SemanticAnalyzer::checkSignatureLifetimes(const PrototypeAST& proto,
 // Lambda signature extraction (pure computation, no side effects)
 // -------------------------------------------------------------------
 
-FunctionInfo SemanticAnalyzer::getLambdaInfo(LambdaAST& lambda) {
+FunctionInfo SemanticAnalyzer::getLambdaInfo(sun::ast::LambdaAST& lambda) {
   PrototypeAST& proto = const_cast<PrototypeAST&>(lambda.getProto());
 
   // Build captures using current scope information
-  std::vector<Capture> captures = buildCaptures(lambda);
+  std::vector<sun::ast::Capture> captures = buildCaptures(lambda);
 
   // Validate and resolve parameter types
-  std::vector<sun::TypePtr> paramTypes = validateAndResolveParamTypes(proto);
+  std::vector<TypePtr> paramTypes = validateAndResolveParamTypes(proto);
 
   // Resolve return type (Sun requires return type annotations on lambdas,
   // parser enforces this, but check defensively)
-  sun::TypePtr returnType = sun::Types::Void();
+  TypePtr returnType = Types::Void();
   if (proto.hasReturnType()) {
     returnType = types_.typeAnnotationToType(*proto.getReturnType());
     if (!returnType) {
@@ -911,16 +965,17 @@ FunctionInfo SemanticAnalyzer::getLambdaInfo(LambdaAST& lambda) {
 // Type parameter validation
 // -------------------------------------------------------------------
 
-void SemanticAnalyzer::validateTypeParameter(const sun::TypePtr& type,
+void SemanticAnalyzer::validateTypeParameter(const TypePtr& type,
                                              const ExprAST& node) {
   if (!type || !type->isTypeParameter()) return;
 
-  auto* typeParam = static_cast<const sun::TypeParameterType*>(type.get());
+  auto* typeParam =
+      static_cast<const sun::semantic_analysis::TypeParameterType*>(type.get());
 
   // Type traits (_Integer, _Float, etc.) are not scope-bound type parameters
-  if (sun::isTypeTrait(typeParam->getName())) return;
+  if (sun::semantic_analysis::isTypeTrait(typeParam->getName())) return;
 
-  sun::TypePtr found = ctx_.findTypeParameter(typeParam->getName());
+  TypePtr found = ctx_.findTypeParameter(typeParam->getName());
   if (!found) {
     const Position& loc = node.getLocation();
     std::string msg = "Unknown type parameter '" + typeParam->getName() +
@@ -948,18 +1003,18 @@ void SemanticAnalyzer::clearResolvedTypes(ExprAST& expr) {
       break;
     }
     case ASTNodeType::BINARY: {
-      auto& bin = static_cast<BinaryExprAST&>(expr);
+      auto& bin = static_cast<sun::ast::BinaryExprAST&>(expr);
       clearResolvedTypes(const_cast<ExprAST&>(*bin.getLHS()));
       clearResolvedTypes(const_cast<ExprAST&>(*bin.getRHS()));
       break;
     }
     case ASTNodeType::UNARY: {
-      auto& unary = static_cast<UnaryExprAST&>(expr);
+      auto& unary = static_cast<sun::ast::UnaryExprAST&>(expr);
       clearResolvedTypes(const_cast<ExprAST&>(*unary.getOperand()));
       break;
     }
     case ASTNodeType::CALL: {
-      auto& call = static_cast<CallExprAST&>(expr);
+      auto& call = static_cast<sun::ast::CallExprAST&>(expr);
       clearResolvedTypes(const_cast<ExprAST&>(*call.getCallee()));
       for (const auto& arg : call.getArgs()) {
         clearResolvedTypes(const_cast<ExprAST&>(*arg));
@@ -983,14 +1038,14 @@ void SemanticAnalyzer::clearResolvedTypes(ExprAST& expr) {
       break;
     }
     case ASTNodeType::VARIABLE_CREATION: {
-      auto& vc = static_cast<VariableCreationAST&>(expr);
+      auto& vc = static_cast<sun::ast::VariableCreationAST&>(expr);
       if (vc.getValue()) {
         clearResolvedTypes(const_cast<ExprAST&>(*vc.getValue()));
       }
       break;
     }
     case ASTNodeType::VARIABLE_ASSIGNMENT: {
-      auto& va = static_cast<VariableAssignmentAST&>(expr);
+      auto& va = static_cast<sun::ast::VariableAssignmentAST&>(expr);
       clearResolvedTypes(const_cast<ExprAST&>(*va.getValue()));
       break;
     }
@@ -1001,19 +1056,19 @@ void SemanticAnalyzer::clearResolvedTypes(ExprAST& expr) {
       break;
     }
     case ASTNodeType::INDEXED_ASSIGNMENT: {
-      auto& ia = static_cast<IndexedAssignmentAST&>(expr);
+      auto& ia = static_cast<sun::ast::IndexedAssignmentAST&>(expr);
       clearResolvedTypes(const_cast<ExprAST&>(*ia.getTarget()));
       clearResolvedTypes(const_cast<ExprAST&>(*ia.getValue()));
       break;
     }
     case ASTNodeType::COMPOUND_ASSIGNMENT: {
-      auto& ca = static_cast<CompoundAssignmentAST&>(expr);
+      auto& ca = static_cast<sun::ast::CompoundAssignmentAST&>(expr);
       clearResolvedTypes(const_cast<ExprAST&>(*ca.getTarget()));
       clearResolvedTypes(const_cast<ExprAST&>(*ca.getValue()));
       break;
     }
     case ASTNodeType::IF: {
-      auto& ifExpr = static_cast<IfExprAST&>(expr);
+      auto& ifExpr = static_cast<sun::ast::IfExprAST&>(expr);
       clearResolvedTypes(*ifExpr.getCond());
       clearResolvedTypes(*ifExpr.getThen());
       if (ifExpr.getElse()) {
@@ -1029,7 +1084,7 @@ void SemanticAnalyzer::clearResolvedTypes(ExprAST& expr) {
       break;
     }
     case ASTNodeType::FOR_LOOP: {
-      auto& loop = static_cast<ForExprAST&>(expr);
+      auto& loop = static_cast<sun::ast::ForExprAST&>(expr);
       if (loop.getInit())
         clearResolvedTypes(const_cast<ExprAST&>(*loop.getInit()));
       if (loop.getCondition())
@@ -1040,38 +1095,38 @@ void SemanticAnalyzer::clearResolvedTypes(ExprAST& expr) {
       break;
     }
     case ASTNodeType::FOR_IN_LOOP: {
-      auto& loop = static_cast<ForInExprAST&>(expr);
+      auto& loop = static_cast<sun::ast::ForInExprAST&>(expr);
       clearResolvedTypes(const_cast<ExprAST&>(*loop.getIterable()));
       clearResolvedTypes(const_cast<ExprAST&>(*loop.getBody()));
       break;
     }
     case ASTNodeType::WHILE_LOOP: {
-      auto& loop = static_cast<WhileExprAST&>(expr);
+      auto& loop = static_cast<sun::ast::WhileExprAST&>(expr);
       clearResolvedTypes(const_cast<ExprAST&>(*loop.getCondition()));
       clearResolvedTypes(const_cast<ExprAST&>(*loop.getBody()));
       break;
     }
     case ASTNodeType::RETURN: {
-      auto& ret = static_cast<ReturnExprAST&>(expr);
+      auto& ret = static_cast<sun::ast::ReturnExprAST&>(expr);
       if (ret.hasValue()) {
         clearResolvedTypes(const_cast<ExprAST&>(*ret.getValue()));
       }
       break;
     }
     case ASTNodeType::REFERENCE_CREATION: {
-      auto& ref = static_cast<ReferenceCreationAST&>(expr);
+      auto& ref = static_cast<sun::ast::ReferenceCreationAST&>(expr);
       clearResolvedTypes(const_cast<ExprAST&>(*ref.getTarget()));
       break;
     }
     case ASTNodeType::GENERIC_CALL: {
-      auto& gc = static_cast<GenericCallAST&>(expr);
+      auto& gc = static_cast<sun::ast::GenericCallAST&>(expr);
       for (const auto& arg : gc.getArgs()) {
         clearResolvedTypes(const_cast<ExprAST&>(*arg));
       }
       break;
     }
     case ASTNodeType::TRY_CATCH: {
-      auto& tc = static_cast<TryCatchExprAST&>(expr);
+      auto& tc = static_cast<sun::ast::TryCatchExprAST&>(expr);
       clearResolvedTypes(const_cast<BlockExprAST&>(tc.getTryBlock()));
       for (const auto& clause : tc.getCatchClauses()) {
         clearResolvedTypes(*clause.body);
@@ -1079,26 +1134,26 @@ void SemanticAnalyzer::clearResolvedTypes(ExprAST& expr) {
       break;
     }
     case ASTNodeType::UNSAFE_BLOCK: {
-      auto& ub = static_cast<UnsafeBlockAST&>(expr);
+      auto& ub = static_cast<sun::ast::UnsafeBlockAST&>(expr);
       clearResolvedTypes(ub.getBody());
       break;
     }
     case ASTNodeType::THROW: {
-      auto& th = static_cast<ThrowExprAST&>(expr);
+      auto& th = static_cast<sun::ast::ThrowExprAST&>(expr);
       if (th.hasErrorExpr()) {
         clearResolvedTypes(const_cast<ExprAST&>(th.getErrorExpr()));
       }
       break;
     }
     case ASTNodeType::ARRAY_LITERAL: {
-      auto& arr = static_cast<ArrayLiteralAST&>(expr);
+      auto& arr = static_cast<sun::ast::ArrayLiteralAST&>(expr);
       for (const auto& elem : arr.getElements()) {
         clearResolvedTypes(const_cast<ExprAST&>(*elem));
       }
       break;
     }
     case ASTNodeType::MATCH: {
-      auto& match = static_cast<MatchExprAST&>(expr);
+      auto& match = static_cast<sun::ast::MatchExprAST&>(expr);
       clearResolvedTypes(const_cast<ExprAST&>(*match.getDiscriminant()));
       for (auto& arm : match.getArmsMutable()) {
         if (arm.pattern) {
@@ -1107,7 +1162,6 @@ void SemanticAnalyzer::clearResolvedTypes(ExprAST& expr) {
         arm.resolvedVariantTag = -1;
         for (auto& binding : arm.bindings) {
           binding.resolvedType = nullptr;
-          binding.resolvedMangledName.clear();
         }
         clearResolvedTypes(*arm.body);
       }
@@ -1139,20 +1193,20 @@ void SemanticAnalyzer::clearResolvedTypes(ExprAST& expr) {
 // -------------------------------------------------------------------
 
 void SemanticAnalyzer::maybeResolveBoundMethodRef(MemberAccessAST& memberAccess,
-                                                  sun::TypePtr expectedType) {
-  sun::TypePtr objectType =
-      unwrapRef(memberAccess.getObject()->getResolvedType());
+                                                  TypePtr expectedType) {
+  TypePtr objectType = unwrapRef(memberAccess.getObject()->getResolvedType());
   if (!objectType) return;
 
   // Unwrap raw_ptr<Class> / static_ptr<Class> (mirrors inferType)
   if (objectType->isRawPointer()) {
-    sun::TypePtr pointee =
-        static_cast<sun::RawPointerType*>(objectType.get())->getPointeeType();
+    TypePtr pointee =
+        static_cast<sun::semantic_analysis::RawPointerType*>(objectType.get())
+            ->getPointeeType();
     if (pointee && pointee->isClass()) objectType = pointee;
   } else if (objectType->isStaticPointer()) {
-    sun::TypePtr pointee =
-        static_cast<sun::StaticPointerType*>(objectType.get())
-            ->getPointeeType();
+    TypePtr pointee = static_cast<sun::semantic_analysis::StaticPointerType*>(
+                          objectType.get())
+                          ->getPointeeType();
     if (pointee && pointee->isClass()) objectType = pointee;
   }
 
@@ -1162,7 +1216,8 @@ void SemanticAnalyzer::maybeResolveBoundMethodRef(MemberAccessAST& memberAccess,
   // load at bind time). Only diagnose when a lambda is expected so
   // interface method calls stay untouched.
   if (objectType->isInterface() && expectedType && expectedType->isLambda()) {
-    auto* ifaceType = static_cast<sun::InterfaceType*>(objectType.get());
+    auto* ifaceType =
+        static_cast<sun::semantic_analysis::InterfaceType*>(objectType.get());
     if (ifaceType->getMethod(memberName)) {
       logAndThrowError("Referencing interface method '" + memberName +
                            "' as a value is not supported",
@@ -1172,26 +1227,26 @@ void SemanticAnalyzer::maybeResolveBoundMethodRef(MemberAccessAST& memberAccess,
   }
 
   if (!objectType->isClass()) return;
-  const auto* classType = static_cast<const sun::ClassType*>(objectType.get());
+  const auto* classType =
+      static_cast<const sun::semantic_analysis::ClassType*>(objectType.get());
   if (classType->getField(memberName)) return;
 
-  std::vector<const sun::ClassMethod*> overloads;
+  std::vector<const ClassMethod*> overloads;
   for (const auto& m : classType->getMethods()) {
     if (m.name == memberName) overloads.push_back(&m);
   }
   if (overloads.empty()) return;  // not a method (inferType already errored)
 
-  const sun::ClassMethod* chosen = nullptr;
+  const ClassMethod* chosen = nullptr;
   if (overloads.size() == 1) {
     chosen = overloads[0];
   } else if (expectedType && expectedType->isLambda()) {
     // Pick the overload matching the expected lambda signature. A
     // non-throwing method may bind where a throwing lambda is expected.
-    const auto* expected =
-        static_cast<const sun::LambdaType*>(expectedType.get());
-    std::vector<const sun::ClassMethod*> matches;
+    const auto* expected = static_cast<const LambdaType*>(expectedType.get());
+    std::vector<const ClassMethod*> matches;
     for (const auto* m : overloads) {
-      sun::LambdaType candidate(m->returnType, m->paramTypes, m->canThrow);
+      LambdaType candidate(m->returnType, m->paramTypes, m->canThrow);
       if (candidate.equalsIgnoringThrow(*expected) &&
           (expected->canThrow() || !m->canThrow)) {
         matches.push_back(m);
@@ -1220,15 +1275,18 @@ void SemanticAnalyzer::maybeResolveBoundMethodRef(MemberAccessAST& memberAccess,
   checkMethodReceiver(*memberAccess.getObject(), memberName, chosen->isConst,
                       chosen->isConstructor, memberAccess.getLocation());
 
-  auto boundType = sun::Types::Lambda(chosen->returnType, chosen->paramTypes,
-                                      chosen->canThrow, chosen->isUnsafe);
+  auto boundType = Types::Lambda(chosen->returnType, chosen->paramTypes,
+                                 chosen->canThrow, chosen->isUnsafe);
   // A bound method holds its receiver by reference, so the value is bound
   // to the frame the receiver lives in - the same escape rules as a lambda
   // with a `[ref ...]` capture list apply to it.
-  static_cast<sun::LambdaType*>(boundType.get())->setHasRefCaptures(true);
+  static_cast<LambdaType*>(boundType.get())->setHasRefCaptures(true);
   memberAccess.setResolvedType(std::move(boundType));
+  memberAccess.setTargetDeclarationId(chosen->declarationId);
   memberAccess.setIsBoundMethodRef(true);
 }
 
 // -------------------------------------------------------------------
 // Payload enums
+
+}  // namespace sun::semantic_analysis

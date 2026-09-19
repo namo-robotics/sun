@@ -3,26 +3,32 @@
 
 using std;
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** Groups tests for the contiguous buffer library behavior. */
   module contiguous_buffer_tests {
+    /** Checks basic allocation and size. */
     test_function basic_allocation_and_size() {
       var alloc = make_heap_allocator();
       var buf = ContiguousBuffer<i32>(alloc, 10);
       std.test.assert_eq(buf.size(), 10);
     }
 
+    /** Checks empty buffer. */
     test_function empty_buffer() {
       var alloc = make_heap_allocator();
       var buf = ContiguousBuffer<i32>(alloc, 0);
       std.test.assert(buf.is_empty());
     }
 
+    /** Checks non empty buffer. */
     test_function non_empty_buffer() {
       var alloc = make_heap_allocator();
       var buf = ContiguousBuffer<i32>(alloc, 5);
       std.test.assert(buf.is_empty() == false);
     }
 
+    /** Checks get set valid index. */
     test_function get_set_valid_index() {
       var alloc = make_heap_allocator();
       var buf = ContiguousBuffer<i32>(alloc, 5);
@@ -32,6 +38,7 @@ public module std {
       std.test.assert_eq(buf.get(0) + buf.get(2) + buf.get(4), 219);
     }
 
+    /** Checks get out of bounds throws. */
     test_function get_out_of_bounds_throws() {
       var alloc = make_heap_allocator();
       var buf = ContiguousBuffer<i32>(alloc, 5);
@@ -41,6 +48,7 @@ public module std {
       } catch (e: IError) {}
     }
 
+    /** Checks get negative index throws. */
     test_function get_negative_index_throws() {
       var alloc = make_heap_allocator();
       var buf = ContiguousBuffer<i32>(alloc, 5);
@@ -50,6 +58,7 @@ public module std {
       } catch (e: IError) {}
     }
 
+    /** Checks set out of bounds throws. */
     test_function set_out_of_bounds_throws() {
       var alloc = make_heap_allocator();
       var buf = ContiguousBuffer<i32>(alloc, 5);
@@ -59,6 +68,7 @@ public module std {
       } catch (e: IError) {}
     }
 
+    /** Checks get set unchecked. */
     test_function get_set_unchecked() {
       var alloc = make_heap_allocator();
       var buf = ContiguousBuffer<i32>(alloc, 3);
@@ -71,6 +81,7 @@ public module std {
       );
     }
 
+    /** Checks fill buffer. */
     test_function fill_buffer() {
       var alloc = make_heap_allocator();
       var buf = ContiguousBuffer<i32>(alloc, 5);
@@ -82,6 +93,7 @@ public module std {
       std.test.assert_eq(sum, 35);
     }
 
+    /** Checks copy from valid. */
     test_function copy_from_valid() {
       var alloc = make_heap_allocator();
       var src = ContiguousBuffer<i32>(alloc, 5);
@@ -101,6 +113,7 @@ public module std {
       );
     }
 
+    /** Checks copy from out of bounds src. */
     test_function copy_from_out_of_bounds_src() {
       var alloc = make_heap_allocator();
       var src = ContiguousBuffer<i32>(alloc, 3);
@@ -114,6 +127,7 @@ public module std {
       } catch (e: IError) {}
     }
 
+    /** Checks copy from out of bounds dst. */
     test_function copy_from_out_of_bounds_dst() {
       var alloc = make_heap_allocator();
       var src = ContiguousBuffer<i32>(alloc, 5);
@@ -127,6 +141,7 @@ public module std {
       } catch (e: IError) {}
     }
 
+    /** Checks first and lsyntax tree. */
     test_function first_and_last() {
       var alloc = make_heap_allocator();
       var buf = ContiguousBuffer<i32>(alloc, 4);
@@ -139,6 +154,7 @@ public module std {
       std.test.assert_eq(f + l, 50);
     }
 
+    /** Checks first on empty throws. */
     test_function first_on_empty_throws() {
       var alloc = make_heap_allocator();
       var buf = ContiguousBuffer<i32>(alloc, 0);
@@ -148,6 +164,7 @@ public module std {
       } catch (e: IError) {}
     }
 
+    /** Checks lsyntax tree on empty throws. */
     test_function last_on_empty_throws() {
       var alloc = make_heap_allocator();
       var buf = ContiguousBuffer<i32>(alloc, 0);
@@ -157,6 +174,7 @@ public module std {
       } catch (e: IError) {}
     }
 
+    /** Checks index operator. */
     test_function index_operator() {
       var alloc = make_heap_allocator();
       var buf = ContiguousBuffer<i32>(alloc, 3);
@@ -166,6 +184,7 @@ public module std {
       std.test.assert_eq(buf[0] + buf[1] + buf[2], 600);
     }
 
+    /** Checks iterator sum. */
     test_function iterator_sum() {
       var alloc = make_heap_allocator();
       var buf = ContiguousBuffer<i32>(alloc, 4);
@@ -180,6 +199,7 @@ public module std {
       std.test.assert_eq(sum, 10);
     }
 
+    /** Checks f64 buffer. */
     test_function f64_buffer() {
       var alloc = make_heap_allocator();
       var buf = ContiguousBuffer<f64>(alloc, 3);
@@ -189,6 +209,7 @@ public module std {
       std.test.assert_eq(buf[0] + buf[1] + buf[2], 7.0);
     }
 
+    /** Checks i64 buffer. */
     test_function i64_buffer() {
       var alloc = make_heap_allocator();
       var buf = ContiguousBuffer<i64>(alloc, 3);
@@ -198,6 +219,7 @@ public module std {
       std.test.assert_eq(buf.get(0) + buf.get(1) + buf.get(2), 6000000000);
     }
 
+    /** Checks resize preserves elements. */
     test_function resize_preserves_elements() {
       var alloc = make_heap_allocator();
       var buf = ContiguousBuffer<i64>(alloc, 3);
@@ -221,6 +243,7 @@ public module std {
       std.test.assert_eq(buf.get(0), 42);
     }
 
+    /** Checks raw data not null. */
     test_function raw_data_not_null() {
       var alloc = make_heap_allocator();
       var buf = ContiguousBuffer<i32>(alloc, 5);

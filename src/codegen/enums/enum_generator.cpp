@@ -8,17 +8,27 @@
 #include "codegen/codegen_visitor.h"
 #include "codegen/support/scalar_ops.h"
 
+using sun::semantic_analysis::EnumType;
+
+using sun::ast::MatchArm;
+using sun::support::logAndThrowError;
+
 using namespace llvm;
 
-ScopeManager& EnumGenerator::scopes() { return gen_.scopeManager(); }
+/** Generates enum representations and operations on enum values. */
+namespace sun::codegen::enums {
+
+sun::codegen::scopes::ScopeManager& EnumGenerator::scopes() {
+  return gen_.scopeManager();
+}
 
 // -------------------------------------------------------------------
 // Enum variant construction: EnumName.Variant(args...)
 // -------------------------------------------------------------------
 
 Value* EnumGenerator::codegenVariantConstruction(
-    const CallExprAST& expr, sun::EnumType& enumType,
-    const sun::EnumVariant& variant) {
+    const sun::ast::CallExprAST& expr, EnumType& enumType,
+    const sun::semantic_analysis::EnumVariant& variant) {
   StructType* storageTy = typeResolver.getEnumStorageType(enumType);
   StructType* variantTy =
       typeResolver.getEnumVariantStruct(enumType, variant.name);
@@ -31,7 +41,7 @@ Value* EnumGenerator::codegenVariantConstruction(
   Value* tagPtr =
       ctx.builder->CreateStructGEP(storageTy, storage, 0, "tag.ptr");
   ctx.builder->CreateStore(
-      ConstantInt::get(Type::getInt32Ty(ctx.getContext()), variant.value),
+      ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), variant.value),
       tagPtr);
 
   // Store each payload value through the variant view struct
@@ -42,7 +52,8 @@ Value* EnumGenerator::codegenVariantConstruction(
     llvm::Type* fieldTy = variantTy->getElementType(idx);
     Value* fieldPtr = ctx.builder->CreateStructGEP(variantTy, storage, idx,
                                                    "payload." + variant.name);
-    const sun::TypePtr& payloadType = variant.payloadTypes[i];
+    const sun::semantic_analysis::TypePtr& payloadType =
+        variant.payloadTypes[i];
 
     // A reference payload stores the referent's ADDRESS: the variant borrows,
     // it does not own, so nothing moves and nothing is dropped later.
@@ -84,8 +95,8 @@ Value* EnumGenerator::codegenVariantConstruction(
     // Numeric widening (sema allows widening assignability)
     if (argVal->getType() != fieldTy) {
       if (argVal->getType()->isIntegerTy() && fieldTy->isIntegerTy()) {
-        argVal = sun::codegen::ops::extendInt(*ctx.builder, argVal, fieldTy,
-                                              args[i]->getResolvedType());
+        argVal = sun::codegen::support::extendInt(*ctx.builder, argVal, fieldTy,
+                                                  args[i]->getResolvedType());
       } else if (argVal->getType()->isFloatTy() && fieldTy->isDoubleTy()) {
         argVal = ctx.builder->CreateFPExt(argVal, fieldTy, "payload.ext");
       }
@@ -108,8 +119,8 @@ Value* EnumGenerator::codegenVariantConstruction(
 // discriminant value is the switch operand directly.
 // -------------------------------------------------------------------
 
-Value* EnumGenerator::codegenMatch(const MatchExprAST& expr,
-                                   sun::EnumType& enumType) {
+Value* EnumGenerator::codegenMatch(const sun::ast::MatchExprAST& expr,
+                                   EnumType& enumType) {
   Value* discVal = gen_.codegen(*expr.getDiscriminant());
   if (!discVal) {
     logAndThrowError("Failed to generate code for match discriminant");
@@ -132,8 +143,8 @@ Value* EnumGenerator::codegenMatch(const MatchExprAST& expr,
     }
     Value* tagPtr =
         ctx.builder->CreateStructGEP(storageTy, discPtr, 0, "match.tag.ptr");
-    tag = ctx.builder->CreateLoad(Type::getInt32Ty(ctx.getContext()), tagPtr,
-                                  "match.tag");
+    tag = ctx.builder->CreateLoad(llvm::Type::getInt32Ty(ctx.getContext()),
+                                  tagPtr, "match.tag");
   } else {
     tag = discVal;
     // A ref discriminant may arrive as a pointer to the tag
@@ -149,14 +160,15 @@ Value* EnumGenerator::codegenMatch(const MatchExprAST& expr,
     Value* owned =
         gen_.createEntryBlockAlloca(TheFunction, "match.input", storageTy);
     ctx.builder->CreateStore(
-        gen_.applyMoveSemantics(
-            discPtr, sun::unwrapRef(expr.getDiscriminant()->getResolvedType())),
+        gen_.applyMoveSemantics(discPtr,
+                                sun::semantic_analysis::unwrapRef(
+                                    expr.getDiscriminant()->getResolvedType())),
         owned);
     discPtr = owned;
   }
   const auto matchType = expr.getResolvedType();
   AllocaInst* resultStorage = nullptr;
-  if (sun::typeMovesOnRead(matchType)) {
+  if (sun::semantic_analysis::typeMovesOnRead(matchType)) {
     resultStorage = gen_.createEntryBlockAlloca(
         TheFunction, "match.result", typeResolver.resolve(matchType));
   }
@@ -185,7 +197,7 @@ Value* EnumGenerator::codegenMatch(const MatchExprAST& expr,
   // arms mixing integer widths (e.g. an i64 binding and literal 0) converge
   // on one PHI type instead of hitting the type-mismatch fallback.
   llvm::Type* resultLLVMType = nullptr;
-  if (sun::TypePtr matchType = expr.getResolvedType()) {
+  if (sun::semantic_analysis::TypePtr matchType = expr.getResolvedType()) {
     if (!matchType->isVoid() && !matchType->isCompound()) {
       resultLLVMType = typeResolver.resolve(matchType);
     }
@@ -198,8 +210,8 @@ Value* EnumGenerator::codegenMatch(const MatchExprAST& expr,
     llvm::Type* from = val->getType();
     if (from->isIntegerTy() && resultLLVMType->isIntegerTy()) {
       if (from->getIntegerBitWidth() < resultLLVMType->getIntegerBitWidth()) {
-        return sun::codegen::ops::extendInt(*ctx.builder, val, resultLLVMType,
-                                            arm.body->getResolvedType());
+        return sun::codegen::support::extendInt(
+            *ctx.builder, val, resultLLVMType, arm.body->getResolvedType());
       }
       return ctx.builder->CreateTrunc(val, resultLLVMType, "arm.trunc");
     }
@@ -224,7 +236,7 @@ Value* EnumGenerator::codegenMatch(const MatchExprAST& expr,
     // Bind payloads through the variant view struct
     if (!arm.isWildcard && arm.hasPayloadParens) {
       const auto& patternAccess =
-          static_cast<const MemberAccessAST&>(*arm.pattern);
+          static_cast<const sun::ast::MemberAccessAST&>(*arm.pattern);
       StructType* variantTy = typeResolver.getEnumVariantStruct(
           enumType, patternAccess.getMemberName());
       for (size_t i = 0; i < arm.bindings.size(); ++i) {
@@ -236,7 +248,7 @@ Value* EnumGenerator::codegenMatch(const MatchExprAST& expr,
                                                        binding.name + ".ptr");
         llvm::Type* fieldTy = variantTy->getElementType(idx);
         if (consuming && binding.resolvedType &&
-            sun::typeMovesOnRead(binding.resolvedType)) {
+            sun::semantic_analysis::typeMovesOnRead(binding.resolvedType)) {
           const std::string name =
               binding.isWildcard ? "match.ignored" : binding.name;
           AllocaInst* alloca =
@@ -244,7 +256,7 @@ Value* EnumGenerator::codegenMatch(const MatchExprAST& expr,
           ctx.builder->CreateStore(ctx.builder->CreateLoad(fieldTy, fieldPtr),
                                    alloca);
           if (!binding.isWildcard)
-            scopes().back().variables[binding.name] = alloca;
+            scopes().back().variables[binding.declaration.id] = alloca;
           scopes().trackClassAllocation(alloca, name, binding.resolvedType);
         } else if (binding.isWildcard) {
           continue;
@@ -256,8 +268,8 @@ Value* EnumGenerator::codegenMatch(const MatchExprAST& expr,
               TheFunction, binding.name + ".ref",
               PointerType::getUnqual(ctx.getContext()));
           ctx.builder->CreateStore(fieldPtr, alloca);
-          scopes().back().variables[binding.name] = alloca;
-          scopes().back().indirectBindings.insert(binding.name);
+          scopes().back().variables[binding.declaration.id] = alloca;
+          scopes().back().indirectBindings.insert(binding.declaration.id);
         } else {
           // Scalar payload: fresh local copy
           AllocaInst* alloca =
@@ -265,7 +277,7 @@ Value* EnumGenerator::codegenMatch(const MatchExprAST& expr,
           Value* fieldVal =
               ctx.builder->CreateLoad(fieldTy, fieldPtr, binding.name);
           ctx.builder->CreateStore(fieldVal, alloca);
-          scopes().back().variables[binding.name] = alloca;
+          scopes().back().variables[binding.declaration.id] = alloca;
           state_.debugInfo.declareLocal(*ctx.builder, alloca, binding.name,
                                         binding.resolvedType, binding.location);
         }
@@ -320,7 +332,7 @@ Value* EnumGenerator::codegenMatch(const MatchExprAST& expr,
 
   if (armResults.empty()) {
     // All arms terminated (e.g. returned); merge block is unreachable
-    return ConstantInt::get(Type::getInt32Ty(ctx.getContext()), 0);
+    return ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
   }
 
   if (resultStorage) {
@@ -328,10 +340,10 @@ Value* EnumGenerator::codegenMatch(const MatchExprAST& expr,
     return resultStorage;
   }
 
-  Type* resultType = armResults[0].first->getType();
+  llvm::Type* resultType = armResults[0].first->getType();
   for (const auto& [val, bb] : armResults) {
     if (val->getType() != resultType) {
-      return ConstantInt::get(Type::getInt32Ty(ctx.getContext()), 0);
+      return ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
     }
   }
 
@@ -353,8 +365,8 @@ Value* EnumGenerator::codegenMatch(const MatchExprAST& expr,
 // Variant access without arguments: EnumName.Variant
 // -------------------------------------------------------------------
 
-Value* EnumGenerator::codegenVariantAccess(sun::EnumType& enumType,
-                                           const sun::EnumVariant& variant) {
+Value* EnumGenerator::codegenVariantAccess(
+    EnumType& enumType, const sun::semantic_analysis::EnumVariant& variant) {
   // Unit variant of a payload enum: materialize tagged storage and return
   // the pointer (compound convention). Payload variants are constructed
   // through the call path.
@@ -366,7 +378,8 @@ Value* EnumGenerator::codegenVariantAccess(sun::EnumType& enumType,
     Value* tagPtr =
         ctx.builder->CreateStructGEP(storageTy, storage, 0, "tag.ptr");
     ctx.builder->CreateStore(
-        ConstantInt::get(Type::getInt32Ty(ctx.getContext()), variant.value),
+        ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()),
+                         variant.value),
         tagPtr);
     return storage;
   }
@@ -378,7 +391,7 @@ Value* EnumGenerator::codegenVariantAccess(sun::EnumType& enumType,
 // Enum definition codegen
 // -------------------------------------------------------------------
 
-Value* EnumGenerator::codegen(const EnumDefinitionAST& expr) {
+Value* EnumGenerator::codegen(const sun::ast::EnumDefinitionAST& expr) {
   // Enum definitions are already fully registered by the semantic analyzer
   // in the TypeRegistry. Payload-free enums are represented as integer
   // constants emitted inline when variants are referenced.
@@ -387,7 +400,7 @@ Value* EnumGenerator::codegen(const EnumDefinitionAST& expr) {
   // recorded by the semantic analyzer (mirrors generic classes) and build
   // their storage structs.
   if (expr.isGeneric()) {
-    for (const auto& [mangledName, specialized] : expr.getSpecializations()) {
+    for (const auto& [instanceId, specialized] : expr.getSpecializations()) {
       if (specialized && specialized->hasPayload()) {
         typeResolver.getEnumStorageType(*specialized);
       }
@@ -399,11 +412,12 @@ Value* EnumGenerator::codegen(const EnumDefinitionAST& expr) {
   // ClassType::getStructType embedding an enum field (which cannot reach the
   // resolver) can serve it from the EnumType cache.
   if (expr.hasAnyPayload()) {
-    if (auto enumType =
-            state_.typeRegistry->getEnum(expr.getQualifiedName().mangled())) {
+    if (auto enumType = state_.typeRegistry->getEnum(expr.getDeclarationId())) {
       typeResolver.getEnumStorageType(*enumType);
     }
   }
 
   return ConstantFP::get(ctx.getContext(), APFloat(0.0));
 }
+
+}  // namespace sun::codegen::enums

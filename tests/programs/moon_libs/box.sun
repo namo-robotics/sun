@@ -1,6 +1,8 @@
+/** Owns a generic payload used to verify imported type and method resolution. */
 public class Box<T> {
   public var value: T;
 
+  /** Initializes the fixture fields used by this example or regression test. */
   init(value: T) {
     this.value = value;
   }

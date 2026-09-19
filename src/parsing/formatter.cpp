@@ -18,16 +18,31 @@
 #include "parsing/parser.h"
 #include "support/error.h"
 
-namespace sun {
+using sun::ast::ASTNodeType;
+using sun::ast::BlockExprAST;
+using sun::ast::EnumDefinitionAST;
+using sun::ast::ExprAST;
+using sun::ast::FunctionAST;
+using sun::ast::IfExprAST;
+using sun::ast::ModuleAST;
+using sun::support::Position;
+
+/** Turns source text into syntax trees and provides source formatting. */
+namespace sun::parsing {
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
 constexpr int kIndentWidth = 2;
 
+/** Connects source text and recorded comments to the syntax formatter. */
 class Formatter {
  public:
-  Formatter(const std::string& src, const std::map<int, Comment>& comments)
+  /** Connects source text and recorded comments to the syntax formatter. */
+  Formatter(const std::string& src,
+            const std::map<int, sun::parsing::Comment>& comments)
       : src_(src), comments_(comments), next_(comments.begin()) {}
 
+  /** Formats a parsed program while preserving its recorded comments. */
   std::string format(const BlockExprAST& program) {
     printStmts(program.getBody());
     flushCommentsBefore(static_cast<int>(src_.size()));
@@ -39,8 +54,8 @@ class Formatter {
 
  private:
   const std::string& src_;
-  const std::map<int, Comment>& comments_;
-  std::map<int, Comment>::const_iterator next_;
+  const std::map<int, sun::parsing::Comment>& comments_;
+  std::map<int, sun::parsing::Comment>::const_iterator next_;
   std::string out_;
   int indent_ = 0;
   int lastLine_ = -1;  // Source end line of the last emitted element; -1
@@ -48,32 +63,41 @@ class Formatter {
 
   // --- small helpers -----------------------------------------------------
 
+  /** Returns the last source line covered by a position span. */
   static int endLineOf(const Position& p) { return p.endLine.value_or(p.line); }
 
+  /** Reports whether a source span crosses a line boundary. */
   static bool isMultiLine(const Position& p) {
     return p.endLine.has_value() && *p.endLine > p.line;
   }
 
+  /** Returns the original source text within a position span. */
   std::string slice(const Position& p) const {
     if (!p.endOffset.has_value()) return "";
     return src_.substr(p.offset, *p.endOffset - p.offset);
   }
 
+  /** Writes indentation for the current formatting depth. */
   void writeIndent() { out_.append(indent_ * kIndentWidth, ' '); }
 
-  // Preserve at most one blank line from the source
+  /**
+   * Preserve at most one blank line from the source
+   */
   void blankGap(int nextStartLine) {
     if (lastLine_ >= 0 && nextStartLine - lastLine_ >= 2) out_ += '\n';
   }
 
+  /** Reports whether this object has comment before. */
   bool hasCommentBefore(int offset) const {
     return next_ != comments_.end() && next_->first < offset;
   }
 
-  // Own-line emission of every comment starting before `offset`
+  /**
+   * Own-line emission of every comment starting before `offset`
+   */
   void flushCommentsBefore(int offset) {
     while (next_ != comments_.end() && next_->first < offset) {
-      const Comment& c = next_->second;
+      const sun::parsing::Comment& c = next_->second;
       blankGap(c.span.line);
       writeIndent();
       out_ += c.text;  // multi-line block comments keep their raw interior
@@ -83,12 +107,14 @@ class Formatter {
     }
   }
 
-  // Comments on the same source line as the element just printed are
-  // appended as trailing comments (two spaces before, gofmt-style)
+  /**
+   * Comments on the same source line as the element just printed are
+   * appended as trailing comments (two spaces before, gofmt-style)
+   */
   void emitTrailingComments(int elemEndLine) {
     while (next_ != comments_.end() && !next_->second.ownLine &&
            next_->second.span.line == elemEndLine) {
-      const Comment& c = next_->second;
+      const sun::parsing::Comment& c = next_->second;
       out_ += "  ";
       out_ += c.text;
       lastLine_ = endLineOf(c.span);
@@ -98,6 +124,7 @@ class Formatter {
 
   // --- statements ---------------------------------------------------------
 
+  /** Formats statements in order, beginning at the requested index. */
   void printStmts(const std::vector<std::unique_ptr<ExprAST>>& stmts,
                   size_t start = 0) {
     for (size_t i = start; i < stmts.size(); ++i) {
@@ -114,18 +141,22 @@ class Formatter {
     }
   }
 
+  /** Formats a statement and its required terminator. */
   void printStmt(const ExprAST& e) {
     printVisibility(e.getVisibility());
     printExpr(e);
     if (needsSemicolon(e)) out_ += ';';
   }
 
-  void printVisibility(sun::Visibility v) {
-    if (v == sun::Visibility::Public) out_ += "public ";
+  /** Writes the access modifier for a declaration. */
+  void printVisibility(sun::semantic_analysis::Visibility v) {
+    if (v == sun::semantic_analysis::Visibility::Public) out_ += "public ";
   }
 
-  // Drop a leading `public` from a verbatim slice; the modifier is re-emitted
-  // by printVisibility so it is not doubled.
+  /**
+   * Drop a leading `public` from a verbatim slice; the modifier is re-emitted
+   * by printVisibility so it is not doubled.
+   */
   static std::string stripPublic(std::string s) {
     static const std::string kw = "public";
     if (s.compare(0, kw.size(), kw) == 0 && s.size() > kw.size() &&
@@ -138,6 +169,7 @@ class Formatter {
     return s;
   }
 
+  /** Reports whether a formatted expression requires a statement terminator. */
   static bool needsSemicolon(const ExprAST& e) {
     switch (e.getType()) {
       case ASTNodeType::FUNCTION:
@@ -163,7 +195,9 @@ class Formatter {
 
   // --- blocks -------------------------------------------------------------
 
-  // Multiline block: '{' newline, indented statements, '}'
+  /**
+   * Multiline block: '{' newline, indented statements, '}'
+   */
   void printBlockML(const BlockExprAST& b, size_t start = 0) {
     const Position& loc = b.getLocation();
     int endOffset = loc.endOffset.value_or(static_cast<int>(src_.size()));
@@ -183,8 +217,10 @@ class Formatter {
     lastLine_ = savedLast;
   }
 
-  // Block that may stay on one line when the source kept it on one line
-  // (lambda and unsafe bodies); comments force the multiline form
+  /**
+   * Block that may stay on one line when the source kept it on one line
+   * (lambda and unsafe bodies); comments force the multiline form
+   */
   void printBlockAuto(const BlockExprAST& b) {
     const Position& loc = b.getLocation();
     int endOffset = loc.endOffset.value_or(static_cast<int>(src_.size()));
@@ -207,7 +243,8 @@ class Formatter {
 
   // --- types & prototypes ---------------------------------------------------
 
-  void printType(const TypeAnnotation& t) {
+  /** Writes a type annotation using Sun source syntax. */
+  void printType(const sun::ast::TypeAnnotation& t) {
     if (t.isFunction()) {
       if (t.requiresUnsafe) out_ += "unsafe ";
       out_ += "function (";
@@ -231,10 +268,13 @@ class Formatter {
     }
   }
 
-  // `<'a, T, U: _Numeric>`, or nothing at all when the declaration has no
-  // parameters. Lifetimes come first, as they are written.
-  void printTypeParams(const std::vector<TypeParameter>& typeParams,
-                       const std::vector<LifetimeParameter>& lifetimes = {}) {
+  /**
+   * `<'a, T, U: _Numeric>`, or nothing at all when the declaration has no
+   * parameters. Lifetimes come first, as they are written.
+   */
+  void printTypeParams(
+      const std::vector<sun::ast::TypeParameter>& typeParams,
+      const std::vector<sun::ast::LifetimeParameter>& lifetimes = {}) {
     if (typeParams.empty() && lifetimes.empty()) return;
     out_ += '<';
     bool first = true;
@@ -263,7 +303,9 @@ class Formatter {
     out_ += '>';
   }
 
-  void printProtoSig(const PrototypeAST& p, bool includeParameters = true,
+  /** Writes the selected parts of a function signature. */
+  void printProtoSig(const sun::ast::PrototypeAST& p,
+                     bool includeParameters = true,
                      bool includeReturnType = true) {
     out_ += p.getName();
     if (includeParameters) {
@@ -307,8 +349,10 @@ class Formatter {
     }
   }
 
-  // `asMethod` prints the class/interface member keyword instead of
-  // 'function'; the rest of the signature is spelled the same way.
+  /**
+   * `asMethod` prints the class/interface member keyword instead of
+   * 'function'; the rest of the signature is spelled the same way.
+   */
   void printFunction(const FunctionAST& f, bool asMethod = false) {
     if (f.isExtern()) {
       // Bodyless functions are `extern` or `declare` forward declarations
@@ -338,8 +382,10 @@ class Formatter {
 
   // --- expression lists -----------------------------------------------------
 
-  // Single line: (a, b, c). Multiline (when the construct spanned lines in
-  // the source): one element per line, closing bracket at parent indent.
+  /**
+   * Single line: (a, b, c). Multiline (when the construct spanned lines in
+   * the source): one element per line, closing bracket at parent indent.
+   */
   void printExprList(const std::vector<std::unique_ptr<ExprAST>>& items,
                      char open, char close, const Position& constructSpan) {
     out_ += open;
@@ -374,7 +420,8 @@ class Formatter {
 
   // --- declarations ---------------------------------------------------------
 
-  void printClass(const ClassDefinitionAST& c) {
+  /** Writes a class declaration, including its fields and methods. */
+  void printClass(const sun::ast::ClassDefinitionAST& c) {
     if (c.isPartial()) out_ += "partial ";
     out_ += c.classKeyword();
     out_ += ' ';
@@ -401,12 +448,14 @@ class Formatter {
     int savedLast = lastLine_;
     lastLine_ = -1;
 
-    // Fields and methods live in separate vectors; merge by source order
+    /**
+     * Fields and methods live in separate vectors; merge by source order
+     */
     struct Member {
       int offset;
       int line;
       int endLine;
-      const ClassFieldDecl* field;
+      const sun::ast::ClassFieldDecl* field;
       const FunctionAST* method;
     };
     std::vector<Member> members;
@@ -471,7 +520,8 @@ class Formatter {
     lastLine_ = savedLast;
   }
 
-  void printInterface(const InterfaceDefinitionAST& n) {
+  /** Writes an interface declaration and its member requirements. */
+  void printInterface(const sun::ast::InterfaceDefinitionAST& n) {
     out_ += "interface ";
     out_ += n.getName();
     printTypeParams(n.getTypeParameters(), n.getLifetimeParameters());
@@ -480,12 +530,13 @@ class Formatter {
     int savedLast = lastLine_;
     lastLine_ = -1;
 
+    /** A class member and its source position used to preserve formatting order. */
     struct Member {
       int offset;
       int line;
       int endLine;
-      const InterfaceFieldDecl* field;
-      const InterfaceMethodDecl* method;
+      const sun::ast::InterfaceFieldDecl* field;
+      const sun::ast::InterfaceMethodDecl* method;
     };
     std::vector<Member> members;
     for (const auto& f : n.getFields()) {
@@ -539,7 +590,9 @@ class Formatter {
     lastLine_ = savedLast;
   }
 
-  void printVariant(const EnumVariantDecl& v, const EnumDefinitionAST& n) {
+  /** Writes an enum alternative and any payload fields. */
+  void printVariant(const sun::ast::EnumVariantDecl& v,
+                    const EnumDefinitionAST& n) {
     out_ += v.name;
     if (v.hasPayload()) {
       out_ += '(';
@@ -552,6 +605,7 @@ class Formatter {
     if (v.hasExplicitValue) out_ += " = " + n.getValueText(v);
   }
 
+  /** Writes an enum declaration and its alternatives. */
   void printEnum(const EnumDefinitionAST& n) {
     out_ += "enum ";
     out_ += n.getName();
@@ -588,6 +642,7 @@ class Formatter {
     out_ += '}';
   }
 
+  /** Writes a module declaration using formatted Sun source syntax. */
   void printModule(const ModuleAST& m) {
     const ModuleAST* cur = &m;
     std::string dotted = cur->getName();
@@ -602,7 +657,8 @@ class Formatter {
     printBlockML(cur->getBody());
   }
 
-  void printMatch(const MatchExprAST& m) {
+  /** Writes a pattern match using formatted Sun source syntax. */
+  void printMatch(const sun::ast::MatchExprAST& m) {
     out_ += "match ";
     printExpr(*m.getDiscriminant());
     out_ += " {\n";
@@ -647,7 +703,8 @@ class Formatter {
     out_ += '}';
   }
 
-  void printTryCatch(const TryCatchExprAST& t) {
+  /** Writes a error handler using formatted Sun source syntax. */
+  void printTryCatch(const sun::ast::TryCatchExprAST& t) {
     out_ += "try ";
     printBlockML(t.getTryBlock());
     for (const auto& clause : t.getCatchClauses()) {
@@ -662,6 +719,7 @@ class Formatter {
     }
   }
 
+  /** Writes a conditional expression using formatted Sun source syntax. */
   void printIf(const IfExprAST& n) {
     out_ += "if ";
     printExpr(*n.getCond());
@@ -679,7 +737,8 @@ class Formatter {
     }
   }
 
-  void printLambda(const LambdaAST& l) {
+  /** Writes a lambda expression using formatted Sun source syntax. */
+  void printLambda(const sun::ast::LambdaAST& l) {
     printTypeParams(l.getProto().getTypeParameters(),
                     l.getProto().getLifetimeParameters());
     const auto& caps = l.getProto().getRefCaptureNames();
@@ -709,6 +768,7 @@ class Formatter {
 
   // --- the big dispatch -----------------------------------------------------
 
+  /** Writes an expression using formatted Sun source syntax. */
   void printExpr(const ExprAST& e) {
     const Position& loc = e.getLocation();
     switch (e.getType()) {
@@ -725,7 +785,7 @@ class Formatter {
       }
 
       case ASTNodeType::STRUCT_LITERAL: {
-        const auto& lit = static_cast<const StructLiteralAST&>(e);
+        const auto& lit = static_cast<const sun::ast::StructLiteralAST&>(e);
         out_ += '{';
         bool first = true;
         for (const auto& field : lit.getFields()) {
@@ -739,13 +799,13 @@ class Formatter {
         break;
       }
       case ASTNodeType::ARRAY_LITERAL: {
-        const auto& n = static_cast<const ArrayLiteralAST&>(e);
+        const auto& n = static_cast<const sun::ast::ArrayLiteralAST&>(e);
         printExprList(n.getElements(), '[', ']', loc);
         break;
       }
 
       case ASTNodeType::PAREN_EXPR: {
-        const auto& n = static_cast<const ParenExprAST&>(e);
+        const auto& n = static_cast<const sun::ast::ParenExprAST&>(e);
         out_ += '(';
         printExpr(*n.getInner());
         out_ += ')';
@@ -753,11 +813,11 @@ class Formatter {
       }
 
       case ASTNodeType::VARIABLE_REFERENCE:
-        out_ += static_cast<const VariableReferenceAST&>(e).getName();
+        out_ += static_cast<const sun::ast::VariableReferenceAST&>(e).getName();
         break;
 
       case ASTNodeType::VARIABLE_CREATION: {
-        const auto& n = static_cast<const VariableCreationAST&>(e);
+        const auto& n = static_cast<const sun::ast::VariableCreationAST&>(e);
         if (n.isCExtern()) {
           // Preserve the optional ABI spelling from the source span.
           std::string s = stripPublic(slice(n.getLocation()));
@@ -783,7 +843,7 @@ class Formatter {
       }
 
       case ASTNodeType::VARIABLE_ASSIGNMENT: {
-        const auto& n = static_cast<const VariableAssignmentAST&>(e);
+        const auto& n = static_cast<const sun::ast::VariableAssignmentAST&>(e);
         out_ += n.getName();
         out_ += " = ";
         printExpr(*n.getValue());
@@ -791,7 +851,7 @@ class Formatter {
       }
 
       case ASTNodeType::REFERENCE_CREATION: {
-        const auto& n = static_cast<const ReferenceCreationAST&>(e);
+        const auto& n = static_cast<const sun::ast::ReferenceCreationAST&>(e);
         out_ += n.isMutable() ? "ref " : "const ref ";
         out_ += n.getName();
         out_ += " = ";
@@ -800,7 +860,7 @@ class Formatter {
       }
 
       case ASTNodeType::BINARY: {
-        const auto& n = static_cast<const BinaryExprAST&>(e);
+        const auto& n = static_cast<const sun::ast::BinaryExprAST&>(e);
         printExpr(*n.getLHS());
         out_ += ' ';
         out_ += n.getOp().text;
@@ -810,7 +870,7 @@ class Formatter {
       }
 
       case ASTNodeType::UNARY: {
-        const auto& n = static_cast<const UnaryExprAST&>(e);
+        const auto& n = static_cast<const sun::ast::UnaryExprAST&>(e);
         out_ += n.getOp().text;
         // Word operators (not) need a separating space
         if (std::isalpha(static_cast<unsigned char>(n.getOp().text[0]))) {
@@ -821,7 +881,7 @@ class Formatter {
       }
 
       case ASTNodeType::TERNARY: {
-        const auto& n = static_cast<const TernaryExprAST&>(e);
+        const auto& n = static_cast<const sun::ast::TernaryExprAST&>(e);
         printExpr(*n.getCond());
         out_ += " ? ";
         printExpr(*n.getThen());
@@ -831,7 +891,7 @@ class Formatter {
       }
 
       case ASTNodeType::COMPOUND_ASSIGNMENT: {
-        const auto& n = static_cast<const CompoundAssignmentAST&>(e);
+        const auto& n = static_cast<const sun::ast::CompoundAssignmentAST&>(e);
         printExpr(*n.getTarget());
         out_ += ' ';
         out_ += n.getOp().text;
@@ -841,7 +901,7 @@ class Formatter {
       }
 
       case ASTNodeType::INDEXED_ASSIGNMENT: {
-        const auto& n = static_cast<const IndexedAssignmentAST&>(e);
+        const auto& n = static_cast<const sun::ast::IndexedAssignmentAST&>(e);
         printExpr(*n.getTarget());
         out_ += " = ";
         printExpr(*n.getValue());
@@ -849,7 +909,7 @@ class Formatter {
       }
 
       case ASTNodeType::MEMBER_ASSIGNMENT: {
-        const auto& n = static_cast<const MemberAssignmentAST&>(e);
+        const auto& n = static_cast<const sun::ast::MemberAssignmentAST&>(e);
         printExpr(*n.getObject());
         out_ += '.';
         out_ += n.getMemberName();
@@ -859,7 +919,7 @@ class Formatter {
       }
 
       case ASTNodeType::INDEX: {
-        const auto& n = static_cast<const IndexAST&>(e);
+        const auto& n = static_cast<const sun::ast::IndexAST&>(e);
         printExpr(*n.getTarget());
         out_ += '[';
         const auto& indices = n.getIndices();
@@ -872,14 +932,14 @@ class Formatter {
       }
 
       case ASTNodeType::CALL: {
-        const auto& n = static_cast<const CallExprAST&>(e);
+        const auto& n = static_cast<const sun::ast::CallExprAST&>(e);
         printExpr(*n.getCallee());
         printExprList(n.getArgs(), '(', ')', loc);
         break;
       }
 
       case ASTNodeType::GENERIC_CALL: {
-        const auto& n = static_cast<const GenericCallAST&>(e);
+        const auto& n = static_cast<const sun::ast::GenericCallAST&>(e);
         out_ += n.getFunctionName();
         out_ += '<';
         const auto& typeArgs = n.getTypeArguments();
@@ -893,7 +953,7 @@ class Formatter {
       }
 
       case ASTNodeType::MEMBER_ACCESS: {
-        const auto& n = static_cast<const MemberAccessAST&>(e);
+        const auto& n = static_cast<const sun::ast::MemberAccessAST&>(e);
         printExpr(*n.getObject());
         out_ += '.';
         out_ += n.getMemberName();
@@ -914,16 +974,16 @@ class Formatter {
         break;
 
       case ASTNodeType::QUALIFIED_NAME:
-        out_ += static_cast<const QualifiedNameAST&>(e).getFullName();
+        out_ += static_cast<const sun::ast::QualifiedNameAST&>(e).getFullName();
         break;
 
       case ASTNodeType::PACK_EXPANSION:
-        out_ += static_cast<const PackExpansionAST&>(e).getPackName();
+        out_ += static_cast<const sun::ast::PackExpansionAST&>(e).getPackName();
         out_ += "...";
         break;
 
       case ASTNodeType::LAMBDA:
-        printLambda(static_cast<const LambdaAST&>(e));
+        printLambda(static_cast<const sun::ast::LambdaAST&>(e));
         break;
 
       case ASTNodeType::FUNCTION:
@@ -937,7 +997,7 @@ class Formatter {
       case ASTNodeType::WHILE_LOOP: {
         // While parens are structural (eaten by the parser), unlike if
         // conditions where they arrive as a ParenExprAST
-        const auto& n = static_cast<const WhileExprAST&>(e);
+        const auto& n = static_cast<const sun::ast::WhileExprAST&>(e);
         out_ += "while (";
         printExpr(*n.getCondition());
         out_ += ") ";
@@ -946,7 +1006,7 @@ class Formatter {
       }
 
       case ASTNodeType::FOR_LOOP: {
-        const auto& n = static_cast<const ForExprAST&>(e);
+        const auto& n = static_cast<const sun::ast::ForExprAST&>(e);
         out_ += "for (";
         if (n.getInit()) printExpr(*n.getInit());
         out_ += "; ";
@@ -959,7 +1019,7 @@ class Formatter {
       }
 
       case ASTNodeType::FOR_IN_LOOP: {
-        const auto& n = static_cast<const ForInExprAST&>(e);
+        const auto& n = static_cast<const sun::ast::ForInExprAST&>(e);
         out_ += n.isConst() ? "for (const " : "for (var ";
         out_ += n.getLoopVar();
         out_ += ": ";
@@ -976,7 +1036,7 @@ class Formatter {
         break;
 
       case ASTNodeType::UNSAFE_BLOCK: {
-        const auto& n = static_cast<const UnsafeBlockAST&>(e);
+        const auto& n = static_cast<const sun::ast::UnsafeBlockAST&>(e);
         out_ += "unsafe ";
         if (n.isExpressionForm())
           printExpr(*n.getBody().getLastExpr());
@@ -986,7 +1046,7 @@ class Formatter {
       }
 
       case ASTNodeType::RETURN: {
-        const auto& n = static_cast<const ReturnExprAST&>(e);
+        const auto& n = static_cast<const sun::ast::ReturnExprAST&>(e);
         out_ += "return";
         if (n.hasValue()) {
           out_ += ' ';
@@ -996,7 +1056,7 @@ class Formatter {
       }
 
       case ASTNodeType::THROW: {
-        const auto& n = static_cast<const ThrowExprAST&>(e);
+        const auto& n = static_cast<const sun::ast::ThrowExprAST&>(e);
         out_ += "throw";
         if (n.hasErrorExpr()) {
           out_ += ' ';
@@ -1014,19 +1074,19 @@ class Formatter {
         break;
 
       case ASTNodeType::MATCH:
-        printMatch(static_cast<const MatchExprAST&>(e));
+        printMatch(static_cast<const sun::ast::MatchExprAST&>(e));
         break;
 
       case ASTNodeType::TRY_CATCH:
-        printTryCatch(static_cast<const TryCatchExprAST&>(e));
+        printTryCatch(static_cast<const sun::ast::TryCatchExprAST&>(e));
         break;
 
       case ASTNodeType::CLASS_DEFINITION:
-        printClass(static_cast<const ClassDefinitionAST&>(e));
+        printClass(static_cast<const sun::ast::ClassDefinitionAST&>(e));
         break;
 
       case ASTNodeType::INTERFACE_DEFINITION:
-        printInterface(static_cast<const InterfaceDefinitionAST&>(e));
+        printInterface(static_cast<const sun::ast::InterfaceDefinitionAST&>(e));
         break;
 
       case ASTNodeType::ENUM_DEFINITION:
@@ -1056,7 +1116,8 @@ class Formatter {
     }
   }
 
-  void printSlice(const SliceExprAST& s) {
+  /** Writes a slice expression using formatted Sun source syntax. */
+  void printSlice(const sun::ast::SliceExprAST& s) {
     if (!s.isRange()) {
       if (s.hasStart()) printExpr(*s.getStart());
       return;
@@ -1069,25 +1130,28 @@ class Formatter {
 
 }  // namespace
 
+/** Formats a parsed program with its original comments and source context. */
 std::string formatProgram(const BlockExprAST& program,
-                          const std::map<int, Comment>& comments,
+                          const std::map<int, sun::parsing::Comment>& comments,
                           const std::string& source) {
   Formatter fmt(source, comments);
   return fmt.format(program);
 }
 
+/** Parses and formats Sun source text for the supplied file. */
 std::string formatSource(const std::string& source,
                          const std::string& filePath) {
   std::istringstream dummy("");
-  Parser parser(dummy);
+  sun::parsing::Parser parser(dummy);
   parser.setCollectComments(true);
   parser.setFilePath(filePath);
   auto program = parser.parseString(source);
   if (!program) {
-    throw SunError(SunError::Kind::Parse,
-                   "formatting failed: could not parse " + filePath);
+    throw sun::support::SunError(
+        sun::support::SunError::Kind::Parse,
+        "formatting failed: could not parse " + filePath);
   }
   return formatProgram(*program, parser.getComments(), source);
 }
 
-}  // namespace sun
+}  // namespace sun::parsing

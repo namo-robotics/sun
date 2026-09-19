@@ -3,7 +3,8 @@
 
 syntax = "proto3";
 
-package sun.ast;
+/** Groups the serialized compiler data defined by this schema. */
+package sun.proto.ast;
 
 import "types.proto";
 
@@ -13,16 +14,30 @@ option cc_enable_arenas = true;
 // Root wrapper for polymorphic AST nodes
 // =============================================================================
 
-// Declaration visibility. Sun is private by default; `public` is the only
-// modifier. Zero value = PRIVATE keeps older serialized data valid.
+/**
+ * Declaration visibility. Sun is private by default; `public` is the only
+ * modifier. Zero value = PRIVATE keeps older serialized data valid.
+ */
 enum Visibility {
   PRIVATE = 0;
   PUBLIC = 1;
 }
 
+/**
+ * Portable declarations are exported explicitly; ordinary AST clones omit them.
+ */
+message DeclarationIdentity {
+  bytes declaration = 1;
+  repeated bytes parameters = 2;
+  repeated bytes type_parameters = 3;
+  repeated bytes lifetime_parameters = 4;
+}
+
+/** Wraps a syntax node with its source position and declaration identity for serialization. */
 message ASTNode {
+  DeclarationIdentity declaration_identity = 102;
   // Canonical module identity for expressions and retained using targets.
-  optional QualifiedName module_qualified_name = 101;
+  optional bytes module_declaration_key = 101;
   uint64 source_file_id = 100;
   Position location = 1;
   bool precompiled = 2;
@@ -107,6 +122,7 @@ message ASTNode {
 // Literal nodes
 // =============================================================================
 
+/** Stores number expression data in the compiler serialization format. */
 message NumberExpr {
   oneof value {
     // Absolute value of an integer literal; spans the whole u64 range
@@ -119,40 +135,51 @@ message NumberExpr {
   bool int_negative = 4;
 }
 
+/** Stores string literal data in the compiler serialization format. */
 message StringLiteral {
   string value = 1;
 }
 
+/** Stores null literal data in the compiler serialization format. */
 message NullLiteral {
   // No fields needed
 }
 
+/** Stores bool literal data in the compiler serialization format. */
 message BoolLiteral {
   bool value = 1;
 }
 
-// 'a' (a char) or b'a' (a u8).
+/**
+ * 'a' (a char) or b'a' (a u8).
+ */
 message CharLiteral {
   uint32 value = 1;   // Unicode scalar value, or the byte
   bool is_byte = 2;   // true for b'a'
 }
 
+/** Stores array literal data in the compiler serialization format. */
 message ArrayLiteral {
   repeated ASTNode elements = 1;
 }
 
+/** Stores struct field init data in the compiler serialization format. */
 message StructFieldInit {
   string name = 1;
   ASTNode value = 2;
   optional Position location = 3;
 }
 
-// Struct literal: { color: "red", speed: 120 }
+/**
+ * Struct literal: { color: "red", speed: 120 }
+ */
 message StructLiteral {
   repeated StructFieldInit fields = 1;
 }
 
-// Template string segment: literal run or ${...} expression
+/**
+ * Template string segment: literal run or ${...} expression
+ */
 message InterpolatedSegment {
   bool is_literal = 1;
   string raw_text = 2;      // Exact source slice (escapes unprocessed)
@@ -161,7 +188,9 @@ message InterpolatedSegment {
   int32 source_offset = 5;  // Absolute byte offset of the segment start
 }
 
-// Template string: `text ${expr}` (parse tree only; lowered before analysis)
+/**
+ * Template string: `text ${expr}` (parse tree only; lowered before analysis)
+ */
 message InterpolatedString {
   string raw_content = 1;   // Inner text, backticks stripped, unprocessed
   repeated InterpolatedSegment segments = 2;
@@ -171,17 +200,20 @@ message InterpolatedString {
 // Indexing/slicing nodes
 // =============================================================================
 
+/** Stores slice expression data in the compiler serialization format. */
 message SliceExpr {
   optional ASTNode start = 1;
   optional ASTNode end = 2;
   bool is_range = 3;  // true for start:end, false for single index
 }
 
+/** Stores index expression data in the compiler serialization format. */
 message IndexExpr {
   ASTNode target = 1;
   repeated SliceExpr indices = 2;  // SliceExpr for each dimension
 }
 
+/** Stores array index expression data in the compiler serialization format. */
 message ArrayIndexExpr {
   // Legacy array index node
   ASTNode array = 1;
@@ -192,11 +224,14 @@ message ArrayIndexExpr {
 // Variable nodes
 // =============================================================================
 
+/** Stores variable reference data in the compiler serialization format. */
 message VariableReference {
   string name = 1;
 }
 
+/** Stores variable creation data in the compiler serialization format. */
 message VariableCreation {
+  DeclarationIdentity declaration_identity = 102;
   uint64 source_file_id = 100;
   string name = 1;
   optional ASTNode value = 2;
@@ -209,28 +244,33 @@ message VariableCreation {
   bool explicit_c_abi = 9;  // Source spelled the optional "C" ABI
 }
 
+/** Stores variable assignment data in the compiler serialization format. */
 message VariableAssignment {
   string name = 1;
   ASTNode value = 2;
 }
 
+/** Stores reference creation data in the compiler serialization format. */
 message ReferenceCreation {
   string name = 1;
   ASTNode target = 2;
   bool is_mutable = 3;
 }
 
+/** Stores indexed assignment data in the compiler serialization format. */
 message IndexedAssignment {
   ASTNode target = 1;  // The index expression
   ASTNode value = 2;
 }
 
+/** Stores member assignment data in the compiler serialization format. */
 message MemberAssignment {
   ASTNode object = 1;
   string member_name = 2;
   ASTNode value = 3;
 }
 
+/** Stores compound assignment data in the compiler serialization format. */
 message CompoundAssignment {
   ASTNode target = 1;  // Lvalue expression (variable / member / index)
   Token op = 2;        // The compound token (+=, -=, ...)
@@ -241,28 +281,34 @@ message CompoundAssignment {
 // Expression nodes
 // =============================================================================
 
+/** Stores binary expression data in the compiler serialization format. */
 message BinaryExpr {
   Token op = 1;
   ASTNode lhs = 2;
   ASTNode rhs = 3;
 }
 
+/** Stores ternary expression data in the compiler serialization format. */
 message TernaryExpr {
   ASTNode cond = 1;
   ASTNode then_expr = 2;
   ASTNode else_expr = 3;
 }
 
-// Grouping parentheses: (expr) (parse tree only; lowered before analysis)
+/**
+ * Grouping parentheses: (expr) (parse tree only; lowered before analysis)
+ */
 message ParenExpr {
   ASTNode inner = 1;
 }
 
+/** Stores unary expression data in the compiler serialization format. */
 message UnaryExpr {
   Token op = 1;
   ASTNode operand = 2;
 }
 
+/** Stores pack expansion data in the compiler serialization format. */
 message PackExpansion {
   string pack_name = 1;
 }
@@ -271,6 +317,7 @@ message PackExpansion {
 // Control flow nodes
 // =============================================================================
 
+/** Stores block expression data in the compiler serialization format. */
 message BlockExpr {
   uint64 source_file_id = 100;
   repeated ASTNode body = 1;
@@ -281,19 +328,24 @@ message BlockExpr {
   optional uint32 block_kind = 3;
 }
 
+/** Stores if expression data in the compiler serialization format. */
 message IfExpr {
   ASTNode condition = 1;
   ASTNode then_branch = 2;
   optional ASTNode else_branch = 3;
 }
 
-// A payload binding position in a destructuring pattern: Shape.Circle(r, _)
+/**
+ * A payload binding position in a destructuring pattern: Shape.Circle(r, _)
+ */
 message PatternBinding {
+  DeclarationIdentity declaration_identity = 102;
   string name = 1;  // empty when is_wildcard
   bool is_wildcard = 2;
   Position location = 3;
 }
 
+/** Stores match arm data in the compiler serialization format. */
 message MatchArm {
   optional ASTNode pattern = 1;  // null for wildcard (_)
   bool is_wildcard = 2;
@@ -302,11 +354,13 @@ message MatchArm {
   repeated PatternBinding bindings = 5;
 }
 
+/** Stores match expression data in the compiler serialization format. */
 message MatchExpr {
   ASTNode discriminant = 1;
   repeated MatchArm arms = 2;
 }
 
+/** Stores for expression data in the compiler serialization format. */
 message ForExpr {
   optional ASTNode init = 1;
   optional ASTNode condition = 2;
@@ -314,6 +368,7 @@ message ForExpr {
   ASTNode body = 4;
 }
 
+/** Stores for in expression data in the compiler serialization format. */
 message ForInExpr {
   string loop_var = 1;
   TypeAnnotation loop_var_type = 2;
@@ -322,23 +377,28 @@ message ForInExpr {
   bool is_const = 5;  // `for (const x: T in ...)`
 }
 
+/** Stores while expression data in the compiler serialization format. */
 message WhileExpr {
   ASTNode condition = 1;
   ASTNode body = 2;
 }
 
+/** Stores break statement data in the compiler serialization format. */
 message BreakStmt {
   // No fields needed
 }
 
+/** Stores continue statement data in the compiler serialization format. */
 message ContinueStmt {
   // No fields needed
 }
 
+/** Stores return expression data in the compiler serialization format. */
 message ReturnExpr {
   optional ASTNode value = 1;
 }
 
+/** Stores unsafe block data in the compiler serialization format. */
 message UnsafeBlock {
   BlockExpr body = 1;
   bool expression_form = 2;
@@ -348,32 +408,40 @@ message UnsafeBlock {
 // Function/call nodes
 // =============================================================================
 
-// Function argument (name + type)
+/**
+ * Function argument (name + type)
+ */
 message FunctionArg {
   string name = 1;
   TypeAnnotation type = 2;
 }
 
-// One generic type parameter: a name, and optionally a constraint the type
-// argument must satisfy (a built-in trait, an interface, or `lambda`).
-// Mirrors TypeParameter/TypeConstraint. User-defined constraints retain the
-// exact interface identity alongside their source spelling.
+/**
+ * One generic type parameter: a name, and optionally a constraint the type
+ * argument must satisfy (a built-in trait, an interface, or `lambda`).
+ * Mirrors TypeParameter/TypeConstraint. User-defined constraints retain the
+ * exact interface identity alongside their source spelling.
+ */
 message TypeParameter {
-  optional QualifiedName qualified_name = 3;
+  optional bytes declaration_key = 3;
   string name = 1;
   optional string constraint = 2;
   repeated TypeAnnotation constraint_arguments = 4;
 }
 
-// Function prototype (signature)
+/**
+ * Function prototype (signature)
+ */
 message Prototype {
+  DeclarationIdentity declaration_identity = 102;
   string name = 1;
   // Superseded by type_params; still read so bundles built before
   // constraints existed keep loading.
   repeated string type_parameters = 2 [deprecated = true];
   repeated FunctionArg args = 3;
   optional TypeAnnotation return_type = 4;
-  repeated Capture captures = 5;
+  reserved 5;  // Computed captures belong to analysis, not source syntax.
+  reserved "captures";
   // The trailing `args...` value pack: its name, and the annotation after its
   // colon in `args...: _params_of<T>`.
   optional string variadic_param_name = 6;
@@ -393,14 +461,15 @@ message Prototype {
   repeated string lifetime_params = 18;     // <'a, T> declares 'a
 }
 
+/** Stores function definition data in the compiler serialization format. */
 message FunctionDef {
   uint64 source_file_id = 100;
   Prototype proto = 1;
   BlockExpr body = 2;
   string source_text = 3;  // Original source for generic specialization
   // A bodyless `extern "C" function`. Without this the declaration comes back
-  // as an ordinary Sun function with an empty body and gets Sun name
-  // mangling, so the C symbol is lost.
+  // as an ordinary Sun function with an empty body and is emitted under a
+  // Sun-derived symbol, so the C symbol is lost.
   bool is_c_extern = 4;
   bool body_present = 5;  // Distinguishes "no body" from "empty body"
   Visibility visibility = 6;
@@ -414,16 +483,19 @@ message FunctionDef {
   bool synthesized_constructor = 10;
 }
 
+/** Stores lambda expression data in the compiler serialization format. */
 message LambdaExpr {
   Prototype proto = 1;
   BlockExpr body = 2;
 }
 
+/** Stores call expression data in the compiler serialization format. */
 message CallExpr {
   ASTNode callee = 1;
   repeated ASTNode args = 2;
 }
 
+/** Stores generic call expression data in the compiler serialization format. */
 message GenericCallExpr {
   string function_name = 1;
   repeated TypeAnnotation type_arguments = 2;
@@ -434,16 +506,19 @@ message GenericCallExpr {
 // Module/import nodes
 // =============================================================================
 
+/** Stores import statement data in the compiler serialization format. */
 message ImportStmt {
   string path = 1;
 }
 
+/** Stores import scope data in the compiler serialization format. */
 message ImportScope {
   string source_file = 1;
   string content_hash = 2;
   BlockExpr body = 3;
 }
 
+/** Stores manifest moon dependency data in the compiler serialization format. */
 message ManifestMoonDependency {
   string path = 1;
   optional string hash = 2;
@@ -451,22 +526,27 @@ message ManifestMoonDependency {
   optional string url = 4;
 }
 
+/** Stores manifest sun dependency data in the compiler serialization format. */
 message ManifestSunDependency {
   string path = 1;
   optional string hash = 2;
 }
 
+/** Stores manifest proto dependency data in the compiler serialization format. */
 message ManifestProtoDependency {
   string path = 1;
 }
 
+/** Stores manifest data in the compiler serialization format. */
 message Manifest {
   repeated ManifestSunDependency suns = 1;
   repeated ManifestMoonDependency moons = 2;
   repeated ManifestProtoDependency protos = 3;
 }
 
+/** Stores module definition data in the compiler serialization format. */
 message ModuleDef {
+  DeclarationIdentity declaration_identity = 102;
   string name = 1;
   BlockExpr body = 2;
   Visibility visibility = 3;
@@ -474,13 +554,16 @@ message ModuleDef {
   Position name_location = 5;
 }
 
+/** Stores using statement data in the compiler serialization format. */
 message UsingStmt {
   repeated string namespace_path = 1;  // ["ModuleName", "SubModule"]
   string target = 2;                   // "funcName" or "*"
   bool is_module_import = 3;
 }
 
-// A dotted name as written in a source expression.
+/**
+ * A dotted name as written in a source expression.
+ */
 message QualifiedNameExpr {
   repeated string parts = 1;  // ["Module", "SubModule", "name"]
 }
@@ -489,8 +572,11 @@ message QualifiedNameExpr {
 // Class/interface/enum definitions
 // =============================================================================
 
-// Class field declaration
+/**
+ * Class field declaration
+ */
 message ClassField {
+  DeclarationIdentity declaration_identity = 102;
   optional ASTNode initializer = 6;
   string name = 1;
   TypeAnnotation type = 2;
@@ -499,21 +585,33 @@ message ClassField {
   string doc = 5;  // Comment written above the field
 }
 
-// Class method declaration
+/**
+ * Class method declaration
+ */
 message ClassMethod {
   FunctionDef function = 1;
   bool is_constructor = 2;  // true if method name is "init"
   bool is_const = 3;        // `const function`: does not mutate `this`
 }
 
-// Implemented interface with type arguments
+/**
+ * Implemented interface with type arguments
+ */
 message ImplementedInterface {
-  optional QualifiedName qualified_name = 3;
+  optional bytes declaration_key = 3;
   string name = 1;
   repeated TypeAnnotation type_arguments = 2;
 }
 
+/** Stores compiled specialization data in the compiler serialization format. */
+message CompiledSpecialization {
+  bytes declaration_key = 1;
+  repeated string method_symbols = 2;
+}
+
+/** Stores class definition data in the compiler serialization format. */
 message ClassDef {
+  DeclarationIdentity declaration_identity = 102;
   uint64 source_file_id = 100;
   string name = 1;
   repeated string type_parameters = 2 [deprecated = true];  // see type_params
@@ -528,11 +626,14 @@ message ClassDef {
   repeated TypeParameter type_params = 11;  // <T, U: _Numeric>
   repeated string lifetime_params = 12;     // class Bus<'a, 'b>
   // Concrete class shapes whose ordinary methods are present in the bundle.
-  repeated string compiled_specializations = 13;
+  repeated CompiledSpecialization compiled_specializations = 13;
 }
 
-// Interface field declaration
+/**
+ * Interface field declaration
+ */
 message InterfaceField {
+  DeclarationIdentity declaration_identity = 102;
   string name = 1;
   TypeAnnotation type = 2;
   Position location = 3;
@@ -540,14 +641,18 @@ message InterfaceField {
   string doc = 5;  // Comment written above the field
 }
 
-// Interface method declaration
+/**
+ * Interface method declaration
+ */
 message InterfaceMethod {
   FunctionDef function = 1;
   bool has_default_impl = 2;
   bool is_const = 3;  // `const function`: does not mutate `this`
 }
 
+/** Stores interface definition data in the compiler serialization format. */
 message InterfaceDef {
+  DeclarationIdentity declaration_identity = 102;
   uint64 source_file_id = 100;
   string name = 1;
   repeated string type_parameters = 2 [deprecated = true];  // see type_params
@@ -560,8 +665,11 @@ message InterfaceDef {
   repeated string lifetime_params = 9;     // interface ISink<'a>
 }
 
-// Enum variant declaration
+/**
+ * Enum variant declaration
+ */
 message EnumVariant {
+  DeclarationIdentity declaration_identity = 102;
   string name = 1;
   int64 value = 2;
   Position location = 3;
@@ -570,7 +678,9 @@ message EnumVariant {
   bool has_explicit_value = 6;
 }
 
+/** Stores enum definition data in the compiler serialization format. */
 message EnumDef {
+  DeclarationIdentity declaration_identity = 102;
   uint64 source_file_id = 100;
   string name = 1;
   repeated EnumVariant variants = 2;
@@ -582,10 +692,12 @@ message EnumDef {
   string underlying_type = 8;  // Empty means the default integer representation
 }
 
+/** Stores this expression data in the compiler serialization format. */
 message ThisExpr {
   // No fields needed
 }
 
+/** Stores member access data in the compiler serialization format. */
 message MemberAccess {
   ASTNode object = 1;
   string member_name = 2;
@@ -596,21 +708,26 @@ message MemberAccess {
 // Error handling / type declaration nodes
 // =============================================================================
 
+/** Stores catch clause data in the compiler serialization format. */
 message CatchClause {
+  DeclarationIdentity declaration_identity = 102;
   string binding_name = 1;
   optional TypeAnnotation binding_type = 2;
   BlockExpr body = 3;
 }
 
+/** Stores try catch data in the compiler serialization format. */
 message TryCatch {
   BlockExpr try_block = 1;
   repeated CatchClause catch_clauses = 2;
 }
 
+/** Stores throw expression data in the compiler serialization format. */
 message ThrowExpr {
   ASTNode error_expr = 1;
 }
 
+/** Stores declare type data in the compiler serialization format. */
 message DeclareType {
   optional string alias_name = 1;
   TypeAnnotation type_annotation = 2;
@@ -621,6 +738,7 @@ message DeclareType {
 // Top-level program message
 // =============================================================================
 
+/** Stores program data in the compiler serialization format. */
 message Program {
   uint32 version = 1;  // Schema version for compatibility
   BlockExpr body = 2;  // Root block containing all declarations

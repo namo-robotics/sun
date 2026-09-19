@@ -4,6 +4,9 @@
 
 #include "ast/ast_fwd.h"
 
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
+namespace sun::ast {
+
 /**
  * True when control never falls out of `expr`: it ends in a `return` or a
  * `throw`, or is an `if` whose branches all do. Whatever such an expression
@@ -11,3 +14,5 @@
  * forward should leave it behind.
  */
 bool exprDiverges(const ExprAST& expr);
+
+}  // namespace sun::ast

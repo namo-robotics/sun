@@ -3,18 +3,23 @@
 
 using std;
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** Groups tests for the convert library behavior. */
   module convert_tests {
+    /** Checks narrow i64 to i32 in range. */
     test_function narrow_i64_to_i32_in_range() {
       var ms: i64 = 200;
       std.test.assert_eq(safe_convert<i32>(ms), 200);
     }
 
+    /** Checks both type arguments may be written. */
     test_function both_type_arguments_may_be_written() {
       var ms: i64 = 200;
       std.test.assert_eq(safe_convert<i32, i64>(ms), 200);
     }
 
+    /** Checks narrow i64 to i32 out of range throws. */
     test_function narrow_i64_to_i32_out_of_range_throws() {
       var big: i64 = 4294967498;  // low 32 bits are 202, so _convert would give 202
       try {
@@ -25,6 +30,7 @@ public module std {
       }
     }
 
+    /** Checks negative to unsigned throws. */
     test_function negative_to_unsigned_throws() {
       var neg: i64 = -1;
       try {
@@ -35,6 +41,7 @@ public module std {
       }
     }
 
+    /** Checks unsigned max to signed throws. */
     test_function unsigned_max_to_signed_throws() {
       var umax: u64 = 0;
       umax = umax - 1;  // wraps to the largest u64; round-trips through i64 as -1
@@ -46,12 +53,14 @@ public module std {
       }
     }
 
+    /** Checks same width sign change in range. */
     test_function same_width_sign_change_in_range() {
       var s: i32 = 77;
       var u: u32 = safe_convert<u32>(s);
       std.test.assert_eq(_convert<i32>(u), 77);
     }
 
+    /** Checks narrow to i8 edges. */
     test_function narrow_to_i8_edges() {
       var lo: i64 = -128;
       var hi: i64 = 127;
@@ -66,17 +75,20 @@ public module std {
       }
     }
 
+    /** Checks widening always succeeds. */
     test_function widening_always_succeeds() {
       var b: u8 = 250;
       var w: i64 = safe_convert<i64>(b);
       std.test.assert_eq(w, 250);
     }
 
+    /** Checks float to int truncates toward zero. */
     test_function float_to_int_truncates_toward_zero() {
       var g: f64 = -7.9;
       std.test.assert_eq(_convert<i32>(safe_convert<i8>(g)), -7);
     }
 
+    /** Checks float to int out of range throws. */
     test_function float_to_int_out_of_range_throws() {
       var f: f64 = 3000000000.0;
       try {
@@ -103,6 +115,7 @@ public module std {
       std.test.assert_eq(_convert<i32>(safe_convert<u8>(fits)), 255);
     }
 
+    /** Checks nan to int throws. */
     test_function nan_to_int_throws() {
       var z: f64 = 0.0;
       var nan: f64 = z / z;
@@ -114,6 +127,7 @@ public module std {
       }
     }
 
+    /** Checks f64 to f32 overflow throws. */
     test_function f64_to_f32_overflow_throws() {
       var huge: f64 = 1.0e300;
       try {
@@ -127,12 +141,14 @@ public module std {
       std.test.assert_eq(_convert<i32>(s * 2.0), 3);
     }
 
+    /** Checks int to float succeeds. */
     test_function int_to_float_succeeds() {
       var n: i64 = 1234;
       var d: f64 = safe_convert<f64>(n);
       std.test.assert_eq(_convert<i32>(d), 1234);
     }
 
+    /** Checks error message is readable. */
     test_function error_message_is_readable() {
       var big: i64 = 4294967498;
       try {

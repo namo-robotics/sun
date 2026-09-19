@@ -4,11 +4,14 @@
 
 #include <unordered_set>
 
-namespace sun::names {
+/** Resolves declarations and checks the types and meaning of Sun programs. */
+namespace sun::semantic_analysis {
 
-// Reserved identifiers are for builtins only (e.g. _is<T>, _sizeof<T>).
-// The exception is the dunder methods a class implements to overload an
-// operator: user code has to be able to spell those.
+/**
+ * Reserved identifiers are for builtins only (e.g. _is&lt;T&gt;, _sizeof&lt;T&gt;).
+ * The exception is the dunder methods a class implements to overload an
+ * operator: user code has to be able to spell those.
+ */
 bool isReservedIdentifier(const std::string& name) {
   if (name.empty() || name[0] != '_') return false;
   static const std::unordered_set<std::string> allowedDunders = {
@@ -20,8 +23,10 @@ bool isReservedIdentifier(const std::string& name) {
   return true;
 }
 
-std::string getFunctionSignature(const std::string& name,
-                                 const std::vector<sun::TypePtr>& paramTypes) {
+/** Formats a readable function signature for compiler diagnostics. */
+std::string formatFunctionSignature(
+    const std::string& name,
+    const std::vector<sun::semantic_analysis::TypePtr>& paramTypes) {
   std::string sig = name + "(";
   for (size_t i = 0; i < paramTypes.size(); ++i) {
     if (i > 0) sig += ",";
@@ -31,4 +36,4 @@ std::string getFunctionSignature(const std::string& name,
   return sig;
 }
 
-}  // namespace sun::names
+}  // namespace sun::semantic_analysis

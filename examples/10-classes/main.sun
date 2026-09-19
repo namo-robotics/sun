@@ -1,17 +1,22 @@
 using std;
 
-// Classes are stack-allocated value types. They are passed by `ref` and
-// carry methods, including an `init` constructor.
+/**
+ * Classes are stack-allocated value types. They are passed by `ref` and
+ * carry methods, including an `init` constructor.
+ */
 class Point {
   public var x: i32;
   public var y: i32;
 
+  /** Initializes the fixture fields used by this example or regression test. */
   init(x_: i32, y_: i32) {
     this.x = x_;
     this.y = y_;
   }
 
-  // Manhattan distance to another point. Class arguments are passed by ref.
+  /**
+   * Manhattan distance to another point. Class arguments are passed by ref.
+   */
   public method manhattan(other: ref Point) i32 {
     var dx = this.x - other.x;
     if (dx < 0) {
@@ -25,6 +30,7 @@ class Point {
   }
 }
 
+/** Runs the example that constructs and uses class values. */
 function main() i32 {
   var origin = Point(0, 0);
   var p = Point(3, 4);

@@ -16,13 +16,18 @@
 #include "support/error.h"
 #include "support/sun_path.h"
 
+/** Coordinates compilation, dependency loading, linking, and program execution. */
+namespace sun::driver {
+using sun::moon_bundling::MoonImport;
+using sun::support::SunError;
+
 // Helper macro for testing SunError with message content
 #define EXPECT_SUN_ERROR_WITH_MESSAGE(stmt, expected_substr)            \
   do {                                                                  \
     try {                                                               \
       stmt;                                                             \
-      FAIL() << "Expected SunError to be thrown";                       \
-    } catch (const SunError& e) {                                       \
+      FAIL() << "Expected sun::support::SunError to be thrown";         \
+    } catch (const sun::support::SunError& e) {                         \
       EXPECT_NE(std::strstr(e.what(), expected_substr), nullptr)        \
           << "Expected error message to contain: \"" << expected_substr \
           << "\"\n"                                                     \
@@ -30,18 +35,22 @@
     }                                                                   \
   } while (0)
 
-// Set SUN_PATH to cwd if not already set (for VS Code Test Explorer)
+/**
+ * Set SUN_PATH to cwd if not already set (for VS Code Test Explorer)
+ */
 inline void initTestEnvironment() {
   static std::once_flag flag;
   std::call_once(flag, []() {
-    sun::SunPath::ensureSet();
+    sun::support::SunPath::ensureSet();
     // Initialize library cache from environment
-    sun::LibraryCache::instance().initFromEnvironment();
+    sun::moon_bundling::LibraryCache::instance().initFromEnvironment();
   });
 }
 
-// Get the stdlib.moon path for test preloading
-inline std::vector<sun::MoonImport> getStdlibMoonImports() {
+/**
+ * Get the stdlib.moon path for test preloading
+ */
+inline std::vector<MoonImport> getStdlibMoonImports() {
   auto stdlibPath = std::filesystem::path("build/stdlib.moon");
   if (!std::filesystem::exists(stdlibPath)) {
     // Try absolute from SUN_PATH
@@ -56,10 +65,12 @@ inline std::vector<sun::MoonImport> getStdlibMoonImports() {
   return {};
 }
 
-// Execute and log SunError to stderr, then rethrow
-inline sun::SunValue executeString(const std::string& source, int argc = 0,
-                                   char** argv = nullptr,
-                                   bool includeStdlib = false) {
+/**
+ * Execute and log SunError to stderr, then rethrow
+ */
+inline sun::driver::SunValue executeString(const std::string& source,
+                                           int argc = 0, char** argv = nullptr,
+                                           bool includeStdlib = false) {
   initTestEnvironment();
   try {
     auto driver = Driver::createForJIT();
@@ -74,18 +85,22 @@ inline sun::SunValue executeString(const std::string& source, int argc = 0,
   }
 }
 
-// Execute with stdlib preloaded
-inline sun::SunValue executeStringWithStdlib(const std::string& source,
-                                             int argc = 0,
-                                             char** argv = nullptr) {
+/**
+ * Execute with stdlib preloaded
+ */
+inline sun::driver::SunValue executeStringWithStdlib(const std::string& source,
+                                                     int argc = 0,
+                                                     char** argv = nullptr) {
   return executeString(source, argc, argv, true);
 }
 
-// Execute in test mode: tests kept, the runner main synthesized, stdlib
-// preloaded. Returns the runner's exit code (0 = every test passed).
-inline sun::SunValue executeTestsWithStdlib(const std::string& source,
-                                            int argc = 0,
-                                            char** argv = nullptr) {
+/**
+ * Execute in test mode: tests kept, the runner main synthesized, stdlib
+ * preloaded. Returns the runner's exit code (0 = every test passed).
+ */
+inline sun::driver::SunValue executeTestsWithStdlib(const std::string& source,
+                                                    int argc = 0,
+                                                    char** argv = nullptr) {
   initTestEnvironment();
   try {
     auto driver = Driver::createForJIT();
@@ -98,11 +113,12 @@ inline sun::SunValue executeTestsWithStdlib(const std::string& source,
   }
 }
 
-// Execute and dump all reachable IR (includes stdlib functions)
-inline sun::SunValue executeStringWithReachableIR(const std::string& source,
-                                                  int argc = 0,
-                                                  char** argv = nullptr,
-                                                  bool includeStdlib = false) {
+/**
+ * Execute and dump all reachable IR (includes stdlib functions)
+ */
+inline sun::driver::SunValue executeStringWithReachableIR(
+    const std::string& source, int argc = 0, char** argv = nullptr,
+    bool includeStdlib = false) {
   initTestEnvironment();
   try {
     auto driver = Driver::createForJIT();
@@ -118,6 +134,7 @@ inline sun::SunValue executeStringWithReachableIR(const std::string& source,
   }
 }
 
+/** Compiles a source file, optionally loading the standard library. */
 inline void compileFile(const std::string& filename,
                         bool includeStdlib = false) {
   try {
@@ -133,11 +150,14 @@ inline void compileFile(const std::string& filename,
   }
 }
 
-// Compile with stdlib preloaded
+/**
+ * Compile with stdlib preloaded
+ */
 inline void compileFileWithStdlib(const std::string& filename) {
   compileFile(filename, true);
 }
 
+/** Compiles source text, optionally loading the standard library. */
 inline void compileString(const std::string& source,
                           bool includeStdlib = false) {
   initTestEnvironment();
@@ -153,14 +173,18 @@ inline void compileString(const std::string& source,
   }
 }
 
-// Compile with stdlib preloaded
+/**
+ * Compile with stdlib preloaded
+ */
 inline void compileStringWithStdlib(const std::string& source) {
   compileString(source, true);
 }
 
-// Compile multiple source files using the merged-AST model
+/**
+ * Compile multiple source files using the merged-AST model
+ */
 inline void compileFiles(const std::vector<std::string>& sourceFiles,
-                         const std::vector<sun::MoonImport>& moonImports = {}) {
+                         const std::vector<MoonImport>& moonImports = {}) {
   initTestEnvironment();
   try {
     std::vector<std::string> absolutePaths;
@@ -175,9 +199,11 @@ inline void compileFiles(const std::vector<std::string>& sourceFiles,
   }
 }
 
-// Execute multiple source files using the merged-AST model
+/**
+ * Execute multiple source files using the merged-AST model
+ */
 inline void executeFiles(const std::vector<std::string>& sourceFiles,
-                         const std::vector<sun::MoonImport>& moonImports = {}) {
+                         const std::vector<MoonImport>& moonImports = {}) {
   initTestEnvironment();
   try {
     std::vector<std::string> absolutePaths;
@@ -191,3 +217,4 @@ inline void executeFiles(const std::vector<std::string>& sourceFiles,
     throw;
   }
 }
+}  // namespace sun::driver

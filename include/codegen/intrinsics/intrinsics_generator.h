@@ -1,5 +1,14 @@
 #pragma once
 
+/** Translates analyzed Sun programs into LLVM instructions. */
+namespace sun::codegen {
+class CodegenVisitor;
+}
+/** Provides the scope manager responsible for variable storage and cleanup. */
+namespace sun::codegen::scopes {
+class ScopeManager;
+}
+
 // intrinsics_generator.h — Compiler intrinsics and libc built-ins
 //
 // Two families of call that never reach a user-written function body:
@@ -28,8 +37,11 @@
 #include "semantic_analysis/argument_conversion.h"
 #include "semantic_analysis/types.h"
 
-class CodegenVisitor;
-class ScopeManager;
+/** Provides the generator for built-in operations. */
+namespace sun::codegen::intrinsics {
+using sun::ast::CallExprAST;
+using sun::ast::ExprAST;
+using sun::semantic_analysis::TypePtr;
 
 /**
  * Emits every intrinsic and built-in call. Holds the thread helpers it needs
@@ -38,7 +50,9 @@ class ScopeManager;
  */
 class IntrinsicsGenerator {
  public:
-  IntrinsicsGenerator(CodegenState& state, CodegenVisitor& gen)
+  /** Binds built-in operation generation to the shared visitor and state. */
+  IntrinsicsGenerator(sun::codegen::CodegenState& state,
+                      sun::codegen::CodegenVisitor& gen)
       : state_(state),
         gen_(gen),
         ctx(state.ctx),
@@ -46,130 +60,212 @@ class IntrinsicsGenerator {
         typeResolver(state.typeResolver),
         threadUtils(state.ctx, state.module) {}
 
+  /** Binds built-in operation generation to the shared visitor and state. */
   IntrinsicsGenerator(const IntrinsicsGenerator&) = delete;
+  /** Disallows assignment so ownership and object identity cannot be duplicated. */
   IntrinsicsGenerator& operator=(const IntrinsicsGenerator&) = delete;
 
-  // Generic intrinsics codegen (in intrinsics/generic.cpp)
-  llvm::Value* codegenSizeofIntrinsic(sun::TypePtr typeArg);
+  /**
+   * Generic intrinsics codegen (in intrinsics/generic.cpp)
+   */
+  llvm::Value* codegenSizeofIntrinsic(TypePtr typeArg);
+  /** Emits LLVM code that constructs a value in supplied storage. */
   llvm::Value* codegenInitIntrinsic(
-      sun::TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args,
-      const std::vector<sun::ArgConversion>& conversions);
+      TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args,
+      const std::vector<sun::semantic_analysis::ArgConversion>& conversions,
+      sun::semantic_analysis::DeclarationId constructor);
+  /** Emits LLVM code that loads a typed value from an address. */
   llvm::Value* codegenLoadIntrinsic(
-      sun::TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args);
+      TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args);
+  /** Emits LLVM code that stores a typed value at an address. */
   llvm::Value* codegenStoreIntrinsic(
-      sun::TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args);
+      TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args);
+  /** Emits LLVM code that exposes an address as a raw pointer. */
   llvm::Value* codegenPtrAsRawIntrinsic(
       const std::vector<std::unique_ptr<ExprAST>>& args);
+  /** Emits LLVM code that obtains the address of a value. */
   llvm::Value* codegenAddressOfIntrinsic(
       const std::vector<std::unique_ptr<ExprAST>>& args);
+  /** Emits LLVM code that turns a pointer into a borrowed reference. */
   llvm::Value* codegenToRefIntrinsic(
       const std::vector<std::unique_ptr<ExprAST>>& args);
+  /** Emits LLVM code that tests whether a value matches a type. */
   llvm::Value* codegenIsIntrinsic(
-      const std::string& targetName,
-      const std::vector<std::unique_ptr<ExprAST>>& args);
+      const TypePtr& target, const std::vector<std::unique_ptr<ExprAST>>& args);
+  /** Emits LLVM code that destroys a value in supplied storage. */
   llvm::Value* codegenDeinitIntrinsic(
-      sun::TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args);
+      TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args);
+  /** Emits code to load a wide integer from an address. */
   llvm::Value* codegenLoadI64Intrinsic(const CallExprAST& expr);
+  /** Emits code to store a wide integer at an address. */
   llvm::Value* codegenStoreI64Intrinsic(const CallExprAST& expr);
+  /** Emits LLVM code that allocates raw memory. */
   llvm::Value* codegenMallocIntrinsic(const CallExprAST& expr);
+  /** Emits LLVM code that releases raw memory. */
   llvm::Value* codegenFreeIntrinsic(const CallExprAST& expr);
+  /** Emits LLVM code that copies a range of memory bytes. */
   llvm::Value* codegenMemcpyIntrinsic(const CallExprAST& expr);
-  /* Emit a byte copy that permits overlapping source and destination. */
+  /** Emit a byte copy that permits overlapping source and destination. */
   llvm::Value* codegenMemmoveIntrinsic(const CallExprAST& expr);
+  /** Emits LLVM code that fills a range of memory bytes. */
   llvm::Value* codegenMemsetIntrinsic(const CallExprAST& expr);
   /** Decode an integer as an enum, returning None for unknown values. */
-  llvm::Value* codegenEnumFromIntIntrinsic(const GenericCallAST& expr);
+  llvm::Value* codegenEnumFromIntIntrinsic(
+      const sun::ast::GenericCallAST& expr);
+  /** Emits LLVM code that converts a value to the requested type. */
   llvm::Value* codegenConvertIntrinsic(
-      sun::TypePtr targetType,
-      const std::vector<std::unique_ptr<ExprAST>>& args);
+      TypePtr targetType, const std::vector<std::unique_ptr<ExprAST>>& args);
+  /** Emits LLVM code that reinterprets a value with the requested representation. */
   llvm::Value* codegenBitcastIntrinsic(
-      sun::TypePtr targetType,
-      const std::vector<std::unique_ptr<ExprAST>>& args);
+      TypePtr targetType, const std::vector<std::unique_ptr<ExprAST>>& args);
+  /** Emits LLVM code that advances a pointer by a byte offset. */
   llvm::Value* codegenPtrOffsetIntrinsic(const CallExprAST& expr);
 
-  // Bit intrinsics (in intrinsics/bits.cpp)
+  /**
+   * Bit intrinsics (in intrinsics/bits.cpp)
+   */
   llvm::Value* codegenMulHiU64Intrinsic(const CallExprAST& expr);
+  /** Emits LLVM code that counts leading or trailing zero bits. */
   llvm::Value* codegenCountZerosIntrinsic(const CallExprAST& expr,
                                           bool leading);
-  // Shared by _bswap_u16, _bswap_u32 and _bswap_u64
+  /**
+   * Shared by _bswap_u16, _bswap_u32 and _bswap_u64
+   */
   llvm::Value* codegenBswapIntrinsic(const CallExprAST& expr,
                                      unsigned bitWidth);
 
-  // Atomic intrinsics (in atomic.cpp)
+  /**
+   * Atomic intrinsics (in atomic.cpp)
+   */
   llvm::Value* codegenAtomicCmpxchgIntrinsic(const CallExprAST& expr,
                                              unsigned bitWidth,
                                              bool signedValues,
                                              const char* name);
+  /** Emits an atomic store using the requested memory ordering. */
   llvm::Value* codegenAtomicStoreIntrinsic(const CallExprAST& expr,
                                            unsigned bitWidth, bool signedValues,
                                            const char* name);
+  /** Emits an atomic load using the requested memory ordering. */
   llvm::Value* codegenAtomicLoadIntrinsic(const CallExprAST& expr,
                                           unsigned bitWidth, const char* name);
+  /** Emits an atomic read-modify-write operation and returns its previous value. */
   llvm::Value* codegenAtomicFetchOpIntrinsic(const CallExprAST& expr,
                                              unsigned bitWidth,
                                              bool signedValues, bool subtract,
                                              const char* name);
+  /** Emits an atomic fence using the requested memory ordering. */
   llvm::Value* codegenAtomicFenceIntrinsic(const CallExprAST& expr,
                                            bool acquire);
 
-  // Futex intrinsics (in atomic.cpp)
+  /**
+   * Futex intrinsics (in atomic.cpp)
+   */
   llvm::Value* codegenFutexWaitIntrinsic(const CallExprAST& expr);
+  /** Emits LLVM code that wakes threads waiting on a futex. */
   llvm::Value* codegenFutexWakeIntrinsic(const CallExprAST& expr);
 
-  // Target intrinsics (in builtins.cpp)
+  /**
+   * Target intrinsics (in builtins.cpp)
+   */
   llvm::Value* codegenTargetIsIntrinsic(const CallExprAST& expr);
-  // Built-in intrinsics (libc calls; see intrinsics/libc.h). The registry
-  // and dispatcher live in src/codegen/intrinsics/builtins.cpp; the codegen
-  // methods below live in the per-area files beside it.
+  /**
+   * Built-in intrinsics (libc calls; see intrinsics/libc.h). The registry
+   * and dispatcher live in src/codegen/intrinsics/builtins.cpp; the codegen
+   * methods below live in the per-area files beside it.
+   */
   bool isBuiltinFunction(const std::string& name);
+  /** Emits LLVM code that dispatches a recognized built-in operation. */
   llvm::Value* codegenBuiltin(const std::string& name, const CallExprAST& expr);
 
-  // Print built-ins
+  /**
+   * Print built-ins
+   */
   llvm::Value* codegenPrintI32(const CallExprAST& expr);
+  /** Emits code to print a signed integer. */
   llvm::Value* codegenPrintI64(const CallExprAST& expr);
+  /** Emits code to print an unsigned integer. */
   llvm::Value* codegenPrintU64(const CallExprAST& expr);
+  /** Emits code to print a floating-point value. */
   llvm::Value* codegenPrintF64(const CallExprAST& expr);
+  /** Emits code to write a string to standard output. */
   llvm::Value* codegenPrintString(const CallExprAST& expr);
+  /** Emits code to write a byte sequence to standard output. */
   llvm::Value* codegenPrintBytes(const CallExprAST& expr);
+  /** Emits code to write a character to standard output. */
   llvm::Value* codegenPrintChar(const CallExprAST& expr);
+  /** Emits code to write a newline to standard output. */
   llvm::Value* codegenPrintNewline();
 
-  // File I/O built-ins
+  /**
+   * File I/O built-ins
+   */
   llvm::Value* codegenFileOpen(const CallExprAST& expr);
+  /** Emits code to close a file handle. */
   llvm::Value* codegenFileClose(const CallExprAST& expr);
+  /** Emits code to write bytes to a file handle. */
   llvm::Value* codegenFileWrite(const CallExprAST& expr);
+  /** Emits code to read bytes from a file handle. */
   llvm::Value* codegenFileRead(const CallExprAST& expr);
 
-  // Extended file I/O built-ins
+  /**
+   * Extended file I/O built-ins
+   */
   llvm::Value* codegenLseek(const CallExprAST& expr);
+  /** Emits code to read metadata for an open file. */
   llvm::Value* codegenFstat(const CallExprAST& expr);
+  /** Emits code to flush a file to persistent storage. */
   llvm::Value* codegenFsync(const CallExprAST& expr);
+  /** Emits code to change the length of a file. */
   llvm::Value* codegenFtruncate(const CallExprAST& expr);
+  /** Emits code to remove a filesystem entry. */
   llvm::Value* codegenUnlink(const CallExprAST& expr);
+  /** Emits code to rename a filesystem entry. */
   llvm::Value* codegenRename(const CallExprAST& expr);
+  /** Emits code to create a directory. */
   llvm::Value* codegenMkdir(const CallExprAST& expr);
+  /** Emits code to remove an empty directory. */
   llvm::Value* codegenRmdir(const CallExprAST& expr);
+  /** Emits code to write bytes to a file descriptor. */
   llvm::Value* codegenWrite(const CallExprAST& expr);
+  /** Emits code to read bytes from a file descriptor. */
   llvm::Value* codegenRead(const CallExprAST& expr);
 
-  // Network socket built-ins
+  /**
+   * Network socket built-ins
+   */
   llvm::Value* codegenSocket(const CallExprAST& expr);
+  /** Emits code to bind a socket to a local address. */
   llvm::Value* codegenBind(const CallExprAST& expr);
+  /** Emits code to start listening for socket connections. */
   llvm::Value* codegenListen(const CallExprAST& expr);
+  /** Emits code to accept an incoming socket connection. */
   llvm::Value* codegenAccept(const CallExprAST& expr);
+  /** Emits code to connect a socket to a remote address. */
   llvm::Value* codegenConnect(const CallExprAST& expr);
+  /** Emits code to send bytes through a socket. */
   llvm::Value* codegenSend(const CallExprAST& expr);
+  /** Emits code to receive bytes from a socket. */
   llvm::Value* codegenRecv(const CallExprAST& expr);
+  /** Emits code to shut down socket communication. */
   llvm::Value* codegenShutdown(const CallExprAST& expr);
+  /** Emits code to change a socket option. */
   llvm::Value* codegenSetSockOpt(const CallExprAST& expr);
+  /** Emits code to read a socket option. */
   llvm::Value* codegenGetSockOpt(const CallExprAST& expr);
 
-  // High-level IPv4 socket helpers (build sockaddr_in internally)
+  /**
+   * High-level IPv4 socket helpers (build sockaddr_in internally)
+   */
   llvm::Value* codegenBindIPv4(const CallExprAST& expr);
+  /** Emits code to connect to an IPv4 address. */
   llvm::Value* codegenConnectIPv4(const CallExprAST& expr);
+  /** Emits code to accept a connection and return its descriptor. */
   llvm::Value* codegenAcceptFd(const CallExprAST& expr);
+  /** Emits code to send a datagram to an IPv4 address. */
   llvm::Value* codegenSendToIPv4(const CallExprAST& expr);
+  /** Emits code to receive a datagram and its IPv4 sender address. */
   llvm::Value* codegenRecvFromIPv4(const CallExprAST& expr);
+  /** Emits code to read the local IPv4 socket address. */
   llvm::Value* codegenGetSockNameIPv4(const CallExprAST& expr);
 
   // -------------------------------------------------------------------
@@ -177,12 +273,13 @@ class IntrinsicsGenerator {
   // -------------------------------------------------------------------
 
   /**
-   * Generates IR for _spawn<F>(fn, args...).
+   * Generates IR for `_spawn<F>(fn, args...)`.
+   * @param contextPtrType Pointer type of the shared thread context.
    *
    * Builds the thread context on the heap — it must outlive this frame —
    * moves the arguments into an argument block beside it, and starts the
    * thread on a trampoline built for this lambda's signature. Hands back the
-   * context pointer; stdlib `spawn` wraps that in the Thread<T> handle that
+   * context pointer; stdlib `spawn` wraps that in the Thread&lt;T&gt; handle that
    * owns it, so the thread is joined when that handle is dropped.
    *
    * @param lambdaSunType The lambda type F was inferred as.
@@ -191,12 +288,12 @@ class IntrinsicsGenerator {
    * @return The thread context pointer.
    */
   llvm::Value* codegenSpawnIntrinsic(
-      const sun::TypePtr& lambdaSunType, const sun::TypePtr& contextPtrType,
+      const TypePtr& lambdaSunType, const TypePtr& contextPtrType,
       const std::vector<std::unique_ptr<ExprAST>>& args,
-      const std::vector<sun::ArgConversion>& conversions);
+      const std::vector<sun::semantic_analysis::ArgConversion>& conversions);
 
   /**
-   * Generates IR for _thread_join<T>(ctx) and _thread_join_drop<T>(ctx).
+   * Generates IR for _thread_join&lt;T&gt;(ctx) and _thread_join_drop&lt;T&gt;(ctx).
    *
    * Blocks until the thread has exited, then releases its context. Reading
    * the result out of the slot is a move: the caller takes over whatever it
@@ -204,13 +301,13 @@ class IntrinsicsGenerator {
    * dropped in place first — freeing the slot alone would release the
    * result's own bytes and nothing they point at.
    *
-   * @param resultType Sun type of the thread's result (T in Thread<T>).
+   * @param resultType Sun type of the thread's result (T in Thread&lt;T&gt;).
    * @param args The thread context, as a single argument.
    * @param dropResult Drop the result rather than hand it back.
    * @return The thread's result, or a non-null placeholder for void.
    */
   llvm::Value* codegenThreadJoinIntrinsic(
-      const sun::TypePtr& resultType,
+      const TypePtr& resultType,
       const std::vector<std::unique_ptr<ExprAST>>& args, bool dropResult);
 
   /**
@@ -218,24 +315,30 @@ class IntrinsicsGenerator {
    * semantic analysis resolved rather than synthesized here, so there is one
    * definition of it and codegen never spells the class's name.
    */
-  llvm::StructType* getThreadContextStruct(const sun::TypePtr& contextPtrType);
+  llvm::StructType* getThreadContextStruct(const TypePtr& contextPtrType);
 
  private:
-  CodegenState& state_;
-  CodegenVisitor& gen_;
+  sun::codegen::CodegenState& state_;
+  sun::codegen::CodegenVisitor& gen_;
 
   // Aliases into the shared state, so the emission code below reads the same
   // way the rest of codegen does
-  CodegenContext& ctx;
+  sun::codegen::CodegenContext& ctx;
   llvm::Module* module;
-  LLVMTypeResolver& typeResolver;
+  sun::codegen::LLVMTypeResolver& typeResolver;
 
   // Thread syscalls and types, used by _spawn and _thread_join
   ThreadUtils threadUtils;
 
-  // Emit a nested expression by handing it back to the main dispatcher
+  /**
+   * Emit a nested expression by handing it back to the main dispatcher
+   */
   llvm::Value* codegen(const ExprAST& expr);
 
-  // The scope stack, for the intrinsics that drop a value in place
-  ScopeManager& scopes();
+  /**
+   * The scope stack, for the intrinsics that drop a value in place
+   */
+  sun::codegen::scopes::ScopeManager& scopes();
 };
+
+}  // namespace sun::codegen::intrinsics

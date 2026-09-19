@@ -9,7 +9,13 @@
 #include "codegen/intrinsics/thread_utils.h"
 #include "support/error.h"
 
+using sun::ast::CallExprAST;
+using sun::support::logAndThrowError;
+
 using namespace llvm;
+
+/** Provides the generator for built-in operations. */
+namespace sun::codegen::intrinsics {
 
 // -------------------------------------------------------------------
 // Atomic integer and fence intrinsics
@@ -188,3 +194,5 @@ Value* IntrinsicsGenerator::codegenFutexWakeIntrinsic(const CallExprAST& expr) {
 
   return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
 }
+
+}  // namespace sun::codegen::intrinsics

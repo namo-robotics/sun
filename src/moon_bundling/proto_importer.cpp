@@ -46,31 +46,40 @@
 #include "support/error.h"
 #include "support/sun_path.h"
 
-namespace sun {
+/** Builds and loads compiled Moon libraries and their declaration metadata. */
+namespace sun::moon_bundling {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
 namespace pb = google::protobuf;
 namespace pbc = google::protobuf::compiler;
+/** Names the protobuf field descriptor type used during source generation. */
 using FD = pb::FieldDescriptor;
 
+/** Reports the operation's failure as a compiler error and stops processing. */
 [[noreturn]] void fail(const std::string& message) {
-  throw SunError(SunError::Kind::Compile, "proto import: " + message);
+  throw sun::support::SunError(sun::support::SunError::Kind::Compile,
+                               "proto import: " + message);
 }
 
-// Descriptor accessors returned `const std::string&` before protobuf 23 and
-// return a string_view since; copying through std::string serves both
-// generations. It also keeps the concatenations below in plain-string land —
-// with LLVM headers in the precompiled header, a string_view operand would
-// otherwise select llvm::Twine's operator+ and fail to convert back.
+/**
+ * Descriptor accessors returned `const std::string&` before protobuf 23 and
+ * return a string_view since; copying through std::string serves both
+ * generations. It also keeps the concatenations below in plain-string land —
+ * with LLVM headers in the precompiled header, a string_view operand would
+ * otherwise select llvm::Twine's operator+ and fail to convert back.
+ */
 template <typename NameLike>
 std::string asString(const NameLike& name) {
   return std::string(name);
 }
 
-// Whether the field was written `optional` in proto3. Such a field is the
-// sole member of a synthetic oneof, which every protobuf generation can
-// report — has_optional_keyword() itself was removed in newer versions.
+/**
+ * Whether the field was written `optional` in proto3. Such a field is the
+ * sole member of a synthetic oneof, which every protobuf generation can
+ * report — has_optional_keyword() itself was removed in newer versions.
+ */
 bool isProto3Optional(const pb::FieldDescriptor* f) {
   return f->containing_oneof() != nullptr &&
          f->real_containing_oneof() == nullptr;
@@ -80,24 +89,29 @@ bool isProto3Optional(const pb::FieldDescriptor* f) {
 // Diagnostics: proto parse errors surface as one Sun compile error
 // ---------------------------------------------------------------------------
 
+/** Collects protobuf schema errors for a combined compiler diagnostic. */
 class ErrorCollector : public pbc::MultiFileErrorCollector {
  public:
   // The virtual this collector implements was renamed in protobuf 22
   // (AddError taking std::string became RecordError taking string_view).
   // An undefined version macro means a post-stubs protobuf, i.e. new API.
 #if !defined(GOOGLE_PROTOBUF_VERSION) || GOOGLE_PROTOBUF_VERSION >= 4022000
+  /** Collects a protobuf parser error with its filename and source position. */
   void RecordError(absl::string_view filename, int line, int column,
                    absl::string_view message) override {
     record(asString(filename), line, column, asString(message));
   }
 #else
+  /** Collects a protobuf schema error for reporting to the caller. */
   void AddError(const std::string& filename, int line, int column,
                 const std::string& message) override {
     record(filename, line, column, message);
   }
 #endif
+  /** Reports whether this object has errors. */
   bool hasErrors() const { return !errors_.empty(); }
 
+  /** Appends a protobuf schema error to the accumulated diagnostics. */
   void record(const std::string& filename, int line, int column,
               const std::string& message) {
     std::ostringstream os;
@@ -105,6 +119,7 @@ class ErrorCollector : public pbc::MultiFileErrorCollector {
        << message;
     errors_.push_back(os.str());
   }
+  /** Combines the collected protobuf errors into one diagnostic message. */
   std::string joined() const {
     std::string out;
     for (const auto& e : errors_) {
@@ -122,8 +137,10 @@ class ErrorCollector : public pbc::MultiFileErrorCollector {
 // Indenting source writer
 // ---------------------------------------------------------------------------
 
+/** Builds generated Sun source with consistent indentation. */
 class Writer {
  public:
+  /** Appends a line of generated source using the current indentation. */
   void line(const std::string& text = "") {
     if (text.empty()) {
       out_ += "\n";
@@ -131,17 +148,22 @@ class Writer {
     }
     out_ += std::string(indent_ * 2, ' ') + text + "\n";
   }
+  /** Writes the start of a generated block and increases indentation. */
   void open(const std::string& text) {
     line(text);
     ++indent_;
   }
+  /** Ends a generated block and decreases indentation. */
   void close(const std::string& text = "}") {
     --indent_;
     line(text);
   }
-  // Pop an indent level without emitting a brace (the next opener prints
-  // "} else if (...) {" itself)
+  /**
+   * Pop an indent level without emitting a brace (the next opener prints
+   * "} else if (...) {" itself)
+   */
   void closeSilently() { --indent_; }
+  /** Returns the generated source accumulated so far. */
   const std::string& str() const { return out_; }
 
  private:
@@ -153,7 +175,9 @@ class Writer {
 // Descriptor traversal helpers
 // ---------------------------------------------------------------------------
 
-// Every message in the file, nested ones included (pre-order)
+/**
+ * Every message in the file, nested ones included (pre-order)
+ */
 std::vector<const pb::Descriptor*> allMessages(const pb::FileDescriptor* file) {
   std::vector<const pb::Descriptor*> out;
   std::vector<const pb::Descriptor*> stack;
@@ -171,7 +195,9 @@ std::vector<const pb::Descriptor*> allMessages(const pb::FileDescriptor* file) {
   return out;
 }
 
-// Every enum in the file, nested ones included
+/**
+ * Every enum in the file, nested ones included
+ */
 std::vector<const pb::EnumDescriptor*> allEnums(
     const pb::FileDescriptor* file) {
   std::vector<const pb::EnumDescriptor*> out;
@@ -185,8 +211,10 @@ std::vector<const pb::EnumDescriptor*> allEnums(
   return out;
 }
 
-// Messages in dependency order: a message's by-value sub-messages (from the
-// same file) and nested types come first
+/**
+ * Messages in dependency order: a message's by-value sub-messages (from the
+ * same file) and nested types come first
+ */
 std::vector<const pb::Descriptor*> messagesInDependencyOrder(
     const pb::FileDescriptor* file) {
   std::vector<const pb::Descriptor*> out;
@@ -215,8 +243,10 @@ std::vector<const pb::Descriptor*> messagesInDependencyOrder(
 // SchemaValidator: the supported subset, with precise rejections
 // ---------------------------------------------------------------------------
 
+/** Rejects protobuf schema features that the Sun importer cannot represent. */
 class SchemaValidator {
  public:
+  /** Checks a protobuf file for features supported by the Sun importer. */
   static void validate(const pb::FileDescriptor* file) {
     // FileDescriptor::syntax() was removed in newer protobuf; the
     // serialized descriptor carries the same fact on every version.
@@ -236,6 +266,7 @@ class SchemaValidator {
   }
 
  private:
+  /** Checks whether a protobuf field can be represented by the generated Sun code. */
   static void validateField(const FD* f) {
     if (f->type() == FD::TYPE_GROUP) {
       fail("groups are not supported (field '" + asString(f->full_name()) +
@@ -247,6 +278,7 @@ class SchemaValidator {
     }
   }
 
+  /** Reports whether a protobuf map key has a supported scalar type. */
   static bool isSupportedMapKey(const FD* key) {
     switch (key->type()) {
       case FD::TYPE_INT32:
@@ -266,8 +298,10 @@ class SchemaValidator {
     }
   }
 
-  // A message that embeds itself by value (directly or through other
-  // messages) has no finite layout. `repeated` breaks the cycle (heap).
+  /**
+   * A message that embeds itself by value (directly or through other
+   * messages) has no finite layout. `repeated` breaks the cycle (heap).
+   */
   static void rejectRecursiveMessages(const pb::FileDescriptor* file) {
     for (const pb::Descriptor* root : allMessages(file)) {
       std::set<const pb::Descriptor*> visited;
@@ -296,9 +330,12 @@ class SchemaValidator {
 // TypeMapper: proto descriptor → Sun spelling
 // ---------------------------------------------------------------------------
 
+/** Maps protobuf field types to generated Sun types. */
 class TypeMapper {
  public:
-  // Sun identifier for a (possibly nested) message: Outer_Inner
+  /**
+   * Sun identifier for a (possibly nested) message: Outer_Inner
+   */
   static std::string messageName(const pb::Descriptor* d) {
     std::string name = asString(d->name());
     for (const pb::Descriptor* p = d->containing_type(); p;
@@ -308,6 +345,7 @@ class TypeMapper {
     return name;
   }
 
+  /** Returns the generated Sun name of a protobuf enum. */
   static std::string enumName(const pb::EnumDescriptor* e) {
     std::string name = asString(e->name());
     for (const pb::Descriptor* p = e->containing_type(); p;
@@ -317,12 +355,16 @@ class TypeMapper {
     return name;
   }
 
-  // Synthesized payload enum for a oneof: <Msg>_<oneof>
+  /**
+   * Synthesized payload enum for a oneof: &lt;Msg&gt;_<oneof>
+   */
   static std::string oneofEnumName(const pb::OneofDescriptor* o) {
     return messageName(o->containing_type()) + "_" + asString(o->name());
   }
 
-  // Variant name for a oneof member: snake_case field → CamelCase
+  /**
+   * Variant name for a oneof member: snake_case field → CamelCase
+   */
   static std::string oneofVariantName(const FD* f) {
     std::string out;
     bool upper = true;
@@ -337,7 +379,9 @@ class TypeMapper {
     return out;
   }
 
-  // Sun type of one element of the field (ignoring repeated/optional/map)
+  /**
+   * Sun type of one element of the field (ignoring repeated/optional/map)
+   */
   static std::string elementType(const FD* f) {
     switch (f->type()) {
       case FD::TYPE_INT32:
@@ -373,7 +417,9 @@ class TypeMapper {
     }
   }
 
-  // Sun type of the field as declared on the class
+  /**
+   * Sun type of the field as declared on the class
+   */
   static std::string fieldType(const FD* f) {
     if (f->is_map()) {
       const pb::Descriptor* entry = f->message_type();
@@ -385,7 +431,9 @@ class TypeMapper {
     return elementType(f);
   }
 
-  // Wire type of one element (0 varint, 1 64-bit, 2 length-delimited, 5 32-bit)
+  /**
+   * Wire type of one element (0 varint, 1 64-bit, 2 length-delimited, 5 32-bit)
+   */
   static int wireType(const FD* f) {
     switch (f->type()) {
       case FD::TYPE_FIXED64:
@@ -405,7 +453,9 @@ class TypeMapper {
     }
   }
 
-  // Scalars pack when repeated; strings/bytes/messages never do
+  /**
+   * Scalars pack when repeated; strings/bytes/messages never do
+   */
   static bool isPackable(const FD* f) {
     switch (f->type()) {
       case FD::TYPE_STRING:
@@ -417,7 +467,9 @@ class TypeMapper {
     }
   }
 
-  // Zero-value expression for one element (`alloc` must be in scope)
+  /**
+   * Zero-value expression for one element (`alloc` must be in scope)
+   */
   static std::string zeroValue(const FD* f) {
     switch (f->type()) {
       case FD::TYPE_FLOAT:
@@ -438,7 +490,9 @@ class TypeMapper {
     }
   }
 
-  // Expression that reads one element from reader `r`
+  /**
+   * Expression that reads one element from reader `r`
+   */
   static std::string readExpr(const FD* f) {
     switch (f->type()) {
       case FD::TYPE_STRING:
@@ -455,7 +509,9 @@ class TypeMapper {
     }
   }
 
-  // Statement writing one element `v` into buffer `dst` (tag already written)
+  /**
+   * Statement writing one element `v` into buffer `dst` (tag already written)
+   */
   static std::string writeStmt(const FD* f, const std::string& v,
                                const std::string& dst = "buf") {
     switch (f->type()) {
@@ -473,7 +529,9 @@ class TypeMapper {
     }
   }
 
-  // Non-zero test for a singular field (proto3 implicit presence)
+  /**
+   * Non-zero test for a singular field (proto3 implicit presence)
+   */
   static std::string nonZeroTest(const FD* f, const std::string& v) {
     switch (f->type()) {
       case FD::TYPE_FLOAT:
@@ -495,8 +553,10 @@ class TypeMapper {
     }
   }
 
-  // Name of the enum value numbered 0 (proto3 requires one; fall back to
-  // the first declared)
+  /**
+   * Name of the enum value numbered 0 (proto3 requires one; fall back to
+   * the first declared)
+   */
   static std::string zeroVariant(const pb::EnumDescriptor* e) {
     for (int i = 0; i < e->value_count(); ++i) {
       if (e->value(i)->number() == 0) return asString(e->value(i)->name());
@@ -505,7 +565,9 @@ class TypeMapper {
   }
 
  private:
-  // proto_write_<suffix> / r.read_<suffix> for a scalar field
+  /**
+   * proto_write_<suffix> / r.read_<suffix> for a scalar field
+   */
   static std::string wireSuffix(const FD* f) {
     switch (f->type()) {
       case FD::TYPE_INT32:
@@ -542,6 +604,7 @@ class TypeMapper {
   }
 };
 
+/** Names the protobuf field category used when selecting its Sun representation. */
 using T = TypeMapper;
 
 // ---------------------------------------------------------------------------
@@ -550,6 +613,7 @@ using T = TypeMapper;
 // (open enums) map to the zero value.
 // ---------------------------------------------------------------------------
 
+/** Writes a Sun enum declaration for a protobuf enum. */
 void emitEnum(Writer& w, const pb::EnumDescriptor* e) {
   std::string name = T::enumName(e);
   w.open("public enum " + name + " {");
@@ -587,11 +651,14 @@ void emitEnum(Writer& w, const pb::EnumDescriptor* e) {
 // MessageGenerator: one message → oneof enums, class, decode functions
 // ---------------------------------------------------------------------------
 
+/** Connects a protobuf message descriptor to its generated-source writer. */
 class MessageGenerator {
  public:
+  /** Connects a protobuf message descriptor to its generated-source writer. */
   MessageGenerator(Writer& w, const pb::Descriptor* d)
       : w_(w), d_(d), name_(T::messageName(d)) {}
 
+  /** Writes the data type and codecs for the selected protobuf message. */
   void emit() {
     emitOneofEnums();
     w_.open("public class " + name_ + " {");
@@ -610,7 +677,9 @@ class MessageGenerator {
   const pb::Descriptor* d_;
   std::string name_;
 
-  // Fields stored directly on the class (oneof members live in the oneof)
+  /**
+   * Fields stored directly on the class (oneof members live in the oneof)
+   */
   template <typename Fn>
   void forEachPlainField(Fn fn) const {
     for (int i = 0; i < d_->field_count(); ++i) {
@@ -619,17 +688,21 @@ class MessageGenerator {
     }
   }
 
+  /** Visits the explicitly declared protobuf oneof groups. */
   template <typename Fn>
   void forEachOneof(Fn fn) const {
     for (int i = 0; i < d_->real_oneof_decl_count(); ++i) fn(d_->oneof_decl(i));
   }
 
+  /** Writes code that emits a protobuf field tag. */
   static std::string tagLine(const std::string& dst, int number, int wire) {
     return "proto_write_tag(" + dst + ", " + std::to_string(number) + ", " +
            std::to_string(wire) + ");";
   }
 
-  // enum <Msg>_<oneof> { NotSet, FieldA(T), FieldB(U) }
+  /**
+   * enum &lt;Msg&gt;_<oneof> { NotSet, FieldA(T), FieldB(U) }
+   */
   void emitOneofEnums() {
     forEachOneof([&](const pb::OneofDescriptor* o) {
       w_.open("public enum " + T::oneofEnumName(o) + " {");
@@ -644,6 +717,7 @@ class MessageGenerator {
     });
   }
 
+  /** Writes the fields belonging to the generated message type. */
   void emitFields() {
     forEachPlainField([&](const FD* f) {
       w_.line("public var " + asString(f->name()) + ": " + T::fieldType(f) +
@@ -658,7 +732,9 @@ class MessageGenerator {
     w_.line();
   }
 
-  // Zero values (proto3 defaults); containers and sub-messages start empty
+  /**
+   * Zero values (proto3 defaults); containers and sub-messages start empty
+   */
   void emitInit() {
     w_.open("init(alloc: ref HeapAllocator) {");
     w_.line("this.alloc_ = alloc.copy();");
@@ -684,6 +760,7 @@ class MessageGenerator {
     w_.line();
   }
 
+  /** Writes the method that encodes this message in protobuf wire format. */
   void emitEncode() {
     w_.open("public method encode(buf: ref Vec<u8>) void {");
     forEachPlainField([&](const FD* f) { emitEncodeField(f); });
@@ -693,6 +770,7 @@ class MessageGenerator {
     w_.line();
   }
 
+  /** Writes the encoding logic for one protobuf field. */
   void emitEncodeField(const FD* f) {
     std::string fld = "this." + asString(f->name());
     int number = f->number();
@@ -745,7 +823,9 @@ class MessageGenerator {
     }
   }
 
-  // Whichever variant is set is written
+  /**
+   * Whichever variant is set is written
+   */
   void emitEncodeOneof(const pb::OneofDescriptor* o) {
     std::string en = T::oneofEnumName(o);
     w_.open("match this." + asString(o->name()) + " {");
@@ -760,7 +840,9 @@ class MessageGenerator {
     w_.close("};");
   }
 
-  // Length-prefixed forms: embedded sub-message and stream framing
+  /**
+   * Length-prefixed forms: embedded sub-message and stream framing
+   */
   void emitEncodeNested() {
     w_.open("public method encode_nested(buf: ref Vec<u8>) void {");
     w_.line("var body = Vec<u8>(this.alloc_, 16);");
@@ -773,7 +855,9 @@ class MessageGenerator {
     w_.close();
   }
 
-  // <Msg>_decode_from: the field-dispatch loop over a reader
+  /**
+   * &lt;Msg&gt;_decode_from: the field-dispatch loop over a reader
+   */
   void emitDecodeFrom() {
     w_.open("public function " + name_ +
             "_decode_from(alloc: ref HeapAllocator, r: ref ProtoReader) " +
@@ -801,6 +885,7 @@ class MessageGenerator {
     w_.line();
   }
 
+  /** Writes the decoding logic for one protobuf field. */
   void emitDecodeField(const FD* f) {
     std::string fld = "msg." + asString(f->name());
     if (const pb::OneofDescriptor* o = f->real_containing_oneof()) {
@@ -830,7 +915,9 @@ class MessageGenerator {
     }
   }
 
-  // One map entry: a length-delimited { 1: key, 2: value } record
+  /**
+   * One map entry: a length-delimited { 1: key, 2: value } record
+   */
   void emitDecodeMapEntry(const FD* f, const std::string& fld) {
     const pb::Descriptor* entry = f->message_type();
     const FD* k = entry->map_key();
@@ -858,7 +945,9 @@ class MessageGenerator {
     w_.line(fld + ".insert(key, val);");
   }
 
-  // Nested (length-prefixed), whole-buffer, and delimited entry points
+  /**
+   * Nested (length-prefixed), whole-buffer, and delimited entry points
+   */
   void emitDecodeHelpers() {
     const std::string sig = "(alloc: ref HeapAllocator, r: ref ProtoReader) ";
     w_.open("public function " + name_ + "_decode_nested" + sig + name_ +
@@ -891,6 +980,7 @@ class MessageGenerator {
 // One .proto file → one Sun module
 // ---------------------------------------------------------------------------
 
+/** Returns the hexadecimal SHA-256 digest of the input bytes. */
 std::string sha256Hex(const std::string& data) {
   llvm::SHA256 h;
   h.update(data);
@@ -904,6 +994,7 @@ std::string sha256Hex(const std::string& data) {
   return out;
 }
 
+/** Writes the generated Sun declarations for a protobuf file. */
 void emitFile(Writer& w, const pb::FileDescriptor* file,
               const std::string& displayPath, const std::string& sourceText) {
   SchemaValidator::validate(file);
@@ -936,6 +1027,7 @@ void emitFile(Writer& w, const pb::FileDescriptor* file,
   w.line();
 }
 
+/** Reads the contents of a protobuf input file. */
 std::string readFile(const std::filesystem::path& p) {
   std::ifstream in(p);
   std::stringstream ss;
@@ -953,7 +1045,8 @@ std::vector<std::string> ProtoImporter::importDirsFor(
     const std::string& baseDir) {
   std::vector<std::string> dirs;
   if (!baseDir.empty()) dirs.push_back(baseDir);
-  for (const auto& dir : SunPath::getPaths()) dirs.push_back(dir.string());
+  for (const auto& dir : sun::support::SunPath::getPaths())
+    dirs.push_back(dir.string());
   return dirs;
 }
 
@@ -1014,4 +1107,4 @@ SynthesizedProtoModule ProtoImporter::import(
   return out;
 }
 
-}  // namespace sun
+}  // namespace sun::moon_bundling

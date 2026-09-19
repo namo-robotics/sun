@@ -8,16 +8,21 @@
 
 using std;
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** Groups declarations used by this compiler regression test. */
   module tests {
-    // A scratch directory under /tmp, created on init and removed with its
-    // files on deinit. A failed assertion throws, and unwinding runs deinit
-    // like any scope exit, so cleanup happens even when the test fails.
-    // Pass the test's own name as the tag so parallel tests never collide.
+    /**
+     * A scratch directory under /tmp, created on init and removed with its
+     * files on deinit. A failed assertion throws, and unwinding runs deinit
+     * like any scope exit, so cleanup happens even when the test fails.
+     * Pass the test's own name as the tag so parallel tests never collide.
+     */
     public class TempDir {
       public var path: String;
       var alloc: HeapAllocator;
 
+      /** Initializes the fixture fields used by this example or regression test. */
       init(allocator: ref HeapAllocator, tag: static_ptr<u8>) throws IError {
         this.alloc = allocator.copy();
         var p = String("/tmp/sun_stdlib_");
@@ -28,7 +33,9 @@ public module std {
         std.io.make_dir(this.path, 493);
       }
 
-      // A path for `name` inside the directory, owned by the caller.
+      /**
+       * A path for `name` inside the directory, owned by the caller.
+       */
       public method file(name: static_ptr<u8>) String {
         var p = this.path.clone(this.alloc);
         p.append_char(b'/');
@@ -36,6 +43,7 @@ public module std {
         return p;
       }
 
+      /** Records fixture destruction so tests can verify ownership and cleanup. */
       deinit() {
         // Best-effort cleanup: remove the entries we can, then the
         // directory itself. deinit must not throw.
@@ -58,8 +66,10 @@ public module std {
       }
     }
 
-    // A /tmp file path unique to the calling test, owned by the caller.
-    // Nothing is created; the test makes and removes the file itself.
+    /**
+     * A /tmp file path unique to the calling test, owned by the caller.
+     * Nothing is created; the test makes and removes the file itself.
+     */
     public function unique_path(tag: static_ptr<u8>) String {
       var p = String("/tmp/sun_stdlib_");
       p.append_literal(tag);

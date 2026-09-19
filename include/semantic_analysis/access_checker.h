@@ -8,34 +8,40 @@
 
 #include <string>
 
+#include "semantic_analysis/declaration_table.h"
 #include "semantic_analysis/visibility.h"
 #include "support/position.h"
 
-namespace sun::access {
+/** Resolves declarations and checks the types and meaning of Sun programs. */
+namespace sun::semantic_analysis {
 
-// Describes an item for the access predicate and its diagnostic.
+/** Describe a declaration for access checks and diagnostics. */
 struct ItemRef {
   const char* kind;           // "field", "method", "function", "class", ...
   std::string name;           // Item name as written by the user
   std::string ownerTypeName;  // Class/interface display name for members
   Visibility visibility;
-  ModulePath owner;  // QualifiedName::owner() of the item (or type)
+  DeclarationId declaration;  // The item or the type declaring its members.
 };
 
-// "class 'Vec' in module 'sun'" | "module 'sun'" |
-// "the top-level scope of its bundle" | "the top-level scope"
-std::string describeOwner(const ItemRef& item);
+/** Describe the declaring module and enclosing type for diagnostics. */
+std::string describeOwner(const ItemRef& item, const DeclarationTable& table);
 
-// "'size_' is private to class 'Vec' in module 'sun'"
-// "function 'helper' is private to module 'sun'"
-std::string denialMessage(const ItemRef& item);
+/** Explain why a declaration is inaccessible. */
+std::string denialMessage(const ItemRef& item, const DeclarationTable& table);
 
-bool isAccessible(const ModulePath& from, const ItemRef& item);
+/** Check visibility using the declaring module and its ancestors. */
+bool isAccessible(DeclarationId from, const ItemRef& item,
+                  const DeclarationTable& table);
 
-[[noreturn]] void denyAccess(const ItemRef& item, const Position& loc);
+/** Report an inaccessible declaration at its use site. */
+[[noreturn]] void denyAccess(const ItemRef& item,
+                             const sun::support::Position& loc,
+                             const DeclarationTable& table);
 
-// Throws a semantic error naming the item and its owner when inaccessible.
-void requireAccessible(const ModulePath& from, const ItemRef& item,
-                       const Position& loc);
+/** Reject a use outside the declaration's allowed module scope. */
+void requireAccessible(DeclarationId from, const ItemRef& item,
+                       const sun::support::Position& loc,
+                       const DeclarationTable& table);
 
-}  // namespace sun::access
+}  // namespace sun::semantic_analysis

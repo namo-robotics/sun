@@ -8,16 +8,20 @@
 #include "moon_bundling/moon.h"
 #include "semantic_analysis/struct_names.h"
 
-namespace sun {
+/** Builds and loads compiled Moon libraries and their declaration metadata. */
+namespace sun::moon_bundling {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-/// The canonical name a struct from a scanned module should unify under in
-/// the target: well-known runtime structs map to their unsuffixed name, and a
-/// trailing ".N" that LLVM added to keep same-named types apart is stripped
-/// (codegen mints the unsuffixed one from the Sun type).
+/**
+ * The canonical name a struct from a scanned module should unify under in
+ * the target: well-known runtime structs map to their unsuffixed name, and a
+ * trailing ".N" that LLVM added to keep same-named types apart is stripped
+ * (codegen mints the unsuffixed one from the Sun type).
+ */
 std::string canonicalStructName(llvm::StringRef name) {
-  for (const auto& info : sun::StructNames::All) {
+  for (const auto& info : sun::semantic_analysis::All) {
     if (name.starts_with(info.name)) return info.name;
   }
   size_t dot = name.rfind('.');
@@ -29,10 +33,12 @@ std::string canonicalStructName(llvm::StringRef name) {
   return name.str();
 }
 
-/// Map a type from a scanned module to the target context. Scanned modules
-/// live in their own LLVMContext, so every type is rebuilt: named structs
-/// unify by canonical name, everything else structurally. `visited` carries
-/// in-progress structs so recursive types terminate.
+/**
+ * Map a type from a scanned module to the target context. Scanned modules
+ * live in their own LLVMContext, so every type is rebuilt: named structs
+ * unify by canonical name, everything else structurally. `visited` carries
+ * in-progress structs so recursive types terminate.
+ */
 llvm::Type* mapTypeToTarget(
     llvm::Type* srcType, llvm::LLVMContext& ctx,
     std::unordered_map<llvm::Type*, llvm::Type*>& visited) {
@@ -111,8 +117,10 @@ llvm::Type* mapTypeToTarget(
   return mapped;
 }
 
-/// Create a function type in the target context with mapped parameter and
-/// return types
+/**
+ * Create a function type in the target context with mapped parameter and
+ * return types
+ */
 llvm::FunctionType* remapFunctionType(
     llvm::FunctionType* srcFuncType, llvm::LLVMContext& ctx,
     std::unordered_map<llvm::Type*, llvm::Type*>& visited) {
@@ -193,11 +201,6 @@ void ModuleLinker::declareAvailableFunctions() {
 
       std::string funcName = func.getName().str();
 
-      // Skip internal helper functions (start with underscore or llvm.)
-      if (funcName[0] == '_' && funcName.size() > 1 && funcName[1] == '_') {
-        continue;  // Skip __sun_* helper functions
-      }
-
       std::string declaredName = funcName;
 
       // Skip if already declared in target
@@ -221,7 +224,7 @@ void ModuleLinker::declareAvailableFunctions() {
         decl->addFnAttr("sun.cabi");
       }
 
-      // Map the aliased name to the module for linking
+      // Index the emitted symbol directly for lazy linking
       symbolToModule_[declaredName] = moduleKey;
     }
 
@@ -235,7 +238,6 @@ void ModuleLinker::declareAvailableFunctions() {
       if (!global.hasName() || global.getName().empty()) continue;
 
       std::string globalName = global.getName().str();
-      if (globalName[0] == '_') continue;  // internal helpers and literals
 
       if (!target_.getNamedGlobal(globalName)) {
         auto* declaration = new llvm::GlobalVariable(
@@ -321,7 +323,7 @@ bool ModuleLinker::linkModuleRecursive(const std::string& moduleKey) {
 
   // Check content hash for deduplication
   // If we've already linked bitcode with this hash, skip it
-  std::string contentHash = sun::getSymbolPrefix(*metadata);
+  std::string contentHash = sun::moon_bundling::getSymbolPrefix(*metadata);
   if (!contentHash.empty() && linkedContentHashes_.count(contentHash)) {
     // Mark as linked (for moduleKey tracking) but don't link bitcode again
     linkedModules_.insert(moduleKey);
@@ -400,4 +402,4 @@ void ModuleLinker::registerAvailableBundle(const MoonImport& moonImport) {
   }
 }
 
-}  // namespace sun
+}  // namespace sun::moon_bundling

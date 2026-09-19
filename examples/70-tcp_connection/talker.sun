@@ -1,6 +1,7 @@
 // Talker: connects and sends a message
 using std;
 
+/** Runs the example that exchanges messages over a TCP connection. */
 function main() i32 {
   // Socket operations can fail, so they run inside a `try` block.
   try {

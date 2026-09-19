@@ -4,49 +4,62 @@
 
 #include "semantic_analysis/packed_layout.h"
 
-namespace sun::codegen::layout {
+using sun::semantic_analysis::ClassType;
 
-llvm::Value* fieldPtr(llvm::IRBuilder<>& builder, sun::ClassType* classType,
-                      llvm::Value* objectPtr, const sun::ClassField& field,
+/** Provides shared diagnostics, source tracking, and compiler utilities. */
+namespace sun::codegen::support {
+
+/** Computes the LLVM address of a field in class storage. */
+llvm::Value* fieldPtr(llvm::IRBuilder<>& builder, ClassType* classType,
+                      llvm::Value* objectPtr,
+                      const sun::semantic_analysis::ClassField& field,
                       const std::string& name) {
   llvm::StructType* structType = classType->getStructType(builder.getContext());
   return builder.CreateStructGEP(structType, objectPtr, field.index, name);
 }
 
-llvm::Align fieldAlign(const sun::ClassType* owner, llvm::Type* fieldTy,
+/** Returns the alignment available for a class field access. */
+llvm::Align fieldAlign(const ClassType* owner, llvm::Type* fieldTy,
                        const llvm::DataLayout& dl) {
-  return sun::packed::fieldAlign(owner, fieldTy, dl);
+  return sun::semantic_analysis::fieldAlign(owner, fieldTy, dl);
 }
 
-llvm::Align lvalueAlign(const ExprAST& target, llvm::Type* slotTy,
+/** Returns the alignment available when accessing an assignable expression. */
+llvm::Align lvalueAlign(const sun::ast::ExprAST& target, llvm::Type* slotTy,
                         const llvm::DataLayout& dl) {
-  return sun::packed::lvalueAlign(target, slotTy, dl);
+  return sun::semantic_analysis::lvalueAlign(target, slotTy, dl);
 }
 
+/** Stores a generated value with the alignment required by its storage. */
 void storeIntoSlot(llvm::IRBuilder<>& builder, const llvm::DataLayout& dl,
                    llvm::Value* dest, llvm::Value* value,
-                   const sun::TypePtr& slotType, const sun::ClassType* owner) {
+                   const sun::semantic_analysis::TypePtr& slotType,
+                   const ClassType* owner) {
   if (slotType && slotType->isClass() && value->getType()->isPointerTy()) {
-    const auto* classType = static_cast<const sun::ClassType*>(slotType.get());
+    const auto* classType = static_cast<const ClassType*>(slotType.get());
     llvm::StructType* structTy = classType->getStructType(builder.getContext());
-    llvm::Align align = fieldAlign(owner, structTy, dl);
+    llvm::Align align = sun::codegen::support::fieldAlign(owner, structTy, dl);
     builder.CreateMemCpy(dest, align, value, align,
                          dl.getTypeAllocSize(structTy));
     return;
   }
   // A sized array arrives as the address of its inline storage
-  if (auto* arrayType = sun::tryGetType<sun::ArrayType>(slotType)) {
+  if (auto* arrayType =
+          sun::codegen::support::tryGetType<sun::semantic_analysis::ArrayType>(
+              slotType)) {
     if (!arrayType->isUnsized() && value->getType()->isPointerTy()) {
       llvm::Type* storageTy =
           arrayType->getDataStorageType(builder.getContext());
-      llvm::Align align = fieldAlign(owner, storageTy, dl);
+      llvm::Align align =
+          sun::codegen::support::fieldAlign(owner, storageTy, dl);
       builder.CreateMemCpy(dest, align, value, align,
                            dl.getTypeAllocSize(storageTy));
       return;
     }
   }
-  builder.CreateAlignedStore(value, dest,
-                             fieldAlign(owner, value->getType(), dl));
+  builder.CreateAlignedStore(
+      value, dest,
+      sun::codegen::support::fieldAlign(owner, value->getType(), dl));
 }
 
-}  // namespace sun::codegen::layout
+}  // namespace sun::codegen::support

@@ -15,24 +15,34 @@
 #include "ast.h"
 #include "parsing/parser.h"
 
+using sun::ast::ASTNodeType;
+using sun::ast::FunctionAST;
+using sun::ast::VariableCreationAST;
+
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
-std::unique_ptr<BlockExprAST> parseSource(const std::string& source) {
+/** Parses fixture text while preserving source spans. */
+std::unique_ptr<sun::ast::BlockExprAST> parseSource(const std::string& source) {
   std::istringstream ss(source);
-  Parser parser(ss);
+  sun::parsing::Parser parser(ss);
   return parser.parseString(source);
 }
 
-// Slice the source using the node's span; fails the test if no span is set
-std::string spanText(const std::string& source, const ExprAST& node) {
-  const Position& loc = node.getLocation();
+/**
+ * Slice the source using the node's span; fails the test if no span is set
+ */
+std::string spanText(const std::string& source, const sun::ast::ExprAST& node) {
+  const sun::support::Position& loc = node.getLocation();
   EXPECT_TRUE(loc.endOffset.has_value())
       << "node has no endOffset: " << node.toString();
   if (!loc.endOffset) return "";
   return source.substr(loc.offset, *loc.endOffset - loc.offset);
 }
 
-std::string spanText(const std::string& source, const Position& loc) {
+/** Extracts the original source text covered by a syntax node's span. */
+std::string spanText(const std::string& source,
+                     const sun::support::Position& loc) {
   EXPECT_TRUE(loc.endOffset.has_value()) << "position has no endOffset";
   if (!loc.endOffset) return "";
   return source.substr(loc.offset, *loc.endOffset - loc.offset);
@@ -53,7 +63,7 @@ TEST(Tooling_Frontend_Positions, BinaryExpressionSpans) {
   std::string src = "var x: i32 = 1 + 23;";
   auto block = parseSource(src);
   auto* var = static_cast<VariableCreationAST*>(block->getBody()[0].get());
-  auto* bin = static_cast<const BinaryExprAST*>(var->getValue());
+  auto* bin = static_cast<const sun::ast::BinaryExprAST*>(var->getValue());
   ASSERT_EQ(bin->getType(), ASTNodeType::BINARY);
   EXPECT_EQ(spanText(src, *bin), "1 + 23");
   EXPECT_EQ(spanText(src, *bin->getLHS()), "1");
@@ -63,11 +73,12 @@ TEST(Tooling_Frontend_Positions, BinaryExpressionSpans) {
 TEST(Tooling_Frontend_Positions, CallAndMemberAccess) {
   std::string src = "foo.bar(1, 2);";
   auto block = parseSource(src);
-  auto* call = static_cast<CallExprAST*>(block->getBody()[0].get());
+  auto* call = static_cast<sun::ast::CallExprAST*>(block->getBody()[0].get());
   ASSERT_EQ(call->getType(), ASTNodeType::CALL);
   EXPECT_EQ(spanText(src, *call), "foo.bar(1, 2)");
   EXPECT_EQ(spanText(src, *call->getCallee()), "foo.bar");
-  auto* member = static_cast<const MemberAccessAST*>(call->getCallee());
+  auto* member =
+      static_cast<const sun::ast::MemberAccessAST*>(call->getCallee());
   EXPECT_EQ(spanText(src, *member->getObject()), "foo");
 }
 
@@ -81,8 +92,8 @@ TEST(Tooling_Frontend_Positions, IfElseStatement) {
   auto* func = static_cast<FunctionAST*>(block->getBody()[0].get());
   ASSERT_EQ(func->getType(), ASTNodeType::FUNCTION);
   EXPECT_EQ(spanText(src, *func), src);
-  auto* ifExpr = static_cast<IfExprAST*>(
-      const_cast<std::vector<std::unique_ptr<ExprAST>>&>(
+  auto* ifExpr = static_cast<sun::ast::IfExprAST*>(
+      const_cast<std::vector<std::unique_ptr<sun::ast::ExprAST>>&>(
           func->getBody().getBody())[0]
           .get());
   ASSERT_EQ(ifExpr->getType(), ASTNodeType::IF);
@@ -132,7 +143,8 @@ TEST(Tooling_Frontend_Positions, ClassDefinition) {
       "    var y: i32;\n"
       "}";
   auto block = parseSource(src);
-  auto* cls = static_cast<ClassDefinitionAST*>(block->getBody()[0].get());
+  auto* cls =
+      static_cast<sun::ast::ClassDefinitionAST*>(block->getBody()[0].get());
   ASSERT_EQ(cls->getType(), ASTNodeType::CLASS_DEFINITION);
   EXPECT_EQ(spanText(src, *cls), src);
   // Field locations point at the field names
@@ -147,7 +159,7 @@ TEST(Tooling_Frontend_Positions, GenericVsComparisonBacktracking) {
   std::string src = "var r: bool = a < b;";
   auto block = parseSource(src);
   auto* var = static_cast<VariableCreationAST*>(block->getBody()[0].get());
-  auto* bin = static_cast<const BinaryExprAST*>(var->getValue());
+  auto* bin = static_cast<const sun::ast::BinaryExprAST*>(var->getValue());
   ASSERT_EQ(bin->getType(), ASTNodeType::BINARY);
   EXPECT_EQ(spanText(src, *bin), "a < b");
   EXPECT_EQ(spanText(src, *bin->getLHS()), "a");
@@ -329,7 +341,7 @@ TEST(Tooling_Frontend_Positions, DottedModuleNamesAndVisibility) {
     auto program = parseSource(source);
     ASSERT_TRUE(program);
     const auto* module =
-        dynamic_cast<const ModuleAST*>(program->getBody()[0].get());
+        dynamic_cast<const sun::ast::ModuleAST*>(program->getBody()[0].get());
     const std::vector<std::pair<std::string, size_t>> segments = {
         {"a", source.find("a.")},
         {"a", source.find("a.c")},
@@ -342,8 +354,8 @@ TEST(Tooling_Frontend_Positions, DottedModuleNamesAndVisibility) {
       ASSERT_TRUE(module->getNameLocation());
       EXPECT_EQ(spanText(source, *module->getNameLocation()), name);
       EXPECT_EQ(module->getNameLocation()->offset, nameOffset);
-      module =
-          dynamic_cast<const ModuleAST*>(module->getBody().getBody()[0].get());
+      module = dynamic_cast<const sun::ast::ModuleAST*>(
+          module->getBody().getBody()[0].get());
     }
     ASSERT_NE(module, nullptr);
     EXPECT_FALSE(module->isPublic());

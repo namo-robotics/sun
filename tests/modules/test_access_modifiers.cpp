@@ -18,6 +18,17 @@
 #include "serialization/ast_deserializer.h"
 #include "serialization/ast_serializer.h"
 
+using sun::moon_bundling::MoonImport;
+using sun::semantic_analysis::Visibility;
+
+using sun::ast::ModuleAST;
+using sun::driver::compileString;
+using sun::driver::Driver;
+using sun::driver::executeString;
+using sun::parsing::TokenKind;
+using sun::support::SunError;
+
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 // A module exposing one public and one private member of every kind
@@ -42,10 +53,12 @@ const char* kLib = R"(
   }
 )";
 
+/** Builds a complete test program around the supplied scenario. */
 std::string program(const std::string& body) {
   return std::string(kLib) + "\nfunction main() i32 {\n" + body + "\n}\n";
 }
 
+/** Builds a program that exercises visibility through a using declaration. */
 std::string usingProgram(const std::string& body) {
   return std::string(kLib) + "\nusing m;\nfunction main() i32 {\n" + body +
          "\n}\n";
@@ -59,14 +72,14 @@ std::string usingProgram(const std::string& body) {
 
 TEST(Modules_AccessModifiers, lexer_public_is_keyword_private_is_identifier) {
   std::istringstream in("public publicity private");
-  Lexer lexer(in);
+  sun::parsing::Lexer lexer(in);
   EXPECT_EQ(lexer.getNextToken().kind, TokenKind::PUBLIC);
   EXPECT_EQ(lexer.getNextToken().kind, TokenKind::IDENTIFIER);
   EXPECT_EQ(lexer.getNextToken().kind, TokenKind::IDENTIFIER);
 }
 
 TEST(Modules_AccessModifiers, parser_accepts_public_on_every_item_kind) {
-  auto parser = Parser::createStringParser(R"(
+  auto parser = sun::parsing::Parser::createStringParser(R"(
     public module a.b {
         public class C { public var x: i32; var y: i32;
                          init() {} method h() void {} }
@@ -94,10 +107,10 @@ TEST(Modules_AccessModifiers, parser_accepts_public_on_every_item_kind) {
   for (const auto& stmt : inner->getBody().getBody()) {
     EXPECT_TRUE(stmt->isPublic()) << stmt->toString();
   }
-  auto* cls = static_cast<const ClassDefinitionAST*>(
+  auto* cls = static_cast<const sun::ast::ClassDefinitionAST*>(
       inner->getBody().getBody()[0].get());
-  EXPECT_EQ(cls->getFields()[0].visibility, sun::Visibility::Public);
-  EXPECT_EQ(cls->getFields()[1].visibility, sun::Visibility::Private);
+  EXPECT_EQ(cls->getFields()[0].visibility, Visibility::Public);
+  EXPECT_EQ(cls->getFields()[1].visibility, Visibility::Private);
   EXPECT_TRUE(cls->getMethods()[0].function->isPublic());
   EXPECT_FALSE(cls->getMethods()[1].function->isPublic());
 }
@@ -139,11 +152,11 @@ TEST(Modules_AccessModifiers, formatter_round_trips_public) {
       "    return 1;\n"
       "  }\n"
       "}\n";
-  EXPECT_EQ(sun::formatSource(src), src);
+  EXPECT_EQ(sun::parsing::formatSource(src), src);
 }
 
 TEST(Modules_AccessModifiers, serialization_round_trips_visibility) {
-  auto parser = Parser::createStringParser(R"(
+  auto parser = sun::parsing::Parser::createStringParser(R"(
     public module m {
         public class C { public var x: i32; var y: i32;
                          init() {} method h() void {} }
@@ -158,11 +171,11 @@ TEST(Modules_AccessModifiers, serialization_round_trips_visibility) {
   ASSERT_NE(back, nullptr);
   auto* mod = static_cast<const ModuleAST*>(back.get());
   EXPECT_TRUE(mod->isPublic());
-  auto* cls =
-      static_cast<const ClassDefinitionAST*>(mod->getBody().getBody()[0].get());
+  auto* cls = static_cast<const sun::ast::ClassDefinitionAST*>(
+      mod->getBody().getBody()[0].get());
   EXPECT_TRUE(cls->isPublic());
-  EXPECT_EQ(cls->getFields()[0].visibility, sun::Visibility::Public);
-  EXPECT_EQ(cls->getFields()[1].visibility, sun::Visibility::Private);
+  EXPECT_EQ(cls->getFields()[0].visibility, Visibility::Public);
+  EXPECT_EQ(cls->getFields()[1].visibility, Visibility::Private);
   EXPECT_TRUE(cls->getMethods()[0].function->isPublic());
   EXPECT_FALSE(cls->getMethods()[1].function->isPublic());
   EXPECT_FALSE(mod->getBody().getBody()[1]->isPublic());
@@ -447,9 +460,11 @@ TEST(Modules_AccessModifiers,
 // .moon bundles: private items are carried but hidden; roots must be public
 // ---------------------------------------------------------------------------
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 namespace fs = std::filesystem;
 
+/** Writes and builds the library fixture used by access-control tests. */
 fs::path writeLib(const std::string& name, const std::string& src) {
   fs::path dir = fs::temp_directory_path() / "sun_access_moon_test";
   fs::create_directories(dir);
@@ -462,7 +477,7 @@ fs::path writeLib(const std::string& name, const std::string& src) {
 
 TEST(Modules_AccessModifiers,
      moon_hides_private_items_but_generics_still_work) {
-  initTestEnvironment();
+  sun::driver::initTestEnvironment();
   fs::path libSrc = writeLib("acclib", R"(
     public module acclib {
         function helper() i32 { return 10; }
@@ -475,11 +490,11 @@ TEST(Modules_AccessModifiers,
     }
   )");
   fs::path moonPath = libSrc.parent_path() / "acclib.moon";
-  sun::MoonBuilder::build(libSrc.string(), moonPath);
+  sun::moon_bundling::MoonBuilder::build(libSrc.string(), moonPath);
 
   {
     auto driver = Driver::createForJIT("moon_main_ok");
-    driver->setMoonImports({sun::MoonImport(moonPath.string())});
+    driver->setMoonImports({MoonImport(moonPath.string())});
     auto value = driver->executeString(R"(
       using acclib;
       function main() i32 { var c = Counter<i64>(); return c.bump(); }
@@ -488,7 +503,7 @@ TEST(Modules_AccessModifiers,
   }
   {
     auto driver = Driver::createForJIT("moon_main_denied");
-    driver->setMoonImports({sun::MoonImport(moonPath.string())});
+    driver->setMoonImports({MoonImport(moonPath.string())});
     EXPECT_SUN_ERROR_WITH_MESSAGE(
         driver->executeString(R"(
       using acclib;
@@ -498,7 +513,7 @@ TEST(Modules_AccessModifiers,
   }
   {
     auto driver = Driver::createForJIT("moon_main_field");
-    driver->setMoonImports({sun::MoonImport(moonPath.string())});
+    driver->setMoonImports({MoonImport(moonPath.string())});
     EXPECT_SUN_ERROR_WITH_MESSAGE(driver->executeString(R"(
       using acclib;
       function main() i32 { var c = make(); return c.n; }
@@ -508,13 +523,13 @@ TEST(Modules_AccessModifiers,
 }
 
 TEST(Modules_AccessModifiers, moon_rejects_private_root_module) {
-  initTestEnvironment();
+  sun::driver::initTestEnvironment();
   fs::path libSrc = writeLib("privroot", R"(
     module privroot { public function f() i32 { return 1; } }
   )");
   fs::path moonPath = libSrc.parent_path() / "privroot.moon";
   EXPECT_SUN_ERROR_WITH_MESSAGE(
-      sun::MoonBuilder::build(libSrc.string(), moonPath),
+      sun::moon_bundling::MoonBuilder::build(libSrc.string(), moonPath),
       "top-level module 'privroot' must be declared 'public'");
 }
 

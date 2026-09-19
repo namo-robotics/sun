@@ -8,6 +8,9 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+
+/** Runs a Sun program and captures its standard output for assertions. */
 static std::string capturePrintedOutput(const std::string& source) {
   testing::internal::CaptureStdout();
   executeString(source);

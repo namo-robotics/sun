@@ -10,6 +10,8 @@
 #include "moon_bundling/moon_builder.h"
 #include "moon_bundling/moon_import.h"
 
+using sun::driver::executeString;
+
 // ============================================================================
 // Option<T>
 // ============================================================================
@@ -253,7 +255,7 @@ TEST(Enums_Generic, OwningPayloadIsDroppedExactlyOnce) {
 
 TEST(Enums_Generic, CrossModuleMoonBundle) {
   namespace fs = std::filesystem;
-  initTestEnvironment();
+  sun::driver::initTestEnvironment();
 
   fs::path dir = fs::temp_directory_path() / "sun_generic_enum_moon_test";
   fs::create_directories(dir);
@@ -274,12 +276,12 @@ TEST(Enums_Generic, CrossModuleMoonBundle) {
 
   // Build the .moon bundle the same way `sun --emit-moon` does
   fs::path moonPath = dir / "optlib.moon";
-  sun::MoonBuilder::build(libSrc.string(), moonPath);
+  sun::moon_bundling::MoonBuilder::build(libSrc.string(), moonPath);
 
   // Instantiate the imported generic enum with a NEW type argument (f64) and
   // use the library's own i32 specialization
-  auto driver = Driver::createForJIT("moon_main");
-  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  auto driver = sun::driver::Driver::createForJIT("moon_main");
+  driver->setMoonImports({sun::moon_bundling::MoonImport(moonPath.string())});
   auto value = driver->executeString(R"(
     using optlib;
 
@@ -331,7 +333,7 @@ TEST(Enums_Generic, QualifiedThroughModulePath) {
 
 TEST(Enums_Generic, QualifiedThroughMoonBundle) {
   namespace fs = std::filesystem;
-  initTestEnvironment();
+  sun::driver::initTestEnvironment();
 
   fs::path dir = fs::temp_directory_path() / "sun_generic_enum_qualified_moon";
   fs::create_directories(dir);
@@ -350,12 +352,12 @@ TEST(Enums_Generic, QualifiedThroughMoonBundle) {
     )";
   }
   fs::path moonPath = dir / "optlib.moon";
-  sun::MoonBuilder::build(libSrc.string(), moonPath);
+  sun::moon_bundling::MoonBuilder::build(libSrc.string(), moonPath);
 
   // No `using optlib;`: the library's specialization and a new one are both
   // spelled through the module path
-  auto driver = Driver::createForJIT("moon_main");
-  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  auto driver = sun::driver::Driver::createForJIT("moon_main");
+  driver->setMoonImports({sun::moon_bundling::MoonImport(moonPath.string())});
   auto value = driver->executeString(R"(
     function main() i32 {
         var a = optlib.pick(30);
@@ -380,7 +382,7 @@ TEST(Enums_Generic, QualifiedThroughMoonBundle) {
 }
 
 TEST(Enums_Generic, QualifiedPrivatePayloadVariantDenied) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::compileString(R"(
     public module m { enum Secret<T> { Item(T), Empty } }
     function main() i32 { var s = m.Secret.Item(1); return 0; }
   )"),
@@ -388,7 +390,7 @@ TEST(Enums_Generic, QualifiedPrivatePayloadVariantDenied) {
 }
 
 TEST(Enums_Generic, QualifiedPrivateUnitVariantDenied) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::compileString(R"(
     public module m { enum Secret<T> { Item(T), Empty } }
     function main() i32 { var s = m.Secret.Empty; return 0; }
   )"),

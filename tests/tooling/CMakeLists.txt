@@ -1,4 +1,5 @@
 add_subdirectory(backend)
+add_subdirectory(cli)
 add_subdirectory(diagnostics)
 add_subdirectory(fmt)
 add_subdirectory(frontend)

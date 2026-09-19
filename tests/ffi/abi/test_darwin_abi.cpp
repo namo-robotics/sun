@@ -25,17 +25,24 @@
 #include <fstream>
 #include <string>
 
-#include "codegen/abi/aapcs64.h"
+#include "codegen/abi/aapcs64/aapcs64.h"
 #include "codegen/abi/c_abi.h"
 #include "driver/compiler.h"
 #include "driver/driver.h"
 #include "moon_bundling/library_cache.h"
 #include "support/error.h"
 
+using sun::codegen::abi::Extend;
+using sun::codegen::abi::SignednessInfo;
+
+using sun::driver::Driver;
+
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
-using sun::abi::aapcs64::Variant;
+using sun::codegen::abi::aapcs64::Variant;
 
+/** Provides isolated state and helpers for this compiler integration test suite. */
 class Ffi_Abi_Aapcs64Darwin : public ::testing::Test {
  protected:
   llvm::LLVMContext ctx;
@@ -46,29 +53,45 @@ class Ffi_Abi_Aapcs64Darwin : public ::testing::Test {
       "e-m:o-p270:32:32-p271:32:32-p272:64:64-i64:64-"
       "i128:128-n32:64-S128-Fn32"};
 
+  /** Returns the LLVM scalar type used to construct calling-convention fixtures. */
   llvm::Type* i1() { return llvm::Type::getInt1Ty(ctx); }
+  /** Returns the LLVM scalar type used to construct calling-convention fixtures. */
   llvm::Type* i8() { return llvm::Type::getInt8Ty(ctx); }
+  /** Returns the LLVM scalar type used to construct calling-convention fixtures. */
   llvm::Type* i16() { return llvm::Type::getInt16Ty(ctx); }
+  /** Returns the LLVM scalar type used to construct calling-convention fixtures. */
   llvm::Type* i32() { return llvm::Type::getInt32Ty(ctx); }
+  /** Returns the LLVM scalar type used to construct calling-convention fixtures. */
   llvm::Type* i64() { return llvm::Type::getInt64Ty(ctx); }
+  /** Returns the LLVM scalar type used to construct calling-convention fixtures. */
   llvm::Type* f32() { return llvm::Type::getFloatTy(ctx); }
+  /** Returns the LLVM scalar type used to construct calling-convention fixtures. */
   llvm::Type* f64() { return llvm::Type::getDoubleTy(ctx); }
+  /** Returns the LLVM pointer type used by the calling-convention fixture. */
   llvm::Type* ptr() { return llvm::PointerType::getUnqual(ctx); }
 
+  /** Creates an LLVM structure with the field types required by an ABI test. */
   llvm::StructType* structOf(std::initializer_list<llvm::Type*> fields) {
     return llvm::StructType::get(ctx, std::vector<llvm::Type*>(fields));
   }
 
+  /** Creates an LLVM array with the element layout required by an ABI test. */
   llvm::Type* arrayOf(llvm::Type* elem, uint64_t n) {
     return llvm::ArrayType::get(elem, n);
   }
 
-  sun::abi::ArgLowering darwinArg(llvm::Type* t, bool isSigned = false) {
-    return sun::abi::aapcs64::lowerArgument(t, dl, Variant::Darwin, isSigned);
+  /** Classifies a function argument using the Darwin AArch64 calling convention. */
+  sun::codegen::abi::ArgLowering darwinArg(llvm::Type* t,
+                                           bool isSigned = false) {
+    return sun::codegen::abi::aapcs64::lowerArgument(t, dl, Variant::Darwin,
+                                                     isSigned);
   }
 
-  sun::abi::ArgLowering darwinRet(llvm::Type* t, bool isSigned = false) {
-    return sun::abi::aapcs64::lowerReturn(t, dl, Variant::Darwin, isSigned);
+  /** Classifies a function return value using the Darwin AArch64 calling convention. */
+  sun::codegen::abi::ArgLowering darwinRet(llvm::Type* t,
+                                           bool isSigned = false) {
+    return sun::codegen::abi::aapcs64::lowerReturn(t, dl, Variant::Darwin,
+                                                   isSigned);
   }
 };
 
@@ -131,7 +154,7 @@ TEST_F(Ffi_Abi_Aapcs64Darwin, hfa_argument_has_no_alignstack) {
   EXPECT_EQ(darwin.pieces[0], arrayOf(f32(), 2));
   EXPECT_EQ(darwin.stackAlign, 0u);
 
-  auto elf = sun::abi::aapcs64::lowerArgument(hfa, dl, Variant::Elf);
+  auto elf = sun::codegen::abi::aapcs64::lowerArgument(hfa, dl, Variant::Elf);
   EXPECT_EQ(elf.stackAlign, 8u);
 }
 
@@ -150,37 +173,37 @@ TEST_F(Ffi_Abi_Aapcs64Darwin, four_double_hfa_still_coerces) {
 TEST_F(Ffi_Abi_Aapcs64Darwin, small_integer_params_take_an_extension) {
   // declare void @scalars(i8 signext, i8 zeroext, i16 signext, i16 zeroext,
   //                       i32, i32)
-  EXPECT_EQ(darwinArg(i8(), /*isSigned=*/true).extend, sun::abi::Extend::Sign);
-  EXPECT_EQ(darwinArg(i8(), /*isSigned=*/false).extend, sun::abi::Extend::Zero);
-  EXPECT_EQ(darwinArg(i16(), /*isSigned=*/true).extend, sun::abi::Extend::Sign);
-  EXPECT_EQ(darwinArg(i16(), /*isSigned=*/false).extend,
-            sun::abi::Extend::Zero);
-  EXPECT_EQ(darwinArg(i1(), /*isSigned=*/false).extend, sun::abi::Extend::Zero);
+  EXPECT_EQ(darwinArg(i8(), /*isSigned=*/true).extend, Extend::Sign);
+  EXPECT_EQ(darwinArg(i8(), /*isSigned=*/false).extend, Extend::Zero);
+  EXPECT_EQ(darwinArg(i16(), /*isSigned=*/true).extend, Extend::Sign);
+  EXPECT_EQ(darwinArg(i16(), /*isSigned=*/false).extend, Extend::Zero);
+  EXPECT_EQ(darwinArg(i1(), /*isSigned=*/false).extend, Extend::Zero);
 }
 
 TEST_F(Ffi_Abi_Aapcs64Darwin, wide_scalars_take_no_extension) {
-  EXPECT_EQ(darwinArg(i32(), /*isSigned=*/true).extend, sun::abi::Extend::None);
-  EXPECT_EQ(darwinArg(i64(), /*isSigned=*/true).extend, sun::abi::Extend::None);
-  EXPECT_EQ(darwinArg(f32()).extend, sun::abi::Extend::None);
-  EXPECT_EQ(darwinArg(ptr()).extend, sun::abi::Extend::None);
+  EXPECT_EQ(darwinArg(i32(), /*isSigned=*/true).extend, Extend::None);
+  EXPECT_EQ(darwinArg(i64(), /*isSigned=*/true).extend, Extend::None);
+  EXPECT_EQ(darwinArg(f32()).extend, Extend::None);
+  EXPECT_EQ(darwinArg(ptr()).extend, Extend::None);
 }
 
 TEST_F(Ffi_Abi_Aapcs64Darwin, small_integer_returns_take_an_extension) {
   // declare signext i8 @retc(); declare zeroext i16 @retus()
-  EXPECT_EQ(darwinRet(i8(), /*isSigned=*/true).extend, sun::abi::Extend::Sign);
-  EXPECT_EQ(darwinRet(i16(), /*isSigned=*/false).extend,
-            sun::abi::Extend::Zero);
-  EXPECT_EQ(darwinRet(i32(), /*isSigned=*/true).extend, sun::abi::Extend::None);
+  EXPECT_EQ(darwinRet(i8(), /*isSigned=*/true).extend, Extend::Sign);
+  EXPECT_EQ(darwinRet(i16(), /*isSigned=*/false).extend, Extend::Zero);
+  EXPECT_EQ(darwinRet(i32(), /*isSigned=*/true).extend, Extend::None);
 }
 
 TEST_F(Ffi_Abi_Aapcs64Darwin, elf_variant_never_extends) {
   // ELF leaves the upper bits unspecified; clang emits no attribute there.
   EXPECT_EQ(
-      sun::abi::aapcs64::lowerArgument(i8(), dl, Variant::Elf, true).extend,
-      sun::abi::Extend::None);
+      sun::codegen::abi::aapcs64::lowerArgument(i8(), dl, Variant::Elf, true)
+          .extend,
+      Extend::None);
   EXPECT_EQ(
-      sun::abi::aapcs64::lowerReturn(i16(), dl, Variant::Elf, true).extend,
-      sun::abi::Extend::None);
+      sun::codegen::abi::aapcs64::lowerReturn(i16(), dl, Variant::Elf, true)
+          .extend,
+      Extend::None);
 }
 
 TEST_F(Ffi_Abi_Aapcs64Darwin, an_extension_makes_the_signature_non_trivial) {
@@ -188,17 +211,17 @@ TEST_F(Ffi_Abi_Aapcs64Darwin, an_extension_makes_the_signature_non_trivial) {
   // extension must force the marshalled path so the call site gets the
   // attribute.
   llvm::Type* params[] = {i8()};
-  sun::abi::SignednessInfo signs;
+  SignednessInfo signs;
   signs.paramSigned = {true};
-  auto lowering = sun::abi::aapcs64::lowerCSignature(
+  auto lowering = sun::codegen::abi::aapcs64::lowerCSignature(
       llvm::Type::getVoidTy(ctx), params, dl, Variant::Darwin, &signs);
   EXPECT_FALSE(lowering.isTrivial());
 
   llvm::Type* wide[] = {i32(), i64(), ptr()};
-  sun::abi::SignednessInfo wideSigns;
+  SignednessInfo wideSigns;
   wideSigns.paramSigned = {true, true, false};
-  EXPECT_TRUE(sun::abi::aapcs64::lowerCSignature(i32(), wide, dl,
-                                                 Variant::Darwin, &wideSigns)
+  EXPECT_TRUE(sun::codegen::abi::aapcs64::lowerCSignature(
+                  i32(), wide, dl, Variant::Darwin, &wideSigns)
                   .isTrivial());
 }
 
@@ -209,8 +232,8 @@ TEST_F(Ffi_Abi_Aapcs64Darwin, dispatch_accepts_apple_arm64_triples) {
   llvm::Type* params[] = {structOf({f32(), f32()})};
   for (const char* tripleStr :
        {"arm64-apple-darwin", "aarch64-apple-darwin", "arm64-apple-macosx14"}) {
-    auto lowering =
-        sun::abi::lowerCSignature(llvm::Triple(tripleStr), voidTy, params, dl);
+    auto lowering = sun::codegen::abi::lowerCSignature(llvm::Triple(tripleStr),
+                                                       voidTy, params, dl);
     ASSERT_TRUE(lowering.params[0].isCoerced()) << tripleStr;
     EXPECT_EQ(lowering.params[0].stackAlign, 0u)
         << tripleStr << " should use the Darwin variant";
@@ -220,16 +243,16 @@ TEST_F(Ffi_Abi_Aapcs64Darwin, dispatch_accepts_apple_arm64_triples) {
 TEST_F(Ffi_Abi_Aapcs64Darwin, dispatch_extends_ints_only_for_darwin) {
   llvm::Type* voidTy = llvm::Type::getVoidTy(ctx);
   llvm::Type* params[] = {i8()};
-  sun::abi::SignednessInfo signs;
+  SignednessInfo signs;
   signs.paramSigned = {true};
 
-  auto darwin = sun::abi::lowerCSignature(llvm::Triple("arm64-apple-darwin"),
-                                          voidTy, params, dl, &signs);
-  EXPECT_EQ(darwin.params[0].extend, sun::abi::Extend::Sign);
+  auto darwin = sun::codegen::abi::lowerCSignature(
+      llvm::Triple("arm64-apple-darwin"), voidTy, params, dl, &signs);
+  EXPECT_EQ(darwin.params[0].extend, Extend::Sign);
 
-  auto elf = sun::abi::lowerCSignature(llvm::Triple("aarch64-linux-gnu"),
-                                       voidTy, params, dl, &signs);
-  EXPECT_EQ(elf.params[0].extend, sun::abi::Extend::None);
+  auto elf = sun::codegen::abi::lowerCSignature(
+      llvm::Triple("aarch64-linux-gnu"), voidTy, params, dl, &signs);
+  EXPECT_EQ(elf.params[0].extend, Extend::None);
 }
 
 TEST_F(Ffi_Abi_Aapcs64Darwin, intel_mac_uses_the_sysv_rules) {
@@ -239,9 +262,9 @@ TEST_F(Ffi_Abi_Aapcs64Darwin, intel_mac_uses_the_sysv_rules) {
       "e-m:o-p270:32:32-p271:32:32-p272:64:64-i64:64-"
       "i128:128-f80:128-n8:16:32:64-S128"};
   llvm::Type* params[] = {structOf({i32(), f64()})};
-  auto lowering =
-      sun::abi::lowerCSignature(llvm::Triple("x86_64-apple-darwin"),
-                                llvm::Type::getVoidTy(ctx), params, x86Dl);
+  auto lowering = sun::codegen::abi::lowerCSignature(
+      llvm::Triple("x86_64-apple-darwin"), llvm::Type::getVoidTy(ctx), params,
+      x86Dl);
   ASSERT_EQ(lowering.params[0].pieces.size(), 2u);
   EXPECT_EQ(lowering.params[0].pieces[0], i32());
   EXPECT_EQ(lowering.params[0].pieces[1], f64());
@@ -252,13 +275,14 @@ TEST_F(Ffi_Abi_Aapcs64Darwin, intel_mac_uses_the_sysv_rules) {
 TEST(Ffi_Abi_DarwinBundles, os_family_separates_linux_from_darwin) {
   // An aarch64 Linux stdlib.moon must never satisfy an arm64 macOS build:
   // open() flags, futex vs ulock, and struct layouts are baked into it.
-  EXPECT_FALSE(sun::sameOsFamily(llvm::Triple("aarch64-linux-gnu"),
-                                 llvm::Triple("arm64-apple-darwin")));
-  EXPECT_TRUE(sun::sameOsFamily(llvm::Triple("arm64-apple-darwin"),
-                                llvm::Triple("arm64-apple-macosx14.0")));
+  EXPECT_FALSE(sun::moon_bundling::sameOsFamily(
+      llvm::Triple("aarch64-linux-gnu"), llvm::Triple("arm64-apple-darwin")));
+  EXPECT_TRUE(
+      sun::moon_bundling::sameOsFamily(llvm::Triple("arm64-apple-darwin"),
+                                       llvm::Triple("arm64-apple-macosx14.0")));
   // Environment stays uncompared: musl and glibc layouts are compatible.
-  EXPECT_TRUE(sun::sameOsFamily(llvm::Triple("aarch64-linux-musl"),
-                                llvm::Triple("aarch64-linux-gnu")));
+  EXPECT_TRUE(sun::moon_bundling::sameOsFamily(
+      llvm::Triple("aarch64-linux-musl"), llvm::Triple("aarch64-linux-gnu")));
 }
 
 // ============================================================================
@@ -435,7 +459,7 @@ TEST(Ffi_Abi_CrossTargetDarwin, emits_an_arm64_macho_object) {
 
   std::string path = ::testing::TempDir() + "sun_darwin_target_test.o";
   std::string errorMsg;
-  ASSERT_TRUE(sun::emitObjectFile(driver->getModule(), path, errorMsg))
+  ASSERT_TRUE(sun::driver::emitObjectFile(driver->getModule(), path, errorMsg))
       << errorMsg;
 
   std::ifstream obj(path, std::ios::binary);
@@ -491,7 +515,7 @@ TEST(Ffi_Abi_CrossTargetDarwin, stdlib_program_compiles_to_a_macho_object) {
 
   std::string path = ::testing::TempDir() + "sun_darwin_stdlib_test.o";
   std::string errorMsg;
-  ASSERT_TRUE(sun::emitObjectFile(driver->getModule(), path, errorMsg))
+  ASSERT_TRUE(sun::driver::emitObjectFile(driver->getModule(), path, errorMsg))
       << errorMsg;
 
   std::ifstream obj(path, std::ios::binary);
@@ -509,23 +533,23 @@ TEST(Ffi_Abi_CrossTargetDarwin, linking_from_linux_names_the_missing_sdk) {
     GTEST_SKIP() << "host links Mach-O natively";
   }
 
-  std::string linker = sun::linkerCommandFor("arm64-apple-darwin");
+  std::string linker = sun::driver::linkerCommandFor("arm64-apple-darwin");
   EXPECT_TRUE(linker.empty());
 
   std::string errorMsg;
-  sun::LinkOptions linkOpts;
+  sun::driver::LinkOptions linkOpts;
   linkOpts.targetTriple = "arm64-apple-darwin";
-  EXPECT_FALSE(sun::linkExecutable("in.o", "out", errorMsg, linkOpts));
+  EXPECT_FALSE(sun::driver::linkExecutable("in.o", "out", errorMsg, linkOpts));
   EXPECT_NE(errorMsg.find("Mac"), std::string::npos) << errorMsg;
 }
 
 TEST(Ffi_Abi_CrossTargetDarwin, static_linking_is_rejected_for_darwin) {
   std::string errorMsg;
-  sun::LinkOptions linkOpts;
+  sun::driver::LinkOptions linkOpts;
   linkOpts.targetTriple = "arm64-apple-darwin";
   linkOpts.staticLink = true;
   linkOpts.sysroot = "/nonexistent-sdk";
-  EXPECT_FALSE(sun::linkExecutable("in.o", "out", errorMsg, linkOpts));
+  EXPECT_FALSE(sun::driver::linkExecutable("in.o", "out", errorMsg, linkOpts));
 }
 
 TEST(Ffi_Abi_CrossTargetDarwin, enum_representation_controls_extensions) {

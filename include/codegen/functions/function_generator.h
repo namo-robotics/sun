@@ -1,5 +1,18 @@
 #pragma once
 
+/** Translates analyzed Sun programs into LLVM instructions. */
+namespace sun::codegen {
+class CodegenVisitor;
+}
+/** Provides the generator for class storage and method operations. */
+namespace sun::codegen::classes {
+class ClassGenerator;
+}
+/** Provides the scope manager responsible for variable storage and cleanup. */
+namespace sun::codegen::scopes {
+class ScopeManager;
+}
+
 // function_generator.h — Functions, lambdas, closures and returns
 //
 // Named functions are thin pointers. Lambdas and bound methods use a fat
@@ -25,10 +38,14 @@
 #include "codegen/abi/extern_c.h"
 #include "codegen/codegen_state.h"
 
-class CodegenVisitor;
-class ClassGenerator;
+/** Provides the registry of generated functions and their metadata. */
+namespace sun::codegen::functions {
+using sun::ast::BlockExprAST;
+using sun::ast::ExprAST;
+using sun::ast::FunctionAST;
+using sun::ast::PrototypeAST;
+
 class FunctionRegistry;
-class ScopeManager;
 
 /**
  * The closure environment in scope while a function body is emitted.
@@ -37,9 +54,7 @@ struct ClosureContext {
   llvm::StructType* fatType;  // Only used for lambdas
   llvm::StructType* envType;
   llvm::Value* fatPtr;
-  std::vector<Capture> captures;
-  std::map<std::string, unsigned> captureIndex;
-  std::map<std::string, llvm::Type*> captureTypes;
+  std::vector<sun::ast::Capture> captures;
 };
 
 /**
@@ -59,7 +74,9 @@ struct FuncDeclResult {
  */
 class FunctionGenerator {
  public:
-  FunctionGenerator(CodegenState& state, CodegenVisitor& gen)
+  /** Binds function generation to the shared expression visitor and state. */
+  FunctionGenerator(sun::codegen::CodegenState& state,
+                    sun::codegen::CodegenVisitor& gen)
       : state_(state),
         gen_(gen),
         ctx(state.ctx),
@@ -70,36 +87,50 @@ class FunctionGenerator {
         currentFunctionReturnsRef(state.frame.returnsRef),
         currentFunctionValueType(state.frame.valueType) {}
 
+  /** Binds function generation to the shared expression visitor and state. */
   FunctionGenerator(const FunctionGenerator&) = delete;
+  /** Disallows assignment so ownership and object identity cannot be duplicated. */
   FunctionGenerator& operator=(const FunctionGenerator&) = delete;
 
   // ---------------------------------------------------------------
   // Definitions
   // ---------------------------------------------------------------
 
+  /** Emits LLVM code for a function body. */
   llvm::Value* codegenFunc(FunctionAST& func);
+  /** Emits LLVM code for a specialized generic function. */
   llvm::Value* codegenGenericFunc(FunctionAST& func);
+  /** Emits LLVM code for an external function declaration. */
   llvm::Value* codegenExternFunc(FunctionAST& func);
-  llvm::Value* codegenLambda(LambdaAST& lambda);
+  /** Emits LLVM code for a lambda and its captured environment. */
+  llvm::Value* codegenLambda(sun::ast::LambdaAST& lambda);
 
-  // Declare a prototype's LLVM signature, body to follow
+  /**
+   * Declare a prototype's LLVM signature, body to follow
+   */
   std::pair<llvm::Function*, llvm::StructType*> codegen(
       const PrototypeAST& proto, llvm::StructType* envType, bool isLambda,
       llvm::Type* returnType = nullptr);
+  /** Declares an LLVM function from its analyzed Sun signature. */
   FuncDeclResult declareFuncSignature(PrototypeAST& proto);
 
-  // Declare one function signature, body to follow
+  /**
+   * Declare one function signature, body to follow
+   */
   void forwardDeclareFunction(const PrototypeAST& proto);
 
-  // Declare every function and method in a block's module subtree before any
-  // body is emitted, so calls may name things defined later in merged input.
+  /**
+   * Declare every function and method in a block's module subtree before any
+   * body is emitted, so calls may name things defined later in merged input.
+   */
   void declareBlockSignatures(const BlockExprAST& block);
 
   // ---------------------------------------------------------------
   // Returns
   // ---------------------------------------------------------------
 
-  llvm::Value* codegen(const ReturnExprAST& expr);
+  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  llvm::Value* codegen(const sun::ast::ReturnExprAST& expr);
 
   // ---------------------------------------------------------------
   // Captures
@@ -110,26 +141,27 @@ class FunctionGenerator {
    * by-value capture, the stored pointer for a `[ref x]` capture. Returns
    * nullptr when the name is not a capture.
    */
-  llvm::Value* createCaptureSlotAddress(const std::string& name,
-                                        llvm::Type** valueTypeOut = nullptr,
-                                        bool* byRefOut = nullptr,
-                                        bool* ownedOut = nullptr);
+  llvm::Value* createCaptureSlotAddress(
+      sun::semantic_analysis::DeclarationId id,
+      llvm::Type** valueTypeOut = nullptr, bool* byRefOut = nullptr,
+      bool* ownedOut = nullptr);
 
   /**
    * Loads a variable from the closure context if it is one.
    */
-  llvm::LoadInst* createLoadVarFromClosure(const std::string& name);
+  llvm::LoadInst* createLoadVarFromClosure(
+      sun::semantic_analysis::DeclarationId id);
 
  private:
-  CodegenState& state_;
-  CodegenVisitor& gen_;
+  sun::codegen::CodegenState& state_;
+  sun::codegen::CodegenVisitor& gen_;
 
   // Aliases into the shared state, so the emission code reads the same way
   // the rest of codegen does
-  CodegenContext& ctx;
+  sun::codegen::CodegenContext& ctx;
   llvm::Module* module;
-  LLVMTypeResolver& typeResolver;
-  sun::DebugInfoBuilder& debugInfo;
+  sun::codegen::LLVMTypeResolver& typeResolver;
+  sun::codegen::DebugInfoBuilder& debugInfo;
   bool& currentFunctionCanError;
   bool& currentFunctionReturnsRef;
   llvm::Type*& currentFunctionValueType;
@@ -140,49 +172,70 @@ class FunctionGenerator {
   // Counter for generating unique names for anonymous lambdas
   unsigned lambdaCounter = 0;
 
-  // Environment slot initializer at closure creation: the value for a
-  // by-value capture, the referent's address for a `[ref x]` capture
-  llvm::Value* computeCaptureInitValue(const Capture& cap);
+  /**
+   * Environment slot initializer at closure creation: the value for a
+   * by-value capture, the referent's address for a `[ref x]` capture
+   */
+  llvm::Value* computeCaptureInitValue(const sun::ast::Capture& cap);
 
+  /** Builds the LLVM structure holding a function's captured environment. */
   llvm::StructType* createEnvTypeForFunc(const PrototypeAST& proto);
+  /** Builds the LLVM representation combining a function and its environment. */
   llvm::StructType* createFatTypeForFunc(llvm::Function* func,
                                          llvm::StructType* envType,
                                          const PrototypeAST& proto);
+  /** Creates a callable value containing its function pointer and captures. */
   llvm::Value* createFatClosure(llvm::Function* func, llvm::StructType* fatType,
                                 llvm::StructType* envType,
                                 const PrototypeAST& proto);
 
-  // Fill a closure environment's capture slots. Owned captures of compound
-  // values move in and the slot is registered for drop.
+  /**
+   * Fill a closure environment's capture slots. Owned captures of compound
+   * values move in and the slot is registered for drop.
+   */
   bool fillCaptureSlots(llvm::StructType* envType, llvm::Value* envAlloca,
                         const PrototypeAST& proto,
                         llvm::IRBuilder<>& entryBuilder);
 
-  // What function codegen borrows from the rest of codegen.
-  // The BlockExprAST overload matters: without it a body would bind to
-  // codegen(const ExprAST&), which attaches an expression debug location the
-  // block path does not want.
+  /**
+   * What function codegen borrows from the rest of codegen.
+   * The BlockExprAST overload matters: without it a body would bind to
+   * codegen(const ExprAST&), which attaches an expression debug location the
+   * block path does not want.
+   */
   llvm::Value* codegen(const ExprAST& expr);
+  /** Emits LLVM instructions for this syntax node and returns its generated value. */
   llvm::Value* codegen(const BlockExprAST& block);
 
-  // A node kind with its own overload must not silently bind to the
-  // ExprAST forwarder above. Make it a compile error instead.
+  /**
+   * A node kind with its own overload must not silently bind to the
+   * ExprAST forwarder above. Make it a compile error instead.
+   */
   template <typename T>
     requires(!std::is_same_v<T, ExprAST> && !std::is_same_v<T, BlockExprAST> &&
-             !std::is_same_v<T, ReturnExprAST> && std::is_base_of_v<ExprAST, T>)
+             !std::is_same_v<T, sun::ast::ReturnExprAST> &&
+             std::is_base_of_v<ExprAST, T>)
   llvm::Value* codegen(const T&) = delete;
 
-  ScopeManager& scopes();
-  sun::cabi::ExternCEmitter& externC();
-  llvm::LoadInst* createLoadForLocalVar(const std::string& name);
-  llvm::LoadInst* createLoadForGlobalVar(const std::string& varName);
-  llvm::Value* applyMoveSemantics(llvm::Value* argVal, sun::TypePtr argSunType);
+  /** Provides the scope manager responsible for variable storage and cleanup. */
+  sun::codegen::scopes::ScopeManager& scopes();
+  /** Provides the emitter for calls using the C calling convention. */
+  sun::codegen::abi::ExternCEmitter& externC();
+  /** Transfers an argument value according to its ownership requirements. */
+  llvm::Value* applyMoveSemantics(llvm::Value* argVal,
+                                  sun::semantic_analysis::TypePtr argSunType);
+  /** Provides the registry of generated functions and their metadata. */
   FunctionRegistry& functions();
-  ClassGenerator& classes();
+  /** Provides the generator for class storage and method operations. */
+  sun::codegen::classes::ClassGenerator& classes();
+  /** Allocates local storage in the function entry block. */
   llvm::AllocaInst* createEntryBlockAlloca(llvm::Function* func,
                                            llvm::StringRef varName,
                                            llvm::Type* type);
+  /** Associates generated parameter storage with its source declaration. */
   void debugDeclareParam(llvm::AllocaInst* alloca, const std::string& name,
                          const PrototypeAST& proto, unsigned userArgIdx,
                          unsigned argNoBase = 1);
 };
+
+}  // namespace sun::codegen::functions

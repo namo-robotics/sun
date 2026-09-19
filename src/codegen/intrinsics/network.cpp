@@ -15,103 +15,135 @@
 #include "codegen/intrinsics/libc.h"
 #include "support/error.h"
 
+using sun::ast::CallExprAST;
+using sun::support::logAndThrowError;
+
 using namespace llvm;
+
+/** Provides the generator for built-in operations. */
+namespace sun::codegen::intrinsics {
 
 // ===================================================================
 // Socket helper functions (thin libc forwarders)
 // ===================================================================
 
-// __sun_socket: socket(domain, type, protocol) -> fd
+/**
+ * __sun_socket: socket(domain, type, protocol) -> fd
+ */
 static Function* getOrCreateSocketHelper(llvm::Module* module,
                                          LLVMContext& llvmCtx) {
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
-  return sun::libc::forwarder(module, "__sun_socket", sun::libc::socket(module),
-                              {i32Ty, i32Ty, i32Ty}, i32Ty);
+  auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
+  return sun::codegen::intrinsics::forwarder(
+      module, "__sun_socket", sun::codegen::intrinsics::socket(module),
+      {i32Ty, i32Ty, i32Ty}, i32Ty);
 }
 
-// __sun_bind: bind(fd, addr, addrlen) -> result
+/**
+ * __sun_bind: bind(fd, addr, addrlen) -> result
+ */
 static Function* getOrCreateBindHelper(llvm::Module* module,
                                        LLVMContext& llvmCtx) {
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
+  auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  return sun::libc::forwarder(module, "__sun_bind", sun::libc::bind(module),
-                              {i32Ty, ptrTy, i32Ty}, i32Ty);
+  return sun::codegen::intrinsics::forwarder(
+      module, "__sun_bind", sun::codegen::intrinsics::bind(module),
+      {i32Ty, ptrTy, i32Ty}, i32Ty);
 }
 
-// __sun_listen: listen(fd, backlog) -> result
+/**
+ * __sun_listen: listen(fd, backlog) -> result
+ */
 static Function* getOrCreateListenHelper(llvm::Module* module,
                                          LLVMContext& llvmCtx) {
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
-  return sun::libc::forwarder(module, "__sun_listen", sun::libc::listen(module),
-                              {i32Ty, i32Ty}, i32Ty);
+  auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
+  return sun::codegen::intrinsics::forwarder(
+      module, "__sun_listen", sun::codegen::intrinsics::listen(module),
+      {i32Ty, i32Ty}, i32Ty);
 }
 
-// __sun_accept: accept(fd, addr, addrlen) -> client_fd
+/**
+ * __sun_accept: accept(fd, addr, addrlen) -> client_fd
+ */
 static Function* getOrCreateAcceptHelper(llvm::Module* module,
                                          LLVMContext& llvmCtx) {
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
+  auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  return sun::libc::forwarder(module, "__sun_accept", sun::libc::accept(module),
-                              {i32Ty, ptrTy, ptrTy}, i32Ty);
+  return sun::codegen::intrinsics::forwarder(
+      module, "__sun_accept", sun::codegen::intrinsics::accept(module),
+      {i32Ty, ptrTy, ptrTy}, i32Ty);
 }
 
-// __sun_connect: connect(fd, addr, addrlen) -> result
+/**
+ * __sun_connect: connect(fd, addr, addrlen) -> result
+ */
 static Function* getOrCreateConnectHelper(llvm::Module* module,
                                           LLVMContext& llvmCtx) {
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
+  auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  return sun::libc::forwarder(module, "__sun_connect",
-                              sun::libc::connect(module), {i32Ty, ptrTy, i32Ty},
-                              i32Ty);
+  return sun::codegen::intrinsics::forwarder(
+      module, "__sun_connect", sun::codegen::intrinsics::connect(module),
+      {i32Ty, ptrTy, i32Ty}, i32Ty);
 }
 
-// __sun_send: send(fd, buf, len, flags) -> bytes_sent
+/**
+ * __sun_send: send(fd, buf, len, flags) -> bytes_sent
+ */
 static Function* getOrCreateSendHelper(llvm::Module* module,
                                        LLVMContext& llvmCtx) {
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
+  auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
+  auto* i64Ty = llvm::Type::getInt64Ty(llvmCtx);
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  return sun::libc::forwarder(module, "__sun_send", sun::libc::send(module),
-                              {i32Ty, ptrTy, i64Ty, i32Ty}, i64Ty);
+  return sun::codegen::intrinsics::forwarder(
+      module, "__sun_send", sun::codegen::intrinsics::send(module),
+      {i32Ty, ptrTy, i64Ty, i32Ty}, i64Ty);
 }
 
-// __sun_recv: recv(fd, buf, len, flags) -> bytes_received
+/**
+ * __sun_recv: recv(fd, buf, len, flags) -> bytes_received
+ */
 static Function* getOrCreateRecvHelper(llvm::Module* module,
                                        LLVMContext& llvmCtx) {
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
+  auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
+  auto* i64Ty = llvm::Type::getInt64Ty(llvmCtx);
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  return sun::libc::forwarder(module, "__sun_recv", sun::libc::recv(module),
-                              {i32Ty, ptrTy, i64Ty, i32Ty}, i64Ty);
+  return sun::codegen::intrinsics::forwarder(
+      module, "__sun_recv", sun::codegen::intrinsics::recv(module),
+      {i32Ty, ptrTy, i64Ty, i32Ty}, i64Ty);
 }
 
-// __sun_shutdown: shutdown(fd, how) -> result
+/**
+ * __sun_shutdown: shutdown(fd, how) -> result
+ */
 static Function* getOrCreateShutdownHelper(llvm::Module* module,
                                            LLVMContext& llvmCtx) {
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
-  return sun::libc::forwarder(module, "__sun_shutdown",
-                              sun::libc::shutdown(module), {i32Ty, i32Ty},
-                              i32Ty);
+  auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
+  return sun::codegen::intrinsics::forwarder(
+      module, "__sun_shutdown", sun::codegen::intrinsics::shutdown(module),
+      {i32Ty, i32Ty}, i32Ty);
 }
 
-// __sun_setsockopt: setsockopt(fd, level, optname, optval, optlen) -> result
+/**
+ * __sun_setsockopt: setsockopt(fd, level, optname, optval, optlen) -> result
+ */
 static Function* getOrCreateSetSockOptHelper(llvm::Module* module,
                                              LLVMContext& llvmCtx) {
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
+  auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  return sun::libc::forwarder(module, "__sun_setsockopt",
-                              sun::libc::setsockopt(module),
-                              {i32Ty, i32Ty, i32Ty, ptrTy, i32Ty}, i32Ty);
+  return sun::codegen::intrinsics::forwarder(
+      module, "__sun_setsockopt", sun::codegen::intrinsics::setsockopt(module),
+      {i32Ty, i32Ty, i32Ty, ptrTy, i32Ty}, i32Ty);
 }
 
-// __sun_getsockopt: getsockopt(fd, level, optname, optval, optlen) -> result
+/**
+ * __sun_getsockopt: getsockopt(fd, level, optname, optval, optlen) -> result
+ */
 static Function* getOrCreateGetSockOptHelper(llvm::Module* module,
                                              LLVMContext& llvmCtx) {
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
+  auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  return sun::libc::forwarder(module, "__sun_getsockopt",
-                              sun::libc::getsockopt(module),
-                              {i32Ty, i32Ty, i32Ty, ptrTy, ptrTy}, i32Ty);
+  return sun::codegen::intrinsics::forwarder(
+      module, "__sun_getsockopt", sun::codegen::intrinsics::getsockopt(module),
+      {i32Ty, i32Ty, i32Ty, ptrTy, ptrTy}, i32Ty);
 }
 
 // -------------------------------------------------------------------
@@ -136,14 +168,16 @@ Value* IntrinsicsGenerator::codegenSocket(const CallExprAST& expr) {
   if (!protocol) return nullptr;
 
   if (!domain->getType()->isIntegerTy(32)) {
-    domain = ctx.builder->CreateSExtOrTrunc(domain, Type::getInt32Ty(llvmCtx));
+    domain =
+        ctx.builder->CreateSExtOrTrunc(domain, llvm::Type::getInt32Ty(llvmCtx));
   }
   if (!type->getType()->isIntegerTy(32)) {
-    type = ctx.builder->CreateSExtOrTrunc(type, Type::getInt32Ty(llvmCtx));
+    type =
+        ctx.builder->CreateSExtOrTrunc(type, llvm::Type::getInt32Ty(llvmCtx));
   }
   if (!protocol->getType()->isIntegerTy(32)) {
-    protocol =
-        ctx.builder->CreateSExtOrTrunc(protocol, Type::getInt32Ty(llvmCtx));
+    protocol = ctx.builder->CreateSExtOrTrunc(protocol,
+                                              llvm::Type::getInt32Ty(llvmCtx));
   }
 
   Function* helper = getOrCreateSocketHelper(module, llvmCtx);
@@ -168,11 +202,11 @@ Value* IntrinsicsGenerator::codegenBind(const CallExprAST& expr) {
   if (!addrlen) return nullptr;
 
   if (!fd->getType()->isIntegerTy(32)) {
-    fd = ctx.builder->CreateSExtOrTrunc(fd, Type::getInt32Ty(llvmCtx));
+    fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
   }
   if (!addrlen->getType()->isIntegerTy(32)) {
-    addrlen =
-        ctx.builder->CreateSExtOrTrunc(addrlen, Type::getInt32Ty(llvmCtx));
+    addrlen = ctx.builder->CreateSExtOrTrunc(addrlen,
+                                             llvm::Type::getInt32Ty(llvmCtx));
   }
 
   Function* helper = getOrCreateBindHelper(module, llvmCtx);
@@ -193,11 +227,11 @@ Value* IntrinsicsGenerator::codegenListen(const CallExprAST& expr) {
   if (!backlog) return nullptr;
 
   if (!fd->getType()->isIntegerTy(32)) {
-    fd = ctx.builder->CreateSExtOrTrunc(fd, Type::getInt32Ty(llvmCtx));
+    fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
   }
   if (!backlog->getType()->isIntegerTy(32)) {
-    backlog =
-        ctx.builder->CreateSExtOrTrunc(backlog, Type::getInt32Ty(llvmCtx));
+    backlog = ctx.builder->CreateSExtOrTrunc(backlog,
+                                             llvm::Type::getInt32Ty(llvmCtx));
   }
 
   Function* helper = getOrCreateListenHelper(module, llvmCtx);
@@ -222,7 +256,7 @@ Value* IntrinsicsGenerator::codegenAccept(const CallExprAST& expr) {
   if (!addrlen) return nullptr;
 
   if (!fd->getType()->isIntegerTy(32)) {
-    fd = ctx.builder->CreateSExtOrTrunc(fd, Type::getInt32Ty(llvmCtx));
+    fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
   }
 
   Function* helper = getOrCreateAcceptHelper(module, llvmCtx);
@@ -247,11 +281,11 @@ Value* IntrinsicsGenerator::codegenConnect(const CallExprAST& expr) {
   if (!addrlen) return nullptr;
 
   if (!fd->getType()->isIntegerTy(32)) {
-    fd = ctx.builder->CreateSExtOrTrunc(fd, Type::getInt32Ty(llvmCtx));
+    fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
   }
   if (!addrlen->getType()->isIntegerTy(32)) {
-    addrlen =
-        ctx.builder->CreateSExtOrTrunc(addrlen, Type::getInt32Ty(llvmCtx));
+    addrlen = ctx.builder->CreateSExtOrTrunc(addrlen,
+                                             llvm::Type::getInt32Ty(llvmCtx));
   }
 
   Function* helper = getOrCreateConnectHelper(module, llvmCtx);
@@ -278,13 +312,14 @@ Value* IntrinsicsGenerator::codegenSend(const CallExprAST& expr) {
   if (!flags) return nullptr;
 
   if (!fd->getType()->isIntegerTy(32)) {
-    fd = ctx.builder->CreateSExtOrTrunc(fd, Type::getInt32Ty(llvmCtx));
+    fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
   }
   if (!len->getType()->isIntegerTy(64)) {
-    len = ctx.builder->CreateSExtOrTrunc(len, Type::getInt64Ty(llvmCtx));
+    len = ctx.builder->CreateSExtOrTrunc(len, llvm::Type::getInt64Ty(llvmCtx));
   }
   if (!flags->getType()->isIntegerTy(32)) {
-    flags = ctx.builder->CreateSExtOrTrunc(flags, Type::getInt32Ty(llvmCtx));
+    flags =
+        ctx.builder->CreateSExtOrTrunc(flags, llvm::Type::getInt32Ty(llvmCtx));
   }
 
   Function* helper = getOrCreateSendHelper(module, llvmCtx);
@@ -311,13 +346,14 @@ Value* IntrinsicsGenerator::codegenRecv(const CallExprAST& expr) {
   if (!flags) return nullptr;
 
   if (!fd->getType()->isIntegerTy(32)) {
-    fd = ctx.builder->CreateSExtOrTrunc(fd, Type::getInt32Ty(llvmCtx));
+    fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
   }
   if (!len->getType()->isIntegerTy(64)) {
-    len = ctx.builder->CreateSExtOrTrunc(len, Type::getInt64Ty(llvmCtx));
+    len = ctx.builder->CreateSExtOrTrunc(len, llvm::Type::getInt64Ty(llvmCtx));
   }
   if (!flags->getType()->isIntegerTy(32)) {
-    flags = ctx.builder->CreateSExtOrTrunc(flags, Type::getInt32Ty(llvmCtx));
+    flags =
+        ctx.builder->CreateSExtOrTrunc(flags, llvm::Type::getInt32Ty(llvmCtx));
   }
 
   Function* helper = getOrCreateRecvHelper(module, llvmCtx);
@@ -338,10 +374,10 @@ Value* IntrinsicsGenerator::codegenShutdown(const CallExprAST& expr) {
   if (!how) return nullptr;
 
   if (!fd->getType()->isIntegerTy(32)) {
-    fd = ctx.builder->CreateSExtOrTrunc(fd, Type::getInt32Ty(llvmCtx));
+    fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
   }
   if (!how->getType()->isIntegerTy(32)) {
-    how = ctx.builder->CreateSExtOrTrunc(how, Type::getInt32Ty(llvmCtx));
+    how = ctx.builder->CreateSExtOrTrunc(how, llvm::Type::getInt32Ty(llvmCtx));
   }
 
   Function* helper = getOrCreateShutdownHelper(module, llvmCtx);
@@ -371,17 +407,19 @@ Value* IntrinsicsGenerator::codegenSetSockOpt(const CallExprAST& expr) {
   if (!optlen) return nullptr;
 
   if (!fd->getType()->isIntegerTy(32)) {
-    fd = ctx.builder->CreateSExtOrTrunc(fd, Type::getInt32Ty(llvmCtx));
+    fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
   }
   if (!level->getType()->isIntegerTy(32)) {
-    level = ctx.builder->CreateSExtOrTrunc(level, Type::getInt32Ty(llvmCtx));
+    level =
+        ctx.builder->CreateSExtOrTrunc(level, llvm::Type::getInt32Ty(llvmCtx));
   }
   if (!optname->getType()->isIntegerTy(32)) {
-    optname =
-        ctx.builder->CreateSExtOrTrunc(optname, Type::getInt32Ty(llvmCtx));
+    optname = ctx.builder->CreateSExtOrTrunc(optname,
+                                             llvm::Type::getInt32Ty(llvmCtx));
   }
   if (!optlen->getType()->isIntegerTy(32)) {
-    optlen = ctx.builder->CreateSExtOrTrunc(optlen, Type::getInt32Ty(llvmCtx));
+    optlen =
+        ctx.builder->CreateSExtOrTrunc(optlen, llvm::Type::getInt32Ty(llvmCtx));
   }
 
   Function* helper = getOrCreateSetSockOptHelper(module, llvmCtx);
@@ -412,14 +450,15 @@ Value* IntrinsicsGenerator::codegenGetSockOpt(const CallExprAST& expr) {
   if (!optlen) return nullptr;
 
   if (!fd->getType()->isIntegerTy(32)) {
-    fd = ctx.builder->CreateSExtOrTrunc(fd, Type::getInt32Ty(llvmCtx));
+    fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
   }
   if (!level->getType()->isIntegerTy(32)) {
-    level = ctx.builder->CreateSExtOrTrunc(level, Type::getInt32Ty(llvmCtx));
+    level =
+        ctx.builder->CreateSExtOrTrunc(level, llvm::Type::getInt32Ty(llvmCtx));
   }
   if (!optname->getType()->isIntegerTy(32)) {
-    optname =
-        ctx.builder->CreateSExtOrTrunc(optname, Type::getInt32Ty(llvmCtx));
+    optname = ctx.builder->CreateSExtOrTrunc(optname,
+                                             llvm::Type::getInt32Ty(llvmCtx));
   }
 
   Function* helper = getOrCreateGetSockOptHelper(module, llvmCtx);
@@ -431,18 +470,20 @@ Value* IntrinsicsGenerator::codegenGetSockOpt(const CallExprAST& expr) {
 // High-level IPv4 socket helpers (build sockaddr_in internally)
 // ===================================================================
 
-// Fill a 16-byte stack sockaddr_in: family/port/addr, rest zeroed. Port and
-// addr sit at offsets 2 and 4 everywhere; the first two bytes differ per OS.
-// Linux has a 16-bit sa_family_t at offset 0; Darwin splits them into a
-// one-byte sin_len (the struct size) followed by a one-byte sin_family — a
-// little-endian 16-bit store of AF_INET there would set sin_len=2 and
-// sin_family=0 (AF_UNSPEC), so the bytes are stored individually. Port
-// arrives in host order; sin_port is big-endian, hence the bswap16.
+/**
+ * Fill a 16-byte stack sockaddr_in: family/port/addr, rest zeroed. Port and
+ * addr sit at offsets 2 and 4 everywhere; the first two bytes differ per OS.
+ * Linux has a 16-bit sa_family_t at offset 0; Darwin splits them into a
+ * one-byte sin_len (the struct size) followed by a one-byte sin_family — a
+ * little-endian 16-bit store of AF_INET there would set sin_len=2 and
+ * sin_family=0 (AF_UNSPEC), so the bytes are stored individually. Port
+ * arrives in host order; sin_port is big-endian, hence the bswap16.
+ */
 static Value* buildSockaddrIn(IRBuilder<>& builder, LLVMContext& llvmCtx,
                               Value* ip, Value* port, bool isDarwin) {
-  auto* i8Ty = Type::getInt8Ty(llvmCtx);
-  auto* i16Ty = Type::getInt16Ty(llvmCtx);
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
+  auto* i8Ty = llvm::Type::getInt8Ty(llvmCtx);
+  auto* i16Ty = llvm::Type::getInt16Ty(llvmCtx);
+  auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
 
   Value* sockaddr =
       builder.CreateAlloca(i8Ty, builder.getInt32(16), "sockaddr");
@@ -472,8 +513,10 @@ static Value* buildSockaddrIn(IRBuilder<>& builder, LLVMContext& llvmCtx,
   return sockaddr;
 }
 
-// Shared body for __sun_bind_ipv4 / __sun_connect_ipv4: build the sockaddr
-// and forward to the given libc function.
+/**
+ * Shared body for __sun_bind_ipv4 / __sun_connect_ipv4: build the sockaddr
+ * and forward to the given libc function.
+ */
 static Function* getOrCreateSockaddrCallHelper(llvm::Module* module,
                                                LLVMContext& llvmCtx,
                                                const char* wrapperName,
@@ -481,8 +524,9 @@ static Function* getOrCreateSockaddrCallHelper(llvm::Module* module,
   Function* func = module->getFunction(wrapperName);
   if (func) return func;
 
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
-  FunctionType* funcTy = FunctionType::get(i32Ty, {i32Ty, i32Ty, i32Ty}, false);
+  auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
+  llvm::FunctionType* funcTy =
+      llvm::FunctionType::get(i32Ty, {i32Ty, i32Ty, i32Ty}, false);
   func =
       Function::Create(funcTy, Function::InternalLinkage, wrapperName, module);
 
@@ -503,29 +547,36 @@ static Function* getOrCreateSockaddrCallHelper(llvm::Module* module,
   return func;
 }
 
-// __sun_bind_ipv4(fd: i32, ip: i32, port: i32) -> i32
+/**
+ * __sun_bind_ipv4(fd: i32, ip: i32, port: i32) -> i32
+ */
 static Function* getOrCreateBindIPv4Helper(llvm::Module* module,
                                            LLVMContext& llvmCtx) {
   return getOrCreateSockaddrCallHelper(module, llvmCtx, "__sun_bind_ipv4",
-                                       sun::libc::bind(module));
+                                       sun::codegen::intrinsics::bind(module));
 }
 
-// __sun_connect_ipv4(fd: i32, ip: i32, port: i32) -> i32
+/**
+ * __sun_connect_ipv4(fd: i32, ip: i32, port: i32) -> i32
+ */
 static Function* getOrCreateConnectIPv4Helper(llvm::Module* module,
                                               LLVMContext& llvmCtx) {
-  return getOrCreateSockaddrCallHelper(module, llvmCtx, "__sun_connect_ipv4",
-                                       sun::libc::connect(module));
+  return getOrCreateSockaddrCallHelper(
+      module, llvmCtx, "__sun_connect_ipv4",
+      sun::codegen::intrinsics::connect(module));
 }
 
-// __sun_accept_fd(fd: i32) -> i32 — accept with NULL addr/addrlen
+/**
+ * __sun_accept_fd(fd: i32) -> i32 — accept with NULL addr/addrlen
+ */
 static Function* getOrCreateAcceptFdHelper(llvm::Module* module,
                                            LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_accept_fd");
   if (func) return func;
 
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
+  auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  FunctionType* funcTy = FunctionType::get(i32Ty, {i32Ty}, false);
+  llvm::FunctionType* funcTy = llvm::FunctionType::get(i32Ty, {i32Ty}, false);
   func = Function::Create(funcTy, Function::InternalLinkage, "__sun_accept_fd",
                           module);
 
@@ -534,7 +585,7 @@ static Function* getOrCreateAcceptFdHelper(llvm::Module* module,
 
   Value* fd = func->arg_begin();
   Value* nullPtr = ConstantPointerNull::get(cast<PointerType>(ptrTy));
-  Value* result = builder.CreateCall(sun::libc::accept(module),
+  Value* result = builder.CreateCall(sun::codegen::intrinsics::accept(module),
                                      {fd, nullPtr, nullPtr}, "client_fd");
   builder.CreateRet(result);
   return func;
@@ -557,13 +608,14 @@ Value* IntrinsicsGenerator::codegenBindIPv4(const CallExprAST& expr) {
   if (!port) return nullptr;
 
   if (!fd->getType()->isIntegerTy(32)) {
-    fd = ctx.builder->CreateSExtOrTrunc(fd, Type::getInt32Ty(llvmCtx));
+    fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
   }
   if (!ip->getType()->isIntegerTy(32)) {
-    ip = ctx.builder->CreateSExtOrTrunc(ip, Type::getInt32Ty(llvmCtx));
+    ip = ctx.builder->CreateSExtOrTrunc(ip, llvm::Type::getInt32Ty(llvmCtx));
   }
   if (!port->getType()->isIntegerTy(32)) {
-    port = ctx.builder->CreateSExtOrTrunc(port, Type::getInt32Ty(llvmCtx));
+    port =
+        ctx.builder->CreateSExtOrTrunc(port, llvm::Type::getInt32Ty(llvmCtx));
   }
 
   Function* helper = getOrCreateBindIPv4Helper(module, llvmCtx);
@@ -587,13 +639,14 @@ Value* IntrinsicsGenerator::codegenConnectIPv4(const CallExprAST& expr) {
   if (!port) return nullptr;
 
   if (!fd->getType()->isIntegerTy(32)) {
-    fd = ctx.builder->CreateSExtOrTrunc(fd, Type::getInt32Ty(llvmCtx));
+    fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
   }
   if (!ip->getType()->isIntegerTy(32)) {
-    ip = ctx.builder->CreateSExtOrTrunc(ip, Type::getInt32Ty(llvmCtx));
+    ip = ctx.builder->CreateSExtOrTrunc(ip, llvm::Type::getInt32Ty(llvmCtx));
   }
   if (!port->getType()->isIntegerTy(32)) {
-    port = ctx.builder->CreateSExtOrTrunc(port, Type::getInt32Ty(llvmCtx));
+    port =
+        ctx.builder->CreateSExtOrTrunc(port, llvm::Type::getInt32Ty(llvmCtx));
   }
 
   Function* helper = getOrCreateConnectIPv4Helper(module, llvmCtx);
@@ -612,22 +665,24 @@ Value* IntrinsicsGenerator::codegenAcceptFd(const CallExprAST& expr) {
   if (!fd) return nullptr;
 
   if (!fd->getType()->isIntegerTy(32)) {
-    fd = ctx.builder->CreateSExtOrTrunc(fd, Type::getInt32Ty(llvmCtx));
+    fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
   }
 
   Function* helper = getOrCreateAcceptFdHelper(module, llvmCtx);
   return ctx.builder->CreateCall(helper, {fd}, "accept_fd_result");
 }
 
-// Load sin_addr (offset 4, left in network order) and sin_port (offset 2,
-// swapped to host order and widened to i32) out of a sockaddr_in, storing
-// them through the two out-pointers.
+/**
+ * Load sin_addr (offset 4, left in network order) and sin_port (offset 2,
+ * swapped to host order and widened to i32) out of a sockaddr_in, storing
+ * them through the two out-pointers.
+ */
 static void extractSockaddrInParts(IRBuilder<>& builder, LLVMContext& llvmCtx,
                                    Value* sockaddr, Value* outIp,
                                    Value* outPort) {
-  auto* i8Ty = Type::getInt8Ty(llvmCtx);
-  auto* i16Ty = Type::getInt16Ty(llvmCtx);
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
+  auto* i8Ty = llvm::Type::getInt8Ty(llvmCtx);
+  auto* i16Ty = llvm::Type::getInt16Ty(llvmCtx);
+  auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
 
   Value* addrPtr = builder.CreateGEP(i8Ty, sockaddr, builder.getInt32(4));
   Value* ip = builder.CreateLoad(i32Ty, addrPtr, "peer_ip");
@@ -642,17 +697,19 @@ static void extractSockaddrInParts(IRBuilder<>& builder, LLVMContext& llvmCtx,
   builder.CreateStore(port, outPort);
 }
 
-// __sun_sendto_ipv4(fd, buf, len, flags, ip, port) -> i64 — build the
-// destination sockaddr and forward to sendto.
+/**
+ * __sun_sendto_ipv4(fd, buf, len, flags, ip, port) -> i64 — build the
+ * destination sockaddr and forward to sendto.
+ */
 static Function* getOrCreateSendToIPv4Helper(llvm::Module* module,
                                              LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_sendto_ipv4");
   if (func) return func;
 
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
+  auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
+  auto* i64Ty = llvm::Type::getInt64Ty(llvmCtx);
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  FunctionType* funcTy = FunctionType::get(
+  llvm::FunctionType* funcTy = llvm::FunctionType::get(
       i64Ty, {i32Ty, ptrTy, i64Ty, i32Ty, i32Ty, i32Ty}, false);
   func = Function::Create(funcTy, Function::InternalLinkage,
                           "__sun_sendto_ipv4", module);
@@ -672,24 +729,26 @@ static Function* getOrCreateSendToIPv4Helper(llvm::Module* module,
       buildSockaddrIn(builder, llvmCtx, ip, port,
                       llvm::Triple(module->getTargetTriple()).isOSDarwin());
   Value* result = builder.CreateCall(
-      sun::libc::sendto(module),
+      sun::codegen::intrinsics::sendto(module),
       {fd, buf, len, flags, sockaddr, builder.getInt32(16)}, "result");
   builder.CreateRet(result);
   return func;
 }
 
-// __sun_recvfrom_ipv4(fd, buf, len, flags, out_ip, out_port) -> i64 — receive
-// with a scratch sockaddr and report the sender through the out slots.
+/**
+ * __sun_recvfrom_ipv4(fd, buf, len, flags, out_ip, out_port) -> i64 — receive
+ * with a scratch sockaddr and report the sender through the out slots.
+ */
 static Function* getOrCreateRecvFromIPv4Helper(llvm::Module* module,
                                                LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_recvfrom_ipv4");
   if (func) return func;
 
-  auto* i8Ty = Type::getInt8Ty(llvmCtx);
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
+  auto* i8Ty = llvm::Type::getInt8Ty(llvmCtx);
+  auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
+  auto* i64Ty = llvm::Type::getInt64Ty(llvmCtx);
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  FunctionType* funcTy = FunctionType::get(
+  llvm::FunctionType* funcTy = llvm::FunctionType::get(
       i64Ty, {i32Ty, ptrTy, i64Ty, i32Ty, ptrTy, ptrTy}, false);
   func = Function::Create(funcTy, Function::InternalLinkage,
                           "__sun_recvfrom_ipv4", module);
@@ -712,7 +771,7 @@ static Function* getOrCreateRecvFromIPv4Helper(llvm::Module* module,
   builder.CreateStore(builder.getInt32(16), addrLen);
 
   Value* result =
-      builder.CreateCall(sun::libc::recvfrom(module),
+      builder.CreateCall(sun::codegen::intrinsics::recvfrom(module),
                          {fd, buf, len, flags, sockaddr, addrLen}, "result");
   // On failure the sockaddr is still the zeroed scratch, so the out slots get
   // harmless zeros; a wrapper throws before reading them.
@@ -721,17 +780,20 @@ static Function* getOrCreateRecvFromIPv4Helper(llvm::Module* module,
   return func;
 }
 
-// __sun_getsockname_ipv4(fd, out_ip, out_port) -> i32 — report the socket's
-// own bound address through the out slots.
+/**
+ * __sun_getsockname_ipv4(fd, out_ip, out_port) -> i32 — report the socket's
+ * own bound address through the out slots.
+ */
 static Function* getOrCreateGetSockNameIPv4Helper(llvm::Module* module,
                                                   LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_getsockname_ipv4");
   if (func) return func;
 
-  auto* i8Ty = Type::getInt8Ty(llvmCtx);
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
+  auto* i8Ty = llvm::Type::getInt8Ty(llvmCtx);
+  auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  FunctionType* funcTy = FunctionType::get(i32Ty, {i32Ty, ptrTy, ptrTy}, false);
+  llvm::FunctionType* funcTy =
+      llvm::FunctionType::get(i32Ty, {i32Ty, ptrTy, ptrTy}, false);
   func = Function::Create(funcTy, Function::InternalLinkage,
                           "__sun_getsockname_ipv4", module);
 
@@ -749,8 +811,9 @@ static Function* getOrCreateGetSockNameIPv4Helper(llvm::Module* module,
   Value* addrLen = builder.CreateAlloca(i32Ty, nullptr, "addrlen");
   builder.CreateStore(builder.getInt32(16), addrLen);
 
-  Value* result = builder.CreateCall(sun::libc::getsockname(module),
-                                     {fd, sockaddr, addrLen}, "result");
+  Value* result =
+      builder.CreateCall(sun::codegen::intrinsics::getsockname(module),
+                         {fd, sockaddr, addrLen}, "result");
   extractSockaddrInParts(builder, llvmCtx, sockaddr, outIp, outPort);
   builder.CreateRet(result);
   return func;
@@ -767,8 +830,8 @@ Value* IntrinsicsGenerator::codegenSendToIPv4(const CallExprAST& expr) {
   }
 
   LLVMContext& llvmCtx = ctx.getContext();
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
+  auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
+  auto* i64Ty = llvm::Type::getInt64Ty(llvmCtx);
 
   Value* fd = codegen(*expr.getArgs()[0]);
   if (!fd) return nullptr;
@@ -815,8 +878,8 @@ Value* IntrinsicsGenerator::codegenRecvFromIPv4(const CallExprAST& expr) {
   }
 
   LLVMContext& llvmCtx = ctx.getContext();
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
+  auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
+  auto* i64Ty = llvm::Type::getInt64Ty(llvmCtx);
 
   Value* fd = codegen(*expr.getArgs()[0]);
   if (!fd) return nullptr;
@@ -866,10 +929,12 @@ Value* IntrinsicsGenerator::codegenGetSockNameIPv4(const CallExprAST& expr) {
   if (!outPort) return nullptr;
 
   if (!fd->getType()->isIntegerTy(32)) {
-    fd = ctx.builder->CreateSExtOrTrunc(fd, Type::getInt32Ty(llvmCtx));
+    fd = ctx.builder->CreateSExtOrTrunc(fd, llvm::Type::getInt32Ty(llvmCtx));
   }
 
   Function* helper = getOrCreateGetSockNameIPv4Helper(module, llvmCtx);
   return ctx.builder->CreateCall(helper, {fd, outIp, outPort},
                                  "getsockname_ipv4_result");
 }
+
+}  // namespace sun::codegen::intrinsics

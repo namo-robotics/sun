@@ -1,3 +1,4 @@
+/** Returns the fixture marker used to check module lookup and imported calls. */
 function foo() i32 {
   return 123;
 }

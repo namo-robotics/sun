@@ -1,6 +1,7 @@
 // Sender: sends one datagram to the receiver
 using std;
 
+/** Runs the example that exchanges datagrams over UDP. */
 function main() i32 {
   // Socket operations can fail, so they run inside a `try` block.
   try {

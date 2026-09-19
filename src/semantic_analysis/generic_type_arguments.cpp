@@ -9,18 +9,25 @@
 #include "semantic_analysis/semantic_analyzer.h"
 #include "support/error.h"
 
-namespace sun::generics {
+using sun::support::Position;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
+namespace sun::semantic_analysis {
+
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
+/** Reports whether a name is one of the declared generic parameters. */
 bool isNamed(const std::vector<std::string>& typeParams,
              const std::string& name) {
   return std::find(typeParams.begin(), typeParams.end(), name) !=
          typeParams.end();
 }
 
-// Reading through a borrow gives the referent's type everywhere but under a
-// `ref` parameter, which binds against the referent too.
+/**
+ * Reading through a borrow gives the referent's type everywhere but under a
+ * `ref` parameter, which binds against the referent too.
+ */
 TypePtr referent(const TypePtr& type) {
   if (type && type->isReference()) {
     return static_cast<const ReferenceType*>(type.get())->getReferencedType();
@@ -28,7 +35,9 @@ TypePtr referent(const TypePtr& type) {
   return type;
 }
 
-// The element a pointer or array parameter binds against.
+/**
+ * The element a pointer or array parameter binds against.
+ */
 TypePtr elementOf(const TypePtr& type) {
   if (type->isArray()) {
     return static_cast<const ArrayType*>(type.get())->getElementType();
@@ -42,7 +51,9 @@ TypePtr elementOf(const TypePtr& type) {
   return nullptr;
 }
 
-// The type arguments of a generic class or enum value.
+/**
+ * The type arguments of a generic class or enum value.
+ */
 const std::vector<TypePtr>* typeArgumentsOf(const TypePtr& type) {
   if (type->isClass()) {
     return &static_cast<const ClassType*>(type.get())->getTypeArguments();
@@ -56,8 +67,10 @@ const std::vector<TypePtr>* typeArgumentsOf(const TypePtr& type) {
   return nullptr;
 }
 
-// Not named `bind`: argument-dependent lookup would pick std::bind for a
-// std::string/shared_ptr/map argument list and silently build a binder.
+/**
+ * Not named `bind`: argument-dependent lookup would pick std::bind for a
+ * std::string/shared_ptr/map argument list and silently build a binder.
+ */
 void bindName(const std::string& name, const TypePtr& value,
               std::map<std::string, TypePtr>& bindings) {
   if (!value) return;
@@ -67,7 +80,9 @@ void bindName(const std::string& name, const TypePtr& value,
 
 }  // namespace
 
-void bindTypeParameters(const TypeAnnotation& param, const TypePtr& argType,
+/** Infers generic bindings by matching a parameter type against an argument type. */
+void bindTypeParameters(const sun::ast::TypeAnnotation& param,
+                        const TypePtr& argType,
                         const std::vector<std::string>& typeParams,
                         std::map<std::string, TypePtr>& bindings) {
   if (!argType) return;
@@ -108,6 +123,7 @@ void bindTypeParameters(const TypeAnnotation& param, const TypePtr& argType,
   }
 }
 
+/** Infers generic bindings by matching a parameter type against an argument type. */
 void bindTypeParameters(const TypePtr& param, const TypePtr& argType,
                         const std::vector<std::string>& typeParams,
                         std::map<std::string, TypePtr>& bindings) {
@@ -162,6 +178,7 @@ void bindTypeParameters(const TypePtr& param, const TypePtr& argType,
   }
 }
 
+/** Reports whether a semantic type contains an unbound generic parameter. */
 bool mentionsTypeParameter(const TypePtr& type) {
   if (!type) return false;
   if (type->isTypeParameter()) return true;
@@ -185,14 +202,17 @@ bool mentionsTypeParameter(const TypePtr& type) {
   return false;
 }
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// Turn the bindings into the full type-argument list, in declaration order.
-// A type argument written at the call site is the caller's choice: it
-// replaces whatever the arguments suggested, and an argument that disagrees
-// with it is reported when the specialization is type-checked, not papered
-// over by inference. A binding may still be a type parameter — the call sits
-// in a template body; the caller decides whether it can specialize.
+/**
+ * Turn the bindings into the full type-argument list, in declaration order.
+ * A type argument written at the call site is the caller's choice: it
+ * replaces whatever the arguments suggested, and an argument that disagrees
+ * with it is reported when the specialization is type-checked, not papered
+ * over by inference. A binding may still be a type parameter — the call sits
+ * in a template body; the caller decides whether it can specialize.
+ */
 std::vector<TypePtr> completeTypeArguments(
     const std::vector<std::string>& typeParams,
     std::map<std::string, TypePtr>& bindings,
@@ -207,11 +227,11 @@ std::vector<TypePtr> completeTypeArguments(
   for (const auto& typeParam : typeParams) {
     auto found = bindings.find(typeParam);
     if (found == bindings.end() || !found->second) {
-      logAndThrowError("Cannot infer type argument '" + typeParam + "' of " +
-                           what + " '" + displayName +
-                           "' from the arguments. Give it explicitly, e.g. " +
-                           displayName + "<i32>(...).",
-                       loc);
+      sun::support::logAndThrowError(
+          "Cannot infer type argument '" + typeParam + "' of " + what + " '" +
+              displayName + "' from the arguments. Give it explicitly, e.g. " +
+              displayName + "<i32>(...).",
+          loc);
     }
     typeArgs.push_back(found->second);
   }
@@ -220,22 +240,24 @@ std::vector<TypePtr> completeTypeArguments(
 
 }  // namespace
 
+/** Infers generic function arguments from explicit types and call arguments. */
 std::vector<TypePtr> inferGenericTypeArguments(
-    const GenericFunctionInfo& genericInfo,
+    const sun::semantic_analysis::GenericFunctionInfo& genericInfo,
     const std::vector<TypePtr>& argTypes, const std::string& displayName,
     std::optional<Position> loc, const std::vector<TypePtr>& explicitTypeArgs) {
   std::map<std::string, TypePtr> bindings;
   for (size_t i = 0; i < genericInfo.params.size() && i < argTypes.size();
        ++i) {
     bindTypeParameters(genericInfo.params[i].second, argTypes[i],
-                       typeParameterNames(genericInfo.typeParameters),
+                       sun::ast::typeParameterNames(genericInfo.typeParameters),
                        bindings);
   }
-  return completeTypeArguments(typeParameterNames(genericInfo.typeParameters),
-                               bindings, explicitTypeArgs, "generic function",
-                               displayName, loc);
+  return completeTypeArguments(
+      sun::ast::typeParameterNames(genericInfo.typeParameters), bindings,
+      explicitTypeArgs, "generic function", displayName, loc);
 }
 
+/** Infers generic method arguments from explicit types and call arguments. */
 std::vector<TypePtr> inferMethodTypeArguments(
     const ClassMethod& method, const std::vector<TypePtr>& argTypes,
     const std::string& displayName, std::optional<Position> loc,
@@ -250,4 +272,4 @@ std::vector<TypePtr> inferMethodTypeArguments(
                                loc);
 }
 
-}  // namespace sun::generics
+}  // namespace sun::semantic_analysis

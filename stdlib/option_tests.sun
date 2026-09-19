@@ -4,9 +4,13 @@
 
 using std;
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** Groups tests for the option library behavior. */
   module option_tests {
-    // Classifies an i32 for the Result tests: negative values are an error.
+    /**
+     * Classifies an i32 for the Result tests: negative values are an error.
+     */
     function parse_positive(x: i32) Result<i32, i32> {
       if (x < 0) {
         return Result.Err(-1);
@@ -14,6 +18,7 @@ public module std {
       return Result.Ok(x);
     }
 
+    /** Checks option from stdlib. */
     test_function OptionFromStdlib() {
       var a = Option.Some(40);
       var b: Option<i32> = Option.None;
@@ -28,6 +33,7 @@ public module std {
       std.test.assert_eq(av + bv, 42);
     }
 
+    /** Checks result from stdlib. */
     test_function ResultFromStdlib() {
       var good = parse_positive(41);
       var bad = parse_positive(-5);
@@ -42,7 +48,9 @@ public module std {
       std.test.assert_eq(g + b, 42);
     }
 
-    // find() borrows the stored value: the map still owns it
+    /**
+     * find() borrows the stored value: the map still owns it
+     */
     test_function MapFind() {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
@@ -58,6 +66,7 @@ public module std {
       std.test.assert_eq(hit + miss, 42);
     }
 
+    /** Checks string find char. */
     test_function StringFindChar() {
       var allocator = make_heap_allocator();
       var s = String(allocator, "hello world");
@@ -79,7 +88,9 @@ public module std {
       std.test.assert_eq(first + last + missing, 42);  // 4 + 7 + 31
     }
 
-    // first()/last() borrow the element: the Vec still owns it
+    /**
+     * first()/last() borrow the element: the Vec still owns it
+     */
     test_function VecFirstLast() {
       var allocator = make_heap_allocator();
       var v = Vec<i32>(allocator, 8);
@@ -100,7 +111,9 @@ public module std {
       std.test.assert_eq(empty + f + l, 42);  // 2 + 10 + 30
     }
 
-    // A new user specialization of a stdlib generic whose methods return Option
+    /**
+     * A new user specialization of a stdlib generic whose methods return Option
+     */
     test_function NewVecSpecializationWithOption() {
       var allocator = make_heap_allocator();
       var v = Vec<u32>(allocator, 4);
@@ -112,21 +125,29 @@ public module std {
       std.test.assert_eq(got, 42);
     }
 
-    // A value with one number inside, for the interface-payload test.
+    /**
+     * A value with one number inside, for the interface-payload test.
+     */
     interface IValue {
+      /** Returns the payload used to check interface or generic method dispatch. */
       method get() i32;
     }
+    /** A numeric fixture implementing the interface used by option-payload tests. */
     class Num implements IValue {
       var n: i32;
+      /** Initializes the fixture fields used by this example or regression test. */
       init(v: i32) {
         this.n = v;
       }
+      /** Returns the payload used to check interface or generic method dispatch. */
       method get() i32 {
         return this.n;
       }
     }
 
-    // Interface payloads: Vec<IValue>.first() yields Option<IValue>
+    /**
+     * Interface payloads: Vec<IValue>.first() yields Option<IValue>
+     */
     test_function InterfacePayloadOption() {
       var alloc = make_heap_allocator();
       var items = Vec<IValue>(alloc, 4);
@@ -138,6 +159,7 @@ public module std {
       std.test.assert_eq(got, 42);
     }
 
+    /** Checks linked list first lsyntax tree. */
     test_function LinkedListFirstLast() {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
@@ -158,6 +180,7 @@ public module std {
       std.test.assert_eq(empty + f + l, 42);  // 2 + 10 + 30
     }
 
+    /** Checks vec pop. */
     test_function VecPop() {
       var allocator = make_heap_allocator();
       var v = Vec<i32>(allocator, 4);
@@ -178,7 +201,9 @@ public module std {
       std.test.assert_eq(a + b + c + v.size(), 42);  // 10 + 30 + 2 + 0
     }
 
-    // Iterators are driven by next() -> Option<T>; the sequence ends at None
+    /**
+     * Iterators are driven by next() -> Option<T>; the sequence ends at None
+     */
     test_function IteratorNextReturnsOption() {
       var allocator = make_heap_allocator();
       var v = Vec<i32>(allocator, 4);
@@ -206,7 +231,9 @@ public module std {
       std.test.assert_eq(again, 1);
     }
 
-    // for-in over every stdlib container goes through next() -> Option<T>
+    /**
+     * for-in over every stdlib container goes through next() -> Option<T>
+     */
     test_function ForInOverStdlibContainers() {
       var allocator = make_heap_allocator();
       var v = Vec<i32>(allocator, 4);
@@ -237,7 +264,9 @@ public module std {
       std.test.assert_eq(sum, 42);  // 3 + 7 + 11 + 21
     }
 
-    // for-in over an empty container never enters the body
+    /**
+     * for-in over an empty container never enters the body
+     */
     test_function ForInOverEmptyContainer() {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);

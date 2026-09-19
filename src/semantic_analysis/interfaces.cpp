@@ -4,6 +4,16 @@
 #include "semantic_analysis/semantic_analyzer.h"
 #include "support/error.h"
 
+using sun::semantic_analysis::ClassType;
+using sun::semantic_analysis::InterfaceType;
+using sun::semantic_analysis::TypePtr;
+
+using sun::support::logAndThrowError;
+using sun::support::logSemanticError;
+
+/** Resolves declarations and checks the types and meaning of Sun programs. */
+namespace sun::semantic_analysis {
+
 // -------------------------------------------------------------------
 // Enum lookup (the rest of enum analysis lives in enums.cpp)
 // -------------------------------------------------------------------
@@ -13,45 +23,23 @@
 // -------------------------------------------------------------------
 
 void SemanticAnalyzer::inheritInterfaceFields(
-    const ClassDefinitionAST& classDef,
-    std::shared_ptr<sun::ClassType> classType) {
+    const sun::ast::ClassDefinitionAST& classDef,
+    std::shared_ptr<ClassType> classType) {
   for (const auto& ifaceRef : classDef.getImplementedInterfaces()) {
-    std::shared_ptr<sun::InterfaceType> interfaceType;
-    std::string interfaceDisplayName = ifaceRef.name;
-
-    if (!ifaceRef.typeArguments.empty()) {
-      // Generic interface with type arguments: IIterator<T>
-      // Convert type arguments, substituting any class type parameters
-      std::vector<sun::TypePtr> typeArgs;
-      for (const auto& typeArg : ifaceRef.typeArguments) {
-        typeArgs.push_back(types_.typeAnnotationToType(typeArg));
-      }
-
-      // Instantiate the generic interface
-      interfaceType = generics_.instantiateGenericInterface(
-          ifaceRef.lookupName(), typeArgs);
-      if (!interfaceType) {
-        logAndThrowError("Class '" + classDef.getName() +
-                             "' implements unknown generic interface '" +
-                             ifaceRef.name + "'",
-                         classDef.getLocation());
-      }
-      interfaceDisplayName = interfaceType->toDisplayString();
-    } else {
-      // Non-generic interface
-      interfaceType = ctx_.lookupInterface(ifaceRef.lookupName());
-      if (!interfaceType) {
-        logAndThrowError("Class '" + classDef.getName() +
-                             "' implements unknown interface '" +
-                             ifaceRef.name + "'",
-                         classDef.getLocation());
-      }
-    }
+    auto interfaceType = std::dynamic_pointer_cast<InterfaceType>(
+        types_.typeAnnotationToType(ifaceRef.toAnnotation()));
+    if (!interfaceType)
+      logAndThrowError("Class '" + classDef.getName() +
+                           "' implements unknown interface '" + ifaceRef.name +
+                           "'",
+                       classDef.getLocation());
+    std::string interfaceDisplayName = interfaceType->toDisplayString();
 
     // Add interface fields to class (interface fields are inherited)
     for (const auto& field : interfaceType->getFields()) {
       // Check if class already has this field
-      const sun::ClassField* existingField = classType->getField(field.name);
+      const sun::semantic_analysis::ClassField* existingField =
+          classType->getField(field.name);
       if (existingField) {
         // Field already declared in class - verify type matches
         if (!existingField->type->equals(*field.type)) {
@@ -66,63 +54,78 @@ void SemanticAnalyzer::inheritInterfaceFields(
         continue;
       }
       // Add interface field to class with the interface's visibility
-      classType->addField(field.name, field.type).visibility = field.visibility;
+      const auto owner = classType->getDeclarationId();
+      auto id = ctx_.types()->declarations.add(
+          sun::semantic_analysis::DeclarationKind::Field, field.name, owner,
+          ctx_.types()->declarations.get(owner).module, {},
+          field.declarationId);
+      classType->addField(field.name, field.type, id).visibility =
+          field.visibility;
     }
 
     // Record the implementation now (conformance is validated after the
     // class body is analyzed) so `throw`/interface conversions on this class
     // work in any body analyzed before its definition is reached
-    classType->addImplementedInterface(interfaceType->getName());
+    classType->addImplementedInterface(*interfaceType);
   }
 }
 
 void SemanticAnalyzer::validateInterfaceImplementation(
-    const ClassDefinitionAST& classDef,
-    std::shared_ptr<sun::ClassType> classType) {
+    const sun::ast::ClassDefinitionAST& classDef,
+    std::shared_ptr<ClassType> classType) {
   for (const auto& ifaceRef : classDef.getImplementedInterfaces()) {
-    std::shared_ptr<sun::InterfaceType> interfaceType;
-    std::string interfaceDisplayName = ifaceRef.name;
-
-    if (!ifaceRef.typeArguments.empty()) {
-      // Generic interface with type arguments
-      std::vector<sun::TypePtr> typeArgs;
-      for (const auto& typeArg : ifaceRef.typeArguments) {
-        typeArgs.push_back(types_.typeAnnotationToType(typeArg));
-      }
-
-      interfaceType = generics_.instantiateGenericInterface(
-          ifaceRef.lookupName(), typeArgs);
-      if (!interfaceType) {
-        // Already reported in inheritInterfaceFields
-        continue;
-      }
-      interfaceDisplayName = interfaceType->toDisplayString();
-    } else {
-      interfaceType = ctx_.lookupInterface(ifaceRef.lookupName());
-      if (!interfaceType) {
-        // Already reported in inheritInterfaceFields
-        continue;
-      }
-    }
+    auto interfaceType = std::dynamic_pointer_cast<InterfaceType>(
+        types_.typeAnnotationToType(ifaceRef.toAnnotation()));
+    if (!interfaceType) continue;
+    std::string interfaceDisplayName = interfaceType->toDisplayString();
 
     // Check that class implements all required methods and add default methods
     for (const auto& interfaceMethod : interfaceType->getMethods()) {
-      // Check if class already has a method with this name
-      const sun::ClassMethod* classMethodInfo = nullptr;
+      const sun::semantic_analysis::ClassMethod* classMethodInfo = nullptr;
+      auto requiredReturnType = interfaceMethod.returnType;
+      auto requiredParamTypes = interfaceMethod.paramTypes;
       for (const auto& classMethod : classDef.getMethods()) {
-        if (classMethod.function->getProto().getName() ==
-            interfaceMethod.name) {
-          // Found override - get the method info from the class type
-          classMethodInfo = classType->getMethod(interfaceMethod.name);
+        const auto& proto = classMethod.function->getProto();
+        if (proto.getName() != interfaceMethod.name ||
+            proto.getTypeParameters().size() !=
+                interfaceMethod.typeParameters.size())
+          continue;
+
+        requiredReturnType = interfaceMethod.returnType;
+        requiredParamTypes = interfaceMethod.paramTypes;
+        // Corresponding generic method parameters have different identities.
+        // Compare the requirement after binding its parameters to this
+        // candidate's.
+        SemanticContext::ScopeSwitchGuard candidateScope(ctx_, ctx_.scope());
+        if (!interfaceMethod.typeParameters.empty()) {
+          std::vector<TypePtr> parameters;
+          for (size_t i = 0; i < proto.getTypeParameters().size(); ++i)
+            parameters.push_back(proto.getTypeParameters()[i].toSunType(
+                ctx_.types()->declarations,
+                proto.declarationIdentity().typeParameters.at(i)));
+          ctx_.enterTypeParamScope(interfaceMethod.typeParameters, parameters);
+          requiredReturnType =
+              types_.substituteTypeParameters(requiredReturnType);
+          for (auto& type : requiredParamTypes)
+            type = types_.substituteTypeParameters(type);
+        }
+        auto* candidate = classType->getMethodForArgs(interfaceMethod.name,
+                                                      requiredParamTypes);
+        if (candidate && candidate->declarationId == proto.getDeclarationId()) {
+          classMethodInfo = candidate;
           break;
         }
       }
 
       if (classMethodInfo) {
+        classType->bindInterfaceMethod(interfaceMethod.declarationId,
+                                       classMethodInfo->declarationId);
         // A public interface member is reachable through the interface, so
         // the implementing method must be public too
-        if (interfaceMethod.visibility == sun::Visibility::Public &&
-            classMethodInfo->visibility != sun::Visibility::Public) {
+        if (interfaceMethod.visibility ==
+                sun::semantic_analysis::Visibility::Public &&
+            classMethodInfo->visibility !=
+                sun::semantic_analysis::Visibility::Public) {
           logSemanticError("method '" + interfaceMethod.name + "' of class '" +
                                classType->getDisplayName() +
                                "' implements public member '" +
@@ -151,28 +154,28 @@ void SemanticAnalyzer::validateInterfaceImplementation(
         // dispatched through a fat pointer, so the class is not convertible
         // to this interface.
         bool returnOk =
-            !classMethodInfo->returnType || !interfaceMethod.returnType ||
-            classMethodInfo->returnType->equals(*interfaceMethod.returnType);
-        if (!returnOk && interfaceMethod.returnType->isInterface() &&
+            !classMethodInfo->returnType || !requiredReturnType ||
+            classMethodInfo->returnType->equals(*requiredReturnType);
+        if (!returnOk && requiredReturnType->isInterface() &&
             classMethodInfo->returnType->isClass()) {
-          auto* required = static_cast<const sun::InterfaceType*>(
-              interfaceMethod.returnType.get());
-          auto* returned = static_cast<const sun::ClassType*>(
-              classMethodInfo->returnType.get());
-          if (returned->implementsInterface(required->getName())) {
+          auto* required =
+              static_cast<const InterfaceType*>(requiredReturnType.get());
+          auto* returned =
+              static_cast<const ClassType*>(classMethodInfo->returnType.get());
+          if (returned->implementsInterface(*required)) {
             returnOk = true;
-            classType->markStaticOnlyInterface(interfaceType->getName());
+            classType->markStaticOnlyInterface(*interfaceType);
           }
         }
         if (!returnOk) {
-          logAndThrowError(
-              "Class '" + classType->getDisplayName() + "' method '" +
-                  interfaceMethod.name + "' has return type '" +
-                  classMethodInfo->returnType->toDisplayString() +
-                  "' but interface '" + interfaceDisplayName +
-                  "' requires return type '" +
-                  interfaceMethod.returnType->toDisplayString() + "'",
-              classDef.getLocation());
+          logAndThrowError("Class '" + classType->getDisplayName() +
+                               "' method '" + interfaceMethod.name +
+                               "' has return type '" +
+                               classMethodInfo->returnType->toDisplayString() +
+                               "' but interface '" + interfaceDisplayName +
+                               "' requires return type '" +
+                               requiredReturnType->toDisplayString() + "'",
+                           classDef.getLocation());
         }
         // Verify parameter count matches
         if (classMethodInfo->paramTypes.size() !=
@@ -192,11 +195,13 @@ void SemanticAnalyzer::validateInterfaceImplementation(
           // names, so the implementation must promise the same ties.
           // Names match verbatim - 'this is 'this, and declared names
           // match by spelling.
-          auto lifetimeContractOf = [](const sun::TypePtr& t) -> std::string {
-            if (auto* lt = sun::tryGetType<sun::LambdaType>(t)) {
+          auto lifetimeContractOf = [](const TypePtr& t) -> std::string {
+            if (auto* lt = sun::codegen::support::tryGetType<
+                    sun::semantic_analysis::LambdaType>(t)) {
               return lt->getLifetimeName();
             }
-            if (auto* rt = sun::tryGetType<sun::ReferenceType>(t)) {
+            if (auto* rt = sun::codegen::support::tryGetType<
+                    sun::semantic_analysis::ReferenceType>(t)) {
               std::string contract = rt->getLifetimeName();
               for (const auto& applied : rt->getClassLifetimeArgs()) {
                 contract += "<" + applied + ">";
@@ -208,7 +213,7 @@ void SemanticAnalyzer::validateInterfaceImplementation(
           // Verify each parameter type matches
           for (size_t i = 0; i < classMethodInfo->paramTypes.size(); ++i) {
             if (!classMethodInfo->paramTypes[i]->equals(
-                    *interfaceMethod.paramTypes[i])) {
+                    *requiredParamTypes[i])) {
               logAndThrowError(
                   "Class '" + classType->getDisplayName() + "' method '" +
                       interfaceMethod.name + "' parameter " +
@@ -242,20 +247,34 @@ void SemanticAnalyzer::validateInterfaceImplementation(
                                               interfaceMethod.returnType,
                                               interfaceMethod.paramTypes, false,
                                               interfaceMethod.typeParameters);
+          method.declarationId = ctx_.types()->declarations.add(
+              sun::semantic_analysis::DeclarationKind::Function,
+              interfaceMethod.name, classType->getDeclarationId(),
+              ctx_.types()
+                  ->declarations.get(classType->getDeclarationId())
+                  .module,
+              {}, interfaceMethod.declarationId);
+          if (method.name == "deinit")
+            classType->deinitializer = method.declarationId;
+          method.defaultImplementation = interfaceMethod.declarationId;
+          classType->bindInterfaceMethod(interfaceMethod.declarationId,
+                                         method.declarationId);
           method.visibility = interfaceMethod.visibility;
           method.isConst = interfaceMethod.isConst;
           method.isUnsafe = interfaceMethod.isUnsafe;
 
-          // Register the mangled method name as a function
-          std::string mangledName =
-              classType->getMangledMethodName(interfaceMethod.name);
-          std::vector<sun::TypePtr> methodParamTypes;
+          // Register the source method name as a function
+          std::string methodNameForScope = interfaceMethod.name;
+          std::vector<TypePtr> methodParamTypes;
           methodParamTypes.push_back(classType);  // this parameter
           for (const auto& pt : interfaceMethod.paramTypes) {
             methodParamTypes.push_back(pt);
           }
-          ctx_.registerFunctionInCurrentScope(
-              mangledName, {interfaceMethod.returnType, methodParamTypes, {}});
+          FunctionInfo methodInfo{
+              interfaceMethod.returnType, methodParamTypes, {}};
+          methodInfo.declarationId = method.declarationId;
+          ctx_.currentScope().declareFunction(methodNameForScope, methodInfo,
+                                              ctx_.currentLocation());
         } else {
           // Required method not implemented
           logAndThrowError("Class '" + classType->getDisplayName() +
@@ -267,8 +286,9 @@ void SemanticAnalyzer::validateInterfaceImplementation(
       }
     }
 
-    // Track that this class implements this interface (use mangled name for
-    // generics)
-    classType->addImplementedInterface(interfaceType->getName());
+    // Retain the resolved interface for conformance and conversion checks.
+    classType->addImplementedInterface(*interfaceType);
   }
 }
+
+}  // namespace sun::semantic_analysis

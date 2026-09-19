@@ -15,8 +15,11 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Prints a progress message with the script name.
 log() { echo -e "${GREEN}[build-deb]${NC} $1"; }
+# Prints a highlighted packaging warning.
 warn() { echo -e "${YELLOW}[build-deb]${NC} $1"; }
+# Writes a packaging error to standard error.
 error() { echo -e "${RED}[build-deb]${NC} $1" >&2; }
 
 # Check for required tools

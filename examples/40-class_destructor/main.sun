@@ -1,13 +1,17 @@
 using std;
 
+/** Demonstrates a class whose destructor runs when its value leaves scope. */
 class Foo {
+  /** Creates an empty fixture value for this example or regression test. */
   init() {}
 
+  /** Prints a message to demonstrate when scope cleanup runs. */
   deinit() {
     println("Foo deinit was called.");
   }
 }
 
+/** Runs the example that demonstrates class cleanup at scope exit. */
 function main() void {
   var foo = Foo();
   println("Exiting main, foo will go out of scope and deinit will be called.");

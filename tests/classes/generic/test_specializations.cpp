@@ -9,6 +9,8 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeStringWithStdlib;
+
 // ============================================================================
 // Generic Class: New Primitive Specialization
 // ============================================================================
@@ -116,7 +118,7 @@ TEST(Classes_Generic_Specializations, map_new_key_value_specialization) {
 
 // Minimal Vec<T> reimplemented inline to analyze IR for class type parameters
 TEST(Classes_Generic_Specializations, simplified_vec_with_class) {
-  auto value = executeString(R"(
+  auto value = sun::driver::executeString(R"(
     class Point {
         var x: i32;
         var y: i32;

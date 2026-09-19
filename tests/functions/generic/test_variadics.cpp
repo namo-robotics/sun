@@ -17,6 +17,9 @@
 #include "driver/execution_utils.h"
 #include "moon_bundling/moon_builder.h"
 
+using sun::driver::executeString;
+
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 // A free factory over a pack, the shape `HeapAllocator.create<T>` has as a
@@ -41,6 +44,7 @@ constexpr const char* kPoint = R"(
     }
 )";
 
+/** Adds shared declarations to the variadic-function test source. */
 std::string source(const std::string& body) {
   return std::string(kPoint) + kMake + body;
 }
@@ -282,7 +286,7 @@ TEST(Functions_Generic_Variadics, params_of_a_primitive_is_unchecked) {
 // A pack template carried in a .moon must still specialize on the importer's
 // side, including at an arity the bundle itself never used.
 TEST(Functions_Generic_Variadics, pack_template_survives_a_moon_round_trip) {
-  initTestEnvironment();
+  sun::driver::initTestEnvironment();
   namespace fs = std::filesystem;
   fs::path dir = fs::temp_directory_path() / "sun_variadic_moon_test";
   fs::create_directories(dir);
@@ -308,10 +312,10 @@ TEST(Functions_Generic_Variadics, pack_template_survives_a_moon_round_trip) {
     )";
   }
   fs::path moonPath = dir / "packlib.moon";
-  sun::MoonBuilder::build(libSrc.string(), moonPath);
+  sun::moon_bundling::MoonBuilder::build(libSrc.string(), moonPath);
 
-  auto driver = Driver::createForJIT("variadic_moon_main");
-  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  auto driver = sun::driver::Driver::createForJIT("variadic_moon_main");
+  driver->setMoonImports({sun::moon_bundling::MoonImport(moonPath.string())});
   auto value = driver->executeString(R"(
     using packlib;
     function main() i32 {

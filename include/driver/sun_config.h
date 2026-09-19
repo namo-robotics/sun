@@ -34,12 +34,16 @@
 #include <string>
 #include <vector>
 
-namespace sun {
+/** Coordinates compilation, dependency loading, linking, and program execution. */
+namespace sun::driver {
 
-// One build product declared by a config: an entrypoint file, what kind of
-// artifact it compiles to, and what to call the outputs. Paths are absolute
-// after parsing.
+/**
+ * One build product declared by a config: an entrypoint file, what kind of
+ * artifact it compiles to, and what to call the outputs. Paths are absolute
+ * after parsing.
+ */
 struct ConfigEntrypoint {
+  /** Identifies whether a configured build target produces a program or a library. */
   enum class Type {
     Binary,   // an executable: the entrypoint has a main
     Library,  // a .moon bundle: no main, tests compile to the test binary
@@ -51,6 +55,7 @@ struct ConfigEntrypoint {
   std::string testBinaryName;  // empty: outputName + "_test"
 };
 
+/** Parsed project configuration used to build and run Sun targets. */
 struct SunConfig {
   static constexpr const char* kFileName = "sun-config.json";
 
@@ -60,18 +65,20 @@ struct SunConfig {
   std::vector<ConfigEntrypoint> entrypoints;         // declared build products
   bool root = false;  // stop the upward search at this file
 
-  // The merged view of every sun-config.json in startDir and its parents
-  // (nearest definitions win, search dirs and entrypoints concatenate
-  // nearest-first, a "root": true file ends the walk); nullopt when no
-  // folder has one.
+  /**
+   * The merged view of every sun-config.json in startDir and its parents
+   * (nearest definitions win, search dirs and entrypoints concatenate
+   * nearest-first, a "root": true file ends the walk); nullopt when no
+   * folder has one.
+   */
   static std::optional<SunConfig> findFrom(
       const std::filesystem::path& startDir,
       const std::string& targetTriple = "");
 
-  /* Parse a config and select settings for the requested target or host.
+  /** Parse a config and select settings for the requested target or host.
    * Report malformed content, invalid target settings, and unknown keys. */
   static SunConfig loadFile(const std::filesystem::path& file,
                             const std::string& targetTriple = "");
 };
 
-}  // namespace sun
+}  // namespace sun::driver

@@ -1,11 +1,14 @@
+/** Returns its generic argument so the caller can test specialization. */
 function inner<T>(x: T) T {
   return x;
 }
 
+/** Forwards its generic argument through another generic function. */
 function outer<T>(x: T) T {
   return inner<T>(x);
 }
 
+/** Runs the manual compiler regression scenario and returns its result. */
 function main() i32 {
   return outer<i32>(42);
 }

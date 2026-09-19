@@ -13,6 +13,11 @@
 
 #pragma once
 
+/** Provides shared diagnostics, source tracking, and compiler utilities. */
+namespace sun::support {
+struct Position;
+}
+
 #include <map>
 #include <memory>
 #include <optional>
@@ -23,7 +28,14 @@
 #include "semantic_analysis/declaration_state.h"
 #include "semantic_analysis/semantic_scope.h"
 
-struct Position;
+/** Resolves declarations and checks the types and meaning of Sun programs. */
+namespace sun::semantic_analysis {
+using sun::support::SourceFileId;
+
+}
+
+/** Resolves declarations and checks the types and meaning of Sun programs. */
+namespace sun::semantic_analysis {
 
 /**
  * The shared state and scope machinery of a semantic analysis run. Implements
@@ -31,12 +43,13 @@ struct Position;
  * is asking" is the nearest module scope on the stack.
  */
 class SemanticContext : public AccessContext {
-  sun::SourceFileId sourceFileId_ = 0;
+  SourceFileId sourceFileId_ = 0;
   DeclarationState declarations_;
 
  public:
   /** Start with an empty global scope holding the builtin functions. */
-  explicit SemanticContext(std::shared_ptr<sun::TypeRegistry> registry);
+  explicit SemanticContext(
+      std::shared_ptr<sun::semantic_analysis::TypeRegistry> registry);
 
   /** Declaration identities, registered shapes, and pending extensions. */
   DeclarationState &declarations() { return declarations_; }
@@ -44,34 +57,45 @@ class SemanticContext : public AccessContext {
   // ---- Shared state ------------------------------------------------------
 
   /** Class and interface types, shared with codegen. */
-  const std::shared_ptr<sun::TypeRegistry> &types() const {
+  const std::shared_ptr<sun::semantic_analysis::TypeRegistry> &types() const {
     return typeRegistry_;
   }
 
   /** The scope currently being analyzed. */
   SemanticScope *scope() const { return currentScope_; }
 
+  /** Access the scope currently being analyzed. */
+  SemanticScope &currentScope() { return *currentScope_; }
+  /** Returns the lexical scope used for current semantic lookups. */
+  const SemanticScope &currentScope() const { return *currentScope_; }
+
   /** The global scope, for debugging and visualization. */
   SemanticScope &rootScope() { return *rootScope_; }
+  /** Returns the outermost scope containing the analyzed program. */
   const SemanticScope &rootScope() const { return *rootScope_; }
 
   /** Set the class whose body is being analyzed, so `this` resolves to it. */
-  void setCurrentClass(std::shared_ptr<sun::ClassType> classType);
+  void setCurrentClass(
+      std::shared_ptr<sun::semantic_analysis::ClassType> classType);
 
   /** The class whose body is being analyzed, or null outside one. */
-  std::shared_ptr<sun::ClassType> getCurrentClass() const;
+  std::shared_ptr<sun::semantic_analysis::ClassType> getCurrentClass() const;
 
   // ---- Scope navigation --------------------------------------------------
 
   /** Push a new scope of the given kind and make it current. */
   void enterScope(ScopeType type = ScopeType::Block);
 
+  /** Make an existing scope current; exitScope returns to its parent. */
+  void enterScope(SemanticScope &scope) { currentScope_ = &scope; }
+
   /**
    * Enter a type parameter scope with bindings (combines enterScope +
-   * addTypeParameterBindings).
+   * currentScope().declareTypeParameters).
    */
-  void enterTypeParamScope(const std::vector<std::string> &params,
-                           const std::vector<sun::TypePtr> &args);
+  void enterTypeParamScope(
+      const std::vector<std::string> &params,
+      const std::vector<sun::semantic_analysis::TypePtr> &args);
 
   /**
    * Enter a module's scope, creating it if this is the first time the module
@@ -79,17 +103,12 @@ class SemanticContext : public AccessContext {
    */
   void enterModuleScope(const std::string &moduleName);
 
-  /**
-   * Enter (creating or reusing) a module scope and record its visibility;
-   * re-openings must agree.
-   */
-  void declareModule(ModuleAST &module);
-
   /** Enter a class scope with qualified name for proper scope path. */
-  void enterClassScope(const sun::QualifiedName &className);
+  void enterClassScope(const sun::semantic_analysis::QualifiedName &className);
 
   /** Enter an interface scope with qualified name for proper scope path. */
-  void enterInterfaceScope(const sun::QualifiedName &interfaceName);
+  void enterInterfaceScope(
+      const sun::semantic_analysis::QualifiedName &interfaceName);
 
   /**
    * Enter a function scope with the function's signature for nested function
@@ -97,9 +116,9 @@ class SemanticContext : public AccessContext {
    * funcName is the qualified name of the function.
    */
   void enterFunctionScope(const std::string &funcSig,
-                          const sun::QualifiedName &funcName,
+                          const sun::semantic_analysis::QualifiedName &funcName,
                           bool canThrow = false,
-                          sun::TypePtr returnType = nullptr);
+                          sun::semantic_analysis::TypePtr returnType = nullptr);
 
   /**
    * Make the parent scope current again. The scope itself stays in the tree
@@ -108,11 +127,7 @@ class SemanticContext : public AccessContext {
   void exitScope();
 
   /** True when not inside any function scope (i.e. at module/global level). */
-  bool isAtModuleLevel() const {
-    for (auto *s = currentScope_; s != nullptr; s = s->parent)
-      if (s->getType() == ScopeType::Function) return false;
-    return true;
-  }
+  bool isAtModuleLevel() const { return currentScope().isAtModuleLevel(); }
 
   /** Nearest enclosing function scope, or nullptr at module/global level. */
   FunctionScope *currentFunctionScope() const {
@@ -126,27 +141,15 @@ class SemanticContext : public AccessContext {
    * Return type of the nearest enclosing function scope (null outside
    * functions or when unresolved); used for return-position inference.
    */
-  sun::TypePtr currentFunctionReturnType() const;
+  sun::semantic_analysis::TypePtr currentFunctionReturnType() const;
 
   // ---- Names and module paths -------------------------------------------
-
-  /**
-   * Get the current module prefix for name mangling (e.g., "sun_").
-   * Returns empty string if not inside any module scope.
-   */
-  std::string getCurrentModulePrefix() const;
 
   /**
    * Get the current scope path as a vector of segments.
    * e.g., inside "module A { module B { } }", returns {"A", "B"}.
    */
   std::vector<std::string> getCurrentScopePath() const;
-
-  /**
-   * Get the fully qualified name for a symbol in current scope.
-   * e.g., inside "module std { }", qualifyName("Vec") returns "sun_Vec".
-   */
-  std::string qualifyNameInCurrentModule(const std::string &name) const;
 
   /**
    * True when the name refers to a module, so `x.y` can be read as a
@@ -178,13 +181,15 @@ class SemanticContext : public AccessContext {
   SymbolMatch findSymbolInModule(
       const std::string &modulePath, const std::string &name,
       SymbolKind filterKind = SymbolKind::None,
-      const std::vector<sun::TypePtr> *argTypes = nullptr) const;
+      const std::vector<sun::semantic_analysis::TypePtr> *argTypes =
+          nullptr) const;
 
   /**
    * Resolve a bare name against the `using` imports in scope, giving the
    * qualified name it refers to (the name itself when nothing matches).
    */
-  sun::QualifiedName resolveNameWithUsings(const std::string &name) const;
+  sun::semantic_analysis::QualifiedName resolveNameWithUsings(
+      const std::string &name) const;
 
   /** Add a using import (legacy string-based). */
   void addUsingImport(const UsingImport &import);
@@ -238,21 +243,6 @@ class SemanticContext : public AccessContext {
 
   // ---- Variables ---------------------------------------------------------
 
-  /** Record a variable in the current scope under the given type. */
-  void declareVariable(const std::string &name, sun::TypePtr type,
-                       bool isParam = false, bool isConst = false);
-
-  /** Find a variable by name in the scope chain. */
-  VariableInfo *lookupVariable(const std::string &name);
-
-  /**
-   * Record a module-level variable under both its plain and its qualified
-   * name, so it can be reached from inside the module and from outside it.
-   */
-  void registerModuleVariable(const sun::QualifiedName &qualifiedName,
-                              sun::TypePtr type, sun::Visibility visibility,
-                              bool isConst = false, bool isCExtern = false);
-
   /**
    * Find a variable by its dotted name (`a.b.x`). An undotted name is an
    * ordinary variable lookup.
@@ -263,28 +253,27 @@ class SemanticContext : public AccessContext {
    * Narrow a variable's type for the rest of the current scope, after an
    * `_is<T>` guard proved it holds a T.
    */
-  void narrowVariable(const std::string &varName, sun::TypePtr narrowedType);
+  void narrowVariable(const std::string &varName,
+                      sun::semantic_analysis::TypePtr narrowedType);
 
   /**
    * The narrowed type in effect for a variable, or its original type when no
    * guard applies. The more specific of the two wins (class over interface).
    */
-  sun::TypePtr getNarrowedType(const std::string &varName,
-                               sun::TypePtr originalType) const;
+  sun::semantic_analysis::TypePtr getNarrowedType(
+      const std::string &varName,
+      sun::semantic_analysis::TypePtr originalType) const;
 
   // ---- Functions ---------------------------------------------------------
-
-  /** Register a function prototype (key = name + param types for overloads). */
-  void registerFunctionInCurrentScope(const std::string &name,
-                                      const FunctionInfo &info);
 
   /**
    * Select an overload by preferred argument types, then by their alternatives.
    * Returns nullopt when no overload matches.
    */
   std::optional<FunctionInfo> lookupFunction(
-      const std::string &name, const std::vector<FunctionArgumentType> &argTypes,
-      std::optional<Position> loc = std::nullopt) const;
+      const std::string &name,
+      const std::vector<FunctionArgumentType> &argTypes,
+      std::optional<sun::support::Position> loc = std::nullopt) const;
 
   /** Every overload declared under the given name. */
   std::vector<FunctionInfo> getAllFunctions(const std::string &name) const;
@@ -293,13 +282,6 @@ class SemanticContext : public AccessContext {
    */
   const FunctionInfo *lookupQualifiedFunction(
       const std::string &qualifiedName) const;
-
-  /**
-   * Record a generic function template and its declaration scope. Repeated
-   * registration of the same declaration is allowed; another template with
-   * the same name in this scope is rejected.
-   */
-  void registerGenericFunctionInCurrentScope(FunctionAST &func);
 
   /**
    * Look up a generic function by name. Tries the direct name first, then
@@ -311,105 +293,82 @@ class SemanticContext : public AccessContext {
 
   // ---- Types: classes, interfaces, enums and their templates -------------
 
-  /**
-   * Record a class in the current scope. A repeated registration of the same
-   * name is ignored, which is what a diamond import produces.
-   */
-  void registerClass(const std::string &name,
-                     std::shared_ptr<sun::ClassType> classType,
-                     std::optional<Position> loc = std::nullopt);
-
   /** Find a class by name in the scope chain (null when there is none). */
-  std::shared_ptr<sun::ClassType> lookupClass(const std::string &name) const;
-
-  /**
-   * Record a generic class template in the current scope, along with the
-   * scope it was declared in, so its bodies resolve names as written there.
-   */
-  void registerGenericClass(const std::string &name,
-                            const GenericClassInfo &info,
-                            std::optional<Position> loc = std::nullopt);
+  std::shared_ptr<sun::semantic_analysis::ClassType> lookupClass(
+      const std::string &name) const;
 
   /** Find a generic class template by name in the scope chain. */
   const GenericClassInfo *lookupGenericClass(const std::string &name) const;
 
-  /** The same by qualified name, for a template in a known module. */
+  /** Retrieve an already selected template from the retained scope tree. */
   const GenericClassInfo *lookupGenericClass(
-      const sun::QualifiedName &qualifiedName) const;
-
-  /**
-   * Record an interface in the current scope. A repeated registration of the
-   * same name is ignored, which is what a diamond import produces.
-   */
-  void registerInterface(const std::string &name,
-                         std::shared_ptr<sun::InterfaceType> interfaceType,
-                         std::optional<Position> loc = std::nullopt);
+      sun::semantic_analysis::DeclarationId id) const;
 
   /**
    * Find an interface by name in the scope chain, falling back to the builtin
    * interfaces (IError).
    */
-  std::shared_ptr<sun::InterfaceType> lookupInterface(
+  std::shared_ptr<sun::semantic_analysis::InterfaceType> lookupInterface(
       const std::string &name) const;
-
-  /** Record a generic interface template in the current scope. */
-  void registerGenericInterface(const std::string &name,
-                                const GenericInterfaceInfo &info,
-                                std::optional<Position> loc = std::nullopt);
 
   /** Find a generic interface template by name in the scope chain. */
   const GenericInterfaceInfo *lookupGenericInterface(
       const std::string &name) const;
 
-  /** Record an enum in the current scope. */
-  void registerEnum(const std::string &name,
-                    std::shared_ptr<sun::EnumType> enumType);
+  /** Retrieve an already selected template from the retained scope tree. */
+  const GenericInterfaceInfo *lookupGenericInterface(
+      sun::semantic_analysis::DeclarationId id) const;
 
   /** Find an enum by name in the scope chain (null when there is none). */
-  std::shared_ptr<sun::EnumType> lookupEnum(const std::string &name) const;
-
-  /**
-   * Record a generic enum template in the current scope, along with the scope
-   * it was declared in.
-   */
-  void registerGenericEnum(const std::string &name, GenericEnumInfo info);
+  std::shared_ptr<sun::semantic_analysis::EnumType> lookupEnum(
+      const std::string &name) const;
 
   /** Find a generic enum template by name in the scope chain. */
   const GenericEnumInfo *lookupGenericEnum(const std::string &name) const;
 
+  /** Retrieve an already selected template from the retained scope tree. */
+  const GenericEnumInfo *lookupGenericEnum(
+      sun::semantic_analysis::DeclarationId id) const;
+
+  /** Retrieve a module already selected by its declaration identity. */
+  SemanticScopeBase *lookupModuleScope(
+      sun::semantic_analysis::DeclarationId id) const;
+
   /** Require the original nominal declaration, without source-name fallback. */
-  void requireDeclaration(
-      const sun::QualifiedName &name, const std::string &exporter = "",
-      std::optional<sun::Type::Kind> expectedKind = std::nullopt) const;
+  sun::semantic_analysis::DeclarationId requireDeclaration(
+      const sun::semantic_analysis::PortableDeclarationKey &key,
+      const std::string &exporter = "",
+      std::optional<sun::semantic_analysis::Type::Kind> expectedKind =
+          std::nullopt,
+      const std::string &displayName = "") const;
 
   // ---- Type parameters and aliases ---------------------------------------
 
-  /** Bind type parameter names to concrete types in the current scope. */
-  void addTypeParameterBindings(const std::vector<std::string> &params,
-                                const std::vector<sun::TypePtr> &args);
-
   /** The type a type parameter is bound to, searching outwards (null if none).
    */
-  sun::TypePtr findTypeParameter(const std::string &name) const;
+  sun::semantic_analysis::TypePtr findTypeParameter(
+      const std::string &name) const;
 
   /** The type a `type` alias names, searching outwards (null if none). */
-  sun::TypePtr findTypeAlias(const std::string &name) const;
+  sun::semantic_analysis::TypePtr findTypeAlias(const std::string &name) const;
 
   /** The file whose imports are visible during the current operation. */
-  sun::SourceFileId currentSourceFileId() const override {
-    return sourceFileId_;
-  }
+  SourceFileId currentSourceFileId() const override { return sourceFileId_; }
 
   /** Restore source context after declaration analysis or specialization. */
   struct SourceFileGuard {
     SemanticContext &ctx;
-    sun::SourceFileId saved;
-    SourceFileGuard(SemanticContext &c, sun::SourceFileId id)
+    SourceFileId saved;
+    /** Changes the active source file and saves the previous source context. */
+    SourceFileGuard(SemanticContext &c, SourceFileId id)
         : ctx(c), saved(c.sourceFileId_) {
       if (id) ctx.sourceFileId_ = id;
     }
+    /** Restores the source file used to resolve imports and report errors. */
     ~SourceFileGuard() { ctx.sourceFileId_ = saved; }
+    /** Changes the active source file and saves the previous source context. */
     SourceFileGuard(const SourceFileGuard &) = delete;
+    /** Disallows assignment so ownership and object identity cannot be duplicated. */
     SourceFileGuard &operator=(const SourceFileGuard &) = delete;
   };
 
@@ -423,12 +382,16 @@ class SemanticContext : public AccessContext {
   struct ScopeSwitchGuard {
     SemanticContext &ctx;
     SemanticScope *saved;
+    /** Temporarily switches semantic lookup to another scope. */
     ScopeSwitchGuard(SemanticContext &c, SemanticScope *target)
         : ctx(c), saved(c.currentScope_) {
       if (target) ctx.currentScope_ = target;
     }
+    /** Restores the semantic scope active before the guard was created. */
     ~ScopeSwitchGuard() { ctx.currentScope_ = saved; }
+    /** Temporarily switches semantic lookup to another scope. */
     ScopeSwitchGuard(const ScopeSwitchGuard &) = delete;
+    /** Disallows assignment so ownership and object identity cannot be duplicated. */
     ScopeSwitchGuard &operator=(const ScopeSwitchGuard &) = delete;
   };
 
@@ -438,16 +401,21 @@ class SemanticContext : public AccessContext {
    */
   struct LocationGuard {
     SemanticContext &ctx;
-    LocationGuard(SemanticContext &c, const Position &loc) : ctx(c) {
+    /** Changes the diagnostic source position and saves the previous position. */
+    LocationGuard(SemanticContext &c, const sun::support::Position &loc)
+        : ctx(c) {
       ctx.locationStack_.push_back(&loc);
     }
+    /** Restores the source position used for subsequent diagnostics. */
     ~LocationGuard() { ctx.locationStack_.pop_back(); }
+    /** Changes the diagnostic source position and saves the previous position. */
     LocationGuard(const LocationGuard &) = delete;
+    /** Disallows assignment so ownership and object identity cannot be duplicated. */
     LocationGuard &operator=(const LocationGuard &) = delete;
   };
 
   /** The innermost location a LocationGuard recorded, if any. */
-  std::optional<Position> currentLocation() const;
+  std::optional<sun::support::Position> currentLocation() const;
 
   /**
    * The scope a generic template was declared in (nullptr if unknown, in
@@ -457,13 +425,6 @@ class SemanticContext : public AccessContext {
   static SemanticScope *definitionScopeOf(const GenericInfo &info) {
     return info.definitionScope.lock().get();
   }
-
-  /**
-   * The scope a class's template was declared in: for a specialization, the
-   * generic's; for a plain class with generic methods, its own registration.
-   * Null when the class has no template.
-   */
-  SemanticScope *classDefinitionScope(const sun::ClassType &classType) const;
 
   // ---- Access control ----------------------------------------------------
   //
@@ -475,80 +436,92 @@ class SemanticContext : public AccessContext {
   // ScopeSwitchGuard), so no override is needed.
 
   /** The module asking for access: the nearest module scope on the stack. */
-  sun::ModulePath currentModulePath() const override;
+  sun::semantic_analysis::DeclarationId currentModuleId() const override;
+
+  /** Declaration ownership for visibility checks in this session. */
+  const sun::semantic_analysis::DeclarationTable &declarationTable()
+      const override {
+    return typeRegistry_->declarations;
+  }
 
   /** Report that `item` is not reachable from here, pointing at source. */
-  [[noreturn]] void denyAccess(const sun::access::ItemRef &item) const override;
+  [[noreturn]] void denyAccess(
+      const sun::semantic_analysis::ItemRef &item) const override;
 
   /** Throw at `loc` unless `item` is reachable from the current module. */
-  void requireAccessible(const sun::access::ItemRef &item,
-                         const Position &loc) const {
-    sun::access::requireAccessible(currentModulePath(), item, loc);
+  void requireAccessible(const sun::semantic_analysis::ItemRef &item,
+                         const sun::support::Position &loc) const {
+    sun::semantic_analysis::requireAccessible(currentModuleId(), item, loc,
+                                              declarationTable());
   }
 
   /** The same, pointing at the innermost recorded location. */
-  void requireAccessible(const sun::access::ItemRef &item) const {
+  void requireAccessible(const sun::semantic_analysis::ItemRef &item) const {
     if (!isAccessible(item)) denyAccess(item);
   }
 
   /** True when `item` is reachable from the current module. */
-  bool isAccessible(const sun::access::ItemRef &item) const {
-    return sun::access::isAccessible(currentModulePath(), item);
+  bool isAccessible(const sun::semantic_analysis::ItemRef &item) const {
+    return sun::semantic_analysis::isAccessible(currentModuleId(), item,
+                                                declarationTable());
   }
 
   /**
    * A class field by name: nullptr when it does not exist; throws when it
    * exists but is not accessible from here.
    */
-  const sun::ClassField *accessibleField(const sun::ClassType &cls,
-                                         const std::string &name,
-                                         const Position &loc) const;
+  const sun::semantic_analysis::ClassField *accessibleField(
+      const sun::semantic_analysis::ClassType &cls, const std::string &name,
+      const sun::support::Position &loc) const;
 
   /** The same for a class method, taking the first overload of that name. */
-  const sun::ClassMethod *accessibleMethod(const sun::ClassType &cls,
-                                           const std::string &name,
-                                           const Position &loc) const;
+  const sun::semantic_analysis::ClassMethod *accessibleMethod(
+      const sun::semantic_analysis::ClassType &cls, const std::string &name,
+      const sun::support::Position &loc) const;
 
   /** The same, picking the overload that matches the argument types. */
-  const sun::ClassMethod *accessibleMethodForArgs(
-      const sun::ClassType &cls, const std::string &name,
-      const std::vector<sun::TypePtr> &argTypes, const Position &loc) const;
+  const sun::semantic_analysis::ClassMethod *accessibleMethodForArgs(
+      const sun::semantic_analysis::ClassType &cls, const std::string &name,
+      const std::vector<sun::semantic_analysis::TypePtr> &argTypes,
+      const sun::support::Position &loc) const;
 
   /** An interface field by name, with the same access rules as a class's. */
-  const sun::InterfaceField *accessibleField(const sun::InterfaceType &iface,
-                                             const std::string &name,
-                                             const Position &loc) const;
+  const sun::semantic_analysis::InterfaceField *accessibleField(
+      const sun::semantic_analysis::InterfaceType &iface,
+      const std::string &name, const sun::support::Position &loc) const;
 
   /** An interface method by name, with the same access rules as a class's. */
-  const sun::InterfaceMethod *accessibleMethod(const sun::InterfaceType &iface,
-                                               const std::string &name,
-                                               const Position &loc) const;
+  const sun::semantic_analysis::InterfaceMethod *accessibleMethod(
+      const sun::semantic_analysis::InterfaceType &iface,
+      const std::string &name, const sun::support::Position &loc) const;
 
   /**
    * A module named by user code (`a.b`, `using a.b;`, `b.f()`): every
    * module on its path must be visible from here.
    */
   void requireModuleAccessible(const SemanticScopeBase &moduleScope,
-                               const Position &loc) const;
+                               const sun::support::Position &loc) const;
 
  private:
   /** Register built-in functions (print, println, file I/O, etc.). */
   void registerBuiltinFunctions();
 
   // Type registry for class/interface types (shared with codegen)
-  std::shared_ptr<sun::TypeRegistry> typeRegistry_;
+  std::shared_ptr<sun::semantic_analysis::TypeRegistry> typeRegistry_;
 
   // Scope tree — rootScope_ is the global scope, currentScope_ walks the tree
   std::shared_ptr<GlobalScope> rootScope_ = std::make_shared<GlobalScope>();
   SemanticScope *currentScope_ = rootScope_.get();
 
   // Current class being analyzed (for 'this' resolution)
-  std::shared_ptr<sun::ClassType> currentClass_ = nullptr;
+  std::shared_ptr<sun::semantic_analysis::ClassType> currentClass_ = nullptr;
 
   // Locations of the expressions being analyzed (innermost last), so denials
   // raised inside lookups can still point at source.
-  std::vector<const Position *> locationStack_;
+  std::vector<const sun::support::Position *> locationStack_;
 
   // How many MoonScopeAST wrappers we are inside (see isInMoonScope)
   int moonScopeDepth_ = 0;
 };
+
+}  // namespace sun::semantic_analysis

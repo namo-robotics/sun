@@ -8,6 +8,8 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeTestsWithStdlib;
+
 // Every test passes: exit code 0, in both parallel and sequential modes.
 TEST(EndToEnd_Testing, all_passing_tests_exit_zero) {
   const std::string program = R"(
@@ -137,9 +139,9 @@ TEST(EndToEnd_Testing, no_tests_found_is_an_error) {
 // Tests need std.test, so a test build without the standard library is
 // refused with a pointer at stdlib.moon (same rule as interpolation).
 TEST(EndToEnd_Testing, tests_without_stdlib_are_an_error) {
-  initTestEnvironment();
-  auto driver = Driver::createForJIT();
-  driver->setTestHandling(Driver::TestHandling::Compile);
+  sun::driver::initTestEnvironment();
+  auto driver = sun::driver::Driver::createForJIT();
+  driver->setTestHandling(sun::driver::Driver::TestHandling::Compile);
   EXPECT_SUN_ERROR_WITH_MESSAGE(driver->executeString(R"(
     test_function lonely() { return; }
   )"),
@@ -174,7 +176,7 @@ TEST(EndToEnd_Testing, user_main_is_replaced_and_optional) {
 
 // The production compile of the same source ignores tests entirely.
 TEST(EndToEnd_Testing, production_compile_ignores_tests) {
-  EXPECT_NO_THROW(compileStringWithStdlib(R"(
+  EXPECT_NO_THROW(sun::driver::compileStringWithStdlib(R"(
     using std;
 
     test_function ignored() {
@@ -271,10 +273,10 @@ TEST(EndToEnd_Testing, filter_combines_with_sequential) {
 // the production compile strips the inline tests and never loads the test
 // file. (Requires SUN_PATH at the workspace root.)
 TEST(EndToEnd_Testing, example_program_compiles_in_production) {
-  initTestEnvironment();
+  sun::driver::initTestEnvironment();
   const char* root = std::getenv("SUN_PATH");
   ASSERT_NE(root, nullptr) << "SUN_PATH must point at the workspace root";
-  EXPECT_NO_THROW(compileFileWithStdlib(
+  EXPECT_NO_THROW(sun::driver::compileFileWithStdlib(
       (std::filesystem::path(root) / "tests/programs/testing_example.sun")
           .string()));
 }

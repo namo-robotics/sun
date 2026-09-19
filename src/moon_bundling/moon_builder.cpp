@@ -4,16 +4,15 @@
 
 #include <llvm/Support/MemoryBufferRef.h>
 #include <llvm/Support/raw_ostream.h>
-#include <llvm/TargetParser/Host.h>
 
-#include <algorithm>
 #include <fstream>
 #include <map>
 #include <set>
 
+#include "driver/build_record.h"
 #include "driver/driver.h"
+#include "driver/input_hash.h"
 #include "driver/manifest_processor.h"
-#include "generated/sun_version.h"
 #include "moon_bundling/archive_symbols.h"
 #include "moon_bundling/metadata_extractor.h"
 #include "moon_bundling/moon.h"
@@ -21,19 +20,20 @@
 #include "serialization/source_file_ids.h"
 #include "support/error.h"
 
-namespace sun {
+using sun::support::SourceFileId;
 
+/** Builds and loads compiled Moon libraries and their declaration metadata. */
+namespace sun::moon_bundling {
+
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
+/** Reports the operation's failure as a compiler error and stops processing. */
 [[noreturn]] void fail(const std::string& message) {
-  throw SunError(SunError::Kind::Compile, message);
+  throw sun::support::SunError(sun::support::SunError::Kind::Compile, message);
 }
 
-// Fingerprints preserve all source bytes before computing the bundle identity.
-std::string sourceFingerprint(const std::string& source) {
-  return computeSha256Hex(source);
-}
-
+/** Reads all bytes from an input file or reports a compiler error. */
 std::string readWholeFile(const std::string& path, const char* what) {
   std::ifstream in(path, std::ios::binary);
   if (!in) fail(std::string("Cannot read ") + what + ": " + path);
@@ -41,10 +41,12 @@ std::string readWholeFile(const std::string& path, const char* what) {
                      std::istreambuf_iterator<char>());
 }
 
-// A native archive named by the manifest's `archives:`, read once: its
-// digest joins the bundle hash and the archive set hash, its symbols decide
-// which externs bind to it, and its bytes are rewritten under the set hash
-// when the bundle is written.
+/**
+ * A native archive named by the manifest's `archives:`, read once: its
+ * digest joins the input hash and the archive set hash, its symbols decide
+ * which externs bind to it, and its bytes are rewritten under the set hash
+ * when the bundle is written.
+ */
 struct OwnArchive {
   std::string path;
   std::string name;  // file name carried in the bundle
@@ -52,60 +54,27 @@ struct OwnArchive {
   std::string digest;
 };
 
-// The bundle's content hash, decided before anything is compiled so the
-// compiler can spell the bundle's own symbols with it. It has to change
-// whenever the code image would: it covers every source, every bundle the
-// code links against (and how those are aliased), every archive it carries
-// (two bundles alike in source but for the C library they wrap are
-// different bundles, and importers drop a second bundle with a known
-// hash), the target, the debug setting and the compiler itself. Importers
-// rely on distinct bundles carrying distinct hashes, and a symbol prefix
-// must not collide.
-std::string computeBundleHash(std::vector<std::string> sources,
-                              const std::vector<MoonImport>& moonImports,
-                              const std::vector<OwnArchive>& archives,
-                              const MoonBuildOptions& options) {
-  std::string input;
-  // Sorted, so the hash does not depend on manifest order
-  std::sort(sources.begin(), sources.end());
-  for (const auto& h : sources) input += "source:" + h + "\n";
-
-  std::vector<std::string> archiveLines;
-  for (const auto& archive : archives) {
-    archiveLines.push_back("archive:" + archive.name + ":" + archive.digest +
-                           "\n");
-  }
-  std::sort(archiveLines.begin(), archiveLines.end());
-  for (const auto& line : archiveLines) input += line;
-
-  std::vector<std::string> dependencies;
-  for (const auto& import : moonImports) {
-    auto reader = MoonReader::open(import.path);
-    if (!reader) fail("Cannot open imported moon: " + import.path);
-    const auto modules = reader->listModules();
-    const auto* first =
-        modules.empty() ? nullptr : reader->getMetadata(modules[0]);
-    if (!first) fail("Imported moon has no modules: " + import.path);
-    std::string dependency = "moon:" + first->content_hash() + "\n";
-    // An alias changes which symbols this bundle's code refers to
-    for (const auto& [from, to] : std::map<std::string, std::string>(
-             import.moduleRemap.begin(), import.moduleRemap.end())) {
-      dependency += "alias:" + from + "=" + to + "\n";
+/**
+ * Fill in what a build would have reported about the bundle already on disk:
+ * the modules it exports and the archives it took over from its imports.
+ * Archives under `ownArchiveSetHash` are the bundle's own.
+ */
+void describeExistingBundle(const std::filesystem::path& bundlePath,
+                            const std::string& ownArchiveSetHash,
+                            MoonBuildReport& report) {
+  auto reader = MoonReader::open(bundlePath);
+  if (!reader) return;
+  for (const auto& key : reader->listModules()) {
+    const auto* metadata = reader->getMetadata(key);
+    if (metadata && !metadata->module_name().empty()) {
+      report.modules.push_back(metadata->module_name());
     }
-    dependencies.push_back(std::move(dependency));
   }
-  std::sort(dependencies.begin(), dependencies.end());
-  for (const auto& dependency : dependencies) input += dependency;
-  input += "format:" + std::to_string(MoonHeader::VERSION) + "\n";
-
-  input += "target:" +
-           (options.targetTriple.empty() ? llvm::sys::getDefaultTargetTriple()
-                                         : options.targetTriple) +
-           "\n";
-  input += std::string("debug:") + (options.debugInfo ? "1" : "0") + "\n";
-  input += std::string("optimize:") + (options.optimize ? "1" : "0") + "\n";
-  input += std::string("compiler:") + SUN_VERSION + "-" + SUN_GIT_HASH + "\n";
-  return computeContentHash(input);
+  for (const auto& archive : reader->getNativeArchives()) {
+    if (archive.archiveSetHash != ownArchiveSetHash) {
+      report.inheritedArchives.push_back(archive.name);
+    }
+  }
 }
 
 }  // namespace
@@ -132,10 +101,10 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   report.moonImports = options.extraMoons;
   // Resolve command-line imports before hashing the bundles they name.
   for (auto& moon : report.moonImports) {
-    moon.path = ManifestProcessor::resolvePath(
+    moon.path = sun::driver::ManifestProcessor::resolvePath(
         moon.path, fs::current_path().string(), nullptr, options.targetTriple);
   }
-  if (auto manifest = ManifestProcessor::fromEntrypointFile(
+  if (auto manifest = sun::driver::ManifestProcessor::fromEntrypointFile(
           entrypoint, options.targetTriple)) {
     report.sunFiles = std::move(manifest->sunFiles);
     report.moonImports.insert(report.moonImports.end(),
@@ -146,17 +115,17 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   }
   report.sunFiles.insert(report.sunFiles.begin(), entrypointPath.string());
 
-  std::vector<std::string> fingerprints;
-  for (const auto& path : report.sunFiles) {
-    std::ifstream input(path, std::ios::binary);
-    if (!input) fail("Cannot read source: " + path);
-    fingerprints.push_back(sourceFingerprint(
-        std::string(std::istreambuf_iterator<char>(input), {})));
-  }
-  for (const auto& source :
-       ProtoImporter::importAll(report.protoFiles, baseDir))
-    fingerprints.push_back(sourceFingerprint(source.sunSource));
-  std::vector<moon::ModuleMetadata> allMetadata;
+  // Everything the bundle is built from, reduced to one hash before any of it
+  // is compiled (see input_hash.h)
+  sun::driver::BuildInputs inputs;
+  inputs.artifactKind = "bundle";
+  inputs.moonImports = report.moonImports;
+  inputs.targetTriple = options.targetTriple;
+  inputs.debugInfo = options.debugInfo;
+  inputs.optimize = options.optimize;
+  inputs.settings.emplace_back("format", std::to_string(MoonHeader::VERSION));
+  sun::driver::addSourceDigests(inputs, report.sunFiles, report.protoFiles,
+                                baseDir);
 
   std::vector<OwnArchive> ownArchives;
   for (const auto& archivePath : report.archiveFiles) {
@@ -173,14 +142,27 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   }
   const std::string archiveSetHash = computeArchiveSetHash(archiveIdentities);
 
-  // ---- Compile everything into one LLVM module, under the bundle's own
-  // hash so its symbols are already the ones importers will look for ----
-  const std::string bundleHash =
-      computeBundleHash(fingerprints, report.moonImports, ownArchives, options);
-  auto driver = Driver::createForAOT("moon_module", options.targetTriple,
-                                     options.debugInfo, options.optimize);
+  inputs.archives = archiveIdentities;
+  const std::string inputHash = sun::driver::computeInputHash(inputs);
+
+  // ---- When asked to, do nothing if the bundle on disk was built from
+  // these very inputs. Printing the generated proto source is a reason to
+  // run anyway ----
+  if (options.skipIfUnchanged && !options.dumpProtoSun &&
+      sun::driver::readMoonInputHash(outputPath.string()) == inputHash) {
+    describeExistingBundle(outputPath, archiveSetHash, report);
+    report.upToDate = true;
+    return report;
+  }
+  if (options.onBuildStart) options.onBuildStart();
+
+  // ---- Compile everything into one LLVM module, under the input hash so
+  // its symbols are already the ones importers will look for ----
+  std::vector<moon::ModuleMetadata> allMetadata;
+  auto driver = sun::driver::Driver::createForAOT(
+      "moon_module", options.targetTriple, options.debugInfo, options.optimize);
   driver->setDumpProtoSun(options.dumpProtoSun);
-  driver->setOwnBundleHash(bundleHash);
+  driver->setOwnBundleHash(inputHash);
 
   // The C symbols the own archives define get a prefix made from the bytes
   // of all of them together, the way Sun symbols get the bundle's: another
@@ -221,18 +203,19 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   for (const auto& [symbol, renamed] : renames) ownUndefinedBy.erase(symbol);
   driver->setExternSymbolRenames(renames);
   driver->setMetadataCallback(
-      [&](const BlockExprAST& program, SemanticAnalyzer& analyzer) {
-        allMetadata = extractAnalyzedMetadata(program, analyzer, bundleHash);
+      [&](const sun::ast::BlockExprAST& program,
+          sun::semantic_analysis::SemanticAnalyzer& analyzer) {
+        allMetadata = extractAnalyzedMetadata(program, analyzer, inputHash);
         std::map<SourceFileId, SourceFileId> sourceFiles;
         for (auto& metadata : allMetadata) {
-          serialization::remapSourceFiles(metadata, [&](SourceFileId id) {
+          sun::serialization::remapSourceFiles(metadata, [&](SourceFileId id) {
             return sourceFiles.try_emplace(id, sourceFiles.size() + 1)
                 .first->second;
           });
           const auto& name = metadata.module_name();
           if (!name.empty()) report.modules.push_back(name);
           if (!name.empty() && name.find('.') == std::string::npos &&
-              metadata.visibility() != ast::PUBLIC)
+              metadata.visibility() != sun::proto::ast::PUBLIC)
             fail("moon bundle: top-level module '" + name +
                  "' must be declared 'public' to be exported");
         }
@@ -240,7 +223,7 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   driver->compileFiles(report.sunFiles, report.moonImports, report.protoFiles);
 
   // ---- Write the bundle: each module's metadata + the shared code ----
-  MoonWriter writer(bundleHash);
+  MoonWriter writer(inputHash);
   for (const auto& metadata : allMetadata) {
     writer.addModule(driver->getModule(), metadata);
   }
@@ -314,4 +297,4 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   return report;
 }
 
-}  // namespace sun
+}  // namespace sun::moon_bundling

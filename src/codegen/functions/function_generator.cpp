@@ -7,21 +7,28 @@
 
 #include "codegen/codegen_visitor.h"
 
-llvm::Value* FunctionGenerator::codegen(const ExprAST& expr) {
+/** Provides the registry of generated functions and their metadata. */
+namespace sun::codegen::functions {
+
+llvm::Value* FunctionGenerator::codegen(const sun::ast::ExprAST& expr) {
   return gen_.codegen(expr);
 }
 
-llvm::Value* FunctionGenerator::codegen(const BlockExprAST& block) {
+llvm::Value* FunctionGenerator::codegen(const sun::ast::BlockExprAST& block) {
   return gen_.codegen(block);
 }
 
-ScopeManager& FunctionGenerator::scopes() { return gen_.scopeManager(); }
+sun::codegen::scopes::ScopeManager& FunctionGenerator::scopes() {
+  return gen_.scopeManager();
+}
 
 FunctionRegistry& FunctionGenerator::functions() {
   return gen_.functionRegistry();
 }
 
-ClassGenerator& FunctionGenerator::classes() { return gen_.classGenerator(); }
+sun::codegen::classes::ClassGenerator& FunctionGenerator::classes() {
+  return gen_.classGenerator();
+}
 
 llvm::AllocaInst* FunctionGenerator::createEntryBlockAlloca(
     llvm::Function* func, llvm::StringRef name, llvm::Type* type) {
@@ -30,27 +37,19 @@ llvm::AllocaInst* FunctionGenerator::createEntryBlockAlloca(
 
 void FunctionGenerator::debugDeclareParam(llvm::AllocaInst* alloca,
                                           const std::string& name,
-                                          const PrototypeAST& proto,
+                                          const sun::ast::PrototypeAST& proto,
                                           unsigned userArgIdx,
                                           unsigned argNoBase) {
   gen_.debugDeclareParam(alloca, name, proto, userArgIdx, argNoBase);
 }
 
-sun::cabi::ExternCEmitter& FunctionGenerator::externC() {
+sun::codegen::abi::ExternCEmitter& FunctionGenerator::externC() {
   return gen_.externCEmitter();
 }
 
-llvm::LoadInst* FunctionGenerator::createLoadForLocalVar(
-    const std::string& name) {
-  return gen_.variableGenerator().createLoadForLocalVar(name);
-}
-
-llvm::LoadInst* FunctionGenerator::createLoadForGlobalVar(
-    const std::string& varName) {
-  return gen_.variableGenerator().createLoadForGlobalVar(varName);
-}
-
-llvm::Value* FunctionGenerator::applyMoveSemantics(llvm::Value* argVal,
-                                                   sun::TypePtr argSunType) {
+llvm::Value* FunctionGenerator::applyMoveSemantics(
+    llvm::Value* argVal, sun::semantic_analysis::TypePtr argSunType) {
   return gen_.applyMoveSemantics(argVal, std::move(argSunType));
 }
+
+}  // namespace sun::codegen::functions

@@ -17,6 +17,8 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeStringWithStdlib;
+
 // ============================================================================
 // A handle over borrowed locals must not outlive the frame it borrows from
 // ============================================================================

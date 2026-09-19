@@ -4,7 +4,8 @@
 
 syntax = "proto3";
 
-package sun.ast;
+/** Groups the serialized compiler data defined by this schema. */
+package sun.proto.ast;
 
 option cc_enable_arenas = true;
 
@@ -13,52 +14,71 @@ option cc_enable_arenas = true;
 // These complement the basic ExprAnalysis and PrototypeAnalysis in ast.proto
 // =============================================================================
 
-// Analysis for FunctionAST nodes
-// Note: Specialization maps are serialized by key only, not full AST
+/**
+ * Analysis for FunctionAST nodes
+ * Note: Specialization maps are serialized by key only, not full AST
+ */
 message FunctionAnalysis {
   string qualified_name = 1;
-  repeated string specialization_keys = 2;  // Mangled names of specializations
+  repeated string specialization_keys = 2;  // Serialized specialization keys
 }
 
-// Analysis for ClassDefinitionAST nodes
+/**
+ * Analysis for ClassDefinitionAST nodes
+ */
 message ClassAnalysis {
   string qualified_name = 1;
-  repeated string specialization_keys = 2;  // Mangled names of specializations
+  repeated string specialization_keys = 2;  // Serialized specialization keys
 }
 
-// Analysis for InterfaceDefinitionAST nodes
+/**
+ * Analysis for InterfaceDefinitionAST nodes
+ */
 message InterfaceAnalysis {
   string qualified_name = 1;
 }
 
-// Analysis for ForInExprAST nodes
+/**
+ * Analysis for ForInExprAST nodes
+ */
 message ForInAnalysis {
   string resolved_loop_var_type = 1;  // Type signature
 }
 
-// Analysis for QualifiedNameAST nodes
+/**
+ * Analysis for QualifiedNameAST nodes
+ */
 message QualifiedNameExprAnalysis {
-  string resolved_mangled_name = 1;
+  reserved 1;
+  reserved "resolved_mangled_name";
 }
 
-// Analysis for MemberAccessAST nodes
+/**
+ * Analysis for MemberAccessAST nodes
+ */
 message MemberAccessAnalysis {
   repeated string resolved_type_args = 1;  // Type signatures
   string qualified_name = 2;
 }
 
-// Analysis for GenericCallAST nodes
+/**
+ * Analysis for GenericCallAST nodes
+ */
 message GenericCallAnalysis {
   repeated string resolved_type_args = 1;
   string generic_function_qualified_name = 2;  // Instead of raw pointer
 }
 
-// Analysis for DeclareTypeAST nodes
+/**
+ * Analysis for DeclareTypeAST nodes
+ */
 message DeclareTypeAnalysis {
   string resolved_declared_type = 1;  // Type signature
 }
 
-// Analysis for VariableReferenceAST, VariableCreationAST, ReferenceCreationAST
+/**
+ * Analysis for VariableReferenceAST, VariableCreationAST, ReferenceCreationAST
+ */
 message VariableAnalysis {
   string qualified_name = 1;
 }
@@ -68,6 +88,7 @@ message VariableAnalysis {
 // This is used when the basic ExprAnalysis in ast.proto is insufficient
 // =============================================================================
 
+/** Stores extended analysis data in the compiler serialization format. */
 message ExtendedAnalysis {
   oneof analysis {
     FunctionAnalysis function_analysis = 1;

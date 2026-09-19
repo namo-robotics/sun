@@ -19,17 +19,26 @@
 
 #include "codegen/abi/c_abi.h"
 
-namespace sun::abi::sysv {
+/** Lowers C calls and values using the System V x86-64 calling convention. */
+namespace sun::codegen::abi::sysv {
 
-/// Classify one type as it would be passed as a parameter.
-ArgLowering lowerArgument(llvm::Type* type, const llvm::DataLayout& dl);
+/**
+ * Classify one type as it would be passed as a parameter.
+ */
+sun::codegen::abi::ArgLowering lowerArgument(llvm::Type* type,
+                                             const llvm::DataLayout& dl);
 
-/// Classify one type as it would be returned.
-ArgLowering lowerReturn(llvm::Type* type, const llvm::DataLayout& dl);
+/**
+ * Classify one type as it would be returned.
+ */
+sun::codegen::abi::ArgLowering lowerReturn(llvm::Type* type,
+                                           const llvm::DataLayout& dl);
 
-/// Classify a whole signature.
-SignatureLowering lowerCSignature(llvm::Type* returnType,
-                                  llvm::ArrayRef<llvm::Type*> paramTypes,
-                                  const llvm::DataLayout& dl);
+/**
+ * Classify a whole signature.
+ */
+sun::codegen::abi::SignatureLowering lowerCSignature(
+    llvm::Type* returnType, llvm::ArrayRef<llvm::Type*> paramTypes,
+    const llvm::DataLayout& dl);
 
-}  // namespace sun::abi::sysv
+}  // namespace sun::codegen::abi::sysv

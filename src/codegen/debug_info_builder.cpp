@@ -11,7 +11,12 @@
 #include <filesystem>
 #include <set>
 
-namespace sun {
+using sun::semantic_analysis::TypePtr;
+
+using sun::support::Position;
+
+/** Translates analyzed Sun programs into LLVM instructions. */
+namespace sun::codegen {
 
 using namespace llvm;
 
@@ -73,8 +78,13 @@ DISubprogram* DebugInfoBuilder::enterFunction(llvm::IRBuilderBase& builder,
   ensureCompileUnit(loc.filePath);
   DIFile* file = getFile(loc.filePath);
   auto* spType = di_->createSubroutineType(di_->getOrCreateTypeArray({}));
+  // Portable hashes are not C++ mangled names. Omitting that optional DWARF
+  // attribute lets debuggers index the written name instead of the hash.
+  const auto linkageName = func->getName().starts_with("_SUN1_")
+                               ? llvm::StringRef{}
+                               : func->getName();
   auto* sp =
-      di_->createFunction(file, name, func->getName(), file, loc.line, spType,
+      di_->createFunction(file, name, linkageName, file, loc.line, spType,
                           /*ScopeLine=*/loc.line, DINode::FlagPrototyped,
                           DISubprogram::SPFlagDefinition |
                               (optimized_ ? DISubprogram::SPFlagOptimized
@@ -252,75 +262,80 @@ DIType* DebugInfoBuilder::resolveType(const TypePtr& type) {
   return resolved;
 }
 
-DIType* DebugInfoBuilder::resolveTypeImpl(const Type& type) {
+DIType* DebugInfoBuilder::resolveTypeImpl(
+    const sun::semantic_analysis::Type& type) {
   auto& ctx = module_->getContext();
   const auto& dl = module_->getDataLayout();
   ensureCompileUnit(std::nullopt);
 
-  auto basicInt = [&](const Type& t) {
+  auto basicInt = [&](const sun::semantic_analysis::Type& t) {
     unsigned bits = 32;
     switch (t.getKind()) {
-      case Type::Kind::Int8:
-      case Type::Kind::UInt8:
+      case sun::semantic_analysis::Type::Kind::Int8:
+      case sun::semantic_analysis::Type::Kind::UInt8:
         bits = 8;
         break;
-      case Type::Kind::Int16:
-      case Type::Kind::UInt16:
+      case sun::semantic_analysis::Type::Kind::Int16:
+      case sun::semantic_analysis::Type::Kind::UInt16:
         bits = 16;
         break;
-      case Type::Kind::Int32:
-      case Type::Kind::UInt32:
+      case sun::semantic_analysis::Type::Kind::Int32:
+      case sun::semantic_analysis::Type::Kind::UInt32:
         bits = 32;
         break;
-      case Type::Kind::Int64:
-      case Type::Kind::UInt64:
+      case sun::semantic_analysis::Type::Kind::Int64:
+      case sun::semantic_analysis::Type::Kind::UInt64:
         bits = 64;
         break;
       default:
         break;
     }
-    // Signedness only exists in sun::Type; LLVM integers are signless.
+    // Signedness only exists in sun::semantic_analysis::Type; LLVM integers are
+    // signless.
     return di_->createBasicType(
         t.toString(), bits,
         t.isSigned() ? dwarf::DW_ATE_signed : dwarf::DW_ATE_unsigned);
   };
 
   switch (type.getKind()) {
-    case Type::Kind::Void:
+    case sun::semantic_analysis::Type::Kind::Void:
       return nullptr;  // DWARF spells void as an absent type
-    case Type::Kind::Bool:
+    case sun::semantic_analysis::Type::Kind::Bool:
       return di_->createBasicType("bool", 8, dwarf::DW_ATE_boolean);
-    case Type::Kind::Int8:
-    case Type::Kind::Int16:
-    case Type::Kind::Int32:
-    case Type::Kind::Int64:
-    case Type::Kind::UInt8:
-    case Type::Kind::UInt16:
-    case Type::Kind::UInt32:
-    case Type::Kind::UInt64:
+    case sun::semantic_analysis::Type::Kind::Int8:
+    case sun::semantic_analysis::Type::Kind::Int16:
+    case sun::semantic_analysis::Type::Kind::Int32:
+    case sun::semantic_analysis::Type::Kind::Int64:
+    case sun::semantic_analysis::Type::Kind::UInt8:
+    case sun::semantic_analysis::Type::Kind::UInt16:
+    case sun::semantic_analysis::Type::Kind::UInt32:
+    case sun::semantic_analysis::Type::Kind::UInt64:
       return basicInt(type);
-    case Type::Kind::Float32:
+    case sun::semantic_analysis::Type::Kind::Float32:
       return di_->createBasicType("f32", 32, dwarf::DW_ATE_float);
-    case Type::Kind::Float64:
+    case sun::semantic_analysis::Type::Kind::Float64:
       return di_->createBasicType("f64", 64, dwarf::DW_ATE_float);
-    case Type::Kind::Char:
+    case sun::semantic_analysis::Type::Kind::Char:
       return di_->createBasicType("char", 32, dwarf::DW_ATE_UTF);
 
-    case Type::Kind::Reference: {
-      const auto& ref = static_cast<const ReferenceType&>(type);
+    case sun::semantic_analysis::Type::Kind::Reference: {
+      const auto& ref =
+          static_cast<const sun::semantic_analysis::ReferenceType&>(type);
       return di_->createReferenceType(dwarf::DW_TAG_reference_type,
                                       resolveType(ref.getReferencedType()),
                                       dl.getPointerSizeInBits());
     }
-    case Type::Kind::RawPointer: {
-      const auto& ptr = static_cast<const RawPointerType&>(type);
+    case sun::semantic_analysis::Type::Kind::RawPointer: {
+      const auto& ptr =
+          static_cast<const sun::semantic_analysis::RawPointerType&>(type);
       return pointerTo(resolveType(ptr.getPointeeType()));
     }
-    case Type::Kind::NullPointer:
+    case sun::semantic_analysis::Type::Kind::NullPointer:
       return pointerTo(nullptr);
 
-    case Type::Kind::StaticPointer: {
-      const auto& sp = static_cast<const StaticPointerType&>(type);
+    case sun::semantic_analysis::Type::Kind::StaticPointer: {
+      const auto& sp =
+          static_cast<const sun::semantic_analysis::StaticPointerType&>(type);
       auto* st = dyn_cast<llvm::StructType>(sp.toLLVMType(ctx));
       return structFor(sp.toString(), st,
                        {{"data", pointerTo(resolveType(sp.getPointeeType()))},
@@ -328,8 +343,9 @@ DIType* DebugInfoBuilder::resolveTypeImpl(const Type& type) {
                                        "u64", 64, dwarf::DW_ATE_unsigned)}});
     }
 
-    case Type::Kind::Enum: {
-      const auto& et = static_cast<const EnumType&>(type);
+    case sun::semantic_analysis::Type::Kind::Enum: {
+      const auto& et =
+          static_cast<const sun::semantic_analysis::EnumType&>(type);
       SmallVector<Metadata*, 8> variants;
       std::set<std::string> seen;
       for (const auto& v : et.getVariants()) {
@@ -362,8 +378,9 @@ DIType* DebugInfoBuilder::resolveTypeImpl(const Type& type) {
                        {{"tag", tagDI}, {"payload", payloadDI}});
     }
 
-    case Type::Kind::Class: {
-      const auto& ct = static_cast<const ClassType&>(type);
+    case sun::semantic_analysis::Type::Kind::Class: {
+      const auto& ct =
+          static_cast<const sun::semantic_analysis::ClassType&>(type);
       auto* st = dyn_cast<llvm::StructType>(ct.toLLVMType(ctx));
       if (!st || !st->isSized()) {
         return di_->createUnspecifiedType(ct.getDisplayName());
@@ -395,12 +412,13 @@ DIType* DebugInfoBuilder::resolveTypeImpl(const Type& type) {
       return full;
     }
 
-    case Type::Kind::Array: {
-      const auto& at = static_cast<const sun::ArrayType&>(type);
+    case sun::semantic_analysis::Type::Kind::Array: {
+      const auto& at =
+          static_cast<const sun::semantic_analysis::ArrayType&>(type);
       auto* u64 = di_->createBasicType("u64", 64, dwarf::DW_ATE_unsigned);
       // An unsized array is the view struct a `ref array<T>` carries
       if (at.isUnsized()) {
-        auto* st = ArrayType::getArrayStructType(ctx);
+        auto* st = sun::semantic_analysis::ArrayType::getArrayStructType(ctx);
         return structFor(
             "array<" + at.getElementType()->toString() + ">", st,
             {{"data", pointerTo(resolveType(at.getElementType()))},
@@ -420,14 +438,15 @@ DIType* DebugInfoBuilder::resolveTypeImpl(const Type& type) {
                                   di_->getOrCreateArray(subscripts));
     }
 
-    case Type::Kind::Slice: {
+    case sun::semantic_analysis::Type::Kind::Slice: {
       auto* st = dyn_cast<llvm::StructType>(type.toLLVMType(ctx));
       auto* i64 = di_->createBasicType("i64", 64, dwarf::DW_ATE_signed);
       return structFor("slice", st, {{"start", i64}, {"end", i64}});
     }
 
-    case Type::Kind::ErrorUnion: {
-      const auto& eu = static_cast<const ErrorUnionType&>(type);
+    case sun::semantic_analysis::Type::Kind::ErrorUnion: {
+      const auto& eu =
+          static_cast<const sun::semantic_analysis::ErrorUnionType&>(type);
       auto* st = dyn_cast<llvm::StructType>(eu.toLLVMType(ctx));
       return structFor(
           eu.toString(), st,
@@ -435,8 +454,8 @@ DIType* DebugInfoBuilder::resolveTypeImpl(const Type& type) {
            {"value", resolveType(eu.getValueType())}});
     }
 
-    case Type::Kind::Function:
-    case Type::Kind::Lambda: {
+    case sun::semantic_analysis::Type::Kind::Function:
+    case sun::semantic_analysis::Type::Kind::Lambda: {
       // Callable values are closure structs { ptr func, ptr env }.
       auto* st = llvm::StructType::get(
           ctx, {PointerType::getUnqual(ctx), PointerType::getUnqual(ctx)});
@@ -473,4 +492,4 @@ void DebugInfoBuilder::stripFromModule(llvm::Module& module) {
   }
 }
 
-}  // namespace sun
+}  // namespace sun::codegen

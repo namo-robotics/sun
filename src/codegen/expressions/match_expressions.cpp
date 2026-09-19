@@ -4,15 +4,22 @@
 #include "codegen/codegen.h"
 #include "codegen/codegen_visitor.h"
 
+using sun::support::logAndThrowError;
+
 using namespace llvm;
 
-Value* CodegenVisitor::codegen(const MatchExprAST& expr) {
+/** Translates analyzed Sun programs into LLVM instructions. */
+namespace sun::codegen {
+
+Value* CodegenVisitor::codegen(const sun::ast::MatchExprAST& expr) {
   // All enum matches lower as a tag switch (sema guarantees variant patterns
   // and exhaustiveness); the equality chain below handles scalar
   // discriminants (ints, floats, strings).
-  sun::TypePtr discType =
-      sun::unwrapRef(expr.getDiscriminant()->getResolvedType());
-  if (auto* enumType = sun::tryGetType<sun::EnumType>(discType)) {
+  sun::semantic_analysis::TypePtr discType = sun::semantic_analysis::unwrapRef(
+      expr.getDiscriminant()->getResolvedType());
+  if (auto* enumType =
+          sun::codegen::support::tryGetType<sun::semantic_analysis::EnumType>(
+              discType)) {
     return enums.codegenMatch(expr, *enumType);
   }
 
@@ -33,11 +40,11 @@ Value* CodegenVisitor::codegen(const MatchExprAST& expr) {
 
   const auto matchType = expr.getResolvedType();
   AllocaInst* resultStorage = nullptr;
-  if (sun::typeMovesOnRead(matchType)) {
+  if (sun::semantic_analysis::typeMovesOnRead(matchType)) {
     resultStorage = createEntryBlockAlloca(TheFunction, "match.result",
                                            typeResolver.resolve(matchType));
   }
-  auto emitBody = [&](const MatchArm& arm) {
+  auto emitBody = [&](const sun::ast::MatchArm& arm) {
     scopes.push();
     Value* value = codegen(*arm.body);
     if (!ctx.builder->GetInsertBlock()->getTerminator() && resultStorage &&
@@ -195,7 +202,7 @@ Value* CodegenVisitor::codegen(const MatchExprAST& expr) {
 
   // Multiple arms with values - create PHI node
   // First, verify all values have the same type
-  Type* resultType = armResults[0].first->getType();
+  llvm::Type* resultType = armResults[0].first->getType();
   for (const auto& [val, bb] : armResults) {
     if (val->getType() != resultType) {
       // Type mismatch - return void/i32 as fallback
@@ -220,3 +227,5 @@ Value* CodegenVisitor::codegen(const MatchExprAST& expr) {
 
   return PN;
 }
+
+}  // namespace sun::codegen

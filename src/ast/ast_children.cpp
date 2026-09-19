@@ -4,14 +4,20 @@
 
 #include "ast.h"
 
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
+namespace sun::ast {
+
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
+/** Invokes the child visitor when a child expression is present. */
 void visit(const ExprAST* child, const ChildFn& fn) {
   if (child) fn(*child);
 }
 
 }  // namespace
 
+/** Visits each directly owned expression child of a syntax node. */
 void forEachChild(const ExprAST& node, const ChildFn& fn) {
   switch (node.getType()) {
     case ASTNodeType::BLOCK: {
@@ -222,3 +228,5 @@ void forEachChild(const ExprAST& node, const ChildFn& fn) {
       break;
   }
 }
+
+}  // namespace sun::ast

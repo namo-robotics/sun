@@ -9,33 +9,54 @@
 // C macros such as SSL_set_tlsext_host_name have no symbol of their own and
 // are expressed through SSL_ctrl instead (see tls_stream.sun).
 
+/** Groups the tls declarations exported by this source file. */
 public module tls {
   // --- context ------------------------------------------------------------
 
+  /** Returns the OpenSSL method used to create TLS client contexts. */
   extern "C" function c_tls_client_method() raw_ptr<u8> as "TLS_client_method";
+  /** Allocates a TLS context that the caller must release. */
   extern "C" function c_ssl_ctx_new(method: raw_ptr<u8>) raw_ptr<u8> as "SSL_CTX_new";
+  /** Releases an OpenSSL TLS context. */
   extern "C" function c_ssl_ctx_free(ctx: raw_ptr<u8>) void as "SSL_CTX_free";
+  /** Configures certificate verification for a TLS context. */
   extern "C" function c_ssl_ctx_set_verify(ctx: raw_ptr<u8>, mode: i32, callback: raw_ptr<u8>) void as "SSL_CTX_set_verify";
+  /** Loads the system certificate trust paths into a TLS context. */
   extern "C" function c_ssl_ctx_set_default_verify_paths(ctx: raw_ptr<u8>) i32 as "SSL_CTX_set_default_verify_paths";
 
   // --- connection ----------------------------------------------------------
 
+  /** Allocates a TLS connection using the supplied context. */
   extern "C" function c_ssl_new(ctx: raw_ptr<u8>) raw_ptr<u8> as "SSL_new";
+  /** Releases an OpenSSL TLS connection. */
   extern "C" function c_ssl_free(ssl: raw_ptr<u8>) void as "SSL_free";
+  /** Connects a TLS session to an existing socket descriptor. */
   extern "C" function c_ssl_set_fd(ssl: raw_ptr<u8>, fd: i32) i32 as "SSL_set_fd";
+  /** Sets the hostname that the peer certificate must match. */
   extern "C" function c_ssl_set1_host(ssl: raw_ptr<u8>, hostname: raw_ptr<u8>) i32 as "SSL_set1_host";
+  /** Applies an OpenSSL control operation to a TLS connection. */
   extern "C" function c_ssl_ctrl(ssl: raw_ptr<u8>, cmd: i32, larg: i64, parg: raw_ptr<u8>) i64 as "SSL_ctrl";
+  /** Performs the client side of the TLS handshake. */
   extern "C" function c_ssl_connect(ssl: raw_ptr<u8>) i32 as "SSL_connect";
+  /** Reads decrypted bytes into caller-provided storage. */
   extern "C" function c_ssl_read(ssl: raw_ptr<u8>, buf: raw_ptr<u8>, num: i32) i32 as "SSL_read";
+  /** Sends bytes through an established TLS connection. */
   extern "C" function c_ssl_write(ssl: raw_ptr<u8>, buf: raw_ptr<u8>, num: i32) i32 as "SSL_write";
+  /** Sends or completes the TLS shutdown exchange. */
   extern "C" function c_ssl_shutdown(ssl: raw_ptr<u8>) i32 as "SSL_shutdown";
 
   // --- errors and verification ----------------------------------------------
 
+  /** Classifies the result of the most recent TLS operation. */
   extern "C" function c_ssl_get_error(ssl: raw_ptr<u8>, ret: i32) i32 as "SSL_get_error";
+  /** Returns the result of peer certificate verification. */
   extern "C" function c_ssl_get_verify_result(ssl: raw_ptr<u8>) i64 as "SSL_get_verify_result";
+  /** Returns a message describing a certificate verification failure. */
   extern "C" function c_x509_verify_cert_error_string(code: i64) raw_ptr<u8> as "X509_verify_cert_error_string";
+  /** Removes and returns the next OpenSSL error from the current thread's queue. */
   extern "C" function c_err_get_error() u64 as "ERR_get_error";
+  /** Returns the next OpenSSL error without removing it from the queue. */
   extern "C" function c_err_peek_error() u64 as "ERR_peek_error";
+  /** Formats an OpenSSL error into a bounded caller-provided buffer. */
   extern "C" function c_err_error_string_n(code: u64, buf: raw_ptr<u8>, len: i64) void as "ERR_error_string_n";
 }

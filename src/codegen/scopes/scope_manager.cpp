@@ -12,13 +12,20 @@
 #include "codegen/codegen_visitor.h"
 #include "semantic_analysis/packed_layout.h"
 
+using sun::semantic_analysis::ClassType;
+using sun::semantic_analysis::DeclarationId;
+using sun::semantic_analysis::TypePtr;
+
 using namespace llvm;
+
+/** Provides the scope manager responsible for variable storage and cleanup. */
+namespace sun::codegen::scopes {
 
 // -------------------------------------------------------------------
 // The stack itself
 // -------------------------------------------------------------------
 
-CodegenScope& ScopeManager::push(const Position& loc) {
+CodegenScope& ScopeManager::push(const sun::support::Position& loc) {
   auto& scope = push();
   scope.hasDebugScope = state_.debugInfo.pushLexicalBlock(*ctx.builder, loc);
   return scope;
@@ -40,10 +47,10 @@ void ScopeManager::pop() {
 // Finding variables
 // -------------------------------------------------------------------
 
-AllocaInst* ScopeManager::findVariable(const std::string& name) {
+AllocaInst* ScopeManager::findVariable(DeclarationId id) {
   // Search from innermost scope to outermost
   for (auto it = scopes_.rbegin(); it != scopes_.rend(); ++it) {
-    auto found = it->variables.find(name);
+    auto found = it->variables.find(id);
     if (found != it->variables.end()) {
       return found->second;
     }
@@ -56,20 +63,20 @@ AllocaInst* ScopeManager::findVariable(const std::string& name) {
   return nullptr;
 }
 
-bool ScopeManager::isIndirectBinding(const std::string& name) const {
+bool ScopeManager::isIndirectBinding(DeclarationId id) const {
   for (auto it = scopes_.rbegin(); it != scopes_.rend(); ++it) {
-    if (it->variables.count(name)) return it->indirectBindings.count(name);
+    if (it->variables.count(id)) return it->indirectBindings.count(id);
     if (it->isFunctionBoundary) break;
   }
   return false;
 }
 
-Value* ScopeManager::compoundStorageAddress(const std::string& name) {
-  AllocaInst* alloca = findVariable(name);
+Value* ScopeManager::compoundStorageAddress(DeclarationId id) {
+  AllocaInst* alloca = findVariable(id);
   if (!alloca) return nullptr;
-  if (isIndirectBinding(name)) {
+  if (isIndirectBinding(id)) {
     return ctx.builder->CreateLoad(PointerType::getUnqual(ctx.getContext()),
-                                   alloca, name + ".borrow");
+                                   alloca, alloca->getName() + ".borrow");
   }
   return alloca;
 }
@@ -79,9 +86,10 @@ Value* ScopeManager::compoundStorageAddress(const std::string& name) {
 // -------------------------------------------------------------------
 
 void ScopeManager::trackClassAllocation(Value* alloca, const std::string& name,
-                                        sun::TypePtr type, bool unwindOnly) {
+                                        TypePtr type, bool unwindOnly) {
   if (scopes_.empty()) return;
-  if (type && (type->isEnum() || type->isArray()) && !sun::typeNeedsDrop(type))
+  if (type && (type->isEnum() || type->isArray()) &&
+      !sun::semantic_analysis::typeNeedsDrop(type))
     return;
   for (auto& scope : scopes_) {
     for (auto& alloc : scope.classAllocations) {
@@ -102,6 +110,7 @@ void ScopeManager::trackClassAllocation(Value* alloca, const std::string& name,
   scopes_.back().classAllocations.push_back(std::move(entry));
 }
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
 /** Identify fields by their path, since empty fields can share an address. */
@@ -129,8 +138,7 @@ StoragePlace storagePlace(Value* ptr) {
 
 }  // namespace
 
-ClassAllocation* ScopeManager::findAllocation(Value* ptr,
-                                              const sun::TypePtr& type) {
+ClassAllocation* ScopeManager::findAllocation(Value* ptr, const TypePtr& type) {
   auto place = storagePlace(ptr);
   for (auto& scope : scopes_) {
     for (auto& alloc : scope.classAllocations) {
@@ -144,8 +152,8 @@ ClassAllocation* ScopeManager::findAllocation(Value* ptr,
   return nullptr;
 }
 
-void ScopeManager::markInitialized(Value* ptr, const sun::TypePtr& type) {
-  if (!type || !sun::typeNeedsDrop(type)) return;
+void ScopeManager::markInitialized(Value* ptr, const TypePtr& type) {
+  if (!type || !sun::semantic_analysis::typeNeedsDrop(type)) return;
   if (auto* alloc = findAllocation(ptr, type)) {
     setOwnership(*alloc, true);
   }
@@ -165,7 +173,7 @@ void ScopeManager::markInitialized(Value* ptr, const sun::TypePtr& type) {
 }
 
 ClassAllocation* ScopeManager::trackFieldAllocation(Value* ptr,
-                                                    const sun::TypePtr& type) {
+                                                    const TypePtr& type) {
   Value* base = storagePlace(ptr).base;
   for (auto& scope : scopes_) {
     for (const auto& owner : scope.classAllocations) {
@@ -187,8 +195,7 @@ void ScopeManager::setOwnership(ClassAllocation& alloc, bool owned) {
                              alloc.dropFlag);
 }
 
-void ScopeManager::markClassAllocationAsDeinited(Value* alloca,
-                                                 sun::TypePtr type) {
+void ScopeManager::markClassAllocationAsDeinited(Value* alloca, TypePtr type) {
   auto* alloc = findAllocation(alloca, type);
   if (!alloc && type) alloc = trackFieldAllocation(alloca, type);
   if (alloc) {
@@ -212,9 +219,11 @@ void ScopeManager::ensureDropFlag(ClassAllocation& alloc) {
   llvm::Type* boolTy = llvm::Type::getInt1Ty(ctx.getContext());
   Function* func = anchorBlock->getParent();
 
-  // The flag sits beside the value in the frame, never inside it, so class
-  // layout is untouched. False on entry, so a path that never reached the
-  // point of ownership never drops.
+  /**
+   * The flag sits beside the value in the frame, never inside it, so class
+   * layout is untouched. False on entry, so a path that never reached the
+   * point of ownership never drops.
+   */
   IRBuilder<> entry(&func->getEntryBlock(), func->getEntryBlock().begin());
   alloc.dropFlag =
       entry.CreateAlloca(boolTy, nullptr, alloc.varName + ".owned");
@@ -262,17 +271,6 @@ std::optional<std::string> ScopeManager::releaseBlockResult(Value* result) {
   return std::nullopt;
 }
 
-void ScopeManager::markAsMoved(const std::string& name) {
-  for (auto& scope : scopes_) {
-    for (auto& alloc : scope.ownedAllocations) {
-      if (alloc.varName == name) {
-        alloc.moved = true;
-        return;
-      }
-    }
-  }
-}
-
 bool ScopeManager::hasLiveOwners(size_t depth) const {
   for (size_t i = depth; i < scopes_.size(); ++i) {
     // A drop flag means ownership is a run-time answer, so assume it is owned
@@ -289,7 +287,7 @@ bool ScopeManager::hasLiveOwners(size_t depth) const {
 // -------------------------------------------------------------------
 
 void ScopeManager::emitFieldCleanup(Value* objectPtr,
-                                    const sun::ClassType* classType,
+                                    const ClassType* classType,
                                     const std::string& baseName,
                                     FunctionCallee freeFunc) {
   if (!classType) return;
@@ -309,8 +307,8 @@ void ScopeManager::emitFieldCleanup(Value* objectPtr,
                                        baseName + "." + field.name + ".ptr");
 
       llvm::Type* ptrTy = PointerType::getUnqual(ctx.getContext());
-      Align ptrAlign = sun::packed::fieldAlign(classType, ptrTy,
-                                               state_.module->getDataLayout());
+      Align ptrAlign = sun::semantic_analysis::fieldAlign(
+          classType, ptrTy, state_.module->getDataLayout());
       Value* fieldValue = ctx.builder->CreateAlignedLoad(
           ptrTy, fieldPtr, ptrAlign, baseName + "." + field.name + ".value");
 
@@ -333,7 +331,7 @@ void ScopeManager::emitFieldCleanup(Value* objectPtr,
 
       ctx.builder->SetInsertPoint(skipRawBB);
     } else if (auto* nestedClass =
-                   sun::tryGetType<sun::ClassType>(field.type)) {
+                   sun::codegen::support::tryGetType<ClassType>(field.type)) {
       // Embedded class field - recursively call deinit on it if it has one
       // Generate GEP to access the embedded struct field
       Value* fieldPtr = ctx.builder->CreateStructGEP(
@@ -346,28 +344,23 @@ void ScopeManager::emitFieldCleanup(Value* objectPtr,
   }
 }
 
-void ScopeManager::emitDeinitCall(const sun::ClassType* classType,
-                                  Value* receiver) {
-  const sun::ClassMethod* deinitMethod = classType->getMethod("deinit");
-  if (!deinitMethod) return;
-
-  Function* deinitFunc = gen_.functionRegistry().getOrDeclareMethodFunction(
-      classType->getMangledMethodName("deinit"), deinitMethod->paramTypes,
-      deinitMethod->returnType, deinitMethod->canThrow);
+void ScopeManager::emitDeinitCall(const ClassType* classType, Value* receiver) {
+  if (!classType->deinitializer) return;
+  Function* deinitFunc =
+      gen_.functionRegistry().lookupFunctionById(classType->deinitializer);
   ctx.builder->CreateCall(
       deinitFunc,
       {gen_.materializeMethodClosure(deinitFunc, receiver, "deinit.closure")});
 }
 
-void ScopeManager::emitFieldDeinit(Value* objectPtr,
-                                   const sun::ClassType* classType,
+void ScopeManager::emitFieldDeinit(Value* objectPtr, const ClassType* classType,
                                    const std::string& baseName) {
   if (!classType) return;
 
   StructType* structType = classType->getStructType(ctx.getContext());
 
   for (const auto& field : classType->getFields()) {
-    if (!sun::typeNeedsDrop(field.type)) continue;
+    if (!sun::semantic_analysis::typeNeedsDrop(field.type)) continue;
     const auto name = baseName + "." + field.name;
     Value* fieldPtr =
         ctx.builder->CreateStructGEP(structType, objectPtr, field.index, name);
@@ -379,10 +372,12 @@ void ScopeManager::emitFieldDeinit(Value* objectPtr,
  * Drops every initialized element of a sized array's inline storage.
  * Safe code cannot move individual elements out of an array.
  */
-void ScopeManager::emitArrayDrop(sun::ArrayType& arrayType, Value* storagePtr,
-                                 const std::string& name) {
-  if (arrayType.isUnsized() || !sun::typeNeedsDrop(&arrayType)) return;
-  const sun::TypePtr& elemType = arrayType.getElementType();
+void ScopeManager::emitArrayDrop(sun::semantic_analysis::ArrayType& arrayType,
+                                 Value* storagePtr, const std::string& name) {
+  if (arrayType.isUnsized() ||
+      !sun::semantic_analysis::typeNeedsDrop(&arrayType))
+    return;
+  const TypePtr& elemType = arrayType.getElementType();
   llvm::Type* elemLLVMType = elemType->toLLVMType(ctx.getContext());
   size_t count = arrayType.getTotalElements();
 
@@ -425,8 +420,8 @@ void ScopeManager::emitArrayDrop(sun::ArrayType& arrayType, Value* storagePtr,
 /**
  * Drops the erased concrete owner referenced by an interface value.
  */
-void ScopeManager::emitInterfaceDrop(sun::InterfaceType& interfaceType,
-                                     Value* storagePtr) {
+void ScopeManager::emitInterfaceDrop(
+    sun::semantic_analysis::InterfaceType& interfaceType, Value* storagePtr) {
   StructType* fatType = interfaceType.getFatPointerType(ctx.getContext());
   Value* fat = ctx.builder->CreateLoad(fatType, storagePtr, "iface.drop.fat");
   Value* data = ctx.builder->CreateExtractValue(fat, 0, "iface.drop.data");
@@ -452,11 +447,11 @@ void ScopeManager::emitInterfaceDrop(sun::InterfaceType& interfaceType,
   }
   Value* dropSlot = ctx.builder->CreateGEP(
       ptrTy, vtable,
-      ConstantInt::get(Type::getInt32Ty(ctx.getContext()), dropIndex),
+      ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), dropIndex),
       "iface.drop.slot");
   Value* drop = ctx.builder->CreateLoad(ptrTy, dropSlot, "iface.drop.fn");
-  FunctionType* dropType =
-      FunctionType::get(Type::getVoidTy(ctx.getContext()), {ptrTy}, false);
+  llvm::FunctionType* dropType = llvm::FunctionType::get(
+      llvm::Type::getVoidTy(ctx.getContext()), {ptrTy}, false);
   ctx.builder->CreateCall(dropType, drop, {data});
   ctx.builder->CreateStore(Constant::getNullValue(fatType), storagePtr);
   ctx.builder->CreateBr(doneBlock);
@@ -464,7 +459,7 @@ void ScopeManager::emitInterfaceDrop(sun::InterfaceType& interfaceType,
   ctx.builder->SetInsertPoint(doneBlock);
 }
 
-void ScopeManager::emitDropInPlace(const sun::TypePtr& type, Value* ptr,
+void ScopeManager::emitDropInPlace(const TypePtr& type, Value* ptr,
                                    const std::string& name) {
   if (!type || !ptr) return;
   if (auto* alloc = findAllocation(ptr, type)) {
@@ -479,17 +474,20 @@ void ScopeManager::emitDropInPlace(const sun::TypePtr& type, Value* ptr,
   emitUnconditionalDrop(type, ptr, name);
 }
 
-void ScopeManager::emitUnconditionalDrop(const sun::TypePtr& type, Value* ptr,
+void ScopeManager::emitUnconditionalDrop(const TypePtr& type, Value* ptr,
                                          const std::string& name) {
-  if (auto* classType = sun::tryGetType<sun::ClassType>(type)) {
+  if (auto* classType = sun::codegen::support::tryGetType<ClassType>(type)) {
     emitDeinitCall(classType, ptr);
     emitFieldDeinit(ptr, classType, name);
-  } else if (auto* interfaceType = sun::tryGetType<sun::InterfaceType>(type)) {
+  } else if (auto* interfaceType = sun::codegen::support::tryGetType<
+                 sun::semantic_analysis::InterfaceType>(type)) {
     emitInterfaceDrop(*interfaceType, ptr);
   } else if (type->isEnum()) {
-    gen_.enumGenerator().emitDrop(static_cast<sun::EnumType&>(*type), ptr);
+    gen_.enumGenerator().emitDrop(
+        static_cast<sun::semantic_analysis::EnumType&>(*type), ptr);
   } else if (type->isArray()) {
-    emitArrayDrop(static_cast<sun::ArrayType&>(*type), ptr, name);
+    emitArrayDrop(static_cast<sun::semantic_analysis::ArrayType&>(*type), ptr,
+                  name);
   }
 }
 
@@ -524,9 +522,9 @@ void ScopeManager::emitCleanupForScope(CodegenScope& scope, bool unwinding) {
   if (currentScope.empty()) return;
 
   // Get or declare free function: void free(ptr)
-  FunctionType* freeType =
-      FunctionType::get(llvm::Type::getVoidTy(ctx.getContext()),
-                        {PointerType::getUnqual(ctx.getContext())}, false);
+  llvm::FunctionType* freeType = llvm::FunctionType::get(
+      llvm::Type::getVoidTy(ctx.getContext()),
+      {PointerType::getUnqual(ctx.getContext())}, false);
   FunctionCallee freeFunc =
       state_.module->getOrInsertFunction("free", freeType);
 
@@ -555,7 +553,8 @@ void ScopeManager::emitCleanupForScope(CodegenScope& scope, bool unwinding) {
 
       ctx.builder->SetInsertPoint(freeBB);
 
-      if (auto* classType = sun::tryGetType<sun::ClassType>(it->pointeeType)) {
+      if (auto* classType =
+              sun::codegen::support::tryGetType<ClassType>(it->pointeeType)) {
         emitDeinitCall(classType, ptrToFree);
         // Recursively deinit class fields and free nested ptr<T> fields
         emitFieldDeinit(ptrToFree, classType, it->varName);
@@ -572,3 +571,5 @@ void ScopeManager::emitCleanupForScope(CodegenScope& scope, bool unwinding) {
     }
   }
 }
+
+}  // namespace sun::codegen::scopes

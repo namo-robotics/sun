@@ -1,3 +1,4 @@
+#include "semantic_analysis/method_signature_set.h"
 // analysis_declarations.cpp — Declarations: classes, interfaces, functions,
 // modules and type aliases
 //
@@ -9,9 +10,21 @@
 #include "semantic_analysis/field_initialization.h"
 #include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/semantic_analyzer.h"
+#include "semantic_analysis/symbol_names.h"
 #include "support/error.h"
 
-void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
+using sun::semantic_analysis::QualifiedName;
+using sun::semantic_analysis::TypePtr;
+using sun::semantic_analysis::Types;
+
+using sun::ast::PrototypeAST;
+using sun::support::logAndThrowError;
+
+/** Resolves declarations and checks the types and meaning of Sun programs. */
+namespace sun::semantic_analysis {
+
+void SemanticAnalyzer::analyzeClassDefinition(
+    sun::ast::ClassDefinitionAST& classDef) {
   const std::string& baseName = classDef.getName();
 
   // Partial classes: add methods to the primary class.
@@ -20,11 +33,10 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
     return;
   }
 
-  const sun::QualifiedName& qualifiedClass = classDef.getQualifiedName();
-  std::string mangledClassName = qualifiedClass.mangled();
+  const QualifiedName& qualifiedClass = classDef.getQualifiedName();
 
-  // Forbid redefinition of class in same module
-  if (ctx_.declarations().isDeclared(mangledClassName)) {
+  // Forbid redefinition of a class in the same scope
+  if (ctx_.declarations().isDeclared(baseName, ctx_.scope())) {
     logAndThrowError("Redefinition of class '" + baseName + "'",
                      classDef.getLocation());
   }
@@ -65,7 +77,7 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
   for (const auto& lp : classDef.getLifetimeParameters()) {
     if (std::count_if(classDef.getLifetimeParameters().begin(),
                       classDef.getLifetimeParameters().end(),
-                      [&](const LifetimeParameter& other) {
+                      [&](const sun::ast::LifetimeParameter& other) {
                         return other.name == lp.name;
                       }) > 1) {
       logAndThrowError("duplicate lifetime parameter '" + lp.name +
@@ -95,17 +107,18 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
     genericInfo.typeParameters = classDef.getTypeParameters();
     genericInfo.definitionScope = ctx_.scope()->shared_from_this();
     genericInfo.qualifiedName = qualifiedClass;
-    ctx_.registerGenericClass(baseName, genericInfo);
+    ctx_.currentScope().declareGenericClass(baseName, genericInfo);
 
     // Generic class templates are not analyzed further until instantiated
     if (classDef.isGeneric()) {
-      classDef.setResolvedType(sun::Types::Void());
+      classDef.setResolvedType(Types::Void());
       return;
     }
   }
 
   // Create the class type with the qualified name
-  auto classType = ctx_.types()->getClass(qualifiedClass);
+  auto classType =
+      ctx_.types()->getClass(classDef.getDeclarationId(), qualifiedClass);
 
   // Layout must be decided before any getStructType() call memoizes it
   classType->setPacked(classDef.isPacked());
@@ -120,12 +133,13 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
 
   // Register the class BEFORE processing fields to allow self-referential
   // types (e.g., var next: raw_ptr<Node> inside class Node)
-  ctx_.registerClass(baseName, classType);
+  ctx_.currentScope().declareClass(baseName, classType);
 
   // Fields and method signatures are normally registered by the
   // declaration pre-pass (registerClassShape); classes analyzed outside a
   // pre-passed block register them here.
-  bool shapeRegistered = ctx_.declarations().hasClassShape(mangledClassName);
+  bool shapeRegistered =
+      ctx_.declarations().hasClassShape(classDef.getDeclarationId());
   if (!shapeRegistered) {
     pipeline_.declarations().registerClassShape(classDef, qualifiedClass,
                                                 classType);
@@ -140,7 +154,7 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
   // so all methods (primary + extensions) can call each other
   const auto* extensions = ctx_.declarations().pendingExtensions(baseName);
   if (extensions) {
-    for (ClassDefinitionAST* extDef : *extensions) {
+    for (sun::ast::ClassDefinitionAST* extDef : *extensions) {
       // Validate: check for duplicate methods
       for (const auto& extMethod : extDef->getMethods()) {
         const std::string& methodName =
@@ -181,25 +195,27 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
   }
 
   // PASS 1: Make the (already registered) method signatures resolvable
-  // by mangled name inside the class scope
+  // by source name inside the class scope
   for (const auto& methodDecl : classDef.getMethods()) {
     const PrototypeAST& proto = methodDecl.function->getProto();
-    std::string mangledName = classType->getMangledMethodName(proto.getName());
-    std::vector<sun::TypePtr> methodParamTypes;
+    std::string methodNameForScope = proto.getName();
+    std::vector<TypePtr> methodParamTypes;
     methodParamTypes.push_back(classType);  // this parameter
     for (const auto& pt : proto.getResolvedParamTypes()) {
       methodParamTypes.push_back(pt);
     }
-    sun::TypePtr returnType = proto.hasResolvedReturnType()
-                                  ? proto.getResolvedReturnType()
-                                  : sun::Types::Void();
-    ctx_.registerFunctionInCurrentScope(mangledName,
-                                        {returnType, methodParamTypes, {}});
+    TypePtr returnType = proto.hasResolvedReturnType()
+                             ? proto.getResolvedReturnType()
+                             : Types::Void();
+    FunctionInfo methodInfo{returnType, methodParamTypes, {}};
+    methodInfo.declarationId = proto.getDeclarationId();
+    ctx_.currentScope().declareFunction(methodNameForScope, methodInfo,
+                                        ctx_.currentLocation());
   }
 
   // PASS 2: Analyze all method bodies using their assigned names.
   for (const auto& methodDecl : classDef.getMethods()) {
-    pipeline_.bodies().analyzeFunction(*methodDecl.function);
+    bodies_.analyzeFunction(*methodDecl.function);
   }
 
   // PASS 3: check constructors, now that every method body is analyzed — the
@@ -210,8 +226,8 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
   if (!classDef.isPrecompiled()) {
     for (const auto& methodDecl : classDef.getMethods()) {
       if (!methodDecl.isConstructor) continue;
-      sun::checkFieldInitialization(*methodDecl.function, *classType,
-                                    classDef.getMethods());
+      sun::semantic_analysis::checkFieldInitialization(
+          *methodDecl.function, *classType, classDef.getMethods());
     }
   }
 
@@ -225,11 +241,11 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
   ctx_.setCurrentClass(savedClass);
 
   // Track symbol for redefinition detection
-  ctx_.declarations().noteDeclared(mangledClassName);
+  ctx_.declarations().noteDeclared(baseName, ctx_.scope());
 
   // Store primary AST for partial class merging (if a partial appears
   // later)
-  ctx_.scope()->classDefinitions[baseName] = &classDef;
+  ctx_.currentScope().declareClassDefinition(baseName, classDef);
 
   // Set resolved type to the class type so codegen can get the qualified
   // name
@@ -237,13 +253,12 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
 }
 
 void SemanticAnalyzer::analyzeInterfaceDefinition(
-    InterfaceDefinitionAST& interfaceDef) {
-  const sun::QualifiedName& qualifiedInterface =
-      interfaceDef.getQualifiedName();
-  std::string interfaceName = qualifiedInterface.mangled();
+    sun::ast::InterfaceDefinitionAST& interfaceDef) {
+  const QualifiedName& qualifiedInterface = interfaceDef.getQualifiedName();
+  std::string interfaceName = qualifiedInterface.lookupName();
 
-  // Forbid redefinition of interface in same module
-  if (ctx_.declarations().isDeclared(interfaceName)) {
+  // Forbid redefinition of an interface in the same scope
+  if (ctx_.declarations().isDeclared(interfaceDef.getName(), ctx_.scope())) {
     logAndThrowError(
         "Redefinition of interface '" + interfaceDef.getName() + "'",
         interfaceDef.getLocation());
@@ -285,7 +300,7 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
   for (const auto& lp : interfaceDef.getLifetimeParameters()) {
     if (std::count_if(interfaceDef.getLifetimeParameters().begin(),
                       interfaceDef.getLifetimeParameters().end(),
-                      [&](const LifetimeParameter& other) {
+                      [&](const sun::ast::LifetimeParameter& other) {
                         return other.name == lp.name;
                       }) > 1) {
       logAndThrowError("duplicate lifetime parameter '" + lp.name +
@@ -315,23 +330,25 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
     info.AST = &interfaceDef;
     info.typeParameters = interfaceDef.getTypeParameters();
     info.qualifiedName = qualifiedInterface;
-    ctx_.registerGenericInterface(interfaceDef.getName(), info);
+    ctx_.currentScope().declareGenericInterface(interfaceDef.getName(), info);
 
     // Create a generic interface type (for type checking generic
     // references)
     auto interfaceType = ctx_.types()->getGenericInterface(
-        interfaceDef.getName(), interfaceDef.getTypeParameterNames());
+        interfaceDef.getDeclarationId(), qualifiedInterface,
+        interfaceDef.getTypeParameterNames());
     interfaceType->visibility = interfaceDef.getVisibility();
     interfaceType->setQualifiedName(qualifiedInterface);
-    ctx_.registerInterface(interfaceDef.getName(), interfaceType);
+    ctx_.currentScope().declareInterface(interfaceDef.getName(), interfaceType);
 
-    interfaceDef.setResolvedType(sun::Types::Void());
+    interfaceDef.setResolvedType(Types::Void());
     activeLifetimeNames_.resize(interfaceLifetimeMark);
     return;
   }
 
   // Non-generic interface: create the interface type directly
-  auto interfaceType = ctx_.types()->getInterface(interfaceName);
+  auto interfaceType = ctx_.types()->getInterface(
+      interfaceDef.getDeclarationId(), qualifiedInterface);
   {
     std::vector<std::string> lifetimeNames;
     for (const auto& lp : interfaceDef.getLifetimeParameters()) {
@@ -348,18 +365,24 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
 
   // Create a pseudo-class type for 'this' during interface method analysis
   // This allows default implementations to access interface fields
-  auto pseudoClass =
-      ctx_.types()->getClass("__interface_" + interfaceDef.getName());
+  auto pseudoId = ctx_.types()->declarations.add(
+      sun::semantic_analysis::DeclarationKind::Class,
+      "__interface_" + interfaceDef.getName(), interfaceDef.getDeclarationId(),
+      ctx_.types()->declarations.get(interfaceDef.getDeclarationId()).module,
+      {}, interfaceDef.getDeclarationId(), "interface-receiver");
+  auto pseudoClass = ctx_.types()->getClass(pseudoId);
 
   // Add fields to the interface type and pseudo-class
   for (const auto& field : interfaceDef.getFields()) {
-    sun::TypePtr fieldType = types_.typeAnnotationToType(field.type);
-    interfaceType->addField(field.name, fieldType).visibility =
-        field.visibility;
-    pseudoClass->addField(field.name, fieldType).visibility = field.visibility;
+    TypePtr fieldType = types_.typeAnnotationToType(field.type);
+    interfaceType->addField(field.name, fieldType, field.declaration.id)
+        .visibility = field.visibility;
+    pseudoClass->addField(field.name, fieldType, field.declaration.id)
+        .visibility = field.visibility;
   }
 
-  // Add methods to the interface type
+  // Add methods to the interface type, rejecting duplicate signatures.
+  MethodSignatureSet methodSignatures(ctx_, types_);
   for (const auto& methodDecl : interfaceDef.getMethods()) {
     // Get method signature info (pure computation)
     FunctionInfo methodInfo = getFunctionInfo(*methodDecl.function);
@@ -369,11 +392,17 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
     // Apply computed info to prototype
     applyFunctionInfoToProto(proto, methodInfo);
 
+    if (!methodSignatures.insert(proto, methodInfo.paramTypes))
+      logAndThrowError(
+          "Interface method '" + proto.getName() + "' is already defined",
+          methodDecl.function->getLocation());
     // Add method to interface type (include generic type parameters)
     auto& method = interfaceType->addMethod(
         proto.getName(), methodInfo.returnType, methodInfo.paramTypes,
         methodDecl.hasDefaultImpl, proto.getTypeParameterNames());
-    method.visibility = sun::access::methodVisibility(*methodDecl.function);
+    method.declarationId = proto.getDeclarationId();
+    method.visibility =
+        sun::semantic_analysis::methodVisibility(*methodDecl.function);
     method.isConst = methodDecl.isConst;
     method.isUnsafe = methodDecl.function->getProto().isUnsafeMethod();
   }
@@ -389,7 +418,7 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
       ctx_.setCurrentClass(pseudoClass);
 
       // Analyze the method body
-      pipeline_.bodies().analyzeFunction(*methodDecl.function);
+      bodies_.analyzeFunction(*methodDecl.function);
 
       // Restore original ctx_.getCurrentClass()
       ctx_.setCurrentClass(savedClass);
@@ -399,21 +428,35 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
   ctx_.exitScope();  // Interface scope
 
   // Register the interface
-  ctx_.registerInterface(interfaceDef.getName(), interfaceType);
+  ctx_.currentScope().declareInterface(interfaceDef.getName(), interfaceType);
 
   // Track symbol for redefinition detection
-  ctx_.declarations().noteDeclared(interfaceName);
+  ctx_.declarations().noteDeclared(interfaceDef.getName(), ctx_.scope());
 
   activeLifetimeNames_.resize(interfaceLifetimeMark);
-  interfaceDef.setResolvedType(sun::Types::Void());
+  interfaceDef.setResolvedType(Types::Void());
 }
 
-void SemanticAnalyzer::analyzeFunctionDefinition(FunctionAST& func) {
+void SemanticAnalyzer::analyzeFunctionDefinition(sun::ast::FunctionAST& func) {
   PrototypeAST& proto = const_cast<PrototypeAST&>(func.getProto());
 
   // Get function signature info (includes qualified name with function
   // context)
   FunctionInfo funcInfo = getFunctionInfo(func);
+
+  if (funcInfo.isForwardDeclaration) {
+    const sun::semantic_analysis::CallableSignature signature{
+        funcInfo.qualifiedName.baseName, funcInfo.paramTypes};
+    const auto definition = ctx_.scope()->functions.find(signature);
+    if (definition != ctx_.scope()->functions.end() &&
+        !definition->second.isForwardDeclaration) {
+      if (!definition->second.returnType->equals(*funcInfo.returnType) ||
+          definition->second.canThrow != funcInfo.canThrow)
+        logAndThrowError("Forward declaration does not match its definition",
+                         func.getLocation());
+      func.setTargetDeclarationId(definition->second.declarationId);
+    }
+  }
 
   // Apply computed info to prototype
   applyFunctionInfoToProto(proto, funcInfo);
@@ -422,19 +465,19 @@ void SemanticAnalyzer::analyzeFunctionDefinition(FunctionAST& func) {
   // Only register non-template functions in the normal function table.
   // Templates are looked up via the genericFunctions table instead.
   if (!proto.isTemplate()) {
-    ctx_.registerFunctionInCurrentScope(funcInfo.qualifiedName.baseName,
-                                        funcInfo);
+    ctx_.currentScope().declareFunction(funcInfo.qualifiedName.baseName,
+                                        funcInfo, ctx_.currentLocation());
   }
 
   // Analyze the function body
-  pipeline_.bodies().analyzeFunction(func);
+  bodies_.analyzeFunction(func);
 
   // Set the function type on the function node
-  func.setResolvedType(sun::Types::Function(
-      funcInfo.returnType, funcInfo.paramTypes, funcInfo.canThrow));
+  func.setResolvedType(Types::Function(funcInfo.returnType, funcInfo.paramTypes,
+                                       funcInfo.canThrow));
 }
 
-void SemanticAnalyzer::analyzeLambdaExpr(LambdaAST& lambda) {
+void SemanticAnalyzer::analyzeLambdaExpr(sun::ast::LambdaAST& lambda) {
   PrototypeAST& proto = const_cast<PrototypeAST&>(lambda.getProto());
 
   rejectRefEnvReturnType(proto.getReturnType(), lambda.getLocation(),
@@ -451,22 +494,22 @@ void SemanticAnalyzer::analyzeLambdaExpr(LambdaAST& lambda) {
   applyFunctionInfoToProto(proto, lambdaInfo);
 
   // Analyze the lambda body
-  pipeline_.bodies().analyzeLambda(lambda);
+  bodies_.analyzeLambda(lambda);
 
   // Set the lambda type on the lambda node
   lambda.setResolvedType(types_.inferType(lambda));
 }
 
-void SemanticAnalyzer::analyzeModuleDefinition(ModuleAST& nsDecl) {
+void SemanticAnalyzer::analyzeModuleDefinition(sun::ast::ModuleAST& nsDecl) {
   // Enter the namespace scope
-  ctx_.declareModule(nsDecl);
+  ctx_.enterScope(ctx_.currentScope().declareModule(nsDecl));
 
   // Analyze the body of the namespace
   // Functions handle their own qualified name registration in FUNCTION case
   for (const auto& bodyExpr : nsDecl.getBody().getBody()) {
-    if (bodyExpr->getType() == ASTNodeType::VARIABLE_CREATION) {
+    if (bodyExpr->getType() == sun::ast::ASTNodeType::VARIABLE_CREATION) {
       // Variables need special handling to register in namespacedVariables
-      auto& varCreate = static_cast<VariableCreationAST&>(*bodyExpr);
+      auto& varCreate = static_cast<sun::ast::VariableCreationAST&>(*bodyExpr);
       if (bodyExpr->isPrecompiled()) {
         // A global imported from a .moon: the storage and its initial
         // value live in the bundle, so there is nothing to analyze — only
@@ -475,11 +518,11 @@ void SemanticAnalyzer::analyzeModuleDefinition(ModuleAST& nsDecl) {
         continue;
       }
       analyzeExpr(*bodyExpr);
-      const sun::QualifiedName& qualifiedName = varCreate.getQualifiedName();
+      const QualifiedName& qualifiedName = varCreate.getQualifiedName();
       if (auto type = varCreate.getResolvedType()) {
-        ctx_.registerModuleVariable(qualifiedName, type,
-                                    varCreate.getVisibility(),
-                                    varCreate.isConst(), varCreate.isCExtern());
+        ctx_.currentScope().declareModuleVariable(
+            qualifiedName, type, varCreate.getVisibility(), varCreate.isConst(),
+            varCreate.isCExtern(), varCreate.getDeclarationId());
       }
     } else {
       analyzeExpr(*bodyExpr);
@@ -488,13 +531,13 @@ void SemanticAnalyzer::analyzeModuleDefinition(ModuleAST& nsDecl) {
 
   // Exit the namespace scope
   ctx_.exitScope();
-  nsDecl.setResolvedType(sun::Types::Void());
+  nsDecl.setResolvedType(Types::Void());
 }
 
-void SemanticAnalyzer::analyzeMoonScope(ExprAST& expr) {
+void SemanticAnalyzer::analyzeMoonScope(sun::ast::ExprAST& expr) {
   // A bundle's declarations live under its content hash, whether they are
   // an import's stubs or the sources of the bundle being built
-  auto& moonScope = static_cast<MoonScopeAST&>(expr);
+  auto& moonScope = static_cast<sun::ast::MoonScopeAST&>(expr);
   const std::string& contentHash = moonScope.getContentHash();
   if (!contentHash.empty()) {
     ctx_.enterModuleScope(contentHash);
@@ -511,29 +554,24 @@ void SemanticAnalyzer::analyzeMoonScope(ExprAST& expr) {
   if (!contentHash.empty()) {
     ctx_.exitScope();
   }
-  expr.setResolvedType(sun::Types::Void());
+  expr.setResolvedType(Types::Void());
 }
 
-void SemanticAnalyzer::analyzeDeclareType(DeclareTypeAST& declareExpr) {
+void SemanticAnalyzer::analyzeDeclareType(
+    sun::ast::DeclareTypeAST& declareExpr) {
   // Trigger generic instantiation by resolving the type annotation
-  sun::TypePtr resolvedType =
+  TypePtr resolvedType =
       types_.typeAnnotationToType(declareExpr.getTypeAnnotation());
   declareExpr.setResolvedDeclaredType(resolvedType);
 
   // If there's an alias, register it
   if (declareExpr.hasAlias()) {
     const std::string& aliasName = declareExpr.getAliasName();
-    // Check current scope only for redefinition (shadowing is allowed)
-    if (ctx_.scope()->typeAliases.find(aliasName) !=
-        ctx_.scope()->typeAliases.end()) {
-      logAndThrowError(
-          "Type alias '" + aliasName + "' is already defined in this scope",
-          declareExpr.getLocation());
-    }
-    if (resolvedType) {
-      ctx_.scope()->typeAliases[aliasName] = resolvedType;
-    }
+    ctx_.currentScope().declareTypeAlias(aliasName, resolvedType,
+                                         declareExpr.getLocation());
   }
 
-  declareExpr.setResolvedType(sun::Types::Void());
+  declareExpr.setResolvedType(Types::Void());
 }
+
+}  // namespace sun::semantic_analysis

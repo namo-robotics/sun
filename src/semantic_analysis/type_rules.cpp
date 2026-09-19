@@ -4,12 +4,29 @@
 
 #include "support/error.h"
 
-using sun::unwrapRef;
+using sun::semantic_analysis::ClassType;
+using sun::semantic_analysis::ReferenceType;
+using sun::semantic_analysis::TypePtr;
 
-namespace sun::rules {
+using sun::ast::ASTNodeType;
+using sun::ast::ExprAST;
+using sun::ast::NumberExprAST;
+using sun::parsing::TokenKind;
+using sun::support::logAndThrowError;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
+namespace sun::semantic_analysis {
+
+using sun::semantic_analysis::unwrapRef;
+
+}  // namespace sun::semantic_analysis
+
+/** Resolves declarations and checks the types and meaning of Sun programs. */
+namespace sun::semantic_analysis {
+
+/** Reports whether an integer magnitude and sign fit the target numeric type. */
 bool literalFitsInType(uint64_t magnitude, bool negative,
-                       sun::Type::Kind kind) {
+                       sun::semantic_analysis::Type::Kind kind) {
   // A signed type of `bits` width holds -2^(bits-1) .. 2^(bits-1)-1; the
   // negative side reaches one further than the positive side.
   auto fitsSigned = [&](int bits) {
@@ -20,54 +37,59 @@ bool literalFitsInType(uint64_t magnitude, bool negative,
     return !negative && magnitude <= max;
   };
   switch (kind) {
-    case sun::Type::Kind::Int8:
+    case sun::semantic_analysis::Type::Kind::Int8:
       return fitsSigned(8);
-    case sun::Type::Kind::Int16:
+    case sun::semantic_analysis::Type::Kind::Int16:
       return fitsSigned(16);
-    case sun::Type::Kind::Int32:
+    case sun::semantic_analysis::Type::Kind::Int32:
       return fitsSigned(32);
-    case sun::Type::Kind::Int64:
+    case sun::semantic_analysis::Type::Kind::Int64:
       return fitsSigned(64);
-    case sun::Type::Kind::UInt8:
+    case sun::semantic_analysis::Type::Kind::UInt8:
       return fitsUnsigned(UINT8_MAX);
-    case sun::Type::Kind::UInt16:
+    case sun::semantic_analysis::Type::Kind::UInt16:
       return fitsUnsigned(UINT16_MAX);
-    case sun::Type::Kind::UInt32:
+    case sun::semantic_analysis::Type::Kind::UInt32:
       return fitsUnsigned(UINT32_MAX);
-    case sun::Type::Kind::UInt64:
+    case sun::semantic_analysis::Type::Kind::UInt64:
       return fitsUnsigned(UINT64_MAX);
-    case sun::Type::Kind::Bool:
+    case sun::semantic_analysis::Type::Kind::Bool:
       return fitsUnsigned(1);
     default:
       return false;
   }
 }
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// Bit width of an integer primitive, 0 for anything else.
-int integerBitWidth(const sun::TypePtr& type) {
+/**
+ * Bit width of an integer primitive, 0 for anything else.
+ */
+int integerBitWidth(const TypePtr& type) {
   if (!type || !type->isPrimitive()) return 0;
   switch (type->getKind()) {
-    case sun::Type::Kind::Int8:
-    case sun::Type::Kind::UInt8:
+    case sun::semantic_analysis::Type::Kind::Int8:
+    case sun::semantic_analysis::Type::Kind::UInt8:
       return 8;
-    case sun::Type::Kind::Int16:
-    case sun::Type::Kind::UInt16:
+    case sun::semantic_analysis::Type::Kind::Int16:
+    case sun::semantic_analysis::Type::Kind::UInt16:
       return 16;
-    case sun::Type::Kind::Int32:
-    case sun::Type::Kind::UInt32:
+    case sun::semantic_analysis::Type::Kind::Int32:
+    case sun::semantic_analysis::Type::Kind::UInt32:
       return 32;
-    case sun::Type::Kind::Int64:
-    case sun::Type::Kind::UInt64:
+    case sun::semantic_analysis::Type::Kind::Int64:
+    case sun::semantic_analysis::Type::Kind::UInt64:
       return 64;
     default:
       return 0;
   }
 }
 
-// True for the six comparison operators, whose result is a bool regardless of
-// what the operands are.
+/**
+ * True for the six comparison operators, whose result is a bool regardless of
+ * what the operands are.
+ */
 bool isComparisonOp(TokenKind op) {
   return op == TokenKind::LESS || op == TokenKind::GREATER ||
          op == TokenKind::LESS_EQUAL || op == TokenKind::GREATER_EQUAL ||
@@ -76,7 +98,8 @@ bool isComparisonOp(TokenKind op) {
 
 }  // namespace
 
-bool tryCoerceIntegerLiteral(ExprAST* expr, sun::TypePtr targetType,
+/** Coerces a fitting integer literal to the requested type without accepting overflow. */
+bool tryCoerceIntegerLiteral(ExprAST* expr, TypePtr targetType,
                              bool throwOnFail) {
   if (!expr || !targetType || !targetType->isPrimitive()) return false;
   if (expr->getType() != ASTNodeType::NUMBER) return false;
@@ -87,7 +110,8 @@ bool tryCoerceIntegerLiteral(ExprAST* expr, sun::TypePtr targetType,
   // A suffixed literal (21u8) is typed: it never adapts to another type. Its
   // own suffix type still goes through the range check below.
   if (numLit.hasSuffix() &&
-      !targetType->equals(*sun::Types::fromString(numLit.getSuffix()))) {
+      !targetType->equals(
+          *sun::semantic_analysis::Types::fromString(numLit.getSuffix()))) {
     return false;
   }
 
@@ -106,10 +130,12 @@ bool tryCoerceIntegerLiteral(ExprAST* expr, sun::TypePtr targetType,
   return false;
 }
 
-// A char is a Unicode scalar value, not a small number: it compares with
-// another char and does nothing else. Both are an i32 underneath, so without
-// this check `'a' + 1` and `c == 65` would quietly take the integer path.
-void checkCharOperands(const BinaryExprAST& binExpr) {
+/**
+ * A char is a Unicode scalar value, not a small number: it compares with
+ * another char and does nothing else. Both are an i32 underneath, so without
+ * this check `'a' + 1` and `c == 65` would quietly take the integer path.
+ */
+void checkCharOperands(const sun::ast::BinaryExprAST& binExpr) {
   const ExprAST* lhs = binExpr.getLHS();
   const ExprAST* rhs = binExpr.getRHS();
   if (!lhs || !rhs) return;
@@ -122,7 +148,7 @@ void checkCharOperands(const BinaryExprAST& binExpr) {
 
   TokenKind op = binExpr.getOp().kind;
   if (!isComparisonOp(op)) {
-    const auto& info = getTokenInfo();
+    const auto& info = sun::parsing::getTokenInfo();
     auto it = info.find(op);
     std::string opText =
         it != info.end() ? std::string(it->second.text) : "operator";
@@ -132,7 +158,7 @@ void checkCharOperands(const BinaryExprAST& binExpr) {
         binExpr.getLocation());
   }
   if (!lhsIsChar || !rhsIsChar) {
-    const sun::TypePtr& other = lhsIsChar ? rhsType : lhsType;
+    const TypePtr& other = lhsIsChar ? rhsType : lhsType;
     logAndThrowError(
         "Cannot compare 'char' with '" +
             (other ? other->toDisplayString() : std::string("unknown")) +
@@ -142,16 +168,18 @@ void checkCharOperands(const BinaryExprAST& binExpr) {
   }
 }
 
-// An untyped numeric literal takes its type from context: the type the
-// surrounding expression expects, or failing that the operand it is combined
-// with. Without this the literal keeps its default i32/f64 type and codegen
-// widens the other operand to match, so `u8_var + 32` would produce an i32
-// value where semantic analysis promised a u8.
-void coerceBinaryLiteralOperands(const BinaryExprAST& binExpr,
-                                 const sun::TypePtr& expectedType) {
+/**
+ * An untyped numeric literal takes its type from context: the type the
+ * surrounding expression expects, or failing that the operand it is combined
+ * with. Without this the literal keeps its default i32/f64 type and codegen
+ * widens the other operand to match, so `u8_var + 32` would produce an i32
+ * value where semantic analysis promised a u8.
+ */
+void coerceBinaryLiteralOperands(const sun::ast::BinaryExprAST& binExpr,
+                                 const TypePtr& expectedType) {
   // Returns true if the literal took the target type
   auto coerceNumericLiteral = [](const ExprAST* literal,
-                                 const sun::TypePtr& targetType) {
+                                 const TypePtr& targetType) {
     auto target = unwrapRef(targetType);
     if (!literal || !target || !target->isPrimitive()) return false;
     auto* expr = const_cast<ExprAST*>(literal);
@@ -201,8 +229,8 @@ void coerceBinaryLiteralOperands(const BinaryExprAST& binExpr,
   coerceNumericLiteral(lhs, rhs->getResolvedType());
 }
 
-sun::TypePtr promoteBinaryOperands(const sun::TypePtr& lhsType,
-                                   const sun::TypePtr& rhsType) {
+/** Chooses the common numeric type used by a binary operation. */
+TypePtr promoteBinaryOperands(const TypePtr& lhsType, const TypePtr& rhsType) {
   auto lhs = unwrapRef(lhsType);
   auto rhs = unwrapRef(rhsType);
   if (!lhs || !rhs || lhs->getKind() == rhs->getKind()) return lhs;
@@ -219,9 +247,9 @@ sun::TypePtr promoteBinaryOperands(const sun::TypePtr& lhsType,
   return lhs;
 }
 
-sun::TypePtr unifyTernaryTypes(const sun::TypePtr& thenType,
-                               const sun::TypePtr& elseType,
-                               std::optional<Position> loc) {
+/** Finds a compatible result type for the two conditional branches. */
+TypePtr unifyTernaryTypes(const TypePtr& thenType, const TypePtr& elseType,
+                          std::optional<sun::support::Position> loc) {
   if (!thenType || !elseType) {
     logAndThrowError("Cannot determine ternary branch types", loc);
   }
@@ -232,8 +260,10 @@ sun::TypePtr unifyTernaryTypes(const sun::TypePtr& thenType,
   if (thenToElse && elseToThen) {
     // Both directions hold for f32<->f64 and same-width integers; never
     // narrow to f32.
-    if (thenType->getKind() == sun::Type::Kind::Float64) return thenType;
-    if (elseType->getKind() == sun::Type::Kind::Float64) return elseType;
+    if (thenType->getKind() == sun::semantic_analysis::Type::Kind::Float64)
+      return thenType;
+    if (elseType->getKind() == sun::semantic_analysis::Type::Kind::Float64)
+      return elseType;
     return thenType;
   }
   if (thenToElse) return elseType;
@@ -249,7 +279,8 @@ sun::TypePtr unifyTernaryTypes(const sun::TypePtr& thenType,
 // Type assignability checking
 // -------------------------------------------------------------------
 
-bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
+/** Reports whether a value of one type can be assigned to another. */
+bool isAssignableTo(const TypePtr& from, const TypePtr& to) {
   if (!from || !to) return false;
 
   // Exact equality always works
@@ -259,8 +290,10 @@ bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
   // A non-throwing pointer may widen to the same throwing signature. The
   // reverse would let an indirect call bypass normal error handling.
   if (from->isFunction() && to->isFunction()) {
-    const auto& source = static_cast<const sun::FunctionType&>(*from);
-    const auto& target = static_cast<const sun::FunctionType&>(*to);
+    const auto& source =
+        static_cast<const sun::semantic_analysis::FunctionType&>(*from);
+    const auto& target =
+        static_cast<const sun::semantic_analysis::FunctionType&>(*to);
     if (source.canThrow() && !target.canThrow()) return false;
     if (source.requiresUnsafe() && !target.requiresUnsafe()) return false;
     if (!source.getReturnType()->equals(*target.getReturnType())) return false;
@@ -275,8 +308,10 @@ bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
   // is extracted). The reverse never holds: a raw_ptr carries no length and
   // no promise the bytes are immortal, so it cannot become a static_ptr.
   if (from->isStaticPointer() && to->isRawPointer()) {
-    auto* s = static_cast<const sun::StaticPointerType*>(from.get());
-    auto* r = static_cast<const sun::RawPointerType*>(to.get());
+    auto* s = static_cast<const sun::semantic_analysis::StaticPointerType*>(
+        from.get());
+    auto* r =
+        static_cast<const sun::semantic_analysis::RawPointerType*>(to.get());
     if (s->getPointeeType()->equals(*r->getPointeeType())) return true;
   }
 
@@ -285,26 +320,30 @@ bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
     auto fromKind = from->getKind();
     auto toKind = to->getKind();
 
-    auto isInteger = [](sun::Type::Kind k) {
-      return k == sun::Type::Kind::Int8 || k == sun::Type::Kind::Int16 ||
-             k == sun::Type::Kind::Int32 || k == sun::Type::Kind::Int64 ||
-             k == sun::Type::Kind::UInt8 || k == sun::Type::Kind::UInt16 ||
-             k == sun::Type::Kind::UInt32 || k == sun::Type::Kind::UInt64;
+    auto isInteger = [](sun::semantic_analysis::Type::Kind k) {
+      return k == sun::semantic_analysis::Type::Kind::Int8 ||
+             k == sun::semantic_analysis::Type::Kind::Int16 ||
+             k == sun::semantic_analysis::Type::Kind::Int32 ||
+             k == sun::semantic_analysis::Type::Kind::Int64 ||
+             k == sun::semantic_analysis::Type::Kind::UInt8 ||
+             k == sun::semantic_analysis::Type::Kind::UInt16 ||
+             k == sun::semantic_analysis::Type::Kind::UInt32 ||
+             k == sun::semantic_analysis::Type::Kind::UInt64;
     };
 
-    auto intBitWidth = [](sun::Type::Kind k) -> int {
+    auto intBitWidth = [](sun::semantic_analysis::Type::Kind k) -> int {
       switch (k) {
-        case sun::Type::Kind::Int8:
-        case sun::Type::Kind::UInt8:
+        case sun::semantic_analysis::Type::Kind::Int8:
+        case sun::semantic_analysis::Type::Kind::UInt8:
           return 8;
-        case sun::Type::Kind::Int16:
-        case sun::Type::Kind::UInt16:
+        case sun::semantic_analysis::Type::Kind::Int16:
+        case sun::semantic_analysis::Type::Kind::UInt16:
           return 16;
-        case sun::Type::Kind::Int32:
-        case sun::Type::Kind::UInt32:
+        case sun::semantic_analysis::Type::Kind::Int32:
+        case sun::semantic_analysis::Type::Kind::UInt32:
           return 32;
-        case sun::Type::Kind::Int64:
-        case sun::Type::Kind::UInt64:
+        case sun::semantic_analysis::Type::Kind::Int64:
+        case sun::semantic_analysis::Type::Kind::UInt64:
           return 64;
         default:
           return 0;
@@ -319,10 +358,10 @@ bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
 
     // Allow f32 <-> f64 conversions (both widening and narrowing)
     // This matches the existing permissive behavior for floating point
-    if ((fromKind == sun::Type::Kind::Float32 ||
-         fromKind == sun::Type::Kind::Float64) &&
-        (toKind == sun::Type::Kind::Float32 ||
-         toKind == sun::Type::Kind::Float64)) {
+    if ((fromKind == sun::semantic_analysis::Type::Kind::Float32 ||
+         fromKind == sun::semantic_analysis::Type::Kind::Float64) &&
+        (toKind == sun::semantic_analysis::Type::Kind::Float32 ||
+         toKind == sun::semantic_analysis::Type::Kind::Float64)) {
       return true;
     }
   }
@@ -331,8 +370,10 @@ bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
   // is expected, and an environment-free lambda where a '<'_>' one is
   // expected — never the reverse in either direction
   if (to->isLambda() && from->isLambda()) {
-    auto* toL = static_cast<const sun::LambdaType*>(to.get());
-    auto* fromL = static_cast<const sun::LambdaType*>(from.get());
+    auto* toL =
+        static_cast<const sun::semantic_analysis::LambdaType*>(to.get());
+    auto* fromL =
+        static_cast<const sun::semantic_analysis::LambdaType*>(from.get());
     return toL->acceptsValueOf(*fromL);
   }
 
@@ -343,11 +384,12 @@ bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
   // Unwrap reference types and check inner compatibility. A const borrow
   // never becomes a mutable one.
   if (to->isReference() && from->isReference()) {
-    auto* toRef = static_cast<const sun::ReferenceType*>(to.get());
-    auto* fromRef = static_cast<const sun::ReferenceType*>(from.get());
-    if (!sun::refMutabilityConvertible(*fromRef, *toRef)) return false;
-    if (sun::ClassType::isArrayCompatible(fromRef->getReferencedType(),
-                                          toRef->getReferencedType())) {
+    auto* toRef = static_cast<const ReferenceType*>(to.get());
+    auto* fromRef = static_cast<const ReferenceType*>(from.get());
+    if (!sun::semantic_analysis::refMutabilityConvertible(*fromRef, *toRef))
+      return false;
+    if (ClassType::isArrayCompatible(fromRef->getReferencedType(),
+                                     toRef->getReferencedType())) {
       return true;
     }
     return isAssignableTo(fromRef->getReferencedType(),
@@ -360,21 +402,24 @@ bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
   // converts by value: the interface type would erase the frame binding,
   // letting the value escape the frame its lambda environment lives in.
   if (to->isInterface() && from->isClass()) {
-    if (sun::typeIsFrameCarrying(from)) return false;
-    auto* ifaceType = static_cast<const sun::InterfaceType*>(to.get());
-    auto* classType = static_cast<const sun::ClassType*>(from.get());
-    return classType->convertibleToInterface(ifaceType->getName());
+    if (sun::semantic_analysis::typeIsFrameCarrying(from)) return false;
+    auto* ifaceType =
+        static_cast<const sun::semantic_analysis::InterfaceType*>(to.get());
+    auto* classType = static_cast<const ClassType*>(from.get());
+    return classType->convertibleToInterface(*ifaceType);
   }
 
   // Class -> ref Interface (class can be passed as ref to interface it
   // implements)
   if (to->isReference() && from->isClass()) {
-    auto* toRef = static_cast<const sun::ReferenceType*>(to.get());
-    sun::TypePtr innerTo = toRef->getReferencedType();
+    auto* toRef = static_cast<const ReferenceType*>(to.get());
+    TypePtr innerTo = toRef->getReferencedType();
     if (innerTo && innerTo->isInterface()) {
-      auto* ifaceType = static_cast<const sun::InterfaceType*>(innerTo.get());
-      auto* classType = static_cast<const sun::ClassType*>(from.get());
-      return classType->convertibleToInterface(ifaceType->getName());
+      auto* ifaceType =
+          static_cast<const sun::semantic_analysis::InterfaceType*>(
+              innerTo.get());
+      auto* classType = static_cast<const ClassType*>(from.get());
+      return classType->convertibleToInterface(*ifaceType);
     }
   }
 
@@ -388,28 +433,21 @@ bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
   // explicitly with clone(), or move it out of a container with
   // pop()/remove()/swap_remove().
   if (!to->isReference() && from->isReference()) {
-    auto* fromRef = static_cast<const sun::ReferenceType*>(from.get());
-    if (!sun::typeCopiesByRead(to)) return false;
+    auto* fromRef = static_cast<const ReferenceType*>(from.get());
+    if (!sun::semantic_analysis::typeCopiesByRead(to)) return false;
     return isAssignableTo(fromRef->getReferencedType(), to);
-  }
-
-  // Class-to-class: compare by mangled name (unique identifier)
-  // This handles cases where equals() fails due to different type instances
-  if (to->isClass() && from->isClass()) {
-    auto* toClass = static_cast<const sun::ClassType*>(to.get());
-    auto* fromClass = static_cast<const sun::ClassType*>(from.get());
-    return toClass->getMangledName() == fromClass->getMangledName();
   }
 
   return false;
 }
 
+/** Reports whether an expression denotes storage that can be borrowed. */
 bool isBorrowableLvalue(const ExprAST& target) {
   ASTNodeType kind = target.getType();
   // A conditional picks one of two slots at runtime; it borrows if both
   // branches do.
   if (kind == ASTNodeType::TERNARY) {
-    const auto& ternary = static_cast<const TernaryExprAST&>(target);
+    const auto& ternary = static_cast<const sun::ast::TernaryExprAST&>(target);
     return isBorrowableLvalue(*ternary.getThen()) &&
            isBorrowableLvalue(*ternary.getElse());
   }
@@ -417,6 +455,7 @@ bool isBorrowableLvalue(const ExprAST& target) {
          kind == ASTNodeType::MEMBER_ACCESS || kind == ASTNodeType::INDEX;
 }
 
+/** Reports whether an expression always leaves the current control-flow path. */
 bool alwaysExits(const ExprAST& expr) {
   switch (expr.getType()) {
     case ASTNodeType::RETURN:
@@ -424,16 +463,17 @@ bool alwaysExits(const ExprAST& expr) {
       return true;
     case ASTNodeType::BLOCK: {
       // One exiting statement is enough: nothing after it runs
-      const auto& block = static_cast<const BlockExprAST&>(expr);
+      const auto& block = static_cast<const sun::ast::BlockExprAST&>(expr);
       for (const auto& stmt : block.getBody()) {
         if (alwaysExits(*stmt)) return true;
       }
       return false;
     }
     case ASTNodeType::UNSAFE_BLOCK:
-      return alwaysExits(static_cast<const UnsafeBlockAST&>(expr).getBody());
+      return alwaysExits(
+          static_cast<const sun::ast::UnsafeBlockAST&>(expr).getBody());
     case ASTNodeType::IF: {
-      const auto& ifExpr = static_cast<const IfExprAST&>(expr);
+      const auto& ifExpr = static_cast<const sun::ast::IfExprAST&>(expr);
       return ifExpr.getElse() != nullptr && alwaysExits(*ifExpr.getThen()) &&
              alwaysExits(*ifExpr.getElse());
     }
@@ -441,21 +481,22 @@ bool alwaysExits(const ExprAST& expr) {
       // Every arm must exit, and no discriminant value may slip past the
       // arms: an enum match is checked for exhaustiveness elsewhere, and any
       // other match needs a wildcard to promise the same.
-      const auto& matchExpr = static_cast<const MatchExprAST&>(expr);
+      const auto& matchExpr = static_cast<const sun::ast::MatchExprAST&>(expr);
       if (matchExpr.getArms().empty()) return false;
       bool sawWildcard = false;
       for (const auto& arm : matchExpr.getArms()) {
         if (!alwaysExits(*arm.body)) return false;
         if (arm.isWildcard) sawWildcard = true;
       }
-      sun::TypePtr discType =
-          sun::unwrapRef(matchExpr.getDiscriminant()->getResolvedType());
+      TypePtr discType = sun::semantic_analysis::unwrapRef(
+          matchExpr.getDiscriminant()->getResolvedType());
       return sawWildcard || (discType && discType->isEnum());
     }
     case ASTNodeType::TRY_CATCH: {
       // The body may stop part-way and land in a catch, so every clause has
       // to exit as well
-      const auto& tryCatch = static_cast<const TryCatchExprAST&>(expr);
+      const auto& tryCatch =
+          static_cast<const sun::ast::TryCatchExprAST&>(expr);
       if (!alwaysExits(tryCatch.getTryBlock())) return false;
       for (const auto& clause : tryCatch.getCatchClauses()) {
         if (!clause.body || !alwaysExits(*clause.body)) return false;
@@ -467,4 +508,4 @@ bool alwaysExits(const ExprAST& expr) {
   }
 }
 
-}  // namespace sun::rules
+}  // namespace sun::semantic_analysis

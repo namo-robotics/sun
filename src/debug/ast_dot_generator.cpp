@@ -4,6 +4,12 @@
 
 #include <sstream>
 
+using sun::ast::ASTNodeType;
+using sun::ast::ExprAST;
+
+/** Produces readable views of syntax trees and semantic scopes. */
+namespace sun::debug {
+
 std::string AstDotGenerator::generate(const ExprAST* root) {
   out.str("");
   out.clear();
@@ -90,7 +96,7 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
 
   switch (node->getType()) {
     case ASTNodeType::BLOCK: {
-      const auto* block = static_cast<const BlockExprAST*>(node);
+      const auto* block = static_cast<const sun::ast::BlockExprAST*>(node);
       for (const auto& expr : block->getBody()) {
         int childId = visitNode(expr.get());
         emitEdge(childId);
@@ -98,7 +104,7 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       break;
     }
     case ASTNodeType::FUNCTION: {
-      const auto* func = static_cast<const FunctionAST*>(node);
+      const auto* func = static_cast<const sun::ast::FunctionAST*>(node);
       if (func->hasBody()) {
         int bodyId = visitNode(&func->getBody());
         emitEdge(bodyId, "body");
@@ -106,13 +112,13 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       break;
     }
     case ASTNodeType::LAMBDA: {
-      const auto* lambda = static_cast<const LambdaAST*>(node);
+      const auto* lambda = static_cast<const sun::ast::LambdaAST*>(node);
       int bodyId = visitNode(&lambda->getBody());
       emitEdge(bodyId, "body");
       break;
     }
     case ASTNodeType::VARIABLE_CREATION: {
-      const auto* var = static_cast<const VariableCreationAST*>(node);
+      const auto* var = static_cast<const sun::ast::VariableCreationAST*>(node);
       if (var->getValue()) {
         int initId = visitNode(var->getValue());
         emitEdge(initId, "init");
@@ -120,25 +126,28 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       break;
     }
     case ASTNodeType::VARIABLE_ASSIGNMENT: {
-      const auto* var = static_cast<const VariableAssignmentAST*>(node);
+      const auto* var =
+          static_cast<const sun::ast::VariableAssignmentAST*>(node);
       int valId = visitNode(var->getValue());
       emitEdge(valId, "value");
       break;
     }
     case ASTNodeType::REFERENCE_CREATION: {
-      const auto* ref = static_cast<const ReferenceCreationAST*>(node);
+      const auto* ref =
+          static_cast<const sun::ast::ReferenceCreationAST*>(node);
       int targetId = visitNode(ref->getTarget());
       emitEdge(targetId, "target");
       break;
     }
     case ASTNodeType::PAREN_EXPR: {
-      const auto* paren = static_cast<const ParenExprAST*>(node);
+      const auto* paren = static_cast<const sun::ast::ParenExprAST*>(node);
       int innerId = visitNode(paren->getInner());
       emitEdge(innerId, "inner");
       break;
     }
     case ASTNodeType::INTERPOLATED_STRING: {
-      const auto* interp = static_cast<const InterpolatedStringAST*>(node);
+      const auto* interp =
+          static_cast<const sun::ast::InterpolatedStringAST*>(node);
       for (const auto& segment : interp->getSegments()) {
         if (!segment.isLiteral && segment.expression) {
           int exprId = visitNode(segment.expression.get());
@@ -148,7 +157,7 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       break;
     }
     case ASTNodeType::BINARY: {
-      const auto* bin = static_cast<const BinaryExprAST*>(node);
+      const auto* bin = static_cast<const sun::ast::BinaryExprAST*>(node);
       int lhsId = visitNode(bin->getLHS());
       int rhsId = visitNode(bin->getRHS());
       emitEdge(lhsId, "lhs");
@@ -156,13 +165,13 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       break;
     }
     case ASTNodeType::UNARY: {
-      const auto* un = static_cast<const UnaryExprAST*>(node);
+      const auto* un = static_cast<const sun::ast::UnaryExprAST*>(node);
       int opId = visitNode(un->getOperand());
       emitEdge(opId);
       break;
     }
     case ASTNodeType::CALL: {
-      const auto* call = static_cast<const CallExprAST*>(node);
+      const auto* call = static_cast<const sun::ast::CallExprAST*>(node);
       int calleeId = visitNode(call->getCallee());
       emitEdge(calleeId, "callee");
       const auto& args = call->getArgs();
@@ -173,7 +182,7 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       break;
     }
     case ASTNodeType::GENERIC_CALL: {
-      const auto* gcall = static_cast<const GenericCallAST*>(node);
+      const auto* gcall = static_cast<const sun::ast::GenericCallAST*>(node);
       const auto& args = gcall->getArgs();
       for (size_t i = 0; i < args.size(); ++i) {
         int argId = visitNode(args[i].get());
@@ -182,7 +191,7 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       break;
     }
     case ASTNodeType::IF: {
-      const auto* ifExpr = static_cast<const IfExprAST*>(node);
+      const auto* ifExpr = static_cast<const sun::ast::IfExprAST*>(node);
       int condId = visitNode(ifExpr->getCond());
       int thenId = visitNode(ifExpr->getThen());
       emitEdge(condId, "cond");
@@ -194,7 +203,7 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       break;
     }
     case ASTNodeType::TERNARY: {
-      const auto* ternary = static_cast<const TernaryExprAST*>(node);
+      const auto* ternary = static_cast<const sun::ast::TernaryExprAST*>(node);
       int condId = visitNode(ternary->getCond());
       int thenId = visitNode(ternary->getThen());
       int elseId = visitNode(ternary->getElse());
@@ -204,7 +213,7 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       break;
     }
     case ASTNodeType::MATCH: {
-      const auto* match = static_cast<const MatchExprAST*>(node);
+      const auto* match = static_cast<const sun::ast::MatchExprAST*>(node);
       int discId = visitNode(match->getDiscriminant());
       emitEdge(discId, "match");
       const auto& arms = match->getArms();
@@ -215,7 +224,7 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       break;
     }
     case ASTNodeType::FOR_LOOP: {
-      const auto* forExpr = static_cast<const ForExprAST*>(node);
+      const auto* forExpr = static_cast<const sun::ast::ForExprAST*>(node);
       if (forExpr->getInit()) {
         int initId = visitNode(forExpr->getInit());
         emitEdge(initId, "init");
@@ -233,7 +242,7 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       break;
     }
     case ASTNodeType::FOR_IN_LOOP: {
-      const auto* forIn = static_cast<const ForInExprAST*>(node);
+      const auto* forIn = static_cast<const sun::ast::ForInExprAST*>(node);
       int iterableId = visitNode(forIn->getIterable());
       emitEdge(iterableId, "iterable");
       int bodyId = visitNode(forIn->getBody());
@@ -241,7 +250,7 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       break;
     }
     case ASTNodeType::WHILE_LOOP: {
-      const auto* whileExpr = static_cast<const WhileExprAST*>(node);
+      const auto* whileExpr = static_cast<const sun::ast::WhileExprAST*>(node);
       int condId = visitNode(whileExpr->getCondition());
       emitEdge(condId, "cond");
       int bodyId = visitNode(whileExpr->getBody());
@@ -249,7 +258,7 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       break;
     }
     case ASTNodeType::RETURN: {
-      const auto* ret = static_cast<const ReturnExprAST*>(node);
+      const auto* ret = static_cast<const sun::ast::ReturnExprAST*>(node);
       if (ret->hasValue()) {
         int valId = visitNode(ret->getValue());
         emitEdge(valId);
@@ -257,7 +266,7 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       break;
     }
     case ASTNodeType::ARRAY_LITERAL: {
-      const auto* arr = static_cast<const ArrayLiteralAST*>(node);
+      const auto* arr = static_cast<const sun::ast::ArrayLiteralAST*>(node);
       const auto& elems = arr->getElements();
       for (size_t i = 0; i < elems.size(); ++i) {
         int elemId = visitNode(elems[i].get());
@@ -266,14 +275,14 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       break;
     }
     case ASTNodeType::INDEX: {
-      const auto* idx = static_cast<const IndexAST*>(node);
+      const auto* idx = static_cast<const sun::ast::IndexAST*>(node);
       int baseId = visitNode(idx->getTarget());
       emitEdge(baseId, "target");
       // SliceExprAST indices - just count them, don't traverse
       break;
     }
     case ASTNodeType::INDEXED_ASSIGNMENT: {
-      const auto* ia = static_cast<const IndexedAssignmentAST*>(node);
+      const auto* ia = static_cast<const sun::ast::IndexedAssignmentAST*>(node);
       int targetId = visitNode(ia->getTarget());
       emitEdge(targetId, "target");
       int valId = visitNode(ia->getValue());
@@ -281,7 +290,7 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       break;
     }
     case ASTNodeType::MODULE: {
-      const auto* mod = static_cast<const ModuleAST*>(node);
+      const auto* mod = static_cast<const sun::ast::ModuleAST*>(node);
       int bodyId = visitNode(&mod->getBody());
       emitEdge(bodyId, "body");
       break;
@@ -289,7 +298,7 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
     case ASTNodeType::MOON_SCOPE: {
       // An imported bundle's stubs would only clutter the graph; the bundle
       // being built is the program itself, so show it
-      const auto* scope = static_cast<const MoonScopeAST*>(node);
+      const auto* scope = static_cast<const sun::ast::MoonScopeAST*>(node);
       if (scope->isOwnBundle()) {
         int bodyId = visitNode(&scope->getBody());
         emitEdge(bodyId, "body");
@@ -297,7 +306,7 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       break;
     }
     case ASTNodeType::CLASS_DEFINITION: {
-      const auto* cls = static_cast<const ClassDefinitionAST*>(node);
+      const auto* cls = static_cast<const sun::ast::ClassDefinitionAST*>(node);
       // Visit methods
       for (const auto& method : cls->getMethods()) {
         int methodId = visitNode(method.function.get());
@@ -310,13 +319,13 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       break;
     }
     case ASTNodeType::MEMBER_ACCESS: {
-      const auto* ma = static_cast<const MemberAccessAST*>(node);
+      const auto* ma = static_cast<const sun::ast::MemberAccessAST*>(node);
       int objId = visitNode(ma->getObject());
       emitEdge(objId, "object");
       break;
     }
     case ASTNodeType::MEMBER_ASSIGNMENT: {
-      const auto* ma = static_cast<const MemberAssignmentAST*>(node);
+      const auto* ma = static_cast<const sun::ast::MemberAssignmentAST*>(node);
       int objId = visitNode(ma->getObject());
       emitEdge(objId, "object");
       int valId = visitNode(ma->getValue());
@@ -324,7 +333,8 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       break;
     }
     case ASTNodeType::COMPOUND_ASSIGNMENT: {
-      const auto* ca = static_cast<const CompoundAssignmentAST*>(node);
+      const auto* ca =
+          static_cast<const sun::ast::CompoundAssignmentAST*>(node);
       int targetId = visitNode(ca->getTarget());
       emitEdge(targetId, "target");
       int valId = visitNode(ca->getValue());
@@ -332,7 +342,7 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       break;
     }
     case ASTNodeType::TRY_CATCH: {
-      const auto* tc = static_cast<const TryCatchExprAST*>(node);
+      const auto* tc = static_cast<const sun::ast::TryCatchExprAST*>(node);
       int tryId = visitNode(&tc->getTryBlock());
       emitEdge(tryId, "try");
       for (const auto& clause : tc->getCatchClauses()) {
@@ -342,13 +352,13 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       break;
     }
     case ASTNodeType::THROW: {
-      const auto* th = static_cast<const ThrowExprAST*>(node);
+      const auto* th = static_cast<const sun::ast::ThrowExprAST*>(node);
       int valId = visitNode(&th->getErrorExpr());
       emitEdge(valId);
       break;
     }
     case ASTNodeType::UNSAFE_BLOCK: {
-      const auto* ub = static_cast<const UnsafeBlockAST*>(node);
+      const auto* ub = static_cast<const sun::ast::UnsafeBlockAST*>(node);
       int bodyId = visitNode(&ub->getBody());
       emitEdge(bodyId, "body");
       break;
@@ -378,3 +388,5 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       break;
   }
 }
+
+}  // namespace sun::debug

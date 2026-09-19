@@ -12,6 +12,8 @@
 #include "driver/execution_utils.h"
 #include "parsing/formatter.h"
 
+using sun::driver::executeString;
+
 // ============================================================================
 // Construction
 // ============================================================================
@@ -210,9 +212,9 @@ TEST(Classes_StructLiterals, rejects_literal_for_a_class_with_init) {
 // ============================================================================
 
 TEST(Classes_StructLiterals, formatter_round_trip) {
-  EXPECT_EQ(sun::formatSource("class C{var a: i32;var b: i32;}\n"
-                              "function main() i32{var c: C={a:1,b:2};"
-                              "return c.a;}"),
+  EXPECT_EQ(sun::parsing::formatSource("class C{var a: i32;var b: i32;}\n"
+                                       "function main() i32{var c: C={a:1,b:2};"
+                                       "return c.a;}"),
             "class C {\n"
             "  var a: i32;\n"
             "  var b: i32;\n"

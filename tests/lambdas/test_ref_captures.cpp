@@ -11,6 +11,8 @@
 #include "driver/execution_utils.h"
 #include "parsing/parser.h"
 
+using sun::driver::executeString;
+
 // ============================================================================
 // By-ref captures: mutation through the capture is visible outside
 // ============================================================================
@@ -417,7 +419,7 @@ TEST(Lambdas_RefCaptures, nested_byref_of_byvalue_rejected) {
 // Issue #122: a spawned thread is joined when its handle's scope ends, so a
 // by-ref capture cannot outlive what it points at
 TEST(Lambdas_RefCaptures, spawn_byref_lambda_accepted) {
-  auto value = executeStringWithStdlib(R"(
+  auto value = sun::driver::executeStringWithStdlib(R"(
     using std.thread;
       function main() i32 {
           var x: i32 = 0;
@@ -433,7 +435,7 @@ TEST(Lambdas_RefCaptures, spawn_byref_lambda_accepted) {
 }
 
 TEST(Lambdas_RefCaptures, spawn_byref_lambda_via_variable_accepted) {
-  auto value = executeStringWithStdlib(R"(
+  auto value = sun::driver::executeStringWithStdlib(R"(
     using std.thread;
       function main() i32 {
           var x: i32 = 0;
@@ -529,18 +531,20 @@ TEST(Lambdas_RefCaptures, ref_and_const_ref_captures_of_one_variable_conflict) {
 // ============================================================================
 
 TEST(Lambdas_RefCaptures, capture_list_names_on_proto) {
-  // Long names also exercise strings stored outside the token itself.
+  /**
+   * Long names also exercise strings stored outside the token itself.
+   */
   std::istringstream ss(
       "[ref mutable_capture_with_a_long_name, "
       "const ref shared_capture_with_a_long_name, "
       "owned_capture_with_a_long_name]() => void {}");
-  Parser parser(ss);
+  sun::parsing::Parser parser(ss);
   parser.getNextToken();
   auto expr = parser.parseExpression();
 
   ASSERT_NE(expr, nullptr);
-  ASSERT_EQ(expr->getType(), ASTNodeType::LAMBDA);
-  auto* lambda = static_cast<LambdaAST*>(expr.get());
+  ASSERT_EQ(expr->getType(), sun::ast::ASTNodeType::LAMBDA);
+  auto* lambda = static_cast<sun::ast::LambdaAST*>(expr.get());
   const auto& names = lambda->getProto().getRefCaptureNames();
   ASSERT_EQ(names.size(), 2u);
   EXPECT_EQ(names[0], "mutable_capture_with_a_long_name");
@@ -612,7 +616,7 @@ TEST(Lambdas_RefCaptures, owned_class_capture_leaves_source_moved) {
           return p.x;
       }
     )"),
-               SunError);
+               sun::support::SunError);
 }
 
 // The closure owns the value, so it drops it exactly once
@@ -692,5 +696,5 @@ TEST(Lambdas_RefCaptures, owned_capture_while_borrowed_is_rejected) {
           return r.x;
       }
     )"),
-               SunError);
+               sun::support::SunError);
 }

@@ -22,6 +22,7 @@
 //   // var row = m[0, :];      // First row as view
 //   // var sub = m[1:5, 2:8];  // Submatrix view
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
   // Interface for types that support indexed access and slicing
   // Any class implementing this interface can use bracket indexing syntax
@@ -34,8 +35,10 @@ public module std {
   //     method ndims() i64;
   // }
 
-  // N-dimensional matrix with contiguous row-major storage. The shape is
-  // owned by the matrix, so a matrix may outlive the array it was built from.
+  /**
+   * N-dimensional matrix with contiguous row-major storage. The shape is
+   * owned by the matrix, so a matrix may outlive the array it was built from.
+   */
   public class Matrix<T> {
     var alloc: HeapAllocator;  // Allocator (stored via copy), shared with views
     var data: ContiguousBuffer<T>;  // Contiguous element storage (bounds-checked, auto-freed)
@@ -43,8 +46,10 @@ public module std {
     var ndims_: i64;  // Number of dimensions
     var total_size: i64 = 1;  // Total number of elements
 
-    // Constructor: allocates memory for matrix of given shape
-    // shape is an array of dimension sizes: [rows, cols, ...], copied in
+    /**
+     * Constructor: allocates memory for matrix of given shape
+     * shape is an array of dimension sizes: [rows, cols, ...], copied in
+     */
     init(alloc: const ref HeapAllocator, shape: const ref array<i64>) {
       this.alloc = alloc.copy();
       this.ndims_ = shape.dim(0);
@@ -60,7 +65,9 @@ public module std {
       this.data = ContiguousBuffer<T>(alloc, this.total_size);
     }
 
-    // Compute linear index from n-dimensional indices (row-major order)
+    /**
+     * Compute linear index from n-dimensional indices (row-major order)
+     */
     public const method compute_linear_index(indices: const ref array<i64>) i64 {
       var offset: i64 = 0;
       var stride: i64 = 1;
@@ -74,48 +81,64 @@ public module std {
       return offset;
     }
 
-    // Get element at indices
+    /**
+     * Get element at indices
+     */
     public const method get(indices: const ref array<i64>) T {
       var idx: i64 = this.compute_linear_index(indices);
       return unsafe { this.data.get_unchecked(idx); };
     }
 
-    // Set element at indices
+    /**
+     * Set element at indices
+     */
     public method set(indices: const ref array<i64>, value: T) void {
       var idx: i64 = this.compute_linear_index(indices);
       unsafe { this.data.set_unchecked(idx, value); };
     }
 
-    // Get the size of dimension i
+    /**
+     * Get the size of dimension i
+     */
     public const method dim(i: i64) i64 {
       return this.dims[i];
     }
 
-    // Get total element count
+    /**
+     * Get total element count
+     */
     public const method size() i64 {
       return this.total_size;
     }
 
-    // Get number of dimensions
+    /**
+     * Get number of dimensions
+     */
     public const method ndims() i64 {
       return this.ndims_;
     }
 
-    // Operator overload for indexing: m[i, j] calls __index__([i, j])
-    // Enables M[i, j] syntax for element access
+    /**
+     * Operator overload for indexing: m[i, j] calls __index__([i, j])
+     * Enables M[i, j] syntax for element access
+     */
     public const method __index__(indices: const ref array<i64>) T {
       return this.get(indices);
     }
 
-    // Operator overload for indexed assignment: m[i, j] = val calls __setindex__([i, j], val)
-    // Enables M[i, j] = value syntax for element assignment
+    /**
+     * Operator overload for indexed assignment: m[i, j] = val calls __setindex__([i, j], val)
+     * Enables M[i, j] = value syntax for element assignment
+     */
     public method __setindex__(indices: const ref array<i64>, value: T) void {
       this.set(indices, value);
     }
 
-    // Slicing via __slice__ method: m[a:b] -> MatrixView<T>
-    // Returns a non-owning view into the matrix data
-    // NOTE: Currently only supports 1D slicing (single range)
+    /**
+     * Slicing via __slice__ method: m[a:b] -> MatrixView<T>
+     * Returns a non-owning view into the matrix data
+     * NOTE: Currently only supports 1D slicing (single range)
+     */
     public const method __slice__(ranges: const ref array<SliceRange>) MatrixView<T> {
       // For 1D matrices, slicing is straightforward
       const ref range = ranges[0];
@@ -130,16 +153,20 @@ public module std {
       return MatrixView<T>(this.alloc, this.data.raw_data(), start, new_shape, strides);
     }
 
-    // Get raw data pointer (escape hatch for interop)
+    /**
+     * Get raw data pointer (escape hatch for interop)
+     */
     public const method raw_data() raw_ptr<u8> {
       return this.data.raw_data();
     }
   }
 
-  // MatrixView<T> - non-owning view into a Matrix or another view
-  // Supports slicing operations that return views without copying data
-  // Views own their shape and strides and point to the parent's data, which
-  // must outlive the view
+  /**
+   * MatrixView<T> - non-owning view into a Matrix or another view
+   * Supports slicing operations that return views without copying data
+   * Views own their shape and strides and point to the parent's data, which
+   * must outlive the view
+   */
   public class MatrixView<T> {
     var data: raw_ptr<u8>;  // Pointer to underlying Matrix data (non-owning, as bytes)
     var base_offset: i64;  // Offset into data for start of view
@@ -148,7 +175,9 @@ public module std {
     var ndims_: i64;  // Number of dimensions
     var total_size: i64 = 1;  // Total elements in view
 
-    // Constructor from raw components; the shape and strides are copied in
+    /**
+     * Constructor from raw components; the shape and strides are copied in
+     */
     init(alloc: const ref HeapAllocator, data_ptr: raw_ptr<u8>, offset: i64, shape: const ref array<i64>, strides_arr: const ref array<i64>) {
       this.data = data_ptr;
       this.base_offset = offset;
@@ -164,7 +193,9 @@ public module std {
       }
     }
 
-    // Compute linear index using strides (includes base offset)
+    /**
+     * Compute linear index using strides (includes base offset)
+     */
     public const method compute_linear_index(indices: const ref array<i64>) i64 {
       var offset: i64 = this.base_offset;
       for (var i: i64 = 0; i < this.ndims_; i = i + 1) {
@@ -173,41 +204,55 @@ public module std {
       return offset;
     }
 
-    // Get element at indices
+    /**
+     * Get element at indices
+     */
     public const method get(indices: const ref array<i64>) T {
       var idx: i64 = this.compute_linear_index(indices);
       return unsafe { _load<T>(this.data, idx); };
     }
 
-    // Set element at indices (views allow modification)
+    /**
+     * Set element at indices (views allow modification)
+     */
     public method set(indices: const ref array<i64>, value: T) void {
       var idx: i64 = this.compute_linear_index(indices);
       unsafe { _store<T>(this.data, idx, value); };
     }
 
-    // Get the size of dimension i
+    /**
+     * Get the size of dimension i
+     */
     public const method dim(i: i64) i64 {
       return this.dims[i];
     }
 
-    // Get total element count
+    /**
+     * Get total element count
+     */
     public const method size() i64 {
       return this.total_size;
     }
 
-    // Get number of dimensions
+    /**
+     * Get number of dimensions
+     */
     public const method ndims() i64 {
       return this.ndims_;
     }
 
-    // Operator overload for indexing: v[i, j] calls __index__([i, j])
-    // Enables View[i, j] syntax for element access
+    /**
+     * Operator overload for indexing: v[i, j] calls __index__([i, j])
+     * Enables View[i, j] syntax for element access
+     */
     public const method __index__(indices: const ref array<i64>) T {
       return this.get(indices);
     }
 
-    // Operator overload for indexed assignment: v[i, j] = val calls __setindex__([i, j], val)
-    // Enables View[i, j] = value syntax for element assignment
+    /**
+     * Operator overload for indexed assignment: v[i, j] = val calls __setindex__([i, j], val)
+     * Enables View[i, j] = value syntax for element assignment
+     */
     public method __setindex__(indices: const ref array<i64>, value: T) void {
       this.set(indices, value);
     }

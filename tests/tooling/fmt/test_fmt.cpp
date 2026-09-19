@@ -7,8 +7,9 @@
 #include "parsing/formatter.h"
 #include "support/error.h"
 
+/** Formats fixture source for comparison with the expected output. */
 static std::string fmt(const std::string& src) {
-  return sun::formatSource(src);
+  return sun::parsing::formatSource(src);
 }
 
 // ------------------------------------------------------------------
@@ -302,7 +303,7 @@ TEST(Tooling_Fmt, ArrayLiterals) {
 // ------------------------------------------------------------------
 
 TEST(Tooling_Fmt, ParseErrorThrows) {
-  EXPECT_THROW(fmt("function f( {"), SunError);
+  EXPECT_THROW(fmt("function f( {"), sun::support::SunError);
 }
 
 TEST(Tooling_Fmt, Idempotence) {
@@ -621,8 +622,12 @@ TEST(Tooling_Fmt, MultipleFilesOneParserNoCommentBleed) {
 #include "serialization/ast_serializer.h"
 #include "serialization/source_file_ids.h"
 
+using sun::ast::BlockExprAST;
+
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
+/** Lists the source files included in the formatter regression corpus. */
 std::vector<std::filesystem::path> corpusFiles() {
   std::vector<std::filesystem::path> files;
   for (const char* dir : {"tests/programs", "stdlib", "examples"}) {
@@ -634,6 +639,7 @@ std::vector<std::filesystem::path> corpusFiles() {
   return files;
 }
 
+/** Reads a fixture file into a string for comparison. */
 std::string readFile(const std::filesystem::path& p) {
   std::ifstream in(p);
   std::stringstream ss;
@@ -641,28 +647,33 @@ std::string readFile(const std::filesystem::path& p) {
   return ss.str();
 }
 
-// Post-lowering, position-free serialization for structural comparison.
-// Mutates the tree (lowering runs in place); use only when done with it.
+/**
+ * Post-lowering, position-free serialization for structural comparison.
+ * Mutates the tree (lowering runs in place); use only when done with it.
+ */
 std::string loweredFingerprint(BlockExprAST& ast) {
-  LoweringPass lowering;
+  sun::parsing::LoweringPass lowering;
   lowering.run(ast);
   sun::serialization::SerializerConfig config;
   config.include_location = false;
   sun::serialization::ASTSerializer serializer(config);
   auto program = serializer.serializeProgram(ast);
   // Each corpus tree represents one file; its allocated identity can differ.
-  sun::serialization::remapSourceFiles(
-      program, [](sun::SourceFileId) { return sun::SourceFileId{1}; });
+  sun::serialization::remapSourceFiles(program, [](sun::support::SourceFileId) {
+    return sun::support::SourceFileId{1};
+  });
   return program.SerializeAsString();
 }
 
 }  // namespace
 
 TEST(Tooling_Fmt_Corpus, IdempotentAndStructurePreserving) {
-  // One shared parser; each corpus file is parsed exactly twice (original and
-  // formatted)
+  /**
+   * One shared parser; each corpus file is parsed exactly twice (original and
+   * formatted)
+   */
   std::istringstream dummy("");
-  Parser parser(dummy);
+  sun::parsing::Parser parser(dummy);
   parser.setCollectComments(true);
 
   int checked = 0;
@@ -671,14 +682,14 @@ TEST(Tooling_Fmt_Corpus, IdempotentAndStructurePreserving) {
     std::unique_ptr<BlockExprAST> ast;
     try {
       ast = parser.parseString(source);
-    } catch (const SunError&) {
+    } catch (const sun::support::SunError&) {
       continue;  // legacy files (import statements) don't parse standalone
     }
     if (!ast) continue;
     ++checked;
 
     std::string formatted =
-        sun::formatProgram(*ast, parser.getComments(), source);
+        sun::parsing::formatProgram(*ast, parser.getComments(), source);
     std::string originalFp = loweredFingerprint(*ast);
 
     // Re-parses cleanly and is idempotent
@@ -686,7 +697,7 @@ TEST(Tooling_Fmt_Corpus, IdempotentAndStructurePreserving) {
     ASSERT_NO_THROW(ast2 = parser.parseString(formatted)) << path;
     ASSERT_NE(ast2, nullptr) << path;
     std::string reformatted =
-        sun::formatProgram(*ast2, parser.getComments(), formatted);
+        sun::parsing::formatProgram(*ast2, parser.getComments(), formatted);
     EXPECT_EQ(reformatted, formatted) << path;
     // Same post-lowering structure as the original
     EXPECT_EQ(loweredFingerprint(*ast2), originalFp) << path;

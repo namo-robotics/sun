@@ -5,14 +5,18 @@
 using std;
 using std.thread;
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** Groups tests for the mutex library behavior. */
   module mutex_tests {
     // State for mutex_two_threads_sequential only. Each multi-threaded test
     // has its own counter and lock so parallel tests never share state.
     var two_threads_counter: i32 = 0;
     var two_threads_mutex: Mutex = Mutex();
 
-    // Adds one to the two-thread counter under its lock.
+    /**
+     * Adds one to the two-thread counter under its lock.
+     */
     function increment_two_threads_counter() void {
       two_threads_mutex.lock();
       two_threads_counter = two_threads_counter + 1;
@@ -27,6 +31,7 @@ public module std {
     var races_counter: i32 = 0;
     var races_mutex: Mutex = Mutex();
 
+    /** Checks mutex single thread lock unlock. */
     test_function mutex_single_thread_lock_unlock() {
       var m = Mutex();
       var counter: i32 = 0;
@@ -42,6 +47,7 @@ public module std {
       std.test.assert_eq(counter, 11);
     }
 
+    /** Checks mutex multiple lock unlock. */
     test_function mutex_multiple_lock_unlock() {
       var m = Mutex();
       var result: i32 = 0;
@@ -57,6 +63,7 @@ public module std {
       std.test.assert_eq(result, 10);
     }
 
+    /** Checks mutex two threads sequential. */
     test_function mutex_two_threads_sequential() {
       var t1 = spawn(
         () => i32 {
@@ -87,6 +94,7 @@ public module std {
       std.test.assert_eq(two_threads_counter, 200);
     }
 
+    /** Checks mutex three threads. */
     test_function mutex_three_threads() {
       var t1 = spawn(
         () => i32 {
@@ -135,8 +143,10 @@ public module std {
       std.test.assert_eq(three_threads_counter, 150);
     }
 
-    // Without the mutex these increments would race; run the exercise a few
-    // times to raise the odds of catching a broken lock.
+    /**
+     * Without the mutex these increments would race; run the exercise a few
+     * times to raise the odds of catching a broken lock.
+     */
     test_function mutex_prevents_races() {
       for (var run: i32 = 0; run < 5; run = run + 1) {
         races_counter = 0;
@@ -178,12 +188,15 @@ public module std {
     var guard_counter: i32 = 0;
     var guard_mutex: Mutex = Mutex();
 
-    // Adds one to the guard counter under a scope-bound guard.
+    /**
+     * Adds one to the guard counter under a scope-bound guard.
+     */
     function increment_under_guard() void {
       var guard = guard_mutex.acquire();
       guard_counter = guard_counter + 1;
     }
 
+    /** Checks guard releases on scope exit. */
     test_function guard_releases_on_scope_exit() {
       if (true) {
         var guard = guard_mutex.acquire();

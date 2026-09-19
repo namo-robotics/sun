@@ -3,7 +3,8 @@
 #include <atomic>
 #include <cstdint>
 
-namespace sun {
+/** Provides shared diagnostics, source tracking, and compiler utilities. */
+namespace sun::support {
 
 /** Identifies a source unit independently of its diagnostic path. Zero is
  * unset. */
@@ -15,4 +16,4 @@ inline SourceFileId nextSourceFileId() {
   return next.fetch_add(1, std::memory_order_relaxed);
 }
 
-}  // namespace sun
+}  // namespace sun::support

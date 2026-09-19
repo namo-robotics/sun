@@ -8,11 +8,25 @@
 #include "codegen/support/scalar_ops.h"
 #include "semantic_analysis/type_rules.h"
 
+using sun::semantic_analysis::TypePtr;
+
+using sun::ast::ASTNodeType;
+using sun::ast::BinaryExprAST;
+using sun::ast::ExprAST;
+using sun::parsing::TokenKind;
+using sun::support::logAndThrowError;
+
+/** Translates analyzed Sun programs into LLVM instructions. */
+namespace sun::codegen {
+
 static ExitOnError ExitOnErr;
+
+}  // namespace sun::codegen
 
 using namespace llvm;
 
-namespace ops = sun::codegen::ops;
+/** Translates analyzed Sun programs into LLVM instructions. */
+namespace sun::codegen {
 
 // -------------------------------------------------------------------
 // Expression dispatch
@@ -35,61 +49,68 @@ Value* CodegenVisitor::codegen(const ExprAST& expr) {
 Value* CodegenVisitor::codegenExpression(const ExprAST& expr) {
   switch (expr.getType()) {
     case ASTNodeType::NUMBER:
-      return codegen(static_cast<const NumberExprAST&>(expr));
+      return codegen(static_cast<const sun::ast::NumberExprAST&>(expr));
     case ASTNodeType::CHAR_LITERAL:
-      return codegen(static_cast<const CharLiteralAST&>(expr));
+      return codegen(static_cast<const sun::ast::CharLiteralAST&>(expr));
     case ASTNodeType::STRING_LITERAL:
-      return codegen(static_cast<const StringLiteralAST&>(expr));
+      return codegen(static_cast<const sun::ast::StringLiteralAST&>(expr));
     case ASTNodeType::STRUCT_LITERAL:
-      return classes.codegen(static_cast<const StructLiteralAST&>(expr));
+      return classes.codegen(
+          static_cast<const sun::ast::StructLiteralAST&>(expr));
     case ASTNodeType::ARRAY_LITERAL:
-      return codegen(static_cast<const ArrayLiteralAST&>(expr));
+      return codegen(static_cast<const sun::ast::ArrayLiteralAST&>(expr));
     case ASTNodeType::INDEX:
-      return codegen(static_cast<const IndexAST&>(expr));
+      return codegen(static_cast<const sun::ast::IndexAST&>(expr));
     case ASTNodeType::VARIABLE_CREATION:
-      return variables.codegen(static_cast<const VariableCreationAST&>(expr));
+      return variables.codegen(
+          static_cast<const sun::ast::VariableCreationAST&>(expr));
     case ASTNodeType::VARIABLE_REFERENCE:
-      return variables.codegen(static_cast<const VariableReferenceAST&>(expr));
+      return variables.codegen(
+          static_cast<const sun::ast::VariableReferenceAST&>(expr));
     case ASTNodeType::VARIABLE_ASSIGNMENT:
-      return variables.codegen(static_cast<const VariableAssignmentAST&>(expr));
+      return variables.codegen(
+          static_cast<const sun::ast::VariableAssignmentAST&>(expr));
     case ASTNodeType::REFERENCE_CREATION:
-      return variables.codegen(static_cast<const ReferenceCreationAST&>(expr));
+      return variables.codegen(
+          static_cast<const sun::ast::ReferenceCreationAST&>(expr));
     case ASTNodeType::UNARY:
-      return codegen(static_cast<const UnaryExprAST&>(expr));
+      return codegen(static_cast<const sun::ast::UnaryExprAST&>(expr));
     case ASTNodeType::BINARY:
       return codegen(static_cast<const BinaryExprAST&>(expr));
     case ASTNodeType::CALL:
-      return codegen(static_cast<const CallExprAST&>(expr));
+      return codegen(static_cast<const sun::ast::CallExprAST&>(expr));
     case ASTNodeType::IF:
-      return codegen(static_cast<const IfExprAST&>(expr));
+      return codegen(static_cast<const sun::ast::IfExprAST&>(expr));
     case ASTNodeType::TERNARY:
-      return codegen(static_cast<const TernaryExprAST&>(expr));
+      return codegen(static_cast<const sun::ast::TernaryExprAST&>(expr));
     case ASTNodeType::MATCH:
-      return codegen(static_cast<const MatchExprAST&>(expr));
+      return codegen(static_cast<const sun::ast::MatchExprAST&>(expr));
     case ASTNodeType::FOR_LOOP:
-      return loops.codegen(static_cast<const ForExprAST&>(expr));
+      return loops.codegen(static_cast<const sun::ast::ForExprAST&>(expr));
     case ASTNodeType::FOR_IN_LOOP:
-      return loops.codegen(static_cast<const ForInExprAST&>(expr));
+      return loops.codegen(static_cast<const sun::ast::ForInExprAST&>(expr));
     case ASTNodeType::WHILE_LOOP:
-      return loops.codegen(static_cast<const WhileExprAST&>(expr));
+      return loops.codegen(static_cast<const sun::ast::WhileExprAST&>(expr));
     case ASTNodeType::BLOCK:
-      return codegen(static_cast<const BlockExprAST&>(expr));
+      return codegen(static_cast<const sun::ast::BlockExprAST&>(expr));
     case ASTNodeType::INDEXED_ASSIGNMENT:
-      return codegen(static_cast<const IndexedAssignmentAST&>(expr));
+      return codegen(static_cast<const sun::ast::IndexedAssignmentAST&>(expr));
     case ASTNodeType::COMPOUND_ASSIGNMENT:
-      return variables.codegen(static_cast<const CompoundAssignmentAST&>(expr));
+      return variables.codegen(
+          static_cast<const sun::ast::CompoundAssignmentAST&>(expr));
     case ASTNodeType::FUNCTION:
-      return functions_.codegenFunc(
-          const_cast<FunctionAST&>(static_cast<const FunctionAST&>(expr)));
+      return functions_.codegenFunc(const_cast<sun::ast::FunctionAST&>(
+          static_cast<const sun::ast::FunctionAST&>(expr)));
     case ASTNodeType::LAMBDA:
-      return functions_.codegenLambda(
-          const_cast<LambdaAST&>(static_cast<const LambdaAST&>(expr)));
+      return functions_.codegenLambda(const_cast<sun::ast::LambdaAST&>(
+          static_cast<const sun::ast::LambdaAST&>(expr)));
     case ASTNodeType::RETURN:
-      return functions_.codegen(static_cast<const ReturnExprAST&>(expr));
+      return functions_.codegen(
+          static_cast<const sun::ast::ReturnExprAST&>(expr));
     case ASTNodeType::BREAK_STMT:
-      return loops.codegen(static_cast<const BreakAST&>(expr));
+      return loops.codegen(static_cast<const sun::ast::BreakAST&>(expr));
     case ASTNodeType::CONTINUE_STMT:
-      return loops.codegen(static_cast<const ContinueAST&>(expr));
+      return loops.codegen(static_cast<const sun::ast::ContinueAST&>(expr));
     case ASTNodeType::IMPORT:
       // Import statements should never reach codegen (parser errors on them)
       return ConstantFP::get(ctx.getContext(), APFloat(0.0));
@@ -97,7 +118,8 @@ Value* CodegenVisitor::codegenExpression(const ExprAST& expr) {
       // Declare statements trigger generic class instantiation.
       // Semantic analysis resolved the type; specialized class should already
       // be generated at definition site.
-      const auto& declareExpr = static_cast<const DeclareTypeAST&>(expr);
+      const auto& declareExpr =
+          static_cast<const sun::ast::DeclareTypeAST&>(expr);
       if (!declareExpr.hasResolvedDeclaredType()) {
         logAndThrowError(
             "Internal error: declare type not resolved by semantic analysis");
@@ -107,25 +129,32 @@ Value* CodegenVisitor::codegenExpression(const ExprAST& expr) {
       return ConstantFP::get(ctx.getContext(), APFloat(0.0));
     }
     case ASTNodeType::CLASS_DEFINITION:
-      return classes.codegen(static_cast<const ClassDefinitionAST&>(expr));
+      return classes.codegen(
+          static_cast<const sun::ast::ClassDefinitionAST&>(expr));
     case ASTNodeType::INTERFACE_DEFINITION:
-      return classes.codegen(static_cast<const InterfaceDefinitionAST&>(expr));
+      return classes.codegen(
+          static_cast<const sun::ast::InterfaceDefinitionAST&>(expr));
     case ASTNodeType::ENUM_DEFINITION:
-      return enums.codegen(static_cast<const EnumDefinitionAST&>(expr));
+      return enums.codegen(
+          static_cast<const sun::ast::EnumDefinitionAST&>(expr));
     case ASTNodeType::THIS:
-      return classes.codegen(static_cast<const ThisExprAST&>(expr));
+      return classes.codegen(static_cast<const sun::ast::ThisExprAST&>(expr));
     case ASTNodeType::MEMBER_ACCESS:
-      return classes.codegen(static_cast<const MemberAccessAST&>(expr));
+      return classes.codegen(
+          static_cast<const sun::ast::MemberAccessAST&>(expr));
     case ASTNodeType::MEMBER_ASSIGNMENT:
-      return classes.codegen(static_cast<const MemberAssignmentAST&>(expr));
+      return classes.codegen(
+          static_cast<const sun::ast::MemberAssignmentAST&>(expr));
     case ASTNodeType::TRY_CATCH:
-      return errors.codegen(static_cast<const TryCatchExprAST&>(expr));
+      return errors.codegen(
+          static_cast<const sun::ast::TryCatchExprAST&>(expr));
     case ASTNodeType::THROW:
-      return errors.codegen(static_cast<const ThrowExprAST&>(expr));
+      return errors.codegen(static_cast<const sun::ast::ThrowExprAST&>(expr));
     case ASTNodeType::UNSAFE_BLOCK:
-      return errors.codegen(static_cast<const UnsafeBlockAST&>(expr));
+      return errors.codegen(static_cast<const sun::ast::UnsafeBlockAST&>(expr));
     case ASTNodeType::GENERIC_CALL:
-      return classes.codegen(static_cast<const GenericCallAST&>(expr));
+      return classes.codegen(
+          static_cast<const sun::ast::GenericCallAST&>(expr));
     case ASTNodeType::PACK_EXPANSION: {
       // Pack expansion (args...) cannot be used as a standalone expression
       // It must be used in a call argument position to expand variadic args
@@ -135,14 +164,13 @@ Value* CodegenVisitor::codegenExpression(const ExprAST& expr) {
     }
     case ASTNodeType::MODULE: {
       // Module declarations: generate code for all declarations inside
-      // Name mangling is handled by semantic analysis (qualified names on AST)
-      const auto& ns = static_cast<const ModuleAST&>(expr);
+      const auto& ns = static_cast<const sun::ast::ModuleAST&>(expr);
       return codegen(ns.getBody());
     }
     case ASTNodeType::MOON_SCOPE: {
       // Moon scope wraps module stubs from a moon import
       // Generate code for all contained modules
-      const auto& moonScope = static_cast<const MoonScopeAST&>(expr);
+      const auto& moonScope = static_cast<const sun::ast::MoonScopeAST&>(expr);
       return codegen(moonScope.getBody());
     }
     case ASTNodeType::USING: {
@@ -157,22 +185,19 @@ Value* CodegenVisitor::codegenExpression(const ExprAST& expr) {
     }
     case ASTNodeType::QUALIFIED_NAME: {
       // Qualified name lookup (e.g., std.Vec)
-      const auto& qn = static_cast<const QualifiedNameAST&>(expr);
+      const auto& qn = static_cast<const sun::ast::QualifiedNameAST&>(expr);
       std::string fullName = qn.getFullName();
-      std::string mangledName = qn.getMangledName();
-
-      // Try to find as a function
-      Function* func = module->getFunction(mangledName);
-      if (func) {
-        return func;
-      }
 
       // Try to find as a global variable
-      const std::string& globalName = externC.symbolFor(mangledName);
-      GlobalVariable* gv = module->getGlobalVariable(globalName);
+      GlobalVariable* gv =
+          variableGenerator().findGlobal(qn.getTargetDeclarationId());
       if (gv) {
         return ctx.builder->CreateLoad(gv->getValueType(), gv,
-                                       mangledName + ".val");
+                                       fullName + ".val");
+      }
+
+      if (qn.getResolvedType() && qn.getResolvedType()->isFunction()) {
+        return functions.lookupFunctionById(qn.getTargetDeclarationId());
       }
 
       logAndThrowError("Unknown qualified name: " + fullName);
@@ -181,7 +206,7 @@ Value* CodegenVisitor::codegenExpression(const ExprAST& expr) {
     case ASTNodeType::NULL_LITERAL:
       return ConstantPointerNull::get(PointerType::getUnqual(ctx.getContext()));
     case ASTNodeType::BOOL_LITERAL: {
-      const auto& boolLit = static_cast<const BoolLiteralAST&>(expr);
+      const auto& boolLit = static_cast<const sun::ast::BoolLiteralAST&>(expr);
       return ConstantInt::get(llvm::Type::getInt1Ty(ctx.getContext()),
                               boolLit.getValue() ? 1 : 0);
     }
@@ -195,14 +220,15 @@ Value* CodegenVisitor::codegenExpression(const ExprAST& expr) {
 // Number and string literals
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegen(const CharLiteralAST& expr) {
+Value* CodegenVisitor::codegen(const sun::ast::CharLiteralAST& expr) {
   // A byte literal is a u8; a char is a Unicode scalar value in an i32.
-  return ConstantInt::get(expr.isByte() ? Type::getInt8Ty(ctx.getContext())
-                                        : Type::getInt32Ty(ctx.getContext()),
+  return ConstantInt::get(expr.isByte()
+                              ? llvm::Type::getInt8Ty(ctx.getContext())
+                              : llvm::Type::getInt32Ty(ctx.getContext()),
                           expr.getValue());
 }
 
-Value* CodegenVisitor::codegen(const NumberExprAST& expr) {
+Value* CodegenVisitor::codegen(const sun::ast::NumberExprAST& expr) {
   if (expr.isInteger()) {
     // Semantic analysis has already checked the literal against its resolved
     // type, so the constant is the low bits of the 64-bit two's-complement
@@ -210,38 +236,42 @@ Value* CodegenVisitor::codegen(const NumberExprAST& expr) {
     // full value.
     const uint64_t bits = expr.getIntegerBits();
     auto constant = [&](unsigned width) {
-      return ConstantInt::get(Type::getIntNTy(ctx.getContext(), width), bits);
+      return ConstantInt::get(llvm::Type::getIntNTy(ctx.getContext(), width),
+                              bits);
     };
 
     // Use the resolved type if available (set by semantic analyzer for
     // context-dependent typing)
-    sun::TypePtr resolvedType = expr.getResolvedType();
+    TypePtr resolvedType = expr.getResolvedType();
     if (resolvedType && resolvedType->isPrimitive()) {
       const auto* primType =
-          static_cast<const sun::PrimitiveType*>(resolvedType.get());
+          static_cast<const sun::semantic_analysis::PrimitiveType*>(
+              resolvedType.get());
       switch (primType->getKind()) {
-        case sun::Type::Kind::Int8:
-        case sun::Type::Kind::UInt8:
+        case sun::semantic_analysis::Type::Kind::Int8:
+        case sun::semantic_analysis::Type::Kind::UInt8:
           return constant(8);
-        case sun::Type::Kind::Int16:
-        case sun::Type::Kind::UInt16:
+        case sun::semantic_analysis::Type::Kind::Int16:
+        case sun::semantic_analysis::Type::Kind::UInt16:
           return constant(16);
-        case sun::Type::Kind::Int32:
-        case sun::Type::Kind::UInt32:
+        case sun::semantic_analysis::Type::Kind::Int32:
+        case sun::semantic_analysis::Type::Kind::UInt32:
           return constant(32);
-        case sun::Type::Kind::Int64:
-        case sun::Type::Kind::UInt64:
+        case sun::semantic_analysis::Type::Kind::Int64:
+        case sun::semantic_analysis::Type::Kind::UInt64:
           return constant(64);
-        case sun::Type::Kind::Bool:
-          return ConstantInt::get(Type::getInt1Ty(ctx.getContext()), bits != 0);
+        case sun::semantic_analysis::Type::Kind::Bool:
+          return ConstantInt::get(llvm::Type::getInt1Ty(ctx.getContext()),
+                                  bits != 0);
         default:
           break;
       }
     }
 
     // Default behavior: i32 when the value fits, otherwise a 64-bit constant
-    if (sun::rules::literalFitsInType(expr.getMagnitude(), expr.isNegative(),
-                                      sun::Type::Kind::Int32)) {
+    if (sun::semantic_analysis::literalFitsInType(
+            expr.getMagnitude(), expr.isNegative(),
+            sun::semantic_analysis::Type::Kind::Int32)) {
       return constant(32);
     }
     return constant(64);
@@ -249,13 +279,13 @@ Value* CodegenVisitor::codegen(const NumberExprAST& expr) {
   // Floating point literal -> f64 unless context typed it f32
   auto resolvedType = expr.getResolvedType();
   if (resolvedType && resolvedType->isFloat32()) {
-    return ConstantFP::get(Type::getFloatTy(ctx.getContext()),
+    return ConstantFP::get(llvm::Type::getFloatTy(ctx.getContext()),
                            expr.getFloatVal());
   }
   return ConstantFP::get(ctx.getContext(), APFloat(expr.getFloatVal()));
 }
 
-Value* CodegenVisitor::codegen(const StringLiteralAST& expr) {
+Value* CodegenVisitor::codegen(const sun::ast::StringLiteralAST& expr) {
   // Create a global string constant
   llvm::GlobalVariable* strGlobal =
       ctx.builder->CreateGlobalString(expr.getValue(), "str");
@@ -283,30 +313,32 @@ Value* CodegenVisitor::codegen(const StringLiteralAST& expr) {
 // Binary and unary expressions
 // -------------------------------------------------------------------
 
-// True if the expression's resolved Sun type is an unsigned integer.
-// Floats, bool, and enums answer false and take the signed/default path.
+/**
+ * True if the expression's resolved Sun type is an unsigned integer.
+ * Floats, bool, and enums answer false and take the signed/default path.
+ */
 static bool isUnsignedExpr(const ExprAST& expr) {
-  auto type = sun::unwrapRef(expr.getResolvedType());
+  auto type = sun::semantic_analysis::unwrapRef(expr.getResolvedType());
   return type && type->isUnsigned();
 }
 
 Value* CodegenVisitor::extendInt(Value* value, llvm::Type* destTy,
-                                 const sun::TypePtr& sourceType) {
-  return ops::extendInt(*ctx.builder, value, destTy, sourceType);
+                                 const TypePtr& sourceType) {
+  return support::extendInt(*ctx.builder, value, destTy, sourceType);
 }
 
 Value* CodegenVisitor::createIntDivRem(Value* L, Value* R, bool isModulo,
                                        bool isUnsigned) {
-  return ops::createIntDivRem(*ctx.builder, L, R, isModulo, isUnsigned);
+  return support::createIntDivRem(*ctx.builder, L, R, isModulo, isUnsigned);
 }
 
 // Bring two scalar operands to a common type (int and float widening);
 // throws on incompatible operand types. Extension mode follows each
 // operand's own Sun-type signedness.
 void CodegenVisitor::unifyBinaryOperands(Value*& L, Value*& R,
-                                         const sun::TypePtr& lhsSunType,
-                                         const sun::TypePtr& rhsSunType,
-                                         const Position& loc) {
+                                         const TypePtr& lhsSunType,
+                                         const TypePtr& rhsSunType,
+                                         const sun::support::Position& loc) {
   llvm::Type* LT = L->getType();
   llvm::Type* RT = R->getType();
   if (LT == RT) return;
@@ -352,7 +384,8 @@ void CodegenVisitor::unifyBinaryOperands(Value*& L, Value*& R,
 // binary expressions and compound assignment. Comparisons and logical ops
 // are not handled here.
 Value* CodegenVisitor::emitBinaryOp(TokenKind op, Value* L, Value* R,
-                                    bool unsignedOp, const Position& loc) {
+                                    bool unsignedOp,
+                                    const sun::support::Position& loc) {
   bool isInteger = L->getType()->isIntegerTy();
 
   switch (op) {
@@ -578,8 +611,8 @@ Value* CodegenVisitor::codegenLogicalOp(const BinaryExprAST& expr) {
 
   // Emit merge block with PHI node
   ctx.builder->SetInsertPoint(MergeBB);
-  PHINode* PN = ctx.builder->CreatePHI(Type::getInt1Ty(ctx.getContext()), 2,
-                                       isAnd ? "and.result" : "or.result");
+  PHINode* PN = ctx.builder->CreatePHI(llvm::Type::getInt1Ty(ctx.getContext()),
+                                       2, isAnd ? "and.result" : "or.result");
 
   // For 'and': short-circuit value is false, evaluated value is RHS
   // For 'or': short-circuit value is true, evaluated value is RHS
@@ -591,7 +624,7 @@ Value* CodegenVisitor::codegenLogicalOp(const BinaryExprAST& expr) {
   return PN;
 }
 
-Value* CodegenVisitor::codegen(const UnaryExprAST& expr) {
+Value* CodegenVisitor::codegen(const sun::ast::UnaryExprAST& expr) {
   Value* OperandV = codegen(*expr.getOperand());
   if (!OperandV) return nullptr;
 
@@ -611,3 +644,5 @@ Value* CodegenVisitor::codegen(const UnaryExprAST& expr) {
                        expr.getLocation());
   }
 }
+
+}  // namespace sun::codegen

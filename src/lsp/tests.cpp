@@ -7,29 +7,36 @@
 #include "lsp/declarations.h"
 #include "lsp/name_ranges.h"
 
+using sun::ast::ASTNodeType;
+using sun::ast::BlockExprAST;
+
+/** Provides compiler-backed editor features through the language server protocol. */
 namespace sun::lsp {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// Walk item-level statements, recursing through module bodies with the
-// dotted path so ids come out exactly as the test runner names them.
+/**
+ * Walk item-level statements, recursing through module bodies with the
+ * dotted path so ids come out exactly as the test runner names them.
+ */
 void collect(const BlockExprAST& block, std::vector<std::string>& modulePath,
              const std::string& documentPath, const std::string& source,
              std::vector<TestItem>& out) {
   for (const auto& stmt : block.getBody()) {
     if (!stmt) continue;
     if (stmt->getType() == ASTNodeType::MODULE) {
-      const auto& module = static_cast<const ModuleAST&>(*stmt);
+      const auto& module = static_cast<const sun::ast::ModuleAST&>(*stmt);
       modulePath.push_back(module.getName());
       collect(module.getBody(), modulePath, documentPath, source, out);
       modulePath.pop_back();
       continue;
     }
     if (stmt->getType() != ASTNodeType::FUNCTION) continue;
-    const auto& function = static_cast<const FunctionAST&>(*stmt);
+    const auto& function = static_cast<const sun::ast::FunctionAST&>(*stmt);
     if (!function.isTest()) continue;
 
-    const Position& span = function.getLocation();
+    const sun::support::Position& span = function.getLocation();
     if (!span.filePath || normalizePath(*span.filePath) != documentPath) {
       continue;
     }
@@ -47,6 +54,7 @@ void collect(const BlockExprAST& block, std::vector<std::string>& modulePath,
 
 }  // namespace
 
+/** Collects runnable test declarations and their editor locations. */
 std::vector<TestItem> collectTests(const BlockExprAST& ast,
                                    const std::string& documentPath,
                                    const std::string& source) {
@@ -56,27 +64,30 @@ std::vector<TestItem> collectTests(const BlockExprAST& ast,
   return items;
 }
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// Workspace-wide walk: like collect, but keeps every test with its file
-// instead of filtering to one document.
+/**
+ * Workspace-wide walk: like collect, but keeps every test with its file
+ * instead of filtering to one document.
+ */
 void collectSpans(const BlockExprAST& block,
                   std::vector<std::string>& modulePath,
                   std::vector<TestSpan>& out) {
   for (const auto& stmt : block.getBody()) {
     if (!stmt) continue;
     if (stmt->getType() == ASTNodeType::MODULE) {
-      const auto& module = static_cast<const ModuleAST&>(*stmt);
+      const auto& module = static_cast<const sun::ast::ModuleAST&>(*stmt);
       modulePath.push_back(module.getName());
       collectSpans(module.getBody(), modulePath, out);
       modulePath.pop_back();
       continue;
     }
     if (stmt->getType() != ASTNodeType::FUNCTION) continue;
-    const auto& function = static_cast<const FunctionAST&>(*stmt);
+    const auto& function = static_cast<const sun::ast::FunctionAST&>(*stmt);
     if (!function.isTest()) continue;
 
-    const Position& span = function.getLocation();
+    const sun::support::Position& span = function.getLocation();
     if (!span.filePath) continue;
 
     TestSpan item;
@@ -91,6 +102,7 @@ void collectSpans(const BlockExprAST& block,
 
 }  // namespace
 
+/** Collects the source ranges occupied by test declarations. */
 std::vector<TestSpan> collectTestSpans(const BlockExprAST& ast) {
   std::vector<TestSpan> items;
   std::vector<std::string> modulePath;

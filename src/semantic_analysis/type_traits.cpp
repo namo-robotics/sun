@@ -6,16 +6,23 @@
 
 #include "semantic_analysis/type_traits.h"
 
-namespace sun::traits {
+/** Resolves declarations and checks the types and meaning of Sun programs. */
+namespace sun::semantic_analysis {
 
-bool satisfies(const TypePtr& type, const std::string& name) {
-  if (!type) return false;
+/** Reports whether a semantic type meets the requested type-trait requirement. */
+bool satisfies(const TypePtr& type, const TypePtr& requirement) {
+  if (!type || !requirement) return false;
 
   // A borrow satisfies whatever it borrows: `ref i32` is numeric.
   TypePtr valueType = unwrapRef(type);
   if (!valueType) return false;
 
-  switch (getTypeTrait(name)) {
+  auto trait =
+      requirement->isTypeParameter()
+          ? getTypeTrait(
+                static_cast<const TypeParameterType&>(*requirement).getName())
+          : TypeTrait::None;
+  switch (trait) {
     case TypeTrait::Integer:
       return valueType->isSigned() || valueType->isUnsigned();
     case TypeTrait::Signed:
@@ -38,14 +45,12 @@ bool satisfies(const TypePtr& type, const std::string& name) {
       break;
   }
 
-  // Not a built-in trait. A class may implement it as an interface, or the
-  // name may be the type's own — both spellings of "is exactly this".
-  if (valueType->isClass()) {
-    auto* classType = static_cast<ClassType*>(valueType.get());
-    return classType->implementsInterface(name) ||
-           classType->getMangledName() == name;
+  if (valueType->isClass() && requirement->isInterface()) {
+    const auto& classType = static_cast<const ClassType&>(*valueType);
+    return classType.implementsInterface(
+        static_cast<const InterfaceType&>(*requirement));
   }
-  return valueType->toString() == name;
+  return valueType->equals(*requirement);
 }
 
-}  // namespace sun::traits
+}  // namespace sun::semantic_analysis

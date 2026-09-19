@@ -9,6 +9,9 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+using sun::driver::executeStringWithStdlib;
+
 // ============================================================================
 // Expression shapes the walk has to look inside
 // ============================================================================

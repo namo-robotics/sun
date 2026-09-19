@@ -8,6 +8,10 @@
 #include "driver/execution_utils.h"
 #include "support/error.h"
 
+using sun::driver::executeString;
+using sun::driver::executeStringWithStdlib;
+
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 // Owner models a heap-owning class: like Unique<T>, deinit is a no-op on
@@ -32,6 +36,7 @@ const char* kOwnerPreamble = R"(
     }
 )";
 
+/** Prepends shared fixture declarations to a test program. */
 std::string withPreamble(const std::string& body) {
   return std::string(kOwnerPreamble) + body;
 }
@@ -85,7 +90,7 @@ TEST(MemorySafety_GlobalAssignment, use_after_move_into_global_rejected) {
       return fresh.get_id();
     }
   )")),
-               SunError);
+               sun::support::SunError);
 }
 
 // Issue #70: assigning a String to a global used to store the source's

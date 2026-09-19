@@ -6,6 +6,9 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 const char* kOwnerPreamble = R"(
@@ -29,6 +32,7 @@ const char* kOwnerPreamble = R"(
     }
 )";
 
+/** Prepends shared fixture declarations to a test program. */
 std::string withPreamble(const std::string& body) {
   return std::string(kOwnerPreamble) + body;
 }

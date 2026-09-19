@@ -7,21 +7,29 @@
 
 #include "codegen/codegen_visitor.h"
 
+using sun::ast::ExprAST;
+
+/** Provides the generator for class storage and method operations. */
+namespace sun::codegen::classes {
+
 llvm::Value* ClassGenerator::codegen(const ExprAST& expr) {
   return gen_.codegen(expr);
 }
 
-llvm::Value* ClassGenerator::codegen(const BlockExprAST& block, size_t start) {
+llvm::Value* ClassGenerator::codegen(const sun::ast::BlockExprAST& block,
+                                     size_t start) {
   return gen_.codegen(block, start);
 }
 
-ScopeManager& ClassGenerator::scopes() { return gen_.scopeManager(); }
+sun::codegen::scopes::ScopeManager& ClassGenerator::scopes() {
+  return gen_.scopeManager();
+}
 
-FunctionRegistry& ClassGenerator::functions() {
+sun::codegen::functions::FunctionRegistry& ClassGenerator::functions() {
   return gen_.functionRegistry();
 }
 
-IntrinsicsGenerator& ClassGenerator::intrinsics() {
+sun::codegen::intrinsics::IntrinsicsGenerator& ClassGenerator::intrinsics() {
   return gen_.intrinsicsGenerator();
 }
 
@@ -33,14 +41,14 @@ llvm::AllocaInst* ClassGenerator::createEntryBlockAlloca(llvm::Function* func,
 
 void ClassGenerator::debugDeclareParam(llvm::AllocaInst* alloca,
                                        const std::string& name,
-                                       const PrototypeAST& proto,
+                                       const sun::ast::PrototypeAST& proto,
                                        unsigned userArgIdx,
                                        unsigned argNoBase) {
   gen_.debugDeclareParam(alloca, name, proto, userArgIdx, argNoBase);
 }
 
-std::pair<llvm::Value*, sun::ClassType*> ClassGenerator::codegenObjectPtr(
-    const ExprAST& object) {
+std::pair<llvm::Value*, sun::semantic_analysis::ClassType*>
+ClassGenerator::codegenObjectPtr(const ExprAST& object) {
   return gen_.codegenObjectPtr(object);
 }
 
@@ -57,20 +65,22 @@ llvm::Value* ClassGenerator::materializeMethodClosureValue(
 
 bool ClassGenerator::emitCallArguments(
     const std::vector<std::unique_ptr<ExprAST>>& args,
-    const std::vector<sun::ArgConversion>& conversions,
-    const std::vector<sun::TypePtr>& paramTypes, llvm::FunctionType* calleeTy,
-    std::vector<llvm::Value*>& argValues, const std::string& calleeName,
-    size_t firstArg) {
+    const std::vector<sun::semantic_analysis::ArgConversion>& conversions,
+    const std::vector<sun::semantic_analysis::TypePtr>& paramTypes,
+    llvm::FunctionType* calleeTy, std::vector<llvm::Value*>& argValues,
+    const std::string& calleeName, size_t firstArg) {
   return gen_.emitCallArguments(args, conversions, paramTypes, calleeTy,
                                 argValues, calleeName, firstArg);
 }
 
-void ClassGenerator::assignToVariableSlot(llvm::Value* slot, llvm::Value* value,
-                                          const sun::TypePtr& varType,
-                                          const std::string& name) {
+void ClassGenerator::assignToVariableSlot(
+    llvm::Value* slot, llvm::Value* value,
+    const sun::semantic_analysis::TypePtr& varType, const std::string& name) {
   gen_.assignToVariableSlot(slot, value, varType, name);
 }
 
 bool ClassGenerator::isPrecompiledFunction(const std::string& name) {
   return gen_.isPrecompiledFunction(name);
 }
+
+}  // namespace sun::codegen::classes

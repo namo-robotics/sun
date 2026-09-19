@@ -1,4 +1,6 @@
+/** Supplies the value exported by the example's transitive library dependency. */
 public module moon3 {
+  /** Supplies the value exported by the example's transitive library dependency. */
   public function moon3() i32 {
     return 3;
   }

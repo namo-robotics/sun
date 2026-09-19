@@ -22,26 +22,36 @@
 #include "driver/execution_utils.h"
 #include "lsp/references.h"
 
+using sun::lsp::SymbolLocation;
+
+using sun::driver::Driver;
+
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 // The file never exists on disk; nodes carry the path exactly as given
 const char* kPath = "/references_test.sun";
 
+/** Keeps the syntax tree and semantic context alive for editor-feature tests. */
 struct Analysis {
   std::unique_ptr<Driver> driver;
-  Driver::AnalyzedProgram program;
+  sun::driver::Driver::AnalyzedProgram program;
 };
 
+/** Parses and analyzes fixture source before querying editor features. */
 Analysis analyze(const std::string& source, bool withStdlib = false) {
-  initTestEnvironment();
+  sun::driver::initTestEnvironment();
   Analysis analysis;
   analysis.driver = Driver::createForAOT("references_test");
-  if (withStdlib) analysis.driver->setMoonImports(getStdlibMoonImports());
+  if (withStdlib)
+    analysis.driver->setMoonImports(sun::driver::getStdlibMoonImports());
   analysis.program = analysis.driver->analyzeString(source, kPath);
   return analysis;
 }
 
-// Byte offset of the Nth occurrence of needle
+/**
+ * Byte offset of the Nth occurrence of needle
+ */
 size_t offsetOf(const std::string& source, const std::string& needle,
                 int occurrence = 0) {
   size_t pos = std::string::npos;
@@ -55,11 +65,12 @@ size_t offsetOf(const std::string& source, const std::string& needle,
   return pos;
 }
 
-std::vector<sun::lsp::SymbolLocation> referencesAt(const std::string& source,
-                                                   const std::string& needle,
-                                                   bool includeDeclaration,
-                                                   int occurrence = 0,
-                                                   bool withStdlib = false) {
+/** Queries reference locations for a symbol in the fixture source. */
+std::vector<SymbolLocation> referencesAt(const std::string& source,
+                                         const std::string& needle,
+                                         bool includeDeclaration,
+                                         int occurrence = 0,
+                                         bool withStdlib = false) {
   size_t pos = offsetOf(source, needle, occurrence);
   if (pos == std::string::npos) return {};
   Analysis analysis = analyze(source, withStdlib);
@@ -73,14 +84,16 @@ std::vector<sun::lsp::SymbolLocation> referencesAt(const std::string& source,
                                      static_cast<int>(pos), includeDeclaration);
 }
 
-std::string rangeText(const std::string& text,
-                      const sun::lsp::SymbolLocation& location) {
+/** Extracts the source spelling covered by an editor result range. */
+std::string rangeText(const std::string& text, const SymbolLocation& location) {
   return text.substr(location.range.offset,
                      location.range.endOffset.value_or(location.range.offset) -
                          location.range.offset);
 }
 
-// Leading identifier of a snippet
+/**
+ * Leading identifier of a snippet
+ */
 std::string identifierOf(const std::string& snippet) {
   size_t length = 0;
   while (length < snippet.size() &&
@@ -91,8 +104,9 @@ std::string identifierOf(const std::string& snippet) {
   return snippet.substr(0, length);
 }
 
+/** Formats collected symbol locations to make assertion failures readable. */
 std::string describe(const std::string& source,
-                     const std::vector<sun::lsp::SymbolLocation>& results) {
+                     const std::vector<SymbolLocation>& results) {
   std::string text;
   for (const auto& result : results) {
     if (!text.empty()) text += ", ";
@@ -103,15 +117,19 @@ std::string describe(const std::string& source,
   return text.empty() ? "nothing" : text;
 }
 
-// A name expected among the results: the Nth occurrence of a snippet that
-// starts with it
+/**
+ * A name expected among the results: the Nth occurrence of a snippet that
+ * starts with it
+ */
 struct ExpectedName {
   std::string needle;
   int occurrence = 0;
 };
 
-// The references of the symbol at `needle` are exactly the names at
-// `expected`, all in the document
+/**
+ * The references of the symbol at `needle` are exactly the names at
+ * `expected`, all in the document
+ */
 testing::AssertionResult refersTo(const std::string& source,
                                   const std::string& needle,
                                   bool includeDeclaration,
@@ -158,6 +176,7 @@ testing::AssertionResult refersTo(const std::string& source,
   return testing::AssertionSuccess();
 }
 
+/** Reads a fixture file into a string for comparison. */
 std::string readFile(const std::string& path) {
   std::ifstream file(path);
   std::stringstream buffer;
@@ -426,7 +445,7 @@ function main() i32 {
 }
 
 TEST(Tooling_Lsp_References, MergedFiles) {
-  initTestEnvironment();
+  sun::driver::initTestEnvironment();
   std::filesystem::create_directories("tmp");
   std::string mainPath =
       std::filesystem::absolute("tmp/references_main.sun").string();
@@ -480,7 +499,8 @@ TEST(Tooling_Lsp_References, MergedFiles) {
 }
 
 TEST(Tooling_Lsp_References, StdlibReferences) {
-  if (getStdlibMoonImports().empty()) GTEST_SKIP() << "stdlib.moon not built";
+  if (sun::driver::getStdlibMoonImports().empty())
+    GTEST_SKIP() << "stdlib.moon not built";
   std::string source = R"(
 using std;
 function main() i64 {
@@ -510,7 +530,7 @@ function main() i64 {
                           const std::vector<ExpectedName>& expected,
                           const std::string& file, const std::string& name) {
     auto results = references(needle);
-    std::vector<sun::lsp::SymbolLocation> library;
+    std::vector<SymbolLocation> library;
     std::vector<int> got;
     for (const auto& result : results) {
       if (result.filePath == kPath) {

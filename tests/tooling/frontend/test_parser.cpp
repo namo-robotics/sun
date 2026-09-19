@@ -10,14 +10,33 @@
 #include <vector>
 
 // Include your public headers
-#include "ast.h"            // Needed to inspect the parsed AST nodes
+#include "ast.h"  // Needed to inspect the parsed AST nodes
+#include "driver/execution_utils.h"
 #include "parsing/lexer.h"  // If needed for Token checks
 #include "parsing/parser.h"  // This should be in include/ (or include/SunCompiler/)
 #include "support/error.h"  // For SunError exception type
 
-// Helper to parse a string and return the parsed AST (for top-level
-// expressions)
-std::unique_ptr<ExprAST> parseStringToExpr(const std::string& source) {
+using sun::ast::ASTNodeType;
+using sun::ast::BinaryExprAST;
+using sun::ast::BlockExprAST;
+using sun::ast::FunctionAST;
+using sun::ast::LambdaAST;
+using sun::ast::NumberExprAST;
+using sun::ast::ParenExprAST;
+using sun::ast::UnaryExprAST;
+using sun::ast::VariableCreationAST;
+using sun::ast::VariableReferenceAST;
+using sun::driver::compileString;
+using sun::parsing::Parser;
+using sun::parsing::TokenKind;
+using sun::support::SunError;
+
+/**
+ * Helper to parse a string and return the parsed AST (for top-level
+ * expressions)
+ */
+std::unique_ptr<sun::ast::ExprAST> parseStringToExpr(
+    const std::string& source) {
   std::istringstream ss(source);
   Parser parser(ss);
 
@@ -28,8 +47,10 @@ std::unique_ptr<ExprAST> parseStringToExpr(const std::string& source) {
   return parser.parseExpression();
 }
 
-// Helper to parse a string and return the parsed AST (for top-level
-// expressions)
+/**
+ * Helper to parse a string and return the parsed AST (for top-level
+ * expressions)
+ */
 std::unique_ptr<BlockExprAST> parseString(const std::string& source) {
   std::istringstream ss(source);
   Parser parser(ss);
@@ -136,7 +157,7 @@ TEST(Tooling_Frontend_Parser, ParseTemplateString) {
   auto ast = parseStringToExpr("`Hello ${name}!`");
 
   ASSERT_NE(ast, nullptr);
-  auto* interp = dynamic_cast<InterpolatedStringAST*>(ast.get());
+  auto* interp = dynamic_cast<sun::ast::InterpolatedStringAST*>(ast.get());
   ASSERT_NE(interp, nullptr);
   EXPECT_EQ(interp->getRawContent(), "Hello ${name}!");
   const auto& segments = interp->getSegments();
@@ -156,7 +177,7 @@ TEST(Tooling_Frontend_Parser, TemplateStringRawVsCookedEscapes) {
   auto ast = parseStringToExpr("`a\\nb`");
 
   ASSERT_NE(ast, nullptr);
-  auto* interp = dynamic_cast<InterpolatedStringAST*>(ast.get());
+  auto* interp = dynamic_cast<sun::ast::InterpolatedStringAST*>(ast.get());
   ASSERT_NE(interp, nullptr);
   const auto& segments = interp->getSegments();
   ASSERT_EQ(segments.size(), 1u);
@@ -197,10 +218,13 @@ TEST(Tooling_Frontend_Parser, ParseBinaryWithPrecedence) {
   EXPECT_EQ(inner->getOp().kind, TokenKind::STAR);
 }
 
-// ------------------------------------------------------------------
-// Function prototype
-// ------------------------------------------------------------------
-std::unique_ptr<PrototypeAST> parsePrototype(const std::string& source) {
+/**
+ * ------------------------------------------------------------------
+ * Function prototype
+ * ------------------------------------------------------------------
+ */
+std::unique_ptr<sun::ast::PrototypeAST> parsePrototype(
+    const std::string& source) {
   std::istringstream ss(source);
   Parser parser(ss);
   parser.getNextToken();
@@ -226,7 +250,7 @@ TEST(Tooling_Frontend_Parser, ParsePrototypeWithArgs) {
 }
 
 TEST(Tooling_Frontend_Parser, LexerRegex) {
-  ASSERT_TRUE(Lexer::getTokenDFA().matches(" a"));
+  ASSERT_TRUE(sun::parsing::Lexer::getTokenDFA().matches(" a"));
 }
 
 // ------------------------------------------------------------------
@@ -349,7 +373,7 @@ TEST(Tooling_Frontend_Parser, IfExpression) {
   auto ast = parseStringToExpr("if (x < 10) { 1; } else { 0; }");
 
   ASSERT_NE(ast, nullptr);
-  auto* ifExpr = dynamic_cast<IfExprAST*>(ast.get());
+  auto* ifExpr = dynamic_cast<sun::ast::IfExprAST*>(ast.get());
   ASSERT_NE(ifExpr, nullptr);
 
   // Check condition (the if-condition parens are preserved in the parse tree)
@@ -720,7 +744,9 @@ function main() i32 {
       SunError);
 }
 
-// `&&` / `||` are not Sun operators; the error must name `and` / `or`.
+/**
+ * `&&` / `||` are not Sun operators; the error must name `and` / `or`.
+ */
 static std::string parseErrorMessage(const std::string& src) {
   try {
     parseString(src);
@@ -876,8 +902,6 @@ function main() i32 {
 // Driver-based parsing error tests - these log errors to stderr
 // Uses compileString which goes through the full driver pipeline
 // ------------------------------------------------------------------
-
-#include "driver/execution_utils.h"
 
 TEST(Tooling_Frontend_Parser_ErrorDriver, MissingSemicolonLogsEnhancedError) {
   // This test verifies that parsing errors through the driver
@@ -1042,6 +1066,7 @@ function main() i32 {
   ASSERT_NE(ast, nullptr);
 }
 
+/** Initializes the test framework and runs the registered parser tests. */
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
@@ -1092,7 +1117,9 @@ TEST(Tooling_Frontend_Parser, UnaryMinusBindsTighterThanBinary) {
 // Comment collection tests (lossless AST / formatter support)
 // ------------------------------------------------------------------
 
-// Parse a full program and return the parser for side-table inspection
+/**
+ * Parse a full program and return the parser for side-table inspection
+ */
 static std::unique_ptr<Parser> parseProgramCollectingComments(
     const std::string& source) {
   std::istringstream dummy("");
@@ -1123,7 +1150,7 @@ TEST(Tooling_Frontend_Comments, CollectsLineAndBlockComments) {
   const auto& comments = parser->getComments();
   ASSERT_EQ(comments.size(), 4u);
 
-  std::vector<Comment> ordered;
+  std::vector<sun::parsing::Comment> ordered;
   for (const auto& [offset, c] : comments) ordered.push_back(c);
 
   EXPECT_EQ(ordered[0].text, "// leading line");
@@ -1151,7 +1178,7 @@ TEST(Tooling_Frontend_Comments, MultilineBlockCommentSpan) {
       "function main() i32 { return 1; }\n");
   const auto& comments = parser->getComments();
   ASSERT_EQ(comments.size(), 1u);
-  const Comment& c = comments.begin()->second;
+  const sun::parsing::Comment& c = comments.begin()->second;
   EXPECT_EQ(c.span.line, 1);
   EXPECT_EQ(c.span.endLine, 2);
   EXPECT_TRUE(c.isBlock);
@@ -1240,7 +1267,8 @@ TEST(Tooling_Frontend_Parser, ExternGlobalMetadata) {
   EXPECT_FALSE(variable->hasValue());
   EXPECT_TRUE(variable->hasTypeAnnotation());
   EXPECT_EQ(variable->getLinkName(), "native_name");
-  EXPECT_EQ(variable->getVisibility(), sun::Visibility::Public);
+  EXPECT_EQ(variable->getVisibility(),
+            sun::semantic_analysis::Visibility::Public);
 }
 
 TEST(Tooling_Frontend_Parser, ExternGlobalAllowsImplicitCAbi) {

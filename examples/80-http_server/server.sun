@@ -1,6 +1,7 @@
 // HTTP server: serves a small webpage on http://127.0.0.1:8080
 using std;
 
+/** Runs the example that serves HTTP requests. */
 function main() i32 {
   var alloc = make_heap_allocator();
   var server = HttpServer(alloc);

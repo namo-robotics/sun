@@ -4,12 +4,15 @@
 
 using std;
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** Groups tests for the io library behavior. */
   module io_tests {
     // -----------------------------------------------------------------
     // Directory listing and file metadata (was Stdlib_Io_Dir)
     // -----------------------------------------------------------------
 
+    /** Checks read dir lists entries without dot and dotdot. */
     test_function read_dir_lists_entries_without_dot_and_dotdot() {
       var alloc = make_heap_allocator();
       var td = std.tests.TempDir(alloc, "read_dir_lists");
@@ -39,6 +42,7 @@ public module std {
       std.test.assert_eq(files, 2);
     }
 
+    /** Checks read dir finds a named entry. */
     test_function read_dir_finds_a_named_entry() {
       var alloc = make_heap_allocator();
       var td = std.tests.TempDir(alloc, "read_dir_finds");
@@ -56,6 +60,7 @@ public module std {
       std.test.assert(found, "needle.txt should be listed");
     }
 
+    /** Checks read dir on empty directory. */
     test_function read_dir_on_empty_directory() {
       var alloc = make_heap_allocator();
       var td = std.tests.TempDir(alloc, "read_dir_empty");
@@ -63,6 +68,7 @@ public module std {
       std.test.assert_eq(entries.size(), 0);
     }
 
+    /** Checks read dir on missing directory throws. */
     test_function read_dir_on_missing_directory_throws() {
       var alloc = make_heap_allocator();
       var td = std.tests.TempDir(alloc, "read_dir_missing");
@@ -73,6 +79,7 @@ public module std {
       } catch (e: IError) {}
     }
 
+    /** Checks metadata predicates. */
     test_function metadata_predicates() {
       var alloc = make_heap_allocator();
       var td = std.tests.TempDir(alloc, "metadata_predicates");
@@ -92,6 +99,7 @@ public module std {
       std.test.assert_eq(std.io.get_file_size(file), 5);
     }
 
+    /** Checks read dir accepts a runtime string path. */
     test_function read_dir_accepts_a_runtime_string_path() {
       var alloc = make_heap_allocator();
       var td = std.tests.TempDir(alloc, "read_dir_runtime");
@@ -108,6 +116,7 @@ public module std {
     // Paths built at runtime (was Stdlib_Io_Paths, issue #84)
     // -----------------------------------------------------------------
 
+    /** Checks open and write a computed path. */
     test_function open_and_write_a_computed_path() {
       var alloc = make_heap_allocator();
       var td = std.tests.TempDir(alloc, "open_write_computed");
@@ -124,6 +133,7 @@ public module std {
       std.test.assert(back.equals(body), "content round-trips");
     }
 
+    /** Checks whole file helpers take a computed path. */
     test_function whole_file_helpers_take_a_computed_path() {
       var alloc = make_heap_allocator();
       var td = std.tests.TempDir(alloc, "whole_file_helpers");
@@ -136,6 +146,7 @@ public module std {
       std.test.assert_eq(std.io.get_file_size(path), 10);
     }
 
+    /** Checks metadata queries take a computed path. */
     test_function metadata_queries_take_a_computed_path() {
       var alloc = make_heap_allocator();
       var td = std.tests.TempDir(alloc, "metadata_computed");
@@ -151,6 +162,7 @@ public module std {
       std.test.assert(std.io.is_file(file), "the file is an ordinary file");
     }
 
+    /** Checks directory calls take a computed path. */
     test_function directory_calls_take_a_computed_path() {
       var alloc = make_heap_allocator();
       var td = std.tests.TempDir(alloc, "directory_computed");
@@ -174,6 +186,7 @@ public module std {
       std.test.assert(not std.io.exists(dir), "made should be removed");
     }
 
+    /** Checks literals still pick the static ptr overload. */
     test_function literals_still_pick_the_static_ptr_overload() {
       // A literal cannot embed the process id, so this is the one test with
       // a fixed /tmp name. The file is removed before any assertion can
@@ -193,6 +206,7 @@ public module std {
     // Poller (was Stdlib_Io_Poll)
     // -----------------------------------------------------------------
 
+    /** Checks empty poller returns zero. */
     test_function empty_poller_returns_zero() {
       var alloc = make_heap_allocator();
       var p = std.io.Poller(alloc);
@@ -200,6 +214,7 @@ public module std {
       std.test.assert_eq(p.wait(0), 0);
     }
 
+    /** Checks pipe becomes readable after a write. */
     test_function pipe_becomes_readable_after_a_write() {
       var alloc = make_heap_allocator();
       var pipe = std.process.open_pipe(alloc);
@@ -221,6 +236,7 @@ public module std {
       pipe.close_read();
     }
 
+    /** Checks hangup is reported when the writer closes. */
     test_function hangup_is_reported_when_the_writer_closes() {
       var alloc = make_heap_allocator();
       var pipe = std.process.open_pipe(alloc);
@@ -233,6 +249,7 @@ public module std {
       pipe.close_read();
     }
 
+    /** Checks watches several descriptors by position. */
     test_function watches_several_descriptors_by_position() {
       var alloc = make_heap_allocator();
       var first = std.process.open_pipe(alloc);
@@ -258,6 +275,7 @@ public module std {
       second.close_read();
     }
 
+    /** Checks remove forgets all matching descriptors. */
     test_function remove_forgets_all_matching_descriptors() {
       var alloc = make_heap_allocator();
       var p = std.io.Poller(alloc);
@@ -277,6 +295,7 @@ public module std {
       std.test.assert(not p.remove(99), "99 was never watched");
     }
 
+    /** Checks duration wait returns ready events. */
     test_function duration_wait_returns_ready_events() {
       var alloc = make_heap_allocator();
       var first = std.process.open_pipe(alloc);
@@ -315,6 +334,7 @@ public module std {
       third.close_read();
     }
 
+    /** Checks empty duration wait honors timeout. */
     test_function empty_duration_wait_honors_timeout() {
       var alloc = make_heap_allocator();
       var p = std.io.Poller(alloc);
@@ -328,6 +348,7 @@ public module std {
     // The std.io File class (was the stdlib half of Stdlib_Io_File)
     // -----------------------------------------------------------------
 
+    /** Checks sun io file literal path round trip. */
     test_function sun_io_file_literal_path_round_trip() {
       // File.open with a literal takes the static_ptr overload, so the path
       // here must be a fixed literal. Removed before any assertion can throw.
@@ -342,6 +363,7 @@ public module std {
       std.test.assert(text.equals_literal("written by File"), "literal-path File round-trips");
     }
 
+    /** Checks sun io file runtime string path. */
     test_function sun_io_file_runtime_string_path() {
       var alloc = make_heap_allocator();
       var td = std.tests.TempDir(alloc, "sun_io_file_runtime");
@@ -355,6 +377,7 @@ public module std {
       std.test.assert_eq(std.io.get_file_size(path), 12);
     }
 
+    /** Checks sun io file seek and size. */
     test_function sun_io_file_seek_and_size() {
       var alloc = make_heap_allocator();
       var td = std.tests.TempDir(alloc, "sun_io_file_seek");
@@ -373,6 +396,7 @@ public module std {
       std.test.assert(not f.is_open(), "closed File holds no descriptor");
     }
 
+    /** Checks sun io append mode keeps existing content. */
     test_function sun_io_append_mode_keeps_existing_content() {
       var alloc = make_heap_allocator();
       var td = std.tests.TempDir(alloc, "sun_io_append");
@@ -389,6 +413,7 @@ public module std {
       std.test.assert(back.equals_literal("first;second"), "append keeps existing content");
     }
 
+    /** Checks sun io open missing file throws. */
     test_function sun_io_open_missing_file_throws() {
       var alloc = make_heap_allocator();
       var td = std.tests.TempDir(alloc, "sun_io_open_missing");
@@ -400,6 +425,7 @@ public module std {
       } catch (e: IError) {}
     }
 
+    /** Checks sun io remove rename and directories. */
     test_function sun_io_remove_rename_and_directories() {
       var alloc = make_heap_allocator();
       var td = std.tests.TempDir(alloc, "sun_io_remove_rename");

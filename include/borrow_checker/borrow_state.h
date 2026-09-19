@@ -10,65 +10,96 @@
 
 #include "borrow_checker/loan.h"
 
-namespace sun {
+/** Checks ownership and lifetimes so references cannot outlive their values. */
+namespace sun::borrow_checker {
 
-/// Tracks the borrow state of all variables during analysis
-/// Enforces Rust-style borrow rules:
-/// - At any given time, either ONE mutable borrow OR any number of shared
-/// borrows
-/// - Cannot mutate a variable while it has active borrows (unless through the
-/// borrow)
-/// - Borrows are invalidated when they go out of scope
+/**
+ * Tracks the borrow state of all variables during analysis
+ * Enforces Rust-style borrow rules:
+ * - At any given time, either ONE mutable borrow OR any number of shared
+ * borrows
+ * - Cannot mutate a variable while it has active borrows (unless through the
+ * borrow)
+ * - Borrows are invalidated when they go out of scope
+ */
 class BorrowState {
  public:
+  /** Creates an instance with its default state. */
   BorrowState() = default;
 
-  /// Attempt to create a new borrow
-  /// Returns error if this would violate borrow rules
+  /**
+   * Attempt to create a new borrow
+   * Returns error if this would violate borrow rules
+   */
   BorrowCheckResult addBorrow(const std::string& borrowedVar,
                               const std::string& refName, BorrowKind kind,
-                              size_t scopeDepth, const Position& loc);
+                              size_t scopeDepth,
+                              const sun::support::Position& loc);
 
-  /// Check if we can mutate a variable directly (not through a reference)
-  /// Mutation is blocked if there are any active borrows
+  /**
+   * Check if we can mutate a variable directly (not through a reference)
+   * Mutation is blocked if there are any active borrows
+   */
   BorrowCheckResult canMutateDirectly(const std::string& var) const;
 
-  /// Check if we can mutate through a specific reference
-  /// Only allowed if this is the only active mutable borrow
+  /**
+   * Check if we can mutate through a specific reference
+   * Only allowed if this is the only active mutable borrow
+   */
   BorrowCheckResult canMutateThroughRef(const std::string& refName) const;
 
-  /// Check if we can read a variable
-  /// Reading is always allowed unless there's an active mutable borrow by
-  /// another ref
+  /**
+   * Check if we can read a variable
+   * Reading is always allowed unless there's an active mutable borrow by
+   * another ref
+   */
   BorrowCheckResult canRead(const std::string& var,
                             const std::string& throughRef = "") const;
 
-  /// Called when exiting a scope - invalidates borrows at or deeper than
-  /// scopeDepth
+  /**
+   * Called when exiting a scope - invalidates borrows at or deeper than
+   * scopeDepth
+   */
   void exitScope(size_t scopeDepth);
 
-  /// Get all active loans for a variable (for error reporting)
+  /**
+   * Get all active loans for a variable (for error reporting)
+   */
   std::vector<Loan> getActiveLoans(const std::string& var) const;
 
-  /// Get all active loans (for debugging)
+  /**
+   * Get all active loans (for debugging)
+   */
   std::vector<Loan> getAllActiveLoans() const;
 
-  /// Check if a name refers to an active reference
+  /**
+   * Check if a name refers to an active reference
+   */
   bool isActiveRef(const std::string& name) const;
 
-  /// Get the variable that a reference points to (if it's an active ref)
+  /**
+   * Get the variable that a reference points to (if it's an active ref)
+   */
   const std::string* getRefTarget(const std::string& refName) const;
 
-  /// Set the lifetime for a variable or reference
+  /**
+   * Set the lifetime for a variable or reference
+   */
   void setLifetime(const std::string& name, const Lifetime& lt);
 
-  /// Get the lifetime for a variable or reference (if known)
+  /**
+   * Get the lifetime for a variable or reference (if known)
+   */
   std::optional<Lifetime> getLifetime(const std::string& name) const;
 
-  /// Forget the lifetime recorded for a name
+  /**
+   * Forget the lifetime recorded for a name
+   */
   void clearLifetime(const std::string& name);
 
-  /// Clear all state (for testing)
+  /**
+   * Clear all state (for testing)
+   */
   void clear();
 
  private:
@@ -82,4 +113,4 @@ class BorrowState {
   std::unordered_map<std::string, Lifetime> lifetimes_;
 };
 
-}  // namespace sun
+}  // namespace sun::borrow_checker

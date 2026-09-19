@@ -14,18 +14,24 @@
 //   var text = String(alloc, "");
 //   n.append_decimal(text);            // 265252859812191058636308480000000
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** An arbitrary-precision unsigned integer that owns its limb storage. */
   public class BigUint {
     var limbs: Vec<u64>;
     var alloc: HeapAllocator;
 
-    // Zero
+    /**
+     * Zero
+     */
     init(allocator: const ref HeapAllocator) {
       this.alloc = allocator.copy();
       this.limbs = Vec<u64>(allocator, 4);
     }
 
-    // From a machine word
+    /**
+     * From a machine word
+     */
     init(allocator: const ref HeapAllocator, value: u64) {
       this.alloc = allocator.copy();
       this.limbs = Vec<u64>(allocator, 4);
@@ -34,7 +40,9 @@ public module std {
       }
     }
 
-    // Independent copy
+    /**
+     * Independent copy
+     */
     public const method clone() BigUint {
       var out = BigUint(this.alloc);
       out.limbs.reserve(this.limbs.size());
@@ -44,12 +52,16 @@ public module std {
       return out;
     }
 
-    // Number of limbs in use
+    /**
+     * Number of limbs in use
+     */
     public const method limb_count() i64 {
       return this.limbs.size();
     }
 
-    // Limb i (little-endian); 0 beyond the top
+    /**
+     * Limb i (little-endian); 0 beyond the top
+     */
     public const method limb(i: i64) u64 {
       if (i < 0 or i >= this.limbs.size()) {
         return 0;
@@ -57,12 +69,16 @@ public module std {
       return unsafe { this.limbs.get_unchecked(i); };
     }
 
-    // Report whether the value is zero. Zero is stored as an empty limb list.
+    /**
+     * Report whether the value is zero. Zero is stored as an empty limb list.
+     */
     public const method is_zero() bool {
       return this.limbs.size() == 0;
     }
 
-    // Bits needed to represent the value (0 for zero)
+    /**
+     * Bits needed to represent the value (0 for zero)
+     */
     public const method bit_length() i64 {
       var n: i64 = this.limbs.size();
       if (n == 0) {
@@ -72,12 +88,16 @@ public module std {
       return (n - 1) * 64 + 64 - _convert<i64>(_ctlz_u64(top));
     }
 
-    // Low 64 bits
+    /**
+     * Low 64 bits
+     */
     public const method low_u64() u64 {
       return this.limb(0);
     }
 
-    // The value as u64, or None if it does not fit
+    /**
+     * The value as u64, or None if it does not fit
+     */
     public const method to_u64() Option<u64> {
       if (this.limbs.size() > 1) {
         return Option.None;
@@ -85,12 +105,16 @@ public module std {
       return Option.Some(this.limb(0));
     }
 
-    // Set to zero
+    /**
+     * Set to zero
+     */
     public method clear() void {
       this.limbs.clear();
     }
 
-    // Set from a machine word
+    /**
+     * Set from a machine word
+     */
     public method set_u64(value: u64) void {
       this.limbs.clear();
       if (value != 0) {
@@ -98,7 +122,9 @@ public module std {
       }
     }
 
-    // Copy the value of another number
+    /**
+     * Copy the value of another number
+     */
     public method assign(other: const ref BigUint) void {
       this.limbs.clear();
       for (var i: i64 = 0; i < other.limbs.size(); i = i + 1) {
@@ -106,7 +132,9 @@ public module std {
       }
     }
 
-    // Drop leading zero limbs
+    /**
+     * Drop leading zero limbs
+     */
     method trim() void {
       while (this.limbs.size() > 0) {
         var top: u64 = unsafe { this.limbs.get_unchecked(this.limbs.size() - 1); };
@@ -121,7 +149,9 @@ public module std {
     // Comparison
     // ------------------------------------------------------------------------
 
-    // -1, 0 or 1
+    /**
+     * -1, 0 or 1
+     */
     public const method compare(other: const ref BigUint) i64 {
       var n: i64 = this.limbs.size();
       var m: i64 = other.limbs.size();
@@ -146,13 +176,17 @@ public module std {
       return 0;
     }
 
-    // Report whether two big integers hold the same value.
+    /**
+     * Report whether two big integers hold the same value.
+     */
     public const method equals(other: const ref BigUint) bool {
       return this.compare(other) == 0;
     }
 
-    // Compare against a single 64-bit value: -1 if this is smaller, 0 if equal,
-    // 1 if larger.
+    /**
+     * Compare against a single 64-bit value: -1 if this is smaller, 0 if equal,
+     * 1 if larger.
+     */
     public const method compare_u64(value: u64) i64 {
       if (this.limbs.size() > 1) {
         return 1;
@@ -171,6 +205,7 @@ public module std {
     // Addition and subtraction
     // ------------------------------------------------------------------------
 
+    /** Adds a machine-sized unsigned value to this integer, growing its storage as needed. */
     public method add_small(value: u64) void {
       var carry: u64 = value;
       var i: i64 = 0;
@@ -191,7 +226,9 @@ public module std {
       }
     }
 
-    // Add another big integer into this one, in place.
+    /**
+     * Add another big integer into this one, in place.
+     */
     public method add(other: const ref BigUint) void {
       var n: i64 = other.limbs.size();
       while (this.limbs.size() < n) {
@@ -221,7 +258,9 @@ public module std {
       }
     }
 
-    // this = this - other; throws if other is larger
+    /**
+     * this = this - other; throws if other is larger
+     */
     public method sub(other: const ref BigUint) void throws IError {
       if (this.compare(other) < 0) {
         throw OverflowError();
@@ -249,6 +288,7 @@ public module std {
     // Multiplication and shifts
     // ------------------------------------------------------------------------
 
+    /** Multiplies this integer by a machine-sized unsigned value in place. */
     public method mul_small(value: u64) void {
       if (value == 0) {
         this.limbs.clear();
@@ -271,7 +311,9 @@ public module std {
       }
     }
 
-    // this = this * other
+    /**
+     * this = this * other
+     */
     public method mul(other: const ref BigUint) void {
       if (this.is_zero() or other.is_zero()) {
         this.limbs.clear();
@@ -322,7 +364,9 @@ public module std {
       this.trim();
     }
 
-    // Multiply by 10^n
+    /**
+     * Multiply by 10^n
+     */
     public method mul_pow10(n: i64) void {
       var remaining: i64 = n;
       while (remaining >= 18) {
@@ -339,7 +383,9 @@ public module std {
       }
     }
 
-    // this = this << bits
+    /**
+     * this = this << bits
+     */
     public method shl(bits: i64) void {
       if (this.is_zero() or bits <= 0) {
         return;
@@ -367,7 +413,9 @@ public module std {
       this.limbs = result;
     }
 
-    // this = this >> bits
+    /**
+     * this = this >> bits
+     */
     public method shr(bits: i64) void {
       if (this.is_zero() or bits <= 0) {
         return;
@@ -400,8 +448,10 @@ public module std {
     // Division by a small divisor
     // ------------------------------------------------------------------------
 
-    // this = this / divisor, returns the remainder. The divisor must fit in
-    // 32 bits (enough for decimal digit extraction: 10, 10^9, ...).
+    /**
+     * this = this / divisor, returns the remainder. The divisor must fit in
+     * 32 bits (enough for decimal digit extraction: 10, 10^9, ...).
+     */
     public method divmod_small(divisor: u32) u32 throws IError {
       if (divisor == 0) {
         throw DivisionByZeroError();
@@ -429,7 +479,9 @@ public module std {
     // Decimal text
     // ------------------------------------------------------------------------
 
-    // Append the decimal digits of the value
+    /**
+     * Append the decimal digits of the value
+     */
     public const method append_decimal(out: ref String) void {
       if (this.is_zero()) {
         out.append_char(b'0');
@@ -463,8 +515,10 @@ public module std {
       }
     }
 
-    // Set from decimal digits; false (and the value left as zero) if the text
-    // is empty or has a non-digit
+    /**
+     * Set from decimal digits; false (and the value left as zero) if the text
+     * is empty or has a non-digit
+     */
     public method set_decimal(text: const ref String) bool {
       this.limbs.clear();
       if (text.length() == 0) {

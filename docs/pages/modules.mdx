@@ -273,23 +273,34 @@ The compiler:
 3. Compiles and serializes the code and type information
 4. Packages everything into `mylib.moon`
 
-### Telling a build system what was read
+### Building only what changed
 
-A build system reruns a command when one of its known inputs changes, but
-only the compiler knows which files a manifest pulled in. `--depfile`
-writes that list in the Make format Ninja and Make read back, one rule per
-artifact built, so nothing has to be listed by hand:
+Only the compiler knows which files a manifest pulled in, so the compiler is
+the one that can tell whether a build has anything to do. Ask it to with
+`--skip-if-unchanged`. Before compiling, it hashes every input: the text of
+each source and test file, the proto schemas, the native archives, the
+bundles imported, the target and flags, and the compiler itself. Every
+artifact it builds records that hash, and an artifact whose recorded hash
+matches is left untouched:
 
 ```bash
-sun --emit-moon --depfile mylib.d -o mylib.moon mylib.sun
-sun -c --depfile app.d -o app app.sun        # rules for app and app_test
-sun -c --depfile all.d sun-config.json       # every entrypoint's artifacts
+sun --emit-moon --skip-if-unchanged -o mylib.moon mylib.sun   # Successfully created: mylib.moon
+sun --emit-moon --skip-if-unchanged -o mylib.moon mylib.sun   # Up to date: mylib.moon
 ```
 
-Each rule names the entrypoint, every `source_files:` and `test_files:`
-entry that went in, the bundles imported, the proto schemas and the native
-archives. With CMake, pass the same path as the custom command's `DEPFILE`;
-Sun's own `CMakeLists.txt` builds the standard library this way.
+The same goes for `sun -c`, per artifact: editing a `test_files:` entry
+rebuilds `app_test` and leaves `app` alone. Without the flag every run
+builds, and executables carry no record of their inputs.
+
+A build system does not need to be told the inputs. Have it run `sun
+--skip-if-unchanged` on every build and let `sun` skip the work; an
+untouched artifact keeps its timestamp, so nothing downstream is rebuilt
+either. With CMake that is an `add_custom_target` naming the artifact under
+`BYPRODUCTS`; Sun's own `CMakeLists.txt` builds the standard library this
+way.
+
+The same hash names a bundle, with or without the flag: its symbols are
+spelled under it, so two bundles that differ in any input never collide.
 
 ### The Standard Library
 
@@ -530,7 +541,7 @@ public module math {
 }
 ```
 
-Symbols inside a module are mangled with the module name prefix (e.g., `math_square`).
+From outside the module, its symbols are reached by qualified name (e.g., `math.square`).
 
 ### Using Statements
 
@@ -551,7 +562,7 @@ manifest {
 }
 ```
 
-Without `using`, you would need to reference symbols by their mangled names.
+Without `using`, you would need to write each symbol's qualified name, such as `std.Vec<i32>`.
 
 ### Module Scope
 

@@ -8,13 +8,15 @@
 using std;
 using std.process;
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** Groups tests for the process library behavior. */
   module process_tests {
     // ------------------------------------------------------------------
     // Command / Child / Output (was Stdlib_Sys_Command)
     // ------------------------------------------------------------------
 
-    /*
+    /**
      * output() captures stdout, leaves stderr empty, and reports status 0.
      */
     test_function output_captures_stdout_and_status() {
@@ -28,7 +30,7 @@ public module std {
       std.test.assert(out.stderr().is_empty(), "stderr empty");
     }
 
-    /*
+    /**
      * A child's non-zero exit code comes back through output().status().
      */
     test_function non_zero_exit_is_reported() {
@@ -39,7 +41,7 @@ public module std {
       std.test.assert_eq(cmd.output().status(), 3);
     }
 
-    /*
+    /**
      * stdout and stderr are captured into separate Strings.
      */
     test_function stderr_is_captured_separately() {
@@ -52,7 +54,7 @@ public module std {
       std.test.assert(res.stderr().equals_literal("err"), "stderr is err");
     }
 
-    /*
+    /**
      * Output well past one pipe buffer (64 KiB on Linux) on stdout while
      * stderr also has data. Draining stdout to the end before touching
      * stderr would wedge here.
@@ -67,7 +69,7 @@ public module std {
       std.test.assert(res.stderr().equals_literal("e"), "stderr captured alongside");
     }
 
-    /*
+    /**
      * A parent that ignores SIGPIPE must not pass that on: the child gets
      * the default disposition, so a writer whose reader has gone away dies
      * quietly instead of printing "Broken pipe". CI runners start every step
@@ -85,7 +87,7 @@ public module std {
       std.test.assert(res.stderr().is_empty(), "yes died of SIGPIPE without complaint");
     }
 
-    /*
+    /**
      * Each add_arg is one argv entry: a space inside an argument stays
      * inside it, with no re-parsing by a shell.
      */
@@ -101,7 +103,7 @@ public module std {
       std.test.assert(res.stdout().equals_literal("one two|three"), "arguments kept separate");
     }
 
-    /*
+    /**
      * add_arg(ref String) borrows the text: the command runs it and the
      * caller still owns the String afterwards.
      */
@@ -116,7 +118,7 @@ public module std {
       std.test.assert_eq(script.length(), 23);
     }
 
-    /*
+    /**
      * status() runs with inherited streams and returns the exit code.
      */
     test_function status_runs_with_inherited_streams() {
@@ -127,7 +129,7 @@ public module std {
       std.test.assert_eq(cmd.status(), 7);
     }
 
-    /*
+    /**
      * start() gives a Child with a real pid; wait() returns the exit code.
      */
     test_function start_then_wait_gives_the_exit_code() {
@@ -140,7 +142,7 @@ public module std {
       std.test.assert_eq(child.wait(), 5);
     }
 
-    /*
+    /**
      * With stdin piped, bytes written to the child come back out of a
      * program that echoes its input.
      */
@@ -160,7 +162,7 @@ public module std {
       std.test.assert_eq(res.status(), 0);
     }
 
-    /*
+    /**
      * A child killed by a signal reports 128 + the signal, as a shell does.
      */
     test_function a_signalled_child_reports_128_plus_the_signal() {
@@ -173,7 +175,7 @@ public module std {
       std.test.assert_eq(cmd.status(), 137);  // 128 + SIGKILL
     }
 
-    /*
+    /**
      * When exec fails the child exits 127, what a shell reports for
      * "command not found".
      */
@@ -188,7 +190,7 @@ public module std {
     // Identity, pipes, wait status (was Stdlib_Sys_Process)
     // ------------------------------------------------------------------
 
-    /*
+    /**
      * pid() is the real OS process id. The C++ harness compared it with
      * getpid(); here a shell child reports its parent's pid instead.
      */
@@ -207,7 +209,7 @@ public module std {
       std.test.assert_eq(reported, _convert<i64>(std.process.pid()));
     }
 
-    /*
+    /**
      * Parent pid and user ids look like a normal process: a real parent,
      * a different pid, and matching real/effective user ids.
      */
@@ -217,7 +219,7 @@ public module std {
       std.test.assert_eq(std.process.uid(), std.process.euid());
     }
 
-    /*
+    /**
      * Bytes written into a pipe's write end read back from its read end.
      */
     test_function pipe_round_trips_bytes() {
@@ -236,7 +238,7 @@ public module std {
       std.test.assert(got.equals_literal("through the pipe"), "pipe payload intact");
     }
 
-    /*
+    /**
      * The wait-status decoders follow waitpid(2)'s bit layout: low 7 bits
      * the signal, next 8 the exit code.
      */
@@ -256,7 +258,7 @@ public module std {
       std.test.assert_eq(std.process.exit_status(0), 0);
     }
 
-    /*
+    /**
      * dup_fd points a chosen descriptor at an existing one; writing through
      * the duplicate reaches the same pipe. The number is kept high so a
      * concurrently running test's own descriptors are not clobbered.

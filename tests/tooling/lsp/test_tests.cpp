@@ -15,21 +15,27 @@
 #include "driver/execution_utils.h"
 #include "lsp/tests.h"
 
+using sun::driver::Driver;
+
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 // The file never exists on disk; nodes carry the path exactly as given
 const char* kPath = "/tests_test.sun";
 
+/** Keeps the syntax tree and semantic context alive for editor-feature tests. */
 struct Analysis {
   std::unique_ptr<Driver> driver;
-  Driver::AnalyzedProgram program;
+  sun::driver::Driver::AnalyzedProgram program;
 };
 
+/** Parses and analyzes fixture source before querying editor features. */
 Analysis analyze(const std::string& source, bool withStdlib = false) {
-  initTestEnvironment();
+  sun::driver::initTestEnvironment();
   Analysis analysis;
-  analysis.driver = Driver::createForAOT("tests_test");
-  if (withStdlib) analysis.driver->setMoonImports(getStdlibMoonImports());
+  analysis.driver = sun::driver::Driver::createForAOT("tests_test");
+  if (withStdlib)
+    analysis.driver->setMoonImports(sun::driver::getStdlibMoonImports());
   analysis.program = analysis.driver->analyzeString(source, kPath);
   return analysis;
 }

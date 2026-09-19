@@ -7,7 +7,10 @@
 
 using namespace llvm;
 
-Value* FunctionGenerator::codegen(const ReturnExprAST& expr) {
+/** Provides the registry of generated functions and their metadata. */
+namespace sun::codegen::functions {
+
+Value* FunctionGenerator::codegen(const sun::ast::ReturnExprAST& expr) {
   llvm::Function* func = ctx.builder->GetInsertBlock()->getParent();
   llvm::Type* retType = func->getReturnType();
 
@@ -18,9 +21,11 @@ Value* FunctionGenerator::codegen(const ReturnExprAST& expr) {
       // A `ref array<T>` return hands back the view value: a sized array is
       // viewed with its rank erased, a view is passed on as it is
       if (retType->isStructTy()) {
-        sun::TypePtr valType =
-            sun::unwrapRef(expr.getValue()->getResolvedType());
-        if (auto* arrayType = sun::tryGetType<sun::ArrayType>(valType)) {
+        sun::semantic_analysis::TypePtr valType =
+            sun::semantic_analysis::unwrapRef(
+                expr.getValue()->getResolvedType());
+        if (auto* arrayType = sun::codegen::support::tryGetType<
+                sun::semantic_analysis::ArrayType>(valType)) {
           Value* view = nullptr;
           if (arrayType->isUnsized()) {
             view = gen_.loadArrayView(codegen(*expr.getValue()));
@@ -32,8 +37,8 @@ Value* FunctionGenerator::codegen(const ReturnExprAST& expr) {
             }
           }
           if (!view) {
-            logAndThrowError("Cannot return a view of this expression",
-                             expr.getLocation());
+            sun::support::logAndThrowError(
+                "Cannot return a view of this expression", expr.getLocation());
           }
           scopes().emitScopeCleanup();
           ctx.builder->CreateRet(view);
@@ -44,7 +49,8 @@ Value* FunctionGenerator::codegen(const ReturnExprAST& expr) {
       if (!addr) {
         // Expressions that are themselves reference-typed codegen directly
         // to the address: _to_ref<T>(ptr), and a call forwarding a borrow.
-        sun::TypePtr valType = expr.getValue()->getResolvedType();
+        sun::semantic_analysis::TypePtr valType =
+            expr.getValue()->getResolvedType();
         if (valType && valType->isReference()) {
           Value* v = codegen(*expr.getValue());
           if (v && v->getType()->isPointerTy()) {
@@ -53,7 +59,7 @@ Value* FunctionGenerator::codegen(const ReturnExprAST& expr) {
         }
       }
       if (!addr) {
-        logAndThrowError(
+        sun::support::logAndThrowError(
             "Cannot return a reference to a temporary or non-addressable "
             "expression",
             expr.getLocation());
@@ -70,7 +76,8 @@ Value* FunctionGenerator::codegen(const ReturnExprAST& expr) {
 
     // Move semantics: borrow checker marks expressions as "moved" when
     // ownership transfers (return, assignment, pass-by-value). Skip deinit.
-    if (sun::typeMovesOnRead(expr.getValue()->getResolvedType()) &&
+    if (sun::semantic_analysis::typeMovesOnRead(
+            expr.getValue()->getResolvedType()) &&
         retVal->getType()->isPointerTy()) {
       scopes().markClassAllocationAsDeinited(
           retVal, expr.getValue()->getResolvedType());
@@ -126,3 +133,5 @@ Value* FunctionGenerator::codegen(const ReturnExprAST& expr) {
   // in this block will be unreachable.
   return nullptr;
 }
+
+}  // namespace sun::codegen::functions

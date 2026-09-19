@@ -5,9 +5,14 @@
 #include "codegen/codegen_visitor.h"
 #include "codegen/loops/loop_generator.h"
 
+using sun::support::logAndThrowError;
+
 using namespace llvm;
 
-Value* LoopGenerator::codegen(const ForExprAST& expr) {
+/** Generates loop control flow and iteration operations. */
+namespace sun::codegen::loops {
+
+Value* LoopGenerator::codegen(const sun::ast::ForExprAST& expr) {
   Function* func = ctx.builder->GetInsertBlock()->getParent();
 
   // Enter a new scope for loop variables
@@ -103,10 +108,10 @@ Value* LoopGenerator::codegen(const ForExprAST& expr) {
   scopes().pop();
 
   // for expr always returns 0.0.
-  return Constant::getNullValue(Type::getDoubleTy(ctx.getContext()));
+  return Constant::getNullValue(llvm::Type::getDoubleTy(ctx.getContext()));
 }
 
-Value* LoopGenerator::codegen(const WhileExprAST& expr) {
+Value* LoopGenerator::codegen(const sun::ast::WhileExprAST& expr) {
   Function* func = ctx.builder->GetInsertBlock()->getParent();
 
   // Create basic blocks for the loop structure
@@ -173,10 +178,10 @@ Value* LoopGenerator::codegen(const WhileExprAST& expr) {
   ctx.builder->SetInsertPoint(afterBB);
 
   // while expr always returns 0.0.
-  return Constant::getNullValue(Type::getDoubleTy(ctx.getContext()));
+  return Constant::getNullValue(llvm::Type::getDoubleTy(ctx.getContext()));
 }
 
-Value* LoopGenerator::codegen(const BreakAST& expr) {
+Value* LoopGenerator::codegen(const sun::ast::BreakAST& expr) {
   if (loopStack.empty()) {
     logAndThrowError("'break' statement not within a loop");
     return nullptr;
@@ -189,10 +194,10 @@ Value* LoopGenerator::codegen(const BreakAST& expr) {
   ctx.builder->CreateBr(loopStack.back().breakBlock);
 
   // Return a dummy value (the branch is the important part)
-  return Constant::getNullValue(Type::getDoubleTy(ctx.getContext()));
+  return Constant::getNullValue(llvm::Type::getDoubleTy(ctx.getContext()));
 }
 
-Value* LoopGenerator::codegen(const ContinueAST& expr) {
+Value* LoopGenerator::codegen(const sun::ast::ContinueAST& expr) {
   if (loopStack.empty()) {
     logAndThrowError("'continue' statement not within a loop");
     return nullptr;
@@ -205,10 +210,10 @@ Value* LoopGenerator::codegen(const ContinueAST& expr) {
   ctx.builder->CreateBr(loopStack.back().continueBlock);
 
   // Return a dummy value (the branch is the important part)
-  return Constant::getNullValue(Type::getDoubleTy(ctx.getContext()));
+  return Constant::getNullValue(llvm::Type::getDoubleTy(ctx.getContext()));
 }
 
-Value* LoopGenerator::codegen(const ForInExprAST& expr) {
+Value* LoopGenerator::codegen(const sun::ast::ForInExprAST& expr) {
   Function* func = ctx.builder->GetInsertBlock()->getParent();
 
   // Enter a new scope for loop variables
@@ -238,28 +243,12 @@ Value* LoopGenerator::codegen(const ForInExprAST& expr) {
   // The container object is passed to next()
   Value* containerObj = iterableObj;
 
-  // Class name for method lookup (includes hash prefix for imported types)
-  auto iterableClassType = sun::requireTypePtr<sun::ClassType>(
-      iterableType, "for-in iterable (needs a next() method)",
-      expr.getIterable()->getLocation());
-  std::string iterableTypeName = iterableClassType->getMangledName();
-
-  // The iterable is either the iterator itself (has next()) or a container
-  // whose iter() produces one
-  Function* nextFunc =
-      functions().findClassMethod(iterableClassType, iterableTypeName, "next");
-
+  const auto& protocol = expr.forInAnalysis();
+  Function* nextFunc = functions().lookupFunctionById(protocol.iteratorNext);
   Value* iteratorObj = iterableObj;
-  std::shared_ptr<sun::ClassType> iteratorClassType = iterableClassType;
-
-  if (!nextFunc) {
-    Function* iterFunc = functions().findClassMethod(iterableClassType,
-                                                     iterableTypeName, "iter");
-    if (!iterFunc) {
-      logAndThrowError("for-in loop: " + iterableTypeName +
-                       " must have a next() method or an iter() method");
-      return nullptr;
-    }
+  if (protocol.iteratorFactory) {
+    Function* iterFunc =
+        functions().lookupFunctionById(protocol.iteratorFactory);
 
     Value* actualIterator = ctx.builder->CreateCall(
         iterFunc,
@@ -275,31 +264,11 @@ Value* LoopGenerator::codegen(const ForInExprAST& expr) {
         func, "iter.alloca", cast<StructType>(iterRetType));
     ctx.builder->CreateStore(actualIterator, iterAlloca);
     iteratorObj = iterAlloca;
-
-    // The iterator's sun type comes from iter()'s return type (carries the
-    // correct hash prefix, unlike LLVM struct names)
-    const auto* iterMethod = iterableClassType->getMethod("iter");
-    iteratorClassType =
-        iterMethod ? sun::tryGetTypePtr<sun::ClassType>(iterMethod->returnType)
-                   : nullptr;
-    if (!iteratorClassType) {
-      logAndThrowError("iter() must return a class type with a next() method");
-      return nullptr;
-    }
-    nextFunc = functions().findClassMethod(
-        iteratorClassType, iteratorClassType->getMangledName(), "next");
-    if (!nextFunc) {
-      logAndThrowError("Iterator returned by iter() must have next() method");
-      return nullptr;
-    }
   }
 
-  // next() returns Option<T>: sema verified the shape and that T matches the
-  // loop variable annotation
-  const auto* nextMethod = iteratorClassType->getMethod("next");
-  auto optionType = nextMethod ? sun::tryGetTypePtr<sun::EnumType>(
-                                     sun::unwrapRef(nextMethod->returnType))
-                               : nullptr;
+  auto optionType =
+      sun::codegen::support::tryGetTypePtr<sun::semantic_analysis::EnumType>(
+          sun::semantic_analysis::unwrapRef(protocol.iteratorResultType));
   if (!optionType || !optionType->getVariant("Some") ||
       !optionType->getVariant("None")) {
     logAndThrowError("for-in loop: next() must return Option<T>");
@@ -318,11 +287,11 @@ Value* LoopGenerator::codegen(const ForInExprAST& expr) {
         "analysis");
     return nullptr;
   }
-  sun::TypePtr loopVarType = expr.getResolvedLoopVarType();
-  Type* llvmLoopVarType = typeResolver.resolve(loopVarType);
+  sun::semantic_analysis::TypePtr loopVarType = expr.getResolvedLoopVarType();
+  llvm::Type* llvmLoopVarType = typeResolver.resolve(loopVarType);
   AllocaInst* loopVarAlloca =
       createEntryBlockAlloca(func, expr.getLoopVar(), llvmLoopVarType);
-  scopes().back().variables[expr.getLoopVar()] = loopVarAlloca;
+  scopes().back().variables[expr.getDeclarationId()] = loopVarAlloca;
   debugDeclareLocal(loopVarAlloca, expr.getLoopVar(), loopVarType,
                     expr.getLocation());
 
@@ -353,10 +322,10 @@ Value* LoopGenerator::codegen(const ForInExprAST& expr) {
   ctx.builder->CreateStore(nextResult, nextAlloca);
   Value* tagPtr = ctx.builder->CreateStructGEP(optionStorageTy, nextAlloca, 0,
                                                "forin.tag.ptr");
-  Value* tag = ctx.builder->CreateLoad(Type::getInt32Ty(ctx.getContext()),
+  Value* tag = ctx.builder->CreateLoad(llvm::Type::getInt32Ty(ctx.getContext()),
                                        tagPtr, "forin.tag");
   Value* isSome = ctx.builder->CreateICmpEQ(
-      tag, ConstantInt::get(Type::getInt32Ty(ctx.getContext()), someTag),
+      tag, ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), someTag),
       "forin.some");
   ctx.builder->CreateCondBr(isSome, bodyBB, afterBB);
 
@@ -393,5 +362,7 @@ Value* LoopGenerator::codegen(const ForInExprAST& expr) {
   scopes().pop();
 
   // for-in expr always returns 0.0
-  return Constant::getNullValue(Type::getDoubleTy(ctx.getContext()));
+  return Constant::getNullValue(llvm::Type::getDoubleTy(ctx.getContext()));
 }
+
+}  // namespace sun::codegen::loops

@@ -6,10 +6,16 @@
 
 #include "ast.h"
 
-namespace sun {
+using sun::ast::ASTNodeType;
+using sun::support::Position;
 
+/** Turns source text into syntax trees and provides source formatting. */
+namespace sun::parsing {
+
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
+/** Removes surrounding whitespace from a comment line. */
 std::string trim(const std::string& text) {
   size_t start = text.find_first_not_of(" \t\r\n");
   if (start == std::string::npos) return "";
@@ -17,16 +23,20 @@ std::string trim(const std::string& text) {
   return text.substr(start, end - start + 1);
 }
 
+/** Reports whether text begins with the supplied prefix. */
 bool startsWith(const std::string& text, const std::string& prefix) {
   return text.compare(0, prefix.size(), prefix) == 0;
 }
 
+/** Reports whether text ends with the supplied suffix. */
 bool endsWith(const std::string& text, const std::string& suffix) {
   return text.size() >= suffix.size() &&
          text.compare(text.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
 
-// One comment line with its delimiters removed
+/**
+ * One comment line with its delimiters removed
+ */
 std::string stripCommentLine(std::string line) {
   line = trim(line);
   if (endsWith(line, "*/")) line = line.substr(0, line.size() - 2);
@@ -43,6 +53,7 @@ std::string stripCommentLine(std::string line) {
   return trim(line);
 }
 
+/** Splits source text into individual lines for comment lookup. */
 std::vector<std::string> splitLines(const std::string& text) {
   std::vector<std::string> lines;
   size_t start = 0;
@@ -55,6 +66,7 @@ std::vector<std::string> splitLines(const std::string& text) {
   return lines;
 }
 
+/** Combines collected comment lines into documentation text. */
 std::string joinCollected(const std::vector<std::string>& collected) {
   std::string out;
   for (auto it = collected.rbegin(); it != collected.rend(); ++it) {
@@ -65,34 +77,42 @@ std::string joinCollected(const std::vector<std::string>& collected) {
   return trim(out);
 }
 
-// Attaches docs throughout one parsed file
+/**
+ * Attaches docs throughout one parsed file
+ */
 class DocAttacher {
  public:
+  /** Retains source lines for attaching documentation to parsed declarations. */
   explicit DocAttacher(const std::string& source)
       : lines_(splitLines(source)) {}
 
-  void visitBlock(BlockExprAST& block) {
+  /** Attaches source documentation to declarations inside a block. */
+  void visitBlock(sun::ast::BlockExprAST& block) {
     for (auto& stmt : block.mutableBody()) {
       if (stmt) visit(*stmt);
     }
   }
 
  private:
+  /** Finds the documentation immediately before a declaration's source position. */
   std::string docAt(const Position& location) const {
     return commentAbove(lines_, location.line);
   }
 
-  // A member written on the same line as its parent's header has no line
-  // of its own above it; the comment there belongs to the parent
+  /**
+   * A member written on the same line as its parent's header has no line
+   * of its own above it; the comment there belongs to the parent
+   */
   std::string memberDocAt(const Position& member,
                           const Position& parent) const {
     return member.line == parent.line ? "" : docAt(member);
   }
 
-  void visit(ExprAST& node) {
+  /** Attaches documentation to this declaration and visits nested declarations. */
+  void visit(sun::ast::ExprAST& node) {
     switch (node.getType()) {
       case ASTNodeType::MODULE: {
-        auto& module = static_cast<ModuleAST&>(node);
+        auto& module = static_cast<sun::ast::ModuleAST&>(node);
         // Only the last segment of a dotted declaration owns its comment.
         module.setDoc(module.getShorthandChild() ? ""
                                                  : docAt(module.getLocation()));
@@ -100,12 +120,12 @@ class DocAttacher {
         break;
       }
       case ASTNodeType::FUNCTION: {
-        auto& fn = static_cast<FunctionAST&>(node);
+        auto& fn = static_cast<sun::ast::FunctionAST&>(node);
         fn.getProtoMut().setDoc(docAt(fn.getLocation()));
         break;
       }
       case ASTNodeType::CLASS_DEFINITION: {
-        auto& cls = static_cast<ClassDefinitionAST&>(node);
+        auto& cls = static_cast<sun::ast::ClassDefinitionAST&>(node);
         cls.setDoc(docAt(cls.getLocation()));
         for (auto& field : cls.getMutableFields()) {
           field.doc = memberDocAt(field.location, cls.getLocation());
@@ -118,7 +138,8 @@ class DocAttacher {
         break;
       }
       case ASTNodeType::INTERFACE_DEFINITION: {
-        auto& iface = static_cast<InterfaceDefinitionAST&>(node);
+        auto& iface =
+            static_cast<sun::ast::InterfaceDefinitionAST&>(node);
         iface.setDoc(docAt(iface.getLocation()));
         for (auto& field : iface.getMutableFields()) {
           field.doc = memberDocAt(field.location, iface.getLocation());
@@ -131,7 +152,7 @@ class DocAttacher {
         break;
       }
       case ASTNodeType::ENUM_DEFINITION: {
-        auto& enumDef = static_cast<EnumDefinitionAST&>(node);
+        auto& enumDef = static_cast<sun::ast::EnumDefinitionAST&>(node);
         enumDef.setDoc(docAt(enumDef.getLocation()));
         for (auto& variant : enumDef.getMutableVariants()) {
           variant.doc = memberDocAt(variant.location, enumDef.getLocation());
@@ -139,7 +160,7 @@ class DocAttacher {
         break;
       }
       case ASTNodeType::VARIABLE_CREATION: {
-        auto& var = static_cast<VariableCreationAST&>(node);
+        auto& var = static_cast<sun::ast::VariableCreationAST&>(node);
         var.setDoc(docAt(var.getLocation()));
         break;
       }
@@ -148,6 +169,7 @@ class DocAttacher {
     }
   }
 
+  /** Collects the comment immediately above a source line. */
   static std::string commentAbove(const std::vector<std::string>& lines,
                                   int line) {
     int index = line - 2;  // line above, as a 0-based index
@@ -175,20 +197,24 @@ class DocAttacher {
     return joinCollected(collected);
   }
 
-  friend std::string sun::docCommentAbove(const std::string& source, int line);
+  friend std::string sun::parsing::docCommentAbove(const std::string& source,
+                                                   int line);
 
   std::vector<std::string> lines_;
 };
 
 }  // namespace
 
+/** Returns the documentation comment preceding a source line. */
 std::string docCommentAbove(const std::string& source, int line) {
   return DocAttacher::commentAbove(splitLines(source), line);
 }
 
-void attachDocComments(BlockExprAST& program, const std::string& source) {
+/** Attaches source documentation to declarations in a parsed program. */
+void attachDocComments(sun::ast::BlockExprAST& program,
+                       const std::string& source) {
   DocAttacher attacher(source);
   attacher.visitBlock(program);
 }
 
-}  // namespace sun
+}  // namespace sun::parsing

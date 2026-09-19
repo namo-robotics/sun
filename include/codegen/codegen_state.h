@@ -31,6 +31,9 @@
 #include "codegen/llvm_type_resolver.h"
 #include "semantic_analysis/types.h"
 
+/** Translates analyzed Sun programs into LLVM instructions. */
+namespace sun::codegen {
+
 /**
  * The function body currently being emitted: its receiver, and what its
  * return statements are allowed to do. Nested emission (a method body inside
@@ -42,7 +45,7 @@ struct FunctionFrame {
   llvm::Value* thisPtr = nullptr;
 
   // Class owning the method being compiled, for method name resolution
-  std::shared_ptr<sun::ClassType> currentClass = nullptr;
+  std::shared_ptr<sun::semantic_analysis::ClassType> currentClass = nullptr;
 
   // True when the function is declared to return errors, so division and
   // modulo take the checked path and calls may unwind
@@ -69,18 +72,20 @@ class CodegenState {
   llvm::Module* module;
 
   // Class and interface types, shared with the semantic analyzer
-  std::shared_ptr<sun::TypeRegistry> typeRegistry;
+  std::shared_ptr<sun::semantic_analysis::TypeRegistry> typeRegistry;
 
-  // sun::Type -> llvm::Type conversion, with its own cache
+  // sun::semantic_analysis::Type -> llvm::Type conversion, with its own cache
   LLVMTypeResolver typeResolver;
 
   // DWARF metadata emission; no-op unless -g
-  sun::DebugInfoBuilder debugInfo;
+  sun::codegen::DebugInfoBuilder debugInfo;
 
   // Where the emitter currently is
   FunctionFrame frame;
 
-  CodegenState(CodegenContext& ctx, std::shared_ptr<sun::TypeRegistry> registry)
+  /** Connects LLVM generation state to the semantic type registry. */
+  CodegenState(CodegenContext& ctx,
+               std::shared_ptr<sun::semantic_analysis::TypeRegistry> registry)
       : ctx(ctx),
         module(ctx.mainModule.get()),
         typeRegistry(std::move(registry)),
@@ -88,10 +93,27 @@ class CodegenState {
         debugInfo(ctx.mainModule.get(), ctx.debugInfoEnabled(),
                   ctx.optimizationEnabled()) {}
 
+  /** Connects LLVM generation state to the semantic type registry. */
   CodegenState(const CodegenState&) = delete;
+  /** Disallows assignment so ownership and object identity cannot be duplicated. */
   CodegenState& operator=(const CodegenState&) = delete;
 
+  /** Derive the linker spelling for an analyzed declaration and emission role.
+   */
+  std::string declarationSymbol(sun::semantic_analysis::DeclarationId id,
+                                const std::string& role = "function") const {
+    const auto& table = typeRegistry->declarations;
+    const auto& record = table.get(id);
+    if (role == "function" && record.name == "main" && !record.owner)
+      return "main";
+    return sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
+               id, table)
+        .symbol(role);
+  }
+
+  /** Provides the LLVM instruction builder used by the active generator. */
   llvm::IRBuilder<>& builder() { return *ctx.builder; }
+  /** Provides the LLVM context that owns generated types and constants. */
   llvm::LLVMContext& llvmContext() { return ctx.getContext(); }
 
   /**
@@ -101,17 +123,21 @@ class CodegenState {
   struct ReceiverGuard {
     CodegenState& state;
     llvm::Value* savedThisPtr;
-    std::shared_ptr<sun::ClassType> savedClass;
+    std::shared_ptr<sun::semantic_analysis::ClassType> savedClass;
 
+    /** Saves the active method receiver for restoration when the guard leaves scope. */
     explicit ReceiverGuard(CodegenState& s)
         : state(s),
           savedThisPtr(s.frame.thisPtr),
           savedClass(s.frame.currentClass) {}
+    /** Restores the previous method receiver when the guard leaves scope. */
     ~ReceiverGuard() {
       state.frame.thisPtr = savedThisPtr;
       state.frame.currentClass = savedClass;
     }
+    /** Saves the active method receiver for restoration when the guard leaves scope. */
     ReceiverGuard(const ReceiverGuard&) = delete;
+    /** Disallows assignment so ownership and object identity cannot be duplicated. */
     ReceiverGuard& operator=(const ReceiverGuard&) = delete;
   };
 
@@ -125,17 +151,21 @@ class CodegenState {
     bool savedReturnsRef;
     llvm::Type* savedValueType;
 
+    /** Saves the active function return state for restoration when the guard leaves scope. */
     explicit ReturnGuard(CodegenState& s)
         : state(s),
           savedCanError(s.frame.canError),
           savedReturnsRef(s.frame.returnsRef),
           savedValueType(s.frame.valueType) {}
+    /** Restores the previous function return state when the guard leaves scope. */
     ~ReturnGuard() {
       state.frame.canError = savedCanError;
       state.frame.returnsRef = savedReturnsRef;
       state.frame.valueType = savedValueType;
     }
+    /** Saves the active function return state for restoration when the guard leaves scope. */
     ReturnGuard(const ReturnGuard&) = delete;
+    /** Disallows assignment so ownership and object identity cannot be duplicated. */
     ReturnGuard& operator=(const ReturnGuard&) = delete;
   };
 
@@ -149,14 +179,20 @@ class CodegenState {
     llvm::BasicBlock* block;
     llvm::BasicBlock::iterator point;
 
+    /** Saves the current LLVM insertion point for later restoration. */
     explicit InsertPointGuard(CodegenState& s)
         : state(s), block(s.ctx.builder->GetInsertBlock()) {
       if (block) point = s.ctx.builder->GetInsertPoint();
     }
+    /** Restores the previous LLVM instruction insertion point. */
     ~InsertPointGuard() {
       if (block) state.ctx.builder->SetInsertPoint(block, point);
     }
+    /** Saves the current LLVM insertion point for later restoration. */
     InsertPointGuard(const InsertPointGuard&) = delete;
+    /** Disallows assignment so ownership and object identity cannot be duplicated. */
     InsertPointGuard& operator=(const InsertPointGuard&) = delete;
   };
 };
+
+}  // namespace sun::codegen

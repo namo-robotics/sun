@@ -9,44 +9,44 @@
 #include "ast/analysis.h"
 #include "ast/expr_ast.h"
 
-// Qualified name expression: Module.name or Namespace::name
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
+namespace sun::ast {
+
+/**
+ * Qualified name expression: Module.name or Namespace::name
+ */
 class QualifiedNameAST : public ExprAST {
   std::vector<std::string> parts;  // ["std", "Vec"] for std.Vec
 
- protected:
-  // Override to allocate QualifiedNameExprAnalysis instead of base ExprAnalysis
-  void ensureAnalysis() const override {
-    if (!analysis_) {
-      analysis_ = std::make_unique<QualifiedNameExprAnalysis>();
-    }
-  }
-
- private:
-  // Access as QualifiedNameExprAnalysis
-  QualifiedNameExprAnalysis& qnAnalysis() const {
-    ensureAnalysis();
-    return static_cast<QualifiedNameExprAnalysis&>(*analysis_);
-  }
-
  public:
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   explicit QualifiedNameAST(std::vector<std::string> parts)
       : parts(std::move(parts)) {}
 
+  /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::QUALIFIED_NAME; }
+  /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override { return getFullName(); }
 
+  /** Returns the qualified-name components. */
   const std::vector<std::string>& getParts() const { return parts; }
 
-  // Get the namespace/module path (all parts except the last)
+  /**
+   * Get the namespace/module path (all parts except the last)
+   */
   std::vector<std::string> getNamespacePath() const {
     if (parts.size() <= 1) return {};
     return std::vector<std::string>(parts.begin(), parts.end() - 1);
   }
 
-  // Get the final name (last part)
+  /**
+   * Get the final name (last part)
+   */
   const std::string& getName() const { return parts.back(); }
 
-  // Get fully qualified name as string with dot separator (e.g., "std.Vec")
+  /**
+   * Get fully qualified name as string with dot separator (e.g., "std.Vec")
+   */
   std::string getFullName() const {
     std::string result;
     for (size_t i = 0; i < parts.size(); ++i) {
@@ -56,26 +56,8 @@ class QualifiedNameAST : public ExprAST {
     return result;
   }
 
-  // Get mangled name for LLVM symbols (e.g., "sun_Vec")
-  // Uses resolved name if set by semantic analyzer, otherwise computes from
-  // parts
-  std::string getMangledName() const {
-    if (analysis_ && !static_cast<QualifiedNameExprAnalysis&>(*analysis_)
-                          .resolvedMangledName.empty()) {
-      return static_cast<QualifiedNameExprAnalysis&>(*analysis_)
-          .resolvedMangledName;
-    }
-    std::string result;
-    for (size_t i = 0; i < parts.size(); ++i) {
-      if (i > 0) result += "_";
-      result += parts[i];
-    }
-    return result;
-  }
-
-  void setResolvedMangledName(std::string name) const {
-    qnAnalysis().resolvedMangledName = std::move(name);
-  }
-
+  /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "QualName\n" + getFullName(); }
 };
+
+}  // namespace sun::ast

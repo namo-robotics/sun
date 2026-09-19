@@ -16,12 +16,12 @@
 // ============================================================================
 
 TEST(Tooling_Backend_Debug, debug_mode_generates_scope_html) {
-  initTestEnvironment();
+  sun::driver::initTestEnvironment();
 
   // Compile a simple program with debug mode enabled. Unique name per
   // process so parallel test runs don't share the debug output folder.
   std::string debugName = "test_debug_" + std::to_string(getpid());
-  auto driver = Driver::createForJIT();
+  auto driver = sun::driver::Driver::createForJIT();
   driver->setDebugMode(true, debugName);
 
   std::string source = R"(

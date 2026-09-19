@@ -26,6 +26,42 @@
 #include "support/sun_path.h"
 #include "support/target_os.h"
 
+using sun::semantic_analysis::QualifiedName;
+using sun::semantic_analysis::Visibility;
+
+using sun::ast::ASTNodeType;
+using sun::ast::BlockExprAST;
+using sun::ast::BlockKind;
+using sun::ast::ClassDefinitionAST;
+using sun::ast::ClassMethodDecl;
+using sun::ast::CompoundAssignmentAST;
+using sun::ast::EnumDefinitionAST;
+using sun::ast::ExprAST;
+using sun::ast::FunctionAST;
+using sun::ast::InterfaceDefinitionAST;
+using sun::ast::LambdaAST;
+using sun::ast::ManifestArchiveDependency;
+using sun::ast::ManifestMoonDependency;
+using sun::ast::ManifestProtoDependency;
+using sun::ast::ManifestSunDependency;
+using sun::ast::ManifestTargetBlock;
+using sun::ast::MemberAccessAST;
+using sun::ast::ModuleAST;
+using sun::ast::MoonScopeAST;
+using sun::ast::NumberExprAST;
+using sun::ast::PrototypeAST;
+using sun::ast::SliceExprAST;
+using sun::ast::StructLiteralAST;
+using sun::ast::UsingAST;
+using sun::ast::VariableCreationAST;
+using sun::ast::VariableReferenceAST;
+using sun::ast::VariadicParam;
+using sun::support::logAndThrowError;
+using sun::support::Position;
+
+/** Turns source text into syntax trees and provides source formatting. */
+namespace sun::parsing {
+
 #define PARSER_TIMER_START(name) \
   auto parser_timer_##name = std::chrono::high_resolution_clock::now()
 #define PARSER_TIMER_END(name)                            \
@@ -57,7 +93,7 @@ std::unique_ptr<ExprAST> Parser::parseNumberExpr() {
 std::unique_ptr<ExprAST> Parser::parseCharLiteral() {
   Position start = captureStart();
   bool isByte = curTok.kind == TokenKind::BYTE_LITERAL;
-  auto result = std::make_unique<CharLiteralAST>(
+  auto result = std::make_unique<sun::ast::CharLiteralAST>(
       static_cast<uint32_t>(curTok.getCharValue().value()), isByte);
   getNextToken();  // consume the literal
   return finishNode(std::move(result), start);
@@ -65,7 +101,8 @@ std::unique_ptr<ExprAST> Parser::parseCharLiteral() {
 
 std::unique_ptr<ExprAST> Parser::parseStringLiteral() {
   Position start = captureStart();
-  auto result = std::make_unique<StringLiteralAST>(curTok.getString().value());
+  auto result =
+      std::make_unique<sun::ast::StringLiteralAST>(curTok.getString().value());
   getNextToken();  // consume the string
   return finishNode(std::move(result), start);
 }
@@ -80,8 +117,9 @@ std::unique_ptr<ExprAST> Parser::parseArrayLiteral() {
   // Handle empty array
   if (curTok.kind == TokenKind::BRACKET_CLOSE) {
     getNextToken();  // eat ']'
-    return finishNode(std::make_unique<ArrayLiteralAST>(std::move(elements)),
-                      start);
+    return finishNode(
+        std::make_unique<sun::ast::ArrayLiteralAST>(std::move(elements)),
+        start);
   }
 
   // Parse comma-separated elements
@@ -100,8 +138,8 @@ std::unique_ptr<ExprAST> Parser::parseArrayLiteral() {
   }
 
   getNextToken();  // eat ']'
-  return finishNode(std::make_unique<ArrayLiteralAST>(std::move(elements)),
-                    start);
+  return finishNode(
+      std::make_unique<sun::ast::ArrayLiteralAST>(std::move(elements)), start);
 }
 
 std::unique_ptr<ExprAST> Parser::parseParenExpr() {
@@ -113,10 +151,11 @@ std::unique_ptr<ExprAST> Parser::parseParenExpr() {
 
   expectCurrentTokenKind(TokenKind::PAREN_CLOSE, "expected ')'");
   getNextToken();  // eat )
-  return finishNode(std::make_unique<ParenExprAST>(std::move(v)), start);
+  return finishNode(std::make_unique<sun::ast::ParenExprAST>(std::move(v)),
+                    start);
 }
 
-unique_ptr<IfExprAST> Parser::parseIfStatement() {
+unique_ptr<sun::ast::IfExprAST> Parser::parseIfStatement() {
   Position start = captureStart();
   getNextToken();  // eat the 'if'
 
@@ -153,7 +192,7 @@ unique_ptr<IfExprAST> Parser::parseIfStatement() {
   }
   // No else - Else remains nullptr
 
-  return finishNode(std::make_unique<IfExprAST>(
+  return finishNode(std::make_unique<sun::ast::IfExprAST>(
                         std::move(Cond), std::move(Then), std::move(Else)),
                     start);
 }
@@ -212,7 +251,7 @@ Parser::ParsedPattern Parser::parsePattern() {
           return result;
         }
         while (true) {
-          PatternBinding binding;
+          sun::ast::PatternBinding binding;
           binding.location = captureStart();
           binding.location.setEnd(curTok.end.line, curTok.end.column,
                                   curTok.end.offset);
@@ -255,7 +294,7 @@ Parser::ParsedPattern Parser::parsePattern() {
 }
 
 // Parse match expression: match value { pattern => expr, ... }
-unique_ptr<MatchExprAST> Parser::parseMatchExpression() {
+unique_ptr<sun::ast::MatchExprAST> Parser::parseMatchExpression() {
   Position start = captureStart();
   getNextToken();  // eat 'match'
 
@@ -272,7 +311,7 @@ unique_ptr<MatchExprAST> Parser::parseMatchExpression() {
   getNextToken();  // eat '{'
 
   // Parse match arms
-  std::vector<MatchArm> arms;
+  std::vector<sun::ast::MatchArm> arms;
   while (curTok.kind != TokenKind::BRACE_CLOSE) {
     ParsedPattern parsed = parsePattern();
     if (!parsed.ok) {
@@ -319,9 +358,9 @@ unique_ptr<MatchExprAST> Parser::parseMatchExpression() {
     return nullptr;
   }
 
-  return finishNode(
-      std::make_unique<MatchExprAST>(std::move(discriminant), std::move(arms)),
-      start);
+  return finishNode(std::make_unique<sun::ast::MatchExprAST>(
+                        std::move(discriminant), std::move(arms)),
+                    start);
 }
 
 // Parse function: function name(args) returnType { body }
@@ -367,8 +406,8 @@ unique_ptr<FunctionAST> Parser::parseFunction(bool isClassMethod, bool isTest) {
   }
 
   // Parse optional type parameters: function name<'a, T>(...)
-  std::vector<LifetimeParameter> lifetimeParameters;
-  std::vector<TypeParameter> typeParameters =
+  std::vector<sun::ast::LifetimeParameter> lifetimeParameters;
+  std::vector<sun::ast::TypeParameter> typeParameters =
       parseTypeParameterList(&lifetimeParameters);
 
   auto result =
@@ -398,7 +437,7 @@ unique_ptr<FunctionAST> Parser::parseLifecycleMethod() {
                            func->getProto().hasVariadicParam())) {
     parsingError("'deinit' takes no parameters");
   }
-  func->setVisibility(sun::Visibility::Public);
+  func->setVisibility(Visibility::Public);
   return func;
 }
 
@@ -530,7 +569,7 @@ bool Parser::isLambdaLiteralStart() {
 unique_ptr<LambdaAST> Parser::parseLambda() {
   Position lambdaLoc = captureStart();
 
-  std::vector<LifetimeParameter> lifetimeParameters;
+  std::vector<sun::ast::LifetimeParameter> lifetimeParameters;
   auto typeParameters = parseTypeParameterList(&lifetimeParameters);
   if (!typeParameters.empty()) {
     parsingError(
@@ -604,14 +643,16 @@ unique_ptr<LambdaAST> Parser::parseLambda() {
 
 // Parse a function literal: (args) returnType { body }
 unique_ptr<ExprAST> Parser::parseFunctionLiteral(
-    const std::string& name, std::vector<TypeParameter> typeParameters,
-    bool isLambda, bool isLifecycleMethod,
-    std::vector<LifetimeParameter> lifetimeParameters, bool isTestFunction) {
+    const std::string& name,
+    std::vector<sun::ast::TypeParameter> typeParameters, bool isLambda,
+    bool isLifecycleMethod,
+    std::vector<sun::ast::LifetimeParameter> lifetimeParameters,
+    bool isTestFunction) {
   Position start = captureStart();
   expectCurrentTokenKind(TokenKind::PAREN_OPEN,
                          "Expected '(' in function literal");
 
-  std::vector<std::pair<std::string, TypeAnnotation>> args;
+  std::vector<std::pair<std::string, sun::ast::TypeAnnotation>> args;
   std::optional<VariadicParam> variadicParam;
 
   getNextToken();  // eat '('
@@ -674,11 +715,11 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
   //         (args) => ReturnType throws IError { ... }
   // Return type is required for all functions except init and deinit, which
   // never declare one and implicitly return void.
-  std::optional<TypeAnnotation> retType;
+  std::optional<sun::ast::TypeAnnotation> retType;
   if (isTestFunction) {
     // A test returns nothing and may always throw: a failed assertion is a
     // throw, and spelling 'throws IError' on every test would be noise.
-    retType = TypeAnnotation("void");
+    retType = sun::ast::TypeAnnotation("void");
     retType->canError = true;
     if (curTok.kind == TokenKind::THROWS) {
       parsingError(
@@ -691,7 +732,7 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
           name + "() { ... }'");
     }
   } else if (isLifecycleMethod) {
-    retType = TypeAnnotation("void");
+    retType = sun::ast::TypeAnnotation("void");
     // A constructor that can throw is written: init(args) throws IError { }
     if (curTok.kind == TokenKind::THROWS) {
       if (name == "deinit") parsingError("'deinit' cannot throw");
@@ -772,7 +813,7 @@ unique_ptr<StructLiteralAST> Parser::parseStructLiteral() {
   Position start = captureStart();
   getNextToken();  // eat '{'
 
-  std::vector<StructLiteralAST::FieldInit> fields;
+  std::vector<sun::ast::StructLiteralAST::FieldInit> fields;
 
   while (curTok.kind != TokenKind::BRACE_CLOSE &&
          curTok.kind != TokenKind::TOK_EOF) {
@@ -836,7 +877,7 @@ unique_ptr<VariableCreationAST> Parser::parseVarDeclaration() {
   getNextToken();  // eat identifier
 
   // Optional type annotation: var x: i32 = ...
-  std::optional<TypeAnnotation> typeAnnot;
+  std::optional<sun::ast::TypeAnnotation> typeAnnot;
   if (curTok.kind == TokenKind::COLON) {
     getNextToken();  // eat ':'
     typeAnnot = parseTypeAnnotation();
@@ -875,8 +916,8 @@ unique_ptr<VariableCreationAST> Parser::parseVarStatement() {
   return decl;
 }
 
-unique_ptr<ReferenceCreationAST> Parser::parseRefStatement(Position refLoc,
-                                                           bool isMutable) {
+unique_ptr<sun::ast::ReferenceCreationAST> Parser::parseRefStatement(
+    Position refLoc, bool isMutable) {
   getNextToken();  // eat the 'ref'
 
   // Require identifier
@@ -900,7 +941,7 @@ unique_ptr<ReferenceCreationAST> Parser::parseRefStatement(Position refLoc,
                          "expected ';' after reference declaration");
   getNextToken();  // eat ';'
 
-  return finishNode(std::make_unique<ReferenceCreationAST>(
+  return finishNode(std::make_unique<sun::ast::ReferenceCreationAST>(
                         name, std::move(target), isMutable, refLoc),
                     refLoc);
 }
@@ -937,8 +978,8 @@ unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
   // Check for pack expansion: args...
   if (curTok.kind == TokenKind::ELLIPSIS) {
     getNextToken();  // eat '...'
-    return finishNode(std::make_unique<PackExpansionAST>(std::move(idName)),
-                      idLoc);
+    return finishNode(
+        std::make_unique<sun::ast::PackExpansionAST>(std::move(idName)), idLoc);
   }
 
   // Note: We don't parse dot-based qualified names (like std.Vec) here.
@@ -967,7 +1008,7 @@ unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
     // parse falls through to the backtrack below rather than reporting an
     // error here.
     bool typeArgsParsed = false;
-    std::vector<std::unique_ptr<TypeAnnotation>> typeArgs;
+    std::vector<std::unique_ptr<sun::ast::TypeAnnotation>> typeArgs;
     if (isTypeToken(curTok.kind) || curTok.kind == TokenKind::IDENTIFIER ||
         curTok.kind == TokenKind::PAREN_OPEN ||
         curTok.kind == TokenKind::BRACKET_OPEN ||
@@ -975,7 +1016,7 @@ unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
       try {
         auto typeArg = parseTypeAnnotation();
         typeArgs.push_back(
-            std::make_unique<TypeAnnotation>(std::move(typeArg)));
+            std::make_unique<sun::ast::TypeAnnotation>(std::move(typeArg)));
 
         // Parse additional type arguments separated by commas
         while (curTok.kind == TokenKind::COMMA) {
@@ -988,11 +1029,11 @@ unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
             break;  // Not a type arg after comma, not a generic call
           }
           auto nextTypeArg = parseTypeAnnotation();
-          typeArgs.push_back(
-              std::make_unique<TypeAnnotation>(std::move(nextTypeArg)));
+          typeArgs.push_back(std::make_unique<sun::ast::TypeAnnotation>(
+              std::move(nextTypeArg)));
         }
         typeArgsParsed = true;
-      } catch (const SunError&) {
+      } catch (const sun::support::SunError&) {
         typeArgsParsed = false;  // not types: treat the '<' as a comparison
       }
     }
@@ -1027,7 +1068,7 @@ unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
 
           // Create a GenericCallAST node
           return finishNode(
-              std::make_unique<GenericCallAST>(
+              std::make_unique<sun::ast::GenericCallAST>(
                   std::move(idName), std::move(typeArgs), std::move(args)),
               idLoc);
         }
@@ -1079,8 +1120,9 @@ unique_ptr<ExprAST> Parser::parseUnary() {
     auto operand = parseUnary();
     if (!operand) return nullptr;
 
-    return finishNode(std::make_unique<UnaryExprAST>(opTok, std::move(operand)),
-                      start);
+    return finishNode(
+        std::make_unique<sun::ast::UnaryExprAST>(opTok, std::move(operand)),
+        start);
   }
 
   return parsePrimary();
@@ -1144,7 +1186,7 @@ unique_ptr<ExprAST> Parser::parsePrimary() {
       break;
     case TokenKind::THIS: {
       Position start = captureStart();
-      base = std::make_unique<ThisExprAST>();
+      base = std::make_unique<sun::ast::ThisExprAST>();
       getNextToken();  // eat 'this'
       base = finishNode(std::move(base), start);
       break;
@@ -1173,21 +1215,21 @@ unique_ptr<ExprAST> Parser::parsePrimary() {
       break;
     case TokenKind::NULL_LITERAL: {
       Position start = captureStart();
-      base = std::make_unique<NullLiteralAST>();
+      base = std::make_unique<sun::ast::NullLiteralAST>();
       getNextToken();  // eat 'null'
       base = finishNode(std::move(base), start);
       break;
     }
     case TokenKind::TRUE_LITERAL: {
       Position start = captureStart();
-      base = std::make_unique<BoolLiteralAST>(true);
+      base = std::make_unique<sun::ast::BoolLiteralAST>(true);
       getNextToken();  // eat 'true'
       base = finishNode(std::move(base), start);
       break;
     }
     case TokenKind::FALSE_LITERAL: {
       Position start = captureStart();
-      base = std::make_unique<BoolLiteralAST>(false);
+      base = std::make_unique<sun::ast::BoolLiteralAST>(false);
       getNextToken();  // eat 'false'
       base = finishNode(std::move(base), start);
       break;
@@ -1280,7 +1322,8 @@ unique_ptr<ExprAST> Parser::parsePostfixExpr(unique_ptr<ExprAST> base) {
       }
 
       Position baseStart = base->getLocation();
-      base = std::make_unique<IndexAST>(std::move(base), std::move(indices));
+      base = std::make_unique<sun::ast::IndexAST>(std::move(base),
+                                                  std::move(indices));
       extendSpan(*base, baseStart);
     } else if (curTok.kind == TokenKind::DOT) {
       getNextToken();  // eat '.'
@@ -1295,7 +1338,7 @@ unique_ptr<ExprAST> Parser::parsePostfixExpr(unique_ptr<ExprAST> base) {
 
       // Parse optional generic type arguments: .method<Type>()
       // Use backtracking to distinguish from comparison (e.g., this.x < 5)
-      std::vector<std::unique_ptr<TypeAnnotation>> typeArgs;
+      std::vector<std::unique_ptr<sun::ast::TypeAnnotation>> typeArgs;
       if (curTok.kind == TokenKind::LESS) {
         // Save parser state for backtracking
         Token savedCurTok = curTok;
@@ -1308,9 +1351,9 @@ unique_ptr<ExprAST> Parser::parsePostfixExpr(unique_ptr<ExprAST> base) {
         // Try to parse type arguments
         bool isGenericMethod = false;
         if (isTypeToken(curTok.kind) || curTok.kind == TokenKind::IDENTIFIER) {
-          std::vector<std::unique_ptr<TypeAnnotation>> tempTypeArgs;
-          tempTypeArgs.push_back(
-              std::make_unique<TypeAnnotation>(parseTypeAnnotation()));
+          std::vector<std::unique_ptr<sun::ast::TypeAnnotation>> tempTypeArgs;
+          tempTypeArgs.push_back(std::make_unique<sun::ast::TypeAnnotation>(
+              parseTypeAnnotation()));
 
           // Parse additional type arguments separated by commas
           while (curTok.kind == TokenKind::COMMA) {
@@ -1319,8 +1362,8 @@ unique_ptr<ExprAST> Parser::parsePostfixExpr(unique_ptr<ExprAST> base) {
                 curTok.kind != TokenKind::IDENTIFIER) {
               break;  // Not a type arg after comma
             }
-            tempTypeArgs.push_back(
-                std::make_unique<TypeAnnotation>(parseTypeAnnotation()));
+            tempTypeArgs.push_back(std::make_unique<sun::ast::TypeAnnotation>(
+                parseTypeAnnotation()));
           }
 
           // Handle '>' or '>>' (for nested generics)
@@ -1376,7 +1419,8 @@ unique_ptr<ExprAST> Parser::parsePostfixExpr(unique_ptr<ExprAST> base) {
       // Create a unified call expression (callee is an expression)
       // The call spans from the callee's start to the closing ')'
       Position callLoc = base->getLocation();
-      base = std::make_unique<CallExprAST>(std::move(base), std::move(args));
+      base = std::make_unique<sun::ast::CallExprAST>(std::move(base),
+                                                     std::move(args));
       extendSpan(*base, callLoc);
     }
   }
@@ -1429,7 +1473,8 @@ void Parser::parseQualifiedNameTail(std::string& name) {
 // trait (`_Numeric`, `_Lambda` — intrinsic identifiers) or an interface name (a
 // possibly qualified identifier). Which kind a name denotes is settled in
 // semantic analysis, not here.
-TypeConstraint Parser::parseTypeConstraint(const std::string& paramName) {
+sun::ast::TypeConstraint Parser::parseTypeConstraint(
+    const std::string& paramName) {
   Position start = captureStart();
 
   std::string name;
@@ -1443,7 +1488,7 @@ TypeConstraint Parser::parseTypeConstraint(const std::string& paramName) {
   getNextToken();  // eat the constraint
   parseQualifiedNameTail(name);
 
-  TypeConstraint constraint(std::move(name));
+  sun::ast::TypeConstraint constraint(std::move(name));
   if (curTok.kind == TokenKind::LESS) {
     getNextToken();
     constraint.typeArguments.push_back(parseTypeAnnotation());
@@ -1465,7 +1510,7 @@ TypeConstraint Parser::parseTypeConstraint(const std::string& paramName) {
 VariadicParam Parser::parseVariadicParam(std::string name) {
   getNextToken();  // eat '...'
 
-  std::optional<TypeAnnotation> constraint;
+  std::optional<sun::ast::TypeAnnotation> constraint;
   if (curTok.kind == TokenKind::COLON) {
     getNextToken();  // eat ':'
     constraint = parseTypeAnnotation();
@@ -1478,9 +1523,9 @@ VariadicParam Parser::parseVariadicParam(std::string name) {
 // constraint written on any of them means the same thing. Lifetime
 // parameters ('a) come first and land in lifetimesOut; a caller that
 // passes nullptr does not accept them.
-std::vector<TypeParameter> Parser::parseTypeParameterList(
-    std::vector<LifetimeParameter>* lifetimesOut) {
-  std::vector<TypeParameter> typeParameters;
+std::vector<sun::ast::TypeParameter> Parser::parseTypeParameterList(
+    std::vector<sun::ast::LifetimeParameter>* lifetimesOut) {
+  std::vector<sun::ast::TypeParameter> typeParameters;
   if (curTok.kind != TokenKind::LESS) return typeParameters;
   getNextToken();  // eat '<'
 
@@ -1517,7 +1562,7 @@ std::vector<TypeParameter> Parser::parseTypeParameterList(
   }
 
   while (curTok.kind == TokenKind::IDENTIFIER) {
-    TypeParameter param(curTok.getIdentifier().value());
+    sun::ast::TypeParameter param(curTok.getIdentifier().value());
     getNextToken();  // eat type parameter name
 
     if (curTok.kind == TokenKind::COLON) {
@@ -1547,15 +1592,15 @@ std::vector<TypeParameter> Parser::parseTypeParameterList(
 }
 
 // Parse a type annotation, including function and lambda callable types.
-TypeAnnotation Parser::parseTypeAnnotation() {
+sun::ast::TypeAnnotation Parser::parseTypeAnnotation() {
   Position start = captureStart();
-  TypeAnnotation type = parseTypeAnnotationImpl();
+  sun::ast::TypeAnnotation type = parseTypeAnnotationImpl();
   start.setEnd(prevTok_.end.line, prevTok_.end.column, prevTok_.end.offset);
   type.span = std::move(start);
   return type;
 }
 
-TypeAnnotation Parser::parseTypeAnnotationImpl() {
+sun::ast::TypeAnnotation Parser::parseTypeAnnotationImpl() {
   if (curTok.kind == TokenKind::UNSAFE) {
     getNextToken();
     auto type = parseTypeAnnotation();
@@ -1572,7 +1617,7 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
         "'_(i32) -> i32' syntax was removed");
   }
 
-  TypeAnnotation type;
+  sun::ast::TypeAnnotation type;
 
   // A named function value is a thin, non-null function pointer.
   if (curTok.kind == TokenKind::FUNCTION) {
@@ -1588,7 +1633,7 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
       while (true) {
         auto paramType = parseTypeAnnotation();
         type.paramTypes.push_back(
-            std::make_unique<TypeAnnotation>(std::move(paramType)));
+            std::make_unique<sun::ast::TypeAnnotation>(std::move(paramType)));
 
         if (curTok.kind != TokenKind::COMMA) break;
         getNextToken();  // eat ','
@@ -1604,7 +1649,8 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
       parsingError("expected return type after function pointer parameters");
     }
 
-    type.returnType = std::make_unique<TypeAnnotation>(parseTypeAnnotation());
+    type.returnType =
+        std::make_unique<sun::ast::TypeAnnotation>(parseTypeAnnotation());
 
     if (curTok.kind == TokenKind::THROWS) {
       getNextToken();  // eat 'throws'
@@ -1657,7 +1703,7 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
       while (true) {
         auto paramType = parseTypeAnnotation();
         type.paramTypes.push_back(
-            std::make_unique<TypeAnnotation>(std::move(paramType)));
+            std::make_unique<sun::ast::TypeAnnotation>(std::move(paramType)));
 
         if (curTok.kind == TokenKind::COMMA) {
           getNextToken();  // eat ','
@@ -1676,7 +1722,8 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
                            "lambda type: (i32) => i32");
     getNextToken();  // eat '=>'
 
-    type.returnType = std::make_unique<TypeAnnotation>(parseTypeAnnotation());
+    type.returnType =
+        std::make_unique<sun::ast::TypeAnnotation>(parseTypeAnnotation());
 
     // Throwing lambda type: (params) => ret throws IError
     if (curTok.kind == TokenKind::THROWS) {
@@ -1702,7 +1749,8 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
     getNextToken();  // eat '<'
 
     // Parse pointee type
-    type.elementType = std::make_unique<TypeAnnotation>(parseTypeAnnotation());
+    type.elementType =
+        std::make_unique<sun::ast::TypeAnnotation>(parseTypeAnnotation());
 
     consumeGreater("expected '>' after ptr type");
 
@@ -1718,7 +1766,8 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
     getNextToken();  // eat '<'
 
     // Parse pointee type
-    type.elementType = std::make_unique<TypeAnnotation>(parseTypeAnnotation());
+    type.elementType =
+        std::make_unique<sun::ast::TypeAnnotation>(parseTypeAnnotation());
 
     consumeGreater("expected '>' after raw_ptr type");
 
@@ -1734,7 +1783,8 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
     getNextToken();  // eat '<'
 
     // Parse pointee type
-    type.elementType = std::make_unique<TypeAnnotation>(parseTypeAnnotation());
+    type.elementType =
+        std::make_unique<sun::ast::TypeAnnotation>(parseTypeAnnotation());
 
     consumeGreater("expected '>' after static_ptr type");
 
@@ -1765,7 +1815,8 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
     }
 
     // Parse referenced type directly (no parentheses)
-    type.elementType = std::make_unique<TypeAnnotation>(parseTypeAnnotation());
+    type.elementType =
+        std::make_unique<sun::ast::TypeAnnotation>(parseTypeAnnotation());
 
     return type;
   }
@@ -1779,7 +1830,8 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
     getNextToken();  // eat '<'
 
     // Parse element type
-    type.elementType = std::make_unique<TypeAnnotation>(parseTypeAnnotation());
+    type.elementType =
+        std::make_unique<sun::ast::TypeAnnotation>(parseTypeAnnotation());
 
     // Parse dimensions (comma-separated integers)
     while (curTok.kind == TokenKind::COMMA) {
@@ -1892,7 +1944,7 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
           }
           auto typeArg = parseTypeAnnotation();
           type.typeArguments.push_back(
-              std::make_unique<TypeAnnotation>(std::move(typeArg)));
+              std::make_unique<sun::ast::TypeAnnotation>(std::move(typeArg)));
 
           if (curTok.kind == TokenKind::COMMA) {
             getNextToken();  // eat ','
@@ -1910,7 +1962,9 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
   return type;
 }
 
-// True for '=' and every compound-assignment operator
+/**
+ * True for '=' and every compound-assignment operator
+ */
 static bool isAssignmentOp(TokenKind kind) {
   return kind == TokenKind::EQUAL || compoundToBinaryOp(kind).has_value();
 }
@@ -1933,7 +1987,8 @@ unique_ptr<ExprAST> Parser::finishVariableAssignment(const std::string& name,
                       namePos);
   }
   return finishNode(
-      std::make_unique<VariableAssignmentAST>(name, std::move(value)), namePos);
+      std::make_unique<sun::ast::VariableAssignmentAST>(name, std::move(value)),
+      namePos);
 }
 
 // Shared tail for `a.b = rhs` / `a.b op= rhs` / `this.f op= rhs` once the
@@ -1965,7 +2020,7 @@ unique_ptr<ExprAST> Parser::finishMemberAssignment(unique_ptr<ExprAST> lhs) {
   auto object = memberAccess->releaseObject();
 
   return finishNode(
-      std::make_unique<MemberAssignmentAST>(
+      std::make_unique<sun::ast::MemberAssignmentAST>(
           std::move(object), std::move(memberName), std::move(value)),
       start);
 }
@@ -1989,9 +2044,9 @@ unique_ptr<ExprAST> Parser::finishIndexedAssignment(unique_ptr<ExprAST> expr) {
                           std::move(expr), opTok, std::move(value)),
                       start);
   }
-  return finishNode(
-      std::make_unique<IndexedAssignmentAST>(std::move(expr), std::move(value)),
-      start);
+  return finishNode(std::make_unique<sun::ast::IndexedAssignmentAST>(
+                        std::move(expr), std::move(value)),
+                    start);
 }
 
 unique_ptr<ExprAST> Parser::parseAssignmentOrExpression() {
@@ -2065,7 +2120,7 @@ unique_ptr<ExprAST> Parser::parseExpression() {
     auto elseExpr = parseExpression();
     if (!elseExpr) return nullptr;
     Position start = expr->getLocation();
-    auto ternary = std::make_unique<TernaryExprAST>(
+    auto ternary = std::make_unique<sun::ast::TernaryExprAST>(
         std::move(expr), std::move(thenExpr), std::move(elseExpr), qLoc);
     extendSpan(*ternary, start);
     return ternary;
@@ -2099,8 +2154,8 @@ std::unique_ptr<ExprAST> Parser::parseBinOpRhs(int exprPrec,
     }
 
     Position start = lhs->getLocation();
-    lhs =
-        std::make_unique<BinaryExprAST>(binOp, std::move(lhs), std::move(rhs));
+    lhs = std::make_unique<sun::ast::BinaryExprAST>(binOp, std::move(lhs),
+                                                    std::move(rhs));
     extendSpan(*lhs, start);
   }
 }
@@ -2119,17 +2174,18 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
   getNextToken();
 
   // Parse optional type parameters: function name<T, U>(...)
-  std::vector<TypeParameter> typeParameters = parseTypeParameterList();
+  std::vector<sun::ast::TypeParameter> typeParameters =
+      parseTypeParameterList();
 
   expectCurrentTokenKind(TokenKind::PAREN_OPEN, "Expected '(' in prototype");
 
-  std::vector<std::pair<std::string, TypeAnnotation>> args;
+  std::vector<std::pair<std::string, sun::ast::TypeAnnotation>> args;
 
   getNextToken();  // eat '('
   if (curTok.kind == TokenKind::PAREN_CLOSE) {
     getNextToken();  // eat ')'
     // Check for return type (only if followed by a type token)
-    std::optional<TypeAnnotation> retType;
+    std::optional<sun::ast::TypeAnnotation> retType;
     if (curTok.kind != TokenKind::BRACE_OPEN &&
         curTok.kind != TokenKind::SEMI_COLON &&
         (isTypeToken(curTok.kind) || curTok.kind == TokenKind::PAREN_OPEN ||
@@ -2196,7 +2252,7 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
 
   // Check for return type (only if followed by a type token, not semicolon)
   // Type can start with: type keywords, '(' for lambda type, '_' for fn type
-  std::optional<TypeAnnotation> retType;
+  std::optional<sun::ast::TypeAnnotation> retType;
   if (curTok.kind != TokenKind::BRACE_OPEN &&
       curTok.kind != TokenKind::SEMI_COLON &&
       (isTypeToken(curTok.kind) || curTok.kind == TokenKind::PAREN_OPEN ||
@@ -2242,7 +2298,7 @@ unique_ptr<BlockExprAST> Parser::parseBlock(BlockKind kind, bool itemLevel) {
 }
 
 unique_ptr<BlockExprAST> Parser::parseProgram() {
-  sun::ScopedStage stage("parse");
+  sun::support::ScopedStage stage("parse");
   Position start = captureStart();
   std::vector<unique_ptr<ExprAST>> body;
 
@@ -2286,7 +2342,9 @@ bool Parser::parseConstModifier() {
   return true;
 }
 
-// Statement kinds that may carry a `public` modifier at item level.
+/**
+ * Statement kinds that may carry a `public` modifier at item level.
+ */
 static bool isPublicableStatementStart(TokenKind kind) {
   switch (kind) {
     case TokenKind::MODULE:
@@ -2332,7 +2390,7 @@ unique_ptr<ExprAST> Parser::parseStatement() {
     for (auto* current = node.get(); current;) {
       auto* module = dynamic_cast<ModuleAST*>(current);
       auto* inner = module ? module->getShorthandChild() : nullptr;
-      current->setVisibility(sun::Visibility::Public);
+      current->setVisibility(Visibility::Public);
       extendSpanStart(*current, start);
       current = inner;
     }
@@ -2477,7 +2535,7 @@ unique_ptr<ExprAST> Parser::parseStatementCore() {
     case TokenKind::THIS: {
       // Handle this.field = value; or this.method(...);
       Position start = captureStart();
-      auto thisExpr = std::make_unique<ThisExprAST>();
+      auto thisExpr = std::make_unique<sun::ast::ThisExprAST>();
       getNextToken();  // eat 'this'
       thisExpr = finishNode(std::move(thisExpr), start);
 
@@ -2525,8 +2583,8 @@ unique_ptr<ExprAST> Parser::parseStatementCore() {
         else
           parsingError("expected ';' after return statement");
 
-        return finishNode(std::make_unique<ReturnExprAST>(std::move(expr)),
-                          start);
+        return finishNode(
+            std::make_unique<sun::ast::ReturnExprAST>(std::move(expr)), start);
       }
     }
     case TokenKind::TRY: {
@@ -2594,7 +2652,7 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
 
       if (curTok.kind == TokenKind::COLON) {
         getNextToken();  // eat ':'
-        TypeAnnotation typeAnnot = parseTypeAnnotation();
+        sun::ast::TypeAnnotation typeAnnot = parseTypeAnnotation();
 
         // Now check if next token is 'in' (contextual keyword)
         if (curTok.kind == TokenKind::IDENTIFIER &&
@@ -2619,7 +2677,7 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
           // Body kept as a block; LoweringPass normalizes it
           unique_ptr<ExprAST> body = std::move(bodyBlock);
 
-          return finishNode(std::make_unique<ForInExprAST>(
+          return finishNode(std::make_unique<sun::ast::ForInExprAST>(
                                 std::move(varName), std::move(typeAnnot),
                                 std::move(iterable), std::move(body), isConst),
                             forStart);
@@ -2704,13 +2762,13 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
   // Body kept as a block; LoweringPass normalizes it
   unique_ptr<ExprAST> body = std::move(bodyBlock);
 
-  return finishNode(
-      std::make_unique<ForExprAST>(std::move(init), std::move(condition),
-                                   std::move(increment), std::move(body)),
-      forStart);
+  return finishNode(std::make_unique<sun::ast::ForExprAST>(
+                        std::move(init), std::move(condition),
+                        std::move(increment), std::move(body)),
+                    forStart);
 }
 
-unique_ptr<WhileExprAST> Parser::parseWhileLoop() {
+unique_ptr<sun::ast::WhileExprAST> Parser::parseWhileLoop() {
   Position start = captureStart();
   getNextToken();  // eat 'while'
 
@@ -2734,12 +2792,12 @@ unique_ptr<WhileExprAST> Parser::parseWhileLoop() {
   // Body kept as a block; LoweringPass normalizes it
   unique_ptr<ExprAST> body = std::move(bodyBlock);
 
-  return finishNode(
-      std::make_unique<WhileExprAST>(std::move(condition), std::move(body)),
-      start);
+  return finishNode(std::make_unique<sun::ast::WhileExprAST>(
+                        std::move(condition), std::move(body)),
+                    start);
 }
 
-unique_ptr<BreakAST> Parser::parseBreak() {
+unique_ptr<sun::ast::BreakAST> Parser::parseBreak() {
   Position start = captureStart();
   getNextToken();  // eat 'break'
 
@@ -2748,10 +2806,10 @@ unique_ptr<BreakAST> Parser::parseBreak() {
     getNextToken();  // eat ';'
   }
 
-  return finishNode(std::make_unique<BreakAST>(), start);
+  return finishNode(std::make_unique<sun::ast::BreakAST>(), start);
 }
 
-unique_ptr<ContinueAST> Parser::parseContinue() {
+unique_ptr<sun::ast::ContinueAST> Parser::parseContinue() {
   Position start = captureStart();
   getNextToken();  // eat 'continue'
 
@@ -2760,7 +2818,7 @@ unique_ptr<ContinueAST> Parser::parseContinue() {
     getNextToken();  // eat ';'
   }
 
-  return finishNode(std::make_unique<ContinueAST>(), start);
+  return finishNode(std::make_unique<sun::ast::ContinueAST>(), start);
 }
 
 std::unique_ptr<ExprAST> Parser::parseExtern() {
@@ -2818,9 +2876,10 @@ std::unique_ptr<ExprAST> Parser::parseExtern() {
     expectCurrentTokenKind(TokenKind::COLON, "extern variable '" + name +
                                                  "' requires an explicit type");
     getNextToken();
-    TypeAnnotation type = parseTypeAnnotation();
+    sun::ast::TypeAnnotation type = parseTypeAnnotation();
     auto var = std::make_unique<VariableCreationAST>(
-        name, nullptr, std::optional<TypeAnnotation>(std::move(type)));
+        name, nullptr,
+        std::optional<sun::ast::TypeAnnotation>(std::move(type)));
     var->setCExtern(true);
     var->setExplicitCAbi(explicitCAbi);
     if (auto symbol = parseLinkName()) var->setLinkName(std::move(*symbol));
@@ -2839,7 +2898,7 @@ std::unique_ptr<ExprAST> Parser::parseExtern() {
 //   source_files = [ "file.sun", { path = "other.sun", hash = "abc" } ]
 //   libraries = ( "lib.moon", { path = "x.moon", hash = "def", rename = "y" } )
 // }
-unique_ptr<ManifestAST> Parser::parseManifest() {
+unique_ptr<sun::ast::ManifestAST> Parser::parseManifest() {
   Position start = captureStart();
   getNextToken();  // eat 'manifest'
 
@@ -2892,9 +2951,9 @@ unique_ptr<ManifestAST> Parser::parseManifest() {
   getNextToken();  // eat '}'
 
   return finishNode(
-      std::make_unique<ManifestAST>(std::move(suns), std::move(moons),
-                                    std::move(protos), std::move(archives),
-                                    std::move(targets), std::move(testSuns)),
+      std::make_unique<sun::ast::ManifestAST>(
+          std::move(suns), std::move(moons), std::move(protos),
+          std::move(archives), std::move(targets), std::move(testSuns)),
       start);
 }
 
@@ -2915,7 +2974,7 @@ std::vector<ManifestTargetBlock> Parser::parseManifestTargets() {
   while (curTok.kind == TokenKind::IDENTIFIER) {
     ManifestTargetBlock block;
     block.os = curTok.getIdentifier().value();
-    if (!sun::isKnownTargetOs(block.os)) {
+    if (!sun::support::isKnownTargetOs(block.os)) {
       parsingError("unknown target OS '" + block.os +
                    "' in manifest; expected 'linux', 'macos' or 'windows'");
     }
@@ -3221,7 +3280,7 @@ unique_ptr<ExprAST> Parser::parseDeclareStatement() {
       // Not an alias, this identifier is part of the type
       // We need to put back the identifier by handling it as a type
       // Create type annotation from the identifier we already consumed
-      TypeAnnotation typeAnnot(name);
+      sun::ast::TypeAnnotation typeAnnot(name);
 
       // Check for generic type arguments: Type<Args>
       if (curTok.kind == TokenKind::LESS) {
@@ -3229,7 +3288,7 @@ unique_ptr<ExprAST> Parser::parseDeclareStatement() {
         while (true) {
           auto argType = parseTypeAnnotation();
           typeAnnot.typeArguments.push_back(
-              std::make_unique<TypeAnnotation>(std::move(argType)));
+              std::make_unique<sun::ast::TypeAnnotation>(std::move(argType)));
           if (curTok.kind == TokenKind::COMMA) {
             getNextToken();  // eat ','
           } else {
@@ -3243,9 +3302,9 @@ unique_ptr<ExprAST> Parser::parseDeclareStatement() {
                              "expected ';' after declare statement");
       getNextToken();  // eat ';'
 
-      return finishNode(
-          std::make_unique<DeclareTypeAST>(std::move(typeAnnot), alias),
-          declStart);
+      return finishNode(std::make_unique<sun::ast::DeclareTypeAST>(
+                            std::move(typeAnnot), alias),
+                        declStart);
     }
   } else {
     parsingError("expected 'function' or type name after 'declare'");
@@ -3260,7 +3319,8 @@ unique_ptr<ExprAST> Parser::parseDeclareStatement() {
   getNextToken();  // eat ';'
 
   return finishNode(
-      std::make_unique<DeclareTypeAST>(std::move(typeAnnot), alias), declStart);
+      std::make_unique<sun::ast::DeclareTypeAST>(std::move(typeAnnot), alias),
+      declStart);
 }
 
 // Parse module declaration: module Name { declarations... }
@@ -3273,6 +3333,7 @@ unique_ptr<ModuleAST> Parser::parseModuleDecl() {
 
   expectCurrentTokenKind(TokenKind::IDENTIFIER, "expected module name");
 
+  /** A module-path component and its source position. */
   struct Segment {
     std::string name;
     Position location;
@@ -3406,8 +3467,8 @@ unique_ptr<ExprAST> Parser::parseQualifiedOrSimpleName() {
       getNextToken();  // eat identifier
     }
 
-    return finishNode(std::make_unique<QualifiedNameAST>(std::move(parts)),
-                      start);
+    return finishNode(
+        std::make_unique<sun::ast::QualifiedNameAST>(std::move(parts)), start);
   }
 
   // Simple identifier - return as variable reference
@@ -3419,7 +3480,7 @@ unique_ptr<ExprAST> Parser::parseQualifiedOrSimpleName() {
 // Returns a MoonScopeAST wrapping all module stubs, or nullptr if already
 // imported
 std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
-    const sun::MoonImport& moonImport) {
+    const sun::moon_bundling::MoonImport& moonImport) {
   const std::string& moonPath = moonImport.path;
   std::string contentHash;
 
@@ -3429,11 +3490,11 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
                                            : std::filesystem::path();
     }
     // Check SUN_PATH directories
-    std::filesystem::path resolved = sun::SunPath::resolve(path);
+    std::filesystem::path resolved = sun::support::SunPath::resolve(path);
     // Check system-wide installation paths (exe-relative, Debian, Homebrew)
     if (resolved.empty()) {
-      resolved = sun::SunPath::resolveInstalledBundle(
-          path, sun::LibraryCache::instance().getTargetTriple());
+      resolved = sun::support::SunPath::resolveInstalledBundle(
+          path, sun::moon_bundling::LibraryCache::instance().getTargetTriple());
     }
     // Fall back to resolving relative to current file's directory
     if (resolved.empty()) {
@@ -3458,7 +3519,7 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
 
   // Open the moon bundle
   PARSER_TIMER_START(open_moon);
-  auto reader = sun::MoonReader::open(resolved);
+  auto reader = sun::moon_bundling::MoonReader::open(resolved);
   if (!reader) {
     logAndThrowError("Failed to open moon: " + resolvedStr);
     return nullptr;
@@ -3479,12 +3540,15 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
   std::unordered_map<std::string, std::unordered_set<std::string>>
       moduleSymbols;
   // Visibility per (effective) dotted module name, from the bundle metadata
-  std::unordered_map<std::string, sun::Visibility> moduleVisibility;
+  std::unordered_map<std::string, Visibility> moduleVisibility;
 
   // Track the primary module name (first non-empty module found)
   std::string primaryModuleName;
   std::map<std::string, std::string> originalModules;
-  std::vector<MoonScopeAST::DeclarationRequirement> requirements;
+  std::map<std::string, std::string> moduleKeys;
+  std::vector<sun::semantic_analysis::ImportedDeclarationRecord>
+      declarationRecords;
+  std::vector<sun::ast::MoonScopeAST::DeclarationRequirement> requirements;
 
   for (const auto& moduleKey : reader->listModules()) {
     // Record for linking
@@ -3505,9 +3569,24 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
       continue;
     }
 
+    for (const auto& record : metadata->declarations())
+      declarationRecords.push_back({record.key(), record.kind(), record.name(),
+                                    record.owner(), record.module()});
+    {
+      std::istringstream path(metadata->module_name());
+      std::string part, prefix;
+      size_t index = 0;
+      while (std::getline(path, part, '.')) {
+        if (!prefix.empty()) prefix += ".";
+        prefix += part;
+        if (index < static_cast<size_t>(metadata->module_declarations_size()))
+          moduleKeys[prefix] = metadata->module_declarations(index++);
+      }
+    }
+
     // Capture content hash from first module (all share the same hash)
     if (contentHash.empty()) {
-      contentHash = sun::getSymbolPrefix(*metadata);
+      contentHash = sun::moon_bundling::getSymbolPrefix(*metadata);
     }
 
     // Track primary module name
@@ -3519,13 +3598,13 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
     // declarations come first so the stubs' field/parameter types resolve
     // the same names their source did (e.g. Vec<u8> from stdlib.moon).
     std::vector<std::unique_ptr<ExprAST>> stubs;
-    sun::serialization::visitQualifiedNames(
-        *metadata, [&](const auto& name, auto expectedKind) {
-          requirements.push_back({name, expectedKind});
+    sun::serialization::visitDeclarationKeys(
+        *metadata, [&](const auto& key, auto expectedKind, const auto& name) {
+          requirements.push_back({key, name, expectedKind});
         });
     auto scopedMetadata = *metadata;
     sun::serialization::remapSourceFiles(
-        scopedMetadata, [&](sun::SourceFileId id) {
+        scopedMetadata, [&](sun::support::SourceFileId id) {
           return sun::serialization::loadedSourceFileId(contentHash, id);
         });
     sun::serialization::ASTDeserializer importDeserializer;
@@ -3542,8 +3621,8 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
     originalModules[effectiveName] = modName;
     if (!effectiveName.empty()) {
       auto& vis = moduleVisibility[effectiveName];
-      if (metadata->visibility() == sun::ast::PUBLIC)
-        vis = sun::Visibility::Public;
+      if (metadata->visibility() == sun::proto::ast::PUBLIC)
+        vis = Visibility::Public;
       // Ensure the entry exists even for a module with no stubs
       (void)moduleStubs[effectiveName];
     }
@@ -3586,12 +3665,12 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
     auto it = moduleVisibility.find(dotted);
     if (it != moduleVisibility.end()) return it->second;
     for (const auto& [name, vis] : moduleVisibility) {
-      if (vis == sun::Visibility::Public && name.size() > dotted.size() &&
+      if (vis == Visibility::Public && name.size() > dotted.size() &&
           name.compare(0, dotted.size(), dotted) == 0 &&
           name[dotted.size()] == '.')
-        return sun::Visibility::Public;
+        return Visibility::Public;
     }
-    return sun::Visibility::Private;
+    return Visibility::Private;
   };
 
   // Build consolidated ModuleAST nodes (one per unique module name)
@@ -3631,7 +3710,12 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
           while (std::getline(original, part, '.')) path.push_back(part);
           auto name = path.back();
           path.pop_back();
-          nsAST->setQualifiedName(sun::QualifiedName(path, name, path));
+          nsAST->setQualifiedName(QualifiedName(path, name));
+          if (auto key = moduleKeys.find(originalModule->second);
+              key != moduleKeys.end())
+            nsAST->declarationIdentity().imported =
+                sun::semantic_analysis::ImportedDeclarationIdentity{
+                    key->second};
         }
         nsAST->setVisibility(visibilityOf(prefix));
         current = std::move(nsAST);
@@ -3646,7 +3730,7 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
   PARSER_TIMER_END(process_modules);
 
   // Store the moon reader in the cache for later linking
-  sun::LibraryCache::instance().addBundle(resolved);
+  sun::moon_bundling::LibraryCache::instance().addBundle(resolved);
 
   // Determine the alias if provided (from moduleRemap)
   std::optional<std::string> alias;
@@ -3663,6 +3747,9 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
   auto result = std::make_unique<MoonScopeAST>(
       contentHash, primaryModuleName, alias, resolvedStr, std::move(body));
   result->requiredDeclarations = std::move(requirements);
+  std::sort(declarationRecords.begin(), declarationRecords.end(),
+            [](const auto& a, const auto& b) { return a.key < b.key; });
+  result->importedDeclarations = std::move(declarationRecords);
   return result;
 }
 
@@ -3674,11 +3761,12 @@ void Parser::createModuleStubs(
   // Use ASTDeserializer to convert proto nodes. Positions inside the bundle
   // carry no file of their own; they all belong to the module's source file
   sun::serialization::ASTDeserializer deserializer(
-      {.default_file_path = metadata.source_path()});
+      {.import_declarations = true,
+       .default_file_path = metadata.source_path()});
 
   // Build the scope path for qualified names:
   // Content hash ensures symbol isolation between library versions
-  std::string contentHash = sun::getSymbolPrefix(metadata);
+  std::string contentHash = sun::moon_bundling::getSymbolPrefix(metadata);
   std::vector<std::string> scopePath;
   if (!contentHash.empty()) {
     scopePath.push_back(contentHash);
@@ -3696,7 +3784,7 @@ void Parser::createModuleStubs(
   // Create AST stubs from metadata
   // IMPORTANT: Process interfaces FIRST (before classes that implement them)
   for (int i = 0; i < metadata.interfaces_size(); ++i) {
-    sun::ast::ASTNode node;
+    sun::proto::ast::ASTNode node;
     *node.mutable_interface_def() = metadata.interfaces(i);
     node.set_source_file_id(node.interface_def().source_file_id());
     if (node.interface_def().has_location()) {
@@ -3708,7 +3796,7 @@ void Parser::createModuleStubs(
       if (auto* ifaceDef = dynamic_cast<InterfaceDefinitionAST*>(ast.get())) {
         ifaceDef->setPrecompiled(true);
         ifaceDef->setQualifiedName(
-            sun::QualifiedName(scopePath, ifaceDef->getName(), scopePath));
+            QualifiedName(scopePath, ifaceDef->getName()));
       }
       moduleAST.push_back(std::move(ast));
     }
@@ -3716,7 +3804,7 @@ void Parser::createModuleStubs(
 
   // Classes (after interfaces so interface lookups work)
   for (int i = 0; i < metadata.classes_size(); ++i) {
-    sun::ast::ASTNode node;
+    sun::proto::ast::ASTNode node;
     *node.mutable_class_def() = metadata.classes(i);
     node.set_source_file_id(node.class_def().source_file_id());
     if (node.class_def().has_location()) {
@@ -3728,7 +3816,7 @@ void Parser::createModuleStubs(
       if (auto* classDef = dynamic_cast<ClassDefinitionAST*>(ast.get())) {
         classDef->setPrecompiled(true);
         classDef->setQualifiedName(
-            sun::QualifiedName(scopePath, classDef->getName(), scopePath));
+            QualifiedName(scopePath, classDef->getName()));
       }
       moduleAST.push_back(std::move(ast));
     }
@@ -3737,7 +3825,7 @@ void Parser::createModuleStubs(
   // Module-level variables. The stub carries the type but no initializer —
   // the storage lives in the bundle's bitcode and is linked in.
   for (int i = 0; i < metadata.globals_size(); ++i) {
-    sun::ast::ASTNode node;
+    sun::proto::ast::ASTNode node;
     *node.mutable_variable_creation() = metadata.globals(i);
     node.set_source_file_id(node.variable_creation().source_file_id());
 
@@ -3745,8 +3833,7 @@ void Parser::createModuleStubs(
     if (ast) {
       if (auto* varDef = dynamic_cast<VariableCreationAST*>(ast.get())) {
         varDef->setPrecompiled(true);
-        varDef->setQualifiedName(
-            sun::QualifiedName(scopePath, varDef->getName(), scopePath));
+        varDef->setQualifiedName(QualifiedName(scopePath, varDef->getName()));
       }
       moduleAST.push_back(std::move(ast));
     }
@@ -3755,7 +3842,7 @@ void Parser::createModuleStubs(
   // Enums (before functions, whose signatures may use enum types; after
   // classes, which enum payload types may reference)
   for (int i = 0; i < metadata.enums_size(); ++i) {
-    sun::ast::ASTNode node;
+    sun::proto::ast::ASTNode node;
     *node.mutable_enum_def() = metadata.enums(i);
     node.set_source_file_id(node.enum_def().source_file_id());
     if (node.enum_def().has_location()) {
@@ -3765,14 +3852,14 @@ void Parser::createModuleStubs(
     auto ast = deserializer.deserialize(node);
     if (ast) {
       static_cast<EnumDefinitionAST&>(*ast).setQualifiedName(
-          sun::QualifiedName(scopePath, metadata.enums(i).name(), scopePath));
+          QualifiedName(scopePath, metadata.enums(i).name()));
       moduleAST.push_back(std::move(ast));
     }
   }
 
   // Functions
   for (int i = 0; i < metadata.functions_size(); ++i) {
-    sun::ast::ASTNode node;
+    sun::proto::ast::ASTNode node;
     *node.mutable_function_def() = metadata.functions(i);
     node.set_source_file_id(node.function_def().source_file_id());
     if (node.function_def().has_location()) {
@@ -3783,8 +3870,8 @@ void Parser::createModuleStubs(
     if (ast) {
       if (auto* funcAST = dynamic_cast<FunctionAST*>(ast.get())) {
         funcAST->setPrecompiled(true);
-        funcAST->getProtoMut().setQualifiedName(sun::QualifiedName(
-            scopePath, funcAST->getProto().getName(), scopePath));
+        funcAST->getProtoMut().setQualifiedName(
+            QualifiedName(scopePath, funcAST->getProto().getName()));
       }
       moduleAST.push_back(std::move(ast));
     }
@@ -3797,7 +3884,8 @@ void Parser::createModuleStubs(
 }
 
 // Helper to parse a type string back into TypeAnnotation.
-TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
+sun::ast::TypeAnnotation Parser::parseTypeFromString(
+    const std::string& typeStr) {
   // Check for ", error" suffix indicating error union type
   bool canError = false;
   std::string cleanType = typeStr;
@@ -3825,7 +3913,7 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
   if (anonymousLambda || legacyRefLambda) {
     std::string inner = cleanType.substr(anonymousLambda ? 4 : 5);
     if (canError) inner += " throws IError";
-    TypeAnnotation result = parseTypeFromString(inner);
+    sun::ast::TypeAnnotation result = parseTypeFromString(inner);
     result.refEnv = true;
     result.lifetimeName = "_";
     return result;
@@ -3833,52 +3921,52 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
 
   // Handle common primitive types
   if (cleanType == "void") {
-    TypeAnnotation result("void");
+    sun::ast::TypeAnnotation result("void");
     result.canError = canError;
     return result;
   }
   if (cleanType == "bool") {
-    TypeAnnotation result("bool");
+    sun::ast::TypeAnnotation result("bool");
     result.canError = canError;
     return result;
   }
   if (cleanType == "char") {
-    TypeAnnotation result("char");
+    sun::ast::TypeAnnotation result("char");
     result.canError = canError;
     return result;
   }
   if (cleanType == "i8") {
-    TypeAnnotation result("i8");
+    sun::ast::TypeAnnotation result("i8");
     result.canError = canError;
     return result;
   }
   if (cleanType == "i16") {
-    TypeAnnotation result("i16");
+    sun::ast::TypeAnnotation result("i16");
     result.canError = canError;
     return result;
   }
   if (cleanType == "i32") {
-    TypeAnnotation result("i32");
+    sun::ast::TypeAnnotation result("i32");
     result.canError = canError;
     return result;
   }
   if (cleanType == "i64") {
-    TypeAnnotation result("i64");
+    sun::ast::TypeAnnotation result("i64");
     result.canError = canError;
     return result;
   }
   if (cleanType == "f32") {
-    TypeAnnotation result("f32");
+    sun::ast::TypeAnnotation result("f32");
     result.canError = canError;
     return result;
   }
   if (cleanType == "f64") {
-    TypeAnnotation result("f64");
+    sun::ast::TypeAnnotation result("f64");
     result.canError = canError;
     return result;
   }
   if (cleanType == "string") {
-    TypeAnnotation result("string");
+    sun::ast::TypeAnnotation result("string");
     result.canError = canError;
     return result;
   }
@@ -3888,9 +3976,9 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
     size_t end = cleanType.rfind('>');
     if (end != std::string::npos) {
       std::string inner = cleanType.substr(4, end - 4);
-      TypeAnnotation result("ptr");
-      result.elementType =
-          std::make_unique<TypeAnnotation>(parseTypeFromString(inner));
+      sun::ast::TypeAnnotation result("ptr");
+      result.elementType = std::make_unique<sun::ast::TypeAnnotation>(
+          parseTypeFromString(inner));
       result.canError = canError;
       return result;
     }
@@ -3899,9 +3987,9 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
     size_t end = cleanType.rfind(')');
     if (end != std::string::npos) {
       std::string inner = cleanType.substr(4, end - 4);
-      TypeAnnotation result("ptr");
-      result.elementType =
-          std::make_unique<TypeAnnotation>(parseTypeFromString(inner));
+      sun::ast::TypeAnnotation result("ptr");
+      result.elementType = std::make_unique<sun::ast::TypeAnnotation>(
+          parseTypeFromString(inner));
       result.canError = canError;
       return result;
     }
@@ -3912,9 +4000,9 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
     size_t end = cleanType.rfind('>');
     if (end != std::string::npos) {
       std::string inner = cleanType.substr(8, end - 8);
-      TypeAnnotation result("raw_ptr");
-      result.elementType =
-          std::make_unique<TypeAnnotation>(parseTypeFromString(inner));
+      sun::ast::TypeAnnotation result("raw_ptr");
+      result.elementType = std::make_unique<sun::ast::TypeAnnotation>(
+          parseTypeFromString(inner));
       result.canError = canError;
       return result;
     }
@@ -3923,9 +4011,9 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
     size_t end = cleanType.rfind(')');
     if (end != std::string::npos) {
       std::string inner = cleanType.substr(8, end - 8);
-      TypeAnnotation result("raw_ptr");
-      result.elementType =
-          std::make_unique<TypeAnnotation>(parseTypeFromString(inner));
+      sun::ast::TypeAnnotation result("raw_ptr");
+      result.elementType = std::make_unique<sun::ast::TypeAnnotation>(
+          parseTypeFromString(inner));
       result.canError = canError;
       return result;
     }
@@ -3934,9 +4022,9 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
   // Handle ref types: ref T or ref(T)
   if (cleanType.size() > 4 && cleanType.substr(0, 4) == "ref ") {
     std::string inner = cleanType.substr(4);
-    TypeAnnotation result("ref");
+    sun::ast::TypeAnnotation result("ref");
     result.elementType =
-        std::make_unique<TypeAnnotation>(parseTypeFromString(inner));
+        std::make_unique<sun::ast::TypeAnnotation>(parseTypeFromString(inner));
     result.canError = canError;
     return result;
   }
@@ -3944,9 +4032,9 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
     size_t end = cleanType.rfind(')');
     if (end != std::string::npos) {
       std::string inner = cleanType.substr(4, end - 4);
-      TypeAnnotation result("ref");
-      result.elementType =
-          std::make_unique<TypeAnnotation>(parseTypeFromString(inner));
+      sun::ast::TypeAnnotation result("ref");
+      result.elementType = std::make_unique<sun::ast::TypeAnnotation>(
+          parseTypeFromString(inner));
       result.canError = canError;
       return result;
     }
@@ -3973,16 +4061,16 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
         }
       }
 
-      TypeAnnotation result("array");
+      sun::ast::TypeAnnotation result("array");
       if (firstComma == std::string::npos) {
         // Unsized array: array<T>
-        result.elementType =
-            std::make_unique<TypeAnnotation>(parseTypeFromString(inner));
+        result.elementType = std::make_unique<sun::ast::TypeAnnotation>(
+            parseTypeFromString(inner));
       } else {
         // Sized array: array<T, dim1, dim2, ...>
         std::string elemType = inner.substr(0, firstComma);
-        result.elementType =
-            std::make_unique<TypeAnnotation>(parseTypeFromString(elemType));
+        result.elementType = std::make_unique<sun::ast::TypeAnnotation>(
+            parseTypeFromString(elemType));
 
         // Parse dimensions
         std::string dims = inner.substr(firstComma + 1);
@@ -4008,9 +4096,9 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
     size_t end = cleanType.rfind('>');
     if (end != std::string::npos) {
       std::string inner = cleanType.substr(11, end - 11);
-      TypeAnnotation result("static_ptr");
-      result.elementType =
-          std::make_unique<TypeAnnotation>(parseTypeFromString(inner));
+      sun::ast::TypeAnnotation result("static_ptr");
+      result.elementType = std::make_unique<sun::ast::TypeAnnotation>(
+          parseTypeFromString(inner));
       result.canError = canError;
       return result;
     }
@@ -4019,9 +4107,9 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
     size_t end = cleanType.rfind(')');
     if (end != std::string::npos) {
       std::string inner = cleanType.substr(11, end - 11);
-      TypeAnnotation result("static_ptr");
-      result.elementType =
-          std::make_unique<TypeAnnotation>(parseTypeFromString(inner));
+      sun::ast::TypeAnnotation result("static_ptr");
+      result.elementType = std::make_unique<sun::ast::TypeAnnotation>(
+          parseTypeFromString(inner));
       result.canError = canError;
       return result;
     }
@@ -4042,7 +4130,7 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
         std::string argsStr =
             cleanType.substr(angleBracketPos + 1, end - angleBracketPos - 1);
 
-        TypeAnnotation result(baseName);
+        sun::ast::TypeAnnotation result(baseName);
 
         // Parse comma-separated type arguments, handling nested generics
         int depth = 0;
@@ -4063,8 +4151,9 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
               argStr = argStr.substr(start, stop - start + 1);
             }
             if (!argStr.empty()) {
-              result.typeArguments.push_back(std::make_unique<TypeAnnotation>(
-                  parseTypeFromString(argStr)));
+              result.typeArguments.push_back(
+                  std::make_unique<sun::ast::TypeAnnotation>(
+                      parseTypeFromString(argStr)));
             }
             argStart = i + 1;
           }
@@ -4078,14 +4167,14 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
 
   // Default: treat as a class/interface name or type parameter
   std::string typeName = cleanType;
-  TypeAnnotation result(typeName);
+  sun::ast::TypeAnnotation result(typeName);
   result.canError = canError;
   return result;
 }
 
 // In parser.cpp (implementation)
 std::unique_ptr<BlockExprAST> Parser::parseString(const std::string& source) {
-  sourceFileId_ = sun::nextSourceFileId();
+  sourceFileId_ = sun::support::nextSourceFileId();
   std::istringstream ss(source);
   lexer.resetInput(ss);  // point the lexer at a new stream; keeps the buffer
                          // and position reset without touching the shared DFA
@@ -4114,18 +4203,18 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
   getNextToken();  // eat class name
 
   // Parse optional type parameters: class Name<'a, T, ...>
-  std::vector<LifetimeParameter> lifetimeParameters;
-  std::vector<TypeParameter> typeParameters =
+  std::vector<sun::ast::LifetimeParameter> lifetimeParameters;
+  std::vector<sun::ast::TypeParameter> typeParameters =
       parseTypeParameterList(&lifetimeParameters);
 
   // Parse optional implements clause
-  std::vector<ImplementedInterfaceAST> implementedInterfaces;
+  std::vector<sun::ast::ImplementedInterfaceAST> implementedInterfaces;
   if (curTok.kind == TokenKind::IMPLEMENTS) {
     getNextToken();  // eat 'implements'
 
     // Parse comma-separated list of interface names with optional type args
     while (curTok.kind == TokenKind::IDENTIFIER) {
-      ImplementedInterfaceAST iface;
+      sun::ast::ImplementedInterfaceAST iface;
       iface.name = curTok.getIdentifier().value();
       getNextToken();  // eat interface name
       parseQualifiedNameTail(iface.name);
@@ -4165,15 +4254,15 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
                          "expected '{' after class name");
   getNextToken();  // eat '{'
 
-  std::vector<ClassFieldDecl> fields;
+  std::vector<sun::ast::ClassFieldDecl> fields;
   std::vector<ClassMethodDecl> methods;
 
   // Parse class body (fields and methods)
   while (curTok.kind != TokenKind::BRACE_CLOSE &&
          curTok.kind != TokenKind::TOK_EOF) {
     Position memberStart = captureStart();
-    sun::Visibility memberVis =
-        parsePublic() ? sun::Visibility::Public : sun::Visibility::Private;
+    Visibility memberVis =
+        parsePublic() ? Visibility::Public : Visibility::Private;
     bool isConstMethod = parseConstModifier();
     bool isUnsafeMethod = curTok.kind == TokenKind::UNSAFE;
     if (isUnsafeMethod) {
@@ -4203,11 +4292,12 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
       }
       getNextToken();  // eat ':'
 
-      TypeAnnotation fieldType = parseTypeAnnotation();
+      sun::ast::TypeAnnotation fieldType = parseTypeAnnotation();
       std::unique_ptr<ExprAST> initializer;
       if (curTok.kind == TokenKind::EQUAL) {
         getNextToken();
         initializer = curTok.kind == TokenKind::BRACE_OPEN
+                          /** Consumes tokens for a field initializer list and builds its syntax-tree representation. */
                           ? parseStructLiteral()
                           : parseExpression();
         if (!initializer)
@@ -4231,7 +4321,7 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
                 curTok.getIdentifier() == "deinit")) {
       // Constructor or destructor: init(args) { } / deinit() { }
       std::string name = curTok.getIdentifier().value();
-      if (memberVis == sun::Visibility::Public)
+      if (memberVis == Visibility::Public)
         parsingError("'" + name +
                      "' is always public; remove the 'public' keyword");
       if (isConstMethod)
@@ -4253,8 +4343,7 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
       auto func = parseFunction(/*isClassMethod=*/true);
       if (!func) return nullptr;
       func->setVisibility(memberVis);
-      if (memberVis == sun::Visibility::Public || isConstMethod ||
-          isUnsafeMethod)
+      if (memberVis == Visibility::Public || isConstMethod || isUnsafeMethod)
         extendSpanStart(*func, memberStart);
 
       func->getProtoMut().setConstMethod(isConstMethod);
@@ -4307,8 +4396,8 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
   getNextToken();  // eat interface name
 
   // Parse optional type parameters: interface Name<'a, T, ...>
-  std::vector<LifetimeParameter> lifetimeParameters;
-  std::vector<TypeParameter> typeParameters =
+  std::vector<sun::ast::LifetimeParameter> lifetimeParameters;
+  std::vector<sun::ast::TypeParameter> typeParameters =
       parseTypeParameterList(&lifetimeParameters);
 
   if (curTok.kind != TokenKind::BRACE_OPEN) {
@@ -4317,15 +4406,15 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
   }
   getNextToken();  // eat '{'
 
-  std::vector<InterfaceFieldDecl> fields;
-  std::vector<InterfaceMethodDecl> methods;
+  std::vector<sun::ast::InterfaceFieldDecl> fields;
+  std::vector<sun::ast::InterfaceMethodDecl> methods;
 
   // Parse interface body (fields and methods)
   while (curTok.kind != TokenKind::BRACE_CLOSE &&
          curTok.kind != TokenKind::TOK_EOF) {
     Position memberStart = captureStart();
-    sun::Visibility memberVis =
-        parsePublic() ? sun::Visibility::Public : sun::Visibility::Private;
+    Visibility memberVis =
+        parsePublic() ? Visibility::Public : Visibility::Private;
     bool isConstMethod = parseConstModifier();
     bool isUnsafeMethod = curTok.kind == TokenKind::UNSAFE;
     if (isUnsafeMethod) {
@@ -4357,7 +4446,7 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
       }
       getNextToken();  // eat ':'
 
-      TypeAnnotation fieldType = parseTypeAnnotation();
+      sun::ast::TypeAnnotation fieldType = parseTypeAnnotation();
 
       if (curTok.kind != TokenKind::SEMI_COLON) {
         parsingError("expected ';' after field declaration");
@@ -4397,14 +4486,14 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
       getNextToken();  // eat method name
 
       // Parse optional type parameters: method name<'a, T>(...)
-      std::vector<LifetimeParameter> lifetimeParameters;
-      std::vector<TypeParameter> typeParameters =
+      std::vector<sun::ast::LifetimeParameter> lifetimeParameters;
+      std::vector<sun::ast::TypeParameter> typeParameters =
           parseTypeParameterList(&lifetimeParameters);
 
       expectCurrentTokenKind(TokenKind::PAREN_OPEN,
                              "Expected '(' in method declaration");
 
-      std::vector<std::pair<std::string, TypeAnnotation>> args;
+      std::vector<std::pair<std::string, sun::ast::TypeAnnotation>> args;
       std::optional<VariadicParam> variadicParam;
       getNextToken();  // eat '('
 
@@ -4441,7 +4530,7 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
       getNextToken();  // eat ')'
 
       // Check for return type
-      std::optional<TypeAnnotation> retType;
+      std::optional<sun::ast::TypeAnnotation> retType;
       if (curTok.kind != TokenKind::BRACE_OPEN &&
           curTok.kind != TokenKind::SEMI_COLON) {
         retType = parseTypeAnnotation();
@@ -4481,13 +4570,12 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
       proto->setUnsafeMethod(isUnsafeMethod);
       auto func = finishNode(
           std::make_unique<FunctionAST>(std::move(proto), std::move(body)),
-          (memberVis == sun::Visibility::Public || isConstMethod ||
-           isUnsafeMethod)
+          (memberVis == Visibility::Public || isConstMethod || isUnsafeMethod)
               ? memberStart
               : methodStart);
       func->setVisibility(memberVis);
 
-      InterfaceMethodDecl method;
+      sun::ast::InterfaceMethodDecl method;
       method.function = std::move(func);
       method.hasDefaultImpl = hasDefaultImpl;
       method.isConst = isConstMethod;
@@ -4534,12 +4622,13 @@ unique_ptr<EnumDefinitionAST> Parser::parseEnumDefinition() {
   getNextToken();  // eat enum name
 
   // Optional type parameters: enum Option<T> { ... }
-  std::vector<TypeParameter> typeParameters = parseTypeParameterList();
+  std::vector<sun::ast::TypeParameter> typeParameters =
+      parseTypeParameterList();
 
   std::string underlyingType;
   if (curTok.kind != TokenKind::BRACE_OPEN) {
     auto annotation = parseTypeAnnotation();
-    auto type = sun::Types::fromString(annotation.baseName);
+    auto type = sun::semantic_analysis::Types::fromString(annotation.baseName);
     if (!type || !type->isIntegral() || annotation.isGeneric()) {
       logAndThrowError("Enum underlying type must be an integer type", start);
     }
@@ -4557,7 +4646,7 @@ unique_ptr<EnumDefinitionAST> Parser::parseEnumDefinition() {
   expectCurrentTokenKind(TokenKind::BRACE_OPEN, "expected '{' after enum name");
   getNextToken();  // eat '{'
 
-  std::vector<EnumVariantDecl> variants;
+  std::vector<sun::ast::EnumVariantDecl> variants;
   uint64_t nextValue = 0;
   bool nextValueOverflow = false;
 
@@ -4573,7 +4662,7 @@ unique_ptr<EnumDefinitionAST> Parser::parseEnumDefinition() {
     getNextToken();  // eat variant name
 
     // Optional payload types: Circle(f64), Rect(f64, f64)
-    std::vector<TypeAnnotation> payloadTypes;
+    std::vector<sun::ast::TypeAnnotation> payloadTypes;
     if (curTok.kind == TokenKind::PAREN_OPEN) {
       getNextToken();  // eat '('
       if (curTok.kind == TokenKind::PAREN_CLOSE) {
@@ -4663,8 +4752,8 @@ unique_ptr<ExprAST> Parser::parseThrow() {
     return nullptr;
   }
 
-  return finishNode(std::make_unique<ThrowExprAST>(std::move(errorExpr)),
-                    start);
+  return finishNode(
+      std::make_unique<sun::ast::ThrowExprAST>(std::move(errorExpr)), start);
 }
 
 // Parse an unsafe block or a single unary expression.
@@ -4684,7 +4773,7 @@ unique_ptr<ExprAST> Parser::parseUnsafeBlock() {
     body->setLocation(operand->getLocation());
     body->addExpression(std::move(operand));
     return finishNode(
-        std::make_unique<UnsafeBlockAST>(std::move(body), true), loc);
+        std::make_unique<sun::ast::UnsafeBlockAST>(std::move(body), true), loc);
   }
 
   auto body = parseBlock(BlockKind::Unsafe);
@@ -4693,7 +4782,8 @@ unique_ptr<ExprAST> Parser::parseUnsafeBlock() {
     return nullptr;
   }
 
-  return finishNode(std::make_unique<UnsafeBlockAST>(std::move(body)), loc);
+  return finishNode(std::make_unique<sun::ast::UnsafeBlockAST>(std::move(body)),
+                    loc);
 }
 
 // Parse try-catch expression: try { ... } catch (e: IError) { ... }
@@ -4715,7 +4805,7 @@ unique_ptr<ExprAST> Parser::parseTryCatch() {
   }
 
   // Parse one or more catch clauses: catch (name: Type) { ... }
-  std::vector<CatchClause> catchClauses;
+  std::vector<sun::ast::CatchClause> catchClauses;
   while (curTok.kind == TokenKind::CATCH) {
     getNextToken();  // eat 'catch'
 
@@ -4725,7 +4815,7 @@ unique_ptr<ExprAST> Parser::parseTryCatch() {
     }
     getNextToken();  // eat '('
 
-    CatchClause catchClause;
+    sun::ast::CatchClause catchClause;
 
     if (curTok.kind != TokenKind::IDENTIFIER) {
       throwIdentifierError("expected binding name in catch clause");
@@ -4760,7 +4850,8 @@ unique_ptr<ExprAST> Parser::parseTryCatch() {
     catchClauses.push_back(std::move(catchClause));
   }
 
-  return finishNode(std::make_unique<TryCatchExprAST>(std::move(tryBlock),
-                                                      std::move(catchClauses)),
+  return finishNode(std::make_unique<sun::ast::TryCatchExprAST>(
+                        std::move(tryBlock), std::move(catchClauses)),
                     start);
 }
+}  // namespace sun::parsing

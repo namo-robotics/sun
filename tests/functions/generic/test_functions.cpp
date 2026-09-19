@@ -8,6 +8,8 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+
 TEST(Functions_Generic, generic_identity_function) {
   auto value = executeString(R"(
     function identity <T> (x: T) T {
@@ -638,4 +640,30 @@ TEST(Functions_Generic, duplicate_pack_only_declaration_is_rejected) {
     function main() i32 { return 0; }
   )"),
                                 "Generic function 'count' is already declared");
+}
+
+TEST(Functions_Generic, recursive_specialization_reuses_prepared_callable) {
+  EXPECT_EQ(executeString(R"(
+    function count<T>(value: T, n: i32) i32 {
+      if (n == 0) { return 0; }
+      return count<T>(value, n - 1) + 1;
+    }
+    function main() i32 { return count<i32>(7, 5); }
+  )"),
+            5);
+}
+
+TEST(Functions_Generic, mutually_recursive_specializations) {
+  EXPECT_EQ(executeString(R"(
+    function even<T>(value: T, n: i32) i32 {
+      if (n == 0) { return 1; }
+      return odd<T>(value, n - 1);
+    }
+    function odd<T>(value: T, n: i32) i32 {
+      if (n == 0) { return 0; }
+      return even<T>(value, n - 1);
+    }
+    function main() i32 { return even<i32>(7, 6); }
+  )"),
+            1);
 }

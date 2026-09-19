@@ -8,6 +8,11 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::compileString;
+using sun::driver::executeString;
+using sun::driver::executeStringWithStdlib;
+using sun::support::SunError;
+
 // ============================================================================
 // Basic Class Definition Tests
 // ============================================================================
@@ -1879,6 +1884,33 @@ TEST(Classes, borrowed_class_constructor_argument_is_rejected) {
       var e = E(borrow(x));
       return 0;
     }
+  )"),
+               SunError);
+}
+
+TEST(Classes, duplicate_method_signatures_are_rejected_before_emission) {
+  EXPECT_THROW(compileString(R"(
+    class Box {
+      method value() i32 { return 1; }
+      method value() i32 { return 2; }
+    }
+    function main() i32 { return 0; }
+  )"),
+               SunError);
+  EXPECT_THROW(compileString(R"(
+    class Box<T> {
+      method value() i32 { return 1; }
+      method value() i32 { return 2; }
+    }
+    function main() i32 { var box = Box<i32>(); return box.value(); }
+  )"),
+               SunError);
+  EXPECT_THROW(compileString(R"(
+    interface View {
+      method value() i32 { return 1; }
+      method value() i32 { return 2; }
+    }
+    function main() i32 { return 0; }
   )"),
                SunError);
 }

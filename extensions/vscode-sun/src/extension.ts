@@ -12,6 +12,7 @@ import { activateTestExplorer } from './testExplorer';
 
 let client: LanguageClient | undefined;
 
+/** Selects the configured or available Sun language-server executable. */
 function resolveServerCommand(configuredPath: string): string {
   if (path.isAbsolute(configuredPath) && fs.existsSync(configuredPath)) {
     return configuredPath;
@@ -28,12 +29,14 @@ function resolveServerCommand(configuredPath: string): string {
   return configuredPath;
 }
 
+/** Reports whether an executable can be found on the process search path. */
 function commandExistsOnPath(command: string): boolean {
   const checkCommand = process.platform === 'win32' ? 'where' : 'which';
   const result = spawnSync(checkCommand, [command], { stdio: 'ignore' });
   return result.status === 0;
 }
 
+/** Checks whether the selected language-server command can be launched. */
 function canLaunchServer(command: string): boolean {
   if (path.isAbsolute(command)) {
     return fs.existsSync(command);

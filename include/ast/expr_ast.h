@@ -14,10 +14,18 @@
 #include "semantic_analysis/visibility.h"
 #include "support/source_file.h"
 
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
+namespace sun::ast {
+using sun::semantic_analysis::DeclarationId;
+using sun::semantic_analysis::PortableDeclarationKey;
+using sun::semantic_analysis::Visibility;
+using sun::support::SourceFileId;
+
+/** Base syntax node carrying source positions and semantic analysis annotations. */
 class ExprAST {
  protected:
   mutable std::unique_ptr<ExprAnalysis> analysis_;  // Analysis metadata
-  sun::SourceFileId sourceFileId_ = 0;
+  SourceFileId sourceFileId_ = 0;
   /** When set, this expression IS a fully qualified module name, identified by
    * its defining bundle and original module path. For a using statement, this
    * identifies its target module instead of the statement itself.
@@ -26,32 +34,37 @@ class ExprAST {
    * source aliases in the caller. Source spelling is kept for formatting and
    * diagnostics.
    */
-  std::optional<sun::QualifiedName> moduleQualifiedName_;
-  Position location_;         // Original source location
+  std::optional<PortableDeclarationKey> moduleDeclaration_;
+  sun::support::Position location_;  // Original source location
   bool precompiled_ = false;  // True if from precompiled library
   bool skipCodegen_ = false;  // Set by semantic analyzer for diamond duplicates
   std::string symbolPrefix_;  // Hash prefix for moon symbol isolation
-  sun::Visibility visibility_ =
-      sun::Visibility::Private;  // Declaration visibility
+  Visibility visibility_ = Visibility::Private;  // Declaration visibility
 
-  // Virtual method to ensure analysis is allocated with the correct type
-  // Derived classes with specialized analysis types should override this
+  /**
+   * Virtual method to ensure analysis is allocated with the correct type
+   * Derived classes with specialized analysis types should override this
+   */
   virtual void ensureAnalysis() const {
     if (!analysis_) {
       analysis_ = std::make_unique<ExprAnalysis>();
     }
   }
 
-  // Accessor for analysis data - calls ensureAnalysis to allocate correct type
+  /**
+   * Accessor for analysis data - calls ensureAnalysis to allocate correct type
+   */
   ExprAnalysis& analysis() const {
     ensureAnalysis();
     return *analysis_;
   }
 
-  // Copy base class fields to a cloned node. Called by derived clone() methods.
+  /**
+   * Copy base class fields to a cloned node. Called by derived clone() methods.
+   */
   void cloneBase(ExprAST& dest) const {
     dest.sourceFileId_ = sourceFileId_;
-    dest.moduleQualifiedName_ = moduleQualifiedName_;
+    dest.moduleDeclaration_ = moduleDeclaration_;
     dest.location_ = location_;
     dest.precompiled_ = precompiled_;
     dest.skipCodegen_ = skipCodegen_;
@@ -64,95 +77,165 @@ class ExprAST {
   }
 
  public:
+  /** Destroys this object and releases its owned members. */
   virtual ~ExprAST() = default;
 
   /** The original module denoted by this expression or retained using target.
    */
-  const std::optional<sun::QualifiedName>& getModuleQualifiedName() const {
-    return moduleQualifiedName_;
+  const std::optional<PortableDeclarationKey>& getModuleDeclaration() const {
+    return moduleDeclaration_;
   }
 
   /** Bind a module reference without changing its source spelling. */
-  void setModuleQualifiedName(sun::QualifiedName name) {
-    moduleQualifiedName_ = std::move(name);
+  void setModuleDeclaration(PortableDeclarationKey name) {
+    moduleDeclaration_ = std::move(name);
   }
 
   /** The source unit whose imports apply to this node. */
-  sun::SourceFileId getSourceFileId() const { return sourceFileId_; }
+  SourceFileId getSourceFileId() const { return sourceFileId_; }
 
   /** Preserve the source context when parsing or synthesizing a node. */
-  void setSourceFileId(sun::SourceFileId id) { sourceFileId_ = id; }
+  void setSourceFileId(SourceFileId id) { sourceFileId_ = id; }
 
   /** Fill missing source identities without changing imported subtrees. */
-  void inheritSourceFile(sun::SourceFileId id);
+  void inheritSourceFile(SourceFileId id);
+  /** Returns the syntax-node kind used to dispatch tree visitors. */
   virtual ASTNodeType getType() const = 0;
 
-  // Debug representation of this AST node
+  /**
+   * Debug representation of this AST node
+   */
   virtual std::string toString() const = 0;
 
-  // Label for DOT graph visualization (includes type name)
+  /**
+   * Label for DOT graph visualization (includes type name)
+   */
   virtual std::string dotLabel() const = 0;
 
-  // Print to stderr (easier to call from debugger than toString())
+  /**
+   * Print to stderr (easier to call from debugger than toString())
+   */
   void dump() const { std::cerr << toString() << "\n"; }
 
-  // Clone this AST node (deep copy) via protobuf serialization roundtrip.
-  // This approach is less error-prone than manual cloning as it automatically
-  // handles all fields through the proto schema.
+  /**
+   * Clone this AST node (deep copy) via protobuf serialization roundtrip.
+   * This approach is less error-prone than manual cloning as it automatically
+   * handles all fields through the proto schema.
+   */
   std::unique_ptr<ExprAST> clone() const;
 
-  // Invoke fn on every direct child slot that holds a replaceable expression
-  // (used by AST-rewriting passes, e.g. lowering). Strongly-typed children
-  // (e.g. a BlockExprAST member) cannot be replaced, so overrides forward
-  // into them instead of exposing their slot.
+  /**
+   * Invoke fn on every direct child slot that holds a replaceable expression
+   * (used by AST-rewriting passes, e.g. lowering). Strongly-typed children
+   * (e.g. a BlockExprAST member) cannot be replaced, so overrides forward
+   * into them instead of exposing their slot.
+   */
   using ChildSlotFn = std::function<void(std::unique_ptr<ExprAST>&)>;
+  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
   virtual void forEachChildSlot(const ChildSlotFn&) {}
 
-  // Declaration visibility (meaningful on declaration nodes only)
-  sun::Visibility getVisibility() const { return visibility_; }
-  void setVisibility(sun::Visibility v) { visibility_ = v; }
-  bool isPublic() const { return visibility_ == sun::Visibility::Public; }
+  /**
+   * Declaration visibility (meaningful on declaration nodes only)
+   */
+  Visibility getVisibility() const { return visibility_; }
+  /** Sets which scopes may access this declaration. */
+  void setVisibility(Visibility v) { visibility_ = v; }
+  /** Reports whether this declaration is accessible outside its defining scope. */
+  bool isPublic() const { return visibility_ == Visibility::Public; }
 
   // Analysis data access
+  /** Reports whether this object has analysis. */
   bool hasAnalysis() const { return analysis_ != nullptr; }
-  void clearAnalysis() const { analysis_.reset(); }
+  /** Read the declaration identity without allocating computed analysis. */
+  virtual DeclarationId getDeclarationId() const {
+    return analysis_ ? analysis_->declaration.id : DeclarationId{};
+  }
+  /** Assign the identity allocated by the owning analysis session. */
+  virtual void setDeclarationId(DeclarationId id) const {
+    analysis().declaration.id = id;
+  }
+  /** Access declaration and parameter identities retained within a session. */
+  virtual sun::semantic_analysis::DeclarationIdentity& declarationIdentity()
+      const {
+    return analysis().declaration;
+  }
+  /** Return the declaration selected by semantic resolution. */
+  DeclarationId getTargetDeclarationId() const {
+    return analysis_ ? analysis_->targetDeclaration : DeclarationId{};
+  }
+  /** Record a resolved reference without changing the source spelling. */
+  void setTargetDeclarationId(DeclarationId id) const {
+    analysis().targetDeclaration = id;
+  }
+  /** Discard computed results while preserving this session's identities. */
+  virtual void clearComputedAnalysis() const {
+    if (!analysis_) return;
+    auto identity = std::move(analysis_->declaration);
+    analysis_.reset();
+    ensureAnalysis();
+    analysis_->declaration = std::move(identity);
+  }
+  /** Discard all annotations when the owning analysis session is discarded. */
+  virtual void resetAnalysisSession() const {
+    if (!analysis_) return;
+    auto imported = std::move(analysis_->declaration.imported);
+    analysis_.reset();
+    if (imported) analysis().declaration.imported = std::move(imported);
+  }
 
-  // Type annotation set by semantic analyzer (delegates to analysis)
-  void setResolvedType(sun::TypePtr type) const {
+  /**
+   * Type annotation set by semantic analyzer (delegates to analysis)
+   */
+  void setResolvedType(sun::semantic_analysis::TypePtr type) const {
     analysis().resolvedType = std::move(type);
   }
-  sun::TypePtr getResolvedType() const {
+  /** Returns the type assigned by semantic analysis, if available. */
+  sun::semantic_analysis::TypePtr getResolvedType() const {
     return analysis_ ? analysis_->resolvedType : nullptr;
   }
+  /** Reports whether semantic analysis has assigned a type. */
   bool hasResolvedType() const {
     return analysis_ && analysis_->resolvedType != nullptr;
   }
+  /** Discards the cached type so analysis can resolve it again. */
   void clearResolvedType() const {
     if (analysis_) analysis_->resolvedType = nullptr;
   }
 
-  // Source location tracking
-  void setLocation(Position loc) { location_ = loc; }
+  /**
+   * Source location tracking
+   */
+  void setLocation(sun::support::Position loc) { location_ = loc; }
+  /** Sets the source position used for diagnostics. */
   void setLocation(int line, int column) {
     location_.line = line;
     location_.column = column;
   }
-  const Position& getLocation() const { return location_; }
+  /** Returns the source position used for diagnostics. */
+  const sun::support::Position& getLocation() const { return location_; }
+  /** Returns the source line used to report this node in diagnostics. */
   int getLine() const { return location_.line; }
+  /** Returns the source column used to report this node in diagnostics. */
   int getColumn() const { return location_.column; }
 
   // Convenience type checks
+  /** Reports whether this syntax node represents a function definition. */
   bool isFunction() const { return getType() == ASTNodeType::FUNCTION; }
+  /** Reports whether this syntax node represents a lambda expression. */
   bool isLambda() const { return getType() == ASTNodeType::LAMBDA; }
+  /** Reports whether this syntax node represents a lexical block. */
   bool isBlock() const { return getType() == ASTNodeType::BLOCK; }
+  /** Reports whether this syntax node represents a return statement. */
   bool isReturn() const { return getType() == ASTNodeType::RETURN; }
 
-  /// Returns true if this expression is a temporary (rvalue) that will be
-  /// destroyed at the end of the statement. Temporaries include:
-  /// - Constructor/function calls that return class values (CALL, GENERIC_CALL)
-  /// - Literals that produce class values
-  /// Named variables (VARIABLE_REFERENCE) and member accesses are NOT
-  /// temporaries.
+  /**
+   * Returns true if this expression is a temporary (rvalue) that will be
+   * destroyed at the end of the statement. Temporaries include:
+   * - Constructor/function calls that return class values (CALL, GENERIC_CALL)
+   * - Literals that produce class values
+   * Named variables (VARIABLE_REFERENCE) and member accesses are NOT
+   * temporaries.
+   */
   bool isTemporary() const {
     ASTNodeType t = getType();
     // CALL and GENERIC_CALL produce temporaries when returning class values
@@ -164,33 +247,51 @@ class ExprAST {
            t == ASTNodeType::BLOCK || t == ASTNodeType::MATCH;
   }
 
-  /// Returns true if this expression is an lvalue (can be assigned to,
-  /// has a stable address). Includes variables, member access, and indexing.
+  /**
+   * Returns true if this expression is an lvalue (can be assigned to,
+   * has a stable address). Includes variables, member access, and indexing.
+   */
   bool isLvalue() const {
     ASTNodeType t = getType();
     return t == ASTNodeType::VARIABLE_REFERENCE ||
            t == ASTNodeType::MEMBER_ACCESS || t == ASTNodeType::INDEX;
   }
 
-  // Precompiled flag (for definitions loaded from .moon files)
+  /**
+   * Precompiled flag (for definitions loaded from .moon files)
+   */
   bool isPrecompiled() const { return precompiled_; }
+  /** Marks whether this node came from an already compiled library. */
   void setPrecompiled(bool value) { precompiled_ = value; }
 
-  // Skip codegen flag (set by semantic analyzer for diamond import duplicates)
+  /**
+   * Skip codegen flag (set by semantic analyzer for diamond import duplicates)
+   */
   bool shouldSkipCodegen() const { return skipCodegen_; }
+  /** Controls whether code generation omits this declaration. */
   void setSkipCodegen(bool value) { skipCodegen_ = value; }
 
-  // Symbol prefix for moon library isolation (content hash)
+  /**
+   * Symbol prefix for moon library isolation (content hash)
+   */
   const std::string& getSymbolPrefix() const { return symbolPrefix_; }
+  /** Sets the prefix used to keep generated library symbols distinct. */
   void setSymbolPrefix(const std::string& prefix) { symbolPrefix_ = prefix; }
 
-  // Moved flag: set by borrow checker when ownership is transferred
-  // (returned, assigned to variable/field, passed by value). Moved expressions
-  // should not have deinit called - the destination owns the data.
+  /**
+   * Moved flag: set by borrow checker when ownership is transferred
+   * (returned, assigned to variable/field, passed by value). Moved expressions
+   * should not have deinit called - the destination owns the data.
+   */
   bool isMoved() const { return analysis_ && analysis_->moved; }
+  /** Records whether ownership of this expression has already been transferred. */
   void setMoved(bool value) const { analysis().moved = value; }
 
  protected:
+  /** Creates a base syntax node without a source position or analysis annotations. */
   ExprAST() = default;
-  explicit ExprAST(Position loc) : location_(loc) {}
+  /** Creates a base syntax node at the supplied source position. */
+  explicit ExprAST(sun::support::Position loc) : location_(loc) {}
 };
+
+}  // namespace sun::ast

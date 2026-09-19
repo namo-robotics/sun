@@ -28,16 +28,23 @@
 //     }
 //   }
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** Produces successive items from a borrowed container until iteration is exhausted. */
   public interface IIterator<T, Container> {
-    // Hand back the next item, or None once the container is exhausted. The
-    // container is passed by reference because the loop lowering supplies its
-    // address.
+    /**
+     * Hand back the next item, or None once the container is exhausted. The
+     * container is passed by reference because the loop lowering supplies its
+     * address.
+     */
     method next(container: ref Container) Option<T>;
   }
 
+  /** Provides an iterator over the values held by a container. */
   public interface IIterable<T, Self> {
-    // Build a fresh iterator positioned at the start of this container.
+    /**
+     * Build a fresh iterator positioned at the start of this container.
+     */
     method iter() IIterator<T, Self>;
   }
 }

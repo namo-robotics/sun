@@ -14,7 +14,10 @@
 
 #include "support/error.h"
 
-namespace sun {
+using sun::support::logAndThrowError;
+
+/** Builds and loads compiled Moon libraries and their declaration metadata. */
+namespace sun::moon_bundling {
 
 std::filesystem::path MoonCache::defaultCacheDir() {
   if (const char* override = std::getenv("SUN_MOON_CACHE")) {
@@ -88,6 +91,7 @@ void MoonCache::validateUrl(const std::string& url) {
   }
 }
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 std::string githubToken_;
 }  // namespace
@@ -219,4 +223,4 @@ std::filesystem::path MoonCache::fetch(
   return std::filesystem::absolute(dest);
 }
 
-}  // namespace sun
+}  // namespace sun::moon_bundling

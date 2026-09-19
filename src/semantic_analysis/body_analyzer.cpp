@@ -1,4 +1,4 @@
-#include "semantic_analysis/body_analysis_pass.h"
+#include "semantic_analysis/body_analyzer.h"
 
 #include "ast.h"
 #include "semantic_analysis/semantic_analyzer.h"
@@ -6,26 +6,32 @@
 #include "semantic_analysis/type_rules.h"
 #include "support/error.h"
 
-void BodyAnalysisPass::run(BlockExprAST& block) {
+using sun::semantic_analysis::TypePtr;
+
+using sun::ast::BlockExprAST;
+using sun::ast::PrototypeAST;
+using sun::support::logAndThrowError;
+
+/** Resolves declarations and checks the types and meaning of Sun programs. */
+namespace sun::semantic_analysis {
+
+void BodyAnalyzer::analyzeBlock(BlockExprAST& block) {
   for (const auto& expression : block.getBody()) {
     analyzer_.analyzeExpr(*expression);
   }
 }
 
-void BodyAnalysisPass::runInFunctionScope(BlockExprAST& body) {
-  localDeclarationNamingPass_.run(body);
-  run(body);
-}
-
-// Sun has no implicit returns: a function whose signature promises a value
-// must leave through an explicit `return` (or a throw) on every path. Checked
-// after the body is analyzed, so match discriminants carry their types.
+/**
+ * Sun has no implicit returns: a function whose signature promises a value
+ * must leave through an explicit `return` (or a throw) on every path. Checked
+ * after the body is analyzed, so match discriminants carry their types.
+ */
 static void checkAllPathsReturn(const PrototypeAST& proto,
                                 const BlockExprAST& body,
-                                const sun::TypePtr& returnType,
-                                const Position& loc) {
+                                const TypePtr& returnType,
+                                const sun::support::Position& loc) {
   if (!returnType || returnType->isVoid()) return;
-  if (sun::rules::alwaysExits(body)) return;
+  if (sun::semantic_analysis::alwaysExits(body)) return;
   const std::string name =
       proto.getName().empty() ? "lambda" : "'" + proto.getName() + "'";
   logAndThrowError(
@@ -35,7 +41,7 @@ static void checkAllPathsReturn(const PrototypeAST& proto,
       loc);
 }
 
-void BodyAnalysisPass::analyzeFunction(FunctionAST& func) {
+void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
   PrototypeAST& proto = const_cast<PrototypeAST&>(func.getProto());
 
   analyzer_.rejectRefEnvReturnType(proto.getReturnType(), func.getLocation(),
@@ -73,22 +79,21 @@ void BodyAnalysisPass::analyzeFunction(FunctionAST& func) {
         func.getLocation());
   }
 
-  // Compute function signature from qualified name and resolved param types
-  // This signature is used to create unique names for nested functions
-  std::string funcSig = sun::names::getFunctionSignature(
-      proto.getMangledName(), proto.getResolvedParamTypes());
+  // Format the function signature for scope diagnostics.
+  std::string funcSig = sun::semantic_analysis::formatFunctionSignature(
+      proto.getQualifiedName().display(), proto.getResolvedParamTypes());
 
   // Return type for return-position inference. Some paths (class method
   // pass 2) reach here before the proto's resolved return type is applied;
   // resolve the annotation in the current scope (type parameter bindings for
   // specialized classes are active here).
-  sun::TypePtr scopeReturnType = proto.getResolvedReturnType();
+  TypePtr scopeReturnType = proto.getResolvedReturnType();
   if (!scopeReturnType && proto.hasReturnType() && !proto.isGeneric()) {
     scopeReturnType =
         analyzer_.types().typeAnnotationToType(*proto.getReturnType());
   }
 
-  // Enter function scope with signature for nested function qualification
+  // Enter the function scope with its diagnostic signature.
   // Pass canThrow flag so throw expressions can be validated. A const method
   // body sees the const view of its return type: borrows of `this` are
   // `const ref` there, and the declared `ref` result is what callers with a
@@ -98,13 +103,12 @@ void BodyAnalysisPass::analyzeFunction(FunctionAST& func) {
   ctx_.enterFunctionScope(funcSig, proto.getQualifiedName(), proto.canThrow(),
                           scopeReturnType);
 
-  localDeclarationNamingPass_.run(const_cast<BlockExprAST&>(func.getBody()));
-
   // Declare 'this' for methods (when we're inside a class context); it is
   // immutable inside a const method
   if (ctx_.getCurrentClass()) {
-    ctx_.declareVariable("this", ctx_.getCurrentClass(), /*isParam=*/true,
-                         /*isConst=*/proto.isConstMethod());
+    ctx_.currentScope().declareVariable("this", ctx_.getCurrentClass(),
+                                        /*isParam=*/true,
+                                        /*isConst=*/proto.isConstMethod());
   }
 
   // If this is a generic function/method, bind each type parameter to itself
@@ -113,12 +117,15 @@ void BodyAnalysisPass::analyzeFunction(FunctionAST& func) {
   // IShape's members on a value of type T (see inferMemberAccessType).
   if (proto.isGeneric()) {
     std::vector<std::string> typeParams;
-    std::vector<sun::TypePtr> typeParamTypes;
-    for (const auto& tp : proto.getTypeParameters()) {
+    std::vector<TypePtr> typeParamTypes;
+    for (size_t i = 0; i < proto.getTypeParameters().size(); ++i) {
+      const auto& tp = proto.getTypeParameters()[i];
       typeParams.push_back(tp.name);
-      typeParamTypes.push_back(tp.toSunType());
+      typeParamTypes.push_back(
+          tp.toSunType(ctx_.types()->declarations,
+                       proto.declarationIdentity().typeParameters.at(i)));
     }
-    ctx_.addTypeParameterBindings(typeParams, typeParamTypes);
+    ctx_.currentScope().declareTypeParameters(typeParams, typeParamTypes);
   }
 
   // Field defaults see the definition scope and this, before parameters exist.
@@ -131,17 +138,21 @@ void BodyAnalysisPass::analyzeFunction(FunctionAST& func) {
   analyzer_.allowThisLifetime_ = savedAllowThisForDefaults;
 
   // Declare parameters
-  for (const auto& [argName, argType] : proto.getArgs()) {
-    sun::TypePtr paramType = analyzer_.types().typeAnnotationToType(argType);
-    ctx_.declareVariable(argName, paramType, /*isParam=*/true);
+  for (size_t i = 0; i < proto.getArgs().size(); ++i) {
+    const auto& [argName, argType] = proto.getArgs()[i];
+    TypePtr paramType = analyzer_.types().typeAnnotationToType(argType);
+    ctx_.currentScope().declareVariable(
+        argName, paramType, true, false,
+        proto.declarationIdentity().parameters.at(i));
   }
 
   // Add captured variables to scope (so nested functions can see them),
   // marked as captures so mutation checks and nested capture lists can
   // distinguish them from ordinary locals
   for (const auto& cap : proto.getCaptures()) {
-    ctx_.declareVariable(cap.name, cap.type);
-    if (VariableInfo* vi = ctx_.lookupVariable(cap.name)) {
+    ctx_.currentScope().declareVariable(cap.name, cap.type, false, cap.isConst,
+                                        cap.declarationId);
+    if (VariableInfo* vi = ctx_.currentScope().lookupVariable(cap.name)) {
       vi->captureKind = cap.kind;
       vi->isConst = cap.isConst;
     }
@@ -171,29 +182,33 @@ void BodyAnalysisPass::analyzeFunction(FunctionAST& func) {
   ctx_.exitScope();
 }
 
-void BodyAnalysisPass::analyzeLambda(LambdaAST& lambda) {
+void BodyAnalyzer::analyzeLambda(sun::ast::LambdaAST& lambda) {
   PrototypeAST& proto = const_cast<PrototypeAST&>(lambda.getProto());
 
   // Enter function scope (empty signature - lambdas are anonymous)
   // Nested functions in lambdas will still get outer function prefixes
   // Pass canThrow flag from the lambda's prototype
-  ctx_.enterFunctionScope("", sun::QualifiedName(), proto.canThrow(),
-                          proto.getResolvedReturnType());
+  ctx_.enterFunctionScope("", sun::semantic_analysis::QualifiedName(),
+                          proto.canThrow(), proto.getResolvedReturnType());
 
   // Lambdas don't have type parameters (no generic lambdas)
 
   // Declare parameters
-  for (const auto& [argName, argType] : proto.getArgs()) {
-    sun::TypePtr paramType = analyzer_.types().typeAnnotationToType(argType);
-    ctx_.declareVariable(argName, paramType, /*isParam=*/true);
+  for (size_t i = 0; i < proto.getArgs().size(); ++i) {
+    const auto& [argName, argType] = proto.getArgs()[i];
+    TypePtr paramType = analyzer_.types().typeAnnotationToType(argType);
+    ctx_.currentScope().declareVariable(
+        argName, paramType, true, false,
+        proto.declarationIdentity().parameters.at(i));
   }
 
   // Add captured variables to scope (so nested functions can see them),
   // marked as captures so mutation checks and nested capture lists can
   // distinguish them from ordinary locals
   for (const auto& cap : proto.getCaptures()) {
-    ctx_.declareVariable(cap.name, cap.type);
-    if (VariableInfo* vi = ctx_.lookupVariable(cap.name)) {
+    ctx_.currentScope().declareVariable(cap.name, cap.type, false, cap.isConst,
+                                        cap.declarationId);
+    if (VariableInfo* vi = ctx_.currentScope().lookupVariable(cap.name)) {
       vi->captureKind = cap.kind;
       vi->isConst = cap.isConst;
     }
@@ -205,7 +220,7 @@ void BodyAnalysisPass::analyzeLambda(LambdaAST& lambda) {
   for (const auto& lp : proto.getLifetimeParameters()) {
     analyzer_.activeLifetimeNames_.push_back(lp.name);
   }
-  runInFunctionScope(const_cast<BlockExprAST&>(lambda.getBody()));
+  analyzeBlock(const_cast<BlockExprAST&>(lambda.getBody()));
   analyzer_.activeLifetimeNames_.resize(lifetimeMark);
 
   // Same rule as named functions: no implicit returns
@@ -218,10 +233,11 @@ void BodyAnalysisPass::analyzeLambda(LambdaAST& lambda) {
 // Analyze one (cloned) method body of a specialized class. The caller has
 // entered the specialized class's scope inside the template's definition
 // scope, so the body sees exactly the names the template was written against.
-void BodyAnalysisPass::analyzeMethodWithBindings(
-    FunctionAST& methodFunc, std::shared_ptr<sun::ClassType> classType,
+void BodyAnalyzer::analyzeMethodWithBindings(
+    sun::ast::FunctionAST& methodFunc,
+    std::shared_ptr<sun::semantic_analysis::ClassType> classType,
     const std::vector<std::string>& typeParams,
-    const std::vector<sun::TypePtr>& typeArgs) {
+    const std::vector<TypePtr>& typeArgs) {
   SemanticContext::SourceFileGuard sourceFile(ctx_,
                                               methodFunc.getSourceFileId());
   // Step 2: Set up scope with type parameter bindings (only if needed)
@@ -242,18 +258,16 @@ void BodyAnalysisPass::analyzeMethodWithBindings(
   // Compute method signature with substituted param types for nested function
   // qualification
   const auto& proto = methodFunc.getProto();
-  std::vector<sun::TypePtr> substitutedParamTypes;
+  std::vector<TypePtr> substitutedParamTypes;
   for (const auto& [argName, argType] : proto.getArgs()) {
     substitutedParamTypes.push_back(
         analyzer_.types().typeAnnotationToType(argType));
   }
-  std::string methodSig = sun::names::getFunctionSignature(
-      classType->getMangledMethodName(proto.getName()), substitutedParamTypes);
-  std::string mangledMethodName =
-      classType->getMangledMethodName(proto.getName());
+  std::string methodSig = sun::semantic_analysis::formatFunctionSignature(
+      proto.getName(), substitutedParamTypes);
   // Resolve the return type under the active bindings so return-position
   // inference (e.g. `return Option.None;`) has the expected type
-  sun::TypePtr methodReturnType;
+  TypePtr methodReturnType;
   if (proto.hasReturnType()) {
     methodReturnType =
         analyzer_.types().typeAnnotationToType(*proto.getReturnType());
@@ -262,18 +276,14 @@ void BodyAnalysisPass::analyzeMethodWithBindings(
   if (proto.isConstMethod())
     methodReturnType = analyzer_.types().createConstView(methodReturnType);
   ctx_.enterFunctionScope(
-      methodSig,
-      sun::QualifiedName(classType->getQualifiedName().scopePath,
-                         mangledMethodName),
+      methodSig, classType->getQualifiedName().memberNamed(proto.getName()),
       proto.canThrow(), methodReturnType);
   if (classType) {
-    ctx_.declareVariable("this", classType, /*isParam=*/true,
-                         /*isConst=*/proto.isConstMethod());
+    ctx_.currentScope().declareVariable("this", classType, /*isParam=*/true,
+                                        /*isConst=*/proto.isConstMethod());
   }
 
   analyzer_.clearResolvedTypes(const_cast<BlockExprAST&>(methodFunc.getBody()));
-  localDeclarationNamingPass_.run(
-      const_cast<BlockExprAST&>(methodFunc.getBody()));
   const auto& statements = methodFunc.getBody().getBody();
   for (size_t i = 0; i < methodFunc.getFieldInitializerCount(); ++i) {
     analyzer_.analyzeExpr(*statements.at(i));
@@ -282,7 +292,9 @@ void BodyAnalysisPass::analyzeMethodWithBindings(
   // Step 5: Declare method parameters with substituted types
   for (size_t i = 0; i < proto.getArgs().size(); ++i) {
     const auto& [argName, argType] = proto.getArgs()[i];
-    ctx_.declareVariable(argName, substitutedParamTypes[i], /*isParam=*/true);
+    ctx_.currentScope().declareVariable(
+        argName, substitutedParamTypes[i], true, false,
+        proto.declarationIdentity().parameters.at(i));
   }
 
   // Analyze the source body after its parameters are in scope.
@@ -298,3 +310,5 @@ void BodyAnalysisPass::analyzeMethodWithBindings(
   }
   ctx_.setCurrentClass(savedClass);
 }
+
+}  // namespace sun::semantic_analysis

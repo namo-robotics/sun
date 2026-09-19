@@ -16,6 +16,9 @@
 #include "codegen/codegen.h"
 #include "semantic_analysis/types.h"
 
+/** Provides the generator for built-in operations. */
+namespace sun::codegen::intrinsics {
+
 /**
  * Utility class for thread-related code generation.
  *
@@ -28,14 +31,15 @@
  * used independently for thread-related IR generation.
  */
 class ThreadUtils {
-  CodegenContext& ctx;
+  sun::codegen::CodegenContext& ctx;
   llvm::Module* module;
 
   // Cache for thread trampoline functions (keyed by lambda signature)
   std::map<std::string, llvm::Function*> trampolineCache;
 
  public:
-  ThreadUtils(CodegenContext& ctx, llvm::Module* module)
+  /** Binds thread runtime helpers to the current LLVM context and module. */
+  ThreadUtils(sun::codegen::CodegenContext& ctx, llvm::Module* module)
       : ctx(ctx), module(module) {}
 
   // -------------------------------------------------------------------
@@ -83,6 +87,9 @@ class ThreadUtils {
    * argument layout, since two spawns of same-typed lambdas share one
    * trampoline.
    *
+   * @param lambdaFuncType LLVM signature invoked by the trampoline.
+   * @param fatType Layout holding the lambda pointer and environment.
+   * @param resultLLVMType LLVM storage type for the thread result.
    * @param contextType The layout of std.thread.ThreadContext, declared in
    *        Sun so the trampoline and the standard library cannot drift apart.
    * @param argsType The argument block's layout, or null when the lambda
@@ -93,3 +100,5 @@ class ThreadUtils {
       llvm::Type* resultLLVMType, llvm::StructType* contextType,
       llvm::StructType* argsType);
 };
+
+}  // namespace sun::codegen::intrinsics

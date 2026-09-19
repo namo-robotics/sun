@@ -2,9 +2,11 @@ using std;
 using std.thread;
 using std.time;
 
-// Take the front item, if there is one. The lock is held for exactly as long
-// as this function runs: the guard is released when `g` goes out of scope at
-// the end of it, so the caller can wait without stalling the producer.
+/**
+ * Take the front item, if there is one. The lock is held for exactly as long
+ * as this function runs: the guard is released when `g` goes out of scope at
+ * the end of it, so the caller can wait without stalling the producer.
+ */
 function take_one(q: const ref Shared<Queue<i64>>) Option<i64> {
   var g = q.lock();
   return g.get().pop();
@@ -53,6 +55,7 @@ var consume = (q: Shared<Queue<i64>>) => i32 {
   return _convert<i32>(total);
 };
 
+/** Runs the example that coordinates producer and consumer threads. */
 function main() i32 {
   var alloc = make_heap_allocator();
 

@@ -8,7 +8,8 @@
 
 #include "semantic_analysis/types.h"
 
-namespace sun::names {
+/** Resolves declarations and checks the types and meaning of Sun programs. */
+namespace sun::semantic_analysis {
 
 /**
  * True for a name starting with '_', which is reserved for builtins. User code
@@ -25,12 +26,9 @@ inline bool isIntrinsic(const std::string& name) {
   return !name.empty() && name[0] == '_';
 }
 
-/**
- * The key an overload is registered under: "name(type1,type2,...)". Two
- * functions with the same name and different parameter types get different
- * keys, which is what makes overloading work.
- */
-std::string getFunctionSignature(const std::string& name,
-                                 const std::vector<sun::TypePtr>& paramTypes);
+/** Format a function signature for diagnostics and scope inspection. */
+std::string formatFunctionSignature(
+    const std::string& name,
+    const std::vector<sun::semantic_analysis::TypePtr>& paramTypes);
 
-}  // namespace sun::names
+}  // namespace sun::semantic_analysis

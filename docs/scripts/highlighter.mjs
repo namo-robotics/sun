@@ -20,6 +20,7 @@ export async function createHighlighter(options) {
   // Store both palettes on each span so switching themes keeps one copy.
   return {
     ...highlighter,
+    /** Renders one code block with both light and dark syntax palettes. */
     codeToHtml(code, lang) {
       const dark = highlighter.codeToThemedTokens(code, lang, 'dark-plus')
       const light = highlighter.codeToThemedTokens(code, lang, 'light-plus')

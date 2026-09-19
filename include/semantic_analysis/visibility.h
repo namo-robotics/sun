@@ -6,7 +6,8 @@
 // enclosing module is M or a descendant of M. Class members are owned by the
 // module that defines the class. Contents of an imported `.moon` live under a
 // `$hash$` scope segment, so importer code is never a descendant of a bundle
-// module and bundle-private items are hidden by the same prefix rule.
+// module and bundle-private items remain hidden through their declaration
+// ownership.
 
 #pragma once
 
@@ -14,37 +15,23 @@
 #include <string>
 #include <vector>
 
-namespace sun {
+/** Resolves declarations and checks the types and meaning of Sun programs. */
+namespace sun::semantic_analysis {
 
+/** The access level used to control declaration lookup across scopes. */
 enum class Visibility : uint8_t { Private = 0, Public = 1 };
 
-// Module path as segments, e.g. {"$hash$", "std"}; root = {}. An item's owner
-// is its QualifiedName::owner() (the scope path it was declared in); a
-// private item owned by root is reachable from every context in a
-// compilation — root is a prefix of every path — so internal/synthesized
-// symbols fail open, while anything declared under a real module or a bundle
-// fails closed unless marked public.
+/** Module path segments used for source lookup and diagnostic display. */
 using ModulePath = std::vector<std::string>;
 
-inline bool isModulePrefix(const ModulePath& prefix, const ModulePath& path) {
-  if (prefix.size() > path.size()) return false;
-  for (size_t i = 0; i < prefix.size(); ++i) {
-    if (prefix[i] != path[i]) return false;
-  }
-  return true;
-}
-
-// The single access predicate: public, or `from` is inside the owner.
-inline bool isAccessibleFrom(const ModulePath& from, Visibility visibility,
-                             const ModulePath& owner) {
-  return visibility == Visibility::Public || isModulePrefix(owner, from);
-}
-
+/** Reports whether a module-path segment is an internal library hash. */
 inline bool isLibraryHashSegment(const std::string& seg) {
   return seg.size() >= 2 && seg.front() == '$' && seg.back() == '$';
 }
 
-// "a.b.c" — drops `$hash$` segments; "" for the root.
+/**
+ * "a.b.c" — drops `$hash$` segments; "" for the root.
+ */
 inline std::string displayModulePath(const ModulePath& path) {
   std::string out;
   for (const auto& seg : path) {
@@ -55,6 +42,7 @@ inline std::string displayModulePath(const ModulePath& path) {
   return out;
 }
 
+/** Splits a dotted module path into its individual names. */
 inline ModulePath splitModulePath(const std::string& dotted) {
   ModulePath out;
   std::string cur;
@@ -70,14 +58,17 @@ inline ModulePath splitModulePath(const std::string& dotted) {
   return out;
 }
 
-// The dotted path as source code spells it: "$hash$.std.io" reads "std.io".
-// Diagnostics use this so a library's bundle hash never reaches the user.
+/**
+ * The dotted path as source code spells it: "$hash$.std.io" reads "std.io".
+ * Diagnostics use this so a library's bundle hash never reaches the user.
+ */
 inline std::string displayModulePath(const std::string& dotted) {
   return displayModulePath(splitModulePath(dotted));
 }
 
+/** Returns the source keyword corresponding to an access level. */
 inline const char* visibilityKeyword(Visibility v) {
   return v == Visibility::Public ? "public" : "private";
 }
 
-}  // namespace sun
+}  // namespace sun::semantic_analysis

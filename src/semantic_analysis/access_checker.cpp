@@ -2,22 +2,43 @@
 
 #include "support/error.h"
 
-namespace sun::access {
+/** Resolves declarations and checks the types and meaning of Sun programs. */
+namespace sun::semantic_analysis {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-bool isBundleOwned(const ModulePath& owner) {
-  return !owner.empty() && isLibraryHashSegment(owner.front());
+/** Read the declaring module from semantic ownership, including imported items.
+ */
+DeclarationId ownerModule(const ItemRef& item, const DeclarationTable& table) {
+  return item.declaration ? table.get(item.declaration).module
+                          : DeclarationId{};
+}
+
+/** Build a diagnostic path from the module ownership chain. */
+ModulePath ownerPath(const ItemRef& item, const DeclarationTable& table) {
+  ModulePath path;
+  for (auto module = ownerModule(item, table); module;
+       module = table.get(module).owner) {
+    const auto& record = table.get(module);
+    if (record.kind != DeclarationKind::Module)
+      sun::support::logAndThrowError(
+          "Visibility ownership must refer to a module");
+    path.insert(path.begin(), record.name);
+  }
+  return path;
 }
 
 }  // namespace
 
-std::string describeOwner(const ItemRef& item) {
+/** Describes the scope owning an inaccessible declaration. */
+std::string describeOwner(const ItemRef& item, const DeclarationTable& table) {
+  const auto owner = ownerPath(item, table);
   std::string modulePart;
-  std::string moduleName = displayModulePath(item.owner);
+  std::string moduleName = displayModulePath(owner);
   if (!moduleName.empty()) {
     modulePart = "module '" + moduleName + "'";
-  } else if (isBundleOwned(item.owner)) {
+  } else if (!owner.empty() && isLibraryHashSegment(owner.front())) {
     modulePart = "the top-level scope of its bundle";
   } else {
     modulePart = "the top-level scope";
@@ -26,29 +47,42 @@ std::string describeOwner(const ItemRef& item) {
   return item.ownerTypeName + " in " + modulePart;
 }
 
-std::string denialMessage(const ItemRef& item) {
+/** Builds a diagnostic explaining why a declaration cannot be accessed. */
+std::string denialMessage(const ItemRef& item, const DeclarationTable& table) {
   std::string kind = item.kind ? item.kind : "item";
   std::string subject = kind == "field" || kind == "method"
                             ? "'" + item.name + "'"
                             : kind + " '" + item.name + "'";
-  return subject + " is private to " + describeOwner(item) +
+  return subject + " is private to " + describeOwner(item, table) +
          " and cannot be accessed here";
 }
 
-bool isAccessible(const ModulePath& from, const ItemRef& item) {
-  return isAccessibleFrom(from, item.visibility, item.owner);
+/** Reports whether the requesting declaration may access the target declaration. */
+bool isAccessible(DeclarationId from, const ItemRef& item,
+                  const DeclarationTable& table) {
+  if (item.visibility == Visibility::Public) return true;
+  auto owner = ownerModule(item, table);
+  if (!owner) return true;
+  for (auto module = from; module; module = table.get(module).owner) {
+    if (module == owner) return true;
+  }
+  return false;
 }
 
-void denyAccess(const ItemRef& item, const Position& loc) {
-  logSemanticError(denialMessage(item), loc);
+/** Reports why the current scope cannot access the supplied declaration. */
+void denyAccess(const ItemRef& item, const sun::support::Position& loc,
+                const DeclarationTable& table) {
+  sun::support::logSemanticError(denialMessage(item, table), loc);
 }
 
-void requireAccessible(const ModulePath& from, const ItemRef& item,
-                       const Position& loc) {
-  if (!isAccessible(from, item)) denyAccess(item, loc);
+/** Reports a compiler error when the requesting declaration cannot access the target. */
+void requireAccessible(DeclarationId from, const ItemRef& item,
+                       const sun::support::Position& loc,
+                       const DeclarationTable& table) {
+  if (!isAccessible(from, item, table)) denyAccess(item, loc, table);
 }
 
-}  // namespace sun::access
+}  // namespace sun::semantic_analysis
 
 // ---------------------------------------------------------------------------
 // Naming class and interface members (see item_refs.h)
@@ -56,12 +90,16 @@ void requireAccessible(const ModulePath& from, const ItemRef& item,
 
 #include "semantic_analysis/item_refs.h"
 
-namespace sun::access {
+/** Resolves declarations and checks the types and meaning of Sun programs. */
+namespace sun::semantic_analysis {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// Display name without library-hash prefixes ("$hash$.std.Vec<i32>" ->
-// "std.Vec<i32>")
+/**
+ * Display name without library-hash prefixes ("$hash$.std.Vec<i32>" ->
+ * "std.Vec<i32>")
+ */
 std::string cleanTypeName(std::string name) {
   while (!name.empty() && name.front() == '$') {
     size_t close = name.find('$', 1);
@@ -75,37 +113,46 @@ std::string cleanTypeName(std::string name) {
 
 }  // namespace
 
-// Constructors and destructors are always public: they are declared without
-// a visibility keyword, and scope exit must be able to run deinit anywhere.
-Visibility methodVisibility(const FunctionAST& method) {
+/**
+ * Constructors and destructors are always public: they are declared without
+ * a visibility keyword, and scope exit must be able to run deinit anywhere.
+ */
+Visibility methodVisibility(const sun::ast::FunctionAST& method) {
   const std::string& name = method.getProto().getName();
   if (name == "init" || name == "deinit") return Visibility::Public;
   return method.getVisibility();
 }
 
-// Members are owned by their type's module
-ItemRef fieldRef(const sun::ClassType& cls, const sun::ClassField& f) {
+/**
+ * Members are owned by their type's module
+ */
+ItemRef fieldRef(const sun::semantic_analysis::ClassType& cls,
+                 const sun::semantic_analysis::ClassField& f) {
   return {"field", f.name,
           "class '" + cleanTypeName(cls.getDisplayName()) + "'", f.visibility,
-          cls.getQualifiedName().owner()};
+          cls.getDeclarationId()};
 }
 
-ItemRef methodRef(const sun::ClassType& cls, const sun::ClassMethod& m) {
+/** Creates the declaration reference used to check access to a method. */
+ItemRef methodRef(const sun::semantic_analysis::ClassType& cls,
+                  const sun::semantic_analysis::ClassMethod& m) {
   return {"method", m.name,
           "class '" + cleanTypeName(cls.getDisplayName()) + "'", m.visibility,
-          cls.getQualifiedName().owner()};
+          cls.getDeclarationId()};
 }
 
-ItemRef fieldRef(const sun::InterfaceType& iface,
-                 const sun::InterfaceField& f) {
+/** Creates the declaration reference used to check access to a field. */
+ItemRef fieldRef(const sun::semantic_analysis::InterfaceType& iface,
+                 const sun::semantic_analysis::InterfaceField& f) {
   return {"field", f.name, "interface '" + iface.getBaseName() + "'",
-          f.visibility, iface.getQualifiedName().owner()};
+          f.visibility, iface.getDeclarationId()};
 }
 
-ItemRef methodRef(const sun::InterfaceType& iface,
-                  const sun::InterfaceMethod& m) {
+/** Creates the declaration reference used to check access to a method. */
+ItemRef methodRef(const sun::semantic_analysis::InterfaceType& iface,
+                  const sun::semantic_analysis::InterfaceMethod& m) {
   return {"method", m.name, "interface '" + iface.getBaseName() + "'",
-          m.visibility, iface.getQualifiedName().owner()};
+          m.visibility, iface.getDeclarationId()};
 }
 
-}  // namespace sun::access
+}  // namespace sun::semantic_analysis

@@ -10,44 +10,51 @@
 #include "semantic_analysis/semantic_analyzer.h"
 #include "support/error.h"
 
+using sun::support::logAndThrowError;
+
+/** Resolves declarations and checks the types and meaning of Sun programs. */
+namespace sun::semantic_analysis {
+
 // `ref p.field` would hand out an address the borrower accesses at the field
 // type's natural alignment, which a packed field does not satisfy.
-void SemanticAnalyzer::checkPackedFieldNotBorrowed(const ExprAST& target,
-                                                   const Position& loc) const {
-  if (target.getType() != ASTNodeType::MEMBER_ACCESS) return;
+void SemanticAnalyzer::checkPackedFieldNotBorrowed(
+    const sun::ast::ExprAST& target, const sun::support::Position& loc) const {
+  if (target.getType() != sun::ast::ASTNodeType::MEMBER_ACCESS) return;
   std::string ownerName;
-  if (!sun::packed::isFieldAccess(target, &ownerName)) return;
-  logAndThrowError(
-      sun::packed::borrowRejection(
-          "create a reference to a " + sun::packed::fieldPhrase(ownerName),
-          "Copy the field into a local instead."),
-      loc);
+  if (!sun::semantic_analysis::isFieldAccess(target, &ownerName)) return;
+  logAndThrowError(sun::semantic_analysis::borrowRejection(
+                       "create a reference to a " +
+                           sun::semantic_analysis::fieldPhrase(ownerName),
+                       "Copy the field into a local instead."),
+                   loc);
 }
 
 // A ref parameter takes the argument's address, so it has the same problem.
 void SemanticAnalyzer::checkPackedRefArguments(
-    const std::vector<std::unique_ptr<ExprAST>>& args,
-    const std::vector<sun::TypePtr>& paramTypes) const {
+    const std::vector<std::unique_ptr<sun::ast::ExprAST>>& args,
+    const std::vector<sun::semantic_analysis::TypePtr>& paramTypes) const {
   for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
     if (!paramTypes[i] || !paramTypes[i]->isReference()) continue;
-    if (args[i]->getType() != ASTNodeType::MEMBER_ACCESS) continue;
+    if (args[i]->getType() != sun::ast::ASTNodeType::MEMBER_ACCESS) continue;
     std::string ownerName;
-    if (sun::packed::isFieldAccess(*args[i], &ownerName)) {
-      logAndThrowError(sun::packed::borrowRejection(
-                           "pass a " + sun::packed::fieldPhrase(ownerName) +
-                               " to a ref parameter",
-                           "Pass a copy instead."),
-                       args[i]->getLocation());
+    if (sun::semantic_analysis::isFieldAccess(*args[i], &ownerName)) {
+      logAndThrowError(
+          sun::semantic_analysis::borrowRejection(
+              "pass a " + sun::semantic_analysis::fieldPhrase(ownerName) +
+                  " to a ref parameter",
+              "Pass a copy instead."),
+          args[i]->getLocation());
     }
   }
 }
 
 // Not every field type can live in a padding-free layout.
 void SemanticAnalyzer::checkPackedFieldType(
-    const ClassDefinitionAST& classDef, const ClassFieldDecl& field,
-    const sun::TypePtr& fieldType) const {
+    const sun::ast::ClassDefinitionAST& classDef,
+    const sun::ast::ClassFieldDecl& field,
+    const sun::semantic_analysis::TypePtr& fieldType) const {
   if (!classDef.isPacked()) return;
-  std::string reason = sun::packed::rejectFieldType(fieldType);
+  std::string reason = sun::semantic_analysis::rejectFieldType(fieldType);
   if (reason.empty()) return;
   logAndThrowError("Field '" + field.name + "' in packed class '" +
                        classDef.getName() + "' " + reason,
@@ -56,3 +63,5 @@ void SemanticAnalyzer::checkPackedFieldType(
 
 // -------------------------------------------------------------------
 // Generic class support
+
+}  // namespace sun::semantic_analysis

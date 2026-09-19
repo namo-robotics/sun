@@ -7,6 +7,10 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+using sun::driver::executeStringWithStdlib;
+
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 const char* kCounter = R"(

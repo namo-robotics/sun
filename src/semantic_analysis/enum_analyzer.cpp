@@ -11,31 +11,47 @@
 #include "semantic_analysis/type_rules.h"
 #include "support/error.h"
 
-using sun::unwrapRef;
-using sun::rules::isAssignableTo;
-using sun::rules::tryCoerceIntegerLiteral;
+using sun::semantic_analysis::EnumType;
+using sun::semantic_analysis::TypePtr;
+using sun::semantic_analysis::Types;
+
+using sun::ast::CallExprAST;
+using sun::ast::ExprAST;
+using sun::ast::MemberAccessAST;
+using sun::support::logAndThrowError;
+using sun::support::logWarning;
+
+/** Resolves declarations and checks the types and meaning of Sun programs. */
+namespace sun::semantic_analysis {
+
+using sun::semantic_analysis::isAssignableTo;
+using sun::semantic_analysis::tryCoerceIntegerLiteral;
+using sun::semantic_analysis::unwrapRef;
 
 // -------------------------------------------------------------------
 // Local helpers
 // -------------------------------------------------------------------
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// True if `type` embeds enum `self` by value, walking enum payloads and class
-// fields. Pointers break the cycle (indirection is the fix we suggest).
-bool embedsEnumByValue(const sun::TypePtr& type, const sun::EnumType* self,
-                       std::set<const sun::Type*>& visited) {
+/**
+ * True if `type` embeds enum `self` by value, walking enum payloads and class
+ * fields. Pointers break the cycle (indirection is the fix we suggest).
+ */
+bool embedsEnumByValue(const TypePtr& type, const EnumType* self,
+                       std::set<const sun::semantic_analysis::Type*>& visited) {
   if (!type || !visited.insert(type.get()).second) return false;
   if (type->isEnum()) {
-    auto* e = static_cast<const sun::EnumType*>(type.get());
-    if (e == self || e->getName() == self->getName()) return true;
+    auto* e = static_cast<const EnumType*>(type.get());
+    if (e->equals(*self)) return true;
     for (const auto& v : e->getVariants()) {
       for (const auto& pt : v.payloadTypes) {
         if (embedsEnumByValue(pt, self, visited)) return true;
       }
     }
   } else if (type->isClass()) {
-    auto* c = static_cast<const sun::ClassType*>(type.get());
+    auto* c = static_cast<const sun::semantic_analysis::ClassType*>(type.get());
     for (const auto& field : c->getFields()) {
       if (embedsEnumByValue(field.type, self, visited)) return true;
     }
@@ -43,17 +59,19 @@ bool embedsEnumByValue(const sun::TypePtr& type, const sun::EnumType* self,
   return false;
 }
 
-// Unify a payload annotation against an argument type, binding directly
-// mentioned type parameters (T, raw_ptr<T>, static_ptr<T>). Nested generic
-// payloads contribute no bindings (annotate the target instead). Returns
-// false on a conflicting binding.
-bool unifyPayloadTypeParam(const TypeAnnotation& annot,
-                           const sun::TypePtr& argType,
+/**
+ * Unify a payload annotation against an argument type, binding directly
+ * mentioned type parameters (T, raw_ptr&lt;T&gt;, static_ptr&lt;T&gt;). Nested generic
+ * payloads contribute no bindings (annotate the target instead). Returns
+ * false on a conflicting binding.
+ */
+bool unifyPayloadTypeParam(const sun::ast::TypeAnnotation& annot,
+                           const TypePtr& argType,
                            const std::vector<std::string>& typeParams,
-                           std::map<std::string, sun::TypePtr>& bindings,
+                           std::map<std::string, TypePtr>& bindings,
                            std::string& conflictParam) {
   if (!argType) return true;
-  sun::TypePtr arg = sun::unwrapRef(argType);
+  TypePtr arg = sun::semantic_analysis::unwrapRef(argType);
 
   bool isParam = false;
   for (const auto& p : typeParams) {
@@ -79,13 +97,15 @@ bool unifyPayloadTypeParam(const TypeAnnotation& annot,
     if (annot.baseName == "raw_ptr" && arg->isRawPointer()) {
       return unifyPayloadTypeParam(
           *annot.elementType,
-          static_cast<sun::RawPointerType*>(arg.get())->getPointeeType(),
+          static_cast<sun::semantic_analysis::RawPointerType*>(arg.get())
+              ->getPointeeType(),
           typeParams, bindings, conflictParam);
     }
     if (annot.baseName == "static_ptr" && arg->isStaticPointer()) {
       return unifyPayloadTypeParam(
           *annot.elementType,
-          static_cast<sun::StaticPointerType*>(arg.get())->getPointeeType(),
+          static_cast<sun::semantic_analysis::StaticPointerType*>(arg.get())
+              ->getPointeeType(),
           typeParams, bindings, conflictParam);
     }
   }
@@ -98,9 +118,9 @@ bool unifyPayloadTypeParam(const TypeAnnotation& annot,
 // Definition analysis
 // -------------------------------------------------------------------
 
-void EnumAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
-  // Forbid redefinition of enum in same module
-  if (ctx_.declarations().isDeclared(enumDef.getQualifiedName().mangled())) {
+void EnumAnalyzer::analyzeEnumDefinition(sun::ast::EnumDefinitionAST& enumDef) {
+  // Forbid redefinition of an enum in the same scope
+  if (ctx_.declarations().isDeclared(enumDef.getName(), ctx_.scope())) {
     logAndThrowError("Redefinition of enum '" + enumDef.getName() + "'",
                      enumDef.getLocation());
   }
@@ -139,28 +159,29 @@ void EnumAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
   // Generic enums register as templates only; payload annotations are
   // resolved per instantiation with the type arguments bound
   if (enumDef.isGeneric()) {
-    if (!ctx_.lookupGenericEnum(enumDef.getName())) {
-      ctx_.registerGenericEnum(
+    if (!ctx_.scope()->findGenericEnum(enumDef.getName())) {
+      ctx_.currentScope().declareGenericEnum(
           enumDef.getName(),
           {&enumDef, enumDef.getTypeParameters(), enumDef.getQualifiedName()});
     }
-    ctx_.declarations().noteDeclared(enumDef.getQualifiedName().mangled());
-    enumDef.setResolvedType(sun::Types::Void());
+    ctx_.declarations().noteDeclared(enumDef.getName(), ctx_.scope());
+    enumDef.setResolvedType(Types::Void());
     return;
   }
 
   // Create the enum type
-  auto enumType = ctx_.types()->getEnum(enumDef.getQualifiedName().mangled());
+  auto enumType = ctx_.types()->getEnum(enumDef.getDeclarationId(),
+                                        enumDef.getQualifiedName());
   enumType->setBaseName(enumDef.getName());
   enumType->setUnderlyingType(
-      sun::Types::fromString(enumDef.getUnderlyingTypeName()));
+      Types::fromString(enumDef.getUnderlyingTypeName()));
   enumType->visibility = enumDef.getVisibility();
   enumType->setQualifiedName(enumDef.getQualifiedName());
 
   // Add variants to the enum type (idempotent: declaration collection
   // already registered them)
   for (const auto& variant : enumDef.getVariants()) {
-    enumType->addVariant(variant.name, variant.value);
+    enumType->addVariant(variant.name, variant.value, variant.declaration.id);
   }
 
   // Resolve payload type annotations. This runs in full analysis (not
@@ -168,7 +189,7 @@ void EnumAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
   // registered later in the same collection pass.
   for (const auto& variant : enumDef.getVariants()) {
     if (!variant.hasPayload()) continue;
-    std::vector<sun::TypePtr> payloadTypes;
+    std::vector<TypePtr> payloadTypes;
     for (const auto& annot : variant.payloadTypes) {
       auto payloadType = types_.typeAnnotationToType(annot);
       validateEnumPayloadType(payloadType, enumType, variant.name,
@@ -179,12 +200,12 @@ void EnumAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
   }
 
   // Register the enum in the namespace
-  ctx_.registerEnum(enumDef.getName(), enumType);
+  ctx_.currentScope().declareEnum(enumDef.getName(), enumType);
 
   // Track symbol for redefinition detection
-  ctx_.declarations().noteDeclared(enumDef.getQualifiedName().mangled());
+  ctx_.declarations().noteDeclared(enumDef.getName(), ctx_.scope());
 
-  enumDef.setResolvedType(sun::Types::Void());
+  enumDef.setResolvedType(Types::Void());
 }
 
 // -------------------------------------------------------------------
@@ -192,8 +213,8 @@ void EnumAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
 // -------------------------------------------------------------------
 
 void EnumAnalyzer::validateEnumPayloadType(
-    const sun::TypePtr& type, const std::shared_ptr<sun::EnumType>& enumType,
-    const std::string& variantName, const Position& location) {
+    const TypePtr& type, const std::shared_ptr<EnumType>& enumType,
+    const std::string& variantName, const sun::support::Position& location) {
   const std::string context = "Payload of variant '" + variantName +
                               "' in enum '" + enumType->getDisplayName() + "'";
   if (!type || type->isVoid()) {
@@ -216,7 +237,7 @@ void EnumAnalyzer::validateEnumPayloadType(
                      location);
   }
 
-  std::set<const sun::Type*> visited;
+  std::set<const sun::semantic_analysis::Type*> visited;
   if (embedsEnumByValue(type, enumType.get(), visited)) {
     logAndThrowError("Recursive enum '" + enumType->getDisplayName() +
                          "' requires indirection (raw_ptr)",
@@ -233,8 +254,9 @@ void EnumAnalyzer::validateEnumPayloadType(
 // expression is not a chain of identifiers, or when its head names a local
 // variable (which shadows any enum of the same name).
 std::string EnumAnalyzer::enumPathOf(const ExprAST& object) {
-  if (auto* variable = dynamic_cast<const VariableReferenceAST*>(&object)) {
-    if (ctx_.lookupVariable(variable->getName())) return "";
+  if (auto* variable =
+          dynamic_cast<const sun::ast::VariableReferenceAST*>(&object)) {
+    if (ctx_.currentScope().lookupVariable(variable->getName())) return "";
     return variable->getName();
   }
   if (auto* member = dynamic_cast<const MemberAccessAST*>(&object)) {
@@ -249,8 +271,8 @@ std::string EnumAnalyzer::enumPathOf(const ExprAST& object) {
 // Returns true if the call was an enum construction (analyzed here); false
 // lets analyzeCall continue with normal call handling.
 bool EnumAnalyzer::tryAnalyzeEnumConstruction(CallExprAST& callExpr,
-                                              sun::TypePtr expectedType) {
-  if (callExpr.getCallee()->getType() != ASTNodeType::MEMBER_ACCESS) {
+                                              TypePtr expectedType) {
+  if (callExpr.getCallee()->getType() != sun::ast::ASTNodeType::MEMBER_ACCESS) {
     return false;
   }
   auto& memberAccess = static_cast<MemberAccessAST&>(
@@ -272,7 +294,7 @@ bool EnumAnalyzer::tryAnalyzeEnumConstruction(CallExprAST& callExpr,
 
 void EnumAnalyzer::analyzeEnumVariantConstruction(
     CallExprAST& callExpr, MemberAccessAST& memberAccess,
-    const std::shared_ptr<sun::EnumType>& enumType) {
+    const std::shared_ptr<EnumType>& enumType) {
   const std::string& variantName = memberAccess.getMemberName();
   const auto* variant = enumType->getVariant(variantName);
   if (!variant) {
@@ -298,9 +320,9 @@ void EnumAnalyzer::analyzeEnumVariantConstruction(
   }
 
   for (size_t i = 0; i < args.size(); ++i) {
-    const sun::TypePtr& payloadType = variant->payloadTypes[i];
+    const TypePtr& payloadType = variant->payloadTypes[i];
     sema_.analyzeExpr(const_cast<ExprAST&>(*args[i]), payloadType);
-    sun::TypePtr argType = args[i]->getResolvedType();
+    TypePtr argType = args[i]->getResolvedType();
     // A `ref X` payload borrows, so it accepts an X the same way a `ref X`
     // parameter does: the variant stores the argument's address.
     if (argType && payloadType && payloadType->isReference() &&
@@ -331,9 +353,10 @@ void EnumAnalyzer::analyzeEnumVariantConstruction(
 void EnumAnalyzer::analyzeGenericEnumConstruction(
     CallExprAST& callExpr, MemberAccessAST& memberAccess,
     const std::string& genericName, const GenericEnumInfo& genericInfo,
-    sun::TypePtr expectedType) {
+    TypePtr expectedType) {
   const std::string& variantName = memberAccess.getMemberName();
-  const EnumVariantDecl* variant = genericInfo.AST->getVariant(variantName);
+  const sun::ast::EnumVariantDecl* variant =
+      genericInfo.AST->getVariant(variantName);
   if (!variant) {
     logAndThrowError(
         "Unknown variant '" + variantName + "' in enum '" + genericName + "'",
@@ -360,13 +383,13 @@ void EnumAnalyzer::analyzeGenericEnumConstruction(
     sema_.analyzeExpr(const_cast<ExprAST&>(*arg));
   }
 
-  std::map<std::string, sun::TypePtr> bindings;
+  std::map<std::string, TypePtr> bindings;
   for (size_t i = 0; i < args.size(); ++i) {
     std::string conflictParam;
-    if (!unifyPayloadTypeParam(variant->payloadTypes[i],
-                               args[i]->getResolvedType(),
-                               typeParameterNames(genericInfo.typeParameters),
-                               bindings, conflictParam)) {
+    if (!unifyPayloadTypeParam(
+            variant->payloadTypes[i], args[i]->getResolvedType(),
+            sun::ast::typeParameterNames(genericInfo.typeParameters), bindings,
+            conflictParam)) {
       logAndThrowError("Conflicting types inferred for type parameter '" +
                            conflictParam + "' of '" + genericName + "." +
                            variantName + "'",
@@ -375,18 +398,19 @@ void EnumAnalyzer::analyzeGenericEnumConstruction(
   }
 
   // Fill parameters the arguments did not determine from the expected type
-  const sun::EnumType* expectedEnum = nullptr;
+  const EnumType* expectedEnum = nullptr;
   if (expectedType) {
-    sun::TypePtr expected = unwrapRef(expectedType);
+    TypePtr expected = unwrapRef(expectedType);
     if (expected && expected->isEnum()) {
-      auto* et = static_cast<sun::EnumType*>(expected.get());
-      if (et->getGenericQualifiedName() == genericInfo.qualifiedName) {
+      auto* et = static_cast<EnumType*>(expected.get());
+      if (et->sourceDeclaration(ctx_.types()->declarations) ==
+          genericInfo.AST->getDeclarationId()) {
         expectedEnum = et;
       }
     }
   }
 
-  std::vector<sun::TypePtr> typeArgs;
+  std::vector<TypePtr> typeArgs;
   for (size_t i = 0; i < genericInfo.typeParameters.size(); ++i) {
     const std::string& param = genericInfo.typeParameters[i].name;
     auto it = bindings.find(param);
@@ -395,7 +419,7 @@ void EnumAnalyzer::analyzeGenericEnumConstruction(
       // binds X. When the target says it wants `ref X` — `Option<ref T>` from
       // a peek accessor — honour that: the variant borrows the referent
       // instead of copying it out.
-      const sun::TypePtr* expectedArg =
+      const TypePtr* expectedArg =
           expectedEnum && i < expectedEnum->getGenericArgs().size()
               ? &expectedEnum->getGenericArgs()[i]
               : nullptr;
@@ -417,7 +441,7 @@ void EnumAnalyzer::analyzeGenericEnumConstruction(
                      callExpr.getLocation());
   }
 
-  auto specialized = generics_.instantiateGenericEnum(genericName, typeArgs);
+  auto specialized = generics_.instantiateGenericEnum(genericInfo, typeArgs);
   if (!specialized) {
     logAndThrowError("Failed to instantiate generic enum '" + genericName + "'",
                      callExpr.getLocation());
@@ -433,17 +457,18 @@ void EnumAnalyzer::analyzeGenericEnumConstruction(
 // Returns true if the member access was a generic-enum unit variant handled
 // here (resolved type set); false lets the MEMBER_ACCESS case continue.
 bool EnumAnalyzer::tryAnalyzeGenericEnumUnitVariant(
-    MemberAccessAST& memberAccess, sun::TypePtr expectedType) {
+    MemberAccessAST& memberAccess, TypePtr expectedType) {
   std::string name = enumPathOf(*memberAccess.getObject());
   if (name.empty()) return false;
   const auto* genericEnum = ctx_.lookupGenericEnum(name);
   if (!genericEnum) return false;
 
-  sun::TypePtr expected = expectedType ? unwrapRef(expectedType) : nullptr;
-  sun::EnumType* expectedEnum = nullptr;
+  TypePtr expected = expectedType ? unwrapRef(expectedType) : nullptr;
+  EnumType* expectedEnum = nullptr;
   if (expected && expected->isEnum()) {
-    auto* et = static_cast<sun::EnumType*>(expected.get());
-    if (et->getGenericQualifiedName() == genericEnum->qualifiedName) {
+    auto* et = static_cast<EnumType*>(expected.get());
+    if (et->sourceDeclaration(ctx_.types()->declarations) ==
+        genericEnum->AST->getDeclarationId()) {
       expectedEnum = et;
     }
   }
@@ -475,9 +500,9 @@ bool EnumAnalyzer::tryAnalyzeGenericEnumUnitVariant(
 // Match analysis: variant patterns, payload bindings, exhaustiveness
 // -------------------------------------------------------------------
 
-void EnumAnalyzer::analyzeEnumMatch(
-    MatchExprAST& matchExpr, const std::shared_ptr<sun::EnumType>& enumType,
-    sun::TypePtr expectedType) {
+void EnumAnalyzer::analyzeEnumMatch(sun::ast::MatchExprAST& matchExpr,
+                                    const std::shared_ptr<EnumType>& enumType,
+                                    TypePtr expectedType) {
   std::set<int64_t> coveredTags;
   bool sawWildcard = false;
 
@@ -500,7 +525,7 @@ void EnumAnalyzer::analyzeEnumMatch(
     // Patterns on enum discriminants must be variant paths: Enum.Variant or
     // Enum.Variant(bindings). Resolve structurally - the last path segment
     // names the variant.
-    if (arm.pattern->getType() != ASTNodeType::MEMBER_ACCESS) {
+    if (arm.pattern->getType() != sun::ast::ASTNodeType::MEMBER_ACCESS) {
       logAndThrowError("Match on enum '" + enumType->getDisplayName() +
                            "' requires variant patterns (e.g. '" +
                            enumType->getBaseName() + ".Variant') or '_'",
@@ -512,18 +537,19 @@ void EnumAnalyzer::analyzeEnumMatch(
     // The object must name this same enum type, bare or through its module
     // path. For specializations the pattern names the generic (Option.Some
     // on an Option<i32> discriminant, or optlib.Option.Some).
-    sun::TypePtr objectType;
+    TypePtr objectType;
     std::string enumName = enumPathOf(*patternAccess.getObject());
     if (!enumName.empty()) {
       objectType = ctx_.lookupEnum(enumName);
-      if (!objectType && (enumName == enumType->getGenericBase() ||
-                          enumName == enumType->getBaseName())) {
-        objectType = enumType;
-      }
       if (!objectType) {
         const auto* genericEnum = ctx_.lookupGenericEnum(enumName);
-        if (genericEnum &&
-            genericEnum->qualifiedName == enumType->getGenericQualifiedName()) {
+        if (genericEnum) {
+          if (genericEnum->AST->getDeclarationId() !=
+              enumType->sourceDeclaration(ctx_.types()->declarations)) {
+            logAndThrowError("Pattern does not match discriminant enum '" +
+                                 enumType->getDisplayName() + "'",
+                             arm.pattern->getLocation());
+          }
           objectType = enumType;
         }
       }
@@ -587,7 +613,9 @@ void EnumAnalyzer::analyzeEnumMatch(
       binding.resolvedType = variant->payloadTypes[i];
       if (!binding.isWildcard) {
         // Registered by plain name, like catch-clause bindings
-        ctx_.declareVariable(binding.name, binding.resolvedType);
+        ctx_.currentScope().declareVariable(binding.name, binding.resolvedType,
+                                            false, false,
+                                            binding.declaration.id);
       }
     }
     sema_.analyzeExpr(const_cast<ExprAST&>(*arm.body), expectedType);
@@ -614,3 +642,5 @@ void EnumAnalyzer::analyzeEnumMatch(
                matchExpr.getLocation());
   }
 }
+
+}  // namespace sun::semantic_analysis

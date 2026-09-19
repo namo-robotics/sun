@@ -13,21 +13,23 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeStringWithStdlib;
+
 TEST(Modules_Interpolation, fails_without_stdlib) {
-  EXPECT_THROW(executeString(R"(
+  EXPECT_THROW(sun::driver::executeString(R"(
     function main() i64 {
         var x = 1;
         var s = `Value: ${x}`;
         return s.length();
     }
   )"),
-               SunError);
+               sun::support::SunError);
 }
 
 TEST(Modules_Interpolation, allowed_when_sources_declare_sun_string) {
   // No stdlib.moon: interpolation needs std.String and std.HeapAllocator to
   // exist, and this compilation declares them itself.
-  auto value = executeString(R"(
+  auto value = sun::driver::executeString(R"(
     public module std {
       public class HeapAllocator {
         init() {}

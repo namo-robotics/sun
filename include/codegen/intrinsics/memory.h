@@ -5,7 +5,8 @@
 
 #pragma once
 
-namespace sun {
+/** Provides the generator for built-in operations. */
+namespace sun::codegen::intrinsics {
 
 // Memory intrinsic identifiers are defined in the main Intrinsic enum.
 // This header exists for organizational purposes and future expansion.
@@ -19,4 +20,4 @@ namespace sun {
 //   _load_i64(ptr, index) -> i64      Load i64 at ptr[index]
 //   _store_i64(ptr, index, val)       Store i64 at ptr[index]
 
-}  // namespace sun
+}  // namespace sun::codegen::intrinsics

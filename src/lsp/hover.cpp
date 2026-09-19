@@ -9,21 +9,36 @@
 #include "lsp/declarations.h"
 #include "parsing/doc_comments.h"
 
+using sun::semantic_analysis::TypePtr;
+
+using sun::ast::ASTNodeType;
+using sun::ast::ClassDefinitionAST;
+using sun::ast::EnumDefinitionAST;
+using sun::ast::ExprAST;
+using sun::ast::InterfaceDefinitionAST;
+using sun::support::Position;
+
+/** Provides compiler-backed editor features through the language server protocol. */
 namespace sun::lsp {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
 // ---------------------------------------------------------------------------
 // Rendering types and signatures
 // ---------------------------------------------------------------------------
 
-std::string renderType(const sun::Type& type, const Bindings& bindings);
+/** Formats a semantic type for editor hover text. */
+std::string renderType(const sun::semantic_analysis::Type& type,
+                       const Bindings& bindings);
 
-// Render a function pointer or lambda. `prefix` carries either the
-// `function ` keyword or a lambda lifetime marker such as `<'_>`.
+/**
+ * Render a function pointer or lambda. `prefix` carries either the
+ * `function ` keyword or a lambda lifetime marker such as `<'_>`.
+ */
 std::string renderCallable(const std::string& prefix,
-                           const std::vector<sun::TypePtr>& params,
-                           const sun::TypePtr& returnType, bool canThrow,
+                           const std::vector<TypePtr>& params,
+                           const TypePtr& returnType, bool canThrow,
                            bool fatArrow, const Bindings& bindings) {
   std::string out = prefix + "(";
   for (size_t i = 0; i < params.size(); ++i) {
@@ -36,10 +51,12 @@ std::string renderCallable(const std::string& prefix,
   return out;
 }
 
-// `Vec<T>`: the display name's base with each type argument re-rendered so
-// bound type parameters show by name
-std::string renderWithArguments(const sun::Type& type,
-                                const std::vector<sun::TypePtr>& arguments,
+/**
+ * `Vec<T>`: the display name's base with each type argument re-rendered so
+ * bound type parameters show by name
+ */
+std::string renderWithArguments(const sun::semantic_analysis::Type& type,
+                                const std::vector<TypePtr>& arguments,
                                 const Bindings& bindings) {
   std::string display = type.toDisplayString();
   if (arguments.empty() || bindings.empty()) return display;
@@ -51,21 +68,26 @@ std::string renderWithArguments(const sun::Type& type,
   return out + ">";
 }
 
-// Sun-syntax spelling of a type. A type bound to a type parameter prints as
-// the parameter; function types print as written in Sun (`(i32) i32`);
-// everything else uses the type's display name.
-std::string renderType(const sun::Type& type, const Bindings& bindings) {
+/**
+ * Sun-syntax spelling of a type. A type bound to a type parameter prints as
+ * the parameter; function types print as written in Sun (`(i32) i32`);
+ * everything else uses the type's display name.
+ */
+std::string renderType(const sun::semantic_analysis::Type& type,
+                       const Bindings& bindings) {
   for (const auto& [name, bound] : bindings) {
     if (bound && bound->equals(type)) return name;
   }
   switch (type.getKind()) {
-    case sun::Type::Kind::Function: {
-      const auto& fn = static_cast<const sun::FunctionType&>(type);
+    case sun::semantic_analysis::Type::Kind::Function: {
+      const auto& fn =
+          static_cast<const sun::semantic_analysis::FunctionType&>(type);
       return renderCallable("function ", fn.getParamTypes(), fn.getReturnType(),
                             fn.canThrow(), false, bindings);
     }
-    case sun::Type::Kind::Lambda: {
-      const auto& lambda = static_cast<const sun::LambdaType&>(type);
+    case sun::semantic_analysis::Type::Kind::Lambda: {
+      const auto& lambda =
+          static_cast<const sun::semantic_analysis::LambdaType&>(type);
       // A lambda that carries a captured environment is written with the
       // lifetime it is bound to, by name when the signature gave it one
       std::string prefix;
@@ -77,37 +99,48 @@ std::string renderType(const sun::Type& type, const Bindings& bindings) {
                             lambda.getReturnType(), lambda.canThrow(), true,
                             bindings);
     }
-    case sun::Type::Kind::Reference: {
-      const auto& ref = static_cast<const sun::ReferenceType&>(type);
+    case sun::semantic_analysis::Type::Kind::Reference: {
+      const auto& ref =
+          static_cast<const sun::semantic_analysis::ReferenceType&>(type);
       if (!ref.getReferencedType()) return type.toDisplayString();
       return std::string(ref.isMutable() ? "ref " : "const ref ") +
              renderType(*ref.getReferencedType(), bindings);
     }
-    case sun::Type::Kind::Class:
+    case sun::semantic_analysis::Type::Kind::Class:
       return renderWithArguments(
-          type, static_cast<const sun::ClassType&>(type).getTypeArguments(),
+          type,
+          static_cast<const sun::semantic_analysis::ClassType&>(type)
+              .getTypeArguments(),
           bindings);
-    case sun::Type::Kind::Interface:
+    case sun::semantic_analysis::Type::Kind::Interface:
       return renderWithArguments(
-          type, static_cast<const sun::InterfaceType&>(type).getTypeArguments(),
+          type,
+          static_cast<const sun::semantic_analysis::InterfaceType&>(type)
+              .getTypeArguments(),
           bindings);
-    case sun::Type::Kind::Enum:
+    case sun::semantic_analysis::Type::Kind::Enum:
       return renderWithArguments(
-          type, static_cast<const sun::EnumType&>(type).getGenericArgs(),
+          type,
+          static_cast<const sun::semantic_analysis::EnumType&>(type)
+              .getGenericArgs(),
           bindings);
     default:
       return type.toDisplayString();
   }
 }
 
-// The annotation as the user wrote it, when the source span is available
-std::string annotationText(const TypeAnnotation& annotation,
+/**
+ * The annotation as the user wrote it, when the source span is available
+ */
+std::string annotationText(const sun::ast::TypeAnnotation& annotation,
                            const std::string& source) {
   std::string text = sliceSpan(source, annotation.span);
   return text.empty() ? annotation.toString() : text;
 }
 
-std::string renderTypeParameters(const std::vector<TypeParameter>& params) {
+/** Formats generic parameters for editor hover text. */
+std::string renderTypeParameters(
+    const std::vector<sun::ast::TypeParameter>& params) {
   if (params.empty()) return "";
   std::string out = "<";
   for (size_t i = 0; i < params.size(); ++i) {
@@ -117,9 +150,11 @@ std::string renderTypeParameters(const std::vector<TypeParameter>& params) {
   return out + ">";
 }
 
-// `function name(a: i32, b: i32) i32` — resolved types when the analyzer
-// recorded them (specializations), otherwise the annotations as written
-std::string renderPrototype(const PrototypeAST& proto,
+/**
+ * `function name(a: i32, b: i32) i32` — resolved types when the analyzer
+ * recorded them (specializations), otherwise the annotations as written
+ */
+std::string renderPrototype(const sun::ast::PrototypeAST& proto,
                             const std::string& keyword, const std::string& name,
                             bool isPublic, const std::string& source,
                             const Bindings& bindings) {
@@ -140,7 +175,7 @@ std::string renderPrototype(const PrototypeAST& proto,
   out += "(";
 
   const auto& args = proto.getArgs();
-  const std::vector<sun::TypePtr>* resolved = nullptr;
+  const std::vector<TypePtr>* resolved = nullptr;
   if (proto.hasResolvedParamTypes() &&
       proto.getResolvedParamTypes().size() == args.size()) {
     resolved = &proto.getResolvedParamTypes();
@@ -175,14 +210,17 @@ std::string renderPrototype(const PrototypeAST& proto,
   return out;
 }
 
-// Hovers on definitions carry the comment stored on the node when the tree
-// has one (declarations loaded from a bundle); otherwise the caller looks it
-// up in the source.
+/**
+ * Hovers on definitions carry the comment stored on the node when the tree
+ * has one (declarations loaded from a bundle); otherwise the caller looks it
+ * up in the source.
+ */
 std::optional<Hover> hoverClass(const ClassDefinitionAST& cls, int offset,
                                 const std::string& source,
                                 const Bindings& bindings) {
   const auto* classType =
-      dynamic_cast<const sun::ClassType*>(cls.getResolvedType().get());
+      dynamic_cast<const sun::semantic_analysis::ClassType*>(
+          cls.getResolvedType().get());
   for (const auto& field : cls.getFields()) {
     Position span = field.location;
     if (field.type.span.endOffset) span.endOffset = field.type.span.endOffset;
@@ -196,7 +234,9 @@ std::optional<Hover> hoverClass(const ClassDefinitionAST& cls, int offset,
     }
     if (typeText.empty()) typeText = annotationText(field.type, source);
     std::string prefix =
-        field.visibility == sun::Visibility::Public ? "public var " : "var ";
+        field.visibility == sun::semantic_analysis::Visibility::Public
+            ? "public var "
+            : "var ";
     return Hover{prefix + field.name + ": " + typeText, field.doc, span};
   }
 
@@ -217,6 +257,7 @@ std::optional<Hover> hoverClass(const ClassDefinitionAST& cls, int offset,
   return Hover{out, cls.getDoc(), cls.getLocation()};
 }
 
+/** Builds hover details for an interface declaration or its members. */
 std::optional<Hover> hoverInterface(const InterfaceDefinitionAST& iface,
                                     int offset, const std::string& source) {
   for (const auto& field : iface.getFields()) {
@@ -233,6 +274,7 @@ std::optional<Hover> hoverInterface(const InterfaceDefinitionAST& iface,
   return Hover{out, iface.getDoc(), iface.getLocation()};
 }
 
+/** Builds hover details for an enum declaration or its variants. */
 std::optional<Hover> hoverEnum(const EnumDefinitionAST& enumDef, int offset,
                                const std::string& source) {
   for (const auto& variant : enumDef.getVariants()) {
@@ -251,12 +293,13 @@ std::optional<Hover> hoverEnum(const EnumDefinitionAST& enumDef, int offset,
   return Hover{out, enumDef.getDoc(), enumDef.getLocation()};
 }
 
+/** Builds hover details for the selected syntax node. */
 std::optional<Hover> hoverNode(const Target& target, int offset,
                                const std::string& source) {
   const ExprAST& node = target.node();
   const Bindings& bindings = target.bindings;
   const Position& range = node.getLocation();
-  sun::TypePtr type = node.getResolvedType();
+  TypePtr type = node.getResolvedType();
 
   // `prefix` followed by the node's own type, when it has one
   auto typed = [&](const std::string& prefix) -> std::optional<Hover> {
@@ -266,16 +309,19 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
 
   switch (node.getType()) {
     case ASTNodeType::VARIABLE_REFERENCE:
-      return typed(static_cast<const VariableReferenceAST&>(node).getName() +
-                   ": ");
+      return typed(
+          static_cast<const sun::ast::VariableReferenceAST&>(node).getName() +
+          ": ");
     case ASTNodeType::THIS:
       return typed("this: ");
     case ASTNodeType::MEMBER_ACCESS:
-      return typed(static_cast<const MemberAccessAST&>(node).getMemberName() +
-                   ": ");
+      return typed(
+          static_cast<const sun::ast::MemberAccessAST&>(node).getMemberName() +
+          ": ");
 
     case ASTNodeType::VARIABLE_CREATION: {
-      const auto& decl = static_cast<const VariableCreationAST&>(node);
+      const auto& decl =
+          static_cast<const sun::ast::VariableCreationAST&>(node);
       std::string prefix = std::string(decl.isConst() ? "const " : "var ") +
                            decl.getName() + ": ";
       if (type) {
@@ -290,13 +336,15 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
     }
 
     case ASTNodeType::REFERENCE_CREATION: {
-      const auto& ref = static_cast<const ReferenceCreationAST&>(node);
+      const auto& ref =
+          static_cast<const sun::ast::ReferenceCreationAST&>(node);
       if (!type) return std::nullopt;
-      const sun::Type* referent = type.get();
-      if (type->getKind() == sun::Type::Kind::Reference) {
-        referent = static_cast<const sun::ReferenceType&>(*type)
-                       .getReferencedType()
-                       .get();
+      const sun::semantic_analysis::Type* referent = type.get();
+      if (type->getKind() == sun::semantic_analysis::Type::Kind::Reference) {
+        referent =
+            static_cast<const sun::semantic_analysis::ReferenceType&>(*type)
+                .getReferencedType()
+                .get();
       }
       if (!referent) return std::nullopt;
       std::string prefix = ref.isMutable() ? "ref " : "const ref ";
@@ -306,7 +354,7 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
     }
 
     case ASTNodeType::FOR_IN_LOOP: {
-      const auto& loop = static_cast<const ForInExprAST&>(node);
+      const auto& loop = static_cast<const sun::ast::ForInExprAST&>(node);
       std::string prefix = std::string(loop.isConst() ? "const " : "var ") +
                            loop.getLoopVar() + ": ";
       if (loop.hasResolvedLoopVarType()) {
@@ -319,7 +367,7 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
     }
 
     case ASTNodeType::FUNCTION: {
-      const auto& fn = static_cast<const FunctionAST&>(node);
+      const auto& fn = static_cast<const sun::ast::FunctionAST&>(node);
       // A function declared inside a class or interface is a method, and is
       // spelled with the 'method' keyword
       bool isMethod = target.chain.size() > 1 &&
@@ -336,7 +384,7 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
                    fn.getProto().getDoc(), range};
     }
     case ASTNodeType::LAMBDA: {
-      const auto& lambda = static_cast<const LambdaAST&>(node);
+      const auto& lambda = static_cast<const sun::ast::LambdaAST&>(node);
       return Hover{renderPrototype(lambda.getProto(), "lambda", "", false,
                                    source, bindings),
                    "", range};
@@ -344,14 +392,14 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
 
     case ASTNodeType::CALL: {
       if (!type) return std::nullopt;
-      const auto& call = static_cast<const CallExprAST&>(node);
+      const auto& call = static_cast<const sun::ast::CallExprAST&>(node);
       std::string callee = sliceSpan(source, call.getCallee()->getLocation());
       if (callee.empty()) callee = call.getCallee()->toString();
       return Hover{callee + "(...): " + renderType(*type, bindings), "", range};
     }
     case ASTNodeType::GENERIC_CALL: {
       if (!type) return std::nullopt;
-      const auto& call = static_cast<const GenericCallAST&>(node);
+      const auto& call = static_cast<const sun::ast::GenericCallAST&>(node);
       std::string callee = call.getFunctionName();
       if (call.hasResolvedTypeArgs()) {
         const auto& typeArgs = call.getResolvedTypeArgs();
@@ -375,10 +423,11 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
                        source);
 
     case ASTNodeType::STRUCT_LITERAL: {
-      const auto& literal = static_cast<const StructLiteralAST&>(node);
+      const auto& literal =
+          static_cast<const sun::ast::StructLiteralAST&>(node);
       for (const auto& field : literal.getFields()) {
         if (!spanContains(field.location, offset)) continue;
-        sun::TypePtr fieldType =
+        TypePtr fieldType =
             field.value ? field.value->getResolvedType() : nullptr;
         if (!fieldType) return std::nullopt;
         return Hover{field.name + ": " + renderType(*fieldType, bindings), "",
@@ -388,7 +437,7 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
     }
 
     case ASTNodeType::MATCH: {
-      const auto& match = static_cast<const MatchExprAST&>(node);
+      const auto& match = static_cast<const sun::ast::MatchExprAST&>(node);
       for (const auto& arm : match.getArms()) {
         for (const auto& binding : arm.bindings) {
           if (binding.isWildcard || !binding.resolvedType) continue;
@@ -402,7 +451,7 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
     }
 
     case ASTNodeType::DECLARE_TYPE: {
-      const auto& decl = static_cast<const DeclareTypeAST&>(node);
+      const auto& decl = static_cast<const sun::ast::DeclareTypeAST&>(node);
       if (!decl.hasResolvedDeclaredType()) return std::nullopt;
       std::string out = "declare ";
       if (decl.hasAlias()) out += decl.getAliasName() + " = ";
@@ -430,10 +479,12 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
   }
 }
 
-// Hover for a type name written in an annotation: the definition's header
-// and its comment, with the annotation itself as the range
+/**
+ * Hover for a type name written in an annotation: the definition's header
+ * and its comment, with the annotation itself as the range
+ */
 std::optional<Hover> hoverAnnotation(const ExprAST& decl,
-                                     const TypeAnnotation& annotation,
+                                     const sun::ast::TypeAnnotation& annotation,
                                      const std::string& source) {
   std::optional<Hover> hover;
   switch (decl.getType()) {
@@ -450,7 +501,7 @@ std::optional<Hover> hoverAnnotation(const ExprAST& decl,
           hoverEnum(static_cast<const EnumDefinitionAST&>(decl), -1, source);
       break;
     case ASTNodeType::DECLARE_TYPE: {
-      const auto& alias = static_cast<const DeclareTypeAST&>(decl);
+      const auto& alias = static_cast<const sun::ast::DeclareTypeAST&>(decl);
       if (!alias.hasResolvedDeclaredType()) return std::nullopt;
       std::string out = "declare ";
       if (alias.hasAlias()) out += alias.getAliasName() + " = ";
@@ -467,7 +518,8 @@ std::optional<Hover> hoverAnnotation(const ExprAST& decl,
 
 }  // namespace
 
-const ExprAST* findInnermostNodeAt(const BlockExprAST& program,
+/** Finds the most deeply nested syntax node covering a document offset. */
+const ExprAST* findInnermostNodeAt(const sun::ast::BlockExprAST& program,
                                    const std::string& filePath,
                                    int byteOffset) {
   NodeFinder finder(normalizePath(filePath), byteOffset);
@@ -475,7 +527,8 @@ const ExprAST* findInnermostNodeAt(const BlockExprAST& program,
   return finder.chain().empty() ? nullptr : finder.chain().back();
 }
 
-std::optional<Hover> computeHover(const BlockExprAST& program,
+/** Returns documentation and type details for the symbol under the cursor. */
+std::optional<Hover> computeHover(const sun::ast::BlockExprAST& program,
                                   const std::string& filePath,
                                   const std::string& source, int byteOffset) {
   std::string documentPath = normalizePath(filePath);
@@ -485,7 +538,7 @@ std::optional<Hover> computeHover(const BlockExprAST& program,
   // Synthesized modules share a declaration span but have distinct names.
   for (const auto* node : target->chain) {
     if (node->getType() != ASTNodeType::MODULE) continue;
-    const auto& module = static_cast<const ModuleAST&>(*node);
+    const auto& module = static_cast<const sun::ast::ModuleAST&>(*node);
     const auto& name = module.getNameLocation();
     if (name && spanContains(*name, byteOffset)) {
       return Hover{std::string(module.isPublic() ? "public " : "") + "module " +
@@ -497,7 +550,7 @@ std::optional<Hover> computeHover(const BlockExprAST& program,
   // A type name written in an annotation stands for its definition
   std::optional<Declaration> declaration;
   std::optional<Hover> hover;
-  if (const TypeAnnotation* annotation =
+  if (const sun::ast::TypeAnnotation* annotation =
           annotationIn(target->node(), byteOffset)) {
     if (const ExprAST* decl = findAnnotatedType(program, *annotation)) {
       hover = hoverAnnotation(*decl, *annotation, source);
@@ -534,7 +587,7 @@ std::optional<Hover> computeHover(const BlockExprAST& program,
     if (!declaration->doc.empty()) {
       hover->documentation = declaration->doc;
     } else {
-      hover->documentation = sun::docCommentAbove(
+      hover->documentation = sun::parsing::docCommentAbove(
           sourceFor(declaration->location, documentPath, source),
           declaration->location.line);
     }

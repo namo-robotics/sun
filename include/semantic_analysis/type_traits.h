@@ -17,10 +17,13 @@
 
 #include "semantic_analysis/types.h"
 
-namespace sun {
+/** Resolves declarations and checks the types and meaning of Sun programs. */
+namespace sun::semantic_analysis {
 
-// The built-in traits. Every one of these is a set of types, not a declared
-// interface, so a primitive can satisfy it without implementing anything.
+/**
+ * The built-in traits. Every one of these is a set of types, not a declared
+ * interface, so a primitive can satisfy it without implementing anything.
+ */
 enum class TypeTrait {
   None,       // Not a built-in trait — an interface or a type name
   Integer,    // i8, i16, i32, i64, u8, u16, u32, u64
@@ -34,9 +37,11 @@ enum class TypeTrait {
   Callable,   // _Callable: Lambda + Function — anything that can be called
 };
 
-// Look up a trait by the name written in source. Returns None when the name is
-// not a built-in trait, which is not an error: it may still be an interface or
-// a concrete type name.
+/**
+ * Look up a trait by the name written in source. Returns None when the name is
+ * not a built-in trait, which is not an error: it may still be an interface or
+ * a concrete type name.
+ */
 inline TypeTrait getTypeTrait(const std::string& name) {
   if (name == "_Integer") return TypeTrait::Integer;
   if (name == "_Signed") return TypeTrait::Signed;
@@ -50,21 +55,14 @@ inline TypeTrait getTypeTrait(const std::string& name) {
   return TypeTrait::None;
 }
 
-// True when the name is one of the built-in traits above.
+/**
+ * True when the name is one of the built-in traits above.
+ */
 inline bool isTypeTrait(const std::string& name) {
   return getTypeTrait(name) != TypeTrait::None;
 }
 
-namespace traits {
+/** Test a resolved trait or type requirement, unwrapping a borrowed value. */
+bool satisfies(const TypePtr& type, const TypePtr& requirement);
 
-/**
- * Does `type` satisfy `name`? The name is a built-in trait, an interface the
- * type implements, or a type name to match exactly. A `ref T` is unwrapped
- * first, so a borrow satisfies whatever its referent does.
- *
- * A null type satisfies nothing.
- */
-bool satisfies(const TypePtr& type, const std::string& name);
-
-}  // namespace traits
-}  // namespace sun
+}  // namespace sun::semantic_analysis

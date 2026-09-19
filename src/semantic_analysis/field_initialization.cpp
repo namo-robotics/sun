@@ -41,9 +41,26 @@
 #include "ast/control_flow.h"
 #include "support/error.h"
 
-namespace sun {
+using sun::ast::FieldWriteKind;
 
-void prepareFieldInitializers(ClassDefinitionAST& classDef) {
+using sun::ast::ASTNodeType;
+using sun::ast::CallExprAST;
+using sun::ast::ClassMethodDecl;
+using sun::ast::ExprAST;
+using sun::ast::exprDiverges;
+using sun::ast::forEachChild;
+using sun::ast::FunctionAST;
+using sun::ast::MemberAccessAST;
+using sun::ast::MemberAssignmentAST;
+using sun::ast::TryCatchExprAST;
+using sun::support::logAndThrowError;
+using sun::support::Position;
+
+/** Resolves declarations and checks the types and meaning of Sun programs. */
+namespace sun::semantic_analysis {
+
+/** Prepares default field initializers for constructor analysis. */
+void prepareFieldInitializers(sun::ast::ClassDefinitionAST& classDef) {
   if (classDef.isPartial() || classDef.isPrecompiled()) return;
   size_t count = 0;
   for (const auto& field : classDef.getFields()) {
@@ -58,15 +75,16 @@ void prepareFieldInitializers(ClassDefinitionAST& classDef) {
               "' needs an explicit init to initialize fields without defaults",
           classDef.getLocation());
     }
-    auto proto = std::make_unique<PrototypeAST>(
-        "init", std::vector<std::pair<std::string, TypeAnnotation>>{});
+    auto proto = std::make_unique<sun::ast::PrototypeAST>(
+        "init",
+        std::vector<std::pair<std::string, sun::ast::TypeAnnotation>>{});
     proto->setLocation(classDef.getLocation());
-    auto body = std::make_unique<BlockExprAST>();
-    body->setKind(BlockKind::Function);
+    auto body = std::make_unique<sun::ast::BlockExprAST>();
+    body->setKind(sun::ast::BlockKind::Function);
     body->setLocation(classDef.getLocation());
     auto function =
         std::make_unique<FunctionAST>(std::move(proto), std::move(body));
-    function->setVisibility(sun::Visibility::Public);
+    function->setVisibility(sun::semantic_analysis::Visibility::Public);
     function->setLocation(classDef.getLocation());
     function->setSynthesizedConstructor(true);
     function->inheritSourceFile(classDef.getSourceFileId());
@@ -81,7 +99,7 @@ void prepareFieldInitializers(ClassDefinitionAST& classDef) {
     std::vector<std::unique_ptr<ExprAST>> prefix;
     for (const auto& field : classDef.getFields()) {
       if (!field.initializer) continue;
-      auto receiver = std::make_unique<ThisExprAST>();
+      auto receiver = std::make_unique<sun::ast::ThisExprAST>();
       receiver->setLocation(field.location);
       auto assignment = std::make_unique<MemberAssignmentAST>(
           std::move(receiver), field.name, field.initializer->clone());
@@ -89,12 +107,13 @@ void prepareFieldInitializers(ClassDefinitionAST& classDef) {
       assignment->inheritSourceFile(classDef.getSourceFileId());
       prefix.push_back(std::move(assignment));
     }
-    const_cast<BlockExprAST&>(function.getBody())
+    const_cast<sun::ast::BlockExprAST&>(function.getBody())
         .prependExpressions(std::move(prefix));
     function.setFieldInitializerCount(count);
   }
 }
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
 /**
@@ -121,6 +140,7 @@ bool usesThis(const ExprAST& expr) {
  */
 enum class FieldStatus { Uninitialized, Initialized, Unknown };
 
+/** Tracks whether each class field has been initialized along a control-flow path. */
 using FieldStates = std::map<std::string, FieldStatus>;
 
 /**
@@ -142,6 +162,7 @@ void mergeInto(FieldStates& target, const FieldStates& other) {
  */
 class ClassInitInfo {
  public:
+  /** Collects class fields and methods needed to check constructor initialization. */
   ClassInitInfo(const ClassType& classType,
                 const std::vector<ClassMethodDecl>& methods)
       : classType_(classType), methods_(methods) {
@@ -151,15 +172,20 @@ class ClassInitInfo {
     }
   }
 
+  /** Returns the class whose field initialization is being checked. */
   const ClassType& classType() const { return classType_; }
+  /** Returns the fields tracked by constructor initialization analysis. */
   const std::set<std::string>& allFields() const { return allFields_; }
+  /** Reports whether a name denotes a field in the class being checked. */
   bool isField(const std::string& name) const {
     return allFields_.count(name) != 0;
   }
 
-  // True when the field holds something that has to be released, so writing
-  // it again would have to drop what was there. A field holding a number
-  // releases nothing, so it is never in doubt.
+  /**
+   * True when the field holds something that has to be released, so writing
+   * it again would have to drop what was there. A field holding a number
+   * releases nothing, so it is never in doubt.
+   */
   bool fieldOwns(const std::string& name) const {
     return owningFields_.count(name) != 0;
   }
@@ -192,6 +218,7 @@ class ClassInitInfo {
  */
 class BodyWalk {
  public:
+  /** Starts a control-flow walk using the class initialization information. */
   explicit BodyWalk(ClassInitInfo& info) : info_(info) {
     for (const auto& name : info.allFields()) {
       states_[name] = FieldStatus::Uninitialized;
@@ -221,8 +248,10 @@ class BodyWalk {
   // its writes must mean the same thing there as here.
   bool inMethodBody_ = false;
 
+  /** Returns the class name used in field-initialization diagnostics. */
   std::string className() const { return info_.classType().getDisplayName(); }
 
+  /** Returns the tracked initialization state of a named field. */
   FieldStatus statusOf(const std::string& field) const {
     auto found = states_.find(field);
     return found == states_.end() ? FieldStatus::Unknown : found->second;
@@ -265,6 +294,7 @@ class BodyWalk {
   void rejectUncertainAssignment(const std::string& field,
                                  std::optional<Position> loc);
 
+  /** Checks child expressions for reads and writes affecting field initialization. */
   void walkChildren(const ExprAST& expr);
 
   /**
@@ -549,7 +579,7 @@ void BodyWalk::walk(const ExprAST& expr) {
       noteObjectUse("use 'this'", expr.getLocation());
       return;
     case ASTNodeType::RETURN: {
-      const auto& ret = static_cast<const ReturnExprAST&>(expr);
+      const auto& ret = static_cast<const sun::ast::ReturnExprAST&>(expr);
       if (ret.getValue()) walk(*ret.getValue());
       // Only the constructor's own returns owe the whole object
       if (inMethodBody_) return;
@@ -565,19 +595,19 @@ void BodyWalk::walk(const ExprAST& expr) {
       return;
     }
     case ASTNodeType::IF: {
-      const auto& ifExpr = static_cast<const IfExprAST&>(expr);
+      const auto& ifExpr = static_cast<const sun::ast::IfExprAST&>(expr);
       if (ifExpr.getCond()) walk(*ifExpr.getCond());
       walkBranches({ifExpr.getThen(), ifExpr.getElse()});
       return;
     }
     case ASTNodeType::TERNARY: {
-      const auto& ternary = static_cast<const TernaryExprAST&>(expr);
+      const auto& ternary = static_cast<const sun::ast::TernaryExprAST&>(expr);
       if (ternary.getCond()) walk(*ternary.getCond());
       walkBranches({ternary.getThen(), ternary.getElse()});
       return;
     }
     case ASTNodeType::MATCH: {
-      const auto& match = static_cast<const MatchExprAST&>(expr);
+      const auto& match = static_cast<const sun::ast::MatchExprAST&>(expr);
       if (match.getDiscriminant()) walk(*match.getDiscriminant());
       std::vector<const ExprAST*> arms;
       for (const auto& arm : match.getArms()) arms.push_back(arm.body.get());
@@ -589,18 +619,18 @@ void BodyWalk::walk(const ExprAST& expr) {
       return;
     }
     case ASTNodeType::WHILE_LOOP: {
-      const auto& loop = static_cast<const WhileExprAST&>(expr);
+      const auto& loop = static_cast<const sun::ast::WhileExprAST&>(expr);
       walkLoop({loop.getCondition()}, loop.getBody(), nullptr);
       return;
     }
     case ASTNodeType::FOR_LOOP: {
-      const auto& loop = static_cast<const ForExprAST&>(expr);
+      const auto& loop = static_cast<const sun::ast::ForExprAST&>(expr);
       walkLoop({loop.getInit(), loop.getCondition()}, loop.getBody(),
                loop.getIncrement());
       return;
     }
     case ASTNodeType::FOR_IN_LOOP: {
-      const auto& loop = static_cast<const ForInExprAST&>(expr);
+      const auto& loop = static_cast<const sun::ast::ForInExprAST&>(expr);
       walkLoop({loop.getIterable()}, loop.getBody(), nullptr);
       return;
     }
@@ -624,6 +654,7 @@ void BodyWalk::walk(const ExprAST& expr) {
 
 }  // namespace
 
+/** Checks that constructors initialize fields before they are read. */
 void checkFieldInitialization(const FunctionAST& constructor,
                               const ClassType& classType,
                               const std::vector<ClassMethodDecl>& methods) {
@@ -640,4 +671,4 @@ void checkFieldInitialization(const FunctionAST& constructor,
   walk.requireEveryFieldAtEnd(constructor.getBody(), constructor.getLocation());
 }
 
-}  // namespace sun
+}  // namespace sun::semantic_analysis

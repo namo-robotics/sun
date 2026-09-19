@@ -11,10 +11,18 @@
 #include "driver/execution_utils.h"
 #include "parsing/parser.h"
 
-// Parse a single assignment-or-expression statement and return its AST
-static std::unique_ptr<ExprAST> parseStatementToAst(const std::string& source) {
+using sun::ast::ASTNodeType;
+using sun::ast::IndexAST;
+using sun::ast::TernaryExprAST;
+using sun::driver::executeString;
+
+/**
+ * Parse a single assignment-or-expression statement and return its AST
+ */
+static std::unique_ptr<sun::ast::ExprAST> parseStatementToAst(
+    const std::string& source) {
   std::istringstream ss(source);
-  Parser parser(ss);
+  sun::parsing::Parser parser(ss);
   parser.getNextToken();
   return parser.parseAssignmentOrExpression();
 }
@@ -355,7 +363,8 @@ TEST(ControlFlow_Ternary, parenthesized_ternary_as_slice_bound_parses) {
   ASSERT_TRUE(slice->hasStart());
   ASSERT_TRUE(slice->hasEnd());
   ASSERT_EQ(slice->getStart()->getType(), ASTNodeType::PAREN_EXPR);
-  const auto* paren = static_cast<const ParenExprAST*>(slice->getStart());
+  const auto* paren =
+      static_cast<const sun::ast::ParenExprAST*>(slice->getStart());
   EXPECT_EQ(paren->getInner()->getType(), ASTNodeType::TERNARY);
   EXPECT_EQ(slice->getEnd()->getType(), ASTNodeType::NUMBER);
 }

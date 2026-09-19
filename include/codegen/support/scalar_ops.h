@@ -15,14 +15,16 @@
 #include "codegen/llvm_type_resolver.h"
 #include "semantic_analysis/types.h"
 
-namespace sun::codegen::ops {
+/** Provides shared diagnostics, source tracking, and compiler utilities. */
+namespace sun::codegen::support {
+using sun::semantic_analysis::TypePtr;
 
 /**
  * Widens an integer to destTy. The source expression's Sun type decides zero-
  * versus sign-extension, and this is the single place that owns that rule.
  */
 llvm::Value* extendInt(llvm::IRBuilder<>& builder, llvm::Value* value,
-                       llvm::Type* destTy, const sun::TypePtr& sourceType);
+                       llvm::Type* destTy, const TypePtr& sourceType);
 
 /**
  * Integer division or remainder with the given signedness.
@@ -36,8 +38,8 @@ llvm::Value* createIntDivRem(llvm::IRBuilder<>& builder, llvm::Value* L,
  * needed.
  */
 llvm::Value* widenNumericIfNeeded(llvm::IRBuilder<>& builder,
-                                  LLVMTypeResolver& types, llvm::Value* argVal,
-                                  const sun::TypePtr& paramType,
-                                  const sun::TypePtr& sourceType);
+                                  sun::codegen::LLVMTypeResolver& types,
+                                  llvm::Value* argVal, const TypePtr& paramType,
+                                  const TypePtr& sourceType);
 
-}  // namespace sun::codegen::ops
+}  // namespace sun::codegen::support

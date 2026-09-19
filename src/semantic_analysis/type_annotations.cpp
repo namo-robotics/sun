@@ -6,26 +6,41 @@
 #include "semantic_analysis/type_traits.h"
 #include "support/error.h"
 
-using sun::unwrapRef;
+using sun::semantic_analysis::DeclarationKind;
+using sun::semantic_analysis::InterfaceType;
+using sun::semantic_analysis::LambdaType;
+using sun::semantic_analysis::ReferenceType;
+using sun::semantic_analysis::TypePtr;
+using sun::semantic_analysis::Types;
 
+using sun::support::logAndThrowError;
+
+/** Resolves declarations and checks the types and meaning of Sun programs. */
+namespace sun::semantic_analysis {
+
+using sun::semantic_analysis::unwrapRef;
+
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// What `_return_type_of<F>` stands for once F is known. A lambda or function
-// answers with what it returns; a parameter that is still standing for itself
-// keeps the question open, carried as the parameter plus the projection.
-sun::TypePtr returnTypeOf(const sun::TypePtr& target,
-                          std::optional<Position> at) {
+/**
+ * What `_return_type_of<F>` stands for once F is known. A lambda or function
+ * answers with what it returns; a parameter that is still standing for itself
+ * keeps the question open, carried as the parameter plus the projection.
+ */
+TypePtr returnTypeOf(const TypePtr& target,
+                     std::optional<sun::support::Position> at) {
   if (!target) return nullptr;
-  if (auto* lambda = sun::tryGetType<sun::LambdaType>(target)) {
+  if (auto* lambda = sun::codegen::support::tryGetType<LambdaType>(target)) {
     return lambda->getReturnType();
   }
-  if (auto* func = sun::tryGetType<sun::FunctionType>(target)) {
+  if (auto* func = sun::codegen::support::tryGetType<
+          sun::semantic_analysis::FunctionType>(target)) {
     return func->getReturnType();
   }
-  if (auto* param = sun::tryGetType<sun::TypeParameterType>(target)) {
-    return sun::Types::TypeParameterProjection(param->getProjectionBase(),
-                                               param->getConstraint(),
-                                               sun::TypeProjection::ReturnType);
+  if (auto* param = sun::codegen::support::tryGetType<
+          sun::semantic_analysis::TypeParameterType>(target)) {
+    return param->project(sun::semantic_analysis::TypeProjection::ReturnType);
   }
   logAndThrowError("_return_type_of<" + target->toDisplayString() +
                        "> requires a lambda or function type",
@@ -35,64 +50,68 @@ sun::TypePtr returnTypeOf(const sun::TypePtr& target,
 
 }  // namespace
 
-std::shared_ptr<sun::InterfaceType> TypeInferer::resolveConstraintInterface(
-    const TypeConstraint& constraint) {
+std::shared_ptr<InterfaceType> TypeInferer::resolveConstraintInterface(
+    const sun::ast::TypeConstraint& constraint) {
   auto type = typeAnnotationToType(constraint.toAnnotation());
   if (!type || !type->isInterface()) {
     logAndThrowError(
         "constraint '" + constraint.toString() + "' must name an interface",
         constraint.span);
   }
-  return std::static_pointer_cast<sun::InterfaceType>(type);
+  return std::static_pointer_cast<InterfaceType>(type);
 }
 
-sun::TypePtr TypeInferer::substituteTypeParameters(sun::TypePtr type) {
+TypePtr TypeInferer::substituteTypeParameters(TypePtr type) {
   if (!type) return nullptr;
 
   // If it's a type parameter, look up binding in scope stack. A projected one
   // asks after its base and then applies the projection to whatever that
   // turned out to be.
   if (type->isTypeParameter()) {
-    auto* tp = dynamic_cast<sun::TypeParameterType*>(type.get());
+    auto* tp =
+        dynamic_cast<sun::semantic_analysis::TypeParameterType*>(type.get());
     auto bound = ctx_.findTypeParameter(tp->getProjectionBase());
     if (!bound) return type;
-    return tp->getProjection() == sun::TypeProjection::ReturnType
+    return tp->getProjection() ==
+                   sun::semantic_analysis::TypeProjection::ReturnType
                ? returnTypeOf(bound, std::nullopt)
                : bound;
   }
 
   // Recursively substitute in compound types
   if (type->isReference()) {
-    auto* rt = dynamic_cast<sun::ReferenceType*>(type.get());
+    auto* rt = dynamic_cast<ReferenceType*>(type.get());
     auto newReferenced = substituteTypeParameters(rt->getReferencedType());
     if (newReferenced != rt->getReferencedType()) {
-      return sun::Types::Reference(newReferenced, rt->isMutable());
+      return Types::Reference(newReferenced, rt->isMutable());
     }
     return type;
   }
 
   if (type->isRawPointer()) {
-    auto* pt = dynamic_cast<sun::RawPointerType*>(type.get());
+    auto* pt =
+        dynamic_cast<sun::semantic_analysis::RawPointerType*>(type.get());
     auto newPointee = substituteTypeParameters(pt->getPointeeType());
     if (newPointee != pt->getPointeeType()) {
-      return sun::Types::RawPointer(newPointee);
+      return Types::RawPointer(newPointee);
     }
     return type;
   }
 
   if (type->isStaticPointer()) {
-    auto* pt = dynamic_cast<sun::StaticPointerType*>(type.get());
+    auto* pt =
+        dynamic_cast<sun::semantic_analysis::StaticPointerType*>(type.get());
     auto newPointee = substituteTypeParameters(pt->getPointeeType());
     if (newPointee != pt->getPointeeType()) {
-      return sun::Types::StaticPointer(newPointee);
+      return Types::StaticPointer(newPointee);
     }
     return type;
   }
 
   if (type->isFunction()) {
-    auto* ft = dynamic_cast<sun::FunctionType*>(type.get());
+    auto* ft = dynamic_cast<sun::semantic_analysis::FunctionType*>(type.get());
     auto newRet = substituteTypeParameters(ft->getReturnType());
-    std::vector<sun::TypePtr> newParams;
+    std::vector<TypePtr> newParams;
     bool changed = (newRet != ft->getReturnType());
     for (const auto& param : ft->getParamTypes()) {
       auto newParam = substituteTypeParameters(param);
@@ -100,16 +119,16 @@ sun::TypePtr TypeInferer::substituteTypeParameters(sun::TypePtr type) {
       if (newParam != param) changed = true;
     }
     if (changed) {
-      return sun::Types::Function(newRet, std::move(newParams), ft->canThrow(),
-                                  ft->requiresUnsafe());
+      return Types::Function(newRet, std::move(newParams), ft->canThrow(),
+                             ft->requiresUnsafe());
     }
     return type;
   }
 
   if (type->isLambda()) {
-    auto* lt = dynamic_cast<sun::LambdaType*>(type.get());
+    auto* lt = dynamic_cast<LambdaType*>(type.get());
     auto newRet = substituteTypeParameters(lt->getReturnType());
-    std::vector<sun::TypePtr> newParams;
+    std::vector<TypePtr> newParams;
     bool changed = (newRet != lt->getReturnType());
     for (const auto& param : lt->getParamTypes()) {
       auto newParam = substituteTypeParameters(param);
@@ -117,14 +136,14 @@ sun::TypePtr TypeInferer::substituteTypeParameters(sun::TypePtr type) {
       if (newParam != param) changed = true;
     }
     if (changed) {
-      auto substituted = sun::Types::Lambda(
-          newRet, std::move(newParams), lt->canThrow(), lt->requiresUnsafe());
+      auto substituted = Types::Lambda(newRet, std::move(newParams),
+                                       lt->canThrow(), lt->requiresUnsafe());
       // The <'_> marker is part of the type's identity and must survive
       // substitution, or spawn<F>'s specializations would lose it; the
       // lifetime metadata rides along with it
-      static_cast<sun::LambdaType*>(substituted.get())
+      static_cast<LambdaType*>(substituted.get())
           ->setHasRefCaptures(lt->hasRefCaptures());
-      static_cast<sun::LambdaType*>(substituted.get())
+      static_cast<LambdaType*>(substituted.get())
           ->setLifetimeName(lt->getLifetimeName());
       return substituted;
     }
@@ -134,10 +153,10 @@ sun::TypePtr TypeInferer::substituteTypeParameters(sun::TypePtr type) {
   // Handle class types with type arguments (e.g., MatrixView<T> ->
   // MatrixView<i32>)
   if (type->isClass()) {
-    auto* ct = dynamic_cast<sun::ClassType*>(type.get());
+    auto* ct = dynamic_cast<sun::semantic_analysis::ClassType*>(type.get());
     const auto& typeArgs = ct->getTypeArguments();
     if (!typeArgs.empty()) {
-      std::vector<sun::TypePtr> newArgs;
+      std::vector<TypePtr> newArgs;
       bool changed = false;
       for (const auto& arg : typeArgs) {
         auto newArg = substituteTypeParameters(arg);
@@ -160,10 +179,10 @@ sun::TypePtr TypeInferer::substituteTypeParameters(sun::TypePtr type) {
   // Handle interface types with type arguments (e.g., IIterator<T> ->
   // IIterator<i32>)
   if (type->isInterface()) {
-    auto* it = dynamic_cast<sun::InterfaceType*>(type.get());
+    auto* it = dynamic_cast<InterfaceType*>(type.get());
     const auto& typeArgs = it->getTypeArguments();
     if (!typeArgs.empty()) {
-      std::vector<sun::TypePtr> newArgs;
+      std::vector<TypePtr> newArgs;
       bool changed = false;
       for (const auto& arg : typeArgs) {
         auto newArg = substituteTypeParameters(arg);
@@ -171,13 +190,11 @@ sun::TypePtr TypeInferer::substituteTypeParameters(sun::TypePtr type) {
         if (newArg != arg) changed = true;
       }
       if (changed) {
-        // Need to re-instantiate the generic interface with substituted type
-        // args
-        std::string baseName = it->getGenericQualifiedName().lookupName();
-        if (baseName.empty()) {
-          baseName = it->getName();
-        }
-        return generics_.instantiateGenericInterface(baseName, newArgs);
+        auto* info = ctx_.lookupGenericInterface(
+            it->sourceDeclaration(ctx_.types()->declarations));
+        if (!info)
+          logAndThrowError("Selected generic interface is not registered");
+        return generics_.instantiateGenericInterface(*info, newArgs);
       }
     }
     return type;
@@ -186,10 +203,10 @@ sun::TypePtr TypeInferer::substituteTypeParameters(sun::TypePtr type) {
   // Handle specialized enums with type arguments (e.g., Option<T> ->
   // Option<i32>)
   if (type->isEnum()) {
-    auto* et = dynamic_cast<sun::EnumType*>(type.get());
+    auto* et = dynamic_cast<sun::semantic_analysis::EnumType*>(type.get());
     const auto& typeArgs = et->getGenericArgs();
     if (!typeArgs.empty()) {
-      std::vector<sun::TypePtr> newArgs;
+      std::vector<TypePtr> newArgs;
       bool changed = false;
       for (const auto& arg : typeArgs) {
         auto newArg = substituteTypeParameters(arg);
@@ -197,8 +214,10 @@ sun::TypePtr TypeInferer::substituteTypeParameters(sun::TypePtr type) {
         if (newArg != arg) changed = true;
       }
       if (changed) {
-        return generics_.instantiateGenericEnum(
-            et->getGenericQualifiedName().lookupName(), newArgs);
+        auto* info = ctx_.lookupGenericEnum(
+            et->sourceDeclaration(ctx_.types()->declarations));
+        if (!info) logAndThrowError("Selected generic enum is not registered");
+        return generics_.instantiateGenericEnum(*info, newArgs);
       }
     }
     return type;
@@ -212,10 +231,12 @@ sun::TypePtr TypeInferer::substituteTypeParameters(sun::TypePtr type) {
 // Type argument resolution helper
 // -------------------------------------------------------------------
 
-std::vector<sun::TypePtr> TypeInferer::resolveTypeArguments(
-    const std::vector<std::unique_ptr<TypeAnnotation>>& typeAnnotations,
-    const std::optional<Position>& location, const std::string& context) {
-  std::vector<sun::TypePtr> typeArgs;
+std::vector<TypePtr> TypeInferer::resolveTypeArguments(
+    const std::vector<std::unique_ptr<sun::ast::TypeAnnotation>>&
+        typeAnnotations,
+    const std::optional<sun::support::Position>& location,
+    const std::string& context) {
+  std::vector<TypePtr> typeArgs;
   for (const auto& typeArg : typeAnnotations) {
     auto argType = typeAnnotationToType(*typeArg);
     if (!argType) {
@@ -230,21 +251,42 @@ std::vector<sun::TypePtr> TypeInferer::resolveTypeArguments(
 // Type annotation to type conversion
 // -------------------------------------------------------------------
 
-sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
-  if (annot.qualifiedName) {
-    ctx_.requireDeclaration(*annot.qualifiedName);
-    TypeAnnotation canonical(annot);
-    canonical.baseName = annot.qualifiedName->lookupName();
-    canonical.qualifiedName.reset();
-    return typeAnnotationToType(canonical);
+TypePtr TypeInferer::typeAnnotationToType(
+    const sun::ast::TypeAnnotation& annot) {
+  if (annot.declarationKey) {
+    auto id = ctx_.requireDeclaration(*annot.declarationKey, "", std::nullopt,
+                                      annot.baseName);
+    std::vector<TypePtr> arguments;
+    for (const auto& argument : annot.typeArguments)
+      arguments.push_back(typeAnnotationToType(*argument));
+    auto kind = ctx_.types()->declarations.get(id).kind;
+    if (!arguments.empty()) {
+      if (kind == DeclarationKind::Class) {
+        auto* info = ctx_.lookupGenericClass(id);
+        if (info) return generics_.instantiateGenericClass(*info, arguments);
+      } else if (kind == DeclarationKind::Interface) {
+        auto* info = ctx_.lookupGenericInterface(id);
+        if (info)
+          return generics_.instantiateGenericInterface(*info, arguments);
+      } else if (kind == DeclarationKind::Enum) {
+        auto* info = ctx_.lookupGenericEnum(id);
+        if (info) return generics_.instantiateGenericEnum(*info, arguments);
+      }
+      logAndThrowError("Imported generic type has no registered template",
+                       annot.span);
+    }
+    if (kind == DeclarationKind::Class) return ctx_.types()->getClass(id);
+    if (kind == DeclarationKind::Interface)
+      return ctx_.types()->getInterface(id);
+    return ctx_.types()->getEnum(id);
   }
   // Raw pointer types: raw_ptr<T> non-owning pointer for C interop
   if (annot.isRawPointer()) {
     if (!annot.elementType) {
       return nullptr;
     }
-    sun::TypePtr pointeeType = typeAnnotationToType(*annot.elementType);
-    return sun::Types::RawPointer(pointeeType);
+    TypePtr pointeeType = typeAnnotationToType(*annot.elementType);
+    return Types::RawPointer(pointeeType);
   }
 
   // Static pointer types: static_ptr<T> pointer to immortal static data
@@ -252,8 +294,8 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
     if (!annot.elementType) {
       return nullptr;
     }
-    sun::TypePtr pointeeType = typeAnnotationToType(*annot.elementType);
-    return sun::Types::StaticPointer(pointeeType);
+    TypePtr pointeeType = typeAnnotationToType(*annot.elementType);
+    return Types::StaticPointer(pointeeType);
   }
 
   // Reference types: ref(T) with implicit dereferencing
@@ -263,32 +305,33 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
     }
     // `ref array<T>` is the one place an unsized array may be written: a
     // view of some sized array with its rank erased
-    sun::TypePtr referencedType;
+    TypePtr referencedType;
     if (annot.elementType->isArray() &&
         annot.elementType->arrayDimensions.empty()) {
       if (!annot.elementType->elementType) {
         logAndThrowError("array type requires an element type", annot.span);
       }
-      sun::TypePtr elemType =
-          typeAnnotationToType(*annot.elementType->elementType);
+      TypePtr elemType = typeAnnotationToType(*annot.elementType->elementType);
       if (!elemType) {
         logAndThrowError("invalid array element type", annot.span);
       }
-      referencedType = sun::Types::Array(elemType, {});
+      referencedType = Types::Array(elemType, {});
     } else {
       referencedType = typeAnnotationToType(*annot.elementType);
     }
     if (!referencedType) return nullptr;
     auto refType =
-        sun::Types::Reference(referencedType, /*isMutable=*/!annot.constRef);
+        Types::Reference(referencedType, /*isMutable=*/!annot.constRef);
     // A named lifetime on the position ('ref 'a Bus') rides along as
     // metadata for the borrow checker; it is not part of the type. So do
     // the class application's lifetime arguments ('ref Bus<'this>'), which
     // must match the class's declared lifetimes one for one.
-    static_cast<sun::ReferenceType*>(refType.get())
+    static_cast<ReferenceType*>(refType.get())
         ->setLifetimeName(annot.lifetimeName);
     if (!annot.elementType->lifetimeArguments.empty()) {
-      auto* referentClass = sun::tryGetType<sun::ClassType>(referencedType);
+      auto* referentClass =
+          sun::codegen::support::tryGetType<sun::semantic_analysis::ClassType>(
+              referencedType);
       size_t declared =
           referentClass ? referentClass->getLifetimeParams().size() : 0;
       if (annot.elementType->lifetimeArguments.size() != declared) {
@@ -299,7 +342,7 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
                 " are applied here",
             annot.span);
       }
-      static_cast<sun::ReferenceType*>(refType.get())
+      static_cast<ReferenceType*>(refType.get())
           ->setClassLifetimeArgs(annot.elementType->lifetimeArguments);
     }
     return refType;
@@ -317,15 +360,14 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
           "returns",
           annot.span);
     }
-    std::vector<sun::TypePtr> paramTypes;
+    std::vector<TypePtr> paramTypes;
     for (const auto& param : annot.paramTypes) {
       paramTypes.push_back(typeAnnotationToType(*param));
     }
-    sun::TypePtr retType = annot.returnType
-                               ? typeAnnotationToType(*annot.returnType)
-                               : sun::Types::Void();
-    return sun::Types::Function(retType, std::move(paramTypes), annot.canError,
-                                annot.requiresUnsafe);
+    TypePtr retType = annot.returnType ? typeAnnotationToType(*annot.returnType)
+                                       : Types::Void();
+    return Types::Function(retType, std::move(paramTypes), annot.canError,
+                           annot.requiresUnsafe);
   }
 
   // Lambda types: () {} (anonymous function, fat pointer call)
@@ -340,23 +382,21 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
           "returns",
           annot.span);
     }
-    std::vector<sun::TypePtr> paramTypes;
+    std::vector<TypePtr> paramTypes;
     for (const auto& param : annot.paramTypes) {
       paramTypes.push_back(typeAnnotationToType(*param));
     }
-    sun::TypePtr retType = annot.returnType
-                               ? typeAnnotationToType(*annot.returnType)
-                               : sun::Types::Void();
+    TypePtr retType = annot.returnType ? typeAnnotationToType(*annot.returnType)
+                                       : Types::Void();
     bool canThrow =
         annot.canError || (annot.returnType && annot.returnType->canError);
-    auto lambdaType = sun::Types::Lambda(retType, std::move(paramTypes),
-                                         canThrow, annot.requiresUnsafe);
+    auto lambdaType = Types::Lambda(retType, std::move(paramTypes), canThrow,
+                                    annot.requiresUnsafe);
     // `<'_>(…) => …` admits lambdas whose captured environment lives in a
     // stack frame; a plain annotation admits only environment-free lambdas.
     // A named lifetime ('<'a>') rides along as borrow-checker metadata.
-    static_cast<sun::LambdaType*>(lambdaType.get())
-        ->setHasRefCaptures(annot.refEnv);
-    static_cast<sun::LambdaType*>(lambdaType.get())
+    static_cast<LambdaType*>(lambdaType.get())->setHasRefCaptures(annot.refEnv);
+    static_cast<LambdaType*>(lambdaType.get())
         ->setLifetimeName(annot.lifetimeName);
     return lambdaType;
   }
@@ -375,22 +415,22 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
           "give it a size: array<T, N>",
           annot.span);
     }
-    sun::TypePtr elemType = typeAnnotationToType(*annot.elementType);
+    TypePtr elemType = typeAnnotationToType(*annot.elementType);
     if (!elemType) {
       logAndThrowError("invalid array element type", annot.span);
     }
-    return sun::Types::Array(elemType, annot.arrayDimensions);
+    return Types::Array(elemType, annot.arrayDimensions);
   }
 
   // Try primitive types first
-  sun::TypePtr primitiveType = sun::Types::fromString(annot.baseName);
+  TypePtr primitiveType = Types::fromString(annot.baseName);
   if (primitiveType) {
     return primitiveType;
   }
 
   // Builtin traits are symbolic targets of _is and generic constraints.
-  if (sun::isTypeTrait(annot.baseName)) {
-    return sun::Types::TypeParameter(annot.baseName);
+  if (sun::semantic_analysis::isTypeTrait(annot.baseName)) {
+    return Types::TypeParameter(annot.baseName);
   }
 
   // Check for type parameter binding (in generic context)
@@ -413,7 +453,7 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
   // Check if this is a generic type usage like List<i32>
   if (annot.isGeneric()) {
     // Convert type arguments to TypePtrs
-    std::vector<sun::TypePtr> typeArgs;
+    std::vector<TypePtr> typeArgs;
     for (const auto& typeArg : annot.typeArguments) {
       auto argType = typeAnnotationToType(*typeArg);
       if (!argType) {
@@ -425,7 +465,8 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
     }
 
     // Resolve the base name through using imports
-    sun::QualifiedName resolved = ctx_.resolveNameWithUsings(annot.baseName);
+    sun::semantic_analysis::QualifiedName resolved =
+        ctx_.resolveNameWithUsings(annot.baseName);
 
     // Try to instantiate the generic class
     // Use the original dotted name for module-qualified lookups (e.g.,
@@ -436,18 +477,17 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
                                  : resolved.baseName;
     // Generic enum (e.g., Option<i32>) — checked first to avoid the noisy
     // unknown-class/interface fallthrough below
-    if (ctx_.scope()->lookupGenericEnum(lookupName)) {
-      auto specializedEnum =
-          generics_.instantiateGenericEnum(lookupName, typeArgs);
+    if (auto* info = ctx_.lookupGenericEnum(lookupName)) {
+      auto specializedEnum = generics_.instantiateGenericEnum(*info, typeArgs);
       if (specializedEnum) {
         return specializedEnum;
       }
     }
 
     // Generic interface (e.g., IIterator<i32, Range>)
-    if (ctx_.lookupGenericInterface(lookupName)) {
+    if (auto* info = ctx_.lookupGenericInterface(lookupName)) {
       auto specializedInterface =
-          generics_.instantiateGenericInterface(lookupName, typeArgs);
+          generics_.instantiateGenericInterface(*info, typeArgs);
       if (specializedInterface) {
         return specializedInterface;
       }
@@ -473,7 +513,8 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
   // Resolve the base name through using imports. A dotted name keeps its
   // module path, so the lookups below can find the symbol inside that module
   // (the generic branch above does the same).
-  sun::QualifiedName resolved = ctx_.resolveNameWithUsings(annot.baseName);
+  sun::semantic_analysis::QualifiedName resolved =
+      ctx_.resolveNameWithUsings(annot.baseName);
   const std::string& lookupName = annot.baseName.find('.') != std::string::npos
                                       ? annot.baseName
                                       : resolved.baseName;
@@ -497,7 +538,9 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
     // This is a reference to a generic class without type arguments
     // Return a type parameter type (this should really be an error in most
     // contexts)
-    return sun::Types::TypeParameter(annot.baseName);
+    return Types::TypeParameter(annot.baseName, {},
+                                genericInfo->AST->getDeclarationId(),
+                                ctx_.types()->declarations.session());
   }
 
   // Check for user-defined interface types
@@ -528,28 +571,31 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
 // lower to the same layout, so a value crosses between them through memory
 // without codegen help. Classes are not viewed (a class holding a borrow of
 // its receiver is not a pattern the stdlib uses).
-sun::TypePtr TypeInferer::createConstView(sun::TypePtr type) {
+TypePtr TypeInferer::createConstView(TypePtr type) {
   if (!type) return type;
   if (type->isReference()) {
-    auto* ref = static_cast<const sun::ReferenceType*>(type.get());
+    auto* ref = static_cast<const ReferenceType*>(type.get());
     if (!ref->isMutable()) return type;
-    return sun::Types::Reference(ref->getReferencedType(), /*isMutable=*/false);
+    return Types::Reference(ref->getReferencedType(), /*isMutable=*/false);
   }
   if (type->isEnum()) {
-    auto* enumType = static_cast<const sun::EnumType*>(type.get());
+    auto* enumType =
+        static_cast<const sun::semantic_analysis::EnumType*>(type.get());
     if (!enumType->isGenericSpecialization()) return type;
-    std::vector<sun::TypePtr> args;
+    std::vector<TypePtr> args;
     bool changed = false;
     for (const auto& arg : enumType->getGenericArgs()) {
-      sun::TypePtr viewed = createConstView(arg);
+      TypePtr viewed = createConstView(arg);
       changed = changed || viewed != arg;
       args.push_back(viewed);
     }
     if (!changed) return type;
-    if (auto viewed = generics_.instantiateGenericEnum(
-            enumType->getGenericQualifiedName().lookupName(), args)) {
-      return viewed;
-    }
+    auto* info = ctx_.lookupGenericEnum(
+        enumType->sourceDeclaration(ctx_.types()->declarations));
+    if (!info) logAndThrowError("Selected generic enum is not registered");
+    return generics_.instantiateGenericEnum(*info, args);
   }
   return type;
 }
+
+}  // namespace sun::semantic_analysis

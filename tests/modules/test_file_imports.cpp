@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "driver/execution_utils.h"
+#include "moon_bundling/library_cache.h"
 #include "moon_bundling/moon.h"
 #include "moon_bundling/moon_builder.h"
 #include "serialization/ast_deserializer.h"
@@ -14,6 +15,20 @@
 #include "serialization/metadata_references.h"
 #include "support/error.h"
 
+using sun::moon_bundling::MoonBuilder;
+using sun::moon_bundling::MoonImport;
+using sun::moon_bundling::MoonReader;
+using sun::semantic_analysis::PortableDeclarationKey;
+using sun::semantic_analysis::PortableTypeKey;
+
+using sun::ast::VariableCreationAST;
+using sun::driver::compileFiles;
+using sun::driver::Driver;
+using sun::driver::executeString;
+using sun::driver::initTestEnvironment;
+using sun::support::SunError;
+
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 /** Write independent source files for one import-scoping test. */
@@ -224,9 +239,9 @@ TEST(Modules_FileImports,
   )"});
   initTestEnvironment();
   auto moon = std::filesystem::path(paths[0]).parent_path() / "library.moon";
-  ASSERT_NO_THROW(sun::MoonBuilder::build(paths[0], moon));
+  ASSERT_NO_THROW(MoonBuilder::build(paths[0], moon));
   auto driver = Driver::createForJIT("file_import_bundle");
-  driver->setMoonImports({sun::MoonImport(moon.string())});
+  driver->setMoonImports({MoonImport(moon.string())});
   EXPECT_EQ(driver->executeString(R"(
     public module caller { public function answer() i32 { return 99; } }
     using caller;
@@ -236,7 +251,7 @@ TEST(Modules_FileImports,
 }
 
 TEST(Modules_FileImports, interpolation_keeps_enclosing_file_imports) {
-  EXPECT_EQ(executeStringWithStdlib(R"(
+  EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
     using std;
     public module lib { public function answer() i32 { return 42; } }
     using lib;
@@ -267,11 +282,11 @@ TEST(Modules_FileImports, different_bundles_remap_overlapping_file_ids) {
   auto dir = std::filesystem::path(paths[0]).parent_path();
   auto left = dir / "left.moon";
   auto right = dir / "right.moon";
-  ASSERT_NO_THROW(sun::MoonBuilder::build(paths[0], left));
-  ASSERT_NO_THROW(sun::MoonBuilder::build(paths[1], right));
+  ASSERT_NO_THROW(MoonBuilder::build(paths[0], left));
+  ASSERT_NO_THROW(MoonBuilder::build(paths[1], right));
   auto driver = Driver::createForJIT("separate_bundle_file_ids");
   driver->setMoonImports(
-      {sun::MoonImport(left.string()), sun::MoonImport(right.string())});
+      {MoonImport(left.string()), MoonImport(right.string())});
   EXPECT_EQ(driver->executeString(R"(
     function main() i32 {
       return left_api.result<i32>() + right_api.result<i32>();
@@ -304,16 +319,17 @@ TEST(Modules_FileImports, targeted_import_does_not_import_other_symbols) {
                SunError);
 }
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 /** Inspect canonical module annotations throughout exported metadata. */
 void visitModuleReferences(
     const google::protobuf::Message& message,
-    const std::function<void(const sun::QualifiedName&)>& visit) {
-  if (message.GetDescriptor() == sun::ast::ASTNode::descriptor()) {
-    const auto& node = static_cast<const sun::ast::ASTNode&>(message);
-    if (node.has_module_qualified_name())
-      visit(sun::serialization::deserializeQualifiedName(
-          node.module_qualified_name()));
+    const std::function<void(const PortableDeclarationKey&)>& visit) {
+  if (message.GetDescriptor() == sun::proto::ast::ASTNode::descriptor()) {
+    const auto& node = static_cast<const sun::proto::ast::ASTNode&>(message);
+    if (node.has_module_declaration_key())
+      visit(
+          PortableDeclarationKey::parseOriginal(node.module_declaration_key()));
   }
   auto* reflection = message.GetReflection();
   std::vector<const google::protobuf::FieldDescriptor*> fields;
@@ -330,6 +346,16 @@ void visitModuleReferences(
   }
 }
 
+/** Find the original key exported for a source declaration. */
+PortableDeclarationKey exportedKey(MoonReader& reader,
+                                   const std::string& name) {
+  for (const auto& module : reader.listModules())
+    for (const auto& record : reader.getMetadata(module)->declarations())
+      if (record.name() == name)
+        return PortableDeclarationKey::parseOriginal(record.key());
+  throw std::runtime_error("Missing exported declaration: " + name);
+}
+
 /** Independent bundle versions used to test nominal metadata identities. */
 class MoonExactTypes : public ::testing::Test {
  protected:
@@ -338,16 +364,17 @@ class MoonExactTypes : public ::testing::Test {
 
   /** Build a bundle from source and explicit dependencies. */
   std::string bundle(const std::string& name, const std::string& source,
-                     std::vector<sun::MoonImport> imports = {}) {
+                     std::vector<MoonImport> imports = {}) {
     auto path = dir / (name + ".sun");
     std::ofstream(path) << source;
     auto output = dir / (name + ".moon");
-    sun::MoonBuildOptions options;
+    sun::moon_bundling::MoonBuildOptions options;
     options.extraMoons = std::move(imports);
-    sun::MoonBuilder::build(path.string(), output, options);
+    MoonBuilder::build(path.string(), output, options);
     return output.string();
   }
 
+  /** Prepares the files and compiler state needed by each test. */
   void SetUp() override {
     initTestEnvironment();
     dir = std::filesystem::current_path() / "tmp" / "exact_types" /
@@ -370,12 +397,12 @@ class MoonExactTypes : public ::testing::Test {
         public function read(value: const ref b.Value) i32 { return value.n; }
       }
     )",
-               {sun::MoonImport(b1)});
+               {MoonImport(b1)});
   }
 
   /** Compile or execute an application with its explicit import list. */
-  sun::SunValue run(std::vector<sun::MoonImport> imports,
-                    const std::string& source) {
+  sun::driver::SunValue run(std::vector<MoonImport> imports,
+                            const std::string& source) {
     auto driver = Driver::createForJIT("exact_types");
     driver->setMoonImports(imports);
     return driver->executeString(source);
@@ -385,7 +412,7 @@ class MoonExactTypes : public ::testing::Test {
 
 TEST_F(MoonExactTypes, missing_dependency_names_exact_declaration) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
-      run({sun::MoonImport(a)}, "function main() i32 { return 0; }"),
+      run({MoonImport(a)}, "function main() i32 { return 0; }"),
       "moon exact dependency");
 }
 
@@ -396,20 +423,20 @@ TEST_F(MoonExactTypes, exact_version_works_in_either_import_order) {
       return a.read(value);
     }
   )";
-  EXPECT_EQ(run({sun::MoonImport(a), sun::MoonImport(b1)}, source), 42);
-  EXPECT_EQ(run({sun::MoonImport(b1), sun::MoonImport(a)}, source), 42);
+  EXPECT_EQ(run({MoonImport(a), MoonImport(b1)}, source), 42);
+  EXPECT_EQ(run({MoonImport(b1), MoonImport(a)}, source), 42);
 }
 
 TEST_F(MoonExactTypes, wrong_version_cannot_rebind_signature) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(run({sun::MoonImport(a), sun::MoonImport(b2)},
-                                    "function main() i32 { return 0; }"),
-                                "conflicting bundle supplied");
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      run({MoonImport(a), MoonImport(b2)}, "function main() i32 { return 0; }"),
+      "conflicting bundle supplied");
 }
 
 TEST_F(MoonExactTypes, aliased_equal_layout_versions_remain_distinct) {
-  auto imports = std::vector<sun::MoonImport>{
-      sun::MoonImport(a), sun::MoonImport(b1, "b", "old_b"),
-      sun::MoonImport(b2, "b", "new_b")};
+  auto imports =
+      std::vector<MoonImport>{MoonImport(a), MoonImport(b1, "b", "old_b"),
+                              MoonImport(b2, "b", "new_b")};
   EXPECT_EQ(run(imports, R"(
     function main() i32 {
       var value: old_b.Value = { n: 42 };
@@ -434,8 +461,8 @@ TEST_F(MoonExactTypes,
       public function result() i32 { return version(); }
     }
   )",
-                               {sun::MoonImport(b1)});
-  EXPECT_EQ(run({sun::MoonImport(implementation)}, R"(
+                               {MoonImport(b1)});
+  EXPECT_EQ(run({MoonImport(implementation)}, R"(
     function main() i32 { return implementation.result(); }
   )"),
             1);
@@ -451,16 +478,15 @@ TEST_F(MoonExactTypes,
       }
     }
   )",
-                        {sun::MoonImport(b1, "b", "original")});
-  EXPECT_EQ(
-      run({sun::MoonImport(generic), sun::MoonImport(b1, "b", "application")},
-          R"(
+                        {MoonImport(b1, "b", "original")});
+  EXPECT_EQ(run({MoonImport(generic), MoonImport(b1, "b", "application")},
+                R"(
     function main() i32 {
       var value: application.Value = { n: 41 };
       return generic.result<i32>(value);
     }
   )"),
-      42);
+            42);
 }
 
 TEST_F(MoonExactTypes,
@@ -483,9 +509,9 @@ TEST_F(MoonExactTypes,
       public var inferred = b.Value();
     }
   )",
-                       {sun::MoonImport(b1)});
-  auto dependency = sun::MoonReader::open(b1);
-  auto reader = sun::MoonReader::open(shapes);
+                       {MoonImport(b1)});
+  auto dependency = MoonReader::open(b1);
+  auto reader = MoonReader::open(shapes);
   ASSERT_TRUE(dependency);
   ASSERT_TRUE(reader);
   auto requiredHash =
@@ -494,18 +520,17 @@ TEST_F(MoonExactTypes,
   bool symbolic = false, inferred = false, array = false;
   for (const auto& key : reader->listModules()) {
     const auto* md = reader->getMetadata(key);
-    sun::serialization::visitQualifiedNames(*md, [&](const auto& ref, auto) {
-      if (ref.baseName != "Value") return;
-      EXPECT_EQ(ref.bundleHash(), requiredHash);
-      EXPECT_EQ(ref.scopePath,
-                (std::vector<std::string>{"$" + requiredHash + "$", "b"}));
-      ++references;
-    });
+    sun::serialization::visitDeclarationKeys(
+        *md, [&](const auto& ref, auto, const auto& name) {
+          if (name.find("Value") == std::string::npos) return;
+          EXPECT_EQ(ref, exportedKey(*dependency, "Value"));
+          ++references;
+        });
     for (const auto& cls : md->classes()) {
       for (const auto& field : cls.fields()) {
         if (field.name() == "parameter") {
           symbolic = field.type().base_name() == "T" &&
-                     !field.type().has_qualified_name();
+                     !field.type().has_declaration_key();
         }
         if (field.name() == "values") {
           array = field.type().array_dimensions_size() == 2 &&
@@ -516,7 +541,7 @@ TEST_F(MoonExactTypes,
     }
     for (const auto& global : md->globals()) {
       inferred = global.has_type_annotation() &&
-                 global.type_annotation().has_qualified_name() &&
+                 global.type_annotation().has_declaration_key() &&
                  !global.has_value();
     }
   }
@@ -525,9 +550,9 @@ TEST_F(MoonExactTypes,
   EXPECT_TRUE(inferred);
   EXPECT_TRUE(array);
   EXPECT_SUN_ERROR_WITH_MESSAGE(
-      run({sun::MoonImport(shapes)}, "function main() i32 { return 0; }"),
+      run({MoonImport(shapes)}, "function main() i32 { return 0; }"),
       "moon exact dependency");
-  EXPECT_EQ(run({sun::MoonImport(shapes), sun::MoonImport(b1, "b", "renamed")},
+  EXPECT_EQ(run({MoonImport(shapes), MoonImport(b1, "b", "renamed")},
                 "function main() i32 { return 0; }"),
             0);
 }
@@ -541,7 +566,7 @@ TEST_F(MoonExactTypes, nested_module_alias_preserves_compiled_symbols) {
       }
     }
   )");
-  EXPECT_EQ(run({sun::MoonImport(nested, "outer", "other")}, R"(
+  EXPECT_EQ(run({MoonImport(nested, "outer", "other")}, R"(
     function main() i32 {
       var value: other.inner.Value = { n: 42 };
       return other.inner.read(value);
@@ -580,10 +605,10 @@ TEST_F(MoonExactTypes,
       public class Unused<T> { var contract: dep.View<T>; }
     }
   )",
-                    {sun::MoonImport(first)});
-  auto imports = std::vector<sun::MoonImport>{
-      sun::MoonImport(api), sun::MoonImport(first, "dep", "old_dep"),
-      sun::MoonImport(second, "dep", "new_dep")};
+                    {MoonImport(first)});
+  auto imports = std::vector<MoonImport>{MoonImport(api),
+                                         MoonImport(first, "dep", "old_dep"),
+                                         MoonImport(second, "dep", "new_dep")};
   EXPECT_EQ(run(imports, R"(
     function main() i32 {
       var box: old_dep.Box<i32> = { item: 42 };
@@ -621,8 +646,8 @@ TEST_F(MoonExactTypes,
   auto wider = bundle("wider", R"(
     public module b { public class Value { public var n: i64; public var extra: i64; } }
   )");
-  EXPECT_THROW(run({sun::MoonImport(a), sun::MoonImport(b1, "b", "old_b"),
-                    sun::MoonImport(wider, "b", "wide_b")},
+  EXPECT_THROW(run({MoonImport(a), MoonImport(b1, "b", "old_b"),
+                    MoonImport(wider, "b", "wide_b")},
                    R"(
     function main() i32 {
       var value: wide_b.Value = { n: 42, extra: 7 };
@@ -642,19 +667,19 @@ TEST_F(MoonExactTypes, incorrect_declaration_kind_is_rejected_before_codegen) {
       public function constrained<T: Marker>(value: const ref T) i32 { return 42; }
     }
   )");
-  auto dependency = sun::MoonReader::open(b1);
+  auto dependency = MoonReader::open(b1);
   ASSERT_TRUE(dependency);
   auto hash =
       dependency->getMetadata(dependency->listModules()[0])->content_hash();
-  sun::QualifiedName wrongName({"$" + hash + "$", "b"}, "Value");
+  auto wrongName = exportedKey(*dependency, "Value");
   for (bool constraint : {false, true}) {
     SCOPED_TRACE(constraint ? "constraint" : "implemented interface");
-    auto reader = sun::MoonReader::open(contracts);
+    auto reader = MoonReader::open(contracts);
     ASSERT_TRUE(reader);
     llvm::LLVMContext context;
     auto module = reader->loadModule(reader->listModules()[0], context);
     ASSERT_TRUE(module);
-    sun::MoonWriter writer(
+    sun::moon_bundling::MoonWriter writer(
         reader->getMetadata(reader->listModules()[0])->content_hash());
     bool changed = false;
     for (const auto& key : reader->listModules()) {
@@ -662,16 +687,14 @@ TEST_F(MoonExactTypes, incorrect_declaration_kind_is_rejected_before_codegen) {
       if (constraint) {
         for (auto& function : *md.mutable_functions()) {
           for (auto& param : *function.mutable_proto()->mutable_type_params()) {
-            *param.mutable_qualified_name() =
-                sun::serialization::serializeQualifiedName(wrongName);
+            param.set_declaration_key(wrongName.encoding());
             changed = true;
           }
         }
       } else {
         for (auto& cls : *md.mutable_classes()) {
           for (auto& impl : *cls.mutable_implemented_interfaces()) {
-            *impl.mutable_qualified_name() =
-                sun::serialization::serializeQualifiedName(wrongName);
+            impl.set_declaration_key(wrongName.encoding());
             changed = true;
           }
         }
@@ -682,26 +705,27 @@ TEST_F(MoonExactTypes, incorrect_declaration_kind_is_rejected_before_codegen) {
     auto malformed = dir / "wrong_kind.moon";
     ASSERT_TRUE(writer.write(malformed));
     EXPECT_SUN_ERROR_WITH_MESSAGE(
-        run({sun::MoonImport(malformed.string()), sun::MoonImport(b1)},
+        run({MoonImport(malformed.string()), MoonImport(b1)},
             "function main() i32 { return 0; }"),
         "wrong type kind");
   }
 }
 
 TEST_F(MoonExactTypes, aliases_leave_compiled_function_names_unchanged) {
-  auto reader = sun::MoonReader::open(b1);
+  auto reader = MoonReader::open(b1);
   ASSERT_TRUE(reader);
   llvm::LLVMContext context;
   auto original = reader->loadModule(reader->listModules()[0], context);
   ASSERT_TRUE(original);
   std::string originalName;
   for (const auto& function : original->functions()) {
-    if (function.getName().contains("_b_version"))
+    if (function.getName() ==
+        exportedKey(*reader, "version").symbol("function"))
       originalName = function.getName().str();
   }
   ASSERT_FALSE(originalName.empty());
   auto driver = Driver::createForJIT("canonical_symbols");
-  driver->setMoonImports({sun::MoonImport(b1, "b", "visible_alias")});
+  driver->setMoonImports({MoonImport(b1, "b", "visible_alias")});
   driver->compileString(
       "function main() i32 { return visible_alias.version(); }");
   EXPECT_NE(driver->getModule().getFunction(originalName), nullptr);
@@ -714,7 +738,7 @@ TEST_F(MoonExactTypes, failed_build_does_not_publish_metadata) {
   std::ofstream(path) << "public module broken { public function bad() i32 { "
                          "return unknown; } }";
   auto output = dir / "broken.moon";
-  EXPECT_THROW(sun::MoonBuilder::build(path.string(), output), SunError);
+  EXPECT_THROW(MoonBuilder::build(path.string(), output), SunError);
   EXPECT_FALSE(std::filesystem::exists(output));
 }
 
@@ -723,42 +747,45 @@ TEST_F(MoonExactTypes, old_format_is_rejected) {
   std::filesystem::copy_file(a, output,
                              std::filesystem::copy_options::overwrite_existing);
   std::fstream file(output, std::ios::in | std::ios::out | std::ios::binary);
-  sun::MoonHeader header;
+  sun::moon_bundling::MoonHeader header;
   file.read(reinterpret_cast<char*>(&header), sizeof(header));
   --header.version;
   file.seekp(0);
   file.write(reinterpret_cast<const char*>(&header), sizeof(header));
   file.close();
-  EXPECT_FALSE(sun::MoonReader::open(output));
+  EXPECT_SUN_ERROR_WITH_MESSAGE(MoonReader::open(output),
+                                "Unsupported moon bundle format version");
 }
 
 TEST(MoonMetadata,
      canonical_type_round_trip_preserves_spelling_and_qualifiers) {
-  TypeAnnotation nominal("build_alias.Value");
-  nominal.qualifiedName =
-      sun::QualifiedName{{"$1234abcd$", "original", "nested"},
-                         "Value",
-                         {"$1234abcd$", "original", "nested"}};
-  nominal.typeArguments.push_back(std::make_unique<TypeAnnotation>("T"));
+  /** Identify a nominal type without recursively expanding its fields. */
+  sun::ast::TypeAnnotation nominal("build_alias.Value");
+  nominal.declarationKey =
+      PortableDeclarationKey::original(std::string(64, 'a'), 3);
+  nominal.typeArguments.push_back(
+      std::make_unique<sun::ast::TypeAnnotation>("T"));
   nominal.lifetimeArguments = {"a"};
-  TypeAnnotation reference("ref");
+  /** Identify a mutable or immutable reference to another type. */
+  sun::ast::TypeAnnotation reference("ref");
   reference.constRef = true;
   reference.lifetimeName = "a";
-  reference.elementType = std::make_unique<TypeAnnotation>(nominal);
-  TypeAnnotation callable("lambda");
+  reference.elementType = std::make_unique<sun::ast::TypeAnnotation>(nominal);
+  sun::ast::TypeAnnotation callable("lambda");
   callable.canError = true;
   callable.refEnv = true;
   callable.lifetimeName = "a";
-  callable.paramTypes.push_back(std::make_unique<TypeAnnotation>(reference));
-  callable.returnType = std::make_unique<TypeAnnotation>(nominal);
+  callable.paramTypes.push_back(
+      std::make_unique<sun::ast::TypeAnnotation>(reference));
+  callable.returnType = std::make_unique<sun::ast::TypeAnnotation>(nominal);
   sun::serialization::ASTSerializer serializer;
   sun::serialization::ASTDeserializer deserializer;
   VariableCreationAST variable("callback", nullptr, callable);
   auto serialized = serializer.serialize(variable);
   auto restored = deserializer.deserialize(serialized);
-  TypeAnnotation copied(
+  sun::ast::TypeAnnotation copied(
       *static_cast<const VariableCreationAST&>(*restored).getTypeAnnotation());
-  TypeAnnotation assigned;
+  sun::ast::TypeAnnotation assigned;
   assigned = copied;
   VariableCreationAST roundTrip("callback", nullptr, assigned);
   EXPECT_EQ(
@@ -767,41 +794,28 @@ TEST(MoonMetadata,
           .type_annotation()
           .SerializeAsString(),
       serialized.variable_creation().type_annotation().SerializeAsString());
-  ASSERT_TRUE(assigned.returnType->qualifiedName);
-  EXPECT_EQ(assigned.returnType->qualifiedName->modulePath,
-            nominal.qualifiedName->modulePath);
+  ASSERT_TRUE(assigned.returnType->declarationKey);
+  EXPECT_EQ(assigned.returnType->declarationKey, nominal.declarationKey);
   EXPECT_EQ(assigned.returnType->baseName, "build_alias.Value");
-  EXPECT_EQ(assigned.returnType->qualifiedName->lookupName(),
-            "$1234abcd$.original.nested.Value");
-}
-
-TEST(MoonMetadata, qualified_name_round_trip_preserves_owner_and_overload) {
-  sun::QualifiedName name({"$1234abcd$", "original", "Container"}, "read",
-                          {"$1234abcd$", "original"});
-  name.paramSuffix = "$i32";
-  auto restored = sun::serialization::deserializeQualifiedName(
-      sun::serialization::serializeQualifiedName(name));
-  EXPECT_EQ(restored, name);
-  EXPECT_EQ(restored.modulePath, name.modulePath);
 }
 
 TEST(MoonMetadata, interface_requirement_does_not_apply_to_type_arguments) {
-  sun::QualifiedName view({"$1234abcd$", "dep"}, "View");
-  sun::QualifiedName value({"$1234abcd$", "dep"}, "Value");
-  sun::ast::ImplementedInterface impl;
-  *impl.mutable_qualified_name() =
-      sun::serialization::serializeQualifiedName(view);
-  *impl.add_type_arguments()->mutable_qualified_name() =
-      sun::serialization::serializeQualifiedName(value);
-  std::vector<std::pair<sun::QualifiedName, std::optional<sun::Type::Kind>>>
+  auto view = PortableDeclarationKey::original(std::string(64, 'a'), 2);
+  auto value = PortableDeclarationKey::original(std::string(64, 'a'), 3);
+  sun::proto::ast::ImplementedInterface impl;
+  impl.set_declaration_key(view.encoding());
+  impl.add_type_arguments()->set_declaration_key(value.encoding());
+  std::vector<std::pair<PortableDeclarationKey,
+                        std::optional<sun::semantic_analysis::Type::Kind>>>
       uses;
-  sun::serialization::visitQualifiedNames(
-      impl,
-      [&](const auto& name, auto kind) { uses.emplace_back(name, kind); });
+  sun::serialization::visitDeclarationKeys(
+      impl, [&](const auto& name, auto kind, const auto&) {
+        uses.emplace_back(name, kind);
+      });
   ASSERT_EQ(uses.size(), 2);
   for (const auto& [name, kind] : uses) {
     if (name == view)
-      EXPECT_EQ(kind, sun::Type::Kind::Interface);
+      EXPECT_EQ(kind, sun::semantic_analysis::Type::Kind::Interface);
     else {
       EXPECT_EQ(name, value);
       EXPECT_FALSE(kind);
@@ -815,16 +829,16 @@ TEST_F(MoonExactTypes, generic_module_references_keep_the_defining_bundle) {
       public function version<T>() i32 { return shared.version(); }
     }
   )",
-                      {sun::MoonImport(b1, "b", "shared")});
+                      {MoonImport(b1, "b", "shared")});
   auto second = bundle("second", R"(
     public module second {
       public function version<T>() i32 { return shared.version(); }
     }
   )",
-                       {sun::MoonImport(b2, "b", "shared")});
-  std::vector<sun::MoonImport> imports{
-      sun::MoonImport(first), sun::MoonImport(second),
-      sun::MoonImport(b1, "b", "old_b"), sun::MoonImport(b2, "b", "new_b")};
+                       {MoonImport(b2, "b", "shared")});
+  std::vector<MoonImport> imports{MoonImport(first), MoonImport(second),
+                                  MoonImport(b1, "b", "old_b"),
+                                  MoonImport(b2, "b", "new_b")};
   for (int order = 0; order < 2; ++order) {
     EXPECT_EQ(run(imports, R"(
       function main() i32 {
@@ -863,15 +877,14 @@ TEST_F(MoonExactTypes, module_references_are_canonical_in_all_source_files) {
   auto api = bundle("multi", R"(
     manifest { source_files: ["first.sun", "second.sun"] }
   )",
-                    {sun::MoonImport(dep, "outer", "build_root")});
-  auto reader = sun::MoonReader::open(api);
+                    {MoonImport(dep, "outer", "build_root")});
+  auto reader = MoonReader::open(api);
   ASSERT_TRUE(reader);
   ASSERT_GE(reader->listModules().size(), 2);
   size_t references = 0;
   for (const auto& key : reader->listModules()) {
     visitModuleReferences(*reader->getMetadata(key), [&](const auto& name) {
-      EXPECT_TRUE(name.lookupName().ends_with(".outer.inner.deep"));
-      EXPECT_FALSE(name.bundleHash().empty());
+      EXPECT_EQ(name, exportedKey(*MoonReader::open(dep), "deep"));
       ++references;
     });
   }
@@ -879,12 +892,11 @@ TEST_F(MoonExactTypes, module_references_are_canonical_in_all_source_files) {
   EXPECT_EQ(sun::moon::ModuleMetadata::descriptor()->FindFieldByName(
                 "module_bindings"),
             nullptr);
-  EXPECT_EQ(
-      run({sun::MoonImport(api), sun::MoonImport(dep, "outer", "client_root")},
-          R"(
+  EXPECT_EQ(run({MoonImport(api), MoonImport(dep, "outer", "client_root")},
+                R"(
     function main() i32 { return api.first<i32>() + api.second<i32>(); }
   )"),
-      42);
+            42);
 }
 
 TEST_F(MoonExactTypes, explicit_nested_alias_preserves_ordinary_children) {
@@ -903,19 +915,18 @@ TEST_F(MoonExactTypes, explicit_nested_alias_preserves_ordinary_children) {
         bundle("nested_api",
                "public module api { public function result<T>() i32 { return " +
                    alias + ".deep.answer(); } }",
-               {sun::MoonImport(dep, "outer.inner", alias)});
-    auto reader = sun::MoonReader::open(api);
+               {MoonImport(dep, "outer.inner", alias)});
+    auto reader = MoonReader::open(api);
     ASSERT_TRUE(reader);
     size_t references = 0;
     for (const auto& key : reader->listModules()) {
       visitModuleReferences(*reader->getMetadata(key), [&](const auto& name) {
-        EXPECT_TRUE(name.lookupName().ends_with(".outer.inner.deep"));
+        EXPECT_EQ(name, exportedKey(*MoonReader::open(dep), "deep"));
         ++references;
       });
     }
     EXPECT_EQ(references, 1);
-    EXPECT_EQ(run({sun::MoonImport(api),
-                   sun::MoonImport(dep, "outer", "client_root")},
+    EXPECT_EQ(run({MoonImport(api), MoonImport(dep, "outer", "client_root")},
                   R"(
       function main() i32 { return api.result<i32>(); }
     )"),
@@ -924,22 +935,23 @@ TEST_F(MoonExactTypes, explicit_nested_alias_preserves_ordinary_children) {
 }
 
 TEST(MoonMetadata, module_reference_round_trip_preserves_source_spelling) {
-  sun::QualifiedName module({"$1234abcd$", "original"}, "inner",
-                            {"$1234abcd$", "original"});
-  VariableReferenceAST reference("build_alias.inner");
-  reference.setModuleQualifiedName(module);
+  auto module = PortableDeclarationKey::original(std::string(64, 'a'), 4);
+  /** Identify a mutable or immutable reference to another type. */
+  sun::ast::VariableReferenceAST reference("build_alias.inner");
+  reference.setModuleDeclaration(module);
   auto clone = reference.clone();
-  ASSERT_TRUE(clone->getModuleQualifiedName());
-  EXPECT_EQ(*clone->getModuleQualifiedName(), module);
+  ASSERT_TRUE(clone->getModuleDeclaration());
+  EXPECT_EQ(*clone->getModuleDeclaration(), module);
   EXPECT_EQ(clone->toString(), "build_alias.inner");
-  UsingAST use({"build_alias"}, "renamed_inner");
-  use.setModuleQualifiedName(module);
+  sun::ast::UsingAST use({"build_alias"}, "renamed_inner");
+  use.setModuleDeclaration(module);
   use.setModuleImport(true);
   auto imported = use.clone();
-  ASSERT_TRUE(imported->getModuleQualifiedName());
-  EXPECT_EQ(*imported->getModuleQualifiedName(), module);
+  ASSERT_TRUE(imported->getModuleDeclaration());
+  EXPECT_EQ(*imported->getModuleDeclaration(), module);
   EXPECT_EQ(imported->toString(), "using build_alias.renamed_inner");
-  EXPECT_TRUE(static_cast<const UsingAST&>(*imported).isModuleImport());
+  EXPECT_TRUE(
+      static_cast<const sun::ast::UsingAST&>(*imported).isModuleImport());
 }
 
 TEST_F(MoonExactTypes, module_alias_shadowing_survives_generic_export) {
@@ -974,10 +986,10 @@ TEST_F(MoonExactTypes, module_alias_shadowing_survives_generic_export) {
       }
     }
   )",
-                    {sun::MoonImport(b1, "b", "dep")});
-  auto imports = std::vector<sun::MoonImport>{sun::MoonImport(api),
-                                              sun::MoonImport(b1, "b", "old_b"),
-                                              sun::MoonImport(b2, "b", "dep")};
+                    {MoonImport(b1, "b", "dep")});
+  auto imports =
+      std::vector<MoonImport>{MoonImport(api), MoonImport(b1, "b", "old_b"),
+                              MoonImport(b2, "b", "dep")};
   EXPECT_EQ(run(imports, R"(
     function main() i32 {
       return api.parameter<i32>(42) + api.local<i32>() + api.block<i32>() + api.nested<i32>() + api.lambda<i32>() + api.pattern<i32>() + api.loop<i32>();
@@ -999,17 +1011,15 @@ TEST_F(MoonExactTypes,
       public function pick<T>(value: T) i32 { return build_dep.pick(value); }
     }
   )",
-                    {sun::MoonImport(dep, "dep", "build_dep")});
-  EXPECT_EQ(
-      run({sun::MoonImport(api), sun::MoonImport(dep, "dep", "client_dep")}, R"(
+                    {MoonImport(dep, "dep", "build_dep")});
+  EXPECT_EQ(run({MoonImport(api), MoonImport(dep, "dep", "client_dep")}, R"(
     function main() i32 { return api.pick<i32>(42) * 10 + api.pick<bool>(true); }
   )"),
-      12);
-  EXPECT_THROW(
-      run({sun::MoonImport(api), sun::MoonImport(dep, "dep", "client_dep")}, R"(
+            12);
+  EXPECT_THROW(run({MoonImport(api), MoonImport(dep, "dep", "client_dep")}, R"(
     function main() i32 { return api.pick<f64>(1.5); }
   )"),
-      SunError);
+               SunError);
 }
 TEST_F(MoonExactTypes, nested_using_target_is_canonical_in_generic_body) {
   auto dep = bundle("nested_using", R"(
@@ -1025,13 +1035,12 @@ TEST_F(MoonExactTypes, nested_using_target_is_canonical_in_generic_body) {
       }
     }
   )",
-                    {sun::MoonImport(dep, "outer.inner", "outer.renamed")});
-  EXPECT_EQ(
-      run({sun::MoonImport(api), sun::MoonImport(dep, "outer", "client_root")},
-          R"(
+                    {MoonImport(dep, "outer.inner", "outer.renamed")});
+  EXPECT_EQ(run({MoonImport(api), MoonImport(dep, "outer", "client_root")},
+                R"(
     function main() i32 { return api.result<i32>(); }
   )"),
-      42);
+            42);
 }
 
 TEST(Modules_FileImports, field_initializers_survive_source_and_moon_imports) {
@@ -1057,9 +1066,9 @@ TEST(Modules_FileImports, field_initializers_survive_source_and_moon_imports) {
       5);
   initTestEnvironment();
   auto moon = std::filesystem::path(paths[0]).parent_path() / "defaults.moon";
-  ASSERT_NO_THROW(sun::MoonBuilder::build(paths[0], moon));
+  ASSERT_NO_THROW(MoonBuilder::build(paths[0], moon));
   auto driver = Driver::createForJIT("field_initializer_bundle");
-  driver->setMoonImports({sun::MoonImport(moon.string())});
+  driver->setMoonImports({MoonImport(moon.string())});
   EXPECT_EQ(driver->executeString(R"(
     function main() i32 {
       var a = defaults.Value();
@@ -1082,10 +1091,10 @@ TEST_F(MoonExactTypes, generic_constraint_arguments_keep_dependency_identity) {
       public function read<H: IValue<Value>>(item: const ref H) i32 { return 42; }
     }
   )",
-                    {sun::MoonImport(b1)});
-  const std::vector<sun::MoonImport> imports = {
-      sun::MoonImport(api), sun::MoonImport(b1, "b", "old_b"),
-      sun::MoonImport(b2, "b", "new_b")};
+                    {MoonImport(b1)});
+  const std::vector<MoonImport> imports = {MoonImport(api),
+                                           MoonImport(b1, "b", "old_b"),
+                                           MoonImport(b2, "b", "new_b")};
   EXPECT_EQ(run(imports, R"(
     class Item implements api.IValue<old_b.Value> { public var value: old_b.Value; }
     function main() i32 {
@@ -1102,4 +1111,209 @@ TEST_F(MoonExactTypes, generic_constraint_arguments_keep_dependency_identity) {
     }
   )"),
                                 "does not satisfy constraint 'IValue<Value>'");
+}
+
+TEST_F(MoonExactTypes,
+       bundle_digest_is_full_sha256_and_ignores_dependency_order) {
+  auto c = bundle("c", R"(
+    public module c { public function value() i32 { return 41; } }
+  )");
+  const std::string source = R"(
+    public module consumer {
+      public function answer() i32 { return b.version() + c.value(); }
+    }
+  )";
+  auto first =
+      bundle("consumer_first", source, {MoonImport(b1), MoonImport(c)});
+  auto second =
+      bundle("consumer_second", source, {MoonImport(c), MoonImport(b1)});
+  auto digest = [](const std::string& path) {
+    auto reader = MoonReader::open(path);
+    return reader->getMetadata(reader->listModules()[0])->content_hash();
+  };
+  auto key = digest(first);
+  EXPECT_EQ(key.size(), 64u);
+  EXPECT_TRUE(std::all_of(key.begin(), key.end(), [](char value) {
+    return (value >= '0' && value <= '9') || (value >= 'a' && value <= 'f');
+  }));
+  EXPECT_EQ(key, digest(second));
+  EXPECT_NE(digest(b1), digest(b2));
+  EXPECT_EQ(run({MoonImport(first)},
+                "function main() i32 { return consumer.answer(); }"),
+            42);
+  EXPECT_EQ(run({MoonImport(second)},
+                "function main() i32 { return consumer.answer(); }"),
+            42);
+}
+
+TEST_F(MoonExactTypes,
+       discovery_skips_old_bundles_but_explicit_import_reports_version) {
+  auto stale = dir / "stale.moon";
+  std::filesystem::copy_file(b1, stale,
+                             std::filesystem::copy_options::overwrite_existing);
+  std::fstream file(stale, std::ios::in | std::ios::out | std::ios::binary);
+  sun::moon_bundling::MoonHeader header;
+  file.read(reinterpret_cast<char*>(&header), sizeof(header));
+  --header.version;
+  file.seekp(0);
+  file.write(reinterpret_cast<const char*>(&header), sizeof(header));
+  file.close();
+  auto reader = MoonReader::open(b1);
+  ASSERT_TRUE(reader);
+  auto key = reader->listModules()[0];
+  auto& cache = sun::moon_bundling::LibraryCache::instance();
+  cache.clear();
+  /** Clears the shared library cache when the fixture leaves scope. */
+  struct ResetCache {
+    /** Clears the shared library cache after the test finishes. */
+    ~ResetCache() { sun::moon_bundling::LibraryCache::instance().clear(); }
+  } reset;
+  cache.addSearchPath(dir);
+  EXPECT_NO_THROW(cache.preloadAll());
+  EXPECT_TRUE(cache.hasModule(key));
+  EXPECT_SUN_ERROR_WITH_MESSAGE(cache.addBundle(stale),
+                                "Unsupported moon bundle format version");
+}
+
+TEST_F(MoonExactTypes, bundle_digest_includes_aliases_and_codegen_options) {
+  const std::string source = R"(
+    public module config { public function answer() i32 { return 42; } }
+  )";
+  auto first = bundle("config", source, {MoonImport(b1)});
+  auto alias = bundle("config_alias", source, {MoonImport(b1, "b", "renamed")});
+  auto digest = [](const std::string& path) {
+    auto reader = MoonReader::open(path);
+    return reader->getMetadata(reader->listModules()[0])->content_hash();
+  };
+  EXPECT_NE(digest(first), digest(alias));
+  sun::moon_bundling::MoonBuildOptions options;
+  options.extraMoons = {MoonImport(b1)};
+  options.optimize = false;
+  auto unoptimized = dir / "unoptimized.moon";
+  MoonBuilder::build((dir / "config.sun").string(), unoptimized, options);
+  EXPECT_NE(digest(first), digest(unoptimized.string()));
+  options.debugInfo = true;
+  auto debug = dir / "debug.moon";
+  MoonBuilder::build((dir / "config.sun").string(), debug, options);
+  EXPECT_NE(digest(unoptimized.string()), digest(debug.string()));
+}
+
+TEST_F(MoonExactTypes, malformed_bundle_digest_is_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(sun::moon_bundling::MoonWriter("short"),
+                                "full lowercase SHA-256 digest");
+  auto reader = MoonReader::open(b1);
+  ASSERT_TRUE(reader);
+  const auto key = reader->listModules()[0];
+  const auto hash = reader->getMetadata(key)->content_hash();
+  std::ifstream input(b1, std::ios::binary);
+  std::string bytes((std::istreambuf_iterator<char>(input)), {});
+  size_t offset = 0;
+  bool changed = false;
+  while ((offset = bytes.find(hash, offset)) != std::string::npos) {
+    bytes.replace(offset, hash.size(), std::string(hash.size(), 'z'));
+    offset += hash.size();
+    changed = true;
+  }
+  ASSERT_TRUE(changed);
+  auto path = dir / "malformed_digest.moon";
+  std::ofstream output(path, std::ios::binary);
+  output.write(bytes.data(), bytes.size());
+  output.close();
+  auto malformed = MoonReader::open(path);
+  ASSERT_TRUE(malformed);
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      malformed->getMetadata(malformed->listModules()[0]),
+      "full lowercase SHA-256 digest");
+}
+
+TEST_F(MoonExactTypes,
+       portable_symbols_survive_independent_specialization_order) {
+  auto shared = bundle("shared", R"(
+    public module shared {
+      public class Box<T> {
+        var value: T;
+        init(value: T) { this.value = value; }
+        public method get() T { return this.value; }
+      }
+      public function constant<T>() i32 { return 1; }
+    }
+  )");
+  auto first = bundle("first", R"(
+    public module first {
+      class Secret { var value: i32; }
+      public function answer() i32 {
+        var box = shared.Box<i32>(19);
+        return box.get() + shared.constant<Secret>();
+      }
+    }
+  )",
+                      {MoonImport(shared)});
+  auto second = bundle("second", R"(
+    public module second {
+      class Secret { var value: i64; }
+      public function answer() i32 {
+        var flag = shared.Box<bool>(true);
+        var box = shared.Box<i32>(21);
+        return box.get() + shared.constant<Secret>();
+      }
+    }
+  )",
+                       {MoonImport(shared)});
+  auto dependency = MoonReader::open(shared);
+  auto firstReader = MoonReader::open(first);
+  auto secondReader = MoonReader::open(second);
+  ASSERT_TRUE(dependency && firstReader && secondReader);
+  const auto instance = PortableDeclarationKey::specialization(
+      exportedKey(*dependency, "Box"), {PortableTypeKey::primitive("i32")});
+  const auto getter = PortableDeclarationKey::inInstance(
+                          exportedKey(*dependency, "get"), instance)
+                          .symbol("function");
+  llvm::LLVMContext firstContext, secondContext;
+  auto firstModule =
+      firstReader->loadModule(firstReader->listModules()[0], firstContext);
+  auto secondModule =
+      secondReader->loadModule(secondReader->listModules()[0], secondContext);
+  ASSERT_TRUE(firstModule && secondModule);
+  ASSERT_NE(firstModule->getFunction(getter), nullptr);
+  ASSERT_NE(secondModule->getFunction(getter), nullptr);
+  const auto constant = exportedKey(*dependency, "constant");
+  const auto privateFirst =
+      PortableDeclarationKey::specialization(
+          constant,
+          {PortableTypeKey::nominal(exportedKey(*firstReader, "Secret"))})
+          .symbol("function");
+  const auto privateSecond =
+      PortableDeclarationKey::specialization(
+          constant,
+          {PortableTypeKey::nominal(exportedKey(*secondReader, "Secret"))})
+          .symbol("function");
+  EXPECT_NE(privateFirst, privateSecond);
+  EXPECT_NE(firstModule->getFunction(privateFirst), nullptr);
+  EXPECT_NE(secondModule->getFunction(privateSecond), nullptr);
+  std::vector<MoonImport> imports{MoonImport(first), MoonImport(second),
+                                  MoonImport(shared)};
+  for (int order = 0; order < 2; ++order) {
+    EXPECT_EQ(
+        run(imports,
+            "function main() i32 { return first.answer() + second.answer(); }"),
+        42);
+    std::reverse(imports.begin(), imports.end());
+  }
+}
+
+TEST_F(MoonExactTypes, forward_declarations_export_the_selected_definition) {
+  auto library = bundle("forwards", R"(
+    public module api {
+      public declare function answer(value: i32) i32;
+      public function call() i32 { return answer(42); }
+      public function answer(value: i32) i32 { return value; }
+      public declare function answer(value: i32) i32;
+    }
+  )");
+  EXPECT_EQ(
+      run({MoonImport(library)}, "function main() i32 { return api.call(); }"),
+      42);
+  EXPECT_EQ(run({MoonImport(library)},
+                "function main() i32 { return api.answer(42); }"),
+            42);
 }

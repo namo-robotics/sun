@@ -11,8 +11,10 @@
 
 namespace fs = std::filesystem;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
+/** Creates a fresh temporary directory for the test's files. */
 fs::path freshDir(const std::string& name) {
   fs::path dir = fs::temp_directory_path() / "sun_manifest_test_files" / name;
   fs::remove_all(dir);
@@ -20,12 +22,14 @@ fs::path freshDir(const std::string& name) {
   return dir;
 }
 
+/** Writes source or fixture data to a test file. */
 void writeFile(const fs::path& path, const std::string& content) {
   fs::create_directories(path.parent_path());
   std::ofstream out(path);
   out << content;
 }
 
+/** Reports whether a collection contains the expected fixture entry. */
 bool includes(const std::vector<std::string>& files, const std::string& name) {
   for (const auto& f : files) {
     if (fs::path(f).filename() == name) return true;
@@ -46,8 +50,8 @@ TEST(Modules_ManifestTestFiles, test_files_stay_out_of_source_files) {
             "}\n"
             "function main() i32 { return 0; }\n");
 
-  auto resolved =
-      sun::ManifestProcessor::fromEntrypointFile((dir / "main.sun").string());
+  auto resolved = sun::driver::ManifestProcessor::fromEntrypointFile(
+      (dir / "main.sun").string());
   ASSERT_TRUE(resolved.has_value());
   EXPECT_TRUE(includes(resolved->sunFiles, "lib.sun"));
   EXPECT_FALSE(includes(resolved->sunFiles, "lib_tests.sun"));
@@ -72,7 +76,7 @@ TEST(Modules_ManifestTestFiles, target_blocks_take_test_files_too) {
             "}\n"
             "function main() i32 { return 0; }\n");
 
-  auto forLinux = sun::ManifestProcessor::fromEntrypointFile(
+  auto forLinux = sun::driver::ManifestProcessor::fromEntrypointFile(
       (dir / "main.sun").string(), "x86_64-linux-gnu");
   ASSERT_TRUE(forLinux.has_value());
   EXPECT_TRUE(includes(forLinux->testSunFiles, "linux_tests.sun"));

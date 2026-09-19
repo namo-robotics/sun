@@ -13,7 +13,7 @@
 // ============================================================================
 
 TEST(MemorySafety_Pointers, pass_static_ptr_to_function) {
-  auto value = executeStringWithStdlib(R"(
+  auto value = sun::driver::executeStringWithStdlib(R"(
     using std;
     function foo(p: static_ptr<u8>) void {
         println(p);
@@ -30,7 +30,7 @@ TEST(MemorySafety_Pointers, pass_static_ptr_to_function) {
 
 TEST(MemorySafety_Pointers, main_with_argc_argv) {
   const char* args[] = {"test_prog", "arg1", "arg2", "arg3", nullptr};
-  auto value = executeString(
+  auto value = sun::driver::executeString(
       R"(
     function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
         return argc;
@@ -45,7 +45,7 @@ TEST(MemorySafety_Pointers, main_with_argc_argv) {
 // ============================================================================
 
 TEST(MemorySafety_Pointers, raw_ptr_has_no_members) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::executeString(R"(
     function main() i32 {
       var x: i32 = 7;
       var p: raw_ptr<i32> = _address_of<i32>(x);

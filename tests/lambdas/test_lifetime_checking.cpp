@@ -13,6 +13,9 @@
 
 #include "driver/execution_utils.h"
 
+using sun::driver::executeString;
+
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 // One registry class used throughout: subscribe demands its callback

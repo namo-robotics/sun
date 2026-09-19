@@ -4,13 +4,16 @@
 #include "ast/ast_children.h"
 #include "semantic_analysis/field_initialization.h"
 
-namespace sun {
+using sun::ast::ExprAST;
+
+/** Resolves declarations and checks the types and meaning of Sun programs. */
+namespace sun::semantic_analysis {
 
 void FieldInitializerPreparationPass::run(ExprAST& root) const {
-  if (root.getType() == ASTNodeType::CLASS_DEFINITION)
-    prepareFieldInitializers(static_cast<ClassDefinitionAST&>(root));
-  forEachChild(root,
-               [&](const ExprAST& child) { run(const_cast<ExprAST&>(child)); });
+  if (root.getType() == sun::ast::ASTNodeType::CLASS_DEFINITION)
+    prepareFieldInitializers(static_cast<sun::ast::ClassDefinitionAST&>(root));
+  sun::ast::forEachChild(
+      root, [&](const ExprAST& child) { run(const_cast<ExprAST&>(child)); });
 }
 
-}  // namespace sun
+}  // namespace sun::semantic_analysis
