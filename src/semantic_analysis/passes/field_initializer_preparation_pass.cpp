@@ -1,4 +1,4 @@
-#include "semantic_analysis/field_initializer_preparation_pass.h"
+#include "semantic_analysis/passes/field_initializer_preparation_pass.h"
 
 #include "ast.h"
 #include "ast/ast_children.h"
@@ -6,8 +6,8 @@
 
 using sun::ast::ExprAST;
 
-/** Resolves declarations and checks the types and meaning of Sun programs. */
-namespace sun::semantic_analysis {
+/** Provides the ordered preparation and registration passes for analysis. */
+namespace sun::semantic_analysis::passes {
 
 void FieldInitializerPreparationPass::run(ExprAST& root) const {
   if (root.getType() == sun::ast::ASTNodeType::CLASS_DEFINITION)
@@ -16,4 +16,4 @@ void FieldInitializerPreparationPass::run(ExprAST& root) const {
       root, [&](const ExprAST& child) { run(const_cast<ExprAST&>(child)); });
 }
 
-}  // namespace sun::semantic_analysis
+}  // namespace sun::semantic_analysis::passes

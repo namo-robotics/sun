@@ -9,14 +9,14 @@
 #include "driver/driver.h"
 #include "parsing/parser.h"
 #include "semantic_analysis/callable_signature.h"
-#include "semantic_analysis/declaration_identity_pass.h"
+#include "semantic_analysis/passes/declaration_identity_pass.h"
 #include "semantic_analysis/item_refs.h"
 #include "serialization/ast_deserializer.h"
 #include "serialization/ast_serializer.h"
 
 using sun::semantic_analysis::CallableSignature;
 using sun::semantic_analysis::DeclarationId;
-using sun::semantic_analysis::DeclarationIdentityPass;
+using sun::semantic_analysis::passes::DeclarationIdentityPass;
 using sun::semantic_analysis::DeclarationKind;
 using sun::semantic_analysis::DeclarationTable;
 using sun::semantic_analysis::PortableDeclarationKey;
@@ -83,13 +83,13 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   function.setResolvedType(Types::Int32());
   function.setTargetDeclarationId(id);
   function.getProtoMut().setQualifiedName({{}, "computed"});
-  sun::semantic_analysis::clearComputedAnalysis(*ast);
+  sun::semantic_analysis::passes::clearComputedAnalysis(*ast);
   EXPECT_EQ(function.getDeclarationId(), id);
   EXPECT_EQ(function.declarationIdentity().parameters[0], parameter);
   EXPECT_FALSE(function.hasResolvedType());
   EXPECT_FALSE(function.getTargetDeclarationId());
   EXPECT_FALSE(function.getProto().hasQualifiedName());
-  sun::semantic_analysis::resetAnalysisSession(*ast);
+  sun::semantic_analysis::passes::resetAnalysisSession(*ast);
   EXPECT_FALSE(function.getDeclarationId());
   EXPECT_FALSE(function.getProto().hasAnalysis());
   DeclarationTable next;
@@ -133,9 +133,9 @@ TEST(Tooling_Frontend_DeclarationIdentity, members_retain_module_ownership) {
   const auto& method = *cls.getMethods()[0].function;
   EXPECT_EQ(table.get(method.getDeclarationId()).owner, cls.getDeclarationId());
   auto fieldId = field.declaration.id;
-  sun::semantic_analysis::clearComputedAnalysis(*ast);
+  sun::semantic_analysis::passes::clearComputedAnalysis(*ast);
   EXPECT_EQ(field.declaration.id, fieldId);
-  sun::semantic_analysis::resetAnalysisSession(*ast);
+  sun::semantic_analysis::passes::resetAnalysisSession(*ast);
   EXPECT_FALSE(field.declaration.id);
 }
 
@@ -147,7 +147,7 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   DeclarationIdentityPass(first).run(*ast);
   second.add(DeclarationKind::Function, "unrelated");
   EXPECT_ANY_THROW(DeclarationIdentityPass(second).run(*ast));
-  sun::semantic_analysis::resetAnalysisSession(*ast);
+  sun::semantic_analysis::passes::resetAnalysisSession(*ast);
   EXPECT_NO_THROW(DeclarationIdentityPass(second).run(*ast));
 }
 
@@ -658,7 +658,7 @@ TEST(Tooling_Frontend_DeclarationIdentity, captures_follow_analysis_lifetime) {
   EXPECT_FALSE(proto.declarationIdentity().session.expired());
   EXPECT_NE(first.typeRegistry, second.typeRegistry);
 
-  sun::semantic_analysis::clearComputedAnalysis(*first.ast);
+  sun::semantic_analysis::passes::clearComputedAnalysis(*first.ast);
   EXPECT_EQ(lambda->getDeclarationId(), id);
   EXPECT_FALSE(proto.hasClosure());
   EXPECT_FALSE(proto.hasRefCaptures());
@@ -666,7 +666,7 @@ TEST(Tooling_Frontend_DeclarationIdentity, captures_follow_analysis_lifetime) {
 
   visit(*second.ast);
   ASSERT_EQ(lambda->getProto().getCaptures().size(), 1u);
-  sun::semantic_analysis::resetAnalysisSession(*second.ast);
+  sun::semantic_analysis::passes::resetAnalysisSession(*second.ast);
   EXPECT_FALSE(lambda->getDeclarationId());
   EXPECT_FALSE(lambda->getProto().hasClosure());
   EXPECT_FALSE(lambda->getProto().hasAnalysis());
@@ -850,7 +850,7 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   const auto portable = PortableDeclarationKey::fromDeclaration(
       function.getDeclarationId(), first);
   const auto oldId = function.getDeclarationId();
-  sun::semantic_analysis::resetAnalysisSession(*imported);
+  sun::semantic_analysis::passes::resetAnalysisSession(*imported);
   ASSERT_FALSE(function.getDeclarationId());
   ASSERT_TRUE(function.declarationIdentity().imported);
   DeclarationTable second;

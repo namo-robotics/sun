@@ -2,9 +2,9 @@
 
 #include <functional>
 
-#include "semantic_analysis/declaration_collection_pass.h"
-#include "semantic_analysis/declaration_naming_pass.h"
-#include "semantic_analysis/field_initializer_preparation_pass.h"
+#include "semantic_analysis/passes/declaration_collection_pass.h"
+#include "semantic_analysis/passes/declaration_naming_pass.h"
+#include "semantic_analysis/passes/field_initializer_preparation_pass.h"
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
@@ -43,16 +43,16 @@ class SemanticPipeline {
                         const ExprAST* origin = nullptr);
 
   /** Access the pass that registers declarations before body checking. */
-  sun::semantic_analysis::DeclarationCollectionPass& declarations() {
+  passes::DeclarationCollectionPass& declarations() {
     return declarationCollectionPass_;
   }
 
  private:
   sun::semantic_analysis::SemanticAnalyzer& analyzer_;
   sun::semantic_analysis::SemanticContext& context_;
-  FieldInitializerPreparationPass fieldInitializerPreparationPass_;
-  DeclarationNamingPass declarationNamingPass_;
-  sun::semantic_analysis::DeclarationCollectionPass declarationCollectionPass_;
+  passes::FieldInitializerPreparationPass fieldInitializerPreparationPass_;
+  passes::DeclarationNamingPass declarationNamingPass_;
+  passes::DeclarationCollectionPass declarationCollectionPass_;
 };
 
 }  // namespace sun::semantic_analysis

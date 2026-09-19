@@ -1,6 +1,6 @@
 #include "semantic_analysis/semantic_pipeline.h"
 
-#include "semantic_analysis/declaration_identity_pass.h"
+#include "semantic_analysis/passes/declaration_identity_pass.h"
 #include "semantic_analysis/semantic_analyzer.h"
 
 using sun::ast::ExprAST;
@@ -17,7 +17,7 @@ SemanticPipeline::SemanticPipeline(
 void SemanticPipeline::run(sun::ast::BlockExprAST& block,
                            const std::function<void()>& declarationsReady) {
   fieldInitializerPreparationPass_.run(block);
-  DeclarationIdentityPass(context_.types()->declarations).run(block);
+  passes::DeclarationIdentityPass(context_.types()->declarations).run(block);
   if (declarationsReady) declarationsReady();
   declarationNamingPass_.run(block, context_.getCurrentScopePath(),
                              context_.isAtModuleLevel());
@@ -29,7 +29,7 @@ void SemanticPipeline::prepareGenerated(const ExprAST& expression,
                                         DeclarationId owner,
                                         const ExprAST* origin) {
   auto& table = context_.types()->declarations;
-  DeclarationIdentityPass(table).run(
+  passes::DeclarationIdentityPass(table).run(
       expression, owner, owner ? table.get(owner).module : DeclarationId{},
       origin);
 }

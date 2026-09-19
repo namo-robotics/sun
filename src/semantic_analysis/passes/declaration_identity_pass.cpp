@@ -1,4 +1,4 @@
-#include "semantic_analysis/declaration_identity_pass.h"
+#include "semantic_analysis/passes/declaration_identity_pass.h"
 
 #include "ast.h"
 #include "ast/ast_children.h"
@@ -13,8 +13,8 @@ using sun::ast::MatchExprAST;
 using sun::ast::TryCatchExprAST;
 using sun::support::logAndThrowError;
 
-/** Resolves declarations and checks the types and meaning of Sun programs. */
-namespace sun::semantic_analysis {
+/** Provides the ordered preparation and registration passes for analysis. */
+namespace sun::semantic_analysis::passes {
 /** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
@@ -360,4 +360,4 @@ void resetAnalysisSession(const ExprAST& root) {
   root.resetAnalysisSession();
 }
 
-}  // namespace sun::semantic_analysis
+}  // namespace sun::semantic_analysis::passes

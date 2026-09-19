@@ -6,13 +6,13 @@
 #include "ast/ast_children.h"
 #include "driver/execution_utils.h"
 #include "parsing/parser.h"
-#include "semantic_analysis/declaration_naming_pass.h"
-#include "semantic_analysis/field_initializer_preparation_pass.h"
+#include "semantic_analysis/passes/declaration_naming_pass.h"
+#include "semantic_analysis/passes/field_initializer_preparation_pass.h"
 #include "semantic_analysis/semantic_pipeline.h"
 #include "semantic_analysis/type_rules.h"
 
-using sun::semantic_analysis::DeclarationNamingPass;
-using sun::semantic_analysis::FieldInitializerPreparationPass;
+using sun::semantic_analysis::passes::DeclarationNamingPass;
+using sun::semantic_analysis::passes::FieldInitializerPreparationPass;
 using sun::semantic_analysis::TypeRegistry;
 
 using sun::ast::ClassDefinitionAST;
@@ -146,7 +146,7 @@ TEST(Tooling_Frontend_DeclarationNames,
       std::make_shared<TypeRegistry>());
   context.enterFunctionScope("work(i32)",
                              sun::semantic_analysis::QualifiedName({}, "work"));
-  sun::semantic_analysis::assignLocalDeclarationName(
+  sun::semantic_analysis::passes::assignLocalDeclarationName(
       choice, context.getCurrentScopePath());
   EXPECT_EQ(choice.getQualifiedName().scopePath,
             std::vector<std::string>({"work"}));
@@ -337,7 +337,7 @@ TEST(Tooling_Frontend_DeclarationNames, local_naming_does_not_walk_method_bodies
     }
   )");
   auto& local = static_cast<ClassDefinitionAST&>(*program->getBody()[0]);
-  sun::semantic_analysis::assignLocalDeclarationName(local, {"owner"});
+  sun::semantic_analysis::passes::assignLocalDeclarationName(local, {"owner"});
   EXPECT_TRUE(local.hasQualifiedName());
   const auto& method = *local.getMethods()[0].function;
   EXPECT_TRUE(method.getProto().hasQualifiedName());

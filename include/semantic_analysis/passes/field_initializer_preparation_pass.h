@@ -2,8 +2,8 @@
 
 #include "ast/ast_fwd.h"
 
-/** Resolves declarations and checks the types and meaning of Sun programs. */
-namespace sun::semantic_analysis {
+/** Provides the ordered preparation and registration passes for analysis. */
+namespace sun::semantic_analysis::passes {
 
 /** Insert field defaults into constructors, creating a constructor when needed.
  */
@@ -13,4 +13,4 @@ class FieldInitializerPreparationPass {
   void run(sun::ast::ExprAST& root) const;
 };
 
-}  // namespace sun::semantic_analysis
+}  // namespace sun::semantic_analysis::passes

@@ -2,7 +2,7 @@
 // declaration_collection_pass.cpp — The declaration pre-pass (see
 // declaration_collection_pass.h)
 
-#include "semantic_analysis/declaration_collection_pass.h"
+#include "semantic_analysis/passes/declaration_collection_pass.h"
 
 #include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/semantic_analyzer.h"
@@ -24,8 +24,8 @@ using sun::ast::PrototypeAST;
 using sun::ast::VariableCreationAST;
 using sun::support::logAndThrowError;
 
-/** Resolves declarations and checks the types and meaning of Sun programs. */
-namespace sun::semantic_analysis {
+/** Provides the ordered preparation and registration passes for analysis. */
+namespace sun::semantic_analysis::passes {
 
 /*
  * Registers every type name in a module tree before class shapes are resolved.
@@ -695,4 +695,4 @@ void DeclarationCollectionPass::collectEnumDeclarations(const BlockExprAST& bloc
   }
 }
 
-}  // namespace sun::semantic_analysis
+}  // namespace sun::semantic_analysis::passes
