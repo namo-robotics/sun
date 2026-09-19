@@ -3,8 +3,8 @@
 #include "ast/ast_fwd.h"
 #include "semantic_analysis/declaration_table.h"
 
-/** Resolves declarations and checks the types and meaning of Sun programs. */
-namespace sun::semantic_analysis {
+/** Provides the ordered preparation and registration passes for analysis. */
+namespace sun::semantic_analysis::passes {
 using sun::ast::ExprAST;
 
 /** Assign identities throughout a syntax tree without resolving signatures. */
@@ -26,4 +26,4 @@ void clearComputedAnalysis(const ExprAST& root);
 /** Discard tree annotations before attaching it to a new analysis session. */
 void resetAnalysisSession(const ExprAST& root);
 
-}  // namespace sun::semantic_analysis
+}  // namespace sun::semantic_analysis::passes

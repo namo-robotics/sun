@@ -101,7 +101,7 @@ void SemanticAnalyzer::validateBorrowTarget(const ExprAST& target,
 void SemanticAnalyzer::analyzeExpr(ExprAST& expr, TypePtr expectedType) {
   SemanticContext::SourceFileGuard sourceFile(ctx_, expr.getSourceFileId());
   SemanticContext::LocationGuard locationGuard(ctx_, expr.getLocation());
-  sun::semantic_analysis::assignLocalDeclarationName(
+  sun::semantic_analysis::passes::assignLocalDeclarationName(
       expr, ctx_.getCurrentScopePath());
   switch (expr.getType()) {
     case ASTNodeType::NUMBER:

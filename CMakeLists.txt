@@ -165,7 +165,7 @@ add_library(sun_lib
     # Semantic analysis
     src/semantic_analysis/portable_declaration_key.cpp
     src/semantic_analysis/specialization_key.cpp
-    src/semantic_analysis/declaration_identity_pass.cpp
+    src/semantic_analysis/passes/declaration_identity_pass.cpp
     src/semantic_analysis/semantic_context.cpp
     src/semantic_analysis/scope_declarations.cpp
     src/semantic_analysis/scope_lookup.cpp
@@ -187,10 +187,10 @@ add_library(sun_lib
     src/semantic_analysis/analysis_expressions.cpp
     src/semantic_analysis/analysis_utils.cpp
     src/semantic_analysis/call_analyzer.cpp
-    src/semantic_analysis/field_initializer_preparation_pass.cpp
-    src/semantic_analysis/declaration_naming_pass.cpp
+    src/semantic_analysis/passes/field_initializer_preparation_pass.cpp
+    src/semantic_analysis/passes/declaration_naming_pass.cpp
     src/semantic_analysis/semantic_pipeline.cpp
-    src/semantic_analysis/declaration_collection_pass.cpp
+    src/semantic_analysis/passes/declaration_collection_pass.cpp
     src/semantic_analysis/access_checker.cpp
     src/semantic_analysis/type_rules.cpp
     src/semantic_analysis/symbol_names.cpp

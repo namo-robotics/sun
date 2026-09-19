@@ -20,9 +20,13 @@
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
-using sun::ast::BlockExprAST;
-
 class SemanticAnalyzer;
+
+}  // namespace sun::semantic_analysis
+
+/** Provides the ordered preparation and registration passes for analysis. */
+namespace sun::semantic_analysis::passes {
+using sun::ast::BlockExprAST;
 
 /**
  * Register declarations before bodies, using bookkeeping in SemanticContext.
@@ -94,4 +98,4 @@ class DeclarationCollectionPass {
   int prepassDepth_ = 0;
 };
 
-}  // namespace sun::semantic_analysis
+}  // namespace sun::semantic_analysis::passes

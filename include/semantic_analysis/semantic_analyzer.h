@@ -47,7 +47,7 @@ struct Position;
 #include "semantic_analysis/access_checker.h"
 #include "semantic_analysis/body_analyzer.h"
 #include "semantic_analysis/call_analyzer.h"
-#include "semantic_analysis/declaration_collection_pass.h"
+#include "semantic_analysis/passes/declaration_collection_pass.h"
 #include "semantic_analysis/enum_analyzer.h"
 #include "semantic_analysis/generic_specializer.h"
 #include "semantic_analysis/semantic_context.h"

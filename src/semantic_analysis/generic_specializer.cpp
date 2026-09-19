@@ -5,7 +5,7 @@
 
 #include <algorithm>
 
-#include "semantic_analysis/declaration_naming_pass.h"
+#include "semantic_analysis/passes/declaration_naming_pass.h"
 #include "semantic_analysis/field_initialization.h"
 #include "semantic_analysis/generic_type_arguments.h"
 #include "semantic_analysis/item_refs.h"

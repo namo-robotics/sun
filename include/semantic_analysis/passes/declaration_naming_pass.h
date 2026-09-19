@@ -5,8 +5,8 @@
 
 #include "ast/ast_fwd.h"
 
-/** Resolves declarations and checks the types and meaning of Sun programs. */
-namespace sun::semantic_analysis {
+/** Provides the ordered preparation and registration passes for analysis. */
+namespace sun::semantic_analysis::passes {
 
 /** Name the current local declaration and its methods without walking bodies.
  */
@@ -25,4 +25,4 @@ class DeclarationNamingPass {
            bool moduleLevel = true) const;
 };
 
-}  // namespace sun::semantic_analysis
+}  // namespace sun::semantic_analysis::passes

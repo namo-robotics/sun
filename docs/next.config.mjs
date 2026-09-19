@@ -15,8 +15,9 @@ export default withNextra({
   output: 'export',
   // Development and production builds can run at the same time.
   distDir: process.env.NODE_ENV === 'production' ? '.next' : '.next-dev',
-  // Keep the compiler reference build within a bounded number of workers.
-  experimental: { webpackBuildWorker: true, cpus: 2 },
+  // Nextra shares navigation data between server and client compilation in memory.
+  // Separate webpack workers leave the client sidebar with an empty page map.
+  experimental: { webpackBuildWorker: false, cpus: 2 },
   /** Disables production build caching to limit memory used by generated navigation. */
   webpack(config, { dev }) {
     // Nextra embeds generated navigation in every page.
