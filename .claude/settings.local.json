@@ -1,0 +1,8 @@
+{
+  "outputStyle": "Explanatory",
+  "permissions": {
+    "allow": [
+      "Bash(docker run *)"
+    ]
+  }
+}

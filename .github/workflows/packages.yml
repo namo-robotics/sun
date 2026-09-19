@@ -1,0 +1,570 @@
+name: Packages
+
+# Runs only after BuildAndTest passes, so a package is never published from a
+# commit whose tests failed. That workflow runs on pushes to main and on
+# version tags (v0, v1, v2, ...); this one picks up the runs that succeeded
+# and builds the same commit they tested. Pull request runs are skipped —
+# nothing is published from a branch.
+#
+# The trigger matches the other workflow by its `name:` field, not its file
+# name, so renaming it there means renaming it here too — otherwise this
+# workflow simply stops running, with nothing to see in the Actions tab.
+on:
+  workflow_run:
+    workflows: [BuildAndTest]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  # The commit BuildAndTest tested. On a workflow_run event github.sha points
+  # at the default branch's head instead, which is the wrong commit for a tag.
+  BUILD_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+jobs:
+  build-deb:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-24.04
+
+    env:
+      # Required for ccache to cache compilations that use precompiled headers
+      CCACHE_SLOPPINESS: pch_defines,time_macros
+      # The build runs in a random mktemp dir; don't hash the cwd or every
+      # run misses the cache (dpkg buildflags include -g, which triggers it)
+      CCACHE_NOHASHDIR: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.BUILD_SHA }}
+          fetch-depth: 0  # Full history and tags for version detection
+
+      # The build scripts read the version from an exact-match tag on HEAD,
+      # so ask git the same question rather than the event payload: under
+      # workflow_run there is no refs/tags ref to test.
+      - name: Detect release tag
+        id: release
+        run: |
+          tag=$(git describe --tags --exact-match HEAD 2>/dev/null || true)
+          case "$tag" in
+            v[0-9]*) echo "tag=$tag" >> "$GITHUB_OUTPUT" ;;
+            *)       echo "tag=" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Install LLVM 20 and build dependencies
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 20
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            llvm-20-dev \
+            libzstd-dev \
+            devscripts \
+            debhelper \
+            build-essential
+
+      - name: Set up ccache
+        uses: hendrikmuhs/ccache-action@v1.2.23
+        with:
+          key: deb-gcc
+          max-size: 2G
+
+      - name: Build Debian package
+        run: |
+          chmod +x ./scripts/build-deb.sh
+          ./scripts/build-deb.sh
+
+      - name: Record Debian package name
+        id: deb
+        run: |
+          mapfile -t packages < <(find dist -maxdepth 1 -type f -name '*.deb' -printf '%f\n')
+          if [ "${#packages[@]}" -ne 1 ]; then
+            echo "Expected exactly one Debian package, found ${#packages[@]}" >&2
+            exit 1
+          fi
+          echo "name=${packages[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sun-deb-package-${{ env.BUILD_SHA }}
+          path: dist/*
+          retention-days: 30
+
+      - name: Upload to release
+        if: steps.release.outputs.tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          # Named explicitly: the action would otherwise fall back to
+          # github.ref, which under workflow_run is the default branch.
+          tag_name: ${{ steps.release.outputs.tag }}
+          files: dist/*
+          body: |
+            Install the Linux package:
+
+            ```bash
+            curl -fL "https://github.com/${{ github.repository }}/releases/download/${{ steps.release.outputs.tag }}/${{ steps.deb.outputs.name }}" -o "/tmp/${{ steps.deb.outputs.name }}" && chmod 0644 "/tmp/${{ steps.deb.outputs.name }}"
+            sudo apt install "/tmp/${{ steps.deb.outputs.name }}" && rm -f "/tmp/${{ steps.deb.outputs.name }}"
+            ```
+
+            The temporary path is reachable by APT's restricted `_apt` user, and mode `0644` handles restrictive user umasks.
+
+            The `.deb` installs the compiler and both bundles on Linux; on
+            macOS that is what `brew install namo-robotics/sun/sun` installs,
+            from the `.tar.gz` here. The `.moon` files are the same bundles on
+            their own, for dropping next to an existing compiler; each is
+            named for the target it was built for. Install one under its
+            canonical name in a bundle search directory:
+
+            ```bash
+            # Linux
+            mv stdlib-x86_64-linux-gnu.moon /usr/lib/sun/stdlib.moon
+            mv tls-x86_64-linux-gnu.moon    /usr/lib/sun/tls.moon
+            # macOS
+            mv stdlib-arm64-apple-darwin.moon "$(brew --prefix)/lib/sun/stdlib.moon"
+            mv tls-arm64-apple-darwin.moon    "$(brew --prefix)/lib/sun/tls.moon"
+            ```
+
+            A bundle built for another architecture is rejected at link time,
+            so take the one matching your target.
+
+            On an Apple Silicon Mac, Homebrew is the whole install — it
+            pulls in `llvm@20`, the compiler's one runtime dependency:
+
+            ```bash
+            brew install namo-robotics/sun/sun
+            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update dev release
+        if: steps.release.outputs.tag == ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dev
+          name: Development Build
+          prerelease: true
+          files: dist/*
+          body: |
+            Latest development build from main branch.
+
+            Commit: ${{ env.BUILD_SHA }}
+
+            Install the Linux package:
+
+            ```bash
+            curl -fL "https://github.com/${{ github.repository }}/releases/download/dev/${{ steps.deb.outputs.name }}" -o "/tmp/${{ steps.deb.outputs.name }}" && chmod 0644 "/tmp/${{ steps.deb.outputs.name }}"
+            sudo apt install "/tmp/${{ steps.deb.outputs.name }}" && rm -f "/tmp/${{ steps.deb.outputs.name }}"
+            ```
+
+            The temporary path is reachable by APT's restricted `_apt` user, and mode `0644` handles restrictive user umasks.
+
+            The `.deb` installs the compiler and both bundles on Linux; on
+            macOS that is what `brew install namo-robotics/sun/sun` installs,
+            from the `.tar.gz` here. The `.moon` files are the same bundles on
+            their own, for dropping next to an existing compiler; each is
+            named for the target it was built for. Install one under its
+            canonical name in a bundle search directory:
+
+            ```bash
+            # Linux
+            mv stdlib-x86_64-linux-gnu.moon /usr/lib/sun/stdlib.moon
+            mv tls-x86_64-linux-gnu.moon    /usr/lib/sun/tls.moon
+            # macOS
+            mv stdlib-arm64-apple-darwin.moon "$(brew --prefix)/lib/sun/stdlib.moon"
+            mv tls-arm64-apple-darwin.moon    "$(brew --prefix)/lib/sun/tls.moon"
+            ```
+
+            A bundle built for another architecture is rejected at link time,
+            so take the one matching your target.
+
+            On an Apple Silicon Mac, Homebrew is the whole install — it
+            pulls in `llvm@20`, the compiler's one runtime dependency:
+
+            ```bash
+            brew install namo-robotics/sun/sun
+            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  test-install:
+    needs: build-deb
+    runs-on: ubuntu-24.04
+    # A bare container, not the runner image: the runner ships gcc, libc6-dev
+    # and libstdc++-dev already, so a missing Depends would go unnoticed there.
+    # Here everything `sun -c` needs has to come from the package's own deps.
+    container: ubuntu:24.04
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sun-deb-package-${{ env.BUILD_SHA }}
+          path: dist/
+
+      - name: Install LLVM 20 runtime
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            wget ca-certificates gnupg lsb-release software-properties-common
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          ./llvm.sh 20
+
+      - name: Install package
+        run: |
+          apt-get update
+
+          private_dir=$(mktemp -d)
+          chmod 0700 "$private_dir"
+          deb=$(mktemp /tmp/sun.XXXXXX.deb)
+          log=$(mktemp)
+          trap 'rm -r "$private_dir"; rm -f "$deb" "$log"' EXIT
+
+          cp ./dist/*.deb "$deb"
+          chmod 0644 "$deb"
+          cd "$private_dir"
+
+          # APT (not dpkg) verifies that the package metadata pulls every
+          # dependency needed on a clean base image.
+          apt-get install -y --no-install-recommends "$deb" 2>&1 | tee "$log"
+          if grep -Fq "Download is performed unsandboxed as root" "$log"; then
+            echo "APT could not read the package through its _apt sandbox" >&2
+            exit 1
+          fi
+
+      - name: Test installation
+        run: |
+          which sun
+          sun --help || true
+          # Test with stdlib import (stdlib.moon installed to /usr/lib/sun/)
+          cat > test.sun << 'EOF'
+          using std;
+          function main() i32 {
+              println("Hello from Sun!");
+              return 0;
+          }
+          manifest {
+              libraries: ["stdlib.moon"]
+          }
+          EOF
+          unset SUN_PATH
+          sun test.sun
+          # AOT: needs a C link driver (cc), libc6-dev and libstdc++ dev files
+          sun -c -o test_aot test.sun
+          ./test_aot
+          # TLS: tls.moon carries its own static OpenSSL, so this needs no
+          # libssl installed and no linker flags.
+          cat > tls_test.sun << 'EOF'
+          using std;
+          using tls;
+          function main() i32 {
+              var alloc = make_heap_allocator();
+              var client = HttpsClient(alloc);
+              var host = String(alloc, "example.com");
+              try {
+                  var resp = client.get(host, "/");
+                  println(resp.status);
+                  if (resp.status == 200) { return 0; }
+                  return 1;
+              } catch (e: IError) {
+                  var msg = e.message();
+                  println(msg);
+                  return 2;
+              }
+          }
+          manifest {
+              libraries: ["stdlib.moon", "tls.moon"]
+          }
+          EOF
+          sun -c --dynamic -o tls_aot tls_test.sun
+          ./tls_aot
+
+      - name: Test installed AArch64 bundles
+        run: |
+          apt-get install -y --no-install-recommends \
+            g++-aarch64-linux-gnu libc6-dev-arm64-cross binutils-aarch64-linux-gnu
+          unset SUN_PATH
+          test -f /usr/lib/sun/aarch64-linux-gnu/stdlib.moon
+          test -f /usr/lib/sun/aarch64-linux-gnu/tls.moon
+          test -f /usr/lib/sun/aarch64-linux-musl/tls.moon
+          for target in aarch64-linux-gnu aarch64-linux-musl; do
+            sun --emit-obj --target "$target" -o "stdlib-$target.o" test.sun
+            sun --emit-obj --target "$target" -o "tls-$target.o" tls_test.sun
+            aarch64-linux-gnu-readelf -h "stdlib-$target.o" | grep 'Machine:.*AArch64'
+            aarch64-linux-gnu-readelf -h "tls-$target.o" | grep 'Machine:.*AArch64'
+          done
+          sun -c --target aarch64-linux-gnu -o tls_aarch64 tls_test.sun
+          aarch64-linux-gnu-readelf -h tls_aarch64 | grep 'Machine:.*AArch64'
+
+  # The deb's macOS counterpart: a tarball of the same files, which the
+  # Homebrew formula unpacks. Like the deb depends on apt's libllvm20, the
+  # binary links Homebrew's LLVM, so `brew install llvm@20` is its one
+  # runtime dependency. This job uploads the tarball and the standalone
+  # tls-arm64-apple-darwin.moon (tls needs Darwin OpenSSL archives, which
+  # only this runner can build); the Darwin stdlib bundle still comes from
+  # the deb job's cross builds.
+  build-macos:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: macos-latest
+
+    env:
+      CCACHE_SLOPPINESS: pch_defines,time_macros
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.BUILD_SHA }}
+          fetch-depth: 0  # Full history and tags for version detection
+
+      # The build scripts read the version from an exact-match tag on HEAD,
+      # so ask git the same question rather than the event payload: under
+      # workflow_run there is no refs/tags ref to test.
+      - name: Detect release tag
+        id: release
+        run: |
+          tag=$(git describe --tags --exact-match HEAD 2>/dev/null || true)
+          case "$tag" in
+            v[0-9]*) echo "tag=$tag" >> "$GITHUB_OUTPUT" ;;
+            *)       echo "tag=" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Install dependencies
+        run: brew install llvm@20 ninja ccache
+
+      - name: Set up ccache
+        uses: hendrikmuhs/ccache-action@v1.2.23
+        with:
+          key: build-macos
+          max-size: 2G
+
+      - name: Cache static OpenSSL archives
+        uses: actions/cache@v5
+        with:
+          path: third_party/openssl
+          key: openssl-macos-${{ hashFiles('scripts/build-openssl-macos.sh') }}
+
+      - name: Build static OpenSSL
+        # tls.moon embeds these. The script exits fast on a cache hit.
+        run: ./scripts/build-openssl-macos.sh
+
+      - name: Build macOS release
+        run: |
+          chmod +x ./scripts/build-macos.sh
+          CMAKE_EXTRA_ARGS="-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache" \
+            ./scripts/build-macos.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sun-macos-${{ env.BUILD_SHA }}
+          path: |
+            dist/*.tar.gz
+            dist/*.moon
+          retention-days: 30
+
+      # No body on either upload: the deb job owns the release notes, and
+      # setting one here would race it.
+      - name: Upload to release
+        if: steps.release.outputs.tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          # Named explicitly: the action would otherwise fall back to
+          # github.ref, which under workflow_run is the default branch.
+          tag_name: ${{ steps.release.outputs.tag }}
+          files: |
+            dist/*.tar.gz
+            dist/*.moon
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update dev release
+        if: steps.release.outputs.tag == ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dev
+          name: Development Build
+          prerelease: true
+          files: |
+            dist/*.tar.gz
+            dist/*.moon
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  test-install-macos:
+    needs: build-macos
+    runs-on: macos-latest
+    # A fresh runner rather than the build job's workspace: everything the
+    # installed compiler needs has to come from the tarball plus its one
+    # declared dependency.
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sun-macos-${{ env.BUILD_SHA }}
+          path: dist/
+
+      - name: Install LLVM 20 runtime
+        run: brew install llvm@20
+
+      # Unpacked into a prefix of its own, the way the formula installs it
+      # into the Cellar. Nothing goes anywhere system-wide, so the only thing
+      # that can find the bundles is the compiler's search of ../lib/sun
+      # relative to its own binary.
+      - name: Install the tarball
+        run: |
+          mkdir -p "$HOME/cellar"
+          tar -xzf dist/*.tar.gz -C "$HOME/cellar"
+          echo "$HOME/cellar/bin" >> "$GITHUB_PATH"
+
+      - name: Test installation
+        run: |
+          which sun
+          sun --help || true
+          # JIT with the stdlib import, and no SUN_PATH.
+          cat > test.sun << 'PROGRAM'
+          using std;
+          function main() i32 {
+              println("Hello from Sun!");
+              return 0;
+          }
+          manifest {
+              libraries: ["stdlib.moon"]
+          }
+          PROGRAM
+          sun test.sun
+          # AOT: links through Apple's cc with -lc++.
+          sun -c -o test_aot test.sun
+          ./test_aot
+          # TLS: tls.moon carries its own static OpenSSL, so this needs no
+          # libssl installed and no linker flags. A real fetch also proves
+          # certificate verification finds the CA bundle stock macOS ships
+          # at /etc/ssl/cert.pem.
+          cat > tls_test.sun << 'PROGRAM'
+          using std;
+          using tls;
+          function main() i32 {
+              var alloc = make_heap_allocator();
+              var client = HttpsClient(alloc);
+              var host = String(alloc, "example.com");
+              try {
+                  var resp = client.get(host, "/");
+                  println(resp.status);
+                  if (resp.status == 200) { return 0; }
+                  return 1;
+              } catch (e: IError) {
+                  var msg = e.message();
+                  println(msg);
+                  return 2;
+              }
+          }
+          manifest {
+              libraries: ["stdlib.moon", "tls.moon"]
+          }
+          PROGRAM
+          sun -c -o tls_aot tls_test.sun
+          ./tls_aot
+
+  # Points the Homebrew tap at the build that just passed its install test.
+  # A formula has to carry a checksum and the rolling dev tarball's changes on
+  # every push, so the formula is re-rendered from homebrew/sun.rb.in and
+  # pushed each time rather than edited by hand in the tap.
+  update-tap:
+    needs: [build-macos, test-install-macos]
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.BUILD_SHA }}
+          fetch-depth: 0  # Full history and tags for version detection
+
+      # Writing to another repository needs a token of its own; the built-in
+      # GITHUB_TOKEN is scoped to this one. Without the secret the job says so
+      # and stops, leaving the tap on the formula it already has.
+      - name: Check for tap token
+        id: tap
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+        run: |
+          if [ -n "$TAP_TOKEN" ]; then
+            echo "have=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "have=no" >> "$GITHUB_OUTPUT"
+            echo "::warning::TAP_TOKEN is not set; namo-robotics/homebrew-sun was left unchanged"
+          fi
+
+      - name: Download artifact
+        if: steps.tap.outputs.have == 'yes'
+        uses: actions/download-artifact@v4
+        with:
+          name: sun-macos-${{ env.BUILD_SHA }}
+          path: dist/
+
+      - name: Render formula
+        if: steps.tap.outputs.have == 'yes'
+        run: |
+          tarball=$(ls dist/sun-*-arm64-apple-darwin.tar.gz)
+          sha=$(sha256sum "$tarball" | cut -d' ' -f1)
+          tag=$(git describe --tags --exact-match HEAD 2>/dev/null || true)
+          case "$tag" in
+            v[0-9]*)
+              version="${tag#v}"
+              release="$tag"
+              ;;
+            *)
+              # A dev build keeps its 0.dev file name but gets a unique
+              # formula version: Homebrew names its download cache after the
+              # version, so a new file under the old version would be served
+              # from a stale cache and fail its checksum.
+              version="0.dev.$(date -u +%Y%m%d%H%M%S)"
+              release="dev"
+              ;;
+          esac
+          url="https://github.com/${{ github.repository }}/releases/download/$release/$(basename "$tarball")"
+          sed -e "s|@URL@|$url|" -e "s|@VERSION@|$version|" -e "s|@SHA256@|$sha|" \
+            homebrew/sun.rb.in > sun.rb
+          echo "version=$version" >> "$GITHUB_ENV"
+          cat sun.rb
+
+      - name: Push to the tap
+        if: steps.tap.outputs.have == 'yes'
+        env:
+          GH_TOKEN: ${{ secrets.TAP_TOKEN }}
+        run: |
+          repo=namo-robotics/homebrew-sun
+          # Replacing a file through the API needs the blob it replaces.
+          blob=$(gh api "repos/$repo/contents/Formula/sun.rb" --jq .sha 2>/dev/null || true)
+          gh api -X PUT "repos/$repo/contents/Formula/sun.rb" \
+            -f message="sun $version" \
+            -f content="$(base64 -w0 sun.rb)" \
+            ${blob:+-f sha="$blob"}
+
+  # Publish main's docs only after every package job succeeds.
+  docs:
+    needs: [build-deb, test-install, build-macos, test-install-macos, update-tap]
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main')
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/docs.yml
+    with:
+      ref: ${{ github.event.workflow_run.head_sha || github.sha }}

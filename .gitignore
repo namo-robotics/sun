@@ -1,0 +1,46 @@
+build/
+
+# Stray compiled binaries (root-anchored so they don't swallow source dirs)
+/regex
+/echo
+/hello_world
+/hello
+manual_tests/test
+
+# Debian packaging artifacts
+debian/.debhelper/
+debian/sun/
+debian/files
+debian/changelog
+debian/*.debhelper
+debian/*.debhelper.log
+debian/*.substvars
+debian/debhelper-build-stamp
+obj-*/
+dist/
+build-tmp/
+build-macos/
+*.deb
+*.buildinfo
+*.changes
+
+Testing/
+
+# VS Code extension artifacts
+extensions/vscode-sun/node_modules/
+extensions/vscode-sun/out/
+extensions/vscode-sun/*.vsix
+extensions/vscode-sun/.vscode-test/
+*.moon
+tmp
+*.dot
+*.ll
+*_debug/
+.cache/
+*.o
+
+cmake_test_discovery*
+# Vendored static OpenSSL archives for tls.moon (built by scripts/build-openssl.sh)
+third_party/openssl/
+
+.claude/settings.local.json

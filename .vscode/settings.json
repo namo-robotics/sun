@@ -1,0 +1,81 @@
+{
+    // === CMake + Build ===
+    "cmake.buildDirectory": "${workspaceFolder}/build",
+    "cmake.configureOnOpen": true,
+    // === IntelliSense (clangd) ===
+    "C_Cpp.intelliSenseEngine": "disabled",
+    "C_Cpp.default.configurationProvider": "",
+    "clangd.arguments": [
+        "--background-index",
+        "--compile-commands-dir=${workspaceFolder}/build",
+        "--header-insertion=iwyu",
+        "--all-scopes-completion",
+        "--completion-style=detailed"
+    ],
+    // === Formatting ===
+    "C_Cpp.formatting": "clangFormat",
+    "C_Cpp.clang_format_style": "file",
+    "C_Cpp.clang_format_fallbackStyle": "Google",
+    "editor.formatOnSave": true,
+    "[cpp]": {
+        "editor.formatOnSave": true,
+        "editor.formatOnPaste": false
+    },
+    "[plaintext]": {
+        "editor.formatOnSave": false
+    },
+    "[makefile]": {
+        "editor.formatOnSave": false
+    },
+    // === Editor UI ===
+    "editor.rulers": [
+        80,
+        120
+    ],
+    // Hide ctest's generated test-discovery files (rewritten on every ctest
+    // run by gtest_discover_tests PRE_TEST mode) from the explorer/watcher
+    "files.exclude": {
+        "build/tests/*.cmake": true
+    },
+    "files.watcherExclude": {
+        "build/tests/*.cmake": true
+    },
+    "files.associations": {
+        "debian/rules": "makefile",
+        "debian/control": "plaintext",
+        "debian/copyright": "plaintext",
+        "debian/changelog": "plaintext",
+        "debian/source/format": "plaintext",
+        "debian/install": "plaintext",
+        "*.proto": "proto"
+    },
+    // === Project-Specific ===
+    "sun.sun_path": [
+        "build",
+        "/workspaces/sun"
+    ],
+    "sun.lsp_path": "build/sun-lsp",
+    "sun.sun_configs": [
+        "sun-config.json"
+    ],
+    // === LLDB (for debugging) ===
+    // Wrapper unsets DEBUGINFOD_URLS, which otherwise hangs lldb in the
+    // container (unreachable symbol server, no timeout). Absolute path: the
+    // lldb-dap extension does not substitute ${workspaceFolder} here.
+    "lldb-dap.executable-path": "/workspaces/sun/.vscode/lldb-dap-wrapper.sh",
+    // Allow gutter breakpoints in .sun files (cppdbg only whitelists
+    // C-family languages by default)
+    "debug.allowBreakpointsEverywhere": true,
+    "github.copilot.chat.commitMessageGeneration.instructions": [
+        {
+            "file": "AGENTS.md"
+        }
+    ],
+    "cppTestExplorer.parallelMode": "case",
+    "cppTestExplorer.concurrency": 0,
+    "cppTestExplorer.testGrouping": {
+        "groupBySplittedTestName": {
+            "splitBy": "`(?<!\\.[^.]*)_(?=[A-Z])|\\."
+        }
+    }
+}

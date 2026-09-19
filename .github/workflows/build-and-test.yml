@@ -1,0 +1,214 @@
+name: BuildAndTest
+
+# Packages waits for this workflow to pass; Docs then waits for Packages.
+# Version tags run the full suite here too, so releases are tested.
+# Packages matches the name below, so keep its trigger in sync if renamed.
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v[0-9]*'
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+
+    env:
+      # Required for ccache to cache compilations that use precompiled headers
+      CCACHE_SLOPPINESS: pch_defines,time_macros
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install LLVM 20
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 20
+          sudo apt-get install -y llvm-20-dev lld-20 libzstd-dev libgtest-dev ninja-build
+
+      - name: Set up ccache
+        uses: hendrikmuhs/ccache-action@v1.2.23
+        with:
+          key: ci-clang20
+          max-size: 2G
+
+      - name: Cache static OpenSSL archives
+        uses: actions/cache@v5
+        with:
+          path: third_party/openssl
+          key: openssl-static-${{ hashFiles('scripts/fetch-openssl.sh') }}
+
+      - name: Fetch static OpenSSL
+        # tls.moon embeds these; without them CMake skips the bundle and the
+        # TLS tests and the https_client example have nothing to link against.
+        run: |
+          if [ ! -f third_party/openssl/x86_64-linux-musl/libcrypto.a ]; then
+            ./scripts/fetch-openssl.sh
+          fi
+
+      - name: Configure
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_C_COMPILER=clang-20 \
+            -DCMAKE_CXX_COMPILER=clang++-20 \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
+      - name: Check tls.moon was built
+        # The example skips itself when the bundle is missing; without this
+        # a failed fetch would look like a pass.
+        run: test -f build/tls.moon
+
+      - name: Test
+        run: |
+          cd build
+          ctest -j$(nproc) --output-on-failure
+        env:
+          SUN_PATH: ${{ github.workspace }}
+
+      - name: Run stdlib Sun tests
+        # The stdlib's own suite (stdlib/*_tests.sun), AOT-compiled to
+        # build/stdlib_tests_test by the CMake build. ctest above already runs
+        # it as one entry and hides its output on success; this step runs it
+        # again so every test's PASS/FAIL line is in the log, and fails
+        # loudly if the binary was never built. Sequential, as in ctest: the
+        # env and cwd tests change process-wide state.
+        run: |
+          test -x build/stdlib_tests_test
+          build/stdlib_tests_test --test-sequential
+
+      - name: Run tls Sun tests
+        # The tls bundle's suite (tls/*_tests.sun), AOT-compiled to
+        # build/tls_tests_test alongside tls.moon. Same visible rerun as the
+        # stdlib's; sequential because the handshake tests set SSL_CERT_FILE,
+        # which is process-wide.
+        run: |
+          test -x build/tls_tests_test
+          build/tls_tests_test --test-sequential
+
+      - name: Add compiler to PATH
+        # Examples call the bare `sun` binary; expose the freshly built one.
+        # A separate step so the PATH change takes effect in the next step.
+        run: echo "${GITHUB_WORKSPACE}/build" >> "$GITHUB_PATH"
+
+      - name: Verify examples compile & execute
+        run: |
+          set -euo pipefail
+          fail=0
+          for dir in examples/*/; do
+            [ -f "${dir}build.sh" ] || continue
+            name=$(basename "$dir")
+            echo "::group::${name}"
+            if ( cd "$dir" && bash build.sh && bash test.sh ); then
+              echo "PASS ${name}"
+            else
+              echo "::error::example '${name}' failed to compile or execute"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $fail
+
+  # Native macOS (Apple Silicon): builds the compiler with Homebrew LLVM and
+  # runs the suite and examples on real hardware — the things the Linux job's
+  # cross-compilation tests cannot execute.
+  build-and-test-macos:
+    runs-on: macos-latest
+
+    env:
+      CCACHE_SLOPPINESS: pch_defines,time_macros
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install dependencies
+        # No OpenSSL package: the tls bundle carries its own static build
+        # (scripts/build-openssl-macos.sh), and the JIT loads the carried
+        # archives just as the AOT link does.
+        run: brew install llvm@20 ninja ccache googletest
+
+      - name: Set up ccache
+        uses: hendrikmuhs/ccache-action@v1.2.23
+        with:
+          key: ci-macos-clang20
+          max-size: 2G
+
+      - name: Cache static OpenSSL archives
+        uses: actions/cache@v5
+        with:
+          path: third_party/openssl
+          key: openssl-macos-${{ hashFiles('scripts/build-openssl-macos.sh') }}
+
+      - name: Build static OpenSSL
+        # tls.moon embeds these; without them CMake skips the bundle and the
+        # TLS tests and the https_client example have nothing to link against.
+        # The script exits fast when the cache already holds the archives.
+        run: ./scripts/build-openssl-macos.sh
+
+      - name: Configure
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_C_COMPILER="$(brew --prefix llvm@20)/bin/clang" \
+            -DCMAKE_CXX_COMPILER="$(brew --prefix llvm@20)/bin/clang++" \
+            -DLLVM_DIR="$(brew --prefix llvm@20)/lib/cmake/llvm" \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build
+        run: cmake --build build -j4
+
+      - name: Check tls.moon was built
+        # The example skips itself when the bundle is missing; without this
+        # a failed OpenSSL build would look like a pass.
+        run: test -f build/tls.moon
+
+      - name: Test
+        run: |
+          cd build
+          ctest -j4 --output-on-failure
+        env:
+          SUN_PATH: ${{ github.workspace }}
+
+      - name: Run stdlib Sun tests
+        # Same as the Linux job: a visible run of stdlib/*_tests.sun on real
+        # macOS hardware, sequential because the env and cwd tests change
+        # process-wide state.
+        run: |
+          test -x build/stdlib_tests_test
+          build/stdlib_tests_test --test-sequential
+
+      - name: Run tls Sun tests
+        # Same as the Linux job, on real macOS hardware. Sequential because
+        # the handshake tests set SSL_CERT_FILE, which is process-wide.
+        run: |
+          test -x build/tls_tests_test
+          build/tls_tests_test --test-sequential
+
+      - name: Add compiler to PATH
+        run: echo "${GITHUB_WORKSPACE}/build" >> "$GITHUB_PATH"
+
+      - name: Verify examples compile & execute
+        run: |
+          set -euo pipefail
+          fail=0
+          for dir in examples/*/; do
+            [ -f "${dir}build.sh" ] || continue
+            name=$(basename "$dir")
+            echo "::group::${name}"
+            if ( cd "$dir" && bash build.sh && bash test.sh ); then
+              echo "PASS ${name}"
+            else
+              echo "::error::example '${name}' failed to compile or execute"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $fail

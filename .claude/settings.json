@@ -1,0 +1,76 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git diff *)",
+      "Bash(git status)",
+      "Bash(./build.sh)",
+      "Bash(./build.sh *)",
+      "Bash(bash *.sh)",
+      "Bash(cmake --build *)",
+      "Bash(./build/*)",
+      "Bash(/workspaces/sun/build/*)",
+      "Bash(SUN_PATH=* ./build/*)",
+      "Bash(SUN_PATH=* /workspaces/sun/build/*)",
+      "Bash(export SUN_PATH=*)",
+      "Bash(sun *)",
+      "Bash(./build/tests/sun_tests *)",
+      "Bash(ctest *)",
+      "Bash(./tmp/*)",
+      "Bash(ls *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(wc *)",
+      "Bash(sed -n *)",
+      "Bash(grep *)",
+      "Bash(awk *)",
+      "Bash(echo *)",
+      "Bash(printf *)",
+      "Bash(mkdir -p *)",
+      "Bash(rm -f tmp/*)",
+      "Bash(rm -rf tmp/*)",
+      "Bash(chmod +x *)",
+      "Bash(node scripts/*)",
+      "Bash(python3 -)",
+      "Read(//tmp/**)",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Bash(cat)",
+      "Bash(SUN_PATH=*)",
+      "Bash(DEBUGINFOD_URLS=*)",
+      "Bash(lldb *)",
+      "Bash(cp * tmp/*)",
+      "WebFetch",
+      "Read(//usr/bin/**)",
+      "Bash(gdb *)",
+      "Bash(sed -i *)",
+      "Bash(valgrind *)",
+      "Bash(ulimit *)",
+      "Bash(which *)",
+      "Bash(find *)",
+      "Bash(curl -sL *)",
+      "Bash(dpkg-deb -x *)",
+      "Bash(SUN_PATH=* ctest *)",
+      "WebFetch(domain:github.com)",
+      "Bash(git checkout *)"
+    ],
+    "additionalDirectories": [
+      "/tmp",
+      "/workspaces/sun/build/tmp",
+      "/workspaces/sun/tmp",
+      "/workspaces/sun/src/semantic_analysis"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/allow_bash.py\""
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,73 @@
+name: Docs
+
+# Packages calls this after its builds, installation tests, and tap update
+# succeed. The required ref keeps the site on the commit those jobs built.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit successfully built and tested by Packages
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Install Doxygen
+        working-directory: .
+        run: |
+          mkdir -p tmp/doxygen
+          curl --fail --location --retry 3 https://www.doxygen.nl/files/doxygen-1.15.0.linux.bin.tar.gz -o tmp/doxygen/archive.tar.gz
+          echo "0ec2e5b2c3cd82b7106d19cb42d8466450730b8cb7a9e85af712be38bf4523a1  tmp/doxygen/archive.tar.gz" | sha256sum --check
+          tar -xzf tmp/doxygen/archive.tar.gz -C tmp/doxygen
+          echo "$GITHUB_WORKSPACE/tmp/doxygen/doxygen-1.15.0/bin" >> "$GITHUB_PATH"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test documentation generators
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/out
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
