@@ -24,10 +24,12 @@ struct TestItem {
   SymbolLocation location;
 };
 
-// Every test_function declared in the document at documentPath, walking
-// module bodies the way the test runner does so ids match the runner's
-// dotted names. `source` is the document's text, used to narrow each
-// declaration span to the name token.
+/**
+ * Every test_function declared in the document at documentPath, walking
+ * module bodies the way the test runner does so ids match the runner's
+ * dotted names. `source` is the document's text, used to narrow each
+ * declaration span to the name token.
+ */
 std::vector<TestItem> collectTests(const sun::ast::BlockExprAST& ast,
                                    const std::string& documentPath,
                                    const std::string& source);
@@ -45,7 +47,9 @@ struct TestSpan {
   std::string filePath;  // normalized
 };
 
-// Every test_function in the program, whichever file declares it.
+/**
+ * Every test_function in the program, whichever file declares it.
+ */
 std::vector<TestSpan> collectTestSpans(const sun::ast::BlockExprAST& ast);
 
 }  // namespace sun::lsp

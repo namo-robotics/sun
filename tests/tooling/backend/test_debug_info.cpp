@@ -283,7 +283,6 @@ TEST(Tooling_Backend_DebugInfo, object_file_dwarf_verifies) {
   std::string objPath = ::testing::TempDir() + "sun_debug_info_test.o";
   int rc = dwarfdumpVerify(driver->getModule(), objPath);
   if (rc < 0) GTEST_SKIP() << "llvm-dwarfdump not installed";
-  /** Builds a small executable used to inspect linked debug information. */
   EXPECT_EQ(rc, 0);
 }
 
@@ -302,10 +301,12 @@ TEST(Tooling_Backend_DebugInfo, cross_target_object_dwarf_verifies) {
 /** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
-// Link kSimpleProgram with -g; returns "" (and records a skip reason) when the
-// host linker is unavailable. The source is written to a real file so
-// debuggers can display source lines. `name` keeps concurrently running tests
-// (ctest -j) from clobbering each other's artifacts.
+/**
+ * Link kSimpleProgram with -g; returns "" (and records a skip reason) when the
+ * host linker is unavailable. The source is written to a real file so
+ * debuggers can display source lines. `name` keeps concurrently running tests
+ * (ctest -j) from clobbering each other's artifacts.
+ */
 std::string linkSimpleDebugBinary(const std::string& name,
                                   std::string& skipReason) {
   initTestEnvironment();

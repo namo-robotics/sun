@@ -44,31 +44,41 @@ struct CompileJob {
   bool skipIfUnchanged = false;
 };
 
-// The default artifact name for an entrypoint: its path without the .sun
-// extension.
+/**
+ * The default artifact name for an entrypoint: its path without the .sun
+ * extension.
+ */
 std::string deriveOutputName(const std::string& entrypoint);
 
-// Fill a job from the command-line options. The output names are copied as
-// given, so the caller still has to settle them.
+/**
+ * Fill a job from the command-line options. The output names are copied as
+ * given, so the caller still has to settle them.
+ */
 CompileJob makeCompileJob(const BuildRunOptions& options);
 
-// Compile one entrypoint: the production executable (when there is a main,
-// or when there are no tests to build instead) plus the test binary (when
-// the program has tests and --no-test was not given). Prints errors and
-// returns the exit code.
+/**
+ * Compile one entrypoint: the production executable (when there is a main,
+ * or when there are no tests to build instead) plus the test binary (when
+ * the program has tests and --no-test was not given). Prints errors and
+ * returns the exit code.
+ */
 int compileEntrypoint(const CompileJob& job);
 
-// Compile only the job's test binary: tests kept, the runner synthesized,
-// linked to the job's test binary name. `hasExecutable` says whether the
-// program also yields an executable, which the test binary records for later
-// runs. Throws SunError like any compile — including "no test functions
-// found" when the program has no tests; the caller decides what that means
-// for it.
+/**
+ * Compile only the job's test binary: tests kept, the runner synthesized,
+ * linked to the job's test binary name. `hasExecutable` says whether the
+ * program also yields an executable, which the test binary records for later
+ * runs. Throws SunError like any compile — including "no test functions
+ * found" when the program has no tests; the caller decides what that means
+ * for it.
+ */
 int compileTestBinary(const CompileJob& job, bool hasExecutable = true);
 
-// sun -c [-o <file>] <script.sun>...  and  sun --emit-obj ...
-// Compiles the input files, naming the output after the first one unless -o
-// says otherwise.
+/**
+ * sun -c [-o <file>] <script.sun>...  and  sun --emit-obj ...
+ * Compiles the input files, naming the output after the first one unless -o
+ * says otherwise.
+ */
 int runCompileCommand(const BuildRunOptions& options);
 
 }  // namespace sun::cli

@@ -237,6 +237,7 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
   // the Vec. codegen() would read instead (see loadIfRef).
   TypePtr declaredType = expr.getResolvedType();
   Value* value = declaredType && declaredType->isReference()
+                     /** Emits the address used to borrow an expression without moving its value. */
                      ? codegenBorrowAddress(*expr.getValue())
                      : nullptr;
   if (!value) value = codegen(*expr.getValue());

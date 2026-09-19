@@ -215,7 +215,6 @@ TEST(Modules_FileImports, imports_preserve_lexical_scope) {
 
 TEST(Modules_FileImports,
      bundle_keeps_file_imports_and_generic_definition_context) {
-  /** Prepares the files and compiler state needed by each test. */
   auto paths = writeImportSources({R"(
     manifest { source_files: ["1.sun", "2.sun"] }
   )",
@@ -375,6 +374,7 @@ class MoonExactTypes : public ::testing::Test {
     return output.string();
   }
 
+  /** Prepares the files and compiler state needed by each test. */
   void SetUp() override {
     initTestEnvironment();
     dir = std::filesystem::current_path() / "tmp" / "exact_types" /

@@ -21,22 +21,30 @@
 /** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
 
-// Parse the default command (run, compile or bundle) and check the result
-// with validateBuildRunOptions. programName appears in the help text.
+/**
+ * Parse the default command (run, compile or bundle) and check the result
+ * with validateBuildRunOptions. programName appears in the help text.
+ */
 std::optional<EarlyExit> parseBuildRunArguments(
     const std::string& programName, const std::vector<std::string>& args,
     BuildRunOptions& options);
 
-// Find the first combination of flags that makes no sense, such as --static
-// without -c. Returns nothing when the options are consistent.
+/**
+ * Find the first combination of flags that makes no sense, such as --static
+ * without -c. Returns nothing when the options are consistent.
+ */
 std::optional<EarlyExit> validateBuildRunOptions(
     const BuildRunOptions& options, const std::string& programName);
 
-// Parse `sun test`.
+/**
+ * Parse `sun test`.
+ */
 std::optional<EarlyExit> parseTestArguments(
     const std::vector<std::string>& args, TestOptions& options);
 
-// Parse `sun fmt`.
+/**
+ * Parse `sun fmt`.
+ */
 std::optional<EarlyExit> parseFmtArguments(const std::vector<std::string>& args,
                                            FmtOptions& options);
 

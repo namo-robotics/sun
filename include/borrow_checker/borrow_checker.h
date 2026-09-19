@@ -35,11 +35,13 @@ struct BorrowError {
       relatedLocations;  // Where conflicting borrows occurred
 };
 
-/// Turn the borrow errors of one compilation into the single error the driver
-/// throws. The first error gives the message and location; every other error
-/// and related borrow rides along as a related diagnostic, so printing the
-/// error shows them all with carets and a tool catching it (the language
-/// server) can point at each one in the source. Requires a non-empty list.
+/**
+ * Turn the borrow errors of one compilation into the single error the driver
+ * throws. The first error gives the message and location; every other error
+ * and related borrow rides along as a related diagnostic, so printing the
+ * error shows them all with carets and a tool catching it (the language
+ * server) can point at each one in the source. Requires a non-empty list.
+ */
 sun::support::SunError buildBorrowCheckError(
     const std::vector<BorrowError>& errors);
 

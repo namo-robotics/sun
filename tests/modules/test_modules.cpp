@@ -349,9 +349,7 @@ TEST(Modules, submod_duplicates_fn) {
 }
 
 TEST(Modules, using_nest_module) {
-  /**
-   * "using A.B;" where B is a nested module should import all from A.B
-   */
+  // "using A.B;" where B is a nested module should import all from A.B
   auto value = executeString(R"(
     public module A {
       public function foo() i32 {
@@ -809,6 +807,7 @@ TEST(Modules, module_qualified_call_widens_numeric_arguments) {
 /** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
+/** Builds a compiled library containing the supplied fixture declarations. */
 std::filesystem::path writeMoonLib(const std::string& name,
                                    const std::string& source) {
   namespace fs = std::filesystem;

@@ -793,6 +793,7 @@ TEST(Builtins_IsIntrinsic, module_generic_helper_definition) {
 // _print_i64 used to sign-truncate to i32 and delegate to the i32 helper, so
 // any value outside the i32 range printed as garbage.
 
+/** Runs a Sun program and captures its standard output for assertions. */
 static std::string capturePrintedOutput(const std::string& source) {
   testing::internal::CaptureStdout();
   executeString(source);

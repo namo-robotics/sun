@@ -48,7 +48,6 @@ class Modules_GenericRegressions : public ::testing::Test {
     std::ofstream(dir / name) << source;
   }
 
-  /** Executes the fixture program and returns its observable result. */
   ::testing::AssertionResult run(const std::string& command,
                                  bool expectSuccess = true,
                                  const std::string& diagnostic = "") {
@@ -393,7 +392,9 @@ function main() i32 { return lib.hidden<i32>(0); }
       run("build/sun " + (dir / "private.sun").string(), false, "private"));
 }
 
-// Rename only the parameter inside one class, leaving its callers unchanged.
+/**
+ * Rename only the parameter inside one class, leaving its callers unchanged.
+ */
 void renameParameter(std::string& source, const std::string& className,
                      const std::string& nextClass, char replacement) {
   const auto begin = source.find("public class " + className + "<T>");

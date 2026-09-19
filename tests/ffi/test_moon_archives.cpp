@@ -88,15 +88,17 @@ manifest {
 )";
 }
 
-// Four bundles in a scratch directory: `leaf.moon` wraps the C archive and
-// carries it; `mid.moon` is built on leaf and names no archive itself;
-// `twin.moon` wraps the same archive file independently of leaf;
-// `leaf2.moon` wraps the second version of the archive. Built once per
-// process (see chain()): the library cache is a singleton that keeps every
-// bundle it has opened, so rebuilding under a fresh path per test would
-// leave it holding readers for files that no longer exist. The directory is
-// per process too: ctest runs each test as its own process, several at a
-// time, and they must not wipe each other's bundles.
+/**
+ * Four bundles in a scratch directory: `leaf.moon` wraps the C archive and
+ * carries it; `mid.moon` is built on leaf and names no archive itself;
+ * `twin.moon` wraps the same archive file independently of leaf;
+ * `leaf2.moon` wraps the second version of the archive. Built once per
+ * process (see chain()): the library cache is a singleton that keeps every
+ * bundle it has opened, so rebuilding under a fresh path per test would
+ * leave it holding readers for files that no longer exist. The directory is
+ * per process too: ctest runs each test as its own process, several at a
+ * time, and they must not wipe each other's bundles.
+ */
 struct BundleChain {
   fs::path dir;
   fs::path leaf;
@@ -106,6 +108,7 @@ struct BundleChain {
   sun::moon_bundling::MoonBuildReport leafReport;
   sun::moon_bundling::MoonBuildReport midReport;
 
+  /** Owns the temporary libraries and paths used to test transitive archive dependencies. */
   BundleChain() {
     sun::driver::initTestEnvironment();
     dir = fs::path(::testing::TempDir()) /
@@ -115,7 +118,6 @@ struct BundleChain {
 
     std::ofstream(dir / "leaf.sun")
         << wrapperSource("slot_lib", ffiTestLibDir() + "/" + kArchiveName);
-    /** Removes the temporary files owned by the bundle-chain fixture. */
     std::ofstream(dir / "twin.sun")
         << wrapperSource("slot_twin", ffiTestLibDir() + "/" + kArchiveName);
     std::ofstream(dir / "leaf2.sun")
@@ -133,25 +135,25 @@ manifest {
 }
 )";
     leaf = dir / "leaf.moon";
-    /** Creates the compiled-library dependency chain used by the archive test. */
     mid = dir / "mid.moon";
     twin = dir / "twin.moon";
     leaf2 = dir / "leaf2.moon";
     leafReport = MoonBuilder::build((dir / "leaf.sun").string(), leaf);
     midReport = MoonBuilder::build((dir / "mid.sun").string(), mid);
     MoonBuilder::build((dir / "twin.sun").string(), twin);
-    /** Lists the native archives packaged in the selected Moon library. */
     MoonBuilder::build((dir / "leaf2.sun").string(), leaf2);
   }
 
-  // Runs at process exit, after every test in this process is done with it
+  /**
+   * Runs at process exit, after every test in this process is done with it
+   */
   ~BundleChain() {
     std::error_code ignored;
     fs::remove_all(dir, ignored);
   }
 };
 
-/** Reports whether a string ends with the expected suffix. */
+/** Creates the compiled-library dependency chain used by the archive test. */
 const BundleChain& chain() {
   static BundleChain built;
   return built;
@@ -170,13 +172,15 @@ std::vector<std::string> carriedArchives(const fs::path& bundle) {
   return names;
 }
 
+/** Reports whether a string ends with the expected suffix. */
 bool endsWith(const std::string& text, const std::string& suffix) {
-  /** Collects the symbols exported by archives carried in a Moon library. */
   return text.size() >= suffix.size() &&
          text.compare(text.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
 
-// The `$hash$_` prefix of a bundle's symbols
+/**
+ * The `$hash$_` prefix of a bundle's symbols
+ */
 std::string symbolPrefix(const fs::path& bundle) {
   auto reader = MoonReader::open(bundle);
   if (!reader) return {};
@@ -186,8 +190,10 @@ std::string symbolPrefix(const fs::path& bundle) {
   return metadata ? sun::moon_bundling::getSymbolPrefix(*metadata) + "_" : "";
 }
 
-// The names in the symbol index of the first archive a bundle carries, as C
-// code spells them
+/**
+ * The names in the symbol index of the first archive a bundle carries, as C
+ * code spells them
+ */
 std::vector<std::string> carriedArchiveSymbols(const fs::path& bundle) {
   auto reader = MoonReader::open(bundle);
   if (!reader || reader->getNativeArchives().empty()) return {};
@@ -199,8 +205,10 @@ std::vector<std::string> carriedArchiveSymbols(const fs::path& bundle) {
       llvm::MemoryBufferRef(llvm::StringRef(bytes.data(), bytes.size()), ""));
 }
 
-// Build and run a program as a native executable; the exit code, or -1
-// when the host cannot link (recorded in `skipReason`).
+/**
+ * Build and run a program as a native executable; the exit code, or -1
+ * when the host cannot link (recorded in `skipReason`).
+ */
 int runCompiled(Driver& driver, const fs::path& binary,
                 std::string& skipReason) {
   std::string errorMsg;

@@ -116,19 +116,23 @@ struct SignatureLowering {
   }
 };
 
-/// Classify a whole signature under the C ABI of `triple`. Throws a
-/// compilation error for targets without implemented rules. `signs` says
-/// which integers are signed, for targets that must pick an extension; null
-/// means "unknown", which only loses the extension attributes such targets
-/// want, so pass it whenever the Sun-level types are at hand.
+/**
+ * Classify a whole signature under the C ABI of `triple`. Throws a
+ * compilation error for targets without implemented rules. `signs` says
+ * which integers are signed, for targets that must pick an extension; null
+ * means "unknown", which only loses the extension attributes such targets
+ * want, so pass it whenever the Sun-level types are at hand.
+ */
 SignatureLowering lowerCSignature(const llvm::Triple& triple,
                                   llvm::Type* returnType,
                                   llvm::ArrayRef<llvm::Type*> paramTypes,
                                   const llvm::DataLayout& dl,
                                   const SignednessInfo* signs = nullptr);
 
-/// The LLVM function type implied by a lowering: sret pointer prepended when
-/// needed, coerced parameters expanded in place, indirect ones as pointers.
+/**
+ * The LLVM function type implied by a lowering: sret pointer prepended when
+ * needed, coerced parameters expanded in place, indirect ones as pointers.
+ */
 llvm::FunctionType* buildLoweredFunctionType(const SignatureLowering& lowering,
                                              llvm::LLVMContext& ctx,
                                              bool isVarArg);

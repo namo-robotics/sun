@@ -11,10 +11,12 @@
 /** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
 
-// sun -c sun-config.json
-// Builds every declared entrypoint, stopping at the first failure. A binary
-// becomes an executable plus its test binary. A library becomes a .moon
-// bundle plus, when it has tests, its test binary.
+/**
+ * sun -c sun-config.json
+ * Builds every declared entrypoint, stopping at the first failure. A binary
+ * becomes an executable plus its test binary. A library becomes a .moon
+ * bundle plus, when it has tests, its test binary.
+ */
 int runConfigBuildCommand(const BuildRunOptions& options);
 
 }  // namespace sun::cli

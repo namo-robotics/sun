@@ -448,7 +448,9 @@ class Formatter {
     int savedLast = lastLine_;
     lastLine_ = -1;
 
-    // Fields and methods live in separate vectors; merge by source order
+    /**
+     * Fields and methods live in separate vectors; merge by source order
+     */
     struct Member {
       int offset;
       int line;

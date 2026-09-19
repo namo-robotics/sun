@@ -28,7 +28,9 @@ struct DeclarationKey {
   bool operator==(const DeclarationKey&) const = default;
 };
 
-// A location without a file belongs to `file`
+/**
+ * A location without a file belongs to `file`
+ */
 DeclarationKey declarationKey(const Declaration& declaration,
                               const std::string& file);
 
@@ -47,6 +49,7 @@ struct MemberGroup {
   std::string builtinInterface;
 };
 
+/** Finds related member declarations that share a rename operation. */
 MemberGroup memberGroupOf(const BlockExprAST& program,
                           const Declaration& declaration,
                           const std::string& documentPath);
@@ -59,24 +62,28 @@ struct Occurrences {
   bool allDeclared = false;
 };
 
-// Where each of `targets` is named, as computeReferences lists them, merged
-// into one sorted list. Declarations outside the tree are not added.
+/**
+ * Where each of `targets` is named, as computeReferences lists them, merged
+ * into one sorted list. Declarations outside the tree are not added.
+ */
 Occurrences findOccurrences(const BlockExprAST& program,
                             const std::string& documentPath,
                             const std::string& source,
                             const std::vector<Declaration>& targets,
                             bool includeDeclaration);
 
-// Every place the symbol at byteOffset is named, across all files of the
-// analyzed program, sorted by file then offset: uses of a local, parameter,
-// loop variable, match or catch binding, function, class, interface, enum,
-// variant, field or method, including type names written in annotations
-// and `implements` lists. With includeDeclaration the declared name is
-// listed too; a declaration from a .moon bundle resolves to the library's
-// source file when the bundle recorded it. Uses inside library code are not
-// listed, since bundles carry no function bodies. An interface member and
-// the class members implementing it are listed together, as one group.
-// Empty for literals, operators, statements and whitespace.
+/**
+ * Every place the symbol at byteOffset is named, across all files of the
+ * analyzed program, sorted by file then offset: uses of a local, parameter,
+ * loop variable, match or catch binding, function, class, interface, enum,
+ * variant, field or method, including type names written in annotations
+ * and `implements` lists. With includeDeclaration the declared name is
+ * listed too; a declaration from a .moon bundle resolves to the library's
+ * source file when the bundle recorded it. Uses inside library code are not
+ * listed, since bundles carry no function bodies. An interface member and
+ * the class members implementing it are listed together, as one group.
+ * Empty for literals, operators, statements and whitespace.
+ */
 std::vector<SymbolLocation> computeReferences(const BlockExprAST& program,
                                               const std::string& filePath,
                                               const std::string& source,

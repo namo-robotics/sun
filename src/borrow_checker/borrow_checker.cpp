@@ -577,11 +577,13 @@ void BorrowChecker::checkVariableWrite(const std::string& varName,
     // a local borrow entry but do allow mutation
     // TODO: More sophisticated tracking for ref params
   } else {
-    // Direct write to a variable that may be borrowed. Overwriting a
-    // compound value drops the storage every live borrow points into, so it
-    // is rejected while any borrow is active. A scalar write leaves the
-    // storage in place - live borrows simply observe the new value - so it
-    // stays legal (ownership.mdx documents both).
+    /**
+     * Direct write to a variable that may be borrowed. Overwriting a
+     * compound value drops the storage every live borrow points into, so it
+     * is rejected while any borrow is active. A scalar write leaves the
+     * storage in place - live borrows simply observe the new value - so it
+     * stays legal (ownership.mdx documents both).
+     */
     if constexpr (Config::STRICT_MUTATION_CHECKING) {
       if (valueType && valueType->isCompound()) {
         auto result = state_.canMutateDirectly(varName);
@@ -1739,7 +1741,9 @@ void BorrowChecker::checkFunctionDef(const sun::ast::FunctionAST& func) {
     const auto& retType = *proto.getReturnType();
     returnsRef = retType.isReference();
 
-    // Rule: Return type cannot be a reference (when config enabled)
+    /**
+     * Rule: Return type cannot be a reference (when config enabled)
+     */
     if constexpr (Config::FORBID_REF_RETURNS) {
       if (returnsRef) {
         reportError(
@@ -2577,7 +2581,9 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
     const auto& retType = *proto.getReturnType();
     returnsRef = retType.isReference();
 
-    // Rule: Return type cannot be a reference (when config enabled)
+    /**
+     * Rule: Return type cannot be a reference (when config enabled)
+     */
     if constexpr (Config::FORBID_REF_RETURNS) {
       if (returnsRef) {
         reportError("lambda cannot return a reference type",
@@ -2768,7 +2774,9 @@ void BorrowChecker::checkClassDef(
     if (field.type.isReference()) {
       hasRefFields = true;
 
-      // Rule: Classes cannot have reference-type fields (when config enabled)
+      /**
+       * Rule: Classes cannot have reference-type fields (when config enabled)
+       */
       if constexpr (Config::FORBID_REF_FIELDS_IN_CLASSES) {
         reportError("class '" + classDef.getName() +
                         "' cannot have reference field '" + field.name +

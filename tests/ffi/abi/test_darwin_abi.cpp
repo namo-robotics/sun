@@ -42,7 +42,7 @@ namespace {
 
 using sun::codegen::abi::aapcs64::Variant;
 
-/** Provides the LLVM state and helpers used by these calling-convention tests. */
+/** Provides isolated state and helpers for this compiler integration test suite. */
 class Ffi_Abi_Aapcs64Darwin : public ::testing::Test {
  protected:
   llvm::LLVMContext ctx;

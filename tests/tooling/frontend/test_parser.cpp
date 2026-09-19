@@ -621,7 +621,6 @@ TEST(Tooling_Frontend_Parser, ParseLargeCodeBlock) {
 
   // Log parsing time for profiling
   std::cout << "[PARSER PERF] Large code block (" << src.size()
-            /** Returns the diagnostic produced by malformed fixture source. */
             << " chars, 13 functions) "
             << "parsed in " << duration.count() << "ms" << std::endl;
 
@@ -745,7 +744,9 @@ function main() i32 {
       SunError);
 }
 
-// `&&` / `||` are not Sun operators; the error must name `and` / `or`.
+/**
+ * `&&` / `||` are not Sun operators; the error must name `and` / `or`.
+ */
 static std::string parseErrorMessage(const std::string& src) {
   try {
     parseString(src);
@@ -902,7 +903,6 @@ function main() i32 {
 // Uses compileString which goes through the full driver pipeline
 // ------------------------------------------------------------------
 
-/** Parses a fixture while retaining comments for attachment checks. */
 TEST(Tooling_Frontend_Parser_ErrorDriver, MissingSemicolonLogsEnhancedError) {
   // This test verifies that parsing errors through the driver
   // include enhanced error messages with source context
@@ -1066,6 +1066,7 @@ function main() i32 {
   ASSERT_NE(ast, nullptr);
 }
 
+/** Initializes the test framework and runs the registered parser tests. */
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
@@ -1116,7 +1117,9 @@ TEST(Tooling_Frontend_Parser, UnaryMinusBindsTighterThanBinary) {
 // Comment collection tests (lossless AST / formatter support)
 // ------------------------------------------------------------------
 
-// Parse a full program and return the parser for side-table inspection
+/**
+ * Parse a full program and return the parser for side-table inspection
+ */
 static std::unique_ptr<Parser> parseProgramCollectingComments(
     const std::string& source) {
   std::istringstream dummy("");

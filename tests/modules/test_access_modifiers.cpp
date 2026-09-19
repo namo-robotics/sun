@@ -464,6 +464,7 @@ TEST(Modules_AccessModifiers,
 namespace {
 namespace fs = std::filesystem;
 
+/** Writes and builds the library fixture used by access-control tests. */
 fs::path writeLib(const std::string& name, const std::string& src) {
   fs::path dir = fs::temp_directory_path() / "sun_access_moon_test";
   fs::create_directories(dir);

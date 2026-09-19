@@ -49,23 +49,31 @@ struct BuildInputs {
   std::vector<std::pair<std::string, std::string>> settings;
 };
 
-// The hash of `inputs` and of the running compiler, as lowercase hex. Throws
-// SunError when an imported bundle cannot be read.
+/**
+ * The hash of `inputs` and of the running compiler, as lowercase hex. Throws
+ * SunError when an imported bundle cannot be read.
+ */
 std::string computeInputHash(const BuildInputs& inputs);
 
-// Digest of the running executable's bytes, so output from a rebuilt
-// compiler is never mistaken for output from the one before it. Read once
-// per process.
+/**
+ * Digest of the running executable's bytes, so output from a rebuilt
+ * compiler is never mistaken for output from the one before it. Read once
+ * per process.
+ */
 const std::string& getCompilerDigest();
 
-// Digest of a file's bytes, as lowercase hex. `what` names the file's role
-// in the error ("source", "native archive"). Throws SunError when it cannot
-// be read.
+/**
+ * Digest of a file's bytes, as lowercase hex. `what` names the file's role
+ * in the error ("source", "native archive"). Throws SunError when it cannot
+ * be read.
+ */
 std::string computeFileDigest(const std::string& path, const char* what);
 
-// Add the digest of each source file, and of the Sun source generated from
-// each proto schema, to `inputs`. `baseDir` is the folder proto paths are
-// relative to. Throws SunError when a file cannot be read.
+/**
+ * Add the digest of each source file, and of the Sun source generated from
+ * each proto schema, to `inputs`. `baseDir` is the folder proto paths are
+ * relative to. Throws SunError when a file cannot be read.
+ */
 void addSourceDigests(BuildInputs& inputs,
                       const std::vector<std::string>& sourceFiles,
                       const std::vector<std::string>& protoFiles,

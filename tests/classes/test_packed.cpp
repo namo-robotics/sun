@@ -477,7 +477,9 @@ TEST(Classes_Packed, rejects_partial_combined_with_packed) {
 
 /** Keeps test fixtures and helpers local to this source file. */
 namespace {
-// Compile `source` in debug mode and return the generated LLVM IR.
+/**
+ * Compile `source` in debug mode and return the generated LLVM IR.
+ */
 std::string irFor(const std::string& source) {
   sun::driver::initTestEnvironment();
   std::string debugName = "test_packed_" + std::to_string(getpid());

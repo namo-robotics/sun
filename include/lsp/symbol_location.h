@@ -19,7 +19,9 @@ struct SymbolLocation {
   LspPosition end;
 };
 
-// Protocol form of a byte range inside `text`
+/**
+ * Protocol form of a byte range inside `text`
+ */
 SymbolLocation makeSymbolLocation(const std::string& filePath,
                                   const sun::support::Position& range,
                                   const std::string& text);

@@ -41,18 +41,22 @@ enum class ArgConversion : uint8_t {
 
 const char* toString(ArgConversion conversion);
 
-// The conversion that hands an argument of `argType` to a parameter of
-// `paramType`. `paramType` is null past the declared parameters: a C `...`
-// tail when `cVariadicTail`, otherwise a variadic pack. Returns nullopt when
-// no lowering exists — acceptance is checked before this (overload
-// resolution, isAssignableTo), so a nullopt for an accepted pair means the
-// acceptance rules and the lowering rules have drifted apart.
+/**
+ * The conversion that hands an argument of `argType` to a parameter of
+ * `paramType`. `paramType` is null past the declared parameters: a C `...`
+ * tail when `cVariadicTail`, otherwise a variadic pack. Returns nullopt when
+ * no lowering exists — acceptance is checked before this (overload
+ * resolution, isAssignableTo), so a nullopt for an accepted pair means the
+ * acceptance rules and the lowering rules have drifted apart.
+ */
 std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
                                               const TypePtr& paramType,
                                               bool cVariadicTail);
 
-// classifyArgument for every argument of a call, in order. Throws the
-// compile error for a pair with no lowering.
+/**
+ * classifyArgument for every argument of a call, in order. Throws the
+ * compile error for a pair with no lowering.
+ */
 std::vector<ArgConversion> classifyArguments(
     const std::vector<TypePtr>& argTypes,
     const std::vector<TypePtr>& paramTypes, bool cVariadic,

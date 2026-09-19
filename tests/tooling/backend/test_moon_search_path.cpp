@@ -61,10 +61,8 @@ public module installed_dependency {
     ASSERT_EQ(run("build/sun --emit-moon -o " + quote(dependencyPath) + " " +
                   quote(dir / "dependency.sun")),
               0)
-        /** Releases the temporary files and state created for each test. */
         << readFile(dir / "log");
 
-    /** Executes the fixture program and returns its observable result. */
     std::ofstream(dir / "project/lib.sun") << R"(
 manifest { libraries: ["stdlib.moon"] }
 // A library that calls its installed dependency.
@@ -81,14 +79,17 @@ public module library {
 })";
   }
 
+  /** Releases the temporary files and state created for each test. */
   void TearDown() override { fs::remove_all(dir); }
 
+  /** Executes the fixture program and returns its observable result. */
   int run(const std::string& command) {
     return std::system(
         ("env SUN_PATH= " + command + " > " + quote(dir / "log") + " 2>&1")
             .c_str());
   }
 
+  /** Builds the fixture and checks that the expected library was selected. */
   void checkBuild(const std::string& arguments) {
     ASSERT_EQ(run(quote(dir / "bin/sun") + " " + arguments), 0)
         << readFile(dir / "log");

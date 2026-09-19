@@ -38,7 +38,7 @@ using sun::driver::Driver;
 /** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
-/** Provides the LLVM state and helpers used by these calling-convention tests. */
+/** Provides isolated state and helpers for this compiler integration test suite. */
 class Ffi_Abi_Aapcs64 : public ::testing::Test {
  protected:
   llvm::LLVMContext ctx;
@@ -356,7 +356,7 @@ TEST_F(Ffi_Abi_Aapcs64, signature_with_an_aggregate_is_not_trivial) {
 /** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
-/** Provides the LLVM state and helpers used by these calling-convention tests. */
+/** Provides isolated state and helpers for this compiler integration test suite. */
 class Ffi_Abi_CDispatch : public Ffi_Abi_Aapcs64 {};
 
 }  // namespace
@@ -443,7 +443,6 @@ TEST(Ffi_Abi_CrossTarget, emits_an_aarch64_elf_object) {
   EXPECT_EQ(header[3], 'F');
   // e_machine at offset 18, little-endian: EM_AARCH64 == 183.
   uint16_t machine = static_cast<uint16_t>(header[18]) |
-                     /** Reports whether the tools needed to execute cross-compiled tests are available. */
                      (static_cast<uint16_t>(header[19]) << 8);
   EXPECT_EQ(machine, 183u);
 }
@@ -457,11 +456,13 @@ namespace {
 
 constexpr const char* kQemuSysroot = "/usr/aarch64-linux-gnu";
 
+/** Reports whether the tools needed to execute cross-compiled tests are available. */
 bool haveCrossExecutionTools() {
   return std::system("command -v qemu-aarch64 >/dev/null 2>&1") == 0 &&
          std::system("command -v aarch64-linux-gnu-gcc >/dev/null 2>&1") == 0;
 }
 
+/** Runs a cross-compiled test program with QEMU and returns its exit result. */
 int runUnderQemu(const std::string& binary) {
   std::string cmd = "qemu-aarch64 -L " + std::string(kQemuSysroot) + " " +
                     binary + " >/dev/null 2>&1";
@@ -552,7 +553,9 @@ TEST(Ffi_Abi_CrossTarget, extern_struct_call_runs_under_qemu) {
 /** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
-// True when the ELF at `path` needs no dynamic loader (no PT_INTERP segment).
+/**
+ * True when the ELF at `path` needs no dynamic loader (no PT_INTERP segment).
+ */
 bool isStaticBinary(const std::string& path) {
   std::string cmd = "! readelf -l " + path + " 2>/dev/null | grep -q INTERP";
   return std::system(cmd.c_str()) == 0;
@@ -635,10 +638,12 @@ TEST_F(Ffi_Abi_CDispatch, musl_environment_uses_the_same_arch_rules) {
 /** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
+/** Reports whether the host musl compiler needed by this test is installed. */
 bool haveHostMuslToolchain() {
   return std::system("command -v x86_64-linux-musl-gcc >/dev/null 2>&1") == 0;
 }
 
+/** Reports whether the AArch64 musl cross-compiler needed by this test is installed. */
 bool haveAarch64MuslToolchain() {
   return std::system("command -v aarch64-linux-musl-gcc >/dev/null 2>&1") ==
              0 &&

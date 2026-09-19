@@ -22,7 +22,7 @@
 /** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
-/** Provides the LLVM state and helpers used by these calling-convention tests. */
+/** Provides isolated state and helpers for this compiler integration test suite. */
 class Ffi_Abi_SysV : public ::testing::Test {
  protected:
   llvm::LLVMContext ctx;

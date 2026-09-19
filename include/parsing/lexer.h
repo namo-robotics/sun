@@ -1226,10 +1226,12 @@ class Lexer {
     TokenKind kind = static_cast<TokenKind>(bestKind);
     commitPosition(bestLine, bestCol, bestOffset);
 
-    // The matched bytes, as a view into the lexer's own buffer. Only the
-    // value-carrying kinds below materialize a string from it -- operators,
-    // keywords and punctuation take their text from the static table, and a
-    // skipped comment needs no text at all.
+    /**
+     * The matched bytes, as a view into the lexer's own buffer. Only the
+     * value-carrying kinds below materialize a string from it -- operators,
+     * keywords and punctuation take their text from the static table, and a
+     * skipped comment needs no text at all.
+     */
     const std::string_view matched(
         buffer.data() + startOffset,
         static_cast<size_t>(bestOffset - startOffset));

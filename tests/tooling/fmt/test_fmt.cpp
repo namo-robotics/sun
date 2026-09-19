@@ -668,8 +668,10 @@ std::string loweredFingerprint(BlockExprAST& ast) {
 }  // namespace
 
 TEST(Tooling_Fmt_Corpus, IdempotentAndStructurePreserving) {
-  // One shared parser; each corpus file is parsed exactly twice (original and
-  // formatted)
+  /**
+   * One shared parser; each corpus file is parsed exactly twice (original and
+   * formatted)
+   */
   std::istringstream dummy("");
   sun::parsing::Parser parser(dummy);
   parser.setCollectComments(true);

@@ -477,7 +477,6 @@ TEST(Modules_ProtoImport, wire_fixed_and_float_roundtrip) {
 }
 
 TEST(Modules_ProtoImport, wire_string_and_bytes_roundtrip) {
-  /** Runs the Sun encoder and returns its protobuf bytes for comparison. */
   auto value = executeStringWithStdlib(R"(
     using std;
     function main() i32 {
@@ -924,7 +923,9 @@ TEST(Modules_ProtoImport, missing_proto_file_is_reported) {
 /** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
-// Encode a Status with fixed values in Sun and return the wire bytes
+/**
+ * Encode a Status with fixed values in Sun and return the wire bytes
+ */
 std::string sunEncodedStatusBytes(ProtoProject& project) {
   fs::path outFile = project.file("bytes.bin");
   project.setProgram(
@@ -1269,8 +1270,10 @@ TEST(Modules_ProtoImport, moon_import_plus_same_proto_is_a_collision_error) {
 }
 
 TEST(Modules_ProtoImport, moon_exports_nested_dotted_package_modules) {
-  // package namo.telemetry -> module namo.telemetry: importers use the
-  // dotted path
+  /**
+   * package namo.telemetry -> module namo.telemetry: importers use the
+   * dotted path
+   */
   ProtoProject lib("sun_proto_moon3");
   lib.addSchema("nested.proto",
                 "syntax = \"proto3\";\npackage namo.telemetry;\n"

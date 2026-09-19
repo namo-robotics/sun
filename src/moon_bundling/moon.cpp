@@ -121,9 +121,11 @@ bool MoonWriter::write(const std::filesystem::path& outputPath) {
   // Write module data and build index
   std::vector<ModuleIndexEntry> index;
 
-  // Each distinct blob is written once; every module that shares it points
-  // at the same region. A bundle built from one compilation unit therefore
-  // stores its code once instead of once per exported module.
+  /**
+   * Each distinct blob is written once; every module that shares it points
+   * at the same region. A bundle built from one compilation unit therefore
+   * stores its code once instead of once per exported module.
+   */
   struct BlobLocation {
     uint64_t offset = 0;
     uint64_t size = 0;

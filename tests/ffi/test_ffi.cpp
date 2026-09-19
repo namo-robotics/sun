@@ -373,8 +373,10 @@ TEST(Ffi, as_is_still_usable_as_an_identifier) {
 /** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
-// Directory holding the built sun_ffi_testlib shared object, baked in by
-// CMake. Empty when the define is absent (e.g. an ad-hoc build).
+/**
+ * Directory holding the built sun_ffi_testlib shared object, baked in by
+ * CMake. Empty when the define is absent (e.g. an ad-hoc build).
+ */
 std::string ffiTestLibDir() {
 #ifdef SUN_FFI_TESTLIB_DIR
   return SUN_FFI_TESTLIB_DIR;
@@ -671,7 +673,9 @@ TEST(Ffi_Moon, extern_survives_serialization_roundtrip) {
 /** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
-// Loads the fixture library once; the tests below all need its symbols.
+/**
+ * Loads the fixture library once; the tests below all need its symbols.
+ */
 bool loadFfiTestLib() {
   if (ffiTestLibDir().empty()) return false;
   LinkOptions opts;

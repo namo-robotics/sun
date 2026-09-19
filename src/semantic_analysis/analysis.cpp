@@ -391,7 +391,9 @@ std::vector<TypePtr> SemanticAnalyzer::validateAndResolveParamTypes(
   for (auto& [argName, argType] : proto.getMutableArgs()) {
     TypePtr paramType = types_.typeAnnotationToType(argType);
 
-    // Check for compound types being passed by value
+    /**
+     * Check for compound types being passed by value
+     */
     if constexpr (sun::support::Config::REQUIRE_REF_FOR_COMPOUND_PARAMS) {
       // C externs are exempt: passing a struct by value is what the C ABI
       // specifies, so it is the callee's signature rather than a Sun choice.

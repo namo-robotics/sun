@@ -87,11 +87,13 @@ inline std::ostream& operator<<(std::ostream& os, const SunValue& v) {
 template <typename T>
 bool operator==(const SunValue& v, T expected) {
   if constexpr (std::is_integral_v<T> && !std::is_same_v<T, bool>) {
-    // Compare through the fixed-width alternative matching the caller's
-    // width — never std::get_if<T> itself. `long` and `long long` alias
-    // int64_t differently per platform (long on Linux, long long on macOS),
-    // and get_if on a type the variant does not list is a compile error.
-    // A narrower expected value also matches an i64-returning program.
+    /**
+     * Compare through the fixed-width alternative matching the caller's
+     * width — never std::get_if<T> itself. `long` and `long long` alias
+     * int64_t differently per platform (long on Linux, long long on macOS),
+     * and get_if on a type the variant does not list is a compile error.
+     * A narrower expected value also matches an i64-returning program.
+     */
     if constexpr (sizeof(T) == 1) {
       if (auto* p = std::get_if<int8_t>(&v))
         return *p == static_cast<int8_t>(expected);

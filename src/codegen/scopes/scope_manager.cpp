@@ -219,9 +219,11 @@ void ScopeManager::ensureDropFlag(ClassAllocation& alloc) {
   llvm::Type* boolTy = llvm::Type::getInt1Ty(ctx.getContext());
   Function* func = anchorBlock->getParent();
 
-  // The flag sits beside the value in the frame, never inside it, so class
-  // layout is untouched. False on entry, so a path that never reached the
-  // point of ownership never drops.
+  /**
+   * The flag sits beside the value in the frame, never inside it, so class
+   * layout is untouched. False on entry, so a path that never reached the
+   * point of ownership never drops.
+   */
   IRBuilder<> entry(&func->getEntryBlock(), func->getEntryBlock().begin());
   alloc.dropFlag =
       entry.CreateAlloca(boolTy, nullptr, alloc.varName + ".owned");

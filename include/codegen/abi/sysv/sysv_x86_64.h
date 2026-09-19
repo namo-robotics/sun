@@ -22,15 +22,21 @@
 /** Lowers C calls and values using the System V x86-64 calling convention. */
 namespace sun::codegen::abi::sysv {
 
-/// Classify one type as it would be passed as a parameter.
+/**
+ * Classify one type as it would be passed as a parameter.
+ */
 sun::codegen::abi::ArgLowering lowerArgument(llvm::Type* type,
                                              const llvm::DataLayout& dl);
 
-/// Classify one type as it would be returned.
+/**
+ * Classify one type as it would be returned.
+ */
 sun::codegen::abi::ArgLowering lowerReturn(llvm::Type* type,
                                            const llvm::DataLayout& dl);
 
-/// Classify a whole signature.
+/**
+ * Classify a whole signature.
+ */
 sun::codegen::abi::SignatureLowering lowerCSignature(
     llvm::Type* returnType, llvm::ArrayRef<llvm::Type*> paramTypes,
     const llvm::DataLayout& dl);

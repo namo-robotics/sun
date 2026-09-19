@@ -151,7 +151,9 @@ TEST(Tooling_Backend_InputHash, missing_artifacts_have_no_record) {
   EXPECT_FALSE(sun::driver::readBuildRecord("/nonexistent/app").has_value());
   EXPECT_FALSE(
       sun::driver::readMoonInputHash("/nonexistent/lib.moon").has_value());
-  // A file that is not an object file carries no record either
+  /**
+   * A file that is not an object file carries no record either
+   */
   Scratch scratch("not_object");
   writeFile(scratch.path("notes.txt"), "plain text\n");
   EXPECT_FALSE(

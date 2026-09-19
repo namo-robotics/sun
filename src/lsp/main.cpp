@@ -588,7 +588,9 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
   };
   std::vector<SemanticToken> tokens;
 
-  // Track last identifier to reclassify on ( or < lookahead
+  /**
+   * Track last identifier to reclassify on ( or < lookahead
+   */
   struct {
     bool valid = false;
     int line;

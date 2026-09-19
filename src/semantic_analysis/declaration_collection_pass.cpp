@@ -139,12 +139,14 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
   // and local variable ordering matter)
   if (!ctx_.isAtModuleLevel()) return;
 
-  // Nested calls (modules) share the outermost pre-pass. Specialization
-  // bodies deferred anywhere inside are analyzed when the outermost pass
-  // completes normally (see the end of this function); if an error unwinds
-  // through it they are dropped, so the error that stopped the pass is the
-  // one reported rather than a failure in a body analyzed against
-  // half-registered declarations.
+  /**
+   * Nested calls (modules) share the outermost pre-pass. Specialization
+   * bodies deferred anywhere inside are analyzed when the outermost pass
+   * completes normally (see the end of this function); if an error unwinds
+   * through it they are dropped, so the error that stopped the pass is the
+   * one reported rather than a failure in a body analyzed against
+   * half-registered declarations.
+   */
   struct PrepassGuard {
     DeclarationCollectionPass& c;
     GenericSpecializer& generics;
