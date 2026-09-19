@@ -41,20 +41,33 @@
   display: none;
 }
 
+/* Suppresses the theme's summary marker in favor of its shared sidebar icon. */
 .compiler-namespace-tree summary::before {
-  position: absolute;
-  top: 0.8rem;
-  left: 0.25rem;
-  width: 0.4rem;
-  height: 0.4rem;
-  border-top: 1.5px solid currentColor;
-  border-right: 1.5px solid currentColor;
-  content: '';
-  transform: rotate(45deg);
+  content: none;
 }
 
-.compiler-namespace-tree details[open] > summary::before {
-  transform: rotate(135deg);
+.compiler-tree-arrow {
+  position: absolute;
+  top: calc(0.25rem + 0.75em - 9px);
+  left: 0;
+  width: 18px;
+  height: 18px;
+  padding: 2px;
+}
+
+.compiler-tree-arrow path {
+  transform-origin: center;
+  transition: transform 150ms;
+}
+
+.compiler-namespace-tree details[open] > summary > .compiler-tree-arrow path {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .compiler-tree-arrow path {
+    transition: none;
+  }
 }
 
 .compiler-namespace-tree a {
