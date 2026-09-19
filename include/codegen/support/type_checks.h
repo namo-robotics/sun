@@ -31,11 +31,14 @@
 #include "semantic_analysis/types.h"
 #include "support/error.h"
 
+/** Provides shared diagnostics, source tracking, and compiler utilities. */
 namespace sun::codegen::support {
 using sun::ast::ExprAST;
 using sun::semantic_analysis::TypePtr;
 
-// How a kind is named in an error message ("must be a class type").
+/**
+ * How a kind is named in an error message ("must be a class type").
+ */
 inline const char* describeKind(sun::semantic_analysis::Type::Kind kind) {
   switch (kind) {
     case sun::semantic_analysis::Type::Kind::Function:
@@ -71,32 +74,42 @@ inline const char* describeKind(sun::semantic_analysis::Type::Kind kind) {
   }
 }
 
-// Everything codegen does with "is this type a T": the check, the cast, and
-// the error when it has to be one.
+/**
+ * Everything codegen does with "is this type a T": the check, the cast, and
+ * the error when it has to be one.
+ */
 template <typename T>
 struct TypeCheck {
+  /** Reports whether a semantic type matches the requested type category. */
   static bool matches(const TypePtr& type) {
     return type && type->getKind() == T::StaticKind;
   }
 
-  // The type as a T, or null if it is absent or of another kind.
+  /**
+   * The type as a T, or null if it is absent or of another kind.
+   */
   static T* tryGet(const TypePtr& type) {
     return matches(type) ? static_cast<T*>(type.get()) : nullptr;
   }
 
-  // Same, keeping the type alive alongside the caller.
+  /**
+   * Same, keeping the type alive alongside the caller.
+   */
   static std::shared_ptr<T> tryGetPtr(const TypePtr& type) {
     return matches(type) ? std::static_pointer_cast<T>(type) : nullptr;
   }
 
-  // The type as a T. Anything else is a compile error naming `what`, which
-  // reads as a noun phrase: "spawn argument", "struct literal".
+  /**
+   * The type as a T. Anything else is a compile error naming `what`, which
+   * reads as a noun phrase: "spawn argument", "struct literal".
+   */
   static T& require(const TypePtr& type, std::string_view what,
                     std::optional<sun::support::Position> loc) {
     if (T* concrete = tryGet(type)) return *concrete;
     throwMismatch(type, what, loc);
   }
 
+  /** Returns the requested type pointer or reports a type mismatch. */
   static std::shared_ptr<T> requirePtr(
       const TypePtr& type, std::string_view what,
       std::optional<sun::support::Position> loc) {
@@ -104,6 +117,7 @@ struct TypeCheck {
     throwMismatch(type, what, loc);
   }
 
+  /** Reports a semantic type that does not meet the generator's requirements. */
   [[noreturn]] static void throwMismatch(
       const TypePtr& actual, std::string_view what,
       std::optional<sun::support::Position> loc) {
@@ -124,38 +138,45 @@ struct TypeCheck {
 // Call-site spellings. The expression forms read the resolved type and report
 // at the expression's own source location.
 
+/** Returns the requested semantic type when it matches, otherwise no result. */
 template <typename T>
 T* tryGetType(const TypePtr& type) {
   return TypeCheck<T>::tryGet(type);
 }
 
+/** Returns the requested semantic type when it matches, otherwise no result. */
 template <typename T>
 T* tryGetType(const ExprAST& expr) {
   return TypeCheck<T>::tryGet(expr.getResolvedType());
 }
 
+/** Returns a pointer to the requested semantic type when it matches. */
 template <typename T>
 std::shared_ptr<T> tryGetTypePtr(const TypePtr& type) {
   return TypeCheck<T>::tryGetPtr(type);
 }
 
+/** Returns a pointer to the requested semantic type when it matches. */
 template <typename T>
 std::shared_ptr<T> tryGetTypePtr(const ExprAST& expr) {
   return TypeCheck<T>::tryGetPtr(expr.getResolvedType());
 }
 
+/** Returns the requested semantic type or reports a type mismatch. */
 template <typename T>
 T& requireType(const TypePtr& type, std::string_view what,
                std::optional<sun::support::Position> loc = std::nullopt) {
   return TypeCheck<T>::require(type, what, loc);
 }
 
+/** Returns the requested semantic type or reports a type mismatch. */
 template <typename T>
 T& requireType(const ExprAST& expr, std::string_view what) {
   return TypeCheck<T>::require(expr.getResolvedType(), what,
                                expr.getLocation());
 }
 
+/** Returns a pointer to the requested semantic type or reports a mismatch. */
 template <typename T>
 std::shared_ptr<T> requireTypePtr(
     const TypePtr& type, std::string_view what,
@@ -163,15 +184,18 @@ std::shared_ptr<T> requireTypePtr(
   return TypeCheck<T>::requirePtr(type, what, loc);
 }
 
+/** Returns a pointer to the requested semantic type or reports a mismatch. */
 template <typename T>
 std::shared_ptr<T> requireTypePtr(const ExprAST& expr, std::string_view what) {
   return TypeCheck<T>::requirePtr(expr.getResolvedType(), what,
                                   expr.getLocation());
 }
 
-// What a raw_ptr<T> or static_ptr<T> points at; null for every other type.
-// Both spellings are just an address at a call site, so the code that looks
-// through one rarely cares which it had.
+/**
+ * What a raw_ptr&lt;T&gt; or static_ptr&lt;T&gt; points at; null for every other type.
+ * Both spellings are just an address at a call site, so the code that looks
+ * through one rarely cares which it had.
+ */
 inline TypePtr getPointeeType(const TypePtr& type) {
   if (auto* raw = tryGetType<sun::semantic_analysis::RawPointerType>(type))
     return raw->getPointeeType();

@@ -7,6 +7,7 @@
 
 #include "codegen/codegen_visitor.h"
 
+/** Generates storage and access operations for Sun variables. */
 namespace sun::codegen::variables {
 
 llvm::Value* VariableGenerator::codegen(const sun::ast::ExprAST& expr) {

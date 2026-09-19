@@ -13,6 +13,7 @@
 
 #pragma once
 
+/** Provides shared diagnostics, source tracking, and compiler utilities. */
 namespace sun::support {
 struct Position;
 }
@@ -27,11 +28,13 @@ struct Position;
 #include "semantic_analysis/declaration_state.h"
 #include "semantic_analysis/semantic_scope.h"
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 using sun::support::SourceFileId;
 
 }
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 /**
@@ -63,10 +66,12 @@ class SemanticContext : public AccessContext {
 
   /** Access the scope currently being analyzed. */
   SemanticScope &currentScope() { return *currentScope_; }
+  /** Returns the lexical scope used for current semantic lookups. */
   const SemanticScope &currentScope() const { return *currentScope_; }
 
   /** The global scope, for debugging and visualization. */
   SemanticScope &rootScope() { return *rootScope_; }
+  /** Returns the outermost scope containing the analyzed program. */
   const SemanticScope &rootScope() const { return *rootScope_; }
 
   /** Set the class whose body is being analyzed, so `this` resolves to it. */
@@ -354,12 +359,16 @@ class SemanticContext : public AccessContext {
   struct SourceFileGuard {
     SemanticContext &ctx;
     SourceFileId saved;
+    /** Changes the active source file and saves the previous source context. */
     SourceFileGuard(SemanticContext &c, SourceFileId id)
         : ctx(c), saved(c.sourceFileId_) {
       if (id) ctx.sourceFileId_ = id;
     }
+    /** Restores the source file used to resolve imports and report errors. */
     ~SourceFileGuard() { ctx.sourceFileId_ = saved; }
+    /** Changes the active source file and saves the previous source context. */
     SourceFileGuard(const SourceFileGuard &) = delete;
+    /** Disallows assignment so ownership and object identity cannot be duplicated. */
     SourceFileGuard &operator=(const SourceFileGuard &) = delete;
   };
 
@@ -373,12 +382,16 @@ class SemanticContext : public AccessContext {
   struct ScopeSwitchGuard {
     SemanticContext &ctx;
     SemanticScope *saved;
+    /** Temporarily switches semantic lookup to another scope. */
     ScopeSwitchGuard(SemanticContext &c, SemanticScope *target)
         : ctx(c), saved(c.currentScope_) {
       if (target) ctx.currentScope_ = target;
     }
+    /** Restores the semantic scope active before the guard was created. */
     ~ScopeSwitchGuard() { ctx.currentScope_ = saved; }
+    /** Temporarily switches semantic lookup to another scope. */
     ScopeSwitchGuard(const ScopeSwitchGuard &) = delete;
+    /** Disallows assignment so ownership and object identity cannot be duplicated. */
     ScopeSwitchGuard &operator=(const ScopeSwitchGuard &) = delete;
   };
 
@@ -388,12 +401,16 @@ class SemanticContext : public AccessContext {
    */
   struct LocationGuard {
     SemanticContext &ctx;
+    /** Changes the diagnostic source position and saves the previous position. */
     LocationGuard(SemanticContext &c, const sun::support::Position &loc)
         : ctx(c) {
       ctx.locationStack_.push_back(&loc);
     }
+    /** Restores the source position used for subsequent diagnostics. */
     ~LocationGuard() { ctx.locationStack_.pop_back(); }
+    /** Changes the diagnostic source position and saves the previous position. */
     LocationGuard(const LocationGuard &) = delete;
+    /** Disallows assignment so ownership and object identity cannot be duplicated. */
     LocationGuard &operator=(const LocationGuard &) = delete;
   };
 

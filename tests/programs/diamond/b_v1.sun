@@ -1,4 +1,6 @@
+/** Groups declarations used by this compiler regression test. */
 public module b {
+  /** Returns the fixture's version marker to check which dependency was selected. */
   public function get_version() i32 {
     return 1;
   }

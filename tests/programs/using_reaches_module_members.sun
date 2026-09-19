@@ -4,20 +4,26 @@
 // and must see it too (issue #198).
 using std;
 
+/** Forwards its generic argument through another generic function. */
 public module outer {
+  /** Returns its generic argument so the caller can test specialization. */
   module inner {
+    /** Owns a value whose imported type is resolved through an enclosing module. */
     class Holder {
       var v: Vec<i32>;
 
+      /** Initializes the fixture fields used by this example or regression test. */
       init(alloc: const ref HeapAllocator) {
         this.v = Vec<i32>(alloc, 4);
       }
 
+      /** Returns the number of elements in the fixture's vector. */
       public method count() i64 {
         return this.v.size();
       }
     }
 
+    /** Builds a vector containing successive integers for the module-import test. */
     function fill(alloc: const ref HeapAllocator, n: i32) Vec<i32> {
       var v = Vec<i32>(alloc, 4);
       var i = 0;
@@ -28,10 +34,12 @@ public module outer {
       return v;
     }
 
+    /** Returns the fixture vector's element count through an imported type annotation. */
     function total(v: ref Vec<i32>) i64 {
       return v.size();
     }
 
+    /** Exercises names imported through enclosing modules and returns the resulting test value. */
     public function run() i64 {
       var alloc = make_heap_allocator();
       var h = Holder(alloc);
@@ -40,11 +48,13 @@ public module outer {
     }
   }
 
+  /** Exercises names imported through enclosing modules and returns the resulting test value. */
   public function run() i64 {
     return inner.run();
   }
 }
 
+/** Runs the regression scenario and returns its observable result to the test harness. */
 function main() i32 {
   return _convert<i32>(outer.run());
 }

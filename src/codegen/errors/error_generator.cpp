@@ -7,6 +7,7 @@
 
 #include "codegen/codegen_visitor.h"
 
+/** Generates control flow for throwing and catching Sun errors. */
 namespace sun::codegen::errors {
 
 sun::codegen::scopes::ScopeManager& ErrorGenerator::scopes() {

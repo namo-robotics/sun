@@ -16,8 +16,10 @@ using sun::support::SunError;
 
 namespace fs = std::filesystem;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
+/** Returns a hexadecimal content digest for cache assertions. */
 std::string sha256Hex(const std::string& content) {
   llvm::SHA256 sha;
   sha.update(llvm::StringRef(content));
@@ -31,12 +33,15 @@ std::string sha256Hex(const std::string& content) {
   return hex;
 }
 
-// Fresh source + cache directories under ${workspaceRoot}/tmp
+/**
+ * Fresh source + cache directories under ${workspaceRoot}/tmp
+ */
 struct CacheFixture {
   fs::path root;
   fs::path srcDir;
   fs::path cacheDir;
 
+  /** Owns the temporary source and library paths used by cache tests. */
   explicit CacheFixture(const std::string& name) {
     root = fs::path("tmp") / "moon_cache_tests" / name;
     fs::remove_all(root);
@@ -46,6 +51,7 @@ struct CacheFixture {
     fs::create_directories(cacheDir);
   }
 
+  /** Writes the source version used to test cache invalidation. */
   std::string writeSource(const std::string& filename,
                           const std::string& content) {
     fs::path file = srcDir / filename;
@@ -56,6 +62,7 @@ struct CacheFixture {
   }
 };
 
+/** Reads a fixture file into a string for comparison. */
 std::string readFile(const fs::path& path) {
   std::ifstream in(path, std::ios::binary);
   std::stringstream buffer;

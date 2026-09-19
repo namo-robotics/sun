@@ -21,15 +21,19 @@
 #include "llvm/IR/LLVMContext.h"
 
 using namespace llvm;
+/** Declares LLVM JIT types referenced by the execution interface. */
 using namespace llvm::orc;
 
+/** Coordinates compilation, dependency loading, linking, and program execution. */
 namespace sun::driver {
 
-/// The ORC JIT behind `sun file.sun`: one dylib, host-targeted, resolving
-/// unknown symbols from the compiler's own process. The object-linking layer
-/// is JITLink on every platform, so the JIT has one linker's behavior to test
-/// and one set of quirks to learn. (RuntimeDyld is not an option: its Mach-O
-/// support is legacy and mishandles arm64 unwind sections.)
+/**
+ * The ORC JIT behind `sun file.sun`: one dylib, host-targeted, resolving
+ * unknown symbols from the compiler's own process. The object-linking layer
+ * is JITLink on every platform, so the JIT has one linker's behavior to test
+ * and one set of quirks to learn. (RuntimeDyld is not an option: its Mach-O
+ * support is legacy and mishandles arm64 unwind sections.)
+ */
 class SunJIT {
  private:
   std::unique_ptr<ExecutionSession> ES;
@@ -45,13 +49,15 @@ class SunJIT {
 
   JITDylib& MainJD;
 
-  /// Build the JITLink object layer. Eh-frame registration lets thrown Sun
-  /// errors unwind through JITed frames. (If exception interop proves
-  /// incomplete on Apple Silicon, the known next step is MachOPlatform with
-  /// the ORC runtime, which also registers compact-unwind info.) The debug
-  /// object plugin hands each JITed ELF object to gdb's JIT interface so -g
-  /// modules are debuggable under the JIT; it is a no-op when no debugger is
-  /// attached and for non-ELF objects.
+  /**
+   * Build the JITLink object layer. Eh-frame registration lets thrown Sun
+   * errors unwind through JITed frames. (If exception interop proves
+   * incomplete on Apple Silicon, the known next step is MachOPlatform with
+   * the ORC runtime, which also registers compact-unwind info.) The debug
+   * object plugin hands each JITed ELF object to gdb's JIT interface so -g
+   * modules are debuggable under the JIT; it is a no-op when no debugger is
+   * attached and for non-ELF objects.
+   */
   static std::unique_ptr<ObjectLayer> makeObjectLayer(ExecutionSession& ES) {
     auto Layer = std::make_unique<ObjectLinkingLayer>(ES);
     Layer->addPlugin(std::make_unique<EHFrameRegistrationPlugin>(
@@ -69,6 +75,7 @@ class SunJIT {
   }
 
  public:
+  /** Creates a JIT engine using the execution session and target data layout. */
   SunJIT(std::unique_ptr<ExecutionSession> ES, JITTargetMachineBuilder JTMB,
          DataLayout DL)
       : ES(std::move(ES)),
@@ -84,12 +91,15 @@ class SunJIT {
             DL.getGlobalPrefix())));
   }
 
+  /** Ends the JIT execution session and releases its resources. */
   ~SunJIT() {
     if (auto Err = ES->endSession()) ES->reportError(std::move(Err));
   }
 
-  /// Resolve symbols out of a native static library (.a), the way the AOT
-  /// linker would. Used for archives carried inside .moon bundles.
+  /**
+   * Resolve symbols out of a native static library (.a), the way the AOT
+   * linker would. Used for archives carried inside .moon bundles.
+   */
   Error addStaticLibrary(const std::string& Path) {
     auto G = StaticLibraryDefinitionGenerator::Load(*ObjLayer, Path.c_str());
     if (!G) return G.takeError();
@@ -97,7 +107,9 @@ class SunJIT {
     return Error::success();
   }
 
-  /// Create a host JIT with the requested backend optimization setting.
+  /**
+   * Create a host JIT with the requested backend optimization setting.
+   */
   static Expected<std::unique_ptr<SunJIT>> Create(bool optimize = true) {
     auto EPC = SelfExecutorProcessControl::Create();
     if (!EPC) return EPC.takeError();
@@ -125,26 +137,34 @@ class SunJIT {
                                     std::move(*DL));
   }
 
+  /** Returns the data layout stored by this object. */
   const DataLayout& getDataLayout() const { return DL; }
 
+  /** Returns the target triple stored by this object. */
   const Triple& getTargetTriple() const { return TT; }
 
+  /** Returns the JIT symbol table for the main program. */
   JITDylib& getMainJITDylib() { return MainJD; }
 
+  /** Adds an LLVM module to the JIT under the supplied resource tracker. */
   Error addModule(ThreadSafeModule TSM, ResourceTrackerSP RT = nullptr) {
     if (!RT) RT = MainJD.getDefaultResourceTracker();
     return CompileLayer.add(RT, std::move(TSM));
   }
 
+  /** Finds the address of a symbol available to the JIT. */
   Expected<ExecutorSymbolDef> lookup(StringRef Name) {
     return ES->lookup({&MainJD}, Mangle(Name.str()));
   }
 
-  /// The symbol-table spelling of a C-level name on this platform (Mach-O
-  /// adds a leading underscore). Definitions handed to the JIT must use it,
-  /// or JIT'd code referencing the name will not find them.
+  /**
+   * The symbol-table spelling of a C-level name on this platform (Mach-O
+   * adds a leading underscore). Definitions handed to the JIT must use it,
+   * or JIT'd code referencing the name will not find them.
+   */
   SymbolStringPtr mangle(StringRef Name) { return Mangle(Name.str()); }
 
+  /** Returns the execution session stored by this object. */
   ExecutionSession& getExecutionSession() { return *ES; }
 };
 

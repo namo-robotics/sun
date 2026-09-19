@@ -1,10 +1,13 @@
 // config.h - Compile-time configuration for Sun language features
 #pragma once
 
+/** Provides shared diagnostics, source tracking, and compiler utilities. */
 namespace sun::support {
 
-/// Compile-time configuration for Sun language behavior.
-/// Modify these settings to enable/disable experimental features.
+/**
+ * Compile-time configuration for Sun language behavior.
+ * Modify these settings to enable/disable experimental features.
+ */
 struct Config {
   // ============================================================
   // Type System

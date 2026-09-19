@@ -19,15 +19,19 @@ using sun::ast::ASTNodeType;
 using sun::ast::FunctionAST;
 using sun::ast::VariableCreationAST;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
+/** Parses fixture text while preserving source spans. */
 std::unique_ptr<sun::ast::BlockExprAST> parseSource(const std::string& source) {
   std::istringstream ss(source);
   sun::parsing::Parser parser(ss);
   return parser.parseString(source);
 }
 
-// Slice the source using the node's span; fails the test if no span is set
+/**
+ * Slice the source using the node's span; fails the test if no span is set
+ */
 std::string spanText(const std::string& source, const sun::ast::ExprAST& node) {
   const sun::support::Position& loc = node.getLocation();
   EXPECT_TRUE(loc.endOffset.has_value())
@@ -36,6 +40,7 @@ std::string spanText(const std::string& source, const sun::ast::ExprAST& node) {
   return source.substr(loc.offset, *loc.endOffset - loc.offset);
 }
 
+/** Extracts the original source text covered by a syntax node's span. */
 std::string spanText(const std::string& source,
                      const sun::support::Position& loc) {
   EXPECT_TRUE(loc.endOffset.has_value()) << "position has no endOffset";

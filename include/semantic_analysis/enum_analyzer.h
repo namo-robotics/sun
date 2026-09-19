@@ -2,21 +2,27 @@
 
 #pragma once
 
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 class CallExprAST;
 }
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 class EnumDefinitionAST;
 }
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 class ExprAST;
 }
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 class MatchExprAST;
 }
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 class MemberAccessAST;
 }
+/** Provides shared diagnostics, source tracking, and compiler utilities. */
 namespace sun::support {
 struct Position;
 }
@@ -26,6 +32,7 @@ struct Position;
 
 #include "semantic_analysis/types.h"
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 class SemanticAnalyzer;
@@ -35,20 +42,28 @@ class TypeInferer;
 
 }  // namespace sun::semantic_analysis
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {}
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {}
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {}
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {}
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {}
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 struct GenericEnumInfo;
 
 }  // namespace sun::semantic_analysis
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {}
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 /** Checks enum definitions, variant construction, and match patterns. */

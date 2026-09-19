@@ -13,21 +13,27 @@
 #include <utility>
 #include <vector>
 
+/** Provides shared diagnostics, source tracking, and compiler utilities. */
 namespace sun::support {
 
+/** Elapsed times collected for compiler stages. */
 class StageTimings {
  public:
+  /** Reports whether compiler-stage timing was requested. */
   static bool enabled() {
     static const bool on = std::getenv("SUN_TIMINGS") != nullptr;
     return on;
   }
 
+  /** Adds elapsed time to the accumulated duration of a named stage. */
   static void add(std::string name, double milliseconds) {
     entries().emplace_back(std::move(name), milliseconds);
   }
 
-  // One line per stage, then a total. Stages that ran more than once (the
-  // entry file is parsed twice, once to find its manifest) are summed.
+  /**
+   * One line per stage, then a total. Stages that ran more than once (the
+   * entry file is parsed twice, once to find its manifest) are summed.
+   */
   static void report() {
     if (!enabled() || entries().empty()) return;
 
@@ -54,26 +60,35 @@ class StageTimings {
   }
 
  private:
-  // Deliberately never destroyed: the report runs from a static destructor,
-  // and a destroyed vector would be read there.
+  /**
+   * Deliberately never destroyed: the report runs from a static destructor,
+   * and a destroyed vector would be read there.
+   */
   static std::vector<std::pair<std::string, double>>& entries() {
     static auto* e = new std::vector<std::pair<std::string, double>>();
     return *e;
   }
 };
 
-// Prints the report when the process ends, whichever exit it takes
+/**
+ * Prints the report when the process ends, whichever exit it takes
+ */
 struct StageTimingsReporter {
+  /** Prints the collected compiler-stage timings when reporting finishes. */
   ~StageTimingsReporter() { StageTimings::report(); }
 };
 inline const StageTimingsReporter stageTimingsReporter;
 
-// Times the enclosing scope and records it under `name`
+/**
+ * Times the enclosing scope and records it under `name`
+ */
 class ScopedStage {
  public:
+  /** Starts timing a named compiler stage until this object leaves scope. */
   explicit ScopedStage(std::string name)
       : name_(std::move(name)), start_(std::chrono::steady_clock::now()) {}
 
+  /** Records the elapsed time for the stage when its scope ends. */
   ~ScopedStage() {
     if (!StageTimings::enabled()) return;
     auto elapsed = std::chrono::steady_clock::now() - start_;
@@ -81,7 +96,9 @@ class ScopedStage {
         name_, std::chrono::duration<double, std::milli>(elapsed).count());
   }
 
+  /** Starts timing a named compiler stage until this object leaves scope. */
   ScopedStage(const ScopedStage&) = delete;
+  /** Disallows assignment so ownership and object identity cannot be duplicated. */
   ScopedStage& operator=(const ScopedStage&) = delete;
 
  private:

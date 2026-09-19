@@ -39,6 +39,7 @@ using sun::driver::Driver;
 using sun::parsing::TokenKind;
 using sun::support::SunError;
 
+/** Provides compiler-backed editor features through the language server protocol. */
 namespace sun::lsp {
 
 // =============================================================================
@@ -47,13 +48,16 @@ namespace sun::lsp {
 // Cache compilation diagnostics by content hash to avoid recompiling unchanged
 // files. This dramatically improves LSP responsiveness.
 
+/** Diagnostics retained for a previously analyzed document. */
 struct CachedDiagnostics {
   std::string contentHash;
   llvm::json::Array diagnostics;
 };
 
+/** Stores analysis results so unchanged documents can reuse diagnostics. */
 class DiagnosticsCache {
  public:
+  /** Computes the content key used to reuse document diagnostics. */
   static std::string computeHash(const std::string& content) {
     llvm::SHA256 sha;
     sha.update(llvm::StringRef(content));
@@ -68,14 +72,17 @@ class DiagnosticsCache {
     return hash;
   }
 
+  /** Reports whether diagnostics have been cached for the supplied content hash. */
   bool has(const std::string& hash) const {
     return cache_.find(hash) != cache_.end();
   }
 
+  /** Returns cached diagnostics for a document content hash when available. */
   const llvm::json::Array& get(const std::string& hash) const {
     return cache_.at(hash);
   }
 
+  /** Caches diagnostics under the document content hash. */
   void put(const std::string& hash, llvm::json::Array diagnostics) {
     // Simple LRU: evict oldest if too many entries
     if (cache_.size() >= maxEntries_) {
@@ -84,10 +91,13 @@ class DiagnosticsCache {
     cache_[hash] = std::move(diagnostics);
   }
 
+  /** Removes diagnostics associated with an outdated content hash. */
   void invalidate(const std::string& hash) { cache_.erase(hash); }
 
+  /** Removes all cached document diagnostics. */
   void clear() { cache_.clear(); }
 
+  /** Returns the number of stored entries. */
   size_t size() const { return cache_.size(); }
 
  private:
@@ -103,7 +113,9 @@ static DiagnosticsCache diagnosticsCache;
 // Manages entrypoint files containing manifest blocks. When a file covered by
 // a manifest is opened, the LSP uses the full manifest context for compilation.
 
-/// Configuration for a single entrypoint file with its manifest data
+/**
+ * Configuration for a single entrypoint file with its manifest data
+ */
 struct EntrypointConfig {
   std::string entrypointPath;                // Absolute path to entrypoint
   std::vector<std::string> sunFiles;         // All .sun files from manifest
@@ -113,10 +125,14 @@ struct EntrypointConfig {
   std::set<std::string> coveredFiles;        // Quick lookup of covered files
 };
 
-/// Global entrypoint configuration state
+/**
+ * Global entrypoint configuration state
+ */
 class EntrypointManager {
  public:
-  /// Set entrypoints from configuration and build file mappings
+  /**
+   * Set entrypoints from configuration and build file mappings
+   */
   void setEntrypoints(const std::vector<std::string>& paths) {
     configuredPaths_ = paths;
     entrypoints_.clear();
@@ -137,8 +153,10 @@ class EntrypointManager {
     }
   }
 
-  /// Find entrypoint config for a given file path
-  /// Returns nullptr if file is not covered by any entrypoint
+  /**
+   * Find entrypoint config for a given file path
+   * Returns nullptr if file is not covered by any entrypoint
+   */
   const EntrypointConfig* findEntrypointForFile(
       const std::string& filePath) const {
     auto it = fileToEntrypoint_.find(normalizePath(filePath));
@@ -148,16 +166,22 @@ class EntrypointManager {
     return nullptr;
   }
 
-  /// Re-resolve the configured entrypoints, e.g. after path variables change
+  /**
+   * Re-resolve the configured entrypoints, e.g. after path variables change
+   */
   void reparse() {
     std::vector<std::string> paths = configuredPaths_;
     setEntrypoints(paths);
   }
 
-  /// Check if any entrypoints are configured
+  /**
+   * Check if any entrypoints are configured
+   */
   bool hasEntrypoints() const { return !entrypoints_.empty(); }
 
-  /// Every resolved entrypoint, for workspace-wide requests
+  /**
+   * Every resolved entrypoint, for workspace-wide requests
+   */
   const std::vector<EntrypointConfig>& entrypoints() const {
     return entrypoints_;
   }
@@ -167,7 +191,9 @@ class EntrypointManager {
   std::vector<EntrypointConfig> entrypoints_;
   std::unordered_map<std::string, size_t> fileToEntrypoint_;
 
-  /// Parse an entrypoint file and extract manifest information
+  /**
+   * Parse an entrypoint file and extract manifest information
+   */
   std::optional<EntrypointConfig> parseEntrypoint(const std::string& path) {
     std::filesystem::path entrypointPath;
     try {
@@ -226,10 +252,12 @@ static std::vector<std::string> explicitEntrypoints;
 static std::map<std::string, sun::driver::ConfigEntrypoint>
     configEntrypointInfo;
 
-// Re-read the configured sun-config files and hand the manager the union of
-// their entrypoints and the explicitly configured ones (configs first, so a
-// file covered by both maps to the config's entrypoint). A config that
-// fails to parse is skipped: a bad editor setting must not kill the server.
+/**
+ * Re-read the configured sun-config files and hand the manager the union of
+ * their entrypoints and the explicitly configured ones (configs first, so a
+ * file covered by both maps to the config's entrypoint). A config that
+ * fails to parse is skipped: a bad editor setting must not kill the server.
+ */
 static void refreshEntrypoints() {
   std::vector<std::string> combined;
   configEntrypointInfo.clear();
@@ -251,9 +279,11 @@ static void refreshEntrypoints() {
   entrypointManager.setEntrypoints(combined);
 }
 
-/// Install manifest path variables ($NAME) from a configuration object's
-/// "pathVariables" member ({NAME: dir, ...}). Replaces the previous set so
-/// removed variables disappear. Returns true if the member was present.
+/**
+ * Install manifest path variables ($NAME) from a configuration object's
+ * "pathVariables" member ({NAME: dir, ...}). Replaces the previous set so
+ * removed variables disappear. Returns true if the member was present.
+ */
 static bool applyPathVariables(const llvm::json::Object& config) {
   const llvm::json::Object* vars = config.getObject("pathVariables");
   if (!vars) return false;
@@ -267,8 +297,10 @@ static bool applyPathVariables(const llvm::json::Object& config) {
   return true;
 }
 
-/// Read a configuration object's "entrypoints" member. Entries may be strings
-/// or {path: string} objects. Returns nullopt if the member is absent.
+/**
+ * Read a configuration object's "entrypoints" member. Entries may be strings
+ * or {path: string} objects. Returns nullopt if the member is absent.
+ */
 static std::optional<std::vector<std::string>> readEntrypoints(
     const llvm::json::Object& config) {
   const llvm::json::Array* entrypoints = config.getArray("entrypoints");
@@ -286,8 +318,10 @@ static std::optional<std::vector<std::string>> readEntrypoints(
   return paths;
 }
 
-// The sun_configs setting: sun-config.json files whose entrypoints the
-// server should know about. Paths arrive absolute from the client.
+/**
+ * The sun_configs setting: sun-config.json files whose entrypoints the
+ * server should know about. Paths arrive absolute from the client.
+ */
 static std::optional<std::vector<std::string>> readSunConfigs(
     const llvm::json::Object& config) {
   const llvm::json::Array* configs = config.getArray("sun_configs");
@@ -328,7 +362,9 @@ constexpr int Operator = 21;
 // Constructors and destructors use the extension's function color mapping.
 constexpr int Lifecycle = 22;
 
-// Map TokenKind to LSP semantic token type index (-1 = skip)
+/**
+ * Map TokenKind to LSP semantic token type index (-1 = skip)
+ */
 int tokenKindToLSPType(TokenKind kind) {
   switch (kind) {
     // The grammar distinguishes control flow, declarations, and primitive
@@ -379,8 +415,10 @@ int tokenKindToLSPType(TokenKind kind) {
   }
 }
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
+/** The current text and version of a document open in the editor. */
 struct OpenDocument {
   std::string uri;
   std::string path;
@@ -388,6 +426,7 @@ struct OpenDocument {
   int version = 0;
 };
 
+/** Removes the carriage return from a protocol header line. */
 std::string trimCR(std::string line) {
   if (!line.empty() && line.back() == '\r') {
     line.pop_back();
@@ -395,10 +434,12 @@ std::string trimCR(std::string line) {
   return line;
 }
 
+/** Reports whether text begins with the supplied prefix. */
 bool startsWith(const std::string& text, const std::string& prefix) {
   return text.rfind(prefix, 0) == 0;
 }
 
+/** Decodes percent-escaped bytes in a URI component. */
 std::string percentDecode(std::string_view encoded) {
   std::string decoded;
   decoded.reserve(encoded.size());
@@ -426,6 +467,7 @@ std::string percentDecode(std::string_view encoded) {
   return decoded;
 }
 
+/** Converts a file URI to a filesystem path. */
 std::string uriToPath(const std::string& uri) {
   if (!startsWith(uri, "file://")) {
     return uri;
@@ -441,8 +483,10 @@ std::string uriToPath(const std::string& uri) {
   return pathPart;
 }
 
-// `file://` URI for an absolute path; bytes outside the unreserved set are
-// percent-encoded (the inverse of uriToPath)
+/**
+ * `file://` URI for an absolute path; bytes outside the unreserved set are
+ * percent-encoded (the inverse of uriToPath)
+ */
 std::string pathToUri(const std::string& path) {
   static const char* hex = "0123456789ABCDEF";
   std::string uri = "file://";
@@ -459,16 +503,19 @@ std::string pathToUri(const std::string& path) {
   return uri;
 }
 
+/** Serializes a JSON value for a language server message. */
 std::string toJsonPayload(llvm::json::Value value) {
   return llvm::formatv("{0}", std::move(value)).str();
 }
 
+/** Writes a JSON message with language server framing headers. */
 void writeLSPMessage(llvm::json::Value value) {
   std::string payload = toJsonPayload(std::move(value));
   std::cout << "Content-Length: " << payload.size() << "\r\n\r\n" << payload;
   std::cout.flush();
 }
 
+/** Sends a successful JSON-RPC response for the supplied request identifier. */
 void sendResponse(const llvm::json::Value& id, llvm::json::Value result) {
   llvm::json::Object response;
   response["jsonrpc"] = "2.0";
@@ -477,6 +524,7 @@ void sendResponse(const llvm::json::Value& id, llvm::json::Value result) {
   writeLSPMessage(std::move(response));
 }
 
+/** Sends a JSON-RPC error response with its code and message. */
 void sendErrorResponse(const llvm::json::Value& id, int code,
                        const std::string& message) {
   llvm::json::Object error;
@@ -490,6 +538,7 @@ void sendErrorResponse(const llvm::json::Value& id, int code,
   writeLSPMessage(std::move(response));
 }
 
+/** Builds a JSON source position for the language server protocol. */
 llvm::json::Object makePosition(int line, int character) {
   llvm::json::Object position;
   position["line"] = std::max(0, line);
@@ -497,6 +546,7 @@ llvm::json::Object makePosition(int line, int character) {
   return position;
 }
 
+/** Builds a JSON source range for the language server protocol. */
 llvm::json::Object makeRange(int startLine, int startCharacter, int endLine,
                              int endCharacter) {
   llvm::json::Object range;
@@ -505,9 +555,11 @@ llvm::json::Object makeRange(int startLine, int startCharacter, int endLine,
   return range;
 }
 
-// Compute semantic tokens for a document
-// Returns encoded token data as per LSP spec: [deltaLine, deltaStartChar,
-// length, tokenType, tokenModifiers]...
+/**
+ * Compute semantic tokens for a document
+ * Returns encoded token data as per LSP spec: [deltaLine, deltaStartChar,
+ * length, tokenType, tokenModifiers]...
+ */
 std::vector<int> computeSemanticTokens(const std::string& source) {
   std::vector<int> data;
   std::istringstream stream(source);
@@ -527,6 +579,7 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
   bool afterArrow = false;
   bool afterDot = false;  // For method calls: obj.method()
 
+  /** A source token and its editor semantic-highlighting classification. */
   struct SemanticToken {
     int line;       // 0-indexed
     int startChar;  // 0-indexed
@@ -536,7 +589,9 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
   };
   std::vector<SemanticToken> tokens;
 
-  // Track last identifier to reclassify on ( or < lookahead
+  /**
+   * Track last identifier to reclassify on ( or < lookahead
+   */
   struct {
     bool valid = false;
     int line;
@@ -744,10 +799,12 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
   return data;
 }
 
-// Add one diagnostic for a message and the place it points at. A location in
-// this document is marked where it happened; one in another file (a manifest
-// sibling, or a library body instantiated from a bundle) is shown at the top
-// of this document, naming where it came from.
+/**
+ * Add one diagnostic for a message and the place it points at. A location in
+ * this document is marked where it happened; one in another file (a manifest
+ * sibling, or a library body instantiated from a bundle) is shown at the top
+ * of this document, naming where it came from.
+ */
 void appendDiagnostic(llvm::json::Array& diagnostics,
                       const OpenDocument& document, const std::string& message,
                       const std::optional<sun::support::Position>& location,
@@ -811,6 +868,7 @@ void appendDiagnostic(llvm::json::Array& diagnostics,
   diagnostics.push_back(std::move(diagnostic));
 }
 
+/** Analyzes the current document text and collects compiler diagnostics. */
 llvm::json::Array analyzeDiagnostics(const OpenDocument& document) {
   // *.inja.sun files are Sun templates: their splices cannot parse, so
   // diagnosing them would only report the template syntax as errors. They
@@ -911,6 +969,7 @@ llvm::json::Array analyzeDiagnostics(const OpenDocument& document) {
 // so the types it owns remain valid; members are declared so the tree is
 // destroyed first.
 
+/** The parsed and analyzed state retained for an editor document. */
 struct AnalyzedDocument {
   std::string contentHash;
   std::unique_ptr<Driver> driver;
@@ -919,9 +978,11 @@ struct AnalyzedDocument {
 
 static std::unordered_map<std::string, AnalyzedDocument> analyzedDocuments;
 
-// Analyzed tree for the document's current text, or null when it cannot be
-// parsed. Analysis errors keep the partial tree: everything typed before the
-// error still answers hover requests.
+/**
+ * Analyzed tree for the document's current text, or null when it cannot be
+ * parsed. Analysis errors keep the partial tree: everything typed before the
+ * error still answers hover requests.
+ */
 const AnalyzedDocument* getAnalyzedDocument(const OpenDocument& document) {
   std::string hash = DiagnosticsCache::computeHash(document.text);
   auto cached = analyzedDocuments.find(document.uri);
@@ -959,6 +1020,7 @@ const AnalyzedDocument* getAnalyzedDocument(const OpenDocument& document) {
   }
 }
 
+/** Notifies the editor of diagnostics for a specific document version. */
 void publishDiagnostics(const std::string& uri, llvm::json::Array diagnostics,
                         int version) {
   llvm::json::Object params;
@@ -973,6 +1035,7 @@ void publishDiagnostics(const std::string& uri, llvm::json::Array diagnostics,
   writeLSPMessage(std::move(notification));
 }
 
+/** Reads the next framed language server message from standard input. */
 std::optional<std::string> readMessageBody() {
   std::string line;
   size_t contentLength = 0;
@@ -1011,6 +1074,7 @@ std::optional<std::string> readMessageBody() {
 
 }  // namespace sun::lsp
 
+/** Reads editor requests and runs the Sun language server message loop. */
 int main() {
   using namespace sun::lsp;
   std::unordered_map<std::string, OpenDocument> openDocuments;

@@ -5,6 +5,7 @@
 #include "ast/member_access_ast.h"
 #include "ast/variable_reference_ast.h"
 
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 
 std::string CallExprAST::dotLabel() const {

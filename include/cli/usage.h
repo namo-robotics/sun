@@ -7,12 +7,17 @@
 
 #include <string>
 
+/** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
 
-// The full help text. programName is how the user invoked the compiler.
+/**
+ * The full help text. programName is how the user invoked the compiler.
+ */
 std::string renderUsage(const std::string& programName);
 
-// The line `sun --version` prints: version number and git commit hash.
+/**
+ * The line `sun --version` prints: version number and git commit hash.
+ */
 std::string renderVersionLine();
 
 // Usage line of `sun fmt`.

@@ -28,6 +28,7 @@ using sun::support::logAndThrowError;
 
 using namespace llvm;
 
+/** Provides the generator for class storage and method operations. */
 namespace sun::codegen::classes {
 
 using sun::codegen::intrinsics::Intrinsic;

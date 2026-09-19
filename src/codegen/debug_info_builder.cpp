@@ -15,6 +15,7 @@ using sun::semantic_analysis::TypePtr;
 
 using sun::support::Position;
 
+/** Translates analyzed Sun programs into LLVM instructions. */
 namespace sun::codegen {
 
 using namespace llvm;

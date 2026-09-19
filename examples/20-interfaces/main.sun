@@ -1,42 +1,54 @@
 using std;
 
-// An interface declares behaviour that classes can implement. Functions can
-// accept `ref Interface` and dispatch dynamically to the concrete type.
+/**
+ * An interface declares behaviour that classes can implement. Functions can
+ * accept `ref Interface` and dispatch dynamically to the concrete type.
+ */
 interface Drawable {
+  /** Prints a description of this shape through its drawing interface. */
   public method draw() void;
 }
 
+/** A drawable circle used to demonstrate interface dispatch. */
 class Circle implements Drawable {
   public var radius: f64;
 
+  /** Initializes the fixture fields used by this example or regression test. */
   init(r: f64) {
     this.radius = r;
   }
 
+  /** Prints a description of this shape through its drawing interface. */
   public method draw() void {
     println("Drawing circle with radius:");
     println(this.radius);
   }
 }
 
+/** A drawable square used to demonstrate interface dispatch. */
 class Square implements Drawable {
   public var side: f64;
 
+  /** Initializes the fixture fields used by this example or regression test. */
   init(s: f64) {
     this.side = s;
   }
 
+  /** Prints a description of this shape through its drawing interface. */
   public method draw() void {
     println("Drawing square with side:");
     println(this.side);
   }
 }
 
-// `shape` is dispatched dynamically based on its concrete type.
+/**
+ * `shape` is dispatched dynamically based on its concrete type.
+ */
 function render(shape: ref Drawable) void {
   shape.draw();
 }
 
+/** Runs the example that dispatches drawing methods through an interface. */
 function main() i32 {
   var c = Circle(5.0);
   var s = Square(10.0);

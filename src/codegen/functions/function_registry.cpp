@@ -6,6 +6,7 @@ using sun::support::logAndThrowError;
 
 using namespace llvm;
 
+/** Provides the registry of generated functions and their metadata. */
 namespace sun::codegen::functions {
 
 void FunctionRegistry::registerFunction(

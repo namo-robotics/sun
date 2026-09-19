@@ -69,7 +69,10 @@ public, protected, and private functions, fields, enums, and aliases. Enum entri
 expand to their values. Separate indexes remain linkable but are hidden from the
 sidebar. The Sun root starts expanded, and deeper branches start collapsed. Anonymous
 helpers are documented on their file pages and grouped under their nearest named
-namespace in symbol indexes. Anonymous namespace pages are not generated. Declarations outside named Sun namespaces appear under File scope.
+namespace in symbol indexes. Anonymous namespace pages are not generated. Declarations outside named Sun namespaces appear under File scope, grouped by source
+file path. Only files containing those symbols appear in File scope. Each file
+branch links to its reference page and groups its symbols by category. The separate
+Files tree lists all source files.
 Methods and fields stay with their owning types. These indexes expose declarations
 without filling the sidebar with hundreds of entries.
 

@@ -9,23 +9,37 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const VERSION = '1.15.0'
 const ROUTE = '/compiler-api'
 const kinds = new Set(['namespace', 'class', 'struct', 'union', 'file'])
+/** Returns direct XML element children, optionally filtered by tag name. */
 const children = (node, tag) => Array.from(node?.childNodes || []).filter(n => n.nodeType === 1 && (!tag || n.tagName === tag))
+/** Returns the first direct XML child with the requested tag name. */
 const child = (node, tag) => children(node, tag)[0]
+/** Reads the text content of a named XML child, or an empty string when absent. */
 const value = (node, tag) => child(node, tag)?.textContent || ''
+/** Reads an XML attribute, or an empty string when absent. */
 const attr = (node, key) => node?.getAttribute(key) || ''
+/** Collects all descendant XML elements with the requested tag name. */
 const descendants = (node, tag) => Array.from(node.getElementsByTagName(tag))
+/** Orders strings consistently for deterministic generated documentation. */
 const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0
+/** Removes anonymous-namespace implementation details from displayed symbol names. */
 const visibleName = name => name.replace(/anonymous_namespace\{[^}]*\}::?/g, '').replace(/::$/, '')
+/** Returns a compound's declared name or a source file's full path. */
 const compoundName = node => attr(node, 'kind') === 'file' ? attr(child(node, 'location'), 'file') || value(node, 'compoundname') : value(node, 'compoundname')
 
-// Character references keep source text from becoming Markdown or executable MDX.
+/**
+ * Character references keep source text from becoming Markdown or executable MDX.
+ */
 const escape = text => String(text).replace(/[&<>\{\}\\`*_\[\]#!|~]/g, c => `&#${c.codePointAt(0)};`).replace(/^(\s*)(import|export)\b/gm, (_, space, word) => `${space}&#${word.codePointAt(0)};${word.slice(1)}`)
+/** Wraps escaped source text as inline code. */
 const code = text => `<code>${escape(text)}</code>`
+/** Creates a code fence long enough to contain any backticks in the source. */
 const fence = text => {
   const marker = '`'.repeat(Math.max(3, ...Array.from(text.matchAll(/`+/g), m => m[0].length + 1)))
   return `\n\n${marker}cpp\n${text}\n${marker}\n\n`
 }
+/** Builds a Markdown link with an escaped label. */
 const link = (label, url) => `[${escape(label)}](${url})`
+/** Rejects identifiers that cannot safely form generated routes and anchors. */
 const safeId = id => {
   if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error(`Invalid Doxygen identifier: ${id}`)
   return id
@@ -36,6 +50,7 @@ export function parseXml(xml) {
   return new DOMParser({ onError: (level, message) => { throw new Error(`Doxygen XML: ${message}`) } }).parseFromString(xml, 'application/xml')
 }
 
+/** Builds a source-code link pinned to the checkout revision and declaration line. */
 function sourceLink(node, revision) {
   const location = child(node, 'location')
   if (!location) return ''
@@ -46,9 +61,11 @@ function sourceLink(node, revision) {
   return link('Source', `https://github.com/namo-robotics/sun/blob/${revision}/${path.split('/').map(encodeURIComponent).join('/')}${/^\d+$/.test(line) ? `#L${line}` : ''}`)
 }
 
+/** Converts Doxygen comment markup into safe Markdown and reference links. */
 function renderComment(node, refs) {
   if (!node) return ''
   if (node.nodeType === 3 || node.nodeType === 4) return escape(node.data)
+  /** Renders the child nodes of a documentation element. */
   const content = () => Array.from(node.childNodes || []).map(n => renderComment(n, refs)).join('')
   switch (node.tagName) {
     case 'ref': {
@@ -66,6 +83,7 @@ function renderComment(node, refs) {
     case 'linebreak': return '<br />\n'
     case 'sp': return ' '
     case 'programlisting': return fence(children(node, 'codeline').map(line => {
+      /** Reads comment text without treating it as executable markup. */
       const plain = n => n.nodeType === 3 ? n.data : n.tagName === 'sp' ? ' ' : Array.from(n.childNodes || []).map(plain).join('')
       return plain(line)
     }).join('\n'))
@@ -83,16 +101,19 @@ function renderComment(node, refs) {
   }
 }
 
+/** Combines brief and detailed documentation or explains that no comment is present. */
 function description(node, refs) {
   const parts = ['briefdescription', 'detaileddescription'].map(tag => renderComment(child(node, tag), refs).trim()).filter(Boolean)
   return parts.length ? [...new Set(parts)].join('\n\n') : 'No documentation comment.'
 }
 
+/** Formats the template parameters belonging to a C++ declaration. */
 function template(node) {
   const params = children(child(node, 'templateparamlist'), 'param')
   return params.length ? `template <${params.map(p => `${value(p, 'type')} ${value(p, 'declname')}${value(p, 'defval') ? ` = ${value(p, 'defval')}` : ''}`.trim()).join(', ')}>\n` : ''
 }
 
+/** Formats a declaration's complete signature for its detail page. */
 function signature(node) {
   if (attr(node, 'kind') === 'enum') {
     return `enum${attr(node, 'strong') === 'yes' ? ' class' : ''} ${value(node, 'qualifiedname') || value(node, 'name')}${value(node, 'type') ? ` : ${value(node, 'type')}` : ''}`
@@ -103,17 +124,20 @@ function signature(node) {
 }
 
 const memberKinds = { function: 'Functions', variable: 'Fields', enum: 'Enums', typedef: 'Type Aliases', friend: 'Friends' }
+/** Selects a member category using its access level and declaration kind. */
 const memberGroup = (member, kind) => {
   const access = attr(member, 'prot') || (kind === 'class' ? 'private' : 'public')
   return `${access[0].toUpperCase() + access.slice(1)} ${memberKinds[attr(member, 'kind')] || 'Other Members'}`
 }
 
+/** Reports whether a name is a regular namespace in the Sun compiler hierarchy. */
 const namedSunNamespace = name => /^sun(?:::[A-Za-z_]\w*)*$/.test(name)
 
 /** Groups symbols under named Sun namespaces, keeping file-local entries accessible. */
 export function renderSymbolTree(title, entries, namespaces, refs) {
   const root = { children: new Map(), entries: [] }
   const known = new Map(namespaces.filter(n => namedSunNamespace(compoundName(n))).map(n => [compoundName(n), n]))
+  /** Finds or creates the namespace branches containing a symbol. */
   const branch = name => {
     let node = root
     let path = ''
@@ -124,16 +148,21 @@ export function renderSymbolTree(title, entries, namespaces, refs) {
     }
     return node
   }
-  for (const [name, href, owner = ''] of entries) {
+  for (const [name, href, owner = '', file = ''] of entries) {
     // Anonymous scopes belong under their nearest named namespace.
     const parts = owner.split('::')
     while (parts.length && !namedSunNamespace(parts.join('::'))) parts.pop()
     const namespace = parts.join('::')
-    const node = namespace ? branch(namespace) : branch('File scope')
+    let node = namespace ? branch(namespace) : branch('File scope')
+    if (!namespace && file) {
+      if (!node.children.has(file)) node.children.set(file, { name: file, children: new Map(), entries: [] })
+      node = node.children.get(file)
+    }
     const display = visibleName(name)
     node.entries.push([namespace && display.startsWith(`${namespace}::`) ? display.slice(namespace.length + 2) : display, href])
   }
   if (title === 'Namespaces') for (const name of known.keys()) branch(name)
+  /** Renders a namespace branch and its sorted symbol entries. */
   const render = (node, depth) => {
     const label = node.name.split('::').at(-1)
     const target = known.get(node.name)
@@ -180,6 +209,7 @@ export function renderReference(compounds, revision) {
     if (!attr(location, 'file') || !attr(location, 'line')) continue
     const key = `${attr(compound, 'kind')}:${attr(location, 'file')}:${attr(location, 'line')}:${attr(location, 'column')}`
     const previous = declarations.get(key)
+    /** Ranks duplicate type entries to prefer the original declaration. */
     const declarationScore = node => {
       const name = compoundName(node)
       const members = descendants(node, 'memberdef').filter(m => value(m, 'definition').includes(`${name}::`)).length
@@ -187,6 +217,7 @@ export function renderReference(compounds, revision) {
       const owner = directory ? `sun::${directory.replaceAll('/', '::')}` : 'sun'
       return [members > 0 ? 1 : 0, name.startsWith(`${owner}::`) ? 1 : 0, name.split('::').length]
     }
+    /** Chooses the declaration whose ownership information is most authoritative. */
     const preferred = (left, right) => {
       const a = declarationScore(left), b = declarationScore(right)
       for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] > b[i]
@@ -202,6 +233,7 @@ export function renderReference(compounds, revision) {
   compounds = compounds.filter(n => !aliases.has(attr(n, 'id')))
   const refs = new Map()
   const owners = new Map()
+  /** Returns the generated reference route for a documented compound. */
   const url = compound => `${ROUTE}/${safeId(attr(compound, 'id'))}`
   for (const compound of compounds) refs.set(attr(compound, 'id'), url(compound))
   // Prefer a namespace or type as the canonical owner over a file listing.
@@ -217,6 +249,7 @@ export function renderReference(compounds, revision) {
     }
   }
   const memberDeclarations = new Map()
+  /** Builds the source identity used to match duplicate member declarations. */
   const memberKey = member => {
     const location = child(member, 'location')
     const file = attr(location, 'bodyfile') || attr(location, 'file')
@@ -244,6 +277,7 @@ export function renderReference(compounds, revision) {
       if (target) aliases.set(attr(member, 'id'), target)
     }
   }
+  /** Follows imported-symbol aliases to the original declaration and rejects cycles. */
   const canonicalId = id => {
     const seen = new Set()
     while (aliases.has(id)) {
@@ -282,6 +316,7 @@ export function renderReference(compounds, revision) {
     ['files', 'Files', 'compound', 'file'],
   ]
   const namespaces = compounds.filter(n => attr(n, 'kind') === 'namespace')
+  /** Finds the nearest enclosing named namespace of a documented compound. */
   const namespaceFor = compound => {
     const name = visibleName(compoundName(compound))
     if (attr(compound, 'kind') === 'namespace') return name
@@ -289,17 +324,15 @@ export function renderReference(compounds, revision) {
   }
   for (const [slug, label, source, kind] of groups) {
     const entries = source === 'compound'
-      ? compounds.filter(n => attr(n, 'kind') === kind && (kind !== 'namespace' || namedSunNamespace(compoundName(n)))).map(n => [compoundName(n) + (compoundName(n).includes('anonymous_namespace{') ? ` (${attr(child(n, 'location'), 'file')})` : ''), url(n), namespaceFor(n)]) : []
+      ? compounds.filter(n => attr(n, 'kind') === kind && (kind !== 'namespace' || namedSunNamespace(compoundName(n)))).map(n => [compoundName(n), url(n), namespaceFor(n), attr(child(n, 'location'), 'file')]) : []
     if (source === 'member') {
       for (const compound of compounds) {
         // Methods and fields remain on their owning type's page.
         if (['function', 'variable'].includes(kind) && !['namespace', 'file'].includes(attr(compound, 'kind'))) continue
         for (const member of descendants(compound, 'memberdef')) {
           if (attr(member, 'kind') !== kind || owners.get(attr(member, 'id')) !== compound || aliases.has(attr(member, 'id'))) continue
-          let name = value(member, 'qualifiedname') || (attr(compound, 'kind') === 'file' ? value(member, 'name') : `${compoundName(compound)}::${value(member, 'name')}`)
-          if (kind === 'function') name += value(member, 'argsstring')
-          if (attr(compound, 'kind') === 'file') name += ` (${compoundName(compound)})`
-          entries.push([name, refs.get(attr(member, 'id')), attr(member, 'data-sun-namespace') || namespaceFor(compound)])
+          const name = value(member, 'qualifiedname') || (attr(compound, 'kind') === 'file' ? value(member, 'name') : `${compoundName(compound)}::${value(member, 'name')}`)
+          entries.push([name, refs.get(attr(member, 'id')), attr(member, 'data-sun-namespace') || namespaceFor(compound), attr(child(member, 'location'), 'file') || attr(child(compound, 'location'), 'file') || (attr(compound, 'kind') === 'file' ? compoundName(compound) : '')])
         }
       }
     }
@@ -312,14 +345,18 @@ export function renderReference(compounds, revision) {
   }
   // Build one hierarchy, attaching nested types and members to their canonical owner.
   const tree = []
-  const fileNodes = new Map(compounds.filter(n => attr(n, 'kind') === 'file').map(n => [compoundName(n), { label: compoundName(n), href: url(n), children: [] }]))
+  const fileNodes = new Map()
+  const fileEntries = compounds.filter(n => attr(n, 'kind') === 'file').map(n => ({ label: compoundName(n), href: url(n), children: [] }))
+  const fileLinks = new Map(fileEntries.map(node => [node.label, node.href]))
   const namespaceNodes = new Map()
   const nodes = new Map()
+  /** Finds or creates a symbol-category branch under an owner. */
   const group = (parent, label) => {
     let node = parent.children.find(n => n.label === label && !n.href)
     if (!node) parent.children.push(node = { label, children: [] })
     return node
   }
+  /** Finds or creates the namespace or file-scope branch for a symbol owner. */
   const scope = name => {
     name = visibleName(name)
     if (!namedSunNamespace(name)) name = 'File scope'
@@ -331,6 +368,12 @@ export function renderReference(compounds, revision) {
     else scope(name.slice(0, split)).children.push(node)
     return node
   }
+  /** Finds or creates the source-file branch containing unnamespaced symbols. */
+  const fileScope = file => {
+    if (!file) return scope('')
+    if (!fileNodes.has(file)) fileNodes.set(file, { label: file, ...(fileLinks.has(file) ? { href: fileLinks.get(file) } : {}), children: [] })
+    return fileNodes.get(file)
+  }
   for (const namespace of namespaces.filter(n => namedSunNamespace(compoundName(n)))) {
     scope(compoundName(namespace)).href = url(namespace)
   }
@@ -340,12 +383,11 @@ export function renderReference(compounds, revision) {
     const name = compoundName(type)
     const parentType = types.filter(n => n !== type && name.startsWith(`${compoundName(n)}::`)).sort((a, b) => compoundName(b).length - compoundName(a).length)[0]
     const namespace = namespaceFor(type)
-    const parent = parentType ? nodes.get(attr(parentType, 'id')) : namespace ? scope(namespace) : fileNodes.get(attr(child(type, 'location'), 'file')) || scope('')
+    const parent = parentType ? nodes.get(attr(parentType, 'id')) : namespace ? scope(namespace) : fileScope(attr(child(type, 'location'), 'file'))
     const label = { class: 'Classes', struct: 'Structs', union: 'Unions' }[attr(type, 'kind')]
     const node = nodes.get(attr(type, 'id'))
     const ownerName = parentType ? visibleName(compoundName(parentType)) : namespace
     if (ownerName && node.label.startsWith(`${ownerName}::`)) node.label = node.label.slice(ownerName.length + 2)
-    if (name.includes('anonymous_namespace{')) node.label += ` (${attr(child(type, 'location'), 'file')})`
     group(parent, label).children.push(node)
   }
   for (const compound of compounds) {
@@ -353,18 +395,21 @@ export function renderReference(compounds, revision) {
       const id = attr(member, 'id')
       if (owners.get(id) !== compound || aliases.has(id)) continue
       const type = nodes.get(attr(compound, 'id'))
-      const parent = type || scope(attr(member, 'data-sun-namespace') || namespaceFor(compound))
+      const namespace = attr(member, 'data-sun-namespace') || namespaceFor(compound)
+      const parent = type || (namespace && namedSunNamespace(visibleName(namespace)) ? scope(namespace) : fileScope(attr(child(member, 'location'), 'file') || attr(child(compound, 'location'), 'file') || (attr(compound, 'kind') === 'file' ? compoundName(compound) : '')))
       const label = type ? memberGroup(member, attr(compound, 'kind')) : ({ variable: 'Variables', define: 'Macros' }[attr(member, 'kind')] || memberKinds[attr(member, 'kind')] || 'Other Symbols')
-      const node = { label: value(member, 'name') + value(member, 'argsstring'), href: refs.get(id), children: [] }
-      if (attr(compound, 'kind') === 'file') node.label += ` (${compoundName(compound)})`
+      const node = { label: value(member, 'name'), href: refs.get(id), children: [] }
       const values = children(member, 'enumvalue')
       if (values.length) group(node, 'Enum Values').children.push(...values.map(entry => ({ label: value(entry, 'name'), href: refs.get(attr(entry, 'id')), children: [] })))
       group(parent, label).children.push(node)
     }
   }
-  if (fileNodes.size) tree.push({ label: 'Files', children: [...fileNodes.values()] })
+  if (fileNodes.size) scope('').children.push(...fileNodes.values())
+  if (fileEntries.length) tree.push({ label: 'Files', children: fileEntries })
   const categoryOrder = ['Classes', 'Structs', 'Unions', 'Functions', 'Variables', 'Enums', 'Type Aliases', 'Macros', ...['Public', 'Protected', 'Private'].flatMap(access => Object.values(memberKinds).map(kind => `${access} ${kind}`))]
+  /** Sorts categories and entries recursively for deterministic reference navigation. */
   const sortTree = nodes => {
+    /** Places recognized categories in their intended display order. */
     const rank = node => node.href || !categoryOrder.includes(node.label) ? -1 : categoryOrder.indexOf(node.label)
     nodes.sort((a, b) => rank(a) - rank(b) || compare(a.label, b.label) || compare(a.href || '', b.href || ''))
     for (const node of nodes) sortTree(node.children)
@@ -402,7 +447,7 @@ export function renderReference(compounds, revision) {
     }
     const sectionOrder = isNamespace ? ['Functions', 'Variables', 'Enums', 'Type Aliases', 'Macros', 'Friends', 'Other Symbols'] : ['Public', 'Protected', 'Private'].flatMap(access => [...Object.values(memberKinds), 'Other Members'].map(kind => `${access} ${kind}`))
     for (const [label, entries] of [...memberGroups].sort(([a], [b]) => sectionOrder.indexOf(a) - sectionOrder.indexOf(b))) {
-      page += `## ${label}\n\n${entries.map(n => `- ${link(value(n, 'name') + value(n, 'argsstring'), refs.get(attr(n, 'id')))}`).join('\n')}\n\n`
+      page += `## ${label}\n\n${entries.map(n => `- ${link(value(n, 'name'), refs.get(attr(n, 'id')))}`).join('\n')}\n\n`
       for (const member of entries) {
         const memberId = attr(member, 'id')
         if (owners.get(memberId) !== compound || aliases.has(memberId)) continue

@@ -19,17 +19,22 @@ using sun::ast::StructLiteralAST;
 using sun::parsing::Token;
 using sun::support::Position;
 
+/** Converts syntax trees to and from the compiler protobuf representation. */
 namespace sun::serialization {
 namespace pbc = sun::proto::ast;
 
-// Copy a repeated string field into a plain vector
+/**
+ * Copy a repeated string field into a plain vector
+ */
 template <typename Repeated>
 static std::vector<std::string> toStringVector(const Repeated& field) {
   return std::vector<std::string>(field.begin(), field.end());
 }
 
-// Lifetime parameters, from the names the bundle carries. Bundles written
-// before lifetimes existed have none, which reads back as fully elided.
+/**
+ * Lifetime parameters, from the names the bundle carries. Bundles written
+ * before lifetimes existed have none, which reads back as fully elided.
+ */
 template <typename Owner>
 static std::vector<sun::ast::LifetimeParameter> toLifetimeParameters(
     const Owner& owner) {

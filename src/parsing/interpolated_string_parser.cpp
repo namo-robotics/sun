@@ -18,8 +18,10 @@ using sun::ast::InterpolatedStringAST;
 using sun::support::logAndThrowError;
 using sun::support::Position;
 
+/** Turns source text into syntax trees and provides source formatting. */
 namespace sun::parsing {
 
+/** A literal or embedded-expression segment of an interpolated string. */
 using Segment = sun::ast::InterpolatedStringAST::Segment;
 
 std::unique_ptr<InterpolatedStringAST> InterpolatedStringParser::parseToAst(

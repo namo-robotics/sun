@@ -16,9 +16,12 @@
 #include <unordered_map>
 #include <vector>
 
+/** Builds and loads compiled Moon libraries and their declaration metadata. */
 namespace sun::moon_bundling {
 
-/// Configuration for importing a single .moon precompiled library
+/**
+ * Configuration for importing a single .moon precompiled library
+ */
 struct MoonImport {
   /// Path to the .moon file (absolute or relative)
   std::string path;
@@ -27,23 +30,33 @@ struct MoonImport {
   /// Example: {"std" -> "std_v1"} remaps std.Vec to std_v1.Vec
   std::unordered_map<std::string, std::string> moduleRemap;
 
-  /// Create a MoonImport with no remapping
+  /**
+   * Create a MoonImport with no remapping
+   */
   explicit MoonImport(std::string path) : path(std::move(path)) {}
 
-  /// Create a MoonImport with a single module remapping
+  /**
+   * Create a MoonImport with a single module remapping
+   */
   MoonImport(std::string path, const std::string& fromModule,
              const std::string& toModule)
       : path(std::move(path)), moduleRemap({{fromModule, toModule}}) {}
 
-  /// Create a MoonImport with multiple remappings
+  /**
+   * Create a MoonImport with multiple remappings
+   */
   MoonImport(std::string path,
              std::unordered_map<std::string, std::string> remap)
       : path(std::move(path)), moduleRemap(std::move(remap)) {}
 
-  /// Check if this import has any module remapping
+  /**
+   * Check if this import has any module remapping
+   */
   bool hasRemap() const { return !moduleRemap.empty(); }
 
-  /// Get the aliased name for a module, or the original if not remapped
+  /**
+   * Get the aliased name for a module, or the original if not remapped
+   */
   std::string getAliasedModule(const std::string& original) const {
     auto it = moduleRemap.find(original);
     if (it != moduleRemap.end()) return it->second;
@@ -57,9 +70,11 @@ struct MoonImport {
   }
 };
 
-/// Parse a moon import specification from CLI argument
-/// Format: "path.moon" or "path.moon:from=to" or
-/// "path.moon:from1=to1,from2=to2" Returns nullopt if parsing fails
+/**
+ * Parse a moon import specification from CLI argument
+ * Format: "path.moon" or "path.moon:from=to" or
+ * "path.moon:from1=to1,from2=to2" Returns nullopt if parsing fails
+ */
 inline std::optional<MoonImport> parseMoonImportSpec(const std::string& spec) {
   size_t colonPos = spec.find(':');
 

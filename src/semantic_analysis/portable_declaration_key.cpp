@@ -12,7 +12,9 @@
 using sun::ast::ExprAST;
 using sun::support::logAndThrowError;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
 /** Encode integers in a fixed width and byte order on every host. */

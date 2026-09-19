@@ -7,6 +7,7 @@
 
 #include "codegen/codegen_visitor.h"
 
+/** Provides the generator for built-in operations. */
 namespace sun::codegen::intrinsics {
 
 llvm::Value* IntrinsicsGenerator::codegen(const sun::ast::ExprAST& expr) {

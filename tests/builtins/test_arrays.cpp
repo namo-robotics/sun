@@ -13,6 +13,7 @@
 
 using sun::driver::executeString;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 // A global drop counter and a class whose deinit bumps it, for tests that
@@ -27,6 +28,7 @@ const char* kOwnerPreamble = R"(
     }
 )";
 
+/** Adds the owning-value fixture declarations to a test program. */
 std::string withOwner(const std::string& body) {
   return std::string(kOwnerPreamble) + body;
 }

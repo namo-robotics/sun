@@ -9,18 +9,24 @@
 
 #include "ast/expr_ast.h"
 
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 
-// A numeric literal. An integer literal is kept as a magnitude and a sign
-// rather than a signed 64-bit value so the whole u64 range is representable:
-// 18446744073709551615 has no int64_t form, yet it is a valid u64 literal. The
-// sign is set only when a minus was folded into a suffixed literal (-128i8).
+/**
+ * A numeric literal. An integer literal is kept as a magnitude and a sign
+ * rather than a signed 64-bit value so the whole u64 range is representable:
+ * 18446744073709551615 has no int64_t form, yet it is a valid u64 literal. The
+ * sign is set only when a minus was folded into a suffixed literal (-128i8).
+ */
 class NumberExprAST : public ExprAST {
  public:
-  // An enum rather than a bool so a suffix string can never be mistaken for
-  // the sign at a construction site.
+  /**
+   * An enum rather than a bool so a suffix string can never be mistaken for
+   * the sign at a construction site.
+   */
   enum class Sign { Positive, Negative };
 
+  /** The magnitude and signedness of an integer literal. */
   struct IntegerValue {
     uint64_t magnitude;
     bool negative;
@@ -33,52 +39,73 @@ class NumberExprAST : public ExprAST {
   std::string suffix_;
 
  public:
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   NumberExprAST(uint64_t magnitude, Sign sign, std::string suffix = "")
       : value_(
             IntegerValue{magnitude, sign == Sign::Negative && magnitude != 0}),
         suffix_(std::move(suffix)) {}
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   explicit NumberExprAST(int64_t intVal)
       : NumberExprAST(intVal < 0 ? uint64_t(0) - static_cast<uint64_t>(intVal)
                                  : static_cast<uint64_t>(intVal),
                       intVal < 0 ? Sign::Negative : Sign::Positive) {}
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   explicit NumberExprAST(double floatVal, std::string suffix = "")
       : value_(floatVal), suffix_(std::move(suffix)) {}
+  /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::NUMBER; }
+  /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     if (isInteger()) return getIntegerText() + suffix_;
     return std::to_string(getFloatVal()) + suffix_;
   }
+  /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "Number\n" + toString(); }
 
+  /** Reports whether this syntax node represents an integer literal. */
   bool isInteger() const {
     return std::holds_alternative<IntegerValue>(value_);
   }
+  /** Reports whether the semantic type is a floating-point number. */
   bool isFloat() const { return std::holds_alternative<double>(value_); }
 
+  /** Reports whether this object has suffix. */
   bool hasSuffix() const { return !suffix_.empty(); }
+  /** Returns the suffix stored by this object. */
   const std::string& getSuffix() const { return suffix_; }
 
-  // Absolute value of an integer literal.
+  /**
+   * Absolute value of an integer literal.
+   */
   uint64_t getMagnitude() const {
     return std::get<IntegerValue>(value_).magnitude;
   }
-  // True when the integer literal is negative; never true for a zero.
+  /**
+   * True when the integer literal is negative; never true for a zero.
+   */
   bool isNegative() const { return std::get<IntegerValue>(value_).negative; }
-  // The integer literal's two's-complement bit pattern, 64 bits wide. Every
-  // integer type the literal was range-checked against reads its value from
-  // the low bits of this pattern.
+  /**
+   * The integer literal's two's-complement bit pattern, 64 bits wide. Every
+   * integer type the literal was range-checked against reads its value from
+   * the low bits of this pattern.
+   */
   uint64_t getIntegerBits() const {
     const auto& v = std::get<IntegerValue>(value_);
     return v.negative ? uint64_t(0) - v.magnitude : v.magnitude;
   }
-  // The integer literal as written, without its suffix ("-129", "42").
+  /**
+   * The integer literal as written, without its suffix ("-129", "42").
+   */
   std::string getIntegerText() const {
     const auto& v = std::get<IntegerValue>(value_);
     return (v.negative ? "-" : "") + std::to_string(v.magnitude);
   }
+  /** Returns the floating-point literal value. */
   double getFloatVal() const { return std::get<double>(value_); }
 
-  // For backward compatibility, get value as double
+  /**
+   * For backward compatibility, get value as double
+   */
   double getVal() const {
     if (isInteger()) {
       double magnitude = static_cast<double>(getMagnitude());

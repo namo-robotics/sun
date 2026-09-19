@@ -3,9 +3,12 @@
 #include <optional>
 #include <string>
 
+/** Provides shared diagnostics, source tracking, and compiler utilities. */
 namespace sun::support {
 
-// Source location tracking for error messages and debugging
+/**
+ * Source location tracking for error messages and debugging
+ */
 struct Position {
   int line = 1;
   int column = 1;
@@ -17,27 +20,36 @@ struct Position {
   std::optional<int> endColumn = std::nullopt;
   std::optional<int> endOffset = std::nullopt;  // Exclusive byte offset
 
+  /** Creates a source coordinate with its optional file path and byte offset. */
   Position() = default;
+  /** Creates a source coordinate with its optional file path and byte offset. */
   Position(int l, int c, int o = 0,
            std::optional<std::string> path = std::nullopt)
       : line(l), column(c), offset(o), filePath(std::move(path)) {}
 
-  // Set end position (for token/expression span)
+  /**
+   * Set end position (for token/expression span)
+   */
   void setEnd(int el, int ec) {
     endLine = el;
     endColumn = ec;
   }
 
+  /** Sets the ending source coordinate of this span. */
   void setEnd(int el, int ec, int eo) {
     endLine = el;
     endColumn = ec;
     endOffset = eo;
   }
 
-  // Check if this position has end info
+  /**
+   * Check if this position has end info
+   */
   bool hasEnd() const { return endLine.has_value() && endColumn.has_value(); }
 
-  // Format as "file:line:column" or "line:column" if no file
+  /**
+   * Format as "file:line:column" or "line:column" if no file
+   */
   std::string toString() const {
     std::string result;
     if (filePath) {

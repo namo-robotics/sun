@@ -6,23 +6,28 @@
 // --target. Shared stdlib code references these names without caring which
 // OS supplied them.
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
   /*
    * Native null-terminated environment vector.
    */
   extern "C" var c_environ: raw_ptr<raw_ptr<u8>> as "environ";
 
-  /*
+  /**
    * Return this platform's current environment vector.
    */
   function environment_ptr() raw_ptr<raw_ptr<u8>> {
     return unsafe { c_environ; };
   }
 
-  // Both glibc and musl export __errno_location for the per-thread errno.
+  /**
+   * Both glibc and musl export __errno_location for the per-thread errno.
+   */
   extern "C" function c_errno_location() raw_ptr<i32> as "__errno_location";
 
-  // Where this OS keeps the per-thread errno value.
+  /**
+   * Where this OS keeps the per-thread errno value.
+   */
   function errno_ptr() raw_ptr<i32> {
     return unsafe { c_errno_location(); };
   }
@@ -33,8 +38,10 @@ public module std {
   /** Native error code for an address that is already bound. */
   var ADDRESS_IN_USE_ERRNO: i32 = 98;
 
-  // MSG_NOSIGNAL on every send already keeps a broken-pipe write from
-  // raising SIGPIPE, so per-socket setup has nothing to do.
+  /**
+   * MSG_NOSIGNAL on every send already keeps a broken-pipe write from
+   * raising SIGPIPE, so per-socket setup has nothing to do.
+   */
   function suppress_sigpipe(fd: i32) void {}
 
   // setsockopt family (asm-generic values).

@@ -11,8 +11,10 @@
 
 namespace fs = std::filesystem;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
+/** Creates a fresh temporary directory for the test's files. */
 fs::path freshDir(const std::string& name) {
   fs::path dir = fs::temp_directory_path() / "sun_manifest_test_files" / name;
   fs::remove_all(dir);
@@ -20,12 +22,14 @@ fs::path freshDir(const std::string& name) {
   return dir;
 }
 
+/** Writes source or fixture data to a test file. */
 void writeFile(const fs::path& path, const std::string& content) {
   fs::create_directories(path.parent_path());
   std::ofstream out(path);
   out << content;
 }
 
+/** Reports whether a collection contains the expected fixture entry. */
 bool includes(const std::vector<std::string>& files, const std::string& name) {
   for (const auto& f : files) {
     if (fs::path(f).filename() == name) return true;

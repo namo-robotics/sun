@@ -6,7 +6,9 @@
 using sun::ast::ASTNodeType;
 using sun::ast::ExprAST;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
 /** Fill a declaration's name while retaining imported or generated identities.
@@ -95,6 +97,7 @@ void DeclarationNamingPass::run(ExprAST& root,
   assignNames(root, scopePath, moduleLevel);
 }
 
+/** Assigns a qualified name to a declaration within its lexical scope. */
 void assignLocalDeclarationName(ExprAST& declaration,
                                 const std::vector<std::string>& scopePath) {
   const auto nameType = [&](auto& type) {

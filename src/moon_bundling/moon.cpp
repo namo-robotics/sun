@@ -17,7 +17,9 @@
 
 #include "support/error.h"
 
+/** Builds and loads compiled Moon libraries and their declaration metadata. */
 namespace sun::moon_bundling {
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
 /** Reject incomplete or malformed identities at bundle boundaries. */
@@ -31,6 +33,7 @@ void validateBundleHash(const std::string& hash) {
 
 }  // namespace
 
+/** Returns the hexadecimal SHA-256 digest of the supplied contents. */
 std::string computeSha256Hex(llvm::StringRef data) {
   llvm::SHA256 sha;
   sha.update(data);
@@ -118,9 +121,11 @@ bool MoonWriter::write(const std::filesystem::path& outputPath) {
   // Write module data and build index
   std::vector<ModuleIndexEntry> index;
 
-  // Each distinct blob is written once; every module that shares it points
-  // at the same region. A bundle built from one compilation unit therefore
-  // stores its code once instead of once per exported module.
+  /**
+   * Each distinct blob is written once; every module that shares it points
+   * at the same region. A bundle built from one compilation unit therefore
+   * stores its code once instead of once per exported module.
+   */
   struct BlobLocation {
     uint64_t offset = 0;
     uint64_t size = 0;

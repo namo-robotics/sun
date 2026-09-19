@@ -16,8 +16,10 @@ using sun::semantic_analysis::InterfaceType;
 
 using namespace llvm;
 
+/** Generates control flow for throwing and catching Sun errors. */
 namespace sun::codegen::errors {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 /** Retain the runtime tag width while deriving it from the portable identity.
  */

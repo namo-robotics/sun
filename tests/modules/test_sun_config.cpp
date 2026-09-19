@@ -19,8 +19,10 @@ using sun::support::SunError;
 
 namespace fs = std::filesystem;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
+/** Creates a fresh temporary directory for the test's files. */
 fs::path freshDir(const std::string& name) {
   fs::path dir = fs::temp_directory_path() / "sun_config_tests" / name;
   fs::remove_all(dir);
@@ -31,6 +33,7 @@ fs::path freshDir(const std::string& name) {
   return fs::canonical(dir);
 }
 
+/** Writes source or fixture data to a test file. */
 void writeFile(const fs::path& path, const std::string& content) {
   fs::create_directories(path.parent_path());
   std::ofstream out(path);

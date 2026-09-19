@@ -10,11 +10,15 @@
 #include <string>
 #include <vector>
 
+/** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
 
+/** Owns the process arguments used to select and configure a compiler command. */
 class ProgramArguments {
  public:
-  // scriptName becomes argv[0]; args follow it in order.
+  /**
+   * scriptName becomes argv[0]; args follow it in order.
+   */
   ProgramArguments(const std::string& scriptName,
                    const std::vector<std::string>& args) {
     storage_.reserve(args.size() + 1);
@@ -27,15 +31,22 @@ class ProgramArguments {
     pointers_.push_back(nullptr);
   }
 
-  // The pointers refer into this object's own strings, so a copy or a move
-  // would leave them pointing at the wrong place.
+  /**
+   * The pointers refer into this object's own strings, so a copy or a move
+   * would leave them pointing at the wrong place.
+   */
   ProgramArguments(const ProgramArguments&) = delete;
+  /** Disallows assignment so ownership and object identity cannot be duplicated. */
   ProgramArguments& operator=(const ProgramArguments&) = delete;
 
-  // Number of arguments, counting the script name but not the closing null.
+  /**
+   * Number of arguments, counting the script name but not the closing null.
+   */
   int argc() const { return static_cast<int>(storage_.size()); }
 
-  // The argument pointers, ending with a null pointer.
+  /**
+   * The argument pointers, ending with a null pointer.
+   */
   char** argv() { return pointers_.data(); }
 
  private:

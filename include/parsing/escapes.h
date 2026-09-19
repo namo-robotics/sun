@@ -11,11 +11,14 @@
 #include <optional>
 #include <string_view>
 
+/** Turns source text into syntax trees and provides source formatting. */
 namespace sun::parsing {
 
-// The escapes every literal form shares: \n \t \r \\ \0.
-// Returns the character the escape stands for, or nullopt if `c` does not
-// name one of them (the caller decides what to do with quotes and \x / \u).
+/**
+ * Handles newline, tab, carriage return, backslash, and null escapes.
+ * Returns the character the escape stands for, or nullopt if `c` does not
+ * name one of them (the caller decides what to do with quotes and hexadecimal or Unicode escapes).
+ */
 inline std::optional<char> simple(char c) {
   switch (c) {
     case 'n':
@@ -36,15 +39,21 @@ inline std::optional<char> simple(char c) {
 // Highest Unicode scalar value.
 inline constexpr uint32_t kMaxScalar = 0x10FFFF;
 
-// UTF-16 surrogates are not scalar values and may not appear on their own.
+/**
+ * UTF-16 surrogates are not scalar values and may not appear on their own.
+ */
 inline bool isSurrogate(uint32_t v) { return v >= 0xD800 && v <= 0xDFFF; }
 
-// A Unicode scalar value is anything up to kMaxScalar that is not a surrogate.
+/**
+ * A Unicode scalar value is anything up to kMaxScalar that is not a surrogate.
+ */
 inline bool isScalarValue(uint32_t v) {
   return v <= kMaxScalar && !isSurrogate(v);
 }
 
-// Value of one hex digit, or -1.
+/**
+ * Value of one hex digit, or -1.
+ */
 inline int hexDigit(char c) {
   if (c >= '0' && c <= '9') return c - '0';
   if (c >= 'a' && c <= 'f') return c - 'a' + 10;
@@ -52,7 +61,7 @@ inline int hexDigit(char c) {
   return -1;
 }
 
-/* Decode the first two hex digits as a byte, or reject missing or invalid
+/** Decode the first two hex digits as a byte, or reject missing or invalid
  * digits. */
 inline std::optional<char> hexByte(std::string_view digits) {
   if (digits.size() < 2) return std::nullopt;
@@ -62,8 +71,10 @@ inline std::optional<char> hexByte(std::string_view digits) {
   return static_cast<char>(high * 16 + low);
 }
 
-// Number of bytes in the UTF-8 sequence that starts with `lead`, or 0 if
-// `lead` is not a valid leading byte.
+/**
+ * Number of bytes in the UTF-8 sequence that starts with `lead`, or 0 if
+ * `lead` is not a valid leading byte.
+ */
 inline int utf8SequenceLength(unsigned char lead) {
   if (lead < 0x80) return 1;
   if ((lead & 0xE0) == 0xC0) return 2;
@@ -72,10 +83,12 @@ inline int utf8SequenceLength(unsigned char lead) {
   return 0;
 }
 
-// Decode the UTF-8 sequence at the start of `s`. Returns the scalar value and
-// writes the number of bytes consumed to `length`, or nullopt if the bytes are
-// not well-formed UTF-8 (bad continuation byte, overlong form, surrogate, or
-// out of range).
+/**
+ * Decode the UTF-8 sequence at the start of `s`. Returns the scalar value and
+ * writes the number of bytes consumed to `length`, or nullopt if the bytes are
+ * not well-formed UTF-8 (bad continuation byte, overlong form, surrogate, or
+ * out of range).
+ */
 inline std::optional<uint32_t> decodeUtf8(std::string_view s, int& length) {
   if (s.empty()) return std::nullopt;
   const int len = utf8SequenceLength(static_cast<unsigned char>(s[0]));
@@ -98,8 +111,10 @@ inline std::optional<uint32_t> decodeUtf8(std::string_view s, int& length) {
   return value;
 }
 
-// Encode `scalar` as UTF-8 into `out` (at least 4 bytes). Returns the number
-// of bytes written.
+/**
+ * Encode `scalar` as UTF-8 into `out` (at least 4 bytes). Returns the number
+ * of bytes written.
+ */
 inline int encodeUtf8(uint32_t scalar, char* out) {
   if (scalar < 0x80) {
     out[0] = static_cast<char>(scalar);

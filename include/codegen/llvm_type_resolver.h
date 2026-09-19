@@ -17,6 +17,7 @@
 #include "semantic_analysis/struct_names.h"
 #include "semantic_analysis/types.h"
 
+/** Translates analyzed Sun programs into LLVM instructions. */
 namespace sun::codegen {
 using sun::semantic_analysis::EnumType;
 using sun::semantic_analysis::LambdaType;
@@ -48,6 +49,7 @@ class LLVMTypeResolver {
   std::map<sun::semantic_analysis::Type*, llvm::Type*> typeCache;
 
  public:
+  /** Creates a type resolver using the supplied LLVM context and target layout. */
   explicit LLVMTypeResolver(llvm::LLVMContext& context,
                             const llvm::DataLayout* dl = nullptr)
       : ctx(context), dataLayout(dl) {}
@@ -65,8 +67,10 @@ class LLVMTypeResolver {
    * pattern extraction GEP through this on the storage pointer, so field
    * offsets are always consistent and naturally aligned.
    */
-  // Field index of payload `i` in a variant view struct (field 0 is the
-  // tag; a padding field may follow it — see getEnumVariantStruct)
+  /**
+   * Field index of payload `i` in a variant view struct (field 0 is the
+   * tag; a padding field may follow it — see getEnumVariantStruct)
+   */
   unsigned enumPayloadFieldIndex(const EnumType& enumType,
                                  const std::string& variantName, size_t i) {
     llvm::StructType* vt = getEnumVariantStruct(enumType, variantName);
@@ -77,6 +81,7 @@ class LLVMTypeResolver {
     return base + static_cast<unsigned>(i);
   }
 
+  /** Returns the enum variant struct stored by this object. */
   llvm::StructType* getEnumVariantStruct(const EnumType& enumType,
                                          const std::string& variantName);
 
@@ -95,7 +100,7 @@ class LLVMTypeResolver {
 
   /**
    * Get or create the shared static pointer struct type { ptr, i64 }.
-   * Used for static_ptr<T> types.
+   * Used for static_ptr&lt;T&gt; types.
    */
   llvm::StructType* getStaticPtrType();
 
@@ -106,6 +111,7 @@ class LLVMTypeResolver {
    * - Class types become LLVM struct types
    */
   llvm::Type* resolve(const sun::semantic_analysis::Type& type);
+  /** Maps a semantic type to the LLVM representation used in generated code. */
   llvm::Type* resolve(const TypePtr& type);
 
   /**
@@ -161,6 +167,7 @@ class LLVMTypeResolver {
    * rather than a pointer, enabling proper return-by-value semantics.
    */
   llvm::Type* resolveForReturn(const TypePtr& type);
+  /** Chooses the LLVM representation for a function return value. */
   llvm::Type* resolveForReturn(const sun::semantic_analysis::Type& type);
 
   /**
@@ -171,6 +178,7 @@ class LLVMTypeResolver {
     return type.getKind() == sun::semantic_analysis::Type::Kind::Function;
   }
 
+  /** Reports whether a semantic type represents an ordinary function. */
   static bool isFunctionType(const TypePtr& type) {
     return type &&
            type->getKind() == sun::semantic_analysis::Type::Kind::Function;
@@ -184,6 +192,7 @@ class LLVMTypeResolver {
     return type.getKind() == sun::semantic_analysis::Type::Kind::Lambda;
   }
 
+  /** Reports whether a semantic type represents a captured callable. */
   static bool isLambdaType(const TypePtr& type) {
     return type &&
            type->getKind() == sun::semantic_analysis::Type::Kind::Lambda;
@@ -197,6 +206,7 @@ class LLVMTypeResolver {
     return isFunctionType(type) || isLambdaType(type);
   }
 
+  /** Reports whether this value can be invoked as a function. */
   static bool isCallable(const TypePtr& type) {
     return type && (isFunctionType(type) || isLambdaType(type));
   }

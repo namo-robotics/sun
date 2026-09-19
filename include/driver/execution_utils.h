@@ -16,6 +16,7 @@
 #include "support/error.h"
 #include "support/sun_path.h"
 
+/** Coordinates compilation, dependency loading, linking, and program execution. */
 namespace sun::driver {
 using sun::moon_bundling::MoonImport;
 using sun::support::SunError;
@@ -34,7 +35,9 @@ using sun::support::SunError;
     }                                                                   \
   } while (0)
 
-// Set SUN_PATH to cwd if not already set (for VS Code Test Explorer)
+/**
+ * Set SUN_PATH to cwd if not already set (for VS Code Test Explorer)
+ */
 inline void initTestEnvironment() {
   static std::once_flag flag;
   std::call_once(flag, []() {
@@ -44,7 +47,9 @@ inline void initTestEnvironment() {
   });
 }
 
-// Get the stdlib.moon path for test preloading
+/**
+ * Get the stdlib.moon path for test preloading
+ */
 inline std::vector<MoonImport> getStdlibMoonImports() {
   auto stdlibPath = std::filesystem::path("build/stdlib.moon");
   if (!std::filesystem::exists(stdlibPath)) {
@@ -60,7 +65,9 @@ inline std::vector<MoonImport> getStdlibMoonImports() {
   return {};
 }
 
-// Execute and log SunError to stderr, then rethrow
+/**
+ * Execute and log SunError to stderr, then rethrow
+ */
 inline sun::driver::SunValue executeString(const std::string& source,
                                            int argc = 0, char** argv = nullptr,
                                            bool includeStdlib = false) {
@@ -78,15 +85,19 @@ inline sun::driver::SunValue executeString(const std::string& source,
   }
 }
 
-// Execute with stdlib preloaded
+/**
+ * Execute with stdlib preloaded
+ */
 inline sun::driver::SunValue executeStringWithStdlib(const std::string& source,
                                                      int argc = 0,
                                                      char** argv = nullptr) {
   return executeString(source, argc, argv, true);
 }
 
-// Execute in test mode: tests kept, the runner main synthesized, stdlib
-// preloaded. Returns the runner's exit code (0 = every test passed).
+/**
+ * Execute in test mode: tests kept, the runner main synthesized, stdlib
+ * preloaded. Returns the runner's exit code (0 = every test passed).
+ */
 inline sun::driver::SunValue executeTestsWithStdlib(const std::string& source,
                                                     int argc = 0,
                                                     char** argv = nullptr) {
@@ -102,7 +113,9 @@ inline sun::driver::SunValue executeTestsWithStdlib(const std::string& source,
   }
 }
 
-// Execute and dump all reachable IR (includes stdlib functions)
+/**
+ * Execute and dump all reachable IR (includes stdlib functions)
+ */
 inline sun::driver::SunValue executeStringWithReachableIR(
     const std::string& source, int argc = 0, char** argv = nullptr,
     bool includeStdlib = false) {
@@ -121,6 +134,7 @@ inline sun::driver::SunValue executeStringWithReachableIR(
   }
 }
 
+/** Compiles a source file, optionally loading the standard library. */
 inline void compileFile(const std::string& filename,
                         bool includeStdlib = false) {
   try {
@@ -136,11 +150,14 @@ inline void compileFile(const std::string& filename,
   }
 }
 
-// Compile with stdlib preloaded
+/**
+ * Compile with stdlib preloaded
+ */
 inline void compileFileWithStdlib(const std::string& filename) {
   compileFile(filename, true);
 }
 
+/** Compiles source text, optionally loading the standard library. */
 inline void compileString(const std::string& source,
                           bool includeStdlib = false) {
   initTestEnvironment();
@@ -156,12 +173,16 @@ inline void compileString(const std::string& source,
   }
 }
 
-// Compile with stdlib preloaded
+/**
+ * Compile with stdlib preloaded
+ */
 inline void compileStringWithStdlib(const std::string& source) {
   compileString(source, true);
 }
 
-// Compile multiple source files using the merged-AST model
+/**
+ * Compile multiple source files using the merged-AST model
+ */
 inline void compileFiles(const std::vector<std::string>& sourceFiles,
                          const std::vector<MoonImport>& moonImports = {}) {
   initTestEnvironment();
@@ -178,7 +199,9 @@ inline void compileFiles(const std::vector<std::string>& sourceFiles,
   }
 }
 
-// Execute multiple source files using the merged-AST model
+/**
+ * Execute multiple source files using the merged-AST model
+ */
 inline void executeFiles(const std::vector<std::string>& sourceFiles,
                          const std::vector<MoonImport>& moonImports = {}) {
   initTestEnvironment();

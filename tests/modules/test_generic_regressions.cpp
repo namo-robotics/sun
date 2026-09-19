@@ -13,8 +13,10 @@
 
 #include "driver/execution_utils.h"
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
+/** Reads a fixture file into a string for comparison. */
 std::string readFile(const std::filesystem::path& path) {
   std::ifstream input(path);
   std::ostringstream text;
@@ -22,11 +24,14 @@ std::string readFile(const std::filesystem::path& path) {
   return text.str();
 }
 
-// Each compiler invocation has a deadline so a recursion bug fails the test.
+/**
+ * Each compiler invocation has a deadline so a recursion bug fails the test.
+ */
 class Modules_GenericRegressions : public ::testing::Test {
  protected:
   std::filesystem::path dir;
 
+  /** Prepares the files and compiler state needed by each test. */
   void SetUp() override {
     ASSERT_TRUE(std::filesystem::exists("build/sun"));
     dir = std::filesystem::path("tmp") /
@@ -35,8 +40,10 @@ class Modules_GenericRegressions : public ::testing::Test {
     std::filesystem::create_directories(dir);
   }
 
+  /** Releases the temporary files and state created for each test. */
   void TearDown() override { std::filesystem::remove_all(dir); }
 
+  /** Writes source text into the fixture's temporary project. */
   void write(const std::string& name, const std::string& source) {
     std::ofstream(dir / name) << source;
   }
@@ -65,6 +72,7 @@ class Modules_GenericRegressions : public ::testing::Test {
     return ::testing::AssertionSuccess();
   }
 
+  /** Runs the fixture and checks the expected program result. */
   void checkProgram(const std::string& name, bool checkNative = true) {
     const auto source = (dir / name).string();
     ASSERT_TRUE(run("build/sun " + source));
@@ -74,6 +82,7 @@ class Modules_GenericRegressions : public ::testing::Test {
     ASSERT_TRUE(run(binary));
   }
 
+  /** Builds a reusable library for the generic-specialization tests. */
   void buildLibrary(const std::string& source) {
     write("lib.sun", source);
     ASSERT_TRUE(run("build/sun --emit-moon -o " + (dir / "lib.moon").string() +
@@ -383,7 +392,9 @@ function main() i32 { return lib.hidden<i32>(0); }
       run("build/sun " + (dir / "private.sun").string(), false, "private"));
 }
 
-// Rename only the parameter inside one class, leaving its callers unchanged.
+/**
+ * Rename only the parameter inside one class, leaving its callers unchanged.
+ */
 void renameParameter(std::string& source, const std::string& className,
                      const std::string& nextClass, char replacement) {
   const auto begin = source.find("public class " + className + "<T>");

@@ -7,14 +7,19 @@
 using sun::semantic_analysis::ModuleScope;
 using sun::semantic_analysis::SemanticContext;
 
+/** Builds and loads compiled Moon libraries and their declaration metadata. */
 namespace sun::moon_bundling {
 
+/** Names the guard that restores semantic scope after metadata lookup. */
 using ScopeSwitchGuard = sun::semantic_analysis::SemanticContext::ScopeSwitchGuard;
 namespace pbc = sun::proto::ast;
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
+/** Stores local declaration spellings that can shadow imported names. */
 using Names = std::set<std::string>;
 
+/** Reads the module name stored in a serialized syntax node. */
 std::string moduleSpelling(const pbc::ASTNode& node) {
   if (node.has_variable_reference()) return node.variable_reference().name();
   if (node.has_qualified_name()) {
@@ -31,6 +36,7 @@ std::string moduleSpelling(const pbc::ASTNode& node) {
   return "";
 }
 
+/** Records declaration names that shadow imported names in the current scope. */
 void addLocal(const pbc::ASTNode& node, Names& locals) {
   if (node.has_variable_creation())
     locals.insert(node.variable_creation().name());
@@ -40,7 +46,9 @@ void addLocal(const pbc::ASTNode& node, Names& locals) {
     locals.insert(node.declare_type().alias_name());
 }
 
-// The traversal follows lexical scopes without instantiating generic types.
+/**
+ * The traversal follows lexical scopes without instantiating generic types.
+ */
 void bindModules(google::protobuf::Message& message, SemanticContext& ctx,
                  Names locals) {
   const auto* desc = message.GetDescriptor();
@@ -188,6 +196,7 @@ void bindModules(google::protobuf::Message& message, SemanticContext& ctx,
 }
 }  // namespace
 
+/** Resolves serialized module references in the active semantic context. */
 void bindMetadataModules(google::protobuf::Message& message,
                          SemanticContext& context) {
   ScopeSwitchGuard scope(context, context.scope());

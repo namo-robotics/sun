@@ -7,6 +7,7 @@
 // look at what it rebuilt.
 
 #include <gtest/gtest.h>
+#include <sys/wait.h>
 
 #include <cstdlib>
 #include <filesystem>
@@ -17,8 +18,10 @@
 #include "driver/build_record.h"
 #include "driver/input_hash.h"
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
+/** Reads a fixture file into a string for comparison. */
 std::string readFile(const std::string& path) {
   std::ifstream in(path);
   std::stringstream buffer;
@@ -26,28 +29,37 @@ std::string readFile(const std::string& path) {
   return buffer.str();
 }
 
+/** Writes source or fixture data to a test file. */
 void writeFile(const std::string& path, const std::string& text) {
   std::ofstream(path) << text;
 }
 
+/** Reports whether the expected text occurs in the captured output. */
 bool contains(const std::string& text, const std::string& part) {
   return text.find(part) != std::string::npos;
 }
 
-// A scratch folder for one end-to-end case, removed afterwards.
+/**
+ * A scratch folder for one end-to-end case, removed afterwards.
+ */
 struct Scratch {
   std::filesystem::path dir;
+  /** Owns a temporary directory used for build-provenance test artifacts. */
   explicit Scratch(const std::string& name)
       : dir(std::filesystem::path(::testing::TempDir()) /
             ("sun_input_hash_" + name + "_" + std::to_string(::getpid()))) {
     std::filesystem::remove_all(dir);
     std::filesystem::create_directories(dir);
   }
+  /** Removes the temporary build-provenance test directory. */
   ~Scratch() { std::filesystem::remove_all(dir); }
+  /** Returns a filename within the scratch directory. */
   std::string path(const std::string& name) const {
     return (dir / name).string();
   }
-  // Run build/sun with `arguments`; returns what it printed.
+  /**
+   * Run build/sun with `arguments`; returns what it printed.
+   */
   std::string runSun(const std::string& arguments) const {
     const std::string cmd =
         "build/sun " + arguments + " > " + path("log") + " 2>&1";
@@ -57,8 +69,10 @@ struct Scratch {
   }
 };
 
+/** Reports whether the compiler executable required by this test is available. */
 bool haveSunBinary() { return std::filesystem::exists("build/sun"); }
 
+/** Builds the input description used to check deterministic build hashes. */
 sun::driver::BuildInputs makeInputs() {
   sun::driver::BuildInputs inputs;
   inputs.artifactKind = "executable";
@@ -137,7 +151,9 @@ TEST(Tooling_Backend_InputHash, missing_artifacts_have_no_record) {
   EXPECT_FALSE(sun::driver::readBuildRecord("/nonexistent/app").has_value());
   EXPECT_FALSE(
       sun::driver::readMoonInputHash("/nonexistent/lib.moon").has_value());
-  // A file that is not an object file carries no record either
+  /**
+   * A file that is not an object file carries no record either
+   */
   Scratch scratch("not_object");
   writeFile(scratch.path("notes.txt"), "plain text\n");
   EXPECT_FALSE(
@@ -268,7 +284,10 @@ manifest {
   EXPECT_TRUE(contains(log, "Successfully compiled test binary to")) << log;
 
   // The rebuilt executable still runs
-  EXPECT_EQ(WEXITSTATUS(std::system(app.c_str())), 0);
+  int status = std::system(app.c_str());
+  ASSERT_NE(status, -1);
+  ASSERT_TRUE(WIFEXITED(status));
+  EXPECT_EQ(WEXITSTATUS(status), 0);
 }
 
 // A program without tests records that, so a later run does not compile it

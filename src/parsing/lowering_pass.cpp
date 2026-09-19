@@ -7,6 +7,7 @@
 using sun::ast::ASTNodeType;
 using sun::ast::ExprAST;
 
+/** Turns source text into syntax trees and provides source formatting. */
 namespace sun::parsing {
 
 void LoweringPass::run(sun::ast::BlockExprAST& program) {
@@ -14,9 +15,11 @@ void LoweringPass::run(sun::ast::BlockExprAST& program) {
       [this](std::unique_ptr<ExprAST>& slot) { lowerSlot(slot); });
 }
 
-// Normalize an if/loop body block to the shape the core pipeline expects:
-// empty block -> synthetic literal, single-statement block -> the statement.
-// The parser keeps bodies as blocks for losslessness.
+/**
+ * Normalize an if/loop body block to the shape the core pipeline expects:
+ * empty block -> synthetic literal, single-statement block -> the statement.
+ * The parser keeps bodies as blocks for losslessness.
+ */
 static void normalizeBody(std::unique_ptr<ExprAST>& slot, bool isIfBody) {
   if (!slot || slot->getType() != ASTNodeType::BLOCK) return;
   auto& block = static_cast<sun::ast::BlockExprAST&>(*slot);

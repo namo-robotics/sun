@@ -56,8 +56,10 @@ using sun::ast::TryCatchExprAST;
 using sun::support::logAndThrowError;
 using sun::support::Position;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
+/** Prepares default field initializers for constructor analysis. */
 void prepareFieldInitializers(sun::ast::ClassDefinitionAST& classDef) {
   if (classDef.isPartial() || classDef.isPrecompiled()) return;
   size_t count = 0;
@@ -111,6 +113,7 @@ void prepareFieldInitializers(sun::ast::ClassDefinitionAST& classDef) {
   }
 }
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
 /**
@@ -137,6 +140,7 @@ bool usesThis(const ExprAST& expr) {
  */
 enum class FieldStatus { Uninitialized, Initialized, Unknown };
 
+/** Tracks whether each class field has been initialized along a control-flow path. */
 using FieldStates = std::map<std::string, FieldStatus>;
 
 /**
@@ -158,6 +162,7 @@ void mergeInto(FieldStates& target, const FieldStates& other) {
  */
 class ClassInitInfo {
  public:
+  /** Collects class fields and methods needed to check constructor initialization. */
   ClassInitInfo(const ClassType& classType,
                 const std::vector<ClassMethodDecl>& methods)
       : classType_(classType), methods_(methods) {
@@ -167,15 +172,20 @@ class ClassInitInfo {
     }
   }
 
+  /** Returns the class whose field initialization is being checked. */
   const ClassType& classType() const { return classType_; }
+  /** Returns the fields tracked by constructor initialization analysis. */
   const std::set<std::string>& allFields() const { return allFields_; }
+  /** Reports whether a name denotes a field in the class being checked. */
   bool isField(const std::string& name) const {
     return allFields_.count(name) != 0;
   }
 
-  // True when the field holds something that has to be released, so writing
-  // it again would have to drop what was there. A field holding a number
-  // releases nothing, so it is never in doubt.
+  /**
+   * True when the field holds something that has to be released, so writing
+   * it again would have to drop what was there. A field holding a number
+   * releases nothing, so it is never in doubt.
+   */
   bool fieldOwns(const std::string& name) const {
     return owningFields_.count(name) != 0;
   }
@@ -208,6 +218,7 @@ class ClassInitInfo {
  */
 class BodyWalk {
  public:
+  /** Starts a control-flow walk using the class initialization information. */
   explicit BodyWalk(ClassInitInfo& info) : info_(info) {
     for (const auto& name : info.allFields()) {
       states_[name] = FieldStatus::Uninitialized;
@@ -237,8 +248,10 @@ class BodyWalk {
   // its writes must mean the same thing there as here.
   bool inMethodBody_ = false;
 
+  /** Returns the class name used in field-initialization diagnostics. */
   std::string className() const { return info_.classType().getDisplayName(); }
 
+  /** Returns the tracked initialization state of a named field. */
   FieldStatus statusOf(const std::string& field) const {
     auto found = states_.find(field);
     return found == states_.end() ? FieldStatus::Unknown : found->second;
@@ -281,6 +294,7 @@ class BodyWalk {
   void rejectUncertainAssignment(const std::string& field,
                                  std::optional<Position> loc);
 
+  /** Checks child expressions for reads and writes affecting field initialization. */
   void walkChildren(const ExprAST& expr);
 
   /**
@@ -640,6 +654,7 @@ void BodyWalk::walk(const ExprAST& expr) {
 
 }  // namespace
 
+/** Checks that constructors initialize fields before they are read. */
 void checkFieldInitialization(const FunctionAST& constructor,
                               const ClassType& classType,
                               const std::vector<ClassMethodDecl>& methods) {

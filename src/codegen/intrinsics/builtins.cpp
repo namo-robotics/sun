@@ -18,18 +18,24 @@ using sun::ast::CallExprAST;
 
 using namespace llvm;
 
+/** Provides the generator for built-in operations. */
 namespace sun::codegen::intrinsics {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// What emitting one built-in takes: the generator to emit through, and the
-// call being lowered.
+/**
+ * What emitting one built-in takes: the generator to emit through, and the
+ * call being lowered.
+ */
 using BuiltinEmitter =
     std::function<Value*(IntrinsicsGenerator&, const CallExprAST&)>;
 
-// Most built-ins are a plain forward to one method; a few need an extra
-// argument or a second call, so the table holds callables rather than
-// member-function pointers.
+/**
+ * Most built-ins are a plain forward to one method; a few need an extra
+ * argument or a second call, so the table holds callables rather than
+ * member-function pointers.
+ */
 const std::map<std::string, BuiltinEmitter>& builtinTable() {
   static const std::map<std::string, BuiltinEmitter> table = {
       // Print built-ins

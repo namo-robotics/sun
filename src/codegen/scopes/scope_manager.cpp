@@ -18,6 +18,7 @@ using sun::semantic_analysis::TypePtr;
 
 using namespace llvm;
 
+/** Provides the scope manager responsible for variable storage and cleanup. */
 namespace sun::codegen::scopes {
 
 // -------------------------------------------------------------------
@@ -109,6 +110,7 @@ void ScopeManager::trackClassAllocation(Value* alloca, const std::string& name,
   scopes_.back().classAllocations.push_back(std::move(entry));
 }
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
 /** Identify fields by their path, since empty fields can share an address. */
@@ -217,9 +219,11 @@ void ScopeManager::ensureDropFlag(ClassAllocation& alloc) {
   llvm::Type* boolTy = llvm::Type::getInt1Ty(ctx.getContext());
   Function* func = anchorBlock->getParent();
 
-  // The flag sits beside the value in the frame, never inside it, so class
-  // layout is untouched. False on entry, so a path that never reached the
-  // point of ownership never drops.
+  /**
+   * The flag sits beside the value in the frame, never inside it, so class
+   * layout is untouched. False on entry, so a path that never reached the
+   * point of ownership never drops.
+   */
   IRBuilder<> entry(&func->getEntryBlock(), func->getEntryBlock().begin());
   alloc.dropFlag =
       entry.CreateAlloca(boolTy, nullptr, alloc.varName + ".owned");

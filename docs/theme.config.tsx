@@ -12,6 +12,7 @@ const config: DocsThemeConfig = {
   },
   primaryHue: 45,
   primarySaturation: 100,
+  /** Supplies the title template used by documentation pages. */
   useNextSeoProps() {
     return {
       titleTemplate: '%s – Sun Language'

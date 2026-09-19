@@ -16,6 +16,7 @@ using sun::semantic_analysis::PortableDeclarationKey;
 
 using namespace llvm;
 
+/** Provides the generator for class storage and method operations. */
 namespace sun::codegen::classes {
 
 // -------------------------------------------------------------------

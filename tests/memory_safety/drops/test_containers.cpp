@@ -8,6 +8,7 @@
 
 using sun::driver::executeStringWithStdlib;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 // Every constructed Owner must be destroyed exactly once, even with a zero id.
@@ -30,6 +31,7 @@ const char* kOwnerPreamble = R"(
     }
 )";
 
+/** Prepends shared fixture declarations to a test program. */
 std::string withPreamble(const std::string& body) {
   return std::string(kOwnerPreamble) + body;
 }

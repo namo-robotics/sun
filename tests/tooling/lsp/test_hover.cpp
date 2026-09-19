@@ -24,16 +24,19 @@ using sun::driver::Driver;
 using sun::driver::getStdlibMoonImports;
 using sun::driver::initTestEnvironment;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 // The file never exists on disk; nodes carry the path exactly as given
 const char* kPath = "/hover_test.sun";
 
+/** Keeps the syntax tree and semantic context alive for editor-feature tests. */
 struct Analysis {
   std::unique_ptr<Driver> driver;
   sun::driver::Driver::AnalyzedProgram program;
 };
 
+/** Parses and analyzes fixture source before querying editor features. */
 Analysis analyze(const std::string& source, bool withStdlib = false) {
   initTestEnvironment();
   Analysis analysis;
@@ -43,7 +46,9 @@ Analysis analyze(const std::string& source, bool withStdlib = false) {
   return analysis;
 }
 
-// Byte offset of the Nth occurrence of needle
+/**
+ * Byte offset of the Nth occurrence of needle
+ */
 size_t offsetOf(const std::string& source, const std::string& needle,
                 int occurrence) {
   size_t pos = std::string::npos;
@@ -57,6 +62,7 @@ size_t offsetOf(const std::string& source, const std::string& needle,
   return pos;
 }
 
+/** Queries the complete hover result at a fixture source offset. */
 std::optional<sun::lsp::Hover> fullHoverAt(const std::string& source,
                                            const std::string& needle,
                                            bool withStdlib = false,
@@ -74,6 +80,7 @@ std::optional<sun::lsp::Hover> fullHoverAt(const std::string& source,
                                 static_cast<int>(pos));
 }
 
+/** Returns the hover text produced for a selected fixture symbol. */
 std::optional<std::string> hoverAt(const std::string& source,
                                    const std::string& needle,
                                    bool withStdlib = false,
@@ -83,7 +90,9 @@ std::optional<std::string> hoverAt(const std::string& source,
   return hover->code;
 }
 
-// The documentation shown for the symbol at needle
+/**
+ * The documentation shown for the symbol at needle
+ */
 std::optional<std::string> docAt(const std::string& source,
                                  const std::string& needle,
                                  int occurrence = 0) {

@@ -1,3 +1,4 @@
+/** Runs the regression scenario and returns its observable result to the test harness. */
 function main() i32 {
   return mymod.foo() + mymod.bar();
 }

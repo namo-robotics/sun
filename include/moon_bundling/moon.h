@@ -11,13 +11,16 @@
 
 #include "moon.pb.h"
 
+/** Builds and loads compiled Moon libraries and their declaration metadata. */
 namespace sun::moon_bundling {
 
 // =============================================================================
 // Binary format structures
 // =============================================================================
 
-/// Binary header for .moon format
+/**
+ * Binary header for .moon format
+ */
 struct MoonHeader {
   static constexpr uint32_t MAGIC = 0x53554E4C;  // "SUNL"
   // Bundle identities use the full digest of canonically framed build inputs.
@@ -30,7 +33,9 @@ struct MoonHeader {
   uint64_t indexOffset = 0;
 };
 
-/// Index entry for a module in the bundle
+/**
+ * Index entry for a module in the bundle
+ */
 struct ModuleIndexEntry {
   std::string moduleKey;  // Source hash used as module identifier
   uint64_t bitcodeOffset;
@@ -39,14 +44,16 @@ struct ModuleIndexEntry {
   uint64_t metadataSize;
 };
 
-/// A native static library (`.a`) carried inside the bundle, so a moon that
-/// binds a C library brings that library's code with it. Programs importing
-/// the bundle link (AOT) or load (JIT) these without naming -l flags. The
-/// archive's symbols are spelled `$archiveSetHash$_symbol`: the hash of all
-/// the archives its bundle listed together, taken from their bytes as the
-/// vendor shipped them (see computeArchiveSetHash). The same set carried by
-/// several bundles is one set of symbols; a set differing in any archive is
-/// another.
+/**
+ * A native static library (`.a`) carried inside the bundle, so a moon that
+ * binds a C library brings that library's code with it. Programs importing
+ * the bundle link (AOT) or load (JIT) these without naming -l flags. The
+ * archive's symbols are spelled `$archiveSetHash$_symbol`: the hash of all
+ * the archives its bundle listed together, taken from their bytes as the
+ * vendor shipped them (see computeArchiveSetHash). The same set carried by
+ * several bundles is one set of symbols; a set differing in any archive is
+ * another.
+ */
 struct NativeArchiveEntry {
   std::string archiveSetHash;  // hash its symbols are prefixed with
   std::string name;            // file name, e.g. "libssl.a"
@@ -62,37 +69,50 @@ struct NativeArchiveEntry {
  */
 std::string computeSha256Hex(llvm::StringRef data);
 
-/// Creates .moon bundle files containing multiple modules
+/**
+ * Creates .moon bundle files containing multiple modules
+ */
 class MoonWriter {
  public:
-  /// @param bundleHash The bundle's input hash (see driver/input_hash.h),
-  /// computed before its code was compiled so the compiler could spell every
-  /// exported symbol with the `$hash$_` prefix. Recorded in each module's
-  /// metadata, for importers and for skipping a build whose inputs are
-  /// unchanged.
+  /**
+   * @param bundleHash The bundle's input hash (see driver/input_hash.h),
+   * computed before its code was compiled so the compiler could spell every
+   * exported symbol with the `$hash$_` prefix. Recorded in each module's
+   * metadata, for importers and for skipping a build whose inputs are
+   * unchanged.
+   */
   explicit MoonWriter(std::string bundleHash);
 
-  /// Add a compiled module to the bundle
-  /// @param module The compiled LLVM module
-  /// @param metadata Module metadata (protobuf) including AST nodes
+  /**
+   * Add a compiled module to the bundle
+   * @param module The compiled LLVM module
+   * @param metadata Module metadata (protobuf) including AST nodes
+   */
   void addModule(llvm::Module& module, const moon::ModuleMetadata& metadata);
 
-  /// Carry a native static library inside the bundle
-  /// @param archiveSetHash Hash the archive's symbols are prefixed with
-  /// @param name File name recorded in the bundle (e.g. "libssl.a")
-  /// @param data Raw archive contents, symbols already renamed
+  /**
+   * Carry a native static library inside the bundle
+   * @param archiveSetHash Hash the archive's symbols are prefixed with
+   * @param name File name recorded in the bundle (e.g. "libssl.a")
+   * @param data Raw archive contents, symbols already renamed
+   */
   void addNativeArchive(std::string archiveSetHash, std::string name,
                         std::string data);
 
-  /// Write the bundle to disk
-  /// @param outputPath Path to write the .moon file
-  /// @return true on success
+  /**
+   * Write the bundle to disk
+   * @param outputPath Path to write the .moon file
+   * @return true on success
+   */
   bool write(const std::filesystem::path& outputPath);
 
-  /// Get error message if write failed
+  /**
+   * Get error message if write failed
+   */
   const std::string& getError() const { return error_; }
 
  private:
+  /** Syntax and metadata collected for one module in a Moon library. */
   struct ModuleData {
     size_t blobIndex;  // index into blobs_
     moon::ModuleMetadata metadata;
@@ -105,6 +125,7 @@ class MoonWriter {
   std::unordered_map<const llvm::Module*, size_t> blobIndexByModule_;
 
   std::vector<ModuleData> modules_;
+  /** An archive queued for inclusion in the compiled library. */
   struct PendingArchive {
     std::string archiveSetHash;
     std::string name;
@@ -115,61 +136,86 @@ class MoonWriter {
   std::string error_;
 };
 
-/// Reads .moon bundle files and extracts individual modules
+/**
+ * Reads .moon bundle files and extracts individual modules
+ */
 class MoonReader {
  public:
-  /// Open a .moon bundle file
-  /// @param path Path to the .moon file
-  /// @return Reader instance, or nullptr on failure
+  /**
+   * Open a .moon bundle file
+   * @param path Path to the .moon file
+   * @return Reader instance, or nullptr on failure
+   */
   static std::unique_ptr<MoonReader> open(const std::filesystem::path& path);
 
-  /// Check if a module exists in this bundle
-  /// @param moduleKey The module key (source hash)
+  /**
+   * Check if a module exists in this bundle
+   * @param moduleKey The module key (source hash)
+   */
   bool hasModule(const std::string& moduleKey) const;
 
-  /// List all modules in the bundle
+  /**
+   * List all modules in the bundle
+   */
   std::vector<std::string> listModules() const;
 
-  /// Get metadata for a module without loading bitcode
-  /// @param moduleKey The module key (source hash)
-  /// @return Protobuf metadata, or nullptr if not found
+  /**
+   * Get metadata for a module without loading bitcode
+   * @param moduleKey The module key (source hash)
+   * @return Protobuf metadata, or nullptr if not found
+   */
   const moon::ModuleMetadata* getMetadata(const std::string& moduleKey);
 
-  /// Load a module's LLVM bitcode
-  /// @param moduleKey The module key (source hash)
-  /// @param context LLVM context to create module in
-  /// @return LLVM module, or nullptr on failure
+  /**
+   * Load a module's LLVM bitcode
+   * @param moduleKey The module key (source hash)
+   * @param context LLVM context to create module in
+   * @return LLVM module, or nullptr on failure
+   */
   std::unique_ptr<llvm::Module> loadModule(const std::string& moduleKey,
                                            llvm::LLVMContext& context);
 
-  /// Identity of the bitcode region backing a module. Modules that share a
-  /// code image share this string, so a caller can scan the image once
-  /// instead of once per module. Empty if the module is unknown.
+  /**
+   * Identity of the bitcode region backing a module. Modules that share a
+   * code image share this string, so a caller can scan the image once
+   * instead of once per module. Empty if the module is unknown.
+   */
   std::string getBitcodeId(const std::string& moduleKey) const;
 
-  /// Get error message if an operation failed
+  /**
+   * Get error message if an operation failed
+   */
   const std::string& getError() const { return error_; }
 
-  /// Get the path to this bundle file
+  /**
+   * Get the path to this bundle file
+   */
   const std::filesystem::path& getPath() const { return path_; }
 
-  /// The target the bundle's bitcode was compiled for (LLVM triple), taken
-  /// from the first module's metadata. Empty for pre-V4 legacy bundles.
+  /**
+   * The target the bundle's bitcode was compiled for (LLVM triple), taken
+   * from the first module's metadata. Empty for pre-V4 legacy bundles.
+   */
   std::string getTargetTriple();
 
-  /// Native static libraries carried by this bundle, in link order
+  /**
+   * Native static libraries carried by this bundle, in link order
+   */
   const std::vector<NativeArchiveEntry>& getNativeArchives() const {
     return nativeArchives_;
   }
 
-  /// Read one carried archive's bytes. Entries come from getNativeArchives();
-  /// two versions of a library share a file name, so the entry rather than
-  /// the name identifies one.
-  /// @return false if the read failed
+  /**
+   * Read one carried archive's bytes. Entries come from getNativeArchives();
+   * two versions of a library share a file name, so the entry rather than
+   * the name identifies one.
+   * @return false if the read failed
+   */
   bool readNativeArchive(const NativeArchiveEntry& entry,
                          std::vector<char>& out);
 
  private:
+  /** Creates an instance with its default state. */
   MoonReader() = default;
 
   std::filesystem::path path_;
@@ -179,11 +225,15 @@ class MoonReader {
   std::vector<NativeArchiveEntry> nativeArchives_;
   std::string error_;
 
-  /// Read raw bytes from the bundle file
+  /**
+   * Read raw bytes from the bundle file
+   */
   bool readBytes(uint64_t offset, uint64_t size, std::vector<char>& buffer);
 };
 
-/// Get symbol prefix for protobuf metadata
+/**
+ * Get symbol prefix for protobuf metadata
+ */
 inline std::string getSymbolPrefix(const moon::ModuleMetadata& metadata) {
   return metadata.content_hash().empty() ? ""
                                          : "$" + metadata.content_hash() + "$";

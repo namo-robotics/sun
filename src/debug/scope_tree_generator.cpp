@@ -11,6 +11,7 @@
 
 using sun::semantic_analysis::ScopeType;
 
+/** Produces readable views of syntax trees and semantic scopes. */
 namespace sun::debug {
 
 std::string ScopeTreeGenerator::generateHtml(
@@ -233,6 +234,7 @@ std::string ScopeTreeGenerator::generateJson(
       if (!child) continue;
       if (!first) out << ",";
       out << "\n" << pad4 << "\"" << escapeJson(name) << "\": ";
+      /** Generate JSON representation of a scope (recursive) */
       out << generateJson(*child, indent + 4);
       first = false;
     }
@@ -246,6 +248,7 @@ std::string ScopeTreeGenerator::generateJson(
     for (const auto& child : scope.children) {
       if (!first) out << ",";
       out << "\n" << pad4;
+      /** Generate JSON representation of a scope (recursive) */
       out << generateJson(*child, indent + 4);
       first = false;
     }

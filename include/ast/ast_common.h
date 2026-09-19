@@ -12,8 +12,10 @@
 #include "ast/type_constraint.h"
 #include "semantic_analysis/types.h"
 
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 
+/** Identifies the syntax-node shapes handled by compiler visitors. */
 enum class ASTNodeType {
   NUMBER,
   STRING_LITERAL,
@@ -71,35 +73,44 @@ enum class ASTNodeType {
   PAREN_EXPR             // (expr) grouping (parse tree only; lowered away)
 };
 
-// One generic type parameter, as written between the angle brackets: a name,
-// and optionally a constraint the type argument must satisfy.
-//
-//   <T>            name "T", no constraint — any type
-//   <T: _Numeric>  see TypeConstraint for the forms a constraint can take
-//
-// The constraint is checked when the generic is instantiated with a concrete
-// type argument, by the same predicate `_is<T>` uses in a function body.
+/**
+ * One generic type parameter, as written between the angle brackets: a name,
+ * and optionally a constraint the type argument must satisfy.
+ *
+ *   &lt;T&gt;            name "T", no constraint — any type
+ *   <T: _Numeric>  see TypeConstraint for the forms a constraint can take
+ *
+ * The constraint is checked when the generic is instantiated with a concrete
+ * type argument, by the same predicate `_is<T>` uses in a function body.
+ */
 struct TypeParameter {
   std::string name;
   std::optional<TypeConstraint> constraint;
 
+  /** Creates a named generic parameter with its optional type constraint. */
   TypeParameter() = default;
+  /** Creates a named generic parameter with its optional type constraint. */
   explicit TypeParameter(std::string n,
                          std::optional<TypeConstraint> c = std::nullopt)
       : name(std::move(n)), constraint(std::move(c)) {}
 
+  /** Compares the stored values for equality. */
   bool operator==(const TypeParameter& other) const {
     return name == other.name && constraint == other.constraint;
   }
 
-  // `T`, or `T: _Numeric` — how the parameter reads in source.
+  /**
+   * `T`, or `T: _Numeric` — how the parameter reads in source.
+   */
   std::string toString() const {
     return constraint ? name + ": " + constraint->toString() : name;
   }
 
-  // The semantic type this parameter stands for while its generic is analyzed
-  // unspecialized: T bound to itself, carrying its constraint so a body can
-  // reach the constraint's members. Unconstrained parameters carry none.
+  /**
+   * The semantic type this parameter stands for while its generic is analyzed
+   * unspecialized: T bound to itself, carrying its constraint so a body can
+   * reach the constraint's members. Unconstrained parameters carry none.
+   */
   sun::semantic_analysis::TypePtr toSunType(
       const sun::semantic_analysis::DeclarationTable& table,
       sun::semantic_analysis::DeclarationId id) const {
@@ -109,34 +120,43 @@ struct TypeParameter {
   }
 };
 
-// One lifetime parameter, as written between the angle brackets with a
-// leading apostrophe, before any type parameters:
-//
-//   <'a>        function pick<'a>(...)
-//   <'a, T>     class Pair<'a, T> { ... }
-//
-// A lifetime names the stack frame a `<'a>` lambda's environment or a
-// `ref 'a T` referent lives in, so two positions in one signature can be
-// declared to share it. Lifetimes are erased before codegen: they never
-// distinguish types, emitted symbols, or generic specializations.
+/**
+ * One lifetime parameter, as written between the angle brackets with a
+ * leading apostrophe, before any type parameters:
+ *
+ *   <'a>        function pick<'a>(...)
+ *   <'a, T>     class Pair<'a, T> { ... }
+ *
+ * A lifetime names the stack frame a `<'a>` lambda's environment or a
+ * `ref 'a T` referent lives in, so two positions in one signature can be
+ * declared to share it. Lifetimes are erased before codegen: they never
+ * distinguish types, emitted symbols, or generic specializations.
+ */
 struct LifetimeParameter {
   std::string name;
   sun::support::Position span;
 
+  /** Creates a named lifetime parameter retaining its source position. */
   LifetimeParameter() = default;
+  /** Creates a named lifetime parameter retaining its source position. */
   explicit LifetimeParameter(std::string n, sun::support::Position s = {})
       : name(std::move(n)), span(std::move(s)) {}
 
+  /** Compares the stored values for equality. */
   bool operator==(const LifetimeParameter& other) const {
     return name == other.name;
   }
 
-  // `'a` — how the parameter reads in source.
+  /**
+   * `'a` — how the parameter reads in source.
+   */
   std::string toString() const { return "'" + name; }
 };
 
-// The names alone, for the many places that only care what a parameter is
-// called (substitution, scope registration).
+/**
+ * The names alone, for the many places that only care what a parameter is
+ * called (substitution, scope registration).
+ */
 inline std::vector<std::string> typeParameterNames(
     const std::vector<TypeParameter>& params) {
   std::vector<std::string> names;
@@ -145,46 +165,55 @@ inline std::vector<std::string> typeParameterNames(
   return names;
 }
 
-// The trailing value pack in a parameter list, as written at the end of the
-// parentheses: a name, and the type annotation after its colon.
-//
-//   args...                  name "args", anything the call supplies
-//   args...: _params_of<T>   the parameters T's `init` takes, or, when T is a
-//                            lambda, the parameters that lambda takes
-//
-// The annotation sits where an ordinary parameter's type sits, but it stands
-// for a whole parameter list rather than one type, and the call's arguments
-// are checked against it. It is not a constraint in the `<T: _Numeric>` sense:
-// it does not narrow which types are allowed, it says where the pack's
-// parameters come from.
-//
-// A pack is not a type. It stands for however many arguments the call passes,
-// so a declaration holding one is a template: it is monomorphized once per
-// argument tuple, and the pack's elements become ordinary positional
-// parameters named `args.0`, `args.1`, … in that specialization.
+/**
+ * The trailing value pack in a parameter list, as written at the end of the
+ * parentheses: a name, and the type annotation after its colon.
+ *
+ *   args...                  name "args", anything the call supplies
+ *   args...: _params_of&lt;T&gt;   the parameters T's `init` takes, or, when T is a
+ *                            lambda, the parameters that lambda takes
+ *
+ * The annotation sits where an ordinary parameter's type sits, but it stands
+ * for a whole parameter list rather than one type, and the call's arguments
+ * are checked against it. It is not a constraint in the `<T: _Numeric>` sense:
+ * it does not narrow which types are allowed, it says where the pack's
+ * parameters come from.
+ *
+ * A pack is not a type. It stands for however many arguments the call passes,
+ * so a declaration holding one is a template: it is monomorphized once per
+ * argument tuple, and the pack's elements become ordinary positional
+ * parameters named `args.0`, `args.1`, … in that specialization.
+ */
 struct VariadicParam {
   std::string name;
   std::optional<TypeAnnotation> typeAnnotation;
 
+  /** Creates a variadic parameter with its optional element annotation. */
   VariadicParam() = default;
+  /** Creates a variadic parameter with its optional element annotation. */
   explicit VariadicParam(std::string n,
                          std::optional<TypeAnnotation> annot = std::nullopt)
       : name(std::move(n)), typeAnnotation(std::move(annot)) {}
 
+  /** Reports whether this object has type annotation. */
   bool hasTypeAnnotation() const { return typeAnnotation.has_value(); }
 
-  // The element the pack materializes as at index i, e.g. `args.0`. Codegen
-  // names the specialization's parameters this way and semantic analysis
-  // rewrites `args...` into references to exactly these names, so the two
-  // sides must agree here and nowhere else.
+  /**
+   * The element the pack materializes as at index i, e.g. `args.0`. Codegen
+   * names the specialization's parameters this way and semantic analysis
+   * rewrites `args...` into references to exactly these names, so the two
+   * sides must agree here and nowhere else.
+   */
   std::string elementName(size_t i) const {
     return name + "." + std::to_string(i);
   }
 };
 
-// How a lambda takes hold of a variable from the enclosing scope. These are
-// the three mutually exclusive ways; whether the binding is writable inside
-// the lambda is a separate question (Capture::isConst).
+/**
+ * How a lambda takes hold of a variable from the enclosing scope. These are
+ * the three mutually exclusive ways; whether the binding is writable inside
+ * the lambda is a separate question (Capture::isConst).
+ */
 enum class CaptureKind {
   // Not named in the capture list: the closure gets a copy it may only read.
   // A compound value cannot be captured this way — the copy would alias.
@@ -199,6 +228,7 @@ enum class CaptureKind {
   Borrow,
 };
 
+/** A variable captured from an enclosing scope by a lambda. */
 struct Capture {
   std::string name;
   sun::semantic_analysis::TypePtr type;

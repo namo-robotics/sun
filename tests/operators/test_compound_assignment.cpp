@@ -16,7 +16,9 @@ using sun::ast::CompoundAssignmentAST;
 using sun::driver::executeString;
 using sun::parsing::TokenKind;
 
-// Parse a single assignment-or-expression statement and return its AST
+/**
+ * Parse a single assignment-or-expression statement and return its AST
+ */
 static std::unique_ptr<sun::ast::ExprAST> parseStatementToAst(
     const std::string& source) {
   std::istringstream ss(source);

@@ -13,6 +13,7 @@
 
 using sun::driver::executeString;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 const char* kHolderReturn = "cannot return a value that stores references";

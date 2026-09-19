@@ -8,6 +8,7 @@
 #include "ast/ast_fwd.h"
 #include "semantic_analysis/declaration_id.h"
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 using sun::ast::ClassDefinitionAST;
 

@@ -4,25 +4,34 @@
 
 using std;
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** Groups tests for the interpolation library behavior. */
   module interpolation_tests {
-    // Build a short labeled string; pins that returning an interpolated
-    // temporary hands the caller a live buffer.
+    /**
+     * Build a short labeled string; pins that returning an interpolated
+     * temporary hands the caller a live buffer.
+     */
     function make_label(n: i64) String {
       return `v=${n}`;
     }
 
-    // Take an interpolated String by value and check its contents survived
-    // the move.
+    /**
+     * Take an interpolated String by value and check its contents survived
+     * the move.
+     */
     function take_label(s: String) void throws IError {
       std.test.assert(s.equals_literal("v=7"), "moved interpolation lost its contents");
     }
 
-    // The append overload is resolved again for each concrete type.
+    /**
+     * The append overload is resolved again for each concrete type.
+     */
     function generic_label<T>(value: T) String {
       return `v=${value}`;
     }
 
+    /** Checks generic interpolation uses concrete overloads. */
     test_function generic_interpolation_uses_concrete_overloads() {
       std.test.assert(generic_label<i32>(42).equals_literal("v=42"));
       std.test.assert(generic_label<bool>(true).equals_literal("v=true"));
@@ -31,11 +40,13 @@ public module std {
       std.test.assert(generic_label(String("text")).equals_literal("v=text"));
     }
 
+    /** Checks simple literal. */
     test_function simple_literal() {
       var s = `Hello World`;
       std.test.assert_eq(s.length(), 11);
     }
 
+    /** Checks interpolate string. */
     test_function interpolate_string() {
       var allocator = make_heap_allocator();
       var name = String(allocator, "World");
@@ -43,24 +54,28 @@ public module std {
       std.test.assert_eq(s.length(), 12);  // "Hello World!"
     }
 
+    /** Checks interpolate integer. */
     test_function interpolate_integer() {
       var age: i64 = 42;
       var s = `Age: ${age}`;
       std.test.assert_eq(s.length(), 7);  // "Age: 42"
     }
 
+    /** Checks interpolate boolean true. */
     test_function interpolate_boolean_true() {
       var flag: bool = true;
       var s = `Flag: ${flag}`;
       std.test.assert_eq(s.length(), 10);  // "Flag: true"
     }
 
+    /** Checks interpolate boolean false. */
     test_function interpolate_boolean_false() {
       var flag: bool = false;
       var s = `Flag: ${flag}`;
       std.test.assert_eq(s.length(), 11);  // "Flag: false"
     }
 
+    /** Checks multiple interpolations. */
     test_function multiple_interpolations() {
       var allocator = make_heap_allocator();
       var name = String(allocator, "Alice");
@@ -69,6 +84,7 @@ public module std {
       std.test.assert_eq(s.length(), 21);  // "Alice is 30 years old"
     }
 
+    /** Checks adjacent interpolations. */
     test_function adjacent_interpolations() {
       var a: i64 = 1;
       var b: i64 = 2;
@@ -76,6 +92,7 @@ public module std {
       std.test.assert(s.equals_literal("12"), "adjacent values");
     }
 
+    /** Checks interpolate expression. */
     test_function interpolate_expression() {
       var x: i64 = 10;
       var y: i64 = 5;
@@ -83,31 +100,37 @@ public module std {
       std.test.assert(s.equals_literal("Sum: 15"), "expression value");
     }
 
+    /** Checks interpolate literal string. */
     test_function interpolate_literal_string() {
       var s = `Hello ${"World"}!`;
       std.test.assert_eq(s.length(), 12);  // "Hello World!"
     }
 
+    /** Checks escape backtick. */
     test_function escape_backtick() {
       var s = `Hello \` World`;
       std.test.assert_eq(s.length(), 13);  // "Hello ` World"
     }
 
+    /** Checks escape dollar. */
     test_function escape_dollar() {
       var s = `Price: \${100}`;
       std.test.assert(s.equals_literal("Price: ${100}"), "escaped dollar");
     }
 
+    /** Checks escape newline. */
     test_function escape_newline() {
       var s = `Line1\nLine2`;
       std.test.assert_eq(s.length(), 11);  // includes the newline byte
     }
 
+    /** Checks empty template. */
     test_function empty_template() {
       var s = ``;
       std.test.assert_eq(s.length(), 0);
     }
 
+    /** Checks only interpolation. */
     test_function only_interpolation() {
       var allocator = make_heap_allocator();
       var name = String(allocator, "Test");
@@ -115,14 +138,17 @@ public module std {
       std.test.assert(s.equals_literal("Test"), "bare interpolation");
     }
 
+    /** Checks nested braces in expression. */
     test_function nested_braces_in_expression() {
       var arr: array<i64, 3> = [1, 2, 3];
       var s = `First: ${arr[0]}`;
       std.test.assert(s.equals_literal("First: 1"), "index expression");
     }
 
-    // The desugar reserves the literal bytes up front; this checks the
-    // reserved path produces exactly the same bytes as growing would.
+    /**
+     * The desugar reserves the literal bytes up front; this checks the
+     * reserved path produces exactly the same bytes as growing would.
+     */
     test_function long_template_content_is_exact() {
       var n: i64 = 42;
       var alloc = make_heap_allocator();
@@ -134,32 +160,39 @@ public module std {
       );
     }
 
-    // Interpolation lowers to a block expression, whose value is a temporary
-    // owned by nobody. Returning one used to leave the caller with a String
-    // of the right length over a freed buffer.
+    /**
+     * Interpolation lowers to a block expression, whose value is a temporary
+     * owned by nobody. Returning one used to leave the caller with a String
+     * of the right length over a freed buffer.
+     */
     test_function returned_from_function_keeps_contents() {
       var s = make_label(7);
       std.test.assert_eq(s.length(), 3);
       std.test.assert(s.equals_literal("v=7"), "returned interpolation content");
     }
 
-    // Same ownership transfer, in argument position
+    /**
+     * Same ownership transfer, in argument position
+     */
     test_function passed_by_value_keeps_contents() {
       take_label(`v=${7}`);
     }
 
+    /** Checks println interpolated direct. */
     test_function println_interpolated_direct() {
       // Interpolated string passed directly as a ref String argument
       var x: i32 = 42;
       println(`x = ${x}`);
     }
 
+    /** Checks print interpolated direct. */
     test_function print_interpolated_direct() {
       var x: i64 = 7;
       print(`a=${x}`);
       println();
     }
 
+    /** Checks println interpolated twice. */
     test_function println_interpolated_twice() {
       // Back-to-back interpolated temporaries stress repeated temp cleanup
       var a: i64 = 1;
@@ -168,6 +201,7 @@ public module std {
       println(`b=${b}`);
     }
 
+    /** Checks interpolate float. */
     test_function interpolate_float() {
       var ratio: f64 = 0.25;
       var s = `ratio=${ratio} half=${1.5}`;

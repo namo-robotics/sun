@@ -9,23 +9,30 @@
 #include "ast/expr_ast.h"
 #include "ast/prototype_ast.h"
 
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 
-// Lambda expression (anonymous function)
+/**
+ * Lambda expression (anonymous function)
+ */
 class LambdaAST : public ExprAST {
   std::unique_ptr<PrototypeAST> Proto;
   std::unique_ptr<BlockExprAST> Body;
 
  public:
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   LambdaAST(std::unique_ptr<PrototypeAST> Proto,
             std::unique_ptr<BlockExprAST> Body)
       : Proto(std::move(Proto)), Body(std::move(Body)) {}
 
+  /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::LAMBDA; }
 
+  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     if (Body) Body->forEachChildSlot(fn);
   }
+  /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     std::string result;
     const auto& lifetimes = Proto->getLifetimeParameters();
@@ -92,10 +99,14 @@ class LambdaAST : public ExprAST {
     ExprAST::resetAnalysisSession();
     Proto->resetAnalysisSession();
   }
+  /** Provides the function signature independently of its body. */
   const PrototypeAST& getProto() const { return *Proto; }
+  /** Provides access to the expressions that make up the body. */
   const BlockExprAST& getBody() const { return *Body; }
+  /** Reports whether a function body is present rather than just a declaration. */
   bool hasBody() const { return Body != nullptr; }
 
+  /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "Lambda"; }
 };
 

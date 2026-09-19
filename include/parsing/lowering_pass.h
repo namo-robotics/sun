@@ -10,19 +10,27 @@
 
 #include "ast.h"
 
+/** Turns source text into syntax trees and provides source formatting. */
 namespace sun::parsing {
 
+/** Rewrites higher-level syntax into the simpler forms used by later passes. */
 class LoweringPass {
  public:
-  // Lower the program in place (recursive, bottom-up)
+  /**
+   * Lower the program in place (recursive, bottom-up)
+   */
   void run(sun::ast::BlockExprAST& program);
 
-  // True if any string interpolation was desugared by this pass
+  /**
+   * True if any string interpolation was desugared by this pass
+   */
   bool usedInterpolation() const { return usedInterpolation_; }
 
  private:
-  // Recurse into the slot's children, then rewrite the slot itself if it
-  // holds a node the core pipeline doesn't understand
+  /**
+   * Recurse into the slot's children, then rewrite the slot itself if it
+   * holds a node the core pipeline doesn't understand
+   */
   void lowerSlot(std::unique_ptr<sun::ast::ExprAST>& slot);
 
   bool usedInterpolation_ = false;

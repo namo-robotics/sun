@@ -1,6 +1,7 @@
 // Listener: accepts one connection and prints received message
 using std;
 
+/** Runs the example that exchanges messages over a TCP connection. */
 function main() i32 {
   var alloc = make_heap_allocator();
   var buf = ContiguousBuffer<u8>(alloc, 256);

@@ -8,6 +8,7 @@
 #include "ast/class_definition_ast.h"
 #include "semantic_analysis/types.h"
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 /** Supplies default constructors and lowers field defaults before body

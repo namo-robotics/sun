@@ -19,6 +19,7 @@
 
 using sun::driver::executeString;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 // A free factory over a pack, the shape `HeapAllocator.create<T>` has as a
@@ -43,6 +44,7 @@ constexpr const char* kPoint = R"(
     }
 )";
 
+/** Adds shared declarations to the variadic-function test source. */
 std::string source(const std::string& body) {
   return std::string(kPoint) + kMake + body;
 }

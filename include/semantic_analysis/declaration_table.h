@@ -11,6 +11,7 @@
 #include "semantic_analysis/portable_declaration_key.h"
 #include "support/error.h"
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 using sun::support::logAndThrowError;
 
@@ -58,9 +59,13 @@ class DeclarationTable {
  public:
   /** Start an independent table whose identities cannot be copied. */
   DeclarationTable() = default;
+  /** Disallows copying so the owned state cannot be duplicated. */
   DeclarationTable(const DeclarationTable&) = delete;
+  /** Disallows assignment so ownership and object identity cannot be duplicated. */
   DeclarationTable& operator=(const DeclarationTable&) = delete;
+  /** Creates an instance with its default state. */
   DeclarationTable(DeclarationTable&&) = default;
+  /** Transfers the stored state from another instance during move assignment. */
   DeclarationTable& operator=(DeclarationTable&&) = default;
 
   /** Identify this session even after a previous table has been destroyed. */

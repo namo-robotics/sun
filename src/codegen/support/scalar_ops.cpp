@@ -5,8 +5,10 @@
 
 using sun::semantic_analysis::TypePtr;
 
+/** Provides shared diagnostics, source tracking, and compiler utilities. */
 namespace sun::codegen::support {
 
+/** Extends an integer to the requested width using its signedness. */
 llvm::Value* extendInt(llvm::IRBuilder<>& builder, llvm::Value* value,
                        llvm::Type* destTy, const TypePtr& sourceType) {
   auto srcType = sun::semantic_analysis::unwrapRef(sourceType);
@@ -15,6 +17,7 @@ llvm::Value* extendInt(llvm::IRBuilder<>& builder, llvm::Value* value,
              : builder.CreateSExt(value, destTy, "widen");
 }
 
+/** Emits integer division or remainder with the required error checks. */
 llvm::Value* createIntDivRem(llvm::IRBuilder<>& builder, llvm::Value* L,
                              llvm::Value* R, bool isModulo, bool isUnsigned) {
   if (isModulo) {
@@ -25,6 +28,7 @@ llvm::Value* createIntDivRem(llvm::IRBuilder<>& builder, llvm::Value* L,
                     : builder.CreateSDiv(L, R, "divtmp");
 }
 
+/** Widens numeric operands to a compatible LLVM representation when needed. */
 llvm::Value* widenNumericIfNeeded(llvm::IRBuilder<>& builder,
                                   sun::codegen::LLVMTypeResolver& types,
                                   llvm::Value* argVal, const TypePtr& paramType,

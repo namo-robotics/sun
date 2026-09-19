@@ -10,13 +10,16 @@
 #include "semantic_analysis/portable_declaration_key.h"
 #include "support/position.h"
 
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 
-// Type annotation structure for parsed type info
-// Supports: i32, f64, bool, void, ptr<T>, ref T, function, lambda
-// Generic types: ClassName<T, U> for class instantiation
-// Array types: array<T, N> or array<T, M, N> for fixed-size arrays
-// Error union types: T, error (value or error)
+/**
+ * Type annotation structure for parsed type info
+ * Supports: i32, f64, bool, void, ptr&lt;T&gt;, ref T, function, lambda
+ * Generic types: ClassName<T, U> for class instantiation
+ * Array types: array<T, N> or array<T, M, N> for fixed-size arrays
+ * Error union types: T, error (value or error)
+ */
 struct TypeAnnotation {
   std::optional<sun::semantic_analysis::PortableDeclarationKey> declarationKey;
   std::string baseName;  // "i32", "f64", "ptr", "fn", "lambda", "array", etc.
@@ -58,8 +61,11 @@ struct TypeAnnotation {
   // serialized
   sun::support::Position span{};
 
+  /** Creates a type annotation from a name or an existing annotation. */
   TypeAnnotation() = default;
+  /** Creates a type annotation from a name or an existing annotation. */
   TypeAnnotation(std::string name) : baseName(std::move(name)) {}
+  /** Creates a type annotation from a name or an existing annotation. */
   TypeAnnotation(const TypeAnnotation& other)
       : declarationKey(other.declarationKey),
         baseName(other.baseName),
@@ -84,6 +90,7 @@ struct TypeAnnotation {
       typeArguments.push_back(std::make_unique<TypeAnnotation>(*typeArg));
     }
   }
+  /** Replaces the stored state with a copy of another instance. */
   TypeAnnotation& operator=(const TypeAnnotation& other) {
     if (this != &other) {
       declarationKey = other.declarationKey;
@@ -117,30 +124,42 @@ struct TypeAnnotation {
     }
     return *this;
   }
+  /** Creates a type annotation from a name or an existing annotation. */
   TypeAnnotation(TypeAnnotation&&) = default;
+  /** Transfers the stored state from another instance during move assignment. */
   TypeAnnotation& operator=(TypeAnnotation&&) = default;
 
+  /** Reports whether this syntax node represents a raw-pointer annotation. */
   bool isRawPointer() const {
     return baseName == "raw_ptr";
   }  // raw_ptr<T> non-owning pointer for C interop
+  /** Reports whether this syntax node represents a static-pointer annotation. */
   bool isStaticPointer() const {
     return baseName == "static_ptr";
   }  // static_ptr<T> pointer to immortal static data
+  /** Reports whether this syntax node represents a borrowed-reference annotation. */
   bool isReference() const {
     return baseName == "ref";
   }  // ref(T) reference type
+  /** Reports whether this syntax node represents a reference without write access. */
   bool isConstReference() const { return isReference() && constRef; }
+  /** Reports whether this syntax node represents a function definition. */
   bool isFunction() const {
     return baseName == "fn";
   }  // function () T thin function-pointer type
+  /** Reports whether this syntax node represents a lambda expression. */
   bool isLambda() const {
     return baseName == "lambda";
   }  // () => {} anonymous function type
+  /** Reports whether this syntax node represents an array annotation. */
   bool isArray() const {
     return baseName == "array";
   }  // array<T, N> fixed-size array
+  /** Reports whether this value can be invoked as a function. */
   bool isCallable() const { return isFunction() || isLambda(); }
+  /** Reports whether this declaration still has unbound type parameters. */
   bool isGeneric() const { return !typeArguments.empty(); }
+  /** Reports whether this syntax node represents a value-or-error type. */
   bool isErrorUnion() const { return canError; }
 
   /** Compare type structure and resolved names, ignoring source locations. */
@@ -169,6 +188,7 @@ struct TypeAnnotation {
            lifetimeArguments == other.lifetimeArguments;
   }
 
+  /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const {
     if (isArray() && elementType) {
       std::string result = "array<" + elementType->toString();

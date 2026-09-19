@@ -12,6 +12,7 @@ using sun::ast::BlockExprAST;
 using sun::ast::PrototypeAST;
 using sun::support::logAndThrowError;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 void BodyAnalyzer::analyzeBlock(BlockExprAST& block) {
@@ -20,9 +21,11 @@ void BodyAnalyzer::analyzeBlock(BlockExprAST& block) {
   }
 }
 
-// Sun has no implicit returns: a function whose signature promises a value
-// must leave through an explicit `return` (or a throw) on every path. Checked
-// after the body is analyzed, so match discriminants carry their types.
+/**
+ * Sun has no implicit returns: a function whose signature promises a value
+ * must leave through an explicit `return` (or a throw) on every path. Checked
+ * after the body is analyzed, so match discriminants carry their types.
+ */
 static void checkAllPathsReturn(const PrototypeAST& proto,
                                 const BlockExprAST& body,
                                 const TypePtr& returnType,

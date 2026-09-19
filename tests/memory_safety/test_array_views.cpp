@@ -11,6 +11,7 @@
 
 using sun::driver::executeString;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 const char* kViewRule = "may only be used behind ref";

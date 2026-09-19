@@ -32,26 +32,35 @@
 
 #include "codegen/abi/c_abi.h"
 
+/** Lowers C calls and values using the AArch64 calling convention. */
 namespace sun::codegen::abi::aapcs64 {
 
-// Which flavor of AAPCS64 to apply. Aggregate rules are shared; Darwin adds
-// caller-side integer extension and drops the HFA alignstack attribute.
+/**
+ * Which flavor of AAPCS64 to apply. Aggregate rules are shared; Darwin adds
+ * caller-side integer extension and drops the HFA alignstack attribute.
+ */
 enum class Variant { Elf, Darwin };
 
-/// Classify one type as it would be passed as a parameter. `isSigned` only
-/// matters for the Darwin variant's small-integer extension.
+/**
+ * Classify one type as it would be passed as a parameter. `isSigned` only
+ * matters for the Darwin variant's small-integer extension.
+ */
 sun::codegen::abi::ArgLowering lowerArgument(llvm::Type* type,
                                              const llvm::DataLayout& dl,
                                              Variant variant = Variant::Elf,
                                              bool isSigned = false);
 
-/// Classify one type as it would be returned.
+/**
+ * Classify one type as it would be returned.
+ */
 sun::codegen::abi::ArgLowering lowerReturn(llvm::Type* type,
                                            const llvm::DataLayout& dl,
                                            Variant variant = Variant::Elf,
                                            bool isSigned = false);
 
-/// Classify a whole signature.
+/**
+ * Classify a whole signature.
+ */
 sun::codegen::abi::SignatureLowering lowerCSignature(
     llvm::Type* returnType, llvm::ArrayRef<llvm::Type*> paramTypes,
     const llvm::DataLayout& dl, Variant variant = Variant::Elf,

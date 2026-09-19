@@ -15,9 +15,10 @@
 #include <optional>
 #include <string>
 
+/** Coordinates compilation, dependency loading, linking, and program execution. */
 namespace sun::driver {
 
-/*
+/**
  * The facts a later run needs to decide there is nothing to do. The two
  * flags say which artifacts the program yields, which is otherwise known
  * only after compiling it: a program without tests has no test binary to
@@ -29,16 +30,22 @@ struct BuildRecord {
   bool hasExecutable = true;  // an executable is built alongside
 };
 
-// Add `record` to `module` so that it ends up in the object file, and in any
-// executable linked from it. Call once per module, just before emitting it.
+/**
+ * Add `record` to `module` so that it ends up in the object file, and in any
+ * executable linked from it. Call once per module, just before emitting it.
+ */
 void embedBuildRecord(llvm::Module& module, const BuildRecord& record);
 
-// The record inside the executable or object file at `path`. Empty when the
-// file is missing, is not an object file, or carries no record.
+/**
+ * The record inside the executable or object file at `path`. Empty when the
+ * file is missing, is not an object file, or carries no record.
+ */
 std::optional<BuildRecord> readBuildRecord(const std::string& path);
 
-// The input hash a .moon bundle was built from. Empty when the file is
-// missing or is not a readable bundle.
+/**
+ * The input hash a .moon bundle was built from. Empty when the file is
+ * missing or is not a readable bundle.
+ */
 std::optional<std::string> readMoonInputHash(const std::string& path);
 
 }  // namespace sun::driver

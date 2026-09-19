@@ -111,9 +111,11 @@ export function activateTestExplorer(
   context.subscriptions.push(controller);
   context.subscriptions.push(output);
 
+  /** Shows an entrypoint relative to the workspace when possible. */
   const entrypointLabel = (entrypoint: string): string =>
     workspaceFolder ? path.relative(workspaceFolder, entrypoint) : entrypoint;
 
+  /** Creates an editor test item with its source range and runnable target. */
   function makeTestItem(
     entrypoint: string,
     uri: vscode.Uri,
@@ -134,6 +136,7 @@ export function activateTestExplorer(
     return item;
   }
 
+  /** Groups discovered tests under their source file in the test explorer. */
   function makeFileItem(
     entrypoint: string,
     uri: vscode.Uri,
@@ -219,6 +222,7 @@ export function activateTestExplorer(
       const watcher = vscode.workspace.createFileSystemWatcher(
         new vscode.RelativePattern(vscode.Uri.file(path.dirname(absolutePath)), '*')
       );
+      /** Refreshes discovery when the configured file changes. */
       const changed = (uri: vscode.Uri) => {
         if (path.resolve(uri.fsPath) === absolutePath) void refreshWorkspace();
       };
@@ -267,6 +271,7 @@ export function activateTestExplorer(
     return leaves;
   }
 
+  /** Runs the selected Sun tests and reports their progress to the editor. */
   async function runTests(
     request: vscode.TestRunRequest,
     token: vscode.CancellationToken
@@ -340,6 +345,7 @@ export function activateTestExplorer(
             env,
             detached: process.platform !== 'win32',
           });
+          /** Signals the test runner and its process group when cancellation is requested. */
           const signalRunner = (signal: NodeJS.Signals) => {
             if (child.exitCode !== null || child.signalCode !== null) return;
             try {
@@ -355,6 +361,7 @@ export function activateTestExplorer(
 
           let done = false;
           let killTimer: NodeJS.Timeout | undefined;
+          /** Settles a test run once and releases its cancellation resources. */
           const finish = (settle: () => void) => {
             if (done) return;
             done = true;
@@ -370,6 +377,7 @@ export function activateTestExplorer(
             signalRunner('SIGTERM');
             killTimer = setTimeout(() => signalRunner('SIGKILL'), 2000);
           });
+          /** Marks tests that never completed as skipped and clears their pending state. */
           const skipOutstanding = () => {
             for (const item of byName.values()) run.skipped(item);
             byName.clear();
@@ -377,6 +385,7 @@ export function activateTestExplorer(
 
           let buffered = '';
           let allOutput = '';
+          /** Updates editor test results from one line of runner output. */
           const handleLine = (line: string) => {
             run.appendOutput(line + '\r\n');
             const pass = /^PASS (\S+)$/.exec(line);
@@ -397,6 +406,7 @@ export function activateTestExplorer(
               }
             }
           };
+          /** Buffers runner output and processes each complete result line. */
           const consume = (chunk: Buffer) => {
             allOutput += chunk.toString();
             buffered += chunk.toString();

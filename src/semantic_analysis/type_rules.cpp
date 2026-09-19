@@ -14,14 +14,17 @@ using sun::ast::NumberExprAST;
 using sun::parsing::TokenKind;
 using sun::support::logAndThrowError;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 using sun::semantic_analysis::unwrapRef;
 
 }  // namespace sun::semantic_analysis
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
+/** Reports whether an integer magnitude and sign fit the target numeric type. */
 bool literalFitsInType(uint64_t magnitude, bool negative,
                        sun::semantic_analysis::Type::Kind kind) {
   // A signed type of `bits` width holds -2^(bits-1) .. 2^(bits-1)-1; the
@@ -57,9 +60,12 @@ bool literalFitsInType(uint64_t magnitude, bool negative,
   }
 }
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// Bit width of an integer primitive, 0 for anything else.
+/**
+ * Bit width of an integer primitive, 0 for anything else.
+ */
 int integerBitWidth(const TypePtr& type) {
   if (!type || !type->isPrimitive()) return 0;
   switch (type->getKind()) {
@@ -80,8 +86,10 @@ int integerBitWidth(const TypePtr& type) {
   }
 }
 
-// True for the six comparison operators, whose result is a bool regardless of
-// what the operands are.
+/**
+ * True for the six comparison operators, whose result is a bool regardless of
+ * what the operands are.
+ */
 bool isComparisonOp(TokenKind op) {
   return op == TokenKind::LESS || op == TokenKind::GREATER ||
          op == TokenKind::LESS_EQUAL || op == TokenKind::GREATER_EQUAL ||
@@ -90,6 +98,7 @@ bool isComparisonOp(TokenKind op) {
 
 }  // namespace
 
+/** Coerces a fitting integer literal to the requested type without accepting overflow. */
 bool tryCoerceIntegerLiteral(ExprAST* expr, TypePtr targetType,
                              bool throwOnFail) {
   if (!expr || !targetType || !targetType->isPrimitive()) return false;
@@ -121,9 +130,11 @@ bool tryCoerceIntegerLiteral(ExprAST* expr, TypePtr targetType,
   return false;
 }
 
-// A char is a Unicode scalar value, not a small number: it compares with
-// another char and does nothing else. Both are an i32 underneath, so without
-// this check `'a' + 1` and `c == 65` would quietly take the integer path.
+/**
+ * A char is a Unicode scalar value, not a small number: it compares with
+ * another char and does nothing else. Both are an i32 underneath, so without
+ * this check `'a' + 1` and `c == 65` would quietly take the integer path.
+ */
 void checkCharOperands(const sun::ast::BinaryExprAST& binExpr) {
   const ExprAST* lhs = binExpr.getLHS();
   const ExprAST* rhs = binExpr.getRHS();
@@ -157,11 +168,13 @@ void checkCharOperands(const sun::ast::BinaryExprAST& binExpr) {
   }
 }
 
-// An untyped numeric literal takes its type from context: the type the
-// surrounding expression expects, or failing that the operand it is combined
-// with. Without this the literal keeps its default i32/f64 type and codegen
-// widens the other operand to match, so `u8_var + 32` would produce an i32
-// value where semantic analysis promised a u8.
+/**
+ * An untyped numeric literal takes its type from context: the type the
+ * surrounding expression expects, or failing that the operand it is combined
+ * with. Without this the literal keeps its default i32/f64 type and codegen
+ * widens the other operand to match, so `u8_var + 32` would produce an i32
+ * value where semantic analysis promised a u8.
+ */
 void coerceBinaryLiteralOperands(const sun::ast::BinaryExprAST& binExpr,
                                  const TypePtr& expectedType) {
   // Returns true if the literal took the target type
@@ -216,6 +229,7 @@ void coerceBinaryLiteralOperands(const sun::ast::BinaryExprAST& binExpr,
   coerceNumericLiteral(lhs, rhs->getResolvedType());
 }
 
+/** Chooses the common numeric type used by a binary operation. */
 TypePtr promoteBinaryOperands(const TypePtr& lhsType, const TypePtr& rhsType) {
   auto lhs = unwrapRef(lhsType);
   auto rhs = unwrapRef(rhsType);
@@ -233,6 +247,7 @@ TypePtr promoteBinaryOperands(const TypePtr& lhsType, const TypePtr& rhsType) {
   return lhs;
 }
 
+/** Finds a compatible result type for the two conditional branches. */
 TypePtr unifyTernaryTypes(const TypePtr& thenType, const TypePtr& elseType,
                           std::optional<sun::support::Position> loc) {
   if (!thenType || !elseType) {
@@ -264,6 +279,7 @@ TypePtr unifyTernaryTypes(const TypePtr& thenType, const TypePtr& elseType,
 // Type assignability checking
 // -------------------------------------------------------------------
 
+/** Reports whether a value of one type can be assigned to another. */
 bool isAssignableTo(const TypePtr& from, const TypePtr& to) {
   if (!from || !to) return false;
 
@@ -425,6 +441,7 @@ bool isAssignableTo(const TypePtr& from, const TypePtr& to) {
   return false;
 }
 
+/** Reports whether an expression denotes storage that can be borrowed. */
 bool isBorrowableLvalue(const ExprAST& target) {
   ASTNodeType kind = target.getType();
   // A conditional picks one of two slots at runtime; it borrows if both
@@ -438,6 +455,7 @@ bool isBorrowableLvalue(const ExprAST& target) {
          kind == ASTNodeType::MEMBER_ACCESS || kind == ASTNodeType::INDEX;
 }
 
+/** Reports whether an expression always leaves the current control-flow path. */
 bool alwaysExits(const ExprAST& expr) {
   switch (expr.getType()) {
     case ASTNodeType::RETURN:

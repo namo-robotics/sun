@@ -28,6 +28,7 @@ using sun::driver::executeString;
 using sun::driver::initTestEnvironment;
 using sun::support::SunError;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 /** Write independent source files for one import-scoping test. */
@@ -318,6 +319,7 @@ TEST(Modules_FileImports, targeted_import_does_not_import_other_symbols) {
                SunError);
 }
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 /** Inspect canonical module annotations throughout exported metadata. */
 void visitModuleReferences(
@@ -372,6 +374,7 @@ class MoonExactTypes : public ::testing::Test {
     return output.string();
   }
 
+  /** Prepares the files and compiler state needed by each test. */
   void SetUp() override {
     initTestEnvironment();
     dir = std::filesystem::current_path() / "tmp" / "exact_types" /
@@ -756,12 +759,14 @@ TEST_F(MoonExactTypes, old_format_is_rejected) {
 
 TEST(MoonMetadata,
      canonical_type_round_trip_preserves_spelling_and_qualifiers) {
+  /** Identify a nominal type without recursively expanding its fields. */
   sun::ast::TypeAnnotation nominal("build_alias.Value");
   nominal.declarationKey =
       PortableDeclarationKey::original(std::string(64, 'a'), 3);
   nominal.typeArguments.push_back(
       std::make_unique<sun::ast::TypeAnnotation>("T"));
   nominal.lifetimeArguments = {"a"};
+  /** Identify a mutable or immutable reference to another type. */
   sun::ast::TypeAnnotation reference("ref");
   reference.constRef = true;
   reference.lifetimeName = "a";
@@ -931,6 +936,7 @@ TEST_F(MoonExactTypes, explicit_nested_alias_preserves_ordinary_children) {
 
 TEST(MoonMetadata, module_reference_round_trip_preserves_source_spelling) {
   auto module = PortableDeclarationKey::original(std::string(64, 'a'), 4);
+  /** Identify a mutable or immutable reference to another type. */
   sun::ast::VariableReferenceAST reference("build_alias.inner");
   reference.setModuleDeclaration(module);
   auto clone = reference.clone();
@@ -1157,7 +1163,9 @@ TEST_F(MoonExactTypes,
   auto key = reader->listModules()[0];
   auto& cache = sun::moon_bundling::LibraryCache::instance();
   cache.clear();
+  /** Clears the shared library cache when the fixture leaves scope. */
   struct ResetCache {
+    /** Clears the shared library cache after the test finishes. */
     ~ResetCache() { sun::moon_bundling::LibraryCache::instance().clear(); }
   } reset;
   cache.addSearchPath(dir);

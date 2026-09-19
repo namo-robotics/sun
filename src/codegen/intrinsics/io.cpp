@@ -17,15 +17,18 @@ using sun::support::logAndThrowError;
 
 using namespace llvm;
 
+/** Provides the generator for built-in operations. */
 namespace sun::codegen::intrinsics {
 
 // ===================================================================
 // File I/O built-in helpers (libc calls; see include/codegen/intrinsics/libc.h)
 // ===================================================================
 
-// -------------------------------------------------------------------
-// __sun_file_open: open(path, flags, mode) -> fd
-// -------------------------------------------------------------------
+/**
+ * -------------------------------------------------------------------
+ * __sun_file_open: open(path, flags, mode) -> fd
+ * -------------------------------------------------------------------
+ */
 static Function* getOrCreateFileOpenHelper(llvm::Module* module,
                                            LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_file_open");
@@ -73,9 +76,11 @@ static Function* getOrCreateFileOpenHelper(llvm::Module* module,
   return func;
 }
 
-// -------------------------------------------------------------------
-// __sun_file_close: close(fd) -> result
-// -------------------------------------------------------------------
+/**
+ * -------------------------------------------------------------------
+ * __sun_file_close: close(fd) -> result
+ * -------------------------------------------------------------------
+ */
 static Function* getOrCreateFileCloseHelper(llvm::Module* module,
                                             LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_file_close");
@@ -96,10 +101,12 @@ static Function* getOrCreateFileCloseHelper(llvm::Module* module,
   return func;
 }
 
-// -------------------------------------------------------------------
-// __sun_file_write: write(fd, str) -> bytes_written
-// Writes a null-terminated string to the given fd.
-// -------------------------------------------------------------------
+/**
+ * -------------------------------------------------------------------
+ * __sun_file_write: write(fd, str) -> bytes_written
+ * Writes a null-terminated string to the given fd.
+ * -------------------------------------------------------------------
+ */
 static Function* getOrCreateFileWriteHelper(llvm::Module* module,
                                             LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_file_write");
@@ -151,11 +158,13 @@ static Function* getOrCreateFileWriteHelper(llvm::Module* module,
   return func;
 }
 
-// -------------------------------------------------------------------
-// __sun_file_read: read(fd, count) -> string
-// Reads up to 'count' bytes from fd, returns a malloc'd null-terminated
-// buffer the caller owns.
-// -------------------------------------------------------------------
+/**
+ * -------------------------------------------------------------------
+ * __sun_file_read: read(fd, count) -> string
+ * Reads up to 'count' bytes from fd, returns a malloc'd null-terminated
+ * buffer the caller owns.
+ * -------------------------------------------------------------------
+ */
 static Function* getOrCreateFileReadHelper(llvm::Module* module,
                                            LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_file_read");
@@ -309,7 +318,9 @@ Value* IntrinsicsGenerator::codegenFileRead(const CallExprAST& expr) {
 // Extended file I/O helper functions
 // -------------------------------------------------------------------
 
-// __sun_lseek: lseek(fd, offset, whence) -> new_offset
+/**
+ * __sun_lseek: lseek(fd, offset, whence) -> new_offset
+ */
 static Function* getOrCreateLseekHelper(llvm::Module* module,
                                         LLVMContext& llvmCtx) {
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
@@ -319,8 +330,10 @@ static Function* getOrCreateLseekHelper(llvm::Module* module,
       {i32Ty, i64Ty, i32Ty}, i64Ty);
 }
 
-// __sun_fstat: fstat(fd, stat_buf) -> result. The buffer layout is the
-// target libc's struct stat; the Sun-side caller owns that interpretation.
+/**
+ * __sun_fstat: fstat(fd, stat_buf) -> result. The buffer layout is the
+ * target libc's struct stat; the Sun-side caller owns that interpretation.
+ */
 static Function* getOrCreateFstatHelper(llvm::Module* module,
                                         LLVMContext& llvmCtx) {
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
@@ -330,7 +343,9 @@ static Function* getOrCreateFstatHelper(llvm::Module* module,
       {i32Ty, ptrTy}, i32Ty);
 }
 
-// __sun_fsync: fsync(fd) -> result
+/**
+ * __sun_fsync: fsync(fd) -> result
+ */
 static Function* getOrCreateFsyncHelper(llvm::Module* module,
                                         LLVMContext& llvmCtx) {
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
@@ -339,7 +354,9 @@ static Function* getOrCreateFsyncHelper(llvm::Module* module,
       i32Ty);
 }
 
-// __sun_ftruncate: ftruncate(fd, length) -> result
+/**
+ * __sun_ftruncate: ftruncate(fd, length) -> result
+ */
 static Function* getOrCreateFtruncateHelper(llvm::Module* module,
                                             LLVMContext& llvmCtx) {
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
@@ -349,7 +366,9 @@ static Function* getOrCreateFtruncateHelper(llvm::Module* module,
       {i32Ty, i64Ty}, i32Ty);
 }
 
-// __sun_unlink: unlink(path) -> result
+/**
+ * __sun_unlink: unlink(path) -> result
+ */
 static Function* getOrCreateUnlinkHelper(llvm::Module* module,
                                          LLVMContext& llvmCtx) {
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
@@ -359,7 +378,9 @@ static Function* getOrCreateUnlinkHelper(llvm::Module* module,
       i32Ty);
 }
 
-// __sun_rename: rename(old_path, new_path) -> result
+/**
+ * __sun_rename: rename(old_path, new_path) -> result
+ */
 static Function* getOrCreateRenameHelper(llvm::Module* module,
                                          LLVMContext& llvmCtx) {
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
@@ -369,7 +390,9 @@ static Function* getOrCreateRenameHelper(llvm::Module* module,
       {ptrTy, ptrTy}, i32Ty);
 }
 
-// __sun_mkdir: mkdir(path, mode) -> result
+/**
+ * __sun_mkdir: mkdir(path, mode) -> result
+ */
 static Function* getOrCreateMkdirHelper(llvm::Module* module,
                                         LLVMContext& llvmCtx) {
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
@@ -379,7 +402,9 @@ static Function* getOrCreateMkdirHelper(llvm::Module* module,
       {ptrTy, i32Ty}, i32Ty);
 }
 
-// __sun_rmdir: rmdir(path) -> result
+/**
+ * __sun_rmdir: rmdir(path) -> result
+ */
 static Function* getOrCreateRmdirHelper(llvm::Module* module,
                                         LLVMContext& llvmCtx) {
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
@@ -389,7 +414,9 @@ static Function* getOrCreateRmdirHelper(llvm::Module* module,
       i32Ty);
 }
 
-// __sun_write: write(fd, buf, len) -> bytes_written
+/**
+ * __sun_write: write(fd, buf, len) -> bytes_written
+ */
 static Function* getOrCreateWriteHelper(llvm::Module* module,
                                         LLVMContext& llvmCtx) {
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
@@ -400,7 +427,9 @@ static Function* getOrCreateWriteHelper(llvm::Module* module,
       {i32Ty, ptrTy, i64Ty}, i64Ty);
 }
 
-// __sun_read: read(fd, buf, len) -> bytes_read
+/**
+ * __sun_read: read(fd, buf, len) -> bytes_read
+ */
 static Function* getOrCreateReadHelper(llvm::Module* module,
                                        LLVMContext& llvmCtx) {
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);

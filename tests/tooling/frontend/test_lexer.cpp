@@ -21,9 +21,12 @@ using sun::parsing::Token;
 using sun::parsing::TokenKind;
 using sun::support::SunError;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
-// Lex a source string to EOF and return every token (comments included).
+/**
+ * Lex a source string to EOF and return every token (comments included).
+ */
 std::vector<Token> lexAll(const std::string& source, bool emitComments = true) {
   std::istringstream ss(source);
   Lexer lexer(ss);
@@ -39,6 +42,7 @@ std::vector<Token> lexAll(const std::string& source, bool emitComments = true) {
   return tokens;
 }
 
+/** Extracts token categories for lexer assertions. */
 std::vector<TokenKind> kindsOf(const std::string& source,
                                bool emitComments = false) {
   std::vector<TokenKind> kinds;
@@ -160,7 +164,9 @@ TEST(Tooling_Frontend_Lexer, ColumnsCountBytes) {
 // Character and byte literals
 // ------------------------------------------------------------------
 
-// Decoded value of the single literal in `source`.
+/**
+ * Decoded value of the single literal in `source`.
+ */
 static int64_t charValueOf(const std::string& source) {
   auto tokens = lexAll(source);
   EXPECT_GE(tokens.size(), 1u);

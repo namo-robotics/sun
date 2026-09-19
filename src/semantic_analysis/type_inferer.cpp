@@ -33,14 +33,18 @@ using sun::ast::VariableReferenceAST;
 using sun::parsing::TokenKind;
 using sun::support::logAndThrowError;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 using sun::semantic_analysis::promoteBinaryOperands;
 using sun::semantic_analysis::unifyTernaryTypes;
 using sun::semantic_analysis::unwrapRef;
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
-// Resolve an exported module through its portable declaration identity.
+/**
+ * Resolve an exported module through its portable declaration identity.
+ */
 TypePtr inferModuleReference(const ExprAST& expr, SemanticContext& context) {
   auto id =
       context.types()->declarations.findPortable(*expr.getModuleDeclaration());

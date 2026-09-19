@@ -15,6 +15,7 @@
 #include "codegen/llvm_type_resolver.h"
 #include "semantic_analysis/types.h"
 
+/** Provides shared diagnostics, source tracking, and compiler utilities. */
 namespace sun::codegen::support {
 using sun::semantic_analysis::TypePtr;
 

@@ -7,37 +7,49 @@
 #include "driver/compiler.h"
 #include "moon_bundling/moon_import.h"
 
+/** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// An early exit that reports a mistake on stderr.
+/**
+ * An early exit that reports a mistake on stderr.
+ */
 EarlyExit makeFailure(const std::string& text, int exitCode = 1) {
   return EarlyExit{exitCode, EarlyExit::Stream::Err, text};
 }
 
-/*
+/**
  * Walks the argument list one argument at a time.
  */
 class ArgumentCursor {
  public:
+  /** Borrows the argument list and starts reading at its first element. */
   explicit ArgumentCursor(const std::vector<std::string>& args) : args_(args) {}
 
+  /** Reports whether all command-line arguments have been consumed. */
   bool atEnd() const { return index_ >= args_.size(); }
+  /** Returns the current command-line argument without advancing. */
   const std::string& current() const { return args_[index_]; }
+  /** Moves the cursor to the next command-line argument. */
   void advance() { ++index_; }
 
-  // True when the current argument is `flag` and another argument follows.
-  // That argument becomes the value, whatever it looks like, and the cursor
-  // moves onto it. A flag with nothing after it is left alone, so the caller
-  // goes on to report it as an unknown option.
+  /**
+   * True when the current argument is `flag` and another argument follows.
+   * That argument becomes the value, whatever it looks like, and the cursor
+   * moves onto it. A flag with nothing after it is left alone, so the caller
+   * goes on to report it as an unknown option.
+   */
   bool takeValueOf(const std::string& flag, std::string& value) {
     if (current() != flag || index_ + 1 >= args_.size()) return false;
     value = args_[++index_];
     return true;
   }
 
-  // Every argument after the current one.
+  /**
+   * Every argument after the current one.
+   */
   std::vector<std::string> getRemaining() const {
     return std::vector<std::string>(args_.begin() + index_ + 1, args_.end());
   }
@@ -47,9 +59,11 @@ class ArgumentCursor {
   size_t index_ = 0;
 };
 
-// Handle the current argument if it is one of the flags every command
-// accepts. Returns true when it was; a malformed value is reported through
-// `failure`.
+/**
+ * Handle the current argument if it is one of the flags every command
+ * accepts. Returns true when it was; a malformed value is reported through
+ * `failure`.
+ */
 bool parseSharedOption(ArgumentCursor& cursor, SharedOptions& shared,
                        std::optional<EarlyExit>& failure) {
   const std::string& arg = cursor.current();
@@ -88,12 +102,14 @@ bool parseSharedOption(ArgumentCursor& cursor, SharedOptions& shared,
   return true;
 }
 
+/** Reports whether an argument begins with an option prefix. */
 bool looksLikeOption(const std::string& arg) {
   return !arg.empty() && arg[0] == '-';
 }
 
 }  // namespace
 
+/** Parses command-line arguments into build run options and reports early exits. */
 std::optional<EarlyExit> parseBuildRunArguments(
     const std::string& programName, const std::vector<std::string>& args,
     BuildRunOptions& options) {
@@ -168,6 +184,7 @@ std::optional<EarlyExit> parseBuildRunArguments(
   return validateBuildRunOptions(options, programName);
 }
 
+/** Checks for incompatible or incomplete build and execution options. */
 std::optional<EarlyExit> validateBuildRunOptions(
     const BuildRunOptions& options, const std::string& programName) {
   bool linksExecutable = options.compileMode && !options.emitObjOnly;
@@ -227,6 +244,7 @@ std::optional<EarlyExit> validateBuildRunOptions(
   return std::nullopt;
 }
 
+/** Parses command-line arguments into test options and reports early exits. */
 std::optional<EarlyExit> parseTestArguments(
     const std::vector<std::string>& args, TestOptions& options) {
   for (ArgumentCursor cursor(args); !cursor.atEnd(); cursor.advance()) {
@@ -261,6 +279,7 @@ std::optional<EarlyExit> parseTestArguments(
   return std::nullopt;
 }
 
+/** Parses command-line arguments into fmt options and reports early exits. */
 std::optional<EarlyExit> parseFmtArguments(const std::vector<std::string>& args,
                                            FmtOptions& options) {
   for (const std::string& arg : args) {

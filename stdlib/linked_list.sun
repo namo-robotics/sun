@@ -22,18 +22,24 @@
 // LinkedListNode<T> - Doubly-linked node
 // ============================================================================
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** Owns one list element and links it to its neighboring nodes. */
   public class LinkedListNode<T> {
     var value: T;
     var next: raw_ptr<LinkedListNode<T>> = null;
     var prev: raw_ptr<LinkedListNode<T>> = null;
 
-    // Build a detached node that owns the given value.
+    /**
+     * Build a detached node that owns the given value.
+     */
     init(v: T) {
       this.value = v;
     }
 
-    // Borrow the stored value; the node keeps ownership
+    /**
+     * Borrow the stored value; the node keeps ownership
+     */
     public const method get_value() ref T {
       return unsafe { _to_ref<T>(_address_of<T>(this.value)); };
     }
@@ -43,39 +49,53 @@ public module std {
       return unsafe { _load<T>(_address_of<T>(this.value), 0); };
     }
 
-    // Assign a new payload, destroying the previous value.
+    /**
+     * Assign a new payload, destroying the previous value.
+     */
     public method set_value(v: T) void {
       this.value = v;
     }
 
-    // Replace the stored value, dropping the old one first (no-op for
-    // non-owning types)
+    /**
+     * Replace the stored value, dropping the old one first (no-op for
+     * non-owning types)
+     */
     public method replace_value(v: T) void {
       this.value = v;
     }
 
-    // Drop the stored value in place (used when freeing nodes that still own
-    // their payload)
+    /**
+     * Drop the stored value in place (used when freeing nodes that still own
+     * their payload)
+     */
     method drop_value() void {
       unsafe { _deinit<T>(_address_of<T>(this.value)); };
     }
 
-    // The node after this one, or null at the tail.
+    /**
+     * The node after this one, or null at the tail.
+     */
     public const method get_next() raw_ptr<LinkedListNode<T>> {
       return this.next;
     }
 
-    // The node before this one, or null at the head.
+    /**
+     * The node before this one, or null at the head.
+     */
     public const method get_prev() raw_ptr<LinkedListNode<T>> {
       return this.prev;
     }
 
-    // Point this node at its successor. Does not touch the other node's links.
+    /**
+     * Point this node at its successor. Does not touch the other node's links.
+     */
     public method set_next(n: raw_ptr<LinkedListNode<T>>) void {
       this.next = n;
     }
 
-    // Point this node at its predecessor. Does not touch the other node's links.
+    /**
+     * Point this node at its predecessor. Does not touch the other node's links.
+     */
     public method set_prev(p: raw_ptr<LinkedListNode<T>>) void {
       this.prev = p;
     }
@@ -85,18 +105,23 @@ public module std {
   // LinkedList<T> - Doubly-Linked List
   // ============================================================================
 
+  /** Owns a doubly linked sequence of values with stable node storage. */
   public class LinkedList<T> implements IIterable<ref T, LinkedList<T>> {
     var head: raw_ptr<LinkedListNode<T>> = null;
     var tail: raw_ptr<LinkedListNode<T>> = null;
     var alloc: HeapAllocator;
     var size_: i64 = 0;
 
-    // Constructor with allocator
+    /**
+     * Constructor with allocator
+     */
     init(allocator: const ref HeapAllocator) {
       this.alloc = allocator.copy();
     }
 
-    // Destructor - free all nodes
+    /**
+     * Destructor - free all nodes
+     */
     deinit() {
       this.clear();
     }
@@ -105,7 +130,9 @@ public module std {
     // Core Operations
     // ========================================================================
 
-    // Append element to the back
+    /**
+     * Append element to the back
+     */
     public method push_back(value: T) void {
       var node: raw_ptr<LinkedListNode<T>> = this.alloc.create<LinkedListNode<T>>(value);
       if (this.tail != null) {
@@ -119,7 +146,9 @@ public module std {
       this.size_ = this.size_ + 1;
     }
 
-    // Prepend element to the front
+    /**
+     * Prepend element to the front
+     */
     public method push_front(value: T) void {
       var node: raw_ptr<LinkedListNode<T>> = this.alloc.create<LinkedListNode<T>>(value);
       if (this.head != null) {
@@ -133,7 +162,9 @@ public module std {
       this.size_ = this.size_ + 1;
     }
 
-    // Remove and return the last element
+    /**
+     * Remove and return the last element
+     */
     public method pop_back() T throws IError {
       if (this.tail == null) {
         throw EmptyError();
@@ -151,7 +182,9 @@ public module std {
       return value;
     }
 
-    // Remove and return the first element
+    /**
+     * Remove and return the first element
+     */
     public method pop_front() T throws IError {
       if (this.head == null) {
         throw EmptyError();
@@ -169,9 +202,11 @@ public module std {
       return value;
     }
 
-    // Borrow the element at index (traverses from nearest end). The list keeps
-    // ownership, so this hands back a reference; use remove()/pop_*() to move
-    // an element out.
+    /**
+     * Borrow the element at index (traverses from nearest end). The list keeps
+     * ownership, so this hands back a reference; use remove()/pop_*() to move
+     * an element out.
+     */
     public const method get(index: i64) ref T throws IError {
       if (index < 0) {
         throw NotFoundError();
@@ -183,7 +218,9 @@ public module std {
       return unsafe { node.get_value(); };
     }
 
-    // Set element at index
+    /**
+     * Set element at index
+     */
     public method set(index: i64, value: T) void throws IError {
       if (index < 0) {
         throw NotFoundError();
@@ -195,7 +232,9 @@ public module std {
       unsafe { node.replace_value(value); };
     }
 
-    // Remove element at index and return its value
+    /**
+     * Remove element at index and return its value
+     */
     public method remove(index: i64) T throws IError {
       if (index < 0) {
         throw NotFoundError();
@@ -211,7 +250,9 @@ public module std {
       return value;
     }
 
-    // Borrow the first element; None when empty
+    /**
+     * Borrow the first element; None when empty
+     */
     public const method first() Option<ref T> {
       if (this.head == null) {
         return Option.None;
@@ -219,7 +260,9 @@ public module std {
       return Option.Some(unsafe { this.head.get_value(); });
     }
 
-    // Borrow the last element; None when empty
+    /**
+     * Borrow the last element; None when empty
+     */
     public const method last() Option<ref T> {
       if (this.tail == null) {
         return Option.None;
@@ -227,18 +270,24 @@ public module std {
       return Option.Some(unsafe { this.tail.get_value(); });
     }
 
-    // Get current size
+    /**
+     * Get current size
+     */
     public const method size() i64 {
       return this.size_;
     }
 
-    // Check if empty
+    /**
+     * Check if empty
+     */
     public const method is_empty() bool {
       return this.size_ == 0;
     }
 
-    // Remove all elements and free nodes. Node payloads still owned by the
-    // list are dropped.
+    /**
+     * Remove all elements and free nodes. Node payloads still owned by the
+     * list are dropped.
+     */
     public method clear() void {
       var curr: raw_ptr<LinkedListNode<T>> = this.head;
       while (curr != null) {
@@ -256,7 +305,9 @@ public module std {
     // Internal Methods
     // ========================================================================
 
-    // Get node at index, traversing from nearest end
+    /**
+     * Get node at index, traversing from nearest end
+     */
     const method find_node_at(index: i64) raw_ptr<LinkedListNode<T>> {
       if (index < this.size_ / 2) {
         // Traverse from head
@@ -274,7 +325,9 @@ public module std {
       return node;
     }
 
-    // Unlink a node from the list (does not free or adjust size)
+    /**
+     * Unlink a node from the list (does not free or adjust size)
+     */
     method unlink_node(node: raw_ptr<LinkedListNode<T>>) void {
       var prev: raw_ptr<LinkedListNode<T>> = unsafe { node.get_prev(); };
       var next: raw_ptr<LinkedListNode<T>> = unsafe { node.get_next(); };
@@ -294,7 +347,9 @@ public module std {
     // Iteration Support
     // ========================================================================
 
-    // Return iterator over elements
+    /**
+     * Return iterator over elements
+     */
     public const method iter() LinkedListIterator<T> {
       return LinkedListIterator<T>();
     }
@@ -309,8 +364,10 @@ public module std {
     var current: raw_ptr<LinkedListNode<T>> = null;
     var started: bool = false;
 
-    // Next element, or None once the list is exhausted. Elements are
-    // borrowed: the list still owns them.
+    /**
+     * Next element, or None once the list is exhausted. Elements are
+     * borrowed: the list still owns them.
+     */
     public method next(list: ref LinkedList<T>) Option<ref T> {
       if (this.started == false) {
         this.current = list.head;

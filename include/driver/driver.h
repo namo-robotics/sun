@@ -28,9 +28,11 @@ using sun::parsing::Parser;
 using sun::semantic_analysis::SemanticAnalyzer;
 using sun::semantic_analysis::TypeRegistry;
 
-/// Driver orchestrates the compilation pipeline: parse → analyze → codegen →
-/// execute. It owns all compilation components and provides static factory
-/// methods for easy construction.
+/**
+ * Driver orchestrates the compilation pipeline: parse → analyze → codegen →
+ * execute. It owns all compilation components and provides static factory
+ * methods for easy construction.
+ */
 class Driver {
  public:
   /** Receive the analyzed program after borrow checking and before code
@@ -40,9 +42,11 @@ class Driver {
     metadataCallback_ = std::move(callback);
   }
 
-  /// How a compilation treats test_function declarations. Editor analysis
-  /// (analyzeFiles/analyzeString) never goes through runPipeline, so it
-  /// always sees tests and needs no mode.
+  /**
+   * How a compilation treats test_function declarations. Editor analysis
+   * (analyzeFiles/analyzeString) never goes through runPipeline, so it
+   * always sees tests and needs no mode.
+   */
   enum class TestHandling {
     Strip,    // production (default): tests removed before analysis
     Compile,  // test binary: tests kept, test_files loaded, runner synthesized
@@ -99,18 +103,24 @@ class Driver {
   std::vector<std::string> nativeArchivePaths_;
   std::filesystem::path archiveTempDir_;
 
-  // Gather the archives to link: the manifest's own, then those carried by
-  // the bundles just linked (put on disk first), so AOT can pass them to the
-  // linker and the JIT can load them. Warns when the set looks troublesome:
-  // two versions of one library, or a plain extern naming a symbol a bundle
-  // carries only under its own prefix.
+  /**
+   * Gather the archives to link: the manifest's own, then those carried by
+   * the bundles just linked (put on disk first), so AOT can pass them to the
+   * linker and the JIT can load them. Warns when the set looks troublesome:
+   * two versions of one library, or a plain extern naming a symbol a bundle
+   * carries only under its own prefix.
+   */
   void collectNativeArchives(const std::set<std::string>& linkedModules);
 
-  // Load the gathered archives into the JIT, exactly as the AOT link would
-  // link them.
+  /**
+   * Load the gathered archives into the JIT, exactly as the AOT link would
+   * link them.
+   */
   void registerArchivesWithJIT();
 
-  // Private constructor - use factory methods
+  /**
+   * Private constructor - use factory methods
+   */
   Driver(std::unique_ptr<sun::codegen::CodegenContext> ctx,
          std::shared_ptr<TypeRegistry> typeRegistry,
          std::unique_ptr<sun::codegen::CodegenVisitor> codegenVisitor,
@@ -120,36 +130,48 @@ class Driver {
         codegenVisitor(std::move(codegenVisitor)),
         analyzer(std::move(analyzer)) {}
 
-  // Internal helper: run full pipeline on parsed AST
+  /**
+   * Internal helper: run full pipeline on parsed AST
+   */
   sun::driver::SunValue runPipeline(std::unique_ptr<BlockExprAST> blockAst,
                                     Parser& parser, bool execute, int argc = 0,
                                     char** argv = nullptr);
 
-  // Strip test functions (production builds) or collect them, make them
-  // public and splice in the synthesized runner main (test builds). Runs
-  // first in runPipeline, before any analysis.
+  /**
+   * Strip test functions (production builds) or collect them, make them
+   * public and splice in the synthesized runner main (test builds). Runs
+   * first in runPipeline, before any analysis.
+   */
   void applyTestHandling(BlockExprAST& blockAst);
 
   /** Start independent declaration and type storage for editor analysis. */
   void startAnalysisSession();
 
-  // Front half of the pipeline shared by compilation and analysis: lowering,
-  // moon stub injection and semantic analysis (no borrow check, no codegen)
+  /**
+   * Front half of the pipeline shared by compilation and analysis: lowering,
+   * moon stub injection and semantic analysis (no borrow check, no codegen)
+   */
   void analyzeProgram(BlockExprAST& blockAst, Parser& parser);
 
-  // Register a source string for error reporting and create its parser
+  /**
+   * Register a source string for error reporting and create its parser
+   */
   Parser prepareStringParser(const std::string& source,
                              const std::string& filePath);
 
-  // Read, parse and merge every source file plus synthesized .proto modules.
-  // sourceOverrides maps a canonical path to text used instead of the file
-  // on disk (an editor's unsaved buffer).
+  /**
+   * Read, parse and merge every source file plus synthesized .proto modules.
+   * sourceOverrides maps a canonical path to text used instead of the file
+   * on disk (an editor's unsaved buffer).
+   */
   std::unique_ptr<BlockExprAST> parseAndMergeFiles(
       const std::vector<std::string>& sourceFiles,
       const std::vector<std::string>& protoFiles,
       const std::map<std::string, std::string>& sourceOverrides);
 
-  // Initialize LLVM targets once (thread-safe)
+  /**
+   * Initialize LLVM targets once (thread-safe)
+   */
   static void ensureLLVMInitialized() {
     static std::once_flag flag;
     std::call_once(flag, []() {
@@ -159,60 +181,81 @@ class Driver {
     });
   }
 
-  // Synthesize Sun modules for manifest .proto files and parse them into
-  // parsedFiles/canonicalPaths (see ProtoImporter)
+  /**
+   * Synthesize Sun modules for manifest .proto files and parse them into
+   * parsedFiles/canonicalPaths (see ProtoImporter)
+   */
   void parseSynthesizedProtoModules(
       const std::vector<std::string>& protoFiles,
       std::vector<std::unique_ptr<BlockExprAST>>& parsedFiles,
       std::vector<std::string>& canonicalPaths);
 
+  /** Writes LLVM IR for user-defined code to the supplied stream. */
   void dumpUserDefinedIR(llvm::raw_ostream& OS);
+  /** Saves LLVM IR for user-defined code to a file. */
   void writeUserDefinedIR(const std::string& path);
 
  public:
+  /** Selects how compilation discovers and emits test functions. */
   void setTestHandling(TestHandling handling) { testHandling_ = handling; }
 
-  /// True when the last compilation encountered test functions or the
-  /// manifest listed test_files. Valid after compileFile/executeFile.
+  /**
+   * True when the last compilation encountered test functions or the
+   * manifest listed test_files. Valid after compileFile/executeFile.
+   */
   bool programHasTests() const { return hasTests_; }
 
-  /// Create a JIT driver with independent debug-info and optimization settings.
+  /**
+   * Create a JIT driver with independent debug-info and optimization settings.
+   */
   static std::unique_ptr<Driver> createForJIT(
       const std::string& moduleName = "sun", bool debugInfo = false,
       bool optimize = true);
 
-  /// Create a Driver for AOT compilation (no JIT). A non-empty targetTriple
-  /// cross-compiles for that target (object/IR emission only — linking and
-  /// execution stay host-only). debugInfo enables DWARF emission.
-  /// Optimization is enabled by default, independently of debug info.
+  /**
+   * Create a Driver for AOT compilation (no JIT). A non-empty targetTriple
+   * cross-compiles for that target (object/IR emission only — linking and
+   * execution stay host-only). debugInfo enables DWARF emission.
+   * Optimization is enabled by default, independently of debug info.
+   */
   static std::unique_ptr<Driver> createForAOT(
       const std::string& moduleName = "module",
       const std::string& targetTriple = "", bool debugInfo = false,
       bool optimize = true);
 
-  /// Execute a source string with optional command-line arguments
-  /// filePath is used for error messages (optional)
+  /**
+   * Execute a source string with optional command-line arguments
+   * filePath is used for error messages (optional)
+   */
   sun::driver::SunValue executeString(const std::string& source, int argc = 0,
                                       char** argv = nullptr,
                                       const std::string& filePath = "");
 
-  /// Execute a file with optional command-line arguments; returns main()'s
-  /// value (VoidValue for void main)
+  /**
+   * Execute a file with optional command-line arguments; returns main()'s
+   * value (VoidValue for void main)
+   */
   sun::driver::SunValue executeFile(const std::string& filename, int argc = 0,
                                     char** argv = nullptr);
 
-  /// Compile a source string to IR without executing
-  /// filePath is used for error messages (optional)
+  /**
+   * Compile a source string to IR without executing
+   * filePath is used for error messages (optional)
+   */
   void compileString(const std::string& source,
                      const std::string& filePath = "");
 
-  /// Compile a file to IR without executing
+  /**
+   * Compile a file to IR without executing
+   */
   void compileFile(const std::string& filename);
 
-  /// A program that was parsed and semantically analyzed but not compiled.
-  /// `ast` is null only when parsing failed. `error` holds the first error
-  /// raised; the tree keeps every type resolved before it, which is what
-  /// editor tooling needs while a file is mid-edit.
+  /**
+   * A program that was parsed and semantically analyzed but not compiled.
+   * `ast` is null only when parsing failed. `error` holds the first error
+   * raised; the tree keeps every type resolved before it, which is what
+   * editor tooling needs while a file is mid-edit.
+   */
   struct AnalyzedProgram {
     /** Keep declaration identities alive with the annotated syntax tree. */
     std::shared_ptr<TypeRegistry> typeRegistry;
@@ -220,100 +263,135 @@ class Driver {
     std::optional<sun::support::SunError> error;
   };
 
-  /// Parse and analyze a source string without generating code
+  /**
+   * Parse and analyze a source string without generating code
+   */
   AnalyzedProgram analyzeString(const std::string& source,
                                 const std::string& filePath = "");
 
-  /// Parse and analyze a set of files (merged like compileFiles) without
-  /// generating code. sourceOverrides maps a canonical path to in-memory text
-  /// used instead of the file on disk.
+  /**
+   * Parse and analyze a set of files (merged like compileFiles) without
+   * generating code. sourceOverrides maps a canonical path to in-memory text
+   * used instead of the file on disk.
+   */
   AnalyzedProgram analyzeFiles(
       const std::vector<std::string>& sourceFiles,
       const std::vector<MoonImport>& moonImports = {},
       const std::vector<std::string>& protoFiles = {},
       const std::map<std::string, std::string>& sourceOverrides = {});
 
-  /// Make a static archive named with -l resolvable by the JIT. Shared
-  /// libraries are dlopen'd into the process instead; an archive has to go
-  /// through the JIT's own linker. Throws when the archive cannot be read.
-  /// No effect on an AOT driver, which passes archives to the system linker.
+  /**
+   * Make a static archive named with -l resolvable by the JIT. Shared
+   * libraries are dlopen'd into the process instead; an archive has to go
+   * through the JIT's own linker. Throws when the archive cannot be read.
+   * No effect on an AOT driver, which passes archives to the system linker.
+   */
   void addJITStaticLibrary(const std::string& path);
 
-  /// Set moon libraries to preload for single-file compilation modes
-  /// (executeString, compileFile, etc.)
+  /**
+   * Set moon libraries to preload for single-file compilation modes
+   * (executeString, compileFile, etc.)
+   */
   void setMoonImports(std::vector<MoonImport> imports) {
     moonImports_ = std::move(imports);
   }
 
-  /// Set .proto schemas to import natively (see ProtoImporter): each is
-  /// synthesized into ordinary Sun source and compiled with the program.
+  /**
+   * Set .proto schemas to import natively (see ProtoImporter): each is
+   * synthesized into ordinary Sun source and compiled with the program.
+   */
   void setProtoFiles(std::vector<std::string> protos) {
     protoFiles_ = std::move(protos);
   }
 
-  /// Print the Sun source synthesized from each imported .proto to stdout
+  /**
+   * Print the Sun source synthesized from each imported .proto to stdout
+   */
   void setDumpProtoSun(bool dump) { dumpProtoSun_ = dump; }
 
-  /// Compile as the body of a .moon bundle with this hash, which is the
-  /// bundle's input hash (see input_hash.h): the program's own declarations are
-  /// analyzed under a `$hash$` module scope, so every symbol and struct type is
-  /// spelled the way importers of the bundle will spell it. Must be set before
-  /// compileFiles.
+  /**
+   * Compile as the body of a .moon bundle with this hash, which is the
+   * bundle's input hash (see input_hash.h): the program's own declarations are
+   * analyzed under a `$hash$` module scope, so every symbol and struct type is
+   * spelled the way importers of the bundle will spell it. Must be set before
+   * compileFiles.
+   */
   void setOwnBundleHash(std::string hash) { ownBundleHash_ = std::move(hash); }
 
-  /// C symbols the bundle being built carries in its archives, mapped to
-  /// their prefixed spelling (`SSL_new` -> `$sethash$_SSL_new`). The
-  /// program's own `extern "C"` declarations naming a key are emitted, and
-  /// recorded in the bundle's metadata, under the value, so the bundle and
-  /// its importers bind to the carried copy. Must be set before compileFiles.
+  /**
+   * C symbols the bundle being built carries in its archives, mapped to
+   * their prefixed spelling (`SSL_new` -> `$sethash$_SSL_new`). The
+   * program's own `extern "C"` declarations naming a key are emitted, and
+   * recorded in the bundle's metadata, under the value, so the bundle and
+   * its importers bind to the carried copy. Must be set before compileFiles.
+   */
   void setExternSymbolRenames(std::map<std::string, std::string> renames) {
     externRenames_ = std::move(renames);
   }
 
-  /// Compile multiple source files with optional precompiled moon libraries
-  /// This is the merged-AST compilation model: all files are parsed and merged
-  /// into a single AST before semantic analysis and codegen.
-  /// @param sourceFiles List of .sun source files to compile
-  /// @param moonImports Precompiled .moon libraries with optional aliasing
-  /// @param protoFiles .proto schemas to synthesize into Sun modules
+  /**
+   * Compile multiple source files with optional precompiled moon libraries
+   * This is the merged-AST compilation model: all files are parsed and merged
+   * into a single AST before semantic analysis and codegen.
+   * @param sourceFiles List of .sun source files to compile
+   * @param moonImports Precompiled .moon libraries with optional aliasing
+   * @param protoFiles .proto schemas to synthesize into Sun modules
+   */
   void compileFiles(const std::vector<std::string>& sourceFiles,
                     const std::vector<MoonImport>& moonImports = {},
                     const std::vector<std::string>& protoFiles = {});
 
-  /// Execute multiple source files with optional precompiled moon libraries
-  /// @param sourceFiles List of .sun source files to compile and execute
-  /// @param moonImports Precompiled .moon libraries with optional aliasing
-  /// @param argc Argument count for main()
-  /// @param argv Argument vector for main()
+  /**
+   * Execute multiple source files with optional precompiled moon libraries
+   * @param sourceFiles List of .sun source files to compile and execute
+   * @param moonImports Precompiled .moon libraries with optional aliasing
+   * @param argc Argument count for main()
+   * @param argv Argument vector for main()
+   * @param protoFiles Protobuf schemas to synthesize into Sun modules
+   */
   sun::driver::SunValue executeFiles(
       const std::vector<std::string>& sourceFiles,
       const std::vector<MoonImport>& moonImports = {}, int argc = 0,
       char** argv = nullptr, const std::vector<std::string>& protoFiles = {});
 
-  /// Access the underlying module (for emitting object code after compilation)
+  /**
+   * Access the underlying module (for emitting object code after compilation)
+   */
   llvm::Module& getModule() { return *ctx->mainModule; }
 
-  // Static archives this compilation must link, as paths on disk: those the
-  // program's manifest declares plus those carried by the .moon bundles it
-  // linked against. Empty when there are none.
+  /**
+   * Static archives this compilation must link, as paths on disk: those the
+   * program's manifest declares plus those carried by the .moon bundles it
+   * linked against. Empty when there are none.
+   */
   const std::vector<std::string>& getNativeArchivePaths() const {
     return nativeArchivePaths_;
   }
 
-  /// Enable/disable LLVM IR dumping to stdout
+  /**
+   * Enable/disable LLVM IR dumping to stdout
+   */
   void setDumpIR(bool dump) { dumpIR = dump; }
 
-  /// Enable dumping all reachable functions (includes stdlib)
+  /**
+   * Enable dumping all reachable functions (includes stdlib)
+   */
   void setDumpReachable(bool dump) { dumpReachable = dump; }
 
-  /// Enable debug mode and set the debug output folder
-  /// Creates <basename>_debug/ folder with ast.dot and ir.ll
+  /**
+   * Enable debug mode and set the debug output folder
+   * Creates &lt;basename&gt;_debug/ folder with ast.dot and ir.ll
+   */
   void setDebugMode(bool enable, const std::string& inputFile = "");
 
-  /// Print only user-defined IR (filters out imports and linked libraries)
+  /**
+   * Print only user-defined IR (filters out imports and linked libraries)
+   */
   void printUserDefinedIR();
 
-  /// Print IR for all functions reachable from main() (includes stdlib)
+  /**
+   * Print IR for all functions reachable from main() (includes stdlib)
+   */
   void printReachableIR();
 };
 

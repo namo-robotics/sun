@@ -13,14 +13,16 @@
 #include "driver/compiler.h"
 #include "moon_bundling/moon_import.h"
 
+/** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
 
-/*
+/**
  * A command line that ends the run before any command starts: --help,
  * --version, or a mistake such as an unknown flag. It names the text to
  * print, the stream to print it on, and the process exit code.
  */
 struct EarlyExit {
+  /** Selects the output stream used for an early-exit message. */
   enum class Stream { Out, Err };
 
   int exitCode = 0;
@@ -28,7 +30,7 @@ struct EarlyExit {
   std::string text;
 };
 
-/*
+/**
  * Flags that both the default command and `sun test` accept.
  */
 struct SharedOptions {
@@ -43,7 +45,7 @@ struct SharedOptions {
   bool debugInfo = false;  // -g
 };
 
-/*
+/**
  * The default command: run a program with the JIT, compile it, or bundle it
  * into a .moon library.
  */
@@ -68,7 +70,7 @@ struct BuildRunOptions {
   bool configInput = false;
 };
 
-/*
+/**
  * `sun test`. Tests always carry debug info, so shared.debugInfo is accepted
  * and ignored.
  */
@@ -80,7 +82,7 @@ struct TestOptions {
   std::vector<std::string> forwardedArgs;
 };
 
-/*
+/**
  * `sun fmt`.
  */
 struct FmtOptions {

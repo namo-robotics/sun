@@ -20,11 +20,14 @@
 #include "ast/member_access_ast.h"
 #include "semantic_analysis/types.h"
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 using sun::ast::ExprAST;
 
-// The class a member access reads through, seeing past ref/raw_ptr/static_ptr.
-// Returns nullptr when the object is not class-shaped.
+/**
+ * The class a member access reads through, seeing past ref/raw_ptr/static_ptr.
+ * Returns nullptr when the object is not class-shaped.
+ */
 inline const ClassType* accessedClass(const ExprAST& object) {
   auto objectType = unwrapRef(object.getResolvedType());
   if (objectType && objectType->isRawPointer()) {
@@ -40,9 +43,11 @@ inline const ClassType* accessedClass(const ExprAST& object) {
   return nullptr;
 }
 
-// True when `expr` names a field reached through a packed class at any depth.
-// Packing removes padding at that level, so everything nested beneath it
-// inherits an arbitrary offset. Reports the offending class via `ownerName`.
+/**
+ * True when `expr` names a field reached through a packed class at any depth.
+ * Packing removes padding at that level, so everything nested beneath it
+ * inherits an arbitrary offset. Reports the offending class via `ownerName`.
+ */
 inline bool isFieldAccess(const ExprAST& expr,
                           std::string* ownerName = nullptr) {
   const ExprAST* cur = &expr;
@@ -62,24 +67,30 @@ inline bool isFieldAccess(const ExprAST& expr,
   return false;
 }
 
-// Alignment for accessing a field of `owner`.
+/**
+ * Alignment for accessing a field of `owner`.
+ */
 inline llvm::Align fieldAlign(const ClassType* owner, llvm::Type* fieldTy,
                               const llvm::DataLayout& DL) {
   if (owner && owner->isPacked()) return llvm::Align(1);
   return DL.getABITypeAlign(fieldTy);
 }
 
-// Alignment for an assignable expression, honouring the whole access chain.
+/**
+ * Alignment for an assignable expression, honouring the whole access chain.
+ */
 inline llvm::Align lvalueAlign(const ExprAST& target, llvm::Type* slotTy,
                                const llvm::DataLayout& DL) {
   if (isFieldAccess(target)) return llvm::Align(1);
   return DL.getABITypeAlign(slotTy);
 }
 
-// Why a field type is rejected inside a packed class, or empty if it is fine.
-// Multi-word fat pointers have interior pointers that would land unaligned for
-// no benefit, and an unpacked nested class would reintroduce exactly the
-// interior padding the user asked to remove.
+/**
+ * Why a field type is rejected inside a packed class, or empty if it is fine.
+ * Multi-word fat pointers have interior pointers that would land unaligned for
+ * no benefit, and an unpacked nested class would reintroduce exactly the
+ * interior padding the user asked to remove.
+ */
 inline std::string rejectFieldType(const TypePtr& fieldType) {
   if (!fieldType) return {};
   if (fieldType->isArray() &&
@@ -103,12 +114,15 @@ inline std::string rejectFieldType(const TypePtr& fieldType) {
   return {};
 }
 
+/** Formats the owning type name for a field-layout diagnostic. */
 inline std::string fieldPhrase(const std::string& ownerName) {
   return "field of packed class '" + ownerName + "'";
 }
 
-// Shared explanation for the ways a packed field's address can escape.
-// `what` completes "Cannot <what> - packed fields ...".
+/**
+ * Shared explanation for the ways a packed field's address can escape.
+ * `what` completes "Cannot <what> - packed fields ...".
+ */
 inline std::string borrowRejection(const std::string& what,
                                    const char* remedy) {
   return "Cannot " + what +

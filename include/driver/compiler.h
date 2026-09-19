@@ -20,11 +20,14 @@
 #include <system_error>
 #include <vector>
 
+/** Coordinates compilation, dependency loading, linking, and program execution. */
 namespace sun::driver {
 
-/// Native libraries to link against, from -l / -L on the command line.
-/// Distinct from LibraryCache's search paths, which locate Sun .moon
-/// libraries rather than native shared objects.
+/**
+ * Native libraries to link against, from -l / -L on the command line.
+ * Distinct from LibraryCache's search paths, which locate Sun .moon
+ * libraries rather than native shared objects.
+ */
 struct LinkOptions {
   std::vector<std::string> libraries;    // -lfoo  -> "foo"
   std::vector<std::string> searchPaths;  // -Ldir  -> "dir"
@@ -37,9 +40,11 @@ struct LinkOptions {
   bool staticLink = false;   // --static -> self-contained binary
 };
 
-/// Quote a string for safe use as a single argument in a /bin/sh command.
-/// The link command runs through std::system, and -l/-L values come from the
-/// user, so they must not be able to inject shell syntax.
+/**
+ * Quote a string for safe use as a single argument in a /bin/sh command.
+ * The link command runs through std::system, and -l/-L values come from the
+ * user, so they must not be able to inject shell syntax.
+ */
 inline std::string shellQuote(const std::string& s) {
   std::string out = "'";
   for (char c : s) {
@@ -53,36 +58,42 @@ inline std::string shellQuote(const std::string& s) {
   return out;
 }
 
-/// Whether `tool` exists on PATH.
+/**
+ * Whether `tool` exists on PATH.
+ */
 inline bool haveTool(const std::string& tool) {
   return std::system(
              ("command -v " + shellQuote(tool) + " >/dev/null 2>&1").c_str()) ==
          0;
 }
 
-/// The triple a link is actually for: the explicit --target, or the host.
+/**
+ * The triple a link is actually for: the explicit --target, or the host.
+ */
 inline llvm::Triple effectiveLinkTriple(const std::string& targetTriple) {
   return llvm::Triple(targetTriple.empty() ? llvm::sys::getDefaultTargetTriple()
                                            : targetTriple);
 }
 
-/// Pick the link driver for a target. SUN_CC overrides the choice entirely.
-///
-/// Static links prefer a musl toolchain for the target architecture
-/// (`<arch>-linux-musl-gcc`, as shipped by musl.cc) when one is installed:
-/// musl is designed for static linking (glibc's static binaries still dlopen
-/// NSS modules for name lookups), is MIT-licensed (no LGPL relink obligation
-/// on the embedded binary), and produces roughly half the binary size. When
-/// no musl toolchain is present, the triple's own GCC with -static is used.
-///
-/// A macOS target links with Apple's own `cc` on a Mac; from any other host
-/// there is no driver to pick — linking Mach-O needs the Apple SDK, which
-/// cannot ship with a Linux toolchain — so stop at --emit-obj and link the
-/// object on a Mac.
-///
-/// Otherwise: host builds use `cc`; cross builds prefer a triple-prefixed
-/// GCC (`aarch64-linux-gnu-gcc`), falling back to `clang --target=<triple>`.
-/// Returns "" when no capable link driver exists on this machine.
+/**
+ * Pick the link driver for a target. SUN_CC overrides the choice entirely.
+ *
+ * Static links prefer a musl toolchain for the target architecture
+ * (`<arch>-linux-musl-gcc`, as shipped by musl.cc) when one is installed:
+ * musl is designed for static linking (glibc's static binaries still dlopen
+ * NSS modules for name lookups), is MIT-licensed (no LGPL relink obligation
+ * on the embedded binary), and produces roughly half the binary size. When
+ * no musl toolchain is present, the triple's own GCC with -static is used.
+ *
+ * A macOS target links with Apple's own `cc` on a Mac; from any other host
+ * there is no driver to pick — linking Mach-O needs the Apple SDK, which
+ * cannot ship with a Linux toolchain — so stop at --emit-obj and link the
+ * object on a Mac.
+ *
+ * Otherwise: host builds use `cc`; cross builds prefer a triple-prefixed
+ * GCC (`aarch64-linux-gnu-gcc`), falling back to `clang --target=<triple>`.
+ * Returns "" when no capable link driver exists on this machine.
+ */
 inline std::string linkerCommandFor(const std::string& targetTriple,
                                     bool staticLink = false) {
   if (const char* env = std::getenv("SUN_CC")) {
@@ -121,10 +132,12 @@ inline std::string linkerCommandFor(const std::string& targetTriple,
   return "";
 }
 
-/// What resolving the -l libraries for the JIT produced. Shared libraries
-/// are dlopen'd into this process as a side effect; static archives cannot
-/// be dlopen'd, so their paths come back for the caller to hand to the JIT's
-/// own linker (SunJIT::addStaticLibrary).
+/**
+ * What resolving the -l libraries for the JIT produced. Shared libraries
+ * are dlopen'd into this process as a side effect; static archives cannot
+ * be dlopen'd, so their paths come back for the caller to hand to the JIT's
+ * own linker (SunJIT::addStaticLibrary).
+ */
 struct NativeLibraries {
   // Static archives (lib<name>.a) found for -l names with no shared library.
   std::vector<std::string> archives;
@@ -136,12 +149,14 @@ struct NativeLibraries {
   std::vector<std::string> failed;
 };
 
-/// Make libraries named by -l visible to the JIT.
-/// The JIT resolves externs through DynamicLibrarySearchGenerator over the
-/// current process, so a shared library only has to be dlopen'd into this
-/// process for its symbols to become reachable. A name that resolves to a
-/// static archive instead (lib<name>.a in a -L directory, or an explicit .a
-/// path) is returned in `archives` for the JIT to link itself.
+/**
+ * Make libraries named by -l visible to the JIT.
+ * The JIT resolves externs through DynamicLibrarySearchGenerator over the
+ * current process, so a shared library only has to be dlopen'd into this
+ * process for its symbols to become reachable. A name that resolves to a
+ * static archive instead (lib<name>.a in a -L directory, or an explicit .a
+ * path) is returned in `archives` for the JIT to link itself.
+ */
 inline NativeLibraries loadNativeLibraries(const LinkOptions& opts) {
   NativeLibraries result;
 
@@ -223,8 +238,10 @@ inline NativeLibraries loadNativeLibraries(const LinkOptions& opts) {
   return result;
 }
 
-/// Emits an object file with the requested backend optimization setting.
-/// Returns true on success, false on failure
+/**
+ * Emits an object file with the requested backend optimization setting.
+ * Returns true on success, false on failure
+ */
 inline bool emitObjectFile(llvm::Module& module, const std::string& outputPath,
                            std::string& errorMsg,
                            bool optimize = true) {
@@ -283,9 +300,11 @@ inline bool emitObjectFile(llvm::Module& module, const std::string& outputPath,
   return true;
 }
 
-/// Links the object file to create an executable
-/// Uses the system C compiler (cc) as the linker
-/// Returns true on success, false on failure
+/**
+ * Links the object file to create an executable
+ * Uses the system C compiler (cc) as the linker
+ * Returns true on success, false on failure
+ */
 inline bool linkExecutable(const std::string& objectPath,
                            const std::string& outputPath, std::string& errorMsg,
                            const LinkOptions& linkOpts = {}) {
@@ -370,8 +389,10 @@ inline bool linkExecutable(const std::string& objectPath,
   return true;
 }
 
-/// Compiles a standalone executable with the requested optimization setting.
-/// Returns true on success, false on failure
+/**
+ * Compiles a standalone executable with the requested optimization setting.
+ * Returns true on success, false on failure
+ */
 inline bool compileToExecutable(llvm::Module& module,
                                 const std::string& outputPath,
                                 std::string& errorMsg,

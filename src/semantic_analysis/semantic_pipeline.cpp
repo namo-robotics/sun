@@ -5,6 +5,7 @@
 
 using sun::ast::ExprAST;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 SemanticPipeline::SemanticPipeline(

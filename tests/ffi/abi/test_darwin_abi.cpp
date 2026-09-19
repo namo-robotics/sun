@@ -37,10 +37,12 @@ using sun::codegen::abi::SignednessInfo;
 
 using sun::driver::Driver;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 using sun::codegen::abi::aapcs64::Variant;
 
+/** Provides isolated state and helpers for this compiler integration test suite. */
 class Ffi_Abi_Aapcs64Darwin : public ::testing::Test {
  protected:
   llvm::LLVMContext ctx;
@@ -51,29 +53,41 @@ class Ffi_Abi_Aapcs64Darwin : public ::testing::Test {
       "e-m:o-p270:32:32-p271:32:32-p272:64:64-i64:64-"
       "i128:128-n32:64-S128-Fn32"};
 
+  /** Returns the LLVM scalar type used to construct calling-convention fixtures. */
   llvm::Type* i1() { return llvm::Type::getInt1Ty(ctx); }
+  /** Returns the LLVM scalar type used to construct calling-convention fixtures. */
   llvm::Type* i8() { return llvm::Type::getInt8Ty(ctx); }
+  /** Returns the LLVM scalar type used to construct calling-convention fixtures. */
   llvm::Type* i16() { return llvm::Type::getInt16Ty(ctx); }
+  /** Returns the LLVM scalar type used to construct calling-convention fixtures. */
   llvm::Type* i32() { return llvm::Type::getInt32Ty(ctx); }
+  /** Returns the LLVM scalar type used to construct calling-convention fixtures. */
   llvm::Type* i64() { return llvm::Type::getInt64Ty(ctx); }
+  /** Returns the LLVM scalar type used to construct calling-convention fixtures. */
   llvm::Type* f32() { return llvm::Type::getFloatTy(ctx); }
+  /** Returns the LLVM scalar type used to construct calling-convention fixtures. */
   llvm::Type* f64() { return llvm::Type::getDoubleTy(ctx); }
+  /** Returns the LLVM pointer type used by the calling-convention fixture. */
   llvm::Type* ptr() { return llvm::PointerType::getUnqual(ctx); }
 
+  /** Creates an LLVM structure with the field types required by an ABI test. */
   llvm::StructType* structOf(std::initializer_list<llvm::Type*> fields) {
     return llvm::StructType::get(ctx, std::vector<llvm::Type*>(fields));
   }
 
+  /** Creates an LLVM array with the element layout required by an ABI test. */
   llvm::Type* arrayOf(llvm::Type* elem, uint64_t n) {
     return llvm::ArrayType::get(elem, n);
   }
 
+  /** Classifies a function argument using the Darwin AArch64 calling convention. */
   sun::codegen::abi::ArgLowering darwinArg(llvm::Type* t,
                                            bool isSigned = false) {
     return sun::codegen::abi::aapcs64::lowerArgument(t, dl, Variant::Darwin,
                                                      isSigned);
   }
 
+  /** Classifies a function return value using the Darwin AArch64 calling convention. */
   sun::codegen::abi::ArgLowering darwinRet(llvm::Type* t,
                                            bool isSigned = false) {
     return sun::codegen::abi::aapcs64::lowerReturn(t, dl, Variant::Darwin,

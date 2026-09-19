@@ -1,8 +1,10 @@
 #pragma once
 
+/** Translates analyzed Sun programs into LLVM instructions. */
 namespace sun::codegen {
 class CodegenVisitor;
 }
+/** Provides the scope manager responsible for variable storage and cleanup. */
 namespace sun::codegen::scopes {
 class ScopeManager;
 }
@@ -32,6 +34,7 @@ class ScopeManager;
 #include "ast.h"
 #include "codegen/codegen_state.h"
 
+/** Generates control flow for throwing and catching Sun errors. */
 namespace sun::codegen::errors {
 using sun::ast::ExprAST;
 
@@ -53,18 +56,25 @@ struct TryContext {
  */
 class ErrorGenerator {
  public:
+  /** Binds error propagation generation to the shared expression visitor and state. */
   ErrorGenerator(sun::codegen::CodegenState& state,
                  sun::codegen::CodegenVisitor& gen)
       : state_(state), gen_(gen), ctx(state.ctx), module(state.module) {}
 
+  /** Binds error propagation generation to the shared expression visitor and state. */
   ErrorGenerator(const ErrorGenerator&) = delete;
+  /** Disallows assignment so ownership and object identity cannot be duplicated. */
   ErrorGenerator& operator=(const ErrorGenerator&) = delete;
 
+  /** Emits LLVM instructions for this syntax node and returns its generated value. */
   llvm::Value* codegen(const sun::ast::TryCatchExprAST& expr);
+  /** Emits LLVM instructions for this syntax node and returns its generated value. */
   llvm::Value* codegen(const sun::ast::ThrowExprAST& expr);
 
-  // The body is emitted as written, in a scope of its own; the block's value
-  // is handed out to the enclosing scope. Safety checks are done in sema.
+  /**
+   * The body is emitted as written, in a scope of its own; the block's value
+   * is handed out to the enclosing scope. Safety checks are done in sema.
+   */
   llvm::Value* codegen(const sun::ast::UnsafeBlockAST& expr);
 
   /**
@@ -77,12 +87,15 @@ class ErrorGenerator {
                                         llvm::Value* callee,
                                         llvm::ArrayRef<llvm::Value*> args,
                                         bool canThrow, const llvm::Twine& name);
+  /** Emits a call and propagates its error result when the callee can throw. */
   llvm::Value* emitPossiblyThrowingCall(llvm::FunctionCallee callee,
                                         llvm::ArrayRef<llvm::Value*> args,
                                         bool canThrow, const llvm::Twine& name);
 
-  // Integer division or modulo that throws instead of trapping when the
-  // divisor is zero. Only used inside a function declared to return errors.
+  /**
+   * Integer division or modulo that throws instead of trapping when the
+   * divisor is zero. Only used inside a function declared to return errors.
+   */
   llvm::Value* codegenSafeDivision(llvm::Value* L, llvm::Value* R,
                                    bool isModulo = false,
                                    bool isUnsigned = false);
@@ -99,48 +112,71 @@ class ErrorGenerator {
   // the rest of codegen does
   llvm::Module* module;
 
-  // What throwing and catching borrow from the rest of codegen
+  /**
+   * What throwing and catching borrow from the rest of codegen
+   */
   llvm::Value* codegen(const ExprAST& expr);
+  /** Emits LLVM instructions for this syntax node and returns its generated value. */
   llvm::Value* codegen(const sun::ast::BlockExprAST& block);
 
-  // A node kind with its own overload must not silently bind to the
-  // ExprAST forwarder above: that path attaches an expression debug location,
-  // so a block routed through it changes DWARF output. Make it a compile
-  // error instead. Add an overload here when a new kind is needed.
+  /**
+   * A node kind with its own overload must not silently bind to the
+   * ExprAST forwarder above: that path attaches an expression debug location,
+   * so a block routed through it changes DWARF output. Make it a compile
+   * error instead. Add an overload here when a new kind is needed.
+   */
   template <typename T>
     requires(!std::is_same_v<T, ExprAST> &&
              !std::is_same_v<T, sun::ast::BlockExprAST> &&
              std::is_base_of_v<ExprAST, T>)
   llvm::Value* codegen(const T&) = delete;
 
+  /** Provides the scope manager responsible for variable storage and cleanup. */
   sun::codegen::scopes::ScopeManager& scopes();
+  /** Provides the semantic types available to this code generator. */
   std::shared_ptr<sun::semantic_analysis::TypeRegistry>& typeRegistry();
+  /** Associates local storage with its source variable for debugging. */
   void debugDeclareLocal(llvm::AllocaInst* alloca, const std::string& name,
                          const sun::semantic_analysis::TypePtr& type,
                          const sun::support::Position& loc);
+  /** Emits integer division or remainder with the required error checks. */
   llvm::Value* createIntDivRem(llvm::Value* L, llvm::Value* R, bool isModulo,
                                bool isUnsigned);
 
-  // True when the function being emitted may return errors
+  /**
+   * True when the function being emitted may return errors
+   */
   bool currentFunctionCanError() const { return state_.frame.canError; }
 
-  // Get or declare the C++ ABI exception handling functions
+  /**
+   * Get or declare the C++ ABI exception handling functions
+   */
   llvm::FunctionCallee getCxaAllocateException();
+  /** Returns the cxa throw stored by this object. */
   llvm::FunctionCallee getCxaThrow();
+  /** Returns the cxa begin catch stored by this object. */
   llvm::FunctionCallee getCxaBeginCatch();
+  /** Returns the cxa end catch stored by this object. */
   llvm::FunctionCallee getCxaEndCatch();
+  /** Returns the cxa rethrow stored by this object. */
   llvm::FunctionCallee getCxaRethrow();
+  /** Returns the personality function stored by this object. */
   llvm::Constant* getPersonalityFunction();
+  /** Returns the runtime type information for Sun exceptions. */
   llvm::Constant* getSunExceptionTypeInfo();
 
-  // Ensure `fn` has a personality function set (needed for any function that
-  // contains an invoke/landingpad). Idempotent.
+  /**
+   * Ensure `fn` has a personality function set (needed for any function that
+   * contains an invoke/landingpad). Idempotent.
+   */
   void ensurePersonality(llvm::Function* fn);
 
-  // Emit __cxa_throw(excPtr, tinfo, null) (as an invoke to the innermost
-  // try's landing pad if inside a try, else a plain call), terminate the
-  // current block with unreachable, and leave the builder in a fresh dead
-  // block.
+  /**
+   * Emit __cxa_throw(excPtr, tinfo, null) (as an invoke to the innermost
+   * try's landing pad if inside a try, else a plain call), terminate the
+   * current block with unreachable, and leave the builder in a fresh dead
+   * block.
+   */
   void emitCxaThrowAndUnreachable(llvm::Value* excPtr);
 };
 

@@ -6,6 +6,7 @@
 
 using namespace llvm;
 
+/** Translates analyzed Sun programs into LLVM instructions. */
 namespace sun::codegen {
 
 // A block is a scope: it declares what it defines before emitting any body,

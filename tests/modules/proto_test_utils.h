@@ -20,11 +20,14 @@
 #include "moon_bundling/moon_builder.h"
 #include "moon_bundling/moon_import.h"
 
+/** Provides protobuf fixtures and helpers for compiler integration tests. */
 namespace proto_test {
 
 namespace fs = std::filesystem;
 
-// Read a whole file as bytes
+/**
+ * Read a whole file as bytes
+ */
 inline std::string readBytes(const fs::path& p) {
   std::ifstream in(p, std::ios::binary);
   std::stringstream ss;
@@ -32,27 +35,35 @@ inline std::string readBytes(const fs::path& p) {
   return ss.str();
 }
 
+/** Writes source or fixture data to a test file. */
 inline void writeFile(const fs::path& p, const std::string& text) {
   fs::create_directories(p.parent_path());
   std::ofstream out(p);
   out << text;
 }
 
-// A throwaway project under the temp directory:
-//   <dir>/schemas/<name>.proto   schemas
-//   <dir>/main.sun               entrypoint with `manifest { protos: [...] }`
+/**
+ * A throwaway project under the temp directory:
+ *   <dir>/schemas/<name>.proto   schemas
+ *   <dir>/main.sun               entrypoint with `manifest { protos: [...] }`
+ */
 class ProtoProject {
  public:
+  /** Owns a temporary project containing protobuf schemas and a Sun entrypoint. */
   explicit ProtoProject(const std::string& name)
       : dir_(fs::temp_directory_path() / name) {
     sun::driver::initTestEnvironment();
     fs::create_directories(dir_ / "schemas");
   }
 
+  /** Returns the temporary project directory. */
   const fs::path& dir() const { return dir_; }
+  /** Returns the directory holding the fixture's protobuf schemas. */
   fs::path schemasDir() const { return dir_ / "schemas"; }
+  /** Returns a path relative to the temporary project directory. */
   fs::path file(const std::string& rel) const { return dir_ / rel; }
 
+  /** Writes a protobuf schema into the fixture project. */
   ProtoProject& addSchema(const std::string& fileName,
                           const std::string& text) {
     writeFile(dir_ / "schemas" / fileName, text);
@@ -60,8 +71,10 @@ class ProtoProject {
     return *this;
   }
 
-  // Sun source that follows the generated manifest block. `manifestProtos`
-  // defaults to every schema added so far.
+  /**
+   * Sun source that follows the generated manifest block. `manifestProtos`
+   * defaults to every schema added so far.
+   */
   ProtoProject& setProgram(const std::string& program,
                            std::vector<std::string> manifestProtos = {}) {
     if (manifestProtos.empty()) manifestProtos = schemas_;
@@ -75,7 +88,9 @@ class ProtoProject {
     return *this;
   }
 
-  // JIT the entrypoint (stdlib.moon preloaded) and return main()'s value
+  /**
+   * JIT the entrypoint (stdlib.moon preloaded) and return main()'s value
+   */
   sun::driver::SunValue run(
       std::vector<sun::moon_bundling::MoonImport> extraMoons = {}) const {
     auto driver = sun::driver::Driver::createForJIT("proto_test");
@@ -85,8 +100,10 @@ class ProtoProject {
     return driver->executeFile((dir_ / "main.sun").string(), 0, nullptr);
   }
 
-  // Build a .moon whose entrypoint manifest lists the project's schemas
-  // (mirrors `sun --emit-moon`); returns the bundle path
+  /**
+   * Build a .moon whose entrypoint manifest lists the project's schemas
+   * (mirrors `sun --emit-moon`); returns the bundle path
+   */
   fs::path buildMoon(const std::string& libName = "lib") const {
     fs::path entry = dir_ / (libName + ".sun");
     std::string manifest = "manifest { protos: [";
@@ -108,8 +125,10 @@ class ProtoProject {
   std::vector<std::string> schemas_;
 };
 
-// Write a schema + program, run it, return main()'s value (the common shape
-// of most round-trip tests)
+/**
+ * Write a schema + program, run it, return main()'s value (the common shape
+ * of most round-trip tests)
+ */
 inline sun::driver::SunValue runWithProto(const std::string& projectName,
                                           const std::string& proto,
                                           const std::string& program) {
@@ -118,24 +137,31 @@ inline sun::driver::SunValue runWithProto(const std::string& projectName,
   return project.run();
 }
 
-// libprotobuf's view of a schema directory: parse a schema with libprotoc and
-// build DynamicMessage instances for cross-validating Sun's bytes
+/**
+ * libprotobuf's view of a schema directory: parse a schema with libprotoc and
+ * build DynamicMessage instances for cross-validating Sun's bytes
+ */
 class LibprotobufSchema {
  public:
+  /** Loads protobuf schemas for comparison with the generated Sun codecs. */
   explicit LibprotobufSchema(const fs::path& schemasDir) : importer_(nullptr) {
     tree_.MapPath("", schemasDir.string());
     importer_ = std::make_unique<google::protobuf::compiler::Importer>(
         &tree_, &errors_);
   }
 
+  /** Loads the requested schema through the protobuf importer. */
   const google::protobuf::FileDescriptor* import(const std::string& file) {
     return importer_->Import(file);
   }
 
+  /** Returns schema errors collected during protobuf import. */
   const std::string& errors() const { return errors_.messages; }
 
-  // A fresh message of `typeName` from `file`, parsed from `bytes`
-  // (nullptr if the type is unknown or the bytes don't parse)
+  /**
+   * A fresh message of `typeName` from `file`, parsed from `bytes`
+   * (nullptr if the type is unknown or the bytes don't parse)
+   */
   std::unique_ptr<google::protobuf::Message> parse(const std::string& file,
                                                    const std::string& typeName,
                                                    const std::string& bytes) {
@@ -150,15 +176,18 @@ class LibprotobufSchema {
   }
 
  private:
+  /** Collects protobuf import diagnostics for test assertions. */
   struct Collector : google::protobuf::compiler::MultiFileErrorCollector {
     // The virtual was renamed in protobuf 22 (AddError taking std::string
     // became RecordError taking string_view).
 #if !defined(GOOGLE_PROTOBUF_VERSION) || GOOGLE_PROTOBUF_VERSION >= 4022000
+    /** Records a protobuf schema error and its source location. */
     void RecordError(absl::string_view, int, int,
                      absl::string_view m) override {
       messages.append(m.data(), m.size());
     }
 #else
+    /** Collects a protobuf schema error for reporting to the caller. */
     void AddError(const std::string&, int, int, const std::string& m) override {
       messages += m;
     }
@@ -171,7 +200,9 @@ class LibprotobufSchema {
   google::protobuf::DynamicMessageFactory factory_;
 };
 
-// Sun program prologue that dumps a Vec<u8> named `buf` to `outFile`
+/**
+ * Sun program prologue that dumps a Vec<u8> named `buf` to `outFile`
+ */
 inline std::string dumpBufferProgramTail(const fs::path& outFile) {
   return "  var fd: i32 = unsafe { __file_open(\"" + outFile.string() +
          "\", 1); };\n"

@@ -8,12 +8,16 @@
 #include "cli/command_support.h"
 #include "cli/compile_command.h"
 
+/** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// Config-named outputs may sit in folders that do not exist yet (e.g.
-// "build/stdlib"); create them so the artifacts have somewhere to land.
+/**
+ * Config-named outputs may sit in folders that do not exist yet (e.g.
+ * "build/stdlib"); create them so the artifacts have somewhere to land.
+ */
 void createOutputFolders(const CompileJob& job) {
   std::error_code ec;
   for (const std::string& artifact : {job.outputFile, job.testBinaryName}) {
@@ -25,7 +29,9 @@ void createOutputFolders(const CompileJob& job) {
   }
 }
 
-// The bundling flags that match a compile job's flags.
+/**
+ * The bundling flags that match a compile job's flags.
+ */
 sun::moon_bundling::MoonBuildOptions makeMoonBuildOptions(
     const CompileJob& job) {
   sun::moon_bundling::MoonBuildOptions buildOptions;
@@ -38,9 +44,11 @@ sun::moon_bundling::MoonBuildOptions makeMoonBuildOptions(
   return buildOptions;
 }
 
-// Build a library entrypoint: its .moon bundle, then its test binary. The
-// bundle is the production artifact; the only executable a library yields is
-// its test binary, and a library without tests yields none.
+/**
+ * Build a library entrypoint: its .moon bundle, then its test binary. The
+ * bundle is the production artifact; the only executable a library yields is
+ * its test binary, and a library without tests yields none.
+ */
 int buildLibrary(const CompileJob& job) {
   std::filesystem::path moonPath(job.outputFile);
   if (moonPath.extension() != ".moon") {
@@ -65,7 +73,9 @@ int buildLibrary(const CompileJob& job) {
   }
 }
 
-// Build every entrypoint the config declares, stopping at the first failure.
+/**
+ * Build every entrypoint the config declares, stopping at the first failure.
+ */
 int buildEntrypoints(const sun::driver::SunConfig& config,
                      const CompileJob& base) {
   for (const auto& entry : config.entrypoints) {
@@ -88,6 +98,7 @@ int buildEntrypoints(const sun::driver::SunConfig& config,
 
 }  // namespace
 
+/** Runs the config build command and returns its process exit status. */
 int runConfigBuildCommand(const BuildRunOptions& options) {
   const std::string& configFile = options.inputFiles[0];
   CompileJob base = makeCompileJob(options);

@@ -15,42 +15,55 @@
 //   var alloc = make_heap_allocator();
 //   var s = Shared<Counter>(alloc, Counter());
 //   var t = std.thread.spawn(bump, s.clone());
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
-  // The heap payload: one per Shared "family". Not named by user code.
+  /**
+   * The heap payload: one per Shared "family". Not named by user code.
+   */
   class SharedBox<T> {
     var count: i32 = 1;  // Live handles; the one that sees 1 was the last
     var lock: std.thread.Mutex = std.thread.Mutex();
     var value: T;
 
-    // Take ownership of the value. The box starts with one handle: the
-    // Shared<T> that built it.
+    /**
+     * Take ownership of the value. The box starts with one handle: the
+     * Shared<T> that built it.
+     */
     init(value: T) {
       this.value = value;
     }
 
-    // Count one more handle in.
+    /**
+     * Count one more handle in.
+     */
     method retain() void {
       unsafe { _atomic_fetch_add_i32(_address_of<i32>(this.count), 1); };
     }
 
-    // Count one handle out. Returns the count from before the decrement, so
-    // a result of 1 means the caller was the last owner.
+    /**
+     * Count one handle out. Returns the count from before the decrement, so
+     * a result of 1 means the caller was the last owner.
+     */
     method release() i32 {
       return unsafe { _atomic_fetch_sub_i32(_address_of<i32>(this.count), 1); };
     }
 
+    /** Atomically reads the current number of shared owners. */
     method count_now() i32 {
       return unsafe { _atomic_load_i32(_address_of<i32>(this.count)); };
     }
 
+    /** Acquires the mutex protecting the shared value. */
     method acquire() void {
       this.lock.lock();
     }
 
+    /** Releases the mutex protecting the shared value. */
     method release_lock() void {
       this.lock.unlock();
     }
 
+    /** Borrows the shared payload; callers must already hold its mutex. */
     method value_ref() ref T {
       return this.value;
     }
@@ -64,22 +77,29 @@ public module std {
     var unused: i8 = 0;
   }
 
-  // Holds the lock for as long as it is alive. Dropping it unlocks, including
-  // on an early return or while an exception unwinds past it.
+  /**
+   * Holds the lock for as long as it is alive. Dropping it unlocks, including
+   * on an early return or while an exception unwinds past it.
+   */
   public class SharedGuard<T> {
     var box: raw_ptr<SharedBox<T>>;
 
-    // Only Shared<T>.lock() builds a guard, so a guard always holds the lock.
+    /**
+     * Only Shared<T>.lock() builds a guard, so a guard always holds the lock.
+     */
     init(box: raw_ptr<SharedBox<T>>, key: GuardKey) {
       this.box = box;
     }
 
-    // The shared value. Nobody else can reach it while this guard is alive.
+    /**
+     * The shared value. Nobody else can reach it while this guard is alive.
+     */
     public method get() ref T {
       var b: ref SharedBox<T> = unsafe { _to_ref<SharedBox<T>>(this.box); };
       return b.value_ref();
     }
 
+    /** Releases the mutex held by this guard when its lifetime ends. */
     deinit() {
       if (this.box != null) {
         var b: ref SharedBox<T> = unsafe { _to_ref<SharedBox<T>>(this.box); };
@@ -89,54 +109,70 @@ public module std {
     }
   }
 
-  // Shared ownership of one value. Reach the value through lock().
-  //
-  // Every method reaches the box through a `ref` bound from _to_ref rather
-  // than calling straight through `this.box`. That is deliberate: inside a
-  // const method `this.box` is an immutable place, so a method called on it
-  // would either be rejected or come back as a read-only view. A mutable
-  // borrow re-grants mutability, and the mutex is what makes the write safe.
+  /**
+   * Shared ownership of one value. Reach the value through lock().
+   *
+   * Every method reaches the box through a `ref` bound from _to_ref rather
+   * than calling straight through `this.box`. That is deliberate: inside a
+   * const method `this.box` is an immutable place, so a method called on it
+   * would either be rejected or come back as a read-only view. A mutable
+   * borrow re-grants mutability, and the mutex is what makes the write safe.
+   */
   public class Shared<T> {
     var box: raw_ptr<SharedBox<T>>;
 
-    // Take ownership of a value and put it behind a shared, locked box.
+    /**
+     * Take ownership of a value and put it behind a shared, locked box.
+     */
     init(allocator: const ref HeapAllocator, value: T) {
       var a = allocator.copy();
       this.box = a.create<SharedBox<T>>(value);
     }
 
-    // Adopt a box the caller has already counted in.
+    /**
+     * Adopt a box the caller has already counted in.
+     */
     init(box: raw_ptr<SharedBox<T>>) {
       this.box = box;
     }
 
-    // Another owner of the same value.
+    /**
+     * Another owner of the same value.
+     */
     public const method clone() Shared<T> {
       var b: ref SharedBox<T> = unsafe { _to_ref<SharedBox<T>>(this.box); };
       b.retain();
       return Shared<T>(this.box);
     }
 
-    // Wait for the lock, then hand back a guard that holds it.
+    /**
+     * Wait for the lock, then hand back a guard that holds it.
+     */
     public const method lock() SharedGuard<T> {
       var b: ref SharedBox<T> = unsafe { _to_ref<SharedBox<T>>(this.box); };
       b.acquire();
       return SharedGuard<T>(this.box, GuardKey());
     }
 
-    // Report whether the box has been taken or was never set.
+    /**
+     * Report whether the box has been taken or was never set.
+     */
     public const method is_null() bool {
       return this.box == null;
     }
 
-    // How many owners there are right now. For tests and diagnostics: by the
-    // time you read it, another thread may have cloned or dropped.
+    /**
+     * How many owners there are right now. For tests and diagnostics: by the
+     * time you read it, another thread may have cloned or dropped.
+     */
     public const method count() i32 {
       var b: ref SharedBox<T> = unsafe { _to_ref<SharedBox<T>>(this.box); };
       return b.count_now();
     }
 
-    // Drop one owner. The last one out drops the value and frees the box.
+    /**
+     * Drop one owner. The last one out drops the value and frees the box.
+     */
     deinit() {
       if (this.box != null) {
         var b: ref SharedBox<T> = unsafe { _to_ref<SharedBox<T>>(this.box); };

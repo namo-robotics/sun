@@ -11,10 +11,13 @@
 #include "ast/expr_ast.h"
 #include "ast/type_annotation.h"
 
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 
-// Catch clause for try-catch expression
-// Represents: catch (name: Type) { body }
+/**
+ * Catch clause for try-catch expression
+ * Represents: catch (name: Type) { body }
+ */
 struct CatchClause {
   std::string bindingName;                    // variable name for error binding
   std::optional<TypeAnnotation> bindingType;  // type annotation (e.g., IError)
@@ -24,24 +27,32 @@ struct CatchClause {
   bool isCatchAll = false;  // true for `catch (e: IError)` (matches any)
   sun::semantic_analysis::TypePtr resolvedType;
 
+  /** Creates an instance with its default state. */
   CatchClause() = default;
+  /** Creates an instance with its default state. */
   CatchClause(CatchClause&&) = default;
+  /** Transfers the stored state from another instance during move assignment. */
   CatchClause& operator=(CatchClause&&) = default;
   mutable sun::semantic_analysis::DeclarationIdentity declaration{};
 };
 
-// Try-catch expression: try { ... } catch (e: A) { ... } catch (e: IError) {
-// ... } Supports multiple typed catch handlers, tested in source order.
+/**
+ * Try-catch expression: try { ... } catch (e: A) { ... } catch (e: IError) {
+ * ... } Supports multiple typed catch handlers, tested in source order.
+ */
 class TryCatchExprAST : public ExprAST {
   std::unique_ptr<BlockExprAST> tryBlock;  // The try block
   std::vector<CatchClause> catchClauses;   // One or more catch handlers
 
  public:
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   TryCatchExprAST(std::unique_ptr<BlockExprAST> tryBlk,
                   std::vector<CatchClause> catchCls)
       : tryBlock(std::move(tryBlk)), catchClauses(std::move(catchCls)) {}
 
+  /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::TRY_CATCH; }
+  /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
     std::string result = "try " + tryBlock->toString();
     for (const auto& c : catchClauses) {
@@ -52,18 +63,23 @@ class TryCatchExprAST : public ExprAST {
     return result;
   }
 
+  /** Returns the try block stored by this object. */
   const BlockExprAST& getTryBlock() const { return *tryBlock; }
+  /** Returns the catch clauses stored by this object. */
   const std::vector<CatchClause>& getCatchClauses() const {
     return catchClauses;
   }
+  /** Returns the catch clauses mutable stored by this object. */
   std::vector<CatchClause>& getCatchClausesMutable() { return catchClauses; }
 
+  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     if (tryBlock) tryBlock->forEachChildSlot(fn);
     for (auto& clause : catchClauses) {
       if (clause.body) clause.body->forEachChildSlot(fn);
     }
   }
+  /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "TryCatch"; }
 };
 

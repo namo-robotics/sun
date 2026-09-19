@@ -28,16 +28,19 @@ using sun::lsp::SymbolLocation;
 using sun::driver::Driver;
 using sun::driver::getStdlibMoonImports;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 // The file never exists on disk; nodes carry the path exactly as given
 const char* kPath = "/rename_test.sun";
 
+/** Keeps the syntax tree and semantic context alive for editor-feature tests. */
 struct Analysis {
   std::unique_ptr<Driver> driver;
   sun::driver::Driver::AnalyzedProgram program;
 };
 
+/** Parses and analyzes fixture source before querying editor features. */
 Analysis analyze(const std::string& source, bool withStdlib = false) {
   sun::driver::initTestEnvironment();
   Analysis analysis;
@@ -47,7 +50,9 @@ Analysis analyze(const std::string& source, bool withStdlib = false) {
   return analysis;
 }
 
-// Byte offset of the Nth occurrence of needle
+/**
+ * Byte offset of the Nth occurrence of needle
+ */
 size_t offsetOf(const std::string& source, const std::string& needle,
                 int occurrence = 0) {
   size_t pos = std::string::npos;
@@ -61,6 +66,7 @@ size_t offsetOf(const std::string& source, const std::string& needle,
   return pos;
 }
 
+/** Queries rename locations for the selected fixture symbol. */
 std::optional<Rename> renameAt(const std::string& source,
                                const std::string& needle, int occurrence = 0,
                                bool withStdlib = false) {
@@ -77,13 +83,16 @@ std::optional<Rename> renameAt(const std::string& source,
                                  static_cast<int>(pos));
 }
 
+/** Extracts the source spelling covered by an editor result range. */
 std::string rangeText(const std::string& text, const SymbolLocation& location) {
   return text.substr(location.range.offset,
                      location.range.endOffset.value_or(location.range.offset) -
                          location.range.offset);
 }
 
-// Leading identifier of a snippet
+/**
+ * Leading identifier of a snippet
+ */
 std::string identifierOf(const std::string& snippet) {
   size_t length = 0;
   while (length < snippet.size() &&
@@ -94,6 +103,7 @@ std::string identifierOf(const std::string& snippet) {
   return snippet.substr(0, length);
 }
 
+/** Formats collected symbol locations to make assertion failures readable. */
 std::string describe(const std::string& source,
                      const std::vector<SymbolLocation>& sites) {
   std::string text;
@@ -106,15 +116,19 @@ std::string describe(const std::string& source,
   return text.empty() ? "nothing" : text;
 }
 
-// A name expected among the sites: the Nth occurrence of a snippet that
-// starts with it
+/**
+ * A name expected among the sites: the Nth occurrence of a snippet that
+ * starts with it
+ */
 struct ExpectedName {
   std::string needle;
   int occurrence = 0;
 };
 
-// Renaming the symbol at `needle` edits exactly the names at `expected`,
-// all in the document, and is not refused
+/**
+ * Renaming the symbol at `needle` edits exactly the names at `expected`,
+ * all in the document, and is not refused
+ */
 testing::AssertionResult renames(const std::string& source,
                                  const std::string& needle,
                                  const std::vector<ExpectedName>& expected,
@@ -170,7 +184,9 @@ testing::AssertionResult renames(const std::string& source,
   return testing::AssertionSuccess();
 }
 
-// The text with every site of the document replaced by newName
+/**
+ * The text with every site of the document replaced by newName
+ */
 std::string applyEdits(const std::string& text,
                        const std::vector<SymbolLocation>& sites,
                        const std::string& newName) {
@@ -183,6 +199,7 @@ std::string applyEdits(const std::string& text,
   return edited;
 }
 
+/** Reads a fixture file into a string for comparison. */
 std::string readFile(const std::string& path) {
   std::ifstream file(path);
   std::stringstream buffer;

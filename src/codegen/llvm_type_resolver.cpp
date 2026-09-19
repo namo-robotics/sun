@@ -11,6 +11,7 @@ using sun::semantic_analysis::LambdaType;
 
 using namespace llvm;
 
+/** Translates analyzed Sun programs into LLVM instructions. */
 namespace sun::codegen {
 
 // -----------------------------------------------------------------------------

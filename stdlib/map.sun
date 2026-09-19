@@ -22,6 +22,7 @@
 //   // Iteration over values
 //   for (var v: i32 in m) { ... }
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
   // Entry states for open addressing
   // 0 = EMPTY (never used)
@@ -32,8 +33,10 @@ public module std {
   // Hash Functions
   // ============================================================================
 
-  // Simple multiplicative hash for integers
-  // Uses Knuth's multiplicative method
+  /**
+   * Simple multiplicative hash for integers
+   * Uses Knuth's multiplicative method
+   */
   function hash_i64(key: i64) i64 {
     // Knuth's multiplicative constant (golden ratio based)
     // 2654435769 = floor(2^32 / phi)
@@ -48,12 +51,16 @@ public module std {
     return hash;
   }
 
-  // Hash for 32-bit integers
+  /**
+   * Hash for 32-bit integers
+   */
   function hash_i32(key: i32) i64 {
     return hash_i64(key);
   }
 
-  // Hash for String (simple polynomial rolling hash)
+  /**
+   * Hash for String (simple polynomial rolling hash)
+   */
   function hash_string(s: const ref String) i64 {
     var hash: i64 = 0;
     var base: i64 = 31;  // Prime base
@@ -72,52 +79,74 @@ public module std {
     return hash;
   }
 
-  // Key hashing/equality dispatched by key type. Overloads resolve per Map
-  // specialization, so Map<i64, V>, Map<i32, V>, Map<u32, V> and
-  // Map<String, V> each pick the matching pair. String keys are compared by
-  // content through references (never copied out of the bucket).
+  /**
+   * Key hashing/equality dispatched by key type. Overloads resolve per Map
+   * specialization, so Map<i64, V>, Map<i32, V>, Map<u32, V> and
+   * Map<String, V> each pick the matching pair. String keys are compared by
+   * content through references (never copied out of the bucket).
+   */
   function hash_map_key(k: i64) i64 {
     return hash_i64(k);
   }
-  // Hash a 32-bit signed key.
+  /**
+   * Hash a 32-bit signed key.
+   */
   function hash_map_key(k: i32) i64 {
     return hash_i64(k);
   }
-  // Hash a 32-bit unsigned key.
+  /**
+   * Hash a 32-bit unsigned key.
+   */
   function hash_map_key(k: u32) i64 {
     return hash_i64(k);
   }
-  // Hash a 64-bit unsigned key.
+  /**
+   * Hash a 64-bit unsigned key.
+   */
   function hash_map_key(k: u64) i64 {
     return hash_i64(_convert<i64>(k));
   }
-  // Hash a String key by its bytes.
+  /**
+   * Hash a String key by its bytes.
+   */
   function hash_map_key(k: const ref String) i64 {
     return hash_string(k);
   }
 
-  // Compare a stored 64-bit signed key against a lookup key.
+  /**
+   * Compare a stored 64-bit signed key against a lookup key.
+   */
   function compare_map_keys(a: const ref i64, b: i64) bool {
     return a == b;
   }
-  // Compare a stored 32-bit signed key against a lookup key.
+  /**
+   * Compare a stored 32-bit signed key against a lookup key.
+   */
   function compare_map_keys(a: const ref i32, b: i32) bool {
     return a == b;
   }
-  // Compare a stored 32-bit unsigned key against a lookup key.
+  /**
+   * Compare a stored 32-bit unsigned key against a lookup key.
+   */
   function compare_map_keys(a: const ref u32, b: u32) bool {
     return a == b;
   }
-  // Compare a stored 64-bit unsigned key against a lookup key.
+  /**
+   * Compare a stored 64-bit unsigned key against a lookup key.
+   */
   function compare_map_keys(a: const ref u64, b: u64) bool {
     return a == b;
   }
-  // Compare a stored String key against a lookup key, byte for byte.
+  /**
+   * Compare a stored String key against a lookup key, byte for byte.
+   */
   function compare_map_keys(a: const ref String, b: const ref String) bool {
     return a.equals(b);
   }
 
-  // Modulo operation (a mod b)
+  /**
+   * Modulo operation (a mod b)
+   */
   function compute_mod(a: i64, b: i64) i64 {
     return a - (a / b) * b;
   }
@@ -126,6 +155,7 @@ public module std {
   // Map<K, V> - Generic Hash Map
   // ============================================================================
 
+  /** Owns key-value entries in a hash table and manages their storage. */
   public class Map<K, V> implements IIterable<ref V, Map<K, V>> {
     var keys: ContiguousBuffer<K>;  // Key storage
     var values: ContiguousBuffer<V>;  // Value storage  
@@ -134,7 +164,9 @@ public module std {
     var capacity_: i64;  // Number of buckets
     var size_: i64 = 0;  // Number of occupied entries
 
-    // Constructor with allocator and capacity
+    /**
+     * Constructor with allocator and capacity
+     */
     init(allocator: const ref HeapAllocator, capacity: i64) {
       this.alloc = allocator.copy();
       this.capacity_ = capacity;
@@ -148,8 +180,10 @@ public module std {
       this.states.fill(0);
     }
 
-    // Destructor - drop live keys/values (buffer memory itself is freed by
-    // the ContiguousBuffer/Unique field recursion)
+    /**
+     * Destructor - drop live keys/values (buffer memory itself is freed by
+     * the ContiguousBuffer/Unique field recursion)
+     */
     deinit() {
       for (var i: i64 = 0; i < this.capacity_; i = i + 1) {
         if (unsafe { this.states.get_unchecked(i); } == 1) {
@@ -159,12 +193,16 @@ public module std {
       }
     }
 
-    // Drop the key stored at bucket probe (no-op for non-owning key types)
+    /**
+     * Drop the key stored at bucket probe (no-op for non-owning key types)
+     */
     method drop_key(probe: i64) void {
       unsafe { _deinit<K>(_ptr_offset(this.keys.raw_data(), probe * _sizeof<K>())); };
     }
 
-    // Drop the value stored at bucket probe (no-op for non-owning value types)
+    /**
+     * Drop the value stored at bucket probe (no-op for non-owning value types)
+     */
     method drop_value(probe: i64) void {
       unsafe { _deinit<V>(_ptr_offset(this.values.raw_data(), probe * _sizeof<V>())); };
     }
@@ -173,7 +211,9 @@ public module std {
     // Core Operations
     // ========================================================================
 
-    // Insert or update a key-value pair
+    /**
+     * Insert or update a key-value pair
+     */
     public method insert(key: K, value: V) void {
       // Check load factor and grow if needed (> 70%)
       var threshold: i64 = (this.capacity_ * 7) / 10;
@@ -233,9 +273,11 @@ public module std {
       }
     }
 
-    // Borrow the value stored under key; throws if not found. The map keeps
-    // ownership, so this hands back a reference — copying the value out would
-    // leave two owners of anything it holds. Use remove() to move it out.
+    /**
+     * Borrow the value stored under key; throws if not found. The map keeps
+     * ownership, so this hands back a reference — copying the value out would
+     * leave two owners of anything it holds. Use remove() to move it out.
+     */
     public const method get(key: K) ref V throws IError {
       var probe: i64 = this.find_index(key);
       if (probe < 0) {
@@ -244,7 +286,9 @@ public module std {
       return unsafe { this.values.get_unchecked(probe); };
     }
 
-    // Borrow the value stored under key; None if not present
+    /**
+     * Borrow the value stored under key; None if not present
+     */
     public const method find(key: K) Option<ref V> {
       var probe: i64 = this.find_index(key);
       if (probe < 0) {
@@ -253,7 +297,9 @@ public module std {
       return Option.Some(unsafe { this.values.get_unchecked(probe); });
     }
 
-    // Borrow the value stored under key, or the caller's default when absent
+    /**
+     * Borrow the value stored under key, or the caller's default when absent
+     */
     public const method get_or_default(key: K, default_value: ref V) ref V {
       var probe: i64 = this.find_index(key);
       if (probe < 0) {
@@ -262,7 +308,9 @@ public module std {
       return unsafe { this.values.get_unchecked(probe); };
     }
 
-    // Remove key and return its value, throws IError if not found
+    /**
+     * Remove key and return its value, throws IError if not found
+     */
     public method remove(key: K) V throws IError {
       var probe: i64 = this.find_index(key);
       if (probe < 0) {
@@ -276,27 +324,37 @@ public module std {
       return value;
     }
 
-    // Check if key exists
+    /**
+     * Check if key exists
+     */
     public const method contains(key: K) bool {
       return this.find_index(key) >= 0;
     }
 
-    // Get number of elements
+    /**
+     * Get number of elements
+     */
     public const method size() i64 {
       return this.size_;
     }
 
-    // Get bucket count
+    /**
+     * Get bucket count
+     */
     public const method capacity() i64 {
       return this.capacity_;
     }
 
-    // Check if map is empty
+    /**
+     * Check if map is empty
+     */
     public const method is_empty() bool {
       return this.size_ == 0;
     }
 
-    // Clear all entries. Live keys/values are dropped.
+    /**
+     * Clear all entries. Live keys/values are dropped.
+     */
     public method clear() void {
       for (var i: i64 = 0; i < this.capacity_; i = i + 1) {
         if (unsafe { this.states.get_unchecked(i); } == 1) {
@@ -317,30 +375,40 @@ public module std {
     // and values in place rather than copy them out)
     // ========================================================================
 
-    // True if bucket i holds a live entry
+    /**
+     * True if bucket i holds a live entry
+     */
     public const method is_bucket_occupied(i: i64) bool {
       return unsafe { this.states.get_unchecked(i); } == 1;
     }
 
-    // Borrow the key stored in bucket i (must be occupied)
+    /**
+     * Borrow the key stored in bucket i (must be occupied)
+     */
     public const method get_bucket_key(i: i64) ref K {
       return unsafe { _to_ref<K>(_ptr_as_raw<K>(_ptr_offset(this.keys.raw_data(), i * _sizeof<K>()))); };
     }
 
-    // Borrow the value stored in bucket i (must be occupied)
+    /**
+     * Borrow the value stored in bucket i (must be occupied)
+     */
     public const method get_bucket_value(i: i64) ref V {
       return unsafe { _to_ref<V>(_ptr_as_raw<V>(_ptr_offset(this.values.raw_data(), i * _sizeof<V>()))); };
     }
 
-    // Compare the key stored in bucket probe against `key` in place
+    /**
+     * Compare the key stored in bucket probe against `key` in place
+     */
     const method key_at_equals(probe: i64, key: const ref K) bool {
       var slot: raw_ptr<K> = unsafe { _ptr_as_raw<K>(_ptr_offset(this.keys.raw_data(), probe * _sizeof<K>())); };
       return unsafe { compare_map_keys(_to_ref<K>(slot), key); };
     }
 
-    // Find index of key, returns -1 if not found. The key is borrowed for
-    // the comparisons and dropped when this call ends (String keys own their
-    // buffer; the bucket keeps its own copy).
+    /**
+     * Find index of key, returns -1 if not found. The key is borrowed for
+     * the comparisons and dropped when this call ends (String keys own their
+     * buffer; the bucket keeps its own copy).
+     */
     const method find_index(key: K) i64 {
       var hash: i64 = hash_map_key(key);
       var start: i64 = compute_mod(hash, this.capacity_);
@@ -366,7 +434,9 @@ public module std {
       return -1;
     }
 
-    // Grow capacity and rehash all entries
+    /**
+     * Grow capacity and rehash all entries
+     */
     method grow() void {
       var old_capacity = this.capacity_;
 
@@ -402,7 +472,9 @@ public module std {
     // Iteration Support
     // ========================================================================
 
-    // Return iterator over values
+    /**
+     * Return iterator over values
+     */
     public const method iter() MapIterator<K, V> {
       return MapIterator<K, V>();
     }
@@ -416,8 +488,10 @@ public module std {
   public class MapIterator<K, V> implements IIterator<ref V, Map<K, V>> {
     var current: i64 = 0;
 
-    // Value in the next occupied slot, or None once the map is exhausted
-    // Values are borrowed: the map still owns them.
+    /**
+     * Value in the next occupied slot, or None once the map is exhausted
+     * Values are borrowed: the map still owns them.
+     */
     public method next(map: ref Map<K, V>) Option<ref V> {
       var capacity: i64 = map.capacity();
       while (this.current < capacity) {

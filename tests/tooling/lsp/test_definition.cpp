@@ -20,16 +20,19 @@
 
 using sun::driver::Driver;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 // The file never exists on disk; nodes carry the path exactly as given
 const char* kPath = "/definition_test.sun";
 
+/** Keeps the syntax tree and semantic context alive for editor-feature tests. */
 struct Analysis {
   std::unique_ptr<Driver> driver;
   sun::driver::Driver::AnalyzedProgram program;
 };
 
+/** Parses and analyzes fixture source before querying editor features. */
 Analysis analyze(const std::string& source, bool withStdlib = false) {
   sun::driver::initTestEnvironment();
   Analysis analysis;
@@ -40,7 +43,9 @@ Analysis analyze(const std::string& source, bool withStdlib = false) {
   return analysis;
 }
 
-// Byte offset of the Nth occurrence of needle
+/**
+ * Byte offset of the Nth occurrence of needle
+ */
 size_t offsetOf(const std::string& source, const std::string& needle,
                 int occurrence = 0) {
   size_t pos = std::string::npos;
@@ -54,6 +59,7 @@ size_t offsetOf(const std::string& source, const std::string& needle,
   return pos;
 }
 
+/** Queries the definition location at a fixture source offset. */
 std::optional<sun::lsp::SymbolLocation> definitionAt(const std::string& source,
                                                      const std::string& needle,
                                                      bool withStdlib = false,
@@ -71,6 +77,7 @@ std::optional<sun::lsp::SymbolLocation> definitionAt(const std::string& source,
                                      static_cast<int>(pos));
 }
 
+/** Extracts the source spelling covered by an editor result range. */
 std::string rangeText(const std::string& text,
                       const sun::lsp::SymbolLocation& def) {
   return text.substr(
@@ -78,8 +85,10 @@ std::string rangeText(const std::string& text,
       def.range.endOffset.value_or(def.range.offset) - def.range.offset);
 }
 
-// The definition of the symbol at `needle` is the name starting at
-// `declaration` in the same document
+/**
+ * The definition of the symbol at `needle` is the name starting at
+ * `declaration` in the same document
+ */
 testing::AssertionResult definedAt(const std::string& source,
                                    const std::string& needle,
                                    const std::string& declaration,
@@ -108,6 +117,7 @@ testing::AssertionResult definedAt(const std::string& source,
   return testing::AssertionSuccess();
 }
 
+/** Reads a fixture file into a string for comparison. */
 std::string readFile(const std::string& path) {
   std::ifstream file(path);
   std::stringstream buffer;

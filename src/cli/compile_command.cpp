@@ -17,11 +17,15 @@ using sun::driver::LinkOptions;
 
 using sun::driver::Driver;
 
+/** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// Compile the job's input files into the driver's module.
+/**
+ * Compile the job's input files into the driver's module.
+ */
 void compileInputs(Driver& driver, const CompileJob& job) {
   if (job.inputFiles.size() > 1) {
     driver.compileFiles(job.inputFiles, job.moonImports);
@@ -30,8 +34,10 @@ void compileInputs(Driver& driver, const CompileJob& job) {
   }
 }
 
-// The job's link options plus the static libraries the driver's imported
-// bundles carry, so a program using such a bundle needs no -l flags.
+/**
+ * The job's link options plus the static libraries the driver's imported
+ * bundles carry, so a program using such a bundle needs no -l flags.
+ */
 LinkOptions makeLinkOptions(const CompileJob& job, const Driver& driver) {
   LinkOptions linkOpts = job.baseLinkOpts;
   const auto& bundled = driver.getNativeArchivePaths();
@@ -40,23 +46,29 @@ LinkOptions makeLinkOptions(const CompileJob& job, const Driver& driver) {
   return linkOpts;
 }
 
-// The name of the job's test binary.
+/**
+ * The name of the job's test binary.
+ */
 std::string getTestOutputName(const CompileJob& job) {
   return job.testBinaryName.empty() ? job.outputFile + "_test"
                                     : job.testBinaryName;
 }
 
-// Whether the job's builds may be skipped. Skipping has to be asked for, and
-// flags that print or write something besides the artifact ask for the work
-// to be done anyway.
+/**
+ * Whether the job's builds may be skipped. Skipping has to be asked for, and
+ * flags that print or write something besides the artifact ask for the work
+ * to be done anyway.
+ */
 bool maySkip(const CompileJob& job) {
   return job.skipIfUnchanged && !job.emitIR && !job.debugMode &&
          !job.dumpProtoSun;
 }
 
-// The hash of everything the job reads to build its executable or object
-// file, or with `forTests` its test binary. Resolves the manifest the way
-// the driver will, so the files hashed are the files compiled.
+/**
+ * The hash of everything the job reads to build its executable or object
+ * file, or with `forTests` its test binary. Resolves the manifest the way
+ * the driver will, so the files hashed are the files compiled.
+ */
 std::string computeJobInputHash(const CompileJob& job, bool forTests) {
   namespace fs = std::filesystem;
   sun::driver::BuildInputs inputs;
@@ -121,8 +133,10 @@ std::string computeJobInputHash(const CompileJob& job, bool forTests) {
   return sun::driver::computeInputHash(inputs);
 }
 
-// True when the artifact at `path` records `inputHash`. `record` receives
-// whatever the artifact recorded.
+/**
+ * True when the artifact at `path` records `inputHash`. `record` receives
+ * whatever the artifact recorded.
+ */
 bool isUpToDate(const std::string& path, const std::string& inputHash,
                 std::optional<BuildRecord>& record) {
   record = sun::driver::readBuildRecord(path);
@@ -131,6 +145,7 @@ bool isUpToDate(const std::string& path, const std::string& inputHash,
 
 }  // namespace
 
+/** Derives the default output filename from the input entrypoint. */
 std::string deriveOutputName(const std::string& entrypoint) {
   std::string output = entrypoint;
   size_t dotPos = output.rfind(".sun");
@@ -140,6 +155,7 @@ std::string deriveOutputName(const std::string& entrypoint) {
   return output;
 }
 
+/** Resolves command options into the inputs and outputs of a compilation job. */
 CompileJob makeCompileJob(const BuildRunOptions& options) {
   CompileJob job;
   job.inputFiles = options.inputFiles;
@@ -159,6 +175,7 @@ CompileJob makeCompileJob(const BuildRunOptions& options) {
   return job;
 }
 
+/** Builds the executable used to run the selected Sun tests. */
 int compileTestBinary(const CompileJob& job, bool hasExecutable) {
   const std::string& inputFile = job.inputFiles[0];
   const std::string testOutput = getTestOutputName(job);
@@ -209,6 +226,7 @@ int compileTestBinary(const CompileJob& job, bool hasExecutable) {
   return 0;
 }
 
+/** Compiles and links a program entrypoint using the prepared job settings. */
 int compileEntrypoint(const CompileJob& job) {
   const std::string& inputFile = job.inputFiles[0];
 
@@ -303,6 +321,7 @@ int compileEntrypoint(const CompileJob& job) {
   }
 }
 
+/** Runs the compile command and returns its process exit status. */
 int runCompileCommand(const BuildRunOptions& options) {
   CompileJob job = makeCompileJob(options);
   if (job.outputFile.empty()) {

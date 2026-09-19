@@ -24,6 +24,7 @@ using sun::ast::PrototypeAST;
 using sun::ast::VariableCreationAST;
 using sun::support::logAndThrowError;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 /*
@@ -138,21 +139,25 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
   // and local variable ordering matter)
   if (!ctx_.isAtModuleLevel()) return;
 
-  // Nested calls (modules) share the outermost pre-pass. Specialization
-  // bodies deferred anywhere inside are analyzed when the outermost pass
-  // completes normally (see the end of this function); if an error unwinds
-  // through it they are dropped, so the error that stopped the pass is the
-  // one reported rather than a failure in a body analyzed against
-  // half-registered declarations.
+  /**
+   * Nested calls (modules) share the outermost pre-pass. Specialization
+   * bodies deferred anywhere inside are analyzed when the outermost pass
+   * completes normally (see the end of this function); if an error unwinds
+   * through it they are dropped, so the error that stopped the pass is the
+   * one reported rather than a failure in a body analyzed against
+   * half-registered declarations.
+   */
   struct PrepassGuard {
     DeclarationCollectionPass& c;
     GenericSpecializer& generics;
     bool outermost;
+    /** Temporarily exposes the active declaration-collection pass to generic specialization. */
     PrepassGuard(DeclarationCollectionPass& collector, GenericSpecializer& g)
         : c(collector), generics(g), outermost(collector.prepassDepth_ == 0) {
       ++c.prepassDepth_;
       generics.setInDeclarationPrepass(true);
     }
+    /** Restores the declaration-collection pass previously used by generic specialization. */
     ~PrepassGuard() {
       --c.prepassDepth_;
       if (outermost) {

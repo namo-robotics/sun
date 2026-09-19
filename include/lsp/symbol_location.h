@@ -8,8 +8,10 @@
 #include "lsp/text_positions.h"
 #include "support/position.h"
 
+/** Provides compiler-backed editor features through the language server protocol. */
 namespace sun::lsp {
 
+/** A declaration location returned by editor navigation requests. */
 struct SymbolLocation {
   std::string filePath;  // Absolute path of the file holding the name
   sun::support::Position range;  // Byte offsets of the name in that file
@@ -17,7 +19,9 @@ struct SymbolLocation {
   LspPosition end;
 };
 
-// Protocol form of a byte range inside `text`
+/**
+ * Protocol form of a byte range inside `text`
+ */
 SymbolLocation makeSymbolLocation(const std::string& filePath,
                                   const sun::support::Position& range,
                                   const std::string& text);

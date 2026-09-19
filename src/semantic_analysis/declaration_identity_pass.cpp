@@ -13,7 +13,9 @@ using sun::ast::MatchExprAST;
 using sun::ast::TryCatchExprAST;
 using sun::support::logAndThrowError;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
 /** Register one imported binder or allocate a new source binder. */
@@ -343,6 +345,7 @@ void DeclarationIdentityPass::run(const ExprAST& root, DeclarationId owner,
   });
 }
 
+/** Clears computed annotations throughout the tree while retaining declaration identities. */
 void clearComputedAnalysis(const ExprAST& root) {
   forEachChild(root,
                [](const ExprAST& child) { clearComputedAnalysis(child); });
@@ -350,6 +353,7 @@ void clearComputedAnalysis(const ExprAST& root) {
   root.clearComputedAnalysis();
 }
 
+/** Discards analysis-session state throughout the syntax tree. */
 void resetAnalysisSession(const ExprAST& root) {
   forEachChild(root, [](const ExprAST& child) { resetAnalysisSession(child); });
   resetBindings(root, true);

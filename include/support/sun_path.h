@@ -12,20 +12,27 @@
 
 #include "support/target_os.h"
 
+/** Provides shared diagnostics, source tracking, and compiler utilities. */
 namespace sun::support {
 
-/// Centralized SUN_PATH environment variable handling.
-/// SUN_PATH is a colon-separated list of directories used to resolve imports.
+/**
+ * Centralized SUN_PATH environment variable handling.
+ * SUN_PATH is a colon-separated list of directories used to resolve imports.
+ */
 class SunPath {
  public:
-  /// Directories added with --lib-path (or by an embedding tool). Searched
-  /// ahead of SUN_PATH, so an explicit flag wins over the environment.
+  /**
+   * Directories added with --lib-path (or by an embedding tool). Searched
+   * ahead of SUN_PATH, so an explicit flag wins over the environment.
+   */
   static std::vector<std::filesystem::path>& extraPaths() {
     static std::vector<std::filesystem::path> paths;
     return paths;
   }
 
-  /// Add a directory to search for .moon bundles
+  /**
+   * Add a directory to search for .moon bundles
+   */
   static void addSearchPath(const std::filesystem::path& dir) {
     auto& paths = extraPaths();
     if (std::find(paths.begin(), paths.end(), dir) == paths.end()) {
@@ -33,8 +40,10 @@ class SunPath {
     }
   }
 
-  /// Get the directories imports resolve against: --lib-path first, then
-  /// the SUN_PATH environment variable.
+  /**
+   * Get the directories imports resolve against: --lib-path first, then
+   * the SUN_PATH environment variable.
+   */
   static std::vector<std::filesystem::path> getPaths() {
     std::vector<std::filesystem::path> paths = extraPaths();
     const char* env = std::getenv("SUN_PATH");
@@ -51,8 +60,10 @@ class SunPath {
     return paths;
   }
 
-  /// Resolve a relative path against SUN_PATH directories.
-  /// Returns the first existing match, or empty path if not found.
+  /**
+   * Resolve a relative path against SUN_PATH directories.
+   * Returns the first existing match, or empty path if not found.
+   */
   static std::filesystem::path resolve(const std::string& relativePath) {
     for (const auto& dir : getPaths()) {
       auto candidate = dir / relativePath;
@@ -104,7 +115,9 @@ class SunPath {
     return {};
   }
 
-  /// Get library search paths derived from SUN_PATH (lib/ and build/ subdirs).
+  /**
+   * Get library search paths derived from SUN_PATH (lib/ and build/ subdirs).
+   */
   static std::vector<std::filesystem::path> getLibrarySearchPaths() {
     std::vector<std::filesystem::path> searchPaths;
     for (const auto& base : getPaths()) {
@@ -120,7 +133,9 @@ class SunPath {
     return searchPaths;
   }
 
-  /// Ensure SUN_PATH is set (to cwd if not already). Used by tests.
+  /**
+   * Ensure SUN_PATH is set (to cwd if not already). Used by tests.
+   */
   static void ensureSet() {
     if (!std::getenv("SUN_PATH")) {
       auto cwd = std::filesystem::current_path().string();
@@ -128,12 +143,14 @@ class SunPath {
     }
   }
 
-  /// The system-wide directories installed bundles live in, existing ones
-  /// only. Two directories relative to the compiler binary come first, so a
-  /// relocated or Homebrew-prefixed install finds its own bundles; then the
-  /// fixed prefixes the Debian package (/usr) and Homebrew
-  /// (/opt/homebrew, /usr/local — macOS keeps /usr/lib read-only) install
-  /// to.
+  /**
+   * The system-wide directories installed bundles live in, existing ones
+   * only. Two directories relative to the compiler binary come first, so a
+   * relocated or Homebrew-prefixed install finds its own bundles; then the
+   * fixed prefixes the Debian package (/usr) and Homebrew
+   * (/opt/homebrew, /usr/local — macOS keeps /usr/lib read-only) install
+   * to.
+   */
   static std::vector<std::filesystem::path> systemInstallDirs() {
     std::vector<std::filesystem::path> dirs;
     auto addIfExists = [&](const std::filesystem::path& dir) {

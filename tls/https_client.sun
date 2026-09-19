@@ -16,6 +16,7 @@
 //   println(resp.status);
 //   println(resp.body);
 
+/** Groups the tls declarations exported by this source file. */
 public module tls {
   using std;
 
@@ -23,11 +24,13 @@ public module tls {
   // HttpClientResponse - parsed response
   // -------------------------------------------------------------------
 
+  /** Owns the status, headers, and body received from an HTTP server. */
   public class HttpClientResponse {
     public var status: i32 = 0;
     public var headers: String;  // raw header block after the status line
     public var body: String;  // decoded body
 
+    /** Creates the client or response with storage from the supplied allocator. */
     init(alloc: ref HeapAllocator) {
       this.headers = String(alloc, "");
       this.body = String(alloc, "");
@@ -38,7 +41,9 @@ public module tls {
   // Response parsing
   // -------------------------------------------------------------------
 
-  // The Content-Length value in a lowercased header block, or -1
+  /**
+   * The Content-Length value in a lowercased header block, or -1
+   */
   function find_content_length(headers_lower: const ref String) i64 {
     var idx: i64 = match headers_lower.find("content-length:") {
       Option.Some(v) => v,
@@ -69,7 +74,9 @@ public module tls {
     return val;
   }
 
-  // Decode a chunked body from raw[start..] into out
+  /**
+   * Decode a chunked body from raw[start..] into out
+   */
   function decode_chunked(raw: const ref String, start: i64, out: ref String) void throws IError {
     var i: i64 = start;
     var n: i64 = raw.length();
@@ -120,9 +127,11 @@ public module tls {
     throw Error(-1, "chunked body missing terminating chunk");
   }
 
-  // Split a raw response into status, header block, and decoded body.
-  // Public like http.sun's request parser, so code driving a TlsStream
-  // itself can reuse the framing.
+  /**
+   * Split a raw response into status, header block, and decoded body.
+   * Public like http.sun's request parser, so code driving a TlsStream
+   * itself can reuse the framing.
+   */
   public function parse_response(alloc: ref HeapAllocator, raw: const ref String, resp: ref HttpClientResponse) void throws IError {
     var n: i64 = raw.length();
     var header_end: i64 = find_header_end(raw);
@@ -186,18 +195,23 @@ public module tls {
   // HttpsClient - one TLS connection per request
   // -------------------------------------------------------------------
 
+  /** Sends HTTP requests over verified TLS connections and parses their responses. */
   public class HttpsClient {
     var alloc: HeapAllocator;
 
+    /** Creates the client or response with storage from the supplied allocator. */
     init(allocator: ref HeapAllocator) {
       this.alloc = allocator.copy();
     }
 
-    // GET https://host{path} on port 443
+    /**
+     * GET https://host{path} on port 443
+     */
     public method get(host: ref String, path: static_ptr<u8>) HttpClientResponse throws IError {
       return this.get(host, 443, path);
     }
 
+    /** Sends an HTTPS GET request and returns the parsed response. */
     public method get(host: ref String, port: i32, path: static_ptr<u8>) HttpClientResponse throws IError {
       var req = String(this.alloc, "GET ");
       req.append(path);
@@ -208,11 +222,14 @@ public module tls {
       return this.exchange(host, port, req);
     }
 
-    // POST a body to https://host{path} on port 443
+    /**
+     * POST a body to https://host{path} on port 443
+     */
     public method post(host: ref String, path: static_ptr<u8>, content_type: static_ptr<u8>, body: const ref String) HttpClientResponse throws IError {
       return this.post(host, 443, path, content_type, body);
     }
 
+    /** Sends an HTTPS POST request with the supplied body and returns the response. */
     public method post(host: ref String, port: i32, path: static_ptr<u8>, content_type: static_ptr<u8>, body: const ref String) HttpClientResponse throws IError {
       var req = String(this.alloc, "POST ");
       req.append(path);
@@ -230,6 +247,7 @@ public module tls {
       return this.exchange(host, port, req);
     }
 
+    /** Appends the HTTP headers shared by requests from this client. */
     method append_common_headers(req: ref String, host: ref String) void {
       req.append("Host: ");
       req.append(host);
@@ -240,7 +258,9 @@ public module tls {
       append_crlf(req);
     }
 
-    // Connect, send the request, read to end-of-stream, and parse
+    /**
+     * Connect, send the request, read to end-of-stream, and parse
+     */
     method exchange(host: ref String, port: i32, request: ref String) HttpClientResponse throws IError {
       var stream = TlsStream();
       stream.connect(host, port);

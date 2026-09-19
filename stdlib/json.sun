@@ -21,35 +21,46 @@
 // move their String/Json arguments in, so the caller cannot use them after
 // the call. To keep a String, store a copy with create_json_string(alloc, ref s).
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
   // ==========================================================================
   // Errors
   // ==========================================================================
 
-  // Raised by parse_json (with the byte offset of the problem) and by the
-  // Json readers when the value has another kind (offset -1).
+  /**
+   * Raised by parse_json (with the byte offset of the problem) and by the
+   * Json readers when the value has another kind (offset -1).
+   */
   public class JsonError implements IError {
     var message_: static_ptr<u8>;
     var offset_: i64;
 
-    // Build a parse error with an explanation and the byte offset it happened at.
-    // An offset of -1 means the error was not tied to a position.
+    /**
+     * Build a parse error with an explanation and the byte offset it happened at.
+     * An offset of -1 means the error was not tied to a position.
+     */
     init(message: static_ptr<u8>, offset: i64) {
       this.message_ = message;
       this.offset_ = offset;
     }
 
-    // Always 10, the code for a JSON error.
+    /**
+     * Returns the code identifying this error category.
+     */
     public method code() i32 {
       return 60;
     }
 
-    // A fresh copy of the explanation, owned by the caller.
+    /**
+     * A fresh copy of the explanation, owned by the caller.
+     */
     public method message() String {
       return String(this.message_);
     }
 
-    // Byte offset into the parsed text, or -1 for non-parse errors
+    /**
+     * Byte offset into the parsed text, or -1 for non-parse errors
+     */
     public method offset() i64 {
       return this.offset_;
     }
@@ -59,6 +70,7 @@ public module std {
   // Value tree
   // ==========================================================================
 
+  /** The alternatives stored by a JSON node, including owned strings and child collections. */
   public enum JsonValue {
     Null,
     Bool(bool),
@@ -69,51 +81,68 @@ public module std {
     Object(Vec<JsonMember>)
   }
 
-  // One "key": value pair of an object
+  /**
+   * One "key": value pair of an object
+   */
   public class JsonMember {
     var key: String;
     var value: Json;
 
-    // Build a member. Both the key and the value move in.
+    /**
+     * Build a member. Both the key and the value move in.
+     */
     init(key: String, value: Json) {
       this.key = key;
       this.value = value;
     }
   }
 
+  /** Owns one JSON value and provides checked access to its contents. */
   public class Json {
     // The tree node itself; match on it directly when the methods below are
     // not enough (see JsonValue)
     public var value: JsonValue;
 
-    // null
+    /**
+     * null
+     */
     init() {
       this.value = JsonValue.Null;
     }
 
-    // Build a node around an already-built value.
+    /**
+     * Build a node around an already-built value.
+     */
     init(v: JsonValue) {
       this.value = v;
     }
 
-    // Build a JSON true or false.
+    /**
+     * Build a JSON true or false.
+     */
     init(b: bool) {
       this.value = JsonValue.Bool(b);
     }
 
-    // Build a JSON integer.
+    /**
+     * Build a JSON integer.
+     */
     init(n: i64) {
       this.value = JsonValue.Int(n);
     }
 
-    // Build a JSON floating-point number.
+    /**
+     * Build a JSON floating-point number.
+     */
     init(x: f64) {
       this.value = JsonValue.Float(x);
     }
 
-    // Takes ownership of the string: s is moved into the node and cannot be
-    // used afterwards. To keep the original, pass a borrow to
-    // create_json_string(alloc, ref s), which stores a copy.
+    /**
+     * Takes ownership of the string: s is moved into the node and cannot be
+     * used afterwards. To keep the original, pass a borrow to
+     * create_json_string(alloc, ref s), which stores a copy.
+     */
     init(s: String) {
       this.value = JsonValue.String(s);
     }
@@ -122,6 +151,7 @@ public module std {
     // Kind checks
     // ------------------------------------------------------------------------
 
+    /** Reports whether this JSON node contains the null value. */
     public method is_null() bool {
       return match this.value {
         JsonValue.Null => true,
@@ -129,7 +159,9 @@ public module std {
       };
     }
 
-    // Report whether this node is true or false.
+    /**
+     * Report whether this node is true or false.
+     */
     public method is_bool() bool {
       return match this.value {
         JsonValue.Bool(b) => true,
@@ -137,8 +169,10 @@ public module std {
       };
     }
 
-    // Report whether this node is an integer. A number written with a decimal
-    // point or exponent is a float, not an int.
+    /**
+     * Report whether this node is an integer. A number written with a decimal
+     * point or exponent is a float, not an int.
+     */
     public method is_int() bool {
       return match this.value {
         JsonValue.Int(n) => true,
@@ -146,7 +180,9 @@ public module std {
       };
     }
 
-    // Report whether this node is a floating-point number.
+    /**
+     * Report whether this node is a floating-point number.
+     */
     public method is_float() bool {
       return match this.value {
         JsonValue.Float(x) => true,
@@ -154,7 +190,9 @@ public module std {
       };
     }
 
-    // Int or Float
+    /**
+     * Int or Float
+     */
     public method is_number() bool {
       return match this.value {
         JsonValue.Int(n) => true,
@@ -163,7 +201,9 @@ public module std {
       };
     }
 
-    // Report whether this node is a string.
+    /**
+     * Report whether this node is a string.
+     */
     public method is_string() bool {
       return match this.value {
         JsonValue.String(s) => true,
@@ -171,7 +211,9 @@ public module std {
       };
     }
 
-    // Report whether this node is an array.
+    /**
+     * Report whether this node is an array.
+     */
     public method is_array() bool {
       return match this.value {
         JsonValue.Array(items) => true,
@@ -179,7 +221,9 @@ public module std {
       };
     }
 
-    // Report whether this node is an object.
+    /**
+     * Report whether this node is an object.
+     */
     public method is_object() bool {
       return match this.value {
         JsonValue.Object(members) => true,
@@ -191,6 +235,7 @@ public module std {
     // Readers
     // ------------------------------------------------------------------------
 
+    /** Returns the stored boolean or throws when this JSON node has another kind. */
     public method as_bool() bool throws IError {
       match this.value {
         JsonValue.Bool(b) => {
@@ -202,7 +247,9 @@ public module std {
       };
     }
 
-    // Int, or a Float with an integral value
+    /**
+     * Int, or a Float with an integral value
+     */
     public method as_i64() i64 throws IError {
       match this.value {
         JsonValue.Int(n) => {
@@ -224,7 +271,9 @@ public module std {
       };
     }
 
-    // Int or Float, as f64
+    /**
+     * Int or Float, as f64
+     */
     public method as_f64() f64 throws IError {
       match this.value {
         JsonValue.Int(n) => {
@@ -239,8 +288,10 @@ public module std {
       };
     }
 
-    // Borrow the string this node holds. Throws if it is not a string; the node
-    // keeps ownership of the text.
+    /**
+     * Borrow the string this node holds. Throws if it is not a string; the node
+     * keeps ownership of the text.
+     */
     public method as_string() ref String throws IError {
       match this.value {
         JsonValue.String(s) => {
@@ -252,7 +303,9 @@ public module std {
       };
     }
 
-    // Number of array items or object members; 0 for other kinds
+    /**
+     * Number of array items or object members; 0 for other kinds
+     */
     public method len() i64 {
       return match this.value {
         JsonValue.Array(items) => items.size(),
@@ -261,7 +314,9 @@ public module std {
       };
     }
 
-    // Array item by index
+    /**
+     * Array item by index
+     */
     public method at(i: i64) ref Json throws IError {
       match this.value {
         JsonValue.Array(items) => {
@@ -276,7 +331,9 @@ public module std {
       };
     }
 
-    // Object member value by key
+    /**
+     * Object member value by key
+     */
     public method get(key: static_ptr<u8>) ref Json throws IError {
       match this.value {
         JsonValue.Object(members) => {
@@ -293,8 +350,10 @@ public module std {
       };
     }
 
-    // Borrow the value stored under a key built at runtime. Throws if this is not
-    // an object or the key is absent.
+    /**
+     * Borrow the value stored under a key built at runtime. Throws if this is not
+     * an object or the key is absent.
+     */
     public method get(key: const ref String) ref Json throws IError {
       match this.value {
         JsonValue.Object(members) => {
@@ -311,7 +370,9 @@ public module std {
       };
     }
 
-    // True if this is an object with the key
+    /**
+     * True if this is an object with the key
+     */
     public method has(key: static_ptr<u8>) bool {
       return match this.value {
         JsonValue.Object(members) => this.find_member_index(members, key) >= 0,
@@ -319,7 +380,9 @@ public module std {
       };
     }
 
-    // The position of a key in an object's members, or -1 when it is absent.
+    /**
+     * The position of a key in an object's members, or -1 when it is absent.
+     */
     method find_member_index(members: const ref Vec<JsonMember>, key: static_ptr<u8>) i64 {
       for (var i: i64 = 0; i < members.size(); i = i + 1) {
         if (unsafe { members.get_unchecked(i); }.key.equals_literal(key)) {
@@ -329,7 +392,9 @@ public module std {
       return -1;
     }
 
-    // Object member key by position (insertion order)
+    /**
+     * Object member key by position (insertion order)
+     */
     public method key_at(i: i64) ref String throws IError {
       match this.value {
         JsonValue.Object(members) => {
@@ -344,7 +409,9 @@ public module std {
       };
     }
 
-    // Object member value by position (insertion order)
+    /**
+     * Object member value by position (insertion order)
+     */
     public method value_at(i: i64) ref Json throws IError {
       match this.value {
         JsonValue.Object(members) => {
@@ -363,7 +430,9 @@ public module std {
     // Building
     // ------------------------------------------------------------------------
 
-    // Append an item to an array
+    /**
+     * Append an item to an array
+     */
     public method push(item: Json) void throws IError {
       match this.value {
         JsonValue.Array(items) => {
@@ -375,8 +444,10 @@ public module std {
       };
     }
 
-    // Set an object member: replaces the value of an existing key (the old
-    // value is dropped) or appends a new member.
+    /**
+     * Set an object member: replaces the value of an existing key (the old
+     * value is dropped) or appends a new member.
+     */
     public method set(key: String, value: Json) void throws IError {
       match this.value {
         JsonValue.Object(members) => {
@@ -402,24 +473,32 @@ public module std {
     // Serialization
     // ------------------------------------------------------------------------
 
-    // Append compact JSON text (no whitespace)
+    /**
+     * Append compact JSON text (no whitespace)
+     */
     public method write(out: ref String) void {
       write_json_value(this, out, -1, 0);
     }
 
-    // Append JSON text with newlines and `indent` spaces per level
+    /**
+     * Append JSON text with newlines and `indent` spaces per level
+     */
     public method write_pretty(out: ref String, indent: i64) void {
       write_json_value(this, out, indent, 0);
     }
 
-    // Render this node as compact JSON text in a new String.
+    /**
+     * Render this node as compact JSON text in a new String.
+     */
     public method to_string(alloc: ref HeapAllocator) String {
       var out = String(alloc, "");
       this.write(out);
       return out;
     }
 
-    // Render this node as JSON text with newlines and `indent` spaces per level.
+    /**
+     * Render this node as JSON text with newlines and `indent` spaces per level.
+     */
     public method to_pretty_string(alloc: ref HeapAllocator, indent: i64) String {
       var out = String(alloc, "");
       this.write_pretty(out, indent);
@@ -427,23 +506,31 @@ public module std {
     }
   }
 
-  // Empty array
+  /**
+   * Empty array
+   */
   public function create_json_array(alloc: ref HeapAllocator) Json {
     return Json(JsonValue.Array(Vec<Json>(alloc, 4)));
   }
 
-  // Empty object
+  /**
+   * Empty object
+   */
   public function create_json_object(alloc: ref HeapAllocator) Json {
     return Json(JsonValue.Object(Vec<JsonMember>(alloc, 4)));
   }
 
-  // String value from a literal
+  /**
+   * String value from a literal
+   */
   public function create_json_string(alloc: ref HeapAllocator, text: static_ptr<u8>) Json {
     return Json(String(alloc, text));
   }
 
-  // String value copied from a borrowed String; the caller keeps its own.
-  // Use Json(s) instead to hand the String over without a copy.
+  /**
+   * String value copied from a borrowed String; the caller keeps its own.
+   * Use Json(s) instead to hand the String over without a copy.
+   */
   public function create_json_string(alloc: ref HeapAllocator, text: const ref String) Json {
     return Json(text.clone(alloc));
   }
@@ -452,6 +539,7 @@ public module std {
   // Writer
   // ==========================================================================
 
+  /** Appends a newline and indentation when pretty printing is enabled. */
   function write_json_indent(out: ref String, indent: i64, level: i64) void {
     if (indent < 0) {
       return;
@@ -462,7 +550,9 @@ public module std {
     }
   }
 
-  // Append a code point as exactly four hex digits, for a \u escape.
+  /**
+   * Append a code point as exactly four hex digits, for a \u escape.
+   */
   function write_json_hex4(out: ref String, code: i64) void {
     var shift: i64 = 12;
     while (shift >= 0) {
@@ -476,8 +566,10 @@ public module std {
     }
   }
 
-  // Quoted string with JSON escapes; bytes >= 0x20 other than '"' and '\'
-  // pass through unchanged (UTF-8 stays UTF-8)
+  /**
+   * Quoted string with JSON escapes; bytes >= 0x20 other than '"' and '\'
+   * pass through unchanged (UTF-8 stays UTF-8)
+   */
   function write_json_string(s: const ref String, out: ref String) void {
     out.append_char(b'"');
     var n: i64 = s.length();
@@ -507,8 +599,10 @@ public module std {
     out.append_char(b'"');
   }
 
-  // Floats keep a '.'/exponent so they read back as Float; non-finite
-  // values have no JSON spelling and are written as null
+  /**
+   * Floats keep a '.'/exponent so they read back as Float; non-finite
+   * values have no JSON spelling and are written as null
+   */
   function write_json_float(x: f64, out: ref String) void {
     if (x != x or x > F64_MAX or x < 0.0 - F64_MAX) {
       // nan / inf
@@ -527,8 +621,10 @@ public module std {
     out.append_literal(".0");
   }
 
-  // Append one node's JSON text. An indent below zero writes compact output;
-  // otherwise each level is indented by that many spaces.
+  /**
+   * Append one node's JSON text. An indent below zero writes compact output;
+   * otherwise each level is indented by that many spaces.
+   */
   function write_json_value(j: const ref Json, out: ref String, indent: i64, level: i64) void {
     match j.value {
       JsonValue.Null => {
@@ -591,17 +687,22 @@ public module std {
   // Deepest allowed array/object nesting
   var JSON_MAX_DEPTH: i64 = 256;
 
+  /** Parses JSON text while tracking the current byte offset and nesting depth. */
   class JsonParser {
     var pos: i64 = 0;
     var depth: i64 = 0;
     var alloc: HeapAllocator;
 
-    // Build a parser positioned at the start of the text.
+    /**
+     * Build a parser positioned at the start of the text.
+     */
     init(alloc: ref HeapAllocator) {
       this.alloc = alloc.copy();
     }
 
-    // The byte at the current position, or -1 at the end of the text.
+    /**
+     * The byte at the current position, or -1 at the end of the text.
+     */
     method peek(text: const ref String) i64 {
       if (this.pos >= text.length()) {
         return -1;
@@ -609,7 +710,9 @@ public module std {
       return _convert<i64>(unsafe { text.unsafe_at(this.pos); });
     }
 
-    // Step past spaces, tabs, newlines and carriage returns.
+    /**
+     * Step past spaces, tabs, newlines and carriage returns.
+     */
     method skip_whitespace(text: const ref String) void {
       while (this.pos < text.length()) {
         var ch: u8 = unsafe { text.unsafe_at(this.pos); };
@@ -621,7 +724,9 @@ public module std {
       }
     }
 
-    // Consume `literal` at pos or fail
+    /**
+     * Consume `literal` at pos or fail
+     */
     method expect_literal(text: const ref String, literal: static_ptr<u8>, what: static_ptr<u8>) void throws IError {
       var data: raw_ptr<u8> = literal.raw();
       var n: i64 = literal.length();
@@ -635,7 +740,9 @@ public module std {
       }
     }
 
-    // Parse whatever JSON value starts at the current position.
+    /**
+     * Parse whatever JSON value starts at the current position.
+     */
     method parse_value(text: const ref String) Json throws IError {
       var ch: i64 = this.peek(text);
       if (ch == b'{') {
@@ -668,9 +775,11 @@ public module std {
       throw JsonError("unexpected character in JSON text", this.pos);
     }
 
-    // Count one level deeper into an array or object, throwing once the nesting
-    // limit is passed. This is what stops a deeply nested document from running
-    // the stack out.
+    /**
+     * Count one level deeper into an array or object, throwing once the nesting
+     * limit is passed. This is what stops a deeply nested document from running
+     * the stack out.
+     */
     method enter(text: const ref String) void throws IError {
       this.depth = this.depth + 1;
       if (this.depth > JSON_MAX_DEPTH) {
@@ -678,7 +787,9 @@ public module std {
       }
     }
 
-    // Parse an array, from its '[' through its ']'.
+    /**
+     * Parse an array, from its '[' through its ']'.
+     */
     method parse_array(text: const ref String) Json throws IError {
       this.enter(text);
       this.pos = this.pos + 1;  // '['
@@ -709,7 +820,9 @@ public module std {
       return Json();
     }
 
-    // Parse an object, from its '{' through its '}'.
+    /**
+     * Parse an object, from its '{' through its '}'.
+     */
     method parse_object(text: const ref String) Json throws IError {
       this.enter(text);
       this.pos = this.pos + 1;  // '{'
@@ -751,7 +864,9 @@ public module std {
       return Json();
     }
 
-    // Read one hex digit and step past it. Throws on anything else.
+    /**
+     * Read one hex digit and step past it. Throws on anything else.
+     */
     method parse_hex_digit(text: const ref String) i64 throws IError {
       var ch: i64 = this.peek(text);
       this.pos = this.pos + 1;
@@ -767,7 +882,9 @@ public module std {
       throw JsonError("invalid \\u escape in JSON string", this.pos - 1);
     }
 
-    // Read the four hex digits of a \u escape as a code point.
+    /**
+     * Read the four hex digits of a \u escape as a code point.
+     */
     method parse_hex4(text: const ref String) i64 throws IError {
       var code: i64 = 0;
       for (var i: i64 = 0; i < 4; i = i + 1) {
@@ -776,13 +893,17 @@ public module std {
       return code;
     }
 
-    // The UTF-8 encoder lives in string.sun; privacy is module-scoped and
-    // both files are `module std`, so push_code is reachable here.
+    /**
+     * The UTF-8 encoder lives in string.sun; privacy is module-scoped and
+     * both files are `module std`, so push_code is reachable here.
+     */
     method append_utf8(out: ref String, code: i64) void {
       out.push_code(code);
     }
 
-    // Parse a quoted string starting at pos, decoding escapes into UTF-8
+    /**
+     * Parse a quoted string starting at pos, decoding escapes into UTF-8
+     */
     method parse_string(text: const ref String) String throws IError {
       var start: i64 = this.pos;
       this.pos = this.pos + 1;  // opening '"'
@@ -855,7 +976,9 @@ public module std {
       return out;
     }
 
-    // Step past a run of decimal digits and return how many there were.
+    /**
+     * Step past a run of decimal digits and return how many there were.
+     */
     method parse_digits(text: const ref String) i64 {
       var count: i64 = 0;
       while (this.pos < text.length() and unsafe { text.unsafe_at(this.pos); } >= b'0' and unsafe { text.unsafe_at(this.pos); } <= b'9') {
@@ -865,7 +988,9 @@ public module std {
       return count;
     }
 
-    // number = [-] int [frac] [exp]; int = 0 | [1-9][0-9]*
+    /**
+     * number = [-] int [frac] [exp]; int = 0 | [1-9][0-9]*
+     */
     method parse_number(text: const ref String) Json throws IError {
       var start: i64 = this.pos;
       if (this.peek(text) == b'-') {
@@ -925,8 +1050,10 @@ public module std {
     }
   }
 
-  // Parse a complete JSON text. Trailing whitespace is allowed, anything else
-  // after the value is an error.
+  /**
+   * Parse a complete JSON text. Trailing whitespace is allowed, anything else
+   * after the value is an error.
+   */
   public function parse_json(alloc: ref HeapAllocator, text: const ref String) Json throws IError {
     var parser = JsonParser(alloc);
     parser.skip_whitespace(text);
@@ -938,7 +1065,9 @@ public module std {
     return value;
   }
 
-  // Parse a JSON literal into a tree. Throws JsonError on malformed text.
+  /**
+   * Parse a JSON literal into a tree. Throws JsonError on malformed text.
+   */
   public function parse_json(alloc: ref HeapAllocator, text: static_ptr<u8>) Json throws IError {
     var owned = String(alloc, text);
     return parse_json(alloc, owned);

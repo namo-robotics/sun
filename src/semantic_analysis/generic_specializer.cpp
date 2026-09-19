@@ -30,6 +30,7 @@ using sun::ast::typeParameterNames;
 using sun::support::logAndThrowError;
 using sun::support::Position;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 using sun::semantic_analysis::formatFunctionSignature;
@@ -118,11 +119,13 @@ std::shared_ptr<ClassType> GenericSpecializer::instantiateGenericClass(
   const GenericClassInfo* genericClassInfo = &info;
   const std::string& baseName = info.qualifiedName.baseName;
 
-  // The template's members, interfaces and bodies are analyzed in the scope
-  // the template was declared in, wherever this instantiation was requested
-  // from: names resolve as they do at the definition site (transitive
-  // dependencies of its module included) and access control sees the
-  // template's own module.
+  /**
+   * The template's members, interfaces and bodies are analyzed in the scope
+   * the template was declared in, wherever this instantiation was requested
+   * from: names resolve as they do at the definition site (transitive
+   * dependencies of its module included) and access control sees the
+   * template's own module.
+   */
   SemanticContext::ScopeSwitchGuard definitionScope(
       ctx_, SemanticContext::definitionScopeOf(*genericClassInfo));
   SemanticContext::SourceFileGuard definitionFile(
@@ -935,8 +938,10 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
     allTypeArgs.push_back(methodTypeArgs[i]);
   }
 
-  // Enter scope and add all type bindings, inside the class's definition
-  // scope so the body resolves names as written at the definition site
+  /**
+   * Enter scope and add all type bindings, inside the class's definition
+   * scope so the body resolves names as written at the definition site
+   */
   SemanticContext::ScopeSwitchGuard definitionScope(
       ctx_, classDefinitionScope(*classType));
   SemanticContext::SourceFileGuard definitionFile(
@@ -1104,8 +1109,10 @@ std::shared_ptr<InterfaceType> GenericSpecializer::instantiateGenericInterface(
   specializedInterface->visibility = genericInfo->AST->getVisibility();
 
   {
-    // Member annotations resolve in the interface's definition scope; the
-    // result is registered in the requesting scope below
+    /**
+     * Member annotations resolve in the interface's definition scope; the
+     * result is registered in the requesting scope below
+     */
     SemanticContext::ScopeSwitchGuard definitionScope(
         ctx_, SemanticContext::definitionScopeOf(*genericInfo));
     SemanticContext::SourceFileGuard definitionFile(
@@ -1239,8 +1246,10 @@ GenericSpecializer::instantiateGenericEnum(
   specialized->setQualifiedName(genericInfo->qualifiedName);
 
   {
-    // Payload annotations resolve in the enum's definition scope; the result
-    // is registered in the requesting scope below
+    /**
+     * Payload annotations resolve in the enum's definition scope; the result
+     * is registered in the requesting scope below
+     */
     SemanticContext::ScopeSwitchGuard definitionScope(
         ctx_, SemanticContext::definitionScopeOf(*genericInfo));
     SemanticContext::SourceFileGuard definitionFile(

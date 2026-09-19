@@ -1,8 +1,10 @@
 using std;
 
-// A function that can fail declares an error type after its return type with
-// the ` throws IError` suffix, and signals failure with `throw`. The thrown value is
-// any class implementing `IError` (the standard library provides several).
+/**
+ * A function that can fail declares an error type after its return type with
+ * the ` throws IError` suffix, and signals failure with `throw`. The thrown value is
+ * any class implementing `IError` (the standard library provides several).
+ */
 function divide(a: i32, b: i32) i32 throws IError {
   if (b == 0) {
     throw DivisionByZeroError();
@@ -10,6 +12,7 @@ function divide(a: i32, b: i32) i32 throws IError {
   return a / b;
 }
 
+/** Runs the example that throws and handles errors. */
 function main() i32 {
   // A successful call needs no special handling.
   try {

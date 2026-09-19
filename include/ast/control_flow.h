@@ -4,6 +4,7 @@
 
 #include "ast/ast_fwd.h"
 
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 
 /**

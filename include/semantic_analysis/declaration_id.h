@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 /** Identifies a declaration within its owning analysis session. */
@@ -22,8 +23,11 @@ class DeclarationId {
   uint64_t index() const { return value_; }
   /** Report whether this identity has been assigned. */
   explicit operator bool() const { return value_ != 0; }
+  /** Compares the stored values for equality. */
   bool operator==(DeclarationId other) const { return value_ == other.value_; }
+  /** Reports whether the stored values differ. */
   bool operator!=(DeclarationId other) const { return !(*this == other); }
+  /** Orders values for use in sorted containers. */
   bool operator<(DeclarationId other) const { return value_ < other.value_; }
 };
 
@@ -64,8 +68,10 @@ struct DeclarationIdentity {
 
 }  // namespace sun::semantic_analysis
 
+/** Hashes declaration identities for use as keys in unordered containers. */
 template <>
 struct std::hash<sun::semantic_analysis::DeclarationId> {
+  /** Computes a hash for the supplied value for use in unordered containers. */
   size_t operator()(sun::semantic_analysis::DeclarationId id) const noexcept {
     return std::hash<uint64_t>{}(id.index());
   }

@@ -531,7 +531,9 @@ TEST(Lambdas_RefCaptures, ref_and_const_ref_captures_of_one_variable_conflict) {
 // ============================================================================
 
 TEST(Lambdas_RefCaptures, capture_list_names_on_proto) {
-  // Long names also exercise strings stored outside the token itself.
+  /**
+   * Long names also exercise strings stored outside the token itself.
+   */
   std::istringstream ss(
       "[ref mutable_capture_with_a_long_name, "
       "const ref shared_capture_with_a_long_name, "

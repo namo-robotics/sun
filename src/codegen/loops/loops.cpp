@@ -9,6 +9,7 @@ using sun::support::logAndThrowError;
 
 using namespace llvm;
 
+/** Generates loop control flow and iteration operations. */
 namespace sun::codegen::loops {
 
 Value* LoopGenerator::codegen(const sun::ast::ForExprAST& expr) {

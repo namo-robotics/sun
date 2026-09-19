@@ -3,14 +3,18 @@
 
 using std;
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** Groups tests for the vec library behavior. */
   module vec_tests {
+    /** Checks create empty vec. */
     test_function create_empty_vec() {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
       std.test.assert_eq(v.size(), 0);
     }
 
+    /** Checks push and size. */
     test_function push_and_size() {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
@@ -20,6 +24,7 @@ public module std {
       std.test.assert_eq(v.size(), 3);
     }
 
+    /** Checks push and get. */
     test_function push_and_get() {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
@@ -29,6 +34,7 @@ public module std {
       std.test.assert_eq(v.get(0) + v.get(1) + v.get(2), 60);
     }
 
+    /** Checks set element. */
     test_function set_element() {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
@@ -38,6 +44,7 @@ public module std {
       std.test.assert_eq(v.get(0), 99);
     }
 
+    /** Checks pop element. */
     test_function pop_element() {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
@@ -52,6 +59,7 @@ public module std {
       std.test.assert_eq(v.size(), 2);
     }
 
+    /** Checks pop empty is none. */
     test_function pop_empty_is_none() {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
@@ -64,6 +72,7 @@ public module std {
       std.test.assert_eq(got, 42);
     }
 
+    /** Checks remove first and iterate. */
     test_function remove_first_and_iterate() {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 4);
@@ -83,6 +92,7 @@ public module std {
       std.test.assert_eq(v.get(3), 5);
     }
 
+    /** Checks remove middle lsyntax tree and singleton. */
     test_function remove_middle_last_and_singleton() {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 4);
@@ -101,6 +111,7 @@ public module std {
       std.test.assert_eq(v.get(0), 40);
     }
 
+    /** Checks remove invalid indices leave vec unchanged. */
     test_function remove_invalid_indices_leave_vec_unchanged() {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 4);
@@ -126,6 +137,7 @@ public module std {
       std.test.assert_eq(caught, 6);
     }
 
+    /** Checks swap remove first and iterate. */
     test_function swap_remove_first_and_iterate() {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 4);
@@ -145,6 +157,7 @@ public module std {
       std.test.assert_eq(v.get(3), 5);
     }
 
+    /** Checks swap remove middle lsyntax tree and singleton. */
     test_function swap_remove_middle_last_and_singleton() {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 4);
@@ -163,6 +176,7 @@ public module std {
       std.test.assert_eq(v.get(0), 40);
     }
 
+    /** Checks swap remove invalid indices leave vec unchanged. */
     test_function swap_remove_invalid_indices_leave_vec_unchanged() {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 4);
@@ -224,9 +238,11 @@ public module std {
     /** Owns a string and counts destruction of live values. */
     class RemovalTracked {
       public var value: String;
+      /** Initializes the fixture fields used by this example or regression test. */
       init(value: String) {
         this.value = value;
       }
+      /** Records fixture destruction so tests can verify ownership and cleanup. */
       deinit() {
         removal_drops = removal_drops + 1;
       }
@@ -258,6 +274,7 @@ public module std {
       v.push(RemovalTracked(String("replacement")));
     }
 
+    /** Checks removal transfers ownership and drops each value once. */
     test_function removal_transfers_ownership_and_drops_each_value_once() {
       removal_drops = 0;
       exercise_removal_ownership(false);
@@ -266,6 +283,7 @@ public module std {
       std.test.assert_eq(removal_drops, 8);
     }
 
+    /** Reports whether the collection contains no elements. */
     test_function is_empty() {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
@@ -274,6 +292,7 @@ public module std {
       std.test.assert(v.is_empty() == false);
     }
 
+    /** Checks clear. */
     test_function clear() {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
@@ -284,12 +303,14 @@ public module std {
       std.test.assert_eq(v.size(), 0);
     }
 
+    /** Checks capacity. */
     test_function capacity() {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
       std.test.assert_eq(v.capacity(), 8);
     }
 
+    /** Checks auto grow. */
     test_function auto_grow() {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
@@ -299,6 +320,7 @@ public module std {
       std.test.assert_eq(v.size(), 20);
     }
 
+    /** Checks auto grow values preserved. */
     test_function auto_grow_values_preserved() {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
@@ -308,6 +330,7 @@ public module std {
       std.test.assert_eq(v.get(0) + v.get(10) + v.get(19), 290);
     }
 
+    /** Checks first and lsyntax tree. */
     test_function first_and_last() {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
@@ -326,6 +349,7 @@ public module std {
       std.test.assert_eq(l, 30);
     }
 
+    /** Checks i32 type. */
     test_function i32_type() {
       var allocator = make_heap_allocator();
       var v = Vec<i32>(allocator, 8);
@@ -334,6 +358,7 @@ public module std {
       std.test.assert_eq(v.get(0) + v.get(1), 15);
     }
 
+    /** Checks iteration. */
     test_function iteration() {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
@@ -348,6 +373,7 @@ public module std {
       std.test.assert_eq(sum, 10);
     }
 
+    /** Checks index operator. */
     test_function index_operator() {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);

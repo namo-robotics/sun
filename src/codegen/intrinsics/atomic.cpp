@@ -14,6 +14,7 @@ using sun::support::logAndThrowError;
 
 using namespace llvm;
 
+/** Provides the generator for built-in operations. */
 namespace sun::codegen::intrinsics {
 
 // -------------------------------------------------------------------

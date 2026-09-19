@@ -18,9 +18,12 @@
 
 using namespace sun::cli;
 
+/** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
 
-// The default command: bundle, compile or run, depending on the flags.
+/**
+ * The default command: bundle, compile or run, depending on the flags.
+ */
 static int runDefaultCommand(const std::string& programName,
                              const std::vector<std::string>& args) {
   BuildRunOptions options;
@@ -39,6 +42,7 @@ static int runDefaultCommand(const std::string& programName,
 
 }  // namespace sun::cli
 
+/** Parses process arguments and dispatches the selected Sun compiler command. */
 int main(int argc, char* argv[]) {
   const std::string programName = argc > 0 ? argv[0] : "sun";
   std::vector<std::string> args;

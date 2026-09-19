@@ -16,8 +16,10 @@ using sun::support::logAndThrowError;
 
 using namespace llvm;
 
+/** Provides the generator for built-in operations. */
 namespace sun::codegen::intrinsics {
 
+/** Emits a C library write call for the supplied descriptor and bytes. */
 static Value* emitLibcWriteInline(IRBuilder<>& builder, llvm::Module* module,
                                   Value* fd, Value* buf, Value* len) {
   LLVMContext& llvmCtx = module->getContext();
@@ -31,7 +33,9 @@ static Value* emitLibcWriteInline(IRBuilder<>& builder, llvm::Module* module,
 // Print helper functions
 // -------------------------------------------------------------------
 
-// Get or create the __sun_print_i32 helper function
+/**
+ * Get or create the __sun_print_i32 helper function
+ */
 static Function* getOrCreatePrintI32Helper(llvm::Module* module,
                                            LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_print_i32");
@@ -134,13 +138,15 @@ static Function* getOrCreatePrintI32Helper(llvm::Module* module,
   return func;
 }
 
-// Get or create the __sun_print_i64 or __sun_print_u64 helper function.
-// Same digit-extraction shape as the i32 helper, widened to 64 bits. Digits
-// are always extracted unsigned; the signed variant first takes the absolute
-// value and later writes the minus sign, the unsigned variant prints the
-// whole 64-bit value as is.
-// Buffer is 24 bytes: the longest output is "18446744073709551615" or
-// "-9223372036854775808" (20 chars each).
+/**
+ * Get or create the __sun_print_i64 or __sun_print_u64 helper function.
+ * Same digit-extraction shape as the i32 helper, widened to 64 bits. Digits
+ * are always extracted unsigned; the signed variant first takes the absolute
+ * value and later writes the minus sign, the unsigned variant prints the
+ * whole 64-bit value as is.
+ * Buffer is 24 bytes: the longest output is "18446744073709551615" or
+ * "-9223372036854775808" (20 chars each).
+ */
 static Function* getOrCreatePrint64Helper(llvm::Module* module,
                                           LLVMContext& llvmCtx, bool isSigned) {
   const char* name = isSigned ? "__sun_print_i64" : "__sun_print_u64";
@@ -235,7 +241,9 @@ static Function* getOrCreatePrint64Helper(llvm::Module* module,
   return func;
 }
 
-// Get or create the __sun_print_newline helper function
+/**
+ * Get or create the __sun_print_newline helper function
+ */
 static Function* getOrCreatePrintNewlineHelper(llvm::Module* module,
                                                LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_print_newline");
@@ -261,8 +269,10 @@ static Function* getOrCreatePrintNewlineHelper(llvm::Module* module,
   return func;
 }
 
-// Get or create the __sun_print_string helper function
-// Takes an i8* (null-terminated string) and prints it
+/**
+ * Get or create the __sun_print_string helper function
+ * Takes an i8* (null-terminated string) and prints it
+ */
 static Function* getOrCreatePrintStringHelper(llvm::Module* module,
                                               LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_print_string");
@@ -425,12 +435,14 @@ Value* IntrinsicsGenerator::codegenPrintString(const CallExprAST& expr) {
   return ctx.builder->CreateCall(helper, {val});
 }
 
-// void __sun_print_char(i32 %scalar) — write one char to stdout as UTF-8.
-//
-// Branch-free: all four bytes are computed with selects and stored into a
-// 4-byte buffer, then only the first `len` of them are written. A scalar
-// value that is somehow out of range (only reachable through an unchecked
-// _convert) is written as U+FFFD rather than as invalid UTF-8.
+/**
+ * void __sun_print_char(i32 %scalar) — write one char to stdout as UTF-8.
+ *
+ * Branch-free: all four bytes are computed with selects and stored into a
+ * 4-byte buffer, then only the first `len` of them are written. A scalar
+ * value that is somehow out of range (only reachable through an unchecked
+ * _convert) is written as U+FFFD rather than as invalid UTF-8.
+ */
 static Function* getOrCreatePrintCharHelper(llvm::Module* module,
                                             LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_print_char");

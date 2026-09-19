@@ -4,8 +4,11 @@
 
 using std;
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** Groups tests for the matrix library behavior. */
   module matrix_tests {
+    /** Checks simple matrix. */
     test_function simple_matrix() {
       var allocator = make_heap_allocator();
       var m = Matrix<i32>(allocator, [1]);
@@ -14,6 +17,7 @@ public module std {
       std.test.assert_eq(m.get(idx), 10);
     }
 
+    /** Checks matrix ndims and size. */
     test_function matrix_ndims_and_size() {
       var allocator = make_heap_allocator();
       var shape: array<i64, 3> = [2, 3, 4];
@@ -22,8 +26,10 @@ public module std {
       std.test.assert_eq(m.size(), 24);  // 2*3*4
     }
 
-    // The matrix owns a copy of its shape: the array it was built from may
-    // be changed or dropped afterwards
+    /**
+     * The matrix owns a copy of its shape: the array it was built from may
+     * be changed or dropped afterwards
+     */
     test_function matrix_owns_its_shape() {
       var allocator = make_heap_allocator();
       var shape: array<i64, 2> = [2, 3];
@@ -33,12 +39,15 @@ public module std {
       std.test.assert_eq(m.dim(1), 3);
     }
 
-    // Builds a view in its own frame and hands it back; the view's shape and
-    // strides must not point into that frame (this was the #196 crash)
+    /**
+     * Builds a view in its own frame and hands it back; the view's shape and
+     * strides must not point into that frame (this was the #196 crash)
+     */
     function slice_middle(m: const ref Matrix<i32>) MatrixView<i32> {
       return m[2:5];
     }
 
+    /** Checks view dims survive caller frame. */
     test_function view_dims_survive_caller_frame() {
       var allocator = make_heap_allocator();
       var m = Matrix<i32>(allocator, [10]);
@@ -53,7 +62,9 @@ public module std {
       std.test.assert_eq(scratch[0], 7);
     }
 
-    // Bracket indexing syntax: M[i, j]
+    /**
+     * Bracket indexing syntax: M[i, j]
+     */
     test_function bracket_index_syntax() {
       var allocator = make_heap_allocator();
       var m = Matrix<i32>(allocator, [2, 3]);
@@ -61,6 +72,7 @@ public module std {
       std.test.assert_eq(m[0, 0], 42);
     }
 
+    /** Checks bracket index 2d. */
     test_function bracket_index_2d() {
       var allocator = make_heap_allocator();
       var m = Matrix<i32>(allocator, [3, 3]);
@@ -72,6 +84,7 @@ public module std {
       std.test.assert_eq(m[0, 0] + m[1, 1] + m[2, 2], 6);
     }
 
+    /** Checks slice range construction. */
     test_function slice_range_construction() {
       // A slice range representing [2:5]
       var s = SliceRange(2, 5, true, true);
@@ -80,6 +93,7 @@ public module std {
       std.test.assert_eq(s.compute_size(10), 3);
     }
 
+    /** Checks slice range open ends. */
     test_function slice_range_open_ends() {
       // Slice [:5] - from start to 5
       var s1 = SliceRange(0, 5, false, true);
@@ -96,6 +110,7 @@ public module std {
       std.test.assert(s3.is_full_range(), "[:] is the full range");
     }
 
+    /** Checks slice 1d basic. */
     test_function slice_1d_basic() {
       var allocator = make_heap_allocator();
       var m = Matrix<i32>(allocator, [10]);
@@ -107,6 +122,7 @@ public module std {
       std.test.assert_eq(view.size(), 3);
     }
 
+    /** Checks slice 1d values. */
     test_function slice_1d_values() {
       var allocator = make_heap_allocator();
       var m = Matrix<i32>(allocator, [10]);
@@ -123,6 +139,7 @@ public module std {
       std.test.assert_eq(view.get(idx2), 4);
     }
 
+    /** Checks slice 1d from start. */
     test_function slice_1d_from_start() {
       var allocator = make_heap_allocator();
       var m = Matrix<i32>(allocator, [5]);
@@ -140,6 +157,7 @@ public module std {
       std.test.assert_eq(sum, 60);  // 10 + 20 + 30
     }
 
+    /** Checks slice 1d to end. */
     test_function slice_1d_to_end() {
       var allocator = make_heap_allocator();
       var m = Matrix<i32>(allocator, [5]);
@@ -156,7 +174,9 @@ public module std {
       std.test.assert_eq(sum, 90);  // 40 + 50
     }
 
-    // View can be modified and read - the view owns the data after the move
+    /**
+     * View can be modified and read - the view owns the data after the move
+     */
     test_function slice_1d_modify_through_view() {
       var allocator = make_heap_allocator();
       var m = Matrix<i32>(allocator, [5]);

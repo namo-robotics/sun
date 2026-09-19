@@ -10,6 +10,7 @@ using sun::semantic_analysis::TypePtr;
 using sun::support::logAndThrowError;
 using sun::support::Position;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 void SemanticScopeBase::declareVariable(

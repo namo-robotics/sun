@@ -171,6 +171,7 @@ TEST(Errors, catch_binding_dispatches_to_concrete_type) {
 // Typed catch clauses: multiple handlers matched by concrete error type
 // ============================================================================
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 constexpr const char* kTypedErrors = R"(
     class ErrA implements IError {

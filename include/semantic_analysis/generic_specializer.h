@@ -22,6 +22,7 @@
 
 #include "semantic_analysis/semantic_context.h"
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 using sun::ast::PrototypeAST;
 
@@ -251,8 +252,10 @@ class GenericSpecializer {
   std::map<sun::semantic_analysis::DeclarationId, SpecializedFunctionInfo>
       specializedFunctionCache_;
 
-  // A class specialization whose type and method signatures are registered
-  // but whose method bodies are not analyzed yet.
+  /**
+   * A class specialization whose type and method signatures are registered
+   * but whose method bodies are not analyzed yet.
+   */
   struct DeferredSpecialization {
     std::shared_ptr<sun::semantic_analysis::ClassType> specializedClass;
     const GenericClassInfo *genericInfo;

@@ -28,9 +28,12 @@ using proto_test::LibprotobufSchema;
 using proto_test::ProtoProject;
 using proto_test::runWithProto;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
-// Parse a program and return its manifest block (nullptr if none)
+/**
+ * Parse a program and return its manifest block (nullptr if none)
+ */
 const ManifestAST* parseManifest(const std::string& source,
                                  std::unique_ptr<BlockExprAST>& keepAlive) {
   auto parser = sun::parsing::Parser::createStringParser(source);
@@ -589,6 +592,7 @@ TEST(Modules_ProtoImport, map_string_keys) {
 // Synthesized messages: encode/decode round-trips
 // ============================================================================
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
 const char* kTelemetryProto = R"(
@@ -916,9 +920,12 @@ TEST(Modules_ProtoImport, missing_proto_file_is_reported) {
 // Cross-validation against libprotobuf (linked into the test binary)
 // ============================================================================
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
-// Encode a Status with fixed values in Sun and return the wire bytes
+/**
+ * Encode a Status with fixed values in Sun and return the wire bytes
+ */
 std::string sunEncodedStatusBytes(ProtoProject& project) {
   fs::path outFile = project.file("bytes.bin");
   project.setProgram(
@@ -977,6 +984,7 @@ TEST(Modules_ProtoImport, libprotobuf_parses_sun_encoded_message) {
 // Full fidelity: optional, oneof, map, proto imports
 // ============================================================================
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 const char* kFullProto = R"(
 syntax = "proto3";
@@ -1262,8 +1270,10 @@ TEST(Modules_ProtoImport, moon_import_plus_same_proto_is_a_collision_error) {
 }
 
 TEST(Modules_ProtoImport, moon_exports_nested_dotted_package_modules) {
-  // package namo.telemetry -> module namo.telemetry: importers use the
-  // dotted path
+  /**
+   * package namo.telemetry -> module namo.telemetry: importers use the
+   * dotted path
+   */
   ProtoProject lib("sun_proto_moon3");
   lib.addSchema("nested.proto",
                 "syntax = \"proto3\";\npackage namo.telemetry;\n"

@@ -59,6 +59,7 @@ using sun::ast::VariadicParam;
 using sun::support::logAndThrowError;
 using sun::support::Position;
 
+/** Turns source text into syntax trees and provides source formatting. */
 namespace sun::parsing {
 
 #define PARSER_TIMER_START(name) \
@@ -1961,7 +1962,9 @@ sun::ast::TypeAnnotation Parser::parseTypeAnnotationImpl() {
   return type;
 }
 
-// True for '=' and every compound-assignment operator
+/**
+ * True for '=' and every compound-assignment operator
+ */
 static bool isAssignmentOp(TokenKind kind) {
   return kind == TokenKind::EQUAL || compoundToBinaryOp(kind).has_value();
 }
@@ -2339,7 +2342,9 @@ bool Parser::parseConstModifier() {
   return true;
 }
 
-// Statement kinds that may carry a `public` modifier at item level.
+/**
+ * Statement kinds that may carry a `public` modifier at item level.
+ */
 static bool isPublicableStatementStart(TokenKind kind) {
   switch (kind) {
     case TokenKind::MODULE:
@@ -3328,6 +3333,7 @@ unique_ptr<ModuleAST> Parser::parseModuleDecl() {
 
   expectCurrentTokenKind(TokenKind::IDENTIFIER, "expected module name");
 
+  /** A module-path component and its source position. */
   struct Segment {
     std::string name;
     Position location;
@@ -4291,6 +4297,7 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
       if (curTok.kind == TokenKind::EQUAL) {
         getNextToken();
         initializer = curTok.kind == TokenKind::BRACE_OPEN
+                          /** Consumes tokens for a field initializer list and builds its syntax-tree representation. */
                           ? parseStructLiteral()
                           : parseExpression();
         if (!initializer)

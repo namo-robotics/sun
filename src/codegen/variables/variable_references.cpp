@@ -16,14 +16,17 @@ using sun::support::logAndThrowError;
 
 using namespace llvm;
 
+/** Generates storage and access operations for Sun variables. */
 namespace sun::codegen::variables {
 
 // -------------------------------------------------------------------
 // Reference helper
 // -------------------------------------------------------------------
 
-// Check if a reference is a direct alias (same alloca as target) or
-// indirect (holds a pointer to a global). Returns true if direct alias.
+/**
+ * Check if a reference is a direct alias (same alloca as target) or
+ * indirect (holds a pointer to a global). Returns true if direct alias.
+ */
 static bool isDirectAlias(AllocaInst* alloca, llvm::Type* referencedType) {
   return alloca->getAllocatedType() == referencedType;
 }

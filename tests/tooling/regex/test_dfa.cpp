@@ -22,13 +22,16 @@ using sun::parsing::Lexer;
 using sun::parsing::RegexParser;
 using sun::parsing::TokenKind;
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
+/** Pairs a lexer pattern with input strings expected to match it. */
 struct MatchCase {
   std::string input;
   bool expected;
 };
 
+/** Checks the accepted and rejected inputs for an automaton fixture. */
 void expectMatches(const std::string& regex,
                    const std::vector<MatchCase>& cases) {
   RegexParser parser;

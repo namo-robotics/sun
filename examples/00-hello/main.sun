@@ -1,5 +1,6 @@
 using std;
 
+/** Runs the example that prints a greeting. */
 function main() void {
   println("Hello, Sun!");
 }

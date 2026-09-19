@@ -3,11 +3,14 @@
 
 syntax = "proto3";
 
+/** Groups the serialized compiler data defined by this schema. */
 package sun.proto.ast;
 
 option cc_enable_arenas = true;
 
-// Source location (mirrors Position struct in position.h)
+/**
+ * Source location (mirrors Position struct in position.h)
+ */
 message Position {
   int32 line = 1;
   int32 column = 2;
@@ -18,8 +21,10 @@ message Position {
   optional int32 end_offset = 7;
 }
 
-// Type annotation (mirrors TypeAnnotation in type_annotation.h)
-// Recursive structure for parsed type syntax
+/**
+ * Type annotation (mirrors TypeAnnotation in type_annotation.h)
+ * Recursive structure for parsed type syntax
+ */
 message TypeAnnotation {
   optional bytes declaration_key = 12;
   string base_name = 1;                         // "i32", "f64", "ptr", "fn", etc.
@@ -36,8 +41,10 @@ message TypeAnnotation {
   repeated string lifetime_arguments = 11;      // `Bus<'a>` application
 }
 
-// Token kind enumeration (mirrors TokenKind in lexer.h)
-// Only includes kinds used in AST (operators, literals)
+/**
+ * Token kind enumeration (mirrors TokenKind in lexer.h)
+ * Only includes kinds used in AST (operators, literals)
+ */
 enum TokenKind {
   TOKEN_KIND_UNKNOWN = 0;
   
@@ -75,7 +82,9 @@ enum TokenKind {
   TOKEN_KIND_SHIFT_RIGHT_ASSIGN = 31;
 }
 
-// Token for operators in binary/unary expressions
+/**
+ * Token for operators in binary/unary expressions
+ */
 message Token {
   TokenKind kind = 1;
   string text = 2;  // Original text representation

@@ -4,35 +4,44 @@
 // declaration pre-pass must still see it (issue #198).
 using lib;
 
+/** Groups declarations used by this compiler regression test. */
 public module app {
+  /** Returns its generic argument so the caller can test specialization. */
   module inner {
+    /** Owns a value whose imported type is resolved through an enclosing module. */
     class Holder {
       var b: Box<i32>;
 
+      /** Initializes the fixture fields used by this example or regression test. */
       init(b: Box<i32>) {
         this.b = b;
       }
 
+      /** Returns the numeric value held by the wrapped test object. */
       public method value() i32 {
         return this.b.get();
       }
     }
 
+    /** Moves a number into the generic box used by the import-resolution fixture. */
     function wrap(x: i32) Box<i32> {
       return Box<i32>(x);
     }
 
+    /** Exercises names imported through enclosing modules and returns the resulting test value. */
     public function run() i32 {
       var h = Holder(wrap(40));
       return h.value() + 2;
     }
   }
 
+  /** Exercises names imported through enclosing modules and returns the resulting test value. */
   public function run() i32 {
     return inner.run();
   }
 }
 
+/** Runs the regression scenario and returns its observable result to the test harness. */
 function main() i32 {
   return app.run();
 }

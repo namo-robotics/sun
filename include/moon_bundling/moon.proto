@@ -3,13 +3,16 @@
 
 syntax = "proto3";
 
+/** Groups the serialized compiler data defined by this schema. */
 package sun.moon;
 
 import "ast.proto";
 
 option cc_enable_arenas = true;
 
-// Original declaration ownership, independent of import aliases and load order.
+/**
+ * Original declaration ownership, independent of import aliases and load order.
+ */
 message DeclarationRecord {
   bytes key = 1;
   uint32 kind = 2;
@@ -18,7 +21,9 @@ message DeclarationRecord {
   bytes module = 5;
 }
 
-// Module metadata stored in .moon bundle files.
+/**
+ * Module metadata stored in .moon bundle files.
+ */
 message ModuleMetadata {
   repeated bytes module_declarations = 17;
   repeated DeclarationRecord declarations = 18;

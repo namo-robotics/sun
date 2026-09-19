@@ -19,6 +19,7 @@ using sun::support::logAndThrowError;
 
 using namespace llvm;
 
+/** Generates storage and access operations for Sun variables. */
 namespace sun::codegen::variables {
 
 // -------------------------------------------------------------------
@@ -236,6 +237,7 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
   // the Vec. codegen() would read instead (see loadIfRef).
   TypePtr declaredType = expr.getResolvedType();
   Value* value = declaredType && declaredType->isReference()
+                     /** Emits the address used to borrow an expression without moving its value. */
                      ? codegenBorrowAddress(*expr.getValue())
                      : nullptr;
   if (!value) value = codegen(*expr.getValue());
@@ -472,7 +474,9 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
 // Global array creation
 // -------------------------------------------------------------------
 
-// Helper to generate a constant element value for global arrays
+/**
+ * Helper to generate a constant element value for global arrays
+ */
 static llvm::Constant* genConstantElement(const ExprAST* elemExpr,
                                           llvm::LLVMContext& llvmCtx) {
   switch (elemExpr->getType()) {
@@ -507,7 +511,9 @@ static llvm::Constant* genConstantElement(const ExprAST* elemExpr,
   }
 }
 
-// Recursively build a constant array for multi-dimensional global arrays
+/**
+ * Recursively build a constant array for multi-dimensional global arrays
+ */
 static llvm::Constant* buildConstantArray(
     const std::vector<std::unique_ptr<ExprAST>>& elements,
     const std::vector<size_t>& dims, size_t dimIndex, llvm::Type* elementType,
@@ -765,12 +771,14 @@ GlobalVariable* VariableGenerator::genGlobalVarWithRuntimeInit(
 // Emit static initialization function
 // -------------------------------------------------------------------
 
-// The initializer of a global class variable constructs it in place when it
-// names the class: `Class(args)` is a call whose callee resolves to the class,
-// and `Class<T>(args)` a generic call that resolves to it. Intrinsics and
-// generic functions merely return a class, so they are not constructions.
-// Returns the constructor arguments, or null when the initializer is anything
-// else.
+/**
+ * The initializer of a global class variable constructs it in place when it
+ * names the class: `Class(args)` is a call whose callee resolves to the class,
+ * and `Class<T>(args)` a generic call that resolves to it. Intrinsics and
+ * generic functions merely return a class, so they are not constructions.
+ * Returns the constructor arguments, or null when the initializer is anything
+ * else.
+ */
 static const std::vector<std::unique_ptr<ExprAST>>* constructorArgsForGlobal(
     const ExprAST& initExpr) {
   if (initExpr.getType() == ASTNodeType::CALL) {

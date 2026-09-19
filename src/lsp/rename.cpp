@@ -14,16 +14,20 @@
 #include "lsp/references.h"
 #include "parsing/lexer.h"
 
+/** Provides compiler-backed editor features through the language server protocol. */
 namespace sun::lsp {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
+/** Reports whether a character may occur inside an identifier. */
 bool isIdentifierChar(char c) {
   return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
 }
 
 }  // namespace
 
+/** Collects the declaration and use sites needed to rename a symbol. */
 std::optional<Rename> computeRename(const sun::ast::BlockExprAST& program,
                                     const std::string& filePath,
                                     const std::string& source, int byteOffset) {
@@ -66,6 +70,7 @@ std::optional<Rename> computeRename(const sun::ast::BlockExprAST& program,
   return rename;
 }
 
+/** Finds the rename occurrence covering the selected document offset. */
 std::optional<SymbolLocation> siteAt(const Rename& rename,
                                      const std::string& filePath,
                                      int byteOffset) {
@@ -78,6 +83,7 @@ std::optional<SymbolLocation> siteAt(const Rename& rename,
   return std::nullopt;
 }
 
+/** Validates a proposed identifier before applying a rename. */
 std::string checkNewName(const std::string& newName) {
   if (newName.empty()) return "A name is required";
   // A name the lexer rejects outright (say 1abc, an invalid literal suffix)

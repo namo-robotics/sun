@@ -20,13 +20,16 @@ using sun::support::logAndThrowError;
 
 using namespace llvm;
 
+/** Provides the generator for built-in operations. */
 namespace sun::codegen::intrinsics {
 
 // ===================================================================
 // Socket helper functions (thin libc forwarders)
 // ===================================================================
 
-// __sun_socket: socket(domain, type, protocol) -> fd
+/**
+ * __sun_socket: socket(domain, type, protocol) -> fd
+ */
 static Function* getOrCreateSocketHelper(llvm::Module* module,
                                          LLVMContext& llvmCtx) {
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
@@ -35,7 +38,9 @@ static Function* getOrCreateSocketHelper(llvm::Module* module,
       {i32Ty, i32Ty, i32Ty}, i32Ty);
 }
 
-// __sun_bind: bind(fd, addr, addrlen) -> result
+/**
+ * __sun_bind: bind(fd, addr, addrlen) -> result
+ */
 static Function* getOrCreateBindHelper(llvm::Module* module,
                                        LLVMContext& llvmCtx) {
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
@@ -45,7 +50,9 @@ static Function* getOrCreateBindHelper(llvm::Module* module,
       {i32Ty, ptrTy, i32Ty}, i32Ty);
 }
 
-// __sun_listen: listen(fd, backlog) -> result
+/**
+ * __sun_listen: listen(fd, backlog) -> result
+ */
 static Function* getOrCreateListenHelper(llvm::Module* module,
                                          LLVMContext& llvmCtx) {
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
@@ -54,7 +61,9 @@ static Function* getOrCreateListenHelper(llvm::Module* module,
       {i32Ty, i32Ty}, i32Ty);
 }
 
-// __sun_accept: accept(fd, addr, addrlen) -> client_fd
+/**
+ * __sun_accept: accept(fd, addr, addrlen) -> client_fd
+ */
 static Function* getOrCreateAcceptHelper(llvm::Module* module,
                                          LLVMContext& llvmCtx) {
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
@@ -64,7 +73,9 @@ static Function* getOrCreateAcceptHelper(llvm::Module* module,
       {i32Ty, ptrTy, ptrTy}, i32Ty);
 }
 
-// __sun_connect: connect(fd, addr, addrlen) -> result
+/**
+ * __sun_connect: connect(fd, addr, addrlen) -> result
+ */
 static Function* getOrCreateConnectHelper(llvm::Module* module,
                                           LLVMContext& llvmCtx) {
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
@@ -74,7 +85,9 @@ static Function* getOrCreateConnectHelper(llvm::Module* module,
       {i32Ty, ptrTy, i32Ty}, i32Ty);
 }
 
-// __sun_send: send(fd, buf, len, flags) -> bytes_sent
+/**
+ * __sun_send: send(fd, buf, len, flags) -> bytes_sent
+ */
 static Function* getOrCreateSendHelper(llvm::Module* module,
                                        LLVMContext& llvmCtx) {
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
@@ -85,7 +98,9 @@ static Function* getOrCreateSendHelper(llvm::Module* module,
       {i32Ty, ptrTy, i64Ty, i32Ty}, i64Ty);
 }
 
-// __sun_recv: recv(fd, buf, len, flags) -> bytes_received
+/**
+ * __sun_recv: recv(fd, buf, len, flags) -> bytes_received
+ */
 static Function* getOrCreateRecvHelper(llvm::Module* module,
                                        LLVMContext& llvmCtx) {
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
@@ -96,7 +111,9 @@ static Function* getOrCreateRecvHelper(llvm::Module* module,
       {i32Ty, ptrTy, i64Ty, i32Ty}, i64Ty);
 }
 
-// __sun_shutdown: shutdown(fd, how) -> result
+/**
+ * __sun_shutdown: shutdown(fd, how) -> result
+ */
 static Function* getOrCreateShutdownHelper(llvm::Module* module,
                                            LLVMContext& llvmCtx) {
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
@@ -105,7 +122,9 @@ static Function* getOrCreateShutdownHelper(llvm::Module* module,
       {i32Ty, i32Ty}, i32Ty);
 }
 
-// __sun_setsockopt: setsockopt(fd, level, optname, optval, optlen) -> result
+/**
+ * __sun_setsockopt: setsockopt(fd, level, optname, optval, optlen) -> result
+ */
 static Function* getOrCreateSetSockOptHelper(llvm::Module* module,
                                              LLVMContext& llvmCtx) {
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
@@ -115,7 +134,9 @@ static Function* getOrCreateSetSockOptHelper(llvm::Module* module,
       {i32Ty, i32Ty, i32Ty, ptrTy, i32Ty}, i32Ty);
 }
 
-// __sun_getsockopt: getsockopt(fd, level, optname, optval, optlen) -> result
+/**
+ * __sun_getsockopt: getsockopt(fd, level, optname, optval, optlen) -> result
+ */
 static Function* getOrCreateGetSockOptHelper(llvm::Module* module,
                                              LLVMContext& llvmCtx) {
   auto* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
@@ -449,13 +470,15 @@ Value* IntrinsicsGenerator::codegenGetSockOpt(const CallExprAST& expr) {
 // High-level IPv4 socket helpers (build sockaddr_in internally)
 // ===================================================================
 
-// Fill a 16-byte stack sockaddr_in: family/port/addr, rest zeroed. Port and
-// addr sit at offsets 2 and 4 everywhere; the first two bytes differ per OS.
-// Linux has a 16-bit sa_family_t at offset 0; Darwin splits them into a
-// one-byte sin_len (the struct size) followed by a one-byte sin_family — a
-// little-endian 16-bit store of AF_INET there would set sin_len=2 and
-// sin_family=0 (AF_UNSPEC), so the bytes are stored individually. Port
-// arrives in host order; sin_port is big-endian, hence the bswap16.
+/**
+ * Fill a 16-byte stack sockaddr_in: family/port/addr, rest zeroed. Port and
+ * addr sit at offsets 2 and 4 everywhere; the first two bytes differ per OS.
+ * Linux has a 16-bit sa_family_t at offset 0; Darwin splits them into a
+ * one-byte sin_len (the struct size) followed by a one-byte sin_family — a
+ * little-endian 16-bit store of AF_INET there would set sin_len=2 and
+ * sin_family=0 (AF_UNSPEC), so the bytes are stored individually. Port
+ * arrives in host order; sin_port is big-endian, hence the bswap16.
+ */
 static Value* buildSockaddrIn(IRBuilder<>& builder, LLVMContext& llvmCtx,
                               Value* ip, Value* port, bool isDarwin) {
   auto* i8Ty = llvm::Type::getInt8Ty(llvmCtx);
@@ -490,8 +513,10 @@ static Value* buildSockaddrIn(IRBuilder<>& builder, LLVMContext& llvmCtx,
   return sockaddr;
 }
 
-// Shared body for __sun_bind_ipv4 / __sun_connect_ipv4: build the sockaddr
-// and forward to the given libc function.
+/**
+ * Shared body for __sun_bind_ipv4 / __sun_connect_ipv4: build the sockaddr
+ * and forward to the given libc function.
+ */
 static Function* getOrCreateSockaddrCallHelper(llvm::Module* module,
                                                LLVMContext& llvmCtx,
                                                const char* wrapperName,
@@ -522,14 +547,18 @@ static Function* getOrCreateSockaddrCallHelper(llvm::Module* module,
   return func;
 }
 
-// __sun_bind_ipv4(fd: i32, ip: i32, port: i32) -> i32
+/**
+ * __sun_bind_ipv4(fd: i32, ip: i32, port: i32) -> i32
+ */
 static Function* getOrCreateBindIPv4Helper(llvm::Module* module,
                                            LLVMContext& llvmCtx) {
   return getOrCreateSockaddrCallHelper(module, llvmCtx, "__sun_bind_ipv4",
                                        sun::codegen::intrinsics::bind(module));
 }
 
-// __sun_connect_ipv4(fd: i32, ip: i32, port: i32) -> i32
+/**
+ * __sun_connect_ipv4(fd: i32, ip: i32, port: i32) -> i32
+ */
 static Function* getOrCreateConnectIPv4Helper(llvm::Module* module,
                                               LLVMContext& llvmCtx) {
   return getOrCreateSockaddrCallHelper(
@@ -537,7 +566,9 @@ static Function* getOrCreateConnectIPv4Helper(llvm::Module* module,
       sun::codegen::intrinsics::connect(module));
 }
 
-// __sun_accept_fd(fd: i32) -> i32 — accept with NULL addr/addrlen
+/**
+ * __sun_accept_fd(fd: i32) -> i32 — accept with NULL addr/addrlen
+ */
 static Function* getOrCreateAcceptFdHelper(llvm::Module* module,
                                            LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_accept_fd");
@@ -641,9 +672,11 @@ Value* IntrinsicsGenerator::codegenAcceptFd(const CallExprAST& expr) {
   return ctx.builder->CreateCall(helper, {fd}, "accept_fd_result");
 }
 
-// Load sin_addr (offset 4, left in network order) and sin_port (offset 2,
-// swapped to host order and widened to i32) out of a sockaddr_in, storing
-// them through the two out-pointers.
+/**
+ * Load sin_addr (offset 4, left in network order) and sin_port (offset 2,
+ * swapped to host order and widened to i32) out of a sockaddr_in, storing
+ * them through the two out-pointers.
+ */
 static void extractSockaddrInParts(IRBuilder<>& builder, LLVMContext& llvmCtx,
                                    Value* sockaddr, Value* outIp,
                                    Value* outPort) {
@@ -664,8 +697,10 @@ static void extractSockaddrInParts(IRBuilder<>& builder, LLVMContext& llvmCtx,
   builder.CreateStore(port, outPort);
 }
 
-// __sun_sendto_ipv4(fd, buf, len, flags, ip, port) -> i64 — build the
-// destination sockaddr and forward to sendto.
+/**
+ * __sun_sendto_ipv4(fd, buf, len, flags, ip, port) -> i64 — build the
+ * destination sockaddr and forward to sendto.
+ */
 static Function* getOrCreateSendToIPv4Helper(llvm::Module* module,
                                              LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_sendto_ipv4");
@@ -700,8 +735,10 @@ static Function* getOrCreateSendToIPv4Helper(llvm::Module* module,
   return func;
 }
 
-// __sun_recvfrom_ipv4(fd, buf, len, flags, out_ip, out_port) -> i64 — receive
-// with a scratch sockaddr and report the sender through the out slots.
+/**
+ * __sun_recvfrom_ipv4(fd, buf, len, flags, out_ip, out_port) -> i64 — receive
+ * with a scratch sockaddr and report the sender through the out slots.
+ */
 static Function* getOrCreateRecvFromIPv4Helper(llvm::Module* module,
                                                LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_recvfrom_ipv4");
@@ -743,8 +780,10 @@ static Function* getOrCreateRecvFromIPv4Helper(llvm::Module* module,
   return func;
 }
 
-// __sun_getsockname_ipv4(fd, out_ip, out_port) -> i32 — report the socket's
-// own bound address through the out slots.
+/**
+ * __sun_getsockname_ipv4(fd, out_ip, out_port) -> i32 — report the socket's
+ * own bound address through the out slots.
+ */
 static Function* getOrCreateGetSockNameIPv4Helper(llvm::Module* module,
                                                   LLVMContext& llvmCtx) {
   Function* func = module->getFunction("__sun_getsockname_ipv4");

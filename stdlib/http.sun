@@ -21,6 +21,7 @@
 //       return 0;
 //   }
 
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
   // Cap on total request header size
   public var HTTP_MAX_REQUEST: i64 = 65536;
@@ -29,12 +30,15 @@ public module std {
   // HttpRequest - parsed request handed to the handler
   // -------------------------------------------------------------------
 
+  /** Owns the method, path, and headers parsed from an HTTP request. */
   public class HttpRequest {
     public var method: String;  // "GET", "POST", ...
     public var path: String;  // "/index.html"
     public var headers: String;  // raw header block after the request line
 
-    // Build an empty request. The parser fills in the fields.
+    /**
+     * Build an empty request. The parser fills in the fields.
+     */
     init(alloc: ref HeapAllocator) {
       this.method = String(alloc, "");
       this.path = String(alloc, "");
@@ -46,35 +50,46 @@ public module std {
   // HttpResponse - filled in by the handler, serialized by the server
   // -------------------------------------------------------------------
 
+  /** Owns the status, content type, and body to send in an HTTP response. */
   public class HttpResponse {
     public var status: i32 = 200;
     public var content_type: String;
     public var body: String;
 
-    // Build a 200 response with an empty HTML body.
+    /**
+     * Build a 200 response with an empty HTML body.
+     */
     init(alloc: ref HeapAllocator) {
       this.content_type = String(alloc, "text/html");
       this.body = String(alloc, "");
     }
 
-    // Set the status code sent on the response line.
+    /**
+     * Set the status code sent on the response line.
+     */
     public method set_status(code: i32) void {
       this.status = code;
     }
 
-    // Replace the Content-Type header value.
+    /**
+     * Replace the Content-Type header value.
+     */
     public method set_content_type(ct: static_ptr<u8>) void {
       this.content_type.clear();
       this.content_type.append(ct);
     }
 
-    // Replace the body with a literal.
+    /**
+     * Replace the body with a literal.
+     */
     public method set_body(content: static_ptr<u8>) void {
       this.body.clear();
       this.body.append(content);
     }
 
-    // Replace the body with text built at runtime. The String is copied in.
+    /**
+     * Replace the body with text built at runtime. The String is copied in.
+     */
     public method set_body_string(content: const ref String) void {
       this.body.clear();
       this.body.append(content);
@@ -85,11 +100,14 @@ public module std {
   // Framing helpers
   // -------------------------------------------------------------------
 
+  /** Appends the line ending used by HTTP headers to a string. */
   public function append_crlf(out: ref String) void {
     out.append("\r\n");
   }
 
-  // Index of the CRLFCRLF header terminator, or -1 if not yet received
+  /**
+   * Index of the CRLFCRLF header terminator, or -1 if not yet received
+   */
   public function find_header_end(s: const ref String) i64 {
     return match s.find("\r\n\r\n") {
       Option.Some(i) => i,
@@ -97,7 +115,9 @@ public module std {
     };
   }
 
-  // Parse "METHOD path HTTP/1.1" request line and raw header block
+  /**
+   * Parse "METHOD path HTTP/1.1" request line and raw header block
+   */
   public function parse_http_request(raw: const ref String, req: ref HttpRequest) void {
     var n: i64 = raw.length();
     var i: i64 = 0;
@@ -139,8 +159,10 @@ public module std {
     }
   }
 
-  // Append the standard reason phrase for a status code, e.g. "OK" for 200.
-  // Unknown codes get a generic phrase for their class.
+  /**
+   * Append the standard reason phrase for a status code, e.g. "OK" for 200.
+   * Unknown codes get a generic phrase for their class.
+   */
   public function append_reason_phrase(out: ref String, code: i32) void {
     out.append(
       match code {
@@ -163,43 +185,56 @@ public module std {
   // HttpServer - sequential accept loop with a handler lambda
   // -------------------------------------------------------------------
 
+  /** Accepts TCP connections and serves HTTP requests using a caller-provided handler. */
   public class HttpServer {
     var listener: TcpListener = TcpListener();
     var alloc: HeapAllocator;
     var running: bool = false;
 
-    // Build a server with no socket bound yet.
+    /**
+     * Build a server with no socket bound yet.
+     */
     init(allocator: ref HeapAllocator) {
       this.alloc = allocator.copy();
     }
 
-    // Close the listening socket.
+    /**
+     * Close the listening socket.
+     */
     deinit() {
       this.listener.close();
     }
 
-    // Bind to port on all interfaces (0.0.0.0) and start listening
+    /**
+     * Bind to port on all interfaces (0.0.0.0) and start listening
+     */
     public method bind(port: i32) void throws IError {
       this.listener.bind_port(port);
       this.listener.listen(128);
     }
 
-    // Bind to 127.0.0.1 only
+    /**
+     * Bind to 127.0.0.1 only
+     */
     public method bind_loopback(port: i32) void throws IError {
       this.listener.bind_loopback(port);
       this.listener.listen(128);
     }
 
-    // Ask the serve loop to finish and close the listening socket. Safe to call
-    // from a request handler.
+    /**
+     * Ask the serve loop to finish and close the listening socket. Safe to call
+     * from a request handler.
+     */
     public method stop() void {
       this.running = false;
       this.listener.close();
     }
 
-    // Accept and handle connections one at a time until stop() is called
-    // or the listener fails. A failed connection is dropped; the server
-    // keeps running.
+    /**
+     * Accept and handle connections one at a time until stop() is called
+     * or the listener fails. A failed connection is dropped; the server
+     * keeps running.
+     */
     public method serve(handler: (ref HttpRequest, ref HttpResponse) => void) void {
       this.running = true;
       while (this.running) {
@@ -217,7 +252,9 @@ public module std {
       }
     }
 
-    // Read, parse, dispatch to the handler, and send the response
+    /**
+     * Read, parse, dispatch to the handler, and send the response
+     */
     method handle_connection(client: ref TcpStream, handler: (ref HttpRequest, ref HttpResponse) => void) void throws IError {
       var req = HttpRequest(this.alloc);
       this.read_request(client, req);
@@ -228,7 +265,9 @@ public module std {
       this.send_response(client, resp);
     }
 
-    // Read from the socket until the header terminator (or size cap)
+    /**
+     * Read from the socket until the header terminator (or size cap)
+     */
     method read_request(client: ref TcpStream, req: ref HttpRequest) void throws IError {
       var chunk = ContiguousBuffer<u8>(this.alloc, 2048);
       var raw = String(this.alloc, "");
@@ -252,7 +291,9 @@ public module std {
       parse_http_request(raw, req);
     }
 
-    // Serialize status line, headers, and body
+    /**
+     * Serialize status line, headers, and body
+     */
     public method send_response(client: ref TcpStream, resp: ref HttpResponse) void throws IError {
       var out = String(this.alloc, "HTTP/1.1 ");
       out.append(resp.status);

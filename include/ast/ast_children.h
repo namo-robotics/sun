@@ -6,15 +6,19 @@
 
 #include "ast/expr_ast.h"
 
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 
+/** A callback invoked for each directly owned syntax-tree child. */
 using ChildFn = std::function<void(const ExprAST&)>;
 
-// Calls fn for each direct child expression of node, in source order. Unlike
-// ExprAST::forEachChildSlot (a rewriting hook that forwards through strongly
-// typed children), this visits every child, including function bodies, class
-// and interface methods, slice bounds, match patterns and struct literal
-// values. Used by tooling that walks the tree (language server lookups).
+/**
+ * Calls fn for each direct child expression of node, in source order. Unlike
+ * ExprAST::forEachChildSlot (a rewriting hook that forwards through strongly
+ * typed children), this visits every child, including function bodies, class
+ * and interface methods, slice bounds, match patterns and struct literal
+ * values. Used by tooling that walks the tree (language server lookups).
+ */
 void forEachChild(const ExprAST& node, const ChildFn& fn);
 
 }  // namespace sun::ast

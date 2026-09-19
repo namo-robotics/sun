@@ -20,10 +20,12 @@ constexpr const char* cyan = "\033[36m";
 constexpr const char* yellow = "\033[1;33m";
 constexpr const char* reset = "\033[0m";
 
-// Render a diagnostic in the standard compiler format: colored label, blue
-// file:line:column, the message, then the offending source line with a red
-// caret under the column. Shared by SunError and multi-error passes like the
-// borrow checker, so every compiler error looks the same.
+/**
+ * Render a diagnostic in the standard compiler format: colored label, blue
+ * file:line:column, the message, then the offending source line with a red
+ * caret under the column. Shared by SunError and multi-error passes like the
+ * borrow checker, so every compiler error looks the same.
+ */
 inline std::string formatDiagnostic(const std::string& label,
                                     const std::string& labelColor,
                                     const std::string& message,
@@ -62,11 +64,14 @@ inline std::string formatDiagnostic(const std::string& label,
   return out;
 }
 
-// Another place an error points at. A pass that finds several problems at once
-// (the borrow checker) reports the first as the error itself and lists the rest
-// here, together with any location that explains it, so an editor can mark
-// every one of them instead of only the first.
+/**
+ * Another place an error points at. A pass that finds several problems at once
+ * (the borrow checker) reports the first as the error itself and lists the rest
+ * here, together with any location that explains it, so an editor can mark
+ * every one of them instead of only the first.
+ */
 struct RelatedDiagnostic {
+  /** Controls which diagnostic severities are written to the log. */
   enum class Level {
     Error,  // A problem in its own right
     Note    // Context for the problem, such as a conflicting borrow
@@ -77,9 +82,12 @@ struct RelatedDiagnostic {
   Level level = Level::Error;
 };
 
-// Custom error type for Sun compiler errors
+/**
+ * Custom error type for Sun compiler errors
+ */
 class SunError : public std::exception {
  public:
+  /** Identifies the compiler stage or rule that produced an error. */
   enum class Kind {
     Compile,   // General compilation error
     Parse,     // Parsing error
@@ -88,6 +96,7 @@ class SunError : public std::exception {
     Borrow     // Borrow checking error
   };
 
+  /** Creates a compiler exception with its diagnostic category and source context. */
   SunError(Kind kind, const std::string& message,
            std::optional<Position> loc = std::nullopt,
            const std::string& sourceLine = "",
@@ -100,26 +109,37 @@ class SunError : public std::exception {
     buildFullMessage();
   }
 
+  /** Returns the formatted diagnostic message through the exception interface. */
   const char* what() const noexcept override { return fullMessage_.c_str(); }
 
+  /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const { return kind_; }
+  /** Returns the message stored by this object. */
   const std::string& getMessage() const { return message_; }
+  /** Returns the source position used for diagnostics. */
   const std::optional<Position>& getLocation() const { return location_; }
+  /** Returns the source line stored by this object. */
   const std::string& getSourceLine() const { return sourceLine_; }
 
-  // Record another place this error points at. It joins the printed message,
-  // rendered like any other diagnostic.
+  /**
+   * Record another place this error points at. It joins the printed message,
+   * rendered like any other diagnostic.
+   */
   void addRelated(const std::string& message, const Position& location,
                   RelatedDiagnostic::Level level) {
     related_.push_back({message, location, level});
     buildFullMessage();
   }
+  /** Returns the related diagnostic locations. */
   const std::vector<RelatedDiagnostic>& getRelated() const { return related_; }
 
-  // What the error is called when printed, such as "Parse Error"
+  /**
+   * What the error is called when printed, such as "Parse Error"
+   */
   std::string getLabel() const { return kindToString(); }
 
  private:
+  /** Returns the readable category name for this compiler error. */
   std::string kindToString() const {
     switch (kind_) {
       case Kind::Compile:
@@ -136,6 +156,7 @@ class SunError : public std::exception {
     return "Error";
   }
 
+  /** Combines the error category, message, and source context into a diagnostic. */
   void buildFullMessage() {
     fullMessage_ = formatDiagnostic(kindToString(), red, message_, location_,
                                     sourceLine_, prevSourceLine_);
@@ -161,6 +182,7 @@ class SunError : public std::exception {
 
 // Unified error handling - throws SunError and does not return
 
+/** Reports a compilation error and throws an exception to stop the current operation. */
 [[noreturn]] inline void logAndThrowError(
     const std::string& str, std::optional<Position> loc = std::nullopt) {
   std::string sourceLine, prevLine;
@@ -172,6 +194,7 @@ class SunError : public std::exception {
   throw SunError(SunError::Kind::Compile, str, loc, sourceLine, prevLine);
 }
 
+/** Reports a type error with its optional source position. */
 [[noreturn]] inline void logTypeError(
     const std::string& str, std::optional<Position> loc = std::nullopt) {
   std::string sourceLine, prevLine;
@@ -183,6 +206,7 @@ class SunError : public std::exception {
   throw SunError(SunError::Kind::Type, str, loc, sourceLine, prevLine);
 }
 
+/** Reports invalid syntax with its source location and line text. */
 [[noreturn]] inline void logParsingError(int line, int column,
                                          const std::string& str,
                                          const std::string& sourceLine = "",
@@ -193,7 +217,9 @@ class SunError : public std::exception {
   throw SunError(SunError::Kind::Parse, str, loc, sourceLine);
 }
 
-// Overload accepting Position directly (preferred for new code)
+/**
+ * Overload accepting Position directly (preferred for new code)
+ */
 [[noreturn]] inline void logParsingError(const Position& loc,
                                          const std::string& str,
                                          const std::string& sourceLine = "",
@@ -201,6 +227,7 @@ class SunError : public std::exception {
   throw SunError(SunError::Kind::Parse, str, loc, sourceLine, prevLine);
 }
 
+/** Reports a semantic error with its optional source position. */
 [[noreturn]] inline void logSemanticError(
     const std::string& str, std::optional<Position> loc = std::nullopt) {
   std::string sourceLine, prevLine;
@@ -212,7 +239,9 @@ class SunError : public std::exception {
   throw SunError(SunError::Kind::Semantic, str, loc, sourceLine, prevLine);
 }
 
-// Log error without throwing - useful for non-fatal diagnostics
+/**
+ * Log error without throwing - useful for non-fatal diagnostics
+ */
 inline void logErrorNoThrow(const std::string& msg,
                             std::optional<Position> loc = std::nullopt) {
   if (loc) {
@@ -222,7 +251,9 @@ inline void logErrorNoThrow(const std::string& msg,
   }
 }
 
-// Non-fatal diagnostic (e.g. unreachable match arms)
+/**
+ * Non-fatal diagnostic (e.g. unreachable match arms)
+ */
 inline void logWarning(const std::string& msg,
                        std::optional<Position> loc = std::nullopt) {
   if (loc) {

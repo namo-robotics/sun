@@ -7,6 +7,7 @@
 
 #include "codegen/codegen_visitor.h"
 
+/** Provides the registry of generated functions and their metadata. */
 namespace sun::codegen::functions {
 
 llvm::Value* FunctionGenerator::codegen(const sun::ast::ExprAST& expr) {

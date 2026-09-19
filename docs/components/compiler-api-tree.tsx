@@ -10,6 +10,7 @@ export function CompilerTreeBranch({ onBeforeExpand, ...props }: ComponentProps<
 
   useEffect(() => () => animation.current?.cancel(), [])
 
+  /** Animates opening or closing a tree branch while preserving link navigation. */
   function toggle(event: MouseEvent<HTMLDetailsElement>) {
     const element = branch.current
     const target = event.target as HTMLElement
@@ -56,6 +57,7 @@ export function CompilerTreeSummary(props: ComponentProps<'summary'>) {
   return <summary {...props} />
 }
 
+/** A labeled reference-tree entry with optional navigation and nested children. */
 type ApiTreeNode = {
   label: string
   href?: string
@@ -63,6 +65,7 @@ type ApiTreeNode = {
   children: ApiTreeNode[]
 }
 
+/** Renders one expandable reference entry and mounts its children when opened. */
 function ApiTreeBranch({ node, depth }: { node: ApiTreeNode; depth: number }) {
   const initiallyOpen = depth === 0 && node.label === 'sun'
   const [mounted, setMounted] = useState(initiallyOpen)

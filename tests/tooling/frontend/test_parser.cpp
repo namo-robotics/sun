@@ -31,8 +31,10 @@ using sun::parsing::Parser;
 using sun::parsing::TokenKind;
 using sun::support::SunError;
 
-// Helper to parse a string and return the parsed AST (for top-level
-// expressions)
+/**
+ * Helper to parse a string and return the parsed AST (for top-level
+ * expressions)
+ */
 std::unique_ptr<sun::ast::ExprAST> parseStringToExpr(
     const std::string& source) {
   std::istringstream ss(source);
@@ -45,8 +47,10 @@ std::unique_ptr<sun::ast::ExprAST> parseStringToExpr(
   return parser.parseExpression();
 }
 
-// Helper to parse a string and return the parsed AST (for top-level
-// expressions)
+/**
+ * Helper to parse a string and return the parsed AST (for top-level
+ * expressions)
+ */
 std::unique_ptr<BlockExprAST> parseString(const std::string& source) {
   std::istringstream ss(source);
   Parser parser(ss);
@@ -214,9 +218,11 @@ TEST(Tooling_Frontend_Parser, ParseBinaryWithPrecedence) {
   EXPECT_EQ(inner->getOp().kind, TokenKind::STAR);
 }
 
-// ------------------------------------------------------------------
-// Function prototype
-// ------------------------------------------------------------------
+/**
+ * ------------------------------------------------------------------
+ * Function prototype
+ * ------------------------------------------------------------------
+ */
 std::unique_ptr<sun::ast::PrototypeAST> parsePrototype(
     const std::string& source) {
   std::istringstream ss(source);
@@ -738,7 +744,9 @@ function main() i32 {
       SunError);
 }
 
-// `&&` / `||` are not Sun operators; the error must name `and` / `or`.
+/**
+ * `&&` / `||` are not Sun operators; the error must name `and` / `or`.
+ */
 static std::string parseErrorMessage(const std::string& src) {
   try {
     parseString(src);
@@ -1058,6 +1066,7 @@ function main() i32 {
   ASSERT_NE(ast, nullptr);
 }
 
+/** Initializes the test framework and runs the registered parser tests. */
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
@@ -1108,7 +1117,9 @@ TEST(Tooling_Frontend_Parser, UnaryMinusBindsTighterThanBinary) {
 // Comment collection tests (lossless AST / formatter support)
 // ------------------------------------------------------------------
 
-// Parse a full program and return the parser for side-table inspection
+/**
+ * Parse a full program and return the parser for side-table inspection
+ */
 static std::unique_ptr<Parser> parseProgramCollectingComments(
     const std::string& source) {
   std::istringstream dummy("");

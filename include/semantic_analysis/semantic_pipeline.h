@@ -6,6 +6,7 @@
 #include "semantic_analysis/declaration_naming_pass.h"
 #include "semantic_analysis/field_initializer_preparation_pass.h"
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 using sun::ast::ExprAST;
 
@@ -13,6 +14,7 @@ class SemanticAnalyzer;
 
 }  // namespace sun::semantic_analysis
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 /** Own and order the passes for one semantic analysis session. */
@@ -23,6 +25,7 @@ class SemanticPipeline {
 
   /** Keep pass references tied to the context and helpers they were given. */
   SemanticPipeline(const SemanticPipeline&) = delete;
+  /** Disallows assignment so ownership and object identity cannot be duplicated. */
   SemanticPipeline& operator=(const SemanticPipeline&) = delete;
 
   /** Prepare names, collect declarations, and check the program's bodies. */

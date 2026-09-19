@@ -1,17 +1,22 @@
 #pragma once
 
+/** Translates analyzed Sun programs into LLVM instructions. */
 namespace sun::codegen {
 class CodegenVisitor;
 }
+/** Provides the generator for class storage and method operations. */
 namespace sun::codegen::classes {
 class ClassGenerator;
 }
+/** Provides the registry of generated functions and their metadata. */
 namespace sun::codegen::functions {
 class FunctionGenerator;
 }
+/** Provides the registry of generated functions and their metadata. */
 namespace sun::codegen::functions {
 class FunctionRegistry;
 }
+/** Provides the scope manager responsible for variable storage and cleanup. */
 namespace sun::codegen::scopes {
 class ScopeManager;
 }
@@ -45,6 +50,7 @@ class ScopeManager;
 #include "ast.h"
 #include "codegen/codegen_state.h"
 
+/** Generates storage and access operations for Sun variables. */
 namespace sun::codegen::variables {
 using sun::ast::BlockExprAST;
 using sun::ast::CompoundAssignmentAST;
@@ -60,6 +66,7 @@ using sun::semantic_analysis::TypePtr;
  */
 class VariableGenerator {
  public:
+  /** Binds variable generation to the shared expression visitor and state. */
   VariableGenerator(sun::codegen::CodegenState& state,
                     sun::codegen::CodegenVisitor& gen)
       : state_(state),
@@ -69,17 +76,24 @@ class VariableGenerator {
         typeResolver(state.typeResolver),
         debugInfo(state.debugInfo) {}
 
+  /** Binds variable generation to the shared expression visitor and state. */
   VariableGenerator(const VariableGenerator&) = delete;
+  /** Disallows assignment so ownership and object identity cannot be duplicated. */
   VariableGenerator& operator=(const VariableGenerator&) = delete;
 
   // ---------------------------------------------------------------
   // Creation, reference, assignment
   // ---------------------------------------------------------------
 
+  /** Emits LLVM instructions for this syntax node and returns its generated value. */
   llvm::Value* codegen(const VariableCreationAST& expr);
+  /** Emits LLVM instructions for this syntax node and returns its generated value. */
   llvm::Value* codegen(const sun::ast::VariableReferenceAST& expr);
+  /** Emits LLVM instructions for this syntax node and returns its generated value. */
   llvm::Value* codegen(const sun::ast::VariableAssignmentAST& expr);
+  /** Emits LLVM instructions for this syntax node and returns its generated value. */
   llvm::Value* codegen(const sun::ast::ReferenceCreationAST& expr);
+  /** Emits LLVM instructions for this syntax node and returns its generated value. */
   llvm::Value* codegen(const CompoundAssignmentAST& expr);
 
   /**
@@ -90,6 +104,7 @@ class VariableGenerator {
   void assignToVariableSlot(llvm::Value* slot, llvm::Value* value,
                             const TypePtr& varType, const std::string& name);
 
+  /** Creates and registers LLVM storage for a global declaration. */
   llvm::GlobalVariable* createGlobalVariable(
       DeclarationId id, const std::string& name, llvm::Type* type,
       llvm::Constant* initializer = nullptr);
@@ -117,10 +132,11 @@ class VariableGenerator {
    * instead. Neither ever spills a value to a temporary alloca.
    */
   llvm::Value* tryCodegenAddress(const ExprAST& expr);
+  /** Emits the storage address of an addressable expression. */
   llvm::Value* codegenAddress(const ExprAST& expr);
 
   /**
-   * Same, plus conditional lvalues (`ref r = c ? a.x : b.y`), whose address is
+   * Also handles conditional reference bindings, whose address is
    * a phi of the branches'. Only borrow bindings take that path.
    */
   llvm::Value* codegenBorrowAddress(const ExprAST& expr);
@@ -136,10 +152,14 @@ class VariableGenerator {
   // Reading and writing through a reference
   // ---------------------------------------------------------------
 
+  /** Loads the value stored for a local declaration. */
   llvm::LoadInst* createLoadForLocalVar(DeclarationId id);
+  /** Loads the value stored for a global declaration. */
   llvm::LoadInst* createLoadForGlobalVar(DeclarationId id);
+  /** Loads a value through the reference stored for a declaration. */
   llvm::Value* createLoadForRef(
       DeclarationId id, const sun::semantic_analysis::ReferenceType& refType);
+  /** Stores a value through the reference bound to a declaration. */
   void createStoreForRef(DeclarationId id,
                          const sun::semantic_analysis::ReferenceType& refType,
                          llvm::Value* value);
@@ -175,31 +195,44 @@ class VariableGenerator {
   // Globals still waiting for their initializer to be emitted
   std::vector<StaticInitInfo> staticInits;
 
+  /** Allocates and initializes storage for a local variable. */
   llvm::Value* genLocalVar(const VariableCreationAST& expr,
                            llvm::Type* varType);
+  /** Creates storage for a variable holding a callable value. */
   llvm::Value* genFunctionVariable(const VariableCreationAST& expr);
+  /** Creates global array storage and its initializer. */
   llvm::Constant* genGlobalArray(const VariableCreationAST& expr);
+  /** Initializes global storage with a compile-time constant. */
   llvm::Constant* genGlobalVarForConstantExpr(const VariableCreationAST& expr,
                                               llvm::Type* varType);
+  /** Creates and initializes global storage for a class value. */
   llvm::GlobalVariable* genGlobalClassVar(const VariableCreationAST& expr,
                                           ClassType& classType);
+  /** Creates global storage and arranges initialization during program startup. */
   llvm::GlobalVariable* genGlobalVarWithRuntimeInit(
       const VariableCreationAST& expr, llvm::Type* varType);
 
-  // Compound assignment: address-once -> load -> op -> store
+  /**
+   * Compound assignment: address-once -> load -> op -> store
+   */
   llvm::Value* emitCompoundOpValue(const CompoundAssignmentAST& expr,
                                    llvm::Value* cur, llvm::Type* slotTy,
                                    const TypePtr& slotSunType);
 
-  // What variable codegen borrows from the rest of codegen.
-  // The BlockExprAST overload matters: without it a block would bind to
-  // codegen(const ExprAST&), which attaches an expression debug location the
-  // block path does not want.
+  /**
+   * What variable codegen borrows from the rest of codegen.
+   * The BlockExprAST overload matters: without it a block would bind to
+   * codegen(const ExprAST&), which attaches an expression debug location the
+   * block path does not want.
+   */
   llvm::Value* codegen(const ExprAST& expr);
+  /** Emits LLVM instructions for this syntax node and returns its generated value. */
   llvm::Value* codegen(const BlockExprAST& block);
 
-  // A node kind with its own overload must not silently bind to the
-  // ExprAST forwarder above. Make it a compile error instead.
+  /**
+   * A node kind with its own overload must not silently bind to the
+   * ExprAST forwarder above. Make it a compile error instead.
+   */
   template <typename T>
     requires(!std::is_same_v<T, ExprAST> && !std::is_same_v<T, BlockExprAST> &&
              !std::is_same_v<T, VariableCreationAST> &&
@@ -210,13 +243,19 @@ class VariableGenerator {
              std::is_base_of_v<ExprAST, T>)
   llvm::Value* codegen(const T&) = delete;
 
+  /** Provides the scope manager responsible for variable storage and cleanup. */
   sun::codegen::scopes::ScopeManager& scopes();
+  /** Provides the registry of generated functions and their metadata. */
   sun::codegen::functions::FunctionRegistry& functions();
+  /** Provides the generator for class storage and method operations. */
   sun::codegen::classes::ClassGenerator& classes();
+  /** Provides the generator for function bodies and callable values. */
   sun::codegen::functions::FunctionGenerator& functionGen();
+  /** Allocates local storage in the function entry block. */
   llvm::AllocaInst* createEntryBlockAlloca(llvm::Function* func,
                                            llvm::StringRef varName,
                                            llvm::Type* type);
+  /** Associates local storage with its source variable for debugging. */
   void debugDeclareLocal(llvm::AllocaInst* alloca, const std::string& name,
                          const TypePtr& type,
                          const sun::support::Position& loc);

@@ -6,8 +6,10 @@
 
 #include "semantic_analysis/type_traits.h"
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
+/** Reports whether a semantic type meets the requested type-trait requirement. */
 bool satisfies(const TypePtr& type, const TypePtr& requirement) {
   if (!type || !requirement) return false;
 

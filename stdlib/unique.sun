@@ -4,33 +4,45 @@
 //   or, adopting an existing pointer:
 //        var ptr = allocator.create<Point>(3, 4);
 //        var p = Unique<Point>(ptr);
+/** Provides the standard-library declarations implemented in this source file. */
 public module std {
+  /** Owns a heap value and releases its allocation when its lifetime ends. */
   public class Unique<T> {
     var data: raw_ptr<T>;
 
-    // Take ownership of a raw pointer. The Unique frees it when it goes out of
-    // scope, so the caller must not free it as well.
+    /**
+     * Take ownership of a raw pointer. The Unique frees it when it goes out of
+     * scope, so the caller must not free it as well.
+     */
     init(p: raw_ptr<T>) {
       this.data = p;
     }
 
-    // Safe dereference - returns a reference to the underlying value
-    // Caller should check is_null() first if pointer validity is uncertain
+    /**
+     * Safe dereference - returns a reference to the underlying value
+     * Caller should check is_null() first if pointer validity is uncertain
+     */
     public const method get() ref T {
       return unsafe { _to_ref<T>(this.data); };
     }
 
-    // Get the raw pointer (for low-level operations like _free or null checks)
+    /**
+     * Get the raw pointer (for low-level operations like _free or null checks)
+     */
     public const method get_raw() raw_ptr<T> {
       return this.data;
     }
 
-    // Report whether the pointer has been taken or was never set.
+    /**
+     * Report whether the pointer has been taken or was never set.
+     */
     public const method is_null() bool {
       return this.data == null;
     }
 
-    // Free the pointed-to memory, unless the pointer is already null.
+    /**
+     * Free the pointed-to memory, unless the pointer is already null.
+     */
     deinit() {
       if (this.data != null) {
         unsafe {

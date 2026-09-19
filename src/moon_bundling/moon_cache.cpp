@@ -16,6 +16,7 @@
 
 using sun::support::logAndThrowError;
 
+/** Builds and loads compiled Moon libraries and their declaration metadata. */
 namespace sun::moon_bundling {
 
 std::filesystem::path MoonCache::defaultCacheDir() {
@@ -90,6 +91,7 @@ void MoonCache::validateUrl(const std::string& url) {
   }
 }
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 std::string githubToken_;
 }  // namespace

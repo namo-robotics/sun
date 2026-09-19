@@ -3,6 +3,7 @@
 #include "ast/ast_fwd.h"
 #include "semantic_analysis/declaration_table.h"
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 using sun::ast::ExprAST;
 

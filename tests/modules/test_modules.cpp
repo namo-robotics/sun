@@ -804,8 +804,10 @@ TEST(Modules, module_qualified_call_widens_numeric_arguments) {
 
 // === Calling into a precompiled .moon ===
 
+/** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
+/** Builds a compiled library containing the supplied fixture declarations. */
 std::filesystem::path writeMoonLib(const std::string& name,
                                    const std::string& source) {
   namespace fs = std::filesystem;

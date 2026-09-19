@@ -22,7 +22,9 @@ using sun::driver::Driver;
 using sun::semantic_analysis::SemanticAnalyzer;
 using sun::support::SunError;
 
-// Helper function to test compilation (without JIT)
+/**
+ * Helper function to test compilation (without JIT)
+ */
 void compileString(const std::string& source) {
   Driver::createForAOT()->compileString(source);
 }

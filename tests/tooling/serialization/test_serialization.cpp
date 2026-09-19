@@ -41,7 +41,9 @@ using sun::support::Position;
 
 using namespace sun::serialization;
 
-// Helper to parse a string and return the AST
+/**
+ * Helper to parse a string and return the AST
+ */
 std::unique_ptr<BlockExprAST> parseCode(const std::string& source) {
   std::istringstream ss(source);
   sun::parsing::Parser parser(ss);
@@ -1396,6 +1398,7 @@ TEST(Tooling_Serialization, UnsafeMethodRoundtrip) {
 }
 
 TEST(Tooling_Serialization, UnsafeCallableTypeRoundtrip) {
+  /** Identify an original declaration in a content-addressed artifact. */
   sun::ast::TypeAnnotation original("lambda");
   original.returnType = std::make_unique<sun::ast::TypeAnnotation>("i32");
   original.requiresUnsafe = true;

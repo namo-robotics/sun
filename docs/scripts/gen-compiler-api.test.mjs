@@ -9,7 +9,9 @@ import { parseXml, renderReference, renderNamespaceTree, renderSymbolTree, write
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const revision = 'a'.repeat(40)
+/** Parses one XML fixture into a compound definition element. */
 const compound = xml => parseXml(xml).documentElement
+/** Builds declarations covering reference links, overloads, visibility, and source comments. */
 const fixture = () => [
   compound(`<compounddef id="namespace_demo" kind="namespace"><compoundname>sun::demo</compoundname>
     <innerclass refid="class_demo">sun::demo::Box</innerclass>
@@ -38,6 +40,7 @@ const fixture = () => [
   compound('<compounddef id="file_demo" kind="file"><compoundname>src/demo.cpp</compoundname><sectiondef><memberdef id="helper" kind="function"><name>helper</name><argsstring>()</argsstring></memberdef></sectiondef></compounddef>'),
 ]
 
+/** Checks that generated reference links point to existing pages and anchors. */
 function checkLinks(pages) {
   for (const page of pages.values()) {
     for (const [, slug, anchor] of page.matchAll(/(?:\]\(|href=")\/compiler-api\/([^\s)#"]+)(?:#([^\s)"]+))?[)"]/g)) {
@@ -91,6 +94,7 @@ test('builds one categorized tree with nested types, members, enum values and st
   const tree = JSON.parse(pages.get('tree.json'))
   assert.ok(landing.length < 300)
   assert.match(landing, /import tree from '.\/compiler-api\/tree.json'/)
+  /** Finds a labeled child in the fixture tree and reports a missing branch. */
   const get = (node, label) => {
     const found = node.children.find(child => child.label === label)
     assert.ok(found, `Missing ${label} under ${node.label}`)
@@ -101,19 +105,21 @@ test('builds one categorized tree with nested types, members, enum values and st
   const demo = get(sun, 'demo')
   assert.equal(demo.kind, 'namespace')
   assert.equal(get(get(demo, 'Structs'), 'Wrapper< sun::demo::Box >').href, '/compiler-api/templated')
-  const files = tree.find(node => node.label === 'Files')
+  const files = tree.find(node => node.label === 'File scope')
   assert.equal(get(get(get(files, 'src/demo.cpp'), 'Structs'), 'std::hash< sun::demo::Box >').href, '/compiler-api/hash_box')
   const box = get(get(demo, 'Classes'), 'Box')
   assert.equal(box.kind, undefined)
-  assert.equal(get(get(box, 'Public Functions'), 'read(bool value)').href, '/compiler-api/class_demo#read_bool')
-  assert.equal(get(get(box, 'Private Functions'), 'read(int value)').href, '/compiler-api/class_demo#read_int')
+  assert.equal(get(get(box, 'Public Functions'), 'read').href, '/compiler-api/class_demo#read_bool')
+  assert.equal(get(get(box, 'Private Functions'), 'read').href, '/compiler-api/class_demo#read_int')
   assert.equal(get(get(box, 'Structs'), 'Nested').href, '/compiler-api/nested')
   assert.equal(get(get(get(get(box, 'Public Enums'), 'Mode'), 'Enum Values'), 'Ready').href, '/compiler-api/class_demo#ready')
-  assert.equal(get(get(demo, 'Functions'), 'helper()').href, '/compiler-api/namespace_demo#helper')
+  assert.equal(get(get(demo, 'Functions'), 'helper').href, '/compiler-api/namespace_demo#helper')
+  const fileLinks = new Set(tree.find(node => node.label === 'Files').children.map(node => node.href))
   const links = new Set()
+  /** Checks reference-tree destinations and visits each nested branch. */
   const visit = node => {
     if (node.href) {
-      assert.ok(!links.has(node.href), `Duplicate ${node.href}`)
+      assert.ok(!links.has(node.href) || fileLinks.has(node.href), `Duplicate ${node.href}`)
       links.add(node.href)
       const [slug, anchor] = node.href.replace('/compiler-api/', '').split('#')
       const target = pages.get(`${slug}.mdx`)
@@ -126,6 +132,23 @@ test('builds one categorized tree with nested types, members, enum values and st
   assert.ok(Object.values(JSON.parse(pages.get('_meta.json'))).every(entry => entry.display === 'hidden'))
   assert.deepEqual(renderReference(input.reverse(), revision), pages)
   await compile(landing)
+})
+
+
+test('groups global symbols by their source file without merging matching names', () => {
+  const input = ['src/first.cpp', 'src/second.cpp'].map((file, index) => compound(`<compounddef id="file_${index}" kind="file"><compoundname>${file}</compoundname><location file="${file}"/><sectiondef><memberdef id="helper_${index}" kind="function"><name>helper</name><argsstring>()</argsstring><location file="${file}"/></memberdef></sectiondef></compounddef>`))
+  input.push(compound('<compounddef id="empty_file" kind="file"><compoundname>src/empty.cpp</compoundname></compounddef>'))
+  const pages = renderReference(input, revision)
+  const tree = JSON.parse(pages.get('tree.json'))
+  assert.deepEqual(tree.find(node => node.label === 'Files').children.map(node => node.label), ['src/empty.cpp', 'src/first.cpp', 'src/second.cpp'])
+  const scope = tree.find(node => node.label === 'File scope')
+  assert.deepEqual(scope.children.map(node => node.label), ['src/first.cpp', 'src/second.cpp'])
+  for (const [index, file] of scope.children.entries()) {
+    assert.equal(file.href, `/compiler-api/file_${index}`)
+    assert.deepEqual(file.children[0].children, [{ label: 'helper', href: `/compiler-api/file_${index}#helper_${index}`, children: [] }])
+    assert.ok(pages.get('functions.mdx').includes(`<TreeSummary>${file.label}</TreeSummary>`))
+  }
+  checkLinks(pages)
 })
 
 test('splits namespace types and members into symbol categories', async () => {
@@ -189,10 +212,11 @@ test('groups every symbol category under named Sun namespaces', async () => {
   const symbols = renderSymbolTree('Classes', [
     ['sun::ast::nodes::Expr<T>', '/compiler-api/expr', 'sun::ast::nodes'],
     ['helper()', '/compiler-api/helper', 'sun::ast::anonymous_namespace{file.cpp}'],
-    ['main()', '/compiler-api/main', ''],
+    ['main', '/compiler-api/main', '', 'src/main.cpp'],
   ], namespaces, refs)
   assert.match(symbols, /Expr&#60;T&#62;/)
   assert.match(symbols, /<TreeSummary>File scope<\/TreeSummary>/)
+  assert.match(symbols, /<TreeSummary>src\/main.cpp<\/TreeSummary>/)
   assert.match(symbols, /href="\/compiler-api\/helper"/)
   assert.doesNotMatch(symbols, /anonymous/)
   await compile(tree)

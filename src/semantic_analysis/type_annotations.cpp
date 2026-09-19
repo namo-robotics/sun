@@ -15,15 +15,19 @@ using sun::semantic_analysis::Types;
 
 using sun::support::logAndThrowError;
 
+/** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
 using sun::semantic_analysis::unwrapRef;
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
-// What `_return_type_of<F>` stands for once F is known. A lambda or function
-// answers with what it returns; a parameter that is still standing for itself
-// keeps the question open, carried as the parameter plus the projection.
+/**
+ * What `_return_type_of<F>` stands for once F is known. A lambda or function
+ * answers with what it returns; a parameter that is still standing for itself
+ * keeps the question open, carried as the parameter plus the projection.
+ */
 TypePtr returnTypeOf(const TypePtr& target,
                      std::optional<sun::support::Position> at) {
   if (!target) return nullptr;

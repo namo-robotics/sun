@@ -5,6 +5,7 @@
 #include "serialization/ast_deserializer.h"
 #include "serialization/ast_serializer.h"
 
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 
 std::unique_ptr<ExprAST> ExprAST::clone() const {

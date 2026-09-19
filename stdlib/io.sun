@@ -18,19 +18,25 @@
 
 /** Work with files, directories, and descriptor polling. */
 public module std.io {
-  // How to open a file.
-  //   Read   — the file must exist
-  //   Write  — create, or truncate what is there
-  //   Append — create if missing, write at the end
-  // These are enums rather than integer constants because a bundle exports
-  // its enums but not its module-level variables.
+  /**
+   * How to open a file.
+   *   Read   — the file must exist
+   *   Write  — create, or truncate what is there
+   *   Append — create if missing, write at the end
+   * These are enums rather than integer constants because a bundle exports
+   * its enums but not its module-level variables.
+   */
   public enum FileMode { Read, Write, Append }
 
-  // Where a seek offset is measured from.
+  /**
+   * Where a seek offset is measured from.
+   */
   public enum Whence { Start, Current, End }
 
-  // What a directory entry is. Some filesystems do not report a kind, in
-  // which case it is Unknown and is_dir(path) answers the question.
+  /**
+   * What a directory entry is. Some filesystems do not report a kind, in
+   * which case it is Unknown and is_dir(path) answers the question.
+   */
   public enum FileKind { Unknown, File, Dir, Symlink, Other }
 
   // open(2) flags. O_RDONLY is 0 everywhere; the composable write flags
@@ -52,74 +58,100 @@ public module std.io {
   public var POLLHUP: i16 = 16;
   public var POLLNVAL: i16 = 32;
 
-  // struct pollfd — { int, short, short }, 8 bytes, same layout on every
-  // Linux ABI. Public because Poller stores a Vec of these, and a bundled
-  // specialization over a private type is not visible to importers.
+  /**
+   * struct pollfd — { int, short, short }, 8 bytes, same layout on every
+   * Linux ABI. Public because Poller stores a Vec of these, and a bundled
+   * specialization over a private type is not visible to importers.
+   */
   public class PollFd {
     var fd: i32;
     var events: i16;
     var revents: i16 = 0;
 
-    // Build a poll record for one descriptor and the events to watch for.
+    /**
+     * Build a poll record for one descriptor and the events to watch for.
+     */
     init(fd: i32, events: i16) {
       this.fd = fd;
       this.events = events;
     }
   }
 
-  // One descriptor reported ready by Poller.wait(Duration).
+  /**
+   * One descriptor reported ready by Poller.wait(Duration).
+   */
   public class Event {
     var fd_: i32;
     var events_: i16;
 
-    // Build an event from a descriptor and the POLL* bits it reported.
+    /**
+     * Build an event from a descriptor and the POLL* bits it reported.
+     */
     init(fd: i32, events: i16) {
       this.fd_ = fd;
       this.events_ = events;
     }
 
-    // The descriptor that became ready.
+    /**
+     * The descriptor that became ready.
+     */
     public const method fd() i32 {
       return this.fd_;
     }
 
-    // The raw POLL* bits reported for this descriptor.
+    /**
+     * The raw POLL* bits reported for this descriptor.
+     */
     public const method events() i16 {
       return this.events_;
     }
 
-    // Report whether data is ready to read.
+    /**
+     * Report whether data is ready to read.
+     */
     public const method is_readable() bool {
       return (this.events_ & POLLIN) != 0;
     }
 
-    // Report whether urgent data is ready to read.
+    /**
+     * Report whether urgent data is ready to read.
+     */
     public const method is_priority() bool {
       return (this.events_ & POLLPRI) != 0;
     }
 
-    // Report whether the descriptor has room to write.
+    /**
+     * Report whether the descriptor has room to write.
+     */
     public const method is_writable() bool {
       return (this.events_ & POLLOUT) != 0;
     }
 
-    // Report whether the descriptor has an error condition.
+    /**
+     * Report whether the descriptor has an error condition.
+     */
     public const method is_error() bool {
       return (this.events_ & POLLERR) != 0;
     }
 
-    // Report whether the peer closed its end.
+    /**
+     * Report whether the peer closed its end.
+     */
     public const method is_hup() bool {
       return (this.events_ & POLLHUP) != 0;
     }
 
-    // Report whether the descriptor is not open.
+    /**
+     * Report whether the descriptor is not open.
+     */
     public const method is_invalid() bool {
       return (this.events_ & POLLNVAL) != 0;
     }
   }
 
-  // Convert a Duration to poll's millisecond timeout without wrapping.
+  /**
+   * Convert a Duration to poll's millisecond timeout without wrapping.
+   */
   function poll_timeout_millis(timeout: const ref std.time.Duration) i32 {
     var max_timeout: i64 = 2147483647;
     if (timeout.as_secs() > 2147483) {
@@ -136,7 +168,9 @@ public module std.io {
     return _convert<i32>(millis);
   }
 
-  // Translate a FileMode into the C open() flag bits it stands for.
+  /**
+   * Translate a FileMode into the C open() flag bits it stands for.
+   */
   function open_flags(mode: FileMode) i32 {
     return match mode {
       FileMode.Read => O_RDONLY,
@@ -145,7 +179,9 @@ public module std.io {
     };
   }
 
-  // Translate a Whence into the C lseek() constant it stands for.
+  /**
+   * Translate a Whence into the C lseek() constant it stands for.
+   */
   function convert_whence(w: Whence) i32 {
     return match w {
       Whence.Start => 0,
@@ -160,17 +196,23 @@ public module std.io {
     // fd 0 would close stdin.
     var fd: i32 = 0;
 
-    // Open a file with the specified mode
+    /**
+     * Open a file with the specified mode
+     */
     public method open(path: static_ptr<u8>, mode: FileMode) void throws IError {
       this.open_cstr(path.raw(), mode);
     }
 
-    // Open a file named at runtime. Throws if the system refuses.
+    /**
+     * Open a file named at runtime. Throws if the system refuses.
+     */
     public method open(path: ref String, mode: FileMode) void throws IError {
       this.open_cstr(path.c_str(), mode);
     }
 
-    // Open a file named by a C string. The one place the open syscall is made.
+    /**
+     * Open a file named by a C string. The one place the open syscall is made.
+     */
     method open_cstr(path: raw_ptr<u8>, mode: FileMode) void throws IError {
       var result: i32 = unsafe { c_open(path, open_flags(mode), CREATE_MODE); };
       if (result < 0) {
@@ -179,25 +221,33 @@ public module std.io {
       this.fd = result;
     }
 
-    // Adopt an already-open descriptor. The File owns it from here.
+    /**
+     * Adopt an already-open descriptor. The File owns it from here.
+     */
     public method adopt(fd: i32) void {
       this.close();
       this.fd = fd;
     }
 
-    // Write string data to the file
-    // Returns number of bytes written, or negative on error
+    /**
+     * Write string data to the file
+     * Returns number of bytes written, or negative on error
+     */
     public method write(data: static_ptr<u8>) i64 {
       return unsafe { c_write(this.fd, data.raw(), data.length()); };
     }
 
-    // Write a String's bytes. Returns how many bytes went out, or a negative
-    // value on failure.
+    /**
+     * Write a String's bytes. Returns how many bytes went out, or a negative
+     * value on failure.
+     */
     public method write(data: ref String) i64 {
       return unsafe { c_write(this.fd, data.c_str(), data.length()); };
     }
 
-    // Read the rest of the file into a String
+    /**
+     * Read the rest of the file into a String
+     */
     public method read_all(alloc: ref HeapAllocator) String throws IError {
       var out: String = String(alloc, "");
       var chunk: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 4096);
@@ -214,7 +264,9 @@ public module std.io {
       return out;
     }
 
-    // Close the file. Safe to call more than once.
+    /**
+     * Close the file. Safe to call more than once.
+     */
     public method close() void {
       if (this.fd > 0) {
         unsafe { c_close(this.fd); };
@@ -222,28 +274,38 @@ public module std.io {
       }
     }
 
-    // Report whether this File still holds a descriptor.
+    /**
+     * Report whether this File still holds a descriptor.
+     */
     public method is_open() bool {
       return this.fd > 0;
     }
 
-    // The underlying descriptor. The File still owns it.
+    /**
+     * The underlying descriptor. The File still owns it.
+     */
     public method get_fd() i32 {
       return this.fd;
     }
 
-    // Seek to a position in the file
-    // Returns the new offset from the beginning of the file
+    /**
+     * Seek to a position in the file
+     * Returns the new offset from the beginning of the file
+     */
     public method seek(offset: i64, whence: Whence) i64 {
       return unsafe { c_lseek(this.fd, offset, convert_whence(whence)); };
     }
 
-    // The current read/write offset from the start of the file.
+    /**
+     * The current read/write offset from the start of the file.
+     */
     public method tell() i64 {
       return this.seek(0, Whence.Current);
     }
 
-    // Flush file data to disk
+    /**
+     * Flush file data to disk
+     */
     public method sync() void throws IError {
       var result: i32 = unsafe { c_fsync(this.fd); };
       if (result < 0) {
@@ -251,7 +313,9 @@ public module std.io {
       }
     }
 
-    // Truncate or extend file to specified length
+    /**
+     * Truncate or extend file to specified length
+     */
     public method truncate(length: i64) void throws IError {
       var result: i32 = unsafe { c_ftruncate(this.fd, length); };
       if (result < 0) {
@@ -259,7 +323,9 @@ public module std.io {
       }
     }
 
-    // Get file size by seeking to end and back
+    /**
+     * Get file size by seeking to end and back
+     */
     public method size() i64 {
       var current: i64 = this.tell();
       var end_pos: i64 = this.seek(0, Whence.End);
@@ -267,17 +333,23 @@ public module std.io {
       return end_pos;
     }
 
-    // Write raw bytes to file
+    /**
+     * Write raw bytes to file
+     */
     public method write_bytes(buf: raw_ptr<u8>, len: i64) i64 {
       return unsafe { c_write(this.fd, buf, len); };
     }
 
-    // Read raw bytes into provided buffer
+    /**
+     * Read raw bytes into provided buffer
+     */
     public method read_into(buf: raw_ptr<u8>, len: i64) i64 {
       return unsafe { c_read(this.fd, buf, len); };
     }
 
-    // Close the descriptor if the File still holds one.
+    /**
+     * Close the descriptor if the File still holds one.
+     */
     deinit() {
       this.close();
     }
@@ -287,6 +359,7 @@ public module std.io {
   // Whole-file helpers
   // -------------------------------------------------------------------
 
+  /** Reads an entire file into an owned string and throws on an I/O failure. */
   public function read_to_string(alloc: ref HeapAllocator, path: static_ptr<u8>) String throws IError {
     var f: File = File();
     f.open(path, FileMode.Read);
@@ -295,7 +368,9 @@ public module std.io {
     return text;
   }
 
-  // Read a whole file named at runtime into a new String.
+  /**
+   * Read a whole file named at runtime into a new String.
+   */
   public function read_to_string(alloc: ref HeapAllocator, path: ref String) String throws IError {
     var f: File = File();
     f.open(path, FileMode.Read);
@@ -304,7 +379,9 @@ public module std.io {
     return text;
   }
 
-  // Write a String over a file named by a literal, replacing what was there.
+  /**
+   * Write a String over a file named by a literal, replacing what was there.
+   */
   public function write_string(path: static_ptr<u8>, contents: ref String) void throws IError {
     var f: File = File();
     f.open(path, FileMode.Write);
@@ -314,7 +391,9 @@ public module std.io {
     f.close();
   }
 
-  // Write a String over a file named at runtime, replacing what was there.
+  /**
+   * Write a String over a file named at runtime, replacing what was there.
+   */
   public function write_string(path: ref String, contents: ref String) void throws IError {
     var f: File = File();
     f.open(path, FileMode.Write);
@@ -328,6 +407,7 @@ public module std.io {
   // Paths
   // -------------------------------------------------------------------
 
+  /** Removes the file at a null-terminated path and throws if removal fails. */
   function remove_file_cstr(path: raw_ptr<u8>) void throws IError {
     var result: i32 = unsafe { c_unlink(path); };
     if (result < 0) {
@@ -335,18 +415,24 @@ public module std.io {
     }
   }
 
-  // Remove a file
+  /**
+   * Remove a file
+   */
   public function remove_file(path: static_ptr<u8>) void throws IError {
     remove_file_cstr(path.raw());
   }
 
-  // Delete a file named at runtime. Throws if it cannot be removed.
+  /**
+   * Delete a file named at runtime. Throws if it cannot be removed.
+   */
   public function remove_file(path: ref String) void throws IError {
     remove_file_cstr(path.c_str());
   }
 
-  // Rename a file, both paths as C strings. The one place the rename syscall is
-  // made.
+  /**
+   * Rename a file, both paths as C strings. The one place the rename syscall is
+   * made.
+   */
   function rename_file_cstr(old_path: raw_ptr<u8>, new_path: raw_ptr<u8>) void throws IError {
     var result: i32 = unsafe { c_rename(old_path, new_path); };
     if (result < 0) {
@@ -354,28 +440,38 @@ public module std.io {
     }
   }
 
-  // Rename or move a file
+  /**
+   * Rename or move a file
+   */
   public function rename_file(old_path: static_ptr<u8>, new_path: static_ptr<u8>) void throws IError {
     rename_file_cstr(old_path.raw(), new_path.raw());
   }
 
-  // Rename a file from a literal path to one built at runtime.
+  /**
+   * Rename a file from a literal path to one built at runtime.
+   */
   public function rename_file(old_path: static_ptr<u8>, new_path: ref String) void throws IError {
     rename_file_cstr(old_path.raw(), new_path.c_str());
   }
 
-  // Rename a file from a path built at runtime to a literal one.
+  /**
+   * Rename a file from a path built at runtime to a literal one.
+   */
   public function rename_file(old_path: ref String, new_path: static_ptr<u8>) void throws IError {
     rename_file_cstr(old_path.c_str(), new_path.raw());
   }
 
-  // Rename a file, both paths built at runtime.
+  /**
+   * Rename a file, both paths built at runtime.
+   */
   public function rename_file(old_path: ref String, new_path: ref String) void throws IError {
     rename_file_cstr(old_path.c_str(), new_path.c_str());
   }
 
-  // Create a directory named by a C string. The one place the mkdir syscall is
-  // made.
+  /**
+   * Create a directory named by a C string. The one place the mkdir syscall is
+   * made.
+   */
   function make_dir_cstr(path: raw_ptr<u8>, mode: i32) void throws IError {
     var result: i32 = unsafe { c_mkdir(path, mode); };
     if (result < 0) {
@@ -383,18 +479,24 @@ public module std.io {
     }
   }
 
-  // Create a directory with the specified mode (e.g. 0755 = 493)
+  /**
+   * Create a directory with the specified mode (e.g. 0755 = 493)
+   */
   public function make_dir(path: static_ptr<u8>, mode: i32) void throws IError {
     make_dir_cstr(path.raw(), mode);
   }
 
-  // Create a directory named at runtime, with the given permission bits.
+  /**
+   * Create a directory named at runtime, with the given permission bits.
+   */
   public function make_dir(path: ref String, mode: i32) void throws IError {
     make_dir_cstr(path.c_str(), mode);
   }
 
-  // Remove a directory named by a C string. The one place the rmdir syscall is
-  // made.
+  /**
+   * Remove a directory named by a C string. The one place the rmdir syscall is
+   * made.
+   */
   function remove_dir_cstr(path: raw_ptr<u8>) void throws IError {
     var result: i32 = unsafe { c_rmdir(path); };
     if (result < 0) {
@@ -402,12 +504,16 @@ public module std.io {
     }
   }
 
-  // Remove an empty directory
+  /**
+   * Remove an empty directory
+   */
   public function remove_dir(path: static_ptr<u8>) void throws IError {
     remove_dir_cstr(path.raw());
   }
 
-  // Remove a directory named at runtime. It must already be empty.
+  /**
+   * Remove a directory named at runtime. It must already be empty.
+   */
   public function remove_dir(path: ref String) void throws IError {
     remove_dir_cstr(path.c_str());
   }
@@ -419,21 +525,28 @@ public module std.io {
   // different field order and padding on x86-64 and aarch64 glibc, and the
   // stdlib is compiled from one source for both.
 
+  /** Reports whether a null-terminated filesystem path is accessible as an existing entry. */
   function exists_cstr(path: raw_ptr<u8>) bool {
     return unsafe { c_access(path, 0); } == 0;
   }
 
-  // Does the path exist? access(path, F_OK)
+  /**
+   * Does the path exist? access(path, F_OK)
+   */
   public function exists(path: static_ptr<u8>) bool {
     return exists_cstr(path.raw());
   }
 
-  // Report whether anything exists at a path built at runtime.
+  /**
+   * Report whether anything exists at a path built at runtime.
+   */
   public function exists(path: ref String) bool {
     return exists_cstr(path.c_str());
   }
 
-  // Report whether a path named by a C string is a directory.
+  /**
+   * Report whether a path named by a C string is a directory.
+   */
   function is_dir_cstr(path: raw_ptr<u8>) bool {
     var dir: raw_ptr<u8> = unsafe { c_opendir(path); };
     if (dir == null) {
@@ -443,28 +556,38 @@ public module std.io {
     return true;
   }
 
-  // Report whether a literal path is a directory.
+  /**
+   * Report whether a literal path is a directory.
+   */
   public function is_dir(path: static_ptr<u8>) bool {
     return is_dir_cstr(path.raw());
   }
 
-  // Report whether a path built at runtime is a directory.
+  /**
+   * Report whether a path built at runtime is a directory.
+   */
   public function is_dir(path: ref String) bool {
     return is_dir_cstr(path.c_str());
   }
 
-  // Report whether a literal path is an ordinary file.
+  /**
+   * Report whether a literal path is an ordinary file.
+   */
   public function is_file(path: static_ptr<u8>) bool {
     return exists(path) and not is_dir(path);
   }
 
-  // Report whether a path built at runtime is an ordinary file.
+  /**
+   * Report whether a path built at runtime is an ordinary file.
+   */
   public function is_file(path: ref String) bool {
     return exists(path) and not is_dir(path);
   }
 
-  // The size in bytes of the file at a literal path. Throws if it cannot be
-  // opened.
+  /**
+   * The size in bytes of the file at a literal path. Throws if it cannot be
+   * opened.
+   */
   public function get_file_size(path: static_ptr<u8>) i64 throws IError {
     var f: File = File();
     f.open(path, FileMode.Read);
@@ -476,7 +599,9 @@ public module std.io {
     return size;
   }
 
-  // The size in bytes of the file at a path built at runtime.
+  /**
+   * The size in bytes of the file at a path built at runtime.
+   */
   public function get_file_size(path: ref String) i64 throws IError {
     var f: File = File();
     f.open(path, FileMode.Read);
@@ -492,40 +617,54 @@ public module std.io {
   // Directories
   // -------------------------------------------------------------------
 
-  // One entry from read_dir. The kind comes from the directory record, so
-  // no extra syscall is needed to tell a file from a subdirectory.
+  /**
+   * One entry from read_dir. The kind comes from the directory record, so
+   * no extra syscall is needed to tell a file from a subdirectory.
+   */
   public class DirEntry {
     var name_: String;
     var kind_: FileKind;
 
-    // Build a directory entry. The name moves in.
+    /**
+     * Build a directory entry. The name moves in.
+     */
     init(name: String, kind: FileKind) {
       this.name_ = name;
       this.kind_ = kind;
     }
 
-    // Borrowed: the entry keeps the name.
+    /**
+     * Borrowed: the entry keeps the name.
+     */
     public method name() ref String {
       return unsafe { _to_ref<String>(_address_of<String>(this.name_)); };
     }
 
-    // Whether the entry is a file, a directory, or something else.
+    /**
+     * Whether the entry is a file, a directory, or something else.
+     */
     public method kind() FileKind {
       return this.kind_;
     }
 
-    // Report whether this entry is a directory.
+    /**
+     * Report whether this entry is a directory.
+     */
     public method is_dir() bool {
       return this.kind_ == FileKind.Dir;
     }
 
-    // Report whether this entry is an ordinary file.
+    /**
+     * Report whether this entry is an ordinary file.
+     */
     public method is_file() bool {
       return this.kind_ == FileKind.File;
     }
   }
 
-  // DT_* values from the directory record's d_type byte.
+  /**
+   * DT_* values from the directory record's d_type byte.
+   */
   function kind_of(d_type: u8) FileKind {
     return match d_type {
       4 => FileKind.Dir,
@@ -536,7 +675,9 @@ public module std.io {
     };
   }
 
-  // Is the record's name "." or ".."?
+  /**
+   * Is the record's name "." or ".."?
+   */
   function is_dot_entry(name: raw_ptr<u8>) bool {
     var first: u8 = unsafe { _load<u8>(name, 0); };
     if (first != b'.') {
@@ -552,8 +693,10 @@ public module std.io {
     return unsafe { _load<u8>(name, 2); } == 0;
   }
 
-  // List a directory. "." and ".." are left out; the order is whatever the
-  // filesystem gives, not sorted.
+  /**
+   * List a directory. "." and ".." are left out; the order is whatever the
+   * filesystem gives, not sorted.
+   */
   function read_dir_cstr(alloc: ref HeapAllocator, path: raw_ptr<u8>) Vec<DirEntry> throws IError {
     var dir: raw_ptr<u8> = unsafe { c_opendir(path); };
     if (dir == null) {
@@ -578,13 +721,17 @@ public module std.io {
     return entries;
   }
 
-  // List the entries of a directory at a literal path. '.' and '..' are left
-  // out.
+  /**
+   * List the entries of a directory at a literal path. '.' and '..' are left
+   * out.
+   */
   public function read_dir(alloc: ref HeapAllocator, path: static_ptr<u8>) Vec<DirEntry> throws IError {
     return read_dir_cstr(alloc, path.raw());
   }
 
-  // List the entries of a directory at a path built at runtime.
+  /**
+   * List the entries of a directory at a path built at runtime.
+   */
   public function read_dir(alloc: ref HeapAllocator, path: ref String) Vec<DirEntry> throws IError {
     return read_dir_cstr(alloc, path.c_str());
   }
@@ -593,9 +740,11 @@ public module std.io {
   // Standard input
   // -------------------------------------------------------------------
 
-  // Read one line from stdin, without the trailing newline. None at end of
-  // input with nothing read. Unbuffered on purpose: a buffered reader would
-  // swallow bytes a later child process expects to find on the descriptor.
+  /**
+   * Read one line from stdin, without the trailing newline. None at end of
+   * input with nothing read. Unbuffered on purpose: a buffered reader would
+   * swallow bytes a later child process expects to find on the descriptor.
+   */
   public function read_line(alloc: ref HeapAllocator) Option<String> {
     var line: String = String(alloc, "");
     var byte: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 1);
@@ -622,39 +771,53 @@ public module std.io {
   // Polling
   // -------------------------------------------------------------------
 
-  // Waits for readiness on a set of descriptors. The descriptors keep their
-  // positions, so revents(i) answers for the fd added i-th.
+  /**
+   * Waits for readiness on a set of descriptors. The descriptors keep their
+   * positions, so revents(i) answers for the fd added i-th.
+   */
   public class Poller {
     var alloc: HeapAllocator;
     var fds: Vec<PollFd>;
 
-    // Build an empty poller. Add descriptors before waiting.
+    /**
+     * Build an empty poller. Add descriptors before waiting.
+     */
     init(alloc: ref HeapAllocator) {
       this.alloc = alloc.copy();
       this.fds = Vec<PollFd>(alloc, 4);
     }
 
-    // Watch for an arbitrary combination of the POLL* bits.
+    /**
+     * Watch for an arbitrary combination of the POLL* bits.
+     */
     public method add(fd: i32, events: i16) void {
       this.fds.push(PollFd(fd, events));
     }
 
-    // Watch for readable data (or the peer hanging up).
+    /**
+     * Watch for readable data (or the peer hanging up).
+     */
     public method add_read(fd: i32) void {
       this.fds.push(PollFd(fd, POLLIN));
     }
 
-    // Watch for room to write.
+    /**
+     * Watch for room to write.
+     */
     public method add_write(fd: i32) void {
       this.fds.push(PollFd(fd, POLLOUT));
     }
 
-    // Watch a descriptor for both readable data and room to write.
+    /**
+     * Watch a descriptor for both readable data and room to write.
+     */
     public method add_read_write(fd: i32) void {
       this.fds.push(PollFd(fd, POLLIN | POLLOUT));
     }
 
-    // Stop watching every registration for a descriptor.
+    /**
+     * Stop watching every registration for a descriptor.
+     */
     public method remove(fd: i32) bool {
       var removed: bool = false;
       var i: i64 = 0;
@@ -675,18 +838,24 @@ public module std.io {
       return removed;
     }
 
-    // Forget every descriptor. Positions restart from zero after this.
+    /**
+     * Forget every descriptor. Positions restart from zero after this.
+     */
     public method clear() void {
       this.fds.clear();
     }
 
-    // How many descriptors are being watched.
+    /**
+     * How many descriptors are being watched.
+     */
     public method count() i64 {
       return this.fds.size();
     }
 
-    // Blocks until something is ready, the timeout expires, or a signal
-    // arrives. -1 waits forever. Returns how many descriptors are ready.
+    /**
+     * Blocks until something is ready, the timeout expires, or a signal
+     * arrives. -1 waits forever. Returns how many descriptors are ready.
+     */
     public method wait(timeout_ms: i32) i32 throws IError {
       var ready: i32 = unsafe {
         c_poll(
@@ -701,7 +870,9 @@ public module std.io {
       return ready;
     }
 
-    // Wait for a finite duration and return the descriptors that became ready.
+    /**
+     * Wait for a finite duration and return the descriptors that became ready.
+     */
     public method wait(timeout: const ref std.time.Duration) Vec<Event> throws IError {
       var ready_count: i32 = this.wait(poll_timeout_millis(timeout));
       var capacity: i64 = _convert<i64>(ready_count);
@@ -718,32 +889,44 @@ public module std.io {
       return ready;
     }
 
-    // The descriptor added i-th.
+    /**
+     * The descriptor added i-th.
+     */
     public method fd_at(i: i64) i32 {
       return unsafe { this.fds.get_unchecked(i); }.fd;
     }
 
-    // The raw POLL* bits the system reported for the descriptor added i-th.
+    /**
+     * The raw POLL* bits the system reported for the descriptor added i-th.
+     */
     public method revents(i: i64) i16 {
       return unsafe { this.fds.get_unchecked(i); }.revents;
     }
 
-    // Report whether the descriptor added i-th has data to read.
+    /**
+     * Report whether the descriptor added i-th has data to read.
+     */
     public method is_readable(i: i64) bool {
       return (this.revents(i) & POLLIN) != 0;
     }
 
-    // Report whether the descriptor added i-th has room to write.
+    /**
+     * Report whether the descriptor added i-th has room to write.
+     */
     public method is_writable(i: i64) bool {
       return (this.revents(i) & POLLOUT) != 0;
     }
 
-    // The peer closed its end. Any buffered bytes are still readable.
+    /**
+     * The peer closed its end. Any buffered bytes are still readable.
+     */
     public method is_hup(i: i64) bool {
       return (this.revents(i) & POLLHUP) != 0;
     }
 
-    // Report whether the system flagged an error on the descriptor added i-th.
+    /**
+     * Report whether the system flagged an error on the descriptor added i-th.
+     */
     public method is_error(i: i64) bool {
       return (this.revents(i) & POLLERR) != 0;
     }

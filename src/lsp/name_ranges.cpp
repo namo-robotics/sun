@@ -13,16 +13,21 @@ using sun::ast::ExprAST;
 using sun::ast::PrototypeAST;
 using sun::support::Position;
 
+/** Provides compiler-backed editor features through the language server protocol. */
 namespace sun::lsp {
 
+/** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
 
+/** Reports whether a character may occur inside an identifier. */
 bool isIdentifierChar(char c) {
   return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
 }
 
-// The signature text of a function or lambda: the prototype span, or the
-// node up to its body when the prototype has none
+/**
+ * The signature text of a function or lambda: the prototype span, or the
+ * node up to its body when the prototype has none
+ */
 std::optional<Position> signatureSpan(const ExprAST& owner) {
   const PrototypeAST* proto = prototypeOf(owner);
   if (!proto) return std::nullopt;
@@ -39,6 +44,7 @@ std::optional<Position> signatureSpan(const ExprAST& owner) {
 
 }  // namespace
 
+/** Finds a complete identifier within a bounded source range. */
 int findWord(const std::string& text, const std::string& name, size_t from,
              size_t to) {
   if (name.empty() || from >= text.size()) return -1;
@@ -54,6 +60,7 @@ int findWord(const std::string& text, const std::string& name, size_t from,
   return -1;
 }
 
+/** Creates a source span from an offset and length within a base position. */
 Position rangeAt(const Position& base, int offset, int length) {
   Position range = base;
   range.offset = offset;
@@ -61,12 +68,14 @@ Position rangeAt(const Position& base, int offset, int length) {
   return range;
 }
 
+/** Reports whether the expected spelling occurs at a source offset. */
 bool textHas(const std::string& text, int offset, const std::string& word) {
   return offset >= 0 &&
          static_cast<size_t>(offset) + word.size() <= text.size() &&
          text.compare(offset, word.size(), word) == 0;
 }
 
+/** Finds the identifier's exact range within its declaration span. */
 Position nameRange(const Position& span, const std::string& name,
                    const std::string& text) {
   if (name.empty()) {
@@ -88,6 +97,7 @@ Position nameRange(const Position& span, const std::string& name,
   return rangeAt(span, span.offset, 0);
 }
 
+/** Returns the signature belonging to a function-like syntax node. */
 const PrototypeAST* prototypeOf(const ExprAST& node) {
   if (node.getType() == ASTNodeType::FUNCTION) {
     return &static_cast<const sun::ast::FunctionAST&>(node).getProto();
@@ -98,6 +108,7 @@ const PrototypeAST* prototypeOf(const ExprAST& node) {
   return nullptr;
 }
 
+/** Reports whether a function signature declares the requested parameter. */
 bool declaresParameter(const PrototypeAST& proto, const std::string& name) {
   for (const auto& arg : proto.getArgs()) {
     if (arg.first == name) return true;
@@ -105,6 +116,7 @@ bool declaresParameter(const PrototypeAST& proto, const std::string& name) {
   return proto.getVariadicParamName() == name;
 }
 
+/** Finds the source range of a named function parameter. */
 std::optional<Position> parameterRange(const ExprAST& owner,
                                        const std::string& name,
                                        const std::string& text) {
@@ -129,6 +141,7 @@ std::optional<Position> parameterRange(const ExprAST& owner,
   return std::nullopt;
 }
 
+/** Retrieves source text for a location, reusing the open document when possible. */
 std::optional<std::string> textOf(const Position& location,
                                   const std::string& documentPath,
                                   const std::string& source) {
@@ -142,6 +155,7 @@ std::optional<std::string> textOf(const Position& location,
   return buffer.str();
 }
 
+/** Finds the exact name range of a resolved declaration. */
 Position nameRangeOf(const Declaration& declaration, const std::string& text) {
   const PrototypeAST* proto =
       declaration.node ? prototypeOf(*declaration.node) : nullptr;
@@ -155,6 +169,7 @@ Position nameRangeOf(const Declaration& declaration, const std::string& text) {
   return nameRange(declaration.location, declaration.name, text);
 }
 
+/** Converts a source span to an editor navigation location. */
 SymbolLocation makeSymbolLocation(const std::string& filePath,
                                   const Position& range,
                                   const std::string& text) {
