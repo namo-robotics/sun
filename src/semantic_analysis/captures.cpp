@@ -275,7 +275,7 @@ std::vector<sun::ast::Capture> SemanticAnalyzer::buildCaptures(
       // silently break aliasing. Naming it in the capture list says which of
       // the three things you meant.
       if (kind == CaptureKind::ByValue &&
-          sun::semantic_analysis::unwrapRef(varInfo->type)->isCompound()) {
+          sun::types::unwrapRef(varInfo->type)->isCompound()) {
         logAndThrowError("Cannot capture '" + var + "' of compound type '" +
                              varInfo->type->toDisplayString() +
                              "' by value; capture it by reference with '[ref " +
@@ -301,8 +301,7 @@ std::vector<sun::ast::Capture> SemanticAnalyzer::buildCaptures(
       bool isConst =
           kind != CaptureKind::Owned &&
           ((kind == CaptureKind::Borrow && proto.isConstRefCapture(var)) ||
-           varInfo->isConst ||
-           sun::semantic_analysis::isConstRef(varInfo->type));
+           varInfo->isConst || sun::types::isConstRef(varInfo->type));
       captures.push_back(
           {var, varInfo->type, kind, isConst, varInfo->declarationId});
     }

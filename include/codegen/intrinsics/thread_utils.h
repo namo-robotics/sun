@@ -14,7 +14,7 @@
 #include <llvm/IR/Value.h>
 
 #include "codegen/codegen.h"
-#include "semantic_analysis/types.h"
+#include "types/types.h"
 
 /** Provides the generator for built-in operations. */
 namespace sun::codegen::intrinsics {

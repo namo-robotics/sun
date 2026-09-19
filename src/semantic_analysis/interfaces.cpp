@@ -4,9 +4,9 @@
 #include "semantic_analysis/semantic_analyzer.h"
 #include "support/error.h"
 
-using sun::semantic_analysis::ClassType;
-using sun::semantic_analysis::InterfaceType;
-using sun::semantic_analysis::TypePtr;
+using sun::types::ClassType;
+using sun::types::InterfaceType;
+using sun::types::TypePtr;
 
 using sun::support::logAndThrowError;
 using sun::support::logSemanticError;
@@ -27,7 +27,7 @@ void SemanticAnalyzer::inheritInterfaceFields(
     std::shared_ptr<ClassType> classType) {
   for (const auto& ifaceRef : classDef.getImplementedInterfaces()) {
     auto interfaceType = std::dynamic_pointer_cast<InterfaceType>(
-        types_.typeAnnotationToType(ifaceRef.toAnnotation()));
+        resolver_.typeAnnotationToType(ifaceRef.toAnnotation()));
     if (!interfaceType)
       logAndThrowError("Class '" + classDef.getName() +
                            "' implements unknown interface '" + ifaceRef.name +
@@ -38,7 +38,7 @@ void SemanticAnalyzer::inheritInterfaceFields(
     // Add interface fields to class (interface fields are inherited)
     for (const auto& field : interfaceType->getFields()) {
       // Check if class already has this field
-      const sun::semantic_analysis::ClassField* existingField =
+      const sun::types::ClassField* existingField =
           classType->getField(field.name);
       if (existingField) {
         // Field already declared in class - verify type matches
@@ -75,13 +75,13 @@ void SemanticAnalyzer::validateInterfaceImplementation(
     std::shared_ptr<ClassType> classType) {
   for (const auto& ifaceRef : classDef.getImplementedInterfaces()) {
     auto interfaceType = std::dynamic_pointer_cast<InterfaceType>(
-        types_.typeAnnotationToType(ifaceRef.toAnnotation()));
+        resolver_.typeAnnotationToType(ifaceRef.toAnnotation()));
     if (!interfaceType) continue;
     std::string interfaceDisplayName = interfaceType->toDisplayString();
 
     // Check that class implements all required methods and add default methods
     for (const auto& interfaceMethod : interfaceType->getMethods()) {
-      const sun::semantic_analysis::ClassMethod* classMethodInfo = nullptr;
+      const sun::types::ClassMethod* classMethodInfo = nullptr;
       auto requiredReturnType = interfaceMethod.returnType;
       auto requiredParamTypes = interfaceMethod.paramTypes;
       for (const auto& classMethod : classDef.getMethods()) {
@@ -105,9 +105,9 @@ void SemanticAnalyzer::validateInterfaceImplementation(
                 proto.declarationIdentity().typeParameters.at(i)));
           ctx_.enterTypeParamScope(interfaceMethod.typeParameters, parameters);
           requiredReturnType =
-              types_.substituteTypeParameters(requiredReturnType);
+              resolver_.substituteTypeParameters(requiredReturnType);
           for (auto& type : requiredParamTypes)
-            type = types_.substituteTypeParameters(type);
+            type = resolver_.substituteTypeParameters(type);
         }
         auto* candidate = classType->getMethodForArgs(interfaceMethod.name,
                                                       requiredParamTypes);
@@ -196,12 +196,13 @@ void SemanticAnalyzer::validateInterfaceImplementation(
           // Names match verbatim - 'this is 'this, and declared names
           // match by spelling.
           auto lifetimeContractOf = [](const TypePtr& t) -> std::string {
-            if (auto* lt = sun::codegen::support::tryGetType<
-                    sun::semantic_analysis::LambdaType>(t)) {
+            if (auto* lt =
+                    sun::codegen::support::tryGetType<sun::types::LambdaType>(
+                        t)) {
               return lt->getLifetimeName();
             }
             if (auto* rt = sun::codegen::support::tryGetType<
-                    sun::semantic_analysis::ReferenceType>(t)) {
+                    sun::types::ReferenceType>(t)) {
               std::string contract = rt->getLifetimeName();
               for (const auto& applied : rt->getClassLifetimeArgs()) {
                 contract += "<" + applied + ">";

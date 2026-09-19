@@ -9,7 +9,7 @@
 #include "ast.h"
 #include "support/error.h"
 
-using sun::semantic_analysis::TypePtr;
+using sun::types::TypePtr;
 
 using sun::support::logAndThrowError;
 
@@ -31,8 +31,7 @@ llvm::Triple targetTriple(const llvm::Module* module) {
  */
 TypePtr integerRepresentation(const TypePtr& type) {
   if (type && type->isEnum()) {
-    return static_cast<sun::semantic_analysis::EnumType*>(type.get())
-        ->getUnderlyingType();
+    return static_cast<sun::types::EnumType*>(type.get())->getUnderlyingType();
   }
   return type;
 }

@@ -9,20 +9,21 @@
 #include "driver/driver.h"
 #include "parsing/parser.h"
 #include "semantic_analysis/callable_signature.h"
-#include "semantic_analysis/passes/declaration_identity_pass.h"
 #include "semantic_analysis/item_refs.h"
+#include "semantic_analysis/passes/declaration_identity_pass.h"
+#include "semantic_analysis/type_registry.h"
 #include "serialization/ast_deserializer.h"
 #include "serialization/ast_serializer.h"
 
 using sun::semantic_analysis::CallableSignature;
 using sun::semantic_analysis::DeclarationId;
-using sun::semantic_analysis::passes::DeclarationIdentityPass;
 using sun::semantic_analysis::DeclarationKind;
 using sun::semantic_analysis::DeclarationTable;
 using sun::semantic_analysis::PortableDeclarationKey;
 using sun::semantic_analysis::SpecializationKey;
 using sun::semantic_analysis::TypeRegistry;
-using sun::semantic_analysis::Types;
+using sun::semantic_analysis::passes::DeclarationIdentityPass;
+using sun::types::Types;
 
 using sun::ast::ASTNodeType;
 using sun::ast::ClassDefinitionAST;
@@ -362,10 +363,10 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   EXPECT_NE(owned, instance);
   EXPECT_EQ(types.declarations.get(owned).owner, owner);
   equal = key;
-  equal.variadic = std::vector<sun::semantic_analysis::TypePtr>{};
+  equal.variadic = std::vector<sun::types::TypePtr>{};
   auto emptyPack = types.specialize(equal);
   EXPECT_NE(emptyPack, instance);
-  equal.variadic = std::vector<sun::semantic_analysis::TypePtr>{Types::Int32()};
+  equal.variadic = std::vector<sun::types::TypePtr>{Types::Int32()};
   EXPECT_NE(types.specialize(equal), emptyPack);
 }
 
@@ -409,7 +410,7 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   const auto id = generic.getSpecializations().begin()->first;
   auto type = result.typeRegistry->getClass(id);
   ASSERT_EQ(type->getFields().size(), 1u);
-  auto next = std::static_pointer_cast<sun::semantic_analysis::RawPointerType>(
+  auto next = std::static_pointer_cast<sun::types::RawPointerType>(
       type->getFields()[0].type);
   EXPECT_EQ(next->getPointeeType(), type);
 }
@@ -455,11 +456,11 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   EXPECT_EQ(instance, types.specialize({source, {}, {repeated}, std::nullopt}));
   EXPECT_NE(instance, types.specialize({source, {}, {second}, std::nullopt}));
   auto projection =
-      static_cast<const sun::semantic_analysis::TypeParameterType&>(*first)
-          .project(sun::semantic_analysis::TypeProjection::ReturnType);
+      static_cast<const sun::types::TypeParameterType&>(*first).project(
+          sun::types::TypeProjection::ReturnType);
   auto repeatedProjection =
-      static_cast<const sun::semantic_analysis::TypeParameterType&>(*repeated)
-          .project(sun::semantic_analysis::TypeProjection::ReturnType);
+      static_cast<const sun::types::TypeParameterType&>(*repeated).project(
+          sun::types::TypeProjection::ReturnType);
   EXPECT_TRUE(projection->equals(*repeatedProjection));
   EXPECT_FALSE(projection->equals(*first));
 }
@@ -742,9 +743,10 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   abstractEnum->setGenericQualifiedName({{}, "unrelated"});
   abstractInterface->setGenericQualifiedName({{}, "unrelated"});
   analyzer.context().enterTypeParamScope({"U"}, {Types::Int32()});
-  auto concreteEnum = analyzer.types().substituteTypeParameters(abstractEnum);
+  auto concreteEnum =
+      analyzer.typeResolver().substituteTypeParameters(abstractEnum);
   auto concreteInterface =
-      analyzer.types().substituteTypeParameters(abstractInterface);
+      analyzer.typeResolver().substituteTypeParameters(abstractInterface);
   EXPECT_EQ(concreteEnum, analyzer.generics().instantiateGenericEnum(
                               *enumInfo, {Types::Int32()}));
   EXPECT_EQ(concreteInterface, analyzer.generics().instantiateGenericInterface(
@@ -754,7 +756,7 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   auto borrowed = analyzer.generics().instantiateGenericEnum(
       *enumInfo, {Types::Reference(Types::Int32())});
   borrowed->setGenericQualifiedName({{}, "unrelated"});
-  EXPECT_EQ(analyzer.types().createConstView(borrowed),
+  EXPECT_EQ(analyzer.typeResolver().createConstView(borrowed),
             analyzer.generics().instantiateGenericEnum(
                 *enumInfo, {Types::Reference(Types::Int32(), false)}));
   auto variant = parse("Choice.None;");

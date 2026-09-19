@@ -86,11 +86,11 @@ class ForInExprAST : public ExprAST {
   /**
    * Resolved loop variable type (set by semantic analyzer)
    */
-  void setResolvedLoopVarType(sun::semantic_analysis::TypePtr type) const {
+  void setResolvedLoopVarType(sun::types::TypePtr type) const {
     forInAnalysis().resolvedLoopVarType = std::move(type);
   }
   /** Returns the loop-variable type selected by analysis. */
-  sun::semantic_analysis::TypePtr getResolvedLoopVarType() const {
+  sun::types::TypePtr getResolvedLoopVarType() const {
     return analysis_
                ? static_cast<ForInAnalysis&>(*analysis_).resolvedLoopVarType
                : nullptr;

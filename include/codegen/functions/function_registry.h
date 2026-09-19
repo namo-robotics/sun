@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "codegen/codegen_state.h"
-#include "semantic_analysis/types.h"
+#include "types/types.h"
 
 /** Provides the registry of generated functions and their metadata. */
 namespace sun::codegen::functions {

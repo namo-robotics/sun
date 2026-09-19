@@ -1,3 +1,4 @@
+#include "semantic_analysis/type_analysis/generic_type_arguments.h"
 // The one place that says how a call argument reaches its parameter. See
 // include/semantic_analysis/argument_conversion.h.
 
@@ -8,6 +9,13 @@
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
+using sun::types::ArrayType;
+using sun::types::EnumType;
+using sun::types::RawPointerType;
+using sun::types::Type;
+using sun::types::typeMovesOnRead;
+using sun::types::TypePtr;
+using sun::types::unwrapRef;
 
 /** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
@@ -115,7 +123,8 @@ std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
 
   // A template body is analyzed with its type parameters unbound; the real
   // decision is made when it is instantiated.
-  if (mentionsTypeParameter(argType) || mentionsTypeParameter(paramType)) {
+  if (sun::semantic_analysis::type_analysis::mentionsTypeParameter(argType) ||
+      sun::semantic_analysis::type_analysis::mentionsTypeParameter(paramType)) {
     return ArgConversion::PassValue;
   }
 

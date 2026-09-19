@@ -5,19 +5,20 @@
 #include <set>
 
 #include "codegen/abi/c_abi_types.h"
+#include "semantic_analysis/expression_properties.h"
 #include "semantic_analysis/field_initialization.h"
 #include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/symbol_names.h"
-#include "semantic_analysis/type_rules.h"
+#include "semantic_analysis/type_analysis/type_rules.h"
 #include "semantic_analysis/visibility.h"
 #include "support/config.h"
 #include "support/error.h"
 
-using sun::semantic_analysis::ClassMethod;
-using sun::semantic_analysis::LambdaType;
-using sun::semantic_analysis::TypePtr;
-using sun::semantic_analysis::Types;
+using sun::types::ClassMethod;
+using sun::types::LambdaType;
+using sun::types::TypePtr;
+using sun::types::Types;
 
 using sun::ast::ASTNodeType;
 using sun::ast::BlockExprAST;
@@ -33,13 +34,14 @@ using sun::support::Position;
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
+using sun::types::Type;
 
-using sun::semantic_analysis::isAssignableTo;
 using sun::semantic_analysis::isBorrowableLvalue;
 using sun::semantic_analysis::isReservedIdentifier;
 using sun::semantic_analysis::methodVisibility;
-using sun::semantic_analysis::tryCoerceIntegerLiteral;
-using sun::semantic_analysis::unwrapRef;
+using sun::semantic_analysis::type_analysis::isAssignableTo;
+using sun::semantic_analysis::type_analysis::tryCoerceIntegerLiteral;
+using sun::types::unwrapRef;
 
 // -------------------------------------------------------------------
 // Borrow targets
@@ -79,8 +81,8 @@ void SemanticAnalyzer::validateBorrowTarget(const ExprAST& target,
   }
   if (target.getType() == ASTNodeType::INDEX) {
     const auto& indexExpr = static_cast<const IndexAST&>(target);
-    auto baseType = sun::semantic_analysis::unwrapRef(
-        indexExpr.getTarget()->getResolvedType());
+    auto baseType =
+        sun::types::unwrapRef(indexExpr.getTarget()->getResolvedType());
     if (baseType && baseType->isClass()) {
       logAndThrowError(
           "Cannot create a reference to a class __index__ element - it "
@@ -111,22 +113,25 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, TypePtr expectedType) {
     case ASTNodeType::CHAR_LITERAL: {
       // 'a' is always a char and b'a' is always a u8; neither takes its type
       // from context the way an integer literal does.
-      expr.setResolvedType(types_.inferType(expr));
+      expr.setResolvedType(
+          static_cast<const sun::ast::CharLiteralAST&>(expr).isByte()
+              ? Types::UInt8()
+              : Types::Char());
       break;
     }
 
     case ASTNodeType::STRING_LITERAL: {
-      expr.setResolvedType(types_.inferType(expr));
+      expr.setResolvedType(Types::String());
       break;
     }
 
     case ASTNodeType::BOOL_LITERAL: {
-      expr.setResolvedType(types_.inferType(expr));
+      expr.setResolvedType(Types::Bool());
       break;
     }
 
     case ASTNodeType::NULL_LITERAL: {
-      expr.setResolvedType(types_.inferType(expr));
+      expr.setResolvedType(Types::NullPointer());
       break;
     }
 
@@ -151,7 +156,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, TypePtr expectedType) {
 
     case ASTNodeType::VARIABLE_REFERENCE: {
       if (expr.getModuleDeclaration()) {
-        expr.setResolvedType(types_.inferType(expr));
+        expr.setResolvedType(resolveModuleReference(expr));
         break;
       }
       auto& varRef = static_cast<sun::ast::VariableReferenceAST&>(expr);
@@ -186,7 +191,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, TypePtr expectedType) {
         }
       }
 
-      expr.setResolvedType(types_.inferType(expr));
+      expr.setResolvedType(resolveVariableReferenceType(varRef));
       sun::semantic_analysis::QualifiedName resolved =
           ctx_.resolveNameWithUsings(varRef.getName());
       varRef.setQualifiedName(resolved);
@@ -231,7 +236,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, TypePtr expectedType) {
       auto& block = static_cast<BlockExprAST&>(expr);
       ctx_.enterScope();
       bodies_.analyzeBlock(block);
-      expr.setResolvedType(types_.inferType(expr));
+      expr.setResolvedType(preparedBlockType(block));
       ctx_.exitScope();
       break;
     }
@@ -306,7 +311,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, TypePtr expectedType) {
 
     case ASTNodeType::QUALIFIED_NAME:
       if (expr.getModuleDeclaration())
-        expr.setResolvedType(types_.inferType(expr));
+        expr.setResolvedType(resolveModuleReference(expr));
       else
         analyzeQualifiedName(static_cast<sun::ast::QualifiedNameAST&>(expr));
       break;
@@ -327,13 +332,14 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, TypePtr expectedType) {
     }
 
     case ASTNodeType::THIS: {
-      expr.setResolvedType(types_.inferType(expr));
+      expr.setResolvedType(ctx_.getCurrentClass() ? ctx_.getCurrentClass()
+                                                  : Types::Void());
       break;
     }
 
     case ASTNodeType::MEMBER_ACCESS:
       if (expr.getModuleDeclaration())
-        expr.setResolvedType(types_.inferType(expr));
+        expr.setResolvedType(resolveModuleReference(expr));
       else
         analyzeMemberAccess(static_cast<MemberAccessAST&>(expr), expectedType);
       break;
@@ -389,7 +395,7 @@ std::vector<TypePtr> SemanticAnalyzer::validateAndResolveParamTypes(
   // Resolve parameter types
   std::vector<TypePtr> paramTypes;
   for (auto& [argName, argType] : proto.getMutableArgs()) {
-    TypePtr paramType = types_.typeAnnotationToType(argType);
+    TypePtr paramType = resolver_.typeAnnotationToType(argType);
 
     /**
      * Check for compound types being passed by value
@@ -450,7 +456,7 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
   // Resolve return type if specified; Void for constructors (no return type)
   TypePtr returnType = Types::Void();
   if (proto.hasReturnType()) {
-    returnType = types_.typeAnnotationToType(*proto.getReturnType());
+    returnType = resolver_.typeAnnotationToType(*proto.getReturnType());
     if (!returnType) {
       logAndThrowError("Failed to resolve return type for function '" +
                            proto.getName() + "'",
@@ -616,8 +622,7 @@ void SemanticAnalyzer::analyzeStructLiteral(sun::ast::StructLiteralAST& literal,
     return;
   }
 
-  auto* classType =
-      static_cast<sun::semantic_analysis::ClassType*>(expectedType.get());
+  auto* classType = static_cast<sun::types::ClassType*>(expectedType.get());
 
   // A class with its own init is constructed through it; allowing both would
   // give two ways to build one object with different invariants.
@@ -635,7 +640,7 @@ void SemanticAnalyzer::analyzeStructLiteral(sun::ast::StructLiteralAST& literal,
   literal.resolvedFields().clear();
   std::set<std::string> seen;
   for (auto& field : literal.getMutableFields()) {
-    const sun::semantic_analysis::ClassField* classField =
+    const sun::types::ClassField* classField =
         ctx_.accessibleField(*classType, field.name, field.location);
     if (!classField) {
       logAndThrowError("Class '" + classType->getDisplayName() +
@@ -700,10 +705,9 @@ void SemanticAnalyzer::checkExternVariableAccessAllowed(
 // target is the module's own variable: it must exist, be visible, be
 // assignable, and take the value's type. Codegen writes the global directly.
 void SemanticAnalyzer::analyzeModuleGlobalAssignment(
-    MemberAssignmentAST& assign,
-    const sun::semantic_analysis::Type& objectType) {
+    MemberAssignmentAST& assign, const sun::types::Type& objectType) {
   const auto& moduleType =
-      static_cast<const sun::semantic_analysis::ModuleType&>(objectType);
+      static_cast<const sun::types::ModuleType&>(objectType);
   const std::string& modPath = moduleType.getModulePath();
   const std::string& memberName = assign.getMemberName();
 
@@ -729,7 +733,7 @@ void SemanticAnalyzer::analyzeModuleGlobalAssignment(
                          "'; declare it with 'var' if it must change",
                      assign.getLocation());
   }
-  if (sun::semantic_analysis::isConstRef(target.type)) {
+  if (sun::types::isConstRef(target.type)) {
     logAndThrowError("Cannot assign through const reference '" + full + "'",
                      assign.getLocation());
   }
@@ -773,8 +777,7 @@ void SemanticAnalyzer::validateExternSignature(FunctionAST& func) {
     return t ? t->toDisplayString() : std::string("<unresolved>");
   };
 
-  auto validateCallback = [&](const sun::semantic_analysis::FunctionType&
-                                  callback,
+  auto validateCallback = [&](const sun::types::FunctionType& callback,
                               const std::string& paramName) {
     if (callback.canThrow()) {
       logAndThrowError("C callback parameter '" + paramName + "' cannot throw",
@@ -805,8 +808,9 @@ void SemanticAnalyzer::validateExternSignature(FunctionAST& func) {
                              "' cannot be void",
                          func.getLocation());
       }
-      if (auto* callback = sun::codegen::support::tryGetType<
-              sun::semantic_analysis::FunctionType>(params[i])) {
+      if (auto* callback =
+              sun::codegen::support::tryGetType<sun::types::FunctionType>(
+                  params[i])) {
         validateCallback(*callback, proto.getArgs()[i].first);
       }
       if (!sun::codegen::abi::isValue(params[i])) {
@@ -935,7 +939,7 @@ void SemanticAnalyzer::checkSignatureLifetimes(const PrototypeAST& proto,
 }
 
 // -------------------------------------------------------------------
-// Lambda signature extraction (pure computation, no side effects)
+// Lambda signature resolution and capture discovery
 // -------------------------------------------------------------------
 
 FunctionInfo SemanticAnalyzer::getLambdaInfo(sun::ast::LambdaAST& lambda) {
@@ -951,7 +955,7 @@ FunctionInfo SemanticAnalyzer::getLambdaInfo(sun::ast::LambdaAST& lambda) {
   // parser enforces this, but check defensively)
   TypePtr returnType = Types::Void();
   if (proto.hasReturnType()) {
-    returnType = types_.typeAnnotationToType(*proto.getReturnType());
+    returnType = resolver_.typeAnnotationToType(*proto.getReturnType());
     if (!returnType) {
       logAndThrowError("Failed to resolve return type for lambda",
                        lambda.getLocation());
@@ -970,10 +974,11 @@ void SemanticAnalyzer::validateTypeParameter(const TypePtr& type,
   if (!type || !type->isTypeParameter()) return;
 
   auto* typeParam =
-      static_cast<const sun::semantic_analysis::TypeParameterType*>(type.get());
+      static_cast<const sun::types::TypeParameterType*>(type.get());
 
   // Type traits (_Integer, _Float, etc.) are not scope-bound type parameters
-  if (sun::semantic_analysis::isTypeTrait(typeParam->getName())) return;
+  if (sun::semantic_analysis::type_analysis::isTypeTrait(typeParam->getName()))
+    return;
 
   TypePtr found = ctx_.findTypeParameter(typeParam->getName());
   if (!found) {
@@ -1197,16 +1202,15 @@ void SemanticAnalyzer::maybeResolveBoundMethodRef(MemberAccessAST& memberAccess,
   TypePtr objectType = unwrapRef(memberAccess.getObject()->getResolvedType());
   if (!objectType) return;
 
-  // Unwrap raw_ptr<Class> / static_ptr<Class> (mirrors inferType)
+  // Unwrap raw_ptr<Class> / static_ptr<Class> (mirrors member resolution)
   if (objectType->isRawPointer()) {
-    TypePtr pointee =
-        static_cast<sun::semantic_analysis::RawPointerType*>(objectType.get())
-            ->getPointeeType();
+    TypePtr pointee = static_cast<sun::types::RawPointerType*>(objectType.get())
+                          ->getPointeeType();
     if (pointee && pointee->isClass()) objectType = pointee;
   } else if (objectType->isStaticPointer()) {
-    TypePtr pointee = static_cast<sun::semantic_analysis::StaticPointerType*>(
-                          objectType.get())
-                          ->getPointeeType();
+    TypePtr pointee =
+        static_cast<sun::types::StaticPointerType*>(objectType.get())
+            ->getPointeeType();
     if (pointee && pointee->isClass()) objectType = pointee;
   }
 
@@ -1216,8 +1220,7 @@ void SemanticAnalyzer::maybeResolveBoundMethodRef(MemberAccessAST& memberAccess,
   // load at bind time). Only diagnose when a lambda is expected so
   // interface method calls stay untouched.
   if (objectType->isInterface() && expectedType && expectedType->isLambda()) {
-    auto* ifaceType =
-        static_cast<sun::semantic_analysis::InterfaceType*>(objectType.get());
+    auto* ifaceType = static_cast<sun::types::InterfaceType*>(objectType.get());
     if (ifaceType->getMethod(memberName)) {
       logAndThrowError("Referencing interface method '" + memberName +
                            "' as a value is not supported",
@@ -1228,14 +1231,15 @@ void SemanticAnalyzer::maybeResolveBoundMethodRef(MemberAccessAST& memberAccess,
 
   if (!objectType->isClass()) return;
   const auto* classType =
-      static_cast<const sun::semantic_analysis::ClassType*>(objectType.get());
+      static_cast<const sun::types::ClassType*>(objectType.get());
   if (classType->getField(memberName)) return;
 
   std::vector<const ClassMethod*> overloads;
   for (const auto& m : classType->getMethods()) {
     if (m.name == memberName) overloads.push_back(&m);
   }
-  if (overloads.empty()) return;  // not a method (inferType already errored)
+  if (overloads.empty())
+    return;  // not a method (member resolution already checked this)
 
   const ClassMethod* chosen = nullptr;
   if (overloads.size() == 1) {

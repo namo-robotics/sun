@@ -35,13 +35,13 @@ class ScopeManager;
 #include "codegen/codegen_state.h"
 #include "codegen/intrinsics/thread_utils.h"
 #include "semantic_analysis/argument_conversion.h"
-#include "semantic_analysis/types.h"
+#include "types/types.h"
 
 /** Provides the generator for built-in operations. */
 namespace sun::codegen::intrinsics {
 using sun::ast::CallExprAST;
 using sun::ast::ExprAST;
-using sun::semantic_analysis::TypePtr;
+using sun::types::TypePtr;
 
 /**
  * Emits every intrinsic and built-in call. Holds the thread helpers it needs

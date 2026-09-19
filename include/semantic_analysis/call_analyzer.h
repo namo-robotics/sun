@@ -7,7 +7,7 @@
 // arguments against that signature, and stamp what codegen needs onto the
 // node: the callee's resolved name and type, and one conversion per argument.
 //
-// Like TypeInferer, this holds the analyzer rather than being part of it: it
+// This helper holds the analyzer so it
 // analyzes arguments and callee expressions through the analyzer, and the
 // analyzer dispatches each call node here.
 
@@ -21,7 +21,7 @@
 #include "semantic_analysis/generic_specializer.h"
 #include "semantic_analysis/semantic_context.h"
 #include "semantic_analysis/semantic_scope.h"
-#include "semantic_analysis/type_inferer.h"
+#include "semantic_analysis/type_analysis/type_resolver.h"
 #include "support/position.h"
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
@@ -40,12 +40,12 @@ class SemanticAnalyzer;
 class CallAnalyzer {
  public:
   /**
-   * Connects call checking to semantic analysis, generic specialization, and type
-   * inference.
+   * Connects call checking to semantic analysis, generic specialization, and
+   * type resolution.
    */
   CallAnalyzer(SemanticContext &ctx, SemanticAnalyzer &sema,
-               GenericSpecializer &generics, TypeInferer &types)
-      : ctx_(ctx), sema_(sema), generics_(generics), types_(types) {}
+               GenericSpecializer &generics, type_analysis::TypeResolver &types)
+      : ctx_(ctx), sema_(sema), generics_(generics), resolver_(types) {}
 
   /**
    * Analyze a call: resolve the callee against the argument types, check the
@@ -53,7 +53,7 @@ class CallAnalyzer {
    * argument for codegen.
    */
   void analyzeCall(CallExprAST &callExpr,
-                   sun::semantic_analysis::TypePtr expectedType = nullptr);
+                   sun::types::TypePtr expectedType = nullptr);
 
   /**
    * Analyze `name<T, ...>(args)`: an intrinsic, a generic class construction
@@ -69,10 +69,50 @@ class CallAnalyzer {
    */
   const FunctionInfo *resolveModuleQualifiedCall(
       const MemberAccessAST &memberAccess,
-      const sun::semantic_analysis::TypePtr &objectType,
-      const std::vector<sun::semantic_analysis::TypePtr> &argTypes) const;
+      const sun::types::TypePtr &objectType,
+      const std::vector<sun::types::TypePtr> &argTypes) const;
 
  private:
+  /** The result type of an intrinsic call (_sizeof, _load, _to_ref, ...). */
+  sun::types::TypePtr resolveIntrinsicCallType(const GenericCallAST &call);
+
+  /**
+   * Read the selected generic signature or resolve its abstract return
+   * annotation.
+   */
+  sun::types::TypePtr resolveGenericFunctionCallType(
+      const GenericCallAST &call);
+
+  /**
+   * The static_ptr&lt;T&gt; type when `type` is a static_ptr to a non-class,
+   * else null. A static_ptr<Class> dispatches to the class's own methods
+   * instead of the builtin ones.
+   */
+  static sun::types::StaticPointerType *asNonClassStaticPtr(
+      const sun::types::TypePtr &type);
+
+  /** True for a builtin static_ptr&lt;T&gt; method name: length() or raw(). */
+  static bool isStaticPtrMethod(const std::string &name);
+
+  /**
+   * The result type of a static_ptr&lt;T&gt; builtin method call, checking the
+   * argument count.
+   */
+  sun::types::TypePtr resolveStaticPtrMethodType(
+      const sun::types::StaticPointerType &ptrType, const std::string &name,
+      size_t argCount, const sun::support::Position &loc);
+
+  /** True for a builtin array method name: ndims() or dim(i). */
+  static bool isArrayMethod(const std::string &name);
+
+  /**
+   * The result type of an array builtin method call (on a sized array or a
+   * `ref array<T>` view), checking the arguments.
+   */
+  sun::types::TypePtr resolveArrayMethodType(
+      const std::string &name, const std::vector<sun::types::TypePtr> &argTypes,
+      const sun::support::Position &loc);
+
   // ---- analyzeCall, phase by phase ---------------------------------------
 
   /** What resolving a call's callee established about the call. */
@@ -80,7 +120,7 @@ class CallAnalyzer {
     // The overload a plain `f(...)` call resolved to, if it named a function.
     std::optional<FunctionInfo> function;
     // The class a constructor call `C(...)` names, if it named one.
-    std::shared_ptr<sun::semantic_analysis::ClassType> classType;
+    std::shared_ptr<sun::types::ClassType> classType;
     // The callee swallows a variadic pack, whose arguments are not part of
     // its recorded parameter list — so the arity check sits out.
     bool takesPack = false;
@@ -91,7 +131,7 @@ class CallAnalyzer {
 
   /** The parameter list a call is checked against. */
   struct CallSignature {
-    std::vector<sun::semantic_analysis::TypePtr> paramTypes;
+    std::vector<sun::types::TypePtr> paramTypes;
     // Whether paramTypes came from a callee whose signature is actually
     // known. An empty parameter list is a real signature (`f()`), so
     // emptiness alone cannot stand in for "unknown" — that is what let calls
@@ -106,8 +146,8 @@ class CallAnalyzer {
    * reference — takes it from a provisional look at the callee. Also expands
    * a variadic pack (`f(args...)`) into the concrete arguments it stands for.
    */
-  std::vector<sun::semantic_analysis::TypePtr> analyzeCallArguments(
-      CallExprAST &callExpr, sun::semantic_analysis::TypePtr expectedType);
+  std::vector<sun::types::TypePtr> analyzeCallArguments(
+      CallExprAST &callExpr, sun::types::TypePtr expectedType);
 
   /**
    * Resolve what a call is actually calling: an overload by name, a
@@ -117,24 +157,22 @@ class CallAnalyzer {
    * analyzeCall's own step.
    */
   CalleeResolution resolveCallee(
-      CallExprAST &callExpr,
-      const std::vector<sun::semantic_analysis::TypePtr> &argTypes);
+      CallExprAST &callExpr, const std::vector<sun::types::TypePtr> &argTypes);
 
   /** `f(args)`: an overload, a constructor, a generic, or a variable. */
   CalleeResolution resolveNamedCallee(
       CallExprAST &callExpr, sun::ast::VariableReferenceAST &varRef,
-      const std::vector<sun::semantic_analysis::TypePtr> &argTypes);
+      const std::vector<sun::types::TypePtr> &argTypes);
 
   /** `obj.m(args)`: a method, a module member, or a builtin type's method. */
   CalleeResolution resolveMemberCallee(
       CallExprAST &callExpr, MemberAccessAST &memberAccess,
-      const std::vector<sun::semantic_analysis::TypePtr> &argTypes);
+      const std::vector<sun::types::TypePtr> &argTypes);
 
   /** `obj.m(args)` on a class: a callable field, or a method overload. */
   CalleeResolution resolveMethodCallee(
-      MemberAccessAST &memberAccess,
-      const sun::semantic_analysis::TypePtr &objectType,
-      const std::vector<sun::semantic_analysis::TypePtr> &argTypes);
+      MemberAccessAST &memberAccess, const sun::types::TypePtr &objectType,
+      const std::vector<sun::types::TypePtr> &argTypes);
 
   /**
    * The signature the arguments are checked against, from the resolved
@@ -143,7 +181,7 @@ class CallAnalyzer {
    */
   CallSignature resolveCallSignature(
       CallExprAST &callExpr, CalleeResolution &callee,
-      const std::vector<sun::semantic_analysis::TypePtr> &argTypes);
+      const std::vector<sun::types::TypePtr> &argTypes);
 
   /**
    * Check each argument against its parameter when no overload resolution
@@ -151,10 +189,9 @@ class CallAnalyzer {
    * a call site allows. `calleeIsIntrinsic` unlocks the byte-pointer erasure
    * only intrinsics may use.
    */
-  void checkArgumentTypes(
-      CallExprAST &callExpr,
-      const std::vector<sun::semantic_analysis::TypePtr> &paramTypes,
-      const std::string &funcName, bool calleeIsIntrinsic);
+  void checkArgumentTypes(CallExprAST &callExpr,
+                          const std::vector<sun::types::TypePtr> &paramTypes,
+                          const std::string &funcName, bool calleeIsIntrinsic);
 
   /**
    * A call to something that throws must sit in a try block or in a function
@@ -172,19 +209,9 @@ class CallAnalyzer {
    * these arguments, or has none at all yet arguments were given. Returns
    * nullopt for the one silent case: no `init` and no arguments.
    */
-  std::optional<std::vector<sun::semantic_analysis::TypePtr>>
-  resolveConstructorParams(
-      const sun::semantic_analysis::ClassType &classType,
-      const std::vector<sun::semantic_analysis::TypePtr> &argTypes,
-      const ExprAST &call);
-
-  /**
-   * Give array-literal arguments their element type before analysis, from
-   * the parameter each will bind to, so they generate with the right type.
-   */
-  static void hintArrayLiteralArguments(
-      const std::vector<std::unique_ptr<ExprAST>> &args,
-      const std::vector<sun::semantic_analysis::TypePtr> &paramTypes);
+  std::optional<std::vector<sun::types::TypePtr>> resolveConstructorParams(
+      const sun::types::ClassType &classType,
+      const std::vector<sun::types::TypePtr> &argTypes, const ExprAST &call);
 
   /**
    * Expand a variadic pack (`args...`) in a call's argument list into
@@ -202,9 +229,8 @@ class CallAnalyzer {
    */
   SymbolMatch findModuleCallee(
       const MemberAccessAST &memberAccess,
-      const sun::semantic_analysis::TypePtr &objectType, SymbolKind kind,
-      const std::vector<sun::semantic_analysis::TypePtr> *argTypes =
-          nullptr) const;
+      const sun::types::TypePtr &objectType, SymbolKind kind,
+      const std::vector<sun::types::TypePtr> *argTypes = nullptr) const;
 
   /**
    * Resolve a module-qualified call of a generic function, `mod.f(args...)`
@@ -215,21 +241,21 @@ class CallAnalyzer {
    */
   std::optional<CalleeResolution> resolveModuleQualifiedGenericCall(
       const MemberAccessAST &memberAccess,
-      const sun::semantic_analysis::TypePtr &objectType,
-      const std::vector<sun::semantic_analysis::TypePtr> &argTypes);
+      const sun::types::TypePtr &objectType,
+      const std::vector<sun::types::TypePtr> &argTypes);
 
   /** What a generic call resolves to once its type arguments are known. */
   struct GenericCallTarget {
     // The complete type arguments: those written at the call, then the rest
     // inferred from its arguments.
-    std::vector<sun::semantic_analysis::TypePtr> typeArgs;
+    std::vector<sun::types::TypePtr> typeArgs;
     // The specialization the call is pinned to; empty in a template body,
     // where the type arguments are still type parameters and the
     // specialization is made when the enclosing generic is instantiated.
     std::optional<SpecializedFunctionInfo> specialized;
     // The callee's type: the specialization's, or until then the template's
     // signature under the type arguments.
-    sun::semantic_analysis::TypePtr calleeType;
+    sun::types::TypePtr calleeType;
     // The callee ends in a pack that calleeType cannot list yet (a template
     // body), so the arity check sits out. A specialization's parameter list
     // already includes the pack's elements.
@@ -246,8 +272,8 @@ class CallAnalyzer {
    */
   GenericCallTarget resolveGenericCallTarget(
       const GenericFunctionInfo &genericInfo,
-      const std::vector<sun::semantic_analysis::TypePtr> &argTypes,
-      const std::vector<sun::semantic_analysis::TypePtr> &writtenTypeArgs,
+      const std::vector<sun::types::TypePtr> &argTypes,
+      const std::vector<sun::types::TypePtr> &writtenTypeArgs,
       const std::string &displayName,
       std::optional<sun::support::Position> loc);
 
@@ -257,8 +283,8 @@ class CallAnalyzer {
    * callers can still fall back on their own type-mismatch diagnostics.
    */
   void reportNoMethodForArgCount(
-      const sun::semantic_analysis::ClassType &cls, const std::string &name,
-      const std::vector<sun::semantic_analysis::TypePtr> &argTypes,
+      const sun::types::ClassType &cls, const std::string &name,
+      const std::vector<sun::types::TypePtr> &argTypes,
       const sun::support::Position &loc) const;
 
   /**
@@ -316,7 +342,7 @@ class CallAnalyzer {
   SemanticContext &ctx_;
   SemanticAnalyzer &sema_;
   GenericSpecializer &generics_;
-  TypeInferer &types_;
+  type_analysis::TypeResolver &resolver_;
 };
 
 }  // namespace sun::semantic_analysis

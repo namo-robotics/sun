@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "ast/expr_ast.h"
-#include "semantic_analysis/types.h"
+#include "types/types.h"
 
 /** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
@@ -91,8 +91,8 @@ class CallExprAST : public ExprAST {
    * Returns the resolved types of all arguments (for constructor overload
    * resolution)
    */
-  std::vector<sun::semantic_analysis::TypePtr> getResolvedArgTypes() const {
-    std::vector<sun::semantic_analysis::TypePtr> types;
+  std::vector<sun::types::TypePtr> getResolvedArgTypes() const {
+    std::vector<sun::types::TypePtr> types;
     types.reserve(Args.size());
     for (const auto& arg : Args) {
       types.push_back(arg->getResolvedType());

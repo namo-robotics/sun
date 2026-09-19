@@ -32,7 +32,7 @@ void SemanticAnalyzer::checkPackedFieldNotBorrowed(
 // A ref parameter takes the argument's address, so it has the same problem.
 void SemanticAnalyzer::checkPackedRefArguments(
     const std::vector<std::unique_ptr<sun::ast::ExprAST>>& args,
-    const std::vector<sun::semantic_analysis::TypePtr>& paramTypes) const {
+    const std::vector<sun::types::TypePtr>& paramTypes) const {
   for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
     if (!paramTypes[i] || !paramTypes[i]->isReference()) continue;
     if (args[i]->getType() != sun::ast::ASTNodeType::MEMBER_ACCESS) continue;
@@ -52,7 +52,7 @@ void SemanticAnalyzer::checkPackedRefArguments(
 void SemanticAnalyzer::checkPackedFieldType(
     const sun::ast::ClassDefinitionAST& classDef,
     const sun::ast::ClassFieldDecl& field,
-    const sun::semantic_analysis::TypePtr& fieldType) const {
+    const sun::types::TypePtr& fieldType) const {
   if (!classDef.isPacked()) return;
   std::string reason = sun::semantic_analysis::rejectFieldType(fieldType);
   if (reason.empty()) return;

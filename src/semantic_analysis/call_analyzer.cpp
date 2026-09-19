@@ -1,25 +1,25 @@
+#include "semantic_analysis/type_analysis/generic_type_arguments.h"
 // call_analyzer.cpp — Semantic analysis of calls. See call_analyzer.h.
-
-#include "semantic_analysis/call_analyzer.h"
 
 #include <string>
 
 #include "codegen/intrinsics/intrinsics.h"
 #include "semantic_analysis/argument_conversion.h"
+#include "semantic_analysis/call_analyzer.h"
 #include "semantic_analysis/generic_type_arguments.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/symbol_names.h"
-#include "semantic_analysis/type_rules.h"
+#include "semantic_analysis/type_analysis/type_rules.h"
 #include "support/error.h"
 
-using sun::semantic_analysis::ClassMethod;
-using sun::semantic_analysis::ClassType;
-using sun::semantic_analysis::LambdaType;
 using sun::semantic_analysis::QualifiedName;
-using sun::semantic_analysis::RawPointerType;
-using sun::semantic_analysis::ReferenceType;
-using sun::semantic_analysis::TypePtr;
-using sun::semantic_analysis::Types;
+using sun::types::ClassMethod;
+using sun::types::ClassType;
+using sun::types::LambdaType;
+using sun::types::RawPointerType;
+using sun::types::ReferenceType;
+using sun::types::TypePtr;
+using sun::types::Types;
 
 using sun::ast::ASTNodeType;
 using sun::ast::CallExprAST;
@@ -32,11 +32,13 @@ using sun::support::Position;
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
+using sun::types::FunctionType;
+using sun::types::Type;
 
-using sun::semantic_analysis::formatTypeList;
-using sun::semantic_analysis::isAssignableTo;
-using sun::semantic_analysis::tryCoerceIntegerLiteral;
-using sun::semantic_analysis::unwrapRef;
+using sun::semantic_analysis::type_analysis::isAssignableTo;
+using sun::semantic_analysis::type_analysis::tryCoerceIntegerLiteral;
+using sun::types::formatTypeList;
+using sun::types::unwrapRef;
 
 /** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
@@ -80,7 +82,7 @@ std::vector<FunctionArgumentType> functionArgumentTypes(
     for (const auto& type : {Types::Int8(), Types::Int16(), Types::Int32(),
                              Types::Int64(), Types::UInt8(), Types::UInt16(),
                              Types::UInt32(), Types::UInt64(), Types::Bool()}) {
-      if (sun::semantic_analysis::literalFitsInType(
+      if (sun::semantic_analysis::type_analysis::literalFitsInType(
               number.getMagnitude(), number.isNegative(), type->getKind())) {
         types[i].alternatives.push_back(type);
       }
@@ -120,17 +122,16 @@ bool isImplicitlyConvertibleArgument(const TypePtr& argType,
     // A borrow of the other mutability: only ref -> const ref
     if (argType->isReference()) {
       auto* argRef = static_cast<const ReferenceType*>(argType.get());
-      if (sun::semantic_analysis::refMutabilityConvertible(*argRef, *refType) &&
+      if (sun::types::refMutabilityConvertible(*argRef, *refType) &&
           refType->getReferencedType()->equals(*argRef->getReferencedType())) {
         return true;
       }
     }
     // ref array<T> (unsized) accepts any array<T, dims...>
     if (refType->getReferencedType()->isArray() && argType->isArray()) {
-      auto* paramArray = static_cast<const sun::semantic_analysis::ArrayType*>(
+      auto* paramArray = static_cast<const sun::types::ArrayType*>(
           refType->getReferencedType().get());
-      auto* argArray =
-          static_cast<const sun::semantic_analysis::ArrayType*>(argType.get());
+      auto* argArray = static_cast<const sun::types::ArrayType*>(argType.get());
       if (paramArray->isUnsized() &&
           paramArray->getElementType()->equals(*argArray->getElementType())) {
         return true;
@@ -189,8 +190,7 @@ bool isImplicitlyConvertibleArgument(const TypePtr& argType,
   // static_ptr<T> is compatible with raw_ptr<T>
   if (argType->isStaticPointer() && paramType->isRawPointer()) {
     auto* staticPtr =
-        static_cast<const sun::semantic_analysis::StaticPointerType*>(
-            argType.get());
+        static_cast<const sun::types::StaticPointerType*>(argType.get());
     auto* rawPtr = static_cast<const RawPointerType*>(paramType.get());
     if (staticPtr->getPointeeType()->equals(*rawPtr->getPointeeType())) {
       return true;
@@ -280,8 +280,8 @@ void CallAnalyzer::analyzeCall(CallExprAST& callExpr, TypePtr expectedType) {
 
   auto callableType = callExpr.getCallee()->getResolvedType();
   bool requiresUnsafe = false;
-  if (auto* fn = sun::codegen::support::tryGetType<
-          sun::semantic_analysis::FunctionType>(callableType))
+  if (auto* fn = sun::codegen::support::tryGetType<sun::types::FunctionType>(
+          callableType))
     requiresUnsafe = fn->requiresUnsafe();
   else if (auto* fn =
                sun::codegen::support::tryGetType<LambdaType>(callableType))
@@ -299,8 +299,20 @@ void CallAnalyzer::analyzeCall(CallExprAST& callExpr, TypePtr expectedType) {
 
   // A borrow handed out by a method seen through an immutable receiver may
   // only be read through
-  TypePtr resultType = types_.inferType(callExpr);
-  if (callee.receiverImmutable) resultType = types_.createConstView(resultType);
+  TypePtr resultType;
+  if (callee.classType)
+    resultType = callee.classType;
+  else if (callableType && callableType->isCallable())
+    resultType = requireInferredType(
+        sun::semantic_analysis::type_analysis::TypeInferer::call(callableType),
+        callExpr.getLocation(), "Cannot infer return type for call expression");
+  else if (callExpr.getCallee()->getType() == ASTNodeType::MEMBER_ACCESS)
+    resultType = sema_.requireResolvedType(*callExpr.getCallee());
+  else
+    logAndThrowError("Cannot infer return type for call expression",
+                     callExpr.getLocation());
+  if (callee.receiverImmutable)
+    resultType = resolver_.createConstView(resultType);
   callExpr.setResolvedType(resultType);
 }
 
@@ -336,7 +348,6 @@ std::vector<TypePtr> CallAnalyzer::analyzeCallArguments(CallExprAST& callExpr,
   }
 
   const auto& args = callExpr.getArgs();
-  hintArrayLiteralArguments(args, expectedParamTypes);
 
   // Analyze arguments before the callee. Passing the provisional parameter
   // type lets callable values select an overload and still supplies the
@@ -347,6 +358,7 @@ std::vector<TypePtr> CallAnalyzer::analyzeCallArguments(CallExprAST& callExpr,
     if (i < expectedParamTypes.size()) {
       const auto& paramType = expectedParamTypes[i];
       if (arg->getType() == ASTNodeType::MEMBER_ACCESS ||
+          arg->getType() == ASTNodeType::ARRAY_LITERAL ||
           (paramType && (paramType->isFunction() || paramType->isLambda()))) {
         expected = paramType;
       }
@@ -493,7 +505,7 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMemberCallee(
   // Get object type (unwrap references)
   TypePtr objectType = memberAccess.getObject()->getResolvedType();
   if (!objectType) {
-    objectType = types_.inferType(*memberAccess.getObject());
+    objectType = sema_.requireResolvedType(*memberAccess.getObject());
   }
   objectType = unwrapRef(objectType);
 
@@ -503,7 +515,7 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMemberCallee(
   if (const FunctionInfo* modFunc =
           resolveModuleQualifiedCall(memberAccess, objectType, argTypes)) {
     // Module-qualified call: the overload is chosen from the argument
-    // types here. types_.inferType() alone would only see the first overload.
+    // types here. the selected signature must be retained for result typing.
     memberAccess.setResolvedType(Types::Function(
         modFunc->returnType, modFunc->paramTypes, modFunc->canThrow));
     return {};
@@ -516,25 +528,24 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMemberCallee(
   }
 
   CalleeResolution out;
-  if (auto* staticPtr = types_.asNonClassStaticPtr(objectType)) {
+  if (auto* staticPtr = asNonClassStaticPtr(objectType)) {
     // static_ptr<T> builtin methods: length(), raw()
-    memberAccess.setResolvedType(types_.inferStaticPtrMethodType(
+    memberAccess.setResolvedType(resolveStaticPtrMethodType(
         *staticPtr, memberAccess.getMemberName(), callExpr.getArgs().size(),
         memberAccess.getLocation()));
   } else if (objectType && objectType->isArray()) {
     // Array builtin methods: ndims(), dim(i)
-    memberAccess.setResolvedType(types_.inferArrayMethodType(
+    memberAccess.setResolvedType(resolveArrayMethodType(
         memberAccess.getMemberName(), argTypes, memberAccess.getLocation()));
   } else {
     // Not a class type (interface, module, ptr-to-class, builtin...).
     // Set the type directly (the object is already analyzed) instead of
     // analyzeExpr, so a ptr-to-class method callee is not converted to a
     // bound-method lambda — call position requires a FunctionType.
-    memberAccess.setResolvedType(types_.inferType(memberAccess));
+    memberAccess.setResolvedType(sema_.resolveMemberType(memberAccess));
     if (objectType && objectType->isInterface()) {
       const auto* iface =
-          static_cast<const sun::semantic_analysis::InterfaceType*>(
-              objectType.get());
+          static_cast<const sun::types::InterfaceType*>(objectType.get());
       if (const auto* method = iface->getMethod(memberAccess.getMemberName())) {
         out.receiverImmutable = sema_.checkMethodReceiver(
             *memberAccess.getObject(), method->name, method->isConst,
@@ -564,14 +575,12 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMethodCallee(
   // Generic method ending in an `args...` pack (e.g.
   // allocator.create<Point>(...)): specialize HERE, where the actual call
   // argument types are known, so overloaded constructors resolve and the
-  // specialization is keyed by the pack's arg types. The
-  // inferType trigger defers variadic methods to this path.
+  // specialization is keyed by the pack's argument types.
   sun::ast::FunctionAST* genericMethod =
       generics_.findGenericMethodAST(classType, methodName);
   bool variadicMethod =
       genericMethod && genericMethod->getProto().hasVariadicParam();
-  const sun::semantic_analysis::ClassField* callableField =
-      classType->getField(methodName);
+  const sun::types::ClassField* callableField = classType->getField(methodName);
   if (callableField && callableField->type &&
       callableField->type->isCallable()) {
     memberAccess.setTargetDeclarationId(callableField->declarationId);
@@ -583,7 +592,7 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMethodCallee(
     out.takesPack = true;
     std::vector<TypePtr> typeArgPtrs;
     for (const auto& ta : memberAccess.getTypeArguments()) {
-      typeArgPtrs.push_back(types_.typeAnnotationToType(*ta));
+      typeArgPtrs.push_back(resolver_.typeAnnotationToType(*ta));
     }
     memberAccess.setResolvedTypeArgs(typeArgPtrs);
     // Only what is left after the method's fixed parameters fills the
@@ -594,37 +603,65 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMethodCallee(
 
     auto mutableClassType = std::static_pointer_cast<ClassType>(objectType);
     // Retain the selected specialization independently of its symbol.
-    if (auto specialized = generics_.instantiateGenericMethod(
-            mutableClassType, methodName, typeArgPtrs, packArgTypes)) {
+    auto specialized = generics_.instantiateGenericMethod(
+        mutableClassType, methodName, typeArgPtrs, packArgTypes);
+    if (specialized)
       memberAccess.setTargetDeclarationId(specialized->getDeclarationId());
-    }
 
     if (const ClassMethod* method =
             ctx_.accessibleMethod(*classType, methodName, loc)) {
-      memberAccess.setResolvedType(
-          Types::Function(method->returnType, method->paramTypes,
-                          method->canThrow, method->isUnsafe));
+      TypePtr result;
+      std::vector<TypePtr> parameters;
+      if (specialized) {
+        result = specialized->getProto().getResolvedReturnType();
+        parameters = specialized->getProto().getResolvedParamTypes();
+      } else {
+        SemanticContext::ScopeSwitchGuard scope(ctx_, ctx_.scope());
+        ctx_.enterTypeParamScope(method->typeParameters, typeArgPtrs);
+        result = resolver_.substituteTypeParameters(method->returnType);
+        for (const auto& parameter : method->paramTypes)
+          parameters.push_back(resolver_.substituteTypeParameters(parameter));
+      }
+      memberAccess.setResolvedType(Types::Function(
+          result, std::move(parameters), method->canThrow, method->isUnsafe));
       checkReceiver(*method);
     }
     return out;
   }
 
   if (genericMethod && !variadicMethod) {
-    // A generic method: whatever type arguments the call leaves out are
-    // inferred from its arguments, then types_.inferType() instantiates the
-    // specialization from the complete list (and does the same when all
-    // of them were written).
     const ClassMethod* method =
         ctx_.accessibleMethod(*classType, methodName, loc);
-    std::vector<TypePtr> written = types_.resolveTypeArguments(
+    std::vector<TypePtr> arguments = resolver_.resolveTypeArguments(
         memberAccess.getTypeArguments(), loc, "generic method call");
-    if (method && written.size() < method->typeParameters.size()) {
-      memberAccess.setResolvedTypeArgs(
-          sun::semantic_analysis::inferMethodTypeArguments(
-              *method, argTypes, classType->getDisplayName() + "." + methodName,
-              loc, written));
+    if (method && arguments.size() < method->typeParameters.size())
+      arguments = resolveMethodTypeArguments(
+          *method, argTypes, classType->getDisplayName() + "." + methodName,
+          loc, arguments);
+    memberAccess.setResolvedTypeArgs(arguments);
+    if (method && !arguments.empty() &&
+        arguments.size() == method->typeParameters.size()) {
+      auto specialized = generics_.instantiateGenericMethod(
+          std::static_pointer_cast<ClassType>(objectType), methodName,
+          arguments);
+      TypePtr result;
+      std::vector<TypePtr> parameters;
+      if (specialized) {
+        memberAccess.setTargetDeclarationId(specialized->getDeclarationId());
+        result = specialized->getProto().getResolvedReturnType();
+        parameters = specialized->getProto().getResolvedParamTypes();
+      } else {
+        SemanticContext::ScopeSwitchGuard scope(ctx_, ctx_.scope());
+        ctx_.enterTypeParamScope(method->typeParameters, arguments);
+        result = resolver_.substituteTypeParameters(method->returnType);
+        for (const auto& parameter : method->paramTypes)
+          parameters.push_back(resolver_.substituteTypeParameters(parameter));
+      }
+      memberAccess.setResolvedType(Types::Function(
+          result, std::move(parameters), method->canThrow, method->isUnsafe));
+    } else {
+      memberAccess.setResolvedType(sema_.resolveMemberType(memberAccess));
     }
-    memberAccess.setResolvedType(types_.inferType(memberAccess));
     if (method) checkReceiver(*method);
     return out;
   }
@@ -649,7 +686,7 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMethodCallee(
   // Set the type directly (the object is already analyzed) instead of
   // analyzeExpr, so the callee is not converted to a bound-method lambda —
   // call position requires a FunctionType.
-  memberAccess.setResolvedType(types_.inferType(memberAccess));
+  memberAccess.setResolvedType(sema_.resolveMemberType(memberAccess));
   return out;
 }
 
@@ -658,7 +695,7 @@ CallAnalyzer::CallSignature CallAnalyzer::resolveCallSignature(
     const std::vector<TypePtr>& argTypes) {
   TypePtr calleeType = callExpr.getCallee()->getResolvedType();
   if (!calleeType) {
-    calleeType = types_.inferType(*callExpr.getCallee());
+    calleeType = sema_.requireResolvedType(*callExpr.getCallee());
   }
 
   // A module-qualified constructor call (`m.Point(...)`) resolves the callee
@@ -671,7 +708,8 @@ CallAnalyzer::CallSignature CallAnalyzer::resolveCallSignature(
     const auto& calleeMember =
         static_cast<const MemberAccessAST&>(*callExpr.getCallee());
     TypePtr ownerType = calleeMember.getObject()->getResolvedType();
-    if (!ownerType) ownerType = types_.inferType(*calleeMember.getObject());
+    if (!ownerType)
+      ownerType = sema_.requireResolvedType(*calleeMember.getObject());
     if (ownerType && ownerType->isModule()) {
       callee.classType = std::static_pointer_cast<ClassType>(calleeType);
     }
@@ -681,8 +719,9 @@ CallAnalyzer::CallSignature CallAnalyzer::resolveCallSignature(
   if (callee.function) {
     signature.paramTypes = callee.function->paramTypes;
     signature.known = true;
-  } else if (auto* function = sun::codegen::support::tryGetType<
-                 sun::semantic_analysis::FunctionType>(calleeType)) {
+  } else if (auto* function =
+                 sun::codegen::support::tryGetType<sun::types::FunctionType>(
+                     calleeType)) {
     signature.paramTypes = function->getParamTypes();
     signature.known = true;
   } else if (auto* lambda =
@@ -710,8 +749,9 @@ void CallAnalyzer::checkArgumentTypes(CallExprAST& callExpr,
 
     // Unbound template arguments are checked again with concrete types at
     // specialization, just as they are in argument conversion classification.
-    if (sun::semantic_analysis::mentionsTypeParameter(argType) ||
-        sun::semantic_analysis::mentionsTypeParameter(paramType)) {
+    if (sun::semantic_analysis::type_analysis::mentionsTypeParameter(argType) ||
+        sun::semantic_analysis::type_analysis::mentionsTypeParameter(
+            paramType)) {
       continue;
     }
 
@@ -731,7 +771,7 @@ void CallAnalyzer::checkArgumentTypes(CallExprAST& callExpr,
     // by-value parameter. Say what to do about it.
     std::string hint;
     if (argType->isReference() && !paramType->isReference() &&
-        !sun::semantic_analysis::typeCopiesByRead(paramType)) {
+        !sun::types::typeCopiesByRead(paramType)) {
       hint = ". It is borrowed, and a '" + paramType->toDisplayString() +
              "' cannot be read out of a borrow: take the parameter by "
              "'ref', pass a clone(), or move the value out first "
@@ -751,8 +791,9 @@ void CallAnalyzer::checkThrowPropagation(const CallExprAST& callExpr,
   bool calleeThrows = callee.function && callee.function->canThrow;
   if (!calleeThrows) {
     TypePtr calleeType = callExpr.getCallee()->getResolvedType();
-    if (auto* function = sun::codegen::support::tryGetType<
-            sun::semantic_analysis::FunctionType>(calleeType)) {
+    if (auto* function =
+            sun::codegen::support::tryGetType<sun::types::FunctionType>(
+                calleeType)) {
       calleeThrows = function->canThrow();
     } else if (auto* lambda =
                    sun::codegen::support::tryGetType<LambdaType>(calleeType)) {
@@ -819,19 +860,6 @@ std::optional<std::vector<TypePtr>> CallAnalyzer::resolveConstructorParams(
                    loc);
 }
 
-void CallAnalyzer::hintArrayLiteralArguments(
-    const std::vector<std::unique_ptr<ExprAST>>& args,
-    const std::vector<TypePtr>& paramTypes) {
-  for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
-    if (args[i]->getType() != ASTNodeType::ARRAY_LITERAL) continue;
-    // `ref array<T>` hints the same as `array<T>`
-    TypePtr paramType = unwrapRef(paramTypes[i]);
-    if (paramType && paramType->isArray()) {
-      const_cast<ExprAST&>(*args[i]).setResolvedType(paramType);
-    }
-  }
-}
-
 void CallAnalyzer::expandPackArguments(
     std::vector<std::unique_ptr<ExprAST>>& args) {
   auto* fnScope = ctx_.currentFunctionScope();
@@ -882,8 +910,7 @@ SymbolMatch CallAnalyzer::findModuleCallee(
     const MemberAccessAST& memberAccess, const TypePtr& objectType,
     SymbolKind kind, const std::vector<TypePtr>* argTypes) const {
   if (!objectType || !objectType->isModule()) return {};
-  auto* moduleType =
-      static_cast<sun::semantic_analysis::ModuleType*>(objectType.get());
+  auto* moduleType = static_cast<sun::types::ModuleType*>(objectType.get());
   return ctx_.findSymbolInModule(moduleType->getModulePath(),
                                  memberAccess.getMemberName(), kind, argTypes);
 }
@@ -913,8 +940,8 @@ CallAnalyzer::resolveModuleQualifiedGenericCall(
   auto loc = memberAccess.getLocation();
   GenericCallTarget target = resolveGenericCallTarget(
       *match.genericFunctionInfo, argTypes,
-      types_.resolveTypeArguments(memberAccess.getTypeArguments(), loc,
-                                  "generic function call"),
+      resolver_.resolveTypeArguments(memberAccess.getTypeArguments(), loc,
+                                     "generic function call"),
       memberAccess.getMemberName(), loc);
   memberAccess.setResolvedTypeArgs(target.typeArgs);
   if (target.specialized) {
@@ -938,7 +965,7 @@ CallAnalyzer::GenericCallTarget CallAnalyzer::resolveGenericCallTarget(
   GenericCallTarget target;
   target.typeArgs = writtenTypeArgs;
   if (target.typeArgs.size() < genericInfo.typeParameters.size()) {
-    target.typeArgs = sun::semantic_analysis::inferGenericTypeArguments(
+    target.typeArgs = sun::semantic_analysis::resolveGenericTypeArguments(
         genericInfo, argTypes, displayName, loc, writtenTypeArgs);
   }
 
@@ -1021,10 +1048,10 @@ void CallAnalyzer::analyzeGenericCall(GenericCallAST& genericCall) {
   QualifiedName resolved = ctx_.resolveNameWithUsings(funcName);
   const std::string& lookupName = resolved.baseName;
 
-  // Resolve type arguments to sun::semantic_analysis::TypePtr
+  // Resolve type arguments to sun::types::TypePtr
   std::vector<TypePtr> typeArgs;
   for (const auto& ta : genericCall.getTypeArguments()) {
-    typeArgs.push_back(types_.typeAnnotationToType(*ta));
+    typeArgs.push_back(resolver_.typeAnnotationToType(*ta));
   }
 
   // Store resolved type arguments on the AST for codegen
@@ -1058,7 +1085,7 @@ void CallAnalyzer::analyzeIntrinsicCall(GenericCallAST& genericCall) {
   // Expand any variadic pack into concrete typed args (e.g. _init<T>(p,
   // args...))
   expandPackArguments(genericCall.getArgsMutable());
-  genericCall.setResolvedType(types_.inferGenericCallType(genericCall));
+  genericCall.setResolvedType(resolveIntrinsicCallType(genericCall));
 
   // _spawn is the one intrinsic that passes its arguments on to something
   // else — the spawned lambda — so, like any other call, how each argument
@@ -1130,10 +1157,11 @@ void CallAnalyzer::recordSpawnArgumentConversions(GenericCallAST& genericCall) {
       typeArgs.empty()
           ? nullptr
           : sun::codegen::support::tryGetType<LambdaType>(typeArgs[0]);
-  auto* namedFn = typeArgs.empty()
-                      ? nullptr
-                      : sun::codegen::support::tryGetType<
-                            sun::semantic_analysis::FunctionType>(typeArgs[0]);
+  auto* namedFn =
+      typeArgs.empty()
+          ? nullptr
+          : sun::codegen::support::tryGetType<sun::types::FunctionType>(
+                typeArgs[0]);
   if (!lambda && !namedFn) {
     logAndThrowError("_spawn<F> requires a lambda or function type argument",
                      genericCall.getLocation());
@@ -1209,9 +1237,7 @@ void CallAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
   std::vector<TypePtr> argTypes;
   if (calleeTakesPack || genericCall.getResolvedTypeArgs().size() <
                              genFuncInfo->typeParameters.size()) {
-    for (const auto& arg : args) {
-      sema_.analyzeExpr(const_cast<ExprAST&>(*arg));
-    }
+    for (const auto& arg : args) sema_.analyzeExpr(*arg);
     // One template forwarding its own pack into another: `g<T>(args...)`.
     if (calleeTakesPack) expandPackArguments(genericCall.getArgsMutable());
     argTypes = resolvedTypesOf(args);
@@ -1220,7 +1246,7 @@ void CallAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
         genFuncInfo->typeParameters.size()) {
       std::vector<TypePtr> given = genericCall.getResolvedTypeArgs();
       genericCall.setResolvedTypeArgs(
-          sun::semantic_analysis::inferGenericTypeArguments(
+          sun::semantic_analysis::resolveGenericTypeArguments(
               *genFuncInfo, argTypes, funcName, genericCall.getLocation(),
               given));
     }
@@ -1253,10 +1279,21 @@ void CallAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
         specializedFunc.asFunctionInfo().declarationId);
   }
 
-  hintArrayLiteralArguments(args, expectedParamTypes);
+  if (argsAnalyzed) {
+    for (size_t i = 0; i < args.size() && i < expectedParamTypes.size(); ++i) {
+      if (args[i]->getType() == ASTNodeType::ARRAY_LITERAL)
+        sema_.resolveArrayLiteralResult(
+            static_cast<sun::ast::ArrayLiteralAST&>(*args[i]),
+            expectedParamTypes[i]);
+    }
+  }
   if (!argsAnalyzed) {
-    for (const auto& arg : args) {
-      sema_.analyzeExpr(const_cast<ExprAST&>(*arg));
+    for (size_t i = 0; i < args.size(); ++i) {
+      TypePtr hint = i < expectedParamTypes.size() &&
+                             args[i]->getType() == ASTNodeType::ARRAY_LITERAL
+                         ? expectedParamTypes[i]
+                         : nullptr;
+      sema_.analyzeExpr(*args[i], hint);
     }
   }
 
@@ -1275,7 +1312,7 @@ void CallAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
         funcName, genericCall.getLocation()));
   }
 
-  genericCall.setResolvedType(types_.inferGenericCallType(genericCall));
+  genericCall.setResolvedType(resolveGenericFunctionCallType(genericCall));
 }
 
 void CallAnalyzer::analyzeGenericClassConstruction(
@@ -1304,9 +1341,12 @@ void CallAnalyzer::analyzeGenericClassConstruction(
     }
   }
 
-  hintArrayLiteralArguments(args, expectedParamTypes);
-  for (const auto& arg : args) {
-    sema_.analyzeExpr(const_cast<ExprAST&>(*arg));
+  for (size_t i = 0; i < args.size(); ++i) {
+    TypePtr hint = i < expectedParamTypes.size() &&
+                           args[i]->getType() == ASTNodeType::ARRAY_LITERAL
+                       ? expectedParamTypes[i]
+                       : nullptr;
+    sema_.analyzeExpr(*args[i], hint);
   }
 
   // Pick the init overload from the argument types, exactly as for a
@@ -1334,7 +1374,7 @@ void CallAnalyzer::analyzeGenericClassConstruction(
         displayName, genericCall.getLocation()));
   }
 
-  genericCall.setResolvedType(types_.inferGenericCallType(genericCall));
+  genericCall.setResolvedType(specializedClass);
 }
 
 }  // namespace sun::semantic_analysis

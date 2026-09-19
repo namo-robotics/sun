@@ -56,9 +56,9 @@ using sun::ast::BlockExprAST;
 using sun::ast::CompoundAssignmentAST;
 using sun::ast::ExprAST;
 using sun::ast::VariableCreationAST;
-using sun::semantic_analysis::ClassType;
 using sun::semantic_analysis::DeclarationId;
-using sun::semantic_analysis::TypePtr;
+using sun::types::ClassType;
+using sun::types::TypePtr;
 
 /**
  * Emits variable creation, reference and assignment, the lvalue addresses
@@ -157,11 +157,11 @@ class VariableGenerator {
   /** Loads the value stored for a global declaration. */
   llvm::LoadInst* createLoadForGlobalVar(DeclarationId id);
   /** Loads a value through the reference stored for a declaration. */
-  llvm::Value* createLoadForRef(
-      DeclarationId id, const sun::semantic_analysis::ReferenceType& refType);
+  llvm::Value* createLoadForRef(DeclarationId id,
+                                const sun::types::ReferenceType& refType);
   /** Stores a value through the reference bound to a declaration. */
   void createStoreForRef(DeclarationId id,
-                         const sun::semantic_analysis::ReferenceType& refType,
+                         const sun::types::ReferenceType& refType,
                          llvm::Value* value);
 
  private:

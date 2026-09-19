@@ -202,7 +202,7 @@ Value* CodegenVisitor::codegen(const sun::ast::TernaryExprAST& expr) {
   // Unified result type of the whole expression (set by semantic analysis).
   // Branches are pure expressions, so no per-branch scope: class temporaries
   // must survive until the enclosing scope ends, past the merge.
-  sun::semantic_analysis::TypePtr resultType = expr.getResolvedType();
+  sun::types::TypePtr resultType = expr.getResolvedType();
 
   ctx.builder->SetInsertPoint(ThenBB);
   Value* ThenV = codegen(*expr.getThen());

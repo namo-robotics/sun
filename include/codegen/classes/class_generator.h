@@ -47,16 +47,17 @@ class ScopeManager;
 #include "ast.h"
 #include "codegen/codegen_state.h"
 #include "semantic_analysis/argument_conversion.h"
-#include "semantic_analysis/types.h"
+#include "semantic_analysis/type_registry.h"
+#include "types/types.h"
 
 /** Provides the generator for class storage and method operations. */
 namespace sun::codegen::classes {
 using sun::ast::ClassDefinitionAST;
 using sun::ast::ExprAST;
-using sun::semantic_analysis::ClassType;
 using sun::semantic_analysis::DeclarationId;
-using sun::semantic_analysis::InterfaceType;
-using sun::semantic_analysis::TypePtr;
+using sun::types::ClassType;
+using sun::types::InterfaceType;
+using sun::types::TypePtr;
 
 /**
  * Emits class, interface and enum definitions, member access, method bodies,

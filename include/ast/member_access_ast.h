@@ -13,7 +13,7 @@
 
 /** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
-using sun::semantic_analysis::TypePtr;
+using sun::types::TypePtr;
 
 /**
  * Member access expression: object.fieldName or object.methodName

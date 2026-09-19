@@ -9,8 +9,8 @@
 
 using sun::codegen::CodegenVisitor;
 using sun::semantic_analysis::DeclarationId;
-using sun::semantic_analysis::ReferenceType;
-using sun::semantic_analysis::TypePtr;
+using sun::types::ReferenceType;
+using sun::types::TypePtr;
 
 using sun::support::logAndThrowError;
 
@@ -168,8 +168,7 @@ Value* VariableGenerator::codegen(const sun::ast::VariableReferenceAST& expr) {
       AllocaInst* alloca = scopes().findVariable(expr.getTargetDeclarationId());
       if (alloca) {
         llvm::StructType* fatType =
-            sun::semantic_analysis::ArrayType::getArrayStructType(
-                ctx.getContext());
+            sun::types::ArrayType::getArrayStructType(ctx.getContext());
         if (alloca->getAllocatedType() == fatType) {
           return ctx.builder->CreateLoad(fatType, alloca,
                                          expr.getName() + ".view");
@@ -187,9 +186,8 @@ Value* VariableGenerator::codegen(const sun::ast::VariableReferenceAST& expr) {
               expr.getTargetDeclarationId())) {
         if (refType->isUnsizedArrayRef()) {
           return ctx.builder->CreateLoad(
-              sun::semantic_analysis::ArrayType::getArrayStructType(
-                  ctx.getContext()),
-              addr, expr.getName() + ".view");
+              sun::types::ArrayType::getArrayStructType(ctx.getContext()), addr,
+              expr.getName() + ".view");
         }
         return addr;
       }
@@ -324,7 +322,7 @@ Value* VariableGenerator::codegen(const sun::ast::VariableAssignmentAST& expr) {
     Value* value = codegen(*expr.getValue());
     return sun::codegen::support::widenNumericIfNeeded(
         *ctx.builder, typeResolver, value,
-        sun::semantic_analysis::unwrapRef(expr.getResolvedType()),
+        sun::types::unwrapRef(expr.getResolvedType()),
         expr.getValue()->getResolvedType());
   };
 
@@ -423,8 +421,7 @@ void VariableGenerator::assignToVariableSlot(Value* slot, Value* value,
   }
   // A sized array moves its inline storage in after the old elements drop
   if (auto* arrayType =
-          sun::codegen::support::tryGetType<sun::semantic_analysis::ArrayType>(
-              varType)) {
+          sun::codegen::support::tryGetType<sun::types::ArrayType>(varType)) {
     if (!arrayType->isUnsized()) {
       if (value == slot) return;
       scopes().emitDropInPlace(varType, slot, name);

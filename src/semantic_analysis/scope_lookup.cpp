@@ -12,21 +12,21 @@
 
 #include "semantic_analysis/semantic_scope.h"
 #include "semantic_analysis/symbol_names.h"
-#include "semantic_analysis/type_rules.h"
+#include "semantic_analysis/type_analysis/type_rules.h"
 #include "support/error.h"
 
 using sun::semantic_analysis::CallableSignature;
-using sun::semantic_analysis::ClassType;
-using sun::semantic_analysis::EnumType;
-using sun::semantic_analysis::InterfaceType;
 using sun::semantic_analysis::QualifiedName;
-using sun::semantic_analysis::ReferenceType;
+using sun::types::ClassType;
+using sun::types::EnumType;
+using sun::types::InterfaceType;
+using sun::types::ReferenceType;
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
-using sun::semantic_analysis::isAssignableTo;
 using sun::semantic_analysis::isIntrinsic;
+using sun::semantic_analysis::type_analysis::isAssignableTo;
 
 /** Keeps the implementation helpers in this file private to this translation unit. */
 namespace {
@@ -497,7 +497,7 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
           if (matchAlternatives) {
             const auto& alternatives = argTypes[i].alternatives;
             if (std::any_of(alternatives.begin(), alternatives.end(),
-                            [&](const sun::semantic_analysis::TypePtr& type) {
+                            [&](const sun::types::TypePtr& type) {
                               return type && info->paramTypes[i]->equals(*type);
                             })) {
               continue;
@@ -512,20 +512,17 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
             // ref -> const ref is allowed
             if (argType->isReference()) {
               auto* argRef = static_cast<const ReferenceType*>(argType.get());
-              if (sun::semantic_analysis::refMutabilityConvertible(*argRef,
-                                                                   *refType) &&
+              if (sun::types::refMutabilityConvertible(*argRef, *refType) &&
                   refType->getReferencedType()->equals(
                       *argRef->getReferencedType()))
                 continue;
             }
             if (refType->getReferencedType()->isArray() &&
                 argType->isArray()) {
-              auto* paramArray =
-                  static_cast<const sun::semantic_analysis::ArrayType*>(
-                      refType->getReferencedType().get());
+              auto* paramArray = static_cast<const sun::types::ArrayType*>(
+                  refType->getReferencedType().get());
               auto* argArray =
-                  static_cast<const sun::semantic_analysis::ArrayType*>(
-                      argType.get());
+                  static_cast<const sun::types::ArrayType*>(argType.get());
               if (paramArray->isUnsized() &&
                   paramArray->getElementType()->equals(
                       *argArray->getElementType()))
@@ -538,7 +535,7 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
             // Reading the value out of the borrow, so only for a scalar
             // parameter type (see isAssignableTo above)
             if (info->paramTypes[i]->equals(*refType->getReferencedType()) &&
-                sun::semantic_analysis::typeCopiesByRead(info->paramTypes[i]))
+                sun::types::typeCopiesByRead(info->paramTypes[i]))
               continue;
           }
 
@@ -549,12 +546,10 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
 
           if (argType->isStaticPointer() &&
               info->paramTypes[i]->isRawPointer()) {
-            auto* staticPtr =
-                static_cast<const sun::semantic_analysis::StaticPointerType*>(
-                    argType.get());
-            auto* rawPtr =
-                static_cast<const sun::semantic_analysis::RawPointerType*>(
-                    info->paramTypes[i].get());
+            auto* staticPtr = static_cast<const sun::types::StaticPointerType*>(
+                argType.get());
+            auto* rawPtr = static_cast<const sun::types::RawPointerType*>(
+                info->paramTypes[i].get());
             if (staticPtr->getPointeeType()->equals(
                     *rawPtr->getPointeeType())) {
               continue;
@@ -565,9 +560,8 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
           // for intrinsics
           if (argType->isRawPointer() &&
               info->paramTypes[i]->isRawPointer() && isIntrinsic(baseName)) {
-            auto* paramRawPtr =
-                static_cast<const sun::semantic_analysis::RawPointerType*>(
-                    info->paramTypes[i].get());
+            auto* paramRawPtr = static_cast<const sun::types::RawPointerType*>(
+                info->paramTypes[i].get());
             if (paramRawPtr->getPointeeType()->isInt8() ||
                 paramRawPtr->getPointeeType()->isUInt8()) {
               continue;

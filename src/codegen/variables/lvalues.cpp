@@ -11,8 +11,8 @@
 #include "codegen/variables/variable_generator.h"
 #include "semantic_analysis/packed_layout.h"
 
-using sun::semantic_analysis::ClassType;
-using sun::semantic_analysis::TypePtr;
+using sun::types::ClassType;
+using sun::types::TypePtr;
 
 using sun::ast::ASTNodeType;
 using sun::ast::ExprAST;
@@ -66,8 +66,9 @@ std::pair<Value*, ClassType*> VariableGenerator::codegenObjectPtr(
   }
 
   // Reference-to-class: the reference value is already the object pointer
-  if (auto* refType = sun::codegen::support::tryGetType<
-          sun::semantic_analysis::ReferenceType>(objectType)) {
+  if (auto* refType =
+          sun::codegen::support::tryGetType<sun::types::ReferenceType>(
+              objectType)) {
     if (refType->getReferencedType() &&
         refType->getReferencedType()->isClass()) {
       objectType = refType->getReferencedType();
@@ -128,8 +129,7 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
           // Ref variable: the referent's address. Mirrors
           // createLoadForRef/createStoreForRef's isDirectAlias decision.
           const auto* refType =
-              static_cast<const sun::semantic_analysis::ReferenceType*>(
-                  varType.get());
+              static_cast<const sun::types::ReferenceType*>(varType.get());
           llvm::Type* referencedLLVMType =
               typeResolver.resolve(refType->getReferencedType());
           if (alloca->getAllocatedType() == referencedLLVMType) {
@@ -181,7 +181,7 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
       auto [objectPtr, classType] = codegenObjectPtr(*memberAccess.getObject());
       if (!objectPtr || !classType) return nullptr;
 
-      const sun::semantic_analysis::ClassField* field =
+      const sun::types::ClassField* field =
           classType->getField(memberAccess.getTargetDeclarationId());
       if (!field) return nullptr;
 
@@ -192,8 +192,8 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
 
     case ASTNodeType::INDEX: {
       const auto& indexExpr = static_cast<const sun::ast::IndexAST&>(expr);
-      auto baseType = sun::semantic_analysis::unwrapRef(
-          indexExpr.getTarget()->getResolvedType());
+      auto baseType =
+          sun::types::unwrapRef(indexExpr.getTarget()->getResolvedType());
       // Class __index__/__setindex__ targets have no address - callers
       // dispatch to the method protocol instead
       if (baseType && baseType->isClass()) return nullptr;
@@ -316,16 +316,15 @@ Value* VariableGenerator::codegen(const sun::ast::CompoundAssignmentAST& expr) {
   const ExprAST& target = *expr.getTarget();
   const sun::support::Position& loc = expr.getLocation();
 
-  TypePtr slotSunType =
-      sun::semantic_analysis::unwrapRef(target.getResolvedType());
+  TypePtr slotSunType = sun::types::unwrapRef(target.getResolvedType());
   llvm::Type* slotTy = typeResolver.resolve(slotSunType);
 
   // Class __index__/__setindex__ targets have no address: lower as
   // get-op-set with the receiver and index array computed exactly once
   if (target.getType() == ASTNodeType::INDEX) {
     const auto& indexExpr = static_cast<const sun::ast::IndexAST&>(target);
-    auto baseType = sun::semantic_analysis::unwrapRef(
-        indexExpr.getTarget()->getResolvedType());
+    auto baseType =
+        sun::types::unwrapRef(indexExpr.getTarget()->getResolvedType());
     if (baseType && baseType->isClass()) {
       auto* classType = static_cast<ClassType*>(baseType.get());
       Value* objPtr = codegen(*indexExpr.getTarget());

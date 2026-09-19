@@ -1,26 +1,32 @@
-// type_annotations.cpp — Resolving a written type annotation to a type, and
-// the const view of a type (see type_inferer.h)
+/**
+ * Resolves written annotations, scoped substitutions, and const views.
+ * This contextual part of type analysis may use semantic state and request
+ * nominal specializations. Pure inference and checking must not call it.
+ */
 
-#include "semantic_analysis/semantic_analyzer.h"
-#include "semantic_analysis/type_inferer.h"
-#include "semantic_analysis/type_traits.h"
+#include "semantic_analysis/type_analysis/type_resolver.h"
+
+#include "codegen/support/type_checks.h"
+#include "semantic_analysis/type_analysis/type_traits.h"
 #include "support/error.h"
 
 using sun::semantic_analysis::DeclarationKind;
-using sun::semantic_analysis::InterfaceType;
-using sun::semantic_analysis::LambdaType;
-using sun::semantic_analysis::ReferenceType;
-using sun::semantic_analysis::TypePtr;
-using sun::semantic_analysis::Types;
+using sun::types::InterfaceType;
+using sun::types::LambdaType;
+using sun::types::ReferenceType;
+using sun::types::TypePtr;
+using sun::types::Types;
 
 using sun::support::logAndThrowError;
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
-namespace sun::semantic_analysis {
+namespace sun::semantic_analysis::type_analysis {
+using sun::types::Type;
 
-using sun::semantic_analysis::unwrapRef;
+using sun::types::unwrapRef;
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /**
@@ -34,13 +40,14 @@ TypePtr returnTypeOf(const TypePtr& target,
   if (auto* lambda = sun::codegen::support::tryGetType<LambdaType>(target)) {
     return lambda->getReturnType();
   }
-  if (auto* func = sun::codegen::support::tryGetType<
-          sun::semantic_analysis::FunctionType>(target)) {
+  if (auto* func =
+          sun::codegen::support::tryGetType<sun::types::FunctionType>(target)) {
     return func->getReturnType();
   }
-  if (auto* param = sun::codegen::support::tryGetType<
-          sun::semantic_analysis::TypeParameterType>(target)) {
-    return param->project(sun::semantic_analysis::TypeProjection::ReturnType);
+  if (auto* param =
+          sun::codegen::support::tryGetType<sun::types::TypeParameterType>(
+              target)) {
+    return param->project(sun::types::TypeProjection::ReturnType);
   }
   logAndThrowError("_return_type_of<" + target->toDisplayString() +
                        "> requires a lambda or function type",
@@ -50,7 +57,7 @@ TypePtr returnTypeOf(const TypePtr& target,
 
 }  // namespace
 
-std::shared_ptr<InterfaceType> TypeInferer::resolveConstraintInterface(
+std::shared_ptr<InterfaceType> TypeResolver::resolveConstraintInterface(
     const sun::ast::TypeConstraint& constraint) {
   auto type = typeAnnotationToType(constraint.toAnnotation());
   if (!type || !type->isInterface()) {
@@ -61,19 +68,17 @@ std::shared_ptr<InterfaceType> TypeInferer::resolveConstraintInterface(
   return std::static_pointer_cast<InterfaceType>(type);
 }
 
-TypePtr TypeInferer::substituteTypeParameters(TypePtr type) {
+TypePtr TypeResolver::substituteTypeParameters(TypePtr type) {
   if (!type) return nullptr;
 
   // If it's a type parameter, look up binding in scope stack. A projected one
   // asks after its base and then applies the projection to whatever that
   // turned out to be.
   if (type->isTypeParameter()) {
-    auto* tp =
-        dynamic_cast<sun::semantic_analysis::TypeParameterType*>(type.get());
+    auto* tp = dynamic_cast<sun::types::TypeParameterType*>(type.get());
     auto bound = ctx_.findTypeParameter(tp->getProjectionBase());
     if (!bound) return type;
-    return tp->getProjection() ==
-                   sun::semantic_analysis::TypeProjection::ReturnType
+    return tp->getProjection() == sun::types::TypeProjection::ReturnType
                ? returnTypeOf(bound, std::nullopt)
                : bound;
   }
@@ -89,8 +94,7 @@ TypePtr TypeInferer::substituteTypeParameters(TypePtr type) {
   }
 
   if (type->isRawPointer()) {
-    auto* pt =
-        dynamic_cast<sun::semantic_analysis::RawPointerType*>(type.get());
+    auto* pt = dynamic_cast<sun::types::RawPointerType*>(type.get());
     auto newPointee = substituteTypeParameters(pt->getPointeeType());
     if (newPointee != pt->getPointeeType()) {
       return Types::RawPointer(newPointee);
@@ -99,8 +103,7 @@ TypePtr TypeInferer::substituteTypeParameters(TypePtr type) {
   }
 
   if (type->isStaticPointer()) {
-    auto* pt =
-        dynamic_cast<sun::semantic_analysis::StaticPointerType*>(type.get());
+    auto* pt = dynamic_cast<sun::types::StaticPointerType*>(type.get());
     auto newPointee = substituteTypeParameters(pt->getPointeeType());
     if (newPointee != pt->getPointeeType()) {
       return Types::StaticPointer(newPointee);
@@ -109,7 +112,7 @@ TypePtr TypeInferer::substituteTypeParameters(TypePtr type) {
   }
 
   if (type->isFunction()) {
-    auto* ft = dynamic_cast<sun::semantic_analysis::FunctionType*>(type.get());
+    auto* ft = dynamic_cast<sun::types::FunctionType*>(type.get());
     auto newRet = substituteTypeParameters(ft->getReturnType());
     std::vector<TypePtr> newParams;
     bool changed = (newRet != ft->getReturnType());
@@ -153,7 +156,7 @@ TypePtr TypeInferer::substituteTypeParameters(TypePtr type) {
   // Handle class types with type arguments (e.g., MatrixView<T> ->
   // MatrixView<i32>)
   if (type->isClass()) {
-    auto* ct = dynamic_cast<sun::semantic_analysis::ClassType*>(type.get());
+    auto* ct = dynamic_cast<sun::types::ClassType*>(type.get());
     const auto& typeArgs = ct->getTypeArguments();
     if (!typeArgs.empty()) {
       std::vector<TypePtr> newArgs;
@@ -203,7 +206,7 @@ TypePtr TypeInferer::substituteTypeParameters(TypePtr type) {
   // Handle specialized enums with type arguments (e.g., Option<T> ->
   // Option<i32>)
   if (type->isEnum()) {
-    auto* et = dynamic_cast<sun::semantic_analysis::EnumType*>(type.get());
+    auto* et = dynamic_cast<sun::types::EnumType*>(type.get());
     const auto& typeArgs = et->getGenericArgs();
     if (!typeArgs.empty()) {
       std::vector<TypePtr> newArgs;
@@ -231,7 +234,7 @@ TypePtr TypeInferer::substituteTypeParameters(TypePtr type) {
 // Type argument resolution helper
 // -------------------------------------------------------------------
 
-std::vector<TypePtr> TypeInferer::resolveTypeArguments(
+std::vector<TypePtr> TypeResolver::resolveTypeArguments(
     const std::vector<std::unique_ptr<sun::ast::TypeAnnotation>>&
         typeAnnotations,
     const std::optional<sun::support::Position>& location,
@@ -251,7 +254,7 @@ std::vector<TypePtr> TypeInferer::resolveTypeArguments(
 // Type annotation to type conversion
 // -------------------------------------------------------------------
 
-TypePtr TypeInferer::typeAnnotationToType(
+TypePtr TypeResolver::typeAnnotationToType(
     const sun::ast::TypeAnnotation& annot) {
   if (annot.declarationKey) {
     auto id = ctx_.requireDeclaration(*annot.declarationKey, "", std::nullopt,
@@ -330,7 +333,7 @@ TypePtr TypeInferer::typeAnnotationToType(
         ->setLifetimeName(annot.lifetimeName);
     if (!annot.elementType->lifetimeArguments.empty()) {
       auto* referentClass =
-          sun::codegen::support::tryGetType<sun::semantic_analysis::ClassType>(
+          sun::codegen::support::tryGetType<sun::types::ClassType>(
               referencedType);
       size_t declared =
           referentClass ? referentClass->getLifetimeParams().size() : 0;
@@ -429,7 +432,7 @@ TypePtr TypeInferer::typeAnnotationToType(
   }
 
   // Builtin traits are symbolic targets of _is and generic constraints.
-  if (sun::semantic_analysis::isTypeTrait(annot.baseName)) {
+  if (sun::semantic_analysis::type_analysis::isTypeTrait(annot.baseName)) {
     return Types::TypeParameter(annot.baseName);
   }
 
@@ -571,7 +574,7 @@ TypePtr TypeInferer::typeAnnotationToType(
 // lower to the same layout, so a value crosses between them through memory
 // without codegen help. Classes are not viewed (a class holding a borrow of
 // its receiver is not a pattern the stdlib uses).
-TypePtr TypeInferer::createConstView(TypePtr type) {
+TypePtr TypeResolver::createConstView(TypePtr type) {
   if (!type) return type;
   if (type->isReference()) {
     auto* ref = static_cast<const ReferenceType*>(type.get());
@@ -579,8 +582,7 @@ TypePtr TypeInferer::createConstView(TypePtr type) {
     return Types::Reference(ref->getReferencedType(), /*isMutable=*/false);
   }
   if (type->isEnum()) {
-    auto* enumType =
-        static_cast<const sun::semantic_analysis::EnumType*>(type.get());
+    auto* enumType = static_cast<const sun::types::EnumType*>(type.get());
     if (!enumType->isGenericSpecialization()) return type;
     std::vector<TypePtr> args;
     bool changed = false;
@@ -598,4 +600,4 @@ TypePtr TypeInferer::createConstView(TypePtr type) {
   return type;
 }
 
-}  // namespace sun::semantic_analysis
+}  // namespace sun::semantic_analysis::type_analysis

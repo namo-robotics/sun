@@ -47,7 +47,7 @@ void ClassGenerator::debugDeclareParam(llvm::AllocaInst* alloca,
   gen_.debugDeclareParam(alloca, name, proto, userArgIdx, argNoBase);
 }
 
-std::pair<llvm::Value*, sun::semantic_analysis::ClassType*>
+std::pair<llvm::Value*, sun::types::ClassType*>
 ClassGenerator::codegenObjectPtr(const ExprAST& object) {
   return gen_.codegenObjectPtr(object);
 }
@@ -66,16 +66,16 @@ llvm::Value* ClassGenerator::materializeMethodClosureValue(
 bool ClassGenerator::emitCallArguments(
     const std::vector<std::unique_ptr<ExprAST>>& args,
     const std::vector<sun::semantic_analysis::ArgConversion>& conversions,
-    const std::vector<sun::semantic_analysis::TypePtr>& paramTypes,
+    const std::vector<sun::types::TypePtr>& paramTypes,
     llvm::FunctionType* calleeTy, std::vector<llvm::Value*>& argValues,
     const std::string& calleeName, size_t firstArg) {
   return gen_.emitCallArguments(args, conversions, paramTypes, calleeTy,
                                 argValues, calleeName, firstArg);
 }
 
-void ClassGenerator::assignToVariableSlot(
-    llvm::Value* slot, llvm::Value* value,
-    const sun::semantic_analysis::TypePtr& varType, const std::string& name) {
+void ClassGenerator::assignToVariableSlot(llvm::Value* slot, llvm::Value* value,
+                                          const sun::types::TypePtr& varType,
+                                          const std::string& name) {
   gen_.assignToVariableSlot(slot, value, varType, name);
 }
 

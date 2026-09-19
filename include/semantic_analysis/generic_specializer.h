@@ -46,18 +46,18 @@ class GenericSpecializer {
    * Monomorphize a generic class for the given type arguments, reusing the
    * specialization if it already exists.
    */
-  std::shared_ptr<sun::semantic_analysis::ClassType> instantiateGenericClass(
+  std::shared_ptr<sun::types::ClassType> instantiateGenericClass(
       const std::string &baseName,
-      const std::vector<sun::semantic_analysis::TypePtr> &typeArgs);
+      const std::vector<sun::types::TypePtr> &typeArgs);
 
   /** The same when the template has already been looked up. */
-  std::shared_ptr<sun::semantic_analysis::ClassType> instantiateGenericClass(
+  std::shared_ptr<sun::types::ClassType> instantiateGenericClass(
       const GenericClassInfo &genericClassInfo,
-      const std::vector<sun::semantic_analysis::TypePtr> &typeArgs);
+      const std::vector<sun::types::TypePtr> &typeArgs);
 
   /** Retrieve the template or generic-method definition by declaration ID. */
   const GenericClassInfo *lookupGenericClassOf(
-      const sun::semantic_analysis::ClassType &specialized) const;
+      const sun::types::ClassType &specialized) const;
 
   /**
    * The scope a class's template was declared in: for a specialization, the
@@ -65,7 +65,7 @@ class GenericSpecializer {
    * Null when the class has no template.
    */
   SemanticScope *classDefinitionScope(
-      const sun::semantic_analysis::ClassType &classType) const;
+      const sun::types::ClassType &classType) const;
 
   /**
    * Analyze the method bodies the pre-pass deferred, now that every
@@ -101,9 +101,9 @@ class GenericSpecializer {
    */
   std::optional<SpecializedFunctionInfo> instantiateGenericFunction(
       const GenericFunctionInfo &genericInfo,
-      const std::vector<sun::semantic_analysis::TypePtr> &typeArgs,
-      const std::optional<std::vector<sun::semantic_analysis::TypePtr>>
-          &variadicArgTypes = std::nullopt);
+      const std::vector<sun::types::TypePtr> &typeArgs,
+      const std::optional<std::vector<sun::types::TypePtr>> &variadicArgTypes =
+          std::nullopt);
 
   /**
    * Instantiate for a call site: same as instantiateGenericFunction, but a
@@ -111,10 +111,10 @@ class GenericSpecializer {
    */
   SpecializedFunctionInfo requireGenericSpecialization(
       const GenericFunctionInfo &genericInfo,
-      const std::vector<sun::semantic_analysis::TypePtr> &typeArgs,
+      const std::vector<sun::types::TypePtr> &typeArgs,
       const std::string &displayName, std::optional<sun::support::Position> loc,
-      const std::optional<std::vector<sun::semantic_analysis::TypePtr>>
-          &variadicArgTypes = std::nullopt);
+      const std::optional<std::vector<sun::types::TypePtr>> &variadicArgTypes =
+          std::nullopt);
 
   /**
    * Type-argument inference itself is sun::semantic_analysis
@@ -122,9 +122,9 @@ class GenericSpecializer {
    * the given type arguments, without instantiating it: what a call in a
    * template body resolves to until the enclosing generic is specialized.
    */
-  sun::semantic_analysis::TypePtr genericFunctionSignature(
+  sun::types::TypePtr genericFunctionSignature(
       const GenericFunctionInfo &genericInfo,
-      const std::vector<sun::semantic_analysis::TypePtr> &typeArgs);
+      const std::vector<sun::types::TypePtr> &typeArgs);
 
   /**
    * True when a call cannot be specialized yet because the template's type
@@ -132,9 +132,8 @@ class GenericSpecializer {
    * a pack-only template has none of its own and may still borrow a type
    * parameter from an enclosing generic through `args...: _params_of<T>`.
    */
-  bool templateStillAbstract(
-      const GenericFunctionInfo &genericInfo,
-      const std::vector<sun::semantic_analysis::TypePtr> &typeArgs);
+  bool templateStillAbstract(const GenericFunctionInfo &genericInfo,
+                             const std::vector<sun::types::TypePtr> &typeArgs);
 
   // ---- Methods -----------------------------------------------------------
 
@@ -151,18 +150,17 @@ class GenericSpecializer {
    * (possibly an empty vector for a zero-arg call), does the real work.
    */
   std::shared_ptr<sun::ast::FunctionAST> instantiateGenericMethod(
-      std::shared_ptr<sun::semantic_analysis::ClassType> classType,
+      std::shared_ptr<sun::types::ClassType> classType,
       const std::string &methodName,
-      const std::vector<sun::semantic_analysis::TypePtr> &methodTypeArgs,
-      const std::optional<std::vector<sun::semantic_analysis::TypePtr>>
-          &variadicArgTypes = std::nullopt);
+      const std::vector<sun::types::TypePtr> &methodTypeArgs,
+      const std::optional<std::vector<sun::types::TypePtr>> &variadicArgTypes =
+          std::nullopt);
 
   /**
    * Find a generic method's FunctionAST on a class by name (nullptr if none).
    */
   sun::ast::FunctionAST *findGenericMethodAST(
-      const sun::semantic_analysis::ClassType *classType,
-      const std::string &methodName);
+      const sun::types::ClassType *classType, const std::string &methodName);
 
   // ---- Interfaces and enums ----------------------------------------------
 
@@ -170,27 +168,25 @@ class GenericSpecializer {
    * Monomorphize a generic interface for the given type arguments, reusing
    * the specialization if it already exists.
    */
-  std::shared_ptr<sun::semantic_analysis::InterfaceType>
-  instantiateGenericInterface(
+  std::shared_ptr<sun::types::InterfaceType> instantiateGenericInterface(
       const std::string &baseName,
-      const std::vector<sun::semantic_analysis::TypePtr> &typeArgs);
+      const std::vector<sun::types::TypePtr> &typeArgs);
 
   /** Instantiate an already selected template without repeating name lookup. */
-  std::shared_ptr<sun::semantic_analysis::InterfaceType>
-  instantiateGenericInterface(
+  std::shared_ptr<sun::types::InterfaceType> instantiateGenericInterface(
       const GenericInterfaceInfo &genericInfo,
-      const std::vector<sun::semantic_analysis::TypePtr> &typeArgs);
+      const std::vector<sun::types::TypePtr> &typeArgs);
 
   /** Instantiate Option<i32> from a generic enum template (monomorphization).
    */
-  std::shared_ptr<sun::semantic_analysis::EnumType> instantiateGenericEnum(
+  std::shared_ptr<sun::types::EnumType> instantiateGenericEnum(
       const std::string &baseName,
-      const std::vector<sun::semantic_analysis::TypePtr> &typeArgs);
+      const std::vector<sun::types::TypePtr> &typeArgs);
 
   /** Instantiate an already selected template without repeating name lookup. */
-  std::shared_ptr<sun::semantic_analysis::EnumType> instantiateGenericEnum(
+  std::shared_ptr<sun::types::EnumType> instantiateGenericEnum(
       const GenericEnumInfo &genericInfo,
-      const std::vector<sun::semantic_analysis::TypePtr> &typeArgs);
+      const std::vector<sun::types::TypePtr> &typeArgs);
 
   // ---- Constraints and variadic packs ------------------------------------
 
@@ -208,8 +204,8 @@ class GenericSpecializer {
    */
   void checkTypeParameterConstraints(
       const std::vector<sun::ast::TypeParameter> &typeParams,
-      const std::vector<sun::semantic_analysis::TypePtr> &typeArgs,
-      const std::string &what, const std::string &name,
+      const std::vector<sun::types::TypePtr> &typeArgs, const std::string &what,
+      const std::string &name,
       std::optional<sun::support::Position> loc = std::nullopt);
 
   /**
@@ -225,9 +221,9 @@ class GenericSpecializer {
    * nullopt when the callee declares no pack. Errors when the call does not
    * even cover the fixed parameters.
    */
-  std::optional<std::vector<sun::semantic_analysis::TypePtr>> splitPackArgTypes(
+  std::optional<std::vector<sun::types::TypePtr>> splitPackArgTypes(
       const PrototypeAST &proto,
-      const std::vector<sun::semantic_analysis::TypePtr> &argTypes,
+      const std::vector<sun::types::TypePtr> &argTypes,
       const std::string &displayName,
       std::optional<sun::support::Position> loc);
 
@@ -241,7 +237,7 @@ class GenericSpecializer {
    */
   void applyVariadicParamTypes(
       PrototypeAST &clonedProto, const PrototypeAST &proto,
-      const std::vector<sun::semantic_analysis::TypePtr> &variadicArgTypes,
+      const std::vector<sun::types::TypePtr> &variadicArgTypes,
       std::optional<sun::support::Position> loc);
 
  private:
@@ -257,9 +253,9 @@ class GenericSpecializer {
    * but whose method bodies are not analyzed yet.
    */
   struct DeferredSpecialization {
-    std::shared_ptr<sun::semantic_analysis::ClassType> specializedClass;
+    std::shared_ptr<sun::types::ClassType> specializedClass;
     const GenericClassInfo *genericInfo;
-    std::vector<sun::semantic_analysis::TypePtr> typeArgs;
+    std::vector<sun::types::TypePtr> typeArgs;
     std::shared_ptr<sun::ast::ClassDefinitionAST>
         specializedAST;  // bodies unanalyzed
   };

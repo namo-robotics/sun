@@ -4,7 +4,7 @@
 //   SemanticContext       scopes, symbol tables, the type registry
 //   DeclarationCollectionPass  declaration registration
 //   GenericSpecializer    monomorphization and its cache
-//   TypeInferer           what type is this expression / this annotation
+//   type_analysis::TypeResolver  annotations, substitutions, and const views
 //   CallAnalyzer          what a call calls, and how its arguments get there
 //   EnumAnalyzer          enum definitions, variants, and match patterns
 // They share SemanticContext by reference. SemanticPipeline owns the passes;
@@ -21,12 +21,11 @@
 //   interfaces.cpp           interfaces and conformance validation
 //   packed_classes.cpp       the rules a packed class has to obey
 //
-// Rules that need no analyzer state live outside the class, so other passes
-// can reach the same answers: sun::semantic_analysis (type_rules.h),
-// sun::semantic_analysis (symbol_names.h), sun::semantic_analysis
-// (access_checker.h, item_refs.h), sun::semantic_analysis
-// (argument_conversion.h), sun::semantic_analysis (generic_type_arguments.h)
-// and sun::semantic_analysis (type_traits.h).
+// Type-related helpers live in semantic_analysis/type_analysis. Pure inference
+// and compatibility checks use prepared types; resolution and contextual rules
+// may use semantic state or annotate syntax. Other shared checks live alongside
+// the analyzer in symbol_names, access_checker, argument_conversion, and
+// expression_properties.
 
 #pragma once
 
@@ -47,13 +46,15 @@ struct Position;
 #include "semantic_analysis/access_checker.h"
 #include "semantic_analysis/body_analyzer.h"
 #include "semantic_analysis/call_analyzer.h"
-#include "semantic_analysis/passes/declaration_collection_pass.h"
 #include "semantic_analysis/enum_analyzer.h"
 #include "semantic_analysis/generic_specializer.h"
+#include "semantic_analysis/inference_result.h"
+#include "semantic_analysis/passes/declaration_collection_pass.h"
 #include "semantic_analysis/semantic_context.h"
 #include "semantic_analysis/semantic_pipeline.h"
 #include "semantic_analysis/semantic_scope.h"
-#include "semantic_analysis/type_inferer.h"
+#include "semantic_analysis/type_analysis/type_resolver.h"
+#include "semantic_analysis/type_registry.h"
 
 // Forward declarations
 /** Resolves declarations and checks the types and meaning of Sun programs. */
@@ -92,14 +93,15 @@ class SemanticAnalyzer {
   // Builds and caches every specialization the program asks for.
   GenericSpecializer generics_{ctx_, *this};
 
-  // What type is this expression, and what type does this annotation name.
-  TypeInferer types_{ctx_, *this, generics_};
+  // Resolve written types and scoped substitutions, requesting specializations
+  // as needed.
+  type_analysis::TypeResolver resolver_{ctx_, generics_};
 
   // Checks enum definitions, variant construction, and match patterns.
-  EnumAnalyzer enums_{ctx_, *this, generics_, types_};
+  EnumAnalyzer enums_{ctx_, *this, generics_, resolver_};
 
   // Resolves and checks every form of call.
-  CallAnalyzer calls_{ctx_, *this, generics_, types_};
+  CallAnalyzer calls_{ctx_, *this, generics_, resolver_};
 
  public:
   /** Create the shared context, checking helpers, and pipeline for a program.
@@ -125,8 +127,8 @@ class SemanticAnalyzer {
   /** Monomorphization: the specializations this run has built. */
   GenericSpecializer &generics() { return generics_; }
 
-  /** Type inference and type-annotation resolution. */
-  TypeInferer &types() { return types_; }
+  /** Type-annotation resolution and scoped substitutions. */
+  type_analysis::TypeResolver &typeResolver() { return resolver_; }
 
   /** Enum definitions, variant construction, and match patterns. */
   EnumAnalyzer &enums() { return enums_; }
@@ -147,8 +149,44 @@ class SemanticAnalyzer {
    * needs. expectedType is an optional hint from the context, such as the
    * declared type of the variable being assigned.
    */
-  void analyzeExpr(ExprAST &expr,
-                   sun::semantic_analysis::TypePtr expectedType = nullptr);
+  void analyzeExpr(ExprAST &expr, sun::types::TypePtr expectedType = nullptr);
+
+  /** Require a type already established by semantic analysis. */
+  static sun::types::TypePtr requireResolvedType(const ExprAST &expr);
+  /** Resolve a module identity and enforce its visibility. */
+  sun::types::TypePtr resolveModuleReference(const ExprAST &expr);
+  /** Resolve a variable or callable name, recording its declaration identity.
+   */
+  sun::types::TypePtr resolveVariableReferenceType(
+      const sun::ast::VariableReferenceAST &expr);
+  /** Resolve a member against its prepared receiver and record its identity. */
+  sun::types::TypePtr resolveMemberType(const sun::ast::MemberAccessAST &expr);
+  /** Resolve the receiver member and enforce access rules. */
+  sun::types::TypePtr resolveModuleMemberType(
+      const sun::ast::MemberAccessAST &expr,
+      const sun::types::TypePtr &objectType, const std::string &memberName);
+  /** Resolve the receiver member and enforce access rules. */
+  sun::types::TypePtr resolveClassMemberType(
+      const sun::ast::MemberAccessAST &expr,
+      const sun::types::TypePtr &objectType, const std::string &memberName);
+  /** Resolve the receiver member and enforce access rules. */
+  sun::types::TypePtr resolveInterfaceMemberType(
+      const sun::ast::MemberAccessAST &expr,
+      const sun::types::TypePtr &objectType, const std::string &memberName);
+  /** Resolve the receiver member and enforce access rules. */
+  sun::types::TypePtr resolveTypeParameterMemberType(
+      const sun::ast::MemberAccessAST &expr,
+      const sun::types::TypePtr &objectType, const std::string &memberName);
+
+  /** Select a block result from statements analyzed in their original scope. */
+  sun::types::TypePtr preparedBlockType(const sun::ast::BlockExprAST &block);
+  /** Select the first reachable match value after pattern and body checking. */
+  sun::types::TypePtr preparedMatchType(const sun::ast::MatchExprAST &match);
+
+  /** Compute an array result from checked elements and a separate contextual
+   * hint. */
+  void resolveArrayLiteralResult(sun::ast::ArrayLiteralAST &literal,
+                                 sun::types::TypePtr expectedType);
 
   // ---- Per-node handlers -------------------------------------------------
   //
@@ -235,13 +273,13 @@ class SemanticAnalyzer {
    * results on its syntax nodes.
    */
   void analyzeMatchExpr(sun::ast::MatchExprAST &matchExpr,
-                        sun::semantic_analysis::TypePtr expectedType);
+                        sun::types::TypePtr expectedType);
   /**
    * Resolves declarations and checks types in this ternary expression, recording the
    * results on its syntax nodes.
    */
   void analyzeTernaryExpr(sun::ast::TernaryExprAST &ternary,
-                          sun::semantic_analysis::TypePtr expectedType);
+                          sun::types::TypePtr expectedType);
   /**
    * Resolves declarations and checks types in this for loop, recording the results on
    * its syntax nodes.
@@ -306,15 +344,13 @@ class SemanticAnalyzer {
   /**
    * Value expressions (analysis_expressions.cpp)
    */
-  void analyzeNumberLiteral(ExprAST &expr,
-                            sun::semantic_analysis::TypePtr expectedType);
+  void analyzeNumberLiteral(ExprAST &expr, sun::types::TypePtr expectedType);
   /**
    * Resolves declarations and checks types in this array literal, recording the results
    * on its syntax nodes.
    */
-  void analyzeArrayLiteral(
-      sun::ast::ArrayLiteralAST &arrLit,
-      sun::semantic_analysis::TypePtr expectedType = nullptr);
+  void analyzeArrayLiteral(sun::ast::ArrayLiteralAST &arrLit,
+                           sun::types::TypePtr expectedType = nullptr);
   /**
    * Resolves declarations and checks types in this index expression, recording the
    * results on its syntax nodes.
@@ -330,7 +366,7 @@ class SemanticAnalyzer {
    * results on its syntax nodes.
    */
   void analyzeBinaryExpr(sun::ast::BinaryExprAST &binExpr,
-                         sun::semantic_analysis::TypePtr expectedType);
+                         sun::types::TypePtr expectedType);
   /**
    * Resolves declarations and checks types in this unary expression, recording the
    * results on its syntax nodes.
@@ -341,7 +377,7 @@ class SemanticAnalyzer {
    * on its syntax nodes.
    */
   void analyzeMemberAccess(sun::ast::MemberAccessAST &memberAccess,
-                           sun::semantic_analysis::TypePtr expectedType);
+                           sun::types::TypePtr expectedType);
   /**
    * Resolves declarations and checks types in this qualified name, recording the results
    * on its syntax nodes.
@@ -386,7 +422,7 @@ class SemanticAnalyzer {
    * TypeParameterType. Throws an error with source location if the type
    * parameter is not found.
    */
-  void validateTypeParameter(const sun::semantic_analysis::TypePtr &type,
+  void validateTypeParameter(const sun::types::TypePtr &type,
                              const ExprAST &node);
 
   /**
@@ -434,10 +470,10 @@ class SemanticAnalyzer {
    * An argument bound to a `ref T` parameter must be a mutable place; one
    * bound to a by-value compound parameter is a move (see checkMoveSource).
    */
-  void checkArgumentPlaces(
-      const std::vector<std::unique_ptr<ExprAST>> &args,
-      const std::vector<sun::semantic_analysis::TypePtr> &paramTypes,
-      const std::string &callee, const sun::support::Position &loc);
+  void checkArgumentPlaces(const std::vector<std::unique_ptr<ExprAST>> &args,
+                           const std::vector<sun::types::TypePtr> &paramTypes,
+                           const std::string &callee,
+                           const sun::support::Position &loc);
 
   /** Require an unsafe block when a call has a caller-side safety contract. */
   void checkUnsafeCall(bool requiresUnsafe, const std::string &name,
@@ -462,20 +498,19 @@ class SemanticAnalyzer {
   /** The same rule for an argument passed to a `ref T` parameter. */
   void checkPackedRefArguments(
       const std::vector<std::unique_ptr<ExprAST>> &args,
-      const std::vector<sun::semantic_analysis::TypePtr> &paramTypes) const;
+      const std::vector<sun::types::TypePtr> &paramTypes) const;
 
   /** Reject a field type a packed class cannot lay out. */
-  void checkPackedFieldType(
-      const ClassDefinitionAST &classDef, const sun::ast::ClassFieldDecl &field,
-      const sun::semantic_analysis::TypePtr &fieldType) const;
+  void checkPackedFieldType(const ClassDefinitionAST &classDef,
+                            const sun::ast::ClassFieldDecl &field,
+                            const sun::types::TypePtr &fieldType) const;
 
   /**
    * Copy the fields an implemented interface declares onto the class. Must run
    * before its methods are analyzed, since they may read those fields.
    */
-  void inheritInterfaceFields(
-      const ClassDefinitionAST &classDef,
-      std::shared_ptr<sun::semantic_analysis::ClassType> classType);
+  void inheritInterfaceFields(const ClassDefinitionAST &classDef,
+                              std::shared_ptr<sun::types::ClassType> classType);
 
   /**
    * Check that a class implements every method its interfaces require, with
@@ -483,7 +518,7 @@ class SemanticAnalyzer {
    */
   void validateInterfaceImplementation(
       const ClassDefinitionAST &classDef,
-      std::shared_ptr<sun::semantic_analysis::ClassType> classType);
+      std::shared_ptr<sun::types::ClassType> classType);
 
   // Module/namespace support (module scopes are tracked via the scope stack)
   // enterModuleScope() and exitScope() are used to manage module scopes
@@ -493,8 +528,8 @@ class SemanticAnalyzer {
    * Extract type guard pattern from condition (_is&lt;T&gt;(var)).
    * Returns (varName, narrowedType) if matched.
    */
-  std::optional<std::pair<std::string, sun::semantic_analysis::TypePtr>>
-  extractTypeGuard(const ExprAST &cond);
+  std::optional<std::pair<std::string, sun::types::TypePtr>> extractTypeGuard(
+      const ExprAST &cond);
 
   /**
    * Validate parameter names and resolve their types from prototype.
@@ -505,7 +540,7 @@ class SemanticAnalyzer {
    * when that policy is enabled: passing a struct by value is what the C ABI
    * specifies, so it is the callee's signature rather than a Sun choice.
    */
-  std::vector<sun::semantic_analysis::TypePtr> validateAndResolveParamTypes(
+  std::vector<sun::types::TypePtr> validateAndResolveParamTypes(
       PrototypeAST &proto,
       std::optional<sun::support::Position> loc = std::nullopt,
       bool allowByValueObjects = false);
@@ -523,9 +558,8 @@ class SemanticAnalyzer {
    * module-level variable, and the value must fit its type. Also records the
    * global's symbol name on the node for codegen.
    */
-  void analyzeModuleGlobalAssignment(
-      sun::ast::MemberAssignmentAST &assign,
-      const sun::semantic_analysis::Type &objectType);
+  void analyzeModuleGlobalAssignment(sun::ast::MemberAssignmentAST &assign,
+                                     const sun::types::Type &objectType);
 
   /**
    * The variables an expression reads but does not bind — what a lambda has
@@ -552,9 +586,8 @@ class SemanticAnalyzer {
    * expects. A struct literal has no type of its own, so without an expected
    * class type there is nothing to check the field names against.
    */
-  void analyzeStructLiteral(
-      sun::ast::StructLiteralAST &literal,
-      const sun::semantic_analysis::TypePtr &expectedType);
+  void analyzeStructLiteral(sun::ast::StructLiteralAST &literal,
+                            const sun::types::TypePtr &expectedType);
 
   /**
    * If the member access names a class method in value position, resolve it
@@ -564,7 +597,7 @@ class SemanticAnalyzer {
    * call-position callees (those never route through here).
    */
   void maybeResolveBoundMethodRef(sun::ast::MemberAccessAST &memberAccess,
-                                  sun::semantic_analysis::TypePtr expectedType);
+                                  sun::types::TypePtr expectedType);
 };
 
 }  // namespace sun::semantic_analysis

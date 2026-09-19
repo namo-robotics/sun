@@ -9,8 +9,8 @@
 #include "codegen/intrinsics/intrinsics_generator.h"
 #include "support/error.h"
 
-using sun::semantic_analysis::EnumType;
-using sun::semantic_analysis::TypePtr;
+using sun::types::EnumType;
+using sun::types::TypePtr;
 
 using sun::ast::ExprAST;
 using sun::support::logAndThrowError;
@@ -59,8 +59,7 @@ Value* IntrinsicsGenerator::codegenInitIntrinsic(
 
   // Only class types have constructors
   auto* classType =
-      sun::codegen::support::tryGetType<sun::semantic_analysis::ClassType>(
-          targetType);
+      sun::codegen::support::tryGetType<sun::types::ClassType>(targetType);
   if (!classType) {
     // Initialize values directly; freshly allocated storage has no value yet.
     llvm::Type* valueType = targetType->toLLVMType(ctx.getContext());
@@ -261,9 +260,10 @@ Value* IntrinsicsGenerator::codegenToRefIntrinsic(
 Value* IntrinsicsGenerator::codegenIsIntrinsic(
     const TypePtr& target, const std::vector<std::unique_ptr<ExprAST>>& args) {
   // _is<T>(value) - compile-time type check, folded to a constant here.
-  // Which types satisfy which trait is sun::semantic_analysis::satisfies (see
-  // semantic_analysis/type_traits.h); a `<T: Trait>` constraint asks that same
-  // predicate at a signature.
+  // Which types satisfy which trait is
+  // sun::semantic_analysis::type_analysis::satisfies (see
+  // semantic_analysis/type_analysis/type_traits.h); a `<T: Trait>` constraint
+  // asks that same predicate at a signature.
 
   if (args.size() != 1) {
     logAndThrowError("_is<T>(value) requires exactly one argument");
@@ -276,7 +276,8 @@ Value* IntrinsicsGenerator::codegenIsIntrinsic(
     return nullptr;
   }
 
-  bool result = sun::semantic_analysis::satisfies(valueType, target);
+  bool result =
+      sun::semantic_analysis::type_analysis::satisfies(valueType, target);
   return llvm::ConstantInt::get(llvm::Type::getInt1Ty(ctx.getContext()),
                                 result ? 1 : 0);
 }
@@ -295,8 +296,7 @@ Value* IntrinsicsGenerator::codegenDeinitIntrinsic(
   if (!ptr) return nullptr;
 
   if (auto* classType =
-          sun::codegen::support::tryGetType<sun::semantic_analysis::ClassType>(
-              typeArg)) {
+          sun::codegen::support::tryGetType<sun::types::ClassType>(typeArg)) {
     scopes().emitDeinitCall(classType, ptr);
 
     // Recursively deinit class fields that have deinit methods
@@ -327,8 +327,7 @@ Value* IntrinsicsGenerator::codegenConvertIntrinsic(
     logAndThrowError("_convert<T>: T must be a numeric type or char");
     return nullptr;
   }
-  TypePtr srcType =
-      sun::semantic_analysis::unwrapRef(args[0]->getResolvedType());
+  TypePtr srcType = sun::types::unwrapRef(args[0]->getResolvedType());
   if (srcType && srcType->isEnum()) {
     if (static_cast<EnumType*>(srcType.get())->hasPayload() ||
         !targetType->isIntegral()) {
@@ -433,7 +432,7 @@ Value* IntrinsicsGenerator::codegenEnumFromIntIntrinsic(
   auto& target = *static_cast<EnumType*>(expr.getResolvedTypeArgs()[0].get());
   auto& result = *static_cast<EnumType*>(expr.getResolvedType().get());
   const auto& arg = expr.getArgs()[0];
-  auto sourceType = sun::semantic_analysis::unwrapRef(arg->getResolvedType());
+  auto sourceType = sun::types::unwrapRef(arg->getResolvedType());
   Value* value = codegen(*arg);
   // Compare before narrowing, preserving both signed and unsigned inputs.
   auto* comparisonType = IntegerType::get(ctx.getContext(), 65);

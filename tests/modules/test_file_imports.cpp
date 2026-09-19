@@ -805,8 +805,8 @@ TEST(MoonMetadata, interface_requirement_does_not_apply_to_type_arguments) {
   sun::proto::ast::ImplementedInterface impl;
   impl.set_declaration_key(view.encoding());
   impl.add_type_arguments()->set_declaration_key(value.encoding());
-  std::vector<std::pair<PortableDeclarationKey,
-                        std::optional<sun::semantic_analysis::Type::Kind>>>
+  std::vector<
+      std::pair<PortableDeclarationKey, std::optional<sun::types::Type::Kind>>>
       uses;
   sun::serialization::visitDeclarationKeys(
       impl, [&](const auto& name, auto kind, const auto&) {
@@ -815,7 +815,7 @@ TEST(MoonMetadata, interface_requirement_does_not_apply_to_type_arguments) {
   ASSERT_EQ(uses.size(), 2);
   for (const auto& [name, kind] : uses) {
     if (name == view)
-      EXPECT_EQ(kind, sun::semantic_analysis::Type::Kind::Interface);
+      EXPECT_EQ(kind, sun::types::Type::Kind::Interface);
     else {
       EXPECT_EQ(name, value);
       EXPECT_FALSE(kind);

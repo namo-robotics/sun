@@ -40,12 +40,11 @@ class VariableCreationAST;
 
 #include "codegen/abi/c_abi.h"
 #include "codegen/codegen.h"
-#include "semantic_analysis/types.h"
+#include "types/types.h"
 
 /** Adapts Sun values and calls to the target C calling convention. */
 namespace sun::codegen::abi {
-using sun::semantic_analysis::TypePtr;
-
+using sun::types::TypePtr;
 }
 /** Adapts Sun values and calls to the target C calling convention. */
 namespace sun::codegen::abi {}

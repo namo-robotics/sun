@@ -6,11 +6,11 @@
 
 #include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/symbol_names.h"
-#include "semantic_analysis/type_rules.h"
+#include "semantic_analysis/type_analysis/type_rules.h"
 #include "support/error.h"
 
-using sun::semantic_analysis::TypePtr;
-using sun::semantic_analysis::Types;
+using sun::types::TypePtr;
+using sun::types::Types;
 
 using sun::ast::ExprAST;
 using sun::parsing::TokenKind;
@@ -18,11 +18,13 @@ using sun::support::logAndThrowError;
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
+using sun::types::ArrayType;
+using sun::types::ClassType;
 
-using sun::semantic_analysis::checkCharOperands;
-using sun::semantic_analysis::coerceBinaryLiteralOperands;
-using sun::semantic_analysis::tryCoerceIntegerLiteral;
-using sun::semantic_analysis::unwrapRef;
+using sun::semantic_analysis::type_analysis::checkCharOperands;
+using sun::semantic_analysis::type_analysis::coerceBinaryLiteralOperands;
+using sun::semantic_analysis::type_analysis::tryCoerceIntegerLiteral;
+using sun::types::unwrapRef;
 
 void SemanticAnalyzer::analyzeNumberLiteral(ExprAST& expr,
                                             TypePtr expectedType) {
@@ -46,7 +48,11 @@ void SemanticAnalyzer::analyzeNumberLiteral(ExprAST& expr,
       return;
     }
   }
-  expr.setResolvedType(types_.inferType(expr));
+  expr.setResolvedType(requireInferredType(
+      sun::semantic_analysis::type_analysis::TypeInferer::number(
+          num.isInteger(), num.isInteger() ? num.getMagnitude() : 0,
+          num.isInteger() && num.isNegative()),
+      expr.getLocation(), "Cannot determine numeric literal type"));
   if (num.isInteger() && num.isNegative()) {
     // A negative magnitude beyond the signed range cannot default to u64.
     tryCoerceIntegerLiteral(&expr, expr.getResolvedType(), /*throwOnFail=*/true);
@@ -55,21 +61,32 @@ void SemanticAnalyzer::analyzeNumberLiteral(ExprAST& expr,
 
 void SemanticAnalyzer::analyzeArrayLiteral(sun::ast::ArrayLiteralAST& arrLit,
                                            TypePtr expectedType) {
-  // The expected element type (a field's or parameter's array type) lets a
-  // literal of narrower numbers widen to it
-  if (expectedType && unwrapRef(expectedType) &&
-      unwrapRef(expectedType)->isArray() && !arrLit.getResolvedType()) {
-    arrLit.setResolvedType(unwrapRef(expectedType));
-  }
   // Analyze each element; a compound element moves into the literal
   for (const auto& elem : arrLit.getElements()) {
     analyzeExpr(const_cast<ExprAST&>(*elem));
     checkMoveSource(*elem, arrLit.getLocation());
   }
-  // Always use inferType - it will use any expected type hint (from
-  // function parameter) to widen element types if needed, while computing
-  // proper dimensions
-  arrLit.setResolvedType(types_.inferType(arrLit));
+  resolveArrayLiteralResult(arrLit, expectedType);
+}
+
+void SemanticAnalyzer::resolveArrayLiteralResult(
+    sun::ast::ArrayLiteralAST& arrLit, TypePtr expectedType) {
+  TypePtr first = arrLit.getElements().empty()
+                      ? nullptr
+                      : requireResolvedType(*arrLit.getElements().front());
+  TypePtr expectedElement;
+  if (auto hint = unwrapRef(expectedType); hint && hint->isArray())
+    expectedElement = static_cast<const ArrayType&>(*hint).getElementType();
+  bool widen = first && expectedElement &&
+               ((expectedElement->isInt64() && first->isInt32()) ||
+                (expectedElement->isFloat64() && first->isFloat32()) ||
+                expectedElement->equals(*first));
+  arrLit.setResolvedType(requireInferredType(
+      sun::semantic_analysis::type_analysis::TypeInferer::array(
+          first, arrLit.getElements().size(), expectedElement, widen),
+      arrLit.getLocation(),
+      arrLit.getElements().empty() ? "Cannot infer type of empty array literal"
+                                   : "Cannot infer array element type"));
 }
 
 void SemanticAnalyzer::analyzeIndexExpr(sun::ast::IndexAST& arrIdx) {
@@ -93,7 +110,7 @@ void SemanticAnalyzer::analyzeIndexExpr(sun::ast::IndexAST& arrIdx) {
   TypePtr targetType = unwrapRef(arrIdx.getTarget()->getResolvedType());
   if (targetType && targetType->isClass()) {
     const auto* classType =
-        static_cast<const sun::semantic_analysis::ClassType*>(targetType.get());
+        static_cast<const sun::types::ClassType*>(targetType.get());
     const char* opName = arrIdx.hasSlices() ? "__slice__" : "__index__";
     if (const auto* method = classType->getMethod(opName)) {
       checkUnsafeCall(method->isUnsafe, opName, arrIdx.getLocation());
@@ -103,8 +120,35 @@ void SemanticAnalyzer::analyzeIndexExpr(sun::ast::IndexAST& arrIdx) {
     }
   }
   // Set resolved type (element type of the array)
-  TypePtr resultType = types_.inferType(arrIdx);
-  if (receiverImmutable) resultType = types_.createConstView(resultType);
+  TypePtr resultType;
+  if (targetType && targetType->isClass()) {
+    const auto& cls = static_cast<const ClassType&>(*targetType);
+    const char* methodName = arrIdx.hasSlices() ? "__slice__" : "__index__";
+    const auto* method =
+        ctx_.accessibleMethod(cls, methodName, arrIdx.getLocation());
+    if (!method)
+      logAndThrowError(
+          "Class " + cls.getDisplayName() + " does not implement " +
+              methodName +
+              (arrIdx.hasSlices() ? " for slicing" : " for indexing"),
+          arrIdx.getLocation());
+    arrIdx.setTargetDeclarationId(method->declarationId);
+    resultType = method->returnType;
+  } else {
+    auto result = sun::semantic_analysis::type_analysis::TypeInferer::index(
+        targetType, arrIdx.getIndices().size());
+    const auto* failure =
+        std::get_if<sun::semantic_analysis::type_analysis::InferenceFailure>(
+            &result);
+    bool wrongDimensions =
+        failure && failure->kind == sun::semantic_analysis::type_analysis::
+                                        InferenceFailure::Kind::IndexDimensions;
+    resultType = requireInferredType(
+        std::move(result), arrIdx.getLocation(),
+        wrongDimensions ? "Array index count does not match dimensions"
+                        : "Cannot index non-array type");
+  }
+  if (receiverImmutable) resultType = resolver_.createConstView(resultType);
   arrIdx.setResolvedType(resultType);
 }
 
@@ -131,28 +175,38 @@ void SemanticAnalyzer::analyzeBinaryExpr(sun::ast::BinaryExprAST& binExpr,
     for (const ExprAST* side : {binExpr.getLHS(), binExpr.getRHS()}) {
       TypePtr sideType = unwrapRef(side->getResolvedType());
       if (sideType && sideType->isEnum() &&
-          static_cast<sun::semantic_analysis::EnumType*>(sideType.get())
-              ->hasPayload()) {
-        logAndThrowError(
-            "Cannot compare enum '" +
-                static_cast<sun::semantic_analysis::EnumType*>(sideType.get())
-                    ->getDisplayName() +
-                "' with '==' ; use match to inspect payload enums",
-            binExpr.getLocation());
+          static_cast<sun::types::EnumType*>(sideType.get())->hasPayload()) {
+        logAndThrowError("Cannot compare enum '" +
+                             static_cast<sun::types::EnumType*>(sideType.get())
+                                 ->getDisplayName() +
+                             "' with '==' ; use match to inspect payload enums",
+                         binExpr.getLocation());
       }
     }
   }
   checkCharOperands(binExpr);
   coerceBinaryLiteralOperands(binExpr, expectedType);
-  binExpr.setResolvedType(types_.inferType(binExpr));
+  bool comparison =
+      binOp == TokenKind::LESS || binOp == TokenKind::GREATER ||
+      binOp == TokenKind::LESS_EQUAL || binOp == TokenKind::GREATER_EQUAL ||
+      binOp == TokenKind::EQUAL_EQUAL || binOp == TokenKind::NOT_EQUAL;
+  binExpr.setResolvedType(
+      comparison
+          ? Types::Bool()
+          : requireInferredType(
+                sun::semantic_analysis::type_analysis::TypeInferer::numeric(
+                    requireResolvedType(*binExpr.getLHS()),
+                    requireResolvedType(*binExpr.getRHS())),
+                binExpr.getLocation(),
+                "Cannot determine binary operand types"));
 }
 
 void SemanticAnalyzer::analyzeUnaryExpr(sun::ast::UnaryExprAST& unaryExpr) {
   analyzeExpr(const_cast<ExprAST&>(*unaryExpr.getOperand()));
 
   TokenKind op = unaryExpr.getOp().kind;
-  auto operandType = sun::semantic_analysis::unwrapRef(
-      types_.inferType(*unaryExpr.getOperand()));
+  auto operandType =
+      sun::types::unwrapRef(requireResolvedType(*unaryExpr.getOperand()));
 
   // Unresolved generic operands are validated again at instantiation
   if (operandType && !operandType->isTypeParameter()) {
@@ -188,8 +242,10 @@ void SemanticAnalyzer::analyzeUnaryExpr(sun::ast::UnaryExprAST& unaryExpr) {
     }
   }
 
-  // Matches inferType's UNARY rule without re-walking the operand subtree
-  unaryExpr.setResolvedType(op == TokenKind::NOT ? Types::Bool() : operandType);
+  unaryExpr.setResolvedType(requireInferredType(
+      sun::semantic_analysis::type_analysis::TypeInferer::unary(
+          operandType, op == TokenKind::NOT),
+      unaryExpr.getLocation(), "Cannot determine unary operand type"));
 }
 
 void SemanticAnalyzer::analyzeMemberAccess(
@@ -225,8 +281,7 @@ void SemanticAnalyzer::analyzeMemberAccess(
   TypePtr objectType = memberAccess.getObject()->getResolvedType();
   if (objectType && objectType->isModule()) {
     const auto* moduleType =
-        static_cast<const sun::semantic_analysis::ModuleType*>(
-            objectType.get());
+        static_cast<const sun::types::ModuleType*>(objectType.get());
     SymbolMatch match = ctx_.findSymbolInModule(moduleType->getModulePath(),
                                                 memberAccess.getMemberName(),
                                                 SymbolKind::Variable);
@@ -240,11 +295,9 @@ void SemanticAnalyzer::analyzeMemberAccess(
   if (objectType && objectType->isModule() && expectedType &&
       expectedType->isFunction()) {
     const auto* moduleType =
-        static_cast<const sun::semantic_analysis::ModuleType*>(
-            objectType.get());
+        static_cast<const sun::types::ModuleType*>(objectType.get());
     const auto* expectedFunction =
-        static_cast<const sun::semantic_analysis::FunctionType*>(
-            expectedType.get());
+        static_cast<const sun::types::FunctionType*>(expectedType.get());
     SymbolMatch match = ctx_.findSymbolInModule(
         moduleType->getModulePath(), memberAccess.getMemberName(),
         SymbolKind::Function, &expectedFunction->getParamTypes());
@@ -252,7 +305,8 @@ void SemanticAnalyzer::analyzeMemberAccess(
       TypePtr candidate = Types::Function(match.functionInfo->returnType,
                                           match.functionInfo->paramTypes,
                                           match.functionInfo->canThrow);
-      if (sun::semantic_analysis::isAssignableTo(candidate, expectedType)) {
+      if (sun::semantic_analysis::type_analysis::isAssignableTo(candidate,
+                                                                expectedType)) {
         memberAccess.setQualifiedName(match.functionInfo->qualifiedName);
         memberAccess.setTargetDeclarationId(match.functionInfo->declarationId);
         memberAccess.setResolvedType(candidate);
@@ -265,7 +319,7 @@ void SemanticAnalyzer::analyzeMemberAccess(
                      memberAccess.getLocation());
   }
 
-  memberAccess.setResolvedType(types_.inferType(memberAccess));
+  memberAccess.setResolvedType(resolveMemberType(memberAccess));
   // A method in value position becomes a bound method reference with
   // lambda type (call-position callees don't route through this case).
   maybeResolveBoundMethodRef(memberAccess, expectedType);

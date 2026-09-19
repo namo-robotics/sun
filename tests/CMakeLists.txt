@@ -35,6 +35,7 @@ add_subdirectory(memory_safety)
 add_subdirectory(modules)
 add_subdirectory(operators)
 add_subdirectory(tooling)
+add_subdirectory(type_analysis)
 
 target_link_libraries(sun_tests
     PRIVATE

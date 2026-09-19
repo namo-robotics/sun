@@ -15,7 +15,7 @@
 #include "semantic_analysis/access_checker.h"
 #include "semantic_analysis/callable_signature.h"
 #include "semantic_analysis/qualified_name.h"
-#include "semantic_analysis/types.h"
+#include "types/types.h"
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
@@ -25,15 +25,15 @@ using sun::support::SourceFileId;
 
 /** An argument's preferred type and other types its value can adopt. */
 struct FunctionArgumentType {
-  sun::semantic_analysis::TypePtr preferred;
-  std::vector<sun::semantic_analysis::TypePtr> alternatives;
+  sun::types::TypePtr preferred;
+  std::vector<sun::types::TypePtr> alternatives;
 };
 
 /**
  * Information about a variable in the symbol table
  */
 struct VariableInfo {
-  sun::semantic_analysis::TypePtr type;
+  sun::types::TypePtr type;
   bool isGlobal;         // Declared at module level (not inside a function)
   bool isFunctionParam;  // Is it a parameter vs let binding
   bool isMoved = false;  // Has ownership been transferred (move semantics)
@@ -53,8 +53,8 @@ struct VariableInfo {
  * Information about a declared function
  */
 struct FunctionInfo {
-  sun::semantic_analysis::TypePtr returnType;
-  std::vector<sun::semantic_analysis::TypePtr> paramTypes;
+  sun::types::TypePtr returnType;
+  std::vector<sun::types::TypePtr> paramTypes;
   std::vector<sun::ast::Capture> captures;
   sun::semantic_analysis::QualifiedName qualifiedName;  // Full qualified name
   bool canThrow = false;  // Whether this function can throw (declared with ,
@@ -295,9 +295,9 @@ struct SymbolMatch {
       libraryHash;  // The library scope hash (empty if not from library)
 
   // Type information (one of these will be set based on kind)
-  std::shared_ptr<sun::semantic_analysis::ClassType> classType;
-  std::shared_ptr<sun::semantic_analysis::InterfaceType> interfaceType;
-  std::shared_ptr<sun::semantic_analysis::EnumType> enumType;
+  std::shared_ptr<sun::types::ClassType> classType;
+  std::shared_ptr<sun::types::InterfaceType> interfaceType;
+  std::shared_ptr<sun::types::EnumType> enumType;
   const GenericClassInfo* genericClassInfo = nullptr;
   const GenericInterfaceInfo* genericInterfaceInfo = nullptr;
   const GenericFunctionInfo* genericFunctionInfo = nullptr;
@@ -388,8 +388,8 @@ struct GenericFunctionInfo {
  * Information about a specialized (monomorphized) generic function
  */
 struct SpecializedFunctionInfo {
-  sun::semantic_analysis::TypePtr returnType;
-  std::vector<sun::semantic_analysis::TypePtr> paramTypes;
+  sun::types::TypePtr returnType;
+  std::vector<sun::types::TypePtr> paramTypes;
   std::vector<sun::ast::Capture> captures;  // Captures with substituted types
   std::shared_ptr<FunctionAST> specializedAST;  // The analyzed clone
   // Name this specialization is emitted under: the template's qualified name
@@ -419,9 +419,8 @@ struct SpecializedFunctionInfo {
   /**
    * Type of the call itself, for the callee expression
    */
-  sun::semantic_analysis::TypePtr functionType() const {
-    return sun::semantic_analysis::Types::Function(returnType, paramTypes,
-                                                   canThrow());
+  sun::types::TypePtr functionType() const {
+    return sun::types::Types::Function(returnType, paramTypes, canThrow());
   }
 };
 
@@ -497,15 +496,12 @@ struct SemanticScopeBase
   // ===== Symbol tables (used by persistent scopes - Global/Module/Import)
   // =====
   FunctionTable functions;
-  std::map<std::string, std::shared_ptr<sun::semantic_analysis::ClassType>>
-      classes;
+  std::map<std::string, std::shared_ptr<sun::types::ClassType>> classes;
   std::map<std::string, ClassDefinitionAST*> classDefinitions;
   std::map<std::string, GenericClassInfo> genericClasses;
-  std::map<std::string, std::shared_ptr<sun::semantic_analysis::InterfaceType>>
-      interfaces;
+  std::map<std::string, std::shared_ptr<sun::types::InterfaceType>> interfaces;
   std::map<std::string, GenericInterfaceInfo> genericInterfaces;
-  std::map<std::string, std::shared_ptr<sun::semantic_analysis::EnumType>>
-      enums;
+  std::map<std::string, std::shared_ptr<sun::types::EnumType>> enums;
   std::map<std::string, GenericEnumInfo> genericEnums;
   std::map<std::string, GenericFunctionInfo> genericFunctions;
   std::map<std::string, std::shared_ptr<SemanticScopeBase>> childModules;
@@ -524,7 +520,7 @@ struct SemanticScopeBase
 
   /** Record a type alias, rejecting a duplicate in this scope. */
   void declareTypeAlias(
-      const std::string& name, sun::semantic_analysis::TypePtr type,
+      const std::string& name, sun::types::TypePtr type,
       std::optional<sun::support::Position> loc = std::nullopt);
 
   /** Register a function prototype (key = name + param types for overloads). */
@@ -544,19 +540,17 @@ struct SemanticScopeBase
    */
   void declareModuleVariable(
       const sun::semantic_analysis::QualifiedName& qualifiedName,
-      sun::semantic_analysis::TypePtr type,
-      sun::semantic_analysis::Visibility visibility, bool isConst = false,
-      bool isCExtern = false,
+      sun::types::TypePtr type, sun::semantic_analysis::Visibility visibility,
+      bool isConst = false, bool isCExtern = false,
       sun::semantic_analysis::DeclarationId declarationId = {});
 
   /**
    * Record a class in the current scope. A repeated registration of the same
    * name is ignored, which is what a diamond import produces.
    */
-  void declareClass(
-      const std::string& name,
-      std::shared_ptr<sun::semantic_analysis::ClassType> classType,
-      std::optional<sun::support::Position> loc = std::nullopt);
+  void declareClass(const std::string& name,
+                    std::shared_ptr<sun::types::ClassType> classType,
+                    std::optional<sun::support::Position> loc = std::nullopt);
 
   /**
    * Record a generic class template in the current scope, along with the
@@ -572,7 +566,7 @@ struct SemanticScopeBase
    */
   void declareInterface(
       const std::string& name,
-      std::shared_ptr<sun::semantic_analysis::InterfaceType> interfaceType,
+      std::shared_ptr<sun::types::InterfaceType> interfaceType,
       std::optional<sun::support::Position> loc = std::nullopt);
 
   /** Record a generic interface template in the current scope. */
@@ -582,7 +576,7 @@ struct SemanticScopeBase
 
   /** Record an enum in the current scope. */
   void declareEnum(const std::string& name,
-                   std::shared_ptr<sun::semantic_analysis::EnumType> enumType);
+                   std::shared_ptr<sun::types::EnumType> enumType);
 
   /**
    * Record a generic enum template in the current scope, along with the scope
@@ -591,14 +585,13 @@ struct SemanticScopeBase
   void declareGenericEnum(const std::string& name, GenericEnumInfo info);
 
   /** Bind type parameter names to concrete types in the current scope. */
-  void declareTypeParameters(
-      const std::vector<std::string>& params,
-      const std::vector<sun::semantic_analysis::TypePtr>& args);
+  void declareTypeParameters(const std::vector<std::string>& params,
+                             const std::vector<sun::types::TypePtr>& args);
 
   /** Record a variable here, checking reserved names and global shadowing. */
   void declareVariable(
-      const std::string& name, sun::semantic_analysis::TypePtr type,
-      bool isParam = false, bool isConst = false,
+      const std::string& name, sun::types::TypePtr type, bool isParam = false,
+      bool isConst = false,
       sun::semantic_analysis::DeclarationId declarationId = {});
 
   /** Report whether this scope is outside every function body. */
@@ -610,9 +603,9 @@ struct SemanticScopeBase
 
   // ===== Transient state (all scopes) =====
   std::map<std::string, VariableInfo> variables;
-  std::map<std::string, sun::semantic_analysis::TypePtr> typeParameters;
-  std::map<std::string, sun::semantic_analysis::TypePtr> typeAliases;
-  std::map<std::string, sun::semantic_analysis::TypePtr> narrowedTypes;
+  std::map<std::string, sun::types::TypePtr> typeParameters;
+  std::map<std::string, sun::types::TypePtr> typeAliases;
+  std::map<std::string, sun::types::TypePtr> narrowedTypes;
   std::vector<UsingImport> usingImports;
   std::vector<ImportBinding> importBindings;
 
@@ -655,19 +648,18 @@ struct SemanticScopeBase
   bool hasAccessibleSymbol(const std::string& name,
                            class AccessFilter& filter) const;
   /** Looks up a visible class by name in the accessible scopes. */
-  std::shared_ptr<sun::semantic_analysis::ClassType> findClass(
+  std::shared_ptr<sun::types::ClassType> findClass(
       const std::string& name) const;
   /** Looks up a visible generic class by name in the accessible scopes. */
   const GenericClassInfo* findGenericClass(const std::string& name) const;
   /** Looks up a visible interface by name in the accessible scopes. */
-  std::shared_ptr<sun::semantic_analysis::InterfaceType> findInterface(
+  std::shared_ptr<sun::types::InterfaceType> findInterface(
       const std::string& name) const;
   /** Looks up a visible generic interface by name in the accessible scopes. */
   const GenericInterfaceInfo* findGenericInterface(
       const std::string& name) const;
   /** Looks up a visible enum by name in the accessible scopes. */
-  std::shared_ptr<sun::semantic_analysis::EnumType> findEnum(
-      const std::string& name) const;
+  std::shared_ptr<sun::types::EnumType> findEnum(const std::string& name) const;
   /** Looks up a visible generic enum by name in the accessible scopes. */
   const GenericEnumInfo* findGenericEnum(const std::string& name) const;
   /** Appends the visible overloads matching the requested function name. */
@@ -693,7 +685,7 @@ struct SemanticScopeBase
   /**
    * Lookup a class by name in the scope chain
    */
-  std::shared_ptr<sun::semantic_analysis::ClassType> lookupClass(
+  std::shared_ptr<sun::types::ClassType> lookupClass(
       const std::string& name) const;
 
   /**
@@ -704,7 +696,7 @@ struct SemanticScopeBase
   /**
    * Lookup an interface by name in the scope chain
    */
-  std::shared_ptr<sun::semantic_analysis::InterfaceType> lookupInterface(
+  std::shared_ptr<sun::types::InterfaceType> lookupInterface(
       const std::string& name) const;
 
   /**
@@ -716,7 +708,7 @@ struct SemanticScopeBase
   /**
    * Lookup an enum by name in the scope chain
    */
-  std::shared_ptr<sun::semantic_analysis::EnumType> lookupEnum(
+  std::shared_ptr<sun::types::EnumType> lookupEnum(
       const std::string& name) const;
 
   /**
@@ -871,15 +863,13 @@ struct FunctionScope : SemanticScopeBase {
   std::string functionSignature;  // e.g., "outer(i32)"
   sun::semantic_analysis::QualifiedName functionName;
   bool functionCanThrow = false;
-  sun::semantic_analysis::TypePtr
-      functionReturnType;  // for return-position type inference
+  sun::types::TypePtr functionReturnType;  // for return-position type inference
 
   // Variadic parameter pack for this function, when it is a specialized
   // variadic body. Holds the pack's name (e.g. "args") and the resolved type of
   // each expanded element. Used to expand `args...` into concrete, typed
   // argument nodes during call analysis.
-  std::optional<
-      std::pair<std::string, std::vector<sun::semantic_analysis::TypePtr>>>
+  std::optional<std::pair<std::string, std::vector<sun::types::TypePtr>>>
       variadicParam;
 };
 
@@ -992,7 +982,7 @@ inline bool isImportScope(const std::string& name) {
  * declaration ID selects the owning module from the declaration table.
  */
 inline sun::semantic_analysis::ItemRef accessItem(
-    const std::shared_ptr<sun::semantic_analysis::ClassType>& c) {
+    const std::shared_ptr<sun::types::ClassType>& c) {
   return {"class", c->getDisplayName(), "", c->visibility,
           c->getDeclarationId()};
 }
@@ -1006,7 +996,7 @@ inline sun::semantic_analysis::ItemRef accessItem(const GenericClassInfo* g) {
 }
 /** Wraps a declaration in the common representation used for visibility checks. */
 inline sun::semantic_analysis::ItemRef accessItem(
-    const std::shared_ptr<sun::semantic_analysis::InterfaceType>& i) {
+    const std::shared_ptr<sun::types::InterfaceType>& i) {
   return {"interface", i->getBaseName(), "", i->visibility,
           i->getDeclarationId()};
 }
@@ -1021,7 +1011,7 @@ inline sun::semantic_analysis::ItemRef accessItem(
 }
 /** Wraps a declaration in the common representation used for visibility checks. */
 inline sun::semantic_analysis::ItemRef accessItem(
-    const std::shared_ptr<sun::semantic_analysis::EnumType>& e) {
+    const std::shared_ptr<sun::types::EnumType>& e) {
   return {"enum", e->getBaseName(), "", e->visibility, e->getDeclarationId()};
 }
 /** Wraps a declaration in the common representation used for visibility checks. */

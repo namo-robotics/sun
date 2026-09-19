@@ -26,7 +26,7 @@ bool isReservedIdentifier(const std::string& name) {
 /** Formats a readable function signature for compiler diagnostics. */
 std::string formatFunctionSignature(
     const std::string& name,
-    const std::vector<sun::semantic_analysis::TypePtr>& paramTypes) {
+    const std::vector<sun::types::TypePtr>& paramTypes) {
   std::string sig = name + "(";
   for (size_t i = 0; i < paramTypes.size(); ++i) {
     if (i > 0) sig += ",";

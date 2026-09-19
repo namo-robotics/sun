@@ -8,9 +8,9 @@
 #include "codegen/support/struct_access.h"
 #include "codegen/variables/variable_generator.h"
 
-using sun::semantic_analysis::ClassType;
-using sun::semantic_analysis::ReferenceType;
-using sun::semantic_analysis::TypePtr;
+using sun::types::ClassType;
+using sun::types::ReferenceType;
+using sun::types::TypePtr;
 
 using sun::ast::ASTNodeType;
 using sun::ast::ExprAST;
@@ -253,8 +253,7 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
   // implicitly copied), and the result is drop-tracked when payloads own
   // heap resources.
   if (varSunType && sun::codegen::CodegenVisitor::isPayloadEnum(varSunType)) {
-    auto& enumType =
-        static_cast<sun::semantic_analysis::EnumType&>(*varSunType);
+    auto& enumType = static_cast<sun::types::EnumType&>(*varSunType);
     llvm::StructType* storageTy = typeResolver.getEnumStorageType(enumType);
 
     // A fresh temporary (construction, materialized call return) can be
@@ -289,11 +288,12 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
   }
 
   // Handle interface types
-  if (auto* ifaceType = sun::codegen::support::tryGetType<
-          sun::semantic_analysis::InterfaceType>(varSunType)) {
+  if (auto* ifaceType =
+          sun::codegen::support::tryGetType<sun::types::InterfaceType>(
+              varSunType)) {
     // Unwrap reference if needed
     TypePtr valueSunType =
-        sun::semantic_analysis::unwrapRef(expr.getValue()->getResolvedType());
+        sun::types::unwrapRef(expr.getValue()->getResolvedType());
 
     // A concrete value is moved into stable storage owned by the interface.
     if (auto* classType =
@@ -314,8 +314,7 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
     // An interface source transfers its existing erased owner.
     if (valueSunType && valueSunType->isInterface()) {
       llvm::StructType* fatPtrType =
-          sun::semantic_analysis::InterfaceType::getFatPointerType(
-              ctx.getContext());
+          sun::types::InterfaceType::getFatPointerType(ctx.getContext());
       Value* fatPtrVal = value;
       if (value->getType()->isPointerTy()) {
         fatPtrVal = gen_.applyMoveSemantics(value, valueSunType);
@@ -335,7 +334,7 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
   // materialized call result) is adopted as the variable's storage; a named
   // source MOVES its elements into new storage, never aliasing it.
   if (auto* arrayType =
-          sun::codegen::support::tryGetType<sun::semantic_analysis::ArrayType>(
+          sun::codegen::support::tryGetType<sun::types::ArrayType>(
               varSunType)) {
     if (!arrayType->isUnsized()) {
       ASTNodeType valueKind = expr.getValue()->getType();
@@ -368,9 +367,10 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
           sun::codegen::support::tryGetType<ReferenceType>(varSunType)) {
     if (refType->isUnsizedArrayRef() && value->getType()->isPointerTy()) {
       TypePtr valueType =
-          sun::semantic_analysis::unwrapRef(expr.getValue()->getResolvedType());
-      if (auto* sized = sun::codegen::support::tryGetType<
-              sun::semantic_analysis::ArrayType>(valueType)) {
+          sun::types::unwrapRef(expr.getValue()->getResolvedType());
+      if (auto* sized =
+              sun::codegen::support::tryGetType<sun::types::ArrayType>(
+                  valueType)) {
         if (!sized->isUnsized()) {
           value = gen_.emitArrayView(value, sized->getDimensions());
         } else {
@@ -559,9 +559,8 @@ llvm::Constant* VariableGenerator::genGlobalArray(
   assert(scopes().empty() &&
          "genGlobalArray should only be called at top-level");
 
-  auto* arrayType =
-      &sun::codegen::support::requireType<sun::semantic_analysis::ArrayType>(
-          expr, "global array '" + expr.getName() + "'");
+  auto* arrayType = &sun::codegen::support::requireType<sun::types::ArrayType>(
+      expr, "global array '" + expr.getName() + "'");
   const auto& dims = arrayType->getDimensions();
 
   if (dims.empty()) {
@@ -853,7 +852,7 @@ void VariableGenerator::emitStaticInitFunction() {
             *static_cast<const sun::ast::StructLiteralAST*>(init.initExpr);
         for (size_t i = 0; i < literal.getFields().size(); ++i) {
           const auto& field = literal.getFields()[i];
-          const sun::semantic_analysis::ClassField* classField =
+          const sun::types::ClassField* classField =
               classType->getField(literal.resolvedFields().at(i));
           if (!classField)
             logAndThrowError(
@@ -938,9 +937,9 @@ void VariableGenerator::emitStaticInitFunction() {
           // handed to a `ref array<T>` parameter is viewed with its rank
           // erased
           auto* paramRef = static_cast<const ReferenceType*>(paramType.get());
-          auto* sizedArg = sun::codegen::support::tryGetType<
-              sun::semantic_analysis::ArrayType>(
-              sun::semantic_analysis::unwrapRef(arg->getResolvedType()));
+          auto* sizedArg =
+              sun::codegen::support::tryGetType<sun::types::ArrayType>(
+                  sun::types::unwrapRef(arg->getResolvedType()));
           if (paramRef->isUnsizedArrayRef() && sizedArg &&
               !sizedArg->isUnsized()) {
             argVal = gen_.emitArrayView(argVal, sizedArg->getDimensions());

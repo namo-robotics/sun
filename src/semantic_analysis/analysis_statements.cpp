@@ -5,13 +5,14 @@
 // analysis.cpp.
 
 #include "codegen/abi/c_abi_types.h"
+#include "semantic_analysis/expression_properties.h"
 #include "semantic_analysis/semantic_analyzer.h"
-#include "semantic_analysis/type_rules.h"
+#include "semantic_analysis/type_analysis/type_rules.h"
 #include "support/error.h"
 
-using sun::semantic_analysis::ClassType;
-using sun::semantic_analysis::TypePtr;
-using sun::semantic_analysis::Types;
+using sun::types::ClassType;
+using sun::types::TypePtr;
+using sun::types::Types;
 
 using sun::ast::ASTNodeType;
 using sun::ast::ExprAST;
@@ -20,10 +21,10 @@ using sun::support::logAndThrowError;
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
-using sun::semantic_analysis::isAssignableTo;
 using sun::semantic_analysis::isBorrowableLvalue;
-using sun::semantic_analysis::tryCoerceIntegerLiteral;
-using sun::semantic_analysis::unwrapRef;
+using sun::semantic_analysis::type_analysis::isAssignableTo;
+using sun::semantic_analysis::type_analysis::tryCoerceIntegerLiteral;
+using sun::types::unwrapRef;
 
 void SemanticAnalyzer::analyzeVariableCreation(
     sun::ast::VariableCreationAST& varCreate) {
@@ -44,7 +45,7 @@ void SemanticAnalyzer::analyzeVariableCreation(
     }
     TypePtr type = varCreate.getResolvedType();
     if (!type) {
-      type = types_.typeAnnotationToType(*varCreate.getTypeAnnotation());
+      type = resolver_.typeAnnotationToType(*varCreate.getTypeAnnotation());
       varCreate.setResolvedType(type);
     }
     if (!sun::codegen::abi::isValue(type)) {
@@ -62,12 +63,8 @@ void SemanticAnalyzer::analyzeVariableCreation(
   if (varCreate.hasTypeAnnotation()) {
     checkAnnotationLifetimes(*varCreate.getTypeAnnotation(),
                              varCreate.getLocation());
-    declaredType = types_.typeAnnotationToType(*varCreate.getTypeAnnotation());
-    // For array literals with explicit type annotation, set the type before
-    // analysis
-    if (varCreate.getValue()->getType() == ASTNodeType::ARRAY_LITERAL) {
-      const_cast<ExprAST&>(*varCreate.getValue()).setResolvedType(declaredType);
-    }
+    declaredType =
+        resolver_.typeAnnotationToType(*varCreate.getTypeAnnotation());
   }
 
   // Analyze the value expression, passing declared type as expected type
@@ -97,7 +94,7 @@ void SemanticAnalyzer::analyzeVariableCreation(
   if (declaredType && declaredType->isReference() && rhsType &&
       !rhsType->isReference()) {
     auto referenced =
-        static_cast<sun::semantic_analysis::ReferenceType*>(declaredType.get())
+        static_cast<sun::types::ReferenceType*>(declaredType.get())
             ->getReferencedType();
     if (isAssignableTo(rhsType, referenced)) {
       if (!isBorrowableLvalue(*varCreate.getValue())) {
@@ -108,7 +105,7 @@ void SemanticAnalyzer::analyzeVariableCreation(
       }
       bindsBorrow = true;
       validateBorrowTarget(*varCreate.getValue(), varCreate.getLocation());
-      if (sun::semantic_analysis::isMutableRef(declaredType)) {
+      if (sun::types::isMutableRef(declaredType)) {
         requireMutablePlace(*varCreate.getValue(),
                             "take a mutable reference to",
                             varCreate.getLocation());
@@ -142,7 +139,7 @@ void SemanticAnalyzer::analyzeVariableCreation(
 
   // Nothing can be stored in a variable of type void, and an inferred
   // `var` has nothing to infer from a call that returns nothing.
-  if (type && sun::semantic_analysis::unwrapRef(type)->isVoid()) {
+  if (type && sun::types::unwrapRef(type)->isVoid()) {
     logAndThrowError(declaredType
                          ? "Variable '" + varName + "' cannot have type 'void'"
                          : "Cannot infer a type for variable '" + varName +
@@ -155,8 +152,7 @@ void SemanticAnalyzer::analyzeVariableCreation(
   // A global outlives every stack frame, so it cannot have a type that may
   // point into one: a '<'_>' lambda, or anything that transitively holds
   // one (a class, enum, container instantiation or array of them).
-  if (ctx_.isAtModuleLevel() &&
-      sun::semantic_analysis::typeIsFrameCarrying(type)) {
+  if (ctx_.isAtModuleLevel() && sun::types::typeIsFrameCarrying(type)) {
     logAndThrowError(
         "a module-level variable cannot have the frame-carrying type '" +
             type->toDisplayString() +
@@ -193,7 +189,7 @@ void SemanticAnalyzer::analyzeVariableAssignment(
                          "'; declare it with 'var' if it must change",
                      varAssign.getLocation());
   }
-  if (varInfo && sun::semantic_analysis::isConstRef(varInfo->type)) {
+  if (varInfo && sun::types::isConstRef(varInfo->type)) {
     logAndThrowError(
         "Cannot assign through const reference '" + varAssign.getName() + "'",
         varAssign.getLocation());
@@ -210,8 +206,8 @@ void SemanticAnalyzer::analyzeVariableAssignment(
     expectedTargetType = varInfo->type;
     // For reference types, the target is the referenced type
     if (expectedTargetType && expectedTargetType->isReference()) {
-      auto* refType = static_cast<sun::semantic_analysis::ReferenceType*>(
-          expectedTargetType.get());
+      auto* refType =
+          static_cast<sun::types::ReferenceType*>(expectedTargetType.get());
       expectedTargetType = refType->getReferencedType();
     }
   }
@@ -237,7 +233,7 @@ void SemanticAnalyzer::analyzeVariableAssignment(
     }
     varAssign.setResolvedType(varInfo->type);
   } else {
-    varAssign.setResolvedType(types_.inferType(varAssign));
+    varAssign.setResolvedType(requireResolvedType(*varAssign.getValue()));
   }
 }
 
@@ -263,13 +259,12 @@ void SemanticAnalyzer::analyzeCompoundAssignment(
   analyzeExpr(const_cast<ExprAST&>(*compound.getTarget()));
   requireMutablePlace(*compound.getTarget(), "assign to",
                       compound.getLocation());
-  TypePtr targetType = sun::semantic_analysis::unwrapRef(
-      compound.getTarget()->getResolvedType());
+  TypePtr targetType =
+      sun::types::unwrapRef(compound.getTarget()->getResolvedType());
   if (compound.getTarget()->getType() == ASTNodeType::INDEX) {
     const auto& index =
         static_cast<const sun::ast::IndexAST&>(*compound.getTarget());
-    auto receiver =
-        sun::semantic_analysis::unwrapRef(index.getTarget()->getResolvedType());
+    auto receiver = sun::types::unwrapRef(index.getTarget()->getResolvedType());
     if (const auto* cls =
             sun::codegen::support::tryGetType<ClassType>(receiver)) {
       const auto* method =
@@ -327,19 +322,17 @@ void SemanticAnalyzer::analyzeMemberAssignment(
       logAndThrowError(
           "Dereferencing 'raw_ptr' can only be done in an unsafe block",
           memberAssign.getLocation());
-    objectType =
-        static_cast<const sun::semantic_analysis::RawPointerType&>(*objectType)
-            .getPointeeType();
+    objectType = static_cast<const sun::types::RawPointerType&>(*objectType)
+                     .getPointeeType();
   } else if (objectType && objectType->isStaticPointer()) {
-    objectType = static_cast<const sun::semantic_analysis::StaticPointerType&>(
-                     *objectType)
+    objectType = static_cast<const sun::types::StaticPointerType&>(*objectType)
                      .getPointeeType();
   }
 
   TypePtr expectedFieldType;
   if (objectType && objectType->isClass()) {
     auto* classType = static_cast<ClassType*>(objectType.get());
-    if (const sun::semantic_analysis::ClassField* field =
+    if (const sun::types::ClassField* field =
             ctx_.accessibleField(*classType, memberAssign.getMemberName(),
                                  memberAssign.getLocation())) {
       memberAssign.setTargetDeclarationId(field->declarationId);
@@ -352,7 +345,7 @@ void SemanticAnalyzer::analyzeMemberAssignment(
 
   if (objectType && objectType->isClass()) {
     auto* classType = static_cast<ClassType*>(objectType.get());
-    const sun::semantic_analysis::ClassField* field =
+    const sun::types::ClassField* field =
         classType->getField(memberAssign.getMemberName());
     if (field) {
       TypePtr rhsType = memberAssign.getValue()->getResolvedType();
@@ -409,7 +402,7 @@ void SemanticAnalyzer::analyzeIndexedAssignment(
   // Try to coerce integer literal to target type (throws if doesn't fit)
   tryCoerceIntegerLiteral(valueExpr, elementType, /*throwOnFail=*/true);
 
-  assignment.setResolvedType(types_.inferType(assignment));
+  assignment.setResolvedType(requireResolvedType(*assignment.getValue()));
 }
 
 void SemanticAnalyzer::analyzeReferenceCreation(
@@ -425,9 +418,12 @@ void SemanticAnalyzer::analyzeReferenceCreation(
   }
   // Determine the type of the referenced expression. Rebinding through
   // another reference borrows the same referent, not the reference.
-  TypePtr targetType = unwrapRef(types_.inferType(*refCreate.getTarget()));
+  TypePtr targetType = unwrapRef(requireResolvedType(*refCreate.getTarget()));
   // Create reference type: ref(T) or const ref(T)
-  TypePtr refType = Types::Reference(targetType, refCreate.isMutable());
+  TypePtr refType = requireInferredType(
+      sun::semantic_analysis::type_analysis::TypeInferer::reference(
+          targetType, refCreate.isMutable()),
+      refCreate.getLocation(), "Cannot determine reference target type");
   // Declare the reference variable
   ctx_.currentScope().declareVariable(refCreate.getName(), refType, false,
                                       false, refCreate.getDeclarationId());

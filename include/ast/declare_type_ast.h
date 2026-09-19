@@ -68,11 +68,11 @@ class DeclareTypeAST : public ExprAST {
   /**
    * Resolved declared type (set by semantic analysis)
    */
-  void setResolvedDeclaredType(sun::semantic_analysis::TypePtr type) const {
+  void setResolvedDeclaredType(sun::types::TypePtr type) const {
     declAnalysis().resolvedDeclaredType = std::move(type);
   }
   /** Returns the resolved declared type stored by this object. */
-  sun::semantic_analysis::TypePtr getResolvedDeclaredType() const {
+  sun::types::TypePtr getResolvedDeclaredType() const {
     return analysis_ ? static_cast<DeclareTypeAnalysis&>(*analysis_)
                            .resolvedDeclaredType
                      : nullptr;

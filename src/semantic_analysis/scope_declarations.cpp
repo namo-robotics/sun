@@ -5,13 +5,14 @@
 #include "support/error.h"
 
 using sun::semantic_analysis::QualifiedName;
-using sun::semantic_analysis::TypePtr;
+using sun::types::TypePtr;
 
 using sun::support::logAndThrowError;
 using sun::support::Position;
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
+using sun::types::Type;
 
 void SemanticScopeBase::declareVariable(
     const std::string& name, TypePtr type, bool isParam, bool isConst,
@@ -168,8 +169,7 @@ void SemanticScopeBase::declareModuleVariable(
 }
 
 void SemanticScopeBase::declareClass(
-    const std::string& name,
-    std::shared_ptr<sun::semantic_analysis::ClassType> classType,
+    const std::string& name, std::shared_ptr<sun::types::ClassType> classType,
     std::optional<Position> loc) {
   // Skip if already registered (diamond import re-registration)
   if (classes.contains(name)) {
@@ -194,7 +194,7 @@ void SemanticScopeBase::declareGenericClass(const std::string& name,
 
 void SemanticScopeBase::declareInterface(
     const std::string& name,
-    std::shared_ptr<sun::semantic_analysis::InterfaceType> interfaceType,
+    std::shared_ptr<sun::types::InterfaceType> interfaceType,
     std::optional<Position> loc) {
   // Skip if already registered (diamond import re-registration)
   if (interfaces.contains(name)) {
@@ -218,8 +218,7 @@ void SemanticScopeBase::declareGenericInterface(
 }
 
 void SemanticScopeBase::declareEnum(
-    const std::string& name,
-    std::shared_ptr<sun::semantic_analysis::EnumType> enumType) {
+    const std::string& name, std::shared_ptr<sun::types::EnumType> enumType) {
   // Register in current scope
   enums[name] = enumType;
 }
@@ -237,8 +236,7 @@ void SemanticScopeBase::declareTypeParameters(
     // Lifetime names are relative to the signature that wrote the type
     // argument; the specialization the binding builds is shared by every
     // caller, so the names must not leak into it
-    scope.typeParameters[params[i]] =
-        sun::semantic_analysis::eraseLifetimeNames(args[i]);
+    scope.typeParameters[params[i]] = sun::types::eraseLifetimeNames(args[i]);
   }
 }
 

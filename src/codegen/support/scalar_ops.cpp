@@ -3,7 +3,7 @@
 
 #include "codegen/support/scalar_ops.h"
 
-using sun::semantic_analysis::TypePtr;
+using sun::types::TypePtr;
 
 /** Provides shared diagnostics, source tracking, and compiler utilities. */
 namespace sun::codegen::support {
@@ -11,7 +11,7 @@ namespace sun::codegen::support {
 /** Extends an integer to the requested width using its signedness. */
 llvm::Value* extendInt(llvm::IRBuilder<>& builder, llvm::Value* value,
                        llvm::Type* destTy, const TypePtr& sourceType) {
-  auto srcType = sun::semantic_analysis::unwrapRef(sourceType);
+  auto srcType = sun::types::unwrapRef(sourceType);
   return srcType && srcType->isUnsigned()
              ? builder.CreateZExt(value, destTy, "widen")
              : builder.CreateSExt(value, destTy, "widen");

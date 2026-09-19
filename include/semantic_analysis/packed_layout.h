@@ -18,7 +18,7 @@
 #include <string>
 
 #include "ast/member_access_ast.h"
-#include "semantic_analysis/types.h"
+#include "types/types.h"
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
@@ -28,17 +28,17 @@ using sun::ast::ExprAST;
  * The class a member access reads through, seeing past ref/raw_ptr/static_ptr.
  * Returns nullptr when the object is not class-shaped.
  */
-inline const ClassType* accessedClass(const ExprAST& object) {
-  auto objectType = unwrapRef(object.getResolvedType());
+inline const sun::types::ClassType* accessedClass(const ExprAST& object) {
+  auto objectType = sun::types::unwrapRef(object.getResolvedType());
   if (objectType && objectType->isRawPointer()) {
-    objectType =
-        static_cast<RawPointerType*>(objectType.get())->getPointeeType();
+    objectType = static_cast<sun::types::RawPointerType*>(objectType.get())
+                     ->getPointeeType();
   } else if (objectType && objectType->isStaticPointer()) {
-    objectType =
-        static_cast<StaticPointerType*>(objectType.get())->getPointeeType();
+    objectType = static_cast<sun::types::StaticPointerType*>(objectType.get())
+                     ->getPointeeType();
   }
   if (objectType && objectType->isClass()) {
-    return static_cast<const ClassType*>(objectType.get());
+    return static_cast<const sun::types::ClassType*>(objectType.get());
   }
   return nullptr;
 }
@@ -56,7 +56,7 @@ inline bool isFieldAccess(const ExprAST& expr,
     const ExprAST* object = access.getObject();
     if (!object) break;
 
-    if (const ClassType* owner = accessedClass(*object)) {
+    if (const sun::types::ClassType* owner = accessedClass(*object)) {
       if (owner->isPacked()) {
         if (ownerName) *ownerName = owner->getDisplayName();
         return true;
@@ -70,8 +70,8 @@ inline bool isFieldAccess(const ExprAST& expr,
 /**
  * Alignment for accessing a field of `owner`.
  */
-inline llvm::Align fieldAlign(const ClassType* owner, llvm::Type* fieldTy,
-                              const llvm::DataLayout& DL) {
+inline llvm::Align fieldAlign(const sun::types::ClassType* owner,
+                              llvm::Type* fieldTy, const llvm::DataLayout& DL) {
   if (owner && owner->isPacked()) return llvm::Align(1);
   return DL.getABITypeAlign(fieldTy);
 }
@@ -91,10 +91,10 @@ inline llvm::Align lvalueAlign(const ExprAST& target, llvm::Type* slotTy,
  * no benefit, and an unpacked nested class would reintroduce exactly the
  * interior padding the user asked to remove.
  */
-inline std::string rejectFieldType(const TypePtr& fieldType) {
+inline std::string rejectFieldType(const sun::types::TypePtr& fieldType) {
   if (!fieldType) return {};
   if (fieldType->isArray() &&
-      static_cast<const ArrayType*>(fieldType.get())->isUnsized()) {
+      static_cast<const sun::types::ArrayType*>(fieldType.get())->isUnsized()) {
     return "has unsized array type. An unsized array is a view of storage "
            "owned elsewhere and cannot be packed; use a sized array<T, N> or "
            "raw_ptr<T> instead.";
@@ -104,7 +104,7 @@ inline std::string rejectFieldType(const TypePtr& fieldType) {
            "be packed.";
   }
   if (fieldType->isClass()) {
-    auto* nested = static_cast<const ClassType*>(fieldType.get());
+    auto* nested = static_cast<const sun::types::ClassType*>(fieldType.get());
     if (!nested->isPacked()) {
       return "has non-packed class type '" + nested->getDisplayName() +
              "'. Its interior padding would remain. Declare '" +

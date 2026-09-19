@@ -12,6 +12,7 @@
 #include "ast/ast_children.h"
 #include "codegen/functions/function_registry.h"
 #include "driver/driver.h"
+#include "semantic_analysis/type_registry.h"
 
 using sun::ast::ASTNodeType;
 using sun::ast::BlockExprAST;

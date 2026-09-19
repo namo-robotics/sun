@@ -1,3 +1,4 @@
+#include "semantic_analysis/type_analysis/generic_type_arguments.h"
 // classes.cpp - Class-related codegen (class definitions, member access, etc.)
 
 #include <cmath>
@@ -15,9 +16,9 @@
 #include "semantic_analysis/semantic_scope.h"
 #include "semantic_analysis/visibility.h"
 
-using sun::semantic_analysis::ClassField;
-using sun::semantic_analysis::ClassType;
-using sun::semantic_analysis::TypePtr;
+using sun::types::ClassField;
+using sun::types::ClassType;
+using sun::types::TypePtr;
 
 using sun::ast::ASTNodeType;
 using sun::ast::ClassDefinitionAST;
@@ -145,7 +146,7 @@ void ClassGenerator::declareBlockClassMethods(const ClassDefinitionAST& expr) {
   if (expr.isGeneric()) {
     for (const auto& [instanceId, specializedAST] : expr.getSpecializations()) {
       if (!specializedAST) continue;
-      if (sun::semantic_analysis::mentionsTypeParameter(
+      if (sun::semantic_analysis::type_analysis::mentionsTypeParameter(
               typeRegistry->getClass(instanceId)))
         continue;
       declareBlockClassMethods(*specializedAST);
@@ -185,7 +186,7 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
       // — `ref Pair<T>` in `unwrap<T>` yields Pair<T>, whose T is still a
       // type parameter. That shape has no layout to emit; the class the code
       // actually uses is instantiated when unwrap<i32> is.
-      if (sun::semantic_analysis::mentionsTypeParameter(
+      if (sun::semantic_analysis::type_analysis::mentionsTypeParameter(
               typeRegistry->getClass(instanceId)))
         continue;
       codegen(*specializedAST);
@@ -513,7 +514,7 @@ void ClassGenerator::generateMethodBody(const FunctionAST& methodFunc) {
       codegen(static_cast<const ExprAST&>(assignment));
       const auto* field =
           currentClass->getField(assignment.getTargetDeclarationId());
-      if (field && sun::semantic_analysis::typeNeedsDrop(field->type)) {
+      if (field && sun::types::typeNeedsDrop(field->type)) {
         auto* address = sun::codegen::support::fieldPtr(
             *ctx.builder, currentClass.get(), thisPtr, *field,
             field->name + ".initialized");
@@ -583,11 +584,10 @@ Value* ClassGenerator::codegen(const sun::ast::MemberAccessAST& expr) {
   // Handle module member access: mod_x.mod_y or mod_x.var
   TypePtr objectType = expr.getObject()->getResolvedType();
   if (auto* moduleType =
-          sun::codegen::support::tryGetType<sun::semantic_analysis::ModuleType>(
+          sun::codegen::support::tryGetType<sun::types::ModuleType>(
               objectType)) {
     // Check if the result type is also a module (nested module access)
-    if (sun::codegen::support::tryGetType<sun::semantic_analysis::ModuleType>(
-            expr)) {
+    if (sun::codegen::support::tryGetType<sun::types::ModuleType>(expr)) {
       // Return null sentinel - next member access will handle it
       return llvm::ConstantPointerNull::get(
           llvm::PointerType::getUnqual(ctx.getContext()));
@@ -617,8 +617,9 @@ Value* ClassGenerator::codegen(const sun::ast::MemberAccessAST& expr) {
   }
 
   // The analyzed object identifies the enum, including qualified unit variants.
-  if (auto enumType = sun::codegen::support::tryGetTypePtr<
-          sun::semantic_analysis::EnumType>(*expr.getObject())) {
+  if (auto enumType =
+          sun::codegen::support::tryGetTypePtr<sun::types::EnumType>(
+              *expr.getObject())) {
     if (const auto* variant = enumType->getVariant(memberName))
       return gen_.enumGenerator().codegenVariantAccess(*enumType, *variant);
   }
@@ -782,8 +783,7 @@ Value* ClassGenerator::codegen(const sun::ast::MemberAssignmentAST& expr) {
     Value* value = codegen(*expr.getValue());
     if (!value) return nullptr;
     assignToVariableSlot(
-        gv, value,
-        sun::semantic_analysis::unwrapRef(expr.getValue()->getResolvedType()),
+        gv, value, sun::types::unwrapRef(expr.getValue()->getResolvedType()),
         expr.getMemberName());
     return value;
   }
@@ -817,8 +817,9 @@ Value* ClassGenerator::codegen(const sun::ast::MemberAssignmentAST& expr) {
 
   // A `ref array<T>` field holds the view value; a view expression may
   // arrive as the value or as a pointer to where it is stored
-  if (auto* fieldRef = sun::codegen::support::tryGetType<
-          sun::semantic_analysis::ReferenceType>(field->type)) {
+  if (auto* fieldRef =
+          sun::codegen::support::tryGetType<sun::types::ReferenceType>(
+              field->type)) {
     if (fieldRef->isUnsizedArrayRef()) {
       value = gen_.loadArrayView(value);
     }
@@ -845,12 +846,13 @@ Value* ClassGenerator::codegen(const sun::ast::MemberAssignmentAST& expr) {
   // Interface fields own the complete { data, vtable } value. A concrete
   // source moves into a stable erased box; an interface source transfers its
   // existing owner and is cleared.
-  if (auto* fieldInterfaceType = sun::codegen::support::tryGetType<
-          sun::semantic_analysis::InterfaceType>(field->type)) {
+  if (auto* fieldInterfaceType =
+          sun::codegen::support::tryGetType<sun::types::InterfaceType>(
+              field->type)) {
     if (value == fieldPtr) return value;
 
     Value* fatPtrValue = value;
-    TypePtr sourceType = sun::semantic_analysis::unwrapRef(valueSunType);
+    TypePtr sourceType = sun::types::unwrapRef(valueSunType);
     if (auto* sourceClassType =
             sun::codegen::support::tryGetType<ClassType>(sourceType)) {
       fatPtrValue = createOwnedInterfaceFatPointer(value, sourceClassType,
@@ -872,7 +874,7 @@ Value* ClassGenerator::codegen(const sun::ast::MemberAssignmentAST& expr) {
   // Sized array fields own their elements inline: the source array MOVES in
   // after the field's old elements are dropped.
   if (auto* fieldArrayType =
-          sun::codegen::support::tryGetType<sun::semantic_analysis::ArrayType>(
+          sun::codegen::support::tryGetType<sun::types::ArrayType>(
               field->type)) {
     dropOverwrittenValue();
     gen_.emitArrayTransfer(fieldPtr, value, *fieldArrayType, /*move=*/true);
@@ -1152,7 +1154,7 @@ Value* ClassGenerator::codegen(const sun::ast::GenericCallAST& expr) {
     if (!calleeType || !calleeType->isFunction())
       logAndThrowError("Generic call has no resolved callable signature");
     const auto& signature =
-        static_cast<const sun::semantic_analysis::FunctionType&>(*calleeType);
+        static_cast<const sun::types::FunctionType&>(*calleeType);
     Function* specializedFunc =
         functions().lookupFunctionById(expr.getTargetDeclarationId());
 

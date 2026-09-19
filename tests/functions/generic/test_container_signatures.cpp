@@ -11,9 +11,9 @@
 #include <gtest/gtest.h>
 
 #include "driver/execution_utils.h"
-#include "semantic_analysis/generic_type_arguments.h"
+#include "semantic_analysis/type_analysis/generic_type_arguments.h"
 
-using sun::semantic_analysis::Types;
+using sun::types::Types;
 
 using sun::driver::executeStringWithStdlib;
 
@@ -163,12 +163,12 @@ TEST(Functions_Generic_ContainerSignatures, self_referential_interface) {
 // Callback parameters and return types can hide unresolved type arguments.
 TEST(Functions_Generic_ContainerSignatures, unresolved_callback_types) {
   auto parameter = Types::TypeParameter("T");
-  EXPECT_TRUE(sun::semantic_analysis::mentionsTypeParameter(
+  EXPECT_TRUE(sun::semantic_analysis::type_analysis::mentionsTypeParameter(
       Types::Function(parameter, {})));
-  EXPECT_TRUE(sun::semantic_analysis::mentionsTypeParameter(
+  EXPECT_TRUE(sun::semantic_analysis::type_analysis::mentionsTypeParameter(
       Types::Function(Types::Void(), {Types::Reference(parameter)})));
-  EXPECT_TRUE(sun::semantic_analysis::mentionsTypeParameter(
+  EXPECT_TRUE(sun::semantic_analysis::type_analysis::mentionsTypeParameter(
       Types::Array(Types::Function(parameter, {}), {2})));
-  EXPECT_FALSE(sun::semantic_analysis::mentionsTypeParameter(
+  EXPECT_FALSE(sun::semantic_analysis::type_analysis::mentionsTypeParameter(
       Types::Function(Types::Void(), {Types::Int32()})));
 }

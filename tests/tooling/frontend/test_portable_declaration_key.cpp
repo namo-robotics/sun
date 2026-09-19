@@ -2,13 +2,14 @@
 
 #include "semantic_analysis/declaration_table.h"
 #include "semantic_analysis/portable_declaration_key.h"
-#include "semantic_analysis/types.h"
+#include "semantic_analysis/type_registry.h"
+#include "types/types.h"
 
 using sun::semantic_analysis::DeclarationKind;
 using sun::semantic_analysis::DeclarationTable;
-using sun::semantic_analysis::TypePtr;
 using sun::semantic_analysis::TypeRegistry;
-using sun::semantic_analysis::Types;
+using sun::types::TypePtr;
+using sun::types::Types;
 
 /** Keeps test fixtures and helpers local to this source file. */
 namespace {
@@ -158,36 +159,35 @@ TEST(Tooling_Frontend_PortableIdentity,
      semantic_type_encoding_matches_identity) {
   DeclarationTable table;
   auto i32 = Types::Int32();
-  auto lambda = std::make_shared<sun::semantic_analysis::LambdaType>(
-      i32, std::vector<TypePtr>{i32});
-  auto borrowed = std::make_shared<sun::semantic_analysis::LambdaType>(
-      i32, std::vector<TypePtr>{i32});
+  auto lambda =
+      std::make_shared<sun::types::LambdaType>(i32, std::vector<TypePtr>{i32});
+  auto borrowed =
+      std::make_shared<sun::types::LambdaType>(i32, std::vector<TypePtr>{i32});
   borrowed->setHasRefCaptures(true);
-  std::vector<TypePtr> types{
-      i32,
-      Types::Bool(),
-      Types::Slice(),
-      Types::NullPointer(),
-      Types::RawPointer(i32),
-      Types::StaticPointer(i32),
-      Types::Reference(i32),
-      Types::Reference(i32, false),
-      Types::Array(i32, {}),
-      Types::Array(i32, {2, 3}),
-      Types::Array(i32, {3, 2}),
-      Types::Array(Types::RawPointer(i32), {2}),
-      Types::Array(Types::StaticPointer(i32), {2}),
-      Types::Reference(Types::RawPointer(i32)),
-      Types::Reference(Types::StaticPointer(i32)),
-      std::make_shared<sun::semantic_analysis::ErrorUnionType>(i32),
-      std::make_shared<sun::semantic_analysis::FunctionType>(
-          i32, std::vector<TypePtr>{i32}),
-      std::make_shared<sun::semantic_analysis::FunctionType>(
-          i32, std::vector<TypePtr>{i32}, true),
-      std::make_shared<sun::semantic_analysis::FunctionType>(
-          i32, std::vector<TypePtr>{i32}, false, true),
-      lambda,
-      borrowed};
+  std::vector<TypePtr> types{i32,
+                             Types::Bool(),
+                             Types::Slice(),
+                             Types::NullPointer(),
+                             Types::RawPointer(i32),
+                             Types::StaticPointer(i32),
+                             Types::Reference(i32),
+                             Types::Reference(i32, false),
+                             Types::Array(i32, {}),
+                             Types::Array(i32, {2, 3}),
+                             Types::Array(i32, {3, 2}),
+                             Types::Array(Types::RawPointer(i32), {2}),
+                             Types::Array(Types::StaticPointer(i32), {2}),
+                             Types::Reference(Types::RawPointer(i32)),
+                             Types::Reference(Types::StaticPointer(i32)),
+                             std::make_shared<sun::types::ErrorUnionType>(i32),
+                             std::make_shared<sun::types::FunctionType>(
+                                 i32, std::vector<TypePtr>{i32}),
+                             std::make_shared<sun::types::FunctionType>(
+                                 i32, std::vector<TypePtr>{i32}, true),
+                             std::make_shared<sun::types::FunctionType>(
+                                 i32, std::vector<TypePtr>{i32}, false, true),
+                             lambda,
+                             borrowed};
   for (size_t i = 0; i < types.size(); ++i)
     for (size_t j = 0; j < types.size(); ++j) {
       SCOPED_TRACE(std::to_string(i) + "," + std::to_string(j));
@@ -201,7 +201,7 @@ TEST(Tooling_Frontend_PortableIdentity,
   auto lifetime = PortableTypeKey::fromType(*borrowed, table);
   borrowed->setLifetimeName("renamed");
   EXPECT_EQ(lifetime, PortableTypeKey::fromType(*borrowed, table));
-  auto reference = std::make_shared<sun::semantic_analysis::ReferenceType>(i32);
+  auto reference = std::make_shared<sun::types::ReferenceType>(i32);
   auto refKey = PortableTypeKey::fromType(*reference, table);
   reference->setLifetimeName("different");
   reference->setClassLifetimeArgs({"a", "b"});

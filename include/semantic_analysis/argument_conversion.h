@@ -12,8 +12,8 @@
 #include <string>
 #include <vector>
 
-#include "semantic_analysis/types.h"
 #include "support/position.h"
+#include "types/types.h"
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
@@ -50,17 +50,17 @@ const char* toString(ArgConversion conversion);
  * resolution, isAssignableTo), so a nullopt for an accepted pair means the
  * acceptance rules and the lowering rules have drifted apart.
  */
-std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
-                                              const TypePtr& paramType,
-                                              bool cVariadicTail);
+std::optional<ArgConversion> classifyArgument(
+    const sun::types::TypePtr& argType, const sun::types::TypePtr& paramType,
+    bool cVariadicTail);
 
 /**
  * classifyArgument for every argument of a call, in order. Throws the
  * compile error for a pair with no lowering.
  */
 std::vector<ArgConversion> classifyArguments(
-    const std::vector<TypePtr>& argTypes,
-    const std::vector<TypePtr>& paramTypes, bool cVariadic,
+    const std::vector<sun::types::TypePtr>& argTypes,
+    const std::vector<sun::types::TypePtr>& paramTypes, bool cVariadic,
     const std::string& calleeName, std::optional<sun::support::Position> loc);
 
 }  // namespace sun::semantic_analysis

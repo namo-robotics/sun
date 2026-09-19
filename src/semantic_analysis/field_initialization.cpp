@@ -58,6 +58,8 @@ using sun::support::Position;
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
+using sun::types::ClassType;
+using sun::types::typeNeedsDrop;
 
 /** Prepares default field initializers for constructor analysis. */
 void prepareFieldInitializers(sun::ast::ClassDefinitionAST& classDef) {

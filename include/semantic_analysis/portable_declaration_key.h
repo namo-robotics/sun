@@ -1,5 +1,10 @@
 #pragma once
 
+/** Defines shared type descriptions used by portable identities. */
+namespace sun::types {
+class Type;
+}
+
 /** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 class ExprAST;
@@ -21,7 +26,6 @@ namespace sun::semantic_analysis {
 
 class PortableDeclarationKey;
 class DeclarationTable;
-class Type;
 
 /** Structural type identity for independently compiled generic instances. */
 class PortableTypeKey {
@@ -32,7 +36,7 @@ class PortableTypeKey {
 
  public:
   /** Encode a concrete semantic type at an artifact boundary. */
-  static PortableTypeKey fromType(const Type& type,
+  static PortableTypeKey fromType(const sun::types::Type& type,
                                   const DeclarationTable& table);
   /** Identify a primitive by its stable language spelling. */
   static PortableTypeKey primitive(const std::string& name);

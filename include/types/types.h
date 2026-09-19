@@ -1,0 +1,21 @@
+/** Includes the shared Sun type model and its factories and queries. */
+#pragma once
+
+#include "types/array_type.h"
+#include "types/class_type.h"
+#include "types/enum_type.h"
+#include "types/error_union_type.h"
+#include "types/function_type.h"
+#include "types/interface_type.h"
+#include "types/lambda_type.h"
+#include "types/module_type.h"
+#include "types/nominal_type.h"
+#include "types/pointer_types.h"
+#include "types/primitive_type.h"
+#include "types/reference_type.h"
+#include "types/slice_type.h"
+#include "types/type.h"
+#include "types/type_factory.h"
+#include "types/type_identity.h"
+#include "types/type_parameter_type.h"
+#include "types/type_utils.h"

@@ -508,7 +508,7 @@ class UseFinder {
    */
   void considerFields(const sun::ast::StructLiteralAST& literal,
                       const std::string& file, const std::string& text) {
-    const sun::semantic_analysis::Type* type =
+    const sun::types::Type* type =
         stripReference(literal.getResolvedType().get());
     if (!type) return;
     const ExprAST* definition = findTypeDefinition(program_, *type);

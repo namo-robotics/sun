@@ -14,26 +14,28 @@
 
 #include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/symbol_names.h"
+#include "semantic_analysis/type_registry.h"
 #include "semantic_analysis/visibility.h"
 #include "support/error.h"
 
-using sun::semantic_analysis::ClassType;
 using sun::semantic_analysis::DeclarationId;
 using sun::semantic_analysis::DeclarationKind;
-using sun::semantic_analysis::InterfaceType;
 using sun::semantic_analysis::QualifiedName;
-using sun::semantic_analysis::TypePtr;
+using sun::types::ClassType;
+using sun::types::InterfaceType;
+using sun::types::TypePtr;
 
 using sun::support::logAndThrowError;
 using sun::support::Position;
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
+using sun::types::Type;
 
 using sun::semantic_analysis::fieldRef;
 using sun::semantic_analysis::methodRef;
 using sun::semantic_analysis::moduleRef;
-using sun::semantic_analysis::unwrapRef;
+using sun::types::unwrapRef;
 
 // isLibraryScope() is provided by semantic_scope.h
 
@@ -698,7 +700,7 @@ std::optional<FunctionInfo> SemanticContext::lookupFunction(
 // -------------------------------------------------------------------
 
 void SemanticContext::registerBuiltinFunctions() {
-  using sun::semantic_analysis::Types;
+  using sun::types::Types;
 
   // Low-level print intrinsics (used by stdlib print functions)
   currentScope().declareFunction("_print_i32",
@@ -1102,7 +1104,7 @@ const GenericInterfaceInfo* SemanticContext::lookupGenericInterface(
   return currentScope_->lookupGenericInterface(name);
 }
 
-std::shared_ptr<sun::semantic_analysis::EnumType> SemanticContext::lookupEnum(
+std::shared_ptr<sun::types::EnumType> SemanticContext::lookupEnum(
     const std::string& name) const {
   return currentScope_->lookupEnum(name);
 }
@@ -1127,31 +1129,29 @@ void SemanticContext::denyAccess(
       sun::semantic_analysis::denialMessage(item, declarationTable()), loc);
 }
 
-const sun::semantic_analysis::ClassField* SemanticContext::accessibleField(
+const sun::types::ClassField* SemanticContext::accessibleField(
     const ClassType& cls, const std::string& name, const Position& loc) const {
   const auto* f = cls.getField(name);
   if (f) requireAccessible(fieldRef(cls, *f), loc);
   return f;
 }
 
-const sun::semantic_analysis::ClassMethod* SemanticContext::accessibleMethod(
+const sun::types::ClassMethod* SemanticContext::accessibleMethod(
     const ClassType& cls, const std::string& name, const Position& loc) const {
   const auto* m = cls.getMethod(name);
   if (m) requireAccessible(methodRef(cls, *m), loc);
   return m;
 }
 
-const sun::semantic_analysis::ClassMethod*
-SemanticContext::accessibleMethodForArgs(const ClassType& cls,
-                                         const std::string& name,
-                                         const std::vector<TypePtr>& argTypes,
-                                         const Position& loc) const {
+const sun::types::ClassMethod* SemanticContext::accessibleMethodForArgs(
+    const ClassType& cls, const std::string& name,
+    const std::vector<TypePtr>& argTypes, const Position& loc) const {
   const auto* m = cls.getMethodForArgs(name, argTypes);
   if (m) requireAccessible(methodRef(cls, *m), loc);
   return m;
 }
 
-const sun::semantic_analysis::InterfaceField* SemanticContext::accessibleField(
+const sun::types::InterfaceField* SemanticContext::accessibleField(
     const InterfaceType& iface, const std::string& name,
     const Position& loc) const {
   const auto* f = iface.getField(name);
@@ -1159,10 +1159,9 @@ const sun::semantic_analysis::InterfaceField* SemanticContext::accessibleField(
   return f;
 }
 
-const sun::semantic_analysis::InterfaceMethod*
-SemanticContext::accessibleMethod(const InterfaceType& iface,
-                                  const std::string& name,
-                                  const Position& loc) const {
+const sun::types::InterfaceMethod* SemanticContext::accessibleMethod(
+    const InterfaceType& iface, const std::string& name,
+    const Position& loc) const {
   const auto* m = iface.getMethod(name);
   if (m) requireAccessible(methodRef(iface, *m), loc);
   return m;
@@ -1205,20 +1204,18 @@ SemanticScopeBase* SemanticContext::lookupModuleScope(DeclarationId id) const {
 DeclarationId SemanticContext::requireDeclaration(
     const sun::semantic_analysis::PortableDeclarationKey& key,
     const std::string& exporter,
-    std::optional<sun::semantic_analysis::Type::Kind> expectedKind,
+    std::optional<sun::types::Type::Kind> expectedKind,
     const std::string& displayName) const {
   auto id = typeRegistry_->declarations.findPortable(key);
   bool wrongKind = false;
   if (id) {
     auto kind = typeRegistry_->declarations.get(id).kind;
-    auto actual = kind == DeclarationKind::Class
-                      ? sun::semantic_analysis::Type::Kind::Class
-                  : kind == DeclarationKind::Interface
-                      ? sun::semantic_analysis::Type::Kind::Interface
-                  : kind == DeclarationKind::Enum
-                      ? sun::semantic_analysis::Type::Kind::Enum
-                      : sun::semantic_analysis::Type::Kind::Void;
-    wrongKind = actual == sun::semantic_analysis::Type::Kind::Void ||
+    auto actual =
+        kind == DeclarationKind::Class       ? sun::types::Type::Kind::Class
+        : kind == DeclarationKind::Interface ? sun::types::Type::Kind::Interface
+        : kind == DeclarationKind::Enum      ? sun::types::Type::Kind::Enum
+                                             : sun::types::Type::Kind::Void;
+    wrongKind = actual == sun::types::Type::Kind::Void ||
                 (expectedKind && actual != *expectedKind);
     if (!wrongKind) return id;
   }

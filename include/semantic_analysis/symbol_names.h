@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "semantic_analysis/types.h"
+#include "types/types.h"
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
@@ -29,6 +29,6 @@ inline bool isIntrinsic(const std::string& name) {
 /** Format a function signature for diagnostics and scope inspection. */
 std::string formatFunctionSignature(
     const std::string& name,
-    const std::vector<sun::semantic_analysis::TypePtr>& paramTypes);
+    const std::vector<sun::types::TypePtr>& paramTypes);
 
 }  // namespace sun::semantic_analysis

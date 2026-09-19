@@ -4628,7 +4628,7 @@ unique_ptr<EnumDefinitionAST> Parser::parseEnumDefinition() {
   std::string underlyingType;
   if (curTok.kind != TokenKind::BRACE_OPEN) {
     auto annotation = parseTypeAnnotation();
-    auto type = sun::semantic_analysis::Types::fromString(annotation.baseName);
+    auto type = sun::types::Types::fromString(annotation.baseName);
     if (!type || !type->isIntegral() || annotation.isGeneric()) {
       logAndThrowError("Enum underlying type must be an integer type", start);
     }

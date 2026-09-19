@@ -223,7 +223,7 @@ class FunctionGenerator {
   sun::codegen::abi::ExternCEmitter& externC();
   /** Transfers an argument value according to its ownership requirements. */
   llvm::Value* applyMoveSemantics(llvm::Value* argVal,
-                                  sun::semantic_analysis::TypePtr argSunType);
+                                  sun::types::TypePtr argSunType);
   /** Provides the registry of generated functions and their metadata. */
   FunctionRegistry& functions();
   /** Provides the generator for class storage and method operations. */

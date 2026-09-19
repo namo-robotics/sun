@@ -7,10 +7,10 @@
 #include "semantic_analysis/semantic_scope.h"
 
 using sun::semantic_analysis::ArgConversion;
-using sun::semantic_analysis::ClassType;
-using sun::semantic_analysis::InterfaceType;
-using sun::semantic_analysis::ReferenceType;
-using sun::semantic_analysis::TypePtr;
+using sun::types::ClassType;
+using sun::types::InterfaceType;
+using sun::types::ReferenceType;
+using sun::types::TypePtr;
 
 using sun::ast::CallExprAST;
 using sun::ast::ExprAST;
@@ -41,8 +41,7 @@ Value* CodegenVisitor::applyMoveSemantics(Value* argVal, TypePtr argSunType) {
   // (never memset: tag 0 is a real variant); a later drop of the source is
   // then a no-op through the drop function's switch default.
   if (isPayloadEnum(argSunType)) {
-    auto& enumType =
-        static_cast<sun::semantic_analysis::EnumType&>(*argSunType);
+    auto& enumType = static_cast<sun::types::EnumType&>(*argSunType);
     llvm::StructType* storageTy = typeResolver.getEnumStorageType(enumType);
     Value* structVal = ctx.builder->CreateLoad(storageTy, argVal, "move.enum");
     Value* tagPtr =
@@ -64,13 +63,13 @@ Value* CodegenVisitor::applyMoveSemantics(Value* argVal, TypePtr argSunType) {
   // A sized array moves its inline storage: load it, then zero the source
   // when its elements own anything, so the source's drop releases nothing
   if (auto* arrayType =
-          sun::codegen::support::tryGetType<sun::semantic_analysis::ArrayType>(
+          sun::codegen::support::tryGetType<sun::types::ArrayType>(
               argSunType)) {
     if (arrayType->isUnsized()) return argVal;
     llvm::Type* storageType = arrayType->getDataStorageType(ctx.getContext());
     Value* storageVal =
         ctx.builder->CreateLoad(storageType, argVal, "move.array");
-    if (sun::semantic_analysis::typeNeedsDrop(argSunType)) {
+    if (sun::types::typeNeedsDrop(argSunType)) {
       const DataLayout& DL = module->getDataLayout();
       ctx.builder->CreateMemSet(
           argVal, ConstantInt::get(llvm::Type::getInt8Ty(ctx.getContext()), 0),
@@ -448,8 +447,9 @@ Value* CodegenVisitor::codegenBuiltinTypeMethod(const CallExprAST& expr,
 
   // static_ptr<T>.length() -> i64, static_ptr<T>.raw() -> raw_ptr<T>.
   // A static_ptr<Class> dispatches to the class's own methods instead.
-  if (auto* staticPtr = sun::codegen::support::tryGetType<
-          sun::semantic_analysis::StaticPointerType>(objectType)) {
+  if (auto* staticPtr =
+          sun::codegen::support::tryGetType<sun::types::StaticPointerType>(
+              objectType)) {
     TypePtr pointeeType = staticPtr->getPointeeType();
     if (pointeeType && pointeeType->isClass()) return nullptr;
 
@@ -485,8 +485,9 @@ Value* CodegenVisitor::codegenModuleFunctionCall(
   // without it every coercion degrades to a no-op, which is what this call
   // path used to do unconditionally.
   std::vector<TypePtr> paramTypes;
-  if (auto* calleeType = sun::codegen::support::tryGetType<
-          sun::semantic_analysis::FunctionType>(memberAccess)) {
+  if (auto* calleeType =
+          sun::codegen::support::tryGetType<sun::types::FunctionType>(
+              memberAccess)) {
     paramTypes = calleeType->getParamTypes();
   }
 
@@ -517,7 +518,7 @@ Value* CodegenVisitor::codegenInterfaceMethodCall(
     const CallExprAST& expr, Value* objectPtr, InterfaceType* ifaceType,
     const std::string& methodName) {
   const auto& signature =
-      sun::codegen::support::requireType<sun::semantic_analysis::FunctionType>(
+      sun::codegen::support::requireType<sun::types::FunctionType>(
           *expr.getCallee(), "interface method call");
   int methodIndex =
       ifaceType->getMethodIndex(expr.getCallee()->getTargetDeclarationId());
@@ -590,7 +591,7 @@ Value* CodegenVisitor::codegenClassMethodCall(
   if (!memberAccess)
     logAndThrowError("Internal error: method call without member access AST");
   const auto& signature =
-      sun::codegen::support::requireType<sun::semantic_analysis::FunctionType>(
+      sun::codegen::support::requireType<sun::types::FunctionType>(
           *memberAccess, "method '" + methodName + "'");
   Function* methodFunc =
       functions.lookupFunctionById(memberAccess->getTargetDeclarationId());
@@ -633,7 +634,7 @@ Value* CodegenVisitor::codegenMethodCall(const CallExprAST& expr,
 
   // Handle module-qualified function call: mymod.foo()
   if (auto* moduleType =
-          sun::codegen::support::tryGetType<sun::semantic_analysis::ModuleType>(
+          sun::codegen::support::tryGetType<sun::types::ModuleType>(
               objectType)) {
     return codegenModuleFunctionCall(expr, methodName, memberAccess);
   }
@@ -641,8 +642,7 @@ Value* CodegenVisitor::codegenMethodCall(const CallExprAST& expr,
   // Enum variant construction: EnumName.Variant(args...). Sema resolved the
   // object to the enum type and validated arity/types.
   if (auto* enumType =
-          sun::codegen::support::tryGetType<sun::semantic_analysis::EnumType>(
-              objectType)) {
+          sun::codegen::support::tryGetType<sun::types::EnumType>(objectType)) {
     const auto* variant = enumType->getVariant(methodName);
     if (variant && variant->hasPayload()) {
       return enums.codegenVariantConstruction(expr, *enumType, *variant);
@@ -653,8 +653,8 @@ Value* CodegenVisitor::codegenMethodCall(const CallExprAST& expr,
 
   // arr.ndims() and arr.dim(i) on arrays and views
   if ((methodName == "ndims" || methodName == "dim") &&
-      sun::codegen::support::tryGetType<sun::semantic_analysis::ArrayType>(
-          sun::semantic_analysis::unwrapRef(objectType))) {
+      sun::codegen::support::tryGetType<sun::types::ArrayType>(
+          sun::types::unwrapRef(objectType))) {
     return codegenArrayQuery(expr, memberAccess);
   }
 
@@ -693,7 +693,7 @@ Value* CodegenVisitor::codegenMethodCall(const CallExprAST& expr,
   }
 
   // Handle reference types - unwrap to get the underlying type
-  objectType = sun::semantic_analysis::unwrapRef(objectType);
+  objectType = sun::types::unwrapRef(objectType);
 
   // Handle interface dispatch
   if (auto* ifaceType =
@@ -718,10 +718,10 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
   // Check if this is a method call (MemberAccessAST as callee)
   if (auto* memberAccess =
           dynamic_cast<const MemberAccessAST*>(expr.getCallee())) {
-    TypePtr ownerType = sun::semantic_analysis::unwrapRef(
-        memberAccess->getObject()->getResolvedType());
+    TypePtr ownerType =
+        sun::types::unwrapRef(memberAccess->getObject()->getResolvedType());
     auto* ownerClass = sun::codegen::support::tryGetType<ClassType>(ownerType);
-    const sun::semantic_analysis::ClassField* field =
+    const sun::types::ClassField* field =
         ownerClass
             ? ownerClass->getField(memberAccess->getTargetDeclarationId())
             : nullptr;
@@ -769,15 +769,14 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
   Value* result;
   TypePtr calleeReturnType;
   if (auto* lambdaType =
-          sun::codegen::support::tryGetType<sun::semantic_analysis::LambdaType>(
+          sun::codegen::support::tryGetType<sun::types::LambdaType>(
               calleeSunType)) {
     result = codegenLambdaCall(expr, calleeName, *lambdaType);
     calleeReturnType = lambdaType->getReturnType();
   } else {
     // Handle Function type: direct call
     const auto& funcType =
-        static_cast<const sun::semantic_analysis::FunctionType&>(
-            *calleeSunType);
+        static_cast<const sun::types::FunctionType&>(*calleeSunType);
     result = codegenFunctionCall(expr, calleeName, funcType);
     calleeReturnType = funcType.getReturnType();
   }
@@ -835,9 +834,8 @@ bool CodegenVisitor::emitCallArguments(
         // The argument's storage, seen with its rank erased
         Value* storage = codegen(*argExpr);
         if (!storage) return false;
-        auto* sized = sun::codegen::support::tryGetType<
-            sun::semantic_analysis::ArrayType>(
-            sun::semantic_analysis::unwrapRef(argSunType));
+        auto* sized = sun::codegen::support::tryGetType<sun::types::ArrayType>(
+            sun::types::unwrapRef(argSunType));
         if (!storage->getType()->isPointerTy()) {
           Function* func = ctx.builder->GetInsertBlock()->getParent();
           AllocaInst* temp = createEntryBlockAlloca(
@@ -858,15 +856,15 @@ bool CodegenVisitor::emitCallArguments(
         Value* classPtr = prepareRefArgument(argExpr, argSunType);
         if (!classPtr) return false;
         argVal = classes.prepareClassForRefInterface(
-            classPtr, sun::semantic_analysis::unwrapRef(argSunType), paramType);
+            classPtr, sun::types::unwrapRef(argSunType), paramType);
         break;
       }
 
       case ArgConversion::ClassToInterface: {
         argVal = codegen(*argExpr);
         if (!argVal) return false;
-        auto* classType = static_cast<ClassType*>(
-            sun::semantic_analysis::unwrapRef(argSunType).get());
+        auto* classType =
+            static_cast<ClassType*>(sun::types::unwrapRef(argSunType).get());
         auto* ifaceType = static_cast<InterfaceType*>(paramType.get());
         argVal = classes.createOwnedInterfaceFatPointer(argVal, classType,
                                                         ifaceType);
@@ -907,7 +905,7 @@ bool CodegenVisitor::emitCallArguments(
       case ArgConversion::PassValue: {
         argVal = codegen(*argExpr);
         if (!argVal) return false;
-        TypePtr valueType = sun::semantic_analysis::unwrapRef(argSunType);
+        TypePtr valueType = sun::types::unwrapRef(argSunType);
         // Representation only: an interface value is carried as the address
         // of its fat pointer, a lambda literal as the address of its closure;
         // the parameter takes each by value.
@@ -999,7 +997,7 @@ bool CodegenVisitor::emitExternArguments(
 
 Value* CodegenVisitor::codegenFunctionCall(
     const CallExprAST& expr, const std::string& calleeName,
-    const sun::semantic_analysis::FunctionType& funcType) {
+    const sun::types::FunctionType& funcType) {
   // For Function types, we need to:
   // 1. Look up the llvm::Function directly
   // 2. Call it directly without any closure indirection
@@ -1070,7 +1068,7 @@ Value* CodegenVisitor::codegenFunctionCall(
 
 Value* CodegenVisitor::codegenLambdaCall(
     const CallExprAST& expr, const std::string& calleeName,
-    const sun::semantic_analysis::LambdaType& lambdaType) {
+    const sun::types::LambdaType& lambdaType) {
   // For Lambda types, we need to:
   // 1. Get the closure pointer (fat pointer)
   // 2. Extract the function pointer from the closure
