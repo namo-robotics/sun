@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { ArrowRightIcon } from 'nextra/icons'
 import { flushSync } from 'react-dom'
 import { useEffect, useRef, useState, type ComponentProps, type MouseEvent } from 'react'
 
@@ -53,8 +54,11 @@ export function CompilerTreeBranch({ onBeforeExpand, ...props }: ComponentProps<
 }
 
 /** Keeps namespace links and disclosure controls independently usable. */
-export function CompilerTreeSummary(props: ComponentProps<'summary'>) {
-  return <summary {...props} />
+export function CompilerTreeSummary({ children, ...props }: ComponentProps<'summary'>) {
+  return <summary {...props}>
+    <ArrowRightIcon className="compiler-tree-arrow" aria-hidden="true" />
+    {children}
+  </summary>
 }
 
 /** A labeled reference-tree entry with optional navigation and nested children. */
