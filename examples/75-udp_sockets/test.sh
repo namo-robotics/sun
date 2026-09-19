@@ -6,6 +6,7 @@ DIR=$(dirname "$0")
 cd "$DIR"
 
 out=$(mktemp)
+# Stops the background example server and removes captured output.
 cleanup() { kill "$RPID" 2>/dev/null || true; wait "$RPID" 2>/dev/null || true; rm -f "$out"; }
 trap cleanup EXIT
 

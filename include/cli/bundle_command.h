@@ -26,7 +26,7 @@ int buildMoonBundle(const std::string& entrypoint,
                     const sun::moon_bundling::MoonBuildOptions& buildOptions);
 
 /**
- * sun --emit-moon [-o <file>] <entrypoint.sun>
+ * sun --emit-moon [-o &lt;file&gt;] <entrypoint.sun>
  * Bundles the first input file, to the -o path or a default next to it.
  */
 int runBundleCommand(const BuildRunOptions& options);

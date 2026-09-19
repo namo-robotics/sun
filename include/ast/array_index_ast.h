@@ -20,7 +20,7 @@ class ArrayIndexAST : public ExprAST {
   std::vector<std::unique_ptr<ExprAST>> indices;  // One or more indices
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   ArrayIndexAST(std::unique_ptr<ExprAST> arr,
                 std::vector<std::unique_ptr<ExprAST>> idxs)
       : array(std::move(arr)), indices(std::move(idxs)) {}
@@ -35,7 +35,7 @@ class ArrayIndexAST : public ExprAST {
     }
     return result + "]";
   }
-  /** Returns the array stored by this object. */
+  /** Returns the array expression. */
   const ExprAST* getArray() const { return array.get(); }
   /** Provides the index expressions used to select array elements. */
   const std::vector<std::unique_ptr<ExprAST>>& getIndices() const {

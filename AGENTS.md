@@ -23,7 +23,8 @@ A file for guiding coding agents.
 
 ## Code Comments (all code, including .sun files)
 - Write concise comments in plain English for a general audience of software engineers.
-- Every namespace, function, and type definition must have a documentation block comment (`/** ... */`) describing what it does or what it is for. This applies to all first-party source code, including C++ and `.sun` files, regardless of visibility.
+- Every namespace, function, and type definition must have a documentation comment describing what it does or what it is for. This applies to all first-party source code, including C++ and `.sun` files, regardless of visibility.
+- Use `/** ... */` blocks in C++, Sun, and JavaScript/TypeScript. Use the language's native equivalent elsewhere, such as Python docstrings or a shell comment block.
 - Cover private and internal helpers, methods, constructors, destructors, anonymous namespaces, classes, structs, interfaces, enums, and type aliases, as well as public APIs. Document modules too.
 - Put the comment immediately before the declaration or definition it documents. For a function declared in a header and implemented separately, document the declaration; add implementation comments when they explain details beyond that contract.
 - Explain the purpose or behavior instead of merely restating the symbol name. Mention ownership, side effects, constraints, or failure behavior when needed to understand correct use.

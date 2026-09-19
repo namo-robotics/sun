@@ -81,7 +81,7 @@ class Lifetime {
   // Accessors
   /** Returns the type category used for semantic checks and dispatch. */
   Kind getKind() const { return kind_; }
-  /** Returns the id stored by this object. */
+  /** Returns the object identifier. */
   uint32_t getId() const { return id_; }
   /** Returns the declared name used to identify this object. */
   const std::string& getName() const { return name_; }

@@ -143,7 +143,7 @@ class SunJIT {
   /** Returns the target triple stored by this object. */
   const Triple& getTargetTriple() const { return TT; }
 
-  /** Returns the main jit dylib stored by this object. */
+  /** Returns the JIT symbol table for the main program. */
   JITDylib& getMainJITDylib() { return MainJD; }
 
   /** Adds an LLVM module to the JIT under the supplied resource tracker. */

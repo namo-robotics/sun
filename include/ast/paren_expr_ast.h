@@ -19,14 +19,14 @@ class ParenExprAST : public ExprAST {
   std::unique_ptr<ExprAST> inner_;
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   explicit ParenExprAST(std::unique_ptr<ExprAST> inner)
       : inner_(std::move(inner)) {}
 
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::PAREN_EXPR; }
 
-  /** Returns the inner stored by this object. */
+  /** Returns the enclosed expression. */
   const ExprAST* getInner() const { return inner_.get(); }
 
   /**

@@ -3333,6 +3333,7 @@ unique_ptr<ModuleAST> Parser::parseModuleDecl() {
 
   expectCurrentTokenKind(TokenKind::IDENTIFIER, "expected module name");
 
+  /** A module-path component and its source position. */
   struct Segment {
     std::string name;
     Position location;

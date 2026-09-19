@@ -100,7 +100,7 @@ class LLVMTypeResolver {
 
   /**
    * Get or create the shared static pointer struct type { ptr, i64 }.
-   * Used for static_ptr<T> types.
+   * Used for static_ptr&lt;T&gt; types.
    */
   llvm::StructType* getStaticPtrType();
 

@@ -45,7 +45,7 @@ class TryCatchExprAST : public ExprAST {
   std::vector<CatchClause> catchClauses;   // One or more catch handlers
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   TryCatchExprAST(std::unique_ptr<BlockExprAST> tryBlk,
                   std::vector<CatchClause> catchCls)
       : tryBlock(std::move(tryBlk)), catchClauses(std::move(catchCls)) {}

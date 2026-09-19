@@ -68,7 +68,7 @@ class ManifestAST : public ExprAST {
   std::vector<ManifestSunDependency> testSuns;
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   ManifestAST(std::vector<ManifestSunDependency> suns,
               std::vector<ManifestMoonDependency> moons,
               std::vector<ManifestProtoDependency> protos = {},
@@ -87,11 +87,11 @@ class ManifestAST : public ExprAST {
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override { return "manifest"; }
 
-  /** Returns the suns stored by this object. */
+  /** Returns the source dependencies. */
   const std::vector<ManifestSunDependency>& getSuns() const { return suns; }
-  /** Returns the moons stored by this object. */
+  /** Returns the compiled-library dependencies. */
   const std::vector<ManifestMoonDependency>& getMoons() const { return moons; }
-  /** Returns the protos stored by this object. */
+  /** Returns the protobuf dependencies. */
   const std::vector<ManifestProtoDependency>& getProtos() const {
     return protos;
   }
@@ -99,9 +99,9 @@ class ManifestAST : public ExprAST {
   const std::vector<ManifestArchiveDependency>& getArchives() const {
     return archives;
   }
-  /** Returns the targets stored by this object. */
+  /** Returns the target-specific dependency settings. */
   const std::vector<ManifestTargetBlock>& getTargets() const { return targets; }
-  /** Returns the test suns stored by this object. */
+  /** Returns the test-source dependencies. */
   const std::vector<ManifestSunDependency>& getTestSuns() const {
     return testSuns;
   }

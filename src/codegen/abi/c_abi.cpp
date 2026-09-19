@@ -9,6 +9,7 @@
 /** Adapts Sun values and calls to the target C calling convention. */
 namespace sun::codegen::abi {
 
+/** Classifies every parameter and the result of a C function signature. */
 SignatureLowering lowerCSignature(const llvm::Triple& triple,
                                   llvm::Type* returnType,
                                   llvm::ArrayRef<llvm::Type*> paramTypes,
@@ -32,6 +33,7 @@ SignatureLowering lowerCSignature(const llvm::Triple& triple,
       "'; extern \"C\" supports x86_64 and aarch64 only");
 }
 
+/** Builds the LLVM function type required by a lowered C signature. */
 llvm::FunctionType* buildLoweredFunctionType(const SignatureLowering& lowering,
                                              llvm::LLVMContext& ctx,
                                              bool isVarArg) {

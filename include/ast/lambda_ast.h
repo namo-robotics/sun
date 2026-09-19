@@ -20,7 +20,7 @@ class LambdaAST : public ExprAST {
   std::unique_ptr<BlockExprAST> Body;
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   LambdaAST(std::unique_ptr<PrototypeAST> Proto,
             std::unique_ptr<BlockExprAST> Body)
       : Proto(std::move(Proto)), Body(std::move(Body)) {}

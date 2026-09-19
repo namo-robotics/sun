@@ -41,7 +41,7 @@ class CallExprAST : public ExprAST {
   }
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   CallExprAST(std::unique_ptr<ExprAST> Callee,
               std::vector<std::unique_ptr<ExprAST>> Args)
       : Callee(std::move(Callee)), Args(std::move(Args)) {}
@@ -75,7 +75,7 @@ class CallExprAST : public ExprAST {
       std::vector<sun::semantic_analysis::ArgConversion> conversions) const {
     callAnalysis().argConversions = std::move(conversions);
   }
-  /** Returns the arg conversions stored by this object. */
+  /** Returns the argument conversions selected by analysis. */
   const std::vector<sun::semantic_analysis::ArgConversion>& getArgConversions()
       const {
     return callAnalysis().argConversions;

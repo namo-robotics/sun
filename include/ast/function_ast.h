@@ -45,7 +45,7 @@ class FunctionAST : public ExprAST {
   }
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   FunctionAST(std::unique_ptr<PrototypeAST> Proto,
               std::unique_ptr<BlockExprAST> Body)
       : Proto(std::move(Proto)), Body(std::move(Body)) {}
@@ -104,7 +104,7 @@ class FunctionAST : public ExprAST {
   }
   /** Provides the function signature independently of its body. */
   const PrototypeAST& getProto() const { return *Proto; }
-  /** Returns the proto mut stored by this object. */
+  /** Returns the modifiable function signature. */
   PrototypeAST& getProtoMut() { return *Proto; }
   /** Provides access to the expressions that make up the body. */
   const BlockExprAST& getBody() const {
@@ -154,7 +154,7 @@ class FunctionAST : public ExprAST {
    * into the test binary; production builds and .moon bundles strip them.
    */
   bool isTest() const { return IsTest; }
-  /** Updates the is test stored by this object. */
+  /** Marks whether the function is a discoverable test. */
   void setIsTest(bool v) { IsTest = v; }
   /** Reports whether a function body is present rather than just a declaration. */
   bool hasBody() const { return Body != nullptr; }

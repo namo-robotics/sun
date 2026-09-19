@@ -41,7 +41,7 @@ class DeclareTypeAST : public ExprAST {
   }
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   DeclareTypeAST(TypeAnnotation type,
                  std::optional<std::string> alias = std::nullopt)
       : aliasName(std::move(alias)), typeAnnotation(std::move(type)) {}

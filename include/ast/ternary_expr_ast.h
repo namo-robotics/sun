@@ -19,7 +19,7 @@ class TernaryExprAST : public ExprAST {
   std::unique_ptr<ExprAST> cond, thenExpr, elseExpr;
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   TernaryExprAST(std::unique_ptr<ExprAST> cond,
                  std::unique_ptr<ExprAST> thenExpr,
                  std::unique_ptr<ExprAST> elseExpr, sun::support::Position loc)
@@ -42,11 +42,11 @@ class TernaryExprAST : public ExprAST {
     return cond->toString() + " ? " + thenExpr->toString() + " : " +
            elseExpr->toString();
   }
-  /** Returns the cond stored by this object. */
+  /** Returns the condition expression. */
   ExprAST* getCond() const { return cond.get(); }
-  /** Returns the then stored by this object. */
+  /** Returns the branch taken when the condition is true. */
   ExprAST* getThen() const { return thenExpr.get(); }
-  /** Returns the else stored by this object. */
+  /** Returns the alternative branch. */
   ExprAST* getElse() const { return elseExpr.get(); }
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "Ternary\n?:"; }

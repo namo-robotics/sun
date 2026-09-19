@@ -39,10 +39,10 @@ class BlockExprAST : public ExprAST {
   BlockKind Kind = BlockKind::Anonymous;
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   BlockExprAST() = default;
 
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   explicit BlockExprAST(std::vector<std::unique_ptr<ExprAST>> body,
                         BlockKind kind = BlockKind::Anonymous)
       : Body(std::move(body)), Kind(kind) {}

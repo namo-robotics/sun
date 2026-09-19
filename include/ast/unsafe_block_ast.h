@@ -17,7 +17,7 @@ class UnsafeBlockAST : public ExprAST {
   bool expressionForm;
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   explicit UnsafeBlockAST(std::unique_ptr<BlockExprAST> b,
                           bool expressionForm = false)
       : body(std::move(b)), expressionForm(expressionForm) {}

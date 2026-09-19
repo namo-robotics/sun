@@ -36,7 +36,7 @@ class VariableReferenceAST : public ExprAST {
   }
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   explicit VariableReferenceAST(std::string Name) : Name(std::move(Name)) {}
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override {

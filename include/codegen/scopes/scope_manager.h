@@ -313,7 +313,7 @@ class ScopeManager {
                        const std::string& baseName);
 
   /**
-   * Emit cleanup code for raw_ptr<T> fields in a class, recursively freeing
+   * Emit cleanup code for raw_ptr&lt;T&gt; fields in a class, recursively freeing
    * pointer fields before the containing object is freed.
    */
   void emitFieldCleanup(llvm::Value* objectPtr, const ClassType* classType,

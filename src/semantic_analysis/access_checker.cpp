@@ -31,6 +31,7 @@ ModulePath ownerPath(const ItemRef& item, const DeclarationTable& table) {
 
 }  // namespace
 
+/** Describes the scope owning an inaccessible declaration. */
 std::string describeOwner(const ItemRef& item, const DeclarationTable& table) {
   const auto owner = ownerPath(item, table);
   std::string modulePart;
@@ -46,6 +47,7 @@ std::string describeOwner(const ItemRef& item, const DeclarationTable& table) {
   return item.ownerTypeName + " in " + modulePart;
 }
 
+/** Builds a diagnostic explaining why a declaration cannot be accessed. */
 std::string denialMessage(const ItemRef& item, const DeclarationTable& table) {
   std::string kind = item.kind ? item.kind : "item";
   std::string subject = kind == "field" || kind == "method"
@@ -55,6 +57,7 @@ std::string denialMessage(const ItemRef& item, const DeclarationTable& table) {
          " and cannot be accessed here";
 }
 
+/** Reports whether the requesting declaration may access the target declaration. */
 bool isAccessible(DeclarationId from, const ItemRef& item,
                   const DeclarationTable& table) {
   if (item.visibility == Visibility::Public) return true;
@@ -72,6 +75,7 @@ void denyAccess(const ItemRef& item, const sun::support::Position& loc,
   sun::support::logSemanticError(denialMessage(item, table), loc);
 }
 
+/** Reports a compiler error when the requesting declaration cannot access the target. */
 void requireAccessible(DeclarationId from, const ItemRef& item,
                        const sun::support::Position& loc,
                        const DeclarationTable& table) {
@@ -129,6 +133,7 @@ ItemRef fieldRef(const sun::semantic_analysis::ClassType& cls,
           cls.getDeclarationId()};
 }
 
+/** Creates the declaration reference used to check access to a method. */
 ItemRef methodRef(const sun::semantic_analysis::ClassType& cls,
                   const sun::semantic_analysis::ClassMethod& m) {
   return {"method", m.name,
@@ -136,12 +141,14 @@ ItemRef methodRef(const sun::semantic_analysis::ClassType& cls,
           cls.getDeclarationId()};
 }
 
+/** Creates the declaration reference used to check access to a field. */
 ItemRef fieldRef(const sun::semantic_analysis::InterfaceType& iface,
                  const sun::semantic_analysis::InterfaceField& f) {
   return {"field", f.name, "interface '" + iface.getBaseName() + "'",
           f.visibility, iface.getDeclarationId()};
 }
 
+/** Creates the declaration reference used to check access to a method. */
 ItemRef methodRef(const sun::semantic_analysis::InterfaceType& iface,
                   const sun::semantic_analysis::InterfaceMethod& m) {
   return {"method", m.name, "interface '" + iface.getBaseName() + "'",

@@ -127,6 +127,7 @@ void bindDeclarationTypes(google::protobuf::Message& message,
 }
 }  // namespace
 
+/** Serializes a semantic type with its portable declaration identity. */
 pbc::TypeAnnotation exportType(
     const sun::semantic_analysis::TypePtr& type,
     const sun::semantic_analysis::DeclarationTable& declarations) {
@@ -198,6 +199,7 @@ pbc::TypeAnnotation exportType(
   return out;
 }
 
+/** Resolves serialized type references in the active semantic context. */
 void bindMetadataTypes(google::protobuf::Message& message,
                        sun::semantic_analysis::SemanticContext& context) {
   bindDeclarationTypes(message, context, {});

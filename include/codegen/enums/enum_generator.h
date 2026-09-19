@@ -52,7 +52,7 @@ class EnumGenerator {
   void emitDrop(EnumType& enumType, llvm::Value* storagePtr);
 
  private:
-  /** Returns the or create drop function stored by this object. */
+  /** Returns the enum cleanup function, generating it when first needed. */
   llvm::Function* getOrCreateDropFunction(EnumType& enumType);
   /** Provides the scope manager responsible for variable storage and cleanup. */
   sun::codegen::scopes::ScopeManager& scopes();

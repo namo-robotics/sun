@@ -1,5 +1,9 @@
 // analysis.h — Analysis structures populated by semantic analyzer
 
+/** @namespace sun
+ * Contains the Sun compiler and its supporting tools.
+ */
+
 #pragma once
 
 #include <map>

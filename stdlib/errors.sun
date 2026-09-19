@@ -80,7 +80,7 @@ public module std {
     init() {}
 
     /**
-     * Always 1.
+     * Returns the code identifying this error category.
      */
     public method code() i32 {
       return 1;
@@ -106,7 +106,7 @@ public module std {
     init() {}
 
     /**
-     * Always 2.
+     * Returns the code identifying this error category.
      */
     public method code() i32 {
       return 2;
@@ -136,7 +136,7 @@ public module std {
     }
 
     /**
-     * Always 3.
+     * Returns the code identifying this error category.
      */
     public method code() i32 {
       return 3;
@@ -169,7 +169,7 @@ public module std {
     init() {}
 
     /**
-     * Always 4.
+     * Returns the code identifying this error category.
      */
     public method code() i32 {
       return 4;
@@ -195,7 +195,7 @@ public module std {
     init() {}
 
     /**
-     * Always 5.
+     * Returns the code identifying this error category.
      */
     public method code() i32 {
       return 5;
@@ -234,7 +234,7 @@ public module std {
     }
 
     /**
-     * Always 6.
+     * Returns the code identifying this error category.
      */
     public method code() i32 {
       return 6;
@@ -302,7 +302,7 @@ public module std {
     }
 
     /**
-     * Always 7.
+     * Returns the code identifying this error category.
      */
     public method code() i32 {
       return 7;
@@ -335,7 +335,7 @@ public module std {
     init() {}
 
     /**
-     * Always 9.
+     * Returns the code identifying this error category.
      */
     public method code() i32 {
       return 9;

@@ -75,7 +75,7 @@ int compileEntrypoint(const CompileJob& job);
 int compileTestBinary(const CompileJob& job, bool hasExecutable = true);
 
 /**
- * sun -c [-o <file>] <script.sun>...  and  sun --emit-obj ...
+ * sun -c [-o &lt;file&gt;] <script.sun>...  and  sun --emit-obj ...
  * Compiles the input files, naming the output after the first one unless -o
  * says otherwise.
  */

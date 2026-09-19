@@ -18,7 +18,7 @@ using sun::semantic_analysis::TypePtr;
 
 /**
  * Generic function call: create<Type>(args...) or create<Type1, Type2>(args...)
- * Used for generic free functions like create<T>, destroy, etc.
+ * Used for generic free functions like create&lt;T&gt;, destroy, etc.
  */
 class GenericCallAST : public ExprAST {
   std::string functionName;  // e.g., "create", "destroy"
@@ -46,7 +46,7 @@ class GenericCallAST : public ExprAST {
   }
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   GenericCallAST(std::string name,
                  std::vector<std::unique_ptr<TypeAnnotation>> typeArgs,
                  std::vector<std::unique_ptr<ExprAST>> arguments)
@@ -103,17 +103,17 @@ class GenericCallAST : public ExprAST {
       std::vector<sun::semantic_analysis::ArgConversion> conversions) const {
     gcAnalysis().argConversions = std::move(conversions);
   }
-  /** Returns the arg conversions stored by this object. */
+  /** Returns the argument conversions selected by analysis. */
   const std::vector<sun::semantic_analysis::ArgConversion>& getArgConversions()
       const {
     return gcAnalysis().argConversions;
   }
 
-  /** Updates the resolved type args stored by this object. */
+  /** Updates the concrete generic type arguments. */
   void setResolvedTypeArgs(std::vector<TypePtr> types) const {
     gcAnalysis().resolvedTypeArgs = std::move(types);
   }
-  /** Returns the resolved type args stored by this object. */
+  /** Returns the concrete generic type arguments. */
   const std::vector<TypePtr>& getResolvedTypeArgs() const {
     return gcAnalysis().resolvedTypeArgs;
   }

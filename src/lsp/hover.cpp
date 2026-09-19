@@ -28,6 +28,7 @@ namespace {
 // Rendering types and signatures
 // ---------------------------------------------------------------------------
 
+/** Formats a semantic type for editor hover text. */
 std::string renderType(const sun::semantic_analysis::Type& type,
                        const Bindings& bindings);
 

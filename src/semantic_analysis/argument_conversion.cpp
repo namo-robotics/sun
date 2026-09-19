@@ -59,7 +59,7 @@ ArgConversion byValue(const TypePtr& argType) {
 }
 
 /**
- * True if `target` is an unsized array<T> and `value` a sized array of the
+ * True if `target` is an unsized array&lt;T&gt; and `value` a sized array of the
  * same element type: the argument's storage is viewed with its rank erased.
  */
 bool decaysToView(const TypePtr& value, const TypePtr& target) {

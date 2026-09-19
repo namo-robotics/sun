@@ -496,7 +496,7 @@ class Parser {
   unique_ptr<ExprAST> parseUnsafeBlock();
 
   /**
-   * Throw expression parsing: throw <expr>
+   * Throw expression parsing: throw &lt;expr&gt;
    */
   unique_ptr<ExprAST> parseThrow();
 
@@ -622,7 +622,7 @@ class Parser {
    * Check if string interpolation was used during parsing
    */
   bool usesStringInterpolation() const { return usesStringInterpolation_; }
-  /** Updates the uses string interpolation stored by this object. */
+  /** Records whether this string contains embedded expressions. */
   void setUsesStringInterpolation(bool value) {
     usesStringInterpolation_ = value;
   }

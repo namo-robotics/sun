@@ -39,17 +39,17 @@ class NumberExprAST : public ExprAST {
   std::string suffix_;
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   NumberExprAST(uint64_t magnitude, Sign sign, std::string suffix = "")
       : value_(
             IntegerValue{magnitude, sign == Sign::Negative && magnitude != 0}),
         suffix_(std::move(suffix)) {}
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   explicit NumberExprAST(int64_t intVal)
       : NumberExprAST(intVal < 0 ? uint64_t(0) - static_cast<uint64_t>(intVal)
                                  : static_cast<uint64_t>(intVal),
                       intVal < 0 ? Sign::Negative : Sign::Positive) {}
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   explicit NumberExprAST(double floatVal, std::string suffix = "")
       : value_(floatVal), suffix_(std::move(suffix)) {}
   /** Returns the syntax-node kind used to dispatch tree visitors. */
@@ -62,7 +62,7 @@ class NumberExprAST : public ExprAST {
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "Number\n" + toString(); }
 
-  /** Reports whether this syntax node represents integer. */
+  /** Reports whether this syntax node represents an integer literal. */
   bool isInteger() const {
     return std::holds_alternative<IntegerValue>(value_);
   }
@@ -100,7 +100,7 @@ class NumberExprAST : public ExprAST {
     const auto& v = std::get<IntegerValue>(value_);
     return (v.negative ? "-" : "") + std::to_string(v.magnitude);
   }
-  /** Returns the float val stored by this object. */
+  /** Returns the floating-point literal value. */
   double getFloatVal() const { return std::get<double>(value_); }
 
   /**

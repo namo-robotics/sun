@@ -192,7 +192,7 @@ std::shared_ptr<T> requireTypePtr(const ExprAST& expr, std::string_view what) {
 }
 
 /**
- * What a raw_ptr<T> or static_ptr<T> points at; null for every other type.
+ * What a raw_ptr&lt;T&gt; or static_ptr&lt;T&gt; points at; null for every other type.
  * Both spellings are just an address at a call site, so the code that looks
  * through one rarely cares which it had.
  */

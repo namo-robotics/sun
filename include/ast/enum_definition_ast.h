@@ -46,7 +46,7 @@ struct EnumVariantDecl {
 
 /**
  * Enum definition: enum Name { Variant1, Variant2(T1, T2), ... }
- * Generic form: enum Option<T> { Some(T), None }
+ * Generic form: enum Option&lt;T&gt; { Some(T), None }
  */
 class EnumDefinitionAST : public ExprAST {
   std::string name;
@@ -68,7 +68,7 @@ class EnumDefinitionAST : public ExprAST {
   bool hasQualifiedName() const { return !qualifiedName.baseName.empty(); }
   /** Record the defining name independently of visible aliases. */
   void setQualifiedName(QualifiedName name) { qualifiedName = std::move(name); }
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   EnumDefinitionAST(std::string name, std::vector<EnumVariantDecl> variants,
                     bool precompiled = false,
                     std::vector<TypeParameter> typeParams = {},
@@ -175,7 +175,7 @@ class EnumDefinitionAST : public ExprAST {
   const std::string& getName() const { return name; }
   /** Provides the alternatives declared by this enum. */
   const std::vector<EnumVariantDecl>& getVariants() const { return variants; }
-  /** Returns the mutable variants stored by this object. */
+  /** Returns the modifiable enum alternatives. */
   std::vector<EnumVariantDecl>& getMutableVariants() { return variants; }
 
   /**

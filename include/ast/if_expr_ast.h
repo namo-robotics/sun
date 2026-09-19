@@ -15,7 +15,7 @@ class IfExprAST : public ExprAST {
   std::unique_ptr<ExprAST> Cond, Then, Else;
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   IfExprAST(std::unique_ptr<ExprAST> Cond, std::unique_ptr<ExprAST> Then,
             std::unique_ptr<ExprAST> Else)
       : Cond(std::move(Cond)), Then(std::move(Then)), Else(std::move(Else)) {}
@@ -27,11 +27,11 @@ class IfExprAST : public ExprAST {
     if (Else) result += " else " + Else->toString();
     return result;
   }
-  /** Returns the cond stored by this object. */
+  /** Returns the condition expression. */
   ExprAST* getCond() const { return Cond.get(); }
-  /** Returns the then stored by this object. */
+  /** Returns the branch taken when the condition is true. */
   ExprAST* getThen() const { return Then.get(); }
-  /** Returns the else stored by this object. */
+  /** Returns the alternative branch. */
   ExprAST* getElse() const { return Else.get(); }
 
   /**

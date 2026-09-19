@@ -45,7 +45,7 @@ public module std {
     }
 
     /**
-     * Always 10, the code for a JSON error.
+     * Returns the code identifying this error category.
      */
     public method code() i32 {
       return 60;

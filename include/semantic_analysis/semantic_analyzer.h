@@ -367,7 +367,7 @@ class SemanticAnalyzer {
   void applyFunctionInfoToProto(PrototypeAST &proto, const FunctionInfo &info);
 
   /**
-   * Reject extern signatures that have no C spelling. Primitives, raw_ptr<T>,
+   * Reject extern signatures that have no C spelling. Primitives, raw_ptr&lt;T&gt;,
    * `ref T` (C's T*) and objects by value all lower correctly; arrays,
    * slices, interfaces and lambdas do not, and must error rather than
    * silently miscompile.
@@ -490,7 +490,7 @@ class SemanticAnalyzer {
 
  private:
   /**
-   * Extract type guard pattern from condition (_is<T>(var)).
+   * Extract type guard pattern from condition (_is&lt;T&gt;(var)).
    * Returns (varName, narrowedType) if matched.
    */
   std::optional<std::pair<std::string, sun::semantic_analysis::TypePtr>>

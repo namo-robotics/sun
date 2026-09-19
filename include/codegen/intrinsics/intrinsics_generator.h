@@ -95,9 +95,9 @@ class IntrinsicsGenerator {
   /** Emits LLVM code that destroys a value in supplied storage. */
   llvm::Value* codegenDeinitIntrinsic(
       TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args);
-  /** Emits the runtime call implementing the load i64 operation. */
+  /** Emits code to load a wide integer from an address. */
   llvm::Value* codegenLoadI64Intrinsic(const CallExprAST& expr);
-  /** Emits the runtime call implementing the store i64 operation. */
+  /** Emits code to store a wide integer at an address. */
   llvm::Value* codegenStoreI64Intrinsic(const CallExprAST& expr);
   /** Emits LLVM code that allocates raw memory. */
   llvm::Value* codegenMallocIntrinsic(const CallExprAST& expr);
@@ -141,15 +141,19 @@ class IntrinsicsGenerator {
                                              unsigned bitWidth,
                                              bool signedValues,
                                              const char* name);
+  /** Emits an atomic store using the requested memory ordering. */
   llvm::Value* codegenAtomicStoreIntrinsic(const CallExprAST& expr,
                                            unsigned bitWidth, bool signedValues,
                                            const char* name);
+  /** Emits an atomic load using the requested memory ordering. */
   llvm::Value* codegenAtomicLoadIntrinsic(const CallExprAST& expr,
                                           unsigned bitWidth, const char* name);
+  /** Emits an atomic read-modify-write operation and returns its previous value. */
   llvm::Value* codegenAtomicFetchOpIntrinsic(const CallExprAST& expr,
                                              unsigned bitWidth,
                                              bool signedValues, bool subtract,
                                              const char* name);
+  /** Emits an atomic fence using the requested memory ordering. */
   llvm::Value* codegenAtomicFenceIntrinsic(const CallExprAST& expr,
                                            bool acquire);
 
@@ -177,91 +181,91 @@ class IntrinsicsGenerator {
    * Print built-ins
    */
   llvm::Value* codegenPrintI32(const CallExprAST& expr);
-  /** Emits the runtime call implementing the print i64 operation. */
+  /** Emits code to print a signed integer. */
   llvm::Value* codegenPrintI64(const CallExprAST& expr);
-  /** Emits the runtime call implementing the print u64 operation. */
+  /** Emits code to print an unsigned integer. */
   llvm::Value* codegenPrintU64(const CallExprAST& expr);
-  /** Emits the runtime call implementing the print f64 operation. */
+  /** Emits code to print a floating-point value. */
   llvm::Value* codegenPrintF64(const CallExprAST& expr);
-  /** Emits the runtime call implementing the print string operation. */
+  /** Emits code to write a string to standard output. */
   llvm::Value* codegenPrintString(const CallExprAST& expr);
-  /** Emits the runtime call implementing the print bytes operation. */
+  /** Emits code to write a byte sequence to standard output. */
   llvm::Value* codegenPrintBytes(const CallExprAST& expr);
-  /** Emits the runtime call implementing the print char operation. */
+  /** Emits code to write a character to standard output. */
   llvm::Value* codegenPrintChar(const CallExprAST& expr);
-  /** Emits the runtime call implementing the print newline operation. */
+  /** Emits code to write a newline to standard output. */
   llvm::Value* codegenPrintNewline();
 
   /**
    * File I/O built-ins
    */
   llvm::Value* codegenFileOpen(const CallExprAST& expr);
-  /** Emits the runtime call implementing the file close operation. */
+  /** Emits code to close a file handle. */
   llvm::Value* codegenFileClose(const CallExprAST& expr);
-  /** Emits the runtime call implementing the file write operation. */
+  /** Emits code to write bytes to a file handle. */
   llvm::Value* codegenFileWrite(const CallExprAST& expr);
-  /** Emits the runtime call implementing the file read operation. */
+  /** Emits code to read bytes from a file handle. */
   llvm::Value* codegenFileRead(const CallExprAST& expr);
 
   /**
    * Extended file I/O built-ins
    */
   llvm::Value* codegenLseek(const CallExprAST& expr);
-  /** Emits the runtime call implementing the fstat operation. */
+  /** Emits code to read metadata for an open file. */
   llvm::Value* codegenFstat(const CallExprAST& expr);
-  /** Emits the runtime call implementing the fsync operation. */
+  /** Emits code to flush a file to persistent storage. */
   llvm::Value* codegenFsync(const CallExprAST& expr);
-  /** Emits the runtime call implementing the ftruncate operation. */
+  /** Emits code to change the length of a file. */
   llvm::Value* codegenFtruncate(const CallExprAST& expr);
-  /** Emits the runtime call implementing the unlink operation. */
+  /** Emits code to remove a filesystem entry. */
   llvm::Value* codegenUnlink(const CallExprAST& expr);
-  /** Emits the runtime call implementing the rename operation. */
+  /** Emits code to rename a filesystem entry. */
   llvm::Value* codegenRename(const CallExprAST& expr);
-  /** Emits the runtime call implementing the mkdir operation. */
+  /** Emits code to create a directory. */
   llvm::Value* codegenMkdir(const CallExprAST& expr);
-  /** Emits the runtime call implementing the rmdir operation. */
+  /** Emits code to remove an empty directory. */
   llvm::Value* codegenRmdir(const CallExprAST& expr);
-  /** Emits the runtime call implementing the write operation. */
+  /** Emits code to write bytes to a file descriptor. */
   llvm::Value* codegenWrite(const CallExprAST& expr);
-  /** Emits the runtime call implementing the read operation. */
+  /** Emits code to read bytes from a file descriptor. */
   llvm::Value* codegenRead(const CallExprAST& expr);
 
   /**
    * Network socket built-ins
    */
   llvm::Value* codegenSocket(const CallExprAST& expr);
-  /** Emits the runtime call implementing the bind operation. */
+  /** Emits code to bind a socket to a local address. */
   llvm::Value* codegenBind(const CallExprAST& expr);
-  /** Emits the runtime call implementing the listen operation. */
+  /** Emits code to start listening for socket connections. */
   llvm::Value* codegenListen(const CallExprAST& expr);
-  /** Emits the runtime call implementing the accept operation. */
+  /** Emits code to accept an incoming socket connection. */
   llvm::Value* codegenAccept(const CallExprAST& expr);
-  /** Emits the runtime call implementing the connect operation. */
+  /** Emits code to connect a socket to a remote address. */
   llvm::Value* codegenConnect(const CallExprAST& expr);
-  /** Emits the runtime call implementing the send operation. */
+  /** Emits code to send bytes through a socket. */
   llvm::Value* codegenSend(const CallExprAST& expr);
-  /** Emits the runtime call implementing the recv operation. */
+  /** Emits code to receive bytes from a socket. */
   llvm::Value* codegenRecv(const CallExprAST& expr);
-  /** Emits the runtime call implementing the shutdown operation. */
+  /** Emits code to shut down socket communication. */
   llvm::Value* codegenShutdown(const CallExprAST& expr);
-  /** Emits the runtime call implementing the set sock opt operation. */
+  /** Emits code to change a socket option. */
   llvm::Value* codegenSetSockOpt(const CallExprAST& expr);
-  /** Emits the runtime call implementing the get sock opt operation. */
+  /** Emits code to read a socket option. */
   llvm::Value* codegenGetSockOpt(const CallExprAST& expr);
 
   /**
    * High-level IPv4 socket helpers (build sockaddr_in internally)
    */
   llvm::Value* codegenBindIPv4(const CallExprAST& expr);
-  /** Emits the runtime call implementing the connect i pv4 operation. */
+  /** Emits code to connect to an IPv4 address. */
   llvm::Value* codegenConnectIPv4(const CallExprAST& expr);
-  /** Emits the runtime call implementing the accept fd operation. */
+  /** Emits code to accept a connection and return its descriptor. */
   llvm::Value* codegenAcceptFd(const CallExprAST& expr);
-  /** Emits the runtime call implementing the send to i pv4 operation. */
+  /** Emits code to send a datagram to an IPv4 address. */
   llvm::Value* codegenSendToIPv4(const CallExprAST& expr);
-  /** Emits the runtime call implementing the recv from i pv4 operation. */
+  /** Emits code to receive a datagram and its IPv4 sender address. */
   llvm::Value* codegenRecvFromIPv4(const CallExprAST& expr);
-  /** Emits the runtime call implementing the get sock name i pv4 operation. */
+  /** Emits code to read the local IPv4 socket address. */
   llvm::Value* codegenGetSockNameIPv4(const CallExprAST& expr);
 
   // -------------------------------------------------------------------
@@ -269,12 +273,13 @@ class IntrinsicsGenerator {
   // -------------------------------------------------------------------
 
   /**
-   * Generates IR for _spawn<F>(fn, args...).
+   * Generates IR for `_spawn<F>(fn, args...)`.
+   * @param contextPtrType Pointer type of the shared thread context.
    *
    * Builds the thread context on the heap — it must outlive this frame —
    * moves the arguments into an argument block beside it, and starts the
    * thread on a trampoline built for this lambda's signature. Hands back the
-   * context pointer; stdlib `spawn` wraps that in the Thread<T> handle that
+   * context pointer; stdlib `spawn` wraps that in the Thread&lt;T&gt; handle that
    * owns it, so the thread is joined when that handle is dropped.
    *
    * @param lambdaSunType The lambda type F was inferred as.
@@ -288,7 +293,7 @@ class IntrinsicsGenerator {
       const std::vector<sun::semantic_analysis::ArgConversion>& conversions);
 
   /**
-   * Generates IR for _thread_join<T>(ctx) and _thread_join_drop<T>(ctx).
+   * Generates IR for _thread_join&lt;T&gt;(ctx) and _thread_join_drop&lt;T&gt;(ctx).
    *
    * Blocks until the thread has exited, then releases its context. Reading
    * the result out of the slot is a move: the caller takes over whatever it
@@ -296,7 +301,7 @@ class IntrinsicsGenerator {
    * dropped in place first — freeing the slot alone would release the
    * result's own bytes and nothing they point at.
    *
-   * @param resultType Sun type of the thread's result (T in Thread<T>).
+   * @param resultType Sun type of the thread's result (T in Thread&lt;T&gt;).
    * @param args The thread context, as a single argument.
    * @param dropResult Drop the result rather than hand it back.
    * @return The thread's result, or a non-null placeholder for void.

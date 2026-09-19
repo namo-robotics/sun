@@ -579,6 +579,7 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
   bool afterArrow = false;
   bool afterDot = false;  // For method calls: obj.method()
 
+  /** A source token and its editor semantic-highlighting classification. */
   struct SemanticToken {
     int line;       // 0-indexed
     int startChar;  // 0-indexed

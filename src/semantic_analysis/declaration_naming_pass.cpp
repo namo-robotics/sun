@@ -97,6 +97,7 @@ void DeclarationNamingPass::run(ExprAST& root,
   assignNames(root, scopePath, moduleLevel);
 }
 
+/** Assigns a qualified name to a declaration within its lexical scope. */
 void assignLocalDeclarationName(ExprAST& declaration,
                                 const std::vector<std::string>& scopePath) {
   const auto nameType = [&](auto& type) {

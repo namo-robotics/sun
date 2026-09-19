@@ -21,7 +21,7 @@ class UnaryExprAST : public ExprAST {
   /** Visits replaceable child expressions so tree passes can rewrite them in place. */
   void forEachChildSlot(const ChildSlotFn& fn) override { fn(Operand); }
 
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   UnaryExprAST(Token op, std::unique_ptr<ExprAST> operand)
       : ExprAST(op.start), op(op), Operand(std::move(operand)) {}
   /** Returns the syntax-node kind used to dispatch tree visitors. */

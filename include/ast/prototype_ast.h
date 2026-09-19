@@ -62,7 +62,7 @@ class PrototypeAST {
   }
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   PrototypeAST(std::string Name,
                std::vector<std::pair<std::string, TypeAnnotation>> args,
                std::optional<TypeAnnotation> retType = std::nullopt,
@@ -93,15 +93,15 @@ class PrototypeAST {
   void setRefCaptureNames(std::vector<std::string> names) {
     refCaptureNames = std::move(names);
   }
-  /** Returns the ref capture names stored by this object. */
+  /** Returns the names of borrowed captures. */
   const std::vector<std::string>& getRefCaptureNames() const {
     return refCaptureNames;
   }
-  /** Updates the const ref capture names stored by this object. */
+  /** Updates the names of captures borrowed without write access. */
   void setConstRefCaptureNames(std::vector<std::string> names) {
     constRefCaptureNames = std::move(names);
   }
-  /** Returns the const ref capture names stored by this object. */
+  /** Returns the names of captures borrowed without write access. */
   const std::vector<std::string>& getConstRefCaptureNames() const {
     return constRefCaptureNames;
   }
@@ -112,11 +112,11 @@ class PrototypeAST {
     return std::find(constRefCaptureNames.begin(), constRefCaptureNames.end(),
                      name) != constRefCaptureNames.end();
   }
-  /** Updates the owned capture names stored by this object. */
+  /** Updates the names of captures whose ownership was transferred. */
   void setOwnedCaptureNames(std::vector<std::string> names) {
     ownedCaptureNames = std::move(names);
   }
-  /** Returns the owned capture names stored by this object. */
+  /** Returns the names of captures whose ownership was transferred. */
   const std::vector<std::string>& getOwnedCaptureNames() const {
     return ownedCaptureNames;
   }
@@ -247,12 +247,12 @@ class PrototypeAST {
     return args;
   }
 
-  /** Returns the mutable args stored by this object. */
+  /** Returns the modifiable argument expressions. */
   std::vector<std::pair<std::string, TypeAnnotation>>& getMutableArgs() {
     return args;
   }
 
-  /** Returns the arg names stored by this object. */
+  /** Returns the parameter names. */
   std::vector<std::string> getArgNames() const {
     std::vector<std::string> names;
     for (const auto& [name, type] : args) {
@@ -278,7 +278,7 @@ class PrototypeAST {
    * that only want a piece of it have the three shorthands below.
    */
   bool hasVariadicParam() const { return variadicParam_.has_value(); }
-  /** Returns the variadic param stored by this object. */
+  /** Returns the variadic parameter declaration. */
   const VariadicParam& getVariadicParam() const { return *variadicParam_; }
   /**
    * The pack's name, or empty when the signature declares no pack.
@@ -291,7 +291,7 @@ class PrototypeAST {
   bool hasVariadicTypeAnnotation() const {
     return variadicParam_ && variadicParam_->hasTypeAnnotation();
   }
-  /** Returns the variadic type annotation stored by this object. */
+  /** Returns the variadic parameter type annotation. */
   const TypeAnnotation& getVariadicTypeAnnotation() const {
     return *variadicParam_->typeAnnotation;
   }
@@ -302,7 +302,7 @@ class PrototypeAST {
    * LLVM function type's isVarArg flag. Extern declarations only.
    */
   bool isCVariadic() const { return cVariadic_; }
-  /** Updates the c variadic stored by this object. */
+  /** Updates the C variadic-call setting. */
   void setCVariadic(bool v) { cVariadic_ = v; }
 
   /** Whether callers must uphold this method's safety contract. */
@@ -315,7 +315,7 @@ class PrototypeAST {
    * change `this`, and it may be called on a constant receiver.
    */
   bool isConstMethod() const { return constMethod_; }
-  /** Updates the const method stored by this object. */
+  /** Marks whether the method receives its object without write access. */
   void setConstMethod(bool v) { constMethod_ = v; }
 
   /**
@@ -341,7 +341,7 @@ class PrototypeAST {
     analysis().resolvedParamTypes = std::move(types);
     analysis().resolvedParamTypesSet = true;
   }
-  /** Returns the resolved param types stored by this object. */
+  /** Returns the parameter types selected by analysis. */
   const std::vector<TypePtr>& getResolvedParamTypes() const {
     return analysis().resolvedParamTypes;
   }
@@ -371,7 +371,7 @@ class PrototypeAST {
     analysis().resolvedVariadicTypes = std::move(types);
     analysis().resolvedVariadicTypesSet = true;
   }
-  /** Returns the resolved variadic types stored by this object. */
+  /** Returns the concrete variadic parameter types. */
   const std::vector<TypePtr>& getResolvedVariadicTypes() const {
     return analysis().resolvedVariadicTypes;
   }

@@ -187,6 +187,7 @@ class LibprotobufSchema {
       messages.append(m.data(), m.size());
     }
 #else
+    /** Collects a protobuf schema error for reporting to the caller. */
     void AddError(const std::string&, int, int, const std::string& m) override {
       messages += m;
     }

@@ -759,12 +759,14 @@ TEST_F(MoonExactTypes, old_format_is_rejected) {
 
 TEST(MoonMetadata,
      canonical_type_round_trip_preserves_spelling_and_qualifiers) {
+  /** Identify a nominal type without recursively expanding its fields. */
   sun::ast::TypeAnnotation nominal("build_alias.Value");
   nominal.declarationKey =
       PortableDeclarationKey::original(std::string(64, 'a'), 3);
   nominal.typeArguments.push_back(
       std::make_unique<sun::ast::TypeAnnotation>("T"));
   nominal.lifetimeArguments = {"a"};
+  /** Identify a mutable or immutable reference to another type. */
   sun::ast::TypeAnnotation reference("ref");
   reference.constRef = true;
   reference.lifetimeName = "a";
@@ -934,6 +936,7 @@ TEST_F(MoonExactTypes, explicit_nested_alias_preserves_ordinary_children) {
 
 TEST(MoonMetadata, module_reference_round_trip_preserves_source_spelling) {
   auto module = PortableDeclarationKey::original(std::string(64, 'a'), 4);
+  /** Identify a mutable or immutable reference to another type. */
   sun::ast::VariableReferenceAST reference("build_alias.inner");
   reference.setModuleDeclaration(module);
   auto clone = reference.clone();
@@ -1160,7 +1163,9 @@ TEST_F(MoonExactTypes,
   auto key = reader->listModules()[0];
   auto& cache = sun::moon_bundling::LibraryCache::instance();
   cache.clear();
+  /** Clears the shared library cache when the fixture leaves scope. */
   struct ResetCache {
+    /** Clears the shared library cache after the test finishes. */
     ~ResetCache() { sun::moon_bundling::LibraryCache::instance().clear(); }
   } reset;
   cache.addSearchPath(dir);

@@ -11,14 +11,14 @@
 namespace sun::ast {
 
 /**
- * Return statement: return <expr>;
+ * Return statement: return &lt;expr&gt;;
  */
 class ReturnExprAST : public ExprAST {
   std::unique_ptr<ExprAST>
       Value;  // The expression to return (may be nullptr for void)
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   explicit ReturnExprAST(std::unique_ptr<ExprAST> value = nullptr)
       : Value(std::move(value)) {}
 

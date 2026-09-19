@@ -11,14 +11,14 @@
 namespace sun::ast {
 
 /**
- * Throw expression: throw <expr>
+ * Throw expression: throw &lt;expr&gt;
  * Used to throw an error from a function declared with "throws IError"
  */
 class ThrowExprAST : public ExprAST {
   std::unique_ptr<ExprAST> errorExpr;  // The error expression to throw
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   explicit ThrowExprAST(std::unique_ptr<ExprAST> expr)
       : errorExpr(std::move(expr)) {}
 
@@ -32,7 +32,7 @@ class ThrowExprAST : public ExprAST {
     return "throw " + errorExpr->toString();
   }
 
-  /** Returns the error expr stored by this object. */
+  /** Returns the thrown error expression. */
   const ExprAST& getErrorExpr() const { return *errorExpr; }
   /** Reports whether this object has error expr. */
   bool hasErrorExpr() const { return errorExpr != nullptr; }

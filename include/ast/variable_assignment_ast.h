@@ -35,7 +35,7 @@ class VariableAssignmentAST : public ExprAST {
   }
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   explicit VariableAssignmentAST(std::string name,
                                  std::unique_ptr<ExprAST> value)
       : name(std::move(name)), value(std::move(value)) {}

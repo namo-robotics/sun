@@ -138,10 +138,10 @@ class BorrowChecker {
    * loans.
    */
   void checkWhileExpr(const sun::ast::WhileExprAST& whileExpr);
-  /** Checks ownership and lifetime rules for this for expression and updates active loans. */
+  /** Checks ownership and lifetime rules for this for loop and updates active loans. */
   void checkForExpr(const sun::ast::ForExprAST& forExpr);
   /**
-   * Checks ownership and lifetime rules for this for in expression and updates active
+   * Checks ownership and lifetime rules for this iteration loop and updates active
    * loans.
    */
   void checkForInExpr(const sun::ast::ForInExprAST& forInExpr);
@@ -256,7 +256,7 @@ class BorrowChecker {
    * it to anything (the elided, trusted case - today's semantics).
    */
   struct LifetimeValue {
-    /** Identifies the storage path component used to track a borrow target. */
+    /** Distinguishes unconstrained, concrete-scope, and named signature lifetimes. */
     enum class Kind { Outlives, Concrete, Symbolic };
     Kind kind = Kind::Outlives;
     size_t depth = 0;       // Concrete: declaration/environment scope depth

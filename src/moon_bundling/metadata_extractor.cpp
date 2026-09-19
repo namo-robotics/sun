@@ -335,6 +335,7 @@ std::vector<moon::ModuleMetadata> extractAllMetadata(
 
 }  // namespace
 
+/** Exports library declaration metadata from an analyzed program. */
 std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
     const BlockExprAST& program,
     sun::semantic_analysis::SemanticAnalyzer& analyzer,
@@ -462,6 +463,7 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
   return result;
 }
 
+/** Reads a source file and extracts metadata for its modules. */
 std::optional<std::vector<moon::ModuleMetadata>> extractAllMetadataFromFile(
     const std::string& filename) {
   std::ifstream file(filename);
@@ -521,6 +523,7 @@ std::optional<std::vector<moon::ModuleMetadata>> extractAllMetadataFromSource(
   return extractAllMetadata(displayName, *ast, sourceHash);
 }
 
+/** Reads a source file and extracts its module metadata when available. */
 std::optional<moon::ModuleMetadata> extractMetadataFromFile(
     const std::string& filename) {
   auto all = extractAllMetadataFromFile(filename);
@@ -528,6 +531,7 @@ std::optional<moon::ModuleMetadata> extractMetadataFromFile(
   return (*all)[0];
 }
 
+/** Extracts module metadata from supplied source text. */
 std::optional<moon::ModuleMetadata> extractMetadataFromSource(
     const std::string& source, const std::string& displayName,
     const std::string& baseDir) {

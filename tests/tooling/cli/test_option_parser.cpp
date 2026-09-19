@@ -20,6 +20,7 @@ using sun::cli::TestOptions;
 /** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
+/** Command-line argument strings supplied to parser fixtures. */
 using Args = std::vector<std::string>;
 
 const char* const kProgram = "prog";

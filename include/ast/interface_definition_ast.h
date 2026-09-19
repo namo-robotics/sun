@@ -75,7 +75,7 @@ class InterfaceDefinitionAST : public ExprAST {
   }
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   InterfaceDefinitionAST(std::string name,
                          std::vector<TypeParameter> typeParams,
                          std::vector<InterfaceFieldDecl> fields,

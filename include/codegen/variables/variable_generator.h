@@ -136,7 +136,7 @@ class VariableGenerator {
   llvm::Value* codegenAddress(const ExprAST& expr);
 
   /**
-   * Same, plus conditional lvalues (`ref r = c ? a.x : b.y`), whose address is
+   * Also handles conditional reference bindings, whose address is
    * a phi of the branches'. Only borrow bindings take that path.
    */
   llvm::Value* codegenBorrowAddress(const ExprAST& expr);

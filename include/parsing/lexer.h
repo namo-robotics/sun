@@ -351,7 +351,7 @@ struct TokenInfo {
   int precedence = -1;
 };
 
-/** Returns the token info stored by this object. */
+/** Returns the token category information. */
 inline const std::map<TokenKind, TokenInfo>& getTokenInfo() {
   static const std::map<TokenKind, TokenInfo> tokenInfo = {
       {TokenKind::TOK_EOF, {""}},
@@ -627,7 +627,7 @@ struct Token {
     return std::nullopt;
   }
 
-  /** Returns the float stored by this object. */
+  /** Returns the floating-point token value. */
   std::optional<double> getFloat() const {
     if (kind == TokenKind::FLOAT || kind == TokenKind::TYPED_FLOAT)
       return std::get<double>(value);
@@ -651,7 +651,7 @@ struct Token {
     return std::nullopt;
   }
 
-  /** Returns the string stored by this object. */
+  /** Returns the string token value. */
   std::optional<std::string> getString() const {
     if (kind == TokenKind::STRING) return std::get<std::string>(value);
     return std::nullopt;
@@ -721,8 +721,8 @@ class Lexer {
    * the text between the quotes, which the token regex has already delimited.
    *
    * A character literal holds one Unicode scalar value: the source is UTF-8,
-   * \xNN reaches U+0000..U+007F, and \u{...} names anything above that. A byte
-   * literal holds one byte: the source must be ASCII and \xNN covers 00..FF.
+   * `\xNN` reaches U+0000..U+007F, and `\u{...}` names anything above that. A byte
+   * literal holds one byte: the source must be ASCII and `\xNN` covers 00..FF.
    */
   uint64_t decodeLiteralBody(std::string_view body, bool isByte,
                              const sun::support::Position& at) const {
@@ -891,7 +891,7 @@ class Lexer {
    * Process escape sequences in regular string literals.
    * Mirrors InterpolatedStringParser::processEscapes (template strings),
    * with \" instead of the template-specific \` and \$. The shared core
-   * (\n \t \r \\ \0) comes from sun::parsing::simple.
+   * for control-character and backslash escapes comes from sun::parsing::simple.
    */
   std::string processStringEscapes(std::string_view raw,
                                    const sun::support::Position& at) const {
@@ -1083,7 +1083,7 @@ class Lexer {
   /** Creates a token scanner reading from the supplied input stream. */
   explicit Lexer(std::istream& in) { slurp(in); }
 
-  /** Updates the emit comments stored by this object. */
+  /** Controls whether the lexer emits comments as tokens. */
   void setEmitComments(bool emit) { emitComments_ = emit; }
   /** Reports whether scanning retains comments as tokens. */
   bool emitComments() const { return emitComments_; }
@@ -1111,7 +1111,7 @@ class Lexer {
   /** Destroys this object and releases its owned members. */
   ~Lexer() = default;
 
-  /** Returns the next token stored by this object. */
+  /** Scans and returns the next token from the input. */
   Token getNextToken() {
     // Cached at construction: getTokenDFA() is a function-local static, so
     // calling it per token pays the thread-safe-init guard every time.

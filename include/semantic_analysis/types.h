@@ -243,7 +243,7 @@ enum class TypeProjection : uint8_t {
 
 /**
  * Type parameter (used in generic class/function definitions)
- * Represents a type variable like T, U, V in class List<T>
+ * Represents a type variable like T, U, V in class List&lt;T&gt;
  */
 class TypeParameterType : public Type {
   std::string name;   // Parameter name: T, U, etc. (F$ret when projected)
@@ -448,7 +448,7 @@ class FunctionType : public Type {
    * Whether calls through this pointer may throw.
    */
   bool canThrow() const { return canThrow_; }
-  /** Updates the can throw stored by this object. */
+  /** Records whether calls through this signature may throw an error. */
   void setCanThrow(bool v) { canThrow_ = v; }
 
   /** Returns a readable representation for diagnostics and debugging. */
@@ -574,7 +574,7 @@ class LambdaType : public Type {
   bool canThrow() const { return canThrow_; }
   /** Reports whether this object has ref captures. */
   bool hasRefCaptures() const { return hasRefCaptures_; }
-  /** Updates the has ref captures stored by this object. */
+  /** Records whether the callable retains any borrowed captures. */
   void setHasRefCaptures(bool v) { hasRefCaptures_ = v; }
   /** Returns the named lifetime associated with the borrowed value. */
   const std::string& getLifetimeName() const { return lifetimeName_; }
@@ -683,7 +683,7 @@ class StaticPointerType;
 
 /**
  * Raw pointer type - non-owning pointer for C interop (no automatic cleanup)
- * Type annotation: raw_ptr<T> where T is the pointee type
+ * Type annotation: raw_ptr&lt;T&gt; where T is the pointee type
  * Examples: raw_ptr<i8> = char*, raw_ptr<raw_ptr<i8>> = char** for argv
  */
 class RawPointerType : public Type {
@@ -732,10 +732,10 @@ class RawPointerType : public Type {
 
 /**
  * Static pointer type - pointer to immortal static data (string literals,
- * globals) Type annotation: static_ptr<T> where T is the pointee type Memory
+ * globals) Type annotation: static_ptr&lt;T&gt; where T is the pointee type Memory
  * safe: never freed, always valid, read-only
  * Represented as a fat pointer struct: { ptr data, i64 length }
- * Can implicitly convert to raw_ptr<T> for function calls (extracts data ptr)
+ * Can implicitly convert to raw_ptr&lt;T&gt; for function calls (extracts data ptr)
  */
 class StaticPointerType : public Type {
   TypePtr pointeeType;  // The type being pointed to
@@ -879,7 +879,7 @@ class ReferenceType : public Type {
   const std::vector<std::string>& getClassLifetimeArgs() const {
     return classLifetimeArgs_;
   }
-  /** Updates the class lifetime args stored by this object. */
+  /** Updates the lifetime arguments for the referenced class. */
   void setClassLifetimeArgs(std::vector<std::string> args) {
     classLifetimeArgs_ = std::move(args);
   }
@@ -1024,7 +1024,7 @@ class ErrorUnionType : public Type {
   }
 
   /**
-   * Error union is represented as a struct: { i1 isError, <valueType> value }
+   * Error union is represented as a struct: { i1 isError, &lt;valueType&gt; value }
    * If isError is true, the error code is stored in the value field (as i64)
    */
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
@@ -1054,7 +1054,7 @@ class ErrorUnionType : public Type {
  * Array type: array<T, N> or array<T, M, N> for multi-dimensional.
  * A sized array OWNS its elements inline - [N x T] wherever it lives (a local,
  * a field, a global, an element of another array) - and moves like every
- * other compound value. An unsized array<T> (empty dimensions) is a view of
+ * other compound value. An unsized array&lt;T&gt; (empty dimensions) is a view of
  * some sized array with the rank erased; it exists only behind `ref` and is
  * carried as the fat struct { ptr data, i32 ndims, ptr dims }.
  */
@@ -1074,11 +1074,11 @@ class ArrayType : public Type {
   Kind getKind() const override { return StaticKind; }
   /** Returns the element type stored by this object. */
   const TypePtr& getElementType() const { return elementType; }
-  /** Returns the dimensions stored by this object. */
+  /** Returns the array dimension sizes. */
   const std::vector<size_t>& getDimensions() const { return dimensions; }
 
   /**
-   * Check if this is an unsized array (array<T> without dimensions)
+   * Check if this is an unsized array (array&lt;T&gt; without dimensions)
    */
   bool isUnsized() const { return dimensions.empty(); }
 
@@ -1143,7 +1143,7 @@ class ArrayType : public Type {
 
   /**
    * Check if a sized array is compatible with this type
-   * Used for coercion from array<T, m, n> to array<T> (unsized)
+   * Used for coercion from array<T, m, n> to array&lt;T&gt; (unsized)
    */
   bool isCompatibleWith(const ArrayType& other) const {
     if (!elementType->equals(*other.elementType)) return false;
@@ -1405,7 +1405,7 @@ class InterfaceType;
 /**
  * Class type for user-defined classes
  * Classes are represented as LLVM structs with methods as separate functions
- * Generic classes have type parameters (e.g., class List<T>)
+ * Generic classes have type parameters (e.g., class List&lt;T&gt;)
  * Specialized classes have type arguments (e.g., List<i32>)
  */
 class ClassType : public NominalType {
@@ -1925,7 +1925,7 @@ class ClassType : public NominalType {
    * Must be set before the first getStructType() call, which memoizes.
    */
   bool isPacked() const { return isPacked_; }
-  /** Updates the packed stored by this object. */
+  /** Controls whether the class uses a packed memory layout. */
   void setPacked(bool v) { isPacked_ = v; }
 
 };
@@ -2405,9 +2405,9 @@ class EnumType : public NominalType {
     genericBase_ = std::move(base);
     genericArgs_ = std::move(args);
   }
-  /** Returns the generic base stored by this object. */
+  /** Returns the original generic declaration. */
   const std::string& getGenericBase() const { return genericBase_; }
-  /** Returns the generic args stored by this object. */
+  /** Returns the generic type arguments. */
   const std::vector<TypePtr>& getGenericArgs() const { return genericArgs_; }
   /** Reports whether this type represents generic specialization values. */
   bool isGenericSpecialization() const { return !genericBase_.empty(); }
@@ -2633,14 +2633,14 @@ class Types {
   }
 
   /**
-   * Create a raw (non-owning) pointer type: raw_ptr<T> for C interop
+   * Create a raw (non-owning) pointer type: raw_ptr&lt;T&gt; for C interop
    */
   static TypePtr RawPointer(TypePtr pointeeType) {
     return std::make_shared<RawPointerType>(std::move(pointeeType));
   }
 
   /**
-   * Create a static pointer type: static_ptr<T> for immortal data
+   * Create a static pointer type: static_ptr&lt;T&gt; for immortal data
    * Used for string literals and global constants - memory safe
    */
   static TypePtr StaticPointer(TypePtr pointeeType) {
@@ -2819,7 +2819,7 @@ class TypeRegistry {
 
   /**
    * Check if a type name is a builtin type that cannot be redefined
-   * Includes builtin interfaces and type traits used by _is<T>
+   * Includes builtin interfaces and type traits used by _is&lt;T&gt;
    */
   bool isBuiltinTypeName(const std::string& name) const {
     static const std::unordered_set<std::string> builtinNames = {

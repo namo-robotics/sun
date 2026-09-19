@@ -16,7 +16,7 @@ namespace sun::ast {
  */
 class BreakAST : public ExprAST {
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   BreakAST() = default;
 
   /** Returns the syntax-node kind used to dispatch tree visitors. */

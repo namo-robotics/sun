@@ -59,6 +59,7 @@ using sun::support::Position;
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
+/** Prepares default field initializers for constructor analysis. */
 void prepareFieldInitializers(sun::ast::ClassDefinitionAST& classDef) {
   if (classDef.isPartial() || classDef.isPrecompiled()) return;
   size_t count = 0;
@@ -653,6 +654,7 @@ void BodyWalk::walk(const ExprAST& expr) {
 
 }  // namespace
 
+/** Checks that constructors initialize fields before they are read. */
 void checkFieldInitialization(const FunctionAST& constructor,
                               const ClassType& classType,
                               const std::vector<ClassMethodDecl>& methods) {

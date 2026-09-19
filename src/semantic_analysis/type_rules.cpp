@@ -24,6 +24,7 @@ using sun::semantic_analysis::unwrapRef;
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
+/** Reports whether an integer magnitude and sign fit the target numeric type. */
 bool literalFitsInType(uint64_t magnitude, bool negative,
                        sun::semantic_analysis::Type::Kind kind) {
   // A signed type of `bits` width holds -2^(bits-1) .. 2^(bits-1)-1; the
@@ -97,6 +98,7 @@ bool isComparisonOp(TokenKind op) {
 
 }  // namespace
 
+/** Coerces a fitting integer literal to the requested type without accepting overflow. */
 bool tryCoerceIntegerLiteral(ExprAST* expr, TypePtr targetType,
                              bool throwOnFail) {
   if (!expr || !targetType || !targetType->isPrimitive()) return false;
@@ -227,6 +229,7 @@ void coerceBinaryLiteralOperands(const sun::ast::BinaryExprAST& binExpr,
   coerceNumericLiteral(lhs, rhs->getResolvedType());
 }
 
+/** Chooses the common numeric type used by a binary operation. */
 TypePtr promoteBinaryOperands(const TypePtr& lhsType, const TypePtr& rhsType) {
   auto lhs = unwrapRef(lhsType);
   auto rhs = unwrapRef(rhsType);
@@ -244,6 +247,7 @@ TypePtr promoteBinaryOperands(const TypePtr& lhsType, const TypePtr& rhsType) {
   return lhs;
 }
 
+/** Finds a compatible result type for the two conditional branches. */
 TypePtr unifyTernaryTypes(const TypePtr& thenType, const TypePtr& elseType,
                           std::optional<sun::support::Position> loc) {
   if (!thenType || !elseType) {
@@ -275,6 +279,7 @@ TypePtr unifyTernaryTypes(const TypePtr& thenType, const TypePtr& elseType,
 // Type assignability checking
 // -------------------------------------------------------------------
 
+/** Reports whether a value of one type can be assigned to another. */
 bool isAssignableTo(const TypePtr& from, const TypePtr& to) {
   if (!from || !to) return false;
 
@@ -436,6 +441,7 @@ bool isAssignableTo(const TypePtr& from, const TypePtr& to) {
   return false;
 }
 
+/** Reports whether an expression denotes storage that can be borrowed. */
 bool isBorrowableLvalue(const ExprAST& target) {
   ASTNodeType kind = target.getType();
   // A conditional picks one of two slots at runtime; it borrows if both
@@ -449,6 +455,7 @@ bool isBorrowableLvalue(const ExprAST& target) {
          kind == ASTNodeType::MEMBER_ACCESS || kind == ASTNodeType::INDEX;
 }
 
+/** Reports whether an expression always leaves the current control-flow path. */
 bool alwaysExits(const ExprAST& expr) {
   switch (expr.getType()) {
     case ASTNodeType::RETURN:

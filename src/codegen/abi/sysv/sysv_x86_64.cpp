@@ -179,6 +179,7 @@ ArgLowering lowerAggregate(llvm::Type* type, const llvm::DataLayout& dl) {
 
 }  // namespace
 
+/** Classifies an LLVM argument using the target C calling convention. */
 ArgLowering lowerArgument(llvm::Type* type, const llvm::DataLayout& dl) {
   ArgLowering result;
   result.type = type;
@@ -186,6 +187,7 @@ ArgLowering lowerArgument(llvm::Type* type, const llvm::DataLayout& dl) {
   return lowerAggregate(type, dl);
 }
 
+/** Classifies an LLVM return value using the target C calling convention. */
 ArgLowering lowerReturn(llvm::Type* type, const llvm::DataLayout& dl) {
   ArgLowering result;
   result.type = type;
@@ -193,6 +195,7 @@ ArgLowering lowerReturn(llvm::Type* type, const llvm::DataLayout& dl) {
   return lowerAggregate(type, dl);
 }
 
+/** Classifies every parameter and the result of a C function signature. */
 sun::codegen::abi::SignatureLowering lowerCSignature(
     llvm::Type* returnType, llvm::ArrayRef<llvm::Type*> paramTypes,
     const llvm::DataLayout& dl) {

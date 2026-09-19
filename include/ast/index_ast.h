@@ -26,7 +26,7 @@ class IndexAST : public ExprAST {
       indices;  // One or more index/slice components
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   IndexAST(std::unique_ptr<ExprAST> target,
            std::vector<std::unique_ptr<SliceExprAST>> idxs)
       : target(std::move(target)), indices(std::move(idxs)) {}

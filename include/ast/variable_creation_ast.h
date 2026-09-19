@@ -45,7 +45,7 @@ class VariableCreationAST : public ExprAST {
   }
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   explicit VariableCreationAST(
       std::string name, std::unique_ptr<ExprAST> value,
       std::optional<TypeAnnotation> type = std::nullopt, bool isConst = false)
@@ -57,17 +57,17 @@ class VariableCreationAST : public ExprAST {
   ASTNodeType getType() const override {
     return ASTNodeType::VARIABLE_CREATION;
   }
-  /** Reports whether this syntax node represents const. */
+  /** Reports whether this syntax node represents an immutable declaration. */
   bool isConst() const { return isConst_; }
-  /** Reports whether this syntax node represents c extern. */
+  /** Reports whether this syntax node represents a declaration using the C calling convention. */
   bool isCExtern() const { return isCExtern_; }
   /** Marks whether the function uses the C calling convention. */
   void setCExtern(bool value) { isCExtern_ = value; }
   /** Reports whether this object has explicit c ABI. */
   bool hasExplicitCAbi() const { return explicitCAbi_; }
-  /** Updates the explicit c ABI stored by this object. */
+  /** Records whether the declaration explicitly uses the C calling convention. */
   void setExplicitCAbi(bool value) { explicitCAbi_ = value; }
-  /** Reports whether this object has link name. */
+  /** Reports whether an explicit linker symbol name is present. */
   bool hasLinkName() const { return linkName_.has_value(); }
   /** Updates the link name stored by this object. */
   void setLinkName(std::string name) { linkName_ = std::move(name); }

@@ -1398,6 +1398,7 @@ TEST(Tooling_Serialization, UnsafeMethodRoundtrip) {
 }
 
 TEST(Tooling_Serialization, UnsafeCallableTypeRoundtrip) {
+  /** Identify an original declaration in a content-addressed artifact. */
   sun::ast::TypeAnnotation original("lambda");
   original.returnType = std::make_unique<sun::ast::TypeAnnotation>("i32");
   original.requiresUnsafe = true;

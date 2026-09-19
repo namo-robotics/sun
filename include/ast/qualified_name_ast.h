@@ -19,7 +19,7 @@ class QualifiedNameAST : public ExprAST {
   std::vector<std::string> parts;  // ["std", "Vec"] for std.Vec
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   explicit QualifiedNameAST(std::vector<std::string> parts)
       : parts(std::move(parts)) {}
 
@@ -28,7 +28,7 @@ class QualifiedNameAST : public ExprAST {
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override { return getFullName(); }
 
-  /** Returns the parts stored by this object. */
+  /** Returns the qualified-name components. */
   const std::vector<std::string>& getParts() const { return parts; }
 
   /**

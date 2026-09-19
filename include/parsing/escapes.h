@@ -15,9 +15,9 @@
 namespace sun::parsing {
 
 /**
- * The escapes every literal form shares: \n \t \r \\ \0.
+ * Handles newline, tab, carriage return, backslash, and null escapes.
  * Returns the character the escape stands for, or nullopt if `c` does not
- * name one of them (the caller decides what to do with quotes and \x / \u).
+ * name one of them (the caller decides what to do with quotes and hexadecimal or Unicode escapes).
  */
 inline std::optional<char> simple(char c) {
   switch (c) {

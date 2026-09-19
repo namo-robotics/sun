@@ -9,6 +9,7 @@ using sun::semantic_analysis::ClassType;
 /** Provides shared diagnostics, source tracking, and compiler utilities. */
 namespace sun::codegen::support {
 
+/** Computes the LLVM address of a field in class storage. */
 llvm::Value* fieldPtr(llvm::IRBuilder<>& builder, ClassType* classType,
                       llvm::Value* objectPtr,
                       const sun::semantic_analysis::ClassField& field,
@@ -17,16 +18,19 @@ llvm::Value* fieldPtr(llvm::IRBuilder<>& builder, ClassType* classType,
   return builder.CreateStructGEP(structType, objectPtr, field.index, name);
 }
 
+/** Returns the alignment available for a class field access. */
 llvm::Align fieldAlign(const ClassType* owner, llvm::Type* fieldTy,
                        const llvm::DataLayout& dl) {
   return sun::semantic_analysis::fieldAlign(owner, fieldTy, dl);
 }
 
+/** Returns the alignment available when accessing an assignable expression. */
 llvm::Align lvalueAlign(const sun::ast::ExprAST& target, llvm::Type* slotTy,
                         const llvm::DataLayout& dl) {
   return sun::semantic_analysis::lvalueAlign(target, slotTy, dl);
 }
 
+/** Stores a generated value with the alignment required by its storage. */
 void storeIntoSlot(llvm::IRBuilder<>& builder, const llvm::DataLayout& dl,
                    llvm::Value* dest, llvm::Value* value,
                    const sun::semantic_analysis::TypePtr& slotType,

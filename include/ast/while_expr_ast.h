@@ -15,7 +15,7 @@ class WhileExprAST : public ExprAST {
   std::unique_ptr<ExprAST> Condition, Body;
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   WhileExprAST(std::unique_ptr<ExprAST> Condition,
                std::unique_ptr<ExprAST> Body)
       : Condition(std::move(Condition)), Body(std::move(Body)) {}
@@ -33,7 +33,7 @@ class WhileExprAST : public ExprAST {
     return "while (" + Condition->toString() + ") " + Body->toString();
   }
 
-  /** Returns the condition stored by this object. */
+  /** Returns the condition expression. */
   const ExprAST* getCondition() const { return Condition.get(); }
   /** Provides access to the expressions that make up the body. */
   const ExprAST* getBody() const { return Body.get(); }

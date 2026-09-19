@@ -102,6 +102,7 @@ class ErrorCollector : public pbc::MultiFileErrorCollector {
     record(asString(filename), line, column, asString(message));
   }
 #else
+  /** Collects a protobuf schema error for reporting to the caller. */
   void AddError(const std::string& filename, int line, int column,
                 const std::string& message) override {
     record(filename, line, column, message);
@@ -355,7 +356,7 @@ class TypeMapper {
   }
 
   /**
-   * Synthesized payload enum for a oneof: <Msg>_<oneof>
+   * Synthesized payload enum for a oneof: &lt;Msg&gt;_<oneof>
    */
   static std::string oneofEnumName(const pb::OneofDescriptor* o) {
     return messageName(o->containing_type()) + "_" + asString(o->name());
@@ -700,7 +701,7 @@ class MessageGenerator {
   }
 
   /**
-   * enum <Msg>_<oneof> { NotSet, FieldA(T), FieldB(U) }
+   * enum &lt;Msg&gt;_<oneof> { NotSet, FieldA(T), FieldB(U) }
    */
   void emitOneofEnums() {
     forEachOneof([&](const pb::OneofDescriptor* o) {
@@ -855,7 +856,7 @@ class MessageGenerator {
   }
 
   /**
-   * <Msg>_decode_from: the field-dispatch loop over a reader
+   * &lt;Msg&gt;_decode_from: the field-dispatch loop over a reader
    */
   void emitDecodeFrom() {
     w_.open("public function " + name_ +

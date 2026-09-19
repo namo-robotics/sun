@@ -87,6 +87,9 @@ class ThreadUtils {
    * argument layout, since two spawns of same-typed lambdas share one
    * trampoline.
    *
+   * @param lambdaFuncType LLVM signature invoked by the trampoline.
+   * @param fatType Layout holding the lambda pointer and environment.
+   * @param resultLLVMType LLVM storage type for the thread result.
    * @param contextType The layout of std.thread.ThreadContext, declared in
    *        Sun so the trampoline and the standard library cannot drift apart.
    * @param argsType The argument block's layout, or null when the lambda

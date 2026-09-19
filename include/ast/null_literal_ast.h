@@ -13,7 +13,7 @@ namespace sun::ast {
 /** The null pointer literal before its target type is resolved. */
 class NullLiteralAST : public ExprAST {
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   NullLiteralAST() = default;
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::NULL_LITERAL; }

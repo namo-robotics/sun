@@ -218,7 +218,7 @@ class ClassGenerator {
   std::map<std::pair<DeclarationId, DeclarationId>, InterfaceVtables>
       vtableGlobals;
 
-  /** Returns the or create borrowed interface vtable stored by this object. */
+  /** Returns the dispatch table for a borrowed interface, creating it when first needed. */
   llvm::GlobalVariable* getOrCreateBorrowedInterfaceVtable(
       ClassType* classType, InterfaceType* ifaceType);
 

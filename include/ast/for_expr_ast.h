@@ -18,7 +18,7 @@ class ForExprAST : public ExprAST {
   std::unique_ptr<ExprAST> Body;
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   ForExprAST(std::unique_ptr<ExprAST> Init, std::unique_ptr<ExprAST> Condition,
              std::unique_ptr<ExprAST> Increment, std::unique_ptr<ExprAST> Body)
       : Init(std::move(Init)),
@@ -48,11 +48,11 @@ class ForExprAST : public ExprAST {
     return result;
   }
 
-  /** Returns the init stored by this object. */
+  /** Returns the loop initialization expression. */
   const ExprAST* getInit() const { return Init.get(); }
-  /** Returns the condition stored by this object. */
+  /** Returns the condition expression. */
   const ExprAST* getCondition() const { return Condition.get(); }
-  /** Returns the increment stored by this object. */
+  /** Returns the loop update expression. */
   const ExprAST* getIncrement() const { return Increment.get(); }
   /** Provides access to the expressions that make up the body. */
   const ExprAST* getBody() const { return Body.get(); }

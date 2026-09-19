@@ -196,6 +196,7 @@ void bindModules(google::protobuf::Message& message, SemanticContext& ctx,
 }
 }  // namespace
 
+/** Resolves serialized module references in the active semantic context. */
 void bindMetadataModules(google::protobuf::Message& message,
                          SemanticContext& context) {
   ScopeSwitchGuard scope(context, context.scope());

@@ -162,7 +162,7 @@ class ErrorGenerator {
   llvm::FunctionCallee getCxaRethrow();
   /** Returns the personality function stored by this object. */
   llvm::Constant* getPersonalityFunction();
-  /** Returns the sun exception type info stored by this object. */
+  /** Returns the runtime type information for Sun exceptions. */
   llvm::Constant* getSunExceptionTypeInfo();
 
   /**

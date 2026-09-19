@@ -25,7 +25,7 @@ class CharLiteralAST : public ExprAST {
   bool isByte_;
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   CharLiteralAST(uint32_t value, bool isByte)
       : value_(value), isByte_(isByte) {}
 
@@ -34,7 +34,7 @@ class CharLiteralAST : public ExprAST {
 
   /** Returns the value represented by this object. */
   uint32_t getValue() const { return value_; }
-  /** Reports whether this syntax node represents byte. */
+  /** Reports whether this syntax node represents a byte literal rather than a Unicode character. */
   bool isByte() const { return isByte_; }
 
   /**

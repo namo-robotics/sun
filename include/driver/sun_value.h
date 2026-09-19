@@ -46,6 +46,7 @@ inline bool isVoid(const SunValue& v) {
 inline double toDouble(const SunValue& v) {
   return std::visit(
       [](auto&& arg) -> double {
+        /** The value type held by the active runtime argument alternative. */
         using T = std::decay_t<decltype(arg)>;
         if constexpr (std::is_same_v<T, VoidValue>) {
           return 0.0;
@@ -66,6 +67,7 @@ inline double toDouble(const SunValue& v) {
 inline std::ostream& operator<<(std::ostream& os, const SunValue& v) {
   std::visit(
       [&os](auto&& arg) {
+        /** The value type held by the active runtime argument alternative. */
         using T = std::decay_t<decltype(arg)>;
         if constexpr (std::is_same_v<T, VoidValue>) {
           os << "void";
@@ -89,7 +91,7 @@ bool operator==(const SunValue& v, T expected) {
   if constexpr (std::is_integral_v<T> && !std::is_same_v<T, bool>) {
     /**
      * Compare through the fixed-width alternative matching the caller's
-     * width — never std::get_if<T> itself. `long` and `long long` alias
+     * width — never std::get_if&lt;T&gt; itself. `long` and `long long` alias
      * int64_t differently per platform (long on Linux, long long on macOS),
      * and get_if on a type the variant does not list is a compile error.
      * A narrower expected value also matches an i64-returning program.

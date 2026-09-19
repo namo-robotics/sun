@@ -43,15 +43,19 @@ const EXAMPLES_DIR = join(DOCS_DIR, '..', 'examples')
 const GENERATED_DIR = join(DOCS_DIR, 'generated')
 const OUT_FILE = join(DOCS_DIR, 'pages', 'examples.mdx')
 
-// Map a source file extension to a fenced-code language for syntax highlighting.
+/**
+ * Map a source file extension to a fenced-code language for syntax highlighting.
+ */
 function langFor(file) {
   const ext = extname(file).slice(1)
   if (ext === 'sun' || ext === 'moon') return 'sun'
   return ext || 'text'
 }
 
-// Recursively collect every .sun source under `dir`, returned as paths relative
-// to `dir` and sorted so top-level main.sun leads and nested moons follow.
+/**
+ * Recursively collect every .sun source under `dir`, returned as paths relative
+ * to `dir` and sorted so top-level main.sun leads and nested moons follow.
+ */
 function collectSunFiles(dir, base = dir) {
   const out = []
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -65,8 +69,10 @@ function collectSunFiles(dir, base = dir) {
   return out.sort()
 }
 
-// Split an optional leading `--- key: value ---` frontmatter block from the
-// README, returning its keys and the remaining markdown.
+/**
+ * Split an optional leading `--- key: value ---` frontmatter block from the
+ * README, returning its keys and the remaining markdown.
+ */
 function splitFrontmatter(readme) {
   const match = readme.match(/^---\n([\s\S]*?)\n---\n/)
   if (!match) return { meta: {}, markdown: readme }
@@ -78,8 +84,10 @@ function splitFrontmatter(readme) {
   return { meta, markdown: readme.slice(match[0].length) }
 }
 
-// An example is any immediate subdirectory that has a README.md. A plain name
-// sort gives the ordering.
+/**
+ * An example is any immediate subdirectory that has a README.md. A plain name
+ * sort gives the ordering.
+ */
 function loadExamples() {
   return readdirSync(EXAMPLES_DIR, { withFileTypes: true })
     .filter((d) => d.isDirectory())
@@ -92,9 +100,11 @@ function loadExamples() {
     })
 }
 
-// Walk the lines of a markdown document, reporting for each whether it sits
-// inside a fenced code block. A `# ...` line inside a fence is shell output or
-// a comment, never a heading.
+/**
+ * Walk the lines of a markdown document, reporting for each whether it sits
+ * inside a fenced code block. A `# ...` line inside a fence is shell output or
+ * a comment, never a heading.
+ */
 function* markdownLines(markdown) {
   let fence = null
   for (const line of markdown.split('\n')) {
@@ -111,8 +121,10 @@ function* markdownLines(markdown) {
   }
 }
 
-// Push every heading `by` levels deeper, so a README's `## Build and run`
-// nests under the heading the example is rendered with.
+/**
+ * Push every heading `by` levels deeper, so a README's `## Build and run`
+ * nests under the heading the example is rendered with.
+ */
 function shiftHeadings(markdown, by) {
   const out = []
   for (const { line, inFence } of markdownLines(markdown)) {
@@ -122,8 +134,10 @@ function shiftHeadings(markdown, by) {
   return out.join('\n')
 }
 
-// Split the README into its H1 title, the intro prose under it, and the `## `
-// sections that follow — the source is spliced between the last two.
+/**
+ * Split the README into its H1 title, the intro prose under it, and the `## `
+ * sections that follow — the source is spliced between the last two.
+ */
 function splitReadme(readme) {
   const lines = [...markdownLines(readme)]
   const titleAt = lines.findIndex(({ line, inFence }) => !inFence && /^#\s+/.test(line))
@@ -131,6 +145,7 @@ function splitReadme(readme) {
 
   const rest = lines.slice(titleAt + 1)
   const sectionsAt = rest.findIndex(({ line, inFence }) => !inFence && /^##\s+/.test(line))
+  /** Extracts a selected section of an example README. */
   const take = (from, to) =>
     rest.slice(from, to).map(({ line }) => line).join('\n').trim()
 
@@ -138,8 +153,10 @@ function splitReadme(readme) {
   return { title, intro: take(0, sectionsAt), sections: take(sectionsAt) }
 }
 
-// Every .sun file in the folder verbatim, each as a fenced block labelled with
-// its filename.
+/**
+ * Every .sun file in the folder verbatim, each as a fenced block labelled with
+ * its filename.
+ */
 function renderSourceBlocks(dir) {
   const parts = []
   for (const file of collectSunFiles(dir)) {
@@ -151,13 +168,17 @@ function renderSourceBlocks(dir) {
   return parts
 }
 
-// A `Source` heading at the given level, followed by every .sun file verbatim.
+/**
+ * A `Source` heading at the given level, followed by every .sun file verbatim.
+ */
 function renderSources(dir, level) {
   return ['#'.repeat(level) + ' Source', '', ...renderSourceBlocks(dir)]
 }
 
-// The body of one example: its intro prose, then the source, then the README's
-// own sections at `level` — the same level the `Source` heading is given.
+/**
+ * The body of one example: its intro prose, then the source, then the README's
+ * own sections at `level` — the same level the `Source` heading is given.
+ */
 function renderBody({ dir, readme }, level) {
   const { intro, sections } = splitReadme(readme)
   const parts = []
@@ -167,13 +188,17 @@ function renderBody({ dir, readme }, level) {
   return parts
 }
 
-// A section of the Examples page: the README title becomes a level-2 heading
-// so it nests under the page's `# Examples`.
+/**
+ * A section of the Examples page: the README title becomes a level-2 heading
+ * so it nests under the page's `# Examples`.
+ */
 function renderExample(example) {
   return [`## ${splitReadme(example.readme).title}`, '', ...renderBody(example, 3)].join('\n')
 }
 
-// The banner every generated partial opens with, naming the folder to edit.
+/**
+ * The banner every generated partial opens with, naming the folder to edit.
+ */
 function partialHeader(name) {
   return [
     `{/* AUTO-GENERATED by docs/scripts/gen-examples.mjs from examples/${name}/. */}`,
@@ -182,22 +207,28 @@ function partialHeader(name) {
   ]
 }
 
-// A partial for a handwritten page to import. The host page owns the heading,
-// so the README's H1 is dropped and `Source` sits at level 4.
+/**
+ * A partial for a handwritten page to import. The host page owns the heading,
+ * so the README's H1 is dropped and `Source` sits at level 4.
+ */
 function renderPartial(example) {
   const name = basename(example.dir)
   return [...partialHeader(name), ...renderBody(example, 4)].join('\n')
 }
 
-// A partial holding only the program — no prose and no headings — for a page
-// that writes its own walkthrough around it.
+/**
+ * A partial holding only the program — no prose and no headings — for a page
+ * that writes its own walkthrough around it.
+ */
 function renderSourcePartial(example) {
   const name = basename(example.dir)
   return [...partialHeader(name), ...renderSourceBlocks(example.dir)].join('\n')
 }
 
-// A partial is only visible if its host page imports it, so a frontmatter key
-// naming a missing or non-importing page would silently drop the example.
+/**
+ * A partial is only visible if its host page imports it, so a frontmatter key
+ * naming a missing or non-importing page would silently drop the example.
+ */
 function checkHostImports(name, key, page, partialFile) {
   const host = join(DOCS_DIR, 'pages', page + '.mdx')
   if (!existsSync(host)) {

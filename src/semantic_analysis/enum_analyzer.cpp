@@ -61,7 +61,7 @@ bool embedsEnumByValue(const TypePtr& type, const EnumType* self,
 
 /**
  * Unify a payload annotation against an argument type, binding directly
- * mentioned type parameters (T, raw_ptr<T>, static_ptr<T>). Nested generic
+ * mentioned type parameters (T, raw_ptr&lt;T&gt;, static_ptr&lt;T&gt;). Nested generic
  * payloads contribute no bindings (annotate the target instead). Returns
  * false on a conflicting binding.
  */

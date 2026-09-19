@@ -1320,6 +1320,7 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
     if (structType->getNumElements() == 2 &&
         structType->getElementType(0)->isPointerTy() &&
         structType->getElementType(1)->isIntegerTy(64)) {
+      /** The pointer-and-length result returned by a JIT-compiled entrypoint. */
       struct StaticPtr {
         const char* data;
         int64_t len;

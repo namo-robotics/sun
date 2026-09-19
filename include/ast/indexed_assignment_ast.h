@@ -18,7 +18,7 @@ class IndexedAssignmentAST : public ExprAST {
   std::unique_ptr<ExprAST> value;   // The value to assign
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   IndexedAssignmentAST(std::unique_ptr<ExprAST> target,
                        std::unique_ptr<ExprAST> value)
       : target(std::move(target)), value(std::move(value)) {}

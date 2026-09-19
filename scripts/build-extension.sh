@@ -6,6 +6,7 @@ EXT_DIR="$ROOT_DIR/extensions/vscode-sun"
 BUILD_DIR="$ROOT_DIR/build"
 VSIX_PATH="$EXT_DIR/sun-language.vsix"
 
+# Installs the built extension through an available VS Code command-line tool.
 install_vsix() {
   local cli=""
   for candidate in code code-insiders codium; do

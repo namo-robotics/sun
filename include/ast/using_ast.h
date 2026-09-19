@@ -22,7 +22,7 @@ class UsingAST : public ExprAST {
   bool isModuleImport_;  // true for "using std;" (imports whole module)
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   UsingAST(std::vector<std::string> nsPath, std::string targetName)
       : namespacePath(std::move(nsPath)),
         target(std::move(targetName)),
@@ -44,7 +44,7 @@ class UsingAST : public ExprAST {
   }
   /** Returns the target stored by this object. */
   const std::string& getTarget() const { return target; }
-  /** Reports whether this syntax node represents module import. */
+  /** Reports whether this syntax node represents a module import. */
   bool isModuleImport() const { return isModuleImport_; }
   /** Record whether semantic binding identified a whole-module import. */
   void setModuleImport(bool value) { isModuleImport_ = value; }

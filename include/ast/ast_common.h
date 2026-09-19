@@ -77,7 +77,7 @@ enum class ASTNodeType {
  * One generic type parameter, as written between the angle brackets: a name,
  * and optionally a constraint the type argument must satisfy.
  *
- *   <T>            name "T", no constraint — any type
+ *   &lt;T&gt;            name "T", no constraint — any type
  *   <T: _Numeric>  see TypeConstraint for the forms a constraint can take
  *
  * The constraint is checked when the generic is instantiated with a concrete
@@ -170,7 +170,7 @@ inline std::vector<std::string> typeParameterNames(
  * parentheses: a name, and the type annotation after its colon.
  *
  *   args...                  name "args", anything the call supplies
- *   args...: _params_of<T>   the parameters T's `init` takes, or, when T is a
+ *   args...: _params_of&lt;T&gt;   the parameters T's `init` takes, or, when T is a
  *                            lambda, the parameters that lambda takes
  *
  * The annotation sits where an ordinary parameter's type sits, but it stands

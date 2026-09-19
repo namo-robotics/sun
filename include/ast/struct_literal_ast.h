@@ -47,7 +47,7 @@ class StructLiteralAST : public ExprAST {
     return static_cast<StructLiteralAnalysis&>(analysis()).fields;
   }
 
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   explicit StructLiteralAST(std::vector<FieldInit> fields)
       : fields_(std::move(fields)) {}
 

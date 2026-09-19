@@ -151,11 +151,13 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
     DeclarationCollectionPass& c;
     GenericSpecializer& generics;
     bool outermost;
+    /** Temporarily exposes the active declaration-collection pass to generic specialization. */
     PrepassGuard(DeclarationCollectionPass& collector, GenericSpecializer& g)
         : c(collector), generics(g), outermost(collector.prepassDepth_ == 0) {
       ++c.prepassDepth_;
       generics.setInDeclarationPrepass(true);
     }
+    /** Restores the declaration-collection pass previously used by generic specialization. */
     ~PrepassGuard() {
       --c.prepassDepth_;
       if (outermost) {

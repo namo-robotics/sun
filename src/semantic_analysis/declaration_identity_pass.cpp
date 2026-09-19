@@ -345,6 +345,7 @@ void DeclarationIdentityPass::run(const ExprAST& root, DeclarationId owner,
   });
 }
 
+/** Clears computed annotations throughout the tree while retaining declaration identities. */
 void clearComputedAnalysis(const ExprAST& root) {
   forEachChild(root,
                [](const ExprAST& child) { clearComputedAnalysis(child); });
@@ -352,6 +353,7 @@ void clearComputedAnalysis(const ExprAST& root) {
   root.clearComputedAnalysis();
 }
 
+/** Discards analysis-session state throughout the syntax tree. */
 void resetAnalysisSession(const ExprAST& root) {
   forEachChild(root, [](const ExprAST& child) { resetAnalysisSession(child); });
   resetBindings(root, true);

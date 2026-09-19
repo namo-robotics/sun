@@ -196,7 +196,7 @@ class Driver {
   void writeUserDefinedIR(const std::string& path);
 
  public:
-  /** Updates the test handling stored by this object. */
+  /** Selects how compilation discovers and emits test functions. */
   void setTestHandling(TestHandling handling) { testHandling_ = handling; }
 
   /**
@@ -347,6 +347,7 @@ class Driver {
    * @param moonImports Precompiled .moon libraries with optional aliasing
    * @param argc Argument count for main()
    * @param argv Argument vector for main()
+   * @param protoFiles Protobuf schemas to synthesize into Sun modules
    */
   sun::driver::SunValue executeFiles(
       const std::vector<std::string>& sourceFiles,
@@ -379,7 +380,7 @@ class Driver {
 
   /**
    * Enable debug mode and set the debug output folder
-   * Creates <basename>_debug/ folder with ast.dot and ir.ll
+   * Creates &lt;basename&gt;_debug/ folder with ast.dot and ir.ll
    */
   void setDebugMode(bool enable, const std::string& inputFile = "");
 

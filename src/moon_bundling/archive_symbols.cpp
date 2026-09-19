@@ -119,6 +119,7 @@ std::string stripBundlePrefix(const std::string& symbol) {
 
 }  // namespace
 
+/** Computes a stable content identity for a set of native archives. */
 std::string computeArchiveSetHash(
     const std::vector<std::pair<std::string, std::string>>& namesAndDigests) {
   std::vector<std::string> lines;
@@ -131,6 +132,7 @@ std::string computeArchiveSetHash(
   return computeSha256Hex(input).substr(0, 16);
 }
 
+/** Reads archive symbols and reports definitions requiring library isolation. */
 llvm::Expected<ArchiveSymbolScan> scanArchiveSymbols(
     llvm::MemoryBufferRef archiveBytes) {
   auto archive = Archive::create(archiveBytes);
@@ -175,6 +177,7 @@ llvm::Expected<ArchiveSymbolScan> scanArchiveSymbols(
   return scan;
 }
 
+/** Rewrites native archive symbols using the supplied name mapping. */
 llvm::Expected<std::string> renameArchiveSymbols(
     llvm::MemoryBufferRef archiveBytes,
     const std::map<std::string, std::string>& renames) {
@@ -246,6 +249,7 @@ bool archiveHoldsMachO(const Archive& archive) {
   return machO;
 }
 
+/** Lists the symbols advertised by the archive index. */
 std::vector<std::string> listArchiveIndex(llvm::MemoryBufferRef archiveBytes) {
   std::vector<std::string> names;
   auto archive = Archive::create(archiveBytes);
@@ -260,6 +264,7 @@ std::vector<std::string> listArchiveIndex(llvm::MemoryBufferRef archiveBytes) {
   return names;
 }
 
+/** Maps defined symbols to the archive members that supply them. */
 std::map<std::string, std::string> listArchiveDefinitions(
     llvm::MemoryBufferRef archiveBytes) {
   std::map<std::string, std::string> definitions;

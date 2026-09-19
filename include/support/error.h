@@ -130,7 +130,7 @@ class SunError : public std::exception {
     related_.push_back({message, location, level});
     buildFullMessage();
   }
-  /** Returns the related stored by this object. */
+  /** Returns the related diagnostic locations. */
   const std::vector<RelatedDiagnostic>& getRelated() const { return related_; }
 
   /**

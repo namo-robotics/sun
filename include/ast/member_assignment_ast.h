@@ -35,7 +35,7 @@ class MemberAssignmentAST : public ExprAST {
   }
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   MemberAssignmentAST(std::unique_ptr<ExprAST> obj, std::string member,
                       std::unique_ptr<ExprAST> val)
       : object(std::move(obj)),

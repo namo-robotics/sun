@@ -432,7 +432,7 @@ class CodegenVisitor {
   }
 
   /**
-   * Attach a #dbg_declare for a source parameter (no-op without -g).
+   * Attach a dbg_declare for a source parameter (no-op without -g).
    * DWARF argNo is 1-based; argNoBase is 2 for methods, whose slot 1 is the
    * artificial 'this'.
    */
@@ -552,8 +552,8 @@ class CodegenVisitor {
                                     const TypePtr& sourceType);
 
   /**
-   * Narrows a static_ptr<T> fat { ptr, i64 } argument to the bare data
-   * pointer a raw_ptr<T> parameter expects. No-op for any other type pairing.
+   * Narrows a static_ptr&lt;T&gt; fat { ptr, i64 } argument to the bare data
+   * pointer a raw_ptr&lt;T&gt; parameter expects. No-op for any other type pairing.
    */
   llvm::Value* coerceStaticPtrToRawPtr(llvm::Value* argVal,
                                        const TypePtr& argSunType,
@@ -635,7 +635,7 @@ class CodegenVisitor {
       const sun::semantic_analysis::ClassMethod* method);
 
   /**
-   * Attach a #dbg_declare for a user variable (no-op without -g)
+   * Attach a dbg_declare for a user variable (no-op without -g)
    */
   void debugDeclareLocal(llvm::AllocaInst* alloca, const std::string& name,
                          const TypePtr& type,

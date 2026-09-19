@@ -93,18 +93,18 @@ class TypeInferer {
       const GenericCallAST &call);
 
   /**
-   * The static_ptr<T> type when `type` is a static_ptr to a non-class, else
+   * The static_ptr&lt;T&gt; type when `type` is a static_ptr to a non-class, else
    * null. A static_ptr<Class> dispatches to the class's own methods instead
    * of the builtin ones.
    */
   static sun::semantic_analysis::StaticPointerType *asNonClassStaticPtr(
       const sun::semantic_analysis::TypePtr &type);
 
-  /** True for a builtin static_ptr<T> method name: length() or raw(). */
+  /** True for a builtin static_ptr&lt;T&gt; method name: length() or raw(). */
   static bool isStaticPtrMethod(const std::string &name);
 
   /**
-   * The result type of a static_ptr<T> builtin method call, checking the
+   * The result type of a static_ptr&lt;T&gt; builtin method call, checking the
    * argument count.
    */
   sun::semantic_analysis::TypePtr inferStaticPtrMethodType(

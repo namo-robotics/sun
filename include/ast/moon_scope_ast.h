@@ -49,7 +49,7 @@ class MoonScopeAST : public ExprAST {
   std::vector<sun::semantic_analysis::ImportedDeclarationRecord>
       importedDeclarations;
 
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   MoonScopeAST(std::string contentHash, std::string moduleName,
                std::optional<std::string> alias, std::string moonPath,
                std::unique_ptr<BlockExprAST> body)

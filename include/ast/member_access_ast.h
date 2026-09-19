@@ -18,7 +18,7 @@ using sun::semantic_analysis::TypePtr;
 /**
  * Member access expression: object.fieldName or object.methodName
  * For method calls, this is wrapped in CallExprAST
- * For generic method calls like object.method<T>(), typeArguments will be
+ * For generic method calls like object.method&lt;T&gt;(), typeArguments will be
  * populated
  */
 class MemberAccessAST : public ExprAST {
@@ -47,7 +47,7 @@ class MemberAccessAST : public ExprAST {
   }
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   MemberAccessAST(std::unique_ptr<ExprAST> obj, std::string member,
                   std::vector<std::unique_ptr<TypeAnnotation>> typeArgs = {})
       : object(std::move(obj)),
@@ -92,7 +92,7 @@ class MemberAccessAST : public ExprAST {
   void setResolvedTypeArgs(std::vector<TypePtr> types) const {
     memberAnalysis().resolvedTypeArgs = std::move(types);
   }
-  /** Returns the resolved type args stored by this object. */
+  /** Returns the concrete generic type arguments. */
   const std::vector<TypePtr>& getResolvedTypeArgs() const {
     return memberAnalysis().resolvedTypeArgs;
   }
@@ -110,7 +110,7 @@ class MemberAccessAST : public ExprAST {
   void setResolvedVariadicArgTypes(std::vector<TypePtr> types) const {
     memberAnalysis().resolvedVariadicArgTypes = std::move(types);
   }
-  /** Returns the resolved variadic arg types stored by this object. */
+  /** Returns the concrete variadic argument types. */
   const std::vector<TypePtr>& getResolvedVariadicArgTypes() const {
     return memberAnalysis().resolvedVariadicArgTypes;
   }
@@ -122,7 +122,7 @@ class MemberAccessAST : public ExprAST {
   void setIsBoundMethodRef(bool value) const {
     memberAnalysis().isBoundMethodRef = value;
   }
-  /** Reports whether this syntax node represents bound method ref. */
+  /** Reports whether this syntax node represents a bound method reference. */
   bool isBoundMethodRef() const {
     return analysis_ &&
            static_cast<MemberAccessAnalysis&>(*analysis_).isBoundMethodRef;

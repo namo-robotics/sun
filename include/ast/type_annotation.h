@@ -15,7 +15,7 @@ namespace sun::ast {
 
 /**
  * Type annotation structure for parsed type info
- * Supports: i32, f64, bool, void, ptr<T>, ref T, function, lambda
+ * Supports: i32, f64, bool, void, ptr&lt;T&gt;, ref T, function, lambda
  * Generic types: ClassName<T, U> for class instantiation
  * Array types: array<T, N> or array<T, M, N> for fixed-size arrays
  * Error union types: T, error (value or error)
@@ -129,29 +129,29 @@ struct TypeAnnotation {
   /** Transfers the stored state from another instance during move assignment. */
   TypeAnnotation& operator=(TypeAnnotation&&) = default;
 
-  /** Reports whether this syntax node represents raw pointer. */
+  /** Reports whether this syntax node represents a raw-pointer annotation. */
   bool isRawPointer() const {
     return baseName == "raw_ptr";
   }  // raw_ptr<T> non-owning pointer for C interop
-  /** Reports whether this syntax node represents static pointer. */
+  /** Reports whether this syntax node represents a static-pointer annotation. */
   bool isStaticPointer() const {
     return baseName == "static_ptr";
   }  // static_ptr<T> pointer to immortal static data
-  /** Reports whether this syntax node represents reference. */
+  /** Reports whether this syntax node represents a borrowed-reference annotation. */
   bool isReference() const {
     return baseName == "ref";
   }  // ref(T) reference type
-  /** Reports whether this syntax node represents const reference. */
+  /** Reports whether this syntax node represents a reference without write access. */
   bool isConstReference() const { return isReference() && constRef; }
-  /** Reports whether this syntax node represents function. */
+  /** Reports whether this syntax node represents a function definition. */
   bool isFunction() const {
     return baseName == "fn";
   }  // function () T thin function-pointer type
-  /** Reports whether this syntax node represents lambda. */
+  /** Reports whether this syntax node represents a lambda expression. */
   bool isLambda() const {
     return baseName == "lambda";
   }  // () => {} anonymous function type
-  /** Reports whether this syntax node represents array. */
+  /** Reports whether this syntax node represents an array annotation. */
   bool isArray() const {
     return baseName == "array";
   }  // array<T, N> fixed-size array
@@ -159,7 +159,7 @@ struct TypeAnnotation {
   bool isCallable() const { return isFunction() || isLambda(); }
   /** Reports whether this declaration still has unbound type parameters. */
   bool isGeneric() const { return !typeArguments.empty(); }
-  /** Reports whether this syntax node represents error union. */
+  /** Reports whether this syntax node represents a value-or-error type. */
   bool isErrorUnion() const { return canError; }
 
   /** Compare type structure and resolved names, ignoring source locations. */

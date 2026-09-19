@@ -18,7 +18,7 @@ class ArrayLiteralAST : public ExprAST {
   std::vector<std::unique_ptr<ExprAST>> elements;
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   explicit ArrayLiteralAST(std::vector<std::unique_ptr<ExprAST>> elems)
       : elements(std::move(elems)) {}
   /** Returns the syntax-node kind used to dispatch tree visitors. */

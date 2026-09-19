@@ -35,7 +35,7 @@ struct Position {
     endColumn = ec;
   }
 
-  /** Updates the end stored by this object. */
+  /** Sets the ending source coordinate of this span. */
   void setEnd(int el, int ec, int eo) {
     endLine = el;
     endColumn = ec;

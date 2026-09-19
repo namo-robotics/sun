@@ -28,7 +28,7 @@ namespace sun::codegen::intrinsics {
 
 /**
  * Intrinsic function identifiers
- * Generic intrinsics take a type argument: _sizeof<T>(), _load<T>(ptr, idx)
+ * Generic intrinsics take a type argument: _sizeof&lt;T&gt;(), _load&lt;T&gt;(ptr, idx)
  * Non-generic intrinsics are called like regular functions: _malloc(size)
  */
 enum class Intrinsic {

@@ -41,7 +41,7 @@ class ReferenceCreationAST : public ExprAST {
   }
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   explicit ReferenceCreationAST(std::string name,
                                 std::unique_ptr<ExprAST> target,
                                 bool isMutable = true,

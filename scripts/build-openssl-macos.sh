@@ -27,6 +27,7 @@ OUT_DIR="$PROJECT_ROOT/third_party/openssl/arm64-apple-darwin"
 STAMP="$OUT_DIR/.built-openssl-$OPENSSL_VERSION"
 WORK_DIR="$PROJECT_ROOT/tmp/openssl-src"
 
+# Prints a progress message with the script name.
 log() { echo "[build-openssl] $1"; }
 
 if [[ "$(uname -s)" != "Darwin" || "$(uname -m)" != "arm64" ]]; then

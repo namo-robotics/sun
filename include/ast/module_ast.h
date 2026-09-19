@@ -27,7 +27,7 @@ class ModuleAST : public ExprAST {
   std::optional<sun::support::Position> nameLocation;
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   ModuleAST(std::string name, std::unique_ptr<BlockExprAST> body)
       : name(std::move(name)), body(std::move(body)) {}
 

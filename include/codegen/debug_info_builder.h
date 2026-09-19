@@ -46,7 +46,7 @@ class DebugInfoBuilder {
   /** Reports whether debug metadata generation is enabled. */
   bool enabled() const { return di_ != nullptr; }
 
-  /** Returns the file stored by this object. */
+  /** Returns debug metadata for a source file, creating it when necessary. */
   llvm::DIFile* getFile(const std::optional<std::string>& path);
 
   /**

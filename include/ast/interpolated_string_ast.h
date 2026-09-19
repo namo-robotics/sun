@@ -37,7 +37,7 @@ class InterpolatedStringAST : public ExprAST {
   std::vector<Segment> segments_;
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   InterpolatedStringAST(std::string rawContent, std::vector<Segment> segments)
       : rawContent_(std::move(rawContent)), segments_(std::move(segments)) {}
 
@@ -46,11 +46,11 @@ class InterpolatedStringAST : public ExprAST {
     return ASTNodeType::INTERPOLATED_STRING;
   }
 
-  /** Returns the raw content stored by this object. */
+  /** Returns the unprocessed source contents. */
   const std::string& getRawContent() const { return rawContent_; }
-  /** Returns the segments stored by this object. */
+  /** Returns the interpolated string segments. */
   const std::vector<Segment>& getSegments() const { return segments_; }
-  /** Returns the segments mutable stored by this object. */
+  /** Returns the modifiable interpolated string segments. */
   std::vector<Segment>& getSegmentsMutable() { return segments_; }
 
   /** Visits replaceable child expressions so tree passes can rewrite them in place. */

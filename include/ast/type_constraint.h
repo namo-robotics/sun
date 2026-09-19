@@ -17,7 +17,7 @@ namespace sun::ast {
  *
  *   <T: _Numeric>   a built-in trait (see semantic_analysis/type_traits.h)
  *   <T: IShape>     an interface the type argument must implement
- *   <T: IClone<T>>  an interface with type arguments
+ *   <T: IClone&lt;T&gt;>  an interface with type arguments
  *   <F: _Lambda>    any closure type
  *
  * Parsing records the name, type arguments and source location. Deciding

@@ -9,7 +9,9 @@ import { parseXml, renderReference, renderNamespaceTree, renderSymbolTree, write
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const revision = 'a'.repeat(40)
+/** Parses one XML fixture into a compound definition element. */
 const compound = xml => parseXml(xml).documentElement
+/** Builds declarations covering reference links, overloads, visibility, and source comments. */
 const fixture = () => [
   compound(`<compounddef id="namespace_demo" kind="namespace"><compoundname>sun::demo</compoundname>
     <innerclass refid="class_demo">sun::demo::Box</innerclass>
@@ -38,6 +40,7 @@ const fixture = () => [
   compound('<compounddef id="file_demo" kind="file"><compoundname>src/demo.cpp</compoundname><sectiondef><memberdef id="helper" kind="function"><name>helper</name><argsstring>()</argsstring></memberdef></sectiondef></compounddef>'),
 ]
 
+/** Checks that generated reference links point to existing pages and anchors. */
 function checkLinks(pages) {
   for (const page of pages.values()) {
     for (const [, slug, anchor] of page.matchAll(/(?:\]\(|href=")\/compiler-api\/([^\s)#"]+)(?:#([^\s)"]+))?[)"]/g)) {
@@ -91,6 +94,7 @@ test('builds one categorized tree with nested types, members, enum values and st
   const tree = JSON.parse(pages.get('tree.json'))
   assert.ok(landing.length < 300)
   assert.match(landing, /import tree from '.\/compiler-api\/tree.json'/)
+  /** Finds a labeled child in the fixture tree and reports a missing branch. */
   const get = (node, label) => {
     const found = node.children.find(child => child.label === label)
     assert.ok(found, `Missing ${label} under ${node.label}`)
@@ -110,10 +114,12 @@ test('builds one categorized tree with nested types, members, enum values and st
   assert.equal(get(get(box, 'Structs'), 'Nested').href, '/compiler-api/nested')
   assert.equal(get(get(get(get(box, 'Public Enums'), 'Mode'), 'Enum Values'), 'Ready').href, '/compiler-api/class_demo#ready')
   assert.equal(get(get(demo, 'Functions'), 'helper').href, '/compiler-api/namespace_demo#helper')
+  const fileLinks = new Set(tree.find(node => node.label === 'Files').children.map(node => node.href))
   const links = new Set()
+  /** Checks reference-tree destinations and visits each nested branch. */
   const visit = node => {
     if (node.href) {
-      assert.ok(!links.has(node.href) || !node.href.includes('#'), `Duplicate ${node.href}`)
+      assert.ok(!links.has(node.href) || fileLinks.has(node.href), `Duplicate ${node.href}`)
       links.add(node.href)
       const [slug, anchor] = node.href.replace('/compiler-api/', '').split('#')
       const target = pages.get(`${slug}.mdx`)

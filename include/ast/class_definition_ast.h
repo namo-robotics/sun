@@ -44,7 +44,7 @@ struct ClassMethodDecl {
 
 /**
  * Implemented interface with optional type arguments
- * e.g., IIterator<T> or IComparable<i32>
+ * e.g., IIterator&lt;T&gt; or IComparable<i32>
  */
 struct ImplementedInterfaceAST {
   /** Represent an implemented interface using ordinary type syntax. */
@@ -62,7 +62,7 @@ struct ImplementedInterfaceAST {
 };
 
 /**
- * Class definition: class Name<T, U> implements Interface1<T>, Interface2 {
+ * Class definition: class Name<T, U> implements Interface1&lt;T&gt;, Interface2 {
  * fields and methods }
  */
 class ClassDefinitionAST : public ExprAST {
@@ -102,7 +102,7 @@ class ClassDefinitionAST : public ExprAST {
   }
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   ClassDefinitionAST(std::string name, std::vector<TypeParameter> typeParams,
                      std::vector<ImplementedInterfaceAST> interfaces,
                      std::vector<ClassFieldDecl> fields,
@@ -264,14 +264,14 @@ class ClassDefinitionAST : public ExprAST {
    * Partial class support: "partial class X {}" adds methods to existing class
    */
   bool isPartial() const { return isPartial_; }
-  /** Updates the is partial stored by this object. */
+  /** Marks whether this class declaration extends a partial class. */
   void setIsPartial(bool v) { isPartial_ = v; }
 
   /**
    * Packed class support: "packed class X {}" lays fields out with no padding
    */
   bool isPacked() const { return isPacked_; }
-  /** Updates the is packed stored by this object. */
+  /** Controls whether the class uses a packed memory layout. */
   void setIsPacked(bool v) { isPacked_ = v; }
 
   /**

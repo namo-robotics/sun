@@ -39,6 +39,7 @@ enum class ArgConversion : uint8_t {
                         // C's default argument promotions
 };
 
+/** Returns the diagnostic name of an argument conversion rule. */
 const char* toString(ArgConversion conversion);
 
 /**

@@ -530,6 +530,7 @@ class Formatter {
     int savedLast = lastLine_;
     lastLine_ = -1;
 
+    /** A class member and its source position used to preserve formatting order. */
     struct Member {
       int offset;
       int line;

@@ -15,7 +15,7 @@ class BoolLiteralAST : public ExprAST {
   bool Value;
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   explicit BoolLiteralAST(bool Value) : Value(Value) {}
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::BOOL_LITERAL; }

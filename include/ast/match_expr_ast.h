@@ -64,7 +64,7 @@ class MatchExprAST : public ExprAST {
   std::vector<MatchArm> arms;             // Match arms
 
  public:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates this syntax node and takes ownership of any supplied child expressions. */
   MatchExprAST(std::unique_ptr<ExprAST> discriminant,
                std::vector<MatchArm> arms)
       : discriminant(std::move(discriminant)), arms(std::move(arms)) {}
@@ -88,11 +88,11 @@ class MatchExprAST : public ExprAST {
     return result;
   }
 
-  /** Returns the discriminant stored by this object. */
+  /** Returns the enum tag. */
   const ExprAST* getDiscriminant() const { return discriminant.get(); }
-  /** Returns the arms stored by this object. */
+  /** Returns the pattern-match branches. */
   const std::vector<MatchArm>& getArms() const { return arms; }
-  /** Returns the arms mutable stored by this object. */
+  /** Returns the modifiable pattern-match branches. */
   std::vector<MatchArm>& getArmsMutable() { return arms; }
 
   /** Visits replaceable child expressions so tree passes can rewrite them in place. */

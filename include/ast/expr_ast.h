@@ -219,13 +219,13 @@ class ExprAST {
   int getColumn() const { return location_.column; }
 
   // Convenience type checks
-  /** Reports whether this syntax node represents function. */
+  /** Reports whether this syntax node represents a function definition. */
   bool isFunction() const { return getType() == ASTNodeType::FUNCTION; }
-  /** Reports whether this syntax node represents lambda. */
+  /** Reports whether this syntax node represents a lambda expression. */
   bool isLambda() const { return getType() == ASTNodeType::LAMBDA; }
-  /** Reports whether this syntax node represents block. */
+  /** Reports whether this syntax node represents a lexical block. */
   bool isBlock() const { return getType() == ASTNodeType::BLOCK; }
-  /** Reports whether this syntax node represents return. */
+  /** Reports whether this syntax node represents a return statement. */
   bool isReturn() const { return getType() == ASTNodeType::RETURN; }
 
   /**
@@ -288,9 +288,9 @@ class ExprAST {
   void setMoved(bool value) const { analysis().moved = value; }
 
  protected:
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates a base syntax node without a source position or analysis annotations. */
   ExprAST() = default;
-  /** Creates this syntax node from its operands and declaration information. */
+  /** Creates a base syntax node at the supplied source position. */
   explicit ExprAST(sun::support::Position loc) : location_(loc) {}
 };
 
