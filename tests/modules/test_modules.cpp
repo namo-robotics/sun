@@ -1700,3 +1700,69 @@ TEST(Modules, global_const_initialized_from_mutable_global_is_rejected) {
   )"),
                std::exception);
 }
+
+// Emitting a function, class, lambda or module leaves the code generator
+// inside the last function it wrote. A global declared afterwards is still at
+// file scope and must be treated that way.
+TEST(Modules, global_const_reads_const_across_other_declarations) {
+  EXPECT_EQ(executeString(R"(
+    const A: i64 = 4;
+    function helper() i32 { return 0; }
+    const AFTER_FUNCTION: i64 = A;
+
+    class Point {
+      var x: i64;
+      init(x: i64) { this.x = x; }
+    }
+    const AFTER_CLASS: i64 = A + 1;
+
+    var add_one = (x: i64) => i64 { return x + 1; };
+    const AFTER_LAMBDA: i64 = A + 2;
+
+    module inner {
+      public function helper() i32 { return 0; }
+      public const IN_MODULE: i64 = 10;
+      public const AFTER_MODULE_FUNCTION: i64 = IN_MODULE + 1;
+    }
+    const AFTER_MODULE: i64 = inner.AFTER_MODULE_FUNCTION + A;
+
+    function main() i32 {
+      if (AFTER_FUNCTION != 4i64) { return 1; }
+      if (AFTER_CLASS != 5i64) { return 2; }
+      if (AFTER_LAMBDA != 6i64) { return 3; }
+      if (AFTER_MODULE != 15i64) { return 4; }
+      return 0;
+    }
+  )"),
+            0);
+}
+
+// A string global needs no open function, wherever it is declared.
+TEST(Modules, global_string_before_and_after_a_function) {
+  EXPECT_EQ(executeString(R"(
+    const FIRST = "sun";
+    function helper() i32 { return 0; }
+    const SECOND = "moon";
+    function main() i32 {
+      if (FIRST.length() != 3i64) { return 1; }
+      if (SECOND.length() != 4i64) { return 2; }
+      return 0;
+    }
+  )"),
+            0);
+}
+
+// A bundle exports through its modules, so a global outside any module has no
+// importer that could reach it. Building such a bundle is rejected; importing
+// one used to crash the compiler.
+TEST(Modules, moon_rejects_global_outside_any_module) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      writeMoonLib("bare_global", R"(
+        var BARE_LIMIT: i64 = 7;
+
+        public module bare {
+          public function answer() i32 { return 42; }
+        }
+      )"),
+      "global 'BARE_LIMIT' is declared outside any module");
+}

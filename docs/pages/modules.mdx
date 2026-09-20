@@ -679,3 +679,7 @@ bodies shipped in the bundle may use them — but importers can only reach the
 public API. `--emit-moon` requires each top-level module of the bundle to be
 `public`; a bundle whose root module is private is rejected.
 
+A bundle's globals must be declared inside a module. A global outside any
+module could not be reached by an importer, so `--emit-moon` rejects it, and
+importing a bundle that carries one is an error.
+
