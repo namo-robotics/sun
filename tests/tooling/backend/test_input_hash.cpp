@@ -1,6 +1,6 @@
 // tests/tooling/backend/test_input_hash.cpp - Skipping builds by input hash
 //
-// With --skip-if-unchanged, every artifact records the hash of the inputs it
+// By default, every artifact records the hash of the inputs it
 // was built from, and a run that arrives at the same hash leaves the
 // artifact alone. The hash is checked directly; the end-to-end cases drive
 // the sun binary the way a build tool running it unconditionally would, and
@@ -183,7 +183,8 @@ manifest { source_files: ["util.sun"] }
   const std::string moon = scratch.path("lib.moon");
   const std::string always =
       "--emit-moon -o " + moon + " " + scratch.path("lib.sun");
-  const std::string build = "--skip-if-unchanged " + always;
+  const std::string build = always;
+  const std::string forced = "--force-rebuild " + always;
 
   EXPECT_TRUE(contains(scratch.runSun(build), "Successfully created"));
   const auto firstHash = sun::driver::readMoonInputHash(moon);
@@ -193,7 +194,7 @@ manifest { source_files: ["util.sun"] }
   EXPECT_TRUE(contains(scratch.runSun(build), "Up to date: " + moon));
   EXPECT_EQ(std::filesystem::last_write_time(moon), written);
 
-  EXPECT_TRUE(contains(scratch.runSun(always), "Successfully created"));
+  EXPECT_TRUE(contains(scratch.runSun(forced), "Successfully created"));
   EXPECT_EQ(sun::driver::readMoonInputHash(moon), firstHash);
 
   writeFile(scratch.path("util.sun"), R"(
@@ -214,7 +215,7 @@ public module input_hash_flags {
   public function one() i32 { return 1; }
 }
 )");
-  const std::string build = "--skip-if-unchanged --emit-moon -o " +
+  const std::string build = "--emit-moon -o " +
                             scratch.path("lib.moon") + " " +
                             scratch.path("lib.sun");
   scratch.runSun(build);
@@ -253,7 +254,7 @@ manifest {
   writeFile(scratch.path("app_tests.sun"), tests);
   writeFile(scratch.path("app.sun"), program);
   const std::string app = scratch.path("app");
-  const std::string build = "-c --skip-if-unchanged --lib-path build -o " +
+  const std::string build = "-c --lib-path build -o " +
                             app + " " + scratch.path("app.sun");
 
   std::string log = scratch.runSun(build);
@@ -298,7 +299,7 @@ TEST(Tooling_Backend_InputHash, program_without_tests_is_skipped) {
   writeFile(scratch.path("app.sun"), "function main() i32 { return 0; }\n");
   const std::string app = scratch.path("app");
   const std::string build =
-      "-c --skip-if-unchanged -o " + app + " " + scratch.path("app.sun");
+      "-c -o " + app + " " + scratch.path("app.sun");
 
   scratch.runSun(build);
   auto record = sun::driver::readBuildRecord(app);
@@ -314,26 +315,26 @@ TEST(Tooling_Backend_InputHash, program_without_tests_is_skipped) {
   EXPECT_TRUE(contains(scratch.runSun(build), "Successfully compiled to"));
 }
 
-// Skipping is opt-in: without the flag every run builds, and the executable
-// carries no record of its inputs.
-TEST(Tooling_Backend_InputHash, nothing_is_skipped_or_recorded_by_default) {
+// Skipping is the default: the second identical build does nothing, and
+// --force-rebuild builds anyway while still recording the inputs, so the run
+// after it skips again.
+TEST(Tooling_Backend_InputHash, force_rebuild_builds_and_still_records) {
   if (!haveSunBinary()) GTEST_SKIP() << "build/sun not found";
-  Scratch scratch("default");
+  Scratch scratch("force");
   writeFile(scratch.path("app.sun"), "function main() i32 { return 0; }\n");
   const std::string app = scratch.path("app");
   const std::string build = "-c -o " + app + " " + scratch.path("app.sun");
 
   EXPECT_TRUE(contains(scratch.runSun(build), "Successfully compiled to"));
-  EXPECT_FALSE(sun::driver::readBuildRecord(app).has_value());
-  const std::string log = scratch.runSun(build);
+  ASSERT_TRUE(sun::driver::readBuildRecord(app).has_value());
+  EXPECT_TRUE(contains(scratch.runSun(build), "Up to date: " + app));
+
+  const std::string forced = "--force-rebuild " + build;
+  std::string log = scratch.runSun(forced);
   EXPECT_TRUE(contains(log, "Successfully compiled to")) << log;
   EXPECT_FALSE(contains(log, "Up to date")) << log;
-
-  // An executable built without a record is rebuilt once skipping is asked
-  // for, and only then left alone
-  const std::string skipping = "--skip-if-unchanged " + build;
-  EXPECT_TRUE(contains(scratch.runSun(skipping), "Successfully compiled to"));
-  EXPECT_TRUE(contains(scratch.runSun(skipping), "Up to date: " + app));
+  EXPECT_TRUE(sun::driver::readBuildRecord(app).has_value());
+  EXPECT_TRUE(contains(scratch.runSun(build), "Up to date: " + app));
 }
 
 // The flag is about built artifacts, so it has nothing to say about a JIT
@@ -342,10 +343,10 @@ TEST(Tooling_Backend_InputHash, flag_is_rejected_without_a_build_mode) {
   if (!haveSunBinary()) GTEST_SKIP() << "build/sun not found";
   Scratch scratch("jit");
   writeFile(scratch.path("run.sun"), "function main() i32 { return 0; }\n");
-  const std::string cmd = "build/sun --skip-if-unchanged " +
+  const std::string cmd = "build/sun --force-rebuild " +
                           scratch.path("run.sun") + " > " +
                           scratch.path("log") + " 2>&1";
   int rc = std::system(cmd.c_str());
   EXPECT_NE(WEXITSTATUS(rc), 0);
-  EXPECT_TRUE(contains(readFile(scratch.path("log")), "--skip-if-unchanged"));
+  EXPECT_TRUE(contains(readFile(scratch.path("log")), "--force-rebuild"));
 }

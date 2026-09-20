@@ -40,7 +40,7 @@ sun::moon_bundling::MoonBuildOptions makeMoonBuildOptions(
   buildOptions.optimize = job.optimize;
   buildOptions.dumpProtoSun = job.dumpProtoSun;
   buildOptions.extraMoons = job.moonImports;
-  buildOptions.skipIfUnchanged = job.skipIfUnchanged;
+  buildOptions.forceRebuild = job.forceRebuild;
   return buildOptions;
 }
 

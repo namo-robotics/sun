@@ -1,0 +1,240 @@
+// stdlib/terminal.sun - Scoped raw/cbreak modes, size queries and key reads
+//
+// Usage:
+//   using std.io;
+//   using std.terminal;
+//   using std.time;
+//
+//   if (is_terminal(STDIN_FD)) {
+//       var mode = TerminalMode(STDIN_FD, Mode.Raw, SignalPolicy.AsInput);
+//       var size = get_size(STDOUT_FD);
+//       while (true) {
+//           match read_key(STDIN_FD, create_duration_millis(250)) {
+//               Option.Some(key) => { if (key == 3 or key == b'q') { break; } },
+//               Option.None => { size = get_size(STDOUT_FD); }  // maybe resized
+//           };
+//       }
+//   }   // `mode` leaves scope here and the terminal is restored
+//
+// The library never installs a signal handler. Whether Ctrl-C still raises
+// SIGINT is the caller's choice, made once through SignalPolicy, and resizes
+// are observed by calling get_size again rather than through SIGWINCH.
+//
+// The termios mirror and the flag values differ per OS, so Termios and the
+// ICANON/ECHO/ISIG/VMIN/VTIME/TIOC* names come from target_<os>.sun; this
+// file only says what to do with them.
+
+/** Put a terminal into raw or cbreak mode for a scope, query its size, and read keys. */
+public module std.terminal {
+  using std.io;
+
+  /** tcsetattr timing: apply at once, keeping any input already typed. */
+  var TCSANOW: i32 = 0;
+
+  /**
+   * What the interrupt, quit and suspend keys do while a mode is active.
+   *   Passthrough — ISIG stays on: Ctrl-C, Ctrl-\ and Ctrl-Z raise SIGINT,
+   *                 SIGQUIT and SIGTSTP for the foreground process group and
+   *                 never arrive as bytes. A signal that kills the process
+   *                 runs no destructor, so the terminal stays in the mode.
+   *   AsInput     — ISIG is off: the same keys arrive as bytes 3, 28 and 26,
+   *                 and the program decides what they mean.
+   */
+  public enum SignalPolicy { Passthrough, AsInput }
+
+  /**
+   * How far from cooked mode to go.
+   *   Raw    — every byte reaches the program as typed: no echo, no line
+   *            editing, no CR/NL translation, no Ctrl-S/Ctrl-Q flow control,
+   *            and no output processing (a "\n" no longer moves to column 0).
+   *   Cbreak — only echo and line editing are turned off; output processing
+   *            and CR/NL translation stay as they were.
+   */
+  public enum Mode { Raw, Cbreak }
+
+  /** A terminal's dimensions in character cells. */
+  public class Size {
+    /** Number of text rows. */
+    public var rows: i64;
+    /** Number of text columns. */
+    public var cols: i64;
+
+    /** Record a row and column count. */
+    init(rows: i64, cols: i64) {
+      this.rows = rows;
+      this.cols = cols;
+    }
+  }
+
+  /**
+   * Report whether a descriptor is a terminal. False for pipes, files, sockets
+   * and closed or invalid descriptors, so it is safe to call on anything.
+   */
+  public function is_terminal(fd: i32) bool {
+    return unsafe { c_isatty(fd); } == 1;
+  }
+
+  /**
+   * The terminal's current size. Throws when the descriptor is not a terminal
+   * (errno ENOTTY) or the driver refuses the request.
+   */
+  public function get_size(fd: i32) Size throws IError {
+    var ws: Winsize = Winsize();
+    var result: i32 = unsafe { c_ioctl(fd, TIOCGWINSZ, _address_of<Winsize>(ws)); };
+    if (result != 0) {
+      throw Error(errno(), "failed to read terminal size");
+    }
+    return Size(_convert<i64>(ws.row), _convert<i64>(ws.col));
+  }
+
+  /**
+   * A snapshot of the terminal's line-discipline settings. Throws when the
+   * descriptor is not a terminal (errno ENOTTY).
+   */
+  public function read_attributes(fd: i32) Termios throws IError {
+    var attrs: Termios = Termios();
+    if (unsafe { c_tcgetattr(fd, attrs); } != 0) {
+      throw Error(errno(), "failed to read terminal attributes");
+    }
+    return attrs;
+  }
+
+  /** Whether typed characters are echoed back (the ECHO flag). */
+  public function has_echo(attrs: const ref Termios) bool {
+    return (attrs.lflag & ECHO) != 0;
+  }
+
+  /** Whether input is delivered a line at a time with editing (the ICANON flag). */
+  public function is_canonical(attrs: const ref Termios) bool {
+    return (attrs.lflag & ICANON) != 0;
+  }
+
+  /** Whether the interrupt, quit and suspend keys raise signals (the ISIG flag). */
+  public function delivers_signals(attrs: const ref Termios) bool {
+    return (attrs.lflag & ISIG) != 0;
+  }
+
+  /**
+   * A scoped change of terminal mode. Construction saves the descriptor's
+   * settings and applies the requested mode; leaving the scope — normally or
+   * by unwinding — puts the saved settings back. Call restore() to put them
+   * back early. Both the change and the restore use TCSANOW, so input typed
+   * around the switch is never discarded.
+   */
+  public class TerminalMode {
+    // `active` rather than `fd == 0` marks a live guard: the terminal is
+    // usually descriptor 0, and a moved-from guard is all zeros.
+    var fd: i32 = 0;
+    var active: bool = false;
+    var saved: Termios;
+
+    /**
+     * Save the terminal's settings and switch it into `mode`. Throws without
+     * changing anything when the descriptor is not a terminal (errno ENOTTY)
+     * or the driver rejects the new settings.
+     */
+    init(fd: i32, mode: Mode, signals: SignalPolicy) throws IError {
+      this.saved = read_attributes(fd);
+      // A second read rather than a copy: Sun has no implicit copies and the
+      // mirror has no clone; one more syscall is cheaper than a per-OS one.
+      var next: Termios = read_attributes(fd);
+
+      match mode {
+        Mode.Raw => {
+          unsafe { c_cfmakeraw(next); };
+        },
+        Mode.Cbreak => {
+          next.lflag = next.lflag & ~(ECHO | ICANON);
+        }
+      };
+      // Set ISIG explicitly either way, so the policy means the same thing
+      // whatever cfmakeraw or the inherited settings did to it.
+      match signals {
+        SignalPolicy.Passthrough => {
+          next.lflag = next.lflag | ISIG;
+        },
+        SignalPolicy.AsInput => {
+          next.lflag = next.lflag & ~ISIG;
+        }
+      };
+      // A blocking read returns after one byte with no inter-byte timer; the
+      // timeout in read_key comes from poll, not from the line discipline.
+      next.cc[VMIN] = 1u8;
+      next.cc[VTIME] = 0u8;
+
+      if (unsafe { c_tcsetattr(fd, TCSANOW, next); } != 0) {
+        throw Error(errno(), "failed to set terminal attributes");
+      }
+      this.fd = fd;
+      this.active = true;
+    }
+
+    /**
+     * Put the saved settings back now. Does nothing when already restored.
+     * Throws if the terminal refuses, in which case the guard stays active
+     * and its destructor tries once more.
+     */
+    public method restore() void throws IError {
+      if (not this.active) {
+        return;
+      }
+      if (unsafe { c_tcsetattr(this.fd, TCSANOW, this.saved); } != 0) {
+        throw Error(errno(), "failed to restore terminal attributes");
+      }
+      this.active = false;
+    }
+
+    /** Whether the terminal is still in the mode this guard applied. */
+    public const method is_active() bool {
+      return this.active;
+    }
+
+    /**
+     * Restore the saved settings if they have not been restored yet. Best
+     * effort: a failure here has nowhere to go. A moved-from guard is all
+     * zeros, so it does nothing.
+     */
+    deinit() {
+      if (this.active) {
+        unsafe { c_tcsetattr(this.fd, TCSANOW, this.saved); };
+        this.active = false;
+      }
+    }
+  }
+
+  /**
+   * Wait up to `timeout` for one byte of input. Returns the byte, or None when
+   * the timeout passes with nothing to read. Throws when input has closed or
+   * poll/read fail. A multi-byte key (an arrow key is ESC [ A) arrives as
+   * several calls; after a 27, drain the rest with try_read_key. Allocates
+   * nothing.
+   */
+  public function read_key(fd: i32, timeout: const ref std.time.Duration) Option<u8> throws IError {
+    var pfd: PollFd = PollFd(fd, POLLIN);
+    var ready: i32 = unsafe {
+      c_poll(_bitcast<raw_ptr<u8>>(_address_of<PollFd>(pfd)), 1, poll_timeout_millis(timeout));
+    };
+    if (ready < 0) {
+      throw Error(errno(), "poll failed");
+    }
+    if (ready == 0) {
+      return Option.None;
+    }
+
+    var byte: u8 = 0;
+    var n: i64 = unsafe { c_read(fd, _address_of<u8>(byte), 1); };
+    if (n == 1) {
+      return Option.Some(byte);
+    }
+    if (n == 0) {
+      throw Error(0, "end of input");
+    }
+    throw Error(errno(), "failed to read key");
+  }
+
+  /** read_key without waiting: the byte if one is already pending, else None. */
+  public function try_read_key(fd: i32) Option<u8> throws IError {
+    var now: std.time.Duration = std.time.create_duration_millis(0);
+    return read_key(fd, now);
+  }
+}

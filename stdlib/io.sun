@@ -23,8 +23,8 @@ public module std.io {
    *   Read   — the file must exist
    *   Write  — create, or truncate what is there
    *   Append — create if missing, write at the end
-   * These are enums rather than integer constants because a bundle exports
-   * its enums but not its module-level variables.
+   * An enum rather than integer flags: the three choices are closed, and a
+   * caller cannot combine or misspell them.
    */
   public enum FileMode { Read, Write, Append }
 
@@ -151,8 +151,10 @@ public module std.io {
 
   /**
    * Convert a Duration to poll's millisecond timeout without wrapping.
+   * Positive fractions of a millisecond round up; very long durations clamp
+   * to the largest i32. Public so std.terminal's key reads share it.
    */
-  function poll_timeout_millis(timeout: const ref std.time.Duration) i32 {
+  public function poll_timeout_millis(timeout: const ref std.time.Duration) i32 {
     var max_timeout: i64 = 2147483647;
     if (timeout.as_secs() > 2147483) {
       return 2147483647;

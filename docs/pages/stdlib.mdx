@@ -595,6 +595,92 @@ An `Event` exposes `fd()` and the raw mask through `events()`. Its
 `is_invalid()` helpers test the corresponding bit without exposing platform
 details.
 
+## Terminal
+
+`stdlib/terminal.sun` (module `std.terminal`). Scoped raw and cbreak modes,
+terminal size queries and single-key reads with a timeout, on Linux and macOS.
+Nothing here needs `termios` or `ioctl` bound by hand: the struct mirror and
+the per-OS flag values live in `target_linux.sun` / `target_darwin.sun`.
+
+```sun
+using std.io;
+using std.terminal;
+using std.time;
+
+if (is_terminal(STDIN_FD)) {
+    var mode = TerminalMode(STDIN_FD, Mode.Raw, SignalPolicy.AsInput);
+    var size = get_size(STDOUT_FD);
+    while (true) {
+        match read_key(STDIN_FD, create_duration_millis(250)) {
+            Option.Some(key) => { if (key == 3 or key == b'q') { break; } },
+            Option.None => { size = get_size(STDOUT_FD); }   // maybe resized
+        };
+    }
+}   // `mode` leaves scope here and the terminal is restored
+```
+
+`TerminalMode` saves the descriptor's settings when it is constructed and puts
+them back when it leaves scope, whether by reaching the end of the block, by
+`return`, or by an exception unwinding through it. Call `restore()` to put them
+back early; a second call does nothing. A moved-from guard is all zeros and
+restores nothing, so handing a guard to another owner moves the duty with it.
+Constructing one on a descriptor that is not a terminal throws with `ENOTTY`
+and changes nothing.
+
+| `Mode` | Clears | Keeps |
+|--------|--------|-------|
+| `Raw` | echo, line editing, CR/NL translation, Ctrl-S/Ctrl-Q flow control, output processing | |
+| `Cbreak` | echo, line editing | output processing and CR/NL translation |
+
+In `Raw` mode a `"\n"` no longer returns to column 0; write `"\r\n"`. Both
+modes set `VMIN=1, VTIME=0`, so a read returns as soon as one byte arrives, and
+both the change and the restore use `TCSANOW`, so input typed around the switch
+is never discarded.
+
+### Signal policy
+
+The library never installs a signal handler. Sun cannot make a Sun function a C
+signal handler, and a process-wide handler installed by a library would be a
+surprise anyway, so what the interrupt keys do is a choice the caller makes
+once, when constructing the guard:
+
+| `SignalPolicy` | Meaning |
+|----------------|---------|
+| `Passthrough` | `ISIG` stays on. Ctrl-C, Ctrl-\ and Ctrl-Z raise `SIGINT`, `SIGQUIT` and `SIGTSTP` for the foreground process group and never arrive as bytes. |
+| `AsInput` | `ISIG` is off. The same keys arrive as bytes 3, 28 and 26, and the program decides what they mean. |
+
+A process killed by a signal runs no destructors, so under `Passthrough` a
+Ctrl-C leaves the terminal in raw mode; the shell's `reset` or `stty sane`
+repairs it. To avoid that, use `AsInput` and exit normally when byte 3 arrives,
+as the example above does. `Cbreak` with `Passthrough` is the gentler
+combination when signals must keep working: output processing stays on, so a
+terminal left behind is still usable.
+
+`SIGWINCH` is not used. A resize is observed by calling `get_size` again, for
+example whenever `read_key` returns `None`.
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `is_terminal` | `(fd: i32) bool` | `isatty`; false for pipes, files and invalid descriptors |
+| `get_size` | `(fd: i32) Size throws IError` | `rows` and `cols`; throws `ENOTTY` on a non-terminal |
+| `read_key` | `(fd: i32, timeout: const ref Duration) Option<u8> throws IError` | One byte, `None` on timeout; throws once input has closed |
+| `try_read_key` | `(fd: i32) Option<u8> throws IError` | `read_key` with a zero timeout |
+| `read_attributes` | `(fd: i32) Termios throws IError` | Snapshot of the line-discipline settings |
+| `has_echo` / `is_canonical` / `delivers_signals` | `(const ref Termios) bool` | Read the `ECHO` / `ICANON` / `ISIG` bits of a snapshot |
+
+| `TerminalMode` | Signature | Description |
+|----------------|-----------|-------------|
+| `init` | `(fd: i32, mode: Mode, signals: SignalPolicy) throws IError` | Save and switch |
+| `restore` | `() void throws IError` | Put the saved settings back now; idempotent |
+| `is_active` | `() bool` | Whether the terminal is still in the applied mode |
+
+`read_key` allocates nothing and never touches a descriptor the caller did not
+pass, so it is safe to use on stdin alongside a child process. A multi-byte key
+(an arrow key is `ESC [ A`) arrives as several calls: after a 27, drain the
+rest with `try_read_key`. `Termios` is opaque; `equals(const ref Termios)`
+compares two snapshots. The native request codes `TIOCGWINSZ`, `TIOCSWINSZ`
+and `TIOCSCTTY` are public for programs that drive `ioctl` themselves.
+
 ## Environment
 
 `Env` in module `std.env` owns a snapshot of the process environment. It

@@ -276,28 +276,29 @@ The compiler:
 ### Building only what changed
 
 Only the compiler knows which files a manifest pulled in, so the compiler is
-the one that can tell whether a build has anything to do. Ask it to with
-`--skip-if-unchanged`. Before compiling, it hashes every input: the text of
-each source and test file, the proto schemas, the native archives, the
-bundles imported, the target and flags, and the compiler itself. Every
-artifact it builds records that hash, and an artifact whose recorded hash
-matches is left untouched:
+the one that can tell whether a build has anything to do, and it checks by
+default. Before compiling, it hashes every input: the text of each source and
+test file, the proto schemas, the native archives, the bundles imported, the
+target and flags, and the compiler itself. Every artifact it builds records
+that hash, and an artifact whose recorded hash matches is left untouched:
 
 ```bash
-sun --emit-moon --skip-if-unchanged -o mylib.moon mylib.sun   # Successfully created: mylib.moon
-sun --emit-moon --skip-if-unchanged -o mylib.moon mylib.sun   # Up to date: mylib.moon
+sun --emit-moon -o mylib.moon mylib.sun                   # Successfully created: mylib.moon
+sun --emit-moon -o mylib.moon mylib.sun                   # Up to date: mylib.moon
+sun --emit-moon --force-rebuild -o mylib.moon mylib.sun   # Successfully created: mylib.moon
 ```
 
 The same goes for `sun -c`, per artifact: editing a `test_files:` entry
-rebuilds `app_test` and leaves `app` alone. Without the flag every run
-builds, and executables carry no record of their inputs.
+rebuilds `app_test` and leaves `app` alone. `--force-rebuild` skips the check
+and builds everything; the artifacts still record their inputs, so the run
+after it can skip again. Flags that print something besides the artifact
+(`--emit-ir`, `--debug`, `--dump-proto-sun`) also always build.
 
-A build system does not need to be told the inputs. Have it run `sun
---skip-if-unchanged` on every build and let `sun` skip the work; an
-untouched artifact keeps its timestamp, so nothing downstream is rebuilt
-either. With CMake that is an `add_custom_target` naming the artifact under
-`BYPRODUCTS`; Sun's own `CMakeLists.txt` builds the standard library this
-way.
+A build system does not need to be told the inputs. Have it run `sun` on
+every build and let it skip the work; an untouched artifact keeps its
+timestamp, so nothing downstream is rebuilt either. With CMake that is an
+`add_custom_target` naming the artifact under `BYPRODUCTS`; Sun's own
+`CMakeLists.txt` builds the standard library this way.
 
 The same hash names a bundle, with or without the flag: its symbols are
 spelled under it, so two bundles that differ in any input never collide.

@@ -1,0 +1,389 @@
+// stdlib/terminal_tests.sun - Tests for terminal.sun
+//
+// Every test opens its own pseudo-terminal pair with openpty, so nothing
+// here touches the process's real stdin or stdout (which are pipes under
+// CI anyway), and tests stay independent when run on parallel threads.
+// Bytes written to the master end arrive as keystrokes on the slave end,
+// and a TIOCSWINSZ on the master is what a terminal emulator does when its
+// window is resized.
+
+using std;
+using std.terminal;
+
+/** Provides the standard-library declarations implemented in this source file. */
+public module std {
+  /** Groups tests for the terminal library behavior. */
+  module terminal_tests {
+    /** ENOTTY, "inappropriate ioctl for device": the same number on Linux and macOS. */
+    var ENOTTY: i32 = 25;
+
+    /**
+     * A pseudo-terminal pair. The slave end behaves like a real terminal
+     * for the code under test; the master end plays the terminal emulator.
+     * Both ends are closed on deinit.
+     */
+    class Pty {
+      /** The emulator's end: write here to type, read here to see output. */
+      public var master: i32 = 0;
+      /** The program's end: the descriptor a terminal program would own. */
+      public var slave: i32 = 0;
+
+      /** Open a fresh pair, throwing if the system has no pseudo-terminals. */
+      init() throws IError {
+        var m: i32 = 0;
+        var s: i32 = 0;
+        var result: i32 = unsafe {
+          c_openpty(_address_of<i32>(m), _address_of<i32>(s), null, null, null);
+        };
+        if (result != 0) {
+          throw Error(errno(), "openpty failed");
+        }
+        this.master = m;
+        this.slave = s;
+      }
+
+      /** Close the master end early, which the slave sees as end of input. */
+      public method close_master() void {
+        if (this.master > 0) {
+          unsafe { c_close(this.master); };
+          this.master = 0;
+        }
+      }
+
+      /** Close whichever ends are still open. */
+      deinit() {
+        this.close_master();
+        if (this.slave > 0) {
+          unsafe { c_close(this.slave); };
+          this.slave = 0;
+        }
+      }
+    }
+
+    /** Type one byte on the master end. */
+    function write_byte(fd: i32, value: u8) void {
+      var byte: u8 = value;
+      unsafe { c_write(fd, _address_of<u8>(byte), 1); };
+    }
+
+    /** Resize the terminal the way an emulator does, from the master end. */
+    function resize(master: i32, rows: u16, cols: u16) void {
+      var ws: Winsize = Winsize();
+      ws.row = rows;
+      ws.col = cols;
+      unsafe { c_ioctl(master, TIOCSWINSZ, _address_of<Winsize>(ws)); };
+    }
+
+    /** Enter raw mode and then fail, so the guard is destroyed by unwinding. */
+    function enter_raw_then_throw(fd: i32) void throws IError {
+      var mode = TerminalMode(fd, Mode.Raw, SignalPolicy.AsInput);
+      throw Error(1, "boom");
+    }
+
+    /** Take a guard by value; it is destroyed when this function returns. */
+    function consume(mode: TerminalMode) void {}
+
+    /** Whether a key read came back empty. */
+    function is_none(key: const ref Option<u8>) bool {
+      return match key {
+        Option.Some(byte) => false,
+        Option.None => true
+      };
+    }
+
+    /** Checks isatty is true for a pty slave and false for everything else. */
+    test_function is_terminal_reports_pty_slave_and_not_pipe() {
+      var alloc = make_heap_allocator();
+      var pty = Pty();
+      std.test.assert(is_terminal(pty.slave), "a pty slave is a terminal");
+
+      var pipe = std.process.open_pipe(alloc);
+      std.test.assert(not is_terminal(pipe.read_fd()), "a pipe's read end is not a terminal");
+      std.test.assert(not is_terminal(pipe.write_fd()), "a pipe's write end is not a terminal");
+      pipe.close_read();
+      pipe.close_write();
+
+      var devnull = std.io.File();
+      devnull.open("/dev/null", std.io.FileMode.Read);
+      std.test.assert(not is_terminal(devnull.get_fd()), "/dev/null is not a terminal");
+
+      std.test.assert(not is_terminal(-1), "an invalid descriptor is not a terminal");
+    }
+
+    /** Checks the termios mirror is exactly as large as the C struct. */
+    test_function termios_mirror_has_the_native_size() {
+      // tcgetattr writes sizeof(struct termios) bytes; a mirror that is too
+      // small would let it overrun the stack, which no other test can see.
+      var expected: i64 = 60;
+      if (_target_is("macos")) {
+        expected = 72;
+      }
+      std.test.assert_eq(_sizeof<Termios>(), expected);
+    }
+
+    /** Checks asking a pipe for its size fails with ENOTTY. */
+    test_function get_size_throws_on_a_non_tty() {
+      var alloc = make_heap_allocator();
+      var pipe = std.process.open_pipe(alloc);
+      var code: i32 = 0;
+      var threw: bool = false;
+      try {
+        get_size(pipe.read_fd());
+      } catch (e: IError) {
+        threw = true;
+        code = e.code();
+      }
+      pipe.close_read();
+      pipe.close_write();
+      std.test.assert(threw, "a pipe has no size");
+      std.test.assert_eq(code, ENOTTY);
+    }
+
+    /** Checks a resize made on the master is visible from the slave. */
+    test_function get_size_reports_resizes_made_on_the_master() {
+      var pty = Pty();
+      resize(pty.master, 24u16, 80u16);
+      var first = get_size(pty.slave);
+      std.test.assert_eq(first.rows, 24);
+      std.test.assert_eq(first.cols, 80);
+
+      resize(pty.master, 50u16, 132u16);
+      var second = get_size(pty.slave);
+      std.test.assert_eq(second.rows, 50);
+      std.test.assert_eq(second.cols, 132);
+    }
+
+    /** Checks raw mode clears echo, line editing and signal keys, and restore is exact. */
+    test_function raw_mode_clears_echo_canonical_and_signals() {
+      var pty = Pty();
+      var before = read_attributes(pty.slave);
+      std.test.assert(has_echo(before), "a fresh pty echoes");
+      std.test.assert(is_canonical(before), "a fresh pty is line-buffered");
+
+      if (true) {
+        var mode = TerminalMode(pty.slave, Mode.Raw, SignalPolicy.AsInput);
+        std.test.assert(mode.is_active(), "the guard is active after construction");
+        var during = read_attributes(pty.slave);
+        std.test.assert(not has_echo(during), "raw mode turns echo off");
+        std.test.assert(not is_canonical(during), "raw mode turns line editing off");
+        std.test.assert(not delivers_signals(during), "AsInput turns signal keys off");
+
+        mode.restore();
+        std.test.assert(not mode.is_active(), "restore deactivates the guard");
+        mode.restore();  // a second restore is a no-op
+      }
+
+      var after = read_attributes(pty.slave);
+      std.test.assert(after.equals(before), "restore puts back exactly what was saved");
+    }
+
+    /** Checks cbreak mode keeps signal keys and is undone at scope exit. */
+    test_function cbreak_mode_keeps_signals() {
+      var pty = Pty();
+      var before = read_attributes(pty.slave);
+
+      if (true) {
+        var mode = TerminalMode(pty.slave, Mode.Cbreak, SignalPolicy.Passthrough);
+        var during = read_attributes(pty.slave);
+        std.test.assert(not has_echo(during), "cbreak turns echo off");
+        std.test.assert(not is_canonical(during), "cbreak turns line editing off");
+        std.test.assert(delivers_signals(during), "Passthrough keeps signal keys");
+      }
+
+      var after = read_attributes(pty.slave);
+      std.test.assert(after.equals(before), "scope exit restores the saved settings");
+    }
+
+    /** Checks Passthrough re-enables ISIG after cfmakeraw cleared it. */
+    test_function raw_passthrough_reenables_signals() {
+      var pty = Pty();
+      var mode = TerminalMode(pty.slave, Mode.Raw, SignalPolicy.Passthrough);
+      var during = read_attributes(pty.slave);
+      std.test.assert(not is_canonical(during), "raw mode turns line editing off");
+      std.test.assert(delivers_signals(during), "Passthrough keeps signal keys in raw mode");
+    }
+
+    /** Checks the terminal is restored when an exception unwinds the scope. */
+    test_function mode_is_restored_after_an_exception() {
+      var pty = Pty();
+      var before = read_attributes(pty.slave);
+
+      var threw: bool = false;
+      try {
+        enter_raw_then_throw(pty.slave);
+      } catch (e: IError) {
+        threw = true;
+      }
+      std.test.assert(threw, "the helper throws from inside the mode");
+
+      var after = read_attributes(pty.slave);
+      std.test.assert(has_echo(after), "echo is back after unwinding");
+      std.test.assert(after.equals(before), "unwinding restores the saved settings");
+    }
+
+    /** Checks a moved guard restores once, from its new owner. */
+    test_function moved_guard_restores_exactly_once() {
+      var pty = Pty();
+      var before = read_attributes(pty.slave);
+
+      var mode = TerminalMode(pty.slave, Mode.Raw, SignalPolicy.AsInput);
+      consume(mode);
+
+      var after = read_attributes(pty.slave);
+      std.test.assert(after.equals(before), "the consumer's scope exit restored the terminal");
+      // The zeroed original leaves scope at the end of this test and must
+      // neither crash nor touch the terminal.
+    }
+
+    /** Checks entering a mode on a pipe fails with ENOTTY and changes nothing. */
+    test_function entering_a_mode_on_a_non_tty_throws_enotty() {
+      var alloc = make_heap_allocator();
+      var pipe = std.process.open_pipe(alloc);
+      var code: i32 = 0;
+      var threw: bool = false;
+      try {
+        var mode = TerminalMode(pipe.read_fd(), Mode.Raw, SignalPolicy.AsInput);
+      } catch (e: IError) {
+        threw = true;
+        code = e.code();
+      }
+      pipe.close_read();
+      pipe.close_write();
+      std.test.assert(threw, "a pipe cannot enter raw mode");
+      std.test.assert_eq(code, ENOTTY);
+    }
+
+    /** Checks a byte typed on the master is read back as a key. */
+    test_function read_key_returns_the_byte_written_to_the_master() {
+      var pty = Pty();
+      var mode = TerminalMode(pty.slave, Mode.Raw, SignalPolicy.AsInput);
+      write_byte(pty.master, b'a');
+
+      var key = read_key(pty.slave, std.time.create_duration_millis(1000));
+      match key {
+        Option.Some(byte) => {
+          std.test.assert_eq(byte, b'a');
+        },
+        Option.None => {
+          std.test.fail("a typed byte should be readable");
+        }
+      };
+    }
+
+    /** Checks an idle terminal yields None from both read_key and try_read_key. */
+    test_function read_key_returns_none_when_idle() {
+      var pty = Pty();
+      var mode = TerminalMode(pty.slave, Mode.Raw, SignalPolicy.AsInput);
+
+      var waited = read_key(pty.slave, std.time.create_duration_millis(20));
+      std.test.assert(is_none(waited), "nothing typed within the timeout");
+
+      var immediate = try_read_key(pty.slave);
+      std.test.assert(is_none(immediate), "nothing pending");
+    }
+
+    /** Checks read_key throws once the other end has gone away. */
+    test_function read_key_throws_at_end_of_input() {
+      var pty = Pty();
+      var mode = TerminalMode(pty.slave, Mode.Raw, SignalPolicy.AsInput);
+      pty.close_master();
+
+      // Linux reports EIO on the slave; macOS reports zero bytes. Either way
+      // the input is gone, and read_key says so by throwing.
+      var threw: bool = false;
+      try {
+        read_key(pty.slave, std.time.create_duration_millis(1000));
+      } catch (e: IError) {
+        threw = true;
+      }
+      std.test.assert(threw, "a closed master is end of input");
+    }
+
+    /** Checks Ctrl-C arrives as byte 3 under AsInput. */
+    test_function as_input_delivers_control_c_as_a_byte() {
+      var pty = Pty();
+      var mode = TerminalMode(pty.slave, Mode.Raw, SignalPolicy.AsInput);
+      write_byte(pty.master, 3u8);
+
+      var key = read_key(pty.slave, std.time.create_duration_millis(1000));
+      match key {
+        Option.Some(byte) => {
+          std.test.assert_eq(byte, 3u8);
+        },
+        Option.None => {
+          std.test.fail("Ctrl-C should arrive as a byte");
+        }
+      };
+    }
+
+    /** Checks Ctrl-C is consumed by the line discipline under Passthrough. */
+    test_function passthrough_swallows_control_c_with_no_foreground_process() {
+      // With ISIG on, the driver turns byte 3 into SIGINT for the terminal's
+      // foreground process group and discards the byte. A pty from openpty
+      // is nobody's controlling terminal, so the group is empty and nothing
+      // is signalled — the byte simply never shows up.
+      var pty = Pty();
+      var mode = TerminalMode(pty.slave, Mode.Raw, SignalPolicy.Passthrough);
+      write_byte(pty.master, 3u8);
+
+      var key = read_key(pty.slave, std.time.create_duration_millis(100));
+      std.test.assert(is_none(key), "Passthrough never delivers Ctrl-C as a byte");
+    }
+
+    /**
+     * Run `body` in a forked child that has made the pty its controlling
+     * terminal, so it is the foreground process the line discipline signals.
+     * Returns the raw wait status. The child only makes calls that are safe
+     * after fork in a multi-threaded process: no allocation, no locks.
+     */
+    function run_as_foreground_process(pty: ref Pty, as_input: bool) i32 throws IError {
+      var alloc = make_heap_allocator();
+      var ready = std.process.open_pipe(alloc);
+      var pid: i32 = std.process.fork();
+      if (pid == 0) {
+        // In the child. A new session has no controlling terminal, so the
+        // pty can become it and this process group the foreground group.
+        unsafe { c_setsid(); };
+        if (unsafe { c_ioctl(pty.slave, TIOCSCTTY, 0i64); } != 0) {
+          std.process.exit_now(2);
+        }
+        var go: u8 = 1;
+        unsafe { c_write(ready.write_fd(), _address_of<u8>(go), 1); };
+
+        var byte: u8 = 0;
+        var n: i64 = unsafe { c_read(pty.slave, _address_of<u8>(byte), 1); };
+        if (n != 1) {
+          std.process.exit_now(3);
+        }
+        std.process.exit_now(_convert<i32>(byte));
+      }
+
+      // Wait for the child to own the terminal before "typing" Ctrl-C.
+      var seen: u8 = 0;
+      unsafe { c_read(ready.read_fd(), _address_of<u8>(seen), 1); };
+      ready.close_read();
+      ready.close_write();
+
+      write_byte(pty.master, 3u8);
+      return std.process.wait_pid(pid, 0);
+    }
+
+    /** Checks Ctrl-C kills a foreground process with SIGINT under Passthrough. */
+    test_function passthrough_delivers_sigint_to_the_foreground_process() {
+      var pty = Pty();
+      var mode = TerminalMode(pty.slave, Mode.Raw, SignalPolicy.Passthrough);
+      var status: i32 = run_as_foreground_process(pty, false);
+      std.test.assert(std.process.is_signaled(status), "the child died from a signal");
+      std.test.assert_eq(std.process.get_term_signal(status), std.process.SIGINT);
+    }
+
+    /** Checks a foreground process reads Ctrl-C as byte 3 under AsInput. */
+    test_function as_input_lets_the_foreground_process_read_control_c() {
+      var pty = Pty();
+      var mode = TerminalMode(pty.slave, Mode.Raw, SignalPolicy.AsInput);
+      var status: i32 = run_as_foreground_process(pty, true);
+      std.test.assert(std.process.exited(status), "the child exited normally");
+      std.test.assert_eq(std.process.exit_status(status), 3);
+    }
+  }  // module terminal_tests
+}  // module std

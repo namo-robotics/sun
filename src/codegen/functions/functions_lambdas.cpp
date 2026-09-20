@@ -658,6 +658,11 @@ Value* FunctionGenerator::codegenFunc(FunctionAST& funcAst) {
   // Check if the current basic block needs a terminator
   llvm::BasicBlock* currentBlock = ctx.builder->GetInsertBlock();
   if (!currentBlock->getTerminator()) {
+    // An empty body attaches no location of its own, yet the cleanup below
+    // may call destructors, and every call in a function with debug info
+    // needs one. Charge the fall-through cleanup to the body's position.
+    debugInfo.attachExpressionLocation(*ctx.builder,
+                                       funcAst.getBody().getLocation());
     // Emit scope cleanup before implicit return (deinit classes, free ptrs)
     scopes().emitScopeCleanup();
 
@@ -824,6 +829,10 @@ llvm::Value* FunctionGenerator::codegenLambda(sun::ast::LambdaAST& lambdaAst) {
   // Check if the current basic block needs a terminator
   llvm::BasicBlock* currentBlock = ctx.builder->GetInsertBlock();
   if (!currentBlock->getTerminator()) {
+    // As for named functions: an empty body sets no location, so give the
+    // fall-through cleanup the body's position before it emits any calls.
+    debugInfo.attachExpressionLocation(*ctx.builder,
+                                       lambdaAst.getBody().getLocation());
     // Emit scope cleanup before implicit return (deinit classes, free ptrs)
     scopes().emitScopeCleanup();
 

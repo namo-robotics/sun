@@ -17,8 +17,8 @@ namespace sun::cli {
 
 /**
  * Build one .moon bundle from an entrypoint with a manifest, printing what
- * went into it. With buildOptions.skipIfUnchanged, a bundle already built
- * from the same inputs is left alone and reported as up to date. Returns the
+ * went into it. A bundle already built from the same inputs is left alone and
+ * reported as up to date unless buildOptions.forceRebuild is set. Returns the
  * exit code.
  */
 int buildMoonBundle(const std::string& entrypoint,
