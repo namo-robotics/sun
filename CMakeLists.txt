@@ -422,10 +422,9 @@ if(NOT SKIP_STDLIB)
     # Only the entrypoints are named here. Which .sun files, bundles, protos
     # and archives each artifact is built from is decided by the manifests,
     # which only the compiler reads. So the commands below are custom
-    # targets, which run on every build, and pass --skip-if-unchanged so the
-    # compiler decides whether there is work to do: each artifact records a
-    # hash of the inputs it was built from, and one whose inputs are
-    # unchanged is left untouched. The
+    # targets, which run on every build, and let the compiler decide whether
+    # there is work to do: each artifact records a hash of the inputs it was
+    # built from, and one whose inputs are unchanged is left untouched. The
     # artifacts are declared as BYPRODUCTS so rules that consume them still
     # know where they come from.
 
@@ -458,7 +457,7 @@ if(NOT SKIP_STDLIB)
     if(BUILD_TESTING AND CMAKE_BINARY_DIR STREQUAL ${CMAKE_SOURCE_DIR}/build
        AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$"))
         add_custom_target(sun_config_products ALL
-            COMMAND $<TARGET_FILE:sun> -c --skip-if-unchanged ${SUN_BUNDLE_FLAGS}
+            COMMAND $<TARGET_FILE:sun> -c ${SUN_BUNDLE_FLAGS}
                     ${CMAKE_SOURCE_DIR}/sun-config.json
             BYPRODUCTS ${STDLIB_MOON} ${STDLIB_TEST_BIN}_test ${TLS_MOON} ${TLS_TEST_BIN}_test
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -487,7 +486,7 @@ if(NOT SKIP_STDLIB)
 
         if(BUILD_TESTING)
             add_custom_target(stdlib_sun_tests ALL
-                COMMAND $<TARGET_FILE:sun> -c --skip-if-unchanged
+                COMMAND $<TARGET_FILE:sun> -c
                         ${SUN_BUNDLE_FLAGS}
                         -o ${STDLIB_TEST_BIN} ${STDLIB_ENTRYPOINT}
                 BYPRODUCTS ${STDLIB_TEST_BIN}_test
@@ -516,7 +515,7 @@ if(NOT SKIP_STDLIB)
         if(BUILD_TESTING)
             # A library with tests compiles to just its test binary.
             add_custom_target(tls_sun_tests ALL
-                COMMAND $<TARGET_FILE:sun> -c --skip-if-unchanged
+                COMMAND $<TARGET_FILE:sun> -c
                         ${SUN_BUNDLE_FLAGS}
                         --lib-path ${CMAKE_BINARY_DIR}
                         -o ${TLS_TEST_BIN} ${TLS_ENTRYPOINT}

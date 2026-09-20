@@ -26,9 +26,9 @@ struct MoonBuildOptions {
   bool optimize = true;                // disabled by -O0
   bool dumpProtoSun = false;           // print synthesized proto source
   std::vector<MoonImport> extraMoons;  // CLI --moon imports
-  // Leave the bundle on disk alone when it was made from the same inputs
-  // (--skip-if-unchanged)
-  bool skipIfUnchanged = false;
+  // Rebuild even when the bundle on disk was made from the same inputs
+  // (--force-rebuild)
+  bool forceRebuild = false;
   // Called once the build is known to go ahead, before anything is compiled,
   // so a caller can announce it. Not called for a skipped build.
   std::function<void()> onBuildStart;
@@ -57,10 +57,10 @@ struct MoonBuildReport {
 class MoonBuilder {
  public:
   /**
-   * Build `outputPath` from `entrypoint`. With options.skipIfUnchanged, a
-   * bundle already there and built from the same inputs is left alone (see
-   * input_hash.h). Throws SunError on any failure (manifest, proto import,
-   * compilation, bundle write).
+   * Build `outputPath` from `entrypoint`. A bundle already there and built
+   * from the same inputs is left alone (see input_hash.h) unless
+   * options.forceRebuild asks for the work anyway. Throws SunError on any
+   * failure (manifest, proto import, compilation, bundle write).
    */
   static MoonBuildReport build(const std::string& entrypoint,
                                const std::filesystem::path& outputPath,

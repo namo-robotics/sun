@@ -145,10 +145,10 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   inputs.archives = archiveIdentities;
   const std::string inputHash = sun::driver::computeInputHash(inputs);
 
-  // ---- When asked to, do nothing if the bundle on disk was built from
-  // these very inputs. Printing the generated proto source is a reason to
+  // ---- Do nothing if the bundle on disk was built from these very inputs.
+  // --force-rebuild and printing the generated proto source are reasons to
   // run anyway ----
-  if (options.skipIfUnchanged && !options.dumpProtoSun &&
+  if (!options.forceRebuild && !options.dumpProtoSun &&
       sun::driver::readMoonInputHash(outputPath.string()) == inputHash) {
     describeExistingBundle(outputPath, archiveSetHash, report);
     report.upToDate = true;

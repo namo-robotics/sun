@@ -133,23 +133,23 @@ public module std.terminal {
   }
 
   // c_lflag bits (asm-generic termbits).
-  var ISIG: u32 = 1;
-  var ICANON: u32 = 2;
-  var ECHO: u32 = 8;
-  var IEXTEN: u32 = 32768;  // 0x8000
+  var ISIG: u32 = 0x1;
+  var ICANON: u32 = 0x2;
+  var ECHO: u32 = 0x8;
+  var IEXTEN: u32 = 0x8000;
   // c_iflag and c_oflag bits.
-  var ICRNL: u32 = 256;  // 0x100
-  var IXON: u32 = 1024;  // 0x400
-  var OPOST: u32 = 1;
+  var ICRNL: u32 = 0x100;
+  var IXON: u32 = 0x400;
+  var OPOST: u32 = 0x1;
   // Indexes into c_cc.
   var VTIME: i64 = 5;
   var VMIN: i64 = 6;
 
   // ioctl request codes (asm-generic ioctls).
   /** Read the window size into a struct winsize. */
-  public var TIOCGWINSZ: u64 = 21523;  // 0x5413
+  public var TIOCGWINSZ: u64 = 0x5413;
   /** Set the window size from a struct winsize. */
-  public var TIOCSWINSZ: u64 = 21524;  // 0x5414
+  public var TIOCSWINSZ: u64 = 0x5414;
   /** Make the terminal the calling session's controlling terminal. */
-  public var TIOCSCTTY: u64 = 21518;  // 0x540E
+  public var TIOCSCTTY: u64 = 0x540E;
 }

@@ -5,10 +5,10 @@
 // its test binary, unless --no-test was given. It is separate from bundling:
 // nothing here builds a .moon library.
 //
-// With --skip-if-unchanged, each artifact records the hash of the inputs it
-// was built from (see driver/input_hash.h), and an artifact whose recorded
-// hash matches what this run would build from is left alone. Without it,
-// everything is built and nothing is recorded.
+// Each artifact records the hash of the inputs it was built from (see
+// driver/input_hash.h), and an artifact whose recorded hash matches what this
+// run would build from is left alone. --force-rebuild skips that check and
+// builds everything; the record is still written.
 
 #pragma once
 
@@ -40,8 +40,8 @@ struct CompileJob {
   bool optimize = true;
   bool dumpProtoSun = false;
   bool noTest = false;
-  // Record each artifact's input hash, and skip one that is up to date
-  bool skipIfUnchanged = false;
+  // Build every artifact even when the one on disk is up to date
+  bool forceRebuild = false;
 };
 
 /**

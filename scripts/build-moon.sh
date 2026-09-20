@@ -2,8 +2,7 @@
 set -euo pipefail
 
 # Compile a bundle next to the bundles it imports. Safe to run on every
-# build: --skip-if-unchanged leaves a bundle alone when its inputs are
-# unchanged.
+# build: the compiler leaves a bundle alone when its inputs are unchanged.
 # Usage: scripts/build-moon.sh <sun> <entrypoint> <output.moon> [compiler flags...]
 
 if [ "$#" -lt 3 ]; then
@@ -19,6 +18,6 @@ shift 3
 BUNDLE_DIR="$(dirname "$OUTPUT")"
 mkdir -p "$BUNDLE_DIR"
 
-exec "$SUN_COMPILER" --emit-moon --skip-if-unchanged \
+exec "$SUN_COMPILER" --emit-moon \
     --lib-path "$BUNDLE_DIR" \
     -o "$OUTPUT" "$@" "$ENTRYPOINT"

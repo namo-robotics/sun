@@ -144,8 +144,8 @@ std::optional<EarlyExit> parseBuildRunArguments(
       options.dumpProtoSun = true;
     } else if (arg == "--no-test") {
       options.noTest = true;
-    } else if (arg == "--skip-if-unchanged") {
-      options.skipIfUnchanged = true;
+    } else if (arg == "--force-rebuild") {
+      options.forceRebuild = true;
     } else if (cursor.takeValueOf("-l", value)) {
       options.linkOptions.libraries.push_back(value);
     } else if (arg.rfind("-l", 0) == 0 && arg.size() > 2) {
@@ -211,9 +211,9 @@ std::optional<EarlyExit> validateBuildRunOptions(
         "Error: --static only applies when linking; use it "
         "with -c\n");
   }
-  if (options.skipIfUnchanged && !options.compileMode && !options.emitMoon) {
+  if (options.forceRebuild && !options.compileMode && !options.emitMoon) {
     return makeFailure(
-        "Error: --skip-if-unchanged is about built artifacts; use it with -c "
+        "Error: --force-rebuild is about built artifacts; use it with -c "
         "or --emit-moon\n");
   }
   // macOS has no fully static binaries: Apple ships no static libSystem or

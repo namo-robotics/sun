@@ -63,7 +63,7 @@ int runBundleCommand(const BuildRunOptions& options) {
   buildOptions.optimize = options.shared.optimize;
   buildOptions.dumpProtoSun = options.dumpProtoSun;
   buildOptions.extraMoons = options.shared.moonImports;
-  buildOptions.skipIfUnchanged = options.skipIfUnchanged;
+  buildOptions.forceRebuild = options.forceRebuild;
 
   return buildMoonBundle(entrypoint, outputPath, buildOptions);
 }

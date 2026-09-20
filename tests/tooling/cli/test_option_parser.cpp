@@ -102,7 +102,7 @@ TEST(Tooling_Cli_OptionParser, plain_script_runs_with_the_jit) {
 TEST(Tooling_Cli_OptionParser, compile_flags_set_their_fields) {
   auto parsed = parseBuildRun({"-c", "-o", "out", "app.sun", "-g", "-O0",
                                "--debug", "--emit-ir", "--no-test",
-                               "--dump-proto-sun", "--skip-if-unchanged"});
+                               "--dump-proto-sun", "--force-rebuild"});
   ASSERT_FALSE(parsed.early.has_value());
   EXPECT_TRUE(parsed.options.compileMode);
   EXPECT_FALSE(parsed.options.emitObjOnly);
@@ -113,7 +113,7 @@ TEST(Tooling_Cli_OptionParser, compile_flags_set_their_fields) {
   EXPECT_TRUE(parsed.options.shared.emitIR);
   EXPECT_TRUE(parsed.options.noTest);
   EXPECT_TRUE(parsed.options.dumpProtoSun);
-  EXPECT_TRUE(parsed.options.skipIfUnchanged);
+  EXPECT_TRUE(parsed.options.forceRebuild);
 }
 
 TEST(Tooling_Cli_OptionParser, emit_obj_implies_compile_mode) {
@@ -336,11 +336,11 @@ TEST(Tooling_Cli_OptionParser, static_is_not_supported_for_macos) {
                  "Error: --static is not supported for macOS targets\n");
 }
 
-TEST(Tooling_Cli_OptionParser, skip_if_unchanged_needs_a_build_mode) {
-  expectRejected(parseBuildRun({"--skip-if-unchanged", "a.sun"}).early,
-                 "Error: --skip-if-unchanged is about built artifacts; use it "
+TEST(Tooling_Cli_OptionParser, force_rebuild_needs_a_build_mode) {
+  expectRejected(parseBuildRun({"--force-rebuild", "a.sun"}).early,
+                 "Error: --force-rebuild is about built artifacts; use it "
                  "with -c or --emit-moon\n");
-  EXPECT_FALSE(parseBuildRun({"--emit-moon", "--skip-if-unchanged", "a.sun"})
+  EXPECT_FALSE(parseBuildRun({"--emit-moon", "--force-rebuild", "a.sun"})
                    .early.has_value());
 }
 

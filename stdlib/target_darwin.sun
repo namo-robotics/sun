@@ -137,23 +137,23 @@ public module std.terminal {
   }
 
   // c_lflag bits (sys/termios.h).
-  var ISIG: u64 = 128;  // 0x80
-  var ICANON: u64 = 256;  // 0x100
-  var ECHO: u64 = 8;
-  var IEXTEN: u64 = 1024;  // 0x400
+  var ISIG: u64 = 0x80;
+  var ICANON: u64 = 0x100;
+  var ECHO: u64 = 0x8;
+  var IEXTEN: u64 = 0x400;
   // c_iflag and c_oflag bits.
-  var ICRNL: u64 = 256;  // 0x100
-  var IXON: u64 = 512;  // 0x200
-  var OPOST: u64 = 1;
+  var ICRNL: u64 = 0x100;
+  var IXON: u64 = 0x200;
+  var OPOST: u64 = 0x1;
   // Indexes into c_cc.
   var VMIN: i64 = 16;
   var VTIME: i64 = 17;
 
   // ioctl request codes (sys/ttycom.h, with the _IOR/_IOW direction bits).
   /** Read the window size into a struct winsize. */
-  public var TIOCGWINSZ: u64 = 1074295912;  // 0x40087468
+  public var TIOCGWINSZ: u64 = 0x40087468;
   /** Set the window size from a struct winsize. */
-  public var TIOCSWINSZ: u64 = 2148037735;  // 0x80087467
+  public var TIOCSWINSZ: u64 = 0x80087467;
   /** Make the terminal the calling session's controlling terminal. */
-  public var TIOCSCTTY: u64 = 536900705;  // 0x20007461
+  public var TIOCSCTTY: u64 = 0x20007461;
 }

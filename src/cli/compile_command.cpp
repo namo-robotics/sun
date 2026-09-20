@@ -55,12 +55,12 @@ std::string getTestOutputName(const CompileJob& job) {
 }
 
 /**
- * Whether the job's builds may be skipped. Skipping has to be asked for, and
- * flags that print or write something besides the artifact ask for the work
- * to be done anyway.
+ * Whether the job's builds may be skipped. --force-rebuild asks for the work
+ * regardless, and so do flags that print or write something besides the
+ * artifact.
  */
 bool maySkip(const CompileJob& job) {
-  return job.skipIfUnchanged && !job.emitIR && !job.debugMode &&
+  return !job.forceRebuild && !job.emitIR && !job.debugMode &&
          !job.dumpProtoSun;
 }
 
@@ -171,7 +171,7 @@ CompileJob makeCompileJob(const BuildRunOptions& options) {
   job.optimize = options.shared.optimize;
   job.dumpProtoSun = options.dumpProtoSun;
   job.noTest = options.noTest;
-  job.skipIfUnchanged = options.skipIfUnchanged;
+  job.forceRebuild = options.forceRebuild;
   return job;
 }
 
@@ -180,9 +180,7 @@ int compileTestBinary(const CompileJob& job, bool hasExecutable) {
   const std::string& inputFile = job.inputFiles[0];
   const std::string testOutput = getTestOutputName(job);
 
-  // Empty unless skipping was asked for: nothing is hashed or recorded then
-  const std::string inputHash =
-      job.skipIfUnchanged ? computeJobInputHash(job, /*forTests=*/true) : "";
+  const std::string inputHash = computeJobInputHash(job, /*forTests=*/true);
   std::optional<BuildRecord> existing;
   if (maySkip(job) && isUpToDate(testOutput, inputHash, existing)) {
     llvm::outs() << "Up to date: " << testOutput << "\n";
@@ -209,10 +207,9 @@ int compileTestBinary(const CompileJob& job, bool hasExecutable) {
     testDriver->printUserDefinedIR();
   }
 
-  if (job.skipIfUnchanged) {
-    sun::driver::embedBuildRecord(
-        testDriver->getModule(), {inputHash, /*hasTests=*/true, hasExecutable});
-  }
+  // Recorded even under --force-rebuild, so the next run can skip
+  sun::driver::embedBuildRecord(testDriver->getModule(),
+                                {inputHash, /*hasTests=*/true, hasExecutable});
   std::string errorMsg;
   if (!sun::driver::compileToExecutable(
           testDriver->getModule(), testOutput, errorMsg,
@@ -232,9 +229,7 @@ int compileEntrypoint(const CompileJob& job) {
 
   try {
     const bool wantTests = !job.noTest && !job.emitObjOnly;
-    // Empty unless skipping was asked for: nothing is hashed or recorded then
-    const std::string inputHash =
-        job.skipIfUnchanged ? computeJobInputHash(job, /*forTests=*/false) : "";
+    const std::string inputHash = computeJobInputHash(job, /*forTests=*/false);
 
     // Which artifacts a program yields is known only after compiling it, so
     // each one records it for the other: the executable says whether there
@@ -281,7 +276,7 @@ int compileEntrypoint(const CompileJob& job) {
     bool hasMain = driver->getModule().getFunction("main") != nullptr;
     bool emitProduction = hasMain || !buildTests;
 
-    if (emitProduction && job.skipIfUnchanged) {
+    if (emitProduction) {
       sun::driver::embedBuildRecord(driver->getModule(),
                                     {inputHash, driver->programHasTests(),
                                      /*hasExecutable=*/true});
