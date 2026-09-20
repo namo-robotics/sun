@@ -1650,3 +1650,53 @@ TEST(Modules, malformed_dotted_module_names) {
     EXPECT_THROW(parser.parseProgram(), std::exception);
   }
 }
+
+// === Global constants built from other constants (issue #311) ===
+
+TEST(Modules, global_const_initialized_from_another_const) {
+  EXPECT_EQ(executeString(R"(
+    const A: i64 = 4;
+    const B: i64 = A;
+    const C: i64 = A * 2 + 1;
+    const NARROW: i32 = 3;
+    const WIDE: i64 = NARROW;
+    function main() i32 {
+      if (B != 4i64) { return 1; }
+      if (C != 9i64) { return 2; }
+      if (WIDE != 3i64) { return 3; }
+      return 0;
+    }
+  )"),
+            0);
+}
+
+TEST(Modules, module_const_initialized_from_another_const) {
+  EXPECT_EQ(executeString(R"(
+    module limits {
+      public const BASE: i64 = 10;
+      public const DOUBLE: i64 = BASE * 2;
+    }
+    const TRIPLE: i64 = limits.BASE * 3;
+    function main() i32 {
+      if (limits.DOUBLE != 20i64) { return 1; }
+      if (TRIPLE != 30i64) { return 2; }
+      return 0;
+    }
+  )"),
+            0);
+}
+
+TEST(Modules, global_const_initialized_from_mutable_global_is_rejected) {
+  EXPECT_THROW(executeString(R"(
+    var counter: i64 = 4;
+    const SNAPSHOT: i64 = counter;
+    function main() i32 { return 0; }
+  )"),
+               std::exception);
+  EXPECT_THROW(executeString(R"(
+    module state { public var counter: i64 = 4; }
+    const SNAPSHOT: i64 = state.counter;
+    function main() i32 { return 0; }
+  )"),
+               std::exception);
+}

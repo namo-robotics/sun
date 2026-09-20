@@ -602,8 +602,8 @@ Value* ClassGenerator::codegen(const sun::ast::MemberAccessAST& expr) {
       if (varType && (varType->isClass() || varType->isInterface())) {
         return gv;
       }
-      return ctx.builder->CreateLoad(gv->getValueType(), gv,
-                                     memberName.c_str());
+      return gen_.variableGenerator().createLoadForGlobalVar(
+          expr.getTargetDeclarationId(), expr.getLocation());
     }
 
     if (expr.getResolvedType() && expr.getResolvedType()->isFunction()) {

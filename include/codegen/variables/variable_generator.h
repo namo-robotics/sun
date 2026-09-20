@@ -154,8 +154,15 @@ class VariableGenerator {
 
   /** Loads the value stored for a local declaration. */
   llvm::LoadInst* createLoadForLocalVar(DeclarationId id);
-  /** Loads the value stored for a global declaration. */
-  llvm::LoadInst* createLoadForGlobalVar(DeclarationId id);
+  /**
+   * Reads the value of a global declaration. Inside a function this emits a
+   * load. In a file-scope initializer no code can be emitted, so a `const`
+   * number global yields its compile-time value instead and any other global
+   * is a compilation error reported at `location`. Returns null when the
+   * declaration has no global storage.
+   */
+  llvm::Value* createLoadForGlobalVar(DeclarationId id,
+                                      const sun::support::Position& location);
   /** Loads a value through the reference stored for a declaration. */
   llvm::Value* createLoadForRef(DeclarationId id,
                                 const sun::types::ReferenceType& refType);
@@ -169,6 +176,12 @@ class VariableGenerator {
   llvm::GlobalVariable* bindGlobal(DeclarationId id,
                                    llvm::GlobalVariable* global);
   std::unordered_map<DeclarationId, llvm::WeakTrackingVH> globals_;
+  /**
+   * Compile-time values of the `const` number globals defined in this
+   * program. File-scope initializers read these because no load can be
+   * emitted outside a function.
+   */
+  std::unordered_map<DeclarationId, llvm::Constant*> constantGlobalValues_;
   sun::codegen::CodegenState& state_;
   sun::codegen::CodegenVisitor& gen_;
 
@@ -202,6 +215,13 @@ class VariableGenerator {
   llvm::Value* genFunctionVariable(const VariableCreationAST& expr);
   /** Creates global array storage and its initializer. */
   llvm::Constant* genGlobalArray(const VariableCreationAST& expr);
+  /**
+   * Evaluates a file-scope initializer at compile time and converts it to
+   * `varType`. Fails compilation when the initializer is not a constant
+   * expression.
+   */
+  llvm::Constant* foldGlobalInitializer(const VariableCreationAST& expr,
+                                        llvm::Type* varType);
   /** Initializes global storage with a compile-time constant. */
   llvm::Constant* genGlobalVarForConstantExpr(const VariableCreationAST& expr,
                                               llvm::Type* varType);

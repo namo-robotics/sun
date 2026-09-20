@@ -22,6 +22,20 @@ using namespace llvm;
 /** Generates storage and access operations for Sun variables. */
 namespace sun::codegen::variables {
 
+/** Helpers private to variable creation. */
+namespace {
+
+/**
+ * Reports whether a global of this type can have its value reused at compile
+ * time. Only plain numbers qualify: pointers and aggregates name storage, and
+ * copying their initializer would not mean the same thing.
+ */
+bool isFoldableNumberType(const llvm::Type* type) {
+  return type->isIntegerTy() || type->isFloatingPointTy();
+}
+
+}  // namespace
+
 // -------------------------------------------------------------------
 // Global variable creation
 // -------------------------------------------------------------------
@@ -600,12 +614,8 @@ llvm::Constant* VariableGenerator::genGlobalArray(
 // Global variable creation for constant expressions
 // -------------------------------------------------------------------
 
-llvm::Constant* VariableGenerator::genGlobalVarForConstantExpr(
+llvm::Constant* VariableGenerator::foldGlobalInitializer(
     const VariableCreationAST& expr, llvm::Type* varType) {
-  assert(scopes().empty() &&
-         "genGlobalVarForConstantExpr should only be called at top-level");
-  assert(!varType->isFunctionTy() &&
-         "Function types should be handled separately");
   // At top-level, we need a constant initializer for the global variable
   // Generate the value - it must be a constant at global scope
   Value* value = codegen(*expr.getValue());
@@ -653,12 +663,27 @@ llvm::Constant* VariableGenerator::genGlobalVarForConstantExpr(
     }
   }
 
+  return constValue;
+}
+
+llvm::Constant* VariableGenerator::genGlobalVarForConstantExpr(
+    const VariableCreationAST& expr, llvm::Type* varType) {
+  assert(scopes().empty() &&
+         "genGlobalVarForConstantExpr should only be called at top-level");
+  assert(!varType->isFunctionTy() &&
+         "Function types should be handled separately");
+  Constant* constValue = foldGlobalInitializer(expr, varType);
+  if (!constValue) return nullptr;
+
   // Create global variable with the constant initializer
   std::string varName =
       (scopes().empty()
            ? state_.declarationSymbol(expr.getDeclarationId(), "global")
            : expr.getName());
   createGlobalVariable(expr.getDeclarationId(), varName, varType, constValue);
+  // A `const` never changes, so later file-scope initializers may read it.
+  if (expr.isConst() && isFoldableNumberType(varType))
+    constantGlobalValues_[expr.getDeclarationId()] = constValue;
   return constValue;
 }
 
