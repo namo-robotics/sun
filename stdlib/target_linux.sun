@@ -87,3 +87,69 @@ public module std.process {
   public var SIGCONT: i32 = 18;
   public var SIGSTOP: i32 = 19;
 }
+
+/** Terminal line-discipline layout and request codes for Linux. */
+public module std.terminal {
+  /**
+   * struct termios on Linux: four u32 flag words, a u8 line discipline, 32
+   * control characters, then u32 input and output speeds. 60 bytes, aligned
+   * to 4; identical on glibc and musl, x86-64 and aarch64. Fields are filled
+   * by tcgetattr and read back by tcsetattr; user code never touches them.
+   */
+  public class Termios {
+    var iflag: u32 = 0;
+    var oflag: u32 = 0;
+    var cflag: u32 = 0;
+    var lflag: u32 = 0;
+    var line: u8 = 0;
+    var cc: array<u8, 32>;
+    var ispeed: u32 = 0;
+    var ospeed: u32 = 0;
+
+    /** Start from all-zero settings, ready for tcgetattr to fill in. */
+    init() {
+      var zeros: array<u8, 32> = [0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8];
+      this.cc = zeros;
+    }
+
+    /** Report whether every field, including each control character, matches. */
+    public const method equals(other: const ref Termios) bool {
+      if (this.iflag != other.iflag or this.oflag != other.oflag) {
+        return false;
+      }
+      if (this.cflag != other.cflag or this.lflag != other.lflag) {
+        return false;
+      }
+      if (this.line != other.line or this.ispeed != other.ispeed or this.ospeed != other.ospeed) {
+        return false;
+      }
+      for (var i: i64 = 0; i < 32; i = i + 1) {
+        if (this.cc[i] != other.cc[i]) {
+          return false;
+        }
+      }
+      return true;
+    }
+  }
+
+  // c_lflag bits (asm-generic termbits).
+  var ISIG: u32 = 1;
+  var ICANON: u32 = 2;
+  var ECHO: u32 = 8;
+  var IEXTEN: u32 = 32768;  // 0x8000
+  // c_iflag and c_oflag bits.
+  var ICRNL: u32 = 256;  // 0x100
+  var IXON: u32 = 1024;  // 0x400
+  var OPOST: u32 = 1;
+  // Indexes into c_cc.
+  var VTIME: i64 = 5;
+  var VMIN: i64 = 6;
+
+  // ioctl request codes (asm-generic ioctls).
+  /** Read the window size into a struct winsize. */
+  public var TIOCGWINSZ: u64 = 21523;  // 0x5413
+  /** Set the window size from a struct winsize. */
+  public var TIOCSWINSZ: u64 = 21524;  // 0x5414
+  /** Make the terminal the calling session's controlling terminal. */
+  public var TIOCSCTTY: u64 = 21518;  // 0x540E
+}

@@ -274,6 +274,33 @@ TEST(Tooling_Backend_DebugInfo, jit_executes_with_debug_info) {
   EXPECT_EQ(value, 7);
 }
 
+// An empty body attaches no debug location, but the fall-through cleanup
+// still calls the parameter's destructor, and LLVM rejects a call without a
+// location inside a function that has debug info. Both a named function and
+// a lambda take the same path.
+TEST(Tooling_Backend_DebugInfo, empty_body_destroying_a_parameter_has_a_location) {
+  initTestEnvironment();
+  auto driver = Driver::createForJIT("debug_empty_body", /*debugInfo=*/true);
+  auto value = driver->executeString(R"(
+    class Guard {
+      var active: bool = false;
+      init() { this.active = true; }
+      deinit() { this.active = false; }
+    }
+
+    function consume(g: Guard) void {}
+
+    function main() i32 {
+      var g = Guard();
+      consume(g);
+      var swallow = (h: Guard) => void {};
+      swallow(Guard());
+      return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
 // ============================================================================
 // Object emission: llvm-dwarfdump verification
 // ============================================================================

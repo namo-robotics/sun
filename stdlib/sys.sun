@@ -69,6 +69,27 @@ public module std {
   /** Waits for descriptor events until they occur or the timeout expires. */
   extern "C" function c_poll(fds: raw_ptr<u8>, nfds: i64, timeout_ms: i32) i32 as "poll";
 
+  // --- terminals -------------------------------------------------------------
+  // struct termios differs per OS (flag width and control-character count),
+  // so its mirror lives in target_<os>.sun as std.terminal.Termios; struct
+  // winsize is the same everywhere and is mirrored below.
+
+  /** Reports whether a descriptor refers to a terminal device. */
+  extern "C" function c_isatty(fd: i32) i32 as "isatty";
+  /** Reads a terminal's line-discipline settings into caller-provided storage. */
+  extern "C" function c_tcgetattr(fd: i32, t: ref std.terminal.Termios) i32 as "tcgetattr";
+  /** Applies line-discipline settings to a terminal with the given TCSA* timing. */
+  extern "C" function c_tcsetattr(fd: i32, actions: i32, t: ref std.terminal.Termios) i32 as "tcsetattr";
+  /** Rewrites settings in place so the terminal delivers every byte unprocessed. */
+  extern "C" function c_cfmakeraw(t: ref std.terminal.Termios) void as "cfmakeraw";
+  /** Issues a device-specific request; the trailing argument is usually a pointer. */
+  extern "C" function c_ioctl(fd: i32, request: u64, ...) i32 as "ioctl";
+  /**
+   * Opens a pseudo-terminal pair and writes both descriptors. Used only by the
+   * stdlib's own tests, so programs importing stdlib.moon never link it.
+   */
+  extern "C" function c_openpty(master: raw_ptr<i32>, slave: raw_ptr<i32>, name: raw_ptr<u8>, termp: raw_ptr<u8>, winp: raw_ptr<u8>) i32 as "openpty";
+
   // --- dns -------------------------------------------------------------------
   // struct addrinfo lays out the same on glibc and musl 64-bit Linux:
   //   ai_flags@0 ai_family@4 ai_socktype@8 ai_protocol@12 (i32 each),
@@ -210,6 +231,21 @@ public module std {
     var gmtoff: i64 = 0;
     var zone: raw_ptr<u8> = null;
   }
+
+  /**
+   * struct winsize — four u16 fields, 8 bytes, the same on Linux and macOS.
+   * Filled by the TIOCGWINSZ ioctl; the pixel fields are usually zero.
+   */
+  class Winsize {
+    var row: u16 = 0;
+    var col: u16 = 0;
+    var xpixel: u16 = 0;
+    var ypixel: u16 = 0;
+  }
+
+  // struct termios has no mirror here either: Linux uses u32 flag fields and
+  // 32 control characters, macOS u64 fields and 20, so each target_<os>.sun
+  // declares its own std.terminal.Termios with that OS's layout.
 
   // struct dirent has no mirror here: its head differs per OS (Linux puts
   // d_type at byte 18 and d_name at 19; macOS has a u16 d_namlen before a
