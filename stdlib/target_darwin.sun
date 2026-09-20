@@ -95,6 +95,10 @@ public module std.process {
 
 /** Terminal line-discipline layout and request codes for macOS. */
 public module std.terminal {
+  // c_lflag bit the kernel sets on a return to canonical mode; declared
+  // ahead of Termios.equals, which masks it.
+  var PENDIN: u64 = 0x20000000;
+
   /**
    * struct termios on macOS: four u64 flag words (tcflag_t is unsigned long),
    * 20 control characters, natural padding, then u64 input and output speeds.
@@ -116,12 +120,20 @@ public module std.terminal {
       this.cc = zeros;
     }
 
-    /** Report whether every field, including each control character, matches. */
+    /**
+     * Report whether every setting, including each control character,
+     * matches. PENDIN is not a setting: the kernel sets it when a tcsetattr
+     * returns the terminal to canonical mode, to mark typed-ahead input it
+     * must reprocess, and clears it on the next read. It is masked out.
+     */
     public const method equals(other: const ref Termios) bool {
       if (this.iflag != other.iflag or this.oflag != other.oflag) {
         return false;
       }
-      if (this.cflag != other.cflag or this.lflag != other.lflag) {
+      if (this.cflag != other.cflag) {
+        return false;
+      }
+      if ((this.lflag & ~PENDIN) != (other.lflag & ~PENDIN)) {
         return false;
       }
       if (this.ispeed != other.ispeed or this.ospeed != other.ospeed) {
