@@ -83,6 +83,8 @@ class Driver {
 
   // See setOwnBundleHash. Empty for a program build.
   std::string ownBundleHash_;
+  // See getStaticInitOrder. Known once the imports have been read.
+  uint32_t staticInitOrder_ = 0;
   // See setExternSymbolRenames. Empty for a program build.
   std::map<std::string, std::string> externRenames_;
   // Link names of the program's own C externs that no rename applied to,
@@ -318,6 +320,15 @@ class Driver {
    * compileFiles.
    */
   void setOwnBundleHash(std::string hash) { ownBundleHash_ = std::move(hash); }
+
+  /**
+   * Where the startup function of the code being compiled runs relative to
+   * those of its imports: zero when it imports nothing, otherwise one more
+   * than the highest value among the imported bundles. A bundle records it so
+   * its own importers can order themselves after it. Valid once analysis has
+   * finished, which includes the metadata callback.
+   */
+  uint32_t getStaticInitOrder() const { return staticInitOrder_; }
 
   /**
    * C symbols the bundle being built carries in its archives, mapped to

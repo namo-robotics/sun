@@ -159,7 +159,8 @@ class CodegenVisitor {
   /** Emits a block, optionally skipping a prefix already emitted by its caller.
    */
   llvm::Value* codegen(const sun::ast::BlockExprAST& block, size_t start = 0);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const ExprAST& expr);
 
   /**
@@ -174,9 +175,13 @@ class CodegenVisitor {
 
   /**
    * Emit static initialization for globals that need it. Call after all
-   * top-level codegen but before main runs.
+   * top-level codegen but before main runs. See
+   * VariableGenerator::emitStaticInitFunction for the parameters.
    */
-  void emitStaticInitFunction() { variables.emitStaticInitFunction(); }
+  void emitStaticInitFunction(uint32_t initOrder,
+                              const std::string& bundleHash) {
+    variables.emitStaticInitFunction(initOrder, bundleHash);
+  }
 
   /**
    * Run DIBuilder finalization; call after all codegen, before verifyModule.
@@ -281,7 +286,8 @@ class CodegenVisitor {
   llvm::Value* codegenAddress(const ExprAST& expr) {
     return variables.codegenAddress(expr);
   }
-  /** Emits the address used to borrow an expression without moving its value. */
+  /** Emits the address used to borrow an expression without moving its value.
+   */
   llvm::Value* codegenBorrowAddress(const ExprAST& expr) {
     return variables.codegenBorrowAddress(expr);
   }
@@ -451,15 +457,20 @@ class CodegenVisitor {
   // Literals and operators (codegen_visitor.cpp)
   // ---------------------------------------------------------------
 
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::NumberExprAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::CharLiteralAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::StringLiteralAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::UnaryExprAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::BinaryExprAST& expr);
 
   /**
@@ -478,18 +489,22 @@ class CodegenVisitor {
   // Conditionals, match and enum destructuring
   // ---------------------------------------------------------------
 
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::IfExprAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::TernaryExprAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::MatchExprAST& expr);
 
   // ---------------------------------------------------------------
   // Calls (call_expressions.cpp)
   // ---------------------------------------------------------------
 
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const CallExprAST& expr);
 
   /**
@@ -552,7 +567,8 @@ class CodegenVisitor {
 
   /**
    * Narrows a static_ptr&lt;T&gt; fat { ptr, i64 } argument to the bare data
-   * pointer a raw_ptr&lt;T&gt; parameter expects. No-op for any other type pairing.
+   * pointer a raw_ptr&lt;T&gt; parameter expects. No-op for any other type
+   * pairing.
    */
   llvm::Value* coerceStaticPtrToRawPtr(llvm::Value* argVal,
                                        const TypePtr& argSunType,
@@ -609,13 +625,17 @@ class CodegenVisitor {
   // Arrays and indexing (arrays.cpp)
   // ---------------------------------------------------------------
 
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::ArrayLiteralAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::ArrayIndexAST& expr);  // Legacy
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const IndexAST& expr);  // New slice-aware indexing
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::IndexedAssignmentAST& expr);
   /** Computes the address of an indexed array element. */
   llvm::Value* codegenArrayElementPtr(const sun::ast::ArrayIndexAST& expr);

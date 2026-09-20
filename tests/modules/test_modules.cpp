@@ -1776,3 +1776,139 @@ TEST(Modules, moon_rejects_global_outside_any_module) {
       )"),
       "global 'c_environ' is declared outside any module");
 }
+
+// === Startup order across bundles ===
+//
+// Globals that need code to initialize them are set up by a startup function,
+// one per bundle plus one for the program. A library's must run before the
+// startup function of anything that imports it, and exactly once however many
+// import paths lead to it.
+
+TEST(Modules, moon_globals_are_initialized_before_the_importing_program) {
+  auto moonPath = writeMoonLib("startup_leaf", R"(
+    public module startup_leaf {
+      public class Counter {
+        public var value: i64;
+        init(start: i64) { this.value = start; }
+        public method get() i64 { return this.value; }
+      }
+      public var counter: Counter = Counter(100);
+      public function readCounter() i64 { return counter.get(); }
+    }
+  )");
+
+  auto driver = Driver::createForJIT("startup_leaf_main");
+  driver->setMoonImports({MoonImport(moonPath.string())});
+  auto value = driver->executeString(R"(
+    using startup_leaf;
+
+    class Snapshot {
+      var seen: i64;
+      init(seen: i64) { this.seen = seen; }
+      method get() i64 { return this.seen; }
+    }
+    // Reads the library's global while the program is still starting up.
+    var snapshot: Snapshot = Snapshot(readCounter());
+
+    function main() i32 {
+      if (snapshot.get() != 100i64) { return 1; }
+      return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(Modules, moon_globals_are_initialized_in_import_order_across_a_chain) {
+  writeMoonLib("chain_leaf", R"(
+    public module chain_leaf {
+      public class Box {
+        public var value: i64;
+        init(value: i64) { this.value = value; }
+        public method get() i64 { return this.value; }
+      }
+      public var leaf_box: Box = Box(100);
+      public function readLeaf() i64 { return leaf_box.get(); }
+    }
+  )");
+  auto midPath = writeMoonLib("chain_mid", R"(
+    public module chain_mid {
+      public class MidBox {
+        public var value: i64;
+        init(value: i64) { this.value = value; }
+        public method get() i64 { return this.value; }
+      }
+      // Initialized from the leaf library's global.
+      public var mid_box: MidBox = MidBox(chain_leaf.readLeaf() + 10);
+      public function readMid() i64 { return mid_box.get(); }
+    }
+
+    manifest {
+      libraries: [{ path: "chain_leaf.moon" }]
+    }
+  )");
+
+  auto driver = Driver::createForJIT("chain_main");
+  driver->setMoonImports({MoonImport(midPath.string())});
+  auto value = driver->executeString(R"(
+    using chain_mid;
+
+    class Snapshot {
+      var seen: i64;
+      init(seen: i64) { this.seen = seen; }
+      method get() i64 { return this.seen; }
+    }
+    var snapshot: Snapshot = Snapshot(readMid() + 1);
+
+    function main() i32 {
+      if (snapshot.get() != 111i64) { return 1; }
+      return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+// A bundle embeds the code of the libraries it imports, so importing a
+// library both directly and through another one brings in two copies of its
+// startup function. Its globals exist once and must be constructed once.
+TEST(Modules, moon_globals_reached_by_two_import_paths_are_initialized_once) {
+  auto leafPath = writeMoonLib("once_leaf", R"(
+    public module once_leaf {
+      public var constructions: i64 = 0;
+      public class Tracker {
+        public var id: i64;
+        init(id: i64) {
+          this.id = id;
+          constructions = constructions + 1;
+        }
+      }
+      public var tracker: Tracker = Tracker(1);
+      public function countConstructions() i64 { return constructions; }
+    }
+  )");
+  auto midPath = writeMoonLib("once_mid", R"(
+    public module once_mid {
+      public function countSeenByMid() i64 {
+        return once_leaf.countConstructions();
+      }
+    }
+
+    manifest {
+      libraries: [{ path: "once_leaf.moon" }]
+    }
+  )");
+
+  auto driver = Driver::createForJIT("once_main");
+  driver->setMoonImports(
+      {MoonImport(leafPath.string()), MoonImport(midPath.string())});
+  auto value = driver->executeString(R"(
+    using once_leaf;
+    using once_mid;
+
+    function main() i32 {
+      if (countConstructions() != 1i64) { return 1; }
+      if (countSeenByMid() != 1i64) { return 2; }
+      return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}

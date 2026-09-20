@@ -212,6 +212,7 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
             return sourceFiles.try_emplace(id, sourceFiles.size() + 1)
                 .first->second;
           });
+          metadata.set_static_init_order(driver->getStaticInitOrder());
           const auto& name = metadata.module_name();
           // A bundle exports through its modules, so a global outside any
           // module could never be reached by an importer. That includes a C

@@ -26,6 +26,20 @@ namespace sun::codegen::variables {
 namespace {
 
 /**
+ * Deepest chain of imports a startup function can be ordered across. Startup
+ * priorities above the default are not portable, so the range is carved out
+ * just below it.
+ */
+constexpr uint32_t kMaxStaticInitOrder = 255;
+
+/**
+ * Startup priority of a bundle that imports nothing. The default priority,
+ * which the top of the deepest allowed chain lands on, is the highest the
+ * platform linkers order reliably.
+ */
+constexpr uint32_t kStaticInitBasePriority = 65535 - kMaxStaticInitOrder;
+
+/**
  * Reports whether a global of this type can have its value reused at compile
  * time. Only plain numbers qualify: pointers and aggregates name storage, and
  * copying their initializer would not mean the same thing.
@@ -822,8 +836,16 @@ static const std::vector<std::unique_ptr<ExprAST>>* constructorArgsForGlobal(
   return nullptr;
 }
 
-void VariableGenerator::emitStaticInitFunction() {
+void VariableGenerator::emitStaticInitFunction(uint32_t initOrder,
+                                               const std::string& bundleHash) {
   if (staticInits.empty()) return;
+  if (initOrder > kMaxStaticInitOrder) {
+    logAndThrowError(
+        "Too many levels of imported libraries: a library may be "
+        "at most " +
+        std::to_string(kMaxStaticInitOrder) +
+        " imports away from a library that imports nothing");
+  }
 
   // Create the initialization function: void __sun_static_init()
   // Internal linkage, on purpose: a .moon bundle carries its own copy of this
@@ -840,6 +862,31 @@ void VariableGenerator::emitStaticInitFunction() {
   ctx.builder->SetInsertPoint(entryBB);
   // No subprogram on the init function: it must carry no debug locations
   debugInfo.clearLocation(*ctx.builder);
+
+  // A bundle's code is embedded in every bundle that imports it, so a program
+  // can receive several copies of this function. They share one flag, named
+  // after the bundle, and only the first copy to run does the work: the
+  // globals themselves exist once, and constructing them twice would repeat
+  // their side effects and leak the first values.
+  if (!bundleHash.empty()) {
+    llvm::Type* flagType = llvm::Type::getInt1Ty(ctx.getContext());
+    const std::string flagName = "_SUN1_static_init_done_" + bundleHash;
+    GlobalVariable* doneFlag = module->getGlobalVariable(flagName);
+    if (!doneFlag) {
+      doneFlag = new GlobalVariable(
+          *module, flagType, /*isConstant=*/false, GlobalValue::WeakAnyLinkage,
+          ConstantInt::getFalse(ctx.getContext()), flagName);
+    }
+    BasicBlock* alreadyBB =
+        BasicBlock::Create(ctx.getContext(), "already.initialized", initFunc);
+    BasicBlock* runBB = BasicBlock::Create(ctx.getContext(), "run", initFunc);
+    Value* done = ctx.builder->CreateLoad(flagType, doneFlag, "done");
+    ctx.builder->CreateCondBr(done, alreadyBB, runBB);
+    ctx.builder->SetInsertPoint(alreadyBB);
+    ctx.builder->CreateRetVoid();
+    ctx.builder->SetInsertPoint(runBB);
+    ctx.builder->CreateStore(ConstantInt::getTrue(ctx.getContext()), doneFlag);
+  }
 
   // Push a scope for any temporaries needed during init
   scopes().push().isFunctionBoundary = true;
@@ -1013,8 +1060,10 @@ void VariableGenerator::emitStaticInitFunction() {
 
   llvm::Constant* ctorEntry = llvm::ConstantStruct::get(
       ctorStructType,
+      // Lower priorities run first, so a library's globals are ready before
+      // the globals of whatever imports it.
       {ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()),
-                        65535),  // priority
+                        kStaticInitBasePriority + initOrder),
        initFunc,
        ConstantPointerNull::get(PointerType::getUnqual(ctx.getContext()))});
 

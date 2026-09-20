@@ -118,8 +118,15 @@ class VariableGenerator {
   /**
    * Emits the static initialization function for the globals that could not
    * be constant-initialized. Call after all top-level codegen, before main.
+   *
+   * `initOrder` places the function among those of other bundles: lower
+   * values run first, and a module's value is one more than the highest among
+   * its imports. `bundleHash` names the bundle being built and is empty for a
+   * program; a bundle's function runs at most once even when its code reaches
+   * a program through several imports.
    */
-  void emitStaticInitFunction();
+  void emitStaticInitFunction(uint32_t initOrder,
+                              const std::string& bundleHash);
 
   // ---------------------------------------------------------------
   // Lvalues

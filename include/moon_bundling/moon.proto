@@ -37,6 +37,12 @@ message ModuleMetadata {
   // Dependencies
   repeated string dependencies = 5;  // Paths to imported modules
 
+  // Where this bundle's startup function runs relative to others: zero for a
+  // bundle that imports nothing, otherwise one more than the highest value
+  // among its imports. Lower values run first, so a library's globals are
+  // initialized before the globals of anything that imports it.
+  uint32 static_init_order = 19;
+
   // Source imports retain their target and file identity within this module.
   reserved 11;
   repeated sun.proto.ast.ASTNode using_declarations = 15;

@@ -103,7 +103,14 @@ std::optional<BuildRecord> readBuildRecord(const std::string& path) {
 std::optional<std::string> readMoonInputHash(const std::string& path) {
   std::error_code ec;
   if (!std::filesystem::is_regular_file(path, ec)) return std::nullopt;
-  auto reader = sun::moon_bundling::MoonReader::open(path);
+  // A bundle in another format version cannot be opened, and was certainly
+  // not built from the current inputs: report no digest so it is rebuilt.
+  std::unique_ptr<sun::moon_bundling::MoonReader> reader;
+  try {
+    reader = sun::moon_bundling::MoonReader::open(path);
+  } catch (const sun::support::SunError&) {
+    return std::nullopt;
+  }
   if (!reader) return std::nullopt;
   const auto modules = reader->listModules();
   const auto* first =

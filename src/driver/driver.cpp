@@ -178,6 +178,33 @@ static void stripUnreachableForJIT(llvm::Module& module) {
 }
 
 /**
+ * Works out where the startup function of the code being compiled runs
+ * relative to those of the bundles it imports: zero when it imports nothing,
+ * otherwise one more than the highest value recorded by an import. Lower
+ * values run first, so every import's globals are initialized before this
+ * code's startup function reads them.
+ */
+static uint32_t computeStaticInitOrder(
+    const std::vector<std::string>& importedModuleKeys,
+    const std::vector<sun::moon_bundling::MoonImport>& moonImports) {
+  uint32_t order = 0;
+  for (const auto& moduleKey : importedModuleKeys) {
+    if (const auto* metadata =
+            sun::moon_bundling::LibraryCache::instance().getMetadata(moduleKey))
+      order = std::max(order, metadata->static_init_order() + 1);
+  }
+  for (const auto& moonImport : moonImports) {
+    auto reader = sun::moon_bundling::MoonReader::open(moonImport.path);
+    if (!reader) continue;
+    for (const auto& moduleKey : reader->listModules()) {
+      if (const auto* metadata = reader->getMetadata(moduleKey))
+        order = std::max(order, metadata->static_init_order() + 1);
+    }
+  }
+  return order;
+}
+
+/**
  * Make a module's global initializers callable under the JIT. They are
  * internal functions registered in llvm.global_ctors — one per linked module,
  * uniquified by the IR linker — and the JIT resolves symbols by name, which
@@ -1006,6 +1033,9 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
     throw sun::borrow_checker::buildBorrowCheckError(borrowErrors);
   }
 
+  staticInitOrder_ =
+      computeStaticInitOrder(parser.getPrecompiledImports(), moonImports_);
+
   if (metadataCallback_) metadataCallback_(*blockAst, *analyzer);
 
   // Register precompiled modules for lazy linking
@@ -1036,7 +1066,7 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
     ScopedStage stage("codegen");
     codegenVisitor->codegen(*blockAst);
     // Emit static initialization function for globals that need runtime init
-    codegenVisitor->emitStaticInitFunction();
+    codegenVisitor->emitStaticInitFunction(staticInitOrder_, ownBundleHash_);
   }
 
   // Link only the modules that provide symbols actually used by the code
