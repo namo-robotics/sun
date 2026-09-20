@@ -1765,4 +1765,14 @@ TEST(Modules, moon_rejects_global_outside_any_module) {
         }
       )"),
       "global 'BARE_LIMIT' is declared outside any module");
+  // A C extern global declares a name like any other, so the rule covers it.
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      writeMoonLib("bare_extern_global", R"(
+        extern "C" var c_environ: raw_ptr<raw_ptr<u8>> as "environ";
+
+        public module bare_extern {
+          public function answer() i32 { return 42; }
+        }
+      )"),
+      "global 'c_environ' is declared outside any module");
 }

@@ -214,11 +214,10 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
           });
           const auto& name = metadata.module_name();
           // A bundle exports through its modules, so a global outside any
-          // module could never be reached by an importer. C extern globals
-          // only name a symbol defined elsewhere and are left alone.
+          // module could never be reached by an importer. That includes a C
+          // extern global, which declares a name like any other.
           if (name.empty()) {
             for (const auto& global : metadata.globals()) {
-              if (global.is_c_extern()) continue;
               fail("moon bundle: global '" + global.name() +
                    "' is declared outside any module; a bundle's globals "
                    "must be declared inside a module");

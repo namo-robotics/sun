@@ -3825,10 +3825,10 @@ void Parser::createModuleStubs(
   // Module-level variables. The stub carries the type but no initializer —
   // the storage lives in the bundle's bitcode and is linked in.
   for (int i = 0; i < metadata.globals_size(); ++i) {
-    // The bundle builder refuses a global outside any module, so a bundle
-    // that carries one was not produced by a valid build. C extern globals
-    // only name a symbol defined elsewhere and are exempt there too.
-    if (metadata.module_name().empty() && !metadata.globals(i).is_c_extern()) {
+    // The bundle builder refuses a global outside any module, C extern
+    // globals included, so a bundle that carries one was not produced by a
+    // valid build.
+    if (metadata.module_name().empty()) {
       logAndThrowError("moon bundle '" + metadata.source_path() +
                        "' declares global '" + metadata.globals(i).name() +
                        "' outside any module; a bundle's globals must be "
