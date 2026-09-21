@@ -245,8 +245,12 @@ function main() i32 {
 }
 ```
 
-A constant global is initialised at runtime like any other global; compile-time
-evaluation is on the roadmap. `for (const x: T in c)` makes the loop binding
+A global whose initializer the compiler can work out, such as
+`const LIMIT: i64 = BASE * 2 + 1;`, is computed at compile time and written into
+the program. Any other global is given its value when the program starts, before
+`main` runs, in the order the globals are written. That includes a `const`:
+`const` means the variable is never reassigned, not that its value is known at
+compile time. `for (const x: T in c)` makes the loop binding
 constant for each element.
 
 ## References

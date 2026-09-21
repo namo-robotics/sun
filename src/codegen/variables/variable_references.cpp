@@ -64,32 +64,11 @@ llvm::GlobalVariable* VariableGenerator::findGlobal(DeclarationId id) const {
              : llvm::dyn_cast_or_null<llvm::GlobalVariable>(found->second);
 }
 
-llvm::Value* VariableGenerator::createLoadForGlobalVar(
-    DeclarationId id, const sun::support::Position& location) {
-  auto* global = findGlobal(id);
-  if (!global) return nullptr;
-  if (ctx.builder->GetInsertBlock())
+llvm::LoadInst* VariableGenerator::createLoadForGlobalVar(DeclarationId id) {
+  if (auto* global = findGlobal(id))
     return ctx.builder->CreateLoad(global->getValueType(), global,
                                    global->getName() + ".value");
-
-  // File-scope initializers are evaluated at compile time, so there is no
-  // block to emit a load into. A `const` number global has a known value.
-  if (auto known = constantGlobalValues_.find(id);
-      known != constantGlobalValues_.end())
-    return known->second;
-  const std::string& name = state_.analysis->declarations.get(id).name;
-  // An imported global is only a declaration here: the library holds its
-  // storage and does not publish the value.
-  if (global->isDeclaration())
-    logAndThrowError(
-        "Global variable initializer must be a constant expression: '" + name +
-            "' is defined in a precompiled library, so its value is not "
-            "available at compile time",
-        location);
-  logAndThrowError(
-      "Global variable initializer must be a constant expression: '" + name +
-          "' is not a `const` number",
-      location);
+  return nullptr;
 }
 
 // -------------------------------------------------------------------
@@ -312,9 +291,9 @@ Value* VariableGenerator::codegen(const sun::ast::VariableReferenceAST& expr) {
   if (cv) return cv;
 
   // Module globals use the same declaration lookup as root globals.
-  llvm::Value* globalValue =
-      createLoadForGlobalVar(expr.getTargetDeclarationId(), expr.getLocation());
-  if (globalValue) return globalValue;
+  llvm::LoadInst* loadInst =
+      createLoadForGlobalVar(expr.getTargetDeclarationId());
+  if (loadInst) return loadInst;
 
   if (expr.getResolvedType() && expr.getResolvedType()->isFunction()) {
     return functions().lookupFunctionById(expr.getTargetDeclarationId());

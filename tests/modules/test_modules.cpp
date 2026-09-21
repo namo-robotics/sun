@@ -1687,19 +1687,79 @@ TEST(Modules, module_const_initialized_from_another_const) {
             0);
 }
 
-TEST(Modules, global_const_initialized_from_mutable_global_is_rejected) {
-  EXPECT_THROW(executeString(R"(
+// A `const` is never reassigned, but its first value need not be known at
+// compile time: one that reads a `var` is given its value at startup.
+TEST(Modules,
+     global_const_initialized_from_mutable_global_initializes_at_startup) {
+  EXPECT_EQ(executeString(R"(
     var counter: i64 = 4;
     const SNAPSHOT: i64 = counter;
-    function main() i32 { return 0; }
+    function main() i32 { return _convert<i32>(SNAPSHOT); }
   )"),
-               std::exception);
-  EXPECT_THROW(executeString(R"(
+            4);
+  EXPECT_EQ(executeString(R"(
     module state { public var counter: i64 = 4; }
     const SNAPSHOT: i64 = state.counter;
-    function main() i32 { return 0; }
+    function main() i32 { return _convert<i32>(SNAPSHOT); }
   )"),
-               std::exception);
+            4);
+}
+
+// A value known at compile time is written into the program image, so it
+// costs nothing at startup: only the variables that need run-time work appear
+// in the startup function.
+TEST(Modules, global_known_at_compile_time_needs_no_startup_code) {
+  sun::driver::initTestEnvironment();
+  {
+    auto driver = Driver::createForAOT("image_globals_only");
+    driver->compileString(R"(
+      const A: i64 = 4;
+      const B: i64 = A * 2 + 1;
+      var counter: i32 = 7;
+      const PRIMES: array<i32, 3> = [2, 3, 5];
+      const NAME = "sun";
+      function main() i32 { return _convert<i32>(B) + counter + PRIMES[0]; }
+    )");
+    EXPECT_EQ(driver->getModule().getFunction("__sun_static_init"), nullptr);
+    EXPECT_EQ(driver->getModule().getGlobalVariable("llvm.global_ctors"),
+              nullptr);
+  }
+  {
+    auto driver = Driver::createForAOT("image_and_startup_globals");
+    driver->compileString(R"(
+      const A: i64 = 4;
+      var counter: i64 = A + 1;
+      const SNAPSHOT: i64 = counter;
+      function main() i32 { return _convert<i32>(SNAPSHOT); }
+    )");
+    llvm::Function* startup =
+        driver->getModule().getFunction("__sun_static_init");
+    ASSERT_NE(startup, nullptr);
+    // SNAPSHOT is the only variable the startup function writes
+    int stores = 0;
+    for (const auto& block : *startup)
+      for (const auto& instruction : block)
+        if (llvm::isa<llvm::StoreInst>(instruction)) ++stores;
+    EXPECT_EQ(stores, 1);
+  }
+}
+
+// Every kind of value initialized at startup holds the right value by the
+// time `main` runs, including arrays and numbers that need widening.
+TEST(Modules, globals_initialized_at_startup_hold_their_values) {
+  EXPECT_EQ(executeString(R"(
+    var seed: i32 = 3;
+    const WIDE: i64 = seed;
+    const HALF: f64 = _convert<f64>(seed) / 2.0;
+    const SQUARES: array<i32, 3> = [seed, seed * seed, seed * seed * seed];
+    const IS_ODD: bool = seed % 2 == 1;
+    function main() i32 {
+      if (not IS_ODD) { return -1; }
+      if (HALF != 1.5) { return -2; }
+      return _convert<i32>(WIDE) + SQUARES[0] + SQUARES[1] + SQUARES[2];
+    }
+  )"),
+            3 + 3 + 9 + 27);
 }
 
 // Emitting a function, class, lambda or module leaves the code generator
