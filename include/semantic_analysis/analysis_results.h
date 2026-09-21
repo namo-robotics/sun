@@ -4,7 +4,6 @@
 
 #include <memory>
 
-#include "semantic_analysis/constants/global_init_table.h"
 #include "semantic_analysis/declaration_table.h"
 #include "semantic_analysis/type_registry.h"
 
@@ -13,8 +12,9 @@ namespace sun::semantic_analysis {
 
 /**
  * Everything analysis concludes about a program that does not belong to a
- * single syntax node. Per-node conclusions, such as an expression's type, are
- * stored on the nodes themselves (see ast/analysis.h); this holds the rest.
+ * single syntax node. Per-node conclusions, such as an expression's type or
+ * how a file-scope variable gets its first value, are stored on the nodes
+ * themselves (see ast/analysis.h); this holds the rest.
  *
  * One is created per compilation and shared by the analyzer, which fills it
  * in, and code generation, which reads it. It is complete once the analysis
@@ -30,10 +30,6 @@ struct AnalysisResults {
   // outlive the code that looked it up.
   std::shared_ptr<TypeRegistry> types =
       std::make_shared<TypeRegistry>(declarations);
-
-  // How each file-scope variable gets its first value: computed at compile
-  // time and written into the program, or computed by the startup function.
-  constants::GlobalInitTable globalInits;
 
   /** Starts with no declarations beyond the builtin ones. */
   AnalysisResults() = default;

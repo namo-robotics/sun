@@ -11,6 +11,11 @@
 #include "semantic_analysis/portable_declaration_key.h"
 #include "support/error.h"
 
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
+namespace sun::ast {
+class ExprAST;
+}
+
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 using sun::support::logAndThrowError;
@@ -47,6 +52,11 @@ struct DeclarationRecord {
   DeclarationId origin;
   std::string generatedRole;
   uint64_t generatedSlot = 0;
+  // The syntax node that declares it, or null when no single node does: a
+  // builtin, a field or variant inside a node, a module opened in several
+  // places. Valid while the analyzed tree is alive, which the owner of the
+  // analysis results keeps it for.
+  const sun::ast::ExprAST* node = nullptr;
 };
 
 /** Allocate and retain declarations independently of symbol spelling. */
@@ -81,6 +91,13 @@ class DeclarationTable {
     auto id = add(DeclarationKind::Module, name, owner, owner);
     modules_.emplace(std::move(key), id);
     return id;
+  }
+
+  /** Records the syntax node that declares `id`; see DeclarationRecord::node.
+   */
+  void bindNode(DeclarationId id, const sun::ast::ExprAST* node) {
+    get(id);
+    records_[id.index() - 1].node = node;
   }
 
   /** Allocate an identity without making the declaration visible in a scope. */

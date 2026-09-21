@@ -135,6 +135,25 @@ class VariableCreationAST : public ExprAST {
   void setQualifiedName(sun::semantic_analysis::QualifiedName qname) {
     varAnalysis().qualifiedName = std::move(qname);
   }
+  /**
+   * How this file-scope variable gets its first value: computed at compile
+   * time and written into the program, or computed by the startup function.
+   * Null until analysis has decided, and for a variable that is not at file
+   * scope.
+   */
+  const sun::semantic_analysis::constants::GlobalInitRecord* getGlobalInit()
+      const {
+    return analysis_
+               ? static_cast<VariableAnalysis&>(*analysis_).globalInit.get()
+               : nullptr;
+  }
+  /** Records the decision made for this file-scope variable. */
+  void setGlobalInit(
+      sun::semantic_analysis::constants::GlobalInitRecord record) const {
+    varAnalysis().globalInit = std::make_shared<
+        const sun::semantic_analysis::constants::GlobalInitRecord>(
+        std::move(record));
+  }
   /** Reports whether a name including the enclosing scopes has been assigned.
    */
   bool hasQualifiedName() const {

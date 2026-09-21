@@ -18,30 +18,37 @@
 #include <string>
 
 #include "ast.h"
-#include "semantic_analysis/constants/global_init_table.h"
+#include "semantic_analysis/constants/global_init.h"
+#include "semantic_analysis/declaration_table.h"
 
 /** Evaluates constant expressions while a program is being analyzed. */
 namespace sun::semantic_analysis::constants {
 
 /** Evaluates the initializers of a program's file-scope variables. */
 class ConstantEvaluator {
-  GlobalInitTable& table_;
+  // Finds the node that declares a variable an initializer reads.
+  const DeclarationTable& declarations_;
   // The first obstacle met while evaluating the current initializer.
   std::optional<StartupReason> blocker_;
 
  public:
-  /** Evaluates into `table`, which must outlive the evaluator. */
-  explicit ConstantEvaluator(GlobalInitTable& table) : table_(table) {}
+  /**
+   * Decisions are stored on the declaring nodes; `declarations` is used to
+   * reach the node of a variable that another initializer reads, and must
+   * outlive the evaluator.
+   */
+  explicit ConstantEvaluator(const DeclarationTable& declarations)
+      : declarations_(declarations) {}
 
   /**
    * Decides every file-scope variable in the block, in source order, looking
-   * inside modules and bundle scopes. A variable the table already has a
-   * decision for is left alone.
+   * inside modules and bundle scopes. A variable that already has a decision
+   * is left alone.
    */
   void evaluateGlobals(const sun::ast::BlockExprAST& block);
 
   /**
-   * Decides one file-scope variable and stores the decision in the table.
+   * Decides one file-scope variable and stores the decision on its node.
    * Returns the stored decision.
    */
   const GlobalInitRecord& evaluateGlobalInitializer(

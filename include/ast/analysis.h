@@ -15,6 +15,7 @@
 #include "ast/ast_common.h"
 #include "ast/ast_fwd.h"
 #include "semantic_analysis/argument_conversion.h"
+#include "semantic_analysis/constants/global_init.h"
 #include "semantic_analysis/declaration_id.h"
 #include "semantic_analysis/qualified_name.h"
 #include "types/types.h"
@@ -246,6 +247,11 @@ struct DeclareTypeAnalysis : public ExprAnalysis {
  */
 struct VariableAnalysis : public ExprAnalysis {
   QualifiedName qualifiedName;
+  // How a file-scope variable gets its first value: decided once analysis
+  // has finished, and null for every other node. Shared because a cloned
+  // node keeps the decision of the node it was copied from.
+  std::shared_ptr<const sun::semantic_analysis::constants::GlobalInitRecord>
+      globalInit;
 
   /** Creates an instance with its default state. */
   VariableAnalysis() = default;

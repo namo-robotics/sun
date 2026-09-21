@@ -110,8 +110,7 @@ void ConstantEvaluator::evaluateGlobals(const sun::ast::BlockExprAST& block) {
       case ASTNodeType::VARIABLE_CREATION: {
         const auto& global =
             static_cast<const sun::ast::VariableCreationAST&>(*node);
-        if (!table_.find(global.getDeclarationId()))
-          evaluateGlobalInitializer(global);
+        if (!global.getGlobalInit()) evaluateGlobalInitializer(global);
         break;
       }
       default:
@@ -155,8 +154,8 @@ const GlobalInitRecord& ConstantEvaluator::evaluateGlobalInitializer(
     record.reason = std::move(blocker_);
   }
   blocker_.reset();
-  table_.record(global.getDeclarationId(), std::move(record));
-  return *table_.find(global.getDeclarationId());
+  global.setGlobalInit(std::move(record));
+  return *global.getGlobalInit();
 }
 
 void ConstantEvaluator::recordBlocker(std::string message,
@@ -266,7 +265,14 @@ std::optional<ConstantValue> ConstantEvaluator::evaluateLiteral(
 
 std::optional<ConstantValue> ConstantEvaluator::evaluateGlobalRead(
     DeclarationId target, const std::string& name, const Position& position) {
-  const GlobalInitRecord* record = target ? table_.find(target) : nullptr;
+  // The decision lives on the node that declares the variable being read.
+  const GlobalInitRecord* record = nullptr;
+  if (target) {
+    const ExprAST* node = declarations_.get(target).node;
+    if (node && node->getType() == ASTNodeType::VARIABLE_CREATION)
+      record = static_cast<const sun::ast::VariableCreationAST&>(*node)
+                   .getGlobalInit();
+  }
   if (!record) {
     recordBlocker(
         "it reads '" + name + "', whose value is not known at compile time",

@@ -26,7 +26,7 @@ void SemanticPipeline::run(sun::ast::BlockExprAST& block,
   analyzer_.bodies().analyzeBlock(block);
   // Every expression now has its type and every name its declaration, which
   // is what evaluating the file-scope initializers needs.
-  constants::ConstantEvaluator(context_.results().globalInits)
+  constants::ConstantEvaluator(context_.results().declarations)
       .evaluateGlobals(block);
 }
 

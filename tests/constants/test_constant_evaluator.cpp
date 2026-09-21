@@ -14,7 +14,7 @@
 #include <vector>
 
 #include "driver/execution_utils.h"
-#include "semantic_analysis/constants/global_init_table.h"
+#include "semantic_analysis/constants/global_init.h"
 #include "semantic_analysis/semantic_analyzer.h"
 
 using sun::ast::ASTNodeType;
@@ -69,10 +69,7 @@ GlobalInitRecord decideGlobal(const std::string& source,
       [&](const sun::ast::BlockExprAST& program,
           sun::semantic_analysis::SemanticAnalyzer& analyzer) {
         const auto* global = findGlobal(program, name);
-        const auto* record =
-            global ? analyzer.context().results().globalInits.find(
-                         global->getDeclarationId())
-                   : nullptr;
+        const auto* record = global ? global->getGlobalInit() : nullptr;
         if (record) {
           decision = *record;
           found = true;

@@ -54,11 +54,12 @@ formats are unchanged.
 
 What analysis concludes about a whole program is gathered in one
 `AnalysisResults` (`semantic_analysis/analysis_results.h`): the
-`DeclarationTable` of who is declared, the `TypeRegistry` of what types exist,
-and the `GlobalInitTable` of how each file-scope variable gets its first
-value. One is created per compilation and shared by the analyzer, which fills
+`DeclarationTable` of who is declared and the `TypeRegistry` of what types
+exist. One is created per compilation and shared by the analyzer, which fills
 it in, and code generation, which reads it. Conclusions about a single
-expression, such as its type, stay on the syntax node.
+node, such as an expression's type or how a file-scope variable gets its
+first value, stay on the syntax node. A declaration record links back to its
+declaring node when exactly one node declares it.
 
 Expected types are arguments to semantic checking, separate from an expression's
 resolved type. For example, an array argument receives its parameter's type as a

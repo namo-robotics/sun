@@ -57,6 +57,9 @@ class Driver {
   // Owned components
   std::unique_ptr<sun::codegen::CodegenContext> ctx;
   std::shared_ptr<AnalysisResults> analysisResults;
+  // The tree the pipeline analyzed. Declaration records in `analysisResults`
+  // point at its nodes, so it is kept for as long as they are.
+  std::unique_ptr<BlockExprAST> analyzedTree_;
   std::unique_ptr<sun::codegen::CodegenVisitor> codegenVisitor;
   std::unique_ptr<SemanticAnalyzer> analyzer;
 
@@ -136,7 +139,7 @@ class Driver {
   /**
    * Internal helper: run full pipeline on parsed AST
    */
-  sun::driver::SunValue runPipeline(std::unique_ptr<BlockExprAST> blockAst,
+  sun::driver::SunValue runPipeline(std::unique_ptr<BlockExprAST> program,
                                     Parser& parser, bool execute, int argc = 0,
                                     char** argv = nullptr);
 

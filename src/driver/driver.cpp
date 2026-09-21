@@ -974,10 +974,13 @@ void Driver::analyzeProgram(BlockExprAST& blockAst, Parser& parser) {
   }
 }
 
-SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
+SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
                              Parser& parser, bool execute, int argc,
                              char** argv) {
   SunValue result = VoidValue{};
+  // Declaration records will point at this tree's nodes; keep it with them.
+  analyzedTree_ = std::move(program);
+  std::unique_ptr<BlockExprAST>& blockAst = analyzedTree_;
 
   if (!blockAst) {
     llvm::errs() << "Error: Failed to parse program.\n";
@@ -1502,6 +1505,7 @@ void Driver::compileString(const std::string& source,
 }
 
 void Driver::startAnalysisSession() {
+  analyzedTree_.reset();
   analysisResults = std::make_shared<AnalysisResults>();
   analyzer = std::make_unique<SemanticAnalyzer>(analysisResults);
   codegenVisitor = std::make_unique<CodegenVisitor>(*ctx, analysisResults);
