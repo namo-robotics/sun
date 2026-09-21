@@ -1804,6 +1804,30 @@ TEST(Modules, global_read_before_its_declaration_is_still_compile_time) {
   EXPECT_EQ(driver->getModule().getFunction("__sun_static_init"), nullptr);
 }
 
+// A constant computed by calling a plain function is a compile-time value
+// like any other: it can size an array, and the program needs no startup code.
+TEST(Modules, global_computed_by_a_pure_function_is_compile_time) {
+  const std::string program = R"(
+    function fact(n: i64) i64 {
+      if (n <= 1) { return 1; }
+      return n * fact(n - 1);
+    }
+    function half(x: i64) i64 { return x / 2; }
+    const SIZE: i64 = half(8);
+    const BIG: i64 = fact(5) + LATE;
+    const LATE: i64 = twice(1);
+    var grid: array<i32, SIZE> = [1, 2, 3, 4];
+    function twice(x: i64) i64 { return x * 2; }
+    function main() i32 { return _convert<i32>(BIG) + grid[3]; }
+  )";
+  EXPECT_EQ(executeString(program), 120 + 2 + 4);
+
+  sun::driver::initTestEnvironment();
+  auto driver = Driver::createForAOT("pure_function_globals");
+  driver->compileString(program);
+  EXPECT_EQ(driver->getModule().getFunction("__sun_static_init"), nullptr);
+}
+
 TEST(Modules, global_that_depends_on_itself_is_rejected) {
   std::string message = globalCompileError(R"(
     const A: i64 = B + 1;

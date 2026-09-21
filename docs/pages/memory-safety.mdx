@@ -247,7 +247,11 @@ function main() i32 {
 
 A global whose initializer the compiler can work out, such as
 `const LIMIT: i64 = BASE * 2 + 1;`, is computed at compile time and written into
-the program. Any other global is given its value when the program starts, before
+the program. That covers literals, operators, other compile-time constants,
+array literals and array elements, and calls to plain functions that only
+compute: a function that takes and returns values, cannot throw, and touches
+nothing but its own variables and compile-time constants. Branches, loops and
+recursion are all fine. Any other global is given its value when the program starts, before
 `main` runs, in the order the globals are written. That includes a `const`:
 `const` means the variable is never reassigned, not that its value is known at
 compile time.

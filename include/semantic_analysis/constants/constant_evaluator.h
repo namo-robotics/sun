@@ -16,6 +16,7 @@
 
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "ast.h"
@@ -26,11 +27,40 @@
 namespace sun::semantic_analysis::constants {
 
 /** Evaluates the initializers of a program's file-scope variables. */
+/**
+ * Most statements and loop turns evaluated for one initializer. A function
+ * that never finishes must not hang the compiler; past the limit the global
+ * is initialized at startup.
+ */
+constexpr size_t kMaxEvaluationSteps = 1'000'000;
+
+/** Most function calls in progress at once while evaluating an initializer. */
+constexpr size_t kMaxCallDepth = 200;
+
 class ConstantEvaluator {
   // Finds the node that declares a variable an initializer reads.
   const DeclarationTable& declarations_;
   // The first obstacle met while evaluating the current initializer.
   std::optional<StartupReason> blocker_;
+  /** The parameters and local variables of one function being evaluated. */
+  using Frame = std::unordered_map<DeclarationId, ConstantValue>;
+  // One frame per function call in progress, innermost last.
+  std::vector<Frame> frames_;
+  // The value handed back by the `return` that is ending the current call.
+  std::optional<ConstantValue> returned_;
+  // Statements and loop turns evaluated for the initializer being decided. A
+  // function that never finishes must not hang the compiler.
+  size_t steps_ = 0;
+
+  /** What running a statement asks the code around it to do next. */
+  enum class Flow {
+    Next,      // carry on with the following statement
+    Return,    // leave the function; the value is in returned_
+    Break,     // leave the innermost loop
+    Continue,  // start the innermost loop's next turn
+    Failed,    // could not be evaluated; the obstacle has been recorded
+  };
+
   // The globals being decided, outermost first: deciding one may mean
   // deciding a global declared further down that it reads.
   std::vector<const sun::ast::VariableCreationAST*> deciding_;
@@ -111,6 +141,59 @@ class ConstantEvaluator {
   /** Evaluates the numeric conversion `_convert<T>(value)`. */
   std::optional<ConstantValue> evaluateConvert(
       const sun::ast::GenericCallAST& call);
+  /** Reads one element of an array value: `a[i]` or `a[i, j]`. */
+  std::optional<ConstantValue> evaluateIndex(
+      const sun::ast::ExprAST& array,
+      const std::vector<const sun::ast::ExprAST*>& indices,
+      const sun::support::Position& position);
+
+  /**
+   * Evaluates a call to a plain function by running its analyzed body. The
+   * function must be pure as far as the evaluator can see: it has a body in
+   * this program, takes and returns values, cannot throw, and touches nothing
+   * but its own variables and compile-time constants. Anything else is
+   * refused, and the global is initialized at startup instead.
+   */
+  std::optional<ConstantValue> evaluateCall(const sun::ast::CallExprAST& call);
+  /**
+   * The function a call runs, when it is one the evaluator can run; otherwise
+   * records why not and returns null.
+   */
+  const sun::ast::FunctionAST* findEvaluableCallee(
+      const sun::ast::CallExprAST& call);
+  /** Runs one statement of a function body in the innermost frame. */
+  Flow runStatement(const sun::ast::ExprAST& statement);
+  /** Runs the statements of a block in order until one changes the flow. */
+  Flow runBlock(const sun::ast::BlockExprAST& block);
+  /** Runs a `while` loop or a `for (init; condition; step)` loop. */
+  Flow runLoop(const sun::ast::ExprAST* condition,
+               const sun::ast::ExprAST* increment,
+               const sun::ast::ExprAST& body,
+               const sun::support::Position& position);
+  /** Evaluates a condition to true or false, or nothing when it cannot. */
+  std::optional<bool> evaluateCondition(const sun::ast::ExprAST& condition);
+  /**
+   * Stores a value in a local variable of the innermost frame, converted to
+   * the variable's type. Refuses a name that is not such a variable, which is
+   * how a write to a global is kept out.
+   */
+  bool assignLocal(DeclarationId target, const std::string& name,
+                   ConstantValue value, const sun::support::Position& position);
+  /**
+   * Counts one unit of work and reports whether evaluation may continue. Past
+   * the limit the initializer is left to startup.
+   */
+  bool countStep(const sun::support::Position& position);
+
+  /**
+   * Brings two operands to one width the way generated code does, then
+   * applies the operator. `leftType` decides the signedness of the operation.
+   */
+  std::optional<ConstantValue> combineOperands(
+      sun::parsing::TokenKind op, ConstantValue left, ConstantValue right,
+      const sun::types::TypePtr& leftType,
+      const sun::types::TypePtr& resultType,
+      const sun::support::Position& position);
 
   /**
    * Applies an arithmetic, bitwise, shift or comparison operator to two

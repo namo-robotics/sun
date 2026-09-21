@@ -5,6 +5,7 @@
 // analysis.cpp.
 
 #include <algorithm>
+#include <functional>
 
 #include "codegen/abi/c_abi_types.h"
 #include "semantic_analysis/expression_properties.h"
@@ -60,6 +61,29 @@ void SemanticAnalyzer::analyzeGlobal(sun::ast::VariableCreationAST& global,
     logAndThrowError(
         "Global variable '" + name + "' depends on itself: " + cycle + name,
         global.getLocation());
+  }
+
+  // A class field or a function signature asks for its array sizes while
+  // declarations are still being collected, when no function can be called
+  // yet: functions are registered after the types their signatures mention.
+  if (generics_.isInDeclarationPrepass() && global.getValue()) {
+    std::function<bool(const ExprAST&)> callsAFunction =
+        [&](const ExprAST& expr) {
+          if (expr.getType() == ASTNodeType::CALL) return true;
+          bool found = false;
+          const_cast<ExprAST&>(expr).forEachChildSlot(
+              [&](std::unique_ptr<ExprAST>& child) {
+                found = found || (child && callsAFunction(*child));
+              });
+          return found;
+        };
+    if (callsAFunction(*global.getValue()))
+      logAndThrowError(
+          "'" + name +
+              "' is needed by a class field or a function signature, so its "
+              "value cannot come from calling a function; write the value "
+              "out, or compute it from other constants",
+          global.getLocation());
   }
 
   // The initializer belongs to the scope and file of the declaration, and to

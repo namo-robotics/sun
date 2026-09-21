@@ -588,6 +588,23 @@ TEST(Builtins_Arrays, named_size_rejects_what_is_not_a_usable_constant) {
                                 "constant");
 }
 
+// A class field and a function signature need their sizes before any
+// function can be called, so such a size cannot be computed by one.
+TEST(Builtins_Arrays, named_size_of_a_field_cannot_come_from_a_function_call) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
+    function half(x: i64) i64 { return x / 2; }
+    const SIZE: i64 = half(8);
+    class Buf {
+        var data: array<i32, SIZE>;
+        init() { this.data = [1, 2, 3, 4]; }
+    }
+    function main() i32 { return 0; }
+  )"),
+      "'SIZE' is needed by a class field or a function signature, so its "
+      "value cannot come from calling a function");
+}
+
 // A size is a number or a name. An expression is given a name first:
 // `const M = N * 2;`.
 TEST(Builtins_Arrays, size_written_as_an_expression_is_rejected) {

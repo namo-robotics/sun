@@ -88,7 +88,7 @@ std::string describeUnsupported(const ExprAST& expr) {
     case ASTNodeType::INDEX:
     case ASTNodeType::ARRAY_INDEX:
     case ASTNodeType::SLICE:
-      return "indexes an array";
+      return "takes a range of an array";
     default:
       return "uses an expression that is only evaluated at run time";
   }
@@ -211,6 +211,7 @@ const GlobalInitRecord& ConstantEvaluator::evaluateGlobalInitializer(
   std::optional<StartupReason> interrupted = std::move(blocker_);
   blocker_.reset();
   deciding_.push_back(&global);
+  if (deciding_.size() == 1) steps_ = 0;
 
   std::optional<ConstantValue> value;
   if (global.isCExtern()) {
@@ -269,6 +270,11 @@ std::optional<ConstantValue> ConstantEvaluator::evaluateExpression(
     case ASTNodeType::VARIABLE_REFERENCE: {
       const auto& reference =
           static_cast<const sun::ast::VariableReferenceAST&>(expr);
+      // Inside a function being evaluated, its own variables come first
+      if (!frames_.empty()) {
+        auto local = frames_.back().find(reference.getTargetDeclarationId());
+        if (local != frames_.back().end()) return local->second;
+      }
       return evaluateGlobalRead(reference.getTargetDeclarationId(),
                                 reference.getName(), expr.getLocation());
     }
@@ -289,6 +295,29 @@ std::optional<ConstantValue> ConstantEvaluator::evaluateExpression(
       const auto& call = static_cast<const sun::ast::GenericCallAST&>(expr);
       if (call.getFunctionName() == "_convert") return evaluateConvert(call);
       break;
+    }
+    case ASTNodeType::CALL:
+      return evaluateCall(static_cast<const sun::ast::CallExprAST&>(expr));
+    case ASTNodeType::INDEX: {
+      const auto& index = static_cast<const sun::ast::IndexAST&>(expr);
+      std::vector<const ExprAST*> indices;
+      for (const auto& slice : index.getIndices()) {
+        // A range takes part of the array, which is a view, not a value
+        if (slice->isRange() || !slice->hasStart() || slice->hasEnd()) {
+          indices.clear();
+          break;
+        }
+        indices.push_back(slice->getStart());
+      }
+      if (indices.empty()) break;
+      return evaluateIndex(*index.getTarget(), indices, expr.getLocation());
+    }
+    case ASTNodeType::ARRAY_INDEX: {
+      const auto& index = static_cast<const sun::ast::ArrayIndexAST&>(expr);
+      std::vector<const ExprAST*> indices;
+      for (const auto& element : index.getIndices())
+        indices.push_back(element.get());
+      return evaluateIndex(*index.getArray(), indices, expr.getLocation());
     }
     default:
       break;
@@ -475,23 +504,32 @@ std::optional<ConstantValue> ConstantEvaluator::evaluateBinary(
   auto right = evaluateExpression(*binary.getRHS());
   if (!right) return std::nullopt;
 
+  return combineOperands(op, std::move(*left), std::move(*right),
+                         getValueType(*binary.getLHS()), getValueType(binary),
+                         binary.getLocation());
+}
+
+std::optional<ConstantValue> ConstantEvaluator::combineOperands(
+    TokenKind op, ConstantValue left, ConstantValue right,
+    const TypePtr& leftType, const TypePtr& resultType,
+    const Position& position) {
   // Generated code brings both operands to one width before operating: the
   // narrower integer is widened by its own signedness, and a 32-bit float
   // becomes 64-bit. Integers and floats are never mixed.
-  if (left->isInteger() && right->isInteger()) {
-    unsigned width = std::max(left->getInteger().getBitWidth(),
-                              right->getInteger().getBitWidth());
-    APInt leftBits = widenInteger(*left, width);
-    APInt rightBits = widenInteger(*right, width);
-    left->data = leftBits;
-    right->data = rightBits;
-  } else if (left->isFloat() && right->isFloat()) {
+  if (left.isInteger() && right.isInteger()) {
+    unsigned width = std::max(left.getInteger().getBitWidth(),
+                              right.getInteger().getBitWidth());
+    APInt leftBits = widenInteger(left, width);
+    APInt rightBits = widenInteger(right, width);
+    left.data = leftBits;
+    right.data = rightBits;
+  } else if (left.isFloat() && right.isFloat()) {
     const bool leftIsSingle =
-        &left->getFloat().getSemantics() == &APFloat::IEEEsingle();
+        &left.getFloat().getSemantics() == &APFloat::IEEEsingle();
     const bool rightIsSingle =
-        &right->getFloat().getSemantics() == &APFloat::IEEEsingle();
+        &right.getFloat().getSemantics() == &APFloat::IEEEsingle();
     if (leftIsSingle != rightIsSingle) {
-      ConstantValue& narrower = leftIsSingle ? *left : *right;
+      ConstantValue& narrower = leftIsSingle ? left : right;
       APFloat widened = narrower.getFloat();
       bool losesInfo = false;
       widened.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven,
@@ -502,16 +540,15 @@ std::optional<ConstantValue> ConstantEvaluator::evaluateBinary(
     recordBlocker(
         "its initializer applies an operator to values the "
         "compiler cannot combine at compile time",
-        binary.getLocation());
+        position);
     return std::nullopt;
   }
 
   // Signedness of division, remainder, right shift and ordering follows the
   // left operand's type, as it does in generated code.
-  TypePtr leftType = getValueType(*binary.getLHS());
   bool unsignedOperation = leftType && leftType->isUnsigned();
-  return applyBinaryOperator(op, *left, *right, unsignedOperation,
-                             getValueType(binary), binary.getLocation());
+  return applyBinaryOperator(op, left, right, unsignedOperation, resultType,
+                             position);
 }
 
 std::optional<ConstantValue> ConstantEvaluator::applyBinaryOperator(
@@ -759,6 +796,316 @@ std::optional<ConstantValue> ConstantEvaluator::evaluateConvert(
     return ConstantValue{target, converted};
   }
   return refuse("uses a conversion the compiler cannot evaluate");
+}
+
+std::optional<ConstantValue> ConstantEvaluator::evaluateIndex(
+    const ExprAST& array, const std::vector<const ExprAST*>& indices,
+    const Position& position) {
+  auto current = evaluateExpression(array);
+  if (!current) return std::nullopt;
+  for (const ExprAST* indexExpr : indices) {
+    auto index = evaluateExpression(*indexExpr);
+    if (!index) return std::nullopt;
+    if (!current->isArray() || !index->isInteger()) {
+      recordBlocker("its initializer indexes something other than an array",
+                    position);
+      return std::nullopt;
+    }
+    // Indexing is not checked at run time, so an index outside the array has
+    // no defined result to reproduce.
+    const APInt& bits = index->getInteger();
+    const auto& elements = current->getElements();
+    const bool negative = !index->isUnsigned() && bits.isNegative();
+    if (negative || bits.getActiveBits() > 64 ||
+        bits.getZExtValue() >= elements.size()) {
+      recordBlocker("its initializer indexes outside an array",
+                    indexExpr->getLocation());
+      return std::nullopt;
+    }
+    ConstantValue element = elements[bits.getZExtValue()];
+    current = std::move(element);
+  }
+  return current;
+}
+
+// -------------------------------------------------------------------
+// Function calls
+// -------------------------------------------------------------------
+
+bool ConstantEvaluator::countStep(const Position& position) {
+  if (++steps_ <= kMaxEvaluationSteps) return true;
+  // Said once per initializer: a function that may never finish is worth
+  // knowing about even though the program still compiles.
+  if (steps_ == kMaxEvaluationSteps + 1 && !deciding_.empty())
+    sun::support::logWarning(
+        "'" + deciding_.front()->getName() +
+            "' is initialized at startup: evaluating its initializer at "
+            "compile time was given up after too many steps",
+        position);
+  recordBlocker(
+      "its initializer did not finish within the number of steps "
+      "the compiler evaluates at compile time",
+      position);
+  return false;
+}
+
+const sun::ast::FunctionAST* ConstantEvaluator::findEvaluableCallee(
+    const sun::ast::CallExprAST& call) {
+  auto refuse = [&](const std::string& what) -> const sun::ast::FunctionAST* {
+    recordBlocker("its initializer " + what, call.getLocation());
+    return nullptr;
+  };
+  if (auto type = getValueType(call); type && type->isClass())
+    return refuse("constructs a '" + type->toDisplayString() + "' value");
+
+  DeclarationId target = call.getTargetDeclarationId();
+  const ExprAST* node = target ? declarations_.get(target).astNode : nullptr;
+  if (!node || node->getType() != ASTNodeType::FUNCTION ||
+      declarations_.get(target).kind != DeclarationKind::Function)
+    return refuse("calls something other than a plain function");
+
+  const auto& function = static_cast<const sun::ast::FunctionAST&>(*node);
+  const auto& proto = function.getProto();
+  const std::string name = "'" + proto.getName() + "'";
+  if (function.isExtern())
+    return refuse("calls " + name + ", which is defined outside Sun");
+  if (function.isPrecompiled())
+    return refuse("calls " + name +
+                  ", which is defined in a precompiled library");
+  if (proto.isGeneric() || proto.isTemplate() || proto.hasVariadicParam())
+    return refuse("calls " + name + ", which is generic");
+  if (proto.canThrow()) return refuse("calls " + name + ", which can throw");
+  // Analysis gives a function its type once its body has been checked
+  if (!function.getResolvedType())
+    return refuse("calls " + name +
+                  ", which has not been analyzed at this point; declare " +
+                  name + " above the first use of the value");
+  for (const auto& paramType : proto.getResolvedParamTypes())
+    if (!paramType || paramType->isReference())
+      return refuse("calls " + name + ", which takes a reference");
+  if (call.getArgs().size() != proto.getResolvedParamTypes().size() ||
+      proto.declarationIdentity().parameters.size() != call.getArgs().size())
+    return refuse("calls " + name + " in a form the compiler cannot evaluate");
+  return &function;
+}
+
+std::optional<ConstantValue> ConstantEvaluator::evaluateCall(
+    const sun::ast::CallExprAST& call) {
+  const sun::ast::FunctionAST* function = findEvaluableCallee(call);
+  if (!function) return std::nullopt;
+  const auto& proto = function->getProto();
+
+  if (frames_.size() >= kMaxCallDepth) {
+    recordBlocker(
+        "its initializer calls functions nested more deeply than "
+        "the compiler evaluates at compile time",
+        call.getLocation());
+    return std::nullopt;
+  }
+
+  // Arguments are evaluated in the caller, then become the callee's
+  // parameters, converted as a call converts them.
+  Frame frame;
+  const auto& paramTypes = proto.getResolvedParamTypes();
+  const auto& paramIds = proto.declarationIdentity().parameters;
+  for (size_t i = 0; i < call.getArgs().size(); ++i) {
+    auto argument = evaluateExpression(*call.getArgs()[i]);
+    if (argument)
+      argument = convertToDeclaredType(std::move(*argument), paramTypes[i],
+                                       call.getArgs()[i]->getLocation());
+    if (!argument) return std::nullopt;
+    frame.emplace(paramIds[i], std::move(*argument));
+  }
+
+  frames_.push_back(std::move(frame));
+  returned_.reset();
+  Flow flow = runBlock(function->getBody());
+  frames_.pop_back();
+
+  std::optional<ConstantValue> result = std::move(returned_);
+  returned_.reset();
+  if (flow == Flow::Failed) return std::nullopt;
+  if (flow != Flow::Return || !result) {
+    recordBlocker("its initializer calls '" + proto.getName() +
+                      "', which returns no value",
+                  call.getLocation());
+    return std::nullopt;
+  }
+  return convertToDeclaredType(std::move(*result),
+                               sun::types::unwrapRef(getValueType(call)),
+                               call.getLocation());
+}
+
+std::optional<bool> ConstantEvaluator::evaluateCondition(
+    const ExprAST& condition) {
+  auto value = evaluateExpression(condition);
+  if (!value) return std::nullopt;
+  auto truth = readTruthValue(*value);
+  if (!truth)
+    recordBlocker("its initializer tests a value that is not true or false",
+                  condition.getLocation());
+  return truth;
+}
+
+bool ConstantEvaluator::assignLocal(DeclarationId target,
+                                    const std::string& name,
+                                    ConstantValue value,
+                                    const Position& position) {
+  auto local =
+      frames_.empty() ? Frame::iterator{} : frames_.back().find(target);
+  if (frames_.empty() || local == frames_.back().end()) {
+    recordBlocker("its initializer calls a function that writes to '" + name +
+                      "', which is not one of its own variables",
+                  position);
+    return false;
+  }
+  auto converted =
+      convertToDeclaredType(std::move(value), local->second.type, position);
+  if (!converted) return false;
+  local->second = std::move(*converted);
+  return true;
+}
+
+ConstantEvaluator::Flow ConstantEvaluator::runBlock(
+    const sun::ast::BlockExprAST& block) {
+  for (const auto& statement : block.getBody()) {
+    Flow flow = runStatement(*statement);
+    if (flow != Flow::Next) return flow;
+  }
+  return Flow::Next;
+}
+
+ConstantEvaluator::Flow ConstantEvaluator::runLoop(const ExprAST* condition,
+                                                   const ExprAST* increment,
+                                                   const ExprAST& body,
+                                                   const Position& position) {
+  while (true) {
+    if (!countStep(position)) return Flow::Failed;
+    if (condition) {
+      auto proceed = evaluateCondition(*condition);
+      if (!proceed) return Flow::Failed;
+      if (!*proceed) return Flow::Next;
+    }
+    Flow flow = runStatement(body);
+    if (flow == Flow::Return || flow == Flow::Failed) return flow;
+    if (flow == Flow::Break) return Flow::Next;
+    if (increment && runStatement(*increment) == Flow::Failed)
+      return Flow::Failed;
+  }
+}
+
+ConstantEvaluator::Flow ConstantEvaluator::runStatement(
+    const ExprAST& statement) {
+  if (!countStep(statement.getLocation())) return Flow::Failed;
+
+  switch (statement.getType()) {
+    case ASTNodeType::BLOCK:
+      return runBlock(static_cast<const sun::ast::BlockExprAST&>(statement));
+
+    case ASTNodeType::VARIABLE_CREATION: {
+      const auto& local =
+          static_cast<const sun::ast::VariableCreationAST&>(statement);
+      if (!local.getValue() || !local.getResolvedType() ||
+          local.getResolvedType()->isReference()) {
+        recordBlocker(
+            "its initializer calls a function with a variable the "
+            "compiler cannot evaluate",
+            statement.getLocation());
+        return Flow::Failed;
+      }
+      auto value = evaluateExpression(*local.getValue());
+      if (value)
+        value =
+            convertToDeclaredType(std::move(*value), local.getResolvedType(),
+                                  local.getValue()->getLocation());
+      if (!value) return Flow::Failed;
+      frames_.back()[local.getDeclarationId()] = std::move(*value);
+      return Flow::Next;
+    }
+
+    case ASTNodeType::VARIABLE_ASSIGNMENT: {
+      const auto& assignment =
+          static_cast<const sun::ast::VariableAssignmentAST&>(statement);
+      auto value = evaluateExpression(*assignment.getValue());
+      if (!value) return Flow::Failed;
+      return assignLocal(assignment.getTargetDeclarationId(),
+                         assignment.getName(), std::move(*value),
+                         statement.getLocation())
+                 ? Flow::Next
+                 : Flow::Failed;
+    }
+
+    case ASTNodeType::COMPOUND_ASSIGNMENT: {
+      const auto& compound =
+          static_cast<const sun::ast::CompoundAssignmentAST&>(statement);
+      auto op = sun::parsing::compoundToBinaryOp(compound.getOp().kind);
+      if (!op ||
+          compound.getTarget()->getType() != ASTNodeType::VARIABLE_REFERENCE) {
+        recordBlocker(
+            "its initializer calls a function that updates "
+            "something other than a variable of its own",
+            statement.getLocation());
+        return Flow::Failed;
+      }
+      const auto& target = static_cast<const sun::ast::VariableReferenceAST&>(
+          *compound.getTarget());
+      auto current = evaluateExpression(target);
+      if (!current) return Flow::Failed;
+      auto operand = evaluateExpression(*compound.getValue());
+      if (!operand) return Flow::Failed;
+      TypePtr variableType = current->type;
+      auto combined =
+          combineOperands(*op, std::move(*current), std::move(*operand),
+                          variableType, variableType, statement.getLocation());
+      if (!combined) return Flow::Failed;
+      return assignLocal(target.getTargetDeclarationId(), target.getName(),
+                         std::move(*combined), statement.getLocation())
+                 ? Flow::Next
+                 : Flow::Failed;
+    }
+
+    case ASTNodeType::RETURN: {
+      const auto& returnExpr =
+          static_cast<const sun::ast::ReturnExprAST&>(statement);
+      returned_.reset();
+      if (returnExpr.hasValue()) {
+        returned_ = evaluateExpression(*returnExpr.getValue());
+        if (!returned_) return Flow::Failed;
+      }
+      return Flow::Return;
+    }
+
+    case ASTNodeType::IF: {
+      const auto& branch = static_cast<const sun::ast::IfExprAST&>(statement);
+      auto taken = evaluateCondition(*branch.getCond());
+      if (!taken) return Flow::Failed;
+      if (*taken) return runStatement(*branch.getThen());
+      return branch.getElse() ? runStatement(*branch.getElse()) : Flow::Next;
+    }
+
+    case ASTNodeType::WHILE_LOOP: {
+      const auto& loop = static_cast<const sun::ast::WhileExprAST&>(statement);
+      return runLoop(loop.getCondition(), nullptr, *loop.getBody(),
+                     statement.getLocation());
+    }
+
+    case ASTNodeType::FOR_LOOP: {
+      const auto& loop = static_cast<const sun::ast::ForExprAST&>(statement);
+      if (loop.getInit() && runStatement(*loop.getInit()) == Flow::Failed)
+        return Flow::Failed;
+      return runLoop(loop.getCondition(), loop.getIncrement(), *loop.getBody(),
+                     statement.getLocation());
+    }
+
+    case ASTNodeType::BREAK_STMT:
+      return Flow::Break;
+    case ASTNodeType::CONTINUE_STMT:
+      return Flow::Continue;
+
+    default:
+      // Any other statement is an expression whose value is dropped
+      return evaluateExpression(statement) ? Flow::Next : Flow::Failed;
+  }
 }
 
 std::optional<ConstantValue> ConstantEvaluator::convertToDeclaredType(

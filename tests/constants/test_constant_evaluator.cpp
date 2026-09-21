@@ -108,11 +108,13 @@ std::string buildBitComparison(const ConstantValue& value) {
 
 /**
  * Evaluates `expression` over the operands at compile time and at run time
- * and expects the same result. The expression names the operands.
+ * and expects the same result. The expression names the operands, and may
+ * call the functions declared in `functions`.
  */
 void expectSameAtCompileTimeAndRunTime(const std::string& resultType,
                                        const std::vector<Operand>& operands,
-                                       const std::string& expression) {
+                                       const std::string& expression,
+                                       const std::string& functions = "") {
   SCOPED_TRACE(resultType + " = " + expression);
   std::string constants, variables;
   for (const auto& operand : operands) {
@@ -123,15 +125,16 @@ void expectSameAtCompileTimeAndRunTime(const std::string& resultType,
                  operand.value + ";\n";
   }
 
-  GlobalInitRecord decision = decideGlobal(
-      constants + "const RESULT: " + resultType + " = " + expression + ";\n",
-      "RESULT");
+  GlobalInitRecord decision =
+      decideGlobal(functions + constants + "const RESULT: " + resultType +
+                       " = " + expression + ";\n",
+                   "RESULT");
   ASSERT_EQ(decision.kind, GlobalInitKind::Image)
       << "not evaluated at compile time: "
       << (decision.reason ? decision.reason->message : "");
   ASSERT_TRUE(decision.value.has_value());
 
-  std::string program = "function main() i32 {\n" + variables +
+  std::string program = functions + "function main() i32 {\n" + variables +
                         "  var RESULT: " + resultType + " = " + expression +
                         ";\n  if (" + buildBitComparison(*decision.value) +
                         ") { return 0; }\n  return 1;\n}\n";
@@ -417,4 +420,133 @@ TEST(Constants_Evaluator, class_construction_is_left_to_startup) {
     var origin: Point = Point(0);
   )",
                              "origin", "constructs a 'Point' value");
+}
+
+// === Calls to pure functions ===
+
+/** Functions of each shape the evaluator runs: branches, loops, recursion. */
+const char* const kPureFunctions = R"(
+function twice(x: i64) i64 { return x * 2; }
+function fact(n: i64) i64 {
+  if (n <= 1) { return 1; }
+  return n * fact(n - 1);
+}
+function sumSkipping(n: i32) i32 {
+  var total: i32 = 0;
+  for (var i: i32 = 1; i <= n; i += 1) {
+    if (i == 3) { continue; }
+    if (i > 5) { break; }
+    total += i;
+  }
+  return total;
+}
+function collatzSteps(start: u32) u32 {
+  var n: u32 = start;
+  var steps: u32 = 0;
+  while (n != 1) {
+    if (n % 2 == 0) { n = n / 2; } else { n = n * 3 + 1; }
+    steps += 1;
+  }
+  return steps;
+}
+function narrow(x: i32) i8 { return _convert<i8>(x); }
+function widen(x: i8) i64 { return x; }
+function scale(x: f32, by: f64) f64 { return x * by; }
+function pick(values: array<i32, 3>, i: i64) i32 { return values[i]; }
+function wrap(x: u8) u8 { var y: u8 = x; y += 200; return y; }
+)";
+
+TEST(Constants_Evaluator, function_calls_match_run_time) {
+  expectSameAtCompileTimeAndRunTime("i64", {{"A", "i64", "4"}},
+                                    "twice(A) + fact(A + 1)", kPureFunctions);
+  expectSameAtCompileTimeAndRunTime("i32", {{"A", "i32", "10"}},
+                                    "sumSkipping(A)", kPureFunctions);
+  expectSameAtCompileTimeAndRunTime("u32", {{"A", "u32", "27"}},
+                                    "collatzSteps(A)", kPureFunctions);
+  expectSameAtCompileTimeAndRunTime("i64", {{"A", "i32", "300"}},
+                                    "widen(narrow(A))", kPureFunctions);
+  expectSameAtCompileTimeAndRunTime("f64", {{"A", "f32", "0.1"}},
+                                    "scale(A, 3.0)", kPureFunctions);
+  expectSameAtCompileTimeAndRunTime("u8", {{"A", "u8", "100"}}, "wrap(A)",
+                                    kPureFunctions);
+  expectSameAtCompileTimeAndRunTime("i32", {{"A", "i64", "2"}},
+                                    "pick([7, 8, 9], A)", kPureFunctions);
+}
+
+// A function may be declared after the constant that calls it: every body
+// has been analyzed by the time the remaining globals are decided.
+TEST(Constants_Evaluator, function_declared_after_the_constant) {
+  GlobalInitRecord decision = decideGlobal(R"(
+    const V: i64 = half(8);
+    function half(x: i64) i64 { return x / 2; }
+  )",
+                                           "V");
+  EXPECT_EQ(describeDecision(decision), "4");
+}
+
+TEST(Constants_Evaluator, array_elements_can_be_read) {
+  GlobalInitRecord decision = decideGlobal(R"(
+    const GRID: array<i32, 2, 2> = [[1, 2], [3, 4]];
+    const CORNER: i32 = GRID[1, 0];
+  )",
+                                           "CORNER");
+  EXPECT_EQ(describeDecision(decision), "3");
+  expectInitializedAtStartup(R"(
+    const PRIMES: array<i32, 3> = [2, 3, 5];
+    const PAST: i32 = PRIMES[3];
+  )",
+                             "PAST", "indexes outside an array");
+}
+
+// Anything a function does beyond computing with its own variables and
+// compile-time constants leaves the global to startup, with the reason.
+TEST(Constants_Evaluator, functions_that_are_not_pure_wait_for_startup) {
+  expectInitializedAtStartup(R"(
+    var counter: i64 = 1;
+    function bump() i64 { counter = counter + 1; return 5; }
+    const V: i64 = bump();
+  )",
+                             "V", "reads 'counter', which is a 'var'");
+  expectInitializedAtStartup(R"(
+    var counter: i64 = 1;
+    function reset() i64 { counter = 0; return 5; }
+    const V: i64 = reset();
+  )",
+                             "V", "writes to 'counter'");
+  expectInitializedAtStartup(R"(
+    extern "C" function getpid() i32;
+    function pid() i32 { return unsafe { getpid(); }; }
+    const V: i32 = pid();
+  )",
+                             "V", "unsafe block");
+  expectInitializedAtStartup(R"(
+    function first(values: ref array<i32, 2>) i32 { return values[0]; }
+    var data: array<i32, 2> = [1, 2];
+    const V: i32 = first(data);
+  )",
+                             "V", "takes a reference");
+  expectInitializedAtStartup(R"(
+    function same<T>(x: T) T { return x; }
+    const V: i64 = same<i64>(1);
+  )",
+                             "V", "");
+  expectInitializedAtStartup(R"(
+    function divide(a: i64, b: i64) i64 { return a / b; }
+    const V: i64 = divide(1, 0);
+  )",
+                             "V", "zero");
+}
+
+// A function that never finishes must not hang the compiler.
+TEST(Constants_Evaluator, function_that_never_finishes_waits_for_startup) {
+  expectInitializedAtStartup(R"(
+    function spin(x: i64) i64 { while (true) { x += 1; } return x; }
+    const V: i64 = spin(1);
+  )",
+                             "V", "did not finish");
+  expectInitializedAtStartup(R"(
+    function down(x: i64) i64 { return down(x + 1); }
+    const V: i64 = down(1);
+  )",
+                             "V", "nested more deeply");
 }

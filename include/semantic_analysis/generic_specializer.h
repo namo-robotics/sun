@@ -88,6 +88,8 @@ class GenericSpecializer {
    * until every declaration in the program is known.
    */
   void setInDeclarationPrepass(bool inPrepass) { inPrepass_ = inPrepass; }
+  /** True while declarations are still being collected, before any body. */
+  bool isInDeclarationPrepass() const { return inPrepass_; }
 
   // ---- Functions ---------------------------------------------------------
 

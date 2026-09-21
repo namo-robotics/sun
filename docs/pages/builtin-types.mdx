@@ -174,7 +174,10 @@ A size is written as a number or as the name of a constant, which may come
 from a module (`limits.ROWS`), including a module of a precompiled library,
 and may be declared further down the file. The
 constant must be an integer `const` at file or module scope whose value the
-compiler can work out, and it must not be negative. A size is not an
+compiler can work out, and it must not be negative. Its value may come from
+calling a function, as in `const CELLS = area(2, 3);`, when the size is used by
+a variable and the function is declared above that variable. A size used by a
+class field or a function signature cannot come from a function call yet. A size is not an
 expression: give the expression a name first.
 
 ```sun
