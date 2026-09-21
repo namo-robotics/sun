@@ -534,8 +534,8 @@ TEST_F(MoonExactTypes,
         }
         if (field.name() == "values") {
           array = field.type().array_dimensions_size() == 2 &&
-                  field.type().array_dimensions(0) == 2 &&
-                  field.type().array_dimensions(1) == 3;
+                  field.type().array_dimensions(0).size() == 2 &&
+                  field.type().array_dimensions(1).size() == 3;
         }
       }
     }

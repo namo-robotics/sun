@@ -162,7 +162,8 @@ pbc::TypeAnnotation exportType(
     out.set_base_name("array");
     *out.mutable_element_type() =
         exportType(value->getElementType(), declarations);
-    for (auto dim : value->getDimensions()) out.add_array_dimensions(dim);
+    for (auto dim : value->getDimensions())
+      out.add_array_dimensions()->set_size(dim);
   } else if (auto* value =
                  sun::codegen::support::tryGetType<sun::types::FunctionType>(
                      type)) {

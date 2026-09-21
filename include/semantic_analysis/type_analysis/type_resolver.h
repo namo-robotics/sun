@@ -8,9 +8,14 @@ namespace sun::semantic_analysis::type_analysis {
 /** Resolves annotations and may request nominal specializations. */
 class TypeResolver {
  public:
-  /** Borrow the semantic session and its specialization service. */
-  TypeResolver(SemanticContext &ctx, GenericSpecializer &generics)
-      : ctx_(ctx), generics_(generics) {}
+  /**
+   * Borrow the semantic session and its specialization service. `sema` is
+   * used to analyze a constant on its first use, when an array size names one
+   * that is declared further down.
+   */
+  TypeResolver(SemanticContext &ctx, GenericSpecializer &generics,
+               SemanticAnalyzer &sema)
+      : ctx_(ctx), generics_(generics), sema_(sema) {}
   /** Resolve an interface requirement with the current parameter bindings. */
   std::shared_ptr<sun::types::InterfaceType> resolveConstraintInterface(
       const sun::ast::TypeConstraint &constraint);
@@ -24,6 +29,15 @@ class TypeResolver {
    */
   sun::types::TypePtr typeAnnotationToType(
       const sun::ast::TypeAnnotation &annot);
+
+  /**
+   * The number of elements an array size stands for. A size written as the
+   * name of a constant, such as `N` or `limits.N`, is looked up like any
+   * other name, and must be an integer `const` whose value is known at
+   * compile time and is not negative; anything else is an error that says
+   * why. The number is remembered on the annotation.
+   */
+  size_t resolveArrayDimension(const sun::ast::ArrayDimension &dimension);
 
   /**
    * Resolve a list of written type arguments, reporting `context` in the
@@ -61,5 +75,6 @@ class TypeResolver {
  private:
   SemanticContext &ctx_;
   GenericSpecializer &generics_;
+  SemanticAnalyzer &sema_;
 };
 }  // namespace sun::semantic_analysis::type_analysis

@@ -14,6 +14,35 @@
 namespace sun::ast {
 
 /**
+ * One size of an array type: `5` in `array<T, 5>` or `N` in `array<T, N>`.
+ * A size is written as a number or as the name of a constant, possibly through
+ * its module (`limits.N`), never as an expression.
+ */
+struct ArrayDimension {
+  // The number of elements. For a named size it is filled in when the type
+  // is resolved, which is why resolving a const annotation may set it.
+  mutable std::optional<size_t> size;
+  // The constant as written, with dots; empty when a number was written.
+  std::string constantName;
+  // Where the size is written; not serialized
+  sun::support::Position position{};
+
+  /** True when the size was written as the name of a constant. */
+  bool isNamed() const { return !constantName.empty(); }
+
+  /** Two sizes are the same when they were written the same way. */
+  bool operator==(const ArrayDimension& other) const {
+    return constantName == other.constantName &&
+           (isNamed() || size == other.size);
+  }
+
+  /** The size as written: the constant's name, or the number. */
+  std::string toString() const {
+    return isNamed() ? constantName : std::to_string(size.value_or(0));
+  }
+};
+
+/**
  * Type annotation structure for parsed type info
  * Supports: i32, f64, bool, void, ptr&lt;T&gt;, ref T, function, lambda
  * Generic types: ClassName<T, U> for class instantiation
@@ -34,8 +63,8 @@ struct TypeAnnotation {
   // For generic types: List<i32>, Map<string, i32>
   std::vector<std::unique_ptr<TypeAnnotation>> typeArguments;
 
-  // For array types: array<T, 5> or array<T, 3, 2>
-  std::vector<size_t> arrayDimensions;
+  // For array types: array<T, 5>, array<T, 3, 2> or array<T, N>
+  std::vector<ArrayDimension> arrayDimensions;
 
   // For error union types: indicates this type can also be an error
   bool canError = false;
@@ -196,8 +225,8 @@ struct TypeAnnotation {
   std::string toString() const {
     if (isArray() && elementType) {
       std::string result = "array<" + elementType->toString();
-      for (size_t dim : arrayDimensions) {
-        result += ", " + std::to_string(dim);
+      for (const ArrayDimension& dim : arrayDimensions) {
+        result += ", " + dim.toString();
       }
       result += ">";
       if (canError) result += " throws IError";

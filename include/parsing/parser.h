@@ -612,11 +612,6 @@ class Parser {
                          std::vector<std::unique_ptr<ExprAST>>& collectedAST);
 
   /**
-   * Parse a type annotation from its string representation.
-   */
-  sun::ast::TypeAnnotation parseTypeFromString(const std::string& typeStr);
-
-  /**
    * Setters for import resolution (used by Driver)
    */
   void setBaseDir(const std::string& dir) { baseDir = dir; }

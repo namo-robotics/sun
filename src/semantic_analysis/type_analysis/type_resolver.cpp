@@ -7,6 +7,8 @@
 #include "semantic_analysis/type_analysis/type_resolver.h"
 
 #include "codegen/support/type_checks.h"
+#include "semantic_analysis/constants/constant_evaluator.h"
+#include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/type_analysis/type_traits.h"
 #include "support/error.h"
 
@@ -254,6 +256,67 @@ std::vector<TypePtr> TypeResolver::resolveTypeArguments(
 // Type annotation to type conversion
 // -------------------------------------------------------------------
 
+size_t TypeResolver::resolveArrayDimension(
+    const sun::ast::ArrayDimension& dimension) {
+  // A number, or a name that was resolved before
+  if (dimension.size) return *dimension.size;
+
+  const std::string& name = dimension.constantName;
+  const std::string what = "array size '" + name + "'";
+  auto reject = [&](const std::string& why) {
+    logAndThrowError(what + " " + why, dimension.position);
+  };
+
+  // A global may be used before the line that declares it
+  VariableInfo* info = nullptr;
+  if (auto dot = name.rfind('.'); dot != std::string::npos) {
+    sema_.ensureModuleGlobalAnalyzed(name.substr(0, dot), name.substr(dot + 1));
+    info = ctx_.lookupQualifiedVariable(name);
+  } else {
+    sema_.ensureGlobalAnalyzed(name);
+    info = ctx_.currentScope().lookupVariable(name);
+  }
+  if (!info) reject("is not the name of a constant that is visible here");
+  if (!info->isGlobal)
+    reject("must be a constant declared at file or module scope, but '" + name +
+           "' is a local variable");
+  if (!info->isConst)
+    reject("must be a constant, but '" + name +
+           "' is a 'var'; declare it with 'const'");
+
+  using sun::semantic_analysis::constants::GlobalInitKind;
+  const auto& declarations = ctx_.declarationTable();
+  const sun::ast::ExprAST* astNode =
+      info->declarationId ? declarations.get(info->declarationId).astNode
+                          : nullptr;
+  if (!astNode ||
+      astNode->getType() != sun::ast::ASTNodeType::VARIABLE_CREATION)
+    reject("must be known at compile time, but the compiler has no value for '" +
+           name + "'");
+  const auto& constant =
+      static_cast<const sun::ast::VariableCreationAST&>(*astNode);
+  const auto* decision = constant.getGlobalInit();
+  if (!decision)
+    decision = &constants::ConstantEvaluator(declarations)
+                    .evaluateGlobalInitializer(constant);
+  if (decision->kind != GlobalInitKind::Image || !decision->value)
+    reject("must be known at compile time, but '" + name +
+           "' is initialized at startup because " +
+           (decision->reason ? decision->reason->message
+                             : std::string("it cannot be evaluated")));
+
+  const auto& value = *decision->value;
+  if (!value.isInteger() || !value.type || !value.type->isIntegral())
+    reject("must be an integer, but '" + name + "' has type '" +
+           (value.type ? value.type->toDisplayString() : "unknown") + "'");
+  if (!value.isUnsigned() && value.getInteger().isNegative())
+    reject("must not be negative, but '" + name + "' is " +
+           value.toDisplayString());
+
+  dimension.size = static_cast<size_t>(value.getInteger().getZExtValue());
+  return *dimension.size;
+}
+
 TypePtr TypeResolver::typeAnnotationToType(
     const sun::ast::TypeAnnotation& annot) {
   if (annot.declarationKey) {
@@ -422,7 +485,11 @@ TypePtr TypeResolver::typeAnnotationToType(
     if (!elemType) {
       logAndThrowError("invalid array element type", annot.span);
     }
-    return Types::Array(elemType, annot.arrayDimensions);
+    std::vector<size_t> dimensions;
+    dimensions.reserve(annot.arrayDimensions.size());
+    for (const auto& dimension : annot.arrayDimensions)
+      dimensions.push_back(resolveArrayDimension(dimension));
+    return Types::Array(elemType, dimensions);
   }
 
   // Try primitive types first

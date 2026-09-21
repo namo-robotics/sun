@@ -89,8 +89,10 @@ pbc::TypeAnnotation ASTSerializer::serializeTypeAnnotation(
     *proto.add_type_arguments() = serializeTypeAnnotation(*arg);
   }
 
-  for (auto dim : type.arrayDimensions) {
-    proto.add_array_dimensions(dim);
+  for (const auto& dim : type.arrayDimensions) {
+    auto* dimension = proto.add_array_dimensions();
+    if (dim.size) dimension->set_size(*dim.size);
+    dimension->set_constant_name(dim.constantName);
   }
 
   proto.set_can_error(type.canError);

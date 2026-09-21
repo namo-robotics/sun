@@ -464,3 +464,137 @@ TEST(Builtins_Arrays, element_borrowed_in_place) {
   )"));
   EXPECT_EQ(value, 3);
 }
+
+// ============================================================================
+// Sizes written as the name of a constant
+// ============================================================================
+
+TEST(Builtins_Arrays, size_named_by_a_constant) {
+  auto value = executeString(R"(
+    const N = 2;
+    const arr: array<i32, N> = [10, 20];
+    function main() i32 { return arr[0] + arr[1]; }
+  )");
+  EXPECT_EQ(value, 30);
+}
+
+// array<i32, N> and array<i32, 2> are one type when N is 2.
+TEST(Builtins_Arrays, named_size_is_the_same_type_as_its_number) {
+  auto value = executeString(R"(
+    const N: i64 = 2;
+    function sum(values: ref array<i32, 2>) i32 { return values[0] + values[1]; }
+    function main() i32 {
+        var values: array<i32, N> = [3, 4];
+        return sum(values);
+    }
+  )");
+  EXPECT_EQ(value, 7);
+}
+
+// A size may come from a module, be computed from other constants, and be
+// declared after the class field and the function signature that use it.
+TEST(Builtins_Arrays, named_size_declared_after_its_uses) {
+  auto value = executeString(R"(
+    class Buf {
+        var data: array<i32, SIZE>;
+        init() { this.data = [1, 2, 3, 4]; }
+    }
+    function ends(values: ref array<i32, SIZE>) i32 { return values[0] + values[3]; }
+    function main() i32 {
+        var b = Buf();
+        var grid: array<i32, limits.ROWS, SIZE> = [[1, 2, 3, 4], [5, 6, 7, 8]];
+        return ends(b.data) + grid[1, 3];
+    }
+    const SIZE: i64 = limits.ROWS * 2;
+    module limits { public const ROWS: i64 = 2; }
+  )");
+  EXPECT_EQ(value, 5 + 8);
+}
+
+TEST(Builtins_Arrays, named_size_inside_a_generic_type_argument) {
+  auto value = executeString(R"(
+    const SIZE = 3;
+    class Box<T> {
+        var item: T;
+        init(item: T) { this.item = item; }
+        method get() ref T { return this.item; }
+    }
+    declare Triple = array<i32, SIZE>;
+    function main() i32 {
+        var values: Triple = [1, 2, 3];
+        var boxed = Box<Triple>(values);
+        return boxed.get()[2];
+    }
+  )");
+  EXPECT_EQ(value, 3);
+}
+
+TEST(Builtins_Arrays, named_size_must_match_the_literal) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    const N = 2;
+    const arr: array<i32, N> = [1, 2, 3];
+    function main() i32 { return 0; }
+  )"),
+                                "to variable 'arr' of type 'array<i32, 2>'");
+}
+
+// A size is needed while types are resolved, so a constant that only gets
+// its value at startup cannot be one. The error says why it is a startup one.
+TEST(Builtins_Arrays, named_size_must_be_known_at_compile_time) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
+    var counter: i64 = 3;
+    const SNAP: i64 = counter;
+    var bad: array<i32, SNAP> = [1, 2, 3];
+    function main() i32 { return 0; }
+  )"),
+      "array size 'SNAP' must be known at compile time, but 'SNAP' is "
+      "initialized at startup because it reads 'counter', which is a 'var'");
+}
+
+TEST(Builtins_Arrays, named_size_rejects_what_is_not_a_usable_constant) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    const NEG: i32 = -2;
+    var bad: array<i32, NEG> = [1, 2];
+    function main() i32 { return 0; }
+  )"),
+                                "array size 'NEG' must not be negative");
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    const F: f64 = 2.0;
+    var bad: array<i32, F> = [1, 2];
+    function main() i32 { return 0; }
+  )"),
+                                "array size 'F' must be an integer");
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    var V: i64 = 2;
+    var bad: array<i32, V> = [1, 2];
+    function main() i32 { return 0; }
+  )"),
+                                "array size 'V' must be a constant, but 'V' is "
+                                "a 'var'");
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    function main() i32 {
+        const L: i64 = 2;
+        var bad: array<i32, L> = [1, 2];
+        return 0;
+    }
+  )"),
+                                "'L' is a local variable");
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    var bad: array<i32, NOPE> = [1, 2];
+    function main() i32 { return 0; }
+  )"),
+                                "array size 'NOPE' is not the name of a "
+                                "constant");
+}
+
+// A size is a number or a name. An expression is given a name first:
+// `const M = N * 2;`.
+TEST(Builtins_Arrays, size_written_as_an_expression_is_rejected) {
+  EXPECT_THROW(executeString(R"(
+    const N = 1;
+    var bad: array<i32, N + 1> = [1, 2];
+    function main() i32 { return 0; }
+  )"),
+               std::exception);
+}

@@ -1914,6 +1914,35 @@ TEST(Modules, moon_rejects_global_outside_any_module) {
       "global 'c_environ' is declared outside any module");
 }
 
+// A library's types keep their array sizes across a bundle, including a size
+// named by a constant the importer cannot see.
+TEST(Modules, moon_keeps_named_array_sizes) {
+  auto moonPath = writeMoonLib("named_sizes", R"(
+    public module named_sizes {
+      public const N: i64 = 3;
+      const HIDDEN: i64 = 2;
+      public class Grid {
+        public var cells: array<i32, N>;
+        var pad: array<i32, HIDDEN>;
+        init() { this.cells = [1, 2, 3]; this.pad = [0, 0]; }
+      }
+      public function ends(g: ref Grid) i32 { return g.cells[0] + g.cells[2]; }
+    }
+  )");
+
+  auto driver = Driver::createForJIT("named_sizes_main");
+  driver->setMoonImports({MoonImport(moonPath.string())});
+  auto value = driver->executeString(R"(
+    using named_sizes;
+    function main() i32 {
+      var g = named_sizes.Grid();
+      var copy: array<i32, 3> = [g.cells[0], g.cells[1], g.cells[2]];
+      return named_sizes.ends(g) + copy[1];
+    }
+  )");
+  EXPECT_EQ(value, 6);
+}
+
 // === Startup order across bundles ===
 //
 // Globals that need code to initialize them are set up by a startup function,

@@ -151,8 +151,11 @@ sun::ast::TypeAnnotation ASTDeserializer::deserializeTypeAnnotation(
         deserializeTypeAnnotation(arg)));
   }
 
-  for (auto dim : type.array_dimensions()) {
-    result.arrayDimensions.push_back(dim);
+  for (const auto& dim : type.array_dimensions()) {
+    sun::ast::ArrayDimension dimension;
+    if (dim.has_size()) dimension.size = dim.size();
+    dimension.constantName = dim.constant_name();
+    result.arrayDimensions.push_back(std::move(dimension));
   }
 
   result.canError = type.can_error();

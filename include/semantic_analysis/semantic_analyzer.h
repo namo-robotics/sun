@@ -95,7 +95,7 @@ class SemanticAnalyzer {
 
   // Resolve written types and scoped substitutions, requesting specializations
   // as needed.
-  type_analysis::TypeResolver resolver_{ctx_, generics_};
+  type_analysis::TypeResolver resolver_{ctx_, generics_, *this};
 
   // Checks enum definitions, variant construction, and match patterns.
   EnumAnalyzer enums_{ctx_, *this, generics_, resolver_};
