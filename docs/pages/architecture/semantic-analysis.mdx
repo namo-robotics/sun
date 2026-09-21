@@ -130,6 +130,50 @@ resolving method signatures. Nested blocks, functions, and lambdas are checked
 through ordinary recursion. Generic templates registered during collection are not
 registered again here.
 
+### Global Initializers
+
+The last step decides, for every file-scope and module-scope variable, where
+its first value comes from. `ConstantEvaluator`
+(`semantic_analysis/constants/`) tries to compute the initializer from the
+analyzed tree. If it can, the variable is an *image* global and the value is
+stored with the decision. If it cannot, the variable is a *startup* global and
+the decision keeps the first thing that stood in the way, so a later error can
+explain it. The decision (`GlobalInitRecord`) lives on the declaring node, and
+code generation only reads it.
+
+```sun
+const N = 2;                          // image
+const M: i64 = twice(N) + k.LIMIT;    // image: pure call, library constant
+var counter: i64 = M * 2;             // image: a var still starts from a value
+const SNAP: i64 = counter;            // startup: reads a var
+```
+
+The rules:
+
+- The decision is made per variable. `const` means "never reassigned", not
+  "known at compile time", so a `const` can be a startup global.
+- A compile-time value may read only image `const`s. Reading a `var` is never
+  compile time, because startup code could have changed it first.
+- The evaluator handles literals, operators, `_convert`, array literals and
+  element reads, reads of image constants, and calls to plain functions whose
+  bodies only compute. It runs a function's analyzed body in a frame of its
+  own variables; a write to anything outside the frame is refused. Step and
+  call-depth limits stop a function that never finishes.
+- Arithmetic uses LLVM's `APInt` and `APFloat` and follows the generated code
+  exactly: wrap-around, signedness taken from the left operand, widening by
+  each operand's own signedness. Operations with no defined run-time result
+  (division by zero, `INT_MIN / -1`, an oversized shift, an index outside an
+  array) are refused, not guessed. The tests compare each result with the
+  same expression computed at run time, bit for bit.
+- Most variables are decided here, after all analysis. One is decided earlier
+  when its value is needed by a type: `TypeResolver::resolveArrayDimension`
+  asks for the constant behind `array<T, N>` as soon as the type is resolved.
+- Startup globals are initialized in source order. One whose initializer
+  directly reads a startup global declared later is an error.
+- A bundle publishes the values of its image `const`s in its metadata. The
+  collection pass gives each imported value its type and records the same
+  decision on the stub node, so an imported constant behaves like a local one.
+
 ## Declaration identities
 
 `DeclarationId` is a typed integer meaningful only in its owning analysis
@@ -408,6 +452,7 @@ The analyzer's source is split by concern under `src/semantic_analysis/`:
 | `expression_resolution.cpp`, `call_result_resolution.cpp` | Name/member resolution and call-result preparation |
 | `expression_properties.cpp` | Storage and control-flow queries on analyzed expressions |
 | `type_analysis/type_resolver.cpp` | Resolving written annotations, and substituting into a resolved type |
+| `constants/constant_evaluator.cpp`, `constants/constant_value.cpp` | Computing file-scope initializers at compile time and deciding image or startup |
 | `semantic_context.cpp` / `scope_lookup.cpp` | Shared scopes, symbols, and declaration bookkeeping (`declaration_state.h`) |
 | `generic_specializer.cpp`, `generic_type_arguments.cpp` | Monomorphization and semantic adapters for generic deduction |
 | `interfaces.cpp`, `enums.cpp`, `packed_classes.cpp` | Per-construct analysis |

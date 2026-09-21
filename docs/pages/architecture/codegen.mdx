@@ -54,6 +54,17 @@ field addresses, alignment and slot writes.
   use the closure ABI: arg 0 is a ptr to `{ ptr func, ptr env }` with the
   receiver in `env`, and `obj.method` in value position is a lambda-typed bound
   method `{ methodFn, objPtr }`.
+- A global's first value is never computed here. Semantic analysis decides
+  it per variable (see Global Initializers in the semantic analysis page) and
+  `VariableGenerator` reads the decision from the node. An *image* global gets
+  an LLVM constant built from the computed value, with no code emitted. A
+  *startup* global gets zeroed storage and its initializer is emitted inside
+  `__sun_static_init`, in source order, together with class globals. That
+  function has internal linkage and is registered in `llvm.global_ctors`; its
+  priority places a library's startup before that of anything importing it,
+  and a per-bundle flag makes it run once. A block creates the storage of all
+  its globals before emitting any body, since a function may use a global
+  declared further down.
 - C extern globals are emitted as external-linkage LLVM globals with no
   initializer. `ExternCEmitter` owns the resolved Sun-name to native-symbol
   map used by loads, assignments, lvalues, module members, and function-pointer
