@@ -8,7 +8,8 @@ using sun::ast::ExprAST;
 
 /** Provides the ordered preparation and registration passes for analysis. */
 namespace sun::semantic_analysis::passes {
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /** Fill a declaration's name while retaining imported or generated identities.

@@ -1,5 +1,6 @@
 #include "semantic_analysis/semantic_pipeline.h"
 
+#include "semantic_analysis/constants/constant_evaluator.h"
 #include "semantic_analysis/passes/declaration_identity_pass.h"
 #include "semantic_analysis/semantic_analyzer.h"
 
@@ -17,18 +18,22 @@ SemanticPipeline::SemanticPipeline(
 void SemanticPipeline::run(sun::ast::BlockExprAST& block,
                            const std::function<void()>& declarationsReady) {
   fieldInitializerPreparationPass_.run(block);
-  passes::DeclarationIdentityPass(context_.types()->declarations).run(block);
+  passes::DeclarationIdentityPass(context_.results().declarations).run(block);
   if (declarationsReady) declarationsReady();
   declarationNamingPass_.run(block, context_.getCurrentScopePath(),
                              context_.isAtModuleLevel());
   declarationCollectionPass_.run(block);
   analyzer_.bodies().analyzeBlock(block);
+  // Every expression now has its type and every name its declaration, which
+  // is what evaluating the file-scope initializers needs.
+  constants::ConstantEvaluator(context_.results().globalInits)
+      .evaluateGlobals(block);
 }
 
 void SemanticPipeline::prepareGenerated(const ExprAST& expression,
                                         DeclarationId owner,
                                         const ExprAST* origin) {
-  auto& table = context_.types()->declarations;
+  auto& table = context_.results().declarations;
   passes::DeclarationIdentityPass(table).run(
       expression, owner, owner ? table.get(owner).module : DeclarationId{},
       origin);

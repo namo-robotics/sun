@@ -18,7 +18,8 @@ class IndexedAssignmentAST : public ExprAST {
   std::unique_ptr<ExprAST> value;   // The value to assign
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   IndexedAssignmentAST(std::unique_ptr<ExprAST> target,
                        std::unique_ptr<ExprAST> value)
       : target(std::move(target)), value(std::move(value)) {}
@@ -28,7 +29,8 @@ class IndexedAssignmentAST : public ExprAST {
     return ASTNodeType::INDEXED_ASSIGNMENT;
   }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     fn(target);
     fn(value);

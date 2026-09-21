@@ -21,7 +21,8 @@ using namespace llvm;
 /** Provides the generator for built-in operations. */
 namespace sun::codegen::intrinsics {
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /**

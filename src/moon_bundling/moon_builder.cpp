@@ -25,7 +25,8 @@ using sun::support::SourceFileId;
 /** Builds and loads compiled Moon libraries and their declaration metadata. */
 namespace sun::moon_bundling {
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /** Reports the operation's failure as a compiler error and stops processing. */
@@ -175,12 +176,12 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   // warning-worthy one, as it would be for any C program linking both. The
   // program's externs naming these symbols are emitted under the prefixed
   // name; the archives are rewritten to match once compilation is done.
-  std::map<std::string, std::string> renames;  // symbol -> prefixed name
-  std::map<std::string, std::string> definedBy;  // symbol -> archive name
+  std::map<std::string, std::string> renames;         // symbol -> prefixed name
+  std::map<std::string, std::string> definedBy;       // symbol -> archive name
   std::map<std::string, std::string> ownUndefinedBy;  // symbol -> archive
   for (const auto& archive : ownArchives) {
-    auto scan = scanArchiveSymbols(
-        llvm::MemoryBufferRef(archive.data, archive.name));
+    auto scan =
+        scanArchiveSymbols(llvm::MemoryBufferRef(archive.data, archive.name));
     if (!scan) {
       fail("moon bundle: cannot isolate the symbols of native archive " +
            archive.path + ": " + llvm::toString(scan.takeError()));
@@ -286,9 +287,8 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
     if (carried == inheritedDefinitions.end() || carried->second == symbol) {
       continue;
     }
-    llvm::errs() << "Warning: native archive " << archiveName
-                 << " references '" << symbol
-                 << "', which an imported bundle carries only as '"
+    llvm::errs() << "Warning: native archive " << archiveName << " references '"
+                 << symbol << "', which an imported bundle carries only as '"
                  << carried->second
                  << "'. The reference will not resolve against that copy; "
                     "carry the library it comes from under `archives:` or "

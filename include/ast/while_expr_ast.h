@@ -15,7 +15,8 @@ class WhileExprAST : public ExprAST {
   std::unique_ptr<ExprAST> Condition, Body;
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   WhileExprAST(std::unique_ptr<ExprAST> Condition,
                std::unique_ptr<ExprAST> Body)
       : Condition(std::move(Condition)), Body(std::move(Body)) {}
@@ -23,7 +24,8 @@ class WhileExprAST : public ExprAST {
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::WHILE_LOOP; }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     fn(Condition);
     fn(Body);

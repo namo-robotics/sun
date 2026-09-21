@@ -72,7 +72,8 @@ class CodegenContext {
   bool optimize_ = true;
 
  public:
-  /** Creates the LLVM generation context for the requested module and target. */
+  /** Creates the LLVM generation context for the requested module and target.
+   */
   explicit CodegenContext(std::string moduleName,
                           const std::shared_ptr<sun::driver::SunJIT>& jit,
                           LLVMContext* existingContext = nullptr,
@@ -204,14 +205,16 @@ class CodegenContext {
    * Delete copy operations (LLVMContext cannot be shared/copied this way)
    */
   CodegenContext(const CodegenContext&) = delete;
-  /** Disallows assignment so ownership and object identity cannot be duplicated. */
+  /** Disallows assignment so ownership and object identity cannot be
+   * duplicated. */
   CodegenContext& operator=(const CodegenContext&) = delete;
 
   /**
    * Allow move semantics if needed
    */
   CodegenContext(CodegenContext&&) = default;
-  /** Transfers the stored state from another instance during move assignment. */
+  /** Transfers the stored state from another instance during move assignment.
+   */
   CodegenContext& operator=(CodegenContext&&) = default;
 
   /**

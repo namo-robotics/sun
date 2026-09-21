@@ -10,7 +10,8 @@
 /** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /**
@@ -109,7 +110,8 @@ bool looksLikeOption(const std::string& arg) {
 
 }  // namespace
 
-/** Parses command-line arguments into build run options and reports early exits. */
+/** Parses command-line arguments into build run options and reports early
+ * exits. */
 std::optional<EarlyExit> parseBuildRunArguments(
     const std::string& programName, const std::vector<std::string>& args,
     BuildRunOptions& options) {

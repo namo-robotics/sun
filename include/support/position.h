@@ -20,9 +20,11 @@ struct Position {
   std::optional<int> endColumn = std::nullopt;
   std::optional<int> endOffset = std::nullopt;  // Exclusive byte offset
 
-  /** Creates a source coordinate with its optional file path and byte offset. */
+  /** Creates a source coordinate with its optional file path and byte offset.
+   */
   Position() = default;
-  /** Creates a source coordinate with its optional file path and byte offset. */
+  /** Creates a source coordinate with its optional file path and byte offset.
+   */
   Position(int l, int c, int o = 0,
            std::optional<std::string> path = std::nullopt)
       : line(l), column(c), offset(o), filePath(std::move(path)) {}

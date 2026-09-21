@@ -78,22 +78,28 @@ class VariableGenerator {
 
   /** Binds variable generation to the shared expression visitor and state. */
   VariableGenerator(const VariableGenerator&) = delete;
-  /** Disallows assignment so ownership and object identity cannot be duplicated. */
+  /** Disallows assignment so ownership and object identity cannot be
+   * duplicated. */
   VariableGenerator& operator=(const VariableGenerator&) = delete;
 
   // ---------------------------------------------------------------
   // Creation, reference, assignment
   // ---------------------------------------------------------------
 
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const VariableCreationAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::VariableReferenceAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::VariableAssignmentAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::ReferenceCreationAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const CompoundAssignmentAST& expr);
 
   /**
@@ -207,8 +213,8 @@ class VariableGenerator {
     std::string varName;              // Variable name (for diagnostics)
     TypePtr varType;                  // Variable type
     std::shared_ptr<ClassType>
-        classType;            // Class type (if class, else nullptr)
-    const ExprAST* initExpr;  // The initialization expression
+        classType;                    // Class type (if class, else nullptr)
+    const ExprAST* initExpr;          // The initialization expression
     sun::support::Position location;  // Declaration site (for diagnostics)
   };
 
@@ -235,7 +241,8 @@ class VariableGenerator {
   /** Creates and initializes global storage for a class value. */
   llvm::GlobalVariable* genGlobalClassVar(const VariableCreationAST& expr,
                                           ClassType& classType);
-  /** Creates global storage and arranges initialization during program startup. */
+  /** Creates global storage and arranges initialization during program startup.
+   */
   llvm::GlobalVariable* genGlobalVarWithRuntimeInit(
       const VariableCreationAST& expr, llvm::Type* varType);
 
@@ -253,7 +260,8 @@ class VariableGenerator {
    * block path does not want.
    */
   llvm::Value* codegen(const ExprAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const BlockExprAST& block);
 
   /**
@@ -270,7 +278,8 @@ class VariableGenerator {
              std::is_base_of_v<ExprAST, T>)
   llvm::Value* codegen(const T&) = delete;
 
-  /** Provides the scope manager responsible for variable storage and cleanup. */
+  /** Provides the scope manager responsible for variable storage and cleanup.
+   */
   sun::codegen::scopes::ScopeManager& scopes();
   /** Provides the registry of generated functions and their metadata. */
   sun::codegen::functions::FunctionRegistry& functions();

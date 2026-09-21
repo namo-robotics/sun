@@ -200,10 +200,10 @@ void SemanticAnalyzer::analyzeForInLoop(sun::ast::ForInExprAST& forInExpr) {
   bool implementsIterable = false;
   // The iteration protocols are recognized by their declarations' source names.
   for (auto interfaceId : classType->getImplementedInterfaces()) {
-    const auto& instance = ctx_.types()->declarations.get(interfaceId);
+    const auto& instance = ctx_.results().declarations.get(interfaceId);
     const auto& source =
         instance.specialization
-            ? ctx_.types()->declarations.get(instance.specialization->source)
+            ? ctx_.results().declarations.get(instance.specialization->source)
             : instance;
     if (source.name == "IIterator") implementsIterator = true;
     if (source.name == "IIterable") implementsIterable = true;

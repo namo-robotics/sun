@@ -32,7 +32,7 @@ namespace sun::ast {
  */
 struct EnumVariantDecl {
   std::string name;
-  int64_t value;      // Tag bits; the enum type determines signedness
+  int64_t value;  // Tag bits; the enum type determines signedness
   sun::support::Position location;  // Source location of variant declaration
   std::vector<TypeAnnotation> payloadTypes;  // empty = unit variant
   std::string doc;  // Comment written above the variant
@@ -67,7 +67,8 @@ class EnumDefinitionAST : public ExprAST {
   bool hasQualifiedName() const { return !qualifiedName.baseName.empty(); }
   /** Record the defining name independently of visible aliases. */
   void setQualifiedName(QualifiedName name) { qualifiedName = std::move(name); }
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   EnumDefinitionAST(std::string name, std::vector<EnumVariantDecl> variants,
                     bool precompiled = false,
                     std::vector<TypeParameter> typeParams = {},

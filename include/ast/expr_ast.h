@@ -21,7 +21,8 @@ using sun::semantic_analysis::PortableDeclarationKey;
 using sun::semantic_analysis::Visibility;
 using sun::support::SourceFileId;
 
-/** Base syntax node carrying source positions and semantic analysis annotations. */
+/** Base syntax node carrying source positions and semantic analysis
+ * annotations. */
 class ExprAST {
  protected:
   mutable std::unique_ptr<ExprAnalysis> analysis_;  // Analysis metadata
@@ -36,7 +37,7 @@ class ExprAST {
    */
   std::optional<PortableDeclarationKey> moduleDeclaration_;
   sun::support::Position location_;  // Original source location
-  bool precompiled_ = false;  // True if from precompiled library
+  bool precompiled_ = false;         // True if from precompiled library
   bool skipCodegen_ = false;  // Set by semantic analyzer for diamond duplicates
   std::string symbolPrefix_;  // Hash prefix for moon symbol isolation
   Visibility visibility_ = Visibility::Private;  // Declaration visibility
@@ -131,7 +132,8 @@ class ExprAST {
    * into them instead of exposing their slot.
    */
   using ChildSlotFn = std::function<void(std::unique_ptr<ExprAST>&)>;
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   virtual void forEachChildSlot(const ChildSlotFn&) {}
 
   /**
@@ -140,7 +142,8 @@ class ExprAST {
   Visibility getVisibility() const { return visibility_; }
   /** Sets which scopes may access this declaration. */
   void setVisibility(Visibility v) { visibility_ = v; }
-  /** Reports whether this declaration is accessible outside its defining scope. */
+  /** Reports whether this declaration is accessible outside its defining scope.
+   */
   bool isPublic() const { return visibility_ == Visibility::Public; }
 
   // Analysis data access
@@ -284,11 +287,13 @@ class ExprAST {
    * should not have deinit called - the destination owns the data.
    */
   bool isMoved() const { return analysis_ && analysis_->moved; }
-  /** Records whether ownership of this expression has already been transferred. */
+  /** Records whether ownership of this expression has already been transferred.
+   */
   void setMoved(bool value) const { analysis().moved = value; }
 
  protected:
-  /** Creates a base syntax node without a source position or analysis annotations. */
+  /** Creates a base syntax node without a source position or analysis
+   * annotations. */
   ExprAST() = default;
   /** Creates a base syntax node at the supplied source position. */
   explicit ExprAST(sun::support::Position loc) : location_(loc) {}

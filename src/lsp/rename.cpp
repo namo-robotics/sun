@@ -14,10 +14,12 @@
 #include "lsp/references.h"
 #include "parsing/lexer.h"
 
-/** Provides compiler-backed editor features through the language server protocol. */
+/** Provides compiler-backed editor features through the language server
+ * protocol. */
 namespace sun::lsp {
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /** Reports whether a character may occur inside an identifier. */

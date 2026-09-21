@@ -62,7 +62,8 @@ class IntrinsicsGenerator {
 
   /** Binds built-in operation generation to the shared visitor and state. */
   IntrinsicsGenerator(const IntrinsicsGenerator&) = delete;
-  /** Disallows assignment so ownership and object identity cannot be duplicated. */
+  /** Disallows assignment so ownership and object identity cannot be
+   * duplicated. */
   IntrinsicsGenerator& operator=(const IntrinsicsGenerator&) = delete;
 
   /**
@@ -115,7 +116,8 @@ class IntrinsicsGenerator {
   /** Emits LLVM code that converts a value to the requested type. */
   llvm::Value* codegenConvertIntrinsic(
       TypePtr targetType, const std::vector<std::unique_ptr<ExprAST>>& args);
-  /** Emits LLVM code that reinterprets a value with the requested representation. */
+  /** Emits LLVM code that reinterprets a value with the requested
+   * representation. */
   llvm::Value* codegenBitcastIntrinsic(
       TypePtr targetType, const std::vector<std::unique_ptr<ExprAST>>& args);
   /** Emits LLVM code that advances a pointer by a byte offset. */
@@ -148,7 +150,8 @@ class IntrinsicsGenerator {
   /** Emits an atomic load using the requested memory ordering. */
   llvm::Value* codegenAtomicLoadIntrinsic(const CallExprAST& expr,
                                           unsigned bitWidth, const char* name);
-  /** Emits an atomic read-modify-write operation and returns its previous value. */
+  /** Emits an atomic read-modify-write operation and returns its previous
+   * value. */
   llvm::Value* codegenAtomicFetchOpIntrinsic(const CallExprAST& expr,
                                              unsigned bitWidth,
                                              bool signedValues, bool subtract,
@@ -279,8 +282,8 @@ class IntrinsicsGenerator {
    * Builds the thread context on the heap — it must outlive this frame —
    * moves the arguments into an argument block beside it, and starts the
    * thread on a trampoline built for this lambda's signature. Hands back the
-   * context pointer; stdlib `spawn` wraps that in the Thread&lt;T&gt; handle that
-   * owns it, so the thread is joined when that handle is dropped.
+   * context pointer; stdlib `spawn` wraps that in the Thread&lt;T&gt; handle
+   * that owns it, so the thread is joined when that handle is dropped.
    *
    * @param lambdaSunType The lambda type F was inferred as.
    * @param args The lambda followed by the arguments to move into the thread.
@@ -293,7 +296,8 @@ class IntrinsicsGenerator {
       const std::vector<sun::semantic_analysis::ArgConversion>& conversions);
 
   /**
-   * Generates IR for _thread_join&lt;T&gt;(ctx) and _thread_join_drop&lt;T&gt;(ctx).
+   * Generates IR for _thread_join&lt;T&gt;(ctx) and
+   * _thread_join_drop&lt;T&gt;(ctx).
    *
    * Blocks until the thread has exited, then releases its context. Reading
    * the result out of the slot is a move: the caller takes over whatever it

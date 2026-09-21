@@ -22,7 +22,8 @@ class UsingAST : public ExprAST {
   bool isModuleImport_;  // true for "using std;" (imports whole module)
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   UsingAST(std::vector<std::string> nsPath, std::string targetName)
       : namespacePath(std::move(nsPath)),
         target(std::move(targetName)),

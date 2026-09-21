@@ -57,19 +57,24 @@ struct TryContext {
  */
 class ErrorGenerator {
  public:
-  /** Binds error propagation generation to the shared expression visitor and state. */
+  /** Binds error propagation generation to the shared expression visitor and
+   * state. */
   ErrorGenerator(sun::codegen::CodegenState& state,
                  sun::codegen::CodegenVisitor& gen)
       : state_(state), gen_(gen), ctx(state.ctx), module(state.module) {}
 
-  /** Binds error propagation generation to the shared expression visitor and state. */
+  /** Binds error propagation generation to the shared expression visitor and
+   * state. */
   ErrorGenerator(const ErrorGenerator&) = delete;
-  /** Disallows assignment so ownership and object identity cannot be duplicated. */
+  /** Disallows assignment so ownership and object identity cannot be
+   * duplicated. */
   ErrorGenerator& operator=(const ErrorGenerator&) = delete;
 
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::TryCatchExprAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::ThrowExprAST& expr);
 
   /**
@@ -117,7 +122,8 @@ class ErrorGenerator {
    * What throwing and catching borrow from the rest of codegen
    */
   llvm::Value* codegen(const ExprAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::BlockExprAST& block);
 
   /**
@@ -132,7 +138,8 @@ class ErrorGenerator {
              std::is_base_of_v<ExprAST, T>)
   llvm::Value* codegen(const T&) = delete;
 
-  /** Provides the scope manager responsible for variable storage and cleanup. */
+  /** Provides the scope manager responsible for variable storage and cleanup.
+   */
   sun::codegen::scopes::ScopeManager& scopes();
   /** Provides the semantic types available to this code generator. */
   std::shared_ptr<sun::semantic_analysis::TypeRegistry>& typeRegistry();

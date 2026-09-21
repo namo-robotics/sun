@@ -75,7 +75,8 @@ class InterfaceDefinitionAST : public ExprAST {
   }
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   InterfaceDefinitionAST(std::string name,
                          std::vector<TypeParameter> typeParams,
                          std::vector<InterfaceFieldDecl> fields,
@@ -120,7 +121,8 @@ class InterfaceDefinitionAST : public ExprAST {
   void setQualifiedName(sun::semantic_analysis::QualifiedName qname) {
     ifaceAnalysis().qualifiedName = std::move(qname);
   }
-  /** Reports whether a name including the enclosing scopes has been assigned. */
+  /** Reports whether a name including the enclosing scopes has been assigned.
+   */
   bool hasQualifiedName() const {
     return analysis_ &&
            !static_cast<InterfaceAnalysis&>(*analysis_).qualifiedName.empty();
@@ -129,7 +131,8 @@ class InterfaceDefinitionAST : public ExprAST {
   void setLifetimeParameters(std::vector<LifetimeParameter> params) {
     lifetimeParameters = std::move(params);
   }
-  /** Provides the declared lifetime parameters used to check borrowed values. */
+  /** Provides the declared lifetime parameters used to check borrowed values.
+   */
   const std::vector<LifetimeParameter>& getLifetimeParameters() const {
     return lifetimeParameters;
   }
@@ -147,9 +150,11 @@ class InterfaceDefinitionAST : public ExprAST {
   const std::vector<InterfaceFieldDecl>& getFields() const { return fields; }
   /** Provides the method declarations belonging to this type. */
   const std::vector<InterfaceMethodDecl>& getMethods() const { return methods; }
-  /** Provides mutable access to field declarations for later compiler passes. */
+  /** Provides mutable access to field declarations for later compiler passes.
+   */
   std::vector<InterfaceFieldDecl>& getMutableFields() { return fields; }
-  /** Provides mutable access to method declarations for later compiler passes. */
+  /** Provides mutable access to method declarations for later compiler passes.
+   */
   std::vector<InterfaceMethodDecl>& getMutableMethods() { return methods; }
 
   /**
@@ -159,7 +164,8 @@ class InterfaceDefinitionAST : public ExprAST {
   /** Stores the source documentation comment for this declaration. */
   void setDoc(std::string doc) { doc_ = std::move(doc); }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     for (auto& method : methods) {
       if (method.function) method.function->forEachChildSlot(fn);

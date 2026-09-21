@@ -67,7 +67,8 @@ TEST(Modules, module_with_using_all) {
   EXPECT_EQ(value, 25);
 }
 
-// File imports must resolve field types and constructor expressions identically.
+// File imports must resolve field types and constructor expressions
+// identically.
 TEST(Modules, file_using_std_reaches_module_class_fields) {
   auto value = sun::driver::executeStringWithStdlib(R"(
     using std;

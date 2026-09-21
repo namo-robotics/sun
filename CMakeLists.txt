@@ -182,6 +182,8 @@ add_library(sun_lib
     src/semantic_analysis/argument_conversion.cpp
     src/semantic_analysis/generic_type_arguments.cpp
     src/semantic_analysis/interfaces.cpp
+    src/semantic_analysis/constants/constant_evaluator.cpp
+    src/semantic_analysis/constants/constant_value.cpp
     src/semantic_analysis/type_analysis/type_resolver.cpp
     src/semantic_analysis/type_analysis/type_inferer.cpp
     src/semantic_analysis/type_analysis/generic_type_arguments.cpp

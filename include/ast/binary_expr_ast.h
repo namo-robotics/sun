@@ -18,7 +18,8 @@ class BinaryExprAST : public ExprAST {
   std::unique_ptr<ExprAST> LHS, RHS;
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   BinaryExprAST(Token Op, std::unique_ptr<ExprAST> LHS,
                 std::unique_ptr<ExprAST> RHS)
       : ExprAST(Op.start), op(Op), LHS(std::move(LHS)), RHS(std::move(RHS)) {}
@@ -35,7 +36,8 @@ class BinaryExprAST : public ExprAST {
   /** Returns the right operand. */
   const ExprAST* getRHS() const { return RHS.get(); }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     fn(LHS);
     fn(RHS);

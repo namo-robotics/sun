@@ -33,9 +33,11 @@ struct TypeConstraint {
   std::vector<TypeAnnotation> typeArguments;
   sun::support::Position span{};  // where it was written, for diagnostics
 
-  /** Creates a named constraint on the types accepted by a generic parameter. */
+  /** Creates a named constraint on the types accepted by a generic parameter.
+   */
   TypeConstraint() = default;
-  /** Creates a named constraint on the types accepted by a generic parameter. */
+  /** Creates a named constraint on the types accepted by a generic parameter.
+   */
   explicit TypeConstraint(std::string n) : name(std::move(n)) {}
 
   /**

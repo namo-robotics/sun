@@ -23,7 +23,8 @@ namespace {
 // The file never exists on disk; nodes carry the path exactly as given
 const char* kPath = "/tests_test.sun";
 
-/** Keeps the syntax tree and semantic context alive for editor-feature tests. */
+/** Keeps the syntax tree and semantic context alive for editor-feature tests.
+ */
 struct Analysis {
   std::unique_ptr<Driver> driver;
   sun::driver::Driver::AnalyzedProgram program;

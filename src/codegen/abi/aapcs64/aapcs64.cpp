@@ -10,10 +10,12 @@ using sun::codegen::abi::Extend;
 /** Lowers C calls and values using the AArch64 calling convention. */
 namespace sun::codegen::abi::aapcs64 {
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
-/** Reports whether an LLVM type groups multiple values in an array or structure. */
+/** Reports whether an LLVM type groups multiple values in an array or
+ * structure. */
 bool isAggregate(llvm::Type* type) {
   return type && (type->isStructTy() || type->isArrayTy());
 }
@@ -74,7 +76,8 @@ Extend extendFor(llvm::Type* type, Variant variant, bool isSigned) {
   return isSigned ? Extend::Sign : Extend::Zero;
 }
 
-/** Chooses the target calling-convention representation of an aggregate value. */
+/** Chooses the target calling-convention representation of an aggregate value.
+ */
 ArgLowering lowerAggregate(llvm::Type* type, const llvm::DataLayout& dl,
                            bool isReturn, Variant variant) {
   ArgLowering result;

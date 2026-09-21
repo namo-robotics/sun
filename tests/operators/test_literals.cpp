@@ -223,7 +223,8 @@ TEST(Operators_Literals, untyped_literal_argument_adopts_parameter_type) {
         function classify(id: u8) i32 { if (id == 21u8) { return 1; } return 0; }
         /* Passes an unsuffixed literal to a plain function. */
         function main() i32 { return classify(21); }
-      )"), 1);
+      )"),
+            1);
 }
 
 TEST(Operators_Literals, typed_variable_still_never_narrows) {
@@ -367,7 +368,8 @@ TEST(Operators_Literals, negative_method_argument_out_of_range_is_error) {
       }
       /* Passes an out-of-range literal. */
       function main() i32 { var e = Enc(); e.put(-129); return 0; }
-    )"), "expected i8, got i32");
+    )"),
+                                "expected i8, got i32");
 }
 
 TEST(Operators_Literals, negative_method_argument_never_fits_unsigned) {
@@ -380,14 +382,17 @@ TEST(Operators_Literals, negative_method_argument_never_fits_unsigned) {
       }
       /* Passes a negative literal to an unsigned parameter. */
       function main() i32 { var e = Enc(); e.put(-1); return 0; }
-    )"), "expected u8, got i32");
+    )"),
+                                "expected u8, got i32");
 }
 
 TEST(Operators_Literals, negative_untyped_literal_past_i64_min_is_error) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
       /* Rejects a negative integer outside the supported signed range. */
       function main() i32 { var x = -9223372036854775809; return 0; }
-    )"), "Integer literal -9223372036854775809 cannot be represented");
+    )"),
+      "Integer literal -9223372036854775809 cannot be represented");
 }
 
 TEST(Operators_Literals, negative_plain_function_arguments) {
@@ -404,7 +409,8 @@ TEST(Operators_Literals, negative_plain_function_arguments) {
           }
           return 0;
       }
-    )"), 0);
+    )"),
+            0);
 }
 
 TEST(Operators_Literals, negative_plain_function_overload_keeps_default_type) {
@@ -415,10 +421,12 @@ TEST(Operators_Literals, negative_plain_function_overload_keeps_default_type) {
       function pick(x: i32) i32 { return 2; }
       /* Checks that contextual typing does not displace an existing match. */
       function main() i32 { return pick(-5) + pick(-5i8); }
-    )"), 3);
+    )"),
+            3);
 }
 
-TEST(Operators_Literals, negative_plain_function_literal_overloads_are_ambiguous) {
+TEST(Operators_Literals,
+     negative_plain_function_literal_overloads_are_ambiguous) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       /* Accepts a narrow integer. */
       function take(x: i8) void {}
@@ -426,25 +434,27 @@ TEST(Operators_Literals, negative_plain_function_literal_overloads_are_ambiguous
       function take(x: i16) void {}
       /* Requires a suffix when both contextual types fit. */
       function main() i32 { take(-5); return 0; }
-    )"), "Ambiguous overload of 'take'");
+    )"),
+                                "Ambiguous overload of 'take'");
 }
 
 TEST(Operators_Literals, negative_plain_function_rejects_invalid_arguments) {
   for (const auto& argument : {"-129", "-5i16", "value"}) {
-    EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(
-        std::string(R"(
+    EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(std::string(R"(
           /* Accepts a narrow integer. */
           function take(x: i8) void {}
           /* Rejects overflowing literals and narrowing typed values. */
           function main() i32 { var value: i32 = -5; take(
-        )") + argument + "); return 0; }"), "No matching overload of 'take'");
+        )") + argument + "); return 0; }"),
+                                  "No matching overload of 'take'");
   }
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       /* Accepts an unsigned integer. */
       function take(x: u8) void {}
       /* Rejects negative values for unsigned parameters. */
       function main() i32 { take(-5); return 0; }
-    )"), "No matching overload of 'take'");
+    )"),
+                                "No matching overload of 'take'");
 }
 
 TEST(Operators_Literals, plain_function_context_checks_every_argument) {
@@ -465,7 +475,8 @@ TEST(Operators_Literals, plain_function_context_checks_every_argument) {
       }
       /* Checks candidate isolation and literal range filtering. */
       function main() i32 { return pick(-5, 7) + range(-300); }
-    )"), 6);
+    )"),
+            6);
 }
 
 TEST(Operators_Literals, integer_bases_preserve_values_and_typing) {

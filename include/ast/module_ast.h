@@ -27,14 +27,16 @@ class ModuleAST : public ExprAST {
   std::optional<sun::support::Position> nameLocation;
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   ModuleAST(std::string name, std::unique_ptr<BlockExprAST> body)
       : name(std::move(name)), body(std::move(body)) {}
 
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::MODULE; }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     if (body) body->forEachChildSlot(fn);
   }

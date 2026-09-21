@@ -34,7 +34,8 @@
 #include <string>
 #include <vector>
 
-/** Coordinates compilation, dependency loading, linking, and program execution. */
+/** Coordinates compilation, dependency loading, linking, and program execution.
+ */
 namespace sun::driver {
 
 /**
@@ -43,7 +44,8 @@ namespace sun::driver {
  * after parsing.
  */
 struct ConfigEntrypoint {
-  /** Identifies whether a configured build target produces a program or a library. */
+  /** Identifies whether a configured build target produces a program or a
+   * library. */
   enum class Type {
     Binary,   // an executable: the entrypoint has a main
     Library,  // a .moon bundle: no main, tests compile to the test binary

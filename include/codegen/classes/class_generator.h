@@ -65,7 +65,8 @@ using sun::types::TypePtr;
  */
 class ClassGenerator {
  public:
-  /** Binds class generation to shared compiler state and the expression visitor. */
+  /** Binds class generation to shared compiler state and the expression
+   * visitor. */
   ClassGenerator(sun::codegen::CodegenState& state,
                  sun::codegen::CodegenVisitor& gen)
       : state_(state),
@@ -81,18 +82,22 @@ class ClassGenerator {
         currentFunctionReturnsRef(state.frame.returnsRef),
         currentFunctionValueType(state.frame.valueType) {}
 
-  /** Binds class generation to shared compiler state and the expression visitor. */
+  /** Binds class generation to shared compiler state and the expression
+   * visitor. */
   ClassGenerator(const ClassGenerator&) = delete;
-  /** Disallows assignment so ownership and object identity cannot be duplicated. */
+  /** Disallows assignment so ownership and object identity cannot be
+   * duplicated. */
   ClassGenerator& operator=(const ClassGenerator&) = delete;
 
   // ---------------------------------------------------------------
   // Definitions
   // ---------------------------------------------------------------
 
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const ClassDefinitionAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::InterfaceDefinitionAST& expr);
 
   /**
@@ -111,13 +116,17 @@ class ClassGenerator {
   // Members and receivers
   // ---------------------------------------------------------------
 
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::ThisExprAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::MemberAccessAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::MemberAssignmentAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::StructLiteralAST& expr);
 
   /**
@@ -141,7 +150,8 @@ class ClassGenerator {
   // Generic instantiation
   // ---------------------------------------------------------------
 
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::GenericCallAST& expr);
 
   /**
@@ -219,7 +229,8 @@ class ClassGenerator {
   std::map<std::pair<DeclarationId, DeclarationId>, InterfaceVtables>
       vtableGlobals;
 
-  /** Returns the dispatch table for a borrowed interface, creating it when first needed. */
+  /** Returns the dispatch table for a borrowed interface, creating it when
+   * first needed. */
   llvm::GlobalVariable* getOrCreateBorrowedInterfaceVtable(
       ClassType* classType, InterfaceType* ifaceType);
 
@@ -287,7 +298,8 @@ class ClassGenerator {
              std::is_base_of_v<ExprAST, T>)
   llvm::Value* codegen(const T&) = delete;
 
-  /** Provides the scope manager responsible for variable storage and cleanup. */
+  /** Provides the scope manager responsible for variable storage and cleanup.
+   */
   sun::codegen::scopes::ScopeManager& scopes();
   /** Provides the registry of generated functions and their metadata. */
   sun::codegen::functions::FunctionRegistry& functions();

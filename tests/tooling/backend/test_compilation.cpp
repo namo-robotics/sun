@@ -12,7 +12,7 @@
 #include "ast/ast_children.h"
 #include "codegen/functions/function_registry.h"
 #include "driver/driver.h"
-#include "semantic_analysis/type_registry.h"
+#include "semantic_analysis/analysis_results.h"
 
 using sun::ast::ASTNodeType;
 using sun::ast::BlockExprAST;
@@ -129,12 +129,13 @@ TEST(Tooling_Backend_Compilation, error_message_contains_type_info) {
 
 TEST(Tooling_Backend_Compilation, function_ids_survive_symbol_renaming) {
   sun::codegen::CodegenContext context("function_ids", nullptr);
-  auto types = std::make_shared<sun::semantic_analysis::TypeRegistry>();
-  sun::codegen::CodegenState state(context, types);
+  auto results = std::make_shared<sun::semantic_analysis::AnalysisResults>();
+  auto types = results->types;
+  sun::codegen::CodegenState state(context, results);
   sun::codegen::functions::FunctionRegistry functions(state);
-  auto first = types->declarations.add(
+  auto first = results->declarations.add(
       sun::semantic_analysis::DeclarationKind::Function, "f");
-  auto second = types->declarations.add(
+  auto second = results->declarations.add(
       sun::semantic_analysis::DeclarationKind::Function, "f");
   auto* signature = llvm::FunctionType::get(
       llvm::Type::getVoidTy(context.getContext()), false);

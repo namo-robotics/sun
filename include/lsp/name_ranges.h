@@ -13,7 +13,8 @@
 #include "lsp/symbol_location.h"
 #include "support/position.h"
 
-/** Provides compiler-backed editor features through the language server protocol. */
+/** Provides compiler-backed editor features through the language server
+ * protocol. */
 namespace sun::lsp {
 
 /**

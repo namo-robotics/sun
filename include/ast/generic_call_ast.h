@@ -46,7 +46,8 @@ class GenericCallAST : public ExprAST {
   }
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   GenericCallAST(std::string name,
                  std::vector<std::unique_ptr<TypeAnnotation>> typeArgs,
                  std::vector<std::unique_ptr<ExprAST>> arguments)
@@ -57,7 +58,8 @@ class GenericCallAST : public ExprAST {
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::GENERIC_CALL; }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     for (auto& arg : args) fn(arg);
   }

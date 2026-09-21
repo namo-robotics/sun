@@ -170,8 +170,8 @@ inline std::vector<std::string> typeParameterNames(
  * parentheses: a name, and the type annotation after its colon.
  *
  *   args...                  name "args", anything the call supplies
- *   args...: _params_of&lt;T&gt;   the parameters T's `init` takes, or, when T is a
- *                            lambda, the parameters that lambda takes
+ *   args...: _params_of&lt;T&gt;   the parameters T's `init` takes, or, when T
+ * is a lambda, the parameters that lambda takes
  *
  * The annotation sits where an ordinary parameter's type sits, but it stands
  * for a whole parameter list rather than one type, and the call's arguments

@@ -28,7 +28,8 @@ namespace sun::semantic_analysis {
 using sun::semantic_analysis::isIntrinsic;
 using sun::semantic_analysis::type_analysis::isAssignableTo;
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /**
@@ -493,7 +494,8 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
           }
           if (info->paramTypes[i]->equals(*argType)) continue;
 
-          // Alternatives were computed by the caller without changing arguments.
+          // Alternatives were computed by the caller without changing
+          // arguments.
           if (matchAlternatives) {
             const auto& alternatives = argTypes[i].alternatives;
             if (std::any_of(alternatives.begin(), alternatives.end(),
@@ -517,8 +519,7 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
                       *argRef->getReferencedType()))
                 continue;
             }
-            if (refType->getReferencedType()->isArray() &&
-                argType->isArray()) {
+            if (refType->getReferencedType()->isArray() && argType->isArray()) {
               auto* paramArray = static_cast<const sun::types::ArrayType*>(
                   refType->getReferencedType().get());
               auto* argArray =
@@ -539,8 +540,7 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
               continue;
           }
 
-          if (argType->isNullPointer() &&
-              info->paramTypes[i]->isAnyPointer()) {
+          if (argType->isNullPointer() && info->paramTypes[i]->isAnyPointer()) {
             continue;
           }
 
@@ -558,8 +558,8 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
 
           // raw_ptr<T> is compatible with byte pointers (raw_ptr<i8>/u8)
           // for intrinsics
-          if (argType->isRawPointer() &&
-              info->paramTypes[i]->isRawPointer() && isIntrinsic(baseName)) {
+          if (argType->isRawPointer() && info->paramTypes[i]->isRawPointer() &&
+              isIntrinsic(baseName)) {
             auto* paramRawPtr = static_cast<const sun::types::RawPointerType*>(
                 info->paramTypes[i].get());
             if (paramRawPtr->getPointeeType()->isInt8() ||
@@ -602,7 +602,7 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunction(
   auto findInScope =
       [&](const SemanticScopeBase* scope) -> std::optional<FunctionInfo> {
     return scope->lookupFunctionLocal(name, argTypes, &filter,
-                                       matchAlternatives, loc);
+                                      matchAlternatives, loc);
   };
 
   // One scope plus its import children and import bindings

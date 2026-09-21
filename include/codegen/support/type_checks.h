@@ -117,7 +117,8 @@ struct TypeCheck {
     throwMismatch(type, what, loc);
   }
 
-  /** Reports a semantic type that does not meet the generator's requirements. */
+  /** Reports a semantic type that does not meet the generator's requirements.
+   */
   [[noreturn]] static void throwMismatch(
       const TypePtr& actual, std::string_view what,
       std::optional<sun::support::Position> loc) {
@@ -192,9 +193,9 @@ std::shared_ptr<T> requireTypePtr(const ExprAST& expr, std::string_view what) {
 }
 
 /**
- * What a raw_ptr&lt;T&gt; or static_ptr&lt;T&gt; points at; null for every other type.
- * Both spellings are just an address at a call site, so the code that looks
- * through one rarely cares which it had.
+ * What a raw_ptr&lt;T&gt; or static_ptr&lt;T&gt; points at; null for every
+ * other type. Both spellings are just an address at a call site, so the code
+ * that looks through one rarely cares which it had.
  */
 inline TypePtr getPointeeType(const TypePtr& type) {
   if (auto* raw = tryGetType<sun::types::RawPointerType>(type))

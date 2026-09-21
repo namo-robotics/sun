@@ -13,9 +13,7 @@
 // neither the AOT link nor the JIT can satisfy them by accident.
 
 #include <gtest/gtest.h>
-
 #include <llvm/Support/MemoryBufferRef.h>
-
 #include <unistd.h>
 
 #include <cstdlib>
@@ -55,7 +53,8 @@ std::string ffiTestLibDir() {
 #endif
 }
 
-/** Returns the alternate native library directory used to test archive replacement. */
+/** Returns the alternate native library directory used to test archive
+ * replacement. */
 std::string ffiTestLibV2Dir() {
 #ifdef SUN_FFI_TESTLIB_V2_DIR
   return SUN_FFI_TESTLIB_V2_DIR;
@@ -83,7 +82,8 @@ std::string wrapperSource(const std::string& moduleName,
 }
 
 manifest {
-  archives: [")" + archive + R"("]
+  archives: [")" +
+         archive + R"("]
 }
 )";
 }
@@ -108,7 +108,8 @@ struct BundleChain {
   sun::moon_bundling::MoonBuildReport leafReport;
   sun::moon_bundling::MoonBuildReport midReport;
 
-  /** Owns the temporary libraries and paths used to test transitive archive dependencies. */
+  /** Owns the temporary libraries and paths used to test transitive archive
+   * dependencies. */
   BundleChain() {
     sun::driver::initTestEnvironment();
     dir = fs::path(::testing::TempDir()) /
@@ -397,8 +398,7 @@ TEST(Ffi_MoonArchives, two_bundles_with_different_versions_link_both) {
   EXPECT_NE(archives[0], archives[1]);
 
   std::string skipReason;
-  int exitCode =
-      runCompiled(*driver, bundles.dir / "two_versions", skipReason);
+  int exitCode = runCompiled(*driver, bundles.dir / "two_versions", skipReason);
   if (exitCode < 0) GTEST_SKIP() << skipReason;
   EXPECT_EQ(exitCode, 42);
 }

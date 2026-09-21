@@ -96,7 +96,7 @@ void GenericSpecializer::checkTypeParameterConstraints(
 const GenericClassInfo* GenericSpecializer::lookupGenericClassOf(
     const ClassType& specialized) const {
   return ctx_.lookupGenericClass(
-      specialized.sourceDeclaration(ctx_.types()->declarations));
+      specialized.sourceDeclaration(ctx_.results().declarations));
 }
 
 // Scope a class's template was declared in: for a specialization, the
@@ -162,7 +162,7 @@ std::shared_ptr<ClassType> GenericSpecializer::instantiateGenericClass(
       !abstractShape && genericClassInfo->AST->isPrecompiled() &&
       genericClassInfo->AST->hasCompiledSpecialization(
           sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
-              instanceId, ctx_.types()->declarations)
+              instanceId, ctx_.results().declarations)
               .encoding());
   auto specializedClass = ctx_.types()->getSpecializedClass(
       instanceId, specializedQName, genericClassInfo->qualifiedName, typeArgs);
@@ -190,9 +190,9 @@ std::shared_ptr<ClassType> GenericSpecializer::instantiateGenericClass(
       // Checked per specialization: whether a type argument is packable is
       // only knowable once T is substituted
       sema_.checkPackedFieldType(*genericClassInfo->AST, field, fieldType);
-      auto id = ctx_.types()->declarations.add(
+      auto id = ctx_.results().declarations.add(
           DeclarationKind::Field, field.name, instanceId,
-          ctx_.types()->declarations.get(instanceId).module, {},
+          ctx_.results().declarations.get(instanceId).module, {},
           field.declaration.id);
       specializedClass->addField(field.name, fieldType, id).visibility =
           field.visibility;
@@ -239,7 +239,7 @@ std::shared_ptr<ClassType> GenericSpecializer::instantiateGenericClass(
     auto& field = fieldsClone[i];
     field.declaration.id =
         specializedClass->getField(field.name)->declarationId;
-    field.declaration.session = ctx_.types()->declarations.session();
+    field.declaration.session = ctx_.results().declarations.session();
   }
 
   // Clone methods for specialized AST - each specialization gets its own
@@ -342,13 +342,13 @@ std::shared_ptr<ClassType> GenericSpecializer::instantiateGenericClass(
 
   sun::semantic_analysis::DeclarationIdentity identity;
   identity.id = instanceId;
-  identity.session = ctx_.types()->declarations.session();
+  identity.session = ctx_.results().declarations.session();
   for (auto source :
        genericClassInfo->AST->declarationIdentity().lifetimeParameters) {
-    const auto& parameter = ctx_.types()->declarations.get(source);
-    identity.lifetimeParameters.push_back(ctx_.types()->declarations.add(
+    const auto& parameter = ctx_.results().declarations.get(source);
+    identity.lifetimeParameters.push_back(ctx_.results().declarations.add(
         DeclarationKind::LifetimeParameter, parameter.name, instanceId,
-        ctx_.types()->declarations.get(instanceId).module, {}, source));
+        ctx_.results().declarations.get(instanceId).module, {}, source));
   }
 
   // Compiled shapes need local signatures, but their bodies and constructor
@@ -774,7 +774,7 @@ GenericSpecializer::instantiateGenericFunction(
     sema_.clearResolvedTypes(*clonedFunc);
     clonedFunc->setDeclarationId(instanceId);
     clonedFunc->declarationIdentity().session =
-        ctx_.types()->declarations.session();
+        ctx_.results().declarations.session();
     sema_.pipeline().prepareGenerated(*clonedFunc, {}, genericFunc);
 
     // Publish the prepared callable before recursion can request it again.
@@ -814,7 +814,6 @@ GenericSpecializer::instantiateGenericFunction(
         const_cast<sun::ast::BlockExprAST&>(clonedFunc->getBody()));
 
     ctx_.exitScope();  // parameter scope
-
   }
 
   ctx_.exitScope();  // type parameter scope
@@ -1004,7 +1003,7 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
   sema_.clearResolvedTypes(*clonedFunc);
   clonedFunc->setDeclarationId(instanceId);
   clonedFunc->declarationIdentity().session =
-      ctx_.types()->declarations.session();
+      ctx_.results().declarations.session();
   sema_.pipeline().prepareGenerated(*clonedFunc, {}, genericMethodAST);
 
   // Recursive calls must see this same prototype and its prepared binders.
@@ -1130,9 +1129,9 @@ std::shared_ptr<InterfaceType> GenericSpecializer::instantiateGenericInterface(
     // Add fields with substituted types
     for (const auto& field : genericInfo->AST->getFields()) {
       auto fieldType = sema_.typeResolver().typeAnnotationToType(field.type);
-      auto id = ctx_.types()->declarations.add(
+      auto id = ctx_.results().declarations.add(
           DeclarationKind::Field, field.name, instanceId,
-          ctx_.types()->declarations.get(instanceId).module, {},
+          ctx_.results().declarations.get(instanceId).module, {},
           field.declaration.id);
       specializedInterface->addField(field.name, fieldType, id).visibility =
           field.visibility;
@@ -1142,7 +1141,7 @@ std::shared_ptr<InterfaceType> GenericSpecializer::instantiateGenericInterface(
     for (const auto& methodDecl : genericInfo->AST->getMethods()) {
       const PrototypeAST& proto = methodDecl.function->getProto();
 
-      auto& declarations = ctx_.types()->declarations;
+      auto& declarations = ctx_.results().declarations;
       auto methodId = declarations.add(
           DeclarationKind::Function, proto.getName(), instanceId,
           declarations.get(instanceId).module, {}, proto.getDeclarationId());
@@ -1265,9 +1264,9 @@ GenericSpecializer::instantiateGenericEnum(
     ctx_.enterTypeParamScope(typeParameterNames(genericInfo->typeParameters),
                              typeArgs);
     for (const auto& variant : genericInfo->AST->getVariants()) {
-      auto variantId = ctx_.types()->declarations.add(
+      auto variantId = ctx_.results().declarations.add(
           DeclarationKind::Variant, variant.name, instanceId,
-          ctx_.types()->declarations.get(instanceId).module, {},
+          ctx_.results().declarations.get(instanceId).module, {},
           variant.declaration.id);
       specialized->addVariant(variant.name, variant.value, variantId);
       if (!variant.hasPayload()) continue;

@@ -12,7 +12,8 @@ using sun::support::Position;
 /** Turns source text into syntax trees and provides source formatting. */
 namespace sun::parsing {
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /** Removes surrounding whitespace from a comment line. */
@@ -82,7 +83,8 @@ std::string joinCollected(const std::vector<std::string>& collected) {
  */
 class DocAttacher {
  public:
-  /** Retains source lines for attaching documentation to parsed declarations. */
+  /** Retains source lines for attaching documentation to parsed declarations.
+   */
   explicit DocAttacher(const std::string& source)
       : lines_(splitLines(source)) {}
 
@@ -94,7 +96,8 @@ class DocAttacher {
   }
 
  private:
-  /** Finds the documentation immediately before a declaration's source position. */
+  /** Finds the documentation immediately before a declaration's source
+   * position. */
   std::string docAt(const Position& location) const {
     return commentAbove(lines_, location.line);
   }
@@ -108,7 +111,8 @@ class DocAttacher {
     return member.line == parent.line ? "" : docAt(member);
   }
 
-  /** Attaches documentation to this declaration and visits nested declarations. */
+  /** Attaches documentation to this declaration and visits nested declarations.
+   */
   void visit(sun::ast::ExprAST& node) {
     switch (node.getType()) {
       case ASTNodeType::MODULE: {
@@ -138,8 +142,7 @@ class DocAttacher {
         break;
       }
       case ASTNodeType::INTERFACE_DEFINITION: {
-        auto& iface =
-            static_cast<sun::ast::InterfaceDefinitionAST&>(node);
+        auto& iface = static_cast<sun::ast::InterfaceDefinitionAST&>(node);
         iface.setDoc(docAt(iface.getLocation()));
         for (auto& field : iface.getMutableFields()) {
           field.doc = memberDocAt(field.location, iface.getLocation());

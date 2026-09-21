@@ -42,7 +42,7 @@ using sun::driver::SunValue;
 using sun::driver::VoidValue;
 using sun::moon_bundling::LibraryCache;
 using sun::moon_bundling::MoonImport;
-using sun::semantic_analysis::TypeRegistry;
+using sun::semantic_analysis::AnalysisResults;
 using sun::support::ScopedStage;
 
 using sun::ast::ASTNodeType;
@@ -57,7 +57,8 @@ using sun::support::logAndThrowError;
 using sun::support::SourceManager;
 using sun::support::SunError;
 
-/** Coordinates compilation, dependency loading, linking, and program execution. */
+/** Coordinates compilation, dependency loading, linking, and program execution.
+ */
 namespace sun::driver {
 
 /**
@@ -287,8 +288,7 @@ static bool declaresStdlibString(const BlockExprAST& block) {
 
 // Factory method for JIT execution
 std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
-                                             bool debugInfo,
-                                             bool optimize) {
+                                             bool debugInfo, bool optimize) {
   ensureLLVMInitialized();
 
   // JIT always runs on the host; .moon bundle selection must match.
@@ -323,11 +323,11 @@ std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
   provide("pthread_atfork", reinterpret_cast<void*>(&jitAtFork));
   cantFail(mainDylib.define(llvm::orc::absoluteSymbols(runtimeSymbols)));
 
-  auto typeRegistry = std::make_shared<TypeRegistry>();
-  auto codegenVisitor = std::make_unique<CodegenVisitor>(*ctx, typeRegistry);
-  auto analyzer = std::make_unique<SemanticAnalyzer>(typeRegistry);
+  auto analysisResults = std::make_shared<AnalysisResults>();
+  auto codegenVisitor = std::make_unique<CodegenVisitor>(*ctx, analysisResults);
+  auto analyzer = std::make_unique<SemanticAnalyzer>(analysisResults);
 
-  return std::unique_ptr<Driver>(new Driver(std::move(ctx), typeRegistry,
+  return std::unique_ptr<Driver>(new Driver(std::move(ctx), analysisResults,
                                             std::move(codegenVisitor),
                                             std::move(analyzer)));
 }
@@ -335,8 +335,7 @@ std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
 // Factory method for AOT compilation
 std::unique_ptr<Driver> Driver::createForAOT(const std::string& moduleName,
                                              const std::string& targetTriple,
-                                             bool debugInfo,
-                                             bool optimize) {
+                                             bool debugInfo, bool optimize) {
   ensureLLVMInitialized();
 
   // Both the parser's bundle resolution and the linker's bundle selection
@@ -346,11 +345,11 @@ std::unique_ptr<Driver> Driver::createForAOT(const std::string& moduleName,
   auto ctx = std::make_unique<sun::codegen::CodegenContext>(
       moduleName, nullptr,
       /*existingContext=*/nullptr, targetTriple, debugInfo, optimize);
-  auto typeRegistry = std::make_shared<TypeRegistry>();
-  auto codegenVisitor = std::make_unique<CodegenVisitor>(*ctx, typeRegistry);
-  auto analyzer = std::make_unique<SemanticAnalyzer>(typeRegistry);
+  auto analysisResults = std::make_shared<AnalysisResults>();
+  auto codegenVisitor = std::make_unique<CodegenVisitor>(*ctx, analysisResults);
+  auto analyzer = std::make_unique<SemanticAnalyzer>(analysisResults);
 
-  return std::unique_ptr<Driver>(new Driver(std::move(ctx), typeRegistry,
+  return std::unique_ptr<Driver>(new Driver(std::move(ctx), analysisResults,
                                             std::move(codegenVisitor),
                                             std::move(analyzer)));
 }
@@ -759,7 +758,8 @@ void Driver::addJITStaticLibrary(const std::string& path) {
   }
 }
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /**
@@ -969,7 +969,7 @@ void Driver::analyzeProgram(BlockExprAST& blockAst, Parser& parser) {
     if (artifactHash.empty()) artifactHash = computeOwnSourceHash(blockAst);
     analyzer->pipeline().run(blockAst, [&] {
       sun::semantic_analysis::PortableDeclarationKey::assignOriginals(
-          blockAst, typeRegistry->declarations, artifactHash);
+          blockAst, analysisResults->declarations, artifactHash);
     });
   }
 }
@@ -1351,7 +1351,8 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
     if (structType->getNumElements() == 2 &&
         structType->getElementType(0)->isPointerTy() &&
         structType->getElementType(1)->isIntegerTy(64)) {
-      /** The pointer-and-length result returned by a JIT-compiled entrypoint. */
+      /** The pointer-and-length result returned by a JIT-compiled entrypoint.
+       */
       struct StaticPtr {
         const char* data;
         int64_t len;
@@ -1501,16 +1502,16 @@ void Driver::compileString(const std::string& source,
 }
 
 void Driver::startAnalysisSession() {
-  typeRegistry = std::make_shared<TypeRegistry>();
-  analyzer = std::make_unique<SemanticAnalyzer>(typeRegistry);
-  codegenVisitor = std::make_unique<CodegenVisitor>(*ctx, typeRegistry);
+  analysisResults = std::make_shared<AnalysisResults>();
+  analyzer = std::make_unique<SemanticAnalyzer>(analysisResults);
+  codegenVisitor = std::make_unique<CodegenVisitor>(*ctx, analysisResults);
 }
 
 Driver::AnalyzedProgram Driver::analyzeString(const std::string& source,
                                               const std::string& filePath) {
   startAnalysisSession();
   AnalyzedProgram result;
-  result.typeRegistry = typeRegistry;
+  result.results = analysisResults;
   try {
     auto parser = prepareStringParser(source, filePath);
     result.ast = parser.parseProgram();
@@ -1531,7 +1532,7 @@ Driver::AnalyzedProgram Driver::analyzeFiles(
     const std::map<std::string, std::string>& sourceOverrides) {
   startAnalysisSession();
   AnalyzedProgram result;
-  result.typeRegistry = typeRegistry;
+  result.results = analysisResults;
   moonImports_ = moonImports;
   try {
     result.ast = parseAndMergeFiles(sourceFiles, protoFiles, sourceOverrides);

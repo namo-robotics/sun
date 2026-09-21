@@ -19,7 +19,8 @@ class QualifiedNameAST : public ExprAST {
   std::vector<std::string> parts;  // ["std", "Vec"] for std.Vec
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   explicit QualifiedNameAST(std::vector<std::string> parts)
       : parts(std::move(parts)) {}
 

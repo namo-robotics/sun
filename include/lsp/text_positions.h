@@ -7,7 +7,8 @@
 #include <cstddef>
 #include <string>
 
-/** Provides compiler-backed editor features through the language server protocol. */
+/** Provides compiler-backed editor features through the language server
+ * protocol. */
 namespace sun::lsp {
 
 /** A source position using the language server protocol coordinate system. */

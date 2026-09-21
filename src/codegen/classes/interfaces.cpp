@@ -49,8 +49,8 @@ Function* ClassGenerator::getOrCreateInterfaceDropFunction(
 
 GlobalVariable* ClassGenerator::getOrCreateInterfaceVtable(
     ClassType* classType, InterfaceType* ifaceType) {
-  if (!classType->belongsTo(typeRegistry->declarations) ||
-      !ifaceType->belongsTo(typeRegistry->declarations)) {
+  if (!classType->belongsTo(state_.analysis->declarations) ||
+      !ifaceType->belongsTo(state_.analysis->declarations)) {
     sun::support::logAndThrowError(
         "Interface dispatch types belong to another analysis session");
   }
@@ -78,10 +78,10 @@ GlobalVariable* ClassGenerator::getOrCreateInterfaceVtable(
 
   std::string vtableName =
       PortableDeclarationKey::inInstance(
-          PortableDeclarationKey::fromDeclaration(ifaceType->getDeclarationId(),
-                                                  typeRegistry->declarations),
-          PortableDeclarationKey::fromDeclaration(classType->getDeclarationId(),
-                                                  typeRegistry->declarations))
+          PortableDeclarationKey::fromDeclaration(
+              ifaceType->getDeclarationId(), state_.analysis->declarations),
+          PortableDeclarationKey::fromDeclaration(
+              classType->getDeclarationId(), state_.analysis->declarations))
           .symbol("owning-vtable");
   Constant* vtableInit = ConstantStruct::get(vtableType, vtableEntries);
   auto* vtableGlobal =
@@ -126,10 +126,10 @@ GlobalVariable* ClassGenerator::getOrCreateBorrowedInterfaceVtable(
   StructType* type = StructType::get(ctx.getContext(), slots);
   std::string name =
       PortableDeclarationKey::inInstance(
-          PortableDeclarationKey::fromDeclaration(ifaceType->getDeclarationId(),
-                                                  typeRegistry->declarations),
-          PortableDeclarationKey::fromDeclaration(classType->getDeclarationId(),
-                                                  typeRegistry->declarations))
+          PortableDeclarationKey::fromDeclaration(
+              ifaceType->getDeclarationId(), state_.analysis->declarations),
+          PortableDeclarationKey::fromDeclaration(
+              classType->getDeclarationId(), state_.analysis->declarations))
           .symbol("borrowed-vtable");
   auto* result =
       new GlobalVariable(*module, type, true, GlobalValue::InternalLinkage,

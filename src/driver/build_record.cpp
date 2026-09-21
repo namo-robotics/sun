@@ -13,10 +13,12 @@
 
 #include "moon_bundling/moon.h"
 
-/** Coordinates compilation, dependency loading, linking, and program execution. */
+/** Coordinates compilation, dependency loading, linking, and program execution.
+ */
 namespace sun::driver {
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 constexpr const char* kRecordHeader = "sun-build-record 1";

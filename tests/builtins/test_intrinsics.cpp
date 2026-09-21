@@ -1452,7 +1452,8 @@ TEST(Builtins_Memory, memmove_handles_overlap_and_empty_ranges) {
         if (ok) { 1; } else { 0; }
       };
     }
-  )"), 1);
+  )"),
+            1);
 }
 
 TEST(Builtins_UnsafeRequirement, memmove_outside_unsafe_is_an_error) {
@@ -1461,5 +1462,6 @@ TEST(Builtins_UnsafeRequirement, memmove_outside_unsafe_is_an_error) {
       _memmove(dst, src, 1);
     }
     function main() i32 { return 0; }
-  )"), "unsafe");
+  )"),
+                                "unsafe");
 }

@@ -23,6 +23,7 @@ add_executable(sun_tests)
 # Order among the groups themselves does not matter.
 add_subdirectory(builtins)
 add_subdirectory(classes)
+add_subdirectory(constants)
 add_subdirectory(control_flow)
 add_subdirectory(end_to_end)
 add_subdirectory(enums)

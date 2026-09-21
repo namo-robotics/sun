@@ -43,17 +43,19 @@ struct SpecializationKeyHash {
  * TypeRegistry - Per-compilation-unit registry for class and interface types.
  *
  * This replaces the static caches in Types class to avoid cross-test pollution.
- * Create one TypeRegistry per compilation and share it between SemanticAnalyzer
- * and CodegenVisitor.
+ * One exists per compilation, as part of its AnalysisResults, next to the
+ * DeclarationTable whose declarations its types are created for.
  */
 class TypeRegistry {
+  // The declarations types are created for; owned by the analysis results.
+  DeclarationTable& declarations_;
   std::unordered_map<DeclarationId, std::shared_ptr<sun::types::NominalType>>
       nominalTypes_;
 
   /** Looks up the class, interface, or enum type for a declaration identity. */
   template <typename T>
   std::shared_ptr<T> nominalType(DeclarationId id, DeclarationKind kind) {
-    const auto& record = declarations.get(id);
+    const auto& record = declarations_.get(id);
     if (record.kind != kind)
       sun::support::logAndThrowError(
           "Declaration kind does not match nominal type");
@@ -62,7 +64,7 @@ class TypeRegistry {
       return std::static_pointer_cast<T>(found->second);
     auto type = std::make_shared<T>(record.name);
     type->declarationId_ = id;
-    type->declarationSession_ = declarations.session();
+    type->declarationSession_ = declarations_.session();
     nominalTypes_.emplace(id, type);
     return type;
   }
@@ -71,14 +73,18 @@ class TypeRegistry {
       specializations_;
 
  public:
-  /** Declaration identities shared by semantic analysis and code generation. */
-  DeclarationTable declarations;
-
   /** The builtin error interface shared throughout this analysis session. */
   std::shared_ptr<sun::types::InterfaceType> errorInterface;
 
-  /** Initializes the collection of primitive and declared semantic types. */
-  TypeRegistry() { registerBuiltins(); }
+  /**
+   * Initializes the collection of primitive and declared semantic types.
+   * Every type is created for a declaration in `declarations`, which belongs
+   * to the same analysis results and must outlive the registry.
+   */
+  explicit TypeRegistry(DeclarationTable& declarations)
+      : declarations_(declarations) {
+    registerBuiltins();
+  }
 
   /**
    * Register built-in types (IError). The iteration protocol
@@ -91,8 +97,8 @@ class TypeRegistry {
     // the return type is retargeted to it (an owned clone of the message), so
     // errors can carry text composed at runtime. Without the stdlib, message()
     // stays literal-only.
-    auto id = declarations.add(DeclarationKind::Interface, "IError");
-    declarations.bindPortable(
+    auto id = declarations_.add(DeclarationKind::Interface, "IError");
+    declarations_.bindPortable(
         id,
         PortableDeclarationKey::original(
             "4c7b23a9e50e3bb484c7f661e4700d156bac371ed9dd5d23c3d22e2fefc263c1",
@@ -103,13 +109,13 @@ class TypeRegistry {
     // `const function code()`, and errors are caught into plain variables.
     ierror->addMethod("code", sun::types::Types::Int32(), {}, true)
         .declarationId =
-        declarations.add(DeclarationKind::Function, "code", id);
+        declarations_.add(DeclarationKind::Function, "code", id);
     ierror->addMethod("message", sun::types::Types::String(), {}, true)
         .declarationId =
-        declarations.add(DeclarationKind::Function, "message", id);
+        declarations_.add(DeclarationKind::Function, "message", id);
     uint64_t ordinal = 2;
     for (const auto& method : ierror->getMethods())
-      declarations.bindPortable(
+      declarations_.bindPortable(
           method.declarationId,
           PortableDeclarationKey::original("4c7b23a9e50e3bb484c7f661e4700d156ba"
                                            "c371ed9dd5d23c3d22e2fefc263c1",
@@ -208,8 +214,8 @@ class TypeRegistry {
   DeclarationId specialize(const SpecializationKey& key) {
     auto found = specializations_.find(key);
     if (found != specializations_.end()) return found->second;
-    const auto& source = declarations.get(key.source);
-    auto id = declarations.add(
+    const auto& source = declarations_.get(key.source);
+    auto id = declarations_.add(
         source.kind, source.name, key.enclosing ? key.enclosing : source.owner,
         source.module, std::make_shared<const SpecializationKey>(key),
         key.source);

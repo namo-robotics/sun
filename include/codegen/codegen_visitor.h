@@ -54,7 +54,7 @@
 #include "codegen/scopes/scope_manager.h"  // Scope stack and drop emission
 #include "codegen/support/type_checks.h"   // requireType / tryGetType helpers
 #include "codegen/variables/variable_generator.h"  // Variables, lvalues and globals
-#include "semantic_analysis/type_registry.h"
+#include "semantic_analysis/analysis_results.h"
 #include "support/error.h"  // Error handling
 #include "types/types.h"    // Type system
 
@@ -138,8 +138,8 @@ class CodegenVisitor {
   /** Creates the expression visitor and its cooperating code generators. */
   explicit CodegenVisitor(
       CodegenContext& ctx,
-      std::shared_ptr<sun::semantic_analysis::TypeRegistry> registry)
-      : state_(ctx, std::move(registry)),
+      std::shared_ptr<sun::semantic_analysis::AnalysisResults> results)
+      : state_(ctx, std::move(results)),
         ctx(state_.ctx),
         module(state_.module),
         typeRegistry(state_.typeRegistry),

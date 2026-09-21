@@ -194,7 +194,7 @@ TypePtr TypeResolver::substituteTypeParameters(TypePtr type) {
       }
       if (changed) {
         auto* info = ctx_.lookupGenericInterface(
-            it->sourceDeclaration(ctx_.types()->declarations));
+            it->sourceDeclaration(ctx_.results().declarations));
         if (!info)
           logAndThrowError("Selected generic interface is not registered");
         return generics_.instantiateGenericInterface(*info, newArgs);
@@ -218,7 +218,7 @@ TypePtr TypeResolver::substituteTypeParameters(TypePtr type) {
       }
       if (changed) {
         auto* info = ctx_.lookupGenericEnum(
-            et->sourceDeclaration(ctx_.types()->declarations));
+            et->sourceDeclaration(ctx_.results().declarations));
         if (!info) logAndThrowError("Selected generic enum is not registered");
         return generics_.instantiateGenericEnum(*info, newArgs);
       }
@@ -262,7 +262,7 @@ TypePtr TypeResolver::typeAnnotationToType(
     std::vector<TypePtr> arguments;
     for (const auto& argument : annot.typeArguments)
       arguments.push_back(typeAnnotationToType(*argument));
-    auto kind = ctx_.types()->declarations.get(id).kind;
+    auto kind = ctx_.results().declarations.get(id).kind;
     if (!arguments.empty()) {
       if (kind == DeclarationKind::Class) {
         auto* info = ctx_.lookupGenericClass(id);
@@ -543,7 +543,7 @@ TypePtr TypeResolver::typeAnnotationToType(
     // contexts)
     return Types::TypeParameter(annot.baseName, {},
                                 genericInfo->AST->getDeclarationId(),
-                                ctx_.types()->declarations.session());
+                                ctx_.results().declarations.session());
   }
 
   // Check for user-defined interface types
@@ -593,7 +593,7 @@ TypePtr TypeResolver::createConstView(TypePtr type) {
     }
     if (!changed) return type;
     auto* info = ctx_.lookupGenericEnum(
-        enumType->sourceDeclaration(ctx_.types()->declarations));
+        enumType->sourceDeclaration(ctx_.results().declarations));
     if (!info) logAndThrowError("Selected generic enum is not registered");
     return generics_.instantiateGenericEnum(*info, args);
   }

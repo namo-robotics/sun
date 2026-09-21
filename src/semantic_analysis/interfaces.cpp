@@ -55,9 +55,9 @@ void SemanticAnalyzer::inheritInterfaceFields(
       }
       // Add interface field to class with the interface's visibility
       const auto owner = classType->getDeclarationId();
-      auto id = ctx_.types()->declarations.add(
+      auto id = ctx_.results().declarations.add(
           sun::semantic_analysis::DeclarationKind::Field, field.name, owner,
-          ctx_.types()->declarations.get(owner).module, {},
+          ctx_.results().declarations.get(owner).module, {},
           field.declarationId);
       classType->addField(field.name, field.type, id).visibility =
           field.visibility;
@@ -101,7 +101,7 @@ void SemanticAnalyzer::validateInterfaceImplementation(
           std::vector<TypePtr> parameters;
           for (size_t i = 0; i < proto.getTypeParameters().size(); ++i)
             parameters.push_back(proto.getTypeParameters()[i].toSunType(
-                ctx_.types()->declarations,
+                ctx_.results().declarations,
                 proto.declarationIdentity().typeParameters.at(i)));
           ctx_.enterTypeParamScope(interfaceMethod.typeParameters, parameters);
           requiredReturnType =
@@ -248,11 +248,11 @@ void SemanticAnalyzer::validateInterfaceImplementation(
                                               interfaceMethod.returnType,
                                               interfaceMethod.paramTypes, false,
                                               interfaceMethod.typeParameters);
-          method.declarationId = ctx_.types()->declarations.add(
+          method.declarationId = ctx_.results().declarations.add(
               sun::semantic_analysis::DeclarationKind::Function,
               interfaceMethod.name, classType->getDeclarationId(),
-              ctx_.types()
-                  ->declarations.get(classType->getDeclarationId())
+              ctx_.results()
+                  .declarations.get(classType->getDeclarationId())
                   .module,
               {}, interfaceMethod.declarationId);
           if (method.name == "deinit")

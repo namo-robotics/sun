@@ -17,8 +17,8 @@
 #include "driver/sun_value.h"
 #include "moon_bundling/moon_import.h"
 #include "parsing/parser.h"
+#include "semantic_analysis/analysis_results.h"
 #include "semantic_analysis/semantic_analyzer.h"
-#include "semantic_analysis/type_registry.h"
 #include "support/error.h"
 
 /** Coordinates compiler inputs, analysis, code generation, and execution. */
@@ -26,8 +26,8 @@ namespace sun::driver {
 using sun::ast::BlockExprAST;
 using sun::moon_bundling::MoonImport;
 using sun::parsing::Parser;
+using sun::semantic_analysis::AnalysisResults;
 using sun::semantic_analysis::SemanticAnalyzer;
-using sun::semantic_analysis::TypeRegistry;
 
 /**
  * Driver orchestrates the compilation pipeline: parse → analyze → codegen →
@@ -56,7 +56,7 @@ class Driver {
  private:
   // Owned components
   std::unique_ptr<sun::codegen::CodegenContext> ctx;
-  std::shared_ptr<TypeRegistry> typeRegistry;
+  std::shared_ptr<AnalysisResults> analysisResults;
   std::unique_ptr<sun::codegen::CodegenVisitor> codegenVisitor;
   std::unique_ptr<SemanticAnalyzer> analyzer;
 
@@ -125,11 +125,11 @@ class Driver {
    * Private constructor - use factory methods
    */
   Driver(std::unique_ptr<sun::codegen::CodegenContext> ctx,
-         std::shared_ptr<TypeRegistry> typeRegistry,
+         std::shared_ptr<AnalysisResults> analysisResults,
          std::unique_ptr<sun::codegen::CodegenVisitor> codegenVisitor,
          std::unique_ptr<SemanticAnalyzer> analyzer)
       : ctx(std::move(ctx)),
-        typeRegistry(std::move(typeRegistry)),
+        analysisResults(std::move(analysisResults)),
         codegenVisitor(std::move(codegenVisitor)),
         analyzer(std::move(analyzer)) {}
 
@@ -260,8 +260,11 @@ class Driver {
    * editor tooling needs while a file is mid-edit.
    */
   struct AnalyzedProgram {
-    /** Keep declaration identities alive with the annotated syntax tree. */
-    std::shared_ptr<TypeRegistry> typeRegistry;
+    /**
+     * What analysis concluded about the program. Also keeps declaration
+     * identities alive with the annotated syntax tree.
+     */
+    std::shared_ptr<AnalysisResults> results;
     std::unique_ptr<BlockExprAST> ast;
     std::optional<sun::support::SunError> error;
   };

@@ -55,7 +55,8 @@ void SemanticAnalyzer::analyzeNumberLiteral(ExprAST& expr,
       expr.getLocation(), "Cannot determine numeric literal type"));
   if (num.isInteger() && num.isNegative()) {
     // A negative magnitude beyond the signed range cannot default to u64.
-    tryCoerceIntegerLiteral(&expr, expr.getResolvedType(), /*throwOnFail=*/true);
+    tryCoerceIntegerLiteral(&expr, expr.getResolvedType(),
+                            /*throwOnFail=*/true);
   }
 }
 

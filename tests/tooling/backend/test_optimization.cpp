@@ -20,7 +20,7 @@ TEST(Tooling_Backend_Optimization, buffer_accessor_inlines_after_moon_linking) {
           readerSymbol =
               sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
                   function->getDeclarationId(),
-                  analyzer.context().types()->declarations)
+                  analyzer.context().results().declarations)
                   .symbol("function");
       }
     });

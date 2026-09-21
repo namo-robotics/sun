@@ -9,7 +9,8 @@ namespace sun::semantic_analysis::passes {
  */
 class FieldInitializerPreparationPass {
  public:
-  /** Prepare constructors and field defaults throughout the AST, including bodies. */
+  /** Prepare constructors and field defaults throughout the AST, including
+   * bodies. */
   void run(sun::ast::ExprAST& root) const;
 };
 

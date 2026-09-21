@@ -123,7 +123,7 @@ void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
       const auto& tp = proto.getTypeParameters()[i];
       typeParams.push_back(tp.name);
       typeParamTypes.push_back(
-          tp.toSunType(ctx_.types()->declarations,
+          tp.toSunType(ctx_.results().declarations,
                        proto.declarationIdentity().typeParameters.at(i)));
     }
     ctx_.currentScope().declareTypeParameters(typeParams, typeParamTypes);

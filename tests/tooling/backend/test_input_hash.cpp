@@ -69,7 +69,8 @@ struct Scratch {
   }
 };
 
-/** Reports whether the compiler executable required by this test is available. */
+/** Reports whether the compiler executable required by this test is available.
+ */
 bool haveSunBinary() { return std::filesystem::exists("build/sun"); }
 
 /** Builds the input description used to check deterministic build hashes. */
@@ -215,8 +216,7 @@ public module input_hash_flags {
   public function one() i32 { return 1; }
 }
 )");
-  const std::string build = "--emit-moon -o " +
-                            scratch.path("lib.moon") + " " +
+  const std::string build = "--emit-moon -o " + scratch.path("lib.moon") + " " +
                             scratch.path("lib.sun");
   scratch.runSun(build);
   EXPECT_TRUE(contains(scratch.runSun("-g " + build), "Successfully created"));
@@ -254,8 +254,8 @@ manifest {
   writeFile(scratch.path("app_tests.sun"), tests);
   writeFile(scratch.path("app.sun"), program);
   const std::string app = scratch.path("app");
-  const std::string build = "-c --lib-path build -o " +
-                            app + " " + scratch.path("app.sun");
+  const std::string build =
+      "-c --lib-path build -o " + app + " " + scratch.path("app.sun");
 
   std::string log = scratch.runSun(build);
   EXPECT_TRUE(contains(log, "Successfully compiled to: " + app)) << log;
@@ -298,8 +298,7 @@ TEST(Tooling_Backend_InputHash, program_without_tests_is_skipped) {
   Scratch scratch("no_tests");
   writeFile(scratch.path("app.sun"), "function main() i32 { return 0; }\n");
   const std::string app = scratch.path("app");
-  const std::string build =
-      "-c -o " + app + " " + scratch.path("app.sun");
+  const std::string build = "-c -o " + app + " " + scratch.path("app.sun");
 
   scratch.runSun(build);
   auto record = sun::driver::readBuildRecord(app);

@@ -8,9 +8,9 @@
 namespace sun::semantic_analysis {
 
 /**
- * Reserved identifiers are for builtins only (e.g. _is&lt;T&gt;, _sizeof&lt;T&gt;).
- * The exception is the dunder methods a class implements to overload an
- * operator: user code has to be able to spell those.
+ * Reserved identifiers are for builtins only (e.g. _is&lt;T&gt;,
+ * _sizeof&lt;T&gt;). The exception is the dunder methods a class implements to
+ * overload an operator: user code has to be able to spell those.
  */
 bool isReservedIdentifier(const std::string& name) {
   if (name.empty() || name[0] != '_') return false;

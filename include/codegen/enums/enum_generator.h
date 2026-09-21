@@ -29,7 +29,8 @@ class EnumGenerator {
 
   /** Disallows copying so the owned state cannot be duplicated. */
   EnumGenerator(const EnumGenerator&) = delete;
-  /** Disallows assignment so ownership and object identity cannot be duplicated. */
+  /** Disallows assignment so ownership and object identity cannot be
+   * duplicated. */
   EnumGenerator& operator=(const EnumGenerator&) = delete;
 
   /** Prepares enum layouts, including generic specializations. */
@@ -54,7 +55,8 @@ class EnumGenerator {
  private:
   /** Returns the enum cleanup function, generating it when first needed. */
   llvm::Function* getOrCreateDropFunction(EnumType& enumType);
-  /** Provides the scope manager responsible for variable storage and cleanup. */
+  /** Provides the scope manager responsible for variable storage and cleanup.
+   */
   sun::codegen::scopes::ScopeManager& scopes();
 
   sun::codegen::CodegenState& state_;

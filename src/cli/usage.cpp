@@ -7,7 +7,8 @@
 /** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 // Everything in the help text below its first line, which names the program.

@@ -4306,7 +4306,8 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
       if (curTok.kind == TokenKind::EQUAL) {
         getNextToken();
         initializer = curTok.kind == TokenKind::BRACE_OPEN
-                          /** Consumes tokens for a field initializer list and builds its syntax-tree representation. */
+                          /** Consumes tokens for a field initializer list and
+                             builds its syntax-tree representation. */
                           ? parseStructLiteral()
                           : parseExpression();
         if (!initializer)

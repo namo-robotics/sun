@@ -2274,7 +2274,8 @@ BorrowChecker::LifetimeValue BorrowChecker::inferDestLifetimeValue(
 void BorrowChecker::checkNamedLifetimesAtCall(
     const CallExprAST& call, const std::vector<TypePtr>& paramTypes) {
   const auto& args = call.getArgs();
-  /** A call argument lifetime and source position used to compare named lifetime bindings. */
+  /** A call argument lifetime and source position used to compare named
+   * lifetime bindings. */
   struct Entry {
     LifetimeValue value;
     Position pos;

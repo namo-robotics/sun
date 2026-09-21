@@ -26,10 +26,12 @@ using sun::ast::ExprAST;
 using sun::ast::forEachChild;
 using sun::support::Position;
 
-/** Provides compiler-backed editor features through the language server protocol. */
+/** Provides compiler-backed editor features through the language server
+ * protocol. */
 namespace sun::lsp {
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /**
@@ -58,7 +60,8 @@ DeclarationKey declarationKey(const Declaration& declaration,
                normalizePath(declaration.location.filePath.value_or(file)));
 }
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /**
@@ -67,7 +70,8 @@ namespace {
  */
 class Collector {
  public:
-  /** Creates a reference collector using the open document's current source text. */
+  /** Creates a reference collector using the open document's current source
+   * text. */
   Collector(std::string documentPath, const std::string& source)
       : documentPath_(std::move(documentPath)), source_(source) {}
 
@@ -93,7 +97,8 @@ class Collector {
     return -1;
   }
 
-  /** Reports whether a declaration belongs to the selected reference targets. */
+  /** Reports whether a declaration belongs to the selected reference targets.
+   */
   bool matches(const Declaration& declaration, const std::string& file) {
     return indexOf(declaration, file) >= 0;
   }
@@ -121,7 +126,8 @@ class Collector {
     if (!inserted && !isDeclaration) entry->second = false;
   }
 
-  /** Returns collected reference locations, optionally including declarations. */
+  /** Returns collected reference locations, optionally including declarations.
+   */
   std::vector<SymbolLocation> results(bool includeDeclarations) {
     std::vector<SymbolLocation> locations;
     for (const auto& [span, isDeclaration] : ranges_) {
@@ -540,7 +546,8 @@ class UseFinder {
 
 }  // namespace
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /**
@@ -571,7 +578,8 @@ bool isBuiltinInterfaceMember(const std::string& interface,
  */
 class GroupBuilder {
  public:
-  /** Creates a collector for member declarations that must be renamed together. */
+  /** Creates a collector for member declarations that must be renamed together.
+   */
   GroupBuilder(const BlockExprAST& program, const std::string& documentPath)
       : program_(program), documentPath_(documentPath) {}
 
@@ -608,7 +616,8 @@ class GroupBuilder {
   }
 
  private:
-  /** Reports whether both nominal types refer to the same declaration identity. */
+  /** Reports whether both nominal types refer to the same declaration identity.
+   */
   bool sameDeclaration(const Declaration& a, const Declaration& b) const {
     return declarationKey(a, documentPath_) == declarationKey(b, documentPath_);
   }

@@ -190,9 +190,11 @@ void SemanticAnalyzer::checkMoveSource(const ExprAST& value,
       const ExprAST* owner = member.getObject();
       if (!owner) break;
       if (owner->getType() == ASTNodeType::THIS ||
-          (owner->getResolvedType() && owner->getResolvedType()->isReference())) {
+          (owner->getResolvedType() &&
+           owner->getResolvedType()->isReference())) {
         logAndThrowError(
-            "Cannot move a field through a reference; replace the field instead",
+            "Cannot move a field through a reference; replace the field "
+            "instead",
             loc);
       }
       auto ownerType = unwrapRef(owner->getResolvedType());
@@ -263,10 +265,10 @@ void SemanticAnalyzer::checkUnsafeCall(bool requiresUnsafe,
                                        const std::string& name,
                                        const Position& loc) const {
   if (!requiresUnsafe || ctx_.isInUnsafeBlock()) return;
-  logAndThrowError(
-      "Calling unsafe method '" + name +
-          "' requires an unsafe block or expression. Use `unsafe ...` or `unsafe { ... }`.",
-      loc);
+  logAndThrowError("Calling unsafe method '" + name +
+                       "' requires an unsafe block or expression. Use `unsafe "
+                       "...` or `unsafe { ... }`.",
+                   loc);
 }
 
 bool SemanticAnalyzer::checkMethodReceiver(const ExprAST& receiver,

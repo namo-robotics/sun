@@ -34,7 +34,8 @@ struct SerializerConfig {
  */
 class ASTSerializer {
  public:
-  /** Creates a syntax-tree encoder using the supplied serialization settings. */
+  /** Creates a syntax-tree encoder using the supplied serialization settings.
+   */
   explicit ASTSerializer(SerializerConfig config = {}) : config_(config) {}
 
   /**
@@ -136,16 +137,20 @@ class ASTSerializer {
    */
   void serializeNumber(const sun::ast::NumberExprAST& expr,
                        pbc::ASTNode* node) const;
-  /** Encodes a character literal and its child data in the protobuf syntax representation. */
+  /** Encodes a character literal and its child data in the protobuf syntax
+   * representation. */
   void serializeCharLiteral(const sun::ast::CharLiteralAST& expr,
                             pbc::ASTNode* node) const;
-  /** Encodes a string literal and its child data in the protobuf syntax representation. */
+  /** Encodes a string literal and its child data in the protobuf syntax
+   * representation. */
   void serializeString(const sun::ast::StringLiteralAST& expr,
                        pbc::ASTNode* node) const;
-  /** Encodes a boolean literal and its child data in the protobuf syntax representation. */
+  /** Encodes a boolean literal and its child data in the protobuf syntax
+   * representation. */
   void serializeBool(const sun::ast::BoolLiteralAST& expr,
                      pbc::ASTNode* node) const;
-  /** Encodes a array literal and its child data in the protobuf syntax representation. */
+  /** Encodes a array literal and its child data in the protobuf syntax
+   * representation. */
   void serializeArray(const sun::ast::ArrayLiteralAST& expr,
                       pbc::ASTNode* node) const;
   /**
@@ -155,12 +160,15 @@ class ASTSerializer {
   void serializeStructLiteral(const sun::ast::StructLiteralAST& expr,
                               pbc::ASTNode* node) const;
 
-  /** Encodes a slice expression and its child data in the protobuf syntax representation. */
+  /** Encodes a slice expression and its child data in the protobuf syntax
+   * representation. */
   void serializeSlice(const sun::ast::SliceExprAST& expr,
                       pbc::ASTNode* node) const;
-  /** Encodes a index expression and its child data in the protobuf syntax representation. */
+  /** Encodes a index expression and its child data in the protobuf syntax
+   * representation. */
   void serializeIndex(const sun::ast::IndexAST& expr, pbc::ASTNode* node) const;
-  /** Encodes a array index and its child data in the protobuf syntax representation. */
+  /** Encodes a array index and its child data in the protobuf syntax
+   * representation. */
   void serializeArrayIndex(const sun::ast::ArrayIndexAST& expr,
                            pbc::ASTNode* node) const;
 
@@ -194,7 +202,8 @@ class ASTSerializer {
    */
   void serializeIndexedAssignment(const sun::ast::IndexedAssignmentAST& expr,
                                   pbc::ASTNode* node) const;
-  /** Encodes a member assignment and its child data in the protobuf syntax representation. */
+  /** Encodes a member assignment and its child data in the protobuf syntax
+   * representation. */
   void serializeMemberAssignment(const sun::ast::MemberAssignmentAST& expr,
                                  pbc::ASTNode* node) const;
   /**
@@ -204,10 +213,12 @@ class ASTSerializer {
   void serializeCompoundAssignment(const sun::ast::CompoundAssignmentAST& expr,
                                    pbc::ASTNode* node) const;
 
-  /** Encodes a binary operation and its child data in the protobuf syntax representation. */
+  /** Encodes a binary operation and its child data in the protobuf syntax
+   * representation. */
   void serializeBinary(const sun::ast::BinaryExprAST& expr,
                        pbc::ASTNode* node) const;
-  /** Encodes a unary operation and its child data in the protobuf syntax representation. */
+  /** Encodes a unary operation and its child data in the protobuf syntax
+   * representation. */
   void serializeUnary(const sun::ast::UnaryExprAST& expr,
                       pbc::ASTNode* node) const;
   /**
@@ -217,8 +228,8 @@ class ASTSerializer {
   void serializeTernary(const sun::ast::TernaryExprAST& expr,
                         pbc::ASTNode* node) const;
   /**
-   * Encodes a parenthesized expression and its child data in the protobuf syntax
-   * representation.
+   * Encodes a parenthesized expression and its child data in the protobuf
+   * syntax representation.
    */
   void serializeParen(const sun::ast::ParenExprAST& expr,
                       pbc::ASTNode* node) const;
@@ -229,34 +240,41 @@ class ASTSerializer {
   void serializeInterpolatedString(const sun::ast::InterpolatedStringAST& expr,
                                    pbc::ASTNode* node) const;
   /**
-   * Encodes a variadic argument expansion and its child data in the protobuf syntax
-   * representation.
+   * Encodes a variadic argument expansion and its child data in the protobuf
+   * syntax representation.
    */
   void serializePackExpansion(const sun::ast::PackExpansionAST& expr,
                               pbc::ASTNode* node) const;
 
-  /** Encodes a lexical block and its child data in the protobuf syntax representation. */
+  /** Encodes a lexical block and its child data in the protobuf syntax
+   * representation. */
   void serializeBlock(const BlockExprAST& expr, pbc::ASTNode* node) const;
   /**
    * Encodes a conditional expression and its child data in the protobuf syntax
    * representation.
    */
   void serializeIf(const sun::ast::IfExprAST& expr, pbc::ASTNode* node) const;
-  /** Encodes a pattern match and its child data in the protobuf syntax representation. */
+  /** Encodes a pattern match and its child data in the protobuf syntax
+   * representation. */
   void serializeMatch(const sun::ast::MatchExprAST& expr,
                       pbc::ASTNode* node) const;
-  /** Encodes a for loop and its child data in the protobuf syntax representation. */
+  /** Encodes a for loop and its child data in the protobuf syntax
+   * representation. */
   void serializeFor(const sun::ast::ForExprAST& expr, pbc::ASTNode* node) const;
-  /** Encodes a iteration loop and its child data in the protobuf syntax representation. */
+  /** Encodes a iteration loop and its child data in the protobuf syntax
+   * representation. */
   void serializeForIn(const sun::ast::ForInExprAST& expr,
                       pbc::ASTNode* node) const;
-  /** Encodes a while loop and its child data in the protobuf syntax representation. */
+  /** Encodes a while loop and its child data in the protobuf syntax
+   * representation. */
   void serializeWhile(const sun::ast::WhileExprAST& expr,
                       pbc::ASTNode* node) const;
-  /** Encodes a return statement and its child data in the protobuf syntax representation. */
+  /** Encodes a return statement and its child data in the protobuf syntax
+   * representation. */
   void serializeReturn(const sun::ast::ReturnExprAST& expr,
                        pbc::ASTNode* node) const;
-  /** Encodes a unsafe block and its child data in the protobuf syntax representation. */
+  /** Encodes a unsafe block and its child data in the protobuf syntax
+   * representation. */
   void serializeUnsafeBlock(const sun::ast::UnsafeBlockAST& expr,
                             pbc::ASTNode* node) const;
 
@@ -266,10 +284,12 @@ class ASTSerializer {
    */
   void serializeFunction(const sun::ast::FunctionAST& expr,
                          pbc::ASTNode* node) const;
-  /** Encodes a lambda expression and its child data in the protobuf syntax representation. */
+  /** Encodes a lambda expression and its child data in the protobuf syntax
+   * representation. */
   void serializeLambda(const sun::ast::LambdaAST& expr,
                        pbc::ASTNode* node) const;
-  /** Encodes a function call and its child data in the protobuf syntax representation. */
+  /** Encodes a function call and its child data in the protobuf syntax
+   * representation. */
   void serializeCall(const sun::ast::CallExprAST& expr,
                      pbc::ASTNode* node) const;
   /**
@@ -291,13 +311,16 @@ class ASTSerializer {
    */
   void serializeModule(const sun::ast::ModuleAST& expr,
                        pbc::ASTNode* node) const;
-  /** Encodes a using declaration and its child data in the protobuf syntax representation. */
+  /** Encodes a using declaration and its child data in the protobuf syntax
+   * representation. */
   void serializeUsing(const sun::ast::UsingAST& expr, pbc::ASTNode* node) const;
-  /** Encodes a qualified name and its child data in the protobuf syntax representation. */
+  /** Encodes a qualified name and its child data in the protobuf syntax
+   * representation. */
   void serializeQualifiedName(const sun::ast::QualifiedNameAST& expr,
                               pbc::ASTNode* node) const;
 
-  /** Encodes a class declaration and its child data in the protobuf syntax representation. */
+  /** Encodes a class declaration and its child data in the protobuf syntax
+   * representation. */
   void serializeClassDef(const sun::ast::ClassDefinitionAST& expr,
                          pbc::ASTNode* node) const;
   /**
@@ -306,22 +329,26 @@ class ASTSerializer {
    */
   void serializeInterfaceDef(const sun::ast::InterfaceDefinitionAST& expr,
                              pbc::ASTNode* node) const;
-  /** Encodes a enum declaration and its child data in the protobuf syntax representation. */
+  /** Encodes a enum declaration and its child data in the protobuf syntax
+   * representation. */
   void serializeEnumDef(const sun::ast::EnumDefinitionAST& expr,
                         pbc::ASTNode* node) const;
-  /** Encodes a member access and its child data in the protobuf syntax representation. */
+  /** Encodes a member access and its child data in the protobuf syntax
+   * representation. */
   void serializeMemberAccess(const sun::ast::MemberAccessAST& expr,
                              pbc::ASTNode* node) const;
 
-  /** Encodes a error handler and its child data in the protobuf syntax representation. */
+  /** Encodes a error handler and its child data in the protobuf syntax
+   * representation. */
   void serializeTryCatch(const sun::ast::TryCatchExprAST& expr,
                          pbc::ASTNode* node) const;
-  /** Encodes a throw expression and its child data in the protobuf syntax representation. */
+  /** Encodes a throw expression and its child data in the protobuf syntax
+   * representation. */
   void serializeThrow(const sun::ast::ThrowExprAST& expr,
                       pbc::ASTNode* node) const;
   /**
-   * Encodes a forward type declaration and its child data in the protobuf syntax
-   * representation.
+   * Encodes a forward type declaration and its child data in the protobuf
+   * syntax representation.
    */
   void serializeDeclareType(const sun::ast::DeclareTypeAST& expr,
                             pbc::ASTNode* node) const;

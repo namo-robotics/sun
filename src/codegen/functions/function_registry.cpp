@@ -11,7 +11,7 @@ namespace sun::codegen::functions {
 
 void FunctionRegistry::registerFunction(
     sun::semantic_analysis::DeclarationId declaration, Function* function) {
-  const auto& record = state_.typeRegistry->declarations.get(declaration);
+  const auto& record = state_.analysis->declarations.get(declaration);
   if (record.kind != sun::semantic_analysis::DeclarationKind::Function &&
       record.kind != sun::semantic_analysis::DeclarationKind::Lambda)
     logAndThrowError("Function registration requires a callable declaration");

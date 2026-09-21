@@ -13,10 +13,12 @@ using sun::ast::ExprAST;
 using sun::ast::PrototypeAST;
 using sun::support::Position;
 
-/** Provides compiler-backed editor features through the language server protocol. */
+/** Provides compiler-backed editor features through the language server
+ * protocol. */
 namespace sun::lsp {
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /** Reports whether a character may occur inside an identifier. */
@@ -141,7 +143,8 @@ std::optional<Position> parameterRange(const ExprAST& owner,
   return std::nullopt;
 }
 
-/** Retrieves source text for a location, reusing the open document when possible. */
+/** Retrieves source text for a location, reusing the open document when
+ * possible. */
 std::optional<std::string> textOf(const Position& location,
                                   const std::string& documentPath,
                                   const std::string& source) {

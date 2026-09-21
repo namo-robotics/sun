@@ -20,7 +20,8 @@
 #include <system_error>
 #include <vector>
 
-/** Coordinates compilation, dependency loading, linking, and program execution. */
+/** Coordinates compilation, dependency loading, linking, and program execution.
+ */
 namespace sun::driver {
 
 /**
@@ -243,8 +244,7 @@ inline NativeLibraries loadNativeLibraries(const LinkOptions& opts) {
  * Returns true on success, false on failure
  */
 inline bool emitObjectFile(llvm::Module& module, const std::string& outputPath,
-                           std::string& errorMsg,
-                           bool optimize = true) {
+                           std::string& errorMsg, bool optimize = true) {
   // Honor a triple codegen already chose (set by --target); default to the
   // host otherwise.
   std::string targetTriple = module.getTargetTriple();

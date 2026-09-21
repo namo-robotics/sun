@@ -115,7 +115,8 @@ void prepareFieldInitializers(sun::ast::ClassDefinitionAST& classDef) {
   }
 }
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /**
@@ -142,7 +143,8 @@ bool usesThis(const ExprAST& expr) {
  */
 enum class FieldStatus { Uninitialized, Initialized, Unknown };
 
-/** Tracks whether each class field has been initialized along a control-flow path. */
+/** Tracks whether each class field has been initialized along a control-flow
+ * path. */
 using FieldStates = std::map<std::string, FieldStatus>;
 
 /**
@@ -164,7 +166,8 @@ void mergeInto(FieldStates& target, const FieldStates& other) {
  */
 class ClassInitInfo {
  public:
-  /** Collects class fields and methods needed to check constructor initialization. */
+  /** Collects class fields and methods needed to check constructor
+   * initialization. */
   ClassInitInfo(const ClassType& classType,
                 const std::vector<ClassMethodDecl>& methods)
       : classType_(classType), methods_(methods) {
@@ -296,7 +299,8 @@ class BodyWalk {
   void rejectUncertainAssignment(const std::string& field,
                                  std::optional<Position> loc);
 
-  /** Checks child expressions for reads and writes affecting field initialization. */
+  /** Checks child expressions for reads and writes affecting field
+   * initialization. */
   void walkChildren(const ExprAST& expr);
 
   /**

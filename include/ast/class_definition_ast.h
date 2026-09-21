@@ -62,8 +62,8 @@ struct ImplementedInterfaceAST {
 };
 
 /**
- * Class definition: class Name<T, U> implements Interface1&lt;T&gt;, Interface2 {
- * fields and methods }
+ * Class definition: class Name<T, U> implements Interface1&lt;T&gt;, Interface2
+ * { fields and methods }
  */
 class ClassDefinitionAST : public ExprAST {
   std::string name;  // Source name as written by user (for error messages)
@@ -102,7 +102,8 @@ class ClassDefinitionAST : public ExprAST {
   }
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   ClassDefinitionAST(std::string name, std::vector<TypeParameter> typeParams,
                      std::vector<ImplementedInterfaceAST> interfaces,
                      std::vector<ClassFieldDecl> fields,
@@ -119,7 +120,8 @@ class ClassDefinitionAST : public ExprAST {
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::CLASS_DEFINITION; }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     for (auto& field : fields) {
       if (field.initializer) fn(field.initializer);
@@ -168,7 +170,8 @@ class ClassDefinitionAST : public ExprAST {
   void setQualifiedName(sun::semantic_analysis::QualifiedName qname) {
     classAnalysis().qualifiedName = std::move(qname);
   }
-  /** Reports whether a name including the enclosing scopes has been assigned. */
+  /** Reports whether a name including the enclosing scopes has been assigned.
+   */
   bool hasQualifiedName() const {
     return analysis_ &&
            !static_cast<ClassAnalysis&>(*analysis_).qualifiedName.empty();
@@ -177,7 +180,8 @@ class ClassDefinitionAST : public ExprAST {
   void setLifetimeParameters(std::vector<LifetimeParameter> params) {
     lifetimeParameters = std::move(params);
   }
-  /** Provides the declared lifetime parameters used to check borrowed values. */
+  /** Provides the declared lifetime parameters used to check borrowed values.
+   */
   const std::vector<LifetimeParameter>& getLifetimeParameters() const {
     return lifetimeParameters;
   }
@@ -245,13 +249,15 @@ class ClassDefinitionAST : public ExprAST {
   getSpecializations() const {
     return classAnalysis().specializations;
   }
-  /** Reports whether an instance already exists for the supplied type arguments. */
+  /** Reports whether an instance already exists for the supplied type
+   * arguments. */
   bool hasSpecialization(DeclarationId id) const {
     return analysis_ &&
            static_cast<ClassAnalysis&>(*analysis_).specializations.find(id) !=
                static_cast<ClassAnalysis&>(*analysis_).specializations.end();
   }
-  /** Looks up the instance previously created for the supplied type arguments. */
+  /** Looks up the instance previously created for the supplied type arguments.
+   */
   std::shared_ptr<ClassDefinitionAST> getSpecialization(
       DeclarationId id) const {
     if (!analysis_) return nullptr;
@@ -281,7 +287,8 @@ class ClassDefinitionAST : public ExprAST {
     compiledSpecializations_.clear();
     return methods;
   }
-  /** Provides mutable access to field declarations for later compiler passes. */
+  /** Provides mutable access to field declarations for later compiler passes.
+   */
   std::vector<ClassFieldDecl>& getMutableFields() { return fields; }
 
   /**

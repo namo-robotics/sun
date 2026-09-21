@@ -137,7 +137,8 @@ class SourceManager {
   SourceManager() = default;
   /** Disallows copying so the owned state cannot be duplicated. */
   SourceManager(const SourceManager&) = delete;
-  /** Disallows assignment so ownership and object identity cannot be duplicated. */
+  /** Disallows assignment so ownership and object identity cannot be
+   * duplicated. */
   SourceManager& operator=(const SourceManager&) = delete;
 
   /**

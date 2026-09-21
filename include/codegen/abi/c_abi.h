@@ -86,7 +86,8 @@ struct ArgLowering {
 
   /** Reports whether the calling convention passes the value unchanged. */
   bool isDirect() const { return kind == ArgKind::Direct; }
-  /** Reports whether the calling convention changes the value representation. */
+  /** Reports whether the calling convention changes the value representation.
+   */
   bool isCoerced() const { return kind == ArgKind::Coerced; }
   /** Reports whether the calling convention passes an address to the value. */
   bool isIndirect() const { return kind == ArgKind::Indirect; }

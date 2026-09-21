@@ -20,7 +20,8 @@ using sun::driver::Driver;
 /** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /**
@@ -155,7 +156,8 @@ std::string deriveOutputName(const std::string& entrypoint) {
   return output;
 }
 
-/** Resolves command options into the inputs and outputs of a compilation job. */
+/** Resolves command options into the inputs and outputs of a compilation job.
+ */
 CompileJob makeCompileJob(const BuildRunOptions& options) {
   CompileJob job;
   job.inputFiles = options.inputFiles;

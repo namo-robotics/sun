@@ -45,7 +45,8 @@ class FunctionAST : public ExprAST {
   }
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   FunctionAST(std::unique_ptr<PrototypeAST> Proto,
               std::unique_ptr<BlockExprAST> Body)
       : Proto(std::move(Proto)), Body(std::move(Body)) {}
@@ -53,7 +54,8 @@ class FunctionAST : public ExprAST {
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::FUNCTION; }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     if (Body) Body->forEachChildSlot(fn);
   }
@@ -156,7 +158,8 @@ class FunctionAST : public ExprAST {
   bool isTest() const { return IsTest; }
   /** Marks whether the function is a discoverable test. */
   void setIsTest(bool v) { IsTest = v; }
-  /** Reports whether a function body is present rather than just a declaration. */
+  /** Reports whether a function body is present rather than just a declaration.
+   */
   bool hasBody() const { return Body != nullptr; }
   /** Reports whether this object has non empty body. */
   bool hasNonEmptyBody() const { return Body && !Body->getBody().empty(); }
@@ -174,14 +177,16 @@ class FunctionAST : public ExprAST {
   getSpecializations() const {
     return funcAnalysis().specializations;
   }
-  /** Reports whether an instance already exists for the supplied type arguments. */
+  /** Reports whether an instance already exists for the supplied type
+   * arguments. */
   bool hasSpecialization(DeclarationId id) const {
     return analysis_ &&
            static_cast<FunctionAnalysis&>(*analysis_)
                    .specializations.find(id) !=
                static_cast<FunctionAnalysis&>(*analysis_).specializations.end();
   }
-  /** Looks up the instance previously created for the supplied type arguments. */
+  /** Looks up the instance previously created for the supplied type arguments.
+   */
   std::shared_ptr<FunctionAST> getSpecialization(DeclarationId id) const {
     if (!analysis_) return nullptr;
     auto& specs = static_cast<FunctionAnalysis&>(*analysis_).specializations;

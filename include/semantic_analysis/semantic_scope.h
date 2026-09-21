@@ -112,7 +112,8 @@ class FunctionTable {
    * Move operations can use defaults
    */
   FunctionTable(FunctionTable&&) = default;
-  /** Transfers the stored state from another instance during move assignment. */
+  /** Transfers the stored state from another instance during move assignment.
+   */
   FunctionTable& operator=(FunctionTable&&) = default;
 
   /** Provides indexed access to the stored elements. */
@@ -126,7 +127,8 @@ class FunctionTable {
     return it->second;
   }
 
-  /** Reports whether the scope contains an overload with the supplied signature. */
+  /** Reports whether the scope contains an overload with the supplied
+   * signature. */
   bool contains(const sun::semantic_analysis::CallableSignature& sig) const {
     return bySig_.count(sig) > 0;
   }
@@ -193,7 +195,6 @@ class FunctionTable {
       byName_[name].push_back(&info);
     }
   }
-
 };
 
 /**
@@ -739,9 +740,10 @@ struct SemanticScopeBase
       std::optional<sun::support::Position> loc = std::nullopt) const;
 
   /**
-   * Select an overload from this scope's own function table. Record inaccessible
-   * candidates on the filter. Setting matchAlternatives enables the fallback
-   * pass, which lookupFunction runs only after ordinary lookup finds no match.
+   * Select an overload from this scope's own function table. Record
+   * inaccessible candidates on the filter. Setting matchAlternatives enables
+   * the fallback pass, which lookupFunction runs only after ordinary lookup
+   * finds no match.
    */
   std::optional<FunctionInfo> lookupFunctionLocal(
       const std::string& name,
@@ -882,7 +884,7 @@ struct ClassScope : SemanticScopeBase {
   /** Returns the lexical scope category used for scope-specific lookup. */
   ScopeType getType() const override { return ScopeType::Class; }
 
-  std::string classBaseName;     // Display name (e.g., "Vec")
+  std::string classBaseName;  // Display name (e.g., "Vec")
 };
 
 /**
@@ -894,7 +896,7 @@ struct InterfaceScope : SemanticScopeBase {
   /** Returns the lexical scope category used for scope-specific lookup. */
   ScopeType getType() const override { return ScopeType::Interface; }
 
-  std::string interfaceBaseName;     // Display name (e.g., "IShape")
+  std::string interfaceBaseName;  // Display name (e.g., "IShape")
 };
 
 /**
@@ -986,7 +988,8 @@ inline sun::semantic_analysis::ItemRef accessItem(
   return {"class", c->getDisplayName(), "", c->visibility,
           c->getDeclarationId()};
 }
-/** Wraps a declaration in the common representation used for visibility checks. */
+/** Wraps a declaration in the common representation used for visibility checks.
+ */
 inline sun::semantic_analysis::ItemRef accessItem(const GenericClassInfo* g) {
   return {"class", g->qualifiedName.baseName, "",
           g->AST ? g->AST->getVisibility()
@@ -994,13 +997,15 @@ inline sun::semantic_analysis::ItemRef accessItem(const GenericClassInfo* g) {
           g->AST ? g->AST->getDeclarationId()
                  : sun::semantic_analysis::DeclarationId{}};
 }
-/** Wraps a declaration in the common representation used for visibility checks. */
+/** Wraps a declaration in the common representation used for visibility checks.
+ */
 inline sun::semantic_analysis::ItemRef accessItem(
     const std::shared_ptr<sun::types::InterfaceType>& i) {
   return {"interface", i->getBaseName(), "", i->visibility,
           i->getDeclarationId()};
 }
-/** Wraps a declaration in the common representation used for visibility checks. */
+/** Wraps a declaration in the common representation used for visibility checks.
+ */
 inline sun::semantic_analysis::ItemRef accessItem(
     const GenericInterfaceInfo* g) {
   return {"interface", g->qualifiedName.baseName, "",
@@ -1009,12 +1014,14 @@ inline sun::semantic_analysis::ItemRef accessItem(
           g->AST ? g->AST->getDeclarationId()
                  : sun::semantic_analysis::DeclarationId{}};
 }
-/** Wraps a declaration in the common representation used for visibility checks. */
+/** Wraps a declaration in the common representation used for visibility checks.
+ */
 inline sun::semantic_analysis::ItemRef accessItem(
     const std::shared_ptr<sun::types::EnumType>& e) {
   return {"enum", e->getBaseName(), "", e->visibility, e->getDeclarationId()};
 }
-/** Wraps a declaration in the common representation used for visibility checks. */
+/** Wraps a declaration in the common representation used for visibility checks.
+ */
 inline sun::semantic_analysis::ItemRef accessItem(const GenericEnumInfo* g) {
   return {"enum", g->qualifiedName.baseName, "",
           g->AST ? g->AST->getVisibility()
@@ -1022,7 +1029,8 @@ inline sun::semantic_analysis::ItemRef accessItem(const GenericEnumInfo* g) {
           g->AST ? g->AST->getDeclarationId()
                  : sun::semantic_analysis::DeclarationId{}};
 }
-/** Wraps a declaration in the common representation used for visibility checks. */
+/** Wraps a declaration in the common representation used for visibility checks.
+ */
 inline sun::semantic_analysis::ItemRef accessItem(
     const GenericFunctionInfo* g) {
   return {"function", g->qualifiedName.baseName, "",
@@ -1031,21 +1039,25 @@ inline sun::semantic_analysis::ItemRef accessItem(
           g->AST ? g->AST->getDeclarationId()
                  : sun::semantic_analysis::DeclarationId{}};
 }
-/** Wraps a declaration in the common representation used for visibility checks. */
+/** Wraps a declaration in the common representation used for visibility checks.
+ */
 inline sun::semantic_analysis::ItemRef accessItem(const FunctionInfo& f) {
   return {"function", f.qualifiedName.baseName, "", f.visibility,
           f.declarationId};
 }
-/** Wraps a declaration in the common representation used for visibility checks. */
+/** Wraps a declaration in the common representation used for visibility checks.
+ */
 inline sun::semantic_analysis::ItemRef accessItem(const FunctionInfo* f) {
   return accessItem(*f);
 }
-/** Wraps a declaration in the common representation used for visibility checks. */
+/** Wraps a declaration in the common representation used for visibility checks.
+ */
 inline sun::semantic_analysis::ItemRef accessItem(const VariableInfo* v) {
   return {"variable", v->qualifiedName.baseName, "", v->visibility,
           v->declarationId};
 }
-/** Wraps a declaration in the common representation used for visibility checks. */
+/** Wraps a declaration in the common representation used for visibility checks.
+ */
 inline sun::semantic_analysis::ItemRef accessItem(const ModuleScope& m) {
   return {"module", m.qualifiedName.baseName, "", m.visibility,
           m.declarationId};

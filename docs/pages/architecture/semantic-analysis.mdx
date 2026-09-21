@@ -52,6 +52,14 @@ specialization keys live in `semantic_analysis/type_registry.h`; registration
 remains a semantic responsibility. Declaration identities and serialization
 formats are unchanged.
 
+What analysis concludes about a whole program is gathered in one
+`AnalysisResults` (`semantic_analysis/analysis_results.h`): the
+`DeclarationTable` of who is declared, the `TypeRegistry` of what types exist,
+and the `GlobalInitTable` of how each file-scope variable gets its first
+value. One is created per compilation and shared by the analyzer, which fills
+it in, and code generation, which reads it. Conclusions about a single
+expression, such as its type, stay on the syntax node.
+
 Expected types are arguments to semantic checking, separate from an expression's
 resolved type. For example, an array argument receives its parameter's type as a
 hint; only after its elements have been checked is its computed type recorded.

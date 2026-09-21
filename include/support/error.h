@@ -96,7 +96,8 @@ class SunError : public std::exception {
     Borrow     // Borrow checking error
   };
 
-  /** Creates a compiler exception with its diagnostic category and source context. */
+  /** Creates a compiler exception with its diagnostic category and source
+   * context. */
   SunError(Kind kind, const std::string& message,
            std::optional<Position> loc = std::nullopt,
            const std::string& sourceLine = "",
@@ -109,7 +110,8 @@ class SunError : public std::exception {
     buildFullMessage();
   }
 
-  /** Returns the formatted diagnostic message through the exception interface. */
+  /** Returns the formatted diagnostic message through the exception interface.
+   */
   const char* what() const noexcept override { return fullMessage_.c_str(); }
 
   /** Returns the type category used for semantic checks and dispatch. */
@@ -156,7 +158,8 @@ class SunError : public std::exception {
     return "Error";
   }
 
-  /** Combines the error category, message, and source context into a diagnostic. */
+  /** Combines the error category, message, and source context into a
+   * diagnostic. */
   void buildFullMessage() {
     fullMessage_ = formatDiagnostic(kindToString(), red, message_, location_,
                                     sourceLine_, prevSourceLine_);
@@ -182,7 +185,8 @@ class SunError : public std::exception {
 
 // Unified error handling - throws SunError and does not return
 
-/** Reports a compilation error and throws an exception to stop the current operation. */
+/** Reports a compilation error and throws an exception to stop the current
+ * operation. */
 [[noreturn]] inline void logAndThrowError(
     const std::string& str, std::optional<Position> loc = std::nullopt) {
   std::string sourceLine, prevLine;

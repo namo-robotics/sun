@@ -3,7 +3,6 @@
 // include/semantic_analysis/argument_conversion.h.
 
 #include "semantic_analysis/argument_conversion.h"
-
 #include "semantic_analysis/generic_type_arguments.h"
 #include "support/error.h"
 
@@ -17,7 +16,8 @@ using sun::types::typeMovesOnRead;
 using sun::types::TypePtr;
 using sun::types::unwrapRef;
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /**
@@ -67,8 +67,8 @@ ArgConversion byValue(const TypePtr& argType) {
 }
 
 /**
- * True if `target` is an unsized array&lt;T&gt; and `value` a sized array of the
- * same element type: the argument's storage is viewed with its rank erased.
+ * True if `target` is an unsized array&lt;T&gt; and `value` a sized array of
+ * the same element type: the argument's storage is viewed with its rank erased.
  */
 bool decaysToView(const TypePtr& value, const TypePtr& target) {
   if (!value || !target || !value->isArray() || !target->isArray())

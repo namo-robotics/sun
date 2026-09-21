@@ -14,7 +14,8 @@
 /** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 
-/** A variable declaration with its type, initializer, and binding properties. */
+/** A variable declaration with its type, initializer, and binding properties.
+ */
 class VariableCreationAST : public ExprAST {
   std::string name;
   std::unique_ptr<ExprAST> value;
@@ -45,7 +46,8 @@ class VariableCreationAST : public ExprAST {
   }
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   explicit VariableCreationAST(
       std::string name, std::unique_ptr<ExprAST> value,
       std::optional<TypeAnnotation> type = std::nullopt, bool isConst = false)
@@ -59,13 +61,15 @@ class VariableCreationAST : public ExprAST {
   }
   /** Reports whether this syntax node represents an immutable declaration. */
   bool isConst() const { return isConst_; }
-  /** Reports whether this syntax node represents a declaration using the C calling convention. */
+  /** Reports whether this syntax node represents a declaration using the C
+   * calling convention. */
   bool isCExtern() const { return isCExtern_; }
   /** Marks whether the function uses the C calling convention. */
   void setCExtern(bool value) { isCExtern_ = value; }
   /** Reports whether this object has explicit c ABI. */
   bool hasExplicitCAbi() const { return explicitCAbi_; }
-  /** Records whether the declaration explicitly uses the C calling convention. */
+  /** Records whether the declaration explicitly uses the C calling convention.
+   */
   void setExplicitCAbi(bool value) { explicitCAbi_ = value; }
   /** Reports whether an explicit linker symbol name is present. */
   bool hasLinkName() const { return linkName_.has_value(); }
@@ -95,7 +99,8 @@ class VariableCreationAST : public ExprAST {
   /** Reports whether this object has value. */
   bool hasValue() const { return value != nullptr; }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     if (value) fn(value);
   }
@@ -130,7 +135,8 @@ class VariableCreationAST : public ExprAST {
   void setQualifiedName(sun::semantic_analysis::QualifiedName qname) {
     varAnalysis().qualifiedName = std::move(qname);
   }
-  /** Reports whether a name including the enclosing scopes has been assigned. */
+  /** Reports whether a name including the enclosing scopes has been assigned.
+   */
   bool hasQualifiedName() const {
     return analysis_ &&
            !static_cast<VariableAnalysis&>(*analysis_).qualifiedName.empty();

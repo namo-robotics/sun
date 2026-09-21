@@ -18,7 +18,8 @@ class ForExprAST : public ExprAST {
   std::unique_ptr<ExprAST> Body;
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   ForExprAST(std::unique_ptr<ExprAST> Init, std::unique_ptr<ExprAST> Condition,
              std::unique_ptr<ExprAST> Increment, std::unique_ptr<ExprAST> Body)
       : Init(std::move(Init)),
@@ -29,7 +30,8 @@ class ForExprAST : public ExprAST {
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::FOR_LOOP; }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     fn(Init);
     fn(Condition);

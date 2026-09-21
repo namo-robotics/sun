@@ -25,7 +25,8 @@ class SemanticPipeline {
 
   /** Keep pass references tied to the context and helpers they were given. */
   SemanticPipeline(const SemanticPipeline&) = delete;
-  /** Disallows assignment so ownership and object identity cannot be duplicated. */
+  /** Disallows assignment so ownership and object identity cannot be
+   * duplicated. */
   SemanticPipeline& operator=(const SemanticPipeline&) = delete;
 
   /** Prepare names, collect declarations, and check the program's bodies. */

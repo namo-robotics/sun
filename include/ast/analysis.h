@@ -56,8 +56,8 @@ struct ExprAnalysis {
   virtual ~ExprAnalysis() = default;
   sun::semantic_analysis::DeclarationIdentity declaration;
   DeclarationId targetDeclaration;
-  TypePtr resolvedType;       // Type determined by semantic analyzer
-  bool moved = false;         // Set by borrow checker when ownership transfers
+  TypePtr resolvedType;  // Type determined by semantic analyzer
+  bool moved = false;    // Set by borrow checker when ownership transfers
 
   /** Creates an instance with its default state. */
   ExprAnalysis() = default;
@@ -67,7 +67,8 @@ struct ExprAnalysis {
   ExprAnalysis& operator=(const ExprAnalysis&) = default;
   /** Creates an instance with its default state. */
   ExprAnalysis(ExprAnalysis&&) = default;
-  /** Transfers the stored state from another instance during move assignment. */
+  /** Transfers the stored state from another instance during move assignment.
+   */
   ExprAnalysis& operator=(ExprAnalysis&&) = default;
 };
 

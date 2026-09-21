@@ -2,9 +2,8 @@
 // declaration_collection_pass.cpp — The declaration pre-pass (see
 // declaration_collection_pass.h)
 
-#include "semantic_analysis/passes/declaration_collection_pass.h"
-
 #include "semantic_analysis/item_refs.h"
+#include "semantic_analysis/passes/declaration_collection_pass.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "support/config.h"
 #include "support/error.h"
@@ -151,13 +150,15 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
     DeclarationCollectionPass& c;
     GenericSpecializer& generics;
     bool outermost;
-    /** Temporarily exposes the active declaration-collection pass to generic specialization. */
+    /** Temporarily exposes the active declaration-collection pass to generic
+     * specialization. */
     PrepassGuard(DeclarationCollectionPass& collector, GenericSpecializer& g)
         : c(collector), generics(g), outermost(collector.prepassDepth_ == 0) {
       ++c.prepassDepth_;
       generics.setInDeclarationPrepass(true);
     }
-    /** Restores the declaration-collection pass previously used by generic specialization. */
+    /** Restores the declaration-collection pass previously used by generic
+     * specialization. */
     ~PrepassGuard() {
       --c.prepassDepth_;
       if (outermost) {
@@ -546,7 +547,7 @@ void DeclarationCollectionPass::registerUsing(sun::ast::UsingAST& usingDecl) {
   std::string namespacePath = usingDecl.getNamespacePathString();
   std::string target = usingDecl.getTarget();
   if (usingDecl.getModuleDeclaration()) {
-    auto id = ctx_.types()->declarations.findPortable(
+    auto id = ctx_.results().declarations.findPortable(
         *usingDecl.getModuleDeclaration());
     // A retained using may serve only a body already compiled into the bundle.
     // Actual nominal and module references still require their exact
@@ -660,16 +661,17 @@ void DeclarationCollectionPass::registerClassShape(
   // IError.message() returns an owned String clone, and every implementation
   // compiled after this line must match that signature.
   const auto module =
-      ctx_.types()->declarations.get(classDef.getDeclarationId()).module;
+      ctx_.results().declarations.get(classDef.getDeclarationId()).module;
   if (qualifiedClass.baseName == "String" && module &&
-      ctx_.types()->declarations.get(module).name == "std") {
+      ctx_.results().declarations.get(module).name == "std") {
     if (auto ierror = ctx_.types()->errorInterface) {
       ierror->setMethodReturnType("message", classType);
     }
   }
 }
 
-void DeclarationCollectionPass::collectEnumDeclarations(const BlockExprAST& block) {
+void DeclarationCollectionPass::collectEnumDeclarations(
+    const BlockExprAST& block) {
   for (const auto& expr : block.getBody()) {
     SemanticContext::SourceFileGuard sourceFile(ctx_, expr->getSourceFileId());
     if (expr->getType() != ASTNodeType::ENUM_DEFINITION) continue;

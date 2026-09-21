@@ -39,7 +39,8 @@ using sun::semantic_analysis::SemanticContext;
 namespace sun::moon_bundling {
 namespace pbc = sun::proto::ast;
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 using sun::serialization::ASTSerializer;
@@ -132,9 +133,10 @@ void extractFunction(const FunctionAST& func, moon::ModuleMetadata& metadata,
 /**
  * Extract a class and add to metadata
  */
-void extractClass(const ClassDefinitionAST& cls, moon::ModuleMetadata& metadata,
-                  const ASTSerializer& serializer,
-                  sun::semantic_analysis::TypeRegistry* types = nullptr) {
+void extractClass(
+    const ClassDefinitionAST& cls, moon::ModuleMetadata& metadata,
+    const ASTSerializer& serializer,
+    const sun::semantic_analysis::AnalysisResults* analysis = nullptr) {
   // Serialize the class AST to proto
   pbc::ASTNode node = serializer.serialize(cls);
 
@@ -145,13 +147,14 @@ void extractClass(const ClassDefinitionAST& cls, moon::ModuleMetadata& metadata,
 
   // The writer verifies these candidates against the emitted code.
   for (const auto& [instanceId, specialization] : cls.getSpecializations()) {
-    if (!specialization || !types) continue;
-    const auto& declarations = types->declarations;
+    if (!specialization || !analysis) continue;
+    const auto& declarations = analysis->declarations;
     auto* candidate = classDef->add_compiled_specializations();
     candidate->set_declaration_key(
         PortableDeclarationKey::fromDeclaration(instanceId, declarations)
             .encoding());
-    for (const auto& method : types->getClass(instanceId)->getMethods()) {
+    for (const auto& method :
+         analysis->types->getClass(instanceId)->getMethods()) {
       if (method.isGeneric()) continue;
       candidate->add_method_symbols(PortableDeclarationKey::fromDeclaration(
                                         method.declarationId, declarations)
@@ -342,7 +345,7 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
     sun::semantic_analysis::SemanticAnalyzer& analyzer,
     const std::string& bundleHash) {
   auto& ctx = analyzer.context();
-  auto& declarations = ctx.types()->declarations;
+  auto& declarations = ctx.results().declarations;
   PortableDeclarationKey::assignOriginals(program, declarations, bundleHash);
   ASTSerializer serializer(
       {.declarations = &declarations, .include_location = true});
@@ -409,7 +412,7 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
             extractFunction(*function, temporary, serializer);
           } else if (auto* cls =
                          dynamic_cast<const ClassDefinitionAST*>(stmt.get())) {
-            extractClass(*cls, temporary, serializer, ctx.types().get());
+            extractClass(*cls, temporary, serializer, &ctx.results());
           } else if (auto* iface = dynamic_cast<const InterfaceDefinitionAST*>(
                          stmt.get())) {
             extractInterface(*iface, temporary, serializer);

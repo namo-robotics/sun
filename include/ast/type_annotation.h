@@ -126,22 +126,26 @@ struct TypeAnnotation {
   }
   /** Creates a type annotation from a name or an existing annotation. */
   TypeAnnotation(TypeAnnotation&&) = default;
-  /** Transfers the stored state from another instance during move assignment. */
+  /** Transfers the stored state from another instance during move assignment.
+   */
   TypeAnnotation& operator=(TypeAnnotation&&) = default;
 
   /** Reports whether this syntax node represents a raw-pointer annotation. */
   bool isRawPointer() const {
     return baseName == "raw_ptr";
   }  // raw_ptr<T> non-owning pointer for C interop
-  /** Reports whether this syntax node represents a static-pointer annotation. */
+  /** Reports whether this syntax node represents a static-pointer annotation.
+   */
   bool isStaticPointer() const {
     return baseName == "static_ptr";
   }  // static_ptr<T> pointer to immortal static data
-  /** Reports whether this syntax node represents a borrowed-reference annotation. */
+  /** Reports whether this syntax node represents a borrowed-reference
+   * annotation. */
   bool isReference() const {
     return baseName == "ref";
   }  // ref(T) reference type
-  /** Reports whether this syntax node represents a reference without write access. */
+  /** Reports whether this syntax node represents a reference without write
+   * access. */
   bool isConstReference() const { return isReference() && constRef; }
   /** Reports whether this syntax node represents a function definition. */
   bool isFunction() const {

@@ -590,7 +590,7 @@ TypePtr SemanticAnalyzer::resolveMemberType(
 
 TypePtr SemanticAnalyzer::resolveModuleReference(const ExprAST& expr) {
   auto id =
-      ctx_.types()->declarations.findPortable(*expr.getModuleDeclaration());
+      ctx_.results().declarations.findPortable(*expr.getModuleDeclaration());
   auto* module = ctx_.lookupModuleScope(id);
   ctx_.requireModuleAccessible(*module, expr.getLocation());
   return Types::Module(

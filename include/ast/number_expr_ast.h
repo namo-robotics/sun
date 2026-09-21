@@ -39,17 +39,20 @@ class NumberExprAST : public ExprAST {
   std::string suffix_;
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   NumberExprAST(uint64_t magnitude, Sign sign, std::string suffix = "")
       : value_(
             IntegerValue{magnitude, sign == Sign::Negative && magnitude != 0}),
         suffix_(std::move(suffix)) {}
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   explicit NumberExprAST(int64_t intVal)
       : NumberExprAST(intVal < 0 ? uint64_t(0) - static_cast<uint64_t>(intVal)
                                  : static_cast<uint64_t>(intVal),
                       intVal < 0 ? Sign::Negative : Sign::Positive) {}
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   explicit NumberExprAST(double floatVal, std::string suffix = "")
       : value_(floatVal), suffix_(std::move(suffix)) {}
   /** Returns the syntax-node kind used to dispatch tree visitors. */

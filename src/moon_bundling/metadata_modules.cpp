@@ -3,7 +3,6 @@
 #include "ast.pb.h"
 #include "moon_bundling/metadata_types.h"
 
-
 using sun::semantic_analysis::ModuleScope;
 using sun::semantic_analysis::SemanticContext;
 
@@ -11,10 +10,12 @@ using sun::semantic_analysis::SemanticContext;
 namespace sun::moon_bundling {
 
 /** Names the guard that restores semantic scope after metadata lookup. */
-using ScopeSwitchGuard = sun::semantic_analysis::SemanticContext::ScopeSwitchGuard;
+using ScopeSwitchGuard =
+    sun::semantic_analysis::SemanticContext::ScopeSwitchGuard;
 namespace pbc = sun::proto::ast;
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 /** Stores local declaration spellings that can shadow imported names. */
 using Names = std::set<std::string>;
@@ -36,7 +37,8 @@ std::string moduleSpelling(const pbc::ASTNode& node) {
   return "";
 }
 
-/** Records declaration names that shadow imported names in the current scope. */
+/** Records declaration names that shadow imported names in the current scope.
+ */
 void addLocal(const pbc::ASTNode& node, Names& locals) {
   if (node.has_variable_creation())
     locals.insert(node.variable_creation().name());
@@ -77,7 +79,7 @@ void bindModules(google::protobuf::Message& message, SemanticContext& ctx,
         node.set_module_declaration_key(
             sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
                 static_cast<const ModuleScope&>(*module).declarationId,
-                ctx.types()->declarations)
+                ctx.results().declarations)
                 .encoding());
         auto target = use.is_module_import() ? "*" : use.target();
         ctx.addUsingImport(sun::semantic_analysis::UsingImport(
@@ -100,7 +102,7 @@ void bindModules(google::protobuf::Message& message, SemanticContext& ctx,
         node.set_module_declaration_key(
             sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
                 static_cast<const ModuleScope&>(*module).declarationId,
-                ctx.types()->declarations)
+                ctx.results().declarations)
                 .encoding());
         return;
       }

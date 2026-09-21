@@ -8,13 +8,14 @@
 #include "codegen/codegen_visitor.h"
 #include "driver/driver.h"
 #include "parsing/parser.h"
+#include "semantic_analysis/analysis_results.h"
 #include "semantic_analysis/callable_signature.h"
 #include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/passes/declaration_identity_pass.h"
-#include "semantic_analysis/type_registry.h"
 #include "serialization/ast_deserializer.h"
 #include "serialization/ast_serializer.h"
 
+using sun::semantic_analysis::AnalysisResults;
 using sun::semantic_analysis::CallableSignature;
 using sun::semantic_analysis::DeclarationId;
 using sun::semantic_analysis::DeclarationKind;
@@ -205,17 +206,16 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   auto second = driver->analyzeString("function f() i32 { return 2; }");
   ASSERT_FALSE(first.error);
   ASSERT_FALSE(second.error);
-  ASSERT_TRUE(first.typeRegistry);
-  ASSERT_TRUE(second.typeRegistry);
-  EXPECT_NE(first.typeRegistry, second.typeRegistry);
+  ASSERT_TRUE(first.results->types);
+  ASSERT_TRUE(second.results->types);
+  EXPECT_NE(first.results->types, second.results->types);
   driver.reset();
   const auto& function = *first.ast->getBody()[0];
-  EXPECT_EQ(
-      first.typeRegistry->declarations.get(function.getDeclarationId()).name,
-      "f");
+  EXPECT_EQ(first.results->declarations.get(function.getDeclarationId()).name,
+            "f");
   EXPECT_FALSE(function.declarationIdentity().session.expired());
-  EXPECT_ANY_THROW(DeclarationIdentityPass(second.typeRegistry->declarations)
-                       .run(*first.ast));
+  EXPECT_ANY_THROW(
+      DeclarationIdentityPass(second.results->declarations).run(*first.ast));
 }
 
 TEST(Tooling_Frontend_DeclarationIdentity, nominal_types_precede_names) {
@@ -223,8 +223,9 @@ TEST(Tooling_Frontend_DeclarationIdentity, nominal_types_precede_names) {
     function work(x: i32) void { class Local {} }
     function work(x: bool) void { class Local {} }
   )");
-  TypeRegistry types;
-  DeclarationIdentityPass(types.declarations).run(*ast);
+  AnalysisResults results;
+  TypeRegistry& types = *results.types;
+  DeclarationIdentityPass(results.declarations).run(*ast);
   auto& first = static_cast<FunctionAST&>(*ast->getBody()[0]);
   auto& second = static_cast<FunctionAST&>(*ast->getBody()[1]);
   auto a = first.getBody().getBody()[0]->getDeclarationId();
@@ -239,14 +240,16 @@ TEST(Tooling_Frontend_DeclarationIdentity, nominal_types_precede_names) {
 }
 
 TEST(Tooling_Frontend_DeclarationIdentity, nominal_types_distinguish_sessions) {
-  TypeRegistry first;
-  TypeRegistry second;
-  auto a = first.declarations.add(DeclarationKind::Interface, "Local");
-  auto b = second.declarations.add(DeclarationKind::Interface, "Local");
+  AnalysisResults firstResults;
+  TypeRegistry& first = *firstResults.types;
+  AnalysisResults secondResults;
+  TypeRegistry& second = *secondResults.types;
+  auto a = firstResults.declarations.add(DeclarationKind::Interface, "Local");
+  auto b = secondResults.declarations.add(DeclarationKind::Interface, "Local");
   ASSERT_EQ(a, b);
   EXPECT_FALSE(first.getInterface(a)->equals(*second.getInterface(b)));
-  auto e = first.declarations.add(DeclarationKind::Enum, "Value");
-  auto f = first.declarations.add(DeclarationKind::Enum, "Value");
+  auto e = firstResults.declarations.add(DeclarationKind::Enum, "Value");
+  auto f = firstResults.declarations.add(DeclarationKind::Enum, "Value");
   EXPECT_FALSE(first.getEnum(e)->equals(*first.getEnum(f)));
   EXPECT_ANY_THROW(first.getClass(a));
   EXPECT_ANY_THROW(first.getEnum(DeclarationId{}));
@@ -255,21 +258,22 @@ TEST(Tooling_Frontend_DeclarationIdentity, nominal_types_distinguish_sessions) {
 TEST(Tooling_Frontend_DeclarationIdentity,
      generated_function_preparation_belongs_to_pipeline) {
   auto ast = parse("function work(x: i32) i32 { return x; }");
-  auto types = std::make_shared<TypeRegistry>();
-  SemanticAnalyzer analyzer(types);
+  auto results = std::make_shared<AnalysisResults>();
+  auto types = results->types;
+  SemanticAnalyzer analyzer(results);
   auto& function = static_cast<FunctionAST&>(*ast->getBody()[0]);
   analyzer.pipeline().prepareGenerated(function, std::vector<std::string>{},
                                        {});
   auto id = function.getDeclarationId();
   ASSERT_TRUE(id);
-  auto count = types->declarations.size();
+  auto count = results->declarations.size();
   auto info = analyzer.getFunctionInfo(function);
   EXPECT_EQ(info.declarationId, id);
-  EXPECT_EQ(types->declarations.size(), count);
+  EXPECT_EQ(results->declarations.size(), count);
   analyzer.pipeline().prepareGenerated(function, std::vector<std::string>{},
                                        {});
   EXPECT_EQ(function.getDeclarationId(), id);
-  EXPECT_EQ(types->declarations.size(), count);
+  EXPECT_EQ(results->declarations.size(), count);
 }
 
 TEST(Tooling_Frontend_DeclarationIdentity,
@@ -311,8 +315,8 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   const auto& second = static_cast<const ModuleAST&>(*result.ast->getBody()[1]);
   auto firstId = first.getBody().getBody()[0]->getDeclarationId();
   auto secondId = second.getBody().getBody()[0]->getDeclarationId();
-  auto firstType = result.typeRegistry->getInterface(firstId);
-  auto secondType = result.typeRegistry->getInterface(secondId);
+  auto firstType = result.results->types->getInterface(firstId);
+  auto secondType = result.results->types->getInterface(secondId);
   EXPECT_NE(firstType, secondType);
   EXPECT_FALSE(firstType->equals(*secondType));
   EXPECT_EQ(firstType->getDeclarationId(), firstId);
@@ -321,13 +325,14 @@ TEST(Tooling_Frontend_DeclarationIdentity,
 
 TEST(Tooling_Frontend_DeclarationIdentity,
      specialization_keys_distinguish_nominal_arguments_and_templates) {
-  TypeRegistry types;
-  auto templateId = types.declarations.add(DeclarationKind::Class, "Box");
-  auto otherTemplate = types.declarations.add(DeclarationKind::Class, "Box");
+  AnalysisResults results;
+  TypeRegistry& types = *results.types;
+  auto templateId = results.declarations.add(DeclarationKind::Class, "Box");
+  auto otherTemplate = results.declarations.add(DeclarationKind::Class, "Box");
   auto first =
-      types.getClass(types.declarations.add(DeclarationKind::Class, "Local"));
+      types.getClass(results.declarations.add(DeclarationKind::Class, "Local"));
   auto second =
-      types.getClass(types.declarations.add(DeclarationKind::Class, "Local"));
+      types.getClass(results.declarations.add(DeclarationKind::Class, "Local"));
   SpecializationKey key{templateId, {}, {first}, std::nullopt};
   auto instance = types.specialize(key);
   EXPECT_EQ(types.specialize(key), instance);
@@ -335,8 +340,8 @@ TEST(Tooling_Frontend_DeclarationIdentity,
             instance);
   EXPECT_NE(types.specialize({otherTemplate, {}, {first}, std::nullopt}),
             instance);
-  ASSERT_TRUE(types.declarations.get(instance).specialization);
-  EXPECT_EQ(types.declarations.get(instance).specialization->source,
+  ASSERT_TRUE(results.declarations.get(instance).specialization);
+  EXPECT_EQ(results.declarations.get(instance).specialization->source,
             templateId);
   first->addField("recursive", Types::Reference(first));
   EXPECT_EQ(types.specialize(key), instance);
@@ -344,9 +349,10 @@ TEST(Tooling_Frontend_DeclarationIdentity,
 
 TEST(Tooling_Frontend_DeclarationIdentity,
      specialization_keys_compare_structure_and_variadic_packs) {
-  TypeRegistry types;
-  auto source = types.declarations.add(DeclarationKind::Function, "work");
-  auto owner = types.declarations.add(DeclarationKind::Class, "Owner");
+  AnalysisResults results;
+  TypeRegistry& types = *results.types;
+  auto source = results.declarations.add(DeclarationKind::Function, "work");
+  auto owner = results.declarations.add(DeclarationKind::Class, "Owner");
   SpecializationKey key{
       source, {}, {Types::Reference(Types::Int32())}, std::nullopt};
   auto instance = types.specialize(key);
@@ -361,7 +367,7 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   equal.enclosing = owner;
   auto owned = types.specialize(equal);
   EXPECT_NE(owned, instance);
-  EXPECT_EQ(types.declarations.get(owned).owner, owner);
+  EXPECT_EQ(results.declarations.get(owned).owner, owner);
   equal = key;
   equal.variadic = std::vector<sun::types::TypePtr>{};
   auto emptyPack = types.specialize(equal);
@@ -383,17 +389,16 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   ASSERT_EQ(generic.getSpecializations().size(), 1u);
   const auto& [id, instance] = *generic.getSpecializations().begin();
   EXPECT_EQ(instance->getDeclarationId(), id);
-  EXPECT_EQ(result.typeRegistry->getClass(id)->getDeclarationId(), id);
-  EXPECT_EQ(result.typeRegistry->declarations.get(id).specialization->source,
+  EXPECT_EQ(result.results->types->getClass(id)->getDeclarationId(), id);
+  EXPECT_EQ(result.results->declarations.get(id).specialization->source,
             generic.getDeclarationId());
   for (const auto& method : instance->getMethods())
-    EXPECT_EQ(result.typeRegistry->declarations
-                  .get(method.function->getDeclarationId())
-                  .owner,
-              id);
+    EXPECT_EQ(
+        result.results->declarations.get(method.function->getDeclarationId())
+            .owner,
+        id);
   for (const auto& field : instance->getFields())
-    EXPECT_EQ(result.typeRegistry->declarations.get(field.declaration.id).owner,
-              id);
+    EXPECT_EQ(result.results->declarations.get(field.declaration.id).owner, id);
 }
 
 TEST(Tooling_Frontend_DeclarationIdentity,
@@ -408,7 +413,7 @@ TEST(Tooling_Frontend_DeclarationIdentity,
       static_cast<const ClassDefinitionAST&>(*result.ast->getBody()[0]);
   ASSERT_EQ(generic.getSpecializations().size(), 1u);
   const auto id = generic.getSpecializations().begin()->first;
-  auto type = result.typeRegistry->getClass(id);
+  auto type = result.results->types->getClass(id);
   ASSERT_EQ(type->getFields().size(), 1u);
   auto next = std::static_pointer_cast<sun::types::RawPointerType>(
       type->getFields()[0].type);
@@ -417,13 +422,14 @@ TEST(Tooling_Frontend_DeclarationIdentity,
 
 TEST(Tooling_Frontend_DeclarationIdentity,
      interface_conformance_uses_session_ids) {
-  TypeRegistry types;
+  AnalysisResults results;
+  TypeRegistry& types = *results.types;
   auto first = types.getInterface(
-      types.declarations.add(DeclarationKind::Interface, "Readable"));
+      results.declarations.add(DeclarationKind::Interface, "Readable"));
   auto second = types.getInterface(
-      types.declarations.add(DeclarationKind::Interface, "Readable"));
+      results.declarations.add(DeclarationKind::Interface, "Readable"));
   auto implementation =
-      types.getClass(types.declarations.add(DeclarationKind::Class, "Value"));
+      types.getClass(results.declarations.add(DeclarationKind::Class, "Value"));
   implementation->addImplementedInterface(*first);
   EXPECT_TRUE(implementation->implementsInterface(*first));
   EXPECT_FALSE(implementation->implementsInterface(*second));
@@ -432,9 +438,10 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   implementation->markStaticOnlyInterface(*first);
   EXPECT_FALSE(implementation->convertibleToInterface(*first));
   EXPECT_TRUE(implementation->implementsInterface(*first));
-  TypeRegistry other;
+  AnalysisResults otherResults;
+  TypeRegistry& other = *otherResults.types;
   auto foreign = other.getInterface(
-      other.declarations.add(DeclarationKind::Interface, "Readable"));
+      otherResults.declarations.add(DeclarationKind::Interface, "Readable"));
   ASSERT_EQ(first->getDeclarationId(), foreign->getDeclarationId());
   EXPECT_FALSE(implementation->implementsInterface(*foreign));
   EXPECT_ANY_THROW(implementation->addImplementedInterface(*foreign));
@@ -442,16 +449,17 @@ TEST(Tooling_Frontend_DeclarationIdentity,
 
 TEST(Tooling_Frontend_DeclarationIdentity,
      abstract_arguments_use_binder_identity) {
-  TypeRegistry types;
+  AnalysisResults results;
+  TypeRegistry& types = *results.types;
   sun::ast::TypeParameter parameter("T");
-  auto a = types.declarations.add(DeclarationKind::TypeParameter, "T");
-  auto b = types.declarations.add(DeclarationKind::TypeParameter, "T");
-  auto first = parameter.toSunType(types.declarations, a);
-  auto repeated = parameter.toSunType(types.declarations, a);
-  auto second = parameter.toSunType(types.declarations, b);
+  auto a = results.declarations.add(DeclarationKind::TypeParameter, "T");
+  auto b = results.declarations.add(DeclarationKind::TypeParameter, "T");
+  auto first = parameter.toSunType(results.declarations, a);
+  auto repeated = parameter.toSunType(results.declarations, a);
+  auto second = parameter.toSunType(results.declarations, b);
   EXPECT_TRUE(first->equals(*repeated));
   EXPECT_FALSE(first->equals(*second));
-  auto source = types.declarations.add(DeclarationKind::Class, "Box");
+  auto source = results.declarations.add(DeclarationKind::Class, "Box");
   auto instance = types.specialize({source, {}, {first}, std::nullopt});
   EXPECT_EQ(instance, types.specialize({source, {}, {repeated}, std::nullopt}));
   EXPECT_NE(instance, types.specialize({source, {}, {second}, std::nullopt}));
@@ -509,8 +517,9 @@ TEST(Tooling_Frontend_DeclarationIdentity,
     module second { class Box<T> {} }
     function use(value: ref first.Box<i32>) void {}
   )");
-  auto types = std::make_shared<TypeRegistry>();
-  SemanticAnalyzer analyzer(types);
+  auto results = std::make_shared<AnalysisResults>();
+  auto types = results->types;
+  SemanticAnalyzer analyzer(results);
   analyzer.pipeline().run(*ast);
   const auto& first = static_cast<const ModuleAST&>(*ast->getBody()[0]);
   const auto& generic =
@@ -528,7 +537,7 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   EXPECT_NE(analyzer.generics().findGenericMethodAST(instance.get(), "echo"),
             nullptr);
   auto unknown =
-      types->getClass(types->declarations.add(DeclarationKind::Class, "Box"));
+      types->getClass(results->declarations.add(DeclarationKind::Class, "Box"));
   unknown->setQualifiedName({{"first"}, "Box"});
   EXPECT_EQ(analyzer.generics().lookupGenericClassOf(*unknown), nullptr);
   analyzer.context().exitScope();
@@ -540,8 +549,9 @@ TEST(Tooling_Frontend_DeclarationIdentity,
     function first() void { class Local { method echo<T>(x: T) T { return x; } } }
     function second() void { class Local { method echo<T>(x: T) T { return x; } } }
   )");
-  auto types = std::make_shared<TypeRegistry>();
-  SemanticAnalyzer analyzer(types);
+  auto results = std::make_shared<AnalysisResults>();
+  auto types = results->types;
+  SemanticAnalyzer analyzer(results);
   analyzer.pipeline().run(*ast);
   for (const auto& declaration : ast->getBody()) {
     const auto& function = static_cast<const FunctionAST&>(*declaration);
@@ -569,7 +579,7 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   ASSERT_FALSE(result.error);
   const auto& plain = static_cast<const sun::ast::EnumDefinitionAST&>(
       *result.ast->getBody()[0]);
-  auto plainType = result.typeRegistry->getEnum(plain.getDeclarationId());
+  auto plainType = result.results->types->getEnum(plain.getDeclarationId());
   for (size_t i = 0; i < plain.getVariants().size(); ++i)
     EXPECT_EQ(plainType->getVariants()[i].declarationId,
               plain.getVariants()[i].declaration.id);
@@ -581,7 +591,7 @@ TEST(Tooling_Frontend_DeclarationIdentity,
     for (size_t i = 0; i < type->getVariants().size(); ++i) {
       auto variantId = type->getVariants()[i].declarationId;
       EXPECT_TRUE(variants.insert(variantId).second);
-      const auto& record = result.typeRegistry->declarations.get(variantId);
+      const auto& record = result.results->declarations.get(variantId);
       EXPECT_EQ(record.owner, id);
       EXPECT_EQ(record.origin, generic.getVariants()[i].declaration.id);
     }
@@ -639,7 +649,7 @@ TEST(Tooling_Frontend_DeclarationIdentity, captures_follow_analysis_lifetime) {
   ASSERT_EQ(proto.getCaptures().size(), 1u);
   const auto capture = proto.getCaptures()[0];
   const auto id = lambda->getDeclarationId();
-  EXPECT_EQ(first.typeRegistry->declarations.get(capture.declarationId).name,
+  EXPECT_EQ(first.results->declarations.get(capture.declarationId).name,
             "value");
   EXPECT_TRUE(capture.type->equals(*Types::Int32()));
 
@@ -654,10 +664,10 @@ TEST(Tooling_Frontend_DeclarationIdentity, captures_follow_analysis_lifetime) {
   ASSERT_FALSE(second.error);
   driver.reset();
   EXPECT_EQ(proto.getCaptures()[0].declarationId, capture.declarationId);
-  EXPECT_EQ(first.typeRegistry->declarations.get(capture.declarationId).name,
+  EXPECT_EQ(first.results->declarations.get(capture.declarationId).name,
             "value");
   EXPECT_FALSE(proto.declarationIdentity().session.expired());
-  EXPECT_NE(first.typeRegistry, second.typeRegistry);
+  EXPECT_NE(first.results->types, second.results->types);
 
   sun::semantic_analysis::passes::clearComputedAnalysis(*first.ast);
   EXPECT_EQ(lambda->getDeclarationId(), id);
@@ -677,19 +687,20 @@ TEST(Tooling_Frontend_DeclarationIdentity, captures_follow_analysis_lifetime) {
 
 TEST(Tooling_Frontend_DeclarationIdentity,
      vtables_distinguish_ids_and_sessions) {
-  auto types = std::make_shared<TypeRegistry>();
-  auto classId = types->declarations.add(DeclarationKind::Class, "Box");
-  auto firstId = types->declarations.add(DeclarationKind::Interface, "View");
-  auto secondId = types->declarations.add(DeclarationKind::Interface, "View");
+  auto results = std::make_shared<AnalysisResults>();
+  auto types = results->types;
+  auto classId = results->declarations.add(DeclarationKind::Class, "Box");
+  auto firstId = results->declarations.add(DeclarationKind::Interface, "View");
+  auto secondId = results->declarations.add(DeclarationKind::Interface, "View");
   auto cls = types->getClass(classId, {{}, "Box"});
   auto first = types->getInterface(firstId, {{}, "View"});
   auto second = types->getInterface(secondId, {{}, "View"});
   uint64_t ordinal = 1;
   for (auto id : {classId, firstId, secondId})
-    types->declarations.bindPortable(
+    results->declarations.bindPortable(
         id, PortableDeclarationKey::original(std::string(64, 'a'), ordinal++));
   sun::codegen::CodegenContext context("vtable_identity", nullptr);
-  sun::codegen::CodegenVisitor gen(context, types);
+  sun::codegen::CodegenVisitor gen(context, results);
   auto& classes = gen.classGenerator();
   auto* firstTable = classes.getOrCreateInterfaceVtable(cls.get(), first.get());
   auto* secondTable =
@@ -698,10 +709,13 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   EXPECT_EQ(firstTable,
             classes.getOrCreateInterfaceVtable(cls.get(), first.get()));
 
-  TypeRegistry foreign;
-  auto foreignClassId = foreign.declarations.add(DeclarationKind::Class, "Box");
+  AnalysisResults foreignResults;
+
+  TypeRegistry& foreign = *foreignResults.types;
+  auto foreignClassId =
+      foreignResults.declarations.add(DeclarationKind::Class, "Box");
   auto foreignInterfaceId =
-      foreign.declarations.add(DeclarationKind::Interface, "View");
+      foreignResults.declarations.add(DeclarationKind::Interface, "View");
   auto foreignClass = foreign.getClass(foreignClassId, {{}, "Box"});
   auto foreignInterface =
       foreign.getInterface(foreignInterfaceId, {{}, "View"});
@@ -721,8 +735,9 @@ TEST(Tooling_Frontend_DeclarationIdentity,
       interface View<T> { method get() T; }
     }
   )");
-  auto types = std::make_shared<TypeRegistry>();
-  SemanticAnalyzer analyzer(types);
+  auto results = std::make_shared<AnalysisResults>();
+  auto types = results->types;
+  SemanticAnalyzer analyzer(results);
   analyzer.pipeline().run(*ast);
   const auto& function = static_cast<const FunctionAST&>(*ast->getBody()[0]);
   const auto& enumeration = *function.getBody().getBody()[0];
@@ -733,9 +748,9 @@ TEST(Tooling_Frontend_DeclarationIdentity,
       analyzer.context().lookupGenericInterface(interface.getDeclarationId());
   ASSERT_NE(enumInfo, nullptr);
   ASSERT_NE(interfaceInfo, nullptr);
-  auto binder = types->declarations.add(DeclarationKind::TypeParameter, "U");
+  auto binder = results->declarations.add(DeclarationKind::TypeParameter, "U");
   auto argument =
-      Types::TypeParameter("U", {}, binder, types->declarations.session());
+      Types::TypeParameter("U", {}, binder, results->declarations.session());
   auto abstractEnum =
       analyzer.generics().instantiateGenericEnum(*enumInfo, {argument});
   auto abstractInterface = analyzer.generics().instantiateGenericInterface(
@@ -768,9 +783,11 @@ TEST(Tooling_Frontend_DeclarationIdentity,
         borrowed));
     EXPECT_EQ(variant->getBody()[0]->getResolvedType(), borrowed);
   }
-  TypeRegistry foreign;
-  EXPECT_ANY_THROW(borrowed->sourceDeclaration(foreign.declarations));
-  EXPECT_ANY_THROW(abstractInterface->sourceDeclaration(foreign.declarations));
+  AnalysisResults foreignResults;
+  TypeRegistry& foreign = *foreignResults.types;
+  EXPECT_ANY_THROW(borrowed->sourceDeclaration(foreignResults.declarations));
+  EXPECT_ANY_THROW(
+      abstractInterface->sourceDeclaration(foreignResults.declarations));
 }
 
 TEST(Tooling_Frontend_DeclarationIdentity,
@@ -870,8 +887,9 @@ TEST(Tooling_Frontend_DeclarationIdentity,
 
 TEST(Tooling_Frontend_DeclarationIdentity,
      visibility_follows_module_ids_instead_of_qualified_names) {
-  TypeRegistry types;
-  auto& table = types.declarations;
+  AnalysisResults results;
+  TypeRegistry& types = *results.types;
+  auto& table = results.declarations;
   auto library = table.module("library");
   auto child = table.module("nested", library);
   auto unrelated = table.module("unrelated");
@@ -904,9 +922,10 @@ TEST(Tooling_Frontend_DeclarationIdentity,
 
 TEST(Tooling_Frontend_DeclarationIdentity,
      overload_keys_use_exact_type_identity) {
-  TypeRegistry types;
-  auto firstId = types.declarations.add(DeclarationKind::Class, "Same");
-  auto secondId = types.declarations.add(DeclarationKind::Class, "Same");
+  AnalysisResults results;
+  TypeRegistry& types = *results.types;
+  auto firstId = results.declarations.add(DeclarationKind::Class, "Same");
+  auto secondId = results.declarations.add(DeclarationKind::Class, "Same");
   auto first = types.getClass(firstId, {{}, "Same"});
   auto second = types.getClass(secondId, {{}, "Same"});
   std::unordered_map<CallableSignature, int,

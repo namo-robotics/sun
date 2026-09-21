@@ -61,11 +61,13 @@ class DeclarationTable {
   DeclarationTable() = default;
   /** Disallows copying so the owned state cannot be duplicated. */
   DeclarationTable(const DeclarationTable&) = delete;
-  /** Disallows assignment so ownership and object identity cannot be duplicated. */
+  /** Disallows assignment so ownership and object identity cannot be
+   * duplicated. */
   DeclarationTable& operator=(const DeclarationTable&) = delete;
   /** Creates an instance with its default state. */
   DeclarationTable(DeclarationTable&&) = default;
-  /** Transfers the stored state from another instance during move assignment. */
+  /** Transfers the stored state from another instance during move assignment.
+   */
   DeclarationTable& operator=(DeclarationTable&&) = default;
 
   /** Identify this session even after a previous table has been destroyed. */

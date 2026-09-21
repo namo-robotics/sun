@@ -15,7 +15,8 @@ using sun::support::logAndThrowError;
 
 /** Provides the ordered preparation and registration passes for analysis. */
 namespace sun::semantic_analysis::passes {
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /** Register one imported binder or allocate a new source binder. */
@@ -345,7 +346,8 @@ void DeclarationIdentityPass::run(const ExprAST& root, DeclarationId owner,
   });
 }
 
-/** Clears computed annotations throughout the tree while retaining declaration identities. */
+/** Clears computed annotations throughout the tree while retaining declaration
+ * identities. */
 void clearComputedAnalysis(const ExprAST& root) {
   forEachChild(root,
                [](const ExprAST& child) { clearComputedAnalysis(child); });

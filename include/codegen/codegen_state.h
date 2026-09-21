@@ -29,7 +29,7 @@
 #include "codegen/codegen.h"
 #include "codegen/debug_info_builder.h"
 #include "codegen/llvm_type_resolver.h"
-#include "semantic_analysis/type_registry.h"
+#include "semantic_analysis/analysis_results.h"
 #include "types/types.h"
 
 /** Translates analyzed Sun programs into LLVM instructions. */
@@ -72,7 +72,10 @@ class CodegenState {
   // The module being built; always ctx.mainModule.get()
   llvm::Module* module;
 
-  // Class and interface types, shared with the semantic analyzer
+  // What analysis concluded about the program; codegen only reads it
+  std::shared_ptr<sun::semantic_analysis::AnalysisResults> analysis;
+
+  // Class and interface types; always analysis->types
   std::shared_ptr<sun::semantic_analysis::TypeRegistry> typeRegistry;
 
   // sun::types::Type -> llvm::Type conversion, with its own cache
@@ -84,26 +87,28 @@ class CodegenState {
   // Where the emitter currently is
   FunctionFrame frame;
 
-  /** Connects LLVM generation state to the semantic type registry. */
+  /** Connects LLVM generation state to the results of semantic analysis. */
   CodegenState(CodegenContext& ctx,
-               std::shared_ptr<sun::semantic_analysis::TypeRegistry> registry)
+               std::shared_ptr<sun::semantic_analysis::AnalysisResults> results)
       : ctx(ctx),
         module(ctx.mainModule.get()),
-        typeRegistry(std::move(registry)),
+        analysis(std::move(results)),
+        typeRegistry(analysis->types),
         typeResolver(ctx.getContext(), &ctx.mainModule->getDataLayout()),
         debugInfo(ctx.mainModule.get(), ctx.debugInfoEnabled(),
                   ctx.optimizationEnabled()) {}
 
   /** Connects LLVM generation state to the semantic type registry. */
   CodegenState(const CodegenState&) = delete;
-  /** Disallows assignment so ownership and object identity cannot be duplicated. */
+  /** Disallows assignment so ownership and object identity cannot be
+   * duplicated. */
   CodegenState& operator=(const CodegenState&) = delete;
 
   /** Derive the linker spelling for an analyzed declaration and emission role.
    */
   std::string declarationSymbol(sun::semantic_analysis::DeclarationId id,
                                 const std::string& role = "function") const {
-    const auto& table = typeRegistry->declarations;
+    const auto& table = analysis->declarations;
     const auto& record = table.get(id);
     if (role == "function" && record.name == "main" && !record.owner)
       return "main";
@@ -126,7 +131,8 @@ class CodegenState {
     llvm::Value* savedThisPtr;
     std::shared_ptr<sun::types::ClassType> savedClass;
 
-    /** Saves the active method receiver for restoration when the guard leaves scope. */
+    /** Saves the active method receiver for restoration when the guard leaves
+     * scope. */
     explicit ReceiverGuard(CodegenState& s)
         : state(s),
           savedThisPtr(s.frame.thisPtr),
@@ -136,9 +142,11 @@ class CodegenState {
       state.frame.thisPtr = savedThisPtr;
       state.frame.currentClass = savedClass;
     }
-    /** Saves the active method receiver for restoration when the guard leaves scope. */
+    /** Saves the active method receiver for restoration when the guard leaves
+     * scope. */
     ReceiverGuard(const ReceiverGuard&) = delete;
-    /** Disallows assignment so ownership and object identity cannot be duplicated. */
+    /** Disallows assignment so ownership and object identity cannot be
+     * duplicated. */
     ReceiverGuard& operator=(const ReceiverGuard&) = delete;
   };
 
@@ -152,21 +160,25 @@ class CodegenState {
     bool savedReturnsRef;
     llvm::Type* savedValueType;
 
-    /** Saves the active function return state for restoration when the guard leaves scope. */
+    /** Saves the active function return state for restoration when the guard
+     * leaves scope. */
     explicit ReturnGuard(CodegenState& s)
         : state(s),
           savedCanError(s.frame.canError),
           savedReturnsRef(s.frame.returnsRef),
           savedValueType(s.frame.valueType) {}
-    /** Restores the previous function return state when the guard leaves scope. */
+    /** Restores the previous function return state when the guard leaves scope.
+     */
     ~ReturnGuard() {
       state.frame.canError = savedCanError;
       state.frame.returnsRef = savedReturnsRef;
       state.frame.valueType = savedValueType;
     }
-    /** Saves the active function return state for restoration when the guard leaves scope. */
+    /** Saves the active function return state for restoration when the guard
+     * leaves scope. */
     ReturnGuard(const ReturnGuard&) = delete;
-    /** Disallows assignment so ownership and object identity cannot be duplicated. */
+    /** Disallows assignment so ownership and object identity cannot be
+     * duplicated. */
     ReturnGuard& operator=(const ReturnGuard&) = delete;
   };
 
@@ -191,7 +203,8 @@ class CodegenState {
     }
     /** Saves the current LLVM insertion point for later restoration. */
     InsertPointGuard(const InsertPointGuard&) = delete;
-    /** Disallows assignment so ownership and object identity cannot be duplicated. */
+    /** Disallows assignment so ownership and object identity cannot be
+     * duplicated. */
     InsertPointGuard& operator=(const InsertPointGuard&) = delete;
   };
 };

@@ -68,7 +68,8 @@ class ManifestAST : public ExprAST {
   std::vector<ManifestSunDependency> testSuns;
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   ManifestAST(std::vector<ManifestSunDependency> suns,
               std::vector<ManifestMoonDependency> moons,
               std::vector<ManifestProtoDependency> protos = {},

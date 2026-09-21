@@ -11,7 +11,8 @@ using sun::codegen::abi::ArgLowering;
 /** Lowers C calls and values using the System V x86-64 calling convention. */
 namespace sun::codegen::abi::sysv {
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /**
@@ -120,12 +121,14 @@ llvm::Type* pieceType(const EightbyteInfo& eb, llvm::LLVMContext& ctx) {
   return llvm::IntegerType::get(ctx, static_cast<unsigned>(eb.usedBytes * 8));
 }
 
-/** Reports whether an LLVM type groups multiple values in an array or structure. */
+/** Reports whether an LLVM type groups multiple values in an array or
+ * structure. */
 bool isAggregate(llvm::Type* type) {
   return type && (type->isStructTy() || type->isArrayTy());
 }
 
-/** Chooses the target calling-convention representation of an aggregate value. */
+/** Chooses the target calling-convention representation of an aggregate value.
+ */
 ArgLowering lowerAggregate(llvm::Type* type, const llvm::DataLayout& dl) {
   ArgLowering result;
   result.type = type;

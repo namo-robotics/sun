@@ -32,7 +32,8 @@ using sun::types::unwrapRef;
 // Local helpers
 // -------------------------------------------------------------------
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /**
@@ -61,9 +62,9 @@ bool embedsEnumByValue(const TypePtr& type, const EnumType* self,
 
 /**
  * Unify a payload annotation against an argument type, binding directly
- * mentioned type parameters (T, raw_ptr&lt;T&gt;, static_ptr&lt;T&gt;). Nested generic
- * payloads contribute no bindings (annotate the target instead). Returns
- * false on a conflicting binding.
+ * mentioned type parameters (T, raw_ptr&lt;T&gt;, static_ptr&lt;T&gt;). Nested
+ * generic payloads contribute no bindings (annotate the target instead).
+ * Returns false on a conflicting binding.
  */
 bool unifyPayloadTypeParam(const sun::ast::TypeAnnotation& annot,
                            const TypePtr& argType,
@@ -402,7 +403,7 @@ void EnumAnalyzer::analyzeGenericEnumConstruction(
     TypePtr expected = unwrapRef(expectedType);
     if (expected && expected->isEnum()) {
       auto* et = static_cast<EnumType*>(expected.get());
-      if (et->sourceDeclaration(ctx_.types()->declarations) ==
+      if (et->sourceDeclaration(ctx_.results().declarations) ==
           genericInfo.AST->getDeclarationId()) {
         expectedEnum = et;
       }
@@ -466,7 +467,7 @@ bool EnumAnalyzer::tryAnalyzeGenericEnumUnitVariant(
   EnumType* expectedEnum = nullptr;
   if (expected && expected->isEnum()) {
     auto* et = static_cast<EnumType*>(expected.get());
-    if (et->sourceDeclaration(ctx_.types()->declarations) ==
+    if (et->sourceDeclaration(ctx_.results().declarations) ==
         genericEnum->AST->getDeclarationId()) {
       expectedEnum = et;
     }
@@ -544,7 +545,7 @@ void EnumAnalyzer::analyzeEnumMatch(sun::ast::MatchExprAST& matchExpr,
         const auto* genericEnum = ctx_.lookupGenericEnum(enumName);
         if (genericEnum) {
           if (genericEnum->AST->getDeclarationId() !=
-              enumType->sourceDeclaration(ctx_.types()->declarations)) {
+              enumType->sourceDeclaration(ctx_.results().declarations)) {
             logAndThrowError("Pattern does not match discriminant enum '" +
                                  enumType->getDisplayName() + "'",
                              arm.pattern->getLocation());
