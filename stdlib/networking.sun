@@ -40,15 +40,15 @@ public module std {
   // suppress_sigpipe (how each OS keeps a broken-pipe send from raising
   // SIGPIPE).
 
-  public var AF_INET: i32 = 2;
-  public var SOCK_STREAM: i32 = 1;
-  public var SOCK_DGRAM: i32 = 2;
-  public var SHUT_RDWR: i32 = 2;
-  public var INADDR_ANY: i32 = 0;
-  public var INADDR_LOOPBACK: i32 = 16777343;  // 127.0.0.1 in network byte order
-  public var IPPROTO_IP: i32 = 0;
-  var F_GETFL: i32 = 3;
-  var F_SETFL: i32 = 4;
+  public const AF_INET: i32 = 2;
+  public const SOCK_STREAM: i32 = 1;
+  public const SOCK_DGRAM: i32 = 2;
+  public const SHUT_RDWR: i32 = 2;
+  public const INADDR_ANY: i32 = 0;
+  public const INADDR_LOOPBACK: i32 = 16777343;  // 127.0.0.1 in network byte order
+  public const IPPROTO_IP: i32 = 0;
+  const F_GETFL: i32 = 3;
+  const F_SETFL: i32 = 4;
 
   /**
    * Report whether an errno value means a non-blocking operation would block.

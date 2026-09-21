@@ -24,7 +24,7 @@
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
   // Cap on total request header size
-  public var HTTP_MAX_REQUEST: i64 = 65536;
+  public const HTTP_MAX_REQUEST: i64 = 65536;
 
   // -------------------------------------------------------------------
   // HttpRequest - parsed request handed to the handler

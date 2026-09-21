@@ -23,21 +23,21 @@ public module tls {
   using std;
 
   // SSL_CTX_set_verify mode
-  var SSL_VERIFY_PEER: i32 = 1;
+  const SSL_VERIFY_PEER: i32 = 1;
   // SSL_ctrl command + argument implementing the SSL_set_tlsext_host_name
   // macro (SNI); values are ABI-stable OpenSSL constants.
-  var SSL_CTRL_SET_TLSEXT_HOSTNAME: i32 = 55;
-  var TLSEXT_NAMETYPE_HOST_NAME: i64 = 0;
+  const SSL_CTRL_SET_TLSEXT_HOSTNAME: i32 = 55;
+  const TLSEXT_NAMETYPE_HOST_NAME: i64 = 0;
   // SSL_get_verify_result success
-  var X509_V_OK: i64 = 0;
+  const X509_V_OK: i64 = 0;
   // SSL_get_error codes
-  var SSL_ERROR_ZERO_RETURN: i32 = 6;
-  var SSL_ERROR_SYSCALL: i32 = 5;
-  var SSL_ERROR_SSL: i32 = 1;
+  const SSL_ERROR_ZERO_RETURN: i32 = 6;
+  const SSL_ERROR_SYSCALL: i32 = 5;
+  const SSL_ERROR_SSL: i32 = 1;
   // ERR_GET_REASON(code) == code & 0x7FFFFF (OpenSSL 3.x packing)
-  var OPENSSL_REASON_MASK: u64 = 8388607;
+  const OPENSSL_REASON_MASK: u64 = 8388607;
   // SSL_R_UNEXPECTED_EOF_WHILE_READING
-  var SSL_REASON_UNEXPECTED_EOF: u64 = 294;
+  const SSL_REASON_UNEXPECTED_EOF: u64 = 294;
 
   /**
    * Error carrying the OpenSSL error-queue text (or the X.509 verification

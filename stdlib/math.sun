@@ -2,11 +2,11 @@
 /** Provides the standard-library declarations implemented in this source file. */
 public module std {
   // Numeric limits
-  public var I64_MAX: i64 = 9223372036854775807;
-  public var I64_MIN: i64 = -9223372036854775807 - 1;
-  public var F64_MAX: f64 = 1.7976931348623157e308;
-  public var F64_MIN_POSITIVE: f64 = 2.2250738585072014e-308;  // smallest normal
-  public var F64_EPSILON: f64 = 2.220446049250313e-16;
+  public const I64_MAX: i64 = 9223372036854775807;
+  public const I64_MIN: i64 = -9223372036854775807 - 1;
+  public const F64_MAX: f64 = 1.7976931348623157e308;
+  public const F64_MIN_POSITIVE: f64 = 2.2250738585072014e-308;  // smallest normal
+  public const F64_EPSILON: f64 = 2.220446049250313e-16;
 
   /**
    * Return whichever of the two values is smaller.

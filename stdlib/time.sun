@@ -14,9 +14,9 @@
 public module std.time {
   // clockid_t values. CLOCK_REALTIME is 0 everywhere; CLOCK_MONOTONIC
   // differs per OS and lives in target_<os>.sun.
-  var CLOCK_REALTIME: i32 = 0;
+  const CLOCK_REALTIME: i32 = 0;
 
-  var NANOS_PER_SEC: i64 = 1000000000;
+  const NANOS_PER_SEC: i64 = 1000000000;
 
   /**
    * A length of time. Always non-negative: subtracting a later instant from

@@ -32,24 +32,24 @@ public module std {
   }
 
   // Descriptor flags and the errno used for non-blocking operations.
-  var O_NONBLOCK: i32 = 4;
-  var WOULD_BLOCK_ERRNO: i32 = 35;
+  const O_NONBLOCK: i32 = 4;
+  const WOULD_BLOCK_ERRNO: i32 = 35;
   /** Native error code for an address that is already bound. */
-  var ADDRESS_IN_USE_ERRNO: i32 = 48;
+  const ADDRESS_IN_USE_ERRNO: i32 = 48;
 
   // setsockopt family. macOS has no MSG_NOSIGNAL — it folds to no flag at
   // all here — and marks the socket SO_NOSIGPIPE instead (below).
-  public var MSG_NOSIGNAL: i32 = 0;
-  public var SOL_SOCKET: i32 = 65535;  // 0xffff
-  public var SO_REUSEADDR: i32 = 4;
-  public var SO_RCVTIMEO: i32 = 4102;  // 0x1006
-  var SO_NOSIGPIPE: i32 = 4130;  // 0x1022
+  public const MSG_NOSIGNAL: i32 = 0;
+  public const SOL_SOCKET: i32 = 65535;  // 0xffff
+  public const SO_REUSEADDR: i32 = 4;
+  public const SO_RCVTIMEO: i32 = 4102;  // 0x1006
+  const SO_NOSIGPIPE: i32 = 4130;  // 0x1022
 
   // IPPROTO_IP-level options for IPv4 multicast.
-  public var IP_MULTICAST_TTL: i32 = 10;
-  public var IP_MULTICAST_LOOP: i32 = 11;
-  public var IP_ADD_MEMBERSHIP: i32 = 12;
-  public var IP_DROP_MEMBERSHIP: i32 = 13;
+  public const IP_MULTICAST_TTL: i32 = 10;
+  public const IP_MULTICAST_LOOP: i32 = 11;
+  public const IP_ADD_MEMBERSHIP: i32 = 12;
+  public const IP_DROP_MEMBERSHIP: i32 = 13;
 
   /**
    * Mark the socket so a send on a broken connection fails with EPIPE
@@ -63,41 +63,41 @@ public module std {
   // struct addrinfo: macOS puts ai_canonname before ai_addr, so ai_addr is
   // the 5th pointer-sized slot (byte 32). The full layout is documented at
   // the getaddrinfo declaration in sys.sun.
-  var ADDRINFO_ADDR_INDEX: i64 = 4;
+  const ADDRINFO_ADDR_INDEX: i64 = 4;
 }
 
 /** File and directory constants for macOS. */
 public module std.io {
   // open(2) composables: O_CREAT=0x200, O_TRUNC=0x400, O_APPEND=0x8, over
   // O_WRONLY=1.
-  var O_WRONLY_CREAT_TRUNC: i32 = 1537;  // 0x601
-  var O_WRONLY_CREAT_APPEND: i32 = 521;  // 0x209
+  const O_WRONLY_CREAT_TRUNC: i32 = 1537;  // 0x601
+  const O_WRONLY_CREAT_APPEND: i32 = 521;  // 0x209
 
   // struct dirent's fixed head: u64 d_ino, u64 d_seekoff, u16 d_reclen,
   // u16 d_namlen, u8 d_type at byte 20, then the d_name characters.
-  var DIRENT_TYPE_OFFSET: i64 = 20;
-  var DIRENT_NAME_OFFSET: i64 = 21;
+  const DIRENT_TYPE_OFFSET: i64 = 20;
+  const DIRENT_NAME_OFFSET: i64 = 21;
 }
 
 /** Clock constants for macOS. */
 public module std.time {
   // clockid_t: macOS numbers CLOCK_MONOTONIC 6.
-  var CLOCK_MONOTONIC: i32 = 6;
+  const CLOCK_MONOTONIC: i32 = 6;
 }
 
 /** Process signal constants for macOS. */
 public module std.process {
   // The job-control signals above 15, where Linux and macOS disagree.
-  public var SIGCHLD: i32 = 20;
-  public var SIGCONT: i32 = 19;
-  public var SIGSTOP: i32 = 17;
+  public const SIGCHLD: i32 = 20;
+  public const SIGCONT: i32 = 19;
+  public const SIGSTOP: i32 = 17;
 }
 
 /** Terminal line-discipline layout and request codes for macOS. */
 public module std.terminal {
   // c_lflag bit the kernel sets on a return to canonical mode; declared
   // ahead of Termios.equals, which masks it.
-  var PENDIN: u64 = 0x20000000;
+  const PENDIN: u64 = 0x20000000;
 
   /**
    * struct termios on macOS: four u64 flag words (tcflag_t is unsigned long),
@@ -149,23 +149,23 @@ public module std.terminal {
   }
 
   // c_lflag bits (sys/termios.h).
-  var ISIG: u64 = 0x80;
-  var ICANON: u64 = 0x100;
-  var ECHO: u64 = 0x8;
-  var IEXTEN: u64 = 0x400;
+  const ISIG: u64 = 0x80;
+  const ICANON: u64 = 0x100;
+  const ECHO: u64 = 0x8;
+  const IEXTEN: u64 = 0x400;
   // c_iflag and c_oflag bits.
-  var ICRNL: u64 = 0x100;
-  var IXON: u64 = 0x200;
-  var OPOST: u64 = 0x1;
+  const ICRNL: u64 = 0x100;
+  const IXON: u64 = 0x200;
+  const OPOST: u64 = 0x1;
   // Indexes into c_cc.
-  var VMIN: i64 = 16;
-  var VTIME: i64 = 17;
+  const VMIN: i64 = 16;
+  const VTIME: i64 = 17;
 
   // ioctl request codes (sys/ttycom.h, with the _IOR/_IOW direction bits).
   /** Read the window size into a struct winsize. */
-  public var TIOCGWINSZ: u64 = 0x40087468;
+  public const TIOCGWINSZ: u64 = 0x40087468;
   /** Set the window size from a struct winsize. */
-  public var TIOCSWINSZ: u64 = 0x80087467;
+  public const TIOCSWINSZ: u64 = 0x80087467;
   /** Make the terminal the calling session's controlling terminal. */
-  public var TIOCSCTTY: u64 = 0x20007461;
+  public const TIOCSCTTY: u64 = 0x20007461;
 }

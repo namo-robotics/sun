@@ -19,20 +19,20 @@ public module std.process {
   // Signal numbers. 1 through 15 agree between Linux's asm-generic set and
   // macOS; the job-control trio above 15 does not and lives in
   // target_<os>.sun.
-  public var SIGHUP: i32 = 1;
-  public var SIGINT: i32 = 2;
-  public var SIGQUIT: i32 = 3;
-  public var SIGKILL: i32 = 9;
-  public var SIGSEGV: i32 = 11;
-  public var SIGPIPE: i32 = 13;
-  public var SIGALRM: i32 = 14;
-  public var SIGTERM: i32 = 15;
+  public const SIGHUP: i32 = 1;
+  public const SIGINT: i32 = 2;
+  public const SIGQUIT: i32 = 3;
+  public const SIGKILL: i32 = 9;
+  public const SIGSEGV: i32 = 11;
+  public const SIGPIPE: i32 = 13;
+  public const SIGALRM: i32 = 14;
+  public const SIGTERM: i32 = 15;
 
   // waitpid options
-  public var WNOHANG: i32 = 1;
+  public const WNOHANG: i32 = 1;
 
-  var O_WRONLY: i32 = 1;
-  var O_RDONLY: i32 = 0;
+  const O_WRONLY: i32 = 1;
+  const O_RDONLY: i32 = 0;
 
   // -------------------------------------------------------------------
   // Identity

@@ -29,7 +29,7 @@ public module std.terminal {
   using std.io;
 
   /** tcsetattr timing: apply at once, keeping any input already typed. */
-  var TCSANOW: i32 = 0;
+  const TCSANOW: i32 = 0;
 
   /**
    * What the interrupt, quit and suspend keys do while a mode is active.
