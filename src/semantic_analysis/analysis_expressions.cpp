@@ -283,6 +283,8 @@ void SemanticAnalyzer::analyzeMemberAccess(
   if (objectType && objectType->isModule()) {
     const auto* moduleType =
         static_cast<const sun::types::ModuleType*>(objectType.get());
+    ensureModuleGlobalAnalyzed(moduleType->getModulePath(),
+                               memberAccess.getMemberName());
     SymbolMatch match = ctx_.findSymbolInModule(moduleType->getModulePath(),
                                                 memberAccess.getMemberName(),
                                                 SymbolKind::Variable);
@@ -329,6 +331,10 @@ void SemanticAnalyzer::analyzeMemberAccess(
 void SemanticAnalyzer::analyzeQualifiedName(
     sun::ast::QualifiedNameAST& qualName) {
   std::string fullName = qualName.getFullName();
+
+  if (auto dot = fullName.rfind('.'); dot != std::string::npos)
+    ensureModuleGlobalAnalyzed(fullName.substr(0, dot),
+                               fullName.substr(dot + 1));
 
   // Look up in namespaced variables first
   VariableInfo* varInfo = ctx_.lookupQualifiedVariable(fullName);

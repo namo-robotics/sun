@@ -160,6 +160,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, TypePtr expectedType) {
         break;
       }
       auto& varRef = static_cast<sun::ast::VariableReferenceAST&>(expr);
+      ensureGlobalAnalyzed(varRef.getName());
 
       // An expected function-pointer type selects one overload without
       // changing ordinary call-site overload resolution.

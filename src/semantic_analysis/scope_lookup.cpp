@@ -355,6 +355,49 @@ VariableInfo* SemanticScopeBase::lookupVariable(const std::string& name) {
 }
 
 // -------------------------------------------------------------------
+// findUnanalyzedGlobal — a global that is used before it is analyzed
+// -------------------------------------------------------------------
+UnanalyzedGlobal SemanticScopeBase::findUnanalyzedGlobal(
+    const std::string& name, const DeclarationTable& declarations) {
+  // The nearest scope that knows the name decides: a variable that is
+  // already declared there shadows any global further out.
+  enum class Probe { Unknown, Declared, Unanalyzed };
+  UnanalyzedGlobal unanalyzed;
+  auto probe = [&](SemanticScopeBase* scope) {
+    if (scope->variables.count(name)) return Probe::Declared;
+    DeclarationId id =
+        declarations.findGlobal(QualifiedName(scope->scopePath, name));
+    if (!id) return Probe::Unknown;
+    const sun::ast::ExprAST* astNode = declarations.get(id).astNode;
+    if (!astNode ||
+        astNode->getType() != sun::ast::ASTNodeType::VARIABLE_CREATION)
+      return Probe::Unknown;
+    auto& global = const_cast<sun::ast::VariableCreationAST&>(
+        static_cast<const sun::ast::VariableCreationAST&>(*astNode));
+    // Analysis gives a variable its type as its last step
+    if (global.getResolvedType()) return Probe::Unknown;
+    unanalyzed = {&global, scope};
+    return Probe::Unanalyzed;
+  };
+  for (auto* scope = this; scope != nullptr; scope = scope->parent) {
+    if (Probe result = probe(scope); result != Probe::Unknown)
+      return result == Probe::Unanalyzed ? unanalyzed : UnanalyzedGlobal{};
+    for (const auto& [childName, child] : scope->childModules) {
+      if (!child || child->getType() != ScopeType::Import) continue;
+      if (probe(child.get()) == Probe::Unanalyzed) return unanalyzed;
+    }
+    for (const auto& binding : scope->importBindings) {
+      if (!scope->admitsImport(binding.sourceFileId)) continue;
+      if (!binding.sourceScope ||
+          (!binding.isWildcard && binding.localName != name))
+        continue;
+      if (probe(binding.sourceScope) == Probe::Unanalyzed) return unanalyzed;
+    }
+  }
+  return {};
+}
+
+// -------------------------------------------------------------------
 // lookupGenericFunction — find a generic function in the scope chain
 // -------------------------------------------------------------------
 const GenericFunctionInfo* SemanticScopeBase::lookupGenericFunction(

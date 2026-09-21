@@ -213,6 +213,11 @@ class SemanticAnalyzer {
   // the builtin 'this lifetime may appear.
   bool allowThisLifetime_ = false;
 
+  // The globals whose initializers are being analyzed, outermost first.
+  // Asking for one that is already here is a cycle, and the list spells out
+  // the path. Empty before and after a program is analyzed.
+  std::vector<const sun::ast::VariableCreationAST *> globalsInProgress_;
+
   /**
    * Reject any lifetime name the annotation uses (recursively, through
    * element, parameter, return and argument positions) that is neither an
@@ -316,6 +321,40 @@ class SemanticAnalyzer {
    * Bindings and assignments (analysis_statements.cpp)
    */
   void analyzeVariableCreation(sun::ast::VariableCreationAST &varCreate);
+  /**
+   * Analyzes a variable declaration that is not tracked as a pending global:
+   * resolves its type, checks its initializer and declares it in the current
+   * scope.
+   */
+  void analyzeVariableDeclaration(sun::ast::VariableCreationAST &varCreate);
+  /**
+   * Analyzes a file-scope or module-scope variable once, whether the walk
+   * over the program reached it or an earlier use asked for it first.
+   * `scope` is the file or module scope that declares it. Reports a cycle
+   * when the variable's own initializer leads back to it.
+   */
+  void analyzeGlobal(sun::ast::VariableCreationAST &global,
+                     SemanticScope &scope);
+  /**
+   * Globals may be used before the line that declares them. If `name` refers
+   * to a global that has not been analyzed yet, analyzes its declaration now,
+   * in the scope it was declared in, so the lookup that follows finds it.
+   */
+  void ensureGlobalAnalyzed(const std::string &name);
+  /** The same, for a global named through its module: `module.name`. */
+  void ensureModuleGlobalAnalyzed(const std::string &modulePath,
+                                  const std::string &name);
+  /**
+   * Reports whether the declaration table tracks this node as a global of
+   * the current scope. A second declaration of a name is not tracked, and is
+   * reported as a duplicate when it is declared.
+   */
+  bool isTrackedGlobal(const sun::ast::VariableCreationAST &varCreate);
+  /**
+   * Registers an analyzed module variable under the module's qualified
+   * names, so `module.name` finds it.
+   */
+  void registerModuleVariable(sun::ast::VariableCreationAST &varCreate);
   /**
    * Resolves declarations and checks types in this variable assignment,
    * recording the results on its syntax nodes.

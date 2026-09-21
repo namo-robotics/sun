@@ -404,6 +404,7 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveNamedCallee(
     CallExprAST& callExpr, VariableReferenceAST& varRef,
     const std::vector<TypePtr>& argTypes) {
   CalleeResolution out;
+  sema_.ensureGlobalAnalyzed(varRef.getName());
   if (ctx_.currentScope().lookupVariable(varRef.getName())) {
     sema_.analyzeExpr(varRef);
     return out;

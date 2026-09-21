@@ -5,6 +5,10 @@
 
 #include <llvm/ADT/APSInt.h>
 
+#include <algorithm>
+#include <functional>
+#include <unordered_map>
+
 #include "semantic_analysis/type_analysis/type_checking.h"
 #include "types/enum_type.h"
 #include "types/type_utils.h"
@@ -97,14 +101,18 @@ std::string describeUnsupported(const ExprAST& expr) {
 // -------------------------------------------------------------------
 
 void ConstantEvaluator::evaluateGlobals(const sun::ast::BlockExprAST& block) {
+  decideGlobals(block);
+  checkStartupOrder(block);
+}
+
+void ConstantEvaluator::decideGlobals(const sun::ast::BlockExprAST& block) {
   for (const auto& node : block.getBody()) {
     switch (node->getType()) {
       case ASTNodeType::MODULE:
-        evaluateGlobals(
-            static_cast<const sun::ast::ModuleAST&>(*node).getBody());
+        decideGlobals(static_cast<const sun::ast::ModuleAST&>(*node).getBody());
         break;
       case ASTNodeType::MOON_SCOPE:
-        evaluateGlobals(
+        decideGlobals(
             static_cast<const sun::ast::MoonScopeAST&>(*node).getBody());
         break;
       case ASTNodeType::VARIABLE_CREATION: {
@@ -119,11 +127,90 @@ void ConstantEvaluator::evaluateGlobals(const sun::ast::BlockExprAST& block) {
   }
 }
 
+void ConstantEvaluator::collectInitializationOrder(
+    const sun::ast::BlockExprAST& block,
+    std::vector<const sun::ast::VariableCreationAST*>& order) const {
+  for (const auto& node : block.getBody()) {
+    switch (node->getType()) {
+      case ASTNodeType::MODULE:
+        collectInitializationOrder(
+            static_cast<const sun::ast::ModuleAST&>(*node).getBody(), order);
+        break;
+      case ASTNodeType::MOON_SCOPE:
+        collectInitializationOrder(
+            static_cast<const sun::ast::MoonScopeAST&>(*node).getBody(), order);
+        break;
+      case ASTNodeType::VARIABLE_CREATION:
+        order.push_back(
+            &static_cast<const sun::ast::VariableCreationAST&>(*node));
+        break;
+      default:
+        break;
+    }
+  }
+}
+
+const sun::ast::VariableCreationAST* ConstantEvaluator::findGlobalNode(
+    DeclarationId target) const {
+  if (!target) return nullptr;
+  const ExprAST* node = declarations_.get(target).astNode;
+  if (!node || node->getType() != ASTNodeType::VARIABLE_CREATION)
+    return nullptr;
+  return static_cast<const sun::ast::VariableCreationAST*>(node);
+}
+
+void ConstantEvaluator::checkStartupOrder(const sun::ast::BlockExprAST& block) {
+  std::vector<const sun::ast::VariableCreationAST*> order;
+  collectInitializationOrder(block, order);
+  std::unordered_map<const sun::ast::VariableCreationAST*, size_t> position;
+  for (size_t i = 0; i < order.size(); ++i) position[order[i]] = i;
+
+  // A library's globals and C globals are ready before any of these run.
+  auto initializedAtStartup = [](const sun::ast::VariableCreationAST& global) {
+    const GlobalInitRecord* decision = global.getGlobalInit();
+    return decision && decision->kind == GlobalInitKind::Startup &&
+           !global.isPrecompiled() && !global.isCExtern();
+  };
+
+  for (size_t i = 0; i < order.size(); ++i) {
+    const auto& reader = *order[i];
+    if (!initializedAtStartup(reader) || !reader.getValue()) continue;
+
+    // Only reads the initializer performs itself: a lambda's body runs
+    // whenever the lambda is called, which may be much later.
+    std::function<void(const ExprAST&)> visit = [&](const ExprAST& expr) {
+      if (expr.getType() == ASTNodeType::LAMBDA) return;
+      if (expr.getType() == ASTNodeType::VARIABLE_REFERENCE ||
+          expr.getType() == ASTNodeType::MEMBER_ACCESS ||
+          expr.getType() == ASTNodeType::QUALIFIED_NAME) {
+        const auto* read = findGlobalNode(expr.getTargetDeclarationId());
+        auto found = read ? position.find(read) : position.end();
+        if (found != position.end() && found->second > i &&
+            initializedAtStartup(*read)) {
+          sun::support::logAndThrowError(
+              "'" + reader.getName() + "' is initialized before '" +
+                  read->getName() + "', which it reads; move '" +
+                  read->getName() + "' above '" + reader.getName() + "'",
+              expr.getLocation());
+        }
+      }
+      const_cast<ExprAST&>(expr).forEachChildSlot(
+          [&](std::unique_ptr<ExprAST>& child) {
+            if (child) visit(*child);
+          });
+    };
+    visit(*reader.getValue());
+  }
+}
+
 const GlobalInitRecord& ConstantEvaluator::evaluateGlobalInitializer(
     const sun::ast::VariableCreationAST& global) {
   GlobalInitRecord record;
   record.isConst = global.isConst();
+  // Deciding this variable may interrupt the evaluation of one that reads it
+  std::optional<StartupReason> interrupted = std::move(blocker_);
   blocker_.reset();
+  deciding_.push_back(&global);
 
   std::optional<ConstantValue> value;
   if (global.isCExtern()) {
@@ -153,7 +240,8 @@ const GlobalInitRecord& ConstantEvaluator::evaluateGlobalInitializer(
                     global.getLocation());
     record.reason = std::move(blocker_);
   }
-  blocker_.reset();
+  blocker_ = std::move(interrupted);
+  deciding_.pop_back();
   global.setGlobalInit(std::move(record));
   return *global.getGlobalInit();
 }
@@ -267,11 +355,15 @@ std::optional<ConstantValue> ConstantEvaluator::evaluateGlobalRead(
     DeclarationId target, const std::string& name, const Position& position) {
   // The decision lives on the node that declares the variable being read.
   const GlobalInitRecord* record = nullptr;
-  if (target) {
-    const ExprAST* node = declarations_.get(target).node;
-    if (node && node->getType() == ASTNodeType::VARIABLE_CREATION)
-      record = static_cast<const sun::ast::VariableCreationAST&>(*node)
-                   .getGlobalInit();
+  if (const auto* global = findGlobalNode(target)) {
+    record = global->getGlobalInit();
+    // Globals may be read before the line that declares them, so the one
+    // read here may not have had its turn yet. Analysis has already refused
+    // a variable that depends on itself.
+    const bool beingDecided = std::find(deciding_.begin(), deciding_.end(),
+                                        global) != deciding_.end();
+    if (!record && !beingDecided && global->getResolvedType())
+      record = &evaluateGlobalInitializer(*global);
   }
   if (!record) {
     recordBlocker(

@@ -16,6 +16,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "ast.h"
 #include "semantic_analysis/constants/global_init.h"
@@ -30,6 +31,9 @@ class ConstantEvaluator {
   const DeclarationTable& declarations_;
   // The first obstacle met while evaluating the current initializer.
   std::optional<StartupReason> blocker_;
+  // The globals being decided, outermost first: deciding one may mean
+  // deciding a global declared further down that it reads.
+  std::vector<const sun::ast::VariableCreationAST*> deciding_;
 
  public:
   /**
@@ -43,7 +47,8 @@ class ConstantEvaluator {
   /**
    * Decides every file-scope variable in the block, in source order, looking
    * inside modules and bundle scopes. A variable that already has a decision
-   * is left alone.
+   * is left alone. Then checks the order of the variables left to startup
+   * (see checkStartupOrder).
    */
   void evaluateGlobals(const sun::ast::BlockExprAST& block);
 
@@ -55,6 +60,23 @@ class ConstantEvaluator {
       const sun::ast::VariableCreationAST& global);
 
  private:
+  /** Decides the variables of one block and of the modules inside it. */
+  void decideGlobals(const sun::ast::BlockExprAST& block);
+
+  /**
+   * Startup initializers run in source order, so one that directly reads a
+   * variable initialized later would see it still zeroed. Reports that as an
+   * error. A read hidden inside a called function is not detected.
+   */
+  void checkStartupOrder(const sun::ast::BlockExprAST& block);
+  /** Lists the block's variables in the order startup initializes them. */
+  void collectInitializationOrder(
+      const sun::ast::BlockExprAST& block,
+      std::vector<const sun::ast::VariableCreationAST*>& order) const;
+  /** The file-scope variable a name or `module.name` refers to, or null. */
+  const sun::ast::VariableCreationAST* findGlobalNode(
+      DeclarationId target) const;
+
   /**
    * The value of an analyzed expression, or nothing when it cannot be
    * computed; the obstacle is then recorded with recordBlocker.

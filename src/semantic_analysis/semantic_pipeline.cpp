@@ -22,12 +22,41 @@ void SemanticPipeline::run(sun::ast::BlockExprAST& block,
   if (declarationsReady) declarationsReady();
   declarationNamingPass_.run(block, context_.getCurrentScopePath(),
                              context_.isAtModuleLevel());
+  registerGlobals(block);
   declarationCollectionPass_.run(block);
   analyzer_.bodies().analyzeBlock(block);
   // Every expression now has its type and every name its declaration, which
   // is what evaluating the file-scope initializers needs.
   constants::ConstantEvaluator(context_.results().declarations)
       .evaluateGlobals(block);
+}
+
+void SemanticPipeline::registerGlobals(const sun::ast::BlockExprAST& block) {
+  for (const auto& node : block.getBody()) {
+    switch (node->getType()) {
+      case sun::ast::ASTNodeType::MODULE:
+        registerGlobals(
+            static_cast<const sun::ast::ModuleAST&>(*node).getBody());
+        break;
+      case sun::ast::ASTNodeType::MOON_SCOPE:
+        registerGlobals(
+            static_cast<const sun::ast::MoonScopeAST&>(*node).getBody());
+        break;
+      case sun::ast::ASTNodeType::VARIABLE_CREATION: {
+        // A library's globals and C globals have no initializer to analyze
+        const auto& global =
+            static_cast<const sun::ast::VariableCreationAST&>(*node);
+        if (global.isPrecompiled() || global.isCExtern() ||
+            !global.hasQualifiedName() || !global.getDeclarationId())
+          break;
+        context_.results().declarations.registerGlobal(
+            global.getQualifiedName(), global.getDeclarationId());
+        break;
+      }
+      default:
+        break;
+    }
+  }
 }
 
 void SemanticPipeline::prepareGenerated(const ExprAST& expression,

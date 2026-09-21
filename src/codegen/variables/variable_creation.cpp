@@ -73,16 +73,16 @@ GlobalVariable* VariableGenerator::createGlobalVariable(
 // Variable creation codegen
 // -------------------------------------------------------------------
 
-void VariableGenerator::declareBlockExternalGlobals(
+void VariableGenerator::declareBlockGlobals(
     const sun::ast::BlockExprAST& block) {
   for (const auto& node : block.getBody()) {
     if (node->getType() == ASTNodeType::MODULE) {
-      declareBlockExternalGlobals(
+      declareBlockGlobals(
           static_cast<const sun::ast::ModuleAST&>(*node).getBody());
       continue;
     }
     if (node->getType() == ASTNodeType::MOON_SCOPE) {
-      declareBlockExternalGlobals(
+      declareBlockGlobals(
           static_cast<const sun::ast::MoonScopeAST&>(*node).getBody());
       continue;
     }
@@ -92,7 +92,11 @@ void VariableGenerator::declareBlockExternalGlobals(
       codegen(variable);
       continue;
     }
-    if (!variable.isCExtern()) continue;
+    if (!variable.isCExtern()) {
+      // Inside a function this is an ordinary local, emitted in its turn
+      if (scopes().empty() && variable.getValue()) codegen(variable);
+      continue;
+    }
     llvm::Type* type = typeResolver.resolve(variable.getResolvedType());
     bindGlobal(variable.getDeclarationId(),
                gen_.externCEmitter().declareGlobal(variable, type));
@@ -140,6 +144,9 @@ Value* VariableGenerator::codegen(const VariableCreationAST& expr) {
 
   // Check if we're creating a global variable and if it already exists
   if (scopes().empty()) {
+    // Its storage was created up front, with the rest of the block's globals
+    if (GlobalVariable* declared = findGlobal(expr.getDeclarationId()))
+      return declared;
     if (module->getGlobalVariable(varName)) {
       logAndThrowError("Cannot redeclare global variable: " + varName);
     }

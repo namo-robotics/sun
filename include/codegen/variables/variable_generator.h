@@ -115,8 +115,13 @@ class VariableGenerator {
       DeclarationId id, const std::string& name, llvm::Type* type,
       llvm::Constant* initializer = nullptr);
 
-  /** Declare imported and C globals before emitting dependent bodies. */
-  void declareBlockExternalGlobals(const BlockExprAST& block);
+  /**
+   * Creates the storage of every global a block declares before any body is
+   * emitted, because a function may use a global declared further down.
+   * Function signatures must already be declared: a global holding a lambda
+   * emits the lambda's body here.
+   */
+  void declareBlockGlobals(const BlockExprAST& block);
 
   /** Find storage for the global selected during semantic analysis. */
   llvm::GlobalVariable* findGlobal(DeclarationId id) const;

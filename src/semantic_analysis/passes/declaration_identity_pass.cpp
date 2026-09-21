@@ -158,7 +158,7 @@ void DeclarationIdentityPass::run(const ExprAST& root, DeclarationId owner,
       root.setDeclarationId(id);
       root.declarationIdentity().session = table_.session();
       // A module may be opened in several places, so no one node declares it.
-      if (kind != DeclarationKind::Module) table_.bindNode(id, &root);
+      if (kind != DeclarationKind::Module) table_.bindAstNode(id, &root);
     } else {
       if (root.declarationIdentity().session.lock() != table_.session())
         logAndThrowError(

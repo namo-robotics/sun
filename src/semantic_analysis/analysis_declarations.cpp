@@ -524,13 +524,11 @@ void SemanticAnalyzer::analyzeModuleDefinition(sun::ast::ModuleAST& nsDecl) {
         pipeline_.declarations().registerPrecompiledModuleVariable(varCreate);
         continue;
       }
+      // A tracked global registers itself, possibly before the walk gets
+      // here; any other variable is registered now.
+      const bool tracked = isTrackedGlobal(varCreate);
       analyzeExpr(*bodyExpr);
-      const QualifiedName& qualifiedName = varCreate.getQualifiedName();
-      if (auto type = varCreate.getResolvedType()) {
-        ctx_.currentScope().declareModuleVariable(
-            qualifiedName, type, varCreate.getVisibility(), varCreate.isConst(),
-            varCreate.isCExtern(), varCreate.getDeclarationId());
-      }
+      if (!tracked) registerModuleVariable(varCreate);
     } else {
       analyzeExpr(*bodyExpr);
     }

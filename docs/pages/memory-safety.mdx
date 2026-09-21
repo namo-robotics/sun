@@ -250,8 +250,20 @@ A global whose initializer the compiler can work out, such as
 the program. Any other global is given its value when the program starts, before
 `main` runs, in the order the globals are written. That includes a `const`:
 `const` means the variable is never reassigned, not that its value is known at
-compile time. `for (const x: T in c)` makes the loop binding
-constant for each element.
+compile time.
+
+Like functions and classes, a global can be used before the line that declares
+it. Two things are errors: a global whose initializer leads back to itself, and
+a global initialized at startup whose initializer reads one that startup
+initializes later, because it would still be zero.
+
+```sun
+const DOUBLE: i64 = BASE * 2;     // ✓ BASE is declared below
+const BASE: i64 = 10;
+// const A: i64 = B;  const B: i64 = A;   // ❌ ERROR: 'A' depends on itself: A -> B -> A
+```
+
+`for (const x: T in c)` makes the loop binding constant for each element.
 
 ## References
 

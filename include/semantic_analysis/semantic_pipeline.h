@@ -49,6 +49,14 @@ class SemanticPipeline {
   }
 
  private:
+  /**
+   * Records every file-scope and module-scope variable the source declares
+   * in the declaration table, under its qualified name. Globals can be used
+   * before the line that declares them, and this is how such a use finds the
+   * declaration. Runs once names have been assigned; nothing is analyzed.
+   */
+  void registerGlobals(const sun::ast::BlockExprAST& block);
+
   sun::semantic_analysis::SemanticAnalyzer& analyzer_;
   sun::semantic_analysis::SemanticContext& context_;
   passes::FieldInitializerPreparationPass fieldInitializerPreparationPass_;

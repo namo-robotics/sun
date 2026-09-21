@@ -1762,6 +1762,82 @@ TEST(Modules, globals_initialized_at_startup_hold_their_values) {
             3 + 3 + 9 + 27);
 }
 
+/** The message a program fails to compile with, or "" when it compiles. */
+static std::string globalCompileError(const std::string& source) {
+  try {
+    executeString(source);
+  } catch (const std::exception& error) {
+    return error.what();
+  }
+  return "";
+}
+
+// Globals, like functions and classes, may be used before the line that
+// declares them: by a function, by a module, and by another global.
+TEST(Modules, global_can_be_used_before_its_declaration) {
+  EXPECT_EQ(executeString(R"(
+    function main() i32 { return _convert<i32>(total()) + origin.x + add_one(1); }
+    function total() i64 { counter = counter + DOUBLE; return counter + m.get(); }
+    module m {
+      public function get() i64 { return LIMIT; }
+      const LIMIT: i64 = BASE + 1;
+    }
+    const DOUBLE: i64 = BASE * 2;
+    const BASE: i64 = 10;
+    var counter: i64 = 1;
+    class Point { var x: i32; init(x: i32) { this.x = x; } }
+    var origin = Point(7);
+    var add_one = (x: i32) => i32 { return x + 1; };
+  )"),
+            1 + 20 + 11 + 7 + 2);
+}
+
+// A constant computed from a later constant is still a compile-time value.
+TEST(Modules, global_read_before_its_declaration_is_still_compile_time) {
+  sun::driver::initTestEnvironment();
+  auto driver = Driver::createForAOT("later_global_image");
+  driver->compileString(R"(
+    const DOUBLE: i64 = BASE * 2;
+    const BASE: i64 = 10;
+    function main() i32 { return _convert<i32>(DOUBLE); }
+  )");
+  EXPECT_EQ(driver->getModule().getFunction("__sun_static_init"), nullptr);
+}
+
+TEST(Modules, global_that_depends_on_itself_is_rejected) {
+  std::string message = globalCompileError(R"(
+    const A: i64 = B + 1;
+    const B: i64 = C;
+    const C: i64 = A;
+    function main() i32 { return 0; }
+  )");
+  EXPECT_NE(message.find("'A' depends on itself: A -> B -> C -> A"),
+            std::string::npos)
+      << message;
+}
+
+// Startup initializers run in source order, so reading one that has not run
+// yet would see zero. A compile-time value has no such order.
+TEST(Modules, startup_global_reading_a_later_startup_global_is_rejected) {
+  std::string message = globalCompileError(R"(
+    var seed: i64 = 3;
+    const FIRST: i64 = SECOND + 1;
+    const SECOND: i64 = seed * 2;
+    function main() i32 { return 0; }
+  )");
+  EXPECT_NE(message.find("'FIRST' is initialized before 'SECOND'"),
+            std::string::npos)
+      << message;
+
+  EXPECT_EQ(executeString(R"(
+    var seed: i64 = 3;
+    const FIRST: i64 = seed + SECOND;
+    const SECOND: i64 = 4;
+    function main() i32 { return _convert<i32>(FIRST); }
+  )"),
+            7);
+}
+
 // Emitting a function, class, lambda or module leaves the code generator
 // inside the last function it wrote. A global declared afterwards is still at
 // file scope and must be treated that way.

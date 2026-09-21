@@ -50,6 +50,18 @@ struct VariableInfo {
 };
 
 /**
+ * A global that is used before its declaration has been analyzed: the node
+ * that declares it, and the file or module scope its initializer belongs to.
+ */
+struct UnanalyzedGlobal {
+  sun::ast::VariableCreationAST* node = nullptr;
+  struct SemanticScopeBase* scope = nullptr;
+
+  /** True when there is a global to analyze. */
+  explicit operator bool() const { return node != nullptr; }
+};
+
+/**
  * Information about a declared function
  */
 struct FunctionInfo {
@@ -721,6 +733,15 @@ struct SemanticScopeBase
    * Lookup a variable by name in the scope chain
    */
   VariableInfo* lookupVariable(const std::string& name);
+
+  /**
+   * The not-yet-analyzed global that `name` refers to from this scope, and
+   * the scope that declares it. Empty when the name already resolves to a
+   * variable or to no global at all. Searches the same scopes lookupVariable
+   * does, nearest first, asking `declarations` which globals each declares.
+   */
+  UnanalyzedGlobal findUnanalyzedGlobal(const std::string& name,
+                                        const DeclarationTable& declarations);
 
   /**
    * Lookup a generic function by name in the scope chain

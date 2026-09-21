@@ -15,8 +15,8 @@ Value* CodegenVisitor::codegen(const sun::ast::BlockExprAST& block,
                                size_t start) {
   if (block.isEmpty()) return ConstantFP::get(ctx.getContext(), APFloat(0.0));
 
-  variables.declareBlockExternalGlobals(block);
   functions_.declareBlockSignatures(block);
+  variables.declareBlockGlobals(block);
 
   Value* lastValue = nullptr;
   bool encounteredReturn = false;

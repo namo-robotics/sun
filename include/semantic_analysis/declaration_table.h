@@ -5,10 +5,12 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 
 #include "semantic_analysis/declaration_id.h"
 #include "semantic_analysis/portable_declaration_key.h"
+#include "semantic_analysis/qualified_name.h"
 #include "support/error.h"
 
 /** Defines syntax-tree nodes and the annotations used to analyze them. */
@@ -56,7 +58,7 @@ struct DeclarationRecord {
   // builtin, a field or variant inside a node, a module opened in several
   // places. Valid while the analyzed tree is alive, which the owner of the
   // analysis results keeps it for.
-  const sun::ast::ExprAST* node = nullptr;
+  const sun::ast::ExprAST* astNode = nullptr;
 };
 
 /** Allocate and retain declarations independently of symbol spelling. */
@@ -65,6 +67,9 @@ class DeclarationTable {
   std::shared_ptr<const int> session_ = std::make_shared<const int>(0);
   std::map<std::pair<DeclarationId, std::string>, DeclarationId> modules_;
   std::map<PortableDeclarationKey, DeclarationId> portableDeclarations_;
+  // The file-scope and module-scope variables this program's source
+  // declares, by qualified name. The first declaration of a name wins.
+  std::unordered_map<QualifiedName, DeclarationId> globals_;
 
  public:
   /** Start an independent table whose identities cannot be copied. */
@@ -93,11 +98,27 @@ class DeclarationTable {
     return id;
   }
 
-  /** Records the syntax node that declares `id`; see DeclarationRecord::node.
-   */
-  void bindNode(DeclarationId id, const sun::ast::ExprAST* node) {
+  /** Links a declaration to the syntax node that declares it. */
+  void bindAstNode(DeclarationId id, const sun::ast::ExprAST* astNode) {
     get(id);
-    records_[id.index() - 1].node = node;
+    records_[id.index() - 1].astNode = astNode;
+  }
+
+  /**
+   * Records a global variable under its qualified name, so a use that comes
+   * before the declaration can find it. Only variables declared in this
+   * program's source are recorded: those of a library and of C code have no
+   * initializer to analyze.
+   */
+  void registerGlobal(const QualifiedName& name, DeclarationId id) {
+    get(id);
+    globals_.try_emplace(name, id);
+  }
+
+  /** The global variable with this qualified name, or an empty id. */
+  DeclarationId findGlobal(const QualifiedName& name) const {
+    auto found = globals_.find(name);
+    return found == globals_.end() ? DeclarationId{} : found->second;
   }
 
   /** Allocate an identity without making the declaration visible in a scope. */
