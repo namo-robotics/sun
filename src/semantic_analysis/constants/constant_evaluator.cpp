@@ -217,8 +217,8 @@ const GlobalInitRecord& ConstantEvaluator::evaluateGlobalInitializer(
     recordBlocker("it is defined by C code", global.getLocation());
   } else if (global.isPrecompiled()) {
     recordBlocker(
-        "it is defined in a precompiled library, so its value is "
-        "not available at compile time",
+        "it is defined in a precompiled library that gives it no "
+        "compile-time value",
         global.getLocation());
   } else if (!global.getValue() || !global.getResolvedType()) {
     recordBlocker("it has no analyzed initializer", global.getLocation());

@@ -171,7 +171,8 @@ var matrix: array<f64, 2, 3> = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
 ```
 
 A size is written as a number or as the name of a constant, which may come
-from a module (`limits.ROWS`) and may be declared further down the file. The
+from a module (`limits.ROWS`), including a module of a precompiled library,
+and may be declared further down the file. The
 constant must be an integer `const` at file or module scope whose value the
 compiler can work out, and it must not be negative. A size is not an
 expression: give the expression a name first.

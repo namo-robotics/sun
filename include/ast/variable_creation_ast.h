@@ -24,6 +24,10 @@ class VariableCreationAST : public ExprAST {
   bool isCExtern_ = false;  // C extern storage is provided by a native global
   bool explicitCAbi_ = false;            // Source spelled the optional "C" ABI
   std::optional<std::string> linkName_;  // Optional native symbol override
+  // The value a library computed for this global, read from its bundle.
+  // It has no types until analysis resolves the global's own type.
+  std::optional<sun::semantic_analysis::constants::ConstantValue>
+      importedConstant_;
   std::string doc_;  // Comment written above the declaration
 
  protected:
@@ -71,6 +75,19 @@ class VariableCreationAST : public ExprAST {
   /** Records whether the declaration explicitly uses the C calling convention.
    */
   void setExplicitCAbi(bool value) { explicitCAbi_ = value; }
+  /**
+   * The compile-time value a library published for this global, if any. Only
+   * a global read from a bundle has one.
+   */
+  const std::optional<sun::semantic_analysis::constants::ConstantValue>&
+  getImportedConstant() const {
+    return importedConstant_;
+  }
+  /** Records the value read from a bundle for this global. */
+  void setImportedConstant(
+      sun::semantic_analysis::constants::ConstantValue value) {
+    importedConstant_ = std::move(value);
+  }
   /** Reports whether an explicit linker symbol name is present. */
   bool hasLinkName() const { return linkName_.has_value(); }
   /** Updates the link name stored by this object. */

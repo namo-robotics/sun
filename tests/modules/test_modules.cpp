@@ -1943,6 +1943,86 @@ TEST(Modules, moon_keeps_named_array_sizes) {
   EXPECT_EQ(value, 6);
 }
 
+/**
+ * A library with constants of each kind, built once: the library cache keeps
+ * a bundle open by path, so a test must not rebuild one it has loaded.
+ */
+static std::filesystem::path constValuesLib() {
+  static const std::filesystem::path path = writeMoonLib("const_values", R"(
+    public module const_values {
+      public const LIMIT: i64 = 7;
+      public const N: i64 = 3;
+      const HIDDEN: i64 = 2;
+      public const PRIMES: array<i32, 3> = [2, 3, 5];
+      public var seed: i64 = 4;
+      public const SNAP: i64 = seed;
+      public class Ring<T> {
+        var slots: array<T, HIDDEN>;
+        init(a: T, b: T) { this.slots = [a, b]; }
+        public method last() T { return this.slots[1]; }
+      }
+    }
+  )");
+  return path;
+}
+
+// A bundle publishes the value of each `const` it computed at compile time,
+// so an importer can compute with it: in its own constants, as an array size,
+// and inside a generic class the library ships. The storage stays the
+// library's.
+TEST(Modules, moon_publishes_compile_time_constant_values) {
+  auto driver = Driver::createForJIT("const_values_main");
+  driver->setMoonImports({MoonImport(constValuesLib().string())});
+  auto value = driver->executeString(R"(
+    using const_values;
+    const B: i64 = const_values.LIMIT + 1;
+    var grid: array<i32, const_values.N> = [1, 2, 3];
+    function main() i32 {
+      var r = const_values.Ring<i32>(5, 6);
+      return _convert<i32>(B) + grid[2] + r.last() + const_values.PRIMES[2];
+    }
+  )");
+  EXPECT_EQ(value, 8 + 3 + 6 + 5);
+}
+
+// A constant computed from a library's constant is itself a compile-time
+// value: neither the library nor the program needs any startup code.
+TEST(Modules, moon_constant_value_keeps_the_importer_compile_time) {
+  auto moonPath = writeMoonLib("const_only", R"(
+    public module const_only { public const LIMIT: i64 = 7; }
+  )");
+  auto driver = Driver::createForAOT("const_only_main");
+  driver->setMoonImports({MoonImport(moonPath.string())});
+  driver->compileString(R"(
+    using const_only;
+    const B: i64 = const_only.LIMIT + 1;
+    function main() i32 { return _convert<i32>(B); }
+  )");
+  EXPECT_EQ(driver->getModule().getFunction("__sun_static_init"), nullptr);
+}
+
+TEST(Modules, moon_constant_without_a_compile_time_value_cannot_be_a_size) {
+  auto driver = Driver::createForJIT("const_values_reject");
+  driver->setMoonImports({MoonImport(constValuesLib().string())});
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      driver->executeString(R"(
+    using const_values;
+    var bad: array<i32, const_values.SNAP> = [1];
+    function main() i32 { return 0; }
+  )"),
+      "'const_values.SNAP' is initialized at startup because it is defined in "
+      "a precompiled library that gives it no compile-time value");
+
+  auto hidden = Driver::createForJIT("const_values_hidden");
+  hidden->setMoonImports({MoonImport(constValuesLib().string())});
+  EXPECT_SUN_ERROR_WITH_MESSAGE(hidden->executeString(R"(
+    using const_values;
+    var bad: array<i32, const_values.HIDDEN> = [1, 2];
+    function main() i32 { return 0; }
+  )"),
+                                "'HIDDEN' is private to module 'const_values'");
+}
+
 // === Startup order across bundles ===
 //
 // Globals that need code to initialize them are set up by a startup function,

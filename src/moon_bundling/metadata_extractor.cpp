@@ -186,19 +186,30 @@ void extractInterface(const InterfaceDefinitionAST& iface,
 
 /**
  * Extract a module-level variable and add to metadata.
- * The initializer is dropped where the declaration states a type: this
- * bundle's bitcode already holds the initialized storage, and importers
- * reference that symbol rather than defining their own copy. Where the type
- * was inferred the initializer is kept, since extraction runs on the parse
- * tree and there is nothing else to read the type from.
+ * The initializer is dropped: this bundle's bitcode already holds the
+ * initialized storage, and importers reference that symbol rather than
+ * defining their own copy. What an importer does get is the type, written out
+ * when the source left it to inference, and the value of a `const` that was
+ * computed at compile time, so the importer can compute with it too.
  */
-void extractGlobal(const VariableCreationAST& var,
-                   moon::ModuleMetadata& metadata,
-                   const ASTSerializer& serializer) {
+void extractGlobal(
+    const VariableCreationAST& var, moon::ModuleMetadata& metadata,
+    const ASTSerializer& serializer,
+    const sun::semantic_analysis::DeclarationTable& declarations) {
   pbc::ASTNode node = serializer.serialize(var);
   pbc::VariableCreation* global = metadata.add_globals();
   *global = node.variable_creation();
-  if (global->has_type_annotation()) global->clear_value();
+  if (!global->has_type_annotation())
+    *global->mutable_type_annotation() =
+        exportType(var.getResolvedType(), declarations);
+  global->clear_value();
+
+  using sun::semantic_analysis::constants::GlobalInitKind;
+  const auto* decision = var.getGlobalInit();
+  if (var.isConst() && decision && decision->kind == GlobalInitKind::Image &&
+      decision->value)
+    serializer.serializeConstantValue(*decision->value,
+                                      global->mutable_constant_value());
 }
 
 /**
@@ -214,127 +225,6 @@ void extractEnum(const EnumDefinitionAST& enumDef,
   pbc::EnumDef* enumProto = metadata.add_enums();
   *enumProto = node.enum_def();
   if (node.has_location()) *enumProto->mutable_location() = node.location();
-}
-
-/**
- * Recursively extract from statements
- * Collects definitions into one ModuleMetadata per dotted module path
- * ("a.b" for `module a { module b { ... } }`); file-level definitions go
- * under the empty name. Vector order = first-seen order.
- */
-struct ModuleCollector {
-  std::vector<std::pair<std::string, moon::ModuleMetadata>> modules;
-
-  /** Returns the metadata being collected for the named module. */
-  moon::ModuleMetadata& forModule(const std::string& dotted) {
-    for (auto& [name, md] : modules) {
-      if (name == dotted) return md;
-    }
-    modules.emplace_back(dotted, moon::ModuleMetadata{});
-    modules.back().second.set_module_name(dotted);
-    return modules.back().second;
-  }
-};
-
-/** Collects exported declaration metadata from a sequence of statements. */
-void extractFromStatements(
-    const std::vector<std::unique_ptr<sun::ast::ExprAST>>& stmts,
-    ModuleCollector& collector, const std::string& modulePath,
-    const ASTSerializer& serializer, const std::filesystem::path& moduleDir) {
-  for (const auto& stmt : stmts) {
-    if (!stmt) continue;
-
-    // Keep source imports in their original module and file context.
-    if (stmt->getType() == ASTNodeType::USING) {
-      *collector.forModule(modulePath).add_using_declarations() =
-          serializer.serialize(*stmt);
-    }
-
-    // Handle module/namespace blocks (nested modules become dotted paths)
-    if (stmt->getType() == ASTNodeType::MODULE) {
-      const auto& nsDecl = static_cast<const sun::ast::ModuleAST&>(*stmt);
-      std::string nested = modulePath.empty()
-                               ? nsDecl.getName()
-                               : modulePath + "." + nsDecl.getName();
-      auto& md = collector.forModule(nested);
-      // Visibility is per module, agreed across all of its openings
-      if (nsDecl.isPublic()) md.set_visibility(pbc::PUBLIC);
-      extractFromStatements(nsDecl.getBody().getBody(), collector, nested,
-                            serializer, moduleDir);
-    }
-
-    // Extract functions. Tests never ship in a bundle: they are unreachable
-    // from importers and would only bloat it.
-    if (stmt->getType() == ASTNodeType::FUNCTION &&
-        !static_cast<const FunctionAST&>(*stmt).isTest()) {
-      extractFunction(static_cast<const FunctionAST&>(*stmt),
-                      collector.forModule(modulePath), serializer);
-    }
-
-    // Extract classes
-    if (stmt->getType() == ASTNodeType::CLASS_DEFINITION) {
-      extractClass(static_cast<const ClassDefinitionAST&>(*stmt),
-                   collector.forModule(modulePath), serializer);
-    }
-
-    // Extract interfaces
-    if (stmt->getType() == ASTNodeType::INTERFACE_DEFINITION) {
-      extractInterface(static_cast<const InterfaceDefinitionAST&>(*stmt),
-                       collector.forModule(modulePath), serializer);
-    }
-
-    // Extract enums
-    if (stmt->getType() == ASTNodeType::ENUM_DEFINITION) {
-      extractEnum(static_cast<const EnumDefinitionAST&>(*stmt),
-                  collector.forModule(modulePath), serializer);
-    }
-
-    // Extract module-level variables
-    if (stmt->getType() == ASTNodeType::VARIABLE_CREATION) {
-      extractGlobal(static_cast<const VariableCreationAST&>(*stmt),
-                    collector.forModule(modulePath), serializer);
-    }
-  }
-}
-
-/** Collects module metadata and build identity from a parsed source file. */
-std::vector<moon::ModuleMetadata> extractAllMetadata(
-    const std::string& filePath, const BlockExprAST& ast,
-    const std::string& sourceHash) {
-  std::filesystem::path moduleDir =
-      std::filesystem::path(filePath).parent_path();
-
-  ASTSerializer serializer({.include_location = true});
-
-  ModuleCollector collector;
-  extractFromStatements(ast.getBody(), collector, "", serializer, moduleDir);
-
-  std::vector<moon::ModuleMetadata> out;
-  size_t idx = 0;
-  for (auto& [name, md] : collector.modules) {
-    // Keep file-level imports even when all declarations are inside modules.
-    // Named modules also carry visibility when otherwise empty.
-    bool empty = md.functions_size() == 0 && md.classes_size() == 0 &&
-                 md.interfaces_size() == 0 && md.enums_size() == 0 &&
-                 md.globals_size() == 0;
-    if (empty && name.empty() && md.using_declarations_size() == 0) continue;
-    // Bundle entries are keyed by source hash: several modules from one file
-    // need distinct keys
-    md.set_source_hash(idx == 0 ? sourceHash
-                                : sourceHash + "-" + std::to_string(idx));
-    ++idx;
-    md.set_version("1.0.0");
-    md.set_source_path(filePath);
-    out.push_back(std::move(md));
-  }
-  if (out.empty()) {
-    moon::ModuleMetadata md;
-    md.set_source_hash(sourceHash);
-    md.set_version("1.0.0");
-    md.set_source_path(filePath);
-    out.push_back(std::move(md));
-  }
-  return out;
 }
 
 }  // namespace
@@ -421,12 +311,7 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
             extractEnum(*enumeration, temporary, serializer);
           } else if (auto* variable =
                          dynamic_cast<const VariableCreationAST*>(stmt.get())) {
-            extractGlobal(*variable, temporary, serializer);
-            auto* global = temporary.mutable_globals(0);
-            if (!global->has_type_annotation())
-              *global->mutable_type_annotation() =
-                  exportType(variable->getResolvedType(), declarations);
-            global->clear_value();
+            extractGlobal(*variable, temporary, serializer, declarations);
           } else if (stmt->getType() == ASTNodeType::USING) {
             *temporary.add_using_declarations() = serializer.serialize(*stmt);
           } else
@@ -465,83 +350,6 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
     }
   }
   return result;
-}
-
-/** Reads a source file and extracts metadata for its modules. */
-std::optional<std::vector<moon::ModuleMetadata>> extractAllMetadataFromFile(
-    const std::string& filename) {
-  std::ifstream file(filename);
-  if (!file.is_open()) {
-    return std::nullopt;
-  }
-  std::stringstream buffer;
-  buffer << file.rdbuf();
-  // The bundle records where each module came from, so editors can open the
-  // library source behind an imported declaration
-  std::string sourcePath = filename;
-  try {
-    sourcePath = std::filesystem::canonical(filename).string();
-  } catch (const std::filesystem::filesystem_error&) {
-    sourcePath = std::filesystem::absolute(filename).string();
-  }
-  return extractAllMetadataFromSource(
-      buffer.str(), sourcePath,
-      std::filesystem::path(sourcePath).parent_path().string());
-}
-
-/** Parses source text and collects the metadata needed to build a library. */
-std::optional<std::vector<moon::ModuleMetadata>> extractAllMetadataFromSource(
-    const std::string& source, const std::string& displayName,
-    const std::string& baseDir) {
-  // Compute SHA-256 hash of source contents
-  llvm::SHA256 sha;
-  sha.update(llvm::StringRef(source));
-  auto hashBytes = sha.final();
-  std::string sourceHash;
-  sourceHash.reserve(64);
-  for (uint8_t b : hashBytes) {
-    char hex[3];
-    snprintf(hex, sizeof(hex), "%02x", b);
-    sourceHash += hex;
-  }
-
-  std::istringstream ss(source);
-  sun::parsing::Parser parser(ss);
-  parser.setBaseDir(baseDir);
-  parser.getNextToken();
-
-  auto ast = parser.parseProgram();
-  if (!ast) {
-    return std::nullopt;
-  }
-
-  // Lower the parse tree so extracted generic function bodies contain only
-  // core AST nodes (paren/template-string nodes never reach .moon files)
-  sun::parsing::LoweringPass lowering;
-  lowering.run(*ast);
-
-  // Doc comments ride along in the bundle so editors can show them for
-  // imported declarations without the library's source at hand
-  sun::parsing::attachDocComments(*ast, source);
-
-  return extractAllMetadata(displayName, *ast, sourceHash);
-}
-
-/** Reads a source file and extracts its module metadata when available. */
-std::optional<moon::ModuleMetadata> extractMetadataFromFile(
-    const std::string& filename) {
-  auto all = extractAllMetadataFromFile(filename);
-  if (!all || all->empty()) return std::nullopt;
-  return (*all)[0];
-}
-
-/** Extracts module metadata from supplied source text. */
-std::optional<moon::ModuleMetadata> extractMetadataFromSource(
-    const std::string& source, const std::string& displayName,
-    const std::string& baseDir) {
-  auto all = extractAllMetadataFromSource(source, displayName, baseDir);
-  if (!all || all->empty()) return std::nullopt;
-  return (*all)[0];
 }
 
 }  // namespace sun::moon_bundling

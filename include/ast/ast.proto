@@ -242,6 +242,30 @@ message VariableCreation {
   bool is_c_extern = 7;       // Declared with extern var
   optional string link_name = 8;  // Native symbol from an as clause
   bool explicit_c_abi = 9;  // Source spelled the optional "C" ABI
+  // Bundle metadata only: the value of a `const` known at compile time
+  optional ConstantValue constant_value = 10;
+}
+
+/**
+ * A value the compiler computed for a global, carried so an importing program
+ * can use it at compile time: as an array size, or in the initializer of one
+ * of its own constants. The type is the global's own; an integer is its low
+ * `bit_width` bits and a float is its IEEE bit pattern, so both survive
+ * exactly.
+ */
+message ConstantValue {
+  oneof value {
+    uint64 integer_bits = 1;
+    uint64 float_bits = 2;
+    bytes text = 3;
+    ConstantArray array = 4;
+  }
+  uint32 bit_width = 5;  // integers and floats
+}
+
+/** The elements of an array value; a further dimension nests. */
+message ConstantArray {
+  repeated ConstantValue elements = 1;
 }
 
 /** Stores variable assignment data in the compiler serialization format. */

@@ -511,18 +511,26 @@ void DeclarationCollectionPass::collectExternVariable(
 
 void DeclarationCollectionPass::registerPrecompiledModuleVariable(
     VariableCreationAST& varCreate) {
-  TypePtr type;
-  if (varCreate.hasTypeAnnotation()) {
-    type = sema_.typeResolver().typeAnnotationToType(
-        *varCreate.getTypeAnnotation());
-  } else if (varCreate.hasValue()) {
-    // The declaration inferred its type, so the bundle kept the initializer
-    // for its type alone. Codegen still only declares the symbol.
-    sema_.analyzeExpr(const_cast<sun::ast::ExprAST&>(*varCreate.getValue()));
-    type = varCreate.getValue()->getResolvedType();
-  }
+  // A bundle always states a global's type and never ships its initializer
+  if (!varCreate.hasTypeAnnotation()) return;
+  TypePtr type =
+      sema_.typeResolver().typeAnnotationToType(*varCreate.getTypeAnnotation());
   if (!type) return;
   varCreate.setResolvedType(type);
+
+  // A `const` the library computed at compile time can be computed with here
+  // too; the storage is still the library's.
+  if (varCreate.isConst() && varCreate.getImportedConstant() &&
+      !varCreate.getGlobalInit()) {
+    if (auto value = constants::adoptType(*varCreate.getImportedConstant(),
+                                          sun::types::unwrapRef(type))) {
+      constants::GlobalInitRecord record;
+      record.kind = constants::GlobalInitKind::Image;
+      record.isConst = true;
+      record.value = std::move(*value);
+      varCreate.setGlobalInit(std::move(record));
+    }
+  }
 
   // Bare-name lookup goes through `variables`, which body analysis would
   // normally populate; there is no body to analyze here.

@@ -62,6 +62,15 @@ struct ConstantValue {
 };
 
 /**
+ * Gives a value read from a bundle the type of the global it belongs to, and
+ * its elements the types that follow from it. A bundle stores values without
+ * types. Returns nothing when the value does not have the shape of the type,
+ * which means the bundle and its metadata disagree.
+ */
+std::optional<ConstantValue> adoptType(ConstantValue value,
+                                       const sun::types::TypePtr& type);
+
+/**
  * Number of bits generated code uses for a value of this type, or nothing
  * when the type is not held as an integer.
  */

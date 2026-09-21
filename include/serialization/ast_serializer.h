@@ -49,6 +49,14 @@ class ASTSerializer {
   pbc::ASTNode serialize(const ExprAST& expr) const;
 
   /**
+   * Writes a value the compiler computed for a global. Its type is not
+   * written: the reader takes it from the global's own type.
+   */
+  void serializeConstantValue(
+      const sun::semantic_analysis::constants::ConstantValue& value,
+      pbc::ConstantValue* proto) const;
+
+  /**
    * Serialize a prototype (non-ExprAST node)
    */
   pbc::Prototype serializePrototype(const sun::ast::PrototypeAST& proto) const;

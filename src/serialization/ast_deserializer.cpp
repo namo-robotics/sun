@@ -94,6 +94,33 @@ void ASTDeserializer::deserializeIdentity(
   identity.imported = std::move(imported);
 }
 
+sun::semantic_analysis::constants::ConstantValue
+ASTDeserializer::deserializeConstantValue(
+    const pbc::ConstantValue& proto) const {
+  using sun::semantic_analysis::constants::ConstantValue;
+  switch (proto.value_case()) {
+    case pbc::ConstantValue::kIntegerBits:
+      return ConstantValue{
+          nullptr, llvm::APInt(proto.bit_width(), proto.integer_bits())};
+    case pbc::ConstantValue::kFloatBits: {
+      const bool single = proto.bit_width() == 32;
+      return ConstantValue{
+          nullptr,
+          llvm::APFloat(single ? llvm::APFloat::IEEEsingle()
+                               : llvm::APFloat::IEEEdouble(),
+                        llvm::APInt(single ? 32 : 64, proto.float_bits()))};
+    }
+    case pbc::ConstantValue::kText:
+      return ConstantValue{nullptr, proto.text()};
+    default:
+      break;
+  }
+  ConstantValue::Elements elements;
+  for (const auto& element : proto.array().elements())
+    elements.push_back(deserializeConstantValue(element));
+  return ConstantValue{nullptr, std::move(elements)};
+}
+
 Position ASTDeserializer::deserializePosition(const pbc::Position& pos) const {
   Position result;
   result.line = pos.line();
@@ -564,6 +591,8 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeVariableCreation(
   if (proto.has_link_name()) var->setLinkName(proto.link_name());
   var->setVisibility(fromProto(proto.visibility()));
   var->setDoc(proto.doc());
+  if (proto.has_constant_value())
+    var->setImportedConstant(deserializeConstantValue(proto.constant_value()));
   if (proto.has_declaration_identity())
     deserializeIdentity(proto.declaration_identity(),
                         var->declarationIdentity());

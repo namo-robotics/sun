@@ -62,4 +62,45 @@ std::string ConstantValue::toDisplayString() const {
   return text + "]";
 }
 
+std::optional<ConstantValue> adoptType(ConstantValue value,
+                                       const sun::types::TypePtr& type) {
+  if (!type) return std::nullopt;
+  value.type = type;
+
+  if (value.isInteger()) {
+    auto width = getIntegerBitWidth(*type);
+    if (!width || *width != value.getInteger().getBitWidth())
+      return std::nullopt;
+    return value;
+  }
+  if (value.isFloat()) {
+    const bool single =
+        &value.getFloat().getSemantics() == &llvm::APFloat::IEEEsingle();
+    if (!type->isFloatingPoint() || type->isFloat32() != single)
+      return std::nullopt;
+    return value;
+  }
+  if (value.isString()) return value;
+
+  if (!type->isArray()) return std::nullopt;
+  const auto& arrayType = static_cast<const sun::types::ArrayType&>(*type);
+  const auto& dimensions = arrayType.getDimensions();
+  auto& elements = std::get<ConstantValue::Elements>(value.data);
+  if (dimensions.empty() || dimensions[0] != elements.size())
+    return std::nullopt;
+  // An element of a multi-dimensional array is itself an array
+  sun::types::TypePtr elementType =
+      dimensions.size() == 1
+          ? arrayType.getElementType()
+          : sun::types::Types::Array(
+                arrayType.getElementType(),
+                std::vector<size_t>(dimensions.begin() + 1, dimensions.end()));
+  for (auto& element : elements) {
+    auto typed = adoptType(std::move(element), elementType);
+    if (!typed) return std::nullopt;
+    element = std::move(*typed);
+  }
+  return value;
+}
+
 }  // namespace sun::semantic_analysis::constants

@@ -90,6 +90,13 @@ class ASTDeserializer {
       const pbc::TypeAnnotation& type) const;
 
   /**
+   * Reads a value a library computed for one of its globals. The result has
+   * no types yet; analysis fills them in from the global's type.
+   */
+  sun::semantic_analysis::constants::ConstantValue deserializeConstantValue(
+      const pbc::ConstantValue& proto) const;
+
+  /**
    * Position deserialization
    */
   sun::support::Position deserializePosition(const pbc::Position& pos) const;
