@@ -30,6 +30,14 @@ using sun::ast::BlockExprAST;
 
 /**
  * Register declarations before bodies, using bookkeeping in SemanticContext.
+ *
+ * Types come first so signatures can name them, class shapes second so a
+ * specialization triggered from a signature can call any method in the
+ * block, and signatures last. While the pass runs (see
+ * GenericSpecializer::isInDeclarationPrepass), a global reached through a
+ * type annotation may not call a function, because its callee has no
+ * analyzed body yet, and a class specialization registers its signatures
+ * but holds its method bodies until the pass ends.
  */
 class DeclarationCollectionPass {
  public:

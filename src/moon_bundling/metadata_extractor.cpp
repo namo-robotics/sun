@@ -1,25 +1,19 @@
-#include "moon_bundling/metadata_types.h"
-#include "semantic_analysis/semantic_analyzer.h"
-#include "semantic_analysis/type_registry.h"
-// metadata_extractor.cpp — Extract module metadata as protobuf from source
-// files
+// metadata_extractor.cpp — Extract module metadata as protobuf from the
+// analyzed program
 
-#include <llvm/Support/SHA256.h>
+#include "moon_bundling/metadata_extractor.h"
 
-#include <filesystem>
-#include <fstream>
-#include <optional>
-#include <sstream>
+#include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
 #include "ast.h"
 #include "ast.pb.h"
 #include "moon.pb.h"
-#include "moon_bundling/metadata_extractor.h"
-#include "parsing/doc_comments.h"
-#include "parsing/lowering_pass.h"
-#include "parsing/parser.h"
+#include "moon_bundling/metadata_types.h"
+#include "semantic_analysis/semantic_analyzer.h"
+#include "semantic_analysis/type_registry.h"
 #include "serialization/ast_serializer.h"
 
 using sun::semantic_analysis::DeclarationId;
@@ -53,20 +47,6 @@ bool isGeneric(const sun::ast::PrototypeAST& proto) {
 }
 
 /**
- * Check if a class is generic
- */
-bool isGeneric(const ClassDefinitionAST& cls) {
-  return !cls.getTypeParameters().empty();
-}
-
-/**
- * Check if an interface is generic
- */
-bool isGeneric(const InterfaceDefinitionAST& iface) {
-  return !iface.getTypeParameters().empty();
-}
-
-/**
  * Clear the body of a FunctionDef proto (keep only signature)
  */
 void clearBody(pbc::FunctionDef* func) {
@@ -75,38 +55,16 @@ void clearBody(pbc::FunctionDef* func) {
 }
 
 /**
- * Clear bodies of non-generic methods in a ClassDef
+ * Clear the bodies of the non-generic methods of a ClassDef or InterfaceDef.
+ * A generic owner keeps every body, since importers instantiate them.
  */
-void clearNonGenericBodies(pbc::ClassDef* cls,
-                           const ClassDefinitionAST& original) {
+template <typename Proto, typename Definition>
+void clearNonGenericBodies(Proto* proto, const Definition& original) {
+  if (!original.getTypeParameters().empty()) return;
   const auto& methods = original.getMethods();
-  for (int i = 0; i < cls->methods_size() && i < (int)methods.size(); ++i) {
-    auto* method = cls->mutable_methods(i);
-    const auto& origMethod = methods[i];
-    // Keep body only if method itself is generic OR class is generic
-    bool methodIsGeneric = origMethod.function->getProto().isTemplate();
-    bool classIsGeneric = !original.getTypeParameters().empty();
-    if (!methodIsGeneric && !classIsGeneric) {
-      clearBody(method->mutable_function());
-    }
-  }
-}
-
-/**
- * Clear bodies of non-generic methods in an InterfaceDef
- */
-void clearNonGenericBodies(pbc::InterfaceDef* iface,
-                           const InterfaceDefinitionAST& original) {
-  const auto& methods = original.getMethods();
-  for (int i = 0; i < iface->methods_size() && i < (int)methods.size(); ++i) {
-    auto* method = iface->mutable_methods(i);
-    const auto& origMethod = methods[i];
-    // Keep body only if method itself is generic OR interface is generic
-    bool methodIsGeneric = origMethod.function->getProto().isTemplate();
-    bool ifaceIsGeneric = !original.getTypeParameters().empty();
-    if (!methodIsGeneric && !ifaceIsGeneric) {
-      clearBody(method->mutable_function());
-    }
+  for (int i = 0; i < proto->methods_size() && i < (int)methods.size(); ++i) {
+    if (!isGeneric(methods[i].function->getProto()))
+      clearBody(proto->mutable_methods(i)->mutable_function());
   }
 }
 
@@ -121,7 +79,7 @@ void extractFunction(const FunctionAST& func, moon::ModuleMetadata& metadata,
 
   // Add to metadata
   pbc::FunctionDef* funcDef = metadata.add_functions();
-  *funcDef = node.function_def();
+  *funcDef = std::move(*node.mutable_function_def());
   if (node.has_location()) *funcDef->mutable_location() = node.location();
 
   // Clear body if not generic
@@ -133,28 +91,27 @@ void extractFunction(const FunctionAST& func, moon::ModuleMetadata& metadata,
 /**
  * Extract a class and add to metadata
  */
-void extractClass(
-    const ClassDefinitionAST& cls, moon::ModuleMetadata& metadata,
-    const ASTSerializer& serializer,
-    const sun::semantic_analysis::AnalysisResults* analysis = nullptr) {
+void extractClass(const ClassDefinitionAST& cls, moon::ModuleMetadata& metadata,
+                  const ASTSerializer& serializer,
+                  const sun::semantic_analysis::AnalysisResults& analysis) {
   // Serialize the class AST to proto
   pbc::ASTNode node = serializer.serialize(cls);
 
   // Add to metadata
   pbc::ClassDef* classDef = metadata.add_classes();
-  *classDef = node.class_def();
+  *classDef = std::move(*node.mutable_class_def());
   if (node.has_location()) *classDef->mutable_location() = node.location();
 
   // The writer verifies these candidates against the emitted code.
   for (const auto& [instanceId, specialization] : cls.getSpecializations()) {
-    if (!specialization || !analysis) continue;
-    const auto& declarations = analysis->declarations;
+    if (!specialization) continue;
+    const auto& declarations = analysis.declarations;
     auto* candidate = classDef->add_compiled_specializations();
     candidate->set_declaration_key(
         PortableDeclarationKey::fromDeclaration(instanceId, declarations)
             .encoding());
     for (const auto& method :
-         analysis->types->getClass(instanceId)->getMethods()) {
+         analysis.types->getClass(instanceId)->getMethods()) {
       if (method.isGeneric()) continue;
       candidate->add_method_symbols(PortableDeclarationKey::fromDeclaration(
                                         method.declarationId, declarations)
@@ -177,7 +134,7 @@ void extractInterface(const InterfaceDefinitionAST& iface,
 
   // Add to metadata
   pbc::InterfaceDef* ifaceDef = metadata.add_interfaces();
-  *ifaceDef = node.interface_def();
+  *ifaceDef = std::move(*node.mutable_interface_def());
   if (node.has_location()) *ifaceDef->mutable_location() = node.location();
 
   // Clear bodies of non-generic methods
@@ -198,7 +155,7 @@ void extractGlobal(
     const sun::semantic_analysis::DeclarationTable& declarations) {
   pbc::ASTNode node = serializer.serialize(var);
   pbc::VariableCreation* global = metadata.add_globals();
-  *global = node.variable_creation();
+  *global = std::move(*node.mutable_variable_creation());
   if (!global->has_type_annotation())
     *global->mutable_type_annotation() =
         exportType(var.getResolvedType(), declarations);
@@ -223,7 +180,7 @@ void extractEnum(const EnumDefinitionAST& enumDef,
 
   // Add to metadata
   pbc::EnumDef* enumProto = metadata.add_enums();
-  *enumProto = node.enum_def();
+  *enumProto = std::move(*node.mutable_enum_def());
   if (node.has_location()) *enumProto->mutable_location() = node.location();
 }
 
@@ -302,7 +259,7 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
             extractFunction(*function, temporary, serializer);
           } else if (auto* cls =
                          dynamic_cast<const ClassDefinitionAST*>(stmt.get())) {
-            extractClass(*cls, temporary, serializer, &ctx.results());
+            extractClass(*cls, temporary, serializer, ctx.results());
           } else if (auto* iface = dynamic_cast<const InterfaceDefinitionAST*>(
                          stmt.get())) {
             extractInterface(*iface, temporary, serializer);

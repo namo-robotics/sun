@@ -9,6 +9,8 @@
 #include <functional>
 #include <unordered_map>
 
+#include "ast/ast_children.h"
+#include "semantic_analysis/globals.h"
 #include "semantic_analysis/type_analysis/type_checking.h"
 #include "types/enum_type.h"
 #include "types/type_utils.h"
@@ -65,13 +67,35 @@ std::optional<bool> readTruthValue(const ConstantValue& value) {
   return std::nullopt;
 }
 
+/** Rounds a float to the 32-bit or the 64-bit format, to the nearest value. */
+APFloat roundToFloatWidth(APFloat value, bool toSingle) {
+  bool losesInfo = false;
+  value.convert(toSingle ? APFloat::IEEEsingle() : APFloat::IEEEdouble(),
+                APFloat::rmNearestTiesToEven, &losesInfo);
+  return value;
+}
+
+/** Reports whether a float is held in the 32-bit format. */
+bool isSingle(const APFloat& value) {
+  return &value.getSemantics() == &APFloat::IEEEsingle();
+}
+
+/**
+ * Reports whether an expression reads a variable by name, as `x` or as
+ * `module.x`, so that its value is already stored somewhere.
+ */
+bool readsStoredValue(const ExprAST& expr) {
+  if (expr.getType() == ASTNodeType::VARIABLE_REFERENCE) return true;
+  if (expr.getType() != ASTNodeType::MEMBER_ACCESS) return false;
+  TypePtr objectType = static_cast<const sun::ast::MemberAccessAST&>(expr)
+                           .getObject()
+                           ->getResolvedType();
+  return objectType && objectType->isModule();
+}
+
 /** A short description of what an expression does, for a startup reason. */
 std::string describeUnsupported(const ExprAST& expr) {
   switch (expr.getType()) {
-    case ASTNodeType::CALL:
-      if (auto type = getValueType(expr); type && type->isClass())
-        return "constructs a '" + type->toDisplayString() + "' value";
-      return "calls a function";
     case ASTNodeType::GENERIC_CALL:
       return "calls '" +
              static_cast<const sun::ast::GenericCallAST&>(expr)
@@ -86,7 +110,6 @@ std::string describeUnsupported(const ExprAST& expr) {
     case ASTNodeType::NULL_LITERAL:
       return "is a null pointer";
     case ASTNodeType::INDEX:
-    case ASTNodeType::ARRAY_INDEX:
     case ASTNodeType::SLICE:
       return "takes a range of an array";
     default:
@@ -101,67 +124,17 @@ std::string describeUnsupported(const ExprAST& expr) {
 // -------------------------------------------------------------------
 
 void ConstantEvaluator::evaluateGlobals(const sun::ast::BlockExprAST& block) {
-  decideGlobals(block);
-  checkStartupOrder(block);
+  GlobalOrder order;
+  forEachGlobalDeclaration(block,
+                           [&](const sun::ast::VariableCreationAST& global) {
+                             order.push_back(&global);
+                           });
+  for (const auto* global : order)
+    if (!global->getGlobalInit()) evaluateGlobalInitializer(*global);
+  checkStartupOrder(order);
 }
 
-void ConstantEvaluator::decideGlobals(const sun::ast::BlockExprAST& block) {
-  for (const auto& node : block.getBody()) {
-    switch (node->getType()) {
-      case ASTNodeType::MODULE:
-        decideGlobals(static_cast<const sun::ast::ModuleAST&>(*node).getBody());
-        break;
-      case ASTNodeType::MOON_SCOPE:
-        decideGlobals(
-            static_cast<const sun::ast::MoonScopeAST&>(*node).getBody());
-        break;
-      case ASTNodeType::VARIABLE_CREATION: {
-        const auto& global =
-            static_cast<const sun::ast::VariableCreationAST&>(*node);
-        if (!global.getGlobalInit()) evaluateGlobalInitializer(global);
-        break;
-      }
-      default:
-        break;
-    }
-  }
-}
-
-void ConstantEvaluator::collectInitializationOrder(
-    const sun::ast::BlockExprAST& block,
-    std::vector<const sun::ast::VariableCreationAST*>& order) const {
-  for (const auto& node : block.getBody()) {
-    switch (node->getType()) {
-      case ASTNodeType::MODULE:
-        collectInitializationOrder(
-            static_cast<const sun::ast::ModuleAST&>(*node).getBody(), order);
-        break;
-      case ASTNodeType::MOON_SCOPE:
-        collectInitializationOrder(
-            static_cast<const sun::ast::MoonScopeAST&>(*node).getBody(), order);
-        break;
-      case ASTNodeType::VARIABLE_CREATION:
-        order.push_back(
-            &static_cast<const sun::ast::VariableCreationAST&>(*node));
-        break;
-      default:
-        break;
-    }
-  }
-}
-
-const sun::ast::VariableCreationAST* ConstantEvaluator::findGlobalNode(
-    DeclarationId target) const {
-  if (!target) return nullptr;
-  const ExprAST* node = declarations_.get(target).astNode;
-  if (!node || node->getType() != ASTNodeType::VARIABLE_CREATION)
-    return nullptr;
-  return static_cast<const sun::ast::VariableCreationAST*>(node);
-}
-
-void ConstantEvaluator::checkStartupOrder(const sun::ast::BlockExprAST& block) {
-  std::vector<const sun::ast::VariableCreationAST*> order;
-  collectInitializationOrder(block, order);
+void ConstantEvaluator::checkStartupOrder(const GlobalOrder& order) {
   std::unordered_map<const sun::ast::VariableCreationAST*, size_t> position;
   for (size_t i = 0; i < order.size(); ++i) position[order[i]] = i;
 
@@ -172,34 +145,34 @@ void ConstantEvaluator::checkStartupOrder(const sun::ast::BlockExprAST& block) {
            !global.isPrecompiled() && !global.isCExtern();
   };
 
-  for (size_t i = 0; i < order.size(); ++i) {
-    const auto& reader = *order[i];
-    if (!initializedAtStartup(reader) || !reader.getValue()) continue;
-
-    // Only reads the initializer performs itself: a lambda's body runs
-    // whenever the lambda is called, which may be much later.
-    std::function<void(const ExprAST&)> visit = [&](const ExprAST& expr) {
-      if (expr.getType() == ASTNodeType::LAMBDA) return;
-      if (expr.getType() == ASTNodeType::VARIABLE_REFERENCE ||
-          expr.getType() == ASTNodeType::MEMBER_ACCESS ||
-          expr.getType() == ASTNodeType::QUALIFIED_NAME) {
-        const auto* read = findGlobalNode(expr.getTargetDeclarationId());
-        auto found = read ? position.find(read) : position.end();
-        if (found != position.end() && found->second > i &&
-            initializedAtStartup(*read)) {
-          sun::support::logAndThrowError(
-              "'" + reader.getName() + "' is initialized before '" +
-                  read->getName() + "', which it reads; move '" +
-                  read->getName() + "' above '" + reader.getName() + "'",
-              expr.getLocation());
-        }
+  // Only reads the initializer performs itself: a lambda's body runs
+  // whenever the lambda is called, which may be much later.
+  size_t readerIndex = 0;
+  sun::ast::ChildFn visit = [&](const ExprAST& expr) {
+    if (expr.getType() == ASTNodeType::LAMBDA) return;
+    if (expr.getType() == ASTNodeType::VARIABLE_REFERENCE ||
+        expr.getType() == ASTNodeType::MEMBER_ACCESS ||
+        expr.getType() == ASTNodeType::QUALIFIED_NAME) {
+      const auto* read =
+          findVariableNode(declarations_, expr.getTargetDeclarationId());
+      auto found = read ? position.find(read) : position.end();
+      if (found != position.end() && found->second > readerIndex &&
+          initializedAtStartup(*read)) {
+        const std::string& reader = order[readerIndex]->getName();
+        sun::support::logAndThrowError(
+            "'" + reader + "' is initialized before '" + read->getName() +
+                "', which it reads; move '" + read->getName() + "' above '" +
+                reader + "'",
+            expr.getLocation());
       }
-      const_cast<ExprAST&>(expr).forEachChildSlot(
-          [&](std::unique_ptr<ExprAST>& child) {
-            if (child) visit(*child);
-          });
-    };
-    visit(*reader.getValue());
+    }
+    sun::ast::forEachChild(expr, visit);
+  };
+
+  for (; readerIndex < order.size(); ++readerIndex) {
+    const auto& reader = *order[readerIndex];
+    if (initializedAtStartup(reader) && reader.getValue())
+      visit(*reader.getValue());
   }
 }
 
@@ -268,15 +241,8 @@ std::optional<ConstantValue> ConstantEvaluator::evaluateExpression(
       return evaluateExpression(
           *static_cast<const sun::ast::ParenExprAST&>(expr).getInner());
     case ASTNodeType::VARIABLE_REFERENCE: {
-      const auto& reference =
-          static_cast<const sun::ast::VariableReferenceAST&>(expr);
-      // Inside a function being evaluated, its own variables come first
-      if (!frames_.empty()) {
-        auto local = frames_.back().find(reference.getTargetDeclarationId());
-        if (local != frames_.back().end()) return local->second;
-      }
-      return evaluateGlobalRead(reference.getTargetDeclarationId(),
-                                reference.getName(), expr.getLocation());
+      const ConstantValue* stored = findStoredValue(expr);
+      return stored ? std::optional<ConstantValue>(*stored) : std::nullopt;
     }
     case ASTNodeType::MEMBER_ACCESS:
       return evaluateMemberAccess(
@@ -356,12 +322,8 @@ std::optional<ConstantValue> ConstantEvaluator::evaluateLiteral(
     // A float literal is 64-bit unless its context typed it as 32-bit, in
     // which case it is rounded to the nearest 32-bit value.
     APFloat value(number.getFloatVal());
-    if (type && type->isFloat32()) {
-      bool losesInfo = false;
-      value.convert(APFloat::IEEEsingle(), APFloat::rmNearestTiesToEven,
-                    &losesInfo);
-      return ConstantValue{type, value};
-    }
+    if (type && type->isFloat32())
+      return ConstantValue{type, roundToFloatWidth(value, /*toSingle=*/true)};
     return ConstantValue{sun::types::Types::Float64(), value};
   }
 
@@ -380,11 +342,11 @@ std::optional<ConstantValue> ConstantEvaluator::evaluateLiteral(
   return makeInteger(type, APInt(64, number.getIntegerBits()).trunc(*width));
 }
 
-std::optional<ConstantValue> ConstantEvaluator::evaluateGlobalRead(
+const ConstantValue* ConstantEvaluator::findGlobalValue(
     DeclarationId target, const std::string& name, const Position& position) {
   // The decision lives on the node that declares the variable being read.
   const GlobalInitRecord* record = nullptr;
-  if (const auto* global = findGlobalNode(target)) {
+  if (const auto* global = findVariableNode(declarations_, target)) {
     record = global->getGlobalInit();
     // Globals may be read before the line that declares them, so the one
     // read here may not have had its turn yet. Analysis has already refused
@@ -398,28 +360,46 @@ std::optional<ConstantValue> ConstantEvaluator::evaluateGlobalRead(
     recordBlocker(
         "it reads '" + name + "', whose value is not known at compile time",
         position);
-    return std::nullopt;
+    return nullptr;
   }
   // A `var` may have been changed by the time the reader runs, so only a
   // `const` whose own value is in the image can be read here.
   if (!record->isConst) {
     recordBlocker("it reads '" + name + "', which is a 'var'", position);
-    return std::nullopt;
+    return nullptr;
   }
   if (record->kind != GlobalInitKind::Image || !record->value) {
     recordBlocker("it reads '" + name + "', which is initialized at startup",
                   position);
-    return std::nullopt;
+    return nullptr;
   }
-  return record->value;
+  return &*record->value;
+}
+
+const ConstantValue* ConstantEvaluator::findStoredValue(const ExprAST& expr) {
+  if (expr.getType() == ASTNodeType::MEMBER_ACCESS) {
+    const auto& access = static_cast<const sun::ast::MemberAccessAST&>(expr);
+    return findGlobalValue(access.getTargetDeclarationId(),
+                           access.getMemberName(), expr.getLocation());
+  }
+  const auto& reference =
+      static_cast<const sun::ast::VariableReferenceAST&>(expr);
+  // Inside a function being evaluated, its own variables come first
+  if (!frames_.empty()) {
+    auto local = frames_.back().find(reference.getTargetDeclarationId());
+    if (local != frames_.back().end()) return &local->second;
+  }
+  return findGlobalValue(reference.getTargetDeclarationId(),
+                         reference.getName(), expr.getLocation());
 }
 
 std::optional<ConstantValue> ConstantEvaluator::evaluateMemberAccess(
     const sun::ast::MemberAccessAST& access) {
+  if (readsStoredValue(access)) {
+    const ConstantValue* stored = findStoredValue(access);
+    return stored ? std::optional<ConstantValue>(*stored) : std::nullopt;
+  }
   TypePtr objectType = access.getObject()->getResolvedType();
-  if (objectType && objectType->isModule())
-    return evaluateGlobalRead(access.getTargetDeclarationId(),
-                              access.getMemberName(), access.getLocation());
 
   // A variant of a payload-free enum is the integer the enum is stored as.
   if (objectType && objectType->isEnum()) {
@@ -519,22 +499,14 @@ std::optional<ConstantValue> ConstantEvaluator::combineOperands(
   if (left.isInteger() && right.isInteger()) {
     unsigned width = std::max(left.getInteger().getBitWidth(),
                               right.getInteger().getBitWidth());
-    APInt leftBits = widenInteger(left, width);
-    APInt rightBits = widenInteger(right, width);
-    left.data = leftBits;
-    right.data = rightBits;
+    left.data = widenInteger(left, width);
+    right.data = widenInteger(right, width);
   } else if (left.isFloat() && right.isFloat()) {
-    const bool leftIsSingle =
-        &left.getFloat().getSemantics() == &APFloat::IEEEsingle();
-    const bool rightIsSingle =
-        &right.getFloat().getSemantics() == &APFloat::IEEEsingle();
-    if (leftIsSingle != rightIsSingle) {
+    const bool leftIsSingle = isSingle(left.getFloat());
+    if (leftIsSingle != isSingle(right.getFloat())) {
       ConstantValue& narrower = leftIsSingle ? left : right;
-      APFloat widened = narrower.getFloat();
-      bool losesInfo = false;
-      widened.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven,
-                      &losesInfo);
-      narrower.data = widened;
+      narrower.data =
+          roundToFloatWidth(narrower.getFloat(), /*toSingle=*/false);
     }
   } else {
     recordBlocker(
@@ -603,9 +575,8 @@ std::optional<ConstantValue> ConstantEvaluator::applyBinaryOperator(
       default:
         return refuse("applies an integer operator to a float");
     }
-    TypePtr type = &result.getSemantics() == &APFloat::IEEEsingle()
-                       ? sun::types::Types::Float32()
-                       : sun::types::Types::Float64();
+    TypePtr type = isSingle(result) ? sun::types::Types::Float32()
+                                    : sun::types::Types::Float64();
     return ConstantValue{type, result};
   }
 
@@ -787,45 +758,58 @@ std::optional<ConstantValue> ConstantEvaluator::evaluateConvert(
       return refuse("converts a float that the integer type cannot hold");
     return makeInteger(target, converted);
   }
-  if (source->isFloat() && target->isFloatingPoint()) {
-    APFloat converted = source->getFloat();
-    bool losesInfo = false;
-    converted.convert(
-        target->isFloat32() ? APFloat::IEEEsingle() : APFloat::IEEEdouble(),
-        APFloat::rmNearestTiesToEven, &losesInfo);
-    return ConstantValue{target, converted};
-  }
+  if (source->isFloat() && target->isFloatingPoint())
+    return ConstantValue{
+        target, roundToFloatWidth(source->getFloat(), target->isFloat32())};
   return refuse("uses a conversion the compiler cannot evaluate");
 }
 
 std::optional<ConstantValue> ConstantEvaluator::evaluateIndex(
     const ExprAST& array, const std::vector<const ExprAST*>& indices,
     const Position& position) {
-  auto current = evaluateExpression(array);
-  if (!current) return std::nullopt;
+  // An array read by name is indexed where it is stored; copying a whole
+  // table to take one element would make a loop over it quadratic.
+  const bool stored = readsStoredValue(array);
+  std::optional<ConstantValue> computed;
+  if (stored) {
+    if (!findStoredValue(array)) return std::nullopt;
+  } else {
+    computed = evaluateExpression(array);
+    if (!computed) return std::nullopt;
+  }
+
+  std::vector<ConstantValue> indexValues;
+  indexValues.reserve(indices.size());
   for (const ExprAST* indexExpr : indices) {
     auto index = evaluateExpression(*indexExpr);
     if (!index) return std::nullopt;
-    if (!current->isArray() || !index->isInteger()) {
+    indexValues.push_back(std::move(*index));
+  }
+
+  // Looked up again: evaluating an index may have called a function, which
+  // can move the values of the locals.
+  const ConstantValue* current = stored ? findStoredValue(array) : &*computed;
+  for (size_t i = 0; i < indices.size(); ++i) {
+    const ConstantValue& index = indexValues[i];
+    if (!current->isArray() || !index.isInteger()) {
       recordBlocker("its initializer indexes something other than an array",
                     position);
       return std::nullopt;
     }
     // Indexing is not checked at run time, so an index outside the array has
     // no defined result to reproduce.
-    const APInt& bits = index->getInteger();
+    const APInt& bits = index.getInteger();
     const auto& elements = current->getElements();
-    const bool negative = !index->isUnsigned() && bits.isNegative();
+    const bool negative = !index.isUnsigned() && bits.isNegative();
     if (negative || bits.getActiveBits() > 64 ||
         bits.getZExtValue() >= elements.size()) {
       recordBlocker("its initializer indexes outside an array",
-                    indexExpr->getLocation());
+                    indices[i]->getLocation());
       return std::nullopt;
     }
-    ConstantValue element = elements[bits.getZExtValue()];
-    current = std::move(element);
+    current = &elements[bits.getZExtValue()];
   }
-  return current;
+  return *current;
 }
 
 // -------------------------------------------------------------------
@@ -1135,13 +1119,9 @@ std::optional<ConstantValue> ConstantEvaluator::convertToDeclaredType(
       return makeInteger(declaredType, converted);
     }
   } else if (value.isFloat() && declaredType->isFloatingPoint()) {
-    // Between the two float widths, rounding to the nearest value.
-    APFloat converted = value.getFloat();
-    bool losesInfo = false;
-    converted.convert(declaredType->isFloat32() ? APFloat::IEEEsingle()
-                                                : APFloat::IEEEdouble(),
-                      APFloat::rmNearestTiesToEven, &losesInfo);
-    return ConstantValue{declaredType, converted};
+    return ConstantValue{
+        declaredType,
+        roundToFloatWidth(value.getFloat(), declaredType->isFloat32())};
   }
   recordBlocker(
       "its initializer needs a conversion the compiler does not "

@@ -9,6 +9,7 @@
 
 #include "codegen/abi/c_abi_types.h"
 #include "semantic_analysis/expression_properties.h"
+#include "semantic_analysis/globals.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/type_analysis/type_rules.h"
 #include "support/error.h"
@@ -141,14 +142,12 @@ void SemanticAnalyzer::ensureModuleGlobalAnalyzed(const std::string& modulePath,
   auto* moduleScope = ctx_.lookupModuleScope(modulePath);
   if (!moduleScope) return;
   const auto& declarations = ctx_.declarationTable();
-  DeclarationId id =
-      declarations.findGlobal(QualifiedName(moduleScope->scopePath, name));
-  if (!id) return;
-  const sun::ast::ExprAST* astNode = declarations.get(id).astNode;
-  if (!astNode || astNode->getType() != ASTNodeType::VARIABLE_CREATION) return;
-  auto& global = const_cast<sun::ast::VariableCreationAST&>(
-      static_cast<const sun::ast::VariableCreationAST&>(*astNode));
-  if (!global.getResolvedType()) analyzeGlobal(global, *moduleScope);
+  const auto* global = findVariableNode(
+      declarations,
+      declarations.findGlobal(QualifiedName(moduleScope->scopePath, name)));
+  if (global && !global->getResolvedType())
+    analyzeGlobal(const_cast<sun::ast::VariableCreationAST&>(*global),
+                  *moduleScope);
 }
 
 void SemanticAnalyzer::analyzeVariableDeclaration(

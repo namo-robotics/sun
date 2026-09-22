@@ -32,10 +32,19 @@ const compoundName = node => attr(node, 'kind') === 'file' ? attr(child(node, 'l
 const escape = text => String(text).replace(/[&<>\{\}\\`*_\[\]#!|~]/g, c => `&#${c.codePointAt(0)};`).replace(/^(\s*)(import|export)\b/gm, (_, space, word) => `${space}&#${word.codePointAt(0)};${word.slice(1)}`)
 /** Wraps escaped source text as inline code. */
 const code = text => `<code>${escape(text)}</code>`
-/** Creates a code fence long enough to contain any backticks in the source. */
-const fence = text => {
+/**
+ * Creates a code fence long enough to contain any backticks in the source.
+ * The language defaults to C++; a comment's own fence keeps its language,
+ * which is how a `mermaid` block reaches the diagram renderer.
+ */
+const fence = (text, language = 'cpp') => {
   const marker = '`'.repeat(Math.max(3, ...Array.from(text.matchAll(/`+/g), m => m[0].length + 1)))
-  return `\n\n${marker}cpp\n${text}\n${marker}\n\n`
+  return `\n\n${marker}${language}\n${text}\n${marker}\n\n`
+}
+/** The language a Doxygen code block was fenced with, or nothing for C++. */
+const fenceLanguage = node => {
+  const language = attr(node, 'filename').replace(/^\./, '')
+  return /^[a-z][a-z0-9+-]*$/i.test(language) && language !== 'cpp' ? language : undefined
 }
 /** Builds a Markdown link with an escaped label. */
 const link = (label, url) => `[${escape(label)}](${url})`
@@ -86,7 +95,7 @@ function renderComment(node, refs) {
       /** Reads comment text without treating it as executable markup. */
       const plain = n => n.nodeType === 3 ? n.data : n.tagName === 'sp' ? ' ' : Array.from(n.childNodes || []).map(plain).join('')
       return plain(line)
-    }).join('\n'))
+    }).join('\n'), fenceLanguage(node))
     case 'verbatim': case 'preformatted': return fence(node.textContent)
     case 'itemizedlist': case 'orderedlist': return `\n${children(node, 'listitem').map((item, i) => `${node.tagName === 'orderedlist' ? `${i + 1}.` : '-'} ${renderComment(item, refs).trim().replace(/\n/g, '\n   ')}`).join('\n')}\n\n`
     case 'parameterlist': return `\n**${escape(attr(node, 'kind'))}**\n\n${content()}`

@@ -26,7 +26,6 @@
 /** Evaluates constant expressions while a program is being analyzed. */
 namespace sun::semantic_analysis::constants {
 
-/** Evaluates the initializers of a program's file-scope variables. */
 /**
  * Most statements and loop turns evaluated for one initializer. A function
  * that never finishes must not hang the compiler; past the limit the global
@@ -37,6 +36,7 @@ constexpr size_t kMaxEvaluationSteps = 1'000'000;
 /** Most function calls in progress at once while evaluating an initializer. */
 constexpr size_t kMaxCallDepth = 200;
 
+/** Evaluates the initializers of a program's file-scope variables. */
 class ConstantEvaluator {
   // Finds the node that declares a variable an initializer reads.
   const DeclarationTable& declarations_;
@@ -48,8 +48,7 @@ class ConstantEvaluator {
   std::vector<Frame> frames_;
   // The value handed back by the `return` that is ending the current call.
   std::optional<ConstantValue> returned_;
-  // Statements and loop turns evaluated for the initializer being decided. A
-  // function that never finishes must not hang the compiler.
+  // Statements and loop turns evaluated for the initializer being decided.
   size_t steps_ = 0;
 
   /** What running a statement asks the code around it to do next. */
@@ -90,23 +89,15 @@ class ConstantEvaluator {
       const sun::ast::VariableCreationAST& global);
 
  private:
-  /** Decides the variables of one block and of the modules inside it. */
-  void decideGlobals(const sun::ast::BlockExprAST& block);
+  /** A program's file-scope variables, in the order startup runs them. */
+  using GlobalOrder = std::vector<const sun::ast::VariableCreationAST*>;
 
   /**
-   * Startup initializers run in source order, so one that directly reads a
+   * Startup initializers run in the given order, so one that directly reads a
    * variable initialized later would see it still zeroed. Reports that as an
    * error. A read hidden inside a called function is not detected.
    */
-  void checkStartupOrder(const sun::ast::BlockExprAST& block);
-  /** Lists the block's variables in the order startup initializes them. */
-  void collectInitializationOrder(
-      const sun::ast::BlockExprAST& block,
-      std::vector<const sun::ast::VariableCreationAST*>& order) const;
-  /** The file-scope variable a name or `module.name` refers to, or null. */
-  const sun::ast::VariableCreationAST* findGlobalNode(
-      DeclarationId target) const;
-
+  void checkStartupOrder(const GlobalOrder& order);
   /**
    * The value of an analyzed expression, or nothing when it cannot be
    * computed; the obstacle is then recorded with recordBlocker.
@@ -116,10 +107,21 @@ class ConstantEvaluator {
 
   /** Evaluates a number, bool, char or string literal. */
   std::optional<ConstantValue> evaluateLiteral(const sun::ast::ExprAST& expr);
-  /** Reads the compile-time value of the `const` a name refers to. */
-  std::optional<ConstantValue> evaluateGlobalRead(
-      DeclarationId target, const std::string& name,
-      const sun::support::Position& position);
+  /**
+   * The compile-time value of the `const` a name refers to, or null with the
+   * obstacle recorded. The value lives on the declaring node, so reading it
+   * copies nothing.
+   */
+  const ConstantValue* findGlobalValue(DeclarationId target,
+                                       const std::string& name,
+                                       const sun::support::Position& position);
+  /**
+   * The value that a read of a variable refers to, without copying it, or
+   * null with the obstacle recorded. `expr` must be such a read (see
+   * readsStoredValue). A local's value may move when a call is evaluated, so
+   * the result must be used before the next call.
+   */
+  const ConstantValue* findStoredValue(const sun::ast::ExprAST& expr);
   /** Evaluates `m.X` on a module and `Color.Red` on a payload-free enum. */
   std::optional<ConstantValue> evaluateMemberAccess(
       const sun::ast::MemberAccessAST& access);

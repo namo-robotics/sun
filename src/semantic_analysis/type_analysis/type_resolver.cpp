@@ -8,6 +8,7 @@
 
 #include "codegen/support/type_checks.h"
 #include "semantic_analysis/constants/constant_evaluator.h"
+#include "semantic_analysis/globals.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/type_analysis/type_traits.h"
 #include "support/error.h"
@@ -286,15 +287,11 @@ size_t TypeResolver::resolveArrayDimension(
 
   using sun::semantic_analysis::constants::GlobalInitKind;
   const auto& declarations = ctx_.declarationTable();
-  const sun::ast::ExprAST* astNode =
-      info->declarationId ? declarations.get(info->declarationId).astNode
-                          : nullptr;
-  if (!astNode ||
-      astNode->getType() != sun::ast::ASTNodeType::VARIABLE_CREATION)
+  const auto* declaration = findVariableNode(declarations, info->declarationId);
+  if (!declaration)
     reject("must be known at compile time, but the compiler has no value for '" +
            name + "'");
-  const auto& constant =
-      static_cast<const sun::ast::VariableCreationAST&>(*astNode);
+  const auto& constant = *declaration;
   const auto* decision = constant.getGlobalInit();
   if (!decision)
     decision = &constants::ConstantEvaluator(declarations)

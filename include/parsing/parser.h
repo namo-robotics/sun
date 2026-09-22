@@ -453,10 +453,6 @@ class Parser {
    * ordinary identifier, so a field or variable may still be called `method`.
    */
   bool atMethodKeyword() const;
-  /** Consumes tokens for a statement sequence and builds its syntax-tree
-   * representation. */
-  unique_ptr<ExprAST> parseStatementList();
-
   /**
    * `<T, U: _Numeric>` or `<'a, T>` after a function, class, interface or
    * enum name. Returns empty when there is no '<' — the declaration is not
@@ -539,11 +535,6 @@ class Parser {
    * Enum definition parsing: enum Name { Variant1, Variant2, ... }
    */
   unique_ptr<sun::ast::EnumDefinitionAST> parseEnumDefinition();
-
-  /**
-   * New class instance: new ClassName(args...)
-   */
-  unique_ptr<ExprAST> parseNewClassInstance(const std::string& className);
 
   /** Consumes tokens for a dependency manifest and builds its syntax-tree
    * representation. */

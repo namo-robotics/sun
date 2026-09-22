@@ -9,16 +9,10 @@ namespace sun::semantic_analysis {
 class SemanticAnalyzer;
 }
 
-#include <optional>
 #include <string>
 #include <vector>
 
 #include "moon.pb.h"
-
-/** Builds and loads compiled Moon libraries and their declaration metadata. */
-namespace sun::moon_bundling {}
-/** Builds and loads compiled Moon libraries and their declaration metadata. */
-namespace sun::moon_bundling {}
 
 /** Builds and loads compiled Moon libraries and their declaration metadata. */
 namespace sun::moon_bundling {

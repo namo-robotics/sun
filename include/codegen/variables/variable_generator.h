@@ -110,11 +110,6 @@ class VariableGenerator {
   void assignToVariableSlot(llvm::Value* slot, llvm::Value* value,
                             const TypePtr& varType, const std::string& name);
 
-  /** Creates and registers LLVM storage for a global declaration. */
-  llvm::GlobalVariable* createGlobalVariable(
-      DeclarationId id, const std::string& name, llvm::Type* type,
-      llvm::Constant* initializer = nullptr);
-
   /**
    * Creates the storage of every global a block declares before any body is
    * emitted, because a function may use a global declared further down.
@@ -213,6 +208,11 @@ class VariableGenerator {
   // Globals still waiting for their initializer to be emitted
   std::vector<StaticInitInfo> staticInits;
 
+  /** Creates and registers LLVM storage for a global with a known value. */
+  llvm::GlobalVariable* createGlobalVariable(DeclarationId id,
+                                             const std::string& name,
+                                             llvm::Type* type,
+                                             llvm::Constant* initializer);
   /** Allocates and initializes storage for a local variable. */
   llvm::Value* genLocalVar(const VariableCreationAST& expr,
                            llvm::Type* varType);
@@ -242,13 +242,11 @@ class VariableGenerator {
    */
   llvm::Value* convertToVariableType(llvm::Value* value, llvm::Type* varType,
                                      const TypePtr& valueSunType);
-  /** Creates and initializes global storage for a class value. */
-  llvm::GlobalVariable* genGlobalClassVar(const VariableCreationAST& expr,
-                                          ClassType& classType);
   /**
    * Creates zeroed storage for a file-scope variable whose value cannot be
    * computed at compile time, and queues its initializer for the startup
-   * function.
+   * function. A class value always takes this path: its constructor runs at
+   * startup.
    */
   llvm::GlobalVariable* emitStartupGlobal(const VariableCreationAST& expr,
                                           llvm::Type* varType);

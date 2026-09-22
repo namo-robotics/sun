@@ -10,6 +10,7 @@
 #include <set>
 #include <sstream>
 
+#include "semantic_analysis/globals.h"
 #include "semantic_analysis/semantic_scope.h"
 #include "semantic_analysis/symbol_names.h"
 #include "semantic_analysis/type_analysis/type_rules.h"
@@ -359,24 +360,21 @@ VariableInfo* SemanticScopeBase::lookupVariable(const std::string& name) {
 // -------------------------------------------------------------------
 UnanalyzedGlobal SemanticScopeBase::findUnanalyzedGlobal(
     const std::string& name, const DeclarationTable& declarations) {
+  // Almost every name looked up is a local, a parameter or a function
+  if (!declarations.hasGlobalNamed(name)) return {};
+
   // The nearest scope that knows the name decides: a variable that is
   // already declared there shadows any global further out.
   enum class Probe { Unknown, Declared, Unanalyzed };
   UnanalyzedGlobal unanalyzed;
   auto probe = [&](SemanticScopeBase* scope) {
     if (scope->variables.count(name)) return Probe::Declared;
-    DeclarationId id =
-        declarations.findGlobal(QualifiedName(scope->scopePath, name));
-    if (!id) return Probe::Unknown;
-    const sun::ast::ExprAST* astNode = declarations.get(id).astNode;
-    if (!astNode ||
-        astNode->getType() != sun::ast::ASTNodeType::VARIABLE_CREATION)
-      return Probe::Unknown;
-    auto& global = const_cast<sun::ast::VariableCreationAST&>(
-        static_cast<const sun::ast::VariableCreationAST&>(*astNode));
+    const auto* global = findVariableNode(
+        declarations,
+        declarations.findGlobal(QualifiedName(scope->scopePath, name)));
     // Analysis gives a variable its type as its last step
-    if (global.getResolvedType()) return Probe::Unknown;
-    unanalyzed = {&global, scope};
+    if (!global || global->getResolvedType()) return Probe::Unknown;
+    unanalyzed = {const_cast<sun::ast::VariableCreationAST*>(global), scope};
     return Probe::Unanalyzed;
   };
   for (auto* scope = this; scope != nullptr; scope = scope->parent) {

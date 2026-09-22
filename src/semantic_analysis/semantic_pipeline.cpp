@@ -1,6 +1,7 @@
 #include "semantic_analysis/semantic_pipeline.h"
 
 #include "semantic_analysis/constants/constant_evaluator.h"
+#include "semantic_analysis/globals.h"
 #include "semantic_analysis/passes/declaration_identity_pass.h"
 #include "semantic_analysis/semantic_analyzer.h"
 
@@ -32,31 +33,16 @@ void SemanticPipeline::run(sun::ast::BlockExprAST& block,
 }
 
 void SemanticPipeline::registerGlobals(const sun::ast::BlockExprAST& block) {
-  for (const auto& node : block.getBody()) {
-    switch (node->getType()) {
-      case sun::ast::ASTNodeType::MODULE:
-        registerGlobals(
-            static_cast<const sun::ast::ModuleAST&>(*node).getBody());
-        break;
-      case sun::ast::ASTNodeType::MOON_SCOPE:
-        registerGlobals(
-            static_cast<const sun::ast::MoonScopeAST&>(*node).getBody());
-        break;
-      case sun::ast::ASTNodeType::VARIABLE_CREATION: {
+  auto& declarations = context_.results().declarations;
+  forEachGlobalDeclaration(
+      block, [&](const sun::ast::VariableCreationAST& global) {
         // A library's globals and C globals have no initializer to analyze
-        const auto& global =
-            static_cast<const sun::ast::VariableCreationAST&>(*node);
         if (global.isPrecompiled() || global.isCExtern() ||
             !global.hasQualifiedName() || !global.getDeclarationId())
-          break;
-        context_.results().declarations.registerGlobal(
-            global.getQualifiedName(), global.getDeclarationId());
-        break;
-      }
-      default:
-        break;
-    }
-  }
+          return;
+        declarations.registerGlobal(global.getQualifiedName(),
+                                    global.getDeclarationId());
+      });
 }
 
 void SemanticPipeline::prepareGenerated(const ExprAST& expression,

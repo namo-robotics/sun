@@ -219,14 +219,14 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
           // module could never be reached by an importer. That includes a C
           // extern global, which declares a name like any other.
           if (name.empty()) {
-            for (const auto& global : metadata.globals()) {
-              fail("moon bundle: global '" + global.name() +
+            if (metadata.globals_size() > 0)
+              fail("moon bundle: global '" + metadata.globals(0).name() +
                    "' is declared outside any module; a bundle's globals "
                    "must be declared inside a module");
-            }
+            continue;
           }
-          if (!name.empty()) report.modules.push_back(name);
-          if (!name.empty() && name.find('.') == std::string::npos &&
+          report.modules.push_back(name);
+          if (name.find('.') == std::string::npos &&
               metadata.visibility() != sun::proto::ast::PUBLIC)
             fail("moon bundle: top-level module '" + name +
                  "' must be declared 'public' to be exported");

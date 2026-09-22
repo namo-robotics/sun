@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 #include "semantic_analysis/declaration_id.h"
@@ -70,6 +71,9 @@ class DeclarationTable {
   // The file-scope and module-scope variables this program's source
   // declares, by qualified name. The first declaration of a name wins.
   std::unordered_map<QualifiedName, DeclarationId> globals_;
+  // The unqualified names in globals_, so that a name no global has can be
+  // dismissed without building qualified names along the scope chain.
+  std::unordered_set<std::string> globalBaseNames_;
 
  public:
   /** Start an independent table whose identities cannot be copied. */
@@ -113,6 +117,12 @@ class DeclarationTable {
   void registerGlobal(const QualifiedName& name, DeclarationId id) {
     get(id);
     globals_.try_emplace(name, id);
+    globalBaseNames_.insert(name.baseName);
+  }
+
+  /** Reports whether any registered global has this unqualified name. */
+  bool hasGlobalNamed(const std::string& baseName) const {
+    return globalBaseNames_.count(baseName) != 0;
   }
 
   /** The global variable with this qualified name, or an empty id. */
