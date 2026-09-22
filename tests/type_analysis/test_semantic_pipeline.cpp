@@ -235,6 +235,8 @@ TEST_F(TypeAnalysis_SemanticPipeline,
       *generic, {sun::types::Types::Int32()});
   ASSERT_NE(specialized->getField("value"), nullptr);
   EXPECT_EQ(specialized->getField("value")->type, sun::types::Types::Int32());
+  ASSERT_NO_THROW(analyzer.generics().analyzePendingBodies());
+  EXPECT_FALSE(analyzer.generics().hasPendingBodies());
 }
 
 /** Imported function signatures and interface fields are ready on return. */
@@ -358,7 +360,7 @@ TEST_F(TypeAnalysis_SemanticPipeline,
   auto* originalScope = context.scope();
   EXPECT_THROW(analyzer.pipeline().run(tree), sun::support::SunError);
   EXPECT_EQ(context.scope(), originalScope);
-  EXPECT_FALSE(analyzer.generics().isInDeclarationPrepass());
+  EXPECT_FALSE(context.isCollectingDeclarations());
 }
 
 /** Whole-tree preparation can prune imports without pruning own-bundle source.

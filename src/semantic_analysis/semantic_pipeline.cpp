@@ -1,7 +1,6 @@
 #include "semantic_analysis/semantic_pipeline.h"
 
 #include "semantic_analysis/passes/declaration_identity_pass.h"
-#include "semantic_analysis/passes/declaration_preparation_guard.h"
 #include "semantic_analysis/semantic_analyzer.h"
 
 using sun::ast::ExprAST;
@@ -21,10 +20,11 @@ SemanticPipeline::SemanticPipeline(
       typeRegistrationPass_(context_),
       declarationCollectionPass_(context_, analyzer),
       bodyAnalysisPass_(analyzer),
+      specializationBodyAnalysisPass_(analyzer),
       globalInitializerEvaluationPass_(context_.results().declarations) {}
 
 void SemanticPipeline::run(sun::ast::BlockExprAST& block,
-                           const std::function<void()>& declarationsReady) {
+                           const std::function<void()>& declarationsReady) try {
   prepareImports(block);
   // Imported roots are complete. Keep subsequent source preparation and
   // body analysis from revisiting their declarations.
@@ -37,8 +37,13 @@ void SemanticPipeline::run(sun::ast::BlockExprAST& block,
   globalRegistrationPass_.run(block);
   typeRegistrationPass_.run(block);
   declarationCollectionPass_.run(block);
+  specializationBodyAnalysisPass_.run();
   bodyAnalysisPass_.run(block);
+  specializationBodyAnalysisPass_.run();
   globalInitializerEvaluationPass_.run(block);
+} catch (...) {
+  analyzer_.generics().discardPendingBodies();
+  throw;
 }
 
 std::vector<sun::ast::MoonScopeAST*> SemanticPipeline::getMoonImports(
@@ -61,13 +66,9 @@ void SemanticPipeline::prepareImports(sun::ast::BlockExprAST& block) {
   declarationNamingPass_.run(imports, context_.getCurrentScopePath());
   typeRegistrationPass_.run(imports);
 
-  // A consumer bundle can instantiate a dependency's template without adding
-  // that specialization to the dependency's metadata. Reconstructed bodies
-  // must wait until every imported bundle's declarations are ready.
-  passes::DeclarationPreparationGuard preparation(analyzer_.generics());
   declarationCollectionPass_.run(imports);
   importCompletionPass_.run(imports);
-  preparation.complete();
+  specializationBodyAnalysisPass_.run();
 }
 
 void SemanticPipeline::prepareGenerated(const ExprAST& expression,

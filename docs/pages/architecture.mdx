@@ -1,173 +1,51 @@
 # Architecture
 
-Sun is a compiled language with an LLVM 20 backend.
+Sun compiles source through a shared analysis pipeline, then uses LLVM to run
+the program directly or produce a native executable.
 
-This page gives a high-level overview of the compiler. Two stages have
-dedicated deep-dives:
-
-- [Semantic Analysis](/architecture/semantic-analysis) — type inference,
-  scope resolution, generics, and capture detection
-- [Code Generation](/architecture/codegen) — LLVM IR emission, lowering
-  conventions, and source layout
-
-## Compilation Pipeline
-
-```
-Source → Lexer → Parser → AST → Manifest Processing → Merged AST → Semantic Analyzer → Borrow Checker → Codegen Visitor → LLVM IR → JIT/AOT
-```
-
-### Pipeline Steps
-
-1. **Lexer** — Tokenize source file
-2. **Parser** — Build AST from tokens
-3. **Manifest Processing** — Extract manifest, parse additional `source_files`, load `libraries`
-4. **AST Merging** — Combine all parsed ASTs into a single merged AST
-5. **Semantic Analysis** — Type inference, scope resolution, capture detection
-6. **Borrow Checking** — Ownership and lifetime analysis
-7. **Code Generation** — Emit LLVM IR
-8. **JIT/AOT** — Execute immediately or compile to native binary
-
-## Component Overview
-
-| Component | Files | Description |
-|-----------|-------|-------------|
-| **Driver** | `driver/driver.h/cpp` | Orchestrates the full pipeline: parse → analyze → codegen → execute |
-| **CLI** | `cli/*.h`, `src/cli/*.cpp` | The `sun` executable: command-line parsing and the `fmt`, `test`, compile, bundle and run commands |
-| **Lexer** | `parsing/lexer.h`, `parsing/nfa.h` | NFA-based regex tokenizer supporting keywords, operators, literals (header-only) |
-| **Parser** | `parsing/parser.h/cpp` | Recursive descent parser producing AST nodes |
-| **AST** | `ast.h`, `ast/*.h`, `src/ast/*.cpp` | Expression/statement nodes with type annotations |
-| **Semantic Analyzer** | `semantic_analysis/semantic_analyzer.h`, `src/semantic_analysis/*.cpp` | Type inference, scope analysis, closure capture detection |
-| **Borrow Checker** | `borrow_checker/*.h/cpp` | Rust-style ownership and borrowing analysis (WIP) |
-| **Codegen Visitor** | `codegen/codegen_visitor.h`, `src/codegen/*.cpp` | Visitor pattern for AST-to-LLVM-IR translation |
-| **LLVM Codegen** | `codegen/codegen.h`, `codegen/llvm_type_resolver.h/cpp` | LLVM context, module, and type management |
-| **Compiler** | `driver/compiler.h` | AOT compilation: emit object files, link executables |
-| **SunJIT** | `driver/sun_jit.h` | LLVM ORC-based JIT compiler for immediate execution |
-| **Moon** | `moon_bundling/moon.h/cpp`, `moon_bundling/library_cache.h/cpp` | Precompiled library format (.moon) and caching |
-
-Headers live under `include/` and implementations under `src/` in the same
-directory layout: `support/`, `driver/`, `cli/`, `parsing/`, `ast/`,
-`semantic_analysis/`, `borrow_checker/`, `codegen/` (with `abi/` and
-`intrinsics/`), `serialization/`, `moon_bundling/`, `lsp/`, `debug/`.
-
-## Semantic Analysis
-
-`SemanticAnalyzer` owns the shared context, checking helpers, and a persistent
-`SemanticPipeline` that owns all analysis passes. Together they turn a merely *parsed* program into an *understood* one: it prepares declarations, assigns their qualified names, and registers
-them before resolving signatures and analyzing bodies. The naming pass does
-not resolve types or register symbols. Body analysis stamps expressions with
-a resolved `sun::Type`. Type inference, expected-type propagation,
-compatibility checking, closure capture detection, and generic
-monomorphization all happen here.
-
-See [Semantic Analysis](/architecture/semantic-analysis) for the full
-deep-dive.
-
-## Code Generation
-
-The codegen visitor walks the analyzed AST and emits LLVM IR, reading the
-types and annotations the semantic analyzer recorded. Its source is split
-across `src/codegen/` by expression type.
-
-See [Code Generation](/architecture/codegen) for lowering conventions and
-the per-file breakdown.
-
-## Type System
-
-The type system (`types.h`) includes:
-
-- **Primitives**: `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `f32`, `f64`, `bool`, `void`
-- **Arrays**: Fixed-size arrays with N-dimensional indexing, owning their elements inline; `ref array<T>` views one with the rank erased
-- **Functions/Lambdas**: First-class function types with closure support
-- **Pointers**: `ptr<T>` owning pointers (RAII), `raw_ptr<T>` for C interop, `static_ptr<T>` for static data
-- **References**: `ref T` for borrowing without ownership transfer
-- **Classes**: User-defined value types with methods and fields
-- **Interfaces**: Contracts for polymorphism (including builtin `IError`; the stdlib supplies `IIterator`, `IIterable`)
-- **Enums**: Named integer variants with pattern matching support
-- **Generics**: Parameterized types with monomorphization
-- **Errors**: `T throws IError` functions throw classes implementing `IError` as native exceptions
-
-## Execution Modes
-
-### JIT Execution
-```bash
-sun program.sun
-```
-Uses LLVM ORC JIT for immediate execution without producing binaries.
-
-### AOT Compilation
-```bash
-sun -c -o program program.sun
-```
-Emits object file via LLVM, links with system C compiler to produce native executable.
-
-### Debug Mode
-```bash
-sun --debug program.sun
-```
-Generates debugging artifacts in `program_debug/`:
-- `ast.dot` — GraphViz AST visualization
-- `ir.ll` — Full LLVM IR output
-- `scope_tree.html` — Semantic scope visualization
-
-## Flow Diagram
+## Compilation flow
 
 ```mermaid
 flowchart TB
-    subgraph Input
-        SRC[".sun Entrypoint"]
-    end
+    SOURCE["Source files and moon libraries"]
+    FRONTEND["Load dependencies and parse source"]
+    AST["Complete AST"]
+    SEMANTIC["Semantic analysis<br/>names, types and specialized bodies"]
+    BORROW["Borrow checking<br/>ownership and lifetimes"]
+    CODEGEN["Code generation<br/>LLVM IR"]
+    OPTIMIZE["LLVM optimization"]
+    JIT["Execute with JIT"]
+    AOT["Emit objects and link a native executable"]
 
-    subgraph Frontend["Frontend (Parsing)"]
-        LEX["Lexer<br/>NFA-based tokenization"]
-        PAR["Parser<br/>Recursive descent"]
-        AST["AST<br/>Abstract Syntax Tree"]
-    end
-
-    subgraph Manifest["Manifest Processing"]
-        MAN["Extract Manifest<br/>source_files, libraries"]
-        DEPS["Parse Dependencies<br/>Additional .sun files"]
-        MOON["Load Moons<br/>Precompiled libraries"]
-        MERGE["Merge ASTs<br/>Single unified AST"]
-    end
-
-    subgraph Analysis["Semantic Analysis"]
-        SEM["Semantic Analyzer<br/>Type inference & checking"]
-        SYM["Symbol Table<br/>Scoping & captures"]
-        BC["Borrow Checker<br/>Ownership analysis (WIP)"]
-    end
-
-    subgraph Backend["Backend (Code Generation)"]
-        CGV["Codegen Visitor<br/>AST traversal"]
-        LLVM["LLVM IR Builder<br/>IR generation"]
-        MAT["Matrix Codegen<br/>Matrix operations"]
-        OPT["Optimization Passes<br/>InstCombine, GVN, etc."]
-    end
-
-    subgraph Execution
-        JIT["SunJIT<br/>LLVM ORC JIT"]
-        AOT["Compiler<br/>Object emission + linking"]
-        RUN["Native Execution"]
-        EXE["Executable Binary"]
-    end
-
-    SRC --> LEX
-    LEX -->|"Tokens"| PAR
-    PAR --> AST
-    AST --> MAN
-    MAN --> DEPS
-    MAN --> MOON
-    DEPS --> MERGE
-    MOON --> MERGE
-    MERGE --> SEM
-    SEM <--> SYM
-    SEM --> BC
-    BC -->|"Verified AST"| CGV
-    CGV --> LLVM
-    CGV --> MAT
-    LLVM --> OPT
-    MAT --> OPT
-    OPT -->|"JIT mode"| JIT
-    OPT -->|"AOT mode"| AOT
-    JIT --> RUN
-    AOT --> EXE
+    SOURCE --> FRONTEND --> AST --> SEMANTIC --> BORROW
+    BORROW --> CODEGEN --> OPTIMIZE
+    OPTIMIZE --> JIT
+    OPTIMIZE --> AOT
 ```
+
+## Stage boundaries
+
+- **Loading and parsing** assemble source and imported declarations into one
+  complete abstract syntax tree (AST).
+- **Semantic analysis** resolves names and types, checks expressions, and
+  prepares concrete generic specializations. Its outputs are an annotated AST
+  and shared declaration and type records.
+- **Borrow checking** validates ownership and lifetime rules before code is
+  emitted.
+- **Code generation** uses those checked results to emit LLVM IR. LLVM
+  optimization and linking produce the executable form.
+
+These boundaries keep file loading out of semantic analysis and name resolution
+out of code generation. JIT and ahead-of-time compilation share the same
+frontend and analysis.
+
+## Moon libraries
+
+A moon bundle contains compiled code and metadata describing its declarations.
+Importing a bundle makes those declarations available to analysis; generic
+templates also retain the syntax needed for new specializations. Stable
+declaration identities connect references across independently built bundles.
+
+See [Semantic Analysis](/architecture/semantic-analysis) for the analysis flow
+and shared data, and [Code Generation](/architecture/codegen) for how those
+results become executable code.

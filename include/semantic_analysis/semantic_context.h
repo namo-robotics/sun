@@ -47,8 +47,35 @@ namespace sun::semantic_analysis {
 class SemanticContext : public AccessContext {
   SourceFileId sourceFileId_ = 0;
   DeclarationState declarations_;
+  size_t declarationCollectionDepth_ = 0;
 
  public:
+  /** Whether type declarations are being collected before body analysis. */
+  bool isCollectingDeclarations() const {
+    return declarationCollectionDepth_ != 0;
+  }
+
+  /** Track nested declaration collection independently of specialization jobs.
+   */
+  class DeclarationCollectionGuard {
+   public:
+    /** Enter declaration collection for this context. */
+    explicit DeclarationCollectionGuard(SemanticContext &context)
+        : context_(context) {
+      ++context_.declarationCollectionDepth_;
+    }
+    /** Restore collection depth on success or failure. */
+    ~DeclarationCollectionGuard() { --context_.declarationCollectionDepth_; }
+    /** Keep each collection interval owned by one guard. */
+    DeclarationCollectionGuard(const DeclarationCollectionGuard &) = delete;
+    /** Prevent duplicate collection interval ownership. */
+    DeclarationCollectionGuard &operator=(const DeclarationCollectionGuard &) =
+        delete;
+
+   private:
+    SemanticContext &context_;
+  };
+
   /** Start with an empty global scope holding the builtin functions. */
   explicit SemanticContext(
       std::shared_ptr<sun::semantic_analysis::AnalysisResults> results);

@@ -4,20 +4,21 @@
 // Sun has no runtime generics. Every `Vec<i32>`, every `spawn<T>(...)` call and
 // every `Option<ref T>` payload is a distinct specialization, built the first
 // time it is asked for and interned by its semantic arguments. This class owns
-// the completed callable cache and the queue of specializations whose bodies
-// the declaration pre-pass deferred.
+// the prepared callable cache and the queue of bodies awaiting explicit analysis.
 //
-// Specializing means analyzing a body, so this holds a reference back to the
+// Checking queued bodies requires a reference back to the
 // analyzer. The direction that matters is the other one: nothing else needs to
 // know how a specialization is built or when it is cached.
 
 #pragma once
 
+#include <deque>
 #include <map>
 #include <memory>
 #include <optional>
 #include <set>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "semantic_analysis/semantic_context.h"
@@ -32,7 +33,8 @@ class SemanticAnalyzer;
  * Builds and caches the specializations a program asks for. Bodies are
  * analyzed in the scope the template was declared in, so names inside a
  * template resolve as written at the definition site rather than at the call
- * site that triggered the instantiation.
+ * site that triggered the instantiation. Instantiation returns prepared
+ * signatures immediately; bodies are always queued until analyzePendingBodies.
  */
 class GenericSpecializer {
  public:
@@ -67,29 +69,17 @@ class GenericSpecializer {
   SemanticScope *classDefinitionScope(
       const sun::types::ClassType &classType) const;
 
-  /**
-   * Analyze the method bodies the pre-pass deferred, now that every
-   * declaration in the preparation group is registered. A body may ask for
-   * further specializations; those are analyzed straight away.
+  /** Drain prepared specialization bodies in FIFO order, including new jobs.
+   * Direct instantiation callers must drain before consuming analyzed bodies.
+   * On failure, discard remaining work and preserve the original diagnostic.
    */
-  void analyzeDeferredSpecializations();
+  void analyzePendingBodies();
 
-  /**
-   * Drop the deferred method bodies without analyzing them. For the error
-   * path: when the pre-pass stops early, declarations are only partly
-   * registered and analyzing these bodies would report a misleading failure
-   * in place of the error that stopped it.
-   */
-  void discardDeferredSpecializations() { deferredSpecializations_.clear(); }
+  /** Discard pending work without analyzing it after a failed compilation. */
+  void discardPendingBodies() { pendingBodies_.clear(); }
 
-  /**
-   * True while the declaration pre-pass is running, so a class specialization
-   * registers its type and method signatures now but defers its method bodies
-   * until every declaration in the preparation group is known.
-   */
-  void setInDeclarationPrepass(bool inPrepass) { inPrepass_ = inPrepass; }
-  /** True while declarations are still being collected, before any body. */
-  bool isInDeclarationPrepass() const { return inPrepass_; }
+  /** Whether prepared specializations still require body checking. */
+  bool hasPendingBodies() const { return !pendingBodies_.empty(); }
 
   // ---- Functions ---------------------------------------------------------
 
@@ -246,25 +236,32 @@ class GenericSpecializer {
   SemanticContext &ctx_;
   SemanticAnalyzer &sema_;
 
-  // Completed callable instances by their declaration identity.
+  // Prepared callable instances by their declaration identity.
   std::map<sun::semantic_analysis::DeclarationId, SpecializedFunctionInfo>
       specializedFunctionCache_;
 
-  /**
-   * A class specialization whose type and method signatures are registered
-   * but whose method bodies are not analyzed yet.
+  /** A prepared specialization and the session-owned scope containing its
+   * concrete bindings. The AST retains captures, pack types and source
+   * identity.
    */
-  struct DeferredSpecialization {
-    std::shared_ptr<sun::types::ClassType> specializedClass;
-    const GenericClassInfo *genericInfo;
-    std::vector<sun::types::TypePtr> typeArgs;
-    std::shared_ptr<sun::ast::ClassDefinitionAST>
-        specializedAST;  // bodies unanalyzed
+  struct PendingBody {
+    SemanticScope *scope;
+    std::shared_ptr<sun::types::ClassType> ownerClass;
+    std::variant<std::shared_ptr<sun::ast::ClassDefinitionAST>,
+                 std::shared_ptr<sun::ast::FunctionAST>>
+        ast;
+    bool isMethod = false;
   };
-  std::vector<DeferredSpecialization> deferredSpecializations_;
+  std::deque<PendingBody> pendingBodies_;
 
-  // Set while the declaration pre-pass runs; see setInDeclarationPrepass.
-  bool inPrepass_ = false;
+  /** Check ordinary specialized methods, then constructor initialization. */
+  void analyzeClassBody(sun::ast::ClassDefinitionAST &ast,
+                        std::shared_ptr<sun::types::ClassType> classType);
+  /** Bind prepared parameters, captures and packs before checking a callable.
+   */
+  void analyzeCallableBody(sun::ast::FunctionAST &ast,
+                           std::shared_ptr<sun::types::ClassType> classType,
+                           bool isMethod);
 };
 
 }  // namespace sun::semantic_analysis

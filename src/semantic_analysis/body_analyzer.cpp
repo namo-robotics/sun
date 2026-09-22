@@ -67,7 +67,7 @@ void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
 
   // A pack's arity and types come from the call site, so a template body
   // holding one has nothing concrete to check yet. Each specialization is
-  // analyzed on instantiation (instantiateGenericFunction/Method).
+  // prepared on instantiation and checked by the specialization body pass.
   if (proto.hasVariadicParam()) return;
 
   // Sun has no va_arg, so C varargs are only meaningful on an extern

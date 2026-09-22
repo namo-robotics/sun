@@ -3,6 +3,7 @@
 #include <functional>
 
 #include "semantic_analysis/passes/body_analysis_pass.h"
+#include "semantic_analysis/passes/specialization_body_analysis_pass.h"
 #include "semantic_analysis/passes/declaration_collection_pass.h"
 #include "semantic_analysis/passes/declaration_identity_pass.h"
 #include "semantic_analysis/passes/declaration_naming_pass.h"
@@ -83,6 +84,7 @@ class SemanticPipeline {
   passes::TypeRegistrationPass typeRegistrationPass_;
   passes::DeclarationCollectionPass declarationCollectionPass_;
   passes::BodyAnalysisPass bodyAnalysisPass_;
+  passes::SpecializationBodyAnalysisPass specializationBodyAnalysisPass_;
   passes::GlobalInitializerEvaluationPass globalInitializerEvaluationPass_;
 };
 

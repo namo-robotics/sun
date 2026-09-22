@@ -6,7 +6,6 @@
 
 #include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/passes/declaration_collection_pass.h"
-#include "semantic_analysis/passes/declaration_preparation_guard.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "support/config.h"
 #include "support/error.h"
@@ -35,7 +34,7 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
   // and local variable ordering matter)
   if (!ctx_.isAtModuleLevel()) return;
 
-  DeclarationPreparationGuard preparation(sema_.generics());
+  SemanticContext::DeclarationCollectionGuard collection(ctx_);
 
   // Bind this block's imports before anything in it is resolved. Declaration
   // order does not matter at module level, and a merged bundle places every
@@ -116,7 +115,6 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
       collectFunctionSignature(static_cast<FunctionAST&>(*expr));
   }
 
-  preparation.complete();
 }
 
 // Register a named, non-lambda function's signature (no body analysis) in

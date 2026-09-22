@@ -26,10 +26,10 @@ using sun::ast::BlockExprAST;
  *
  * TypeRegistrationPass supplies types and templates first. This pass binds
  * imports, fills class shapes, and resolves concrete signatures. While it runs (see
- * GenericSpecializer::isInDeclarationPrepass), a global reached through a
+ * SemanticContext::isCollectingDeclarations), a global reached through a
  * type annotation may not call a function, because its callee has no
  * analyzed body yet, and a class specialization registers its signatures
- * but holds its method bodies until the outer preparation group ends.
+ * but queues its method bodies for an explicit body-analysis pass.
  */
 class DeclarationCollectionPass {
  public:

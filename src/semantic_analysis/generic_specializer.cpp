@@ -4,6 +4,7 @@
 // generic_specializer.cpp — Monomorphization (see generic_specializer.h)
 
 #include <algorithm>
+#include <type_traits>
 
 #include "semantic_analysis/field_initialization.h"
 #include "semantic_analysis/generic_specializer.h"
@@ -421,39 +422,7 @@ std::shared_ptr<ClassType> GenericSpecializer::instantiateGenericClass(
     return specializedClass;
   }
 
-  // PASS 2: Analyze all cloned method bodies — unless requested from the
-  // declaration pre-pass, where bodies are deferred until every declaration
-  // (including functions the bodies may call) is registered.
-  bool deferBodies = inPrepass_;
-  if (!deferBodies) {
-    for (auto& methodClone : specializedAST->getMutableMethods()) {
-      FunctionAST* methodFunc = methodClone.function.get();
-      const auto& proto = methodFunc->getProto();
-
-      // Skip generic methods - they are analyzed when called with type args
-      if (proto.isGeneric()) {
-        continue;
-      }
-
-      // Use the unified helper (type params already in outer scope, pass
-      // empty). This analyzes the CLONED method, not the shared generic one
-      sema_.bodies().analyzeMethodWithBindings(*methodFunc, specializedClass,
-                                               {}, {});
-    }
-    // Each specialization's constructors are checked against its own fields:
-    // what a field's type turns out to be is only known here
-    for (const auto& methodClone : specializedAST->getMethods()) {
-      if (!methodClone.isConstructor) continue;
-      if (methodClone.function->getProto().isGeneric()) continue;
-      checkFieldInitialization(*methodClone.function, *specializedClass,
-                               specializedAST->getMethods());
-    }
-  }
-
-  if (deferBodies) {
-    deferredSpecializations_.push_back(
-        {specializedClass, genericClassInfo, typeArgs, specializedAST});
-  }
+  pendingBodies_.push_back({ctx_.scope(), specializedClass, specializedAST});
 
   // Restore old class context
   ctx_.setCurrentClass(savedClass);
@@ -466,42 +435,82 @@ std::shared_ptr<ClassType> GenericSpecializer::instantiateGenericClass(
   return specializedClass;
 }
 
-// Analyze the method bodies of specializations created during the
-// declaration pre-pass. Re-enters an equivalent class scope (type parameter
-// bindings) inside the template's definition scope. Bodies may create
-// further specializations; those are analyzed immediately (the pre-pass is
-// over) so the loop is by index.
-void GenericSpecializer::analyzeDeferredSpecializations() {
-  for (size_t i = 0; i < deferredSpecializations_.size(); ++i) {
-    DeferredSpecialization d = deferredSpecializations_[i];
-    SemanticContext::ScopeSwitchGuard definitionScope(
-        ctx_, SemanticContext::definitionScopeOf(*d.genericInfo));
-    SemanticContext::SourceFileGuard definitionFile(
-        ctx_, d.genericInfo->AST->getSourceFileId());
-
-    ctx_.enterClassScope(d.specializedClass->getQualifiedName());
-    ctx_.currentScope().declareTypeParameters(
-        typeParameterNames(d.genericInfo->typeParameters), d.typeArgs);
-    auto savedClass = ctx_.getCurrentClass();
-    ctx_.setCurrentClass(d.specializedClass);
-
-    for (auto& methodClone : d.specializedAST->getMutableMethods()) {
-      FunctionAST* methodFunc = methodClone.function.get();
-      if (methodFunc->getProto().isGeneric()) continue;
-      sema_.bodies().analyzeMethodWithBindings(*methodFunc, d.specializedClass,
-                                               {}, {});
+void GenericSpecializer::analyzePendingBodies() {
+  try {
+    while (!pendingBodies_.empty()) {
+      auto job = std::move(pendingBodies_.front());
+      pendingBodies_.pop_front();
+      SemanticContext::ScopeSwitchGuard scope(ctx_, job.scope);
+      /** Restore the caller's class even if a queued body throws. */
+      struct ClassGuard {
+        SemanticContext& context;
+        std::shared_ptr<ClassType> saved;
+        /** Retain the caller's class while checking a prepared body. */
+        explicit ClassGuard(SemanticContext& ctx)
+            : context(ctx), saved(ctx.getCurrentClass()) {}
+        /** Restore the caller's class after body checking. */
+        ~ClassGuard() { context.setCurrentClass(saved); }
+      } restoreClass(ctx_);
+      ctx_.setCurrentClass(job.ownerClass);
+      std::visit(
+          [&](const auto& ast) {
+            SemanticContext::SourceFileGuard sourceFile(ctx_,
+                                                        ast->getSourceFileId());
+            /** Select the body handler for the owned syntax node. */
+            using AST = typename std::decay_t<decltype(ast)>::element_type;
+            if constexpr (std::is_same_v<AST, ClassDefinitionAST>)
+              analyzeClassBody(*ast, job.ownerClass);
+            else
+              analyzeCallableBody(*ast, job.ownerClass, job.isMethod);
+          },
+          job.ast);
     }
-    for (const auto& methodClone : d.specializedAST->getMethods()) {
-      if (!methodClone.isConstructor) continue;
-      if (methodClone.function->getProto().isGeneric()) continue;
-      checkFieldInitialization(*methodClone.function, *d.specializedClass,
-                               d.specializedAST->getMethods());
-    }
-
-    ctx_.setCurrentClass(savedClass);
-    ctx_.exitScope();
+  } catch (...) {
+    discardPendingBodies();
+    throw;
   }
-  deferredSpecializations_.clear();
+}
+
+void GenericSpecializer::analyzeClassBody(
+    ClassDefinitionAST& ast, std::shared_ptr<ClassType> classType) {
+  for (auto& method : ast.getMutableMethods()) {
+    if (method.function->getProto().isGeneric()) continue;
+    sema_.bodies().analyzeMethodWithBindings(*method.function, classType, {},
+                                             {});
+  }
+  for (const auto& method : ast.getMethods()) {
+    if (!method.isConstructor || method.function->getProto().isGeneric())
+      continue;
+    checkFieldInitialization(*method.function, *classType, ast.getMethods());
+  }
+}
+
+void GenericSpecializer::analyzeCallableBody(
+    FunctionAST& ast, std::shared_ptr<ClassType> classType, bool isMethod) {
+  const auto& proto = ast.getProto();
+  const auto& paramTypes = proto.getResolvedParamTypes();
+  auto returnType = proto.getResolvedReturnType();
+  if (proto.isConstMethod())
+    returnType = sema_.typeResolver().createConstView(returnType);
+  ctx_.enterFunctionScope(
+      formatFunctionSignature(proto.getQualifiedName().display(), paramTypes),
+      proto.getQualifiedName(), proto.canThrow(), returnType);
+  declareVariadicPack(proto);
+  if (isMethod)
+    ctx_.currentScope().declareVariable("this", classType, true,
+                                        proto.isConstMethod());
+  for (size_t i = 0; i < proto.getArgs().size(); ++i) {
+    ctx_.currentScope().declareVariable(
+        proto.getArgs()[i].first, paramTypes[i], true, false,
+        proto.declarationIdentity().parameters.at(i));
+  }
+  for (const auto& capture : proto.getCaptures()) {
+    ctx_.currentScope().declareVariable(capture.name, capture.type, false,
+                                        capture.isConst, capture.declarationId);
+  }
+  sema_.bodies().analyzeBlock(
+      const_cast<sun::ast::BlockExprAST&>(ast.getBody()));
+  ctx_.exitScope();
 }
 
 // -------------------------------------------------------------------
@@ -640,6 +649,10 @@ GenericSpecializer::instantiateGenericFunction(
     return std::nullopt;
   }
   const PrototypeAST& proto = genericFunc->getProto();
+
+  // A callable needs concrete arguments before its body can be queued.
+  if (std::any_of(typeArgs.begin(), typeArgs.end(), mentionsTypeParameter))
+    return std::nullopt;
 
   // A pack's arity and types come from the actual call arguments. Without
   // them (nullopt, e.g. from type inference) there is nothing to specialize
@@ -783,37 +796,15 @@ GenericSpecializer::instantiateGenericFunction(
     genericFunc->addSpecialization(instanceId, clonedFunc);
     specializedFunctionCache_.emplace(instanceId, result);
 
-    // Compute function signature for nested function qualification
-    std::string funcSig =
-        formatFunctionSignature(specializedName.display(), paramTypes);
-
-    // Declare parameters in scope for body analysis - use the source qualified
-    // name so nested functions get correct context
-    ctx_.enterFunctionScope(funcSig, clonedProto.getQualifiedName(),
-                            proto.canThrow(),
-                            clonedProto.getResolvedReturnType());
-
-    declareVariadicPack(clonedProto);
-
-    for (size_t i = 0; i < paramTypes.size(); ++i) {
-      // Use parameter names from the cloned prototype
-      std::string argName = proto.getArgs()[i].first;
-      ctx_.currentScope().declareVariable(
-          argName, paramTypes[i], true, false,
-          clonedProto.declarationIdentity().parameters.at(i));
+    // A nested function may borrow its definition's receiver, but a free
+    // function must never inherit the class of the caller requesting it.
+    std::shared_ptr<ClassType> enclosingClass;
+    if (const auto* receiver = ctx_.currentScope().lookupVariable("this")) {
+      auto receiverType = unwrapRef(receiver->type);
+      if (receiverType && receiverType->isClass())
+        enclosingClass = std::static_pointer_cast<ClassType>(receiverType);
     }
-
-    // Add captures to scope
-    for (const auto& cap : substitutedCaptures) {
-      ctx_.currentScope().declareVariable(cap.name, cap.type, false,
-                                          cap.isConst, cap.declarationId);
-    }
-
-    // Analyze the body with current type parameter bindings
-    sema_.bodies().analyzeBlock(
-        const_cast<sun::ast::BlockExprAST&>(clonedFunc->getBody()));
-
-    ctx_.exitScope();  // parameter scope
+    pendingBodies_.push_back({ctx_.scope(), enclosingClass, clonedFunc});
   }
 
   ctx_.exitScope();  // type parameter scope
@@ -1019,42 +1010,8 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
   genericMethodAST->addSpecialization(instanceId, clonedFunc);
   specializedFunctionCache_.emplace(instanceId, result);
 
-  // Analyze the method body
-  auto savedClass = ctx_.getCurrentClass();
-  ctx_.setCurrentClass(classType);
-
-  // Compute method signature for nested function qualification
-  std::string methodSig =
-      formatFunctionSignature(specializedName.display(), paramTypes);
-
-  // Enter method scope and declare parameters. A const method body sees the
-  // const view of its return type (borrows of `this` are `const ref` there).
-  TypePtr bodyReturnType = proto.getResolvedReturnType();
-  if (proto.isConstMethod())
-    bodyReturnType = sema_.typeResolver().createConstView(bodyReturnType);
-  ctx_.enterFunctionScope(methodSig, specializedName, proto.canThrow(),
-                          bodyReturnType);
-
-  declareVariadicPack(clonedProto);
-
-  // Declare 'this' parameter (immutable inside a const method)
-  ctx_.currentScope().declareVariable("this", classType, /*isParam=*/true,
-                                      /*isConst=*/clonedProto.isConstMethod());
-
-  // Declare regular parameters
-  for (size_t i = 0; i < paramTypes.size(); ++i) {
-    const auto& [argName, argType] = proto.getArgs()[i];
-    ctx_.currentScope().declareVariable(
-        argName, paramTypes[i], true, false,
-        clonedProto.declarationIdentity().parameters.at(i));
-  }
-
-  // Analyze the body
-  sema_.bodies().analyzeBlock(
-      const_cast<sun::ast::BlockExprAST&>(clonedFunc->getBody()));
-
-  ctx_.exitScope();  // method scope
-  ctx_.setCurrentClass(savedClass);
+  if (clonedFunc->hasBody())
+    pendingBodies_.push_back({ctx_.scope(), classType, clonedFunc, true});
   ctx_.exitScope();  // type parameter scope
 
   return clonedFunc;

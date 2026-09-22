@@ -67,7 +67,7 @@ void SemanticAnalyzer::analyzeGlobal(sun::ast::VariableCreationAST& global,
   // A class field or a function signature asks for its array sizes while
   // declarations are still being collected, when no function can be called
   // yet: functions are registered after the types their signatures mention.
-  if (generics_.isInDeclarationPrepass() && global.getValue()) {
+  if (ctx_.isCollectingDeclarations() && global.getValue()) {
     std::function<bool(const ExprAST&)> callsAFunction =
         [&](const ExprAST& expr) {
           if (expr.getType() == ASTNodeType::CALL) return true;
