@@ -24,7 +24,8 @@ using namespace llvm;
 /** Declares LLVM JIT types referenced by the execution interface. */
 using namespace llvm::orc;
 
-/** Coordinates compilation, dependency loading, linking, and program execution. */
+/** Coordinates compilation, dependency loading, linking, and program execution.
+ */
 namespace sun::driver {
 
 /**
@@ -75,7 +76,8 @@ class SunJIT {
   }
 
  public:
-  /** Creates a JIT engine using the execution session and target data layout. */
+  /** Creates a JIT engine using the execution session and target data layout.
+   */
   SunJIT(std::unique_ptr<ExecutionSession> ES, JITTargetMachineBuilder JTMB,
          DataLayout DL)
       : ES(std::move(ES)),
@@ -119,7 +121,7 @@ class SunJIT {
     JITTargetMachineBuilder JTMB(
         ES->getExecutorProcessControl().getTargetTriple());
     JTMB.setCodeGenOptLevel(optimize ? CodeGenOptLevel::Default
-                                    : CodeGenOptLevel::None);
+                                     : CodeGenOptLevel::None);
     // The same settings LLJIT picks for JITLink. Position-independent code
     // reaches host symbols through GOT and PLT entries; non-PIC code would
     // instead need libc and the compiler's own globals (`environ`, for one)

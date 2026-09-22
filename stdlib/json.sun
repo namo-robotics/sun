@@ -685,7 +685,7 @@ public module std {
   // ==========================================================================
 
   // Deepest allowed array/object nesting
-  var JSON_MAX_DEPTH: i64 = 256;
+  const JSON_MAX_DEPTH: i64 = 256;
 
   /** Parses JSON text while tracking the current byte offset and nesting depth. */
   class JsonParser {

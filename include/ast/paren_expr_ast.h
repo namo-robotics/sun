@@ -19,7 +19,8 @@ class ParenExprAST : public ExprAST {
   std::unique_ptr<ExprAST> inner_;
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   explicit ParenExprAST(std::unique_ptr<ExprAST> inner)
       : inner_(std::move(inner)) {}
 
@@ -34,7 +35,8 @@ class ParenExprAST : public ExprAST {
    */
   std::unique_ptr<ExprAST> takeInner() { return std::move(inner_); }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override { fn(inner_); }
 
   /** Returns a readable representation for diagnostics and debugging. */

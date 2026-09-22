@@ -76,8 +76,8 @@ class BorrowChecker {
    */
   void checkVariableCreation(const sun::ast::VariableCreationAST& var);
   /**
-   * Checks ownership and lifetime rules for this reference creation and updates active
-   * loans.
+   * Checks ownership and lifetime rules for this reference creation and updates
+   * active loans.
    */
   void checkReferenceCreation(const sun::ast::ReferenceCreationAST& ref);
   /**
@@ -98,35 +98,36 @@ class BorrowChecker {
   void checkBorrowTargetIntact(const ExprAST& target,
                                const sun::support::Position& refPos);
   /**
-   * Checks ownership and lifetime rules for this variable assignment and updates active
-   * loans.
+   * Checks ownership and lifetime rules for this variable assignment and
+   * updates active loans.
    */
   void checkVariableAssignment(const sun::ast::VariableAssignmentAST& assign);
   /**
-   * Checks ownership and lifetime rules for this variable reference and updates active
-   * loans.
+   * Checks ownership and lifetime rules for this variable reference and updates
+   * active loans.
    */
   void checkVariableReference(const sun::ast::VariableReferenceAST& varRef);
   /**
-   * Checks ownership and lifetime rules for this binary expression and updates active
-   * loans.
+   * Checks ownership and lifetime rules for this binary expression and updates
+   * active loans.
    */
   void checkBinaryExpr(const sun::ast::BinaryExprAST& binary);
   /**
-   * Checks ownership and lifetime rules for this call expression and updates active
-   * loans.
+   * Checks ownership and lifetime rules for this call expression and updates
+   * active loans.
    */
   void checkCallExpr(const CallExprAST& call);
-  /** Checks ownership and lifetime rules for this if expression and updates active loans. */
+  /** Checks ownership and lifetime rules for this if expression and updates
+   * active loans. */
   void checkIfExpr(const sun::ast::IfExprAST& ifExpr);
   /**
-   * Checks ownership and lifetime rules for this ternary expression and updates active
-   * loans.
+   * Checks ownership and lifetime rules for this ternary expression and updates
+   * active loans.
    */
   void checkTernaryExpr(const sun::ast::TernaryExprAST& ternary);
   /**
-   * Checks ownership and lifetime rules for this match expression and updates active
-   * loans.
+   * Checks ownership and lifetime rules for this match expression and updates
+   * active loans.
    */
   void checkMatchExpr(const MatchExprAST& matchExpr);
 
@@ -134,64 +135,67 @@ class BorrowChecker {
    * parentheses. */
   void consumeOwnedValue(const ExprAST& value);
   /**
-   * Checks ownership and lifetime rules for this while expression and updates active
-   * loans.
+   * Checks ownership and lifetime rules for this while expression and updates
+   * active loans.
    */
   void checkWhileExpr(const sun::ast::WhileExprAST& whileExpr);
-  /** Checks ownership and lifetime rules for this for loop and updates active loans. */
+  /** Checks ownership and lifetime rules for this for loop and updates active
+   * loans. */
   void checkForExpr(const sun::ast::ForExprAST& forExpr);
   /**
-   * Checks ownership and lifetime rules for this iteration loop and updates active
-   * loans.
+   * Checks ownership and lifetime rules for this iteration loop and updates
+   * active loans.
    */
   void checkForInExpr(const sun::ast::ForInExprAST& forInExpr);
   /**
-   * Checks ownership and lifetime rules for this block expression and updates active
-   * loans.
+   * Checks ownership and lifetime rules for this block expression and updates
+   * active loans.
    */
   void checkBlockExpr(const sun::ast::BlockExprAST& block, size_t start = 0);
   /**
-   * Checks ownership and lifetime rules for this return statement and updates active
-   * loans.
+   * Checks ownership and lifetime rules for this return statement and updates
+   * active loans.
    */
   void checkReturnStmt(const sun::ast::ReturnExprAST& ret);
   /**
-   * Checks ownership and lifetime rules for this function definition and updates active
-   * loans.
+   * Checks ownership and lifetime rules for this function definition and
+   * updates active loans.
    */
   void checkFunctionDef(const sun::ast::FunctionAST& func);
   /**
-   * Checks ownership and lifetime rules for this lambda definition and updates active
-   * loans.
+   * Checks ownership and lifetime rules for this lambda definition and updates
+   * active loans.
    */
   void checkLambdaDef(const sun::ast::LambdaAST& lambda);
   /**
-   * Checks ownership and lifetime rules for this class definition and updates active
-   * loans.
+   * Checks ownership and lifetime rules for this class definition and updates
+   * active loans.
    */
   void checkClassDef(const sun::ast::ClassDefinitionAST& classDef);
-  /** Checks ownership and lifetime rules for this member access and updates active loans. */
+  /** Checks ownership and lifetime rules for this member access and updates
+   * active loans. */
   void checkMemberAccess(const sun::ast::MemberAccessAST& access);
   /**
-   * Checks ownership and lifetime rules for this member assignment and updates active
-   * loans.
+   * Checks ownership and lifetime rules for this member assignment and updates
+   * active loans.
    */
   void checkMemberAssignment(const sun::ast::MemberAssignmentAST& assign);
   /**
-   * Checks ownership and lifetime rules for this indexed assignment and updates active
-   * loans.
+   * Checks ownership and lifetime rules for this indexed assignment and updates
+   * active loans.
    */
   void checkIndexedAssignment(const sun::ast::IndexedAssignmentAST& assign);
-  /** Checks ownership and lifetime rules for this array literal and updates active loans. */
+  /** Checks ownership and lifetime rules for this array literal and updates
+   * active loans. */
   void checkArrayLiteral(const sun::ast::ArrayLiteralAST& literal);
   /**
-   * Checks ownership and lifetime rules for this index expression and updates active
-   * loans.
+   * Checks ownership and lifetime rules for this index expression and updates
+   * active loans.
    */
   void checkIndexExpr(const sun::ast::IndexAST& index);
   /**
-   * Checks ownership and lifetime rules for this compound assignment and updates active
-   * loans.
+   * Checks ownership and lifetime rules for this compound assignment and
+   * updates active loans.
    */
   void checkCompoundAssignment(const sun::ast::CompoundAssignmentAST& assign);
   /** Checks whether active loans permit replacing the named variable. */
@@ -256,7 +260,8 @@ class BorrowChecker {
    * it to anything (the elided, trusted case - today's semantics).
    */
   struct LifetimeValue {
-    /** Distinguishes unconstrained, concrete-scope, and named signature lifetimes. */
+    /** Distinguishes unconstrained, concrete-scope, and named signature
+     * lifetimes. */
     enum class Kind { Outlives, Concrete, Symbolic };
     Kind kind = Kind::Outlives;
     size_t depth = 0;       // Concrete: declaration/environment scope depth
@@ -326,7 +331,8 @@ class BorrowChecker {
    * field, transitively, or a '<'_>' lambda environment it can carry?
    */
   bool classStoresRefs(const TypePtr& type) const;
-  /** Recursively checks class fields for references while avoiding type cycles. */
+  /** Recursively checks class fields for references while avoiding type cycles.
+   */
   bool classStoresRefsWalk(
       const TypePtr& type,
       std::unordered_set<const sun::types::Type*>& visited) const;
@@ -362,9 +368,11 @@ class BorrowChecker {
   // Protos of the lambdas whose bodies are currently being checked
   // (innermost last) - nested by-ref captures alias their loans
   std::vector<const sun::ast::PrototypeAST*> lambdaProtoStack_;
-  /** Checks ownership and lifetime rules for this try catch and updates active loans. */
+  /** Checks ownership and lifetime rules for this try catch and updates active
+   * loans. */
   void checkTryCatch(const sun::ast::TryCatchExprAST& tryCatch);
-  /** Checks ownership and lifetime rules for this unsafe block and updates active loans. */
+  /** Checks ownership and lifetime rules for this unsafe block and updates
+   * active loans. */
   void checkUnsafeBlock(const sun::ast::UnsafeBlockAST& unsafeBlock);
 
   /**

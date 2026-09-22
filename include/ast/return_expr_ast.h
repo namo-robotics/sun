@@ -18,7 +18,8 @@ class ReturnExprAST : public ExprAST {
       Value;  // The expression to return (may be nullptr for void)
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   explicit ReturnExprAST(std::unique_ptr<ExprAST> value = nullptr)
       : Value(std::move(value)) {}
 
@@ -35,7 +36,8 @@ class ReturnExprAST : public ExprAST {
   /** Reports whether this object has value. */
   bool hasValue() const { return Value != nullptr; }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override { fn(Value); }
   /** Returns the node label used in syntax-tree graph visualizations. */
   std::string dotLabel() const override { return "Return"; }

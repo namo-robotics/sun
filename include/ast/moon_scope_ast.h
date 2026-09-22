@@ -41,15 +41,17 @@ class MoonScopeAST : public ExprAST {
   };
 
   /** Exact declarations referenced by this bundle's metadata, with any kind
-   * requirement imposed by their use. Validate after all explicit imports
-   * are indexed, including generic declarations that are never instantiated.
+   * requirement imposed by their use. Import preparation validates these
+   * after registering every bundle's records, including requirements from
+   * generic declarations that are never instantiated.
    */
   std::vector<DeclarationRequirement> requiredDeclarations;
-  // Consumed at the import boundary before any signatures are resolved.
+  // Registered by import preparation before syntax identities are assigned.
   std::vector<sun::semantic_analysis::ImportedDeclarationRecord>
       importedDeclarations;
 
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   MoonScopeAST(std::string contentHash, std::string moduleName,
                std::optional<std::string> alias, std::string moonPath,
                std::unique_ptr<BlockExprAST> body)
@@ -79,7 +81,8 @@ class MoonScopeAST : public ExprAST {
    */
   bool isOwnBundle() const { return ownBundle_; }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     if (body_) body_->forEachChildSlot(fn);
   }

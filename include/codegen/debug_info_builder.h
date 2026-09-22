@@ -131,7 +131,8 @@ class DebugInfoBuilder {
   llvm::DIType* structFor(
       const std::string& name, llvm::StructType* st,
       const std::vector<std::pair<std::string, llvm::DIType*>>& members);
-  /** Associates a debug variable with its generated storage and source scope. */
+  /** Associates a debug variable with its generated storage and source scope.
+   */
   void declareVariable(llvm::IRBuilderBase& builder, llvm::AllocaInst* alloca,
                        llvm::DILocalVariable* var,
                        const sun::support::Position& loc,

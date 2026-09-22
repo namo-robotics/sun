@@ -24,7 +24,8 @@ class CompoundAssignmentAST : public ExprAST {
   std::unique_ptr<ExprAST> value;   // Right-hand side
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   CompoundAssignmentAST(std::unique_ptr<ExprAST> target, Token op,
                         std::unique_ptr<ExprAST> value)
       : ExprAST(op.start),
@@ -37,7 +38,8 @@ class CompoundAssignmentAST : public ExprAST {
     return ASTNodeType::COMPOUND_ASSIGNMENT;
   }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     fn(target);
     fn(value);

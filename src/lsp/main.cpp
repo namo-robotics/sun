@@ -39,7 +39,8 @@ using sun::driver::Driver;
 using sun::parsing::TokenKind;
 using sun::support::SunError;
 
-/** Provides compiler-backed editor features through the language server protocol. */
+/** Provides compiler-backed editor features through the language server
+ * protocol. */
 namespace sun::lsp {
 
 // =============================================================================
@@ -72,7 +73,8 @@ class DiagnosticsCache {
     return hash;
   }
 
-  /** Reports whether diagnostics have been cached for the supplied content hash. */
+  /** Reports whether diagnostics have been cached for the supplied content
+   * hash. */
   bool has(const std::string& hash) const {
     return cache_.find(hash) != cache_.end();
   }
@@ -117,12 +119,12 @@ static DiagnosticsCache diagnosticsCache;
  * Configuration for a single entrypoint file with its manifest data
  */
 struct EntrypointConfig {
-  std::string entrypointPath;                // Absolute path to entrypoint
-  std::vector<std::string> sunFiles;         // All .sun files from manifest
+  std::string entrypointPath;         // Absolute path to entrypoint
+  std::vector<std::string> sunFiles;  // All .sun files from manifest
   std::vector<sun::moon_bundling::MoonImport>
-      moonImports;                           // Moon imports from manifest
-  std::vector<std::string> protoFiles;       // .proto schemas from manifest
-  std::set<std::string> coveredFiles;        // Quick lookup of covered files
+      moonImports;                      // Moon imports from manifest
+  std::vector<std::string> protoFiles;  // .proto schemas from manifest
+  std::set<std::string> coveredFiles;   // Quick lookup of covered files
 };
 
 /**
@@ -415,7 +417,8 @@ int tokenKindToLSPType(TokenKind kind) {
   }
 }
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /** The current text and version of a document open in the editor. */

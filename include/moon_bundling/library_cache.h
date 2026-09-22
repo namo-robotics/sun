@@ -148,7 +148,8 @@ class LibraryCache {
   LibraryCache() = default;
   /** Disallows copying so the owned state cannot be duplicated. */
   LibraryCache(const LibraryCache&) = delete;
-  /** Disallows assignment so ownership and object identity cannot be duplicated. */
+  /** Disallows assignment so ownership and object identity cannot be
+   * duplicated. */
   LibraryCache& operator=(const LibraryCache&) = delete;
 
   /**

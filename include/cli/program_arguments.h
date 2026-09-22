@@ -13,7 +13,8 @@
 /** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
 
-/** Owns the process arguments used to select and configure a compiler command. */
+/** Owns the process arguments used to select and configure a compiler command.
+ */
 class ProgramArguments {
  public:
   /**
@@ -36,7 +37,8 @@ class ProgramArguments {
    * would leave them pointing at the wrong place.
    */
   ProgramArguments(const ProgramArguments&) = delete;
-  /** Disallows assignment so ownership and object identity cannot be duplicated. */
+  /** Disallows assignment so ownership and object identity cannot be
+   * duplicated. */
   ProgramArguments& operator=(const ProgramArguments&) = delete;
 
   /**

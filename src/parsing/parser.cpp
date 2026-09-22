@@ -1833,16 +1833,33 @@ sun::ast::TypeAnnotation Parser::parseTypeAnnotationImpl() {
     type.elementType =
         std::make_unique<sun::ast::TypeAnnotation>(parseTypeAnnotation());
 
-    // Parse dimensions (comma-separated integers)
+    // Parse dimensions: each a number, or the name of a constant
     while (curTok.kind == TokenKind::COMMA) {
       getNextToken();  // eat ','
 
-      expectCurrentTokenKind(TokenKind::INTEGER,
-                             "expected integer dimension in array type");
-
-      type.arrayDimensions.push_back(
-          static_cast<size_t>(curTok.getInteger().value()));
-      getNextToken();  // eat integer
+      sun::ast::ArrayDimension dimension;
+      Position start = captureStart();
+      if (curTok.kind == TokenKind::INTEGER) {
+        dimension.size = static_cast<size_t>(curTok.getInteger().value());
+        getNextToken();  // eat integer
+      } else if (curTok.kind == TokenKind::IDENTIFIER) {
+        // A constant, possibly named through its module: limits.N
+        dimension.constantName = curTok.getIdentifier().value();
+        getNextToken();  // eat the name
+        while (curTok.kind == TokenKind::DOT) {
+          getNextToken();  // eat '.'
+          expectCurrentTokenKind(TokenKind::IDENTIFIER,
+                                 "expected a name after '.' in array size");
+          dimension.constantName += "." + curTok.getIdentifier().value();
+          getNextToken();  // eat the name
+        }
+      } else {
+        throwIdentifierError(
+            "expected an array size: a number or the name of a constant");
+      }
+      start.setEnd(prevTok_.end.line, prevTok_.end.column, prevTok_.end.offset);
+      dimension.position = std::move(start);
+      type.arrayDimensions.push_back(std::move(dimension));
     }
 
     consumeGreater("expected '>' after array type");
@@ -3825,6 +3842,15 @@ void Parser::createModuleStubs(
   // Module-level variables. The stub carries the type but no initializer —
   // the storage lives in the bundle's bitcode and is linked in.
   for (int i = 0; i < metadata.globals_size(); ++i) {
+    // The bundle builder refuses a global outside any module, C extern
+    // globals included, so a bundle that carries one was not produced by a
+    // valid build.
+    if (metadata.module_name().empty()) {
+      logAndThrowError("moon bundle '" + metadata.source_path() +
+                       "' declares global '" + metadata.globals(i).name() +
+                       "' outside any module; a bundle's globals must be "
+                       "declared inside a module. Rebuild the bundle.");
+    }
     sun::proto::ast::ASTNode node;
     *node.mutable_variable_creation() = metadata.globals(i);
     node.set_source_file_id(node.variable_creation().source_file_id());
@@ -3881,295 +3907,6 @@ void Parser::createModuleStubs(
   for (auto& ast : moduleAST) {
     collectedAST.push_back(std::move(ast));
   }
-}
-
-// Helper to parse a type string back into TypeAnnotation.
-sun::ast::TypeAnnotation Parser::parseTypeFromString(
-    const std::string& typeStr) {
-  // Check for ", error" suffix indicating error union type
-  bool canError = false;
-  std::string cleanType = typeStr;
-
-  // Check for an error-union suffix. " throws IError" is the current
-  // spelling; the comma forms are accepted for older serialized strings.
-  for (const std::string& suffix :
-       {std::string(" throws IError"), std::string(", error"),
-        std::string(", IError")}) {
-    if (cleanType.size() > suffix.size() &&
-        cleanType.compare(cleanType.size() - suffix.size(), suffix.size(),
-                          suffix) == 0) {
-      canError = true;
-      cleanType = cleanType.substr(0, cleanType.size() - suffix.size());
-      break;
-    }
-  }
-
-  // A `<'_>` prefix marks a frame-bound lambda type in canonical type
-  // strings. Keep reading `[ref]` so existing Moon bundles remain usable.
-  bool anonymousLambda =
-      cleanType.size() > 5 && cleanType.substr(0, 5) == "<'_>(";
-  bool legacyRefLambda =
-      cleanType.size() > 6 && cleanType.substr(0, 6) == "[ref](";
-  if (anonymousLambda || legacyRefLambda) {
-    std::string inner = cleanType.substr(anonymousLambda ? 4 : 5);
-    if (canError) inner += " throws IError";
-    sun::ast::TypeAnnotation result = parseTypeFromString(inner);
-    result.refEnv = true;
-    result.lifetimeName = "_";
-    return result;
-  }
-
-  // Handle common primitive types
-  if (cleanType == "void") {
-    sun::ast::TypeAnnotation result("void");
-    result.canError = canError;
-    return result;
-  }
-  if (cleanType == "bool") {
-    sun::ast::TypeAnnotation result("bool");
-    result.canError = canError;
-    return result;
-  }
-  if (cleanType == "char") {
-    sun::ast::TypeAnnotation result("char");
-    result.canError = canError;
-    return result;
-  }
-  if (cleanType == "i8") {
-    sun::ast::TypeAnnotation result("i8");
-    result.canError = canError;
-    return result;
-  }
-  if (cleanType == "i16") {
-    sun::ast::TypeAnnotation result("i16");
-    result.canError = canError;
-    return result;
-  }
-  if (cleanType == "i32") {
-    sun::ast::TypeAnnotation result("i32");
-    result.canError = canError;
-    return result;
-  }
-  if (cleanType == "i64") {
-    sun::ast::TypeAnnotation result("i64");
-    result.canError = canError;
-    return result;
-  }
-  if (cleanType == "f32") {
-    sun::ast::TypeAnnotation result("f32");
-    result.canError = canError;
-    return result;
-  }
-  if (cleanType == "f64") {
-    sun::ast::TypeAnnotation result("f64");
-    result.canError = canError;
-    return result;
-  }
-  if (cleanType == "string") {
-    sun::ast::TypeAnnotation result("string");
-    result.canError = canError;
-    return result;
-  }
-
-  // Handle pointer types: ptr<T> or ptr(T)
-  if (cleanType.size() > 4 && cleanType.substr(0, 4) == "ptr<") {
-    size_t end = cleanType.rfind('>');
-    if (end != std::string::npos) {
-      std::string inner = cleanType.substr(4, end - 4);
-      sun::ast::TypeAnnotation result("ptr");
-      result.elementType = std::make_unique<sun::ast::TypeAnnotation>(
-          parseTypeFromString(inner));
-      result.canError = canError;
-      return result;
-    }
-  }
-  if (cleanType.size() > 4 && cleanType.substr(0, 4) == "ptr(") {
-    size_t end = cleanType.rfind(')');
-    if (end != std::string::npos) {
-      std::string inner = cleanType.substr(4, end - 4);
-      sun::ast::TypeAnnotation result("ptr");
-      result.elementType = std::make_unique<sun::ast::TypeAnnotation>(
-          parseTypeFromString(inner));
-      result.canError = canError;
-      return result;
-    }
-  }
-
-  // Handle raw pointer types: raw_ptr<T> or raw_ptr(T)
-  if (cleanType.size() > 8 && cleanType.substr(0, 8) == "raw_ptr<") {
-    size_t end = cleanType.rfind('>');
-    if (end != std::string::npos) {
-      std::string inner = cleanType.substr(8, end - 8);
-      sun::ast::TypeAnnotation result("raw_ptr");
-      result.elementType = std::make_unique<sun::ast::TypeAnnotation>(
-          parseTypeFromString(inner));
-      result.canError = canError;
-      return result;
-    }
-  }
-  if (cleanType.size() > 8 && cleanType.substr(0, 8) == "raw_ptr(") {
-    size_t end = cleanType.rfind(')');
-    if (end != std::string::npos) {
-      std::string inner = cleanType.substr(8, end - 8);
-      sun::ast::TypeAnnotation result("raw_ptr");
-      result.elementType = std::make_unique<sun::ast::TypeAnnotation>(
-          parseTypeFromString(inner));
-      result.canError = canError;
-      return result;
-    }
-  }
-
-  // Handle ref types: ref T or ref(T)
-  if (cleanType.size() > 4 && cleanType.substr(0, 4) == "ref ") {
-    std::string inner = cleanType.substr(4);
-    sun::ast::TypeAnnotation result("ref");
-    result.elementType =
-        std::make_unique<sun::ast::TypeAnnotation>(parseTypeFromString(inner));
-    result.canError = canError;
-    return result;
-  }
-  if (cleanType.size() > 4 && cleanType.substr(0, 4) == "ref(") {
-    size_t end = cleanType.rfind(')');
-    if (end != std::string::npos) {
-      std::string inner = cleanType.substr(4, end - 4);
-      sun::ast::TypeAnnotation result("ref");
-      result.elementType = std::make_unique<sun::ast::TypeAnnotation>(
-          parseTypeFromString(inner));
-      result.canError = canError;
-      return result;
-    }
-  }
-
-  // Handle array types: array<T> or array<T, N> or array<T, M, N>
-  if (cleanType.size() > 6 && cleanType.substr(0, 6) == "array<") {
-    size_t end = cleanType.rfind('>');
-    if (end != std::string::npos) {
-      std::string inner = cleanType.substr(6, end - 6);
-      // Parse: "elementType" or "elementType, dim1, dim2, ..."
-      // Find the first comma that separates element type from dimensions
-      // Need to handle nested types like array<array<i32, 2>, 3>
-      int depth = 0;
-      size_t firstComma = std::string::npos;
-      for (size_t i = 0; i < inner.size(); ++i) {
-        if (inner[i] == '<')
-          depth++;
-        else if (inner[i] == '>')
-          depth--;
-        else if (inner[i] == ',' && depth == 0) {
-          firstComma = i;
-          break;
-        }
-      }
-
-      sun::ast::TypeAnnotation result("array");
-      if (firstComma == std::string::npos) {
-        // Unsized array: array<T>
-        result.elementType = std::make_unique<sun::ast::TypeAnnotation>(
-            parseTypeFromString(inner));
-      } else {
-        // Sized array: array<T, dim1, dim2, ...>
-        std::string elemType = inner.substr(0, firstComma);
-        result.elementType = std::make_unique<sun::ast::TypeAnnotation>(
-            parseTypeFromString(elemType));
-
-        // Parse dimensions
-        std::string dims = inner.substr(firstComma + 1);
-        std::istringstream dimStream(dims);
-        std::string dimStr;
-        while (std::getline(dimStream, dimStr, ',')) {
-          // Trim whitespace
-          size_t start = dimStr.find_first_not_of(" \t");
-          size_t stop = dimStr.find_last_not_of(" \t");
-          if (start != std::string::npos && stop != std::string::npos) {
-            dimStr = dimStr.substr(start, stop - start + 1);
-          }
-          result.arrayDimensions.push_back(std::stoull(dimStr));
-        }
-      }
-      result.canError = canError;
-      return result;
-    }
-  }
-
-  // Handle static pointer types: static_ptr<T> or static_ptr(T)
-  if (cleanType.size() > 11 && cleanType.substr(0, 11) == "static_ptr<") {
-    size_t end = cleanType.rfind('>');
-    if (end != std::string::npos) {
-      std::string inner = cleanType.substr(11, end - 11);
-      sun::ast::TypeAnnotation result("static_ptr");
-      result.elementType = std::make_unique<sun::ast::TypeAnnotation>(
-          parseTypeFromString(inner));
-      result.canError = canError;
-      return result;
-    }
-  }
-  if (cleanType.size() > 11 && cleanType.substr(0, 11) == "static_ptr(") {
-    size_t end = cleanType.rfind(')');
-    if (end != std::string::npos) {
-      std::string inner = cleanType.substr(11, end - 11);
-      sun::ast::TypeAnnotation result("static_ptr");
-      result.elementType = std::make_unique<sun::ast::TypeAnnotation>(
-          parseTypeFromString(inner));
-      result.canError = canError;
-      return result;
-    }
-  }
-
-  // Handle generic class types: ClassName<T, U, ...>
-  // Look for '<' that indicates generic type arguments
-  auto angleBracketPos = cleanType.find('<');
-  if (angleBracketPos != std::string::npos && angleBracketPos > 0) {
-    // Make sure it's not a built-in type we already handled (ptr<, raw_ptr<,
-    // etc.)
-    std::string baseName = cleanType.substr(0, angleBracketPos);
-    if (baseName != "ptr" && baseName != "raw_ptr" &&
-        baseName != "static_ptr" && baseName != "array" && baseName != "ref") {
-      // This looks like a generic class type
-      size_t end = cleanType.rfind('>');
-      if (end != std::string::npos && end > angleBracketPos) {
-        std::string argsStr =
-            cleanType.substr(angleBracketPos + 1, end - angleBracketPos - 1);
-
-        sun::ast::TypeAnnotation result(baseName);
-
-        // Parse comma-separated type arguments, handling nested generics
-        int depth = 0;
-        size_t argStart = 0;
-        for (size_t i = 0; i <= argsStr.size(); ++i) {
-          char c =
-              (i < argsStr.size()) ? argsStr[i] : ',';  // Treat end as comma
-          if (c == '<') {
-            depth++;
-          } else if (c == '>') {
-            depth--;
-          } else if (c == ',' && depth == 0) {
-            std::string argStr = argsStr.substr(argStart, i - argStart);
-            // Trim whitespace
-            size_t start = argStr.find_first_not_of(" \t");
-            size_t stop = argStr.find_last_not_of(" \t");
-            if (start != std::string::npos && stop != std::string::npos) {
-              argStr = argStr.substr(start, stop - start + 1);
-            }
-            if (!argStr.empty()) {
-              result.typeArguments.push_back(
-                  std::make_unique<sun::ast::TypeAnnotation>(
-                      parseTypeFromString(argStr)));
-            }
-            argStart = i + 1;
-          }
-        }
-
-        result.canError = canError;
-        return result;
-      }
-    }
-  }
-
-  // Default: treat as a class/interface name or type parameter
-  std::string typeName = cleanType;
-  sun::ast::TypeAnnotation result(typeName);
-  result.canError = canError;
-  return result;
 }
 
 // In parser.cpp (implementation)
@@ -4297,7 +4034,8 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
       if (curTok.kind == TokenKind::EQUAL) {
         getNextToken();
         initializer = curTok.kind == TokenKind::BRACE_OPEN
-                          /** Consumes tokens for a field initializer list and builds its syntax-tree representation. */
+                          /** Consumes tokens for a field initializer list and
+                             builds its syntax-tree representation. */
                           ? parseStructLiteral()
                           : parseExpression();
         if (!initializer)

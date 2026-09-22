@@ -211,7 +211,8 @@ class Parser {
   /** Returns the file path stored by this object. */
   const std::string& getFilePath() const { return currentFilePath; }
 
-  /** Consumes tokens for a complete program and builds its syntax-tree representation. */
+  /** Consumes tokens for a complete program and builds its syntax-tree
+   * representation. */
   unique_ptr<BlockExprAST> parseProgram();
   // Convenience constructors (optional but recommended)
 
@@ -296,15 +297,20 @@ class Parser {
     node.setLocation(std::move(loc));
   }
 
-  /** Consumes tokens for a expression and builds its syntax-tree representation. */
+  /** Consumes tokens for a expression and builds its syntax-tree
+   * representation. */
   unique_ptr<ExprAST> parseExpression();
-  /** Consumes tokens for a unary operation and builds its syntax-tree representation. */
+  /** Consumes tokens for a unary operation and builds its syntax-tree
+   * representation. */
   unique_ptr<ExprAST> parseUnary();
-  /** Consumes tokens for a primary expression and builds its syntax-tree representation. */
+  /** Consumes tokens for a primary expression and builds its syntax-tree
+   * representation. */
   unique_ptr<ExprAST> parsePrimary();
-  /** Consumes tokens for a postfix expression and builds its syntax-tree representation. */
+  /** Consumes tokens for a postfix expression and builds its syntax-tree
+   * representation. */
   unique_ptr<ExprAST> parsePostfixExpr(unique_ptr<ExprAST> base);
-  /** Consumes tokens for a variable declaration and builds its syntax-tree representation. */
+  /** Consumes tokens for a variable declaration and builds its syntax-tree
+   * representation. */
   unique_ptr<sun::ast::VariableCreationAST> parseVarStatement();
   /**
    * `var x = ...` or `const x = ...`, without the trailing semicolon
@@ -329,7 +335,8 @@ class Parser {
    * representation.
    */
   unique_ptr<sun::ast::IfExprAST> parseIfStatement();
-  /** Consumes tokens for a pattern match and builds its syntax-tree representation. */
+  /** Consumes tokens for a pattern match and builds its syntax-tree
+   * representation. */
   unique_ptr<sun::ast::MatchExprAST> parseMatchExpression();
 
   /**
@@ -342,15 +349,20 @@ class Parser {
     std::vector<sun::ast::PatternBinding> bindings;
     bool ok = false;
   };
-  /** Consumes tokens for a match pattern and builds its syntax-tree representation. */
+  /** Consumes tokens for a match pattern and builds its syntax-tree
+   * representation. */
   ParsedPattern parsePattern();
-  /** Consumes tokens for a numeric literal and builds its syntax-tree representation. */
+  /** Consumes tokens for a numeric literal and builds its syntax-tree
+   * representation. */
   unique_ptr<ExprAST> parseNumberExpr();
-  /** Consumes tokens for a character literal and builds its syntax-tree representation. */
+  /** Consumes tokens for a character literal and builds its syntax-tree
+   * representation. */
   unique_ptr<ExprAST> parseCharLiteral();
-  /** Consumes tokens for a string literal and builds its syntax-tree representation. */
+  /** Consumes tokens for a string literal and builds its syntax-tree
+   * representation. */
   unique_ptr<ExprAST> parseStringLiteral();
-  /** Consumes tokens for a array literal and builds its syntax-tree representation. */
+  /** Consumes tokens for a array literal and builds its syntax-tree
+   * representation. */
   unique_ptr<ExprAST> parseArrayLiteral();
   /**
    * Consumes tokens for a parenthesized expression and builds its syntax-tree
@@ -358,20 +370,23 @@ class Parser {
    */
   unique_ptr<ExprAST> parseParenExpr();
   /**
-   * Consumes tokens for a binary-operation continuation and builds its syntax-tree
-   * representation.
+   * Consumes tokens for a binary-operation continuation and builds its
+   * syntax-tree representation.
    */
   unique_ptr<ExprAST> parseBinOpRhs(int exprPrec, unique_ptr<ExprAST> lhs);
-  /** Consumes tokens for a function signature and builds its syntax-tree representation. */
+  /** Consumes tokens for a function signature and builds its syntax-tree
+   * representation. */
   unique_ptr<sun::ast::PrototypeAST> parsePrototype();
-  /** Consumes tokens for a function body and builds its syntax-tree representation. */
+  /** Consumes tokens for a function body and builds its syntax-tree
+   * representation. */
   unique_ptr<ExprAST> parseFunctionLiteral(
       const std::string& name = "",
       std::vector<sun::ast::TypeParameter> typeParameters = {},
       bool isLambda = false, bool isLifecycleMethod = false,
       std::vector<sun::ast::LifetimeParameter> lifetimeParameters = {},
       bool isTestFunction = false);
-  /** Consumes tokens for a function definition and builds its syntax-tree representation. */
+  /** Consumes tokens for a function definition and builds its syntax-tree
+   * representation. */
   unique_ptr<sun::ast::FunctionAST> parseFunction(bool isClassMethod = false,
                                                   bool isTest = false);
   /**
@@ -385,7 +400,8 @@ class Parser {
    * ordinary expressions when no lambda signature follows.
    */
   bool isLambdaLiteralStart();
-  /** Consumes tokens for a lambda expression and builds its syntax-tree representation. */
+  /** Consumes tokens for a lambda expression and builds its syntax-tree
+   * representation. */
   unique_ptr<sun::ast::LambdaAST> parseLambda();
   /**
    * Parse an extern function or extern variable declaration.
@@ -396,15 +412,20 @@ class Parser {
    * representation.
    */
   unique_ptr<sun::ast::StructLiteralAST> parseStructLiteral();
-  /** Consumes tokens for a for loop and builds its syntax-tree representation. */
+  /** Consumes tokens for a for loop and builds its syntax-tree representation.
+   */
   unique_ptr<ExprAST> parseForLoop();  // Returns ForExprAST or ForInExprAST
-  /** Consumes tokens for a while loop and builds its syntax-tree representation. */
+  /** Consumes tokens for a while loop and builds its syntax-tree
+   * representation. */
   unique_ptr<sun::ast::WhileExprAST> parseWhileLoop();
-  /** Consumes tokens for a loop break and builds its syntax-tree representation. */
+  /** Consumes tokens for a loop break and builds its syntax-tree
+   * representation. */
   unique_ptr<sun::ast::BreakAST> parseBreak();
-  /** Consumes tokens for a loop continuation and builds its syntax-tree representation. */
+  /** Consumes tokens for a loop continuation and builds its syntax-tree
+   * representation. */
   unique_ptr<sun::ast::ContinueAST> parseContinue();
-  /** Consumes tokens for a string literal and builds its syntax-tree representation. */
+  /** Consumes tokens for a string literal and builds its syntax-tree
+   * representation. */
   unique_ptr<BlockExprAST> parseString(const std::string& source);
   /**
    * Every block records what construct it is the body of (see BlockKind);
@@ -412,9 +433,11 @@ class Parser {
    */
   unique_ptr<BlockExprAST> parseBlock(sun::ast::BlockKind kind,
                                       bool itemLevel = false);
-  /** Consumes tokens for a statement and builds its syntax-tree representation. */
+  /** Consumes tokens for a statement and builds its syntax-tree representation.
+   */
   unique_ptr<ExprAST> parseStatement();
-  /** Consumes tokens for a statement and builds its syntax-tree representation. */
+  /** Consumes tokens for a statement and builds its syntax-tree representation.
+   */
   unique_ptr<ExprAST> parseStatementCore();
   /**
    * Consumes an optional `public`; errors on a duplicate.
@@ -430,9 +453,6 @@ class Parser {
    * ordinary identifier, so a field or variable may still be called `method`.
    */
   bool atMethodKeyword() const;
-  /** Consumes tokens for a statement sequence and builds its syntax-tree representation. */
-  unique_ptr<ExprAST> parseStatementList();
-
   /**
    * `<T, U: _Numeric>` or `<'a, T>` after a function, class, interface or
    * enum name. Returns empty when there is no '<' — the declaration is not
@@ -467,14 +487,15 @@ class Parser {
    * variant holds the grammar and leaves the span unset.
    */
   sun::ast::TypeAnnotation parseTypeAnnotation();
-  /** Consumes tokens for a type annotation and builds its syntax-tree representation. */
+  /** Consumes tokens for a type annotation and builds its syntax-tree
+   * representation. */
   sun::ast::TypeAnnotation parseTypeAnnotationImpl();
   /** Reports whether a token can start a type annotation. */
   bool isTypeToken(TokenKind kind);
 
   /**
-   * Consumes tokens for a assignment or value expression and builds its syntax-tree
-   * representation.
+   * Consumes tokens for a assignment or value expression and builds its
+   * syntax-tree representation.
    */
   unique_ptr<ExprAST> parseAssignmentOrExpression();
   /** Parses the value assigned to an already parsed variable name. */
@@ -515,12 +536,8 @@ class Parser {
    */
   unique_ptr<sun::ast::EnumDefinitionAST> parseEnumDefinition();
 
-  /**
-   * New class instance: new ClassName(args...)
-   */
-  unique_ptr<ExprAST> parseNewClassInstance(const std::string& className);
-
-  /** Consumes tokens for a dependency manifest and builds its syntax-tree representation. */
+  /** Consumes tokens for a dependency manifest and builds its syntax-tree
+   * representation. */
   unique_ptr<sun::ast::ManifestAST> parseManifest();
   /**
    * Consumes tokens for a source dependency list and builds its syntax-tree
@@ -528,8 +545,8 @@ class Parser {
    */
   std::vector<sun::ast::ManifestSunDependency> parseManifestSuns();
   /**
-   * Consumes tokens for a compiled-library dependency list and builds its syntax-tree
-   * representation.
+   * Consumes tokens for a compiled-library dependency list and builds its
+   * syntax-tree representation.
    */
   std::vector<sun::ast::ManifestMoonDependency> parseManifestMoons();
   /**
@@ -543,8 +560,8 @@ class Parser {
    */
   std::vector<sun::ast::ManifestArchiveDependency> parseManifestArchives();
   /**
-   * Consumes tokens for a target-specific dependency settings and builds its syntax-tree
-   * representation.
+   * Consumes tokens for a target-specific dependency settings and builds its
+   * syntax-tree representation.
    */
   std::vector<sun::ast::ManifestTargetBlock> parseManifestTargets();
 
@@ -584,11 +601,6 @@ class Parser {
    */
   void createModuleStubs(const sun::moon::ModuleMetadata& metadata,
                          std::vector<std::unique_ptr<ExprAST>>& collectedAST);
-
-  /**
-   * Parse a type annotation from its string representation.
-   */
-  sun::ast::TypeAnnotation parseTypeFromString(const std::string& typeStr);
 
   /**
    * Setters for import resolution (used by Driver)

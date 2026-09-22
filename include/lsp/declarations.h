@@ -17,15 +17,16 @@
 #include "support/position.h"
 #include "types/types.h"
 
-/** Provides compiler-backed editor features through the language server protocol. */
+/** Provides compiler-backed editor features through the language server
+ * protocol. */
 namespace sun::lsp {
 using sun::ast::BlockExprAST;
 using sun::ast::ExprAST;
 using sun::semantic_analysis::QualifiedName;
 
 /** Maps declaration identities to their first syntax node in a live program. */
-using DeclarationIndex = std::unordered_map<
-    sun::semantic_analysis::DeclarationId, const ExprAST*>;
+using DeclarationIndex =
+    std::unordered_map<sun::semantic_analysis::DeclarationId, const ExprAST*>;
 
 /**
  * Type parameter name -> the type it stands for in one specialization
@@ -70,7 +71,8 @@ class NodeFinder {
   bool visit(const ExprAST& node);
 
  private:
-  /** Reports whether a source position belongs to the requested editor document. */
+  /** Reports whether a source position belongs to the requested editor
+   * document. */
   bool isDocumentFile(const sun::support::Position& loc);
 
   std::string documentPath_;

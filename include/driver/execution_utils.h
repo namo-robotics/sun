@@ -16,7 +16,8 @@
 #include "support/error.h"
 #include "support/sun_path.h"
 
-/** Coordinates compilation, dependency loading, linking, and program execution. */
+/** Coordinates compilation, dependency loading, linking, and program execution.
+ */
 namespace sun::driver {
 using sun::moon_bundling::MoonImport;
 using sun::support::SunError;

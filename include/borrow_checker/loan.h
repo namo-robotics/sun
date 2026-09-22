@@ -30,9 +30,9 @@ struct Loan {
   BorrowKind kind;          // Shared or Mutable
   size_t scopeDepth;        // Scope level where borrow was created
   sun::support::Position
-      location;             // Where the borrow occurred (for error messages)
-  Lifetime lifetime;        // Lifetime of the borrowed reference
-  bool isActive = true;     // False when ref goes out of scope
+      location;          // Where the borrow occurred (for error messages)
+  Lifetime lifetime;     // Lifetime of the borrowed reference
+  bool isActive = true;  // False when ref goes out of scope
 
   /** Records a borrow, its reference binding, access mode, and lifetime. */
   Loan() = default;

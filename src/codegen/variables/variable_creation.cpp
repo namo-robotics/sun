@@ -1,5 +1,7 @@
 // variable_creation.cpp - Variable creation codegen methods
 
+#include <llvm/Transforms/Utils/ModuleUtils.h>
+
 #include "ast.h"
 #include "codegen/codegen.h"
 #include "codegen/codegen_visitor.h"
@@ -7,6 +9,7 @@
 #include "codegen/support/scalar_ops.h"
 #include "codegen/support/struct_access.h"
 #include "codegen/variables/variable_generator.h"
+#include "semantic_analysis/globals.h"
 
 using sun::types::ClassType;
 using sun::types::ReferenceType;
@@ -22,6 +25,25 @@ using namespace llvm;
 /** Generates storage and access operations for Sun variables. */
 namespace sun::codegen::variables {
 
+/** Helpers private to variable creation. */
+namespace {
+
+/**
+ * Deepest chain of imports a startup function can be ordered across. Startup
+ * priorities above the default are not portable, so the range is carved out
+ * just below it.
+ */
+constexpr uint32_t kMaxStaticInitOrder = 255;
+
+/**
+ * Startup priority of a bundle that imports nothing. The default priority,
+ * which the top of the deepest allowed chain lands on, is the highest the
+ * platform linkers order reliably.
+ */
+constexpr uint32_t kStaticInitBasePriority = 65535 - kMaxStaticInitOrder;
+
+}  // namespace
+
 // -------------------------------------------------------------------
 // Global variable creation
 // -------------------------------------------------------------------
@@ -29,22 +51,6 @@ namespace sun::codegen::variables {
 GlobalVariable* VariableGenerator::createGlobalVariable(
     sun::semantic_analysis::DeclarationId id, const std::string& name,
     llvm::Type* type, llvm::Constant* initializer) {
-  // Create appropriate zero initializer if none provided
-  if (!initializer) {
-    if (type->isDoubleTy()) {
-      initializer = ConstantFP::get(ctx.getContext(), APFloat(0.0));
-    } else if (type->isFloatTy()) {
-      initializer = ConstantFP::get(type, 0.0f);
-    } else if (type->isIntegerTy()) {
-      initializer = ConstantInt::get(type, 0);
-    } else if (type->isArrayTy()) {
-      initializer = ConstantAggregateZero::get(type);
-    } else {
-      initializer = Constant::getNullValue(type);
-    }
-  }
-
-  // Create new global variable
   GlobalVariable* gv = new GlobalVariable(
       *module, type, false, GlobalValue::ExternalLinkage, initializer, name);
   return bindGlobal(id, gv);
@@ -54,33 +60,26 @@ GlobalVariable* VariableGenerator::createGlobalVariable(
 // Variable creation codegen
 // -------------------------------------------------------------------
 
-void VariableGenerator::declareBlockExternalGlobals(
+void VariableGenerator::declareBlockGlobals(
     const sun::ast::BlockExprAST& block) {
-  for (const auto& node : block.getBody()) {
-    if (node->getType() == ASTNodeType::MODULE) {
-      declareBlockExternalGlobals(
-          static_cast<const sun::ast::ModuleAST&>(*node).getBody());
-      continue;
-    }
-    if (node->getType() == ASTNodeType::MOON_SCOPE) {
-      declareBlockExternalGlobals(
-          static_cast<const sun::ast::MoonScopeAST&>(*node).getBody());
-      continue;
-    }
-    if (node->getType() != ASTNodeType::VARIABLE_CREATION) continue;
-    const auto& variable = static_cast<const VariableCreationAST&>(*node);
-    if (variable.isPrecompiled() && !variable.isCExtern()) {
-      codegen(variable);
-      continue;
-    }
-    if (!variable.isCExtern()) continue;
-    llvm::Type* type = typeResolver.resolve(variable.getResolvedType());
-    bindGlobal(variable.getDeclarationId(),
-               gen_.externCEmitter().declareGlobal(variable, type));
-  }
+  sun::semantic_analysis::forEachGlobalDeclaration(
+      block, [&](const VariableCreationAST& variable) {
+        // Inside a function, a variable with a value is an ordinary local,
+        // emitted in its turn
+        if (variable.isCExtern() || variable.isPrecompiled() ||
+            (scopes().empty() && variable.getValue()))
+          codegen(variable);
+      });
 }
 
 Value* VariableGenerator::codegen(const VariableCreationAST& expr) {
+  // A global's storage is created up front, with the rest of its block's
+  // globals, so by its own turn there is nothing left to do
+  if (scopes().empty()) {
+    if (GlobalVariable* declared = findGlobal(expr.getDeclarationId()))
+      return declared;
+  }
+
   // Get the type from the resolved type set by semantic analyzer
   TypePtr varSunType = expr.getResolvedType();
   if (!varSunType) {
@@ -119,11 +118,8 @@ Value* VariableGenerator::codegen(const VariableCreationAST& expr) {
                            /*Initializer=*/nullptr, varName));
   }
 
-  // Check if we're creating a global variable and if it already exists
-  if (scopes().empty()) {
-    if (module->getGlobalVariable(varName)) {
-      logAndThrowError("Cannot redeclare global variable: " + varName);
-    }
+  if (scopes().empty() && module->getGlobalVariable(varName)) {
+    logAndThrowError("Cannot redeclare global variable: " + varName);
   }
 
   bool isLambdaType = varSunType->isLambda();
@@ -143,22 +139,31 @@ Value* VariableGenerator::codegen(const VariableCreationAST& expr) {
   llvm::Type* varType = typeResolver.resolve(varSunType);
 
   if (scopes().empty()) {
-    // Global arrays need special handling - they can't use stack allocations
-    if (varSunType->isArray()) {
-      return genGlobalArray(expr);
-    }
     if (sun::codegen::CodegenVisitor::isPayloadEnum(varSunType)) {
       logAndThrowError(
           "Global variables of payload-carrying enum types are not yet "
           "supported",
           expr.getLocation());
     }
-    // Global class variables need runtime initialization
+    // A class value is built by its constructor, which runs at startup
     if (auto* classType =
             sun::codegen::support::tryGetType<ClassType>(varSunType)) {
-      return genGlobalClassVar(expr, *classType);
+      return emitStartupGlobal(expr,
+                               classType->getStructType(ctx.getContext()));
     }
-    return genGlobalVarForConstantExpr(expr, varType);
+    // Analysis decided where every other file-scope variable gets its value
+    const auto* decision = expr.getGlobalInit();
+    if (!decision) {
+      logAndThrowError(
+          "Internal error: analysis made no decision about how "
+          "global variable '" +
+              expr.getName() + "' is initialized",
+          expr.getLocation());
+    }
+    using sun::semantic_analysis::constants::GlobalInitKind;
+    if (decision->kind == GlobalInitKind::Image && decision->value)
+      return emitImageGlobal(expr, varType, *decision->value);
+    return emitStartupGlobal(expr, varType);
   }
 
   return genLocalVar(expr, varType);
@@ -196,7 +201,7 @@ Value* VariableGenerator::genFunctionVariable(const VariableCreationAST& expr) {
   if (scopes().empty()) {
     // Top-level: use global variable for closure struct
     createGlobalVariable(expr.getDeclarationId(), varName, varType,
-                         llvm::dyn_cast<llvm::Constant>(resultPtr));
+                         llvm::cast<llvm::Constant>(resultPtr));
   } else {
     // Inside a function: resultPtr is already an alloca from createFatClosure
     // that holds the closure struct. Just register it in the scope.
@@ -226,10 +231,6 @@ Value* VariableGenerator::genFunctionVariable(const VariableCreationAST& expr) {
 // Local variable creation
 // -------------------------------------------------------------------
 
-// -------------------------------------------------------------------
-// Local variable creation
-// -------------------------------------------------------------------
-
 llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
                                             llvm::Type* varType) {
   // A reference variable binds the referent's address rather than reading
@@ -237,7 +238,6 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
   // the Vec. codegen() would read instead (see loadIfRef).
   TypePtr declaredType = expr.getResolvedType();
   Value* value = declaredType && declaredType->isReference()
-                     /** Emits the address used to borrow an expression without moving its value. */
                      ? codegenBorrowAddress(*expr.getValue())
                      : nullptr;
   if (!value) value = codegen(*expr.getValue());
@@ -439,28 +439,9 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
     }
   }
 
-  // Handle implicit type conversion for integers (e.g., i8 to i32)
-  llvm::Type* valueType = value->getType();
-  if (valueType != varType) {
-    // Integer widening
-    if (valueType->isIntegerTy() && varType->isIntegerTy()) {
-      unsigned valueBits = valueType->getIntegerBitWidth();
-      unsigned varBits = varType->getIntegerBitWidth();
-      if (valueBits < varBits) {
-        value = sun::codegen::support::extendInt(
-            *ctx.builder, value, varType,
-            expr.getValue() ? expr.getValue()->getResolvedType() : nullptr);
-      } else if (valueBits > varBits) {
-        value = ctx.builder->CreateTrunc(value, varType, "trunc");
-      }
-    }
-    // Float widening
-    else if (valueType->isFloatTy() && varType->isDoubleTy()) {
-      value = ctx.builder->CreateFPExt(value, varType, "widen");
-    } else if (valueType->isDoubleTy() && varType->isFloatTy()) {
-      value = ctx.builder->CreateFPTrunc(value, varType, "trunc");
-    }
-  }
+  value = convertToVariableType(
+      value, varType,
+      expr.getValue() ? expr.getValue()->getResolvedType() : nullptr);
 
   AllocaInst* alloca = createEntryBlockAlloca(func, expr.getName(), varType);
   ctx.builder->CreateStore(value, alloca);
@@ -470,196 +451,95 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
   return value;
 }
 
-// -------------------------------------------------------------------
-// Global array creation
-// -------------------------------------------------------------------
+llvm::Value* VariableGenerator::convertToVariableType(
+    llvm::Value* value, llvm::Type* varType, const TypePtr& valueSunType) {
+  llvm::Type* valueType = value->getType();
+  if (valueType == varType) return value;
 
-/**
- * Helper to generate a constant element value for global arrays
- */
-static llvm::Constant* genConstantElement(const ExprAST* elemExpr,
-                                          llvm::LLVMContext& llvmCtx) {
-  switch (elemExpr->getType()) {
-    case ASTNodeType::NUMBER: {
-      const auto& numExpr =
-          static_cast<const sun::ast::NumberExprAST&>(*elemExpr);
-      auto elemType = elemExpr->getResolvedType();
-      if (!elemType) return nullptr;
-
-      if (elemType->isFloat32() || elemType->isFloat64()) {
-        llvm::Type* ty = elemType->isFloat32()
-                             ? llvm::Type::getFloatTy(llvmCtx)
-                             : llvm::Type::getDoubleTy(llvmCtx);
-        return llvm::ConstantFP::get(ty, numExpr.getVal());
-      } else {
-        // Integer type
-        llvm::Type* ty = elemType->toLLVMType(llvmCtx);
-        return llvm::ConstantInt::get(ty,
-                                      static_cast<int64_t>(numExpr.getVal()),
-                                      /*isSigned=*/true);
-      }
-    }
-    case ASTNodeType::CHAR_LITERAL: {
-      const auto& lit = static_cast<const sun::ast::CharLiteralAST&>(*elemExpr);
-      auto elemType = elemExpr->getResolvedType();
-      if (!elemType) return nullptr;
-      return llvm::ConstantInt::get(elemType->toLLVMType(llvmCtx),
-                                    lit.getValue(), /*isSigned=*/false);
-    }
-    default:
-      return nullptr;
+  if (valueType->isIntegerTy() && varType->isIntegerTy()) {
+    unsigned valueBits = valueType->getIntegerBitWidth();
+    unsigned varBits = varType->getIntegerBitWidth();
+    if (valueBits < varBits)
+      return sun::codegen::support::extendInt(*ctx.builder, value, varType,
+                                              valueSunType);
+    return ctx.builder->CreateTrunc(value, varType, "trunc");
   }
+  if (valueType->isFloatTy() && varType->isDoubleTy())
+    return ctx.builder->CreateFPExt(value, varType, "widen");
+  if (valueType->isDoubleTy() && varType->isFloatTy())
+    return ctx.builder->CreateFPTrunc(value, varType, "trunc");
+  return value;
 }
 
-/**
- * Recursively build a constant array for multi-dimensional global arrays
- */
-static llvm::Constant* buildConstantArray(
-    const std::vector<std::unique_ptr<ExprAST>>& elements,
-    const std::vector<size_t>& dims, size_t dimIndex, llvm::Type* elementType,
-    llvm::LLVMContext& llvmCtx) {
-  if (dimIndex >= dims.size()) {
-    // This shouldn't happen - means we've gone too deep
-    return nullptr;
+// -------------------------------------------------------------------
+// File-scope variables whose value is known at compile time
+// -------------------------------------------------------------------
+
+llvm::Constant* VariableGenerator::buildLlvmConstant(
+    const sun::semantic_analysis::constants::ConstantValue& value,
+    llvm::Type* type, const sun::support::Position& location) {
+  if (value.isInteger() && type->isIntegerTy()) {
+    // Analysis stores an integer at the width generated code uses, so this
+    // only changes the width if the two ever disagree.
+    unsigned width = type->getIntegerBitWidth();
+    const APInt& bits = value.getInteger();
+    return ConstantInt::get(ctx.getContext(), value.isUnsigned()
+                                                  ? bits.zextOrTrunc(width)
+                                                  : bits.sextOrTrunc(width));
   }
 
-  std::vector<llvm::Constant*> constElements;
-  constElements.reserve(elements.size());
-
-  for (const auto& elem : elements) {
-    if (elem->getType() == ASTNodeType::ARRAY_LITERAL) {
-      // Nested array - recurse
-      const auto& nestedArray =
-          static_cast<const sun::ast::ArrayLiteralAST&>(*elem);
-      llvm::Constant* nestedConst = buildConstantArray(
-          nestedArray.getElements(), dims, dimIndex + 1, elementType, llvmCtx);
-      if (!nestedConst) return nullptr;
-      constElements.push_back(nestedConst);
-    } else {
-      // Scalar element
-      llvm::Constant* elemConst = genConstantElement(elem.get(), llvmCtx);
-      if (!elemConst) return nullptr;
-      constElements.push_back(elemConst);
-    }
+  if (value.isFloat() && type->isFloatingPointTy()) {
+    APFloat number = value.getFloat();
+    bool losesInfo = false;
+    number.convert(type->getFltSemantics(), APFloat::rmNearestTiesToEven,
+                   &losesInfo);
+    return ConstantFP::get(ctx.getContext(), number);
   }
 
-  // Determine the type for this level
-  llvm::Type* arrayType = elementType;
-  for (size_t i = dims.size() - 1; i > dimIndex; --i) {
-    arrayType = llvm::ArrayType::get(arrayType, dims[i]);
+  if (value.isString() && type == typeResolver.getStaticPtrType()) {
+    // The text lives in its own read-only array, ending in a zero byte so C
+    // code can read it; the variable holds its address and its length.
+    llvm::Constant* text = llvm::ConstantDataArray::getString(
+        ctx.getContext(), value.getString(), /*AddNull=*/true);
+    auto* storage = new GlobalVariable(
+        *module, text->getType(),
+        /*isConstant=*/true, GlobalValue::PrivateLinkage, text, "str");
+    storage->setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
+    storage->setAlignment(llvm::Align(1));
+    return llvm::ConstantStruct::get(
+        typeResolver.getStaticPtrType(),
+        {storage, ConstantInt::get(llvm::Type::getInt64Ty(ctx.getContext()),
+                                   value.getString().size())});
   }
-  llvm::ArrayType* thisLevelType =
-      llvm::ArrayType::get(arrayType, dims[dimIndex]);
 
-  return llvm::ConstantArray::get(thisLevelType, constElements);
+  if (auto* arrayType = llvm::dyn_cast<llvm::ArrayType>(type);
+      arrayType && value.isArray() &&
+      value.getElements().size() == arrayType->getNumElements()) {
+    // One constant per element; a further dimension nests the same way
+    std::vector<llvm::Constant*> elements;
+    elements.reserve(value.getElements().size());
+    for (const auto& element : value.getElements())
+      elements.push_back(
+          buildLlvmConstant(element, arrayType->getElementType(), location));
+    return llvm::ConstantArray::get(arrayType, elements);
+  }
+
+  logAndThrowError("Internal error: the compile-time value " +
+                       value.toDisplayString() +
+                       " does not fit the storage of the global variable it "
+                       "initializes",
+                   location);
 }
 
-llvm::Constant* VariableGenerator::genGlobalArray(
-    const VariableCreationAST& expr) {
+llvm::GlobalVariable* VariableGenerator::emitImageGlobal(
+    const VariableCreationAST& expr, llvm::Type* varType,
+    const sun::semantic_analysis::constants::ConstantValue& value) {
   assert(scopes().empty() &&
-         "genGlobalArray should only be called at top-level");
-
-  auto* arrayType = &sun::codegen::support::requireType<sun::types::ArrayType>(
-      expr, "global array '" + expr.getName() + "'");
-  const auto& dims = arrayType->getDimensions();
-
-  if (dims.empty()) {
-    logAndThrowError("Cannot create global unsized array: " + expr.getName());
-  }
-
-  // Get the array literal
-  if (expr.getValue()->getType() != ASTNodeType::ARRAY_LITERAL) {
-    logAndThrowError("Global array must be initialized with array literal: " +
-                     expr.getName());
-  }
-  const auto& arrayLit =
-      static_cast<const sun::ast::ArrayLiteralAST&>(*expr.getValue());
-
-  // Build the constant data array
-  llvm::Type* elementLLVMType =
-      arrayType->getElementType()->toLLVMType(ctx.getContext());
-  llvm::Constant* dataConst = buildConstantArray(
-      arrayLit.getElements(), dims, 0, elementLLVMType, ctx.getContext());
-
-  if (!dataConst) {
-    logAndThrowError("Failed to generate constant data for global array: " +
-                     expr.getName());
-  }
-
-  // The global IS the inline storage
-  createGlobalVariable(
+         "emitImageGlobal should only be called at top-level");
+  return createGlobalVariable(
       expr.getDeclarationId(),
-      (scopes().empty()
-           ? state_.declarationSymbol(expr.getDeclarationId(), "global")
-           : expr.getName()),
-      dataConst->getType(), dataConst);
-  return dataConst;
-}
-
-// -------------------------------------------------------------------
-// Global variable creation for constant expressions
-// -------------------------------------------------------------------
-
-llvm::Constant* VariableGenerator::genGlobalVarForConstantExpr(
-    const VariableCreationAST& expr, llvm::Type* varType) {
-  assert(scopes().empty() &&
-         "genGlobalVarForConstantExpr should only be called at top-level");
-  assert(!varType->isFunctionTy() &&
-         "Function types should be handled separately");
-  // At top-level, we need a constant initializer for the global variable
-  // Generate the value - it must be a constant at global scope
-  Value* value = codegen(*expr.getValue());
-  if (!value) return nullptr;
-
-  // Convert to constant - global initializers must be constants
-  Constant* constValue = dyn_cast<Constant>(value);
-  if (!constValue) {
-    logAndThrowError(
-        "Global variable initializer must be a constant expression: " +
-        expr.getName());
-  }
-
-  // Convert value to the correct type if needed
-  if (constValue->getType() != varType) {
-    if (varType->isIntegerTy() && constValue->getType()->isFloatingPointTy()) {
-      // Constant fold: FP to Int
-      if (auto* fpConst = dyn_cast<ConstantFP>(constValue)) {
-        APFloat fpVal = fpConst->getValueAPF();
-        bool isExact;
-        APSInt intVal(varType->getIntegerBitWidth(), /*isUnsigned=*/false);
-        fpVal.convertToInteger(intVal, APFloat::rmTowardZero, &isExact);
-        constValue = ConstantInt::get(varType, intVal);
-      }
-    } else if (varType->isFloatingPointTy() &&
-               constValue->getType()->isIntegerTy()) {
-      // Constant fold: Int to FP
-      if (auto* intConst = dyn_cast<ConstantInt>(constValue)) {
-        double fpVal = intConst->getSExtValue();
-        constValue = ConstantFP::get(varType, fpVal);
-      }
-    } else if (varType->isIntegerTy() && constValue->getType()->isIntegerTy()) {
-      // Integer cast - extract value and create new constant
-      if (auto* intConst = dyn_cast<ConstantInt>(constValue)) {
-        int64_t val = intConst->getSExtValue();
-        constValue = ConstantInt::get(varType, val, /*isSigned=*/true);
-      }
-    } else if (varType->isFloatingPointTy() &&
-               constValue->getType()->isFloatingPointTy()) {
-      // FP cast - extract value and create new constant
-      if (auto* fpConst = dyn_cast<ConstantFP>(constValue)) {
-        double val = fpConst->getValueAPF().convertToDouble();
-        constValue = ConstantFP::get(varType, val);
-      }
-    }
-  }
-
-  // Create global variable with the constant initializer
-  std::string varName =
-      (scopes().empty()
-           ? state_.declarationSymbol(expr.getDeclarationId(), "global")
-           : expr.getName());
-  createGlobalVariable(expr.getDeclarationId(), varName, varType, constValue);
-  return constValue;
+      state_.declarationSymbol(expr.getDeclarationId(), "global"), varType,
+      buildLlvmConstant(value, varType, expr.getLocation()));
 }
 
 // -------------------------------------------------------------------
@@ -700,65 +580,26 @@ Value* VariableGenerator::codegen(const sun::ast::ReferenceCreationAST& expr) {
 }
 
 // -------------------------------------------------------------------
-// Global class variable creation
+// File-scope variables initialized at startup
 // -------------------------------------------------------------------
 
-GlobalVariable* VariableGenerator::genGlobalClassVar(
-    const VariableCreationAST& expr, ClassType& classType) {
+GlobalVariable* VariableGenerator::emitStartupGlobal(
+    const VariableCreationAST& expr, llvm::Type* varType) {
   assert(scopes().empty() &&
-         "genGlobalClassVar should only be called at top-level");
+         "emitStartupGlobal should only be called at top-level");
 
-  // Get the LLVM struct type for the class
-  llvm::StructType* structType = classType.getStructType(ctx.getContext());
-
-  // Create zero-initialized global variable for the class instance
-  std::string varName =
-      (scopes().empty()
-           ? state_.declarationSymbol(expr.getDeclarationId(), "global")
-           : expr.getName());
-  llvm::Constant* zeroInit = llvm::ConstantAggregateZero::get(structType);
+  // Zeroed until the startup function stores the real value
   GlobalVariable* gv = new GlobalVariable(
-      *module, structType,
-      /*isConstant=*/false, GlobalValue::ExternalLinkage, zeroInit, varName);
+      *module, varType,
+      /*isConstant=*/false, GlobalValue::ExternalLinkage,
+      Constant::getNullValue(varType),
+      state_.declarationSymbol(expr.getDeclarationId(), "global"));
 
-  // Queue for runtime initialization
   StaticInitInfo info;
   info.globalVar = gv;
   info.varName = expr.getName();
   info.varType = expr.getResolvedType();
   info.classType = sun::codegen::support::tryGetTypePtr<ClassType>(expr);
-  info.initExpr = expr.getValue();
-  info.location = expr.getLocation();
-  staticInits.push_back(std::move(info));
-
-  return bindGlobal(expr.getDeclarationId(), gv);
-}
-
-// -------------------------------------------------------------------
-// Global variable with runtime initialization (non-class)
-// -------------------------------------------------------------------
-
-GlobalVariable* VariableGenerator::genGlobalVarWithRuntimeInit(
-    const VariableCreationAST& expr, llvm::Type* varType) {
-  assert(scopes().empty() &&
-         "genGlobalVarWithRuntimeInit should only be called at top-level");
-
-  // Create zero-initialized global variable
-  std::string varName =
-      (scopes().empty()
-           ? state_.declarationSymbol(expr.getDeclarationId(), "global")
-           : expr.getName());
-  llvm::Constant* zeroInit = Constant::getNullValue(varType);
-  GlobalVariable* gv = new GlobalVariable(
-      *module, varType,
-      /*isConstant=*/false, GlobalValue::ExternalLinkage, zeroInit, varName);
-
-  // Queue for runtime initialization
-  StaticInitInfo info;
-  info.globalVar = gv;
-  info.varName = expr.getName();
-  info.varType = expr.getResolvedType();
-  info.classType = nullptr;
   info.initExpr = expr.getValue();
   info.location = expr.getLocation();
   staticInits.push_back(std::move(info));
@@ -797,8 +638,16 @@ static const std::vector<std::unique_ptr<ExprAST>>* constructorArgsForGlobal(
   return nullptr;
 }
 
-void VariableGenerator::emitStaticInitFunction() {
+void VariableGenerator::emitStaticInitFunction(uint32_t initOrder,
+                                               const std::string& bundleHash) {
   if (staticInits.empty()) return;
+  if (initOrder > kMaxStaticInitOrder) {
+    logAndThrowError(
+        "Too many levels of imported libraries: a library may be "
+        "at most " +
+        std::to_string(kMaxStaticInitOrder) +
+        " imports away from a library that imports nothing");
+  }
 
   // Create the initialization function: void __sun_static_init()
   // Internal linkage, on purpose: a .moon bundle carries its own copy of this
@@ -816,6 +665,31 @@ void VariableGenerator::emitStaticInitFunction() {
   // No subprogram on the init function: it must carry no debug locations
   debugInfo.clearLocation(*ctx.builder);
 
+  // A bundle's code is embedded in every bundle that imports it, so a program
+  // can receive several copies of this function. They share one flag, named
+  // after the bundle, and only the first copy to run does the work: the
+  // globals themselves exist once, and constructing them twice would repeat
+  // their side effects and leak the first values.
+  if (!bundleHash.empty()) {
+    llvm::Type* flagType = llvm::Type::getInt1Ty(ctx.getContext());
+    const std::string flagName = "_SUN1_static_init_done_" + bundleHash;
+    GlobalVariable* doneFlag = module->getGlobalVariable(flagName);
+    if (!doneFlag) {
+      doneFlag = new GlobalVariable(
+          *module, flagType, /*isConstant=*/false, GlobalValue::WeakAnyLinkage,
+          ConstantInt::getFalse(ctx.getContext()), flagName);
+    }
+    BasicBlock* alreadyBB =
+        BasicBlock::Create(ctx.getContext(), "already.initialized", initFunc);
+    BasicBlock* runBB = BasicBlock::Create(ctx.getContext(), "run", initFunc);
+    Value* done = ctx.builder->CreateLoad(flagType, doneFlag, "done");
+    ctx.builder->CreateCondBr(done, alreadyBB, runBB);
+    ctx.builder->SetInsertPoint(alreadyBB);
+    ctx.builder->CreateRetVoid();
+    ctx.builder->SetInsertPoint(runBB);
+    ctx.builder->CreateStore(ConstantInt::getTrue(ctx.getContext()), doneFlag);
+  }
+
   // Push a scope for any temporaries needed during init
   scopes().push().isFunctionBoundary = true;
 
@@ -823,27 +697,11 @@ void VariableGenerator::emitStaticInitFunction() {
   for (const auto& init : staticInits) {
     GlobalVariable* gv = init.globalVar;
 
-    if (init.classType && init.initExpr) {
-      // Class type: call constructor
+    if (init.classType) {
+      // Class type: call constructor. The storage is already zeroed: the
+      // global is defined that way and this function's work runs once.
       ClassType* classType = init.classType.get();
       llvm::StructType* structType = classType->getStructType(ctx.getContext());
-
-      // Zero-initialize the memory using memset
-      const DataLayout& DL = module->getDataLayout();
-      uint64_t structSize = DL.getTypeAllocSize(structType);
-
-      llvm::FunctionCallee memsetFn = module->getOrInsertFunction(
-          "memset",
-          llvm::FunctionType::get(PointerType::getUnqual(ctx.getContext()),
-                                  {PointerType::getUnqual(ctx.getContext()),
-                                   llvm::Type::getInt32Ty(ctx.getContext()),
-                                   llvm::Type::getInt64Ty(ctx.getContext())},
-                                  false));
-      ctx.builder->CreateCall(
-          memsetFn,
-          {gv, ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0),
-           ConstantInt::get(llvm::Type::getInt64Ty(ctx.getContext()),
-                            structSize)});
 
       // A struct literal names its fields, so store them straight into the
       // global rather than looking for a constructor.
@@ -912,7 +770,7 @@ void VariableGenerator::emitStaticInitFunction() {
         continue;
       }
 
-      const auto& paramTypes = ctor ? ctor->paramTypes : std::vector<TypePtr>{};
+      const auto& paramTypes = ctor->paramTypes;
 
       std::vector<Value*> ctorArgValues;
       // Method closure; the receiver is the global variable
@@ -964,13 +822,31 @@ void VariableGenerator::emitStaticInitFunction() {
       }
 
       ctx.builder->CreateCall(ctorFunc, ctorArgValues);
-    } else if (init.initExpr) {
+    } else {
       // Non-class type: evaluate expression and store
       Value* initVal = codegen(*init.initExpr);
       if (!initVal) {
         logAndThrowError(
             "Failed to generate initializer for global variable: " +
             init.varName);
+      }
+
+      // A sized array owns its elements inline: they move into the global
+      auto* arrayType =
+          sun::codegen::support::tryGetType<sun::types::ArrayType>(
+              init.varType);
+      if (arrayType && !arrayType->isUnsized()) {
+        gen_.emitArrayTransfer(gv, initVal, *arrayType, /*move=*/true);
+        continue;
+      }
+
+      initVal = convertToVariableType(initVal, gv->getValueType(),
+                                      init.initExpr->getResolvedType());
+      if (initVal->getType() != gv->getValueType()) {
+        logAndThrowError("Global variables of type '" +
+                             init.varType->toString() +
+                             "' cannot be initialized with this expression yet",
+                         init.location);
       }
       ctx.builder->CreateStore(initVal, gv);
     }
@@ -979,50 +855,11 @@ void VariableGenerator::emitStaticInitFunction() {
   scopes().pop();
   ctx.builder->CreateRetVoid();
 
-  // Register the init function in llvm.global_ctors
-  // This is an array of { i32 priority, ptr function, ptr data }
-  llvm::StructType* ctorStructType = llvm::StructType::get(
-      ctx.getContext(), {llvm::Type::getInt32Ty(ctx.getContext()),
-                         PointerType::getUnqual(ctx.getContext()),
-                         PointerType::getUnqual(ctx.getContext())});
-
-  llvm::Constant* ctorEntry = llvm::ConstantStruct::get(
-      ctorStructType,
-      {ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()),
-                        65535),  // priority
-       initFunc,
-       ConstantPointerNull::get(PointerType::getUnqual(ctx.getContext()))});
-
-  llvm::ArrayType* ctorArrayType = llvm::ArrayType::get(ctorStructType, 1);
-  llvm::Constant* ctorArray =
-      llvm::ConstantArray::get(ctorArrayType, {ctorEntry});
-
-  // Create or append to llvm.global_ctors
-  GlobalVariable* existingCtors =
-      module->getGlobalVariable("llvm.global_ctors");
-  if (existingCtors) {
-    // Append to existing array
-    llvm::Constant* existingInit = existingCtors->getInitializer();
-    if (auto* existingArray = dyn_cast<llvm::ConstantArray>(existingInit)) {
-      std::vector<llvm::Constant*> entries;
-      for (unsigned i = 0; i < existingArray->getNumOperands(); ++i) {
-        entries.push_back(existingArray->getOperand(i));
-      }
-      entries.push_back(ctorEntry);
-      llvm::ArrayType* newArrayType =
-          llvm::ArrayType::get(ctorStructType, entries.size());
-      llvm::Constant* newArray =
-          llvm::ConstantArray::get(newArrayType, entries);
-      existingCtors->eraseFromParent();
-      new GlobalVariable(*module, newArrayType, false,
-                         GlobalValue::AppendingLinkage, newArray,
-                         "llvm.global_ctors");
-    }
-  } else {
-    new GlobalVariable(*module, ctorArrayType, false,
-                       GlobalValue::AppendingLinkage, ctorArray,
-                       "llvm.global_ctors");
-  }
+  // Register the init function in llvm.global_ctors. Lower priorities run
+  // first, so a library's globals are ready before the globals of whatever
+  // imports it.
+  llvm::appendToGlobalCtors(*module, initFunc,
+                            kStaticInitBasePriority + initOrder);
 
   // Clear the queue
   staticInits.clear();

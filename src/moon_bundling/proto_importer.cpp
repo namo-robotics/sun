@@ -49,7 +49,8 @@
 /** Builds and loads compiled Moon libraries and their declaration metadata. */
 namespace sun::moon_bundling {
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 namespace pb = google::protobuf;
@@ -266,7 +267,8 @@ class SchemaValidator {
   }
 
  private:
-  /** Checks whether a protobuf field can be represented by the generated Sun code. */
+  /** Checks whether a protobuf field can be represented by the generated Sun
+   * code. */
   static void validateField(const FD* f) {
     if (f->type() == FD::TYPE_GROUP) {
       fail("groups are not supported (field '" + asString(f->full_name()) +
@@ -604,7 +606,8 @@ class TypeMapper {
   }
 };
 
-/** Names the protobuf field category used when selecting its Sun representation. */
+/** Names the protobuf field category used when selecting its Sun
+ * representation. */
 using T = TypeMapper;
 
 // ---------------------------------------------------------------------------

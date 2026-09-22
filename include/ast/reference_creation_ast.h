@@ -41,7 +41,8 @@ class ReferenceCreationAST : public ExprAST {
   }
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   explicit ReferenceCreationAST(std::string name,
                                 std::unique_ptr<ExprAST> target,
                                 bool isMutable = true,
@@ -55,7 +56,8 @@ class ReferenceCreationAST : public ExprAST {
     return ASTNodeType::REFERENCE_CREATION;
   }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override { fn(target); }
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
@@ -81,7 +83,8 @@ class ReferenceCreationAST : public ExprAST {
   void setQualifiedName(sun::semantic_analysis::QualifiedName qname) {
     varAnalysis().qualifiedName = std::move(qname);
   }
-  /** Reports whether a name including the enclosing scopes has been assigned. */
+  /** Reports whether a name including the enclosing scopes has been assigned.
+   */
   bool hasQualifiedName() const {
     return analysis_ &&
            !static_cast<VariableAnalysis&>(*analysis_).qualifiedName.empty();

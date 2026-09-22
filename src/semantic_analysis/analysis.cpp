@@ -160,6 +160,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, TypePtr expectedType) {
         break;
       }
       auto& varRef = static_cast<sun::ast::VariableReferenceAST&>(expr);
+      ensureGlobalAnalyzed(varRef.getName());
 
       // An expected function-pointer type selects one overload without
       // changing ordinary call-site overload resolution.
@@ -435,7 +436,7 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
     std::vector<TypePtr> parameters;
     for (size_t i = 0; i < proto.getTypeParameters().size(); ++i) {
       parameters.push_back(proto.getTypeParameters()[i].toSunType(
-          ctx_.types()->declarations,
+          ctx_.results().declarations,
           proto.declarationIdentity().typeParameters.at(i)));
     }
     ctx_.enterTypeParamScope(proto.getTypeParameterNames(), parameters);

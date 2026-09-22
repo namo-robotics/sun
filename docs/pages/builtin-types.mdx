@@ -170,6 +170,33 @@ var arr: array<i32, 3> = [10, 20, 30];
 var matrix: array<f64, 2, 3> = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
 ```
 
+A size is written as a number or as the name of a constant, which may come
+from a module (`limits.ROWS`), including a module of a precompiled library,
+and may be declared further down the file. The
+constant must be an integer `const` at file or module scope whose value the
+compiler can work out, and it must not be negative. Its value may come from
+calling a function, as in `const CELLS = area(2, 3);`, when the size is used by
+a variable and the function is declared above that variable. A size used by a
+class field or a function signature cannot come from a function call yet. A size is not an
+expression: give the expression a name first.
+
+```sun
+const ROWS = 2;
+const CELLS = ROWS * 3;
+var grid: array<i32, ROWS, 3> = [[1, 2, 3], [4, 5, 6]];
+var flat: array<i32, CELLS> = [1, 2, 3, 4, 5, 6];
+// var bad: array<i32, ROWS * 3> = ...;   // ERROR: a size is a number or a name
+```
+
+`array<i32, CELLS>` and `array<i32, 6>` are the same type. A `const` that only
+gets its value when the program starts cannot be a size, and the error says
+what made it so:
+
+```
+array size 'SNAP' must be known at compile time, but 'SNAP' is initialized at
+startup because it reads 'counter', which is a 'var'
+```
+
 ### Indexing
 
 ```sun

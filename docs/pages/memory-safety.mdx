@@ -245,9 +245,29 @@ function main() i32 {
 }
 ```
 
-A constant global is initialised at runtime like any other global; compile-time
-evaluation is on the roadmap. `for (const x: T in c)` makes the loop binding
-constant for each element.
+A global whose initializer the compiler can work out, such as
+`const LIMIT: i64 = BASE * 2 + 1;`, is computed at compile time and written into
+the program. That covers literals, operators, other compile-time constants,
+array literals and array elements, and calls to plain functions that only
+compute: a function that takes and returns values, cannot throw, and touches
+nothing but its own variables and compile-time constants. Branches, loops and
+recursion are all fine. Any other global is given its value when the program starts, before
+`main` runs, in the order the globals are written. That includes a `const`:
+`const` means the variable is never reassigned, not that its value is known at
+compile time.
+
+Like functions and classes, a global can be used before the line that declares
+it. Two things are errors: a global whose initializer leads back to itself, and
+a global initialized at startup whose initializer reads one that startup
+initializes later, because it would still be zero.
+
+```sun
+const DOUBLE: i64 = BASE * 2;     // ✓ BASE is declared below
+const BASE: i64 = 10;
+// const A: i64 = B;  const B: i64 = A;   // ❌ ERROR: 'A' depends on itself: A -> B -> A
+```
+
+`for (const x: T in c)` makes the loop binding constant for each element.
 
 ## References
 

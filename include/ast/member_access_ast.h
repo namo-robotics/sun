@@ -47,7 +47,8 @@ class MemberAccessAST : public ExprAST {
   }
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   MemberAccessAST(std::unique_ptr<ExprAST> obj, std::string member,
                   std::vector<std::unique_ptr<TypeAnnotation>> typeArgs = {})
       : object(std::move(obj)),
@@ -73,7 +74,8 @@ class MemberAccessAST : public ExprAST {
   /** Provides the receiver expression used for member access. */
   const ExprAST* getObject() const { return object.get(); }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override { fn(object); }
   /** Transfers ownership of the receiver expression to the caller. */
   std::unique_ptr<ExprAST> releaseObject() { return std::move(object); }
@@ -140,7 +142,8 @@ class MemberAccessAST : public ExprAST {
   const sun::semantic_analysis::QualifiedName& getQualifiedName() const {
     return memberAnalysis().qualifiedName;
   }
-  /** Reports whether a name including the enclosing scopes has been assigned. */
+  /** Reports whether a name including the enclosing scopes has been assigned.
+   */
   bool hasQualifiedName() const {
     return analysis_ && !static_cast<MemberAccessAnalysis&>(*analysis_)
                              .qualifiedName.empty();

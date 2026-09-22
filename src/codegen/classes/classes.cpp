@@ -246,8 +246,7 @@ Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
       continue;
     }
 
-    std::string symbol =
-        state_.declarationSymbol(proto.getDeclarationId());
+    std::string symbol = state_.declarationSymbol(proto.getDeclarationId());
     generateMethodBody(methodFunc);
     // Track user-defined methods for IR filtering
     if (isUserDefined) {
@@ -351,8 +350,7 @@ Function* ClassGenerator::declareMethodFromAST(
 
   if (!proto.hasResolvedParamTypes()) {
     logAndThrowError(
-        "Method parameter types not resolved by semantic analysis: " +
-        symbol);
+        "Method parameter types not resolved by semantic analysis: " + symbol);
     return nullptr;
   }
   // The fixed parameters, then the elements of any `args...` pack
@@ -379,8 +377,8 @@ Function* ClassGenerator::declareMethodFromAST(
   // Create the function declaration
   llvm::FunctionType* funcType =
       llvm::FunctionType::get(returnType, paramTypes, false);
-  Function* func = Function::Create(funcType, Function::ExternalLinkage,
-                                    symbol, module);
+  Function* func =
+      Function::Create(funcType, Function::ExternalLinkage, symbol, module);
   functions().registerFunction(proto.getDeclarationId(), func);
   // Tag throwing methods so call sites emit `invoke` inside a try block.
   if (canError) {
@@ -429,8 +427,7 @@ void ClassGenerator::emitMethodPrologueThis(Function* func) {
 // -------------------------------------------------------------------
 
 void ClassGenerator::generateMethodBody(const FunctionAST& methodFunc) {
-  const auto symbol =
-      state_.declarationSymbol(methodFunc.getDeclarationId());
+  const auto symbol = state_.declarationSymbol(methodFunc.getDeclarationId());
   const PrototypeAST& proto = methodFunc.getProto();
 
   Function* func = functions().lookupFunctionById(proto.getDeclarationId());
@@ -476,8 +473,7 @@ void ClassGenerator::generateMethodBody(const FunctionAST& methodFunc) {
   if (!proto.hasResolvedParamTypes() ||
       paramTypes.size() != paramNames.size()) {
     logAndThrowError(
-        "Method parameter types not resolved by semantic analysis: " +
-        symbol);
+        "Method parameter types not resolved by semantic analysis: " + symbol);
     return;
   }
   const size_t fixedCount = proto.getArgs().size();
@@ -987,8 +983,7 @@ Value* ClassGenerator::codegen(const sun::ast::InterfaceDefinitionAST& expr) {
     const FunctionAST& methodFunc = *methodDecl.function;
     const PrototypeAST& proto = methodFunc.getProto();
 
-    std::string symbol =
-        state_.declarationSymbol(proto.getDeclarationId());
+    std::string symbol = state_.declarationSymbol(proto.getDeclarationId());
 
     Function* func = declareMethodFromAST(methodFunc);
     if (!func->empty()) continue;
@@ -1026,8 +1021,8 @@ Value* ClassGenerator::codegen(const sun::ast::InterfaceDefinitionAST& expr) {
     for (const auto& [argName, argType] : proto.getArgs()) {
       if (paramIdx >= resolvedParamTypes.size()) {
         logAndThrowError(
-            "Interface default method parameter type not resolved: " +
-            symbol + " param " + argName);
+            "Interface default method parameter type not resolved: " + symbol +
+            " param " + argName);
         break;
       }
       llvm::Type* argLLVMType =

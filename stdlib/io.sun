@@ -41,22 +41,22 @@ public module std.io {
 
   // open(2) flags. O_RDONLY is 0 everywhere; the composable write flags
   // differ per OS and live in target_<os>.sun.
-  var O_RDONLY: i32 = 0;
-  var CREATE_MODE: i32 = 420;  // 0644
+  const O_RDONLY: i32 = 0;
+  const CREATE_MODE: i32 = 420;  // 0644
 
   // Standard descriptors
-  public var STDIN_FD: i32 = 0;
-  public var STDOUT_FD: i32 = 1;
-  public var STDERR_FD: i32 = 2;
+  public const STDIN_FD: i32 = 0;
+  public const STDOUT_FD: i32 = 1;
+  public const STDERR_FD: i32 = 2;
 
   // poll(2) event bits, for Poller.add. The add_read / add_write / is_*
   // helpers cover the common cases without assembling a bitmask.
-  public var POLLIN: i16 = 1;
-  public var POLLPRI: i16 = 2;
-  public var POLLOUT: i16 = 4;
-  public var POLLERR: i16 = 8;
-  public var POLLHUP: i16 = 16;
-  public var POLLNVAL: i16 = 32;
+  public const POLLIN: i16 = 1;
+  public const POLLPRI: i16 = 2;
+  public const POLLOUT: i16 = 4;
+  public const POLLERR: i16 = 8;
+  public const POLLHUP: i16 = 16;
+  public const POLLNVAL: i16 = 32;
 
   /**
    * struct pollfd — { int, short, short }, 8 bytes, same layout on every

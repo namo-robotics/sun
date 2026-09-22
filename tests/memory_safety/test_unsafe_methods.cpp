@@ -240,7 +240,8 @@ TEST(MemorySafety_UnsafeMethods, expression_allows_calls_and_aliases) {
       var read = r.read;
       return unsafe r.read() + unsafe read();
     }
-  )"), 42);
+  )"),
+            42);
 }
 
 TEST(MemorySafety_UnsafeMethods, expression_allows_intrinsics_and_void_calls) {
@@ -252,10 +253,12 @@ TEST(MemorySafety_UnsafeMethods, expression_allows_intrinsics_and_void_calls) {
       unsafe _free(p);
       return result;
     }
-  )"), 42);
+  )"),
+            42);
 }
 
-TEST(MemorySafety_UnsafeMethods, expression_includes_indexing_and_call_arguments) {
+TEST(MemorySafety_UnsafeMethods,
+     expression_includes_indexing_and_call_arguments) {
   EXPECT_EQ(executeString(R"(
     class Reader {
       public unsafe method __index__(indices: const ref array<i64>) i32 {
@@ -267,7 +270,8 @@ TEST(MemorySafety_UnsafeMethods, expression_includes_indexing_and_call_arguments
       var r = Reader();
       return unsafe r.twice(r[0]);
     }
-  )"), 42);
+  )"),
+            42);
 }
 
 TEST(MemorySafety_UnsafeMethods, expression_stops_before_binary_operand) {
@@ -277,7 +281,8 @@ TEST(MemorySafety_UnsafeMethods, expression_stops_before_binary_operand) {
       var r = Reader();
       return unsafe r.read() + r.read();
     }
-  )"), "requires an unsafe block");
+  )"),
+                                "requires an unsafe block");
 }
 
 TEST(MemorySafety_UnsafeMethods, parentheses_extend_unsafe_expression) {
@@ -287,7 +292,8 @@ TEST(MemorySafety_UnsafeMethods, parentheses_extend_unsafe_expression) {
       var r = Reader();
       return unsafe (r.read() + r.read());
     }
-  )"), 42);
+  )"),
+            42);
 }
 
 TEST(MemorySafety_UnsafeMethods, expression_stops_before_next_statement) {
@@ -298,10 +304,12 @@ TEST(MemorySafety_UnsafeMethods, expression_stops_before_next_statement) {
       unsafe r.read();
       return r.read();
     }
-  )"), "requires an unsafe block");
+  )"),
+                                "requires an unsafe block");
 }
 
-TEST(MemorySafety_UnsafeMethods, expression_does_not_make_nested_lambda_unsafe) {
+TEST(MemorySafety_UnsafeMethods,
+     expression_does_not_make_nested_lambda_unsafe) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Reader { public unsafe method read() i32 { return 42; } }
     function main() i32 {
@@ -309,17 +317,20 @@ TEST(MemorySafety_UnsafeMethods, expression_does_not_make_nested_lambda_unsafe) 
       var f = unsafe [ref r]() => i32 { return r.read(); };
       return f();
     }
-  )"), "requires an unsafe block");
+  )"),
+                                "requires an unsafe block");
 }
 
-TEST(MemorySafety_UnsafeMethods, expression_supports_unary_operators_and_nesting) {
+TEST(MemorySafety_UnsafeMethods,
+     expression_supports_unary_operators_and_nesting) {
   EXPECT_EQ(executeString(R"(
     class Reader { public unsafe method read() i32 { return 21; } }
     function main() i32 {
       var r = Reader();
       return -unsafe -r.read() + unsafe unsafe r.read();
     }
-  )"), 42);
+  )"),
+            42);
 }
 
 TEST(MemorySafety_UnsafeMethods, expression_transfers_owned_values_once) {
@@ -339,5 +350,6 @@ TEST(MemorySafety_UnsafeMethods, expression_transfers_owned_values_once) {
       var result = use();
       return result + drops;
     }
-  )"), 42);
+  )"),
+            42);
 }

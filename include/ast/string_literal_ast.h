@@ -15,7 +15,8 @@ class StringLiteralAST : public ExprAST {
   std::string Value;
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   explicit StringLiteralAST(std::string Value) : Value(std::move(Value)) {}
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::STRING_LITERAL; }

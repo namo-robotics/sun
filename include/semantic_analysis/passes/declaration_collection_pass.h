@@ -1,15 +1,8 @@
-// declaration_collection_pass.h — The pre-pass that registers every declaration
-// in a block before any body is analyzed. Declaration naming runs first; this
-// pass consumes the qualified names already attached to the AST.
-//
-// Sun does not require a declaration to appear before its use, so a block's
-// types, class shapes and function signatures all have to be known before the
-// first body is looked at. That is three sub-passes over the same block: the
-// types (so signatures can name them), then the class shapes (so a
-// specialization triggered from a signature can call any method in the
-// block), then the signatures themselves.
-//
-// Declaration bookkeeping lives in the shared SemanticContext.
+/**
+ * Resolves class shapes and concrete signatures after type registration.
+ * Declaration identities, qualified names, module scopes, nominal types, and
+ * generic templates must already be registered before this pass runs.
+ */
 
 #pragma once
 
@@ -29,31 +22,36 @@ namespace sun::semantic_analysis::passes {
 using sun::ast::BlockExprAST;
 
 /**
- * Register declarations before bodies, using bookkeeping in SemanticContext.
+ * Resolve declarations before bodies, using bookkeeping in SemanticContext.
+ *
+ * TypeRegistrationPass supplies types and templates first. This pass binds
+ * imports, fills class shapes, and resolves concrete signatures. While it runs (see
+ * SemanticContext::isCollectingDeclarations), a global reached through a
+ * type annotation may not call a function, because its callee has no
+ * analyzed body yet, and a class specialization registers its signatures
+ * but queues its method bodies for an explicit body-analysis pass.
  */
 class DeclarationCollectionPass {
  public:
+  /** Run this stage across all borrowed imported bundles before the next stage. */
+  void run(const std::vector<sun::ast::MoonScopeAST*>& imports);
+
   /** Share declaration state and signature-checking helpers with analysis. */
   DeclarationCollectionPass(SemanticContext &ctx, SemanticAnalyzer &sema)
       : ctx_(ctx), sema_(sema) {}
 
   /**
-   * Declaration pre-pass: register all imports, functions, classes,
-   * interfaces, enums, and modules in a block before analyzing bodies. This
+   * Bind imports and resolve class shapes and concrete function signatures
+   * in the scopes prepared by TypeRegistrationPass before checking bodies. This
    * allows forward references between declarations at the same scope level,
    * and lets a `using` anywhere in the block serve every declaration in it.
+   * Imported bundle wrappers are skipped; import preparation invokes this
+   * same collector directly on their contents.
    */
   void run(BlockExprAST &block);
 
   /** Register one named function's signature in the current scope. */
   void collectFunctionSignature(sun::ast::FunctionAST &func);
-
-  /**
-   * Declaration-collection pre-pass: register a block's enums (and generic
-   * enum templates) so function signatures collected afterwards can resolve
-   * enum-typed parameters/returns.
-   */
-  void collectEnumDeclarations(const BlockExprAST &block);
 
   /**
    * Register a non-generic class's fields and method signatures on its
@@ -81,21 +79,8 @@ class DeclarationCollectionPass {
   void registerUsing(sun::ast::UsingAST &usingDecl);
 
  private:
-  /**
-   * Register type names through the whole module tree before any class shape
-   * is resolved, so sibling modules may name each other's public types.
-   */
-  void collectTypeNames(BlockExprAST &block);
-
   SemanticContext &ctx_;
   SemanticAnalyzer &sema_;
-
-  // Depth of the pre-pass. Generic class specializations requested while > 0
-  // register their type and method signatures immediately (so shapes and
-  // signatures can refer to them) but defer method-body analysis to the end of
-  // the outermost pre-pass, once every declaration in the program is
-  // registered.
-  int prepassDepth_ = 0;
 };
 
 }  // namespace sun::semantic_analysis::passes

@@ -1,113 +1,36 @@
 # Code Generation
 
-The codegen stage walks the analyzed AST and emits LLVM IR. It relies entirely
-on the types and annotations stamped by the semantic analyzer — by this point
-every expression already knows its resolved `sun::Type`, and generic
-specializations have been recorded for it to emit as ordinary non-generic code.
+Code generation translates the checked program into LLVM IR. It reads the
+analyzed AST, declaration table and type registry produced by
+[semantic analysis](/architecture/semantic-analysis).
 
-## Structure
+## The analysis contract
 
-`CodegenVisitor` (`codegen_visitor.h`) walks the AST and dispatches. It does
-little emitting of its own: its components do that work, each with its own
-header under `include/codegen/` and each owning the state it needs.
+By this stage, calls have selected declarations, expressions have resolved types,
+and required generic bodies have been specialized and checked. Codegen uses
+those decisions to choose LLVM types, locate functions and storage, and emit
+operations. It does not repeat name lookup, overload selection or type inference.
 
-They all share one `CodegenState` by reference — the module, the type registry,
-the Sun-to-LLVM type resolver, DWARF emission, and the frame currently being
-emitted. Where a component needs another, it reaches back through the visitor.
-This is the same shape the semantic analyzer uses with `SemanticContext`.
+Declarations are emitted before bodies that may reference them, so source order
+does not restrict calls between functions.
 
-| Component | What it owns |
-|-----------|--------------|
-| `CodegenState` | The module, type registry, type resolver, DWARF, current frame |
-| `ScopeManager` | The scope stack, and every drop it has to emit |
-| `FunctionRegistry` | Calling conventions, where each function came from, name lookup |
-| `ClassGenerator` | Classes, interfaces, generic instantiation, vtables |
-| `EnumGenerator` | Enum definitions, variants, matching, payload cleanup |
-| `FunctionGenerator` | Functions, lambdas, closures, returns |
-| `VariableGenerator` | Variables, lvalues, globals |
-| `LoopGenerator` | Loops, and the jumps out of them |
-| `ErrorGenerator` | `throw`, `try`/`catch`, and every call that may unwind |
-| `IntrinsicsGenerator` | Compiler intrinsics and libc built-ins |
+## Lowering the program
 
-Rules that need no codegen state are free functions instead, so other passes can
-reach the same answers: `sun::codegen::ops` (`support/scalar_ops.h`) for scalar
-widening and coercion, and `sun::codegen::layout` (`support/struct_access.h`) for
-field addresses, alignment and slot writes.
+| Sun concept | Code generation responsibility |
+|-------------|--------------------------------|
+| Values and types | Choose LLVM representations, layouts and operations |
+| Calls and closures | Emit calls, receivers and captured environments |
+| Ownership | Emit moves and cleanup according to checked ownership rules |
+| Control flow and errors | Emit branches, loops, returns and exception unwinding |
+| Generics | Emit the concrete implementations prepared during analysis |
+| Imported code | Reference compiled declarations using stable identities |
 
-## Key Conventions
+Global initialization also follows an analysis decision: known values become
+static data; other initializers become startup code. Calls across the C boundary
+use the target platform's calling convention.
 
-- LLVM is accessed through a shared context: `ctx.builder` and `ctx.context`.
-- Sun types map to LLVM types via the type resolver:
-  `typeResolver.resolve(type)` for variables and
-  `typeResolver.resolveForReturn(type)` for function returns.
-- Classes are value types: functions returning a class return the struct by
-  value, and callers materialize it on the stack for addressability.
-- A sized array `array<T, N>` is inline storage `[N x T]`, carried by address
-  like a class, moved with a memcpy that invalidates the source. A
-  `ref array<T>` to an unsized array is the view struct
-  `{ ptr data, i32 ndims, ptr dims }` by value, built at the borrow site; its
-  dims table is a private constant global.
-- Throwing functions (`T throws IError`) return plain `T`; errors are native LLVM
-  exceptions (`__gxx_personality_v0`, landing pads), so `throw` unwinds and
-  `catch` selects a handler by the thrown class's type id.
-- Lambdas use closure structs; named functions use direct calls. Class methods
-  use the closure ABI: arg 0 is a ptr to `{ ptr func, ptr env }` with the
-  receiver in `env`, and `obj.method` in value position is a lambda-typed bound
-  method `{ methodFn, objPtr }`.
-- C extern globals are emitted as external-linkage LLVM globals with no
-  initializer. `ExternCEmitter` owns the resolved Sun-name to native-symbol
-  map used by loads, assignments, lvalues, module members, and function-pointer
-  calls. A `sun.cabi` metadata tag keeps the native name unchanged when
-  `.moon` bundling prefixes or remaps Sun symbols.
-- Before emitting any body, `FunctionGenerator::declareBlockSignatures` walks
-  the complete module subtree and declares every free function and class
-  method. Included files are one merged AST even when their declarations sit
-  under separate module nodes, so calls do not depend on source-list order.
-  Re-entering a module during emission reuses those declarations rather than
-  creating new ones.
-- Call arguments are never re-examined here. Semantic analysis records an
-  `ArgConversion` per argument on the call node, and every kind of call — plain,
-  module-qualified, generic, method, lambda, interface, constructor,
-  extern "C" — lowers its arguments through one loop, `emitCallArguments`, that
-  switches on those tags (take the address for a borrow, zero the source for a
-  move, build a fat pointer for an interface, extend a number, ...). Codegen
-  does no semantic analysis of its own.
+## Executable output
 
-## Source Layout
-
-`include/codegen/` and `src/codegen/` share one layout: a folder per component,
-holding both its header and the sources that implement it.
-
-| Folder | Holds |
-|--------|-------|
-| *(top level)* | `codegen_visitor`, `codegen_state`, `llvm_type_resolver`, `debug_info_builder` |
-| `scopes/` | The scope stack and the drop code it emits |
-| `classes/` | Class and interface definitions, members, method bodies, vtables |
-| `enums/` | Enum definitions, variant construction and access, matching, payload cleanup |
-| `functions/` | Functions, lambdas, closures, returns, the function registry |
-| `variables/` | Declarations, loads, assignments, lvalues, global initialization |
-| `expressions/` | Calls, arrays and indexing, conditionals, match, blocks |
-| `loops/` | `for`, `while` and `for-in`, and the jumps out of them |
-| `errors/` | `try`/`catch`/`throw` and unwinding calls |
-| `support/` | Helpers holding no codegen state: type checks, scalar ops, field access |
-| `abi/` | The C boundary: per-target ABI classification (x86-64 SysV; AArch64 AAPCS64, ELF and Darwin variants) and the extern "C" emitter |
-| `intrinsics/` | Compiler intrinsics and libc built-ins, by area, plus thread support |
-
-Each component's `*_generator.cpp` holds only the forwarders it uses to reach
-the rest of codegen; those cannot be inline in the headers, because the headers
-are included by `codegen_visitor.h`.
-
-## Adding a New Expression Type
-
-1. Add an `ASTNodeType` enum value and AST class.
-2. Implement a `codegen` method on the component that owns that kind of node,
-   or on `CodegenVisitor` if it belongs to none.
-3. Update the `codegenExpression()` dispatch switch to route to it.
-
-A component that forwards sub-expression emission through its own `codegen`
-overloads declares two forwarders,
-`codegen(const ExprAST&)` and `codegen(const BlockExprAST&)`. The block overload
-is not optional: without it a block binds to the `ExprAST` one, which attaches an
-expression debug location and changes the DWARF output. A deleted template
-overload alongside them turns a missing overload into a compile error rather than
-infinite recursion.
+The resulting LLVM IR is optimized, then either executed through the JIT or
+compiled to object files and linked into a native executable. Moon bundles keep
+compiled code together with the metadata needed by later importers.

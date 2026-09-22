@@ -20,7 +20,8 @@ class LambdaAST : public ExprAST {
   std::unique_ptr<BlockExprAST> Body;
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   LambdaAST(std::unique_ptr<PrototypeAST> Proto,
             std::unique_ptr<BlockExprAST> Body)
       : Proto(std::move(Proto)), Body(std::move(Body)) {}
@@ -28,7 +29,8 @@ class LambdaAST : public ExprAST {
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::LAMBDA; }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     if (Body) Body->forEachChildSlot(fn);
   }
@@ -103,7 +105,8 @@ class LambdaAST : public ExprAST {
   const PrototypeAST& getProto() const { return *Proto; }
   /** Provides access to the expressions that make up the body. */
   const BlockExprAST& getBody() const { return *Body; }
-  /** Reports whether a function body is present rather than just a declaration. */
+  /** Reports whether a function body is present rather than just a declaration.
+   */
   bool hasBody() const { return Body != nullptr; }
 
   /** Returns the node label used in syntax-tree graph visualizations. */

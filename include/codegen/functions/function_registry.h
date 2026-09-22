@@ -28,7 +28,8 @@ class FunctionRegistry {
 
   /** Disallows copying so the owned state cannot be duplicated. */
   FunctionRegistry(const FunctionRegistry&) = delete;
-  /** Disallows assignment so ownership and object identity cannot be duplicated. */
+  /** Disallows assignment so ownership and object identity cannot be
+   * duplicated. */
   FunctionRegistry& operator=(const FunctionRegistry&) = delete;
 
   // ---------------------------------------------------------------

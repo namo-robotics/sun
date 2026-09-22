@@ -66,7 +66,7 @@ std::unique_ptr<Driver> compileWithDebug(const std::string& source,
                                          const std::string& triple = "") {
   initTestEnvironment();
   auto driver = Driver::createForAOT("debug_test", triple, /*debugInfo=*/true,
-                                      /*optimize=*/false);
+                                     /*optimize=*/false);
   driver->compileString(source);
   return driver;
 }
@@ -278,7 +278,8 @@ TEST(Tooling_Backend_DebugInfo, jit_executes_with_debug_info) {
 // still calls the parameter's destructor, and LLVM rejects a call without a
 // location inside a function that has debug info. Both a named function and
 // a lambda take the same path.
-TEST(Tooling_Backend_DebugInfo, empty_body_destroying_a_parameter_has_a_location) {
+TEST(Tooling_Backend_DebugInfo,
+     empty_body_destroying_a_parameter_has_a_location) {
   initTestEnvironment();
   auto driver = Driver::createForJIT("debug_empty_body", /*debugInfo=*/true);
   auto value = driver->executeString(R"(
@@ -341,7 +342,7 @@ std::string linkSimpleDebugBinary(const std::string& name,
   std::ofstream(srcPath) << kSimpleProgram;
 
   auto driver = Driver::createForAOT("debug_bin_test", "", /*debugInfo=*/true,
-                                      /*optimize=*/false);
+                                     /*optimize=*/false);
   driver->compileFile(srcPath);
 
   std::string binary = ::testing::TempDir() + name + "_bin";
@@ -490,10 +491,10 @@ TEST(Tooling_Backend_DebugInfo, optimization_is_independent_of_debug_info) {
   initTestEnvironment();
   for (bool debugInfo : {false, true}) {
     for (bool optimize : {false, true}) {
-      SCOPED_TRACE(::testing::Message() << "debugInfo=" << debugInfo
-                                        << ", optimize=" << optimize);
-      auto driver = Driver::createForAOT("optimization_override", "",
-                                         debugInfo, optimize);
+      SCOPED_TRACE(::testing::Message()
+                   << "debugInfo=" << debugInfo << ", optimize=" << optimize);
+      auto driver = Driver::createForAOT("optimization_override", "", debugInfo,
+                                         optimize);
       driver->compileString(R"(
 function main() i32 {
   var x: i32 = 3;
@@ -517,7 +518,8 @@ function main() i32 {
   }
 }
 
-TEST(Tooling_Backend_DebugInfo, debug_info_keeps_optimization_enabled_by_default) {
+TEST(Tooling_Backend_DebugInfo,
+     debug_info_keeps_optimization_enabled_by_default) {
   initTestEnvironment();
   auto driver = Driver::createForAOT("optimized_debug", "", /*debugInfo=*/true);
   driver->compileString(R"(

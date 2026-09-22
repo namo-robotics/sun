@@ -25,6 +25,7 @@ struct Position;
 #include <vector>
 
 #include "semantic_analysis/access_checker.h"
+#include "semantic_analysis/analysis_results.h"
 #include "semantic_analysis/declaration_state.h"
 #include "semantic_analysis/semantic_scope.h"
 #include "semantic_analysis/type_registry.h"
@@ -46,11 +47,38 @@ namespace sun::semantic_analysis {
 class SemanticContext : public AccessContext {
   SourceFileId sourceFileId_ = 0;
   DeclarationState declarations_;
+  size_t declarationCollectionDepth_ = 0;
 
  public:
+  /** Whether type declarations are being collected before body analysis. */
+  bool isCollectingDeclarations() const {
+    return declarationCollectionDepth_ != 0;
+  }
+
+  /** Track nested declaration collection independently of specialization jobs.
+   */
+  class DeclarationCollectionGuard {
+   public:
+    /** Enter declaration collection for this context. */
+    explicit DeclarationCollectionGuard(SemanticContext &context)
+        : context_(context) {
+      ++context_.declarationCollectionDepth_;
+    }
+    /** Restore collection depth on success or failure. */
+    ~DeclarationCollectionGuard() { --context_.declarationCollectionDepth_; }
+    /** Keep each collection interval owned by one guard. */
+    DeclarationCollectionGuard(const DeclarationCollectionGuard &) = delete;
+    /** Prevent duplicate collection interval ownership. */
+    DeclarationCollectionGuard &operator=(const DeclarationCollectionGuard &) =
+        delete;
+
+   private:
+    SemanticContext &context_;
+  };
+
   /** Start with an empty global scope holding the builtin functions. */
   explicit SemanticContext(
-      std::shared_ptr<sun::semantic_analysis::TypeRegistry> registry);
+      std::shared_ptr<sun::semantic_analysis::AnalysisResults> results);
 
   /** Declaration identities, registered shapes, and pending extensions. */
   DeclarationState &declarations() { return declarations_; }
@@ -59,8 +87,16 @@ class SemanticContext : public AccessContext {
 
   /** Class and interface types, shared with codegen. */
   const std::shared_ptr<sun::semantic_analysis::TypeRegistry> &types() const {
-    return typeRegistry_;
+    return results_->types;
   }
+
+  /**
+   * What analysis concludes about the whole program. Complete once the
+   * analysis pipeline has run; later stages only read it.
+   */
+  AnalysisResults &results() { return *results_; }
+  /** Read-only view of the program-wide analysis results. */
+  const AnalysisResults &results() const { return *results_; }
 
   /** The scope currently being analyzed. */
   SemanticScope *scope() const { return currentScope_; }
@@ -363,7 +399,8 @@ class SemanticContext : public AccessContext {
     ~SourceFileGuard() { ctx.sourceFileId_ = saved; }
     /** Changes the active source file and saves the previous source context. */
     SourceFileGuard(const SourceFileGuard &) = delete;
-    /** Disallows assignment so ownership and object identity cannot be duplicated. */
+    /** Disallows assignment so ownership and object identity cannot be
+     * duplicated. */
     SourceFileGuard &operator=(const SourceFileGuard &) = delete;
   };
 
@@ -386,7 +423,8 @@ class SemanticContext : public AccessContext {
     ~ScopeSwitchGuard() { ctx.currentScope_ = saved; }
     /** Temporarily switches semantic lookup to another scope. */
     ScopeSwitchGuard(const ScopeSwitchGuard &) = delete;
-    /** Disallows assignment so ownership and object identity cannot be duplicated. */
+    /** Disallows assignment so ownership and object identity cannot be
+     * duplicated. */
     ScopeSwitchGuard &operator=(const ScopeSwitchGuard &) = delete;
   };
 
@@ -396,16 +434,19 @@ class SemanticContext : public AccessContext {
    */
   struct LocationGuard {
     SemanticContext &ctx;
-    /** Changes the diagnostic source position and saves the previous position. */
+    /** Changes the diagnostic source position and saves the previous position.
+     */
     LocationGuard(SemanticContext &c, const sun::support::Position &loc)
         : ctx(c) {
       ctx.locationStack_.push_back(&loc);
     }
     /** Restores the source position used for subsequent diagnostics. */
     ~LocationGuard() { ctx.locationStack_.pop_back(); }
-    /** Changes the diagnostic source position and saves the previous position. */
+    /** Changes the diagnostic source position and saves the previous position.
+     */
     LocationGuard(const LocationGuard &) = delete;
-    /** Disallows assignment so ownership and object identity cannot be duplicated. */
+    /** Disallows assignment so ownership and object identity cannot be
+     * duplicated. */
     LocationGuard &operator=(const LocationGuard &) = delete;
   };
 
@@ -436,7 +477,7 @@ class SemanticContext : public AccessContext {
   /** Declaration ownership for visibility checks in this session. */
   const sun::semantic_analysis::DeclarationTable &declarationTable()
       const override {
-    return typeRegistry_->declarations;
+    return results_->declarations;
   }
 
   /** Report that `item` is not reachable from here, pointing at source. */
@@ -501,8 +542,8 @@ class SemanticContext : public AccessContext {
   /** Register built-in functions (print, println, file I/O, etc.). */
   void registerBuiltinFunctions();
 
-  // Type registry for class/interface types (shared with codegen)
-  std::shared_ptr<sun::semantic_analysis::TypeRegistry> typeRegistry_;
+  // See results(). Shared with codegen, which reads what analysis concludes.
+  std::shared_ptr<AnalysisResults> results_;
 
   // Scope tree — rootScope_ is the global scope, currentScope_ walks the tree
   std::shared_ptr<GlobalScope> rootScope_ = std::make_shared<GlobalScope>();

@@ -588,12 +588,13 @@ TEST(Functions_Generic, partial_type_arguments_uninferable_is_error) {
 }
 
 TEST(Functions_Generic, duplicate_declaration_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
     function identity<T>(x: T) T { return x; }
     function identity<T>(x: T) T { return x; }
     function main() i32 { return 0; }
   )"),
-                                "Generic function 'identity' is already declared");
+      "Generic function 'identity' is already declared");
 }
 
 TEST(Functions_Generic, different_parameter_shapes_cannot_replace_a_template) {
@@ -606,7 +607,8 @@ TEST(Functions_Generic, different_parameter_shapes_cannot_replace_a_template) {
 }
 
 TEST(Functions_Generic, duplicate_declaration_in_reopened_module_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
     module helpers {
       function identity<T>(x: T) T { return x; }
     }
@@ -615,7 +617,7 @@ TEST(Functions_Generic, duplicate_declaration_in_reopened_module_is_rejected) {
     }
     function main() i32 { return 0; }
   )"),
-                                "Generic function 'identity' is already declared");
+      "Generic function 'identity' is already declared");
 }
 
 TEST(Functions_Generic, same_name_in_separate_modules_is_allowed) {

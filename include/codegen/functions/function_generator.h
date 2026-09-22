@@ -89,7 +89,8 @@ class FunctionGenerator {
 
   /** Binds function generation to the shared expression visitor and state. */
   FunctionGenerator(const FunctionGenerator&) = delete;
-  /** Disallows assignment so ownership and object identity cannot be duplicated. */
+  /** Disallows assignment so ownership and object identity cannot be
+   * duplicated. */
   FunctionGenerator& operator=(const FunctionGenerator&) = delete;
 
   // ---------------------------------------------------------------
@@ -129,7 +130,8 @@ class FunctionGenerator {
   // Returns
   // ---------------------------------------------------------------
 
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::ReturnExprAST& expr);
 
   // ---------------------------------------------------------------
@@ -180,7 +182,8 @@ class FunctionGenerator {
 
   /** Builds the LLVM structure holding a function's captured environment. */
   llvm::StructType* createEnvTypeForFunc(const PrototypeAST& proto);
-  /** Builds the LLVM representation combining a function and its environment. */
+  /** Builds the LLVM representation combining a function and its environment.
+   */
   llvm::StructType* createFatTypeForFunc(llvm::Function* func,
                                          llvm::StructType* envType,
                                          const PrototypeAST& proto);
@@ -204,7 +207,8 @@ class FunctionGenerator {
    * block path does not want.
    */
   llvm::Value* codegen(const ExprAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const BlockExprAST& block);
 
   /**
@@ -217,7 +221,8 @@ class FunctionGenerator {
              std::is_base_of_v<ExprAST, T>)
   llvm::Value* codegen(const T&) = delete;
 
-  /** Provides the scope manager responsible for variable storage and cleanup. */
+  /** Provides the scope manager responsible for variable storage and cleanup.
+   */
   sun::codegen::scopes::ScopeManager& scopes();
   /** Provides the emitter for calls using the C calling convention. */
   sun::codegen::abi::ExternCEmitter& externC();

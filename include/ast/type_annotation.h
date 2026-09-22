@@ -14,6 +14,35 @@
 namespace sun::ast {
 
 /**
+ * One size of an array type: `5` in `array<T, 5>` or `N` in `array<T, N>`.
+ * A size is written as a number or as the name of a constant, possibly through
+ * its module (`limits.N`), never as an expression.
+ */
+struct ArrayDimension {
+  // The number of elements. For a named size it is filled in when the type
+  // is resolved, which is why resolving a const annotation may set it.
+  mutable std::optional<size_t> size;
+  // The constant as written, with dots; empty when a number was written.
+  std::string constantName;
+  // Where the size is written; not serialized
+  sun::support::Position position{};
+
+  /** True when the size was written as the name of a constant. */
+  bool isNamed() const { return !constantName.empty(); }
+
+  /** Two sizes are the same when they were written the same way. */
+  bool operator==(const ArrayDimension& other) const {
+    return constantName == other.constantName &&
+           (isNamed() || size == other.size);
+  }
+
+  /** The size as written: the constant's name, or the number. */
+  std::string toString() const {
+    return isNamed() ? constantName : std::to_string(size.value_or(0));
+  }
+};
+
+/**
  * Type annotation structure for parsed type info
  * Supports: i32, f64, bool, void, ptr&lt;T&gt;, ref T, function, lambda
  * Generic types: ClassName<T, U> for class instantiation
@@ -34,8 +63,8 @@ struct TypeAnnotation {
   // For generic types: List<i32>, Map<string, i32>
   std::vector<std::unique_ptr<TypeAnnotation>> typeArguments;
 
-  // For array types: array<T, 5> or array<T, 3, 2>
-  std::vector<size_t> arrayDimensions;
+  // For array types: array<T, 5>, array<T, 3, 2> or array<T, N>
+  std::vector<ArrayDimension> arrayDimensions;
 
   // For error union types: indicates this type can also be an error
   bool canError = false;
@@ -126,22 +155,26 @@ struct TypeAnnotation {
   }
   /** Creates a type annotation from a name or an existing annotation. */
   TypeAnnotation(TypeAnnotation&&) = default;
-  /** Transfers the stored state from another instance during move assignment. */
+  /** Transfers the stored state from another instance during move assignment.
+   */
   TypeAnnotation& operator=(TypeAnnotation&&) = default;
 
   /** Reports whether this syntax node represents a raw-pointer annotation. */
   bool isRawPointer() const {
     return baseName == "raw_ptr";
   }  // raw_ptr<T> non-owning pointer for C interop
-  /** Reports whether this syntax node represents a static-pointer annotation. */
+  /** Reports whether this syntax node represents a static-pointer annotation.
+   */
   bool isStaticPointer() const {
     return baseName == "static_ptr";
   }  // static_ptr<T> pointer to immortal static data
-  /** Reports whether this syntax node represents a borrowed-reference annotation. */
+  /** Reports whether this syntax node represents a borrowed-reference
+   * annotation. */
   bool isReference() const {
     return baseName == "ref";
   }  // ref(T) reference type
-  /** Reports whether this syntax node represents a reference without write access. */
+  /** Reports whether this syntax node represents a reference without write
+   * access. */
   bool isConstReference() const { return isReference() && constRef; }
   /** Reports whether this syntax node represents a function definition. */
   bool isFunction() const {
@@ -192,8 +225,8 @@ struct TypeAnnotation {
   std::string toString() const {
     if (isArray() && elementType) {
       std::string result = "array<" + elementType->toString();
-      for (size_t dim : arrayDimensions) {
-        result += ", " + std::to_string(dim);
+      for (const ArrayDimension& dim : arrayDimensions) {
+        result += ", " + dim.toString();
       }
       result += ">";
       if (canError) result += " throws IError";

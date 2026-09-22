@@ -5,7 +5,8 @@
 #include "lsp/declarations.h"
 #include "lsp/name_ranges.h"
 
-/** Provides compiler-backed editor features through the language server protocol. */
+/** Provides compiler-backed editor features through the language server
+ * protocol. */
 namespace sun::lsp {
 
 /** Returns the definition location for the symbol at a document offset. */

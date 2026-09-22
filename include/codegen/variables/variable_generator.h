@@ -78,22 +78,28 @@ class VariableGenerator {
 
   /** Binds variable generation to the shared expression visitor and state. */
   VariableGenerator(const VariableGenerator&) = delete;
-  /** Disallows assignment so ownership and object identity cannot be duplicated. */
+  /** Disallows assignment so ownership and object identity cannot be
+   * duplicated. */
   VariableGenerator& operator=(const VariableGenerator&) = delete;
 
   // ---------------------------------------------------------------
   // Creation, reference, assignment
   // ---------------------------------------------------------------
 
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const VariableCreationAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::VariableReferenceAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::VariableAssignmentAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::ReferenceCreationAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const CompoundAssignmentAST& expr);
 
   /**
@@ -104,13 +110,13 @@ class VariableGenerator {
   void assignToVariableSlot(llvm::Value* slot, llvm::Value* value,
                             const TypePtr& varType, const std::string& name);
 
-  /** Creates and registers LLVM storage for a global declaration. */
-  llvm::GlobalVariable* createGlobalVariable(
-      DeclarationId id, const std::string& name, llvm::Type* type,
-      llvm::Constant* initializer = nullptr);
-
-  /** Declare imported and C globals before emitting dependent bodies. */
-  void declareBlockExternalGlobals(const BlockExprAST& block);
+  /**
+   * Creates the storage of every global a block declares before any body is
+   * emitted, because a function may use a global declared further down.
+   * Function signatures must already be declared: a global holding a lambda
+   * emits the lambda's body here.
+   */
+  void declareBlockGlobals(const BlockExprAST& block);
 
   /** Find storage for the global selected during semantic analysis. */
   llvm::GlobalVariable* findGlobal(DeclarationId id) const;
@@ -118,8 +124,15 @@ class VariableGenerator {
   /**
    * Emits the static initialization function for the globals that could not
    * be constant-initialized. Call after all top-level codegen, before main.
+   *
+   * `initOrder` places the function among those of other bundles: lower
+   * values run first, and a module's value is one more than the highest among
+   * its imports. `bundleHash` names the bundle being built and is empty for a
+   * program; a bundle's function runs at most once even when its code reaches
+   * a program through several imports.
    */
-  void emitStaticInitFunction();
+  void emitStaticInitFunction(uint32_t initOrder,
+                              const std::string& bundleHash);
 
   // ---------------------------------------------------------------
   // Lvalues
@@ -187,30 +200,56 @@ class VariableGenerator {
     std::string varName;              // Variable name (for diagnostics)
     TypePtr varType;                  // Variable type
     std::shared_ptr<ClassType>
-        classType;            // Class type (if class, else nullptr)
-    const ExprAST* initExpr;  // The initialization expression
+        classType;                    // Class type (if class, else nullptr)
+    const ExprAST* initExpr;          // The initialization expression
     sun::support::Position location;  // Declaration site (for diagnostics)
   };
 
   // Globals still waiting for their initializer to be emitted
   std::vector<StaticInitInfo> staticInits;
 
+  /** Creates and registers LLVM storage for a global with a known value. */
+  llvm::GlobalVariable* createGlobalVariable(DeclarationId id,
+                                             const std::string& name,
+                                             llvm::Type* type,
+                                             llvm::Constant* initializer);
   /** Allocates and initializes storage for a local variable. */
   llvm::Value* genLocalVar(const VariableCreationAST& expr,
                            llvm::Type* varType);
   /** Creates storage for a variable holding a callable value. */
   llvm::Value* genFunctionVariable(const VariableCreationAST& expr);
-  /** Creates global array storage and its initializer. */
-  llvm::Constant* genGlobalArray(const VariableCreationAST& expr);
-  /** Initializes global storage with a compile-time constant. */
-  llvm::Constant* genGlobalVarForConstantExpr(const VariableCreationAST& expr,
-                                              llvm::Type* varType);
-  /** Creates and initializes global storage for a class value. */
-  llvm::GlobalVariable* genGlobalClassVar(const VariableCreationAST& expr,
-                                          ClassType& classType);
-  /** Creates global storage and arranges initialization during program startup. */
-  llvm::GlobalVariable* genGlobalVarWithRuntimeInit(
-      const VariableCreationAST& expr, llvm::Type* varType);
+  /**
+   * Creates storage for a file-scope variable whose value analysis computed,
+   * and writes that value into the program image. No code is emitted.
+   */
+  llvm::GlobalVariable* emitImageGlobal(
+      const VariableCreationAST& expr, llvm::Type* varType,
+      const sun::semantic_analysis::constants::ConstantValue& value);
+  /**
+   * Builds the LLVM constant of type `type` for a value analysis computed. A
+   * string adds a private byte array to the module for its text. Fails
+   * compilation at `location` when the value does not have the shape of the
+   * type, which means analysis and code generation disagree.
+   */
+  llvm::Constant* buildLlvmConstant(
+      const sun::semantic_analysis::constants::ConstantValue& value,
+      llvm::Type* type, const sun::support::Position& location);
+  /**
+   * Brings a number to the type of the variable it initializes: a narrower
+   * integer widens by the signedness of `valueSunType`, a wider one keeps its
+   * low bits, and a float is rounded between the two float widths. Any other
+   * value is returned unchanged.
+   */
+  llvm::Value* convertToVariableType(llvm::Value* value, llvm::Type* varType,
+                                     const TypePtr& valueSunType);
+  /**
+   * Creates zeroed storage for a file-scope variable whose value cannot be
+   * computed at compile time, and queues its initializer for the startup
+   * function. A class value always takes this path: its constructor runs at
+   * startup.
+   */
+  llvm::GlobalVariable* emitStartupGlobal(const VariableCreationAST& expr,
+                                          llvm::Type* varType);
 
   /**
    * Compound assignment: address-once -> load -> op -> store
@@ -226,7 +265,8 @@ class VariableGenerator {
    * block path does not want.
    */
   llvm::Value* codegen(const ExprAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const BlockExprAST& block);
 
   /**
@@ -243,7 +283,8 @@ class VariableGenerator {
              std::is_base_of_v<ExprAST, T>)
   llvm::Value* codegen(const T&) = delete;
 
-  /** Provides the scope manager responsible for variable storage and cleanup. */
+  /** Provides the scope manager responsible for variable storage and cleanup.
+   */
   sun::codegen::scopes::ScopeManager& scopes();
   /** Provides the registry of generated functions and their metadata. */
   sun::codegen::functions::FunctionRegistry& functions();

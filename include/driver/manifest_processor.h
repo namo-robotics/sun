@@ -18,15 +18,16 @@
 #include "driver/sun_config.h"
 #include "moon_bundling/moon_import.h"
 
-/** Coordinates compilation, dependency loading, linking, and program execution. */
+/** Coordinates compilation, dependency loading, linking, and program execution.
+ */
 namespace sun::driver {
 
 /** Dependencies and settings after manifest paths and targets are resolved. */
 struct ResolvedManifest {
-  std::vector<std::string> sunFiles;    // resolved .sun paths (manifest order)
+  std::vector<std::string> sunFiles;  // resolved .sun paths (manifest order)
   std::vector<sun::moon_bundling::MoonImport>
-      moonImports;                      // resolved .moon imports
-  std::vector<std::string> protoFiles;  // resolved .proto paths
+      moonImports;                        // resolved .moon imports
+  std::vector<std::string> protoFiles;    // resolved .proto paths
   std::vector<std::string> archiveFiles;  // resolved native .a archives
   // resolved `test_files:` paths; merged into the source set only when
   // compiling the test binary, never for production builds

@@ -36,7 +36,8 @@ struct DeserializerConfig {
  */
 class ASTDeserializer {
  public:
-  /** Creates a syntax-tree decoder using the supplied deserialization settings. */
+  /** Creates a syntax-tree decoder using the supplied deserialization settings.
+   */
   explicit ASTDeserializer(DeserializerConfig config = {}) : config_(config) {}
 
   /**
@@ -89,6 +90,13 @@ class ASTDeserializer {
       const pbc::TypeAnnotation& type) const;
 
   /**
+   * Reads a value a library computed for one of its globals. The result has
+   * no types yet; analysis fills them in from the global's type.
+   */
+  sun::semantic_analysis::constants::ConstantValue deserializeConstantValue(
+      const pbc::ConstantValue& proto) const;
+
+  /**
    * Position deserialization
    */
   sun::support::Position deserializePosition(const pbc::Position& pos) const;
@@ -135,7 +143,8 @@ class ASTDeserializer {
    */
   std::unique_ptr<ExprAST> deserializeNumber(
       const pbc::NumberExpr& proto) const;
-  /** Reconstructs a character literal and its child nodes from protobuf data. */
+  /** Reconstructs a character literal and its child nodes from protobuf data.
+   */
   std::unique_ptr<ExprAST> deserializeCharLiteral(
       const pbc::CharLiteral& proto) const;
   /** Reconstructs a string literal and its child nodes from protobuf data. */
@@ -143,7 +152,8 @@ class ASTDeserializer {
       const pbc::StringLiteral& proto) const;
   /** Reconstructs a boolean literal and its child nodes from protobuf data. */
   std::unique_ptr<ExprAST> deserializeBool(const pbc::BoolLiteral& proto) const;
-  /** Reconstructs a field initializer list and its child nodes from protobuf data. */
+  /** Reconstructs a field initializer list and its child nodes from protobuf
+   * data. */
   std::unique_ptr<ExprAST> deserializeStructLiteral(
       const pbc::StructLiteral& proto) const;
   /** Reconstructs a array literal and its child nodes from protobuf data. */
@@ -161,25 +171,32 @@ class ASTDeserializer {
   std::unique_ptr<ExprAST> deserializeArrayIndex(
       const pbc::ArrayIndexExpr& proto) const;
 
-  /** Reconstructs a variable reference and its child nodes from protobuf data. */
+  /** Reconstructs a variable reference and its child nodes from protobuf data.
+   */
   std::unique_ptr<ExprAST> deserializeVariableRef(
       const pbc::VariableReference& proto) const;
-  /** Reconstructs a variable declaration and its child nodes from protobuf data. */
+  /** Reconstructs a variable declaration and its child nodes from protobuf
+   * data. */
   std::unique_ptr<ExprAST> deserializeVariableCreation(
       const pbc::VariableCreation& proto) const;
-  /** Reconstructs a variable assignment and its child nodes from protobuf data. */
+  /** Reconstructs a variable assignment and its child nodes from protobuf data.
+   */
   std::unique_ptr<ExprAST> deserializeVariableAssignment(
       const pbc::VariableAssignment& proto) const;
-  /** Reconstructs a reference creation and its child nodes from protobuf data. */
+  /** Reconstructs a reference creation and its child nodes from protobuf data.
+   */
   std::unique_ptr<ExprAST> deserializeReferenceCreation(
       const pbc::ReferenceCreation& proto) const;
-  /** Reconstructs a indexed assignment and its child nodes from protobuf data. */
+  /** Reconstructs a indexed assignment and its child nodes from protobuf data.
+   */
   std::unique_ptr<ExprAST> deserializeIndexedAssignment(
       const pbc::IndexedAssignment& proto) const;
-  /** Reconstructs a member assignment and its child nodes from protobuf data. */
+  /** Reconstructs a member assignment and its child nodes from protobuf data.
+   */
   std::unique_ptr<ExprAST> deserializeMemberAssignment(
       const pbc::MemberAssignment& proto) const;
-  /** Reconstructs a compound assignment and its child nodes from protobuf data. */
+  /** Reconstructs a compound assignment and its child nodes from protobuf data.
+   */
   std::unique_ptr<ExprAST> deserializeCompoundAssignment(
       const pbc::CompoundAssignment& proto) const;
 
@@ -188,21 +205,26 @@ class ASTDeserializer {
       const pbc::BinaryExpr& proto) const;
   /** Reconstructs a unary operation and its child nodes from protobuf data. */
   std::unique_ptr<ExprAST> deserializeUnary(const pbc::UnaryExpr& proto) const;
-  /** Reconstructs a conditional expression and its child nodes from protobuf data. */
+  /** Reconstructs a conditional expression and its child nodes from protobuf
+   * data. */
   std::unique_ptr<ExprAST> deserializeTernary(
       const pbc::TernaryExpr& proto) const;
-  /** Reconstructs a parenthesized expression and its child nodes from protobuf data. */
+  /** Reconstructs a parenthesized expression and its child nodes from protobuf
+   * data. */
   std::unique_ptr<ExprAST> deserializeParen(const pbc::ParenExpr& proto) const;
-  /** Reconstructs a interpolated string and its child nodes from protobuf data. */
+  /** Reconstructs a interpolated string and its child nodes from protobuf data.
+   */
   std::unique_ptr<ExprAST> deserializeInterpolatedString(
       const pbc::InterpolatedString& proto) const;
-  /** Reconstructs a variadic argument expansion and its child nodes from protobuf data. */
+  /** Reconstructs a variadic argument expansion and its child nodes from
+   * protobuf data. */
   std::unique_ptr<ExprAST> deserializePackExpansion(
       const pbc::PackExpansion& proto) const;
 
   /** Reconstructs a lexical block and its child nodes from protobuf data. */
   std::unique_ptr<ExprAST> deserializeBlock(const pbc::BlockExpr& proto) const;
-  /** Reconstructs a conditional expression and its child nodes from protobuf data. */
+  /** Reconstructs a conditional expression and its child nodes from protobuf
+   * data. */
   std::unique_ptr<ExprAST> deserializeIf(const pbc::IfExpr& proto) const;
   /** Reconstructs a pattern match and its child nodes from protobuf data. */
   std::unique_ptr<ExprAST> deserializeMatch(const pbc::MatchExpr& proto) const;
@@ -219,33 +241,41 @@ class ASTDeserializer {
   std::unique_ptr<ExprAST> deserializeUnsafeBlock(
       const pbc::UnsafeBlock& proto) const;
 
-  /** Reconstructs a function definition and its child nodes from protobuf data. */
+  /** Reconstructs a function definition and its child nodes from protobuf data.
+   */
   std::unique_ptr<ExprAST> deserializeFunction(
       const pbc::FunctionDef& proto) const;
-  /** Reconstructs a lambda expression and its child nodes from protobuf data. */
+  /** Reconstructs a lambda expression and its child nodes from protobuf data.
+   */
   std::unique_ptr<ExprAST> deserializeLambda(
       const pbc::LambdaExpr& proto) const;
   /** Reconstructs a function call and its child nodes from protobuf data. */
   std::unique_ptr<ExprAST> deserializeCall(const pbc::CallExpr& proto) const;
-  /** Reconstructs a generic function call and its child nodes from protobuf data. */
+  /** Reconstructs a generic function call and its child nodes from protobuf
+   * data. */
   std::unique_ptr<ExprAST> deserializeGenericCall(
       const pbc::GenericCallExpr& proto) const;
 
-  /** Reconstructs a dependency manifest and its child nodes from protobuf data. */
+  /** Reconstructs a dependency manifest and its child nodes from protobuf data.
+   */
   std::unique_ptr<ExprAST> deserializeManifest(
       const pbc::Manifest& proto) const;
-  /** Reconstructs a module declaration and its child nodes from protobuf data. */
+  /** Reconstructs a module declaration and its child nodes from protobuf data.
+   */
   std::unique_ptr<ExprAST> deserializeModule(const pbc::ModuleDef& proto) const;
-  /** Reconstructs a using declaration and its child nodes from protobuf data. */
+  /** Reconstructs a using declaration and its child nodes from protobuf data.
+   */
   std::unique_ptr<ExprAST> deserializeUsing(const pbc::UsingStmt& proto) const;
   /** Reconstructs a qualified name and its child nodes from protobuf data. */
   std::unique_ptr<ExprAST> deserializeQualifiedName(
       const pbc::QualifiedNameExpr& proto) const;
 
-  /** Reconstructs a class declaration and its child nodes from protobuf data. */
+  /** Reconstructs a class declaration and its child nodes from protobuf data.
+   */
   std::unique_ptr<ExprAST> deserializeClassDef(
       const pbc::ClassDef& proto) const;
-  /** Reconstructs a interface declaration and its child nodes from protobuf data. */
+  /** Reconstructs a interface declaration and its child nodes from protobuf
+   * data. */
   std::unique_ptr<ExprAST> deserializeInterfaceDef(
       const pbc::InterfaceDef& proto) const;
   /** Reconstructs a enum declaration and its child nodes from protobuf data. */
@@ -259,7 +289,8 @@ class ASTDeserializer {
       const pbc::TryCatch& proto) const;
   /** Reconstructs a throw expression and its child nodes from protobuf data. */
   std::unique_ptr<ExprAST> deserializeThrow(const pbc::ThrowExpr& proto) const;
-  /** Reconstructs a forward type declaration and its child nodes from protobuf data. */
+  /** Reconstructs a forward type declaration and its child nodes from protobuf
+   * data. */
   std::unique_ptr<ExprAST> deserializeDeclareType(
       const pbc::DeclareType& proto) const;
 

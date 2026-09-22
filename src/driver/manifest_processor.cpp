@@ -17,10 +17,12 @@
 
 using sun::ast::ManifestAST;
 
-/** Coordinates compilation, dependency loading, linking, and program execution. */
+/** Coordinates compilation, dependency loading, linking, and program execution.
+ */
 namespace sun::driver {
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 /** Provides the configured names used when expanding manifest paths. */
 std::map<std::string, std::string>& pathVariables() {

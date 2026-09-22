@@ -19,7 +19,8 @@ using namespace llvm;
 /** Generates control flow for throwing and catching Sun errors. */
 namespace sun::codegen::errors {
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 /** Retain the runtime tag width while deriving it from the portable identity.
  */
@@ -148,7 +149,7 @@ Value* ErrorGenerator::codegen(const sun::ast::ThrowExprAST& expr) {
     // typeId at offset 0.
     ctx.builder->CreateStore(
         ConstantInt::get(i64Ty,
-                         sunTypeId(*classType, typeRegistry()->declarations)),
+                         sunTypeId(*classType, state_.analysis->declarations)),
         exc);
     // Object copy after the header; fat.data references it.
     Value* objSlot = ctx.builder->CreateGEP(
@@ -326,7 +327,7 @@ Value* ErrorGenerator::codegen(const sun::ast::TryCatchExprAST& expr) {
       Value* want = ConstantInt::get(
           i64Ty, sunTypeId(sun::codegen::support::requireType<ClassType>(
                                clause.resolvedType, "catch type"),
-                           typeRegistry()->declarations));
+                           state_.analysis->declarations));
       Value* m = ctx.builder->CreateICmpEQ(typeId, want, "catch.match");
       BasicBlock* elseBB = (i + 1 < n) ? testBBs[i + 1] : nomatchBB;
       ctx.builder->CreateCondBr(m, bodyBBs[i], elseBB);

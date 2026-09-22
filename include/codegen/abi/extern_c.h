@@ -67,7 +67,8 @@ struct PreparedArg {
 /** Binds C-call emission to the current code-generation context and module. */
 class ExternCEmitter {
  public:
-  /** Binds C-call emission to the current code-generation context and module. */
+  /** Binds C-call emission to the current code-generation context and module.
+   */
   ExternCEmitter(sun::codegen::CodegenContext& ctx, llvm::Module* module)
       : ctx_(ctx), module_(module) {}
 

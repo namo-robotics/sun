@@ -25,7 +25,8 @@ using sun::types::StaticPointerType;
 using sun::types::Type;
 using sun::types::TypePtr;
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /** Encode integers in a fixed width and byte order on every host. */

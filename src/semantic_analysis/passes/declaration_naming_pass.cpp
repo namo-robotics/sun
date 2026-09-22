@@ -8,7 +8,8 @@ using sun::ast::ExprAST;
 
 /** Provides the ordered preparation and registration passes for analysis. */
 namespace sun::semantic_analysis::passes {
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /** Fill a declaration's name while retaining imported or generated identities.
@@ -25,11 +26,12 @@ const QualifiedName& nameDeclaration(
 
 /** Share name assignment while each pass supplies its own scope boundary. */
 void assignNames(ExprAST& root, const std::vector<std::string>& scopePath,
-                 bool moduleLevel) {
+                 bool moduleLevel, bool skipImportedMoons) {
   const auto visitChildren = [&](const std::vector<std::string>& childScope,
                                  bool childModuleLevel) {
     sun::ast::forEachChild(root, [&](const ExprAST& child) {
-      assignNames(const_cast<ExprAST&>(child), childScope, childModuleLevel);
+      assignNames(const_cast<ExprAST&>(child), childScope, childModuleLevel,
+                  skipImportedMoons);
     });
   };
   const QualifiedName* namedScope = nullptr;
@@ -41,6 +43,7 @@ void assignNames(ExprAST& root, const std::vector<std::string>& scopePath,
       break;
     case ASTNodeType::MOON_SCOPE: {
       const auto& moon = static_cast<sun::ast::MoonScopeAST&>(root);
+      if (skipImportedMoons && !moon.isOwnBundle()) return;
       auto childScope = scopePath;
       if (!moon.getContentHash().empty())
         childScope.push_back(moon.getContentHash());
@@ -93,8 +96,8 @@ void assignNames(ExprAST& root, const std::vector<std::string>& scopePath,
 
 void DeclarationNamingPass::run(ExprAST& root,
                                 const std::vector<std::string>& scopePath,
-                                bool moduleLevel) const {
-  assignNames(root, scopePath, moduleLevel);
+                                bool moduleLevel, bool skipImportedMoons) const {
+  assignNames(root, scopePath, moduleLevel, skipImportedMoons);
 }
 
 /** Assigns a qualified name to a declaration within its lexical scope. */
@@ -126,6 +129,12 @@ void assignLocalDeclarationName(ExprAST& declaration,
     default:
       break;
   }
+}
+
+void DeclarationNamingPass::run(
+    const std::vector<sun::ast::MoonScopeAST*>& imports,
+           const std::vector<std::string>& scopePath) const {
+  for (auto* moon : imports) run(*moon, scopePath, true);
 }
 
 }  // namespace sun::semantic_analysis::passes

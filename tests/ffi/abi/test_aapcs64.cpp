@@ -38,7 +38,8 @@ using sun::driver::Driver;
 /** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
-/** Provides isolated state and helpers for this compiler integration test suite. */
+/** Provides isolated state and helpers for this compiler integration test
+ * suite. */
 class Ffi_Abi_Aapcs64 : public ::testing::Test {
  protected:
   llvm::LLVMContext ctx;
@@ -48,17 +49,23 @@ class Ffi_Abi_Aapcs64 : public ::testing::Test {
       "e-m:e-p270:32:32-p271:32:32-p272:64:64-i8:8:32-"
       "i16:16:32-i64:64-i128:128-n32:64-S128-Fn32"};
 
-  /** Returns the LLVM scalar type used to construct calling-convention fixtures. */
+  /** Returns the LLVM scalar type used to construct calling-convention
+   * fixtures. */
   llvm::Type* i8() { return llvm::Type::getInt8Ty(ctx); }
-  /** Returns the LLVM scalar type used to construct calling-convention fixtures. */
+  /** Returns the LLVM scalar type used to construct calling-convention
+   * fixtures. */
   llvm::Type* i16() { return llvm::Type::getInt16Ty(ctx); }
-  /** Returns the LLVM scalar type used to construct calling-convention fixtures. */
+  /** Returns the LLVM scalar type used to construct calling-convention
+   * fixtures. */
   llvm::Type* i32() { return llvm::Type::getInt32Ty(ctx); }
-  /** Returns the LLVM scalar type used to construct calling-convention fixtures. */
+  /** Returns the LLVM scalar type used to construct calling-convention
+   * fixtures. */
   llvm::Type* i64() { return llvm::Type::getInt64Ty(ctx); }
-  /** Returns the LLVM scalar type used to construct calling-convention fixtures. */
+  /** Returns the LLVM scalar type used to construct calling-convention
+   * fixtures. */
   llvm::Type* f32() { return llvm::Type::getFloatTy(ctx); }
-  /** Returns the LLVM scalar type used to construct calling-convention fixtures. */
+  /** Returns the LLVM scalar type used to construct calling-convention
+   * fixtures. */
   llvm::Type* f64() { return llvm::Type::getDoubleTy(ctx); }
   /** Returns the LLVM pointer type used by the calling-convention fixture. */
   llvm::Type* ptr() { return llvm::PointerType::getUnqual(ctx); }
@@ -356,7 +363,8 @@ TEST_F(Ffi_Abi_Aapcs64, signature_with_an_aggregate_is_not_trivial) {
 /** Keeps test fixtures and helpers local to this source file. */
 namespace {
 
-/** Provides isolated state and helpers for this compiler integration test suite. */
+/** Provides isolated state and helpers for this compiler integration test
+ * suite. */
 class Ffi_Abi_CDispatch : public Ffi_Abi_Aapcs64 {};
 
 }  // namespace
@@ -456,7 +464,8 @@ namespace {
 
 constexpr const char* kQemuSysroot = "/usr/aarch64-linux-gnu";
 
-/** Reports whether the tools needed to execute cross-compiled tests are available. */
+/** Reports whether the tools needed to execute cross-compiled tests are
+ * available. */
 bool haveCrossExecutionTools() {
   return std::system("command -v qemu-aarch64 >/dev/null 2>&1") == 0 &&
          std::system("command -v aarch64-linux-gnu-gcc >/dev/null 2>&1") == 0;
@@ -643,7 +652,8 @@ bool haveHostMuslToolchain() {
   return std::system("command -v x86_64-linux-musl-gcc >/dev/null 2>&1") == 0;
 }
 
-/** Reports whether the AArch64 musl cross-compiler needed by this test is installed. */
+/** Reports whether the AArch64 musl cross-compiler needed by this test is
+ * installed. */
 bool haveAarch64MuslToolchain() {
   return std::system("command -v aarch64-linux-musl-gcc >/dev/null 2>&1") ==
              0 &&

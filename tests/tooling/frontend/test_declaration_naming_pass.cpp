@@ -6,15 +6,16 @@
 #include "ast/ast_children.h"
 #include "driver/execution_utils.h"
 #include "parsing/parser.h"
+#include "semantic_analysis/analysis_results.h"
 #include "semantic_analysis/passes/declaration_naming_pass.h"
 #include "semantic_analysis/passes/field_initializer_preparation_pass.h"
 #include "semantic_analysis/semantic_pipeline.h"
 #include "semantic_analysis/type_analysis/type_rules.h"
-#include "semantic_analysis/type_registry.h"
 
+using sun::semantic_analysis::AnalysisResults;
+using sun::semantic_analysis::TypeRegistry;
 using sun::semantic_analysis::passes::DeclarationNamingPass;
 using sun::semantic_analysis::passes::FieldInitializerPreparationPass;
-using sun::semantic_analysis::TypeRegistry;
 
 using sun::ast::ClassDefinitionAST;
 using sun::ast::EnumDefinitionAST;
@@ -144,7 +145,7 @@ TEST(Tooling_Frontend_DeclarationNames,
   auto& local = static_cast<sun::ast::VariableCreationAST&>(*body.getBody()[1]);
   EXPECT_FALSE(choice.hasQualifiedName());
   sun::semantic_analysis::SemanticContext context(
-      std::make_shared<TypeRegistry>());
+      std::make_shared<AnalysisResults>());
   context.enterFunctionScope("work(i32)",
                              sun::semantic_analysis::QualifiedName({}, "work"));
   sun::semantic_analysis::passes::assignLocalDeclarationName(
@@ -215,7 +216,7 @@ TEST(Tooling_Frontend_DeclarationNames,
     class Counter { var value: i32 = 42; }
     function identity<T>(value: T) T { return value; }
   )");
-  SemanticAnalyzer analyzer(std::make_shared<TypeRegistry>());
+  SemanticAnalyzer analyzer(std::make_shared<AnalysisResults>());
   auto& pipeline = analyzer.pipeline();
   pipeline.run(*program);
 
@@ -241,7 +242,7 @@ TEST(Tooling_Frontend_DeclarationNames,
   )");
   FieldInitializerPreparationPass{}.run(*program);
   DeclarationNamingPass{}.run(*program);
-  SemanticAnalyzer analyzer(std::make_shared<TypeRegistry>());
+  SemanticAnalyzer analyzer(std::make_shared<AnalysisResults>());
   auto& pipeline = analyzer.pipeline();
   pipeline.prepareGenerated(*program);
 
@@ -316,7 +317,7 @@ TEST(Tooling_Frontend_DeclarationNames,
       return value(1) + value(true) + host.value() + callback();
     }
   )");
-  SemanticAnalyzer analyzer(std::make_shared<TypeRegistry>());
+  SemanticAnalyzer analyzer(std::make_shared<AnalysisResults>());
   EXPECT_NO_THROW(analyzer.pipeline().run(*program));
 }
 
@@ -326,12 +327,13 @@ TEST(Tooling_Frontend_DeclarationNames,
     class Item { var value: i32; }
     class Item { var value: i32; }
   )");
-  SemanticAnalyzer analyzer(std::make_shared<TypeRegistry>());
+  SemanticAnalyzer analyzer(std::make_shared<AnalysisResults>());
   EXPECT_SUN_ERROR_WITH_MESSAGE(analyzer.pipeline().run(*program),
                                 "Redefinition of class 'Item'");
 }
 
-TEST(Tooling_Frontend_DeclarationNames, local_naming_does_not_walk_method_bodies) {
+TEST(Tooling_Frontend_DeclarationNames,
+     local_naming_does_not_walk_method_bodies) {
   auto program = parseDeclarations(R"(
     class Local {
       method work() void { enum Inner { First, Second } }
@@ -361,8 +363,9 @@ TEST(Tooling_Frontend_DeclarationNames,
       enum Choice { First, Second }
     }
   )");
-  auto types = std::make_shared<TypeRegistry>();
-  SemanticAnalyzer analyzer(types);
+  auto results = std::make_shared<AnalysisResults>();
+  auto types = results->types;
+  SemanticAnalyzer analyzer(results);
   ASSERT_NO_THROW(analyzer.pipeline().run(*program));
   const auto& first = static_cast<const FunctionAST&>(*program->getBody()[0]);
   const auto& second = static_cast<const FunctionAST&>(*program->getBody()[1]);
@@ -445,7 +448,7 @@ TEST(Tooling_Frontend_DeclarationNames,
     module library { class Local {} }
     module library { class Local {} }
   )");
-  SemanticAnalyzer analyzer(std::make_shared<TypeRegistry>());
+  SemanticAnalyzer analyzer(std::make_shared<AnalysisResults>());
   EXPECT_SUN_ERROR_WITH_MESSAGE(analyzer.pipeline().run(*program),
                                 "Redefinition of class 'Local'");
 }
@@ -470,28 +473,32 @@ TEST(Tooling_Frontend_DeclarationNames, specializations_keep_source_names) {
       return first;
     }
   )");
-  SemanticAnalyzer analyzer(std::make_shared<TypeRegistry>());
+  SemanticAnalyzer analyzer(std::make_shared<AnalysisResults>());
   analyzer.pipeline().run(*program);
   const auto& source = static_cast<const FunctionAST&>(*program->getBody()[0]);
   ASSERT_EQ(source.getSpecializations().size(), 2u);
   sun::semantic_analysis::DeclarationId previous;
   for (const auto& [id, instance] : source.getSpecializations()) {
     ASSERT_TRUE(instance);
-    EXPECT_EQ(instance->getProto().getQualifiedName(), source.getProto().getQualifiedName());
+    EXPECT_EQ(instance->getProto().getQualifiedName(),
+              source.getProto().getQualifiedName());
     EXPECT_NE(id, source.getDeclarationId());
     EXPECT_NE(id, previous);
     previous = id;
   }
 }
 
-TEST(Tooling_Frontend_DeclarationNames, duplicate_generic_methods_compare_binder_positions) {
-  for (const auto& source : {
-    "interface View { method value<T>(x: T) T; method value<U>(x: U) U; }",
-    "class Box { method value<T>(x: T) T { return x; } method value<U>(x: U) U { return x; } }",
-    "class Box<A> { method value<T>(x: T) T { return x; } method value<U>(x: U) U { return x; } } function main() i32 { var box = Box<i32>(); return 0; }"
-  }) {
+TEST(Tooling_Frontend_DeclarationNames,
+     duplicate_generic_methods_compare_binder_positions) {
+  for (const auto& source :
+       {"interface View { method value<T>(x: T) T; method value<U>(x: U) U; }",
+        "class Box { method value<T>(x: T) T { return x; } method value<U>(x: "
+        "U) U { return x; } }",
+        "class Box<A> { method value<T>(x: T) T { return x; } method "
+        "value<U>(x: U) U { return x; } } function main() i32 { var box = "
+        "Box<i32>(); return 0; }"}) {
     auto program = parseDeclarations(source);
-    SemanticAnalyzer analyzer(std::make_shared<TypeRegistry>());
+    SemanticAnalyzer analyzer(std::make_shared<AnalysisResults>());
     EXPECT_THROW(analyzer.pipeline().run(*program), sun::support::SunError);
   }
 }

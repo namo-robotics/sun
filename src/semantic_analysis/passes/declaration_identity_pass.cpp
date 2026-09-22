@@ -15,7 +15,8 @@ using sun::support::logAndThrowError;
 
 /** Provides the ordered preparation and registration passes for analysis. */
 namespace sun::semantic_analysis::passes {
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /** Register one imported binder or allocate a new source binder. */
@@ -134,6 +135,22 @@ void resetBindings(const ExprAST& root, bool resetIdentity) {
 void DeclarationIdentityPass::run(const ExprAST& root, DeclarationId owner,
                                   DeclarationId module,
                                   const ExprAST* origin) const {
+  visit(root, owner, module, origin, false);
+}
+
+void DeclarationIdentityPass::run(
+    const ExprAST& root, bool skipImportedMoons,
+    const std::function<void()>& declarationsReady) const {
+  visit(root, {}, {}, nullptr, skipImportedMoons);
+  if (declarationsReady) declarationsReady();
+}
+
+void DeclarationIdentityPass::visit(const ExprAST& root, DeclarationId owner,
+                                    DeclarationId module, const ExprAST* origin,
+                                    bool skipImportedMoons) const {
+  if (skipImportedMoons && root.getType() == ASTNodeType::MOON_SCOPE &&
+      !static_cast<const sun::ast::MoonScopeAST&>(root).isOwnBundle())
+    return;
   if (origin && origin->getType() != root.getType())
     logAndThrowError("Generated declaration does not match its source syntax");
   const auto* sourceIdentity = origin && origin->getDeclarationId()
@@ -156,6 +173,8 @@ void DeclarationIdentityPass::run(const ExprAST& root, DeclarationId owner,
                      origin ? origin->getDeclarationId() : DeclarationId{});
       root.setDeclarationId(id);
       root.declarationIdentity().session = table_.session();
+      // A module may be opened in several places, so no one node declares it.
+      if (kind != DeclarationKind::Module) table_.bindAstNode(id, &root);
     } else {
       if (root.declarationIdentity().session.lock() != table_.session())
         logAndThrowError(
@@ -168,7 +187,6 @@ void DeclarationIdentityPass::run(const ExprAST& root, DeclarationId owner,
   switch (root.getType()) {
     case ASTNodeType::MOON_SCOPE: {
       const auto& moon = static_cast<const sun::ast::MoonScopeAST&>(root);
-      table_.importRecords(moon.importedDeclarations);
       if (!moon.getContentHash().empty()) {
         owner = table_.module(moon.getContentHash(), module);
         root.setDeclarationId(owner);
@@ -341,11 +359,13 @@ void DeclarationIdentityPass::run(const ExprAST& root, DeclarationId owner,
     });
   size_t index = 0;
   forEachChild(root, [&](const ExprAST& child) {
-    run(child, owner, module, origin ? sourceChildren.at(index++) : nullptr);
+    visit(child, owner, module, origin ? sourceChildren.at(index++) : nullptr,
+          skipImportedMoons);
   });
 }
 
-/** Clears computed annotations throughout the tree while retaining declaration identities. */
+/** Clears computed annotations throughout the tree while retaining declaration
+ * identities. */
 void clearComputedAnalysis(const ExprAST& root) {
   forEachChild(root,
                [](const ExprAST& child) { clearComputedAnalysis(child); });
@@ -358,6 +378,11 @@ void resetAnalysisSession(const ExprAST& root) {
   forEachChild(root, [](const ExprAST& child) { resetAnalysisSession(child); });
   resetBindings(root, true);
   root.resetAnalysisSession();
+}
+
+void DeclarationIdentityPass::run(
+    const std::vector<sun::ast::MoonScopeAST*>& imports) const {
+  for (auto* moon : imports) run(*moon);
 }
 
 }  // namespace sun::semantic_analysis::passes

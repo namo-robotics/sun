@@ -5,11 +5,19 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 #include "semantic_analysis/declaration_id.h"
 #include "semantic_analysis/portable_declaration_key.h"
+#include "semantic_analysis/qualified_name.h"
 #include "support/error.h"
+
+/** Defines syntax-tree nodes and the annotations used to analyze them. */
+namespace sun::ast {
+class ExprAST;
+}
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
@@ -47,6 +55,11 @@ struct DeclarationRecord {
   DeclarationId origin;
   std::string generatedRole;
   uint64_t generatedSlot = 0;
+  // The syntax node that declares it, or null when no single node does: a
+  // builtin, a field or variant inside a node, a module opened in several
+  // places. Valid while the analyzed tree is alive, which the owner of the
+  // analysis results keeps it for.
+  const sun::ast::ExprAST* astNode = nullptr;
 };
 
 /** Allocate and retain declarations independently of symbol spelling. */
@@ -55,17 +68,25 @@ class DeclarationTable {
   std::shared_ptr<const int> session_ = std::make_shared<const int>(0);
   std::map<std::pair<DeclarationId, std::string>, DeclarationId> modules_;
   std::map<PortableDeclarationKey, DeclarationId> portableDeclarations_;
+  // The file-scope and module-scope variables this program's source
+  // declares, by qualified name. The first declaration of a name wins.
+  std::unordered_map<QualifiedName, DeclarationId> globals_;
+  // The unqualified names in globals_, so that a name no global has can be
+  // dismissed without building qualified names along the scope chain.
+  std::unordered_set<std::string> globalBaseNames_;
 
  public:
   /** Start an independent table whose identities cannot be copied. */
   DeclarationTable() = default;
   /** Disallows copying so the owned state cannot be duplicated. */
   DeclarationTable(const DeclarationTable&) = delete;
-  /** Disallows assignment so ownership and object identity cannot be duplicated. */
+  /** Disallows assignment so ownership and object identity cannot be
+   * duplicated. */
   DeclarationTable& operator=(const DeclarationTable&) = delete;
   /** Creates an instance with its default state. */
   DeclarationTable(DeclarationTable&&) = default;
-  /** Transfers the stored state from another instance during move assignment. */
+  /** Transfers the stored state from another instance during move assignment.
+   */
   DeclarationTable& operator=(DeclarationTable&&) = default;
 
   /** Identify this session even after a previous table has been destroyed. */
@@ -79,6 +100,35 @@ class DeclarationTable {
     auto id = add(DeclarationKind::Module, name, owner, owner);
     modules_.emplace(std::move(key), id);
     return id;
+  }
+
+  /** Links a declaration to the syntax node that declares it. */
+  void bindAstNode(DeclarationId id, const sun::ast::ExprAST* astNode) {
+    get(id);
+    records_[id.index() - 1].astNode = astNode;
+  }
+
+  /**
+   * Records a global variable under its qualified name, so a use that comes
+   * before the declaration can find it. Only variables declared in this
+   * program's source are recorded: those of a library and of C code have no
+   * initializer to analyze.
+   */
+  void registerGlobal(const QualifiedName& name, DeclarationId id) {
+    get(id);
+    globals_.try_emplace(name, id);
+    globalBaseNames_.insert(name.baseName);
+  }
+
+  /** Reports whether any registered global has this unqualified name. */
+  bool hasGlobalNamed(const std::string& baseName) const {
+    return globalBaseNames_.count(baseName) != 0;
+  }
+
+  /** The global variable with this qualified name, or an empty id. */
+  DeclarationId findGlobal(const QualifiedName& name) const {
+    auto found = globals_.find(name);
+    return found == globals_.end() ? DeclarationId{} : found->second;
   }
 
   /** Allocate an identity without making the declaration visible in a scope. */

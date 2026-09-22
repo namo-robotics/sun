@@ -15,8 +15,8 @@ namespace sun::ast {
 /**
  * for (var x: T in iterable) { ... }
  * Iterates over iterable by calling iter() -> IIterator<T, C> (when the
- * iterable is not itself an iterator), then next(ref C) -> Option&lt;T&gt; until
- * None
+ * iterable is not itself an iterator), then next(ref C) -> Option&lt;T&gt;
+ * until None
  */
 class ForInExprAST : public ExprAST {
   std::string LoopVar;                // Variable name (x)
@@ -42,7 +42,8 @@ class ForInExprAST : public ExprAST {
     return static_cast<ForInAnalysis&>(*analysis_);
   }
 
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   ForInExprAST(std::string LoopVar, TypeAnnotation LoopVarType,
                std::unique_ptr<ExprAST> Iterable, std::unique_ptr<ExprAST> Body,
                bool isConst = false)
@@ -55,7 +56,8 @@ class ForInExprAST : public ExprAST {
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::FOR_IN_LOOP; }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     fn(Iterable);
     fn(Body);

@@ -40,7 +40,8 @@ using sun::semantic_analysis::type_analysis::tryCoerceIntegerLiteral;
 using sun::types::formatTypeList;
 using sun::types::unwrapRef;
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /**
@@ -389,8 +390,8 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveCallee(
       sema_.analyzeExpr(callee);
       if (callee.getType() == ASTNodeType::QUALIFIED_NAME &&
           callee.getTargetDeclarationId() &&
-          ctx_.types()
-                  ->declarations.get(callee.getTargetDeclarationId())
+          ctx_.results()
+                  .declarations.get(callee.getTargetDeclarationId())
                   .kind == sun::semantic_analysis::DeclarationKind::Function)
         callExpr.setTargetDeclarationId(callee.getTargetDeclarationId());
       return {};
@@ -403,6 +404,7 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveNamedCallee(
     CallExprAST& callExpr, VariableReferenceAST& varRef,
     const std::vector<TypePtr>& argTypes) {
   CalleeResolution out;
+  sema_.ensureGlobalAnalyzed(varRef.getName());
   if (ctx_.currentScope().lookupVariable(varRef.getName())) {
     sema_.analyzeExpr(varRef);
     return out;
@@ -416,7 +418,7 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveNamedCallee(
   const auto& args = callExpr.getArgs();
   const auto lookupTypes = functionArgumentTypes(args);
   out.function = ctx_.lookupFunction(resolved.baseName, lookupTypes,
-                                      callExpr.getLocation());
+                                     callExpr.getLocation());
   if (out.function) {
     for (size_t i = 0; i < out.function->paramTypes.size(); ++i) {
       tryCoerceIntegerLiteral(args[i].get(), out.function->paramTypes[i]);
@@ -447,9 +449,9 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveNamedCallee(
   // call resolve to it like any other named function.
   if (const GenericFunctionInfo* genericFunc =
           ctx_.lookupGenericFunction(resolved.baseName)) {
-    GenericCallTarget target = resolveGenericCallTarget(
-        *genericFunc, argTypes, /*writtenTypeArgs=*/{}, varRef.getName(),
-        callExpr.getLocation());
+    GenericCallTarget target =
+        resolveGenericCallTarget(*genericFunc, argTypes, /*writtenTypeArgs=*/{},
+                                 varRef.getName(), callExpr.getLocation());
     out.takesPack = target.takesPack;
     if (target.specialized) {
       out.function = target.specialized->asFunctionInfo();
@@ -522,8 +524,8 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMemberCallee(
   }
   // Module-qualified generic call: type arguments written or inferred, and
   // the callee pinned to its specialization.
-  if (auto generic = resolveModuleQualifiedGenericCall(memberAccess,
-                                                       objectType, argTypes)) {
+  if (auto generic = resolveModuleQualifiedGenericCall(memberAccess, objectType,
+                                                       argTypes)) {
     return *generic;
   }
 
@@ -567,9 +569,9 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMethodCallee(
   // A non-const method needs a mutable receiver, and a constant one makes
   // any `ref T` result read-only.
   auto checkReceiver = [&](const ClassMethod& method) {
-    out.receiverImmutable = sema_.checkMethodReceiver(
-        *memberAccess.getObject(), methodName, method.isConst,
-        method.isConstructor, loc);
+    out.receiverImmutable =
+        sema_.checkMethodReceiver(*memberAccess.getObject(), methodName,
+                                  method.isConst, method.isConstructor, loc);
   };
 
   // Generic method ending in an `args...` pack (e.g.
@@ -849,8 +851,8 @@ std::optional<std::vector<TypePtr>> CallAnalyzer::resolveConstructorParams(
     std::string params;
     for (size_t i = 0; i < method.paramTypes.size(); ++i) {
       if (i > 0) params += ", ";
-      params += method.paramTypes[i] ? method.paramTypes[i]->toDisplayString()
-                                     : "?";
+      params +=
+          method.paramTypes[i] ? method.paramTypes[i]->toDisplayString() : "?";
     }
     candidates += "\n       candidate: init(" + params + ")";
   }
@@ -933,8 +935,8 @@ std::optional<CallAnalyzer::CalleeResolution>
 CallAnalyzer::resolveModuleQualifiedGenericCall(
     const MemberAccessAST& memberAccess, const TypePtr& objectType,
     const std::vector<TypePtr>& argTypes) {
-  SymbolMatch match = findModuleCallee(memberAccess, objectType,
-                                       SymbolKind::GenericFunction);
+  SymbolMatch match =
+      findModuleCallee(memberAccess, objectType, SymbolKind::GenericFunction);
   if (!match || !match.genericFunctionInfo) return std::nullopt;
 
   auto loc = memberAccess.getLocation();

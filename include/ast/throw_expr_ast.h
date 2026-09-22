@@ -18,14 +18,16 @@ class ThrowExprAST : public ExprAST {
   std::unique_ptr<ExprAST> errorExpr;  // The error expression to throw
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   explicit ThrowExprAST(std::unique_ptr<ExprAST> expr)
       : errorExpr(std::move(expr)) {}
 
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::THROW; }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override { fn(errorExpr); }
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {

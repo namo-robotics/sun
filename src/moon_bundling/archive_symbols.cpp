@@ -23,7 +23,8 @@
 /** Builds and loads compiled Moon libraries and their declaration metadata. */
 namespace sun::moon_bundling {
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 using llvm::object::Archive;
@@ -53,7 +54,8 @@ std::string memberName(const Archive::Child& child) {
  * the `as "..."` names in extern declarations never do.
  */
 std::string bareName(llvm::StringRef objectName, bool machO) {
-  if (machO && objectName.starts_with("_")) return objectName.drop_front().str();
+  if (machO && objectName.starts_with("_"))
+    return objectName.drop_front().str();
   return objectName.str();
 }
 
@@ -90,11 +92,10 @@ llvm::Expected<std::unique_ptr<llvm::object::Binary>> openMember(
 /**
  * One pass over every member; `visit` sees each member as an object.
  */
-llvm::Error forEachMember(
-    const Archive& archive,
-    llvm::function_ref<llvm::Error(const Archive::Child&,
-                                   llvm::object::Binary&)>
-        visit) {
+llvm::Error forEachMember(const Archive& archive,
+                          llvm::function_ref<llvm::Error(const Archive::Child&,
+                                                         llvm::object::Binary&)>
+                              visit) {
   llvm::Error err = llvm::Error::success();
   for (const Archive::Child& child : archive.children(err)) {
     auto binary = openMember(child);
@@ -132,7 +133,8 @@ std::string computeArchiveSetHash(
   return computeSha256Hex(input).substr(0, 16);
 }
 
-/** Reads archive symbols and reports definitions requiring library isolation. */
+/** Reads archive symbols and reports definitions requiring library isolation.
+ */
 llvm::Expected<ArchiveSymbolScan> scanArchiveSymbols(
     llvm::MemoryBufferRef archiveBytes) {
   auto archive = Archive::create(archiveBytes);
@@ -209,7 +211,8 @@ llvm::Expected<std::string> renameArchiveSymbols(
 
         llvm::SmallString<0> bytes;
         llvm::raw_svector_ostream out(bytes);
-        if (auto copyErr = llvm::objcopy::executeObjcopyOnBinary(config, bin, out)) {
+        if (auto copyErr =
+                llvm::objcopy::executeObjcopyOnBinary(config, bin, out)) {
           return copyErr;
         }
 

@@ -18,13 +18,15 @@ class ArrayLiteralAST : public ExprAST {
   std::vector<std::unique_ptr<ExprAST>> elements;
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   explicit ArrayLiteralAST(std::vector<std::unique_ptr<ExprAST>> elems)
       : elements(std::move(elems)) {}
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::ARRAY_LITERAL; }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     for (auto& elem : elements) fn(elem);
   }

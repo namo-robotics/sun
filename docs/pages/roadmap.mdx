@@ -31,12 +31,15 @@ generic payload enums with owning payloads and drop glue. The absence APIs
 
 Routine requirements in embedded and safety-critical work, not niceties.
 Fixed-size array types (`array<i32, 4>`, `array<f64, 2, 3>`) exist, own their
-elements inline, and their dimensions are part of the type.
+elements inline, and their dimensions are part of the type. Constant
+expressions, including calls to pure functions, are evaluated at compile time,
+and an array size can be the name of a constant: `array<T, N>`.
 
-- [ ] Compile-time evaluation of constant expressions (`const` variables,
-      `const ref` and `const method` exist; a `const` global is still
-      initialised at runtime)
-- [ ] Const generics: `array<T, const N>`
+- [ ] Generic value parameters: `array<T, const N>`
+- [ ] An array size computed by a function call, when the size is used by a
+      class field or a function signature, or the function is declared below
+      the use
+- [ ] Place compile-time `const` globals in read-only memory
 
 ## Iteration Ergonomics
 

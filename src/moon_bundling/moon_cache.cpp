@@ -91,7 +91,8 @@ void MoonCache::validateUrl(const std::string& url) {
   }
 }
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 std::string githubToken_;
 }  // namespace

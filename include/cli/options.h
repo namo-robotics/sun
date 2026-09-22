@@ -35,7 +35,7 @@ struct EarlyExit {
  */
 struct SharedOptions {
   std::vector<sun::moon_bundling::MoonImport> moonImports;  // --moon <spec>
-  std::vector<std::string> libPaths;         // --lib-path <dir>
+  std::vector<std::string> libPaths;                        // --lib-path <dir>
   // --path-var NAME=<dir>, in the order given so a repeated name keeps its
   // last value
   std::vector<std::pair<std::string, std::string>> pathVariables;

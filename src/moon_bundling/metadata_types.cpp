@@ -9,10 +9,12 @@
 namespace sun::moon_bundling {
 namespace pbc = sun::proto::ast;
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
-/** Serializes a named type with its declaration identity and generic arguments. */
+/** Serializes a named type with its declaration identity and generic arguments.
+ */
 void nominal(pbc::TypeAnnotation& out, const sun::types::NominalType& type,
              const std::string& display,
              const std::vector<sun::types::TypePtr>& args,
@@ -45,7 +47,8 @@ void parameters(const google::protobuf::Message& message,
     parameters(reflection->GetMessage(message, field), names);
 }
 
-/** Binds serialized type references to declarations in the current analysis context. */
+/** Binds serialized type references to declarations in the current analysis
+ * context. */
 void bindDeclarationTypes(google::protobuf::Message& message,
                           sun::semantic_analysis::SemanticContext& ctx,
                           std::set<std::string> names, bool inBody = false) {
@@ -67,25 +70,25 @@ void bindDeclarationTypes(google::protobuf::Message& message,
       else if (auto* generic = ctx.lookupGenericEnum(name))
         ref = generic->AST->getDeclarationId();
       else if (auto type = ctx.findTypeAlias(name)) {
-        auto expanded = exportType(type, ctx.types()->declarations);
+        auto expanded = exportType(type, ctx.results().declarations);
         expanded.set_can_error(annotation.can_error() || expanded.can_error());
         if (!annotation.lifetime_arguments().empty())
           *expanded.mutable_lifetime_arguments() =
               annotation.lifetime_arguments();
         annotation = std::move(expanded);
       } else if (auto type = ctx.lookupClass(name))
-        ref = type->sourceDeclaration(ctx.types()->declarations);
+        ref = type->sourceDeclaration(ctx.results().declarations);
       else if (auto type = ctx.lookupInterface(name))
-        ref = type->sourceDeclaration(ctx.types()->declarations);
+        ref = type->sourceDeclaration(ctx.results().declarations);
       else if (auto type = ctx.lookupEnum(name))
-        ref = type->sourceDeclaration(ctx.types()->declarations);
+        ref = type->sourceDeclaration(ctx.results().declarations);
       else if (!inBody)
         sun::support::logAndThrowError(
             "Cannot bind exported type '" + name + "'", ctx.currentLocation());
       if (ref)
         annotation.set_declaration_key(
             sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
-                ref, ctx.types()->declarations)
+                ref, ctx.results().declarations)
                 .encoding());
     }
   } else if (message.GetDescriptor() ==
@@ -159,7 +162,8 @@ pbc::TypeAnnotation exportType(
     out.set_base_name("array");
     *out.mutable_element_type() =
         exportType(value->getElementType(), declarations);
-    for (auto dim : value->getDimensions()) out.add_array_dimensions(dim);
+    for (auto dim : value->getDimensions())
+      out.add_array_dimensions()->set_size(dim);
   } else if (auto* value =
                  sun::codegen::support::tryGetType<sun::types::FunctionType>(
                      type)) {

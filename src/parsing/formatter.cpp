@@ -29,7 +29,8 @@ using sun::support::Position;
 
 /** Turns source text into syntax trees and provides source formatting. */
 namespace sun::parsing {
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 constexpr int kIndentWidth = 2;
@@ -530,7 +531,8 @@ class Formatter {
     int savedLast = lastLine_;
     lastLine_ = -1;
 
-    /** A class member and its source position used to preserve formatting order. */
+    /** A class member and its source position used to preserve formatting
+     * order. */
     struct Member {
       int offset;
       int line;

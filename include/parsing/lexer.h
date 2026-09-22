@@ -721,8 +721,9 @@ class Lexer {
    * the text between the quotes, which the token regex has already delimited.
    *
    * A character literal holds one Unicode scalar value: the source is UTF-8,
-   * `\xNN` reaches U+0000..U+007F, and `\u{...}` names anything above that. A byte
-   * literal holds one byte: the source must be ASCII and `\xNN` covers 00..FF.
+   * `\xNN` reaches U+0000..U+007F, and `\u{...}` names anything above that. A
+   * byte literal holds one byte: the source must be ASCII and `\xNN` covers
+   * 00..FF.
    */
   uint64_t decodeLiteralBody(std::string_view body, bool isByte,
                              const sun::support::Position& at) const {
@@ -891,7 +892,8 @@ class Lexer {
    * Process escape sequences in regular string literals.
    * Mirrors InterpolatedStringParser::processEscapes (template strings),
    * with \" instead of the template-specific \` and \$. The shared core
-   * for control-character and backslash escapes comes from sun::parsing::simple.
+   * for control-character and backslash escapes comes from
+   * sun::parsing::simple.
    */
   std::string processStringEscapes(std::string_view raw,
                                    const sun::support::Position& at) const {
@@ -1102,11 +1104,13 @@ class Lexer {
    * Copying a Lexer would duplicate a position into a shared stream; move only
    */
   Lexer(const Lexer&) = delete;
-  /** Disallows assignment so ownership and object identity cannot be duplicated. */
+  /** Disallows assignment so ownership and object identity cannot be
+   * duplicated. */
   Lexer& operator=(const Lexer&) = delete;
   /** Creates a token scanner reading from the supplied input stream. */
   Lexer(Lexer&&) noexcept = default;
-  /** Transfers the stored state from another instance during move assignment. */
+  /** Transfers the stored state from another instance during move assignment.
+   */
   Lexer& operator=(Lexer&&) noexcept = default;
   /** Destroys this object and releases its owned members. */
   ~Lexer() = default;

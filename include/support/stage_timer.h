@@ -98,7 +98,8 @@ class ScopedStage {
 
   /** Starts timing a named compiler stage until this object leaves scope. */
   ScopedStage(const ScopedStage&) = delete;
-  /** Disallows assignment so ownership and object identity cannot be duplicated. */
+  /** Disallows assignment so ownership and object identity cannot be
+   * duplicated. */
   ScopedStage& operator=(const ScopedStage&) = delete;
 
  private:

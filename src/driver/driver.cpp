@@ -42,7 +42,7 @@ using sun::driver::SunValue;
 using sun::driver::VoidValue;
 using sun::moon_bundling::LibraryCache;
 using sun::moon_bundling::MoonImport;
-using sun::semantic_analysis::TypeRegistry;
+using sun::semantic_analysis::AnalysisResults;
 using sun::support::ScopedStage;
 
 using sun::ast::ASTNodeType;
@@ -57,7 +57,8 @@ using sun::support::logAndThrowError;
 using sun::support::SourceManager;
 using sun::support::SunError;
 
-/** Coordinates compilation, dependency loading, linking, and program execution. */
+/** Coordinates compilation, dependency loading, linking, and program execution.
+ */
 namespace sun::driver {
 
 /**
@@ -178,6 +179,33 @@ static void stripUnreachableForJIT(llvm::Module& module) {
 }
 
 /**
+ * Works out where the startup function of the code being compiled runs
+ * relative to those of the bundles it imports: zero when it imports nothing,
+ * otherwise one more than the highest value recorded by an import. Lower
+ * values run first, so every import's globals are initialized before this
+ * code's startup function reads them.
+ */
+static uint32_t computeStaticInitOrder(
+    const std::vector<std::string>& importedModuleKeys,
+    const std::vector<sun::moon_bundling::MoonImport>& moonImports) {
+  uint32_t order = 0;
+  for (const auto& moduleKey : importedModuleKeys) {
+    if (const auto* metadata =
+            sun::moon_bundling::LibraryCache::instance().getMetadata(moduleKey))
+      order = std::max(order, metadata->static_init_order() + 1);
+  }
+  for (const auto& moonImport : moonImports) {
+    auto reader = sun::moon_bundling::MoonReader::open(moonImport.path);
+    if (!reader) continue;
+    for (const auto& moduleKey : reader->listModules()) {
+      if (const auto* metadata = reader->getMetadata(moduleKey))
+        order = std::max(order, metadata->static_init_order() + 1);
+    }
+  }
+  return order;
+}
+
+/**
  * Make a module's global initializers callable under the JIT. They are
  * internal functions registered in llvm.global_ctors — one per linked module,
  * uniquified by the IR linker — and the JIT resolves symbols by name, which
@@ -260,8 +288,7 @@ static bool declaresStdlibString(const BlockExprAST& block) {
 
 // Factory method for JIT execution
 std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
-                                             bool debugInfo,
-                                             bool optimize) {
+                                             bool debugInfo, bool optimize) {
   ensureLLVMInitialized();
 
   // JIT always runs on the host; .moon bundle selection must match.
@@ -296,11 +323,11 @@ std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
   provide("pthread_atfork", reinterpret_cast<void*>(&jitAtFork));
   cantFail(mainDylib.define(llvm::orc::absoluteSymbols(runtimeSymbols)));
 
-  auto typeRegistry = std::make_shared<TypeRegistry>();
-  auto codegenVisitor = std::make_unique<CodegenVisitor>(*ctx, typeRegistry);
-  auto analyzer = std::make_unique<SemanticAnalyzer>(typeRegistry);
+  auto analysisResults = std::make_shared<AnalysisResults>();
+  auto codegenVisitor = std::make_unique<CodegenVisitor>(*ctx, analysisResults);
+  auto analyzer = std::make_unique<SemanticAnalyzer>(analysisResults);
 
-  return std::unique_ptr<Driver>(new Driver(std::move(ctx), typeRegistry,
+  return std::unique_ptr<Driver>(new Driver(std::move(ctx), analysisResults,
                                             std::move(codegenVisitor),
                                             std::move(analyzer)));
 }
@@ -308,8 +335,7 @@ std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
 // Factory method for AOT compilation
 std::unique_ptr<Driver> Driver::createForAOT(const std::string& moduleName,
                                              const std::string& targetTriple,
-                                             bool debugInfo,
-                                             bool optimize) {
+                                             bool debugInfo, bool optimize) {
   ensureLLVMInitialized();
 
   // Both the parser's bundle resolution and the linker's bundle selection
@@ -319,11 +345,11 @@ std::unique_ptr<Driver> Driver::createForAOT(const std::string& moduleName,
   auto ctx = std::make_unique<sun::codegen::CodegenContext>(
       moduleName, nullptr,
       /*existingContext=*/nullptr, targetTriple, debugInfo, optimize);
-  auto typeRegistry = std::make_shared<TypeRegistry>();
-  auto codegenVisitor = std::make_unique<CodegenVisitor>(*ctx, typeRegistry);
-  auto analyzer = std::make_unique<SemanticAnalyzer>(typeRegistry);
+  auto analysisResults = std::make_shared<AnalysisResults>();
+  auto codegenVisitor = std::make_unique<CodegenVisitor>(*ctx, analysisResults);
+  auto analyzer = std::make_unique<SemanticAnalyzer>(analysisResults);
 
-  return std::unique_ptr<Driver>(new Driver(std::move(ctx), typeRegistry,
+  return std::unique_ptr<Driver>(new Driver(std::move(ctx), analysisResults,
                                             std::move(codegenVisitor),
                                             std::move(analyzer)));
 }
@@ -732,7 +758,8 @@ void Driver::addJITStaticLibrary(const std::string& path) {
   }
 }
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /**
@@ -942,15 +969,18 @@ void Driver::analyzeProgram(BlockExprAST& blockAst, Parser& parser) {
     if (artifactHash.empty()) artifactHash = computeOwnSourceHash(blockAst);
     analyzer->pipeline().run(blockAst, [&] {
       sun::semantic_analysis::PortableDeclarationKey::assignOriginals(
-          blockAst, typeRegistry->declarations, artifactHash);
+          blockAst, analysisResults->declarations, artifactHash);
     });
   }
 }
 
-SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
+SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
                              Parser& parser, bool execute, int argc,
                              char** argv) {
   SunValue result = VoidValue{};
+  // Declaration records will point at this tree's nodes; keep it with them.
+  analyzedTree_ = std::move(program);
+  std::unique_ptr<BlockExprAST>& blockAst = analyzedTree_;
 
   if (!blockAst) {
     llvm::errs() << "Error: Failed to parse program.\n";
@@ -1006,6 +1036,9 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
     throw sun::borrow_checker::buildBorrowCheckError(borrowErrors);
   }
 
+  staticInitOrder_ =
+      computeStaticInitOrder(parser.getPrecompiledImports(), moonImports_);
+
   if (metadataCallback_) metadataCallback_(*blockAst, *analyzer);
 
   // Register precompiled modules for lazy linking
@@ -1036,7 +1069,7 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
     ScopedStage stage("codegen");
     codegenVisitor->codegen(*blockAst);
     // Emit static initialization function for globals that need runtime init
-    codegenVisitor->emitStaticInitFunction();
+    codegenVisitor->emitStaticInitFunction(staticInitOrder_, ownBundleHash_);
   }
 
   // Link only the modules that provide symbols actually used by the code
@@ -1321,7 +1354,8 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
     if (structType->getNumElements() == 2 &&
         structType->getElementType(0)->isPointerTy() &&
         structType->getElementType(1)->isIntegerTy(64)) {
-      /** The pointer-and-length result returned by a JIT-compiled entrypoint. */
+      /** The pointer-and-length result returned by a JIT-compiled entrypoint.
+       */
       struct StaticPtr {
         const char* data;
         int64_t len;
@@ -1471,16 +1505,17 @@ void Driver::compileString(const std::string& source,
 }
 
 void Driver::startAnalysisSession() {
-  typeRegistry = std::make_shared<TypeRegistry>();
-  analyzer = std::make_unique<SemanticAnalyzer>(typeRegistry);
-  codegenVisitor = std::make_unique<CodegenVisitor>(*ctx, typeRegistry);
+  analyzedTree_.reset();
+  analysisResults = std::make_shared<AnalysisResults>();
+  analyzer = std::make_unique<SemanticAnalyzer>(analysisResults);
+  codegenVisitor = std::make_unique<CodegenVisitor>(*ctx, analysisResults);
 }
 
 Driver::AnalyzedProgram Driver::analyzeString(const std::string& source,
                                               const std::string& filePath) {
   startAnalysisSession();
   AnalyzedProgram result;
-  result.typeRegistry = typeRegistry;
+  result.results = analysisResults;
   try {
     auto parser = prepareStringParser(source, filePath);
     result.ast = parser.parseProgram();
@@ -1501,7 +1536,7 @@ Driver::AnalyzedProgram Driver::analyzeFiles(
     const std::map<std::string, std::string>& sourceOverrides) {
   startAnalysisSession();
   AnalyzedProgram result;
-  result.typeRegistry = typeRegistry;
+  result.results = analysisResults;
   moonImports_ = moonImports;
   try {
     result.ast = parseAndMergeFiles(sourceFiles, protoFiles, sourceOverrides);

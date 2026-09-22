@@ -19,7 +19,8 @@ class TernaryExprAST : public ExprAST {
   std::unique_ptr<ExprAST> cond, thenExpr, elseExpr;
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   TernaryExprAST(std::unique_ptr<ExprAST> cond,
                  std::unique_ptr<ExprAST> thenExpr,
                  std::unique_ptr<ExprAST> elseExpr, sun::support::Position loc)
@@ -31,7 +32,8 @@ class TernaryExprAST : public ExprAST {
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::TERNARY; }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     fn(cond);
     fn(thenExpr);

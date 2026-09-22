@@ -16,7 +16,8 @@ using sun::support::logAndThrowError;
 /** Adapts Sun values and calls to the target C calling convention. */
 namespace sun::codegen::abi {
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /** Returns the target architecture and platform recorded on an LLVM module. */

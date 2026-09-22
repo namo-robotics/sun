@@ -49,11 +49,11 @@ using sun::types::TypePtr;
  * A heap allocation the current scope owns and must free on the way out.
  */
 struct OwnedAllocation {
-  llvm::Value* ptrAlloca;    // Alloca storing the heap pointer
-  std::string varName;       // Variable name (for debugging)
-  bool moved;                // If true, ownership was transferred - don't free
-  TypePtr pointeeType;       // Type of the pointed-to object (for recursive
-                             // field cleanup)
+  llvm::Value* ptrAlloca;  // Alloca storing the heap pointer
+  std::string varName;     // Variable name (for debugging)
+  bool moved;              // If true, ownership was transferred - don't free
+  TypePtr pointeeType;     // Type of the pointed-to object (for recursive
+                           // field cleanup)
 };
 
 /**
@@ -116,7 +116,8 @@ class ScopeManager {
 
   /** Creates the manager that tracks generated scopes and their cleanup. */
   ScopeManager(const ScopeManager&) = delete;
-  /** Disallows assignment so ownership and object identity cannot be duplicated. */
+  /** Disallows assignment so ownership and object identity cannot be
+   * duplicated. */
   ScopeManager& operator=(const ScopeManager&) = delete;
 
   // ---------------------------------------------------------------
@@ -313,8 +314,8 @@ class ScopeManager {
                        const std::string& baseName);
 
   /**
-   * Emit cleanup code for raw_ptr&lt;T&gt; fields in a class, recursively freeing
-   * pointer fields before the containing object is freed.
+   * Emit cleanup code for raw_ptr&lt;T&gt; fields in a class, recursively
+   * freeing pointer fields before the containing object is freed.
    */
   void emitFieldCleanup(llvm::Value* objectPtr, const ClassType* classType,
                         const std::string& baseName,

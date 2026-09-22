@@ -285,9 +285,11 @@ Value* CodegenVisitor::codegen(const sun::ast::NumberExprAST& expr) {
 }
 
 Value* CodegenVisitor::codegen(const sun::ast::StringLiteralAST& expr) {
-  // Create a global string constant
-  llvm::GlobalVariable* strGlobal =
-      ctx.builder->CreateGlobalString(expr.getValue(), "str");
+  // Create a global string constant. The module is named explicitly because
+  // a file-scope initializer has no open function for the builder to find it
+  // through.
+  llvm::GlobalVariable* strGlobal = ctx.builder->CreateGlobalString(
+      expr.getValue(), "str", /*AddressSpace=*/0, module);
   // Get pointer to the first character (i8*)
   Value* strPtr = ctx.builder->CreateConstGEP2_32(strGlobal->getValueType(),
                                                   strGlobal, 0, 0, "str.ptr");

@@ -1,407 +1,170 @@
 # Semantic Analysis
 
-The semantic analyzer's job is to turn a merely *parsed* program into an
-*understood* one: every expression gets a resolved type, every name gets a
-meaning, and anything inconsistent is rejected with an error. It prepares
-declarations and annotates the AST in place; the borrow checker and codegen
-read those annotations.
+Semantic analysis gives a parsed program its meaning: it identifies declarations,
+resolves types, checks expressions, and prepares generic specializations. It
+receives a complete AST and performs no file loading or parsing.
 
-## Semantic Analyzer
+## Analysis flow
 
-`SemanticAnalyzer` owns the shared `SemanticContext`, checking helpers, and
-`SemanticPipeline`. The context holds scopes, symbols, class shapes, and pending
-extensions; the shared type registry owns semantic types and declaration IDs.
-Semantic helpers handle type resolution, calls, generics, enums, and recursive
-body checking. Pure type computation and compatibility checking live in the
-nested `sun::semantic_analysis::type_analysis` module.
+Imported bundles are prepared before source declarations. The bundle currently
+being built is treated as source.
 
-The driver invokes the pipeline to prepare declarations and check bodies in
-order. Passes and helpers annotate the same AST using the shared context.
-Generated generic syntax enters through `SemanticPipeline::prepareGenerated()`;
-nested bodies use recursive helper calls without restarting the pipeline.
+```mermaid
+flowchart TB
+    INPUT["Complete AST"]
 
-## Type analysis boundary
+    subgraph IMPORTS["Prepare imports"]
+        IMPORT_DECLS["Register imported declarations<br/>validate dependencies and resolve types"]
+        IMPORT_BODIES["Check queued specialization bodies"]
+        IMPORT_DECLS --> IMPORT_BODIES
+    end
 
-`include/semantic_analysis/type_analysis/` and
-`src/semantic_analysis/type_analysis/` group type inference, compatibility checks,
-written-type resolution, and contextual type rules in
-`sun::semantic_analysis::type_analysis`.
+    subgraph SOURCE["Analyze source"]
+        PREPARE["Prepare declarations<br/>identities, names and type registration"]
+        SIGNATURES["Resolve fields and callable signatures"]
+        DECL_BODIES["Check queued specialization bodies"]
+        BODIES["Check source bodies"]
+        SOURCE_BODIES["Check queued specialization bodies"]
+        GLOBALS["Determine global initial values"]
+        PREPARE --> SIGNATURES --> DECL_BODIES --> BODIES
+        BODIES --> SOURCE_BODIES --> GLOBALS
+    end
 
-The pure components are `type_inferer`, `generic_type_arguments`, `type_checking`,
-and `type_traits`. They receive prepared type descriptions, literal facts,
-parameter shapes, and compatibility results. Inference returns a value or an
-`InferenceFailure`; compatibility predicates return booleans. These components do
-not traverse expression syntax, look up names, report diagnostics, or request
-specializations. Source comments document this convention: pure components
-must not depend on the contextual components, even though they share a folder
-and namespace.
+    OUTPUT["Analyzed AST and AnalysisResults"]
+    INPUT --> IMPORT_DECLS
+    IMPORT_BODIES --> PREPARE
+    GLOBALS --> OUTPUT
+```
 
-`TypeResolver` resolves annotations, scoped substitutions, constraints, and const
-views, including any nominal specialization they require. `type_rules` applies
-contextual literal coercions and reports source-located type errors. Semantic
-handlers prepare facts, select callable signatures, and record results on the AST.
-Storage and control-flow queries live separately in `expression_properties`.
+Registration makes declarations available before their uses are checked.
+Imported declaration records are all registered before exact dependencies are
+validated, so import order does not determine which declarations can be found.
 
-Shared type descriptions live in `include/types/` and `src/types/`, in namespace
-`sun::types`. `types.h` is a small umbrella header; the base interface, concrete
-types, factories, identity comparisons, and shared queries have focused headers.
-Implementations that require several concrete types live in `.cpp` files so each
-header can be included independently. Pure analysis treats supplied descriptions
-as read-only and may construct new structural types. The session-owned `TypeRegistry` and its
-specialization keys live in `semantic_analysis/type_registry.h`; registration
-remains a semantic responsibility. Declaration identities and serialization
-formats are unchanged.
+Body checking resolves references, selects calls, infers expression types, checks
+type compatibility, and records captures and conversions. Global initializers
+are then classified as values that can be stored in the program image or work
+that must run at startup.
 
-Expected types are arguments to semantic checking, separate from an expression's
-resolved type. For example, an array argument receives its parameter's type as a
-hint; only after its elements have been checked is its computed type recorded.
-Inference remains part of body checking rather than a new compilation pass.
+## Data shared with codegen
 
-## Analysis Passes
+Analysis produces two connected outputs: program-wide records in
+`AnalysisResults`, and annotations plus specialized bodies on the AST.
 
-The pipeline runs the following steps in order.
+```mermaid
+flowchart LR
+    subgraph RESULTS["AnalysisResults"]
+        DECLS["DeclarationTable<br/>records of declared entities"]
+        TYPES["TypeRegistry<br/>class, interface and enum descriptions"]
+        TYPES -.->|declaration IDs| DECLS
+    end
 
-### Field Initializer Preparation
+    subgraph TREE["Analyzed AST"]
+        NODES["Source and specialized bodies"]
+        ANNOTATIONS["Annotations<br/>types, selected declarations,<br/>signatures and conversions"]
+        NODES -->|carry| ANNOTATIONS
+    end
 
-`FieldInitializerPreparationPass` supplies implicit constructors and lowers field
-defaults into constructor bodies. It traverses the entire AST, including local
-classes, so generated declarations exist before identity assignment and naming.
-It does not require resolved signatures or types.
+    ANNOTATIONS -.->|selected IDs| DECLS
+    ANNOTATIONS -.->|nominal type references| TYPES
+    DECLS -.->|syntax links| NODES
+    DECLS --> CODEGEN["Codegen"]
+    TYPES --> CODEGEN
+    NODES --> CODEGEN
+    ANNOTATIONS --> CODEGEN
+```
 
-### Declaration Identity
+**A type describes the values an expression can have.** The compiler represents
+it with a semantic `Type`: an integer type describes its width and signedness;
+a class type describes its fields, their types, and its method signatures.
+`TypeRegistry` holds the descriptions of declared classes, interfaces and enums,
+including concrete generic instances such as `Box<i32>`. Primitive types,
+references, arrays and function signatures also have semantic type descriptions,
+but are not entries in this registry.
 
-`DeclarationIdentityPass` assigns session IDs to declarations and their binders
-throughout the tree, including function bodies. Repeated runs preserve IDs, and
-reopened modules share an identity. Assignment does not resolve signatures or
-change source visibility and duplicate-name checks.
+**A declaration introduces an entity into the program**, such as a class,
+function, variable or field. `DeclarationTable` gives each one an identity and
+records its name, kind, enclosing declaration and module. Where available, the
+record also links to its syntax. Two variables can have the same type while
+remaining distinct declarations.
 
-### Declaration Naming
+**An AST annotation records what analysis learned about a particular piece of
+syntax.** A variable reference records which declaration it refers to and its
+resolved type. A call records the selected function and any argument conversions.
+Codegen reads these decisions when emitting that expression; function and class
+bodies remain in the AST, including generated specializations.
 
-`DeclarationNamingPass` assigns source names and scope paths without resolving
-types or registering symbols. Declaration identity assignment already recorded
-the owning modules. It preserves names supplied by
-imports and specializations, including aliased bundle modules. Local declarations
-receive names later, when body checking reaches their resolved enclosing scope;
-local variables remain unqualified.
+### Example: `point.x`
 
-### Declaration Collection and Signature Resolution
+Suppose `point` has type `Point`, with a field `x: i32`. The diagrams show selected
+fields using illustrative declaration IDs: `#10` for `Point`, `#11` for `x`, and
+`#1` for their module.
 
-`DeclarationCollectionPass` registers types and generic templates, then resolves
-class shapes and function signatures. It collects type names across the module
-tree first, allowing sibling modules to refer to each other's types. Overloads
-share a source qualified name and are selected using resolved parameter types;
-declaration IDs distinguish the selected targets. Sun forward declarations retain
-the selected definition ID and cannot replace an available definition during
-body checking. Duplicate type declarations are checked by source name within
-their semantic scope; reopened modules reuse that scope.
+**AST node.** Syntax and analysis results live together. The analysis block
+records which field was selected and the type of the resulting expression.
 
-C extern globals are also registered here so functions can use them before their
-source declarations. Their `isCExtern` flag governs unsafe access, and
-`c_abi_types.h` provides the shared C-layout checks for extern parameters and
-globals.
+```mermaid
+flowchart TB
+    subgraph NODE["MemberAccessAST: point.x"]
+        direction TB
+        SYNTAX["Syntax<br/>object: point<br/>memberName: x"]
+        subgraph ANALYSIS["Analysis block"]
+            FACTS["targetDeclaration: #11<br/>resolvedType: i32"]
+        end
+        SYNTAX -->|annotated by analysis| FACTS
+    end
+```
 
-### Body Analysis
+**Type registry value.** Looking up the class identity gives its semantic shape.
+The field's type describes its values; its declaration ID identifies the field.
 
-`BodyAnalyzer` checks prepared statements in source order, resolving references,
-inferring types, selecting overloads, and validating statements in context. It is
-a recursive helper owned by `SemanticAnalyzer`; the pipeline starts it after
-preparation and collection.
+```mermaid
+flowchart TB
+    subgraph REGISTRY["TypeRegistry"]
+        KEY["DeclarationId #10"]
+        subgraph TYPE["ClassType"]
+            CLASS["name: Point<br/>declarationId: #10"]
+            FIELD["Field<br/>name: x<br/>type: i32<br/>declarationId: #11"]
+            CLASS -->|fields| FIELD
+        end
+        KEY -->|lookup| CLASS
+    end
+```
 
-Body checking names local classes and interfaces, including their methods, before
-resolving method signatures. Nested blocks, functions, and lambdas are checked
-through ordinary recursion. Generic templates registered during collection are not
-registered again here.
+**Declaration record.** The same field ID leads to a record describing what was
+declared and where it belongs. Its owner is the `Point` class.
 
-## Declaration identities
+```mermaid
+flowchart TB
+    subgraph TABLE["DeclarationTable"]
+        KEY["DeclarationId #11"]
+        subgraph RECORD["DeclarationRecord"]
+            IDENTITY["name: x<br/>kind: Field<br/>owner: #10<br/>module: #1"]
+        end
+        KEY -->|lookup| IDENTITY
+    end
+```
 
-`DeclarationId` is a typed integer meaningful only in its owning analysis
-session. An analyzed-program snapshot retains its type registry and declaration
-table after the driver is released; each editor analysis creates a new session.
-Declaration annotations hold the ID; a function forwards access to
-its prototype so both denote the same declaration. Parameters and members also
-receive IDs. Literals and other expressions that declare nothing do not.
+A `DeclarationId` connects these structures within one compilation.
+`PortableDeclarationKey` provides identity across bundle boundaries. Names
+support source lookup; identities distinguish declarations even when names match.
 
-`clearComputedAnalysis()` drops inferred results and resolved targets while
-preserving declaration identities. `resetAnalysisSession()` drops both while
-retaining imported source keys for registration in a new session. The
-subtree helpers apply those operations to child declarations and struct-backed
-bindings as well. A session marker rejects accidental reuse of an annotated
-tree with another declaration table. Serialization-based cloning does not copy
-session IDs, so cloned declarations are registered afresh. The specializer sends
-new syntax through `SemanticPipeline::prepareGenerated()` before resolving it;
-signature helpers and body passes do not run declaration identity passes.
+Scopes and the specialization queue are analysis working state. Scopes determine
+which names are visible; the queue tracks bodies still needing checks. Codegen
+uses the recorded results rather than repeating that work.
 
-Computed closure captures live in prototype analysis alongside the resolved
-signature. Both reset operations discard their binding IDs and semantic types.
-Cloning and bundle serialization preserve the written capture lists, including
-ownership and const borrows, but omit computed captures. Analysis reconstructs
-those records in the destination session. Retained snapshots keep their original
-captures and declaration table alive independently of later driver analyses.
+## Generics: signatures before bodies
 
-Ordinary resolved calls and variable references carry target IDs. Direct and
-module-qualified function calls and named function values use an ID-to-LLVM-function
-map. Codegen binds IDs when declaring or importing functions, including forward
-declarations, externs, and generic specializations. Resolved function lookup does
-not fall back to symbol names. Declaration records contain no emitted symbols.
-Concrete generic calls retain their selected ID and callable signature, so codegen
-and return-type inference do not reconstruct specialization names.
+Specialization prepares concrete types and signatures immediately, then queues
+the bodies that need checking. For example, `Box<T>.get() T` becomes
+`Box<i32>.get() i32`, so a caller knows the result type before the method's
+implementation is checked.
 
-Source, specialized, builtin, and synthetic nominal types are interned by
-session declaration ID. Equality compares the session and ID; class shapes and
-implemented interfaces also use IDs. Specializations are interned by their
-source declaration, enclosing instance, semantic type arguments, and variadic
-arguments. Abstract type parameters compare their binder IDs. Names remain in
-source scopes for lookup, overload selection, visibility, and duplicate checks.
-Resolved generic classes, interfaces, and enums retrieve their templates from
-the retained scope tree by ID, following the specialization record to its source
-declaration. The same traversal handles all three kinds without another
-registry. This works after local source scopes close, including type-argument
-substitution and enum const views. Source-declaration retrieval checks the owning
-session before using the ID. Enum expected-type matching and match patterns also
-compare declarations, so a same-named enum in an inner scope cannot stand in for
-the selected template. Generic enum registration checks the current scope, so
-an outer declaration does not prevent an inner declaration from being registered.
-Generic names remain for diagnostics, editor navigation,
-and the legacy artifact representation. Class emission tracks
-completed declarations by ID. Interface dispatch caches owning and borrowed
-vtables together under the concrete class and interface IDs, and rejects types
-from another session. The cache belongs to one codegen run; its LLVM globals are
-owned by that run's module. Enum variants retain their IDs in semantic types;
-specialized variants have concrete enum owners and source-variant origins.
+Each queue-draining stage checks all pending bodies, including new
+specializations requested by those bodies. Repeated requests reuse the same
+specialization. Bodies resolve names in their template's definition scope,
+preserving its imports and visibility rules.
 
-Codegen registers local and global storage under declaration IDs. Parameters,
-expanded variadic arguments, references, and loop/pattern/catch bindings use the
-same rule. Captures retain the selected binding ID; their environment slot is a
-separate layout decision. Field access retains a selected field ID, which the
-resolved class maps to its layout index. Struct initializers retain their field
-selections in source order. The method frame holds the implicit receiver. LLVM
-class and enum layouts are shared by their fields and packing rather than source
-names, so same-named local types can have different layouts.
-
-A source block has its own semantic scope. Once that scope closes, its resolved
-result type can be reused without repeating lookup of its locals. Constructor
-field defaults already refer to the bindings selected before constructor
-parameters became visible, so codegen does not hide and restore parameters by
-name. Imported and C globals are registered before dependent bodies are emitted.
-
-`PortableDeclarationKey` provides the separate representation for artifact
-identity: an original declaration uses a full SHA-256 bundle digest and a
-bundle-local declaration number. Instances use template and structural type
-keys; generated declarations use an origin, role, and structural slot. A
-session table can bind each portable key to exactly one declaration ID.
-
-The canonical encoder represents each tuple with a one-byte kind tag, an
-unsigned big-endian field count, and an unsigned big-endian byte length before
-each field. Counts, lengths, and integer values occupy eight bytes. Original
-keys, instances, enclosing-instance bindings, and generated declarations use
-`D`, `S`, `I`, and `G`. Type keys use `P`, `N`, `R`, `Q`, `A`, `F`, and `U`;
-ordered type lists use `L`. An absent variadic pack uses `V`, so it differs from
-an empty `L` pack. Callable keys include throwing, unsafe-call, lambda, and
-reference-environment flags. Lifetime spelling is deliberately erased, matching
-specialization identity. Symbol encoding hashes an `E` tuple containing
-`SUN1`, the key, and the emission role, and prefixes the full hexadecimal
-SHA-256 digest with `_SUN1_`. Tests freeze the encoding independently of
-protobuf, display strings, and session allocation.
-
-At an artifact boundary, the encoder converts concrete semantic types and
-specialization records directly. Nominal types refer to declaration keys without
-expanding recursive fields, and conversion rejects types from another session or
-sources without assigned keys. Generated variadic elements retain explicit slots;
-interface receiver helpers retain a generated role. Internal specialization
-comparison uses exact recursive type identity, so pointer conversions cannot
-merge instances with different layouts.
-
-Bundle format 4 uses a full SHA-256 digest computed before code emission. Its
-input begins with `sun.bundle.v1`, followed by tagged, length-prefixed records.
-Source fingerprints, archive name/digest pairs, and dependency digest/alias
-records are sorted before hashing. Format version, target triple, debug and
-optimization settings, and compiler version/revision follow. Lengths are unsigned
-big-endian integers. Emitted symbols and bitcode are excluded, avoiding a circular
-identity definition. Writers and imported metadata require full lowercase digest
-strings. Explicit imports reject unsupported versions; directory
-discovery skips them so stale build outputs do not prevent rebuilding.
-
-The driver supplies an artifact callback immediately after source identity
-assignment. It assigns original keys before imported templates can be
-instantiated. The bundle scope uses ordinal one; declarations and their binders
-follow in source traversal order, with sibling nodes ordered by source file and
-offset. Reopened modules receive one key, imported trees keep their existing
-keys, and generated instances derive their keys from their original declarations.
-Executable sources receive a digest of their serialized source syntax. Compiler
-builtins have a fixed ABI identity independent of session allocation.
-
-Format 4 metadata carries original declaration records, portable ownership links,
-and keys for nominal and module references. Import restores these records before
-attaching syntax or resolving signatures, so repeated imports share session IDs.
-Imported source keys survive an analysis-session reset. Ordinary AST clones
-omit declaration identities while retaining written portable
-references to dependencies. Qualified names remain for source lookup, visibility,
-and diagnostics; they no longer identify declarations in bundle metadata.
-
-Emission derives Sun function, method, global, vtable, and interface/enum drop symbols
-from portable keys and explicit roles. The program entry point and explicit C ABI
-names retain their required spellings. Runtime exception tags derive from the
-same portable identity. Compiled class inventories contain canonical instance
-keys and exact required method symbols; the bundle writer advertises an instance
-only when all its method definitions are present.
-
-## Scope Tree
-
-All name resolution happens against a **scope tree** that mirrors the
-program's structure: a global scope with module, import, function, and block
-scopes nested inside it. Looking up a name walks from the innermost scope
-outward, also consulting `using` imports and, for code that came from a
-`.moon` library, the scope of the module that defined it. Function scopes
-additionally carry context the analysis needs later — whether the function
-may throw, and its return type (used to infer types in `return` position).
-
-## The Deep Walk
-
-During the deep walk, a few things are happening at once:
-
-- **Type inference** — the type of every expression is computed bottom-up
-  (an untyped literal is an `i32`, a suffixed literal like `21u8` names its
-  own type, a call has its callee's return type, and so on).
-- **Expected-type propagation** — types also flow *top-down* where context
-  determines them: a variable's annotation shapes its initializer, a
-  function's return type shapes its `return` expressions, a parameter type
-  shapes its argument. This is how untyped integer literals adopt the right
-  width and how `Option.None` learns its type arguments. A suffixed literal
-  arrives already typed and ignores the expected type; its value is
-  range-checked against the suffix instead.
-- **Overload selection** — once argument types select an overloaded method,
-  the chosen function signature remains attached to the callee. Later result
-  inference uses that signature instead of looking up the method name again.
-- **Checking** — assignments, arguments, and operators are verified for
-  compatibility; overloads are resolved against the actual argument types;
-  calls to throwing functions must sit inside `try` or a throwing function;
-  enum matches must be exhaustive.
-- **Argument conversions** — once a call's signature is settled, each
-  argument is tagged with how it reaches its parameter (`ArgConversion`:
-  pass by value, move, borrow, class to interface, numeric widening, and so
-  on — `include/semantic_analysis/argument_conversion.h`). The rules live in
-  `sun::conversions::classifyArgument`; codegen only carries the tags out.
-- **Capture detection** — lambdas are scanned for references to outer
-  variables so codegen can build their closure environments.
-- **Field initialization** — each constructor is walked once more
-  (`checkFieldInitialization`, `field_initialization.cpp`) to enforce the
-  two-phase rule and to tag every `this.field = value` with what becomes of
-  the value that was there. The walk carries the fields assigned on *every*
-  path and on *some* path; between them a write starts a field's life, or
-  replaces a value, or lands somewhere the walk cannot tell, where codegen
-  checks the storage at run time. A method the constructor calls is walked
-  the same way for a summary of what it assigns and what it needs assigned
-  already.
-
-## Generics
-
-**Generics are monomorphized here, not in codegen.** When analysis meets
-`Vec<i32>` or `Option<f64>`, it instantiates the template with the type
-arguments bound: annotations inside the template resolve against those
-bindings, and the resulting concrete type (plus, for classes, a cloned and
-re-analyzed copy of the method bodies) is recorded on the template's AST
-node. Codegen later walks those recorded specializations and emits each one
-as ordinary non-generic code.
-
-Instantiation happens lazily at the first use, but the template's body is
-analyzed **in the scope the template was declared in**: every generic
-template records its `definitionScope` when registered, and the instantiators
-switch `currentScope` to it (`ScopeSwitchGuard`) before pushing the transient
-type-parameter / class / function scopes. So a body sees exactly the names
-its author could see — its module's private helpers, the module's `using`s,
-transitive dependencies — and never the requester's locals or imports. Only
-the resulting specialized type is registered back in the requesting scope
-(as a lookup fast path); identity lives in the global `TypeRegistry` and the
-specialization list on the template's AST.
-
-**Type arguments are applied once, by one of two operations.** Resolving a
-written annotation and substituting into an existing type are separate jobs,
-and each applies the bindings in scope a single time. `typeAnnotationToType`
-starts from source syntax — `ref Vec<T>` as the parser produced it — and fills
-in every type parameter as it walks, so what it returns is already final.
-`substituteTypeParameters` starts from a type with no annotation behind it,
-worked out somewhere earlier: a variable's recorded type, a generic method's
-signature stored on its class, the type of a captured value. Applying both to
-one type is not a harmless repeat. Type parameter equality uses binder IDs,
-but substitution still uses the bindings in the active definition scope.
-Repeating substitution in a different template's scope can select its `T`. `IIterable` names its own first parameter `T`, so
-`class Vec<T> implements IIterable<ref T, Vec<T>>` puts two unrelated `T`s
-within reach of a single lookup.
-
-**A template has a shape of its own, distinct from any specialization.**
-`Vec<T>` with `T` still a type parameter is what the signature
-`count<T>(v: ref Vec<T>)` names before anything calls it. That shape is built
-much like a specialization — its members are resolved, because a template body
-resolves against them — but it is never recorded as one (`abstractShape` in
-`generic_specializer.cpp`). Codegen lays out every specialization recorded on
-a template, and a type parameter has no layout. The same reasoning exempts a
-shape from checks that need a real type: a payload enum's variants go
-unvalidated, since what a `T` may carry is only knowable once `T` is a type.
-Recording and validation both happen when `count<i32>` builds `Vec<i32>`.
-
-## Access Control
-
-Declarations carry visibility and a declaration ID. `QualifiedName` contains only
-`scopePath` and `baseName`; it describes source spelling, not module ownership.
-`DeclarationRecord::module` identifies the declaring module, including for nested
-classes, members, generated specializations, and imported declarations.
-
-`sun::access::isAccessible` accepts public items, or private items whose declaring
-module is the asking module or one of its ancestors. It compares declaration IDs
-and follows the module ownership chain. Top-level source items belong to the
-root; imported bundle roots have distinct module IDs, so bundle-private items
-remain inaccessible to importers. Import aliases change source lookup without
-changing ownership. Diagnostic module paths are reconstructed from declaration
-records instead of copied from qualified names.
-
-Enforcement lives in two places:
-
-- **Module-level items** are filtered inside the scope lookups
-  (`AccessFilter` in `semantic_scope.h`, used by `lookupInChain`,
-  `lookupFunction`, `resolveNameWithUsings`, `findSymbolInModule`, ...). The
-  analyzer implements `AccessContext`, which tells lookups which module is
-  asking and reports a denial ("`helper` is private to module `std`") when
-  the only candidates were private.
-- **Class / interface members** are resolved on the type
-  (`SemanticAnalyzer::accessibleField / accessibleMethod`), which check the
-  member's visibility (owner = the type's module) where `obj.member` is
-  resolved.
-
-Because generic bodies are analyzed inside their definition scope, "which
-module is asking" is always the nearest `Module` scope on the stack — no
-override is needed. `deinit` is always public (`methodVisibility`). Wording
-of every diagnostic comes from `sun::access::denialMessage`
-(`access_checker.h`).
-
-## Source Layout
-
-The analyzer's source is split by concern under `src/semantic_analysis/`:
-
-| File | Responsibility |
-|------|----------------|
-| `semantic_pipeline.cpp` | Owning and ordering all passes within the analyzer |
-| `field_initializer_preparation_pass.cpp` | Preparing field defaults and implicit constructors |
-| `declaration_naming_pass.cpp` | Program naming traversal and individual local declaration names |
-| `declaration_collection_pass.cpp` | Registering declarations and resolving signatures |
-| `body_analyzer.cpp` | Recursive statement checking and function scopes |
-| `analysis.cpp`, `analysis_*.cpp` | Shared expression and construct checking helpers |
-| `type_analysis/type_inferer.cpp`, `type_analysis/generic_type_arguments.cpp` | Pure expression type computation and generic argument deduction |
-| `type_analysis/type_checking.cpp`, `type_analysis/type_traits.cpp` | Assignability, literal range checks, and type-trait predicates |
-| `expression_resolution.cpp`, `call_result_resolution.cpp` | Name/member resolution and call-result preparation |
-| `expression_properties.cpp` | Storage and control-flow queries on analyzed expressions |
-| `type_analysis/type_resolver.cpp` | Resolving written annotations, and substituting into a resolved type |
-| `semantic_context.cpp` / `scope_lookup.cpp` | Shared scopes, symbols, and declaration bookkeeping (`declaration_state.h`) |
-| `generic_specializer.cpp`, `generic_type_arguments.cpp` | Monomorphization and semantic adapters for generic deduction |
-| `interfaces.cpp`, `enums.cpp`, `packed_classes.cpp` | Per-construct analysis |
-| `argument_conversion.cpp`, `type_analysis/type_rules.cpp` | Argument conversions, syntax coercion, and diagnostic adapters |
-| `access_checker.cpp` | Visibility |
-| `captures.cpp` | Closure captures |
-| `field_initialization.cpp` | The two-phase constructor rule, and what each field write drops |
-
-Overload tables use the source name and exact structural parameter types. Nominal
-parameter types compare declaration IDs, so identical spellings in different
-scopes remain distinct. Generic instances retain their source qualified names;
-`SpecializationKey` and declaration IDs distinguish their concrete arguments.
-Module variables are indexed by source name within their owning scope. Encoded
-portable declaration keys are used only where emitted symbols need stable names
-across compilation sessions.
+Recognized compiled specializations reuse their existing implementations.
+Abstract shapes containing unresolved type parameters support template checking
+but are not emitted as concrete implementations. Named functions without return
+annotations use `void`; their return types are not inferred from their bodies.

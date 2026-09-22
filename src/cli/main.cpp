@@ -42,7 +42,8 @@ static int runDefaultCommand(const std::string& programName,
 
 }  // namespace sun::cli
 
-/** Parses process arguments and dispatches the selected Sun compiler command. */
+/** Parses process arguments and dispatches the selected Sun compiler command.
+ */
 int main(int argc, char* argv[]) {
   const std::string programName = argc > 0 ? argv[0] : "sun";
   std::vector<std::string> args;

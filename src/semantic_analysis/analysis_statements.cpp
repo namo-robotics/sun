@@ -4,8 +4,12 @@
 // One handler per AST node kind, called from the dispatcher in
 // analysis.cpp.
 
+#include <algorithm>
+#include <functional>
+
 #include "codegen/abi/c_abi_types.h"
 #include "semantic_analysis/expression_properties.h"
+#include "semantic_analysis/globals.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/type_analysis/type_rules.h"
 #include "support/error.h"
@@ -27,6 +31,126 @@ using sun::semantic_analysis::type_analysis::tryCoerceIntegerLiteral;
 using sun::types::unwrapRef;
 
 void SemanticAnalyzer::analyzeVariableCreation(
+    sun::ast::VariableCreationAST& varCreate) {
+  if (isTrackedGlobal(varCreate)) {
+    // An earlier use may already have analyzed this global, which gave it
+    // its type
+    if (!varCreate.getResolvedType())
+      analyzeGlobal(varCreate, ctx_.currentScope());
+    return;
+  }
+  analyzeVariableDeclaration(varCreate);
+}
+
+bool SemanticAnalyzer::isTrackedGlobal(
+    const sun::ast::VariableCreationAST& varCreate) {
+  return ctx_.isAtModuleLevel() && varCreate.hasQualifiedName() &&
+         varCreate.getDeclarationId() &&
+         ctx_.declarationTable().findGlobal(varCreate.getQualifiedName()) ==
+             varCreate.getDeclarationId();
+}
+
+void SemanticAnalyzer::analyzeGlobal(sun::ast::VariableCreationAST& global,
+                                     SemanticScope& scope) {
+  const std::string& name = global.getName();
+  auto repeated =
+      std::find(globalsInProgress_.begin(), globalsInProgress_.end(), &global);
+  if (repeated != globalsInProgress_.end()) {
+    std::string cycle;
+    for (auto step = repeated; step != globalsInProgress_.end(); ++step)
+      cycle += (*step)->getName() + " -> ";
+    logAndThrowError(
+        "Global variable '" + name + "' depends on itself: " + cycle + name,
+        global.getLocation());
+  }
+
+  // A class field or a function signature asks for its array sizes while
+  // declarations are still being collected, when no function can be called
+  // yet: functions are registered after the types their signatures mention.
+  if (ctx_.isCollectingDeclarations() && global.getValue()) {
+    std::function<bool(const ExprAST&)> callsAFunction =
+        [&](const ExprAST& expr) {
+          if (expr.getType() == ASTNodeType::CALL) return true;
+          bool found = false;
+          const_cast<ExprAST&>(expr).forEachChildSlot(
+              [&](std::unique_ptr<ExprAST>& child) {
+                found = found || (child && callsAFunction(*child));
+              });
+          return found;
+        };
+    if (callsAFunction(*global.getValue()))
+      logAndThrowError(
+          "'" + name +
+              "' is needed by a class field or a function signature, so its "
+              "value cannot come from calling a function; write the value "
+              "out, or compute it from other constants",
+          global.getLocation());
+  }
+
+  // The initializer belongs to the scope and file of the declaration, and to
+  // no class or function, wherever the use that asked for it happens to be.
+  SemanticContext::ScopeSwitchGuard scopeSwitch(ctx_, &scope);
+  SemanticContext::SourceFileGuard sourceFile(ctx_, global.getSourceFileId());
+  auto savedClass = ctx_.getCurrentClass();
+  auto savedLifetimes = std::move(activeLifetimeNames_);
+  bool savedAllowThis = allowThisLifetime_;
+  ctx_.setCurrentClass(nullptr);
+  activeLifetimeNames_.clear();
+  allowThisLifetime_ = false;
+  globalsInProgress_.push_back(&global);
+  /** Puts back the analysis state of the code that used the global. */
+  struct Restore {
+    SemanticAnalyzer& sema;
+    std::shared_ptr<sun::types::ClassType> currentClass;
+    std::vector<std::string> lifetimes;
+    bool allowThis;
+    /** Restores the saved state, including when an error unwinds. */
+    ~Restore() {
+      sema.ctx_.setCurrentClass(currentClass);
+      sema.activeLifetimeNames_ = std::move(lifetimes);
+      sema.allowThisLifetime_ = allowThis;
+      sema.globalsInProgress_.pop_back();
+    }
+  } restore{*this, std::move(savedClass), std::move(savedLifetimes),
+            savedAllowThis};
+
+  analyzeVariableDeclaration(global);
+  // Inside a module it is also reachable as `module.name`. A bundle's hash
+  // scope is not a module the program can name.
+  if (scope.getType() == ScopeType::Module && !isLibraryScope(scope.scopeName))
+    registerModuleVariable(global);
+}
+
+void SemanticAnalyzer::registerModuleVariable(
+    sun::ast::VariableCreationAST& varCreate) {
+  if (auto type = varCreate.getResolvedType()) {
+    ctx_.currentScope().declareModuleVariable(
+        varCreate.getQualifiedName(), type, varCreate.getVisibility(),
+        varCreate.isConst(), varCreate.isCExtern(),
+        varCreate.getDeclarationId());
+  }
+}
+
+void SemanticAnalyzer::ensureGlobalAnalyzed(const std::string& name) {
+  if (UnanalyzedGlobal global = ctx_.currentScope().findUnanalyzedGlobal(
+          name, ctx_.declarationTable()))
+    analyzeGlobal(*global.node, *global.scope);
+}
+
+void SemanticAnalyzer::ensureModuleGlobalAnalyzed(const std::string& modulePath,
+                                                  const std::string& name) {
+  auto* moduleScope = ctx_.lookupModuleScope(modulePath);
+  if (!moduleScope) return;
+  const auto& declarations = ctx_.declarationTable();
+  const auto* global = findVariableNode(
+      declarations,
+      declarations.findGlobal(QualifiedName(moduleScope->scopePath, name)));
+  if (global && !global->getResolvedType())
+    analyzeGlobal(const_cast<sun::ast::VariableCreationAST&>(*global),
+                  *moduleScope);
+}
+
+void SemanticAnalyzer::analyzeVariableDeclaration(
     sun::ast::VariableCreationAST& varCreate) {
   if (varCreate.isCExtern()) {
     if (!ctx_.isAtModuleLevel()) {
@@ -172,6 +296,7 @@ void SemanticAnalyzer::analyzeVariableCreation(
 void SemanticAnalyzer::analyzeVariableAssignment(
     sun::ast::VariableAssignmentAST& varAssign) {
   // Look up the variable's type first for expected type propagation
+  ensureGlobalAnalyzed(varAssign.getName());
   VariableInfo* varInfo =
       ctx_.currentScope().lookupVariable(varAssign.getName());
   if (varInfo) varAssign.setTargetDeclarationId(varInfo->declarationId);

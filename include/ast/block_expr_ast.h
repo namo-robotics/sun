@@ -39,10 +39,12 @@ class BlockExprAST : public ExprAST {
   BlockKind Kind = BlockKind::Anonymous;
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   BlockExprAST() = default;
 
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   explicit BlockExprAST(std::vector<std::unique_ptr<ExprAST>> body,
                         BlockKind kind = BlockKind::Anonymous)
       : Body(std::move(body)), Kind(kind) {}
@@ -66,7 +68,8 @@ class BlockExprAST : public ExprAST {
     Body.push_back(std::move(expr));
   }
 
-  /** Moves expressions to the beginning of the block in their original order. */
+  /** Moves expressions to the beginning of the block in their original order.
+   */
   void prependExpressions(std::vector<std::unique_ptr<ExprAST>> exprs) {
     exprs.insert(exprs.end(), std::make_move_iterator(Body.begin()),
                  std::make_move_iterator(Body.end()));
@@ -83,7 +86,8 @@ class BlockExprAST : public ExprAST {
   /** Provides mutable access to the body so compiler passes can rewrite it. */
   std::vector<std::unique_ptr<ExprAST>>& mutableBody() { return Body; }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     for (auto& stmt : Body) fn(stmt);
   }

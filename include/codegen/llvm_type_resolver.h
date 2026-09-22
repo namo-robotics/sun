@@ -49,7 +49,8 @@ class LLVMTypeResolver {
   std::map<sun::types::Type*, llvm::Type*> typeCache;
 
  public:
-  /** Creates a type resolver using the supplied LLVM context and target layout. */
+  /** Creates a type resolver using the supplied LLVM context and target layout.
+   */
   explicit LLVMTypeResolver(llvm::LLVMContext& context,
                             const llvm::DataLayout* dl = nullptr)
       : ctx(context), dataLayout(dl) {}

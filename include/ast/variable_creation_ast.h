@@ -14,7 +14,8 @@
 /** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 
-/** A variable declaration with its type, initializer, and binding properties. */
+/** A variable declaration with its type, initializer, and binding properties.
+ */
 class VariableCreationAST : public ExprAST {
   std::string name;
   std::unique_ptr<ExprAST> value;
@@ -23,6 +24,10 @@ class VariableCreationAST : public ExprAST {
   bool isCExtern_ = false;  // C extern storage is provided by a native global
   bool explicitCAbi_ = false;            // Source spelled the optional "C" ABI
   std::optional<std::string> linkName_;  // Optional native symbol override
+  // The value a library computed for this global, read from its bundle.
+  // It has no types until analysis resolves the global's own type.
+  std::optional<sun::semantic_analysis::constants::ConstantValue>
+      importedConstant_;
   std::string doc_;  // Comment written above the declaration
 
  protected:
@@ -45,7 +50,8 @@ class VariableCreationAST : public ExprAST {
   }
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   explicit VariableCreationAST(
       std::string name, std::unique_ptr<ExprAST> value,
       std::optional<TypeAnnotation> type = std::nullopt, bool isConst = false)
@@ -59,14 +65,29 @@ class VariableCreationAST : public ExprAST {
   }
   /** Reports whether this syntax node represents an immutable declaration. */
   bool isConst() const { return isConst_; }
-  /** Reports whether this syntax node represents a declaration using the C calling convention. */
+  /** Reports whether this syntax node represents a declaration using the C
+   * calling convention. */
   bool isCExtern() const { return isCExtern_; }
   /** Marks whether the function uses the C calling convention. */
   void setCExtern(bool value) { isCExtern_ = value; }
   /** Reports whether this object has explicit c ABI. */
   bool hasExplicitCAbi() const { return explicitCAbi_; }
-  /** Records whether the declaration explicitly uses the C calling convention. */
+  /** Records whether the declaration explicitly uses the C calling convention.
+   */
   void setExplicitCAbi(bool value) { explicitCAbi_ = value; }
+  /**
+   * The compile-time value a library published for this global, if any. Only
+   * a global read from a bundle has one.
+   */
+  const std::optional<sun::semantic_analysis::constants::ConstantValue>&
+  getImportedConstant() const {
+    return importedConstant_;
+  }
+  /** Records the value read from a bundle for this global. */
+  void setImportedConstant(
+      sun::semantic_analysis::constants::ConstantValue value) {
+    importedConstant_ = std::move(value);
+  }
   /** Reports whether an explicit linker symbol name is present. */
   bool hasLinkName() const { return linkName_.has_value(); }
   /** Updates the link name stored by this object. */
@@ -95,7 +116,8 @@ class VariableCreationAST : public ExprAST {
   /** Reports whether this object has value. */
   bool hasValue() const { return value != nullptr; }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     if (value) fn(value);
   }
@@ -130,7 +152,27 @@ class VariableCreationAST : public ExprAST {
   void setQualifiedName(sun::semantic_analysis::QualifiedName qname) {
     varAnalysis().qualifiedName = std::move(qname);
   }
-  /** Reports whether a name including the enclosing scopes has been assigned. */
+  /**
+   * How this file-scope variable gets its first value: computed at compile
+   * time and written into the program, or computed by the startup function.
+   * Null until analysis has decided, and for a variable that is not at file
+   * scope.
+   */
+  const sun::semantic_analysis::constants::GlobalInitRecord* getGlobalInit()
+      const {
+    return analysis_
+               ? static_cast<VariableAnalysis&>(*analysis_).globalInit.get()
+               : nullptr;
+  }
+  /** Records the decision made for this file-scope variable. */
+  void setGlobalInit(
+      sun::semantic_analysis::constants::GlobalInitRecord record) const {
+    varAnalysis().globalInit = std::make_shared<
+        const sun::semantic_analysis::constants::GlobalInitRecord>(
+        std::move(record));
+  }
+  /** Reports whether a name including the enclosing scopes has been assigned.
+   */
   bool hasQualifiedName() const {
     return analysis_ &&
            !static_cast<VariableAnalysis&>(*analysis_).qualifiedName.empty();

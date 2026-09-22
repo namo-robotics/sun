@@ -18,7 +18,8 @@ class PackExpansionAST : public ExprAST {
   std::string packName;  // Name of the variadic parameter to expand
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   explicit PackExpansionAST(std::string name) : packName(std::move(name)) {}
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::PACK_EXPANSION; }

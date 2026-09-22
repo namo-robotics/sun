@@ -35,7 +35,8 @@ class VariableAssignmentAST : public ExprAST {
   }
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   explicit VariableAssignmentAST(std::string name,
                                  std::unique_ptr<ExprAST> value)
       : name(std::move(name)), value(std::move(value)) {}
@@ -44,7 +45,8 @@ class VariableAssignmentAST : public ExprAST {
     return ASTNodeType::VARIABLE_ASSIGNMENT;
   }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override { fn(value); }
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {

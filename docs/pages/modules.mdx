@@ -679,3 +679,28 @@ bodies shipped in the bundle may use them — but importers can only reach the
 public API. `--emit-moon` requires each top-level module of the bundle to be
 `public`; a bundle whose root module is private is rejected.
 
+Globals that need code to initialize them, such as a class value built by its
+constructor, are set up before `main` runs. A library's globals are always
+initialized before those of any library or program that imports it, and only
+once, even when the library is imported both directly and through another
+library.
+
+A bundle also publishes the value of every `const` it worked out at compile
+time. An importer can compute with such a value just as the library could: in
+the initializer of its own constants, and as an array size. The storage is
+still the library's; only the value is shared.
+
+```sun
+using limits;                                   // limits.moon: public const ROWS: i64 = 3;
+const CELLS: i64 = limits.ROWS * 2;             // computed at compile time
+var row: array<i32, limits.ROWS> = [1, 2, 3];
+```
+
+A library `const` that only gets its value at startup has no value to publish,
+so it cannot be an array size in an importer either.
+
+A bundle's globals, `extern "C" var` declarations included, must be declared
+inside a module. A global outside any module could not be reached by an
+importer, so `--emit-moon` rejects it, and importing a bundle that carries one
+is an error.
+

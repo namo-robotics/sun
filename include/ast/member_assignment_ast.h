@@ -20,7 +20,8 @@ class MemberAssignmentAST : public ExprAST {
   std::unique_ptr<ExprAST> value;   // The value to assign
 
  protected:
-  /** Creates the analysis annotations required by this node when first needed. */
+  /** Creates the analysis annotations required by this node when first needed.
+   */
   void ensureAnalysis() const override {
     if (!analysis_) {
       analysis_ = std::make_unique<MemberAccessAnalysis>();
@@ -35,7 +36,8 @@ class MemberAssignmentAST : public ExprAST {
   }
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   MemberAssignmentAST(std::unique_ptr<ExprAST> obj, std::string member,
                       std::unique_ptr<ExprAST> val)
       : object(std::move(obj)),
@@ -47,7 +49,8 @@ class MemberAssignmentAST : public ExprAST {
     return ASTNodeType::MEMBER_ASSIGNMENT;
   }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     fn(object);
     fn(value);

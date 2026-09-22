@@ -1,10 +1,11 @@
 #include <gtest/gtest.h>
 
+#include "semantic_analysis/analysis_results.h"
 #include "semantic_analysis/declaration_table.h"
 #include "semantic_analysis/portable_declaration_key.h"
-#include "semantic_analysis/type_registry.h"
 #include "types/types.h"
 
+using sun::semantic_analysis::AnalysisResults;
 using sun::semantic_analysis::DeclarationKind;
 using sun::semantic_analysis::DeclarationTable;
 using sun::semantic_analysis::TypeRegistry;
@@ -112,8 +113,9 @@ TEST(Tooling_Frontend_PortableIdentity,
 TEST(Tooling_Frontend_PortableIdentity,
      semantic_instances_ignore_allocation_order) {
   auto make = [&](bool reverse) {
-    TypeRegistry registry;
-    auto& table = registry.declarations;
+    AnalysisResults registryResults;
+    TypeRegistry& registry = *registryResults.types;
+    auto& table = registryResults.declarations;
     if (reverse) table.add(DeclarationKind::Variable, "unrelated");
     auto source = table.add(DeclarationKind::Class, "Box");
     auto argument = table.add(DeclarationKind::Class, "Private");
@@ -131,8 +133,9 @@ TEST(Tooling_Frontend_PortableIdentity,
 
 TEST(Tooling_Frontend_PortableIdentity,
      semantic_packs_and_enclosing_owners_are_distinct) {
-  TypeRegistry registry;
-  auto& table = registry.declarations;
+  AnalysisResults registryResults;
+  TypeRegistry& registry = *registryResults.types;
+  auto& table = registryResults.declarations;
   auto source = table.add(DeclarationKind::Function, "apply");
   auto owner = table.add(DeclarationKind::Class, "Owner");
   table.bindPortable(source, PortableDeclarationKey::original(bundle, 1));
@@ -210,19 +213,22 @@ TEST(Tooling_Frontend_PortableIdentity,
 
 TEST(Tooling_Frontend_PortableIdentity,
      semantic_conversion_rejects_missing_and_foreign_identity) {
-  TypeRegistry registry;
-  auto& table = registry.declarations;
+  AnalysisResults registryResults;
+  TypeRegistry& registry = *registryResults.types;
+  auto& table = registryResults.declarations;
   auto id = table.add(DeclarationKind::Class, "Private");
   auto type = registry.getClass(id);
   EXPECT_ANY_THROW(PortableTypeKey::fromType(*type, table));
   table.bindPortable(id, PortableDeclarationKey::original(bundle, 1));
   EXPECT_NO_THROW(PortableTypeKey::fromType(*type, table));
-  TypeRegistry other;
-  auto otherId = other.declarations.add(DeclarationKind::Class, "Private");
+  AnalysisResults otherResults;
+  TypeRegistry& other = *otherResults.types;
+  auto otherId =
+      otherResults.declarations.add(DeclarationKind::Class, "Private");
   EXPECT_EQ(id, otherId);
-  other.declarations.bindPortable(otherId,
-                                  PortableDeclarationKey::original(bundle, 1));
-  EXPECT_ANY_THROW(PortableTypeKey::fromType(*type, other.declarations));
+  otherResults.declarations.bindPortable(
+      otherId, PortableDeclarationKey::original(bundle, 1));
+  EXPECT_ANY_THROW(PortableTypeKey::fromType(*type, otherResults.declarations));
   EXPECT_ANY_THROW(
       PortableTypeKey::fromType(*Types::TypeParameter("T"), table));
 }
@@ -249,8 +255,9 @@ TEST(Tooling_Frontend_PortableIdentity,
 
 TEST(Tooling_Frontend_PortableIdentity,
      interned_instances_preserve_nested_pointer_layouts) {
-  TypeRegistry registry;
-  auto source = registry.declarations.add(DeclarationKind::Class, "Box");
+  AnalysisResults registryResults;
+  TypeRegistry& registry = *registryResults.types;
+  auto source = registryResults.declarations.add(DeclarationKind::Class, "Box");
   auto raw = Types::Array(Types::RawPointer(Types::Int32()), {2});
   auto immortal = Types::Array(Types::StaticPointer(Types::Int32()), {2});
   auto first = registry.specialize({source, {}, {raw}, std::nullopt});

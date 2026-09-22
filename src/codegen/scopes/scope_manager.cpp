@@ -110,7 +110,8 @@ void ScopeManager::trackClassAllocation(Value* alloca, const std::string& name,
   scopes_.back().classAllocations.push_back(std::move(entry));
 }
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /** Identify fields by their path, since empty fields can share an address. */

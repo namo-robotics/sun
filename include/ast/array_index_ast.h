@@ -20,7 +20,8 @@ class ArrayIndexAST : public ExprAST {
   std::vector<std::unique_ptr<ExprAST>> indices;  // One or more indices
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   ArrayIndexAST(std::unique_ptr<ExprAST> arr,
                 std::vector<std::unique_ptr<ExprAST>> idxs)
       : array(std::move(arr)), indices(std::move(idxs)) {}

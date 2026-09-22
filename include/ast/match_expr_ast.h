@@ -47,14 +47,16 @@ struct MatchArm {
    * Move constructor
    */
   MatchArm(MatchArm&& other) = default;
-  /** Transfers the stored state from another instance during move assignment. */
+  /** Transfers the stored state from another instance during move assignment.
+   */
   MatchArm& operator=(MatchArm&& other) = default;
 
   /**
    * No copy
    */
   MatchArm(const MatchArm&) = delete;
-  /** Disallows assignment so ownership and object identity cannot be duplicated. */
+  /** Disallows assignment so ownership and object identity cannot be
+   * duplicated. */
   MatchArm& operator=(const MatchArm&) = delete;
 };
 
@@ -64,7 +66,8 @@ class MatchExprAST : public ExprAST {
   std::vector<MatchArm> arms;             // Match arms
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   MatchExprAST(std::unique_ptr<ExprAST> discriminant,
                std::vector<MatchArm> arms)
       : discriminant(std::move(discriminant)), arms(std::move(arms)) {}
@@ -95,7 +98,8 @@ class MatchExprAST : public ExprAST {
   /** Returns the modifiable pattern-match branches. */
   std::vector<MatchArm>& getArmsMutable() { return arms; }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     fn(discriminant);
     for (auto& arm : arms) {

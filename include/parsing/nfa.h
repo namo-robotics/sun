@@ -18,7 +18,8 @@
 /** Turns source text into syntax trees and provides source formatting. */
 namespace sun::parsing {
 
-/** A state and its outgoing transitions in a nondeterministic finite automaton. */
+/** A state and its outgoing transitions in a nondeterministic finite automaton.
+ */
 struct State {
   bool isAccepting = false;
   std::map<unsigned char, std::unordered_set<State*>>
@@ -50,7 +51,8 @@ struct RegexCapture {
 
 class DFA;
 
-/** Creates an empty nondeterministic automaton ready for pattern construction. */
+/** Creates an empty nondeterministic automaton ready for pattern construction.
+ */
 class NFA {
  private:
   // The DFA reads the compiled arrays below to run lazy subset construction.
@@ -83,7 +85,8 @@ class NFA {
  public:
   State* startState;
   State* acceptingState;
-  /** Creates an empty nondeterministic automaton ready for pattern construction. */
+  /** Creates an empty nondeterministic automaton ready for pattern
+   * construction. */
   NFA() {
     startState = createState();
     acceptingState = createState();
@@ -136,7 +139,8 @@ class NFA {
     return nfa;
   }
 
-  /** Creates an automaton accepting characters in, or outside, a character class. */
+  /** Creates an automaton accepting characters in, or outside, a character
+   * class. */
   static NFA createForCharClass(const std::string& chars,
                                 bool negated = false) {
     std::set<unsigned char> set(chars.begin(), chars.end());
@@ -417,7 +421,8 @@ class DFA {
   static constexpr int32_t kNoAccept = -1;    // acceptKind_ of a non-accepting
 
  private:
-  /** Hashes sets of automaton states during deterministic-state construction. */
+  /** Hashes sets of automaton states during deterministic-state construction.
+   */
   struct SetHash {
     /** Hashes a set of NFA state identifiers for deterministic-state lookup. */
     size_t operator()(const std::vector<int32_t>& v) const noexcept {

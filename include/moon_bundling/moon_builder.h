@@ -39,9 +39,9 @@ struct MoonBuildOptions {
  */
 struct MoonBuildReport {
   std::vector<std::string> sunFiles;  // compiled .sun files (entrypoint first)
-  std::vector<std::string> protoFiles;    // synthesized .proto schemas
-  std::vector<MoonImport> moonImports;    // bundles linked against
-  std::vector<std::string> modules;       // exported module names (dotted)
+  std::vector<std::string> protoFiles;  // synthesized .proto schemas
+  std::vector<MoonImport> moonImports;  // bundles linked against
+  std::vector<std::string> modules;     // exported module names (dotted)
   // Native archives the manifest's own `archives:` named (resolved paths);
   // carried with their symbols renamed under the bundle's hash
   std::vector<std::string> archiveFiles;

@@ -22,6 +22,16 @@ message Position {
 }
 
 /**
+ * One size of an array type. `size` is absent only for a named size that had
+ * not been resolved when the tree was written, such as one inside a generic
+ * class.
+ */
+message ArrayDimension {
+  optional uint64 size = 1;
+  string constant_name = 2;  // "N" or "limits.N"; empty for a plain number
+}
+
+/**
  * Type annotation (mirrors TypeAnnotation in type_annotation.h)
  * Recursive structure for parsed type syntax
  */
@@ -32,7 +42,8 @@ message TypeAnnotation {
   repeated TypeAnnotation param_types = 3;      // For fn/lambda: parameter types
   optional TypeAnnotation return_type = 4;      // For fn/lambda: return type
   repeated TypeAnnotation type_arguments = 5;   // For generics: Vec<i32>
-  repeated uint64 array_dimensions = 6;         // For arrays: array<T, 5, 3>
+  reserved 6;                                   // Sizes were plain numbers
+  repeated ArrayDimension array_dimensions = 14; // For arrays: array<T, 5, N>
   bool requires_unsafe = 13;                   // Calls require an unsafe block.
   bool can_error = 7;                           // Error union: T, IError
   bool const_ref = 8;                           // `const ref T`

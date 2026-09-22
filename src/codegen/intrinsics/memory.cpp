@@ -141,7 +141,7 @@ Value* IntrinsicsGenerator::codegenMemmoveIntrinsic(const CallExprAST& expr) {
 
   // LLVM preserves the source bytes when the ranges overlap.
   ctx.builder->CreateMemMove(dst, llvm::MaybeAlign(1), src, llvm::MaybeAlign(1),
-                            len);
+                             len);
   return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
 }
 

@@ -40,10 +40,10 @@ using sun::types::unwrapRef;
 // isLibraryScope() is provided by semantic_scope.h
 
 SemanticContext::SemanticContext(
-    std::shared_ptr<sun::semantic_analysis::TypeRegistry> registry)
-    : typeRegistry_(std::move(registry)) {
+    std::shared_ptr<sun::semantic_analysis::AnalysisResults> results)
+    : results_(std::move(results)) {
   rootScope_->accessContext = this;  // lookups filter by visibility
-  rootScope_->interfaces["IError"] = typeRegistry_->errorInterface;
+  rootScope_->interfaces["IError"] = results_->types->errorInterface;
   registerBuiltinFunctions();
 }
 
@@ -103,7 +103,7 @@ void SemanticContext::enterModuleScope(const std::string& moduleName) {
   enterScope(currentScope().declareModule(moduleName));
   if (isLibraryScope(moduleName))
     static_cast<ModuleScope*>(currentScope_)->declarationId =
-        typeRegistry_->declarations.module(moduleName);
+        results_->declarations.module(moduleName);
 }
 
 void SemanticContext::enterClassScope(const QualifiedName& className) {
@@ -1034,7 +1034,8 @@ const GenericClassInfo* SemanticContext::lookupGenericClass(
   return currentScope_->lookupGenericClass(name);
 }
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /** Retrieve selected templates, including declarations in closed local scopes.
@@ -1056,19 +1057,19 @@ const Info* findTemplate(
 
 const GenericClassInfo* SemanticContext::lookupGenericClass(
     DeclarationId id) const {
-  typeRegistry_->declarations.get(id);
+  results_->declarations.get(id);
   return findTemplate(*rootScope_, id, &SemanticScopeBase::genericClasses);
 }
 
 const GenericInterfaceInfo* SemanticContext::lookupGenericInterface(
     DeclarationId id) const {
-  typeRegistry_->declarations.get(id);
+  results_->declarations.get(id);
   return findTemplate(*rootScope_, id, &SemanticScopeBase::genericInterfaces);
 }
 
 const GenericEnumInfo* SemanticContext::lookupGenericEnum(
     DeclarationId id) const {
-  typeRegistry_->declarations.get(id);
+  results_->declarations.get(id);
   return findTemplate(*rootScope_, id, &SemanticScopeBase::genericEnums);
 }
 
@@ -1182,7 +1183,7 @@ SemanticScopeBase* SemanticContext::lookupModuleScope(DeclarationId id) const {
     logAndThrowError(
         "Imported module identity is missing; import the required exact "
         "bundle");
-  if (typeRegistry_->declarations.get(id).kind != DeclarationKind::Module)
+  if (results_->declarations.get(id).kind != DeclarationKind::Module)
     logAndThrowError(
         "Imported module reference has the wrong declaration kind");
   auto find = [&](auto&& self, SemanticScopeBase* scope) -> SemanticScopeBase* {
@@ -1206,10 +1207,10 @@ DeclarationId SemanticContext::requireDeclaration(
     const std::string& exporter,
     std::optional<sun::types::Type::Kind> expectedKind,
     const std::string& displayName) const {
-  auto id = typeRegistry_->declarations.findPortable(key);
+  auto id = results_->declarations.findPortable(key);
   bool wrongKind = false;
   if (id) {
-    auto kind = typeRegistry_->declarations.get(id).kind;
+    auto kind = results_->declarations.get(id).kind;
     auto actual =
         kind == DeclarationKind::Class       ? sun::types::Type::Kind::Class
         : kind == DeclarationKind::Interface ? sun::types::Type::Kind::Interface
@@ -1225,7 +1226,7 @@ DeclarationId SemanticContext::requireDeclaration(
              key.encoding().substr(17, 64);
   if (wrongKind) message += " (declaration has the wrong type kind)";
   if (!id) {
-    const auto& table = typeRegistry_->declarations;
+    const auto& table = results_->declarations;
     for (uint64_t i = 1; i <= table.size(); ++i) {
       const auto& candidate = table.get(DeclarationId(i));
       if (candidate.portableKey &&

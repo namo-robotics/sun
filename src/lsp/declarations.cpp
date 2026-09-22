@@ -28,7 +28,8 @@ using sun::ast::VariableCreationAST;
 using sun::ast::VariableReferenceAST;
 using sun::support::Position;
 
-/** Provides compiler-backed editor features through the language server protocol. */
+/** Provides compiler-backed editor features through the language server
+ * protocol. */
 namespace sun::lsp {
 
 /** Converts a path to the normalized form used for document comparisons. */
@@ -68,8 +69,8 @@ bool NodeFinder::visit(const ExprAST& node) {
   // can come from other files or later declarations in the same file.
   bool isModule = node.getType() == ASTNodeType::MODULE;
   bool matchesFile = isDocumentFile(loc);
-  bool hasSpan = matchesFile && loc.endOffset.has_value() &&
-                 spanContains(loc, offset_);
+  bool hasSpan =
+      matchesFile && loc.endOffset.has_value() && spanContains(loc, offset_);
   if (!isModule && (!matchesFile || (loc.endOffset && !hasSpan))) return false;
   if (hasSpan) chain_.push_back(&node);
   bool found = false;
@@ -106,7 +107,8 @@ bool NodeFinder::isDocumentFile(const Position& loc) {
   return matches;
 }
 
-/** Finds a concrete generic instance and its type bindings for editor lookup. */
+/** Finds a concrete generic instance and its type bindings for editor lookup.
+ */
 const ExprAST* firstSpecialization(const ExprAST& node, Bindings& bindings) {
   if (node.getType() == ASTNodeType::CLASS_DEFINITION) {
     const auto& cls = static_cast<const ClassDefinitionAST&>(node);
@@ -227,7 +229,8 @@ QualifiedName declarationQualifiedName(const ExprAST& node) {
   }
 }
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /**
@@ -607,7 +610,8 @@ std::string sourceFor(const Position& declaration,
 // Type names written in annotations
 // ---------------------------------------------------------------------------
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /**
@@ -796,7 +800,8 @@ void forEachCatchBinding(const TryCatchExprAST& tryCatch,
   }
 }
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /**
@@ -934,7 +939,8 @@ std::optional<Declaration> resolveSymbol(
   return declarationOf(*decl);
 }
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /**

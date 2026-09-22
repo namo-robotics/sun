@@ -5,7 +5,8 @@
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /** Read the declaring module from semantic ownership, including imported items.
@@ -57,7 +58,8 @@ std::string denialMessage(const ItemRef& item, const DeclarationTable& table) {
          " and cannot be accessed here";
 }
 
-/** Reports whether the requesting declaration may access the target declaration. */
+/** Reports whether the requesting declaration may access the target
+ * declaration. */
 bool isAccessible(DeclarationId from, const ItemRef& item,
                   const DeclarationTable& table) {
   if (item.visibility == Visibility::Public) return true;
@@ -75,7 +77,8 @@ void denyAccess(const ItemRef& item, const sun::support::Position& loc,
   sun::support::logSemanticError(denialMessage(item, table), loc);
 }
 
-/** Reports a compiler error when the requesting declaration cannot access the target. */
+/** Reports a compiler error when the requesting declaration cannot access the
+ * target. */
 void requireAccessible(DeclarationId from, const ItemRef& item,
                        const sun::support::Position& loc,
                        const DeclarationTable& table) {
@@ -93,7 +96,8 @@ void requireAccessible(DeclarationId from, const ItemRef& item,
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /**

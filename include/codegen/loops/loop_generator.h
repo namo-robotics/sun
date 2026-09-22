@@ -62,18 +62,24 @@ class LoopGenerator {
 
   /** Binds loop generation to the shared expression visitor and state. */
   LoopGenerator(const LoopGenerator&) = delete;
-  /** Disallows assignment so ownership and object identity cannot be duplicated. */
+  /** Disallows assignment so ownership and object identity cannot be
+   * duplicated. */
   LoopGenerator& operator=(const LoopGenerator&) = delete;
 
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::ForExprAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::ForInExprAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::WhileExprAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::BreakAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::ContinueAST& expr);
 
  private:
@@ -93,7 +99,8 @@ class LoopGenerator {
    * the iterator protocol's methods, and declaring the loop variable.
    */
   llvm::Value* codegen(const ExprAST& expr);
-  /** Emits LLVM instructions for this syntax node and returns its generated value. */
+  /** Emits LLVM instructions for this syntax node and returns its generated
+   * value. */
   llvm::Value* codegen(const sun::ast::BlockExprAST& block);
 
   /**
@@ -108,7 +115,8 @@ class LoopGenerator {
              std::is_base_of_v<ExprAST, T>)
   llvm::Value* codegen(const T&) = delete;
 
-  /** Provides the scope manager responsible for variable storage and cleanup. */
+  /** Provides the scope manager responsible for variable storage and cleanup.
+   */
   sun::codegen::scopes::ScopeManager& scopes();
   /** Provides the registry of generated functions and their metadata. */
   sun::codegen::functions::FunctionRegistry& functions();

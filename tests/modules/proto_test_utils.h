@@ -49,7 +49,8 @@ inline void writeFile(const fs::path& p, const std::string& text) {
  */
 class ProtoProject {
  public:
-  /** Owns a temporary project containing protobuf schemas and a Sun entrypoint. */
+  /** Owns a temporary project containing protobuf schemas and a Sun entrypoint.
+   */
   explicit ProtoProject(const std::string& name)
       : dir_(fs::temp_directory_path() / name) {
     sun::driver::initTestEnvironment();

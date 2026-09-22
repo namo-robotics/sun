@@ -8,14 +8,15 @@
 #include "lsp/text_positions.h"
 #include "support/position.h"
 
-/** Provides compiler-backed editor features through the language server protocol. */
+/** Provides compiler-backed editor features through the language server
+ * protocol. */
 namespace sun::lsp {
 
 /** A declaration location returned by editor navigation requests. */
 struct SymbolLocation {
-  std::string filePath;  // Absolute path of the file holding the name
+  std::string filePath;          // Absolute path of the file holding the name
   sun::support::Position range;  // Byte offsets of the name in that file
-  LspPosition start;     // The same range in protocol coordinates
+  LspPosition start;             // The same range in protocol coordinates
   LspPosition end;
 };
 

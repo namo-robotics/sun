@@ -10,6 +10,7 @@
 #include <set>
 #include <sstream>
 
+#include "semantic_analysis/globals.h"
 #include "semantic_analysis/semantic_scope.h"
 #include "semantic_analysis/symbol_names.h"
 #include "semantic_analysis/type_analysis/type_rules.h"
@@ -28,7 +29,8 @@ namespace sun::semantic_analysis {
 using sun::semantic_analysis::isIntrinsic;
 using sun::semantic_analysis::type_analysis::isAssignableTo;
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /**
@@ -354,6 +356,46 @@ VariableInfo* SemanticScopeBase::lookupVariable(const std::string& name) {
 }
 
 // -------------------------------------------------------------------
+// findUnanalyzedGlobal — a global that is used before it is analyzed
+// -------------------------------------------------------------------
+UnanalyzedGlobal SemanticScopeBase::findUnanalyzedGlobal(
+    const std::string& name, const DeclarationTable& declarations) {
+  // Almost every name looked up is a local, a parameter or a function
+  if (!declarations.hasGlobalNamed(name)) return {};
+
+  // The nearest scope that knows the name decides: a variable that is
+  // already declared there shadows any global further out.
+  enum class Probe { Unknown, Declared, Unanalyzed };
+  UnanalyzedGlobal unanalyzed;
+  auto probe = [&](SemanticScopeBase* scope) {
+    if (scope->variables.count(name)) return Probe::Declared;
+    const auto* global = findVariableNode(
+        declarations,
+        declarations.findGlobal(QualifiedName(scope->scopePath, name)));
+    // Analysis gives a variable its type as its last step
+    if (!global || global->getResolvedType()) return Probe::Unknown;
+    unanalyzed = {const_cast<sun::ast::VariableCreationAST*>(global), scope};
+    return Probe::Unanalyzed;
+  };
+  for (auto* scope = this; scope != nullptr; scope = scope->parent) {
+    if (Probe result = probe(scope); result != Probe::Unknown)
+      return result == Probe::Unanalyzed ? unanalyzed : UnanalyzedGlobal{};
+    for (const auto& [childName, child] : scope->childModules) {
+      if (!child || child->getType() != ScopeType::Import) continue;
+      if (probe(child.get()) == Probe::Unanalyzed) return unanalyzed;
+    }
+    for (const auto& binding : scope->importBindings) {
+      if (!scope->admitsImport(binding.sourceFileId)) continue;
+      if (!binding.sourceScope ||
+          (!binding.isWildcard && binding.localName != name))
+        continue;
+      if (probe(binding.sourceScope) == Probe::Unanalyzed) return unanalyzed;
+    }
+  }
+  return {};
+}
+
+// -------------------------------------------------------------------
 // lookupGenericFunction — find a generic function in the scope chain
 // -------------------------------------------------------------------
 const GenericFunctionInfo* SemanticScopeBase::lookupGenericFunction(
@@ -493,7 +535,8 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
           }
           if (info->paramTypes[i]->equals(*argType)) continue;
 
-          // Alternatives were computed by the caller without changing arguments.
+          // Alternatives were computed by the caller without changing
+          // arguments.
           if (matchAlternatives) {
             const auto& alternatives = argTypes[i].alternatives;
             if (std::any_of(alternatives.begin(), alternatives.end(),
@@ -517,8 +560,7 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
                       *argRef->getReferencedType()))
                 continue;
             }
-            if (refType->getReferencedType()->isArray() &&
-                argType->isArray()) {
+            if (refType->getReferencedType()->isArray() && argType->isArray()) {
               auto* paramArray = static_cast<const sun::types::ArrayType*>(
                   refType->getReferencedType().get());
               auto* argArray =
@@ -539,8 +581,7 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
               continue;
           }
 
-          if (argType->isNullPointer() &&
-              info->paramTypes[i]->isAnyPointer()) {
+          if (argType->isNullPointer() && info->paramTypes[i]->isAnyPointer()) {
             continue;
           }
 
@@ -558,8 +599,8 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
 
           // raw_ptr<T> is compatible with byte pointers (raw_ptr<i8>/u8)
           // for intrinsics
-          if (argType->isRawPointer() &&
-              info->paramTypes[i]->isRawPointer() && isIntrinsic(baseName)) {
+          if (argType->isRawPointer() && info->paramTypes[i]->isRawPointer() &&
+              isIntrinsic(baseName)) {
             auto* paramRawPtr = static_cast<const sun::types::RawPointerType*>(
                 info->paramTypes[i].get());
             if (paramRawPtr->getPointeeType()->isInt8() ||
@@ -602,7 +643,7 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunction(
   auto findInScope =
       [&](const SemanticScopeBase* scope) -> std::optional<FunctionInfo> {
     return scope->lookupFunctionLocal(name, argTypes, &filter,
-                                       matchAlternatives, loc);
+                                      matchAlternatives, loc);
   };
 
   // One scope plus its import children and import bindings

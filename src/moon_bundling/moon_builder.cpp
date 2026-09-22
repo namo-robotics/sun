@@ -25,7 +25,8 @@ using sun::support::SourceFileId;
 /** Builds and loads compiled Moon libraries and their declaration metadata. */
 namespace sun::moon_bundling {
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /** Reports the operation's failure as a compiler error and stops processing. */
@@ -175,12 +176,12 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   // warning-worthy one, as it would be for any C program linking both. The
   // program's externs naming these symbols are emitted under the prefixed
   // name; the archives are rewritten to match once compilation is done.
-  std::map<std::string, std::string> renames;  // symbol -> prefixed name
-  std::map<std::string, std::string> definedBy;  // symbol -> archive name
+  std::map<std::string, std::string> renames;         // symbol -> prefixed name
+  std::map<std::string, std::string> definedBy;       // symbol -> archive name
   std::map<std::string, std::string> ownUndefinedBy;  // symbol -> archive
   for (const auto& archive : ownArchives) {
-    auto scan = scanArchiveSymbols(
-        llvm::MemoryBufferRef(archive.data, archive.name));
+    auto scan =
+        scanArchiveSymbols(llvm::MemoryBufferRef(archive.data, archive.name));
     if (!scan) {
       fail("moon bundle: cannot isolate the symbols of native archive " +
            archive.path + ": " + llvm::toString(scan.takeError()));
@@ -212,9 +213,20 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
             return sourceFiles.try_emplace(id, sourceFiles.size() + 1)
                 .first->second;
           });
+          metadata.set_static_init_order(driver->getStaticInitOrder());
           const auto& name = metadata.module_name();
-          if (!name.empty()) report.modules.push_back(name);
-          if (!name.empty() && name.find('.') == std::string::npos &&
+          // A bundle exports through its modules, so a global outside any
+          // module could never be reached by an importer. That includes a C
+          // extern global, which declares a name like any other.
+          if (name.empty()) {
+            if (metadata.globals_size() > 0)
+              fail("moon bundle: global '" + metadata.globals(0).name() +
+                   "' is declared outside any module; a bundle's globals "
+                   "must be declared inside a module");
+            continue;
+          }
+          report.modules.push_back(name);
+          if (name.find('.') == std::string::npos &&
               metadata.visibility() != sun::proto::ast::PUBLIC)
             fail("moon bundle: top-level module '" + name +
                  "' must be declared 'public' to be exported");
@@ -275,9 +287,8 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
     if (carried == inheritedDefinitions.end() || carried->second == symbol) {
       continue;
     }
-    llvm::errs() << "Warning: native archive " << archiveName
-                 << " references '" << symbol
-                 << "', which an imported bundle carries only as '"
+    llvm::errs() << "Warning: native archive " << archiveName << " references '"
+                 << symbol << "', which an imported bundle carries only as '"
                  << carried->second
                  << "'. The reference will not resolve against that copy; "
                     "carry the library it comes from under `archives:` or "

@@ -17,10 +17,12 @@
 #include "moon_bundling/proto_importer.h"
 #include "support/error.h"
 
-/** Coordinates compilation, dependency loading, linking, and program execution. */
+/** Coordinates compilation, dependency loading, linking, and program execution.
+ */
 namespace sun::driver {
 
-/** Keeps the implementation helpers in this file private to this translation unit. */
+/** Keeps the implementation helpers in this file private to this translation
+ * unit. */
 namespace {
 
 /** Reports the operation's failure as a compiler error and stops processing. */

@@ -17,8 +17,8 @@
 #include "driver/sun_value.h"
 #include "moon_bundling/moon_import.h"
 #include "parsing/parser.h"
+#include "semantic_analysis/analysis_results.h"
 #include "semantic_analysis/semantic_analyzer.h"
-#include "semantic_analysis/type_registry.h"
 #include "support/error.h"
 
 /** Coordinates compiler inputs, analysis, code generation, and execution. */
@@ -26,8 +26,8 @@ namespace sun::driver {
 using sun::ast::BlockExprAST;
 using sun::moon_bundling::MoonImport;
 using sun::parsing::Parser;
+using sun::semantic_analysis::AnalysisResults;
 using sun::semantic_analysis::SemanticAnalyzer;
-using sun::semantic_analysis::TypeRegistry;
 
 /**
  * Driver orchestrates the compilation pipeline: parse → analyze → codegen →
@@ -56,7 +56,10 @@ class Driver {
  private:
   // Owned components
   std::unique_ptr<sun::codegen::CodegenContext> ctx;
-  std::shared_ptr<TypeRegistry> typeRegistry;
+  std::shared_ptr<AnalysisResults> analysisResults;
+  // The tree the pipeline analyzed. Declaration records in `analysisResults`
+  // point at its nodes, so it is kept for as long as they are.
+  std::unique_ptr<BlockExprAST> analyzedTree_;
   std::unique_ptr<sun::codegen::CodegenVisitor> codegenVisitor;
   std::unique_ptr<SemanticAnalyzer> analyzer;
 
@@ -83,6 +86,8 @@ class Driver {
 
   // See setOwnBundleHash. Empty for a program build.
   std::string ownBundleHash_;
+  // See getStaticInitOrder. Known once the imports have been read.
+  uint32_t staticInitOrder_ = 0;
   // See setExternSymbolRenames. Empty for a program build.
   std::map<std::string, std::string> externRenames_;
   // Link names of the program's own C externs that no rename applied to,
@@ -123,18 +128,18 @@ class Driver {
    * Private constructor - use factory methods
    */
   Driver(std::unique_ptr<sun::codegen::CodegenContext> ctx,
-         std::shared_ptr<TypeRegistry> typeRegistry,
+         std::shared_ptr<AnalysisResults> analysisResults,
          std::unique_ptr<sun::codegen::CodegenVisitor> codegenVisitor,
          std::unique_ptr<SemanticAnalyzer> analyzer)
       : ctx(std::move(ctx)),
-        typeRegistry(std::move(typeRegistry)),
+        analysisResults(std::move(analysisResults)),
         codegenVisitor(std::move(codegenVisitor)),
         analyzer(std::move(analyzer)) {}
 
   /**
    * Internal helper: run full pipeline on parsed AST
    */
-  sun::driver::SunValue runPipeline(std::unique_ptr<BlockExprAST> blockAst,
+  sun::driver::SunValue runPipeline(std::unique_ptr<BlockExprAST> program,
                                     Parser& parser, bool execute, int argc = 0,
                                     char** argv = nullptr);
 
@@ -258,8 +263,11 @@ class Driver {
    * editor tooling needs while a file is mid-edit.
    */
   struct AnalyzedProgram {
-    /** Keep declaration identities alive with the annotated syntax tree. */
-    std::shared_ptr<TypeRegistry> typeRegistry;
+    /**
+     * What analysis concluded about the program. Also keeps declaration
+     * identities alive with the annotated syntax tree.
+     */
+    std::shared_ptr<AnalysisResults> results;
     std::unique_ptr<BlockExprAST> ast;
     std::optional<sun::support::SunError> error;
   };
@@ -318,6 +326,15 @@ class Driver {
    * compileFiles.
    */
   void setOwnBundleHash(std::string hash) { ownBundleHash_ = std::move(hash); }
+
+  /**
+   * Where the startup function of the code being compiled runs relative to
+   * those of its imports: zero when it imports nothing, otherwise one more
+   * than the highest value among the imported bundles. A bundle records it so
+   * its own importers can order themselves after it. Valid once analysis has
+   * finished, which includes the metadata callback.
+   */
+  uint32_t getStaticInitOrder() const { return staticInitOrder_; }
 
   /**
    * C symbols the bundle being built carries in its archives, mapped to

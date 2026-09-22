@@ -62,7 +62,8 @@ class PrototypeAST {
   }
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   PrototypeAST(std::string Name,
                std::vector<std::pair<std::string, TypeAnnotation>> args,
                std::optional<TypeAnnotation> retType = std::nullopt,
@@ -199,7 +200,8 @@ class PrototypeAST {
   void setQualifiedName(sun::semantic_analysis::QualifiedName qname) {
     analysis().qualifiedName = std::move(qname);
   }
-  /** Reports whether a name including the enclosing scopes has been assigned. */
+  /** Reports whether a name including the enclosing scopes has been assigned.
+   */
   bool hasQualifiedName() const {
     return analysis_ && !analysis_->qualifiedName.empty();
   }
@@ -210,7 +212,8 @@ class PrototypeAST {
   void setLifetimeParameters(std::vector<LifetimeParameter> params) {
     lifetimeParameters = std::move(params);
   }
-  /** Provides the declared lifetime parameters used to check borrowed values. */
+  /** Provides the declared lifetime parameters used to check borrowed values.
+   */
   const std::vector<LifetimeParameter>& getLifetimeParameters() const {
     return lifetimeParameters;
   }

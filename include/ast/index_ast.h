@@ -26,7 +26,8 @@ class IndexAST : public ExprAST {
       indices;  // One or more index/slice components
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   IndexAST(std::unique_ptr<ExprAST> target,
            std::vector<std::unique_ptr<SliceExprAST>> idxs)
       : target(std::move(target)), indices(std::move(idxs)) {}
@@ -48,7 +49,8 @@ class IndexAST : public ExprAST {
     return indices;
   }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     fn(target);
     for (auto& slice : indices) {

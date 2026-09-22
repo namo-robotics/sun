@@ -200,7 +200,7 @@ manifest { libraries: ["lib.moon"] }
       ++compiled;
       EXPECT_TRUE(box->hasCompiledSpecialization(
           sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
-              instanceId, analyzed.typeRegistry->declarations)
+              instanceId, analyzed.results->declarations)
               .encoding()));
       for (const auto& method : shape->getMethods()) {
         EXPECT_EQ(method.function->hasBody(),
@@ -210,7 +210,7 @@ manifest { libraries: ["lib.moon"] }
       ++fresh;
       EXPECT_FALSE(box->hasCompiledSpecialization(
           sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
-              instanceId, analyzed.typeRegistry->declarations)
+              instanceId, analyzed.results->declarations)
               .encoding()));
       for (const auto& method : shape->getMethods())
         EXPECT_TRUE(method.function->hasBody());
@@ -247,9 +247,9 @@ function main() i32 {
 }
 manifest { libraries: ["lib.moon"] }
 )");
-  ASSERT_TRUE(run(
-      "build/sun " + (dir / "invalid.sun").string(), false,
-      "Type mismatch in binary operation: incompatible operand types"));
+  ASSERT_TRUE(
+      run("build/sun " + (dir / "invalid.sun").string(), false,
+          "Type mismatch in binary operation: incompatible operand types"));
 }
 
 TEST_F(Modules_GenericRegressions, ModuleGlobals) {

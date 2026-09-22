@@ -15,14 +15,19 @@ Value* CodegenVisitor::codegen(const sun::ast::BlockExprAST& block,
                                size_t start) {
   if (block.isEmpty()) return ConstantFP::get(ctx.getContext(), APFloat(0.0));
 
-  variables.declareBlockExternalGlobals(block);
   functions_.declareBlockSignatures(block);
+  variables.declareBlockGlobals(block);
 
   Value* lastValue = nullptr;
   bool encounteredReturn = false;
 
   for (size_t i = start; i < block.getBody().size(); ++i) {
     const auto& expr = block.getBody()[i];
+    // Functions, classes, lambdas and modules all leave the builder inside
+    // the last function they emitted. At file scope no function is open, so
+    // clear it before each item: a global's initializer must not mistake a
+    // finished function's last block for its own.
+    if (scopes.empty()) ctx.builder->ClearInsertionPoint();
     if (encounteredReturn) {
       // Code after return is unreachable, skip codegen
       break;

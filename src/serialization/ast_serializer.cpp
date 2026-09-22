@@ -37,6 +37,26 @@ pbc::DeclarationIdentity ASTSerializer::serializeIdentity(
   return result;
 }
 
+void ASTSerializer::serializeConstantValue(
+    const sun::semantic_analysis::constants::ConstantValue& value,
+    pbc::ConstantValue* proto) const {
+  if (value.isInteger()) {
+    proto->set_integer_bits(value.getInteger().getZExtValue());
+    proto->set_bit_width(value.getInteger().getBitWidth());
+  } else if (value.isFloat()) {
+    llvm::APInt bits = value.getFloat().bitcastToAPInt();
+    proto->set_float_bits(bits.getZExtValue());
+    proto->set_bit_width(bits.getBitWidth());
+  } else if (value.isString()) {
+    proto->set_text(value.getString());
+  } else {
+    // Present even when empty, so the reader sees an array
+    auto* array = proto->mutable_array();
+    for (const auto& element : value.getElements())
+      serializeConstantValue(element, array->add_elements());
+  }
+}
+
 pbc::Position ASTSerializer::serializePosition(
     const sun::support::Position& pos) const {
   pbc::Position proto;
@@ -89,8 +109,10 @@ pbc::TypeAnnotation ASTSerializer::serializeTypeAnnotation(
     *proto.add_type_arguments() = serializeTypeAnnotation(*arg);
   }
 
-  for (auto dim : type.arrayDimensions) {
-    proto.add_array_dimensions(dim);
+  for (const auto& dim : type.arrayDimensions) {
+    auto* dimension = proto.add_array_dimensions();
+    if (dim.size) dimension->set_size(*dim.size);
+    dimension->set_constant_name(dim.constantName);
   }
 
   proto.set_can_error(type.canError);

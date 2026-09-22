@@ -31,7 +31,8 @@ struct CatchClause {
   CatchClause() = default;
   /** Creates an instance with its default state. */
   CatchClause(CatchClause&&) = default;
-  /** Transfers the stored state from another instance during move assignment. */
+  /** Transfers the stored state from another instance during move assignment.
+   */
   CatchClause& operator=(CatchClause&&) = default;
   mutable sun::semantic_analysis::DeclarationIdentity declaration{};
 };
@@ -45,7 +46,8 @@ class TryCatchExprAST : public ExprAST {
   std::vector<CatchClause> catchClauses;   // One or more catch handlers
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   TryCatchExprAST(std::unique_ptr<BlockExprAST> tryBlk,
                   std::vector<CatchClause> catchCls)
       : tryBlock(std::move(tryBlk)), catchClauses(std::move(catchCls)) {}
@@ -72,7 +74,8 @@ class TryCatchExprAST : public ExprAST {
   /** Returns the catch clauses mutable stored by this object. */
   std::vector<CatchClause>& getCatchClausesMutable() { return catchClauses; }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     if (tryBlock) tryBlock->forEachChildSlot(fn);
     for (auto& clause : catchClauses) {

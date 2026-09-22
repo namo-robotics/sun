@@ -9,7 +9,8 @@
 #include "ast/block_expr_ast.h"
 #include "lsp/symbol_location.h"
 
-/** Provides compiler-backed editor features through the language server protocol. */
+/** Provides compiler-backed editor features through the language server
+ * protocol. */
 namespace sun::lsp {
 
 /** The source edits required to rename a resolved declaration. */

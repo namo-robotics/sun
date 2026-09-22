@@ -6,8 +6,8 @@
 #include "ast/ast_children.h"
 #include "driver/execution_utils.h"
 #include "parsing/parser.h"
+#include "semantic_analysis/analysis_results.h"
 #include "semantic_analysis/semantic_analyzer.h"
-#include "semantic_analysis/type_registry.h"
 #include "serialization/ast_deserializer.h"
 #include "serialization/ast_serializer.h"
 
@@ -93,8 +93,9 @@ TEST(TypeAnalysis_Integration, CallFactsAfterSyntaxRoundTrip) {
       return choose(true);
     }
   )");
-  auto registry = std::make_shared<TypeRegistry>();
-  SemanticAnalyzer analyzer(registry);
+  auto registryResults = std::make_shared<AnalysisResults>();
+  auto registry = registryResults->types;
+  SemanticAnalyzer analyzer(registryResults);
   analyzer.pipeline().run(*original);
   std::vector<const sun::ast::CallExprAST*> before;
   collectCalls(*original, before);
@@ -112,8 +113,9 @@ TEST(TypeAnalysis_Integration, CallFactsAfterSyntaxRoundTrip) {
   sun::serialization::ASTDeserializer deserializer;
   auto restored =
       deserializer.deserializeProgram(serializer.serializeProgram(*original));
-  auto otherRegistry = std::make_shared<TypeRegistry>();
-  SemanticAnalyzer other(otherRegistry);
+  auto otherRegistryResults = std::make_shared<AnalysisResults>();
+  auto otherRegistry = otherRegistryResults->types;
+  SemanticAnalyzer other(otherRegistryResults);
   other.pipeline().run(*restored);
   std::vector<const sun::ast::CallExprAST*> after;
   collectCalls(*restored, after);

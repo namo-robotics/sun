@@ -25,7 +25,7 @@ const fixture = () => [
     <basecompoundref refid="struct_base" prot="public">Base</basecompoundref>
     <briefdescription><para>Stores &lt;values&gt; with {braces}, [brackets], and backticks &#96;.</para></briefdescription>
     <detaileddescription><para>Another paragraph.</para><para>import something from 'invalid'</para>
-    <programlisting><codeline><highlight>Box<sp/>box;</highlight></codeline></programlisting><verbatim>&#96;&#96;&#96;
+    <programlisting><codeline><highlight>Box<sp/>box;</highlight></codeline></programlisting><programlisting filename=".mermaid"><codeline><highlight>flowchart<sp/>TD</highlight></codeline></programlisting><verbatim>&#96;&#96;&#96;
 &lt;script&gt;{example}&lt;/script&gt;
 &#96;&#96;&#96;</verbatim></detaileddescription>
     <sectiondef>
@@ -67,7 +67,8 @@ test('renders source descriptions, internals, overloads, inheritance, enums, ali
   assert.match(box, /The input/)
   assert.match(box, /The result/)
   assert.match(box, /Another paragraph/)
-  assert.match(box, /Box box;/)
+  assert.match(box, /```cpp\nBox box;\n```/)
+  assert.match(box, /```mermaid\nflowchart TD\n```/)
   assert.match(box, /&#60;values&#62; with &#123;braces&#125;/)
   assert.match(box, new RegExp(`blob/${revision}/include/demo.h#L8`))
   assert.doesNotMatch(pages.get('file_demo.mdx'), /id="helper"/)

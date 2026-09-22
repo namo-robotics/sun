@@ -7,6 +7,9 @@
 #include "semantic_analysis/type_analysis/type_resolver.h"
 
 #include "codegen/support/type_checks.h"
+#include "semantic_analysis/constants/constant_evaluator.h"
+#include "semantic_analysis/globals.h"
+#include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/type_analysis/type_traits.h"
 #include "support/error.h"
 
@@ -194,7 +197,7 @@ TypePtr TypeResolver::substituteTypeParameters(TypePtr type) {
       }
       if (changed) {
         auto* info = ctx_.lookupGenericInterface(
-            it->sourceDeclaration(ctx_.types()->declarations));
+            it->sourceDeclaration(ctx_.results().declarations));
         if (!info)
           logAndThrowError("Selected generic interface is not registered");
         return generics_.instantiateGenericInterface(*info, newArgs);
@@ -218,7 +221,7 @@ TypePtr TypeResolver::substituteTypeParameters(TypePtr type) {
       }
       if (changed) {
         auto* info = ctx_.lookupGenericEnum(
-            et->sourceDeclaration(ctx_.types()->declarations));
+            et->sourceDeclaration(ctx_.results().declarations));
         if (!info) logAndThrowError("Selected generic enum is not registered");
         return generics_.instantiateGenericEnum(*info, newArgs);
       }
@@ -254,6 +257,63 @@ std::vector<TypePtr> TypeResolver::resolveTypeArguments(
 // Type annotation to type conversion
 // -------------------------------------------------------------------
 
+size_t TypeResolver::resolveArrayDimension(
+    const sun::ast::ArrayDimension& dimension) {
+  // A number, or a name that was resolved before
+  if (dimension.size) return *dimension.size;
+
+  const std::string& name = dimension.constantName;
+  const std::string what = "array size '" + name + "'";
+  auto reject = [&](const std::string& why) {
+    logAndThrowError(what + " " + why, dimension.position);
+  };
+
+  // A global may be used before the line that declares it
+  VariableInfo* info = nullptr;
+  if (auto dot = name.rfind('.'); dot != std::string::npos) {
+    sema_.ensureModuleGlobalAnalyzed(name.substr(0, dot), name.substr(dot + 1));
+    info = ctx_.lookupQualifiedVariable(name);
+  } else {
+    sema_.ensureGlobalAnalyzed(name);
+    info = ctx_.currentScope().lookupVariable(name);
+  }
+  if (!info) reject("is not the name of a constant that is visible here");
+  if (!info->isGlobal)
+    reject("must be a constant declared at file or module scope, but '" + name +
+           "' is a local variable");
+  if (!info->isConst)
+    reject("must be a constant, but '" + name +
+           "' is a 'var'; declare it with 'const'");
+
+  using sun::semantic_analysis::constants::GlobalInitKind;
+  const auto& declarations = ctx_.declarationTable();
+  const auto* declaration = findVariableNode(declarations, info->declarationId);
+  if (!declaration)
+    reject("must be known at compile time, but the compiler has no value for '" +
+           name + "'");
+  const auto& constant = *declaration;
+  const auto* decision = constant.getGlobalInit();
+  if (!decision)
+    decision = &constants::ConstantEvaluator(declarations)
+                    .evaluateGlobalInitializer(constant);
+  if (decision->kind != GlobalInitKind::Image || !decision->value)
+    reject("must be known at compile time, but '" + name +
+           "' is initialized at startup because " +
+           (decision->reason ? decision->reason->message
+                             : std::string("it cannot be evaluated")));
+
+  const auto& value = *decision->value;
+  if (!value.isInteger() || !value.type || !value.type->isIntegral())
+    reject("must be an integer, but '" + name + "' has type '" +
+           (value.type ? value.type->toDisplayString() : "unknown") + "'");
+  if (!value.isUnsigned() && value.getInteger().isNegative())
+    reject("must not be negative, but '" + name + "' is " +
+           value.toDisplayString());
+
+  dimension.size = static_cast<size_t>(value.getInteger().getZExtValue());
+  return *dimension.size;
+}
+
 TypePtr TypeResolver::typeAnnotationToType(
     const sun::ast::TypeAnnotation& annot) {
   if (annot.declarationKey) {
@@ -262,7 +322,7 @@ TypePtr TypeResolver::typeAnnotationToType(
     std::vector<TypePtr> arguments;
     for (const auto& argument : annot.typeArguments)
       arguments.push_back(typeAnnotationToType(*argument));
-    auto kind = ctx_.types()->declarations.get(id).kind;
+    auto kind = ctx_.results().declarations.get(id).kind;
     if (!arguments.empty()) {
       if (kind == DeclarationKind::Class) {
         auto* info = ctx_.lookupGenericClass(id);
@@ -422,7 +482,11 @@ TypePtr TypeResolver::typeAnnotationToType(
     if (!elemType) {
       logAndThrowError("invalid array element type", annot.span);
     }
-    return Types::Array(elemType, annot.arrayDimensions);
+    std::vector<size_t> dimensions;
+    dimensions.reserve(annot.arrayDimensions.size());
+    for (const auto& dimension : annot.arrayDimensions)
+      dimensions.push_back(resolveArrayDimension(dimension));
+    return Types::Array(elemType, dimensions);
   }
 
   // Try primitive types first
@@ -543,7 +607,7 @@ TypePtr TypeResolver::typeAnnotationToType(
     // contexts)
     return Types::TypeParameter(annot.baseName, {},
                                 genericInfo->AST->getDeclarationId(),
-                                ctx_.types()->declarations.session());
+                                ctx_.results().declarations.session());
   }
 
   // Check for user-defined interface types
@@ -593,7 +657,7 @@ TypePtr TypeResolver::createConstView(TypePtr type) {
     }
     if (!changed) return type;
     auto* info = ctx_.lookupGenericEnum(
-        enumType->sourceDeclaration(ctx_.types()->declarations));
+        enumType->sourceDeclaration(ctx_.results().declarations));
     if (!info) logAndThrowError("Selected generic enum is not registered");
     return generics_.instantiateGenericEnum(*info, args);
   }

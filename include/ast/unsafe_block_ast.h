@@ -17,7 +17,8 @@ class UnsafeBlockAST : public ExprAST {
   bool expressionForm;
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   explicit UnsafeBlockAST(std::unique_ptr<BlockExprAST> b,
                           bool expressionForm = false)
       : body(std::move(b)), expressionForm(expressionForm) {}
@@ -28,7 +29,8 @@ class UnsafeBlockAST : public ExprAST {
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::UNSAFE_BLOCK; }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     if (body) body->forEachChildSlot(fn);
   }

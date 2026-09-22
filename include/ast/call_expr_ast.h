@@ -26,7 +26,8 @@ class CallExprAST : public ExprAST {
   std::vector<std::unique_ptr<ExprAST>> Args;
 
  protected:
-  /** Creates the analysis annotations required by this node when first needed. */
+  /** Creates the analysis annotations required by this node when first needed.
+   */
   void ensureAnalysis() const override {
     if (!analysis_) {
       analysis_ = std::make_unique<CallAnalysis>();
@@ -41,7 +42,8 @@ class CallExprAST : public ExprAST {
   }
 
  public:
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   CallExprAST(std::unique_ptr<ExprAST> Callee,
               std::vector<std::unique_ptr<ExprAST>> Args)
       : Callee(std::move(Callee)), Args(std::move(Args)) {}
@@ -81,7 +83,8 @@ class CallExprAST : public ExprAST {
     return callAnalysis().argConversions;
   }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     fn(Callee);
     for (auto& arg : Args) fn(arg);

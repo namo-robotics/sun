@@ -36,7 +36,8 @@ class StructLiteralAST : public ExprAST {
   std::vector<FieldInit> fields_;
 
  protected:
-  /** Creates the analysis annotations required by this node when first needed. */
+  /** Creates the analysis annotations required by this node when first needed.
+   */
   void ensureAnalysis() const override {
     if (!analysis_) analysis_ = std::make_unique<StructLiteralAnalysis>();
   }
@@ -47,14 +48,16 @@ class StructLiteralAST : public ExprAST {
     return static_cast<StructLiteralAnalysis&>(analysis()).fields;
   }
 
-  /** Creates this syntax node and takes ownership of any supplied child expressions. */
+  /** Creates this syntax node and takes ownership of any supplied child
+   * expressions. */
   explicit StructLiteralAST(std::vector<FieldInit> fields)
       : fields_(std::move(fields)) {}
 
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::STRUCT_LITERAL; }
 
-  /** Visits replaceable child expressions so tree passes can rewrite them in place. */
+  /** Visits replaceable child expressions so tree passes can rewrite them in
+   * place. */
   void forEachChildSlot(const ChildSlotFn& fn) override {
     for (auto& field : fields_) fn(field.value);
   }
@@ -71,7 +74,8 @@ class StructLiteralAST : public ExprAST {
 
   /** Provides the field declarations belonging to this type. */
   const std::vector<FieldInit>& getFields() const { return fields_; }
-  /** Provides mutable access to field declarations for later compiler passes. */
+  /** Provides mutable access to field declarations for later compiler passes.
+   */
   std::vector<FieldInit>& getMutableFields() { return fields_; }
   /** Returns the number of stored entries. */
   size_t size() const { return fields_.size(); }

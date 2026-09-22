@@ -70,7 +70,8 @@ class PortableTypeKey {
 /** Identifies a declaration independently of any compiler session. */
 class PortableDeclarationKey {
   std::string encoded_;
-  /** Stores an encoded declaration identity that can cross compilation sessions. */
+  /** Stores an encoded declaration identity that can cross compilation
+   * sessions. */
   explicit PortableDeclarationKey(std::string encoded)
       : encoded_(std::move(encoded)) {}
 

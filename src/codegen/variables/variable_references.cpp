@@ -50,7 +50,7 @@ llvm::LoadInst* VariableGenerator::createLoadForLocalVar(DeclarationId id) {
 
 llvm::GlobalVariable* VariableGenerator::bindGlobal(
     DeclarationId id, llvm::GlobalVariable* global) {
-  state_.typeRegistry->declarations.get(id);
+  state_.analysis->declarations.get(id);
   if (auto* existing = findGlobal(id); existing && existing != global)
     logAndThrowError("Global declaration already has different storage");
   globals_[id] = global;
@@ -77,7 +77,7 @@ llvm::LoadInst* VariableGenerator::createLoadForGlobalVar(DeclarationId id) {
 
 llvm::Value* VariableGenerator::createLoadForRef(DeclarationId id,
                                                  const ReferenceType& refType) {
-  const auto& varName = state_.typeRegistry->declarations.get(id).name;
+  const auto& varName = state_.analysis->declarations.get(id).name;
   llvm::Type* referencedLLVMType =
       typeResolver.resolve(refType.getReferencedType());
 
@@ -102,7 +102,7 @@ llvm::Value* VariableGenerator::createLoadForRef(DeclarationId id,
 void VariableGenerator::createStoreForRef(DeclarationId id,
                                           const ReferenceType& refType,
                                           llvm::Value* value) {
-  const auto& varName = state_.typeRegistry->declarations.get(id).name;
+  const auto& varName = state_.analysis->declarations.get(id).name;
   llvm::Type* referencedLLVMType =
       typeResolver.resolve(refType.getReferencedType());
 
@@ -301,7 +301,8 @@ Value* VariableGenerator::codegen(const sun::ast::VariableReferenceAST& expr) {
 
   // Enhanced error with both names for debugging
   logAndThrowError("Global variable not found in module: " + expr.getName() +
-                       " (qualifiedName='" + expr.getQualifiedName().display() + "')",
+                       " (qualifiedName='" + expr.getQualifiedName().display() +
+                       "')",
                    expr.getLocation());
 }
 
