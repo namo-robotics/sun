@@ -61,18 +61,6 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
       }
     }
   } prepassGuard(*this, sema_.generics());
-  // Type registration has already made every module and type name available.
-  if (prepassGuard.outermost) {
-    for (const auto& expr : block.getBody()) {
-      auto* moon = dynamic_cast<MoonScopeAST*>(expr.get());
-      if (!moon || moon->isOwnBundle()) continue;
-      for (const auto& requirement : moon->requiredDeclarations)
-        ctx_.requireDeclaration(requirement.key, moon->getMoonPath(),
-                                requirement.expectedKind,
-                                requirement.displayName);
-    }
-  }
-
   // Precompiled bundles first. Their stubs were resolved when the bundle was
   // built, in the bundle's own context; the imports this block binds next
   // must not reach into their class shapes and make a name ambiguous there.

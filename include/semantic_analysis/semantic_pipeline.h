@@ -5,6 +5,7 @@
 #include "semantic_analysis/passes/declaration_collection_pass.h"
 #include "semantic_analysis/passes/declaration_naming_pass.h"
 #include "semantic_analysis/passes/field_initializer_preparation_pass.h"
+#include "semantic_analysis/passes/moon_import_preparation_pass.h"
 #include "semantic_analysis/passes/type_registration_pass.h"
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
@@ -30,7 +31,9 @@ class SemanticPipeline {
    * duplicated. */
   SemanticPipeline& operator=(const SemanticPipeline&) = delete;
 
-  /** Prepare names, collect declarations, and check the program's bodies. */
+  /** Prepare imports and names, collect declarations, and check bodies in a
+   * complete AST whose bundles have already been loaded. Performs no file I/O.
+   */
   void run(sun::ast::BlockExprAST& block,
            const std::function<void()>& declarationsReady = {});
 
@@ -60,6 +63,7 @@ class SemanticPipeline {
 
   sun::semantic_analysis::SemanticAnalyzer& analyzer_;
   sun::semantic_analysis::SemanticContext& context_;
+  passes::MoonImportPreparationPass moonImportPreparationPass_;
   passes::FieldInitializerPreparationPass fieldInitializerPreparationPass_;
   passes::DeclarationNamingPass declarationNamingPass_;
   passes::TypeRegistrationPass typeRegistrationPass_;

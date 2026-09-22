@@ -41,11 +41,12 @@ class MoonScopeAST : public ExprAST {
   };
 
   /** Exact declarations referenced by this bundle's metadata, with any kind
-   * requirement imposed by their use. Validate after all explicit imports
-   * are indexed, including generic declarations that are never instantiated.
+   * requirement imposed by their use. Import preparation validates these
+   * after registering every bundle's records, including requirements from
+   * generic declarations that are never instantiated.
    */
   std::vector<DeclarationRequirement> requiredDeclarations;
-  // Consumed at the import boundary before any signatures are resolved.
+  // Registered by import preparation before syntax identities are assigned.
   std::vector<sun::semantic_analysis::ImportedDeclarationRecord>
       importedDeclarations;
 

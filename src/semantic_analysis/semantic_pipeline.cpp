@@ -14,11 +14,13 @@ SemanticPipeline::SemanticPipeline(
     sun::semantic_analysis::SemanticAnalyzer& analyzer)
     : analyzer_(analyzer),
       context_(analyzer.context()),
+      moonImportPreparationPass_(context_),
       typeRegistrationPass_(context_),
       declarationCollectionPass_(context_, analyzer) {}
 
 void SemanticPipeline::run(sun::ast::BlockExprAST& block,
                            const std::function<void()>& declarationsReady) {
+  moonImportPreparationPass_.run(block);
   fieldInitializerPreparationPass_.run(block);
   passes::DeclarationIdentityPass(context_.results().declarations).run(block);
   if (declarationsReady) declarationsReady();

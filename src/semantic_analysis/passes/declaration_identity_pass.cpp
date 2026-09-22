@@ -171,7 +171,6 @@ void DeclarationIdentityPass::run(const ExprAST& root, DeclarationId owner,
   switch (root.getType()) {
     case ASTNodeType::MOON_SCOPE: {
       const auto& moon = static_cast<const sun::ast::MoonScopeAST&>(root);
-      table_.importRecords(moon.importedDeclarations);
       if (!moon.getContentHash().empty()) {
         owner = table_.module(moon.getContentHash(), module);
         root.setDeclarationId(owner);

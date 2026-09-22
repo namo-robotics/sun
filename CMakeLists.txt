@@ -174,6 +174,7 @@ add_library(sun_lib
     src/semantic_analysis/portable_declaration_key.cpp
     src/semantic_analysis/specialization_key.cpp
     src/semantic_analysis/passes/declaration_identity_pass.cpp
+    src/semantic_analysis/passes/moon_import_preparation_pass.cpp
     src/semantic_analysis/semantic_context.cpp
     src/semantic_analysis/scope_declarations.cpp
     src/semantic_analysis/scope_lookup.cpp
