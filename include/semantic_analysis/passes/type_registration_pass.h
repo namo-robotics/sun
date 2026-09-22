@@ -2,6 +2,8 @@
  * resolution. */
 #pragma once
 
+#include <vector>
+
 #include "semantic_analysis/semantic_context.h"
 
 /** Provides the ordered preparation and registration passes for analysis. */
@@ -16,10 +18,14 @@ namespace sun::semantic_analysis::passes {
  */
 class TypeRegistrationPass {
  public:
+  /** Run this stage across all borrowed imported bundles before the next stage. */
+  void run(const std::vector<sun::ast::MoonScopeAST*>& imports);
+
   /** Borrow the shared context that owns scopes and registered types. */
   explicit TypeRegistrationPass(SemanticContext& ctx) : ctx_(ctx) {}
 
-  /** Register module-level declarations, including those in imported bundles.
+  /** Register source declarations, skipping imported bundle wrappers whose
+   * contents are registered separately by import preparation.
    */
   void run(sun::ast::BlockExprAST& block);
 

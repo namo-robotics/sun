@@ -69,8 +69,8 @@ class GenericSpecializer {
 
   /**
    * Analyze the method bodies the pre-pass deferred, now that every
-   * declaration in the program is registered. A body may ask for further
-   * specializations; those are analyzed straight away.
+   * declaration in the preparation group is registered. A body may ask for
+   * further specializations; those are analyzed straight away.
    */
   void analyzeDeferredSpecializations();
 
@@ -85,7 +85,7 @@ class GenericSpecializer {
   /**
    * True while the declaration pre-pass is running, so a class specialization
    * registers its type and method signatures now but defers its method bodies
-   * until every declaration in the program is known.
+   * until every declaration in the preparation group is known.
    */
   void setInDeclarationPrepass(bool inPrepass) { inPrepass_ = inPrepass; }
   /** True while declarations are still being collected, before any body. */

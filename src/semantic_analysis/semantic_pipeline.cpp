@@ -1,8 +1,7 @@
 #include "semantic_analysis/semantic_pipeline.h"
 
-#include "semantic_analysis/constants/constant_evaluator.h"
-#include "semantic_analysis/globals.h"
 #include "semantic_analysis/passes/declaration_identity_pass.h"
+#include "semantic_analysis/passes/declaration_preparation_guard.h"
 #include "semantic_analysis/semantic_analyzer.h"
 
 using sun::ast::ExprAST;
@@ -14,46 +13,68 @@ SemanticPipeline::SemanticPipeline(
     sun::semantic_analysis::SemanticAnalyzer& analyzer)
     : analyzer_(analyzer),
       context_(analyzer.context()),
-      moonImportPreparationPass_(context_),
+      importRecordRegistrationPass_(context_.results().declarations),
+      importDependencyValidationPass_(context_),
+      importCompletionPass_(analyzer),
+      declarationIdentityPass_(context_.results().declarations),
+      globalRegistrationPass_(context_.results().declarations),
       typeRegistrationPass_(context_),
-      declarationCollectionPass_(context_, analyzer) {}
+      declarationCollectionPass_(context_, analyzer),
+      bodyAnalysisPass_(analyzer),
+      globalInitializerEvaluationPass_(context_.results().declarations) {}
 
 void SemanticPipeline::run(sun::ast::BlockExprAST& block,
                            const std::function<void()>& declarationsReady) {
-  moonImportPreparationPass_.run(block);
-  fieldInitializerPreparationPass_.run(block);
-  passes::DeclarationIdentityPass(context_.results().declarations).run(block);
-  if (declarationsReady) declarationsReady();
+  prepareImports(block);
+  // Imported roots are complete. Keep subsequent source preparation and
+  // body analysis from revisiting their declarations.
+  fieldInitializerPreparationPass_.run(block, /*skipImportedMoons=*/true);
+  declarationIdentityPass_.run(block, /*skipImportedMoons=*/true,
+                               declarationsReady);
   declarationNamingPass_.run(block, context_.getCurrentScopePath(),
-                             context_.isAtModuleLevel());
-  registerGlobals(block);
+                             context_.isAtModuleLevel(),
+                             /*skipImportedMoons=*/true);
+  globalRegistrationPass_.run(block);
   typeRegistrationPass_.run(block);
   declarationCollectionPass_.run(block);
-  analyzer_.bodies().analyzeBlock(block);
-  // Every expression now has its type and every name its declaration, which
-  // is what evaluating the file-scope initializers needs.
-  constants::ConstantEvaluator(context_.results().declarations)
-      .evaluateGlobals(block);
+  bodyAnalysisPass_.run(block);
+  globalInitializerEvaluationPass_.run(block);
 }
 
-void SemanticPipeline::registerGlobals(const sun::ast::BlockExprAST& block) {
-  auto& declarations = context_.results().declarations;
-  forEachGlobalDeclaration(
-      block, [&](const sun::ast::VariableCreationAST& global) {
-        // A library's globals and C globals have no initializer to analyze
-        if (global.isPrecompiled() || global.isCExtern() ||
-            !global.hasQualifiedName() || !global.getDeclarationId())
-          return;
-        declarations.registerGlobal(global.getQualifiedName(),
-                                    global.getDeclarationId());
-      });
+std::vector<sun::ast::MoonScopeAST*> SemanticPipeline::getMoonImports(
+    const sun::ast::BlockExprAST& block) {
+  std::vector<sun::ast::MoonScopeAST*> imports;
+  for (const auto& expr : block.getBody()) {
+    auto* moon = dynamic_cast<sun::ast::MoonScopeAST*>(expr.get());
+    if (!moon || moon->isOwnBundle()) continue;
+    imports.push_back(moon);
+  }
+  return imports;
+}
+
+void SemanticPipeline::prepareImports(sun::ast::BlockExprAST& block) {
+  const auto imports = getMoonImports(block);
+  importRecordRegistrationPass_.run(imports);
+  importDependencyValidationPass_.run(imports);
+  fieldInitializerPreparationPass_.run(imports);
+  declarationIdentityPass_.run(imports);
+  declarationNamingPass_.run(imports, context_.getCurrentScopePath());
+  typeRegistrationPass_.run(imports);
+
+  // A consumer bundle can instantiate a dependency's template without adding
+  // that specialization to the dependency's metadata. Reconstructed bodies
+  // must wait until every imported bundle's declarations are ready.
+  passes::DeclarationPreparationGuard preparation(analyzer_.generics());
+  declarationCollectionPass_.run(imports);
+  importCompletionPass_.run(imports);
+  preparation.complete();
 }
 
 void SemanticPipeline::prepareGenerated(const ExprAST& expression,
                                         DeclarationId owner,
                                         const ExprAST* origin) {
   auto& table = context_.results().declarations;
-  passes::DeclarationIdentityPass(table).run(
+  declarationIdentityPass_.run(
       expression, owner, owner ? table.get(owner).module : DeclarationId{},
       origin);
 }

@@ -1,9 +1,12 @@
+#include "semantic_analysis/passes/import_traversal.h"
+
 #include "semantic_analysis/method_signature_set.h"
 // declaration_collection_pass.cpp — The declaration pre-pass (see
 // declaration_collection_pass.h)
 
 #include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/passes/declaration_collection_pass.h"
+#include "semantic_analysis/passes/declaration_preparation_guard.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "support/config.h"
 #include "support/error.h"
@@ -32,49 +35,7 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
   // and local variable ordering matter)
   if (!ctx_.isAtModuleLevel()) return;
 
-  /**
-   * Nested calls (modules) share the outermost pre-pass. Specialization
-   * bodies deferred anywhere inside are analyzed when the outermost pass
-   * completes normally (see the end of this function); if an error unwinds
-   * through it they are dropped, so the error that stopped the pass is the
-   * one reported rather than a failure in a body analyzed against
-   * half-registered declarations.
-   */
-  struct PrepassGuard {
-    DeclarationCollectionPass& c;
-    GenericSpecializer& generics;
-    bool outermost;
-    /** Temporarily exposes the active declaration-collection pass to generic
-     * specialization. */
-    PrepassGuard(DeclarationCollectionPass& collector, GenericSpecializer& g)
-        : c(collector), generics(g), outermost(collector.prepassDepth_ == 0) {
-      ++c.prepassDepth_;
-      generics.setInDeclarationPrepass(true);
-    }
-    /** Restores the declaration-collection pass previously used by generic
-     * specialization. */
-    ~PrepassGuard() {
-      --c.prepassDepth_;
-      if (outermost) {
-        generics.setInDeclarationPrepass(false);
-        generics.discardDeferredSpecializations();
-      }
-    }
-  } prepassGuard(*this, sema_.generics());
-  // Precompiled bundles first. Their stubs were resolved when the bundle was
-  // built, in the bundle's own context; the imports this block binds next
-  // must not reach into their class shapes and make a name ambiguous there.
-  // The bundle being built is ordinary source and takes its turn below.
-  for (const auto& expr : block.getBody()) {
-    SemanticContext::SourceFileGuard sourceFile(ctx_, expr->getSourceFileId());
-    if (expr->getType() != ASTNodeType::MOON_SCOPE) continue;
-    auto& moonScope = static_cast<MoonScopeAST&>(*expr);
-    if (moonScope.isOwnBundle()) continue;
-    const std::string& contentHash = moonScope.getContentHash();
-    if (!contentHash.empty()) ctx_.enterModuleScope(contentHash);
-    run(const_cast<BlockExprAST&>(moonScope.getBody()));
-    if (!contentHash.empty()) ctx_.exitScope();
-  }
+  DeclarationPreparationGuard preparation(sema_.generics());
 
   // Bind this block's imports before anything in it is resolved. Declaration
   // order does not matter at module level, and a merged bundle places every
@@ -103,7 +64,7 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
       case ASTNodeType::MOON_SCOPE: {
         // The bundle being built: its sources are collected here, in
         // declaration order with everything else, under the bundle's hash.
-        // Imported bundles were handled before the usings above.
+        // Imported bundles were completed by import preparation.
         auto& moonScope = static_cast<MoonScopeAST&>(*expr);
         if (!moonScope.isOwnBundle()) break;
         ctx_.enterModuleScope(moonScope.getContentHash());
@@ -155,14 +116,7 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
       collectFunctionSignature(static_cast<FunctionAST&>(*expr));
   }
 
-  // Every declaration in the program is registered now, so the method bodies
-  // of the specializations requested along the way can be analyzed. This runs
-  // only when the outermost pass got this far: an error above unwinds past it
-  // and the guard drops the deferred bodies instead.
-  if (prepassGuard.outermost) {
-    sema_.generics().setInDeclarationPrepass(false);
-    sema_.generics().analyzeDeferredSpecializations();
-  }
+  preparation.complete();
 }
 
 // Register a named, non-lambda function's signature (no body analysis) in
@@ -408,6 +362,12 @@ void DeclarationCollectionPass::registerClassShape(
       ierror->setMethodReturnType("message", classType);
     }
   }
+}
+
+void DeclarationCollectionPass::run(
+    const std::vector<sun::ast::MoonScopeAST*>& imports) {
+  forEachImportedBody(imports, ctx_,
+                      [this](sun::ast::BlockExprAST& body) { run(body); });
 }
 
 }  // namespace sun::semantic_analysis::passes

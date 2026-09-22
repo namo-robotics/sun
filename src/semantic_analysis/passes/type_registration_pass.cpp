@@ -1,3 +1,5 @@
+#include "semantic_analysis/passes/import_traversal.h"
+
 /** Registers module scopes, type names, and generic templates before
  * resolution. */
 #include "semantic_analysis/passes/type_registration_pass.h"
@@ -113,6 +115,7 @@ void TypeRegistrationPass::run(BlockExprAST& block) {
       }
       case ASTNodeType::MOON_SCOPE: {
         auto& moonScope = static_cast<MoonScopeAST&>(*expr);
+        if (!moonScope.isOwnBundle()) break;
         const std::string& contentHash = moonScope.getContentHash();
         if (!contentHash.empty()) ctx_.enterModuleScope(contentHash);
         run(const_cast<BlockExprAST&>(moonScope.getBody()));
@@ -123,6 +126,12 @@ void TypeRegistrationPass::run(BlockExprAST& block) {
         break;
     }
   }
+}
+
+void TypeRegistrationPass::run(
+    const std::vector<sun::ast::MoonScopeAST*>& imports) {
+  forEachImportedBody(imports, ctx_,
+                      [this](sun::ast::BlockExprAST& body) { run(body); });
 }
 
 }  // namespace sun::semantic_analysis::passes

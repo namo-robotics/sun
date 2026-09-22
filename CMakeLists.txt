@@ -174,7 +174,6 @@ add_library(sun_lib
     src/semantic_analysis/portable_declaration_key.cpp
     src/semantic_analysis/specialization_key.cpp
     src/semantic_analysis/passes/declaration_identity_pass.cpp
-    src/semantic_analysis/passes/moon_import_preparation_pass.cpp
     src/semantic_analysis/semantic_context.cpp
     src/semantic_analysis/scope_declarations.cpp
     src/semantic_analysis/scope_lookup.cpp
@@ -203,6 +202,12 @@ add_library(sun_lib
     src/semantic_analysis/call_analyzer.cpp
     src/semantic_analysis/passes/field_initializer_preparation_pass.cpp
     src/semantic_analysis/passes/declaration_naming_pass.cpp
+    src/semantic_analysis/passes/global_registration_pass.cpp
+    src/semantic_analysis/passes/body_analysis_pass.cpp
+    src/semantic_analysis/passes/global_initializer_evaluation_pass.cpp
+    src/semantic_analysis/passes/import_record_registration_pass.cpp
+    src/semantic_analysis/passes/import_dependency_validation_pass.cpp
+    src/semantic_analysis/passes/import_completion_pass.cpp
     src/semantic_analysis/semantic_pipeline.cpp
     src/semantic_analysis/passes/type_registration_pass.cpp
     src/semantic_analysis/passes/declaration_collection_pass.cpp

@@ -2,10 +2,16 @@
 
 #include <functional>
 
+#include "semantic_analysis/passes/body_analysis_pass.h"
 #include "semantic_analysis/passes/declaration_collection_pass.h"
+#include "semantic_analysis/passes/declaration_identity_pass.h"
 #include "semantic_analysis/passes/declaration_naming_pass.h"
 #include "semantic_analysis/passes/field_initializer_preparation_pass.h"
-#include "semantic_analysis/passes/moon_import_preparation_pass.h"
+#include "semantic_analysis/passes/global_initializer_evaluation_pass.h"
+#include "semantic_analysis/passes/global_registration_pass.h"
+#include "semantic_analysis/passes/import_completion_pass.h"
+#include "semantic_analysis/passes/import_dependency_validation_pass.h"
+#include "semantic_analysis/passes/import_record_registration_pass.h"
 #include "semantic_analysis/passes/type_registration_pass.h"
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
@@ -19,7 +25,7 @@ class SemanticAnalyzer;
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
-/** Own and order the passes for one semantic analysis session. */
+/** Run import preparation, then source analysis, in one shared session. */
 class SemanticPipeline {
  public:
   /** Borrow the owning analyzer's shared context and checking helpers. */
@@ -53,21 +59,31 @@ class SemanticPipeline {
   }
 
  private:
-  /**
-   * Records every file-scope and module-scope variable the source declares
-   * in the declaration table, under its qualified name. Globals can be used
-   * before the line that declares them, and this is how such a use finds the
-   * declaration. Runs once names have been assigned; nothing is analyzed.
+  /** Returns borrowed pointers to the top-level imported bundles, excluding
+   * the bundle being built. Does not register declarations or modify the AST.
    */
-  void registerGlobals(const sun::ast::BlockExprAST& block);
+  static std::vector<sun::ast::MoonScopeAST*> getMoonImports(
+      const sun::ast::BlockExprAST& block);
+
+  /** Prepare every imported bundle's identities, types, signatures, and
+   * declaration bindings before source analysis. Uses the supplied AST only;
+   * source declarations and the bundle being built are left for later stages.
+   */
+  void prepareImports(sun::ast::BlockExprAST& block);
 
   sun::semantic_analysis::SemanticAnalyzer& analyzer_;
   sun::semantic_analysis::SemanticContext& context_;
-  passes::MoonImportPreparationPass moonImportPreparationPass_;
+  passes::ImportRecordRegistrationPass importRecordRegistrationPass_;
+  passes::ImportDependencyValidationPass importDependencyValidationPass_;
+  passes::ImportCompletionPass importCompletionPass_;
   passes::FieldInitializerPreparationPass fieldInitializerPreparationPass_;
+  passes::DeclarationIdentityPass declarationIdentityPass_;
   passes::DeclarationNamingPass declarationNamingPass_;
+  passes::GlobalRegistrationPass globalRegistrationPass_;
   passes::TypeRegistrationPass typeRegistrationPass_;
   passes::DeclarationCollectionPass declarationCollectionPass_;
+  passes::BodyAnalysisPass bodyAnalysisPass_;
+  passes::GlobalInitializerEvaluationPass globalInitializerEvaluationPass_;
 };
 
 }  // namespace sun::semantic_analysis

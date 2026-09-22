@@ -1317,3 +1317,45 @@ TEST_F(MoonExactTypes, forward_declarations_export_the_selected_definition) {
                 "function main() i32 { return api.answer(42); }"),
             42);
 }
+
+/** A dependency's template can be specialized only by its consuming bundle. */
+TEST_F(MoonExactTypes,
+       consumer_specialization_waits_for_dependency_declarations) {
+  auto templates = bundle("templates", R"(
+    public module templates {
+      public class Box<T> {
+        public var value: T;
+        public method answer() i32 { return helper(); }
+      }
+      public function helper() i32 { return 42; }
+    }
+  )");
+  auto consumer = bundle("consumer", R"(
+    public module consumer {
+      public function answer(value: ref templates.Box<i32>) i32 {
+        return value.answer();
+      }
+    }
+  )", {MoonImport(templates)});
+
+  auto reader = MoonReader::open(templates);
+  ASSERT_TRUE(reader);
+  bool foundTemplate = false;
+  for (const auto& module : reader->listModules()) {
+    for (const auto& cls : reader->getMetadata(module)->classes()) {
+      if (cls.name() != "Box") continue;
+      foundTemplate = true;
+      EXPECT_EQ(cls.compiled_specializations_size(), 0);
+    }
+  }
+  ASSERT_TRUE(foundTemplate);
+
+  const std::string source = R"(
+    function main() i32 {
+      var box: templates.Box<i32> = { value: 1 };
+      return consumer.answer(box);
+    }
+  )";
+  EXPECT_EQ(run({MoonImport(consumer), MoonImport(templates)}, source), 42);
+  EXPECT_EQ(run({MoonImport(templates), MoonImport(consumer)}, source), 42);
+}

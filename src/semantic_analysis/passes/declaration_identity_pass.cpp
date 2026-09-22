@@ -135,6 +135,22 @@ void resetBindings(const ExprAST& root, bool resetIdentity) {
 void DeclarationIdentityPass::run(const ExprAST& root, DeclarationId owner,
                                   DeclarationId module,
                                   const ExprAST* origin) const {
+  visit(root, owner, module, origin, false);
+}
+
+void DeclarationIdentityPass::run(
+    const ExprAST& root, bool skipImportedMoons,
+    const std::function<void()>& declarationsReady) const {
+  visit(root, {}, {}, nullptr, skipImportedMoons);
+  if (declarationsReady) declarationsReady();
+}
+
+void DeclarationIdentityPass::visit(const ExprAST& root, DeclarationId owner,
+                                    DeclarationId module, const ExprAST* origin,
+                                    bool skipImportedMoons) const {
+  if (skipImportedMoons && root.getType() == ASTNodeType::MOON_SCOPE &&
+      !static_cast<const sun::ast::MoonScopeAST&>(root).isOwnBundle())
+    return;
   if (origin && origin->getType() != root.getType())
     logAndThrowError("Generated declaration does not match its source syntax");
   const auto* sourceIdentity = origin && origin->getDeclarationId()
@@ -343,7 +359,8 @@ void DeclarationIdentityPass::run(const ExprAST& root, DeclarationId owner,
     });
   size_t index = 0;
   forEachChild(root, [&](const ExprAST& child) {
-    run(child, owner, module, origin ? sourceChildren.at(index++) : nullptr);
+    visit(child, owner, module, origin ? sourceChildren.at(index++) : nullptr,
+          skipImportedMoons);
   });
 }
 
@@ -361,6 +378,11 @@ void resetAnalysisSession(const ExprAST& root) {
   forEachChild(root, [](const ExprAST& child) { resetAnalysisSession(child); });
   resetBindings(root, true);
   root.resetAnalysisSession();
+}
+
+void DeclarationIdentityPass::run(
+    const std::vector<sun::ast::MoonScopeAST*>& imports) const {
+  for (auto* moon : imports) run(*moon);
 }
 
 }  // namespace sun::semantic_analysis::passes

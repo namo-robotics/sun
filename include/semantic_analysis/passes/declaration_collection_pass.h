@@ -29,10 +29,13 @@ using sun::ast::BlockExprAST;
  * GenericSpecializer::isInDeclarationPrepass), a global reached through a
  * type annotation may not call a function, because its callee has no
  * analyzed body yet, and a class specialization registers its signatures
- * but holds its method bodies until the pass ends.
+ * but holds its method bodies until the outer preparation group ends.
  */
 class DeclarationCollectionPass {
  public:
+  /** Run this stage across all borrowed imported bundles before the next stage. */
+  void run(const std::vector<sun::ast::MoonScopeAST*>& imports);
+
   /** Share declaration state and signature-checking helpers with analysis. */
   DeclarationCollectionPass(SemanticContext &ctx, SemanticAnalyzer &sema)
       : ctx_(ctx), sema_(sema) {}
@@ -42,6 +45,8 @@ class DeclarationCollectionPass {
    * in the scopes prepared by TypeRegistrationPass before checking bodies. This
    * allows forward references between declarations at the same scope level,
    * and lets a `using` anywhere in the block serve every declaration in it.
+   * Imported bundle wrappers are skipped; import preparation invokes this
+   * same collector directly on their contents.
    */
   void run(BlockExprAST &block);
 
@@ -76,13 +81,6 @@ class DeclarationCollectionPass {
  private:
   SemanticContext &ctx_;
   SemanticAnalyzer &sema_;
-
-  // Depth of the pre-pass. Generic class specializations requested while > 0
-  // register their type and method signatures immediately (so shapes and
-  // signatures can refer to them) but defer method-body analysis to the end of
-  // the outermost pre-pass, once every declaration in the program is
-  // registered.
-  int prepassDepth_ = 0;
 };
 
 }  // namespace sun::semantic_analysis::passes
