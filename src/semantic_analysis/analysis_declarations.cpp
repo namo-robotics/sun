@@ -462,7 +462,7 @@ void SemanticAnalyzer::analyzeFunctionDefinition(sun::ast::FunctionAST& func) {
   // Apply computed info to prototype
   applyFunctionInfoToProto(proto, funcInfo);
 
-  // Templates were registered during declaration collection.
+  // Templates were registered by the type registration pass.
   // Only register non-template functions in the normal function table.
   // Templates are looked up via the genericFunctions table instead.
   if (!proto.isTemplate()) {

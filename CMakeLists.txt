@@ -203,6 +203,7 @@ add_library(sun_lib
     src/semantic_analysis/passes/field_initializer_preparation_pass.cpp
     src/semantic_analysis/passes/declaration_naming_pass.cpp
     src/semantic_analysis/semantic_pipeline.cpp
+    src/semantic_analysis/passes/type_registration_pass.cpp
     src/semantic_analysis/passes/declaration_collection_pass.cpp
     src/semantic_analysis/access_checker.cpp
     src/semantic_analysis/type_analysis/type_rules.cpp

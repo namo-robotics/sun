@@ -14,6 +14,7 @@ SemanticPipeline::SemanticPipeline(
     sun::semantic_analysis::SemanticAnalyzer& analyzer)
     : analyzer_(analyzer),
       context_(analyzer.context()),
+      typeRegistrationPass_(context_),
       declarationCollectionPass_(context_, analyzer) {}
 
 void SemanticPipeline::run(sun::ast::BlockExprAST& block,
@@ -24,6 +25,7 @@ void SemanticPipeline::run(sun::ast::BlockExprAST& block,
   declarationNamingPass_.run(block, context_.getCurrentScopePath(),
                              context_.isAtModuleLevel());
   registerGlobals(block);
+  typeRegistrationPass_.run(block);
   declarationCollectionPass_.run(block);
   analyzer_.bodies().analyzeBlock(block);
   // Every expression now has its type and every name its declaration, which

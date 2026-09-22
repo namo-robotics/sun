@@ -15,7 +15,6 @@ using sun::types::Types;
 using sun::ast::ASTNodeType;
 using sun::ast::BlockExprAST;
 using sun::ast::ClassDefinitionAST;
-using sun::ast::EnumDefinitionAST;
 using sun::ast::FunctionAST;
 using sun::ast::ModuleAST;
 using sun::ast::MoonScopeAST;
@@ -25,111 +24,6 @@ using sun::support::logAndThrowError;
 
 /** Provides the ordered preparation and registration passes for analysis. */
 namespace sun::semantic_analysis::passes {
-
-/*
- * Registers every type name in a module tree before class shapes are resolved.
- */
-void DeclarationCollectionPass::collectTypeNames(BlockExprAST& block) {
-  if (!ctx_.isAtModuleLevel()) return;
-
-  for (const auto& expr : block.getBody()) {
-    SemanticContext::SourceFileGuard sourceFile(ctx_, expr->getSourceFileId());
-    switch (expr->getType()) {
-      case ASTNodeType::ENUM_DEFINITION: {
-        auto& enumDef = static_cast<EnumDefinitionAST&>(*expr);
-        if (enumDef.isGeneric()) {
-          if (!ctx_.scope()->findGenericEnum(enumDef.getName())) {
-            ctx_.currentScope().declareGenericEnum(
-                enumDef.getName(), {&enumDef, enumDef.getTypeParameters(),
-                                    enumDef.getQualifiedName()});
-          }
-          break;
-        }
-        if (ctx_.lookupEnum(enumDef.getName())) break;
-        auto enumType = ctx_.types()->getEnum(enumDef.getDeclarationId(),
-                                              enumDef.getQualifiedName());
-        for (const auto& variant : enumDef.getVariants()) {
-          enumType->addVariant(variant.name, variant.value,
-                               variant.declaration.id);
-        }
-        enumType->setBaseName(enumDef.getName());
-        enumType->setUnderlyingType(
-            Types::fromString(enumDef.getUnderlyingTypeName()));
-        enumType->visibility = enumDef.getVisibility();
-        enumType->setQualifiedName(enumDef.getQualifiedName());
-        ctx_.currentScope().declareEnum(enumDef.getName(), enumType);
-        break;
-      }
-      case ASTNodeType::INTERFACE_DEFINITION: {
-        auto& interfaceDef =
-            static_cast<sun::ast::InterfaceDefinitionAST&>(*expr);
-        if (ctx_.lookupInterface(interfaceDef.getName())) break;
-        if (interfaceDef.isGeneric()) {
-          if (!ctx_.lookupGenericInterface(interfaceDef.getName())) {
-            GenericInterfaceInfo info;
-            info.AST = &interfaceDef;
-            info.typeParameters = interfaceDef.getTypeParameters();
-            info.qualifiedName = interfaceDef.getQualifiedName();
-            ctx_.currentScope().declareGenericInterface(interfaceDef.getName(),
-                                                        info);
-          }
-        } else {
-          QualifiedName qualifiedInterface = interfaceDef.getQualifiedName();
-          std::string interfaceName = qualifiedInterface.lookupName();
-          auto interfaceType = ctx_.types()->getInterface(
-              interfaceDef.getDeclarationId(), qualifiedInterface);
-          if (interfaceName != interfaceDef.getName()) {
-            interfaceType->setBaseName(interfaceDef.getName());
-          }
-          interfaceType->visibility = interfaceDef.getVisibility();
-          interfaceType->setQualifiedName(qualifiedInterface);
-          ctx_.currentScope().declareInterface(interfaceDef.getName(),
-                                               interfaceType);
-        }
-        break;
-      }
-      case ASTNodeType::CLASS_DEFINITION: {
-        auto& classDef = static_cast<ClassDefinitionAST&>(*expr);
-        if (classDef.isPartial() || ctx_.lookupClass(classDef.getName())) break;
-        QualifiedName qualifiedClass = classDef.getQualifiedName();
-        if (classDef.isGeneric() || classDef.hasGenericMethods()) {
-          GenericClassInfo genericInfo;
-          genericInfo.AST = &classDef;
-          genericInfo.typeParameters = classDef.getTypeParameters();
-          genericInfo.definitionScope = ctx_.scope()->shared_from_this();
-          genericInfo.qualifiedName = qualifiedClass;
-          ctx_.currentScope().declareGenericClass(classDef.getName(),
-                                                  genericInfo);
-        }
-        if (!classDef.isGeneric()) {
-          auto classType = ctx_.types()->getClass(classDef.getDeclarationId(),
-                                                  qualifiedClass);
-          classType->setPacked(classDef.isPacked());
-          classType->visibility = classDef.getVisibility();
-          ctx_.currentScope().declareClass(classDef.getName(), classType);
-        }
-        break;
-      }
-      case ASTNodeType::MODULE: {
-        auto& module = static_cast<ModuleAST&>(*expr);
-        ctx_.enterScope(ctx_.currentScope().declareModule(module));
-        collectTypeNames(const_cast<BlockExprAST&>(module.getBody()));
-        ctx_.exitScope();
-        break;
-      }
-      case ASTNodeType::MOON_SCOPE: {
-        auto& moonScope = static_cast<MoonScopeAST&>(*expr);
-        const std::string& contentHash = moonScope.getContentHash();
-        if (!contentHash.empty()) ctx_.enterModuleScope(contentHash);
-        collectTypeNames(const_cast<BlockExprAST&>(moonScope.getBody()));
-        if (!contentHash.empty()) ctx_.exitScope();
-        break;
-      }
-      default:
-        break;
-    }
-  }
-}
 
 using sun::semantic_analysis::methodVisibility;
 
@@ -167,10 +61,8 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
       }
     }
   } prepassGuard(*this, sema_.generics());
-  // The outermost pass makes sibling-module type names visible before any
-  // class shape or public method signature is resolved.
+  // Type registration has already made every module and type name available.
   if (prepassGuard.outermost) {
-    collectTypeNames(block);
     for (const auto& expr : block.getBody()) {
       auto* moon = dynamic_cast<MoonScopeAST*>(expr.get());
       if (!moon || moon->isOwnBundle()) continue;
@@ -200,8 +92,8 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
   // order does not matter at module level, and a merged bundle places every
   // file-level `using` after the modules it precedes in source, so the
   // nested modules, class shapes and signatures below must not depend on
-  // where the `using` sits. Every module scope already exists (the outermost
-  // pass registered the whole tree), so the bindings resolve now.
+  // where the `using` sits. Type registration already created every module
+  // scope, so the bindings resolve now.
   for (const auto& expr : block.getBody()) {
     SemanticContext::SourceFileGuard sourceFile(ctx_, expr->getSourceFileId());
     if (expr->getType() == ASTNodeType::USING) {
@@ -209,102 +101,13 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
     }
   }
 
-  // Sub-pass A: Register types (enums, interfaces, classes) so that
-  // function signatures can reference forward-declared types.
+  // Collect nested modules in the scopes prepared by type registration.
   for (const auto& expr : block.getBody()) {
     SemanticContext::SourceFileGuard sourceFile(ctx_, expr->getSourceFileId());
-    // Precompiled nodes (from .moon libs) are registered here like any
-    // other type declaration — registration is idempotent, and every type,
-    // generic template and class shape must be known before any signature
-    // (precompiled or not) is resolved. Their bodies are never analyzed.
-
     switch (expr->getType()) {
-      case ASTNodeType::ENUM_DEFINITION: {
-        auto& enumDef = static_cast<EnumDefinitionAST&>(*expr);
-        // Generic enums register as templates, instantiated at use sites
-        if (enumDef.isGeneric()) {
-          if (!ctx_.scope()->findGenericEnum(enumDef.getName())) {
-            ctx_.currentScope().declareGenericEnum(
-                enumDef.getName(), {&enumDef, enumDef.getTypeParameters(),
-                                    enumDef.getQualifiedName()});
-          }
-          break;
-        }
-        // Skip if already registered (e.g. from import)
-        if (ctx_.lookupEnum(enumDef.getName())) break;
-        // Create and register a minimal enum type
-        auto enumType = ctx_.types()->getEnum(enumDef.getDeclarationId(),
-                                              enumDef.getQualifiedName());
-        for (const auto& variant : enumDef.getVariants()) {
-          enumType->addVariant(variant.name, variant.value,
-                               variant.declaration.id);
-        }
-        enumType->setBaseName(enumDef.getName());
-        enumType->setUnderlyingType(
-            Types::fromString(enumDef.getUnderlyingTypeName()));
-        enumType->visibility = enumDef.getVisibility();
-        enumType->setQualifiedName(enumDef.getQualifiedName());
-        ctx_.currentScope().declareEnum(enumDef.getName(), enumType);
-        break;
-      }
-      case ASTNodeType::INTERFACE_DEFINITION: {
-        auto& interfaceDef =
-            static_cast<sun::ast::InterfaceDefinitionAST&>(*expr);
-        // Skip if already registered
-        if (ctx_.lookupInterface(interfaceDef.getName())) break;
-        if (interfaceDef.isGeneric()) {
-          if (!ctx_.lookupGenericInterface(interfaceDef.getName())) {
-            GenericInterfaceInfo info;
-            info.AST = &interfaceDef;
-            info.typeParameters = interfaceDef.getTypeParameters();
-            info.qualifiedName = interfaceDef.getQualifiedName();
-            ctx_.currentScope().declareGenericInterface(interfaceDef.getName(),
-                                                        info);
-          }
-        } else {
-          // Precompiled stubs carry their qualified name (content-hash scoped)
-          QualifiedName qualifiedInterface = interfaceDef.getQualifiedName();
-          std::string interfaceName = qualifiedInterface.lookupName();
-          auto interfaceType = ctx_.types()->getInterface(
-              interfaceDef.getDeclarationId(), qualifiedInterface);
-          if (interfaceName != interfaceDef.getName()) {
-            interfaceType->setBaseName(interfaceDef.getName());
-          }
-          interfaceType->visibility = interfaceDef.getVisibility();
-          interfaceType->setQualifiedName(qualifiedInterface);
-          ctx_.currentScope().declareInterface(interfaceDef.getName(),
-                                               interfaceType);
-        }
-        break;
-      }
-      case ASTNodeType::CLASS_DEFINITION: {
-        auto& classDef = static_cast<ClassDefinitionAST&>(*expr);
-        if (classDef.isPartial()) break;
-        // Skip if already registered
-        if (ctx_.lookupClass(classDef.getName())) break;
-        // Precompiled stubs carry their qualified name (content-hash scoped)
-        QualifiedName qualifiedClass = classDef.getQualifiedName();
-        if (classDef.isGeneric() || classDef.hasGenericMethods()) {
-          GenericClassInfo genericInfo;
-          genericInfo.AST = &classDef;
-          genericInfo.typeParameters = classDef.getTypeParameters();
-          genericInfo.definitionScope = ctx_.scope()->shared_from_this();
-          genericInfo.qualifiedName = qualifiedClass;
-          ctx_.currentScope().declareGenericClass(classDef.getName(),
-                                                  genericInfo);
-        }
-        if (!classDef.isGeneric()) {
-          auto classType = ctx_.types()->getClass(classDef.getDeclarationId(),
-                                                  qualifiedClass);
-          classType->setPacked(classDef.isPacked());
-          classType->visibility = classDef.getVisibility();
-          ctx_.currentScope().declareClass(classDef.getName(), classType);
-        }
-        break;
-      }
       case ASTNodeType::MODULE: {
         auto& nsDecl = static_cast<ModuleAST&>(*expr);
-        ctx_.enterScope(ctx_.currentScope().declareModule(nsDecl));
+        ctx_.enterModuleScope(nsDecl.getName());
         run(const_cast<BlockExprAST&>(nsDecl.getBody()));
         ctx_.exitScope();
         break;
@@ -325,8 +128,8 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
     }
   }
 
-  // Sub-pass A2: Register class shapes (fields + method signatures) for the
-  // non-generic classes just registered. Function signatures in sub-pass B
+  // Register class shapes (fields + method signatures) for the
+  // non-generic classes. Function signatures collected below
   // may instantiate generic classes, and those specializations' method bodies
   // may call methods of any class in this block — so every class's methods
   // must be known before any signature is resolved.
@@ -346,7 +149,7 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
     registerClassShape(classDef, qualifiedClass, classType);
   }
 
-  // Sub-pass B: Register functions (signatures only, no body analysis).
+  // Register functions (signatures only, no body analysis).
   // Types are now available for parameter/return type resolution.
   for (const auto& expr : block.getBody()) {
     SemanticContext::SourceFileGuard sourceFile(ctx_, expr->getSourceFileId());
@@ -360,63 +163,8 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
       continue;
     }
 
-    // Types were registered in sub-pass A. Imported functions still need
-    // signatures here, including functions in deeply nested modules.
-    if (expr->isPrecompiled() && expr->getType() != ASTNodeType::FUNCTION)
-      continue;
-
-    switch (expr->getType()) {
-      case ASTNodeType::FUNCTION:
-        collectFunctionSignature(static_cast<FunctionAST&>(*expr));
-        break;
-      case ASTNodeType::MODULE: {
-        auto& nsDecl = static_cast<ModuleAST&>(*expr);
-        ctx_.enterModuleScope(nsDecl.getName());
-        // Register the module's enums first: function signatures below may
-        // use enum types (including generic enums like Option<i32>)
-        collectEnumDeclarations(nsDecl.getBody());
-        // Collect function declarations inside the module
-        for (const auto& bodyExpr :
-             const_cast<BlockExprAST&>(nsDecl.getBody()).getBody()) {
-          if (bodyExpr->getType() == ASTNodeType::FUNCTION)
-            collectFunctionSignature(static_cast<FunctionAST&>(*bodyExpr));
-        }
-        ctx_.exitScope();
-        break;
-      }
-      case ASTNodeType::MOON_SCOPE: {
-        // Process the contained module stubs with content hash prefix
-        auto& moonScope = static_cast<MoonScopeAST&>(*expr);
-        const std::string& contentHash = moonScope.getContentHash();
-        if (!contentHash.empty()) {
-          ctx_.enterModuleScope(contentHash);
-        }
-        for (const auto& bodyExpr :
-             const_cast<BlockExprAST&>(moonScope.getBody()).getBody()) {
-          if (bodyExpr->getType() == ASTNodeType::MODULE) {
-            auto& nsDecl = static_cast<ModuleAST&>(*bodyExpr);
-            ctx_.enterModuleScope(nsDecl.getName());
-            // Register the module's enums first: function signatures below
-            // may use enum types (including generic enums like Option<i32>)
-            collectEnumDeclarations(nsDecl.getBody());
-            // Collect function declarations inside the module
-            for (const auto& moduleExpr :
-                 const_cast<BlockExprAST&>(nsDecl.getBody()).getBody()) {
-              if (moduleExpr->getType() == ASTNodeType::FUNCTION)
-                collectFunctionSignature(
-                    static_cast<FunctionAST&>(*moduleExpr));
-            }
-            ctx_.exitScope();
-          }
-        }
-        if (!contentHash.empty()) {
-          ctx_.exitScope();
-        }
-        break;
-      }
-      default:
-        break;
-    }
+    if (expr->getType() == ASTNodeType::FUNCTION)
+      collectFunctionSignature(static_cast<FunctionAST&>(*expr));
   }
 
   // Every declaration in the program is registered now, so the method bodies
@@ -430,7 +178,7 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
 }
 
 // Register a named, non-lambda function's signature (no body analysis) in
-// the current scope. Generic functions register as templates.
+// the current scope. Templates were registered by TypeRegistrationPass.
 void DeclarationCollectionPass::collectFunctionSignature(FunctionAST& func) {
   SemanticContext::SourceFileGuard sourceFile(ctx_, func.getSourceFileId());
   PrototypeAST& proto = const_cast<PrototypeAST&>(func.getProto());
@@ -438,12 +186,8 @@ void DeclarationCollectionPass::collectFunctionSignature(FunctionAST& func) {
   // Skip lambdas and anonymous functions
   if (proto.getName().empty()) return;
 
-  // A pack makes a function a template even with no type parameters: its
-  // arity comes from the call, so it is emitted once per argument tuple.
-  if (proto.isTemplate()) {
-    ctx_.currentScope().declareGenericFunction(func);
-    return;
-  }
+  // Generic and parameter-pack templates were registered before resolution.
+  if (proto.isTemplate()) return;
 
   std::vector<TypePtr> paramTypes;
   for (auto& [argName, argType] : proto.getMutableArgs()) {
@@ -675,35 +419,6 @@ void DeclarationCollectionPass::registerClassShape(
     if (auto ierror = ctx_.types()->errorInterface) {
       ierror->setMethodReturnType("message", classType);
     }
-  }
-}
-
-void DeclarationCollectionPass::collectEnumDeclarations(
-    const BlockExprAST& block) {
-  for (const auto& expr : block.getBody()) {
-    SemanticContext::SourceFileGuard sourceFile(ctx_, expr->getSourceFileId());
-    if (expr->getType() != ASTNodeType::ENUM_DEFINITION) continue;
-    auto& enumDef = static_cast<EnumDefinitionAST&>(*expr);
-    if (enumDef.isGeneric()) {
-      if (!ctx_.scope()->findGenericEnum(enumDef.getName())) {
-        ctx_.currentScope().declareGenericEnum(
-            enumDef.getName(), {&enumDef, enumDef.getTypeParameters(),
-                                enumDef.getQualifiedName()});
-      }
-      continue;
-    }
-    if (ctx_.lookupEnum(enumDef.getName())) continue;
-    auto enumType = ctx_.types()->getEnum(enumDef.getDeclarationId(),
-                                          enumDef.getQualifiedName());
-    for (const auto& variant : enumDef.getVariants()) {
-      enumType->addVariant(variant.name, variant.value, variant.declaration.id);
-    }
-    enumType->setBaseName(enumDef.getName());
-    enumType->setUnderlyingType(
-        Types::fromString(enumDef.getUnderlyingTypeName()));
-    enumType->visibility = enumDef.getVisibility();
-    enumType->setQualifiedName(enumDef.getQualifiedName());
-    ctx_.currentScope().declareEnum(enumDef.getName(), enumType);
   }
 }
 

@@ -2,7 +2,8 @@
 //
 // The semantic session shares state and checking helpers with these classes:
 //   SemanticContext       scopes, symbol tables, the type registry
-//   DeclarationCollectionPass  declaration registration
+//   TypeRegistrationPass  type names and generic templates
+//   DeclarationCollectionPass  class shapes and concrete signatures
 //   GenericSpecializer    monomorphization and its cache
 //   type_analysis::TypeResolver  annotations, substitutions, and const views
 //   CallAnalyzer          what a call calls, and how its arguments get there

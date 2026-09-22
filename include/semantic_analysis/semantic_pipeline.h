@@ -5,6 +5,7 @@
 #include "semantic_analysis/passes/declaration_collection_pass.h"
 #include "semantic_analysis/passes/declaration_naming_pass.h"
 #include "semantic_analysis/passes/field_initializer_preparation_pass.h"
+#include "semantic_analysis/passes/type_registration_pass.h"
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
@@ -61,6 +62,7 @@ class SemanticPipeline {
   sun::semantic_analysis::SemanticContext& context_;
   passes::FieldInitializerPreparationPass fieldInitializerPreparationPass_;
   passes::DeclarationNamingPass declarationNamingPass_;
+  passes::TypeRegistrationPass typeRegistrationPass_;
   passes::DeclarationCollectionPass declarationCollectionPass_;
 };
 
