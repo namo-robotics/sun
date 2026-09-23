@@ -37,6 +37,7 @@ sun::moon_bundling::MoonBuildOptions makeMoonBuildOptions(
     const CompileJob& job) {
   sun::moon_bundling::MoonBuildOptions buildOptions;
   buildOptions.targetTriple = job.targetTriple;
+  buildOptions.debugMode = job.debugMode;
   buildOptions.debugInfo = job.debugInfo;
   buildOptions.optimize = job.optimize;
   buildOptions.dumpProtoSun = job.dumpProtoSun;

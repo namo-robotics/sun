@@ -36,7 +36,7 @@ message ArrayDimension {
  * Recursive structure for parsed type syntax
  */
 message TypeAnnotation {
-  optional bytes declaration_key = 12;
+  optional string declaration_key = 12;
   string base_name = 1;                         // "i32", "f64", "ptr", "fn", etc.
   optional TypeAnnotation element_type = 2;     // For ptr/ref/array: element type
   repeated TypeAnnotation param_types = 3;      // For fn/lambda: parameter types

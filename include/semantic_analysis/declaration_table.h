@@ -60,6 +60,8 @@ struct DeclarationRecord {
   // places. Valid while the analyzed tree is alive, which the owner of the
   // analysis results keeps it for.
   const sun::ast::ExprAST* astNode = nullptr;
+  // Artifact ownership is metadata, independent of the portable identifier.
+  std::string bundleHash;
 };
 
 /** Allocate and retain declarations independently of symbol spelling. */
@@ -150,46 +152,76 @@ class DeclarationTable {
   /** Intern a source declaration from an artifact, validating its ownership. */
   DeclarationId importOriginal(const std::string& encoded, DeclarationKind kind,
                                const std::string& name, DeclarationId owner,
-                               DeclarationId module) {
-    auto key = PortableDeclarationKey::parseOriginal(encoded);
+                               DeclarationId module,
+                               const std::string& bundleHash = {}) {
+    auto key = PortableDeclarationKey::fromString(encoded);
     if (auto existing = findPortable(key)) {
       const auto& record = get(existing);
       if (record.kind != kind || record.name != name || record.owner != owner ||
-          record.module != module)
+          record.module != module || record.bundleHash != bundleHash ||
+          record.specialization || record.origin)
         logAndThrowError("Conflicting imported declaration identity");
       return existing;
     }
     auto id = kind == DeclarationKind::Module ? this->module(name, owner)
                                               : add(kind, name, owner, module);
-    bindPortable(id, key);
+    bindPortable(id, key, bundleHash);
     return id;
   }
 
   /** Restore an artifact's ownership graph before registering its syntax. */
   void importRecords(const std::vector<ImportedDeclarationRecord>& records) {
-    auto reference = [&](const std::string& encoded) {
-      if (encoded.empty()) return DeclarationId{};
-      auto id = findPortable(PortableDeclarationKey::parseOriginal(encoded));
-      if (!id)
-        logAndThrowError("Imported declaration refers to a missing owner");
-      return id;
-    };
-    for (const auto& record : records) {
-      if (record.kind > static_cast<uint32_t>(DeclarationKind::Alias))
+    std::map<std::string, size_t> indices;
+    for (size_t i = 0; i < records.size(); ++i) {
+      PortableDeclarationKey::fromString(records[i].key);
+      if (records[i].kind > static_cast<uint32_t>(DeclarationKind::Alias))
         logAndThrowError("Imported declaration has an unknown kind");
+      indices.try_emplace(records[i].key, i);
+    }
+    std::vector<size_t> pending(records.size());
+    std::vector<std::vector<size_t>> dependents(records.size());
+    std::deque<size_t> ready;
+    for (size_t i = 0; i < records.size(); ++i) {
+      for (const auto* link : {&records[i].owner, &records[i].module}) {
+        if (link->empty()) continue;
+        auto found = indices.find(*link);
+        if (found != indices.end()) {
+          ++pending[i];
+          dependents[found->second].push_back(i);
+        } else if (!findPortable(PortableDeclarationKey::fromString(*link))) {
+          logAndThrowError("Imported declaration refers to a missing owner");
+        }
+      }
+      if (!pending[i]) ready.push_back(i);
+    }
+    auto reference = [&](const std::string& key) {
+      return key.empty()
+                 ? DeclarationId{}
+                 : findPortable(PortableDeclarationKey::fromString(key));
+    };
+    size_t restored = 0;
+    while (!ready.empty()) {
+      const auto i = ready.front();
+      ready.pop_front();
+      const auto& record = records[i];
       importOriginal(record.key, static_cast<DeclarationKind>(record.kind),
                      record.name, reference(record.owner),
-                     reference(record.module));
+                     reference(record.module), record.bundleHash);
+      ++restored;
+      for (auto dependent : dependents[i])
+        if (--pending[dependent] == 0) ready.push_back(dependent);
     }
+    if (restored != records.size())
+      logAndThrowError("Imported declaration ownership contains a cycle");
   }
 
   /** Attach imported syntax to its previously interned original declaration. */
   DeclarationId importedSyntax(const std::string& encoded, DeclarationKind kind,
                                const std::string& name) const {
-    auto id = findPortable(PortableDeclarationKey::parseOriginal(encoded));
+    auto id = findPortable(PortableDeclarationKey::fromString(encoded));
     if (!id) logAndThrowError("Imported syntax has no declaration record");
     const auto& record = get(id);
-    if (record.kind != kind ||
+    if (record.specialization || record.origin || record.kind != kind ||
         (kind != DeclarationKind::Module && record.name != name))
       logAndThrowError("Imported syntax does not match its declaration record");
     return id;
@@ -210,7 +242,8 @@ class DeclarationTable {
 
   /** Bind a portable identity exactly once, rejecting conflicting declarations.
    */
-  void bindPortable(DeclarationId id, const PortableDeclarationKey& key) {
+  void bindPortable(DeclarationId id, const PortableDeclarationKey& key,
+                    const std::string& bundleHash = {}) {
     get(id);
     if (key.empty()) logAndThrowError("Cannot bind an unassigned portable key");
     auto& record = records_[id.index() - 1];
@@ -220,8 +253,11 @@ class DeclarationTable {
     if (existing && existing != id)
       logAndThrowError(
           "Portable identity already belongs to another declaration");
+    if (!record.bundleHash.empty() && record.bundleHash != bundleHash)
+      logAndThrowError("Declaration already belongs to another bundle");
     portableDeclarations_.emplace(key, id);
     record.portableKey = key;
+    record.bundleHash = bundleHash;
   }
 
   /** Return how many declarations this session has allocated. */

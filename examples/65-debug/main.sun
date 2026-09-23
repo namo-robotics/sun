@@ -1,0 +1,8 @@
+/** Exits successfully when the compiled library returns the expected value. */
+function main() i32 {
+  return life.answer() - 42;
+}
+
+manifest {
+  libraries: ["life.moon"]
+}

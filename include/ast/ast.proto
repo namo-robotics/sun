@@ -27,17 +27,17 @@ enum Visibility {
  * Portable declarations are exported explicitly; ordinary AST clones omit them.
  */
 message DeclarationIdentity {
-  bytes declaration = 1;
-  repeated bytes parameters = 2;
-  repeated bytes type_parameters = 3;
-  repeated bytes lifetime_parameters = 4;
+  string declaration = 1;
+  repeated string parameters = 2;
+  repeated string type_parameters = 3;
+  repeated string lifetime_parameters = 4;
 }
 
 /** Wraps a syntax node with its source position and declaration identity for serialization. */
 message ASTNode {
   DeclarationIdentity declaration_identity = 102;
   // Canonical module identity for expressions and retained using targets.
-  optional bytes module_declaration_key = 101;
+  optional string module_declaration_key = 101;
   uint64 source_file_id = 100;
   Position location = 1;
   bool precompiled = 2;
@@ -447,7 +447,7 @@ message FunctionArg {
  * exact interface identity alongside their source spelling.
  */
 message TypeParameter {
-  optional bytes declaration_key = 3;
+  optional string declaration_key = 3;
   string name = 1;
   optional string constraint = 2;
   repeated TypeAnnotation constraint_arguments = 4;
@@ -622,14 +622,14 @@ message ClassMethod {
  * Implemented interface with type arguments
  */
 message ImplementedInterface {
-  optional bytes declaration_key = 3;
+  optional string declaration_key = 3;
   string name = 1;
   repeated TypeAnnotation type_arguments = 2;
 }
 
 /** Stores compiled specialization data in the compiler serialization format. */
 message CompiledSpecialization {
-  bytes declaration_key = 1;
+  string declaration_key = 1;
   repeated string method_symbols = 2;
 }
 

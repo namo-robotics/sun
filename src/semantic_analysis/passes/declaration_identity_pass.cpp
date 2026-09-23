@@ -194,8 +194,9 @@ void DeclarationIdentityPass::visit(const ExprAST& root, DeclarationId owner,
         auto hash = moon.getContentHash();
         if (hash.starts_with("$") && hash.ends_with("$"))
           hash = hash.substr(1, hash.size() - 2);
-        if (hash.size() == 64)
-          table_.bindPortable(owner, PortableDeclarationKey::original(hash, 1));
+        if (hash.size() == 64 && !table_.get(owner).portableKey)
+          table_.bindPortable(owner, PortableDeclarationKey::original(hash, 1),
+                              hash);
         module = owner;
       }
       break;

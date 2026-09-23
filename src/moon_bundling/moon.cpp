@@ -2,9 +2,12 @@
 
 #include "moon_bundling/moon.h"
 
+#include <google/protobuf/util/json_util.h>
 #include <llvm/Bitcode/BitcodeReader.h>
 #include <llvm/Bitcode/BitcodeWriter.h>
 #include <llvm/IR/Module.h>
+#include <llvm/Support/FormatVariadic.h>
+#include <llvm/Support/JSON.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/SHA256.h>
 #include <llvm/Support/raw_ostream.h>
@@ -313,6 +316,57 @@ std::unique_ptr<MoonReader> MoonReader::open(
   }
 
   return reader;
+}
+
+bool MoonReader::writeDebugJson(const std::filesystem::path& outputPath) {
+  google::protobuf::util::JsonPrintOptions options;
+  options.preserve_proto_field_names = true;
+  options.always_print_primitive_fields = true;
+  llvm::json::Array modules;
+  for (const auto& entry : index_) {
+    const auto* metadata = getMetadata(entry.moduleKey);
+    if (!metadata) return false;
+    std::string json;
+    auto status =
+        google::protobuf::util::MessageToJsonString(*metadata, &json, options);
+    if (!status.ok()) {
+      error_ = "Failed to convert moon metadata to JSON: " + status.ToString();
+      return false;
+    }
+    auto value = llvm::json::parse(json);
+    if (!value) {
+      error_ =
+          "Failed to parse metadata JSON: " + llvm::toString(value.takeError());
+      return false;
+    }
+    modules.push_back(
+        llvm::json::Object{{"module_key", entry.moduleKey},
+                           {"bitcode_offset", entry.bitcodeOffset},
+                           {"bitcode_size", entry.bitcodeSize},
+                           {"metadata_offset", entry.metadataOffset},
+                           {"metadata_size", entry.metadataSize},
+                           {"metadata", std::move(*value)}});
+  }
+  llvm::json::Array archives;
+  for (const auto& entry : nativeArchives_) {
+    archives.push_back(
+        llvm::json::Object{{"archive_set_hash", entry.archiveSetHash},
+                           {"name", entry.name},
+                           {"offset", entry.offset},
+                           {"size", entry.size}});
+  }
+  llvm::json::Value document =
+      llvm::json::Object{{"format_version", MoonHeader::VERSION},
+                         {"modules", std::move(modules)},
+                         {"native_archives", std::move(archives)}};
+  std::ofstream out(outputPath);
+  out << llvm::formatv("{0:2}", document).str() << '\n';
+  out.close();
+  if (!out) {
+    error_ = "Failed to write moon debug JSON: " + outputPath.string();
+    return false;
+  }
+  return true;
 }
 
 bool MoonReader::readNativeArchive(const NativeArchiveEntry& entry,

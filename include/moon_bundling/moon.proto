@@ -10,22 +10,41 @@ import "ast.proto";
 
 option cc_enable_arenas = true;
 
+/** Declaration roles, with values matching the compiler's DeclarationKind. */
+enum DeclarationKind {
+  MODULE = 0;
+  FUNCTION = 1;
+  LAMBDA = 2;
+  CLASS = 3;
+  INTERFACE = 4;
+  ENUM = 5;
+  VARIABLE = 6;
+  REFERENCE = 7;
+  PARAMETER = 8;
+  TYPE_PARAMETER = 9;
+  LIFETIME_PARAMETER = 10;
+  FIELD = 11;
+  VARIANT = 12;
+  BINDING = 13;
+  ALIAS = 14;
+}
+
 /**
  * Original declaration ownership, independent of import aliases and load order.
  */
 message DeclarationRecord {
-  bytes key = 1;
-  uint32 kind = 2;
+  string key = 1;
+  DeclarationKind kind = 2;
   string name = 3;
-  bytes owner = 4;
-  bytes module = 5;
+  string owner = 4;
+  string module = 5;
 }
 
 /**
  * Module metadata stored in .moon bundle files.
  */
 message ModuleMetadata {
-  repeated bytes module_declarations = 17;
+  repeated string module_declarations = 17;
   repeated DeclarationRecord declarations = 18;
   reserved 16;  // Former module binding table; references now carry canonical names.
   // Source identification

@@ -157,6 +157,17 @@ This creates:
 - `ir.ll` — the LLVM IR for the program's own code
 - `scope_tree.html` — HTML visualization of semantic scopes
 
+For Moon libraries, `sun --emit-moon --debug library.sun` also writes
+`library_debug/moon.json`. It contains the bundle format version, module
+metadata (including generic bodies), and the offsets and sizes of bitcode and
+native archives. Binary payloads are omitted; use `ir.ll` to inspect compiled
+code. Declaration keys are opaque readable strings. Source keys are generated as
+`$<bundle-hash>$_<ordinal>`; derived keys use a deterministic hash of their
+specialization or generation inputs. Ownership and declaration kinds come
+from declaration records, independently of key spelling. Other metadata
+follows protobuf JSON conventions; declaration kinds appear as names such as
+`"MODULE"` and `"FUNCTION"`.
+
 The IR keeps only what this file compiled to; the stdlib it calls into is
 filtered out:
 

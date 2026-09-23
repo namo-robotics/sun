@@ -47,6 +47,7 @@ struct ImportedDeclarationRecord {
   std::string name;
   std::string owner;
   std::string module;
+  std::string bundleHash;
 };
 
 /** Annotation data that survives recomputing types within one session. */
