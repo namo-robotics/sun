@@ -102,10 +102,11 @@ class TypeAnalysis_SemanticPipeline : public ::testing::Test {
       FAIL() << "Expected an exact dependency error";
     } catch (const sun::support::SunError& error) {
       const std::string message = error.what();
+      SCOPED_TRACE(message);
       EXPECT_NE(message.find("moon exact dependency: library 'a.moon'"),
                 std::string::npos);
-      EXPECT_NE(message.find("requires declaration 'Value' from bundle " +
-                             std::string(64, 'b')),
+      EXPECT_NE(message.find("requires declaration 'Value' with identity " +
+                             key('b').encoding()),
                 std::string::npos);
       EXPECT_NE(message.find("Explicitly import the required exact bundle."),
                 std::string::npos);
