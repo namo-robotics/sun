@@ -239,8 +239,8 @@ void DeclarationCollectionPass::registerUsing(sun::ast::UsingAST& usingDecl) {
   std::string namespacePath = usingDecl.getNamespacePathString();
   std::string target = usingDecl.getTarget();
   if (usingDecl.getModuleDeclaration()) {
-    auto id = ctx_.results().declarations.findPortable(
-        *usingDecl.getModuleDeclaration());
+    auto id =
+        ctx_.results().declarations.find(*usingDecl.getModuleDeclaration());
     // A retained using may serve only a body already compiled into the bundle.
     // Actual nominal and module references still require their exact
     // dependency.

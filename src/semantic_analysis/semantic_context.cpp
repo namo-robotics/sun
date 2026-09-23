@@ -1203,11 +1203,11 @@ SemanticScopeBase* SemanticContext::lookupModuleScope(DeclarationId id) const {
 }
 
 DeclarationId SemanticContext::requireDeclaration(
-    const sun::semantic_analysis::PortableDeclarationKey& key,
+    const sun::semantic_analysis::DeclarationId& key,
     const std::string& exporter,
     std::optional<sun::types::Type::Kind> expectedKind,
     const std::string& displayName) const {
-  auto id = results_->declarations.findPortable(key);
+  auto id = results_->declarations.find(key);
   bool wrongKind = false;
   if (id) {
     auto kind = results_->declarations.get(id).kind;
@@ -1228,11 +1228,11 @@ DeclarationId SemanticContext::requireDeclaration(
   if (!id) {
     const auto& table = results_->declarations;
     for (uint64_t i = 1; i <= table.size(); ++i) {
-      const auto& candidate = table.get(DeclarationId(i));
-      if (candidate.portableKey &&
+      const auto& candidate = table.get(table.idAt(i - 1));
+      if (candidate.imported &&
           (candidate.name == displayName ||
            displayName.ends_with("." + candidate.name)) &&
-          !(*candidate.portableKey == key)) {
+          table.idAt(i - 1) != key) {
         message += " (conflicting bundle supplied)";
         break;
       }

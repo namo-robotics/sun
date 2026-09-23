@@ -17,11 +17,10 @@ TEST(Tooling_Backend_Optimization, buffer_accessor_inlines_after_moon_linking) {
       for (const auto& node : program.getBody()) {
         auto* function = dynamic_cast<const sun::ast::FunctionAST*>(node.get());
         if (function && function->getProto().getName() == "read_byte")
-          readerSymbol =
-              sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
-                  function->getDeclarationId(),
-                  analyzer.context().results().declarations)
-                  .symbol("function");
+          readerSymbol = sun::semantic_analysis::DeclarationId::forExport(
+                             function->getDeclarationId(),
+                             analyzer.context().results().declarations)
+                             .symbol("function");
       }
     });
     driver->compileString(R"(

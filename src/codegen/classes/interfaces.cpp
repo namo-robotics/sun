@@ -10,7 +10,7 @@
 #include "codegen/codegen_visitor.h"
 #include "codegen/intrinsics/libc.h"
 
-using sun::semantic_analysis::PortableDeclarationKey;
+using sun::semantic_analysis::DeclarationId;
 using sun::types::ClassType;
 using sun::types::InterfaceType;
 
@@ -77,11 +77,11 @@ GlobalVariable* ClassGenerator::getOrCreateInterfaceVtable(
       llvm::StructType::get(ctx.getContext(), slotTypes);
 
   std::string vtableName =
-      PortableDeclarationKey::inInstance(
-          PortableDeclarationKey::fromDeclaration(
-              ifaceType->getDeclarationId(), state_.analysis->declarations),
-          PortableDeclarationKey::fromDeclaration(
-              classType->getDeclarationId(), state_.analysis->declarations))
+      DeclarationId::inInstance(
+          DeclarationId::forExport(ifaceType->getDeclarationId(),
+                                   state_.analysis->declarations),
+          DeclarationId::forExport(classType->getDeclarationId(),
+                                   state_.analysis->declarations))
           .symbol("owning-vtable");
   Constant* vtableInit = ConstantStruct::get(vtableType, vtableEntries);
   auto* vtableGlobal =
@@ -125,11 +125,11 @@ GlobalVariable* ClassGenerator::getOrCreateBorrowedInterfaceVtable(
   std::vector<llvm::Type*> slots(entries.size(), ptrTy);
   StructType* type = StructType::get(ctx.getContext(), slots);
   std::string name =
-      PortableDeclarationKey::inInstance(
-          PortableDeclarationKey::fromDeclaration(
-              ifaceType->getDeclarationId(), state_.analysis->declarations),
-          PortableDeclarationKey::fromDeclaration(
-              classType->getDeclarationId(), state_.analysis->declarations))
+      DeclarationId::inInstance(
+          DeclarationId::forExport(ifaceType->getDeclarationId(),
+                                   state_.analysis->declarations),
+          DeclarationId::forExport(classType->getDeclarationId(),
+                                   state_.analysis->declarations))
           .symbol("borrowed-vtable");
   auto* result =
       new GlobalVariable(*module, type, true, GlobalValue::InternalLinkage,

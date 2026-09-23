@@ -23,9 +23,8 @@ namespace {
 DeclarationId parameter(DeclarationTable& table, DeclarationKind kind,
                         const std::string& name, DeclarationId owner,
                         DeclarationId module, DeclarationId origin,
-                        const std::vector<std::string>* imported,
-                        size_t index) {
-  return imported ? table.importedSyntax(imported->at(index), kind, name)
+                        DeclarationId imported = {}) {
+  return imported ? table.importedSyntax(imported.encoding(), kind, name)
                   : table.add(kind, name, owner, module, {}, origin);
 }
 
@@ -34,17 +33,19 @@ template <typename Declaration>
 void parameters(const Declaration& node, DeclarationIdentity& identity,
                 DeclarationTable& table, DeclarationId module,
                 const DeclarationIdentity* origin) {
-  if (identity.imported && identity.imported->typeParameters.size() !=
-                               node.getTypeParameters().size())
+  if (identity.imported &&
+      identity.typeParameters.size() != node.getTypeParameters().size())
     logAndThrowError(
         "Imported type parameter identities do not match the declaration");
-  if (identity.typeParameters.empty())
-    for (size_t i = 0; i < node.getTypeParameters().size(); ++i)
-      identity.typeParameters.push_back(parameter(
+  if (identity.imported || identity.typeParameters.empty())
+    for (size_t i = 0; i < node.getTypeParameters().size(); ++i) {
+      auto id = parameter(
           table, DeclarationKind::TypeParameter,
           node.getTypeParameters()[i].name, identity.id, module,
           origin ? origin->typeParameters.at(i) : DeclarationId{},
-          identity.imported ? &identity.imported->typeParameters : nullptr, i));
+          identity.imported ? identity.typeParameters.at(i) : DeclarationId{});
+      if (!identity.imported) identity.typeParameters.push_back(id);
+    }
 }
 
 /** Allocate identities for lifetime parameters without resolving lifetimes. */
@@ -52,18 +53,20 @@ template <typename Declaration>
 void lifetimes(const Declaration& node, DeclarationIdentity& identity,
                DeclarationTable& table, DeclarationId module,
                const DeclarationIdentity* origin) {
-  if (identity.imported && identity.imported->lifetimeParameters.size() !=
-                               node.getLifetimeParameters().size())
+  if (identity.imported &&
+      identity.lifetimeParameters.size() != node.getLifetimeParameters().size())
     logAndThrowError(
         "Imported lifetime identities do not match the declaration");
-  if (identity.lifetimeParameters.empty())
-    for (size_t i = 0; i < node.getLifetimeParameters().size(); ++i)
-      identity.lifetimeParameters.push_back(parameter(
-          table, DeclarationKind::LifetimeParameter,
-          node.getLifetimeParameters()[i].name, identity.id, module,
-          origin ? origin->lifetimeParameters.at(i) : DeclarationId{},
-          identity.imported ? &identity.imported->lifetimeParameters : nullptr,
-          i));
+  if (identity.imported || identity.lifetimeParameters.empty())
+    for (size_t i = 0; i < node.getLifetimeParameters().size(); ++i) {
+      auto id =
+          parameter(table, DeclarationKind::LifetimeParameter,
+                    node.getLifetimeParameters()[i].name, identity.id, module,
+                    origin ? origin->lifetimeParameters.at(i) : DeclarationId{},
+                    identity.imported ? identity.lifetimeParameters.at(i)
+                                      : DeclarationId{});
+      if (!identity.imported) identity.lifetimeParameters.push_back(id);
+    }
 }
 
 /** Register struct-backed declarations while preserving their existing IDs. */
@@ -71,11 +74,10 @@ void binding(DeclarationIdentity& identity, DeclarationKind kind,
              const std::string& name, DeclarationTable& table,
              DeclarationId owner, DeclarationId module,
              DeclarationId origin = {}) {
-  if (!identity.id) {
-    identity.id =
-        identity.imported
-            ? table.importedSyntax(identity.imported->declaration, kind, name)
-            : table.add(kind, name, owner, module, {}, origin);
+  if (!identity.id || (identity.imported && !identity.hasSession())) {
+    identity.id = identity.imported
+                      ? table.importedSyntax(identity.id.encoding(), kind, name)
+                      : table.add(kind, name, owner, module, {}, origin);
     identity.session = table.session();
   } else {
     if (identity.session.lock() != table.session())
@@ -162,10 +164,10 @@ void DeclarationIdentityPass::visit(const ExprAST& root, DeclarationId owner,
         "Generated declaration origin belongs to another analysis session");
   auto declare = [&](DeclarationKind kind, const std::string& name) {
     auto id = root.getDeclarationId();
-    if (!id) {
-      auto& identity = root.declarationIdentity();
-      id = identity.imported ? table_.importedSyntax(
-                                   identity.imported->declaration, kind, name)
+    auto& identity = root.declarationIdentity();
+    if (!id || (identity.imported && !identity.hasSession())) {
+      id = identity.imported
+               ? table_.importedSyntax(identity.id.encoding(), kind, name)
            : kind == DeclarationKind::Module
                ? table_.module(name, module)
                : table_.add(
@@ -194,9 +196,8 @@ void DeclarationIdentityPass::visit(const ExprAST& root, DeclarationId owner,
         auto hash = moon.getContentHash();
         if (hash.starts_with("$") && hash.ends_with("$"))
           hash = hash.substr(1, hash.size() - 2);
-        if (hash.size() == 64 && !table_.get(owner).portableKey)
-          table_.bindPortable(owner, PortableDeclarationKey::original(hash, 1),
-                              hash);
+        if (hash.size() == 64 && !table_.exportedId(owner))
+          table_.bindExportId(owner, DeclarationId::original(hash, 1), hash);
         module = owner;
       }
       break;
@@ -231,20 +232,20 @@ void DeclarationIdentityPass::visit(const ExprAST& root, DeclarationId owner,
       lifetimes(proto, identity, table_, module, sourceIdentity);
       const size_t parameterCount =
           proto.getArgs().size() + proto.hasVariadicParam();
-      if (identity.imported &&
-          identity.imported->parameters.size() != parameterCount)
+      if (identity.imported && identity.parameters.size() != parameterCount)
         logAndThrowError(
             "Imported parameter identities do not match the signature");
-      if (identity.parameters.empty()) {
+      if (identity.imported || identity.parameters.empty()) {
         for (size_t i = 0; i < parameterCount; ++i) {
           const auto& name = i < proto.getArgs().size()
                                  ? proto.getArgs()[i].first
                                  : proto.getVariadicParamName();
-          identity.parameters.push_back(parameter(
+          auto id = parameter(
               table_, DeclarationKind::Parameter, name, owner, module,
               sourceIdentity ? sourceIdentity->parameters.at(i)
                              : DeclarationId{},
-              identity.imported ? &identity.imported->parameters : nullptr, i));
+              identity.imported ? identity.parameters.at(i) : DeclarationId{});
+          if (!identity.imported) identity.parameters.push_back(id);
         }
       }
       break;

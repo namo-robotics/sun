@@ -26,10 +26,9 @@ namespace {
  */
 uint64_t sunTypeId(const ClassType& type,
                    const sun::semantic_analysis::DeclarationTable& table) {
-  const auto symbol =
-      sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
-          type.getDeclarationId(), table)
-          .symbol("error-type");
+  const auto symbol = sun::semantic_analysis::DeclarationId::forExport(
+                          type.getDeclarationId(), table)
+                          .symbol("error-type");
   return std::stoull(symbol.substr(6, 16), nullptr, 16);
 }
 }  // namespace

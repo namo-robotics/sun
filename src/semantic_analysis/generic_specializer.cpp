@@ -162,7 +162,7 @@ std::shared_ptr<ClassType> GenericSpecializer::instantiateGenericClass(
   const bool compiledShape =
       !abstractShape && genericClassInfo->AST->isPrecompiled() &&
       genericClassInfo->AST->hasCompiledSpecialization(
-          sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
+          sun::semantic_analysis::DeclarationId::forExport(
               instanceId, ctx_.results().declarations)
               .encoding());
   auto specializedClass = ctx_.types()->getSpecializedClass(

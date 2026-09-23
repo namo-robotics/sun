@@ -17,7 +17,6 @@
 /** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
 using sun::semantic_analysis::DeclarationId;
-using sun::semantic_analysis::PortableDeclarationKey;
 using sun::semantic_analysis::Visibility;
 using sun::support::SourceFileId;
 
@@ -35,7 +34,7 @@ class ExprAST {
    * source aliases in the caller. Source spelling is kept for formatting and
    * diagnostics.
    */
-  std::optional<PortableDeclarationKey> moduleDeclaration_;
+  std::optional<DeclarationId> moduleDeclaration_;
   sun::support::Position location_;  // Original source location
   bool precompiled_ = false;         // True if from precompiled library
   bool skipCodegen_ = false;  // Set by semantic analyzer for diamond duplicates
@@ -83,12 +82,12 @@ class ExprAST {
 
   /** The original module denoted by this expression or retained using target.
    */
-  const std::optional<PortableDeclarationKey>& getModuleDeclaration() const {
+  const std::optional<DeclarationId>& getModuleDeclaration() const {
     return moduleDeclaration_;
   }
 
   /** Bind a module reference without changing its source spelling. */
-  void setModuleDeclaration(PortableDeclarationKey name) {
+  void setModuleDeclaration(DeclarationId name) {
     moduleDeclaration_ = std::move(name);
   }
 
@@ -181,9 +180,10 @@ class ExprAST {
   /** Discard all annotations when the owning analysis session is discarded. */
   virtual void resetAnalysisSession() const {
     if (!analysis_) return;
-    auto imported = std::move(analysis_->declaration.imported);
+    auto identity = std::move(analysis_->declaration);
+    identity.resetSession();
     analysis_.reset();
-    if (imported) analysis().declaration.imported = std::move(imported);
+    if (identity.imported) analysis().declaration = std::move(identity);
   }
 
   /**

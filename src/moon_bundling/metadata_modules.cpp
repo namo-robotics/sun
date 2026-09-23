@@ -77,7 +77,7 @@ void bindModules(google::protobuf::Message& message, SemanticContext& ctx,
       if (!module) module = ctx.lookupModuleScope(path);
       if (module) {
         node.set_module_declaration_key(
-            sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
+            sun::semantic_analysis::DeclarationId::forExport(
                 static_cast<const ModuleScope&>(*module).declarationId,
                 ctx.results().declarations)
                 .encoding());
@@ -100,7 +100,7 @@ void bindModules(google::protobuf::Message& message, SemanticContext& ctx,
         ctx.getAllFunctions(first).empty()) {
       if (auto* module = ctx.lookupModuleScope(path)) {
         node.set_module_declaration_key(
-            sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
+            sun::semantic_analysis::DeclarationId::forExport(
                 static_cast<const ModuleScope&>(*module).declarationId,
                 ctx.results().declarations)
                 .encoding());

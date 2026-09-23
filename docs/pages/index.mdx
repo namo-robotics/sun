@@ -164,7 +164,10 @@ native archives. Binary payloads are omitted; use `ir.ll` to inspect compiled
 code. Declaration keys are opaque readable strings. Source keys are generated as
 `$<bundle-hash>$_<ordinal>`; derived keys use a deterministic hash of their
 specialization or generation inputs. Ownership and declaration kinds come
-from declaration records, independently of key spelling. Other metadata
+from declaration records, independently of key spelling. During compilation,
+all declarations use string IDs: new local declarations receive decimal IDs,
+while imported declarations retain their serialized IDs. Export assigns stable
+artifact IDs to local declarations without changing their in-session IDs. Other metadata
 follows protobuf JSON conventions; declaration kinds appear as names such as
 `"MODULE"` and `"FUNCTION"`.
 

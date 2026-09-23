@@ -196,14 +196,14 @@ TEST_F(TypeAnalysis_SpecializationBodies, CompiledAndAbstractShapesSkipBodies) {
       analyzer.generics().instantiateGenericClass(*generic, {parameter}));
   EXPECT_FALSE(analyzer.generics().hasPendingBodies());
 
-  PortableDeclarationKey::assignOriginals(*tree, results->declarations,
-                                          std::string(64, 'a'));
+  DeclarationId::assignExportIds(*tree, results->declarations,
+                                 std::string(64, 'a'));
   auto& ast = const_cast<sun::ast::ClassDefinitionAST&>(*generic->AST);
   ast.setPrecompiled(true);
   ast.addCompiledSpecialization(
-      PortableDeclarationKey::specialization(
-          PortableDeclarationKey::fromDeclaration(ast.getDeclarationId(),
-                                                  results->declarations),
+      DeclarationId::specialization(
+          DeclarationId::forExport(ast.getDeclarationId(),
+                                   results->declarations),
           {PortableTypeKey::primitive("i32")})
           .encoding());
   ASSERT_NO_THROW(

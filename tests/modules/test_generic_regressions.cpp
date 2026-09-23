@@ -199,7 +199,7 @@ manifest { libraries: ["lib.moon"] }
     if (shape->isPrecompiled()) {
       ++compiled;
       EXPECT_TRUE(box->hasCompiledSpecialization(
-          sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
+          sun::semantic_analysis::DeclarationId::forExport(
               instanceId, analyzed.results->declarations)
               .encoding()));
       for (const auto& method : shape->getMethods()) {
@@ -209,7 +209,7 @@ manifest { libraries: ["lib.moon"] }
     } else {
       ++fresh;
       EXPECT_FALSE(box->hasCompiledSpecialization(
-          sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
+          sun::semantic_analysis::DeclarationId::forExport(
               instanceId, analyzed.results->declarations)
               .encoding()));
       for (const auto& method : shape->getMethods())

@@ -112,9 +112,8 @@ class CodegenState {
     const auto& record = table.get(id);
     if (role == "function" && record.name == "main" && !record.owner)
       return "main";
-    return sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
-               id, table)
-        .symbol(role);
+    return sun::semantic_analysis::DeclarationId::forExport(id, table).symbol(
+        role);
   }
 
   /** Provides the LLVM instruction builder used by the active generator. */

@@ -6,7 +6,7 @@
 #include <string>
 
 #include "ast/type_annotation.h"
-#include "semantic_analysis/portable_declaration_key.h"
+#include "semantic_analysis/declaration_id.h"
 #include "support/position.h"
 
 /** Defines syntax-tree nodes and the annotations used to analyze them. */
@@ -29,7 +29,7 @@ namespace sun::ast {
  */
 struct TypeConstraint {
   std::string name;  // "_Numeric", "IShape", "_Lambda"
-  std::optional<sun::semantic_analysis::PortableDeclarationKey> declarationKey;
+  std::optional<sun::semantic_analysis::DeclarationId> declarationKey;
   std::vector<TypeAnnotation> typeArguments;
   sun::support::Position span{};  // where it was written, for diagnostics
 

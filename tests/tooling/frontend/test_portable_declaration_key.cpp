@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
 
 #include "semantic_analysis/analysis_results.h"
+#include "semantic_analysis/declaration_id.h"
 #include "semantic_analysis/declaration_table.h"
-#include "semantic_analysis/portable_declaration_key.h"
 #include "types/types.h"
 
 using sun::semantic_analysis::AnalysisResults;
@@ -14,7 +14,7 @@ using sun::types::Types;
 
 /** Keeps test fixtures and helpers local to this source file. */
 namespace {
-using sun::semantic_analysis::PortableDeclarationKey;
+using sun::semantic_analysis::DeclarationId;
 using sun::semantic_analysis::PortableTypeKey;
 
 /** A fixed artifact identity for portable encoding regression tests. */
@@ -22,43 +22,43 @@ const std::string bundle(64, 'a');
 }  // namespace
 
 TEST(Tooling_Frontend_PortableIdentity, symbols_have_a_frozen_encoding) {
-  auto key = PortableDeclarationKey::original(bundle, 6);
+  auto key = DeclarationId::original(bundle, 6);
   EXPECT_EQ(
       key.symbol("function"),
       "_SUN1_907b3a260be289f76a3596962f74a0e6ab8e2c93163365102c2195eca4841cac");
   EXPECT_NE(key.symbol("function"), key.symbol("type"));
-  EXPECT_EQ(key, PortableDeclarationKey::original(bundle, 6));
+  EXPECT_EQ(key, DeclarationId::original(bundle, 6));
 }
 
 TEST(Tooling_Frontend_PortableIdentity, artifact_and_declaration_both_matter) {
-  auto key = PortableDeclarationKey::original(bundle, 6);
+  auto key = DeclarationId::original(bundle, 6);
   EXPECT_NE(key.symbol("function"),
-            PortableDeclarationKey::original(bundle, 7).symbol("function"));
-  EXPECT_NE(key.symbol("function"),
-            PortableDeclarationKey::original(std::string(64, 'b'), 6)
-                .symbol("function"));
-  EXPECT_ANY_THROW(PortableDeclarationKey::original("short", 6));
-  EXPECT_ANY_THROW(PortableDeclarationKey::original(bundle, 0));
-  EXPECT_ANY_THROW(PortableDeclarationKey().symbol("function"));
+            DeclarationId::original(bundle, 7).symbol("function"));
+  EXPECT_NE(
+      key.symbol("function"),
+      DeclarationId::original(std::string(64, 'b'), 6).symbol("function"));
+  EXPECT_ANY_THROW(DeclarationId::original("short", 6));
+  EXPECT_ANY_THROW(DeclarationId::original(bundle, 0));
+  EXPECT_ANY_THROW(DeclarationId().symbol("function"));
 }
 
 TEST(Tooling_Frontend_PortableIdentity,
      instances_use_structural_type_arguments) {
-  auto origin = PortableDeclarationKey::original(bundle, 6);
+  auto origin = DeclarationId::original(bundle, 6);
   auto i32 = PortableTypeKey::primitive("i32");
   auto boolean = PortableTypeKey::primitive("bool");
-  auto a = PortableDeclarationKey::specialization(origin, {i32});
-  auto b = PortableDeclarationKey::specialization(origin, {boolean});
+  auto a = DeclarationId::specialization(origin, {i32});
+  auto b = DeclarationId::specialization(origin, {boolean});
   EXPECT_NE(a.symbol("function"), b.symbol("function"));
-  EXPECT_EQ(a, PortableDeclarationKey::specialization(origin, {i32}));
-  EXPECT_NE(PortableDeclarationKey::specialization(
-                origin, {i32}, std::vector<PortableTypeKey>{boolean})
-                .symbol("function"),
-            PortableDeclarationKey::specialization(origin, {i32, boolean})
-                .symbol("function"));
-  auto local = PortableDeclarationKey::original(bundle, 8);
-  EXPECT_NE(PortableDeclarationKey::inInstance(local, a).symbol("type"),
-            PortableDeclarationKey::inInstance(local, b).symbol("type"));
+  EXPECT_EQ(a, DeclarationId::specialization(origin, {i32}));
+  EXPECT_NE(
+      DeclarationId::specialization(origin, {i32},
+                                    std::vector<PortableTypeKey>{boolean})
+          .symbol("function"),
+      DeclarationId::specialization(origin, {i32, boolean}).symbol("function"));
+  auto local = DeclarationId::original(bundle, 8);
+  EXPECT_NE(DeclarationId::inInstance(local, a).symbol("type"),
+            DeclarationId::inInstance(local, b).symbol("type"));
 }
 
 TEST(Tooling_Frontend_PortableIdentity,
@@ -74,40 +74,38 @@ TEST(Tooling_Frontend_PortableIdentity,
                PortableTypeKey::array(i32, {23}));
   EXPECT_FALSE(PortableTypeKey::function(i32, {i32}, true) ==
                PortableTypeKey::function(i32, {i32}, false));
-  EXPECT_FALSE(
-      PortableTypeKey::nominal(PortableDeclarationKey::original(bundle, 2)) ==
-      PortableTypeKey::nominal(PortableDeclarationKey::original(bundle, 3)));
+  EXPECT_FALSE(PortableTypeKey::nominal(DeclarationId::original(bundle, 2)) ==
+               PortableTypeKey::nominal(DeclarationId::original(bundle, 3)));
   EXPECT_ANY_THROW(PortableTypeKey::primitive("Point"));
 }
 
 TEST(Tooling_Frontend_PortableIdentity, generated_keys_delimit_role_and_slot) {
-  auto origin = PortableDeclarationKey::original(bundle, 6);
-  EXPECT_NE(PortableDeclarationKey::generated(origin, "wrapper", 12)
-                .symbol("function"),
-            PortableDeclarationKey::generated(origin, "wrapper1", 2)
-                .symbol("function"));
-  EXPECT_ANY_THROW(PortableDeclarationKey::generated(origin, "", 1));
+  auto origin = DeclarationId::original(bundle, 6);
+  EXPECT_NE(DeclarationId::generated(origin, "wrapper", 12).symbol("function"),
+            DeclarationId::generated(origin, "wrapper1", 2).symbol("function"));
+  EXPECT_ANY_THROW(DeclarationId::generated(origin, "", 1));
 }
 
 TEST(Tooling_Frontend_PortableIdentity,
      one_portable_key_has_one_session_identity) {
-  auto key = PortableDeclarationKey::original(bundle, 6);
+  auto key = DeclarationId::original(bundle, 6);
   DeclarationTable table;
   auto first = table.add(DeclarationKind::Function, "first");
   auto second = table.add(DeclarationKind::Function, "second");
-  table.bindPortable(first, key);
-  EXPECT_EQ(table.findPortable(key), first);
-  EXPECT_NO_THROW(table.bindPortable(first, key));
-  EXPECT_ANY_THROW(table.bindPortable(second, key));
+  table.bindExportId(first, key);
+  EXPECT_FALSE(table.find(key));
+  EXPECT_EQ(table.find(first), first);
+  EXPECT_NO_THROW(table.bindExportId(first, key));
+  EXPECT_ANY_THROW(table.bindExportId(second, key));
   EXPECT_ANY_THROW(
-      table.bindPortable(first, PortableDeclarationKey::original(bundle, 7)));
-  EXPECT_FALSE(table.get(second).portableKey);
+      table.bindExportId(first, DeclarationId::original(bundle, 7)));
+  EXPECT_FALSE(table.exportedId(second));
   DeclarationTable another;
   another.add(DeclarationKind::Variable, "unrelated");
   auto imported = another.add(DeclarationKind::Function, "first");
-  another.bindPortable(imported, key);
+  another.bindExportId(imported, key);
   EXPECT_NE(first, imported);
-  EXPECT_EQ(table.get(first).portableKey, another.get(imported).portableKey);
+  EXPECT_EQ(table.exportedId(first), another.exportedId(imported));
 }
 
 TEST(Tooling_Frontend_PortableIdentity,
@@ -119,14 +117,14 @@ TEST(Tooling_Frontend_PortableIdentity,
     if (reverse) table.add(DeclarationKind::Variable, "unrelated");
     auto source = table.add(DeclarationKind::Class, "Box");
     auto argument = table.add(DeclarationKind::Class, "Private");
-    table.bindPortable(source, PortableDeclarationKey::original(bundle, 1));
-    table.bindPortable(argument, PortableDeclarationKey::original(bundle, 2));
+    table.bindExportId(source, DeclarationId::original(bundle, 1));
+    table.bindExportId(argument, DeclarationId::original(bundle, 2));
     auto nominal = registry.getClass(argument);
     nominal->addField("recursive", Types::RawPointer(nominal));
     if (reverse)
       registry.specialize({source, {}, {Types::Bool()}, std::nullopt});
     auto instance = registry.specialize({source, {}, {nominal}, std::nullopt});
-    return PortableDeclarationKey::fromDeclaration(instance, table);
+    return DeclarationId::forExport(instance, table);
   };
   EXPECT_EQ(make(false), make(true));
 }
@@ -138,19 +136,18 @@ TEST(Tooling_Frontend_PortableIdentity,
   auto& table = registryResults.declarations;
   auto source = table.add(DeclarationKind::Function, "apply");
   auto owner = table.add(DeclarationKind::Class, "Owner");
-  table.bindPortable(source, PortableDeclarationKey::original(bundle, 1));
-  table.bindPortable(owner, PortableDeclarationKey::original(bundle, 2));
+  table.bindExportId(source, DeclarationId::original(bundle, 1));
+  table.bindExportId(owner, DeclarationId::original(bundle, 2));
   auto absent = registry.specialize({source, {}, {}, std::nullopt});
   auto empty = registry.specialize({source, {}, {}, std::vector<TypePtr>{}});
   auto enclosed = registry.specialize({source, owner, {}, std::nullopt});
   auto key = [&](sun::semantic_analysis::DeclarationId id) {
-    return PortableDeclarationKey::fromDeclaration(id, table).symbol(
-        "function");
+    return DeclarationId::forExport(id, table).symbol("function");
   };
   EXPECT_NE(key(absent), key(empty));
   EXPECT_NE(key(absent), key(enclosed));
   auto parameter = table.add(DeclarationKind::Parameter, "args", source);
-  table.bindPortable(parameter, PortableDeclarationKey::original(bundle, 3));
+  table.bindExportId(parameter, DeclarationId::original(bundle, 3));
   auto first = table.add(DeclarationKind::Parameter, "args.0", enclosed, {}, {},
                          parameter, "variadic-element", 0);
   auto second = table.add(DeclarationKind::Parameter, "args.1", enclosed, {},
@@ -219,15 +216,15 @@ TEST(Tooling_Frontend_PortableIdentity,
   auto id = table.add(DeclarationKind::Class, "Private");
   auto type = registry.getClass(id);
   EXPECT_ANY_THROW(PortableTypeKey::fromType(*type, table));
-  table.bindPortable(id, PortableDeclarationKey::original(bundle, 1));
+  table.bindExportId(id, DeclarationId::original(bundle, 1));
   EXPECT_NO_THROW(PortableTypeKey::fromType(*type, table));
   AnalysisResults otherResults;
   TypeRegistry& other = *otherResults.types;
   auto otherId =
       otherResults.declarations.add(DeclarationKind::Class, "Private");
   EXPECT_EQ(id, otherId);
-  otherResults.declarations.bindPortable(
-      otherId, PortableDeclarationKey::original(bundle, 1));
+  otherResults.declarations.bindExportId(otherId,
+                                         DeclarationId::original(bundle, 1));
   EXPECT_ANY_THROW(PortableTypeKey::fromType(*type, otherResults.declarations));
   EXPECT_ANY_THROW(
       PortableTypeKey::fromType(*Types::TypeParameter("T"), table));
@@ -235,21 +232,20 @@ TEST(Tooling_Frontend_PortableIdentity,
 
 TEST(Tooling_Frontend_PortableIdentity,
      pack_presence_and_unsafe_symbols_are_frozen) {
-  auto origin = PortableDeclarationKey::original(bundle, 6);
+  auto origin = DeclarationId::original(bundle, 6);
   auto i32 = PortableTypeKey::primitive("i32");
   EXPECT_EQ(
-      PortableDeclarationKey::specialization(origin, {i32}).symbol("function"),
+      DeclarationId::specialization(origin, {i32}).symbol("function"),
       "_SUN1_a5c9bfc8ad33bf284e44bf31a599ccf775b4f3fa9c59dfece04efffb0a3b3222");
   EXPECT_EQ(
-      PortableDeclarationKey::specialization(origin, {i32},
-                                             std::vector<PortableTypeKey>{})
+      DeclarationId::specialization(origin, {i32},
+                                    std::vector<PortableTypeKey>{})
           .symbol("function"),
       "_SUN1_efd1d82485b55ff40f82bba5e46914854e6964bc5a2eddd07af7d7d1500d0b26");
   auto callable =
       PortableTypeKey::function(i32, {i32}, false, false, false, true);
   EXPECT_EQ(
-      PortableDeclarationKey::specialization(origin, {callable})
-          .symbol("function"),
+      DeclarationId::specialization(origin, {callable}).symbol("function"),
       "_SUN1_9588ac0357d3c9ba9fcd51354eb6fb5e200dc1d6a20fff46ff6bc199ac815de1");
 }
 
@@ -272,64 +268,79 @@ TEST(Tooling_Frontend_PortableIdentity,
 TEST(Tooling_Frontend_PortableIdentity, keys_are_opaque) {
   for (const auto* value :
        {"arbitrary identifier", "$hash$_0", "01", "specialization"})
-    EXPECT_EQ(PortableDeclarationKey::fromString(value).encoding(), value);
-  EXPECT_ANY_THROW(PortableDeclarationKey::fromString(""));
+    EXPECT_EQ(DeclarationId::fromString(value).encoding(), value);
+  EXPECT_ANY_THROW(DeclarationId::fromString(""));
 }
 
 TEST(Tooling_Frontend_PortableIdentity, imported_ownership_is_interned_once) {
-  auto owner = PortableDeclarationKey::original(bundle, 1).encoding();
-  auto child = PortableDeclarationKey::original(bundle, 2).encoding();
-  std::vector<sun::semantic_analysis::ImportedDeclarationRecord> records{
-      {owner, static_cast<uint32_t>(DeclarationKind::Module), "lib", {}, {}},
-      {child, static_cast<uint32_t>(DeclarationKind::Function), "read", owner,
-       owner}};
+  auto owner = DeclarationId::original(bundle, 1).encoding();
+  auto child = DeclarationId::original(bundle, 2).encoding();
+  std::vector<std::pair<sun::semantic_analysis::DeclarationId,
+                        sun::semantic_analysis::DeclarationRecord>>
+      records{{DeclarationId(owner),
+               {.kind = DeclarationKind::Module,
+                .name = "lib",
+                .owner = {},
+                .module = {}}},
+              {DeclarationId(child),
+               {.kind = DeclarationKind::Function,
+                .name = "read",
+                .owner = DeclarationId(owner),
+                .module = DeclarationId(owner)}}};
   DeclarationTable first, second;
   second.add(DeclarationKind::Variable, "unrelated");
   first.importRecords(records);
   second.importRecords(records);
-  auto firstId = first.findPortable(PortableDeclarationKey::fromString(child));
-  auto secondId =
-      second.findPortable(PortableDeclarationKey::fromString(child));
-  EXPECT_NE(firstId, secondId);
-  EXPECT_EQ(PortableDeclarationKey::fromDeclaration(firstId, first),
-            PortableDeclarationKey::fromDeclaration(secondId, second));
+  auto firstId = first.find(DeclarationId::fromString(child));
+  auto secondId = second.find(DeclarationId::fromString(child));
+  EXPECT_EQ(firstId, secondId);
+  EXPECT_EQ(DeclarationId::forExport(firstId, first),
+            DeclarationId::forExport(secondId, second));
   auto size = first.size();
   first.importRecords(records);
   EXPECT_EQ(first.size(), size);
-  records[1].name = "conflicting";
+  records[1].second.name = "conflicting";
   EXPECT_ANY_THROW(first.importRecords(records));
-  records[1].name = "read";
-  records[1].owner = PortableDeclarationKey::original(bundle, 9).encoding();
+  records[1].second.name = "read";
+  records[1].second.owner = DeclarationId::original(bundle, 9);
   EXPECT_ANY_THROW(first.importRecords(records));
 }
 
 /** Derived identities remain deterministic without a category suffix. */
 TEST(Tooling_Frontend_PortableIdentity, derived_keys_are_opaque_hashes) {
-  auto source = PortableDeclarationKey::fromString("template");
-  auto instance = PortableDeclarationKey::specialization(source, {});
-  EXPECT_EQ(PortableDeclarationKey::fromString(instance.encoding()), instance);
+  auto source = DeclarationId::fromString("template");
+  auto instance = DeclarationId::specialization(source, {});
+  EXPECT_EQ(DeclarationId::fromString(instance.encoding()), instance);
   EXPECT_EQ(instance.encoding().size(), 65);
   EXPECT_EQ(instance.encoding().find("$_"), std::string::npos);
-  EXPECT_EQ(instance, PortableDeclarationKey::specialization(source, {}));
-  EXPECT_NE(instance, PortableDeclarationKey::inInstance(source, source));
-  EXPECT_NE(instance, PortableDeclarationKey::generated(source, "instance", 0));
+  EXPECT_EQ(instance, DeclarationId::specialization(source, {}));
+  EXPECT_NE(instance, DeclarationId::inInstance(source, source));
+  EXPECT_NE(instance, DeclarationId::generated(source, "instance", 0));
 }
 
 /** Import order follows explicit links even when key and input order disagree.
  */
 TEST(Tooling_Frontend_PortableIdentity, opaque_records_restore_ownership) {
-  using Record = sun::semantic_analysis::ImportedDeclarationRecord;
-  const auto module = static_cast<uint32_t>(DeclarationKind::Module);
-  const auto function = static_cast<uint32_t>(DeclarationKind::Function);
-  std::vector<Record> records{
-      {"first", function, "read", "last", "last", "artifact"},
-      {"last", module, "lib", {}, {}, "artifact"}};
+  using Record =
+      std::pair<DeclarationId, sun::semantic_analysis::DeclarationRecord>;
+  const auto module = DeclarationKind::Module;
+  const auto function = DeclarationKind::Function;
+  std::vector<Record> records{{DeclarationId("first"),
+                               {.kind = function,
+                                .name = "read",
+                                .owner = DeclarationId("last"),
+                                .module = DeclarationId("last"),
+                                .bundleHash = "artifact"}},
+                              {DeclarationId("last"),
+                               {.kind = module,
+                                .name = "lib",
+                                .owner = {},
+                                .module = {},
+                                .bundleHash = "artifact"}}};
   DeclarationTable table;
   table.importRecords(records);
-  const auto child =
-      table.findPortable(PortableDeclarationKey::fromString("first"));
-  const auto owner =
-      table.findPortable(PortableDeclarationKey::fromString("last"));
+  const auto child = table.find(DeclarationId::fromString("first"));
+  const auto owner = table.find(DeclarationId::fromString("last"));
   EXPECT_EQ(table.get(child).owner, owner);
   EXPECT_EQ(table.get(child).module, owner);
   EXPECT_EQ(table.get(child).bundleHash, "artifact");
@@ -338,18 +349,52 @@ TEST(Tooling_Frontend_PortableIdentity, opaque_records_restore_ownership) {
             child);
   EXPECT_ANY_THROW(
       table.importedSyntax("first", DeclarationKind::Class, "read"));
-  records[0].bundleHash = "different artifact";
+  records[0].second.bundleHash = "different artifact";
   EXPECT_ANY_THROW(table.importRecords(records));
 }
 
 /** Missing and cyclic ownership links are invalid regardless of key spelling.
  */
 TEST(Tooling_Frontend_PortableIdentity, invalid_ownership_graphs_are_rejected) {
-  const auto kind = static_cast<uint32_t>(DeclarationKind::Module);
+  const auto kind = DeclarationKind::Module;
   DeclarationTable missing, cyclic, self;
-  EXPECT_ANY_THROW(
-      missing.importRecords({{"child", kind, "child", "absent", {}}}));
+  EXPECT_ANY_THROW(missing.importRecords({{DeclarationId("child"),
+                                           {.kind = kind,
+                                            .name = "child",
+                                            .owner = DeclarationId("absent"),
+                                            .module = {}}}}));
   EXPECT_ANY_THROW(cyclic.importRecords(
-      {{"a", kind, "a", "b", {}}, {"b", kind, "b", "a", {}}}));
-  EXPECT_ANY_THROW(self.importRecords({{"a", kind, "a", "a", {}}}));
+      {{DeclarationId("a"),
+        {.kind = kind, .name = "a", .owner = DeclarationId("b"), .module = {}}},
+       {DeclarationId("b"),
+        {.kind = kind,
+         .name = "b",
+         .owner = DeclarationId("a"),
+         .module = {}}}}));
+  EXPECT_ANY_THROW(self.importRecords({{DeclarationId("a"),
+                                        {.kind = kind,
+                                         .name = "a",
+                                         .owner = DeclarationId("a"),
+                                         .module = {}}}}));
+}
+
+/** Imported IDs are retained directly, while local IDs use fresh decimal names.
+ */
+TEST(Tooling_Frontend_PortableIdentity, string_ids_share_one_lookup_path) {
+  DeclarationTable table;
+  auto local = table.add(DeclarationKind::Variable, "local");
+  EXPECT_EQ(local.encoding(), "1");
+  EXPECT_ANY_THROW(
+      table.importOriginal("1", DeclarationKind::Variable, "local", {}, {}));
+  auto imported = table.importOriginal(
+      "opaque-import", DeclarationKind::Function, "external", {}, {});
+  EXPECT_EQ(imported.encoding(), "opaque-import");
+  EXPECT_EQ(table.find(local), local);
+  EXPECT_EQ(table.find(imported), imported);
+  auto numeric =
+      table.importOriginal("2", DeclarationKind::Variable, "numeric", {}, {});
+  EXPECT_EQ(numeric.encoding(), "2");
+  EXPECT_EQ(table.add(DeclarationKind::Variable, "next").encoding(), "3");
+  EXPECT_EQ(table.get(imported).name, "external");
+  EXPECT_FALSE(table.find(DeclarationId::fromString("missing")));
 }

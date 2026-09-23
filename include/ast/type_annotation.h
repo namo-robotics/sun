@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include "semantic_analysis/portable_declaration_key.h"
+#include "semantic_analysis/declaration_id.h"
 #include "support/position.h"
 
 /** Defines syntax-tree nodes and the annotations used to analyze them. */
@@ -50,7 +50,7 @@ struct ArrayDimension {
  * Error union types: T, error (value or error)
  */
 struct TypeAnnotation {
-  std::optional<sun::semantic_analysis::PortableDeclarationKey> declarationKey;
+  std::optional<sun::semantic_analysis::DeclarationId> declarationKey;
   std::string baseName;  // "i32", "f64", "ptr", "fn", "lambda", "array", etc.
   std::unique_ptr<TypeAnnotation>
       elementType;  // For ptr/ref/array: element type

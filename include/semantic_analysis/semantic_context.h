@@ -369,7 +369,7 @@ class SemanticContext : public AccessContext {
 
   /** Require the original nominal declaration, without source-name fallback. */
   sun::semantic_analysis::DeclarationId requireDeclaration(
-      const sun::semantic_analysis::PortableDeclarationKey &key,
+      const sun::semantic_analysis::DeclarationId &key,
       const std::string &exporter = "",
       std::optional<sun::types::Type::Kind> expectedKind = std::nullopt,
       const std::string &displayName = "") const;

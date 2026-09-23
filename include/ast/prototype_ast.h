@@ -183,9 +183,10 @@ class PrototypeAST {
   /** Drop all annotations when discarding the owning session. */
   void resetAnalysisSession() const {
     if (!analysis_) return;
-    auto imported = std::move(analysis_->declaration.imported);
+    auto identity = std::move(analysis_->declaration);
+    identity.resetSession();
     analysis_.reset();
-    if (imported) analysis().declaration.imported = std::move(imported);
+    if (identity.imported) analysis().declaration = std::move(identity);
   }
   /** Returns the analysis stored by this object. */
   const PrototypeAnalysis* getAnalysis() const { return analysis_.get(); }

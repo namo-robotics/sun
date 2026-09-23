@@ -23,9 +23,9 @@ struct SpecializationKey {
 struct SpecializationKeyHash {
   /** Computes a hash for the supplied value for use in unordered containers. */
   size_t operator()(const SpecializationKey& key) const {
-    size_t hash = key.source.index();
+    size_t hash = std::hash<DeclarationId>{}(key.source);
     auto combine = [&](size_t value) { hash = hash * 31 + value; };
-    combine(key.enclosing.index());
+    combine(std::hash<DeclarationId>{}(key.enclosing));
     combine(key.arguments.size());
     for (const auto& arg : key.arguments)
       combine(arg ? static_cast<size_t>(arg->getKind()) + 1 : 0);
@@ -98,9 +98,9 @@ class TypeRegistry {
     // errors can carry text composed at runtime. Without the stdlib, message()
     // stays literal-only.
     auto id = declarations_.add(DeclarationKind::Interface, "IError");
-    declarations_.bindPortable(
+    declarations_.bindExportId(
         id,
-        PortableDeclarationKey::original(
+        DeclarationId::original(
             "4c7b23a9e50e3bb484c7f661e4700d156bac371ed9dd5d23c3d22e2fefc263c1",
             1));
     auto ierror =
@@ -115,11 +115,11 @@ class TypeRegistry {
         declarations_.add(DeclarationKind::Function, "message", id);
     uint64_t ordinal = 2;
     for (const auto& method : ierror->getMethods())
-      declarations_.bindPortable(
+      declarations_.bindExportId(
           method.declarationId,
-          PortableDeclarationKey::original("4c7b23a9e50e3bb484c7f661e4700d156ba"
-                                           "c371ed9dd5d23c3d22e2fefc263c1",
-                                           ordinal++));
+          DeclarationId::original("4c7b23a9e50e3bb484c7f661e4700d156ba"
+                                  "c371ed9dd5d23c3d22e2fefc263c1",
+                                  ordinal++));
     errorInterface = ierror;
   }
 

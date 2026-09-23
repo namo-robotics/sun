@@ -968,7 +968,7 @@ void Driver::analyzeProgram(BlockExprAST& blockAst, Parser& parser) {
     std::string artifactHash = ownBundleHash_;
     if (artifactHash.empty()) artifactHash = computeOwnSourceHash(blockAst);
     analyzer->pipeline().run(blockAst, [&] {
-      sun::semantic_analysis::PortableDeclarationKey::assignOriginals(
+      sun::semantic_analysis::DeclarationId::assignExportIds(
           blockAst, analysisResults->declarations, artifactHash);
     });
   }

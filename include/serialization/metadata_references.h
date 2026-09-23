@@ -13,9 +13,9 @@ namespace pbc = sun::proto::ast;
 /** Visit portable nominal references, retaining names only for diagnostics. */
 inline void visitDeclarationKeys(
     const google::protobuf::Message& message,
-    const std::function<void(
-        const sun::semantic_analysis::PortableDeclarationKey&,
-        std::optional<sun::types::Type::Kind>, const std::string&)>& visit) {
+    const std::function<void(const sun::semantic_analysis::DeclarationId&,
+                             std::optional<sun::types::Type::Kind>,
+                             const std::string&)>& visit) {
   const auto* descriptor = message.GetDescriptor();
   if (descriptor == pbc::CompiledSpecialization::descriptor()) return;
   const auto* reflection = message.GetReflection();
@@ -28,7 +28,7 @@ inline void visitDeclarationKeys(
           descriptor == pbc::TypeAnnotation::descriptor()  ? "base_name"
           : descriptor == pbc::TypeParameter::descriptor() ? "constraint"
                                                            : "name");
-      visit(sun::semantic_analysis::PortableDeclarationKey::fromString(
+      visit(sun::semantic_analysis::DeclarationId::fromString(
                 reflection->GetString(message, field)),
             interface ? std::optional<sun::types::Type::Kind>(
                             sun::types::Type::Kind::Interface)

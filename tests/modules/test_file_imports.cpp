@@ -18,7 +18,7 @@
 using sun::moon_bundling::MoonBuilder;
 using sun::moon_bundling::MoonImport;
 using sun::moon_bundling::MoonReader;
-using sun::semantic_analysis::PortableDeclarationKey;
+using sun::semantic_analysis::DeclarationId;
 using sun::semantic_analysis::PortableTypeKey;
 
 using sun::ast::VariableCreationAST;
@@ -324,11 +324,11 @@ namespace {
 /** Inspect canonical module annotations throughout exported metadata. */
 void visitModuleReferences(
     const google::protobuf::Message& message,
-    const std::function<void(const PortableDeclarationKey&)>& visit) {
+    const std::function<void(const DeclarationId&)>& visit) {
   if (message.GetDescriptor() == sun::proto::ast::ASTNode::descriptor()) {
     const auto& node = static_cast<const sun::proto::ast::ASTNode&>(message);
     if (node.has_module_declaration_key())
-      visit(PortableDeclarationKey::fromString(node.module_declaration_key()));
+      visit(DeclarationId::fromString(node.module_declaration_key()));
   }
   auto* reflection = message.GetReflection();
   std::vector<const google::protobuf::FieldDescriptor*> fields;
@@ -346,12 +346,10 @@ void visitModuleReferences(
 }
 
 /** Find the original key exported for a source declaration. */
-PortableDeclarationKey exportedKey(MoonReader& reader,
-                                   const std::string& name) {
+DeclarationId exportedKey(MoonReader& reader, const std::string& name) {
   for (const auto& module : reader.listModules())
     for (const auto& record : reader.getMetadata(module)->declarations())
-      if (record.name() == name)
-        return PortableDeclarationKey::fromString(record.key());
+      if (record.name() == name) return DeclarationId::fromString(record.key());
   throw std::runtime_error("Missing exported declaration: " + name);
 }
 
@@ -760,8 +758,7 @@ TEST(MoonMetadata,
      canonical_type_round_trip_preserves_spelling_and_qualifiers) {
   /** Identify a nominal type without recursively expanding its fields. */
   sun::ast::TypeAnnotation nominal("build_alias.Value");
-  nominal.declarationKey =
-      PortableDeclarationKey::original(std::string(64, 'a'), 3);
+  nominal.declarationKey = DeclarationId::original(std::string(64, 'a'), 3);
   nominal.typeArguments.push_back(
       std::make_unique<sun::ast::TypeAnnotation>("T"));
   nominal.lifetimeArguments = {"a"};
@@ -799,13 +796,12 @@ TEST(MoonMetadata,
 }
 
 TEST(MoonMetadata, interface_requirement_does_not_apply_to_type_arguments) {
-  auto view = PortableDeclarationKey::original(std::string(64, 'a'), 2);
-  auto value = PortableDeclarationKey::original(std::string(64, 'a'), 3);
+  auto view = DeclarationId::original(std::string(64, 'a'), 2);
+  auto value = DeclarationId::original(std::string(64, 'a'), 3);
   sun::proto::ast::ImplementedInterface impl;
   impl.set_declaration_key(view.encoding());
   impl.add_type_arguments()->set_declaration_key(value.encoding());
-  std::vector<
-      std::pair<PortableDeclarationKey, std::optional<sun::types::Type::Kind>>>
+  std::vector<std::pair<DeclarationId, std::optional<sun::types::Type::Kind>>>
       uses;
   sun::serialization::visitDeclarationKeys(
       impl, [&](const auto& name, auto kind, const auto&) {
@@ -934,7 +930,7 @@ TEST_F(MoonExactTypes, explicit_nested_alias_preserves_ordinary_children) {
 }
 
 TEST(MoonMetadata, module_reference_round_trip_preserves_source_spelling) {
-  auto module = PortableDeclarationKey::original(std::string(64, 'a'), 4);
+  auto module = DeclarationId::original(std::string(64, 'a'), 4);
   /** Identify a mutable or immutable reference to another type. */
   sun::ast::VariableReferenceAST reference("build_alias.inner");
   reference.setModuleDeclaration(module);
@@ -1262,11 +1258,11 @@ TEST_F(MoonExactTypes,
   auto firstReader = MoonReader::open(first);
   auto secondReader = MoonReader::open(second);
   ASSERT_TRUE(dependency && firstReader && secondReader);
-  const auto instance = PortableDeclarationKey::specialization(
+  const auto instance = DeclarationId::specialization(
       exportedKey(*dependency, "Box"), {PortableTypeKey::primitive("i32")});
-  const auto getter = PortableDeclarationKey::inInstance(
-                          exportedKey(*dependency, "get"), instance)
-                          .symbol("function");
+  const auto getter =
+      DeclarationId::inInstance(exportedKey(*dependency, "get"), instance)
+          .symbol("function");
   llvm::LLVMContext firstContext, secondContext;
   auto firstModule =
       firstReader->loadModule(firstReader->listModules()[0], firstContext);
@@ -1277,12 +1273,12 @@ TEST_F(MoonExactTypes,
   ASSERT_NE(secondModule->getFunction(getter), nullptr);
   const auto constant = exportedKey(*dependency, "constant");
   const auto privateFirst =
-      PortableDeclarationKey::specialization(
+      DeclarationId::specialization(
           constant,
           {PortableTypeKey::nominal(exportedKey(*firstReader, "Secret"))})
           .symbol("function");
   const auto privateSecond =
-      PortableDeclarationKey::specialization(
+      DeclarationId::specialization(
           constant,
           {PortableTypeKey::nominal(exportedKey(*secondReader, "Secret"))})
           .symbol("function");

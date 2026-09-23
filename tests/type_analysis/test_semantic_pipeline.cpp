@@ -14,14 +14,14 @@ using namespace sun::ast;
 using namespace sun::semantic_analysis;
 
 /** Creates a portable identity for a declaration in a synthetic bundle. */
-PortableDeclarationKey key(char bundle, uint64_t ordinal = 2) {
-  return PortableDeclarationKey::original(std::string(64, bundle), ordinal);
+DeclarationId key(char bundle, uint64_t ordinal = 2) {
+  return DeclarationId::original(std::string(64, bundle), ordinal);
 }
 
 /** Builds a compiled class stub with a primitive or generic field. */
 std::unique_ptr<MoonScopeAST> bundle(
     char artifact, bool generic = false,
-    std::optional<PortableDeclarationKey> fieldKey = std::nullopt) {
+    std::optional<DeclarationId> fieldKey = std::nullopt) {
   const std::string scope = "$" + std::string(64, artifact) + "$";
   std::vector<TypeParameter> parameters;
   if (generic) parameters.emplace_back("T");
@@ -35,13 +35,10 @@ std::unique_ptr<MoonScopeAST> bundle(
   auto type = std::make_unique<ClassDefinitionAST>(
       "Value", std::move(parameters), std::vector<ImplementedInterfaceAST>{},
       std::move(fields), std::vector<ClassMethodDecl>{}, true);
-  type->declarationIdentity().imported =
-      ImportedDeclarationIdentity{key(artifact).encoding()};
-  type->getFields()[0].declaration.imported =
-      ImportedDeclarationIdentity{key(artifact, 3).encoding()};
+  type->declarationIdentity() = {.imported = true, .id = key(artifact)};
+  type->getFields()[0].declaration = {.imported = true, .id = key(artifact, 3)};
   if (generic)
-    type->declarationIdentity().imported->typeParameters.push_back(
-        key(artifact, 4).encoding());
+    type->declarationIdentity().typeParameters.push_back(key(artifact, 4));
   std::vector<std::unique_ptr<ExprAST>> declarations;
   declarations.push_back(std::move(type));
   auto moon = std::make_unique<MoonScopeAST>(
@@ -50,17 +47,28 @@ std::unique_ptr<MoonScopeAST> bundle(
                                      BlockKind::Module));
   const auto root = key(artifact, 1).encoding();
   const auto owner = key(artifact).encoding();
-  moon->importedDeclarations = {
-      {root, static_cast<uint32_t>(DeclarationKind::Module), scope, "", ""},
-      {owner, static_cast<uint32_t>(DeclarationKind::Class), "Value", root,
-       root},
-      {key(artifact, 3).encoding(),
-       static_cast<uint32_t>(DeclarationKind::Field), "value", owner, root}};
+  moon->importedDeclarations = {{DeclarationId(root),
+                                 {.kind = DeclarationKind::Module,
+                                  .name = scope,
+                                  .owner = {},
+                                  .module = {}}},
+                                {DeclarationId(owner),
+                                 {.kind = DeclarationKind::Class,
+                                  .name = "Value",
+                                  .owner = DeclarationId(root),
+                                  .module = DeclarationId(root)}},
+                                {DeclarationId(key(artifact, 3).encoding()),
+                                 {.kind = DeclarationKind::Field,
+                                  .name = "value",
+                                  .owner = DeclarationId(owner),
+                                  .module = DeclarationId(root)}}};
   if (generic)
     moon->importedDeclarations.push_back(
-        {key(artifact, 4).encoding(),
-         static_cast<uint32_t>(DeclarationKind::TypeParameter), "T", owner,
-         root});
+        {DeclarationId(key(artifact, 4).encoding()),
+         {.kind = DeclarationKind::TypeParameter,
+          .name = "T",
+          .owner = DeclarationId(owner),
+          .module = DeclarationId(root)}});
   return moon;
 }
 
@@ -104,8 +112,8 @@ class TypeAnalysis_SemanticPipeline : public ::testing::Test {
       const std::string message = error.what();
       EXPECT_NE(message.find("moon exact dependency: library 'a.moon'"),
                 std::string::npos);
-      EXPECT_NE(message.find("requires declaration 'Value' from bundle " +
-                             std::string(64, 'b')),
+      EXPECT_NE(message.find("requires declaration 'Value' with identity " +
+                             key('b').encoding()),
                 std::string::npos);
       EXPECT_NE(message.find("Explicitly import the required exact bundle."),
                 std::string::npos);
@@ -129,7 +137,7 @@ TEST_F(TypeAnalysis_SemanticPipeline, PreparesFieldsInEitherDependencyOrder) {
     SemanticAnalyzer isolatedAnalyzer(session);
     auto& isolated = isolatedAnalyzer.context();
     ASSERT_NO_THROW(isolatedAnalyzer.pipeline().run(ordered));
-    EXPECT_TRUE(session->declarations.findPortable(key('b')));
+    EXPECT_TRUE(session->declarations.find(key('b')));
     EXPECT_EQ(isolated.rootScope().childModules.size(), 2u);
     for (const auto& node : ordered.getBody()) {
       const auto& moon = static_cast<const MoonScopeAST&>(*node);
@@ -140,10 +148,9 @@ TEST_F(TypeAnalysis_SemanticPipeline, PreparesFieldsInEitherDependencyOrder) {
       ASSERT_NE(prepared->getField("value"), nullptr);
     }
     auto importerType =
-        session->types->getClass(session->declarations.findPortable(key('a')));
-    EXPECT_EQ(
-        importerType->getField("value")->type,
-        session->types->getClass(session->declarations.findPortable(key('b'))));
+        session->types->getClass(session->declarations.find(key('a')));
+    EXPECT_EQ(importerType->getField("value")->type,
+              session->types->getClass(session->declarations.find(key('b'))));
   }
 }
 
@@ -180,7 +187,8 @@ TEST_F(TypeAnalysis_SemanticPipeline, UnusedGenericRequirement) {
       {key('b'), "Value", sun::types::Type::Kind::Interface});
   expectDependencyError();
   EXPECT_EQ(context.lookupGenericClass("Value"), nullptr);
-  EXPECT_FALSE(moon.getBody().getBody()[0]->getDeclarationId());
+  EXPECT_EQ(moon.getBody().getBody()[0]->getDeclarationId(), key('a'));
+  EXPECT_FALSE(moon.getBody().getBody()[0]->declarationIdentity().hasSession());
 }
 
 /** Own-bundle metadata is ignored while its source declarations are analyzed.
@@ -201,14 +209,18 @@ TEST_F(TypeAnalysis_SemanticPipeline, TreatsOwnBundleAsSource) {
   auto own = MoonScopeAST::forOwnBundle(
       "$own$",
       std::make_unique<BlockExprAST>(std::move(ownNodes), BlockKind::Module));
-  own->importedDeclarations.push_back({"invalid", 0, "", "", ""});
+  own->importedDeclarations.push_back({DeclarationId("invalid"),
+                                       {.kind = DeclarationKind::Module,
+                                        .name = "",
+                                        .owner = {},
+                                        .module = {}}});
   own->requiredDeclarations.push_back({key('b'), "Value", std::nullopt});
   add(std::move(own));
 
   ASSERT_NO_THROW(analyzer.pipeline().run(tree));
   EXPECT_TRUE(sourceType->hasResolvedType());
   EXPECT_TRUE(ownType->hasResolvedType());
-  EXPECT_FALSE(results->declarations.findPortable(key('b')));
+  EXPECT_FALSE(results->declarations.find(key('b')));
 }
 
 /** Import preparation attaches template identities without specializing them.
@@ -217,16 +229,16 @@ TEST_F(TypeAnalysis_SemanticPipeline,
        RegistersGenericTemplatesForLaterSpecialization) {
   auto& moon = add(bundle('a', true));
   ASSERT_NO_THROW(analyzer.pipeline().run(tree));
-  const auto expected = results->declarations.findPortable(key('a'));
+  const auto expected = results->declarations.find(key('a'));
   const auto count = results->declarations.size();
   const auto& type =
       static_cast<const ClassDefinitionAST&>(*moon.getBody().getBody()[0]);
   EXPECT_EQ(type.getDeclarationId(), expected);
   EXPECT_EQ(type.getFields()[0].declaration.id,
-            results->declarations.findPortable(key('a', 3)));
+            results->declarations.find(key('a', 3)));
   ASSERT_EQ(type.declarationIdentity().typeParameters.size(), 1u);
   EXPECT_EQ(type.declarationIdentity().typeParameters[0],
-            results->declarations.findPortable(key('a', 4)));
+            results->declarations.find(key('a', 4)));
   EXPECT_EQ(results->declarations.size(), count);
   EXPECT_TRUE(type.hasResolvedType());
   const auto* generic = context.lookupGenericClass(expected);
@@ -247,28 +259,33 @@ TEST_F(TypeAnalysis_SemanticPipeline, CompletesSignaturesAndInterfaces) {
       TypeAnnotation("i32"));
   auto function = std::make_unique<FunctionAST>(std::move(proto), nullptr);
   function->setPrecompiled(true);
-  function->declarationIdentity().imported =
-      ImportedDeclarationIdentity{key('a', 10).encoding()};
+  function->declarationIdentity() = {.imported = true, .id = key('a', 10)};
   auto* importedFunction = function.get();
   std::vector<InterfaceFieldDecl> fields;
   fields.push_back({"size", TypeAnnotation("i32")});
   auto interface = std::make_unique<InterfaceDefinitionAST>(
       "Sized", std::vector<TypeParameter>{}, std::move(fields),
       std::vector<InterfaceMethodDecl>{}, true);
-  interface->declarationIdentity().imported =
-      ImportedDeclarationIdentity{key('a', 11).encoding()};
-  interface->getFields()[0].declaration.imported =
-      ImportedDeclarationIdentity{key('a', 12).encoding()};
+  interface->declarationIdentity() = {.imported = true, .id = key('a', 11)};
+  interface->getFields()[0].declaration = {.imported = true,
+                                           .id = key('a', 12)};
   const auto root = key('a', 1).encoding();
+  moon->importedDeclarations.push_back({DeclarationId(key('a', 10).encoding()),
+                                        {.kind = DeclarationKind::Function,
+                                         .name = "read",
+                                         .owner = DeclarationId(root),
+                                         .module = DeclarationId(root)}});
+  moon->importedDeclarations.push_back({DeclarationId(key('a', 11).encoding()),
+                                        {.kind = DeclarationKind::Interface,
+                                         .name = "Sized",
+                                         .owner = DeclarationId(root),
+                                         .module = DeclarationId(root)}});
   moon->importedDeclarations.push_back(
-      {key('a', 10).encoding(),
-       static_cast<uint32_t>(DeclarationKind::Function), "read", root, root});
-  moon->importedDeclarations.push_back(
-      {key('a', 11).encoding(),
-       static_cast<uint32_t>(DeclarationKind::Interface), "Sized", root, root});
-  moon->importedDeclarations.push_back(
-      {key('a', 12).encoding(), static_cast<uint32_t>(DeclarationKind::Field),
-       "size", key('a', 11).encoding(), root});
+      {DeclarationId(key('a', 12).encoding()),
+       {.kind = DeclarationKind::Field,
+        .name = "size",
+        .owner = DeclarationId(key('a', 11).encoding()),
+        .module = DeclarationId(root)}});
   std::vector<std::unique_ptr<ExprAST>> declarations;
   declarations.push_back(std::move(interface));
   declarations.push_back(std::move(function));
@@ -278,8 +295,8 @@ TEST_F(TypeAnalysis_SemanticPipeline, CompletesSignaturesAndInterfaces) {
   ASSERT_NO_THROW(analyzer.pipeline().run(tree));
   EXPECT_EQ(importedFunction->getProto().getResolvedReturnType(),
             sun::types::Types::Int32());
-  auto interfaceType = results->types->getInterface(
-      results->declarations.findPortable(key('a', 11)));
+  auto interfaceType =
+      results->types->getInterface(results->declarations.find(key('a', 11)));
   ASSERT_NE(interfaceType->getField("size"), nullptr);
   EXPECT_EQ(interfaceType->getField("size")->type, sun::types::Types::Int32());
 }
@@ -316,8 +333,7 @@ TEST_F(TypeAnalysis_SemanticPipeline, RegistersModuleGlobals) {
                                                       std::move(annotation));
   global->setPrecompiled(true);
   global->setVisibility(Visibility::Public);
-  global->declarationIdentity().imported =
-      ImportedDeclarationIdentity{key('a', 11).encoding()};
+  global->declarationIdentity() = {.imported = true, .id = key('a', 11)};
   auto* importedGlobal = global.get();
   std::vector<std::unique_ptr<ExprAST>> members;
   members.push_back(std::move(global));
@@ -326,29 +342,32 @@ TEST_F(TypeAnalysis_SemanticPipeline, RegistersModuleGlobals) {
       std::make_unique<BlockExprAST>(std::move(members), BlockKind::Module));
   module->setPrecompiled(true);
   module->setVisibility(Visibility::Public);
-  module->declarationIdentity().imported =
-      ImportedDeclarationIdentity{key('a', 10).encoding()};
+  module->declarationIdentity() = {.imported = true, .id = key('a', 10)};
   const auto root = key('a', 1).encoding();
+  moon->importedDeclarations.push_back({DeclarationId(key('a', 10).encoding()),
+                                        {.kind = DeclarationKind::Module,
+                                         .name = "storage",
+                                         .owner = DeclarationId(root),
+                                         .module = DeclarationId(root)}});
   moon->importedDeclarations.push_back(
-      {key('a', 10).encoding(), static_cast<uint32_t>(DeclarationKind::Module),
-       "storage", root, root});
-  moon->importedDeclarations.push_back(
-      {key('a', 11).encoding(),
-       static_cast<uint32_t>(DeclarationKind::Variable), "shared",
-       key('a', 10).encoding(), key('a', 10).encoding()});
+      {DeclarationId(key('a', 11).encoding()),
+       {.kind = DeclarationKind::Variable,
+        .name = "shared",
+        .owner = DeclarationId(key('a', 10).encoding()),
+        .module = DeclarationId(key('a', 10).encoding())}});
   std::vector<std::unique_ptr<ExprAST>> declarations;
   declarations.push_back(std::move(module));
   const_cast<BlockExprAST&>(moon->getBody())
       .prependExpressions(std::move(declarations));
   add(std::move(moon));
   ASSERT_NO_THROW(analyzer.pipeline().run(tree));
-  auto* scope = context.lookupModuleScope(
-      results->declarations.findPortable(key('a', 10)));
+  auto* scope =
+      context.lookupModuleScope(results->declarations.find(key('a', 10)));
   ASSERT_NE(scope, nullptr);
   auto* variable = scope->lookupVariable("shared");
   ASSERT_NE(variable, nullptr);
-  EXPECT_EQ(variable->type, results->types->getClass(
-                                results->declarations.findPortable(key('a'))));
+  EXPECT_EQ(variable->type,
+            results->types->getClass(results->declarations.find(key('a'))));
   EXPECT_EQ(variable->declarationId, importedGlobal->getDeclarationId());
   EXPECT_FALSE(importedGlobal->getValue());
 }

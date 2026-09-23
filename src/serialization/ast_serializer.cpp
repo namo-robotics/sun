@@ -25,7 +25,7 @@ pbc::DeclarationIdentity ASTSerializer::serializeIdentity(
     sun::support::logAndThrowError(
         "Cannot export declarations from another analysis session");
   auto key = [&](sun::semantic_analysis::DeclarationId id) {
-    return sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
+    return sun::semantic_analysis::DeclarationId::forExport(
                id, *config_.declarations)
         .encoding();
   };

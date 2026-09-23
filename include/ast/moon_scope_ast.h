@@ -3,10 +3,12 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "ast/block_expr_ast.h"
 #include "ast/expr_ast.h"
+#include "semantic_analysis/declaration_record.h"
 #include "types/types.h"
 
 /** Defines syntax-tree nodes and the annotations used to analyze them. */
@@ -33,7 +35,7 @@ class MoonScopeAST : public ExprAST {
  public:
   /** A referenced declaration and the type kind required by this use. */
   struct DeclarationRequirement {
-    sun::semantic_analysis::PortableDeclarationKey key;
+    sun::semantic_analysis::DeclarationId key;
     std::string displayName;
     // Empty accepts any nominal type; implements and constraints require
     // Interface.
@@ -47,7 +49,8 @@ class MoonScopeAST : public ExprAST {
    */
   std::vector<DeclarationRequirement> requiredDeclarations;
   // Registered by import preparation before syntax identities are assigned.
-  std::vector<sun::semantic_analysis::ImportedDeclarationRecord>
+  std::vector<std::pair<sun::semantic_analysis::DeclarationId,
+                        sun::semantic_analysis::DeclarationRecord>>
       importedDeclarations;
 
   /** Creates this syntax node and takes ownership of any supplied child

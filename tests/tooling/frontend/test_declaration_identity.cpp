@@ -20,7 +20,6 @@ using sun::semantic_analysis::CallableSignature;
 using sun::semantic_analysis::DeclarationId;
 using sun::semantic_analysis::DeclarationKind;
 using sun::semantic_analysis::DeclarationTable;
-using sun::semantic_analysis::PortableDeclarationKey;
 using sun::semantic_analysis::SpecializationKey;
 using sun::semantic_analysis::TypeRegistry;
 using sun::semantic_analysis::passes::DeclarationIdentityPass;
@@ -697,8 +696,8 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   auto second = types->getInterface(secondId, {{}, "View"});
   uint64_t ordinal = 1;
   for (auto id : {classId, firstId, secondId})
-    results->declarations.bindPortable(
-        id, PortableDeclarationKey::original(std::string(64, 'a'), ordinal++));
+    results->declarations.bindExportId(
+        id, DeclarationId::original(std::string(64, 'a'), ordinal++));
   sun::codegen::CodegenContext context("vtable_identity", nullptr);
   sun::codegen::CodegenVisitor gen(context, results);
   auto& classes = gen.classGenerator();
@@ -827,15 +826,14 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   b.add(DeclarationKind::Variable, "unrelated");
   DeclarationIdentityPass(a).run(*first);
   DeclarationIdentityPass(b).run(*second);
-  PortableDeclarationKey::assignOriginals(*first, a, std::string(64, 'a'));
-  PortableDeclarationKey::assignOriginals(*second, b, std::string(64, 'a'));
+  DeclarationId::assignExportIds(*first, a, std::string(64, 'a'));
+  DeclarationId::assignExportIds(*second, b, std::string(64, 'a'));
   for (uint64_t i = 1; i <= a.size(); ++i) {
-    const auto key =
-        PortableDeclarationKey::fromDeclaration(DeclarationId(i), a);
-    const auto imported = b.findPortable(key);
-    ASSERT_TRUE(imported);
-    EXPECT_NE(imported, DeclarationId(i));
-    EXPECT_EQ(a.get(DeclarationId(i)).name, b.get(imported).name);
+    const auto key = DeclarationId::forExport(DeclarationId(i), a);
+    const auto otherId = b.idAt(i);
+    EXPECT_EQ(DeclarationId::forExport(otherId, b), key);
+    EXPECT_NE(otherId, a.idAt(i - 1));
+    EXPECT_EQ(a.get(a.idAt(i - 1)).name, b.get(otherId).name);
   }
 }
 
@@ -844,41 +842,53 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   auto source = parse("function work<T>(value: T) i32 { return 1; }");
   DeclarationTable original;
   DeclarationIdentityPass(original).run(*source);
-  PortableDeclarationKey::assignOriginals(*source, original,
-                                          std::string(64, 'a'));
+  DeclarationId::assignExportIds(*source, original, std::string(64, 'a'));
   sun::serialization::ASTSerializer serializer({.declarations = &original});
   sun::serialization::ASTDeserializer deserializer(
       {.import_declarations = true});
   auto imported = deserializer.deserialize(serializer.serialize(*source));
-  std::vector<sun::semantic_analysis::ImportedDeclarationRecord> records;
+  std::vector<std::pair<sun::semantic_analysis::DeclarationId,
+                        sun::semantic_analysis::DeclarationRecord>>
+      records;
   auto key = [&](DeclarationId id) {
-    return id ? PortableDeclarationKey::fromDeclaration(id, original).encoding()
+    return id ? DeclarationId::forExport(id, original).encoding()
               : std::string{};
   };
   for (uint64_t i = 1; i <= original.size(); ++i) {
     const auto& record = original.get(DeclarationId(i));
-    records.push_back({key(DeclarationId(i)),
-                       static_cast<uint32_t>(record.kind), record.name,
-                       key(record.owner), key(record.module)});
+    records.push_back({DeclarationId(key(DeclarationId(i))),
+                       {.kind = record.kind,
+                        .name = record.name,
+                        .owner = DeclarationId(key(record.owner)),
+                        .module = DeclarationId(key(record.module))}});
   }
   DeclarationTable first;
   first.importRecords(records);
   DeclarationIdentityPass(first).run(*imported);
   auto& function =
       *static_cast<sun::ast::BlockExprAST&>(*imported).getBody()[0];
-  const auto portable = PortableDeclarationKey::fromDeclaration(
-      function.getDeclarationId(), first);
+  const auto portable =
+      DeclarationId::forExport(function.getDeclarationId(), first);
   const auto oldId = function.getDeclarationId();
+  const auto parameterIds = function.declarationIdentity().parameters;
+  const auto typeParameterIds = function.declarationIdentity().typeParameters;
+  EXPECT_NO_THROW(DeclarationIdentityPass(first).run(*imported));
+  EXPECT_EQ(function.declarationIdentity().parameters, parameterIds);
+  DeclarationTable other;
+  other.importRecords(records);
+  EXPECT_ANY_THROW(DeclarationIdentityPass(other).run(*imported));
   sun::semantic_analysis::passes::resetAnalysisSession(*imported);
-  ASSERT_FALSE(function.getDeclarationId());
+  ASSERT_EQ(function.getDeclarationId(), oldId);
+  ASSERT_FALSE(function.declarationIdentity().hasSession());
   ASSERT_TRUE(function.declarationIdentity().imported);
+  EXPECT_EQ(function.declarationIdentity().parameters, parameterIds);
+  EXPECT_EQ(function.declarationIdentity().typeParameters, typeParameterIds);
   DeclarationTable second;
   second.add(DeclarationKind::Variable, "unrelated");
   second.importRecords(records);
   DeclarationIdentityPass(second).run(*imported);
-  EXPECT_NE(function.getDeclarationId(), oldId);
-  EXPECT_EQ(PortableDeclarationKey::fromDeclaration(function.getDeclarationId(),
-                                                    second),
+  EXPECT_EQ(function.getDeclarationId(), oldId);
+  EXPECT_EQ(DeclarationId::forExport(function.getDeclarationId(), second),
             portable);
   auto clone = function.clone();
   EXPECT_FALSE(clone->getDeclarationId());

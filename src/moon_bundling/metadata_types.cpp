@@ -22,7 +22,7 @@ void nominal(pbc::TypeAnnotation& out, const sun::types::NominalType& type,
   out.set_base_name(display);
   if (display != "IError")
     out.set_declaration_key(
-        sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
+        sun::semantic_analysis::DeclarationId::forExport(
             type.sourceDeclaration(declarations), declarations)
             .encoding());
   for (const auto& arg : args)
@@ -87,7 +87,7 @@ void bindDeclarationTypes(google::protobuf::Message& message,
             "Cannot bind exported type '" + name + "'", ctx.currentLocation());
       if (ref)
         annotation.set_declaration_key(
-            sun::semantic_analysis::PortableDeclarationKey::fromDeclaration(
+            sun::semantic_analysis::DeclarationId::forExport(
                 ref, ctx.results().declarations)
                 .encoding());
     }

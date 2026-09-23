@@ -17,7 +17,6 @@
 #include "serialization/ast_serializer.h"
 
 using sun::semantic_analysis::DeclarationId;
-using sun::semantic_analysis::PortableDeclarationKey;
 using sun::semantic_analysis::Visibility;
 
 using sun::ast::ASTNodeType;
@@ -108,14 +107,13 @@ void extractClass(const ClassDefinitionAST& cls, moon::ModuleMetadata& metadata,
     const auto& declarations = analysis.declarations;
     auto* candidate = classDef->add_compiled_specializations();
     candidate->set_declaration_key(
-        PortableDeclarationKey::fromDeclaration(instanceId, declarations)
-            .encoding());
+        DeclarationId::forExport(instanceId, declarations).encoding());
     for (const auto& method :
          analysis.types->getClass(instanceId)->getMethods()) {
       if (method.isGeneric()) continue;
-      candidate->add_method_symbols(PortableDeclarationKey::fromDeclaration(
-                                        method.declarationId, declarations)
-                                        .symbol("function"));
+      candidate->add_method_symbols(
+          DeclarationId::forExport(method.declarationId, declarations)
+              .symbol("function"));
     }
   }
 
@@ -193,7 +191,7 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
     const std::string& bundleHash) {
   auto& ctx = analyzer.context();
   auto& declarations = ctx.results().declarations;
-  PortableDeclarationKey::assignOriginals(program, declarations, bundleHash);
+  DeclarationId::assignExportIds(program, declarations, bundleHash);
   ASTSerializer serializer(
       {.declarations = &declarations, .include_location = true});
   std::vector<moon::ModuleMetadata> result;
@@ -216,8 +214,7 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
         const auto& record = declarations.get(module);
         if (record.name.starts_with("$")) break;
         modules.push_back(
-            PortableDeclarationKey::fromDeclaration(module, declarations)
-                .encoding());
+            DeclarationId::forExport(module, declarations).encoding());
         module = record.owner;
       }
       for (auto it = modules.rbegin(); it != modules.rend(); ++it)
@@ -283,16 +280,15 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
       };
   walk(program, "", Visibility::Private);
   if (!result.empty()) {
-    std::map<PortableDeclarationKey, DeclarationId> originals;
+    std::map<DeclarationId, DeclarationId> originals;
     for (size_t i = 1; i <= declarations.size(); ++i) {
-      const auto id = DeclarationId(i);
+      const auto id = declarations.idAt(i - 1);
       const auto& record = declarations.get(id);
-      if (record.portableKey && record.bundleHash == bundleHash)
-        originals.emplace(*record.portableKey, id);
+      if (declarations.exportedId(id) && record.bundleHash == bundleHash)
+        originals.emplace(*declarations.exportedId(id), id);
     }
     auto key = [&](DeclarationId id) {
-      return id ? PortableDeclarationKey::fromDeclaration(id, declarations)
-                      .encoding()
+      return id ? DeclarationId::forExport(id, declarations).encoding()
                 : std::string{};
     };
     for (const auto& [portable, id] : originals) {

@@ -1,4 +1,4 @@
-#include "semantic_analysis/portable_declaration_key.h"
+#include "semantic_analysis/declaration_id.h"
 
 #include <algorithm>
 #include <set>
@@ -72,7 +72,7 @@ std::string types(const std::vector<PortableTypeKey>& arguments) {
 }
 
 /** Reject attempts to emit or derive an identity before its origin exists. */
-const std::string& require(const PortableDeclarationKey& key) {
+const std::string& require(const DeclarationId& key) {
   if (key.empty())
     logAndThrowError("Portable declaration identity is not assigned");
   return key.encoding();
@@ -80,9 +80,9 @@ const std::string& require(const PortableDeclarationKey& key) {
 
 }  // namespace
 
-void PortableDeclarationKey::assignOriginals(const ExprAST& root,
-                                             DeclarationTable& table,
-                                             const std::string& artifactHash) {
+void DeclarationId::assignExportIds(const ExprAST& root,
+                                    DeclarationTable& table,
+                                    const std::string& artifactHash) {
   std::set<DeclarationId> seen;
   uint64_t ordinal = 1;  // The bundle scope occupies the first ordinal.
   auto assign = [&](DeclarationId id) {
@@ -90,8 +90,8 @@ void PortableDeclarationKey::assignOriginals(const ExprAST& root,
     const auto& record = table.get(id);
     if (record.specialization || record.origin) return;
     auto key = original(artifactHash, ++ordinal);
-    if (record.portableKey) return;
-    table.bindPortable(id, key, artifactHash);
+    if (table.exportedId(id)) return;
+    table.bindExportId(id, key, artifactHash);
   };
   auto identity = [&](const DeclarationIdentity& value) {
     assign(value.id);
@@ -135,15 +135,15 @@ void PortableDeclarationKey::assignOriginals(const ExprAST& root,
   walk(walk, root);
 }
 
-PortableDeclarationKey PortableDeclarationKey::fromDeclaration(
-    DeclarationId id, const DeclarationTable& table) {
+DeclarationId DeclarationId::forExport(DeclarationId id,
+                                       const DeclarationTable& table) {
   const auto& record = table.get(id);
-  if (record.portableKey) return *record.portableKey;
+  if (auto exported = table.exportedId(id)) return *exported;
   if (record.specialization) {
     const auto& instance = *record.specialization;
-    auto origin = fromDeclaration(instance.source, table);
+    auto origin = forExport(instance.source, table);
     if (instance.enclosing)
-      origin = inInstance(origin, fromDeclaration(instance.enclosing, table));
+      origin = inInstance(origin, forExport(instance.enclosing, table));
     std::vector<PortableTypeKey> arguments;
     for (const auto& type : instance.arguments) {
       if (!type)
@@ -163,8 +163,8 @@ PortableDeclarationKey PortableDeclarationKey::fromDeclaration(
     return specialization(origin, arguments, variadic);
   }
   if (record.origin && record.owner) {
-    auto origin = fromDeclaration(record.origin, table);
-    auto owner = fromDeclaration(record.owner, table);
+    auto origin = forExport(record.origin, table);
+    auto owner = forExport(record.owner, table);
     auto member = inInstance(origin, owner);
     if (!record.generatedRole.empty())
       return generated(member, record.generatedRole, record.generatedSlot);
@@ -202,8 +202,7 @@ PortableTypeKey PortableTypeKey::fromType(const Type& type,
       if (!value.belongsTo(table))
         logAndThrowError(
             "Portable type identity belongs to another analysis session");
-      return nominal(PortableDeclarationKey::fromDeclaration(
-          value.getDeclarationId(), table));
+      return nominal(DeclarationId::forExport(value.getDeclarationId(), table));
     }
     case Type::Kind::Reference: {
       const auto& value = static_cast<const ReferenceType&>(type);
@@ -242,15 +241,14 @@ PortableTypeKey PortableTypeKey::fromType(const Type& type,
   }
 }
 
-PortableDeclarationKey PortableDeclarationKey::fromString(
-    const std::string& value) {
+DeclarationId DeclarationId::fromString(const std::string& value) {
   if (value.empty())
     logAndThrowError("Portable declaration identity is not assigned");
-  return PortableDeclarationKey(value);
+  return DeclarationId(value);
 }
 
-PortableDeclarationKey PortableDeclarationKey::original(
-    const std::string& bundleHash, uint64_t declarationNumber) {
+DeclarationId DeclarationId::original(const std::string& bundleHash,
+                                      uint64_t declarationNumber) {
   if (bundleHash.size() != 64 ||
       !std::all_of(bundleHash.begin(), bundleHash.end(), [](char c) {
         return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
@@ -258,36 +256,31 @@ PortableDeclarationKey PortableDeclarationKey::original(
     logAndThrowError("Bundle identity must be a full lowercase SHA-256 digest");
   if (!declarationNumber)
     logAndThrowError("Bundle declaration number is unassigned");
-  return PortableDeclarationKey("$" + bundleHash + "$_" +
-                                std::to_string(declarationNumber));
+  return DeclarationId("$" + bundleHash + "$_" +
+                       std::to_string(declarationNumber));
 }
 
-PortableDeclarationKey PortableDeclarationKey::specialization(
-    const PortableDeclarationKey& origin,
-    const std::vector<PortableTypeKey>& arguments,
+DeclarationId DeclarationId::specialization(
+    const DeclarationId& origin, const std::vector<PortableTypeKey>& arguments,
     const std::optional<std::vector<PortableTypeKey>>& variadicArguments) {
-  return PortableDeclarationKey(derivedKey(
+  return DeclarationId(derivedKey(
       'S', {require(origin), types(arguments),
             variadicArguments ? types(*variadicArguments) : tuple('V', {})}));
 }
 
-PortableDeclarationKey PortableDeclarationKey::inInstance(
-    const PortableDeclarationKey& origin,
-    const PortableDeclarationKey& instance) {
-  return PortableDeclarationKey(
-      derivedKey('I', {require(origin), require(instance)}));
+DeclarationId DeclarationId::inInstance(const DeclarationId& origin,
+                                        const DeclarationId& instance) {
+  return DeclarationId(derivedKey('I', {require(origin), require(instance)}));
 }
 
-PortableDeclarationKey PortableDeclarationKey::generated(
-    const PortableDeclarationKey& origin, const std::string& role,
-    uint64_t slot) {
+DeclarationId DeclarationId::generated(const DeclarationId& origin,
+                                       const std::string& role, uint64_t slot) {
   if (role.empty())
     logAndThrowError("Generated declaration role must not be empty");
-  return PortableDeclarationKey(
-      derivedKey('G', {require(origin), role, integer(slot)}));
+  return DeclarationId(derivedKey('G', {require(origin), role, integer(slot)}));
 }
 
-std::string PortableDeclarationKey::symbol(const std::string& role) const {
+std::string DeclarationId::symbol(const std::string& role) const {
   if (role.empty()) logAndThrowError("Symbol emission role must not be empty");
   llvm::SHA256 sha;
   sha.update(tuple('E', {"SUN1", require(*this), role}));
@@ -309,8 +302,7 @@ PortableTypeKey PortableTypeKey::primitive(const std::string& name) {
   return PortableTypeKey(tuple('P', {name}));
 }
 
-PortableTypeKey PortableTypeKey::nominal(
-    const PortableDeclarationKey& declaration) {
+PortableTypeKey PortableTypeKey::nominal(const DeclarationId& declaration) {
   return PortableTypeKey(tuple('N', {require(declaration)}));
 }
 
