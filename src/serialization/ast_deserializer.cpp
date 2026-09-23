@@ -76,15 +76,15 @@ void ASTDeserializer::deserializeIdentity(
     const pbc::DeclarationIdentity& proto,
     sun::semantic_analysis::DeclarationIdentity& identity) const {
   if (!config_.import_declarations) return;
-  if (proto.declaration().empty())
+  if (proto.key().empty())
     sun::support::logAndThrowError(
         "Imported declaration has no portable identity");
   auto validate = [](const std::string& value) {
     PortableDeclarationKey::fromString(value);
     return value;
   };
-  sun::semantic_analysis::ImportedDeclarationIdentity imported;
-  imported.declaration = validate(proto.declaration());
+  sun::semantic_analysis::LibraryDeclarationIdentity imported;
+  imported.key = validate(proto.key());
   for (const auto& value : proto.parameters())
     imported.parameters.push_back(validate(value));
   for (const auto& value : proto.type_parameters())

@@ -25,16 +25,17 @@ using sun::ast::BlockExprAST;
  * Resolve declarations before bodies, using bookkeeping in SemanticContext.
  *
  * TypeRegistrationPass supplies types and templates first. This pass binds
- * imports, fills class shapes, and resolves concrete signatures. While it runs (see
- * SemanticContext::isCollectingDeclarations), a global reached through a
+ * imports, fills class shapes, and resolves concrete signatures. While it runs
+ * (see SemanticContext::isCollectingDeclarations), a global reached through a
  * type annotation may not call a function, because its callee has no
  * analyzed body yet, and a class specialization registers its signatures
  * but queues its method bodies for an explicit body-analysis pass.
  */
 class DeclarationCollectionPass {
  public:
-  /** Run this stage across all borrowed imported bundles before the next stage. */
-  void run(const std::vector<sun::ast::MoonScopeAST*>& imports);
+  /** Run this stage across all borrowed imported bundles before the next stage.
+   */
+  void run(const std::vector<sun::ast::MoonScopeAST *> &imports);
 
   /** Share declaration state and signature-checking helpers with analysis. */
   DeclarationCollectionPass(SemanticContext &ctx, SemanticAnalyzer &sema)

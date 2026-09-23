@@ -33,15 +33,15 @@ class DeclarationId {
 
 /** Portable source identities retained across importing analysis sessions.
  */
-struct ImportedDeclarationIdentity {
-  std::string declaration;
+struct LibraryDeclarationIdentity {
+  std::string key;
   std::vector<std::string> parameters;
   std::vector<std::string> typeParameters;
   std::vector<std::string> lifetimeParameters;
 };
 
 /** One original declaration exported with its portable ownership links. */
-struct ImportedDeclarationRecord {
+struct LibraryDeclarationRecord {
   std::string key;
   uint32_t kind = 0;
   std::string name;
@@ -52,7 +52,7 @@ struct ImportedDeclarationRecord {
 
 /** Annotation data that survives recomputing types within one session. */
 struct DeclarationIdentity {
-  std::optional<ImportedDeclarationIdentity> imported;
+  std::optional<LibraryDeclarationIdentity> imported;
   DeclarationId id;
   std::weak_ptr<const int> session;
   std::vector<DeclarationId> parameters;

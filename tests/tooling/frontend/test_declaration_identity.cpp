@@ -850,7 +850,7 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   sun::serialization::ASTDeserializer deserializer(
       {.import_declarations = true});
   auto imported = deserializer.deserialize(serializer.serialize(*source));
-  std::vector<sun::semantic_analysis::ImportedDeclarationRecord> records;
+  std::vector<sun::semantic_analysis::LibraryDeclarationRecord> records;
   auto key = [&](DeclarationId id) {
     return id ? PortableDeclarationKey::fromDeclaration(id, original).encoding()
               : std::string{};
@@ -862,7 +862,7 @@ TEST(Tooling_Frontend_DeclarationIdentity,
                        key(record.owner), key(record.module)});
   }
   DeclarationTable first;
-  first.importRecords(records);
+  first.importLibraryDeclarationRecords(records);
   DeclarationIdentityPass(first).run(*imported);
   auto& function =
       *static_cast<sun::ast::BlockExprAST&>(*imported).getBody()[0];
@@ -874,7 +874,7 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   ASSERT_TRUE(function.declarationIdentity().imported);
   DeclarationTable second;
   second.add(DeclarationKind::Variable, "unrelated");
-  second.importRecords(records);
+  second.importLibraryDeclarationRecords(records);
   DeclarationIdentityPass(second).run(*imported);
   EXPECT_NE(function.getDeclarationId(), oldId);
   EXPECT_EQ(PortableDeclarationKey::fromDeclaration(function.getDeclarationId(),

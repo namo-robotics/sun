@@ -36,9 +36,9 @@ std::unique_ptr<MoonScopeAST> bundle(
       "Value", std::move(parameters), std::vector<ImplementedInterfaceAST>{},
       std::move(fields), std::vector<ClassMethodDecl>{}, true);
   type->declarationIdentity().imported =
-      ImportedDeclarationIdentity{key(artifact).encoding()};
+      LibraryDeclarationIdentity{key(artifact).encoding()};
   type->getFields()[0].declaration.imported =
-      ImportedDeclarationIdentity{key(artifact, 3).encoding()};
+      LibraryDeclarationIdentity{key(artifact, 3).encoding()};
   if (generic)
     type->declarationIdentity().imported->typeParameters.push_back(
         key(artifact, 4).encoding());
@@ -249,7 +249,7 @@ TEST_F(TypeAnalysis_SemanticPipeline, CompletesSignaturesAndInterfaces) {
   auto function = std::make_unique<FunctionAST>(std::move(proto), nullptr);
   function->setPrecompiled(true);
   function->declarationIdentity().imported =
-      ImportedDeclarationIdentity{key('a', 10).encoding()};
+      LibraryDeclarationIdentity{key('a', 10).encoding()};
   auto* importedFunction = function.get();
   std::vector<InterfaceFieldDecl> fields;
   fields.push_back({"size", TypeAnnotation("i32")});
@@ -257,9 +257,9 @@ TEST_F(TypeAnalysis_SemanticPipeline, CompletesSignaturesAndInterfaces) {
       "Sized", std::vector<TypeParameter>{}, std::move(fields),
       std::vector<InterfaceMethodDecl>{}, true);
   interface->declarationIdentity().imported =
-      ImportedDeclarationIdentity{key('a', 11).encoding()};
+      LibraryDeclarationIdentity{key('a', 11).encoding()};
   interface->getFields()[0].declaration.imported =
-      ImportedDeclarationIdentity{key('a', 12).encoding()};
+      LibraryDeclarationIdentity{key('a', 12).encoding()};
   const auto root = key('a', 1).encoding();
   moon->importedDeclarations.push_back(
       {key('a', 10).encoding(),
@@ -318,7 +318,7 @@ TEST_F(TypeAnalysis_SemanticPipeline, RegistersModuleGlobals) {
   global->setPrecompiled(true);
   global->setVisibility(Visibility::Public);
   global->declarationIdentity().imported =
-      ImportedDeclarationIdentity{key('a', 11).encoding()};
+      LibraryDeclarationIdentity{key('a', 11).encoding()};
   auto* importedGlobal = global.get();
   std::vector<std::unique_ptr<ExprAST>> members;
   members.push_back(std::move(global));
@@ -328,7 +328,7 @@ TEST_F(TypeAnalysis_SemanticPipeline, RegistersModuleGlobals) {
   module->setPrecompiled(true);
   module->setVisibility(Visibility::Public);
   module->declarationIdentity().imported =
-      ImportedDeclarationIdentity{key('a', 10).encoding()};
+      LibraryDeclarationIdentity{key('a', 10).encoding()};
   const auto root = key('a', 1).encoding();
   moon->importedDeclarations.push_back(
       {key('a', 10).encoding(), static_cast<uint32_t>(DeclarationKind::Module),

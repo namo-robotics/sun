@@ -289,8 +289,9 @@ size_t TypeResolver::resolveArrayDimension(
   const auto& declarations = ctx_.declarationTable();
   const auto* declaration = findVariableNode(declarations, info->declarationId);
   if (!declaration)
-    reject("must be known at compile time, but the compiler has no value for '" +
-           name + "'");
+    reject(
+        "must be known at compile time, but the compiler has no value for '" +
+        name + "'");
   const auto& constant = *declaration;
   const auto* decision = constant.getGlobalInit();
   if (!decision)

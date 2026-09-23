@@ -3564,7 +3564,7 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
   std::string primaryModuleName;
   std::map<std::string, std::string> originalModules;
   std::map<std::string, std::string> moduleKeys;
-  std::vector<sun::semantic_analysis::ImportedDeclarationRecord>
+  std::vector<sun::semantic_analysis::LibraryDeclarationRecord>
       declarationRecords;
   std::vector<sun::ast::MoonScopeAST::DeclarationRequirement> requirements;
 
@@ -3733,8 +3733,7 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
           if (auto key = moduleKeys.find(originalModule->second);
               key != moduleKeys.end())
             nsAST->declarationIdentity().imported =
-                sun::semantic_analysis::ImportedDeclarationIdentity{
-                    key->second};
+                sun::semantic_analysis::LibraryDeclarationIdentity{key->second};
         }
         nsAST->setVisibility(visibilityOf(prefix));
         current = std::move(nsAST);

@@ -29,7 +29,7 @@ pbc::DeclarationIdentity ASTSerializer::serializeIdentity(
                id, *config_.declarations)
         .encoding();
   };
-  result.set_declaration(key(identity.id));
+  result.set_key(key(identity.id));
   for (auto id : identity.parameters) result.add_parameters(key(id));
   for (auto id : identity.typeParameters) result.add_type_parameters(key(id));
   for (auto id : identity.lifetimeParameters)

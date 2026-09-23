@@ -279,14 +279,14 @@ TEST(Tooling_Frontend_PortableIdentity, keys_are_opaque) {
 TEST(Tooling_Frontend_PortableIdentity, imported_ownership_is_interned_once) {
   auto owner = PortableDeclarationKey::original(bundle, 1).encoding();
   auto child = PortableDeclarationKey::original(bundle, 2).encoding();
-  std::vector<sun::semantic_analysis::ImportedDeclarationRecord> records{
+  std::vector<sun::semantic_analysis::LibraryDeclarationRecord> records{
       {owner, static_cast<uint32_t>(DeclarationKind::Module), "lib", {}, {}},
       {child, static_cast<uint32_t>(DeclarationKind::Function), "read", owner,
        owner}};
   DeclarationTable first, second;
   second.add(DeclarationKind::Variable, "unrelated");
-  first.importRecords(records);
-  second.importRecords(records);
+  first.importLibraryDeclarationRecords(records);
+  second.importLibraryDeclarationRecords(records);
   auto firstId = first.findPortable(PortableDeclarationKey::fromString(child));
   auto secondId =
       second.findPortable(PortableDeclarationKey::fromString(child));
@@ -294,13 +294,13 @@ TEST(Tooling_Frontend_PortableIdentity, imported_ownership_is_interned_once) {
   EXPECT_EQ(PortableDeclarationKey::fromDeclaration(firstId, first),
             PortableDeclarationKey::fromDeclaration(secondId, second));
   auto size = first.size();
-  first.importRecords(records);
+  first.importLibraryDeclarationRecords(records);
   EXPECT_EQ(first.size(), size);
   records[1].name = "conflicting";
-  EXPECT_ANY_THROW(first.importRecords(records));
+  EXPECT_ANY_THROW(first.importLibraryDeclarationRecords(records));
   records[1].name = "read";
   records[1].owner = PortableDeclarationKey::original(bundle, 9).encoding();
-  EXPECT_ANY_THROW(first.importRecords(records));
+  EXPECT_ANY_THROW(first.importLibraryDeclarationRecords(records));
 }
 
 /** Derived identities remain deterministic without a category suffix. */
@@ -318,14 +318,14 @@ TEST(Tooling_Frontend_PortableIdentity, derived_keys_are_opaque_hashes) {
 /** Import order follows explicit links even when key and input order disagree.
  */
 TEST(Tooling_Frontend_PortableIdentity, opaque_records_restore_ownership) {
-  using Record = sun::semantic_analysis::ImportedDeclarationRecord;
+  using Record = sun::semantic_analysis::LibraryDeclarationRecord;
   const auto module = static_cast<uint32_t>(DeclarationKind::Module);
   const auto function = static_cast<uint32_t>(DeclarationKind::Function);
   std::vector<Record> records{
       {"first", function, "read", "last", "last", "artifact"},
       {"last", module, "lib", {}, {}, "artifact"}};
   DeclarationTable table;
-  table.importRecords(records);
+  table.importLibraryDeclarationRecords(records);
   const auto child =
       table.findPortable(PortableDeclarationKey::fromString("first"));
   const auto owner =
@@ -333,13 +333,13 @@ TEST(Tooling_Frontend_PortableIdentity, opaque_records_restore_ownership) {
   EXPECT_EQ(table.get(child).owner, owner);
   EXPECT_EQ(table.get(child).module, owner);
   EXPECT_EQ(table.get(child).bundleHash, "artifact");
-  EXPECT_NO_THROW(table.importRecords(records));
+  EXPECT_NO_THROW(table.importLibraryDeclarationRecords(records));
   EXPECT_EQ(table.importedSyntax("first", DeclarationKind::Function, "read"),
             child);
   EXPECT_ANY_THROW(
       table.importedSyntax("first", DeclarationKind::Class, "read"));
   records[0].bundleHash = "different artifact";
-  EXPECT_ANY_THROW(table.importRecords(records));
+  EXPECT_ANY_THROW(table.importLibraryDeclarationRecords(records));
 }
 
 /** Missing and cyclic ownership links are invalid regardless of key spelling.
@@ -347,9 +347,10 @@ TEST(Tooling_Frontend_PortableIdentity, opaque_records_restore_ownership) {
 TEST(Tooling_Frontend_PortableIdentity, invalid_ownership_graphs_are_rejected) {
   const auto kind = static_cast<uint32_t>(DeclarationKind::Module);
   DeclarationTable missing, cyclic, self;
-  EXPECT_ANY_THROW(
-      missing.importRecords({{"child", kind, "child", "absent", {}}}));
-  EXPECT_ANY_THROW(cyclic.importRecords(
+  EXPECT_ANY_THROW(missing.importLibraryDeclarationRecords(
+      {{"child", kind, "child", "absent", {}}}));
+  EXPECT_ANY_THROW(cyclic.importLibraryDeclarationRecords(
       {{"a", kind, "a", "b", {}}, {"b", kind, "b", "a", {}}}));
-  EXPECT_ANY_THROW(self.importRecords({{"a", kind, "a", "a", {}}}));
+  EXPECT_ANY_THROW(
+      self.importLibraryDeclarationRecords({{"a", kind, "a", "a", {}}}));
 }

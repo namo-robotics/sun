@@ -171,6 +171,7 @@ add_library(sun_lib
     src/types/class_type.cpp
     src/types/type_utils.cpp
     # Semantic analysis
+    src/semantic_analysis/declaration_table.cpp
     src/semantic_analysis/portable_declaration_key.cpp
     src/semantic_analysis/specialization_key.cpp
     src/semantic_analysis/passes/declaration_identity_pass.cpp

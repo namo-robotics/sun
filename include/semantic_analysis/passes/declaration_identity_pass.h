@@ -15,7 +15,8 @@ class DeclarationIdentityPass {
   DeclarationTable& table_;
 
  public:
-  /** Run this stage across all borrowed imported bundles before the next stage. */
+  /** Run this stage across all borrowed imported bundles before the next stage.
+   */
   void run(const std::vector<sun::ast::MoonScopeAST*>& imports) const;
 
   /** Use the declaration table owned by the analysis session. */

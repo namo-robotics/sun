@@ -72,10 +72,9 @@ void binding(DeclarationIdentity& identity, DeclarationKind kind,
              DeclarationId owner, DeclarationId module,
              DeclarationId origin = {}) {
   if (!identity.id) {
-    identity.id =
-        identity.imported
-            ? table.importedSyntax(identity.imported->declaration, kind, name)
-            : table.add(kind, name, owner, module, {}, origin);
+    identity.id = identity.imported
+                      ? table.importedSyntax(identity.imported->key, kind, name)
+                      : table.add(kind, name, owner, module, {}, origin);
     identity.session = table.session();
   } else {
     if (identity.session.lock() != table.session())
@@ -164,8 +163,8 @@ void DeclarationIdentityPass::visit(const ExprAST& root, DeclarationId owner,
     auto id = root.getDeclarationId();
     if (!id) {
       auto& identity = root.declarationIdentity();
-      id = identity.imported ? table_.importedSyntax(
-                                   identity.imported->declaration, kind, name)
+      id = identity.imported
+               ? table_.importedSyntax(identity.imported->key, kind, name)
            : kind == DeclarationKind::Module
                ? table_.module(name, module)
                : table_.add(

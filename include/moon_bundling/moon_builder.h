@@ -21,11 +21,11 @@ namespace sun::moon_bundling {
 
 /** Inputs and build settings for producing a Moon library. */
 struct MoonBuildOptions {
-  std::string targetTriple;            // empty = host
-  bool debugMode = false;  // --debug: compiler artifacts and moon.json
-  bool debugInfo = false;              // -g
-  bool optimize = true;                // disabled by -O0
-  bool dumpProtoSun = false;           // print synthesized proto source
+  std::string targetTriple;   // empty = host
+  bool debugMode = false;     // --debug: compiler artifacts and moon.json
+  bool debugInfo = false;     // -g
+  bool optimize = true;       // disabled by -O0
+  bool dumpProtoSun = false;  // print synthesized proto source
   std::vector<MoonImport> extraMoons;  // CLI --moon imports
   // Rebuild even when the bundle on disk was made from the same inputs
   // (--force-rebuild)

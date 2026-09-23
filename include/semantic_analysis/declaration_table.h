@@ -150,11 +150,12 @@ class DeclarationTable {
   }
 
   /** Intern a source declaration from an artifact, validating its ownership. */
-  DeclarationId importOriginal(const std::string& encoded, DeclarationKind kind,
-                               const std::string& name, DeclarationId owner,
-                               DeclarationId module,
-                               const std::string& bundleHash = {}) {
-    auto key = PortableDeclarationKey::fromString(encoded);
+  DeclarationId importLibraryDeclaration(const PortableDeclarationKey& key,
+                                         DeclarationKind kind,
+                                         const std::string& name,
+                                         DeclarationId owner,
+                                         DeclarationId module,
+                                         const std::string& bundleHash = {}) {
     if (auto existing = findPortable(key)) {
       const auto& record = get(existing);
       if (record.kind != kind || record.name != name || record.owner != owner ||
@@ -170,50 +171,8 @@ class DeclarationTable {
   }
 
   /** Restore an artifact's ownership graph before registering its syntax. */
-  void importRecords(const std::vector<ImportedDeclarationRecord>& records) {
-    std::map<std::string, size_t> indices;
-    for (size_t i = 0; i < records.size(); ++i) {
-      PortableDeclarationKey::fromString(records[i].key);
-      if (records[i].kind > static_cast<uint32_t>(DeclarationKind::Alias))
-        logAndThrowError("Imported declaration has an unknown kind");
-      indices.try_emplace(records[i].key, i);
-    }
-    std::vector<size_t> pending(records.size());
-    std::vector<std::vector<size_t>> dependents(records.size());
-    std::deque<size_t> ready;
-    for (size_t i = 0; i < records.size(); ++i) {
-      for (const auto* link : {&records[i].owner, &records[i].module}) {
-        if (link->empty()) continue;
-        auto found = indices.find(*link);
-        if (found != indices.end()) {
-          ++pending[i];
-          dependents[found->second].push_back(i);
-        } else if (!findPortable(PortableDeclarationKey::fromString(*link))) {
-          logAndThrowError("Imported declaration refers to a missing owner");
-        }
-      }
-      if (!pending[i]) ready.push_back(i);
-    }
-    auto reference = [&](const std::string& key) {
-      return key.empty()
-                 ? DeclarationId{}
-                 : findPortable(PortableDeclarationKey::fromString(key));
-    };
-    size_t restored = 0;
-    while (!ready.empty()) {
-      const auto i = ready.front();
-      ready.pop_front();
-      const auto& record = records[i];
-      importOriginal(record.key, static_cast<DeclarationKind>(record.kind),
-                     record.name, reference(record.owner),
-                     reference(record.module), record.bundleHash);
-      ++restored;
-      for (auto dependent : dependents[i])
-        if (--pending[dependent] == 0) ready.push_back(dependent);
-    }
-    if (restored != records.size())
-      logAndThrowError("Imported declaration ownership contains a cycle");
-  }
+  void importLibraryDeclarationRecords(
+      const std::vector<LibraryDeclarationRecord>& records);
 
   /** Attach imported syntax to its previously interned original declaration. */
   DeclarationId importedSyntax(const std::string& encoded, DeclarationKind kind,

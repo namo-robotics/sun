@@ -11,7 +11,8 @@ namespace sun::semantic_analysis::passes {
  */
 class FieldInitializerPreparationPass {
  public:
-  /** Run this stage across all borrowed imported bundles before the next stage. */
+  /** Run this stage across all borrowed imported bundles before the next stage.
+   */
   void run(const std::vector<sun::ast::MoonScopeAST*>& imports) const;
 
   /** Prepare constructors and field defaults throughout the AST, including

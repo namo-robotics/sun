@@ -9,7 +9,7 @@ namespace sun::semantic_analysis::passes {
 void ImportRecordRegistrationPass::run(
     const std::vector<sun::ast::MoonScopeAST*>& imports) const {
   for (const auto* moon : imports)
-    declarations_.importRecords(moon->importedDeclarations);
+    declarations_.importLibraryDeclarationRecords(moon->importedDeclarations);
 }
 
 }  // namespace sun::semantic_analysis::passes

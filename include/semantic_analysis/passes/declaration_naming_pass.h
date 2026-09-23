@@ -16,7 +16,8 @@ void assignLocalDeclarationName(sun::ast::ExprAST& declaration,
 /** Assign declaration names without resolving types or registering symbols. */
 class DeclarationNamingPass {
  public:
-  /** Run this stage across all borrowed imported bundles before the next stage. */
+  /** Run this stage across all borrowed imported bundles before the next stage.
+   */
   void run(const std::vector<sun::ast::MoonScopeAST*>& imports,
            const std::vector<std::string>& scopePath = {}) const;
 

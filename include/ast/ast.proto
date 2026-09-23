@@ -27,7 +27,7 @@ enum Visibility {
  * Portable declarations are exported explicitly; ordinary AST clones omit them.
  */
 message DeclarationIdentity {
-  string declaration = 1;
+  string key = 1;
   repeated string parameters = 2;
   repeated string type_parameters = 3;
   repeated string lifetime_parameters = 4;

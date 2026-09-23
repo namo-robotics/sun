@@ -18,6 +18,8 @@
     "C_Cpp.clang_format_fallbackStyle": "Google",
     "editor.formatOnSave": true,
     "[cpp]": {
+        "editor.inlayHints.enabled": "off",
+        "editor.hover.enabled": true,
         "editor.formatOnSave": true,
         "editor.formatOnPaste": false
     },

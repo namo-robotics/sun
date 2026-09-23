@@ -1335,7 +1335,8 @@ TEST_F(MoonExactTypes,
         return value.answer();
       }
     }
-  )", {MoonImport(templates)});
+  )",
+                         {MoonImport(templates)});
 
   auto reader = MoonReader::open(templates);
   ASSERT_TRUE(reader);
