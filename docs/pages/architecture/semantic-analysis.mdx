@@ -37,8 +37,11 @@ flowchart TB
 ```
 
 Registration makes declarations available before their uses are checked.
-Imported declaration records are all registered before exact dependencies are
-validated, so import order does not determine which declarations can be found.
+[`ImportLibraryDeclarationsPass`](/compiler-api/classsun_1_1semantic__analysis_1_1passes_1_1ImportLibraryDeclarationsPass)
+registers every imported library's declaration records in `DeclarationTable`
+before exact dependencies are validated. Records are restored with owners and
+modules before their dependents, so import order does not determine which
+declarations can be found.
 
 Body checking resolves references, selects calls, infers expression types, checks
 type compatibility, and records captures and conversions. Global initializers

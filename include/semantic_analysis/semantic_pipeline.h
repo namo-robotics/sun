@@ -11,7 +11,7 @@
 #include "semantic_analysis/passes/global_registration_pass.h"
 #include "semantic_analysis/passes/import_completion_pass.h"
 #include "semantic_analysis/passes/import_dependency_validation_pass.h"
-#include "semantic_analysis/passes/import_record_registration_pass.h"
+#include "semantic_analysis/passes/import_library_declarations_pass.h"
 #include "semantic_analysis/passes/specialization_body_analysis_pass.h"
 #include "semantic_analysis/passes/type_registration_pass.h"
 
@@ -74,7 +74,7 @@ class SemanticPipeline {
 
   sun::semantic_analysis::SemanticAnalyzer& analyzer_;
   sun::semantic_analysis::SemanticContext& context_;
-  passes::ImportRecordRegistrationPass importRecordRegistrationPass_;
+  passes::ImportLibraryDeclarationsPass importLibraryDeclarationsPass_;
   passes::ImportDependencyValidationPass importDependencyValidationPass_;
   passes::ImportCompletionPass importCompletionPass_;
   passes::FieldInitializerPreparationPass fieldInitializerPreparationPass_;

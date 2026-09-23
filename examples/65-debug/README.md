@@ -22,7 +22,7 @@ Run from the repository root:
 
 ```bash
 SUN_BIN=./build/sun bash examples/65-debug/build.sh
-./examples/65-debug/main
+bash examples/65-debug/test.sh
 python3 -m json.tool examples/65-debug/life_debug/moon.json
 ```
 

@@ -206,7 +206,7 @@ add_library(sun_lib
     src/semantic_analysis/passes/global_registration_pass.cpp
     src/semantic_analysis/passes/body_analysis_pass.cpp
     src/semantic_analysis/passes/global_initializer_evaluation_pass.cpp
-    src/semantic_analysis/passes/import_record_registration_pass.cpp
+    src/semantic_analysis/passes/import_library_declarations_pass.cpp
     src/semantic_analysis/passes/import_dependency_validation_pass.cpp
     src/semantic_analysis/passes/import_completion_pass.cpp
     src/semantic_analysis/passes/specialization_body_analysis_pass.cpp
