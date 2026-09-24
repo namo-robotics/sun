@@ -9,8 +9,8 @@
 // A computed value must equal what the same expression produces at run time,
 // so the arithmetic here follows generated code operation for operation:
 // which operand decides signedness, how mixed widths are widened, how floats
-// compare. Anything generated code leaves undefined, such as dividing an
-// integer by zero, is refused rather than given a value.
+// compare. Operations that throw, such as dividing an integer by zero,
+// are refused rather than given a value.
 
 #pragma once
 
@@ -88,6 +88,13 @@ class ConstantEvaluator {
   const GlobalInitRecord& evaluateGlobalInitializer(
       const sun::ast::VariableCreationAST& global);
 
+  /**
+   * The value of an analyzed expression, or nothing when it cannot be
+   * computed; the obstacle is then recorded with recordBlocker.
+   */
+  std::optional<ConstantValue> evaluateExpression(
+      const sun::ast::ExprAST& expr);
+
  private:
   /** A program's file-scope variables, in the order startup runs them. */
   using GlobalOrder = std::vector<const sun::ast::VariableCreationAST*>;
@@ -98,13 +105,6 @@ class ConstantEvaluator {
    * error. A read hidden inside a called function is not detected.
    */
   void checkStartupOrder(const GlobalOrder& order);
-  /**
-   * The value of an analyzed expression, or nothing when it cannot be
-   * computed; the obstacle is then recorded with recordBlocker.
-   */
-  std::optional<ConstantValue> evaluateExpression(
-      const sun::ast::ExprAST& expr);
-
   /** Evaluates a number, bool, char or string literal. */
   std::optional<ConstantValue> evaluateLiteral(const sun::ast::ExprAST& expr);
   /**

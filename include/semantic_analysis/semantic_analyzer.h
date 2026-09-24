@@ -402,6 +402,13 @@ class SemanticAnalyzer {
    * the results on its syntax nodes.
    */
   void analyzeSliceExpr(ExprAST &expr);
+  /** Requires a handler or throwing function unless integer division is safe.
+   */
+  void checkIntegerDivision(const sun::ast::ExprAST &lhs,
+                            const sun::ast::ExprAST &rhs,
+                            sun::parsing::TokenKind op,
+                            const sun::support::Position &location);
+
   /**
    * Resolves declarations and checks types in this binary expression, recording
    * the results on its syntax nodes.

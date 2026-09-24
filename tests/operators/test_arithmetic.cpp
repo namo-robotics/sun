@@ -193,7 +193,7 @@ TEST(Operators_Arithmetic, div_i32) {
 
 TEST(Operators_Arithmetic, div_i32_variables) {
   auto value = executeString(R"(
-      function main() i32 {
+      function main() i32 throws IError {
           var x: i32 = 84;
           var y: i32 = 2;
           return x / y;
@@ -253,7 +253,7 @@ TEST(Operators_Arithmetic, mod_i32) {
 
 TEST(Operators_Arithmetic, mod_i32_variables) {
   auto value = executeString(R"(
-      function main() i32 {
+      function main() i32 throws IError {
           var x: i32 = 17;
           var y: i32 = 5;
           return x % y;
@@ -300,7 +300,7 @@ TEST(Operators_Arithmetic, mod_both_negative) {
 
 TEST(Operators_Arithmetic, mod_i64) {
   auto value = executeString(R"(
-      function main() i64 {
+      function main() i64 throws IError {
           var x: i64 = 1000000000007;
           var y: i64 = 1000000000;
           return x % y;
@@ -565,7 +565,7 @@ TEST(Operators_Arithmetic, chained_operations) {
 
 TEST(Operators_Arithmetic, quotient_remainder_identity) {
   auto value = executeString(R"(
-      function main() i32 {
+      function main() i32 throws IError {
           var a: i32 = 10;
           var b: i32 = 3;
           var quotient: i32 = a / b;
@@ -632,7 +632,7 @@ TEST(Operators_Arithmetic, mixed_width_operands_promote_to_wider) {
   auto value = executeString(R"(
       function to_i32(x: i64) i32 { return _convert<i32>(x); }
 
-      function main() i32 {
+      function main() i32 throws IError {
           var a: i32 = 1000000;
           var b: i64 = 1000000;
           // i32 + i64 is i64, which the i64 parameter accepts
@@ -652,4 +652,22 @@ TEST(Operators_Arithmetic, literal_too_wide_for_operand_is_error) {
       }
     )"),
                                 "No matching overload of 'takes_u8'");
+}
+
+/** Valid boundary counts and divisors retain their ordinary results. */
+TEST(Operators_Arithmetic, checked_integer_boundaries_succeed) {
+  EXPECT_EQ(executeString(R"(
+    /** Exercises values adjacent to invalid arithmetic inputs. */
+    function main() i32 throws IError {
+      var minimum: i64 = -9223372036854775807 - 1;
+      var maximum: u64 = 18446744073709551615;
+      var top: u64 = 1u64 << 63;
+      if (minimum / 1 != minimum or minimum % 1 != 0) { return 1; }
+      if (maximum / maximum != 1 or maximum % maximum != 0) { return 2; }
+      if (top >> 63 != 1 or minimum >> 63 != -1) { return 3; }
+      if (7 / -1 != -7 or 7 % -1 != 0 or 1 << 0 != 1) { return 4; }
+      return 0;
+    }
+  )"),
+            0);
 }

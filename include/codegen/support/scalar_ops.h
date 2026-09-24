@@ -1,13 +1,8 @@
 #pragma once
 
-// scalar_ops.h — Scalar conversions that hold no codegen state
-//
-// Widening, signedness and the small coercions a call boundary needs. They
-// take an IR builder and the Sun types involved, nothing else, so any pass
-// that emits IR can reach the same answers. The rules that need to know what
-// function is being emitted — checked division, for one — stay with the
-// component that knows it.
+/** Provides scalar conversions and checked integer arithmetic emission. */
 
+#include <llvm/ADT/STLFunctionalExtras.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Type.h>
 #include <llvm/IR/Value.h>
@@ -15,7 +10,7 @@
 #include "codegen/llvm_type_resolver.h"
 #include "types/types.h"
 
-/** Provides shared diagnostics, source tracking, and compiler utilities. */
+/** Emits scalar conversions and arithmetic shared by code generators. */
 namespace sun::codegen::support {
 using sun::types::TypePtr;
 
@@ -27,10 +22,17 @@ llvm::Value* extendInt(llvm::IRBuilder<>& builder, llvm::Value* value,
                        llvm::Type* destTy, const TypePtr& sourceType);
 
 /**
- * Integer division or remainder with the given signedness.
+ * Checks and emits integer division or remainder. The callback emits a
+ * terminating throw for division by zero (code 4) or signed overflow (code 5).
  */
 llvm::Value* createIntDivRem(llvm::IRBuilder<>& builder, llvm::Value* L,
-                             llvm::Value* R, bool isModulo, bool isUnsigned);
+                             llvm::Value* R, bool isModulo, bool isUnsigned,
+                             llvm::function_ref<void(int)> throwError);
+
+/** Emits a shift with the count masked to the widened operand bit width.
+ */
+llvm::Value* createIntShift(llvm::IRBuilder<>& builder, llvm::Value* L,
+                            llvm::Value* R, bool isRight, bool isUnsigned);
 
 /**
  * Widens an integer or float argument to what the parameter expects

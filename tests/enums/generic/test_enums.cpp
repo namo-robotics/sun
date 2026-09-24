@@ -70,8 +70,8 @@ TEST(Enums_Generic, ResultWithTwoParams) {
     enum Result<T, E> { Ok(T), Err(E) }
 
     function checked_div(a: i32, b: i32) Result<i32, i32> {
-        if (b == 0) { return Result.Err(-1); }
-        return Result.Ok(a / b);
+        try { return Result.Ok(a / b); }
+        catch (e: ArithmeticError) { return Result.Err(-1); }
     }
 
     function get(r: ref Result<i32, i32>) i32 {

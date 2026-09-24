@@ -172,7 +172,7 @@ TEST(MemorySafety_Drops_Containers, vec_of_vec_drops_recursively) {
 
 TEST(MemorySafety_Drops_Containers, map_deinit_drops_entries) {
   auto value = executeStringWithStdlib(withPreamble(R"(
-    function helper() i32 {
+    function helper() i32 throws IError {
       var alloc = make_heap_allocator();
       var m = Map<i64, Owner>(alloc, 8);
       m.insert(1, Owner(10));
@@ -180,7 +180,7 @@ TEST(MemorySafety_Drops_Containers, map_deinit_drops_entries) {
       return 0;
     }
 
-    function main() i32 {
+    function main() i32 throws IError {
       helper();
       return counter;
     }
@@ -190,7 +190,7 @@ TEST(MemorySafety_Drops_Containers, map_deinit_drops_entries) {
 
 TEST(MemorySafety_Drops_Containers, map_insert_overwrite_drops_old_value) {
   auto value = executeStringWithStdlib(withPreamble(R"(
-    function main() i32 {
+    function main() i32 throws IError {
       var alloc = make_heap_allocator();
       var m = Map<i64, Owner>(alloc, 8);
       m.insert(1, Owner(10));
@@ -232,7 +232,7 @@ TEST(MemorySafety_Drops_Containers, map_remove_moves_value_out) {
 
 TEST(MemorySafety_Drops_Containers, map_clear_drops_entries) {
   auto value = executeStringWithStdlib(withPreamble(R"(
-    function main() i32 {
+    function main() i32 throws IError {
       var alloc = make_heap_allocator();
       var m = Map<i64, Owner>(alloc, 8);
       m.insert(1, Owner(10));
@@ -398,7 +398,7 @@ TEST(MemorySafety_Drops_Containers, map_and_list_peeks_borrow_owning_values) {
   auto value = executeStringWithStdlib(R"(
     using std;
 
-    function main() i32 {
+    function main() i32 throws IError {
       var alloc = make_heap_allocator();
       var m = Map<i64, String>(alloc, 16);
       m.insert(1, String(alloc, "alpha"));

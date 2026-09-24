@@ -570,7 +570,7 @@ TEST(Modules_ProtoImport, wire_truncated_input_throws) {
 TEST(Modules_ProtoImport, map_string_keys) {
   auto value = executeStringWithStdlib(R"(
     using std;
-    function main() i32 {
+    function main() i32 throws IError {
       var alloc = make_heap_allocator();
       var m = Map<String, i32>(alloc, 8);
       m.insert(String(alloc, "one"), 1);
@@ -1101,7 +1101,7 @@ TEST(Modules_ProtoImport, maps_with_string_keys_and_message_values) {
   auto value = runWithProto("sun_proto_full4", kFullProto, R"(
     using std;
     using f;
-    function main() i32 {
+    function main() i32 throws IError {
       var alloc = make_heap_allocator();
       var b = Bag(alloc);
       b.scores.insert(String(alloc, "alice"), 10);
@@ -1171,7 +1171,7 @@ TEST(Modules_ProtoImport, libprotobuf_parses_optional_oneof_map_encoding) {
   project.addSchema("t.proto", kFullProto)
       .setProgram(
           "using std;\nusing f;\n"
-          "function main() i32 {\n"
+          "function main() i32 throws IError {\n"
           "  var alloc = make_heap_allocator();\n"
           "  var b = Bag(alloc);\n"
           "  b.nickname = Option.Some(String(alloc, \"nick\"));\n"

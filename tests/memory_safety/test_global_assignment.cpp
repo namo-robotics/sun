@@ -226,7 +226,7 @@ TEST(MemorySafety_GlobalAssignment, map_global_is_constructed) {
     var alloc: HeapAllocator = HeapAllocator();
     var m: Map<String, i32> = Map<String, i32>(alloc, 64);
 
-    function main() i32 {
+    function main() i32 throws IError {
       if (m.capacity() != 64) { return -1; }
       var k = String(alloc, "key");
       m.insert(k, 3);

@@ -356,6 +356,7 @@ void DeclarationCollectionPass::registerClassShape(
       ctx_.results().declarations.get(module).name == "std") {
     if (auto ierror = ctx_.types()->errorInterface) {
       ierror->setMethodReturnType("message", classType);
+      ctx_.types()->arithmeticError->setMethodReturnType("message", classType);
     }
   }
 }

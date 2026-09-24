@@ -330,7 +330,9 @@ Value* CodegenVisitor::extendInt(Value* value, llvm::Type* destTy,
 
 Value* CodegenVisitor::createIntDivRem(Value* L, Value* R, bool isModulo,
                                        bool isUnsigned) {
-  return support::createIntDivRem(*ctx.builder, L, R, isModulo, isUnsigned);
+  return support::createIntDivRem(
+      *ctx.builder, L, R, isModulo, isUnsigned,
+      [this](int code) { errors.throwArithmeticError(code); });
 }
 
 // Bring two scalar operands to a common type (int and float widening);
@@ -400,20 +402,12 @@ Value* CodegenVisitor::emitBinaryOp(TokenKind op, Value* L, Value* R,
       return isInteger ? ctx.builder->CreateMul(L, R, "multmp")
                        : ctx.builder->CreateFMul(L, R, "multmp");
     case TokenKind::SLASH: {
-      if (isInteger && currentFunctionCanError) {
-        // Safe division: check for zero and return error if so
-        return errors.codegenSafeDivision(L, R, /*isModulo=*/false, unsignedOp);
-      }
       if (!isInteger) return ctx.builder->CreateFDiv(L, R, "divtmp");
       return createIntDivRem(L, R, /*isModulo=*/false, unsignedOp);
     }
     case TokenKind::PERCENT: {
       if (!isInteger) {
         logAndThrowError("Modulo operator (%) requires integer operands", loc);
-      }
-      if (currentFunctionCanError) {
-        // Safe modulo: check for zero and return error if so
-        return errors.codegenSafeDivision(L, R, /*isModulo=*/true, unsignedOp);
       }
       return createIntDivRem(L, R, /*isModulo=*/true, unsignedOp);
     }
@@ -443,16 +437,14 @@ Value* CodegenVisitor::emitBinaryOp(TokenKind op, Value* L, Value* R,
         logAndThrowError("Left shift operator (<<) requires integer operands",
                          loc);
       }
-      return ctx.builder->CreateShl(L, R, "shltmp");
+      return support::createIntShift(*ctx.builder, L, R, false, unsignedOp);
     }
     case TokenKind::RIGHT_SHIFT: {
       if (!isInteger) {
         logAndThrowError("Right shift operator (>>) requires integer operands",
                          loc);
       }
-      // Logical shift for unsigned, arithmetic (sign-extending) for signed
-      return unsignedOp ? ctx.builder->CreateLShr(L, R, "shrtmp")
-                        : ctx.builder->CreateAShr(L, R, "shrtmp");
+      return support::createIntShift(*ctx.builder, L, R, true, unsignedOp);
     }
     default:
       logAndThrowError("Unknown binary operator", loc);

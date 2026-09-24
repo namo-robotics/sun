@@ -614,7 +614,7 @@ std::optional<ConstantValue> ConstantEvaluator::applyBinaryOperator(
       break;
     case TokenKind::SLASH:
     case TokenKind::PERCENT: {
-      // Generated code gives these no defined result, so neither do we.
+      // Leave operations that abort to runtime initialization.
       if (b.isZero()) return refuse("divides an integer by zero");
       if (!unsignedOperation && a.isMinSignedValue() && b.isAllOnes())
         return refuse("divides the most negative integer by -1");
@@ -635,10 +635,9 @@ std::optional<ConstantValue> ConstantEvaluator::applyBinaryOperator(
       break;
     case TokenKind::LEFT_SHIFT:
     case TokenKind::RIGHT_SHIFT: {
-      // Shifting by the width or more has no defined result at run time.
-      if (b.uge(a.getBitWidth()))
-        return refuse("shifts an integer by its width or more");
-      unsigned amount = static_cast<unsigned>(b.getZExtValue());
+      // Match runtime shifts, including negative and oversized counts.
+      unsigned amount = static_cast<unsigned>(
+          (b & APInt(b.getBitWidth(), a.getBitWidth() - 1)).getZExtValue());
       if (op == TokenKind::LEFT_SHIFT)
         result = a.shl(amount);
       else

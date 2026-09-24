@@ -25,6 +25,32 @@ var d: u8 = 255;
 var e: char = 'k';
 ```
 
+## Integer Arithmetic
+
+Integer `/` and `%` throw the built-in `ArithmeticError` if the divisor is
+zero or a signed integer's minimum value is divided by `-1` (including
+remainder). The same checks apply to `/=` and `%=` and inside `unsafe` blocks.
+Potentially failing operations require a surrounding `try` or a function
+declared with `throws IError`. This includes division by a variable, even if
+an earlier runtime check appears to make it safe.
+
+Constant operands that prove the operation safe need no error handling.
+For example, `x / 2` cannot fail, whereas signed `x / -1` can overflow.
+
+Shifts `<<` and `>>` mask the count with `width - 1`, using the bit width
+of the operands after integer widening. This includes negative counts:
+for `i32` operands, a count of `32` becomes `0`, `33` becomes `1`, and
+`-1` becomes `31`. The same rule applies to `<<=` and `>>=`, to constant
+evaluation, and at every optimization level. Shifts do not abort.
+
+Valid signed division truncates toward zero, and the remainder has the
+sign of the dividend. Right shift fills with zeros for unsigned integers
+and with the sign bit for signed integers. Addition, subtraction, and
+multiplication wrap at the integer width. Floating-point division is unchanged.
+
+File-scope initializers cannot propagate errors, so potentially failing integer
+division and remainder are rejected there.
+
 ## Numeric Literals
 
 Integer literals can use decimal (`113`), hexadecimal (`0x71`), or binary

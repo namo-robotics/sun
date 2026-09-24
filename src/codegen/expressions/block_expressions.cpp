@@ -16,6 +16,7 @@ Value* CodegenVisitor::codegen(const sun::ast::BlockExprAST& block,
   if (block.isEmpty()) return ConstantFP::get(ctx.getContext(), APFloat(0.0));
 
   functions_.declareBlockSignatures(block);
+  if (scopes.empty()) errors.emitArithmeticErrorMethods();
   variables.declareBlockGlobals(block);
 
   Value* lastValue = nullptr;
@@ -89,6 +90,8 @@ Value* CodegenVisitor::codegen(const sun::ast::BlockExprAST& block,
       return nullptr;
     }
   }
+
+  if (scopes.empty()) errors.emitArithmeticErrorMethods(/*defineBodies=*/true);
 
   // If we encountered a return, the block has already been terminated
   // Return a dummy value - the caller will check for terminator

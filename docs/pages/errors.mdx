@@ -92,12 +92,40 @@ function main() i32 {
   class. `message()` returns an owned `String` that stays valid after the
   handler ends.
 
-import { Callout } from 'nextra/components'
+## Built-in Arithmetic Errors
 
-<Callout type="warning">
-  Inside a throwing function, integer division and modulo by zero throw
-  instead of crashing; `catch (e: IError)` catches them.
-</Callout>
+`ArithmeticError` implements `IError` and is available without an import.
+Integer division and remainder throw it on failure, including compound
+assignments. Catch it directly or through `IError`:
+
+```sun
+/** Divides two integers, propagating arithmetic failures. */
+function divide(a: i32, b: i32) i32 throws IError {
+  return a / b;
+}
+
+/** Handles division by zero. */
+function main() i32 {
+  try {
+    return divide(1, 0);
+  } catch (e: ArithmeticError) {
+    return e.code();
+  }
+}
+```
+
+| Failure | `code()` | `message()` |
+|---------|----------|-------------|
+| Zero divisor | `4` | `integer division by zero` |
+| Signed minimum divided by `-1`, including remainder | `5` | `integer division overflow` |
+
+As with other errors, `message()` returns an owned `String` when the standard
+library is loaded, and a `static_ptr<u8>` otherwise. Unwinding drops live
+owners on the way to the handler.
+
+Division by a variable requires `try` or `throws IError`. Constant operands
+that prove an operation safe, such as `x / 2`, need neither. Shifts mask their
+counts and do not throw. Addition, subtraction, and multiplication still wrap.
 
 ## Cleanup During Unwinding
 

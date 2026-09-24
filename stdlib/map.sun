@@ -145,9 +145,9 @@ public module std {
   }
 
   /**
-   * Modulo operation (a mod b)
+   * Compute a remainder, throwing ArithmeticError for invalid operands.
    */
-  function compute_mod(a: i64, b: i64) i64 {
+  function compute_mod(a: i64, b: i64) i64 throws IError {
     return a - (a / b) * b;
   }
 
@@ -212,9 +212,9 @@ public module std {
     // ========================================================================
 
     /**
-     * Insert or update a key-value pair
+     * Insert or update a key-value pair; propagates invalid-capacity arithmetic errors.
      */
-    public method insert(key: K, value: V) void {
+    public method insert(key: K, value: V) void throws IError {
       // Check load factor and grow if needed (> 70%)
       var threshold: i64 = (this.capacity_ * 7) / 10;
       if (this.size_ >= threshold) {
@@ -287,9 +287,9 @@ public module std {
     }
 
     /**
-     * Borrow the value stored under key; None if not present
+     * Borrow the value stored under key; None if absent. Propagates arithmetic errors.
      */
-    public const method find(key: K) Option<ref V> {
+    public const method find(key: K) Option<ref V> throws IError {
       var probe: i64 = this.find_index(key);
       if (probe < 0) {
         return Option.None;
@@ -298,9 +298,9 @@ public module std {
     }
 
     /**
-     * Borrow the value stored under key, or the caller's default when absent
+     * Borrow the stored value or the caller's default; propagates arithmetic errors.
      */
-    public const method get_or_default(key: K, default_value: ref V) ref V {
+    public const method get_or_default(key: K, default_value: ref V) ref V throws IError {
       var probe: i64 = this.find_index(key);
       if (probe < 0) {
         return default_value;
@@ -325,9 +325,9 @@ public module std {
     }
 
     /**
-     * Check if key exists
+     * Check if a key exists; propagates invalid-capacity arithmetic errors.
      */
-    public const method contains(key: K) bool {
+    public const method contains(key: K) bool throws IError {
       return this.find_index(key) >= 0;
     }
 
@@ -409,7 +409,7 @@ public module std {
      * the comparisons and dropped when this call ends (String keys own their
      * buffer; the bucket keeps its own copy).
      */
-    const method find_index(key: K) i64 {
+    const method find_index(key: K) i64 throws IError {
       var hash: i64 = hash_map_key(key);
       var start: i64 = compute_mod(hash, this.capacity_);
 
@@ -437,7 +437,7 @@ public module std {
     /**
      * Grow capacity and rehash all entries
      */
-    method grow() void {
+    method grow() void throws IError {
       var old_capacity = this.capacity_;
 
       // Double capacity

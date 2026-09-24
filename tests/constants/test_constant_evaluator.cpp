@@ -134,10 +134,10 @@ void expectSameAtCompileTimeAndRunTime(const std::string& resultType,
       << (decision.reason ? decision.reason->message : "");
   ASSERT_TRUE(decision.value.has_value());
 
-  std::string program = functions + "function main() i32 {\n" + variables +
-                        "  var RESULT: " + resultType + " = " + expression +
-                        ";\n  if (" + buildBitComparison(*decision.value) +
-                        ") { return 0; }\n  return 1;\n}\n";
+  std::string program =
+      functions + "function main() i32 throws IError {\n" + variables +
+      "  var RESULT: " + resultType + " = " + expression + ";\n  if (" +
+      buildBitComparison(*decision.value) + ") { return 0; }\n  return 1;\n}\n";
   EXPECT_EQ(sun::driver::executeString(program), 0)
       << "compile time gave " << decision.value->toDisplayString()
       << ", run time disagreed:\n"
@@ -223,18 +223,22 @@ TEST(Constants_Evaluator, payload_free_enum_variants) {
 }
 
 TEST(Constants_Evaluator, ternary_and_logic_evaluate_only_what_runs) {
-  // The side not taken divides by zero, which would otherwise be refused.
-  EXPECT_EQ(describeDecision(decideGlobal(
-                "const Z: i64 = 0;\nconst A: i64 = Z == 0 ? 7 : 1 / Z;", "A")),
+  // The side not taken reads a mutable global, which cannot be folded.
+  EXPECT_EQ(describeDecision(
+                decideGlobal("const Z: i64 = 0;\nvar unavailable: i64 = "
+                             "9;\nconst A: i64 = Z == 0 ? 7 : unavailable;",
+                             "A")),
             "7");
-  EXPECT_EQ(
-      describeDecision(decideGlobal(
-          "const Z: i64 = 0;\nconst A: bool = Z != 0 and 1 / Z > 0;", "A")),
-      "false");
-  EXPECT_EQ(
-      describeDecision(decideGlobal(
-          "const Z: i64 = 0;\nconst A: bool = Z == 0 or 1 / Z > 0;", "A")),
-      "true");
+  EXPECT_EQ(describeDecision(
+                decideGlobal("const Z: i64 = 0;\nvar unavailable: i64 = "
+                             "9;\nconst A: bool = Z != 0 and unavailable > 0;",
+                             "A")),
+            "false");
+  EXPECT_EQ(describeDecision(
+                decideGlobal("const Z: i64 = 0;\nvar unavailable: i64 = "
+                             "9;\nconst A: bool = Z == 0 or unavailable > 0;",
+                             "A")),
+            "true");
 }
 
 // === Same result at compile time and at run time ===
@@ -287,6 +291,23 @@ TEST(Constants_Evaluator, shifts_follow_the_left_operands_signedness) {
       "u8", {{"A", "u8", "255"}, {"B", "u8", "7"}}, "A << B");
   expectSameAtCompileTimeAndRunTime(
       "i64", {{"A", "i64", "-1"}, {"B", "i64", "63"}}, "A >> B");
+}
+
+/** Constant shifts use the same masked counts as runtime shifts. */
+TEST(Constants_Evaluator, shift_counts_are_masked) {
+  for (const std::string type :
+       {"i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64"}) {
+    const int width = std::stoi(type.substr(1));
+    for (const int count : {width, width + 1, -1, -width}) {
+      for (const std::string op : {"<<", ">>"}) {
+        expectSameAtCompileTimeAndRunTime(
+            type,
+            {{"A", type, type[0] == 'i' ? "-7" : "7"},
+             {"B", type[0] == 'i' ? type : "i8", std::to_string(count)}},
+            "A " + op + " B");
+      }
+    }
+  }
 }
 
 TEST(Constants_Evaluator, comparisons_follow_the_left_operands_signedness) {
@@ -385,16 +406,14 @@ TEST(Constants_Evaluator, numeric_conversions_match_run_time) {
 
 // === What is left to the startup function, and why ===
 
-TEST(Constants_Evaluator, undefined_integer_operations_are_not_evaluated) {
-  expectInitializedAtStartup("const Z: i64 = 0;\nconst A: i64 = 1 / Z;", "A",
-                             "divides an integer by zero");
-  expectInitializedAtStartup("const Z: i64 = 0;\nconst A: i64 = 1 % Z;", "A",
-                             "divides an integer by zero");
-  expectInitializedAtStartup(
-      "const M: i32 = -2147483648;\nconst N: i32 = -1;\nconst A: i32 = M / N;",
-      "A", "divides the most negative integer by -1");
-  expectInitializedAtStartup("const S: i32 = 32;\nconst A: i32 = 1 << S;", "A",
-                             "shifts an integer by its width or more");
+/** Invalid file-scope arithmetic cannot propagate an unchecked exception. */
+TEST(Constants_Evaluator, invalid_integer_operations_require_handling) {
+  for (const std::string expression :
+       {"1 / 0", "1 % 0", "-2147483648 / -1", "-2147483648 % -1"}) {
+    EXPECT_SUN_ERROR_WITH_MESSAGE(
+        decideGlobal("const A: i32 = " + expression + ";", "A"),
+        "may throw ArithmeticError");
+  }
   expectInitializedAtStartup(
       "const F: f64 = 1.0e40;\nconst A: i32 = _convert<i32>(F);", "A",
       "converts a float that the integer type cannot hold");
@@ -530,11 +549,13 @@ TEST(Constants_Evaluator, functions_that_are_not_pure_wait_for_startup) {
     const V: i64 = same<i64>(1);
   )",
                              "V", "");
-  expectInitializedAtStartup(R"(
-    function divide(a: i64, b: i64) i64 { return a / b; }
+  EXPECT_SUN_ERROR_WITH_MESSAGE(decideGlobal(R"(
+    /** Propagates invalid arithmetic to the caller. */
+    function divide(a: i64, b: i64) i64 throws IError { return a / b; }
     const V: i64 = divide(1, 0);
   )",
-                             "V", "zero");
+                                             "V"),
+                                "Call to throwing function");
 }
 
 // A function that never finishes must not hang the compiler.
