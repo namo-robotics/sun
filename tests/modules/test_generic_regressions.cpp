@@ -90,6 +90,49 @@ class Modules_GenericRegressions : public ::testing::Test {
   }
 };
 
+/** Compiles byte literals quietly and preserves them in imported templates. */
+TEST_F(Modules_GenericRegressions, RawByteStringLiterals) {
+  const std::string body = R"(
+    using std;
+    var alloc = make_heap_allocator();
+    var value = String(alloc, "\xff\xfe\0\x80");
+    if (value.length() != 4) { return 1; }
+    try {
+      if (value.at(0) != 255u8) { return 2; }
+      if (value.at(1) != 254u8) { return 3; }
+      if (value.at(2) != 0u8) { return 4; }
+      if (value.at(3) != 128u8) { return 5; }
+    } catch (error: IError) { return 6; }
+    return 0;
+  )";
+  write("direct.sun", "/** Checks literal bytes. */\nfunction main() i32 {" +
+                          body +
+                          "}\nmanifest { libraries: [\"stdlib.moon\"] }");
+  ASSERT_NO_FATAL_FAILURE(buildLibrary(
+      "/** Exports a template containing byte literals. */\npublic module lib {"
+      "/** Checks bytes after template deserialization. */\n"
+      "public function check<T>(unused: T) i32 {" +
+      body + "}}\nmanifest { libraries: [\"stdlib.moon\"] }"));
+  EXPECT_EQ(readFile(dir / "log").find("libprotobuf"), std::string::npos)
+      << readFile(dir / "log");
+  write("consumer.sun", R"(
+    /** Instantiates the imported template. */
+    function main() i32 { return lib.check<i32>(0); }
+    manifest { libraries: ["stdlib.moon", "lib.moon"] }
+  )");
+  for (const std::string name : {"direct.sun", "consumer.sun"}) {
+    const auto source = (dir / name).string();
+    const auto binary = (dir / "app").string();
+    for (const auto& command :
+         {"build/sun " + source, "build/sun -c -o " + binary + " " + source,
+          binary}) {
+      ASSERT_TRUE(run(command));
+      EXPECT_EQ(readFile(dir / "log").find("libprotobuf"), std::string::npos)
+          << readFile(dir / "log");
+    }
+  }
+}
+
 const std::string supportClass = R"(
 /** Holds the value used to verify the indirect clone call. */
 public class TypeSupport<T> {

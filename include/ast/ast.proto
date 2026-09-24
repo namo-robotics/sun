@@ -137,7 +137,8 @@ message NumberExpr {
 
 /** Stores string literal data in the compiler serialization format. */
 message StringLiteral {
-  string value = 1;
+  // Escape sequences can produce arbitrary bytes, including invalid UTF-8.
+  bytes value = 1;
 }
 
 /** Stores null literal data in the compiler serialization format. */
