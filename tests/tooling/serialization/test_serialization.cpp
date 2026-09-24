@@ -159,6 +159,27 @@ TEST(Tooling_Serialization, StringLiteralWithEscapes) {
   EXPECT_EQ(str->getValue(), "line1\nline2\ttab");
 }
 
+/** Round-trips all byte values, including NUL, without UTF-8 diagnostics. */
+TEST(Tooling_Serialization, StringLiteralRawBytesRoundtrip) {
+  std::string bytes;
+  for (unsigned int value = 0; value < 256; ++value) {
+    bytes.push_back(static_cast<char>(value));
+  }
+  StringLiteralAST ast(bytes);
+  ASTSerializer serializer;
+  ASTDeserializer deserializer;
+
+  testing::internal::CaptureStderr();
+  const auto data = serializer.serializeToString(ast);
+  auto restored = deserializer.deserializeFromString(data);
+  const auto diagnostics = testing::internal::GetCapturedStderr();
+
+  EXPECT_TRUE(diagnostics.empty()) << diagnostics;
+  ASSERT_NE(restored, nullptr);
+  ASSERT_EQ(restored->getType(), ASTNodeType::STRING_LITERAL);
+  EXPECT_EQ(static_cast<StringLiteralAST*>(restored.get())->getValue(), bytes);
+}
+
 TEST(Tooling_Serialization, BoolLiteralTrue) {
   auto ast = std::make_unique<BoolLiteralAST>(true);
 
