@@ -59,6 +59,7 @@ int runBundleCommand(const BuildRunOptions& options) {
 
   MoonBuildOptions buildOptions;
   buildOptions.targetTriple = options.targetTriple;
+  buildOptions.debugMode = options.shared.debugMode;
   buildOptions.debugInfo = options.shared.debugInfo;
   buildOptions.optimize = options.shared.optimize;
   buildOptions.dumpProtoSun = options.dumpProtoSun;

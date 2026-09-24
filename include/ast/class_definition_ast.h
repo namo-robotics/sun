@@ -224,7 +224,8 @@ class ClassDefinitionAST : public ExprAST {
   /** Record a specialization supplied by the imported bundle. */
   void addCompiledSpecialization(std::string key) {
     compiledSpecializations_.insert(
-        sun::semantic_analysis::PortableDeclarationKey::parse(key).encoding());
+        sun::semantic_analysis::PortableDeclarationKey::fromString(key)
+            .encoding());
   }
   /** Return the specializations already compiled into the bundle. */
   const std::set<std::string>& getCompiledSpecializations() const {

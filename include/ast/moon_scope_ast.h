@@ -47,7 +47,7 @@ class MoonScopeAST : public ExprAST {
    */
   std::vector<DeclarationRequirement> requiredDeclarations;
   // Registered by import preparation before syntax identities are assigned.
-  std::vector<sun::semantic_analysis::ImportedDeclarationRecord>
+  std::vector<sun::semantic_analysis::LibraryDeclarationRecord>
       importedDeclarations;
 
   /** Creates this syntax node and takes ownership of any supplied child

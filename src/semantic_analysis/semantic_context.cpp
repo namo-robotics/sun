@@ -1222,8 +1222,8 @@ DeclarationId SemanticContext::requireDeclaration(
   }
   std::string message = "moon exact dependency: ";
   if (!exporter.empty()) message += "library '" + exporter + "' ";
-  message += "requires declaration '" + displayName + "' from bundle " +
-             key.encoding().substr(17, 64);
+  message += "requires declaration '" + displayName + "' with identity " +
+             key.encoding();
   if (wrongKind) message += " (declaration has the wrong type kind)";
   if (!id) {
     const auto& table = results_->declarations;
@@ -1232,8 +1232,7 @@ DeclarationId SemanticContext::requireDeclaration(
       if (candidate.portableKey &&
           (candidate.name == displayName ||
            displayName.ends_with("." + candidate.name)) &&
-          candidate.portableKey->encoding().substr(17, 64) !=
-              key.encoding().substr(17, 64)) {
+          !(*candidate.portableKey == key)) {
         message += " (conflicting bundle supplied)";
         break;
       }

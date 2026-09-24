@@ -287,8 +287,7 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
     for (size_t i = 1; i <= declarations.size(); ++i) {
       const auto id = DeclarationId(i);
       const auto& record = declarations.get(id);
-      if (record.portableKey &&
-          record.portableKey->encoding().substr(17, 64) == bundleHash)
+      if (record.portableKey && record.bundleHash == bundleHash)
         originals.emplace(*record.portableKey, id);
     }
     auto key = [&](DeclarationId id) {
@@ -300,7 +299,7 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
       const auto& record = declarations.get(id);
       auto* out = result.front().add_declarations();
       out->set_key(portable.encoding());
-      out->set_kind(static_cast<uint32_t>(record.kind));
+      out->set_kind(static_cast<sun::moon::DeclarationKind>(record.kind));
       out->set_name(record.name);
       out->set_owner(key(record.owner));
       out->set_module(key(record.module));

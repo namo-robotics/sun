@@ -12,10 +12,10 @@ class DeclarationTable;
 namespace passes {
 
 /** Register every imported declaration record before dependency validation. */
-class ImportRecordRegistrationPass {
+class ImportLibraryDeclarationsPass {
  public:
   /** Borrow the analysis session's declarations. */
-  explicit ImportRecordRegistrationPass(DeclarationTable& declarations)
+  explicit ImportLibraryDeclarationsPass(DeclarationTable& declarations)
       : declarations_(declarations) {}
 
   /** Register every imported declaration record before dependency validation.

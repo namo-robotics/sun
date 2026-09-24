@@ -67,7 +67,7 @@ class PortableTypeKey {
   }
 };
 
-/** Identifies a declaration independently of any compiler session. */
+/** An opaque declaration identifier shared across compiler sessions. */
 class PortableDeclarationKey {
   std::string encoded_;
   /** Stores an encoded declaration identity that can cross compilation
@@ -87,11 +87,8 @@ class PortableDeclarationKey {
    */
   static PortableDeclarationKey fromDeclaration(DeclarationId id,
                                                 const DeclarationTable& table);
-  /** Validate a canonical original or derived declaration key from an artifact.
-   */
-  static PortableDeclarationKey parse(const std::string& encoded);
-  /** Validate and decode an original declaration received from an artifact. */
-  static PortableDeclarationKey parseOriginal(const std::string& encoded);
+  /** Retain an artifact identifier unchanged; reject an unset identifier. */
+  static PortableDeclarationKey fromString(const std::string& value);
   /** Identify an original declaration in a content-addressed artifact. */
   static PortableDeclarationKey original(const std::string& bundleHash,
                                          uint64_t declarationNumber);
@@ -109,7 +106,7 @@ class PortableDeclarationKey {
   static PortableDeclarationKey generated(const PortableDeclarationKey& origin,
                                           const std::string& role,
                                           uint64_t slot);
-  /** Return canonical bytes interpreted under the enclosing ABI version. */
+  /** Return the canonical printable identity. */
   const std::string& encoding() const { return encoded_; }
   /** Report whether the portable identity has been established. */
   bool empty() const { return encoded_.empty(); }
@@ -119,7 +116,7 @@ class PortableDeclarationKey {
   bool operator==(const PortableDeclarationKey& other) const {
     return encoded_ == other.encoded_;
   }
-  /** Orders values for use in sorted containers. */
+  /** Order opaque identifiers for use in sorted containers. */
   bool operator<(const PortableDeclarationKey& other) const {
     return encoded_ < other.encoded_;
   }

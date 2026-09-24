@@ -147,9 +147,8 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   const std::string inputHash = sun::driver::computeInputHash(inputs);
 
   // ---- Do nothing if the bundle on disk was built from these very inputs.
-  // --force-rebuild and printing the generated proto source are reasons to
-  // run anyway ----
-  if (!options.forceRebuild && !options.dumpProtoSun &&
+  // Debug artifacts and generated proto source require running anyway ----
+  if (!options.forceRebuild && !options.dumpProtoSun && !options.debugMode &&
       sun::driver::readMoonInputHash(outputPath.string()) == inputHash) {
     describeExistingBundle(outputPath, archiveSetHash, report);
     report.upToDate = true;
@@ -162,6 +161,7 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   std::vector<moon::ModuleMetadata> allMetadata;
   auto driver = sun::driver::Driver::createForAOT(
       "moon_module", options.targetTriple, options.debugInfo, options.optimize);
+  if (options.debugMode) driver->setDebugMode(true, entrypoint);
   driver->setDumpProtoSun(options.dumpProtoSun);
   driver->setOwnBundleHash(inputHash);
 
@@ -304,6 +304,18 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   }
   if (!writer.write(outputPath)) {
     fail("Error writing moon: " + writer.getError());
+  }
+  if (options.debugMode) {
+    auto reader = MoonReader::open(outputPath);
+    const auto jsonPath = fs::path(driver->getDebugFolder()) / "moon.json";
+    if (!reader) {
+      sun::support::logAndThrowError("Cannot reopen moon for debug JSON: " +
+                                     outputPath.string());
+    }
+    if (!reader->writeDebugJson(jsonPath)) {
+      sun::support::logAndThrowError(reader->getError());
+    }
+    llvm::outs() << "  Generated: " << jsonPath.string() << "\n";
   }
   return report;
 }

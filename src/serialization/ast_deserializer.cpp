@@ -61,7 +61,7 @@ std::vector<sun::ast::TypeParameter> ASTDeserializer::deserializeTypeParameters(
         constraint.typeArguments.push_back(deserializeTypeAnnotation(argument));
       if (tp.has_declaration_key())
         constraint.declarationKey =
-            PortableDeclarationKey::parseOriginal(tp.declaration_key());
+            PortableDeclarationKey::fromString(tp.declaration_key());
     }
     return params;
   }
@@ -76,15 +76,15 @@ void ASTDeserializer::deserializeIdentity(
     const pbc::DeclarationIdentity& proto,
     sun::semantic_analysis::DeclarationIdentity& identity) const {
   if (!config_.import_declarations) return;
-  if (proto.declaration().empty())
+  if (proto.key().empty())
     sun::support::logAndThrowError(
         "Imported declaration has no portable identity");
   auto validate = [](const std::string& value) {
-    PortableDeclarationKey::parseOriginal(value);
+    PortableDeclarationKey::fromString(value);
     return value;
   };
-  sun::semantic_analysis::ImportedDeclarationIdentity imported;
-  imported.declaration = validate(proto.declaration());
+  sun::semantic_analysis::LibraryDeclarationIdentity imported;
+  imported.key = validate(proto.key());
   for (const auto& value : proto.parameters())
     imported.parameters.push_back(validate(value));
   for (const auto& value : proto.type_parameters())
@@ -156,7 +156,7 @@ sun::ast::TypeAnnotation ASTDeserializer::deserializeTypeAnnotation(
   result.baseName = type.base_name();
   if (type.has_declaration_key())
     result.declarationKey =
-        PortableDeclarationKey::parseOriginal(type.declaration_key());
+        PortableDeclarationKey::fromString(type.declaration_key());
 
   if (type.has_element_type()) {
     result.elementType = std::make_unique<sun::ast::TypeAnnotation>(
@@ -210,7 +210,7 @@ void ASTDeserializer::deserializeExprBase(const pbc::ASTNode& node,
   expr->setSourceFileId(node.source_file_id());
   if (node.has_module_declaration_key())
     expr->setModuleDeclaration(
-        PortableDeclarationKey::parseOriginal(node.module_declaration_key()));
+        PortableDeclarationKey::fromString(node.module_declaration_key()));
   expr->setPrecompiled(node.precompiled());
   expr->setSkipCodegen(node.skip_codegen());
   expr->setSymbolPrefix(node.symbol_prefix());
@@ -933,7 +933,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
     iface.name = ifaceProto.name();
     if (ifaceProto.has_declaration_key())
       iface.declarationKey =
-          PortableDeclarationKey::parseOriginal(ifaceProto.declaration_key());
+          PortableDeclarationKey::fromString(ifaceProto.declaration_key());
     for (const auto& typeArg : ifaceProto.type_arguments()) {
       iface.typeArguments.push_back(deserializeTypeAnnotation(typeArg));
     }

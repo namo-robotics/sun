@@ -21,10 +21,11 @@ namespace sun::moon_bundling {
 
 /** Inputs and build settings for producing a Moon library. */
 struct MoonBuildOptions {
-  std::string targetTriple;            // empty = host
-  bool debugInfo = false;              // -g
-  bool optimize = true;                // disabled by -O0
-  bool dumpProtoSun = false;           // print synthesized proto source
+  std::string targetTriple;   // empty = host
+  bool debugMode = false;     // --debug: compiler artifacts and moon.json
+  bool debugInfo = false;     // -g
+  bool optimize = true;       // disabled by -O0
+  bool dumpProtoSun = false;  // print synthesized proto source
   std::vector<MoonImport> extraMoons;  // CLI --moon imports
   // Rebuild even when the bundle on disk was made from the same inputs
   // (--force-rebuild)
@@ -59,8 +60,9 @@ class MoonBuilder {
   /**
    * Build `outputPath` from `entrypoint`. A bundle already there and built
    * from the same inputs is left alone (see input_hash.h) unless
-   * options.forceRebuild asks for the work anyway. Throws SunError on any
-   * failure (manifest, proto import, compilation, bundle write).
+   * options.forceRebuild or debug output asks for the work anyway.
+   * Throws SunError on manifest, proto import, compilation, bundle write,
+   * or debug output failure.
    */
   static MoonBuildReport build(const std::string& entrypoint,
                                const std::filesystem::path& outputPath,

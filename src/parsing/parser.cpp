@@ -19,6 +19,7 @@
 #include "moon_bundling/library_cache.h"
 #include "moon_bundling/metadata_extractor.h"
 #include "parsing/interpolated_string_parser.h"
+#include "semantic_analysis/portable_declaration_key.h"
 #include "serialization/ast_deserializer.h"
 #include "serialization/metadata_references.h"
 #include "serialization/source_file_ids.h"
@@ -3563,7 +3564,7 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
   std::string primaryModuleName;
   std::map<std::string, std::string> originalModules;
   std::map<std::string, std::string> moduleKeys;
-  std::vector<sun::semantic_analysis::ImportedDeclarationRecord>
+  std::vector<sun::semantic_analysis::LibraryDeclarationRecord>
       declarationRecords;
   std::vector<sun::ast::MoonScopeAST::DeclarationRequirement> requirements;
 
@@ -3587,8 +3588,9 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
     }
 
     for (const auto& record : metadata->declarations())
-      declarationRecords.push_back({record.key(), record.kind(), record.name(),
-                                    record.owner(), record.module()});
+      declarationRecords.push_back(
+          {record.key(), static_cast<uint32_t>(record.kind()), record.name(),
+           record.owner(), record.module(), metadata->content_hash()});
     {
       std::istringstream path(metadata->module_name());
       std::string part, prefix;
@@ -3731,8 +3733,7 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
           if (auto key = moduleKeys.find(originalModule->second);
               key != moduleKeys.end())
             nsAST->declarationIdentity().imported =
-                sun::semantic_analysis::ImportedDeclarationIdentity{
-                    key->second};
+                sun::semantic_analysis::LibraryDeclarationIdentity{key->second};
         }
         nsAST->setVisibility(visibilityOf(prefix));
         current = std::move(nsAST);
@@ -3764,8 +3765,6 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
   auto result = std::make_unique<MoonScopeAST>(
       contentHash, primaryModuleName, alias, resolvedStr, std::move(body));
   result->requiredDeclarations = std::move(requirements);
-  std::sort(declarationRecords.begin(), declarationRecords.end(),
-            [](const auto& a, const auto& b) { return a.key < b.key; });
   result->importedDeclarations = std::move(declarationRecords);
   return result;
 }

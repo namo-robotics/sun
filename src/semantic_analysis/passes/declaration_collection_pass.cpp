@@ -1,6 +1,5 @@
-#include "semantic_analysis/passes/import_traversal.h"
-
 #include "semantic_analysis/method_signature_set.h"
+#include "semantic_analysis/passes/import_traversal.h"
 // declaration_collection_pass.cpp — The declaration pre-pass (see
 // declaration_collection_pass.h)
 
@@ -114,7 +113,6 @@ void DeclarationCollectionPass::run(BlockExprAST& block) {
     if (expr->getType() == ASTNodeType::FUNCTION)
       collectFunctionSignature(static_cast<FunctionAST&>(*expr));
   }
-
 }
 
 // Register a named, non-lambda function's signature (no body analysis) in

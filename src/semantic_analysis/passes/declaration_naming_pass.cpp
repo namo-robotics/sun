@@ -96,7 +96,8 @@ void assignNames(ExprAST& root, const std::vector<std::string>& scopePath,
 
 void DeclarationNamingPass::run(ExprAST& root,
                                 const std::vector<std::string>& scopePath,
-                                bool moduleLevel, bool skipImportedMoons) const {
+                                bool moduleLevel,
+                                bool skipImportedMoons) const {
   assignNames(root, scopePath, moduleLevel, skipImportedMoons);
 }
 
@@ -133,7 +134,7 @@ void assignLocalDeclarationName(ExprAST& declaration,
 
 void DeclarationNamingPass::run(
     const std::vector<sun::ast::MoonScopeAST*>& imports,
-           const std::vector<std::string>& scopePath) const {
+    const std::vector<std::string>& scopePath) const {
   for (auto* moon : imports) run(*moon, scopePath, true);
 }
 

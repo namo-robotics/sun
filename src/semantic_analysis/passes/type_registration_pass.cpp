@@ -2,9 +2,8 @@
 
 /** Registers module scopes, type names, and generic templates before
  * resolution. */
-#include "semantic_analysis/passes/type_registration_pass.h"
-
 #include "ast.h"
+#include "semantic_analysis/passes/type_registration_pass.h"
 
 using sun::ast::ASTNodeType;
 using sun::ast::BlockExprAST;

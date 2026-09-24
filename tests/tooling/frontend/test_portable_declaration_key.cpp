@@ -25,7 +25,7 @@ TEST(Tooling_Frontend_PortableIdentity, symbols_have_a_frozen_encoding) {
   auto key = PortableDeclarationKey::original(bundle, 6);
   EXPECT_EQ(
       key.symbol("function"),
-      "_SUN1_c2db7def6b72feb55dc8e30d5b9d1623b06a78b8f26480ed2004205b5fca0372");
+      "_SUN1_907b3a260be289f76a3596962f74a0e6ab8e2c93163365102c2195eca4841cac");
   EXPECT_NE(key.symbol("function"), key.symbol("type"));
   EXPECT_EQ(key, PortableDeclarationKey::original(bundle, 6));
 }
@@ -239,18 +239,18 @@ TEST(Tooling_Frontend_PortableIdentity,
   auto i32 = PortableTypeKey::primitive("i32");
   EXPECT_EQ(
       PortableDeclarationKey::specialization(origin, {i32}).symbol("function"),
-      "_SUN1_e93f546e0d3015d7566a8c6d260e66173c7a4b0af496be025830700d4b537315");
+      "_SUN1_a5c9bfc8ad33bf284e44bf31a599ccf775b4f3fa9c59dfece04efffb0a3b3222");
   EXPECT_EQ(
       PortableDeclarationKey::specialization(origin, {i32},
                                              std::vector<PortableTypeKey>{})
           .symbol("function"),
-      "_SUN1_8bb3c1b199a59ddd486d59650fc59f211ded8cc2e91caa0916896bcdd6cfb114");
+      "_SUN1_efd1d82485b55ff40f82bba5e46914854e6964bc5a2eddd07af7d7d1500d0b26");
   auto callable =
       PortableTypeKey::function(i32, {i32}, false, false, false, true);
   EXPECT_EQ(
       PortableDeclarationKey::specialization(origin, {callable})
           .symbol("function"),
-      "_SUN1_eedd001944694044fb231fa2ffff36acc8c87f60f6f06f293f80976f0fba5c87");
+      "_SUN1_9588ac0357d3c9ba9fcd51354eb6fb5e200dc1d6a20fff46ff6bc199ac815de1");
 }
 
 TEST(Tooling_Frontend_PortableIdentity,
@@ -268,63 +268,89 @@ TEST(Tooling_Frontend_PortableIdentity,
             registry.specialize({source, {}, {immortal}, std::nullopt}));
 }
 
-TEST(Tooling_Frontend_PortableIdentity,
-     original_import_rejects_malformed_keys) {
-  const auto key = PortableDeclarationKey::original(bundle, 7);
-  EXPECT_EQ(PortableDeclarationKey::parseOriginal(key.encoding()), key);
-  auto bytes = key.encoding();
-  EXPECT_ANY_THROW(PortableDeclarationKey::parseOriginal(bytes.substr(1)));
-  EXPECT_ANY_THROW(PortableDeclarationKey::parseOriginal(bytes + "extra"));
-  bytes[17] = 'G';
-  EXPECT_ANY_THROW(PortableDeclarationKey::parseOriginal(bytes));
-  bytes = key.encoding();
-  bytes.back() = 0;
-  EXPECT_ANY_THROW(PortableDeclarationKey::parseOriginal(bytes));
+/** Identifier spelling does not encode declaration semantics. */
+TEST(Tooling_Frontend_PortableIdentity, keys_are_opaque) {
+  for (const auto* value :
+       {"arbitrary identifier", "$hash$_0", "01", "specialization"})
+    EXPECT_EQ(PortableDeclarationKey::fromString(value).encoding(), value);
+  EXPECT_ANY_THROW(PortableDeclarationKey::fromString(""));
 }
 
 TEST(Tooling_Frontend_PortableIdentity, imported_ownership_is_interned_once) {
   auto owner = PortableDeclarationKey::original(bundle, 1).encoding();
   auto child = PortableDeclarationKey::original(bundle, 2).encoding();
-  std::vector<sun::semantic_analysis::ImportedDeclarationRecord> records{
+  std::vector<sun::semantic_analysis::LibraryDeclarationRecord> records{
       {owner, static_cast<uint32_t>(DeclarationKind::Module), "lib", {}, {}},
       {child, static_cast<uint32_t>(DeclarationKind::Function), "read", owner,
        owner}};
   DeclarationTable first, second;
   second.add(DeclarationKind::Variable, "unrelated");
-  first.importRecords(records);
-  second.importRecords(records);
-  auto firstId =
-      first.findPortable(PortableDeclarationKey::parseOriginal(child));
+  first.importLibraryDeclarationRecords(records);
+  second.importLibraryDeclarationRecords(records);
+  auto firstId = first.findPortable(PortableDeclarationKey::fromString(child));
   auto secondId =
-      second.findPortable(PortableDeclarationKey::parseOriginal(child));
+      second.findPortable(PortableDeclarationKey::fromString(child));
   EXPECT_NE(firstId, secondId);
   EXPECT_EQ(PortableDeclarationKey::fromDeclaration(firstId, first),
             PortableDeclarationKey::fromDeclaration(secondId, second));
   auto size = first.size();
-  first.importRecords(records);
+  first.importLibraryDeclarationRecords(records);
   EXPECT_EQ(first.size(), size);
   records[1].name = "conflicting";
-  EXPECT_ANY_THROW(first.importRecords(records));
+  EXPECT_ANY_THROW(first.importLibraryDeclarationRecords(records));
   records[1].name = "read";
   records[1].owner = PortableDeclarationKey::original(bundle, 9).encoding();
-  EXPECT_ANY_THROW(first.importRecords(records));
+  EXPECT_ANY_THROW(first.importLibraryDeclarationRecords(records));
 }
 
-TEST(Tooling_Frontend_PortableIdentity,
-     derived_import_validates_nested_encodings) {
-  const auto instance = PortableDeclarationKey::specialization(
-      PortableDeclarationKey::original(bundle, 2),
-      {PortableTypeKey::reference(PortableTypeKey::primitive("i32"), true)},
-      std::vector<PortableTypeKey>{});
-  EXPECT_EQ(PortableDeclarationKey::parse(instance.encoding()), instance);
-  const auto generated =
-      PortableDeclarationKey::generated(instance, "receiver", 0);
-  EXPECT_EQ(PortableDeclarationKey::parse(generated.encoding()), generated);
-  auto bytes = instance.encoding();
-  bytes[8] = static_cast<char>(255);
-  EXPECT_ANY_THROW(PortableDeclarationKey::parse(bytes));
+/** Derived identities remain deterministic without a category suffix. */
+TEST(Tooling_Frontend_PortableIdentity, derived_keys_are_opaque_hashes) {
+  auto source = PortableDeclarationKey::fromString("template");
+  auto instance = PortableDeclarationKey::specialization(source, {});
+  EXPECT_EQ(PortableDeclarationKey::fromString(instance.encoding()), instance);
+  EXPECT_EQ(instance.encoding().size(), 65);
+  EXPECT_EQ(instance.encoding().find("$_"), std::string::npos);
+  EXPECT_EQ(instance, PortableDeclarationKey::specialization(source, {}));
+  EXPECT_NE(instance, PortableDeclarationKey::inInstance(source, source));
+  EXPECT_NE(instance, PortableDeclarationKey::generated(source, "instance", 0));
+}
+
+/** Import order follows explicit links even when key and input order disagree.
+ */
+TEST(Tooling_Frontend_PortableIdentity, opaque_records_restore_ownership) {
+  using Record = sun::semantic_analysis::LibraryDeclarationRecord;
+  const auto module = static_cast<uint32_t>(DeclarationKind::Module);
+  const auto function = static_cast<uint32_t>(DeclarationKind::Function);
+  std::vector<Record> records{
+      {"first", function, "read", "last", "last", "artifact"},
+      {"last", module, "lib", {}, {}, "artifact"}};
+  DeclarationTable table;
+  table.importLibraryDeclarationRecords(records);
+  const auto child =
+      table.findPortable(PortableDeclarationKey::fromString("first"));
+  const auto owner =
+      table.findPortable(PortableDeclarationKey::fromString("last"));
+  EXPECT_EQ(table.get(child).owner, owner);
+  EXPECT_EQ(table.get(child).module, owner);
+  EXPECT_EQ(table.get(child).bundleHash, "artifact");
+  EXPECT_NO_THROW(table.importLibraryDeclarationRecords(records));
+  EXPECT_EQ(table.importedSyntax("first", DeclarationKind::Function, "read"),
+            child);
   EXPECT_ANY_THROW(
-      PortableDeclarationKey::parse(instance.encoding() + "extra"));
-  EXPECT_ANY_THROW(PortableDeclarationKey::parse(
-      PortableTypeKey::primitive("i32").encoding()));
+      table.importedSyntax("first", DeclarationKind::Class, "read"));
+  records[0].bundleHash = "different artifact";
+  EXPECT_ANY_THROW(table.importLibraryDeclarationRecords(records));
+}
+
+/** Missing and cyclic ownership links are invalid regardless of key spelling.
+ */
+TEST(Tooling_Frontend_PortableIdentity, invalid_ownership_graphs_are_rejected) {
+  const auto kind = static_cast<uint32_t>(DeclarationKind::Module);
+  DeclarationTable missing, cyclic, self;
+  EXPECT_ANY_THROW(missing.importLibraryDeclarationRecords(
+      {{"child", kind, "child", "absent", {}}}));
+  EXPECT_ANY_THROW(cyclic.importLibraryDeclarationRecords(
+      {{"a", kind, "a", "b", {}}, {"b", kind, "b", "a", {}}}));
+  EXPECT_ANY_THROW(
+      self.importLibraryDeclarationRecords({{"a", kind, "a", "a", {}}}));
 }

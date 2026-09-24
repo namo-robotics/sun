@@ -18,7 +18,8 @@ namespace sun::semantic_analysis::passes {
  */
 class TypeRegistrationPass {
  public:
-  /** Run this stage across all borrowed imported bundles before the next stage. */
+  /** Run this stage across all borrowed imported bundles before the next stage.
+   */
   void run(const std::vector<sun::ast::MoonScopeAST*>& imports);
 
   /** Borrow the shared context that owns scopes and registered types. */

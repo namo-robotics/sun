@@ -28,7 +28,7 @@ inline void visitDeclarationKeys(
           descriptor == pbc::TypeAnnotation::descriptor()  ? "base_name"
           : descriptor == pbc::TypeParameter::descriptor() ? "constraint"
                                                            : "name");
-      visit(sun::semantic_analysis::PortableDeclarationKey::parseOriginal(
+      visit(sun::semantic_analysis::PortableDeclarationKey::fromString(
                 reflection->GetString(message, field)),
             interface ? std::optional<sun::types::Type::Kind>(
                             sun::types::Type::Kind::Interface)

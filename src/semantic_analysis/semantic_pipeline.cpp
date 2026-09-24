@@ -12,7 +12,7 @@ SemanticPipeline::SemanticPipeline(
     sun::semantic_analysis::SemanticAnalyzer& analyzer)
     : analyzer_(analyzer),
       context_(analyzer.context()),
-      importRecordRegistrationPass_(context_.results().declarations),
+      importLibraryDeclarationsPass_(context_.results().declarations),
       importDependencyValidationPass_(context_),
       importCompletionPass_(analyzer),
       declarationIdentityPass_(context_.results().declarations),
@@ -59,7 +59,7 @@ std::vector<sun::ast::MoonScopeAST*> SemanticPipeline::getMoonImports(
 
 void SemanticPipeline::prepareImports(sun::ast::BlockExprAST& block) {
   const auto imports = getMoonImports(block);
-  importRecordRegistrationPass_.run(imports);
+  importLibraryDeclarationsPass_.run(imports);
   importDependencyValidationPass_.run(imports);
   fieldInitializerPreparationPass_.run(imports);
   declarationIdentityPass_.run(imports);

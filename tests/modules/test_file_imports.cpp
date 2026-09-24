@@ -328,8 +328,7 @@ void visitModuleReferences(
   if (message.GetDescriptor() == sun::proto::ast::ASTNode::descriptor()) {
     const auto& node = static_cast<const sun::proto::ast::ASTNode&>(message);
     if (node.has_module_declaration_key())
-      visit(
-          PortableDeclarationKey::parseOriginal(node.module_declaration_key()));
+      visit(PortableDeclarationKey::fromString(node.module_declaration_key()));
   }
   auto* reflection = message.GetReflection();
   std::vector<const google::protobuf::FieldDescriptor*> fields;
@@ -352,7 +351,7 @@ PortableDeclarationKey exportedKey(MoonReader& reader,
   for (const auto& module : reader.listModules())
     for (const auto& record : reader.getMetadata(module)->declarations())
       if (record.name() == name)
-        return PortableDeclarationKey::parseOriginal(record.key());
+        return PortableDeclarationKey::fromString(record.key());
   throw std::runtime_error("Missing exported declaration: " + name);
 }
 
@@ -1336,7 +1335,8 @@ TEST_F(MoonExactTypes,
         return value.answer();
       }
     }
-  )", {MoonImport(templates)});
+  )",
+                         {MoonImport(templates)});
 
   auto reader = MoonReader::open(templates);
   ASSERT_TRUE(reader);

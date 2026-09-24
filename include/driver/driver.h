@@ -402,6 +402,9 @@ class Driver {
    */
   void setDebugMode(bool enable, const std::string& inputFile = "");
 
+  /** Returns the directory used for compiler inspection artifacts. */
+  const std::string& getDebugFolder() const { return debugFolder_; }
+
   /**
    * Print only user-defined IR (filters out imports and linked libraries)
    */

@@ -4,7 +4,8 @@
 // Sun has no runtime generics. Every `Vec<i32>`, every `spawn<T>(...)` call and
 // every `Option<ref T>` payload is a distinct specialization, built the first
 // time it is asked for and interned by its semantic arguments. This class owns
-// the prepared callable cache and the queue of bodies awaiting explicit analysis.
+// the prepared callable cache and the queue of bodies awaiting explicit
+// analysis.
 //
 // Checking queued bodies requires a reference back to the
 // analyzer. The direction that matters is the other one: nothing else needs to
