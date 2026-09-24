@@ -3,7 +3,7 @@
     "displayName": "Sun Language",
     "description": "Syntax highlighting, diagnostics, formatting, hover type information, go-to-definition, find references, rename symbol and Test Explorer for Sun",
     "icon": "images/sun-logo.png",
-    "version": "0.1.38",
+    "version": "0.1.39",
     "publisher": "namo-robotics",
     "license": "MIT",
     "repository": {
@@ -160,7 +160,7 @@
                         ]
                     },
                     "default": [],
-                    "description": "Explicit entrypoint files with manifest blocks, combined with sun.sun_configs. Only configured entrypoints provide test suites. Files listed in an entrypoint's manifest will use the full manifest context for cross-file analysis."
+                    "description": "Explicit entrypoint files with manifest blocks, combined with sun.sun_configs. Open files containing a manifest are also detected as entrypoints. Files listed in an entrypoint's manifest will use the full manifest context for cross-file analysis."
                 },
                 "sun.path_variables": {
                     "type": "object",

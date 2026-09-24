@@ -526,6 +526,10 @@ class Formatter {
     out_ += "interface ";
     out_ += n.getName();
     printTypeParams(n.getTypeParameters(), n.getLifetimeParameters());
+    if (n.getParent()) {
+      out_ += " extends ";
+      printType(*n.getParent());
+    }
     out_ += " {\n";
     ++indent_;
     int savedLast = lastLine_;

@@ -23,8 +23,8 @@ namespace sun::moon_bundling {
  */
 struct MoonHeader {
   static constexpr uint32_t MAGIC = 0x53554E4C;  // "SUNL"
-  // Declaration identifiers are opaque; derived keys have no category suffix.
-  static constexpr uint32_t VERSION = 9;
+  // Interface tables carry view links; interface borrows return a view value.
+  static constexpr uint32_t VERSION = 10;
 
   uint32_t magic = MAGIC;
   uint32_t version = VERSION;

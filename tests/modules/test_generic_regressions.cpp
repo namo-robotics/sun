@@ -607,3 +607,49 @@ TEST_F(Modules_GenericRegressions, ExportedGenericInterfaceConstraints) {
 }
 
 }  // namespace
+
+/** Preserves inherited defaults and ancestor conversions across a compiled
+ * library. */
+TEST_F(Modules_GenericRegressions, InterfaceInheritanceAcrossLibrary) {
+  buildLibrary(R"(
+    public module contracts {
+      /** Supplies a typed contract. */ public interface Base<T> {
+        /** Reads a value. */ public method value() T;
+      }
+      /** Adds a default that calls the inherited requirement. */
+      public interface Child<T> extends Base<T> {
+        /** Forwards the value. */ public method read() T { return this.value(); }
+        /** Exercises a method binder alongside the interface binder. */
+        public method take<U>(ignored: U) T { return this.value(); }
+      }
+      /** Supplies a concrete library implementation. */
+      public class Item implements Child<i32> {
+        /** Constructs an item. */ init() {}
+        /** Reads a value. */ public method value() i32 { return 42; }
+      }
+      /** Returns an erased child from the library. */
+      public function make() Child<i32> { return Item(); }
+    }
+  )");
+  write("consumer.sun", R"(
+    /** Implements the imported contract in the consumer. */
+    class Local implements contracts.Child<i32> {
+      /** Constructs an item. */ init() {}
+      /** Reads a value. */ public method value() i32 { return 42; }
+    }
+    /** Checks defaults and transferred dispatch tables on both sides. */
+    function main() i32 {
+      var local = Local();
+      if (local.read() != 42) { return 1; }
+      if (local.take<i32>(0) != 42) { return 3; }
+      var imported = contracts.Item();
+      if (imported.take<i32>(0) != 42) { return 4; }
+      var child = contracts.make();
+      var parent: contracts.Base<i32> = child;
+      if (parent.value() != 42) { return 2; }
+      return 0;
+    }
+    manifest { libraries: ["lib.moon"] }
+  )");
+  checkProgram("consumer.sun");
+}

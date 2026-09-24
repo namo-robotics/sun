@@ -440,10 +440,7 @@ void ScopeManager::emitInterfaceDrop(sun::types::InterfaceType& interfaceType,
   ctx.builder->CreateCondBr(isEmpty, doneBlock, dropBlock);
 
   ctx.builder->SetInsertPoint(dropBlock);
-  unsigned dropIndex = 0;
-  for (const auto& method : interfaceType.getMethods()) {
-    if (!method.isGeneric()) ++dropIndex;
-  }
+  unsigned dropIndex = interfaceType.getDropIndex();
   Value* dropSlot = ctx.builder->CreateGEP(
       ptrTy, vtable,
       ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), dropIndex),

@@ -471,6 +471,7 @@ void SemanticAnalyzer::analyzeReturnExpr(sun::ast::ReturnExprAST& returnExpr) {
     // Propagate the function's return type for return-position inference
     // (e.g. `return Option.None;`)
     TypePtr declaredReturn = ctx_.currentFunctionReturnType();
+    returnExpr.setTargetType(declaredReturn);
     analyzeExpr(const_cast<ExprAST&>(*returnExpr.getValue()), declaredReturn);
     TypePtr valueType = requireResolvedType(*returnExpr.getValue());
     // Returning by value out of a borrow would hand the caller a second

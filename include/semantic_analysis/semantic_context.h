@@ -50,6 +50,13 @@ class SemanticContext : public AccessContext {
   size_t declarationCollectionDepth_ = 0;
 
  public:
+  /** A registered interface and the scope where its annotations resolve. */
+  struct InterfaceDefinition {
+    sun::ast::InterfaceDefinitionAST *node;
+    SemanticScope *scope;
+  };
+  std::map<DeclarationId, InterfaceDefinition> interfaceDefinitions;
+  std::set<DeclarationId> resolvingInterfaceParents;
   /** Whether type declarations are being collected before body analysis. */
   bool isCollectingDeclarations() const {
     return declarationCollectionDepth_ != 0;

@@ -195,6 +195,9 @@ void SemanticAnalyzer::analyzeClassDefinition(
     activeLifetimeNames_.push_back(lp.name);
   }
 
+  // Install defaults before checking bodies that may call them.
+  validateInterfaceImplementation(classDef, classType);
+
   // PASS 1: Make the (already registered) method signatures resolvable
   // by source name inside the class scope
   for (const auto& methodDecl : classDef.getMethods()) {
@@ -216,7 +219,30 @@ void SemanticAnalyzer::analyzeClassDefinition(
 
   // PASS 2: Analyze all method bodies using their assigned names.
   for (const auto& methodDecl : classDef.getMethods()) {
-    bodies_.analyzeFunction(*methodDecl.function);
+    const auto& proto = methodDecl.function->getProto();
+    auto* member = classType->getMethodForArgs(proto.getName(),
+                                               proto.getResolvedParamTypes());
+    if (member && member->defaultImplementation) {
+      auto module =
+          ctx_.results().declarations.get(member->defaultImplementation).module;
+      auto* scope = module ? ctx_.lookupModuleScope(module) : &ctx_.rootScope();
+      SemanticContext::ScopeSwitchGuard definitionScope(ctx_, scope);
+      std::vector<std::string> names;
+      std::vector<TypePtr> arguments;
+      for (const auto& [name, argument] : proto.getTypeBindings()) {
+        names.push_back(name);
+        arguments.push_back(argument);
+      }
+      if (proto.isGeneric()) {
+        if (!names.empty()) ctx_.enterTypeParamScope(names, arguments);
+        auto info = getFunctionInfo(*methodDecl.function);
+        applyFunctionInfoToProto(const_cast<PrototypeAST&>(proto), info);
+        bodies_.analyzeFunction(*methodDecl.function);
+      } else
+        bodies_.analyzeMethodWithBindings(*methodDecl.function, classType,
+                                          names, arguments);
+    } else
+      bodies_.analyzeFunction(*methodDecl.function);
   }
 
   // PASS 3: check constructors, now that every method body is analyzed — the
@@ -231,9 +257,6 @@ void SemanticAnalyzer::analyzeClassDefinition(
           *methodDecl.function, *classType, classDef.getMethods());
     }
   }
-
-  // Validate interface implementations
-  validateInterfaceImplementation(classDef, classType);
 
   activeLifetimeNames_.resize(classLifetimeMark);
   ctx_.exitScope();  // Class scope
@@ -253,7 +276,7 @@ void SemanticAnalyzer::analyzeClassDefinition(
   classDef.setResolvedType(classType);
 }
 
-void SemanticAnalyzer::analyzeInterfaceDefinition(
+void SemanticAnalyzer::prepareInterfaceShape(
     sun::ast::InterfaceDefinitionAST& interfaceDef) {
   const QualifiedName& qualifiedInterface = interfaceDef.getQualifiedName();
   std::string interfaceName = qualifiedInterface.lookupName();
@@ -315,6 +338,9 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
   }
   bool savedAllowThisForInterface = allowThisLifetime_;
   allowThisLifetime_ = true;
+  if (interfaceDef.getParent())
+    checkAnnotationLifetimes(*interfaceDef.getParent(),
+                             interfaceDef.getLocation());
   for (const auto& field : interfaceDef.getFields()) {
     checkAnnotationLifetimes(field.type, field.location);
   }
@@ -342,6 +368,15 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
     interfaceType->setQualifiedName(qualifiedInterface);
     ctx_.currentScope().declareInterface(interfaceDef.getName(), interfaceType);
 
+    if (interfaceDef.getParent()) {
+      std::vector<TypePtr> arguments;
+      for (size_t i = 0; i < interfaceDef.getTypeParameters().size(); ++i)
+        arguments.push_back(interfaceDef.getTypeParameters()[i].toSunType(
+            ctx_.results().declarations,
+            interfaceDef.declarationIdentity().typeParameters.at(i)));
+      generics_.instantiateGenericInterface(
+          interfaceDef.getQualifiedName().lookupName(), arguments);
+    }
     interfaceDef.setResolvedType(Types::Void());
     activeLifetimeNames_.resize(interfaceLifetimeMark);
     return;
@@ -364,21 +399,10 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
   interfaceType->visibility = interfaceDef.getVisibility();
   interfaceType->setQualifiedName(qualifiedInterface);
 
-  // Create a pseudo-class type for 'this' during interface method analysis
-  // This allows default implementations to access interface fields
-  auto pseudoId = ctx_.results().declarations.add(
-      sun::semantic_analysis::DeclarationKind::Class,
-      "__interface_" + interfaceDef.getName(), interfaceDef.getDeclarationId(),
-      ctx_.results().declarations.get(interfaceDef.getDeclarationId()).module,
-      {}, interfaceDef.getDeclarationId(), "interface-receiver");
-  auto pseudoClass = ctx_.types()->getClass(pseudoId);
-
   // Add fields to the interface type and pseudo-class
   for (const auto& field : interfaceDef.getFields()) {
     TypePtr fieldType = resolver_.typeAnnotationToType(field.type);
     interfaceType->addField(field.name, fieldType, field.declaration.id)
-        .visibility = field.visibility;
-    pseudoClass->addField(field.name, fieldType, field.declaration.id)
         .visibility = field.visibility;
   }
 
@@ -402,12 +426,59 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
         proto.getName(), methodInfo.returnType, methodInfo.paramTypes,
         methodDecl.hasDefaultImpl, proto.getTypeParameterNames());
     method.declarationId = proto.getDeclarationId();
+    for (size_t i = 0; i < proto.getTypeParameters().size(); ++i)
+      method.genericArguments.push_back(proto.getTypeParameters()[i].toSunType(
+          ctx_.results().declarations,
+          proto.declarationIdentity().typeParameters.at(i)));
+    {
+      SemanticContext::ScopeSwitchGuard constraints(ctx_, ctx_.scope());
+      ctx_.enterTypeParamScope(method.typeParameters, method.genericArguments);
+      for (const auto& parameter : proto.getTypeParameters())
+        method.genericConstraints.push_back(
+            parameter.constraint ? resolver_.typeAnnotationToType(
+                                       parameter.constraint->toAnnotation())
+                                 : nullptr);
+    }
     method.visibility =
         sun::semantic_analysis::methodVisibility(*methodDecl.function);
     method.isConst = methodDecl.isConst;
     method.isUnsafe = methodDecl.function->getProto().isUnsafeMethod();
   }
 
+  mergeInterfaceParent(*interfaceType, interfaceDef);
+  ctx_.currentScope().declareInterface(interfaceDef.getName(), interfaceType);
+  ctx_.declarations().noteDeclared(interfaceDef.getName(), ctx_.scope());
+  activeLifetimeNames_.resize(interfaceLifetimeMark);
+}
+
+void SemanticAnalyzer::analyzeInterfaceDefinition(
+    sun::ast::InterfaceDefinitionAST& interfaceDef) {
+  auto id = interfaceDef.getDeclarationId();
+  ctx_.interfaceDefinitions.emplace(
+      id, SemanticContext::InterfaceDefinition{&interfaceDef, ctx_.scope()});
+  ensureInterfaceShape(id);
+  if (!analyzedInterfaceBodies_.insert(id).second) return;
+  interfaceDef.setResolvedType(Types::Void());
+  if (interfaceDef.isGeneric()) return;
+  auto interfaceType = ctx_.types()->getInterface(id);
+  const auto& qualifiedInterface = interfaceDef.getQualifiedName();
+  auto pseudoId = ctx_.results().declarations.add(
+      sun::semantic_analysis::DeclarationKind::Class,
+      "__interface_" + interfaceDef.getName(), id,
+      ctx_.results().declarations.get(id).module, {}, id, "interface-receiver");
+  auto pseudoClass = ctx_.types()->getClass(pseudoId);
+  for (const auto& field : interfaceType->getFields())
+    pseudoClass->addField(field.name, field.type, field.declarationId)
+        .visibility = field.visibility;
+  for (const auto& method : interfaceType->getMethods()) {
+    auto& member =
+        pseudoClass->addMethod(method.name, method.returnType,
+                               method.paramTypes, false, method.typeParameters);
+    member.declarationId = method.declarationId;
+    member.visibility = method.visibility;
+    member.isConst = method.isConst;
+    member.isUnsafe = method.isUnsafe;
+  }
   // Enter Interface scope to contain method scopes
   ctx_.enterInterfaceScope(qualifiedInterface);
 
@@ -427,15 +498,6 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
   }
 
   ctx_.exitScope();  // Interface scope
-
-  // Register the interface
-  ctx_.currentScope().declareInterface(interfaceDef.getName(), interfaceType);
-
-  // Track symbol for redefinition detection
-  ctx_.declarations().noteDeclared(interfaceDef.getName(), ctx_.scope());
-
-  activeLifetimeNames_.resize(interfaceLifetimeMark);
-  interfaceDef.setResolvedType(Types::Void());
 }
 
 void SemanticAnalyzer::analyzeFunctionDefinition(sun::ast::FunctionAST& func) {

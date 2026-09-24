@@ -4137,8 +4137,15 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
   std::vector<sun::ast::TypeParameter> typeParameters =
       parseTypeParameterList(&lifetimeParameters);
 
+  std::optional<sun::ast::TypeAnnotation> parent;
+  if (curTok.kind == TokenKind::EXTENDS) {
+    getNextToken();
+    parent = parseTypeAnnotation();
+    if (curTok.kind == TokenKind::COMMA)
+      parsingError("An interface can extend only one parent");
+  }
   if (curTok.kind != TokenKind::BRACE_OPEN) {
-    parsingError("expected '{' after interface name");
+    parsingError("expected '{' after interface name or parent");
     return nullptr;
   }
   getNextToken();  // eat '{'
@@ -4342,6 +4349,7 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
   auto interfaceDef = std::make_unique<InterfaceDefinitionAST>(
       std::move(interfaceName), std::move(typeParameters), std::move(fields),
       std::move(methods));
+  interfaceDef->setParent(std::move(parent));
   interfaceDef->setLifetimeParameters(std::move(lifetimeParameters));
   return finishNode(std::move(interfaceDef), start);
 }

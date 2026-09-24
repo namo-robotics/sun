@@ -46,9 +46,10 @@ class DiscoveryProtocolTests(unittest.TestCase):
         self.reader = threading.Thread(target=self.read_messages, daemon=True)
         self.reader.start()
         self.request_id = 0
-        self.request("initialize", {"initializationOptions": {
+        initialized = self.request("initialize", {"initializationOptions": {
             "sun_configs": [str(self.config)], "entrypoints": [],
         }})
+        self.token_types = initialized["capabilities"]["semanticTokensProvider"]["legend"]["tokenTypes"]
         self.notify("initialized", {})
 
     def stop_server(self):
@@ -127,12 +128,93 @@ class DiscoveryProtocolTests(unittest.TestCase):
             "path": entry.name, "test_binary_name": "suite_test",
         }]}))
 
-    def test_unconfigured_open_files_never_become_suites(self):
-        """Neither a test file nor a manifest supplies an implicit entrypoint."""
-        for file in (self.source, self.entry):
-            self.open_document(file)
-            self.assertEqual(self.workspace_tests(), [])
-            self.assertEqual(self.document_tests(file), {"entrypoint": None, "tests": []})
+    def test_open_manifest_becomes_entrypoint_until_closed(self):
+        """An open manifest supplies context for itself and its source files."""
+        self.open_document(self.source)
+        self.assertEqual(self.workspace_tests(), [])
+        self.open_document(self.entry)
+        self.assertEqual(self.document_tests(self.source)["entrypoint"], str(self.entry))
+        self.assertEqual(self.document_tests(self.entry)["entrypoint"], str(self.entry))
+        suites = self.workspace_tests()
+        self.assertEqual(len(suites), 1)
+        self.assertEqual(suites[0]["files"][0]["tests"][0]["id"], "suite.first")
+        self.configure([self.entry])
+        self.assertEqual(len(self.workspace_tests()), 1)
+        self.configure([])
+        self.assertEqual(len(self.workspace_tests()), 1)
+        self.notify("textDocument/didClose", {
+            "textDocument": {"uri": self.entry.as_uri()},
+        })
+        self.assertEqual(self.workspace_tests(), [])
+
+    def diagnostics(self, file):
+        """Wait for diagnostics published for the requested document."""
+        while True:
+            message = self.messages.get(timeout=30)
+            if isinstance(message, Exception):
+                raise message
+            if (message.get("method") == "textDocument/publishDiagnostics"
+                    and message["params"]["uri"] == file.as_uri()):
+                return message["params"]["diagnostics"]
+
+    def test_unsaved_manifest_resolves_println(self):
+        """Adding and removing a manifest updates diagnostics and library hover."""
+        source = ('using std;\n/** Prints a greeting. */\n'
+                  'function main() i32 { println("hello"); return 0; }\n')
+        self.entry.write_text(source)
+        self.open_document(self.entry)
+        self.assertTrue(any("Unknown variable" in item["message"]
+                            for item in self.diagnostics(self.entry)))
+        manifest = ('manifest { libraries: ['
+                    + json.dumps(str(SERVER.parent / "stdlib.moon")) + '] }\n')
+        self.notify("textDocument/didChange", {
+            "textDocument": {"uri": self.entry.as_uri(), "version": 2},
+            "contentChanges": [{"text": source + manifest}],
+        })
+        self.assertEqual(self.diagnostics(self.entry), [])
+        hover = self.request("textDocument/hover", {
+            "textDocument": {"uri": self.entry.as_uri()},
+            "position": {"line": 2, "character": source.splitlines()[2].index("println")},
+        })
+        self.assertIsNotNone(hover)
+        self.assertIn("println", hover["contents"]["value"])
+        self.assertEqual(self.document_tests(self.entry)["entrypoint"], str(self.entry))
+        self.notify("textDocument/didChange", {
+            "textDocument": {"uri": self.entry.as_uri(), "version": 3},
+            "contentChanges": [{"text": source}],
+        })
+        self.assertTrue(any("Unknown variable" in item["message"]
+                            for item in self.diagnostics(self.entry)))
+        self.assertEqual(self.document_tests(self.entry)["entrypoint"], None)
+
+    def test_semantic_tokens_cover_interface_lists(self):
+        """Every implemented or extended interface stays a type across commas."""
+        for declaration in (
+            "class FlyingCar implements IAircraft, ILandcraft",
+            "interface IFlyingCar extends IAircraft, ILandcraft",
+            "class FlyingCar implements IAircraft, /* ground */\n ILandcraft",
+            "class FlyingCar implements IAircraft<Cargo<Box>>, ILandcraft",
+            "class FlyingCar implements air.IAircraft, land.ILandcraft",
+        ):
+            with self.subTest(declaration=declaration):
+                source = declaration + " { var fuel = 0; }"
+                self.entry.write_text(source)
+                self.open_document(self.entry)
+                result = self.request("textDocument/semanticTokens/full", {
+                    "textDocument": {"uri": self.entry.as_uri()},
+                })
+                lines = source.splitlines()
+                line = column = 0
+                classified = {}
+                data = result["data"]
+                for index in range(0, len(data), 5):
+                    delta_line, delta_column, length, kind, _ = data[index:index + 5]
+                    line += delta_line
+                    column = delta_column if delta_line else column + delta_column
+                    classified[lines[line][column:column + length]] = self.token_types[kind]
+                self.assertEqual(classified["IAircraft"], "type")
+                self.assertEqual(classified["ILandcraft"], "type")
+                self.assertEqual(classified["fuel"], "variable")
 
     def test_config_created_edited_deleted_without_restart(self):
         """Every discovery request reads the latest contents of configured paths."""

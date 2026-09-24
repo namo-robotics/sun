@@ -91,7 +91,11 @@ TypePtr TypeResolver::substituteTypeParameters(TypePtr type) {
     auto* rt = dynamic_cast<ReferenceType*>(type.get());
     auto newReferenced = substituteTypeParameters(rt->getReferencedType());
     if (newReferenced != rt->getReferencedType()) {
-      return Types::Reference(newReferenced, rt->isMutable());
+      auto result =
+          std::make_shared<ReferenceType>(newReferenced, rt->isMutable());
+      result->setLifetimeName(rt->getLifetimeName());
+      result->setClassLifetimeArgs(rt->getClassLifetimeArgs());
+      return result;
     }
     return type;
   }
@@ -340,8 +344,10 @@ TypePtr TypeResolver::typeAnnotationToType(
                        annot.span);
     }
     if (kind == DeclarationKind::Class) return ctx_.types()->getClass(id);
-    if (kind == DeclarationKind::Interface)
+    if (kind == DeclarationKind::Interface) {
+      sema_.ensureInterfaceShape(id);
       return ctx_.types()->getInterface(id);
+    }
     return ctx_.types()->getEnum(id);
   }
   // Raw pointer types: raw_ptr<T> non-owning pointer for C interop
@@ -614,6 +620,7 @@ TypePtr TypeResolver::typeAnnotationToType(
   // Check for user-defined interface types
   auto interfaceType = ctx_.lookupInterface(lookupName);
   if (interfaceType) {
+    sema_.ensureInterfaceShape(interfaceType->getDeclarationId());
     return interfaceType;
   }
 

@@ -167,6 +167,12 @@ class ClassGenerator {
 
   // ---------------------------------------------------------------
   // Interface dispatch
+
+  /** Converts an erased child value to an ancestor without copying its object.
+   */
+  llvm::Value* upcastInterface(llvm::Value* value, InterfaceType* source,
+                               InterfaceType* target, bool borrowed);
+
   // ---------------------------------------------------------------
 
   /**
@@ -179,7 +185,7 @@ class ClassGenerator {
 
   /**
    * Moves a concrete class into heap storage and creates an owning interface
-   * fat pointer. The vtable's final slot drops and frees that erased object.
+   * fat pointer. The vtable's drop slot drops and frees that erased object.
    */
   llvm::Value* createOwnedInterfaceFatPointer(llvm::Value* objectPtr,
                                               ClassType* classType,
@@ -221,18 +227,9 @@ class ClassGenerator {
   // These need codegen but shouldn't show in an IR dump.
   std::set<DeclarationId> librarySpecializations;
 
-  /** Owning and borrowed dispatch tables for the same concrete type pair. */
-  struct InterfaceVtables {
-    llvm::GlobalVariable* owning = nullptr;
-    llvm::GlobalVariable* borrowed = nullptr;
-  };
-  std::map<std::pair<DeclarationId, DeclarationId>, InterfaceVtables>
+  /** Shared dispatch tables, keyed by concrete class and interface. */
+  std::map<std::pair<DeclarationId, DeclarationId>, llvm::GlobalVariable*>
       vtableGlobals;
-
-  /** Returns the dispatch table for a borrowed interface, creating it when
-   * first needed. */
-  llvm::GlobalVariable* getOrCreateBorrowedInterfaceVtable(
-      ClassType* classType, InterfaceType* ifaceType);
 
   /**
    * Emits the type-specific routine that destroys and frees an erased object.

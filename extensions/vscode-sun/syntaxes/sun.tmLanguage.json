@@ -139,7 +139,7 @@
                 },
                 {
                     "name": "storage.modifier.sun",
-                    "match": "\\b(?:const|partial|declare|public|extern|implements)\\b"
+                    "match": "\\b(?:const|partial|declare|public|extern|implements|extends)\\b"
                 },
                 {
                     "name": "storage.type.sun",

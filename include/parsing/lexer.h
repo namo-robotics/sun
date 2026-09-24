@@ -38,6 +38,7 @@ enum class TokenKind {
   PACKED_CLASS,  // packed_class keyword: class with no inter-field padding
   INTERFACE,     // interface keyword
   ENUM,          // enum keyword
+  EXTENDS,       // single interface parent
   IMPLEMENTS,    // implements keyword
   THIS,          // this keyword
   NULL_LITERAL,  // null keyword
@@ -165,6 +166,7 @@ static const std::map<TokenKind, std::string> tokenRegexes = {
     {TokenKind::PACKED_CLASS, "packed_class"},
     {TokenKind::INTERFACE, "interface"},
     {TokenKind::ENUM, "enum"},
+    {TokenKind::EXTENDS, "extends"},
     {TokenKind::IMPLEMENTS, "implements"},
     {TokenKind::THIS, "this"},
     {TokenKind::NULL_LITERAL, "null"},
@@ -368,6 +370,7 @@ inline const std::map<TokenKind, TokenInfo>& getTokenInfo() {
       {TokenKind::PACKED_CLASS, {"packed_class"}},
       {TokenKind::INTERFACE, {"interface"}},
       {TokenKind::ENUM, {"enum"}},
+      {TokenKind::EXTENDS, {"extends"}},
       {TokenKind::IMPLEMENTS, {"implements"}},
       {TokenKind::THIS, {"this"}},
       {TokenKind::NULL_LITERAL, {"null"}},

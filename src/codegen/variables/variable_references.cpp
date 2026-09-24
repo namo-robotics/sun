@@ -321,6 +321,16 @@ Value* VariableGenerator::codegen(const sun::ast::VariableAssignmentAST& expr) {
 
   auto generateValue = [&]() {
     Value* value = codegen(*expr.getValue());
+    auto source = expr.getValue()->getResolvedType();
+    auto target = sun::types::unwrapRef(expr.getResolvedType());
+    if (source && source->isClass() && target && target->isInterface())
+      return classes().createOwnedInterfaceFatPointer(
+          value, static_cast<sun::types::ClassType*>(source.get()),
+          static_cast<sun::types::InterfaceType*>(target.get()));
+    if (source && source->isInterface() && target && target->isInterface())
+      return classes().upcastInterface(
+          value, static_cast<sun::types::InterfaceType*>(source.get()),
+          static_cast<sun::types::InterfaceType*>(target.get()), false);
     return sun::codegen::support::widenNumericIfNeeded(
         *ctx.builder, typeResolver, value,
         sun::types::unwrapRef(expr.getResolvedType()),

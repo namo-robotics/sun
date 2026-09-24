@@ -84,6 +84,10 @@ bool decaysToView(const TypePtr& value, const TypePtr& target) {
 /** Returns a readable representation for diagnostics and debugging. */
 const char* toString(ArgConversion conversion) {
   switch (conversion) {
+    case ArgConversion::InterfaceUpcast:
+      return "interface upcast";
+    case ArgConversion::InterfaceRefUpcast:
+      return "borrowed interface upcast";
     case ArgConversion::PassValue:
       return "pass by value";
     case ArgConversion::Move:
@@ -143,6 +147,9 @@ std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
     if (value && value->isClass() && target && target->isInterface()) {
       return ArgConversion::ClassToRefInterface;
     }
+    if (value && value->isInterface() && target && target->isInterface() &&
+        !value->equals(*target))
+      return ArgConversion::InterfaceRefUpcast;
     if (decaysToView(value, target)) return ArgConversion::ArrayToView;
     return ArgConversion::Borrow;
   }
@@ -163,6 +170,10 @@ std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
     if (pointee && pointee->equals(*paramType))
       return ArgConversion::DerefRawPtr;
   }
+
+  if (argType->isInterface() && paramType->isInterface() &&
+      !argType->equals(*paramType))
+    return ArgConversion::InterfaceUpcast;
 
   if (value && paramType->equals(*value)) return byValue(argType);
 

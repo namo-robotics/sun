@@ -164,6 +164,8 @@ bool isAssignableTo(const TypePtr& from, const TypePtr& to) {
                           toRef->getReferencedType());
   }
 
+  if (ClassType::isInterfaceConvertible(from, to)) return true;
+
   // Class-to-interface assignability:
   // Class C can be assigned to interface I if C implements I.
   // A frame-carrying class (one that can hold a '<'_>' lambda) never

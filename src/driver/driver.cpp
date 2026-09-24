@@ -1774,8 +1774,9 @@ std::unique_ptr<BlockExprAST> Driver::parseAndMergeFiles(
 
 void Driver::compileFiles(const std::vector<std::string>& sourceFiles,
                           const std::vector<MoonImport>& moonImports,
-                          const std::vector<std::string>& protoFiles) {
-  auto mergedAst = parseAndMergeFiles(sourceFiles, protoFiles, {});
+                          const std::vector<std::string>& protoFiles,
+                          const std::map<std::string, std::string>& sourceOverrides) {
+  auto mergedAst = parseAndMergeFiles(sourceFiles, protoFiles, sourceOverrides);
 
   // Create a parser for runPipeline (used for precompiled imports lookup)
   auto stubParser = Parser::createStringParser("");

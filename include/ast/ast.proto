@@ -688,6 +688,7 @@ message InterfaceDef {
   optional Position location = 7;  // Declaration span (bundle exports only)
   repeated TypeParameter type_params = 8;  // <T, U: _Numeric>
   repeated string lifetime_params = 9;     // interface ISink<'a>
+  optional TypeAnnotation parent = 10;
 }
 
 /**

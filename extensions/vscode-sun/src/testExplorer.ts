@@ -2,8 +2,8 @@
 //
 // Discovery is workspace-wide: the language server's custom
 // "sun/workspaceTests" request lists every test of every configured
-// entrypoint from sun.entrypoints and sun.sun_configs. Opening a file does
-// not discover tests. The tree groups tests by entrypoint, then by file.
+// entrypoint from sun.entrypoints, sun.sun_configs, and open manifest files.
+// The tree groups tests by entrypoint, then by file.
 //
 // Running prefers the entrypoint's configured test binary
 // (test_binary_name in sun-config.json) when it is newer than every source;

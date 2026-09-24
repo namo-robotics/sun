@@ -963,3 +963,12 @@ TEST(Tooling_Fmt, PublicNestedModulesStayNested) {
   EXPECT_EQ(fmt(source), source);
   EXPECT_EQ(fmt(fmt(source)), source);
 }
+
+/** Keeps the single qualified parent when formatting and reformatting. */
+TEST(Tooling_Fmt, InterfaceParent) {
+  auto formatted =
+      fmt("interface Child<T> extends lib.Parent<T>{method read()T;}");
+  EXPECT_NE(formatted.find("interface Child<T> extends lib.Parent<T> {"),
+            std::string::npos);
+  EXPECT_EQ(fmt(formatted), formatted);
+}

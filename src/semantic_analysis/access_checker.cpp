@@ -134,7 +134,7 @@ ItemRef fieldRef(const sun::types::ClassType& cls,
                  const sun::types::ClassField& f) {
   return {"field", f.name,
           "class '" + cleanTypeName(cls.getDisplayName()) + "'", f.visibility,
-          cls.getDeclarationId()};
+          f.declarationId ? f.declarationId : cls.getDeclarationId()};
 }
 
 /** Creates the declaration reference used to check access to a method. */
@@ -142,21 +142,25 @@ ItemRef methodRef(const sun::types::ClassType& cls,
                   const sun::types::ClassMethod& m) {
   return {"method", m.name,
           "class '" + cleanTypeName(cls.getDisplayName()) + "'", m.visibility,
-          cls.getDeclarationId()};
+          m.defaultImplementation
+              ? m.defaultImplementation
+              : (m.declarationId ? m.declarationId : cls.getDeclarationId())};
 }
 
 /** Creates the declaration reference used to check access to a field. */
 ItemRef fieldRef(const sun::types::InterfaceType& iface,
                  const sun::types::InterfaceField& f) {
   return {"field", f.name, "interface '" + iface.getBaseName() + "'",
-          f.visibility, iface.getDeclarationId()};
+          f.visibility,
+          f.declarationId ? f.declarationId : iface.getDeclarationId()};
 }
 
 /** Creates the declaration reference used to check access to a method. */
 ItemRef methodRef(const sun::types::InterfaceType& iface,
                   const sun::types::InterfaceMethod& m) {
   return {"method", m.name, "interface '" + iface.getBaseName() + "'",
-          m.visibility, iface.getDeclarationId()};
+          m.visibility,
+          m.declarationId ? m.declarationId : iface.getDeclarationId()};
 }
 
 }  // namespace sun::semantic_analysis

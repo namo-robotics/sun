@@ -334,6 +334,11 @@ void SemanticAnalyzer::analyzeVariableAssignment(
       auto* refType =
           static_cast<sun::types::ReferenceType*>(expectedTargetType.get());
       expectedTargetType = refType->getReferencedType();
+      if (expectedTargetType && expectedTargetType->isInterface())
+        logAndThrowError(
+            "Cannot replace an interface owner through a borrowed view; assign "
+            "to the owning interface variable",
+            varAssign.getLocation());
     }
   }
 

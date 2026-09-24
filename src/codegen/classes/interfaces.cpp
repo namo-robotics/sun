@@ -22,7 +22,7 @@ namespace sun::codegen::classes {
 // -------------------------------------------------------------------
 
 /**
- * Emits the concrete destructor stored in an interface vtable's final slot.
+ * Emits the concrete destructor stored in an interface vtable's drop slot.
  */
 Function* ClassGenerator::getOrCreateInterfaceDropFunction(
     ClassType* classType) {
@@ -54,15 +54,16 @@ GlobalVariable* ClassGenerator::getOrCreateInterfaceVtable(
     sun::support::logAndThrowError(
         "Interface dispatch types belong to another analysis session");
   }
-  auto& tables = vtableGlobals[{classType->getDeclarationId(),
-                                ifaceType->getDeclarationId()}];
-  if (tables.owning) return tables.owning;
+  auto& table = vtableGlobals[{classType->getDeclarationId(),
+                               ifaceType->getDeclarationId()}];
+  if (table) return table;
 
   auto* ptrTy = PointerType::getUnqual(ctx.getContext());
 
   // Build one function pointer per non-generic interface method. Methods not
   // present here are declared as externals and resolved from the defining
-  // module at link/JIT time. The last slot always owns concrete drop glue.
+  // module at link/JIT time. The methods are followed by concrete drop glue and
+  // an optional parent table link. Ownership is tracked by the compiler.
   std::vector<Constant*> vtableEntries;
   for (const auto& m : ifaceType->getMethods()) {
     if (m.isGeneric()) continue;
@@ -71,6 +72,10 @@ GlobalVariable* ClassGenerator::getOrCreateInterfaceVtable(
         classType->getInterfaceMethod(m.declarationId)));
   }
   vtableEntries.push_back(getOrCreateInterfaceDropFunction(classType));
+  if (ifaceType->getParent()) {
+    vtableEntries.push_back(
+        getOrCreateInterfaceVtable(classType, ifaceType->getParent().get()));
+  }
 
   std::vector<llvm::Type*> slotTypes(vtableEntries.size(), ptrTy);
   llvm::StructType* vtableType =
@@ -82,60 +87,40 @@ GlobalVariable* ClassGenerator::getOrCreateInterfaceVtable(
               ifaceType->getDeclarationId(), state_.analysis->declarations),
           PortableDeclarationKey::fromDeclaration(
               classType->getDeclarationId(), state_.analysis->declarations))
-          .symbol("owning-vtable");
+          .symbol("vtable");
   Constant* vtableInit = ConstantStruct::get(vtableType, vtableEntries);
   auto* vtableGlobal =
       new GlobalVariable(*module, vtableType, /*isConstant=*/true,
                          GlobalValue::InternalLinkage, vtableInit, vtableName);
 
-  tables.owning = vtableGlobal;
-  return vtableGlobal;
+  table = vtableGlobal;
+  return table;
 }
 
-/**
- * Builds a dispatch-equivalent vtable whose final drop slot is a no-op.
- */
-GlobalVariable* ClassGenerator::getOrCreateBorrowedInterfaceVtable(
-    ClassType* classType, InterfaceType* ifaceType) {
-  GlobalVariable* owning = getOrCreateInterfaceVtable(classType, ifaceType);
-  auto& tables = vtableGlobals.at(
-      {classType->getDeclarationId(), ifaceType->getDeclarationId()});
-  if (tables.borrowed) return tables.borrowed;
-  auto* owningInit = cast<ConstantStruct>(owning->getInitializer());
-  std::vector<Constant*> entries;
-  for (unsigned i = 0; i + 1 < owningInit->getNumOperands(); ++i) {
-    entries.push_back(cast<Constant>(owningInit->getOperand(i)));
+Value* ClassGenerator::upcastInterface(Value* value, InterfaceType* source,
+                                       InterfaceType* target, bool borrowed) {
+  if (!source->extendsInterface(*target))
+    sun::support::logAndThrowError("Invalid interface upcast");
+  auto* fatType = InterfaceType::getFatPointerType(ctx.getContext());
+  if (value->getType()->isPointerTy()) {
+    if (borrowed)
+      value = ctx.builder->CreateLoad(fatType, value, "iface.borrow");
+    else
+      value = gen_.applyMoveSemantics(value,
+                                      std::make_shared<InterfaceType>(*source));
   }
-
-  std::string dropName = "__sun_interface_borrow_drop";
-  Function* noOpDrop = module->getFunction(dropName);
-  if (!noOpDrop) {
-    auto* ptrTy = PointerType::getUnqual(ctx.getContext());
-    llvm::FunctionType* fnTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(ctx.getContext()), {ptrTy}, false);
-    noOpDrop =
-        Function::Create(fnTy, Function::LinkOnceODRLinkage, dropName, module);
-    BasicBlock* entry = BasicBlock::Create(ctx.getContext(), "entry", noOpDrop);
-    IRBuilder<> builder(entry);
-    builder.CreateRetVoid();
+  auto* ptrType = PointerType::getUnqual(ctx.getContext());
+  while (!source->equals(*target)) {
+    Value* table = ctx.builder->CreateExtractValue(value, 1, "iface.table");
+    Value* slot = ctx.builder->CreateGEP(
+        ptrType, table, ctx.builder->getInt32(source->getParentIndex()),
+        "iface.parent.slot");
+    Value* parent =
+        ctx.builder->CreateLoad(ptrType, slot, "iface.parent.table");
+    value = ctx.builder->CreateInsertValue(value, parent, 1, "iface.parent");
+    source = source->getParent().get();
   }
-  entries.push_back(noOpDrop);
-
-  auto* ptrTy = PointerType::getUnqual(ctx.getContext());
-  std::vector<llvm::Type*> slots(entries.size(), ptrTy);
-  StructType* type = StructType::get(ctx.getContext(), slots);
-  std::string name =
-      PortableDeclarationKey::inInstance(
-          PortableDeclarationKey::fromDeclaration(
-              ifaceType->getDeclarationId(), state_.analysis->declarations),
-          PortableDeclarationKey::fromDeclaration(
-              classType->getDeclarationId(), state_.analysis->declarations))
-          .symbol("borrowed-vtable");
-  auto* result =
-      new GlobalVariable(*module, type, true, GlobalValue::InternalLinkage,
-                         ConstantStruct::get(type, entries), name);
-  tables.borrowed = result;
-  return result;
+  return value;
 }
 
 Value* ClassGenerator::createInterfaceFatPointer(Value* objectPtr,
@@ -143,7 +128,7 @@ Value* ClassGenerator::createInterfaceFatPointer(Value* objectPtr,
                                                  InterfaceType* ifaceType) {
   // Look up (or build) the vtable for this (class, interface) pair.
   GlobalVariable* vtableGlobal =
-      getOrCreateBorrowedInterfaceVtable(classType, ifaceType);
+      getOrCreateInterfaceVtable(classType, ifaceType);
   if (!vtableGlobal) {
     sun::support::logAndThrowError(
         "Vtable not found for class " + classType->getDisplayName() +
@@ -176,10 +161,6 @@ Value* ClassGenerator::createOwnedInterfaceFatPointer(
   Value* fatPtr = createInterfaceFatPointer(objectPtr, classType, ifaceType);
   if (!fatPtr) return nullptr;
 
-  GlobalVariable* owningVtable =
-      getOrCreateInterfaceVtable(classType, ifaceType);
-  fatPtr = ctx.builder->CreateInsertValue(fatPtr, owningVtable, 1,
-                                          "iface.owner.vtable");
   StructType* objectType = classType->getStructType(ctx.getContext());
   const DataLayout& layout = module->getDataLayout();
   uint64_t objectSize = layout.getTypeAllocSize(objectType);

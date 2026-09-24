@@ -19,7 +19,7 @@
     "editor.formatOnSave": true,
     "[cpp]": {
         "editor.inlayHints.enabled": "off",
-        "editor.hover.enabled": true,
+        "editor.hover.enabled": "on",
         "editor.formatOnSave": true,
         "editor.formatOnPaste": false
     },

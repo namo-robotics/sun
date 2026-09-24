@@ -24,6 +24,60 @@ class Counter implements Printable, HasValue {
 }
 ```
 
+## Extending an Interface
+
+An interface can extend one parent. It inherits the parent's fields, required
+methods, and default implementations. Inheritance can span several levels,
+and the parent may be declared later in the same module.
+
+```sun
+/** Provides a readable value. */
+interface Readable {
+    /** Returns the current value. */
+    method read() i32;
+}
+
+/** Adds a write operation to the readable contract. */
+interface Writable extends Readable {
+    /** Replaces the current value. */
+    method write(value: i32) void;
+}
+```
+
+A class implementing `Writable` must provide both methods and also satisfies
+`Readable`, including generic constraints requiring `Readable`. Parents may
+be qualified or generic, such as `interface Child<T> extends api.Parent<T>`.
+Lifetime arguments use the usual annotation syntax.
+
+A child may replace an inherited method with the same signature, visibility,
+const/unsafe qualifiers, generic constraints, and lifetime contract. A body
+provides a new default; a declaration without a body requires implementing
+classes to supply the method. The nearest default wins, and a class method
+takes precedence over every default. Calls through a parent use the same
+selected implementation. Inherited field names cannot be redeclared.
+
+Owned child interface values can move into parent interface variables,
+parameters, and return values. Borrowing a child as `ref Parent` or
+`const ref Parent` preserves the original object's lifetime and constness.
+These conversions do not copy or allocate the concrete object. An owned
+conversion transfers responsibility for destruction; a borrowed conversion
+never takes ownership. A borrowed interface allows method calls, but cannot be
+assigned a replacement owner; assign to the owning interface variable instead.
+Conversion in the opposite direction is not supported.
+
+Inheritance preserves member visibility: private members remain accessible
+only within their defining module. Multiple parents and inheritance cycles
+are rejected. A class may still implement several unrelated interfaces, but
+conflicting defaults require an explicit class implementation.
+
+Owned and borrowed interface values share one dispatch table per concrete class
+and interface. The table contains method pointers, a concrete cleanup function,
+and a parent table pointer when the interface extends another interface. The
+compiler emits cleanup only for owned values; borrowing does not change the table.
+
+Rebuild existing `.moon` libraries with this compiler version. Interface dispatch
+metadata and the calling convention for interface-reference returns have changed.
+
 ## Visibility
 
 Interfaces and their members are private by default and are marked `public`

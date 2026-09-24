@@ -1000,6 +1000,8 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeInterfaceDef(
   auto iface = std::make_unique<sun::ast::InterfaceDefinitionAST>(
       proto.name(), deserializeTypeParameters(proto), std::move(fields),
       std::move(methods));
+  if (proto.has_parent())
+    iface->setParent(deserializeTypeAnnotation(proto.parent()));
   iface->setLifetimeParameters(toLifetimeParameters(proto));
   iface->setVisibility(fromProto(proto.visibility()));
   iface->setDoc(proto.doc());

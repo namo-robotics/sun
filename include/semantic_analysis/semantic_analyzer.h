@@ -84,6 +84,9 @@ class SemanticAnalyzer {
   // Scopes, symbol tables, the type registry and the current class. Shared by
   // reference with everything else this analysis run is made of.
   SemanticContext ctx_;
+  std::set<DeclarationId> preparedInterfaces_;
+  std::set<DeclarationId> preparingInterfaces_;
+  std::set<DeclarationId> analyzedInterfaceBodies_;
 
   // One persistent pipeline owns all passes for this analysis session.
   sun::semantic_analysis::SemanticPipeline pipeline_{*this};
@@ -245,6 +248,15 @@ class SemanticAnalyzer {
    */
   void analyzeInterfaceDefinition(
       sun::ast::InterfaceDefinitionAST &interfaceDef);
+  /** Resolves an interface's complete inherited shape without checking bodies.
+   */
+  void ensureInterfaceShape(DeclarationId declaration);
+  /** Builds the local members of a registered interface after its parent. */
+  void prepareInterfaceShape(sun::ast::InterfaceDefinitionAST &interfaceDef);
+  /** Combines inherited members and validates matching child declarations. */
+  void mergeInterfaceParent(sun::types::InterfaceType &interfaceType,
+                            const sun::ast::InterfaceDefinitionAST &definition);
+
   /**
    * Resolves declarations and checks types in this function definition,
    * recording the results on its syntax nodes.

@@ -924,6 +924,8 @@ void ASTSerializer::serializeInterfaceDef(
   node->mutable_interface_def()->set_source_file_id(expr.getSourceFileId());
   auto* iface = node->mutable_interface_def();
   iface->set_name(expr.getName());
+  if (expr.getParent())
+    *iface->mutable_parent() = serializeTypeAnnotation(*expr.getParent());
 
   for (const auto& parameter : expr.getTypeParameters()) {
     serializeTypeParameterInto(parameter, iface->add_type_params());

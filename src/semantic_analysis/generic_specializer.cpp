@@ -475,8 +475,24 @@ void GenericSpecializer::analyzeClassBody(
     ClassDefinitionAST& ast, std::shared_ptr<ClassType> classType) {
   for (auto& method : ast.getMutableMethods()) {
     if (method.function->getProto().isGeneric()) continue;
-    sema_.bodies().analyzeMethodWithBindings(*method.function, classType, {},
-                                             {});
+    const auto& proto = method.function->getProto();
+    std::vector<std::string> names;
+    std::vector<TypePtr> arguments;
+    for (const auto& [name, argument] : proto.getTypeBindings()) {
+      names.push_back(name);
+      arguments.push_back(argument);
+    }
+    SemanticContext::ScopeSwitchGuard definitionScope(ctx_, ctx_.scope());
+    auto* member = classType->getMethodForArgs(proto.getName(),
+                                               proto.getResolvedParamTypes());
+    if (member && member->defaultImplementation) {
+      auto module =
+          ctx_.results().declarations.get(member->defaultImplementation).module;
+      ctx_.enterScope(module ? *ctx_.lookupModuleScope(module)
+                             : ctx_.rootScope());
+    }
+    sema_.bodies().analyzeMethodWithBindings(*method.function, classType, names,
+                                             arguments);
   }
   for (const auto& method : ast.getMethods()) {
     if (!method.isConstructor || method.function->getProto().isGeneric())
@@ -841,6 +857,9 @@ FunctionAST* GenericSpecializer::findGenericMethodAST(
     if (genericInfo) classDef = genericInfo->AST;
   }
 
+  if (!classDef)
+    classDef = dynamic_cast<const ClassDefinitionAST*>(
+        ctx_.results().declarations.get(classType->getDeclarationId()).astNode);
   if (!classDef) return nullptr;
 
   for (const auto& methodDecl : classDef->getMethods()) {
@@ -926,6 +945,12 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
         allTypeArgs.push_back(classTypeArgs[i]);
       }
     }
+  }
+
+  // A cloned interface default retains its interface's concrete bindings.
+  for (const auto& [name, argument] : proto.getTypeBindings()) {
+    allTypeParams.push_back(name);
+    allTypeArgs.push_back(argument);
   }
 
   // Add method-level type parameter bindings
@@ -1069,6 +1094,10 @@ std::shared_ptr<InterfaceType> GenericSpecializer::instantiateGenericInterface(
       instanceId, name, genericInfo->qualifiedName, typeArgs);
 
   specializedInterface->visibility = genericInfo->AST->getVisibility();
+  std::vector<std::string> interfaceLifetimes;
+  for (const auto& lifetime : genericInfo->AST->getLifetimeParameters())
+    interfaceLifetimes.push_back(lifetime.name);
+  specializedInterface->setLifetimeParams(std::move(interfaceLifetimes));
 
   {
     /**
@@ -1136,9 +1165,71 @@ std::shared_ptr<InterfaceType> GenericSpecializer::instantiateGenericInterface(
           proto.getName(), returnType, paramTypes, methodDecl.hasDefaultImpl,
           proto.getTypeParameterNames());
       method.declarationId = methodId;
+      method.genericArguments = methodArguments;
+      for (const auto& parameter : proto.getTypeParameters())
+        method.genericConstraints.push_back(
+            parameter.constraint ? sema_.typeResolver().typeAnnotationToType(
+                                       parameter.constraint->toAnnotation())
+                                 : nullptr);
       method.visibility = methodVisibility(*methodDecl.function);
       method.isConst = methodDecl.isConst;
       method.isUnsafe = methodDecl.function->getProto().isUnsafeMethod();
+    }
+
+    sema_.mergeInterfaceParent(*specializedInterface, *genericInfo->AST);
+    if (!mentionsTypeParameter(specializedInterface)) {
+      auto receiverId = ctx_.results().declarations.add(
+          DeclarationKind::Class, "__interface_receiver", instanceId,
+          ctx_.results().declarations.get(instanceId).module, {}, instanceId,
+          "interface-receiver");
+      auto receiver = ctx_.types()->getClass(receiverId);
+      for (const auto& field : specializedInterface->getFields())
+        receiver->addField(field.name, field.type, field.declarationId)
+            .visibility = field.visibility;
+      for (const auto& member : specializedInterface->getMethods()) {
+        auto& method = receiver->addMethod(member.name, member.returnType,
+                                           member.paramTypes, false,
+                                           member.typeParameters);
+        method.declarationId = member.declarationId;
+        method.visibility = member.visibility;
+        method.isConst = member.isConst;
+        method.isUnsafe = member.isUnsafe;
+      }
+      for (const auto& declaration : genericInfo->AST->getMethods()) {
+        if (!declaration.hasDefaultImpl) continue;
+        const auto& original = *declaration.function;
+        const sun::types::InterfaceMethod* member = nullptr;
+        for (const auto& candidate : specializedInterface->getMethods())
+          if (ctx_.results().declarations.get(candidate.declarationId).origin ==
+              original.getDeclarationId()) {
+            member = &candidate;
+            break;
+          }
+        if (!member) continue;
+        auto clone = original.clone();
+        auto function = std::shared_ptr<FunctionAST>(
+            static_cast<FunctionAST*>(clone.release()));
+        sema_.clearResolvedTypes(*function);
+        function->setDeclarationId(member->declarationId);
+        function->declarationIdentity().session =
+            ctx_.results().declarations.session();
+        sema_.pipeline().prepareGenerated(*function, instanceId, &original);
+        ctx_.results().declarations.bindAstNode(member->declarationId,
+                                                function.get());
+        auto& proto = const_cast<PrototypeAST&>(function->getProto());
+        proto.setQualifiedName(original.getProto().getQualifiedName());
+        proto.setResolvedParamTypes(member->paramTypes);
+        proto.setResolvedReturnType(member->returnType);
+        std::vector<std::pair<std::string, TypePtr>> bindings;
+        for (size_t i = 0; i < typeArgs.size(); ++i)
+          bindings.emplace_back(genericInfo->typeParameters[i].name,
+                                typeArgs[i]);
+        proto.setTypeBindings(std::move(bindings));
+        function->setPrecompiled(false);
+        original.addSpecialization(member->declarationId, function);
+        if (!function->getProto().isGeneric())
+          pendingBodies_.push_back({ctx_.scope(), receiver, function, true});
+      }
     }
 
     // Pop the scope
