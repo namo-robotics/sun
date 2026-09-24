@@ -87,7 +87,7 @@ TEST(Functions_Generic_ContainerSignatures, map_parameter_two_type_params) {
         return m.size();
     }
 
-    function main() i32 {
+    function main() i32 throws IError {
         var allocator = make_heap_allocator();
         var m = Map<i32, i32>(allocator, 8);
         m.insert(1, 10);

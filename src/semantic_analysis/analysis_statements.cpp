@@ -418,6 +418,9 @@ void SemanticAnalyzer::analyzeCompoundAssignment(
     }
   }
 
+  checkIntegerDivision(*compound.getTarget(), *compound.getValue(),
+                       compound.getOp().kind, compound.getLocation());
+
   // Compound assignment is a statement; codegen returns the stored value
   compound.setResolvedType(Types::Void());
 }

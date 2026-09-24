@@ -360,8 +360,7 @@ class CodegenVisitor {
                             const sun::support::Position& loc);
 
   /**
-   * Integer division/remainder with signedness; shared by the plain binary
-   * path and codegenSafeDivision
+   * Emits integer division or remainder, throwing ArithmeticError on failure.
    */
   llvm::Value* createIntDivRem(llvm::Value* L, llvm::Value* R, bool isModulo,
                                bool isUnsigned);

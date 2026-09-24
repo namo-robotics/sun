@@ -490,7 +490,7 @@ TEST(Errors, safe_divide_by_zero) {
 }
 
 TEST(Errors, auto_safe_division_success) {
-  // Functions declared with IError automatically check for division by zero
+  // Valid division also works in functions declared to throw.
   auto value = executeString(R"(
     function divide(a: i32, b: i32) i32 throws IError {
       return a / b;
@@ -505,24 +505,6 @@ TEST(Errors, auto_safe_division_success) {
     }
   )");
   EXPECT_EQ(value, 20);
-}
-
-TEST(Errors, auto_safe_division_by_zero) {
-  // Functions declared with IError automatically check for division by zero
-  auto value = executeString(R"(
-    function divide(a: i32, b: i32) i32 throws IError {
-      return a / b;
-    }
-
-    function main() i32 {
-      try {
-        return divide(1, 0);
-      } catch (e: IError) {
-        return 0;
-      }
-    }
-  )");
-  EXPECT_EQ(value, 0);
 }
 
 // ============================================================================

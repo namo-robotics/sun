@@ -216,6 +216,13 @@ class ClassType : public NominalType {
   /** Provides the method declarations belonging to this type. */
   const std::vector<ClassMethod>& getMethods() const { return methods; }
 
+  /** Updates a builtin method contract when the standard String type is known.
+   */
+  void setMethodReturnType(const std::string& name, TypePtr type) {
+    for (auto& method : methods)
+      if (method.name == name) method.returnType = type;
+  }
+
   /** Record the concrete method selected for an interface declaration. */
   void bindInterfaceMethod(DeclarationId requirement,
                            DeclarationId implementation) {

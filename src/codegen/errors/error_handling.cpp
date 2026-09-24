@@ -34,38 +34,98 @@ uint64_t sunTypeId(const ClassType& type,
 }
 }  // namespace
 
-// Safe division/modulo: check for zero divisor and throw instead of crashing.
-// This is only called when currentFunctionCanError() is true.
-Value* ErrorGenerator::codegenSafeDivision(Value* L, Value* R, bool isModulo,
-                                           bool isUnsigned) {
-  Function* func = ctx.builder->GetInsertBlock()->getParent();
+void ErrorGenerator::emitArithmeticErrorMethods(bool defineBodies) {
+  auto error = typeRegistry()->arithmeticError;
+  auto* objectType = error->getStructType(ctx.getContext());
+  auto* pointerType = PointerType::getUnqual(ctx.getContext());
+  auto* closureType = state_.typeResolver.getClosureType();
+  for (const auto& method : error->getMethods()) {
+    std::string name = state_.declarationSymbol(
+        method.declarationId, method.returnType->isClass()
+                                  ? "arithmetic-owned-method"
+                                  : "arithmetic-literal-method");
+    auto* returnType = state_.typeResolver.resolve(method.returnType);
+    auto* signature = llvm::FunctionType::get(returnType, {pointerType}, false);
+    auto* function = module->getFunction(name);
+    if (!function)
+      function =
+          Function::Create(signature, Function::ExternalLinkage, name, module);
+    gen_.functionRegistry().registerFunction(method.declarationId, function);
+    if (!defineBodies || function->use_empty() || !function->empty()) continue;
+    function->setLinkage(Function::LinkOnceODRLinkage);
+    IRBuilder<> builder(
+        BasicBlock::Create(ctx.getContext(), "entry", function));
+    auto* object = builder.CreateLoad(
+        pointerType,
+        builder.CreateStructGEP(closureType, function->getArg(0), 1));
+    auto* code = builder.CreateLoad(
+        builder.getInt32Ty(), builder.CreateStructGEP(objectType, object, 0));
+    if (method.name == "code") {
+      builder.CreateRet(code);
+      continue;
+    }
+    auto* zero = builder.CreateICmpEQ(code, builder.getInt32(4));
+    auto* data = builder.CreateSelect(
+        zero, builder.CreateGlobalString("integer division by zero"),
+        builder.CreateGlobalString("integer division overflow"));
+    auto* length = builder.CreateSelect(
+        zero, builder.getInt64(sizeof("integer division by zero") - 1),
+        builder.getInt64(sizeof("integer division overflow") - 1));
+    auto* literalType =
+        state_.typeResolver.resolve(sun::types::Types::String());
+    Value* literal = UndefValue::get(literalType);
+    literal = builder.CreateInsertValue(literal, data, 0);
+    literal = builder.CreateInsertValue(literal, length, 1);
+    if (!method.returnType->isClass()) {
+      builder.CreateRet(literal);
+      continue;
+    }
+    auto string = std::static_pointer_cast<ClassType>(method.returnType);
+    const auto* constructor =
+        string->getMethodForArgs("init", {sun::types::Types::String()});
+    if (!constructor)
+      sun::support::logAndThrowError("String lacks its literal constructor");
+    auto* init =
+        gen_.functionRegistry().lookupFunctionById(constructor->declarationId);
+    auto* result = builder.CreateAlloca(returnType);
+    auto* closure = builder.CreateAlloca(closureType);
+    builder.CreateStore(init, builder.CreateStructGEP(closureType, closure, 0));
+    builder.CreateStore(result,
+                        builder.CreateStructGEP(closureType, closure, 1));
+    builder.CreateCall(init, {closure, literal});
+    builder.CreateRet(builder.CreateLoad(returnType, result));
+  }
+}
 
-  // Check if R == 0
-  Value* isZero = ctx.builder->CreateICmpEQ(
-      R, ConstantInt::get(R->getType(), 0), "div.zero.check");
-
-  BasicBlock* zeroBB = BasicBlock::Create(ctx.getContext(), "div.zero", func);
-  BasicBlock* safeBB = BasicBlock::Create(ctx.getContext(), "div.safe", func);
-
-  ctx.builder->CreateCondBr(isZero, zeroBB, safeBB);
-
-  // Zero case: throw a division-by-zero exception. We don't have a concrete
-  // stdlib error object here, so we throw a bare exception carrying a null
-  // IError fat pointer — enough to unwind into the caller's catch.
-  ctx.builder->SetInsertPoint(zeroBB);
-  llvm::StructType* fatTy = InterfaceType::getFatPointerType(ctx.getContext());
-  const DataLayout& DL = module->getDataLayout();
-  uint64_t fatSize = DL.getTypeAllocSize(fatTy);
-  Value* exc = ctx.builder->CreateCall(
+void ErrorGenerator::throwArithmeticError(int code) {
+  auto error = typeRegistry()->arithmeticError;
+  auto* objectType = error->getStructType(ctx.getContext());
+  auto* fatType = InterfaceType::getFatPointerType(ctx.getContext());
+  auto* i64Type = ctx.builder->getInt64Ty();
+  const auto& layout = module->getDataLayout();
+  uint64_t fatOffset = layout.getTypeAllocSize(i64Type);
+  uint64_t objectOffset = fatOffset + layout.getTypeAllocSize(fatType);
+  auto* exception = ctx.builder->CreateCall(
       getCxaAllocateException(),
-      {ConstantInt::get(llvm::Type::getInt64Ty(ctx.getContext()), fatSize)},
-      "exc");
-  ctx.builder->CreateStore(Constant::getNullValue(fatTy), exc);
-  emitCxaThrowAndUnreachable(exc);
-
-  // Safe case: perform division or modulo and continue.
-  ctx.builder->SetInsertPoint(safeBB);
-  return createIntDivRem(L, R, isModulo, isUnsigned);
+      {ctx.builder->getInt64(objectOffset +
+                             layout.getTypeAllocSize(objectType))});
+  ctx.builder->CreateStore(
+      ctx.builder->getInt64(sunTypeId(*error, state_.analysis->declarations)),
+      exception);
+  auto* object = ctx.builder->CreateGEP(ctx.builder->getInt8Ty(), exception,
+                                        ctx.builder->getInt64(objectOffset));
+  ctx.builder->CreateStore(ctx.builder->getInt32(code),
+                           ctx.builder->CreateStructGEP(objectType, object, 0));
+  auto* fat = gen_.classGenerator().createInterfaceFatPointer(
+      object, error.get(), typeRegistry()->errorInterface.get());
+  ctx.builder->CreateStore(
+      fat, ctx.builder->CreateGEP(ctx.builder->getInt8Ty(), exception,
+                                  ctx.builder->getInt64(fatOffset)));
+  scopes().emitCleanupToDepth(tryStack.empty()
+                                  ? scopes().functionBoundaryDepth()
+                                  : tryStack.back().scopeDepth,
+                              /*unwinding=*/true);
+  emitCxaThrowAndUnreachable(exception);
 }
 
 // Emit __cxa_throw of an already-populated exception buffer, then terminate
@@ -300,6 +360,18 @@ Value* ErrorGenerator::codegen(const sun::ast::TryCatchExprAST& expr) {
       llvm::Type::getInt8Ty(ctx.getContext()), obj,
       {ConstantInt::get(i64Ty, fatOffset)}, "exc.fat.slot");
   Value* fat = ctx.builder->CreateLoad(fatTy, fatSlot, "exc.fat");
+
+  // A library without stdlib returns literal messages; its caller may use
+  // owned String messages. Rebind builtin errors to the caller's local ABI.
+  auto arithmetic = typeRegistry()->arithmeticError;
+  auto* arithmeticData = ctx.builder->CreateExtractValue(fat, 0);
+  auto* localArithmetic = gen_.classGenerator().createInterfaceFatPointer(
+      arithmeticData, arithmetic.get(), typeRegistry()->errorInterface.get());
+  auto* isArithmetic = ctx.builder->CreateICmpEQ(
+      typeId,
+      ConstantInt::get(i64Ty,
+                       sunTypeId(*arithmetic, state_.analysis->declarations)));
+  fat = ctx.builder->CreateSelect(isArithmetic, localArithmetic, fat);
 
   const auto& clauses = expr.getCatchClauses();
   size_t n = clauses.size();

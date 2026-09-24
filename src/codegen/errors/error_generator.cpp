@@ -35,9 +35,4 @@ void ErrorGenerator::debugDeclareLocal(llvm::AllocaInst* alloca,
   state_.debugInfo.declareLocal(*ctx.builder, alloca, name, type, loc);
 }
 
-llvm::Value* ErrorGenerator::createIntDivRem(llvm::Value* L, llvm::Value* R,
-                                             bool isModulo, bool isUnsigned) {
-  return gen_.createIntDivRem(L, R, isModulo, isUnsigned);
-}
-
 }  // namespace sun::codegen::errors

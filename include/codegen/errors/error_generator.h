@@ -98,13 +98,12 @@ class ErrorGenerator {
                                         llvm::ArrayRef<llvm::Value*> args,
                                         bool canThrow, const llvm::Twine& name);
 
-  /**
-   * Integer division or modulo that throws instead of trapping when the
-   * divisor is zero. Only used inside a function declared to return errors.
-   */
-  llvm::Value* codegenSafeDivision(llvm::Value* L, llvm::Value* R,
-                                   bool isModulo = false,
-                                   bool isUnsigned = false);
+  /** Declares builtin error methods, optionally defining only referenced
+   * methods. */
+  void emitArithmeticErrorMethods(bool defineBodies = false);
+
+  /** Constructs and throws ArithmeticError, cleaning up live owners. */
+  void throwArithmeticError(int code);
 
  private:
   sun::codegen::CodegenState& state_;
@@ -147,10 +146,6 @@ class ErrorGenerator {
   void debugDeclareLocal(llvm::AllocaInst* alloca, const std::string& name,
                          const sun::types::TypePtr& type,
                          const sun::support::Position& loc);
-  /** Emits integer division or remainder with the required error checks. */
-  llvm::Value* createIntDivRem(llvm::Value* L, llvm::Value* R, bool isModulo,
-                               bool isUnsigned);
-
   /**
    * True when the function being emitted may return errors
    */

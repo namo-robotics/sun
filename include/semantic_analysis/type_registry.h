@@ -72,25 +72,8 @@ class TypeRegistry {
   std::unordered_map<SpecializationKey, DeclarationId, SpecializationKeyHash>
       specializations_;
 
- public:
-  /** The builtin error interface shared throughout this analysis session. */
-  std::shared_ptr<sun::types::InterfaceType> errorInterface;
-
-  /**
-   * Initializes the collection of primitive and declared semantic types.
-   * Every type is created for a declaration in `declarations`, which belongs
-   * to the same analysis results and must outlive the registry.
-   */
-  explicit TypeRegistry(DeclarationTable& declarations)
-      : declarations_(declarations) {
-    registerBuiltins();
-  }
-
-  /**
-   * Register built-in types (IError). The iteration protocol
-   * (IIterator/IIterable) lives in stdlib/iterator.sun since it names Option.
-   */
-  void registerBuiltins() {
+  /** Registers the builtin error interface and its code and message methods. */
+  void registerIError() {
     // Create IError interface with code() and message() methods.
     // message() starts as static_ptr<u8> — the only string type that exists
     // before any source is read. When the stdlib's String class is registered,
@@ -123,14 +106,75 @@ class TypeRegistry {
     errorInterface = ierror;
   }
 
+  /** Registers the builtin arithmetic error after its IError interface. */
+  void registerArithmeticError() {
+    auto errorId = declarations_.add(DeclarationKind::Class, "ArithmeticError");
+    declarations_.bindPortable(
+        errorId,
+        PortableDeclarationKey::original(
+            "4c7b23a9e50e3bb484c7f661e4700d156bac371ed9dd5d23c3d22e2fefc263c1",
+            4));
+    arithmeticError = getClass(errorId, QualifiedName{{}, "ArithmeticError"});
+    arithmeticError->visibility = Visibility::Public;
+    auto codeId = declarations_.add(DeclarationKind::Field, "code_", errorId);
+    declarations_.bindPortable(
+        codeId,
+        PortableDeclarationKey::original(
+            "4c7b23a9e50e3bb484c7f661e4700d156bac371ed9dd5d23c3d22e2fefc263c1",
+            5));
+    arithmeticError->addField("code_", sun::types::Types::Int32(), codeId);
+    uint64_t methodOrdinal = 6;
+    for (const auto& requirement : errorInterface->getMethods()) {
+      auto methodId = declarations_.add(DeclarationKind::Function,
+                                        requirement.name, errorId);
+      declarations_.bindPortable(
+          methodId,
+          PortableDeclarationKey::original("4c7b23a9e50e3bb484c7f661e4700d156ba"
+                                           "c371ed9dd5d23c3d22e2fefc263c1",
+                                           methodOrdinal++));
+      auto& method = arithmeticError->addMethod(requirement.name,
+                                                requirement.returnType, {});
+      method.declarationId = methodId;
+      method.visibility = Visibility::Public;
+      arithmeticError->bindInterfaceMethod(requirement.declarationId, methodId);
+    }
+    arithmeticError->addImplementedInterface(*errorInterface);
+  }
+
+ public:
+  /** The builtin error interface shared throughout this analysis session. */
+  std::shared_ptr<sun::types::InterfaceType> errorInterface;
+
+  /** Builtin error thrown by invalid integer division and remainder. */
+  std::shared_ptr<sun::types::ClassType> arithmeticError;
+
+  /**
+   * Initializes the collection of primitive and declared semantic types.
+   * Every type is created for a declaration in `declarations`, which belongs
+   * to the same analysis results and must outlive the registry.
+   */
+  explicit TypeRegistry(DeclarationTable& declarations)
+      : declarations_(declarations) {
+    registerBuiltins();
+  }
+
+  /**
+   * Register built-in error types. The iteration protocol
+   * (IIterator/IIterable) lives in stdlib/iterator.sun since it names Option.
+   */
+  void registerBuiltins() {
+    registerIError();
+    registerArithmeticError();
+  }
+
   /**
    * Check if a type name is a builtin type that cannot be redefined
    * Includes builtin interfaces and type traits used by _is&lt;T&gt;
    */
   bool isBuiltinTypeName(const std::string& name) const {
     static const std::unordered_set<std::string> builtinNames = {
-        // Builtin interfaces
-        "IError",
+        // Builtin error types
+        "IError", "ArithmeticError",
         // Type traits for _is<T> intrinsic
         "_Integer", "_Signed", "_Unsigned", "_Float", "_Numeric", "_Primitive"};
     return builtinNames.count(name) > 0;

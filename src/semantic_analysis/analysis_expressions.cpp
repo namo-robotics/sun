@@ -4,6 +4,7 @@
 // One handler per AST node kind, called from the dispatcher in
 // analysis.cpp.
 
+#include "semantic_analysis/constants/constant_evaluator.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/symbol_names.h"
 #include "semantic_analysis/type_analysis/type_rules.h"
@@ -165,6 +166,42 @@ void SemanticAnalyzer::analyzeSliceExpr(ExprAST& expr) {
   expr.setResolvedType(Types::Slice());
 }
 
+void SemanticAnalyzer::checkIntegerDivision(
+    const ExprAST& lhs, const ExprAST& rhs, TokenKind op,
+    const sun::support::Position& location) {
+  if (op != TokenKind::SLASH && op != TokenKind::PERCENT &&
+      op != TokenKind::SLASH_ASSIGN && op != TokenKind::PERCENT_ASSIGN)
+    return;
+  auto leftType = unwrapRef(lhs.getResolvedType());
+  auto rightType = unwrapRef(rhs.getResolvedType());
+  if (!leftType || !rightType || !leftType->isIntegral() ||
+      !rightType->isIntegral())
+    return;
+  if (ctx_.isInTryBlock() || ctx_.isInThrowingFunction()) return;
+
+  constants::ConstantEvaluator evaluator(ctx_.results().declarations);
+  auto divisor = evaluator.evaluateExpression(rhs);
+  if (divisor && divisor->isInteger()) {
+    unsigned width = std::max(*constants::getIntegerBitWidth(*leftType),
+                              *constants::getIntegerBitWidth(*rightType));
+    auto bits = rightType->isUnsigned()
+                    ? divisor->getInteger().zextOrTrunc(width)
+                    : divisor->getInteger().sextOrTrunc(width);
+    if (!bits.isZero()) {
+      if (leftType->isUnsigned() || !bits.isAllOnes()) return;
+      auto dividend = evaluator.evaluateExpression(lhs);
+      if (dividend && dividend->isInteger() &&
+          !dividend->getInteger().sextOrTrunc(width).isMinSignedValue())
+        return;
+    }
+  }
+  logAndThrowError(
+      "Integer division or remainder may throw ArithmeticError; use a try "
+      "block "
+      "or declare the function with 'throws IError'",
+      location);
+}
+
 void SemanticAnalyzer::analyzeBinaryExpr(sun::ast::BinaryExprAST& binExpr,
                                          TypePtr expectedType) {
   analyzeExpr(const_cast<ExprAST&>(*binExpr.getLHS()));
@@ -187,6 +224,8 @@ void SemanticAnalyzer::analyzeBinaryExpr(sun::ast::BinaryExprAST& binExpr,
   }
   checkCharOperands(binExpr);
   coerceBinaryLiteralOperands(binExpr, expectedType);
+  checkIntegerDivision(*binExpr.getLHS(), *binExpr.getRHS(), binOp,
+                       binExpr.getLocation());
   bool comparison =
       binOp == TokenKind::LESS || binOp == TokenKind::GREATER ||
       binOp == TokenKind::LESS_EQUAL || binOp == TokenKind::GREATER_EQUAL ||

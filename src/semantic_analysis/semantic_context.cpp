@@ -44,6 +44,7 @@ SemanticContext::SemanticContext(
     : results_(std::move(results)) {
   rootScope_->accessContext = this;  // lookups filter by visibility
   rootScope_->interfaces["IError"] = results_->types->errorInterface;
+  rootScope_->classes["ArithmeticError"] = results_->types->arithmeticError;
   registerBuiltinFunctions();
 }
 

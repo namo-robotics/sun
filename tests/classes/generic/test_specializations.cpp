@@ -100,7 +100,7 @@ TEST(Classes_Generic_Specializations, map_new_key_value_specialization) {
   auto value = executeStringWithStdlib(R"(
     using std;
 
-    function main() i32 {
+    function main() i32 throws IError {
         var allocator = make_heap_allocator();
         var m = Map<i32, i32>(allocator, 16);
         m.insert(1, 100);

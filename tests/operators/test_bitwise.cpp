@@ -532,3 +532,69 @@ TEST(Operators_Bitwise, bnot_on_float_is_error) {
     )"),
                                 "Bitwise NOT (~) requires an integer operand");
 }
+
+/** Masked counts work for every integer width and compound assignment. */
+TEST(Operators_Bitwise, masked_counts_at_all_optimization_levels) {
+  for (bool optimize : {false, true}) {
+    for (const std::string type :
+         {"i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64"}) {
+      const int width = std::stoi(type.substr(1));
+      const bool isSigned = type[0] == 'i';
+      for (const std::string op : {"<<", ">>"}) {
+        for (bool compound : {false, true}) {
+          const std::string body = compound ? "a " + op + "= b; return a;"
+                                            : "return a " + op + " b;";
+          const std::string initial =
+              op == "<<" ? "1" : (isSigned ? "-8" : "8");
+          const std::string once = op == "<<" ? "2" : (isSigned ? "-4" : "4");
+          const std::string last =
+              op == "<<"
+                  ? "(1" + type + " << " + std::to_string(width - 1) + ")"
+                  : (isSigned ? "-1" : "0");
+          const std::string largest = isSigned ? "-1" : "~0" + type;
+          const std::string source =
+              "/** Shifts runtime operands. */\n"
+              "function apply(a: " +
+              type + ", b: " + type + ") " + type + " { " + body +
+              " }\n"
+              "/** Checks the expected values of masked shifts. */\n"
+              "function main() i32 {"
+              "if (apply(" +
+              initial + ", " + std::to_string(width) + ") != " + initial +
+              ") { return 1; }"
+              "if (apply(" +
+              initial + ", " + std::to_string(width + 1) + ") != " + once +
+              ") { return 2; }"
+              "if (apply(" +
+              initial + ", " + largest + ") != " + last +
+              ") { return 3; }"
+              "return 0; }";
+          SCOPED_TRACE(type + op + (compound ? "=" : ""));
+          auto driver = sun::driver::Driver::createForJIT("masked_shifts",
+                                                          false, optimize);
+          EXPECT_EQ(driver->executeString(source), 0);
+        }
+      }
+    }
+  }
+}
+
+/** Mixed-width shifts mask against the width after operand widening. */
+TEST(Operators_Bitwise, masked_counts_use_widened_width) {
+  for (bool optimize : {false, true}) {
+    auto driver =
+        sun::driver::Driver::createForJIT("wide_shifts", false, optimize);
+    EXPECT_EQ(driver->executeString(R"(
+      /** Shifts a narrow value after widening it to the count's type. */
+      function shift(a: u8, b: i64) i64 { return _convert<i64>(a << b); }
+      /** Checks width selection and negative count masking. */
+      function main() i32 {
+        if (shift(1, 8) != 256) { return 1; }
+        if (shift(1, 64) != 1) { return 2; }
+        if (shift(1, -64) != 1) { return 3; }
+        return 0;
+      }
+    )"),
+              0);
+  }
+}

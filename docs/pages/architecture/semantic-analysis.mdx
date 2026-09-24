@@ -1,10 +1,21 @@
 # Semantic Analysis
 
-Semantic analysis gives a parsed program its meaning: it identifies declarations,
-resolves types, checks expressions, and prepares generic specializations. It
-receives a complete AST and performs no file loading or parsing.
+The role of semantic analysis is essentially to assign types to every symbol and expression,
+and to validate semantic consistency. For example if we have a statement such as
 
-## Analysis flow
+```sun
+var x = foo(bar());
+```
+
+analysis checks that the return type of `bar` is compatible with the 
+parameter type of `foo` and sets the type of `x` to be `foo`'s return-type.
+
+Analysis runs a series of "passes" over the syntax tree. Each pass populates
+analysis data in an `AnalaysisResults` object which is shared with codegen.
+Some analysis data is also stored directly on the AST nodes in their "analysis" field.
+
+
+## High-Level Architecture
 
 Imported bundles are prepared before source declarations. The bundle currently
 being built is treated as source.

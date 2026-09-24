@@ -138,7 +138,7 @@ TEST(ControlFlow_Ternary, zero_integer_condition_is_false) {
 
 TEST(ControlFlow_Ternary, untaken_branch_not_evaluated) {
   auto value = executeString(R"(
-      function main() i32 {
+      function main() i32 throws IError {
           var b = 0;
           return b != 0 ? 10 / b : 7;
       }
