@@ -8,11 +8,14 @@
 namespace sun::ast {
 
 /** Reports whether evaluating this expression always exits the current
- * control-flow path. */
+ * control-flow path. A break or continue counts: code after it in the same
+ * block or arm never runs, even though the enclosing loop carries on. */
 bool exprDiverges(const ExprAST& expr) {
   switch (expr.getType()) {
     case ASTNodeType::RETURN:
     case ASTNodeType::THROW:
+    case ASTNodeType::BREAK_STMT:
+    case ASTNodeType::CONTINUE_STMT:
       return true;
     case ASTNodeType::BLOCK: {
       const auto& block = static_cast<const BlockExprAST&>(expr);
