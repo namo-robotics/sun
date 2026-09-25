@@ -467,7 +467,7 @@ jobs:
                   println(resp.status);
                   if (resp.status == 200) { return 0; }
                   return 1;
-              } catch (e: IError) {
+              } catch (e: ref IError) {
                   var msg = e.message();
                   println(msg);
                   return 2;
@@ -655,7 +655,7 @@ jobs:
                   println(resp.status);
                   if (resp.status == 200) { return 0; }
                   return 1;
-              } catch (e: IError) {
+              } catch (e: ref IError) {
                   var msg = e.message();
                   println(msg);
                   return 2;
