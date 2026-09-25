@@ -8,7 +8,7 @@
 //       f.open("test.txt", FileMode.Write);
 //       f.write("Hello, World!");
 //       f.close();
-//   } catch (e: IError) {
+//   } catch (e: ref IError) {
 //       // Handle error
 //   }
 //

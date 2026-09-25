@@ -101,11 +101,11 @@ TEST(Tooling_Diagnostics_TypeNames, catch_type_must_implement_ierror) {
   std::string message = errorFor(R"(
     using std;
     function main() i32 {
-      try { var z = 1; } catch (e: Vec<u8>) { return 1; }
+      try { var z = 1; } catch (e: ref Vec<u8>) { return 1; }
       return 0;
     }
   )");
-  expectNames(message, "got 'std.Vec<u8>'");
+  expectNames(message, "got 'ref std.Vec<u8>'");
 }
 
 TEST(Tooling_Diagnostics_TypeNames, ternary_branch_mismatch) {

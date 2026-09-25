@@ -101,7 +101,7 @@ function main() i32 {
     try {
         var r = compute(10);
         return r;
-    } catch (e: IError) {
+    } catch (e: ref IError) {
         return -1;
     }
 }

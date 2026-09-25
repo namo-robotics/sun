@@ -63,6 +63,18 @@ inline TypePtr unwrapRef(TypePtr type) {
 }
 
 /**
+ * Reports whether both types name different interfaces after unwrapping
+ * references. This does not check whether either interface extends the other.
+ */
+inline bool areDifferentInterfaces(const TypePtr& sourceType,
+                                   const TypePtr& targetType) {
+  auto source = unwrapRef(sourceType);
+  auto target = unwrapRef(targetType);
+  return source && source->isInterface() && target && target->isInterface() &&
+         !source->equals(*target);
+}
+
+/**
  * `ref T` (the referent may be changed through it)
  */
 inline bool isMutableRef(const TypePtr& type) {

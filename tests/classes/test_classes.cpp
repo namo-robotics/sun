@@ -552,7 +552,7 @@ TEST(Classes, throwing_constructor) {
             var ok = Guarded(5);
             var bad = Guarded(-1);
             return 0;
-        } catch (e: IError) {
+        } catch (e: ref IError) {
             return 5;
         }
     }
@@ -1712,7 +1712,7 @@ TEST(Classes_FieldInitializers,
     class Foo { var x: i32 = fail(); init() throws IError {} }
     function main() i32 {
       try { var f = Foo(); return 0; }
-      catch (e: IError) { return 7; }
+      catch (e: ref IError) { return 7; }
     }
   )"),
             7);
@@ -1761,7 +1761,7 @@ TEST(Classes_FieldInitializers,
     }
     function main() i32 {
       try { var f = Foo(Resource(10)); return 0; }
-      catch (e: IError) { return dropped; }
+      catch (e: ref IError) { return dropped; }
     }
   )"),
             11);
@@ -1805,13 +1805,13 @@ TEST(Classes_FieldInitializers,
       var resource: Resource = Resource(1);
       init() throws IError {
         try { fail(); }
-        catch (e: IError) { this.resource = Resource(10 + dropped); }
+        catch (e: ref IError) { this.resource = Resource(10 + dropped); }
         fail();
       }
     }
     function main() i32 {
       try { var f = Foo(); return 0; }
-      catch (e: IError) { return dropped; }
+      catch (e: ref IError) { return dropped; }
     }
   )"),
             11);

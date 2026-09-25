@@ -76,7 +76,7 @@ public module std {
       try {
         var entries = std.io.read_dir(alloc, missing);
         std.test.fail("expected error");
-      } catch (e: IError) {}
+      } catch (e: ref IError) {}
     }
 
     /** Checks metadata predicates. */
@@ -422,7 +422,7 @@ public module std {
       try {
         f.open(missing, std.io.FileMode.Read);
         std.test.fail("expected error");
-      } catch (e: IError) {}
+      } catch (e: ref IError) {}
     }
 
     /** Checks sun io remove rename and directories. */

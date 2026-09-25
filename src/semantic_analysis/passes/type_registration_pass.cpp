@@ -51,6 +51,9 @@ void TypeRegistrationPass::run(BlockExprAST& block) {
       case ASTNodeType::INTERFACE_DEFINITION: {
         auto& interfaceDef =
             static_cast<sun::ast::InterfaceDefinitionAST&>(*expr);
+        ctx_.interfaceDefinitions.emplace(
+            interfaceDef.getDeclarationId(),
+            SemanticContext::InterfaceDefinition{&interfaceDef, ctx_.scope()});
         if (ctx_.lookupInterface(interfaceDef.getName())) break;
         if (interfaceDef.isGeneric()) {
           if (!ctx_.lookupGenericInterface(interfaceDef.getName())) {

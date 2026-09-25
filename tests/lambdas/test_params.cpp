@@ -185,7 +185,7 @@ TEST(Lambdas_Throwing, throw_and_catch) {
             var a = risky(5);
             var b = risky(-1);
             return a + b;
-        } catch (e: IError) {
+        } catch (e: ref IError) {
             return 42;
         }
     }
@@ -200,7 +200,7 @@ TEST(Lambdas_Throwing, throwing_lambda_as_param) {
     function run_guarded(f: (i32) => i32 throws IError, x: i32) i32 {
         try {
             return f(x);
-        } catch (e: IError) {
+        } catch (e: ref IError) {
             return -1;
         }
     }
@@ -225,7 +225,7 @@ TEST(Lambdas_Throwing, non_throwing_into_throwing_param) {
     function run_guarded(f: (i32) => i32 throws IError, x: i32) i32 {
         try {
             return f(x);
-        } catch (e: IError) {
+        } catch (e: ref IError) {
             return -1;
         }
     }

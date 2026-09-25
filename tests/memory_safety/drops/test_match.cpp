@@ -230,7 +230,7 @@ TEST(MemorySafety_Drops_Match, unwind_cleans_owned_payloads) {
     }
     function main() i32 {
       try { run(Triple.Left(Res(1), Res(2), Res(3))); }
-      catch (e: IError) { return drops; }
+      catch (e: ref IError) { return drops; }
       return -1;
     }
   )")),
@@ -397,7 +397,7 @@ TEST(MemorySafety_Drops_Match, thrown_payload_survives_unwind) {
       try {
         var errors = Errors.One(Error(), Res(1));
         match errors { Errors.One(e, _) => { throw e; } };
-      } catch (e: IError) { return e.code(); }
+      } catch (e: ref IError) { return e.code(); }
       return -1;
     }
     function main() i32 throws IError {

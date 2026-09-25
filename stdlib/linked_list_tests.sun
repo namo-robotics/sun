@@ -147,11 +147,11 @@ public module std {
       try {
         var v: i32 = ll.pop_front();
         std.test.fail("expected error");
-      } catch (e: IError) {}
+      } catch (e: ref IError) {}
       try {
         var v: i32 = ll.pop_back();
         std.test.fail("expected error");
-      } catch (e: IError) {}
+      } catch (e: ref IError) {}
     }
 
     /** Checks drain list. */
@@ -194,7 +194,7 @@ public module std {
       try {
         var v: i32 = ll.get(5);
         std.test.fail("expected error");
-      } catch (e: IError) {}
+      } catch (e: ref IError) {}
     }
 
     /** Checks remove nodes. */

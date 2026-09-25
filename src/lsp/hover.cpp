@@ -264,6 +264,8 @@ std::optional<Hover> hoverInterface(const InterfaceDefinitionAST& iface,
   std::string out = iface.isPublic() ? "public " : "";
   out += "interface " + iface.getName() +
          renderTypeParameters(iface.getTypeParameters());
+  if (iface.getParent())
+    out += " extends " + annotationText(*iface.getParent(), source);
   return Hover{out, iface.getDoc(), iface.getLocation()};
 }
 

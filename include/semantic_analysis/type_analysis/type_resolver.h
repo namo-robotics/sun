@@ -24,11 +24,12 @@ class TypeResolver {
 
   /**
    * Resolve a written type annotation to a type, instantiating any generic
-   * it names. The bindings in scope are already applied, so the result must
-   * not be handed to substituteTypeParameters as well — see there.
+   * it names. Bare interfaces are allowed only for contracts and referents,
+   * never for stored values. The bindings in scope are already applied, so the
+   * result must not be handed to substituteTypeParameters as well — see there.
    */
   sun::types::TypePtr typeAnnotationToType(
-      const sun::ast::TypeAnnotation &annot);
+      const sun::ast::TypeAnnotation &annot, bool allowInterface = false);
 
   /**
    * The number of elements an array size stands for. A size written as the
@@ -73,6 +74,8 @@ class TypeResolver {
   sun::types::TypePtr createConstView(sun::types::TypePtr type);
 
  private:
+  /** Resolves an annotation before checking whether it may own a value. */
+  sun::types::TypePtr resolveAnnotation(const sun::ast::TypeAnnotation &annot);
   SemanticContext &ctx_;
   GenericSpecializer &generics_;
   SemanticAnalyzer &sema_;

@@ -801,7 +801,7 @@ TEST(Tooling_Serialization, TryCatchRoundtrip) {
     function test() i32 throws IError {
       try {
         return 42;
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }
@@ -1534,4 +1534,21 @@ TEST(Tooling_Serialization, ModuleMetadataDefaultsAndLocationOmission) {
   auto serialized = serializer.serialize(*program->getBody()[0]);
   EXPECT_FALSE(serialized.module_def().has_name_location());
   EXPECT_EQ(serialized.module_def().doc(), "Module docs.");
+}
+
+/** Preserves a qualified generic parent and its lifetime arguments. */
+TEST(Tooling_Serialization, InterfaceParentRoundtrip) {
+  auto block = parseCode("interface Child<'b, T> extends lib.Parent<'b, T> {}");
+  ASTSerializer serializer;
+  ASTDeserializer deserializer;
+  auto restored =
+      deserializer.deserializeFromString(serializer.serializeToString(*block));
+  const auto& definition = static_cast<const sun::ast::InterfaceDefinitionAST&>(
+      *static_cast<const BlockExprAST&>(*restored).getBody().front());
+  ASSERT_TRUE(definition.getParent());
+  EXPECT_EQ(definition.getParent()->baseName, "lib.Parent");
+  ASSERT_EQ(definition.getParent()->typeArguments.size(), 1u);
+  EXPECT_EQ(definition.getParent()->typeArguments.front()->baseName, "T");
+  EXPECT_EQ(definition.getParent()->lifetimeArguments,
+            std::vector<std::string>{"b"});
 }

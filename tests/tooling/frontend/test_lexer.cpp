@@ -84,6 +84,7 @@ TEST(Tooling_Frontend_Lexer, KeywordSpellingCoversWordTokensOnly) {
 // Every word the table calls a keyword must lex as that keyword, and every
 // token the lexer produces for a bare word must be in the table. The docs'
 // reserved-word list (docs/pages/overview.mdx) mirrors this set.
+/** Checks that each reserved spelling produces its corresponding token. */
 TEST(Tooling_Frontend_Lexer, EveryKeywordLexesAsItself) {
   int count = 0;
   for (int i = 0; i < static_cast<int>(TokenKind::COUNT); ++i) {
@@ -97,7 +98,7 @@ TEST(Tooling_Frontend_Lexer, EveryKeywordLexesAsItself) {
     // A keyword token carries its spelling as text.
     EXPECT_EQ(lexAll(std::string(*word))[0].text, *word);
   }
-  EXPECT_EQ(count, 55);
+  EXPECT_EQ(count, 56);
 }
 
 // "test_function" is reserved; longer words that merely start with it are

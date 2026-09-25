@@ -26,7 +26,7 @@ TEST(Errors_Arithmetic, zero_divisors) {
               " }\n"
               "/** Checks the concrete builtin error. */\n"
               "function main() i32 { try { apply(7, 0); return -1; }"
-              "catch (e: ArithmeticError) { return e.code(); } }";
+              "catch (e: ref ArithmeticError) { return e.code(); } }";
           SCOPED_TRACE(type + op + (compound ? "=" : ""));
           auto driver = sun::driver::Driver::createForJIT("arithmetic_errors",
                                                           false, optimize);
@@ -57,7 +57,7 @@ TEST(Errors_Arithmetic, signed_overflow) {
             "function main() i32 { try { apply(" +
             minimum +
             ", -1); return -1; }"
-            "catch (e: IError) { return e.code(); } }";
+            "catch (e: ref IError) { return e.code(); } }";
         auto driver = sun::driver::Driver::createForJIT("arithmetic_overflow",
                                                         false, optimize);
         EXPECT_EQ(driver->executeString(source), 5);
@@ -73,7 +73,7 @@ TEST(Errors_Arithmetic, local_handler_and_user_example) {
     function divide(a: i32, b: i32) i32 throws IError { return a / b; }
     /** Recovers from the failure. */
     function main() i32 {
-      try { return divide(1, 0); } catch (e: IError) { return 0; }
+      try { return divide(1, 0); } catch (e: ref IError) { return 0; }
     }
   )"),
             0);
@@ -81,7 +81,7 @@ TEST(Errors_Arithmetic, local_handler_and_user_example) {
     /** Handles arithmetic directly within its own body. */
     function main() i32 {
       var divisor: i32 = 0;
-      try { return 1 / divisor; } catch (e: ArithmeticError) { return e.code(); }
+      try { return 1 / divisor; } catch (e: ref ArithmeticError) { return e.code(); }
     }
   )"),
             4);
@@ -141,7 +141,7 @@ TEST(Errors_Arithmetic, unwinding_drops_live_values) {
       try {
         var owner = Owner();
         return divide(1, 0);
-      } catch (e: ArithmeticError) { return drops; }
+      } catch (e: ref ArithmeticError) { return drops; }
     }
   )"),
             2);
@@ -154,7 +154,7 @@ TEST(Errors_Arithmetic, messages_with_stdlib) {
     /** Tests the arithmetic error's standard error interface. */
     function main() i32 {
       try { var zero: i32 = 0; return 1 / zero; }
-      catch (e: IError) {
+      catch (e: ref IError) {
         var message = e.message();
         if (message.equals_literal("integer division by zero")) { return 0; }
         return 1;
@@ -197,12 +197,12 @@ TEST(Errors_Arithmetic, nested_rethrow) {
     /** Throws a caught arithmetic error without losing its concrete identity. */
     function divide(a: i32, b: i32) i32 throws IError {
       try { return a / b; }
-      catch (e: ArithmeticError) { throw e; }
+      catch (e: ref ArithmeticError) { throw e; }
     }
     /** Matches the rethrown error. */
     function main() i32 {
       try { return divide(1, 0); }
-      catch (e: ArithmeticError) { return e.code(); }
+      catch (e: ref ArithmeticError) { return e.code(); }
     }
   )"),
             4);
@@ -237,7 +237,7 @@ TEST(Errors_Arithmetic, library_without_stdlib_caught_with_stdlib) {
     /** Catches a library's builtin error through the local error interface. */
     function main() i32 {
       try { return arithmetic_fixture.divide(1, 0); }
-      catch (e: IError) {
+      catch (e: ref IError) {
         var message = e.message();
         if (message.equals_literal("integer division by zero")) { return 0; }
         return 1;

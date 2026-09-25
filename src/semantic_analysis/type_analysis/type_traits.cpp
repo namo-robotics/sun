@@ -59,6 +59,9 @@ bool satisfies(const TypePtr& type, const TypePtr& requirement) {
     return classType.implementsInterface(
         static_cast<const InterfaceType&>(*requirement));
   }
+  if (valueType->isInterface() && requirement->isInterface())
+    return static_cast<const InterfaceType&>(*valueType)
+        .extendsInterface(static_cast<const InterfaceType&>(*requirement));
   return valueType->equals(*requirement);
 }
 

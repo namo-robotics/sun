@@ -274,6 +274,7 @@ std::optional<std::string> ScopeManager::releaseBlockResult(Value* result) {
 
 bool ScopeManager::hasLiveOwners(size_t depth) const {
   for (size_t i = depth; i < scopes_.size(); ++i) {
+    if (scopes_[i].endCatch) return true;
     // A drop flag means ownership is a run-time answer, so assume it is owned
     for (const auto& a : scopes_[i].classAllocations)
       if (!a.moved || a.dropFlag) return true;
@@ -416,48 +417,6 @@ void ScopeManager::emitArrayDrop(sun::types::ArrayType& arrayType,
   ctx.builder->SetInsertPoint(doneBlock);
 }
 
-/**
- * Drops the erased concrete owner referenced by an interface value.
- */
-void ScopeManager::emitInterfaceDrop(sun::types::InterfaceType& interfaceType,
-                                     Value* storagePtr) {
-  StructType* fatType = interfaceType.getFatPointerType(ctx.getContext());
-  Value* fat = ctx.builder->CreateLoad(fatType, storagePtr, "iface.drop.fat");
-  Value* data = ctx.builder->CreateExtractValue(fat, 0, "iface.drop.data");
-  Value* vtable = ctx.builder->CreateExtractValue(fat, 1, "iface.drop.vtable");
-
-  auto* ptrTy = PointerType::getUnqual(ctx.getContext());
-  auto* nullPtr = ConstantPointerNull::get(ptrTy);
-  Value* isEmpty = ctx.builder->CreateOr(
-      ctx.builder->CreateICmpEQ(data, nullPtr),
-      ctx.builder->CreateICmpEQ(vtable, nullPtr), "iface.drop.empty");
-
-  Function* parent = ctx.builder->GetInsertBlock()->getParent();
-  BasicBlock* dropBlock =
-      BasicBlock::Create(ctx.getContext(), "iface.drop", parent);
-  BasicBlock* doneBlock =
-      BasicBlock::Create(ctx.getContext(), "iface.dropped", parent);
-  ctx.builder->CreateCondBr(isEmpty, doneBlock, dropBlock);
-
-  ctx.builder->SetInsertPoint(dropBlock);
-  unsigned dropIndex = 0;
-  for (const auto& method : interfaceType.getMethods()) {
-    if (!method.isGeneric()) ++dropIndex;
-  }
-  Value* dropSlot = ctx.builder->CreateGEP(
-      ptrTy, vtable,
-      ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), dropIndex),
-      "iface.drop.slot");
-  Value* drop = ctx.builder->CreateLoad(ptrTy, dropSlot, "iface.drop.fn");
-  llvm::FunctionType* dropType = llvm::FunctionType::get(
-      llvm::Type::getVoidTy(ctx.getContext()), {ptrTy}, false);
-  ctx.builder->CreateCall(dropType, drop, {data});
-  ctx.builder->CreateStore(Constant::getNullValue(fatType), storagePtr);
-  ctx.builder->CreateBr(doneBlock);
-
-  ctx.builder->SetInsertPoint(doneBlock);
-}
-
 void ScopeManager::emitDropInPlace(const TypePtr& type, Value* ptr,
                                    const std::string& name) {
   if (!type || !ptr) return;
@@ -478,10 +437,6 @@ void ScopeManager::emitUnconditionalDrop(const TypePtr& type, Value* ptr,
   if (auto* classType = sun::codegen::support::tryGetType<ClassType>(type)) {
     emitDeinitCall(classType, ptr);
     emitFieldDeinit(ptr, classType, name);
-  } else if (auto* interfaceType =
-                 sun::codegen::support::tryGetType<sun::types::InterfaceType>(
-                     type)) {
-    emitInterfaceDrop(*interfaceType, ptr);
   } else if (type->isEnum()) {
     gen_.enumGenerator().emitDrop(static_cast<sun::types::EnumType&>(*type),
                                   ptr);
@@ -518,7 +473,10 @@ void ScopeManager::emitCleanupForScope(CodegenScope& scope, bool unwinding) {
 
   // Then, cleanup owned pointer allocations (ptr<T>)
   auto& currentScope = scope.ownedAllocations;
-  if (currentScope.empty()) return;
+  if (currentScope.empty()) {
+    if (scope.endCatch) ctx.builder->CreateCall(scope.endCatch, {});
+    return;
+  }
 
   // Get or declare free function: void free(ptr)
   llvm::FunctionType* freeType = llvm::FunctionType::get(
@@ -569,6 +527,7 @@ void ScopeManager::emitCleanupForScope(CodegenScope& scope, bool unwinding) {
       ctx.builder->SetInsertPoint(skipBB);
     }
   }
+  if (scope.endCatch) ctx.builder->CreateCall(scope.endCatch, {});
 }
 
 }  // namespace sun::codegen::scopes

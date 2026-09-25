@@ -354,10 +354,12 @@ class Driver {
    * @param sourceFiles List of .sun source files to compile
    * @param moonImports Precompiled .moon libraries with optional aliasing
    * @param protoFiles .proto schemas to synthesize into Sun modules
+   * @param sourceOverrides Editor buffers keyed by normalized source paths
    */
   void compileFiles(const std::vector<std::string>& sourceFiles,
                     const std::vector<MoonImport>& moonImports = {},
-                    const std::vector<std::string>& protoFiles = {});
+                    const std::vector<std::string>& protoFiles = {},
+                    const std::map<std::string, std::string>& sourceOverrides = {});
 
   /**
    * Execute multiple source files with optional precompiled moon libraries

@@ -175,12 +175,26 @@ class ErrorGenerator {
   void ensurePersonality(llvm::Function* fn);
 
   /**
-   * Emit __cxa_throw(excPtr, tinfo, null) (as an invoke to the innermost
+   * Emit __cxa_throw(excPtr, tinfo, destructor) (as an invoke to the innermost
    * try's landing pad if inside a try, else a plain call), terminate the
    * current block with unreachable, and leave the builder in a fresh dead
    * block.
    */
-  void emitCxaThrowAndUnreachable(llvm::Value* excPtr);
+  void emitCxaThrowAndUnreachable(llvm::Value* excPtr,
+                                  llvm::Function* destructor);
+
+  /** Returns the innermost try in the function currently being emitted. */
+  TryContext* activeTry();
+
+  /** Builds aligned exception storage containing the tag, view, and payload. */
+  llvm::StructType* exceptionStorageType(sun::types::ClassType* type);
+
+  /** Emits the callback that drops a concrete payload without freeing its
+   * buffer. */
+  llvm::Function* exceptionDestructor(sun::types::ClassType* type);
+
+  /** Rethrows the active exception and ends exited catches during unwinding. */
+  void emitRethrow();
 };
 
 }  // namespace sun::codegen::errors

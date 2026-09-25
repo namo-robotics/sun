@@ -133,8 +133,15 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
     case ASTNodeType::THROW: {
       const auto& thrown = static_cast<const sun::ast::ThrowExprAST&>(expr);
       if (thrown.hasErrorExpr()) {
-        checkExpr(thrown.getErrorExpr());
-        consumeOwnedValue(thrown.getErrorExpr());
+        const auto& value = thrown.getErrorExpr();
+        checkExpr(value);
+        auto type = value.getResolvedType();
+        if (type && !type->isReference() &&
+            (isFrameBoundExpr(value) ||
+             (classStoresRefs(type) && holderPointsIntoFrame(value))))
+          reportError("cannot throw a value that borrows from this frame",
+                      thrown.getLocation());
+        consumeOwnedValue(value);
       }
       break;
     }
@@ -3033,7 +3040,20 @@ void BorrowChecker::checkTryCatch(const sun::ast::TryCatchExprAST& tryCatch) {
 
   for (const auto& clause : tryCatch.getCatchClauses()) {
     movedVariables_ = movedBefore;
+    auto savedRefs = refVariables_;
+    auto savedParams = refTypedParams_;
+    auto savedLifetimes = paramLifetimes_;
+    auto savedLocals = frameLocalNames_;
+    auto savedDepths = declDepths_;
+    auto previousLifetime = state_.getLifetime(clause.bindingName);
     enterScope();
+    refVariables_.erase(clause.bindingName);
+    refTypedParams_.erase(clause.bindingName);
+    paramLifetimes_.erase(clause.bindingName);
+    frameLocalNames_.insert(clause.bindingName);
+    declDepths_[clause.bindingName] = currentScope_;
+    state_.setLifetime(clause.bindingName,
+                       Lifetime::local(clause.bindingName, currentScope_));
     if (clause.body) {
       checkBlockExpr(*clause.body);
       if (!exprDiverges(*clause.body)) {
@@ -3041,6 +3061,15 @@ void BorrowChecker::checkTryCatch(const sun::ast::TryCatchExprAST& tryCatch) {
       }
     }
     exitScope();
+    refVariables_ = std::move(savedRefs);
+    refTypedParams_ = std::move(savedParams);
+    paramLifetimes_ = std::move(savedLifetimes);
+    frameLocalNames_ = std::move(savedLocals);
+    declDepths_ = std::move(savedDepths);
+    if (previousLifetime)
+      state_.setLifetime(clause.bindingName, *previousLifetime);
+    else
+      state_.clearLifetime(clause.bindingName);
   }
 
   movedVariables_ = std::move(movedAfter);

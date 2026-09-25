@@ -396,7 +396,7 @@ function main() i32 {
     try {
         var result = divide(10, 0);
         return result;
-    } catch (e: IError) {
+    } catch (e: ref IError) {
         return -1;  // Handle error
     }
 }

@@ -118,7 +118,7 @@ public module std {
       var caught: i64 = 0;
       try {
         v.remove(0);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         caught = caught + 1;
       }
       std.test.assert(v.is_empty());
@@ -127,7 +127,7 @@ public module std {
         if (index != 0) {
           try {
             v.remove(index);
-          } catch (e: IError) {
+          } catch (e: ref IError) {
             caught = caught + 1;
           }
           std.test.assert_eq(v.size(), 1);
@@ -183,7 +183,7 @@ public module std {
       var caught: i64 = 0;
       try {
         v.swap_remove(0);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         caught = caught + 1;
       }
       std.test.assert(v.is_empty());
@@ -192,7 +192,7 @@ public module std {
         if (index != 0) {
           try {
             v.swap_remove(index);
-          } catch (e: IError) {
+          } catch (e: ref IError) {
             caught = caught + 1;
           }
           std.test.assert_eq(v.size(), 1);

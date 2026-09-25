@@ -285,7 +285,7 @@ llvm::Type* LLVMTypeResolver::resolve(const sun::types::Type& type) {
 llvm::Type* LLVMTypeResolver::resolveReturnType(
     const sun::types::FunctionType& funcType) {
   const auto& retType = funcType.getReturnType();
-  return resolve(retType);
+  return resolveForReturn(retType);
 }
 
 std::vector<llvm::Type*> LLVMTypeResolver::resolveParamTypes(
@@ -334,7 +334,7 @@ llvm::FunctionType* LLVMTypeResolver::resolveDirectFunctionSignature(
 
 llvm::Type* LLVMTypeResolver::resolveReturnType(const LambdaType& lambdaType) {
   const auto& retType = lambdaType.getReturnType();
-  return resolve(retType);
+  return resolveForReturn(retType);
 }
 
 std::vector<llvm::Type*> LLVMTypeResolver::resolveParamTypes(
@@ -373,9 +373,12 @@ llvm::Type* LLVMTypeResolver::resolveForReturn(
 }
 
 llvm::Type* LLVMTypeResolver::resolveForReturn(const sun::types::Type& type) {
-  // Now that resolve() returns struct for class types and
-  // ErrorUnionType::toLLVMType() embeds the correct struct type,
-  // resolveForReturn is equivalent to resolve().
+  // Return an interface borrow as a view value; its storage belongs to the
+  // caller, so a view created during an upcast never escapes a callee frame.
+  if (auto* reference = dynamic_cast<const sun::types::ReferenceType*>(&type)) {
+    if (reference->getReferencedType()->isInterface())
+      return sun::types::InterfaceType::getFatPointerType(ctx);
+  }
   return resolve(type);
 }
 

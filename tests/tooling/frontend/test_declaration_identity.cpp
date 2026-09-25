@@ -941,3 +941,18 @@ TEST(Tooling_Frontend_DeclarationIdentity,
       (CallableSignature{"accept", {Types::RawPointer(Types::Int32())}} ==
        CallableSignature{"accept", {Types::RawPointer(Types::Void())}}));
 }
+
+/** Return conversions must be recomputed after either analysis reset. */
+TEST(Tooling_Frontend_DeclarationIdentity, return_target_is_computed_metadata) {
+  sun::ast::ReturnExprAST node;
+  EXPECT_FALSE(node.getTargetType());
+  EXPECT_FALSE(node.hasAnalysis());
+  node.setTargetType(Types::Int32());
+  EXPECT_EQ(node.getTargetType(), Types::Int32());
+  node.clearComputedAnalysis();
+  EXPECT_FALSE(node.getTargetType());
+  node.setTargetType(Types::Int32());
+  node.resetAnalysisSession();
+  EXPECT_FALSE(node.getTargetType());
+  EXPECT_FALSE(node.hasAnalysis());
+}

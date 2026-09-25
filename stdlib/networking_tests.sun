@@ -15,7 +15,7 @@ public module std {
       if (pid == 0) {
         try {
           check_descriptor_zero();
-        } catch (e: IError) {
+        } catch (e: ref IError) {
           std.process.exit_now(1);
         }
         std.process.exit_now(0);
@@ -186,7 +186,7 @@ public module std {
       var would_block: bool = false;
       try {
         stream.recv(buf);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         would_block = is_would_block(e.code());
       }
       std.test.assert(would_block, "recv on an idle non-blocking stream reports would-block");
@@ -207,7 +207,7 @@ public module std {
       var recv_code: i32 = 0;
       try {
         stream.recv(buf);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         recv_code = e.code();
       }
       std.test.assert_eq(recv_code, 9);
@@ -217,7 +217,7 @@ public module std {
       var listener_code: i32 = 0;
       try {
         listener.set_nonblocking(true);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         listener_code = e.code();
       }
       std.test.assert_eq(listener_code, 9);
@@ -237,7 +237,7 @@ public module std {
       var threw: bool = false;
       try {
         resolve_host_ipv4(host);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         threw = true;
       }
       std.test.assert(threw, "a name under .invalid never resolves");

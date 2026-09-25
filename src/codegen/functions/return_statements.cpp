@@ -18,6 +18,25 @@ Value* FunctionGenerator::codegen(const sun::ast::ReturnExprAST& expr) {
     // Reference returns must return the referent's ADDRESS, not the
     // auto-dereffed value the normal expression path produces
     if (currentFunctionReturnsRef) {
+      auto target = sun::types::unwrapRef(expr.getTargetType());
+      auto source = sun::types::unwrapRef(expr.getValue()->getResolvedType());
+      if (target && target->isInterface()) {
+        Value* value = gen_.tryCodegenAddress(*expr.getValue());
+        if (!value) value = codegen(*expr.getValue());
+        auto* targetInterface =
+            static_cast<sun::types::InterfaceType*>(target.get());
+        if (source->isInterface())
+          value = gen_.classGenerator().upcastInterface(
+              value, static_cast<sun::types::InterfaceType*>(source.get()),
+              targetInterface);
+        else
+          value = gen_.classGenerator().createInterfaceFatPointer(
+              value, static_cast<sun::types::ClassType*>(source.get()),
+              targetInterface);
+        scopes().emitScopeCleanup();
+        ctx.builder->CreateRet(value);
+        return nullptr;
+      }
       // A `ref array<T>` return hands back the view value: a sized array is
       // viewed with its rank erased, a view is passed on as it is
       if (retType->isStructTy()) {
@@ -72,7 +91,6 @@ Value* FunctionGenerator::codegen(const sun::ast::ReturnExprAST& expr) {
     // IMPORTANT: Evaluate return expression FIRST (may transfer ownership)
     Value* retVal = codegen(*expr.getValue());
     if (!retVal) return nullptr;
-
     // Move semantics: borrow checker marks expressions as "moved" when
     // ownership transfers (return, assignment, pass-by-value). Skip deinit.
     if (sun::types::typeMovesOnRead(expr.getValue()->getResolvedType()) &&

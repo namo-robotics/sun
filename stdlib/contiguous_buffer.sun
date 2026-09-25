@@ -11,8 +11,8 @@
 //   
 //   var allocator = make_heap_allocator();
 //   var buf = ContiguousBuffer<i32>(allocator, 10);
-//   try { buf.set(0, 42); } catch (e: IError) { }
-//   try { var val = buf.get(0); } catch (e: IError) { }  // borrows 42
+//   try { buf.set(0, 42); } catch (e: ref IError) { }
+//   try { var val = buf.get(0); } catch (e: ref IError) { }  // borrows 42
 //   var len = buf.size();  // 10
 
 // ============================================================================

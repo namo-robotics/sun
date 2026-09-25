@@ -455,7 +455,7 @@ TEST(MemorySafety_Drops_FieldInit,
     class Holder {
       var r: Res;
       init(f: bool) {
-        try { this.r = Res(1); boom(f); } catch (e: Boom) { this.r = Res(2); }
+        try { this.r = Res(1); boom(f); } catch (e: ref Boom) { this.r = Res(2); }
       }
     }
 
@@ -480,7 +480,7 @@ TEST(MemorySafety_Drops_FieldInit, a_field_settled_before_a_try_is_certain) {
       var r: Res;
       init(f: bool) {
         this.r = Res(0);
-        try { boom(f); this.r = Res(1); } catch (e: Boom) { this.r = Res(2); }
+        try { boom(f); this.r = Res(1); } catch (e: ref Boom) { this.r = Res(2); }
       }
     }
 

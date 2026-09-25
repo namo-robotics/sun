@@ -685,7 +685,7 @@ public module std {
       if (reuse) {
         try {
           this.enable_reuse_addr();
-        } catch (e: IError) {
+        } catch (e: ref IError) {
           this.close();
           throw e;
         }

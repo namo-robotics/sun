@@ -73,6 +73,11 @@ struct ExprAnalysis {
   ExprAnalysis& operator=(ExprAnalysis&&) = default;
 };
 
+/** Declared return type used to convert a returned expression. */
+struct ReturnAnalysis : public ExprAnalysis {
+  TypePtr targetType;
+};
+
 /** Selected fields in source order for a struct literal. */
 struct StructLiteralAnalysis : public ExprAnalysis {
   std::vector<DeclarationId> fields;

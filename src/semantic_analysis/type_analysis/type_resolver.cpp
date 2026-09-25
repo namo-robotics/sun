@@ -62,7 +62,7 @@ TypePtr returnTypeOf(const TypePtr& target,
 
 std::shared_ptr<InterfaceType> TypeResolver::resolveConstraintInterface(
     const sun::ast::TypeConstraint& constraint) {
-  auto type = typeAnnotationToType(constraint.toAnnotation());
+  auto type = typeAnnotationToType(constraint.toAnnotation(), true);
   if (!type || !type->isInterface()) {
     logAndThrowError(
         "constraint '" + constraint.toString() + "' must name an interface",
@@ -91,7 +91,11 @@ TypePtr TypeResolver::substituteTypeParameters(TypePtr type) {
     auto* rt = dynamic_cast<ReferenceType*>(type.get());
     auto newReferenced = substituteTypeParameters(rt->getReferencedType());
     if (newReferenced != rt->getReferencedType()) {
-      return Types::Reference(newReferenced, rt->isMutable());
+      auto result =
+          std::make_shared<ReferenceType>(newReferenced, rt->isMutable());
+      result->setLifetimeName(rt->getLifetimeName());
+      result->setClassLifetimeArgs(rt->getClassLifetimeArgs());
+      return result;
     }
     return type;
   }
@@ -316,7 +320,17 @@ size_t TypeResolver::resolveArrayDimension(
 }
 
 TypePtr TypeResolver::typeAnnotationToType(
-    const sun::ast::TypeAnnotation& annot) {
+    const sun::ast::TypeAnnotation& annot, bool allowInterface) {
+  auto type = resolveAnnotation(annot);
+  if (type && type->isInterface() && !allowInterface)
+    logAndThrowError("Interface '" + type->toDisplayString() +
+                         "' cannot own a value; use ref or const ref, or own a "
+                         "concrete type",
+                     annot.span);
+  return type;
+}
+
+TypePtr TypeResolver::resolveAnnotation(const sun::ast::TypeAnnotation& annot) {
   if (annot.declarationKey) {
     auto id = ctx_.requireDeclaration(*annot.declarationKey, "", std::nullopt,
                                       annot.baseName);
@@ -340,8 +354,10 @@ TypePtr TypeResolver::typeAnnotationToType(
                        annot.span);
     }
     if (kind == DeclarationKind::Class) return ctx_.types()->getClass(id);
-    if (kind == DeclarationKind::Interface)
+    if (kind == DeclarationKind::Interface) {
+      sema_.ensureInterfaceShape(id);
       return ctx_.types()->getInterface(id);
+    }
     return ctx_.types()->getEnum(id);
   }
   // Raw pointer types: raw_ptr<T> non-owning pointer for C interop
@@ -381,7 +397,7 @@ TypePtr TypeResolver::typeAnnotationToType(
       }
       referencedType = Types::Array(elemType, {});
     } else {
-      referencedType = typeAnnotationToType(*annot.elementType);
+      referencedType = typeAnnotationToType(*annot.elementType, true);
     }
     if (!referencedType) return nullptr;
     auto refType =
@@ -614,6 +630,7 @@ TypePtr TypeResolver::typeAnnotationToType(
   // Check for user-defined interface types
   auto interfaceType = ctx_.lookupInterface(lookupName);
   if (interfaceType) {
+    sema_.ensureInterfaceShape(interfaceType->getDeclarationId());
     return interfaceType;
   }
 

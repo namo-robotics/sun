@@ -242,11 +242,11 @@ public module std {
           var client = this.listener.accept();
           try {
             this.handle_connection(client, handler);
-          } catch (conn_err: IError) {
+          } catch (conn_err: ref IError) {
             client.close();
           }
           client.close();
-        } catch (accept_err: IError) {
+        } catch (accept_err: ref IError) {
           this.running = false;
         }
       }

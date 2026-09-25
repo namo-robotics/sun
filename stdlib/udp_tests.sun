@@ -40,7 +40,7 @@ public module std {
       var rejected = false;
       try {
         contender.bind(here, port);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         rejected = true;
         std.test.assert_eq(e.code(), ADDRESS_IN_USE_ERRNO);
       }
@@ -66,7 +66,7 @@ public module std {
       var rejected = false;
       try {
         exclusive.bind(group, port, false);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         rejected = true;
         std.test.assert_eq(e.code(), ADDRESS_IN_USE_ERRNO);
       }
@@ -86,7 +86,7 @@ public module std {
       try {
         socket.recv_from(buf);
         std.test.fail("recv on an empty socket should time out");
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         std.test.assert(is_would_block(e.code()), "timeout should report would-block");
       }
       socket.close();
@@ -123,7 +123,7 @@ public module std {
       var threw_truncated = false;
       try {
         parse_ipv4(truncated);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         threw_truncated = true;
       }
       std.test.assert(threw_truncated, "three octets should not parse");
@@ -131,7 +131,7 @@ public module std {
       var threw_overflow = false;
       try {
         parse_ipv4(overflow);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         threw_overflow = true;
       }
       std.test.assert(threw_overflow, "octet above 255 should not parse");
@@ -144,7 +144,7 @@ public module std {
       try {
         socket.send_to(null, 0, dest, 9);
         std.test.fail("send on a never-opened socket should throw");
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         // EBADF is 9 on every supported target.
         std.test.assert_eq(e.code(), 9);
       }

@@ -430,13 +430,18 @@ void FunctionGenerator::declareBlockSignatures(
     if (expr->getType() == ASTNodeType::INTERFACE_DEFINITION) {
       const auto& definition =
           static_cast<const sun::ast::InterfaceDefinitionAST&>(*expr);
-      if (definition.isGeneric()) continue;
       const auto type =
           state_.typeRegistry->getInterface(definition.getDeclarationId());
       for (const auto& method : definition.getMethods()) {
         if (!method.hasDefaultImpl || method.function->getProto().isGeneric())
           continue;
-        classes().declareMethodFromAST(*method.function);
+        if (definition.isGeneric()) {
+          for (const auto& [id, instance] :
+               method.function->getSpecializations())
+            classes().declareMethodFromAST(*instance);
+        } else {
+          classes().declareMethodFromAST(*method.function);
+        }
       }
       continue;
     }

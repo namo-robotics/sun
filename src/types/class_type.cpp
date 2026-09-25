@@ -12,6 +12,7 @@ void ClassType::addImplementedInterface(const InterfaceType& interface) {
         "Interface implementation belongs to another analysis session");
   if (!implementsInterface(interface))
     implementedInterfaces.push_back(interface.getDeclarationId());
+  if (interface.getParent()) addImplementedInterface(*interface.getParent());
 }
 
 bool ClassType::implementsInterface(const InterfaceType& interface) const {
@@ -36,27 +37,21 @@ bool ClassType::convertibleToInterface(const InterfaceType& interface) const {
 }
 
 bool ClassType::isInterfaceConvertible(const TypePtr& from, const TypePtr& to) {
-  if (!from || !to) return false;
-
-  // Class -> Interface: the class is owned by the interface value. A borrow
-  // never converts this way (it cannot become an owner), and neither does a
-  // frame-carrying class (one that can hold a '<'_>' lambda): the interface
-  // type would erase the frame binding.
-  if (to->isInterface()) {
-    if (!from->isClass() || typeIsFrameCarrying(from)) return false;
-    auto* iface = static_cast<const InterfaceType*>(to.get());
-    return static_cast<const ClassType*>(from.get())
-        ->convertibleToInterface(*iface);
-  }
-
-  // Class -> ref Interface: the class is borrowed through the fat pointer
-  if (to->isReference() && from->isClass()) {
-    TypePtr target = unwrapRef(to);
-    if (!target || !target->isInterface()) return false;
-    auto* iface = static_cast<const InterfaceType*>(target.get());
-    return static_cast<const ClassType*>(from.get())
-        ->convertibleToInterface(*iface);
-  }
+  if (!from || !to || !to->isReference()) return false;
+  if (from->isReference() &&
+      !refMutabilityConvertible(*static_cast<const ReferenceType*>(from.get()),
+                                *static_cast<const ReferenceType*>(to.get())))
+    return false;
+  auto source = unwrapRef(from);
+  auto target = unwrapRef(to);
+  if (!source || !target || !target->isInterface()) return false;
+  auto* interface = static_cast<const InterfaceType*>(target.get());
+  if (source->isInterface())
+    return static_cast<const InterfaceType*>(source.get())
+        ->extendsInterface(*interface);
+  if (source->isClass())
+    return static_cast<const ClassType*>(source.get())
+        ->convertibleToInterface(*interface);
 
   return false;
 }

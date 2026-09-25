@@ -31,7 +31,7 @@ function main() i32 {
     try {
         var back = RobotStatus_decode(alloc, buf);
         return back.robot_id;
-    } catch (e: IError) {
+    } catch (e: ref IError) {
         return -1;                        // malformed input throws
     }
 }

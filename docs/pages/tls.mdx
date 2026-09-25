@@ -28,7 +28,7 @@ function main() i32 {
         println(response.status);   // 200
         println(response.body);
         return 0;
-    } catch (e: IError) {
+    } catch (e: ref IError) {
         var message = e.message();
         println(message);
         return 1;

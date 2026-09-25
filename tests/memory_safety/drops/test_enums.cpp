@@ -357,7 +357,7 @@ TEST(MemorySafety_Drops_Enums, owning_enum_dropped_on_unwind) {
     function main() i32 {
       try {
         middle();
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return counter;
       }
       return -1;

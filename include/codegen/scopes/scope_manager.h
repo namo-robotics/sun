@@ -88,6 +88,7 @@ struct ClassAllocation {
  */
 struct CodegenScope {
   std::map<DeclarationId, llvm::AllocaInst*> variables;
+  llvm::Function* endCatch = nullptr;  // Releases the runtime-owned exception.
   bool isFunctionBoundary = false;  // True for scopes marking function entry
   bool hasDebugScope = false;  // True when a DILexicalBlock was opened with it
   std::vector<OwnedAllocation> ownedAllocations;
@@ -265,7 +266,7 @@ class ScopeManager {
   void markInitialized(llvm::Value* ptr, const TypePtr& type);
 
   /**
-   * True if any scope at or above `depth` holds a live (non-moved) owner —
+   * True if any scope at or above `depth` holds an owner or an active catch —
    * i.e. unwinding past this point would need cleanup
    */
   bool hasLiveOwners(size_t depth) const;
@@ -293,8 +294,8 @@ class ScopeManager {
   void emitCleanupForScope(CodegenScope& scope, bool unwinding = false);
 
   /**
-   * Drop whatever value of `type` lives at `ptr`, in place: class recursion,
-   * interface vtable drop glue, or the enum drop function.
+   * Drop the concrete value at `ptr` in place, including class fields,
+   * enum payloads, and array elements. Borrowed views need no cleanup.
    */
   void emitDropInPlace(const TypePtr& type, llvm::Value* ptr,
                        const std::string& name = "drop");
@@ -320,13 +321,6 @@ class ScopeManager {
   void emitFieldCleanup(llvm::Value* objectPtr, const ClassType* classType,
                         const std::string& baseName,
                         llvm::FunctionCallee freeFunc);
-
-  /**
-   * Drops the concrete owner held by an interface fat pointer, then clears
-   * both fields so a later drop is a no-op.
-   */
-  void emitInterfaceDrop(sun::types::InterfaceType& interfaceType,
-                         llvm::Value* storagePtr);
 
   /**
    * Drop every element of a sized array's inline storage

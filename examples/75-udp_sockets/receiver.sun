@@ -21,7 +21,7 @@ function main() i32 {
     println(from.to_string(alloc));
 
     socket.close();
-  } catch (e: IError) {
+  } catch (e: ref IError) {
     println("Network error:");
     println(e.message());
     return 1;

@@ -54,6 +54,7 @@ class InterfaceDefinitionAST : public ExprAST {
   std::vector<InterfaceFieldDecl> fields;
   std::vector<InterfaceMethodDecl> methods;
   std::string doc_;  // Comment written above the interface
+  std::optional<TypeAnnotation> parent_;
 
  protected:
   /**
@@ -105,8 +106,17 @@ class InterfaceDefinitionAST : public ExprAST {
       }
       result += ">";
     }
+    if (parent_) result += " extends " + parent_->toString();
     result += " { ... }";
     return result;
+  }
+
+  /** Returns the written parent interface, when this declaration extends one.
+   */
+  const std::optional<TypeAnnotation>& getParent() const { return parent_; }
+  /** Records the single parent annotation for resolution and serialization. */
+  void setParent(std::optional<TypeAnnotation> parent) {
+    parent_ = std::move(parent);
   }
 
   /** Returns the declared name used to identify this object. */

@@ -119,8 +119,43 @@ void extractClass(const ClassDefinitionAST& cls, moon::ModuleMetadata& metadata,
     }
   }
 
+  // Cloned defaults can mention their interface's type parameters in source.
+  // Export concrete signatures so consumers do not need those bindings.
+  if (!cls.isGeneric()) {
+    for (size_t i = 0; i < cls.getMethods().size(); ++i) {
+      const auto& proto = cls.getMethods()[i].function->getProto();
+      if (proto.isGeneric() || proto.getTypeBindings().empty()) continue;
+      auto* exported =
+          classDef->mutable_methods(i)->mutable_function()->mutable_proto();
+      for (size_t j = 0; j < proto.getResolvedParamTypes().size(); ++j)
+        *exported->mutable_args(j)->mutable_type() =
+            exportType(proto.getResolvedParamTypes()[j], analysis.declarations);
+      if (proto.hasResolvedReturnType()) {
+        *exported->mutable_return_type() =
+            exportType(proto.getResolvedReturnType(), analysis.declarations);
+        exported->mutable_return_type()->set_can_error(proto.canThrow());
+      }
+    }
+  }
+
   // Clear bodies of non-generic methods
   clearNonGenericBodies(classDef, cls);
+  // Regenerate generic defaults from their interface in each consumer. Their
+  // bodies need the interface's bindings, which are not class parameters.
+  if (!cls.isGeneric()) {
+    const auto type = analysis.types->getClass(cls.getDeclarationId());
+    for (size_t i = cls.getMethods().size(); i > 0; --i) {
+      auto id = cls.getMethods()[i - 1].function->getDeclarationId();
+      for (const auto& method : type->getMethods()) {
+        if (method.declarationId == id && method.isGeneric() &&
+            method.defaultImplementation) {
+          classDef->mutable_methods()->DeleteSubrange(static_cast<int>(i - 1),
+                                                      1);
+          break;
+        }
+      }
+    }
+  }
 }
 
 /**
@@ -137,8 +172,7 @@ void extractInterface(const InterfaceDefinitionAST& iface,
   *ifaceDef = std::move(*node.mutable_interface_def());
   if (node.has_location()) *ifaceDef->mutable_location() = node.location();
 
-  // Clear bodies of non-generic methods
-  clearNonGenericBodies(ifaceDef, iface);
+  // Consumers specialize default bodies for their concrete class layouts.
 }
 
 /**

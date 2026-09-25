@@ -17,7 +17,24 @@ class ReturnExprAST : public ExprAST {
   std::unique_ptr<ExprAST>
       Value;  // The expression to return (may be nullptr for void)
 
+ protected:
+  /** Allocates return-specific metadata when analysis first needs it. */
+  void ensureAnalysis() const override {
+    if (!analysis_) {
+      analysis_ = std::make_unique<ReturnAnalysis>();
+    }
+  }
+
  public:
+  /** Records the declared return type used to lower ownership conversions. */
+  void setTargetType(sun::types::TypePtr type) {
+    static_cast<ReturnAnalysis&>(analysis()).targetType = std::move(type);
+  }
+  /** Returns the declared return type recorded by semantic analysis. */
+  sun::types::TypePtr getTargetType() const {
+    return analysis_ ? static_cast<ReturnAnalysis&>(*analysis_).targetType
+                     : nullptr;
+  }
   /** Creates this syntax node and takes ownership of any supplied child
    * expressions. */
   explicit ReturnExprAST(std::unique_ptr<ExprAST> value = nullptr)

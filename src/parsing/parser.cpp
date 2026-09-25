@@ -1198,7 +1198,7 @@ unique_ptr<ExprAST> Parser::parsePrimary() {
           "such as '() => i32 { return 0; }' instead");
       break;
     case TokenKind::TRY: {
-      // try { ... } catch (e: IError) { ... } syntax
+      // try { ... } catch (e: ref IError) { ... } syntax
       Position start = captureStart();
       getNextToken();  // eat 'try'
       if (curTok.kind != TokenKind::BRACE_OPEN) {
@@ -2606,7 +2606,7 @@ unique_ptr<ExprAST> Parser::parseStatementCore() {
       }
     }
     case TokenKind::TRY: {
-      // try { ... } catch (e: IError) { ... } syntax
+      // try { ... } catch (e: ref IError) { ... } syntax
       Position start = captureStart();
       getNextToken();  // eat 'try'
       std::unique_ptr<ExprAST> tryExpr;
@@ -4137,8 +4137,15 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
   std::vector<sun::ast::TypeParameter> typeParameters =
       parseTypeParameterList(&lifetimeParameters);
 
+  std::optional<sun::ast::TypeAnnotation> parent;
+  if (curTok.kind == TokenKind::EXTENDS) {
+    getNextToken();
+    parent = parseTypeAnnotation();
+    if (curTok.kind == TokenKind::COMMA)
+      parsingError("An interface can extend only one parent");
+  }
   if (curTok.kind != TokenKind::BRACE_OPEN) {
-    parsingError("expected '{' after interface name");
+    parsingError("expected '{' after interface name or parent");
     return nullptr;
   }
   getNextToken();  // eat '{'
@@ -4342,6 +4349,7 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
   auto interfaceDef = std::make_unique<InterfaceDefinitionAST>(
       std::move(interfaceName), std::move(typeParameters), std::move(fields),
       std::move(methods));
+  interfaceDef->setParent(std::move(parent));
   interfaceDef->setLifetimeParameters(std::move(lifetimeParameters));
   return finishNode(std::move(interfaceDef), start);
 }
@@ -4523,7 +4531,7 @@ unique_ptr<ExprAST> Parser::parseUnsafeBlock() {
                     loc);
 }
 
-// Parse try-catch expression: try { ... } catch (e: IError) { ... }
+// Parse try-catch expression: try { ... } catch (e: ref IError) { ... }
 // Note: 'try' has already been consumed; we're at '{'
 unique_ptr<ExprAST> Parser::parseTryCatch() {
   // Parse try block - we're already at '{' ('try' was consumed by the caller,
@@ -4541,7 +4549,7 @@ unique_ptr<ExprAST> Parser::parseTryCatch() {
     return nullptr;
   }
 
-  // Parse one or more catch clauses: catch (name: Type) { ... }
+  // Parse one or more catch clauses: catch (name: ref Type) { ... }
   std::vector<sun::ast::CatchClause> catchClauses;
   while (curTok.kind == TokenKind::CATCH) {
     getNextToken();  // eat 'catch'

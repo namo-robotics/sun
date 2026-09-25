@@ -58,6 +58,8 @@ bool literalFitsInType(uint64_t magnitude, bool negative,
 bool isAssignableTo(const TypePtr& from, const TypePtr& to) {
   if (!from || !to) return false;
 
+  if (to->isInterface()) return false;
+
   // Exact equality always works
   if (from->equals(*to)) return true;
 
@@ -150,6 +152,8 @@ bool isAssignableTo(const TypePtr& from, const TypePtr& to) {
   // (the rank is erased); a sized array itself must match exactly.
   if (to->isArray() && from->isArray()) return false;
 
+  if (ClassType::isInterfaceConvertible(from, to)) return true;
+
   // Unwrap reference types and check inner compatibility. A const borrow
   // never becomes a mutable one.
   if (to->isReference() && from->isReference()) {
@@ -163,35 +167,6 @@ bool isAssignableTo(const TypePtr& from, const TypePtr& to) {
     return isAssignableTo(fromRef->getReferencedType(),
                           toRef->getReferencedType());
   }
-
-  // Class-to-interface assignability:
-  // Class C can be assigned to interface I if C implements I.
-  // A frame-carrying class (one that can hold a '<'_>' lambda) never
-  // converts by value: the interface type would erase the frame binding,
-  // letting the value escape the frame its lambda environment lives in.
-  if (to->isInterface() && from->isClass()) {
-    if (sun::types::typeIsFrameCarrying(from)) return false;
-    auto* ifaceType = static_cast<const sun::types::InterfaceType*>(to.get());
-    auto* classType = static_cast<const ClassType*>(from.get());
-    return classType->convertibleToInterface(*ifaceType);
-  }
-
-  // Class -> ref Interface (class can be passed as ref to interface it
-  // implements)
-  if (to->isReference() && from->isClass()) {
-    auto* toRef = static_cast<const ReferenceType*>(to.get());
-    TypePtr innerTo = toRef->getReferencedType();
-    if (innerTo && innerTo->isInterface()) {
-      auto* ifaceType =
-          static_cast<const sun::types::InterfaceType*>(innerTo.get());
-      auto* classType = static_cast<const ClassType*>(from.get());
-      return classType->convertibleToInterface(*ifaceType);
-    }
-  }
-
-  // ref Class -> Interface never converts: an interface value owns what it
-  // points at, and a borrow cannot become an owner. A borrowed class reaches
-  // an interface only through `ref Interface` (handled above).
 
   // ref(T) -> T: the value is read out of the reference. Only a scalar can be
   // duplicated that way. A compound T read out of a borrow would be a second

@@ -102,7 +102,7 @@ TEST_F(Modules_GenericRegressions, RawByteStringLiterals) {
       if (value.at(1) != 254u8) { return 3; }
       if (value.at(2) != 0u8) { return 4; }
       if (value.at(3) != 128u8) { return 5; }
-    } catch (error: IError) { return 6; }
+    } catch (error: ref IError) { return 6; }
     return 0;
   )";
   write("direct.sun", "/** Checks literal bytes. */\nfunction main() i32 {" +
@@ -607,3 +607,52 @@ TEST_F(Modules_GenericRegressions, ExportedGenericInterfaceConstraints) {
 }
 
 }  // namespace
+
+/** Preserves inherited defaults and ancestor conversions across a compiled
+ * library. */
+TEST_F(Modules_GenericRegressions, InterfaceInheritanceAcrossLibrary) {
+  buildLibrary(R"(
+    public module contracts {
+      /** Supplies a typed contract. */ public interface Base<T> {
+        /** Reads a value. */ public method value() T;
+      }
+      /** Adds a default that calls the inherited requirement. */
+      public interface Child<T> extends Base<T> {
+        /** Forwards the value. */ public method read() T { return this.value(); }
+        /** Exercises a method binder alongside the interface binder. */
+        public method take<U>(ignored: U) T { return this.value(); }
+      }
+      /** Supplies a concrete library implementation. */
+      public class Item implements Child<i32> {
+        /** Constructs an item. */ init() {}
+        /** Reads a value. */ public method value() i32 { return 42; }
+      }
+      /** Returns a concrete owner from the library. */
+      public function make() Item { return Item(); }
+      /** Borrows the concrete owner through its child contract. */
+      public function view(item: ref Item) ref Child<i32> { return item; }
+    }
+  )");
+  write("consumer.sun", R"(
+    /** Implements the imported contract in the consumer. */
+    class Local implements contracts.Child<i32> {
+      /** Constructs an item. */ init() {}
+      /** Reads a value. */ public method value() i32 { return 42; }
+    }
+    /** Checks defaults and transferred dispatch tables on both sides. */
+    function main() i32 {
+      var local = Local();
+      if (local.read() != 42) { return 1; }
+      if (local.take<i32>(0) != 42) { return 3; }
+      var imported = contracts.Item();
+      if (imported.take<i32>(0) != 42) { return 4; }
+      var owner = contracts.make();
+      var child = contracts.view(owner);
+      var parent: ref contracts.Base<i32> = child;
+      if (parent.value() != 42) { return 2; }
+      return 0;
+    }
+    manifest { libraries: ["lib.moon"] }
+  )");
+  checkProgram("consumer.sun");
+}

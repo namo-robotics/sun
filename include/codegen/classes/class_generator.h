@@ -167,6 +167,22 @@ class ClassGenerator {
 
   // ---------------------------------------------------------------
   // Interface dispatch
+
+  /** Converts a borrowed child view to an ancestor without copying its object.
+   */
+  llvm::Value* upcastInterface(llvm::Value* value, InterfaceType* source,
+                               InterfaceType* target);
+
+  /**
+   * Borrows an ancestor interface in a temporary stack slot without moving the
+   * object. Returns value unchanged unless both types are interfaces and
+   * targetType is a reference to a different interface. Invalid ancestor
+   * conversions report an error.
+   */
+  llvm::Value* createBorrowedInterfaceUpcast(llvm::Value* value,
+                                               TypePtr sourceType,
+                                               TypePtr targetType);
+
   // ---------------------------------------------------------------
 
   /**
@@ -176,14 +192,6 @@ class ClassGenerator {
   llvm::Value* createInterfaceFatPointer(llvm::Value* objectPtr,
                                          ClassType* classType,
                                          InterfaceType* ifaceType);
-
-  /**
-   * Moves a concrete class into heap storage and creates an owning interface
-   * fat pointer. The vtable's final slot drops and frees that erased object.
-   */
-  llvm::Value* createOwnedInterfaceFatPointer(llvm::Value* objectPtr,
-                                              ClassType* classType,
-                                              InterfaceType* ifaceType);
 
   /**
    * Returns the vtable global for a (class, interface) pair, building it on
@@ -221,23 +229,9 @@ class ClassGenerator {
   // These need codegen but shouldn't show in an IR dump.
   std::set<DeclarationId> librarySpecializations;
 
-  /** Owning and borrowed dispatch tables for the same concrete type pair. */
-  struct InterfaceVtables {
-    llvm::GlobalVariable* owning = nullptr;
-    llvm::GlobalVariable* borrowed = nullptr;
-  };
-  std::map<std::pair<DeclarationId, DeclarationId>, InterfaceVtables>
+  /** Shared dispatch tables, keyed by concrete class and interface. */
+  std::map<std::pair<DeclarationId, DeclarationId>, llvm::GlobalVariable*>
       vtableGlobals;
-
-  /** Returns the dispatch table for a borrowed interface, creating it when
-   * first needed. */
-  llvm::GlobalVariable* getOrCreateBorrowedInterfaceVtable(
-      ClassType* classType, InterfaceType* ifaceType);
-
-  /**
-   * Emits the type-specific routine that destroys and frees an erased object.
-   */
-  llvm::Function* getOrCreateInterfaceDropFunction(ClassType* classType);
 
   /**
    * Declare every method of one class (no bodies)

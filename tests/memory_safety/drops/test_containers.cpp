@@ -80,7 +80,7 @@ TEST(MemorySafety_Drops_Containers, vec_set_drops_overwritten_element_only) {
       v.push(Owner(2));
       try {
         v.set(0, Owner(9));
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
       return counter;
@@ -137,7 +137,7 @@ TEST(MemorySafety_Drops_Containers,
       var id: i32 = 0;
       try {
         id = helper();
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
       if (id != 1) {
@@ -216,7 +216,7 @@ TEST(MemorySafety_Drops_Containers, map_remove_moves_value_out) {
       var id: i32 = 0;
       try {
         id = helper();
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
       if (id != 10) {
@@ -285,7 +285,7 @@ TEST(MemorySafety_Drops_Containers, linked_list_set_drops_old_payload) {
       list.push_back(Owner(1));
       try {
         list.set(0, Owner(9));
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
       return counter;
@@ -309,7 +309,7 @@ TEST(MemorySafety_Drops_Containers, linked_list_pop_moves_ownership) {
       var id: i32 = 0;
       try {
         id = helper();
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
       if (id != 2) {
@@ -363,7 +363,7 @@ TEST(MemorySafety_Drops_Containers, vec_get_borrows_owning_element) {
       try {
         var s = v.get(0);
         n = s.length();
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
       return n;
@@ -403,12 +403,12 @@ TEST(MemorySafety_Drops_Containers, map_and_list_peeks_borrow_owning_values) {
       var m = Map<i64, String>(alloc, 16);
       m.insert(1, String(alloc, "alpha"));
       var total: i64 = 0;
-      try { total = total + m.get(1).length(); } catch (e: IError) { return -1; }
+      try { total = total + m.get(1).length(); } catch (e: ref IError) { return -1; }
       total = total + match m.find(1) { Option.Some(s) => s.length(), Option.None => 0 };
 
       var ll = LinkedList<String>(alloc);
       ll.push_back(String(alloc, "beta"));
-      try { total = total + ll.get(0).length(); } catch (e: IError) { return -2; }
+      try { total = total + ll.get(0).length(); } catch (e: ref IError) { return -2; }
       total = total + match ll.first() { Option.Some(s) => s.length(), Option.None => 0 };
       return total;
     }
@@ -431,7 +431,7 @@ TEST(MemorySafety_Drops_Containers,
       try {
         var r = v.get(1);
         r = 99;
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
       return match v.last() { Option.Some(x) => x, Option.None => 0 };
@@ -454,7 +454,7 @@ TEST(MemorySafety_Drops_Containers, remove_moves_the_element_out) {
       try {
         var owned = v.remove(0);
         n = owned.length();
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
       return n + v.size();

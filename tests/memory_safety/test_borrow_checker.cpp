@@ -496,7 +496,7 @@ TEST(MemorySafety_BorrowChecker, return_in_catch_does_not_move_on_fallthrough) {
       var out = Vec<String>(alloc, 4);
       try {
         if (n == 3) { throw EmptyError(); }
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return out;
       }
       if (n < 2) { return out; }
@@ -509,7 +509,7 @@ TEST(MemorySafety_BorrowChecker, return_in_catch_does_not_move_on_fallthrough) {
       try {
         var v = pick(alloc, 5);
         return _convert<i32>(v.size());
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }
@@ -526,9 +526,9 @@ TEST(MemorySafety_BorrowChecker,
       var out = Vec<String>(alloc, 4);
       try {
         if (n == 3) { throw EmptyError(); }
-      } catch (e: EmptyError) {
+      } catch (e: ref EmptyError) {
         return out;
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return out;
       }
       return out;
@@ -539,7 +539,7 @@ TEST(MemorySafety_BorrowChecker,
       try {
         var v = pick(alloc, 5);
         return _convert<i32>(v.size());
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }
@@ -582,7 +582,7 @@ TEST(MemorySafety_BorrowChecker, error_on_move_in_falling_through_catch) {
       var out = Vec<String>(alloc, 4);
       try {
         if (n == 3) { throw EmptyError(); }
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         var k = consume(out);
       }
       return out;
@@ -590,7 +590,7 @@ TEST(MemorySafety_BorrowChecker, error_on_move_in_falling_through_catch) {
 
     function main() i32 {
       var alloc = make_heap_allocator();
-      try { var v = f(alloc, 1); return 0; } catch (e: IError) { return -1; }
+      try { var v = f(alloc, 1); return 0; } catch (e: ref IError) { return -1; }
     }
   )"),
                SunError);
@@ -632,7 +632,7 @@ TEST(MemorySafety_BorrowChecker, error_on_move_in_try_block_used_after) {
       var out = Vec<String>(alloc, 4);
       try {
         var k = consume(out);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return out;
       }
       return out;
@@ -640,7 +640,7 @@ TEST(MemorySafety_BorrowChecker, error_on_move_in_try_block_used_after) {
 
     function main() i32 {
       var alloc = make_heap_allocator();
-      try { var v = f(alloc); return 0; } catch (e: IError) { return -1; }
+      try { var v = f(alloc); return 0; } catch (e: ref IError) { return -1; }
     }
   )"),
                SunError);

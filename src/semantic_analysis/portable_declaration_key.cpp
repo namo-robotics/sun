@@ -84,11 +84,15 @@ void PortableDeclarationKey::assignOriginals(const ExprAST& root,
                                              DeclarationTable& table,
                                              const std::string& artifactHash) {
   std::set<DeclarationId> seen;
+  std::vector<DeclarationId> derivedSyntax;
   uint64_t ordinal = 1;  // The bundle scope occupies the first ordinal.
   auto assign = [&](DeclarationId id) {
     if (!id || !seen.insert(id).second) return;
     const auto& record = table.get(id);
-    if (record.specialization || record.origin) return;
+    if (record.specialization || record.origin) {
+      derivedSyntax.push_back(id);
+      return;
+    }
     auto key = original(artifactHash, ++ordinal);
     if (record.portableKey) return;
     table.bindPortable(id, key, artifactHash);
@@ -133,6 +137,12 @@ void PortableDeclarationKey::assignOriginals(const ExprAST& root,
     for (const auto* child : children) self(self, *child);
   };
   walk(walk, root);
+  // Cloned interface defaults are exported syntax too. Retain their derived
+  // keys in the bundle's declaration graph after all source keys exist.
+  for (auto id : derivedSyntax) {
+    if (!table.get(id).portableKey)
+      table.bindPortable(id, fromDeclaration(id, table), artifactHash);
+  }
 }
 
 PortableDeclarationKey PortableDeclarationKey::fromDeclaration(

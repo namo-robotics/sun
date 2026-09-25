@@ -15,7 +15,7 @@ public module std {
       var caught_equal = false;
       try {
         std.test.assert_eq<T>(a, b);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         caught_equal = true;
         std.test.assert(e.code() == 10);
         std.test.assert(e.message().equals_literal(equal_message));
@@ -24,7 +24,7 @@ public module std {
       var caught_unequal = false;
       try {
         std.test.assert_ne<T>(a, a);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         caught_unequal = true;
         std.test.assert(e.code() == 10);
         std.test.assert(e.message().equals_literal(unequal_message));
@@ -66,7 +66,7 @@ public module std {
       var caught = false;
       try {
         std.test.assert_eq(a, other);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         caught = true;
         std.test.assert(e.code() == 10);
         std.test.assert(e.message().equals_literal("assertion failed: expected same, got other"));

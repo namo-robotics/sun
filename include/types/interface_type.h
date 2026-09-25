@@ -39,6 +39,9 @@ struct InterfaceMethod {
       sun::semantic_analysis::Visibility::Private;
 
   DeclarationId declarationId;
+  std::vector<DeclarationId> inheritedDeclarations;
+  std::vector<TypePtr> genericArguments;
+  std::vector<TypePtr> genericConstraints;
 
   /** Reports whether this declaration still has unbound type parameters. */
   bool isGeneric() const { return !typeParameters.empty(); }
@@ -64,6 +67,7 @@ class InterfaceType : public NominalType {
       baseGenericName;  // For specialized: original generic interface name
   std::vector<InterfaceField> fields;
   std::vector<InterfaceMethod> methods;
+  InterfaceTypePtr parent_;
   sun::semantic_analysis::QualifiedName qualifiedName_;
   // Lifetime names the interface DECLARES ('interface ISink<'a>').
   // Declarations only, never bindings - see ClassType::lifetimeParams_.
@@ -160,6 +164,31 @@ class InterfaceType : public NominalType {
   const std::vector<InterfaceField>& getFields() const { return fields; }
   /** Provides the method declarations belonging to this type. */
   const std::vector<InterfaceMethod>& getMethods() const { return methods; }
+
+  /** Returns the resolved direct parent, or null for a root interface. */
+  const InterfaceTypePtr& getParent() const { return parent_; }
+  /** Records the resolved parent and its effective members. */
+  void setInheritedShape(InterfaceTypePtr parent,
+                         std::vector<InterfaceField> effectiveFields,
+                         std::vector<InterfaceMethod> effectiveMethods) {
+    parent_ = std::move(parent);
+    fields = std::move(effectiveFields);
+    methods = std::move(effectiveMethods);
+  }
+  /** Reports nominal conformance to this interface or one of its ancestors. */
+  bool extendsInterface(const InterfaceType& target) const {
+    return equals(target) || (parent_ && parent_->extendsInterface(target));
+  }
+  /** Returns the number of dynamically dispatchable methods.
+   */
+  unsigned getMethodCount() const {
+    unsigned result = 0;
+    for (const auto& method : methods)
+      if (!method.isGeneric()) ++result;
+    return result;
+  }
+  /** Returns the direct parent's dispatch-table slot. */
+  unsigned getParentIndex() const { return getMethodCount(); }
 
   /**
    * Returns the (possibly pre-existing) record so callers can set access.
@@ -292,8 +321,8 @@ class InterfaceType : public NominalType {
 
   /**
    * Interfaces are represented as fat pointers: { ptr data, ptr vtable }.
-   * The vtable contains method pointers followed by concrete drop glue (or a
-   * no-op for a borrow), so an owning interface remains two pointers.
+   * The vtable contains methods and an optional parent table link.
+   * Views borrow the concrete object and never run its cleanup.
    */
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
     return getFatPointerType(ctx);
@@ -322,12 +351,12 @@ class InterfaceType : public NominalType {
 
   /**
    * Get the vtable struct type for this interface.
-   * Contains one function pointer per method in declaration order.
-   * Vtable layout: [method0_ptr, method1_ptr, ...]
+   * Non-generic methods precede an optional parent table link.
    */
   llvm::StructType* getVtableType(llvm::LLVMContext& ctx) const {
     auto* ptrTy = llvm::PointerType::getUnqual(ctx);
-    std::vector<llvm::Type*> slotTypes(methods.size(), ptrTy);
+    std::vector<llvm::Type*> slotTypes(getMethodCount() + (parent_ ? 1 : 0),
+                                       ptrTy);
     return llvm::StructType::get(ctx, slotTypes);
   }
 

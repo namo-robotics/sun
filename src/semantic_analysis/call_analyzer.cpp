@@ -7,6 +7,7 @@
 #include "semantic_analysis/argument_conversion.h"
 #include "semantic_analysis/call_analyzer.h"
 #include "semantic_analysis/generic_type_arguments.h"
+#include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/symbol_names.h"
 #include "semantic_analysis/type_analysis/type_rules.h"
@@ -530,6 +531,41 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMemberCallee(
   }
 
   CalleeResolution out;
+  if (objectType && objectType->isInterface()) {
+    const auto& interface =
+        static_cast<const sun::types::InterfaceType&>(*objectType);
+    const sun::types::InterfaceMethod* selected = nullptr;
+    for (const auto& method : interface.getMethods()) {
+      if (method.name != memberAccess.getMemberName() || method.isGeneric() ||
+          method.paramTypes.size() != argTypes.size())
+        continue;
+      bool compatible = true;
+      bool exact = true;
+      for (size_t i = 0; i < argTypes.size(); ++i) {
+        compatible &= isAssignableTo(argTypes[i], method.paramTypes[i]);
+        exact &= argTypes[i] && argTypes[i]->equals(*method.paramTypes[i]);
+      }
+      if (compatible && (!selected || exact)) selected = &method;
+      if (compatible && exact) break;
+    }
+    if (selected) {
+      if (selected->returnType && selected->returnType->isInterface())
+        logAndThrowError(
+            "An interface return requirement can only be called on a concrete "
+            "implementation",
+            memberAccess.getLocation());
+      ctx_.requireAccessible(methodRef(interface, *selected),
+                             memberAccess.getLocation());
+      memberAccess.setTargetDeclarationId(selected->declarationId);
+      memberAccess.setResolvedType(Types::Function(selected->returnType,
+                                                   selected->paramTypes, false,
+                                                   selected->isUnsafe));
+      out.receiverImmutable = sema_.checkMethodReceiver(
+          *memberAccess.getObject(), selected->name, selected->isConst, false,
+          memberAccess.getLocation());
+      return out;
+    }
+  }
   if (auto* staticPtr = asNonClassStaticPtr(objectType)) {
     // static_ptr<T> builtin methods: length(), raw()
     memberAccess.setResolvedType(resolveStaticPtrMethodType(
@@ -1053,7 +1089,7 @@ void CallAnalyzer::analyzeGenericCall(GenericCallAST& genericCall) {
   // Resolve type arguments to sun::types::TypePtr
   std::vector<TypePtr> typeArgs;
   for (const auto& ta : genericCall.getTypeArguments()) {
-    typeArgs.push_back(resolver_.typeAnnotationToType(*ta));
+    typeArgs.push_back(resolver_.typeAnnotationToType(*ta, funcName == "_is"));
   }
 
   // Store resolved type arguments on the AST for codegen

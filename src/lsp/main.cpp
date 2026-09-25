@@ -115,6 +115,9 @@ static DiagnosticsCache diagnosticsCache;
 // Manages entrypoint files containing manifest blocks. When a file covered by
 // a manifest is opened, the LSP uses the full manifest context for compilation.
 
+/** Current editor buffers, used to resolve manifests and analyze unsaved edits. */
+static std::map<std::string, std::string> openSourceOverrides;
+
 /**
  * Configuration for a single entrypoint file with its manifest data
  */
@@ -140,7 +143,9 @@ class EntrypointManager {
     entrypoints_.clear();
     fileToEntrypoint_.clear();
 
+    std::set<std::string> seen;
     for (const auto& path : configuredPaths_) {
+      if (!seen.insert(normalizePath(path)).second) continue;
       auto config = parseEntrypoint(path);
       if (config) {
         // Map all covered files to this entrypoint
@@ -152,6 +157,10 @@ class EntrypointManager {
         }
         entrypoints_.push_back(std::move(*config));
       }
+    }
+    // A manifest file uses its own context even if another manifest includes it.
+    for (size_t i = 0; i < entrypoints_.size(); ++i) {
+      fileToEntrypoint_[entrypoints_[i].entrypointPath] = i;
     }
   }
 
@@ -199,15 +208,27 @@ class EntrypointManager {
   std::optional<EntrypointConfig> parseEntrypoint(const std::string& path) {
     std::filesystem::path entrypointPath;
     try {
-      entrypointPath = std::filesystem::canonical(path);
+      entrypointPath = normalizePath(path);
     } catch (const std::filesystem::filesystem_error&) {
-      // File doesn't exist
+      // The path cannot be normalized
       return std::nullopt;
     }
 
     std::optional<sun::driver::ResolvedManifest> resolved;
     try {
-      resolved = ManifestProcessor::fromEntrypointFile(entrypointPath.string());
+      auto buffer = openSourceOverrides.find(entrypointPath.string());
+      if (buffer == openSourceOverrides.end()) {
+        resolved = ManifestProcessor::fromEntrypointFile(entrypointPath.string());
+      } else {
+        auto parser = sun::parsing::Parser::createStringParser(buffer->second);
+        parser.setFilePath(entrypointPath.string());
+        parser.setBaseDir(entrypointPath.parent_path().string());
+        auto ast = parser.parseProgram();
+        if (const auto* manifest = ManifestProcessor::findManifest(*ast)) {
+          resolved = ManifestProcessor::process(
+              *manifest, entrypointPath.parent_path().string());
+        }
+      }
     } catch (const std::exception&) {
       // A failed moon download degrades to per-file mode instead of
       // crashing the server.
@@ -230,8 +251,9 @@ class EntrypointManager {
     config.protoFiles = std::move(resolved->protoFiles);
 
     for (const auto& file : config.sunFiles) {
-      if (std::filesystem::exists(file)) {
-        config.coveredFiles.insert(std::filesystem::canonical(file).string());
+      if (std::filesystem::exists(file) ||
+          openSourceOverrides.count(normalizePath(file))) {
+        config.coveredFiles.insert(normalizePath(file));
       }
     }
 
@@ -256,8 +278,8 @@ static std::map<std::string, sun::driver::ConfigEntrypoint>
 
 /**
  * Re-read the configured sun-config files and hand the manager the union of
- * their entrypoints and the explicitly configured ones (configs first, so a
- * file covered by both maps to the config's entrypoint). A config that
+ * their entrypoints, explicitly configured ones, and open manifest files (configs
+ * first, so a file covered by both maps to the config's entrypoint). A config that
  * fails to parse is skipped: a bad editor setting must not kill the server.
  */
 static void refreshEntrypoints() {
@@ -278,6 +300,9 @@ static void refreshEntrypoints() {
   }
   combined.insert(combined.end(), explicitEntrypoints.begin(),
                   explicitEntrypoints.end());
+  for (const auto& [path, source] : openSourceOverrides) {
+    combined.push_back(path);
+  }
   entrypointManager.setEntrypoints(combined);
 }
 
@@ -576,7 +601,8 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
   bool afterEnum = false;
   bool afterModule = false;
   bool afterInterface = false;
-  bool afterImplements = false;
+  // Implements and extends accept a list that ends at the declaration body.
+  bool inInterfaceList = false;
   bool afterFunction = false;
   bool afterColon = false;
   bool afterArrow = false;
@@ -673,8 +699,9 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
       afterModule = true;
     else if (tok.kind == TokenKind::INTERFACE)
       afterInterface = true;
-    else if (tok.kind == TokenKind::IMPLEMENTS)
-      afterImplements = true;
+    else if (tok.kind == TokenKind::IMPLEMENTS ||
+             tok.kind == TokenKind::EXTENDS)
+      inInterfaceList = true;
     else if (tok.kind == TokenKind::FUNCTION ||
              tok.kind == TokenKind::TEST_FUNCTION)
       afterFunction = true;
@@ -700,13 +727,13 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
     } else if (tok.kind == TokenKind::PAREN_OPEN) {
       // Reset declaration context but keep angle brackets for generic calls
       afterEnum = afterModule = false;
-      afterClass = afterInterface = afterImplements = afterFunction = false;
+      afterClass = afterInterface = inInterfaceList = afterFunction = false;
       afterColon = afterArrow = afterDot = false;
     } else if (tok.kind == TokenKind::PAREN_CLOSE ||
                tok.kind == TokenKind::BRACE_OPEN ||
                tok.kind == TokenKind::SEMI_COLON) {
       afterEnum = afterModule = false;
-      afterClass = afterInterface = afterImplements = afterFunction = false;
+      afterClass = afterInterface = inInterfaceList = afterFunction = false;
       afterColon = afterArrow = afterDot = false;
       if (tok.kind == TokenKind::BRACE_OPEN ||
           tok.kind == TokenKind::SEMI_COLON)
@@ -716,7 +743,7 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
 
     // Identifiers need context-based classification
     else if (tok.kind == TokenKind::IDENTIFIER) {
-      bool isTypeContext = afterColon || afterArrow || afterImplements ||
+      bool isTypeContext = afterColon || afterArrow || inInterfaceList ||
                            afterClass || afterInterface ||
                            angleBracketDepth > 0;
 
@@ -764,7 +791,7 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
         // Track for potential function call: foo() or foo<T>()
         lastIdent = {true, line, col, length, tok.text};
       }
-      afterColon = afterArrow = afterImplements = false;
+      afterColon = afterArrow = false;
     }
 
     // Special case for literal length (includes the quotes). Without this a
@@ -911,11 +938,9 @@ llvm::json::Array analyzeDiagnostics(const OpenDocument& document) {
         entrypointManager.findEntrypointForFile(document.path);
 
     if (entrypoint && !entrypoint->sunFiles.empty()) {
-      // Compile using full manifest context
-      // Note: This uses disk content for all files including the current one.
-      // Unsaved changes won't be reflected until the file is saved.
-      driver->compileFiles(entrypoint->sunFiles, entrypoint->moonImports,
-                           entrypoint->protoFiles);
+      driver->compileFiles(
+          entrypoint->sunFiles, entrypoint->moonImports, entrypoint->protoFiles,
+          openSourceOverrides);
     } else {
       // Single-file compilation (existing behavior)
       driver->compileString(document.text, document.path);
@@ -1001,11 +1026,9 @@ const AnalyzedDocument* getAnalyzedDocument(const OpenDocument& document) {
         entrypointManager.findEntrypointForFile(document.path);
     if (entrypoint && !entrypoint->sunFiles.empty()) {
       // Manifest context; the open buffer stands in for its file on disk
-      std::map<std::string, std::string> overrides;
-      overrides[normalizePath(document.path)] = document.text;
       program =
           driver->analyzeFiles(entrypoint->sunFiles, entrypoint->moonImports,
-                               entrypoint->protoFiles, overrides);
+                               entrypoint->protoFiles, openSourceOverrides);
     } else {
       program = driver->analyzeString(document.text, document.path);
     }
@@ -1241,6 +1264,11 @@ int main() {
       document.text = text->str();
       document.version = version;
       openDocuments[document.uri] = document;
+      sun::lsp::openSourceOverrides[sun::lsp::normalizePath(document.path)] =
+          document.text;
+      sun::lsp::refreshEntrypoints();
+      sun::lsp::diagnosticsCache.clear();
+      analyzedDocuments.clear();
 
       publishDiagnostics(document.uri, analyzeDiagnostics(document), version);
       continue;
@@ -1277,7 +1305,11 @@ int main() {
       OpenDocument& document = documentIter->second;
       document.text = text->str();
       document.version = version;
-      analyzedDocuments.erase(document.uri);
+      sun::lsp::openSourceOverrides[sun::lsp::normalizePath(document.path)] =
+          document.text;
+      sun::lsp::refreshEntrypoints();
+      sun::lsp::diagnosticsCache.clear();
+      analyzedDocuments.clear();
 
       publishDiagnostics(document.uri, analyzeDiagnostics(document), version);
       continue;
@@ -1297,6 +1329,7 @@ int main() {
       if (documentIter == openDocuments.end()) continue;
 
       OpenDocument& document = documentIter->second;
+      sun::lsp::refreshEntrypoints();
       // Clear cache to force re-read from disk for manifest-based compilation
       sun::lsp::diagnosticsCache.clear();
       analyzedDocuments.clear();
@@ -1316,8 +1349,12 @@ int main() {
       if (!uri) continue;
 
       std::string uriString = uri->str();
+      sun::lsp::openSourceOverrides.erase(
+          sun::lsp::normalizePath(uriToPath(uriString)));
       openDocuments.erase(uriString);
-      analyzedDocuments.erase(uriString);
+      sun::lsp::refreshEntrypoints();
+      sun::lsp::diagnosticsCache.clear();
+      analyzedDocuments.clear();
       publishDiagnostics(uriString, llvm::json::Array(), 0);
       continue;
     }

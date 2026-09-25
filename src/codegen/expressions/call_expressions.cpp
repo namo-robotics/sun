@@ -51,15 +51,6 @@ Value* CodegenVisitor::applyMoveSemantics(Value* argVal, TypePtr argSunType) {
     return structVal;
   }
 
-  // Interface values move their two-pointer owner handle as one value. Clearing
-  // the source makes any later scope drop a no-op.
-  if (argSunType->isInterface()) {
-    StructType* fatType = InterfaceType::getFatPointerType(ctx.getContext());
-    Value* fat = ctx.builder->CreateLoad(fatType, argVal, "move.interface");
-    ctx.builder->CreateStore(Constant::getNullValue(fatType), argVal);
-    return fat;
-  }
-
   // A sized array moves its inline storage: load it, then zero the source
   // when its elements own anything, so the source's drop releases nothing
   if (auto* arrayType =
@@ -274,8 +265,8 @@ Value* CodegenVisitor::materializeStructReturn(Value* callResult) {
 
   auto* structType = cast<StructType>(callResult->getType());
 
-  // Non-owning internal structs stay as values. An owning interface return is
-  // materialized so normal compound move and drop tracking can address it.
+  // Interface views need a stack address for subsequent dispatch and borrowing.
+  // Other internal structs stay as values.
   if (structType->hasName()) {
     StringRef name = structType->getName();
     for (const auto& info : sun::semantic_analysis::All) {
@@ -286,8 +277,8 @@ Value* CodegenVisitor::materializeStructReturn(Value* callResult) {
     }
   }
 
-  // This is an owning compound type returned by value.
-  // Store it to the caller's stack and return a pointer for addressability
+  // Store the returned compound value or borrowed view on the caller's
+  // stack so later operations can address it.
   Function* currentFunc = ctx.builder->GetInsertBlock()->getParent();
   AllocaInst* resultAlloca =
       createEntryBlockAlloca(currentFunc, "ret.struct", structType);
@@ -860,16 +851,12 @@ bool CodegenVisitor::emitCallArguments(
         break;
       }
 
-      case ArgConversion::ClassToInterface: {
-        argVal = codegen(*argExpr);
+      case ArgConversion::InterfaceRefUpcast:
+        argVal = prepareRefArgument(argExpr, argSunType);
         if (!argVal) return false;
-        auto* classType =
-            static_cast<ClassType*>(sun::types::unwrapRef(argSunType).get());
-        auto* ifaceType = static_cast<InterfaceType*>(paramType.get());
-        argVal = classes.createOwnedInterfaceFatPointer(argVal, classType,
-                                                        ifaceType);
+        argVal = classes.createBorrowedInterfaceUpcast(argVal, argSunType,
+                                                       paramType);
         break;
-      }
 
       case ArgConversion::Move:
         argVal = codegen(*argExpr);

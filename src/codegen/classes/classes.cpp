@@ -839,34 +839,6 @@ Value* ClassGenerator::codegen(const sun::ast::MemberAssignmentAST& expr) {
     }
   };
 
-  // Interface fields own the complete { data, vtable } value. A concrete
-  // source moves into a stable erased box; an interface source transfers its
-  // existing owner and is cleared.
-  if (auto* fieldInterfaceType =
-          sun::codegen::support::tryGetType<sun::types::InterfaceType>(
-              field->type)) {
-    if (value == fieldPtr) return value;
-
-    Value* fatPtrValue = value;
-    TypePtr sourceType = sun::types::unwrapRef(valueSunType);
-    if (auto* sourceClassType =
-            sun::codegen::support::tryGetType<ClassType>(sourceType)) {
-      fatPtrValue = createOwnedInterfaceFatPointer(value, sourceClassType,
-                                                   fieldInterfaceType);
-      if (!fatPtrValue) return nullptr;
-    } else if (sourceType && sourceType->isInterface() &&
-               value->getType()->isPointerTy()) {
-      fatPtrValue = gen_.applyMoveSemantics(value, sourceType);
-    }
-
-    dropOverwrittenValue();
-    ctx.builder->CreateAlignedStore(
-        fatPtrValue, fieldPtr,
-        sun::codegen::support::fieldAlign(classType, fieldLLVMType,
-                                          module->getDataLayout()));
-    return fatPtrValue;
-  }
-
   // Sized array fields own their elements inline: the source array MOVES in
   // after the field's old elements are dropped.
   if (auto* fieldArrayType =
@@ -961,108 +933,7 @@ Value* ClassGenerator::codegen(const sun::ast::MemberAssignmentAST& expr) {
 // -------------------------------------------------------------------
 
 Value* ClassGenerator::codegen(const sun::ast::InterfaceDefinitionAST& expr) {
-  const std::string& interfaceName = expr.getName();
-
-  // Skip precompiled interfaces - they come from linked bitcode
-  if (expr.isPrecompiled()) {
-    return ConstantFP::get(ctx.getContext(), APFloat(0.0));
-  }
-
-  // Get the interface type (already fully built by semantic analyzer)
-  auto interfaceType = typeRegistry->getInterface(expr.getDeclarationId());
-
-  // Generate default method implementations
-  for (const auto& methodDecl : expr.getMethods()) {
-    if (!methodDecl.hasDefaultImpl) {
-      // No default implementation - skip (method already registered by semantic
-      // analyzer)
-      continue;
-    }
-
-    // Generate default implementation
-    const FunctionAST& methodFunc = *methodDecl.function;
-    const PrototypeAST& proto = methodFunc.getProto();
-
-    std::string symbol = state_.declarationSymbol(proto.getDeclarationId());
-
-    Function* func = declareMethodFromAST(methodFunc);
-    if (!func->empty()) continue;
-    llvm::Type* returnType = func->getReturnType();
-
-    // Set parameter names
-    auto argIt = func->arg_begin();
-    argIt->setName("closure");
-    ++argIt;
-
-    for (const auto& [argName, argType] : proto.getArgs()) {
-      argIt->setName(argName);
-      ++argIt;
-    }
-
-    // Create entry basic block
-    BasicBlock* BB = BasicBlock::Create(ctx.getContext(), "entry", func);
-    ctx.builder->SetInsertPoint(BB);
-
-    debugInfo.enterFunction(*ctx.builder, func, proto.getName(),
-                            proto.getLocation());
-
-    // Create a new scope for the method
-    scopes().push().isFunctionBoundary = true;
-
-    emitMethodPrologueThis(func);
-
-    // Store other parameters
-    argIt = func->arg_begin();
-    ++argIt;  // Skip closure
-
-    // Use resolved param types for storing parameters
-    const auto& resolvedParamTypes = proto.getResolvedParamTypes();
-    size_t paramIdx = 0;
-    for (const auto& [argName, argType] : proto.getArgs()) {
-      if (paramIdx >= resolvedParamTypes.size()) {
-        logAndThrowError(
-            "Interface default method parameter type not resolved: " + symbol +
-            " param " + argName);
-        break;
-      }
-      llvm::Type* argLLVMType =
-          typeResolver.resolve(resolvedParamTypes[paramIdx]);
-
-      AllocaInst* alloca =
-          ctx.builder->CreateAlloca(argLLVMType, nullptr, argName);
-      ctx.builder->CreateStore(&*argIt, alloca);
-      scopes().back().variables[proto.declarationIdentity().parameters.at(
-          paramIdx)] = alloca;
-      debugDeclareParam(alloca, argName, proto, static_cast<unsigned>(paramIdx),
-                        /*argNoBase=*/2);
-      ++argIt;
-      ++paramIdx;
-    }
-
-    // Generate the method body (statement position, as in codegenMethod)
-    codegen(methodFunc.getBody());
-
-    // Add implicit return if no explicit return (see codegenMethod); a void
-    // body that falls off the end drops its locals first
-    if (!ctx.builder->GetInsertBlock()->getTerminator()) {
-      if (returnType->isVoidTy()) {
-        scopes().emitScopeCleanup();
-        ctx.builder->CreateRetVoid();
-      } else {
-        ctx.builder->CreateUnreachable();
-      }
-    }
-
-    scopes().pop();
-    thisPtr = nullptr;
-
-    debugInfo.exitFunction(func);
-
-    // Verify the function
-    verifyFunction(*func);
-  }
-
-  // Interface definitions return void
+  // Default bodies are emitted as concrete class methods.
   return ConstantFP::get(ctx.getContext(), APFloat(0.0));
 }
 
