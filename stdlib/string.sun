@@ -1,6 +1,6 @@
-// stdlib/string.sun - Heap-allocated mutable String class
+// stdlib/string.sun - Mutable strings with inline storage for short text
 //
-// String wraps Matrix<u8> for heap storage with automatic cleanup.
+// String keeps short text inline and owns heap storage for longer text.
 // Mutable with growth via methods. Sliceable via __slice__ returning StringView.
 //
 // Usage:
@@ -178,7 +178,7 @@ public module std {
 
     /**
      * Build a view over [start_, start_ + len_) of a String's buffer. The
-     * caller keeps that String alive and unmodified while the view is used.
+     * caller keeps that String alive, unmoved, and unmodified while the view is used.
      */
     init(data_: raw_ptr<u8>, start_: i64, len_: i64) {
       this.data = data_;
@@ -235,7 +235,7 @@ public module std {
    * covers the whole string.
    *
    * WARNING: a Chars must not outlive the String it reads, and any mutation
-   * of that String invalidates it.
+   * or move of that String invalidates it.
    * NOTE: Defined before String because String.iterate_chars() returns one.
    */
   public class Chars implements IIterator<char, Chars> {
@@ -320,17 +320,60 @@ public module std {
     }
   }
 
-  /**
-   * Heap-allocated mutable string backed by ContiguousBuffer<u8>
-   */
+  /** Stores short byte sequences inline and owns heap storage after growing.
+     Inline addresses are computed when borrowed, so moving this value never
+     leaves a pointer into its former location. */
+  class StringStorage {
+    var inline_words: array<u64, 2> = [0u64, 0u64];
+    var heap: Unique<u8>;
+
+    /** Allocate only when the requested capacity exceeds the inline buffer. */
+    init(alloc: const ref HeapAllocator, size: i64) {
+      this.heap = Unique<u8>(null);
+      if (size > 16) {
+        var allocator = alloc.copy();
+        this.heap = Unique<u8>(allocator.alloc_raw(size));
+      }
+    }
+
+    /** Borrow storage until the owner is moved, resized, or destroyed. */
+    public const method raw_data() raw_ptr<u8> {
+      if (this.heap.is_null()) {
+        return unsafe { _ptr_as_raw<u8>(_address_of<u64>(this.inline_words[0])); };
+      }
+      return this.heap.get_raw();
+    }
+
+    /** Read an initialized byte at an index below the storage capacity. */
+    public const unsafe method get_unchecked(index: i64) u8 {
+      return unsafe { _load<u8>(this.raw_data(), index); };
+    }
+
+    /** Write a byte at a nonnegative index below the storage capacity. */
+    public unsafe method set_unchecked(index: i64, value: u8) void {
+      unsafe { _store<u8>(this.raw_data(), index, value); };
+    }
+
+    /** Allocate larger storage and preserve count initialized bytes. The caller
+       supplies a larger capacity and a count within the current storage. */
+    public method resize_to(size: i64, count: i64) void {
+      var alloc = HeapAllocator();
+      var next = Unique<u8>(alloc.alloc_raw(size));
+      unsafe { _memcpy(next.get_raw(), this.raw_data(), count); };
+      this.heap = next;
+    }
+  }
+
+  /** Owns mutable text, keeping short strings inline and growing onto the heap.
+     Moving a String invalidates pointers, views, and iterators into its bytes. */
   public class String {
-    var data: ContiguousBuffer<u8>;  // Byte storage (owns ptr, auto-freed)
+    var data: StringStorage;  // Inline bytes or an owned heap allocation
     var capacity_: i64;  // Allocated capacity
     var len: i64;  // Current string length
 
     /**
      * Construct from string literal
-     * Copies bytes from static_ptr<u8> (fat pointer) to heap
+     * Copies bytes from a literal into owned inline or heap storage
      */
     init(alloc: const ref HeapAllocator, literal: static_ptr<u8>) {
       // Extract data pointer and length from fat pointer struct
@@ -338,12 +381,15 @@ public module std {
       var src_len: i64 = literal.length();
 
       // Allocate with some extra capacity for growth
-      var capacity: i64 = src_len + 16;
-      this.data = ContiguousBuffer<u8>(alloc, capacity);
+      var capacity: i64 = src_len + 1;
+      if (capacity < 16) {
+        capacity = 16;
+      }
+      this.data = StringStorage(alloc, capacity);
       this.capacity_ = capacity;
       this.len = src_len;
 
-      // Copy bytes from literal to heap
+      // Copy the literal into the owned storage.
       if (src_len > 0) {
         unsafe { _memcpy(this.data.raw_data(), src_data, src_len); };
       }
@@ -351,16 +397,18 @@ public module std {
 
     /**
      * Construct from a string literal without naming an allocator.
-     * HeapAllocator is stateless, so a fresh one serves; the buffer keeps its
-     * own copy and frees itself through it as usual.
+     * HeapAllocator is stateless; longer strings own the allocation it creates.
      */
     init(literal: static_ptr<u8>) {
       var alloc: HeapAllocator = HeapAllocator();
       var src_data: raw_ptr<u8> = literal.raw();
       var src_len: i64 = literal.length();
 
-      var capacity: i64 = src_len + 16;
-      this.data = ContiguousBuffer<u8>(alloc, capacity);
+      var capacity: i64 = src_len + 1;
+      if (capacity < 16) {
+        capacity = 16;
+      }
+      this.data = StringStorage(alloc, capacity);
       this.capacity_ = capacity;
       this.len = src_len;
 
@@ -372,16 +420,19 @@ public module std {
 
     /**
      * Construct from ContiguousBuffer with specified length
-     * Copies `length` bytes from buffer to a new heap-allocated string
-     * Throws IndexOutOfBoundsError if length > buffer.size()
+     * Copies length bytes into a new owned string. Throws IndexOutOfBoundsError
+     * when length is negative or exceeds the source buffer size.
      */
     init(allocator: const ref HeapAllocator, buffer: ref ContiguousBuffer<u8>, length: i64) throws IError {
-      if (length > buffer.size()) {
+      if (length < 0 or length > buffer.size()) {
         throw IndexOutOfBoundsError(length);
       }
 
-      var capacity: i64 = length + 16;
-      this.data = ContiguousBuffer<u8>(allocator, capacity);
+      var capacity: i64 = length + 1;
+      if (capacity < 16) {
+        capacity = 16;
+      }
+      this.data = StringStorage(allocator, capacity);
       this.capacity_ = capacity;
       this.len = length;
 
@@ -444,7 +495,7 @@ public module std {
      */
     public method reserve(n: i64) void {
       if (n > this.capacity_) {
-        this.data.resize_to(n);
+        this.data.resize_to(n, this.len);
         this.capacity_ = n;
       }
     }
@@ -454,7 +505,7 @@ public module std {
      */
     method grow() void {
       var new_capacity: i64 = this.capacity_ * 2;
-      this.data.resize_to(new_capacity);
+      this.data.resize_to(new_capacity, this.len);
       this.capacity_ = new_capacity;
     }
 
@@ -469,14 +520,14 @@ public module std {
         while (new_capacity < needed) {
           new_capacity = new_capacity * 2;
         }
-        this.data.resize_to(new_capacity);
+        this.data.resize_to(new_capacity, this.len);
         this.capacity_ = new_capacity;
       }
     }
 
     /** Borrow the bytes without allocating or adding a NUL terminator. Read only
        length() bytes; do not write through the pointer. It remains valid until
-       the next mutation or until the String is destroyed. */
+       the next mutation, move, or destruction of the String. */
     public const method bytes() raw_ptr<u8> {
       return this.data.raw_data();
     }
@@ -485,7 +536,7 @@ public module std {
      * NUL-terminate in spare capacity and hand back a pointer to the bytes,
      * for passing a runtime path or argument to C. The terminator sits past
      * the length, so the string itself is unchanged. The pointer is only good
-     * until the next mutation.
+     * until the next mutation, move, or destruction.
      */
     public method c_str() raw_ptr<u8> {
       this.ensure_capacity(1);
@@ -1250,25 +1301,6 @@ public module std {
     // ========================================================================
 
     /**
-     * Helper: append a decimal digit (0-9)
-     */
-    method append_dec_digit(d: i64) void {
-      var ch: u8 = match d {
-        0 => 48,
-        1 => 49,
-        2 => 50,
-        3 => 51,
-        4 => 52,
-        5 => 53,
-        6 => 54,
-        7 => 55,
-        8 => 56,
-        _ => 57
-      };
-      this.append_char(ch);
-    }
-
-    /**
      * Helper: append a hex digit (0-15)
      */
     method append_hex_digit(d: i64) void {
@@ -1295,35 +1327,30 @@ public module std {
 
     /**
      * Append an unsigned integer in decimal. The arithmetic stays unsigned so
-     * a value above the i64 maximum writes its full digits.
+     * a value above the i64 maximum writes its full digits. Reserve once and
+     * fill from the end so each digit is written directly to its final position.
      */
     public method append_u64(val: u64) void {
-      if (val == 0) {
-        this.append_char(b'0');
-        return;
+      var digits: i64 = 1;
+      var remaining: u64 = val;
+      while (remaining >= 10) {
+        remaining = remaining / 10;
+        digits = digits + 1;
       }
-
-      // Write digits in reverse order, then reverse them
+      this.ensure_capacity(digits);
       var start: i64 = this.len;
+      var end: i64 = start + digits;
+      var destination: raw_ptr<u8> = this.data.raw_data();
+      var index: i64 = end;
       var n: u64 = val;
-
-      while (n > 0) {
-        // n % 10 without modulo operator
-        var q: u64 = n / 10;
-        var r: u64 = n - q * 10;
-        this.append_dec_digit(_convert<i64>(r));
-        n = q;
+      while (index > start) {
+        var quotient: u64 = n / 10;
+        var digit: u8 = _convert<u8>(n - quotient * 10);
+        index = index - 1;
+        unsafe { _store<u8>(destination, index, b'0' + digit); };
+        n = quotient;
       }
-
-      // Reverse the digits we just wrote
-      var end: i64 = this.len - 1;
-      while (start < end) {
-        var tmp: u8 = unsafe { this.data.get_unchecked(start); };
-        unsafe { this.data.set_unchecked(start, unsafe { this.data.get_unchecked(end); }); };
-        unsafe { this.data.set_unchecked(end, tmp); };
-        start = start + 1;
-        end = end - 1;
-      }
+      this.len = end;
     }
 
     /**

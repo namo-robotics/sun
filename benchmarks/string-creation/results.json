@@ -1,0 +1,219 @@
+{
+  "measured_at_utc": "2026-09-25T18:59:24.787907+00:00",
+  "upstream_commit": "361c1f2ed0291573bcaccaab4ee2d5a96188fe5b",
+  "benchmark_sha256": {
+    "bench.cpp": "39edb4555af31cde8ae810273e61ff5bc017bc2e6cc396e0ad1e808347ae8643",
+    "bench.go": "cee9a416b4e66950785a46b3e3e75ca73ecc27d39388a929057da030b2251d1d",
+    "bench.js": "286c9297a05e7b7029e991cef5f89267c4f342c931b797245c807bf070418e65",
+    "bench.nim": "7166536b2dc8ce8a3dc0291ba98303078bd4082c3aecbf969ea12ea9e5b7ee9f",
+    "bench.py": "b6a4d7e97d1943c849c93e7f4c85b0d31db9874d47deb43757cb9eefb407a022",
+    "rust/Cargo.toml": "783f3faf910c291541d26e0961a96cbabd0e43014b8e1588beedc357e3df49aa",
+    "rust/Cargo.lock": "3f8ce1f2f45dd4e1a9043bee747a089caa381a071d9094832b95aca1ac8b8a17",
+    "rust/src/main.rs": "b5f7596849713c6ff6de36635b8ae69a2df4cef8366f15768d242d4aa3e67c69"
+  },
+  "sun_commit": "676145c0924fe4cecdd9cf651b80499cb1ed2dd2",
+  "sun_source_sha256": "11b3fb214e996d1f8f2252339861b4c1ac594186d80b1939a2e9117e2aeb2cdf",
+  "implementation_sha256": {
+    "stdlib/string.sun": "a3918d27ea1b0a8143194612d4c95f7f953eabc08950780f7484846dbe3eec16",
+    "include/codegen/codegen.h": "b8d6f4c28e0319403da745f569d95e19cee0bacd85ee5bf6a5eb75a4073e59d5",
+    "src/driver/driver.cpp": "d173355f3d618ff9aa64fa2475ad387169bbd755d021e96f8e89b63302a1f919"
+  },
+  "worktree_modified": true,
+  "platform": "Linux-7.0.0-31-generic-x86_64-with-glibc2.43",
+  "cpu": 1,
+  "versions": {
+    "sun": "sun 0.dev (676145c0924f-dirty)",
+    "cxx": "Ubuntu clang version 20.1.8 (2ubuntu8)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/lib/llvm-20/bin",
+    "python": "Python 3.14.4",
+    "node": "v24.21.0",
+    "bun": "1.4.2",
+    "cargo": "cargo 1.94.1 (29ea6fb6a 2026-03-24)",
+    "rustc": "rustc 1.94.1 (e408947bf 2026-03-25)",
+    "go": "go version go1.24.3 linux/amd64",
+    "nim": "Nim Compiler Version 2.2.13 [Linux: amd64]\nCompiled at 2026-09-23\nCopyright (c) 2006-2026 by Andreas Rumpf\n\ngit hash: 597822ac8a695a9530ddd53c7f93b06201053028\nactive boot switches: -d:release"
+  },
+  "commands": [
+    [
+      "/workspaces/sun/build/sun",
+      "--version"
+    ],
+    [
+      "/usr/bin/clang++",
+      "--version"
+    ],
+    [
+      "/usr/bin/python3",
+      "--version"
+    ],
+    [
+      "/usr/local/share/nvm/current/bin/node",
+      "--version"
+    ],
+    [
+      "/workspaces/sun/tmp/string-creation/tools/bun-linux-x64/bun",
+      "--version"
+    ],
+    [
+      "/workspaces/sun/tmp/string-creation/tools/rust/bin/cargo",
+      "--version"
+    ],
+    [
+      "/workspaces/sun/tmp/string-creation/tools/rust/bin/rustc",
+      "--version"
+    ],
+    [
+      "/workspaces/sun/tmp/string-creation/tools/go/bin/go",
+      "version"
+    ],
+    [
+      "/workspaces/sun/tmp/string-creation/tools/nim-2.2.13/bin/nim",
+      "--version"
+    ],
+    [
+      "/workspaces/sun/build/sun",
+      "--emit-moon",
+      "-o",
+      "build/stdlib.moon",
+      "stdlib/stdlib.sun"
+    ],
+    [
+      "/workspaces/sun/build/sun",
+      "-c",
+      "--dynamic",
+      "-o",
+      "/workspaces/sun/tmp/string-creation-optimized/bench_sun",
+      "/workspaces/sun/benchmarks/string-creation/bench.sun"
+    ],
+    [
+      "/usr/bin/clang++",
+      "-O3",
+      "-std=c++20",
+      "-o",
+      "/workspaces/sun/tmp/string-creation-optimized/bench_cpp",
+      "/workspaces/sun/benchmarks/string-creation/bench.cpp"
+    ],
+    [
+      "/workspaces/sun/tmp/string-creation/tools/rust/bin/cargo",
+      "build",
+      "--release",
+      "--locked",
+      "--manifest-path",
+      "/workspaces/sun/benchmarks/string-creation/rust/Cargo.toml"
+    ],
+    [
+      "/workspaces/sun/tmp/string-creation/tools/go/bin/go",
+      "build",
+      "-o",
+      "/workspaces/sun/tmp/string-creation-optimized/bench_go",
+      "/workspaces/sun/benchmarks/string-creation/bench.go"
+    ],
+    [
+      "/workspaces/sun/tmp/string-creation/tools/nim-2.2.13/bin/nim",
+      "c",
+      "-d:danger",
+      "--hints:off",
+      "--nimcache:/workspaces/sun/tmp/string-creation-optimized/nim-cache",
+      "-o:/workspaces/sun/tmp/string-creation-optimized/bench_nim",
+      "/workspaces/sun/benchmarks/string-creation/bench.nim"
+    ],
+    [
+      "taskset",
+      "-c",
+      "1",
+      "/usr/bin/python3",
+      "/workspaces/sun/benchmarks/string-creation/bench.py"
+    ],
+    [
+      "taskset",
+      "-c",
+      "1",
+      "/usr/local/share/nvm/current/bin/node",
+      "/workspaces/sun/benchmarks/string-creation/bench.js"
+    ],
+    [
+      "taskset",
+      "-c",
+      "1",
+      "/workspaces/sun/tmp/string-creation/tools/bun-linux-x64/bun",
+      "/workspaces/sun/benchmarks/string-creation/bench.js"
+    ],
+    [
+      "taskset",
+      "-c",
+      "1",
+      "/workspaces/sun/tmp/string-creation-optimized/bench_cpp"
+    ],
+    [
+      "taskset",
+      "-c",
+      "1",
+      "/workspaces/sun/tmp/string-creation-optimized/rust-target/release/strbench"
+    ],
+    [
+      "taskset",
+      "-c",
+      "1",
+      "/workspaces/sun/tmp/string-creation-optimized/bench_go"
+    ],
+    [
+      "taskset",
+      "-c",
+      "1",
+      "/workspaces/sun/tmp/string-creation-optimized/bench_nim"
+    ],
+    [
+      "taskset",
+      "-c",
+      "1",
+      "/workspaces/sun/tmp/string-creation-optimized/bench_sun"
+    ]
+  ],
+  "results": [
+    {
+      "language": "C++ std::to_string",
+      "ns_per_string": 10.18,
+      "million_strings_per_second": 98.2
+    },
+    {
+      "language": "Rust itoa",
+      "ns_per_string": 11.2,
+      "million_strings_per_second": 89.3
+    },
+    {
+      "language": "Sun interpolation",
+      "ns_per_string": 11.64282863,
+      "million_strings_per_second": 85.88978089253213
+    },
+    {
+      "language": "Rust to_string()",
+      "ns_per_string": 12.64,
+      "million_strings_per_second": 79.1
+    },
+    {
+      "language": "Nim $i",
+      "ns_per_string": 15.99,
+      "million_strings_per_second": 62.5
+    },
+    {
+      "language": "Go strconv.Itoa",
+      "ns_per_string": 17.1,
+      "million_strings_per_second": 58.5
+    },
+    {
+      "language": "Node.js String(i)",
+      "ns_per_string": 20.81,
+      "million_strings_per_second": 48.1
+    },
+    {
+      "language": "Bun String(i)",
+      "ns_per_string": 28.64,
+      "million_strings_per_second": 34.9
+    },
+    {
+      "language": "Python str(i)",
+      "ns_per_string": 50.91,
+      "million_strings_per_second": 19.6
+    }
+  ],
+  "cpu_model": "Intel(R) Core(TM) Ultra 9 185H"
+}

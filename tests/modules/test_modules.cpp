@@ -1711,10 +1711,12 @@ TEST(Modules,
 // A value known at compile time is written into the program image, so it
 // costs nothing at startup: only the variables that need run-time work appear
 // in the startup function.
+/** Check frontend global initializers before optimizer transformations. */
 TEST(Modules, global_known_at_compile_time_needs_no_startup_code) {
   sun::driver::initTestEnvironment();
+  // Inspect frontend initialization before LLVM folds or removes startup code.
   {
-    auto driver = Driver::createForAOT("image_globals_only");
+    auto driver = Driver::createForAOT("image_globals_only", "", false, false);
     driver->compileString(R"(
       const A: i64 = 4;
       const B: i64 = A * 2 + 1;
@@ -1728,7 +1730,8 @@ TEST(Modules, global_known_at_compile_time_needs_no_startup_code) {
               nullptr);
   }
   {
-    auto driver = Driver::createForAOT("image_and_startup_globals");
+    auto driver =
+        Driver::createForAOT("image_and_startup_globals", "", false, false);
     driver->compileString(R"(
       const A: i64 = 4;
       var counter: i64 = A + 1;

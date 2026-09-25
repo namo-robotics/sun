@@ -48,6 +48,96 @@ public module std {
       };
     }
 
+    /** Return an owned short string so callers exercise a move out of a frame. */
+    function returned_short_string() String {
+      return String("short text");
+    }
+
+    /** Check returned inline storage survives container relocation and extraction. */
+    test_function inline_string_moves_and_vec_relocation() {
+      var alloc = make_heap_allocator();
+      var values = Vec<String>(alloc, 1);
+      values.push(returned_short_string());
+      for (var i: i64 = 0; i < 100; i = i + 1) {
+        values.push(`${i}`);
+      }
+      std.test.assert(values.get(0).equals_literal("short text"));
+      var moved = values.remove(0);
+      std.test.assert(moved.equals_literal("short text"));
+      std.test.assert(values.get(0).equals_literal("0"));
+      std.test.assert(values.get(99).equals_literal("99"));
+      var view = moved[0:5];
+      std.test.assert(view.equals_literal("short"));
+    }
+
+    /** Replacing heap and inline strings repeatedly preserves unique ownership. */
+    test_function inline_heap_replacement_and_clone() {
+      var alloc = make_heap_allocator();
+      var values = Vec<String>(alloc, 1);
+      values.push(returned_short_string());
+      for (var i: i64 = 0; i < 100; i = i + 1) {
+        values.set(0, String("a long string that must use independently owned heap storage"));
+        var copied = values.get(0).clone(alloc);
+        values.set(0, returned_short_string());
+        std.test.assert(copied.equals_literal("a long string that must use independently owned heap storage"));
+        std.test.assert(values.get(0).equals_literal("short text"));
+      }
+      var short_copy = values.get(0).clone(alloc);
+      values.set(0, String("replacement"));
+      std.test.assert(short_copy.equals_literal("short text"));
+    }
+
+    /** Filling inline storage and adding a terminator preserves every byte. */
+    test_function inline_capacity_boundary_and_c_string() {
+      var s = String("");
+      var initial_capacity = s.capacity();
+      for (var i: i64 = 0; i < initial_capacity; i = i + 1) {
+        s.append_char(b'x');
+      }
+      std.test.assert_eq(s.capacity(), initial_capacity);
+      var c = s.c_str();
+      std.test.assert_eq(s.length(), initial_capacity);
+      std.test.assert(s.capacity() > initial_capacity);
+      for (var i: i64 = 0; i < initial_capacity; i = i + 1) {
+        std.test.assert_eq(s.at(i), b'x');
+      }
+      std.test.assert_eq(unsafe { _load<u8>(c, initial_capacity); }, 0u8);
+      s.append_literal("end");
+      std.test.assert(s.ends_with("end"));
+      s.reserve(s.capacity() * 2);
+      std.test.assert_eq(s.at(0), b'x');
+      std.test.assert(s.ends_with("end"));
+    }
+
+    /** Verify decimal widths and values immediately around each power of ten. */
+    test_function decimal_power_boundaries() {
+      var power: i64 = 1;
+      for (var exponent: i64 = 0; exponent < 19; exponent = exponent + 1) {
+        for (var delta: i64 = -1; delta <= 1; delta = delta + 1) {
+          var value = power + delta;
+          var s = String("");
+          s.append_i64(value);
+          var valid = match s.parse_i64() {
+            Option.Some(parsed) => parsed == value,
+            Option.None => false
+          };
+          std.test.assert(valid, "decimal boundary did not round trip");
+          var expected_length = exponent + 1;
+          if (delta == -1 and exponent > 0) {
+            expected_length = exponent;
+          }
+          std.test.assert_eq(s.length(), expected_length);
+        }
+        if (exponent < 18) {
+          power = power * 10;
+        }
+      }
+      var prefixed = String("a prefix near the inline storage boundary: ");
+      prefixed.append_u64(18446744073709551615u64);
+      prefixed.append_i64(-9223372036854775808i64);
+      std.test.assert(prefixed.equals_literal("a prefix near the inline storage boundary: 18446744073709551615-9223372036854775808"));
+    }
+
     /** Checks construct from literal. */
     test_function construct_from_literal() {
       var allocator = make_heap_allocator();
@@ -75,6 +165,20 @@ public module std {
       std.test.assert_eq(h, 72);
       var i: i64 = s.at(1);
       std.test.assert_eq(i, 105);
+    }
+
+    /** Reject a negative copy length before constructing owned storage. */
+    test_function construct_from_buffer_rejects_negative_length() {
+      var alloc = make_heap_allocator();
+      var buffer = ContiguousBuffer<u8>(alloc, 1);
+      var caught = false;
+      try {
+        var s = String(alloc, buffer, -1);
+      } catch (e: ref IError) {
+        caught = true;
+        std.test.assert_eq(e.code(), 3);
+      }
+      std.test.assert(caught);
     }
 
     /** Checks at access. */

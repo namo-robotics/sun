@@ -1,0 +1,59 @@
+/** Compare standard integer interpolation with the small-string benchmark. */
+using std;
+
+const N: i64 = 100000000;
+const RING_SIZE: i64 = 1024;
+const RUNS: i64 = 5;
+
+/** Create an owned decimal string and replace one ring slot on every iteration. */
+function from_int(buf: ref Vec<String>, n: i64) void throws IError {
+  for (var i: i64 = 0; i < n; i = i + 1) {
+    buf.set(i & (RING_SIZE - 1), `${i}`);
+  }
+}
+
+/** Check every retained decimal value outside the timed region. */
+function verify(buf: const ref Vec<String>, n: i64) i64 throws IError {
+  var total: i64 = 0;
+  for (var slot: i64 = 0; slot < RING_SIZE; slot = slot + 1) {
+    var expected: i64 = n - 1 - ((n - 1 - slot) & (RING_SIZE - 1));
+    var value: const ref String = buf.get(slot);
+    var correct: bool = match value.parse_i64() {
+      Option.Some(parsed) => parsed == expected,
+      Option.None => false
+    };
+    std.test.assert(correct, "ring slot contains the wrong decimal integer");
+    total = total + value.length();
+  }
+  return total;
+}
+
+/** Warm up, time repeated conversions, and report throughput and a checksum. */
+function main() void throws IError {
+  var allocator = make_heap_allocator();
+  var buf = Vec<String>(allocator, RING_SIZE);
+  for (var slot: i64 = 0; slot < RING_SIZE; slot = slot + 1) {
+    buf.push(String(allocator, ""));
+  }
+  from_int(buf, 1000000);
+  verify(buf, 1000000);
+  var best: i64 = I64_MAX;
+  for (var run: i64 = 0; run < RUNS; run = run + 1) {
+    var start = std.time.now();
+    from_int(buf, N);
+    var elapsed: i64 = start.elapsed().as_nanos();
+    if (elapsed < best) {
+      best = elapsed;
+    }
+    verify(buf, N);
+    println(`sample ${run}: ${elapsed} ns`);
+  }
+  var total: i64 = verify(buf, N);
+  var ns: f64 = _convert<f64>(best) / _convert<f64>(N);
+  var rate: f64 = 1000.0 / ns;
+  println(`Sun interpolation: ${ns} ns/string  ${rate} M/s   (check ${total})`);
+}
+
+manifest {
+  libraries: ["stdlib.moon"]
+}

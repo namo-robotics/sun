@@ -1,0 +1,48 @@
+=== python ===
+Python 3.14.4
+loop only          19.68 ns/string      50.8 M/s
+""                 19.58 ns/string      51.1 M/s
+str()              26.36 ns/string      37.9 M/s
+str(i)             50.91 ns/string      19.6 M/s
+p[i&15] + 'x'      51.12 ns/string      19.6 M/s
+
+=== node ===
+Node v24.21.0
+loop only           0.44 ns/string    2248.9 M/s
+""                  0.45 ns/string    2244.0 M/s
+String()            3.58 ns/string     279.7 M/s
+String(i)          20.81 ns/string      48.1 M/s
+p[i&15] + 'x'       8.77 ns/string     114.0 M/s
+
+=== bun ===
+Bun 1.4.2
+loop only           0.30 ns/string    3353.0 M/s
+""                  0.38 ns/string    2633.8 M/s
+String()            0.38 ns/string    2664.2 M/s
+String(i)          28.64 ns/string      34.9 M/s
+p[i&15] + 'x'       3.35 ns/string     298.3 M/s
+
+=== cpp ===
+C++ (Ubuntu Clang 20.1.8 (2ubuntu8))
+to_string(i)               10.18 ns/string      98.2 M/s   (check 8192)
+
+=== rust ===
+Rust
+i.to_string()              12.64 ns/string      79.1 M/s   (check 8192)
+itoa + to_owned()          11.20 ns/string      89.3 M/s   (check 8192)
+
+=== go ===
+Go go1.24.3
+strconv.Itoa(i)            17.10 ns/string      58.5 M/s   (check 8192)
+
+=== nim ===
+Nim 2.2.13
+$i                         15.99 ns/string      62.5 M/s   (check 8192)
+
+=== sun ===
+sample 0: 1164282863 ns
+sample 1: 1179295563 ns
+sample 2: 1239438346 ns
+sample 3: 1222885618 ns
+sample 4: 1182601061 ns
+Sun interpolation: 11.64282863 ns/string  85.88978089253213 M/s   (check 8192)

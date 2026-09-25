@@ -17,6 +17,118 @@ env:
   BUILD_SHA: ${{ github.sha }}
 
 jobs:
+  # Runs independently; benchmark failures do not gate tests or packages.
+  string-creation-benchmark:
+    name: String creation benchmark (informational)
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    timeout-minutes: 45
+    env:
+      CCACHE_SLOPPINESS: pch_defines,time_macros
+      CXX: clang++-20
+      MPLCONFIGDIR: ${{ github.workspace }}/tmp/string-creation-ci/matplotlib
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install LLVM 20 from its signed APT repository
+        run: |
+          mkdir -p tmp/string-creation-ci
+          curl --fail --location --retry 3 https://apt.llvm.org/llvm-snapshot.gpg.key -o tmp/string-creation-ci/llvm-key.asc
+          echo '8b2a587ffd672c4687e7581dad4b2f6c1bb2ad6b480cd9771ba2ff48e0b8c75d  tmp/string-creation-ci/llvm-key.asc' | sha256sum --check
+          gpg --batch --dearmor --output tmp/string-creation-ci/llvm-key.gpg tmp/string-creation-ci/llvm-key.asc
+          sudo install -m 644 tmp/string-creation-ci/llvm-key.gpg /usr/share/keyrings/llvm-benchmark.gpg
+          echo 'deb [signed-by=/usr/share/keyrings/llvm-benchmark.gpg] https://apt.llvm.org/noble/ llvm-toolchain-noble-20 main' | sudo tee /etc/apt/sources.list.d/llvm-benchmark.list
+          sudo apt-get update
+          sudo apt-get install -y clang-20 llvm-20-dev lld-20 libzstd-dev ninja-build
+
+      - name: Set up ccache
+        uses: hendrikmuhs/ccache-action@v1.2.23
+        with:
+          key: benchmark-clang20
+          max-size: 2G
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.14.4'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24.21.0'
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.24.3'
+          cache: false
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+
+      - name: Set up Rust and Nim
+        run: |
+          rustup toolchain install 1.94.1 --profile minimal
+          rustup default 1.94.1
+          mkdir -p tmp/string-creation-tools
+          curl --fail --location --retry 3 \
+            https://github.com/nim-lang/nightlies/releases/download/2026-09-23-version-2-2-597822ac8a695a9530ddd53c7f93b06201053028/nim-2.2.13-linux_x64.tar.xz \
+            -o tmp/string-creation-tools/nim.tar.xz
+          echo '79b4877c3e3817bbd75463759aa03f280711d22aab0006ab917130dede277eee  tmp/string-creation-tools/nim.tar.xz' | sha256sum --check
+          tar -xJf tmp/string-creation-tools/nim.tar.xz -C tmp/string-creation-tools
+          echo "${GITHUB_WORKSPACE}/tmp/string-creation-tools/nim-2.2.13/bin" >> "$GITHUB_PATH"
+
+      - name: Build Sun
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_C_COMPILER=clang-20 \
+            -DCMAKE_CXX_COMPILER=clang++-20 \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=OFF -DSKIP_STDLIB=ON
+          cmake --build build --target sun -j2 2>&1 | tee tmp/string-creation-ci/compiler-build.log
+
+      - name: Run all languages on one CPU
+        run: |
+          BENCHMARK_CPU=$(python3 -c 'import os; print(min(os.sched_getaffinity(0)))')
+          python3 benchmarks/string-creation/run.py \
+            --cpu "$BENCHMARK_CPU" --output tmp/string-creation-ci \
+            2>&1 | tee tmp/string-creation-ci/run.log
+
+      - name: Plot results
+        run: |
+          python3 -m pip install -r benchmarks/string-creation/requirements.txt
+          python3 benchmarks/string-creation/plot.py \
+            tmp/string-creation-ci/results.json tmp/string-creation-ci/strings.png
+
+      - name: Publish benchmark summary
+        if: always()
+        run: |
+          if [ -f tmp/string-creation-ci/results.md ]; then
+            echo '### String creation benchmark' >> "$GITHUB_STEP_SUMMARY"
+            echo 'Informational only. Hosted-runner hardware and load vary between runs.' >> "$GITHUB_STEP_SUMMARY"
+            cat tmp/string-creation-ci/results.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'String creation benchmark did not finish. See the job logs and available artifacts.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload benchmark results and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: string-creation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            tmp/string-creation-ci/*.json
+            tmp/string-creation-ci/*.md
+            tmp/string-creation-ci/*.png
+            tmp/string-creation-ci/*.log
+          if-no-files-found: ignore
+          retention-days: 30
+
   build-and-test:
     runs-on: ubuntu-24.04
 
