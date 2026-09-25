@@ -396,16 +396,17 @@ TEST(Tooling_Fmt, MatchExpression) {
 }
 
 TEST(Tooling_Fmt, TryCatchThrow) {
-  EXPECT_EQ(fmt("function f(x: i32) i32 {\n"
-                "try { return div(10, x); } catch (e: IError) { return -1; }\n"
-                "}"),
-            "function f(x: i32) i32 {\n"
-            "  try {\n"
-            "    return div(10, x);\n"
-            "  } catch (e: IError) {\n"
-            "    return -1;\n"
-            "  }\n"
-            "}\n");
+  EXPECT_EQ(
+      fmt("function f(x: i32) i32 {\n"
+          "try { return div(10, x); } catch (e: ref IError) { return -1; }\n"
+          "}"),
+      "function f(x: i32) i32 {\n"
+      "  try {\n"
+      "    return div(10, x);\n"
+      "  } catch (e: ref IError) {\n"
+      "    return -1;\n"
+      "  }\n"
+      "}\n");
 }
 
 TEST(Tooling_Fmt, DottedModule) {

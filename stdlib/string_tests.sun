@@ -109,7 +109,7 @@ public module std {
         var caught_read = false;
         try {
           var byte = s.at(indices[j]);
-        } catch (e: IError) {
+        } catch (e: ref IError) {
           caught_read = true;
           std.test.assert_eq(e.code(), 3);
         }
@@ -117,7 +117,7 @@ public module std {
         var caught_write = false;
         try {
           s.set_at(indices[j], b'X');
-        } catch (e: IError) {
+        } catch (e: ref IError) {
           caught_write = true;
           std.test.assert_eq(e.code(), 3);
         }
@@ -133,14 +133,14 @@ public module std {
       var caught = false;
       try {
         var byte = s.at(0);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         caught = true;
       }
       std.test.assert(caught);
       caught = false;
       try {
         s.set_at(0, b'X');
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         caught = true;
       }
       std.test.assert(caught);
@@ -164,7 +164,7 @@ public module std {
       var caught = false;
       try {
         var byte = view.at(2);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         caught = true;
       }
       std.test.assert(caught);
@@ -561,7 +561,7 @@ public module std {
       try {
         var bad = s.substr(alloc, 4, 3);
         std.test.fail("expected error");
-      } catch (e: IError) {}
+      } catch (e: ref IError) {}
     }
 
     /** Checks split on byte and string. */

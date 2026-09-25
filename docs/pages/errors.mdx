@@ -74,23 +74,41 @@ function main() i32 {
     try {
         var r = divide(10, 0);
         return r;
-    } catch (e: DivisionByZeroError) {
+    } catch (e: ref DivisionByZeroError) {
         return -1;                 // this exact error type
-    } catch (e: IError) {
+    } catch (e: ref IError) {
         return e.code();           // anything else
     }
 }
 ```
 
-- `catch (e: IError)` matches every error; a clause after it is unreachable
+- `catch (e: ref IError)` matches every error; a clause after it is unreachable
   and rejected.
-- `catch (e: SomeError)` matches only that class. The binding is the real
+- `catch (e: ref SomeError)` matches only that class. The binding is the real
   object, so methods unique to that class (like `line()` above) are callable.
 - When no clause matches, the error keeps unwinding to the enclosing `try` or
   caller.
 - Inside a catch clause, `e.code()` and `e.message()` dispatch to the thrown
   class. `message()` returns an owned `String` that stays valid after the
   handler ends.
+
+## Ownership and Catch Lifetimes
+
+`throw` moves a concrete error into storage owned by the exception runtime.
+Catch bindings must use `ref` or `const ref`; catching by value is rejected.
+The binding refers to the original error and cannot outlive the handler.
+A `const ref` binding permits only const methods and read-only access.
+
+When a handler finishes, its local values are dropped first. The runtime then
+runs the error's `deinit`, drops its owned fields, and frees its exception
+storage. This also happens on `return`, `break`, `continue`, and when another
+error leaves the handler.
+
+Inside a throwing function, `throw e;` rethrows the innermost catch binding.
+It preserves the original concrete type and payload, and does not copy or
+allocate another exception. The error remains alive until its final handler
+finishes. Throwing an unrelated borrowed error, an alias, or an outer catch
+binding while a different error is active is rejected.
 
 ## Built-in Arithmetic Errors
 
@@ -108,7 +126,7 @@ function divide(a: i32, b: i32) i32 throws IError {
 function main() i32 {
   try {
     return divide(1, 0);
-  } catch (e: ArithmeticError) {
+  } catch (e: ref ArithmeticError) {
     return e.code();
   }
 }

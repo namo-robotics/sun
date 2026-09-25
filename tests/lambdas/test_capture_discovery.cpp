@@ -53,7 +53,7 @@ TEST(Lambdas_CaptureDiscovery, scalar_used_inside_try_block) {
   auto value = executeString(R"(
       function main() i32 {
           var n: i32 = 5;
-          var f = () => i32 { try { return n; } catch (e: IError) { return 0; } };
+          var f = () => i32 { try { return n; } catch (e: ref IError) { return 0; } };
           return f();
       }
     )");
@@ -71,7 +71,7 @@ TEST(Lambdas_CaptureDiscovery, scalar_used_inside_catch_block) {
       function main() i32 {
           var n: i32 = 6;
           var f = () => i32 {
-              try { return boom(); } catch (e: IError) { return n; }
+              try { return boom(); } catch (e: ref IError) { return n; }
           };
           return f();
       }
@@ -100,7 +100,7 @@ TEST(Lambdas_CaptureDiscovery, scalar_used_in_a_thrown_error) {
       function main() i32 {
           var n: i32 = 8;
           var f = () => i32 throws IError { throw Error(n, "bad"); };
-          try { return f(); } catch (e: IError) { return e.code(); }
+          try { return f(); } catch (e: ref IError) { return e.code(); }
       }
     )");
   EXPECT_EQ(value, 8);
@@ -152,7 +152,7 @@ TEST(Lambdas_CaptureDiscovery, catch_binding_shadows_an_outer_name) {
       function main() i32 {
           var e: i32 = 100;
           var f = () => i32 {
-              try { return boom(); } catch (e: IError) { return e.code(); }
+              try { return boom(); } catch (e: ref IError) { return e.code(); }
           };
           return f() + e;
       }

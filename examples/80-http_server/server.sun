@@ -7,7 +7,7 @@ function main() i32 {
   var server = HttpServer(alloc);
   try {
     server.bind_loopback(8080);
-  } catch (e: IError) {
+  } catch (e: ref IError) {
     println("Failed to bind 127.0.0.1:8080 (port in use?)");
     return 1;
   }

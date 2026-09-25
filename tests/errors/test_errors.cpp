@@ -47,7 +47,7 @@ TEST(Errors, throw_basic) {
     function main() i32 {
       try {
         return mayThrow(5);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }
@@ -73,7 +73,7 @@ TEST(Errors, throw_triggers_catch) {
     function main() i32 {
       try {
         return mayThrow(-5);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return 99;
       }
     }
@@ -99,7 +99,7 @@ TEST(Errors, try_catch_success_path) {
     function main() i32 {
       try {
         return compute(20, 4);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }
@@ -128,7 +128,7 @@ TEST(Errors, catch_binding_code_is_usable) {
     function main() i32 {
       try {
         return mayThrow(-1);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return e.code() + 100;
       }
     }
@@ -159,7 +159,7 @@ TEST(Errors, catch_binding_dispatches_to_concrete_type) {
     function main() i32 {
       try {
         return pick(2);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return e.code();
       }
     }
@@ -201,11 +201,11 @@ TEST(Errors, typed_catch_selects_matching_clause) {
     function main() i32 {
       try {
         return pick(2);
-      } catch (e: ErrA) {
+      } catch (e: ref ErrA) {
         return 10;
-      } catch (e: ErrB) {
+      } catch (e: ref ErrB) {
         return 20;
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return 30;
       }
     }
@@ -219,11 +219,11 @@ TEST(Errors, typed_catch_falls_through_to_ierror) {
     function main() i32 {
       try {
         return pick();
-      } catch (e: ErrA) {
+      } catch (e: ref ErrA) {
         return 10;
-      } catch (e: ErrB) {
+      } catch (e: ref ErrB) {
         return 20;
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return e.code();
       }
     }
@@ -250,7 +250,7 @@ TEST(Errors, typed_catch_concrete_binding_reads_field) {
       try {
         var r = may(-1);
         return 0;
-      } catch (e: BoundsErr) {
+      } catch (e: ref BoundsErr) {
         return e.idx();
       }
     }
@@ -270,10 +270,10 @@ TEST(Errors, typed_catch_unmatched_rethrows_to_outer) {
       try {
         try {
           return pick(2);
-        } catch (e: ErrA) {
+        } catch (e: ref ErrA) {
           return 10;
         }
-      } catch (e: ErrB) {
+      } catch (e: ref ErrB) {
         return 20;
       }
     }
@@ -299,7 +299,7 @@ TEST(Errors, try_catch_error_path) {
     function main() i32 {
       try {
         return compute(20, 0);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }
@@ -334,7 +334,7 @@ TEST(Errors, nested_try_catch) {
     function main() i32 {
       try {
         return outer(5);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }
@@ -365,7 +365,7 @@ TEST(Errors, nested_error_propagation) {
     function main() i32 {
       try {
         return outer(0);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }
@@ -395,7 +395,7 @@ TEST(Errors, pass_mayThrow_to_function) {
     function main() i32 {
       try {
         return foo(mayThrow(-5));
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }
@@ -425,7 +425,7 @@ TEST(Errors, pass_mayThrow_success) {
     function main() i32 {
       try {
         return foo(mayThrow(1));
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }
@@ -455,7 +455,7 @@ TEST(Errors, safe_divide_success) {
     function main() i32 {
       try {
         return safeDivide(42, 7);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }
@@ -481,7 +481,7 @@ TEST(Errors, safe_divide_by_zero) {
     function main() i32 {
       try {
         return safeDivide(42, 0);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }
@@ -499,7 +499,7 @@ TEST(Errors, auto_safe_division_success) {
     function main() i32 {
       try {
         return divide(100, 5);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }
@@ -530,7 +530,7 @@ TEST(Errors, try_catch_with_computation) {
       try {
         var result = compute(5);
         return result + 1;
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return 0;
       }
     }
@@ -564,7 +564,7 @@ TEST(Errors, try_catch_with_multiple_calls) {
       try {
         var x = mul(2, 3);
         return add(x, 4);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }
@@ -593,7 +593,7 @@ TEST(Errors, try_catch_with_variable_args) {
       var z: i32 = 3;
       try {
         return combine(x, y, z);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }
@@ -623,7 +623,7 @@ TEST(Errors, catch_returns_different_value) {
     function main() i32 {
       try {
         return mayFail(0);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return 42;
       }
     }
@@ -649,7 +649,7 @@ TEST(Errors, success_returns_original_value) {
     function main() i32 {
       try {
         return mayFail(5);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return 42;
       }
     }
@@ -682,7 +682,7 @@ TEST(Errors, multiple_throw_conditions) {
     function main() i32 {
       try {
         return validate(50);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }
@@ -711,7 +711,7 @@ TEST(Errors, first_condition_throws) {
     function main() i32 {
       try {
         return validate(-5);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }
@@ -740,7 +740,7 @@ TEST(Errors, second_condition_throws) {
     function main() i32 {
       try {
         return validate(150);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -2;
       }
     }
@@ -774,7 +774,7 @@ TEST(Errors, throw_inside_for_loop) {
           sum = sum + mayThrow(i);
         };
         return sum;
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }
@@ -807,7 +807,7 @@ TEST(Errors, throw_inside_while_loop) {
           i = i + 1;
         };
         return sum;
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }
@@ -838,7 +838,7 @@ TEST(Errors, for_loop_completes_without_throw) {
           sum = sum + mayThrow(i);
         };
         return sum;
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }
@@ -871,7 +871,7 @@ TEST(Errors, while_loop_completes_without_throw) {
           i = i + 1;
         };
         return sum;
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }
@@ -906,7 +906,7 @@ TEST(Errors, throw_inside_nested_for_loops) {
           };
         };
         return sum;
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }
@@ -940,7 +940,7 @@ TEST(Errors, throw_inside_for_loop_with_break) {
           sum = sum + mayThrow(i);
         };
         return sum;
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }
@@ -977,7 +977,7 @@ TEST(Errors, throw_inside_while_loop_with_continue) {
           sum = sum + mayThrow(i);
         };
         return sum;
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }
@@ -1008,7 +1008,7 @@ TEST(Errors, throw_after_loop_iteration) {
           sum = sum + i;
         };
         return process(sum);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }
@@ -1039,7 +1039,7 @@ TEST(Errors, throw_after_loop_exceeds_limit) {
           sum = sum + i;
         };
         return process(sum);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }
@@ -1066,7 +1066,7 @@ TEST(Errors, error_carries_a_computed_string_message) {
       path.append("computed.txt");
       try {
         boom(path);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         // The message outlives the String's scope: Error keeps its own copy.
         var msg: String = e.message();
         if (not msg.equals(path)) { return -2; }
@@ -1094,7 +1094,7 @@ TEST(Errors, computed_error_message_survives_the_string_it_came_from) {
       var a = make_heap_allocator();
       try {
         make(a);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         var text: String = e.message();
         if (text.length() != 11) { return -2; }
         // 'g' is 103: the clone is real bytes, not freed storage.
@@ -1172,7 +1172,7 @@ TEST(Errors, throw_and_catch_work_without_stdlib) {
     function main() i32 {
       try {
         return fail();
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return e.code() + _convert<i32>(e.message().length());
       }
     }
@@ -1227,7 +1227,7 @@ TEST(Errors, binding_a_try_catch_is_an_error) {
   EXPECT_THROW(executeString(R"(
     function g() i32 throws IError { return 5; }
     function f() i32 {
-        var x = try { g(); } catch (e: IError) { 0; };
+        var x = try { g(); } catch (e: ref IError) { 0; };
         return 1;
     }
     function main() i32 { return f(); }
@@ -1242,7 +1242,7 @@ TEST(Errors, returning_from_inside_the_try_is_the_value_form) {
     function main() i32 {
         try {
             return g();
-        } catch (e: IError) {
+        } catch (e: ref IError) {
             return -1;
         }
     }
@@ -1273,7 +1273,7 @@ TEST(Errors, bool_leading_class_return_field_access) {
         if (make(false).t != 37) { return 1; }
         if (make(true).ok) { return 2; }
         return 3;
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         result = result + 2;
       }
       return result;

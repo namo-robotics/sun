@@ -235,7 +235,7 @@ TEST(MemorySafety_GlobalAssignment, map_global_is_constructed) {
       try {
         var k2 = String(alloc, "key");
         found = m.get(k2);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -3;
       }
       return found;

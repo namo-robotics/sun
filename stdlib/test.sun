@@ -133,7 +133,7 @@ public module std.test {
     try {
       fn();
       return TestResult(name, true, String(""));
-    } catch (e: IError) {
+    } catch (e: ref IError) {
       return TestResult(name, false, e.message());
     }
   }

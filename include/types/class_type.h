@@ -376,8 +376,7 @@ class ClassType : public NominalType {
 
   /**
    * True if an argument of type `from` reaches an interface-typed parameter
-   * `to` by conversion to a fat pointer: an owned class where the interface
-   * is taken by value, or a class where `ref Interface` is expected.
+   * `to` by conversion to a borrowed fat pointer.
    * Mirrors the interface rules of isAssignableTo
    * (type_analysis/type_checking.cpp) so that overload selection accepts what a
    * single known signature accepts. Implemented with complete interface and

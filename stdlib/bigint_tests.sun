@@ -105,7 +105,7 @@ public module std {
       var threw: bool = false;
       try {
         small.sub(b);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         threw = true;
       }
       std.test.assert(threw, "subtracting a larger number should throw");

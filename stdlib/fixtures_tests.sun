@@ -62,7 +62,7 @@ public module std {
             i = i + 1;
           }
           std.io.remove_dir(this.path);
-        } catch (e: IError) {}
+        } catch (e: ref IError) {}
       }
     }
 

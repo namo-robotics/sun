@@ -801,7 +801,7 @@ TEST(Tooling_Serialization, TryCatchRoundtrip) {
     function test() i32 throws IError {
       try {
         return 42;
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }

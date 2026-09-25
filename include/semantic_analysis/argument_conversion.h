@@ -27,12 +27,8 @@ enum class ArgConversion : uint8_t {
   ArrayToView,       // a sized array to `ref array<T>`: a view of its storage
                      // with the rank erased
   RawPtrAsRef,       // raw_ptr<T> to `ref T`: the pointer is the address
-  ClassToInterface,  // an owned class to an owning interface (a borrowed
-                     // class never converts this way: it cannot become an
-                     // owner)
   ClassToRefInterface,  // a class to `ref Interface`: a fat pointer
                         // spilled to the stack, its address passed
-  InterfaceUpcast,      // transfers an erased owner to an ancestor
   InterfaceRefUpcast,   // borrows an ancestor through a separate view
   WidenNumeric,         // a narrower integer or float to a wider parameter
   StaticToRawPtr,       // static_ptr<T> to raw_ptr<T>: its data pointer

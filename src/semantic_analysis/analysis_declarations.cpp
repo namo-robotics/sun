@@ -410,7 +410,8 @@ void SemanticAnalyzer::prepareInterfaceShape(
   MethodSignatureSet methodSignatures(ctx_, resolver_);
   for (const auto& methodDecl : interfaceDef.getMethods()) {
     // Get method signature info (pure computation)
-    FunctionInfo methodInfo = getFunctionInfo(*methodDecl.function);
+    FunctionInfo methodInfo =
+        getFunctionInfo(*methodDecl.function, !methodDecl.hasDefaultImpl);
     PrototypeAST& proto =
         const_cast<PrototypeAST&>(methodDecl.function->getProto());
 
@@ -435,9 +436,10 @@ void SemanticAnalyzer::prepareInterfaceShape(
       ctx_.enterTypeParamScope(method.typeParameters, method.genericArguments);
       for (const auto& parameter : proto.getTypeParameters())
         method.genericConstraints.push_back(
-            parameter.constraint ? resolver_.typeAnnotationToType(
-                                       parameter.constraint->toAnnotation())
-                                 : nullptr);
+            parameter.constraint
+                ? resolver_.typeAnnotationToType(
+                      parameter.constraint->toAnnotation(), true)
+                : nullptr);
     }
     method.visibility =
         sun::semantic_analysis::methodVisibility(*methodDecl.function);
@@ -628,7 +630,7 @@ void SemanticAnalyzer::analyzeDeclareType(
     sun::ast::DeclareTypeAST& declareExpr) {
   // Trigger generic instantiation by resolving the type annotation
   TypePtr resolvedType =
-      resolver_.typeAnnotationToType(declareExpr.getTypeAnnotation());
+      resolver_.typeAnnotationToType(declareExpr.getTypeAnnotation(), true);
   declareExpr.setResolvedDeclaredType(resolvedType);
 
   // If there's an alias, register it

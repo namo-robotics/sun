@@ -503,7 +503,7 @@ TEST(Functions, nonthrowing_pointer_widens_to_throwing_pointer) {
     function main() i32 {
         try {
             return invoke(double, 21);
-        } catch (error: IError) {
+        } catch (error: ref IError) {
             return -1;
         }
     }
@@ -525,7 +525,7 @@ TEST(Functions, throwing_pointer_propagates_indirect_exceptions) {
         var callback: function (i32) i32 throws IError = fail;
         try {
             return callback(1);
-        } catch (error: IError) {
+        } catch (error: ref IError) {
             return 42;
         }
     }

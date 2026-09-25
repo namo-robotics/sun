@@ -458,7 +458,7 @@ try {
     f.open("notes.txt", FileMode.Write);
     f.write("Hello, World!");
     f.close();
-} catch (e: IError) {
+} catch (e: ref IError) {
     eprintln("could not write notes.txt");
 }
 
@@ -704,7 +704,7 @@ for (var entry: ref EnvEntry in environment) {
     println(entry.name());
 }
 
-try { environment.set("LANG", "C"); } catch (e: IError) { }
+try { environment.set("LANG", "C"); } catch (e: ref IError) { }
 var here = environment.cwd();
 ```
 
@@ -1338,7 +1338,7 @@ path.append(name);
 throw Error(errno(), path);
 
 // ... several frames up:
-catch (e: IError) {
+catch (e: ref IError) {
     var msg: String = e.message();   // an owned clone
     eprintln(msg);
 }

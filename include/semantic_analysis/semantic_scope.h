@@ -624,6 +624,7 @@ struct SemanticScopeBase
 
   // Parent scope pointer (tree structure)
   SemanticScopeBase* parent = nullptr;
+  DeclarationId catchBinding;  // The borrowed error bound by this handler.
   // Non-module child scopes (for scope tree traversal)
   std::vector<std::shared_ptr<SemanticScopeBase>> children;
 

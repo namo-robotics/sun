@@ -69,7 +69,7 @@ void GenericSpecializer::checkTypeParameterConstraints(
     auto requirement =
         constraint->typeArguments.empty()
             ? sema_.typeResolver().typeAnnotationToType(
-                  constraint->toAnnotation())
+                  constraint->toAnnotation(), true)
             : sema_.typeResolver().resolveConstraintInterface(*constraint);
     if (mentionsTypeParameter(arg)) continue;
     if (!constraint->typeArguments.empty() &&
@@ -206,7 +206,8 @@ std::shared_ptr<ClassType> GenericSpecializer::instantiateGenericClass(
   for (const auto& ifaceRef :
        genericClassInfo->AST->getImplementedInterfaces()) {
     auto interfaceType = std::dynamic_pointer_cast<InterfaceType>(
-        sema_.typeResolver().typeAnnotationToType(ifaceRef.toAnnotation()));
+        sema_.typeResolver().typeAnnotationToType(ifaceRef.toAnnotation(),
+                                                  true));
 
     if (interfaceType) {
       specializedClass->addImplementedInterface(*interfaceType);
@@ -1146,8 +1147,8 @@ std::shared_ptr<InterfaceType> GenericSpecializer::instantiateGenericInterface(
       // Get return type with substitution
       TypePtr returnType;
       if (proto.getReturnType()) {
-        returnType =
-            sema_.typeResolver().typeAnnotationToType(*proto.getReturnType());
+        returnType = sema_.typeResolver().typeAnnotationToType(
+            *proto.getReturnType(), !methodDecl.hasDefaultImpl);
       } else {
         returnType = Types::Void();
       }
@@ -1168,9 +1169,10 @@ std::shared_ptr<InterfaceType> GenericSpecializer::instantiateGenericInterface(
       method.genericArguments = methodArguments;
       for (const auto& parameter : proto.getTypeParameters())
         method.genericConstraints.push_back(
-            parameter.constraint ? sema_.typeResolver().typeAnnotationToType(
-                                       parameter.constraint->toAnnotation())
-                                 : nullptr);
+            parameter.constraint
+                ? sema_.typeResolver().typeAnnotationToType(
+                      parameter.constraint->toAnnotation(), true)
+                : nullptr);
       method.visibility = methodVisibility(*methodDecl.function);
       method.isConst = methodDecl.isConst;
       method.isUnsafe = methodDecl.function->getProto().isUnsafeMethod();

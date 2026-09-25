@@ -129,7 +129,7 @@ public module std {
       var threw: bool = false;
       try {
         get_size(pipe.read_fd());
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         threw = true;
         code = e.code();
       }
@@ -211,7 +211,7 @@ public module std {
       var threw: bool = false;
       try {
         enter_raw_then_throw(pty.slave);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         threw = true;
       }
       std.test.assert(threw, "the helper throws from inside the mode");
@@ -243,7 +243,7 @@ public module std {
       var threw: bool = false;
       try {
         var mode = TerminalMode(pipe.read_fd(), Mode.Raw, SignalPolicy.AsInput);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         threw = true;
         code = e.code();
       }
@@ -293,7 +293,7 @@ public module std {
       var threw: bool = false;
       try {
         read_key(pty.slave, std.time.create_duration_millis(1000));
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         threw = true;
       }
       std.test.assert(threw, "a closed master is end of input");

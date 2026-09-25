@@ -168,7 +168,7 @@ public module std {
       try {
         var val: i32 = m.get(99);
         std.test.fail("expected error");
-      } catch (e: IError) {}
+      } catch (e: ref IError) {}
     }
 
     /** Checks remove missing key throws. */
@@ -179,7 +179,7 @@ public module std {
       try {
         var val: i32 = m.remove(99);
         std.test.fail("expected error");
-      } catch (e: IError) {}
+      } catch (e: ref IError) {}
     }
 
     /** Checks hash collision handling. */

@@ -507,7 +507,7 @@ class Parser {
   unique_ptr<ExprAST> finishIndexedAssignment(unique_ptr<ExprAST> expr);
 
   /**
-   * Try-catch expression parsing: try { ... } catch (e: IError) { ... }
+   * Try-catch expression parsing: try { ... } catch (e: ref IError) { ... }
    */
   unique_ptr<ExprAST> parseTryCatch();
 

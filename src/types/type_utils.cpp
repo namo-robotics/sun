@@ -29,9 +29,6 @@ bool typeNeedsDropImpl(const Type* type,
     }
     return false;
   }
-  // A by-value interface owns its erased concrete implementation. Its vtable
-  // supplies the concrete drop routine; ref Interface values remain borrows.
-  if (type->isInterface()) return true;
   if (type->isEnum()) {
     auto* e = static_cast<const EnumType*>(type);
     for (const auto& v : e->getVariants()) {

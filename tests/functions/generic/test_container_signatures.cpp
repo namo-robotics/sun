@@ -143,7 +143,8 @@ TEST(Functions_Generic_ContainerSignatures, self_referential_interface) {
     class Cell<T> implements IPeekable<ref T, Cell<T>> {
         var value: T;
         init(v: T) { this.value = v; }
-        method peeker() IPeeker<ref T, Cell<T>> {
+        /** Returns the concrete iterator without erasing its owner. */
+        method peeker() CellPeeker<T> {
             return CellPeeker<T>();
         }
     }

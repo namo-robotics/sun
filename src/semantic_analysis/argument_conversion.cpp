@@ -84,8 +84,6 @@ bool decaysToView(const TypePtr& value, const TypePtr& target) {
 /** Returns a readable representation for diagnostics and debugging. */
 const char* toString(ArgConversion conversion) {
   switch (conversion) {
-    case ArgConversion::InterfaceUpcast:
-      return "interface upcast";
     case ArgConversion::InterfaceRefUpcast:
       return "borrowed interface upcast";
     case ArgConversion::PassValue:
@@ -98,8 +96,6 @@ const char* toString(ArgConversion conversion) {
       return "array to view";
     case ArgConversion::RawPtrAsRef:
       return "raw pointer as reference";
-    case ArgConversion::ClassToInterface:
-      return "class to interface";
     case ArgConversion::ClassToRefInterface:
       return "class to ref interface";
     case ArgConversion::WidenNumeric:
@@ -118,7 +114,7 @@ const char* toString(ArgConversion conversion) {
 std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
                                               const TypePtr& paramType,
                                               bool cVariadicTail) {
-  if (!argType) return std::nullopt;
+  if (!argType || (paramType && paramType->isInterface())) return std::nullopt;
 
   // Past the declared parameters: a C `...` tail, or a variadic pack
   if (!paramType) {
@@ -154,12 +150,6 @@ std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
     return ArgConversion::Borrow;
   }
 
-  // Only an owned class becomes an owning interface value; a borrowed one
-  // reaches an interface through `ref Interface` alone (see above).
-  if (paramType->isInterface() && argType->isClass()) {
-    return ArgConversion::ClassToInterface;
-  }
-
   if (argType->isStaticPointer() && paramType->isRawPointer()) {
     return ArgConversion::StaticToRawPtr;
   }
@@ -170,10 +160,6 @@ std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
     if (pointee && pointee->equals(*paramType))
       return ArgConversion::DerefRawPtr;
   }
-
-  if (argType->isInterface() && paramType->isInterface() &&
-      !argType->equals(*paramType))
-    return ArgConversion::InterfaceUpcast;
 
   if (value && paramType->equals(*value)) return byValue(argType);
 

@@ -458,7 +458,7 @@ TEST(ControlFlow_Match, method_ending_in_fully_terminating_match) {
       try {
         total = a.as_f64();
         total = total + b.as_f64();
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return _convert<i32>(total) + e.code();
       }
       return 0;

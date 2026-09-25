@@ -134,7 +134,7 @@ TEST(Lambdas_RefLambdaTypes, ref_and_throws_widen_together) {
     function run_guarded(f: <'_>(i32) => i32 throws IError, x: i32) i32 {
         try {
             return f(x);
-        } catch (e: IError) {
+        } catch (e: ref IError) {
             return -1;
         }
     }
@@ -246,7 +246,7 @@ TEST(Lambdas_RefLambdaTypes, frame_carrying_class_cannot_become_interface) {
         return i.call();
     }
   )"),
-                                "Cannot assign value of type");
+                                "cannot own a value");
 }
 
 // A global of a frame-carrying class type is banned like the bare lambda.

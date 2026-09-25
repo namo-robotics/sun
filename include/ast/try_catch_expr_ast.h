@@ -16,15 +16,16 @@ namespace sun::ast {
 
 /**
  * Catch clause for try-catch expression
- * Represents: catch (name: Type) { body }
+ * Represents: catch (name: ref Type) { body }
  */
 struct CatchClause {
   std::string bindingName;                    // variable name for error binding
-  std::optional<TypeAnnotation> bindingType;  // type annotation (e.g., IError)
+  std::optional<TypeAnnotation>
+      bindingType;  // type annotation (e.g., ref IError)
   std::unique_ptr<BlockExprAST> body;         // the catch body
 
   // Filled in by semantic analysis, consumed by codegen for typed matching:
-  bool isCatchAll = false;  // true for `catch (e: IError)` (matches any)
+  bool isCatchAll = false;  // true for `catch (e: ref IError)` (matches any)
   sun::types::TypePtr resolvedType;
 
   /** Creates an instance with its default state. */
@@ -38,7 +39,8 @@ struct CatchClause {
 };
 
 /**
- * Try-catch expression: try { ... } catch (e: A) { ... } catch (e: IError) {
+ * Try-catch expression: try { ... } catch (e: ref A) { ... } catch (e: ref
+ * IError) {
  * ... } Supports multiple typed catch handlers, tested in source order.
  */
 class TryCatchExprAST : public ExprAST {

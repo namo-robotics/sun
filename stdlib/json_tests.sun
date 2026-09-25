@@ -104,68 +104,68 @@ public module std {
       var doc = parse_json(alloc, "{\"a\": [1], \"s\": \"x\", \"f\": 1.5}");
       try {
         doc.get("s").as_i64();
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         codes = codes + 1;
       }
       try {
         doc.get("f").as_i64();
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         codes = codes + 1;
       }
       try {
         doc.get("a").as_bool();
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         codes = codes + 1;
       }
       try {
         doc.get("a").as_string();
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         codes = codes + 1;
       }
       try {
         doc.get("missing");
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         codes = codes + 1;
       }
       try {
         doc.get("a").at(5);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         codes = codes + 1;
       }
       try {
         doc.get("a").at(-1);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         codes = codes + 1;
       }
       try {
         doc.get("s").at(0);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         codes = codes + 1;
       }
       try {
         doc.get("a").get("k");
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         codes = codes + 1;
       }
       try {
         doc.key_at(9);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         codes = codes + 1;
       }
       try {
         doc.get("s").push(Json());
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         codes = codes + 1;
       }
       try {
         doc.get("a").set(String(alloc, "k"), Json());
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         codes = codes + 1;
       }
       // A JsonError from a reader carries no text offset
       try {
         doc.get("s").as_f64();
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         std.test.assert_eq(e.code(), 60);
         codes = codes + 1;
       }
@@ -180,7 +180,7 @@ public module std {
       try {
         var doc = parse_json(alloc, text);
         return -1;
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         if (e.code() != 60) {
           return -100;
         }
@@ -240,7 +240,7 @@ public module std {
       try {
         var doc = parse_json(alloc, text);
         std.test.fail("300 nested arrays should be rejected");
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         std.test.assert_eq(e.code(), 60);
       }
     }

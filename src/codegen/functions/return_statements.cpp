@@ -28,7 +28,7 @@ Value* FunctionGenerator::codegen(const sun::ast::ReturnExprAST& expr) {
         if (source->isInterface())
           value = gen_.classGenerator().upcastInterface(
               value, static_cast<sun::types::InterfaceType*>(source.get()),
-              targetInterface, true);
+              targetInterface);
         else
           value = gen_.classGenerator().createInterfaceFatPointer(
               value, static_cast<sun::types::ClassType*>(source.get()),
@@ -91,21 +91,6 @@ Value* FunctionGenerator::codegen(const sun::ast::ReturnExprAST& expr) {
     // IMPORTANT: Evaluate return expression FIRST (may transfer ownership)
     Value* retVal = codegen(*expr.getValue());
     if (!retVal) return nullptr;
-    auto target = expr.getTargetType();
-    auto source = expr.getValue()->getResolvedType();
-    if (target && target->isInterface()) {
-      auto* targetInterface =
-          static_cast<sun::types::InterfaceType*>(target.get());
-      if (source->isInterface())
-        retVal = gen_.classGenerator().upcastInterface(
-            retVal, static_cast<sun::types::InterfaceType*>(source.get()),
-            targetInterface, false);
-      else if (source->isClass())
-        retVal = gen_.classGenerator().createOwnedInterfaceFatPointer(
-            retVal, static_cast<sun::types::ClassType*>(source.get()),
-            targetInterface);
-    }
-
     // Move semantics: borrow checker marks expressions as "moved" when
     // ownership transfers (return, assignment, pass-by-value). Skip deinit.
     if (sun::types::typeMovesOnRead(expr.getValue()->getResolvedType()) &&

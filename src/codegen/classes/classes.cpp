@@ -839,35 +839,6 @@ Value* ClassGenerator::codegen(const sun::ast::MemberAssignmentAST& expr) {
     }
   };
 
-  // Interface fields own the complete { data, vtable } value. A concrete
-  // source moves into a stable erased box; an interface source transfers its
-  // existing owner and is cleared.
-  if (auto* fieldInterfaceType =
-          sun::codegen::support::tryGetType<sun::types::InterfaceType>(
-              field->type)) {
-    if (value == fieldPtr) return value;
-
-    Value* fatPtrValue = value;
-    TypePtr sourceType = sun::types::unwrapRef(valueSunType);
-    if (auto* sourceClassType =
-            sun::codegen::support::tryGetType<ClassType>(sourceType)) {
-      fatPtrValue = createOwnedInterfaceFatPointer(value, sourceClassType,
-                                                   fieldInterfaceType);
-      if (!fatPtrValue) return nullptr;
-    } else if (sourceType && sourceType->isInterface()) {
-      fatPtrValue =
-          upcastInterface(value, static_cast<InterfaceType*>(sourceType.get()),
-                          fieldInterfaceType, false);
-    }
-
-    dropOverwrittenValue();
-    ctx.builder->CreateAlignedStore(
-        fatPtrValue, fieldPtr,
-        sun::codegen::support::fieldAlign(classType, fieldLLVMType,
-                                          module->getDataLayout()));
-    return fatPtrValue;
-  }
-
   // Sized array fields own their elements inline: the source array MOVES in
   // after the field's old elements are dropped.
   if (auto* fieldArrayType =

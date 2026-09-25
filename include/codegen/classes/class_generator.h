@@ -168,10 +168,10 @@ class ClassGenerator {
   // ---------------------------------------------------------------
   // Interface dispatch
 
-  /** Converts an erased child value to an ancestor without copying its object.
+  /** Converts a borrowed child view to an ancestor without copying its object.
    */
   llvm::Value* upcastInterface(llvm::Value* value, InterfaceType* source,
-                               InterfaceType* target, bool borrowed);
+                               InterfaceType* target);
 
   /**
    * Borrows an ancestor interface in a temporary stack slot without moving the
@@ -192,14 +192,6 @@ class ClassGenerator {
   llvm::Value* createInterfaceFatPointer(llvm::Value* objectPtr,
                                          ClassType* classType,
                                          InterfaceType* ifaceType);
-
-  /**
-   * Moves a concrete class into heap storage and creates an owning interface
-   * fat pointer. The vtable's drop slot drops and frees that erased object.
-   */
-  llvm::Value* createOwnedInterfaceFatPointer(llvm::Value* objectPtr,
-                                              ClassType* classType,
-                                              InterfaceType* ifaceType);
 
   /**
    * Returns the vtable global for a (class, interface) pair, building it on
@@ -240,11 +232,6 @@ class ClassGenerator {
   /** Shared dispatch tables, keyed by concrete class and interface. */
   std::map<std::pair<DeclarationId, DeclarationId>, llvm::GlobalVariable*>
       vtableGlobals;
-
-  /**
-   * Emits the type-specific routine that destroys and frees an erased object.
-   */
-  llvm::Function* getOrCreateInterfaceDropFunction(ClassType* classType);
 
   /**
    * Declare every method of one class (no bodies)

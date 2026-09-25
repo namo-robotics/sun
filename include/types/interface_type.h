@@ -179,16 +179,16 @@ class InterfaceType : public NominalType {
   bool extendsInterface(const InterfaceType& target) const {
     return equals(target) || (parent_ && parent_->extendsInterface(target));
   }
-  /** Returns the destruction slot after the dynamically dispatchable methods.
+  /** Returns the number of dynamically dispatchable methods.
    */
-  unsigned getDropIndex() const {
+  unsigned getMethodCount() const {
     unsigned result = 0;
     for (const auto& method : methods)
       if (!method.isGeneric()) ++result;
     return result;
   }
   /** Returns the direct parent's dispatch-table slot. */
-  unsigned getParentIndex() const { return getDropIndex() + 1; }
+  unsigned getParentIndex() const { return getMethodCount(); }
 
   /**
    * Returns the (possibly pre-existing) record so callers can set access.
@@ -321,8 +321,8 @@ class InterfaceType : public NominalType {
 
   /**
    * Interfaces are represented as fat pointers: { ptr data, ptr vtable }.
-   * The vtable contains methods, drop glue, and an optional parent table link.
-   * Owned and borrowed handles share the table; only owned values run cleanup.
+   * The vtable contains methods and an optional parent table link.
+   * Views borrow the concrete object and never run its cleanup.
    */
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
     return getFatPointerType(ctx);
@@ -351,11 +351,12 @@ class InterfaceType : public NominalType {
 
   /**
    * Get the vtable struct type for this interface.
-   * Non-generic methods precede drop glue and an optional parent table link.
+   * Non-generic methods precede an optional parent table link.
    */
   llvm::StructType* getVtableType(llvm::LLVMContext& ctx) const {
     auto* ptrTy = llvm::PointerType::getUnqual(ctx);
-    std::vector<llvm::Type*> slotTypes(getDropIndex() + 1 + (parent_ ? 1 : 0), ptrTy);
+    std::vector<llvm::Type*> slotTypes(getMethodCount() + (parent_ ? 1 : 0),
+                                       ptrTy);
     return llvm::StructType::get(ctx, slotTypes);
   }
 

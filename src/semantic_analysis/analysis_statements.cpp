@@ -220,7 +220,8 @@ void SemanticAnalyzer::analyzeVariableDeclaration(
     auto referenced =
         static_cast<sun::types::ReferenceType*>(declaredType.get())
             ->getReferencedType();
-    if (isAssignableTo(rhsType, referenced)) {
+    if (referenced->isInterface() ? isAssignableTo(rhsType, declaredType)
+                                  : isAssignableTo(rhsType, referenced)) {
       if (!isBorrowableLvalue(*varCreate.getValue())) {
         logAndThrowError("Cannot bind reference '" + varCreate.getName() +
                              "' to a temporary - a reference must bind a "
@@ -244,7 +245,7 @@ void SemanticAnalyzer::analyzeVariableDeclaration(
   TypePtr type;
   if (declaredType) {
     // Check type compatibility: RHS must be assignable to declared type
-    // This enables interface polymorphism: var s: IShape = Circle(...)
+    // Interface views borrow an existing concrete value.
     if (!bindsBorrow && rhsType && !isAssignableTo(rhsType, declaredType)) {
       // Allow integer literal coercion as a fallback
       if (!tryCoerceIntegerLiteral(const_cast<ExprAST*>(varCreate.getValue()),
@@ -269,6 +270,28 @@ void SemanticAnalyzer::analyzeVariableDeclaration(
                          : "Cannot infer a type for variable '" + varName +
                                "': the value assigned to it produces no result",
                      varCreate.getLocation());
+  }
+
+  if (type && type->isInterface()) {
+    // A call on an unbound generic receiver has only its return contract here.
+    // Specialization checks the concrete return type before generating storage.
+    bool deferredContract = false;
+    if (!declaredType && varCreate.getValue()->getType() == ASTNodeType::CALL) {
+      const auto& call =
+          static_cast<const sun::ast::CallExprAST&>(*varCreate.getValue());
+      if (call.getCallee()->getType() == ASTNodeType::MEMBER_ACCESS) {
+        const auto& member =
+            static_cast<const sun::ast::MemberAccessAST&>(*call.getCallee());
+        auto receiver =
+            sun::types::unwrapRef(member.getObject()->getResolvedType());
+        deferredContract = receiver && receiver->isTypeParameter();
+      }
+    }
+    if (!deferredContract)
+      logAndThrowError("Interface '" + type->toDisplayString() +
+                           "' cannot own a value; use ref or const ref, or own "
+                           "a concrete type",
+                       varCreate.getLocation());
   }
 
   validateTypeParameter(type, varCreate);
@@ -335,10 +358,8 @@ void SemanticAnalyzer::analyzeVariableAssignment(
           static_cast<sun::types::ReferenceType*>(expectedTargetType.get());
       expectedTargetType = refType->getReferencedType();
       if (expectedTargetType && expectedTargetType->isInterface())
-        logAndThrowError(
-            "Cannot replace an interface owner through a borrowed view; assign "
-            "to the owning interface variable",
-            varAssign.getLocation());
+        logAndThrowError("Cannot assign through a borrowed interface view",
+                         varAssign.getLocation());
     }
   }
 

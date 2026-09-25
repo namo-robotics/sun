@@ -56,27 +56,29 @@ classes to supply the method. The nearest default wins, and a class method
 takes precedence over every default. Calls through a parent use the same
 selected implementation. Inherited field names cannot be redeclared.
 
-Owned child interface values can move into parent interface variables,
-parameters, and return values. Borrowing a child as `ref Parent` or
-`const ref Parent` preserves the original object's lifetime and constness.
-These conversions do not copy or allocate the concrete object. An owned
-conversion transfers responsibility for destruction; a borrowed conversion
-never takes ownership. A borrowed interface allows method calls, but cannot be
-assigned a replacement owner; assign to the owning interface variable instead.
-Conversion in the opposite direction is not supported.
+Interfaces do not own values. Use `ref Interface` or `const ref Interface` to
+borrow an existing concrete object. Creating a view or converting a child view
+to a parent view never allocates on the heap or copies the object. The concrete
+owner remains responsible for destruction, and a view cannot outlive it.
+A borrowed interface allows method calls but cannot replace the concrete object
+through assignment. Conversion from parent to child is not supported.
+
+Bare interface types cannot be used for variables, fields, parameters, ordinary
+returns, or owned container elements. Store a concrete type, use a generic type
+parameter constrained by the interface, or store a borrowed view with a suitable
+lifetime.
 
 Inheritance preserves member visibility: private members remain accessible
 only within their defining module. Multiple parents and inheritance cycles
 are rejected. A class may still implement several unrelated interfaces, but
 conflicting defaults require an explicit class implementation.
 
-Owned and borrowed interface values share one dispatch table per concrete class
-and interface. The table contains method pointers, a concrete cleanup function,
-and a parent table pointer when the interface extends another interface. The
-compiler emits cleanup only for owned values; borrowing does not change the table.
+Borrowed views share one static dispatch table per concrete class and interface.
+The table contains method pointers and a parent table pointer when the interface
+extends another interface. Views have no destruction slot.
 
-Rebuild existing `.moon` libraries with this compiler version. Interface dispatch
-metadata and the calling convention for interface-reference returns have changed.
+Rebuild existing `.moon` libraries: owning interface values have been removed,
+and the interface dispatch-table layout has changed.
 
 ## Visibility
 
@@ -133,29 +135,45 @@ class Person implements Named {
 }
 ```
 
-A class can also store an interface value and dispatch through the stored
-implementation:
+A class can own a concrete implementation through a generic parameter:
 
 ```sun
+/** Handles an input value. */
 interface Handler {
+    /** Transforms the input. */
     method handle(value: i32) i32;
 }
 
+/** Doubles each input. */
 class Doubler implements Handler {
+    /** Creates the handler. */
     init() {}
+    /** Doubles the input. */
     method handle(value: i32) i32 { return value * 2; }
 }
 
-class Service {
-    var handler: Handler;
-    init() { this.handler = Doubler(); }
+/** Owns its concrete handler directly. */
+class Service<H: Handler> {
+    var handler: H;
+    /** Moves the concrete handler into the service. */
+    init(handler: H) { this.handler = handler; }
+    /** Handles one input. */
     method run(value: i32) i32 { return this.handler.handle(value); }
 }
 ```
 
-Assigning `Doubler()` moves the concrete value into the interface field. The
-implementation stays alive for dynamic dispatch and is dropped when the field
-is replaced or when its owning `Service` is dropped.
+`Service<Doubler>(Doubler())` stores the handler directly and destroys it when
+the service is dropped. Code needing dynamic dispatch can borrow the concrete
+handler as `ref Handler`.
+
+### Interface Return Requirements
+
+A bodyless interface method may name an interface as its return requirement.
+Each implementation must return a concrete class implementing that interface.
+This is a compile-time contract used by generic code, including
+`IIterable.iter()`. Such an implementation cannot be converted to a borrowed
+view of that interface for dynamic dispatch. An ordinary function or a default
+method body cannot return an owning interface value.
 
 ## Default Implementations
 
@@ -319,7 +337,12 @@ class Service implements Runnable, Stoppable {
 ## Builtin and Stdlib Interfaces
 
 `IError` (error handling, `code()` and `message()`) is builtin and cannot be
-redefined; see [Builtin Types](/builtin-types). The iteration protocol comes
+redefined; see [Builtin Types](/builtin-types). `catch (error: ref IError)` borrows
+a runtime-owned exception. Catch bindings must explicitly use `ref` or
+`const ref`; they never own the error. Exception transport still allocates and is
+separate from allocation-free interface views.
+
+The iteration protocol comes
 from the standard library (`iterator.sun`, see [Iteration](/stdlib#iteration-iiteratort-container-and-iiterablet-self)):
 
 - **`IIterator<T, Container>`** - `next(c: ref Container) Option<T>`; `None` ends the sequence

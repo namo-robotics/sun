@@ -45,7 +45,7 @@ public module std {
       }
       try {
         return Option.Some(this.items.pop_front());
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return Option.None;
       }
     }

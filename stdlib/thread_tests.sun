@@ -292,7 +292,7 @@ public module std {
           }
         );
         var r = throw_boom();
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         got = c.n;
       }
       std.test.assert_eq(got, 100000);

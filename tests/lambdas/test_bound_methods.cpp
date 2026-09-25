@@ -260,7 +260,7 @@ TEST(Lambdas_BoundMethods, throwing_method_into_throwing_param) {
     function run_guarded(f: <'_>(i32) => i32 throws IError, x: i32) i32 {
         try {
             return f(x);
-        } catch (e: IError) {
+        } catch (e: ref IError) {
             return -1;
         }
     }
@@ -287,7 +287,7 @@ TEST(Lambdas_BoundMethods, nonthrowing_method_into_throwing_param) {
     function run_guarded(f: <'_>(i32) => i32 throws IError, x: i32) i32 {
         try {
             return f(x);
-        } catch (e: IError) {
+        } catch (e: ref IError) {
             return -1;
         }
     }

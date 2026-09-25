@@ -216,7 +216,7 @@ public module std {
       var got: i64 = 0;
       try {
         var r = lock_then_throw(s);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         var g = s.lock();  // deadlocks if the guard did not unlock
         got = g.get().n;
       }

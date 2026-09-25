@@ -49,7 +49,7 @@ public module tls {
       var threw: bool = false;
       try {
         parse_response(alloc, raw, resp);
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         threw = true;
       }
       std.test.assert(threw, "a header block with no blank line is not a response");
@@ -69,7 +69,7 @@ public module tls {
       cmd.set_stderr(Stdio.Null);
       try {
         return cmd.status() == 0;
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return false;
       }
     }
@@ -164,7 +164,7 @@ public module tls {
           try {
             probe.connect_local(port_);
             ready = true;
-          } catch (e: IError) {
+          } catch (e: ref IError) {
             std.time.sleep(pause);
           }
           probe.close();
@@ -182,16 +182,16 @@ public module tls {
         try {
           this.server.kill(std.process.SIGTERM);
           this.server.wait();
-        } catch (e: IError) {}
+        } catch (e: ref IError) {}
         try {
           std.io.remove_file(this.cert_path);
-        } catch (e: IError) {}
+        } catch (e: ref IError) {}
         try {
           std.io.remove_file(this.key_path);
-        } catch (e: IError) {}
+        } catch (e: ref IError) {}
         try {
           std.io.remove_dir(this.dir);
-        } catch (e: IError) {}
+        } catch (e: ref IError) {}
       }
     }
 
@@ -205,7 +205,7 @@ public module tls {
       try {
         var resp = client.get(host, port, "/");
         return resp.status;
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
     }

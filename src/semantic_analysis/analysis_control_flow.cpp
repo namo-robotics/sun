@@ -332,40 +332,32 @@ void SemanticAnalyzer::analyzeTryCatch(
     if (catchClause.bindingName.empty() ||
         !catchClause.bindingType.has_value()) {
       logAndThrowError(
-          "catch clause requires a typed binding, e.g. catch (e: IError) "
+          "catch clause requires a typed binding, e.g. catch (e: ref IError) "
           "{ ... }",
           tryCatchExpr.getLocation());
     }
 
+    if (!catchClause.bindingType->isReference())
+      logAndThrowError("Catch bindings must use ref or const ref",
+                       tryCatchExpr.getLocation());
     TypePtr bindingType =
         resolver_.typeAnnotationToType(*catchClause.bindingType);
-
-    // The catch type must be IError or a class implementing IError.
-    bool isCatchAll = false;
-    bool valid = false;
-    if (bindingType && bindingType->isInterface()) {
-      if (bindingType.get() == builtinIError.get()) {
-        valid = true;
-        isCatchAll = true;  // catch (e: IError) matches any error
-      }
-    } else if (bindingType && bindingType->isClass()) {
-      valid = static_cast<ClassType*>(bindingType.get())
-                  ->implementsInterface(*builtinIError);
-    }
-    if (!valid) {
+    TypePtr errorType = sun::types::unwrapRef(bindingType);
+    bool isCatchAll = errorType && errorType->equals(*builtinIError);
+    bool valid = isCatchAll || (errorType && errorType->isClass() &&
+                                static_cast<ClassType*>(errorType.get())
+                                    ->implementsInterface(*builtinIError));
+    if (!valid)
       logAndThrowError(
-          "catch type must be 'IError' or a class implementing IError, "
+          "catch type must reference IError or a class implementing IError, "
           "got '" +
-              (bindingType ? bindingType->toDisplayString()
-                           : std::string("?")) +
-              "'",
+              bindingType->toDisplayString() + "'",
           tryCatchExpr.getLocation());
-    }
 
     // A catch-all (IError) makes any following clause unreachable.
     if (sawCatchAll) {
       logAndThrowError(
-          "unreachable catch clause: a 'catch (e: IError)' catch-all must "
+          "unreachable catch clause: a 'catch (e: ref IError)' catch-all must "
           "be the last handler",
           tryCatchExpr.getLocation());
     }
@@ -376,6 +368,7 @@ void SemanticAnalyzer::analyzeTryCatch(
     catchClause.resolvedType = bindingType;
 
     ctx_.enterScope();
+    ctx_.currentScope().catchBinding = catchClause.declaration.id;
     ctx_.currentScope().declareVariable(catchClause.bindingName, bindingType,
                                         false, false,
                                         catchClause.declaration.id);
@@ -400,49 +393,35 @@ void SemanticAnalyzer::analyzeThrowExpr(sun::ast::ThrowExprAST& throwExpr) {
   // Analyze the error expression being thrown
   analyzeExpr(const_cast<ExprAST&>(throwExpr.getErrorExpr()));
 
-  // Validate that the thrown expression implements IError
   TypePtr errorType = requireResolvedType(throwExpr.getErrorExpr());
-  if (errorType) {
-    bool implementsIError = false;
-
-    // Get the builtin IError interface for comparison
-    auto builtinIError = ctx_.types()->errorInterface;
-
-    // Check if it's the IError interface itself (e.g., re-throwing caught
-    // error)
-    if (errorType->isInterface()) {
-      // IError itself is throwable
-      if (errorType.get() == builtinIError.get()) {
-        implementsIError = true;
+  if (errorType && errorType->isReference()) {
+    // Only the innermost handler's binding names the runtime's active
+    // exception.
+    DeclarationId binding;
+    for (auto* scope = ctx_.scope(); scope; scope = scope->parent) {
+      if (scope->catchBinding) {
+        binding = scope->catchBinding;
+        break;
       }
+      if (scope->asFunction()) break;
     }
-    // Check if it's a class that implements IError
-    else if (errorType->isClass()) {
-      auto* classType = static_cast<ClassType*>(errorType.get());
-      implementsIError = classType->implementsInterface(*builtinIError);
-    }
-    // Check if it's a reference to a class that implements IError
-    else if (errorType->isReference()) {
-      auto* refType = static_cast<sun::types::ReferenceType*>(errorType.get());
-      TypePtr innerType = refType->getReferencedType();
-      if (innerType && innerType->isClass()) {
-        auto* classType = static_cast<ClassType*>(innerType.get());
-        implementsIError = classType->implementsInterface(*builtinIError);
-      }
-      // Also allow reference to IError interface
-      else if (innerType && innerType->isInterface()) {
-        if (innerType.get() == builtinIError.get()) {
-          implementsIError = true;
-        }
-      }
-    }
-
-    if (!implementsIError) {
+    const auto& value = throwExpr.getErrorExpr();
+    if (!binding ||
+        value.getType() != sun::ast::ASTNodeType::VARIABLE_REFERENCE ||
+        static_cast<const sun::ast::VariableReferenceAST&>(value)
+                .getTargetDeclarationId() != binding)
       logAndThrowError(
-          "throw expression must be a type implementing IError, got '" +
-              errorType->toDisplayString() + "'",
+          "Cannot throw a borrowed error; only the innermost catch binding may "
+          "be rethrown",
           throwExpr.getLocation());
-    }
+  } else if (!errorType || !errorType->isClass() ||
+             !static_cast<ClassType*>(errorType.get())
+                  ->implementsInterface(*ctx_.types()->errorInterface)) {
+    logAndThrowError(
+        "throw expression must own a concrete type implementing IError",
+        throwExpr.getLocation());
+  } else {
+    checkMoveSource(throwExpr.getErrorExpr(), throwExpr.getLocation());
   }
 
   // Throw doesn't return a value

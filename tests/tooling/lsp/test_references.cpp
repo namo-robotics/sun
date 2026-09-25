@@ -431,16 +431,16 @@ function risky(x: i32) i32 throws IError {
 function main() i32 {
     try {
         return risky(1);
-    } catch (err: IError) {
+    } catch (err: ref IError) {
         return err.code() + err.code();
     }
 }
 )";
   EXPECT_TRUE(refersTo(source, "err.code() +", true,
-                       {{"err: IError"}, {"err.code() +"}, {"err.code();"}}));
+                       {{"err: ref IError"}, {"err.code() +"}, {"err.code();"}}));
   // The cursor on the binding's own declaration
-  EXPECT_TRUE(refersTo(source, "err: IError", true,
-                       {{"err: IError"}, {"err.code() +"}, {"err.code();"}}));
+  EXPECT_TRUE(refersTo(source, "err: ref IError", true,
+                       {{"err: ref IError"}, {"err.code() +"}, {"err.code();"}}));
   EXPECT_TRUE(
       refersTo(source, "Oops();", true, {{"Oops implements"}, {"Oops();"}}));
 }

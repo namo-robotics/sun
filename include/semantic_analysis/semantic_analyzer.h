@@ -449,9 +449,11 @@ class SemanticAnalyzer {
    * type). Sets captures on the prototype and handles auto-ref conversion for
    * params. Does NOT register the function — caller is responsible for that.
    * Returns FunctionInfo with returnType set if explicit, nullptr if needs
-   * inference.
+   * inference. Only bodyless interface requirements may allow an interface
+   * return contract; executable functions must return concrete values or views.
    */
-  FunctionInfo getFunctionInfo(FunctionAST &func);
+  FunctionInfo getFunctionInfo(FunctionAST &func,
+                               bool allowInterfaceReturn = false);
 
   /** The same for a lambda: parameter types, captures, and return type. */
   FunctionInfo getLambdaInfo(LambdaAST &lambda);

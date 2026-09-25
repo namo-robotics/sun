@@ -676,7 +676,7 @@ constexpr const char* kThrowingProgram = R"(
         try {
             var x = divide(10, 0);
             return 1;
-        } catch (e: IError) {
+        } catch (e: ref IError) {
             return 42;
         }
     }

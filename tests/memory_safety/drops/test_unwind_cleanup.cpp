@@ -49,7 +49,7 @@ TEST(MemorySafety_Drops_UnwindCleanup, callee_throw_drops_callers_frame_owner) {
     function main() i32 {
       try {
         middle();
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return counter;
       }
       return -1;
@@ -74,7 +74,7 @@ TEST(MemorySafety_Drops_UnwindCleanup, unwind_through_two_frames_drops_both) {
     function main() i32 {
       try {
         outer();
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return counter;
       }
       return -1;
@@ -90,7 +90,7 @@ TEST(MemorySafety_Drops_UnwindCleanup,
       try {
         var o = Owner();
         throw TestError();
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return counter;
       }
       return -1;
@@ -99,7 +99,7 @@ TEST(MemorySafety_Drops_UnwindCleanup,
     function main() i32 {
       try {
         return helper();
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -2;
       }
       return -3;
@@ -120,7 +120,7 @@ TEST(MemorySafety_Drops_UnwindCleanup,
           var b = Owner();
           throw TestError();
         }
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return counter;
       }
       return -1;
@@ -129,7 +129,7 @@ TEST(MemorySafety_Drops_UnwindCleanup,
     function main() i32 {
       try {
         return helper();
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -2;
       }
       return -3;
@@ -151,7 +151,7 @@ TEST(MemorySafety_Drops_UnwindCleanup,
     function main() i32 {
       try {
         middle();
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return counter;
       }
       return -1;
@@ -173,7 +173,7 @@ TEST(MemorySafety_Drops_UnwindCleanup,
     function main() i32 {
       try {
         middle();
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return counter;
       }
       return -1;
@@ -192,7 +192,7 @@ TEST(MemorySafety_Drops_UnwindCleanup,
       try {
         var inside = Owner();
         thrower();
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         // inside dropped by the unwind edge; outside still live
       }
       return counter;
@@ -201,7 +201,7 @@ TEST(MemorySafety_Drops_UnwindCleanup,
     function main() i32 {
       try {
         return helper();
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -2;
       }
       return -3;
@@ -221,7 +221,7 @@ TEST(MemorySafety_Drops_UnwindCleanup, no_owners_unwind_still_works) {
     function main() i32 {
       try {
         middle();
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return 42;
       }
       return -1;
@@ -255,9 +255,9 @@ TEST(MemorySafety_Drops_UnwindCleanup,
     function main() i32 {
       try {
         thrower();
-      } catch (e: Payload) {
+      } catch (e: ref Payload) {
         return e.code();
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -2;
       }
       return -1;

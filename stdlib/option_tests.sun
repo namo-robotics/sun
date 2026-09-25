@@ -146,13 +146,13 @@ public module std {
     }
 
     /**
-     * Interface payloads: Vec<IValue>.first() yields Option<IValue>
+     * Borrowed interface payloads stay valid while their concrete owner lives.
      */
     test_function InterfacePayloadOption() {
-      var alloc = make_heap_allocator();
-      var items = Vec<IValue>(alloc, 4);
-      items.push(Num(42));
-      var got = match items.first() {
+      var number = Num(42);
+      var view: ref IValue = number;
+      var item: Option<ref IValue> = Option.Some(view);
+      var got = match item {
         Option.Some(item) => item.get(),
         Option.None => 0
       };

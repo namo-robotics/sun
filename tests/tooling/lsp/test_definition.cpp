@@ -337,12 +337,12 @@ function risky(x: i32) i32 throws IError {
 function main() i32 {
     try {
         return risky(1);
-    } catch (err: IError) {
+    } catch (err: ref IError) {
         return err.code();
     }
 }
 )";
-  EXPECT_TRUE(definedAt(source, "err.code()", "err: IError"));
+  EXPECT_TRUE(definedAt(source, "err.code()", "err: ref IError"));
   EXPECT_TRUE(definedAt(source, "Oops();", "Oops implements"));
   EXPECT_TRUE(definedAt(source, "risky(1)", "risky(x: i32)"));
 }

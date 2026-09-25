@@ -643,7 +643,7 @@ TEST(Functions_Generic_Constraints, module_field_uses_file_scope_interface) {
         public method handle(x: i32) i32 { return x + 1; }
       }
       class Box<H: IHandler> {
-        var inner: IHandler;
+        var inner: H;
         init(inner: H) { this.inner = inner; }
         /** Passes the input through the interface field. */
         public method go(x: i32) i32 { return this.inner.handle(x); }

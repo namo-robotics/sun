@@ -494,7 +494,7 @@ public module std {
         var chunk: u32 = 0;
         try {
           chunk = work.divmod_small(1000000000);
-        } catch (e: IError) {
+        } catch (e: ref IError) {
           return;
         }
         chunks.push(chunk);

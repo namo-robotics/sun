@@ -71,7 +71,7 @@ TEST(Enums_Generic, ResultWithTwoParams) {
 
     function checked_div(a: i32, b: i32) Result<i32, i32> {
         try { return Result.Ok(a / b); }
-        catch (e: ArithmeticError) { return Result.Err(-1); }
+        catch (e: ref ArithmeticError) { return Result.Err(-1); }
     }
 
     function get(r: ref Result<i32, i32>) i32 {

@@ -242,6 +242,10 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
                      : nullptr;
   if (!value) value = codegen(*expr.getValue());
   if (!value) return nullptr;
+  if (auto* view = classes().prepareClassForRefInterface(
+          value, sun::types::unwrapRef(expr.getValue()->getResolvedType()),
+          declaredType))
+    value = view;
   if (declaredType && declaredType->isReference() &&
       sun::types::areDifferentInterfaces(expr.getValue()->getResolvedType(),
                                          declaredType)) {
@@ -291,48 +295,6 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
     debugDeclareLocal(alloca, expr.getName(), varSunType, expr.getLocation());
     scopes().trackClassAllocation(alloca, expr.getName(), varSunType);
     return alloca;
-  }
-
-  // Handle interface types
-  if (auto* ifaceType =
-          sun::codegen::support::tryGetType<sun::types::InterfaceType>(
-              varSunType)) {
-    // Unwrap reference if needed
-    TypePtr valueSunType =
-        sun::types::unwrapRef(expr.getValue()->getResolvedType());
-
-    // A concrete value is moved into stable storage owned by the interface.
-    if (auto* classType =
-            sun::codegen::support::tryGetType<ClassType>(valueSunType)) {
-      Value* fatPtr =
-          classes().createOwnedInterfaceFatPointer(value, classType, ifaceType);
-      if (!fatPtr) return nullptr;
-
-      AllocaInst* alloca =
-          createEntryBlockAlloca(func, expr.getName(), fatPtr->getType());
-      ctx.builder->CreateStore(fatPtr, alloca);
-      scope[expr.getDeclarationId()] = alloca;
-      debugDeclareLocal(alloca, expr.getName(), varSunType, expr.getLocation());
-      scopes().trackClassAllocation(alloca, expr.getName(), varSunType);
-      return fatPtr;
-    }
-
-    // An interface source transfers its existing erased owner.
-    if (valueSunType && valueSunType->isInterface()) {
-      llvm::StructType* fatPtrType =
-          sun::types::InterfaceType::getFatPointerType(ctx.getContext());
-      Value* fatPtrVal = classes().upcastInterface(
-          value, static_cast<sun::types::InterfaceType*>(valueSunType.get()),
-          ifaceType, false);
-
-      AllocaInst* alloca =
-          createEntryBlockAlloca(func, expr.getName(), fatPtrType);
-      ctx.builder->CreateStore(fatPtrVal, alloca);
-      scope[expr.getDeclarationId()] = alloca;
-      debugDeclareLocal(alloca, expr.getName(), varSunType, expr.getLocation());
-      scopes().trackClassAllocation(alloca, expr.getName(), varSunType);
-      return fatPtrVal;
-    }
   }
 
   // Sized arrays own their inline storage. A fresh temporary (a literal, a

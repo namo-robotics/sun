@@ -335,6 +335,11 @@ TypePtr SemanticAnalyzer::resolveInterfaceMemberType(
   const InterfaceMethod* method =
       ctx_.accessibleMethod(*ifaceType, memberName, memberAccess.getLocation());
   if (method) {
+    if (method->returnType && method->returnType->isInterface())
+      logAndThrowError(
+          "An interface return requirement can only be called on a concrete "
+          "implementation",
+          memberAccess.getLocation());
     memberAccess.setTargetDeclarationId(method->declarationId);
     return Types::Function(method->returnType, method->paramTypes, false,
                            method->isUnsafe);

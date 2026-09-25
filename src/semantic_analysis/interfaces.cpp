@@ -113,7 +113,7 @@ void SemanticAnalyzer::mergeInterfaceParent(
   std::shared_ptr<InterfaceType> parent;
   try {
     parent = std::dynamic_pointer_cast<InterfaceType>(
-        resolver_.typeAnnotationToType(*definition.getParent()));
+        resolver_.typeAnnotationToType(*definition.getParent(), true));
     if (!parent || parent->isGenericDefinition())
       logAndThrowError(
           "Interface parent must be a fully applied interface type",
@@ -216,7 +216,7 @@ void SemanticAnalyzer::inheritInterfaceFields(
     std::shared_ptr<ClassType> classType) {
   for (const auto& ifaceRef : classDef.getImplementedInterfaces()) {
     auto interfaceType = std::dynamic_pointer_cast<InterfaceType>(
-        resolver_.typeAnnotationToType(ifaceRef.toAnnotation()));
+        resolver_.typeAnnotationToType(ifaceRef.toAnnotation(), true));
     if (!interfaceType)
       logAndThrowError("Class '" + classDef.getName() +
                            "' implements unknown interface '" + ifaceRef.name +
@@ -265,7 +265,7 @@ void SemanticAnalyzer::validateInterfaceImplementation(
   std::vector<std::shared_ptr<InterfaceType>> interfaces;
   for (const auto& reference : classDef.getImplementedInterfaces()) {
     auto type = std::dynamic_pointer_cast<InterfaceType>(
-        resolver_.typeAnnotationToType(reference.toAnnotation()));
+        resolver_.typeAnnotationToType(reference.toAnnotation(), true));
     if (type) interfaces.push_back(type);
   }
   for (const auto& interfaceType : interfaces) {

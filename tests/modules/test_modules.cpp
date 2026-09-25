@@ -969,9 +969,9 @@ TEST(Modules, moon_free_function_throw_is_caught_by_importer) {
 
     function main() i32 {
         var r: i32 = 0;
-        try { r = r + fail(1); } catch (e: IError) { r = r + e.code(); }
-        try { r = r + nested(1); } catch (e: IError) { r = r + 1000; }
-        try { r = r + fail(0); } catch (e: IError) { r = r + 5000; }
+        try { r = r + fail(1); } catch (e: ref IError) { r = r + e.code(); }
+        try { r = r + nested(1); } catch (e: ref IError) { r = r + 1000; }
+        try { r = r + fail(0); } catch (e: ref IError) { r = r + 5000; }
         return r;
     }
   )");
@@ -1498,10 +1498,12 @@ TEST(Modules, moon_interface_param_links) {
     public module handlers {
         public interface IHandler { method handle(x: i32) i32; }
 
+        /** Invokes a handler supplied by the importer. */
         public class Runner {
-            var h: IHandler;
-            init(h: IHandler) { this.h = h; }
-            public method run(x: i32) i32 { return this.h.handle(x); }
+            /** Creates a runner. */
+            init() {}
+            /** Dispatches through a borrowed handler across the library boundary. */
+            public method run(h: ref IHandler, x: i32) i32 { return h.handle(x); }
         }
     }
   )");
@@ -1518,9 +1520,10 @@ TEST(Modules, moon_interface_param_links) {
     }
 
     function main() i32 {
-        var h: IHandler = Echo();
-        var r = Runner(h);
-        return r.run(41);
+        var echo = Echo();
+        var h: ref IHandler = echo;
+        var r = Runner();
+        return r.run(h, 41);
     }
   )");
   EXPECT_EQ(value, 42);
@@ -1537,6 +1540,13 @@ TEST(Modules, moon_generic_over_own_type_by_value_links) {
     public module boxes {
         public interface IHandler { method handle(x: i32) i32; }
 
+        /** Supplies a concrete handler owned by the generic box. */
+        public class Handler implements IHandler {
+            /** Creates the handler. */
+            init() {}
+            /** Increments the input. */
+            public method handle(x: i32) i32 { return x + 1; }
+        }
         public class Box<T> {
             var value: T;
             init(value: T) { this.value = value; }
@@ -1546,11 +1556,11 @@ TEST(Modules, moon_generic_over_own_type_by_value_links) {
         }
 
         public class Server {
-            var box: Box<IHandler>;
-            init(box: Box<IHandler>) { this.box = box; }
+            var box: Box<Handler>;
+            init(box: Box<Handler>) { this.box = box; }
             public method run(x: i32) i32 { return this.box.get().handle(x); }
         }
-        public function make_server(box: Box<IHandler>) Server {
+        public function make_server(box: Box<Handler>) Server {
             return Server(box);
         }
 
@@ -1569,15 +1579,8 @@ TEST(Modules, moon_generic_over_own_type_by_value_links) {
   auto value = driver->executeString(R"(
     using boxes;
 
-    class Echo implements IHandler {
-        var pad: i32;
-        init() { this.pad = 0; }
-        public method handle(x: i32) i32 { return x + 1; }
-    }
-
     function main() i32 {
-        var h: IHandler = Echo();
-        var b = Box<IHandler>(h);
+        var b = Box<Handler>(Handler());
         var s = make_server(b);
         var c = Box<Config>(Config(10));
         return s.run(31) + config_value(c);

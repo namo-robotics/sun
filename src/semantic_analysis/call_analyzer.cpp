@@ -549,6 +549,11 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMemberCallee(
       if (compatible && exact) break;
     }
     if (selected) {
+      if (selected->returnType && selected->returnType->isInterface())
+        logAndThrowError(
+            "An interface return requirement can only be called on a concrete "
+            "implementation",
+            memberAccess.getLocation());
       ctx_.requireAccessible(methodRef(interface, *selected),
                              memberAccess.getLocation());
       memberAccess.setTargetDeclarationId(selected->declarationId);
@@ -1084,7 +1089,7 @@ void CallAnalyzer::analyzeGenericCall(GenericCallAST& genericCall) {
   // Resolve type arguments to sun::types::TypePtr
   std::vector<TypePtr> typeArgs;
   for (const auto& ta : genericCall.getTypeArguments()) {
-    typeArgs.push_back(resolver_.typeAnnotationToType(*ta));
+    typeArgs.push_back(resolver_.typeAnnotationToType(*ta, funcName == "_is"));
   }
 
   // Store resolved type arguments on the AST for codegen

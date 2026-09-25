@@ -30,7 +30,7 @@ function main() i32 {
     println(first_line);
 
     return 0;
-  } catch (e: IError) {
+  } catch (e: ref IError) {
     var message = e.message();
     print("request failed: ");
     println(message);

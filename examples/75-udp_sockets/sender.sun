@@ -11,7 +11,7 @@ function main() i32 {
     println("Datagram sent");
 
     socket.close();
-  } catch (e: IError) {
+  } catch (e: ref IError) {
     println("Network error:");
     println(e.message());
     return 1;

@@ -375,7 +375,7 @@ TEST(Modules_ProtoImport, wire_varint_roundtrip_small_and_multibyte) {
         a = r.read_varint();
         b = r.read_varint();
         c = r.read_varint();
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -4;
       }
       if (a != 1) { return -5; }
@@ -399,7 +399,7 @@ TEST(Modules_ProtoImport, wire_negative_int32_is_ten_bytes_and_roundtrips) {
       if (buf.size() != 10) { return -1; }
       var r = ProtoReader(buf);
       var back: i32 = 0;
-      try { back = r.read_int32(); } catch (e: IError) { return -2; }
+      try { back = r.read_int32(); } catch (e: ref IError) { return -2; }
       if (back != -1) { return -3; }
       return 0;
     }
@@ -429,7 +429,7 @@ TEST(Modules_ProtoImport, wire_zigzag_sint_roundtrip) {
         a = r.read_sint32();
         b = r.read_sint32();
         c = r.read_sint64();
-      } catch (e: IError) { return -3; }
+      } catch (e: ref IError) { return -3; }
       if (a != -1) { return -4; }
       if (b != 2) { return -5; }
       if (c != -123456789012) { return -6; }
@@ -465,7 +465,7 @@ TEST(Modules_ProtoImport, wire_fixed_and_float_roundtrip) {
         d2 = r.read_double();
         f2 = r.read_float();
         s2 = r.read_sfixed64();
-      } catch (e: IError) { return -3; }
+      } catch (e: ref IError) { return -3; }
       if (u2 != u) { return -4; }
       if (d2 != 3.5) { return -5; }
       if (f2 != -2.25) { return -6; }
@@ -496,7 +496,7 @@ TEST(Modules_ProtoImport, wire_string_and_bytes_roundtrip) {
       try {
         back = r.read_string_field(alloc);
         backBytes = r.read_bytes_field(alloc);
-      } catch (e: IError) { return -2; }
+      } catch (e: ref IError) { return -2; }
       if (back.length() != 5) { return -3; }
       if (unsafe { back.unsafe_at(4); } != 111) { return -4; }   // 'o'
       if (backBytes.size() != 2) { return -5; }
@@ -535,7 +535,7 @@ TEST(Modules_ProtoImport, wire_tags_limits_and_skip_unknown) {
         r.skip_field(proto_read_tag_wire_type(t2), t2, unknown);
         var t3: u64 = r.read_tag();
         r.skip_field(proto_read_tag_wire_type(t3), t3, unknown);
-      } catch (e: IError) { return -3; }
+      } catch (e: ref IError) { return -3; }
       if (seen3 != 150) { return -4; }
       if (r.at_end() == false) { return -5; }
       // unknown holds: tag(4,2)=34, len 2, 'a','b', tag(5,5)=45, 4 bytes
@@ -558,7 +558,7 @@ TEST(Modules_ProtoImport, wire_truncated_input_throws) {
       try {
         var v: u64 = r.read_varint();
         return -1;
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return 1;
       }
       return -2;
@@ -579,7 +579,7 @@ TEST(Modules_ProtoImport, map_string_keys) {
       var got: i32 = 0;
       try {
         got = m.get(String(alloc, "one")) + m.get(String(alloc, "two"));
-      } catch (e: IError) { return -1; }
+      } catch (e: ref IError) { return -1; }
       if (m.contains(String(alloc, "three"))) { return -2; }
       if (m.size() != 2) { return -3; }
       return got;
@@ -663,7 +663,7 @@ TEST(Modules_ProtoImport, message_roundtrip_all_field_kinds) {
         if (b.crc != 305419896) { return 14; }
         if (b.big != 1234567890123) { return 15; }
         if (b.ratio != 0.5) { return 16; }
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return -1;
       }
       return 0;
@@ -691,7 +691,7 @@ TEST(Modules_ProtoImport, zero_values_encode_to_empty_and_decode_defaults) {
         if (b.samples.size() != 0) { return 4; }
         if (proto_enum_to_i32_Mode(b.mode) != 0) { return 5; }
         if (b.ok) { return 6; }
-      } catch (e: IError) { return -1; }
+      } catch (e: ref IError) { return -1; }
       return 0;
     }
   )");
@@ -726,7 +726,7 @@ TEST(Modules_ProtoImport, unknown_fields_survive_reencode) {
         var m2 = Status_decode(alloc, out);
         if (m2.robot_id != 9) { return 3; }
         if (m2.unknown_fields.size() == 0) { return 4; }
-      } catch (e: IError) { return -1; }
+      } catch (e: ref IError) { return -1; }
       return 0;
     }
   )");
@@ -751,7 +751,7 @@ TEST(Modules_ProtoImport, unpacked_repeated_scalars_decode) {
         var m = Status_decode(alloc, wire);
         if (m.samples.size() != 3) { return 1; }
         if (unsafe { m.samples.get_unchecked(2); } != 30) { return 2; }
-      } catch (e: IError) { return -1; }
+      } catch (e: ref IError) { return -1; }
       return 0;
     }
   )");
@@ -770,7 +770,7 @@ TEST(Modules_ProtoImport, unknown_enum_value_maps_to_zero_variant) {
       try {
         var m = Status_decode(alloc, wire);
         return proto_enum_to_i32_Mode(m.mode);
-      } catch (e: IError) { return -1; }
+      } catch (e: ref IError) { return -1; }
     }
   )");
   EXPECT_EQ(value, 0);
@@ -788,7 +788,7 @@ TEST(Modules_ProtoImport, truncated_message_throws_decode_error) {
       try {
         var m = Status_decode(alloc, wire);
         return -1;
-      } catch (e: IError) {
+      } catch (e: ref IError) {
         return 1;
       }
     }
@@ -827,7 +827,7 @@ TEST(Modules_ProtoImport, nested_message_types_flatten_with_underscore) {
         if (proto_enum_to_i32_Outer_Kind(b.kind) != 1) { return 2; }
         if (b.more.size() != 1) { return 3; }
         if (unsafe { b.more.get_unchecked(0); }.v != 6) { return 4; }
-      } catch (e: IError) { return -1; }
+      } catch (e: ref IError) { return -1; }
       return 0;
     }
   )");
@@ -855,7 +855,7 @@ TEST(Modules_ProtoImport, delimited_stream_framing) {
         if (a2.y != 0.0) { return 2; }
         if (b2.y != 2.0) { return 3; }
         if (r.at_end() == false) { return 4; }
-      } catch (e: IError) { return -1; }
+      } catch (e: ref IError) { return -1; }
       return 0;
     }
   )");
@@ -1027,7 +1027,7 @@ TEST(Modules_ProtoImport, optional_fields_track_presence) {
         var b2 = Bag_decode(alloc, empty);
         var unset: i32 = match b2.count { Option.Some(v) => 1, Option.None => 0 };
         if (unset != 0) { return 5; }
-      } catch (e: IError) { return -1; }
+      } catch (e: ref IError) { return -1; }
       return 0;
     }
   )");
@@ -1063,7 +1063,7 @@ TEST(Modules_ProtoImport, oneof_roundtrips_each_variant) {
         d.label = String(alloc, "nine");
         b.power = Bag_power.Dock(d);
         if (roundtrip(alloc, b) != 3009) { return 4; }
-      } catch (e: IError) { return -1; }
+      } catch (e: ref IError) { return -1; }
       return 0;
     }
   )");
@@ -1091,7 +1091,7 @@ TEST(Modules_ProtoImport, oneof_last_field_on_wire_wins) {
           Bag_power.Dock(d) => -3,
           Bag_power.NotSet => -4
         };
-      } catch (e: IError) { return -1; }
+      } catch (e: ref IError) { return -1; }
     }
   )");
   EXPECT_EQ(value, 2);
@@ -1120,7 +1120,7 @@ TEST(Modules_ProtoImport, maps_with_string_keys_and_message_values) {
         if (back.items.size() != 1) { return 4; }
         if (back.items.get(3).id != 3) { return 5; }
         if (back.items.get(3).label.length() != 5) { return 6; }
-      } catch (e: IError) { return -1; }
+      } catch (e: ref IError) { return -1; }
       return 0;
     }
   )");
@@ -1157,7 +1157,7 @@ TEST(Modules_ProtoImport, proto_imports_generate_dependency_modules) {
             if (back.when.secs != 1700000000) { return 1; }
             if (proto_enum_to_i32_Level(back.level) != 1) { return 2; }
             if (back.what.length() != 4) { return 3; }
-          } catch (e2: IError) { return -1; }
+          } catch (e2: ref IError) { return -1; }
           return 0;
         }
       )",
@@ -1244,7 +1244,7 @@ TEST(Modules_ProtoImport, moon_exports_proto_messages_to_importers) {
         if (unsafe { back.samples.get_unchecked(0); } != 300) { return 3; }
         if (proto_enum_to_i32_Mode(back.mode) != 7) { return 4; }
         if (back.pose.y != -2.0) { return 5; }
-      } catch (e: IError) { return -1; }
+      } catch (e: ref IError) { return -1; }
       return 42;
     }
   )");
@@ -1296,7 +1296,7 @@ TEST(Modules_ProtoImport, moon_exports_nested_dotted_package_modules) {
       try {
         var back = Ping_decode(alloc, buf);
         return back.seq;
-      } catch (e: IError) { return -1; }
+      } catch (e: ref IError) { return -1; }
     }
   )");
   EXPECT_EQ(value, 9);

@@ -18,7 +18,7 @@ function main() i32 {
   try {
     var ok = divide(10, 2);  // 5
     println(ok);
-  } catch (e: IError) {
+  } catch (e: ref IError) {
     println("unexpected error");
   }
 
@@ -26,7 +26,7 @@ function main() i32 {
   try {
     var bad = divide(10, 0);  // throws DivisionByZeroError
     println(bad);
-  } catch (e: IError) {
+  } catch (e: ref IError) {
     println("caught division by zero");
   }
 

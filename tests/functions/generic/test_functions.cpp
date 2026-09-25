@@ -284,7 +284,7 @@ TEST(Functions_Generic, throwing_generic_is_catchable) {
     }
     function risky<T>(x: T) i32 throws IError { throw Boom(); }
     function main() i32 {
-        try { return risky<i32>(1); } catch (e: IError) { return 42; }
+        try { return risky<i32>(1); } catch (e: ref IError) { return 42; }
     }
   )");
   EXPECT_EQ(value, 42);
@@ -301,7 +301,7 @@ TEST(Functions_Generic, throwing_generic_is_catchable_from_class_method) {
         var v: T;
         init(v: T) { this.v = v; }
         method get() i32 {
-            try { return risky<T>(this.v); } catch (e: IError) { return 42; }
+            try { return risky<T>(this.v); } catch (e: ref IError) { return 42; }
         }
     }
     function risky<T>(x: T) i32 throws IError { throw Boom(); }
