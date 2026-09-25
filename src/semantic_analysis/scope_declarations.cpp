@@ -1,5 +1,6 @@
 // Declaration registration and validation within a semantic scope.
 
+#include "ast.h"
 #include "semantic_analysis/semantic_scope.h"
 #include "semantic_analysis/symbol_names.h"
 #include "support/error.h"
@@ -14,6 +15,34 @@ using sun::support::Position;
 namespace sun::semantic_analysis {
 using sun::types::Type;
 
+/**
+ * Returns the scope of a conflicting global or module variable, or null when
+ * the declaration does not shadow one. Lookup stays within the current bundle.
+ */
+static const SemanticScopeBase* shadowsGlobalVariable(
+    const SemanticScopeBase& scope, const std::string& name,
+    DeclarationId declarationId) {
+  const auto* context = scope.accessCtx();
+  const auto* declarations = context ? &context->declarationTable() : nullptr;
+  // Include globals whose initializers have not been analyzed yet, while
+  // allowing a global to register its own declaration.
+  for (auto* current = &scope; current; current = current->lookupParent()) {
+    if (current->getType() != ScopeType::Global &&
+        current->getType() != ScopeType::Module) {
+      continue;
+    }
+    const auto global =
+        declarations
+            ? declarations->findGlobal(QualifiedName(current->scopePath, name))
+            : DeclarationId{};
+    if (current->variables.contains(name) ||
+        (global && global != declarationId)) {
+      return current;
+    }
+  }
+  return nullptr;
+}
+
 void SemanticScopeBase::declareVariable(
     const std::string& name, TypePtr type, bool isParam, bool isConst,
     sun::semantic_analysis::DeclarationId declarationId) {
@@ -23,18 +52,23 @@ void SemanticScopeBase::declareVariable(
         "Identifier '" + name +
         "' is invalid: names starting with '_' are reserved for builtins");
   }
-  // Check for shadowing of global/module variables
-  for (auto* s = this; s != nullptr; s = s->parent) {
-    if (s->getType() == ScopeType::Global ||
-        s->getType() == ScopeType::Module) {
-      if (s->variables.contains(name)) {
-        logAndThrowError("Cannot shadow " +
-                         std::string(s->getType() == ScopeType::Global
-                                         ? "global"
-                                         : "module") +
-                         " variable '" + name + "'");
-      }
-    }
+  const auto* context = accessCtx();
+  const auto* declarations = context ? &context->declarationTable() : nullptr;
+  std::optional<Position> location;
+  for (auto id = declarationId; declarations && id && !location;) {
+    const auto& record = declarations->get(id);
+    if (record.astNode) location = record.astNode->getLocation();
+    id = record.owner;
+  }
+  if (const auto* shadowedScope =
+          shadowsGlobalVariable(*this, name, declarationId)) {
+    logAndThrowError(
+        "Cannot shadow " +
+            std::string(shadowedScope->getType() == ScopeType::Global
+                            ? "global"
+                            : "module") +
+            " variable '" + name + "'",
+        location);
   }
   VariableInfo info{type, isAtModuleLevel(), isParam, false};
   info.declarationId = declarationId;

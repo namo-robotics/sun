@@ -607,6 +607,9 @@ struct SemanticScopeBase
       bool isConst = false,
       sun::semantic_analysis::DeclarationId declarationId = {});
 
+  /** Returns the enclosing variable scope, stopping at a library bundle. */
+  SemanticScopeBase* lookupParent() const;
+
   /** Report whether this scope is outside every function body. */
   bool isAtModuleLevel() const {
     for (auto* scope = this; scope; scope = scope->parent)
