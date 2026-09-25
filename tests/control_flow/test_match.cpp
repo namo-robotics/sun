@@ -507,3 +507,94 @@ TEST(ControlFlow_Match, statement_arms_with_void_calls) {
   )");
   EXPECT_EQ(value, 3);
 }
+
+// ============================================================================
+// Diverging arms: a block arm that leaves the loop with continue or break
+// yields no value, so the match takes its type from the other arms (#309)
+// ============================================================================
+
+TEST(ControlFlow_Match, value_match_arm_continues_loop) {
+  auto value = executeString(R"(
+    enum Opt { Some(i64), None }
+
+    function pick(i: i64) Opt {
+      if (i % 2 == 0) {
+        return Opt.Some(i);
+      }
+      return Opt.None;
+    }
+
+    function main() i32 {
+      var total: i64 = 0;
+      for (var i: i64 = 0; i < 4; i = i + 1) {
+        var v: i64 = match pick(i) {
+          Opt.Some(x) => x,
+          Opt.None => {
+            continue;
+          }
+        };
+        total = total + v;
+      }
+      return _convert<i32>(total);
+    }
+  )");
+  EXPECT_EQ(value, 2);
+}
+
+TEST(ControlFlow_Match, value_match_arm_breaks_loop) {
+  auto value = executeString(R"(
+    enum Opt { Some(i64), None }
+
+    function pick(i: i64) Opt {
+      if (i < 2) {
+        return Opt.Some(i + 10);
+      }
+      return Opt.None;
+    }
+
+    function main() i32 {
+      var total: i64 = 0;
+      for (var i: i64 = 0; i < 4; i = i + 1) {
+        var v: i64 = match pick(i) {
+          Opt.Some(x) => x,
+          Opt.None => {
+            break;
+          }
+        };
+        total = total + v;
+      }
+      return _convert<i32>(total);
+    }
+  )");
+  EXPECT_EQ(value, 21);
+}
+
+TEST(ControlFlow_Match, diverging_arm_listed_first_still_types_the_match) {
+  auto value = executeString(R"(
+    enum Opt { Some(i64), None }
+
+    function skipThree(i: i64) Opt {
+      if (i == 3) {
+        return Opt.None;
+      }
+      return Opt.Some(i);
+    }
+
+    function main() i32 {
+      var total: i64 = 0;
+      var i: i64 = 0;
+      while (i < 5) {
+        i = i + 1;
+        var v = match skipThree(i) {
+          Opt.None => {
+            continue;
+          },
+          Opt.Some(x) => x
+        };
+        total = total + v;
+      }
+      return _convert<i32>(total);
+    }
+  )");
+  EXPECT_EQ(value, 12);
+}

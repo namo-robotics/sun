@@ -376,6 +376,13 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, TypePtr expectedType) {
       analyzeDeclareType(static_cast<sun::ast::DeclareTypeAST&>(expr));
       break;
 
+    case ASTNodeType::BREAK_STMT:
+    case ASTNodeType::CONTINUE_STMT:
+      // Neither yields a value, but a block that ends in one still needs a
+      // prepared type when it sits in a match arm or another value position
+      expr.setResolvedType(Types::Void());
+      break;
+
     default:
       break;
   }
