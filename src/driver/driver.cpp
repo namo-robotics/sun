@@ -6,7 +6,6 @@
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Transforms/IPO/GlobalDCE.h>
-#include <llvm/Transforms/IPO/Inliner.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <unistd.h>
 
@@ -1099,21 +1098,8 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
   // Optimize only after codegen has finished using instruction pointers.
   if (ctx->optimizationEnabled()) {
     ScopedStage stage("optimize");
-    for (auto& function : *ctx->mainModule) {
-      if (!function.isDeclaration()) {
-        ctx->fpm->run(function, *ctx->fam);
-      }
-    }
-    // Inline after linking so small library accessors are visible to callers.
-    llvm::ModulePassManager inliner;
-    inliner.addPass(llvm::ModuleInlinerWrapperPass());
-    inliner.run(*ctx->mainModule, *ctx->mam);
-    // Simplify the instructions exposed by inlining.
-    for (auto& function : *ctx->mainModule) {
-      if (!function.isDeclaration()) {
-        ctx->fpm->run(function, *ctx->fam);
-      }
-    }
+    // Run the standard pipeline after linking so it can optimize library calls.
+    ctx->mpm->run(*ctx->mainModule, *ctx->mam);
   }
 
   // Debug mode: dump only user-defined IR after codegen (filters out stdlib /

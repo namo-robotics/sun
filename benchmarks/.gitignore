@@ -1,0 +1,19 @@
+# Python and optional local chart environments.
+__pycache__/
+*.py[cod]
+.venv/
+
+# Local builds of the string-creation programs.
+/string-creation/bench
+/string-creation/bench_cpp
+/string-creation/bench_go
+/string-creation/bench_nim
+/string-creation/bench_sun
+/string-creation/a.out
+/string-creation/*.exe
+/string-creation/nimcache/
+/string-creation/rust/target/
+
+# Optional --output directory inside the benchmark tree.
+# Keep the named JSON, Markdown, and PNG result snapshots trackable.
+/string-creation/results/

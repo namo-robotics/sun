@@ -27,12 +27,6 @@ class PrototypeAST;
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/TargetParser/Host.h"
-#include "llvm/Transforms/InstCombine/InstCombine.h"
-#include "llvm/Transforms/Scalar.h"
-#include "llvm/Transforms/Scalar/GVN.h"
-#include "llvm/Transforms/Scalar/Reassociate.h"
-#include "llvm/Transforms/Scalar/SimplifyCFG.h"
-#include "llvm/Transforms/Utils/Mem2Reg.h"
 
 /** Declares LLVM types referenced by the compiler interfaces. */
 using namespace llvm;
@@ -51,7 +45,7 @@ class CodegenContext {
   std::unique_ptr<Module> mainModule;
 
   // Pass and analysis managers
-  std::unique_ptr<FunctionPassManager> fpm;
+  std::unique_ptr<ModulePassManager> mpm;
   std::unique_ptr<LoopAnalysisManager> lam;
   std::unique_ptr<FunctionAnalysisManager> fam;
   std::unique_ptr<CGSCCAnalysisManager> cgam;
@@ -116,7 +110,6 @@ class CodegenContext {
 
   /** Configures the LLVM passes used to optimize generated code. */
   void initializePasses(LLVMContext& ctx) {
-    fpm = std::make_unique<FunctionPassManager>();
     lam = std::make_unique<LoopAnalysisManager>();
     fam = std::make_unique<FunctionAnalysisManager>();
     cgam = std::make_unique<CGSCCAnalysisManager>();
@@ -138,18 +131,14 @@ class CodegenContext {
 
     si->registerCallbacks(*pic, mam.get());
 
-    fpm->addPass(PromotePass());
-    fpm->addPass(InstCombinePass());
-    fpm->addPass(ReassociatePass());
-    fpm->addPass(GVNPass());
-    fpm->addPass(SimplifyCFGPass());
-
     PassBuilder PB;
     PB.registerModuleAnalyses(*mam);
     PB.registerFunctionAnalyses(*fam);
     PB.registerLoopAnalyses(*lam);
     PB.registerCGSCCAnalyses(*cgam);
     PB.crossRegisterProxies(*lam, *fam, *cgam, *mam);
+    mpm = std::make_unique<ModulePassManager>(
+        PB.buildPerModuleDefaultPipeline(OptimizationLevel::O3));
 
     if (jit) {
       mainModule->setDataLayout(jit->getDataLayout());

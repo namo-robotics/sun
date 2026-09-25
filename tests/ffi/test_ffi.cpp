@@ -1130,12 +1130,14 @@ TEST(Ffi, native_function_and_global_kind_collision_fails) {
       std::exception);
 }
 
+/** Verify native and Sun globals remain distinct when both are used. */
 TEST(Ffi, native_global_and_sun_definition_have_distinct_symbols) {
   auto driver = Driver::createForAOT("extern_global_definition_collision");
   ASSERT_NO_THROW(driver->compileString(R"(
     var defined: i32 = 1;
     extern "C" var imported: i32 as "defined";
-    function main() i32 { return defined; }
+    /** Keep both storage locations live through optimization. */
+    function main() i32 { return defined + unsafe { imported; }; }
   )"));
   auto* native = driver->getModule().getGlobalVariable("defined");
   ASSERT_NE(native, nullptr);
@@ -1151,6 +1153,7 @@ TEST(Ffi, native_global_and_sun_definition_have_distinct_symbols) {
 // Externs inside a .moon bundle
 // ============================================================================
 
+/** Check bundled native names before optimization and execute the imported wrapper. */
 TEST(Ffi, extern_symbol_survives_moon_bundling) {
   // A bundle's own symbols carry its hash prefix for isolation. A C extern's
   // name *is* its ABI, so prefixing it would rename the libc symbol out of
@@ -1182,7 +1185,10 @@ TEST(Ffi, extern_symbol_survives_moon_bundling) {
   }
 
   fs::path moonPath = dir / "cwrap.moon";
-  sun::moon_bundling::MoonBuilder::build(libSrc.string(), moonPath);
+  // Inspect ABI declarations before LLVM replaces libc calls with intrinsics.
+  sun::moon_bundling::MoonBuildOptions options;
+  options.optimize = false;
+  sun::moon_bundling::MoonBuilder::build(libSrc.string(), moonPath, options);
 
   // The C symbol must still be spelled `labs` in the bundled bitcode.
   {
