@@ -242,18 +242,11 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
                      : nullptr;
   if (!value) value = codegen(*expr.getValue());
   if (!value) return nullptr;
-  auto sourceType = sun::types::unwrapRef(expr.getValue()->getResolvedType());
-  auto targetType = sun::types::unwrapRef(declaredType);
-  if (declaredType && declaredType->isReference() && sourceType &&
-      sourceType->isInterface() && targetType && targetType->isInterface() &&
-      !sourceType->equals(*targetType)) {
-    auto* view = classes().upcastInterface(
-        value, static_cast<sun::types::InterfaceType*>(sourceType.get()),
-        static_cast<sun::types::InterfaceType*>(targetType.get()), true);
-    auto* storage = ctx.builder->CreateAlloca(view->getType(), nullptr,
-                                              "iface.parent.view");
-    ctx.builder->CreateStore(view, storage);
-    value = storage;
+  if (declaredType && declaredType->isReference() &&
+      sun::types::areDifferentInterfaces(expr.getValue()->getResolvedType(),
+                                         declaredType)) {
+    value = classes().createBorrowedInterfaceUpcast(
+        value, expr.getValue()->getResolvedType(), declaredType);
   }
 
   // Inside a function: use local alloca

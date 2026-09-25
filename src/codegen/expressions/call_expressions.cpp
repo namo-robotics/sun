@@ -876,16 +876,16 @@ bool CodegenVisitor::emitCallArguments(
         bool borrowed = conversions[i] == ArgConversion::InterfaceRefUpcast;
         argVal = borrowed ? prepareRefArgument(argExpr, argSunType)
                           : codegen(*argExpr);
-        auto* source = static_cast<InterfaceType*>(
-            sun::types::unwrapRef(argSunType).get());
-        auto* target =
-            static_cast<InterfaceType*>(sun::types::unwrapRef(paramType).get());
-        argVal = classes.upcastInterface(argVal, source, target, borrowed);
+        if (!argVal) return false;
         if (borrowed) {
-          auto* storage = ctx.builder->CreateAlloca(argVal->getType(), nullptr,
-                                                    "iface.parent.view");
-          ctx.builder->CreateStore(argVal, storage);
-          argVal = storage;
+          argVal = classes.createBorrowedInterfaceUpcast(argVal, argSunType,
+                                                            paramType);
+        } else {
+          auto* source = static_cast<InterfaceType*>(
+              sun::types::unwrapRef(argSunType).get());
+          auto* target = static_cast<InterfaceType*>(
+              sun::types::unwrapRef(paramType).get());
+          argVal = classes.upcastInterface(argVal, source, target, false);
         }
         break;
       }

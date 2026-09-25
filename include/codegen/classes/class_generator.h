@@ -173,6 +173,16 @@ class ClassGenerator {
   llvm::Value* upcastInterface(llvm::Value* value, InterfaceType* source,
                                InterfaceType* target, bool borrowed);
 
+  /**
+   * Borrows an ancestor interface in a temporary stack slot without moving the
+   * object. Returns value unchanged unless both types are interfaces and
+   * targetType is a reference to a different interface. Invalid ancestor
+   * conversions report an error.
+   */
+  llvm::Value* createBorrowedInterfaceUpcast(llvm::Value* value,
+                                               TypePtr sourceType,
+                                               TypePtr targetType);
+
   // ---------------------------------------------------------------
 
   /**
