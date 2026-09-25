@@ -656,3 +656,38 @@ TEST_F(Modules_GenericRegressions, InterfaceInheritanceAcrossLibrary) {
   )");
   checkProgram("consumer.sun");
 }
+
+/** Library parameters may share names with globals in the importing program. */
+TEST_F(Modules_GenericRegressions,
+       LibraryParametersDoNotShadowConsumerGlobals) {
+  ASSERT_NO_FATAL_FAILURE(buildLibrary(R"(
+    /** Provides a template with a parameter named by the consumer too. */
+    public module lib {
+      /** Returns the supplied value after specialization. */
+      public function identity<T>(total: T) T { return total; }
+    }
+  )"));
+  for (bool globalFirst : {false, true}) {
+    const std::string global = "var total: i32 = 1;\n";
+    const std::string main = R"(
+      /** Checks specialization in the library's definition scope. */
+      function main() i32 { return lib.identity<i32>(5) - 5; }
+    )";
+    write("consumer.sun", (globalFirst ? global + main : main + global) +
+                              "manifest { libraries: [\"lib.moon\"] }");
+    ASSERT_NO_FATAL_FAILURE(checkProgram("consumer.sun"));
+  }
+}
+
+/** Standard library generic parameters cannot shadow a consumer allocator. */
+TEST_F(Modules_GenericRegressions, GlobalAllocatorWithGenericVector) {
+  write("consumer.sun", R"(
+    using std;
+    var alloc: HeapAllocator = HeapAllocator();
+    var values: Vec<i64> = Vec<i64>(alloc, 8);
+    /** Confirms the vector can be initialized using the global allocator. */
+    function main() i32 { return 0; }
+    manifest { libraries: ["stdlib.moon"] }
+  )");
+  ASSERT_NO_FATAL_FAILURE(checkProgram("consumer.sun"));
+}

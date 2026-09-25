@@ -72,6 +72,13 @@ void requireQualifiedEnumAccess(const SemanticScopeBase* from,
 
 }  // namespace
 
+SemanticScopeBase* SemanticScopeBase::lookupParent() const {
+  if (isLibraryScope(scopeName) && getType() != ScopeType::Import) {
+    return nullptr;
+  }
+  return parent;
+}
+
 bool SemanticScope::hasSymbol(const std::string& name) const {
   if (classes.contains(name)) return true;
   if (genericClasses.contains(name)) return true;
@@ -334,7 +341,7 @@ VariableInfo* SemanticScopeBase::lookupVariable(const std::string& name) {
     if (found == s->variables.end()) return nullptr;
     return filter.admit(&found->second) ? &found->second : nullptr;
   };
-  for (auto* s = this; s != nullptr; s = s->parent) {
+  for (auto* s = this; s != nullptr; s = s->lookupParent()) {
     if (auto* v = probe(s)) return v;
     // Search direct import-scope children
     for (const auto& [childName, child] : s->childModules) {
@@ -369,6 +376,11 @@ UnanalyzedGlobal SemanticScopeBase::findUnanalyzedGlobal(
   UnanalyzedGlobal unanalyzed;
   auto probe = [&](SemanticScopeBase* scope) {
     if (scope->variables.count(name)) return Probe::Declared;
+    // Blocks have no global namespace, even when their scope path is empty.
+    if (scope->getType() != ScopeType::Global &&
+        scope->getType() != ScopeType::Module &&
+        scope->getType() != ScopeType::Import)
+      return Probe::Unknown;
     const auto* global = findVariableNode(
         declarations,
         declarations.findGlobal(QualifiedName(scope->scopePath, name)));
@@ -377,7 +389,7 @@ UnanalyzedGlobal SemanticScopeBase::findUnanalyzedGlobal(
     unanalyzed = {const_cast<sun::ast::VariableCreationAST*>(global), scope};
     return Probe::Unanalyzed;
   };
-  for (auto* scope = this; scope != nullptr; scope = scope->parent) {
+  for (auto* scope = this; scope != nullptr; scope = scope->lookupParent()) {
     if (Probe result = probe(scope); result != Probe::Unknown)
       return result == Probe::Unanalyzed ? unanalyzed : UnanalyzedGlobal{};
     for (const auto& [childName, child] : scope->childModules) {

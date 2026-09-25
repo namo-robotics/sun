@@ -2185,3 +2185,97 @@ TEST(Modules, moon_globals_reached_by_two_import_paths_are_initialized_once) {
   )");
   EXPECT_EQ(value, 0);
 }
+
+/** Rejects local shadowing regardless of declaration order or an earlier read.
+ */
+TEST(Modules, global_shadowing_is_independent_of_order) {
+  for (bool module : {false, true}) {
+    for (bool globalFirst : {false, true}) {
+      for (bool readFirst : {false, true}) {
+        SCOPED_TRACE(module);
+        SCOPED_TRACE(globalFirst);
+        SCOPED_TRACE(readFirst);
+        const std::string global = "var total: i32 = 1;\n";
+        const std::string local =
+            "/** Attempts to shadow the enclosing global. */\n"
+            "function f() i32 {\n" +
+            std::string(readFirst ? "var before: i32 = total;\n" : "") +
+            "var total: i32 = 5;\nreturn total;\n}\n";
+        std::string source = globalFirst ? global + local : local + global;
+        const int localLine =
+            3 + (globalFirst ? 1 : 0) + (readFirst ? 1 : 0) + (module ? 1 : 0);
+        if (module)
+          source = "/** Contains the conflicting names. */ module m {\n" +
+                   source + "}\n";
+        source +=
+            "/** Supplies the program entry point. */\n"
+            "function main() i32 { return 0; }\n";
+        try {
+          executeString(source);
+          FAIL() << "Accepted a local that shadows a global";
+        } catch (const sun::support::SunError& error) {
+          EXPECT_NE(error.getMessage().find(std::string("Cannot shadow ") +
+                                            (module ? "module" : "global") +
+                                            " variable 'total'"),
+                    std::string::npos);
+          ASSERT_TRUE(error.getLocation().has_value());
+          EXPECT_EQ(error.getLocation()->line, localLine);
+        }
+      }
+    }
+  }
+}
+
+/** Keeps library lexical lookup inside its bundle while retaining file imports.
+ */
+TEST(Modules, library_scope_stops_lookup_at_bundle_boundary) {
+  using namespace sun::semantic_analysis;
+  GlobalScope program;
+  program.declareVariable("consumer", nullptr);
+  auto& library = program.declareModule("$library$");
+  library.declareVariable("libraryValue", nullptr);
+  auto& module = library.declareModule("api");
+  BlockScope body;
+  body.parent = &module;
+  EXPECT_EQ(body.lookupVariable("consumer"), nullptr);
+  EXPECT_NE(body.lookupVariable("libraryValue"), nullptr);
+  DeclarationTable declarations;
+  sun::ast::VariableCreationAST later("later", nullptr);
+  const auto laterId = declarations.add(DeclarationKind::Variable, "later");
+  declarations.bindAstNode(laterId, &later);
+  declarations.registerGlobal(QualifiedName({}, "later"), laterId);
+  EXPECT_EQ(program.findUnanalyzedGlobal("later", declarations).node, &later);
+  EXPECT_EQ(body.findUnanalyzedGlobal("later", declarations).node, nullptr);
+  EXPECT_NO_THROW(body.declareVariable("consumer", nullptr));
+  EXPECT_THROW(body.declareVariable("libraryValue", nullptr),
+               sun::support::SunError);
+
+  ImportScope importedFile;
+  importedFile.scopeName = "$import_file$";
+  importedFile.parent = &program;
+  EXPECT_NE(importedFile.lookupVariable("consumer"), nullptr);
+}
+
+/** Parameters and references obey the same rule as ordinary local variables. */
+TEST(Modules, other_bindings_cannot_shadow_later_globals) {
+  EXPECT_NE(globalCompileError(R"(
+    /** Declares a parameter that conflicts with a later global. */
+    function f(total: i32) i32 { return total; }
+    var total: i32 = 1;
+    /** Supplies the program entry point. */
+    function main() i32 { return 0; }
+  )")
+                .find("Cannot shadow global variable 'total'"),
+            std::string::npos);
+  EXPECT_NE(globalCompileError(R"(
+    /** Declares a reference that conflicts with a later global. */
+    function main() i32 {
+      var value: i32 = 2;
+      ref total = value;
+      return total;
+    }
+    var total: i32 = 1;
+  )")
+                .find("Cannot shadow global variable 'total'"),
+            std::string::npos);
+}
