@@ -291,23 +291,36 @@ sun test sun-config.json
 Unchanged builds skip compilation. Use `--target` to select another compilation
 target and `--no-test` to omit test binaries from a build.
 
-A library entrypoint can also build from Git:
+Build a library dependency from its repository's configuration:
 
 ```json
 {
-    "git": "git@github.com:example/mylib.git",
-    "version": "v1.2.3",
-    "path": "src/mylib.sun",
-    "type": "library",
-    "output_name": "build/mylib"
+    "dependencies": {
+        "MYLIB": {
+            "git": "git@github.com:example/mylib.git",
+            "version": "v1.2.3",
+            "config": "sun-config.json",
+            "entrypoint": "mylib"
+        }
+    }
 }
 ```
 
-Here `path` is relative to the repository, and `version` is a branch, tag, or
-commit. HTTPS and SSH are supported. Sources stay cached until a build uses
-`--refresh-sources`. See the
+Import `"$MYLIB/mylib.moon"` in the consumer's manifest. `config` defaults to
+`sun-config.json` and is relative to the repository. `entrypoint` selects a
+named library; omit it when the config declares exactly one library. The library
+owns its source path and output filename. Sun builds it on demand in an isolated
+cache without running its tests or building its other entrypoints.
+
+To build a source file with your project's settings instead, replace `config`
+and `entrypoint` with `"path": "src/mylib.sun"`. This form ignores the repository's
+config and exposes `mylib.moon` under `$MYLIB`. The two forms are mutually exclusive.
+
+`version` is a branch, tag, or commit. HTTPS, `ssh://` URLs, and `git@host:path`
+SSH addresses are supported, using Git's normal authentication. Sources stay
+cached until a build uses `--refresh-sources`. See the
 [Git library example](https://github.com/namo-robotics/sun/tree/main/examples/100-git_library)
-for a complete project using `sun_serve`.
+for a complete project building `sun_serve` from scratch.
 
 ## Moons
 

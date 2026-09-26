@@ -24,6 +24,9 @@ namespace sun::driver {
 /** Keeps the implementation helpers in this file private to this translation
  * unit. */
 namespace {
+/** Holds the explicitly selected config while compiling a source dependency. */
+thread_local const SunConfig* sourceConfig = nullptr;
+
 /** Provides the configured names used when expanding manifest paths. */
 std::map<std::string, std::string>& pathVariables() {
   static std::map<std::string, std::string> vars;
@@ -57,6 +60,13 @@ ManifestProcessor::exchangeDependencyPathVariables(
     std::map<std::string, std::string> values) {
   dependencyPathVariables().swap(values);
   return values;
+}
+
+const SunConfig* ManifestProcessor::exchangeSourceConfig(
+    const SunConfig* config) {
+  const auto* previous = sourceConfig;
+  sourceConfig = config;
+  return previous;
 }
 
 void ManifestProcessor::clearPathVariables() {
@@ -182,8 +192,10 @@ ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
 
   // Explicit path variables win, followed by consuming-project overrides
   // during Git builds, then source config, defaults, and the environment.
-  auto configOpt = SunConfig::findFrom(baseDir, targetTriple);
-  const SunConfig* config = configOpt ? &*configOpt : nullptr;
+  auto configOpt = sourceConfig ? std::optional<SunConfig>{}
+                                : SunConfig::findFrom(baseDir, targetTriple);
+  const SunConfig* config =
+      sourceConfig ? sourceConfig : (configOpt ? &*configOpt : nullptr);
 
   auto addSuns = [&](const std::vector<sun::ast::ManifestSunDependency>& suns) {
     for (const auto& sunDep : suns) {

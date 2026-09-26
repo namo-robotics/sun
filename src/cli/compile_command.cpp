@@ -8,6 +8,7 @@
 #include "cli/command_support.h"
 #include "driver/build_record.h"
 #include "driver/driver.h"
+#include "driver/git_source.h"
 #include "driver/input_hash.h"
 #include "driver/manifest_processor.h"
 #include "llvm/Support/raw_ostream.h"
@@ -324,6 +325,9 @@ int compileEntrypoint(const CompileJob& job) {
 
 /** Runs the compile command and returns its process exit status. */
 int runCompileCommand(const BuildRunOptions& options) {
+  sun::driver::GitDependencyBuildScope dependencyScope(
+      options.shared.debugInfo, options.shared.optimize, options.forceRebuild,
+      options.refreshSources);
   CompileJob job = makeCompileJob(options);
   if (job.outputFile.empty()) {
     job.outputFile = deriveOutputName(job.inputFiles[0]);

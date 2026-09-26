@@ -1,14 +1,19 @@
 #include "driver/git_source.h"
 
+#include <fcntl.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/Program.h>
+#include <sys/file.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <set>
 
+#include "driver/manifest_processor.h"
 #include "moon_bundling/moon.h"
 #include "support/error.h"
 
@@ -17,6 +22,17 @@
 namespace sun::driver {
 /** Keeps checkout and process helpers private to this file. */
 namespace {
+/** Settings inherited by source dependencies during the current build. */
+thread_local sun::moon_bundling::MoonBuildOptions dependencyOptions;
+/** Whether the current command requests fresh source snapshots. */
+thread_local bool refreshDependencies = false;
+/** Counts nested build scopes so refreshes are shared within a command. */
+thread_local unsigned buildDepth = 0;
+/** Repository revisions already refreshed during the current command. */
+thread_local std::set<std::string> refreshedDependencies;
+/** Repository/config selections currently being built, for cycle detection. */
+thread_local std::set<std::string> activeDependencies;
+
 /** Runs Git with separate arguments, disabled hooks, and restricted protocols.
  */
 void runGit(const std::vector<std::string>& arguments) {
@@ -152,5 +168,166 @@ std::string resolveGitEntrypoint(const ConfigEntrypoint& entry, bool refresh) {
     sun::support::logAndThrowError(
         "Git entrypoint is missing or escapes its checkout: " + entry.path);
   return source.string();
+}
+GitDependencyBuildScope::GitDependencyBuildScope(bool debugInfo, bool optimize,
+                                                 bool forceRebuild,
+                                                 bool refresh)
+    : previous_(dependencyOptions), previousRefresh_(refreshDependencies) {
+  if (buildDepth++ == 0) refreshedDependencies.clear();
+  dependencyOptions.debugInfo = debugInfo;
+  dependencyOptions.optimize = optimize;
+  dependencyOptions.forceRebuild = forceRebuild;
+  refreshDependencies = refresh || previousRefresh_;
+}
+
+GitDependencyBuildScope::~GitDependencyBuildScope() {
+  dependencyOptions = previous_;
+  refreshDependencies = previousRefresh_;
+  --buildDepth;
+}
+
+/** Keeps dependency lifetime guards private to this file. */
+namespace {
+/** Detects cycles and serializes complete dependency graphs across processes.
+ */
+class DependencyBuildGuard {
+  std::string key_;
+  int lock_ = -1;
+
+ public:
+  /** Registers the selection before any recursive build or lock acquisition. */
+  explicit DependencyBuildGuard(std::string key) : key_(std::move(key)) {
+    if (activeDependencies.count(key_))
+      sun::support::logAndThrowError("cyclic Git library dependency");
+    if (activeDependencies.empty()) {
+      const auto cache = cacheDirectory();
+      std::filesystem::create_directories(cache);
+      lock_ = open((cache / ".build.lock").c_str(),
+                   O_CREAT | O_RDWR | O_CLOEXEC | O_NOFOLLOW, 0600);
+      if (lock_ < 0 || flock(lock_, LOCK_EX) != 0) {
+        if (lock_ >= 0) close(lock_);
+        sun::support::logAndThrowError("could not lock Git dependency cache");
+      }
+    }
+    activeDependencies.insert(key_);
+  }
+  /** Releases cycle membership and the outer graph lock on every exit path. */
+  ~DependencyBuildGuard() {
+    activeDependencies.erase(key_);
+    if (lock_ >= 0) close(lock_);
+  }
+};
+
+/** Applies the chosen config while retaining explicit command-line overrides.
+ */
+class SourceConfigScope {
+  const SunConfig* previous_;
+  std::map<std::string, std::string> variables_;
+
+ public:
+  /** Replaces any enclosing dependency's config and project overrides. */
+  explicit SourceConfigScope(const SunConfig& config)
+      : previous_(ManifestProcessor::exchangeSourceConfig(&config)),
+        variables_(ManifestProcessor::exchangeDependencyPathVariables({})) {}
+  /** Restores the enclosing library's configuration, including after errors. */
+  ~SourceConfigScope() {
+    ManifestProcessor::exchangeSourceConfig(previous_);
+    ManifestProcessor::exchangeDependencyPathVariables(std::move(variables_));
+  }
+};
+}  // namespace
+
+std::filesystem::path resolveGitDependency(const SunConfig& consumer,
+                                           const std::string& name) {
+  /** Shortens filesystem operations within the dependency build. */
+  namespace fs = std::filesystem;
+  const auto& dep = consumer.dependencies.at(name);
+  const auto repository = dep.git + "\n" + dep.version;
+  const bool direct = !dep.path.empty();
+  const auto selection =
+      repository + (direct ? "\nsource\n" + dep.path
+                           : "\nconfig\n" + dep.config + "\n" + dep.entrypoint);
+  DependencyBuildGuard guard(selection);
+  ConfigEntrypoint source;
+  source.git = dep.git;
+  source.version = dep.version;
+  source.path = direct ? dep.path : dep.config;
+  source.type = ConfigEntrypoint::Type::Library;
+  const bool refresh =
+      refreshDependencies && !refreshedDependencies.count(repository);
+  const fs::path inputFile = resolveGitEntrypoint(source, refresh);
+  if (refresh) refreshedDependencies.insert(repository);
+  // Direct source builds use the consumer's settings without loading the
+  // repository's project config; config selections use library-owned defaults.
+  auto config =
+      direct ? consumer : SunConfig::loadFile(inputFile, consumer.targetTriple);
+  // Keep the consumer and its dependencies on the same local libraries.
+  std::vector<std::string> consumerPaths;
+  for (const auto& path : consumer.sunPath)
+    consumerPaths.push_back(
+        ManifestProcessor::expandPathVariables(path, &consumer));
+  if (direct) config.sunPath.clear();
+  config.sunPath.insert(config.sunPath.begin(), consumerPaths.begin(),
+                        consumerPaths.end());
+  ConfigEntrypoint directEntry;
+  directEntry.path = inputFile.string();
+  directEntry.type = ConfigEntrypoint::Type::Library;
+  const ConfigEntrypoint* selected = direct ? &directEntry : nullptr;
+  if (!direct)
+    for (const auto& entry : config.entrypoints) {
+      if (!dep.entrypoint.empty() && entry.name != dep.entrypoint) continue;
+      if (entry.type != ConfigEntrypoint::Type::Library) {
+        if (!dep.entrypoint.empty())
+          sun::support::logAndThrowError(
+              "Git dependency entrypoint must be a library: " + dep.entrypoint);
+        continue;
+      }
+      if (selected)
+        sun::support::logAndThrowError("ambiguous Git library dependency " +
+                                       name + "; specify entrypoint");
+      selected = &entry;
+    }
+  if (!selected)
+    sun::support::logAndThrowError("Git dependency " + name +
+                                   " has no matching library entrypoint");
+  if (!selected->git.empty())
+    sun::support::logAndThrowError(
+        "selected library must belong to its dependency repository");
+
+  SourceConfigScope configScope(config);
+  const fs::path entrypoint = fs::weakly_canonical(
+      ManifestProcessor::expandPathVariables(selected->path, &config));
+  auto checkout = inputFile.parent_path();
+  while (!fs::is_directory(checkout / ".sun-git-source")) {
+    if (checkout == checkout.parent_path())
+      sun::support::logAndThrowError("missing Git checkout boundary");
+    checkout = checkout.parent_path();
+  }
+  const auto relative = entrypoint.lexically_relative(checkout);
+  if (relative.empty() || *relative.begin() == ".." ||
+      !fs::is_regular_file(entrypoint))
+    sun::support::logAndThrowError(
+        "dependency library is missing or escapes its checkout");
+  fs::path filename = selected->outputName.empty()
+                          ? entrypoint.stem()
+                          : fs::path(selected->outputName).filename();
+  if (filename.extension() != ".moon") filename += ".moon";
+  if (filename.string().find('$') != std::string::npos)
+    sun::support::logAndThrowError(
+        "dependency library output filename must be fixed");
+  const auto settings =
+      std::string(dependencyOptions.debugInfo ? "debug" : "release") +
+      (dependencyOptions.optimize ? "-optimized" : "-unoptimized");
+  const auto output = cacheDirectory() / "builds" /
+                      sun::moon_bundling::computeSha256Hex(
+                          selection + "\n" + inputFile.string() + "\n" +
+                          consumer.configDir.string()) /
+                      configTargetKey(consumer.targetTriple) / settings;
+  fs::create_directories(output);
+  auto options = dependencyOptions;
+  options.targetTriple = consumer.targetTriple;
+  sun::moon_bundling::MoonBuilder::build(entrypoint.string(), output / filename,
+                                         options);
+  return output;
 }
 }  // namespace sun::driver

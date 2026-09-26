@@ -235,11 +235,67 @@ cache root with `SUN_DEPENDENCY_CACHE`. Names must not collide with ordinary
 path variables, explicit overrides, editor defaults, or environment variables.
 
 A dependency accepts an ordinary descriptor, or `default` and `target`
-descriptors. Each descriptor contains exactly one of `moon` or `package`.
+descriptors. A descriptor contains `moon`, `package`, or a Git source selection.
 A `moon` descriptor requires a simple `.moon` `filename`; `package` accepts a
 Sun `.tar.gz` package and exposes its extracted root. Both accept exactly one
 of `url` or config-relative `path`. URLs require a SHA-256 hash; local hashes
 are optional. Supported URL schemes are `http://`, `https://`, and `file://`.
+
+A Git source selection uses the dependency's own config:
+
+```json
+{
+  "dependencies": {
+    "MYLIB": {
+      "git": "ssh://git@example.com/team/mylib.git",
+      "version": "v1.2.3",
+      "config": "sun-config.json",
+      "entrypoint": "mylib"
+    }
+  }
+}
+```
+
+Alternatively, select a source entrypoint directly:
+
+```json
+{
+  "dependencies": {
+    "MYLIB": {
+      "git": "git@example.com:team/mylib.git",
+      "version": "v1.2.3",
+      "path": "src/mylib.sun"
+    }
+  }
+}
+```
+
+`path` is relative to the repository and cannot be combined with `config` or
+`entrypoint`. Direct source builds use the consumer's configuration, including
+`sun_path`, path variables, and named dependencies; the repository's config is
+not loaded. The output filename is the source filename with `.moon` replacing
+`.sun`, so the consumer imports `"$MYLIB/mylib.moon"`. Both forms build libraries
+without running dependency tests and share Git caching and SSH support.
+
+The `git` field also accepts HTTPS and SCP-style SSH (`git@example.com:team/mylib.git`).
+`version` is required. When `path` is absent, `config` defaults to
+`sun-config.json`; `entrypoint` is
+optional only when exactly one enabled library is available for the selected
+target. Use `default`/`target` descriptors to restrict platform availability.
+The selected library's `output_name` basename (or source stem plus `.moon`)
+is exposed under `$MYLIB`. Its tests, other entrypoints, and packages are not built.
+Transitive dependencies resolve through the library's own config. Source configs
+own their path variables; explicit `--path-var` overrides still apply. The
+consumer's `sun_path` directories are searched before the dependency's configured
+search directories, including for transitive builds. To compile against your
+local stdlib, put the directory containing your built `stdlib.moon` in the
+consumer's `sun_path`.
+
+Git checkouts and library builds use `SUN_GIT_CACHE` (default `~/.sun/cache/git`).
+Builds are separated by consumer, source selection, target, and compiler settings.
+`--refresh-sources` refreshes each repository revision once per command;
+`--force-rebuild` recompiles dependencies as well. Dependency cycles and missing,
+ambiguous, or non-library selections are compilation errors.
 
 For a package dependency named `IMAGE_TOOLS`, import a library by its path:
 

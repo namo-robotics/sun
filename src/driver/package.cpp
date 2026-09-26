@@ -18,6 +18,7 @@
 #include <memory>
 #include <set>
 
+#include "driver/git_source.h"
 #include "driver/manifest_processor.h"
 #include "moon_bundling/moon.h"
 #include "moon_bundling/moon_cache.h"
@@ -384,7 +385,8 @@ fs::path resolveConfigDependency(const SunConfig& config,
                                  const std::string& name) {
   const auto& dep = config.dependencies.at(name);
   if (!dep.available)
-    fail("dependency " + name + " has no archive for " + config.targetTriple);
+    fail("dependency " + name + " is unavailable for " + config.targetTriple);
+  if (!dep.git.empty()) return resolveGitDependency(config, name);
   fs::path cache;
   if (const char* env = std::getenv("SUN_DEPENDENCY_CACHE"))
     cache = env;

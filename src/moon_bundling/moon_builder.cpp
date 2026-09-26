@@ -11,6 +11,7 @@
 
 #include "driver/build_record.h"
 #include "driver/driver.h"
+#include "driver/git_source.h"
 #include "driver/input_hash.h"
 #include "driver/manifest_processor.h"
 #include "moon_bundling/archive_symbols.h"
@@ -94,6 +95,8 @@ std::filesystem::path MoonBuilder::defaultOutputPath(
 MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
                                    const std::filesystem::path& outputPath,
                                    const MoonBuildOptions& options) {
+  sun::driver::GitDependencyBuildScope dependencyScope(
+      options.debugInfo, options.optimize, options.forceRebuild);
   namespace fs = std::filesystem;
   fs::path entrypointPath = fs::absolute(entrypoint);
   std::string baseDir = entrypointPath.parent_path().string();

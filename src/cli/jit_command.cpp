@@ -8,6 +8,7 @@
 #include "cli/program_arguments.h"
 #include "driver/compiler.h"
 #include "driver/driver.h"
+#include "driver/git_source.h"
 #include "llvm/Support/raw_ostream.h"
 
 /** Parses command-line options and runs the selected compiler command. */
@@ -47,6 +48,9 @@ std::optional<std::string> findConfigBinary(const std::string& configFile) {
 
 /** Runs the jit command and returns its process exit status. */
 int runJitCommand(const BuildRunOptions& options) {
+  sun::driver::GitDependencyBuildScope dependencyScope(
+      options.shared.debugInfo, options.shared.optimize, options.forceRebuild,
+      options.refreshSources);
   std::string inputFile = options.inputFiles[0];
   if (options.configInput) {
     std::optional<std::string> binary = findConfigBinary(inputFile);

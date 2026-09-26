@@ -211,9 +211,27 @@ Object fields(const Object& obj, const std::string& target, bool package) {
 /** Validates complete source descriptors, keeping hashes with their URLs. */
 void dependencyValue(const llvm::json::Value& value) {
   const auto& obj = object(value);
+  if (obj.get("git")) {
+    keys(obj, {"git", "version", "config", "entrypoint", "path"});
+    if (obj.get("path") && (obj.get("config") || obj.get("entrypoint")))
+      invalid(
+          "Git dependency path cannot be combined with config or entrypoint");
+    for (const auto& [key, v] : obj) stringValue(v);
+    ConfigEntrypoint source;
+    source.git = obj.getString("git")->str();
+    if (auto v = obj.getString("version")) source.version = v->str();
+    source.path =
+        obj.getString("path")
+            .value_or(obj.getString("config").value_or("sun-config.json"))
+            .str();
+    source.type = ConfigEntrypoint::Type::Library;
+    validateGitSource(source);
+    if (auto v = obj.getString("entrypoint")) validName(v->str());
+    return;
+  }
   keys(obj, {"moon", "package"});
   if (bool(obj.get("moon")) == bool(obj.get("package")))
-    invalid("dependency requires exactly one of moon or package");
+    invalid("dependency requires exactly one of moon, package, or git");
   const bool package = bool(obj.get("package"));
   const auto& source = object(*obj.get(package ? "package" : "moon"));
   keys(source, package
@@ -260,7 +278,6 @@ SunConfig parse(const Object& root, const std::filesystem::path& file,
   SunConfig config;
   config.configDir = std::filesystem::weakly_canonical(
       std::filesystem::absolute(file).parent_path());
-  config.targetTriple = target;
   if (auto* value = root.get("root")) {
     boolValue(*value);
     config.root = *value->getAsBoolean();
@@ -288,6 +305,15 @@ SunConfig parse(const Object& root, const std::filesystem::path& file,
       if (selected) {
         const auto& obj = object(*selected);
         dep.package = bool(obj.get("package"));
+        if (auto git = obj.getString("git")) {
+          dep.git = git->str();
+          dep.version = obj.getString("version")->str();
+          if (auto v = obj.getString("path")) dep.path = v->str();
+          if (auto v = obj.getString("config")) dep.config = v->str();
+          if (auto v = obj.getString("entrypoint")) dep.entrypoint = v->str();
+          config.dependencies[key.str()] = std::move(dep);
+          continue;
+        }
         const auto& source = object(*obj.get(dep.package ? "package" : "moon"));
         if (auto v = source.getString("url")) dep.url = v->str();
         if (auto v = source.getString("path"))
@@ -461,6 +487,9 @@ SunConfig SunConfig::loadFile(const std::filesystem::path& file,
     }
     root.erase("target");
   }
-  return parse(root, file, target);
+  auto config = parse(root, file, target);
+  // Config matching ignores vendor and OS version; compilation must retain both.
+  config.targetTriple = sun::support::resolvedTargetTriple(targetTriple).str();
+  return config;
 }
 }  // namespace sun::driver
