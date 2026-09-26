@@ -37,7 +37,8 @@ bool isConfigInput(const std::string& input) {
 
 /** Loads project configuration for the selected compilation target. */
 SunConfig loadConfigInput(const std::string& input,
-                          const std::string& targetTriple, bool refreshSources) {
+                          const std::string& targetTriple,
+                          bool refreshSources) {
   SunConfig config =
       SunConfig::loadFile(std::filesystem::absolute(input), targetTriple);
   if (config.entrypoints.empty()) {
@@ -55,9 +56,15 @@ SunConfig loadConfigInput(const std::string& input,
     sun::driver::ManifestProcessor::setDefaultPathVariable(name, value);
   std::set<std::pair<std::string, std::string>> refreshed;
   for (auto& entry : config.entrypoints) {
+    entry.path = sun::driver::ManifestProcessor::expandPathVariables(entry.path,
+                                                                     &config);
+    entry.outputName = sun::driver::ManifestProcessor::expandPathVariables(
+        entry.outputName, &config);
+    entry.testBinaryName = sun::driver::ManifestProcessor::expandPathVariables(
+        entry.testBinaryName, &config);
     if (!entry.git.empty()) {
-      const bool refresh = refreshSources &&
-                           refreshed.emplace(entry.git, entry.version).second;
+      const bool refresh =
+          refreshSources && refreshed.emplace(entry.git, entry.version).second;
       entry.path = sun::driver::resolveGitEntrypoint(entry, refresh);
     }
   }

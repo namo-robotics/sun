@@ -125,25 +125,15 @@ TEST(Modules_ProtoImport, manifest_unknown_key_names_protos_in_error) {
   }
 }
 
-TEST(Modules_ProtoImport, manifest_moon_url_parses) {
+/** URL imports explain how to move fetching into project configuration. */
+TEST(Modules_ProtoImport, manifest_moon_url_requires_config) {
   std::unique_ptr<BlockExprAST> ast;
-  const auto* manifest = parseManifest(R"(
-    manifest {
-      libraries: [{ url: "https://example.com/libs/mylib.moon", hash: "abc123", rename: "ml" }]
-    }
-    function main() i32 { return 0; }
-  )",
-                                       ast);
-  ASSERT_NE(manifest, nullptr);
-  ASSERT_EQ(manifest->getMoons().size(), 1u);
-  const auto& moon = manifest->getMoons()[0];
-  EXPECT_TRUE(moon.path.empty());
-  ASSERT_TRUE(moon.url.has_value());
-  EXPECT_EQ(*moon.url, "https://example.com/libs/mylib.moon");
-  ASSERT_TRUE(moon.hash.has_value());
-  EXPECT_EQ(*moon.hash, "abc123");
-  ASSERT_TRUE(moon.rename.has_value());
-  EXPECT_EQ(*moon.rename, "ml");
+  try {
+    parseManifest(R"(manifest { libraries: [{ url: "https://example.com/lib.moon" }] })", ast);
+    FAIL() << "expected migration diagnostic";
+  } catch (const std::exception& error) {
+    EXPECT_NE(std::string(error.what()).find("sun-config.json"), std::string::npos);
+  }
 }
 
 TEST(Modules_ProtoImport, manifest_moon_url_and_path_conflict) {
