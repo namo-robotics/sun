@@ -40,6 +40,8 @@ struct CompileJob {
   bool optimize = true;
   bool dumpProtoSun = false;
   bool noTest = false;
+  // A selected distribution must have a production executable to include.
+  bool requireProductionArtifact = false;
   // Build every artifact even when the one on disk is up to date
   bool forceRebuild = false;
 };

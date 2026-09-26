@@ -3,10 +3,12 @@
 #include "cli/config_build_command.h"
 
 #include <filesystem>
+#include <set>
 
 #include "cli/bundle_command.h"
 #include "cli/command_support.h"
 #include "cli/compile_command.h"
+#include "driver/package.h"
 
 /** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
@@ -80,10 +82,26 @@ int buildLibrary(const CompileJob& job) {
  */
 int buildEntrypoints(const sun::driver::SunConfig& config,
                      const CompileJob& base) {
+  std::vector<sun::driver::PackageArtifact> artifacts;
+  for (const auto& entry : config.entrypoints) {
+    std::string output = entry.outputName.empty() ? deriveOutputName(entry.path)
+                                                  : entry.outputName;
+    const bool library =
+        entry.type == sun::driver::ConfigEntrypoint::Type::Library;
+    if (library && std::filesystem::path(output).extension() != ".moon")
+      output += ".moon";
+    artifacts.push_back({entry.name, output, library});
+  }
+  const auto packages = sun::driver::planPackages(config, artifacts);
+  std::set<std::string> packagedEntries;
+  for (const auto& package : packages)
+    for (const auto& artifact : package.artifacts)
+      packagedEntries.insert(artifact.name);
   for (const auto& entry : config.entrypoints) {
     DependencyPathVariables dependencyVariables(config, entry);
     CompileJob job = base;
     job.inputFiles = {entry.path};
+    job.requireProductionArtifact = packagedEntries.count(entry.name) != 0;
     job.outputFile = entry.outputName.empty() ? deriveOutputName(entry.path)
                                               : entry.outputName;
     job.testBinaryName = entry.testBinaryName;
@@ -96,6 +114,7 @@ int buildEntrypoints(const sun::driver::SunConfig& config,
       return 1;
     }
   }
+  sun::driver::buildPackages(config, packages);
   return 0;
 }
 
@@ -106,8 +125,8 @@ int runConfigBuildCommand(const BuildRunOptions& options) {
   const std::string& configFile = options.inputFiles[0];
   CompileJob base = makeCompileJob(options);
   try {
-    sun::driver::SunConfig config =
-        loadConfigInput(configFile, options.targetTriple, options.refreshSources);
+    sun::driver::SunConfig config = loadConfigInput(
+        configFile, options.targetTriple, options.refreshSources);
     return buildEntrypoints(config, base);
   } catch (const sun::support::SunError& e) {
     return reportSunError(e);

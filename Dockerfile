@@ -27,7 +27,7 @@ RUN apt-get update --error-on=any && apt-get install -y --no-install-recommends 
     libllvm-20-ocaml-dev \
     clangd-20 clang-format-20 clang-tidy-20 clang-tools-20 \
     # Common LLVM dev dependencies
-    libzstd-dev zlib1g-dev libxml2-dev libedit-dev libncurses-dev \
+    libarchive-dev libzstd-dev zlib1g-dev libxml2-dev libedit-dev libncurses-dev \
     libcurl4-openssl-dev libpfm4-dev libdw-dev libcapstone-dev \
     # TLS tests generate certificates and run a local OpenSSL server.
     openssl ca-certificates \

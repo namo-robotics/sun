@@ -2,8 +2,8 @@
 // --emit-moon path and the LSP: locate the manifest block, resolve entry
 // paths through local, configured and installed directories, and split
 // the entries into .sun files, .moon imports and .proto schemas. Moon
-// entries with a url are fetched into the download cache (MoonCache) and
-// resolved to the cached file. Entries may reference path variables
+// entries always name local .moon files. Configured dependencies are fetched
+// lazily when their directory variables are used. Entries may reference path variables
 // ("$LIBS/util.moon"), defined by --path-var (which wins), the nearest sun-config.json,
 // project / language-server defaults, or the environment.
 

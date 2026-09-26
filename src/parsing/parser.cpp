@@ -3176,8 +3176,7 @@ std::vector<ManifestSunDependency> Parser::parseManifestSuns() {
 }
 
 // Parse libraries array: [ "lib.moon", { path: "x.moon", hash: "def", rename:
-// "y" }, { url: "https://example.com/lib.moon" } ]
-// A struct entry needs exactly one of 'path' or 'url'.
+// "y" } ]. A struct entry requires a local path.
 std::vector<ManifestMoonDependency> Parser::parseManifestMoons() {
   expectCurrentTokenKind(TokenKind::BRACKET_OPEN,
                          "expected '[' after 'libraries:'");
@@ -3214,7 +3213,7 @@ std::vector<ManifestMoonDependency> Parser::parseManifestMoons() {
         if (fieldName == "path") {
           dep.path = value;
         } else if (fieldName == "url") {
-          dep.url = value;
+          parsingError("manifest library URLs are no longer supported; move the URL and hash to sun-config.json dependencies and use a local .moon path");
         } else if (fieldName == "hash") {
           dep.hash = value;
         } else if (fieldName == "rename") {
@@ -3236,7 +3235,7 @@ std::vector<ManifestMoonDependency> Parser::parseManifestMoons() {
         parsingError("moon dependency cannot have both 'path' and 'url'");
       }
       if (dep.path.empty() && !dep.url.has_value()) {
-        parsingError("moon dependency requires a 'path' or 'url' field");
+        parsingError("moon dependency requires a local 'path' field");
       }
     } else {
       parsingError("expected string or '{' in moons array");
