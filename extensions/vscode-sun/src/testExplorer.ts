@@ -95,7 +95,7 @@ function binaryIsFresh(run: EntrypointRun): boolean {
 
 /** Discover and run tests through configured workspace entrypoints. */
 export function activateTestExplorer(
-  context: vscode.ExtensionContext,
+  context: Pick<vscode.ExtensionContext, 'subscriptions'>,
   client: LanguageClient,
   env: NodeJS.ProcessEnv,
   workspaceFolder: string | undefined,
@@ -187,12 +187,14 @@ export function activateTestExplorer(
   }
 
   let disposed = false;
+  const activeRunners = new Set<() => void>();
   let refreshGeneration = 0;
   let refreshTask: Promise<void> | undefined;
   let configWatchers: vscode.FileSystemWatcher[] = [];
 
   /** Serialize refreshes and discard results superseded by another event. */
   function refreshWorkspace(): Promise<void> {
+    if (disposed) return Promise.resolve();
     ++refreshGeneration;
     if (!refreshTask) {
       refreshTask = (async () => {
@@ -203,7 +205,7 @@ export function activateTestExplorer(
             await synchronizeConfiguration();
             if (!disposed) await discoverWorkspace(generation);
           } catch (error) {
-            output.appendLine(`Test discovery failed: ${error}`);
+            if (!disposed) output.appendLine(`Test discovery failed: ${error}`);
           }
         } while (!disposed && generation !== refreshGeneration);
       })().finally(() => {
@@ -256,6 +258,7 @@ export function activateTestExplorer(
     {
       dispose: () => {
         disposed = true;
+        for (const cancel of activeRunners) cancel();
         for (const watcher of configWatchers) watcher.dispose();
       },
     }
@@ -276,6 +279,7 @@ export function activateTestExplorer(
     request: vscode.TestRunRequest,
     token: vscode.CancellationToken
   ): Promise<void> {
+    if (disposed) return;
     const run = controller.createTestRun(request);
     try {
       const sunBinary = resolveSunBinary(serverCommand);
@@ -301,7 +305,7 @@ export function activateTestExplorer(
       }
 
       for (const [entrypoint, items] of byEntrypoint) {
-        if (token.isCancellationRequested) break;
+        if (disposed || token.isCancellationRequested) break;
 
         // No filter args when every known test of the entrypoint is included:
         // the suite may hold tests in files not yet discovered, and run-all
@@ -367,16 +371,21 @@ export function activateTestExplorer(
             done = true;
             if (killTimer) clearTimeout(killTimer);
             cancellation.dispose();
+            activeRunners.delete(cancelRunner);
             settle();
             resolve();
           };
 
           // Cancelling asks the runner to stop and, if it does not, kills it.
           // Outstanding tests are skipped rather than errored: they never ran.
-          const cancellation = token.onCancellationRequested(() => {
+          /** Stops a runner when cancelled or when language services are disabled. */
+          const cancelRunner = () => {
+            if (done || killTimer) return;
             signalRunner('SIGTERM');
             killTimer = setTimeout(() => signalRunner('SIGKILL'), 2000);
-          });
+          };
+          activeRunners.add(cancelRunner);
+          const cancellation = token.onCancellationRequested(cancelRunner);
           /** Marks tests that never completed as skipped and clears their pending state. */
           const skipOutstanding = () => {
             for (const item of byName.values()) run.skipped(item);
@@ -433,11 +442,11 @@ export function activateTestExplorer(
           // output pipes too, which a surviving grandchild can hold open. A
           // cancelled run settles on 'exit' so it can never hang on that.
           child.on('exit', () => {
-            if (token.isCancellationRequested) finish(skipOutstanding);
+            if (disposed || token.isCancellationRequested) finish(skipOutstanding);
           });
           child.on('close', (code, signal) => {
             if (buffered.length > 0) handleLine(buffered.replace(/\r$/, ''));
-            if (token.isCancellationRequested) {
+            if (disposed || token.isCancellationRequested) {
               finish(skipOutstanding);
               return;
             }
