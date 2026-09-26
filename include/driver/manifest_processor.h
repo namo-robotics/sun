@@ -4,11 +4,12 @@
 // the entries into .sun files, .moon imports and .proto schemas. Moon
 // entries with a url are fetched into the download cache (MoonCache) and
 // resolved to the cached file. Entries may reference path variables
-// ("$LIBS/util.moon"), defined by the nearest sun-config.json (which wins),
-// --path-var / language-server settings, or the environment.
+// ("$LIBS/util.moon"), defined by --path-var (which wins), the nearest sun-config.json,
+// project / language-server defaults, or the environment.
 
 #pragma once
 
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -55,10 +56,21 @@ class ManifestProcessor {
                                  const std::string& targetTriple = "");
 
   /**
-   * Define a path variable for manifest entries (--path-var NAME=DIR)
+   * Define an explicit override for manifest entries (--path-var NAME=DIR).
+   * Explicit values take precedence over source configuration files.
    */
   static void setPathVariable(const std::string& name,
                               const std::string& value);
+
+  /** Defines a project or editor fallback, used only when neither an explicit
+   * override nor the source's config defines the variable. */
+  static void setDefaultPathVariable(const std::string& name,
+                                     const std::string& value);
+
+  /** Replaces the consuming project's overrides for the current Git build
+   * and returns the previous values so a caller can restore them. */
+  static std::map<std::string, std::string> exchangeDependencyPathVariables(
+      std::map<std::string, std::string> values);
 
   /**
    * Drop all defined path variables (used by tests)
@@ -67,8 +79,9 @@ class ManifestProcessor {
 
   /**
    * Replace every $NAME in a manifest entry with the variable's value —
-   * the config's pathVariables first, then --path-var / language-server
-   * definitions, then the environment. Throws SunError for a variable
+   * explicit --path-var definitions first, then the consuming project's Git
+   * overrides, then the source config's pathVariables,
+   * project / language-server defaults, then the environment. Throws SunError for a variable
    * defined nowhere.
    */
   static std::string expandPathVariables(const std::string& input,

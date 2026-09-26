@@ -64,6 +64,7 @@ int runConfigTests(const TestOptions& options) {
     sun::driver::SunConfig config = loadConfigInput(options.inputFile);
     int failures = 0;
     for (const auto& entry : config.entrypoints) {
+      DependencyPathVariables dependencyVariables(config, entry);
       if (config.entrypoints.size() > 1) {
         // Flushed so the header lands before the runner's own stdout.
         llvm::outs() << "== " << entry.path << " ==\n";

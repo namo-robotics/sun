@@ -9,4 +9,5 @@ target_sources(sun_tests PRIVATE
     test_moon_cache.cpp
     test_proto_import.cpp
     test_sun_config.cpp
+    test_git_source.cpp
 )

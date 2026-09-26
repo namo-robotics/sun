@@ -1,0 +1,16 @@
+manifest {
+    libraries: ["stdlib.moon", "sun_serve.moon"]
+}
+
+/** Checks the imported library's HTTP helpers and prints its version. */
+function main() i32 {
+  if sun_serve.status_has_no_body(200) {
+    return 1;
+  }
+  if sun_serve.status_has_no_body(204) {
+    std.println(sun_serve.version());
+    std.println(sun_serve.reason_phrase(200));
+    return 0;
+  }
+  return 2;
+}

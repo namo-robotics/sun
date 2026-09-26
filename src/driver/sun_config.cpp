@@ -8,6 +8,7 @@
 #include <set>
 #include <sstream>
 
+#include "driver/git_source.h"
 #include "support/error.h"
 #include "support/target_os.h"
 
@@ -37,7 +38,8 @@ std::string anchorAtConfigDir(const std::string& value,
 /**
  * One entry of the entrypoints array: an object naming the entrypoint file
  * and, optionally, what kind of artifact it is and what its outputs are
- * called. Every path-like value is anchored at the config's folder.
+ * called. Git source paths remain relative to the checkout; output paths
+ * are anchored at the config folder.
  */
 ConfigEntrypoint parseEntrypoint(const llvm::json::Value& value,
                                  const std::filesystem::path& configDir,
@@ -57,7 +59,11 @@ ConfigEntrypoint parseEntrypoint(const llvm::json::Value& value,
                        file.string());
     }
     if (name == "path") {
-      entrypoint.path = anchorAtConfigDir(str->str(), configDir);
+      entrypoint.path = str->str();
+    } else if (name == "git") {
+      entrypoint.git = str->str();
+    } else if (name == "version") {
+      entrypoint.version = str->str();
     } else if (name == "type") {
       if (*str == "binary") {
         entrypoint.type = ConfigEntrypoint::Type::Binary;
@@ -74,13 +80,24 @@ ConfigEntrypoint parseEntrypoint(const llvm::json::Value& value,
     } else {
       logAndThrowError("unknown entrypoint key '" + name + "' in " +
                        file.string() +
-                       "; expected 'path', 'type', 'output_name' or "
+                       "; expected 'path', 'git', 'version', 'type', 'output_name' or "
                        "'test_binary_name'");
     }
   }
   if (entrypoint.path.empty()) {
     logAndThrowError("an entrypoints entry is missing 'path' in " +
                      file.string());
+  }
+  if (object->get("git")) {
+    validateGitSource(entrypoint);
+    if (entrypoint.outputName.empty()) {
+      entrypoint.outputName =
+          (configDir / std::filesystem::path(entrypoint.path).stem()).string();
+    }
+  } else {
+    if (object->get("version"))
+      logAndThrowError("entrypoint 'version' requires 'git' in " + file.string());
+    entrypoint.path = anchorAtConfigDir(entrypoint.path, configDir);
   }
   return entrypoint;
 }
@@ -195,6 +212,8 @@ std::optional<SunConfig> SunConfig::findFrom(
         break;
       }
     }
+    // A cached repository must not inherit configuration from cache parents.
+    if (std::filesystem::is_directory(dir / ".sun-git-source")) break;
     auto parent = dir.parent_path();
     if (parent == dir) {
       break;

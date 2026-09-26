@@ -183,190 +183,82 @@ dot -Tpng main_debug/ast.dot -o ast.png
 
 ## Manifests
 
-Sun programs and libraries declare their dependencies using a `manifest` block, written in
-the source file itself:
+Declare source files and library dependencies in a `manifest` block:
 
 ```sun
 manifest {
-    source_files: ["utils.sun", "math.sun"]  // All source files except for the one containing this manifest block
+    source_files: ["utils.sun", "math.sun"]
     libraries: [
-        "stdlib.moon",                       // Found via SUN_PATH
-        {                                    // Fetched once, then cached
-            url: "https://example.com/libs/mylib.moon",
-            hash: "c2e6500466f386836814c860fffcd6fe3dc3f236230746ac977c07c82290613e" // Optional
-        }
+        "stdlib.moon",
+        { url: "https://example.com/libs/mylib.moon" }
     ]
-    target: { // Target-specific files
-        linux: {
-            source_files: ["platform_linux.sun"]
-            archives: ["vendor/libfoo-linux.a"]
-        }
-        macos: {
-            source_files: ["platform_macos.sun"]
-            archives: ["vendor/libfoo-macos.a"]
-        }
-    }
 }
 ```
 
-Paths are resolved relative to the source file, then via `SUN_PATH`. A library
-given as a `url` is downloaded with `curl` on first use and reused from the
-cache afterwards; the optional `hash` is the bundle's SHA-256, and a file that
-does not match it is rejected. A `target` block takes the same sections as the
-manifest itself and applies only when compiling for that operating system —
-the manifest never picks the target, `--target` (or the host) does. `archives`
-are static C libraries carried inside a bundle built with `--emit-moon`, so
-whoever imports it links them without needing `-l` flags.
+Source paths are relative to this file. Libraries are found through configured
+search paths or downloaded and cached when given a URL. Add an optional `hash`
+to verify a downloaded bundle's SHA-256.
 
-### Path variables
-
-A manifest entry can name a directory with `$NAME`, so the manifest stays
-portable when a dependency sits somewhere different on each machine:
-
-```sun
-manifest {
-    libraries: ["stdlib.moon", "$LIBS/mathlib.moon"]
-}
-```
-
-Give the value on the command line with `--path-var`, or let it fall back to
-a plain environment variable:
-
-```bash
-sun --path-var LIBS=libs main.sun
-LIBS=libs sun main.sun
-```
-
-Committing the value to a [Sun config](#sun-config) instead means nobody has
-to remember the flag. A variable defined nowhere is a compile error naming
-the ways to define it.
-
-[Modules and Manifests](/modules) covers private GitHub assets, `rename`, and
-the rest.
+Paths can use variables such as `$LIBS/mathlib.moon`, defined in
+`sun-config.json` or with `--path-var LIBS=libs`.
+See [Modules and Manifests](/modules) for more options.
 
 ## Sun Config
 
-A `sun-config.json` file records the settings a project would otherwise pass
-on every `sun` invocation. The compiler looks for one beside the entrypoint
-and in every folder above it:
+Use `sun-config.json` to set library search paths, path variables, and the
+entrypoints to build:
 
 ```json filename="sun-config.json"
 {
-    "sun_path": ["../../build"],
+    "root": true,
+    "sun_path": ["build"],
     "path_variables": { "LIBS": "libs" },
     "entrypoints": [
-        { "path": "stdlib/stdlib.sun", "type": "library",
-          "output_name": "build/stdlib",
-          "test_binary_name": "build/stdlib_test" }
-    ],
-    "root": true
+        {
+            "path": "mylib.sun",
+            "type": "library",
+            "output_name": "build/mylib"
+        },
+        {
+            "path": "main.sun",
+            "type": "binary",
+            "output_name": "build/app"
+        }
+    ]
 }
 ```
 
-The supported keys are:
+Paths are relative to the config file. Sun looks for configs beside the source
+and in parent folders; `root: true` stops that search. Explicit `--path-var`
+arguments override configured variables.
 
-- **`sun_path`** — extra directories to search for `.moon` libraries, on top
-  of `SUN_PATH` and the install location
-- **`path_variables`** — values for the `$NAME` variables a manifest uses
-- **`entrypoints`** — the project's build products. Each entry names an
-  entrypoint file (`path`, required), whether it is a `"binary"`
-  (an executable, the default) or a `"library"` (a `.moon` bundle), and
-  optionally what to call the compiled artifact (`output_name`) and its test
-  binary (`test_binary_name`). With entrypoints declared, the config file
-  itself can stand in for an entrypoint on the command line —
-  `sun -c sun-config.json` builds every product, `sun test sun-config.json`
-  runs every suite — and editor tooling knows the project's entrypoints
-  without scanning
-- **`target`** — settings selected by the compilation target (see below).
-- **`root`** — `true` stops the upward search at this file, keeping a project
-  self-contained
-
-Every config from the entrypoint's folder upwards is merged: the nearest
-definition of a variable wins, search directories and entrypoints are
-concatenated nearest-first, and a relative path resolves against the folder of the file that declares it.
-So a workspace root can set shared values once while a subfolder overrides
-only what is local to it.
-
-A config wins over `--path-var` and over the environment, which is the
-opposite of the usual precedence — a checked-in file is meant to be the
-project's answer, not something a stray shell variable can quietly change.
-
-### Cross-compiling configured entrypoints
-
-Pass `--target` to choose the target triple for every entrypoint built by
-that invocation. Without it, Sun builds for the host using its matching
-target settings:
+Build entrypoints in their listed order, or run their tests:
 
 ```bash
-sun -c --target aarch64-linux-gnu --no-test sun-config.json
+sun -c sun-config.json
+sun test sun-config.json
 ```
 
-Here `--no-test` skips building test binaries. Cross-compiling executables
-also requires a linker and system libraries for the target.
+Unchanged builds skip compilation. Use `--target` to select another compilation
+target and `--no-test` to omit test binaries from a build.
 
-Installed bundles are selected automatically from target subdirectories such as
-`/usr/lib/sun/aarch64-linux-gnu`. Debian packages include AArch64 Linux
-standard-library and TLS bundles for GNU and musl target spellings.
-
-Each dependency moon must have been built for the selected architecture and
-operating system, including `stdlib.moon`. Keep moons for different targets
-in separate directories and point `sun_path` at the directory for the build,
-for example `"sun_path": ["libs/aarch64-linux-gnu"]`. `--target` does not
-append the triple to `sun_path` or `path_variables` values, and an existing
-moon found there is not replaced by one from `--lib-path`.
-
-A config can declare a complete entrypoint list alongside each target's
-search paths and fixed path variables:
+A library entrypoint can also build from Git:
 
 ```json
 {
-    "root": true,
-    "target": {
-        "x86_64-linux-gnu": {
-            "sun_path": ["build"],
-            "path_variables": {"OPENSSL": "vendor/x86_64"},
-            "entrypoints": [{
-                "path": "app.sun",
-                "output_name": "build/app"
-            }]
-        },
-        "aarch64-linux-gnu": {
-            "sun_path": ["build/aarch64-linux-gnu"],
-            "path_variables": {"OPENSSL": "vendor/aarch64"},
-            "entrypoints": [{
-                "path": "app.sun",
-                "output_name": "build/aarch64-linux-gnu/app",
-                "test_binary_name": "build/aarch64-linux-gnu/app_test"
-            }]
-        }
-    }
+    "git": "git@github.com:example/mylib.git",
+    "version": "v1.2.3",
+    "path": "src/mylib.sun",
+    "type": "library",
+    "output_name": "build/mylib"
 }
 ```
 
-Target keys are normalized LLVM triples: `aarch64-linux-gnu` and
-`aarch64-unknown-linux-gnu` select the same settings. Vendor spellings are
-ignored; `arm64` and `aarch64` match the same
-architecture, and macOS version suffixes do not affect selection. GNU and musl
-config keys remain distinct. Duplicate normalized keys and invalid settings are
-errors, including in inactive target blocks.
-
-A matching target replaces `sun_path` and `entrypoints` when those fields
-are present, and merges its `path_variables` over the defaults in that file.
-An omitted field keeps its default; an empty entrypoint list selects no
-entrypoints from that file. Target entrypoints use the same fields as default
-entrypoints, including `path`, `type`, `output_name`, and `test_binary_name`.
-There are no per-entrypoint target blocks.
-
-Configs still merge nearest-first, and config values still take precedence
-over command-line and environment path variables. Paths remain relative to
-the file declaring them. Without `--target`, the host target is selected. If no
-target block matches, only the top-level settings apply. Paths are otherwise
-literal; the compiler does not
-automatically append a target directory.
-
-The workspace root config keeps all settings inside target blocks, including
-the native platforms. Its AArch64 Linux blocks build stdlib and TLS separately
-from the native outputs.
+Here `path` is relative to the repository, and `version` is a branch, tag, or
+commit. HTTPS and SSH are supported. Sources stay cached until a build uses
+`--refresh-sources`. See the
+[Git library example](https://github.com/namo-robotics/sun/tree/main/examples/100-git_library)
+for a complete project using `sun_serve`.
 
 ## Moons
 
