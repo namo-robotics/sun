@@ -292,6 +292,7 @@ jobs:
             -DCMAKE_C_COMPILER="$(brew --prefix llvm@20)/bin/clang" \
             -DCMAKE_CXX_COMPILER="$(brew --prefix llvm@20)/bin/clang++" \
             -DLLVM_DIR="$(brew --prefix llvm@20)/lib/cmake/llvm" \
+            -DLibArchive_ROOT="$(brew --prefix libarchive)" \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
@@ -628,8 +629,7 @@ jobs:
 
   # The deb's macOS counterpart: a tarball of the same files, which the
   # Homebrew formula unpacks. Like the deb depends on apt's libllvm20, the
-  # binary links Homebrew's LLVM, so `brew install llvm@20` is its one
-  # runtime dependency. This job uploads the tarball and the standalone
+  # binary links Homebrew's LLVM and libarchive at runtime. This job uploads the tarball and the standalone
   # tls-arm64-apple-darwin.moon (tls needs Darwin OpenSSL archives, which
   # only this runner can build); the Darwin stdlib bundle still comes from
   # the deb job's cross builds.
@@ -727,7 +727,7 @@ jobs:
     runs-on: macos-latest
     # A fresh runner rather than the build job's workspace: everything the
     # installed compiler needs has to come from the tarball plus its one
-    # declared dependency.
+    # declared dependencies.
 
     steps:
       - name: Download artifact
@@ -736,8 +736,8 @@ jobs:
           name: sun-macos-${{ env.BUILD_SHA }}
           path: dist/
 
-      - name: Install LLVM 20 runtime
-        run: brew install llvm@20
+      - name: Install compiler runtime dependencies
+        run: brew install llvm@20 libarchive
 
       # Unpacked into a prefix of its own, the way the formula installs it
       # into the Cellar. Nothing goes anywhere system-wide, so the only thing
