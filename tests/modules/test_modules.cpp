@@ -2,6 +2,7 @@
 // Tests for the module system
 
 #include <gtest/gtest.h>
+#include "driver/package.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -1068,9 +1069,8 @@ TEST(Modules, moon_and_program_global_initializers_both_run) {
   EXPECT_EQ(value, 1102);
 }
 
-// A manifest can name a moon by url; it is fetched into the moon cache
-// (file:// keeps the test offline) and imported from there.
-TEST(Modules, manifest_moon_url_is_fetched_and_imported) {
+/** A config downloads a Moon while the manifest names its cached local file. */
+TEST(Modules, config_moon_url_is_fetched_and_imported) {
   initTestEnvironment();
   namespace fs = std::filesystem;
   auto moonPath = writeMoonLib("urllib", R"(
@@ -1082,21 +1082,27 @@ TEST(Modules, manifest_moon_url_is_fetched_and_imported) {
   fs::path dir = fs::temp_directory_path() / "sun_moon_url_test";
   fs::remove_all(dir);
   fs::create_directories(dir / "cache");
-  setenv("SUN_MOON_CACHE", (dir / "cache").c_str(), 1);
+  setenv("SUN_DEPENDENCY_CACHE", (dir / "cache").c_str(), 1);
 
   fs::path mainFile = dir / "main.sun";
   {
     std::ofstream out(mainFile);
-    out << "manifest { libraries: [{ url: \"file://" +
-               fs::absolute(moonPath).string() +
-               "\" }] }\n"
+    out << "manifest { libraries: [\"$URLLIB/lib.moon\"] }\n"
                "using urllib;\n"
+               "/** Returns the value from the configured library. */\n"
                "function main() i32 { return seven(); }\n";
+  }
+  {
+    std::ofstream out(dir / "sun-config.json");
+    out << "{\"root\":true,\"dependencies\":{\"URLLIB\":{\"moon\":{\"url\":\"file://"
+        << fs::absolute(moonPath).string() << "\",\"hash\":\""
+        << sun::driver::packageFileHash(moonPath)
+        << "\",\"filename\":\"lib.moon\"}}}}";
   }
 
   auto driver = Driver::createForJIT("moon_url_main");
   auto value = driver->executeFile(mainFile.string());
-  unsetenv("SUN_MOON_CACHE");
+  unsetenv("SUN_DEPENDENCY_CACHE");
   EXPECT_EQ(value, 7);
 
   // The bundle landed in the cache directory

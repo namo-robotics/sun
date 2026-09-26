@@ -11,10 +11,10 @@ class Sun < Formula
   sha256 "@SHA256@"
   license "MIT"
 
-  # The compiler is a prebuilt Apple Silicon binary. Its only non-system
-  # dependency is Homebrew's libLLVM.dylib, which it loads by absolute path
-  # from llvm@20's opt prefix.
+  # The compiler is a prebuilt Apple Silicon binary. Its non-system
+  # dependencies include LLVM and libarchive from Homebrew.
   depends_on "llvm@20"
+  depends_on "libarchive"
   depends_on arch: :arm64
   depends_on :macos
 

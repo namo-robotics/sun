@@ -190,14 +190,14 @@ manifest {
     source_files: ["utils.sun", "math.sun"]
     libraries: [
         "stdlib.moon",
-        { url: "https://example.com/libs/mylib.moon" }
+        "$MYLIB/mylib.moon"
     ]
 }
 ```
 
 Source paths are relative to this file. Libraries are found through configured
-search paths or downloaded and cached when given a URL. Add an optional `hash`
-to verify a downloaded bundle's SHA-256.
+search paths. Configure downloaded libraries in `sun-config.json`; manifests
+reference their verified local `.moon` paths.
 
 Paths can use variables such as `$LIBS/mathlib.moon`, defined in
 `sun-config.json` or with `--path-var LIBS=libs`.
@@ -231,6 +231,55 @@ entrypoints to build:
 Paths are relative to the config file. Sun looks for configs beside the source
 and in parent folders; `root: true` stops that search. Explicit `--path-var`
 arguments override configured variables.
+
+Each setting can choose a value independently for each target. An ordinary
+value is an unconditional default; a wrapper supplies replacements:
+
+```json
+{
+  "sun_path": {
+    "default": ["build"],
+    "target": { "aarch64-linux-gnu": ["build/arm64"] }
+  },
+  "path_variables": {
+    "OPENSSL_LIBS": {
+      "default": "vendor/openssl",
+      "target": { "aarch64-linux-gnu": "vendor/openssl/arm64" }
+    }
+  },
+  "entrypoints": [
+    {
+      "name": "app",
+      "path": "app/main.sun",
+      "type": "binary",
+      "output_name": {
+        "default": "build/app",
+        "target": { "aarch64-linux-gnu": "build/arm64/app" }
+      }
+    },
+    {
+      "name": "helper",
+      "enabled": {
+        "default": false,
+        "target": { "aarch64-linux-gnu": true }
+      },
+      "path": "app/helper.sun"
+    }
+  ]
+}
+```
+
+A matching target replaces the default, including entire arrays. Without a
+match, the default applies; a wrapper with neither is an error when needed.
+Entrypoints and packages default to enabled. Disabled entries skip resolution
+of their other settings. Names stay fixed; other entrypoint and package fields
+can use wrappers, including resource lists. Do not wrap the structural
+`entrypoints`, `packages`, or `dependencies` collections.
+
+Legacy top-level `target` blocks remain supported, but cannot overlap wrappers
+for the same setting. Prefer per-setting values to avoid repeating entrypoints.
+See [dependencies and distributions](/modules#downloaded-dependencies) for
+config-owned downloads and compressed packages.
 
 Build entrypoints in their listed order, or run their tests:
 

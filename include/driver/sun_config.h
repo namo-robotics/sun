@@ -18,13 +18,16 @@
 // search dirs and entrypoints concatenate nearest-first. "root": true stops
 // the upward search at that file. Explicit --path-var flags override config
 // values. Config values override project and language-server defaults and
-// environment variables.
+// environment variables. Dependency directory names are reserved and cannot
+// collide with ordinary path variables.
 //
 // The entrypoints list names the project's build products, so a config file
 // can stand in for an entrypoint on the command line (`sun test
 // sun-config.json`) and tools like the editor's test explorer know every
 // entrypoint without scanning. The requested target (or host) selects matching
-// settings for search paths, path variables, and a complete entrypoint list.
+// values independently for search paths, path variables, and entrypoint fields.
+// Legacy top-level target blocks can still replace complete entrypoint lists.
+// Config builds also assemble named packages and entrypoint resources.
 
 #pragma once
 
@@ -38,10 +41,38 @@
  */
 namespace sun::driver {
 
+/** A file or directory copied into a distribution at an explicit path. */
+struct ConfigResource {
+  std::string path;
+  std::string destination;
+};
+
+/** A selected dependency archive or Moon file, resolved only when used. */
+struct ConfigDependency {
+  bool available = true;
+  bool package = false;
+  std::string path;
+  std::string url;
+  std::string hash;
+  std::string filename;
+};
+
+/** A named distribution assembled from configured production artifacts. */
+struct ConfigPackage {
+  std::string name;
+  std::string outputName;
+  std::vector<std::string> entrypoints;
+  std::vector<ConfigResource> resources;
+};
+
+/** Returns the canonical config target key, retaining architecture and ABI. */
+std::string configTargetKey(const std::string& targetTriple);
+
 /**
  * One build product declared by a config: an entrypoint file, what kind of
  * artifact it compiles to, and what to call the outputs. Paths are absolute
- * after parsing, except Git entrypoint paths, which are repository-relative.
+ * after parsing, except paths containing lazy variables and Git entrypoint
+ * paths, which are repository-relative.
  */
 struct ConfigEntrypoint {
   /** Identifies whether a configured build target produces a program or a
@@ -51,6 +82,8 @@ struct ConfigEntrypoint {
     Library,  // a .moon bundle: no main, tests compile to the test binary
   };
 
+  std::string name;
+  std::vector<ConfigResource> resources;
   std::string path;     // the entrypoint .sun file
   std::string git;      // repository URL; empty for local entrypoints
   std::string version;  // commit ID, branch, or tag for a source checkout
@@ -67,6 +100,9 @@ struct SunConfig {
   std::vector<std::string> sunPath;  // extra library search dirs (absolute)
   std::map<std::string, std::string> pathVariables;  // values made absolute
   std::vector<ConfigEntrypoint> entrypoints;         // declared build products
+  std::map<std::string, ConfigDependency> dependencies;
+  std::vector<ConfigPackage> packages;
+  std::string targetTriple;
   bool root = false;  // stop the upward search at this file
 
   /**

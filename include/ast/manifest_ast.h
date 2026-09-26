@@ -11,8 +11,8 @@ namespace sun::ast {
 
 /** A compiled-library dependency and its import settings. */
 struct ManifestMoonDependency {
-  std::string path;                 // local path; empty when url is set
-  std::optional<std::string> url;   // downloaded to the moon cache
+  std::string path;                 // local .moon file path
+  std::optional<std::string> url;   // legacy serialized data; rejected on use
   std::optional<std::string> hash;  // lowercase hex SHA-256 of the file
   std::optional<std::string> rename;
 };

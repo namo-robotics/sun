@@ -40,7 +40,7 @@ jobs:
           sudo install -m 644 tmp/string-creation-ci/llvm-key.gpg /usr/share/keyrings/llvm-benchmark.gpg
           echo 'deb [signed-by=/usr/share/keyrings/llvm-benchmark.gpg] https://apt.llvm.org/noble/ llvm-toolchain-noble-20 main' | sudo tee /etc/apt/sources.list.d/llvm-benchmark.list
           sudo apt-get update
-          sudo apt-get install -y clang-20 llvm-20-dev lld-20 libzstd-dev ninja-build
+          sudo apt-get install -y clang-20 llvm-20-dev lld-20 libarchive-dev libzstd-dev ninja-build
 
       - name: Set up ccache
         uses: hendrikmuhs/ccache-action@v1.2.23
@@ -145,7 +145,7 @@ jobs:
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh 20
-          sudo apt-get install -y llvm-20-dev lld-20 libzstd-dev libgtest-dev ninja-build
+          sudo apt-get install -y llvm-20-dev lld-20 libarchive-dev libzstd-dev libgtest-dev ninja-build
 
       - name: Set up ccache
         uses: hendrikmuhs/ccache-action@v1.2.23
@@ -250,7 +250,7 @@ jobs:
         # No OpenSSL package: the tls bundle carries its own static build
         # (scripts/build-openssl-macos.sh), and the JIT loads the carried
         # archives just as the AOT link does.
-        run: brew install llvm@20 ninja ccache googletest
+        run: brew install llvm@20 libarchive ninja ccache googletest
 
       - name: Set up ccache
         uses: hendrikmuhs/ccache-action@v1.2.23
@@ -371,6 +371,7 @@ jobs:
           sudo apt-get install -y \
             cmake \
             llvm-20-dev \
+            libarchive-dev \
             libzstd-dev \
             devscripts \
             debhelper \
@@ -645,7 +646,7 @@ jobs:
           esac
 
       - name: Install dependencies
-        run: brew install llvm@20 ninja ccache
+        run: brew install llvm@20 libarchive ninja ccache
 
       - name: Set up ccache
         uses: hendrikmuhs/ccache-action@v1.2.23

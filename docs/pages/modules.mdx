@@ -191,62 +191,128 @@ loaded automatically.
 Moon format changes require rebuilding libraries with the current compiler,
 including the standard library and TLS bundles for every target.
 
-### Moon Files from a URL
+### Downloaded dependencies
 
-A moon entry can point at a URL instead of a local path:
+Manifests name local `.moon` files. Configure downloads in `sun-config.json`:
 
-```sun
-manifest {
-    libraries: [{ url: "https://example.com/libs/mylib.moon" }]
+```json
+{
+  "dependencies": {
+    "IMAGE_CORE": {
+      "target": {
+        "x86_64-linux-gnu": {
+          "moon": {
+            "url": "https://example.com/image-core-x64.moon",
+            "hash": "<lowercase SHA-256>",
+            "filename": "image_core.moon"
+          }
+        },
+        "aarch64-linux-gnu": {
+          "moon": {
+            "url": "https://example.com/image-core-arm64.moon",
+            "hash": "<lowercase SHA-256>",
+            "filename": "image_core.moon"
+          }
+        }
+      }
+    }
+  }
 }
 ```
 
-The compiler downloads the bundle with `curl` into `~/.sun/cache/moons/` on
-first use and reuses the cached copy afterwards, so later builds work offline.
-Supported schemes are `http://`, `https://` and `file://`. Set the
-`SUN_MOON_CACHE` environment variable to move the cache directory.
-
-Add a `hash` field to pin the bundle to its exact contents — the lowercase
-hex SHA-256 of the file (as printed by `sha256sum`):
+The source remains the same for both targets:
 
 ```sun
 manifest {
-    libraries: [{
-        url: "https://example.com/libs/mylib.moon",
-        hash: "c2e6500466f386836814c860fffcd6fe3dc3f236230746ac977c07c82290613e"
-    }]
+    libraries: ["$IMAGE_CORE/image_core.moon"]
 }
 ```
 
-When the cached copy no longer matches the hash, the bundle is downloaded
-again; if the fresh download still does not match, compilation fails. An
-entry has either a `path` or a `url`, never both; `hash` and `rename` work
-with either.
+`--target` selects the dependency; without it, Sun uses the host target.
+Dependency names bind local directories beneath
+`~/.sun/cache/dependencies/<NAME>/<normalized-target>/<sha256>/`. Override the
+cache root with `SUN_DEPENDENCY_CACHE`. Names must not collide with ordinary
+path variables, explicit overrides, editor defaults, or environment variables.
 
-#### Private GitHub Assets
+A dependency accepts an ordinary descriptor, or `default` and `target`
+descriptors. Each descriptor contains exactly one of `moon` or `package`.
+A `moon` descriptor requires a simple `.moon` `filename`; `package` accepts a
+Sun `.tar.gz` package and exposes its extracted root. Both accept exactly one
+of `url` or config-relative `path`. URLs require a SHA-256 hash; local hashes
+are optional. Supported URL schemes are `http://`, `https://`, and `file://`.
 
-For a moon hosted on a private GitHub repository, pass a token with
-`--gh-token` (or set the `GH_TOKEN` or `GITHUB_TOKEN` environment variable,
-which also covers the language server):
-
-```bash
-sun --gh-token ghp_yourtoken main.sun
-```
-
-The token is sent as an `Authorization` header, and only to GitHub hosts
-(`github.com`, `*.github.com`, `*.githubusercontent.com`) — never to other
-servers. Private release assets must be fetched through the GitHub API asset
-URL, which returns the file itself when asked for `application/octet-stream`
-(the compiler sets that header for `api.github.com` automatically):
+For a package dependency named `IMAGE_TOOLS`, import a library by its path:
 
 ```sun
 manifest {
-    libraries: [{ url: "https://api.github.com/repos/OWNER/REPO/releases/assets/ASSET_ID" }]
+    libraries: ["$IMAGE_TOOLS/lib/helpers.moon"]
 }
 ```
 
-Files committed to a private repository work through
-`https://raw.githubusercontent.com/OWNER/REPO/BRANCH/path/lib.moon`.
+Downloads occur only when a dependency is used. Sun verifies the bytes and
+package inventory before exposing local files. An unsupported target fails
+when the dependency is used. Importing a library does not redistribute its
+package's other files or resources.
+
+Manifest objects with a `url` are no longer accepted. Move their URL and hash
+into config, set a local filename, and reference `$NAME/file.moon` instead.
+Local library objects can still use `path` and `rename`.
+
+For private GitHub assets, pass `--gh-token` or set `GH_TOKEN` or
+`GITHUB_TOKEN`. Authentication is sent only to GitHub hosts. Use a GitHub API
+release-asset URL in the config to download private release assets.
+
+### Distributions and resources
+
+Build configured distributions with `sun -c sun-config.json`:
+
+```json
+{
+  "root": true,
+  "entrypoints": [
+    {
+      "name": "viewer",
+      "path": "apps/viewer.sun",
+      "type": "binary",
+      "resources": [
+        { "path": "assets", "destination": "share/viewer/assets" }
+      ]
+    },
+    { "name": "helpers", "path": "lib/helpers.sun", "type": "library" }
+  ],
+  "packages": [
+    {
+      "name": "viewer-tools",
+      "entrypoints": ["viewer", "helpers"],
+      "resources": [
+        { "path": "LICENSE", "destination": "LICENSE" }
+      ]
+    }
+  ]
+}
+```
+
+This produces `dist/viewer-tools-<normalized-target>/` and the corresponding
+`.tar.gz`. The directory remains available for inspection. Set package
+`output_name` to change the extensionless output base. Named binaries live
+under `bin/`; named libraries live under `lib/` with `.moon` extensions.
+`package.json` records the target, artifact paths, and payload hashes.
+
+An entrypoint with resources automatically gets an individual package unless
+an enabled explicit package includes it. Explicit packages can contain several
+binaries and libraries, even without resources. Tests and compiler intermediate
+files are excluded. Package membership does not change compilation order.
+
+Resource paths resolve relative to their config and support `$NAME` variables.
+For example, explicitly copy dependency resources with
+`{ "path": "$IMAGE_TOOLS/share/profiles", "destination": "share/profiles" }`.
+Directories contribute their contents recursively. Destinations must remain
+inside the archive. Missing inputs, conflicting mappings, links, and special
+files are errors. Applications control runtime resource lookup.
+
+Resource changes cause repackaging without recompiling unchanged code. Sun
+normalizes archive ordering, timestamps, ownership, and permissions. Direct
+source builds, tests, and JIT execution do not assemble distributions.
 
 ### Creating Moon Files
 

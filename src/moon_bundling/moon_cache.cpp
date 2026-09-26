@@ -155,7 +155,16 @@ std::string MoonCache::buildCurlCommand(const std::string& url,
     }
   }
 
-  command += " --output '" + dest.string() + "' '" + url + "'";
+  std::string quotedDest = "'";
+  for (char c : dest.string()) {
+    if (c == '\'')
+      quotedDest += "'\\''";
+    else
+      quotedDest += c;
+  }
+  quotedDest += "'";
+  validateUrl(url);
+  command += " --output " + quotedDest + " '" + url + "'";
   return command;
 }
 
@@ -199,8 +208,12 @@ std::filesystem::path MoonCache::fetch(
     // Cached file no longer matches the manifest hash: fetch again.
   }
 
-  auto tmp = dest;
-  tmp += ".tmp." + std::to_string(getpid());
+  std::string pattern = dest.string() + ".tmp.XXXXXX";
+  int descriptor = mkstemp(pattern.data());
+  if (descriptor < 0)
+    logAndThrowError("cannot create dependency download file");
+  close(descriptor);
+  std::filesystem::path tmp(pattern);
   downloadWithCurl(url, tmp);
 
   if (!wantedHash.empty()) {

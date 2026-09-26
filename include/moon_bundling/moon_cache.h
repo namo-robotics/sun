@@ -8,13 +8,11 @@
 namespace sun::moon_bundling {
 
 /**
- * Download cache for .moon bundles referenced by URL in a manifest:
- *
- *   manifest { libraries: [{ url: "https://example.com/lib.moon" }] }
+ * Verified download storage used by configured Moon and package dependencies.
  *
  * Bundles are downloaded once with the system curl binary and stored under
  * the cache directory, keyed by the URL. A cached bundle is reused forever,
- * unless the manifest entry carries a `hash` (lowercase hex SHA-256 of the
+ * unless the config descriptor carries a `hash` (lowercase hex SHA-256 of the
  * file bytes) that the cached file no longer matches — then it is fetched
  * again and the fresh download must match the hash.
  */
