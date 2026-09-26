@@ -428,7 +428,6 @@ fs::path resolveConfigDependency(const SunConfig& config,
 std::vector<PackagePlan> planPackages(
     const SunConfig& config, const std::vector<PackageArtifact>& artifacts) {
   std::vector<PackagePlan> result;
-  std::set<std::string> assigned;
   std::map<std::string, size_t> activeEntries;
   for (size_t i = 0; i < config.entrypoints.size(); ++i)
     if (!config.entrypoints[i].name.empty())
@@ -444,20 +443,11 @@ std::vector<PackagePlan> planPackages(
       const auto found = activeEntries.find(name);
       if (found == activeEntries.end()) continue;
       const auto index = found->second;
-      const auto& entry = config.entrypoints[index];
       plan.artifacts.push_back(artifacts.at(index));
-      plan.resources.insert(plan.resources.end(), entry.resources.begin(),
-                            entry.resources.end());
-      assigned.insert(name);
     }
     if (plan.artifacts.empty())
       fail("package " + pkg.name + " has no active entrypoints");
     result.push_back(std::move(plan));
-  }
-  for (size_t i = 0; i < config.entrypoints.size(); ++i) {
-    const auto& entry = config.entrypoints[i];
-    if (!entry.resources.empty() && !assigned.count(entry.name))
-      result.push_back({entry.name, {}, {artifacts.at(i)}, entry.resources});
   }
   std::vector<fs::path> outputs;
   for (auto& plan : result) {

@@ -176,7 +176,7 @@ Object fields(const Object& obj, const std::string& target, bool package) {
                                                      "output_name"}
                 : std::initializer_list<std::string>{
                       "name", "enabled", "path", "git", "version", "type",
-                      "output_name", "test_binary_name", "resources"});
+                      "output_name", "test_binary_name"});
   bool enabled = true;
   if (auto* value = obj.get("enabled"))
     enabled = *select(*value, target, boolValue)->getAsBoolean();
@@ -321,10 +321,6 @@ SunConfig parse(const Object& root, const std::filesystem::path& file,
         entry.outputName = anchor(v->str(), config.configDir);
       if (auto v = obj.getString("test_binary_name"))
         entry.testBinaryName = anchor(v->str(), config.configDir);
-      if (auto* v = obj.get("resources"))
-        entry.resources = resources(*v, config.configDir);
-      if (!entry.resources.empty() && entry.name.empty())
-        invalid("entrypoints with resources require a name");
       if (!entry.git.empty()) {
         validateGitSource(entry);
         if (entry.outputName.empty())

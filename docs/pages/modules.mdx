@@ -273,10 +273,7 @@ Build configured distributions with `sun -c sun-config.json`:
     {
       "name": "viewer",
       "path": "apps/viewer.sun",
-      "type": "binary",
-      "resources": [
-        { "path": "assets", "destination": "share/viewer/assets" }
-      ]
+      "type": "binary"
     },
     { "name": "helpers", "path": "lib/helpers.sun", "type": "library" }
   ],
@@ -285,6 +282,7 @@ Build configured distributions with `sun -c sun-config.json`:
       "name": "viewer-tools",
       "entrypoints": ["viewer", "helpers"],
       "resources": [
+        { "path": "assets", "destination": "share/viewer/assets" },
         { "path": "LICENSE", "destination": "LICENSE" }
       ]
     }
@@ -298,10 +296,11 @@ This produces `dist/viewer-tools-<normalized-target>/` and the corresponding
 under `bin/`; named libraries live under `lib/` with `.moon` extensions.
 `package.json` records the target, artifact paths, and payload hashes.
 
-An entrypoint with resources automatically gets an individual package unless
-an enabled explicit package includes it. Explicit packages can contain several
-binaries and libraries, even without resources. Tests and compiler intermediate
-files are excluded. Package membership does not change compilation order.
+Resources belong only to packages; entrypoints do not accept a `resources`
+field. To distribute one executable with assets, declare a package containing
+that entrypoint. Packages can contain several binaries and libraries, even
+without resources. Entrypoints outside a package produce only their build
+outputs. Tests and compiler intermediate files are excluded. Package membership does not change compilation order.
 
 Resource paths resolve relative to their config and support `$NAME` variables.
 For example, explicitly copy dependency resources with

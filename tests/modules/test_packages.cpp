@@ -153,10 +153,10 @@ TEST_F(Packages, RoundTripAndResourceRebuild) {
   put(dir / "helpers.moon", "library");
   put(dir / "assets/message.txt", "hello");
   auto cfg = config(R"({"root":true,"entrypoints":[
-    {"name":"app","path":"main.sun","resources":[{"path":"assets","destination":"share/app"}]},
+    {"name":"app","path":"main.sun"},
     {"name":"helpers","path":"helpers.sun","type":"library"},
     {"name":"disabled","enabled":false}
-  ],"packages":[{"name":"tools","entrypoints":["app","helpers","disabled"]}]})");
+  ],"packages":[{"name":"tools","entrypoints":["app","helpers","disabled"],"resources":[{"path":"assets","destination":"share/app"}]}]})");
   std::vector<sun::driver::PackageArtifact> artifacts{
       {"app", (dir / "app").string(), false},
       {"helpers", (dir / "helpers.moon").string(), true}};
@@ -191,13 +191,12 @@ TEST_F(Packages, RoundTripAndResourceRebuild) {
             sun::driver::packageFileHash(plans[0].output / "bin/app"));
 }
 
-/** Automatic packages exclude unselected artifacts and detect output conflicts.
- */
-TEST_F(Packages, AutomaticAndConflicts) {
+/** Explicit single-entrypoint packages detect unsafe resources and conflicts. */
+TEST_F(Packages, SingleEntrypointAndConflicts) {
   put(dir / "asset", "data");
   put(dir / "app", "binary");
   auto cfg = config(
-      R"({"entrypoints":[{"name":"app","path":"main.sun","resources":[{"path":"asset","destination":"share/data"}]}]})");
+      R"({"entrypoints":[{"name":"app","path":"main.sun"}],"packages":[{"name":"app","entrypoints":["app"],"resources":[{"path":"asset","destination":"share/data"}]}]})");
   std::vector<sun::driver::PackageArtifact> artifacts{
       {"app", (dir / "app").string(), false}};
   auto plans = sun::driver::planPackages(cfg, artifacts);
@@ -208,8 +207,27 @@ TEST_F(Packages, AutomaticAndConflicts) {
   plans[0].resources[0].destination = "../escaped";
   EXPECT_THROW(sun::driver::buildPackages(cfg, plans), SunError);
   fs::create_symlink(dir / "asset", dir / "link");
-  cfg.entrypoints[0].resources[0].path = (dir / "link").string();
+  cfg.packages[0].resources[0].path = (dir / "link").string();
   EXPECT_THROW(sun::driver::planPackages(cfg, artifacts), SunError);
+}
+
+/** Resource fields are rejected on both active and disabled entrypoints. */
+TEST_F(Packages, RejectEntrypointResources) {
+  EXPECT_THROW(
+      config(R"({"entrypoints":[{"name":"app","path":"main.sun","resources":[]}]})"),
+      SunError);
+  EXPECT_THROW(
+      config(R"({"entrypoints":[{"name":"app","enabled":false,"resources":[]}]})"),
+      SunError);
+}
+
+/** Naming an entrypoint alone does not request a distribution. */
+TEST_F(Packages, NoImplicitPackages) {
+  auto cfg = config(
+      R"({"entrypoints":[{"name":"app","path":"main.sun"}]})");
+  std::vector<sun::driver::PackageArtifact> artifacts{
+      {"app", (dir / "app").string(), false}};
+  EXPECT_TRUE(sun::driver::planPackages(cfg, artifacts).empty());
 }
 
 /** Creates a malicious tar fixture without relying on external archive

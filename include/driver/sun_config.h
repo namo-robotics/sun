@@ -27,7 +27,7 @@
 // entrypoint without scanning. The requested target (or host) selects matching
 // values independently for search paths, path variables, and entrypoint fields.
 // Legacy top-level target blocks can still replace complete entrypoint lists.
-// Config builds also assemble named packages and entrypoint resources.
+// Config builds also assemble named packages with their distribution resources.
 
 #pragma once
 
@@ -83,7 +83,6 @@ struct ConfigEntrypoint {
   };
 
   std::string name;
-  std::vector<ConfigResource> resources;
   std::string path;     // the entrypoint .sun file
   std::string git;      // repository URL; empty for local entrypoints
   std::string version;  // commit ID, branch, or tag for a source checkout
