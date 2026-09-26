@@ -2,7 +2,7 @@
     "root": true,
     "sun_path": ["build", "../../build"],
     "path_variables": {
-        "MUSL_LIB": "build/native"
+        "MUSL_LIB": "../../third_party/openssl/x86_64-linux-musl"
     },
     "entrypoints": [
         {

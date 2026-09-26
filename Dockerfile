@@ -83,6 +83,12 @@ RUN mkdir -p /opt/cross \
     && curl -sL https://musl.cc/x86_64-linux-musl-cross.tgz | tar xz -C /opt/cross
 ENV PATH="/opt/cross/aarch64-linux-musl-cross/bin:/opt/cross/x86_64-linux-musl-cross/bin:${PATH}"
 
+# Supply the Git-library example's musl OpenSSL and zlib archives in fresh containers.
+COPY scripts/fetch-openssl.sh /opt/sun/scripts/fetch-openssl.sh
+RUN bash /opt/sun/scripts/fetch-openssl.sh --arch x86_64 \
+    && rm -rf /opt/sun/tmp
+ENV SUN_EXAMPLE_NATIVE_LIBS="/opt/sun/third_party/openssl/x86_64-linux-musl"
+
 # GitHub CLI from the official apt repo (newer than the Ubuntu archive build)
 RUN mkdir -p -m 755 /etc/apt/keyrings \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \

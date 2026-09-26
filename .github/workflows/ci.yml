@@ -145,7 +145,22 @@ jobs:
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh 20
-          sudo apt-get install -y llvm-20-dev lld-20 libarchive-dev libzstd-dev libgtest-dev ninja-build
+          sudo apt-get install -y llvm-20-dev lld-20 libarchive-dev libzstd-dev libgtest-dev ninja-build git curl ca-certificates
+
+      - name: Cache x86_64 musl toolchain
+        uses: actions/cache@v5
+        with:
+          path: tmp/musl-toolchain
+          key: musl-cross-x86_64-v1
+
+      - name: Install musl toolchain for static examples
+        run: |
+          mkdir -p tmp/musl-toolchain
+          if [ ! -x tmp/musl-toolchain/x86_64-linux-musl-cross/bin/x86_64-linux-musl-g++ ]; then
+            curl -fsSL --retry 3 --max-time 600 https://musl.cc/x86_64-linux-musl-cross.tgz -o tmp/musl-toolchain.tar.gz
+            tar xzf tmp/musl-toolchain.tar.gz -C tmp/musl-toolchain
+          fi
+          echo "${{ github.workspace }}/tmp/musl-toolchain/x86_64-linux-musl-cross/bin" >> "$GITHUB_PATH"
 
       - name: Set up ccache
         uses: hendrikmuhs/ccache-action@v1.2.23
@@ -159,11 +174,12 @@ jobs:
           path: third_party/openssl
           key: openssl-static-${{ hashFiles('scripts/fetch-openssl.sh') }}
 
-      - name: Fetch static OpenSSL
+      - name: Fetch static OpenSSL and example zlib
         # tls.moon embeds these; without them CMake skips the bundle and the
         # TLS tests and the https_client example have nothing to link against.
         run: |
-          if [ ! -f third_party/openssl/x86_64-linux-musl/libcrypto.a ]; then
+          if [ ! -f third_party/openssl/x86_64-linux-musl/libcrypto.a ] ||
+             [ ! -f third_party/openssl/x86_64-linux-musl/libz.a ]; then
             ./scripts/fetch-openssl.sh
           fi
 
