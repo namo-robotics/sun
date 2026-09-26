@@ -1,0 +1,21 @@
+{
+    "root": true,
+    "sun_path": ["build", "../../build"],
+    "path_variables": {
+        "MUSL_LIB": "build/native"
+    },
+    "entrypoints": [
+        {
+            "git": "https://github.com/namo-robotics/sun_serve.git",
+            "version": "main",
+            "path": "src/sun_serve.sun",
+            "type": "library",
+            "output_name": "build/sun_serve"
+        },
+        {
+            "path": "main.sun",
+            "type": "binary",
+            "output_name": "build/git_library"
+        }
+    ]
+}

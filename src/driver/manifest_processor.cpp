@@ -29,6 +29,17 @@ std::map<std::string, std::string>& pathVariables() {
   static std::map<std::string, std::string> vars;
   return vars;
 }
+/** Holds consuming-project values while a Git entrypoint is being built. */
+std::map<std::string, std::string>& dependencyPathVariables() {
+  static std::map<std::string, std::string> vars;
+  return vars;
+}
+
+/** Provides project and editor defaults when a source config has no value. */
+std::map<std::string, std::string>& defaultPathVariables() {
+  static std::map<std::string, std::string> vars;
+  return vars;
+}
 }  // namespace
 
 void ManifestProcessor::setPathVariable(const std::string& name,
@@ -36,7 +47,22 @@ void ManifestProcessor::setPathVariable(const std::string& name,
   pathVariables()[name] = value;
 }
 
-void ManifestProcessor::clearPathVariables() { pathVariables().clear(); }
+void ManifestProcessor::setDefaultPathVariable(const std::string& name,
+                                               const std::string& value) {
+  defaultPathVariables()[name] = value;
+}
+
+std::map<std::string, std::string> ManifestProcessor::exchangeDependencyPathVariables(
+    std::map<std::string, std::string> values) {
+  dependencyPathVariables().swap(values);
+  return values;
+}
+
+void ManifestProcessor::clearPathVariables() {
+  pathVariables().clear();
+  defaultPathVariables().clear();
+  dependencyPathVariables().clear();
+}
 
 std::string ManifestProcessor::expandPathVariables(const std::string& input,
                                                    const SunConfig* config) {
@@ -61,15 +87,22 @@ std::string ManifestProcessor::expandPathVariables(const std::string& input,
     }
     std::string name = input.substr(nameStart, nameEnd - nameStart);
     const std::string* value = nullptr;
-    if (config) {
+    if (auto it = pathVariables().find(name); it != pathVariables().end()) {
+      value = &it->second;
+    }
+    if (!value) {
+      auto it = dependencyPathVariables().find(name);
+      if (it != dependencyPathVariables().end()) value = &it->second;
+    }
+    if (!value && config) {
       auto it = config->pathVariables.find(name);
       if (it != config->pathVariables.end()) {
         value = &it->second;
       }
     }
     if (!value) {
-      auto it = pathVariables().find(name);
-      if (it != pathVariables().end()) {
+      auto it = defaultPathVariables().find(name);
+      if (it != defaultPathVariables().end()) {
         value = &it->second;
       }
     }
@@ -134,8 +167,8 @@ ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
   ResolvedManifest out;
   out.baseDir = baseDir;
 
-  // The nearest sun-config.json overrides configuration supplied from
-  // outside the folder (--path-var, editor settings, environment).
+  // Explicit path variables win, followed by consuming-project overrides
+  // during Git builds, then source config, defaults, and the environment.
   auto configOpt = SunConfig::findFrom(baseDir, targetTriple);
   const SunConfig* config = configOpt ? &*configOpt : nullptr;
 

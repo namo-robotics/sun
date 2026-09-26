@@ -16,6 +16,23 @@
 /** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
 
+/** Applies consuming-project variables during a Git entrypoint build only. */
+class DependencyPathVariables {
+ public:
+  /** Saves the previous overrides and selects this entrypoint's project values. */
+  DependencyPathVariables(const sun::driver::SunConfig& config,
+                          const sun::driver::ConfigEntrypoint& entry);
+  /** Restores the overrides that were active before this entrypoint. */
+  ~DependencyPathVariables();
+  /** Prevents duplicating the responsibility to restore overrides. */
+  DependencyPathVariables(const DependencyPathVariables&) = delete;
+  /** Prevents replacing a scope responsible for restoring overrides. */
+  DependencyPathVariables& operator=(const DependencyPathVariables&) = delete;
+
+ private:
+  std::map<std::string, std::string> previous_;
+};
+
 /**
  * True when the input argument is a sun-config.json rather than a .sun
  * entrypoint. A config with an entrypoints list stands in for its
@@ -25,10 +42,13 @@ bool isConfigInput(const std::string& input);
 
 /**
  * Parse the config named on the command line and insist it declares
- * entrypoints — without them there is nothing to stand in for.
+ * entrypoints — without them there is nothing to stand in for. Resolves Git
+ * sources and applies project paths to builds outside the project directory.
+ * refreshSources fetches a fresh revision even when a checkout is cached.
  */
 sun::driver::SunConfig loadConfigInput(const std::string& input,
-                                       const std::string& targetTriple = "");
+                                       const std::string& targetTriple = "",
+                                       bool refreshSources = false);
 
 /**
  * Put the shared options into effect: define the path variables, then set up

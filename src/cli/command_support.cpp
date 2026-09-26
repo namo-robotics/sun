@@ -4,7 +4,9 @@
 
 #include <filesystem>
 #include <iostream>
+#include <set>
 
+#include "driver/git_source.h"
 #include "driver/manifest_processor.h"
 #include "llvm/Support/raw_ostream.h"
 #include "moon_bundling/library_cache.h"
@@ -17,6 +19,17 @@ using sun::moon_bundling::LibraryCache;
 /** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
 
+DependencyPathVariables::DependencyPathVariables(
+    const SunConfig& config, const sun::driver::ConfigEntrypoint& entry)
+    : previous_(sun::driver::ManifestProcessor::exchangeDependencyPathVariables(
+          entry.git.empty() ? std::map<std::string, std::string>{}
+                            : config.pathVariables)) {}
+
+DependencyPathVariables::~DependencyPathVariables() {
+  sun::driver::ManifestProcessor::exchangeDependencyPathVariables(
+      std::move(previous_));
+}
+
 /** Reports whether the input names a project configuration file. */
 bool isConfigInput(const std::string& input) {
   return std::filesystem::path(input).filename() == SunConfig::kFileName;
@@ -24,7 +37,7 @@ bool isConfigInput(const std::string& input) {
 
 /** Loads project configuration for the selected compilation target. */
 SunConfig loadConfigInput(const std::string& input,
-                          const std::string& targetTriple) {
+                          const std::string& targetTriple, bool refreshSources) {
   SunConfig config =
       SunConfig::loadFile(std::filesystem::absolute(input), targetTriple);
   if (config.entrypoints.empty()) {
@@ -32,6 +45,21 @@ SunConfig loadConfigInput(const std::string& input,
         input +
         " declares no entrypoints; add an 'entrypoints' list or "
         "name a .sun file directly");
+  }
+  // Cached sources live outside the project, so carry its selected settings.
+  for (const auto& path : config.sunPath) {
+    sun::support::SunPath::addSearchPath(path);
+    LibraryCache::instance().addSearchPath(path);
+  }
+  for (const auto& [name, value] : config.pathVariables)
+    sun::driver::ManifestProcessor::setDefaultPathVariable(name, value);
+  std::set<std::pair<std::string, std::string>> refreshed;
+  for (auto& entry : config.entrypoints) {
+    if (!entry.git.empty()) {
+      const bool refresh = refreshSources &&
+                           refreshed.emplace(entry.git, entry.version).second;
+      entry.path = sun::driver::resolveGitEntrypoint(entry, refresh);
+    }
   }
   return config;
 }

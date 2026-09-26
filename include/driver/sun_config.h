@@ -16,9 +16,9 @@
 // sun-config.json from the entrypoint's folder up to the filesystem root is
 // merged: path variables union with the nearest definition winning, and
 // search dirs and entrypoints concatenate nearest-first. "root": true stops
-// the upward search at that file. Definitions here override configuration
-// supplied from outside the folders: --path-var flags, language-server
-// settings, and environment variables.
+// the upward search at that file. Explicit --path-var flags override config
+// values. Config values override project and language-server defaults and
+// environment variables.
 //
 // The entrypoints list names the project's build products, so a config file
 // can stand in for an entrypoint on the command line (`sun test
@@ -41,7 +41,7 @@ namespace sun::driver {
 /**
  * One build product declared by a config: an entrypoint file, what kind of
  * artifact it compiles to, and what to call the outputs. Paths are absolute
- * after parsing.
+ * after parsing, except Git entrypoint paths, which are repository-relative.
  */
 struct ConfigEntrypoint {
   /** Identifies whether a configured build target produces a program or a
@@ -51,7 +51,9 @@ struct ConfigEntrypoint {
     Library,  // a .moon bundle: no main, tests compile to the test binary
   };
 
-  std::string path;  // the entrypoint .sun file
+  std::string path;     // the entrypoint .sun file
+  std::string git;      // repository URL; empty for local entrypoints
+  std::string version;  // commit ID, branch, or tag for a source checkout
   Type type = Type::Binary;
   std::string outputName;      // empty: derived from the entrypoint's name
   std::string testBinaryName;  // empty: outputName + "_test"

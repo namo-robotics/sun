@@ -11,6 +11,39 @@ import {
 import { activateTestExplorer } from './testExplorer';
 
 let client: LanguageClient | undefined;
+let serviceSubscriptions: vscode.Disposable[] = [];
+let serviceTask: Promise<void> = Promise.resolve();
+let shuttingDown = false;
+
+/** Reports whether only the contributed syntax grammar should remain active. */
+function syntaxOnly(): boolean {
+  return vscode.workspace.getConfiguration('sun').get<boolean>('syntaxOnly', false);
+}
+
+/** Disposes test integration and stops the server, clearing its diagnostics. */
+async function stopLanguageServices(): Promise<void> {
+  for (const subscription of serviceSubscriptions.splice(0).reverse()) {
+    subscription.dispose();
+  }
+  const runningClient = client;
+  client = undefined;
+  if (runningClient) await runningClient.stop();
+}
+
+/** Serializes service changes so setting toggles cannot start duplicate servers. */
+function updateLanguageServices(): Promise<void> {
+  serviceTask = serviceTask.then(async () => {
+    if (shuttingDown || syntaxOnly()) {
+      await stopLanguageServices();
+    } else if (!client) {
+      await startLanguageServices();
+    }
+  }).catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!shuttingDown) void vscode.window.showErrorMessage(`Sun language services failed: ${message}`);
+  });
+  return serviceTask;
+}
 
 /** Selects the configured or available Sun language-server executable. */
 function resolveServerCommand(configuredPath: string): string {
@@ -102,8 +135,8 @@ async function sendConfigurationToLSP(workspaceFolder: string | undefined): Prom
   });
 }
 
-/** Start language services and configured test discovery. */
-export async function activate(_context: vscode.ExtensionContext): Promise<void> {
+/** Starts compiler-backed features when syntax-only mode is disabled. */
+async function startLanguageServices(): Promise<void> {
   const configuredPath = vscode.workspace
     .getConfiguration('sun')
     .get<string>('lsp_path', '/usr/bin/sun-lsp');
@@ -175,23 +208,36 @@ export async function activate(_context: vscode.ExtensionContext): Promise<void>
 
   try {
     await client.start();
+    if (shuttingDown || syntaxOnly()) {
+      await stopLanguageServices();
+      return;
+    }
     activateTestExplorer(
-      _context, client, env, workspaceFolder, command,
+      { subscriptions: serviceSubscriptions }, client, env, workspaceFolder, command,
       () => sendConfigurationToLSP(workspaceFolder),
       () => getSunConfigs(workspaceFolder)
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    void vscode.window.showErrorMessage(`Sun LSP failed to start: ${message}`);
+    await stopLanguageServices();
+    if (!shuttingDown && !syntaxOnly()) {
+      void vscode.window.showErrorMessage(`Sun LSP failed to start: ${message}`);
+    }
   }
 }
 
-/** Stop the language server. */
-export async function deactivate(): Promise<void> {
-  if (!client) {
-    return;
-  }
+/** Applies syntax-only mode at startup and whenever its setting changes. */
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  shuttingDown = false;
+  context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((event) => {
+    if (event.affectsConfiguration('sun.syntaxOnly')) void updateLanguageServices();
+  }));
+  await updateLanguageServices();
+}
 
-  await client.stop();
-  client = undefined;
+/** Waits for pending startup and releases all language services. */
+export async function deactivate(): Promise<void> {
+  shuttingDown = true;
+  await serviceTask;
+  await stopLanguageServices();
 }

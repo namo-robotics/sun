@@ -446,3 +446,14 @@ TEST(Tooling_Cli_OptionParser, fmt_help_succeeds_and_mistakes_exit_with_two) {
   expectRejected(parseFmt({"--check"}).early, sun::cli::kFmtUsage,
                  /*exitCode=*/2);
 }
+
+/** Source refresh is explicit and only applies to configured builds. */
+TEST(Tooling_Cli_OptionParser, refresh_sources_requires_config_build) {
+  auto parsed = parseBuildRun({"-c", "--refresh-sources", "sun-config.json"});
+  EXPECT_FALSE(parsed.early);
+  EXPECT_TRUE(parsed.options.refreshSources);
+  expectRejected(parseBuildRun({"--refresh-sources", "a.sun"}).early,
+                 "Error: --refresh-sources requires -c sun-config.json\n");
+  expectRejected(parseBuildRun({"-c", "--refresh-sources", "a.sun"}).early,
+                 "Error: --refresh-sources requires -c sun-config.json\n");
+}

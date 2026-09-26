@@ -81,6 +81,7 @@ int buildLibrary(const CompileJob& job) {
 int buildEntrypoints(const sun::driver::SunConfig& config,
                      const CompileJob& base) {
   for (const auto& entry : config.entrypoints) {
+    DependencyPathVariables dependencyVariables(config, entry);
     CompileJob job = base;
     job.inputFiles = {entry.path};
     job.outputFile = entry.outputName.empty() ? deriveOutputName(entry.path)
@@ -106,7 +107,7 @@ int runConfigBuildCommand(const BuildRunOptions& options) {
   CompileJob base = makeCompileJob(options);
   try {
     sun::driver::SunConfig config =
-        loadConfigInput(configFile, options.targetTriple);
+        loadConfigInput(configFile, options.targetTriple, options.refreshSources);
     return buildEntrypoints(config, base);
   } catch (const sun::support::SunError& e) {
     return reportSunError(e);

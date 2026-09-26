@@ -62,6 +62,7 @@ struct BuildRunOptions {
   bool emitMoon = false;                 // --emit-moon
   bool dumpProtoSun = false;             // --dump-proto-sun
   bool noTest = false;                   // --no-test
+  bool refreshSources = false;          // --refresh-sources
   bool forceRebuild = false;             // --force-rebuild
   std::string githubToken;               // --gh-token <tok>
   std::vector<std::string> programArgs;  // everything after --
