@@ -1,0 +1,21 @@
+{
+    "root": true,
+    "sun_path": ["build", "../../build"],
+    "path_variables": {
+        "MUSL_LIB": "../../third_party/openssl/x86_64-linux-musl"
+    },
+    "entrypoints": [
+        {
+            "git": "https://github.com/namo-robotics/sun_serve.git",
+            "version": "main",
+            "path": "src/sun_serve.sun",
+            "type": "library",
+            "output_name": "build/sun_serve"
+        },
+        {
+            "path": "main.sun",
+            "type": "binary",
+            "output_name": "build/git_library"
+        }
+    ]
+}

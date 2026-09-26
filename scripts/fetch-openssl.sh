@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# Fetch the static OpenSSL archives that tls.moon carries.
+# Fetch musl OpenSSL for tls.moon and zlib for the Git-library example.
 #
 # tls.moon embeds libssl.a and libcrypto.a, so a program using TLS links
 # without -lssl/-lcrypto and runs without OpenSSL installed. That needs
@@ -11,7 +11,7 @@ set -euo pipefail
 # there rather than compiling OpenSSL ourselves. The macOS counterpart is
 # scripts/build-openssl-macos.sh.
 #
-# Output: third_party/openssl/<arch>-linux-musl/lib{ssl,crypto}.a
+# Output: third_party/openssl/<arch>-linux-musl/lib{ssl,crypto,z}.a
 #
 # Usage: ./scripts/fetch-openssl.sh [--arch x86_64|aarch64] [--alpine-release v3.21]
 
@@ -72,6 +72,20 @@ if [ ! -f usr/lib/libssl.a ] || [ ! -f usr/lib/libcrypto.a ]; then
     exit 1
 fi
 
+# The Git-library example also carries zlib for WebSocket compression.
+ZLIB_PKG=$(curl -fsSL --max-time 60 "$MIRROR/" \
+          | grep -oE 'zlib-static-[0-9][^"]*\.apk' | head -1)
+if [ -z "$ZLIB_PKG" ]; then
+    echo "error: no zlib-static package at $MIRROR" >&2
+    exit 1
+fi
+curl -fsSL --max-time 300 -o zlib.apk "$MIRROR/$ZLIB_PKG"
+tar xzf zlib.apk 2>/dev/null || true
+if [ ! -f usr/lib/libz.a ]; then
+    echo "error: package did not contain libz.a" >&2
+    exit 1
+fi
+
 # A reference to a library we do not ship would make every link fail with
 # undefined symbols, so check before installing rather than at link time.
 for sym in ZSTD_ BrotliDec jent_; do
@@ -84,10 +98,10 @@ done
 # Alpine ships these unstripped, which would roughly double tls.moon. Debug
 # info is no use inside a vendored dependency; the symbol table linking needs
 # is kept.
-"$STRIP_TOOL" --strip-debug usr/lib/libssl.a usr/lib/libcrypto.a
+"$STRIP_TOOL" --strip-debug usr/lib/libssl.a usr/lib/libcrypto.a usr/lib/libz.a
 
 mkdir -p "$OUT_DIR"
-cp usr/lib/libssl.a usr/lib/libcrypto.a "$OUT_DIR/"
+cp usr/lib/libssl.a usr/lib/libcrypto.a usr/lib/libz.a "$OUT_DIR/"
 
-echo "[fetch-openssl] wrote $OUT_DIR/{libssl.a,libcrypto.a}"
+echo "[fetch-openssl] wrote $OUT_DIR/{libssl.a,libcrypto.a,libz.a}"
 ls -lh "$OUT_DIR"

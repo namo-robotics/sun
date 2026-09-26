@@ -40,7 +40,7 @@ jobs:
           sudo install -m 644 tmp/string-creation-ci/llvm-key.gpg /usr/share/keyrings/llvm-benchmark.gpg
           echo 'deb [signed-by=/usr/share/keyrings/llvm-benchmark.gpg] https://apt.llvm.org/noble/ llvm-toolchain-noble-20 main' | sudo tee /etc/apt/sources.list.d/llvm-benchmark.list
           sudo apt-get update
-          sudo apt-get install -y clang-20 llvm-20-dev lld-20 libzstd-dev ninja-build
+          sudo apt-get install -y clang-20 llvm-20-dev lld-20 libarchive-dev libzstd-dev ninja-build
 
       - name: Set up ccache
         uses: hendrikmuhs/ccache-action@v1.2.23
@@ -145,7 +145,33 @@ jobs:
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh 20
-          sudo apt-get install -y llvm-20-dev lld-20 libzstd-dev libgtest-dev ninja-build
+          sudo apt-get install -y llvm-20-dev lld-20 libarchive-dev libzstd-dev libgtest-dev ninja-build git curl ca-certificates
+
+      - name: Cache x86_64 musl toolchain
+        uses: actions/cache@v5
+        with:
+          path: tmp/musl-toolchain
+          key: musl-cross-x86_64-20260823
+
+      - name: Install musl toolchain for static examples
+        run: |
+          mkdir -p tmp/musl-toolchain
+          toolchain_bin="$GITHUB_WORKSPACE/tmp/musl-toolchain/x86_64-unknown-linux-musl/bin"
+          if [ ! -x "$toolchain_bin/x86_64-unknown-linux-musl-g++" ]; then
+            curl -fsSL --retry 3 --connect-timeout 20 --max-time 600 \
+              https://github.com/cross-tools/musl-cross/releases/download/20260823/x86_64-unknown-linux-musl.tar.xz \
+              -o tmp/musl-toolchain.tar.xz
+            echo '9752ecb10bafc0fc2ea75b3ed864a78137f3e5ba9b1579f1f16923d444c48096  tmp/musl-toolchain.tar.xz' | sha256sum --check
+            tar -xJf tmp/musl-toolchain.tar.xz -C tmp/musl-toolchain
+          fi
+          # The archive ships read-only directories; allow adding driver aliases.
+          chmod u+w "$toolchain_bin"
+          # Sun discovers musl link drivers using the shorter target prefix.
+          for driver in gcc g++; do
+            ln -sf "x86_64-unknown-linux-musl-$driver" "$toolchain_bin/x86_64-linux-musl-$driver"
+          done
+          "$toolchain_bin/x86_64-linux-musl-gcc" --version
+          echo "$toolchain_bin" >> "$GITHUB_PATH"
 
       - name: Set up ccache
         uses: hendrikmuhs/ccache-action@v1.2.23
@@ -159,11 +185,12 @@ jobs:
           path: third_party/openssl
           key: openssl-static-${{ hashFiles('scripts/fetch-openssl.sh') }}
 
-      - name: Fetch static OpenSSL
+      - name: Fetch static OpenSSL and example zlib
         # tls.moon embeds these; without them CMake skips the bundle and the
         # TLS tests and the https_client example have nothing to link against.
         run: |
-          if [ ! -f third_party/openssl/x86_64-linux-musl/libcrypto.a ]; then
+          if [ ! -f third_party/openssl/x86_64-linux-musl/libcrypto.a ] ||
+             [ ! -f third_party/openssl/x86_64-linux-musl/libz.a ]; then
             ./scripts/fetch-openssl.sh
           fi
 
@@ -250,7 +277,7 @@ jobs:
         # No OpenSSL package: the tls bundle carries its own static build
         # (scripts/build-openssl-macos.sh), and the JIT loads the carried
         # archives just as the AOT link does.
-        run: brew install llvm@20 ninja ccache googletest
+        run: brew install llvm@20 libarchive ninja ccache googletest
 
       - name: Set up ccache
         uses: hendrikmuhs/ccache-action@v1.2.23
@@ -276,6 +303,7 @@ jobs:
             -DCMAKE_C_COMPILER="$(brew --prefix llvm@20)/bin/clang" \
             -DCMAKE_CXX_COMPILER="$(brew --prefix llvm@20)/bin/clang++" \
             -DLLVM_DIR="$(brew --prefix llvm@20)/lib/cmake/llvm" \
+            -DLibArchive_ROOT="$(brew --prefix libarchive)" \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
@@ -371,6 +399,7 @@ jobs:
           sudo apt-get install -y \
             cmake \
             llvm-20-dev \
+            libarchive-dev \
             libzstd-dev \
             devscripts \
             debhelper \
@@ -611,8 +640,7 @@ jobs:
 
   # The deb's macOS counterpart: a tarball of the same files, which the
   # Homebrew formula unpacks. Like the deb depends on apt's libllvm20, the
-  # binary links Homebrew's LLVM, so `brew install llvm@20` is its one
-  # runtime dependency. This job uploads the tarball and the standalone
+  # binary links Homebrew's LLVM and libarchive at runtime. This job uploads the tarball and the standalone
   # tls-arm64-apple-darwin.moon (tls needs Darwin OpenSSL archives, which
   # only this runner can build); the Darwin stdlib bundle still comes from
   # the deb job's cross builds.
@@ -645,7 +673,7 @@ jobs:
           esac
 
       - name: Install dependencies
-        run: brew install llvm@20 ninja ccache
+        run: brew install llvm@20 libarchive ninja ccache
 
       - name: Set up ccache
         uses: hendrikmuhs/ccache-action@v1.2.23
@@ -710,7 +738,7 @@ jobs:
     runs-on: macos-latest
     # A fresh runner rather than the build job's workspace: everything the
     # installed compiler needs has to come from the tarball plus its one
-    # declared dependency.
+    # declared dependencies.
 
     steps:
       - name: Download artifact
@@ -719,8 +747,8 @@ jobs:
           name: sun-macos-${{ env.BUILD_SHA }}
           path: dist/
 
-      - name: Install LLVM 20 runtime
-        run: brew install llvm@20
+      - name: Install compiler runtime dependencies
+        run: brew install llvm@20 libarchive
 
       # Unpacked into a prefix of its own, the way the formula installs it
       # into the Cellar. Nothing goes anywhere system-wide, so the only thing

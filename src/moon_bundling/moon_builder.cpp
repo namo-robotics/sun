@@ -14,6 +14,7 @@
 #include "driver/input_hash.h"
 #include "driver/manifest_processor.h"
 #include "moon_bundling/archive_symbols.h"
+#include "moon_bundling/library_cache.h"
 #include "moon_bundling/metadata_extractor.h"
 #include "moon_bundling/moon.h"
 #include "moon_bundling/proto_importer.h"
@@ -317,6 +318,9 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
     }
     llvm::outs() << "  Generated: " << jsonPath.string() << "\n";
   }
+  // Release the completed compiler before dropping any metadata it referenced.
+  driver.reset();
+  LibraryCache::instance().invalidateBundle(outputPath);
   return report;
 }
 

@@ -290,6 +290,8 @@ static void refreshEntrypoints() {
       sun::driver::SunConfig config =
           sun::driver::SunConfig::loadFile(configPath);
       for (const auto& entry : config.entrypoints) {
+        // Project discovery never fetches remote source repositories.
+        if (!entry.git.empty()) continue;
         combined.push_back(entry.path);
         configEntrypointInfo.emplace(normalizePath(entry.path), entry);
       }
@@ -317,7 +319,7 @@ static bool applyPathVariables(const llvm::json::Object& config) {
   ManifestProcessor::clearPathVariables();
   for (const auto& [name, value] : *vars) {
     if (auto str = value.getAsString()) {
-      ManifestProcessor::setPathVariable(llvm::StringRef(name).str(),
+      ManifestProcessor::setDefaultPathVariable(llvm::StringRef(name).str(),
                                          str->str());
     }
   }

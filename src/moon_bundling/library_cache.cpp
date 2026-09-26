@@ -51,6 +51,29 @@ void LibraryCache::addBundle(const std::filesystem::path& bundlePath) {
   }
 }
 
+void LibraryCache::invalidateBundle(const std::filesystem::path& bundlePath) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  const auto path = std::filesystem::weakly_canonical(bundlePath);
+  std::set<MoonReader*> replaced;
+  for (const auto& bundle : bundles_)
+    if (std::filesystem::weakly_canonical(bundle->getPath()) == path)
+      replaced.insert(bundle.get());
+  for (auto it = moduleToBundle_.begin(); it != moduleToBundle_.end();) {
+    std::erase_if(it->second,
+                  [&](MoonReader* reader) { return replaced.count(reader); });
+    if (it->second.empty())
+      it = moduleToBundle_.erase(it);
+    else
+      ++it;
+  }
+  for (auto* reader : replaced) pinnedBundles_.erase(reader);
+  std::erase_if(bundles_, [&](const auto& reader) {
+    return replaced.count(reader.get());
+  });
+  // A new output may not have existed when the search paths were scanned.
+  discovered_ = false;
+}
+
 void LibraryCache::setTargetTriple(const std::string& triple) {
   std::lock_guard<std::mutex> lock(mutex_);
   targetTriple_ = triple;

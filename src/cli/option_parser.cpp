@@ -146,6 +146,8 @@ std::optional<EarlyExit> parseBuildRunArguments(
       options.dumpProtoSun = true;
     } else if (arg == "--no-test") {
       options.noTest = true;
+    } else if (arg == "--refresh-sources") {
+      options.refreshSources = true;
     } else if (arg == "--force-rebuild") {
       options.forceRebuild = true;
     } else if (cursor.takeValueOf("-l", value)) {
@@ -212,6 +214,9 @@ std::optional<EarlyExit> validateBuildRunOptions(
     return makeFailure(
         "Error: --static only applies when linking; use it "
         "with -c\n");
+  }
+  if (options.refreshSources && (!options.compileMode || !options.configInput)) {
+    return makeFailure("Error: --refresh-sources requires -c sun-config.json\n");
   }
   if (options.forceRebuild && !options.compileMode && !options.emitMoon) {
     return makeFailure(

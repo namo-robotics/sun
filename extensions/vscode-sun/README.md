@@ -14,6 +14,21 @@ a compiled language with Rust-style borrow checking and an LLVM backend.
 - **Formatting** via "Format Document" and format-on-save.
 - **Cross-file analysis**: files listed in a `manifest` block are analyzed together with their entrypoint. Entrypoints are configured with `sun.entrypoints` or `sun.sun_configs`.
 
+## Syntax highlighting only
+
+Enable **Sun: Syntax Only** in Settings, or add this to workspace settings:
+
+```json
+{
+    "sun.syntaxOnly": true
+}
+```
+
+This keeps syntax highlighting while disabling the language server and Test
+Explorer, including diagnostics, semantic tokens, formatting, and navigation.
+Use it for screenshots or examples that do not compile. Changes apply immediately;
+turn it off to restore language features. No Sun installation is needed in this mode.
+
 ## Requirements
 
 The extension talks to the Sun language server, `sun-lsp`, which ships with the Sun compiler.
@@ -24,6 +39,7 @@ elsewhere (for example a local build at `build/sun-lsp`).
 
 | Setting | Description |
 | --- | --- |
+| `sun.syntaxOnly` | Keep only syntax highlighting; disable the language server and Test Explorer. Defaults to `false`. |
 | `sun.lsp_path` | Path to the `sun-lsp` executable. Defaults to `sun-lsp` on `PATH`. Relative paths resolve against the workspace folder. |
 | `sun.compiler_path` | Path to the `sun` compiler, used by the Test Explorer to run tests. Defaults to `sun` on `PATH`; the binary next to `sun-lsp` is tried as a fallback. |
 | `sun.sun_configs` | `sun-config.json` files whose `entrypoints` lists describe the project. Defaults to the workspace root's. Test discovery and cross-file analysis use their declared entrypoints. |

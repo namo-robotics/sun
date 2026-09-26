@@ -31,12 +31,12 @@ dirs are searched nearest-first, and relative entries resolve against their
 own config file's folder. So a workspace root can define `sun_path` and shared
 variables once, while each subfolder adds or overrides only what is local to
 it. A config with `"root": true` stops the upward search — this example uses
-it to stay self-contained. Config definitions override variables supplied
-from outside the folders — `--path-var` flags, the `sun.pathVariables`
-editor setting, and the environment:
+it to stay self-contained. Explicit `--path-var` arguments override config
+values; config values override the `sun.pathVariables` editor defaults and
+the environment:
 
 ```bash
-sun --path-var LIBS=libs --compile -o main main.sun   # without a config file
+sun --path-var LIBS=libs --compile -o main main.sun   # overrides config values
 LIBS=libs sun --compile -o main main.sun              # environment works too
 ```
 

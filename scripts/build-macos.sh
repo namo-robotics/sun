@@ -6,8 +6,8 @@ set -euo pipefail
 # is packed as a plain .tar.gz, which is what the Homebrew formula unpacks;
 # the compiler's bundle search finds those bundles beside its own binary
 # wherever Homebrew puts them. The binary links Homebrew's LLVM the way the
-# deb links apt's libllvm20, so `brew install llvm@20` is its one runtime
-# dependency. The tls bundle carries its own static OpenSSL, built by
+# deb links apt's libllvm20; it also needs Homebrew's libarchive at runtime.
+# The tls bundle carries its own static OpenSSL, built by
 # scripts/build-openssl-macos.sh; the bundle is also published on its own as
 # dist/tls-<triple>.moon.
 #
@@ -56,6 +56,7 @@ cmake -B "$BUILD_DIR" -G Ninja \
     -DCMAKE_C_COMPILER="$LLVM_PREFIX/bin/clang" \
     -DCMAKE_CXX_COMPILER="$LLVM_PREFIX/bin/clang++" \
     -DLLVM_DIR="$LLVM_PREFIX/lib/cmake/llvm" \
+    -DLibArchive_ROOT="$(brew --prefix libarchive)" \
     -DBUILD_TESTING=OFF \
     ${CMAKE_EXTRA_ARGS:-}
 cmake --build "$BUILD_DIR" -j"$(sysctl -n hw.ncpu)"

@@ -237,3 +237,128 @@ test('a failed discovery can be refreshed again and disposal drops pending resul
   await pending;
   assert.deepEqual([...h.controller.items.keys()], ['/workspace/main.sun']);
 });
+
+/** Supplies observable language services for activation and live-toggle tests. */
+function languageServicesHarness(h, start = async () => {}) {
+  const clients = [];
+  let explorerStarts = 0;
+  let explorerDisposals = 0;
+  h.settings.lsp_path = process.execPath;
+  h.mocks['vscode-languageclient/node'] = {
+    TransportKind: { stdio: 0 },
+    /** Records service startup and shutdown without launching a server. */
+    LanguageClient: class {
+      /** Tracks one independent language-client instance. */
+      constructor() { this.stopped = false; clients.push(this); }
+      /** Allows tests to delay initialization while settings change. */
+      async start() { await start(); }
+      /** Records that all client-owned language features were stopped. */
+      async stop() { this.stopped = true; }
+    },
+  };
+  h.mocks['./testExplorer'] = {
+    /** Registers a disposable standing in for all test-discovery resources. */
+    activateTestExplorer(context) {
+      explorerStarts++;
+      context.subscriptions.push({
+        /** Records cleanup when syntax-only mode is enabled. */
+        dispose() { explorerDisposals++; },
+      });
+    },
+  };
+  const context = { subscriptions: [] };
+  return {
+    extension: load('extension', h.mocks), context, clients,
+    /** Returns the number of test integrations created and disposed. */
+    explorerCounts: () => [explorerStarts, explorerDisposals],
+    /** Changes the live mode through the same event emitted by VS Code. */
+    setSyntaxOnly(value) {
+      h.settings.syntaxOnly = value;
+      h.settingsChanged.fire({ affectsConfiguration: (name) => name === 'sun.syntaxOnly' });
+    },
+  };
+}
+
+/** Syntax-only startup must work without locating or launching compiler tools. */
+test('syntax-only startup does not check tools or start language services', async () => {
+  const h = harness({ existsSync() { throw new Error('must not check executables'); } });
+  h.settings.syntaxOnly = true;
+  const services = languageServicesHarness(h);
+  await services.extension.activate(services.context);
+  assert.equal(services.clients.length, 0);
+  assert.deepEqual(services.explorerCounts(), [0, 0]);
+  await services.extension.deactivate();
+  services.context.subscriptions.forEach((subscription) => subscription.dispose());
+});
+
+/** Live toggles dispose services and restore them without duplicate clients. */
+test('syntax-only mode stops and restores the language server and test explorer', async () => {
+  const services = languageServicesHarness(harness());
+  await services.extension.activate(services.context);
+  assert.equal(services.clients.length, 1);
+  services.setSyntaxOnly(true);
+  await flush();
+  assert.equal(services.clients[0].stopped, true);
+  assert.deepEqual(services.explorerCounts(), [1, 1]);
+  services.setSyntaxOnly(false);
+  services.setSyntaxOnly(false);
+  await flush();
+  assert.equal(services.clients.length, 2);
+  assert.equal(services.clients[1].stopped, false);
+  assert.deepEqual(services.explorerCounts(), [2, 1]);
+  await services.extension.deactivate();
+  assert.equal(services.clients[1].stopped, true);
+  assert.deepEqual(services.explorerCounts(), [2, 2]);
+  services.context.subscriptions.forEach((subscription) => subscription.dispose());
+});
+
+/** Enabling syntax-only mode during startup must not activate test discovery. */
+test('syntax-only mode requested during server startup stops it before discovery', async () => {
+  let finishStartup;
+  const services = languageServicesHarness(harness(), () => new Promise((resolve) => { finishStartup = resolve; }));
+  const activation = services.extension.activate(services.context);
+  await flush();
+  services.setSyntaxOnly(true);
+  finishStartup();
+  await activation;
+  await flush();
+  assert.equal(services.clients.length, 1);
+  assert.equal(services.clients[0].stopped, true);
+  assert.deepEqual(services.explorerCounts(), [0, 0]);
+  await services.extension.deactivate();
+  services.context.subscriptions.forEach((subscription) => subscription.dispose());
+});
+
+/** Disabling test integration cancels its runner and does not start later suites. */
+test('disposing test explorer cancels active tests and stops queued suites', async () => {
+  const h = harness();
+  const signals = [];
+  let spawned = 0;
+  let skipped = 0;
+  h.controller.createTestRun = () => ({
+    started() {}, appendOutput() {}, end() {}, skipped() { skipped++; },
+  });
+  h.mocks['node:child_process'].spawn = () => {
+    spawned++;
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.exitCode = null;
+    child.signalCode = null;
+    child.kill = (signal) => {
+      signals.push(signal);
+      setImmediate(() => { child.signalCode = signal; child.emit('exit', null, signal); });
+    };
+    return child;
+  };
+  h.client.response = listing('/workspace/one.sun', '/workspace/two.sun');
+  h.start(); await flush();
+  const running = h.controller.run({}, {
+    isCancellationRequested: false, onCancellationRequested: () => ({ dispose() {} }),
+  });
+  h.dispose();
+  await running;
+  assert.deepEqual(signals, ['SIGTERM']);
+  assert.equal(spawned, 1);
+  assert.equal(skipped, 2);
+});

@@ -37,6 +37,7 @@ const char* const kUsageBody =
     "                    Includes moon.json when building a Moon library\n"
     "  --no-test         Do not also compile the test binary when the program "
     "has tests\n"
+    "  --refresh-sources Fetch Git entrypoint versions again (-c sun-config.json)\n"
     "  --force-rebuild   Build even when the artifact on disk was already "
     "built from the\n"
     "                    same inputs (by default such an artifact is left "

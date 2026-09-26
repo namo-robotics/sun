@@ -1,5 +1,5 @@
 // tests/modules/test_sun_config.cpp - Per-folder sun-config.json: path
-// variables and library search paths that override outside configuration.
+// variables, explicit overrides, and library search paths.
 
 #include <gtest/gtest.h>
 #include <llvm/TargetParser/Host.h>
@@ -42,7 +42,7 @@ void writeFile(const fs::path& path, const std::string& content) {
 
 }  // namespace
 
-TEST(Modules_SunConfig, config_variables_override_cli_and_environment) {
+TEST(Modules_SunConfig, cli_variables_override_config_and_environment) {
   fs::path dir = freshDir("override");
   writeFile(dir / "sun-config.json",
             "{ \"path_variables\": { \"LIBS\": \"conflibs\" } }\n");
@@ -60,7 +60,7 @@ TEST(Modules_SunConfig, config_variables_override_cli_and_environment) {
   ASSERT_TRUE(resolved.has_value());
   ASSERT_EQ(resolved->moonImports.size(), 1u);
   EXPECT_EQ(fs::path(resolved->moonImports[0].path).lexically_normal(),
-            (dir / "conflibs" / "lib.moon").lexically_normal());
+            fs::path("/from-cli/lib.moon"));
 }
 
 TEST(Modules_SunConfig, config_is_found_in_a_parent_folder) {
@@ -313,7 +313,7 @@ TEST(Modules_SunConfig,
   auto config = SunConfig::findFrom(dir / "child", "aarch64-linux-gnu");
   ASSERT_TRUE(config);
   EXPECT_EQ(config->pathVariables.at("OTHER"), (dir / "child/child").string());
-  ManifestProcessor::setPathVariable("SSL", "/cli");
+  ManifestProcessor::setDefaultPathVariable("SSL", "/editor");
   auto manifest = ManifestProcessor::fromEntrypointFile(
       (dir / "child/main.sun").string(), "aarch64-linux-gnu");
   ManifestProcessor::clearPathVariables();
@@ -424,4 +424,20 @@ TEST(Modules_SunConfig, target_selection_accepts_platform_aliases) {
     ASSERT_EQ(mac.entrypoints.size(), 1u);
     EXPECT_EQ(mac.entrypoints[0].path, (dir / "mac.sun").string());
   }
+}
+
+/** Source configuration overrides defaults and environment until explicitly overridden. */
+TEST(Modules_SunConfig, explicit_overrides_preserve_default_precedence) {
+  SunConfig config;
+  config.pathVariables["SUN_TEST_PATH_PRECEDENCE"] = "/config";
+  setenv("SUN_TEST_PATH_PRECEDENCE", "/environment", 1);
+  ManifestProcessor::setDefaultPathVariable("SUN_TEST_PATH_PRECEDENCE", "/project");
+  EXPECT_EQ(ManifestProcessor::expandPathVariables("$SUN_TEST_PATH_PRECEDENCE/lib", &config),
+            "/config/lib");
+  ManifestProcessor::setPathVariable("SUN_TEST_PATH_PRECEDENCE", "/explicit");
+  ManifestProcessor::setDefaultPathVariable("SUN_TEST_PATH_PRECEDENCE", "/later-project");
+  EXPECT_EQ(ManifestProcessor::expandPathVariables("$SUN_TEST_PATH_PRECEDENCE/lib", &config),
+            "/explicit/lib");
+  ManifestProcessor::clearPathVariables();
+  unsetenv("SUN_TEST_PATH_PRECEDENCE");
 }

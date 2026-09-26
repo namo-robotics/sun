@@ -3,7 +3,7 @@
     "displayName": "Sun Language",
     "description": "Syntax highlighting, diagnostics, formatting, hover type information, go-to-definition, find references, rename symbol and Test Explorer for Sun",
     "icon": "images/sun-logo.png",
-    "version": "0.1.39",
+    "version": "0.1.40",
     "publisher": "namo-robotics",
     "license": "MIT",
     "repository": {
@@ -109,6 +109,12 @@
         "configuration": {
             "title": "Sun",
             "properties": {
+                "sun.syntaxOnly": {
+                    "type": "boolean",
+                    "default": false,
+                    "scope": "window",
+                    "description": "Keep only syntax highlighting. Stops the Sun language server and Test Explorer, disabling diagnostics, semantic highlighting, formatting, and navigation. Changes take effect immediately."
+                },
                 "sun.lsp_path": {
                     "type": "string",
                     "default": "sun-lsp",

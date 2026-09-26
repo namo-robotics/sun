@@ -58,6 +58,10 @@ class LibraryCache {
    */
   void addBundle(const std::filesystem::path& bundlePath);
 
+  /** Forgets readers for a replaced bundle after its previous compilation ends.
+   * Search paths and other explicitly registered bundles remain available. */
+  void invalidateBundle(const std::filesystem::path& bundlePath);
+
   /**
    * Initialize from environment
    * Loads lib/ and build/ subdirectories for each SUN_PATH entry

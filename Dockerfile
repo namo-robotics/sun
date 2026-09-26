@@ -27,7 +27,7 @@ RUN apt-get update --error-on=any && apt-get install -y --no-install-recommends 
     libllvm-20-ocaml-dev \
     clangd-20 clang-format-20 clang-tidy-20 clang-tools-20 \
     # Common LLVM dev dependencies
-    libzstd-dev zlib1g-dev libxml2-dev libedit-dev libncurses-dev \
+    libarchive-dev libzstd-dev zlib1g-dev libxml2-dev libedit-dev libncurses-dev \
     libcurl4-openssl-dev libpfm4-dev libdw-dev libcapstone-dev \
     # TLS tests generate certificates and run a local OpenSSL server.
     openssl ca-certificates \
@@ -82,6 +82,12 @@ RUN mkdir -p /opt/cross \
     && curl -sL https://musl.cc/aarch64-linux-musl-cross.tgz | tar xz -C /opt/cross \
     && curl -sL https://musl.cc/x86_64-linux-musl-cross.tgz | tar xz -C /opt/cross
 ENV PATH="/opt/cross/aarch64-linux-musl-cross/bin:/opt/cross/x86_64-linux-musl-cross/bin:${PATH}"
+
+# Supply the Git-library example's musl OpenSSL and zlib archives in fresh containers.
+COPY scripts/fetch-openssl.sh /opt/sun/scripts/fetch-openssl.sh
+RUN bash /opt/sun/scripts/fetch-openssl.sh --arch x86_64 \
+    && rm -rf /opt/sun/tmp
+ENV SUN_EXAMPLE_NATIVE_LIBS="/opt/sun/third_party/openssl/x86_64-linux-musl"
 
 # GitHub CLI from the official apt repo (newer than the Ubuntu archive build)
 RUN mkdir -p -m 755 /etc/apt/keyrings \

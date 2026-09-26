@@ -9,7 +9,7 @@
 #include <map>
 #include <sstream>
 
-#include "moon_bundling/moon_cache.h"
+#include "driver/package.h"
 #include "parsing/parser.h"
 #include "support/error.h"
 #include "support/sun_path.h"
@@ -29,6 +29,17 @@ std::map<std::string, std::string>& pathVariables() {
   static std::map<std::string, std::string> vars;
   return vars;
 }
+/** Holds consuming-project values while a Git entrypoint is being built. */
+std::map<std::string, std::string>& dependencyPathVariables() {
+  static std::map<std::string, std::string> vars;
+  return vars;
+}
+
+/** Provides project and editor defaults when a source config has no value. */
+std::map<std::string, std::string>& defaultPathVariables() {
+  static std::map<std::string, std::string> vars;
+  return vars;
+}
 }  // namespace
 
 void ManifestProcessor::setPathVariable(const std::string& name,
@@ -36,7 +47,23 @@ void ManifestProcessor::setPathVariable(const std::string& name,
   pathVariables()[name] = value;
 }
 
-void ManifestProcessor::clearPathVariables() { pathVariables().clear(); }
+void ManifestProcessor::setDefaultPathVariable(const std::string& name,
+                                               const std::string& value) {
+  defaultPathVariables()[name] = value;
+}
+
+std::map<std::string, std::string>
+ManifestProcessor::exchangeDependencyPathVariables(
+    std::map<std::string, std::string> values) {
+  dependencyPathVariables().swap(values);
+  return values;
+}
+
+void ManifestProcessor::clearPathVariables() {
+  pathVariables().clear();
+  defaultPathVariables().clear();
+  dependencyPathVariables().clear();
+}
 
 std::string ManifestProcessor::expandPathVariables(const std::string& input,
                                                    const SunConfig* config) {
@@ -60,16 +87,34 @@ std::string ManifestProcessor::expandPathVariables(const std::string& input,
           "'");
     }
     std::string name = input.substr(nameStart, nameEnd - nameStart);
+    if (config && config->dependencies.count(name)) {
+      if (pathVariables().count(name) ||
+          dependencyPathVariables().count(name) ||
+          defaultPathVariables().count(name) ||
+          config->pathVariables.count(name) || std::getenv(name.c_str()))
+        sun::support::logAndThrowError("dependency path variable collision: " +
+                                       name);
+      out += resolveConfigDependency(*config, name).string();
+      i = nameEnd;
+      continue;
+    }
     const std::string* value = nullptr;
-    if (config) {
+    if (auto it = pathVariables().find(name); it != pathVariables().end()) {
+      value = &it->second;
+    }
+    if (!value) {
+      auto it = dependencyPathVariables().find(name);
+      if (it != dependencyPathVariables().end()) value = &it->second;
+    }
+    if (!value && config) {
       auto it = config->pathVariables.find(name);
       if (it != config->pathVariables.end()) {
         value = &it->second;
       }
     }
     if (!value) {
-      auto it = pathVariables().find(name);
-      if (it != pathVariables().end()) {
+      auto it = defaultPathVariables().find(name);
+      if (it != defaultPathVariables().end()) {
         value = &it->second;
       }
     }
@@ -113,7 +158,8 @@ std::string ManifestProcessor::resolvePath(const std::string& path,
   }
   if (config) {
     for (const auto& dir : config->sunPath) {
-      auto candidate = std::filesystem::path(dir) / p;
+      auto candidate =
+          std::filesystem::path(expandPathVariables(dir, config)) / p;
       if (std::filesystem::exists(candidate)) {
         return candidate.lexically_normal().string();
       }
@@ -134,8 +180,8 @@ ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
   ResolvedManifest out;
   out.baseDir = baseDir;
 
-  // The nearest sun-config.json overrides configuration supplied from
-  // outside the folder (--path-var, editor settings, environment).
+  // Explicit path variables win, followed by consuming-project overrides
+  // during Git builds, then source config, defaults, and the environment.
   auto configOpt = SunConfig::findFrom(baseDir, targetTriple);
   const SunConfig* config = configOpt ? &*configOpt : nullptr;
 
@@ -145,24 +191,28 @@ ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
           expandPathVariables(sunDep.path, config), baseDir, config));
     }
   };
-  auto addMoons =
-      [&](const std::vector<sun::ast::ManifestMoonDependency>& moons) {
-        for (const auto& moonDep : moons) {
-          std::string resolved =
-              moonDep.url
-                  ? sun::moon_bundling::MoonCache::fetch(
-                        expandPathVariables(*moonDep.url, config), moonDep.hash)
-                        .string()
-                  : resolvePath(expandPathVariables(moonDep.path, config),
-                                baseDir, config, targetTriple);
-          if (moonDep.rename.has_value()) {
-            out.moonImports.emplace_back(resolved, moonDep.rename.value(),
-                                         moonDep.rename.value());
-          } else {
-            out.moonImports.emplace_back(resolved);
-          }
-        }
-      };
+  auto addMoons = [&](const std::vector<sun::ast::ManifestMoonDependency>&
+                          moons) {
+    for (const auto& moonDep : moons) {
+      if (moonDep.url)
+        sun::support::logAndThrowError(
+            "manifest library URLs are no longer supported; move the URL and "
+            "hash to sun-config.json dependencies and use a local .moon path");
+      std::string resolved =
+          resolvePath(expandPathVariables(moonDep.path, config), baseDir,
+                      config, targetTriple);
+      if (std::filesystem::path(resolved).extension() != ".moon" ||
+          resolved.find("://") != std::string::npos)
+        sun::support::logAndThrowError(
+            "manifest libraries must name local .moon files");
+      if (moonDep.rename.has_value()) {
+        out.moonImports.emplace_back(resolved, moonDep.rename.value(),
+                                     moonDep.rename.value());
+      } else {
+        out.moonImports.emplace_back(resolved);
+      }
+    }
+  };
   auto addProtos =
       [&](const std::vector<sun::ast::ManifestProtoDependency>& protos) {
         for (const auto& protoDep : protos) {

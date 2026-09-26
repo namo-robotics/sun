@@ -100,6 +100,43 @@ public module library {
   }
 };
 
+/** A config build must import the replacement bundle, not its cached
+ * predecessor. */
+TEST_P(MoonSearchPath, config_rebuild_reloads_replaced_library) {
+  const auto config = dir / "project/sun-config.json";
+  const auto library = dir / "project/library.moon";
+  ASSERT_EQ(run(quote(dir / "bin/sun") + " --emit-moon -o " + quote(library) +
+                " " + quote(dir / "project/lib.sun")),
+            0)
+      << readFile(dir / "log");
+  std::ofstream(dir / "project/lib.sun") << R"(
+manifest { libraries: ["stdlib.moon"] }
+/** Exposes a changed implementation through a rebuilt bundle. */
+public module library {
+  /** Makes the replacement distinguishable from the previous bundle. */
+  public function answer() i32 { return installed_dependency.answer() + 1; }
+}
+)";
+  std::ofstream(dir / "project/main.sun") << R"(
+manifest { libraries: ["library.moon"] }
+/** Verifies the consumer uses the rebuilt implementation. */
+function main() i32 { if library.answer() == 43 { return 0; } return 1; }
+)";
+  std::ofstream(config) << R"({
+    "root": true,
+    "sun_path": ["."],
+    "entrypoints": [
+      {"path": "lib.sun", "type": "library", "output_name": "library"},
+      {"path": "main.sun", "type": "binary", "output_name": "main"}
+    ]
+  })";
+  ASSERT_EQ(run(quote(dir / "bin/sun") + " -c --no-test --force-rebuild " +
+                quote(config)),
+            0)
+      << readFile(dir / "log");
+  EXPECT_EQ(run(quote(dir / "project/main")), 0) << readFile(dir / "log");
+}
+
 TEST_P(MoonSearchPath, emit_moon_finds_installed_dependency) {
   checkBuild("--emit-moon -o " + quote(dir / "project/library.moon") + " " +
              quote(dir / "project/lib.sun"));
