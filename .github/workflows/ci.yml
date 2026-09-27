@@ -607,8 +607,9 @@ jobs:
           EOF
           unset SUN_PATH
           sun test.sun
-          # AOT: needs a C link driver (cc), libc6-dev and libstdc++ dev files
-          sun -c -o test_aot test.sun
+          # Exercise the package-provided GNU toolchain; static linking
+          # needs the separate musl toolchain tested in build-and-test.
+          sun -c --dynamic -o test_aot test.sun
           ./test_aot
           # TLS: tls.moon carries its own static OpenSSL, so this needs no
           # libssl installed and no linker flags.
@@ -651,7 +652,8 @@ jobs:
             aarch64-linux-gnu-readelf -h "stdlib-$target.o" | grep 'Machine:.*AArch64'
             aarch64-linux-gnu-readelf -h "tls-$target.o" | grep 'Machine:.*AArch64'
           done
-          sun -c --target aarch64-linux-gnu -o tls_aarch64 tls_test.sun
+          # Match the GNU cross toolchain installed above.
+          sun -c --dynamic --target aarch64-linux-gnu -o tls_aarch64 tls_test.sun
           aarch64-linux-gnu-readelf -h tls_aarch64 | grep 'Machine:.*AArch64'
 
   # The deb's macOS counterpart: a tarball of the same files, which the
