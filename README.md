@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/sun-logo.svg" alt="Sun Logo" width="120" height="120">
+  <img src="assets/sun_banner.jpg" alt="Sun Logo">
 </p>
 
 <h1 align="center">The Sun Programming Language</h1>
@@ -10,5 +10,6 @@
   </a>
 </p>
 
-[Documentation](https://namo-robotics.github.io/sun/)
-
+<p align="center">
+  <a href="https://namo-robotics.github.io/sun/">Documentation</a>
+</p>
