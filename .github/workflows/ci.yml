@@ -25,6 +25,7 @@ jobs:
     timeout-minutes: 45
     env:
       CCACHE_SLOPPINESS: pch_defines,time_macros
+      CC: clang-20
       CXX: clang++-20
       MPLCONFIGDIR: ${{ github.workspace }}/tmp/string-creation-ci/matplotlib
     steps:
@@ -64,22 +65,15 @@ jobs:
           go-version: '1.24.3'
           cache: false
 
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
         with:
-          bun-version: '1.4.2'
+          dotnet-version: '8.0.x'
 
-      - name: Set up Rust and Nim
+      - name: Set up Rust
         run: |
           rustup toolchain install 1.94.1 --profile minimal
           rustup default 1.94.1
-          mkdir -p tmp/string-creation-tools
-          curl --fail --location --retry 3 \
-            https://github.com/nim-lang/nightlies/releases/download/2026-09-23-version-2-2-597822ac8a695a9530ddd53c7f93b06201053028/nim-2.2.13-linux_x64.tar.xz \
-            -o tmp/string-creation-tools/nim.tar.xz
-          echo '79b4877c3e3817bbd75463759aa03f280711d22aab0006ab917130dede277eee  tmp/string-creation-tools/nim.tar.xz' | sha256sum --check
-          tar -xJf tmp/string-creation-tools/nim.tar.xz -C tmp/string-creation-tools
-          echo "${GITHUB_WORKSPACE}/tmp/string-creation-tools/nim-2.2.13/bin" >> "$GITHUB_PATH"
 
       - name: Build Sun
         run: |
@@ -105,18 +99,8 @@ jobs:
           python3 benchmarks/string-creation/plot.py \
             tmp/string-creation-ci/results.json tmp/string-creation-ci/strings.png
 
-      - name: Publish benchmark summary
-        if: always()
-        run: |
-          if [ -f tmp/string-creation-ci/results.md ]; then
-            echo '### String creation benchmark' >> "$GITHUB_STEP_SUMMARY"
-            echo 'Informational only. Hosted-runner hardware and load vary between runs.' >> "$GITHUB_STEP_SUMMARY"
-            cat tmp/string-creation-ci/results.md >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo 'String creation benchmark did not finish. See the job logs and available artifacts.' >> "$GITHUB_STEP_SUMMARY"
-          fi
-
       - name: Upload benchmark results and logs
+        id: benchmark-artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -128,6 +112,22 @@ jobs:
             tmp/string-creation-ci/*.log
           if-no-files-found: ignore
           retention-days: 30
+
+      - name: Publish benchmark summary
+        if: always()
+        env:
+          BENCHMARK_ARTIFACT_URL: ${{ steps.benchmark-artifact.outputs.artifact-url }}
+        run: |
+          if [ -f tmp/string-creation-ci/results.md ]; then
+            echo '### String creation benchmark' >> "$GITHUB_STEP_SUMMARY"
+            echo 'Informational only. Hosted-runner hardware and load vary between runs.' >> "$GITHUB_STEP_SUMMARY"
+            cat tmp/string-creation-ci/results.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'String creation benchmark did not finish. See the job logs and available artifacts.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f tmp/string-creation-ci/strings.png ] && [ -n "$BENCHMARK_ARTIFACT_URL" ]; then
+            printf '\n[Download the vertical bar chart (strings.png) and full results](%s)\n' "$BENCHMARK_ARTIFACT_URL" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   build-and-test:
     runs-on: ubuntu-24.04

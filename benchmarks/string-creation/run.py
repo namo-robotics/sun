@@ -16,7 +16,8 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = Path(__file__).resolve().parent
 UPSTREAM = "361c1f2ed0291573bcaccaab4ee2d5a96188fe5b"
-FILES = ["bench.cpp", "bench.go", "bench.js", "bench.nim", "bench.py",
+FILES = ["bench.c", "bench.cpp", "bench.go", "bench.js", "bench.py",
+         "csharp/StringBench.csproj", "csharp/Program.cs",
          "rust/Cargo.toml", "rust/Cargo.lock", "rust/src/main.rs"]
 
 
@@ -37,11 +38,15 @@ def main():
     env["CARGO_TARGET_DIR"] = str(out / "rust-target")
     env["GOCACHE"] = str(out / "go-cache")
     env["GOPATH"] = str(out / "go-path")
+    env["DOTNET_CLI_HOME"] = str(out / "dotnet-home")
+    env["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1"
+    env["DOTNET_NOLOGO"] = "1"
     names = {"sun": os.environ.get("SUN", str(ROOT / "build/sun")),
+             "cc": os.environ.get("CC", "clang"),
              "cxx": os.environ.get("CXX", "clang++"),
              "python": os.environ.get("PYTHON", "python3"),
-             "node": "node", "bun": "bun", "cargo": "cargo",
-             "rustc": "rustc", "go": "go", "nim": "nim"}
+             "node": "node", "dotnet": "dotnet", "cargo": "cargo",
+             "rustc": "rustc", "go": "go"}
     tools = {}
     for name, command in names.items():
         found = shutil.which(command)
@@ -76,22 +81,26 @@ def main():
     sun = out / "bench_sun"
     cpp = out / "bench_cpp"
     go = out / "bench_go"
-    nim = out / "bench_nim"
+    c = out / "bench_c"
+    csharp = out / "csharp"
     run("build-sun", [tools["sun"], "-c", "--dynamic", "-o", str(sun), str(SOURCE / "bench.sun")])
+    run("build-c", [tools["cc"], "-O3", "-std=c11", "-o", str(c), str(SOURCE / "bench.c")])
     run("build-cpp", [tools["cxx"], "-O3", "-std=c++20", "-o", str(cpp), str(SOURCE / "bench.cpp")])
     run("build-rust", [tools["cargo"], "build", "--release", "--locked", "--manifest-path", str(manifest)])
     run("build-go", [tools["go"], "build", "-o", str(go), str(SOURCE / "bench.go")])
-    run("build-nim", [tools["nim"], "c", "-d:danger", "--hints:off",
-                      f"--nimcache:{out / 'nim-cache'}", f"-o:{nim}", str(SOURCE / "bench.nim")])
+    run("build-csharp", [tools["dotnet"], "build", str(SOURCE / "csharp/StringBench.csproj"),
+                         "--configuration", "Release", "--output", str(csharp),
+                         f"-p:BaseIntermediateOutputPath={out / 'csharp-obj'}/"])
     cases = [
         ("python", [tools["python"], str(SOURCE / "bench.py")], [("Python str(i)", "str(i)")]),
-        ("node", [tools["node"], str(SOURCE / "bench.js")], [("Node.js String(i)", "String(i)")]),
-        ("bun", [tools["bun"], str(SOURCE / "bench.js")], [("Bun String(i)", "String(i)")]),
+        ("node", [tools["node"], str(SOURCE / "bench.js")], [("JavaScript (Node.js) String(i)", "String(i)")]),
+        ("c", [str(c)], [("C snprintf", "snprintf(i)")]),
         ("cpp", [str(cpp)], [("C++ std::to_string", "to_string(i)")]),
         ("rust", [str(out / "rust-target/release/strbench")],
          [("Rust to_string()", "i.to_string()"), ("Rust itoa", "itoa + to_owned()")]),
         ("go", [str(go)], [("Go strconv.Itoa", "strconv.Itoa(i)")]),
-        ("nim", [str(nim)], [("Nim $i", "$i")]),
+        ("csharp", [tools["dotnet"], str(csharp / "StringBench.dll")],
+         [("C# ToString()", "i.ToString()")]),
         ("sun", [str(sun)], [("Sun interpolation", "Sun interpolation:")]),
     ]
     rows = []
@@ -105,7 +114,7 @@ def main():
                 raise RuntimeError(f"missing result for {name}")
             rows.append({"language": name, "ns_per_string": float(match[1]),
                          "million_strings_per_second": float(match[2])})
-        if label in {"cpp", "rust", "go", "nim", "sun"}:
+        if label in {"c", "cpp", "rust", "go", "csharp", "sun"}:
             checks = re.findall(r"\(check (\d+)\)", output)
             if len(checks) != len(entries) or any(int(x) != 8192 for x in checks):
                 raise RuntimeError(f"incorrect retained string lengths for {label}: {checks}")
