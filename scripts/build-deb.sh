@@ -151,19 +151,38 @@ publish_bundles() {
 build_package() {
     log "Building Debian package..."
     
-    # Clean previous builds
-    rm -rf obj-* debian/.debhelper debian/sun debian/files debian/*.debhelper* debian/*.substvars
-    
-    # Create a build directory to avoid parent directory permission issues
-    local build_dir=$(mktemp -d)
-    trap "rm -rf '$build_dir'" EXIT
-    
-    # Copy source to build directory
-    cp -a . "$build_dir/sun"
-    # Drop any local build tree: sun-config.json lists build/ as a bundle
-    # search path, and a stale stdlib.moon there would shadow the one this
-    # package build produces in obj-*/.
-    rm -rf "$build_dir/sun/build" "$build_dir/sun/dist"
+    # Stable source and build paths let ccache reuse objects across CI runs.
+    # Reserve the directory exclusively so concurrent builds cannot erase
+    # each other's files. A stale directory must be removed before retrying.
+    local build_dir="$PROJECT_ROOT/tmp/build-deb"
+    mkdir -p "$PROJECT_ROOT/tmp"
+    if ! mkdir "$build_dir"; then
+        error "Build directory already exists or cannot be created: $build_dir"
+        exit 1
+    fi
+    trap 'rm -rf -- "$PROJECT_ROOT/tmp/build-deb"' EXIT
+    mkdir "$build_dir/sun"
+
+    # Exclude work directories before copying, including this staging tree.
+    # Keep Git metadata for version detection and OpenSSL archives for TLS.
+    # A stale build/stdlib.moon would shadow the freshly packaged bundle.
+    tar -cf - \
+        --exclude='./tmp' \
+        --exclude='./.ccache' \
+        --exclude='./.cache' \
+        --exclude='./build' \
+        --exclude='./build-*' \
+        --exclude='./obj-*' \
+        --exclude='./dist' \
+        --exclude='./Testing' \
+        --exclude='node_modules' \
+        --exclude='./debian/.debhelper' \
+        --exclude='./debian/sun' \
+        --exclude='./debian/files' \
+        --exclude='./debian/*.debhelper*' \
+        --exclude='./debian/*.substvars' \
+        --exclude='./debian/debhelper-build-stamp' \
+        . | tar -xf - -C "$build_dir/sun"
     cd "$build_dir/sun"
     
     # Build the package (unsigned for CI)

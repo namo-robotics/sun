@@ -358,19 +358,21 @@ jobs:
           done
           exit $fail
 
+  # Package builds run alongside tests; publication is gated separately.
   build-deb:
-    needs: [build-and-test, build-and-test-macos]
     if: github.event_name != 'pull_request'
-    permissions:
-      contents: write
     runs-on: ubuntu-24.04
+
+    outputs:
+      release-tag: ${{ steps.release.outputs.tag }}
+      package-name: ${{ steps.deb.outputs.name }}
 
     env:
       # Required for ccache to cache compilations that use precompiled headers
       CCACHE_SLOPPINESS: pch_defines,time_macros
-      # The build runs in a random mktemp dir; don't hash the cwd or every
-      # run misses the cache (dpkg buildflags include -g, which triggers it)
-      CCACHE_NOHASHDIR: "true"
+      # debhelper changes HOME; keep compilation and the cache action on
+      # the same cache directory regardless of the build environment.
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
 
     steps:
       - name: Checkout
@@ -433,19 +435,33 @@ jobs:
           path: dist/*
           retention-days: 30
 
+  # Publish only after compiler tests and this package's installation pass.
+  publish-deb:
+    needs: [build-deb, build-and-test, build-and-test-macos, test-install]
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sun-deb-package-${{ env.BUILD_SHA }}
+          path: dist/
+
       - name: Upload to release
-        if: steps.release.outputs.tag != ''
+        if: needs.build-deb.outputs.release-tag != ''
         uses: softprops/action-gh-release@v2
         with:
           # Use the detected tag, including for manual runs on a branch.
-          tag_name: ${{ steps.release.outputs.tag }}
+          tag_name: ${{ needs.build-deb.outputs.release-tag }}
           files: dist/*
           body: |
             Install the Linux package:
 
             ```bash
-            curl -fL "https://github.com/${{ github.repository }}/releases/download/${{ steps.release.outputs.tag }}/${{ steps.deb.outputs.name }}" -o "/tmp/${{ steps.deb.outputs.name }}" && chmod 0644 "/tmp/${{ steps.deb.outputs.name }}"
-            sudo apt install "/tmp/${{ steps.deb.outputs.name }}" && rm -f "/tmp/${{ steps.deb.outputs.name }}"
+            curl -fL "https://github.com/${{ github.repository }}/releases/download/${{ needs.build-deb.outputs.release-tag }}/${{ needs.build-deb.outputs.package-name }}" -o "/tmp/${{ needs.build-deb.outputs.package-name }}" && chmod 0644 "/tmp/${{ needs.build-deb.outputs.package-name }}"
+            sudo apt install "/tmp/${{ needs.build-deb.outputs.package-name }}" && rm -f "/tmp/${{ needs.build-deb.outputs.package-name }}"
             ```
 
             The temporary path is reachable by APT's restricted `_apt` user, and mode `0644` handles restrictive user umasks.
@@ -479,7 +495,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update dev release
-        if: steps.release.outputs.tag == ''
+        if: needs.build-deb.outputs.release-tag == ''
         uses: softprops/action-gh-release@v2
         with:
           tag_name: dev
@@ -494,8 +510,8 @@ jobs:
             Install the Linux package:
 
             ```bash
-            curl -fL "https://github.com/${{ github.repository }}/releases/download/dev/${{ steps.deb.outputs.name }}" -o "/tmp/${{ steps.deb.outputs.name }}" && chmod 0644 "/tmp/${{ steps.deb.outputs.name }}"
-            sudo apt install "/tmp/${{ steps.deb.outputs.name }}" && rm -f "/tmp/${{ steps.deb.outputs.name }}"
+            curl -fL "https://github.com/${{ github.repository }}/releases/download/dev/${{ needs.build-deb.outputs.package-name }}" -o "/tmp/${{ needs.build-deb.outputs.package-name }}" && chmod 0644 "/tmp/${{ needs.build-deb.outputs.package-name }}"
+            sudo apt install "/tmp/${{ needs.build-deb.outputs.package-name }}" && rm -f "/tmp/${{ needs.build-deb.outputs.package-name }}"
             ```
 
             The temporary path is reachable by APT's restricted `_apt` user, and mode `0644` handles restrictive user umasks.
@@ -645,11 +661,11 @@ jobs:
   # only this runner can build); the Darwin stdlib bundle still comes from
   # the deb job's cross builds.
   build-macos:
-    needs: [build-and-test, build-and-test-macos]
     if: github.event_name != 'pull_request'
-    permissions:
-      contents: write
     runs-on: macos-latest
+
+    outputs:
+      release-tag: ${{ steps.release.outputs.tag }}
 
     env:
       CCACHE_SLOPPINESS: pch_defines,time_macros
@@ -706,14 +722,28 @@ jobs:
             dist/*.moon
           retention-days: 30
 
-      # No body on either upload: the deb job owns the release notes, and
+  # Publish only after compiler tests and this package's installation pass.
+  publish-macos:
+    needs: [build-macos, build-and-test, build-and-test-macos, test-install-macos]
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sun-macos-${{ env.BUILD_SHA }}
+          path: dist/
+
+      # No body on either upload: publish-deb owns the release notes, and
       # setting one here would race it.
       - name: Upload to release
-        if: steps.release.outputs.tag != ''
+        if: needs.build-macos.outputs.release-tag != ''
         uses: softprops/action-gh-release@v2
         with:
           # Use the detected tag, including for manual runs on a branch.
-          tag_name: ${{ steps.release.outputs.tag }}
+          tag_name: ${{ needs.build-macos.outputs.release-tag }}
           files: |
             dist/*.tar.gz
             dist/*.moon
@@ -721,7 +751,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update dev release
-        if: steps.release.outputs.tag == ''
+        if: needs.build-macos.outputs.release-tag == ''
         uses: softprops/action-gh-release@v2
         with:
           tag_name: dev
@@ -808,12 +838,12 @@ jobs:
           sun -c -o tls_aot tls_test.sun
           ./tls_aot
 
-  # Points the Homebrew tap at the build that just passed its install test.
+  # Points the Homebrew tap at the published build that passed its install test.
   # A formula has to carry a checksum and the rolling dev tarball's changes on
   # every push, so the formula is re-rendered from homebrew/sun.rb.in and
   # pushed each time rather than edited by hand in the tap.
   update-tap:
-    needs: [build-macos, test-install-macos]
+    needs: publish-macos
     runs-on: ubuntu-24.04
 
     steps:
@@ -886,7 +916,7 @@ jobs:
 
   # Publish main's docs only after every package job succeeds.
   docs:
-    needs: [build-deb, test-install, build-macos, test-install-macos, update-tap]
+    needs: [publish-deb, publish-macos, update-tap]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
