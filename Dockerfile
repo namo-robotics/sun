@@ -21,6 +21,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update --error-on=any && apt-get install -y --no-install-recommends \
     # Core build tools
     build-essential cmake ninja-build git python3 python3-pip \
+    # Local benchmark toolchains, chart generation, and .NET globalization.
+    rustc cargo golang-go python3-matplotlib libicu78 \
     # LLVM 20 full development suite (native since 25.10)
     clang-20 lldb-20 lld-20 \
     llvm-20 llvm-20-dev llvm-20-tools \
@@ -43,6 +45,13 @@ RUN apt-get update --error-on=any && apt-get install -y --no-install-recommends 
     # otherwise it reports "No permission to enable task-clock event".
     valgrind linux-tools-common linux-tools-generic \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Ubuntu does not provide the benchmark's .NET SDK version in this image.
+RUN curl -fsSL --retry 3 https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh \
+    && bash /tmp/dotnet-install.sh --channel 8.0 --install-dir /opt/dotnet --no-path \
+    && rm /tmp/dotnet-install.sh
+ENV DOTNET_ROOT=/opt/dotnet \
+    PATH="/opt/dotnet:${PATH}"
 
 # Set modern LLVM 20 as default (usually already the case, but explicit is safer)
 RUN update-alternatives --install /usr/bin/clang     clang     /usr/bin/clang-20     100 \
