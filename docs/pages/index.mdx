@@ -345,7 +345,7 @@ moons it uses — nothing to install beside the binary, and nothing to load at
 run time.
 
 C libraries follow the same preference: `sun -c` links statically by default,
-preferring musl where it is installed, and produces one self-contained
+requiring a musl toolchain on Linux, and produces one self-contained
 executable. Dynamic linkage is still available — `--dynamic` links against
 shared objects, which vendor SDKs shipped only as `.so` files need, and macOS
 targets are always dynamic because Apple ships no static libSystem. See

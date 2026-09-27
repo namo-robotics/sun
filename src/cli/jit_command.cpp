@@ -10,6 +10,7 @@
 #include "driver/driver.h"
 #include "driver/git_source.h"
 #include "llvm/Support/raw_ostream.h"
+#include "support/terminal.h"
 
 /** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
@@ -33,8 +34,9 @@ std::optional<std::string> findConfigBinary(const std::string& configFile) {
       }
     }
     if (binaries.size() != 1) {
-      llvm::errs() << "Error: " << configFile << " declares " << binaries.size()
-                   << " binary entrypoints; name the .sun file to run\n";
+      sun::support::messageStream("error")
+          << configFile << " declares " << binaries.size()
+          << " binary entrypoints; name the .sun file to run\n";
       return std::nullopt;
     }
     return binaries[0]->path;
@@ -72,8 +74,9 @@ int runJitCommand(const BuildRunOptions& options) {
   // reports the unresolved symbol with more precision than a guess here.
   auto nativeLibs = sun::driver::loadNativeLibraries(options.linkOptions);
   for (const auto& lib : nativeLibs.failed) {
-    llvm::errs() << "Warning: could not load library '" << lib
-                 << "'; continuing in case its symbols are already present\n";
+    sun::support::messageStream("warning")
+        << "could not load library '" << lib
+        << "'; continuing in case its symbols are already present\n";
   }
 
   try {

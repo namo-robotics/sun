@@ -12,6 +12,7 @@
 #include "moon_bundling/library_cache.h"
 #include "moon_bundling/moon_cache.h"
 #include "support/sun_path.h"
+#include "support/terminal.h"
 
 using sun::driver::SunConfig;
 using sun::moon_bundling::LibraryCache;
@@ -97,10 +98,16 @@ void applyBuildRunSettings(const BuildRunOptions& options) {
 
 /** Prints an early-exit message to its selected output stream. */
 int reportEarlyExit(const EarlyExit& earlyExit) {
-  if (earlyExit.stream == EarlyExit::Stream::Out) {
-    llvm::outs() << earlyExit.text;
-  } else {
-    llvm::errs() << earlyExit.text;
+  auto& stream =
+      earlyExit.stream == EarlyExit::Stream::Out ? llvm::outs() : llvm::errs();
+  const std::string prefix = sun::support::messagePrefix(
+      earlyExit.exitCode == 0 ? "info" : "error", stream);
+  size_t start = 0;
+  while (start < earlyExit.text.size()) {
+    size_t end = earlyExit.text.find('\n', start);
+    stream << prefix << earlyExit.text.substr(start, end - start) << "\n";
+    if (end == std::string::npos) break;
+    start = end + 1;
   }
   return earlyExit.exitCode;
 }
@@ -113,7 +120,7 @@ int reportSunError(const sun::support::SunError& error) {
 
 /** Prints an unexpected exception as a command-line failure. */
 int reportUnexpectedError(const std::exception& error) {
-  std::cerr << "Error: " << error.what() << std::endl;
+  sun::support::logMessage("error", error.what());
   return 1;
 }
 

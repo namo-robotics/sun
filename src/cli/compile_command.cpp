@@ -12,6 +12,7 @@
 #include "driver/input_hash.h"
 #include "driver/manifest_processor.h"
 #include "llvm/Support/raw_ostream.h"
+#include "support/terminal.h"
 
 using sun::driver::BuildRecord;
 using sun::driver::LinkOptions;
@@ -130,6 +131,7 @@ std::string computeJobInputHash(const CompileJob& job, bool forTests) {
   }
   inputs.settings.emplace_back("sysroot", link.sysroot);
   inputs.settings.emplace_back("static", link.staticLink ? "1" : "0");
+  inputs.settings.emplace_back("static-link-policy", "require-musl");
   const char* linkDriver = std::getenv("SUN_CC");
   inputs.settings.emplace_back("link-driver", linkDriver ? linkDriver : "");
   return sun::driver::computeInputHash(inputs);
@@ -186,7 +188,7 @@ int compileTestBinary(const CompileJob& job, bool hasExecutable) {
   const std::string inputHash = computeJobInputHash(job, /*forTests=*/true);
   std::optional<BuildRecord> existing;
   if (maySkip(job) && isUpToDate(testOutput, inputHash, existing)) {
-    llvm::outs() << "Up to date: " << testOutput << "\n";
+    sun::support::messageStream("info") << "Up to date: " << testOutput << "\n";
     return 0;
   }
 
@@ -218,11 +220,12 @@ int compileTestBinary(const CompileJob& job, bool hasExecutable) {
           testDriver->getModule(), testOutput, errorMsg,
           /*keepObjectFile=*/false, makeLinkOptions(job, *testDriver),
           job.optimize)) {
-    llvm::errs() << "Test compilation failed: " << errorMsg << "\n";
+    sun::support::messageStream("error")
+        << "Test compilation failed: " << errorMsg << "\n";
     return 1;
   }
-  llvm::outs() << "Successfully compiled test binary to: " << testOutput
-               << "\n";
+  sun::support::messageStream("info")
+      << "Successfully compiled test binary to: " << testOutput << "\n";
   return 0;
 }
 
@@ -240,7 +243,8 @@ int compileEntrypoint(const CompileJob& job) {
     if (maySkip(job)) {
       std::optional<BuildRecord> built;
       if (isUpToDate(job.outputFile, inputHash, built)) {
-        llvm::outs() << "Up to date: " << job.outputFile << "\n";
+        sun::support::messageStream("info")
+            << "Up to date: " << job.outputFile << "\n";
         if (!wantTests || !built->hasTests) return 0;
         return compileTestBinary(job);
       }
@@ -252,13 +256,14 @@ int compileEntrypoint(const CompileJob& job) {
           !built->hasExecutable) {
         if (job.requireProductionArtifact)
           sun::support::logAndThrowError("packaged entrypoint has no production executable: " + inputFile);
-        llvm::outs() << "Up to date: " << getTestOutputName(job) << "\n";
+        sun::support::messageStream("info")
+            << "Up to date: " << getTestOutputName(job) << "\n";
         return 0;
       }
     }
 
-    llvm::outs() << "Compiling: " << inputFile << " -> " << job.outputFile
-                 << "\n";
+    sun::support::messageStream("info")
+        << "Compiling: " << inputFile << " -> " << job.outputFile << "\n";
     auto driver = Driver::createForAOT("main_module", job.targetTriple,
                                        job.debugInfo, job.optimize);
     if (job.debugMode) {
@@ -291,7 +296,8 @@ int compileEntrypoint(const CompileJob& job) {
     if (!emitProduction) {
       if (job.requireProductionArtifact)
         sun::support::logAndThrowError("packaged entrypoint has no production executable: " + inputFile);
-      llvm::outs() << "No main() found; emitting only the test binary\n";
+      sun::support::messageStream("info")
+          << "No main() found; emitting only the test binary\n";
     } else if (job.emitObjOnly) {
       success = sun::driver::emitObjectFile(driver->getModule(), job.outputFile,
                                             errorMsg, job.optimize);
@@ -303,11 +309,13 @@ int compileEntrypoint(const CompileJob& job) {
     }
 
     if (!success) {
-      llvm::errs() << "Compilation failed: " << errorMsg << "\n";
+      sun::support::messageStream("error")
+          << "Compilation failed: " << errorMsg << "\n";
       return 1;
     }
     if (emitProduction) {
-      llvm::outs() << "Successfully compiled to: " << job.outputFile << "\n";
+      sun::support::messageStream("info")
+          << "Successfully compiled to: " << job.outputFile << "\n";
     }
 
     // A program with tests also gets a test binary, so `sun -c` leaves

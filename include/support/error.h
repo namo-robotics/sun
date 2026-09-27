@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "support/position.h"
+#include "support/terminal.h"
 #include "support/source_manager.h"
 
 /** Provides source locations, diagnostics, and shared compiler utilities. */
@@ -32,7 +33,14 @@ inline std::string formatDiagnostic(const std::string& label,
                                     const std::optional<Position>& location,
                                     const std::string& sourceLine,
                                     const std::string& prevSourceLine) {
-  std::string out = labelColor + label + reset;
+  const bool colors = terminalColors(llvm::errs());
+  const std::string reset = colors ? sun::support::reset : "";
+  const std::string blue = colors ? sun::support::blue : "";
+  const std::string cyan = colors ? sun::support::cyan : "";
+  const std::string red = colors ? sun::support::red : "";
+  std::string out = messagePrefix(label == "Note" ? "note" : "error",
+                                  llvm::errs()) +
+                    (colors ? labelColor : "") + label + reset;
   if (location) {
     out += ": " + std::string(blue) + location->toString() + reset;
   }
@@ -249,9 +257,9 @@ class SunError : public std::exception {
 inline void logErrorNoThrow(const std::string& msg,
                             std::optional<Position> loc = std::nullopt) {
   if (loc) {
-    std::cerr << "Error: " << loc->toString() << ": " << msg << std::endl;
+    messageStream("error") << loc->toString() << ": " << msg << "\n";
   } else {
-    std::cerr << "Error: " << msg << std::endl;
+    messageStream("error") << msg << "\n";
   }
 }
 
@@ -261,9 +269,9 @@ inline void logErrorNoThrow(const std::string& msg,
 inline void logWarning(const std::string& msg,
                        std::optional<Position> loc = std::nullopt) {
   if (loc) {
-    std::cerr << "Warning: " << loc->toString() << ": " << msg << std::endl;
+    messageStream("warning") << loc->toString() << ": " << msg << "\n";
   } else {
-    std::cerr << "Warning: " << msg << std::endl;
+    messageStream("warning") << msg << "\n";
   }
 }
 

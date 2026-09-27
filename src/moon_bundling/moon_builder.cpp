@@ -21,6 +21,7 @@
 #include "moon_bundling/proto_importer.h"
 #include "serialization/source_file_ids.h"
 #include "support/error.h"
+#include "support/terminal.h"
 
 using sun::support::SourceFileId;
 
@@ -193,10 +194,11 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
     for (const auto& symbol : scan->defined) {
       auto [it, fresh] = definedBy.emplace(symbol, archive.name);
       if (!fresh) {
-        llvm::errs() << "Warning: native archives " << it->second << " and "
-                     << archive.name << " both define '" << symbol
-                     << "'; the link takes whichever it meets first, as it "
-                        "would for any program linking both.\n";
+        sun::support::messageStream("warning")
+            << "native archives " << it->second << " and " << archive.name
+            << " both define '" << symbol
+            << "'; the link takes whichever it meets first, as it "
+               "would for any program linking both.\n";
         continue;
       }
       renames.emplace(symbol, "$" + archiveSetHash + "$_" + symbol);
@@ -291,18 +293,18 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
     if (carried == inheritedDefinitions.end() || carried->second == symbol) {
       continue;
     }
-    llvm::errs() << "Warning: native archive " << archiveName << " references '"
-                 << symbol << "', which an imported bundle carries only as '"
-                 << carried->second
-                 << "'. The reference will not resolve against that copy; "
-                    "carry the library it comes from under `archives:` or "
-                    "link it into the program.\n";
+    sun::support::messageStream("warning")
+        << "native archive " << archiveName << " references '" << symbol
+        << "', which an imported bundle carries only as '" << carried->second
+        << "'. The reference will not resolve against that copy; "
+           "carry the library it comes from under `archives:` or "
+           "link it into the program.\n";
   }
   for (const auto& [name, hashes] : hashesByName) {
     if (hashes.size() < 2) continue;
-    llvm::errs() << "Warning: this bundle carries " << hashes.size()
-                 << " versions of " << name
-                 << ", each bound to the code that came with it:";
+    sun::support::messageStream("warning")
+        << "this bundle carries " << hashes.size() << " versions of " << name
+        << ", each bound to the code that came with it:";
     for (const auto& hash : hashes) llvm::errs() << " " << hash;
     llvm::errs() << "\n";
   }
@@ -319,7 +321,8 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
     if (!reader->writeDebugJson(jsonPath)) {
       sun::support::logAndThrowError(reader->getError());
     }
-    llvm::outs() << "  Generated: " << jsonPath.string() << "\n";
+    sun::support::messageStream("info")
+        << "  Generated: " << jsonPath.string() << "\n";
   }
   // Release the completed compiler before dropping any metadata it referenced.
   driver.reset();
