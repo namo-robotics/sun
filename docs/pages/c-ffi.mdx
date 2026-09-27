@@ -421,7 +421,7 @@ carried archives just as the linker would, so a program that works under
   the target machine — the only option for `--target arm64-apple-darwin`
   from Linux, since linking Mach-O needs Apple's SDK (`cc -o prog prog.o
   -lc++` on the Mac).
-- Linking is static by default (musl-preferred), so `-l` libraries must ship
+- Linking is static by default (musl required on Linux), so `-l` libraries must ship
   static archives (`.a`). Libraries distributed only as shared objects —
   most proprietary vendor SDKs — need `--dynamic`. macOS targets are always
   dynamic: Apple ships no static libc, and its linker links the C++ runtime

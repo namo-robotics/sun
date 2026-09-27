@@ -12,6 +12,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "parsing/formatter.h"
 #include "support/error.h"
+#include "support/terminal.h"
 
 /** Parses command-line options and runs the selected compiler command. */
 namespace sun::cli {
@@ -33,13 +34,15 @@ bool collectSunFiles(const std::string& dir, std::vector<std::string>& out) {
   std::error_code ec;
   std::filesystem::recursive_directory_iterator it(dir, ec), end;
   if (ec) {
-    llvm::errs() << dir << ": cannot read directory: " << ec.message() << "\n";
+    sun::support::messageStream("error")
+        << dir << ": cannot read directory: " << ec.message() << "\n";
     return false;
   }
   size_t firstNew = out.size();
   for (; it != end; it.increment(ec)) {
     if (ec) {
-      llvm::errs() << dir << ": error while scanning: " << ec.message() << "\n";
+      sun::support::messageStream("error")
+          << dir << ": error while scanning: " << ec.message() << "\n";
       return false;
     }
     const std::filesystem::path& path = it->path();
@@ -73,10 +76,12 @@ bool expandInputs(const std::vector<std::string>& inputs,
     if (std::filesystem::is_directory(input, ec)) {
       if (!collectSunFiles(input, files)) ok = false;
     } else if (!std::filesystem::exists(input, ec)) {
-      llvm::errs() << input << ": no such file or directory\n";
+      sun::support::messageStream("error")
+          << input << ": no such file or directory\n";
       ok = false;
     } else if (std::filesystem::path(input).extension() != ".sun") {
-      llvm::errs() << input << ": skipped (not a .sun file)\n";
+      sun::support::messageStream("warning")
+          << input << ": skipped (not a .sun file)\n";
     } else {
       files.push_back(input);
     }
@@ -93,7 +98,8 @@ bool rewriteFile(const std::string& file, const std::string& contents) {
   {
     std::ofstream out(tmpPath, std::ios::trunc);
     if (!out) {
-      llvm::errs() << file << ": cannot write " << tmpPath << "\n";
+      sun::support::messageStream("error")
+          << file << ": cannot write " << tmpPath << "\n";
       return false;
     }
     out << contents;
@@ -101,7 +107,8 @@ bool rewriteFile(const std::string& file, const std::string& contents) {
   std::error_code ec;
   std::filesystem::rename(tmpPath, file, ec);
   if (ec) {
-    llvm::errs() << file << ": rename failed: " << ec.message() << "\n";
+    sun::support::messageStream("error")
+        << file << ": rename failed: " << ec.message() << "\n";
     std::filesystem::remove(tmpPath, ec);
     return false;
   }
@@ -114,7 +121,7 @@ bool rewriteFile(const std::string& file, const std::string& contents) {
 FormatOutcome formatFile(const std::string& file, bool checkMode) {
   std::ifstream in(file);
   if (!in) {
-    llvm::errs() << file << ": cannot open file\n";
+    sun::support::messageStream("error") << file << ": cannot open file\n";
     return FormatOutcome::Failed;
   }
   std::stringstream buffer;
@@ -126,13 +133,13 @@ FormatOutcome formatFile(const std::string& file, bool checkMode) {
   try {
     formatted = sun::parsing::formatSource(source, file);
   } catch (const sun::support::SunError& e) {
-    llvm::errs() << file << ": " << e.what() << "\n";
+    sun::support::messageStream("error") << file << ": " << e.what() << "\n";
     return FormatOutcome::Failed;
   }
 
   if (formatted == source) return FormatOutcome::Unchanged;
   if (checkMode) {
-    llvm::outs() << file << ": needs formatting\n";
+    sun::support::messageStream("info") << file << ": needs formatting\n";
     return FormatOutcome::Changed;
   }
   return rewriteFile(file, formatted) ? FormatOutcome::Changed

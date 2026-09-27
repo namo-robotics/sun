@@ -35,6 +35,7 @@
 #include "support/source_manager.h"
 #include "support/stage_timer.h"
 #include "support/sun_path.h"
+#include "support/terminal.h"
 
 using sun::driver::ManifestProcessor;
 using sun::driver::SunValue;
@@ -295,8 +296,8 @@ std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
 
   auto jit = SunJIT::Create(optimize);
   if (!jit) {
-    llvm::errs() << "Failed to create SunJIT: " << toString(jit.takeError())
-                 << "\n";
+    sun::support::messageStream("error")
+        << "Failed to create SunJIT: " << toString(jit.takeError()) << "\n";
     std::abort();
   }
 
@@ -365,7 +366,8 @@ void Driver::setDebugMode(bool enable, const std::string& inputFile) {
       debugFolder_ = basename + "_debug";
     }
     std::filesystem::create_directories(debugFolder_);
-    llvm::outs() << "Debug output folder: " << debugFolder_ << "/\n";
+    sun::support::messageStream("info")
+        << "Debug output folder: " << debugFolder_ << "/\n";
   }
 }
 
@@ -494,8 +496,8 @@ void Driver::writeUserDefinedIR(const std::string& path) {
   std::error_code EC;
   llvm::raw_fd_ostream OS(path, EC);
   if (EC) {
-    llvm::errs() << "Warning: Could not write " << path << ": " << EC.message()
-                 << "\n";
+    sun::support::messageStream("warning")
+        << "Could not write " << path << ": " << EC.message() << "\n";
     return;
   }
 
@@ -673,10 +675,12 @@ static void warnAboutArchiveSet(const std::vector<std::string>& archives,
   }
   for (const auto& [name, paths] : byName) {
     if (paths.size() < 2) continue;
-    llvm::errs() << "Warning: " << paths.size() << " versions of " << name
-                 << " will be linked, each bound to the code that came with "
-                    "it:\n";
-    for (const auto& path : paths) llvm::errs() << "  " << path << "\n";
+    sun::support::messageStream("warning")
+        << paths.size() << " versions of " << name
+        << " will be linked, each bound to the code that came with "
+           "it:\n";
+    for (const auto& path : paths)
+      sun::support::messageStream("warning") << "  " << path << "\n";
   }
 
   if (bareExterns.empty()) return;
@@ -690,16 +694,16 @@ static void warnAboutArchiveSet(const std::vector<std::string>& archives,
              (*buffer)->getMemBufferRef())) {
       if (bare == recorded || !wanted.count(bare)) continue;
       if (!reported.insert(bare).second) continue;
-      llvm::errs() << "Warning: extern \"C\" '" << bare
-                   << "' names a symbol that "
-                   << std::filesystem::path(path).filename().string()
-                   << " carries as '" << recorded
-                   << "'. The declaration binds to whatever the final link "
-                      "provides as '"
-                   << bare
-                   << "', not to that bundle's copy. Call through the "
-                      "bundle's API, or carry the archive under `archives:` "
-                      "to bind your own copy.\n";
+      sun::support::messageStream("warning")
+          << "extern \"C\" '" << bare << "' names a symbol that "
+          << std::filesystem::path(path).filename().string() << " carries as '"
+          << recorded
+          << "'. The declaration binds to whatever the final link "
+             "provides as '"
+          << bare
+          << "', not to that bundle's copy. Call through the "
+             "bundle's API, or carry the archive under `archives:` "
+             "to bind your own copy.\n";
     }
   }
 }
@@ -741,10 +745,11 @@ void Driver::registerArchivesWithJIT() {
   // see are provided by createForJIT.
   for (const auto& archive : nativeArchivePaths_) {
     if (auto err = ctx->jit->addStaticLibrary(archive)) {
-      llvm::errs() << "Warning: could not load bundled library '" << archive
-                   << "' into the JIT: " << llvm::toString(std::move(err))
-                   << "\n  Compiling with -c links it with the system linker "
-                      "instead.\n";
+      sun::support::messageStream("warning")
+          << "could not load bundled library '" << archive
+          << "' into the JIT: " << llvm::toString(std::move(err))
+          << "\n  Compiling with -c links it with the system linker "
+             "instead.\n";
     }
   }
 }
@@ -877,9 +882,11 @@ void Driver::applyTestHandling(BlockExprAST& blockAst) {
     std::ofstream runnerFile(runnerPath);
     if (runnerFile) {
       runnerFile << runnerSrc;
-      llvm::outs() << "  Generated: " << runnerPath << "\n";
+      sun::support::messageStream("info")
+          << "  Generated: " << runnerPath << "\n";
     } else {
-      llvm::errs() << "Warning: Could not write " << runnerPath << "\n";
+      sun::support::messageStream("warning")
+          << "Could not write " << runnerPath << "\n";
     }
   }
 
@@ -982,7 +989,7 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
   std::unique_ptr<BlockExprAST>& blockAst = analyzedTree_;
 
   if (!blockAst) {
-    llvm::errs() << "Error: Failed to parse program.\n";
+    sun::support::messageStream("error") << "Failed to parse program.\n";
     return result;
   }
 
@@ -999,9 +1006,10 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
     std::ofstream dotFile(dotPath);
     if (dotFile) {
       dotFile << dot;
-      llvm::outs() << "  Generated: " << dotPath << "\n";
+      sun::support::messageStream("info") << "  Generated: " << dotPath << "\n";
     } else {
-      llvm::errs() << "Warning: Could not write " << dotPath << "\n";
+      sun::support::messageStream("warning")
+          << "Could not write " << dotPath << "\n";
     }
   }
 
@@ -1015,9 +1023,11 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
     std::ofstream scopeFile(scopePath);
     if (scopeFile) {
       scopeFile << html;
-      llvm::outs() << "  Generated: " << scopePath << "\n";
+      sun::support::messageStream("info")
+          << "  Generated: " << scopePath << "\n";
     } else {
-      llvm::errs() << "Warning: Could not write " << scopePath << "\n";
+      sun::support::messageStream("warning")
+          << "Could not write " << scopePath << "\n";
     }
   }
 
@@ -1107,7 +1117,7 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
   if (debugMode_ && !debugFolder_.empty()) {
     std::string irPath = debugFolder_ + "/ir.ll";
     writeUserDefinedIR(irPath);
-    llvm::outs() << "  Generated: " << irPath << "\n";
+    sun::support::messageStream("info") << "  Generated: " << irPath << "\n";
   }
 
   // If not executing, handle AOT compilation specifics
@@ -1187,7 +1197,8 @@ SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> program,
 
   llvm::Function* func = ctx->mainModule->getFunction("main");
   if (!func) {
-    llvm::errs() << "Error: Could not find 'main' function in module.\n";
+    sun::support::messageStream("error")
+        << "Could not find 'main' function in module.\n";
     return result;
   }
 
@@ -1416,7 +1427,8 @@ SunValue Driver::executeFile(const std::string& filename, int argc,
 
   std::ifstream file(filename);
   if (!file.is_open()) {
-    llvm::errs() << "Error: Could not open file '" << filename << "'\n";
+    sun::support::messageStream("error")
+        << "Could not open file '" << filename << "'\n";
     return VoidValue{};
   }
   std::stringstream buffer;
@@ -1541,7 +1553,8 @@ void Driver::compileFile(const std::string& filename) {
 
   std::ifstream file(filename);
   if (!file.is_open()) {
-    llvm::errs() << "Error: Could not open file '" << filename << "'\n";
+    sun::support::messageStream("error")
+        << "Could not open file '" << filename << "'\n";
     return;
   }
   std::stringstream buffer;
@@ -1787,7 +1800,8 @@ SunValue Driver::executeFiles(const std::vector<std::string>& sourceFiles,
   // JIT execution similar to runPipeline
   llvm::Function* func = ctx->mainModule->getFunction("main");
   if (!func) {
-    llvm::errs() << "Error: Could not find 'main' function in module.\n";
+    sun::support::messageStream("error")
+        << "Could not find 'main' function in module.\n";
     return result;
   }
 

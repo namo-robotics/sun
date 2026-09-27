@@ -6,6 +6,7 @@
 #include "driver/git_source.h"
 #include "llvm/Support/raw_ostream.h"
 #include "support/error.h"
+#include "support/terminal.h"
 
 using sun::moon_bundling::MoonBuildOptions;
 
@@ -19,33 +20,34 @@ int buildMoonBundle(const std::string& entrypoint,
   try {
     MoonBuildOptions announced = buildOptions;
     announced.onBuildStart = [&] {
-      llvm::outs() << "Creating moon: " << outputPath.string() << "\n";
+      sun::support::messageStream("info")
+          << "Creating moon: " << outputPath.string() << "\n";
     };
     auto report = sun::moon_bundling::MoonBuilder::build(entrypoint, outputPath,
                                                          announced);
     if (report.upToDate) {
-      llvm::outs() << "Up to date: " << outputPath.string() << "\n";
+      sun::support::messageStream("info")
+          << "Up to date: " << outputPath.string() << "\n";
       return 0;
     }
     for (const auto& f : report.sunFiles) {
-      llvm::outs() << "  Including: " << f << "\n";
+      sun::support::messageStream("info") << "  Including: " << f << "\n";
     }
     for (const auto& p : report.protoFiles) {
-      llvm::outs() << "  Including proto: " << p << "\n";
+      sun::support::messageStream("info") << "  Including proto: " << p << "\n";
     }
     for (const auto& m : report.moonImports) {
-      llvm::outs() << "  Moon import: " << m.path << "\n";
+      sun::support::messageStream("info")
+          << "  Moon import: " << m.path << "\n";
     }
-    llvm::outs() << "Successfully created: " << outputPath.string() << "\n";
+    sun::support::messageStream("info")
+        << "Successfully created: " << outputPath.string() << "\n";
     return 0;
   } catch (const sun::support::SunError& e) {
-    // Unlike the other commands, bundling prefixes compile errors with
-    // "Error: ". The difference is deliberate: it keeps the output people
-    // and scripts already see.
-    llvm::errs() << "Error: " << e.what() << "\n";
+    llvm::errs() << e.what() << "\n";
     return 1;
   } catch (const std::exception& e) {
-    llvm::errs() << "Error: " << e.what() << "\n";
+    sun::support::messageStream("error") << e.what() << "\n";
     return 1;
   }
 }

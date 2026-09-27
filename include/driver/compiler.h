@@ -15,6 +15,10 @@
 #include <llvm/TargetParser/Triple.h>
 
 #include <cstdlib>
+#include <cstdio>
+#include <sys/wait.h>
+
+#include "support/terminal.h"
 #include <optional>
 #include <string>
 #include <system_error>
@@ -72,19 +76,16 @@ inline bool haveTool(const std::string& tool) {
  * The triple a link is actually for: the explicit --target, or the host.
  */
 inline llvm::Triple effectiveLinkTriple(const std::string& targetTriple) {
-  return llvm::Triple(targetTriple.empty() ? llvm::sys::getDefaultTargetTriple()
-                                           : targetTriple);
+  return llvm::Triple(llvm::Triple::normalize(
+      targetTriple.empty() ? llvm::sys::getDefaultTargetTriple() : targetTriple));
 }
 
 /**
  * Pick the link driver for a target. SUN_CC overrides the choice entirely.
  *
- * Static links prefer a musl toolchain for the target architecture
- * (`<arch>-linux-musl-gcc`, as shipped by musl.cc) when one is installed:
- * musl is designed for static linking (glibc's static binaries still dlopen
- * NSS modules for name lookups), is MIT-licensed (no LGPL relink obligation
- * on the embedded binary), and produces roughly half the binary size. When
- * no musl toolchain is present, the triple's own GCC with -static is used.
+ * Static Linux links require a musl toolchain for the target architecture
+ * (`<arch>-linux-musl-gcc`). Missing musl never selects glibc or dynamic
+ * linkage implicitly; users must request --dynamic or set SUN_CC explicitly.
  *
  * A macOS target links with Apple's own `cc` on a Mac; from any other host
  * there is no driver to pick — linking Mach-O needs the Apple SDK, which
@@ -106,12 +107,13 @@ inline std::string linkerCommandFor(const std::string& targetTriple,
     return host.isOSDarwin() ? "cc" : "";
   }
 
-  if (staticLink) {
+  if (staticLink && effectiveLinkTriple(targetTriple).isOSLinux()) {
     llvm::Triple triple = effectiveLinkTriple(targetTriple);
     std::string muslGcc = triple.getArchName().str() + "-linux-musl-gcc";
     if (haveTool(muslGcc)) {
       return muslGcc;
     }
+    return "";
   }
 
   if (targetTriple.empty()) {
@@ -302,7 +304,7 @@ inline bool emitObjectFile(llvm::Module& module, const std::string& outputPath,
 
 /**
  * Links the object file to create an executable
- * Uses the system C compiler (cc) as the linker
+ * Uses the explicitly selected driver, or the target-appropriate default
  * Returns true on success, false on failure
  */
 inline bool linkExecutable(const std::string& objectPath,
@@ -324,6 +326,11 @@ inline bool linkExecutable(const std::string& objectPath,
                  "' from this machine: Mach-O linking needs Apple's SDK. "
                  "Stop at --emit-obj and link the object on a Mac (cc -o "
                  "prog prog.o -lc++), or set SUN_CC to a capable driver";
+    } else if (linkOpts.staticLink && triple.isOSLinux()) {
+      errorMsg = "static linking requires " + triple.getArchName().str() +
+                 "-linux-musl-gcc; install the musl toolchain, explicitly use "
+                 "--dynamic for shared-library linkage, or set SUN_CC to a "
+                 "compatible static link driver";
     } else {
       errorMsg = "no link driver for target '" + linkOpts.targetTriple +
                  "': install " + linkOpts.targetTriple +
@@ -340,7 +347,7 @@ inline bool linkExecutable(const std::string& objectPath,
   // .so files. The result runs on any Linux of the same architecture with no
   // loader, no shared-library dependencies and no glibc version coupling —
   // the deployment shape embedded targets want. Needs the toolchain's static
-  // archives (libc.a from libc6-dev, libstdc++.a from libstdc++-dev).
+  // archives for the selected libc and C++ runtime.
   // macOS cannot do this at all: Apple ships no static libSystem or crt0.
   if (linkOpts.staticLink) {
     if (isDarwin) {
@@ -380,7 +387,29 @@ inline bool linkExecutable(const std::string& objectPath,
 
   cmd += isDarwin ? " -lc++" : " -lstdc++";
 
-  int result = std::system(cmd.c_str());
+  // Capture the driver's diagnostics so every line has a Sun severity label.
+  llvm::outs().flush();
+  FILE* pipe = popen((cmd + " 2>&1").c_str(), "r");
+  if (!pipe) {
+    errorMsg = "could not start link driver";
+    return false;
+  }
+  std::string output;
+  char buffer[4096];
+  while (fgets(buffer, sizeof(buffer), pipe)) output += buffer;
+  int status = pclose(pipe);
+  int result = status >= 0 && WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+  size_t start = 0;
+  while (start < output.size()) {
+    size_t end = output.find('\n', start);
+    std::string line = output.substr(start, end - start);
+    const char* level = line.find("warning:") != std::string::npos ? "warning"
+                        : line.find("note:") != std::string::npos ? "note"
+                        : result != 0 ? "error" : "info";
+    sun::support::logMessage(level, line);
+    if (end == std::string::npos) break;
+    start = end + 1;
+  }
   if (result != 0) {
     errorMsg = "Linker failed with exit code: " + std::to_string(result);
     return false;
