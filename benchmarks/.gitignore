@@ -5,6 +5,9 @@ __pycache__/
 
 # Local builds of the string-creation programs.
 /string-creation/bench
+/string-creation/bench_c
+/string-creation/csharp/bin/
+/string-creation/csharp/obj/
 /string-creation/bench_cpp
 /string-creation/bench_go
 /string-creation/bench_nim

@@ -2,7 +2,7 @@
 
 Reproduces [Daniel Lemire's benchmark](https://lemire.me/blog/2026/09/25/how-many-strings-can-you-create-per-second/), adding Sun's standard string interpolation. The [original post](https://x.com/lemire/status/2103455184860893435/photo/1) compares the time to create small owned decimal strings.
 
-The latest measurements are in [RESULTS.md](RESULTS.md) and `strings.png`. The
+The historical local measurements are in [RESULTS.md](RESULTS.md) and `strings.png`. The
 [optimization report](OPTIMIZATION.md) records the formatter, LLVM pipeline, and
 small-string-storage changes and the new measurements.
 
@@ -10,11 +10,13 @@ small-string-storage changes and the new measurements.
 
 Each loop converts successive integers to new strings and replaces `buffer[i & 1023]`. The buffer retains 1,024 strings. Each timed run performs 100,000,000 conversions, except Python, which performs 10,000,000 as in the original. The reported result is the best of five runs. Compiled languages and JavaScript receive the original 1,000,000-iteration warm-up; Python retains its original harness without a separate warm-up.
 
-The C++, Go, JavaScript, Nim, Python, and Rust implementations are included here, based on Daniel Lemire's [source at commit `361c1f2ed0291573bcaccaab4ee2d5a96188fe5b`](https://github.com/lemire/Code-used-on-Daniel-Lemire-s-blog/tree/361c1f2ed0291573bcaccaab4ee2d5a96188fe5b/2026/09/24). Their executable benchmark logic is unchanged; documentation comments were added. The Rust manifest and lockfile pin `itoa` to `1.0.18`, the article's version. Python and JavaScript also execute the original harness's other cases; only integer conversion appears in the comparison.
+The C++, Go, JavaScript, Python, and Rust implementations are included here, based on Daniel Lemire's [source at commit `361c1f2ed0291573bcaccaab4ee2d5a96188fe5b`](https://github.com/lemire/Code-used-on-Daniel-Lemire-s-blog/tree/361c1f2ed0291573bcaccaab4ee2d5a96188fe5b/2026/09/24). Their executable benchmark logic is unchanged; documentation comments were added. The Rust manifest and lockfile pin `itoa` to `1.0.18`, the article's version. Python and JavaScript also execute the original harness's other cases; only integer conversion appears in the comparison.
+
+The active comparison includes C, C++, Rust (standard formatting and `itoa`), Go, C#, JavaScript (Node.js), Python, and Sun. C uses `snprintf` followed by a fresh allocation and copy, freeing the overwritten string inside the timer. C# uses invariant-culture `long.ToString()` with .NET garbage collection during the timed workload. Both validate retained values after warm-up and each run. C has no built-in owned string type or small-string optimization, so its allocation strategy differs from C++ and Sun.
 
 Sun uses ``buf.set(i & 1023, `${i}`)`` with `Vec<String>`. This creates a fresh owned string for each integer and drops the previous slot's string. It uses checked access and no unsafe blocks. Initialization, validation, output, and final destruction are outside the timer; replacement and destruction of overwritten strings are inside it. Sun checks every retained string by parsing it back to the expected integer after warm-up and each timed run. Its output also reports all five elapsed times. The runner checks the original native implementations' retained-length checksums and Sun's checksum against 8,192.
 
-Sun is compiled ahead of time with its default optimizations enabled and `--dynamic`, using a freshly built standard library from this checkout. C++ uses Clang `-O3 -std=c++20` and libstdc++; Rust uses release mode with optimization level 3; Nim uses `-d:danger` and its default C backend. Go uses its normal build defaults. Sun, C++, Rust, and Nim use this machine's glibc allocator where their implementations allocate strings.
+Sun is compiled ahead of time with its default optimizations enabled and `--dynamic`, using a freshly built standard library from this checkout. C++ uses Clang `-O3 -std=c++20` and libstdc++; Rust uses release mode with optimization level 3; C uses Clang `-O3 -std=c11`; C# uses a .NET 8 Release build. Go uses its normal build defaults. Sun, C, C++, and Rust use this machine's glibc allocator where their implementations allocate strings.
 
 The current compiler uses LLVM's standard O3 module pipeline; `-O0` disables it.
 The current string implementation stores short text inline, avoiding an allocation
@@ -25,14 +27,14 @@ All benchmark processes run sequentially, pinned to logical CPU 1, a performance
 
 ## Reproduce
 
-Run from the workspace root. Build Sun first and put Clang, Rust/Cargo, Go, Nim, Node.js, Bun, and Python on `PATH`:
+Run from the workspace root. Build Sun first and put Clang, Rust/Cargo, Go, .NET 8 SDK, Node.js, and Python on `PATH`:
 
 ```sh
 cmake --build build -j 4
 python3 benchmarks/string-creation/run.py --cpu 1
 ```
 
-`SUN`, `CXX`, and `PYTHON` can select alternative compiler/interpreter executables. `--cpu` may be omitted on platforms without `taskset`; select an available performance core on hybrid processors. No benchmark source is downloaded. Cargo needs network access on its first run to obtain the locked Rust dependency. The runner saves build products, caches, full command output, versions, source hashes, `results.json`, and `results.md` under `tmp/string-creation/`. `--output` selects another scratch directory; `benchmarks/string-creation/results/` is an ignored option inside the benchmark tree. It rebuilds `build/stdlib.moon` for the Sun entrypoint.
+`SUN`, `CC`, `CXX`, and `PYTHON` can select alternative compiler/interpreter executables. `--cpu` may be omitted on platforms without `taskset`; select an available performance core on hybrid processors. No benchmark source is downloaded. Cargo needs network access on its first run to obtain the locked Rust dependency. The runner saves build products, caches, full command output, versions, source hashes, `results.json`, and `results.md` under `tmp/string-creation/`. `--output` selects another scratch directory; `benchmarks/string-creation/results/` is an ignored option inside the benchmark tree. It rebuilds `build/stdlib.moon` for the Sun entrypoint.
 
 With Matplotlib installed, regenerate the chart:
 
@@ -40,12 +42,12 @@ With Matplotlib installed, regenerate the chart:
 python3 benchmarks/string-creation/plot.py tmp/string-creation/results.json tmp/string-creation/strings.png
 ```
 
-The current checked-in snapshot is in [RESULTS.md](RESULTS.md), with [machine-readable metadata](results.json), [program output](output.txt), and a [chart](strings.png).
+The historical checked-in snapshot (which includes Nim and Bun, before C and C# were added) is in [RESULTS.md](RESULTS.md), with [machine-readable metadata](results.json), [program output](output.txt), and a [chart](strings.png).
 
 ## Included code
 
-- [Sun](bench.sun), [C++](bench.cpp), [Go](bench.go), [Nim](bench.nim), and [Python](bench.py).
-- [JavaScript](bench.js), executed by both Node.js and Bun.
+- [Sun](bench.sun), [C](bench.c), [C++](bench.cpp), [Go](bench.go), [C#](csharp/Program.cs), and [Python](bench.py).
+- [JavaScript](bench.js), executed by Node.js.
 - [Rust](rust/src/main.rs), with [Cargo.toml](rust/Cargo.toml) and [Cargo.lock](rust/Cargo.lock).
 - [Runner](run.py), [chart generator](plot.py), and optional [chart dependencies](requirements.txt).
 
@@ -59,13 +61,13 @@ There are no performance pass/fail thresholds. Keep `String creation benchmark
 (informational)` out of branch protection's required status checks; workflow
 files do not edit repository-level branch protection.
 
-The job installs pinned versions of Python, Node.js, Go, Rust, Bun, and Nim;
+The job installs pinned versions of Python, Node.js, Go, and Rust, plus the latest .NET 8 SDK patch;
 builds Sun and its standard library from the checked-out commit; and runs every
-language sequentially on one available CPU. It publishes a summary and uploads
-JSON, Markdown, a PNG chart, and logs as `string-creation-<run-id>-<attempt>`.
+language sequentially on one available CPU. It publishes a Markdown table and a download link in the job summary and uploads
+JSON, Markdown, a vertical bar chart (`strings.png`), and logs as `string-creation-<run-id>-<attempt>`.
 Logs are uploaded even if the benchmark fails. The job has a timeout and uses
 read-only repository permissions. Hosted-runner hardware and load can change,
 so compare languages within a run rather than treating differences between CI
 runs as precise regressions.
 
-Generated binaries, Rust/Nim build directories, Python caches, and local `results/` output are ignored by [benchmarks/.gitignore](../.gitignore). The source files, Cargo lockfile, and named result snapshots are intentionally trackable.
+Generated binaries, Rust/.NET build directories, Python caches, and local `results/` output are ignored by [benchmarks/.gitignore](../.gitignore). The source files, Cargo lockfile, and named result snapshots are intentionally trackable.
