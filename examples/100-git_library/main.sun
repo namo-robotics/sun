@@ -1,5 +1,5 @@
 manifest {
-    libraries: ["stdlib.moon", "sun_serve.moon"]
+    libraries: ["stdlib.moon", "$SUN_SERVE/sun_serve.moon"]
 }
 
 /** Checks the imported library's HTTP helpers and prints its version. */

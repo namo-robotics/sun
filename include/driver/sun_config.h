@@ -47,14 +47,18 @@ struct ConfigResource {
   std::string destination;
 };
 
-/** A selected dependency archive or Moon file, resolved only when used. */
+/** A selected archive, Moon file, or Git library, resolved only when used. */
 struct ConfigDependency {
   bool available = true;
   bool package = false;
-  std::string path;
+  std::string path;  // local artifact, or repository-relative Git source file
   std::string url;
   std::string hash;
   std::string filename;
+  std::string git;
+  std::string version;
+  std::string config = "sun-config.json";
+  std::string entrypoint;  // empty selects the only library in the config
 };
 
 /** A named distribution assembled from configured production artifacts. */
@@ -101,7 +105,7 @@ struct SunConfig {
   std::vector<ConfigEntrypoint> entrypoints;         // declared build products
   std::map<std::string, ConfigDependency> dependencies;
   std::vector<ConfigPackage> packages;
-  std::string targetTriple;
+  std::string targetTriple;  // resolved compilation triple, retaining vendor and OS version
   bool root = false;  // stop the upward search at this file
 
   /**

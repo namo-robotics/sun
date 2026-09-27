@@ -3,6 +3,7 @@
 #include "cli/bundle_command.h"
 
 #include "cli/command_support.h"
+#include "driver/git_source.h"
 #include "llvm/Support/raw_ostream.h"
 #include "support/error.h"
 
@@ -51,6 +52,9 @@ int buildMoonBundle(const std::string& entrypoint,
 
 /** Runs the bundle command and returns its process exit status. */
 int runBundleCommand(const BuildRunOptions& options) {
+  sun::driver::GitDependencyBuildScope dependencyScope(
+      options.shared.debugInfo, options.shared.optimize, options.forceRebuild,
+      options.refreshSources);
   const std::string& entrypoint = options.inputFiles[0];
   std::filesystem::path outputPath =
       options.outputFile.empty()

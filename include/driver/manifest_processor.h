@@ -72,6 +72,10 @@ class ManifestProcessor {
   static std::map<std::string, std::string> exchangeDependencyPathVariables(
       std::map<std::string, std::string> values);
 
+  /** Selects an explicit dependency config during its build, returning the
+   * previous config for restoration. The caller owns both config lifetimes. */
+  static const SunConfig* exchangeSourceConfig(const SunConfig* config);
+
   /**
    * Drop all defined path variables (used by tests)
    */

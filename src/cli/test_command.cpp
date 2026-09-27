@@ -6,6 +6,7 @@
 #include "cli/option_parser.h"
 #include "cli/program_arguments.h"
 #include "driver/driver.h"
+#include "driver/git_source.h"
 #include "llvm/Support/raw_ostream.h"
 
 /** Parses command-line options and runs the selected compiler command. */
@@ -90,6 +91,8 @@ int runTestCommand(const std::vector<std::string>& args) {
     return reportEarlyExit(*earlyExit);
   }
   applySharedSettings(options.shared);
+  sun::driver::GitDependencyBuildScope dependencyScope(true,
+                                                       options.shared.optimize);
 
   if (isConfigInput(options.inputFile)) {
     return runConfigTests(options);

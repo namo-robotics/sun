@@ -1,21 +1,24 @@
 {
     "root": true,
-    "sun_path": ["build", "../../build"],
+    "sun_path": [
+        "build",
+        "../../build"
+    ],
     "path_variables": {
         "MUSL_LIB": "../../third_party/openssl/x86_64-linux-musl"
     },
     "entrypoints": [
         {
-            "git": "https://github.com/namo-robotics/sun_serve.git",
-            "version": "main",
-            "path": "src/sun_serve.sun",
-            "type": "library",
-            "output_name": "build/sun_serve"
-        },
-        {
             "path": "main.sun",
             "type": "binary",
             "output_name": "build/git_library"
         }
-    ]
+    ],
+    "dependencies": {
+        "SUN_SERVE": {
+            "git": "https://github.com/namo-robotics/sun_serve.git",
+            "version": "a90791b818f70cf612fac70ece0582c5a6468cc2",
+            "config": "sun-config.json"
+        }
+    }
 }

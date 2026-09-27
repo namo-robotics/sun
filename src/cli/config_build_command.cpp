@@ -8,6 +8,7 @@
 #include "cli/bundle_command.h"
 #include "cli/command_support.h"
 #include "cli/compile_command.h"
+#include "driver/git_source.h"
 #include "driver/package.h"
 
 /** Parses command-line options and runs the selected compiler command. */
@@ -122,6 +123,9 @@ int buildEntrypoints(const sun::driver::SunConfig& config,
 
 /** Runs the config build command and returns its process exit status. */
 int runConfigBuildCommand(const BuildRunOptions& options) {
+  sun::driver::GitDependencyBuildScope dependencyScope(
+      options.shared.debugInfo, options.shared.optimize, options.forceRebuild,
+      options.refreshSources);
   const std::string& configFile = options.inputFiles[0];
   CompileJob base = makeCompileJob(options);
   try {

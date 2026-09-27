@@ -10,6 +10,7 @@
 #include "driver/manifest_processor.h"
 #include "driver/sun_config.h"
 #include "support/error.h"
+#include "support/target_os.h"
 
 using sun::driver::ConfigEntrypoint;
 using sun::driver::ManifestProcessor;
@@ -426,18 +427,45 @@ TEST(Modules_SunConfig, target_selection_accepts_platform_aliases) {
   }
 }
 
-/** Source configuration overrides defaults and environment until explicitly overridden. */
+/** Source configuration overrides defaults and environment until explicitly
+ * overridden. */
 TEST(Modules_SunConfig, explicit_overrides_preserve_default_precedence) {
   SunConfig config;
   config.pathVariables["SUN_TEST_PATH_PRECEDENCE"] = "/config";
   setenv("SUN_TEST_PATH_PRECEDENCE", "/environment", 1);
-  ManifestProcessor::setDefaultPathVariable("SUN_TEST_PATH_PRECEDENCE", "/project");
-  EXPECT_EQ(ManifestProcessor::expandPathVariables("$SUN_TEST_PATH_PRECEDENCE/lib", &config),
+  ManifestProcessor::setDefaultPathVariable("SUN_TEST_PATH_PRECEDENCE",
+                                            "/project");
+  EXPECT_EQ(ManifestProcessor::expandPathVariables(
+                "$SUN_TEST_PATH_PRECEDENCE/lib", &config),
             "/config/lib");
   ManifestProcessor::setPathVariable("SUN_TEST_PATH_PRECEDENCE", "/explicit");
-  ManifestProcessor::setDefaultPathVariable("SUN_TEST_PATH_PRECEDENCE", "/later-project");
-  EXPECT_EQ(ManifestProcessor::expandPathVariables("$SUN_TEST_PATH_PRECEDENCE/lib", &config),
+  ManifestProcessor::setDefaultPathVariable("SUN_TEST_PATH_PRECEDENCE",
+                                            "/later-project");
+  EXPECT_EQ(ManifestProcessor::expandPathVariables(
+                "$SUN_TEST_PATH_PRECEDENCE/lib", &config),
             "/explicit/lib");
   ManifestProcessor::clearPathVariables();
   unsetenv("SUN_TEST_PATH_PRECEDENCE");
+}
+
+/** Config matching normalizes keys without changing the compilation target. */
+TEST(Modules_SunConfig, preserves_compilation_target_when_matching_settings) {
+  const auto dir = freshDir("compilation_target");
+  writeFile(dir / "sun-config.json", R"({"root":true,
+    "path_variables":{"LIBS":{"target":{
+      "x86_64-linux-gnu":"linux-libs",
+      "aarch64-apple-darwin":"mac-libs"}}}})");
+  const auto linuxConfig =
+      SunConfig::loadFile(dir / "sun-config.json", "x86_64-pc-linux-gnu");
+  EXPECT_EQ(linuxConfig.targetTriple, "x86_64-pc-linux-gnu");
+  EXPECT_EQ(linuxConfig.pathVariables.at("LIBS"), (dir / "linux-libs").string());
+  const auto macConfig =
+      SunConfig::loadFile(dir / "sun-config.json", "arm64-apple-macosx14.0.0");
+  EXPECT_EQ(
+      macConfig.targetTriple,
+      sun::support::resolvedTargetTriple("arm64-apple-macosx14.0.0").str());
+  EXPECT_EQ(macConfig.pathVariables.at("LIBS"), (dir / "mac-libs").string());
+  writeFile(dir / "sun-config.json", "{\"root\":true}");
+  EXPECT_EQ(SunConfig::loadFile(dir / "sun-config.json").targetTriple,
+            sun::support::resolvedTargetTriple("").str());
 }
