@@ -9,7 +9,7 @@
 #include "codegen/support/scalar_ops.h"
 #include "codegen/support/struct_access.h"
 #include "codegen/variables/variable_generator.h"
-#include "semantic_analysis/packed_layout.h"
+#include "semantic_analysis/class_analysis/packed_layout.h"
 
 using sun::types::ClassType;
 using sun::types::TypePtr;

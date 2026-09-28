@@ -46,7 +46,7 @@ class ScopeManager;
 
 #include "ast.h"
 #include "codegen/codegen_state.h"
-#include "semantic_analysis/argument_conversion.h"
+#include "semantic_analysis/call_analysis/argument_conversion.h"
 #include "semantic_analysis/type_registry.h"
 #include "types/types.h"
 

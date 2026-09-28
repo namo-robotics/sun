@@ -34,7 +34,7 @@ class ScopeManager;
 #include "ast.h"
 #include "codegen/codegen_state.h"
 #include "codegen/intrinsics/thread_utils.h"
-#include "semantic_analysis/argument_conversion.h"
+#include "semantic_analysis/call_analysis/argument_conversion.h"
 #include "types/types.h"
 
 /** Provides the generator for built-in operations. */

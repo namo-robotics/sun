@@ -900,3 +900,134 @@ TEST(Functions_Generic_Constraints,
                                   "does not satisfy constraint 'IValue<i64>'");
   }
 }
+
+/** Accepts concrete handlers in constrained fields inside reopened test
+ * modules. */
+TEST(Functions_Generic_Constraints,
+     interface_constraint_in_nested_test_module) {
+  EXPECT_EQ(sun::driver::executeTestsWithStdlib(R"(
+    /** Declares the handler and its owner. */
+    public module sample {
+      /** Handles requests. */
+      interface Handler {
+        /** Handles one request. */
+        public method handle() void;
+      }
+      /** Implements the handler contract. */
+      class Concrete implements Handler {
+        /** Handles one request. */
+        public method handle() void {}
+      }
+      /** Owns a handler satisfying the interface. */
+      class Server<H: Handler> {
+        var handler: H;
+        /** Takes ownership of the handler. */
+        init(handler: H) { this.handler = handler; }
+      }
+    }
+    /** Reopens the module for its tests. */
+    public module sample {
+      /** Exercises construction from a nested module. */
+      module tests {
+        /** Owns the specialized server. */
+        class Fixture {
+          var server: Server<Concrete>;
+          /** Constructs the server and its handler. */
+          init() { this.server = Server<Concrete>(Concrete()); }
+        }
+        /** Constructs a fixture with a constrained field. */
+        test_function build() { var fixture = Fixture(); }
+      }
+    }
+    /** Supplies the application entry point outside test mode. */
+    function main() i32 { return 0; }
+  )"),
+            0);
+}
+
+/** Resolves forward implementations and generic interface ancestry for fields.
+ */
+TEST(Functions_Generic_Constraints, interface_constraint_before_handler_shape) {
+  EXPECT_EQ(executeString(R"(
+    /** Holds a constrained owner before its handler is shaped. */
+    class Fixture {
+      var server: Server<Concrete>;
+      /** Takes ownership of the server. */
+      init(server: Server<Concrete>) { this.server = server; }
+    }
+    /** Owns a handler with a generic interface requirement. */
+    class Server<H: Handler<i32>> {
+      var handler: H;
+      /** Takes ownership of the handler. */
+      init(handler: H) { this.handler = handler; }
+    }
+    /** Defines the handler contract. */
+    interface Handler<T> {
+      /** Returns the handled value. */
+      public method handle() T;
+    }
+    /** Inherits a concrete handler requirement. */
+    interface Derived extends Handler<i32> {}
+    /** Implements the inherited requirement. */
+    class Concrete implements Derived {
+      /** Returns the handled value. */
+      public method handle() i32 { return 42; }
+    }
+    /** Runs the constrained field's handler. */
+    function main() i32 {
+      var fixture = Fixture(Server<Concrete>(Concrete()));
+      return fixture.server.handler.handle();
+    }
+  )"),
+            42);
+}
+
+/** Rejects an unrelated class even when the field is resolved before it. */
+TEST(Functions_Generic_Constraints, nested_constraint_rejects_non_implementor) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    /** Declares the contract and its constrained owner. */
+    module sample {
+      /** Declares a nominal handler contract. */
+      interface Handler {}
+      /** Owns a handler. */
+      class Server<H: Handler> { var handler: H; }
+      /** Contains a field that violates the constraint. */
+      module tests {
+        /** Attempts to own an unrelated handler. */
+        class Fixture { var server: Server<Concrete>; }
+      }
+      /** Does not implement the handler interface. */
+      class Concrete {}
+    }
+    /** Supplies an entry point. */
+    function main() i32 { return 0; }
+  )"),
+                                "does not satisfy constraint 'Handler'");
+}
+
+/** Still validates methods after an early constraint check accepts a claim. */
+TEST(Functions_Generic_Constraints,
+     nested_constraint_checks_handler_conformance) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    /** Declares a handler with an invalid implementation. */
+    module sample {
+      /** Requires a handler method. */
+      interface Handler {
+        /** Handles one request. */
+        public method handle() void;
+      }
+      /** Owns a handler. */
+      class Server<H: Handler> { var handler: H; }
+      /** Resolves a constrained field before its handler. */
+      module tests {
+        /** Owns the invalid handler. */
+        class Fixture { var server: Server<Concrete>; }
+      }
+      /** Claims the interface but omits its required method. */
+      class Concrete implements Handler {}
+    }
+    /** Supplies an entry point. */
+    function main() i32 { return 0; }
+  )"),
+                                "does not implement required method 'handle'");
+}

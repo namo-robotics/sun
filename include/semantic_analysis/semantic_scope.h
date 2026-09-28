@@ -13,7 +13,7 @@
 
 #include "ast.h"
 #include "semantic_analysis/access_checker.h"
-#include "semantic_analysis/callable_signature.h"
+#include "semantic_analysis/call_analysis/callable_signature.h"
 #include "semantic_analysis/qualified_name.h"
 #include "types/types.h"
 

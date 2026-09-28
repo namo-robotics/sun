@@ -2,7 +2,7 @@
 
 #include "ast.h"
 #include "ast/ast_children.h"
-#include "semantic_analysis/field_initialization.h"
+#include "semantic_analysis/class_analysis/field_initialization.h"
 
 using sun::ast::ExprAST;
 
