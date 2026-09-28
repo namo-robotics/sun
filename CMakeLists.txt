@@ -173,54 +173,65 @@ add_library(sun_lib
     src/types/class_type.cpp
     src/types/type_utils.cpp
     # Semantic analysis
-    src/semantic_analysis/declaration_table.cpp
-    src/semantic_analysis/portable_declaration_key.cpp
-    src/semantic_analysis/specialization_key.cpp
-    src/semantic_analysis/passes/declaration_identity_pass.cpp
-    src/semantic_analysis/semantic_context.cpp
-    src/semantic_analysis/scope_declarations.cpp
-    src/semantic_analysis/scope_lookup.cpp
-    src/semantic_analysis/packed_classes.cpp
-    src/semantic_analysis/generic_specializer.cpp
-    src/semantic_analysis/argument_conversion.cpp
-    src/semantic_analysis/generic_type_arguments.cpp
-    src/semantic_analysis/interfaces.cpp
+    src/semantic_analysis/access_checker.cpp
+    src/semantic_analysis/analysis.cpp
+    src/semantic_analysis/body_analysis/analysis_control_flow.cpp
+    src/semantic_analysis/body_analysis/analysis_statements.cpp
+    src/semantic_analysis/body_analysis/body_analyzer.cpp
+    src/semantic_analysis/body_analysis/module_assignments.cpp
+    src/semantic_analysis/body_analysis/statement_dispatch.cpp
+    src/semantic_analysis/body_analysis/type_guards.cpp
+    src/semantic_analysis/call_analysis/argument_conversion.cpp
+    src/semantic_analysis/call_analysis/call_analyzer.cpp
+    src/semantic_analysis/call_analysis/call_result_resolution.cpp
+    src/semantic_analysis/class_analysis/class_definitions.cpp
+    src/semantic_analysis/class_analysis/field_initialization.cpp
+    src/semantic_analysis/class_analysis/packed_classes.cpp
     src/semantic_analysis/constants/constant_evaluator.cpp
     src/semantic_analysis/constants/constant_value.cpp
-    src/semantic_analysis/type_analysis/type_resolver.cpp
-    src/semantic_analysis/type_analysis/type_inferer.cpp
-    src/semantic_analysis/type_analysis/generic_type_arguments.cpp
-    src/semantic_analysis/expression_resolution.cpp
-    src/semantic_analysis/call_result_resolution.cpp
-    src/semantic_analysis/type_analysis/type_traits.cpp
-    src/semantic_analysis/captures.cpp
-    src/semantic_analysis/field_initialization.cpp
-    src/semantic_analysis/body_analyzer.cpp
-    src/semantic_analysis/analysis.cpp
-    src/semantic_analysis/analysis_declarations.cpp
-    src/semantic_analysis/analysis_control_flow.cpp
-    src/semantic_analysis/analysis_statements.cpp
-    src/semantic_analysis/analysis_expressions.cpp
-    src/semantic_analysis/analysis_utils.cpp
-    src/semantic_analysis/call_analyzer.cpp
-    src/semantic_analysis/passes/field_initializer_preparation_pass.cpp
-    src/semantic_analysis/passes/declaration_naming_pass.cpp
-    src/semantic_analysis/passes/global_registration_pass.cpp
+    src/semantic_analysis/declaration_analysis/captures.cpp
+    src/semantic_analysis/declaration_analysis/declaration_analyzer.cpp
+    src/semantic_analysis/declaration_analysis/declaration_dispatch.cpp
+    src/semantic_analysis/declaration_analysis/signatures.cpp
+    src/semantic_analysis/declaration_analysis/variable_declarations.cpp
+    src/semantic_analysis/declaration_table.cpp
+    src/semantic_analysis/enum_analysis/enum_analyzer.cpp
+    src/semantic_analysis/expression_analysis/analysis_expressions.cpp
+    src/semantic_analysis/expression_analysis/analysis_utils.cpp
+    src/semantic_analysis/expression_analysis/conditional_expressions.cpp
+    src/semantic_analysis/expression_analysis/expression_analyzer.cpp
+    src/semantic_analysis/expression_analysis/expression_dispatch.cpp
+    src/semantic_analysis/expression_analysis/expression_properties.cpp
+    src/semantic_analysis/expression_analysis/expression_resolution.cpp
+    src/semantic_analysis/expression_analysis/lambdas.cpp
+    src/semantic_analysis/generic_analysis/generic_specializer.cpp
+    src/semantic_analysis/generic_analysis/generic_type_arguments.cpp
+    src/semantic_analysis/interface_analysis/interface_analyzer.cpp
     src/semantic_analysis/passes/body_analysis_pass.cpp
-    src/semantic_analysis/passes/global_initializer_evaluation_pass.cpp
-    src/semantic_analysis/passes/import_library_declarations_pass.cpp
-    src/semantic_analysis/passes/import_dependency_validation_pass.cpp
-    src/semantic_analysis/passes/import_completion_pass.cpp
-    src/semantic_analysis/passes/specialization_body_analysis_pass.cpp
-    src/semantic_analysis/semantic_pipeline.cpp
-    src/semantic_analysis/passes/type_registration_pass.cpp
     src/semantic_analysis/passes/declaration_collection_pass.cpp
-    src/semantic_analysis/access_checker.cpp
-    src/semantic_analysis/type_analysis/type_rules.cpp
-    src/semantic_analysis/expression_properties.cpp
-    src/semantic_analysis/type_analysis/type_checking.cpp
+    src/semantic_analysis/passes/declaration_identity_pass.cpp
+    src/semantic_analysis/passes/declaration_naming_pass.cpp
+    src/semantic_analysis/passes/field_initializer_preparation_pass.cpp
+    src/semantic_analysis/passes/global_initializer_evaluation_pass.cpp
+    src/semantic_analysis/passes/global_registration_pass.cpp
+    src/semantic_analysis/passes/import_completion_pass.cpp
+    src/semantic_analysis/passes/import_dependency_validation_pass.cpp
+    src/semantic_analysis/passes/import_library_declarations_pass.cpp
+    src/semantic_analysis/passes/specialization_body_analysis_pass.cpp
+    src/semantic_analysis/passes/type_registration_pass.cpp
+    src/semantic_analysis/portable_declaration_key.cpp
+    src/semantic_analysis/scope_declarations.cpp
+    src/semantic_analysis/scope_lookup.cpp
+    src/semantic_analysis/semantic_context.cpp
+    src/semantic_analysis/semantic_pipeline.cpp
+    src/semantic_analysis/specialization_key.cpp
     src/semantic_analysis/symbol_names.cpp
-    src/semantic_analysis/enum_analyzer.cpp
+    src/semantic_analysis/type_analysis/generic_type_arguments.cpp
+    src/semantic_analysis/type_analysis/type_checking.cpp
+    src/semantic_analysis/type_analysis/type_inferer.cpp
+    src/semantic_analysis/type_analysis/type_resolver.cpp
+    src/semantic_analysis/type_analysis/type_rules.cpp
+    src/semantic_analysis/type_analysis/type_traits.cpp
     # Borrow checker
     src/borrow_checker/borrow_state.cpp
     src/borrow_checker/borrow_checker.cpp

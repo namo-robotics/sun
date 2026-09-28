@@ -93,6 +93,9 @@ void TypeRegistrationPass::run(BlockExprAST& block) {
                                                   genericInfo);
         }
         if (!classDef.isGeneric()) {
+          ctx_.classDefinitions.emplace(
+              classDef.getDeclarationId(),
+              SemanticContext::ClassDefinition{&classDef, ctx_.scope()});
           auto classType = ctx_.types()->getClass(classDef.getDeclarationId(),
                                                   qualifiedClass);
           classType->setPacked(classDef.isPacked());

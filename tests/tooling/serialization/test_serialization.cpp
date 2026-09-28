@@ -11,7 +11,7 @@
 #include "parsing/doc_comments.h"
 #include "parsing/lexer.h"
 #include "parsing/parser.h"
-#include "semantic_analysis/field_initialization.h"
+#include "semantic_analysis/class_analysis/field_initialization.h"
 #include "serialization/ast_deserializer.h"
 #include "serialization/ast_serializer.h"
 #include "serialization/token_kind_proto_map.h"

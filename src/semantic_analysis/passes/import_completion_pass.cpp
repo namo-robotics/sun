@@ -11,7 +11,7 @@ void ImportCompletionPass::run(
   for (auto* moon : imports) {
     SemanticContext::SourceFileGuard sourceFile(analyzer_.context(),
                                                 moon->getSourceFileId());
-    analyzer_.analyzeMoonScope(*moon);
+    analyzer_.declarations().analyzeMoonScope(*moon);
   }
 }
 

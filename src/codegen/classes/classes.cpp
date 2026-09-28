@@ -12,7 +12,7 @@
 #include "codegen/support/scalar_ops.h"
 #include "codegen/support/struct_access.h"
 #include "parsing/parser.h"
-#include "semantic_analysis/generic_type_arguments.h"
+#include "semantic_analysis/generic_analysis/generic_type_arguments.h"
 #include "semantic_analysis/semantic_scope.h"
 #include "semantic_analysis/visibility.h"
 

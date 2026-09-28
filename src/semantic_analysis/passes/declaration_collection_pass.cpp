@@ -1,4 +1,4 @@
-#include "semantic_analysis/method_signature_set.h"
+#include "semantic_analysis/call_analysis/method_signature_set.h"
 #include "semantic_analysis/passes/import_traversal.h"
 // declaration_collection_pass.cpp — The declaration pre-pass (see
 // declaration_collection_pass.h)
@@ -309,27 +309,28 @@ void DeclarationCollectionPass::registerClassShape(
       }
     }
 
-    sema_.checkPackedFieldType(classDef, field, fieldType);
+    sema_.classes().checkPackedFieldType(classDef, field, fieldType);
     classType->addField(field.name, fieldType, field.declaration.id)
         .visibility = field.visibility;
   }
 
   // Implemented interfaces (fields inherited, implementation recorded)
-  sema_.inheritInterfaceFields(classDef, classType);
+  sema_.interfaces().inheritInterfaceFields(classDef, classType);
 
   // Method signatures ('this' resolves against the class being shaped)
   auto savedClass = ctx_.getCurrentClass();
   ctx_.setCurrentClass(classType);
   MethodSignatureSet methodSignatures(ctx_, sema_.typeResolver());
   for (const auto& methodDecl : classDef.getMethods()) {
-    FunctionInfo methodInfo = sema_.getFunctionInfo(*methodDecl.function);
+    FunctionInfo methodInfo =
+        sema_.declarations().getFunctionInfo(*methodDecl.function);
     PrototypeAST& proto =
         const_cast<PrototypeAST&>(methodDecl.function->getProto());
     if (!methodSignatures.insert(proto, methodInfo.paramTypes))
       logAndThrowError(
           "Function '" + proto.getName() + "' is already defined in this scope",
           methodDecl.function->getLocation());
-    sema_.applyFunctionInfoToProto(proto, methodInfo);
+    sema_.declarations().applyFunctionInfoToProto(proto, methodInfo);
     auto& method =
         classType->addMethod(proto.getName(), methodInfo.returnType,
                              methodInfo.paramTypes, methodDecl.isConstructor,

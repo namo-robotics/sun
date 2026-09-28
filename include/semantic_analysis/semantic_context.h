@@ -48,15 +48,71 @@ class SemanticContext : public AccessContext {
   SourceFileId sourceFileId_ = 0;
   DeclarationState declarations_;
   size_t declarationCollectionDepth_ = 0;
+  std::vector<std::string> activeLifetimeNames_;
+  bool allowThisLifetime_ = false;
 
  public:
+  /** Lifetime names visible in the current declaration or body. */
+  const std::vector<std::string> &activeLifetimeNames() const {
+    return activeLifetimeNames_;
+  }
+  /** Whether the current declaration or body may name the receiver lifetime. */
+  bool allowsThisLifetime() const { return allowThisLifetime_; }
+  /** Add a lifetime binder within a LifetimeScopeGuard. */
+  void declareLifetime(const std::string &name) {
+    activeLifetimeNames_.push_back(name);
+  }
+  /** Restores lifetime binders and receiver permission on every exit path. */
+  class LifetimeScopeGuard {
+   public:
+    /** Extend the current bindings, or isolate a global initializer from them.
+     */
+    explicit LifetimeScopeGuard(SemanticContext &context,
+                                std::optional<bool> allowThis = std::nullopt,
+                                bool isolate = false)
+        : ctx_(context),
+          mark_(context.activeLifetimeNames_.size()),
+          allowThis_(context.allowThisLifetime_),
+          isolated_(isolate) {
+      if (isolated_) {
+        savedNames_ = std::move(ctx_.activeLifetimeNames_);
+        ctx_.activeLifetimeNames_.clear();
+      }
+      if (allowThis) ctx_.allowThisLifetime_ = *allowThis;
+    }
+    /** A lifetime scope has exactly one owner responsible for restoration. */
+    LifetimeScopeGuard(const LifetimeScopeGuard &) = delete;
+    /** Prevent duplicate restoration through assignment. */
+    LifetimeScopeGuard &operator=(const LifetimeScopeGuard &) = delete;
+    /** Restore the enclosing declaration's bindings, including after errors. */
+    ~LifetimeScopeGuard() {
+      if (isolated_)
+        ctx_.activeLifetimeNames_ = std::move(savedNames_);
+      else
+        ctx_.activeLifetimeNames_.resize(mark_);
+      ctx_.allowThisLifetime_ = allowThis_;
+    }
+
+   private:
+    SemanticContext &ctx_;
+    size_t mark_;
+    bool allowThis_;
+    bool isolated_;
+    std::vector<std::string> savedNames_;
+  };
+
   /** A registered interface and the scope where its annotations resolve. */
   struct InterfaceDefinition {
     sun::ast::InterfaceDefinitionAST *node;
     SemanticScope *scope;
   };
   std::map<DeclarationId, InterfaceDefinition> interfaceDefinitions;
-  std::set<DeclarationId> resolvingInterfaceParents;
+  /** A non-generic class and the scope of its implemented interface names. */
+  struct ClassDefinition {
+    sun::ast::ClassDefinitionAST *node;
+    SemanticScope *scope;
+  };
+  std::map<DeclarationId, ClassDefinition> classDefinitions;
   /** Whether type declarations are being collected before body analysis. */
   bool isCollectingDeclarations() const {
     return declarationCollectionDepth_ != 0;

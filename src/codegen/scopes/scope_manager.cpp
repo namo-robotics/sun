@@ -10,7 +10,7 @@
 #include <llvm/IR/Operator.h>
 
 #include "codegen/codegen_visitor.h"
-#include "semantic_analysis/packed_layout.h"
+#include "semantic_analysis/class_analysis/packed_layout.h"
 
 using sun::semantic_analysis::DeclarationId;
 using sun::types::ClassType;

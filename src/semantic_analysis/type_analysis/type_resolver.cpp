@@ -275,10 +275,11 @@ size_t TypeResolver::resolveArrayDimension(
   // A global may be used before the line that declares it
   VariableInfo* info = nullptr;
   if (auto dot = name.rfind('.'); dot != std::string::npos) {
-    sema_.ensureModuleGlobalAnalyzed(name.substr(0, dot), name.substr(dot + 1));
+    sema_.declarations().ensureModuleGlobalAnalyzed(name.substr(0, dot),
+                                                    name.substr(dot + 1));
     info = ctx_.lookupQualifiedVariable(name);
   } else {
-    sema_.ensureGlobalAnalyzed(name);
+    sema_.declarations().ensureGlobalAnalyzed(name);
     info = ctx_.currentScope().lookupVariable(name);
   }
   if (!info) reject("is not the name of a constant that is visible here");
@@ -355,7 +356,7 @@ TypePtr TypeResolver::resolveAnnotation(const sun::ast::TypeAnnotation& annot) {
     }
     if (kind == DeclarationKind::Class) return ctx_.types()->getClass(id);
     if (kind == DeclarationKind::Interface) {
-      sema_.ensureInterfaceShape(id);
+      sema_.interfaces().ensureInterfaceShape(id);
       return ctx_.types()->getInterface(id);
     }
     return ctx_.types()->getEnum(id);
@@ -630,7 +631,7 @@ TypePtr TypeResolver::resolveAnnotation(const sun::ast::TypeAnnotation& annot) {
   // Check for user-defined interface types
   auto interfaceType = ctx_.lookupInterface(lookupName);
   if (interfaceType) {
-    sema_.ensureInterfaceShape(interfaceType->getDeclarationId());
+    sema_.interfaces().ensureInterfaceShape(interfaceType->getDeclarationId());
     return interfaceType;
   }
 

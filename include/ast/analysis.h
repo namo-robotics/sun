@@ -14,7 +14,7 @@
 
 #include "ast/ast_common.h"
 #include "ast/ast_fwd.h"
-#include "semantic_analysis/argument_conversion.h"
+#include "semantic_analysis/call_analysis/argument_conversion.h"
 #include "semantic_analysis/constants/global_init.h"
 #include "semantic_analysis/declaration_id.h"
 #include "semantic_analysis/qualified_name.h"

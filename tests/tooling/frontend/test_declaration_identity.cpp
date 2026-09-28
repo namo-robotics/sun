@@ -9,7 +9,7 @@
 #include "driver/driver.h"
 #include "parsing/parser.h"
 #include "semantic_analysis/analysis_results.h"
-#include "semantic_analysis/callable_signature.h"
+#include "semantic_analysis/call_analysis/callable_signature.h"
 #include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/passes/declaration_identity_pass.h"
 #include "serialization/ast_deserializer.h"
@@ -267,7 +267,7 @@ TEST(Tooling_Frontend_DeclarationIdentity,
   auto id = function.getDeclarationId();
   ASSERT_TRUE(id);
   auto count = results->declarations.size();
-  auto info = analyzer.getFunctionInfo(function);
+  auto info = analyzer.declarations().getFunctionInfo(function);
   EXPECT_EQ(info.declarationId, id);
   EXPECT_EQ(results->declarations.size(), count);
   analyzer.pipeline().prepareGenerated(function, std::vector<std::string>{},

@@ -1,6 +1,6 @@
 /** Resolves written types and scoped substitutions during semantic analysis. */
 #pragma once
-#include "semantic_analysis/generic_specializer.h"
+#include "semantic_analysis/generic_analysis/generic_specializer.h"
 #include "semantic_analysis/semantic_context.h"
 
 /** Resolves declarations and checks Sun programs. */

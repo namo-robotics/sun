@@ -2,7 +2,7 @@
 
 #include "codegen/support/struct_access.h"
 
-#include "semantic_analysis/packed_layout.h"
+#include "semantic_analysis/class_analysis/packed_layout.h"
 
 using sun::types::ClassType;
 
