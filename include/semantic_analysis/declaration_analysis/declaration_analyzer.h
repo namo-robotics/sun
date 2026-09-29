@@ -130,6 +130,14 @@ class DeclarationAnalyzer {
                      SemanticScope &scope);
 
   /**
+   * Reports a cycle when `global` is already being analyzed further up the
+   * stack, meaning its initializer leads back to itself. The error lists
+   * each global along the cycle, for example `A -> B -> A`.
+   */
+  void verifyGlobalVarIsNotRepeated(
+      const sun::ast::VariableCreationAST &global) const;
+
+  /**
    * Globals may be used before the line that declares them. If `name` refers
    * to a global that has not been analyzed yet, analyzes its declaration now,
    * in the scope it was declared in, so the lookup that follows finds it.

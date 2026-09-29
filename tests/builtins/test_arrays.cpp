@@ -605,6 +605,41 @@ TEST(Builtins_Arrays, named_size_of_a_field_cannot_come_from_a_function_call) {
       "value cannot come from calling a function");
 }
 
+// A generic call is a function call too.
+TEST(Builtins_Arrays, named_size_of_a_field_cannot_come_from_a_generic_call) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
+    function make<T>() i64 { return 4; }
+    const SIZE: i64 = make<i32>();
+    class Buf {
+        var data: array<i32, SIZE>;
+        init() { this.data = [1, 2, 3, 4]; }
+    }
+    function main() i32 { return 0; }
+  )"),
+      "'SIZE' is needed by a class field or a function signature, so its "
+      "value cannot come from calling a function");
+}
+
+// A call nested inside a struct literal is still found.
+TEST(Builtins_Arrays,
+     named_size_of_a_field_cannot_come_from_a_call_in_a_struct_literal) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
+    function half(x: i64) i64 { return x / 2; }
+    class Pair { var a: i64; var b: i64; }
+    const P: Pair = { a: half(8), b: 2 };
+    const SIZE: i64 = P.a;
+    class Buf {
+        var data: array<i32, SIZE>;
+        init() { this.data = [1, 2, 3, 4]; }
+    }
+    function main() i32 { return 0; }
+  )"),
+      "'P' is needed by a class field or a function signature, so its "
+      "value cannot come from calling a function");
+}
+
 // A size is a number or a name. An expression is given a name first:
 // `const M = N * 2;`.
 TEST(Builtins_Arrays, size_written_as_an_expression_is_rejected) {

@@ -23,4 +23,12 @@ bool isBorrowableLvalue(const ExprAST& target);
  */
 bool alwaysExits(const ExprAST& expr);
 
+/**
+ * Does this expression, or anything nested inside it, call a function? Counts
+ * plain calls (`half(8)`) and generic calls (`make<i32>()`), and looks into
+ * every child, including struct literal values, slice bounds and match
+ * patterns.
+ */
+bool containsCall(const ExprAST& expr);
+
 }  // namespace sun::semantic_analysis
