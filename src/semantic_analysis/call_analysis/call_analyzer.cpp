@@ -111,62 +111,6 @@ std::string calleeDisplayName(const CallExprAST& callExpr) {
   return "<unknown>";
 }
 
-/**
- * Whether an argument of one type may be passed to a parameter of another
- * when the two are not equal: the implicit conversions a call site allows.
- * `calleeIsIntrinsic` unlocks the byte-pointer erasure only intrinsics may
- * use.
- */
-bool isImplicitlyConvertibleArgument(const TypePtr& argType,
-                                     const TypePtr& paramType,
-                                     bool calleeIsIntrinsic) {
-  // Reference parameter accepts the referenced type directly
-  if (paramType->isReference()) {
-    auto* refType = static_cast<const ReferenceType*>(paramType.get());
-    if (sun::semantic_analysis::type_analysis::referenceParameterAccepts(
-            *refType, argType))
-      return true;
-    // Auto-deref: raw_ptr<T> is compatible with ref T
-    if (argType->isRawPointer()) {
-      auto* ptrType = static_cast<const RawPointerType*>(argType.get());
-      if (ptrType->getPointeeType()->equals(*refType->getReferencedType())) {
-        return true;
-      }
-    }
-  }
-
-  // Auto-deref: raw_ptr<T> can be passed where T or ref T is expected
-  if (argType->isRawPointer() && !paramType->isRawPointer()) {
-    auto* ptrType = static_cast<const RawPointerType*>(argType.get());
-    TypePtr pointeeType = ptrType->getPointeeType();
-    // For primitives, auto-deref to value is allowed
-    if (pointeeType->equals(*paramType) && paramType->isPrimitive() &&
-        !paramType->isReference()) {
-      return true;
-    }
-    // For any type, auto-deref to ref is allowed
-    if (paramType->isReference()) {
-      auto* refType = static_cast<const ReferenceType*>(paramType.get());
-      if (pointeeType->equals(*refType->getReferencedType())) return true;
-    }
-  }
-
-  // Null is compatible with any pointer type
-  if (argType->isNullPointer() && paramType->isAnyPointer()) return true;
-
-  // raw_ptr<T> is compatible with byte pointers raw_ptr<i8>/raw_ptr<u8> (like
-  // C's void*). Only for intrinsics, to avoid accidental type erasure in user
-  // code.
-  if (calleeIsIntrinsic &&
-      sun::semantic_analysis::type_analysis::isBytePointerArgument(argType,
-                                                                   paramType))
-    return true;
-
-  // Everything an assignment accepts, such as numeric widening and
-  // static_ptr<T> to raw_ptr<T>
-  return isAssignableTo(argType, paramType);
-}
-
 }  // namespace
 
 // -------------------------------------------------------------------
@@ -754,10 +698,8 @@ void CallAnalyzer::checkArgumentTypes(CallExprAST& callExpr,
     }
 
     if (!argType || !paramType || paramType->equals(*argType)) continue;
-    if (isImplicitlyConvertibleArgument(argType, paramType,
-                                        calleeIsIntrinsic)) {
+    if (sun::types::argumentAccepts(argType, paramType, calleeIsIntrinsic))
       continue;
-    }
 
     // The common way to land here now: handing a borrowed element to a
     // by-value parameter. Say what to do about it.

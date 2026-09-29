@@ -7,6 +7,8 @@ A file for guiding coding agents.
 - Never use git commands except readonly ones like `git status` and `git diff`.
 - Run all commands from the workspace root. Create any temp files in `${workspaceRoot}/tmp`.
 - `sun fmt` for formating sun source files
+- Build: `cmake --build build -j$(($(nproc)/2))`. Never use all cores; a full-speed build exhausts the machine's memory.
+- Tests: `SUN_PATH=$PWD ctest --test-dir build -j$(($(nproc)/2))` runs the whole suite in parallel. Do not run `build/tests/sun_tests` directly except with `--gtest_filter=...` for a few tests; on its own it runs everything serially.
 
 ## Sun Language Conventions
 

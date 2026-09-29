@@ -2,20 +2,17 @@
 #pragma once
 #include <cstdint>
 
+#include "types/argument_compatibility.h"
 #include "types/types.h"
 
 /** Pure type inference and compatibility rules used by semantic analysis. */
 namespace sun::semantic_analysis::type_analysis {
-/**
- * True when a value of type `from` may be used where `to` is expected.
- * Covers exact equality, integer widening, f32/f64 conversion, static_ptr to
- * raw_ptr narrowing, class-to-interface conformance (through a `ref` on either
- * side), a non-throwing lambda where a throwing one is expected, and reading a
- * scalar out of a borrow. A compound read out of a borrow is rejected: that
- * would give the copy and the borrowed value the same buffer.
- */
-bool isAssignableTo(const sun::types::TypePtr& from,
-                    const sun::types::TypePtr& to);
+// The compatibility rules live with the types; they are re-exported here so
+// analysis code can keep naming them alongside the other type checks.
+using sun::types::argumentAccepts;
+using sun::types::isAssignableTo;
+using sun::types::isBytePointerArgument;
+using sun::types::referenceParameterAccepts;
 
 /**
  * True when an integer literal, given as a magnitude and a sign, is
@@ -25,23 +22,6 @@ bool isAssignableTo(const sun::types::TypePtr& from,
  */
 bool literalFitsInType(uint64_t magnitude, bool negative,
                        sun::types::Type::Kind kind);
-
-/**
- * Whether an argument of type `argType` can bind to a `ref` parameter of type
- * `param` without conversion: it is the referenced type itself, a borrow of it
- * whose mutability may convert (only `ref` to `const ref`), or a sized array
- * whose element type matches an unsized `ref array<T>` parameter.
- */
-bool referenceParameterAccepts(const sun::types::ReferenceType& param,
-                               const sun::types::TypePtr& argType);
-
-/**
- * Whether a raw_ptr argument may be passed as a byte pointer parameter
- * (raw_ptr<i8> or raw_ptr<u8>), like C's void*. Only intrinsic callees allow
- * this, to avoid accidental type erasure in user code.
- */
-bool isBytePointerArgument(const sun::types::TypePtr& argType,
-                           const sun::types::TypePtr& paramType);
 
 /**
  * The type a variable of `original` type has once an `_is<T>` guard has

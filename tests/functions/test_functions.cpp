@@ -284,6 +284,38 @@ TEST(Functions, overload_resolution_by_arity) {
   EXPECT_EQ(value, 2);
 }
 
+// A call site reads through a raw_ptr<T> where ref T or a primitive T is
+// expected. Overload lookup follows the same rule, so the call finds the
+// overload instead of reporting that none matches.
+TEST(Functions, overload_lookup_reads_through_a_raw_ptr) {
+  auto value = executeString(R"(
+    class P { var v: i32; init() { this.v = 3; } }
+    function read(p: ref P) i32 { return p.v; }
+    function read(x: i32) i32 { return x + 100; }
+
+    function main() i32 {
+        var p = P();
+        var rp: raw_ptr<P> = _address_of<P>(p);
+        return read(rp);
+    }
+  )");
+  EXPECT_EQ(value, 3);
+}
+
+TEST(Functions, overload_lookup_reads_a_primitive_through_a_raw_ptr) {
+  auto value = executeString(R"(
+    function twice(x: i32) i32 { return x * 2; }
+    function twice(x: i64) i64 { return x * 3; }
+
+    function main() i32 {
+        var n: i32 = 4;
+        var rp: raw_ptr<i32> = _address_of<i32>(n);
+        return twice(rp);
+    }
+  )");
+  EXPECT_EQ(value, 8);
+}
+
 TEST(Functions, wrong_argument_count_is_error) {
   EXPECT_THROW(executeString(R"(
         function f(a: i32) i32 { return a; }

@@ -465,6 +465,27 @@ TEST(Classes, constructor_wrong_argument_count) {
 
 // Constructors and destructors are written bare — 'public' and 'function'
 // are rejected, and no method or interface member may take their names.
+// Constructor lookup accepts the same arguments a call site does, including
+// a raw_ptr<T> read through for a ref T parameter.
+TEST(Classes, constructor_lookup_reads_through_a_raw_ptr) {
+  auto value = executeString(R"(
+    class Q { var v: i32; init() { this.v = 7; } }
+    class P {
+      var v: i32;
+      init(o: ref Q) { this.v = o.v; }
+      init(x: i32) { this.v = x + 100; }
+    }
+
+    function main() i32 {
+        var q = Q();
+        var rq: raw_ptr<Q> = _address_of<Q>(q);
+        var p = P(rq);
+        return p.v;
+    }
+  )");
+  EXPECT_EQ(value, 7);
+}
+
 TEST(Classes, init_rejects_function_keyword) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       compileString(R"(

@@ -173,6 +173,7 @@ add_library(sun_lib
     src/types/reference_type.cpp
     src/types/pointer_types.cpp
     src/types/class_type.cpp
+    src/types/argument_compatibility.cpp
     src/types/type_utils.cpp
     # Semantic analysis
     src/semantic_analysis/access_checker.cpp

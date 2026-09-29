@@ -290,7 +290,7 @@ void BodyAnalyzer::analyzeMethodWithBindings(
                                         /*isConst=*/proto.isConstMethod());
   }
 
-  sun::ast::clearResolvedTypes(const_cast<BlockExprAST&>(methodFunc.getBody()));
+  sun::ast::clearResolvedTypes(methodFunc.getBody());
   const auto& statements = methodFunc.getBody().getBody();
   for (size_t i = 0; i < methodFunc.getFieldInitializerCount(); ++i) {
     sema_.analyzeExpr(*statements.at(i));

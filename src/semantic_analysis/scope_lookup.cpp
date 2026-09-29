@@ -559,47 +559,9 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
             }
           }
 
-          if (info->paramTypes[i]->isReference()) {
-            auto* refType =
-                static_cast<const ReferenceType*>(info->paramTypes[i].get());
-            if (type_analysis::referenceParameterAccepts(*refType, argType))
-              continue;
-          }
-
-          if (argType->isReference()) {
-            auto* refType = static_cast<const ReferenceType*>(argType.get());
-            // Reading the value out of the borrow, so only for a scalar
-            // parameter type (see isAssignableTo above)
-            if (info->paramTypes[i]->equals(*refType->getReferencedType()) &&
-                sun::types::typeCopiesByRead(info->paramTypes[i]))
-              continue;
-          }
-
-          if (argType->isNullPointer() && info->paramTypes[i]->isAnyPointer()) {
+          if (sun::types::argumentAccepts(argType, info->paramTypes[i],
+                                          isIntrinsic(baseName)))
             continue;
-          }
-
-          if (argType->isStaticPointer() &&
-              info->paramTypes[i]->isRawPointer()) {
-            auto* staticPtr = static_cast<const sun::types::StaticPointerType*>(
-                argType.get());
-            auto* rawPtr = static_cast<const sun::types::RawPointerType*>(
-                info->paramTypes[i].get());
-            if (staticPtr->getPointeeType()->equals(
-                    *rawPtr->getPointeeType())) {
-              continue;
-            }
-          }
-
-          // raw_ptr<T> is compatible with byte pointers (raw_ptr<i8>/u8)
-          // for intrinsics
-          if (isIntrinsic(baseName) && type_analysis::isBytePointerArgument(
-                                           argType, info->paramTypes[i]))
-            continue;
-
-          if (isAssignableTo(argType, info->paramTypes[i])) {
-            continue;
-          }
 
           compatible = false;
           break;
