@@ -43,4 +43,13 @@ bool referenceParameterAccepts(const sun::types::ReferenceType& param,
 bool isBytePointerArgument(const sun::types::TypePtr& argType,
                            const sun::types::TypePtr& paramType);
 
+/**
+ * The type a variable of `original` type has once an `_is<T>` guard has
+ * shown it to be `narrowed`: the more specific of the two, where a class
+ * beats an interface it implements and anything concrete beats a type
+ * parameter. Null when the two do not relate, so no narrowing applies.
+ */
+sun::types::TypePtr moreSpecificNarrowing(const sun::types::TypePtr& original,
+                                          const sun::types::TypePtr& narrowed);
+
 }  // namespace sun::semantic_analysis::type_analysis

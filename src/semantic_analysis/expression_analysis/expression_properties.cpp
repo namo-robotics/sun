@@ -5,6 +5,9 @@
 
 #include "ast/ast_children.h"
 #include "ast/control_flow.h"
+#include "codegen/intrinsics/intrinsics.h"
+#include "codegen/support/type_checks.h"
+#include "semantic_analysis/type_analysis/type_traits.h"
 #include "support/error.h"
 #include "types/type_utils.h"
 
@@ -190,6 +193,79 @@ void checkOwnedMatchCoverage(const sun::ast::MatchExprAST& match,
   logAndThrowError(
       "Match producing an owned value must cover every input; add a '_' arm",
       match.getLocation());
+}
+
+/** Matches the `_is` intrinsic applied to one variable reference. */
+std::optional<IsGuard> matchIsGuard(const ExprAST& cond) {
+  if (cond.getType() != ASTNodeType::GENERIC_CALL) return std::nullopt;
+  const auto& call = static_cast<const sun::ast::GenericCallAST&>(cond);
+  if (sun::codegen::intrinsics::getIntrinsic(call.getFunctionName()) !=
+      sun::codegen::intrinsics::Intrinsic::Is)
+    return std::nullopt;
+  const auto& args = call.getArgs();
+  if (args.size() != 1 || args[0]->getType() != ASTNodeType::VARIABLE_REFERENCE)
+    return std::nullopt;
+  const auto& typeArgs = call.getTypeArguments();
+  if (typeArgs.empty()) return std::nullopt;
+  const std::string& typeName = typeArgs[0]->baseName;
+  if (type_analysis::isTypeTrait(typeName)) return std::nullopt;
+  return IsGuard{
+      static_cast<const sun::ast::VariableReferenceAST&>(*args[0]).getName(),
+      typeName};
+}
+
+/** Walks the access chain of a moved value looking for storage it must not
+ * leave. */
+void rejectPartialMove(const ExprAST& source,
+                       const sun::support::Position& loc) {
+  // Only an owned compound value moves; scalars copy and borrows stay put
+  if (!sun::types::typeMovesOnRead(source.getResolvedType())) return;
+
+  // An array owns its elements the way a container does: an element is
+  // reached by borrowing it, never by moving it out of the middle
+  if (source.getType() == ASTNodeType::INDEX) {
+    const auto& index = static_cast<const sun::ast::IndexAST&>(source);
+    TypePtr targetType = unwrapRef(index.getTarget()->getResolvedType());
+    if (targetType && targetType->isArray()) {
+      logAndThrowError(
+          "Cannot move an element out of an array; borrow it "
+          "with 'ref' or 'const ref' instead",
+          loc);
+    }
+  }
+
+  if (source.getType() != ASTNodeType::MEMBER_ACCESS) return;
+  const ExprAST* part = &source;
+  while (part && part->getType() == ASTNodeType::MEMBER_ACCESS) {
+    const auto& member = static_cast<const sun::ast::MemberAccessAST&>(*part);
+    if (member.hasQualifiedName() || member.isBoundMethodRef()) break;
+    const ExprAST* owner = member.getObject();
+    if (!owner) break;
+    if (owner->getType() == ASTNodeType::THIS ||
+        (owner->getResolvedType() && owner->getResolvedType()->isReference())) {
+      logAndThrowError(
+          "Cannot move a field through a reference; replace the field "
+          "instead",
+          loc);
+    }
+    auto ownerType = unwrapRef(owner->getResolvedType());
+    if (auto* cls = sun::codegen::support::tryGetType<sun::types::ClassType>(
+            ownerType)) {
+      if (cls->getMethod("deinit")) {
+        logAndThrowError(
+            "Cannot move a field out of a class with deinit; replace the "
+            "field instead",
+            loc);
+      }
+    }
+    part = owner;
+  }
+  if (part && part->getType() == ASTNodeType::INDEX) {
+    logAndThrowError(
+        "Cannot move a field out of an indexed element; replace the field "
+        "instead",
+        loc);
+  }
 }
 
 }  // namespace sun::semantic_analysis

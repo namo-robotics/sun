@@ -14,6 +14,7 @@
 
 #include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/symbol_names.h"
+#include "semantic_analysis/type_analysis/type_checking.h"
 #include "semantic_analysis/type_registry.h"
 #include "semantic_analysis/visibility.h"
 #include "support/error.h"
@@ -638,40 +639,8 @@ TypePtr SemanticContext::getNarrowedType(const std::string& varName,
   // Search from innermost to outermost scope
   for (auto* s = currentScope_; s != nullptr; s = s->parent) {
     auto found = s->narrowedTypes.find(varName);
-    if (found != s->narrowedTypes.end()) {
-      TypePtr narrowedType = found->second;
-
-      // Return the MORE SPECIFIC type between originalType and narrowedType.
-      // Specificity order: Class > Interface > TypeParameter
-      if (!originalType) {
-        return narrowedType;
-      }
-
-      // TypeParameter -> anything concrete is more specific
-      if (originalType->isTypeParameter()) {
-        return narrowedType;
-      }
-
-      // Interface -> Class that implements it is more specific
-      if (originalType->isInterface() && narrowedType->isClass()) {
-        auto* classType = static_cast<ClassType*>(narrowedType.get());
-        auto* ifaceType = static_cast<InterfaceType*>(originalType.get());
-        if (classType->implementsInterface(*ifaceType)) return narrowedType;
-      }
-
-      // Class -> Interface: Class is more specific, return the class
-      if (originalType->isClass() && narrowedType->isInterface()) {
-        auto* classType = static_cast<ClassType*>(originalType.get());
-        auto* ifaceType = static_cast<InterfaceType*>(narrowedType.get());
-        if (classType->implementsInterface(*ifaceType)) return originalType;
-      }
-
-      // Interface -> more specific Interface (TODO: interface inheritance)
-      // For now, don't narrow interface to interface
-
-      // Not a valid narrowing - return nullptr
-      return nullptr;
-    }
+    if (found != s->narrowedTypes.end())
+      return type_analysis::moreSpecificNarrowing(originalType, found->second);
   }
   return nullptr;
 }

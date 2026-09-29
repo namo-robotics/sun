@@ -1,5 +1,6 @@
 /** Checks analysis utils within the semantic session. */
 #include "codegen/intrinsics/intrinsics.h"
+#include "semantic_analysis/expression_analysis/expression_properties.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "support/error.h"
 
@@ -105,56 +106,11 @@ void ExpressionAnalyzer::checkMoveSource(const ExprAST& value,
   while (source->getType() == ASTNodeType::PAREN_EXPR) {
     source = static_cast<const sun::ast::ParenExprAST*>(source)->getInner();
   }
-  TypePtr type = source->getResolvedType();
   // Only an owned compound value moves; scalars copy and borrows stay put
-  if (!sun::types::typeMovesOnRead(type)) return;
-
-  // An array owns its elements the way a container does: an element is
-  // reached by borrowing it, never by moving it out of the middle
-  if (source->getType() == ASTNodeType::INDEX) {
-    const auto& index = static_cast<const sun::ast::IndexAST&>(*source);
-    TypePtr targetType = unwrapRef(index.getTarget()->getResolvedType());
-    if (targetType && targetType->isArray()) {
-      logAndThrowError(
-          "Cannot move an element out of an array; borrow it "
-          "with 'ref' or 'const ref' instead",
-          loc);
-    }
-  }
+  if (!sun::types::typeMovesOnRead(source->getResolvedType())) return;
+  rejectPartialMove(*source, loc);
 
   if (source->getType() == ASTNodeType::MEMBER_ACCESS) {
-    const ExprAST* part = source;
-    while (part && part->getType() == ASTNodeType::MEMBER_ACCESS) {
-      const auto& member = static_cast<const MemberAccessAST&>(*part);
-      if (member.hasQualifiedName() || member.isBoundMethodRef()) break;
-      const ExprAST* owner = member.getObject();
-      if (!owner) break;
-      if (owner->getType() == ASTNodeType::THIS ||
-          (owner->getResolvedType() &&
-           owner->getResolvedType()->isReference())) {
-        logAndThrowError(
-            "Cannot move a field through a reference; replace the field "
-            "instead",
-            loc);
-      }
-      auto ownerType = unwrapRef(owner->getResolvedType());
-      if (auto* cls = sun::codegen::support::tryGetType<sun::types::ClassType>(
-              ownerType)) {
-        if (cls->getMethod("deinit")) {
-          logAndThrowError(
-              "Cannot move a field out of a class with deinit; replace the "
-              "field instead",
-              loc);
-        }
-      }
-      part = owner;
-    }
-    if (part && part->getType() == ASTNodeType::INDEX) {
-      logAndThrowError(
-          "Cannot move a field out of an indexed element; replace the field "
-          "instead",
-          loc);
-    }
     const auto& access = static_cast<const MemberAccessAST&>(*source);
     std::string why = immutableBaseOf(*access.getObject());
     if (!why.empty()) {

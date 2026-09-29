@@ -1,5 +1,7 @@
 /** Queries storage and control-flow properties of analyzed expressions. */
 #pragma once
+#include <optional>
+#include <string>
 #include <vector>
 
 #include "ast.h"
@@ -82,5 +84,28 @@ void checkOwnedMatchArmTypes(const sun::ast::MatchExprAST& match);
  */
 void checkOwnedMatchCoverage(const sun::ast::MatchExprAST& match,
                              const sun::types::TypePtr& discriminantType);
+
+/** The pieces of an `_is<T>(x)` test: the variable and the written type. */
+struct IsGuard {
+  std::string variable;
+  std::string typeName;
+};
+
+/**
+ * Recognizes the type-guard shape `_is<T>(x)`, where x is a plain variable:
+ * a generic call of the `_is` intrinsic with one variable argument. Returns
+ * nothing for any other condition, or when T is a type trait such as
+ * `_Integer`, which tests a property and does not narrow to a type.
+ */
+std::optional<IsGuard> matchIsGuard(const ExprAST& cond);
+
+/**
+ * Throws when an owned value would be moved out of storage that must stay
+ * whole: an array element, a field reached through a reference or `this`, a
+ * field of a class with `deinit`, or a field of an indexed element. Anything
+ * that copies or borrows on read passes.
+ */
+void rejectPartialMove(const ExprAST& source,
+                       const sun::support::Position& loc);
 
 }  // namespace sun::semantic_analysis

@@ -178,4 +178,24 @@ bool isBytePointerArgument(const TypePtr& argType, const TypePtr& paramType) {
   return pointee->isInt8() || pointee->isUInt8();
 }
 
+/** Orders types by specificity: class, then interface, then type parameter. */
+TypePtr moreSpecificNarrowing(const TypePtr& original,
+                              const TypePtr& narrowed) {
+  if (!original || original->isTypeParameter()) return narrowed;
+  if (original->isInterface() && narrowed->isClass()) {
+    const auto& cls = static_cast<const sun::types::ClassType&>(*narrowed);
+    const auto& iface =
+        static_cast<const sun::types::InterfaceType&>(*original);
+    if (cls.implementsInterface(iface)) return narrowed;
+  }
+  if (original->isClass() && narrowed->isInterface()) {
+    const auto& cls = static_cast<const sun::types::ClassType&>(*original);
+    const auto& iface =
+        static_cast<const sun::types::InterfaceType&>(*narrowed);
+    if (cls.implementsInterface(iface)) return original;
+  }
+  // An interface never narrows to another interface (no interface inheritance)
+  return nullptr;
+}
+
 }  // namespace sun::semantic_analysis::type_analysis
