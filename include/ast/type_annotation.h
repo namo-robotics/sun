@@ -194,6 +194,14 @@ struct TypeAnnotation {
   bool isGeneric() const { return !typeArguments.empty(); }
   /** Reports whether this syntax node represents a value-or-error type. */
   bool isErrorUnion() const { return canError; }
+  /**
+   * Reports whether this is a `<'_>` lambda type whose frame has no name:
+   * written `<'_>` or with no lifetime at all. Such a type cannot be
+   * returned, because its environment dies with the frame that made it.
+   */
+  bool isAnonymousFrameLambda() const {
+    return refEnv && (lifetimeName.empty() || lifetimeName == "_");
+  }
 
   /** Compare type structure and resolved names, ignoring source locations. */
   bool operator==(const TypeAnnotation& other) const {

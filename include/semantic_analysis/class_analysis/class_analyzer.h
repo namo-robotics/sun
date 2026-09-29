@@ -27,20 +27,6 @@ class ClassAnalyzer {
   void analyzePartialClass(sun::ast::ClassDefinitionAST &classDef,
                            sun::ast::ExprAST &expr);
 
-  /** A packed field has no guaranteed alignment, so it cannot be borrowed. */
-  void checkPackedFieldNotBorrowed(const sun::ast::ExprAST &target,
-                                   const sun::support::Position &loc) const;
-
-  /** The same rule for an argument passed to a `ref T` parameter. */
-  void checkPackedRefArguments(
-      const std::vector<std::unique_ptr<sun::ast::ExprAST>> &args,
-      const std::vector<sun::types::TypePtr> &paramTypes) const;
-
-  /** Reject a field type a packed class cannot lay out. */
-  void checkPackedFieldType(const sun::ast::ClassDefinitionAST &classDef,
-                            const sun::ast::ClassFieldDecl &field,
-                            const sun::types::TypePtr &fieldType) const;
-
  private:
   SemanticContext &ctx_;
   SemanticAnalyzer &sema_;

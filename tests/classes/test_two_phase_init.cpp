@@ -358,3 +358,31 @@ TEST(Classes_TwoPhaseInit, passing_this_before_the_object_is_whole) {
   )")),
                std::exception);
 }
+
+// A `this` inside a class defined in a lambda is that class's own receiver,
+// so the lambda does not use the object being built.
+TEST(Classes_TwoPhaseInit, a_local_class_this_in_a_lambda_is_not_a_use) {
+  auto value = executeString(R"(
+    class Outer {
+      var a: i32;
+      init() {
+        var f = () => i32 {
+          class Inner {
+            var v: i32;
+            init() { this.v = 7; }
+            method get() i32 { return this.v; }
+          }
+          var i = Inner();
+          return i.get();
+        };
+        this.a = f();
+      }
+    }
+
+    function main() i32 {
+      var o = Outer();
+      return o.a;
+    }
+  )");
+  EXPECT_EQ(value, 7);
+}

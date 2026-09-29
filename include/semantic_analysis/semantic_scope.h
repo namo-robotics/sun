@@ -6,7 +6,6 @@
 #include <memory>
 #include <optional>
 #include <set>
-#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -14,7 +13,9 @@
 #include "ast.h"
 #include "semantic_analysis/access_checker.h"
 #include "semantic_analysis/call_analysis/callable_signature.h"
+#include "semantic_analysis/module_path.h"
 #include "semantic_analysis/qualified_name.h"
+#include "semantic_analysis/visibility.h"
 #include "types/types.h"
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
@@ -323,22 +324,10 @@ struct SymbolMatch {
   explicit operator bool() const { return kind != SymbolKind::None; }
 
   /**
-   * Get display name for error messages (hides library hashes)
+   * Display name for error messages, with library hash segments left out.
    */
   std::string display() const {
-    if (modulePath.empty()) return name;
-    // Filter out $hash$ segments from module path
-    std::string displayPath;
-    std::istringstream stream(modulePath);
-    std::string segment;
-    while (std::getline(stream, segment, '.')) {
-      if (segment.size() >= 2 && segment.front() == '$' &&
-          segment.back() == '$') {
-        continue;  // Skip library hash
-      }
-      if (!displayPath.empty()) displayPath += ".";
-      displayPath += segment;
-    }
+    std::string displayPath = displayModulePath(modulePath);
     if (displayPath.empty()) return name;
     return displayPath + "." + name;
   }
@@ -987,10 +976,11 @@ inline const BlockScope* SemanticScopeBase::asBlock() const {
 }
 
 /**
- * Helper to check if a module name represents a library scope ($hash$)
+ * Reports whether a scope name is a library's bundle hash (`$hash$`) rather
+ * than a module the program can name.
  */
 inline bool isLibraryScope(const std::string& name) {
-  return name.size() >= 2 && name.front() == '$' && name.back() == '$';
+  return isLibraryHashSegment(name);
 }
 
 /**

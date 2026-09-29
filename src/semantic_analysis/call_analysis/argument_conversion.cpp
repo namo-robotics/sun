@@ -9,9 +9,7 @@
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 using sun::types::ArrayType;
-using sun::types::EnumType;
 using sun::types::RawPointerType;
-using sun::types::Type;
 using sun::types::typeMovesOnRead;
 using sun::types::TypePtr;
 using sun::types::unwrapRef;
@@ -19,42 +17,6 @@ using sun::types::unwrapRef;
 /** Keeps the implementation helpers in this file private to this translation
  * unit. */
 namespace {
-
-/**
- * Bit width of a numeric primitive; 0 for anything else.
- */
-int numericBits(const Type& type) {
-  switch (type.getKind()) {
-    case Type::Kind::Int8:
-    case Type::Kind::UInt8:
-      return 8;
-    case Type::Kind::Int16:
-    case Type::Kind::UInt16:
-      return 16;
-    case Type::Kind::Int32:
-    case Type::Kind::UInt32:
-    case Type::Kind::Float32:
-      return 32;
-    case Type::Kind::Int64:
-    case Type::Kind::UInt64:
-    case Type::Kind::Float64:
-      return 64;
-    default:
-      return 0;
-  }
-}
-
-/** Reports whether the semantic type is a floating-point number. */
-bool isFloat(const Type& type) {
-  return type.getKind() == Type::Kind::Float32 ||
-         type.getKind() == Type::Kind::Float64;
-}
-
-/** Reports whether an enum carries data in addition to its tag. */
-bool isPayloadEnum(const TypePtr& type) {
-  return type && type->isEnum() &&
-         static_cast<const EnumType*>(type.get())->hasPayload();
-}
 
 /**
  * A value handed over as itself: an owning compound moves, anything else is
@@ -166,10 +128,11 @@ std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
   // Numeric: only widening has a lowering. Same-width signedness changes
   // share a representation; a narrowing or an int/float mix has no lowering,
   // and acceptance should not have let it through.
-  int argBits = value ? numericBits(*value) : 0;
-  int paramBits = numericBits(*paramType);
+  int argBits = value ? value->numericBitWidth() : 0;
+  int paramBits = paramType->numericBitWidth();
   if (argBits && paramBits) {
-    if (isFloat(*value) != isFloat(*paramType)) return std::nullopt;
+    if (value->isFloatingPoint() != paramType->isFloatingPoint())
+      return std::nullopt;
     if (argBits < paramBits) return ArgConversion::WidenNumeric;
     if (argBits == paramBits) return ArgConversion::PassValue;
     return std::nullopt;

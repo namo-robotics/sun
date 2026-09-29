@@ -1,6 +1,8 @@
 #include "semantic_analysis/body_analysis/body_analyzer.h"
 
 #include "ast.h"
+#include "ast/ast_utils.h"
+#include "semantic_analysis/declaration_analysis/declaration_rules.h"
 #include "semantic_analysis/expression_analysis/expression_properties.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/symbol_names.h"
@@ -45,9 +47,8 @@ static void checkAllPathsReturn(const PrototypeAST& proto,
 void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
   PrototypeAST& proto = const_cast<PrototypeAST&>(func.getProto());
 
-  sema_.declarations().rejectRefEnvReturnType(proto.getReturnType(),
-                                              func.getLocation(),
-                                              /*allowNamed=*/true);
+  rejectRefEnvReturnType(proto.getReturnType(), func.getLocation(),
+                         /*allowNamed=*/true);
 
   // Lifetime names in the signature must be declared; 'this needs a class
   {
@@ -63,7 +64,7 @@ void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
                            "' must have an explicit return type",
                        func.getLocation());
     }
-    if (func.isCExtern()) sema_.declarations().validateExternSignature(func);
+    if (func.isCExtern()) validateExternSignature(func);
     return;
   }
 
@@ -289,8 +290,7 @@ void BodyAnalyzer::analyzeMethodWithBindings(
                                         /*isConst=*/proto.isConstMethod());
   }
 
-  sema_.expressions().clearResolvedTypes(
-      const_cast<BlockExprAST&>(methodFunc.getBody()));
+  sun::ast::clearResolvedTypes(methodFunc.getBody());
   const auto& statements = methodFunc.getBody().getBody();
   for (size_t i = 0; i < methodFunc.getFieldInitializerCount(); ++i) {
     sema_.analyzeExpr(*statements.at(i));

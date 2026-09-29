@@ -2,20 +2,17 @@
 #pragma once
 #include <cstdint>
 
+#include "types/argument_compatibility.h"
 #include "types/types.h"
 
 /** Pure type inference and compatibility rules used by semantic analysis. */
 namespace sun::semantic_analysis::type_analysis {
-/**
- * True when a value of type `from` may be used where `to` is expected.
- * Covers exact equality, integer widening, f32/f64 conversion, static_ptr to
- * raw_ptr narrowing, class-to-interface conformance (through a `ref` on either
- * side), a non-throwing lambda where a throwing one is expected, and reading a
- * scalar out of a borrow. A compound read out of a borrow is rejected: that
- * would give the copy and the borrowed value the same buffer.
- */
-bool isAssignableTo(const sun::types::TypePtr& from,
-                    const sun::types::TypePtr& to);
+// The compatibility rules live with the types; they are re-exported here so
+// analysis code can keep naming them alongside the other type checks.
+using sun::types::argumentAccepts;
+using sun::types::isAssignableTo;
+using sun::types::isBytePointerArgument;
+using sun::types::referenceParameterAccepts;
 
 /**
  * True when an integer literal, given as a magnitude and a sign, is
@@ -25,5 +22,14 @@ bool isAssignableTo(const sun::types::TypePtr& from,
  */
 bool literalFitsInType(uint64_t magnitude, bool negative,
                        sun::types::Type::Kind kind);
+
+/**
+ * The type a variable of `original` type has once an `_is<T>` guard has
+ * shown it to be `narrowed`: the more specific of the two, where a class
+ * beats an interface it implements and anything concrete beats a type
+ * parameter. Null when the two do not relate, so no narrowing applies.
+ */
+sun::types::TypePtr moreSpecificNarrowing(const sun::types::TypePtr& original,
+                                          const sun::types::TypePtr& narrowed);
 
 }  // namespace sun::semantic_analysis::type_analysis

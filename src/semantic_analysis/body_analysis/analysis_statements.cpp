@@ -95,8 +95,7 @@ void BodyAnalyzer::analyzeVariableAssignment(
     }
     varAssign.setResolvedType(varInfo->type);
   } else {
-    varAssign.setResolvedType(
-        sema_.expressions().requireResolvedType(*varAssign.getValue()));
+    varAssign.setResolvedType(requireResolvedType(*varAssign.getValue()));
   }
 }
 
@@ -273,8 +272,7 @@ void BodyAnalyzer::analyzeIndexedAssignment(
   // Try to coerce integer literal to target type (throws if doesn't fit)
   tryCoerceIntegerLiteral(valueExpr, elementType, /*throwOnFail=*/true);
 
-  assignment.setResolvedType(
-      sema_.expressions().requireResolvedType(*assignment.getValue()));
+  assignment.setResolvedType(requireResolvedType(*assignment.getValue()));
 }
 
 }  // namespace sun::semantic_analysis

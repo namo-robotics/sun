@@ -118,8 +118,8 @@ class BodyAnalyzer {
                                      const sun::types::Type &objectType);
 
   /**
-   * Extract type guard pattern from condition (_is&lt;T&gt;(var)).
-   * Returns (varName, narrowedType) if matched.
+   * The variable and resolved type of an `_is&lt;T&gt;(var)` condition, so the
+   * then-branch can narrow the variable to T; nothing for other conditions.
    */
   std::optional<std::pair<std::string, sun::types::TypePtr>> extractTypeGuard(
       const sun::ast::ExprAST &cond);

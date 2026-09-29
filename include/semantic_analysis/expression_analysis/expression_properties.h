@@ -1,5 +1,9 @@
 /** Queries storage and control-flow properties of analyzed expressions. */
 #pragma once
+#include <optional>
+#include <string>
+#include <vector>
+
 #include "ast.h"
 
 /** Checks expression properties during semantic analysis. */
@@ -30,5 +34,78 @@ bool alwaysExits(const ExprAST& expr);
  * patterns.
  */
 bool containsCall(const ExprAST& expr);
+
+/**
+ * The first `this` inside the expression, or null if there is none. Stops at
+ * a class or interface defined inside the expression, because a `this` in
+ * one of its methods refers to that type's own receiver, not the enclosing
+ * one.
+ */
+const ExprAST* findThisUse(const ExprAST& expr);
+
+/**
+ * The type analysis already recorded on the expression. Throws an internal
+ * error if there is none, since callers rely on the expression having been
+ * analyzed first.
+ */
+sun::types::TypePtr requireResolvedType(const ExprAST& expr);
+
+/**
+ * The value type of an analyzed block: the type of its first `return`, else
+ * of its last statement when the block produces a value, else void.
+ */
+sun::types::TypePtr preparedBlockType(const sun::ast::BlockExprAST& block);
+
+/**
+ * The arms of an analyzed match that can run: an arm for an enum variant an
+ * earlier arm already covers is left out, and nothing after the first `_`
+ * arm is included.
+ */
+std::vector<const sun::ast::MatchArm*> reachableMatchArms(
+    const sun::ast::MatchExprAST& match);
+
+/**
+ * The value type of an analyzed match: that of the first reachable arm whose
+ * body does not always leave (by return, throw, break or continue), else
+ * void.
+ */
+sun::types::TypePtr preparedMatchType(const sun::ast::MatchExprAST& match);
+
+/**
+ * When a match produces an owned value, throws unless every reachable arm
+ * that yields a value yields exactly that type.
+ */
+void checkOwnedMatchArmTypes(const sun::ast::MatchExprAST& match);
+
+/**
+ * When a match over a non-enum value produces an owned value, throws unless
+ * every input is covered: by a `_` arm, or by `true` and `false` arms when
+ * `discriminantType` is bool.
+ */
+void checkOwnedMatchCoverage(const sun::ast::MatchExprAST& match,
+                             const sun::types::TypePtr& discriminantType);
+
+/** The pieces of an `_is<T>(x)` test: the variable and the written type. */
+struct IsGuard {
+  std::string variable;
+  std::string typeName;
+};
+
+/**
+ * Recognizes the type-guard shape `_is<T>(x)`, where x is a plain variable:
+ * a generic call of the `_is` intrinsic with one variable argument. Returns
+ * nothing for any other condition, or when T is a type trait such as
+ * `_Integer`, which tests a property and does not narrow to a type.
+ */
+std::optional<IsGuard> matchIsGuard(const ExprAST& cond);
+
+/**
+ * Throws when an owned value would be moved out of storage that must stay
+ * whole: an array element, a field reached through a reference or `this`, a
+ * field of a class with `deinit`, or a field of an indexed element. Anything
+ * that copies or borrows on read passes.
+ */
+void rejectPartialMove(const ExprAST& source,
+                       const sun::support::Position& loc);
 
 }  // namespace sun::semantic_analysis

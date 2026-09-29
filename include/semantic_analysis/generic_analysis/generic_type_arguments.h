@@ -43,4 +43,15 @@ std::vector<sun::types::TypePtr> resolveMethodTypeArguments(
     const std::string& displayName, std::optional<sun::support::Position> loc,
     const std::vector<sun::types::TypePtr>& explicitTypeArgs = {});
 
+/**
+ * A call's argument types, divided into the callee's fixed parameters and
+ * the remainder that fills its `args...` pack. Returns the pack's share, or
+ * nullopt when the callee declares no pack. Errors when the call does not
+ * even cover the fixed parameters.
+ */
+std::optional<std::vector<sun::types::TypePtr>> splitPackArgTypes(
+    const sun::ast::PrototypeAST& proto,
+    const std::vector<sun::types::TypePtr>& argTypes,
+    const std::string& displayName, std::optional<sun::support::Position> loc);
+
 }  // namespace sun::semantic_analysis

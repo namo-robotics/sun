@@ -8,8 +8,6 @@
 
 /** Pure type inference and compatibility rules used by semantic analysis. */
 namespace sun::semantic_analysis::type_analysis {
-using sun::types::ClassType;
-using sun::types::ReferenceType;
 using sun::types::Type;
 using sun::types::TypePtr;
 
@@ -50,136 +48,24 @@ bool literalFitsInType(uint64_t magnitude, bool negative,
   }
 }
 
-// -------------------------------------------------------------------
-// Type assignability checking
-// -------------------------------------------------------------------
-
-/** Reports whether a value of one type can be assigned to another. */
-bool isAssignableTo(const TypePtr& from, const TypePtr& to) {
-  if (!from || !to) return false;
-
-  if (to->isInterface()) return false;
-
-  // Exact equality always works
-  if (from->equals(*to)) return true;
-
-  // A non-throwing pointer may widen to the same throwing signature. The
-  // reverse would let an indirect call bypass normal error handling.
-  if (from->isFunction() && to->isFunction()) {
-    const auto& source = static_cast<const sun::types::FunctionType&>(*from);
-    const auto& target = static_cast<const sun::types::FunctionType&>(*to);
-    if (source.canThrow() && !target.canThrow()) return false;
-    if (source.requiresUnsafe() && !target.requiresUnsafe()) return false;
-    if (!source.getReturnType()->equals(*target.getReturnType())) return false;
-    if (source.getParamTypes().size() != target.getParamTypes().size())
-      return false;
-    for (size_t i = 0; i < source.getParamTypes().size(); ++i) {
-      if (!source.getParamTypes()[i]->equals(*target.getParamTypes()[i]))
-        return false;
-    }
-    return true;
+/** Orders types by specificity: class, then interface, then type parameter. */
+TypePtr moreSpecificNarrowing(const TypePtr& original,
+                              const TypePtr& narrowed) {
+  if (!original || original->isTypeParameter()) return narrowed;
+  if (original->isInterface() && narrowed->isClass()) {
+    const auto& cls = static_cast<const sun::types::ClassType&>(*narrowed);
+    const auto& iface =
+        static_cast<const sun::types::InterfaceType&>(*original);
+    if (cls.implementsInterface(iface)) return narrowed;
   }
-  // A static_ptr narrows to a raw_ptr by extracting its data pointer.
-  // The reverse never holds: a raw_ptr carries no length and
-  // no promise the bytes are immortal, so it cannot become a static_ptr.
-  if (from->isStaticPointer() && to->isRawPointer()) {
-    auto* s = static_cast<const sun::types::StaticPointerType*>(from.get());
-    auto* r = static_cast<const sun::types::RawPointerType*>(to.get());
-    if (s->getPointeeType()->equals(*r->getPointeeType())) return true;
+  if (original->isClass() && narrowed->isInterface()) {
+    const auto& cls = static_cast<const sun::types::ClassType&>(*original);
+    const auto& iface =
+        static_cast<const sun::types::InterfaceType&>(*narrowed);
+    if (cls.implementsInterface(iface)) return original;
   }
-
-  // Numeric widening
-  if (from->isPrimitive() && to->isPrimitive()) {
-    auto fromKind = from->getKind();
-    auto toKind = to->getKind();
-
-    auto isInteger = [](sun::types::Type::Kind k) {
-      return k == sun::types::Type::Kind::Int8 ||
-             k == sun::types::Type::Kind::Int16 ||
-             k == sun::types::Type::Kind::Int32 ||
-             k == sun::types::Type::Kind::Int64 ||
-             k == sun::types::Type::Kind::UInt8 ||
-             k == sun::types::Type::Kind::UInt16 ||
-             k == sun::types::Type::Kind::UInt32 ||
-             k == sun::types::Type::Kind::UInt64;
-    };
-
-    auto intBitWidth = [](sun::types::Type::Kind k) -> int {
-      switch (k) {
-        case sun::types::Type::Kind::Int8:
-        case sun::types::Type::Kind::UInt8:
-          return 8;
-        case sun::types::Type::Kind::Int16:
-        case sun::types::Type::Kind::UInt16:
-          return 16;
-        case sun::types::Type::Kind::Int32:
-        case sun::types::Type::Kind::UInt32:
-          return 32;
-        case sun::types::Type::Kind::Int64:
-        case sun::types::Type::Kind::UInt64:
-          return 64;
-        default:
-          return 0;
-      }
-    };
-
-    // Allow integer widening (destination must be at least as wide)
-    // This includes u8 -> i64, i32 -> i64, etc.
-    if (isInteger(fromKind) && isInteger(toKind)) {
-      return intBitWidth(fromKind) <= intBitWidth(toKind);
-    }
-
-    // Allow f32 <-> f64 conversions (both widening and narrowing)
-    // This matches the existing permissive behavior for floating point
-    if ((fromKind == sun::types::Type::Kind::Float32 ||
-         fromKind == sun::types::Type::Kind::Float64) &&
-        (toKind == sun::types::Type::Kind::Float32 ||
-         toKind == sun::types::Type::Kind::Float64)) {
-      return true;
-    }
-  }
-
-  // Lambda widening: a non-throwing lambda is accepted where a throwing one
-  // is expected, and an environment-free lambda where a '<'_>' one is
-  // expected — never the reverse in either direction
-  if (to->isLambda() && from->isLambda()) {
-    auto* toL = static_cast<const sun::types::LambdaType*>(to.get());
-    auto* fromL = static_cast<const sun::types::LambdaType*>(from.get());
-    return toL->acceptsValueOf(*fromL);
-  }
-
-  // A borrow of a sized array stands in for a borrow of the unsized view
-  // (the rank is erased); a sized array itself must match exactly.
-  if (to->isArray() && from->isArray()) return false;
-
-  if (ClassType::isInterfaceConvertible(from, to)) return true;
-
-  // Unwrap reference types and check inner compatibility. A const borrow
-  // never becomes a mutable one.
-  if (to->isReference() && from->isReference()) {
-    auto* toRef = static_cast<const ReferenceType*>(to.get());
-    auto* fromRef = static_cast<const ReferenceType*>(from.get());
-    if (!sun::types::refMutabilityConvertible(*fromRef, *toRef)) return false;
-    if (ClassType::isArrayCompatible(fromRef->getReferencedType(),
-                                     toRef->getReferencedType())) {
-      return true;
-    }
-    return isAssignableTo(fromRef->getReferencedType(),
-                          toRef->getReferencedType());
-  }
-
-  // ref(T) -> T: the value is read out of the reference. Only a scalar can be
-  // duplicated that way. A compound T read out of a borrow would be a second
-  // value backed by the borrowed storage — borrow it with `ref`, copy it
-  // explicitly with clone(), or move it out of a container with
-  // pop()/remove()/swap_remove().
-  if (!to->isReference() && from->isReference()) {
-    auto* fromRef = static_cast<const ReferenceType*>(from.get());
-    if (!sun::types::typeCopiesByRead(to)) return false;
-    return isAssignableTo(fromRef->getReferencedType(), to);
-  }
-
-  return false;
+  // An interface never narrows to another interface (no interface inheritance)
+  return nullptr;
 }
 
 }  // namespace sun::semantic_analysis::type_analysis

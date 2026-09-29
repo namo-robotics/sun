@@ -50,9 +50,8 @@ std::vector<sun::ast::MoonScopeAST*> SemanticPipeline::getMoonImports(
     const sun::ast::BlockExprAST& block) {
   std::vector<sun::ast::MoonScopeAST*> imports;
   for (const auto& expr : block.getBody()) {
-    auto* moon = dynamic_cast<sun::ast::MoonScopeAST*>(expr.get());
-    if (!moon || moon->isOwnBundle()) continue;
-    imports.push_back(moon);
+    if (!sun::ast::isImportedMoon(*expr)) continue;
+    imports.push_back(static_cast<sun::ast::MoonScopeAST*>(expr.get()));
   }
   return imports;
 }

@@ -1,7 +1,8 @@
 /** Discovers and validates function and lambda captures. */
 #include <set>
 
-#include "ast/ast_children.h"
+#include "ast/free_variables.h"
+#include "semantic_analysis/expression_analysis/expression_properties.h"
 #include "semantic_analysis/semantic_analyzer.h"
 
 using sun::ast::ASTNodeType;
@@ -11,174 +12,6 @@ using sun::support::logAndThrowError;
 
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
-
-// -------------------------------------------------------------------
-// Free variable collection
-// -------------------------------------------------------------------
-
-// Names the expression uses that nothing inside it declares.
-//
-// Most nodes are just a shape to walk through, so `forEachChild` — the
-// enumerator that already knows every node's children — supplies the default.
-// Only the handful of nodes that mention a name, or that declare one their
-// children can see, need their own case here. Anything left out of both is
-// silently treated as capturing nothing, which is how a lambda ends up
-// looking for a local among the module's globals.
-std::set<std::string> DeclarationAnalyzer::collectFreeVariables(
-    const ExprAST& expr, const std::set<std::string>& bound) {
-  std::set<std::string> free;
-
-  auto collectFrom = [&](const ExprAST& child,
-                         const std::set<std::string>& childBound) {
-    auto childFree = collectFreeVariables(child, childBound);
-    free.insert(childFree.begin(), childFree.end());
-  };
-
-  switch (expr.getType()) {
-    case ASTNodeType::VARIABLE_REFERENCE: {
-      const auto& varRef =
-          static_cast<const sun::ast::VariableReferenceAST&>(expr);
-      if (!bound.count(varRef.getName())) {
-        free.insert(varRef.getName());
-      }
-      break;
-    }
-
-    case ASTNodeType::VARIABLE_ASSIGNMENT: {
-      const auto& varAssign =
-          static_cast<const sun::ast::VariableAssignmentAST&>(expr);
-      // Writing to a name uses it just as reading does
-      if (!bound.count(varAssign.getName())) {
-        free.insert(varAssign.getName());
-      }
-      collectFrom(*varAssign.getValue(), bound);
-      break;
-    }
-
-    case ASTNodeType::BLOCK: {
-      const auto& block = static_cast<const sun::ast::BlockExprAST&>(expr);
-      auto blockFree = collectFreeVariablesInBlock(block, bound);
-      free.insert(blockFree.begin(), blockFree.end());
-      break;
-    }
-
-    case ASTNodeType::FOR_LOOP: {
-      const auto& forExpr = static_cast<const sun::ast::ForExprAST&>(expr);
-      std::set<std::string> innerBound = bound;
-      if (forExpr.getInit()) {
-        collectFrom(*forExpr.getInit(), bound);
-        // A loop counter declared in the header is visible to the rest of it
-        if (forExpr.getInit()->getType() == ASTNodeType::VARIABLE_CREATION) {
-          innerBound.insert(static_cast<const sun::ast::VariableCreationAST&>(
-                                *forExpr.getInit())
-                                .getName());
-        }
-      }
-      if (forExpr.getCondition())
-        collectFrom(*forExpr.getCondition(), innerBound);
-      if (forExpr.getIncrement())
-        collectFrom(*forExpr.getIncrement(), innerBound);
-      collectFrom(*forExpr.getBody(), innerBound);
-      break;
-    }
-
-    case ASTNodeType::FOR_IN_LOOP: {
-      const auto& forInExpr = static_cast<const sun::ast::ForInExprAST&>(expr);
-      collectFrom(*forInExpr.getIterable(), bound);
-      // The loop variable is declared by the loop, not captured from outside
-      std::set<std::string> bodyBound = bound;
-      bodyBound.insert(forInExpr.getLoopVar());
-      collectFrom(*forInExpr.getBody(), bodyBound);
-      break;
-    }
-
-    case ASTNodeType::TRY_CATCH: {
-      const auto& tryCatch =
-          static_cast<const sun::ast::TryCatchExprAST&>(expr);
-      collectFrom(tryCatch.getTryBlock(), bound);
-      for (const auto& clause : tryCatch.getCatchClauses()) {
-        // The caught error is declared by the clause
-        std::set<std::string> clauseBound = bound;
-        clauseBound.insert(clause.bindingName);
-        collectFrom(*clause.body, clauseBound);
-      }
-      break;
-    }
-
-    case ASTNodeType::LAMBDA: {
-      // A nested lambda's free variables (minus its own params) are free in
-      // the enclosing scope too: the enclosing closure must capture them so
-      // the inner closure can initialize its env from the enclosing one
-      const auto& lambda = static_cast<const sun::ast::LambdaAST&>(expr);
-      std::set<std::string> innerBound = bound;
-      for (const auto& arg : lambda.getProto().getArgNames()) {
-        innerBound.insert(arg);
-      }
-      auto innerFree =
-          collectFreeVariablesInBlock(lambda.getBody(), innerBound);
-      free.insert(innerFree.begin(), innerFree.end());
-      break;
-    }
-
-    // Definitions carry their own scope and cannot reach an enclosing local
-    case ASTNodeType::FUNCTION:
-    case ASTNodeType::CLASS_DEFINITION:
-    case ASTNodeType::INTERFACE_DEFINITION:
-    case ASTNodeType::ENUM_DEFINITION:
-    case ASTNodeType::MODULE:
-    case ASTNodeType::MOON_SCOPE:
-    case ASTNodeType::IMPORT_SCOPE:
-      break;
-
-    default:
-      sun::ast::forEachChild(
-          expr, [&](const ExprAST& child) { collectFrom(child, bound); });
-      break;
-  }
-
-  return free;
-}
-
-std::set<std::string> DeclarationAnalyzer::collectFreeVariablesInBlock(
-    const sun::ast::BlockExprAST& block, std::set<std::string> bound) {
-  std::set<std::string> free;
-
-  for (const auto& expr : block.getBody()) {
-    // Skip nested functions for now - they handle their own captures
-    if (expr->isFunction()) {
-      continue;
-    }
-
-    auto exprFree = collectFreeVariables(*expr, bound);
-    free.insert(exprFree.begin(), exprFree.end());
-
-    // Variable creation adds to bound set for subsequent expressions
-    if (expr->getType() == ASTNodeType::VARIABLE_CREATION) {
-      const auto& varCreate =
-          static_cast<const sun::ast::VariableCreationAST&>(*expr);
-      bound.insert(varCreate.getName());
-    }
-  }
-
-  return free;
-}
-
-/**
- * The first `this` inside the expression, if any. `this` is its own node
- * type, so free-variable collection never sees it as a name.
- */
-static const ExprAST* findThisUse(const ExprAST& expr) {
-  // A local type's receiver belongs to that type, not the enclosing lambda.
-  if (expr.getType() == ASTNodeType::CLASS_DEFINITION ||
-      expr.getType() == ASTNodeType::INTERFACE_DEFINITION)
-    return nullptr;
-  if (expr.getType() == ASTNodeType::THIS) return &expr;
-  const ExprAST* found = nullptr;
-  sun::ast::forEachChild(expr, [&found](const ExprAST& child) {
-    if (!found) found = findThisUse(child);
-  });
-  return found;
-}
 
 std::vector<sun::ast::Capture> DeclarationAnalyzer::buildCaptures(
     const sun::ast::LambdaAST& lambda) {
@@ -206,7 +39,7 @@ std::vector<sun::ast::Capture> DeclarationAnalyzer::buildCaptures(
   }
 
   std::set<std::string> freeVars =
-      collectFreeVariablesInBlock(lambda.getBody(), boundVars);
+      sun::ast::collectFreeVariablesInBlock(lambda.getBody(), boundVars);
 
   const auto& refNames = proto.getRefCaptureNames();
   auto isDeclaredRef = [&](const std::string& name) {

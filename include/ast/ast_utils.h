@@ -38,4 +38,12 @@ inline std::vector<std::unique_ptr<TypeAnnotation>> cloneTypeAnnotationVector(
   return result;
 }
 
+/**
+ * Forgets the types analysis recorded on a tree, including match arm tags and
+ * binding types, so a copy of a generic body can be analyzed afresh. Visits
+ * every child, including lambda and function bodies. Declaration identities
+ * and other annotations are kept.
+ */
+void clearResolvedTypes(const ExprAST& expr);
+
 }  // namespace sun::ast

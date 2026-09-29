@@ -329,52 +329,6 @@ class ClassType : public NominalType {
   }
 
   /**
-   * Returns true if a value of type `from` can be implicitly widened to type
-   * `to` (integer-to-wider-integer or float-to-wider-float). This mirrors the
-   * numeric widening allowed by free-function overload resolution so that
-   * method/constructor overloads accept the same arguments (e.g. an i32 literal
-   * passed where an i64 parameter is expected).
-   */
-  static bool isNumericWidenable(const TypePtr& from, const TypePtr& to) {
-    if (!from || !to || !from->isPrimitive() || !to->isPrimitive()) {
-      return false;
-    }
-    auto fromKind = from->getKind();
-    auto toKind = to->getKind();
-
-    auto intBitWidth = [](Type::Kind k) -> int {
-      switch (k) {
-        case Type::Kind::Int8:
-        case Type::Kind::UInt8:
-          return 8;
-        case Type::Kind::Int16:
-        case Type::Kind::UInt16:
-          return 16;
-        case Type::Kind::Int32:
-        case Type::Kind::UInt32:
-          return 32;
-        case Type::Kind::Int64:
-        case Type::Kind::UInt64:
-          return 64;
-        default:
-          return 0;
-      }
-    };
-
-    int fromWidth = intBitWidth(fromKind);
-    int toWidth = intBitWidth(toKind);
-    if (fromWidth != 0 && toWidth != 0) {
-      return fromWidth <= toWidth;
-    }
-
-    bool fromFloat =
-        fromKind == Type::Kind::Float32 || fromKind == Type::Kind::Float64;
-    bool toFloat =
-        toKind == Type::Kind::Float32 || toKind == Type::Kind::Float64;
-    return fromFloat && toFloat;
-  }
-
-  /**
    * True if an argument of type `from` reaches an interface-typed parameter
    * `to` by conversion to a borrowed fat pointer.
    * Mirrors the interface rules of isAssignableTo
@@ -385,128 +339,15 @@ class ClassType : public NominalType {
   static bool isInterfaceConvertible(const TypePtr& from, const TypePtr& to);
 
   /**
-   * Get method with overload resolution based on argument types.
-   * Returns the method whose parameter types best match the provided arg
-   * types. An exact match wins; otherwise the first overload reachable by an
-   * implicit argument conversion (borrow, array view, numeric or lambda
-   * widening, class to interface) is chosen.
+   * The method named `methodName` whose parameters accept `argTypes`, under
+   * the same rules a call site applies (types/argument_compatibility.h). An
+   * overload matching every argument exactly is preferred over one that
+   * needs conversions; among the latter the first declared wins. Null when
+   * no overload accepts the arguments.
    */
   const ClassMethod* getMethodForArgs(
       const std::string& methodName,
-      const std::vector<TypePtr>& argTypes) const {
-    const ClassMethod* bestMatch = nullptr;
-    bool foundExact = false;
-
-    for (const auto& method : methods) {
-      if (method.name != methodName) continue;
-      if (method.paramTypes.size() != argTypes.size()) continue;
-
-      bool allMatch = true;
-      bool allExact = true;
-      for (size_t i = 0; i < argTypes.size(); ++i) {
-        if (!argTypes[i] || !method.paramTypes[i]) {
-          allMatch = false;
-          break;
-        }
-
-        // Exact type match
-        if (method.paramTypes[i]->equals(*argTypes[i])) {
-          continue;
-        }
-        allExact = false;
-
-        // A borrowed scalar can be read into a value parameter, including
-        // numeric widening. Borrowed compound values must keep their owner.
-        if (argTypes[i]->isReference() &&
-            !method.paramTypes[i]->isReference() &&
-            typeCopiesByRead(method.paramTypes[i])) {
-          TypePtr valueType = unwrapRef(argTypes[i]);
-          if (method.paramTypes[i]->equals(*valueType) ||
-              isNumericWidenable(valueType, method.paramTypes[i])) {
-            continue;
-          }
-        }
-
-        // A static_ptr argument narrows to a raw_ptr parameter of the same
-        // pointee: the data pointer is passed. Never the other way around.
-        if (method.paramTypes[i]->isRawPointer() &&
-            argTypes[i]->isStaticPointer()) {
-          auto* r =
-              static_cast<const RawPointerType*>(method.paramTypes[i].get());
-          auto* s = static_cast<const StaticPointerType*>(argTypes[i].get());
-          if (s->getPointeeType()->equals(*r->getPointeeType())) {
-            continue;
-          }
-        }
-
-        // Reference parameter accepts the referenced type
-        if (method.paramTypes[i]->isReference()) {
-          auto* refType =
-              static_cast<const ReferenceType*>(method.paramTypes[i].get());
-          const TypePtr& referenced = refType->getReferencedType();
-          if (referenced->equals(*argTypes[i])) {
-            continue;
-          }
-          // A borrow of the other mutability: only ref -> const ref
-          if (argTypes[i]->isReference()) {
-            auto* argRef = static_cast<const ReferenceType*>(argTypes[i].get());
-            if (refMutabilityConvertible(*argRef, *refType) &&
-                referenced->equals(*argRef->getReferencedType())) {
-              continue;
-            }
-          }
-          // ref to an (unsized) array accepts a compatible sized array, e.g.
-          // passing array<i32, 3, 2> where ref array<i32> is expected.
-          if (isArrayCompatible(argTypes[i], referenced)) {
-            continue;
-          }
-        }
-
-        // Array compatibility for by-value array parameters (sized -> unsized).
-        if (isArrayCompatible(argTypes[i], method.paramTypes[i])) {
-          continue;
-        }
-
-        // Numeric widening: e.g. an i32 literal argument for an i64 parameter
-        if (isNumericWidenable(argTypes[i], method.paramTypes[i])) {
-          continue;
-        }
-
-        // Lambda widening: non-throwing where throwing is expected, and
-        // environment-free where '<'_>' is expected
-        if (method.paramTypes[i]->isLambda() && argTypes[i]->isLambda()) {
-          auto* paramL =
-              static_cast<const LambdaType*>(method.paramTypes[i].get());
-          auto* argL = static_cast<const LambdaType*>(argTypes[i].get());
-          if (paramL->acceptsValueOf(*argL)) {
-            continue;
-          }
-        }
-
-        // A class becomes a fat pointer where an interface it implements is
-        // expected (issue #219).
-        if (isInterfaceConvertible(argTypes[i], method.paramTypes[i])) {
-          continue;
-        }
-
-        // No match for this parameter
-        allMatch = false;
-        break;
-      }
-
-      if (allMatch) {
-        // Prefer exact matches over ref-compatible matches
-        if (allExact) {
-          return &method;  // Exact match - return immediately
-        }
-        if (!foundExact) {
-          bestMatch = &method;
-        }
-      }
-    }
-
-    return bestMatch;
-  }
+      const std::vector<TypePtr>& argTypes) const;
 
   /**
    * Get the constructor method (named "init")

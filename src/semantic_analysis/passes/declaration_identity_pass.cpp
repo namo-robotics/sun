@@ -2,6 +2,7 @@
 
 #include "ast.h"
 #include "ast/ast_children.h"
+#include "semantic_analysis/module_path.h"
 
 using sun::ast::ASTNodeType;
 using sun::ast::ClassDefinitionAST;
@@ -147,9 +148,7 @@ void DeclarationIdentityPass::run(
 void DeclarationIdentityPass::visit(const ExprAST& root, DeclarationId owner,
                                     DeclarationId module, const ExprAST* origin,
                                     bool skipImportedMoons) const {
-  if (skipImportedMoons && root.getType() == ASTNodeType::MOON_SCOPE &&
-      !static_cast<const sun::ast::MoonScopeAST&>(root).isOwnBundle())
-    return;
+  if (skipImportedMoons && sun::ast::isImportedMoon(root)) return;
   if (origin && origin->getType() != root.getType())
     logAndThrowError("Generated declaration does not match its source syntax");
   const auto* sourceIdentity = origin && origin->getDeclarationId()
@@ -191,8 +190,7 @@ void DeclarationIdentityPass::visit(const ExprAST& root, DeclarationId owner,
         root.setDeclarationId(owner);
         root.declarationIdentity().session = table_.session();
         auto hash = moon.getContentHash();
-        if (hash.starts_with("$") && hash.ends_with("$"))
-          hash = hash.substr(1, hash.size() - 2);
+        if (isLibraryHashSegment(hash)) hash = libraryHashOf(hash);
         if (hash.size() == 64 && !table_.get(owner).portableKey)
           table_.bindPortable(owner, PortableDeclarationKey::original(hash, 1),
                               hash);

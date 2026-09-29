@@ -209,18 +209,6 @@ class GenericSpecializer {
   void declareVariadicPack(const PrototypeAST &proto);
 
   /**
-   * A call's argument types, divided into the callee's fixed parameters and
-   * the remainder that fills its `args...` pack. Returns the pack's share, or
-   * nullopt when the callee declares no pack. Errors when the call does not
-   * even cover the fixed parameters.
-   */
-  std::optional<std::vector<sun::types::TypePtr>> splitPackArgTypes(
-      const PrototypeAST &proto,
-      const std::vector<sun::types::TypePtr> &argTypes,
-      const std::string &displayName,
-      std::optional<sun::support::Position> loc);
-
-  /**
    * Record a specialization's pack element types on its cloned prototype and
    * check them against the pack's declared type annotation. `_params_of<C>`
    * for a class C means C must have a matching `init` overload; for a lambda,

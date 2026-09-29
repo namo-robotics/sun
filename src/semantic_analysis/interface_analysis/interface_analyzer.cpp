@@ -4,7 +4,9 @@
 
 #include <algorithm>
 
+#include "ast/ast_utils.h"
 #include "semantic_analysis/call_analysis/method_signature_set.h"
+#include "semantic_analysis/declaration_analysis/declaration_rules.h"
 #include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/symbol_names.h"
@@ -536,7 +538,7 @@ void InterfaceAnalyzer::validateInterfaceImplementation(
             auto copy = original->clone();
             auto function = std::unique_ptr<sun::ast::FunctionAST>(
                 static_cast<sun::ast::FunctionAST*>(copy.release()));
-            sema_.expressions().clearResolvedTypes(*function);
+            sun::ast::clearResolvedTypes(*function);
             function->setDeclarationId(method.declarationId);
             function->declarationIdentity().session =
                 ctx_.results().declarations.session();
@@ -606,8 +608,8 @@ void InterfaceAnalyzer::prepareInterfaceShape(
   }
 
   // Validate interface name
-  sema_.declarations().validateNotReserved(
-      interfaceDef.getName(), "Interface name", interfaceDef.getLocation());
+  validateNotReserved(interfaceDef.getName(), "Interface name",
+                      interfaceDef.getLocation());
 
   // Check for redefinition of builtin types
   if (ctx_.types()->isBuiltinTypeName(interfaceDef.getName())) {
@@ -618,39 +620,20 @@ void InterfaceAnalyzer::prepareInterfaceShape(
 
   // Validate field names and reject duplicates, on the same terms as classes:
   // a name-only comparison, ahead of the generic early-return below.
-  std::set<std::string> seenInterfaceFields;
-  for (const auto& field : interfaceDef.getFields()) {
-    sema_.declarations().validateNotReserved(field.name, "Interface field name",
-                                             field.location);
-    if (!seenInterfaceFields.insert(field.name).second) {
-      logAndThrowError("Field '" + field.name +
-                           "' already exists in interface '" +
-                           interfaceDef.getName() + "'",
-                       field.location);
-    }
-  }
+  validateFieldNames(interfaceDef.getFields(), "Interface field name",
+                     "interface '" + interfaceDef.getName() + "'");
 
   // Validate method names
   for (const auto& methodDecl : interfaceDef.getMethods()) {
     const std::string& methodName = methodDecl.function->getProto().getName();
-    sema_.declarations().validateNotReserved(
-        methodName, "Interface method name",
-        methodDecl.function->getLocation());
+    validateNotReserved(methodName, "Interface method name",
+                        methodDecl.function->getLocation());
   }
 
   // Lifetime declarations must be distinct, and every lifetime a member
   // names must be the builtin 'this or declared on the interface
-  for (const auto& lp : interfaceDef.getLifetimeParameters()) {
-    if (std::count_if(interfaceDef.getLifetimeParameters().begin(),
-                      interfaceDef.getLifetimeParameters().end(),
-                      [&](const sun::ast::LifetimeParameter& other) {
-                        return other.name == lp.name;
-                      }) > 1) {
-      logAndThrowError("duplicate lifetime parameter '" + lp.name +
-                           " on interface '" + interfaceDef.getName() + "'",
-                       lp.span);
-    }
-  }
+  rejectDuplicateLifetimes(interfaceDef.getLifetimeParameters(),
+                           " on interface '" + interfaceDef.getName() + "'");
   SemanticContext::LifetimeScopeGuard lifetimes(ctx_);
   for (const auto& lp : interfaceDef.getLifetimeParameters()) {
     ctx_.declareLifetime(lp.name);
@@ -703,13 +686,8 @@ void InterfaceAnalyzer::prepareInterfaceShape(
   // Non-generic interface: create the interface type directly
   auto interfaceType = ctx_.types()->getInterface(
       interfaceDef.getDeclarationId(), qualifiedInterface);
-  {
-    std::vector<std::string> lifetimeNames;
-    for (const auto& lp : interfaceDef.getLifetimeParameters()) {
-      lifetimeNames.push_back(lp.name);
-    }
-    interfaceType->setLifetimeParams(std::move(lifetimeNames));
-  }
+  interfaceType->setLifetimeParams(
+      sun::ast::lifetimeParameterNames(interfaceDef.getLifetimeParameters()));
   // Store the user-written base name for error messages
   if (interfaceName != interfaceDef.getName()) {
     interfaceType->setBaseName(interfaceDef.getName());

@@ -6,6 +6,10 @@
 
 #include "semantic_analysis/type_analysis/type_rules.h"
 
+#include <set>
+
+#include "semantic_analysis/expression_analysis/expression_properties.h"
+#include "semantic_analysis/inference_result.h"
 #include "semantic_analysis/type_analysis/type_inferer.h"
 #include "support/error.h"
 
@@ -25,6 +29,30 @@ using sun::types::unwrapRef;
 /** Keeps the implementation helpers in this file private to this translation
  * unit. */
 namespace {
+
+/**
+ * True if `type` embeds enum `self` by value, walking enum payloads and class
+ * fields. Pointers break the cycle (indirection is the fix we suggest).
+ */
+bool embedsEnumByValue(const TypePtr& type, const sun::types::EnumType* self,
+                       std::set<const sun::types::Type*>& visited) {
+  if (!type || !visited.insert(type.get()).second) return false;
+  if (type->isEnum()) {
+    auto* e = static_cast<const sun::types::EnumType*>(type.get());
+    if (e->equals(*self)) return true;
+    for (const auto& v : e->getVariants()) {
+      for (const auto& pt : v.payloadTypes) {
+        if (embedsEnumByValue(pt, self, visited)) return true;
+      }
+    }
+  } else if (type->isClass()) {
+    auto* c = static_cast<const sun::types::ClassType*>(type.get());
+    for (const auto& field : c->getFields()) {
+      if (embedsEnumByValue(field.type, self, visited)) return true;
+    }
+  }
+  return false;
+}
 
 /**
  * True for the six comparison operators, whose result is a bool regardless of
@@ -181,6 +209,64 @@ TypePtr unifyTernaryTypes(const TypePtr& thenType, const TypePtr& elseType,
                        thenType->toDisplayString() + "' vs '" +
                        elseType->toDisplayString() + "'",
                    loc);
+}
+
+/** Infers the element type from the first element, widened by the hint. */
+void resolveArrayLiteralType(sun::ast::ArrayLiteralAST& arrLit,
+                             const TypePtr& expectedType) {
+  TypePtr first = arrLit.getElements().empty()
+                      ? nullptr
+                      : sun::semantic_analysis::requireResolvedType(
+                            *arrLit.getElements().front());
+  TypePtr expectedElement;
+  if (auto hint = unwrapRef(expectedType); hint && hint->isArray())
+    expectedElement =
+        static_cast<const sun::types::ArrayType&>(*hint).getElementType();
+  bool widen = first && expectedElement &&
+               ((expectedElement->isInt64() && first->isInt32()) ||
+                (expectedElement->isFloat64() && first->isFloat32()) ||
+                expectedElement->equals(*first));
+  arrLit.setResolvedType(requireInferredType(
+      TypeInferer::array(first, arrLit.getElements().size(), expectedElement,
+                         widen),
+      arrLit.getLocation(),
+      arrLit.getElements().empty() ? "Cannot infer type of empty array literal"
+                                   : "Cannot infer array element type"));
+}
+
+/** Applies the payload allowlist, then rejects recursion by value. */
+void validateEnumPayloadType(const TypePtr& type,
+                             const sun::types::EnumType& enumType,
+                             const std::string& variantName,
+                             const sun::support::Position& location) {
+  const std::string context = "Payload of variant '" + variantName +
+                              "' in enum '" + enumType.getDisplayName() + "'";
+  if (!type || type->isVoid()) {
+    logAndThrowError(context + " cannot be void", location);
+  }
+  // Allowlist: primitives, pointers, enums, classes (including owning ones —
+  // payload enums carry drop glue), interfaces (fat pointers are copyable
+  // borrowed views), and references (the variant stores the referent's
+  // address and owns nothing — this is what lets a container hand back
+  // `Option<ref T>` for a peek instead of a copy of an element it still
+  // owns). Arrays, slices, lambdas, threads etc. are deferred.
+  bool allowed = type->isPrimitive() || type->isRawPointer() ||
+                 type->isStaticPointer() || type->isEnum() || type->isClass() ||
+                 type->isInterface() || type->isReference();
+  if (!allowed) {
+    logAndThrowError(context + " has unsupported type '" +
+                         type->toDisplayString() +
+                         "'; supported: primitives, pointers, enums, "
+                         "interfaces, and classes",
+                     location);
+  }
+
+  std::set<const sun::types::Type*> visited;
+  if (embedsEnumByValue(type, &enumType, visited)) {
+    logAndThrowError("Recursive enum '" + enumType.getDisplayName() +
+                         "' requires indirection (raw_ptr)",
+                     location);
+  }
 }
 
 }  // namespace sun::semantic_analysis::type_analysis

@@ -32,10 +32,6 @@ class ExpressionAnalyzer {
   void validateBorrowTarget(const sun::ast::ExprAST &target,
                             const sun::support::Position &loc);
 
-  /** Clear resolved types on an AST tree (for re-analysis of generic methods).
-   */
-  void clearResolvedTypes(sun::ast::ExprAST &expr);
-
   /**
    * Resolves declarations and checks types in this lambda expression, recording
    * the results on its syntax nodes.
@@ -75,15 +71,6 @@ class ExpressionAnalyzer {
   /** Resolve a module identity and enforce its visibility. */
   sun::types::TypePtr resolveModuleReference(const sun::ast::ExprAST &expr);
 
-  /** Require a type already established by semantic analysis. */
-  static sun::types::TypePtr requireResolvedType(const sun::ast::ExprAST &expr);
-
-  /** Select a block result from statements analyzed in their original scope. */
-  sun::types::TypePtr preparedBlockType(const sun::ast::BlockExprAST &block);
-
-  /** Select the first reachable match value after pattern and body checking. */
-  sun::types::TypePtr preparedMatchType(const sun::ast::MatchExprAST &match);
-
   /**
    * Value expressions (analysis_expressions.cpp)
    */
@@ -96,11 +83,6 @@ class ExpressionAnalyzer {
    */
   void analyzeArrayLiteral(sun::ast::ArrayLiteralAST &arrLit,
                            sun::types::TypePtr expectedType = nullptr);
-
-  /** Compute an array result from checked elements and a separate contextual
-   * hint. */
-  void resolveArrayLiteralResult(sun::ast::ArrayLiteralAST &literal,
-                                 sun::types::TypePtr expectedType);
 
   /**
    * Resolves declarations and checks types in this index expression, recording

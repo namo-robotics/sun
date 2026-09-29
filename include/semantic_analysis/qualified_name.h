@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include "semantic_analysis/module_path.h"
+
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
@@ -20,22 +22,11 @@ struct QualifiedName {
   QualifiedName(std::vector<std::string> path, std::string name)
       : scopePath(std::move(path)), baseName(std::move(name)) {}
   /**
-   * Get display form for error messages: "A.B.my_func"
-   * Note: Library hash scopes (starting with $) are filtered out for cleaner
-   * display
+   * Display form for error messages, "A.B.my_func", with library hash
+   * segments left out.
    */
   std::string display() const {
-    if (scopePath.empty()) return baseName;
-
-    // Filter out library hash scopes from display (they start with $)
-    std::string displayPath;
-    for (const auto& segment : scopePath) {
-      // Skip hash segments (start with $)
-      if (!segment.empty() && segment[0] != '$') {
-        if (!displayPath.empty()) displayPath += ".";
-        displayPath += segment;
-      }
-    }
+    std::string displayPath = displayModulePath(scopePath);
     if (displayPath.empty()) return baseName;
     return displayPath + "." + baseName;
   }
@@ -62,14 +53,7 @@ struct QualifiedName {
   /**
    * Get scope path as dot-separated string (for compatibility/display)
    */
-  std::string scopePathString() const {
-    std::string result;
-    for (const auto& segment : scopePath) {
-      if (!result.empty()) result += ".";
-      result += segment;
-    }
-    return result;
-  }
+  std::string scopePathString() const { return joinPath(scopePath); }
 
   /** Return the dotted lookup name, including the bundle scope. */
   std::string lookupName() const {
@@ -78,11 +62,7 @@ struct QualifiedName {
 
   /** Return the defining bundle hash, or empty for an unbundled name. */
   std::string bundleHash() const {
-    if (scopePath.empty()) return "";
-    const auto& scope = scopePath.front();
-    if (scope.size() < 3 || scope.front() != '$' || scope.back() != '$')
-      return "";
-    return scope.substr(1, scope.size() - 2);
+    return scopePath.empty() ? "" : libraryHashOf(scopePath.front());
   }
 
   /**

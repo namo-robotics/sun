@@ -1,6 +1,7 @@
 /** Resolves lambda signatures and delegates body checking. */
 #include <set>
 
+#include "semantic_analysis/declaration_analysis/declaration_rules.h"
 #include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/symbol_names.h"
@@ -20,9 +21,8 @@ using sun::types::LambdaType;
 void ExpressionAnalyzer::analyzeLambdaExpr(sun::ast::LambdaAST& lambda) {
   PrototypeAST& proto = const_cast<PrototypeAST&>(lambda.getProto());
 
-  sema_.declarations().rejectRefEnvReturnType(proto.getReturnType(),
-                                              lambda.getLocation(),
-                                              /*allowNamed=*/true);
+  rejectRefEnvReturnType(proto.getReturnType(), lambda.getLocation(),
+                         /*allowNamed=*/true);
 
   // A lambda's own binders and any enclosing binders are both in scope for
   // its signature.

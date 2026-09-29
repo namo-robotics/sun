@@ -431,9 +431,7 @@ TypePtr TypeResolver::resolveAnnotation(const sun::ast::TypeAnnotation& annot) {
 
   // Function-pointer types: function (Types) ReturnType
   if (annot.isFunction()) {
-    if (annot.returnType && annot.returnType->refEnv &&
-        (annot.returnType->lifetimeName.empty() ||
-         annot.returnType->lifetimeName == "_")) {
+    if (annot.returnType && annot.returnType->isAnonymousFrameLambda()) {
       logAndThrowError(
           "an anonymous <'_> lambda type cannot be a return type - its "
           "captured "
@@ -453,9 +451,7 @@ TypePtr TypeResolver::resolveAnnotation(const sun::ast::TypeAnnotation& annot) {
 
   // Lambda types: () {} (anonymous function, fat pointer call)
   if (annot.isLambda()) {
-    if (annot.returnType && annot.returnType->refEnv &&
-        (annot.returnType->lifetimeName.empty() ||
-         annot.returnType->lifetimeName == "_")) {
+    if (annot.returnType && annot.returnType->isAnonymousFrameLambda()) {
       logAndThrowError(
           "an anonymous <'_> lambda type cannot be a return type - its "
           "captured "

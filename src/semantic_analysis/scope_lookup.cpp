@@ -559,71 +559,9 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
             }
           }
 
-          if (info->paramTypes[i]->isReference()) {
-            auto* refType =
-                static_cast<const ReferenceType*>(info->paramTypes[i].get());
-            if (refType->getReferencedType()->equals(*argType)) continue;
-            // A borrow handed to a parameter of the other mutability: only
-            // ref -> const ref is allowed
-            if (argType->isReference()) {
-              auto* argRef = static_cast<const ReferenceType*>(argType.get());
-              if (sun::types::refMutabilityConvertible(*argRef, *refType) &&
-                  refType->getReferencedType()->equals(
-                      *argRef->getReferencedType()))
-                continue;
-            }
-            if (refType->getReferencedType()->isArray() && argType->isArray()) {
-              auto* paramArray = static_cast<const sun::types::ArrayType*>(
-                  refType->getReferencedType().get());
-              auto* argArray =
-                  static_cast<const sun::types::ArrayType*>(argType.get());
-              if (paramArray->isUnsized() &&
-                  paramArray->getElementType()->equals(
-                      *argArray->getElementType()))
-                continue;
-            }
-          }
-
-          if (argType->isReference()) {
-            auto* refType = static_cast<const ReferenceType*>(argType.get());
-            // Reading the value out of the borrow, so only for a scalar
-            // parameter type (see isAssignableTo above)
-            if (info->paramTypes[i]->equals(*refType->getReferencedType()) &&
-                sun::types::typeCopiesByRead(info->paramTypes[i]))
-              continue;
-          }
-
-          if (argType->isNullPointer() && info->paramTypes[i]->isAnyPointer()) {
+          if (sun::types::argumentAccepts(argType, info->paramTypes[i],
+                                          isIntrinsic(baseName)))
             continue;
-          }
-
-          if (argType->isStaticPointer() &&
-              info->paramTypes[i]->isRawPointer()) {
-            auto* staticPtr = static_cast<const sun::types::StaticPointerType*>(
-                argType.get());
-            auto* rawPtr = static_cast<const sun::types::RawPointerType*>(
-                info->paramTypes[i].get());
-            if (staticPtr->getPointeeType()->equals(
-                    *rawPtr->getPointeeType())) {
-              continue;
-            }
-          }
-
-          // raw_ptr<T> is compatible with byte pointers (raw_ptr<i8>/u8)
-          // for intrinsics
-          if (argType->isRawPointer() && info->paramTypes[i]->isRawPointer() &&
-              isIntrinsic(baseName)) {
-            auto* paramRawPtr = static_cast<const sun::types::RawPointerType*>(
-                info->paramTypes[i].get());
-            if (paramRawPtr->getPointeeType()->isInt8() ||
-                paramRawPtr->getPointeeType()->isUInt8()) {
-              continue;
-            }
-          }
-
-          if (isAssignableTo(argType, info->paramTypes[i])) {
-            continue;
-          }
 
           compatible = false;
           break;
@@ -936,31 +874,19 @@ QualifiedName SemanticScopeBase::resolveNameWithUsings(
   }
   AccessFilter filter(this);
 
-  // Helper to filter out $...$ hash segments from scope path
-  auto getVisiblePath =
-      [](const std::vector<std::string>& path) -> std::vector<std::string> {
-    std::vector<std::string> result;
-    for (const auto& segment : path) {
-      if (!segment.empty() && segment[0] != '$') {
-        result.push_back(segment);
-      }
-    }
-    return result;
-  };
-
   // Collect ALL candidate matches
   std::map<std::vector<std::string>,
            std::pair<std::vector<std::string>, SemanticScopeBase*>>
       candidates;
 
   auto addCandidate = [&](SemanticScopeBase* scope) {
-    auto visPath = getVisiblePath(scope->scopePath);
+    auto visPath = visibleModulePath(scope->scopePath);
     if (candidates.find(visPath) == candidates.end()) {
       candidates[visPath] = {scope->scopePath, scope};
     }
   };
 
-  auto visiblePath = getVisiblePath(scopePath);
+  auto visiblePath = visibleModulePath(scopePath);
 
   // 1. Check enclosing module scopes by walking up the parent chain
   for (auto* s = this; s != nullptr; s = s->parent) {

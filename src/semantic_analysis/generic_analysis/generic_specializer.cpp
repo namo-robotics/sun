@@ -1,4 +1,6 @@
+#include "ast/ast_utils.h"
 #include "semantic_analysis/call_analysis/method_signature_set.h"
+#include "semantic_analysis/class_analysis/packed_layout.h"
 #include "semantic_analysis/type_analysis/generic_type_arguments.h"
 #include "semantic_analysis/type_registry.h"
 // generic_specializer.cpp — Monomorphization (see generic_specializer.h)
@@ -39,6 +41,7 @@ using sun::types::Type;
 
 using sun::semantic_analysis::formatFunctionSignature;
 using sun::semantic_analysis::methodVisibility;
+using sun::semantic_analysis::type_analysis::anyMentionsTypeParameter;
 using sun::semantic_analysis::type_analysis::isAssignableTo;
 using sun::semantic_analysis::type_analysis::mentionsTypeParameter;
 using sun::types::unwrapRef;
@@ -170,8 +173,7 @@ std::shared_ptr<ClassType> GenericSpecializer::instantiateGenericClass(
 
   // Resolve members of shapes such as Vec<Sample<T>> for template signatures.
   // Only concrete specializations may have their bodies checked and emitted.
-  const bool abstractShape =
-      std::any_of(typeArgs.begin(), typeArgs.end(), mentionsTypeParameter);
+  const bool abstractShape = anyMentionsTypeParameter(typeArgs);
 
   SpecializationKey key{
       genericClassInfo->AST->getDeclarationId(), {}, typeArgs, std::nullopt};
@@ -189,10 +191,8 @@ std::shared_ptr<ClassType> GenericSpecializer::instantiateGenericClass(
   auto specializedClass = ctx_.types()->getSpecializedClass(
       instanceId, specializedQName, genericClassInfo->qualifiedName, typeArgs);
 
-  std::vector<std::string> lifetimeNames;
-  for (const auto& lp : genericClassInfo->AST->getLifetimeParameters())
-    lifetimeNames.push_back(lp.name);
-  specializedClass->setLifetimeParams(std::move(lifetimeNames));
+  specializedClass->setLifetimeParams(sun::ast::lifetimeParameterNames(
+      genericClassInfo->AST->getLifetimeParameters()));
 
   // Push a scope for class-level type parameter bindings
   ctx_.enterClassScope(specializedQName);
@@ -211,8 +211,7 @@ std::shared_ptr<ClassType> GenericSpecializer::instantiateGenericClass(
       auto fieldType = sema_.typeResolver().typeAnnotationToType(field.type);
       // Checked per specialization: whether a type argument is packable is
       // only knowable once T is substituted
-      sema_.classes().checkPackedFieldType(*genericClassInfo->AST, field,
-                                           fieldType);
+      checkPackedFieldType(*genericClassInfo->AST, field, fieldType);
       auto id = ctx_.results().declarations.add(
           DeclarationKind::Field, field.name, instanceId,
           ctx_.results().declarations.get(instanceId).module, {},
@@ -558,22 +557,6 @@ void GenericSpecializer::analyzeCallableBody(
 // Value packs
 // -------------------------------------------------------------------
 
-std::optional<std::vector<TypePtr>> GenericSpecializer::splitPackArgTypes(
-    const PrototypeAST& proto, const std::vector<TypePtr>& argTypes,
-    const std::string& displayName, std::optional<Position> loc) {
-  if (!proto.hasVariadicParam()) return std::nullopt;
-
-  const size_t fixed = proto.getArgs().size();
-  if (argTypes.size() < fixed) {
-    logAndThrowError("'" + displayName + "' expects at least " +
-                         std::to_string(fixed) +
-                         (fixed == 1 ? " argument, got " : " arguments, got ") +
-                         std::to_string(argTypes.size()),
-                     loc);
-  }
-  return std::vector<TypePtr>(argTypes.begin() + fixed, argTypes.end());
-}
-
 void GenericSpecializer::declareVariadicPack(const PrototypeAST& proto) {
   if (!proto.hasVariadicParam()) return;
   auto* fnScope = ctx_.currentFunctionScope();
@@ -692,8 +675,7 @@ GenericSpecializer::instantiateGenericFunction(
   const PrototypeAST& proto = genericFunc->getProto();
 
   // A callable needs concrete arguments before its body can be queued.
-  if (std::any_of(typeArgs.begin(), typeArgs.end(), mentionsTypeParameter))
-    return std::nullopt;
+  if (anyMentionsTypeParameter(typeArgs)) return std::nullopt;
 
   // A pack's arity and types come from the actual call arguments. Without
   // them (nullopt, e.g. from type inference) there is nothing to specialize
@@ -704,9 +686,7 @@ GenericSpecializer::instantiateGenericFunction(
 
   // Inside a template body the arguments are still type parameters; the real
   // specialization is made when the enclosing generic gets concrete types.
-  if (variadicArgTypes &&
-      std::any_of(variadicArgTypes->begin(), variadicArgTypes->end(),
-                  mentionsTypeParameter)) {
+  if (variadicArgTypes && anyMentionsTypeParameter(*variadicArgTypes)) {
     return std::nullopt;
   }
 
@@ -825,7 +805,7 @@ GenericSpecializer::instantiateGenericFunction(
     }
 
     // Clear resolved types for fresh analysis
-    sema_.expressions().clearResolvedTypes(*clonedFunc);
+    sun::ast::clearResolvedTypes(*clonedFunc);
     clonedFunc->setDeclarationId(instanceId);
     clonedFunc->declarationIdentity().session =
         ctx_.results().declarations.session();
@@ -907,11 +887,8 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
   // Inside a generic template body (analyzed with T bound to itself), the type
   // args are still type parameters; a real specialization is created when the
   // enclosing generic is instantiated with concrete types.
-  if (std::any_of(methodTypeArgs.begin(), methodTypeArgs.end(),
-                  mentionsTypeParameter) ||
-      (variadicArgTypes &&
-       std::any_of(variadicArgTypes->begin(), variadicArgTypes->end(),
-                   mentionsTypeParameter))) {
+  if (anyMentionsTypeParameter(methodTypeArgs) ||
+      (variadicArgTypes && anyMentionsTypeParameter(*variadicArgTypes))) {
     return nullptr;
   }
 
@@ -1041,7 +1018,7 @@ std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
   }
 
   // Clear any stale resolved types from previous specializations
-  sema_.expressions().clearResolvedTypes(*clonedFunc);
+  sun::ast::clearResolvedTypes(*clonedFunc);
   clonedFunc->setDeclarationId(instanceId);
   clonedFunc->declarationIdentity().session =
       ctx_.results().declarations.session();
@@ -1119,10 +1096,8 @@ std::shared_ptr<InterfaceType> GenericSpecializer::instantiateGenericInterface(
       instanceId, name, genericInfo->qualifiedName, typeArgs);
 
   specializedInterface->visibility = genericInfo->AST->getVisibility();
-  std::vector<std::string> interfaceLifetimes;
-  for (const auto& lifetime : genericInfo->AST->getLifetimeParameters())
-    interfaceLifetimes.push_back(lifetime.name);
-  specializedInterface->setLifetimeParams(std::move(interfaceLifetimes));
+  specializedInterface->setLifetimeParams(sun::ast::lifetimeParameterNames(
+      genericInfo->AST->getLifetimeParameters()));
 
   {
     /**
@@ -1236,7 +1211,7 @@ std::shared_ptr<InterfaceType> GenericSpecializer::instantiateGenericInterface(
         auto clone = original.clone();
         auto function = std::shared_ptr<FunctionAST>(
             static_cast<FunctionAST*>(clone.release()));
-        sema_.expressions().clearResolvedTypes(*function);
+        sun::ast::clearResolvedTypes(*function);
         function->setDeclarationId(member->declarationId);
         function->declarationIdentity().session =
             ctx_.results().declarations.session();
@@ -1305,8 +1280,7 @@ GenericSpecializer::instantiateGenericEnum(
 
   // Resolve unresolved payloads for template signatures, but only record
   // concrete enum specializations for code generation.
-  const bool abstractShape =
-      std::any_of(typeArgs.begin(), typeArgs.end(), mentionsTypeParameter);
+  const bool abstractShape = anyMentionsTypeParameter(typeArgs);
 
   SpecializationKey key{
       genericInfo->AST->getDeclarationId(), {}, typeArgs, std::nullopt};
@@ -1349,8 +1323,8 @@ GenericSpecializer::instantiateGenericEnum(
       for (const auto& annot : variant.payloadTypes) {
         auto payloadType = sema_.typeResolver().typeAnnotationToType(annot);
         if (!abstractShape) {
-          sema_.enums().validateEnumPayloadType(payloadType, specialized,
-                                                variant.name, variant.location);
+          type_analysis::validateEnumPayloadType(
+              payloadType, *specialized, variant.name, variant.location);
         }
         payloadTypes.push_back(std::move(payloadType));
       }
@@ -1389,9 +1363,7 @@ TypePtr GenericSpecializer::genericFunctionSignature(
 bool GenericSpecializer::templateStillAbstract(
     const GenericFunctionInfo& genericInfo,
     const std::vector<TypePtr>& typeArgs) {
-  if (std::any_of(
-          typeArgs.begin(), typeArgs.end(),
-          sun::semantic_analysis::type_analysis::mentionsTypeParameter)) {
+  if (anyMentionsTypeParameter(typeArgs)) {
     return true;
   }
   // A template with no type parameters of its own still cannot be

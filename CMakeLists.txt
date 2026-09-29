@@ -163,7 +163,9 @@ add_library(sun_lib
     src/ast/prototype_ast.cpp
     src/ast/call_expr_ast.cpp
     src/ast/ast_children.cpp
+    src/ast/ast_utils.cpp
     src/ast/control_flow.cpp
+    src/ast/free_variables.cpp
     # Shared types
     src/types/type.cpp
     src/types/type_identity.cpp
@@ -171,6 +173,7 @@ add_library(sun_lib
     src/types/reference_type.cpp
     src/types/pointer_types.cpp
     src/types/class_type.cpp
+    src/types/argument_compatibility.cpp
     src/types/type_utils.cpp
     # Semantic analysis
     src/semantic_analysis/access_checker.cpp
@@ -193,6 +196,7 @@ add_library(sun_lib
     src/semantic_analysis/declaration_analysis/declaration_analyzer.cpp
     src/semantic_analysis/declaration_analysis/declaration_dispatch.cpp
     src/semantic_analysis/declaration_analysis/signatures.cpp
+    src/semantic_analysis/declaration_analysis/declaration_rules.cpp
     src/semantic_analysis/declaration_analysis/variable_declarations.cpp
     src/semantic_analysis/declaration_table.cpp
     src/semantic_analysis/enum_analysis/enum_analyzer.cpp
@@ -231,6 +235,7 @@ add_library(sun_lib
     src/semantic_analysis/type_analysis/type_inferer.cpp
     src/semantic_analysis/type_analysis/type_resolver.cpp
     src/semantic_analysis/type_analysis/type_rules.cpp
+    src/semantic_analysis/type_analysis/builtin_methods.cpp
     src/semantic_analysis/type_analysis/type_traits.cpp
     # Borrow checker
     src/borrow_checker/borrow_state.cpp

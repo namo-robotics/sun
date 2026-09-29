@@ -39,6 +39,7 @@
 #include "ast.h"
 #include "ast/ast_children.h"
 #include "ast/control_flow.h"
+#include "semantic_analysis/expression_analysis/expression_properties.h"
 #include "support/error.h"
 
 using sun::ast::FieldWriteKind;
@@ -124,18 +125,6 @@ namespace {
  */
 bool isThis(const ExprAST* expr) {
   return expr && expr->getType() == ASTNodeType::THIS;
-}
-
-/**
- * Does `this` appear anywhere inside this expression?
- */
-bool usesThis(const ExprAST& expr) {
-  if (expr.getType() == ASTNodeType::THIS) return true;
-  bool found = false;
-  forEachChild(expr, [&found](const ExprAST& child) {
-    if (!found) found = usesThis(child);
-  });
-  return found;
 }
 
 /**
@@ -646,7 +635,7 @@ void BodyWalk::walk(const ExprAST& expr) {
       // Making one that touches the object is itself a use of `this`, so it
       // needs the object whole — and then every write in it replaces a value,
       // which is what a write means unless this walk says otherwise.
-      if (usesThis(expr)) {
+      if (findThisUse(expr)) {
         noteObjectUse("capture 'this' in a lambda or nested function",
                       expr.getLocation());
       }

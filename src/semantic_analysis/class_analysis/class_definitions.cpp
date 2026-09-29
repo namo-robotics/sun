@@ -3,6 +3,7 @@
 #include <set>
 
 #include "semantic_analysis/class_analysis/field_initialization.h"
+#include "semantic_analysis/declaration_analysis/declaration_rules.h"
 #include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/symbol_names.h"
@@ -34,8 +35,7 @@ void ClassAnalyzer::analyzeClassDefinition(
   }
 
   // Validate class name
-  sema_.declarations().validateNotReserved(classDef.getName(), "Class name",
-                                           classDef.getLocation());
+  validateNotReserved(classDef.getName(), "Class name", classDef.getLocation());
 
   // Check for redefinition of builtin types
   if (ctx_.types()->isBuiltinTypeName(classDef.getName())) {
@@ -48,37 +48,20 @@ void ClassAnalyzer::analyzeClassDefinition(
   // this runs before the generic early-return below: a template's field types
   // have no meaning until a specialization substitutes them, but a repeated
   // name is wrong at the declaration either way.
-  std::set<std::string> seenFields;
-  for (const auto& field : classDef.getFields()) {
-    sema_.declarations().validateNotReserved(field.name, "Field name",
-                                             field.location);
-    if (!seenFields.insert(field.name).second) {
-      logAndThrowError("Field '" + field.name + "' already exists in class '" +
-                           baseName + "'",
-                       field.location);
-    }
-  }
+  validateFieldNames(classDef.getFields(), "Field name",
+                     "class '" + baseName + "'");
 
   // Validate method names
   for (const auto& methodDecl : classDef.getMethods()) {
     const std::string& methodName = methodDecl.function->getProto().getName();
-    sema_.declarations().validateNotReserved(
-        methodName, "Method name", methodDecl.function->getLocation());
+    validateNotReserved(methodName, "Method name",
+                        methodDecl.function->getLocation());
   }
 
   // Lifetime declarations must be distinct, and every lifetime a field
   // names must be the builtin 'this or declared on the class
-  for (const auto& lp : classDef.getLifetimeParameters()) {
-    if (std::count_if(classDef.getLifetimeParameters().begin(),
-                      classDef.getLifetimeParameters().end(),
-                      [&](const sun::ast::LifetimeParameter& other) {
-                        return other.name == lp.name;
-                      }) > 1) {
-      logAndThrowError("duplicate lifetime parameter '" + lp.name +
-                           " on class '" + baseName + "'",
-                       lp.span);
-    }
-  }
+  rejectDuplicateLifetimes(classDef.getLifetimeParameters(),
+                           " on class '" + baseName + "'");
   {
     SemanticContext::LifetimeScopeGuard lifetimes(ctx_, true);
     for (const auto& lp : classDef.getLifetimeParameters()) {
@@ -113,13 +96,8 @@ void ClassAnalyzer::analyzeClassDefinition(
   // Layout must be decided before any getStructType() call memoizes it
   classType->setPacked(classDef.isPacked());
   classType->visibility = classDef.getVisibility();
-  {
-    std::vector<std::string> lifetimeNames;
-    for (const auto& lp : classDef.getLifetimeParameters()) {
-      lifetimeNames.push_back(lp.name);
-    }
-    classType->setLifetimeParams(std::move(lifetimeNames));
-  }
+  classType->setLifetimeParams(
+      sun::ast::lifetimeParameterNames(classDef.getLifetimeParameters()));
 
   // Register the class BEFORE processing fields to allow self-referential
   // types (e.g., var next: raw_ptr<Node> inside class Node)

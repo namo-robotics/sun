@@ -46,4 +46,23 @@ sun::types::TypePtr unifyTernaryTypes(
     const sun::types::TypePtr& thenType, const sun::types::TypePtr& elseType,
     std::optional<sun::support::Position> loc);
 
+/**
+ * Sets an analyzed array literal's type from its first element, widening to
+ * the element type of `expectedType` (an i32 literal where i64 is wanted,
+ * f32 where f64 is) when one is given. Throws if the type cannot be inferred,
+ * as for an empty literal with no hint.
+ */
+void resolveArrayLiteralType(sun::ast::ArrayLiteralAST& arrLit,
+                             const sun::types::TypePtr& expectedType);
+
+/**
+ * Throws unless `type` may be carried by a variant of `enumType`: a
+ * primitive, pointer, enum, class, interface or reference, and not one that
+ * contains `enumType` itself by value (that needs a raw_ptr).
+ */
+void validateEnumPayloadType(const sun::types::TypePtr& type,
+                             const sun::types::EnumType& enumType,
+                             const std::string& variantName,
+                             const sun::support::Position& location);
+
 }  // namespace sun::semantic_analysis::type_analysis

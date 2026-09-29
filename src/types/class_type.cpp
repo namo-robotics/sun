@@ -2,6 +2,7 @@
  */
 #include "types/class_type.h"
 
+#include "types/argument_compatibility.h"
 #include "types/interface_type.h"
 
 /** Implements shared type descriptions and queries. */
@@ -54,6 +55,34 @@ bool ClassType::isInterfaceConvertible(const TypePtr& from, const TypePtr& to) {
         ->convertibleToInterface(*interface);
 
   return false;
+}
+
+const ClassMethod* ClassType::getMethodForArgs(
+    const std::string& methodName, const std::vector<TypePtr>& argTypes) const {
+  const ClassMethod* bestMatch = nullptr;
+  for (const auto& method : methods) {
+    if (method.name != methodName) continue;
+    if (method.paramTypes.size() != argTypes.size()) continue;
+
+    bool allMatch = true;
+    bool allExact = true;
+    for (size_t i = 0; i < argTypes.size(); ++i) {
+      if (!argTypes[i] || !method.paramTypes[i]) {
+        allMatch = false;
+        break;
+      }
+      if (method.paramTypes[i]->equals(*argTypes[i])) continue;
+      allExact = false;
+      if (!argumentAccepts(argTypes[i], method.paramTypes[i], false)) {
+        allMatch = false;
+        break;
+      }
+    }
+    if (!allMatch) continue;
+    if (allExact) return &method;
+    if (!bestMatch) bestMatch = &method;
+  }
+  return bestMatch;
 }
 
 }  // namespace sun::types

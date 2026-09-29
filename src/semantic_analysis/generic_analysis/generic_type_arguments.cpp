@@ -6,6 +6,7 @@
 
 /** Semantic adapters for generic argument deduction. */
 namespace sun::semantic_analysis {
+using sun::support::logAndThrowError;
 using sun::types::ClassMethod;
 using sun::types::TypePtr;
 
@@ -49,4 +50,21 @@ std::vector<TypePtr> resolveMethodTypeArguments(
           method.typeParameters, method.paramTypes, argTypes, explicitTypeArgs),
       "generic method", displayName, loc);
 }
+/** Everything after the fixed parameters belongs to the pack. */
+std::optional<std::vector<TypePtr>> splitPackArgTypes(
+    const sun::ast::PrototypeAST& proto, const std::vector<TypePtr>& argTypes,
+    const std::string& displayName, std::optional<sun::support::Position> loc) {
+  if (!proto.hasVariadicParam()) return std::nullopt;
+
+  const size_t fixed = proto.getArgs().size();
+  if (argTypes.size() < fixed) {
+    logAndThrowError("'" + displayName + "' expects at least " +
+                         std::to_string(fixed) +
+                         (fixed == 1 ? " argument, got " : " arguments, got ") +
+                         std::to_string(argTypes.size()),
+                     loc);
+  }
+  return std::vector<TypePtr>(argTypes.begin() + fixed, argTypes.end());
+}
+
 }  // namespace sun::semantic_analysis
