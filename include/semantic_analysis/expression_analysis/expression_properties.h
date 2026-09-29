@@ -1,5 +1,7 @@
 /** Queries storage and control-flow properties of analyzed expressions. */
 #pragma once
+#include <vector>
+
 #include "ast.h"
 
 /** Checks expression properties during semantic analysis. */
@@ -38,5 +40,47 @@ bool containsCall(const ExprAST& expr);
  * one.
  */
 const ExprAST* findThisUse(const ExprAST& expr);
+
+/**
+ * The type analysis already recorded on the expression. Throws an internal
+ * error if there is none, since callers rely on the expression having been
+ * analyzed first.
+ */
+sun::types::TypePtr requireResolvedType(const ExprAST& expr);
+
+/**
+ * The value type of an analyzed block: the type of its first `return`, else
+ * of its last statement when the block produces a value, else void.
+ */
+sun::types::TypePtr preparedBlockType(const sun::ast::BlockExprAST& block);
+
+/**
+ * The arms of an analyzed match that can run: an arm for an enum variant an
+ * earlier arm already covers is left out, and nothing after the first `_`
+ * arm is included.
+ */
+std::vector<const sun::ast::MatchArm*> reachableMatchArms(
+    const sun::ast::MatchExprAST& match);
+
+/**
+ * The value type of an analyzed match: that of the first reachable arm whose
+ * body does not always leave (by return, throw, break or continue), else
+ * void.
+ */
+sun::types::TypePtr preparedMatchType(const sun::ast::MatchExprAST& match);
+
+/**
+ * When a match produces an owned value, throws unless every reachable arm
+ * that yields a value yields exactly that type.
+ */
+void checkOwnedMatchArmTypes(const sun::ast::MatchExprAST& match);
+
+/**
+ * When a match over a non-enum value produces an owned value, throws unless
+ * every input is covered: by a `_` arm, or by `true` and `false` arms when
+ * `discriminantType` is bool.
+ */
+void checkOwnedMatchCoverage(const sun::ast::MatchExprAST& match,
+                             const sun::types::TypePtr& discriminantType);
 
 }  // namespace sun::semantic_analysis

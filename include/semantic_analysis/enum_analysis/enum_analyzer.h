@@ -83,13 +83,6 @@ class EnumAnalyzer {
    */
   void analyzeEnumDefinition(sun::ast::EnumDefinitionAST &enumDef);
 
-  /** Check that an enum payload type is supported and not recursive by value.
-   */
-  void validateEnumPayloadType(
-      const sun::types::TypePtr &type,
-      const std::shared_ptr<sun::types::EnumType> &enumType,
-      const std::string &variantName, const sun::support::Position &location);
-
   /**
    * Call interception for EnumName.Variant(args...) on concrete and generic
    * enums; returns true when the call was an enum construction.

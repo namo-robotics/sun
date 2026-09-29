@@ -8,6 +8,7 @@
 #include <set>
 
 #include "semantic_analysis/declaration_analysis/declaration_rules.h"
+#include "semantic_analysis/expression_analysis/expression_properties.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/type_analysis/type_rules.h"
 #include "support/error.h"
@@ -36,30 +37,6 @@ using sun::types::unwrapRef;
 /** Keeps the implementation helpers in this file private to this translation
  * unit. */
 namespace {
-
-/**
- * True if `type` embeds enum `self` by value, walking enum payloads and class
- * fields. Pointers break the cycle (indirection is the fix we suggest).
- */
-bool embedsEnumByValue(const TypePtr& type, const EnumType* self,
-                       std::set<const sun::types::Type*>& visited) {
-  if (!type || !visited.insert(type.get()).second) return false;
-  if (type->isEnum()) {
-    auto* e = static_cast<const EnumType*>(type.get());
-    if (e->equals(*self)) return true;
-    for (const auto& v : e->getVariants()) {
-      for (const auto& pt : v.payloadTypes) {
-        if (embedsEnumByValue(pt, self, visited)) return true;
-      }
-    }
-  } else if (type->isClass()) {
-    auto* c = static_cast<const sun::types::ClassType*>(type.get());
-    for (const auto& field : c->getFields()) {
-      if (embedsEnumByValue(field.type, self, visited)) return true;
-    }
-  }
-  return false;
-}
 
 /**
  * Unify a payload annotation against an argument type, binding directly
@@ -191,8 +168,8 @@ void EnumAnalyzer::analyzeEnumDefinition(sun::ast::EnumDefinitionAST& enumDef) {
     std::vector<TypePtr> payloadTypes;
     for (const auto& annot : variant.payloadTypes) {
       auto payloadType = resolver_.typeAnnotationToType(annot);
-      validateEnumPayloadType(payloadType, enumType, variant.name,
-                              variant.location);
+      type_analysis::validateEnumPayloadType(payloadType, *enumType,
+                                             variant.name, variant.location);
       payloadTypes.push_back(std::move(payloadType));
     }
     enumType->setVariantPayloadTypes(variant.name, std::move(payloadTypes));
@@ -205,43 +182,6 @@ void EnumAnalyzer::analyzeEnumDefinition(sun::ast::EnumDefinitionAST& enumDef) {
   ctx_.declarations().noteDeclared(enumDef.getName(), ctx_.scope());
 
   enumDef.setResolvedType(Types::Void());
-}
-
-// -------------------------------------------------------------------
-// Payload validation (Stage 1 rules)
-// -------------------------------------------------------------------
-
-void EnumAnalyzer::validateEnumPayloadType(
-    const TypePtr& type, const std::shared_ptr<EnumType>& enumType,
-    const std::string& variantName, const sun::support::Position& location) {
-  const std::string context = "Payload of variant '" + variantName +
-                              "' in enum '" + enumType->getDisplayName() + "'";
-  if (!type || type->isVoid()) {
-    logAndThrowError(context + " cannot be void", location);
-  }
-  // Allowlist: primitives, pointers, enums, classes (including owning ones —
-  // payload enums carry drop glue), interfaces (fat pointers are copyable
-  // borrowed views), and references (the variant stores the referent's
-  // address and owns nothing — this is what lets a container hand back
-  // `Option<ref T>` for a peek instead of a copy of an element it still
-  // owns). Arrays, slices, lambdas, threads etc. are deferred.
-  bool allowed = type->isPrimitive() || type->isRawPointer() ||
-                 type->isStaticPointer() || type->isEnum() || type->isClass() ||
-                 type->isInterface() || type->isReference();
-  if (!allowed) {
-    logAndThrowError(context + " has unsupported type '" +
-                         type->toDisplayString() +
-                         "'; supported: primitives, pointers, enums, "
-                         "interfaces, and classes",
-                     location);
-  }
-
-  std::set<const sun::types::Type*> visited;
-  if (embedsEnumByValue(type, enumType.get(), visited)) {
-    logAndThrowError("Recursive enum '" + enumType->getDisplayName() +
-                         "' requires indirection (raw_ptr)",
-                     location);
-  }
 }
 
 // -------------------------------------------------------------------
@@ -555,8 +495,7 @@ void EnumAnalyzer::analyzeEnumMatch(sun::ast::MatchExprAST& matchExpr,
     }
     if (!objectType) {
       sema_.analyzeExpr(const_cast<ExprAST&>(*patternAccess.getObject()));
-      objectType =
-          sema_.expressions().requireResolvedType(*patternAccess.getObject());
+      objectType = requireResolvedType(*patternAccess.getObject());
     }
     if (!objectType || !objectType->isEnum() ||
         !objectType->equals(*enumType)) {

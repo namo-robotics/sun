@@ -316,8 +316,7 @@ void DeclarationAnalyzer::analyzeReferenceCreation(
   }
   // Determine the type of the referenced expression. Rebinding through
   // another reference borrows the same referent, not the reference.
-  TypePtr targetType = unwrapRef(
-      sema_.expressions().requireResolvedType(*refCreate.getTarget()));
+  TypePtr targetType = unwrapRef(requireResolvedType(*refCreate.getTarget()));
   // Create reference type: ref(T) or const ref(T)
   TypePtr refType = requireInferredType(
       sun::semantic_analysis::type_analysis::TypeInferer::reference(

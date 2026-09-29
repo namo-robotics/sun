@@ -234,6 +234,7 @@ add_library(sun_lib
     src/semantic_analysis/type_analysis/type_inferer.cpp
     src/semantic_analysis/type_analysis/type_resolver.cpp
     src/semantic_analysis/type_analysis/type_rules.cpp
+    src/semantic_analysis/type_analysis/builtin_methods.cpp
     src/semantic_analysis/type_analysis/type_traits.cpp
     # Borrow checker
     src/borrow_checker/borrow_state.cpp

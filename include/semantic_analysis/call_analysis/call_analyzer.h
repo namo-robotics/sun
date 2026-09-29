@@ -83,36 +83,6 @@ class CallAnalyzer {
   sun::types::TypePtr resolveGenericFunctionCallType(
       const GenericCallAST &call);
 
-  /**
-   * The static_ptr&lt;T&gt; type when `type` is a static_ptr to a non-class,
-   * else null. A static_ptr<Class> dispatches to the class's own methods
-   * instead of the builtin ones.
-   */
-  static sun::types::StaticPointerType *asNonClassStaticPtr(
-      const sun::types::TypePtr &type);
-
-  /** True for a builtin static_ptr&lt;T&gt; method name: length() or raw(). */
-  static bool isStaticPtrMethod(const std::string &name);
-
-  /**
-   * The result type of a static_ptr&lt;T&gt; builtin method call, checking the
-   * argument count.
-   */
-  sun::types::TypePtr resolveStaticPtrMethodType(
-      const sun::types::StaticPointerType &ptrType, const std::string &name,
-      size_t argCount, const sun::support::Position &loc);
-
-  /** True for a builtin array method name: ndims() or dim(i). */
-  static bool isArrayMethod(const std::string &name);
-
-  /**
-   * The result type of an array builtin method call (on a sized array or a
-   * `ref array<T>` view), checking the arguments.
-   */
-  sun::types::TypePtr resolveArrayMethodType(
-      const std::string &name, const std::vector<sun::types::TypePtr> &argTypes,
-      const sun::support::Position &loc);
-
   // ---- analyzeCall, phase by phase ---------------------------------------
 
   /** What resolving a call's callee established about the call. */

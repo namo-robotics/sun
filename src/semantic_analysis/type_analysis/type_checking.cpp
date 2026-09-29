@@ -146,4 +146,36 @@ bool isAssignableTo(const TypePtr& from, const TypePtr& to) {
   return false;
 }
 
+/** Checks the referent, borrow mutability, and unsized array view rules. */
+bool referenceParameterAccepts(const sun::types::ReferenceType& param,
+                               const TypePtr& argType) {
+  const TypePtr& referent = param.getReferencedType();
+  if (referent->equals(*argType)) return true;
+  if (argType->isReference()) {
+    const auto& argRef =
+        static_cast<const sun::types::ReferenceType&>(*argType);
+    if (sun::types::refMutabilityConvertible(argRef, param) &&
+        referent->equals(*argRef.getReferencedType()))
+      return true;
+  }
+  if (referent->isArray() && argType->isArray()) {
+    const auto& paramArray =
+        static_cast<const sun::types::ArrayType&>(*referent);
+    const auto& argArray = static_cast<const sun::types::ArrayType&>(*argType);
+    if (paramArray.isUnsized() &&
+        paramArray.getElementType()->equals(*argArray.getElementType()))
+      return true;
+  }
+  return false;
+}
+
+/** Accepts any raw_ptr where a raw_ptr to i8 or u8 is expected. */
+bool isBytePointerArgument(const TypePtr& argType, const TypePtr& paramType) {
+  if (!argType->isRawPointer() || !paramType->isRawPointer()) return false;
+  const auto& pointee =
+      static_cast<const sun::types::RawPointerType&>(*paramType)
+          .getPointeeType();
+  return pointee->isInt8() || pointee->isUInt8();
+}
+
 }  // namespace sun::semantic_analysis::type_analysis

@@ -1,7 +1,8 @@
 /** Checks expression resolution within the semantic session. */
-#include "ast/control_flow.h"
+#include "semantic_analysis/expression_analysis/expression_properties.h"
 #include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/semantic_analyzer.h"
+#include "semantic_analysis/type_analysis/builtin_methods.h"
 #include "semantic_analysis/type_analysis/type_traits.h"
 #include "support/error.h"
 
@@ -516,7 +517,7 @@ TypePtr ExpressionAnalyzer::resolveMemberType(
       // The accessors are methods; the call form is typed by
       // resolveArrayMethodType before the callee is inferred, so reaching
       // here means the property form was written.
-      if ((memberName == "ndims" || memberName == "dim")) {
+      if (type_analysis::isArrayMethod(memberName)) {
         logAndThrowError("Array has no property '" + memberName +
                              "'; call it: '" + memberName + "(...)'",
                          memberAccess.getLocation());
@@ -530,7 +531,7 @@ TypePtr ExpressionAnalyzer::resolveMemberType(
       // The accessors are methods; the call form is typed by
       // resolveStaticPtrMethodType before the callee is inferred, so reaching
       // here means the property form was written.
-      if ((memberName == "length" || memberName == "raw")) {
+      if (type_analysis::isStaticPtrMethod(memberName)) {
         logAndThrowError("static_ptr has no property '" + memberName +
                              "'; call '" + memberName + "()'",
                          memberAccess.getLocation());
@@ -572,37 +573,6 @@ TypePtr ExpressionAnalyzer::resolveModuleReference(const ExprAST& expr) {
   ctx_.requireModuleAccessible(*module, expr.getLocation());
   return Types::Module(
       static_cast<const ModuleScope&>(*module).qualifiedName.lookupName());
-}
-
-TypePtr ExpressionAnalyzer::requireResolvedType(const ExprAST& expr) {
-  if (auto type = expr.getResolvedType()) return type;
-  logAndThrowError(
-      "Internal error: expression type was not prepared for inference",
-      expr.getLocation());
-}
-
-TypePtr ExpressionAnalyzer::preparedBlockType(
-    const sun::ast::BlockExprAST& block) {
-  for (const auto& statement : block.getBody()) {
-    if (statement->isReturn()) return requireResolvedType(*statement);
-  }
-  if (!block.producesValue() || block.isEmpty()) return Types::Void();
-  return requireResolvedType(*block.getBody().back());
-}
-
-TypePtr ExpressionAnalyzer::preparedMatchType(
-    const sun::ast::MatchExprAST& match) {
-  std::set<int64_t> coveredTags;
-  for (const auto& arm : match.getArms()) {
-    if (!arm.isWildcard && arm.pattern && arm.pattern->getResolvedType() &&
-        arm.pattern->getResolvedType()->isEnum() &&
-        !coveredTags.insert(arm.resolvedVariantTag).second)
-      continue;
-    if (!sun::ast::exprDiverges(*arm.body))
-      return unwrapRef(requireResolvedType(*arm.body));
-    if (arm.isWildcard) break;
-  }
-  return Types::Void();
 }
 
 }  // namespace sun::semantic_analysis

@@ -557,22 +557,6 @@ void GenericSpecializer::analyzeCallableBody(
 // Value packs
 // -------------------------------------------------------------------
 
-std::optional<std::vector<TypePtr>> GenericSpecializer::splitPackArgTypes(
-    const PrototypeAST& proto, const std::vector<TypePtr>& argTypes,
-    const std::string& displayName, std::optional<Position> loc) {
-  if (!proto.hasVariadicParam()) return std::nullopt;
-
-  const size_t fixed = proto.getArgs().size();
-  if (argTypes.size() < fixed) {
-    logAndThrowError("'" + displayName + "' expects at least " +
-                         std::to_string(fixed) +
-                         (fixed == 1 ? " argument, got " : " arguments, got ") +
-                         std::to_string(argTypes.size()),
-                     loc);
-  }
-  return std::vector<TypePtr>(argTypes.begin() + fixed, argTypes.end());
-}
-
 void GenericSpecializer::declareVariadicPack(const PrototypeAST& proto) {
   if (!proto.hasVariadicParam()) return;
   auto* fnScope = ctx_.currentFunctionScope();
@@ -1339,8 +1323,8 @@ GenericSpecializer::instantiateGenericEnum(
       for (const auto& annot : variant.payloadTypes) {
         auto payloadType = sema_.typeResolver().typeAnnotationToType(annot);
         if (!abstractShape) {
-          sema_.enums().validateEnumPayloadType(payloadType, specialized,
-                                                variant.name, variant.location);
+          type_analysis::validateEnumPayloadType(
+              payloadType, *specialized, variant.name, variant.location);
         }
         payloadTypes.push_back(std::move(payloadType));
       }

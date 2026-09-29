@@ -562,26 +562,8 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
           if (info->paramTypes[i]->isReference()) {
             auto* refType =
                 static_cast<const ReferenceType*>(info->paramTypes[i].get());
-            if (refType->getReferencedType()->equals(*argType)) continue;
-            // A borrow handed to a parameter of the other mutability: only
-            // ref -> const ref is allowed
-            if (argType->isReference()) {
-              auto* argRef = static_cast<const ReferenceType*>(argType.get());
-              if (sun::types::refMutabilityConvertible(*argRef, *refType) &&
-                  refType->getReferencedType()->equals(
-                      *argRef->getReferencedType()))
-                continue;
-            }
-            if (refType->getReferencedType()->isArray() && argType->isArray()) {
-              auto* paramArray = static_cast<const sun::types::ArrayType*>(
-                  refType->getReferencedType().get());
-              auto* argArray =
-                  static_cast<const sun::types::ArrayType*>(argType.get());
-              if (paramArray->isUnsized() &&
-                  paramArray->getElementType()->equals(
-                      *argArray->getElementType()))
-                continue;
-            }
+            if (type_analysis::referenceParameterAccepts(*refType, argType))
+              continue;
           }
 
           if (argType->isReference()) {
@@ -611,15 +593,9 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
 
           // raw_ptr<T> is compatible with byte pointers (raw_ptr<i8>/u8)
           // for intrinsics
-          if (argType->isRawPointer() && info->paramTypes[i]->isRawPointer() &&
-              isIntrinsic(baseName)) {
-            auto* paramRawPtr = static_cast<const sun::types::RawPointerType*>(
-                info->paramTypes[i].get());
-            if (paramRawPtr->getPointeeType()->isInt8() ||
-                paramRawPtr->getPointeeType()->isUInt8()) {
-              continue;
-            }
-          }
+          if (isIntrinsic(baseName) && type_analysis::isBytePointerArgument(
+                                           argType, info->paramTypes[i]))
+            continue;
 
           if (isAssignableTo(argType, info->paramTypes[i])) {
             continue;

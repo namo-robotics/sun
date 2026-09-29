@@ -93,61 +93,6 @@ TypePtr CallAnalyzer::resolveIntrinsicCallType(
 }
 
 // -------------------------------------------------------------------
-// static_ptr<T> builtin methods
-// -------------------------------------------------------------------
-
-StaticPointerType* CallAnalyzer::asNonClassStaticPtr(const TypePtr& type) {
-  if (!type || !type->isStaticPointer()) return nullptr;
-  auto* staticPtr = static_cast<StaticPointerType*>(type.get());
-  const auto& pointee = staticPtr->getPointeeType();
-  if (pointee && pointee->isClass()) return nullptr;
-  return staticPtr;
-}
-
-bool CallAnalyzer::isStaticPtrMethod(const std::string& name) {
-  return name == "length" || name == "raw";
-}
-
-bool CallAnalyzer::isArrayMethod(const std::string& name) {
-  return name == "ndims" || name == "dim";
-}
-
-TypePtr CallAnalyzer::resolveArrayMethodType(
-    const std::string& name, const std::vector<TypePtr>& argTypes,
-    const sun::support::Position& loc) {
-  if (!isArrayMethod(name)) {
-    logAndThrowError(
-        "Array has no method '" + name + "'; available: ndims(), dim(i)", loc);
-  }
-  if (name == "ndims") {
-    if (!argTypes.empty()) {
-      logAndThrowError("array.ndims() takes no arguments", loc);
-    }
-    return Types::Int64();
-  }
-  if (argTypes.size() != 1 || !argTypes[0] ||
-      !unwrapRef(argTypes[0])->isIntegral()) {
-    logAndThrowError("array.dim(i) takes one integer argument", loc);
-  }
-  return Types::Int64();
-}
-
-TypePtr CallAnalyzer::resolveStaticPtrMethodType(
-    const StaticPointerType& ptrType, const std::string& name, size_t argCount,
-    const sun::support::Position& loc) {
-  if (!isStaticPtrMethod(name)) {
-    logAndThrowError(
-        "static_ptr has no method '" + name + "'; available: length(), raw()",
-        loc);
-  }
-  if (argCount != 0) {
-    logAndThrowError("static_ptr." + name + "() takes no arguments", loc);
-  }
-  if (name == "length") return Types::Int64();
-  return Types::RawPointer(ptrType.getPointeeType());
-}
-
-// -------------------------------------------------------------------
 // Generic function result resolution
 // -------------------------------------------------------------------
 

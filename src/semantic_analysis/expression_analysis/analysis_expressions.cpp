@@ -1,5 +1,6 @@
 /** Checks analysis expressions within the semantic session. */
 #include "semantic_analysis/constants/constant_evaluator.h"
+#include "semantic_analysis/expression_analysis/expression_properties.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/symbol_names.h"
 #include "semantic_analysis/type_analysis/type_rules.h"
@@ -63,27 +64,7 @@ void ExpressionAnalyzer::analyzeArrayLiteral(sun::ast::ArrayLiteralAST& arrLit,
     sema_.analyzeExpr(const_cast<ExprAST&>(*elem));
     checkMoveSource(*elem, arrLit.getLocation());
   }
-  resolveArrayLiteralResult(arrLit, expectedType);
-}
-
-void ExpressionAnalyzer::resolveArrayLiteralResult(
-    sun::ast::ArrayLiteralAST& arrLit, TypePtr expectedType) {
-  TypePtr first = arrLit.getElements().empty()
-                      ? nullptr
-                      : requireResolvedType(*arrLit.getElements().front());
-  TypePtr expectedElement;
-  if (auto hint = unwrapRef(expectedType); hint && hint->isArray())
-    expectedElement = static_cast<const ArrayType&>(*hint).getElementType();
-  bool widen = first && expectedElement &&
-               ((expectedElement->isInt64() && first->isInt32()) ||
-                (expectedElement->isFloat64() && first->isFloat32()) ||
-                expectedElement->equals(*first));
-  arrLit.setResolvedType(requireInferredType(
-      sun::semantic_analysis::type_analysis::TypeInferer::array(
-          first, arrLit.getElements().size(), expectedElement, widen),
-      arrLit.getLocation(),
-      arrLit.getElements().empty() ? "Cannot infer type of empty array literal"
-                                   : "Cannot infer array element type"));
+  type_analysis::resolveArrayLiteralType(arrLit, expectedType);
 }
 
 void ExpressionAnalyzer::analyzeIndexExpr(sun::ast::IndexAST& arrIdx) {

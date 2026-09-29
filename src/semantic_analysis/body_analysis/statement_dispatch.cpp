@@ -1,6 +1,7 @@
 /** Routes statements and control flow to body checking. */
 #include "ast.h"
 #include "semantic_analysis/body_analysis/body_analyzer.h"
+#include "semantic_analysis/expression_analysis/expression_properties.h"
 #include "semantic_analysis/semantic_analyzer.h"
 
 using sun::ast::ASTNodeType;
@@ -28,7 +29,7 @@ bool BodyAnalyzer::tryAnalyzeStatement(ExprAST& expr, TypePtr expectedType) {
       auto& block = static_cast<BlockExprAST&>(expr);
       ctx_.enterScope();
       analyzeBlock(block);
-      expr.setResolvedType(sema_.expressions().preparedBlockType(block));
+      expr.setResolvedType(preparedBlockType(block));
       ctx_.exitScope();
       break;
     }

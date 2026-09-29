@@ -1,5 +1,5 @@
 /** Checks analysis control flow within the semantic session. */
-#include "ast/control_flow.h"
+#include "semantic_analysis/expression_analysis/expression_properties.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/type_analysis/type_rules.h"
 #include "support/error.h"
@@ -45,27 +45,6 @@ void BodyAnalyzer::analyzeMatchExpr(sun::ast::MatchExprAST& matchExpr,
   // Analyze the discriminant expression
   sema_.analyzeExpr(const_cast<ExprAST&>(*matchExpr.getDiscriminant()));
 
-  auto checkOwnedArmTypes = [&] {
-    auto resultType = matchExpr.getResolvedType();
-    if (!sun::types::typeMovesOnRead(resultType)) return;
-    std::set<int64_t> coveredTags;
-    for (const auto& arm : matchExpr.getArms()) {
-      if (!arm.isWildcard && arm.pattern && arm.pattern->getResolvedType() &&
-          arm.pattern->getResolvedType()->isEnum() &&
-          !coveredTags.insert(arm.resolvedVariantTag).second)
-        continue;
-      if (!sun::ast::exprDiverges(*arm.body)) {
-        auto armType = unwrapRef(arm.body->getResolvedType());
-        if (!armType || !armType->equals(*resultType)) {
-          logAndThrowError(
-              "Every reachable arm must produce the same owned type",
-              arm.body->getLocation());
-        }
-      }
-      if (arm.isWildcard) break;
-    }
-  };
-
   // Enum discriminants get variant patterns, payload bindings, and
   // exhaustiveness checking
   TypePtr discType = unwrapRef(matchExpr.getDiscriminant()->getResolvedType());
@@ -73,8 +52,8 @@ void BodyAnalyzer::analyzeMatchExpr(sun::ast::MatchExprAST& matchExpr,
     sema_.enums().analyzeEnumMatch(
         matchExpr, std::static_pointer_cast<sun::types::EnumType>(discType),
         expectedType);
-    matchExpr.setResolvedType(sema_.expressions().preparedMatchType(matchExpr));
-    checkOwnedArmTypes();
+    matchExpr.setResolvedType(preparedMatchType(matchExpr));
+    checkOwnedMatchArmTypes(matchExpr);
     return;
   }
 
@@ -90,29 +69,6 @@ void BodyAnalyzer::analyzeMatchExpr(sun::ast::MatchExprAST& matchExpr,
     }
     sema_.analyzeExpr(const_cast<ExprAST&>(*arm.body), expectedType);
   }
-  // Owned results need a value on every path; there is no empty resource
-  // that code generation can safely invent for an unmatched input.
-  auto checkOwnedCoverage = [&] {
-    if (!sun::types::typeMovesOnRead(matchExpr.getResolvedType())) return;
-    bool hasTrue = false;
-    bool hasFalse = false;
-    for (const auto& arm : matchExpr.getArms()) {
-      if (arm.isWildcard) return;
-      if (arm.pattern &&
-          arm.pattern->getType() == sun::ast::ASTNodeType::BOOL_LITERAL) {
-        if (static_cast<const sun::ast::BoolLiteralAST&>(*arm.pattern)
-                .getValue()) {
-          hasTrue = true;
-        } else {
-          hasFalse = true;
-        }
-      }
-    }
-    if (discType && discType->isBool() && hasTrue && hasFalse) return;
-    logAndThrowError(
-        "Match producing an owned value must cover every input; add a '_' arm",
-        matchExpr.getLocation());
-  };
   // If we have an expected type and all arms resolved to it, use it
   bool allArmsMatch = expectedType != nullptr;
   if (expectedType) {
@@ -123,11 +79,10 @@ void BodyAnalyzer::analyzeMatchExpr(sun::ast::MatchExprAST& matchExpr,
       }
     }
   }
-  matchExpr.setResolvedType(
-      allArmsMatch ? expectedType
-                   : sema_.expressions().preparedMatchType(matchExpr));
-  checkOwnedCoverage();
-  checkOwnedArmTypes();
+  matchExpr.setResolvedType(allArmsMatch ? expectedType
+                                         : preparedMatchType(matchExpr));
+  checkOwnedMatchCoverage(matchExpr, discType);
+  checkOwnedMatchArmTypes(matchExpr);
 }
 
 void BodyAnalyzer::analyzeForLoop(sun::ast::ForExprAST& forExpr) {
@@ -363,8 +318,7 @@ void BodyAnalyzer::analyzeThrowExpr(sun::ast::ThrowExprAST& throwExpr) {
   // Analyze the error expression being thrown
   sema_.analyzeExpr(const_cast<ExprAST&>(throwExpr.getErrorExpr()));
 
-  TypePtr errorType =
-      sema_.expressions().requireResolvedType(throwExpr.getErrorExpr());
+  TypePtr errorType = requireResolvedType(throwExpr.getErrorExpr());
   if (errorType && errorType->isReference()) {
     // Only the innermost handler's binding names the runtime's active
     // exception.
@@ -412,9 +366,8 @@ void BodyAnalyzer::analyzeUnsafeBlock(sun::ast::UnsafeBlockAST& unsafeBlock) {
 
   const auto& body = unsafeBlock.getBody();
   unsafeBlock.setResolvedType(
-      body.isEmpty()
-          ? Types::Void()
-          : sema_.expressions().requireResolvedType(*body.getBody().back()));
+      body.isEmpty() ? Types::Void()
+                     : requireResolvedType(*body.getBody().back()));
 }
 
 void BodyAnalyzer::analyzeReturnExpr(sun::ast::ReturnExprAST& returnExpr) {
@@ -425,8 +378,7 @@ void BodyAnalyzer::analyzeReturnExpr(sun::ast::ReturnExprAST& returnExpr) {
     returnExpr.setTargetType(declaredReturn);
     sema_.analyzeExpr(const_cast<ExprAST&>(*returnExpr.getValue()),
                       declaredReturn);
-    TypePtr valueType =
-        sema_.expressions().requireResolvedType(*returnExpr.getValue());
+    TypePtr valueType = requireResolvedType(*returnExpr.getValue());
     // Returning by value out of a borrow would hand the caller a second
     // value backed by the borrowed storage.
     if (valueType && valueType->isReference() && declaredReturn &&

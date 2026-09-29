@@ -1,11 +1,19 @@
 /** Implements storage and control-flow queries on analyzed expressions. */
 #include "semantic_analysis/expression_analysis/expression_properties.h"
 
+#include <set>
+
 #include "ast/ast_children.h"
+#include "ast/control_flow.h"
+#include "support/error.h"
+#include "types/type_utils.h"
 
 /** Checks expression properties during semantic analysis. */
 namespace sun::semantic_analysis {
+using sun::support::logAndThrowError;
 using sun::types::TypePtr;
+using sun::types::Types;
+using sun::types::unwrapRef;
 
 using sun::ast::ASTNodeType;
 
@@ -100,6 +108,88 @@ const ExprAST* findThisUse(const ExprAST& expr) {
     if (!found) found = findThisUse(child);
   });
   return found;
+}
+
+/** Returns the recorded type or reports that analysis skipped the node. */
+TypePtr requireResolvedType(const ExprAST& expr) {
+  if (auto type = expr.getResolvedType()) return type;
+  logAndThrowError(
+      "Internal error: expression type was not prepared for inference",
+      expr.getLocation());
+}
+
+/** Takes the type of the first return, else of the trailing value. */
+TypePtr preparedBlockType(const sun::ast::BlockExprAST& block) {
+  for (const auto& statement : block.getBody()) {
+    if (statement->isReturn()) return requireResolvedType(*statement);
+  }
+  if (!block.producesValue() || block.isEmpty()) return Types::Void();
+  return requireResolvedType(*block.getBody().back());
+}
+
+/** Skips repeated enum variants and stops after the first wildcard. */
+std::vector<const sun::ast::MatchArm*> reachableMatchArms(
+    const sun::ast::MatchExprAST& match) {
+  std::vector<const sun::ast::MatchArm*> reachable;
+  std::set<int64_t> coveredTags;
+  for (const auto& arm : match.getArms()) {
+    if (!arm.isWildcard && arm.pattern && arm.pattern->getResolvedType() &&
+        arm.pattern->getResolvedType()->isEnum() &&
+        !coveredTags.insert(arm.resolvedVariantTag).second)
+      continue;
+    reachable.push_back(&arm);
+    if (arm.isWildcard) break;
+  }
+  return reachable;
+}
+
+/** Takes the type of the first reachable arm that yields a value. */
+TypePtr preparedMatchType(const sun::ast::MatchExprAST& match) {
+  for (const auto* arm : reachableMatchArms(match)) {
+    if (!sun::ast::exprDiverges(*arm->body))
+      return unwrapRef(requireResolvedType(*arm->body));
+  }
+  return Types::Void();
+}
+
+/** Compares each value-producing reachable arm with the match's type. */
+void checkOwnedMatchArmTypes(const sun::ast::MatchExprAST& match) {
+  auto resultType = match.getResolvedType();
+  if (!sun::types::typeMovesOnRead(resultType)) return;
+  for (const auto* arm : reachableMatchArms(match)) {
+    if (sun::ast::exprDiverges(*arm->body)) continue;
+    auto armType = unwrapRef(arm->body->getResolvedType());
+    if (!armType || !armType->equals(*resultType)) {
+      logAndThrowError("Every reachable arm must produce the same owned type",
+                       arm->body->getLocation());
+    }
+  }
+}
+
+/** Accepts a wildcard arm, or both boolean literals over a bool. */
+void checkOwnedMatchCoverage(const sun::ast::MatchExprAST& match,
+                             const TypePtr& discriminantType) {
+  // Owned results need a value on every path; there is no empty resource
+  // that code generation can safely invent for an unmatched input.
+  if (!sun::types::typeMovesOnRead(match.getResolvedType())) return;
+  bool hasTrue = false;
+  bool hasFalse = false;
+  for (const auto& arm : match.getArms()) {
+    if (arm.isWildcard) return;
+    if (arm.pattern && arm.pattern->getType() == ASTNodeType::BOOL_LITERAL) {
+      if (static_cast<const sun::ast::BoolLiteralAST&>(*arm.pattern)
+              .getValue()) {
+        hasTrue = true;
+      } else {
+        hasFalse = true;
+      }
+    }
+  }
+  if (discriminantType && discriminantType->isBool() && hasTrue && hasFalse)
+    return;
+  logAndThrowError(
+      "Match producing an owned value must cover every input; add a '_' arm",
+      match.getLocation());
 }
 
 }  // namespace sun::semantic_analysis

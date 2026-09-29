@@ -26,4 +26,21 @@ bool isAssignableTo(const sun::types::TypePtr& from,
 bool literalFitsInType(uint64_t magnitude, bool negative,
                        sun::types::Type::Kind kind);
 
+/**
+ * Whether an argument of type `argType` can bind to a `ref` parameter of type
+ * `param` without conversion: it is the referenced type itself, a borrow of it
+ * whose mutability may convert (only `ref` to `const ref`), or a sized array
+ * whose element type matches an unsized `ref array<T>` parameter.
+ */
+bool referenceParameterAccepts(const sun::types::ReferenceType& param,
+                               const sun::types::TypePtr& argType);
+
+/**
+ * Whether a raw_ptr argument may be passed as a byte pointer parameter
+ * (raw_ptr<i8> or raw_ptr<u8>), like C's void*. Only intrinsic callees allow
+ * this, to avoid accidental type erasure in user code.
+ */
+bool isBytePointerArgument(const sun::types::TypePtr& argType,
+                           const sun::types::TypePtr& paramType);
+
 }  // namespace sun::semantic_analysis::type_analysis

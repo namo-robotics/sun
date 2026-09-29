@@ -1,4 +1,6 @@
 #include "semantic_analysis/class_analysis/packed_layout.h"
+#include "semantic_analysis/expression_analysis/expression_properties.h"
+#include "semantic_analysis/type_analysis/builtin_methods.h"
 #include "semantic_analysis/type_analysis/generic_type_arguments.h"
 // call_analyzer.cpp — Semantic analysis of calls. See call_analyzer.h.
 
@@ -121,25 +123,9 @@ bool isImplicitlyConvertibleArgument(const TypePtr& argType,
   // Reference parameter accepts the referenced type directly
   if (paramType->isReference()) {
     auto* refType = static_cast<const ReferenceType*>(paramType.get());
-    if (refType->getReferencedType()->equals(*argType)) return true;
-    // A borrow of the other mutability: only ref -> const ref
-    if (argType->isReference()) {
-      auto* argRef = static_cast<const ReferenceType*>(argType.get());
-      if (sun::types::refMutabilityConvertible(*argRef, *refType) &&
-          refType->getReferencedType()->equals(*argRef->getReferencedType())) {
-        return true;
-      }
-    }
-    // ref array<T> (unsized) accepts any array<T, dims...>
-    if (refType->getReferencedType()->isArray() && argType->isArray()) {
-      auto* paramArray = static_cast<const sun::types::ArrayType*>(
-          refType->getReferencedType().get());
-      auto* argArray = static_cast<const sun::types::ArrayType*>(argType.get());
-      if (paramArray->isUnsized() &&
-          paramArray->getElementType()->equals(*argArray->getElementType())) {
-        return true;
-      }
-    }
+    if (sun::semantic_analysis::type_analysis::referenceParameterAccepts(
+            *refType, argType))
+      return true;
     // Auto-deref: raw_ptr<T> is compatible with ref T
     if (argType->isRawPointer()) {
       auto* ptrType = static_cast<const RawPointerType*>(argType.get());
@@ -168,52 +154,16 @@ bool isImplicitlyConvertibleArgument(const TypePtr& argType,
   // Null is compatible with any pointer type
   if (argType->isNullPointer() && paramType->isAnyPointer()) return true;
 
-  // Integer widening: smaller int types can be passed to larger int params
-  // i8 -> i16 -> i32 -> i64, u8 -> u16 -> u32 -> u64; float f32 -> f64
-  if (argType->isPrimitive() && paramType->isPrimitive()) {
-    if ((argType->isInt8() || argType->isInt16() || argType->isInt32()) &&
-        paramType->isInt64()) {
-      return true;
-    }
-    if ((argType->isInt8() || argType->isInt16()) && paramType->isInt32()) {
-      return true;
-    }
-    if (argType->isInt8() && paramType->isInt16()) return true;
-    if ((argType->isUInt8() || argType->isUInt16() || argType->isUInt32()) &&
-        paramType->isUInt64()) {
-      return true;
-    }
-    if ((argType->isUInt8() || argType->isUInt16()) && paramType->isUInt32()) {
-      return true;
-    }
-    if (argType->isUInt8() && paramType->isUInt16()) return true;
-    if (argType->isFloat32() && paramType->isFloat64()) return true;
-  }
-
-  // static_ptr<T> is compatible with raw_ptr<T>
-  if (argType->isStaticPointer() && paramType->isRawPointer()) {
-    auto* staticPtr =
-        static_cast<const sun::types::StaticPointerType*>(argType.get());
-    auto* rawPtr = static_cast<const RawPointerType*>(paramType.get());
-    if (staticPtr->getPointeeType()->equals(*rawPtr->getPointeeType())) {
-      return true;
-    }
-  }
-
   // raw_ptr<T> is compatible with byte pointers raw_ptr<i8>/raw_ptr<u8> (like
   // C's void*). Only for intrinsics, to avoid accidental type erasure in user
   // code.
-  if (calleeIsIntrinsic && argType->isRawPointer() &&
-      paramType->isRawPointer()) {
-    auto* paramRawPtr = static_cast<const RawPointerType*>(paramType.get());
-    if (paramRawPtr->getPointeeType()->isInt8() ||
-        paramRawPtr->getPointeeType()->isUInt8()) {
-      return true;
-    }
-  }
+  if (calleeIsIntrinsic &&
+      sun::semantic_analysis::type_analysis::isBytePointerArgument(argType,
+                                                                   paramType))
+    return true;
 
-  // Class-to-interface: a class C can be passed where interface I is expected
-  // if C implements I
+  // Everything an assignment accepts, such as numeric widening and
+  // static_ptr<T> to raw_ptr<T>
   return isAssignableTo(argType, paramType);
 }
 
@@ -311,7 +261,7 @@ void CallAnalyzer::analyzeCall(CallExprAST& callExpr, TypePtr expectedType) {
         sun::semantic_analysis::type_analysis::TypeInferer::call(callableType),
         callExpr.getLocation(), "Cannot infer return type for call expression");
   else if (callExpr.getCallee()->getType() == ASTNodeType::MEMBER_ACCESS)
-    resultType = sema_.expressions().requireResolvedType(*callExpr.getCallee());
+    resultType = requireResolvedType(*callExpr.getCallee());
   else
     logAndThrowError("Cannot infer return type for call expression",
                      callExpr.getLocation());
@@ -510,8 +460,7 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMemberCallee(
   // Get object type (unwrap references)
   TypePtr objectType = memberAccess.getObject()->getResolvedType();
   if (!objectType) {
-    objectType =
-        sema_.expressions().requireResolvedType(*memberAccess.getObject());
+    objectType = requireResolvedType(*memberAccess.getObject());
   }
   objectType = unwrapRef(objectType);
 
@@ -569,14 +518,14 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMemberCallee(
       return out;
     }
   }
-  if (auto* staticPtr = asNonClassStaticPtr(objectType)) {
+  if (auto* staticPtr = type_analysis::asNonClassStaticPtr(objectType)) {
     // static_ptr<T> builtin methods: length(), raw()
-    memberAccess.setResolvedType(resolveStaticPtrMethodType(
+    memberAccess.setResolvedType(type_analysis::resolveStaticPtrMethodType(
         *staticPtr, memberAccess.getMemberName(), callExpr.getArgs().size(),
         memberAccess.getLocation()));
   } else if (objectType && objectType->isArray()) {
     // Array builtin methods: ndims(), dim(i)
-    memberAccess.setResolvedType(resolveArrayMethodType(
+    memberAccess.setResolvedType(type_analysis::resolveArrayMethodType(
         memberAccess.getMemberName(), argTypes, memberAccess.getLocation()));
   } else {
     // Not a class type (interface, module, ptr-to-class, builtin...).
@@ -639,7 +588,7 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMethodCallee(
     memberAccess.setResolvedTypeArgs(typeArgPtrs);
     // Only what is left after the method's fixed parameters fills the
     // pack; `create<T>(args...)` has none, but `(x: i32, args...)` does.
-    std::vector<TypePtr> packArgTypes = *generics_.splitPackArgTypes(
+    std::vector<TypePtr> packArgTypes = *splitPackArgTypes(
         genericMethod->getProto(), argTypes, methodName, loc);
     memberAccess.setResolvedVariadicArgTypes(packArgTypes);
 
@@ -739,7 +688,7 @@ CallAnalyzer::CallSignature CallAnalyzer::resolveCallSignature(
     const std::vector<TypePtr>& argTypes) {
   TypePtr calleeType = callExpr.getCallee()->getResolvedType();
   if (!calleeType) {
-    calleeType = sema_.expressions().requireResolvedType(*callExpr.getCallee());
+    calleeType = requireResolvedType(*callExpr.getCallee());
   }
 
   // A module-qualified constructor call (`m.Point(...)`) resolves the callee
@@ -752,9 +701,7 @@ CallAnalyzer::CallSignature CallAnalyzer::resolveCallSignature(
     const auto& calleeMember =
         static_cast<const MemberAccessAST&>(*callExpr.getCallee());
     TypePtr ownerType = calleeMember.getObject()->getResolvedType();
-    if (!ownerType)
-      ownerType =
-          sema_.expressions().requireResolvedType(*calleeMember.getObject());
+    if (!ownerType) ownerType = requireResolvedType(*calleeMember.getObject());
     if (ownerType && ownerType->isModule()) {
       callee.classType = std::static_pointer_cast<ClassType>(calleeType);
     }
@@ -1027,8 +974,8 @@ CallAnalyzer::GenericCallTarget CallAnalyzer::resolveGenericCallTarget(
 
   std::optional<std::vector<TypePtr>> packArgTypes;
   if (hasPack) {
-    packArgTypes = generics_.splitPackArgTypes(genericInfo.AST->getProto(),
-                                               argTypes, displayName, loc);
+    packArgTypes = splitPackArgTypes(genericInfo.AST->getProto(), argTypes,
+                                     displayName, loc);
   }
   target.specialized = generics_.requireGenericSpecialization(
       genericInfo, target.typeArgs, displayName, loc, packArgTypes);
@@ -1301,8 +1248,8 @@ void CallAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
   // Everything past the fixed parameters fills the pack.
   std::optional<std::vector<TypePtr>> packArgTypes;
   if (calleeTakesPack) {
-    packArgTypes = generics_.splitPackArgTypes(*calleeProto, argTypes, funcName,
-                                               genericCall.getLocation());
+    packArgTypes = splitPackArgTypes(*calleeProto, argTypes, funcName,
+                                     genericCall.getLocation());
   }
 
   // Only instantiate if all type arguments are concrete. Inside a generic
@@ -1327,7 +1274,7 @@ void CallAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
   if (argsAnalyzed) {
     for (size_t i = 0; i < args.size() && i < expectedParamTypes.size(); ++i) {
       if (args[i]->getType() == ASTNodeType::ARRAY_LITERAL)
-        sema_.expressions().resolveArrayLiteralResult(
+        type_analysis::resolveArrayLiteralType(
             static_cast<sun::ast::ArrayLiteralAST&>(*args[i]),
             expectedParamTypes[i]);
     }
