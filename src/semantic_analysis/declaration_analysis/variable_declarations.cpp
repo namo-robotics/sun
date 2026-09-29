@@ -1,6 +1,5 @@
 /** Checks bindings and resolves global initializer dependencies. */
 #include <algorithm>
-#include <functional>
 
 #include "codegen/abi/c_abi_types.h"
 #include "semantic_analysis/expression_analysis/expression_properties.h"
@@ -20,6 +19,7 @@ using sun::support::logAndThrowError;
 /** Resolves declarations and checks the types and meaning of Sun programs. */
 namespace sun::semantic_analysis {
 
+using sun::semantic_analysis::containsCall;
 using sun::semantic_analysis::isBorrowableLvalue;
 using sun::semantic_analysis::type_analysis::isAssignableTo;
 using sun::semantic_analysis::type_analysis::tryCoerceIntegerLiteral;
@@ -45,35 +45,30 @@ bool DeclarationAnalyzer::isTrackedGlobal(
              varCreate.getDeclarationId();
 }
 
+void DeclarationAnalyzer::verifyGlobalVarIsNotRepeated(
+    const sun::ast::VariableCreationAST& global) const {
+  auto repeated =
+      std::find(globalsInProgress_.begin(), globalsInProgress_.end(), &global);
+  if (repeated == globalsInProgress_.end()) return;
+  const std::string& name = global.getName();
+  std::string cycle;
+  for (auto step = repeated; step != globalsInProgress_.end(); ++step)
+    cycle += (*step)->getName() + " -> ";
+  logAndThrowError(
+      "Global variable '" + name + "' depends on itself: " + cycle + name,
+      global.getLocation());
+}
+
 void DeclarationAnalyzer::analyzeGlobal(sun::ast::VariableCreationAST& global,
                                         SemanticScope& scope) {
   const std::string& name = global.getName();
-  auto repeated =
-      std::find(globalsInProgress_.begin(), globalsInProgress_.end(), &global);
-  if (repeated != globalsInProgress_.end()) {
-    std::string cycle;
-    for (auto step = repeated; step != globalsInProgress_.end(); ++step)
-      cycle += (*step)->getName() + " -> ";
-    logAndThrowError(
-        "Global variable '" + name + "' depends on itself: " + cycle + name,
-        global.getLocation());
-  }
+  verifyGlobalVarIsNotRepeated(global);
 
   // A class field or a function signature asks for its array sizes while
   // declarations are still being collected, when no function can be called
   // yet: functions are registered after the types their signatures mention.
   if (ctx_.isCollectingDeclarations() && global.getValue()) {
-    std::function<bool(const ExprAST&)> callsAFunction =
-        [&](const ExprAST& expr) {
-          if (expr.getType() == ASTNodeType::CALL) return true;
-          bool found = false;
-          const_cast<ExprAST&>(expr).forEachChildSlot(
-              [&](std::unique_ptr<ExprAST>& child) {
-                found = found || (child && callsAFunction(*child));
-              });
-          return found;
-        };
-    if (callsAFunction(*global.getValue()))
+    if (containsCall(*global.getValue()))
       logAndThrowError(
           "'" + name +
               "' is needed by a class field or a function signature, so its "

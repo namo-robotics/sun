@@ -1,6 +1,8 @@
 /** Implements storage and control-flow queries on analyzed expressions. */
 #include "semantic_analysis/expression_analysis/expression_properties.h"
 
+#include "ast/ast_children.h"
+
 /** Checks expression properties during semantic analysis. */
 namespace sun::semantic_analysis {
 using sun::types::TypePtr;
@@ -73,6 +75,18 @@ bool alwaysExits(const ExprAST& expr) {
     default:
       return false;
   }
+}
+
+/** Reports whether an expression contains a plain or generic call. */
+bool containsCall(const ExprAST& expr) {
+  if (expr.getType() == ASTNodeType::CALL ||
+      expr.getType() == ASTNodeType::GENERIC_CALL)
+    return true;
+  bool found = false;
+  sun::ast::forEachChild(expr, [&](const ExprAST& child) {
+    found = found || containsCall(child);
+  });
+  return found;
 }
 
 }  // namespace sun::semantic_analysis
