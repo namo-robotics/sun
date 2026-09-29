@@ -1,7 +1,6 @@
 /** Owns nominal type registration and specialization identities for a session.
  */
 #pragma once
-#include <unordered_set>
 
 #include "types/types.h"
 
@@ -168,16 +167,12 @@ class TypeRegistry {
   }
 
   /**
-   * Check if a type name is a builtin type that cannot be redefined
-   * Includes builtin interfaces and type traits used by _is&lt;T&gt;
+   * Reports whether a class or interface name would redefine a builtin
+   * error type. Type trait names such as `_Integer` need no entry: the
+   * parser already rejects a declared name that starts with `_`.
    */
   bool isBuiltinTypeName(const std::string& name) const {
-    static const std::unordered_set<std::string> builtinNames = {
-        // Builtin error types
-        "IError", "ArithmeticError",
-        // Type traits for _is<T> intrinsic
-        "_Integer", "_Signed", "_Unsigned", "_Float", "_Numeric", "_Primitive"};
-    return builtinNames.count(name) > 0;
+    return name == "IError" || name == "ArithmeticError";
   }
 
   /**

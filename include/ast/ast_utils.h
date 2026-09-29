@@ -38,4 +38,12 @@ inline std::vector<std::unique_ptr<TypeAnnotation>> cloneTypeAnnotationVector(
   return result;
 }
 
+/**
+ * Forgets the types analysis recorded on a tree, including match arm tags and
+ * binding types, so a copy of a generic body can be analyzed afresh. Only the
+ * node kinds listed in its switch are recursed into; for any other node, only
+ * that node itself is cleared.
+ */
+void clearResolvedTypes(ExprAST& expr);
+
 }  // namespace sun::ast

@@ -339,39 +339,10 @@ class ClassType : public NominalType {
     if (!from || !to || !from->isPrimitive() || !to->isPrimitive()) {
       return false;
     }
-    auto fromKind = from->getKind();
-    auto toKind = to->getKind();
-
-    auto intBitWidth = [](Type::Kind k) -> int {
-      switch (k) {
-        case Type::Kind::Int8:
-        case Type::Kind::UInt8:
-          return 8;
-        case Type::Kind::Int16:
-        case Type::Kind::UInt16:
-          return 16;
-        case Type::Kind::Int32:
-        case Type::Kind::UInt32:
-          return 32;
-        case Type::Kind::Int64:
-        case Type::Kind::UInt64:
-          return 64;
-        default:
-          return 0;
-      }
-    };
-
-    int fromWidth = intBitWidth(fromKind);
-    int toWidth = intBitWidth(toKind);
-    if (fromWidth != 0 && toWidth != 0) {
-      return fromWidth <= toWidth;
+    if (from->isIntegral() && to->isIntegral()) {
+      return from->numericBitWidth() <= to->numericBitWidth();
     }
-
-    bool fromFloat =
-        fromKind == Type::Kind::Float32 || fromKind == Type::Kind::Float64;
-    bool toFloat =
-        toKind == Type::Kind::Float32 || toKind == Type::Kind::Float64;
-    return fromFloat && toFloat;
+    return from->isFloatingPoint() && to->isFloatingPoint();
   }
 
   /**

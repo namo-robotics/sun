@@ -32,10 +32,6 @@ class ExpressionAnalyzer {
   void validateBorrowTarget(const sun::ast::ExprAST &target,
                             const sun::support::Position &loc);
 
-  /** Clear resolved types on an AST tree (for re-analysis of generic methods).
-   */
-  void clearResolvedTypes(sun::ast::ExprAST &expr);
-
   /**
    * Resolves declarations and checks types in this lambda expression, recording
    * the results on its syntax nodes.

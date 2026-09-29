@@ -15,8 +15,7 @@ std::vector<ExprAST*> BodyAnalysisPass::getSourceRoots(
     const sun::ast::BlockExprAST& block) {
   std::vector<ExprAST*> sourceRoots;
   for (const auto& expr : block.getBody()) {
-    const auto* moon = dynamic_cast<const sun::ast::MoonScopeAST*>(expr.get());
-    if (moon && !moon->isOwnBundle()) continue;
+    if (sun::ast::isImportedMoon(*expr)) continue;
     sourceRoots.push_back(expr.get());
   }
   return sourceRoots;

@@ -1,4 +1,5 @@
 #include "semantic_analysis/call_analysis/method_signature_set.h"
+#include "semantic_analysis/class_analysis/packed_layout.h"
 #include "semantic_analysis/passes/import_traversal.h"
 // declaration_collection_pass.cpp — The declaration pre-pass (see
 // declaration_collection_pass.h)
@@ -309,7 +310,7 @@ void DeclarationCollectionPass::registerClassShape(
       }
     }
 
-    sema_.classes().checkPackedFieldType(classDef, field, fieldType);
+    checkPackedFieldType(classDef, field, fieldType);
     classType->addField(field.name, fieldType, field.declaration.id)
         .visibility = field.visibility;
   }

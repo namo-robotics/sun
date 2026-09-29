@@ -1,3 +1,4 @@
+#include "semantic_analysis/class_analysis/packed_layout.h"
 #include "semantic_analysis/type_analysis/generic_type_arguments.h"
 // call_analyzer.cpp — Semantic analysis of calls. See call_analyzer.h.
 
@@ -268,7 +269,7 @@ void CallAnalyzer::analyzeCall(CallExprAST& callExpr, TypePtr expectedType) {
                      callExpr.getLocation());
   }
 
-  sema_.classes().checkPackedRefArguments(args, paramTypes);
+  checkPackedRefArguments(args, paramTypes);
   if (signature.known) {
     sema_.expressions().checkArgumentPlaces(args, paramTypes, funcName,
                                             callExpr.getLocation());

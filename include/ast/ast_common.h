@@ -153,6 +153,15 @@ struct LifetimeParameter {
   std::string toString() const { return "'" + name; }
 };
 
+/** The names of the lifetime parameters, in declaration order. */
+inline std::vector<std::string> lifetimeParameterNames(
+    const std::vector<LifetimeParameter>& params) {
+  std::vector<std::string> names;
+  names.reserve(params.size());
+  for (const auto& param : params) names.push_back(param.name);
+  return names;
+}
+
 /**
  * The names alone, for the many places that only care what a parameter is
  * called (substitution, scope registration).

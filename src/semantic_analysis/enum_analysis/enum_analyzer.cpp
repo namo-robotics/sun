@@ -7,6 +7,7 @@
 #include <map>
 #include <set>
 
+#include "semantic_analysis/declaration_analysis/declaration_rules.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/type_analysis/type_rules.h"
 #include "support/error.h"
@@ -126,8 +127,7 @@ void EnumAnalyzer::analyzeEnumDefinition(sun::ast::EnumDefinitionAST& enumDef) {
   }
 
   // Validate enum name
-  sema_.declarations().validateNotReserved(enumDef.getName(), "Enum name",
-                                           enumDef.getLocation());
+  validateNotReserved(enumDef.getName(), "Enum name", enumDef.getLocation());
 
   if (!enumDef.getUnderlyingType().empty() && enumDef.hasAnyPayload()) {
     logAndThrowError("An enum with an underlying type must not have payloads",
@@ -138,8 +138,7 @@ void EnumAnalyzer::analyzeEnumDefinition(sun::ast::EnumDefinitionAST& enumDef) {
   std::set<int64_t> seenValues;
   std::set<std::string> seenVariants;
   for (const auto& variant : enumDef.getVariants()) {
-    sema_.declarations().validateNotReserved(variant.name, "Enum variant name",
-                                             variant.location);
+    validateNotReserved(variant.name, "Enum variant name", variant.location);
     if (seenVariants.count(variant.name)) {
       logAndThrowError("Duplicate enum variant '" + variant.name +
                            "' in enum '" + enumDef.getName() + "'",

@@ -171,6 +171,11 @@ class Type {
   bool isIntegral() const;
   /** Reports whether this type represents floating point values. */
   bool isFloatingPoint() const;
+  /**
+   * The width in bits of an integer or floating point type, such as 32 for
+   * both i32 and f32. Zero for every other type, including bool and char.
+   */
+  int numericBitWidth() const;
   /** Reports whether this type represents string values. */
   bool isString() const;
 };

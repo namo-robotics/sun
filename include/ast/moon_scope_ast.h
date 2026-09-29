@@ -132,4 +132,14 @@ class MoonScopeAST : public ExprAST {
   }
 };
 
+/**
+ * True if the node wraps the stubs of an imported .moon rather than the
+ * sources of the bundle being built. Passes that only act on the program's
+ * own code use this to skip over imports.
+ */
+inline bool isImportedMoon(const ExprAST& node) {
+  return node.getType() == ASTNodeType::MOON_SCOPE &&
+         !static_cast<const MoonScopeAST&>(node).isOwnBundle();
+}
+
 }  // namespace sun::ast

@@ -14,32 +14,12 @@ namespace sun::semantic_analysis::type_analysis {
 using sun::types::ArrayType;
 using sun::types::FunctionType;
 using sun::types::LambdaType;
-using sun::types::Type;
 using sun::types::TypePtr;
 using sun::types::Types;
 using sun::types::unwrapRef;
 
 /** Helpers used only by the inference operations in this file. */
 namespace {
-/** Return an integer type's width, or zero for other types. */
-int integerWidth(const TypePtr& type) {
-  switch (type->getKind()) {
-    case Type::Kind::Int8:
-    case Type::Kind::UInt8:
-      return 8;
-    case Type::Kind::Int16:
-    case Type::Kind::UInt16:
-      return 16;
-    case Type::Kind::Int32:
-    case Type::Kind::UInt32:
-      return 32;
-    case Type::Kind::Int64:
-    case Type::Kind::UInt64:
-      return 64;
-    default:
-      return 0;
-  }
-}
 /** Construct a missing-input failure without consulting external state. */
 InferenceFailure missing() {
   return {InferenceFailure::Kind::MissingType, {}, {}, {}};
@@ -59,8 +39,8 @@ TypeResult TypeInferer::numeric(const TypePtr& left, const TypePtr& right) {
   auto lhs = unwrapRef(left), rhs = unwrapRef(right);
   if (!lhs || !rhs) return missing();
   if (lhs->getKind() == rhs->getKind()) return lhs;
-  int a = integerWidth(lhs), b = integerWidth(rhs);
-  if (a && b) return b > a ? rhs : lhs;
+  if (lhs->isIntegral() && rhs->isIntegral())
+    return rhs->numericBitWidth() > lhs->numericBitWidth() ? rhs : lhs;
   if (lhs->isFloatingPoint() && rhs->isFloatingPoint())
     return lhs->isFloat64() ? lhs : rhs;
   return lhs;

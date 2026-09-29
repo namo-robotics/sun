@@ -8,6 +8,8 @@
 
 #include <algorithm>
 
+#include "types/type_utils.h"
+
 /** Deduces type arguments from supplied parameter and argument shapes. */
 namespace sun::semantic_analysis::type_analysis {
 using sun::types::ArrayType;
@@ -17,10 +19,10 @@ using sun::types::FunctionType;
 using sun::types::InterfaceType;
 using sun::types::LambdaType;
 using sun::types::RawPointerType;
-using sun::types::ReferenceType;
 using sun::types::StaticPointerType;
 using sun::types::TypeParameterType;
 using sun::types::TypePtr;
+using sun::types::unwrapRef;
 
 /** Keeps the implementation helpers in this file private to this translation
  * unit. */
@@ -31,17 +33,6 @@ bool isNamed(const std::vector<std::string>& typeParams,
              const std::string& name) {
   return std::find(typeParams.begin(), typeParams.end(), name) !=
          typeParams.end();
-}
-
-/**
- * Reading through a borrow gives the referent's type everywhere but under a
- * `ref` parameter, which binds against the referent too.
- */
-TypePtr referent(const TypePtr& type) {
-  if (type && type->isReference()) {
-    return static_cast<const ReferenceType*>(type.get())->getReferencedType();
-  }
-  return type;
 }
 
 /**
@@ -99,12 +90,12 @@ void bindTypeParameters(const sun::ast::TypeAnnotation& param,
 
   // `ref T` against an argument of type T (or ref T)
   if (param.baseName == "ref" && param.elementType) {
-    bindTypeParameters(*param.elementType, referent(argType), typeParams,
+    bindTypeParameters(*param.elementType, unwrapRef(argType), typeParams,
                        bindings);
     return;
   }
 
-  TypePtr value = referent(argType);
+  TypePtr value = unwrapRef(argType);
   if (!value) return;
 
   // The parameter is the type parameter itself: T, bound to the argument
@@ -142,12 +133,12 @@ void bindTypeParameters(const TypePtr& param, const TypePtr& argType,
 
   // `ref T` against an argument of type T (or ref T)
   if (param->isReference()) {
-    bindTypeParameters(referent(param), referent(argType), typeParams,
+    bindTypeParameters(unwrapRef(param), unwrapRef(argType), typeParams,
                        bindings);
     return;
   }
 
-  TypePtr value = referent(argType);
+  TypePtr value = unwrapRef(argType);
   if (!value) return;
 
   if (param->isTypeParameter()) {
@@ -193,7 +184,7 @@ void bindTypeParameters(const TypePtr& param, const TypePtr& argType,
 bool mentionsTypeParameter(const TypePtr& type) {
   if (!type) return false;
   if (type->isTypeParameter()) return true;
-  if (type->isReference()) return mentionsTypeParameter(referent(type));
+  if (type->isReference()) return mentionsTypeParameter(unwrapRef(type));
   if (TypePtr element = elementOf(type)) return mentionsTypeParameter(element);
   if (type->isFunction()) {
     auto* f = static_cast<const FunctionType*>(type.get());
@@ -211,6 +202,13 @@ bool mentionsTypeParameter(const TypePtr& type) {
     return std::any_of(args->begin(), args->end(), mentionsTypeParameter);
   }
   return false;
+}
+
+/** Checks each type in turn for a type parameter. */
+bool anyMentionsTypeParameter(const std::vector<TypePtr>& types) {
+  return std::any_of(types.begin(), types.end(), [](const TypePtr& type) {
+    return mentionsTypeParameter(type);
+  });
 }
 
 /** Keeps the implementation helpers in this file private to this translation

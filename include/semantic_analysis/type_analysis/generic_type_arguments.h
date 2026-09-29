@@ -43,4 +43,7 @@ void bindTypeParameters(const TypePtr& param, const TypePtr& argType,
  */
 bool mentionsTypeParameter(const TypePtr& type);
 
+/** True if any of the types mentions a type parameter; see above. */
+bool anyMentionsTypeParameter(const std::vector<TypePtr>& types);
+
 }  // namespace sun::semantic_analysis::type_analysis

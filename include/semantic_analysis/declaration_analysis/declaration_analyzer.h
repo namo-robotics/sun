@@ -38,35 +38,12 @@ class DeclarationAnalyzer {
                                 const FunctionInfo &info);
 
   /**
-   * Validate that an identifier name is not reserved (doesn't start with '_').
-   * Throws an error if the name is reserved.
-   */
-  void validateNotReserved(const std::string &name, const std::string &kind,
-                           std::optional<sun::support::Position> location);
-
-  /**
-   * Reject extern signatures that have no C spelling. Primitives,
-   * raw_ptr&lt;T&gt;, `ref T` (C's T*) and objects by value all lower
-   * correctly; arrays, slices, interfaces and lambdas do not, and must error
-   * rather than silently miscompile.
-   */
-  void validateExternSignature(sun::ast::FunctionAST &func);
-
-  /**
    * Validate that a type parameter exists when the type is a
    * TypeParameterType. Throws an error with source location if the type
    * parameter is not found.
    */
   void validateTypeParameter(const sun::types::TypePtr &type,
                              const sun::ast::ExprAST &node);
-
-  /**
-   * Reject a '<'_>' lambda type in return position: its captured
-   * environment lives in a stack frame that dies when the function returns.
-   */
-  void rejectRefEnvReturnType(
-      const std::optional<sun::ast::TypeAnnotation> &returnType,
-      const sun::support::Position &location, bool allowNamed = false);
 
   /**
    * Reject any lifetime name the annotation uses (recursively, through
@@ -190,22 +167,8 @@ class DeclarationAnalyzer {
       bool allowByValueObjects = false);
 
   /**
-   * The variables an expression reads but does not bind — what a lambda has
-   * to capture. `bound` names the ones already in scope.
-   */
-  std::set<std::string> collectFreeVariables(
-      const sun::ast::ExprAST &expr, const std::set<std::string> &bound);
-
-  /**
-   * The same over a block, adding each declaration to `bound` as it is
-   * reached so later statements do not count it as free.
-   */
-  std::set<std::string> collectFreeVariablesInBlock(
-      const sun::ast::BlockExprAST &block, std::set<std::string> bound);
-
-  /**
-   * The same for a lambda, marking the ones its `[ref x]` list asks to
-   * capture by reference.
+   * The variables a lambda captures, marking the ones its `[ref x]` list asks
+   * to capture by reference.
    */
   std::vector<sun::ast::Capture> buildCaptures(
       const sun::ast::LambdaAST &lambda);

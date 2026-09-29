@@ -89,4 +89,17 @@ bool containsCall(const ExprAST& expr) {
   return found;
 }
 
+/** Finds the first `this` that belongs to the enclosing receiver. */
+const ExprAST* findThisUse(const ExprAST& expr) {
+  if (expr.getType() == ASTNodeType::CLASS_DEFINITION ||
+      expr.getType() == ASTNodeType::INTERFACE_DEFINITION)
+    return nullptr;
+  if (expr.getType() == ASTNodeType::THIS) return &expr;
+  const ExprAST* found = nullptr;
+  sun::ast::forEachChild(expr, [&found](const ExprAST& child) {
+    if (!found) found = findThisUse(child);
+  });
+  return found;
+}
+
 }  // namespace sun::semantic_analysis

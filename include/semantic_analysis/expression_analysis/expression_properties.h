@@ -31,4 +31,12 @@ bool alwaysExits(const ExprAST& expr);
  */
 bool containsCall(const ExprAST& expr);
 
+/**
+ * The first `this` inside the expression, or null if there is none. Stops at
+ * a class or interface defined inside the expression, because a `this` in
+ * one of its methods refers to that type's own receiver, not the enclosing
+ * one.
+ */
+const ExprAST* findThisUse(const ExprAST& expr);
+
 }  // namespace sun::semantic_analysis

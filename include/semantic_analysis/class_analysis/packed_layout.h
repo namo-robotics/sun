@@ -15,8 +15,11 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
+#include <vector>
 
+#include "ast/class_definition_ast.h"
 #include "ast/member_access_ast.h"
 #include "types/types.h"
 
@@ -130,5 +133,22 @@ inline std::string borrowRejection(const std::string& what,
          "be borrowed. " +
          remedy;
 }
+
+/**
+ * Throws if `target` is a field reached through a packed class: a packed
+ * field has no guaranteed alignment, so it cannot be borrowed.
+ */
+void checkPackedFieldNotBorrowed(const ExprAST& target,
+                                 const sun::support::Position& loc);
+
+/** The same rule for an argument passed to a `ref T` parameter. */
+void checkPackedRefArguments(
+    const std::vector<std::unique_ptr<ExprAST>>& args,
+    const std::vector<sun::types::TypePtr>& paramTypes);
+
+/** Throws if a packed class declares a field type it cannot lay out. */
+void checkPackedFieldType(const sun::ast::ClassDefinitionAST& classDef,
+                          const sun::ast::ClassFieldDecl& field,
+                          const sun::types::TypePtr& fieldType);
 
 }  // namespace sun::semantic_analysis

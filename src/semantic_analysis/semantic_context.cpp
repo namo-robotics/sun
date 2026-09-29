@@ -396,8 +396,8 @@ SymbolMatch SemanticContext::findSymbolInModule(
   auto searchInScope = [&](SemanticScope* scope) -> std::optional<SymbolMatch> {
     std::string fullPath = QualifiedName::joinPath(scope->scopePath);
     std::string libHash;
-    if (!scope->scopePath.empty() && scope->scopePath[0].size() >= 2 &&
-        scope->scopePath[0].front() == '$') {
+    if (!scope->scopePath.empty() &&
+        isLibraryHashSegment(scope->scopePath[0])) {
       libHash = scope->scopePath[0];
     }
 

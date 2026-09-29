@@ -90,51 +90,15 @@ bool isAssignableTo(const TypePtr& from, const TypePtr& to) {
 
   // Numeric widening
   if (from->isPrimitive() && to->isPrimitive()) {
-    auto fromKind = from->getKind();
-    auto toKind = to->getKind();
-
-    auto isInteger = [](sun::types::Type::Kind k) {
-      return k == sun::types::Type::Kind::Int8 ||
-             k == sun::types::Type::Kind::Int16 ||
-             k == sun::types::Type::Kind::Int32 ||
-             k == sun::types::Type::Kind::Int64 ||
-             k == sun::types::Type::Kind::UInt8 ||
-             k == sun::types::Type::Kind::UInt16 ||
-             k == sun::types::Type::Kind::UInt32 ||
-             k == sun::types::Type::Kind::UInt64;
-    };
-
-    auto intBitWidth = [](sun::types::Type::Kind k) -> int {
-      switch (k) {
-        case sun::types::Type::Kind::Int8:
-        case sun::types::Type::Kind::UInt8:
-          return 8;
-        case sun::types::Type::Kind::Int16:
-        case sun::types::Type::Kind::UInt16:
-          return 16;
-        case sun::types::Type::Kind::Int32:
-        case sun::types::Type::Kind::UInt32:
-          return 32;
-        case sun::types::Type::Kind::Int64:
-        case sun::types::Type::Kind::UInt64:
-          return 64;
-        default:
-          return 0;
-      }
-    };
-
     // Allow integer widening (destination must be at least as wide)
     // This includes u8 -> i64, i32 -> i64, etc.
-    if (isInteger(fromKind) && isInteger(toKind)) {
-      return intBitWidth(fromKind) <= intBitWidth(toKind);
+    if (from->isIntegral() && to->isIntegral()) {
+      return from->numericBitWidth() <= to->numericBitWidth();
     }
 
     // Allow f32 <-> f64 conversions (both widening and narrowing)
     // This matches the existing permissive behavior for floating point
-    if ((fromKind == sun::types::Type::Kind::Float32 ||
-         fromKind == sun::types::Type::Kind::Float64) &&
-        (toKind == sun::types::Type::Kind::Float32 ||
-         toKind == sun::types::Type::Kind::Float64)) {
+    if (from->isFloatingPoint() && to->isFloatingPoint()) {
       return true;
     }
   }

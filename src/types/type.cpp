@@ -35,6 +35,27 @@ bool Type::isFloatingPoint() const {
   return k == Kind::Float32 || k == Kind::Float64;
 }
 
+int Type::numericBitWidth() const {
+  switch (getKind()) {
+    case Kind::Int8:
+    case Kind::UInt8:
+      return 8;
+    case Kind::Int16:
+    case Kind::UInt16:
+      return 16;
+    case Kind::Int32:
+    case Kind::UInt32:
+    case Kind::Float32:
+      return 32;
+    case Kind::Int64:
+    case Kind::UInt64:
+    case Kind::Float64:
+      return 64;
+    default:
+      return 0;
+  }
+}
+
 bool Type::isString() const {
   // String is now represented as static_ptr<u8> - immortal string literal data
   if (auto* p = dynamic_cast<const StaticPointerType*>(this)) {

@@ -936,31 +936,19 @@ QualifiedName SemanticScopeBase::resolveNameWithUsings(
   }
   AccessFilter filter(this);
 
-  // Helper to filter out $...$ hash segments from scope path
-  auto getVisiblePath =
-      [](const std::vector<std::string>& path) -> std::vector<std::string> {
-    std::vector<std::string> result;
-    for (const auto& segment : path) {
-      if (!segment.empty() && segment[0] != '$') {
-        result.push_back(segment);
-      }
-    }
-    return result;
-  };
-
   // Collect ALL candidate matches
   std::map<std::vector<std::string>,
            std::pair<std::vector<std::string>, SemanticScopeBase*>>
       candidates;
 
   auto addCandidate = [&](SemanticScopeBase* scope) {
-    auto visPath = getVisiblePath(scope->scopePath);
+    auto visPath = visibleModulePath(scope->scopePath);
     if (candidates.find(visPath) == candidates.end()) {
       candidates[visPath] = {scope->scopePath, scope};
     }
   };
 
-  auto visiblePath = getVisiblePath(scopePath);
+  auto visiblePath = visibleModulePath(scopePath);
 
   // 1. Check enclosing module scopes by walking up the parent chain
   for (auto* s = this; s != nullptr; s = s->parent) {
