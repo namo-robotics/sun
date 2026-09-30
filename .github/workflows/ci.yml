@@ -963,6 +963,10 @@ jobs:
         run: npm test
 
       - name: Build
+        env:
+          # Generated API pages exceed Node's default heap during compilation.
+          # Leave room for native allocations and workers on the hosted runner.
+          NODE_OPTIONS: --max-old-space-size=8192
         run: npm run build
 
       - name: Upload artifact
