@@ -85,8 +85,9 @@ Value* ClassGenerator::upcastInterface(Value* value, InterfaceType* source,
   return value;
 }
 
-Value* ClassGenerator::createBorrowedInterfaceUpcast(
-    Value* value, TypePtr sourceType, TypePtr targetType) {
+Value* ClassGenerator::createBorrowedInterfaceUpcast(Value* value,
+                                                     TypePtr sourceType,
+                                                     TypePtr targetType) {
   if (!value || !targetType || !targetType->isReference()) return value;
   if (!sun::types::areDifferentInterfaces(sourceType, targetType)) return value;
   auto source = sun::types::unwrapRef(sourceType);
@@ -95,8 +96,8 @@ Value* ClassGenerator::createBorrowedInterfaceUpcast(
   Value* view =
       upcastInterface(value, static_cast<InterfaceType*>(source.get()),
                       static_cast<InterfaceType*>(target.get()));
-  auto* storage = ctx.builder->CreateAlloca(view->getType(), nullptr,
-                                            "iface.parent.view");
+  auto* storage =
+      ctx.builder->CreateAlloca(view->getType(), nullptr, "iface.parent.view");
   ctx.builder->CreateStore(view, storage);
   return storage;
 }

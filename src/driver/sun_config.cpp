@@ -488,7 +488,8 @@ SunConfig SunConfig::loadFile(const std::filesystem::path& file,
     root.erase("target");
   }
   auto config = parse(root, file, target);
-  // Config matching ignores vendor and OS version; compilation must retain both.
+  // Config matching ignores vendor and OS version; compilation must retain
+  // both.
   config.targetTriple = sun::support::resolvedTargetTriple(targetTriple).str();
   return config;
 }

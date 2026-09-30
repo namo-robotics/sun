@@ -2,7 +2,6 @@
 // Tests for the module system
 
 #include <gtest/gtest.h>
-#include "driver/package.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -15,6 +14,7 @@
 #include "codegen/codegen.h"
 #include "codegen/codegen_visitor.h"
 #include "driver/execution_utils.h"
+#include "driver/package.h"
 #include "moon_bundling/moon.h"
 #include "moon_bundling/moon_builder.h"
 #include "parsing/lexer.h"
@@ -1088,13 +1088,14 @@ TEST(Modules, config_moon_url_is_fetched_and_imported) {
   {
     std::ofstream out(mainFile);
     out << "manifest { libraries: [\"$URLLIB/lib.moon\"] }\n"
-               "using urllib;\n"
-               "/** Returns the value from the configured library. */\n"
-               "function main() i32 { return seven(); }\n";
+           "using urllib;\n"
+           "/** Returns the value from the configured library. */\n"
+           "function main() i32 { return seven(); }\n";
   }
   {
     std::ofstream out(dir / "sun-config.json");
-    out << "{\"root\":true,\"dependencies\":{\"URLLIB\":{\"moon\":{\"url\":\"file://"
+    out << "{\"root\":true,\"dependencies\":{\"URLLIB\":{\"moon\":{\"url\":"
+           "\"file://"
         << fs::absolute(moonPath).string() << "\",\"hash\":\""
         << sun::driver::packageFileHash(moonPath)
         << "\",\"filename\":\"lib.moon\"}}}}";

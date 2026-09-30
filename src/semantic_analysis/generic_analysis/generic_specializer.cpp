@@ -1175,6 +1175,7 @@ std::shared_ptr<InterfaceType> GenericSpecializer::instantiateGenericInterface(
       method.visibility = methodVisibility(*methodDecl.function);
       method.isConst = methodDecl.isConst;
       method.isUnsafe = methodDecl.function->getProto().isUnsafeMethod();
+      method.canThrow = methodDecl.function->getProto().canThrow();
     }
 
     sema_.interfaces().mergeInterfaceParent(*specializedInterface,
@@ -1196,6 +1197,7 @@ std::shared_ptr<InterfaceType> GenericSpecializer::instantiateGenericInterface(
         method.visibility = member.visibility;
         method.isConst = member.isConst;
         method.isUnsafe = member.isUnsafe;
+        method.canThrow = member.canThrow;
       }
       for (const auto& declaration : genericInfo->AST->getMethods()) {
         if (!declaration.hasDefaultImpl) continue;

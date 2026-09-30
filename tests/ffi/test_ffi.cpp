@@ -1153,7 +1153,8 @@ TEST(Ffi, native_global_and_sun_definition_have_distinct_symbols) {
 // Externs inside a .moon bundle
 // ============================================================================
 
-/** Check bundled native names before optimization and execute the imported wrapper. */
+/** Check bundled native names before optimization and execute the imported
+ * wrapper. */
 TEST(Ffi, extern_symbol_survives_moon_bundling) {
   // A bundle's own symbols carry its hash prefix for isolation. A C extern's
   // name *is* its ABI, so prefixing it would rename the libc symbol out of

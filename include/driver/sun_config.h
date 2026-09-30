@@ -105,8 +105,9 @@ struct SunConfig {
   std::vector<ConfigEntrypoint> entrypoints;         // declared build products
   std::map<std::string, ConfigDependency> dependencies;
   std::vector<ConfigPackage> packages;
-  std::string targetTriple;  // resolved compilation triple, retaining vendor and OS version
-  bool root = false;  // stop the upward search at this file
+  std::string targetTriple;  // resolved compilation triple, retaining vendor
+                             // and OS version
+  bool root = false;         // stop the upward search at this file
 
   /**
    * The merged view of every sun-config.json in startDir and its parents

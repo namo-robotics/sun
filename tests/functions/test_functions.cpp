@@ -671,3 +671,25 @@ TEST(Functions, callable_variable_shadows_direct_function_target) {
   )"),
             42);
 }
+
+/** Constructor arguments accept widening from a stored infallible pointer. */
+TEST(Functions, nonthrowing_pointer_widens_in_constructor) {
+  EXPECT_EQ(executeString(R"(
+    /** Doubles its input without failure. */ function double(x: i32) i32 { return x * 2; }
+    /** Stores a callback that may fail. */
+    class Handler {
+      var callback: function (i32) i32 throws IError;
+      /** Stores the callback. */
+      init(callback: function (i32) i32 throws IError) { this.callback = callback; }
+      /** Invokes the stored callback. */
+      method call(x: i32) i32 throws IError { return this.callback(x); }
+    }
+    /** Widens a stored pointer and handles the resulting error contract. */
+    function main() i32 {
+      var callback: function (i32) i32 = double;
+      var handler = Handler(callback);
+      try { return handler.call(21); } catch (error: ref IError) { return 0; }
+    }
+  )"),
+            42);
+}

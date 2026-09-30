@@ -226,7 +226,8 @@ void InterfaceAnalyzer::mergeInterfaceParent(
               *resolver_.substituteTypeParameters(inherited.returnType)) ||
           local.visibility != inherited.visibility ||
           local.isConst != inherited.isConst ||
-          local.isUnsafe != inherited.isUnsafe)
+          local.isUnsafe != inherited.isUnsafe ||
+          (local.canThrow && !inherited.canThrow))
         logAndThrowError("Interface method '" + local.name +
                              "' changes its inherited contract",
                          definition.getLocation());
@@ -404,6 +405,12 @@ void InterfaceAnalyzer::validateInterfaceImplementation(
                                "' cannot implement a safe interface method",
                            classDef.getLocation());
         }
+        if (classMethodInfo->canThrow && !interfaceMethod.canThrow) {
+          logSemanticError(
+              "throwing method '" + interfaceMethod.name +
+                  "' cannot implement a non-throwing interface method",
+              classDef.getLocation());
+        }
         // Verify return type matches. A class return where the interface
         // declares an interface type it implements is accepted (IIterable's
         // iter() returns the concrete iterator), but such a method cannot be
@@ -566,6 +573,7 @@ void InterfaceAnalyzer::validateInterfaceImplementation(
           method.visibility = interfaceMethod.visibility;
           method.isConst = interfaceMethod.isConst;
           method.isUnsafe = interfaceMethod.isUnsafe;
+          method.canThrow = interfaceMethod.canThrow;
 
           // Register the source method name as a function
           std::string methodNameForScope = interfaceMethod.name;
@@ -577,6 +585,7 @@ void InterfaceAnalyzer::validateInterfaceImplementation(
           FunctionInfo methodInfo{
               interfaceMethod.returnType, methodParamTypes, {}};
           methodInfo.declarationId = method.declarationId;
+          methodInfo.canThrow = interfaceMethod.canThrow;
           ctx_.currentScope().declareFunction(methodNameForScope, methodInfo,
                                               ctx_.currentLocation());
         } else {
@@ -741,6 +750,7 @@ void InterfaceAnalyzer::prepareInterfaceShape(
         sun::semantic_analysis::methodVisibility(*methodDecl.function);
     method.isConst = methodDecl.isConst;
     method.isUnsafe = methodDecl.function->getProto().isUnsafeMethod();
+    method.canThrow = proto.canThrow();
   }
 
   mergeInterfaceParent(*interfaceType, interfaceDef);
@@ -775,6 +785,7 @@ void InterfaceAnalyzer::analyzeInterfaceDefinition(
     member.visibility = method.visibility;
     member.isConst = method.isConst;
     member.isUnsafe = method.isUnsafe;
+    member.canThrow = method.canThrow;
   }
   // Enter Interface scope to contain method scopes
   ctx_.enterInterfaceScope(qualifiedInterface);
@@ -821,8 +832,8 @@ TypePtr InterfaceAnalyzer::resolveInterfaceMemberType(
           "implementation",
           memberAccess.getLocation());
     memberAccess.setTargetDeclarationId(method->declarationId);
-    return Types::Function(method->returnType, method->paramTypes, false,
-                           method->isUnsafe);
+    return Types::Function(method->returnType, method->paramTypes,
+                           method->canThrow, method->isUnsafe);
   }
 
   logAndThrowError("Unknown member '" + memberName + "' on interface '" +

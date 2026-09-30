@@ -129,10 +129,13 @@ TEST(Modules_ProtoImport, manifest_unknown_key_names_protos_in_error) {
 TEST(Modules_ProtoImport, manifest_moon_url_requires_config) {
   std::unique_ptr<BlockExprAST> ast;
   try {
-    parseManifest(R"(manifest { libraries: [{ url: "https://example.com/lib.moon" }] })", ast);
+    parseManifest(
+        R"(manifest { libraries: [{ url: "https://example.com/lib.moon" }] })",
+        ast);
     FAIL() << "expected migration diagnostic";
   } catch (const std::exception& error) {
-    EXPECT_NE(std::string(error.what()).find("sun-config.json"), std::string::npos);
+    EXPECT_NE(std::string(error.what()).find("sun-config.json"),
+              std::string::npos);
   }
 }
 

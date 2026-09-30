@@ -3214,7 +3214,10 @@ std::vector<ManifestMoonDependency> Parser::parseManifestMoons() {
         if (fieldName == "path") {
           dep.path = value;
         } else if (fieldName == "url") {
-          parsingError("manifest library URLs are no longer supported; move the URL and hash to sun-config.json dependencies and use a local .moon path");
+          parsingError(
+              "manifest library URLs are no longer supported; move the URL and "
+              "hash to sun-config.json dependencies and use a local .moon "
+              "path");
         } else if (fieldName == "hash") {
           dep.hash = value;
         } else if (fieldName == "rename") {
@@ -4278,6 +4281,17 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
       if (curTok.kind != TokenKind::BRACE_OPEN &&
           curTok.kind != TokenKind::SEMI_COLON) {
         retType = parseTypeAnnotation();
+      }
+
+      if (curTok.kind == TokenKind::THROWS) {
+        getNextToken();  // eat 'throws'
+        if (curTok.kind != TokenKind::IDENTIFIER ||
+            curTok.getIdentifier() != "IError")
+          parsingError("expected 'IError' after 'throws'");
+        getNextToken();  // eat 'IError'
+        retType->canError = true;
+        retType->span.setEnd(prevTok_.end.line, prevTok_.end.column,
+                             prevTok_.end.offset);
       }
 
       // Signature span ends at the last token before the body/semicolon

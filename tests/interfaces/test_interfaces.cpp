@@ -1587,7 +1587,8 @@ TEST(Interfaces, owning_ancestor_assignment_is_rejected) {
                                 "cannot own a value");
 }
 
-/** Borrowing concrete and erased objects must leave destruction to their owners. */
+/** Borrowing concrete and erased objects must leave destruction to their
+ * owners. */
 TEST(Interfaces, shared_table_borrows_preserve_ownership) {
   EXPECT_EQ(executeString(R"(
     var dropped: i32 = 0;
@@ -1637,8 +1638,8 @@ TEST(Interfaces, shared_table_borrows_preserve_ownership) {
 /** Borrowed views share static tables without allocating or freeing objects. */
 TEST(Interfaces, shared_dispatch_table_layout) {
   sun::driver::initTestEnvironment();
-  auto driver = sun::driver::Driver::createForAOT(
-      "shared_interface_tables", "", false, false);
+  auto driver = sun::driver::Driver::createForAOT("shared_interface_tables", "",
+                                                  false, false);
   driver->compileString(R"(
     /** Supplies the base operation. */
     interface Base {
@@ -1679,8 +1680,8 @@ TEST(Interfaces, shared_dispatch_table_layout) {
   llvm::GlobalVariable* childTable = nullptr;
   for (auto& global : driver->getModule().globals()) {
     if (!global.hasInitializer()) continue;
-    auto* entries = llvm::dyn_cast_or_null<llvm::ConstantStruct>(
-        global.getInitializer());
+    auto* entries =
+        llvm::dyn_cast_or_null<llvm::ConstantStruct>(global.getInitializer());
     if (!entries || entries->getNumOperands() == 0 ||
         !llvm::isa<llvm::Function>(entries->getOperand(0)))
       continue;
@@ -1791,4 +1792,169 @@ TEST(Interfaces, interface_return_contract_cannot_dispatch) {
     /** Supplies an entry point. */ function main() i32 { return 0; }
   )"),
       "can only be called on a concrete implementation");
+}
+
+/** Throwing interface calls reach a local catch through the vtable. */
+TEST(Interfaces, throwing_method_dispatch) {
+  EXPECT_EQ(executeString(R"(
+    /** Describes a fallible operation. */
+    interface Operation { /** Runs the operation. */ method run() void throws IError; }
+    /** Identifies a failed operation. */
+    class Failure implements IError {
+      /** Creates the error. */ init() {}
+      /** Returns the error code. */ method code() i32 { return 42; }
+      /** Describes the error. */ method message() static_ptr<u8> { return "failed"; }
+    }
+    /** Always fails. */
+    class Task implements Operation {
+      /** Creates the task. */ init() {}
+      /** Reports failure. */ method run() void throws IError { throw Failure(); }
+    }
+    /** Catches an error from an indirect call. */
+    function invoke(task: ref Operation) i32 {
+      try { task.run(); } catch (error: ref IError) { return error.code(); }
+      return 0;
+    }
+    /** Exercises interface dispatch. */
+    function main() i32 { var task = Task(); return invoke(task); }
+  )"),
+            42);
+}
+
+/** Generic inherited defaults preserve throwing contracts and propagation. */
+TEST(Interfaces, throwing_generic_inherited_default) {
+  EXPECT_EQ(executeString(R"(
+    /** Provides a fallible value. */
+    interface Source<T> {
+      /** Obtains the value. */ method read() T throws IError;
+      /** Forwards the operation. */ method forward() T throws IError { return this.read(); }
+    }
+    /** Inherits the specialized contract. */ interface Child extends Source<i32> {}
+    /** Identifies a failed read. */
+    class Failure implements IError {
+      /** Creates the error. */ init() {}
+      /** Returns the error code. */ method code() i32 { return 42; }
+      /** Describes the error. */ method message() static_ptr<u8> { return "failed"; }
+    }
+    /** Uses an inherited default. */
+    class Reader implements Child {
+      /** Creates the reader. */ init() {}
+      /** Reports failure. */ method read() i32 throws IError { throw Failure(); }
+    }
+    /** Catches failure through an inherited vtable slot. */
+    function invoke(reader: ref Child) i32 {
+      try { return reader.forward(); } catch (error: ref IError) { return error.code(); }
+    }
+    /** Exercises the default on concrete and erased receivers. */
+    function main() i32 {
+      var reader = Reader();
+      try { return reader.forward(); } catch (error: ref IError) { return invoke(reader); }
+    }
+  )"),
+            42);
+}
+
+/** Infallible implementations may satisfy fallible interface requirements. */
+TEST(Interfaces, nonthrowing_method_implements_throwing_contract) {
+  EXPECT_EQ(executeString(R"(
+    /** Permits a failing implementation. */
+    interface Source { /** Reads a value. */ method read() i32 throws IError; }
+    /** Narrows the inherited error contract. */
+    interface Child extends Source { /** Reads without failure. */ method read() i32; }
+    /** Always produces a value. */
+    class Reader implements Child {
+      /** Creates the reader. */ init() {}
+      /** Returns the value. */ method read() i32 { return 42; }
+    }
+    /** Directly satisfies the fallible requirement without throwing. */
+    class DirectReader implements Source {
+      /** Creates the reader. */ init() {}
+      /** Returns the value. */ method read() i32 { return 21; }
+    }
+    /** Calls through the fallible parent contract. */
+    function invoke(reader: ref Source) i32 throws IError { return reader.read(); }
+    /** Handles the declared possibility of failure. */
+    function main() i32 {
+      var reader = Reader();
+      var direct = DirectReader();
+      try { return invoke(reader) + invoke(direct); } catch (error: ref IError) { return 0; }
+    }
+  )"),
+            63);
+}
+
+/** Interface calls require an error handler even without a concrete receiver.
+ */
+TEST(Interfaces, throwing_method_requires_error_handling) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    /** Describes a fallible operation. */
+    interface Operation { /** Runs the operation. */ method run() void throws IError; }
+    /** Omits the required handler. */
+    function invoke(task: ref Operation) void { task.run(); }
+    /** Supplies an entry point. */ function main() i32 { return 0; }
+  )"),
+                                "must be in a try block");
+}
+
+/** Implementations cannot add failure to an infallible interface contract. */
+TEST(Interfaces, throwing_method_cannot_implement_nonthrowing_contract) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
+    /** Promises an infallible operation. */
+    interface Operation { /** Runs without failure. */ method run() void; }
+    /** Attempts to weaken the contract. */
+    class Task implements Operation {
+      /** Creates the task. */ init() {}
+      /** Declares possible failure. */ method run() void throws IError {}
+    }
+    /** Supplies an entry point. */ function main() i32 { return 0; }
+  )"),
+      "cannot implement a non-throwing interface method");
+}
+
+/** Child interfaces cannot add failure to an inherited method. */
+TEST(Interfaces, throwing_override_cannot_weaken_parent_contract) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    /** Promises an infallible operation. */
+    interface Parent { /** Runs without failure. */ method run() void; }
+    /** Attempts to weaken the inherited promise. */
+    interface Child extends Parent { /** Adds possible failure. */ method run() void throws IError; }
+    /** Supplies an entry point. */ function main() i32 { return 0; }
+  )"),
+                                "changes its inherited contract");
+}
+
+/** Interface throws clauses require the same error type as ordinary methods. */
+TEST(Interfaces, throwing_method_rejects_invalid_error_type) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    /** Declares an invalid error contract. */
+    interface Operation { /** Uses an unsupported error type. */ method run() void throws i32; }
+    /** Supplies an entry point. */ function main() i32 { return 0; }
+  )"),
+                                "expected 'IError' after 'throws'");
+}
+
+/** Default bodies must handle calls to fallible interface requirements. */
+TEST(Interfaces, throwing_call_in_nonthrowing_default_is_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    /** Defines a fallible requirement and an invalid default. */
+    interface Operation {
+      /** Runs the operation. */ method run() void throws IError;
+      /** Omits the required handler. */ method forward() void { this.run(); }
+    }
+    /** Supplies an entry point. */ function main() i32 { return 0; }
+  )"),
+                                "must be in a try block");
+}
+
+/** Generic callers must honor the error contract on their type constraint. */
+TEST(Interfaces, throwing_constrained_method_requires_error_handling) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    /** Describes a fallible operation. */
+    interface Operation { /** Runs the operation. */ method run() void throws IError; }
+    /** Omits the required handler in a generic body. */
+    function invoke<T: Operation>(task: ref T) void { task.run(); }
+    /** Supplies an entry point. */ function main() i32 { return 0; }
+  )"),
+                                "must be in a try block");
 }

@@ -458,7 +458,8 @@ TEST(Modules_SunConfig, preserves_compilation_target_when_matching_settings) {
   const auto linuxConfig =
       SunConfig::loadFile(dir / "sun-config.json", "x86_64-pc-linux-gnu");
   EXPECT_EQ(linuxConfig.targetTriple, "x86_64-pc-linux-gnu");
-  EXPECT_EQ(linuxConfig.pathVariables.at("LIBS"), (dir / "linux-libs").string());
+  EXPECT_EQ(linuxConfig.pathVariables.at("LIBS"),
+            (dir / "linux-libs").string());
   const auto macConfig =
       SunConfig::loadFile(dir / "sun-config.json", "arm64-apple-macosx14.0.0");
   EXPECT_EQ(

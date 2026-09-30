@@ -255,7 +255,8 @@ int compileEntrypoint(const CompileJob& job) {
                      computeJobInputHash(job, /*forTests=*/true), built) &&
           !built->hasExecutable) {
         if (job.requireProductionArtifact)
-          sun::support::logAndThrowError("packaged entrypoint has no production executable: " + inputFile);
+          sun::support::logAndThrowError(
+              "packaged entrypoint has no production executable: " + inputFile);
         sun::support::messageStream("info")
             << "Up to date: " << getTestOutputName(job) << "\n";
         return 0;
@@ -295,7 +296,8 @@ int compileEntrypoint(const CompileJob& job) {
     bool success = true;
     if (!emitProduction) {
       if (job.requireProductionArtifact)
-        sun::support::logAndThrowError("packaged entrypoint has no production executable: " + inputFile);
+        sun::support::logAndThrowError(
+            "packaged entrypoint has no production executable: " + inputFile);
       sun::support::messageStream("info")
           << "No main() found; emitting only the test binary\n";
     } else if (job.emitObjOnly) {

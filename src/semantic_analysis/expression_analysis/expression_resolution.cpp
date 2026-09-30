@@ -365,8 +365,8 @@ TypePtr ExpressionAnalyzer::resolveTypeParameterMemberType(
         const InterfaceMethod* method = ctx_.accessibleMethod(
             *ifaceType, memberName, memberAccess.getLocation());
         if (method)
-          return Types::Function(method->returnType, method->paramTypes, false,
-                                 method->isUnsafe);
+          return Types::Function(method->returnType, method->paramTypes,
+                                 method->canThrow, method->isUnsafe);
         logAndThrowError("Unknown member '" + memberName + "' on interface '" +
                              ifaceType->toDisplayString() + "'",
                          memberAccess.getLocation());
@@ -395,8 +395,8 @@ TypePtr ExpressionAnalyzer::resolveTypeParameterMemberType(
       const InterfaceMethod* method = ctx_.accessibleMethod(
           *ifaceType, memberName, memberAccess.getLocation());
       if (method)
-        return Types::Function(method->returnType, method->paramTypes, false,
-                               method->isUnsafe);
+        return Types::Function(method->returnType, method->paramTypes,
+                               method->canThrow, method->isUnsafe);
       logAndThrowError("Unknown member '" + memberName +
                            "' on type parameter '" + param->getName() +
                            "', which is constrained to interface '" +

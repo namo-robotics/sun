@@ -115,7 +115,8 @@ static DiagnosticsCache diagnosticsCache;
 // Manages entrypoint files containing manifest blocks. When a file covered by
 // a manifest is opened, the LSP uses the full manifest context for compilation.
 
-/** Current editor buffers, used to resolve manifests and analyze unsaved edits. */
+/** Current editor buffers, used to resolve manifests and analyze unsaved edits.
+ */
 static std::map<std::string, std::string> openSourceOverrides;
 
 /**
@@ -158,7 +159,8 @@ class EntrypointManager {
         entrypoints_.push_back(std::move(*config));
       }
     }
-    // A manifest file uses its own context even if another manifest includes it.
+    // A manifest file uses its own context even if another manifest includes
+    // it.
     for (size_t i = 0; i < entrypoints_.size(); ++i) {
       fileToEntrypoint_[entrypoints_[i].entrypointPath] = i;
     }
@@ -218,7 +220,8 @@ class EntrypointManager {
     try {
       auto buffer = openSourceOverrides.find(entrypointPath.string());
       if (buffer == openSourceOverrides.end()) {
-        resolved = ManifestProcessor::fromEntrypointFile(entrypointPath.string());
+        resolved =
+            ManifestProcessor::fromEntrypointFile(entrypointPath.string());
       } else {
         auto parser = sun::parsing::Parser::createStringParser(buffer->second);
         parser.setFilePath(entrypointPath.string());
@@ -278,9 +281,10 @@ static std::map<std::string, sun::driver::ConfigEntrypoint>
 
 /**
  * Re-read the configured sun-config files and hand the manager the union of
- * their entrypoints, explicitly configured ones, and open manifest files (configs
- * first, so a file covered by both maps to the config's entrypoint). A config that
- * fails to parse is skipped: a bad editor setting must not kill the server.
+ * their entrypoints, explicitly configured ones, and open manifest files
+ * (configs first, so a file covered by both maps to the config's entrypoint). A
+ * config that fails to parse is skipped: a bad editor setting must not kill the
+ * server.
  */
 static void refreshEntrypoints() {
   std::vector<std::string> combined;
@@ -320,7 +324,7 @@ static bool applyPathVariables(const llvm::json::Object& config) {
   for (const auto& [name, value] : *vars) {
     if (auto str = value.getAsString()) {
       ManifestProcessor::setDefaultPathVariable(llvm::StringRef(name).str(),
-                                         str->str());
+                                                str->str());
     }
   }
   return true;
@@ -940,9 +944,8 @@ llvm::json::Array analyzeDiagnostics(const OpenDocument& document) {
         entrypointManager.findEntrypointForFile(document.path);
 
     if (entrypoint && !entrypoint->sunFiles.empty()) {
-      driver->compileFiles(
-          entrypoint->sunFiles, entrypoint->moonImports, entrypoint->protoFiles,
-          openSourceOverrides);
+      driver->compileFiles(entrypoint->sunFiles, entrypoint->moonImports,
+                           entrypoint->protoFiles, openSourceOverrides);
     } else {
       // Single-file compilation (existing behavior)
       driver->compileString(document.text, document.path);

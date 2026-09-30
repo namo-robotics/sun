@@ -8,7 +8,8 @@
 // only a builder and a data layout, so they hold no codegen state.
 //
 // The alignment helpers are thin wrappers over sun::semantic_analysis
-// (semantic_analysis/class_analysis/packed_layout.h) that supply the module's DataLayout.
+// (semantic_analysis/class_analysis/packed_layout.h) that supply the module's
+// DataLayout.
 
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Value.h>

@@ -117,6 +117,30 @@ interface IShape {
 function measure(s: const ref IShape) f64 { return s.area(); }
 ```
 
+## Throwing Methods
+
+An interface method can declare `throws IError`, including a method with a
+default implementation:
+
+```sun
+/** Describes an operation that may fail. */
+interface Operation {
+    /** Runs the operation or reports an error. */
+    method run() void throws IError;
+}
+
+/** Propagates an error from interface dispatch. */
+function invoke(operation: ref Operation) void throws IError {
+    operation.run();
+}
+```
+
+Calls through the interface require a `try` block or an enclosing function
+with `throws IError`. An implementation may be non-throwing, but a throwing
+method cannot implement a non-throwing requirement. A child interface may
+remove `throws IError` from an inherited method, but cannot add it to a
+non-throwing method. See [Error Handling](/errors).
+
 ## Interface Fields
 
 Interfaces can declare fields that implementing classes must have:
