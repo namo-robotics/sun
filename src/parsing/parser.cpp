@@ -1445,6 +1445,7 @@ bool Parser::isTypeToken(TokenKind kind) {
     case TokenKind::TYPE_BOOL:
     case TokenKind::TYPE_VOID:
     case TokenKind::TYPE_CHAR:
+    case TokenKind::ARRAY:
     case TokenKind::PTR:
     case TokenKind::RAW_PTR:
     case TokenKind::STATIC_PTR:
