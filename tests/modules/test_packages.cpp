@@ -191,7 +191,8 @@ TEST_F(Packages, RoundTripAndResourceRebuild) {
             sun::driver::packageFileHash(plans[0].output / "bin/app"));
 }
 
-/** Explicit single-entrypoint packages detect unsafe resources and conflicts. */
+/** Explicit single-entrypoint packages detect unsafe resources and conflicts.
+ */
 TEST_F(Packages, SingleEntrypointAndConflicts) {
   put(dir / "asset", "data");
   put(dir / "app", "binary");
@@ -214,17 +215,18 @@ TEST_F(Packages, SingleEntrypointAndConflicts) {
 /** Resource fields are rejected on both active and disabled entrypoints. */
 TEST_F(Packages, RejectEntrypointResources) {
   EXPECT_THROW(
-      config(R"({"entrypoints":[{"name":"app","path":"main.sun","resources":[]}]})"),
+      config(
+          R"({"entrypoints":[{"name":"app","path":"main.sun","resources":[]}]})"),
       SunError);
   EXPECT_THROW(
-      config(R"({"entrypoints":[{"name":"app","enabled":false,"resources":[]}]})"),
+      config(
+          R"({"entrypoints":[{"name":"app","enabled":false,"resources":[]}]})"),
       SunError);
 }
 
 /** Naming an entrypoint alone does not request a distribution. */
 TEST_F(Packages, NoImplicitPackages) {
-  auto cfg = config(
-      R"({"entrypoints":[{"name":"app","path":"main.sun"}]})");
+  auto cfg = config(R"({"entrypoints":[{"name":"app","path":"main.sun"}]})");
   std::vector<sun::driver::PackageArtifact> artifacts{
       {"app", (dir / "app").string(), false}};
   EXPECT_TRUE(sun::driver::planPackages(cfg, artifacts).empty());

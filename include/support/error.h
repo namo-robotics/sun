@@ -7,8 +7,8 @@
 #include <vector>
 
 #include "support/position.h"
-#include "support/terminal.h"
 #include "support/source_manager.h"
+#include "support/terminal.h"
 
 /** Provides source locations, diagnostics, and shared compiler utilities. */
 namespace sun::support {
@@ -38,9 +38,9 @@ inline std::string formatDiagnostic(const std::string& label,
   const std::string blue = colors ? sun::support::blue : "";
   const std::string cyan = colors ? sun::support::cyan : "";
   const std::string red = colors ? sun::support::red : "";
-  std::string out = messagePrefix(label == "Note" ? "note" : "error",
-                                  llvm::errs()) +
-                    (colors ? labelColor : "") + label + reset;
+  std::string out =
+      messagePrefix(label == "Note" ? "note" : "error", llvm::errs()) +
+      (colors ? labelColor : "") + label + reset;
   if (location) {
     out += ": " + std::string(blue) + location->toString() + reset;
   }

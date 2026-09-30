@@ -19,7 +19,8 @@ namespace sun::cli {
 /** Applies consuming-project variables during a Git entrypoint build only. */
 class DependencyPathVariables {
  public:
-  /** Saves the previous overrides and selects this entrypoint's project values. */
+  /** Saves the previous overrides and selects this entrypoint's project values.
+   */
   DependencyPathVariables(const sun::driver::SunConfig& config,
                           const sun::driver::ConfigEntrypoint& entry);
   /** Restores the overrides that were active before this entrypoint. */

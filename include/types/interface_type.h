@@ -33,6 +33,7 @@ struct InterfaceMethod {
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;  // Excludes implicit 'this' parameter
   bool hasDefaultImpl;    // true if this method has a default implementation
+  bool canThrow = false;  // Calls may unwind and require error handling.
   bool isUnsafe = false;  // Calls require an unsafe block.
   bool isConst = false;   // `const function`: does not change `this`
   sun::semantic_analysis::Visibility visibility =

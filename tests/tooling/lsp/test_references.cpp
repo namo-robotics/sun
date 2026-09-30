@@ -436,11 +436,13 @@ function main() i32 {
     }
 }
 )";
-  EXPECT_TRUE(refersTo(source, "err.code() +", true,
-                       {{"err: ref IError"}, {"err.code() +"}, {"err.code();"}}));
+  EXPECT_TRUE(
+      refersTo(source, "err.code() +", true,
+               {{"err: ref IError"}, {"err.code() +"}, {"err.code();"}}));
   // The cursor on the binding's own declaration
-  EXPECT_TRUE(refersTo(source, "err: ref IError", true,
-                       {{"err: ref IError"}, {"err.code() +"}, {"err.code();"}}));
+  EXPECT_TRUE(
+      refersTo(source, "err: ref IError", true,
+               {{"err: ref IError"}, {"err.code() +"}, {"err.code();"}}));
   EXPECT_TRUE(
       refersTo(source, "Oops();", true, {{"Oops implements"}, {"Oops();"}}));
 }

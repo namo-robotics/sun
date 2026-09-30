@@ -89,7 +89,7 @@ struct ClassAllocation {
 struct CodegenScope {
   std::map<DeclarationId, llvm::AllocaInst*> variables;
   llvm::Function* endCatch = nullptr;  // Releases the runtime-owned exception.
-  bool isFunctionBoundary = false;  // True for scopes marking function entry
+  bool isFunctionBoundary = false;     // True for scopes marking function entry
   bool hasDebugScope = false;  // True when a DILexicalBlock was opened with it
   std::vector<OwnedAllocation> ownedAllocations;
   std::vector<ClassAllocation> classAllocations;

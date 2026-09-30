@@ -19,10 +19,10 @@ namespace sun::ast {
  * Represents: catch (name: ref Type) { body }
  */
 struct CatchClause {
-  std::string bindingName;                    // variable name for error binding
+  std::string bindingName;  // variable name for error binding
   std::optional<TypeAnnotation>
-      bindingType;  // type annotation (e.g., ref IError)
-  std::unique_ptr<BlockExprAST> body;         // the catch body
+      bindingType;                     // type annotation (e.g., ref IError)
+  std::unique_ptr<BlockExprAST> body;  // the catch body
 
   // Filled in by semantic analysis, consumed by codegen for typed matching:
   bool isCatchAll = false;  // true for `catch (e: ref IError)` (matches any)

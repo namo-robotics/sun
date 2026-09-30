@@ -430,7 +430,8 @@ TEST_F(TypeAnalysis_SemanticPipeline, PreparationPassesOptionallySkipImports) {
             1u);
 }
 
-/** Lifetime scopes restore outer bindings and receiver permission after errors. */
+/** Lifetime scopes restore outer bindings and receiver permission after errors.
+ */
 TEST_F(TypeAnalysis_SemanticPipeline, LifetimeScopesRestoreAfterErrors) {
   using sun::semantic_analysis::AnalysisResults;
   using sun::semantic_analysis::SemanticContext;
@@ -448,13 +449,15 @@ TEST_F(TypeAnalysis_SemanticPipeline, LifetimeScopesRestoreAfterErrors) {
     EXPECT_EQ(context.activeLifetimeNames(),
               (std::vector<std::string>{"outer"}));
     EXPECT_TRUE(context.allowsThisLifetime());
-    EXPECT_THROW({
-      SemanticContext::LifetimeScopeGuard global(context, false, true);
-      EXPECT_TRUE(context.activeLifetimeNames().empty());
-      EXPECT_FALSE(context.allowsThisLifetime());
-      context.declareLifetime("global");
-      sun::support::logAndThrowError("initializer analysis failed");
-    }, sun::support::SunError);
+    EXPECT_THROW(
+        {
+          SemanticContext::LifetimeScopeGuard global(context, false, true);
+          EXPECT_TRUE(context.activeLifetimeNames().empty());
+          EXPECT_FALSE(context.allowsThisLifetime());
+          context.declareLifetime("global");
+          sun::support::logAndThrowError("initializer analysis failed");
+        },
+        sun::support::SunError);
     EXPECT_EQ(context.activeLifetimeNames(),
               (std::vector<std::string>{"outer"}));
     EXPECT_TRUE(context.allowsThisLifetime());

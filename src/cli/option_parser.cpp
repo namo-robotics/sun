@@ -215,8 +215,10 @@ std::optional<EarlyExit> validateBuildRunOptions(
         "Error: --static only applies when linking; use it "
         "with -c\n");
   }
-  if (options.refreshSources && (!options.compileMode || !options.configInput)) {
-    return makeFailure("Error: --refresh-sources requires -c sun-config.json\n");
+  if (options.refreshSources &&
+      (!options.compileMode || !options.configInput)) {
+    return makeFailure(
+        "Error: --refresh-sources requires -c sun-config.json\n");
   }
   if (options.forceRebuild && !options.compileMode && !options.emitMoon) {
     return makeFailure(

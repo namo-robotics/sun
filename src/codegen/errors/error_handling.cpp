@@ -216,7 +216,7 @@ Value* ErrorGenerator::codegen(const sun::ast::ThrowExprAST& expr) {
   const DataLayout& DL = module->getDataLayout();
   auto* i64Ty = llvm::Type::getInt64Ty(ctx.getContext());
   auto* i8Ty = llvm::Type::getInt8Ty(ctx.getContext());
-  uint64_t idSize = DL.getTypeAllocSize(i64Ty);   // header: typeId
+  uint64_t idSize = DL.getTypeAllocSize(i64Ty);  // header: typeId
   uint64_t fatOffset = idSize;
 
   auto storeAt = [&](Value* base, uint64_t off, Value* val) {

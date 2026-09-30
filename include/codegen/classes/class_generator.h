@@ -180,8 +180,8 @@ class ClassGenerator {
    * conversions report an error.
    */
   llvm::Value* createBorrowedInterfaceUpcast(llvm::Value* value,
-                                               TypePtr sourceType,
-                                               TypePtr targetType);
+                                             TypePtr sourceType,
+                                             TypePtr targetType);
 
   // ---------------------------------------------------------------
 

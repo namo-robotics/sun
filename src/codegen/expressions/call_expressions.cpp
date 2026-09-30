@@ -562,13 +562,8 @@ Value* CodegenVisitor::codegenInterfaceMethodCall(
     return nullptr;
   }
 
-  // Make the indirect call. Interface-dispatched methods are not currently
-  // marked as throwing (InterfaceMethod carries no canThrow), so this does not
-  // route through a local landing pad — a limitation only for throwing methods
-  // invoked via an interface value, which the stdlib/tests don't exercise.
-  Value* result =
-      errors.emitPossiblyThrowingCall(funcType, funcPtr, argValues,
-                                      /*canThrow=*/false, "iface.call");
+  Value* result = errors.emitPossiblyThrowingCall(
+      funcType, funcPtr, argValues, signature.canThrow(), "iface.call");
   return materializeStructReturn(result);
 }
 

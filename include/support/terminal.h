@@ -1,9 +1,9 @@
 #pragma once
 
+#include <llvm/Support/raw_ostream.h>
+
 #include <cstdlib>
 #include <string>
-
-#include <llvm/Support/raw_ostream.h>
 
 /** Formats messages written by the compiler and its command-line tools. */
 namespace sun::support {
@@ -20,7 +20,7 @@ inline std::string messagePrefix(const std::string& level,
                                  llvm::raw_ostream& stream) {
   std::string prefix = "[sun][" + level + "]:";
   if (terminalColors(stream)) {
-    const char* color = level == "error" ? "\033[1;31m"
+    const char* color = level == "error"     ? "\033[1;31m"
                         : level == "warning" ? "\033[1;33m"
                                              : "\033[36m";
     prefix = color + prefix + "\033[0m";

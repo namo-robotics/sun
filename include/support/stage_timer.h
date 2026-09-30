@@ -55,10 +55,11 @@ class StageTimings {
     const std::string prefix = messagePrefix("info", llvm::errs());
     std::fprintf(stderr, "%sStage timings\n", prefix.c_str());
     for (const auto& [name, ms] : totals) {
-      std::fprintf(stderr, "%s  %-16s %8.2f ms  %5.1f%%\n", prefix.c_str(), name.c_str(), ms,
-                   100.0 * ms / total);
+      std::fprintf(stderr, "%s  %-16s %8.2f ms  %5.1f%%\n", prefix.c_str(),
+                   name.c_str(), ms, 100.0 * ms / total);
     }
-    std::fprintf(stderr, "%s  %-16s %8.2f ms\n", prefix.c_str(), "total", total);
+    std::fprintf(stderr, "%s  %-16s %8.2f ms\n", prefix.c_str(), "total",
+                 total);
     entries().clear();
   }
 

@@ -453,9 +453,9 @@ CallAnalyzer::CalleeResolution CallAnalyzer::resolveMemberCallee(
       ctx_.requireAccessible(methodRef(interface, *selected),
                              memberAccess.getLocation());
       memberAccess.setTargetDeclarationId(selected->declarationId);
-      memberAccess.setResolvedType(Types::Function(selected->returnType,
-                                                   selected->paramTypes, false,
-                                                   selected->isUnsafe));
+      memberAccess.setResolvedType(
+          Types::Function(selected->returnType, selected->paramTypes,
+                          selected->canThrow, selected->isUnsafe));
       out.receiverImmutable = sema_.expressions().checkMethodReceiver(
           *memberAccess.getObject(), selected->name, selected->isConst, false,
           memberAccess.getLocation());

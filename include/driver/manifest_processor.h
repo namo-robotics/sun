@@ -3,9 +3,10 @@
 // paths through local, configured and installed directories, and split
 // the entries into .sun files, .moon imports and .proto schemas. Moon
 // entries always name local .moon files. Configured dependencies are fetched
-// lazily when their directory variables are used. Entries may reference path variables
-// ("$LIBS/util.moon"), defined by --path-var (which wins), the nearest sun-config.json,
-// project / language-server defaults, or the environment.
+// lazily when their directory variables are used. Entries may reference path
+// variables
+// ("$LIBS/util.moon"), defined by --path-var (which wins), the nearest
+// sun-config.json, project / language-server defaults, or the environment.
 
 #pragma once
 
@@ -85,8 +86,8 @@ class ManifestProcessor {
    * Replace every $NAME in a manifest entry with the variable's value —
    * explicit --path-var definitions first, then the consuming project's Git
    * overrides, then the source config's pathVariables,
-   * project / language-server defaults, then the environment. Throws SunError for a variable
-   * defined nowhere.
+   * project / language-server defaults, then the environment. Throws SunError
+   * for a variable defined nowhere.
    */
   static std::string expandPathVariables(const std::string& input,
                                          const SunConfig* config = nullptr);

@@ -13,16 +13,16 @@
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/TargetParser/Host.h>
 #include <llvm/TargetParser/Triple.h>
-
-#include <cstdlib>
-#include <cstdio>
 #include <sys/wait.h>
 
-#include "support/terminal.h"
+#include <cstdio>
+#include <cstdlib>
 #include <optional>
 #include <string>
 #include <system_error>
 #include <vector>
+
+#include "support/terminal.h"
 
 /** Coordinates compilation, dependency loading, linking, and program execution.
  */
@@ -77,7 +77,8 @@ inline bool haveTool(const std::string& tool) {
  */
 inline llvm::Triple effectiveLinkTriple(const std::string& targetTriple) {
   return llvm::Triple(llvm::Triple::normalize(
-      targetTriple.empty() ? llvm::sys::getDefaultTargetTriple() : targetTriple));
+      targetTriple.empty() ? llvm::sys::getDefaultTargetTriple()
+                           : targetTriple));
 }
 
 /**
@@ -404,8 +405,9 @@ inline bool linkExecutable(const std::string& objectPath,
     size_t end = output.find('\n', start);
     std::string line = output.substr(start, end - start);
     const char* level = line.find("warning:") != std::string::npos ? "warning"
-                        : line.find("note:") != std::string::npos ? "note"
-                        : result != 0 ? "error" : "info";
+                        : line.find("note:") != std::string::npos  ? "note"
+                        : result != 0                              ? "error"
+                                                                   : "info";
     sun::support::logMessage(level, line);
     if (end == std::string::npos) break;
     start = end + 1;
