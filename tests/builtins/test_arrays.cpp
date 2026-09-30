@@ -511,22 +511,30 @@ TEST(Builtins_Arrays, named_size_declared_after_its_uses) {
   EXPECT_EQ(value, 5 + 8);
 }
 
-TEST(Builtins_Arrays, named_size_inside_a_generic_type_argument) {
-  auto value = executeString(R"(
+/** Executes an array specialization with both literal and named sizes. */
+TEST(Builtins_Arrays, array_size_inside_a_generic_type_argument) {
+  for (const auto* size : {"3", "SIZE"}) {
+    SCOPED_TRACE(size);
+    auto value = executeString(std::string(R"(
     const SIZE = 3;
+    /** Owns a value of the supplied type. */
     class Box<T> {
         var item: T;
+        /** Takes ownership of the initial value. */
         init(item: T) { this.item = item; }
+        /** Borrows the stored value. */
         method get() ref T { return this.item; }
     }
-    declare Triple = array<i32, SIZE>;
+    /** Constructs a box with an explicit array type argument. */
     function main() i32 {
-        var values: Triple = [1, 2, 3];
-        var boxed = Box<Triple>(values);
+        var values: array<i32, SIZE> = [1, 2, 3];
+        var boxed = Box<array<i32, )") +
+                               size + R"(>>(values);
         return boxed.get()[2];
     }
   )");
-  EXPECT_EQ(value, 3);
+    EXPECT_EQ(value, 3);
+  }
 }
 
 TEST(Builtins_Arrays, named_size_must_match_the_literal) {

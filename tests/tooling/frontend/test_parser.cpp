@@ -1328,3 +1328,37 @@ TEST(Tooling_Frontend_Parser_Errors, PrimitiveMethodNamePointsAtDeclaration) {
     }
   }
 }
+
+/** Keeps array dimensions inside their type argument in direct calls. */
+TEST(Tooling_Frontend_Parser, ArrayGenericCallArguments) {
+  for (const auto* source :
+       {"Box<array<i32, 3>>(values)", "Box<array<i32, SIZE>>(values)",
+        "Box<array<i32, limits.ROWS, 3>>(values)",
+        "Box<array<array<i32, 3>, 2>>(values)",
+        "Box<i32, array<i32, 3>>(values)"}) {
+    SCOPED_TRACE(source);
+    auto ast = parseStringToExpr(source);
+    auto* call = dynamic_cast<sun::ast::GenericCallAST*>(ast.get());
+    ASSERT_NE(call, nullptr);
+    ASSERT_FALSE(call->getTypeArguments().empty());
+    EXPECT_EQ(call->getTypeArguments().back()->baseName, "array");
+    EXPECT_EQ(call->getArgs().size(), 1);
+  }
+}
+
+/** Recognizes array type arguments after a member or module qualifier. */
+TEST(Tooling_Frontend_Parser, ArrayGenericMemberCallArguments) {
+  for (const auto* source : {"factory.make<array<i32, 3>>(values)",
+                             "factory.make<array<i32, limits.SIZE>>(values)",
+                             "factory.make<i32, array<i32, 3>>(values)"}) {
+    SCOPED_TRACE(source);
+    auto ast = parseStringToExpr(source);
+    auto* call = dynamic_cast<sun::ast::CallExprAST*>(ast.get());
+    ASSERT_NE(call, nullptr);
+    auto* member =
+        dynamic_cast<const sun::ast::MemberAccessAST*>(call->getCallee());
+    ASSERT_NE(member, nullptr);
+    ASSERT_FALSE(member->getTypeArguments().empty());
+    EXPECT_EQ(member->getTypeArguments().back()->baseName, "array");
+  }
+}
