@@ -35,4 +35,10 @@ public module std {
     Ok(T),
     Empty(EmptyError)
   }
+
+  /** Reports JSON parsing, conversion, and container errors. */
+  public enum JsonResult<T> {
+    Ok(T),
+    Error(JsonError)
+  }
 }

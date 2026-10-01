@@ -1312,3 +1312,51 @@ TEST(Errors_Results, rejects_discarded_pop_result) {
   )"),
                                 "Error result must be handled");
 }
+
+/** JSON failures retain their concrete payload when propagated to std.Result.
+ */
+TEST(Errors_Results, json_result_propagation) {
+  EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
+    using std;
+    /** Parses a document and propagates either parsing or scalar conversion errors. */
+    function read(text: static_ptr<u8>) Result<i64> {
+      var alloc = make_heap_allocator();
+      var value = try parse_json(alloc, text);
+      return Result.Ok(try value.as_i64());
+    }
+    /** Checks a parsed value, a parse offset, and an accessor error. */
+    function main() i32 {
+      var value = match read("42") {
+        Result.Ok(number) => number,
+        (_: const ref IError) => -100
+      };
+      var parse_error = match read("[") {
+        Result.Json(error) => error.offset() >= 0 and error.code() == 60,
+        _ => false
+      };
+      var type_error = match read("true") {
+        Result.Json(error) => error.offset() == -1 and error.code() == 60,
+        _ => false
+      };
+      var alloc = make_heap_allocator();
+      ignore_error(parse_json(alloc, "["));
+      if (value != 42 or not parse_error or not type_error) { return 1; }
+      return 0;
+    }
+  )"),
+            0);
+}
+
+/** A malformed document cannot be ignored by dropping its result implicitly. */
+TEST(Errors_Results, rejects_discarded_json_result) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::executeStringWithStdlib(R"(
+    using std;
+    /** Attempts to discard the result of parsing malformed JSON. */
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      parse_json(alloc, "[");
+      return 0;
+    }
+  )"),
+                                "Error result must be handled");
+}

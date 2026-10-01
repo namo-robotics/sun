@@ -1014,6 +1014,7 @@ For fallible operations, prefer the result enums defined in `result.sun`:
 - `AccessResult<T>` contains `Ok(T)` or `OutOfBounds(IndexOutOfBoundsError)`. Checked vector, buffer, and string access operations use this narrow result.
 - `LookupResult<T>` contains `Ok(T)` or `NotFound(NotFoundError)` for map and linked-list lookups, updates, and removal.
 - `PopResult<T>` contains `Ok(T)` or `Empty(EmptyError)` for linked-list and string pops.
+- `JsonResult<T>` contains `Ok(T)` or `Error(JsonError)` for JSON parsing, conversions, and container operations.
 - `Result<T>` contains `Ok(T)` and named variants for standard error categories,
   including bounds, lookup, I/O, allocation, conversion, arithmetic, JSON, and
   protocol decoding errors. Use it when combining several APIs.
@@ -1217,17 +1218,21 @@ scan), numbers are `Int(i64)` when the text is an integer that fits and
 `Float(f64)` otherwise, strings are UTF-8 `String`s.
 
 ```sun
-var alloc = make_heap_allocator();
-var doc = parse_json(alloc, "{\"name\": \"sun\", \"tags\": [1, 2.5]}");
-var name: ref String = doc.get("name").as_string();
-var second: f64 = doc.get("tags").at(1).as_f64();
+/** Parses and builds JSON while propagating concrete JSON errors. */
+function json_example() JsonResult<void> {
+  var alloc = make_heap_allocator();
+  var doc = try parse_json(alloc, "{\"name\": \"sun\", \"tags\": [1, 2.5]}");
+  var tags = try doc.get("tags");
+  var second: f64 = try (try tags.at(1)).as_f64();
 
-var obj = create_json_object(alloc);
-obj.set(String(alloc, "ok"), Json(true));
-obj.set(String(alloc, "tags"), create_json_array(alloc));
-obj.get("tags").push(Json(42));
-println(obj.to_string(alloc));            // {"ok":true,"tags":[42]}
-println(obj.to_pretty_string(alloc, 2));
+  var obj = create_json_object(alloc);
+  try obj.set(String(alloc, "ok"), Json(true));
+  try obj.set(String(alloc, "tags"), create_json_array(alloc));
+  try (try obj.get("tags")).push(Json(42));
+  println(obj.to_string(alloc));            // {"ok":true,"tags":[42]}
+  println(obj.to_pretty_string(alloc, 2));
+  return JsonResult.Ok;
+}
 ```
 
 The tree node is `class Json` wrapping a `public var value: JsonValue`:
@@ -1247,33 +1252,34 @@ store a copy instead. `create_json_string(alloc, ref s)` does that for a `String
 
 ```sun
 // cfg.model is still needed later, so the document gets a copy
-req.set(String(alloc, "model"), create_json_string(alloc, cfg.model));
+try req.set(String(alloc, "model"), create_json_string(alloc, cfg.model));
 // Equivalent to an explicit clone:
-req.set(String(alloc, "model"), Json(cfg.model.clone(alloc)));
+try req.set(String(alloc, "model"), Json(cfg.model.clone(alloc)));
 // Moves cfg.model into the document; using it again is a compile error
-req.set(String(alloc, "model"), Json(cfg.model));
+try req.set(String(alloc, "model"), Json(cfg.model));
 ```
 
 | Function / Method | Signature | Description |
 |--------|-----------|-------------|
-| `parse_json(alloc, text)` | `(ref HeapAllocator, ref String) Json throws IError` | Parse a complete document (also accepts a `static_ptr<u8>` literal). Rejects trailing text, leading zeros, control characters in strings, and nesting deeper than 256 |
+| `parse_json(alloc, text)` | `(ref HeapAllocator, ref String) JsonResult<Json>` | Parse a complete document (also accepts a `static_ptr<u8>` literal). Rejects trailing text, leading zeros, control characters in strings, and nesting deeper than 256 |
 | `Json()`, `Json(b)`, `Json(n)`, `Json(x)`, `Json(s)` | `()`, `(bool)`, `(i64)`, `(f64)`, `(String)` | Build a scalar node (`Json(s)` moves the `String` into the node; see above) |
 | `create_json_array(alloc)` / `create_json_object(alloc)` | `(ref HeapAllocator) Json` | Empty array / object |
 | `create_json_string(alloc, text)` | `(ref HeapAllocator, static_ptr<u8>) Json`, `(ref HeapAllocator, ref String) Json` | String node from a literal, or a copy of a borrowed `String` (the caller keeps its own) |
 | `is_null()`, `is_bool()`, `is_int()`, `is_float()`, `is_number()`, `is_string()`, `is_array()`, `is_object()` | `() bool` | Kind checks |
-| `as_bool()`, `as_i64()`, `as_f64()` | `() T throws IError` | Scalar readers; `as_i64` accepts an integral `Float`, `as_f64` accepts an `Int` |
-| `as_string()` | `() ref String throws IError` | Borrow the string |
+| `as_bool()`, `as_i64()`, `as_f64()` | `() JsonResult<T>` | Scalar readers; `as_i64` accepts an integral `Float`, `as_f64` accepts an `Int` |
+| `as_string()` | `() JsonResult<ref String>` | Borrow the string |
 | `len()` | `() i64` | Array items or object members (0 for scalars) |
-| `at(i)` | `(i64) ref Json throws IError` | Array item |
-| `get(key)` | `(static_ptr<u8>) ref Json throws IError`, `(ref String) ref Json throws IError` | Object member value |
+| `at(i)` | `(i64) JsonResult<ref Json>` | Array item |
+| `get(key)` | `(static_ptr<u8>) JsonResult<ref Json>`, `(ref String) JsonResult<ref Json>` | Object member value |
 | `has(key)` | `(static_ptr<u8>) bool` | Whether an object has the key |
-| `key_at(i)` / `value_at(i)` | `(i64) ref String throws IError` / `(i64) ref Json throws IError` | Object members by position, in insertion order |
-| `push(item)` | `(Json) void throws IError` | Append to an array |
-| `set(key, value)` | `(String, Json) void throws IError` | Set an object member (replaces an existing key's value in place, otherwise appends) |
+| `key_at(i)` / `value_at(i)` | `(i64) JsonResult<ref String>` / `(i64) JsonResult<ref Json>` | Object members by position, in insertion order |
+| `push(item)` | `(Json) JsonResult<void>` | Append to an array |
+| `set(key, value)` | `(String, Json) JsonResult<void>` | Set an object member (replaces an existing key's value in place, otherwise appends) |
 | `write(out)` / `write_pretty(out, indent)` | `(ref String) void` / `(ref String, i64) void` | Append JSON text to a `String` |
 | `to_string(alloc)` / `to_pretty_string(alloc, indent)` | `(ref HeapAllocator) String` / `(ref HeapAllocator, i64) String` | JSON text as a new `String` |
 
-Readers throw `JsonError` (code 60) on a kind mismatch or missing key; parse
+Fallible JSON operations return `JsonResult<T>`. Its `Error` variant owns a
+`JsonError` (code 60) on a kind mismatch or missing key; parse
 errors carry the byte offset of the problem in `offset()`. When writing,
 `Float` values keep a `.0` or exponent so they read back as `Float`, and
 non-finite floats become `null`.
