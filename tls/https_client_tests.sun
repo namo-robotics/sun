@@ -192,16 +192,16 @@ public module tls {
           SystemResult.Error(e) => {}
         };
         match std.io.remove_file(this.cert_path) {
-          _Result.Ok => {},
-          _Result.Err(e) => {}
+          SystemResult.Ok => {},
+          SystemResult.Error(e) => {}
         };
         match std.io.remove_file(this.key_path) {
-          _Result.Ok => {},
-          _Result.Err(e) => {}
+          SystemResult.Ok => {},
+          SystemResult.Error(e) => {}
         };
         match std.io.remove_dir(this.dir) {
-          _Result.Ok => {},
-          _Result.Err(e) => {}
+          SystemResult.Ok => {},
+          SystemResult.Error(e) => {}
         };
       }
     }

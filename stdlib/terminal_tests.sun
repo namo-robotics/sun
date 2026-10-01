@@ -104,7 +104,7 @@ public module std {
       pipe.close_write();
 
       var devnull = std.io.File();
-      try std.test.expect_success(devnull.open("/dev/null", std.io.FileMode.Read));
+      try std.test.expect_system_success(devnull.open("/dev/null", std.io.FileMode.Read));
       try std.test.assert(not is_terminal(devnull.get_fd()), "/dev/null is not a terminal");
 
       try std.test.assert(not is_terminal(-1), "an invalid descriptor is not a terminal");

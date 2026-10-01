@@ -233,7 +233,7 @@ public module std {
 
       var reader = std.io.File();
       reader.adopt(p.read_fd());
-      var got = try std.test.expect_ok(reader.read_all(alloc));
+      var got = try std.test.expect_system(reader.read_all(alloc));
       reader.close();
       try std.test.assert(got.equals_literal("through the pipe"), "pipe payload intact");
     }
@@ -276,7 +276,7 @@ public module std {
 
       var reader = std.io.File();
       reader.adopt(p.read_fd());
-      var got = try std.test.expect_ok(reader.read_all(alloc));
+      var got = try std.test.expect_system(reader.read_all(alloc));
       reader.close();
       try std.test.assert(got.equals_literal("via dup"), "write through the duplicate arrived");
     }

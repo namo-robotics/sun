@@ -197,29 +197,29 @@ public module std.io {
     /**
      * Open a file with the specified mode
      */
-    public method open(path: static_ptr<u8>, mode: FileMode) _Result<void, Error> {
+    public method open(path: static_ptr<u8>, mode: FileMode) SystemResult<void> {
       try this.open_cstr(path.raw(), mode);
-      return _Result.Ok;
+      return SystemResult.Ok;
     }
 
     /**
      * Open a file named at runtime. Throws if the system refuses.
      */
-    public method open(path: ref String, mode: FileMode) _Result<void, Error> {
+    public method open(path: ref String, mode: FileMode) SystemResult<void> {
       try this.open_cstr(path.c_str(), mode);
-      return _Result.Ok;
+      return SystemResult.Ok;
     }
 
     /**
      * Open a file named by a C string. The one place the open syscall is made.
      */
-    method open_cstr(path: raw_ptr<u8>, mode: FileMode) _Result<void, Error> {
+    method open_cstr(path: raw_ptr<u8>, mode: FileMode) SystemResult<void> {
       var result: i32 = unsafe { c_open(path, open_flags(mode), CREATE_MODE); };
       if (result < 0) {
-        return _Result.Err(Error(errno(), "failed to open file"));
+        return SystemResult.Error(Error(errno(), "failed to open file"));
       }
       this.fd = result;
-      return _Result.Ok;
+      return SystemResult.Ok;
     }
 
     /**
@@ -249,7 +249,7 @@ public module std.io {
     /**
      * Read the rest of the file into a String
      */
-    public method read_all(alloc: ref HeapAllocator) _Result<String, Error> {
+    public method read_all(alloc: ref HeapAllocator) SystemResult<String> {
       var out: String = String(alloc, "");
       var chunk: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 4096);
       var n: i64 = unsafe { c_read(this.fd, chunk.raw_data(), 4096); };
@@ -260,9 +260,9 @@ public module std.io {
         n = unsafe { c_read(this.fd, chunk.raw_data(), 4096); };
       }
       if (n < 0) {
-        return _Result.Err(Error(errno(), "failed to read file"));
+        return SystemResult.Error(Error(errno(), "failed to read file"));
       }
-      return _Result.Ok(out);
+      return SystemResult.Ok(out);
     }
 
     /**
@@ -307,23 +307,23 @@ public module std.io {
     /**
      * Flush file data to disk
      */
-    public method sync() _Result<void, Error> {
+    public method sync() SystemResult<void> {
       var result: i32 = unsafe { c_fsync(this.fd); };
       if (result < 0) {
-        return _Result.Err(Error(errno(), "failed to sync file"));
+        return SystemResult.Error(Error(errno(), "failed to sync file"));
       }
-      return _Result.Ok;
+      return SystemResult.Ok;
     }
 
     /**
      * Truncate or extend file to specified length
      */
-    public method truncate(length: i64) _Result<void, Error> {
+    public method truncate(length: i64) SystemResult<void> {
       var result: i32 = unsafe { c_ftruncate(this.fd, length); };
       if (result < 0) {
-        return _Result.Err(Error(errno(), "failed to truncate file"));
+        return SystemResult.Error(Error(errno(), "failed to truncate file"));
       }
-      return _Result.Ok;
+      return SystemResult.Ok;
     }
 
     /**
@@ -363,49 +363,49 @@ public module std.io {
   // -------------------------------------------------------------------
 
   /** Reads an entire file into an owned string and returns Error on an I/O failure. */
-  public function read_to_string(alloc: ref HeapAllocator, path: static_ptr<u8>) _Result<String, Error> {
+  public function read_to_string(alloc: ref HeapAllocator, path: static_ptr<u8>) SystemResult<String> {
     var f: File = File();
     try f.open(path, FileMode.Read);
     var text: String = try f.read_all(alloc);
     f.close();
-    return _Result.Ok(text);
+    return SystemResult.Ok(text);
   }
 
   /**
    * Read a whole file named at runtime into a new String.
    */
-  public function read_to_string(alloc: ref HeapAllocator, path: ref String) _Result<String, Error> {
+  public function read_to_string(alloc: ref HeapAllocator, path: ref String) SystemResult<String> {
     var f: File = File();
     try f.open(path, FileMode.Read);
     var text: String = try f.read_all(alloc);
     f.close();
-    return _Result.Ok(text);
+    return SystemResult.Ok(text);
   }
 
   /**
    * Write a String over a file named by a literal, replacing what was there.
    */
-  public function write_string(path: static_ptr<u8>, contents: ref String) _Result<void, Error> {
+  public function write_string(path: static_ptr<u8>, contents: ref String) SystemResult<void> {
     var f: File = File();
     try f.open(path, FileMode.Write);
     if (f.write(contents) < 0) {
-      return _Result.Err(Error(errno(), "failed to write file"));
+      return SystemResult.Error(Error(errno(), "failed to write file"));
     }
     f.close();
-    return _Result.Ok;
+    return SystemResult.Ok;
   }
 
   /**
    * Write a String over a file named at runtime, replacing what was there.
    */
-  public function write_string(path: ref String, contents: ref String) _Result<void, Error> {
+  public function write_string(path: ref String, contents: ref String) SystemResult<void> {
     var f: File = File();
     try f.open(path, FileMode.Write);
     if (f.write(contents) < 0) {
-      return _Result.Err(Error(errno(), "failed to write file"));
+      return SystemResult.Error(Error(errno(), "failed to write file"));
     }
     f.close();
-    return _Result.Ok;
+    return SystemResult.Ok;
   }
 
   // -------------------------------------------------------------------
@@ -413,128 +413,128 @@ public module std.io {
   // -------------------------------------------------------------------
 
   /** Removes the file at a null-terminated path and returns Error if removal fails. */
-  function remove_file_cstr(path: raw_ptr<u8>) _Result<void, Error> {
+  function remove_file_cstr(path: raw_ptr<u8>) SystemResult<void> {
     var result: i32 = unsafe { c_unlink(path); };
     if (result < 0) {
-      return _Result.Err(Error(errno(), "failed to remove file"));
+      return SystemResult.Error(Error(errno(), "failed to remove file"));
     }
-    return _Result.Ok;
+    return SystemResult.Ok;
   }
 
   /**
    * Remove a file
    */
-  public function remove_file(path: static_ptr<u8>) _Result<void, Error> {
+  public function remove_file(path: static_ptr<u8>) SystemResult<void> {
     try remove_file_cstr(path.raw());
-    return _Result.Ok;
+    return SystemResult.Ok;
   }
 
   /**
    * Delete a file named at runtime. Throws if it cannot be removed.
    */
-  public function remove_file(path: ref String) _Result<void, Error> {
+  public function remove_file(path: ref String) SystemResult<void> {
     try remove_file_cstr(path.c_str());
-    return _Result.Ok;
+    return SystemResult.Ok;
   }
 
   /**
    * Rename a file, both paths as C strings. The one place the rename syscall is
    * made.
    */
-  function rename_file_cstr(old_path: raw_ptr<u8>, new_path: raw_ptr<u8>) _Result<void, Error> {
+  function rename_file_cstr(old_path: raw_ptr<u8>, new_path: raw_ptr<u8>) SystemResult<void> {
     var result: i32 = unsafe { c_rename(old_path, new_path); };
     if (result < 0) {
-      return _Result.Err(Error(errno(), "failed to rename file"));
+      return SystemResult.Error(Error(errno(), "failed to rename file"));
     }
-    return _Result.Ok;
+    return SystemResult.Ok;
   }
 
   /**
    * Rename or move a file
    */
-  public function rename_file(old_path: static_ptr<u8>, new_path: static_ptr<u8>) _Result<void, Error> {
+  public function rename_file(old_path: static_ptr<u8>, new_path: static_ptr<u8>) SystemResult<void> {
     try rename_file_cstr(old_path.raw(), new_path.raw());
-    return _Result.Ok;
+    return SystemResult.Ok;
   }
 
   /**
    * Rename a file from a literal path to one built at runtime.
    */
-  public function rename_file(old_path: static_ptr<u8>, new_path: ref String) _Result<void, Error> {
+  public function rename_file(old_path: static_ptr<u8>, new_path: ref String) SystemResult<void> {
     try rename_file_cstr(old_path.raw(), new_path.c_str());
-    return _Result.Ok;
+    return SystemResult.Ok;
   }
 
   /**
    * Rename a file from a path built at runtime to a literal one.
    */
-  public function rename_file(old_path: ref String, new_path: static_ptr<u8>) _Result<void, Error> {
+  public function rename_file(old_path: ref String, new_path: static_ptr<u8>) SystemResult<void> {
     try rename_file_cstr(old_path.c_str(), new_path.raw());
-    return _Result.Ok;
+    return SystemResult.Ok;
   }
 
   /**
    * Rename a file, both paths built at runtime.
    */
-  public function rename_file(old_path: ref String, new_path: ref String) _Result<void, Error> {
+  public function rename_file(old_path: ref String, new_path: ref String) SystemResult<void> {
     try rename_file_cstr(old_path.c_str(), new_path.c_str());
-    return _Result.Ok;
+    return SystemResult.Ok;
   }
 
   /**
    * Create a directory named by a C string. The one place the mkdir syscall is
    * made.
    */
-  function make_dir_cstr(path: raw_ptr<u8>, mode: i32) _Result<void, Error> {
+  function make_dir_cstr(path: raw_ptr<u8>, mode: i32) SystemResult<void> {
     var result: i32 = unsafe { c_mkdir(path, mode); };
     if (result < 0) {
-      return _Result.Err(Error(errno(), "failed to create directory"));
+      return SystemResult.Error(Error(errno(), "failed to create directory"));
     }
-    return _Result.Ok;
+    return SystemResult.Ok;
   }
 
   /**
    * Create a directory with the specified mode (e.g. 0755 = 493)
    */
-  public function make_dir(path: static_ptr<u8>, mode: i32) _Result<void, Error> {
+  public function make_dir(path: static_ptr<u8>, mode: i32) SystemResult<void> {
     try make_dir_cstr(path.raw(), mode);
-    return _Result.Ok;
+    return SystemResult.Ok;
   }
 
   /**
    * Create a directory named at runtime, with the given permission bits.
    */
-  public function make_dir(path: ref String, mode: i32) _Result<void, Error> {
+  public function make_dir(path: ref String, mode: i32) SystemResult<void> {
     try make_dir_cstr(path.c_str(), mode);
-    return _Result.Ok;
+    return SystemResult.Ok;
   }
 
   /**
    * Remove a directory named by a C string. The one place the rmdir syscall is
    * made.
    */
-  function remove_dir_cstr(path: raw_ptr<u8>) _Result<void, Error> {
+  function remove_dir_cstr(path: raw_ptr<u8>) SystemResult<void> {
     var result: i32 = unsafe { c_rmdir(path); };
     if (result < 0) {
-      return _Result.Err(Error(errno(), "failed to remove directory"));
+      return SystemResult.Error(Error(errno(), "failed to remove directory"));
     }
-    return _Result.Ok;
+    return SystemResult.Ok;
   }
 
   /**
    * Remove an empty directory
    */
-  public function remove_dir(path: static_ptr<u8>) _Result<void, Error> {
+  public function remove_dir(path: static_ptr<u8>) SystemResult<void> {
     try remove_dir_cstr(path.raw());
-    return _Result.Ok;
+    return SystemResult.Ok;
   }
 
   /**
    * Remove a directory named at runtime. It must already be empty.
    */
-  public function remove_dir(path: ref String) _Result<void, Error> {
+  public function remove_dir(path: ref String) SystemResult<void> {
     try remove_dir_cstr(path.c_str());
-    return _Result.Ok;
+    return SystemResult.Ok;
   }
 
   // -------------------------------------------------------------------
@@ -607,29 +607,29 @@ public module std.io {
    * The size in bytes of the file at a literal path. Throws if it cannot be
    * opened.
    */
-  public function get_file_size(path: static_ptr<u8>) _Result<i64, Error> {
+  public function get_file_size(path: static_ptr<u8>) SystemResult<i64> {
     var f: File = File();
     try f.open(path, FileMode.Read);
     var size: i64 = f.seek(0, Whence.End);
     f.close();
     if (size < 0) {
-      return _Result.Err(Error(errno(), "failed to size file"));
+      return SystemResult.Error(Error(errno(), "failed to size file"));
     }
-    return _Result.Ok(size);
+    return SystemResult.Ok(size);
   }
 
   /**
    * The size in bytes of the file at a path built at runtime.
    */
-  public function get_file_size(path: ref String) _Result<i64, Error> {
+  public function get_file_size(path: ref String) SystemResult<i64> {
     var f: File = File();
     try f.open(path, FileMode.Read);
     var size: i64 = f.seek(0, Whence.End);
     f.close();
     if (size < 0) {
-      return _Result.Err(Error(errno(), "failed to size file"));
+      return SystemResult.Error(Error(errno(), "failed to size file"));
     }
-    return _Result.Ok(size);
+    return SystemResult.Ok(size);
   }
 
   // -------------------------------------------------------------------
@@ -716,10 +716,10 @@ public module std.io {
    * List a directory. "." and ".." are left out; the order is whatever the
    * filesystem gives, not sorted.
    */
-  function read_dir_cstr(alloc: ref HeapAllocator, path: raw_ptr<u8>) _Result<Vec<DirEntry>, Error> {
+  function read_dir_cstr(alloc: ref HeapAllocator, path: raw_ptr<u8>) SystemResult<Vec<DirEntry>> {
     var dir: raw_ptr<u8> = unsafe { c_opendir(path); };
     if (dir == null) {
-      return _Result.Err(Error(errno(), "failed to open directory"));
+      return SystemResult.Error(Error(errno(), "failed to open directory"));
     }
 
     var entries: Vec<DirEntry> = Vec<DirEntry>(alloc, 8);
@@ -737,22 +737,22 @@ public module std.io {
     }
 
     unsafe { c_closedir(dir); };
-    return _Result.Ok(entries);
+    return SystemResult.Ok(entries);
   }
 
   /**
    * List the entries of a directory at a literal path. '.' and '..' are left
    * out.
    */
-  public function read_dir(alloc: ref HeapAllocator, path: static_ptr<u8>) _Result<Vec<DirEntry>, Error> {
-    return _Result.Ok((try read_dir_cstr(alloc, path.raw())));
+  public function read_dir(alloc: ref HeapAllocator, path: static_ptr<u8>) SystemResult<Vec<DirEntry>> {
+    return SystemResult.Ok((try read_dir_cstr(alloc, path.raw())));
   }
 
   /**
    * List the entries of a directory at a path built at runtime.
    */
-  public function read_dir(alloc: ref HeapAllocator, path: ref String) _Result<Vec<DirEntry>, Error> {
-    return _Result.Ok((try read_dir_cstr(alloc, path.c_str())));
+  public function read_dir(alloc: ref HeapAllocator, path: ref String) SystemResult<Vec<DirEntry>> {
+    return SystemResult.Ok((try read_dir_cstr(alloc, path.c_str())));
   }
 
   // -------------------------------------------------------------------
@@ -875,7 +875,7 @@ public module std.io {
      * Blocks until something is ready, the timeout expires, or a signal
      * arrives. -1 waits forever. Returns how many descriptors are ready.
      */
-    public method wait(timeout_ms: i32) _Result<i32, Error> {
+    public method wait(timeout_ms: i32) SystemResult<i32> {
       var ready: i32 = unsafe {
         c_poll(
           this.fds.raw_data(),
@@ -884,15 +884,15 @@ public module std.io {
         );
       };
       if (ready < 0) {
-        return _Result.Err(Error(errno(), "poll failed"));
+        return SystemResult.Error(Error(errno(), "poll failed"));
       }
-      return _Result.Ok(ready);
+      return SystemResult.Ok(ready);
     }
 
     /**
      * Wait for a finite duration and return the descriptors that became ready.
      */
-    public method wait(timeout: const ref std.time.Duration) _Result<Vec<Event>, Error> {
+    public method wait(timeout: const ref std.time.Duration) SystemResult<Vec<Event>> {
       var ready_count: i32 = try this.wait(poll_timeout_millis(timeout));
       var capacity: i64 = _convert<i64>(ready_count);
       if (capacity < 1) {
@@ -905,7 +905,7 @@ public module std.io {
           ready.push(Event(entry.fd, entry.revents));
         }
       }
-      return _Result.Ok(ready);
+      return SystemResult.Ok(ready);
     }
 
     /**

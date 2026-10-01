@@ -447,28 +447,25 @@ See [Threads](/threads) for the whole picture.
 
 `stdlib/io.sun` (module `std.io`). Every path is taken two ways: as a
 `static_ptr<u8>` — what a string literal is — and as a `ref String` for a path
-put together at runtime.
+put together at runtime. Fallible calls return `SystemResult<T>` with an owned
+`Error`. The examples use `try` inside a function returning a compatible result.
 
 ```sun
 using std;
 using std.io;
 
 var f = File();
-try {
-    f.open("notes.txt", FileMode.Write);
-    f.write("Hello, World!");
-    f.close();
-} catch (e: ref IError) {
-    eprintln("could not write notes.txt");
-}
+try f.open("notes.txt", FileMode.Write);
+f.write("Hello, World!");
+f.close();
 
 // Or in one step
-var text = read_to_string(alloc, "notes.txt");
+var text = try read_to_string(alloc, "notes.txt");
 
 // A runtime path
 var path = String(alloc, "/tmp/");
 path.append_literal("report.csv");
-write_string(path, text);
+try write_string(path, text);
 ```
 
 `FileMode` is `Read` (must exist), `Write` (create or truncate) or `Append`.
@@ -476,15 +473,15 @@ write_string(path, text);
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `open` | `(path: Path, mode: FileMode) void throws IError` | Open a file |
+| `open` | `(path: Path, mode: FileMode) SystemResult<void>` | Open a file |
 | `adopt` | `(fd: i32) void` | Take ownership of an open descriptor |
 | `write` | `(data: static_ptr<u8>) i64` / `(data: ref String) i64` | Bytes written |
 | `write_bytes` | `(buf: raw_ptr<u8>, len: i64) i64` | Write raw bytes |
-| `read_all` | `(alloc: ref HeapAllocator) String throws IError` | Read to end of file |
+| `read_all` | `(alloc: ref HeapAllocator) SystemResult<String>` | Read to end of file |
 | `read_into` | `(buf: raw_ptr<u8>, len: i64) i64` | Read into a buffer |
 | `seek` | `(offset: i64, whence: Whence) i64` | New offset from the start |
 | `tell` / `size` | `() i64` | Current position / total length |
-| `sync` / `truncate` | `() void throws IError` / `(length: i64) void throws IError` | Flush / resize |
+| `sync` / `truncate` | `() SystemResult<void>` / `(length: i64) SystemResult<void>` | Flush / resize |
 | `close` / `is_open` / `get_fd` | | Close (idempotent), query, borrow the fd |
 
 A `File` closes itself at scope exit. The descriptor it holds is `0` when it
@@ -495,13 +492,13 @@ Free functions:
 
 | Function | Signature |
 |----------|-----------|
-| `read_to_string` | `(alloc: ref HeapAllocator, path: Path) String throws IError` |
-| `write_string` | `(path: Path, contents: ref String) void throws IError` |
-| `remove_file` / `remove_dir` | `(path: Path) void throws IError` |
-| `rename_file` | `(old_path: Path, new_path: Path) void throws IError` |
-| `make_dir` | `(path: Path, mode: i32) void throws IError` |
+| `read_to_string` | `(alloc: ref HeapAllocator, path: Path) SystemResult<String>` |
+| `write_string` | `(path: Path, contents: ref String) SystemResult<void>` |
+| `remove_file` / `remove_dir` | `(path: Path) SystemResult<void>` |
+| `rename_file` | `(old_path: Path, new_path: Path) SystemResult<void>` |
+| `make_dir` | `(path: Path, mode: i32) SystemResult<void>` |
 | `exists` / `is_dir` / `is_file` | `(path: Path) bool` |
-| `get_file_size` | `(path: Path) i64 throws IError` |
+| `get_file_size` | `(path: Path) SystemResult<i64>` |
 | `read_line` | `(alloc: ref HeapAllocator) Option<String>` |
 
 `Path` stands for the two overloads each of these has: `static_ptr<u8>` (a
@@ -525,7 +522,7 @@ directory record itself — no second syscall per entry, and no application-leve
 parsing of `getdents64` output.
 
 ```sun
-var entries = read_dir(alloc, "/etc");
+var entries = try read_dir(alloc, "/etc");
 for (var e: DirEntry in entries) {
     if (e.is_dir()) {
         print("dir  ");
@@ -538,7 +535,7 @@ for (var e: DirEntry in entries) {
 
 | Item | Signature | Description |
 |------|-----------|-------------|
-| `read_dir` | `(alloc: ref HeapAllocator, path: Path) Vec<DirEntry> throws IError` | `.` and `..` excluded, filesystem order |
+| `read_dir` | `(alloc: ref HeapAllocator, path: Path) SystemResult<Vec<DirEntry>>` | `.` and `..` excluded, filesystem order |
 | `DirEntry.name` | `() ref String` | Borrowed — the entry keeps it |
 | `DirEntry.kind` | `() FileKind` | `File`, `Dir`, `Symlink`, `Other` or `Unknown` |
 | `DirEntry.is_dir` / `is_file` | `() bool` | |
@@ -557,7 +554,7 @@ var poller = Poller(alloc);
 poller.add_read(sock_fd);
 poller.add_read(pipe_fd);
 
-var ready = poller.wait(1000);   // -1 blocks forever
+var ready = try poller.wait(1000);   // -1 blocks forever
 if (poller.is_readable(0)) { /* sock_fd has data */ }
 if (poller.is_hup(1)) { /* pipe_fd's writer closed */ }
 ```
@@ -569,7 +566,7 @@ durations clamp to the largest `i32` timeout.
 ```sun
 using std.time;
 
-var events = poller.wait(create_duration_millis(250));
+var events = try poller.wait(create_duration_millis(250));
 for (var event: ref Event in events) {
     if (event.is_readable()) { /* event.fd() has data */ }
     if (event.is_hup()) { /* event.fd() reached end of stream */ }
@@ -583,8 +580,8 @@ poller.remove(sock_fd);       // removes every registration for sock_fd
 | `add_read` / `add_write` / `add_read_write` | `(fd: i32) void` | Watch a descriptor |
 | `add` | `(fd: i32, events: i16) void` | Watch with an explicit `POLL*` mask |
 | `remove` | `(fd: i32) bool` | Remove every matching registration; report whether one existed |
-| `wait` | `(timeout_ms: i32) i32 throws IError` | Number ready; -1 blocks |
-| `wait` | `(timeout: const ref Duration) Vec<Event> throws IError` | Ready descriptors in registration order |
+| `wait` | `(timeout_ms: i32) SystemResult<i32>` | Number ready; -1 blocks |
+| `wait` | `(timeout: const ref Duration) SystemResult<Vec<Event>>` | Ready descriptors in registration order |
 | `is_readable` / `is_writable` / `is_hup` / `is_error` | `(i: i64) bool` | |
 | `fd_at` / `revents` | `(i: i64) i32` / `(i: i64) i16` | |
 | `clear` / `count` | | Reset, or how many are watched |
@@ -1023,7 +1020,7 @@ For fallible operations, prefer the result enums defined in `result.sun`:
 - `ConversionResult<T>` reports `ConversionError` through its `Error` variant.
 - `ArithmeticResult<T>` contains `Ok(T)`, `Overflow(OverflowError)`, and `DivisionByZero(DivisionByZeroError)`. Use `_ => ...` to handle all remaining variants in a match.
 - `ProtoResult<T>` contains `Ok(T)` or `Error(ProtoDecodeError)` for wire reads and generated protobuf decoders.
-- `SystemResult<T>` contains `Ok(T)` or `Error(Error)` for environment and process operations.
+- `SystemResult<T>` contains `Ok(T)` or `Error(Error)` for environment, process, file, and polling operations.
 - `Result<T>` contains `Ok(T)` and named variants for standard error categories,
   including bounds, lookup, I/O, allocation, conversion, arithmetic, JSON, and
   protocol decoding errors. Use it when combining several APIs.

@@ -48,7 +48,7 @@ public module std {
         // Best-effort cleanup: remove the entries we can, then the
         // directory itself. deinit must not throw.
         match std.io.read_dir(this.alloc, this.path) {
-          _Result.Ok(entries) => {
+          SystemResult.Ok(entries) => {
             for (var i: i64 = 0; i < entries.size(); i = i + 1) {
               var entry_path = this.path.clone(this.alloc);
               entry_path.append_char(b'/');
@@ -60,7 +60,7 @@ public module std {
               }
             }
           },
-          _Result.Err(_) => {}
+          SystemResult.Error(_) => {}
         };
         ignore_error(std.io.remove_dir(this.path));
       }

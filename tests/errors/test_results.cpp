@@ -1469,3 +1469,32 @@ TEST(Errors_Results, system_result_propagation) {
   )"),
             0);
 }
+
+/** Whole-file reads preserve owned success and errors through broad results. */
+TEST(Errors_Results, file_result_propagation) {
+  EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
+    using std;
+    /** Reads a path and propagates file failures into the standard error variant. */
+    function read(alloc: ref HeapAllocator, path: static_ptr<u8>) Result<String> {
+      return Result.Ok(try std.io.read_to_string(alloc, path));
+    }
+    /** Checks an empty device read and an invalid empty path without creating files. */
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var empty = match read(alloc, "/dev/null") {
+        Result.Ok(text) => text.length() == 0,
+        _ => false
+      };
+      var failed = match read(alloc, "") {
+        Result.Error(error) => {
+          var message = error.message();
+          error.code() != 0 and message.equals_literal("failed to open file");
+        },
+        _ => false
+      };
+      if (not empty or not failed) { return 1; }
+      return 0;
+    }
+  )"),
+            0);
+}
