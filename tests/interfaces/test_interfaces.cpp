@@ -463,7 +463,7 @@ TEST(Interfaces_Builtin, cannot_redefine_IError_interface) {
   EXPECT_ANY_THROW({
     executeString(R"(
       interface IError {
-        method code() i32;
+        const method code() i32;
       }
       function main() i32 { return 0; }
     )");
@@ -1548,8 +1548,8 @@ TEST(Interfaces, extends_builtin_error_interface) {
     /** Adds an error category. */ interface Failure extends IError {}
     /** Supplies the inherited error contract. */ class MyError implements Failure {
       /** Constructs the error. */ init() {}
-      /** Returns its error code. */ method code() i32 { return 42; }
-      /** Describes the error. */ method message() static_ptr<u8> { return "failure"; }
+      /** Returns its error code. */ const method code() i32 { return 42; }
+      /** Describes the error. */ const method message() static_ptr<u8> { return "failure"; }
     }
     /** Throws the descendant implementation. */ function fail() void throws IError { throw MyError(); }
     /** Catches through the ancestor. */ function main() i32 {
@@ -1802,8 +1802,8 @@ TEST(Interfaces, throwing_method_dispatch) {
     /** Identifies a failed operation. */
     class Failure implements IError {
       /** Creates the error. */ init() {}
-      /** Returns the error code. */ method code() i32 { return 42; }
-      /** Describes the error. */ method message() static_ptr<u8> { return "failed"; }
+      /** Returns the error code. */ const method code() i32 { return 42; }
+      /** Describes the error. */ const method message() static_ptr<u8> { return "failed"; }
     }
     /** Always fails. */
     class Task implements Operation {
@@ -1833,8 +1833,8 @@ TEST(Interfaces, throwing_generic_inherited_default) {
     /** Identifies a failed read. */
     class Failure implements IError {
       /** Creates the error. */ init() {}
-      /** Returns the error code. */ method code() i32 { return 42; }
-      /** Describes the error. */ method message() static_ptr<u8> { return "failed"; }
+      /** Returns the error code. */ const method code() i32 { return 42; }
+      /** Describes the error. */ const method message() static_ptr<u8> { return "failed"; }
     }
     /** Uses an inherited default. */
     class Reader implements Child {

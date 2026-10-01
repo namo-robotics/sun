@@ -368,8 +368,8 @@ TEST(Tooling_Lsp_Rename, BuiltinInterfaceMemberRefused) {
   std::string source = R"(
 class Oops implements IError {
     init() {}
-    method code() i32 { return 1; }
-    method message() static_ptr<u8> { return "oops"; }
+    const method code() i32 { return 1; }
+    const method message() static_ptr<u8> { return "oops"; }
 }
 function main() i32 {
     var e = Oops();

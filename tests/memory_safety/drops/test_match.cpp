@@ -217,8 +217,8 @@ TEST(MemorySafety_Drops_Match, unwind_cleans_owned_payloads) {
   EXPECT_EQ(executeString(program(R"(
     class Error implements IError {
       init() {}
-      method code() i32 { return 1; }
-      method message() static_ptr<u8> { return "error"; }
+      const method code() i32 { return 1; }
+      const method message() static_ptr<u8> { return "error"; }
     }
     function fail() void throws IError { throw Error(); }
     function sink(r: Res) void { }
@@ -389,8 +389,8 @@ TEST(MemorySafety_Drops_Match, thrown_payload_survives_unwind) {
       var id: i32;
       init() { this.id = 7; }
       deinit() { this.id = 0; }
-      method code() i32 { return this.id; }
-      method message() static_ptr<u8> { return "error"; }
+      const method code() i32 { return this.id; }
+      const method message() static_ptr<u8> { return "error"; }
     }
     enum Errors { One(Error, Res) }
     function run() i32 throws IError {

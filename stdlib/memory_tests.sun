@@ -25,22 +25,22 @@ public module std {
       if (true) {
         var current = Owner(0);
         var previous = replace(current, Owner(1));
-        std.test.assert_eq(drops, 0);
-        std.test.assert_eq(previous.id, 0);
-        std.test.assert_eq(current.id, 1);
+        try std.test.assert_eq(drops, 0);
+        try std.test.assert_eq(previous.id, 0);
+        try std.test.assert_eq(current.id, 1);
       }
-      std.test.assert_eq(drops, 2);
+      try std.test.assert_eq(drops, 2);
 
       if (true) {
         var alloc = make_heap_allocator();
         var slots = Vec<Option<Owner>>(alloc, 1);
         slots.push(Option.Some(Owner(0)));
         var empty: Option<Owner> = Option.None;
-        var previous = slots.replace(0, empty);
+        var previous = try std.test.expect_access(slots.replace(0, empty));
         slots.clear();
-        std.test.assert_eq(drops, 2);
+        try std.test.assert_eq(drops, 2);
       }
-      std.test.assert_eq(drops, 3);
+      try std.test.assert_eq(drops, 3);
     }
   }
 }

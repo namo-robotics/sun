@@ -594,6 +594,18 @@ Value* CodegenVisitor::codegenClassMethodCall(
   Value* result = errors.emitPossiblyThrowingCall(
       methodFunc->getFunctionType(), methodFunc, argValues,
       signature.canThrow(), "method.call");
+  if (!expr.getInitializedFields().empty()) {
+    auto type =
+        sun::types::unwrapRef(memberAccess->getObject()->getResolvedType());
+    auto* objectClass = static_cast<sun::types::ClassType*>(type.get());
+    for (auto id : expr.getInitializedFields()) {
+      const auto* field = objectClass->getField(id);
+      auto* address = ctx.builder->CreateStructGEP(
+          objectClass->getStructType(ctx.getContext()), objectPtr,
+          field->index);
+      scopes.markInitialized(address, field->type);
+    }
+  }
   return materializeStructReturn(result);
 }
 
@@ -722,6 +734,62 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
           expr.getCallee())) {
     calleeName = varRef->getName();
 
+    if (!varRef->getTargetDeclarationId() &&
+        (calleeName == "checked_div" || calleeName == "checked_rem")) {
+      auto& resultType =
+          static_cast<sun::types::EnumType&>(*expr.getResolvedType());
+      auto valueType = resultType.getGenericArgs()[0];
+      auto* function = ctx.builder->GetInsertBlock()->getParent();
+      auto* storageType = typeResolver.getEnumStorageType(resultType);
+      auto* storage =
+          createEntryBlockAlloca(function, "arithmetic.result", storageType);
+      Value* left = codegen(*expr.getArgs()[0]);
+      Value* right = codegen(*expr.getArgs()[1]);
+      left = support::widenNumericIfNeeded(
+          *ctx.builder, typeResolver, left, valueType,
+          expr.getArgs()[0]->getResolvedType());
+      right = support::widenNumericIfNeeded(
+          *ctx.builder, typeResolver, right, valueType,
+          expr.getArgs()[1]->getResolvedType());
+      auto* done =
+          BasicBlock::Create(ctx.getContext(), "checked.done", function);
+      auto* tag = ctx.builder->CreateStructGEP(storageType, storage, 0);
+      Value* value = support::createIntDivRem(
+          *ctx.builder, left, right, calleeName == "checked_rem",
+          valueType->isUnsigned(), [&](int code) {
+            ctx.builder->CreateStore(ctx.builder->getInt32(1), tag);
+            auto* variantType =
+                typeResolver.getEnumVariantStruct(resultType, "Err");
+            auto* payload = ctx.builder->CreateStructGEP(
+                variantType, storage,
+                typeResolver.enumPayloadFieldIndex(resultType, "Err", 0));
+            // ArithmeticError owns only its numeric code.
+            ctx.builder->CreateStore(ctx.builder->getInt32(code), payload);
+            ctx.builder->CreateBr(done);
+          });
+      ctx.builder->CreateStore(ctx.builder->getInt32(0), tag);
+      auto* variantType = typeResolver.getEnumVariantStruct(resultType, "Ok");
+      auto* payload = ctx.builder->CreateStructGEP(
+          variantType, storage,
+          typeResolver.enumPayloadFieldIndex(resultType, "Ok", 0));
+      ctx.builder->CreateStore(value, payload);
+      ctx.builder->CreateBr(done);
+      ctx.builder->SetInsertPoint(done);
+      if (!expr.isMoved())
+        scopes.trackClassAllocation(storage, "arithmetic.result",
+                                    expr.getResolvedType());
+      return storage;
+    }
+
+    if (!varRef->getTargetDeclarationId() && calleeName == "ignore_error") {
+      const auto& argument = *expr.getArgs().front();
+      Value* storage = codegen(argument);
+      scopes.emitDropInPlace(argument.getResolvedType(), storage,
+                             "ignored.result");
+      scopes.markClassAllocationAsDeinited(storage, argument.getResolvedType());
+      return ConstantInt::get(ctx.builder->getInt32Ty(), 0);
+    }
+
     // Check for built-in functions (bypass type system)
     if (intrinsics.isBuiltinFunction(calleeName)) {
       return intrinsics.codegenBuiltin(calleeName, expr);
@@ -795,6 +863,7 @@ bool CodegenVisitor::emitCallArguments(
     return false;
   }
 
+  std::vector<std::pair<Value*, TypePtr>> pendingOwners;
   for (size_t i = firstArg; i < args.size(); ++i) {
     const ExprAST* argExpr = args[i].get();
     TypePtr argSunType = argExpr->getResolvedType();
@@ -857,6 +926,14 @@ bool CodegenVisitor::emitCallArguments(
         argVal = codegen(*argExpr);
         if (!argVal) return false;
         argVal = applyMoveSemantics(argVal, argSunType);
+        if (i + 1 < args.size() && sun::types::typeNeedsDrop(argSunType)) {
+          auto* storage =
+              createEntryBlockAlloca(ctx.builder->GetInsertBlock()->getParent(),
+                                     "pending.argument", argVal->getType());
+          ctx.builder->CreateStore(argVal, storage);
+          scopes.trackClassAllocation(storage, "pending.argument", argSunType);
+          pendingOwners.emplace_back(storage, argSunType);
+        }
         break;
 
       case ArgConversion::WidenNumeric:
@@ -916,6 +993,9 @@ bool CodegenVisitor::emitCallArguments(
     if (!argVal) return false;
     argValues.push_back(argVal);
   }
+  // All arguments exist now; the callee takes ownership when the call starts.
+  for (const auto& [storage, type] : pendingOwners)
+    scopes.markClassAllocationAsDeinited(storage, type);
   return true;
 }
 

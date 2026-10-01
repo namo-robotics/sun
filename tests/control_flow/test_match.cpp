@@ -429,8 +429,8 @@ TEST(ControlFlow_Match, method_ending_in_fully_terminating_match) {
 
     class NotANumber implements IError {
       init() {}
-      method code() i32 { return 7; }
-      method message() String { return String("not a number"); }
+      const method code() i32 { return 7; }
+      const method message() String { return String("not a number"); }
     }
 
     enum Value {

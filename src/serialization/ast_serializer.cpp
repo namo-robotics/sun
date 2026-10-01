@@ -674,6 +674,7 @@ void ASTSerializer::serializeIf(const sun::ast::IfExprAST& expr,
 void ASTSerializer::serializeMatch(const sun::ast::MatchExprAST& expr,
                                    pbc::ASTNode* node) const {
   auto* match = node->mutable_match_expr();
+  match->set_propagation(expr.isPropagation());
   *match->mutable_discriminant() = serialize(*expr.getDiscriminant());
   for (const auto& arm : expr.getArms()) {
     auto* armProto = match->add_arms();
@@ -683,6 +684,9 @@ void ASTSerializer::serializeMatch(const sun::ast::MatchExprAST& expr,
     armProto->set_is_wildcard(arm.isWildcard);
     *armProto->mutable_body() = serialize(*arm.body);
     armProto->set_has_payload_parens(arm.hasPayloadParens);
+    if (arm.bindingType)
+      *armProto->mutable_binding_type() =
+          serializeTypeAnnotation(*arm.bindingType);
     for (const auto& binding : arm.bindings) {
       auto* bindingProto = armProto->add_bindings();
       if (config_.declarations && binding.declaration.id)

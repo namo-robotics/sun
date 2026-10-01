@@ -165,9 +165,9 @@ public module std {
     /**
      * Remove and return the last element
      */
-    public method pop_back() T throws IError {
+    public method pop_back() _Result<T, EmptyError> {
       if (this.tail == null) {
-        throw EmptyError();
+        return _Result.Err(EmptyError());
       }
       var node: raw_ptr<LinkedListNode<T>> = this.tail;
       var value: T = unsafe { node.take_value(); };
@@ -179,15 +179,15 @@ public module std {
       }
       unsafe { _free(node); };
       this.size_ = this.size_ - 1;
-      return value;
+      return _Result.Ok(value);
     }
 
     /**
      * Remove and return the first element
      */
-    public method pop_front() T throws IError {
+    public method pop_front() _Result<T, EmptyError> {
       if (this.head == null) {
-        throw EmptyError();
+        return _Result.Err(EmptyError());
       }
       var node: raw_ptr<LinkedListNode<T>> = this.head;
       var value: T = unsafe { node.take_value(); };
@@ -199,7 +199,7 @@ public module std {
       }
       unsafe { _free(node); };
       this.size_ = this.size_ - 1;
-      return value;
+      return _Result.Ok(value);
     }
 
     /**
@@ -207,47 +207,48 @@ public module std {
      * ownership, so this hands back a reference; use remove()/pop_*() to move
      * an element out.
      */
-    public const method get(index: i64) ref T throws IError {
+    public const method get(index: i64) _Result<ref T, NotFoundError> {
       if (index < 0) {
-        throw NotFoundError();
+        return _Result.Err(NotFoundError());
       }
       if (index >= this.size_) {
-        throw NotFoundError();
+        return _Result.Err(NotFoundError());
       }
       var node: raw_ptr<LinkedListNode<T>> = this.find_node_at(index);
-      return unsafe { node.get_value(); };
+      return _Result.Ok(unsafe { node.get_value(); });
     }
 
     /**
      * Set element at index
      */
-    public method set(index: i64, value: T) void throws IError {
+    public method set(index: i64, value: T) _Result<void, NotFoundError> {
       if (index < 0) {
-        throw NotFoundError();
+        return _Result.Err(NotFoundError());
       }
       if (index >= this.size_) {
-        throw NotFoundError();
+        return _Result.Err(NotFoundError());
       }
       var node: raw_ptr<LinkedListNode<T>> = this.find_node_at(index);
       unsafe { node.replace_value(value); };
+      return _Result.Ok;
     }
 
     /**
      * Remove element at index and return its value
      */
-    public method remove(index: i64) T throws IError {
+    public method remove(index: i64) _Result<T, NotFoundError> {
       if (index < 0) {
-        throw NotFoundError();
+        return _Result.Err(NotFoundError());
       }
       if (index >= this.size_) {
-        throw NotFoundError();
+        return _Result.Err(NotFoundError());
       }
       var node: raw_ptr<LinkedListNode<T>> = this.find_node_at(index);
       var value: T = unsafe { node.take_value(); };
       this.unlink_node(node);
       unsafe { _free(node); };
       this.size_ = this.size_ - 1;
-      return value;
+      return _Result.Ok(value);
     }
 
     /**

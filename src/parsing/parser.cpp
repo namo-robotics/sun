@@ -205,6 +205,42 @@ unique_ptr<sun::ast::IfExprAST> Parser::parseIfStatement() {
 Parser::ParsedPattern Parser::parsePattern() {
   ParsedPattern result;
 
+  if (curTok.kind == TokenKind::PAREN_OPEN) {
+    Token savedCurTok = curTok;
+    Token savedPrevTok = prevTok_;
+    auto savedLexerPos = lexer.getPosition();
+    auto savedTokenStack = tokenStack;
+    Position start = captureStart();
+    getNextToken();
+    if (curTok.kind == TokenKind::IDENTIFIER ||
+        curTok.kind == TokenKind::UNDERSCORE) {
+      sun::ast::PatternBinding binding;
+      binding.location = captureStart();
+      binding.isWildcard = curTok.kind == TokenKind::UNDERSCORE;
+      if (!binding.isWildcard) binding.name = curTok.getIdentifier().value();
+      getNextToken();
+      if (curTok.kind == TokenKind::COLON) {
+        getNextToken();
+        result.bindingType = parseTypeAnnotation();
+        expectCurrentTokenKind(TokenKind::PAREN_CLOSE,
+                               "expected ')' after typed match binding");
+        getNextToken();
+        result.pattern =
+            finishNode(std::make_unique<VariableReferenceAST>(
+                           binding.isWildcard ? "_" : binding.name),
+                       start);
+        result.bindings.push_back(std::move(binding));
+        result.hasPayloadParens = true;
+        result.ok = true;
+        return result;
+      }
+    }
+    curTok = savedCurTok;
+    prevTok_ = savedPrevTok;
+    lexer.setPosition(savedLexerPos);
+    tokenStack = savedTokenStack;
+  }
+
   if (curTok.kind == TokenKind::UNDERSCORE) {
     getNextToken();  // eat '_'
     result.isWildcard = true;
@@ -212,7 +248,8 @@ Parser::ParsedPattern Parser::parsePattern() {
     return result;
   }
 
-  if (curTok.kind == TokenKind::IDENTIFIER) {
+  if (curTok.kind == TokenKind::IDENTIFIER ||
+      curTok.kind == TokenKind::INTRINSIC_IDENTIFIER) {
     // Save state: if this is not a dotted path, backtrack to parseUnary
     Token savedCurTok = curTok;
     Token savedPrevTok = prevTok_;
@@ -342,6 +379,7 @@ unique_ptr<sun::ast::MatchExprAST> Parser::parseMatchExpression() {
                       std::move(body));
     arms.back().hasPayloadParens = parsed.hasPayloadParens;
     arms.back().bindings = std::move(parsed.bindings);
+    arms.back().bindingType = std::move(parsed.bindingType);
 
     // Check for comma (optional before closing brace)
     if (curTok.kind == TokenKind::COMMA) {
@@ -718,19 +756,24 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
   // never declare one and implicitly return void.
   std::optional<sun::ast::TypeAnnotation> retType;
   if (isTestFunction) {
-    // A test returns nothing and may always throw: a failed assertion is a
-    // throw, and spelling 'throws IError' on every test would be noise.
-    retType = sun::ast::TypeAnnotation("void");
-    retType->canError = true;
-    if (curTok.kind == TokenKind::THROWS) {
+    // Tests return assertion failures by default; broader error enums may be
+    // explicit.
+    retType = sun::ast::TypeAnnotation("_Result");
+    retType->typeArguments.push_back(
+        std::make_unique<sun::ast::TypeAnnotation>("void"));
+    retType->typeArguments.push_back(
+        std::make_unique<sun::ast::TypeAnnotation>("std.test.AssertionError"));
+    if (curTok.kind == TokenKind::THROWS)
       parsingError(
-          "a test function may always throw; 'throws IError' is implicit");
-    }
+          "test functions return _Result<void, E>; 'throws' is not supported");
     if (curTok.kind != TokenKind::BRACE_OPEN) {
-      parsingError(
-          "a test function does not declare a return type; write "
-          "'test_function " +
-          name + "() { ... }'");
+      retType = parseTypeAnnotation();
+      if (!retType || retType->baseName != "_Result" ||
+          retType->typeArguments.size() != 2 ||
+          retType->typeArguments[0]->baseName != "void")
+        parsingError(
+            "a test function does not declare a return type other than "
+            "_Result<void, E>");
     }
   } else if (isLifecycleMethod) {
     retType = sun::ast::TypeAnnotation("void");
@@ -745,8 +788,13 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
       retType->canError = true;
     }
     if (curTok.kind != TokenKind::BRACE_OPEN) {
-      parsingError("'" + name + "' does not declare a return type; write '" +
-                   name + "(...) { ... }'");
+      if (name == "deinit")
+        parsingError("'deinit' cannot declare a return type");
+      retType = parseTypeAnnotation();
+      if (retType && retType->baseName == "void")
+        parsingError(
+            "'init' does not declare a return type for infallible "
+            "construction");
     }
   } else if (curTok.kind != TokenKind::BRACE_OPEN) {
     retType = parseTypeAnnotation();
@@ -1202,8 +1250,12 @@ unique_ptr<ExprAST> Parser::parsePrimary() {
       Position start = captureStart();
       getNextToken();  // eat 'try'
       if (curTok.kind != TokenKind::BRACE_OPEN) {
-        parsingError("expected '{' after 'try'");
-        return nullptr;
+        auto operand = parseUnary();
+        if (!operand) return nullptr;
+        std::vector<sun::ast::MatchArm> arms;
+        return finishNode(std::make_unique<sun::ast::MatchExprAST>(
+                              std::move(operand), std::move(arms), true),
+                          start);
       }
       base = finishNode(parseTryCatch(), start);
       break;
@@ -2607,17 +2659,13 @@ unique_ptr<ExprAST> Parser::parseStatementCore() {
       }
     }
     case TokenKind::TRY: {
-      // try { ... } catch (e: ref IError) { ... } syntax
-      Position start = captureStart();
-      getNextToken();  // eat 'try'
-      std::unique_ptr<ExprAST> tryExpr;
-      if (curTok.kind != TokenKind::BRACE_OPEN) {
-        parsingError("expected '{' after 'try'");
-        return nullptr;
+      auto tryExpr = parseExpression();
+      if (!tryExpr) return nullptr;
+      if (tryExpr->getType() != ASTNodeType::TRY_CATCH) {
+        expectCurrentTokenKind(TokenKind::SEMI_COLON,
+                               "expected ';' after propagation statement");
       }
-      tryExpr = finishNode(parseTryCatch(), start);
-      while (curTok.kind == TokenKind::SEMI_COLON)
-        getNextToken();  // optional semicolons
+      while (curTok.kind == TokenKind::SEMI_COLON) getNextToken();
       return tryExpr;
     }
     case TokenKind::THROW: {

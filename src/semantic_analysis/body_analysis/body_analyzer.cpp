@@ -1,7 +1,9 @@
 #include "semantic_analysis/body_analysis/body_analyzer.h"
 
 #include "ast.h"
+#include "ast/ast_children.h"
 #include "ast/ast_utils.h"
+#include "ast/control_flow.h"
 #include "semantic_analysis/declaration_analysis/declaration_rules.h"
 #include "semantic_analysis/expression_analysis/expression_properties.h"
 #include "semantic_analysis/semantic_analyzer.h"
@@ -42,6 +44,104 @@ static void checkAllPathsReturn(const PrototypeAST& proto,
           "it must end in a `return` (or a throw) on every path. Sun has no "
           "implicit returns.",
       loc);
+}
+
+/** Turns a test's bare success returns into unit result values. */
+static void completeTestReturns(sun::ast::ExprAST& expression) {
+  using namespace sun::ast;
+  if (expression.getType() == ASTNodeType::FUNCTION ||
+      expression.getType() == ASTNodeType::LAMBDA)
+    return;
+  if (auto* returned = dynamic_cast<ReturnExprAST*>(&expression);
+      returned && !returned->hasValue()) {
+    returned->forEachChildSlot([&](std::unique_ptr<ExprAST>& value) {
+      value = std::make_unique<MemberAccessAST>(
+          std::make_unique<VariableReferenceAST>("_Result"), "Ok");
+      value->setLocation(returned->getLocation());
+    });
+    return;
+  }
+  sun::ast::forEachChild(expression, [&](const ExprAST& child) {
+    completeTestReturns(const_cast<ExprAST&>(child));
+  });
+}
+
+/** Rejects discarded results and result locals that are never used. */
+static void checkResultHandling(const BlockExprAST& body,
+                                SemanticContext& ctx) {
+  using namespace sun::ast;
+  const auto resultId =
+      ctx.lookupGenericEnum("_Result")->AST->getDeclarationId();
+  auto isResult = [&](const TypePtr& type) {
+    auto result = std::dynamic_pointer_cast<sun::types::EnumType>(
+        sun::types::unwrapRef(type));
+    if (!result) return false;
+    if (result->sourceDeclaration(ctx.results().declarations) == resultId)
+      return true;
+    const auto& variants = result->getVariants();
+    if (variants.size() < 2 || variants.front().payloadTypes.size() > 1)
+      return false;
+    for (size_t i = 1; i < variants.size(); ++i) {
+      if (variants[i].payloadTypes.size() != 1) return false;
+      auto error = std::dynamic_pointer_cast<sun::types::ClassType>(
+          sun::types::unwrapRef(variants[i].payloadTypes.front()));
+      if (!error || !error->implementsInterface(*ctx.types()->errorInterface))
+        return false;
+    }
+    return true;
+  };
+  std::vector<const VariableCreationAST*> locals;
+  std::unordered_set<DeclarationId> usedLocals;
+  std::function<void(const ExprAST&, bool)> visit =
+      [&](const ExprAST& expression, bool used) {
+        if (expression.getType() == ASTNodeType::FUNCTION ||
+            expression.getType() == ASTNodeType::LAMBDA)
+          return;
+        if (!used && !exprDiverges(expression) &&
+            expression.getType() != ASTNodeType::VARIABLE_CREATION &&
+            expression.getType() != ASTNodeType::REFERENCE_CREATION &&
+            expression.getType() != ASTNodeType::VARIABLE_ASSIGNMENT &&
+            isResult(expression.getResolvedType()))
+          logAndThrowError(
+              "Error result must be handled, returned, propagated with try, "
+              "or explicitly discarded with ignore_error",
+              expression.getLocation());
+        if (auto* local =
+                dynamic_cast<const VariableCreationAST*>(&expression)) {
+          if (isResult(local->getResolvedType())) locals.push_back(local);
+        }
+        if (auto* reference =
+                dynamic_cast<const VariableReferenceAST*>(&expression))
+          usedLocals.insert(reference->getTargetDeclarationId());
+        if (auto* block = dynamic_cast<const BlockExprAST*>(&expression)) {
+          const auto& statements = block->getBody();
+          for (size_t i = 0; i < statements.size(); ++i)
+            visit(*statements[i], used && i + 1 == statements.size());
+          return;
+        }
+        if (auto* match = dynamic_cast<const MatchExprAST*>(&expression)) {
+          visit(*match->getDiscriminant(), true);
+          for (const auto& arm : match->getArms()) visit(*arm.body, used);
+          return;
+        }
+        if (auto* branch = dynamic_cast<const IfExprAST*>(&expression)) {
+          visit(*branch->getCond(), true);
+          visit(*branch->getThen(), false);
+          if (branch->getElse()) visit(*branch->getElse(), false);
+          return;
+        }
+        forEachChild(expression, [&](const ExprAST& child) {
+          visit(child, child.getType() != ASTNodeType::BLOCK);
+        });
+      };
+  visit(body, false);
+  for (const auto* local : locals) {
+    if (!usedLocals.count(local->getDeclarationId()))
+      logAndThrowError(
+          "Unused error result '" + local->getName() +
+              "'; handle it or explicitly discard it with ignore_error",
+          local->getLocation());
+  }
 }
 
 void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
@@ -96,6 +196,26 @@ void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
     scopeReturnType =
         sema_.typeResolver().typeAnnotationToType(*proto.getReturnType());
   }
+
+  const bool fallibleInit = ctx_.getCurrentClass() &&
+                            proto.getName() == "init" && scopeReturnType &&
+                            !scopeReturnType->isVoid();
+  const bool resultTest =
+      func.isTest() && scopeReturnType && !scopeReturnType->isVoid();
+  if (fallibleInit || resultTest) {
+    auto result =
+        std::dynamic_pointer_cast<sun::types::EnumType>(scopeReturnType);
+    if (!result ||
+        result->sourceDeclaration(ctx_.results().declarations) !=
+            ctx_.lookupGenericEnum("_Result")->AST->getDeclarationId() ||
+        result->getGenericArgs().size() != 2 ||
+        !result->getGenericArgs()[0]->isVoid())
+      logAndThrowError("A fallible init must return _Result<void, E>",
+                       func.getLocation());
+  }
+
+  if (resultTest)
+    completeTestReturns(const_cast<BlockExprAST&>(func.getBody()));
 
   // Enter the function scope with its diagnostic signature.
   // Pass canThrow flag so throw expressions can be validated. A const method
@@ -178,9 +298,19 @@ void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
     }
   }
 
+  if ((fallibleInit || resultTest) &&
+      !sun::semantic_analysis::alwaysExits(func.getBody())) {
+    auto success = std::make_unique<sun::ast::ReturnExprAST>();
+    success->setLocation(func.getLocation());
+    if (resultTest) completeTestReturns(*success);
+    analyzeReturnExpr(*success);
+    const_cast<BlockExprAST&>(func.getBody()).addExpression(std::move(success));
+  }
+
   // No implicit returns: a non-void signature must be met by an explicit
   // return (or throw) on every path. Moon stubs carry no body to check.
   if (!ctx_.isInMoonScope()) {
+    checkResultHandling(func.getBody(), ctx_);
     checkAllPathsReturn(proto, func.getBody(), scopeReturnType,
                         func.getLocation());
   }
@@ -229,6 +359,8 @@ void BodyAnalyzer::analyzeLambda(sun::ast::LambdaAST& lambda) {
     }
     analyzeBlock(const_cast<BlockExprAST&>(lambda.getBody()));
   }
+
+  checkResultHandling(lambda.getBody(), ctx_);
 
   // Same rule as named functions: no implicit returns
   checkAllPathsReturn(proto, lambda.getBody(), proto.getResolvedReturnType(),
@@ -309,6 +441,27 @@ void BodyAnalyzer::analyzeMethodWithBindings(
        ++i) {
     sema_.analyzeExpr(*statements[i]);
   }
+
+  if (proto.getName() == "init" && methodReturnType &&
+      !methodReturnType->isVoid()) {
+    auto result =
+        std::dynamic_pointer_cast<sun::types::EnumType>(methodReturnType);
+    if (!result ||
+        result->sourceDeclaration(ctx_.results().declarations) !=
+            ctx_.lookupGenericEnum("_Result")->AST->getDeclarationId() ||
+        result->getGenericArgs().size() != 2 ||
+        !result->getGenericArgs()[0]->isVoid())
+      logAndThrowError("A fallible init must return _Result<void, E>",
+                       methodFunc.getLocation());
+    if (!sun::semantic_analysis::alwaysExits(methodFunc.getBody())) {
+      auto success = std::make_unique<sun::ast::ReturnExprAST>();
+      success->setLocation(methodFunc.getLocation());
+      analyzeReturnExpr(*success);
+      const_cast<BlockExprAST&>(methodFunc.getBody())
+          .addExpression(std::move(success));
+    }
+  }
+  checkResultHandling(methodFunc.getBody(), ctx_);
 
   // Step 7: Pop scopes and restore context
   ctx_.exitScope();  // method scope

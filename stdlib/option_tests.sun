@@ -1,4 +1,4 @@
-// stdlib/option_tests.sun - Tests for option.sun (Option/Result) and the
+// stdlib/option_tests.sun - Tests for option.sun (Option/_Result) and the
 // stdlib APIs that signal absence through them.
 // Replaces the C++ suite Stdlib_Option.
 
@@ -9,13 +9,13 @@ public module std {
   /** Groups tests for the option library behavior. */
   module option_tests {
     /**
-     * Classifies an i32 for the Result tests: negative values are an error.
+     * Classifies an i32 for the _Result tests: negative values are an error.
      */
-    function parse_positive(x: i32) Result<i32, i32> {
+    function parse_positive(x: i32) _Result<i32, i32> {
       if (x < 0) {
-        return Result.Err(-1);
+        return _Result.Err(-1);
       }
-      return Result.Ok(x);
+      return _Result.Ok(x);
     }
 
     /** Checks option from stdlib. */
@@ -30,7 +30,7 @@ public module std {
         Option.Some(v) => v,
         Option.None => 2
       };
-      std.test.assert_eq(av + bv, 42);
+      try std.test.assert_eq(av + bv, 42);
     }
 
     /** Checks result from stdlib. */
@@ -38,14 +38,14 @@ public module std {
       var good = parse_positive(41);
       var bad = parse_positive(-5);
       var g = match good {
-        Result.Ok(v) => v,
-        Result.Err(e) => 0
+        _Result.Ok(v) => v,
+        _Result.Err(e) => 0
       };
       var b = match bad {
-        Result.Ok(v) => 0,
-        Result.Err(e) => 1
+        _Result.Ok(v) => 0,
+        _Result.Err(e) => 1
       };
-      std.test.assert_eq(g + b, 42);
+      try std.test.assert_eq(g + b, 42);
     }
 
     /**
@@ -63,7 +63,7 @@ public module std {
         Option.Some(v) => 0,
         Option.None => 2
       };
-      std.test.assert_eq(hit + miss, 42);
+      try std.test.assert_eq(hit + miss, 42);
     }
 
     /** Checks string find char. */
@@ -85,7 +85,7 @@ public module std {
         Option.Some(i) => i,
         Option.None => 31
       };
-      std.test.assert_eq(first + last + missing, 42);  // 4 + 7 + 31
+      try std.test.assert_eq(first + last + missing, 42);  // 4 + 7 + 31
     }
 
     /**
@@ -108,7 +108,7 @@ public module std {
         Option.Some(x) => x,
         Option.None => 0
       };
-      std.test.assert_eq(empty + f + l, 42);  // 2 + 10 + 30
+      try std.test.assert_eq(empty + f + l, 42);  // 2 + 10 + 30
     }
 
     /**
@@ -122,7 +122,7 @@ public module std {
         Option.Some(x) => x,
         Option.None => 0
       };
-      std.test.assert_eq(got, 42);
+      try std.test.assert_eq(got, 42);
     }
 
     /**
@@ -156,7 +156,7 @@ public module std {
         Option.Some(item) => item.get(),
         Option.None => 0
       };
-      std.test.assert_eq(got, 42);
+      try std.test.assert_eq(got, 42);
     }
 
     /** Checks linked list first lsyntax tree. */
@@ -177,7 +177,7 @@ public module std {
         Option.Some(x) => x,
         Option.None => 0
       };
-      std.test.assert_eq(empty + f + l, 42);  // 2 + 10 + 30
+      try std.test.assert_eq(empty + f + l, 42);  // 2 + 10 + 30
     }
 
     /** Checks vec pop. */
@@ -198,7 +198,7 @@ public module std {
         Option.Some(x) => 0,
         Option.None => 2
       };
-      std.test.assert_eq(a + b + c + v.size(), 42);  // 10 + 30 + 2 + 0
+      try std.test.assert_eq(a + b + c + v.size(), 42);  // 10 + 30 + 2 + 0
     }
 
     /**
@@ -222,13 +222,13 @@ public module std {
           }
         };
       }
-      std.test.assert_eq(sum, 42);
+      try std.test.assert_eq(sum, 42);
       // Exhausted iterators keep returning None
       var again = match it.next(v) {
         Option.Some(x) => 0,
         Option.None => 1
       };
-      std.test.assert_eq(again, 1);
+      try std.test.assert_eq(again, 1);
     }
 
     /**
@@ -261,7 +261,7 @@ public module std {
       for (var x: i32 in buf) {
         sum = sum + x;
       }
-      std.test.assert_eq(sum, 42);  // 3 + 7 + 11 + 21
+      try std.test.assert_eq(sum, 42);  // 3 + 7 + 11 + 21
     }
 
     /**
@@ -274,7 +274,7 @@ public module std {
       for (var x: i32 in ll) {
         count = 0;
       }
-      std.test.assert_eq(count, 42);
+      try std.test.assert_eq(count, 42);
     }
   }  // module option_tests
 }  // module std

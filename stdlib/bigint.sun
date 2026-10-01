@@ -259,11 +259,11 @@ public module std {
     }
 
     /**
-     * this = this - other; throws if other is larger
+     * this = this - other; returns OverflowError if other is larger
      */
-    public method sub(other: const ref BigUint) void throws IError {
+    public method sub(other: const ref BigUint) _Result<void, OverflowError> {
       if (this.compare(other) < 0) {
-        throw OverflowError();
+        return _Result.Err(OverflowError());
       }
       var borrow: u64 = 0;
       for (var i: i64 = 0; i < this.limbs.size(); i = i + 1) {
@@ -282,6 +282,7 @@ public module std {
         borrow = next;
       }
       this.trim();
+      return _Result.Ok;
     }
 
     // ------------------------------------------------------------------------
@@ -452,9 +453,9 @@ public module std {
      * this = this / divisor, returns the remainder. The divisor must fit in
      * 32 bits (enough for decimal digit extraction: 10, 10^9, ...).
      */
-    public method divmod_small(divisor: u32) u32 throws IError {
+    public method divmod_small(divisor: u32) _Result<u32, DivisionByZeroError> {
       if (divisor == 0) {
-        throw DivisionByZeroError();
+        return _Result.Err(DivisionByZeroError());
       }
       var d: u64 = _convert<u64>(divisor);
       var rem: u64 = 0;
@@ -472,7 +473,7 @@ public module std {
         i = i - 1;
       }
       this.trim();
-      return _convert<u32>(rem);
+      return _Result.Ok(_convert<u32>(rem));
     }
 
     // ------------------------------------------------------------------------
@@ -491,12 +492,12 @@ public module std {
       var work = this.clone();
       var chunks = Vec<u32>(this.alloc, this.limbs.size() * 3 + 1);
       while (work.is_zero() == false) {
-        var chunk: u32 = 0;
-        try {
-          chunk = work.divmod_small(1000000000);
-        } catch (e: ref IError) {
-          return;
-        }
+        var chunk: u32 = match work.divmod_small(1000000000) {
+          _Result.Ok(value) => value,
+          _Result.Err(_) => {
+            return;
+          }
+        };
         chunks.push(chunk);
       }
       var i: i64 = chunks.size() - 1;

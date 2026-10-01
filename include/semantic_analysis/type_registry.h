@@ -87,13 +87,15 @@ class TypeRegistry {
             1));
     auto ierror =
         nominalType<sun::types::InterfaceType>(id, DeclarationKind::Interface);
-    // Not const: every user error class would then have to spell
-    // `const function code()`, and errors are caught into plain variables.
-    ierror->addMethod("code", sun::types::Types::Int32(), {}, true)
-        .declarationId =
+    auto& code =
+        ierror->addMethod("code", sun::types::Types::Int32(), {}, true);
+    code.isConst = true;
+    code.declarationId =
         declarations_.add(DeclarationKind::Function, "code", id);
-    ierror->addMethod("message", sun::types::Types::String(), {}, true)
-        .declarationId =
+    auto& message =
+        ierror->addMethod("message", sun::types::Types::String(), {}, true);
+    message.isConst = true;
+    message.declarationId =
         declarations_.add(DeclarationKind::Function, "message", id);
     uint64_t ordinal = 2;
     for (const auto& method : ierror->getMethods())
@@ -134,6 +136,7 @@ class TypeRegistry {
       auto& method = arithmeticError->addMethod(requirement.name,
                                                 requirement.returnType, {});
       method.declarationId = methodId;
+      method.isConst = requirement.isConst;
       method.visibility = Visibility::Public;
       arithmeticError->bindInterfaceMethod(requirement.declarationId, methodId);
     }

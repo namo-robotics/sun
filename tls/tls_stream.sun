@@ -22,6 +22,9 @@
 public module tls {
   using std;
 
+  /** Owns a general transport or HTTP error, or an OpenSSL protocol error. */
+  public enum ClientError { General(Error), Tls(TlsError) }
+
   // SSL_CTX_set_verify mode
   const SSL_VERIFY_PEER: i32 = 1;
   // SSL_ctrl command + argument implementing the SSL_set_tlsext_host_name
@@ -61,12 +64,12 @@ public module tls {
     }
 
     /** Returns the error category used by the test fixture. */
-    public method code() i32 {
+    public const method code() i32 {
       return this.code_;
     }
 
     /** Returns an owned explanation of the fixture's error. */
-    public method message() String {
+    public const method message() String {
       var alloc: HeapAllocator = HeapAllocator();
       return this.message_.clone(alloc);
     }
@@ -109,42 +112,42 @@ public module tls {
     /**
      * Resolve the host, connect, and complete a verified TLS handshake.
      */
-    public method connect(host: ref String, port: i32) void throws IError {
-      this.tcp.connect_host(host, port);
+    public method connect(host: ref String, port: i32) _Result<void, tls.ClientError> {
+      try this.tcp.connect_host(host, port);
 
       var method: raw_ptr<u8> = unsafe { c_tls_client_method(); };
       this.ctx = unsafe { c_ssl_ctx_new(method); };
       if (this.ctx == null) {
         this.close();
         var err_ctx: String = take_openssl_error("SSL_CTX_new failed");
-        throw TlsError(-1, err_ctx);
+        return _Result.Err(ClientError.Tls(TlsError(-1, err_ctx)));
       }
       unsafe { c_ssl_ctx_set_verify(this.ctx, SSL_VERIFY_PEER, null); };
       if (unsafe { c_ssl_ctx_set_default_verify_paths(this.ctx); } != 1) {
         this.close();
         var err_paths: String = take_openssl_error("failed to load system CA store");
-        throw TlsError(-1, err_paths);
+        return _Result.Err(ClientError.Tls(TlsError(-1, err_paths)));
       }
 
       this.ssl = unsafe { c_ssl_new(this.ctx); };
       if (this.ssl == null) {
         this.close();
         var err_new: String = take_openssl_error("SSL_new failed");
-        throw TlsError(-1, err_new);
+        return _Result.Err(ClientError.Tls(TlsError(-1, err_new)));
       }
 
       // Verify the certificate against this hostname, and send it as SNI.
       if (unsafe { c_ssl_set1_host(this.ssl, host.c_str()); } != 1) {
         this.close();
         var err_host: String = take_openssl_error("SSL_set1_host failed");
-        throw TlsError(-1, err_host);
+        return _Result.Err(ClientError.Tls(TlsError(-1, err_host)));
       }
       unsafe { c_ssl_ctrl(this.ssl, SSL_CTRL_SET_TLSEXT_HOSTNAME, TLSEXT_NAMETYPE_HOST_NAME, host.c_str()); };
 
       if (unsafe { c_ssl_set_fd(this.ssl, this.tcp.get_fd()); } != 1) {
         this.close();
         var err_fd: String = take_openssl_error("SSL_set_fd failed");
-        throw TlsError(-1, err_fd);
+        return _Result.Err(ClientError.Tls(TlsError(-1, err_fd)));
       }
 
       if (unsafe { c_ssl_connect(this.ssl); } != 1) {
@@ -156,54 +159,55 @@ public module tls {
           var reason: String = from_c_str(alloc, unsafe { c_x509_verify_cert_error_string(verify); });
           msg.append(reason);
           this.close();
-          throw TlsError(-1, msg);
+          return _Result.Err(ClientError.Tls(TlsError(-1, msg)));
         }
         var handshake_err: String = take_openssl_error("TLS handshake failed");
         this.close();
-        throw TlsError(-1, handshake_err);
+        return _Result.Err(ClientError.Tls(TlsError(-1, handshake_err)));
       }
+      return _Result.Ok;
     }
 
     /**
      * Send string data
      */
-    public method send_str(data: static_ptr<u8>) i64 throws IError {
-      return this.send_bytes(data.raw(), data.length());
+    public method send_str(data: static_ptr<u8>) _Result<i64, TlsError> {
+      return _Result.Ok((try this.send_bytes(data.raw(), data.length())));
     }
 
     /**
      * Send a String's contents. Takes ref (not const ref) because c_str()
      * may append the terminating NUL.
      */
-    public method send_string(data: ref String) i64 throws IError {
-      return this.send_bytes(data.c_str(), data.length());
+    public method send_string(data: ref String) _Result<i64, TlsError> {
+      return _Result.Ok((try this.send_bytes(data.c_str(), data.length())));
     }
 
     /**
      * Send raw bytes; on a blocking socket SSL_write writes everything or
      * fails.
      */
-    public method send_bytes(data: raw_ptr<u8>, len: i64) i64 throws IError {
+    public method send_bytes(data: raw_ptr<u8>, len: i64) _Result<i64, TlsError> {
       var result: i32 = unsafe { c_ssl_write(this.ssl, data, _convert<i32>(len)); };
       if (result <= 0) {
         var err_write: String = take_openssl_error("TLS write failed");
-        throw TlsError(result, err_write);
+        return _Result.Err(TlsError(result, err_write));
       }
-      return _convert<i64>(result);
+      return _Result.Ok(_convert<i64>(result));
     }
 
     /**
      * Receive into a ContiguousBuffer. Returns the byte count, or 0 once
      * the peer has closed the connection.
      */
-    public method recv(buf: ref ContiguousBuffer<u8>) i64 throws IError {
+    public method recv(buf: ref ContiguousBuffer<u8>) _Result<i64, TlsError> {
       var result: i32 = unsafe { c_ssl_read(this.ssl, buf.raw_data(), _convert<i32>(buf.size())); };
       if (result > 0) {
-        return _convert<i64>(result);
+        return _Result.Ok(_convert<i64>(result));
       }
       var reason: i32 = unsafe { c_ssl_get_error(this.ssl, result); };
       if (reason == SSL_ERROR_ZERO_RETURN) {
-        return 0;  // clean TLS shutdown
+        return _Result.Ok(0);  // clean TLS shutdown
       }
       // Peers commonly drop the socket without a close_notify. OpenSSL 1.1.1
       // reports that as a syscall error with an empty queue, 3.x as an SSL
@@ -211,16 +215,16 @@ public module tls {
       // framed protocols (Content-Length, chunked) detect real truncation
       // above this layer.
       if (reason == SSL_ERROR_SYSCALL and unsafe { c_err_peek_error(); } == 0) {
-        return 0;
+        return _Result.Ok(0);
       }
       if (reason == SSL_ERROR_SSL) {
         var peeked: u64 = unsafe { c_err_peek_error(); };
         if ((peeked & OPENSSL_REASON_MASK) == SSL_REASON_UNEXPECTED_EOF) {
-          return 0;
+          return _Result.Ok(0);
         }
       }
       var err_read: String = take_openssl_error("TLS read failed");
-      throw TlsError(reason, err_read);
+      return _Result.Err(TlsError(reason, err_read));
     }
 
     /**

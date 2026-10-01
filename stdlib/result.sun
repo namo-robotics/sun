@@ -1,0 +1,26 @@
+/** Stores results inline; reference payloads remain borrowed. */
+public module std {
+  /** Combines standard error categories for functions that use several APIs. */
+  public enum Result<T> {
+    Ok(T),
+    Error(Error),
+    OutOfBounds(IndexOutOfBoundsError),
+    NotFound(NotFoundError),
+    Empty(EmptyError),
+    InvalidArgument(InvalidArgumentError),
+    Io(IOError),
+    Allocation(AllocationError),
+    Conversion(ConversionError),
+    DivisionByZero(DivisionByZeroError),
+    Overflow(OverflowError),
+    Arithmetic(ArithmeticError),
+    Json(JsonError),
+    Decode(ProtoDecodeError)
+  }
+
+  /** Reports checked element access without unrelated error categories. */
+  public enum AccessResult<T> {
+    Ok(T),
+    OutOfBounds(IndexOutOfBoundsError)
+  }
+}

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "ast/expr_ast.h"
+#include "ast/type_annotation.h"
 
 /** Defines syntax-tree nodes and the annotations used to analyze them. */
 namespace sun::ast {
@@ -35,6 +36,8 @@ struct MatchArm {
   // Set by semantic analysis when the pattern names an enum variant.
   // Valid tags may be negative; the pattern type identifies enum arms.
   int64_t resolvedVariantTag = -1;
+  std::optional<TypeAnnotation> bindingType;
+  std::vector<int64_t> matchedVariantTags;
 
   /** Creates a match branch owning its pattern and body. */
   MatchArm(std::unique_ptr<ExprAST> pattern, bool isWildcard,
@@ -64,23 +67,36 @@ struct MatchArm {
 class MatchExprAST : public ExprAST {
   std::unique_ptr<ExprAST> discriminant;  // The value being matched
   std::vector<MatchArm> arms;             // Match arms
+  bool propagation_ = false;              // Source spelling is prefix try.
 
  public:
   /** Creates this syntax node and takes ownership of any supplied child
    * expressions. */
   MatchExprAST(std::unique_ptr<ExprAST> discriminant,
-               std::vector<MatchArm> arms)
-      : discriminant(std::move(discriminant)), arms(std::move(arms)) {}
+               std::vector<MatchArm> arms, bool propagation = false)
+      : discriminant(std::move(discriminant)),
+        arms(std::move(arms)),
+        propagation_(propagation) {}
+
+  /** Reports whether this match implements prefix error propagation. */
+  bool isPropagation() const { return propagation_; }
 
   /** Returns the syntax-node kind used to dispatch tree visitors. */
   ASTNodeType getType() const override { return ASTNodeType::MATCH; }
 
   /** Returns a readable representation for diagnostics and debugging. */
   std::string toString() const override {
+    if (propagation_) return "try " + discriminant->toString();
     std::string result = "match " + discriminant->toString() + " {";
     for (size_t i = 0; i < arms.size(); ++i) {
       if (i > 0) result += ", ";
-      if (arms[i].isWildcard) {
+      if (arms[i].bindingType) {
+        result += "(" +
+                  (arms[i].bindings.front().isWildcard
+                       ? std::string("_")
+                       : arms[i].bindings.front().name) +
+                  ": " + arms[i].bindingType->toString() + ")";
+      } else if (arms[i].isWildcard) {
         result += "_";
       } else {
         result += arms[i].pattern->toString();

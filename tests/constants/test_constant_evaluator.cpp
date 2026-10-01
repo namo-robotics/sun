@@ -406,13 +406,13 @@ TEST(Constants_Evaluator, numeric_conversions_match_run_time) {
 
 // === What is left to the startup function, and why ===
 
-/** Invalid file-scope arithmetic cannot propagate an unchecked exception. */
-TEST(Constants_Evaluator, invalid_integer_operations_require_handling) {
+/** Statically invalid integer arithmetic is rejected before startup. */
+TEST(Constants_Evaluator, invalid_integer_operations_are_rejected) {
   for (const std::string expression :
        {"1 / 0", "1 % 0", "-2147483648 / -1", "-2147483648 % -1"}) {
     EXPECT_SUN_ERROR_WITH_MESSAGE(
         decideGlobal("const A: i32 = " + expression + ";", "A"),
-        "may throw ArithmeticError");
+        "Invalid integer division or remainder");
   }
   expectInitializedAtStartup(
       "const F: f64 = 1.0e40;\nconst A: i32 = _convert<i32>(F);", "A",

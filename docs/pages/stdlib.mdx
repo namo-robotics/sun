@@ -1001,29 +1001,26 @@ It handles one connection at a time, parses request line and headers (not
 bodies), and always answers `Connection: close`. For outgoing requests, use
 `HttpsClient` from the tls bundle.
 
-## Option\<T\> and Result\<T, E\>
+## Optional values and results
 
-Payload enums for absence and fallibility, defined in `option.sun`:
+`Option<T>`, defined in `option.sun`, represents a value that may be absent:
 
 ```sun
 enum Option<T> { Some(T), None }
-enum Result<T, E> { Ok(T), Err(E) }
 ```
 
-Inspect them with `match`; construction infers type arguments from the
-payload (`Option.Some(42)`) or from the expected type (`Option.None` in
-return position or against an annotation):
+For fallible operations, prefer the result enums defined in `result.sun`:
 
-```sun
-var v = match m.find(key) {
-    Option.Some(x) => x,
-    Option.None => fallback
-};
-```
+- `AccessResult<T>` contains `Ok(T)` or `OutOfBounds(IndexOutOfBoundsError)`.
+  Checked vector operations use this precise result type.
+- `Result<T>` contains `Ok(T)` and named variants for standard error categories,
+  including bounds, lookup, I/O, allocation, conversion, arithmetic, JSON, and
+  protocol decoding errors. Use it when combining several APIs.
 
-Use `Option` for "might not be there" (lookups, `first`/`last`, `pop`,
-iterator `next`), and `IError` throwing for actual failures. `Result<T, E>`
-suits fallible operations whose error is a value rather than an exception.
+Use `match` to handle results or prefix `try` to propagate failures. `try` treats
+the first declared variant as success; it does not depend on stdlib names.
+The builtin `_Result<T, E>` remains available without importing the stdlib.
+
 
 ## Iteration: IIterator\<T, Container\> and IIterable\<T, Self\>
 

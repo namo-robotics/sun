@@ -110,6 +110,7 @@ void resetBindings(const ExprAST& root, bool resetIdentity) {
            const_cast<MatchExprAST&>(static_cast<const MatchExprAST&>(root))
                .getArmsMutable()) {
         arm.resolvedVariantTag = -1;
+        arm.matchedVariantTags.clear();
         for (auto& value : arm.bindings) {
           value.resolvedType.reset();
           if (resetIdentity) value.declaration.resetSession();

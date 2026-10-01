@@ -484,7 +484,7 @@ TEST(Classes_ConstMethods, const_vec_cannot_push_or_set) {
 TEST(Classes_ConstMethods, peek_accessors_are_const_views) {
   auto value = executeStringWithStdlib(R"(
       using std;
-      function main() i32 throws IError {
+      function main() i32 {
           var allocator = make_heap_allocator();
           var v = Vec<i32>(allocator, 4);
           v.push(5);
@@ -508,7 +508,7 @@ TEST(Classes_ConstMethods, peek_accessors_are_const_views) {
   // Through a constant receiver the peeked element is read-only ...
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
       using std;
-      function main() i32 throws IError {
+      function main() i32 {
           var allocator = make_heap_allocator();
           var v = Vec<i32>(allocator, 4);
           v.push(5);
@@ -525,7 +525,7 @@ TEST(Classes_ConstMethods, peek_accessors_are_const_views) {
   // ... while a mutable receiver still hands out a writable borrow
   auto written = executeStringWithStdlib(R"(
       using std;
-      function main() i32 throws IError {
+      function main() i32 {
           var allocator = make_heap_allocator();
           var v = Vec<i32>(allocator, 4);
           v.push(5);
@@ -533,7 +533,7 @@ TEST(Classes_ConstMethods, peek_accessors_are_const_views) {
               Option.Some(x) => { x = 42; },
               Option.None => { }
           };
-          return v.get(0);
+          return (match v.get(0) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } });
       }
     )");
   EXPECT_EQ(written, 42);
@@ -575,14 +575,14 @@ TEST(Classes_ConstMethods, user_const_method_returning_option_ref) {
 TEST(Classes_ConstMethods, const_map_reads) {
   auto value = executeStringWithStdlib(R"(
       using std;
-      function main() i32 throws IError {
+      function main() i32 {
           var allocator = make_heap_allocator();
           var m = Map<i64, i32>(allocator, 8);
           m.insert(1, 10);
           m.insert(2, 20);
           const ref cm = m;
           if (not cm.contains(2)) { return -1; }
-          return cm.get(1) + cm.get(2) + _convert<i32>(cm.size());
+          return (match cm.get(1) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) + (match cm.get(2) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) + _convert<i32>(cm.size());
       }
     )");
   EXPECT_EQ(value, 32);

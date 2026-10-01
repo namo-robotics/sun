@@ -50,10 +50,10 @@ TEST(Functions_Generic_ContainerSignatures, vec_return_type_and_local) {
         return v;
     }
 
-    function main() i32 throws IError {
+    function main() i32 {
         var allocator = make_heap_allocator();
         var v = build<i64>(allocator, 7);
-        return v.get(0);
+        return (match v.get(0) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } });
     }
   )");
   EXPECT_EQ(value, 7);
@@ -87,7 +87,7 @@ TEST(Functions_Generic_ContainerSignatures, map_parameter_two_type_params) {
         return m.size();
     }
 
-    function main() i32 throws IError {
+    function main() i32 {
         var allocator = make_heap_allocator();
         var m = Map<i32, i32>(allocator, 8);
         m.insert(1, 10);

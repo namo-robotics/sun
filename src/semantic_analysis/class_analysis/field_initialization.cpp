@@ -409,11 +409,24 @@ void BodyWalk::walkCallOnThis(const CallExprAST& call,
     return;
   }
 
+  // A result-returning helper can fail after writing only some fields. Its
+  // signature does not expose those partial writes to the caller.
+  auto returned = body->getProto().getResolvedReturnType();
+  if (returned && returned->isEnum() &&
+      static_cast<const sun::types::EnumType&>(*returned).getBaseName() ==
+          "_Result")
+    noteObjectUse("call fallible method '" + methodName + "'",
+                  call.getLocation());
   bool wasInMethod = inMethodBody_;
   inMethodBody_ = true;
   walk(body->getBody());
   inMethodBody_ = wasInMethod;
   inProgress_.erase(methodName);
+  std::vector<sun::semantic_analysis::DeclarationId> initialized;
+  for (const auto& field : info_.classType().getFields())
+    if (statusOf(field.name) == FieldStatus::Initialized)
+      initialized.push_back(field.declarationId);
+  call.setInitializedFields(std::move(initialized));
 }
 
 void BodyWalk::requireEveryFieldAtEnd(const ExprAST& body,
@@ -578,6 +591,13 @@ void BodyWalk::walk(const ExprAST& expr) {
       if (ret.getValue()) walk(*ret.getValue());
       // Only the constructor's own returns owe the whole object
       if (inMethodBody_) return;
+      if (ret.getTargetType() && ret.getTargetType()->isEnum()) {
+        auto* call = dynamic_cast<const sun::ast::CallExprAST*>(ret.getValue());
+        auto* variant =
+            call ? dynamic_cast<const MemberAccessAST*>(call->getCallee())
+                 : nullptr;
+        if (variant && variant->getMemberName() == "Err") return;
+      }
       std::string missing = firstFieldWithoutValue();
       if (!missing.empty()) {
         logAndThrowError("Constructor of '" + className() +

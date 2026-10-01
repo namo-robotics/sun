@@ -527,14 +527,14 @@ TEST(Operators_Literals, string_hex_escape_alpn_length) {
 TEST(Operators_Literals, string_hex_escapes_preserve_bytes) {
   EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
     using std;
-    function main() i64 throws IError {
+    function main() i64 {
       var alloc = HeapAllocator();
       var s = String(alloc, "\x00\x7f\x80\xfF\x41F\\x08");
       if (s.length() != 10) { return 1; }
-      if (s.at(0) != 0 or s.at(1) != 127 or s.at(2) != 128 or
-          s.at(3) != 255 or s.at(4) != b'A' or s.at(5) != b'F' or
-          s.at(6) != b'\\' or s.at(7) != b'x' or
-          s.at(8) != b'0' or s.at(9) != b'8') { return 2; }
+      if ((match s.at(0) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != 0 or (match s.at(1) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != 127 or (match s.at(2) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != 128 or
+          (match s.at(3) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != 255 or (match s.at(4) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != b'A' or (match s.at(5) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != b'F' or
+          (match s.at(6) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != b'\\' or (match s.at(7) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != b'x' or
+          (match s.at(8) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != b'0' or (match s.at(9) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != b'8') { return 2; }
       return 0;
     }
   )"),

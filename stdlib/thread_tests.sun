@@ -43,11 +43,11 @@ public module std {
       /** Creates an empty fixture value for this example or regression test. */
       init() {}
       /** Returns the error category used by the test fixture. */
-      method code() i32 {
+      const method code() i32 {
         return 1;
       }
       /** Returns an owned explanation of the fixture's error. */
-      method message() String {
+      const method message() String {
         return String("boom");
       }
     }
@@ -55,8 +55,8 @@ public module std {
     /**
      * Throws immediately.
      */
-    function throw_boom() i32 throws IError {
-      throw Boom();
+    function throw_boom() _Result<i32, Boom> {
+      return _Result.Err(Boom());
     }
 
     // ------------------------------------------------------------------
@@ -68,7 +68,7 @@ public module std {
      */
     test_function spawn_accepts_a_named_function() {
       var t = spawn(double_it, 21);
-      std.test.assert_eq(t.join(), 42);
+      try std.test.assert_eq(t.join(), 42);
     }
 
     /**
@@ -76,7 +76,7 @@ public module std {
      */
     test_function spawn_accepts_a_qualified_call() {
       var t = std.thread.spawn(double_it, 21);
-      std.test.assert_eq(t.join(), 42);
+      try std.test.assert_eq(t.join(), 42);
     }
 
     /**
@@ -84,7 +84,7 @@ public module std {
      */
     test_function spawn_accepts_a_written_function_type() {
       var t = std.thread.spawn<function (i32) i32>(double_it, 21);
-      std.test.assert_eq(t.join(), 42);
+      try std.test.assert_eq(t.join(), 42);
     }
 
     /**
@@ -94,7 +94,7 @@ public module std {
      */
     test_function spawn_passes_function_pointer_arguments() {
       var t = spawn(apply, double_it, 21);
-      std.test.assert_eq(t.join(), 42);
+      try std.test.assert_eq(t.join(), 42);
     }
 
     /**
@@ -104,11 +104,11 @@ public module std {
     test_function function_values_satisfy_function_traits() {
       var f: function (i32) i32 = double_it;
       var l = (n: i32) => i32 { return n; };
-      std.test.assert(_is<_Function>(f), "f is a _Function");
-      std.test.assert(_is<_Callable>(f), "f is a _Callable");
-      std.test.assert(_is<_Lambda>(f) == false, "f is not a _Lambda");
-      std.test.assert(_is<_Function>(l) == false, "l is not a _Function");
-      std.test.assert(_is<_Callable>(l), "l is a _Callable");
+      try std.test.assert(_is<_Function>(f), "f is a _Function");
+      try std.test.assert(_is<_Callable>(f), "f is a _Callable");
+      try std.test.assert(_is<_Lambda>(f) == false, "f is not a _Lambda");
+      try std.test.assert(_is<_Function>(l) == false, "l is not a _Function");
+      try std.test.assert(_is<_Callable>(l), "l is a _Callable");
     }
 
     /**
@@ -117,7 +117,7 @@ public module std {
      */
     test_function thread_handle_can_be_written_as_a_type() {
       var t: Thread<i32> = spawn(() => i32 { return 42; });
-      std.test.assert_eq(t.join(), 42);
+      try std.test.assert_eq(t.join(), 42);
     }
 
     // ------------------------------------------------------------------
@@ -127,14 +127,14 @@ public module std {
     /** Checks spawn and join basic. */
     test_function spawn_and_join_basic() {
       var t = spawn(() => i32 { return 42; });
-      std.test.assert_eq(t.join(), 42);
+      try std.test.assert_eq(t.join(), 42);
     }
 
     /** Checks spawn with captured value. */
     test_function spawn_with_captured_value() {
       var x: i32 = 10;
       var t = spawn(() => i32 { return x * 2; });
-      std.test.assert_eq(t.join(), 20);
+      try std.test.assert_eq(t.join(), 20);
     }
 
     /**
@@ -153,7 +153,7 @@ public module std {
     test_function spawn_lambda_variable() {
       var f = () => i32 { return 7; };
       var t = spawn(f);
-      std.test.assert_eq(t.join() * 6, 42);
+      try std.test.assert_eq(t.join() * 6, 42);
     }
 
     /** Checks spawn lambda variable with capture. */
@@ -161,7 +161,7 @@ public module std {
       var x: i32 = 10;
       var f = () => i32 { return x * 2; };
       var t = spawn(f);
-      std.test.assert_eq(t.join() + 1, 21);
+      try std.test.assert_eq(t.join() + 1, 21);
     }
 
     /** Checks multiple threads. */
@@ -169,7 +169,7 @@ public module std {
       var t1 = spawn(() => i32 { return 10; });
       var t2 = spawn(() => i32 { return 20; });
       var t3 = spawn(() => i32 { return 30; });
-      std.test.assert_eq(t1.join() + t2.join() + t3.join(), 60);
+      try std.test.assert_eq(t1.join() + t2.join() + t3.join(), 60);
     }
 
     // ------------------------------------------------------------------
@@ -193,7 +193,7 @@ public module std {
         }
       );
       var r = t.join();
-      std.test.assert_eq(c.n, 1000);
+      try std.test.assert_eq(c.n, 1000);
     }
 
     /**
@@ -214,7 +214,7 @@ public module std {
           }
         );
       }
-      std.test.assert_eq(c.n, 100000);
+      try std.test.assert_eq(c.n, 100000);
     }
 
     /**
@@ -241,7 +241,7 @@ public module std {
      * there.
      */
     test_function unjoined_thread_joins_on_early_return() {
-      std.test.assert_eq(spawn_then_return_early(), 5);
+      try std.test.assert_eq(spawn_then_return_early(), 5);
     }
 
     /**
@@ -251,7 +251,7 @@ public module std {
       var x: i32 = 1;
       var t = spawn([ref x]() => i32 { x = 2; return 40; });
       var r = t.join();
-      std.test.assert_eq(r + x, 42);
+      try std.test.assert_eq(r + x, 42);
     }
 
     /**
@@ -261,7 +261,7 @@ public module std {
     test_function handle_moves_to_a_new_variable() {
       var t = spawn(() => i32 { return 11; });
       var t2 = t;
-      std.test.assert_eq(t2.join(), 11);
+      try std.test.assert_eq(t2.join(), 11);
     }
 
     /**
@@ -270,32 +270,51 @@ public module std {
     test_function reassigned_handle_joins_previous_thread() {
       var t = spawn(() => i32 { return 1; });
       t = spawn(() => i32 { return 2; });
-      std.test.assert_eq(t.join(), 2);
+      try std.test.assert_eq(t.join(), 2);
+    }
+
+    var joined_at_error: i32 = 0;
+
+    /** Records the final counter after the thread handle has been destroyed. */
+    class JoinedCounter {
+      public var n: i32 = 0;
+      /** Starts a counter for the propagation cleanup test. */
+      init() {}
+      /** Observes the worker only after the later-created handle has joined it. */
+      deinit() {
+        joined_at_error = this.n;
+      }
+    }
+
+    /** Joins its thread when a returned error leaves the helper's scope. */
+    function join_before_error() _Result<i32, Boom> {
+      var c = JoinedCounter();
+      var t = spawn(
+        [ref c]() => i32 {
+          var i: i32 = 0;
+          while (i < 100000) {
+            c.n = c.n + 1;
+            i = i + 1;
+          }
+          return 0;
+        }
+      );
+      return _Result.Ok(try throw_boom());
     }
 
     /**
      * An exception unwinding out of the scope joins the thread on its way
      * past.
      */
-    test_function unjoined_thread_joins_while_unwinding() {
-      var c = Counter();
-      var got: i32 = 0;
-      try {
-        var t = spawn(
-          [ref c]() => i32 {
-            var i: i32 = 0;
-            while (i < 100000) {
-              c.n = c.n + 1;
-              i = i + 1;
-            }
-            return 0;
-          }
-        );
-        var r = throw_boom();
-      } catch (e: ref IError) {
-        got = c.n;
-      }
-      std.test.assert_eq(got, 100000);
+    test_function unjoined_thread_joins_on_propagation() {
+      joined_at_error = 0;
+      match join_before_error() {
+        _Result.Ok(_) => {
+          try std.test.fail("expected Boom");
+        },
+        _Result.Err(_) => {}
+      };
+      try std.test.assert_eq(joined_at_error, 100000);
     }
 
     /**
@@ -306,7 +325,7 @@ public module std {
       var x: i32 = 0;
       var t1 = spawn([const ref x]() => i32 { return x + 1; });
       var t2 = spawn([const ref x]() => i32 { return x + 2; });
-      std.test.assert_eq(t1.join() + t2.join(), 3);
+      try std.test.assert_eq(t1.join() + t2.join(), 3);
     }
 
     /**
@@ -327,7 +346,7 @@ public module std {
       var cfg = Config(20);
       var t1 = spawn([const ref cfg]() => i32 { return cfg.limit; });
       var t2 = spawn([const ref cfg]() => i32 { return cfg.limit; });
-      std.test.assert_eq(t1.join() + t2.join(), 40);
+      try std.test.assert_eq(t1.join() + t2.join(), 40);
     }
 
     // ------------------------------------------------------------------
@@ -369,8 +388,8 @@ public module std {
      */
     test_function joined_class_result_is_owned_by_the_joiner() {
       var v = join_class_result();
-      std.test.assert_eq(v, 7);
-      std.test.assert_eq(joined_result_drops, 1);
+      try std.test.assert_eq(v, 7);
+      try std.test.assert_eq(joined_result_drops, 1);
     }
 
     // Drop counter for unjoined_class_result_is_dropped only.
@@ -404,7 +423,7 @@ public module std {
      */
     test_function unjoined_class_result_is_dropped() {
       drop_class_result();
-      std.test.assert_eq(unjoined_result_drops, 1);
+      try std.test.assert_eq(unjoined_result_drops, 1);
     }
 
     /**
@@ -456,7 +475,7 @@ public module std {
     test_function class_result_owning_heap_is_released_once() {
       var v = take_buffer();
       drop_buffer_at_scope_exit();
-      std.test.assert_eq(v, 9);
+      try std.test.assert_eq(v, 9);
     }
 
     // Drop counter for unjoined_enum_result_drops_its_payload only.
@@ -495,7 +514,7 @@ public module std {
      */
     test_function unjoined_enum_result_drops_its_payload() {
       drop_enum_result();
-      std.test.assert_eq(enum_payload_drops, 1);
+      try std.test.assert_eq(enum_payload_drops, 1);
     }
 
     // ------------------------------------------------------------------
@@ -508,7 +527,7 @@ public module std {
     /** Checks spawn forwards one argument. */
     test_function spawn_forwards_one_argument() {
       var t = spawn((n: i32) => i32 { return n * 2; }, 21);
-      std.test.assert_eq(t.join(), 42);
+      try std.test.assert_eq(t.join(), 42);
     }
 
     /** Checks spawn forwards several arguments. */
@@ -524,7 +543,7 @@ public module std {
         2,
         true
       );
-      std.test.assert_eq(t.join(), 42);
+      try std.test.assert_eq(t.join(), 42);
     }
 
     /**
@@ -533,7 +552,7 @@ public module std {
      */
     test_function spawn_widens_a_narrow_argument() {
       var t = spawn((n: i64) => i64 { return n * 2; }, 21);
-      std.test.assert_eq(t.join(), 42);
+      try std.test.assert_eq(t.join(), 42);
     }
 
     /**
@@ -544,7 +563,7 @@ public module std {
       var work = (n: i32) => i32 { return n * 2; };
       var a = spawn(work, 20);
       var b = spawn(work, 1);
-      std.test.assert_eq(a.join() + b.join(), 42);
+      try std.test.assert_eq(a.join() + b.join(), 42);
     }
 
     // A module-level lambda for spawn_a_global_lambda.
@@ -557,7 +576,7 @@ public module std {
      */
     test_function spawn_a_global_lambda() {
       var t = spawn(global_work, 21);
-      std.test.assert_eq(t.join(), 42);
+      try std.test.assert_eq(t.join(), 42);
     }
 
     // ------------------------------------------------------------------
@@ -604,8 +623,8 @@ public module std {
       }
       // 7 came back, and the value was released exactly once — inside the
       // thread.
-      std.test.assert_eq(got, 7);
-      std.test.assert_eq(moved_argument_drops, 1);
+      try std.test.assert_eq(got, 7);
+      try std.test.assert_eq(moved_argument_drops, 1);
     }
 
     // ------------------------------------------------------------------
@@ -618,7 +637,7 @@ public module std {
     test_function ref_capturing_thread_joined_in_frame_is_fine() {
       var x = 40;
       var t = spawn([ref x]() => i32 { return x + 2; });
-      std.test.assert_eq(t.join(), 42);
+      try std.test.assert_eq(t.join(), 42);
     }
 
     /**
@@ -644,7 +663,7 @@ public module std {
      */
     test_function capture_free_thread_may_live_in_a_field() {
       var w = Worker();
-      std.test.assert_eq(w.take() + 35, 42);
+      try std.test.assert_eq(w.take() + 35, 42);
     }
 
     /**
@@ -669,7 +688,7 @@ public module std {
     test_function bound_method_thread_joined_in_frame_is_fine() {
       var c = BoundCounter();
       var t = spawn(c.get, 2);
-      std.test.assert_eq(t.join(), 42);
+      try std.test.assert_eq(t.join(), 42);
     }
 
     /**
@@ -705,7 +724,7 @@ public module std {
      */
     test_function method_on_a_thread_reports_to_a_callback() {
       var j = Job(20);
-      std.test.assert_eq(j.runThen((r: i32) => i32 { return r + 2; }), 42);
+      try std.test.assert_eq(j.runThen((r: i32) => i32 { return r + 2; }), 42);
     }
 
     // ------------------------------------------------------------------
@@ -733,7 +752,7 @@ public module std {
           total = total + t.join();
         },
         Option.None => {
-          std.test.fail("expected a second thread");
+          try std.test.fail("expected a second thread");
         }
       };
       match (v.pop()) {
@@ -741,10 +760,10 @@ public module std {
           total = total + t.join();
         },
         Option.None => {
-          std.test.fail("expected a first thread");
+          try std.test.fail("expected a first thread");
         }
       };
-      std.test.assert_eq(total, 42);
+      try std.test.assert_eq(total, 42);
     }
 
     /**
@@ -762,7 +781,7 @@ public module std {
       var x = 40;
       var t = spawn([ref x]() => i32 { return x; });
       var extra = borrow_handle(t);
-      std.test.assert_eq(t.join() + extra, 42);
+      try std.test.assert_eq(t.join() + extra, 42);
     }
   }  // module thread_tests
 }  // module std

@@ -446,8 +446,8 @@ TEST(MemorySafety_Drops_FieldInit,
   EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(withPreamble(R"(
     class Boom implements IError {
       init() {}
-      method code() i32 { return 1; }
-      method message() static_ptr<u8> { return "boom"; }
+      const method code() i32 { return 1; }
+      const method message() static_ptr<u8> { return "boom"; }
     }
 
     function boom(f: bool) void throws IError { if (f) { throw Boom(); } }
@@ -470,8 +470,8 @@ TEST(MemorySafety_Drops_FieldInit, a_field_settled_before_a_try_is_certain) {
   auto value = executeString(withPreamble(R"(
     class Boom implements IError {
       init() {}
-      method code() i32 { return 1; }
-      method message() static_ptr<u8> { return "boom"; }
+      const method code() i32 { return 1; }
+      const method message() static_ptr<u8> { return "boom"; }
     }
 
     function boom(f: bool) void throws IError { if (f) { throw Boom(); } }

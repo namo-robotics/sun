@@ -377,12 +377,14 @@ message MatchArm {
   ASTNode body = 3;
   bool has_payload_parens = 4;
   repeated PatternBinding bindings = 5;
+  optional TypeAnnotation binding_type = 6;
 }
 
 /** Stores match expression data in the compiler serialization format. */
 message MatchExpr {
   ASTNode discriminant = 1;
   repeated MatchArm arms = 2;
+  bool propagation = 3;
 }
 
 /** Stores for expression data in the compiler serialization format. */

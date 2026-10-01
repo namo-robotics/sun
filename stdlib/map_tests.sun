@@ -11,7 +11,7 @@ public module std {
     test_function create_empty_map() {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
-      std.test.assert_eq(m.size(), 0);
+      try std.test.assert_eq(m.size(), 0);
     }
 
     /** Checks insert and get. */
@@ -19,7 +19,7 @@ public module std {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
       m.insert(42, 100);
-      std.test.assert_eq(m.get(42), 100);
+      try std.test.assert_eq((try std.test.expect_value(m.get(42))), 100);
     }
 
     /** Checks insert multiple and get. */
@@ -29,7 +29,7 @@ public module std {
       m.insert(1, 10);
       m.insert(2, 20);
       m.insert(3, 30);
-      std.test.assert_eq(m.get(1) + m.get(2) + m.get(3), 60);
+      try std.test.assert_eq((try std.test.expect_value(m.get(1))) + (try std.test.expect_value(m.get(2))) + (try std.test.expect_value(m.get(3))), 60);
     }
 
     /** Checks update existing key. */
@@ -38,7 +38,7 @@ public module std {
       var m = Map<i64, i32>(allocator, 16);
       m.insert(42, 100);
       m.insert(42, 200);
-      std.test.assert_eq(m.get(42), 200);
+      try std.test.assert_eq((try std.test.expect_value(m.get(42))), 200);
     }
 
     /** Checks contains key. */
@@ -46,21 +46,21 @@ public module std {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
       m.insert(42, 100);
-      std.test.assert(m.contains(42));
-      std.test.assert(m.contains(99) == false);
+      try std.test.assert(m.contains(42));
+      try std.test.assert(m.contains(99) == false);
     }
 
     /** Checks size tracking. */
     test_function size_tracking() {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
-      std.test.assert_eq(m.size(), 0);
+      try std.test.assert_eq(m.size(), 0);
       m.insert(1, 10);
-      std.test.assert_eq(m.size(), 1);
+      try std.test.assert_eq(m.size(), 1);
       m.insert(2, 20);
-      std.test.assert_eq(m.size(), 2);
+      try std.test.assert_eq(m.size(), 2);
       m.insert(1, 15);  // Update, not new
-      std.test.assert_eq(m.size(), 2);
+      try std.test.assert_eq(m.size(), 2);
     }
 
     /** Checks get or default found. */
@@ -69,7 +69,7 @@ public module std {
       var m = Map<i64, i32>(allocator, 16);
       m.insert(42, 100);
       var fallback: i32 = -1;
-      std.test.assert_eq(m.get_or_default(42, fallback), 100);
+      try std.test.assert_eq(m.get_or_default(42, fallback), 100);
     }
 
     /** Checks get or default not found. */
@@ -78,7 +78,7 @@ public module std {
       var m = Map<i64, i32>(allocator, 16);
       m.insert(42, 100);
       var fallback: i32 = -1;
-      std.test.assert_eq(m.get_or_default(99, fallback), -1);
+      try std.test.assert_eq(m.get_or_default(99, fallback), -1);
     }
 
     /** Checks remove existing. */
@@ -86,9 +86,9 @@ public module std {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
       m.insert(42, 100);
-      var removed: i32 = m.remove(42);
-      std.test.assert_eq(removed, 100);
-      std.test.assert_eq(m.size(), 0);
+      var removed: i32 = try std.test.expect_ok(m.remove(42));
+      try std.test.assert_eq(removed, 100);
+      try std.test.assert_eq(m.size(), 0);
     }
 
     /** Checks remove then contains. */
@@ -96,8 +96,8 @@ public module std {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
       m.insert(42, 100);
-      m.remove(42);
-      std.test.assert(m.contains(42) == false);
+      try std.test.expect_ok(m.remove(42));
+      try std.test.assert(m.contains(42) == false);
     }
 
     /** Checks remove and reinsert. */
@@ -105,9 +105,9 @@ public module std {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
       m.insert(42, 100);
-      m.remove(42);
+      try std.test.expect_ok(m.remove(42));
       m.insert(42, 200);
-      std.test.assert_eq(m.get(42), 200);
+      try std.test.assert_eq((try std.test.expect_value(m.get(42))), 200);
     }
 
     /** Checks clear. */
@@ -118,8 +118,8 @@ public module std {
       m.insert(2, 20);
       m.insert(3, 30);
       m.clear();
-      std.test.assert_eq(m.size(), 0);
-      std.test.assert(m.contains(1) == false);
+      try std.test.assert_eq(m.size(), 0);
+      try std.test.assert(m.contains(1) == false);
     }
 
     /** Checks auto grow. */
@@ -132,10 +132,10 @@ public module std {
       }
       var sum: i32 = 0;
       for (var i: i64 = 0; i < 20; i = i + 1) {
-        sum = sum + m.get(i);
+        sum = sum + (try std.test.expect_value(m.get(i)));
       }
       // 10 * (0 + 1 + ... + 19) = 1900
-      std.test.assert_eq(sum, 1900);
+      try std.test.assert_eq(sum, 1900);
     }
 
     /** Checks many elements. */
@@ -147,17 +147,17 @@ public module std {
       }
       var sum: i32 = 0;
       for (var i: i64 = 0; i < 100; i = i + 1) {
-        sum = sum + m.get(i);
+        sum = sum + (try std.test.expect_value(m.get(i)));
       }
-      std.test.assert_eq(sum, 100);
-      std.test.assert_eq(m.size(), 100);
+      try std.test.assert_eq(sum, 100);
+      try std.test.assert_eq(m.size(), 100);
     }
 
     /** Checks custom capacity. */
     test_function custom_capacity() {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 64);
-      std.test.assert_eq(m.capacity(), 64);
+      try std.test.assert_eq(m.capacity(), 64);
     }
 
     /** Checks get missing key throws. */
@@ -165,10 +165,13 @@ public module std {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
       m.insert(42, 100);
-      try {
-        var val: i32 = m.get(99);
-        std.test.fail("expected error");
-      } catch (e: ref IError) {}
+      match m.get(99) {
+        _Result.Ok(matched_value) => {
+          var val: i32 = matched_value;
+          try std.test.fail("expected error");
+        },
+        _Result.Err(e) => {}
+      };
     }
 
     /** Checks remove missing key throws. */
@@ -176,10 +179,13 @@ public module std {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
       m.insert(42, 100);
-      try {
-        var val: i32 = m.remove(99);
-        std.test.fail("expected error");
-      } catch (e: ref IError) {}
+      match m.remove(99) {
+        _Result.Ok(matched_value) => {
+          var val: i32 = matched_value;
+          try std.test.fail("expected error");
+        },
+        _Result.Err(e) => {}
+      };
     }
 
     /** Checks hash collision handling. */
@@ -191,7 +197,7 @@ public module std {
       m.insert(4, 2);
       m.insert(8, 3);
       m.insert(12, 4);
-      std.test.assert_eq(m.get(0) + m.get(4) + m.get(8) + m.get(12), 10);
+      try std.test.assert_eq((try std.test.expect_value(m.get(0))) + (try std.test.expect_value(m.get(4))) + (try std.test.expect_value(m.get(8))) + (try std.test.expect_value(m.get(12))), 10);
     }
 
     /** Checks iteration sum values. */
@@ -205,7 +211,7 @@ public module std {
       for (var v: i32 in m) {
         sum = sum + v;
       }
-      std.test.assert_eq(sum, 60);
+      try std.test.assert_eq(sum, 60);
     }
 
     /** Checks iteration empty map. */
@@ -216,7 +222,7 @@ public module std {
       for (var v: i32 in m) {
         count = count + 1;
       }
-      std.test.assert_eq(count, 0);
+      try std.test.assert_eq(count, 0);
     }
   }  // module map_tests
 }  // module std

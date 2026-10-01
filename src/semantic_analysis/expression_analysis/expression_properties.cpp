@@ -136,10 +136,17 @@ std::vector<const sun::ast::MatchArm*> reachableMatchArms(
   std::vector<const sun::ast::MatchArm*> reachable;
   std::set<int64_t> coveredTags;
   for (const auto& arm : match.getArms()) {
-    if (!arm.isWildcard && arm.pattern && arm.pattern->getResolvedType() &&
-        arm.pattern->getResolvedType()->isEnum() &&
-        !coveredTags.insert(arm.resolvedVariantTag).second)
+    if (arm.bindingType) {
+      bool reachable = false;
+      for (auto tag : arm.matchedVariantTags)
+        reachable |= coveredTags.insert(tag).second;
+      if (!reachable) continue;
+    } else if (!arm.isWildcard && arm.pattern &&
+               arm.pattern->getResolvedType() &&
+               arm.pattern->getResolvedType()->isEnum() &&
+               !coveredTags.insert(arm.resolvedVariantTag).second) {
       continue;
+    }
     reachable.push_back(&arm);
     if (arm.isWildcard) break;
   }
@@ -179,6 +186,12 @@ void checkOwnedMatchCoverage(const sun::ast::MatchExprAST& match,
   bool hasFalse = false;
   for (const auto& arm : match.getArms()) {
     if (arm.isWildcard) return;
+    // A validated typed binding covers a direct class discriminant. Generic
+    // discriminants are checked again after specialization.
+    if (arm.bindingType && !arm.matchedVariantTags.empty() &&
+        discriminantType &&
+        (discriminantType->isClass() || discriminantType->isTypeParameter()))
+      return;
     if (arm.pattern && arm.pattern->getType() == ASTNodeType::BOOL_LITERAL) {
       if (static_cast<const sun::ast::BoolLiteralAST&>(*arm.pattern)
               .getValue()) {

@@ -21,19 +21,19 @@ public module std {
     test_function captures_lookup_empty_and_equals_values() {
       var alloc = make_heap_allocator();
       var environment = std.env.Env(alloc);
-      environment.set("SUN_TEST_ENV_CAPTURES", "left=right");
+      try std.test.expect_success(environment.set("SUN_TEST_ENV_CAPTURES", "left=right"));
       var value_matches: bool = match environment.get("SUN_TEST_ENV_CAPTURES") {
         Option.Some(found) => found.equals_literal("left=right"),
         Option.None => false
       };
-      std.test.assert(value_matches, "value with an equals sign reads back whole");
-      environment.set("SUN_TEST_ENV_CAPTURES", "");
+      try std.test.assert(value_matches, "value with an equals sign reads back whole");
+      try std.test.expect_success(environment.set("SUN_TEST_ENV_CAPTURES", ""));
       var empty: bool = match environment.get("SUN_TEST_ENV_CAPTURES") {
         Option.Some(found) => found.is_empty(),
         Option.None => false
       };
-      std.test.assert(empty, "empty value reads back as an empty String");
-      environment.remove("SUN_TEST_ENV_CAPTURES");
+      try std.test.assert(empty, "empty value reads back as an empty String");
+      try std.test.expect_success(environment.remove("SUN_TEST_ENV_CAPTURES"));
     }
 
     /**
@@ -44,17 +44,17 @@ public module std {
       var alloc = make_heap_allocator();
       var snapshot = std.env.Env(alloc);
       var outside = std.env.Env(alloc);
-      std.test.assert(not snapshot.has("SUN_TEST_ENV_REFRESH"), "variable absent at start");
-      outside.set("SUN_TEST_ENV_REFRESH", "outside");
-      std.test.assert(not snapshot.has("SUN_TEST_ENV_REFRESH"), "snapshot does not see the outside write");
+      try std.test.assert(not snapshot.has("SUN_TEST_ENV_REFRESH"), "variable absent at start");
+      try std.test.expect_success(outside.set("SUN_TEST_ENV_REFRESH", "outside"));
+      try std.test.assert(not snapshot.has("SUN_TEST_ENV_REFRESH"), "snapshot does not see the outside write");
       snapshot.refresh();
-      std.test.assert(snapshot.has("SUN_TEST_ENV_REFRESH"), "refresh picks up the outside write");
+      try std.test.assert(snapshot.has("SUN_TEST_ENV_REFRESH"), "refresh picks up the outside write");
       var value_matches: bool = match snapshot.get("SUN_TEST_ENV_REFRESH") {
         Option.Some(found) => found.equals_literal("outside"),
         Option.None => false
       };
-      std.test.assert(value_matches, "refreshed snapshot has the outside value");
-      outside.remove("SUN_TEST_ENV_REFRESH");
+      try std.test.assert(value_matches, "refreshed snapshot has the outside value");
+      try std.test.expect_success(outside.remove("SUN_TEST_ENV_REFRESH"));
     }
 
     /**
@@ -64,21 +64,21 @@ public module std {
     test_function set_remove_and_iteration_stay_synchronized() {
       var alloc = make_heap_allocator();
       var environment = std.env.Env(alloc);
-      environment.set("SUN_TEST_ENV_SYNC", "one=two");
-      std.test.assert(environment.has("SUN_TEST_ENV_SYNC"), "set makes has() true");
+      try std.test.expect_success(environment.set("SUN_TEST_ENV_SYNC", "one=two"));
+      try std.test.assert(environment.has("SUN_TEST_ENV_SYNC"), "set makes has() true");
       var found: i32 = 0;
       for (var entry: ref std.env.EnvEntry in environment) {
         if (entry.name().equals_literal("SUN_TEST_ENV_SYNC")) {
-          std.test.assert(entry.value().equals_literal("one=two"), "iterated value matches");
+          try std.test.assert(entry.value().equals_literal("one=two"), "iterated value matches");
           found = found + 1;
         }
       }
-      std.test.assert_eq(found, 1);
-      environment.remove("SUN_TEST_ENV_SYNC");
-      std.test.assert(not environment.has("SUN_TEST_ENV_SYNC"), "remove makes has() false");
+      try std.test.assert_eq(found, 1);
+      try std.test.expect_success(environment.remove("SUN_TEST_ENV_SYNC"));
+      try std.test.assert(not environment.has("SUN_TEST_ENV_SYNC"), "remove makes has() false");
       // The native environment must agree: a brand new snapshot has no trace.
       var fresh = std.env.Env(alloc);
-      std.test.assert(not fresh.has("SUN_TEST_ENV_SYNC"), "removal reached the native environment");
+      try std.test.assert(not fresh.has("SUN_TEST_ENV_SYNC"), "removal reached the native environment");
     }
 
     /**
@@ -90,15 +90,15 @@ public module std {
       var environment = std.env.Env(alloc);
       var name = String(alloc, "SUN_TEST_ENV_OVERLOADS");
       var value = String(alloc, "runtime");
-      environment.set(name, value);
-      std.test.assert(environment.has(name), "String name found after set");
+      try std.test.expect_success(environment.set(name, value));
+      try std.test.assert(environment.has(name), "String name found after set");
       var value_matches: bool = match environment.get(name) {
         Option.Some(found) => found.equals_literal("runtime"),
         Option.None => false
       };
-      std.test.assert(value_matches, "String-set value reads back");
-      environment.remove(name);
-      std.test.assert(not environment.has(name), "String remove works");
+      try std.test.assert(value_matches, "String-set value reads back");
+      try std.test.expect_success(environment.remove(name));
+      try std.test.assert(not environment.has(name), "String remove works");
     }
 
     /**
@@ -110,13 +110,13 @@ public module std {
     test_function cwd_and_set_cwd_are_methods() {
       var alloc = make_heap_allocator();
       var environment = std.env.Env(alloc);
-      var before = environment.cwd();
-      environment.set_cwd("/");
-      var after = environment.cwd();
-      environment.set_cwd(before);
-      var restored = environment.cwd();
-      std.test.assert(after.equals_literal("/"), "cwd reports the directory set_cwd chose");
-      std.test.assert(restored.equals(before), "original working directory restored");
+      var before = try std.test.expect_ok(environment.cwd());
+      try std.test.expect_success(environment.set_cwd("/"));
+      var after = try std.test.expect_ok(environment.cwd());
+      try std.test.expect_success(environment.set_cwd(before));
+      var restored = try std.test.expect_ok(environment.cwd());
+      try std.test.assert(after.equals_literal("/"), "cwd reports the directory set_cwd chose");
+      try std.test.assert(restored.equals(before), "original working directory restored");
     }
 
     /**
@@ -137,10 +137,10 @@ public module std {
       unsafe { argv.set_unchecked(3, null); };
       var raw_argv: raw_ptr<raw_ptr<i8>> = unsafe { _ptr_as_raw<raw_ptr<i8>>(argv.raw_data()); };
       var cli = environment.args(3, raw_argv);
-      std.test.assert_eq(cli.size(), 3);
-      std.test.assert(unsafe { cli.get_unchecked(0); }.equals_literal("prog"), "argv[0] copied");
-      std.test.assert(unsafe { cli.get_unchecked(1); }.equals_literal("alpha"), "argv[1] copied");
-      std.test.assert(unsafe { cli.get_unchecked(2); }.equals_literal("beta"), "argv[2] copied");
+      try std.test.assert_eq(cli.size(), 3);
+      try std.test.assert(unsafe { cli.get_unchecked(0); }.equals_literal("prog"), "argv[0] copied");
+      try std.test.assert(unsafe { cli.get_unchecked(1); }.equals_literal("alpha"), "argv[1] copied");
+      try std.test.assert(unsafe { cli.get_unchecked(2); }.equals_literal("beta"), "argv[2] copied");
     }
   }  // module env_tests
 }  // module std

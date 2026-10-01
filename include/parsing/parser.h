@@ -347,6 +347,7 @@ class Parser {
     bool isWildcard = false;
     bool hasPayloadParens = false;
     std::vector<sun::ast::PatternBinding> bindings;
+    std::optional<sun::ast::TypeAnnotation> bindingType;
     bool ok = false;
   };
   /** Consumes tokens for a match pattern and builds its syntax-tree

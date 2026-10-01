@@ -45,6 +45,24 @@ Value* CodegenVisitor::codegen(const sun::ast::MatchExprAST& expr) {
   }
   auto emitBody = [&](const sun::ast::MatchArm& arm) {
     scopes.push();
+    if (arm.bindingType && !arm.bindings.front().isWildcard) {
+      const auto& binding = arm.bindings.front();
+      auto target = sun::types::unwrapRef(binding.resolvedType);
+      Value* address = discVal;
+      if (target->isInterface()) {
+        auto* view = classes.createInterfaceFatPointer(
+            discVal, static_cast<sun::types::ClassType*>(discType.get()),
+            static_cast<sun::types::InterfaceType*>(target.get()));
+        auto* storage = createEntryBlockAlloca(TheFunction, "match.interface",
+                                               view->getType());
+        ctx.builder->CreateStore(view, storage);
+        address = storage;
+      }
+      auto* local = createEntryBlockAlloca(
+          TheFunction, binding.name, PointerType::getUnqual(ctx.getContext()));
+      ctx.builder->CreateStore(address, local);
+      scopes.back().variables[binding.declaration.id] = local;
+    }
     Value* value = codegen(*arm.body);
     if (!ctx.builder->GetInsertBlock()->getTerminator() && resultStorage &&
         value && !value->getType()->isVoidTy()) {
@@ -68,7 +86,7 @@ Value* CodegenVisitor::codegen(const sun::ast::MatchExprAST& expr) {
     const auto& arm = arms[i];
     bool isLast = (i == arms.size() - 1);
 
-    if (arm.isWildcard) {
+    if (arm.isWildcard || arm.bindingType) {
       // Wildcard arm: always matches, no condition needed
       // Just generate the body and branch to merge
       Value* bodyVal = emitBody(arm);

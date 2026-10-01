@@ -710,6 +710,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeMatch(
     arms.emplace_back(std::move(pattern), armProto.is_wildcard(),
                       std::move(body));
     arms.back().hasPayloadParens = armProto.has_payload_parens();
+    if (armProto.has_binding_type())
+      arms.back().bindingType =
+          deserializeTypeAnnotation(armProto.binding_type());
     for (const auto& bindingProto : armProto.bindings()) {
       sun::ast::PatternBinding binding;
       if (bindingProto.has_declaration_identity())
@@ -723,8 +726,8 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeMatch(
       arms.back().bindings.push_back(std::move(binding));
     }
   }
-  return std::make_unique<sun::ast::MatchExprAST>(std::move(discriminant),
-                                                  std::move(arms));
+  return std::make_unique<sun::ast::MatchExprAST>(
+      std::move(discriminant), std::move(arms), proto.propagation());
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeFor(

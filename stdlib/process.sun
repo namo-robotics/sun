@@ -68,32 +68,34 @@ public module std.process {
   // Signals, process groups, exit
   // -------------------------------------------------------------------
 
-  /** Sends a signal to the selected process or process group and throws on failure. */
-  public function kill(target: i32, sig: i32) void throws IError {
+  /** Sends a signal to the selected process or process group and returns Error on failure. */
+  public function kill(target: i32, sig: i32) _Result<void, Error> {
     if (unsafe { c_kill(target, sig); } != 0) {
-      throw Error(errno(), "failed to signal process");
+      return _Result.Err(Error(errno(), "failed to signal process"));
     }
+    return _Result.Ok;
   }
 
   /**
    * Put a process in a process group. pid or pgid of 0 means "this one".
    */
-  public function set_pgid(target: i32, pgid: i32) void throws IError {
+  public function set_pgid(target: i32, pgid: i32) _Result<void, Error> {
     if (unsafe { c_setpgid(target, pgid); } != 0) {
-      throw Error(errno(), "failed to set process group");
+      return _Result.Err(Error(errno(), "failed to set process group"));
     }
+    return _Result.Ok;
   }
 
   /**
    * Start a new session, detaching from the controlling terminal.
    * Returns the new session id.
    */
-  public function create_new_session() i32 throws IError {
+  public function create_new_session() _Result<i32, Error> {
     var sid: i32 = unsafe { c_setsid(); };
     if (sid < 0) {
-      throw Error(errno(), "failed to start a new session");
+      return _Result.Err(Error(errno(), "failed to start a new session"));
     }
-    return sid;
+    return _Result.Ok(sid);
   }
 
   /**
@@ -124,22 +126,22 @@ public module std.process {
    * signal handler — no allocation, no method calls that might allocate. Use
    * Command below unless you have a reason not to.
    */
-  public function fork() i32 throws IError {
+  public function fork() _Result<i32, Error> {
     var result: i32 = unsafe { c_fork(); };
     if (result < 0) {
-      throw Error(errno(), "failed to fork");
+      return _Result.Err(Error(errno(), "failed to fork"));
     }
-    return result;
+    return _Result.Ok(result);
   }
 
   /**
    * Replace this process with `cmd`, searching PATH. Only returns on
    * failure.
    */
-  public function exec(cmd: ref Command) void throws IError {
+  public function exec(cmd: ref Command) _Result<void, Error> {
     var argv: ContiguousBuffer<raw_ptr<u8>> = cmd.build_argv_array();
     unsafe { c_execvp(cmd.program(), argv.raw_data()); };
-    throw Error(errno(), "failed to exec");
+    return _Result.Err(Error(errno(), "failed to exec"));
   }
 
   /**
@@ -148,7 +150,7 @@ public module std.process {
    * With WNOHANG and no child ready, returns 0 for the pid, so the status
    * is meaningless — use Child.try_wait for that case.
    */
-  public function wait_pid(target: i32, options: i32) i32 throws IError {
+  public function wait_pid(target: i32, options: i32) _Result<i32, Error> {
     var status: i32 = 0;
     var got: i32 = unsafe {
       c_waitpid(
@@ -158,9 +160,9 @@ public module std.process {
       );
     };
     if (got < 0) {
-      throw Error(errno(), "failed to wait for child");
+      return _Result.Err(Error(errno(), "failed to wait for child"));
     }
-    return status;
+    return _Result.Ok(status);
   }
 
   /**
@@ -245,25 +247,26 @@ public module std.process {
   /**
    * Create a pipe and return its two ends. Throws if the system refuses.
    */
-  public function open_pipe(alloc: ref HeapAllocator) Pipe throws IError {
+  public function open_pipe(alloc: ref HeapAllocator) _Result<Pipe, Error> {
     var fds: ContiguousBuffer<i32> = ContiguousBuffer<i32>(alloc, 2);
     unsafe { fds.set_unchecked(0, 0); };
     unsafe { fds.set_unchecked(1, 0); };
     if (unsafe { c_pipe(_ptr_as_raw<i32>(fds.raw_data())); } != 0) {
-      throw Error(errno(), "failed to create pipe");
+      return _Result.Err(Error(errno(), "failed to create pipe"));
     }
     var read_end: i32 = unsafe { fds.get_unchecked(0); };
     var write_end: i32 = unsafe { fds.get_unchecked(1); };
-    return Pipe(read_end, write_end);
+    return _Result.Ok(Pipe(read_end, write_end));
   }
 
   /**
    * Point `new_fd` at whatever `old_fd` refers to, closing `new_fd` first.
    */
-  public function dup_fd(old_fd: i32, new_fd: i32) void throws IError {
+  public function dup_fd(old_fd: i32, new_fd: i32) _Result<void, Error> {
     if (unsafe { c_dup2(old_fd, new_fd); } < 0) {
-      throw Error(errno(), "failed to duplicate descriptor");
+      return _Result.Err(Error(errno(), "failed to duplicate descriptor"));
     }
+    return _Result.Ok;
   }
 
   // -------------------------------------------------------------------
@@ -381,7 +384,7 @@ public module std.process {
      * Run the program in a new process. The child's end of every pipe is
      * closed here, so reading from Child hits end-of-file when it exits.
      */
-    public method start() Child throws IError {
+    public method start() _Result<Child, Error> {
       // Everything the child touches is prepared first: after fork it may
       // only call things that are safe in a signal handler.
       var argv: ContiguousBuffer<raw_ptr<u8>> = this.build_argv_array();
@@ -396,17 +399,17 @@ public module std.process {
       var devnull: i32 = 0;
 
       if (this.stdin_mode == Stdio.Piped) {
-        var p: Pipe = open_pipe(this.alloc);
+        var p: Pipe = try open_pipe(this.alloc);
         in_read = p.read_fd();
         in_write = p.write_fd();
       }
       if (this.stdout_mode == Stdio.Piped) {
-        var p: Pipe = open_pipe(this.alloc);
+        var p: Pipe = try open_pipe(this.alloc);
         out_read = p.read_fd();
         out_write = p.write_fd();
       }
       if (this.stderr_mode == Stdio.Piped) {
-        var p: Pipe = open_pipe(this.alloc);
+        var p: Pipe = try open_pipe(this.alloc);
         err_read = p.read_fd();
         err_write = p.write_fd();
       }
@@ -416,7 +419,7 @@ public module std.process {
 
       var child: i32 = unsafe { c_fork(); };
       if (child < 0) {
-        throw Error(errno(), "failed to fork");
+        return _Result.Err(Error(errno(), "failed to fork"));
       }
 
       if (child == 0) {
@@ -485,25 +488,25 @@ public module std.process {
         }
       };
 
-      return Child(child, in_write, out_read, err_read);
+      return _Result.Ok(Child(child, in_write, out_read, err_read));
     }
 
     /**
      * Run to completion, inheriting the streams. Returns the exit code.
      */
-    public method status() i32 throws IError {
-      var child: Child = this.start();
-      return child.wait();
+    public method status() _Result<i32, Error> {
+      var child: Child = try this.start();
+      return _Result.Ok((try child.wait()));
     }
 
     /**
      * Run to completion with stdout and stderr captured.
      */
-    public method output() Output throws IError {
+    public method output() _Result<Output, Error> {
       this.stdout_mode = Stdio.Piped;
       this.stderr_mode = Stdio.Piped;
-      var child: Child = this.start();
-      return child.collect(this.alloc);
+      var child: Child = try this.start();
+      return _Result.Ok((try child.collect(this.alloc)));
     }
   }
 
@@ -561,26 +564,26 @@ public module std.process {
      * Wait for the child and return its exit code. A child killed by a
      * signal reports 128 + the signal, as a shell does.
      */
-    public method wait() i32 throws IError {
+    public method wait() _Result<i32, Error> {
       if (this.pid_ <= 0) {
-        throw Error(-1, "no child to wait for");
+        return _Result.Err(Error(-1, "no child to wait for"));
       }
       this.close_stdin();
-      var status: i32 = wait_pid(this.pid_, 0);
+      var status: i32 = try wait_pid(this.pid_, 0);
       this.pid_ = 0;
       if (is_signaled(status)) {
-        return 128 + get_term_signal(status);
+        return _Result.Ok(128 + get_term_signal(status));
       }
-      return exit_status(status);
+      return _Result.Ok(exit_status(status));
     }
 
     /**
      * The exit code if the child has already finished, None if it is still
      * running.
      */
-    public method try_wait() Option<i32> throws IError {
+    public method try_wait() _Result<Option<i32>, Error> {
       if (this.pid_ <= 0) {
-        return Option.None;
+        return _Result.Ok(Option.None);
       }
       var status: i32 = 0;
       var got: i32 = unsafe {
@@ -591,29 +594,30 @@ public module std.process {
         );
       };
       if (got < 0) {
-        throw Error(errno(), "failed to poll child");
+        return _Result.Err(Error(errno(), "failed to poll child"));
       }
       if (got == 0) {
-        return Option.None;
+        return _Result.Ok(Option.None);
       }
       this.pid_ = 0;
       if (is_signaled(status)) {
-        return Option.Some(128 + get_term_signal(status));
+        return _Result.Ok(Option.Some(128 + get_term_signal(status)));
       }
-      return Option.Some(exit_status(status));
+      return _Result.Ok(Option.Some(exit_status(status)));
     }
 
     /**
      * Send a signal to the child. Throws if there is no child or the system
      * refuses.
      */
-    public method kill(sig: i32) void throws IError {
+    public method kill(sig: i32) _Result<void, Error> {
       if (this.pid_ <= 0) {
-        throw Error(-1, "no child to signal");
+        return _Result.Err(Error(-1, "no child to signal"));
       }
       if (unsafe { c_kill(this.pid_, sig); } != 0) {
-        throw Error(errno(), "failed to signal child");
+        return _Result.Err(Error(errno(), "failed to signal child"));
       }
+      return _Result.Ok;
     }
 
     /**
@@ -639,7 +643,7 @@ public module std.process {
      * other: a child that fills the stderr pipe while the parent is stuck
      * reading stdout would deadlock.
      */
-    public method collect(alloc: ref HeapAllocator) Output throws IError {
+    public method collect(alloc: ref HeapAllocator) _Result<Output, Error> {
       var out: String = String(alloc, "");
       var err: String = String(alloc, "");
       var buf: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 4096);
@@ -656,7 +660,7 @@ public module std.process {
         if (err_open) {
           poller.add_read(this.stderr_fd);
         }
-        poller.wait(-1);
+        try poller.wait(-1);
 
         var slot: i64 = 0;
         if (out_open) {
@@ -702,8 +706,8 @@ public module std.process {
         }
       }
 
-      var code: i32 = this.wait();
-      return Output(code, out, err);
+      var code: i32 = try this.wait();
+      return _Result.Ok(Output(code, out, err));
     }
 
     /**

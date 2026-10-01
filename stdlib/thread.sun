@@ -13,7 +13,7 @@
 //
 //   if (condition) {
 //     var guard = m.acquire();  // locked until guard goes out of scope
-//     // critical section; early returns and throws release the lock too
+//     // critical section; early returns and error propagation release the lock too
 //   }
 //
 // A thread never outlives the scope that spawned it: the handle spawn hands
@@ -85,8 +85,8 @@ public module std.thread {
    * The arguments move into the thread, which owns them from the moment it
    * starts — so a thread body can be an ordinary lambda taking what it
    * works on, rather than a closure that had to capture it.
-   * `fn` may be a lambda or a named function passed as a value; it must
-   * not throw — catch inside it and carry any failure in the result.
+   * `fn` may be a lambda or a named function passed as a value. A worker can
+   * return a _Result; join() hands that result to the joining thread.
    */
   public function spawn<F: _Callable>(fn: F, args...: _params_of<F>) Thread<_return_type_of<F>> {
     return Thread<_return_type_of<F>>(unsafe { _spawn<F>(fn, args...); });

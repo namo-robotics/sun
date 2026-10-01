@@ -4,6 +4,7 @@
 
 #include <set>
 
+#include "ast/control_flow.h"
 #include "codegen/codegen.h"
 #include "codegen/codegen_visitor.h"
 #include "codegen/support/scalar_ops.h"
@@ -47,6 +48,7 @@ Value* EnumGenerator::codegenVariantConstruction(
 
   // Store each payload value through the variant view struct
   const auto& args = expr.getArgs();
+  std::vector<std::pair<Value*, sun::types::TypePtr>> pendingPayloads;
   for (size_t i = 0; i < args.size(); ++i) {
     unsigned idx =
         typeResolver.enumPayloadFieldIndex(enumType, variant.name, i);
@@ -55,8 +57,8 @@ Value* EnumGenerator::codegenVariantConstruction(
                                                    "payload." + variant.name);
     const sun::types::TypePtr& payloadType = variant.payloadTypes[i];
 
-    // A reference payload stores the referent's ADDRESS: the variant borrows,
-    // it does not own, so nothing moves and nothing is dropped later.
+    // A reference payload stores an address or an inline array/interface view.
+    // The variant borrows its storage, so it never moves or drops the referent.
     if (payloadType->isReference()) {
       Value* addr = gen_.tryCodegenAddress(*args[i]);
       if (!addr) {
@@ -64,6 +66,27 @@ Value* EnumGenerator::codegenVariantConstruction(
             "Payload of variant '" + variant.name +
                 "' is a reference, but the argument has no address to borrow",
             expr.getLocation());
+      }
+      auto target = sun::types::unwrapRef(payloadType);
+      if (auto* array = dynamic_cast<sun::types::ArrayType*>(target.get());
+          array && array->isUnsized()) {
+        auto source = sun::types::unwrapRef(args[i]->getResolvedType());
+        auto* sourceArray = static_cast<sun::types::ArrayType*>(source.get());
+        addr = sourceArray->isUnsized()
+                   ? gen_.loadArrayView(addr)
+                   : gen_.emitArrayView(addr, sourceArray->getDimensions());
+      }
+      if (target->isInterface()) {
+        auto source = sun::types::unwrapRef(args[i]->getResolvedType());
+        auto* iface = static_cast<sun::types::InterfaceType*>(target.get());
+        if (source->isClass()) {
+          addr = gen_.classGenerator().createInterfaceFatPointer(
+              addr, static_cast<sun::types::ClassType*>(source.get()), iface);
+        } else {
+          addr = gen_.classGenerator().upcastInterface(
+              addr, static_cast<sun::types::InterfaceType*>(source.get()),
+              iface);
+        }
       }
       ctx.builder->CreateStore(addr, fieldPtr);
       continue;
@@ -89,6 +112,10 @@ Value* EnumGenerator::codegenVariantConstruction(
         argVal = ctx.builder->CreateLoad(fieldTy, argVal, "payload.load");
       }
       ctx.builder->CreateStore(argVal, fieldPtr);
+      if (i + 1 < args.size() && sun::types::typeNeedsDrop(payloadType)) {
+        scopes().trackClassAllocation(fieldPtr, "pending.payload", payloadType);
+        pendingPayloads.emplace_back(fieldPtr, payloadType);
+      }
       continue;
     }
 
@@ -103,6 +130,9 @@ Value* EnumGenerator::codegenVariantConstruction(
     }
     ctx.builder->CreateStore(argVal, fieldPtr);
   }
+
+  for (const auto& [address, type] : pendingPayloads)
+    scopes().markClassAllocationAsDeinited(address, type);
 
   // The fresh storage owns its payloads until moved into a variable/field
   // (the borrow checker marks that move; genLocalVar adopts the alloca).
@@ -224,31 +254,65 @@ Value* EnumGenerator::codegenMatch(const sun::ast::MatchExprAST& expr,
     return val;
   };
 
-  auto emitArmBody = [&](const MatchArm& arm, BasicBlock* armBB) {
+  auto emitArmBody = [&](const MatchArm& arm, BasicBlock* armBB,
+                         const std::string& variantName) {
     ctx.builder->SetInsertPoint(armBB);
     scopes().push();
 
-    if (consuming && arm.isWildcard && enumType.hasPayload()) {
+    if (consuming && (arm.isWildcard || arm.bindingType) &&
+        enumType.hasPayload()) {
       scopes().trackClassAllocation(discPtr, "match.ignored",
                                     expr.getDiscriminant()->getResolvedType());
     }
 
     // Bind payloads through the variant view struct
     if (!arm.isWildcard && arm.hasPayloadParens) {
-      const auto& patternAccess =
-          static_cast<const sun::ast::MemberAccessAST&>(*arm.pattern);
-      StructType* variantTy = typeResolver.getEnumVariantStruct(
-          enumType, patternAccess.getMemberName());
+      StructType* variantTy =
+          typeResolver.getEnumVariantStruct(enumType, variantName);
       for (size_t i = 0; i < arm.bindings.size(); ++i) {
         const auto& binding = arm.bindings[i];
         if (binding.isWildcard && !consuming) continue;
-        unsigned idx = typeResolver.enumPayloadFieldIndex(
-            enumType, patternAccess.getMemberName(), i);
+        unsigned idx =
+            typeResolver.enumPayloadFieldIndex(enumType, variantName, i);
         Value* fieldPtr = ctx.builder->CreateStructGEP(variantTy, discPtr, idx,
                                                        binding.name + ".ptr");
         llvm::Type* fieldTy = variantTy->getElementType(idx);
-        if (consuming && binding.resolvedType &&
-            sun::types::typeMovesOnRead(binding.resolvedType)) {
+        auto payload = enumType.getVariant(variantName)->payloadTypes[i];
+        if (arm.bindingType ||
+            (payload->isReference() &&
+             sun::types::unwrapRef(payload)->isInterface())) {
+          if (binding.isWildcard) continue;
+          Value* address = fieldPtr;
+          auto source = sun::types::unwrapRef(payload);
+          auto target = sun::types::unwrapRef(binding.resolvedType);
+          if (payload->isReference() && !source->isInterface())
+            address = ctx.builder->CreateLoad(fieldTy, fieldPtr);
+          if (target->isInterface() && source->isClass()) {
+            auto* view = gen_.classGenerator().createInterfaceFatPointer(
+                address, static_cast<sun::types::ClassType*>(source.get()),
+                static_cast<sun::types::InterfaceType*>(target.get()));
+            auto* storage = gen_.createEntryBlockAlloca(
+                TheFunction, "match.interface", view->getType());
+            ctx.builder->CreateStore(view, storage);
+            address = storage;
+          }
+          if (target->isInterface() && source->isInterface() &&
+              !source->equals(*target)) {
+            auto* view = gen_.classGenerator().upcastInterface(
+                address, static_cast<sun::types::InterfaceType*>(source.get()),
+                static_cast<sun::types::InterfaceType*>(target.get()));
+            auto* storage = gen_.createEntryBlockAlloca(
+                TheFunction, "match.parent", view->getType());
+            ctx.builder->CreateStore(view, storage);
+            address = storage;
+          }
+          auto* local = gen_.createEntryBlockAlloca(
+              TheFunction, binding.name,
+              PointerType::getUnqual(ctx.getContext()));
+          ctx.builder->CreateStore(address, local);
+          scopes().back().variables[binding.declaration.id] = local;
+        } else if (consuming && binding.resolvedType &&
+                   sun::types::typeMovesOnRead(binding.resolvedType)) {
           const std::string name =
               binding.isWildcard ? "match.ignored" : binding.name;
           AllocaInst* alloca =
@@ -284,7 +348,10 @@ Value* EnumGenerator::codegenMatch(const sun::ast::MatchExprAST& expr,
       }
     }
 
-    Value* bodyVal = gen_.codegen(*arm.body);
+    Value* bodyVal = matchType && matchType->isReference() &&
+                             !sun::ast::exprDiverges(*arm.body)
+                         ? gen_.tryCodegenAddress(*arm.body)
+                         : gen_.codegen(*arm.body);
     bool terminated = ctx.builder->GetInsertBlock()->getTerminator() != nullptr;
     if (!terminated) {
       bodyVal = convertArmValue(bodyVal, arm);
@@ -310,18 +377,26 @@ Value* EnumGenerator::codegenMatch(const sun::ast::MatchExprAST& expr,
   for (size_t i = 0; i < arms.size(); ++i) {
     const auto& arm = arms[i];
     if (arm.isWildcard) break;
-    if (!emittedTags.insert(arm.resolvedVariantTag).second) continue;
-    BasicBlock* ArmBB = BasicBlock::Create(
-        ctx.getContext(), "match.arm." + std::to_string(i), TheFunction);
-    switchInst->addCase(ConstantInt::get(cast<IntegerType>(tag->getType()),
-                                         arm.resolvedVariantTag),
-                        ArmBB);
-    emitArmBody(arm, ArmBB);
+    const auto tags = arm.bindingType
+                          ? arm.matchedVariantTags
+                          : std::vector<int64_t>{arm.resolvedVariantTag};
+    for (auto variantTag : tags) {
+      if (!emittedTags.insert(variantTag).second) continue;
+      const sun::types::EnumVariant* variant = nullptr;
+      for (const auto& candidate : enumType.getVariants())
+        if (candidate.value == variantTag) variant = &candidate;
+      BasicBlock* ArmBB = BasicBlock::Create(
+          ctx.getContext(), "match.arm." + std::to_string(i), TheFunction);
+      switchInst->addCase(
+          ConstantInt::get(cast<IntegerType>(tag->getType()), variantTag),
+          ArmBB);
+      emitArmBody(arm, ArmBB, variant->name);
+    }
   }
 
   // Default block
   if (wildcardArm) {
-    emitArmBody(*wildcardArm, DefaultBB);
+    emitArmBody(*wildcardArm, DefaultBB, "");
   } else {
     // Sema proved exhaustiveness; an unknown tag is memory corruption
     ctx.builder->SetInsertPoint(DefaultBB);

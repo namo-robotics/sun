@@ -421,8 +421,8 @@ TEST(Tooling_Lsp_References, CatchBinding) {
   std::string source = R"(
 class Oops implements IError {
     init() {}
-    method code() i32 { return 1; }
-    method message() static_ptr<u8> { return "oops"; }
+    const method code() i32 { return 1; }
+    const method message() static_ptr<u8> { return "oops"; }
 }
 function risky(x: i32) i32 throws IError {
     if (x < 0) { throw Oops(); }

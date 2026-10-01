@@ -43,11 +43,10 @@ public module std {
       if (this.items.is_empty()) {
         return Option.None;
       }
-      try {
-        return Option.Some(this.items.pop_front());
-      } catch (e: ref IError) {
-        return Option.None;
-      }
+      return match this.items.pop_front() {
+        _Result.Ok(value) => Option.Some(value),
+        _Result.Err(_) => Option.None
+      };
     }
 
     /**

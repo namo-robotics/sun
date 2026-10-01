@@ -13,19 +13,19 @@ public module std {
       var here = ipv4_loopback();
       var sender = UdpSocket();
       var receiver = UdpSocket();
-      sender.bind(here, 0);
-      receiver.bind(here, 0);
-      var sent: i64 = sender.send_str_to("ping", here, receiver.local_port());
-      std.test.assert_eq(sent, 4);
+      try std.test.expect_success(sender.bind(here, 0));
+      try std.test.expect_success(receiver.bind(here, 0));
+      var sent: i64 = try std.test.expect_ok(sender.send_str_to("ping", here, (try std.test.expect_ok(receiver.local_port()))));
+      try std.test.assert_eq(sent, 4);
       var buf = ContiguousBuffer<u8>(alloc, 64);
-      var datagram = receiver.recv_from(buf);
-      std.test.assert_eq(datagram.length(), 4);
-      std.test.assert_eq(datagram.port(), sender.local_port());
-      std.test.assert_eq(datagram.addr().to_network_i32(), INADDR_LOOPBACK);
+      var datagram = try std.test.expect_ok(receiver.recv_from(buf));
+      try std.test.assert_eq(datagram.length(), 4);
+      try std.test.assert_eq(datagram.port(), (try std.test.expect_ok(sender.local_port())));
+      try std.test.assert_eq(datagram.addr().to_network_i32(), INADDR_LOOPBACK);
       var first: u8 = unsafe { _load<u8>(buf.raw_data(), 0); };
       var last: u8 = unsafe { _load<u8>(buf.raw_data(), 3); };
-      std.test.assert_eq(_convert<i32>(first), 112);  // 'p'
-      std.test.assert_eq(_convert<i32>(last), 103);  // 'g'
+      try std.test.assert_eq(_convert<i32>(first), 112);  // 'p'
+      try std.test.assert_eq(_convert<i32>(last), 103);  // 'g'
       sender.close();
       receiver.close();
     }
@@ -34,44 +34,46 @@ public module std {
     test_function bind_is_exclusive_and_can_retry() {
       var here = ipv4_loopback();
       var owner = UdpSocket();
-      owner.bind(here, 0);
-      var port = owner.local_port();
+      try std.test.expect_success(owner.bind(here, 0));
+      var port = try std.test.expect_ok(owner.local_port());
       var contender = UdpSocket();
       var rejected = false;
-      try {
-        contender.bind(here, port);
-      } catch (e: ref IError) {
-        rejected = true;
-        std.test.assert_eq(e.code(), ADDRESS_IN_USE_ERRNO);
-      }
-      std.test.assert(rejected, "default bind should reject an occupied port");
-      std.test.assert(not contender.is_open(), "failed bind should close the socket");
-      contender.bind(here, 0);
-      std.test.assert(contender.local_port() != port, "retry should get a different port");
+      match contender.bind(here, port) {
+        _Result.Ok => {},
+        _Result.Err(e) => {
+          rejected = true;
+          try std.test.assert_eq(e.code(), ADDRESS_IN_USE_ERRNO);
+        }
+      };
+      try std.test.assert(rejected, "default bind should reject an occupied port");
+      try std.test.assert(not contender.is_open(), "failed bind should close the socket");
+      try std.test.expect_success(contender.bind(here, 0));
+      try std.test.assert((try std.test.expect_ok(contender.local_port())) != port, "retry should get a different port");
       owner.close();
-      contender.bind(here, port, false);
-      std.test.assert_eq(contender.local_port(), port);
+      try std.test.expect_success(contender.bind(here, port, false));
+      try std.test.assert_eq((try std.test.expect_ok(contender.local_port())), port);
     }
 
     /** Checks bind reuse is explicit. */
     test_function bind_reuse_is_explicit() {
       var group = Ipv4Addr(239, 255, 0, 1);
       var first = UdpSocket();
-      first.bind(group, 0, true);
-      var port = first.local_port();
+      try std.test.expect_success(first.bind(group, 0, true));
+      var port = try std.test.expect_ok(first.local_port());
       var second = UdpSocket();
-      second.bind(group, port, true);
-      std.test.assert_eq(second.local_port(), port);
+      try std.test.expect_success(second.bind(group, port, true));
+      try std.test.assert_eq((try std.test.expect_ok(second.local_port())), port);
       var exclusive = UdpSocket();
       var rejected = false;
-      try {
-        exclusive.bind(group, port, false);
-      } catch (e: ref IError) {
-        rejected = true;
-        std.test.assert_eq(e.code(), ADDRESS_IN_USE_ERRNO);
-      }
-      std.test.assert(rejected, "exclusive bind should reject a shared port");
-      std.test.assert(not exclusive.is_open(), "failed bind should close the socket");
+      match exclusive.bind(group, port, false) {
+        _Result.Ok => {},
+        _Result.Err(e) => {
+          rejected = true;
+          try std.test.assert_eq(e.code(), ADDRESS_IN_USE_ERRNO);
+        }
+      };
+      try std.test.assert(rejected, "exclusive bind should reject a shared port");
+      try std.test.assert(not exclusive.is_open(), "failed bind should close the socket");
     }
 
     /** Checks recv timeout reports would block. */
@@ -79,16 +81,18 @@ public module std {
       var alloc = make_heap_allocator();
       var here = ipv4_loopback();
       var socket = UdpSocket();
-      socket.bind(here, 0);
+      try std.test.expect_success(socket.bind(here, 0));
       var timeout = std.time.create_duration_millis(50);
-      socket.set_recv_timeout(timeout);
+      try std.test.expect_success(socket.set_recv_timeout(timeout));
       var buf = ContiguousBuffer<u8>(alloc, 16);
-      try {
-        socket.recv_from(buf);
-        std.test.fail("recv on an empty socket should time out");
-      } catch (e: ref IError) {
-        std.test.assert(is_would_block(e.code()), "timeout should report would-block");
-      }
+      match socket.recv_from(buf) {
+        _Result.Ok(_) => {
+          try std.test.fail("recv on an empty socket should time out");
+        },
+        _Result.Err(e) => {
+          try std.test.assert(is_would_block(e.code()), "timeout should report would-block");
+        }
+      };
       socket.close();
     }
 
@@ -98,12 +102,12 @@ public module std {
       var wildcard = ipv4_any();
       var group = Ipv4Addr(224, 0, 0, 251);
       var iface = ipv4_loopback();
-      socket.bind(wildcard, 0, true);
-      socket.join_multicast(group, iface);
-      socket.set_multicast_ttl(1);
-      socket.set_multicast_loop(true);
-      socket.set_multicast_loop(false);
-      socket.leave_multicast(group, iface);
+      try std.test.expect_success(socket.bind(wildcard, 0, true));
+      try std.test.expect_success(socket.join_multicast(group, iface));
+      try std.test.expect_success(socket.set_multicast_ttl(1));
+      try std.test.expect_success(socket.set_multicast_loop(true));
+      try std.test.expect_success(socket.set_multicast_loop(false));
+      try std.test.expect_success(socket.leave_multicast(group, iface));
       socket.close();
     }
 
@@ -111,43 +115,47 @@ public module std {
     test_function ipv4addr_roundtrip() {
       var alloc = make_heap_allocator();
       var loopback = Ipv4Addr(127, 0, 0, 1);
-      std.test.assert_eq(loopback.to_network_i32(), INADDR_LOOPBACK);
-      std.test.assert_eq(_convert<i32>(loopback.octet(0)), 127);
-      std.test.assert_eq(_convert<i32>(loopback.octet(3)), 1);
+      try std.test.assert_eq(loopback.to_network_i32(), INADDR_LOOPBACK);
+      try std.test.assert_eq(_convert<i32>(loopback.octet(0)), 127);
+      try std.test.assert_eq(_convert<i32>(loopback.octet(3)), 1);
       var lan = Ipv4Addr(192, 168, 1, 10);
       var text = lan.to_string(alloc);
-      std.test.assert(text.equals_literal("192.168.1.10"), "address renders dotted");
-      var parsed = parse_ipv4(text);
-      std.test.assert_eq(parsed.to_network_i32(), lan.to_network_i32());
+      try std.test.assert(text.equals_literal("192.168.1.10"), "address renders dotted");
+      var parsed = try std.test.expect_ok(parse_ipv4(text));
+      try std.test.assert_eq(parsed.to_network_i32(), lan.to_network_i32());
       var truncated = String(alloc, "192.168.1");
       var threw_truncated = false;
-      try {
-        parse_ipv4(truncated);
-      } catch (e: ref IError) {
-        threw_truncated = true;
-      }
-      std.test.assert(threw_truncated, "three octets should not parse");
+      match parse_ipv4(truncated) {
+        _Result.Ok(_) => {},
+        _Result.Err(e) => {
+          threw_truncated = true;
+        }
+      };
+      try std.test.assert(threw_truncated, "three octets should not parse");
       var overflow = String(alloc, "1.2.3.400");
       var threw_overflow = false;
-      try {
-        parse_ipv4(overflow);
-      } catch (e: ref IError) {
-        threw_overflow = true;
-      }
-      std.test.assert(threw_overflow, "octet above 255 should not parse");
+      match parse_ipv4(overflow) {
+        _Result.Ok(_) => {},
+        _Result.Err(e) => {
+          threw_overflow = true;
+        }
+      };
+      try std.test.assert(threw_overflow, "octet above 255 should not parse");
     }
 
     /** Checks send on closed socket reports errno. */
     test_function send_on_closed_socket_reports_errno() {
       var socket = UdpSocket();
       var dest = ipv4_loopback();
-      try {
-        socket.send_to(null, 0, dest, 9);
-        std.test.fail("send on a never-opened socket should throw");
-      } catch (e: ref IError) {
-        // EBADF is 9 on every supported target.
-        std.test.assert_eq(e.code(), 9);
-      }
+      match socket.send_to(null, 0, dest, 9) {
+        _Result.Ok(_) => {
+          try std.test.fail("send on a never-opened socket should throw");
+        },
+        _Result.Err(e) => {
+          // EBADF is 9 on every supported target.
+          try std.test.assert_eq(e.code(), 9);
+        }
+      };
     }
   }  // module udp_tests
 }  // module std

@@ -29,8 +29,8 @@ const std::string trackedError = R"(
   /** Provides a different matching tag. */
   class Other implements IError {
     /** Creates the error. */ init() {}
-    /** Reads the error code. */ method code() i32 { return 99; }
-    /** Reads a static message. */ method message() static_ptr<u8> { return "other"; }
+    /** Reads the error code. */ const method code() i32 { return 99; }
+    /** Reads a static message. */ const method message() static_ptr<u8> { return "other"; }
   }
   /** Moves an error into runtime ownership. */
   function fail() void throws IError { throw Tracked(7); }

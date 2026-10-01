@@ -279,8 +279,8 @@ TEST(Functions_Generic, throwing_generic_is_catchable) {
   auto value = executeString(R"(
     class Boom implements IError {
         init() {}
-        method code() i32 { return 1; }
-        method message() static_ptr<u8> { return "boom"; }
+        const method code() i32 { return 1; }
+        const method message() static_ptr<u8> { return "boom"; }
     }
     function risky<T>(x: T) i32 throws IError { throw Boom(); }
     function main() i32 {
@@ -294,8 +294,8 @@ TEST(Functions_Generic, throwing_generic_is_catchable_from_class_method) {
   auto value = executeString(R"(
     class Boom implements IError {
         init() {}
-        method code() i32 { return 1; }
-        method message() static_ptr<u8> { return "boom"; }
+        const method code() i32 { return 1; }
+        const method message() static_ptr<u8> { return "boom"; }
     }
     class Box<T> {
         var v: T;

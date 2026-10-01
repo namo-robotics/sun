@@ -146,6 +146,14 @@ class ClassGenerator {
   llvm::Value* codegenStackClassInstance(const sun::ast::CallExprAST& expr,
                                          ClassType& classType);
 
+  /** Wraps a completed object or constructor error in the construction result.
+   */
+  llvm::Value* finishFallibleConstruction(const ExprAST& expr,
+                                          ClassType& classType,
+                                          llvm::Value* object,
+                                          llvm::Value* status,
+                                          sun::types::EnumType& statusType);
+
   // ---------------------------------------------------------------
   // Generic instantiation
   // ---------------------------------------------------------------

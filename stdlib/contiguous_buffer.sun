@@ -2,7 +2,7 @@
 //
 // ContiguousBuffer<T> is a fixed-size, bounds-checked array backed by contiguous memory.
 // Unlike Vec, it has fixed capacity (no grow/push); resizing requires explicit reallocation.
-// All get/set operations perform bounds checking and throw IndexOutOfBoundsError on violation.
+// All get/set operations perform bounds checking and return IndexOutOfBoundsError on violation.
 // Uses HeapAllocator for memory management.
 //
 // Usage:
@@ -11,8 +11,8 @@
 //   
 //   var allocator = make_heap_allocator();
 //   var buf = ContiguousBuffer<i32>(allocator, 10);
-//   try { buf.set(0, 42); } catch (e: ref IError) { }
-//   try { var val = buf.get(0); } catch (e: ref IError) { }  // borrows 42
+//   try buf.set(0, 42);
+//   var val: ref i32 = try buf.get(0);  // borrows 42
 //   var len = buf.size();  // 10
 
 // ============================================================================
@@ -45,27 +45,28 @@ public module std {
      * this hands back a reference — copying the element out would leave two
      * owners of anything it holds.
      */
-    public const method get(index: i64) ref T throws IError {
+    public const method get(index: i64) _Result<ref T, IndexOutOfBoundsError> {
       if (index < 0) {
-        throw IndexOutOfBoundsError(index);
+        return _Result.Err(IndexOutOfBoundsError(index));
       }
       if (index >= this.size_) {
-        throw IndexOutOfBoundsError(index);
+        return _Result.Err(IndexOutOfBoundsError(index));
       }
-      return unsafe { this.get_unchecked(index); };
+      return _Result.Ok(unsafe { this.get_unchecked(index); });
     }
 
     /**
      * Set element at index (bounds-checked)
      */
-    public method set(index: i64, value: T) void throws IError {
+    public method set(index: i64, value: T) _Result<void, IndexOutOfBoundsError> {
       if (index < 0) {
-        throw IndexOutOfBoundsError(index);
+        return _Result.Err(IndexOutOfBoundsError(index));
       }
       if (index >= this.size_) {
-        throw IndexOutOfBoundsError(index);
+        return _Result.Err(IndexOutOfBoundsError(index));
       }
       unsafe { _store<T>(this.data.get_raw(), index, value); };
+      return _Result.Ok;
     }
 
     // ========================================================================
@@ -137,20 +138,20 @@ public module std {
     /**
      * Write elements from another buffer into this buffer (bounds-checked)
      */
-    public method write_from(source: const ref ContiguousBuffer<T>, src_offset: i64, dst_offset: i64, count: i64) void throws IError {
+    public method write_from(source: const ref ContiguousBuffer<T>, src_offset: i64, dst_offset: i64, count: i64) _Result<void, IndexOutOfBoundsError> {
       // Validate source bounds
       if (src_offset < 0) {
-        throw IndexOutOfBoundsError(src_offset);
+        return _Result.Err(IndexOutOfBoundsError(src_offset));
       }
       if (src_offset + count > source.size()) {
-        throw IndexOutOfBoundsError(src_offset);
+        return _Result.Err(IndexOutOfBoundsError(src_offset));
       }
       // Validate destination bounds
       if (dst_offset < 0) {
-        throw IndexOutOfBoundsError(dst_offset);
+        return _Result.Err(IndexOutOfBoundsError(dst_offset));
       }
       if (dst_offset + count > this.size_) {
-        throw IndexOutOfBoundsError(dst_offset);
+        return _Result.Err(IndexOutOfBoundsError(dst_offset));
       }
       // Copy elements using fast memcpy
       var byte_count: i64 = count * _sizeof<T>();
@@ -165,6 +166,7 @@ public module std {
           byte_count
         );
       };
+      return _Result.Ok;
     }
 
     /**
@@ -203,21 +205,21 @@ public module std {
     /**
      * Borrow first element (bounds-checked)
      */
-    public const method first() ref T throws IError {
+    public const method first() _Result<ref T, IndexOutOfBoundsError> {
       if (this.size_ == 0) {
-        throw IndexOutOfBoundsError(0);
+        return _Result.Err(IndexOutOfBoundsError(0));
       }
-      return unsafe { this.get_unchecked(0); };
+      return _Result.Ok(unsafe { this.get_unchecked(0); });
     }
 
     /**
      * Borrow last element (bounds-checked)
      */
-    public const method last() ref T throws IError {
+    public const method last() _Result<ref T, IndexOutOfBoundsError> {
       if (this.size_ == 0) {
-        throw IndexOutOfBoundsError(0);
+        return _Result.Err(IndexOutOfBoundsError(0));
       }
-      return unsafe { this.get_unchecked(this.size_ - 1); };
+      return _Result.Ok(unsafe { this.get_unchecked(this.size_ - 1); });
     }
 
     // ========================================================================

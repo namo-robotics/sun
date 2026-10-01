@@ -61,7 +61,7 @@ TEST(TestFunctions, rejects_return_type) {
                                 "does not declare a return type");
 }
 
-// Every test may throw; spelling it is redundant and rejected.
+/** Test failures use returned results instead of exception declarations. */
 TEST(TestFunctions, rejects_explicit_throws) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     test_function bad() throws IError {
@@ -69,7 +69,7 @@ TEST(TestFunctions, rejects_explicit_throws) {
     }
     function main() i32 { return 0; }
   )"),
-                                "'throws IError' is implicit");
+                                "'throws' is not supported");
 }
 
 TEST(TestFunctions, rejects_public) {

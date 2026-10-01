@@ -236,8 +236,8 @@ Rules for payload enums:
 - `==` / `!=` are not defined on them — `match` is the eliminator.
 - Payload types may be primitives, pointers, other enums, interfaces, and
   classes — including classes that own heap memory (`String`, `Vec<T>`,
-  anything with `deinit`). References, arrays, and recursive payloads
-  (without `raw_ptr` indirection) are rejected.
+  anything with `deinit`). Reference payloads borrow their referents and cannot
+  outlive them. Arrays and recursive payloads without indirection are rejected.
 - Payload-free enums are unchanged: plain `i32` values with `==` comparison,
   usable in `extern "C"` signatures. Payload enums cannot cross the C
   boundary yet.
@@ -294,7 +294,7 @@ results expressible:
 
 ```sun
 enum Option<T> { Some(T), None }
-enum Result<T, E> { Ok(T), Err(E) }
+// _Result<T, E> is builtin; It is independent of the standard library.
 
 function find(x: i32) Option<i32> {
     if (x > 0) { return Option.Some(x * 2); }  // T inferred from the argument
@@ -322,8 +322,7 @@ match a {
 <Callout type="info">
   Not yet supported: explicit type arguments in expression position
   (`Option<i32>.Some(5)` — use inference or an annotation), nested patterns,
-  arrays or globals of payload enums, and moving a payload out of a match
-  binding. These are planned follow-ups.
+  and arrays or globals of payload enums. These are planned follow-ups.
 </Callout>
 
 ## Trailing Commas

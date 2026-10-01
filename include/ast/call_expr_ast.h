@@ -77,6 +77,16 @@ class CallExprAST : public ExprAST {
       std::vector<sun::semantic_analysis::ArgConversion> conversions) const {
     callAnalysis().argConversions = std::move(conversions);
   }
+  /** Records fields initialized by a constructor's call to its own helper. */
+  void setInitializedFields(std::vector<DeclarationId> fields) const {
+    callAnalysis().initializedFields = std::move(fields);
+  }
+  /** Returns fields whose initialization is guaranteed when this call returns.
+   */
+  const std::vector<DeclarationId>& getInitializedFields() const {
+    return callAnalysis().initializedFields;
+  }
+
   /** Returns the argument conversions selected by analysis. */
   const std::vector<sun::semantic_analysis::ArgConversion>& getArgConversions()
       const {

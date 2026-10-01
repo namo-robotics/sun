@@ -558,8 +558,8 @@ TEST(Classes, throwing_constructor) {
   auto value = executeString(R"(
     class NegativeError implements IError {
       init() {}
-      method code() i32 { return 1; }
-      method message() static_ptr<u8> { return "negative"; }
+      const method code() i32 { return 1; }
+      const method message() static_ptr<u8> { return "negative"; }
     }
     class Guarded {
         var n: i32;
@@ -1719,8 +1719,8 @@ TEST(Classes_FieldInitializers,
   const std::string preamble = R"(
     class Failure implements IError {
       init() {}
-      method code() i32 { return 1; }
-      method message() static_ptr<u8> { return "failed"; }
+      const method code() i32 { return 1; }
+      const method message() static_ptr<u8> { return "failed"; }
     }
     function fail() i32 throws IError { throw Failure(); }
   )";
@@ -1771,8 +1771,8 @@ TEST(Classes_FieldInitializers,
     }
     class Failure implements IError {
       init() {}
-      method code() i32 { return 1; }
-      method message() static_ptr<u8> { return "failed"; }
+      const method code() i32 { return 1; }
+      const method message() static_ptr<u8> { return "failed"; }
     }
     function fail() i32 throws IError { throw Failure(); }
     class Foo {
@@ -1818,8 +1818,8 @@ TEST(Classes_FieldInitializers,
     }
     class Failure implements IError {
       init() {}
-      method code() i32 { return 1; }
-      method message() static_ptr<u8> { return "failed"; }
+      const method code() i32 { return 1; }
+      const method message() static_ptr<u8> { return "failed"; }
     }
     function fail() void throws IError { throw Failure(); }
     class Foo {

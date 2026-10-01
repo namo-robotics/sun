@@ -341,8 +341,8 @@ TEST(MemorySafety_Drops_Enums, owning_enum_dropped_on_unwind) {
   auto value = executeString(withPreamble(R"(
     class TestError implements IError {
       init() {}
-      method code() i32 { return 1; }
-      method message() static_ptr<u8> { return "test error"; }
+      const method code() i32 { return 1; }
+      const method message() static_ptr<u8> { return "test error"; }
     }
 
     function thrower() void throws IError {

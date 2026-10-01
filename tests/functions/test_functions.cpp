@@ -547,8 +547,8 @@ TEST(Functions, throwing_pointer_propagates_indirect_exceptions) {
   auto value = executeString(R"(
     class CallbackError implements IError {
         init() {}
-        method code() i32 { return 1; }
-        method message() static_ptr<u8> { return "callback failed"; }
+        const method code() i32 { return 1; }
+        const method message() static_ptr<u8> { return "callback failed"; }
     }
 
     function fail(x: i32) i32 throws IError { throw CallbackError(); }
@@ -569,8 +569,8 @@ TEST(Functions, throwing_pointer_does_not_narrow) {
   EXPECT_THROW(executeString(R"(
     class CallbackError implements IError {
         init() {}
-        method code() i32 { return 1; }
-        method message() static_ptr<u8> { return "callback failed"; }
+        const method code() i32 { return 1; }
+        const method message() static_ptr<u8> { return "callback failed"; }
     }
     function fail(x: i32) i32 throws IError { throw CallbackError(); }
     function main() i32 {
@@ -585,8 +585,8 @@ TEST(Functions, indirect_throwing_call_requires_error_handling) {
   EXPECT_THROW(executeString(R"(
     class CallbackError implements IError {
         init() {}
-        method code() i32 { return 1; }
-        method message() static_ptr<u8> { return "callback failed"; }
+        const method code() i32 { return 1; }
+        const method message() static_ptr<u8> { return "callback failed"; }
     }
     function fail(x: i32) i32 throws IError { throw CallbackError(); }
     function main() i32 {

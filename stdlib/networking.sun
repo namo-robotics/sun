@@ -60,11 +60,11 @@ public module std {
   /**
    * Change one descriptor's non-blocking flag while preserving its other flags.
    */
-  function set_fd_nonblocking(fd: i32, enabled: bool) void throws IError {
+  function set_fd_nonblocking(fd: i32, enabled: bool) _Result<void, Error> {
     var flags: i32 = unsafe { c_fcntl(fd, F_GETFL); };
     if (flags < 0) {
       var err_code: i32 = errno();
-      throw Error(err_code, "failed to read descriptor flags");
+      return _Result.Err(Error(err_code, "failed to read descriptor flags"));
     }
 
     var next_flags: i32 = flags;
@@ -77,8 +77,9 @@ public module std {
     var result: i32 = unsafe { c_fcntl(fd, F_SETFL, next_flags); };
     if (result < 0) {
       var err_code: i32 = errno();
-      throw Error(err_code, "failed to set descriptor flags");
+      return _Result.Err(Error(err_code, "failed to set descriptor flags"));
     }
+    return _Result.Ok;
   }
 
   // -------------------------------------------------------------------
@@ -91,13 +92,13 @@ public module std {
    * or has no IPv4 address. Field offsets are documented at the getaddrinfo
    * declaration in sys.sun.
    */
-  public function resolve_host_ipv4(host: ref String) i32 throws IError {
+  public function resolve_host_ipv4(host: ref String) _Result<i32, Error> {
     var list: raw_ptr<u8> = null;
     var rc: i32 = unsafe { c_getaddrinfo(host.c_str(), null, null, _address_of<raw_ptr<u8>>(list)); };
     if (rc != 0) {
       var alloc: HeapAllocator = HeapAllocator();
       var msg: String = from_c_str(alloc, unsafe { c_gai_strerror(rc); });
-      throw Error(rc, msg);
+      return _Result.Err(Error(rc, msg));
     }
     var entry: raw_ptr<u8> = list;
     while (entry != null) {
@@ -108,12 +109,12 @@ public module std {
         var sa: raw_ptr<u8> = unsafe { _load<raw_ptr<u8>>(entry, ADDRINFO_ADDR_INDEX); };
         var ip: i32 = unsafe { _load<i32>(sa, 1); };  // sin_addr @4, network order
         unsafe { c_freeaddrinfo(list); };
-        return ip;
+        return _Result.Ok(ip);
       }
       entry = unsafe { _load<raw_ptr<u8>>(entry, 5); };  // ai_next @40
     }
     unsafe { c_freeaddrinfo(list); };
-    throw Error(-1, "host has no IPv4 address");
+    return _Result.Err(Error(-1, "host has no IPv4 address"));
   }
 
   // -------------------------------------------------------------------
@@ -203,7 +204,7 @@ public module std {
    * Parse dotted-quad text like "239.255.0.1". Throws unless the text is
    * exactly four octets in the range 0-255, separated by dots.
    */
-  public function parse_ipv4(text: const ref String) Ipv4Addr throws IError {
+  public function parse_ipv4(text: const ref String) _Result<Ipv4Addr, Error> {
     var net: i32 = 0;
     var octet_value: i32 = 0;
     var digits: i32 = 0;
@@ -217,27 +218,27 @@ public module std {
         octet_value = octet_value * 10 + (ch - 48);
         digits = digits + 1;
         if (digits > 3 or octet_value > 255) {
-          throw Error(-1, "malformed IPv4 address");
+          return _Result.Err(Error(-1, "malformed IPv4 address"));
         }
       } else if (ch == 46) {
         // '.'
         if (digits == 0 or parts == 3) {
-          throw Error(-1, "malformed IPv4 address");
+          return _Result.Err(Error(-1, "malformed IPv4 address"));
         }
         net = net | (octet_value << (parts * 8));
         parts = parts + 1;
         octet_value = 0;
         digits = 0;
       } else {
-        throw Error(-1, "malformed IPv4 address");
+        return _Result.Err(Error(-1, "malformed IPv4 address"));
       }
       i = i + 1;
     }
     if (digits == 0 or parts != 3) {
-      throw Error(-1, "malformed IPv4 address");
+      return _Result.Err(Error(-1, "malformed IPv4 address"));
     }
     net = net | (octet_value << 24);
-    return ipv4_from_network(net);
+    return _Result.Ok(ipv4_from_network(net));
   }
 
   // -------------------------------------------------------------------
@@ -260,11 +261,11 @@ public module std {
     /**
      * Connect to loopback (127.0.0.1) on port
      */
-    public method connect_local(port: i32) void throws IError {
+    public method connect_local(port: i32) _Result<void, Error> {
       var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
       if (sock_fd < 0) {
         var err_code: i32 = errno();
-        throw Error(err_code, "failed to create socket");
+        return _Result.Err(Error(err_code, "failed to create socket"));
       }
       this.fd = sock_fd;
       this.owns_fd = true;
@@ -273,18 +274,19 @@ public module std {
       var result: i32 = unsafe { __connect_ipv4(this.fd, INADDR_LOOPBACK, port); };
       if (result < 0) {
         var err_code: i32 = errno();
-        throw Error(err_code, "failed to connect");
+        return _Result.Err(Error(err_code, "failed to connect"));
       }
+      return _Result.Ok;
     }
 
     /**
      * Connect to specific IP (in network byte order) and port
      */
-    public method connect_ip(ip: i32, port: i32) void throws IError {
+    public method connect_ip(ip: i32, port: i32) _Result<void, Error> {
       var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
       if (sock_fd < 0) {
         var err_code: i32 = errno();
-        throw Error(err_code, "failed to create socket");
+        return _Result.Err(Error(err_code, "failed to create socket"));
       }
       this.fd = sock_fd;
       this.owns_fd = true;
@@ -293,75 +295,79 @@ public module std {
       var result: i32 = unsafe { __connect_ipv4(this.fd, ip, port); };
       if (result < 0) {
         var err_code: i32 = errno();
-        throw Error(err_code, "failed to connect");
+        return _Result.Err(Error(err_code, "failed to connect"));
       }
+      return _Result.Ok;
     }
 
     /**
      * Resolve a hostname and connect to its first IPv4 address
      */
-    public method connect_host(host: ref String, port: i32) void throws IError {
-      var ip: i32 = resolve_host_ipv4(host);
-      this.connect_ip(ip, port);
+    public method connect_host(host: ref String, port: i32) _Result<void, Error> {
+      var ip: i32 = try resolve_host_ipv4(host);
+      try this.connect_ip(ip, port);
+      return _Result.Ok;
     }
 
     /**
      * Connect to an Ipv4Addr and port
      */
-    public method connect_addr(addr: const ref Ipv4Addr, port: i32) void throws IError {
-      this.connect_ip(addr.to_network_i32(), port);
+    public method connect_addr(addr: const ref Ipv4Addr, port: i32) _Result<void, Error> {
+      try this.connect_ip(addr.to_network_i32(), port);
+      return _Result.Ok;
     }
 
     /**
      * Send string data
      */
-    public method send_str(data: static_ptr<u8>) i64 throws IError {
+    public method send_str(data: static_ptr<u8>) _Result<i64, Error> {
       var str_ptr: raw_ptr<u8> = data.raw();
       var len: i64 = data.length();
       var result: i64 = unsafe { __send(this.fd, str_ptr, len, MSG_NOSIGNAL); };
       if (result < 0) {
         var err_code: i32 = errno();
-        throw Error(err_code, "send failed");
+        return _Result.Err(Error(err_code, "send failed"));
       }
-      return result;
+      return _Result.Ok(result);
     }
 
     /**
      * Send raw bytes
      */
-    public method send_bytes(data: raw_ptr<u8>, len: i64) i64 throws IError {
+    public method send_bytes(data: raw_ptr<u8>, len: i64) _Result<i64, Error> {
       var result: i64 = unsafe { __send(this.fd, data, len, MSG_NOSIGNAL); };
       if (result < 0) {
         var err_code: i32 = errno();
-        throw Error(err_code, "send failed");
+        return _Result.Err(Error(err_code, "send failed"));
       }
-      return result;
+      return _Result.Ok(result);
     }
 
     /**
      * Send a String's contents
      */
-    public method send_string(data: const ref String) i64 throws IError {
-      return this.send_bytes(data.data.raw_data(), data.length());
+    public method send_string(data: const ref String) _Result<i64, Error> {
+      return _Result.Ok((try this.send_bytes(data.data.raw_data(), data.length())));
     }
 
     /**
      * Receive into ContiguousBuffer, returns bytes read
      */
-    public method recv(buf: ref ContiguousBuffer<u8>) i64 throws IError {
+    public method recv(buf: ref ContiguousBuffer<u8>) _Result<i64, Error> {
       var result: i64 = unsafe { __recv(this.fd, buf.raw_data(), buf.size(), 0); };
       if (result < 0) {
         var err_code: i32 = errno();
-        throw Error(err_code, "recv failed");
+        return _Result.Err(Error(err_code, "recv failed"));
       }
-      return result;
+      return _Result.Ok(result);
     }
 
     /**
      * Change whether operations on this socket wait for readiness.
      */
-    public method set_nonblocking(enabled: bool) void throws IError {
-      set_fd_nonblocking(this.fd, enabled);
+    public method set_nonblocking(enabled: bool) _Result<void, Error> {
+      try set_fd_nonblocking(this.fd, enabled);
+      return _Result.Ok;
     }
 
     /**
@@ -420,11 +426,11 @@ public module std {
     /**
      * Create and bind to port on all interfaces (0.0.0.0)
      */
-    public method bind_port(port: i32) void throws IError {
+    public method bind_port(port: i32) _Result<void, Error> {
       var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
       if (sock_fd < 0) {
         var err_code: i32 = errno();
-        throw Error(err_code, "failed to create socket");
+        return _Result.Err(Error(err_code, "failed to create socket"));
       }
       this.fd = sock_fd;
       this.owns_fd = true;
@@ -433,18 +439,19 @@ public module std {
       var result: i32 = unsafe { __bind_ipv4(this.fd, INADDR_ANY, port); };
       if (result < 0) {
         var err_code: i32 = errno();
-        throw Error(err_code, "failed to bind socket");
+        return _Result.Err(Error(err_code, "failed to bind socket"));
       }
+      return _Result.Ok;
     }
 
     /**
      * Create and bind to loopback (127.0.0.1) on port
      */
-    public method bind_loopback(port: i32) void throws IError {
+    public method bind_loopback(port: i32) _Result<void, Error> {
       var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
       if (sock_fd < 0) {
         var err_code: i32 = errno();
-        throw Error(err_code, "failed to create socket");
+        return _Result.Err(Error(err_code, "failed to create socket"));
       }
       this.fd = sock_fd;
       this.owns_fd = true;
@@ -453,18 +460,19 @@ public module std {
       var result: i32 = unsafe { __bind_ipv4(this.fd, INADDR_LOOPBACK, port); };
       if (result < 0) {
         var err_code: i32 = errno();
-        throw Error(err_code, "failed to bind socket");
+        return _Result.Err(Error(err_code, "failed to bind socket"));
       }
+      return _Result.Ok;
     }
 
     /**
      * Create and bind to an Ipv4Addr and port
      */
-    public method bind_addr(addr: const ref Ipv4Addr, port: i32) void throws IError {
+    public method bind_addr(addr: const ref Ipv4Addr, port: i32) _Result<void, Error> {
       var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
       if (sock_fd < 0) {
         var err_code: i32 = errno();
-        throw Error(err_code, "failed to create socket");
+        return _Result.Err(Error(err_code, "failed to create socket"));
       }
       this.fd = sock_fd;
       this.owns_fd = true;
@@ -473,49 +481,52 @@ public module std {
       var result: i32 = unsafe { __bind_ipv4(this.fd, addr.to_network_i32(), port); };
       if (result < 0) {
         var err_code: i32 = errno();
-        throw Error(err_code, "failed to bind socket");
+        return _Result.Err(Error(err_code, "failed to bind socket"));
       }
+      return _Result.Ok;
     }
 
     /**
      * Start listening for connections
      */
-    public method listen(backlog: i32) void throws IError {
+    public method listen(backlog: i32) _Result<void, Error> {
       var result: i32 = unsafe { __listen(this.fd, backlog); };
       if (result < 0) {
         var err_code: i32 = errno();
-        throw Error(err_code, "failed to listen");
+        return _Result.Err(Error(err_code, "failed to listen"));
       }
+      return _Result.Ok;
     }
 
     /**
      * Accept a new connection, returns TcpStream
      */
-    public method accept() TcpStream throws IError {
+    public method accept() _Result<TcpStream, Error> {
       var client_fd: i32 = unsafe { __accept_fd(this.fd); };
       if (client_fd < 0) {
         var err_code: i32 = errno();
-        throw Error(err_code, "failed to accept connection");
+        return _Result.Err(Error(err_code, "failed to accept connection"));
       }
       suppress_sigpipe(client_fd);
       var stream = TcpStream();
       stream.fd = client_fd;
       stream.owns_fd = true;
-      return stream;
+      return _Result.Ok(stream);
     }
 
     /**
      * Change whether operations on this socket wait for readiness.
      */
-    public method set_nonblocking(enabled: bool) void throws IError {
-      set_fd_nonblocking(this.fd, enabled);
+    public method set_nonblocking(enabled: bool) _Result<void, Error> {
+      try set_fd_nonblocking(this.fd, enabled);
+      return _Result.Ok;
     }
 
     /**
      * The port the listener is actually bound to — the answer after binding
      * port 0 and letting the OS pick.
      */
-    public method local_port() i32 throws IError {
+    public method local_port() _Result<i32, Error> {
       var ip: i32 = 0;
       var port: i32 = 0;
       var result: i32 = unsafe {
@@ -523,9 +534,9 @@ public module std {
       };
       if (result < 0) {
         var err_code: i32 = errno();
-        throw Error(err_code, "failed to read socket address");
+        return _Result.Err(Error(err_code, "failed to read socket address"));
       }
-      return port;
+      return _Result.Ok(port);
     }
 
     /**
@@ -653,76 +664,80 @@ public module std {
     }
 
     /** Allow this socket to share its address with other reuse-enabled sockets. */
-    public method enable_reuse_addr() void throws IError {
+    public method enable_reuse_addr() _Result<void, Error> {
       var optval: i32 = 1;
       var result: i32 = unsafe {
         __setsockopt(this.fd, SOL_SOCKET, SO_REUSEADDR, _address_of<i32>(optval), 4);
       };
       if (result < 0) {
         var err_code: i32 = errno();
-        throw Error(err_code, "failed to enable address reuse");
+        return _Result.Err(Error(err_code, "failed to enable address reuse"));
       }
+      return _Result.Ok;
     }
 
     /** Bind exclusively to addr:port. Port zero asks the OS for a free port. */
-    public method bind(addr: const ref Ipv4Addr, port: i32) void throws IError {
-      this.bind(addr, port, false);
+    public method bind(addr: const ref Ipv4Addr, port: i32) _Result<void, Error> {
+      try this.bind(addr, port, false);
+      return _Result.Ok;
     }
 
     /** Bind to addr:port, enabling SO_REUSEADDR only when reuse is true.
-     * Failed binds close the socket and throw an Error with the native errno.
+     * Failed binds close the socket and return an Error with the native errno.
      */
-    public method bind(addr: const ref Ipv4Addr, port: i32, reuse: bool) void throws IError {
+    public method bind(addr: const ref Ipv4Addr, port: i32, reuse: bool) _Result<void, Error> {
       this.close();
       var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_DGRAM, 0); };
       if (sock_fd < 0) {
         var err_code: i32 = errno();
-        throw Error(err_code, "failed to create socket");
+        return _Result.Err(Error(err_code, "failed to create socket"));
       }
       this.fd = sock_fd;
       this.owns_fd = true;
       suppress_sigpipe(this.fd);
       if (reuse) {
-        try {
-          this.enable_reuse_addr();
-        } catch (e: ref IError) {
-          this.close();
-          throw e;
-        }
+        match this.enable_reuse_addr() {
+          _Result.Ok => {},
+          _Result.Err(error) => {
+            this.close();
+            return _Result.Err(error);
+          }
+        };
       }
 
       var result: i32 = unsafe { __bind_ipv4(this.fd, addr.to_network_i32(), port); };
       if (result < 0) {
         var err_code: i32 = errno();
         this.close();
-        throw Error(err_code, "failed to bind socket");
+        return _Result.Err(Error(err_code, "failed to bind socket"));
       }
+      return _Result.Ok;
     }
 
     /**
      * Send one datagram of len bytes to addr:port. Returns bytes sent.
      */
-    public method send_to(data: raw_ptr<u8>, len: i64, addr: const ref Ipv4Addr, port: i32) i64 throws IError {
+    public method send_to(data: raw_ptr<u8>, len: i64, addr: const ref Ipv4Addr, port: i32) _Result<i64, Error> {
       var result: i64 = unsafe { __sendto_ipv4(this.fd, data, len, MSG_NOSIGNAL, addr.to_network_i32(), port); };
       if (result < 0) {
         var err_code: i32 = errno();
-        throw Error(err_code, "send failed");
+        return _Result.Err(Error(err_code, "send failed"));
       }
-      return result;
+      return _Result.Ok(result);
     }
 
     /**
      * Send string data as one datagram
      */
-    public method send_str_to(data: static_ptr<u8>, addr: const ref Ipv4Addr, port: i32) i64 throws IError {
-      return this.send_to(data.raw(), data.length(), addr, port);
+    public method send_str_to(data: static_ptr<u8>, addr: const ref Ipv4Addr, port: i32) _Result<i64, Error> {
+      return _Result.Ok((try this.send_to(data.raw(), data.length(), addr, port)));
     }
 
     /**
      * Receive one datagram into the buffer, reporting its size and sender.
      * A datagram longer than the buffer is cut to fit; the rest is dropped.
      */
-    public method recv_from(buf: ref ContiguousBuffer<u8>) UdpDatagram throws IError {
+    public method recv_from(buf: ref ContiguousBuffer<u8>) _Result<UdpDatagram, Error> {
       var sender_ip: i32 = 0;
       var sender_port: i32 = 0;
       var result: i64 = unsafe {
@@ -737,9 +752,9 @@ public module std {
       };
       if (result < 0) {
         var err_code: i32 = errno();
-        throw Error(err_code, "recv failed");
+        return _Result.Err(Error(err_code, "recv failed"));
       }
-      return UdpDatagram(result, sender_ip, sender_port);
+      return _Result.Ok(UdpDatagram(result, sender_ip, sender_port));
     }
 
     /**
@@ -747,36 +762,38 @@ public module std {
      * ipv4_any() to let the OS pick the interface. The socket then receives
      * datagrams sent to the group on its bound port.
      */
-    public method join_multicast(group: const ref Ipv4Addr, iface: const ref Ipv4Addr) void throws IError {
+    public method join_multicast(group: const ref Ipv4Addr, iface: const ref Ipv4Addr) _Result<void, Error> {
       var request = IpMreq(group.to_network_i32(), iface.to_network_i32());
       var result: i32 = unsafe {
         __setsockopt(this.fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, _address_of<IpMreq>(request), 8);
       };
       if (result < 0) {
         var err_code: i32 = errno();
-        throw Error(err_code, "failed to join multicast group");
+        return _Result.Err(Error(err_code, "failed to join multicast group"));
       }
+      return _Result.Ok;
     }
 
     /**
      * Leave a multicast group joined with the same group and interface.
      */
-    public method leave_multicast(group: const ref Ipv4Addr, iface: const ref Ipv4Addr) void throws IError {
+    public method leave_multicast(group: const ref Ipv4Addr, iface: const ref Ipv4Addr) _Result<void, Error> {
       var request = IpMreq(group.to_network_i32(), iface.to_network_i32());
       var result: i32 = unsafe {
         __setsockopt(this.fd, IPPROTO_IP, IP_DROP_MEMBERSHIP, _address_of<IpMreq>(request), 8);
       };
       if (result < 0) {
         var err_code: i32 = errno();
-        throw Error(err_code, "failed to leave multicast group");
+        return _Result.Err(Error(err_code, "failed to leave multicast group"));
       }
+      return _Result.Ok;
     }
 
     /**
      * How many router hops outgoing multicast datagrams may cross. The
      * default of 1 keeps them on the local network.
      */
-    public method set_multicast_ttl(ttl: i32) void throws IError {
+    public method set_multicast_ttl(ttl: i32) _Result<void, Error> {
       // Both OSes accept a one-byte value; macOS insists on it.
       var value: u8 = _convert<u8>(ttl & 255);
       var result: i32 = unsafe {
@@ -784,14 +801,15 @@ public module std {
       };
       if (result < 0) {
         var err_code: i32 = errno();
-        throw Error(err_code, "failed to set multicast TTL");
+        return _Result.Err(Error(err_code, "failed to set multicast TTL"));
       }
+      return _Result.Ok;
     }
 
     /**
      * Whether this host's own multicast sends loop back to local listeners.
      */
-    public method set_multicast_loop(enabled: bool) void throws IError {
+    public method set_multicast_loop(enabled: bool) _Result<void, Error> {
       var value: u8 = 0;
       if (enabled) {
         value = 1;
@@ -801,15 +819,16 @@ public module std {
       };
       if (result < 0) {
         var err_code: i32 = errno();
-        throw Error(err_code, "failed to set multicast loopback");
+        return _Result.Err(Error(err_code, "failed to set multicast loopback"));
       }
+      return _Result.Ok;
     }
 
     /**
-     * Make a blocking recv_from give up after the timeout, throwing an error
+     * Make a blocking recv_from give up after the timeout, returning an error
      * for which is_would_block(e.code()) is true.
      */
-    public method set_recv_timeout(timeout: const ref std.time.Duration) void throws IError {
+    public method set_recv_timeout(timeout: const ref std.time.Duration) _Result<void, Error> {
       var micros: i64 = timeout.as_micros();
       if (micros == 0 and timeout.as_nanos() > 0) {
         micros = 1;  // a zero timeval would mean "wait forever"
@@ -821,15 +840,16 @@ public module std {
       };
       if (result < 0) {
         var err_code: i32 = errno();
-        throw Error(err_code, "failed to set receive timeout");
+        return _Result.Err(Error(err_code, "failed to set receive timeout"));
       }
+      return _Result.Ok;
     }
 
     /**
      * The port the socket is actually bound to — the answer after binding
      * port 0.
      */
-    public method local_port() i32 throws IError {
+    public method local_port() _Result<i32, Error> {
       var ip: i32 = 0;
       var port: i32 = 0;
       var result: i32 = unsafe {
@@ -837,15 +857,15 @@ public module std {
       };
       if (result < 0) {
         var err_code: i32 = errno();
-        throw Error(err_code, "failed to read socket address");
+        return _Result.Err(Error(err_code, "failed to read socket address"));
       }
-      return port;
+      return _Result.Ok(port);
     }
 
     /**
      * The address the socket is bound to.
      */
-    public method local_addr() Ipv4Addr throws IError {
+    public method local_addr() _Result<Ipv4Addr, Error> {
       var ip: i32 = 0;
       var port: i32 = 0;
       var result: i32 = unsafe {
@@ -853,16 +873,17 @@ public module std {
       };
       if (result < 0) {
         var err_code: i32 = errno();
-        throw Error(err_code, "failed to read socket address");
+        return _Result.Err(Error(err_code, "failed to read socket address"));
       }
-      return ipv4_from_network(ip);
+      return _Result.Ok(ipv4_from_network(ip));
     }
 
     /**
      * Change whether operations on this socket wait for readiness.
      */
-    public method set_nonblocking(enabled: bool) void throws IError {
-      set_fd_nonblocking(this.fd, enabled);
+    public method set_nonblocking(enabled: bool) _Result<void, Error> {
+      try set_fd_nonblocking(this.fd, enabled);
+      return _Result.Ok;
     }
 
     /**

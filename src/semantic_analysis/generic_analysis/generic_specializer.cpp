@@ -1324,6 +1324,10 @@ GenericSpecializer::instantiateGenericEnum(
       std::vector<TypePtr> payloadTypes;
       for (const auto& annot : variant.payloadTypes) {
         auto payloadType = sema_.typeResolver().typeAnnotationToType(annot);
+        // A generic enum's sole first-variant payload becomes unit for void.
+        if (payloadType->isVoid() && variant.payloadTypes.size() == 1 &&
+            &variant == &genericInfo->AST->getVariants().front())
+          continue;
         if (!abstractShape) {
           type_analysis::validateEnumPayloadType(
               payloadType, *specialized, variant.name, variant.location);

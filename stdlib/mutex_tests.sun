@@ -44,7 +44,7 @@ public module std {
       counter = counter + 10;
       m.unlock();
 
-      std.test.assert_eq(counter, 11);
+      try std.test.assert_eq(counter, 11);
     }
 
     /** Checks mutex multiple lock unlock. */
@@ -60,7 +60,7 @@ public module std {
         i = i + 1;
       }
 
-      std.test.assert_eq(result, 10);
+      try std.test.assert_eq(result, 10);
     }
 
     /** Checks mutex two threads sequential. */
@@ -91,7 +91,7 @@ public module std {
       t2.join();
 
       // Both threads increment 100 times each.
-      std.test.assert_eq(two_threads_counter, 200);
+      try std.test.assert_eq(two_threads_counter, 200);
     }
 
     /** Checks mutex three threads. */
@@ -140,7 +140,7 @@ public module std {
       t3.join();
 
       // Three threads each increment 50 times.
-      std.test.assert_eq(three_threads_counter, 150);
+      try std.test.assert_eq(three_threads_counter, 150);
     }
 
     /**
@@ -180,7 +180,7 @@ public module std {
         t1.join();
         t2.join();
 
-        std.test.assert_eq(races_counter, 2000);
+        try std.test.assert_eq(races_counter, 2000);
       }
     }
 
@@ -212,7 +212,7 @@ public module std {
       );
       t.join();
       increment_under_guard();
-      std.test.assert_eq(guard_counter, 3);
+      try std.test.assert_eq(guard_counter, 3);
     }
   }  // module mutex_tests
 }  // module std

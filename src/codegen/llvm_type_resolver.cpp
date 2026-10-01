@@ -126,7 +126,10 @@ StructType* LLVMTypeResolver::getEnumVariantStruct(
         llvm::ArrayType::get(llvm::Type::getInt8Ty(ctx), tagArea - 4));
   }
   for (const auto& payloadType : variant->payloadTypes) {
-    fields.push_back(resolve(payloadType));
+    fields.push_back(payloadType->isReference() &&
+                             sun::types::unwrapRef(payloadType)->isInterface()
+                         ? sun::types::InterfaceType::getFatPointerType(ctx)
+                         : resolve(payloadType));
   }
   auto* variantStruct = StructType::get(ctx, fields);
   enumType.cachedVariantStructs[variantName] = variantStruct;

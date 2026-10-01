@@ -507,6 +507,8 @@ class BorrowChecker {
   // Discover payload moves before checking the match's final binding mode.
   bool discoveringMatchMoves_ = false;
   std::unordered_map<const MatchExprAST*, bool> matchConsumes_;
+  // Lifetime shared by every reachable result-producing match arm.
+  std::unordered_map<const MatchExprAST*, Lifetime> matchResultLifetimes_;
   std::unordered_map<std::string, const MatchExprAST*> matchPayloadSources_;
 
   // Discriminant variables of enclosing match expressions: frozen (no
@@ -635,7 +637,7 @@ class BorrowChecker {
    * - Parameters have param lifetimes (outlive function body)
    * - Locals have local lifetimes (bound to their scope)
    */
-  Lifetime inferExprLifetime(const ExprAST& expr);
+  Lifetime inferExprLifetime(const ExprAST& expr) const;
 
   /**
    * Check that a return statement's lifetime is valid.
@@ -679,7 +681,7 @@ class BorrowChecker {
    * Infer the lifetime of a call expression's return value,
    * considering whether temporaries were passed to ref params.
    */
-  Lifetime inferCallReturnLifetime(const CallExprAST& call);
+  Lifetime inferCallReturnLifetime(const CallExprAST& call) const;
 };
 
 }  // namespace sun::borrow_checker

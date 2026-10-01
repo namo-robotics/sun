@@ -13,6 +13,7 @@
 #include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "semantic_analysis/symbol_names.h"
+#include "semantic_analysis/type_analysis/type_inferer.h"
 #include "semantic_analysis/type_analysis/type_rules.h"
 #include "support/error.h"
 
@@ -126,6 +127,88 @@ void CallAnalyzer::analyzeCall(CallExprAST& callExpr, TypePtr expectedType) {
     const auto& varRef =
         static_cast<const VariableReferenceAST&>(*callExpr.getCallee());
     checkRequiresUnsafeBlock(varRef.getName(), callExpr.getLocation());
+    const bool userDefined =
+        ctx_.currentScope().lookupVariable(varRef.getName()) ||
+        !ctx_.currentScope().getAllFunctions(varRef.getName()).empty() ||
+        ctx_.currentScope().lookupGenericFunction(varRef.getName());
+    if (!userDefined && (varRef.getName() == "checked_div" ||
+                         varRef.getName() == "checked_rem")) {
+      if (callExpr.getArgs().size() != 2)
+        logAndThrowError(varRef.getName() + " expects two integer operands",
+                         callExpr.getLocation());
+      auto& left = *callExpr.getArgs()[0];
+      auto& right = *callExpr.getArgs()[1];
+      sema_.analyzeExpr(left);
+      sema_.analyzeExpr(right);
+      auto leftType = unwrapRef(left.getResolvedType());
+      auto rightType = unwrapRef(right.getResolvedType());
+      if (leftType->isIntegral())
+        tryCoerceIntegerLiteral(&right, leftType, false);
+      if (rightType->isIntegral())
+        tryCoerceIntegerLiteral(&left, rightType, false);
+      leftType = unwrapRef(left.getResolvedType());
+      rightType = unwrapRef(right.getResolvedType());
+      if ((!leftType->isIntegral() && !leftType->isTypeParameter()) ||
+          (!rightType->isIntegral() && !rightType->isTypeParameter()))
+        logAndThrowError(varRef.getName() + " requires integer operands",
+                         callExpr.getLocation());
+      auto numeric =
+          sun::semantic_analysis::type_analysis::TypeInferer::numeric(
+              leftType, rightType);
+      auto valueType = std::get_if<TypePtr>(&numeric);
+      if (!valueType)
+        logAndThrowError("Incompatible checked arithmetic operands",
+                         callExpr.getLocation());
+      auto result = generics_.instantiateGenericEnum(
+          "_Result", {*valueType, ctx_.types()->arithmeticError});
+      const_cast<ExprAST*>(callExpr.getCallee())
+          ->setResolvedType(std::make_shared<FunctionType>(
+              result, std::vector<TypePtr>{*valueType, *valueType}));
+      callExpr.setResolvedType(result);
+      callExpr.setArgConversions(
+          {sun::semantic_analysis::ArgConversion::PassValue,
+           sun::semantic_analysis::ArgConversion::PassValue});
+      return;
+    }
+    if (!userDefined && varRef.getName() == "ignore_error") {
+      if (callExpr.getArgs().size() != 1)
+        logAndThrowError("ignore_error expects one owned _Result<T, E>",
+                         callExpr.getLocation());
+      auto& argument = *callExpr.getArgs().front();
+      sema_.analyzeExpr(argument);
+      auto result = std::dynamic_pointer_cast<sun::types::EnumType>(
+          argument.getResolvedType());
+      // Explicit discard accepts owned enums whose failure payloads are errors.
+      auto isErrorResult = [&]() {
+        auto& ctx = ctx_;
+        const auto resultId =
+            ctx.lookupGenericEnum("_Result")->AST->getDeclarationId();
+        if (!result) return false;
+        if (result->sourceDeclaration(ctx.results().declarations) == resultId)
+          return true;
+        const auto& variants = result->getVariants();
+        if (variants.size() < 2 || variants.front().payloadTypes.size() > 1)
+          return false;
+        for (size_t i = 1; i < variants.size(); ++i) {
+          if (variants[i].payloadTypes.size() != 1) return false;
+          auto error = std::dynamic_pointer_cast<sun::types::ClassType>(
+              sun::types::unwrapRef(variants[i].payloadTypes.front()));
+          if (!error ||
+              !error->implementsInterface(*ctx.types()->errorInterface))
+            return false;
+        }
+        return true;
+      };
+      if (!isErrorResult())
+        logAndThrowError("ignore_error expects one owned error-result enum",
+                         callExpr.getLocation());
+      const_cast<ExprAST*>(callExpr.getCallee())
+          ->setResolvedType(std::make_shared<sun::types::FunctionType>(
+              Types::Void(), std::vector<TypePtr>{result}));
+      callExpr.setResolvedType(Types::Void());
+      callExpr.setArgConversions({sun::semantic_analysis::ArgConversion::Move});
+      return;
+    }
   }
 
   // Enum variant construction: EnumName.Variant(args...) for concrete and
@@ -198,9 +281,18 @@ void CallAnalyzer::analyzeCall(CallExprAST& callExpr, TypePtr expectedType) {
   // A borrow handed out by a method seen through an immutable receiver may
   // only be read through
   TypePtr resultType;
-  if (callee.classType)
+  if (callee.classType) {
     resultType = callee.classType;
-  else if (callableType && callableType->isCallable())
+    if (const auto* ctor =
+            callee.classType->getMethod(callExpr.getTargetDeclarationId());
+        ctor && ctor->returnType->isEnum()) {
+      auto status =
+          std::static_pointer_cast<sun::types::EnumType>(ctor->returnType);
+      if (status->getGenericArgs().size() == 2)
+        resultType = generics_.instantiateGenericEnum(
+            "_Result", {callee.classType, status->getGenericArgs()[1]});
+    }
+  } else if (callableType && callableType->isCallable())
     resultType = requireInferredType(
         sun::semantic_analysis::type_analysis::TypeInferer::call(callableType),
         callExpr.getLocation(), "Cannot infer return type for call expression");
@@ -1072,7 +1164,10 @@ void CallAnalyzer::recordInitArgumentConversions(GenericCallAST& genericCall) {
     return;
   }
 
-  if (init) genericCall.setTargetDeclarationId(init->declarationId);
+  if (init) {
+    genericCall.setTargetDeclarationId(init->declarationId);
+    genericCall.setResolvedType(init->returnType);
+  }
   std::vector<TypePtr> paramTypes{argTypes[0]};
   for (size_t i = 0; i < ctorArgTypes.size(); ++i) {
     paramTypes.push_back(init ? init->paramTypes[i] : ctorArgTypes[i]);
@@ -1309,6 +1404,17 @@ void CallAnalyzer::analyzeGenericClassConstruction(
   }
 
   genericCall.setResolvedType(specializedClass);
+  if (specializedClass) {
+    if (const auto* ctor =
+            specializedClass->getMethod(genericCall.getTargetDeclarationId());
+        ctor && ctor->returnType->isEnum()) {
+      auto status =
+          std::static_pointer_cast<sun::types::EnumType>(ctor->returnType);
+      if (status->getGenericArgs().size() == 2)
+        genericCall.setResolvedType(generics_.instantiateGenericEnum(
+            "_Result", {specializedClass, status->getGenericArgs()[1]}));
+    }
+  }
 }
 
 }  // namespace sun::semantic_analysis

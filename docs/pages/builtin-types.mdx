@@ -27,15 +27,13 @@ var e: char = 'k';
 
 ## Integer Arithmetic
 
-Integer `/` and `%` throw the built-in `ArithmeticError` if the divisor is
-zero or a signed integer's minimum value is divided by `-1` (including
-remainder). The same checks apply to `/=` and `%=` and inside `unsafe` blocks.
-Potentially failing operations require a surrounding `try` or a function
-declared with `throws IError`. This includes division by a variable, even if
-an earlier runtime check appears to make it safe.
+Integer `/`, `%`, `/=`, and `%=` trap if the divisor is zero or a signed
+integer's minimum value is divided by `-1` (including remainder). The same
+checks apply inside `unsafe` blocks. Statically invalid operations are rejected
+at compile time. These operators do not propagate errors or run cleanup on a trap.
 
-Constant operands that prove the operation safe need no error handling.
-For example, `x / 2` cannot fail, whereas signed `x / -1` can overflow.
+Use `checked_div(a, b)` or `checked_rem(a, b)` when failure should be handled.
+They return `_Result<T, ArithmeticError>` and work with `match` and prefix `try`.
 
 Shifts `<<` and `>>` mask the count with `width - 1`, using the bit width
 of the operands after integer widening. This includes negative counts:
@@ -376,13 +374,14 @@ Sun provides builtin interfaces for common patterns. These interfaces are always
 
 ### IError
 
-The error interface used with the `try`/`catch`/`throw` error handling system.
+The builtin interface for reading error codes and messages. Both methods are
+const. With the standard library, `message()` returns an owned `String`.
 
 ```sun
 class DivByZero implements IError {
     init() {}
-    method code() i32 { return 1; }
-    method message() String { return String("division by zero"); }
+    const method code() i32 { return 1; }
+    const method message() String { return String("division by zero"); }
 }
 
 function divide(a: i32, b: i32) i32 throws IError {
@@ -420,6 +419,6 @@ Attempting to define a class or interface with this name will result in a compil
 ```sun
 // ❌ ERROR: Cannot redefine builtin interface 'IError'
 interface IError {
-    method code() i32;
+    const method code() i32;
 }
 ```

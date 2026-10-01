@@ -99,8 +99,19 @@ Value* FunctionGenerator::codegen(const sun::ast::ReturnExprAST& expr) {
           retVal, expr.getValue()->getResolvedType());
     }
 
-    // THEN clean up owned allocations that weren't moved (move semantics)
-    scopes().emitScopeCleanup();
+    // A failed constructor releases initialized fields without running deinit
+    // on an object that never became fully initialized.
+    auto* returnedCall =
+        dynamic_cast<const sun::ast::CallExprAST*>(expr.getValue());
+    auto* returnedVariant =
+        returnedCall ? dynamic_cast<const sun::ast::MemberAccessAST*>(
+                           returnedCall->getCallee())
+                     : nullptr;
+    if (func->hasFnAttribute("sun.fallible_init") && returnedVariant &&
+        returnedVariant->getMemberName() == "Err")
+      scopes().emitCleanupToDepth(scopes().functionBoundaryDepth(), true);
+    else
+      scopes().emitScopeCleanup();
 
     // A void function may still be written `return <expr>;` when the
     // expression is itself void — `return _thread_join<T>(c);` in a

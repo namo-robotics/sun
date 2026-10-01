@@ -29,14 +29,14 @@ public module std {
       public var slave: i32 = 0;
 
       /** Open a fresh pair, throwing if the system has no pseudo-terminals. */
-      init() throws IError {
+      init() _Result<void, Error> {
         var m: i32 = 0;
         var s: i32 = 0;
         var result: i32 = unsafe {
           c_openpty(_address_of<i32>(m), _address_of<i32>(s), null, null, null);
         };
         if (result != 0) {
-          throw Error(errno(), "openpty failed");
+          return _Result.Err(Error(errno(), "openpty failed"));
         }
         this.master = m;
         this.slave = s;
@@ -75,9 +75,9 @@ public module std {
     }
 
     /** Enter raw mode and then fail, so the guard is destroyed by unwinding. */
-    function enter_raw_then_throw(fd: i32) void throws IError {
-      var mode = TerminalMode(fd, Mode.Raw, SignalPolicy.AsInput);
-      throw Error(1, "boom");
+    function enter_raw_then_throw(fd: i32) _Result<void, Error> {
+      var mode = try TerminalMode(fd, Mode.Raw, SignalPolicy.AsInput);
+      return _Result.Err(Error(1, "boom"));
     }
 
     /** Take a guard by value; it is destroyed when this function returns. */
@@ -94,20 +94,20 @@ public module std {
     /** Checks isatty is true for a pty slave and false for everything else. */
     test_function is_terminal_reports_pty_slave_and_not_pipe() {
       var alloc = make_heap_allocator();
-      var pty = Pty();
-      std.test.assert(is_terminal(pty.slave), "a pty slave is a terminal");
+      var pty = try std.test.expect_ok(Pty());
+      try std.test.assert(is_terminal(pty.slave), "a pty slave is a terminal");
 
-      var pipe = std.process.open_pipe(alloc);
-      std.test.assert(not is_terminal(pipe.read_fd()), "a pipe's read end is not a terminal");
-      std.test.assert(not is_terminal(pipe.write_fd()), "a pipe's write end is not a terminal");
+      var pipe = try std.test.expect_ok(std.process.open_pipe(alloc));
+      try std.test.assert(not is_terminal(pipe.read_fd()), "a pipe's read end is not a terminal");
+      try std.test.assert(not is_terminal(pipe.write_fd()), "a pipe's write end is not a terminal");
       pipe.close_read();
       pipe.close_write();
 
       var devnull = std.io.File();
-      devnull.open("/dev/null", std.io.FileMode.Read);
-      std.test.assert(not is_terminal(devnull.get_fd()), "/dev/null is not a terminal");
+      try std.test.expect_success(devnull.open("/dev/null", std.io.FileMode.Read));
+      try std.test.assert(not is_terminal(devnull.get_fd()), "/dev/null is not a terminal");
 
-      std.test.assert(not is_terminal(-1), "an invalid descriptor is not a terminal");
+      try std.test.assert(not is_terminal(-1), "an invalid descriptor is not a terminal");
     }
 
     /** Checks the termios mirror is exactly as large as the C struct. */
@@ -118,119 +118,121 @@ public module std {
       if (_target_is("macos")) {
         expected = 72;
       }
-      std.test.assert_eq(_sizeof<Termios>(), expected);
+      try std.test.assert_eq(_sizeof<Termios>(), expected);
     }
 
     /** Checks asking a pipe for its size fails with ENOTTY. */
     test_function get_size_throws_on_a_non_tty() {
       var alloc = make_heap_allocator();
-      var pipe = std.process.open_pipe(alloc);
+      var pipe = try std.test.expect_ok(std.process.open_pipe(alloc));
       var code: i32 = 0;
       var threw: bool = false;
-      try {
-        get_size(pipe.read_fd());
-      } catch (e: ref IError) {
-        threw = true;
-        code = e.code();
-      }
+      match get_size(pipe.read_fd()) {
+        _Result.Ok(_) => {},
+        _Result.Err(e) => {
+          threw = true;
+          code = e.code();
+        }
+      };
       pipe.close_read();
       pipe.close_write();
-      std.test.assert(threw, "a pipe has no size");
-      std.test.assert_eq(code, ENOTTY);
+      try std.test.assert(threw, "a pipe has no size");
+      try std.test.assert_eq(code, ENOTTY);
     }
 
     /** Checks a resize made on the master is visible from the slave. */
     test_function get_size_reports_resizes_made_on_the_master() {
-      var pty = Pty();
+      var pty = try std.test.expect_ok(Pty());
       resize(pty.master, 24u16, 80u16);
-      var first = get_size(pty.slave);
-      std.test.assert_eq(first.rows, 24);
-      std.test.assert_eq(first.cols, 80);
+      var first = try std.test.expect_ok(get_size(pty.slave));
+      try std.test.assert_eq(first.rows, 24);
+      try std.test.assert_eq(first.cols, 80);
 
       resize(pty.master, 50u16, 132u16);
-      var second = get_size(pty.slave);
-      std.test.assert_eq(second.rows, 50);
-      std.test.assert_eq(second.cols, 132);
+      var second = try std.test.expect_ok(get_size(pty.slave));
+      try std.test.assert_eq(second.rows, 50);
+      try std.test.assert_eq(second.cols, 132);
     }
 
     /** Checks raw mode clears echo, line editing and signal keys, and restore is exact. */
     test_function raw_mode_clears_echo_canonical_and_signals() {
-      var pty = Pty();
-      var before = read_attributes(pty.slave);
-      std.test.assert(has_echo(before), "a fresh pty echoes");
-      std.test.assert(is_canonical(before), "a fresh pty is line-buffered");
+      var pty = try std.test.expect_ok(Pty());
+      var before = try std.test.expect_ok(read_attributes(pty.slave));
+      try std.test.assert(has_echo(before), "a fresh pty echoes");
+      try std.test.assert(is_canonical(before), "a fresh pty is line-buffered");
 
       if (true) {
-        var mode = TerminalMode(pty.slave, Mode.Raw, SignalPolicy.AsInput);
-        std.test.assert(mode.is_active(), "the guard is active after construction");
-        var during = read_attributes(pty.slave);
-        std.test.assert(not has_echo(during), "raw mode turns echo off");
-        std.test.assert(not is_canonical(during), "raw mode turns line editing off");
-        std.test.assert(not delivers_signals(during), "AsInput turns signal keys off");
+        var mode = try std.test.expect_ok(TerminalMode(pty.slave, Mode.Raw, SignalPolicy.AsInput));
+        try std.test.assert(mode.is_active(), "the guard is active after construction");
+        var during = try std.test.expect_ok(read_attributes(pty.slave));
+        try std.test.assert(not has_echo(during), "raw mode turns echo off");
+        try std.test.assert(not is_canonical(during), "raw mode turns line editing off");
+        try std.test.assert(not delivers_signals(during), "AsInput turns signal keys off");
 
-        mode.restore();
-        std.test.assert(not mode.is_active(), "restore deactivates the guard");
-        mode.restore();  // a second restore is a no-op
+        try std.test.expect_success(mode.restore());
+        try std.test.assert(not mode.is_active(), "restore deactivates the guard");
+        try std.test.expect_success(mode.restore());  // a second restore is a no-op
       }
 
-      var after = read_attributes(pty.slave);
-      std.test.assert(after.equals(before), "restore puts back exactly what was saved");
+      var after = try std.test.expect_ok(read_attributes(pty.slave));
+      try std.test.assert(after.equals(before), "restore puts back exactly what was saved");
     }
 
     /** Checks cbreak mode keeps signal keys and is undone at scope exit. */
     test_function cbreak_mode_keeps_signals() {
-      var pty = Pty();
-      var before = read_attributes(pty.slave);
+      var pty = try std.test.expect_ok(Pty());
+      var before = try std.test.expect_ok(read_attributes(pty.slave));
 
       if (true) {
-        var mode = TerminalMode(pty.slave, Mode.Cbreak, SignalPolicy.Passthrough);
-        var during = read_attributes(pty.slave);
-        std.test.assert(not has_echo(during), "cbreak turns echo off");
-        std.test.assert(not is_canonical(during), "cbreak turns line editing off");
-        std.test.assert(delivers_signals(during), "Passthrough keeps signal keys");
+        var mode = try std.test.expect_ok(TerminalMode(pty.slave, Mode.Cbreak, SignalPolicy.Passthrough));
+        var during = try std.test.expect_ok(read_attributes(pty.slave));
+        try std.test.assert(not has_echo(during), "cbreak turns echo off");
+        try std.test.assert(not is_canonical(during), "cbreak turns line editing off");
+        try std.test.assert(delivers_signals(during), "Passthrough keeps signal keys");
       }
 
-      var after = read_attributes(pty.slave);
-      std.test.assert(after.equals(before), "scope exit restores the saved settings");
+      var after = try std.test.expect_ok(read_attributes(pty.slave));
+      try std.test.assert(after.equals(before), "scope exit restores the saved settings");
     }
 
     /** Checks Passthrough re-enables ISIG after cfmakeraw cleared it. */
     test_function raw_passthrough_reenables_signals() {
-      var pty = Pty();
-      var mode = TerminalMode(pty.slave, Mode.Raw, SignalPolicy.Passthrough);
-      var during = read_attributes(pty.slave);
-      std.test.assert(not is_canonical(during), "raw mode turns line editing off");
-      std.test.assert(delivers_signals(during), "Passthrough keeps signal keys in raw mode");
+      var pty = try std.test.expect_ok(Pty());
+      var mode = try std.test.expect_ok(TerminalMode(pty.slave, Mode.Raw, SignalPolicy.Passthrough));
+      var during = try std.test.expect_ok(read_attributes(pty.slave));
+      try std.test.assert(not is_canonical(during), "raw mode turns line editing off");
+      try std.test.assert(delivers_signals(during), "Passthrough keeps signal keys in raw mode");
     }
 
     /** Checks the terminal is restored when an exception unwinds the scope. */
     test_function mode_is_restored_after_an_exception() {
-      var pty = Pty();
-      var before = read_attributes(pty.slave);
+      var pty = try std.test.expect_ok(Pty());
+      var before = try std.test.expect_ok(read_attributes(pty.slave));
 
       var threw: bool = false;
-      try {
-        enter_raw_then_throw(pty.slave);
-      } catch (e: ref IError) {
-        threw = true;
-      }
-      std.test.assert(threw, "the helper throws from inside the mode");
+      match enter_raw_then_throw(pty.slave) {
+        _Result.Ok => {},
+        _Result.Err(e) => {
+          threw = true;
+        }
+      };
+      try std.test.assert(threw, "the helper throws from inside the mode");
 
-      var after = read_attributes(pty.slave);
-      std.test.assert(has_echo(after), "echo is back after unwinding");
-      std.test.assert(after.equals(before), "unwinding restores the saved settings");
+      var after = try std.test.expect_ok(read_attributes(pty.slave));
+      try std.test.assert(has_echo(after), "echo is back after unwinding");
+      try std.test.assert(after.equals(before), "unwinding restores the saved settings");
     }
 
     /** Checks a moved guard restores once, from its new owner. */
     test_function moved_guard_restores_exactly_once() {
-      var pty = Pty();
-      var before = read_attributes(pty.slave);
+      var pty = try std.test.expect_ok(Pty());
+      var before = try std.test.expect_ok(read_attributes(pty.slave));
 
-      var mode = TerminalMode(pty.slave, Mode.Raw, SignalPolicy.AsInput);
+      var mode = try std.test.expect_ok(TerminalMode(pty.slave, Mode.Raw, SignalPolicy.AsInput));
       consume(mode);
 
-      var after = read_attributes(pty.slave);
-      std.test.assert(after.equals(before), "the consumer's scope exit restored the terminal");
+      var after = try std.test.expect_ok(read_attributes(pty.slave));
+      try std.test.assert(after.equals(before), "the consumer's scope exit restored the terminal");
       // The zeroed original leaves scope at the end of this test and must
       // neither crash nor touch the terminal.
     }
@@ -238,80 +240,82 @@ public module std {
     /** Checks entering a mode on a pipe fails with ENOTTY and changes nothing. */
     test_function entering_a_mode_on_a_non_tty_throws_enotty() {
       var alloc = make_heap_allocator();
-      var pipe = std.process.open_pipe(alloc);
+      var pipe = try std.test.expect_ok(std.process.open_pipe(alloc));
       var code: i32 = 0;
       var threw: bool = false;
-      try {
-        var mode = TerminalMode(pipe.read_fd(), Mode.Raw, SignalPolicy.AsInput);
-      } catch (e: ref IError) {
-        threw = true;
-        code = e.code();
-      }
+      match TerminalMode(pipe.read_fd(), Mode.Raw, SignalPolicy.AsInput) {
+        _Result.Ok(_) => {},
+        _Result.Err(e) => {
+          threw = true;
+          code = e.code();
+        }
+      };
       pipe.close_read();
       pipe.close_write();
-      std.test.assert(threw, "a pipe cannot enter raw mode");
-      std.test.assert_eq(code, ENOTTY);
+      try std.test.assert(threw, "a pipe cannot enter raw mode");
+      try std.test.assert_eq(code, ENOTTY);
     }
 
     /** Checks a byte typed on the master is read back as a key. */
     test_function read_key_returns_the_byte_written_to_the_master() {
-      var pty = Pty();
-      var mode = TerminalMode(pty.slave, Mode.Raw, SignalPolicy.AsInput);
+      var pty = try std.test.expect_ok(Pty());
+      var mode = try std.test.expect_ok(TerminalMode(pty.slave, Mode.Raw, SignalPolicy.AsInput));
       write_byte(pty.master, b'a');
 
-      var key = read_key(pty.slave, std.time.create_duration_millis(1000));
+      var key = try std.test.expect_ok(read_key(pty.slave, std.time.create_duration_millis(1000)));
       match key {
         Option.Some(byte) => {
-          std.test.assert_eq(byte, b'a');
+          try std.test.assert_eq(byte, b'a');
         },
         Option.None => {
-          std.test.fail("a typed byte should be readable");
+          try std.test.fail("a typed byte should be readable");
         }
       };
     }
 
     /** Checks an idle terminal yields None from both read_key and try_read_key. */
     test_function read_key_returns_none_when_idle() {
-      var pty = Pty();
-      var mode = TerminalMode(pty.slave, Mode.Raw, SignalPolicy.AsInput);
+      var pty = try std.test.expect_ok(Pty());
+      var mode = try std.test.expect_ok(TerminalMode(pty.slave, Mode.Raw, SignalPolicy.AsInput));
 
-      var waited = read_key(pty.slave, std.time.create_duration_millis(20));
-      std.test.assert(is_none(waited), "nothing typed within the timeout");
+      var waited = try std.test.expect_ok(read_key(pty.slave, std.time.create_duration_millis(20)));
+      try std.test.assert(is_none(waited), "nothing typed within the timeout");
 
-      var immediate = try_read_key(pty.slave);
-      std.test.assert(is_none(immediate), "nothing pending");
+      var immediate = try std.test.expect_ok(try_read_key(pty.slave));
+      try std.test.assert(is_none(immediate), "nothing pending");
     }
 
     /** Checks read_key throws once the other end has gone away. */
     test_function read_key_throws_at_end_of_input() {
-      var pty = Pty();
-      var mode = TerminalMode(pty.slave, Mode.Raw, SignalPolicy.AsInput);
+      var pty = try std.test.expect_ok(Pty());
+      var mode = try std.test.expect_ok(TerminalMode(pty.slave, Mode.Raw, SignalPolicy.AsInput));
       pty.close_master();
 
       // Linux reports EIO on the slave; macOS reports zero bytes. Either way
       // the input is gone, and read_key says so by throwing.
       var threw: bool = false;
-      try {
-        read_key(pty.slave, std.time.create_duration_millis(1000));
-      } catch (e: ref IError) {
-        threw = true;
-      }
-      std.test.assert(threw, "a closed master is end of input");
+      match read_key(pty.slave, std.time.create_duration_millis(1000)) {
+        _Result.Ok(_) => {},
+        _Result.Err(e) => {
+          threw = true;
+        }
+      };
+      try std.test.assert(threw, "a closed master is end of input");
     }
 
     /** Checks Ctrl-C arrives as byte 3 under AsInput. */
     test_function as_input_delivers_control_c_as_a_byte() {
-      var pty = Pty();
-      var mode = TerminalMode(pty.slave, Mode.Raw, SignalPolicy.AsInput);
+      var pty = try std.test.expect_ok(Pty());
+      var mode = try std.test.expect_ok(TerminalMode(pty.slave, Mode.Raw, SignalPolicy.AsInput));
       write_byte(pty.master, 3u8);
 
-      var key = read_key(pty.slave, std.time.create_duration_millis(1000));
+      var key = try std.test.expect_ok(read_key(pty.slave, std.time.create_duration_millis(1000)));
       match key {
         Option.Some(byte) => {
-          std.test.assert_eq(byte, 3u8);
+          try std.test.assert_eq(byte, 3u8);
         },
         Option.None => {
-          std.test.fail("Ctrl-C should arrive as a byte");
+          try std.test.fail("Ctrl-C should arrive as a byte");
         }
       };
     }
@@ -322,12 +326,12 @@ public module std {
       // foreground process group and discards the byte. A pty from openpty
       // is nobody's controlling terminal, so the group is empty and nothing
       // is signalled — the byte simply never shows up.
-      var pty = Pty();
-      var mode = TerminalMode(pty.slave, Mode.Raw, SignalPolicy.Passthrough);
+      var pty = try std.test.expect_ok(Pty());
+      var mode = try std.test.expect_ok(TerminalMode(pty.slave, Mode.Raw, SignalPolicy.Passthrough));
       write_byte(pty.master, 3u8);
 
-      var key = read_key(pty.slave, std.time.create_duration_millis(100));
-      std.test.assert(is_none(key), "Passthrough never delivers Ctrl-C as a byte");
+      var key = try std.test.expect_ok(read_key(pty.slave, std.time.create_duration_millis(100)));
+      try std.test.assert(is_none(key), "Passthrough never delivers Ctrl-C as a byte");
     }
 
     /**
@@ -336,10 +340,10 @@ public module std {
      * Returns the raw wait status. The child only makes calls that are safe
      * after fork in a multi-threaded process: no allocation, no locks.
      */
-    function run_as_foreground_process(pty: ref Pty, as_input: bool) i32 throws IError {
+    function run_as_foreground_process(pty: ref Pty, as_input: bool) _Result<i32, std.test.AssertionError> {
       var alloc = make_heap_allocator();
-      var ready = std.process.open_pipe(alloc);
-      var pid: i32 = std.process.fork();
+      var ready = try std.test.expect_ok(std.process.open_pipe(alloc));
+      var pid: i32 = try std.test.expect_ok(std.process.fork());
       if (pid == 0) {
         // In the child. A new session has no controlling terminal, so the
         // pty can become it and this process group the foreground group.
@@ -365,25 +369,25 @@ public module std {
       ready.close_write();
 
       write_byte(pty.master, 3u8);
-      return std.process.wait_pid(pid, 0);
+      return _Result.Ok((try std.test.expect_ok(std.process.wait_pid(pid, 0))));
     }
 
     /** Checks Ctrl-C kills a foreground process with SIGINT under Passthrough. */
     test_function passthrough_delivers_sigint_to_the_foreground_process() {
-      var pty = Pty();
-      var mode = TerminalMode(pty.slave, Mode.Raw, SignalPolicy.Passthrough);
-      var status: i32 = run_as_foreground_process(pty, false);
-      std.test.assert(std.process.is_signaled(status), "the child died from a signal");
-      std.test.assert_eq(std.process.get_term_signal(status), std.process.SIGINT);
+      var pty = try std.test.expect_ok(Pty());
+      var mode = try std.test.expect_ok(TerminalMode(pty.slave, Mode.Raw, SignalPolicy.Passthrough));
+      var status: i32 = try std.test.expect_ok(run_as_foreground_process(pty, false));
+      try std.test.assert(std.process.is_signaled(status), "the child died from a signal");
+      try std.test.assert_eq(std.process.get_term_signal(status), std.process.SIGINT);
     }
 
     /** Checks a foreground process reads Ctrl-C as byte 3 under AsInput. */
     test_function as_input_lets_the_foreground_process_read_control_c() {
-      var pty = Pty();
-      var mode = TerminalMode(pty.slave, Mode.Raw, SignalPolicy.AsInput);
-      var status: i32 = run_as_foreground_process(pty, true);
-      std.test.assert(std.process.exited(status), "the child exited normally");
-      std.test.assert_eq(std.process.exit_status(status), 3);
+      var pty = try std.test.expect_ok(Pty());
+      var mode = try std.test.expect_ok(TerminalMode(pty.slave, Mode.Raw, SignalPolicy.AsInput));
+      var status: i32 = try std.test.expect_ok(run_as_foreground_process(pty, true));
+      try std.test.assert(std.process.exited(status), "the child exited normally");
+      try std.test.assert_eq(std.process.exit_status(status), 3);
     }
   }  // module terminal_tests
 }  // module std

@@ -28,7 +28,10 @@ class Point {
 - **Constructor**: `init(args) { }` runs during instantiation. It is written
   bare — no `public`, no `method`, no return type — and so is the destructor
   `deinit() { }`; both are always public, and no method may take their names.
-  A constructor that can fail is written `init(args) throws IError { }`.
+  A constructor that returns errors is written `init(args) _Result<void, E> { }`;
+  calling the class then returns `_Result<Class, E>`. Use `try Class(args)` to
+  propagate failure. See [returned errors](/errors#returned-error-values).
+  Legacy exception constructors still use `init(args) throws IError { }`.
 - **Methods**: Declared with the `method` keyword inside the class body; a
   method can access `this`
 - **Member access**: Use `.` to access fields and call methods

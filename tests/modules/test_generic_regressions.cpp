@@ -45,7 +45,17 @@ class Modules_GenericRegressions : public ::testing::Test {
 
   /** Writes source text into the fixture's temporary project. */
   void write(const std::string& name, const std::string& source) {
-    std::ofstream(dir / name) << source;
+    std::string fixture = source;
+    const std::string library =
+        std::filesystem::absolute("build/stdlib.moon").string();
+    const std::string bareLibrary = "\"stdlib.moon\"";
+    for (size_t pos = 0;
+         (pos = fixture.find(bareLibrary, pos)) != std::string::npos;) {
+      const std::string resolved = "\"" + library + "\"";
+      fixture.replace(pos, bareLibrary.size(), resolved);
+      pos += resolved.size();
+    }
+    std::ofstream(dir / name) << fixture;
   }
 
   ::testing::AssertionResult run(const std::string& command,
@@ -97,12 +107,12 @@ TEST_F(Modules_GenericRegressions, RawByteStringLiterals) {
     var alloc = make_heap_allocator();
     var value = String(alloc, "\xff\xfe\0\x80");
     if (value.length() != 4) { return 1; }
-    try {
-      if (value.at(0) != 255u8) { return 2; }
-      if (value.at(1) != 254u8) { return 3; }
-      if (value.at(2) != 0u8) { return 4; }
-      if (value.at(3) != 128u8) { return 5; }
-    } catch (error: ref IError) { return 6; }
+    if (true) {
+      if ((match value.at(0) { _Result.Ok(byte) => byte, _Result.Err(_) => { return 6; } }) != 255u8) { return 2; }
+      if ((match value.at(1) { _Result.Ok(byte) => byte, _Result.Err(_) => { return 6; } }) != 254u8) { return 3; }
+      if ((match value.at(2) { _Result.Ok(byte) => byte, _Result.Err(_) => { return 6; } }) != 0u8) { return 4; }
+      if ((match value.at(3) { _Result.Ok(byte) => byte, _Result.Err(_) => { return 6; } }) != 128u8) { return 5; }
+    }
     return 0;
   )";
   write("direct.sun", "/** Checks literal bytes. */\nfunction main() i32 {" +
@@ -400,24 +410,24 @@ using std;
 /** Provides a generic operation on a standard container. */
 public module lib {
   /** Moves an element out of the vector. */
-  public function rem<T>(v: ref Vec<T>, index: i64) T throws IError {
-    return v.remove(index);
+  public function rem<T>(v: ref Vec<T>, index: i64) _Result<T, IndexOutOfBoundsError> {
+    return _Result.Ok(try v.remove(index));
   }
   /** Calls the sibling function from another generic body. */
-  public function nested<T>(v: ref Vec<T>) T throws IError { return rem<T>(v, 0); }
+  public function nested<T>(v: ref Vec<T>) _Result<T, IndexOutOfBoundsError> { return rem<T>(v, 0); }
   /** Exercises explicit, inferred and nested generic calls. */
-  public function check() i32 throws IError {
+  public function check() _Result<i32, IndexOutOfBoundsError> {
     var a = make_heap_allocator();
     var v = Vec<i64>(a, 3);
     v.push(1); v.push(2); v.push(3);
-    var first = rem<i64>(v, 0);
-    var second = rem(v, 0);
-    var third = nested<i64>(v);
-    if (first == 1 and second == 2 and third == 3 and v.size() == 0) { return 0; }
-    return 1;
+    var first = try rem<i64>(v, 0);
+    var second = try rem(v, 0);
+    var third = try nested<i64>(v);
+    if (first == 1 and second == 2 and third == 3 and v.size() == 0) { return _Result.Ok(0); }
+    return _Result.Ok(1);
   }
 }
-function main() i32 throws IError { return lib.check(); }
+function main() i32 { return match lib.check() { _Result.Ok(code) => code, _Result.Err(_) => -100 }; }
 manifest { libraries: ["stdlib.moon"] }
 )");
   ASSERT_NO_FATAL_FAILURE(checkProgram("container.sun"));
@@ -487,7 +497,10 @@ TEST_F(Modules_GenericRegressions, NestedTypeArguments) {
       ASSERT_NE(begin, std::string::npos);
       ASSERT_NE(end, std::string::npos);
       source.replace(begin, end + 2 - begin,
-                     "var value = sample.data.remove(0); return value.v - 7;");
+                     "var value = match sample.data.remove(0) { "
+                     "std.AccessResult.Ok(v) => v, "
+                     "std.AccessResult.OutOfBounds(_) => { return -100; } }; "
+                     "return value.v - 7;");
     }
     // Keep native coverage on the original; run every variant through the JIT.
     const bool checkNative = variant == 0;

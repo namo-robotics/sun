@@ -14,23 +14,23 @@ public module std {
   module tests {
     /**
      * A scratch directory under /tmp, created on init and removed with its
-     * files on deinit. A failed assertion throws, and unwinding runs deinit
-     * like any scope exit, so cleanup happens even when the test fails.
+     * files on deinit. Propagating a failed assertion exits the scope and
+     * runs deinit, so cleanup happens even when the test fails.
      * Pass the test's own name as the tag so parallel tests never collide.
      */
     public class TempDir {
       public var path: String;
       var alloc: HeapAllocator;
 
-      /** Initializes the fixture fields used by this example or regression test. */
-      init(allocator: ref HeapAllocator, tag: static_ptr<u8>) throws IError {
+      /** Creates the scratch directory or returns its filesystem error. */
+      init(allocator: ref HeapAllocator, tag: static_ptr<u8>) _Result<void, Error> {
         this.alloc = allocator.copy();
         var p = String("/tmp/sun_stdlib_");
         p.append_literal(tag);
         p.append_char(b'_');
         p.append(std.process.pid());
         this.path = p;
-        std.io.make_dir(this.path, 493);
+        try std.io.make_dir(this.path, 493);
       }
 
       /**
@@ -47,22 +47,22 @@ public module std {
       deinit() {
         // Best-effort cleanup: remove the entries we can, then the
         // directory itself. deinit must not throw.
-        try {
-          var entries = std.io.read_dir(this.alloc, this.path);
-          var i: i64 = 0;
-          while (i < entries.size()) {
-            var entry_path = this.path.clone(this.alloc);
-            entry_path.append_char(b'/');
-            entry_path.append(unsafe { entries.get_unchecked(i); }.name());
-            if (unsafe { entries.get_unchecked(i); }.is_dir()) {
-              std.io.remove_dir(entry_path);
-            } else {
-              std.io.remove_file(entry_path);
+        match std.io.read_dir(this.alloc, this.path) {
+          _Result.Ok(entries) => {
+            for (var i: i64 = 0; i < entries.size(); i = i + 1) {
+              var entry_path = this.path.clone(this.alloc);
+              entry_path.append_char(b'/');
+              entry_path.append(unsafe { entries.get_unchecked(i); }.name());
+              if (unsafe { entries.get_unchecked(i); }.is_dir()) {
+                ignore_error(std.io.remove_dir(entry_path));
+              } else {
+                ignore_error(std.io.remove_file(entry_path));
+              }
             }
-            i = i + 1;
-          }
-          std.io.remove_dir(this.path);
-        } catch (e: ref IError) {}
+          },
+          _Result.Err(_) => {}
+        };
+        ignore_error(std.io.remove_dir(this.path));
       }
     }
 

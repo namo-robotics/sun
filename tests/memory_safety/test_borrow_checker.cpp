@@ -410,12 +410,6 @@ TEST(MemorySafety_BorrowChecker, ref_return_through_match_binding_of_this) {
   auto value = executeStringWithStdlib(R"(
     using std;
 
-    class OutOfRange implements IError {
-      init() {}
-      method code() i32 { return 3; }
-      method message() String { return String("out of range"); }
-    }
-
     enum Value {
       Items(Vec<String>),
       Text(String),
@@ -425,30 +419,33 @@ TEST(MemorySafety_BorrowChecker, ref_return_through_match_binding_of_this) {
     class Holder {
       var v: Value;
       init(v: Value) { this.v = v; }
-      method at(i: i64) ref String throws IError {
+      method at(i: i64) _Result<ref String, IndexOutOfBoundsError> {
         match this.v {
-          Value.Items(items) => { return items.get(i); },
-          Value.Text(s) => { return s; },
-          _ => { throw OutOfRange(); }
+          Value.Items(items) => { return _Result.Ok(try items.get(i)); },
+          Value.Text(s) => { return _Result.Ok(s); },
+          _ => { return _Result.Err(IndexOutOfBoundsError(0)); }
         };
       }
     }
 
-    function first(h: ref Holder) ref String throws IError {
+    function first(h: ref Holder) _Result<ref String, IndexOutOfBoundsError> {
       match h.v {
-        Value.Items(items) => { return items.get(0); },
-        _ => { throw OutOfRange(); }
+        Value.Items(items) => { return _Result.Ok(try items.get(0)); },
+        _ => { return _Result.Err(IndexOutOfBoundsError(0)); }
       };
     }
 
-    function main() i32 throws IError {
+    function main() i32 {
       var alloc = make_heap_allocator();
       var items = Vec<String>(alloc, 2);
       items.push(String(alloc, "ab"));
       items.push(String(alloc, "cde"));
       var h = Holder(Value.Items(items));
       var t = Holder(Value.Text(String(alloc, "z")));
-      return _convert<i32>(h.at(1).length() + first(h).length() + t.at(0).length());
+      var a = match h.at(1) { _Result.Ok(s) => s.length(), _Result.Err(_) => -100 };
+      var b = match first(h) { _Result.Ok(s) => s.length(), _Result.Err(_) => -100 };
+      var c = match t.at(0) { _Result.Ok(s) => s.length(), _Result.Err(_) => -100 };
+      return _convert<i32>(a + b + c);
     }
   )");
   EXPECT_EQ(value, 6);
@@ -467,7 +464,7 @@ TEST(MemorySafety_BorrowChecker,
     function first(alloc: ref HeapAllocator) ref String {
       var local = Value.Items(Vec<String>(alloc, 1));
       match local {
-        Value.Items(items) => { return items.get(0); },
+        Value.Items(items) => { return _Result.Ok(try items.get(0)); },
         _ => { }
       };
       return unsafe { _to_ref<String>(null); };

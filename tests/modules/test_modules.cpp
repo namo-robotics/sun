@@ -950,8 +950,8 @@ TEST(Modules, moon_free_function_throw_is_caught_by_importer) {
     public module throwlib {
         public class Boom implements IError {
             init() {}
-            public method code() i32 { return 77; }
-            public method message() static_ptr<u8> { return "boom"; }
+            public const method code() i32 { return 77; }
+            public const method message() static_ptr<u8> { return "boom"; }
         }
         public function fail(x: i32) i32 throws IError {
             if (x > 0) { throw Boom(); }

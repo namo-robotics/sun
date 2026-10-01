@@ -20,8 +20,9 @@ public module std {
      * Take an interpolated String by value and check its contents survived
      * the move.
      */
-    function take_label(s: String) void throws IError {
-      std.test.assert(s.equals_literal("v=7"), "moved interpolation lost its contents");
+    function take_label(s: String) _Result<void, std.test.AssertionError> {
+      try std.test.assert(s.equals_literal("v=7"), "moved interpolation lost its contents");
+      return _Result.Ok;
     }
 
     /**
@@ -33,17 +34,17 @@ public module std {
 
     /** Checks generic interpolation uses concrete overloads. */
     test_function generic_interpolation_uses_concrete_overloads() {
-      std.test.assert(generic_label<i32>(42).equals_literal("v=42"));
-      std.test.assert(generic_label<bool>(true).equals_literal("v=true"));
-      std.test.assert(generic_label<char>('x').equals_literal("v=x"));
-      std.test.assert(generic_label<f64>(1.5).equals_literal("v=1.5"));
-      std.test.assert(generic_label(String("text")).equals_literal("v=text"));
+      try std.test.assert(generic_label<i32>(42).equals_literal("v=42"));
+      try std.test.assert(generic_label<bool>(true).equals_literal("v=true"));
+      try std.test.assert(generic_label<char>('x').equals_literal("v=x"));
+      try std.test.assert(generic_label<f64>(1.5).equals_literal("v=1.5"));
+      try std.test.assert(generic_label(String("text")).equals_literal("v=text"));
     }
 
     /** Checks simple literal. */
     test_function simple_literal() {
       var s = `Hello World`;
-      std.test.assert_eq(s.length(), 11);
+      try std.test.assert_eq(s.length(), 11);
     }
 
     /** Checks interpolate string. */
@@ -51,28 +52,28 @@ public module std {
       var allocator = make_heap_allocator();
       var name = String(allocator, "World");
       var s = `Hello ${name}!`;
-      std.test.assert_eq(s.length(), 12);  // "Hello World!"
+      try std.test.assert_eq(s.length(), 12);  // "Hello World!"
     }
 
     /** Checks interpolate integer. */
     test_function interpolate_integer() {
       var age: i64 = 42;
       var s = `Age: ${age}`;
-      std.test.assert_eq(s.length(), 7);  // "Age: 42"
+      try std.test.assert_eq(s.length(), 7);  // "Age: 42"
     }
 
     /** Checks interpolate boolean true. */
     test_function interpolate_boolean_true() {
       var flag: bool = true;
       var s = `Flag: ${flag}`;
-      std.test.assert_eq(s.length(), 10);  // "Flag: true"
+      try std.test.assert_eq(s.length(), 10);  // "Flag: true"
     }
 
     /** Checks interpolate boolean false. */
     test_function interpolate_boolean_false() {
       var flag: bool = false;
       var s = `Flag: ${flag}`;
-      std.test.assert_eq(s.length(), 11);  // "Flag: false"
+      try std.test.assert_eq(s.length(), 11);  // "Flag: false"
     }
 
     /** Checks multiple interpolations. */
@@ -81,7 +82,7 @@ public module std {
       var name = String(allocator, "Alice");
       var age: i64 = 30;
       var s = `${name} is ${age} years old`;
-      std.test.assert_eq(s.length(), 21);  // "Alice is 30 years old"
+      try std.test.assert_eq(s.length(), 21);  // "Alice is 30 years old"
     }
 
     /** Checks adjacent interpolations. */
@@ -89,7 +90,7 @@ public module std {
       var a: i64 = 1;
       var b: i64 = 2;
       var s = `${a}${b}`;
-      std.test.assert(s.equals_literal("12"), "adjacent values");
+      try std.test.assert(s.equals_literal("12"), "adjacent values");
     }
 
     /** Checks interpolate expression. */
@@ -97,37 +98,37 @@ public module std {
       var x: i64 = 10;
       var y: i64 = 5;
       var s = `Sum: ${x + y}`;
-      std.test.assert(s.equals_literal("Sum: 15"), "expression value");
+      try std.test.assert(s.equals_literal("Sum: 15"), "expression value");
     }
 
     /** Checks interpolate literal string. */
     test_function interpolate_literal_string() {
       var s = `Hello ${"World"}!`;
-      std.test.assert_eq(s.length(), 12);  // "Hello World!"
+      try std.test.assert_eq(s.length(), 12);  // "Hello World!"
     }
 
     /** Checks escape backtick. */
     test_function escape_backtick() {
       var s = `Hello \` World`;
-      std.test.assert_eq(s.length(), 13);  // "Hello ` World"
+      try std.test.assert_eq(s.length(), 13);  // "Hello ` World"
     }
 
     /** Checks escape dollar. */
     test_function escape_dollar() {
       var s = `Price: \${100}`;
-      std.test.assert(s.equals_literal("Price: ${100}"), "escaped dollar");
+      try std.test.assert(s.equals_literal("Price: ${100}"), "escaped dollar");
     }
 
     /** Checks escape newline. */
     test_function escape_newline() {
       var s = `Line1\nLine2`;
-      std.test.assert_eq(s.length(), 11);  // includes the newline byte
+      try std.test.assert_eq(s.length(), 11);  // includes the newline byte
     }
 
     /** Checks empty template. */
     test_function empty_template() {
       var s = ``;
-      std.test.assert_eq(s.length(), 0);
+      try std.test.assert_eq(s.length(), 0);
     }
 
     /** Checks only interpolation. */
@@ -135,14 +136,14 @@ public module std {
       var allocator = make_heap_allocator();
       var name = String(allocator, "Test");
       var s = `${name}`;
-      std.test.assert(s.equals_literal("Test"), "bare interpolation");
+      try std.test.assert(s.equals_literal("Test"), "bare interpolation");
     }
 
     /** Checks nested braces in expression. */
     test_function nested_braces_in_expression() {
       var arr: array<i64, 3> = [1, 2, 3];
       var s = `First: ${arr[0]}`;
-      std.test.assert(s.equals_literal("First: 1"), "index expression");
+      try std.test.assert(s.equals_literal("First: 1"), "index expression");
     }
 
     /**
@@ -154,7 +155,7 @@ public module std {
       var alloc = make_heap_allocator();
       var who = String(alloc, "alice");
       var s = `timestamp=${n} user=${who} status=active region=eu-west-1`;
-      std.test.assert(
+      try std.test.assert(
         s.equals_literal("timestamp=42 user=alice status=active region=eu-west-1"),
         "long template content"
       );
@@ -167,15 +168,15 @@ public module std {
      */
     test_function returned_from_function_keeps_contents() {
       var s = make_label(7);
-      std.test.assert_eq(s.length(), 3);
-      std.test.assert(s.equals_literal("v=7"), "returned interpolation content");
+      try std.test.assert_eq(s.length(), 3);
+      try std.test.assert(s.equals_literal("v=7"), "returned interpolation content");
     }
 
     /**
      * Same ownership transfer, in argument position
      */
     test_function passed_by_value_keeps_contents() {
-      take_label(`v=${7}`);
+      try std.test.expect_success(take_label(`v=${7}`));
     }
 
     /** Checks println interpolated direct. */
@@ -205,8 +206,8 @@ public module std {
     test_function interpolate_float() {
       var ratio: f64 = 0.25;
       var s = `ratio=${ratio} half=${1.5}`;
-      std.test.assert(s.equals_literal("ratio=0.25 half=1.5"), "float formatting");
-      std.test.assert_eq(s.length(), 19);
+      try std.test.assert(s.equals_literal("ratio=0.25 half=1.5"), "float formatting");
+      try std.test.assert_eq(s.length(), 19);
     }
   }  // module interpolation_tests
 }  // module std

@@ -10,8 +10,9 @@ into "a user can do it themselves". Table stakes before novelty.
 
 ## Optionals — Remaining Work
 
-`Option<T>` / `Result<T, E>` ship in the stdlib (`stdlib/option.sun`) as ordinary
-generic payload enums with owning payloads and drop glue. The absence APIs
+`Option<T>` ships in the stdlib (`stdlib/option.sun`); `_Result<T, E>` is builtin
+and usable without the standard library. Both use generic payload enums with owning
+payloads and drop glue. The absence APIs
 (`Map.find`, `String.find_char`/`rfind_char`, `Vec.first`/`last`/`pop`,
 `LinkedList.first`/`last`) return `Option<T>`, and the iteration protocol
 (`stdlib/iterator.sun`) is `next(ref Container) Option<T>`. What remains:

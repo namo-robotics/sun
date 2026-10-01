@@ -331,8 +331,12 @@ Value* CodegenVisitor::extendInt(Value* value, llvm::Type* destTy,
 Value* CodegenVisitor::createIntDivRem(Value* L, Value* R, bool isModulo,
                                        bool isUnsigned) {
   return support::createIntDivRem(
-      *ctx.builder, L, R, isModulo, isUnsigned,
-      [this](int code) { errors.throwArithmeticError(code); });
+      *ctx.builder, L, R, isModulo, isUnsigned, [this](int) {
+        auto* trap =
+            llvm::Intrinsic::getDeclaration(module, llvm::Intrinsic::trap);
+        ctx.builder->CreateCall(trap);
+        ctx.builder->CreateUnreachable();
+      });
 }
 
 // Bring two scalar operands to a common type (int and float widening);
