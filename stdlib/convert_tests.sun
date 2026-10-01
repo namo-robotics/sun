@@ -10,24 +10,24 @@ public module std {
     /** Checks narrow i64 to i32 in range. */
     test_function narrow_i64_to_i32_in_range() {
       var ms: i64 = 200;
-      try std.test.assert_eq((try std.test.expect_ok(safe_convert<i32>(ms))), 200);
+      try std.test.assert_eq(try std.test.expect_conversion(safe_convert<i32>(ms)), 200);
     }
 
     /** Checks both type arguments may be written. */
     test_function both_type_arguments_may_be_written() {
       var ms: i64 = 200;
-      try std.test.assert_eq((try std.test.expect_ok(safe_convert<i32, i64>(ms))), 200);
+      try std.test.assert_eq(try std.test.expect_conversion(safe_convert<i32, i64>(ms)), 200);
     }
 
     /** Checks narrow i64 to i32 out of range throws. */
     test_function narrow_i64_to_i32_out_of_range_throws() {
       var big: i64 = 4294967498;  // low 32 bits are 202, so _convert would give 202
       match safe_convert<i32>(big) {
-        _Result.Ok(matched_value) => {
+        ConversionResult.Ok(matched_value) => {
           var t: i32 = matched_value;
           try std.test.fail("expected ConversionError");
         },
-        _Result.Err(e) => {
+        ConversionResult.Error(e) => {
           try std.test.assert_eq(e.code(), 9);
         }
       };
@@ -37,11 +37,11 @@ public module std {
     test_function negative_to_unsigned_throws() {
       var neg: i64 = -1;
       match safe_convert<u64>(neg) {
-        _Result.Ok(matched_value) => {
+        ConversionResult.Ok(matched_value) => {
           var u: u64 = matched_value;
           try std.test.fail("expected ConversionError");
         },
-        _Result.Err(e) => {
+        ConversionResult.Error(e) => {
           try std.test.assert_eq(e.code(), 9);
         }
       };
@@ -52,11 +52,11 @@ public module std {
       var umax: u64 = 0;
       umax = umax - 1;  // wraps to the largest u64; round-trips through i64 as -1
       match safe_convert<i64>(umax) {
-        _Result.Ok(matched_value) => {
+        ConversionResult.Ok(matched_value) => {
           var s: i64 = matched_value;
           try std.test.fail("expected ConversionError");
         },
-        _Result.Err(e) => {
+        ConversionResult.Error(e) => {
           try std.test.assert_eq(e.code(), 9);
         }
       };
@@ -65,7 +65,7 @@ public module std {
     /** Checks same width sign change in range. */
     test_function same_width_sign_change_in_range() {
       var s: i32 = 77;
-      var u: u32 = try std.test.expect_ok(safe_convert<u32>(s));
+      var u: u32 = try std.test.expect_conversion(safe_convert<u32>(s));
       try std.test.assert_eq(_convert<i32>(u), 77);
     }
 
@@ -74,14 +74,14 @@ public module std {
       var lo: i64 = -128;
       var hi: i64 = 127;
       var over: i64 = 128;
-      try std.test.assert_eq(_convert<i32>((try std.test.expect_ok(safe_convert<i8>(lo)))), -128);
-      try std.test.assert_eq(_convert<i32>((try std.test.expect_ok(safe_convert<i8>(hi)))), 127);
+      try std.test.assert_eq(_convert<i32>(try std.test.expect_conversion(safe_convert<i8>(lo))), -128);
+      try std.test.assert_eq(_convert<i32>(try std.test.expect_conversion(safe_convert<i8>(hi))), 127);
       match safe_convert<i8>(over) {
-        _Result.Ok(matched_value) => {
+        ConversionResult.Ok(matched_value) => {
           var x: i8 = matched_value;
           try std.test.fail("128 does not fit an i8");
         },
-        _Result.Err(e) => {
+        ConversionResult.Error(e) => {
           try std.test.assert_eq(e.code(), 9);
         }
       };
@@ -90,50 +90,50 @@ public module std {
     /** Checks widening always succeeds. */
     test_function widening_always_succeeds() {
       var b: u8 = 250;
-      var w: i64 = try std.test.expect_ok(safe_convert<i64>(b));
+      var w: i64 = try std.test.expect_conversion(safe_convert<i64>(b));
       try std.test.assert_eq(w, 250);
     }
 
     /** Checks float to int truncates toward zero. */
     test_function float_to_int_truncates_toward_zero() {
       var g: f64 = -7.9;
-      try std.test.assert_eq(_convert<i32>((try std.test.expect_ok(safe_convert<i8>(g)))), -7);
+      try std.test.assert_eq(_convert<i32>(try std.test.expect_conversion(safe_convert<i8>(g))), -7);
     }
 
     /** Checks float to int out of range throws. */
     test_function float_to_int_out_of_range_throws() {
       var f: f64 = 3000000000.0;
       match safe_convert<i32>(f) {
-        _Result.Ok(matched_value) => {
+        ConversionResult.Ok(matched_value) => {
           var t: i32 = matched_value;
           try std.test.fail("3e9 does not fit an i32");
         },
-        _Result.Err(e) => {
+        ConversionResult.Error(e) => {
           try std.test.assert_eq(e.code(), 9);
         }
       };
       var small: f64 = -1.0;
       match safe_convert<u8>(small) {
-        _Result.Ok(matched_value) => {
+        ConversionResult.Ok(matched_value) => {
           var u: u8 = matched_value;
           try std.test.fail("-1.0 does not fit a u8");
         },
-        _Result.Err(e) => {
+        ConversionResult.Error(e) => {
           try std.test.assert_eq(e.code(), 9);
         }
       };
       var top: f64 = 256.0;
       match safe_convert<u8>(top) {
-        _Result.Ok(matched_value) => {
+        ConversionResult.Ok(matched_value) => {
           var u: u8 = matched_value;
           try std.test.fail("256.0 does not fit a u8");
         },
-        _Result.Err(e) => {
+        ConversionResult.Error(e) => {
           try std.test.assert_eq(e.code(), 9);
         }
       };
       var fits: f64 = 255.0;
-      try std.test.assert_eq(_convert<i32>((try std.test.expect_ok(safe_convert<u8>(fits)))), 255);
+      try std.test.assert_eq(_convert<i32>(try std.test.expect_conversion(safe_convert<u8>(fits))), 255);
     }
 
     /** Checks nan to int throws. */
@@ -141,11 +141,11 @@ public module std {
       var z: f64 = 0.0;
       var nan: f64 = z / z;
       match safe_convert<i64>(nan) {
-        _Result.Ok(matched_value) => {
+        ConversionResult.Ok(matched_value) => {
           var t: i64 = matched_value;
           try std.test.fail("NaN does not convert to an integer");
         },
-        _Result.Err(e) => {
+        ConversionResult.Error(e) => {
           try std.test.assert_eq(e.code(), 9);
         }
       };
@@ -155,23 +155,23 @@ public module std {
     test_function f64_to_f32_overflow_throws() {
       var huge: f64 = 1.0e300;
       match safe_convert<f32>(huge) {
-        _Result.Ok(matched_value) => {
+        ConversionResult.Ok(matched_value) => {
           var s: f32 = matched_value;
           try std.test.fail("1e300 does not fit an f32");
         },
-        _Result.Err(e) => {
+        ConversionResult.Error(e) => {
           try std.test.assert_eq(e.code(), 9);
         }
       };
       var fine: f64 = 1.5;
-      var s: f32 = try std.test.expect_ok(safe_convert<f32>(fine));
+      var s: f32 = try std.test.expect_conversion(safe_convert<f32>(fine));
       try std.test.assert_eq(_convert<i32>(s * 2.0), 3);
     }
 
     /** Checks int to float succeeds. */
     test_function int_to_float_succeeds() {
       var n: i64 = 1234;
-      var d: f64 = try std.test.expect_ok(safe_convert<f64>(n));
+      var d: f64 = try std.test.expect_conversion(safe_convert<f64>(n));
       try std.test.assert_eq(_convert<i32>(d), 1234);
     }
 
@@ -179,11 +179,11 @@ public module std {
     test_function error_message_is_readable() {
       var big: i64 = 4294967498;
       match safe_convert<i32>(big) {
-        _Result.Ok(matched_value) => {
+        ConversionResult.Ok(matched_value) => {
           var t: i32 = matched_value;
           try std.test.fail("expected ConversionError");
         },
-        _Result.Err(e) => {
+        ConversionResult.Error(e) => {
           var m: String = e.message();
           try std.test.assert(
             m.equals_literal("value out of range for the target type"),

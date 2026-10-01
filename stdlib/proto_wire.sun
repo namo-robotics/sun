@@ -255,19 +255,19 @@ public module std {
     /**
      * Read one byte and step past it. Throws at the end of the buffer.
      */
-    public method read_byte() _Result<u8, ProtoDecodeError> {
+    public method read_byte() ProtoResult<u8> {
       if (this.pos >= this.len) {
-        return _Result.Err(ProtoDecodeError("unexpected end of buffer"));
+        return ProtoResult.Error(ProtoDecodeError("unexpected end of buffer"));
       }
       var b: u8 = unsafe { _load<u8>(this.data, this.pos); };
       this.pos = this.pos + 1;
-      return _Result.Ok(b);
+      return ProtoResult.Ok(b);
     }
 
     /**
      * Read a base-128 varint. Throws on a truncated or over-long encoding.
      */
-    public method read_varint() _Result<u64, ProtoDecodeError> {
+    public method read_varint() ProtoResult<u64> {
       var result: u64 = 0;
       var shift: u64 = 0;
       for (var i: i32 = 0; i < 10; i = i + 1) {
@@ -275,84 +275,84 @@ public module std {
         var low: u64 = _convert<u64>(b & 127);
         result = result | (low << shift);
         if ((b & 128) == 0) {
-          return _Result.Ok(result);
+          return ProtoResult.Ok(result);
         }
         shift = shift + 7;
       }
-      return _Result.Err(ProtoDecodeError("varint too long"));
+      return ProtoResult.Error(ProtoDecodeError("varint too long"));
     }
 
     /**
      * Returns the tag key (field << 3 | wire type)
      */
-    public method read_tag() _Result<u64, ProtoDecodeError> {
-      return _Result.Ok((try this.read_varint()));
+    public method read_tag() ProtoResult<u64> {
+      return ProtoResult.Ok((try this.read_varint()));
     }
 
     /**
      * Read an int32 field value.
      */
-    public method read_int32() _Result<i32, ProtoDecodeError> {
-      return _Result.Ok(_convert<i32>((try this.read_varint())));
+    public method read_int32() ProtoResult<i32> {
+      return ProtoResult.Ok(_convert<i32>((try this.read_varint())));
     }
 
     /**
      * Read an int64 field value.
      */
-    public method read_int64() _Result<i64, ProtoDecodeError> {
-      return _Result.Ok(_convert<i64>((try this.read_varint())));
+    public method read_int64() ProtoResult<i64> {
+      return ProtoResult.Ok(_convert<i64>((try this.read_varint())));
     }
 
     /**
      * Read a uint32 field value.
      */
-    public method read_uint32() _Result<u32, ProtoDecodeError> {
-      return _Result.Ok(_convert<u32>((try this.read_varint())));
+    public method read_uint32() ProtoResult<u32> {
+      return ProtoResult.Ok(_convert<u32>((try this.read_varint())));
     }
 
     /**
      * Read a uint64 field value.
      */
-    public method read_uint64() _Result<u64, ProtoDecodeError> {
-      return _Result.Ok((try this.read_varint()));
+    public method read_uint64() ProtoResult<u64> {
+      return ProtoResult.Ok((try this.read_varint()));
     }
 
     /**
      * Read a bool field value. Any non-zero varint counts as true.
      */
-    public method read_bool() _Result<bool, ProtoDecodeError> {
-      return _Result.Ok((try this.read_varint()) != 0);
+    public method read_bool() ProtoResult<bool> {
+      return ProtoResult.Ok((try this.read_varint()) != 0);
     }
 
     /**
      * Read a zigzag-encoded sint32 field value.
      */
-    public method read_sint32() _Result<i32, ProtoDecodeError> {
-      return _Result.Ok(_convert<i32>(proto_decode_zigzag64((try this.read_varint()))));
+    public method read_sint32() ProtoResult<i32> {
+      return ProtoResult.Ok(_convert<i32>(proto_decode_zigzag64((try this.read_varint()))));
     }
 
     /**
      * Read a zigzag-encoded sint64 field value.
      */
-    public method read_sint64() _Result<i64, ProtoDecodeError> {
-      return _Result.Ok(proto_decode_zigzag64((try this.read_varint())));
+    public method read_sint64() ProtoResult<i64> {
+      return ProtoResult.Ok(proto_decode_zigzag64((try this.read_varint())));
     }
 
     /**
      * Read four bytes as a fixed32 field value, least significant first.
      */
-    public method read_fixed32() _Result<u32, ProtoDecodeError> {
+    public method read_fixed32() ProtoResult<u32> {
       var b0: u32 = _convert<u32>((try this.read_byte()));
       var b1: u32 = _convert<u32>((try this.read_byte()));
       var b2: u32 = _convert<u32>((try this.read_byte()));
       var b3: u32 = _convert<u32>((try this.read_byte()));
-      return _Result.Ok(b0 | (b1 << 8) | (b2 << 16) | (b3 << 24));
+      return ProtoResult.Ok(b0 | (b1 << 8) | (b2 << 16) | (b3 << 24));
     }
 
     /**
      * Read eight bytes as a fixed64 field value, least significant first.
      */
-    public method read_fixed64() _Result<u64, ProtoDecodeError> {
+    public method read_fixed64() ProtoResult<u64> {
       var result: u64 = 0;
       var shift: u64 = 0;
       for (var i: i32 = 0; i < 8; i = i + 1) {
@@ -360,35 +360,35 @@ public module std {
         result = result | (b << shift);
         shift = shift + 8;
       }
-      return _Result.Ok(result);
+      return ProtoResult.Ok(result);
     }
 
     /**
      * Read four bytes as a signed sfixed32 field value.
      */
-    public method read_sfixed32() _Result<i32, ProtoDecodeError> {
-      return _Result.Ok(_convert<i32>((try this.read_fixed32())));
+    public method read_sfixed32() ProtoResult<i32> {
+      return ProtoResult.Ok(_convert<i32>((try this.read_fixed32())));
     }
 
     /**
      * Read eight bytes as a signed sfixed64 field value.
      */
-    public method read_sfixed64() _Result<i64, ProtoDecodeError> {
-      return _Result.Ok(_convert<i64>((try this.read_fixed64())));
+    public method read_sfixed64() ProtoResult<i64> {
+      return ProtoResult.Ok(_convert<i64>((try this.read_fixed64())));
     }
 
     /**
      * Read four bytes as an IEEE-754 float.
      */
-    public method read_float() _Result<f32, ProtoDecodeError> {
-      return _Result.Ok(_bitcast<f32>((try this.read_fixed32())));
+    public method read_float() ProtoResult<f32> {
+      return ProtoResult.Ok(_bitcast<f32>((try this.read_fixed32())));
     }
 
     /**
      * Read eight bytes as an IEEE-754 double.
      */
-    public method read_double() _Result<f64, ProtoDecodeError> {
-      return _Result.Ok(_bitcast<f64>((try this.read_fixed64())));
+    public method read_double() ProtoResult<f64> {
+      return ProtoResult.Ok(_bitcast<f64>((try this.read_fixed64())));
     }
 
     /**
@@ -396,15 +396,15 @@ public module std {
      * delimited region; the caller narrows with push_limit / restores with
      * pop_limit around nested decoding.
      */
-    public method read_length() _Result<i64, ProtoDecodeError> {
+    public method read_length() ProtoResult<i64> {
       var n: i64 = _convert<i64>((try this.read_varint()));
       if (n < 0) {
-        return _Result.Err(ProtoDecodeError("negative length"));
+        return ProtoResult.Error(ProtoDecodeError("negative length"));
       }
       if (this.pos + n > this.len) {
-        return _Result.Err(ProtoDecodeError("length exceeds buffer"));
+        return ProtoResult.Error(ProtoDecodeError("length exceeds buffer"));
       }
-      return _Result.Ok(this.pos + n);
+      return ProtoResult.Ok(this.pos + n);
     }
 
     /**
@@ -426,36 +426,36 @@ public module std {
     /**
      * Read `n` bytes into a fresh Vec<u8>
      */
-    public method read_bytes(alloc: ref HeapAllocator, n: i64) _Result<Vec<u8>, ProtoDecodeError> {
+    public method read_bytes(alloc: ref HeapAllocator, n: i64) ProtoResult<Vec<u8>> {
       if (this.pos + n > this.len) {
-        return _Result.Err(ProtoDecodeError("length exceeds buffer"));
+        return ProtoResult.Error(ProtoDecodeError("length exceeds buffer"));
       }
       var out = Vec<u8>(alloc, n + 1);
       for (var i: i64 = 0; i < n; i = i + 1) {
         out.push(unsafe { _load<u8>(this.data, this.pos + i); });
       }
       this.pos = this.pos + n;
-      return _Result.Ok(out);
+      return ProtoResult.Ok(out);
     }
 
     /**
      * Read a length-prefixed byte field
      */
-    public method read_bytes_field(alloc: ref HeapAllocator) _Result<Vec<u8>, ProtoDecodeError> {
+    public method read_bytes_field(alloc: ref HeapAllocator) ProtoResult<Vec<u8>> {
       var n: i64 = _convert<i64>((try this.read_varint()));
-      return _Result.Ok((try this.read_bytes(alloc, n)));
+      return ProtoResult.Ok((try this.read_bytes(alloc, n)));
     }
 
     /**
      * Read a length-prefixed string field
      */
-    public method read_string_field(alloc: ref HeapAllocator) _Result<String, ProtoDecodeError> {
+    public method read_string_field(alloc: ref HeapAllocator) ProtoResult<String> {
       var n: i64 = _convert<i64>((try this.read_varint()));
       if (n < 0) {
-        return _Result.Err(ProtoDecodeError("negative length"));
+        return ProtoResult.Error(ProtoDecodeError("negative length"));
       }
       if (this.pos + n > this.len) {
-        return _Result.Err(ProtoDecodeError("length exceeds buffer"));
+        return ProtoResult.Error(ProtoDecodeError("length exceeds buffer"));
       }
       var tmp = ContiguousBuffer<u8>(alloc, n + 1);
       for (var i: i64 = 0; i < n; i = i + 1) {
@@ -463,8 +463,8 @@ public module std {
       }
       this.pos = this.pos + n;
       return match String(alloc, tmp, n) {
-        _Result.Ok(value) => _Result.Ok(value),
-        _Result.Err(_) => _Result.Err(ProtoDecodeError("invalid string length"))
+        _Result.Ok(value) => ProtoResult.Ok(value),
+        _Result.Err(_) => ProtoResult.Error(ProtoDecodeError("invalid string length"))
       };
     }
 
@@ -472,39 +472,39 @@ public module std {
      * Skip a field of the given wire type, appending its raw tag+payload
      * bytes to `unknown` so an unrecognized field survives re-encoding.
      */
-    public method skip_field(wire_type: i64, tag: u64, unknown: ref Vec<u8>) _Result<void, ProtoDecodeError> {
+    public method skip_field(wire_type: i64, tag: u64, unknown: ref Vec<u8>) ProtoResult<void> {
       proto_write_varint(unknown, tag);
       if (wire_type == 0) {
         var v: u64 = try this.read_varint();
         proto_write_varint(unknown, v);
-        return _Result.Ok;
+        return ProtoResult.Ok;
       }
       if (wire_type == 1) {
         var v64: u64 = try this.read_fixed64();
         proto_write_fixed64(unknown, v64);
-        return _Result.Ok;
+        return ProtoResult.Ok;
       }
       if (wire_type == 5) {
         var v32: u32 = try this.read_fixed32();
         proto_write_fixed32(unknown, v32);
-        return _Result.Ok;
+        return ProtoResult.Ok;
       }
       if (wire_type == 2) {
         var n: i64 = _convert<i64>((try this.read_varint()));
         if (n < 0) {
-          return _Result.Err(ProtoDecodeError("negative length"));
+          return ProtoResult.Error(ProtoDecodeError("negative length"));
         }
         if (this.pos + n > this.len) {
-          return _Result.Err(ProtoDecodeError("length exceeds buffer"));
+          return ProtoResult.Error(ProtoDecodeError("length exceeds buffer"));
         }
         proto_write_varint(unknown, _convert<u64>(n));
         for (var i: i64 = 0; i < n; i = i + 1) {
           unknown.push(unsafe { _load<u8>(this.data, this.pos + i); });
         }
         this.pos = this.pos + n;
-        return _Result.Ok;
+        return ProtoResult.Ok;
       }
-      return _Result.Err(ProtoDecodeError("unsupported wire type"));
+      return ProtoResult.Error(ProtoDecodeError("unsupported wire type"));
     }
   }
 

@@ -1015,6 +1015,9 @@ For fallible operations, prefer the result enums defined in `result.sun`:
 - `LookupResult<T>` contains `Ok(T)` or `NotFound(NotFoundError)` for map and linked-list lookups, updates, and removal.
 - `PopResult<T>` contains `Ok(T)` or `Empty(EmptyError)` for linked-list and string pops.
 - `JsonResult<T>` contains `Ok(T)` or `Error(JsonError)` for JSON parsing, conversions, and container operations.
+- `ConversionResult<T>` reports `ConversionError` through its `Error` variant.
+- `ArithmeticResult<T>` contains `Ok(T)`, `Overflow(OverflowError)`, and `DivisionByZero(DivisionByZeroError)`. Use `_ => ...` to handle all remaining variants in a match.
+- `ProtoResult<T>` contains `Ok(T)` or `Error(ProtoDecodeError)` for wire reads and generated protobuf decoders.
 - `Result<T>` contains `Ok(T)` and named variants for standard error categories,
   including bounds, lookup, I/O, allocation, conversion, arithmetic, JSON, and
   protocol decoding errors. Use it when combining several APIs.
@@ -1134,10 +1137,10 @@ n.append_decimal(text);   // 265252859812191058636308480000000
 | `set_u64(v)`, `assign(other)`, `clear()` | | Replace the value |
 | `compare(other)`, `compare_u64(v)`, `equals(other)` | `(const ref BigUint) i64`, `(u64) i64`, `(const ref BigUint) bool` | Ordering (-1/0/1) |
 | `add(other)`, `add_small(v)` | `(const ref BigUint) void`, `(u64) void` | In-place addition |
-| `sub(other)` | `(const ref BigUint) void throws IError` | In-place subtraction; throws `OverflowError` if the result would be negative |
+| `sub(other)` | `(const ref BigUint) ArithmeticResult<void>` | In-place subtraction; returns `Overflow` if the result would be negative |
 | `mul(other)`, `mul_small(v)`, `mul_pow10(n)` | `(const ref BigUint) void`, `(u64) void`, `(i64) void` | In-place multiplication |
 | `shl(bits)`, `shr(bits)` | `(i64) void` | In-place shifts |
-| `divmod_small(d)` | `(u32) u32 throws IError` | Divide in place by a 32-bit divisor, returning the remainder |
+| `divmod_small(d)` | `(u32) ArithmeticResult<u32>` | Divide in place, returning the remainder or `DivisionByZero` for a zero divisor |
 | `append_decimal(out)` | `(ref String) void` | Append the decimal digits |
 | `set_decimal(text)` | `(const ref String) bool` | Parse decimal digits; `false` (value left at zero) if malformed |
 
@@ -1145,18 +1148,28 @@ n.append_decimal(text);   // 265252859812191058636308480000000
 
 A value never narrows on its own: assigning an `i64` to an `i32` is a compile
 error. `math.sun` provides `safe_convert<T>(x)`, which converts between any two
-numeric types and throws `ConversionError` when the value does not fit:
+numeric types and returns `ConversionResult<T>`. Its `Error` variant owns a
+`ConversionError` when the value does not fit:
 
 ```sun
-var ms: i64 = 200;
-var t: i32 = safe_convert<i32>(ms);       // 200
-var big: i64 = 4294967498;
-var u: i32 = safe_convert<i32>(big);      // throws ConversionError
-var n: u64 = safe_convert<u64>(-1);       // throws: negative to unsigned
-var b: u8 = safe_convert<u8>(255.0);      // 255
-var c: u8 = safe_convert<u8>(256.0);      // throws
-var h: f32 = safe_convert<f32>(1.0e300);  // throws: infinite in f32
+/** Narrows a value and lets the caller handle conversion failure. */
+function narrow(value: i64) ConversionResult<u8> {
+  return safe_convert<u8>(value);
+}
+
+/** Prints the converted number or the error message. */
+function show_conversion(value: i64) void {
+  match narrow(value) {
+    ConversionResult.Ok(number) => println(number),
+    ConversionResult.Error(error) => println(error.message())
+  };
+}
 ```
+
+Inside a function returning a compatible result enum, use `try safe_convert<T>(x)`
+to extract the number and propagate conversion failures. For example, converting
+`255.0` to `u8` succeeds; `256.0`, negative integers, and NaN return `Error`.
+
 
 Checked: integer values outside `T`'s range (including a sign change that flips
 the value), floats that are NaN or outside `T`'s range, and an `f64` that

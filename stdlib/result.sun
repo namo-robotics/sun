@@ -41,4 +41,23 @@ public module std {
     Ok(T),
     Error(JsonError)
   }
+
+  /** Reports a number that cannot be represented by the requested type. */
+  public enum ConversionResult<T> {
+    Ok(T),
+    Error(ConversionError)
+  }
+
+  /** Reports overflow or division by zero from arithmetic operations. */
+  public enum ArithmeticResult<T> {
+    Ok(T),
+    Overflow(OverflowError),
+    DivisionByZero(DivisionByZeroError)
+  }
+
+  /** Reports malformed protocol-buffer input while decoding a value. */
+  public enum ProtoResult<T> {
+    Ok(T),
+    Error(ProtoDecodeError)
+  }
 }

@@ -261,9 +261,9 @@ public module std {
     /**
      * this = this - other; returns OverflowError if other is larger
      */
-    public method sub(other: const ref BigUint) _Result<void, OverflowError> {
+    public method sub(other: const ref BigUint) ArithmeticResult<void> {
       if (this.compare(other) < 0) {
-        return _Result.Err(OverflowError());
+        return ArithmeticResult.Overflow(OverflowError());
       }
       var borrow: u64 = 0;
       for (var i: i64 = 0; i < this.limbs.size(); i = i + 1) {
@@ -282,7 +282,7 @@ public module std {
         borrow = next;
       }
       this.trim();
-      return _Result.Ok;
+      return ArithmeticResult.Ok;
     }
 
     // ------------------------------------------------------------------------
@@ -453,9 +453,9 @@ public module std {
      * this = this / divisor, returns the remainder. The divisor must fit in
      * 32 bits (enough for decimal digit extraction: 10, 10^9, ...).
      */
-    public method divmod_small(divisor: u32) _Result<u32, DivisionByZeroError> {
+    public method divmod_small(divisor: u32) ArithmeticResult<u32> {
       if (divisor == 0) {
-        return _Result.Err(DivisionByZeroError());
+        return ArithmeticResult.DivisionByZero(DivisionByZeroError());
       }
       var d: u64 = _convert<u64>(divisor);
       var rem: u64 = 0;
@@ -473,7 +473,7 @@ public module std {
         i = i - 1;
       }
       this.trim();
-      return _Result.Ok(_convert<u32>(rem));
+      return ArithmeticResult.Ok(_convert<u32>(rem));
     }
 
     // ------------------------------------------------------------------------
@@ -493,8 +493,8 @@ public module std {
       var chunks = Vec<u32>(this.alloc, this.limbs.size() * 3 + 1);
       while (work.is_zero() == false) {
         var chunk: u32 = match work.divmod_small(1000000000) {
-          _Result.Ok(value) => value,
-          _Result.Err(_) => {
+          ArithmeticResult.Ok(value) => value,
+          _ => {
             return;
           }
         };

@@ -1360,3 +1360,78 @@ TEST(Errors_Results, rejects_discarded_json_result) {
   )"),
                                 "Error result must be handled");
 }
+
+/** Numeric APIs propagate distinct concrete failures into the broad result. */
+TEST(Errors_Results, numeric_result_propagation) {
+  EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
+    using std;
+    /** Converts input and performs two fallible arithmetic operations. */
+    function calculate(input: i64, subtract: u64, divisor: u32) Result<u32> {
+      var byte = try safe_convert<u8>(input);
+      var alloc = make_heap_allocator();
+      var value = BigUint(alloc, 10);
+      var other = BigUint(alloc, subtract);
+      try value.sub(other);
+      var remainder = try value.divmod_small(divisor);
+      return Result.Ok(remainder + _convert<u32>(byte));
+    }
+    /** Identifies the precise propagated error or the successful value. */
+    function code(input: i64, subtract: u64, divisor: u32) i32 {
+      return match calculate(input, subtract, divisor) {
+        Result.Ok(value) => _convert<i32>(value),
+        Result.Conversion(_) => 100,
+        Result.Overflow(_) => 200,
+        Result.DivisionByZero(_) => 300,
+        (_: const ref IError) => -1000
+      };
+    }
+    /** Checks success and failure at each propagation point. */
+    function main() i32 {
+      return code(4, 3, 2) + code(256, 3, 2) + code(4, 11, 2) + code(4, 3, 0) - 605;
+    }
+  )"),
+            0);
+}
+
+/** Numeric conversion failures require handling or explicit discard. */
+TEST(Errors_Results, rejects_discarded_conversion_result) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::executeStringWithStdlib(R"(
+    using std;
+    /** Attempts to discard an out-of-range conversion. */
+    function main() i32 {
+      safe_convert<u8>(256);
+      return 0;
+    }
+  )"),
+                                "Error result must be handled");
+}
+
+/** Wire reads propagate their concrete decode errors into std.Result. */
+TEST(Errors_Results, proto_result_propagation) {
+  EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
+    using std;
+    /** Reads either a complete varint or a truncated one. */
+    function read(truncated: bool) Result<u64> {
+      var alloc = make_heap_allocator();
+      var bytes = Vec<u8>(alloc, 2);
+      if (truncated) { bytes.push(128); }
+      else { bytes.push(42); }
+      var reader = ProtoReader(bytes);
+      return Result.Ok(try reader.read_varint());
+    }
+    /** Checks success and the propagated concrete error category. */
+    function main() i32 {
+      var value = match read(false) {
+        Result.Ok(value) => _convert<i32>(value),
+        _ => -100
+      };
+      var failed = match read(true) {
+        Result.Decode(_) => true,
+        _ => false
+      };
+      if (value != 42 or not failed) { return 1; }
+      return 0;
+    }
+  )"),
+            0);
+}

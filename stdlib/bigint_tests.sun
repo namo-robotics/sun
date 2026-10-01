@@ -75,7 +75,7 @@ public module std {
         "a + b wrong"
       );
       var diff = b.clone();
-      try std.test.expect_success(diff.sub(a));
+      try std.test.expect_arithmetic_success(diff.sub(a));
       try std.test.assert(
         renders_as(alloc, diff, "369988485033520034880441792176154682094131937787200770821401612466434535"),
         "b - a wrong"
@@ -100,16 +100,16 @@ public module std {
       try std.test.assert_eq(a.compare(b), -1);
       try std.test.assert_eq(b.compare(a), 1);
       try std.test.assert_eq(a.compare(a), 0);
-      // Subtracting a larger number throws
+      // Subtracting a larger number reports overflow
       var small = a.clone();
-      var threw: bool = false;
+      var overflowed: bool = false;
       match small.sub(b) {
-        _Result.Ok => {},
-        _Result.Err(e) => {
-          threw = true;
-        }
+        ArithmeticResult.Overflow(e) => {
+          overflowed = true;
+        },
+        _ => {}
       };
-      try std.test.assert(threw, "subtracting a larger number should throw");
+      try std.test.assert(overflowed, "subtracting a larger number should report overflow");
       // 2^100 via shift, back down via shift
       var p = BigUint(alloc, 1);
       p.shl(100);
@@ -121,7 +121,7 @@ public module std {
       try std.test.assert(p.is_zero(), "2 >> 5 should be zero");
       // divmod peels digits from the bottom
       var d = make_bigint(alloc, "123456789012345678901234567890");
-      var rem: u32 = try std.test.expect_ok(d.divmod_small(1000));
+      var rem: u32 = try std.test.expect_arithmetic(d.divmod_small(1000));
       try std.test.assert_eq(rem, 890);
       try std.test.assert(renders_as(alloc, d, "123456789012345678901234567"), "divmod quotient wrong");
       d.mul_small(1000);
@@ -144,6 +144,26 @@ public module std {
         Option.None => 0
       };
       try std.test.assert_eq(v, 7);
+    }
+    /** Failed arithmetic reports its precise error without changing the value. */
+    test_function failed_arithmetic_preserves_value() {
+      var alloc = make_heap_allocator();
+      var value = BigUint(alloc, 7);
+      var larger = BigUint(alloc, 8);
+      match value.sub(larger) {
+        ArithmeticResult.Overflow(_) => {},
+        _ => {
+          try std.test.fail("expected overflow");
+        }
+      };
+      try std.test.assert_eq(value.compare_u64(7), 0);
+      match value.divmod_small(0) {
+        ArithmeticResult.DivisionByZero(_) => {},
+        _ => {
+          try std.test.fail("expected zero-divisor error");
+        }
+      };
+      try std.test.assert_eq(value.compare_u64(7), 0);
     }
   }  // module bigint_tests
 }  // module std

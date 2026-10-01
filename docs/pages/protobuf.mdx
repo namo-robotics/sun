@@ -28,12 +28,10 @@ function main() i32 {
     var buf = Vec<u8>(alloc, 64);
     status.encode(buf);                   // appends wire bytes
 
-    try {
-        var back = RobotStatus_decode(alloc, buf);
-        return back.robot_id;
-    } catch (e: ref IError) {
-        return -1;                        // malformed input throws
-    }
+    return match RobotStatus_decode(alloc, buf) {
+        ProtoResult.Ok(back) => back.robot_id,
+        ProtoResult.Error(_) => -1
+    };
 }
 ```
 
@@ -98,13 +96,15 @@ Every message class also has:
 
 Decoding is a free function per message (Sun has no static methods):
 
-- `M_decode(alloc: ref HeapAllocator, buf: ref Vec<u8>) M throws IError`
-- `M_decode_delimited(alloc: ref HeapAllocator, r: ref ProtoReader) M throws IError`
+- `M_decode(alloc: ref HeapAllocator, buf: ref Vec<u8>) ProtoResult<M>`
+- `M_decode_delimited(alloc: ref HeapAllocator, r: ref ProtoReader) ProtoResult<M>`
   reads one length-prefixed message from a stream reader (`ProtoReader(buf)`,
   from the stdlib's `proto_wire` module).
 
-Malformed input (truncated buffers, over-long varints, bad lengths) throws a
-`ProtoDecodeError`.
+Malformed input (truncated buffers, over-long varints, bad lengths) returns
+`ProtoResult.Error` with an owned `ProtoDecodeError`. Use `try M_decode(alloc, buf)`
+to extract a message and propagate errors from a function returning a compatible
+result enum, such as `std.Result<T>`.
 
 ## Ownership
 

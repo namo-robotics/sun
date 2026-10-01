@@ -663,8 +663,8 @@ TEST(Modules_ProtoImport, wire_truncated_input_returns_error) {
       buf.push(128);   // continuation bit set, then EOF
       var r = ProtoReader(buf);
       return match r.read_varint() {
-        _Result.Ok(_) => -1,
-        _Result.Err(_) => 1
+        ProtoResult.Ok(_) => -1,
+        ProtoResult.Error(_) => 1
       };
     }
   )");
@@ -1002,8 +1002,8 @@ TEST(Modules_ProtoImport, truncated_message_returns_decode_error) {
       proto_write_tag(wire, 2, 0 + 2);
       proto_write_varint(wire, 50);   // claims 50 bytes, provides none
       return match Status_decode(alloc, wire) {
-        _Result.Ok(_) => -1,
-        _Result.Err(_) => 1
+        ProtoResult.Ok(_) => -1,
+        ProtoResult.Error(_) => 1
       };
     }
   )");

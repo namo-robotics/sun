@@ -210,6 +210,30 @@ public module std.test {
     };
   }
 
+  /** Returns a converted value or reports a conversion test failure. */
+  public function expect_conversion<T>(result: ConversionResult<T>) _Result<T, std.test.AssertionError> {
+    return match result {
+      ConversionResult.Ok(value) => _Result.Ok(value),
+      ConversionResult.Error(error) => _Result.Err(AssertionError(error.message()))
+    };
+  }
+
+  /** Checks that an arithmetic update succeeded. */
+  public function expect_arithmetic_success(result: ArithmeticResult<void>) _Result<void, std.test.AssertionError> {
+    return match result {
+      ArithmeticResult.Ok => _Result.Ok,
+      (error: const ref IError) => _Result.Err(AssertionError(error.message()))
+    };
+  }
+
+  /** Returns an arithmetic value or reports its error as a test failure. */
+  public function expect_arithmetic<T>(result: ArithmeticResult<T>) _Result<T, std.test.AssertionError> {
+    return match result {
+      ArithmeticResult.Ok(value) => _Result.Ok(value),
+      (error: const ref IError) => _Result.Err(AssertionError(error.message()))
+    };
+  }
+
   /**
    * The outcome of one test, produced on the test's thread and moved back
    * to the main thread through join. The message is empty on a pass.

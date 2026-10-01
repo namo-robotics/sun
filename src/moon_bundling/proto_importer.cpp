@@ -863,10 +863,10 @@ class MessageGenerator {
    * &lt;Msg&gt;_decode_from: the field-dispatch loop over a reader
    */
   void emitDecodeFrom() {
-    w_.open(
-        "public function " + name_ +
-        "_decode_from(alloc: ref HeapAllocator, r: ref ProtoReader) _Result<" +
-        name_ + ", ProtoDecodeError> {");
+    w_.open("public function " + name_ +
+            "_decode_from(alloc: ref HeapAllocator, r: ref ProtoReader) "
+            "ProtoResult<" +
+            name_ + "> {");
     w_.line("var msg = " + name_ + "(alloc);");
     w_.open("while (r.at_end() == false) {");
     w_.line("var tag: u64 = try r.read_tag();");
@@ -885,7 +885,7 @@ class MessageGenerator {
     w_.line("try r.skip_field(wire, tag, msg.unknown_fields);");
     w_.close();
     w_.close();  // while
-    w_.line("return _Result.Ok(msg);");
+    w_.line("return ProtoResult.Ok(msg);");
     w_.close();
     w_.line();
   }
@@ -955,26 +955,26 @@ class MessageGenerator {
    */
   void emitDecodeHelpers() {
     const std::string sig = "(alloc: ref HeapAllocator, r: ref ProtoReader) ";
-    w_.open("public function " + name_ + "_decode_nested" + sig + "_Result<" +
-            name_ + ", ProtoDecodeError> {");
+    w_.open("public function " + name_ + "_decode_nested" + sig +
+            "ProtoResult<" + name_ + "> {");
     w_.line("var end: i64 = try r.read_length();");
     w_.line("var old: i64 = r.push_limit(end);");
     w_.line("var msg = try " + name_ + "_decode_from(alloc, r);");
     w_.line("r.pop_limit(old);");
-    w_.line("return _Result.Ok(msg);");
+    w_.line("return ProtoResult.Ok(msg);");
     w_.close();
     w_.line();
 
     w_.open("public function " + name_ +
-            "_decode(alloc: ref HeapAllocator, buf: ref Vec<u8>) _Result<" +
-            name_ + ", ProtoDecodeError> {");
+            "_decode(alloc: ref HeapAllocator, buf: ref Vec<u8>) ProtoResult<" +
+            name_ + "> {");
     w_.line("var r = ProtoReader(buf);");
     w_.line("return " + name_ + "_decode_from(alloc, r);");
     w_.close();
     w_.line();
 
     w_.open("public function " + name_ + "_decode_delimited" + sig +
-            "_Result<" + name_ + ", ProtoDecodeError> {");
+            "ProtoResult<" + name_ + "> {");
     w_.line("return " + name_ + "_decode_nested(alloc, r);");
     w_.close();
     w_.line();
