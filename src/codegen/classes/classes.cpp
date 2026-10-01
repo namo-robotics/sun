@@ -792,31 +792,51 @@ Value* ClassGenerator::finishFallibleConstruction(
   auto* done =
       BasicBlock::Create(ctx.getContext(), "construction.done", function);
   ctx.builder->CreateCondBr(
-      ctx.builder->CreateICmpEQ(tag, ctx.builder->getInt32(0)), success,
-      failure);
+      ctx.builder->CreateICmpEQ(
+          tag, ctx.builder->getInt32(statusType.getVariants().front().value)),
+      success, failure);
   ctx.builder->SetInsertPoint(success);
-  auto* successType = typeResolver.getEnumVariantStruct(resultType, "Ok");
+  auto* successType = typeResolver.getEnumVariantStruct(
+      resultType, resultType.getVariants().front().name);
   auto* destination = ctx.builder->CreateStructGEP(
       successType, result,
-      typeResolver.enumPayloadFieldIndex(resultType, "Ok", 0));
+      typeResolver.enumPayloadFieldIndex(
+          resultType, resultType.getVariants().front().name, 0));
   ctx.builder->CreateStore(
       ctx.builder->CreateLoad(classType.getStructType(ctx.getContext()),
                               object),
       destination);
   ctx.builder->CreateBr(done);
   ctx.builder->SetInsertPoint(failure);
-  auto* sourceType = typeResolver.getEnumVariantStruct(statusType, "Err");
-  auto sourceIndex = typeResolver.enumPayloadFieldIndex(statusType, "Err", 0);
-  auto* source =
-      ctx.builder->CreateStructGEP(sourceType, statusStorage, sourceIndex);
-  auto* failureType = typeResolver.getEnumVariantStruct(resultType, "Err");
-  destination = ctx.builder->CreateStructGEP(
-      failureType, result,
-      typeResolver.enumPayloadFieldIndex(resultType, "Err", 0));
-  ctx.builder->CreateStore(
-      ctx.builder->CreateLoad(sourceType->getElementType(sourceIndex), source),
-      destination);
-  ctx.builder->CreateBr(done);
+  auto* invalid =
+      BasicBlock::Create(ctx.getContext(), "construction.invalid", function);
+  auto* dispatch = ctx.builder->CreateSwitch(
+      tag, invalid, statusType.getVariants().size() - 1);
+  for (size_t i = 1; i < statusType.getVariants().size(); ++i) {
+    const auto& variant = statusType.getVariants()[i];
+    auto* arm =
+        BasicBlock::Create(ctx.getContext(), "construction.failure", function);
+    dispatch->addCase(ctx.builder->getInt32(variant.value), arm);
+    ctx.builder->SetInsertPoint(arm);
+    auto* sourceType =
+        typeResolver.getEnumVariantStruct(statusType, variant.name);
+    auto sourceIndex =
+        typeResolver.enumPayloadFieldIndex(statusType, variant.name, 0);
+    auto* source =
+        ctx.builder->CreateStructGEP(sourceType, statusStorage, sourceIndex);
+    auto* failureType =
+        typeResolver.getEnumVariantStruct(resultType, variant.name);
+    destination = ctx.builder->CreateStructGEP(
+        failureType, result,
+        typeResolver.enumPayloadFieldIndex(resultType, variant.name, 0));
+    ctx.builder->CreateStore(
+        ctx.builder->CreateLoad(sourceType->getElementType(sourceIndex),
+                                source),
+        destination);
+    ctx.builder->CreateBr(done);
+  }
+  ctx.builder->SetInsertPoint(invalid);
+  ctx.builder->CreateUnreachable();
   ctx.builder->SetInsertPoint(done);
   if (!expr.isMoved())
     scopes().trackClassAllocation(result, "construction.result",
@@ -1136,7 +1156,7 @@ Value* ClassGenerator::codegen(const sun::ast::GenericCallAST& expr) {
   if (constructedType && constructedType->isEnum()) {
     const auto& arguments =
         static_cast<sun::types::EnumType&>(*constructedType).getGenericArgs();
-    if (arguments.size() == 2) constructedType = arguments[0];
+    if (!arguments.empty()) constructedType = arguments.front();
   }
   if (auto* resolvedClass =
           sun::codegen::support::tryGetType<ClassType>(constructedType)) {

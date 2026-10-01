@@ -108,7 +108,11 @@ Value* FunctionGenerator::codegen(const sun::ast::ReturnExprAST& expr) {
                            returnedCall->getCallee())
                      : nullptr;
     if (func->hasFnAttribute("sun.fallible_init") && returnedVariant &&
-        returnedVariant->getMemberName() == "Err")
+        returnedVariant->getMemberName() !=
+            static_cast<const sun::types::EnumType&>(*expr.getTargetType())
+                .getVariants()
+                .front()
+                .name)
       scopes().emitCleanupToDepth(scopes().functionBoundaryDepth(), true);
     else
       scopes().emitScopeCleanup();

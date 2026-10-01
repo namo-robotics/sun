@@ -40,6 +40,39 @@ namespace sun::semantic_analysis {
 using sun::types::FunctionType;
 using sun::types::Type;
 
+/** Replaces the unit success type with the constructed object, preserving
+ * errors. */
+static TypePtr constructorResult(
+    GenericSpecializer& generics,
+    const std::shared_ptr<sun::types::EnumType>& status, const TypePtr& object,
+    std::optional<Position> location) {
+  auto args = status->getGenericArgs();
+  if (args.empty() || !args.front()->isVoid())
+    logAndThrowError(
+        "Constructor results require void as their first type argument",
+        location);
+  args.front() = object;
+  auto result = generics.instantiateGenericEnum(
+      status->getGenericQualifiedName().display(), args);
+  if (!result || result->getVariants().size() != status->getVariants().size() ||
+      result->getVariants().empty() ||
+      result->getVariants().front().payloadTypes.size() != 1 ||
+      !result->getVariants().front().payloadTypes.front()->equals(*object))
+    logAndThrowError(
+        "Constructor result's first variant must hold its first type parameter",
+        location);
+  for (size_t i = 1; i < result->getVariants().size(); ++i) {
+    const auto& source = status->getVariants()[i];
+    const auto& target = result->getVariants()[i];
+    if (source.payloadTypes.size() != 1 || target.payloadTypes.size() != 1 ||
+        !source.payloadTypes.front()->equals(*target.payloadTypes.front()))
+      logAndThrowError(
+          "Constructor failure payloads must not depend on the success type",
+          location);
+  }
+  return result;
+}
+
 using sun::semantic_analysis::type_analysis::isAssignableTo;
 using sun::semantic_analysis::type_analysis::tryCoerceIntegerLiteral;
 using sun::types::formatTypeList;
@@ -288,9 +321,8 @@ void CallAnalyzer::analyzeCall(CallExprAST& callExpr, TypePtr expectedType) {
         ctor && ctor->returnType->isEnum()) {
       auto status =
           std::static_pointer_cast<sun::types::EnumType>(ctor->returnType);
-      if (status->getGenericArgs().size() == 2)
-        resultType = generics_.instantiateGenericEnum(
-            "_Result", {callee.classType, status->getGenericArgs()[1]});
+      resultType = constructorResult(generics_, status, callee.classType,
+                                     callExpr.getLocation());
     }
   } else if (callableType && callableType->isCallable())
     resultType = requireInferredType(
@@ -1410,9 +1442,8 @@ void CallAnalyzer::analyzeGenericClassConstruction(
         ctor && ctor->returnType->isEnum()) {
       auto status =
           std::static_pointer_cast<sun::types::EnumType>(ctor->returnType);
-      if (status->getGenericArgs().size() == 2)
-        genericCall.setResolvedType(generics_.instantiateGenericEnum(
-            "_Result", {specializedClass, status->getGenericArgs()[1]}));
+      genericCall.setResolvedType(constructorResult(
+          generics_, status, specializedClass, genericCall.getLocation()));
     }
   }
 }

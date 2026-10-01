@@ -81,13 +81,20 @@ sole first-variant payload specialized to `void` becomes a unit success variant.
 `try operation();` propagates such an operation. A successful reference such as
 `_Result<ref T, E>` stays a borrow after propagation; its owner must remain alive.
 
-A fallible constructor declares `init(...) _Result<void, E>`. Calling the class
-returns `_Result<Class, E>`, so `var object = try ClassName(args);` propagates a
-construction error. Reaching the end of `init`, `return;`, and `return _Result.Ok;`
-all report success. Use `return _Result.Err(error);` for failure. Every successful
-path must initialize every field; failure drops initialized fields without
-calling `deinit` on the incomplete object. The unsafe `_init<T>` operation also
-returns the constructor's `_Result<void, E>` for explicit handling.
+A fallible constructor can declare `init(...) AccessResult<void>`. Calling the
+class returns `AccessResult<Class>`, so `var object = try ClassName(args);`
+propagates a construction error. Any generic result enum can be used when its
+first type parameter holds the success value and its failure payload types do
+not depend on that parameter. Additional type parameters are preserved.
+
+Reaching the end of `init`, `return;`, and `return AccessResult.Ok;` all report
+success. Use `return AccessResult.OutOfBounds(error);` for failure. The first
+variant determines success; it need not be named `Ok`. Each failure variant
+must have one payload. Every successful path must initialize every field;
+failure drops initialized fields without calling `deinit` on the incomplete
+object. The unsafe `_init<T>` operation returns the constructor's original
+status type, such as `AccessResult<void>`, for explicit handling. Builtin
+`_Result<void, E>` constructors remain supported.
 
 Errors may also be borrowed explicitly, including through interface payloads:
 

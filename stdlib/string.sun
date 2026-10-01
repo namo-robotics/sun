@@ -423,9 +423,9 @@ public module std {
      * Copies length bytes into a new owned string. Returns IndexOutOfBoundsError
      * when length is negative or exceeds the source buffer size.
      */
-    init(allocator: const ref HeapAllocator, buffer: ref ContiguousBuffer<u8>, length: i64) _Result<void, IndexOutOfBoundsError> {
+    init(allocator: const ref HeapAllocator, buffer: ref ContiguousBuffer<u8>, length: i64) AccessResult<void> {
       if (length < 0 or length > buffer.size()) {
-        return _Result.Err(IndexOutOfBoundsError(length));
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(length));
       }
 
       var capacity: i64 = length + 1;

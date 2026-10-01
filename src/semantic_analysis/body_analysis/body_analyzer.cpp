@@ -46,6 +46,24 @@ static void checkAllPathsReturn(const PrototypeAST& proto,
       loc);
 }
 
+/** Checks the status enum used by a fallible constructor. */
+static void checkConstructorStatus(const TypePtr& type,
+                                   const sun::support::Position& location) {
+  auto result = std::dynamic_pointer_cast<sun::types::EnumType>(type);
+  if (!result || result->getGenericArgs().empty() ||
+      !result->getGenericArgs().front()->isVoid() ||
+      result->getVariants().size() < 2 ||
+      !result->getVariants().front().payloadTypes.empty())
+    logAndThrowError(
+        "A fallible init must return a generic result with void as its first "
+        "type argument and an empty first variant",
+        location);
+  for (size_t i = 1; i < result->getVariants().size(); ++i)
+    if (result->getVariants()[i].payloadTypes.size() != 1)
+      logAndThrowError("Constructor failure variants must have one payload",
+                       location);
+}
+
 /** Turns a test's bare success returns into unit result values. */
 static void completeTestReturns(sun::ast::ExprAST& expression,
                                 const std::string& successVariant) {
@@ -204,15 +222,7 @@ void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
                             !scopeReturnType->isVoid();
   const bool resultTest = func.isTest();
   if (fallibleInit) {
-    auto result =
-        std::dynamic_pointer_cast<sun::types::EnumType>(scopeReturnType);
-    if (!result ||
-        result->sourceDeclaration(ctx_.results().declarations) !=
-            ctx_.lookupGenericEnum("_Result")->AST->getDeclarationId() ||
-        result->getGenericArgs().size() != 2 ||
-        !result->getGenericArgs()[0]->isVoid())
-      logAndThrowError("A fallible init must return _Result<void, E>",
-                       func.getLocation());
+    checkConstructorStatus(scopeReturnType, func.getLocation());
   }
 
   std::shared_ptr<sun::types::EnumType> testResult;
@@ -464,6 +474,10 @@ void BodyAnalyzer::analyzeMethodWithBindings(
         proto.declarationIdentity().parameters.at(i));
   }
 
+  if (proto.getName() == "init" && methodReturnType &&
+      !methodReturnType->isVoid())
+    checkConstructorStatus(methodReturnType, methodFunc.getLocation());
+
   // Analyze the source body after its parameters are in scope.
   for (size_t i = methodFunc.getFieldInitializerCount(); i < statements.size();
        ++i) {
@@ -472,15 +486,6 @@ void BodyAnalyzer::analyzeMethodWithBindings(
 
   if (proto.getName() == "init" && methodReturnType &&
       !methodReturnType->isVoid()) {
-    auto result =
-        std::dynamic_pointer_cast<sun::types::EnumType>(methodReturnType);
-    if (!result ||
-        result->sourceDeclaration(ctx_.results().declarations) !=
-            ctx_.lookupGenericEnum("_Result")->AST->getDeclarationId() ||
-        result->getGenericArgs().size() != 2 ||
-        !result->getGenericArgs()[0]->isVoid())
-      logAndThrowError("A fallible init must return _Result<void, E>",
-                       methodFunc.getLocation());
     if (!sun::semantic_analysis::alwaysExits(methodFunc.getBody())) {
       auto success = std::make_unique<sun::ast::ReturnExprAST>();
       success->setLocation(methodFunc.getLocation());

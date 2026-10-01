@@ -553,10 +553,16 @@ void BodyAnalyzer::analyzeReturnExpr(sun::ast::ReturnExprAST& returnExpr) {
                             function->functionName.baseName == "init" &&
                             ctx_.currentFunctionReturnType() &&
                             ctx_.currentFunctionReturnType()->isEnum();
+  auto initResult = fallibleInit
+                        ? std::static_pointer_cast<sun::types::EnumType>(
+                              ctx_.currentFunctionReturnType())
+                        : nullptr;
   if (fallibleInit && !returnExpr.hasValue()) {
+    ctx_.currentScope().declareEnum("$init_result", initResult);
     returnExpr.forEachChildSlot([&](std::unique_ptr<ExprAST>& value) {
       value = std::make_unique<sun::ast::MemberAccessAST>(
-          std::make_unique<sun::ast::VariableReferenceAST>("_Result"), "Ok");
+          std::make_unique<sun::ast::VariableReferenceAST>("$init_result"),
+          initResult->getVariants().front().name);
       value->setLocation(returnExpr.getLocation());
     });
   }
@@ -565,11 +571,9 @@ void BodyAnalyzer::analyzeReturnExpr(sun::ast::ReturnExprAST& returnExpr) {
     if (auto* call = dynamic_cast<const sun::ast::CallExprAST*>(variant))
       variant = call->getCallee();
     auto* member = dynamic_cast<const sun::ast::MemberAccessAST*>(variant);
-    if (!member ||
-        (member->getMemberName() != "Ok" && member->getMemberName() != "Err"))
-      logAndThrowError(
-          "A fallible init returns _Result.Ok, _Result.Err(error), or return;",
-          returnExpr.getLocation());
+    if (!member || !initResult->hasVariant(member->getMemberName()))
+      logAndThrowError("A fallible init returns a result variant or return;",
+                       returnExpr.getLocation());
   }
   if (returnExpr.hasValue()) {
     // Propagate the function's return type for return-position inference

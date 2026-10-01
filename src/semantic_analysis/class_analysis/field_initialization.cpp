@@ -412,11 +412,16 @@ void BodyWalk::walkCallOnThis(const CallExprAST& call,
   // A result-returning helper can fail after writing only some fields. Its
   // signature does not expose those partial writes to the caller.
   auto returned = body->getProto().getResolvedReturnType();
-  if (returned && returned->isEnum() &&
-      static_cast<const sun::types::EnumType&>(*returned).getBaseName() ==
-          "_Result")
-    noteObjectUse("call fallible method '" + methodName + "'",
-                  call.getLocation());
+  if (returned && returned->isEnum()) {
+    const auto& variants =
+        static_cast<const sun::types::EnumType&>(*returned).getVariants();
+    bool fallible = variants.size() > 1;
+    for (size_t i = 1; i < variants.size(); ++i)
+      fallible = fallible && variants[i].payloadTypes.size() == 1;
+    if (fallible)
+      noteObjectUse("call fallible method '" + methodName + "'",
+                    call.getLocation());
+  }
   bool wasInMethod = inMethodBody_;
   inMethodBody_ = true;
   walk(body->getBody());
@@ -596,7 +601,13 @@ void BodyWalk::walk(const ExprAST& expr) {
         auto* variant =
             call ? dynamic_cast<const MemberAccessAST*>(call->getCallee())
                  : nullptr;
-        if (variant && variant->getMemberName() == "Err") return;
+        if (variant &&
+            variant->getMemberName() !=
+                static_cast<const sun::types::EnumType&>(*ret.getTargetType())
+                    .getVariants()
+                    .front()
+                    .name)
+          return;
       }
       std::string missing = firstFieldWithoutValue();
       if (!missing.empty()) {

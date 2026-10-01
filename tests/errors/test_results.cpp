@@ -1555,3 +1555,102 @@ TEST(Errors_Results, terminal_result_propagation) {
   )"),
             0);
 }
+
+/** Constructors specialize custom success payloads and preserve multiple
+ * errors. */
+TEST(Errors_Results, custom_constructor_result) {
+  EXPECT_EQ(executeString(R"(
+    /** Uses distinct payload layouts and a nonstandard success name. */
+    enum Outcome<T> { Ready(T), Small(i32), Large(i64) }
+    /** Owns a generic value only after successful construction. */
+    class Box<T> {
+      public var value: T;
+      /** Returns either error before taking the value, or completes construction. */
+      init(value: T, mode: i32) Outcome<void> {
+        if (mode == 1) { return Outcome.Small(7); }
+        if (mode == 2) { return Outcome.Large(5000000000); }
+        this.value = value;
+        return;
+      }
+    }
+    /** Reads each variant without assuming its payload layout. */
+    function code(mode: i32) i64 {
+      return match Box<i32>(42, mode) {
+        Outcome.Ready(box) => _convert<i64>(box.value),
+        Outcome.Small(error) => _convert<i64>(error),
+        Outcome.Large(error) => error
+      };
+    }
+    /** Exercises success and both error paths. */
+    function main() i32 {
+      if (code(0) != 42 or code(1) != 7 or code(2) != 5000000000) { return 1; }
+      return 0;
+    }
+  )"),
+            0);
+}
+
+/** Multiple custom failure variants release only initialized constructor
+ * fields. */
+TEST(Errors_Results, custom_constructor_partial_cleanup) {
+  EXPECT_EQ(executeString(R"(
+    var drops = 0;
+    var completed = 0;
+    /** Stores an owned object or either failure. */
+    enum Outcome<T> { Ready(T), First(Owner), Second(i64) }
+    /** Records destruction of initialized fields. */
+    class Owner {
+      /** Creates a tracked value. */
+      init() {}
+      /** Counts releases. */
+      deinit() { drops += 1; }
+    }
+    /** Returns a failure that a constructor can propagate. */
+    function check() Outcome<void> { return Outcome.Second(9); }
+    /** Owns two fields after construction succeeds. */
+    class Object {
+      var first: Owner;
+      var second: Owner;
+      /** Exercises direct failure, propagated failure, and success. */
+      init(mode: i32) Outcome<void> {
+        this.first = Owner();
+        if (mode == 1) { return Outcome.First(Owner()); }
+        if (mode == 2) { try check(); }
+        this.second = Owner();
+      }
+      /** Runs only after complete construction. */
+      deinit() { completed += 1; }
+    }
+    /** Drops either the successfully constructed object or its error payload. */
+    function attempt(mode: i32) void {
+      match Object(mode) { _ => {} };
+    }
+    /** Verifies one release per field and no destructor for partial objects. */
+    function main() i32 {
+      attempt(1);
+      attempt(2);
+      attempt(0);
+      return drops * 10 + completed;
+    }
+  )"),
+            51);
+}
+
+/** Replacing the success type must not change failure payload layouts. */
+TEST(Errors_Results, rejects_constructor_error_depending_on_success) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
+    /** Wraps a possibly empty value. */
+    enum Nested<T> { Value(T), None }
+    /** Reuses the success type in a failure payload. */
+    enum Invalid<T> { Ok(T), Failure(Nested<T>) }
+    /** Declares an unsafe constructor result shape. */
+    class Object {
+      /** Completes without explicit fields. */
+      init() Invalid<void> {}
+    }
+    /** Forces the constructed specialization. */
+    function main() i32 { var result = Object(); return 0; }
+  )"),
+      "Constructor failure payloads must not depend on the success type");
+}

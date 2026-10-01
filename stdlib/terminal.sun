@@ -133,7 +133,7 @@ public module std.terminal {
      * changing anything when the descriptor is not a terminal (errno ENOTTY)
      * or the driver rejects the new settings.
      */
-    init(fd: i32, mode: Mode, signals: SignalPolicy) _Result<void, Error> {
+    init(fd: i32, mode: Mode, signals: SignalPolicy) SystemResult<void> {
       this.saved = (try read_attributes(fd));
       // A second read rather than a copy: Sun has no implicit copies and the
       // mirror has no clone; one more syscall is cheaper than a per-OS one.
@@ -163,7 +163,7 @@ public module std.terminal {
       next.cc[VTIME] = 0u8;
 
       if (unsafe { c_tcsetattr(fd, TCSANOW, next); } != 0) {
-        return _Result.Err(Error(errno(), "failed to set terminal attributes"));
+        return SystemResult.Error(Error(errno(), "failed to set terminal attributes"));
       }
       this.fd = fd;
       this.active = true;

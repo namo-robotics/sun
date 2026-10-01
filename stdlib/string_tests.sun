@@ -168,7 +168,7 @@ public module std {
       // Write "Hi" (72, 105) to the buffer
       unsafe { buf.set_unchecked(0, 72); };
       unsafe { buf.set_unchecked(1, 105); };
-      var s = try std.test.expect_ok(String(allocator, buf, 2));
+      var s = try std.test.expect_access(String(allocator, buf, 2));
       try std.test.assert_eq(s.length(), 2);
       var h: i64 = try std.test.expect_access(s.at(0));
       try std.test.assert_eq(h, 72);
@@ -182,8 +182,8 @@ public module std {
       var buffer = ContiguousBuffer<u8>(alloc, 1);
       var caught = false;
       match String(alloc, buffer, -1) {
-        _Result.Ok(_) => {},
-        _Result.Err(e) => {
+        AccessResult.Ok(_) => {},
+        AccessResult.OutOfBounds(e) => {
           caught = true;
           try std.test.assert_eq(e.code(), 3);
         }

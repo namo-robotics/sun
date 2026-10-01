@@ -684,7 +684,7 @@ compares two snapshots. The native request codes `TIOCGWINSZ`, `TIOCSWINSZ`
 and `TIOCSCTTY` are public for programs that drive `ioctl` themselves.
 
 Terminal operations return `SystemResult<T>`. `TerminalMode` construction still
-uses `_Result<TerminalMode, Error>`; `try` can propagate either result.
+uses `SystemResult<TerminalMode>`; `try` can propagate either result.
 
 ## Environment
 
