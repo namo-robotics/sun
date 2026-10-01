@@ -21,19 +21,19 @@ public module std {
     test_function captures_lookup_empty_and_equals_values() {
       var alloc = make_heap_allocator();
       var environment = std.env.Env(alloc);
-      try std.test.expect_success(environment.set("SUN_TEST_ENV_CAPTURES", "left=right"));
+      try std.test.expect_system_success(environment.set("SUN_TEST_ENV_CAPTURES", "left=right"));
       var value_matches: bool = match environment.get("SUN_TEST_ENV_CAPTURES") {
         Option.Some(found) => found.equals_literal("left=right"),
         Option.None => false
       };
       try std.test.assert(value_matches, "value with an equals sign reads back whole");
-      try std.test.expect_success(environment.set("SUN_TEST_ENV_CAPTURES", ""));
+      try std.test.expect_system_success(environment.set("SUN_TEST_ENV_CAPTURES", ""));
       var empty: bool = match environment.get("SUN_TEST_ENV_CAPTURES") {
         Option.Some(found) => found.is_empty(),
         Option.None => false
       };
       try std.test.assert(empty, "empty value reads back as an empty String");
-      try std.test.expect_success(environment.remove("SUN_TEST_ENV_CAPTURES"));
+      try std.test.expect_system_success(environment.remove("SUN_TEST_ENV_CAPTURES"));
     }
 
     /**
@@ -45,7 +45,7 @@ public module std {
       var snapshot = std.env.Env(alloc);
       var outside = std.env.Env(alloc);
       try std.test.assert(not snapshot.has("SUN_TEST_ENV_REFRESH"), "variable absent at start");
-      try std.test.expect_success(outside.set("SUN_TEST_ENV_REFRESH", "outside"));
+      try std.test.expect_system_success(outside.set("SUN_TEST_ENV_REFRESH", "outside"));
       try std.test.assert(not snapshot.has("SUN_TEST_ENV_REFRESH"), "snapshot does not see the outside write");
       snapshot.refresh();
       try std.test.assert(snapshot.has("SUN_TEST_ENV_REFRESH"), "refresh picks up the outside write");
@@ -54,7 +54,7 @@ public module std {
         Option.None => false
       };
       try std.test.assert(value_matches, "refreshed snapshot has the outside value");
-      try std.test.expect_success(outside.remove("SUN_TEST_ENV_REFRESH"));
+      try std.test.expect_system_success(outside.remove("SUN_TEST_ENV_REFRESH"));
     }
 
     /**
@@ -64,7 +64,7 @@ public module std {
     test_function set_remove_and_iteration_stay_synchronized() {
       var alloc = make_heap_allocator();
       var environment = std.env.Env(alloc);
-      try std.test.expect_success(environment.set("SUN_TEST_ENV_SYNC", "one=two"));
+      try std.test.expect_system_success(environment.set("SUN_TEST_ENV_SYNC", "one=two"));
       try std.test.assert(environment.has("SUN_TEST_ENV_SYNC"), "set makes has() true");
       var found: i32 = 0;
       for (var entry: ref std.env.EnvEntry in environment) {
@@ -74,7 +74,7 @@ public module std {
         }
       }
       try std.test.assert_eq(found, 1);
-      try std.test.expect_success(environment.remove("SUN_TEST_ENV_SYNC"));
+      try std.test.expect_system_success(environment.remove("SUN_TEST_ENV_SYNC"));
       try std.test.assert(not environment.has("SUN_TEST_ENV_SYNC"), "remove makes has() false");
       // The native environment must agree: a brand new snapshot has no trace.
       var fresh = std.env.Env(alloc);
@@ -90,14 +90,14 @@ public module std {
       var environment = std.env.Env(alloc);
       var name = String(alloc, "SUN_TEST_ENV_OVERLOADS");
       var value = String(alloc, "runtime");
-      try std.test.expect_success(environment.set(name, value));
+      try std.test.expect_system_success(environment.set(name, value));
       try std.test.assert(environment.has(name), "String name found after set");
       var value_matches: bool = match environment.get(name) {
         Option.Some(found) => found.equals_literal("runtime"),
         Option.None => false
       };
       try std.test.assert(value_matches, "String-set value reads back");
-      try std.test.expect_success(environment.remove(name));
+      try std.test.expect_system_success(environment.remove(name));
       try std.test.assert(not environment.has(name), "String remove works");
     }
 
@@ -110,11 +110,11 @@ public module std {
     test_function cwd_and_set_cwd_are_methods() {
       var alloc = make_heap_allocator();
       var environment = std.env.Env(alloc);
-      var before = try std.test.expect_ok(environment.cwd());
-      try std.test.expect_success(environment.set_cwd("/"));
-      var after = try std.test.expect_ok(environment.cwd());
-      try std.test.expect_success(environment.set_cwd(before));
-      var restored = try std.test.expect_ok(environment.cwd());
+      var before = try std.test.expect_system(environment.cwd());
+      try std.test.expect_system_success(environment.set_cwd("/"));
+      var after = try std.test.expect_system(environment.cwd());
+      try std.test.expect_system_success(environment.set_cwd(before));
+      var restored = try std.test.expect_system(environment.cwd());
       try std.test.assert(after.equals_literal("/"), "cwd reports the directory set_cwd chose");
       try std.test.assert(restored.equals(before), "original working directory restored");
     }
@@ -141,6 +141,22 @@ public module std {
       try std.test.assert(unsafe { cli.get_unchecked(0); }.equals_literal("prog"), "argv[0] copied");
       try std.test.assert(unsafe { cli.get_unchecked(1); }.equals_literal("alpha"), "argv[1] copied");
       try std.test.assert(unsafe { cli.get_unchecked(2); }.equals_literal("beta"), "argv[2] copied");
+    }
+    /** A rejected name returns the system error without adding an entry. */
+    test_function invalid_name_returns_system_error() {
+      var alloc = make_heap_allocator();
+      var environment = std.env.Env(alloc);
+      match environment.set("SUN_TEST_INVALID=NAME", "value") {
+        SystemResult.Error(error) => {
+          try std.test.assert(error.code() != 0, "native failure code is preserved");
+          var message = error.message();
+          try std.test.assert(message.length() > 0, "failure has an owned message");
+        },
+        _ => {
+          try std.test.fail("invalid environment name must fail");
+        }
+      };
+      try std.test.assert(environment.has("SUN_TEST_INVALID=NAME") == false, "failed update leaves no entry");
     }
   }  // module env_tests
 }  // module std

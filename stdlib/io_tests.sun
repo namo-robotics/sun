@@ -220,7 +220,7 @@ public module std {
     /** Checks pipe becomes readable after a write. */
     test_function pipe_becomes_readable_after_a_write() {
       var alloc = make_heap_allocator();
-      var pipe = try std.test.expect_ok(std.process.open_pipe(alloc));
+      var pipe = try std.test.expect_system(std.process.open_pipe(alloc));
       var p = std.io.Poller(alloc);
       p.add_read(pipe.read_fd());
 
@@ -242,7 +242,7 @@ public module std {
     /** Checks hangup is reported when the writer closes. */
     test_function hangup_is_reported_when_the_writer_closes() {
       var alloc = make_heap_allocator();
-      var pipe = try std.test.expect_ok(std.process.open_pipe(alloc));
+      var pipe = try std.test.expect_system(std.process.open_pipe(alloc));
       pipe.close_write();
 
       var p = std.io.Poller(alloc);
@@ -255,8 +255,8 @@ public module std {
     /** Checks watches several descriptors by position. */
     test_function watches_several_descriptors_by_position() {
       var alloc = make_heap_allocator();
-      var first = try std.test.expect_ok(std.process.open_pipe(alloc));
-      var second = try std.test.expect_ok(std.process.open_pipe(alloc));
+      var first = try std.test.expect_system(std.process.open_pipe(alloc));
+      var second = try std.test.expect_system(std.process.open_pipe(alloc));
 
       var p = std.io.Poller(alloc);
       p.add_read(first.read_fd());
@@ -301,9 +301,9 @@ public module std {
     /** Checks duration wait returns ready events. */
     test_function duration_wait_returns_ready_events() {
       var alloc = make_heap_allocator();
-      var first = try std.test.expect_ok(std.process.open_pipe(alloc));
-      var second = try std.test.expect_ok(std.process.open_pipe(alloc));
-      var third = try std.test.expect_ok(std.process.open_pipe(alloc));
+      var first = try std.test.expect_system(std.process.open_pipe(alloc));
+      var second = try std.test.expect_system(std.process.open_pipe(alloc));
+      var third = try std.test.expect_system(std.process.open_pipe(alloc));
       var p = std.io.Poller(alloc);
       p.add_read(first.read_fd());
       p.add_read(second.read_fd());

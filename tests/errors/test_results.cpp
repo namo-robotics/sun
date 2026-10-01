@@ -1435,3 +1435,37 @@ TEST(Errors_Results, proto_result_propagation) {
   )"),
             0);
 }
+
+/** System operations propagate owned values and native error payloads. */
+TEST(Errors_Results, system_result_propagation) {
+  EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
+    using std;
+    /** Moves an owned pipe through the broad library result. */
+    function open(alloc: ref HeapAllocator) Result<std.process.Pipe> {
+      return Result.Ok(try std.process.open_pipe(alloc));
+    }
+    /** Propagates a deterministic invalid-descriptor error. */
+    function invalid() Result<void> {
+      try std.process.dup_fd(-1, -1);
+      return Result.Ok;
+    }
+    /** Checks a live pipe and the code and message of the propagated failure. */
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var opened = match open(alloc) {
+        Result.Ok(pipe) => pipe.read_fd() >= 0 and pipe.write_fd() >= 0,
+        _ => false
+      };
+      var failed = match invalid() {
+        Result.Error(error) => {
+          var message = error.message();
+          error.code() != 0 and message.equals_literal("failed to duplicate descriptor");
+        },
+        _ => false
+      };
+      if (not opened or not failed) { return 1; }
+      return 0;
+    }
+  )"),
+            0);
+}

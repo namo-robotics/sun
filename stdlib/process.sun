@@ -69,33 +69,33 @@ public module std.process {
   // -------------------------------------------------------------------
 
   /** Sends a signal to the selected process or process group and returns Error on failure. */
-  public function kill(target: i32, sig: i32) _Result<void, Error> {
+  public function kill(target: i32, sig: i32) SystemResult<void> {
     if (unsafe { c_kill(target, sig); } != 0) {
-      return _Result.Err(Error(errno(), "failed to signal process"));
+      return SystemResult.Error(Error(errno(), "failed to signal process"));
     }
-    return _Result.Ok;
+    return SystemResult.Ok;
   }
 
   /**
    * Put a process in a process group. pid or pgid of 0 means "this one".
    */
-  public function set_pgid(target: i32, pgid: i32) _Result<void, Error> {
+  public function set_pgid(target: i32, pgid: i32) SystemResult<void> {
     if (unsafe { c_setpgid(target, pgid); } != 0) {
-      return _Result.Err(Error(errno(), "failed to set process group"));
+      return SystemResult.Error(Error(errno(), "failed to set process group"));
     }
-    return _Result.Ok;
+    return SystemResult.Ok;
   }
 
   /**
    * Start a new session, detaching from the controlling terminal.
    * Returns the new session id.
    */
-  public function create_new_session() _Result<i32, Error> {
+  public function create_new_session() SystemResult<i32> {
     var sid: i32 = unsafe { c_setsid(); };
     if (sid < 0) {
-      return _Result.Err(Error(errno(), "failed to start a new session"));
+      return SystemResult.Error(Error(errno(), "failed to start a new session"));
     }
-    return _Result.Ok(sid);
+    return SystemResult.Ok(sid);
   }
 
   /**
@@ -126,22 +126,22 @@ public module std.process {
    * signal handler — no allocation, no method calls that might allocate. Use
    * Command below unless you have a reason not to.
    */
-  public function fork() _Result<i32, Error> {
+  public function fork() SystemResult<i32> {
     var result: i32 = unsafe { c_fork(); };
     if (result < 0) {
-      return _Result.Err(Error(errno(), "failed to fork"));
+      return SystemResult.Error(Error(errno(), "failed to fork"));
     }
-    return _Result.Ok(result);
+    return SystemResult.Ok(result);
   }
 
   /**
    * Replace this process with `cmd`, searching PATH. Only returns on
    * failure.
    */
-  public function exec(cmd: ref Command) _Result<void, Error> {
+  public function exec(cmd: ref Command) SystemResult<void> {
     var argv: ContiguousBuffer<raw_ptr<u8>> = cmd.build_argv_array();
     unsafe { c_execvp(cmd.program(), argv.raw_data()); };
-    return _Result.Err(Error(errno(), "failed to exec"));
+    return SystemResult.Error(Error(errno(), "failed to exec"));
   }
 
   /**
@@ -150,7 +150,7 @@ public module std.process {
    * With WNOHANG and no child ready, returns 0 for the pid, so the status
    * is meaningless — use Child.try_wait for that case.
    */
-  public function wait_pid(target: i32, options: i32) _Result<i32, Error> {
+  public function wait_pid(target: i32, options: i32) SystemResult<i32> {
     var status: i32 = 0;
     var got: i32 = unsafe {
       c_waitpid(
@@ -160,9 +160,9 @@ public module std.process {
       );
     };
     if (got < 0) {
-      return _Result.Err(Error(errno(), "failed to wait for child"));
+      return SystemResult.Error(Error(errno(), "failed to wait for child"));
     }
-    return _Result.Ok(status);
+    return SystemResult.Ok(status);
   }
 
   /**
@@ -247,26 +247,26 @@ public module std.process {
   /**
    * Create a pipe and return its two ends. Throws if the system refuses.
    */
-  public function open_pipe(alloc: ref HeapAllocator) _Result<Pipe, Error> {
+  public function open_pipe(alloc: ref HeapAllocator) SystemResult<Pipe> {
     var fds: ContiguousBuffer<i32> = ContiguousBuffer<i32>(alloc, 2);
     unsafe { fds.set_unchecked(0, 0); };
     unsafe { fds.set_unchecked(1, 0); };
     if (unsafe { c_pipe(_ptr_as_raw<i32>(fds.raw_data())); } != 0) {
-      return _Result.Err(Error(errno(), "failed to create pipe"));
+      return SystemResult.Error(Error(errno(), "failed to create pipe"));
     }
     var read_end: i32 = unsafe { fds.get_unchecked(0); };
     var write_end: i32 = unsafe { fds.get_unchecked(1); };
-    return _Result.Ok(Pipe(read_end, write_end));
+    return SystemResult.Ok(Pipe(read_end, write_end));
   }
 
   /**
    * Point `new_fd` at whatever `old_fd` refers to, closing `new_fd` first.
    */
-  public function dup_fd(old_fd: i32, new_fd: i32) _Result<void, Error> {
+  public function dup_fd(old_fd: i32, new_fd: i32) SystemResult<void> {
     if (unsafe { c_dup2(old_fd, new_fd); } < 0) {
-      return _Result.Err(Error(errno(), "failed to duplicate descriptor"));
+      return SystemResult.Error(Error(errno(), "failed to duplicate descriptor"));
     }
-    return _Result.Ok;
+    return SystemResult.Ok;
   }
 
   // -------------------------------------------------------------------
@@ -384,7 +384,7 @@ public module std.process {
      * Run the program in a new process. The child's end of every pipe is
      * closed here, so reading from Child hits end-of-file when it exits.
      */
-    public method start() _Result<Child, Error> {
+    public method start() SystemResult<Child> {
       // Everything the child touches is prepared first: after fork it may
       // only call things that are safe in a signal handler.
       var argv: ContiguousBuffer<raw_ptr<u8>> = this.build_argv_array();
@@ -419,7 +419,7 @@ public module std.process {
 
       var child: i32 = unsafe { c_fork(); };
       if (child < 0) {
-        return _Result.Err(Error(errno(), "failed to fork"));
+        return SystemResult.Error(Error(errno(), "failed to fork"));
       }
 
       if (child == 0) {
@@ -488,25 +488,25 @@ public module std.process {
         }
       };
 
-      return _Result.Ok(Child(child, in_write, out_read, err_read));
+      return SystemResult.Ok(Child(child, in_write, out_read, err_read));
     }
 
     /**
      * Run to completion, inheriting the streams. Returns the exit code.
      */
-    public method status() _Result<i32, Error> {
+    public method status() SystemResult<i32> {
       var child: Child = try this.start();
-      return _Result.Ok((try child.wait()));
+      return SystemResult.Ok((try child.wait()));
     }
 
     /**
      * Run to completion with stdout and stderr captured.
      */
-    public method output() _Result<Output, Error> {
+    public method output() SystemResult<Output> {
       this.stdout_mode = Stdio.Piped;
       this.stderr_mode = Stdio.Piped;
       var child: Child = try this.start();
-      return _Result.Ok((try child.collect(this.alloc)));
+      return SystemResult.Ok((try child.collect(this.alloc)));
     }
   }
 
@@ -564,26 +564,26 @@ public module std.process {
      * Wait for the child and return its exit code. A child killed by a
      * signal reports 128 + the signal, as a shell does.
      */
-    public method wait() _Result<i32, Error> {
+    public method wait() SystemResult<i32> {
       if (this.pid_ <= 0) {
-        return _Result.Err(Error(-1, "no child to wait for"));
+        return SystemResult.Error(Error(-1, "no child to wait for"));
       }
       this.close_stdin();
       var status: i32 = try wait_pid(this.pid_, 0);
       this.pid_ = 0;
       if (is_signaled(status)) {
-        return _Result.Ok(128 + get_term_signal(status));
+        return SystemResult.Ok(128 + get_term_signal(status));
       }
-      return _Result.Ok(exit_status(status));
+      return SystemResult.Ok(exit_status(status));
     }
 
     /**
      * The exit code if the child has already finished, None if it is still
      * running.
      */
-    public method try_wait() _Result<Option<i32>, Error> {
+    public method try_wait() SystemResult<Option<i32>> {
       if (this.pid_ <= 0) {
-        return _Result.Ok(Option.None);
+        return SystemResult.Ok(Option.None);
       }
       var status: i32 = 0;
       var got: i32 = unsafe {
@@ -594,30 +594,30 @@ public module std.process {
         );
       };
       if (got < 0) {
-        return _Result.Err(Error(errno(), "failed to poll child"));
+        return SystemResult.Error(Error(errno(), "failed to poll child"));
       }
       if (got == 0) {
-        return _Result.Ok(Option.None);
+        return SystemResult.Ok(Option.None);
       }
       this.pid_ = 0;
       if (is_signaled(status)) {
-        return _Result.Ok(Option.Some(128 + get_term_signal(status)));
+        return SystemResult.Ok(Option.Some(128 + get_term_signal(status)));
       }
-      return _Result.Ok(Option.Some(exit_status(status)));
+      return SystemResult.Ok(Option.Some(exit_status(status)));
     }
 
     /**
      * Send a signal to the child. Throws if there is no child or the system
      * refuses.
      */
-    public method kill(sig: i32) _Result<void, Error> {
+    public method kill(sig: i32) SystemResult<void> {
       if (this.pid_ <= 0) {
-        return _Result.Err(Error(-1, "no child to signal"));
+        return SystemResult.Error(Error(-1, "no child to signal"));
       }
       if (unsafe { c_kill(this.pid_, sig); } != 0) {
-        return _Result.Err(Error(errno(), "failed to signal child"));
+        return SystemResult.Error(Error(errno(), "failed to signal child"));
       }
-      return _Result.Ok;
+      return SystemResult.Ok;
     }
 
     /**
@@ -643,7 +643,7 @@ public module std.process {
      * other: a child that fills the stderr pipe while the parent is stuck
      * reading stdout would deadlock.
      */
-    public method collect(alloc: ref HeapAllocator) _Result<Output, Error> {
+    public method collect(alloc: ref HeapAllocator) SystemResult<Output> {
       var out: String = String(alloc, "");
       var err: String = String(alloc, "");
       var buf: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 4096);
@@ -707,7 +707,7 @@ public module std.process {
       }
 
       var code: i32 = try this.wait();
-      return _Result.Ok(Output(code, out, err));
+      return SystemResult.Ok(Output(code, out, err));
     }
 
     /**

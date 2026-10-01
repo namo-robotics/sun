@@ -97,7 +97,7 @@ public module std {
       var pty = try std.test.expect_ok(Pty());
       try std.test.assert(is_terminal(pty.slave), "a pty slave is a terminal");
 
-      var pipe = try std.test.expect_ok(std.process.open_pipe(alloc));
+      var pipe = try std.test.expect_system(std.process.open_pipe(alloc));
       try std.test.assert(not is_terminal(pipe.read_fd()), "a pipe's read end is not a terminal");
       try std.test.assert(not is_terminal(pipe.write_fd()), "a pipe's write end is not a terminal");
       pipe.close_read();
@@ -124,7 +124,7 @@ public module std {
     /** Checks asking a pipe for its size fails with ENOTTY. */
     test_function get_size_throws_on_a_non_tty() {
       var alloc = make_heap_allocator();
-      var pipe = try std.test.expect_ok(std.process.open_pipe(alloc));
+      var pipe = try std.test.expect_system(std.process.open_pipe(alloc));
       var code: i32 = 0;
       var threw: bool = false;
       match get_size(pipe.read_fd()) {
@@ -240,7 +240,7 @@ public module std {
     /** Checks entering a mode on a pipe fails with ENOTTY and changes nothing. */
     test_function entering_a_mode_on_a_non_tty_throws_enotty() {
       var alloc = make_heap_allocator();
-      var pipe = try std.test.expect_ok(std.process.open_pipe(alloc));
+      var pipe = try std.test.expect_system(std.process.open_pipe(alloc));
       var code: i32 = 0;
       var threw: bool = false;
       match TerminalMode(pipe.read_fd(), Mode.Raw, SignalPolicy.AsInput) {
@@ -342,8 +342,8 @@ public module std {
      */
     function run_as_foreground_process(pty: ref Pty, as_input: bool) _Result<i32, std.test.AssertionError> {
       var alloc = make_heap_allocator();
-      var ready = try std.test.expect_ok(std.process.open_pipe(alloc));
-      var pid: i32 = try std.test.expect_ok(std.process.fork());
+      var ready = try std.test.expect_system(std.process.open_pipe(alloc));
+      var pid: i32 = try std.test.expect_system(std.process.fork());
       if (pid == 0) {
         // In the child. A new session has no controlling terminal, so the
         // pty can become it and this process group the foreground group.
@@ -369,7 +369,7 @@ public module std {
       ready.close_write();
 
       write_byte(pty.master, 3u8);
-      return _Result.Ok((try std.test.expect_ok(std.process.wait_pid(pid, 0))));
+      return _Result.Ok((try std.test.expect_system(std.process.wait_pid(pid, 0))));
     }
 
     /** Checks Ctrl-C kills a foreground process with SIGINT under Passthrough. */

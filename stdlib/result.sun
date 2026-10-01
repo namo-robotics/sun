@@ -60,4 +60,10 @@ public module std {
     Ok(T),
     Error(ProtoDecodeError)
   }
+
+  /** Reports a failed operating-system call with its code and message. */
+  public enum SystemResult<T> {
+    Ok(T),
+    Error(Error)
+  }
 }

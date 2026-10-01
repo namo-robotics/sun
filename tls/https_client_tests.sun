@@ -69,10 +69,10 @@ public module tls {
       cmd.set_stdout(Stdio.Null);
       cmd.set_stderr(Stdio.Null);
       match cmd.status() {
-        _Result.Ok(matched_value) => {
+        SystemResult.Ok(matched_value) => {
           return matched_value == 0;
         },
-        _Result.Err(e) => {
+        SystemResult.Error(e) => {
           return false;
         }
       };
@@ -186,10 +186,10 @@ public module tls {
       deinit() {
         // Best-effort teardown; deinit must not throw.
         match this.server.kill(std.process.SIGTERM) {
-          _Result.Ok => {
+          SystemResult.Ok => {
             ignore_error(this.server.wait());
           },
-          _Result.Err(e) => {}
+          SystemResult.Error(e) => {}
         };
         match std.io.remove_file(this.cert_path) {
           _Result.Ok => {},
@@ -235,9 +235,9 @@ public module tls {
       }
       var server = (try std.test.expect_ok(TlsServer(alloc, "localhost")));
       var environment = std.env.Env(alloc);
-      try std.test.expect_success(environment.set("SSL_CERT_FILE", server.cert_path));
+      try std.test.expect_system_success(environment.set("SSL_CERT_FILE", server.cert_path));
       var status = fetch_status(alloc, server.port);
-      try std.test.expect_success(environment.remove("SSL_CERT_FILE"));
+      try std.test.expect_system_success(environment.remove("SSL_CERT_FILE"));
       try std.test.assert_eq(status, 200);
     }
 
@@ -253,7 +253,7 @@ public module tls {
       }
       var server = (try std.test.expect_ok(TlsServer(alloc, "localhost")));
       var environment = std.env.Env(alloc);
-      try std.test.expect_success(environment.remove("SSL_CERT_FILE"));
+      try std.test.expect_system_success(environment.remove("SSL_CERT_FILE"));
       try std.test.assert_eq(fetch_status(alloc, server.port), -1);
     }
 
@@ -269,9 +269,9 @@ public module tls {
       }
       var server = (try std.test.expect_ok(TlsServer(alloc, "otherhost.example")));
       var environment = std.env.Env(alloc);
-      try std.test.expect_success(environment.set("SSL_CERT_FILE", server.cert_path));
+      try std.test.expect_system_success(environment.set("SSL_CERT_FILE", server.cert_path));
       var status = fetch_status(alloc, server.port);
-      try std.test.expect_success(environment.remove("SSL_CERT_FILE"));
+      try std.test.expect_system_success(environment.remove("SSL_CERT_FILE"));
       try std.test.assert_eq(status, -1);
     }
   }  // module https_client_tests

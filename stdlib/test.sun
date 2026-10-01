@@ -234,6 +234,22 @@ public module std.test {
     };
   }
 
+  /** Returns a system-call value or reports its error as a test failure. */
+  public function expect_system<T>(result: SystemResult<T>) _Result<T, std.test.AssertionError> {
+    return match result {
+      SystemResult.Ok(value) => _Result.Ok(value),
+      SystemResult.Error(error) => _Result.Err(AssertionError(error.message()))
+    };
+  }
+
+  /** Checks that a system operation succeeded. */
+  public function expect_system_success(result: SystemResult<void>) _Result<void, std.test.AssertionError> {
+    return match result {
+      SystemResult.Ok => _Result.Ok,
+      SystemResult.Error(error) => _Result.Err(AssertionError(error.message()))
+    };
+  }
+
   /**
    * The outcome of one test, produced on the test's thread and moved back
    * to the main thread through join. The message is empty on a pass.

@@ -11,7 +11,7 @@ public module std {
   module networking_tests {
     /** Check socket ownership with stdin closed in an isolated process. */
     test_function sockets_can_own_descriptor_zero() {
-      var pid: i32 = try std.test.expect_ok(std.process.fork());
+      var pid: i32 = try std.test.expect_system(std.process.fork());
       if (pid == 0) {
         match check_descriptor_zero() {
           _Result.Ok => {},
@@ -21,7 +21,7 @@ public module std {
         };
         std.process.exit_now(0);
       }
-      var status: i32 = try std.test.expect_ok(std.process.wait_pid(pid, 0));
+      var status: i32 = try std.test.expect_system(std.process.wait_pid(pid, 0));
       try std.test.assert(std.process.exited(status), "the socket child exited normally");
       try std.test.assert_eq(std.process.exit_status(status), 0);
     }

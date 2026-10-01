@@ -59,7 +59,7 @@ public module std {
       var cmd = std.process.Command(alloc, "/bin/sh");
       cmd.add_arg("-c");
       cmd.add_arg("date +%s");
-      var out = try std.test.expect_ok(cmd.output());
+      var out = try std.test.expect_system(cmd.output());
       try std.test.assert_eq(out.status(), 0);
       out.stdout().trim();
       var host: i64 = match out.stdout().parse_i64() {
