@@ -14,8 +14,8 @@ public module std {
       try std.test.assert_ne<T>(a, b);
       var caught_equal = false;
       match std.test.assert_eq<T>(a, b) {
-        _Result.Ok => {},
-        _Result.Err(e) => {
+        std.test.AssertionResult.Ok => {},
+        std.test.AssertionResult.Error(e) => {
           caught_equal = true;
           try std.test.assert(e.code() == 10);
           try std.test.assert(e.message().equals_literal(equal_message));
@@ -24,8 +24,8 @@ public module std {
       try std.test.assert(caught_equal);
       var caught_unequal = false;
       match std.test.assert_ne<T>(a, a) {
-        _Result.Ok => {},
-        _Result.Err(e) => {
+        std.test.AssertionResult.Ok => {},
+        std.test.AssertionResult.Error(e) => {
           caught_unequal = true;
           try std.test.assert(e.code() == 10);
           try std.test.assert(e.message().equals_literal(unequal_message));
@@ -68,8 +68,8 @@ public module std {
       var other = String("other");
       var caught = false;
       match std.test.assert_eq(a, other) {
-        _Result.Ok => {},
-        _Result.Err(e) => {
+        std.test.AssertionResult.Ok => {},
+        std.test.AssertionResult.Error(e) => {
           caught = true;
           try std.test.assert(e.code() == 10);
           try std.test.assert(e.message().equals_literal("assertion failed: expected same, got other"));

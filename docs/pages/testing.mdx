@@ -56,7 +56,7 @@ test_function arithmetic() TestOutcome {
 Explicit `_Result<void, E>` remains supported. Its `E` can be a concrete class
 implementing `IError`, or an enum whose immediate payloads implement `IError`.
 
-Tests default to `_Result<void, std.test.AssertionError>`. Use `try` to propagate
+Tests default to `std.test.AssertionResult<void>`. Use `try` to propagate
 an assertion failure. An explicit error enum lets a test also propagate concrete
 library errors without converting them to assertion failures.
 
@@ -154,7 +154,7 @@ after another in declaration order.
 
 ## Assertions
 
-Assertions return `_Result<void, AssertionError>`. A failure carries code 10 and
+Assertions return `std.test.AssertionResult<void>`. A failure carries code 10 and
 an owned message. Write `try std.test.assert(condition);` to return that failure
 to the runner, which reports it with the test's name.
 

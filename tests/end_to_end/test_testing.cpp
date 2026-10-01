@@ -357,3 +357,19 @@ TEST(EndToEnd_Testing, rejects_non_error_test_payload) {
   )"),
       "Test failure variants must own a concrete IError payload");
 }
+
+/** Tests without annotations return the standard assertion enum. */
+TEST(EndToEnd_Testing, default_assertion_result) {
+  EXPECT_EQ(executeTestsWithStdlib(R"(
+    /** Returns the default library success explicitly. */
+    test_function success() { return std.test.AssertionResult.Ok; }
+  )"),
+            0);
+  EXPECT_EQ(executeTestsWithStdlib(R"(
+    /** Returns the default library failure explicitly. */
+    test_function failure() {
+      return std.test.AssertionResult.Error(std.test.AssertionError("explicit failure"));
+    }
+  )"),
+            1);
+}

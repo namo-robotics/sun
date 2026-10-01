@@ -1314,10 +1314,10 @@ The assertions and runner support behind `test_function` — see
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `assert(cond)` / `assert(cond, msg)` | `(bool[, static_ptr<u8>]) void throws IError` | Throw `AssertionError` when false |
-| `assert_eq(expected, actual)` | overloaded per primitive, plus `(const ref String, const ref String)` | Throw when the values differ, showing both |
-| `assert_ne(a, b)` | overloaded per primitive | Throw when the values are equal |
-| `fail(msg)` | `(static_ptr<u8>) void throws IError` | Fail unconditionally |
+| `assert(cond)` / `assert(cond, msg)` | `(bool[, static_ptr<u8>]) std.test.AssertionResult<void>` | Return `Error(AssertionError)` when false |
+| `assert_eq(expected, actual)` | overloaded per primitive, plus `(const ref String, const ref String)` | Return an assertion error when the values differ, showing both |
+| `assert_ne(a, b)` | overloaded per primitive | Return an assertion error when the values are equal |
+| `fail(msg)` | `(static_ptr<u8>) std.test.AssertionResult<void>` | Fail unconditionally |
 
 `AssertionError` (code 10) implements `IError`. The remaining items —
 `TestResult`, `run_one`, `report`, `finish`, `wants_sequential` — exist for

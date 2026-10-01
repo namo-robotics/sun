@@ -758,14 +758,12 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
   if (isTestFunction) {
     // Tests return assertion failures by default; broader error enums may be
     // explicit.
-    retType = sun::ast::TypeAnnotation("_Result");
+    retType = sun::ast::TypeAnnotation("std.test.AssertionResult");
     retType->typeArguments.push_back(
         std::make_unique<sun::ast::TypeAnnotation>("void"));
-    retType->typeArguments.push_back(
-        std::make_unique<sun::ast::TypeAnnotation>("std.test.AssertionError"));
     if (curTok.kind == TokenKind::THROWS)
       parsingError(
-          "test functions return _Result<void, E>; 'throws' is not supported");
+          "test functions return result enums; 'throws' is not supported");
     if (curTok.kind != TokenKind::BRACE_OPEN) {
       retType = parseTypeAnnotation();
       if (!retType) parsingError("expected a test result type");
