@@ -234,7 +234,7 @@ TEST(MemorySafety_GlobalAssignment, map_global_is_constructed) {
       var found = 0;
       if (true) {
         var k2 = String(alloc, "key");
-        found = (match m.get(k2) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } });
+        found = (match m.get(k2) { std.LookupResult.Ok(value) => value, std.LookupResult.NotFound(_) => { return -100; } });
       }
       return found;
     }

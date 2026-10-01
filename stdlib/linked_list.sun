@@ -165,9 +165,9 @@ public module std {
     /**
      * Remove and return the last element
      */
-    public method pop_back() _Result<T, EmptyError> {
+    public method pop_back() PopResult<T> {
       if (this.tail == null) {
-        return _Result.Err(EmptyError());
+        return PopResult.Empty(EmptyError());
       }
       var node: raw_ptr<LinkedListNode<T>> = this.tail;
       var value: T = unsafe { node.take_value(); };
@@ -179,15 +179,15 @@ public module std {
       }
       unsafe { _free(node); };
       this.size_ = this.size_ - 1;
-      return _Result.Ok(value);
+      return PopResult.Ok(value);
     }
 
     /**
      * Remove and return the first element
      */
-    public method pop_front() _Result<T, EmptyError> {
+    public method pop_front() PopResult<T> {
       if (this.head == null) {
-        return _Result.Err(EmptyError());
+        return PopResult.Empty(EmptyError());
       }
       var node: raw_ptr<LinkedListNode<T>> = this.head;
       var value: T = unsafe { node.take_value(); };
@@ -199,7 +199,7 @@ public module std {
       }
       unsafe { _free(node); };
       this.size_ = this.size_ - 1;
-      return _Result.Ok(value);
+      return PopResult.Ok(value);
     }
 
     /**
@@ -207,48 +207,48 @@ public module std {
      * ownership, so this hands back a reference; use remove()/pop_*() to move
      * an element out.
      */
-    public const method get(index: i64) _Result<ref T, NotFoundError> {
+    public const method get(index: i64) LookupResult<ref T> {
       if (index < 0) {
-        return _Result.Err(NotFoundError());
+        return LookupResult.NotFound(NotFoundError());
       }
       if (index >= this.size_) {
-        return _Result.Err(NotFoundError());
+        return LookupResult.NotFound(NotFoundError());
       }
       var node: raw_ptr<LinkedListNode<T>> = this.find_node_at(index);
-      return _Result.Ok(unsafe { node.get_value(); });
+      return LookupResult.Ok(unsafe { node.get_value(); });
     }
 
     /**
      * Set element at index
      */
-    public method set(index: i64, value: T) _Result<void, NotFoundError> {
+    public method set(index: i64, value: T) LookupResult<void> {
       if (index < 0) {
-        return _Result.Err(NotFoundError());
+        return LookupResult.NotFound(NotFoundError());
       }
       if (index >= this.size_) {
-        return _Result.Err(NotFoundError());
+        return LookupResult.NotFound(NotFoundError());
       }
       var node: raw_ptr<LinkedListNode<T>> = this.find_node_at(index);
       unsafe { node.replace_value(value); };
-      return _Result.Ok;
+      return LookupResult.Ok;
     }
 
     /**
      * Remove element at index and return its value
      */
-    public method remove(index: i64) _Result<T, NotFoundError> {
+    public method remove(index: i64) LookupResult<T> {
       if (index < 0) {
-        return _Result.Err(NotFoundError());
+        return LookupResult.NotFound(NotFoundError());
       }
       if (index >= this.size_) {
-        return _Result.Err(NotFoundError());
+        return LookupResult.NotFound(NotFoundError());
       }
       var node: raw_ptr<LinkedListNode<T>> = this.find_node_at(index);
       var value: T = unsafe { node.take_value(); };
       this.unlink_node(node);
       unsafe { _free(node); };
       this.size_ = this.size_ - 1;
-      return _Result.Ok(value);
+      return LookupResult.Ok(value);
     }
 
     /**

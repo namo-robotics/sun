@@ -138,7 +138,7 @@ public module std.test {
     };
   }
 
-  /** Returns a checked vector value or reports its bounds error as a test failure. */
+  /** Returns a checked access value or reports its bounds error as a test failure. */
   public function expect_access<T>(result: AccessResult<T>) _Result<T, std.test.AssertionError> {
     return match result {
       AccessResult.Ok(value) => _Result.Ok(value),
@@ -154,11 +154,43 @@ public module std.test {
     };
   }
 
-  /** Reports an unexpected bounds failure from a checked vector update. */
+  /** Reports an unexpected bounds failure from a checked access update. */
   public function expect_access_success(result: AccessResult<void>) _Result<void, std.test.AssertionError> {
     return match result {
       AccessResult.Ok => _Result.Ok,
       AccessResult.OutOfBounds(error) => _Result.Err(AssertionError(error.message()))
+    };
+  }
+
+  /** Returns a found value or reports its lookup error as a test failure. */
+  public function expect_lookup<T>(result: LookupResult<T>) _Result<T, std.test.AssertionError> {
+    return match result {
+      LookupResult.Ok(value) => _Result.Ok(value),
+      LookupResult.NotFound(error) => _Result.Err(AssertionError(error.message()))
+    };
+  }
+
+  /** Reads a found scalar borrow or reports its lookup error as a test failure. */
+  public function expect_lookup_value<T: _Primitive>(result: LookupResult<ref T>) _Result<T, std.test.AssertionError> {
+    return match result {
+      LookupResult.Ok(value) => _Result.Ok(value),
+      LookupResult.NotFound(error) => _Result.Err(AssertionError(error.message()))
+    };
+  }
+
+  /** Checks that a lookup-based update succeeded. */
+  public function expect_lookup_success(result: LookupResult<void>) _Result<void, std.test.AssertionError> {
+    return match result {
+      LookupResult.Ok => _Result.Ok,
+      LookupResult.NotFound(error) => _Result.Err(AssertionError(error.message()))
+    };
+  }
+
+  /** Returns a removed value or reports an empty collection as a test failure. */
+  public function expect_pop<T>(result: PopResult<T>) _Result<T, std.test.AssertionError> {
+    return match result {
+      PopResult.Ok(value) => _Result.Ok(value),
+      PopResult.Empty(error) => _Result.Err(AssertionError(error.message()))
     };
   }
 

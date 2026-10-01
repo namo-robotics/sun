@@ -19,7 +19,7 @@ public module std {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
       m.insert(42, 100);
-      try std.test.assert_eq((try std.test.expect_value(m.get(42))), 100);
+      try std.test.assert_eq(try std.test.expect_lookup_value(m.get(42)), 100);
     }
 
     /** Checks insert multiple and get. */
@@ -29,7 +29,7 @@ public module std {
       m.insert(1, 10);
       m.insert(2, 20);
       m.insert(3, 30);
-      try std.test.assert_eq((try std.test.expect_value(m.get(1))) + (try std.test.expect_value(m.get(2))) + (try std.test.expect_value(m.get(3))), 60);
+      try std.test.assert_eq((try std.test.expect_lookup_value(m.get(1))) + (try std.test.expect_lookup_value(m.get(2))) + (try std.test.expect_lookup_value(m.get(3))), 60);
     }
 
     /** Checks update existing key. */
@@ -38,7 +38,7 @@ public module std {
       var m = Map<i64, i32>(allocator, 16);
       m.insert(42, 100);
       m.insert(42, 200);
-      try std.test.assert_eq((try std.test.expect_value(m.get(42))), 200);
+      try std.test.assert_eq(try std.test.expect_lookup_value(m.get(42)), 200);
     }
 
     /** Checks contains key. */
@@ -86,7 +86,7 @@ public module std {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
       m.insert(42, 100);
-      var removed: i32 = try std.test.expect_ok(m.remove(42));
+      var removed: i32 = try std.test.expect_lookup(m.remove(42));
       try std.test.assert_eq(removed, 100);
       try std.test.assert_eq(m.size(), 0);
     }
@@ -96,7 +96,7 @@ public module std {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
       m.insert(42, 100);
-      try std.test.expect_ok(m.remove(42));
+      try std.test.expect_lookup(m.remove(42));
       try std.test.assert(m.contains(42) == false);
     }
 
@@ -105,9 +105,9 @@ public module std {
       var allocator = make_heap_allocator();
       var m = Map<i64, i32>(allocator, 16);
       m.insert(42, 100);
-      try std.test.expect_ok(m.remove(42));
+      try std.test.expect_lookup(m.remove(42));
       m.insert(42, 200);
-      try std.test.assert_eq((try std.test.expect_value(m.get(42))), 200);
+      try std.test.assert_eq(try std.test.expect_lookup_value(m.get(42)), 200);
     }
 
     /** Checks clear. */
@@ -132,7 +132,7 @@ public module std {
       }
       var sum: i32 = 0;
       for (var i: i64 = 0; i < 20; i = i + 1) {
-        sum = sum + (try std.test.expect_value(m.get(i)));
+        sum = sum + (try std.test.expect_lookup_value(m.get(i)));
       }
       // 10 * (0 + 1 + ... + 19) = 1900
       try std.test.assert_eq(sum, 1900);
@@ -147,7 +147,7 @@ public module std {
       }
       var sum: i32 = 0;
       for (var i: i64 = 0; i < 100; i = i + 1) {
-        sum = sum + (try std.test.expect_value(m.get(i)));
+        sum = sum + (try std.test.expect_lookup_value(m.get(i)));
       }
       try std.test.assert_eq(sum, 100);
       try std.test.assert_eq(m.size(), 100);
@@ -166,11 +166,11 @@ public module std {
       var m = Map<i64, i32>(allocator, 16);
       m.insert(42, 100);
       match m.get(99) {
-        _Result.Ok(matched_value) => {
+        LookupResult.Ok(matched_value) => {
           var val: i32 = matched_value;
           try std.test.fail("expected error");
         },
-        _Result.Err(e) => {}
+        LookupResult.NotFound(e) => {}
       };
     }
 
@@ -180,11 +180,11 @@ public module std {
       var m = Map<i64, i32>(allocator, 16);
       m.insert(42, 100);
       match m.remove(99) {
-        _Result.Ok(matched_value) => {
+        LookupResult.Ok(matched_value) => {
           var val: i32 = matched_value;
           try std.test.fail("expected error");
         },
-        _Result.Err(e) => {}
+        LookupResult.NotFound(e) => {}
       };
     }
 
@@ -197,7 +197,7 @@ public module std {
       m.insert(4, 2);
       m.insert(8, 3);
       m.insert(12, 4);
-      try std.test.assert_eq((try std.test.expect_value(m.get(0))) + (try std.test.expect_value(m.get(4))) + (try std.test.expect_value(m.get(8))) + (try std.test.expect_value(m.get(12))), 10);
+      try std.test.assert_eq((try std.test.expect_lookup_value(m.get(0))) + (try std.test.expect_lookup_value(m.get(4))) + (try std.test.expect_lookup_value(m.get(8))) + (try std.test.expect_lookup_value(m.get(12))), 10);
     }
 
     /** Checks iteration sum values. */

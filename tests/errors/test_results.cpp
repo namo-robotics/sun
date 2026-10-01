@@ -383,6 +383,7 @@ TEST(Errors_Results, formatter_roundtrip) {
     function example() _Result<i32, i32> {
       try prepare();
       var value = try source();
+      try check(try source(), 42);
       return match value {
         (e: const ref IError) => _Result.Err(e.code()),
         _ => _Result.Ok(42)
@@ -393,6 +394,7 @@ TEST(Errors_Results, formatter_roundtrip) {
   EXPECT_NE(formatted.find("try prepare();"), std::string::npos);
   EXPECT_EQ(formatted.find("(try prepare())"), std::string::npos);
   EXPECT_NE(formatted.find("try source()"), std::string::npos);
+  EXPECT_NE(formatted.find("try check(try source(), 42);"), std::string::npos);
   EXPECT_NE(formatted.find("(e: const ref IError)"), std::string::npos);
   EXPECT_EQ(sun::parsing::formatSource(formatted), formatted);
 }
@@ -1263,4 +1265,50 @@ TEST(Errors_Results, buffer_and_string_access_propagation) {
     }
   )"),
             0);
+}
+
+/** Propagates narrow lookup and pop failures into distinct standard variants.
+ */
+TEST(Errors_Results, collection_result_propagation) {
+  EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
+    using std;
+    /** Looks up a key and then removes a list element. */
+    function read(key: i32, populated: bool) Result<i32> {
+      var alloc = make_heap_allocator();
+      var values = Map<i32, i32>(alloc, 8);
+      values.insert(1, 40);
+      var value: i32 = try values.get(key);
+      var list = LinkedList<i32>(alloc);
+      if (populated) { list.push_back(2); }
+      return Result.Ok(value + (try list.pop_front()));
+    }
+    /** Identifies success and each concrete failure without catching other errors. */
+    function code(key: i32, populated: bool) i32 {
+      return match read(key, populated) {
+        Result.Ok(value) => value,
+        Result.NotFound(_) => 1,
+        Result.Empty(_) => 2,
+        (_: const ref IError) => -100
+      };
+    }
+    /** Checks success, early lookup propagation, and later empty propagation. */
+    function main() i32 {
+      return code(1, true) + code(0, true) + code(1, false) - 45;
+    }
+  )"),
+            0);
+}
+
+/** Narrow collection results require handling even when no value is needed. */
+TEST(Errors_Results, rejects_discarded_pop_result) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::executeStringWithStdlib(R"(
+    using std;
+    /** Attempts to discard an empty-string error. */
+    function main() i32 {
+      var text = String("");
+      text.pop();
+      return 0;
+    }
+  )"),
+                                "Error result must be handled");
 }

@@ -44,8 +44,8 @@ public module std {
         return Option.None;
       }
       return match this.items.pop_front() {
-        _Result.Ok(value) => Option.Some(value),
-        _Result.Err(_) => Option.None
+        PopResult.Ok(value) => Option.Some(value),
+        PopResult.Empty(_) => Option.None
       };
     }
 

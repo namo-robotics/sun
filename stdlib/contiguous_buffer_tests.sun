@@ -251,12 +251,12 @@ public module std {
       try std.test.assert_eq(buf.size(), 2);
       try std.test.assert_eq((try std.test.expect_access_value(buf.get(0))) + (try std.test.expect_access_value(buf.get(1))), 3000000000);
       buf.resize_to(2);
-      try std.test.assert_eq((try std.test.expect_access_value(buf.get(1))), 2000000000);
+      try std.test.assert_eq(try std.test.expect_access_value(buf.get(1)), 2000000000);
       buf.resize_to(0);
       try std.test.assert(buf.is_empty());
       buf.resize_to(1);
       try std.test.expect_access_success(buf.set(0, 42));
-      try std.test.assert_eq((try std.test.expect_access_value(buf.get(0))), 42);
+      try std.test.assert_eq(try std.test.expect_access_value(buf.get(0)), 42);
     }
 
     /** Checks raw data not null. */

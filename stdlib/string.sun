@@ -707,12 +707,12 @@ public module std {
     /**
      * Remove and return last byte
      */
-    public method pop() _Result<u8, EmptyError> {
+    public method pop() PopResult<u8> {
       if (this.len == 0) {
-        return _Result.Err(EmptyError());
+        return PopResult.Empty(EmptyError());
       }
       this.len = this.len - 1;
-      return _Result.Ok(unsafe { this.data.get_unchecked(this.len); });
+      return PopResult.Ok(unsafe { this.data.get_unchecked(this.len); });
     }
 
     /**

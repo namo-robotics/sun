@@ -582,7 +582,7 @@ TEST(Classes_ConstMethods, const_map_reads) {
           m.insert(2, 20);
           const ref cm = m;
           if (not cm.contains(2)) { return -1; }
-          return (match cm.get(1) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) + (match cm.get(2) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) + _convert<i32>(cm.size());
+          return (match cm.get(1) { std.LookupResult.Ok(value) => value, std.LookupResult.NotFound(_) => { return -100; } }) + (match cm.get(2) { std.LookupResult.Ok(value) => value, std.LookupResult.NotFound(_) => { return -100; } }) + _convert<i32>(cm.size());
       }
     )");
   EXPECT_EQ(value, 32);

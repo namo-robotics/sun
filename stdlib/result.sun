@@ -23,4 +23,16 @@ public module std {
     Ok(T),
     OutOfBounds(IndexOutOfBoundsError)
   }
+
+  /** Reports a missing key or list position without unrelated errors. */
+  public enum LookupResult<T> {
+    Ok(T),
+    NotFound(NotFoundError)
+  }
+
+  /** Moves a value out of a collection, or reports that it was empty. */
+  public enum PopResult<T> {
+    Ok(T),
+    Empty(EmptyError)
+  }
 }

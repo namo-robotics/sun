@@ -278,12 +278,12 @@ public module std {
      * ownership, so this hands back a reference — copying the value out would
      * leave two owners of anything it holds. Use remove() to move it out.
      */
-    public const method get(key: K) _Result<ref V, NotFoundError> {
+    public const method get(key: K) LookupResult<ref V> {
       var probe: i64 = this.find_index(key);
       if (probe < 0) {
-        return _Result.Err(NotFoundError());
+        return LookupResult.NotFound(NotFoundError());
       }
-      return _Result.Ok(unsafe { this.values.get_unchecked(probe); });
+      return LookupResult.Ok(unsafe { this.values.get_unchecked(probe); });
     }
 
     /**
@@ -311,17 +311,17 @@ public module std {
     /**
      * Remove key and return its value, returns NotFoundError if not found
      */
-    public method remove(key: K) _Result<V, NotFoundError> {
+    public method remove(key: K) LookupResult<V> {
       var probe: i64 = this.find_index(key);
       if (probe < 0) {
-        return _Result.Err(NotFoundError());
+        return LookupResult.NotFound(NotFoundError());
       }
 
       var value: V = unsafe { this.values.take_unchecked(probe); };
       this.drop_key(probe);  // Value moved out; the key is dropped here
       unsafe { this.states.set_unchecked(probe, 2); };  // Mark as DELETED
       this.size_ = this.size_ - 1;
-      return _Result.Ok(value);
+      return LookupResult.Ok(value);
     }
 
     /**
