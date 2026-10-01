@@ -602,18 +602,20 @@ terminal size queries and single-key reads with a timeout, on Linux and macOS.
 Nothing here needs `termios` or `ioctl` bound by hand: the struct mirror and
 the per-OS flag values live in `target_linux.sun` / `target_darwin.sun`.
 
+Inside a function returning a compatible result, use `try` to propagate failures:
+
 ```sun
 using std.io;
 using std.terminal;
 using std.time;
 
 if (is_terminal(STDIN_FD)) {
-    var mode = TerminalMode(STDIN_FD, Mode.Raw, SignalPolicy.AsInput);
-    var size = get_size(STDOUT_FD);
+    var mode = try TerminalMode(STDIN_FD, Mode.Raw, SignalPolicy.AsInput);
+    var size = try get_size(STDOUT_FD);
     while (true) {
-        match read_key(STDIN_FD, create_duration_millis(250)) {
+        match try read_key(STDIN_FD, create_duration_millis(250)) {
             Option.Some(key) => { if (key == 3 or key == b'q') { break; } },
-            Option.None => { size = get_size(STDOUT_FD); }   // maybe resized
+            Option.None => { size = try get_size(STDOUT_FD); }   // maybe resized
         };
     }
 }   // `mode` leaves scope here and the terminal is restored
@@ -621,10 +623,10 @@ if (is_terminal(STDIN_FD)) {
 
 `TerminalMode` saves the descriptor's settings when it is constructed and puts
 them back when it leaves scope, whether by reaching the end of the block, by
-`return`, or by an exception unwinding through it. Call `restore()` to put them
+`return`, or by `try` propagating an error. Call `restore()` to put them
 back early; a second call does nothing. A moved-from guard is all zeros and
 restores nothing, so handing a guard to another owner moves the duty with it.
-Constructing one on a descriptor that is not a terminal throws with `ENOTTY`
+Constructing one on a descriptor that is not a terminal returns an error with `ENOTTY`
 and changes nothing.
 
 | `Mode` | Clears | Keeps |
@@ -662,16 +664,16 @@ example whenever `read_key` returns `None`.
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `is_terminal` | `(fd: i32) bool` | `isatty`; false for pipes, files and invalid descriptors |
-| `get_size` | `(fd: i32) Size throws IError` | `rows` and `cols`; throws `ENOTTY` on a non-terminal |
-| `read_key` | `(fd: i32, timeout: const ref Duration) Option<u8> throws IError` | One byte, `None` on timeout; throws once input has closed |
-| `try_read_key` | `(fd: i32) Option<u8> throws IError` | `read_key` with a zero timeout |
-| `read_attributes` | `(fd: i32) Termios throws IError` | Snapshot of the line-discipline settings |
+| `get_size` | `(fd: i32) SystemResult<Size>` | `rows` and `cols`; returns `ENOTTY` on a non-terminal |
+| `read_key` | `(fd: i32, timeout: const ref Duration) SystemResult<Option<u8>>` | One byte, `None` on timeout; returns an error once input has closed |
+| `try_read_key` | `(fd: i32) SystemResult<Option<u8>>` | `read_key` with a zero timeout |
+| `read_attributes` | `(fd: i32) SystemResult<Termios>` | Snapshot of the line-discipline settings |
 | `has_echo` / `is_canonical` / `delivers_signals` | `(const ref Termios) bool` | Read the `ECHO` / `ICANON` / `ISIG` bits of a snapshot |
 
 | `TerminalMode` | Signature | Description |
 |----------------|-----------|-------------|
-| `init` | `(fd: i32, mode: Mode, signals: SignalPolicy) throws IError` | Save and switch |
-| `restore` | `() void throws IError` | Put the saved settings back now; idempotent |
+| `init` | `(fd: i32, mode: Mode, signals: SignalPolicy) _Result<void, Error>` | Save and switch |
+| `restore` | `() SystemResult<void>` | Put the saved settings back now; idempotent |
 | `is_active` | `() bool` | Whether the terminal is still in the applied mode |
 
 `read_key` allocates nothing and never touches a descriptor the caller did not
@@ -680,6 +682,9 @@ pass, so it is safe to use on stdin alongside a child process. A multi-byte key
 rest with `try_read_key`. `Termios` is opaque; `equals(const ref Termios)`
 compares two snapshots. The native request codes `TIOCGWINSZ`, `TIOCSWINSZ`
 and `TIOCSCTTY` are public for programs that drive `ioctl` themselves.
+
+Terminal operations return `SystemResult<T>`. `TerminalMode` construction still
+uses `_Result<TerminalMode, Error>`; `try` can propagate either result.
 
 ## Environment
 
@@ -1022,7 +1027,7 @@ For fallible operations, prefer the result enums defined in `result.sun`:
 - `ConversionResult<T>` reports `ConversionError` through its `Error` variant.
 - `ArithmeticResult<T>` contains `Ok(T)`, `Overflow(OverflowError)`, and `DivisionByZero(DivisionByZeroError)`. Use `_ => ...` to handle all remaining variants in a match.
 - `ProtoResult<T>` contains `Ok(T)` or `Error(ProtoDecodeError)` for wire reads and generated protobuf decoders.
-- `SystemResult<T>` contains `Ok(T)` or `Error(Error)` for environment, process, file, polling, networking, and HTTP operations.
+- `SystemResult<T>` contains `Ok(T)` or `Error(Error)` for environment, process, file, polling, terminal, networking, and HTTP operations.
 - `Result<T>` contains `Ok(T)` and named variants for standard error categories,
   including bounds, lookup, I/O, allocation, conversion, arithmetic, JSON, and
   protocol decoding errors. Use it when combining several APIs.

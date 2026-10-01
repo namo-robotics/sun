@@ -128,8 +128,8 @@ public module std {
       var code: i32 = 0;
       var threw: bool = false;
       match get_size(pipe.read_fd()) {
-        _Result.Ok(_) => {},
-        _Result.Err(e) => {
+        SystemResult.Ok(_) => {},
+        SystemResult.Error(e) => {
           threw = true;
           code = e.code();
         }
@@ -144,12 +144,12 @@ public module std {
     test_function get_size_reports_resizes_made_on_the_master() {
       var pty = try std.test.expect_ok(Pty());
       resize(pty.master, 24u16, 80u16);
-      var first = try std.test.expect_ok(get_size(pty.slave));
+      var first = try std.test.expect_system(get_size(pty.slave));
       try std.test.assert_eq(first.rows, 24);
       try std.test.assert_eq(first.cols, 80);
 
       resize(pty.master, 50u16, 132u16);
-      var second = try std.test.expect_ok(get_size(pty.slave));
+      var second = try std.test.expect_system(get_size(pty.slave));
       try std.test.assert_eq(second.rows, 50);
       try std.test.assert_eq(second.cols, 132);
     }
@@ -157,41 +157,41 @@ public module std {
     /** Checks raw mode clears echo, line editing and signal keys, and restore is exact. */
     test_function raw_mode_clears_echo_canonical_and_signals() {
       var pty = try std.test.expect_ok(Pty());
-      var before = try std.test.expect_ok(read_attributes(pty.slave));
+      var before = try std.test.expect_system(read_attributes(pty.slave));
       try std.test.assert(has_echo(before), "a fresh pty echoes");
       try std.test.assert(is_canonical(before), "a fresh pty is line-buffered");
 
       if (true) {
         var mode = try std.test.expect_ok(TerminalMode(pty.slave, Mode.Raw, SignalPolicy.AsInput));
         try std.test.assert(mode.is_active(), "the guard is active after construction");
-        var during = try std.test.expect_ok(read_attributes(pty.slave));
+        var during = try std.test.expect_system(read_attributes(pty.slave));
         try std.test.assert(not has_echo(during), "raw mode turns echo off");
         try std.test.assert(not is_canonical(during), "raw mode turns line editing off");
         try std.test.assert(not delivers_signals(during), "AsInput turns signal keys off");
 
-        try std.test.expect_success(mode.restore());
+        try std.test.expect_system_success(mode.restore());
         try std.test.assert(not mode.is_active(), "restore deactivates the guard");
-        try std.test.expect_success(mode.restore());  // a second restore is a no-op
+        try std.test.expect_system_success(mode.restore());  // a second restore is a no-op
       }
 
-      var after = try std.test.expect_ok(read_attributes(pty.slave));
+      var after = try std.test.expect_system(read_attributes(pty.slave));
       try std.test.assert(after.equals(before), "restore puts back exactly what was saved");
     }
 
     /** Checks cbreak mode keeps signal keys and is undone at scope exit. */
     test_function cbreak_mode_keeps_signals() {
       var pty = try std.test.expect_ok(Pty());
-      var before = try std.test.expect_ok(read_attributes(pty.slave));
+      var before = try std.test.expect_system(read_attributes(pty.slave));
 
       if (true) {
         var mode = try std.test.expect_ok(TerminalMode(pty.slave, Mode.Cbreak, SignalPolicy.Passthrough));
-        var during = try std.test.expect_ok(read_attributes(pty.slave));
+        var during = try std.test.expect_system(read_attributes(pty.slave));
         try std.test.assert(not has_echo(during), "cbreak turns echo off");
         try std.test.assert(not is_canonical(during), "cbreak turns line editing off");
         try std.test.assert(delivers_signals(during), "Passthrough keeps signal keys");
       }
 
-      var after = try std.test.expect_ok(read_attributes(pty.slave));
+      var after = try std.test.expect_system(read_attributes(pty.slave));
       try std.test.assert(after.equals(before), "scope exit restores the saved settings");
     }
 
@@ -199,7 +199,7 @@ public module std {
     test_function raw_passthrough_reenables_signals() {
       var pty = try std.test.expect_ok(Pty());
       var mode = try std.test.expect_ok(TerminalMode(pty.slave, Mode.Raw, SignalPolicy.Passthrough));
-      var during = try std.test.expect_ok(read_attributes(pty.slave));
+      var during = try std.test.expect_system(read_attributes(pty.slave));
       try std.test.assert(not is_canonical(during), "raw mode turns line editing off");
       try std.test.assert(delivers_signals(during), "Passthrough keeps signal keys in raw mode");
     }
@@ -207,7 +207,7 @@ public module std {
     /** Checks the terminal is restored when an exception unwinds the scope. */
     test_function mode_is_restored_after_an_exception() {
       var pty = try std.test.expect_ok(Pty());
-      var before = try std.test.expect_ok(read_attributes(pty.slave));
+      var before = try std.test.expect_system(read_attributes(pty.slave));
 
       var threw: bool = false;
       match enter_raw_then_throw(pty.slave) {
@@ -218,7 +218,7 @@ public module std {
       };
       try std.test.assert(threw, "the helper throws from inside the mode");
 
-      var after = try std.test.expect_ok(read_attributes(pty.slave));
+      var after = try std.test.expect_system(read_attributes(pty.slave));
       try std.test.assert(has_echo(after), "echo is back after unwinding");
       try std.test.assert(after.equals(before), "unwinding restores the saved settings");
     }
@@ -226,12 +226,12 @@ public module std {
     /** Checks a moved guard restores once, from its new owner. */
     test_function moved_guard_restores_exactly_once() {
       var pty = try std.test.expect_ok(Pty());
-      var before = try std.test.expect_ok(read_attributes(pty.slave));
+      var before = try std.test.expect_system(read_attributes(pty.slave));
 
       var mode = try std.test.expect_ok(TerminalMode(pty.slave, Mode.Raw, SignalPolicy.AsInput));
       consume(mode);
 
-      var after = try std.test.expect_ok(read_attributes(pty.slave));
+      var after = try std.test.expect_system(read_attributes(pty.slave));
       try std.test.assert(after.equals(before), "the consumer's scope exit restored the terminal");
       // The zeroed original leaves scope at the end of this test and must
       // neither crash nor touch the terminal.
@@ -262,7 +262,7 @@ public module std {
       var mode = try std.test.expect_ok(TerminalMode(pty.slave, Mode.Raw, SignalPolicy.AsInput));
       write_byte(pty.master, b'a');
 
-      var key = try std.test.expect_ok(read_key(pty.slave, std.time.create_duration_millis(1000)));
+      var key = try std.test.expect_system(read_key(pty.slave, std.time.create_duration_millis(1000)));
       match key {
         Option.Some(byte) => {
           try std.test.assert_eq(byte, b'a');
@@ -278,10 +278,10 @@ public module std {
       var pty = try std.test.expect_ok(Pty());
       var mode = try std.test.expect_ok(TerminalMode(pty.slave, Mode.Raw, SignalPolicy.AsInput));
 
-      var waited = try std.test.expect_ok(read_key(pty.slave, std.time.create_duration_millis(20)));
+      var waited = try std.test.expect_system(read_key(pty.slave, std.time.create_duration_millis(20)));
       try std.test.assert(is_none(waited), "nothing typed within the timeout");
 
-      var immediate = try std.test.expect_ok(try_read_key(pty.slave));
+      var immediate = try std.test.expect_system(try_read_key(pty.slave));
       try std.test.assert(is_none(immediate), "nothing pending");
     }
 
@@ -295,8 +295,8 @@ public module std {
       // the input is gone, and read_key says so by throwing.
       var threw: bool = false;
       match read_key(pty.slave, std.time.create_duration_millis(1000)) {
-        _Result.Ok(_) => {},
-        _Result.Err(e) => {
+        SystemResult.Ok(_) => {},
+        SystemResult.Error(e) => {
           threw = true;
         }
       };
@@ -309,7 +309,7 @@ public module std {
       var mode = try std.test.expect_ok(TerminalMode(pty.slave, Mode.Raw, SignalPolicy.AsInput));
       write_byte(pty.master, 3u8);
 
-      var key = try std.test.expect_ok(read_key(pty.slave, std.time.create_duration_millis(1000)));
+      var key = try std.test.expect_system(read_key(pty.slave, std.time.create_duration_millis(1000)));
       match key {
         Option.Some(byte) => {
           try std.test.assert_eq(byte, 3u8);
@@ -330,7 +330,7 @@ public module std {
       var mode = try std.test.expect_ok(TerminalMode(pty.slave, Mode.Raw, SignalPolicy.Passthrough));
       write_byte(pty.master, 3u8);
 
-      var key = try std.test.expect_ok(read_key(pty.slave, std.time.create_duration_millis(100)));
+      var key = try std.test.expect_system(read_key(pty.slave, std.time.create_duration_millis(100)));
       try std.test.assert(is_none(key), "Passthrough never delivers Ctrl-C as a byte");
     }
 

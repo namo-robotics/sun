@@ -1529,3 +1529,29 @@ TEST(Errors_Results, network_result_propagation) {
   )"),
             0);
 }
+
+/** Terminal errors propagate into the broad result with their message intact.
+ */
+TEST(Errors_Results, terminal_result_propagation) {
+  EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
+    using std;
+    /** Propagates a failed terminal query without changing terminal state. */
+    function size() Result<std.terminal.Size> {
+      return Result.Ok(try std.terminal.get_size(-1));
+    }
+    /** Checks the original error code and owned diagnostic message. */
+    function main() i32 {
+      return match size() {
+        Result.Error(error) => {
+          var message = error.message();
+          if (error.code() == 0 or not message.equals_literal("failed to read terminal size")) {
+            return 1;
+          }
+          0;
+        },
+        _ => 2
+      };
+    }
+  )"),
+            0);
+}
