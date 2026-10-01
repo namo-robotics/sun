@@ -531,10 +531,10 @@ TEST(Operators_Literals, string_hex_escapes_preserve_bytes) {
       var alloc = HeapAllocator();
       var s = String(alloc, "\x00\x7f\x80\xfF\x41F\\x08");
       if (s.length() != 10) { return 1; }
-      if ((match s.at(0) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != 0 or (match s.at(1) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != 127 or (match s.at(2) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != 128 or
-          (match s.at(3) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != 255 or (match s.at(4) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != b'A' or (match s.at(5) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != b'F' or
-          (match s.at(6) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != b'\\' or (match s.at(7) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != b'x' or
-          (match s.at(8) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != b'0' or (match s.at(9) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != b'8') { return 2; }
+      if ((match s.at(0) { AccessResult.Ok(value) => value, AccessResult.OutOfBounds(_) => { return -100; } }) != 0 or (match s.at(1) { AccessResult.Ok(value) => value, AccessResult.OutOfBounds(_) => { return -100; } }) != 127 or (match s.at(2) { AccessResult.Ok(value) => value, AccessResult.OutOfBounds(_) => { return -100; } }) != 128 or
+          (match s.at(3) { AccessResult.Ok(value) => value, AccessResult.OutOfBounds(_) => { return -100; } }) != 255 or (match s.at(4) { AccessResult.Ok(value) => value, AccessResult.OutOfBounds(_) => { return -100; } }) != b'A' or (match s.at(5) { AccessResult.Ok(value) => value, AccessResult.OutOfBounds(_) => { return -100; } }) != b'F' or
+          (match s.at(6) { AccessResult.Ok(value) => value, AccessResult.OutOfBounds(_) => { return -100; } }) != b'\\' or (match s.at(7) { AccessResult.Ok(value) => value, AccessResult.OutOfBounds(_) => { return -100; } }) != b'x' or
+          (match s.at(8) { AccessResult.Ok(value) => value, AccessResult.OutOfBounds(_) => { return -100; } }) != b'0' or (match s.at(9) { AccessResult.Ok(value) => value, AccessResult.OutOfBounds(_) => { return -100; } }) != b'8') { return 2; }
       return 0;
     }
   )"),

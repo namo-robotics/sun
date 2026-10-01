@@ -45,28 +45,28 @@ public module std {
      * this hands back a reference — copying the element out would leave two
      * owners of anything it holds.
      */
-    public const method get(index: i64) _Result<ref T, IndexOutOfBoundsError> {
+    public const method get(index: i64) AccessResult<ref T> {
       if (index < 0) {
-        return _Result.Err(IndexOutOfBoundsError(index));
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
       }
       if (index >= this.size_) {
-        return _Result.Err(IndexOutOfBoundsError(index));
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
       }
-      return _Result.Ok(unsafe { this.get_unchecked(index); });
+      return AccessResult.Ok(unsafe { this.get_unchecked(index); });
     }
 
     /**
      * Set element at index (bounds-checked)
      */
-    public method set(index: i64, value: T) _Result<void, IndexOutOfBoundsError> {
+    public method set(index: i64, value: T) AccessResult<void> {
       if (index < 0) {
-        return _Result.Err(IndexOutOfBoundsError(index));
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
       }
       if (index >= this.size_) {
-        return _Result.Err(IndexOutOfBoundsError(index));
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
       }
       unsafe { _store<T>(this.data.get_raw(), index, value); };
-      return _Result.Ok;
+      return AccessResult.Ok;
     }
 
     // ========================================================================
@@ -138,20 +138,20 @@ public module std {
     /**
      * Write elements from another buffer into this buffer (bounds-checked)
      */
-    public method write_from(source: const ref ContiguousBuffer<T>, src_offset: i64, dst_offset: i64, count: i64) _Result<void, IndexOutOfBoundsError> {
+    public method write_from(source: const ref ContiguousBuffer<T>, src_offset: i64, dst_offset: i64, count: i64) AccessResult<void> {
       // Validate source bounds
       if (src_offset < 0) {
-        return _Result.Err(IndexOutOfBoundsError(src_offset));
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(src_offset));
       }
       if (src_offset + count > source.size()) {
-        return _Result.Err(IndexOutOfBoundsError(src_offset));
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(src_offset));
       }
       // Validate destination bounds
       if (dst_offset < 0) {
-        return _Result.Err(IndexOutOfBoundsError(dst_offset));
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(dst_offset));
       }
       if (dst_offset + count > this.size_) {
-        return _Result.Err(IndexOutOfBoundsError(dst_offset));
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(dst_offset));
       }
       // Copy elements using fast memcpy
       var byte_count: i64 = count * _sizeof<T>();
@@ -166,7 +166,7 @@ public module std {
           byte_count
         );
       };
-      return _Result.Ok;
+      return AccessResult.Ok;
     }
 
     /**
@@ -205,21 +205,21 @@ public module std {
     /**
      * Borrow first element (bounds-checked)
      */
-    public const method first() _Result<ref T, IndexOutOfBoundsError> {
+    public const method first() AccessResult<ref T> {
       if (this.size_ == 0) {
-        return _Result.Err(IndexOutOfBoundsError(0));
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(0));
       }
-      return _Result.Ok(unsafe { this.get_unchecked(0); });
+      return AccessResult.Ok(unsafe { this.get_unchecked(0); });
     }
 
     /**
      * Borrow last element (bounds-checked)
      */
-    public const method last() _Result<ref T, IndexOutOfBoundsError> {
+    public const method last() AccessResult<ref T> {
       if (this.size_ == 0) {
-        return _Result.Err(IndexOutOfBoundsError(0));
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(0));
       }
-      return _Result.Ok(unsafe { this.get_unchecked(this.size_ - 1); });
+      return AccessResult.Ok(unsafe { this.get_unchecked(this.size_ - 1); });
     }
 
     // ========================================================================

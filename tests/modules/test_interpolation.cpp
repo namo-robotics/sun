@@ -73,12 +73,12 @@ TEST(Modules_Interpolation, hex_escapes_preserve_bytes_around_expressions) {
     function main() i64 {
       var protocol = "http/1.1";
       var s = `\x08${protocol}\x00\x7f\x80\xfF\x41F\\x08`;
-      if (s.length() != 19 or (match s.at(0) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != 8) { return 1; }
-      if ((match s.at(1) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != b'h' or (match s.at(8) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != b'1' or
-          (match s.at(9) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != 0 or (match s.at(10) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != 127 or (match s.at(11) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != 128 or
-          (match s.at(12) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != 255 or (match s.at(13) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != b'A' or (match s.at(14) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != b'F' or
-          (match s.at(15) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != b'\\' or (match s.at(16) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != b'x' or
-          (match s.at(17) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != b'0' or (match s.at(18) { _Result.Ok(value) => value, _Result.Err(_) => { return -100; } }) != b'8') { return 2; }
+      if (s.length() != 19 or (match s.at(0) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) != 8) { return 1; }
+      if ((match s.at(1) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) != b'h' or (match s.at(8) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) != b'1' or
+          (match s.at(9) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) != 0 or (match s.at(10) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) != 127 or (match s.at(11) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) != 128 or
+          (match s.at(12) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) != 255 or (match s.at(13) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) != b'A' or (match s.at(14) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) != b'F' or
+          (match s.at(15) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) != b'\\' or (match s.at(16) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) != b'x' or
+          (match s.at(17) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) != b'0' or (match s.at(18) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) != b'8') { return 2; }
       return 0;
     }
   )"),

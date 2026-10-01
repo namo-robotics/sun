@@ -108,10 +108,10 @@ TEST_F(Modules_GenericRegressions, RawByteStringLiterals) {
     var value = String(alloc, "\xff\xfe\0\x80");
     if (value.length() != 4) { return 1; }
     if (true) {
-      if ((match value.at(0) { _Result.Ok(byte) => byte, _Result.Err(_) => { return 6; } }) != 255u8) { return 2; }
-      if ((match value.at(1) { _Result.Ok(byte) => byte, _Result.Err(_) => { return 6; } }) != 254u8) { return 3; }
-      if ((match value.at(2) { _Result.Ok(byte) => byte, _Result.Err(_) => { return 6; } }) != 0u8) { return 4; }
-      if ((match value.at(3) { _Result.Ok(byte) => byte, _Result.Err(_) => { return 6; } }) != 128u8) { return 5; }
+      if ((match value.at(0) { AccessResult.Ok(byte) => byte, AccessResult.OutOfBounds(_) => { return 6; } }) != 255u8) { return 2; }
+      if ((match value.at(1) { AccessResult.Ok(byte) => byte, AccessResult.OutOfBounds(_) => { return 6; } }) != 254u8) { return 3; }
+      if ((match value.at(2) { AccessResult.Ok(byte) => byte, AccessResult.OutOfBounds(_) => { return 6; } }) != 0u8) { return 4; }
+      if ((match value.at(3) { AccessResult.Ok(byte) => byte, AccessResult.OutOfBounds(_) => { return 6; } }) != 128u8) { return 5; }
     }
     return 0;
   )";

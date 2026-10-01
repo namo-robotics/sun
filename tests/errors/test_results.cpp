@@ -1225,3 +1225,42 @@ TEST(Errors_Results, rejects_discarded_library_result) {
   )"),
                                 "Error result must be handled");
 }
+
+/** Propagates buffer and string bounds errors into the broad standard result.
+ */
+TEST(Errors_Results, buffer_and_string_access_propagation) {
+  EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
+    using std;
+    /** Combines checked buffer writes, borrowed reads, and string byte reads. */
+    function read(index: i64) Result<i32> {
+      var alloc = make_heap_allocator();
+      var buffer = ContiguousBuffer<i32>(alloc, 1);
+      try buffer.set(0, 7);
+      var value: i32 = try buffer.get(index);
+      var text = String("A");
+      return Result.Ok(value + (try text.at(index)));
+    }
+    /** Propagates a string failure after successful buffer access. */
+    function read_string() Result<u8> {
+      var text = String("A");
+      return Result.Ok(try text.at(1));
+    }
+    /** Checks both success and the concrete propagated error category. */
+    function main() i32 {
+      var success = match read(0) {
+        Result.Ok(value) => value,
+        (_: const ref IError) => -100
+      };
+      var buffer_error = match read(1) {
+        Result.OutOfBounds(_) => 1,
+        _ => 0
+      };
+      var string_error = match read_string() {
+        Result.OutOfBounds(_) => 1,
+        _ => 0
+      };
+      return success + buffer_error + string_error - 74;
+    }
+  )"),
+            0);
+}

@@ -30,7 +30,7 @@ public module std {
       var dirs: i32 = 0;
       for (var e: std.io.DirEntry in entries) {
         // "." and ".." are excluded, so nothing starts with a dot here.
-        try std.test.assert((try std.test.expect_ok(e.name().at(0))) != b'.', "dot entries are excluded");
+        try std.test.assert((try std.test.expect_access(e.name().at(0))) != b'.', "dot entries are excluded");
         if (e.is_dir()) {
           dirs = dirs + 1;
         }

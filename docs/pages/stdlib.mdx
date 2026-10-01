@@ -1011,7 +1011,7 @@ enum Option<T> { Some(T), None }
 
 For fallible operations, prefer the result enums defined in `result.sun`:
 
-- `AccessResult<T>` contains `Ok(T)` or `OutOfBounds(IndexOutOfBoundsError)`.
+- `AccessResult<T>` contains `Ok(T)` or `OutOfBounds(IndexOutOfBoundsError)`. Checked vector, buffer, and string access operations use this narrow result.
   Checked vector operations use this precise result type.
 - `Result<T>` contains `Ok(T)` and named variants for standard error categories,
   including bounds, lookup, I/O, allocation, conversion, arithmetic, JSON, and
