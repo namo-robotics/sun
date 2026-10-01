@@ -166,10 +166,10 @@ public module tls {
           };
           var probe = TcpStream();
           match probe.connect_local(port_) {
-            _Result.Ok => {
+            SystemResult.Ok => {
               ready = true;
             },
-            _Result.Err(e) => {
+            SystemResult.Error(e) => {
               std.time.sleep(pause);
             }
           };

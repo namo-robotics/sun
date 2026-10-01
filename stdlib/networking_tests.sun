@@ -32,15 +32,15 @@ public module std {
       for (var mode: i32 = 0; mode < 3; mode = mode + 1) {
         var listener = TcpListener();
         if (mode == 0) {
-          try std.test.expect_success(listener.bind_port(0));
+          try std.test.expect_system_success(listener.bind_port(0));
         } else if (mode == 1) {
-          try std.test.expect_success(listener.bind_loopback(0));
+          try std.test.expect_system_success(listener.bind_loopback(0));
         } else {
-          try std.test.expect_success(listener.bind_addr(ipv4_loopback(), 0));
+          try std.test.expect_system_success(listener.bind_addr(ipv4_loopback(), 0));
         }
         try std.test.assert_eq(listener.get_fd(), 0);
         try std.test.assert(listener.is_open(), "a listener can own descriptor zero");
-        try std.test.expect_success(listener.listen(1));
+        try std.test.expect_system_success(listener.listen(1));
         listener.close();
         listener.close();
         try std.test.assert(not listener.is_open(), "the listener is closed");
@@ -49,51 +49,51 @@ public module std {
 
       // Occupy zero while opening the server, then release it for each client.
       var reserve = UdpSocket();
-      try std.test.expect_success(reserve.bind(ipv4_loopback(), 0));
+      try std.test.expect_system_success(reserve.bind(ipv4_loopback(), 0));
       var listener = TcpListener();
-      try std.test.expect_success(listener.bind_loopback(0));
-      try std.test.expect_success(listener.listen(1));
+      try std.test.expect_system_success(listener.bind_loopback(0));
+      try std.test.expect_system_success(listener.listen(1));
       reserve.close();
       for (var mode: i32 = 0; mode < 2; mode = mode + 1) {
         var stream = TcpStream();
         if (mode == 0) {
-          try std.test.expect_success(stream.connect_local((try std.test.expect_ok(listener.local_port()))));
+          try std.test.expect_system_success(stream.connect_local(try std.test.expect_system(listener.local_port())));
         } else {
-          try std.test.expect_success(stream.connect_ip(INADDR_LOOPBACK, (try std.test.expect_ok(listener.local_port()))));
+          try std.test.expect_system_success(stream.connect_ip(INADDR_LOOPBACK, try std.test.expect_system(listener.local_port())));
         }
         try std.test.assert_eq(stream.get_fd(), 0);
         try std.test.assert(stream.is_open(), "a connected stream can own descriptor zero");
-        var peer = try std.test.expect_ok(listener.accept());
-        try std.test.assert_eq((try std.test.expect_ok(stream.send_str("ping"))), 4);
+        var peer = try std.test.expect_system(listener.accept());
+        try std.test.assert_eq(try std.test.expect_system(stream.send_str("ping")), 4);
         stream.close();
         stream.close();
         try std.test.assert(not stream.is_open(), "the stream is closed");
         try std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, -1);
       }
 
-      try std.test.expect_success(reserve.bind(ipv4_loopback(), 0));
+      try std.test.expect_system_success(reserve.bind(ipv4_loopback(), 0));
       var client = TcpStream();
-      try std.test.expect_success(client.connect_local((try std.test.expect_ok(listener.local_port()))));
+      try std.test.expect_system_success(client.connect_local(try std.test.expect_system(listener.local_port())));
       reserve.close();
       if (true) {
-        var accepted = try std.test.expect_ok(listener.accept());
+        var accepted = try std.test.expect_system(listener.accept());
         try std.test.assert_eq(accepted.get_fd(), 0);
         try std.test.assert(accepted.is_open(), "an accepted stream can own descriptor zero");
-        try std.test.assert_eq((try std.test.expect_ok(accepted.send_str("ping"))), 4);
+        try std.test.assert_eq(try std.test.expect_system(accepted.send_str("ping")), 4);
       }
       try std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, -1);
 
       if (true) {
         var socket = UdpSocket();
-        try std.test.expect_success(socket.bind(ipv4_loopback(), 0));
+        try std.test.expect_system_success(socket.bind(ipv4_loopback(), 0));
         try std.test.assert_eq(socket.get_fd(), 0);
         try std.test.assert(socket.is_open(), "a UDP socket can own descriptor zero");
-        try std.test.assert((try std.test.expect_ok(socket.local_port())) > 0, "the UDP socket is bound");
+        try std.test.assert((try std.test.expect_system(socket.local_port())) > 0, "the UDP socket is bound");
         socket.close();
         socket.close();
         try std.test.assert(not socket.is_open(), "the UDP socket is closed");
         try std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, -1);
-        try std.test.expect_success(socket.bind(ipv4_loopback(), 0));
+        try std.test.expect_system_success(socket.bind(ipv4_loopback(), 0));
         try std.test.assert_eq(socket.get_fd(), 0);
       }
       try std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, -1);
@@ -108,19 +108,19 @@ public module std {
       if (true) {
         var sockets = Vec<TcpStream>(alloc, 1);
         var listener = TcpListener();
-        try std.test.expect_success(listener.bind_loopback(0));
-        try std.test.expect_success(listener.listen(1));
+        try std.test.expect_system_success(listener.bind_loopback(0));
+        try std.test.expect_system_success(listener.listen(1));
         var socket = TcpStream();
-        try std.test.expect_success(socket.connect_local((try std.test.expect_ok(listener.local_port()))));
-        var peer = try std.test.expect_ok(listener.accept());
+        try std.test.expect_system_success(socket.connect_local(try std.test.expect_system(listener.local_port())));
+        var peer = try std.test.expect_system(listener.accept());
         sockets.push(socket);
         var taken = try std.test.expect_access(sockets.remove(0));
         try std.test.assert_eq(sockets.size(), 0);
         sockets.clear();
         try std.test.assert(taken.is_open(), "the taken stream is open");
-        try std.test.assert_eq((try std.test.expect_ok(taken.send_str("ping"))), 4);
+        try std.test.assert_eq(try std.test.expect_system(taken.send_str("ping")), 4);
         var buf = ContiguousBuffer<u8>(alloc, 4);
-        try std.test.assert((try std.test.expect_ok(peer.recv(buf))) > 0, "the taken stream can send data");
+        try std.test.assert((try std.test.expect_system(peer.recv(buf))) > 0, "the taken stream can send data");
         taken.close();
         taken.close();
         try std.test.assert(not taken.is_open(), "the socket is closed");
@@ -136,13 +136,13 @@ public module std {
       if (true) {
         var sockets = Vec<TcpListener>(alloc, 1);
         var socket = TcpListener();
-        try std.test.expect_success(socket.bind_loopback(0));
+        try std.test.expect_system_success(socket.bind_loopback(0));
         sockets.push(socket);
         var taken = try std.test.expect_access(sockets.remove(0));
         try std.test.assert_eq(sockets.size(), 0);
         sockets.clear();
         try std.test.assert(taken.is_open(), "the taken socket is open");
-        try std.test.assert((try std.test.expect_ok(taken.local_port())) > 0, "the taken socket remains bound");
+        try std.test.assert((try std.test.expect_system(taken.local_port())) > 0, "the taken socket remains bound");
         taken.close();
         taken.close();
         try std.test.assert(not taken.is_open(), "the socket is closed");
@@ -158,13 +158,13 @@ public module std {
       if (true) {
         var sockets = Vec<UdpSocket>(alloc, 1);
         var socket = UdpSocket();
-        try std.test.expect_success(socket.bind(ipv4_loopback(), 0));
+        try std.test.expect_system_success(socket.bind(ipv4_loopback(), 0));
         sockets.push(socket);
         var taken = try std.test.expect_access(sockets.remove(0));
         try std.test.assert_eq(sockets.size(), 0);
         sockets.clear();
         try std.test.assert(taken.is_open(), "the taken socket is open");
-        try std.test.assert((try std.test.expect_ok(taken.local_port())) > 0, "the taken socket remains bound");
+        try std.test.assert((try std.test.expect_system(taken.local_port())) > 0, "the taken socket remains bound");
         taken.close();
         taken.close();
         try std.test.assert(not taken.is_open(), "the socket is closed");
@@ -179,21 +179,21 @@ public module std {
     test_function nonblocking_recv_reports_would_block() {
       var alloc = make_heap_allocator();
       var listener = TcpListener();
-      try std.test.expect_success(listener.bind_loopback(0));
-      try std.test.expect_success(listener.listen(1));
+      try std.test.expect_system_success(listener.bind_loopback(0));
+      try std.test.expect_system_success(listener.listen(1));
       var stream = TcpStream();
-      try std.test.expect_success(stream.connect_local((try std.test.expect_ok(listener.local_port()))));
-      try std.test.expect_success(stream.set_nonblocking(true));
+      try std.test.expect_system_success(stream.connect_local(try std.test.expect_system(listener.local_port())));
+      try std.test.expect_system_success(stream.set_nonblocking(true));
       var buf = ContiguousBuffer<u8>(alloc, 16);
       var would_block: bool = false;
       match stream.recv(buf) {
-        _Result.Ok(_) => {},
-        _Result.Err(e) => {
+        SystemResult.Ok(_) => {},
+        SystemResult.Error(e) => {
           would_block = is_would_block(e.code());
         }
       };
       try std.test.assert(would_block, "recv on an idle non-blocking stream reports would-block");
-      try std.test.expect_success(stream.set_nonblocking(false));
+      try std.test.expect_system_success(stream.set_nonblocking(false));
       stream.close();
       listener.close();
     }
@@ -209,8 +209,8 @@ public module std {
       var buf = ContiguousBuffer<u8>(alloc, 1);
       var recv_code: i32 = 0;
       match stream.recv(buf) {
-        _Result.Ok(_) => {},
-        _Result.Err(e) => {
+        SystemResult.Ok(_) => {},
+        SystemResult.Error(e) => {
           recv_code = e.code();
         }
       };
@@ -220,8 +220,8 @@ public module std {
       var listener = TcpListener();
       var listener_code: i32 = 0;
       match listener.set_nonblocking(true) {
-        _Result.Ok => {},
-        _Result.Err(e) => {
+        SystemResult.Ok => {},
+        SystemResult.Error(e) => {
           listener_code = e.code();
         }
       };
@@ -232,7 +232,7 @@ public module std {
     test_function resolves_localhost_to_loopback() {
       var alloc = make_heap_allocator();
       var host = String(alloc, "localhost");
-      try std.test.assert_eq((try std.test.expect_ok(resolve_host_ipv4(host))), INADDR_LOOPBACK);
+      try std.test.assert_eq(try std.test.expect_system(resolve_host_ipv4(host)), INADDR_LOOPBACK);
     }
 
     /** Checks unresolvable host throws. */
@@ -241,8 +241,8 @@ public module std {
       var host = String(alloc, "no-such-host.invalid");
       var threw: bool = false;
       match resolve_host_ipv4(host) {
-        _Result.Ok(_) => {},
-        _Result.Err(e) => {
+        SystemResult.Ok(_) => {},
+        SystemResult.Error(e) => {
           threw = true;
         }
       };

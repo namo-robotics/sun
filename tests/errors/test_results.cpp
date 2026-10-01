@@ -1498,3 +1498,34 @@ TEST(Errors_Results, file_result_propagation) {
   )"),
             0);
 }
+
+/** Network results propagate parsed addresses and their original error
+ * payloads. */
+TEST(Errors_Results, network_result_propagation) {
+  EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
+    using std;
+    /** Parses an IPv4 address through the broad standard result. */
+    function parse(text: static_ptr<u8>) Result<Ipv4Addr> {
+      var alloc = make_heap_allocator();
+      var input = String(alloc, text);
+      return Result.Ok(try parse_ipv4(input));
+    }
+    /** Checks an address and a malformed input without external network access. */
+    function main() i32 {
+      var valid = match parse("127.0.0.1") {
+        Result.Ok(address) => address.to_network_i32() == ipv4_loopback().to_network_i32(),
+        _ => false
+      };
+      var failed = match parse("256.0.0.1") {
+        Result.Error(error) => {
+          var message = error.message();
+          error.code() == -1 and message.equals_literal("malformed IPv4 address");
+        },
+        _ => false
+      };
+      if (not valid or not failed) { return 1; }
+      return 0;
+    }
+  )"),
+            0);
+}

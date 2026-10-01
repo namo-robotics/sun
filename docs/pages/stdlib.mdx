@@ -859,7 +859,9 @@ C's `tm_year`/`tm_mon` offsets. It also carries `day`, `hour`, `minute`,
 ## Networking
 
 TCP and UDP sockets and hostname resolution, from `networking.sun`. For TLS
-and HTTPS see [TLS & HTTPS](/tls).
+and HTTPS see [TLS & HTTPS](/tls). Fallible networking and HTTP operations
+return `SystemResult<T>`. These examples use `try` inside a function returning
+a compatible result enum.
 
 ```sun
 using std;
@@ -867,41 +869,41 @@ using std;
 // Client
 var stream = TcpStream();
 var host = String(alloc, "example.com");
-stream.connect_host(host, 80);       // resolve a name, then connect
-stream.connect_ip(ip, 80);           // or an address already in hand
-stream.connect_local(8080);          // or 127.0.0.1
-stream.set_nonblocking(true);         // configure the chosen connection
+try stream.connect_host(host, 80);       // resolve a name, then connect
+try stream.connect_ip(ip, 80);           // or an address already in hand
+try stream.connect_local(8080);          // or 127.0.0.1
+try stream.set_nonblocking(true);         // configure the chosen connection
 
-stream.send_str("ping");
-stream.send_string(message);
+try stream.send_str("ping");
+try stream.send_string(message);
 var buf = ContiguousBuffer<u8>(alloc, 4096);
-var n = stream.recv(buf);            // bytes read; 0 at end of stream
+var n = try stream.recv(buf);            // bytes read; 0 at end of stream
 stream.close();
 
 // Server
 var listener = TcpListener();
-listener.bind_port(8080);            // 0.0.0.0; bind_loopback for 127.0.0.1
-listener.set_nonblocking(true);       // configure after binding
-listener.listen(128);
-var client = listener.accept();
-client.set_nonblocking(true);         // accepted streams configure themselves
+try listener.bind_port(8080);            // 0.0.0.0; bind_loopback for 127.0.0.1
+try listener.set_nonblocking(true);       // configure after binding
+try listener.listen(128);
+var client = try listener.accept();
+try client.set_nonblocking(true);         // accepted streams configure themselves
 ```
 
 `resolve_host_ipv4` does name resolution on its own, returning the first A
 record in network byte order — the form `connect_ip` takes:
 
 ```sun
-var ip: i32 = resolve_host_ipv4(host);
+var ip: i32 = try resolve_host_ipv4(host);
 ```
 
-It throws when the name does not resolve or has no IPv4 address. Socket
-operations also throw the positive libc `errno` value through `IError.code()`;
+Resolution returns `SystemResult.Error` when the name does not resolve or has
+no IPv4 address. Socket failures carry the positive libc `errno` value in `Error.code()`;
 they do not use `-1` as an error code.
 
 For a single-threaded event loop, connect a stream or bind a listener first,
 then call `set_nonblocking(true)` and register `get_fd()` with a `Poller`. Wait
 with a `Duration`, handle each returned `Event`, and keep reading, writing, or
-accepting until an operation throws an error for which
+accepting until an operation returns `SystemResult.Error(e)` for which
 `is_would_block(e.code())` is true. An accepted `TcpStream` has its own
 descriptor, so configure and register it separately. Calling
 `set_nonblocking(false)` restores blocking behavior without changing unrelated
@@ -917,12 +919,12 @@ returns.
 
 ```sun
 var lan = Ipv4Addr(192, 168, 1, 10);     // from octets
-var addr = parse_ipv4(text);             // from a String; throws if malformed
+var addr = try parse_ipv4(text);             // propagate an error if malformed
 var any = ipv4_any();                    // 0.0.0.0
 var home = ipv4_loopback();              // 127.0.0.1
 println(lan.to_string(alloc));           // "192.168.1.10"
-stream.connect_addr(lan, 80);            // TCP takes it too
-listener.bind_addr(any, 8080);
+try stream.connect_addr(lan, 80);            // TCP takes it too
+try listener.bind_addr(any, 8080);
 ```
 
 ### UDP
@@ -931,7 +933,7 @@ listener.bind_addr(any, 8080);
 call. `bind` creates the socket, so it always comes first; binding port 0
 lets the OS pick a free port — right for a send-only socket — and
 `local_port()` reads the pick back. Binds are exclusive by default: an
-occupied address throws an `Error` with the native `EADDRINUSE` code. A
+occupied address returns an `Error` with the native `EADDRINUSE` code. A
 failed bind leaves the socket closed, so callers can retry another port.
 Pass `true` as the third argument, `socket.bind(any, port, true)`, to enable
 `SO_REUSEADDR` for shared listeners. Each socket sharing the address must
@@ -942,15 +944,15 @@ using std;
 
 var socket = UdpSocket();
 var any = ipv4_any();
-socket.bind(any, 0);
-var port: i32 = socket.local_port();
+try socket.bind(any, 0);
+var port: i32 = try socket.local_port();
 
 var dest = Ipv4Addr(192, 168, 1, 20);
-socket.send_str_to("ping", dest, 9000);      // a literal
-socket.send_to(data, len, dest, 9000);       // raw bytes
+try socket.send_str_to("ping", dest, 9000);      // a literal
+try socket.send_to(data, len, dest, 9000);       // raw bytes
 
 var buf = ContiguousBuffer<u8>(alloc, 2048);
-var datagram = socket.recv_from(buf);        // one datagram, cut to fit buf
+var datagram = try socket.recv_from(buf);        // one datagram, cut to fit buf
 datagram.length();                           // bytes received
 datagram.addr();                             // sender's Ipv4Addr
 datagram.port();                             // sender's port
@@ -958,7 +960,7 @@ socket.close();
 ```
 
 A blocking `recv_from` can be given a deadline with
-`set_recv_timeout(duration)`; when it expires the call throws an error for
+`set_recv_timeout(duration)`; when it expires the call returns an error for
 which `is_would_block(e.code())` is true. `set_nonblocking(true)` and a
 `Poller` work here the same way they do for TCP.
 
@@ -968,13 +970,13 @@ sent to the group on its bound port:
 
 ```sun
 var socket = UdpSocket();
-socket.bind(ipv4_any(), 9000, true);
+try socket.bind(ipv4_any(), 9000, true);
 var group = Ipv4Addr(239, 255, 0, 1);
 var iface = ipv4_any();
-socket.join_multicast(group, iface);
-socket.set_multicast_ttl(1);        // how many router hops sends may cross
-socket.set_multicast_loop(true);    // hear this host's own sends
-socket.leave_multicast(group, iface);
+try socket.join_multicast(group, iface);
+try socket.set_multicast_ttl(1);        // how many router hops sends may cross
+try socket.set_multicast_loop(true);    // hear this host's own sends
+try socket.leave_multicast(group, iface);
 ```
 
 IPv4 is the only supported address family for now. TCP sockets have no
@@ -988,7 +990,7 @@ the response.
 
 ```sun
 var server = HttpServer(alloc);
-server.bind(8080);
+try server.bind(8080);
 server.serve((req: ref HttpRequest, resp: ref HttpResponse) => void {
     if (req.path.equals_literal("/")) {
         resp.set_body("<h1>Hello</h1>");
@@ -1020,7 +1022,7 @@ For fallible operations, prefer the result enums defined in `result.sun`:
 - `ConversionResult<T>` reports `ConversionError` through its `Error` variant.
 - `ArithmeticResult<T>` contains `Ok(T)`, `Overflow(OverflowError)`, and `DivisionByZero(DivisionByZeroError)`. Use `_ => ...` to handle all remaining variants in a match.
 - `ProtoResult<T>` contains `Ok(T)` or `Error(ProtoDecodeError)` for wire reads and generated protobuf decoders.
-- `SystemResult<T>` contains `Ok(T)` or `Error(Error)` for environment, process, file, and polling operations.
+- `SystemResult<T>` contains `Ok(T)` or `Error(Error)` for environment, process, file, polling, networking, and HTTP operations.
 - `Result<T>` contains `Ok(T)` and named variants for standard error categories,
   including bounds, lookup, I/O, allocation, conversion, arithmetic, JSON, and
   protocol decoding errors. Use it when combining several APIs.
