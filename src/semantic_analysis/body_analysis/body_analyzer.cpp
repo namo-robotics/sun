@@ -47,7 +47,8 @@ static void checkAllPathsReturn(const PrototypeAST& proto,
 }
 
 /** Turns a test's bare success returns into unit result values. */
-static void completeTestReturns(sun::ast::ExprAST& expression) {
+static void completeTestReturns(sun::ast::ExprAST& expression,
+                                const std::string& successVariant) {
   using namespace sun::ast;
   if (expression.getType() == ASTNodeType::FUNCTION ||
       expression.getType() == ASTNodeType::LAMBDA)
@@ -56,13 +57,14 @@ static void completeTestReturns(sun::ast::ExprAST& expression) {
       returned && !returned->hasValue()) {
     returned->forEachChildSlot([&](std::unique_ptr<ExprAST>& value) {
       value = std::make_unique<MemberAccessAST>(
-          std::make_unique<VariableReferenceAST>("_Result"), "Ok");
+          std::make_unique<VariableReferenceAST>("$test_result"),
+          successVariant);
       value->setLocation(returned->getLocation());
     });
     return;
   }
   sun::ast::forEachChild(expression, [&](const ExprAST& child) {
-    completeTestReturns(const_cast<ExprAST&>(child));
+    completeTestReturns(const_cast<ExprAST&>(child), successVariant);
   });
 }
 
@@ -200,9 +202,8 @@ void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
   const bool fallibleInit = ctx_.getCurrentClass() &&
                             proto.getName() == "init" && scopeReturnType &&
                             !scopeReturnType->isVoid();
-  const bool resultTest =
-      func.isTest() && scopeReturnType && !scopeReturnType->isVoid();
-  if (fallibleInit || resultTest) {
+  const bool resultTest = func.isTest();
+  if (fallibleInit) {
     auto result =
         std::dynamic_pointer_cast<sun::types::EnumType>(scopeReturnType);
     if (!result ||
@@ -214,8 +215,34 @@ void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
                        func.getLocation());
   }
 
-  if (resultTest)
-    completeTestReturns(const_cast<BlockExprAST&>(func.getBody()));
+  std::shared_ptr<sun::types::EnumType> testResult;
+  std::string testSuccess;
+  if (resultTest) {
+    testResult =
+        std::dynamic_pointer_cast<sun::types::EnumType>(scopeReturnType);
+    if (!testResult || testResult->getVariants().size() < 2 ||
+        !testResult->getVariants().front().payloadTypes.empty())
+      logAndThrowError(
+          "A test function must return an enum with an empty first success "
+          "variant",
+          func.getLocation());
+    if (proto.getReturnType()->baseName != "_Result") {
+      for (size_t i = 1; i < testResult->getVariants().size(); ++i) {
+        const auto& payload = testResult->getVariants()[i].payloadTypes;
+        auto error = payload.size() == 1
+                         ? std::dynamic_pointer_cast<sun::types::ClassType>(
+                               payload.front())
+                         : nullptr;
+        if (!error ||
+            !error->implementsInterface(*ctx_.types()->errorInterface))
+          logAndThrowError(
+              "Test failure variants must own a concrete IError payload",
+              func.getLocation());
+      }
+    }
+    testSuccess = testResult->getVariants().front().name;
+    completeTestReturns(const_cast<BlockExprAST&>(func.getBody()), testSuccess);
+  }
 
   // Enter the function scope with its diagnostic signature.
   // Pass canThrow flag so throw expressions can be validated. A const method
@@ -226,6 +253,7 @@ void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
     scopeReturnType = sema_.typeResolver().createConstView(scopeReturnType);
   ctx_.enterFunctionScope(funcSig, proto.getQualifiedName(), proto.canThrow(),
                           scopeReturnType);
+  if (resultTest) ctx_.currentScope().declareEnum("$test_result", testResult);
 
   // Declare 'this' for methods (when we're inside a class context); it is
   // immutable inside a const method
@@ -302,7 +330,7 @@ void BodyAnalyzer::analyzeFunction(sun::ast::FunctionAST& func) {
       !sun::semantic_analysis::alwaysExits(func.getBody())) {
     auto success = std::make_unique<sun::ast::ReturnExprAST>();
     success->setLocation(func.getLocation());
-    if (resultTest) completeTestReturns(*success);
+    if (resultTest) completeTestReturns(*success, testSuccess);
     analyzeReturnExpr(*success);
     const_cast<BlockExprAST&>(func.getBody()).addExpression(std::move(success));
   }

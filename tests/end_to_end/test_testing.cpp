@@ -308,3 +308,52 @@ TEST(EndToEnd_Testing, returned_errors_fail_tests) {
   const char* argv[] = {"program", "--test-sequential", nullptr};
   EXPECT_EQ(executeTestsWithStdlib(program, 2, const_cast<char**>(argv)), 1);
 }
+
+/** Custom result tests use declaration-order success and report concrete
+ * errors. */
+TEST(EndToEnd_Testing, custom_result_tests) {
+  const std::string program = R"(
+    using std;
+    /** Combines assertions with failures from system calls. */
+    enum Outcome { Passed, Assertion(std.test.AssertionError), System(Error) }
+    /** Returns success implicitly. */
+    test_function implicit_success() Outcome {
+      try std.test.assert_eq(2 + 2, 4);
+    }
+    /** Returns success through a bare return. */
+    test_function early_success() Outcome { return; }
+    /** Accepts a result enum supplied by the standard library. */
+    test_function library_success() SystemResult<void> { return; }
+    /** Coexists with the default builtin result convention. */
+    test_function legacy_success() { try std.test.assert(true); }
+  )";
+  EXPECT_EQ(executeTestsWithStdlib(program), 0);
+  const char* argv[] = {"program", "--test-sequential", nullptr};
+  EXPECT_EQ(executeTestsWithStdlib(program, 2, const_cast<char**>(argv)), 0);
+}
+
+/** A concrete failure in a custom test result fails the test run. */
+TEST(EndToEnd_Testing, custom_result_failure_exits_one) {
+  const std::string program = R"(
+    using std;
+    /** Reports assertion failures directly in a test-owned enum. */
+    enum Outcome { Passed, Assertion(std.test.AssertionError) }
+    /** Propagates an assertion failure through a custom result. */
+    test_function fails() Outcome { try std.test.assert(false, "custom failure"); }
+  )";
+  EXPECT_EQ(executeTestsWithStdlib(program), 1);
+  const char* argv[] = {"program", "--test-sequential", nullptr};
+  EXPECT_EQ(executeTestsWithStdlib(program, 2, const_cast<char**>(argv)), 1);
+}
+
+/** Failure payloads cannot silently evade the test runner's error matching. */
+TEST(EndToEnd_Testing, rejects_non_error_test_payload) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeTestsWithStdlib(R"(
+    /** An integer is not a reportable test failure. */
+    enum Outcome { Passed, Failure(i32) }
+    /** Attempts to return an unsupported error payload. */
+    test_function invalid() Outcome { return Outcome.Failure(1); }
+  )"),
+      "Test failure variants must own a concrete IError payload");
+}

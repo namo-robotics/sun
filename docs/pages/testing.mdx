@@ -33,11 +33,28 @@ PASS geometry.addsOne
 ## Declaring tests
 
 A test is declared like a function, with `test_function` in place of
-`function`. Tests take no parameters. A test can explicitly return
-`_Result<void, E>`; reaching its end or writing `return;` produces `_Result.Ok`.
-The runner handles returned errors in both sequential and parallel modes.
-`E` can be a concrete class implementing `IError`, or an enum whose immediate
-payloads implement `IError`.
+`function`. Tests take no parameters. A test can explicitly return a result enum
+whose first variant has no payload and whose remaining variants each own one
+concrete class implementing `IError`. Reaching its end or writing `return;`
+produces the first variant, regardless of its name. Both sequential and parallel
+runners report any failure variant using its error message.
+
+```sun
+/** Groups the failures this test can propagate. */
+enum TestOutcome {
+    Passed,
+    Assertion(std.test.AssertionError),
+    System(std.Error)
+}
+
+/** Uses a custom success name and propagates assertion failures. */
+test_function arithmetic() TestOutcome {
+    try std.test.assert_eq(2 + 2, 4);
+}
+```
+
+Explicit `_Result<void, E>` remains supported. Its `E` can be a concrete class
+implementing `IError`, or an enum whose immediate payloads implement `IError`.
 
 Tests default to `_Result<void, std.test.AssertionError>`. Use `try` to propagate
 an assertion failure. An explicit error enum lets a test also propagate concrete

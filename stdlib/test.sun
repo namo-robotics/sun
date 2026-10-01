@@ -277,6 +277,14 @@ public module std.test {
     };
   }
 
+  /** Runs a structural result test and groups its concrete error payloads. */
+  public function run_result<R>(name: static_ptr<u8>, fn: function () R) TestResult {
+    return match fn() {
+      (error: const ref IError) => TestResult(name, false, error.message()),
+      _ => TestResult(name, true, String(""))
+    };
+  }
+
   /**
    * Print one result line: "PASS name" or "FAIL name: message". Returns
    * whether the test passed. Only the main thread reports, so lines from

@@ -768,12 +768,7 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
           "test functions return _Result<void, E>; 'throws' is not supported");
     if (curTok.kind != TokenKind::BRACE_OPEN) {
       retType = parseTypeAnnotation();
-      if (!retType || retType->baseName != "_Result" ||
-          retType->typeArguments.size() != 2 ||
-          retType->typeArguments[0]->baseName != "void")
-        parsingError(
-            "a test function does not declare a return type other than "
-            "_Result<void, E>");
+      if (!retType) parsingError("expected a test result type");
     }
   } else if (isLifecycleMethod) {
     retType = sun::ast::TypeAnnotation("void");

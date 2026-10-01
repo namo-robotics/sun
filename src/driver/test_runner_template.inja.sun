@@ -1,9 +1,9 @@
 // test_runner_template.inja.sun - Source template for the synthesized test
 // runner (see Driver::applyTestHandling). Embedded into the compiler at
 // build time and rendered with inja: `tests` is the list of collected
-// dotted test names, in declaration order.
+// dotted test names and runner adapters, in declaration order.
 //
-// Every test runs through std.test.run_one, each on its own thread by
+// Each test runs through its result adapter, on its own thread by
 // default; "--test-sequential" in argv runs them inline instead,
 // and "--test-filter <pattern>" (repeatable) picks which tests run at all.
 // Results are reported in declaration order either way, so the output is
@@ -19,17 +19,17 @@ function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
     var failed: i64 = 0;
     if (wants_sequential(argc, argv)) {
         {% for test in tests %}
-        if (is_selected("{{ test }}", argc, argv)) {
+        if (is_selected("{{ test.name }}", argc, argv)) {
             total = total + 1;
-            var r{{ loop.index }} = run_one("{{ test }}", {{ test }});
+            var r{{ loop.index }} = {{ test.runner }}("{{ test.name }}", {{ test.name }});
             if (report(r{{ loop.index }}) == false) { failed = failed + 1; }
         }
         {% endfor %}
     } else {
         var threads = Vec<Thread<TestResult>>(alloc, {{ length(tests) }});
         {% for test in tests %}
-        if (is_selected("{{ test }}", argc, argv)) {
-            threads.push(std.thread.spawn(() => TestResult { return run_one("{{ test }}", {{ test }}); }));
+        if (is_selected("{{ test.name }}", argc, argv)) {
+            threads.push(std.thread.spawn(() => TestResult { return {{ test.runner }}("{{ test.name }}", {{ test.name }}); }));
         }
         {% endfor %}
         total = threads.size();
