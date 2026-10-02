@@ -13,6 +13,11 @@
         "--completion-style=detailed"
     ],
     // === Formatting ===
+    "[json][jsonc]": {
+        "editor.tabSize": 2,
+        "editor.insertSpaces": true,
+        "editor.detectIndentation": false
+    },
     "C_Cpp.formatting": "clangFormat",
     "C_Cpp.clang_format_style": "file",
     "C_Cpp.clang_format_fallbackStyle": "Google",
