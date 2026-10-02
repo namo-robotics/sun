@@ -77,7 +77,7 @@ public module tls {
   /**
    * Decode a chunked body from raw[start..] into out
    */
-  function decode_chunked(raw: const ref String, start: i64, out: ref String) void throws IError {
+  function decode_chunked(raw: const ref String, start: i64, out: ref String) SystemResult<void> {
     var i: i64 = start;
     var n: i64 = raw.length();
     while (i < n) {
@@ -104,7 +104,7 @@ public module tls {
         i = i + 1;
       }
       if (saw_digit == false) {
-        throw Error(-1, "malformed chunked body");
+        return SystemResult.Error(Error(-1, "malformed chunked body"));
       }
       // Skip any chunk extension up to the end of the size line
       while (i < n and unsafe { raw.unsafe_at(i); } != b'\n') {
@@ -112,10 +112,10 @@ public module tls {
       }
       i = i + 1;
       if (size == 0) {
-        return;  // terminating chunk; any trailers are ignored
+        return SystemResult.Ok;  // terminating chunk; any trailers are ignored
       }
       if (i + size > n) {
-        throw Error(-1, "truncated chunked body");
+        return SystemResult.Error(Error(-1, "truncated chunked body"));
       }
       var end: i64 = i + size;
       while (i < end) {
@@ -124,7 +124,7 @@ public module tls {
       }
       i = i + 2;  // CRLF after the chunk data
     }
-    throw Error(-1, "chunked body missing terminating chunk");
+    return SystemResult.Error(Error(-1, "chunked body missing terminating chunk"));
   }
 
   /**
@@ -132,11 +132,11 @@ public module tls {
    * Public like http.sun's request parser, so code driving a TlsStream
    * itself can reuse the framing.
    */
-  public function parse_response(alloc: ref HeapAllocator, raw: const ref String, resp: ref HttpClientResponse) void throws IError {
+  public function parse_response(alloc: ref HeapAllocator, raw: const ref String, resp: ref HttpClientResponse) SystemResult<void> {
     var n: i64 = raw.length();
     var header_end: i64 = find_header_end(raw);
     if (header_end < 0) {
-      throw Error(-1, "malformed HTTP response: missing header terminator");
+      return SystemResult.Error(Error(-1, "malformed HTTP response: missing header terminator"));
     }
 
     // Status code: the digits after the first space of "HTTP/1.1 200 OK"
@@ -157,7 +157,7 @@ public module tls {
       i = i + 1;
     }
     if (saw_digit == false) {
-      throw Error(-1, "malformed HTTP response: no status code");
+      return SystemResult.Error(Error(-1, "malformed HTTP response: no status code"));
     }
     resp.status = _convert<i32>(status);
 
@@ -176,8 +176,8 @@ public module tls {
     var lower: String = resp.headers.clone(alloc);
     lower.to_lower();
     if (lower.contains("transfer-encoding: chunked")) {
-      decode_chunked(raw, body_start, resp.body);
-      return;
+      try decode_chunked(raw, body_start, resp.body);
+      return SystemResult.Ok;
     }
     var content_length: i64 = find_content_length(lower);
     var body_end: i64 = n;
@@ -189,6 +189,7 @@ public module tls {
       resp.body.append_char(unsafe { raw.unsafe_at(j); });
       j = j + 1;
     }
+    return SystemResult.Ok;
   }
 
   // -------------------------------------------------------------------
@@ -207,30 +208,30 @@ public module tls {
     /**
      * GET https://host{path} on port 443
      */
-    public method get(host: ref String, path: static_ptr<u8>) HttpClientResponse throws IError {
-      return this.get(host, 443, path);
+    public method get(host: ref String, path: static_ptr<u8>) ClientResult<HttpClientResponse> {
+      return ClientResult.Ok((try this.get(host, 443, path)));
     }
 
     /** Sends an HTTPS GET request and returns the parsed response. */
-    public method get(host: ref String, port: i32, path: static_ptr<u8>) HttpClientResponse throws IError {
+    public method get(host: ref String, port: i32, path: static_ptr<u8>) ClientResult<HttpClientResponse> {
       var req = String(this.alloc, "GET ");
       req.append(path);
       req.append(" HTTP/1.1");
       append_crlf(req);
       this.append_common_headers(req, host);
       append_crlf(req);
-      return this.exchange(host, port, req);
+      return ClientResult.Ok((try this.exchange(host, port, req)));
     }
 
     /**
      * POST a body to https://host{path} on port 443
      */
-    public method post(host: ref String, path: static_ptr<u8>, content_type: static_ptr<u8>, body: const ref String) HttpClientResponse throws IError {
-      return this.post(host, 443, path, content_type, body);
+    public method post(host: ref String, path: static_ptr<u8>, content_type: static_ptr<u8>, body: const ref String) ClientResult<HttpClientResponse> {
+      return ClientResult.Ok((try this.post(host, 443, path, content_type, body)));
     }
 
     /** Sends an HTTPS POST request with the supplied body and returns the response. */
-    public method post(host: ref String, port: i32, path: static_ptr<u8>, content_type: static_ptr<u8>, body: const ref String) HttpClientResponse throws IError {
+    public method post(host: ref String, port: i32, path: static_ptr<u8>, content_type: static_ptr<u8>, body: const ref String) ClientResult<HttpClientResponse> {
       var req = String(this.alloc, "POST ");
       req.append(path);
       req.append(" HTTP/1.1");
@@ -244,7 +245,7 @@ public module tls {
       append_crlf(req);
       append_crlf(req);
       req.append(body);
-      return this.exchange(host, port, req);
+      return ClientResult.Ok((try this.exchange(host, port, req)));
     }
 
     /** Appends the HTTP headers shared by requests from this client. */
@@ -261,16 +262,16 @@ public module tls {
     /**
      * Connect, send the request, read to end-of-stream, and parse
      */
-    method exchange(host: ref String, port: i32, request: ref String) HttpClientResponse throws IError {
+    method exchange(host: ref String, port: i32, request: ref String) ClientResult<HttpClientResponse> {
       var stream = TlsStream();
-      stream.connect(host, port);
-      stream.send_string(request);
+      try stream.connect(host, port);
+      try stream.send_string(request);
 
       var raw = String(this.alloc, "");
       var chunk = ContiguousBuffer<u8>(this.alloc, 8192);
       var done: bool = false;
       while (done == false) {
-        var n: i64 = stream.recv(chunk);
+        var n: i64 = (try stream.recv(chunk));
         if (n <= 0) {
           done = true;
         } else {
@@ -282,8 +283,8 @@ public module tls {
       stream.close();
 
       var resp = HttpClientResponse(this.alloc);
-      parse_response(this.alloc, raw, resp);
-      return resp;
+      try parse_response(this.alloc, raw, resp);
+      return ClientResult.Ok(resp);
     }
   }
 }

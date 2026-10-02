@@ -542,7 +542,7 @@ TEST(Classes, deinit_cannot_throw) {
     class A { var x: i32; init() { this.x = 1; } deinit() throws IError { this.x = 0; } }
     function main() i32 { return 0; }
   )"),
-                                "'deinit' cannot throw");
+                                "'throws' is no longer supported");
 }
 
 TEST(Classes, interface_cannot_declare_init) {
@@ -558,24 +558,19 @@ TEST(Classes, throwing_constructor) {
   auto value = executeString(R"(
     class NegativeError implements IError {
       init() {}
-      method code() i32 { return 1; }
-      method message() static_ptr<u8> { return "negative"; }
+      const method code() i32 { return 1; }
+      const method message() static_ptr<u8> { return "negative"; }
     }
     class Guarded {
         var n: i32;
-        init(n: i32) throws IError {
-            if (n < 0) { throw NegativeError(); }
+        init(n: i32) _Result<void, NegativeError> {
+            if (n < 0) { return _Result.Err(NegativeError()); }
             this.n = n;
         }
     }
     function main() i32 {
-        try {
-            var ok = Guarded(5);
-            var bad = Guarded(-1);
-            return 0;
-        } catch (e: ref IError) {
-            return 5;
-        }
+        match Guarded(5) { _Result.Ok(_) => {}, _ => { return -1; } };
+        return match Guarded(-1) { _Result.Ok(_) => 0, _Result.Err(_) => 5 };
     }
   )");
   EXPECT_EQ(value, 5);
@@ -1719,21 +1714,20 @@ TEST(Classes_FieldInitializers,
   const std::string preamble = R"(
     class Failure implements IError {
       init() {}
-      method code() i32 { return 1; }
-      method message() static_ptr<u8> { return "failed"; }
+      const method code() i32 { return 1; }
+      const method message() static_ptr<u8> { return "failed"; }
     }
-    function fail() i32 throws IError { throw Failure(); }
+    function fail() _Result<i32, Failure> { return _Result.Err(Failure()); }
   )";
   EXPECT_THROW(compileString(preamble + R"(
-    class Foo { var x: i32 = fail(); }
+    class Foo { var x: i32 = try fail(); }
     function main() i32 { return 0; }
   )"),
                SunError);
   EXPECT_EQ(executeString(preamble + R"(
-    class Foo { var x: i32 = fail(); init() throws IError {} }
+    class Foo { var x: i32 = try fail(); init() _Result<void, Failure> {} }
     function main() i32 {
-      try { var f = Foo(); return 0; }
-      catch (e: ref IError) { return 7; }
+      return match Foo() { _Result.Ok(_) => 0, _Result.Err(_) => 7 };
     }
   )"),
             7);
@@ -1771,18 +1765,17 @@ TEST(Classes_FieldInitializers,
     }
     class Failure implements IError {
       init() {}
-      method code() i32 { return 1; }
-      method message() static_ptr<u8> { return "failed"; }
+      const method code() i32 { return 1; }
+      const method message() static_ptr<u8> { return "failed"; }
     }
-    function fail() i32 throws IError { throw Failure(); }
+    function fail() _Result<i32, Failure> { return _Result.Err(Failure()); }
     class Foo {
       var resource: Resource = Resource(1);
-      var status: i32 = fail();
-      init(resource: Resource) throws IError {}
+      var status: i32 = try fail();
+      init(resource: Resource) _Result<void, Failure> {}
     }
     function main() i32 {
-      try { var f = Foo(Resource(10)); return 0; }
-      catch (e: ref IError) { return dropped; }
+      return match Foo(Resource(10)) { _Result.Ok(_) => 0, _Result.Err(_) => dropped };
     }
   )"),
             11);
@@ -1818,21 +1811,19 @@ TEST(Classes_FieldInitializers,
     }
     class Failure implements IError {
       init() {}
-      method code() i32 { return 1; }
-      method message() static_ptr<u8> { return "failed"; }
+      const method code() i32 { return 1; }
+      const method message() static_ptr<u8> { return "failed"; }
     }
-    function fail() void throws IError { throw Failure(); }
+    function fail() _Result<void, Failure> { return _Result.Err(Failure()); }
     class Foo {
       var resource: Resource = Resource(1);
-      init() throws IError {
-        try { fail(); }
-        catch (e: ref IError) { this.resource = Resource(10 + dropped); }
-        fail();
+      init() _Result<void, Failure> {
+        match fail() { _Result.Ok => {}, _Result.Err(_) => { this.resource = Resource(10 + dropped); } };
+        try fail();
       }
     }
     function main() i32 {
-      try { var f = Foo(); return 0; }
-      catch (e: ref IError) { return dropped; }
+      return match Foo() { _Result.Ok(_) => 0, _Result.Err(_) => dropped };
     }
   )"),
             11);

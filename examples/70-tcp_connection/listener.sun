@@ -1,39 +1,44 @@
 // Listener: accepts one connection and prints received message
 using std;
 
-/** Runs the example that exchanges messages over a TCP connection. */
-function main() i32 {
+/** Performs the operation and propagates returned failures. */
+function run() Result<void> {
   var alloc = make_heap_allocator();
   var buf = ContiguousBuffer<u8>(alloc, 256);
 
-  // Socket operations can fail, so they run inside a `try` block.
-  try {
-    var listener = TcpListener();
-    listener.bind_loopback(8080);
-    listener.listen(1);
-    println("Listening on 127.0.0.1:8080...");
+  var listener = TcpListener();
+  try listener.bind_loopback(8080);
+  try listener.listen(1);
+  println("Listening on 127.0.0.1:8080...");
 
-    var client = listener.accept();
-    println("Client connected");
+  var client = try listener.accept();
+  println("Client connected");
 
-    while (true) {
-      var n = client.recv(buf);
-      if (n <= 0) {
-        println("Connection closed");
-        break;
-      }
-      var str = String(alloc, buf, n);
-      println(str);
+  while (true) {
+    var n = try client.recv(buf);
+    if (n <= 0) {
+      println("Connection closed");
+      break;
     }
-
-    client.close();
-    listener.close();
-  } catch (e: ref IError) {
-    println("Network error:");
-    println(e.message());
-    return 1;
+    var str = try String(alloc, buf, n);
+    println(str);
   }
-  return 0;
+
+  client.close();
+  listener.close();
+
+  return Result.Ok;
+}
+
+/** Reports errors and sets the process exit code. */
+function main() i32 {
+  return match run() {
+    (e: const ref IError) => {
+      println(e.message());
+      1;
+    },
+    _ => 0
+  };
 }
 
 manifest {

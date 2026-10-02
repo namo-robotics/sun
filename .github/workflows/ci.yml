@@ -87,6 +87,7 @@ jobs:
           cmake --build build --target sun -j2 2>&1 | tee tmp/string-creation-ci/compiler-build.log
 
       - name: Run all languages on one CPU
+        shell: bash
         run: |
           BENCHMARK_CPU=$(python3 -c 'import os; print(min(os.sched_getaffinity(0)))')
           python3 benchmarks/string-creation/run.py \
@@ -249,6 +250,11 @@ jobs:
           for dir in examples/*/; do
             [ -f "${dir}build.sh" ] || continue
             name=$(basename "$dir")
+            # Restore this integration after sun_serve migrates: https://github.com/namo-robotics/sun/issues/353
+            if [ "$name" = "100-git_library" ]; then
+              echo "SKIP ${name}: waiting for upstream result migration (#353)"
+              continue
+            fi
             echo "::group::${name}"
             if ( cd "$dir" && bash build.sh && bash test.sh ); then
               echo "PASS ${name}"
@@ -347,6 +353,11 @@ jobs:
           for dir in examples/*/; do
             [ -f "${dir}build.sh" ] || continue
             name=$(basename "$dir")
+            # Restore this integration after sun_serve migrates: https://github.com/namo-robotics/sun/issues/353
+            if [ "$name" = "100-git_library" ]; then
+              echo "SKIP ${name}: waiting for upstream result migration (#353)"
+              continue
+            fi
             echo "::group::${name}"
             if ( cd "$dir" && bash build.sh && bash test.sh ); then
               echo "PASS ${name}"
@@ -616,20 +627,22 @@ jobs:
           cat > tls_test.sun << 'EOF'
           using std;
           using tls;
+          /** Fetch a page and report transport or HTTP failures. */
           function main() i32 {
               var alloc = make_heap_allocator();
               var client = HttpsClient(alloc);
               var host = String(alloc, "example.com");
-              try {
-                  var resp = client.get(host, "/");
-                  println(resp.status);
-                  if (resp.status == 200) { return 0; }
-                  return 1;
-              } catch (e: ref IError) {
-                  var msg = e.message();
-                  println(msg);
-                  return 2;
-              }
+              match client.get(host, "/") {
+                  ClientResult.Ok(resp) => {
+                      println(resp.status);
+                      if (resp.status == 200) { return 0; }
+                      return 1;
+                  },
+                  (e: const ref IError) => {
+                      println(e.message());
+                      return 2;
+                  }
+              };
           }
           manifest {
               libraries: ["stdlib.moon", "tls.moon"]
@@ -818,20 +831,22 @@ jobs:
           cat > tls_test.sun << 'PROGRAM'
           using std;
           using tls;
+          /** Fetch a page and report transport or HTTP failures. */
           function main() i32 {
               var alloc = make_heap_allocator();
               var client = HttpsClient(alloc);
               var host = String(alloc, "example.com");
-              try {
-                  var resp = client.get(host, "/");
-                  println(resp.status);
-                  if (resp.status == 200) { return 0; }
-                  return 1;
-              } catch (e: ref IError) {
-                  var msg = e.message();
-                  println(msg);
-                  return 2;
-              }
+              match client.get(host, "/") {
+                  ClientResult.Ok(resp) => {
+                      println(resp.status);
+                      if (resp.status == 200) { return 0; }
+                      return 1;
+                  },
+                  (e: const ref IError) => {
+                      println(e.message());
+                      return 2;
+                  }
+              };
           }
           manifest {
               libraries: ["stdlib.moon", "tls.moon"]

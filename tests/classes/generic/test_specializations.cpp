@@ -21,12 +21,12 @@ TEST(Classes_Generic_Specializations, vec_new_primitive_specialization) {
   auto value = executeStringWithStdlib(R"(
     using std;
 
-    function main() i32 throws IError {
+    function main() i32 {
         var allocator = make_heap_allocator();
         var v = Vec<u32>(allocator, 4);
         v.push(100);
         v.push(200);
-        return v.get(0) + v.get(1);
+        return (match v.get(0) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) + (match v.get(1) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } });
     }
   )");
   EXPECT_EQ(value, 300);
@@ -100,7 +100,7 @@ TEST(Classes_Generic_Specializations, map_new_key_value_specialization) {
   auto value = executeStringWithStdlib(R"(
     using std;
 
-    function main() i32 throws IError {
+    function main() i32 {
         var allocator = make_heap_allocator();
         var m = Map<i32, i32>(allocator, 16);
         m.insert(1, 100);

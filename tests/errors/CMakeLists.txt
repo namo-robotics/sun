@@ -1,5 +1,6 @@
 target_sources(sun_tests PRIVATE
     test_errors.cpp
+    test_results.cpp
     test_exception_ownership.cpp
     test_arithmetic_errors.cpp
 )

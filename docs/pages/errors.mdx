@@ -1,10 +1,138 @@
 # Error Handling
 
-Sun signals failure with exceptions. A function that can fail says so in its
-signature, `throw` raises an error object, and the error unwinds the stack to
-the nearest matching `catch`. There is no cost on the success path: a throwing
-function returns its plain value like any other, and the unwinding machinery
-only runs when something is actually thrown.
+## Returned error values
+
+Prefer standard-library result enums when using the standard library.
+`std.AccessResult<T>` is the precise result of checked vector, buffer, and string access operations: its
+variants are `Ok(T)` and `OutOfBounds(IndexOutOfBoundsError)`. `std.Result<T>`
+combines standard error categories for functions that call several APIs.
+Both are defined in `stdlib/result.sun`; the compiler does not identify them by name.
+
+`_Result<T, E>` remains builtin and needs no import. Its `Ok` payload contains
+the successful value, and its `Err` payload contains the concrete error.
+All these results follow ordinary enum ownership and cleanup rules, storing
+the active payload inline without allocating exception storage.
+
+
+```sun
+/** Describes invalid port numbers. */
+enum PortError { OutOfRange(i32) }
+
+/** Validates a port without allocating. */
+function validate_port(port: i32) _Result<i32, PortError> {
+    if (port < 1 or port > 65535) {
+        return _Result.Err(PortError.OutOfRange(port));
+    }
+    return _Result.Ok(port);
+}
+
+/** Propagates an invalid port to its caller. */
+function configure_port(port: i32) _Result<i32, PortError> {
+    var valid = try validate_port(port);
+    return _Result.Ok(valid);
+}
+```
+
+A plain call returns a result for storage, forwarding, or handling with `match`:
+
+```sun
+var port = match validate_port(input) {
+    _Result.Ok(value) => value,
+    _Result.Err(error) => 8080
+};
+```
+
+Builtin and standard results cannot be silently discarded, including by storing it in an unused
+local. Use `ignore_error(operation())` to explicitly discard a result; this drops
+its owned success or error payload.
+
+Prefix `try` works with any nonempty enum whose first declared variant has
+zero or one payload and whose remaining variants each have one payload. The
+first variant represents success: `try` extracts its payload, or produces
+`void` when it has none. Variant names and modules do not affect this rule.
+Declaration order is therefore part of an enum's public contract.
+
+```sun
+/** Returns a value or a bounds error. */
+enum AccessResult<T> {
+    Value(T),
+    OutOfBounds(IndexOutOfBoundsError)
+}
+```
+
+`try` evaluates its operand once. For a failure, it moves the payload into a
+compatible failure variant of the enclosing function's returned enum and cleans
+up live owners. When both enums are the same type, the original failure variant
+is preserved. Otherwise, each possible failure must have exactly one destination
+failure variant with the same payload type. The destination's first variant is
+never an error destination. Missing or ambiguous conversions are compile errors,
+even if a particular call happens to return success.
+
+For compatibility with explicit error sums such as `_Result<T, ErrorKind>`, a
+payload may also be wrapped in a unique immediate variant of the destination
+error payload enum when no direct destination matches. This does not search
+recursively through nested enums.
+
+Calls, indexing, and member access belong to the operand; binary operators do
+not: `try read_value() + 1` means `(try read_value()) + 1`. In a generic enum, a
+sole first-variant payload specialized to `void` becomes a unit success variant.
+
+`_Result<void, E>` represents success without a value, written `_Result.Ok`.
+`try operation();` propagates such an operation. A successful reference such as
+`_Result<ref T, E>` stays a borrow after propagation; its owner must remain alive.
+
+A fallible constructor can declare `init(...) AccessResult<void>`. Calling the
+class returns `AccessResult<Class>`, so `var object = try ClassName(args);`
+propagates a construction error. Any generic result enum can be used when its
+first type parameter holds the success value and its failure payload types do
+not depend on that parameter. Additional type parameters are preserved.
+
+Reaching the end of `init`, `return;`, and `return AccessResult.Ok;` all report
+success. Use `return AccessResult.OutOfBounds(error);` for failure. The first
+variant determines success; it need not be named `Ok`. Each failure variant
+must have one payload. Every successful path must initialize every field;
+failure drops initialized fields without calling `deinit` on the incomplete
+object. The unsafe `_init<T>` operation returns the constructor's original
+status type, such as `AccessResult<void>`, for explicit handling. Builtin
+`_Result<void, E>` constructors remain supported.
+
+Errors may also be borrowed explicitly, including through interface payloads:
+
+```sun
+/** Borrows errors whose storage belongs to another owner. */
+enum BorrowedResult {
+    Ok,
+    RetryableError(const ref IRetryableError),
+    OtherError(const ref IError)
+}
+```
+
+The owner must outlive every use of the borrowed result. A function cannot return
+an error view pointing into its own local storage. Custom enums support both `match` and prefix `try` when their variants satisfy
+the declaration-order rule above.
+
+See [typed match bindings](/match#typed-borrowed-bindings) for handling several
+concrete payload types through one interface pattern.
+
+## Checked integer arithmetic
+
+`checked_div(a, b)` and `checked_rem(a, b)` return
+`_Result<T, ArithmeticError>`, where `T` is the operands' promoted integer type.
+They evaluate each operand once and return an error for a zero divisor or
+signed minimum divided by `-1` (including remainder).
+
+```sun
+function quotient(a: i32, b: i32) _Result<i32, ArithmeticError> {
+    var value = try checked_div(a, b);
+    return _Result.Ok(value);
+}
+```
+
+## Error messages
+
+`IError.code()` and `IError.message()` are const methods. With the standard
+library, `message()` returns an owned `String` copy that may outlive the error.
+Without the standard library, the existing `static_ptr<u8>` contract is retained.
 
 ## Error Types
 
@@ -12,8 +140,8 @@ An error is a class that implements the builtin `IError` interface:
 
 ```sun
 interface IError {
-    method code() i32;
-    method message() String;
+    const method code() i32;
+    const method message() String;
 }
 ```
 
@@ -24,8 +152,8 @@ class, it can carry whatever fields and extra methods you need:
 class ParseError implements IError {
     var line_: i32;
     init(line: i32) { this.line_ = line; }
-    method code() i32 { return 1; }
-    method message() String { return String("bad input"); }
+    const method code() i32 { return 1; }
+    const method message() String { return String("bad input"); }
     method line() i32 { return this.line_; }
 }
 ```
@@ -36,99 +164,60 @@ of ready-made ones: `EmptyError`, `NotFoundError`, `IndexOutOfBoundsError`,
 `AllocationError` and `ConversionError`. `Error` accepts its message as a literal or as a `String`
 built at runtime, and keeps its own copy.
 
-## Throwing Functions
+## Standard-library results
 
-A function that can fail declares it with the `throws IError` suffix after its
-return type, and raises an error with `throw`. `throw` takes an error object,
-never a bare number:
+Fallible library calls return their concrete error types:
 
-```sun
-function divide(a: i32, b: i32) i32 throws IError {
-    if (b == 0) { throw DivisionByZeroError(); }
-    return a / b;
-}
-```
+| Operation | Error type |
+| --- | --- |
+| `Vec.get`, `Vec.set`, checked buffer indexing | `IndexOutOfBoundsError` |
+| `Map.get`, `Map.remove` | `NotFoundError` |
+| `LinkedList.pop_front`, `String.pop` | `EmptyError` |
+| `safe_convert` | `ConversionError` |
+| JSON readers and parsing | `JsonError` |
+| Protocol-buffer reads | `ProtoDecodeError` |
+| File, process, environment, and socket operations | `Error` |
+| Test assertions | `std.test.AssertionError` |
 
-A constructor can fail too: it has no return type, so the suffix stands
-alone — `init(args) throws IError { }`.
-
-A function without the suffix cannot throw. Calling a throwing function is
-only allowed from inside a `try` block or from another throwing function, so
-an error either gets handled or is visibly passed up the signature chain — it
-can never escape unnoticed:
+For a function that returns `_Result<void, Error>`, standalone propagation needs
+no grouping parentheses:
 
 ```sun
-// Propagates: no try needed, the error keeps unwinding to the caller.
-function half_of_quotient(a: i32, b: i32) i32 throws IError {
-    return divide(a, b) / 2;
-}
+try std.io.make_dir(path, 493);
+return _Result.Ok;
 ```
 
-## Handling Errors with try/catch
-
-`try` is block-form only. Each `catch` names a binding and its type, and the
-clauses are tested in order against the concrete type of the thrown error:
+Handle an error without binding its payload with `_Result.Err(_)`. To inspect
+several concrete error payloads through one interface, use a typed borrowed arm:
 
 ```sun
-function main() i32 {
-    try {
-        var r = divide(10, 0);
-        return r;
-    } catch (e: ref DivisionByZeroError) {
-        return -1;                 // this exact error type
-    } catch (e: ref IError) {
-        return e.code();           // anything else
-    }
-}
+match operation() {
+    _Result.Ok(value) => use(value),
+    (error: const ref IError) => println(error.message())
+};
 ```
 
-- `catch (e: ref IError)` matches every error; a clause after it is unreachable
-  and rejected.
-- `catch (e: ref SomeError)` matches only that class. The binding is the real
-  object, so methods unique to that class (like `line()` above) are callable.
-- When no clause matches, the error keeps unwinding to the enclosing `try` or
-  caller.
-- Inside a catch clause, `e.code()` and `e.message()` dispatch to the thrown
-  class. `message()` returns an owned `String` that stays valid after the
-  handler ends.
-
-## Ownership and Catch Lifetimes
-
-`throw` moves a concrete error into storage owned by the exception runtime.
-Catch bindings must use `ref` or `const ref`; catching by value is rejected.
-The binding refers to the original error and cannot outlive the handler.
-A `const ref` binding permits only const methods and read-only access.
-
-When a handler finishes, its local values are dropped first. The runtime then
-runs the error's `deinit`, drops its owned fields, and frees its exception
-storage. This also happens on `return`, `break`, `continue`, and when another
-error leaves the handler.
-
-Inside a throwing function, `throw e;` rethrows the innermost catch binding.
-It preserves the original concrete type and payload, and does not copy or
-allocate another exception. The error remains alive until its final handler
-finishes. Throwing an unrelated borrowed error, an alias, or an outer catch
-binding while a different error is active is rejected.
+Typed arms inspect immediate payloads. If `E` is itself an enum of error classes,
+first match `_Result.Err(error)`, then match `error` with the interface arm.
 
 ## Built-in Arithmetic Errors
 
 `ArithmeticError` implements `IError` and is available without an import.
-Integer division and remainder throw it on failure, including compound
-assignments. Catch it directly or through `IError`:
+`checked_div` and `checked_rem` return it on failure; ordinary integer
+arithmetic traps instead.
 
 ```sun
-/** Divides two integers, propagating arithmetic failures. */
-function divide(a: i32, b: i32) i32 throws IError {
-  return a / b;
+/** Divides two integers, returning recoverable arithmetic failures. */
+function divide(a: i32, b: i32) _Result<i32, ArithmeticError> {
+  return checked_div(a, b);
 }
 
-/** Handles division by zero. */
+/** Handles division by zero through the error interface. */
 function main() i32 {
-  try {
-    return divide(1, 0);
-  } catch (e: ref ArithmeticError) {
-    return e.code();
-  }
+  return match divide(1, 0) {
+    _Result.Ok(value) => value,
+    (error: const ref IError) => error.code()
+  };
 }
 ```
 
@@ -137,36 +226,25 @@ function main() i32 {
 | Zero divisor | `4` | `integer division by zero` |
 | Signed minimum divided by `-1`, including remainder | `5` | `integer division overflow` |
 
-As with other errors, `message()` returns an owned `String` when the standard
-library is loaded, and a `static_ptr<u8>` otherwise. Unwinding drops live
-owners on the way to the handler.
+`message()` returns an owned `String` with the standard library, retaining the
+existing `static_ptr<u8>` contract without it. Prefix `try` drops live owners
+before returning a failure to its caller. A trap terminates execution without
+running cleanup.
 
-Division by a variable requires `try` or `throws IError`. Constant operands
-that prove an operation safe, such as `x / 2`, need neither. Shifts mask their
-counts and do not throw. Addition, subtraction, and multiplication still wrap.
+## Cleanup during propagation
 
-## Cleanup During Unwinding
+Prefix `try` returns early on failure and drops live owners before returning.
+Code before the failing call has run; code after it has not. An owned error moves
+through `_Result.Err` without copying its payload or allocating exception storage.
+A borrowed error never transfers ownership of its referent.
 
-Unwinding runs the same cleanup a normal scope exit would: every live value
-between the `throw` and the `catch` is dropped, so containers, strings and
-other owning types release their memory exactly as if the function had
-returned. Code before the failing call in a `try` block has run; code after it
-has not.
+## Replacing Exception Syntax
 
-## How It Works
+The standard library, TLS APIs, generated protocol-buffer decoders, and test
+runner use returned results. `throws`, `throw`, and block-form `try`/`catch` are
+rejected with migration diagnostics. Declare a result return type, return an
+error variant, and use `try expression` for propagation or `match` for handling.
 
-Errors are native LLVM exceptions, using the same personality routine and
-landing pads as C++. A throwing function has the plain return type `T` in the
-generated code; `throw` allocates the error, packs it with its `IError` vtable
-and a type id, and unwinds. Each `catch` clause compares the type id to select
-a handler, and cleanup landing pads drop live values on the way out. An error
-that is never caught terminates the program.
-
-## Best Practices
-
-1. **Handle or declare**: wrap the call in `try`, or add `throws IError` to your own
-   signature and let the caller decide.
-2. **Catch what you can handle**: use a typed `catch` for the errors you have a
-   real answer for, and let the rest propagate.
-3. **Throw meaningful errors**: pick a stdlib error type or define a class that
-   carries the details the handler needs.
+Builtin `_Result<T, E>` remains available. Prefer library-defined result enums
+with concrete owned errors; borrowed interface payloads are supported when
+their referents outlive the result.

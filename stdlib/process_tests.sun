@@ -24,10 +24,10 @@ public module std {
       var cmd = std.process.Command(alloc, "/bin/sh");
       cmd.add_arg("-c");
       cmd.add_arg("printf hello");
-      var out = cmd.output();
-      std.test.assert_eq(out.status(), 0);
-      std.test.assert(out.stdout().equals_literal("hello"), "stdout captured");
-      std.test.assert(out.stderr().is_empty(), "stderr empty");
+      var out = try std.test.expect_system(cmd.output());
+      try std.test.assert_eq(out.status(), 0);
+      try std.test.assert(out.stdout().equals_literal("hello"), "stdout captured");
+      try std.test.assert(out.stderr().is_empty(), "stderr empty");
     }
 
     /**
@@ -38,7 +38,7 @@ public module std {
       var cmd = std.process.Command(alloc, "/bin/sh");
       cmd.add_arg("-c");
       cmd.add_arg("exit 3");
-      std.test.assert_eq(cmd.output().status(), 3);
+      try std.test.assert_eq((try std.test.expect_system(cmd.output())).status(), 3);
     }
 
     /**
@@ -49,9 +49,9 @@ public module std {
       var cmd = std.process.Command(alloc, "/bin/sh");
       cmd.add_arg("-c");
       cmd.add_arg("printf out; printf err >&2");
-      var res = cmd.output();
-      std.test.assert(res.stdout().equals_literal("out"), "stdout is out");
-      std.test.assert(res.stderr().equals_literal("err"), "stderr is err");
+      var res = try std.test.expect_system(cmd.output());
+      try std.test.assert(res.stdout().equals_literal("out"), "stdout is out");
+      try std.test.assert(res.stderr().equals_literal("err"), "stderr is err");
     }
 
     /**
@@ -64,9 +64,9 @@ public module std {
       var cmd = std.process.Command(alloc, "/bin/sh");
       cmd.add_arg("-c");
       cmd.add_arg("yes abcdefgh | head -c 200000; printf e >&2");
-      var res = cmd.output();
-      std.test.assert_eq(res.stdout().length(), 200000);
-      std.test.assert(res.stderr().equals_literal("e"), "stderr captured alongside");
+      var res = try std.test.expect_system(cmd.output());
+      try std.test.assert_eq(res.stdout().length(), 200000);
+      try std.test.assert(res.stderr().equals_literal("e"), "stderr captured alongside");
     }
 
     /**
@@ -81,10 +81,10 @@ public module std {
       var cmd = std.process.Command(alloc, "/bin/sh");
       cmd.add_arg("-c");
       cmd.add_arg("yes | head -c 1");
-      var res = cmd.output();
+      var res = try std.test.expect_system(cmd.output());
       unsafe { c_signal(SIGPIPE, previous); };
-      std.test.assert(res.stdout().equals_literal("y"), "head still read one byte");
-      std.test.assert(res.stderr().is_empty(), "yes died of SIGPIPE without complaint");
+      try std.test.assert(res.stdout().equals_literal("y"), "head still read one byte");
+      try std.test.assert(res.stderr().is_empty(), "yes died of SIGPIPE without complaint");
     }
 
     /**
@@ -99,8 +99,8 @@ public module std {
       cmd.add_arg("sh");
       cmd.add_arg("one two");
       cmd.add_arg("three");
-      var res = cmd.output();
-      std.test.assert(res.stdout().equals_literal("one two|three"), "arguments kept separate");
+      var res = try std.test.expect_system(cmd.output());
+      try std.test.assert(res.stdout().equals_literal("one two|three"), "arguments kept separate");
     }
 
     /**
@@ -113,9 +113,9 @@ public module std {
       var cmd = std.process.Command(alloc, "/bin/sh");
       cmd.add_arg("-c");
       cmd.add_arg(script);
-      var res = cmd.output();
-      std.test.assert(res.stdout().equals_literal("built-at-runtime"), "runtime-built argument ran");
-      std.test.assert_eq(script.length(), 23);
+      var res = try std.test.expect_system(cmd.output());
+      try std.test.assert(res.stdout().equals_literal("built-at-runtime"), "runtime-built argument ran");
+      try std.test.assert_eq(script.length(), 23);
     }
 
     /**
@@ -126,7 +126,7 @@ public module std {
       var cmd = std.process.Command(alloc, "/bin/sh");
       cmd.add_arg("-c");
       cmd.add_arg("exit 7");
-      std.test.assert_eq(cmd.status(), 7);
+      try std.test.assert_eq(try std.test.expect_system(cmd.status()), 7);
     }
 
     /**
@@ -137,9 +137,9 @@ public module std {
       var cmd = std.process.Command(alloc, "/bin/sh");
       cmd.add_arg("-c");
       cmd.add_arg("exit 5");
-      var child = cmd.start();
-      std.test.assert(child.id() > 0, "child has a positive pid");
-      std.test.assert_eq(child.wait(), 5);
+      var child = try std.test.expect_system(cmd.start());
+      try std.test.assert(child.id() > 0, "child has a positive pid");
+      try std.test.assert_eq(try std.test.expect_system(child.wait()), 5);
     }
 
     /**
@@ -153,13 +153,13 @@ public module std {
       cmd.add_arg("cat");
       cmd.set_stdin(Stdio.Piped);
       cmd.set_stdout(Stdio.Piped);
-      var child = cmd.start();
+      var child = try std.test.expect_system(cmd.start());
       var payload = String(alloc, "echoed back");
       child.write_stdin(payload);
       child.close_stdin();
-      var res = child.collect(alloc);
-      std.test.assert(res.stdout().equals_literal("echoed back"), "stdin round-tripped");
-      std.test.assert_eq(res.status(), 0);
+      var res = try std.test.expect_system(child.collect(alloc));
+      try std.test.assert(res.stdout().equals_literal("echoed back"), "stdin round-tripped");
+      try std.test.assert_eq(res.status(), 0);
     }
 
     /**
@@ -172,7 +172,7 @@ public module std {
       cmd.add_arg("kill -9 $$");
       cmd.set_stdout(Stdio.Null);
       cmd.set_stderr(Stdio.Null);
-      std.test.assert_eq(cmd.status(), 137);  // 128 + SIGKILL
+      try std.test.assert_eq(try std.test.expect_system(cmd.status()), 137);  // 128 + SIGKILL
     }
 
     /**
@@ -183,7 +183,7 @@ public module std {
       var alloc = make_heap_allocator();
       var cmd = std.process.Command(alloc, "/no/such/program/anywhere");
       cmd.set_stderr(Stdio.Null);
-      std.test.assert_eq(cmd.status(), 127);
+      try std.test.assert_eq(try std.test.expect_system(cmd.status()), 127);
     }
 
     // ------------------------------------------------------------------
@@ -199,14 +199,14 @@ public module std {
       var cmd = std.process.Command(alloc, "/bin/sh");
       cmd.add_arg("-c");
       cmd.add_arg("echo $PPID");
-      var out = cmd.output();
-      std.test.assert_eq(out.status(), 0);
+      var out = try std.test.expect_system(cmd.output());
+      try std.test.assert_eq(out.status(), 0);
       out.stdout().trim();
       var reported: i64 = match out.stdout().parse_i64() {
         Option.Some(x) => x,
         Option.None => -1
       };
-      std.test.assert_eq(reported, _convert<i64>(std.process.pid()));
+      try std.test.assert_eq(reported, _convert<i64>(std.process.pid()));
     }
 
     /**
@@ -214,9 +214,9 @@ public module std {
      * a different pid, and matching real/effective user ids.
      */
     test_function parent_pid_and_uids_are_plausible() {
-      std.test.assert(std.process.parent_pid() > 0, "parent pid is positive");
-      std.test.assert(std.process.pid() != std.process.parent_pid(), "pid differs from parent pid");
-      std.test.assert_eq(std.process.uid(), std.process.euid());
+      try std.test.assert(std.process.parent_pid() > 0, "parent pid is positive");
+      try std.test.assert(std.process.pid() != std.process.parent_pid(), "pid differs from parent pid");
+      try std.test.assert_eq(std.process.uid(), std.process.euid());
     }
 
     /**
@@ -224,18 +224,18 @@ public module std {
      */
     test_function pipe_round_trips_bytes() {
       var alloc = make_heap_allocator();
-      var p = std.process.open_pipe(alloc);
+      var p = try std.test.expect_system(std.process.open_pipe(alloc));
       var writer = std.io.File();
       writer.adopt(p.write_fd());
       var msg = String(alloc, "through the pipe");
-      std.test.assert_eq(writer.write(msg), 16);
+      try std.test.assert_eq(writer.write(msg), 16);
       writer.close();
 
       var reader = std.io.File();
       reader.adopt(p.read_fd());
-      var got = reader.read_all(alloc);
+      var got = try std.test.expect_system(reader.read_all(alloc));
       reader.close();
-      std.test.assert(got.equals_literal("through the pipe"), "pipe payload intact");
+      try std.test.assert(got.equals_literal("through the pipe"), "pipe payload intact");
     }
 
     /**
@@ -244,18 +244,18 @@ public module std {
      */
     test_function wait_status_decoding() {
       // exit(3): status 0x0300
-      std.test.assert(std.process.exited(768), "exit(3) counts as exited");
-      std.test.assert_eq(std.process.exit_status(768), 3);
-      std.test.assert(not std.process.is_signaled(768), "exit(3) is not a signal death");
+      try std.test.assert(std.process.exited(768), "exit(3) counts as exited");
+      try std.test.assert_eq(std.process.exit_status(768), 3);
+      try std.test.assert(not std.process.is_signaled(768), "exit(3) is not a signal death");
 
       // killed by SIGKILL (9)
-      std.test.assert(not std.process.exited(9), "signal death is not an exit");
-      std.test.assert(std.process.is_signaled(9), "signal death is signaled");
-      std.test.assert_eq(std.process.get_term_signal(9), 9);
+      try std.test.assert(not std.process.exited(9), "signal death is not an exit");
+      try std.test.assert(std.process.is_signaled(9), "signal death is signaled");
+      try std.test.assert_eq(std.process.get_term_signal(9), 9);
 
       // exit(0)
-      std.test.assert(std.process.exited(0), "exit(0) counts as exited");
-      std.test.assert_eq(std.process.exit_status(0), 0);
+      try std.test.assert(std.process.exited(0), "exit(0) counts as exited");
+      try std.test.assert_eq(std.process.exit_status(0), 0);
     }
 
     /**
@@ -265,8 +265,8 @@ public module std {
      */
     test_function dup_fd_redirects_a_descriptor() {
       var alloc = make_heap_allocator();
-      var p = std.process.open_pipe(alloc);
-      std.process.dup_fd(p.write_fd(), 199);
+      var p = try std.test.expect_system(std.process.open_pipe(alloc));
+      try std.test.expect_system_success(std.process.dup_fd(p.write_fd(), 199));
       var writer = std.io.File();
       writer.adopt(199);
       var msg = String(alloc, "via dup");
@@ -276,9 +276,9 @@ public module std {
 
       var reader = std.io.File();
       reader.adopt(p.read_fd());
-      var got = reader.read_all(alloc);
+      var got = try std.test.expect_system(reader.read_all(alloc));
       reader.close();
-      std.test.assert(got.equals_literal("via dup"), "write through the duplicate arrived");
+      try std.test.assert(got.equals_literal("via dup"), "write through the duplicate arrived");
     }
   }  // module process_tests
 }  // module std

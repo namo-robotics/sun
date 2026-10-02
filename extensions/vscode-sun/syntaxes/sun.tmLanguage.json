@@ -131,7 +131,7 @@
             "patterns": [
                 {
                     "name": "keyword.control.sun",
-                    "match": "\\b(?:if|else|for|while|break|continue|match|return|try|catch|throw|throws|unsafe|using)\\b"
+                    "match": "\\b(?:if|else|for|while|break|continue|match|return|try|unsafe|using)\\b"
                 },
                 {
                     "name": "storage.type.sun",

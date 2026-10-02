@@ -7,45 +7,48 @@ using std;
 public module std {
   /** Groups tests for the vec library behavior. */
   module vec_tests {
+    /** Combines assertions with failures from borrowed element access. */
+    enum TestResult { Ok, Assertion(std.test.AssertionError), Bounds(IndexOutOfBoundsError) }
+
     /** Checks create empty vec. */
-    test_function create_empty_vec() {
+    test_function create_empty_vec() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
-      std.test.assert_eq(v.size(), 0);
+      try std.test.assert_eq(v.size(), 0);
     }
 
     /** Checks push and size. */
-    test_function push_and_size() {
+    test_function push_and_size() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
       v.push(10);
       v.push(20);
       v.push(30);
-      std.test.assert_eq(v.size(), 3);
+      try std.test.assert_eq(v.size(), 3);
     }
 
     /** Checks push and get. */
-    test_function push_and_get() {
+    test_function push_and_get() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
       v.push(10);
       v.push(20);
       v.push(30);
-      std.test.assert_eq(v.get(0) + v.get(1) + v.get(2), 60);
+      try std.test.assert_eq((try std.test.expect_access_value(v.get(0))) + (try std.test.expect_access_value(v.get(1))) + (try std.test.expect_access_value(v.get(2))), 60);
     }
 
     /** Checks set element. */
-    test_function set_element() {
+    test_function set_element() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
       v.push(10);
       v.push(20);
-      v.set(0, 99);
-      std.test.assert_eq(v.get(0), 99);
+      try std.test.expect_access_success(v.set(0, 99));
+      try std.test.assert_eq((try std.test.expect_access_value(v.get(0))), 99);
     }
 
     /** Checks pop element. */
-    test_function pop_element() {
+    test_function pop_element() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
       v.push(10);
@@ -55,12 +58,12 @@ public module std {
         Option.Some(x) => x,
         Option.None => -1
       };
-      std.test.assert_eq(last, 30);
-      std.test.assert_eq(v.size(), 2);
+      try std.test.assert_eq(last, 30);
+      try std.test.assert_eq(v.size(), 2);
     }
 
     /** Checks pop empty is none. */
-    test_function pop_empty_is_none() {
+    test_function pop_empty_is_none() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
       v.push(1);
@@ -69,163 +72,167 @@ public module std {
         Option.Some(x) => 1,
         Option.None => 42
       };
-      std.test.assert_eq(got, 42);
+      try std.test.assert_eq(got, 42);
     }
 
     /** Checks remove first and iterate. */
-    test_function remove_first_and_iterate() {
+    test_function remove_first_and_iterate() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 4);
       v.push(1);
       v.push(2);
       v.push(3);
       v.push(4);
-      std.test.assert_eq(v.remove(0), 1);
-      std.test.assert_eq(v.size(), 3);
-      std.test.assert_eq(v.capacity(), 4);
+      try std.test.assert_eq((try std.test.expect_access(v.remove(0))), 1);
+      try std.test.assert_eq(v.size(), 3);
+      try std.test.assert_eq(v.capacity(), 4);
       var order: i64 = 0;
       for (var x: i64 in v) {
         order = order * 10 + x;
       }
-      std.test.assert_eq(order, 234);
+      try std.test.assert_eq(order, 234);
       v.push(5);
-      std.test.assert_eq(v.get(3), 5);
+      try std.test.assert_eq((try std.test.expect_access_value(v.get(3))), 5);
     }
 
     /** Checks remove middle lsyntax tree and singleton. */
-    test_function remove_middle_last_and_singleton() {
+    test_function remove_middle_last_and_singleton() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 4);
       v.push(10);
       v.push(20);
       v.push(30);
-      std.test.assert_eq(v.remove(1), 20);
-      std.test.assert_eq(v.size(), 2);
-      std.test.assert_eq(v.get(0), 10);
-      std.test.assert_eq(v.get(1), 30);
-      std.test.assert_eq(v.remove(1), 30);
-      std.test.assert_eq(v.size(), 1);
-      std.test.assert_eq(v.remove(0), 10);
-      std.test.assert(v.is_empty());
+      try std.test.assert_eq((try std.test.expect_access(v.remove(1))), 20);
+      try std.test.assert_eq(v.size(), 2);
+      try std.test.assert_eq((try std.test.expect_access_value(v.get(0))), 10);
+      try std.test.assert_eq((try std.test.expect_access_value(v.get(1))), 30);
+      try std.test.assert_eq((try std.test.expect_access(v.remove(1))), 30);
+      try std.test.assert_eq(v.size(), 1);
+      try std.test.assert_eq((try std.test.expect_access(v.remove(0))), 10);
+      try std.test.assert(v.is_empty());
       v.push(40);
-      std.test.assert_eq(v.get(0), 40);
+      try std.test.assert_eq((try std.test.expect_access_value(v.get(0))), 40);
     }
 
     /** Checks remove invalid indices leave vec unchanged. */
-    test_function remove_invalid_indices_leave_vec_unchanged() {
+    test_function remove_invalid_indices_leave_vec_unchanged() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 4);
       var caught: i64 = 0;
-      try {
-        v.remove(0);
-      } catch (e: ref IError) {
-        caught = caught + 1;
-      }
-      std.test.assert(v.is_empty());
+      match v.remove(0) {
+        AccessResult.Ok(_) => {},
+        AccessResult.OutOfBounds(e) => {
+          caught = caught + 1;
+        }
+      };
+      try std.test.assert(v.is_empty());
       v.push(10);
       for (var index: i64 = -1; index <= 4; index = index + 1) {
         if (index != 0) {
-          try {
-            v.remove(index);
-          } catch (e: ref IError) {
-            caught = caught + 1;
-          }
-          std.test.assert_eq(v.size(), 1);
-          std.test.assert_eq(v.get(0), 10);
+          match v.remove(index) {
+            AccessResult.Ok(_) => {},
+            AccessResult.OutOfBounds(e) => {
+              caught = caught + 1;
+            }
+          };
+          try std.test.assert_eq(v.size(), 1);
+          try std.test.assert_eq((try std.test.expect_access_value(v.get(0))), 10);
         }
       }
-      std.test.assert_eq(caught, 6);
+      try std.test.assert_eq(caught, 6);
     }
 
     /** Checks swap remove first and iterate. */
-    test_function swap_remove_first_and_iterate() {
+    test_function swap_remove_first_and_iterate() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 4);
       v.push(1);
       v.push(2);
       v.push(3);
       v.push(4);
-      std.test.assert_eq(v.swap_remove(0), 1);
-      std.test.assert_eq(v.size(), 3);
-      std.test.assert_eq(v.capacity(), 4);
+      try std.test.assert_eq((try std.test.expect_access(v.swap_remove(0))), 1);
+      try std.test.assert_eq(v.size(), 3);
+      try std.test.assert_eq(v.capacity(), 4);
       var order: i64 = 0;
       for (var x: i64 in v) {
         order = order * 10 + x;
       }
-      std.test.assert_eq(order, 423);
+      try std.test.assert_eq(order, 423);
       v.push(5);
-      std.test.assert_eq(v.get(3), 5);
+      try std.test.assert_eq((try std.test.expect_access_value(v.get(3))), 5);
     }
 
     /** Checks swap remove middle lsyntax tree and singleton. */
-    test_function swap_remove_middle_last_and_singleton() {
+    test_function swap_remove_middle_last_and_singleton() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 4);
       v.push(10);
       v.push(20);
       v.push(30);
-      std.test.assert_eq(v.swap_remove(1), 20);
-      std.test.assert_eq(v.size(), 2);
-      std.test.assert_eq(v.get(0), 10);
-      std.test.assert_eq(v.get(1), 30);
-      std.test.assert_eq(v.swap_remove(1), 30);
-      std.test.assert_eq(v.size(), 1);
-      std.test.assert_eq(v.swap_remove(0), 10);
-      std.test.assert(v.is_empty());
+      try std.test.assert_eq((try std.test.expect_access(v.swap_remove(1))), 20);
+      try std.test.assert_eq(v.size(), 2);
+      try std.test.assert_eq((try std.test.expect_access_value(v.get(0))), 10);
+      try std.test.assert_eq((try std.test.expect_access_value(v.get(1))), 30);
+      try std.test.assert_eq((try std.test.expect_access(v.swap_remove(1))), 30);
+      try std.test.assert_eq(v.size(), 1);
+      try std.test.assert_eq((try std.test.expect_access(v.swap_remove(0))), 10);
+      try std.test.assert(v.is_empty());
       v.push(40);
-      std.test.assert_eq(v.get(0), 40);
+      try std.test.assert_eq((try std.test.expect_access_value(v.get(0))), 40);
     }
 
     /** Checks swap remove invalid indices leave vec unchanged. */
-    test_function swap_remove_invalid_indices_leave_vec_unchanged() {
+    test_function swap_remove_invalid_indices_leave_vec_unchanged() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 4);
       var caught: i64 = 0;
-      try {
-        v.swap_remove(0);
-      } catch (e: ref IError) {
-        caught = caught + 1;
-      }
-      std.test.assert(v.is_empty());
+      match v.swap_remove(0) {
+        AccessResult.Ok(_) => {},
+        AccessResult.OutOfBounds(e) => {
+          caught = caught + 1;
+        }
+      };
+      try std.test.assert(v.is_empty());
       v.push(10);
       for (var index: i64 = -1; index <= 4; index = index + 1) {
         if (index != 0) {
-          try {
-            v.swap_remove(index);
-          } catch (e: ref IError) {
-            caught = caught + 1;
-          }
-          std.test.assert_eq(v.size(), 1);
-          std.test.assert_eq(v.get(0), 10);
+          match v.swap_remove(index) {
+            AccessResult.Ok(_) => {},
+            AccessResult.OutOfBounds(e) => {
+              caught = caught + 1;
+            }
+          };
+          try std.test.assert_eq(v.size(), 1);
+          try std.test.assert_eq((try std.test.expect_access_value(v.get(0))), 10);
         }
       }
-      std.test.assert_eq(caught, 6);
+      try std.test.assert_eq(caught, 6);
     }
 
     /** Replacing an optional slot leaves a valid empty value at the same index. */
-    test_function replace_leaves_explicit_empty_slot() {
+    test_function replace_leaves_explicit_empty_slot() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<Option<i32>>(allocator, 2);
       v.push(Option.Some(10));
       v.push(Option.Some(20));
       var empty: Option<i32> = Option.None;
-      var previous = v.replace(0, empty);
-      std.test.assert_eq(
+      var previous = try std.test.expect_access(v.replace(0, empty));
+      try std.test.assert_eq(
         match previous {
           Option.Some(value) => value,
           Option.None => -1
         },
         10
       );
-      std.test.assert_eq(v.size(), 2);
-      std.test.assert(
-        match v.get(0) {
+      try std.test.assert_eq(v.size(), 2);
+      try std.test.assert(
+        match (try v.get(0)) {
           Option.Some(value) => false,
           Option.None => true
         }
       );
-      std.test.assert_eq(
-        match v.get(1) {
+      try std.test.assert_eq(
+        match (try v.get(1)) {
           Option.Some(value) => value,
           Option.None => -1
         },
@@ -249,89 +256,90 @@ public module std {
     }
 
     /** Select a removal operation and transfer its result to the caller. */
-    function remove_tracked(v: ref Vec<RemovalTracked>, swap: bool) RemovalTracked throws IError {
+    function remove_tracked(v: ref Vec<RemovalTracked>, swap: bool) AccessResult<RemovalTracked> {
       if (swap) {
-        return v.swap_remove(0);
+        return AccessResult.Ok(try v.swap_remove(0));
       }
-      return v.remove(0);
+      return AccessResult.Ok(try v.remove(0));
     }
 
     /** Check that removing values transfers ownership without dropping them. */
-    function exercise_removal_ownership(swap: bool) void throws IError {
+    function exercise_removal_ownership(swap: bool) std.test.AssertionResult<void> {
       var allocator = make_heap_allocator();
       var v = Vec<RemovalTracked>(allocator, 4);
       v.push(RemovalTracked(String("first")));
       v.push(RemovalTracked(String("middle")));
       v.push(RemovalTracked(String("last")));
       var before = removal_drops;
-      var removed = remove_tracked(v, swap);
-      std.test.assert_eq(removed.value.length(), 5);
-      std.test.assert_eq(removal_drops, before);
-      std.test.assert_eq(v.size(), 2);
+      var removed = try std.test.expect_access(remove_tracked(v, swap));
+      try std.test.assert_eq(removed.value.length(), 5);
+      try std.test.assert_eq(removal_drops, before);
+      try std.test.assert_eq(v.size(), 2);
       v.clear();
-      std.test.assert_eq(removal_drops, before + 2);
-      std.test.assert_eq(removed.value.length(), 5);
+      try std.test.assert_eq(removal_drops, before + 2);
+      try std.test.assert_eq(removed.value.length(), 5);
       v.push(RemovalTracked(String("replacement")));
+      return std.test.AssertionResult.Ok;
     }
 
     /** Checks removal transfers ownership and drops each value once. */
-    test_function removal_transfers_ownership_and_drops_each_value_once() {
+    test_function removal_transfers_ownership_and_drops_each_value_once() std.vec_tests.TestResult {
       removal_drops = 0;
-      exercise_removal_ownership(false);
-      std.test.assert_eq(removal_drops, 4);
-      exercise_removal_ownership(true);
-      std.test.assert_eq(removal_drops, 8);
+      try exercise_removal_ownership(false);
+      try std.test.assert_eq(removal_drops, 4);
+      try exercise_removal_ownership(true);
+      try std.test.assert_eq(removal_drops, 8);
     }
 
     /** Reports whether the collection contains no elements. */
-    test_function is_empty() {
+    test_function is_empty() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
-      std.test.assert(v.is_empty());
+      try std.test.assert(v.is_empty());
       v.push(1);
-      std.test.assert(v.is_empty() == false);
+      try std.test.assert(v.is_empty() == false);
     }
 
     /** Checks clear. */
-    test_function clear() {
+    test_function clear() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
       v.push(1);
       v.push(2);
       v.push(3);
       v.clear();
-      std.test.assert_eq(v.size(), 0);
+      try std.test.assert_eq(v.size(), 0);
     }
 
     /** Checks capacity. */
-    test_function capacity() {
+    test_function capacity() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
-      std.test.assert_eq(v.capacity(), 8);
+      try std.test.assert_eq(v.capacity(), 8);
     }
 
     /** Checks auto grow. */
-    test_function auto_grow() {
+    test_function auto_grow() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
       for (var i: i64 = 0; i < 20; i = i + 1) {
         v.push(i);
       }
-      std.test.assert_eq(v.size(), 20);
+      try std.test.assert_eq(v.size(), 20);
     }
 
     /** Checks auto grow values preserved. */
-    test_function auto_grow_values_preserved() {
+    test_function auto_grow_values_preserved() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
       for (var i: i64 = 0; i < 20; i = i + 1) {
         v.push(i * 10);
       }
-      std.test.assert_eq(v.get(0) + v.get(10) + v.get(19), 290);
+      try std.test.assert_eq((try std.test.expect_access_value(v.get(0))) + (try std.test.expect_access_value(v.get(10))) + (try std.test.expect_access_value(v.get(19))), 290);
     }
 
     /** Checks first and lsyntax tree. */
-    test_function first_and_last() {
+    test_function first_and_last() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
       v.push(10);
@@ -345,21 +353,21 @@ public module std {
         Option.Some(x) => x,
         Option.None => -1
       };
-      std.test.assert_eq(f, 10);
-      std.test.assert_eq(l, 30);
+      try std.test.assert_eq(f, 10);
+      try std.test.assert_eq(l, 30);
     }
 
     /** Checks i32 type. */
-    test_function i32_type() {
+    test_function i32_type() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i32>(allocator, 8);
       v.push(5);
       v.push(10);
-      std.test.assert_eq(v.get(0) + v.get(1), 15);
+      try std.test.assert_eq((try std.test.expect_access_value(v.get(0))) + (try std.test.expect_access_value(v.get(1))), 15);
     }
 
     /** Checks iteration. */
-    test_function iteration() {
+    test_function iteration() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
       v.push(1);
@@ -370,16 +378,16 @@ public module std {
       for (var x: i64 in v) {
         sum = sum + x;
       }
-      std.test.assert_eq(sum, 10);
+      try std.test.assert_eq(sum, 10);
     }
 
     /** Checks index operator. */
-    test_function index_operator() {
+    test_function index_operator() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
       v.push(100);
       v.push(200);
-      std.test.assert_eq(v[0] + v[1], 300);
+      try std.test.assert_eq(v[0] + v[1], 300);
     }
   }  // module vec_tests
 }  // module std

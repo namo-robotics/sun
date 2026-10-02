@@ -317,6 +317,17 @@ void EnumAnalyzer::analyzeGenericEnumConstruction(
         callExpr.getLocation());
   }
 
+  // A contextual specialization fixes every payload type. Analyze its values
+  // in that context, including literal byte views and numeric literals.
+  if (auto expected =
+          std::dynamic_pointer_cast<EnumType>(unwrapRef(expectedType));
+      expected && expected->sourceDeclaration(ctx_.results().declarations) ==
+                      genericInfo.AST->getDeclarationId()) {
+    const_cast<ExprAST&>(*memberAccess.getObject()).setResolvedType(expected);
+    analyzeEnumVariantConstruction(callExpr, memberAccess, expected);
+    return;
+  }
+
   // Analyze arguments to learn their types for unification
   for (const auto& arg : args) {
     sema_.analyzeExpr(const_cast<ExprAST&>(*arg));
@@ -336,42 +347,12 @@ void EnumAnalyzer::analyzeGenericEnumConstruction(
     }
   }
 
-  // Fill parameters the arguments did not determine from the expected type
-  const EnumType* expectedEnum = nullptr;
-  if (expectedType) {
-    TypePtr expected = unwrapRef(expectedType);
-    if (expected && expected->isEnum()) {
-      auto* et = static_cast<EnumType*>(expected.get());
-      if (et->sourceDeclaration(ctx_.results().declarations) ==
-          genericInfo.AST->getDeclarationId()) {
-        expectedEnum = et;
-      }
-    }
-  }
-
   std::vector<TypePtr> typeArgs;
-  for (size_t i = 0; i < genericInfo.typeParameters.size(); ++i) {
-    const std::string& param = genericInfo.typeParameters[i].name;
+  for (const auto& parameter : genericInfo.typeParameters) {
+    const std::string& param = parameter.name;
     auto it = bindings.find(param);
     if (it != bindings.end()) {
-      // Unification reads through a reference argument, so a `ref X` argument
-      // binds X. When the target says it wants `ref X` — `Option<ref T>` from
-      // a peek accessor — honour that: the variant borrows the referent
-      // instead of copying it out.
-      const TypePtr* expectedArg =
-          expectedEnum && i < expectedEnum->getGenericArgs().size()
-              ? &expectedEnum->getGenericArgs()[i]
-              : nullptr;
-      if (expectedArg && *expectedArg && (*expectedArg)->isReference() &&
-          unwrapRef(*expectedArg)->equals(*it->second)) {
-        typeArgs.push_back(*expectedArg);
-        continue;
-      }
       typeArgs.push_back(it->second);
-      continue;
-    }
-    if (expectedEnum && i < expectedEnum->getGenericArgs().size()) {
-      typeArgs.push_back(expectedEnum->getGenericArgs()[i]);
       continue;
     }
     logAndThrowError("Cannot infer type argument '" + param + "' for '" +
@@ -459,6 +440,73 @@ void EnumAnalyzer::analyzeEnumMatch(sun::ast::MatchExprAST& matchExpr,
       logWarning(
           "Match arm after wildcard '_' is unreachable",
           arm.pattern ? arm.pattern->getLocation() : matchExpr.getLocation());
+    }
+
+    if (arm.bindingType) {
+      if (!arm.bindingType->isReference())
+        logAndThrowError("Typed match bindings must use ref or const ref",
+                         arm.pattern->getLocation());
+      auto bindingType = resolver_.typeAnnotationToType(*arm.bindingType);
+      auto target = unwrapRef(bindingType);
+      if (!target->isClass() && !target->isInterface())
+        logAndThrowError("Typed match bindings require a class or interface",
+                         arm.pattern->getLocation());
+      auto disc = matchExpr.getDiscriminant()->getResolvedType();
+      bool mutableBinding =
+          static_cast<sun::types::ReferenceType*>(bindingType.get())
+              ->isMutable();
+      if (mutableBinding && disc->isReference() &&
+          !static_cast<sun::types::ReferenceType*>(disc.get())->isMutable())
+        logAndThrowError(
+            "Cannot bind a mutable reference through a const match "
+            "discriminant",
+            arm.pattern->getLocation());
+      sema_.expressions().checkMethodReceiver(
+          *matchExpr.getDiscriminant(), "typed match binding", !mutableBinding,
+          false, arm.pattern->getLocation());
+      arm.matchedVariantTags.clear();
+      bool reachable = false;
+      for (const auto& variant : enumType->getVariants()) {
+        if (variant.payloadTypes.size() != 1) continue;
+        auto payload = variant.payloadTypes.front();
+        auto source = unwrapRef(payload);
+        bool matches = source->equals(*target);
+        if (target->isInterface() && source->isClass())
+          matches =
+              static_cast<sun::types::ClassType*>(source.get())
+                  ->implementsInterface(
+                      *static_cast<sun::types::InterfaceType*>(target.get()));
+        if (target->isInterface() && source->isInterface())
+          matches =
+              static_cast<sun::types::InterfaceType*>(source.get())
+                  ->extendsInterface(
+                      *static_cast<sun::types::InterfaceType*>(target.get()));
+        if (!matches) continue;
+        if (mutableBinding && payload->isReference() &&
+            !static_cast<sun::types::ReferenceType*>(payload.get())
+                 ->isMutable())
+          logAndThrowError("Cannot bind a mutable reference to a const payload",
+                           arm.pattern->getLocation());
+        arm.matchedVariantTags.push_back(variant.value);
+        reachable |= coveredTags.insert(variant.value).second;
+      }
+      if (arm.matchedVariantTags.empty())
+        logAndThrowError("Typed match pattern matches no variant payloads: '" +
+                             bindingType->toDisplayString() + "'",
+                         arm.pattern->getLocation());
+      if (!reachable)
+        logWarning("Typed match arm is unreachable",
+                   arm.pattern->getLocation());
+      arm.pattern->setResolvedType(enumType);
+      auto& binding = arm.bindings.front();
+      binding.resolvedType = bindingType;
+      ctx_.enterScope();
+      if (!binding.isWildcard)
+        ctx_.currentScope().declareVariable(binding.name, bindingType, false,
+                                            false, binding.declaration.id);
+      sema_.analyzeExpr(*arm.body, expectedType);
+      ctx_.exitScope();
+      continue;
     }
 
     // Patterns on enum discriminants must be variant paths: Enum.Variant or

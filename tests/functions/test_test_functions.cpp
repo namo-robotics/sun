@@ -1,7 +1,7 @@
 // tests/functions/test_test_functions.cpp - The test_function declaration
 //
-// Covers the parser rules for `test_function` (no parameters, no return
-// type, implicit throws, item level only, never public) and the default
+// Covers the parser rules for `test_function` (no parameters, result return
+// types, item level only, never public) and the default
 // production behavior: tests are stripped, so a normal build neither runs
 // nor even analyzes them. Running tests end to end lives in
 // EndToEnd_Testing.
@@ -52,16 +52,16 @@ TEST(TestFunctions, rejects_parameters) {
 }
 
 TEST(TestFunctions, rejects_return_type) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(sun::driver::executeTestsWithStdlib(R"(
     test_function bad() i32 {
         return 1;
     }
     function main() i32 { return 0; }
   )"),
-                                "does not declare a return type");
+                                "empty first success variant");
 }
 
-// Every test may throw; spelling it is redundant and rejected.
+/** Test failures use returned results instead of exception declarations. */
 TEST(TestFunctions, rejects_explicit_throws) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     test_function bad() throws IError {
@@ -69,7 +69,7 @@ TEST(TestFunctions, rejects_explicit_throws) {
     }
     function main() i32 { return 0; }
   )"),
-                                "'throws IError' is implicit");
+                                "'throws' is not supported");
 }
 
 TEST(TestFunctions, rejects_public) {

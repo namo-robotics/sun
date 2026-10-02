@@ -1,0 +1,69 @@
+/** Stores results inline; reference payloads remain borrowed. */
+public module std {
+  /** Combines standard error categories for functions that use several APIs. */
+  public enum Result<T> {
+    Ok(T),
+    Error(Error),
+    OutOfBounds(IndexOutOfBoundsError),
+    NotFound(NotFoundError),
+    Empty(EmptyError),
+    InvalidArgument(InvalidArgumentError),
+    Io(IOError),
+    Allocation(AllocationError),
+    Conversion(ConversionError),
+    DivisionByZero(DivisionByZeroError),
+    Overflow(OverflowError),
+    Arithmetic(ArithmeticError),
+    Json(JsonError),
+    Decode(ProtoDecodeError)
+  }
+
+  /** Reports checked element access without unrelated error categories. */
+  public enum AccessResult<T> {
+    Ok(T),
+    OutOfBounds(IndexOutOfBoundsError)
+  }
+
+  /** Reports a missing key or list position without unrelated errors. */
+  public enum LookupResult<T> {
+    Ok(T),
+    NotFound(NotFoundError)
+  }
+
+  /** Moves a value out of a collection, or reports that it was empty. */
+  public enum PopResult<T> {
+    Ok(T),
+    Empty(EmptyError)
+  }
+
+  /** Reports JSON parsing, conversion, and container errors. */
+  public enum JsonResult<T> {
+    Ok(T),
+    Error(JsonError)
+  }
+
+  /** Reports a number that cannot be represented by the requested type. */
+  public enum ConversionResult<T> {
+    Ok(T),
+    Error(ConversionError)
+  }
+
+  /** Reports overflow or division by zero from arithmetic operations. */
+  public enum ArithmeticResult<T> {
+    Ok(T),
+    Overflow(OverflowError),
+    DivisionByZero(DivisionByZeroError)
+  }
+
+  /** Reports malformed protocol-buffer input while decoding a value. */
+  public enum ProtoResult<T> {
+    Ok(T),
+    Error(ProtoDecodeError)
+  }
+
+  /** Reports a failed operating-system call with its code and message. */
+  public enum SystemResult<T> {
+    Ok(T),
+    Error(Error)
+  }
+}

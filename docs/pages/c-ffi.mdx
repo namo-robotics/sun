@@ -145,7 +145,8 @@ function main() i32 {
 }
 ```
 
-The declared pointer signature must match exactly and must not throw. Callback
+The declared pointer signature must match exactly. A C callback uses an ABI-compatible
+return value; adapt result enums to a C error code explicitly. Callback
 parameters may be primitives, payload-free enums, `raw_ptr<T>`, or `ref T`.
 The return may be a primitive, a payload-free enum, or `raw_ptr<T>`. The
 compiler rejects throwing callbacks, lambdas, bound methods, by-value classes,

@@ -130,19 +130,23 @@ TEST(Lambdas_RefLambdaTypes, ref_param_accepts_and_calls_capturing_values) {
 // non-throwing capture-list lambda fits a throwing '<'_>' parameter.
 TEST(Lambdas_RefLambdaTypes, ref_and_throws_widen_together) {
   auto value = sun::driver::executeStringWithStdlib(R"(
-    using std;
-    function run_guarded(f: <'_>(i32) => i32 throws IError, x: i32) i32 {
-        try {
-            return f(x);
-        } catch (e: ref IError) {
-            return -1;
-        }
+using std;
+/** Owns successes and concrete fixture errors. */
+enum Outcome<T> { Ok(T), Error(Error) }
+
+function run_guarded(f: <'_>(i32) => Outcome<i32>, x: i32) i32 {
+  return match f(x) {
+    Outcome.Ok(value) => value,
+    (e: ref IError) => {
+      return -1;
     }
-    function main() i32 {
-        var k = 40;
-        return run_guarded([ref k](n: i32) => i32 { return k + n; }, 2);
-    }
-  )");
+  };
+}
+function main() i32 {
+  var k = 40;
+  return run_guarded([ref k](n: i32) => Outcome<i32> { return Outcome.Ok(k + n); }, 2);
+}
+)");
   EXPECT_EQ(value, 42);
 }
 

@@ -70,15 +70,15 @@ TEST(Modules_Interpolation, works_without_using_sun) {
 
 TEST(Modules_Interpolation, hex_escapes_preserve_bytes_around_expressions) {
   EXPECT_EQ(executeStringWithStdlib(R"(
-    function main() i64 throws IError {
+    function main() i64 {
       var protocol = "http/1.1";
       var s = `\x08${protocol}\x00\x7f\x80\xfF\x41F\\x08`;
-      if (s.length() != 19 or s.at(0) != 8) { return 1; }
-      if (s.at(1) != b'h' or s.at(8) != b'1' or
-          s.at(9) != 0 or s.at(10) != 127 or s.at(11) != 128 or
-          s.at(12) != 255 or s.at(13) != b'A' or s.at(14) != b'F' or
-          s.at(15) != b'\\' or s.at(16) != b'x' or
-          s.at(17) != b'0' or s.at(18) != b'8') { return 2; }
+      if (s.length() != 19 or (match s.at(0) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) != 8) { return 1; }
+      if ((match s.at(1) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) != b'h' or (match s.at(8) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) != b'1' or
+          (match s.at(9) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) != 0 or (match s.at(10) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) != 127 or (match s.at(11) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) != 128 or
+          (match s.at(12) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) != 255 or (match s.at(13) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) != b'A' or (match s.at(14) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) != b'F' or
+          (match s.at(15) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) != b'\\' or (match s.at(16) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) != b'x' or
+          (match s.at(17) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) != b'0' or (match s.at(18) { std.AccessResult.Ok(value) => value, std.AccessResult.OutOfBounds(_) => { return -100; } }) != b'8') { return 2; }
       return 0;
     }
   )"),

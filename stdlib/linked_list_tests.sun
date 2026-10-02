@@ -9,6 +9,9 @@ using std;
 public module std {
   /** Groups tests for the linked list library behavior. */
   module linked_list_tests {
+    /** Combines assertion failures with errors from borrowed reads. */
+    enum TestResult { Ok, Assertion(std.test.AssertionError), Read(NotFoundError) }
+
     /**
      * A 2-D point used by the class-element tests.
      */
@@ -71,15 +74,15 @@ public module std {
     }
 
     /** Checks empty list. */
-    test_function empty_list() {
+    test_function empty_list() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
-      std.test.assert(ll.is_empty());
-      std.test.assert_eq(ll.size(), 0);
+      try std.test.assert(ll.is_empty());
+      try std.test.assert_eq(ll.size(), 0);
     }
 
     /** Checks push back. */
-    test_function push_back() {
+    test_function push_back() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
       ll.push_back(10);
@@ -93,13 +96,13 @@ public module std {
         Option.Some(x) => x,
         Option.None => -1
       };
-      std.test.assert_eq(f, 10);
-      std.test.assert_eq(l, 30);
-      std.test.assert_eq(ll.size(), 3);
+      try std.test.assert_eq(f, 10);
+      try std.test.assert_eq(l, 30);
+      try std.test.assert_eq(ll.size(), 3);
     }
 
     /** Checks push front. */
-    test_function push_front() {
+    test_function push_front() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
       ll.push_front(3);
@@ -114,63 +117,69 @@ public module std {
         Option.Some(x) => x,
         Option.None => -1
       };
-      std.test.assert_eq(f, 1);
-      std.test.assert_eq(l, 3);
+      try std.test.assert_eq(f, 1);
+      try std.test.assert_eq(l, 3);
     }
 
     /** Checks pop front. */
-    test_function pop_front() {
+    test_function pop_front() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
       ll.push_back(10);
       ll.push_back(20);
       ll.push_back(30);
-      std.test.assert_eq(ll.pop_front(), 10);
-      std.test.assert_eq(ll.size(), 2);
+      try std.test.assert_eq(try std.test.expect_pop(ll.pop_front()), 10);
+      try std.test.assert_eq(ll.size(), 2);
     }
 
     /** Checks pop back. */
-    test_function pop_back() {
+    test_function pop_back() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
       ll.push_back(10);
       ll.push_back(20);
       ll.push_back(30);
-      std.test.assert_eq(ll.pop_back(), 30);
-      std.test.assert_eq(ll.size(), 2);
+      try std.test.assert_eq(try std.test.expect_pop(ll.pop_back()), 30);
+      try std.test.assert_eq(ll.size(), 2);
     }
 
     /** Checks pop empty throws. */
-    test_function pop_empty_throws() {
+    test_function pop_empty_throws() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
-      try {
-        var v: i32 = ll.pop_front();
-        std.test.fail("expected error");
-      } catch (e: ref IError) {}
-      try {
-        var v: i32 = ll.pop_back();
-        std.test.fail("expected error");
-      } catch (e: ref IError) {}
+      match ll.pop_front() {
+        PopResult.Ok(matched_value) => {
+          var v: i32 = matched_value;
+          try std.test.fail("expected error");
+        },
+        PopResult.Empty(e) => {}
+      };
+      match ll.pop_back() {
+        PopResult.Ok(matched_value) => {
+          var v: i32 = matched_value;
+          try std.test.fail("expected error");
+        },
+        PopResult.Empty(e) => {}
+      };
     }
 
     /** Checks drain list. */
-    test_function drain_list() {
+    test_function drain_list() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
       ll.push_back(1);
       ll.push_back(2);
       ll.push_back(3);
       var sum: i32 = 0;
-      sum = sum + ll.pop_front();
-      sum = sum + ll.pop_back();
-      sum = sum + ll.pop_front();
-      std.test.assert_eq(sum, 6);
-      std.test.assert(ll.is_empty());
+      sum = sum + (try std.test.expect_pop(ll.pop_front()));
+      sum = sum + (try std.test.expect_pop(ll.pop_back()));
+      sum = sum + (try std.test.expect_pop(ll.pop_front()));
+      try std.test.assert_eq(sum, 6);
+      try std.test.assert(ll.is_empty());
     }
 
     /** Checks get and set. */
-    test_function get_and_set() {
+    test_function get_and_set() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
       ll.push_back(10);
@@ -179,26 +188,29 @@ public module std {
       ll.push_back(40);
       // Annotating i32 copies the scalar out instead of holding a borrow of
       // the list, so the later borrows and set() are legal
-      var first: i32 = ll.get(0);
-      var last: i32 = ll.get(3);
-      ll.set(1, 99);
-      var modified: i32 = ll.get(1);
-      std.test.assert_eq(first + last + modified, 149);
+      var first: i32 = try std.test.expect_lookup_value(ll.get(0));
+      var last: i32 = try std.test.expect_lookup_value(ll.get(3));
+      try std.test.expect_lookup_success(ll.set(1, 99));
+      var modified: i32 = try std.test.expect_lookup_value(ll.get(1));
+      try std.test.assert_eq(first + last + modified, 149);
     }
 
     /** Checks get out of bounds. */
-    test_function get_out_of_bounds() {
+    test_function get_out_of_bounds() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
       ll.push_back(10);
-      try {
-        var v: i32 = ll.get(5);
-        std.test.fail("expected error");
-      } catch (e: ref IError) {}
+      match ll.get(5) {
+        LookupResult.Ok(matched_value) => {
+          var v: i32 = matched_value;
+          try std.test.fail("expected error");
+        },
+        LookupResult.NotFound(e) => {}
+      };
     }
 
     /** Checks remove nodes. */
-    test_function remove_nodes() {
+    test_function remove_nodes() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
       ll.push_back(10);
@@ -206,18 +218,18 @@ public module std {
       ll.push_back(30);
       ll.push_back(40);
       ll.push_back(50);
-      var mid = ll.remove(2);
-      var first = ll.remove(0);
-      var last = ll.remove(2);
+      var mid = try std.test.expect_lookup(ll.remove(2));
+      var first = try std.test.expect_lookup(ll.remove(0));
+      var last = try std.test.expect_lookup(ll.remove(2));
       // Remaining: 20 -> 40
-      std.test.assert_eq(mid, 30);
-      std.test.assert_eq(first, 10);
-      std.test.assert_eq(last, 50);
-      std.test.assert_eq(ll.size(), 2);
+      try std.test.assert_eq(mid, 30);
+      try std.test.assert_eq(first, 10);
+      try std.test.assert_eq(last, 50);
+      try std.test.assert_eq(ll.size(), 2);
     }
 
     /** Checks clear and reuse. */
-    test_function clear_and_reuse() {
+    test_function clear_and_reuse() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
       ll.push_back(10);
@@ -229,12 +241,12 @@ public module std {
         Option.Some(x) => x,
         Option.None => -1
       };
-      std.test.assert_eq(f, 99);
-      std.test.assert_eq(ll.size(), 1);
+      try std.test.assert_eq(f, 99);
+      try std.test.assert_eq(ll.size(), 1);
     }
 
     /** Checks for in iteration. */
-    test_function for_in_iteration() {
+    test_function for_in_iteration() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
       ll.push_back(1);
@@ -249,22 +261,22 @@ public module std {
         multiplier = multiplier * 10;
       }
       // 1*1 + 2*10 + 4*100 + 8*1000 = 8421
-      std.test.assert_eq(result, 8421);
+      try std.test.assert_eq(result, 8421);
     }
 
     /** Checks iterate empty. */
-    test_function iterate_empty() {
+    test_function iterate_empty() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
       var sum: i32 = 0;
       for (var v: i32 in ll) {
         sum = sum + v;
       }
-      std.test.assert_eq(sum, 0);
+      try std.test.assert_eq(sum, 0);
     }
 
     /** Checks mixed push front back. */
-    test_function mixed_push_front_back() {
+    test_function mixed_push_front_back() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
       ll.push_back(2);
@@ -276,23 +288,23 @@ public module std {
       for (var v: i32 in ll) {
         sum = sum + v;
       }
-      std.test.assert_eq(sum, 6);
-      std.test.assert_eq(ll.size(), 4);
+      try std.test.assert_eq(sum, 6);
+      try std.test.assert_eq(ll.size(), 4);
     }
 
     /** Checks i64 type. */
-    test_function i64_type() {
+    test_function i64_type() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i64>(allocator);
       ll.push_back(100);
       ll.push_back(200);
       ll.push_back(300);
-      var sum: i64 = ll.pop_front() + ll.pop_back();
-      std.test.assert_eq(sum, 400);
+      var sum: i64 = (try std.test.expect_pop(ll.pop_front())) + (try std.test.expect_pop(ll.pop_back()));
+      try std.test.assert_eq(sum, 400);
     }
 
     /** Checks list of class objects. */
-    test_function list_of_class_objects() {
+    test_function list_of_class_objects() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var list = LinkedList<Point>(allocator);
       list.push_back(Point(1, 2));
@@ -300,27 +312,26 @@ public module std {
       list.push_back(Point(5, 6));
       // Access via get. Each borrow is used within its own statement -
       // binding all three at once would hold three borrows of the list
-      std.test.assert_eq(
-        list.get(0).sum() + list.get(1).sum() + list.get(2).sum(),
-        21
-      );
+      try std.test.assert_eq((try list.get(0)).sum(), 3);
+      try std.test.assert_eq((try list.get(1)).sum(), 7);
+      try std.test.assert_eq((try list.get(2)).sum(), 11);
     }
 
     /** Checks class objects push front pop. */
-    test_function class_objects_push_front_pop() {
+    test_function class_objects_push_front_pop() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var list = LinkedList<Pair>(allocator);
       list.push_back(Pair(2, 3));
       list.push_back(Pair(4, 5));
       list.push_front(Pair(1, 10));
       // List: (1,10) -> (2,3) -> (4,5)
-      var front = list.pop_front();
-      var back = list.pop_back();
-      std.test.assert_eq(front.product() + back.product(), 30);
+      var front = try std.test.expect_pop(list.pop_front());
+      var back = try std.test.expect_pop(list.pop_back());
+      try std.test.assert_eq(front.product() + back.product(), 30);
     }
 
     /** Checks iterate class objects. */
-    test_function iterate_class_objects() {
+    test_function iterate_class_objects() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var list = LinkedList<Weight>(allocator);
       list.push_back(Weight(10));
@@ -331,7 +342,7 @@ public module std {
       for (var w: Weight in list) {
         sum = sum + w.get_value();
       }
-      std.test.assert_eq(sum, 100);
+      try std.test.assert_eq(sum, 100);
     }
   }  // module linked_list_tests
 }  // module std

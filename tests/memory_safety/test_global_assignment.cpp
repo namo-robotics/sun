@@ -226,17 +226,15 @@ TEST(MemorySafety_GlobalAssignment, map_global_is_constructed) {
     var alloc: HeapAllocator = HeapAllocator();
     var m: Map<String, i32> = Map<String, i32>(alloc, 64);
 
-    function main() i32 throws IError {
+    function main() i32 {
       if (m.capacity() != 64) { return -1; }
       var k = String(alloc, "key");
       m.insert(k, 3);
       if (m.size() != 1) { return -2; }
       var found = 0;
-      try {
+      if (true) {
         var k2 = String(alloc, "key");
-        found = m.get(k2);
-      } catch (e: ref IError) {
-        return -3;
+        found = (match m.get(k2) { std.LookupResult.Ok(value) => value, std.LookupResult.NotFound(_) => { return -100; } });
       }
       return found;
     }

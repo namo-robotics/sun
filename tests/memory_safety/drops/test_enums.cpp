@@ -339,30 +339,48 @@ TEST(MemorySafety_Drops_Enums, block_scoped_owning_enum_dropped_at_block_exit) {
 
 TEST(MemorySafety_Drops_Enums, owning_enum_dropped_on_unwind) {
   auto value = executeString(withPreamble(R"(
-    class TestError implements IError {
-      init() {}
-      method code() i32 { return 1; }
-      method message() static_ptr<u8> { return "test error"; }
-    }
+/** Owns successes and concrete fixture errors. */
+enum Outcome<T> { Ok(T), TestError(TestError) }
 
-    function thrower() void throws IError {
-      throw TestError();
-    }
+class TestError implements IError {
+  init() {}
+  const method code() i32 {
+    return 1;
+  }
+  const method message() static_ptr<u8> {
+    return "test error";
+  }
+}
 
-    function middle() void throws IError {
-      var h = Holder.Hold(Owner(1));
-      thrower();
-    }
+function thrower() Outcome<void> {
+  return Outcome.TestError(TestError());
 
-    function main() i32 {
-      try {
-        middle();
-      } catch (e: ref IError) {
-        return counter;
-      }
-      return -1;
+  return Outcome.Ok;
+}
+
+function middle() Outcome<void> {
+  var h = Holder.Hold(Owner(1));
+  try thrower();
+
+  return Outcome.Ok;
+}
+
+function main() i32 {
+  /** Executes a fallible operation. */
+  var attempt_0 = () => Outcome<void> {
+    try middle();
+
+    return Outcome.Ok;
+  };
+  match attempt_0() {
+    Outcome.Ok => {},
+    (e: ref IError) => {
+      return counter;
     }
-  )"));
+  };
+  return -1;
+}
+)"));
   EXPECT_EQ(value, 1);
 }
 

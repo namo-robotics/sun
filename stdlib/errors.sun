@@ -9,16 +9,16 @@
 // message was composed in.
 //
 // Error takes its message either as a literal or as a String built at runtime:
-//   throw Error(errno(), "failed to open file");
-//   throw Error(-1, path);   // path: a String built at runtime
+//   return SystemResult.Error(Error(errno(), "failed to open file"));
+//   return SystemResult.Error(Error(-1, path));   // path: a String built at runtime
 //
 // Usage:
 //   import "stdlib/errors.sun";
 //   using std;
 //
-//   method pop_front() T throws IError {
+//   method pop_front() PopResult<T> {
 //       if (this.is_empty()) {
-//           throw EmptyError();
+//           return PopResult.Empty(EmptyError());
 //       }
 //       // ...
 //   }
@@ -44,7 +44,7 @@ public module std {
 
     /**
      * The error keeps its own copy, so the String the caller built can go out
-     * of scope (or be thrown past).
+     * of scope before the error is handled.
      */
     init(code: i32, message: const ref String) {
       var alloc: HeapAllocator = HeapAllocator();
@@ -55,14 +55,14 @@ public module std {
     /**
      * The numeric code this error was built with.
      */
-    public method code() i32 {
+    public const method code() i32 {
       return this.code_;
     }
 
     /**
      * A fresh copy of the message text, owned by the caller.
      */
-    public method message() String {
+    public const method message() String {
       var alloc: HeapAllocator = HeapAllocator();
       return this.message_.clone(alloc);
     }
@@ -82,14 +82,14 @@ public module std {
     /**
      * Returns the code identifying this error category.
      */
-    public method code() i32 {
+    public const method code() i32 {
       return 1;
     }
 
     /**
      * Fixed text: the container is empty.
      */
-    public method message() String {
+    public const method message() String {
       return String("container is empty");
     }
   }
@@ -108,14 +108,14 @@ public module std {
     /**
      * Returns the code identifying this error category.
      */
-    public method code() i32 {
+    public const method code() i32 {
       return 2;
     }
 
     /**
      * Fixed text: the element was not found.
      */
-    public method message() String {
+    public const method message() String {
       return String("element not found");
     }
   }
@@ -138,14 +138,14 @@ public module std {
     /**
      * Returns the code identifying this error category.
      */
-    public method code() i32 {
+    public const method code() i32 {
       return 3;
     }
 
     /**
      * Fixed text: the index was out of bounds.
      */
-    public method message() String {
+    public const method message() String {
       return String("index out of bounds");
     }
 
@@ -171,14 +171,14 @@ public module std {
     /**
      * Returns the code identifying this error category.
      */
-    public method code() i32 {
+    public const method code() i32 {
       return 4;
     }
 
     /**
      * Fixed text: division by zero.
      */
-    public method message() String {
+    public const method message() String {
       return String("division by zero");
     }
   }
@@ -197,14 +197,14 @@ public module std {
     /**
      * Returns the code identifying this error category.
      */
-    public method code() i32 {
+    public const method code() i32 {
       return 5;
     }
 
     /**
      * Fixed text: arithmetic overflow.
      */
-    public method message() String {
+    public const method message() String {
       return String("arithmetic overflow");
     }
   }
@@ -236,14 +236,14 @@ public module std {
     /**
      * Returns the code identifying this error category.
      */
-    public method code() i32 {
+    public const method code() i32 {
       return 6;
     }
 
     /**
      * A fresh copy of the explanation, owned by the caller.
      */
-    public method message() String {
+    public const method message() String {
       var alloc: HeapAllocator = HeapAllocator();
       return this.message_.clone(alloc);
     }
@@ -267,14 +267,14 @@ public module std {
     /**
      * The errno value, passed straight through.
      */
-    public method code() i32 {
+    public const method code() i32 {
       return this.errno_;
     }
 
     /**
      * Fixed text: an I/O call failed.
      */
-    public method message() String {
+    public const method message() String {
       return String("I/O error");
     }
 
@@ -304,14 +304,14 @@ public module std {
     /**
      * Returns the code identifying this error category.
      */
-    public method code() i32 {
+    public const method code() i32 {
       return 7;
     }
 
     /**
      * Fixed text: the allocator could not satisfy the request.
      */
-    public method message() String {
+    public const method message() String {
       return String("memory allocation failed");
     }
 
@@ -337,14 +337,14 @@ public module std {
     /**
      * Returns the code identifying this error category.
      */
-    public method code() i32 {
+    public const method code() i32 {
       return 9;
     }
 
     /**
      * Fixed text: the value was out of range for the target type.
      */
-    public method message() String {
+    public const method message() String {
       return String("value out of range for the target type");
     }
   }

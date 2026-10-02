@@ -1419,7 +1419,7 @@ TEST(Builtins_SpawnIntrinsic, rejects_a_throwing_function) {
         return 0;
     }
   )"),
-                                "a spawned function must not throw");
+                                "'throws' is no longer supported");
 }
 
 TEST(Builtins_Memory, memmove_handles_overlap_and_empty_ranges) {

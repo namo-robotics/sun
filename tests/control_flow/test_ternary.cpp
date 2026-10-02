@@ -138,11 +138,27 @@ TEST(ControlFlow_Ternary, zero_integer_condition_is_false) {
 
 TEST(ControlFlow_Ternary, untaken_branch_not_evaluated) {
   auto value = executeString(R"(
-      function main() i32 throws IError {
-          var b = 0;
-          return b != 0 ? 10 / b : 7;
-      }
-    )");
+/** Represents a fixture failure without a standard-library dependency. */
+class Error implements IError {
+  /** Creates the fixture failure. */
+  init() {}
+  /** Returns its numeric code. */
+  const method code() i32 {
+    return 1;
+  }
+  /** Returns a static description. */
+  const method message() static_ptr<u8> {
+    return "failure";
+  }
+}
+/** Owns successes and concrete fixture errors. */
+enum Outcome<T> { Ok(T), Error(Error) }
+
+function main() i32 {
+  var b = 0;
+  return b != 0 ? 10 / b : 7;
+}
+)");
   EXPECT_EQ(value, 7);
 }
 

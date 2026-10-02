@@ -14,7 +14,7 @@ public module std {
       var m = Matrix<i32>(allocator, [1]);
       var idx: array<i64, 1> = [0];
       m.set(idx, 10);
-      std.test.assert_eq(m.get(idx), 10);
+      try std.test.assert_eq(m.get(idx), 10);
     }
 
     /** Checks matrix ndims and size. */
@@ -22,8 +22,8 @@ public module std {
       var allocator = make_heap_allocator();
       var shape: array<i64, 3> = [2, 3, 4];
       var m = Matrix<f64>(allocator, shape);
-      std.test.assert_eq(m.ndims(), 3);
-      std.test.assert_eq(m.size(), 24);  // 2*3*4
+      try std.test.assert_eq(m.ndims(), 3);
+      try std.test.assert_eq(m.size(), 24);  // 2*3*4
     }
 
     /**
@@ -35,8 +35,8 @@ public module std {
       var shape: array<i64, 2> = [2, 3];
       var m = Matrix<i32>(allocator, shape);
       shape[0] = 99;
-      std.test.assert_eq(m.dim(0), 2);
-      std.test.assert_eq(m.dim(1), 3);
+      try std.test.assert_eq(m.dim(0), 2);
+      try std.test.assert_eq(m.dim(1), 3);
     }
 
     /**
@@ -57,9 +57,9 @@ public module std {
       var view = slice_middle(m);
       var scratch: array<i64, 3> = [7, 7, 7];
       var idx2: array<i64, 1> = [2];
-      std.test.assert_eq(view.dim(0), 3);
-      std.test.assert_eq(view.get(idx2), 4);
-      std.test.assert_eq(scratch[0], 7);
+      try std.test.assert_eq(view.dim(0), 3);
+      try std.test.assert_eq(view.get(idx2), 4);
+      try std.test.assert_eq(scratch[0], 7);
     }
 
     /**
@@ -69,7 +69,7 @@ public module std {
       var allocator = make_heap_allocator();
       var m = Matrix<i32>(allocator, [2, 3]);
       m[0, 0] = 42;
-      std.test.assert_eq(m[0, 0], 42);
+      try std.test.assert_eq(m[0, 0], 42);
     }
 
     /** Checks bracket index 2d. */
@@ -81,33 +81,33 @@ public module std {
       m[1, 1] = 2;
       m[2, 2] = 3;
       // Sum diagonal
-      std.test.assert_eq(m[0, 0] + m[1, 1] + m[2, 2], 6);
+      try std.test.assert_eq(m[0, 0] + m[1, 1] + m[2, 2], 6);
     }
 
     /** Checks slice range construction. */
     test_function slice_range_construction() {
       // A slice range representing [2:5]
       var s = SliceRange(2, 5, true, true);
-      std.test.assert_eq(s.get_start(), 2);
-      std.test.assert_eq(s.get_end(10), 5);
-      std.test.assert_eq(s.compute_size(10), 3);
+      try std.test.assert_eq(s.get_start(), 2);
+      try std.test.assert_eq(s.get_end(10), 5);
+      try std.test.assert_eq(s.compute_size(10), 3);
     }
 
     /** Checks slice range open ends. */
     test_function slice_range_open_ends() {
       // Slice [:5] - from start to 5
       var s1 = SliceRange(0, 5, false, true);
-      std.test.assert_eq(s1.get_start(), 0);
-      std.test.assert_eq(s1.get_end(10), 5);
+      try std.test.assert_eq(s1.get_start(), 0);
+      try std.test.assert_eq(s1.get_end(10), 5);
 
       // Slice [3:] - from 3 to end
       var s2 = SliceRange(3, 0, true, false);
-      std.test.assert_eq(s2.get_start(), 3);
-      std.test.assert_eq(s2.get_end(10), 10);
+      try std.test.assert_eq(s2.get_start(), 3);
+      try std.test.assert_eq(s2.get_end(10), 10);
 
       // Full slice [:] - from start to end
       var s3 = SliceRange(0, 0, false, false);
-      std.test.assert(s3.is_full_range(), "[:] is the full range");
+      try std.test.assert(s3.is_full_range(), "[:] is the full range");
     }
 
     /** Checks slice 1d basic. */
@@ -119,7 +119,7 @@ public module std {
       }
       // Slice [2:5] should give a view of length 3
       var view = m[2:5];
-      std.test.assert_eq(view.size(), 3);
+      try std.test.assert_eq(view.size(), 3);
     }
 
     /** Checks slice 1d values. */
@@ -134,9 +134,9 @@ public module std {
       var idx0: array<i64, 1> = [0];
       var idx1: array<i64, 1> = [1];
       var idx2: array<i64, 1> = [2];
-      std.test.assert_eq(view.get(idx0), 2);
-      std.test.assert_eq(view.get(idx1), 3);
-      std.test.assert_eq(view.get(idx2), 4);
+      try std.test.assert_eq(view.get(idx0), 2);
+      try std.test.assert_eq(view.get(idx1), 3);
+      try std.test.assert_eq(view.get(idx2), 4);
     }
 
     /** Checks slice 1d from start. */
@@ -154,7 +154,7 @@ public module std {
       var idx1: array<i64, 1> = [1];
       var idx2: array<i64, 1> = [2];
       var sum: i64 = view.get(idx0) + view.get(idx1) + view.get(idx2);
-      std.test.assert_eq(sum, 60);  // 10 + 20 + 30
+      try std.test.assert_eq(sum, 60);  // 10 + 20 + 30
     }
 
     /** Checks slice 1d to end. */
@@ -171,7 +171,7 @@ public module std {
       var idx0: array<i64, 1> = [0];
       var idx1: array<i64, 1> = [1];
       var sum: i64 = view.get(idx0) + view.get(idx1);
-      std.test.assert_eq(sum, 90);  // 40 + 50
+      try std.test.assert_eq(sum, 90);  // 40 + 50
     }
 
     /**
@@ -191,7 +191,7 @@ public module std {
       var idx0: array<i64, 1> = [0];
       view.set(idx0, 200);
       // Read back through view (not the original matrix)
-      std.test.assert_eq(view.get(idx0), 200);
+      try std.test.assert_eq(view.get(idx0), 200);
     }
   }  // module matrix_tests
 }  // module std

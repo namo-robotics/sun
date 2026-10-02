@@ -353,7 +353,7 @@ TEST(Tooling_Frontend_Parser, ParseFunction) {
 }
 TEST(Tooling_Frontend_Parser, ParseFunctionPointerType) {
   auto block = parseString(
-      "function use(callback: function (i32, bool) i64 throws IError) void {}");
+      "function use(callback: function (i32, bool) Result<i64>) void {}");
   ASSERT_NE(block, nullptr);
   const auto* function =
       dynamic_cast<const FunctionAST*>(block->getBody()[0].get());
@@ -364,9 +364,11 @@ TEST(Tooling_Frontend_Parser, ParseFunctionPointerType) {
   EXPECT_EQ(type.paramTypes[0]->baseName, "i32");
   EXPECT_EQ(type.paramTypes[1]->baseName, "bool");
   ASSERT_NE(type.returnType, nullptr);
-  EXPECT_EQ(type.returnType->baseName, "i64");
-  EXPECT_TRUE(type.canError);
-  EXPECT_EQ(type.toString(), "function (i32, bool) i64 throws IError");
+  EXPECT_EQ(type.returnType->baseName, "Result");
+  ASSERT_EQ(type.returnType->typeArguments.size(), 1u);
+  EXPECT_EQ(type.returnType->typeArguments[0]->baseName, "i64");
+  EXPECT_FALSE(type.canError);
+  EXPECT_EQ(type.toString(), "function (i32, bool) Result<i64>");
 }
 
 TEST(Tooling_Frontend_Parser, IfExpression) {

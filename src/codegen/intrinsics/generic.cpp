@@ -119,7 +119,10 @@ Value* IntrinsicsGenerator::codegenInitIntrinsic(
                               /*firstArg=*/1)) {
     return nullptr;
   }
-  ctx.builder->CreateCall(ctorFunc, ctorArgs);
+  auto* status = ctx.builder->CreateCall(ctorFunc, ctorArgs);
+  if (ctor->returnType->isEnum())
+    return scopes().trackCallTemporary(gen_.materializeStructReturn(status),
+                                       ctor->returnType);
 
   return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
 }

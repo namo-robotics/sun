@@ -94,6 +94,7 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
   if (exprType && exprType->isReference()) {
     switch (expr.getType()) {
       case ASTNodeType::CALL:
+      case ASTNodeType::MATCH:
       case ASTNodeType::INDEX:
       case ASTNodeType::GENERIC_CALL:  // _to_ref<T>(ptr)
         return gen_.codegenExpression(expr);

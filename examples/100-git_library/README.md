@@ -4,6 +4,13 @@ Fetches a pinned revision of [sun_serve](https://github.com/namo-robotics/sun_se
 builds the Moon library selected from its `sun-config.json`, and links a program
 that checks HTTP status helpers and prints the library version and `OK`.
 
+The currently pinned revision, `a90791b818f70cf612fac70ece0582c5a6468cc2`,
+still uses `throws` and the previous standard-library error APIs. It does not
+compile with the result-based compiler: compilation stops at `throws` in
+`src/sys_ffi.sun`. This example needs a migrated upstream revision before its
+build and test commands can pass. The dependency pin remains unchanged so the
+incompatibility is visible.
+
 Requires x86_64 Linux, Git, Sun with `stdlib.moon`, and musl archives
 `libz.a`, `libssl.a`, and `libcrypto.a`. Run `scripts/fetch-openssl.sh` to
 install these under `third_party/openssl/x86_64-linux-musl`, the config default.

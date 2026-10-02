@@ -172,26 +172,27 @@ A generic hash map using open addressing with linear probing. Implements `IItera
 var allocator = make_heap_allocator();
 var m = Map<i64, i32>(allocator, 16);  // Initial capacity 16
 m.insert(42, 100);
-var val = m.get_or_default(42, 0);   // 100
-m.remove(42);
+var fallback: i32 = 0;
+var val = m.get_or_default(42, fallback);   // 100
+ignore_error(m.remove(42));
 ```
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `insert(key, value)` | `(K, V) void throws IError` | Insert or update a key-value pair |
-| `get(key)` | `(K) V throws IError` | Get value by key (throws if not found) |
-| `find(key)` | `(K) Option<ref V> throws IError` | Get value by key; `None` if not present |
-| `get_or_default(key, default)` | `(K, ref V) ref V throws IError` | Get value or return default |
-| `remove(key)` | `(K) V throws IError` | Remove and return value (throws if not found) |
-| `contains(key)` | `(K) bool throws IError` | Check if key exists |
+| `insert(key, value)` | `(K, V) void` | Insert or update a key-value pair |
+| `get(key)` | `(K) LookupResult<ref V>` | Borrow the value or return `NotFound` |
+| `find(key)` | `(K) Option<ref V>` | Get value by key; `None` if not present |
+| `get_or_default(key, default)` | `(K, ref V) ref V` | Get value or return default |
+| `remove(key)` | `(K) LookupResult<V>` | Remove the value or return `NotFound` |
+| `contains(key)` | `(K) bool` | Check if key exists |
 | `size()` | `() i64` | Number of entries |
 | `capacity()` | `() i64` | Number of buckets |
 | `is_empty()` | `() bool` | Check if empty |
 | `clear()` | `() void` | Remove all entries |
 | `iter()` | `() MapIterator<K, V>` | Get iterator over values |
 
-Lookup and insertion methods propagate `ArithmeticError` if bucket arithmetic
-fails. Call them inside `try` or a function declared with `throws IError`.
+Handle `get` and `remove` with `match`, or propagate their `LookupResult`
+with `try` from a function that returns a compatible result enum.
 
 ### Iteration
 
@@ -234,8 +235,8 @@ and yield `char`. See [Characters and Bytes](/builtin-types#characters-and-bytes
 | `length()` | `() i64` | Current string length |
 | `capacity()` | `() i64` | Allocated capacity |
 | `is_empty()` | `() bool` | True when the string has no bytes |
-| `at(i)` | `(i64) u8 throws IError` | Read a byte; reject indices outside `length()` |
-| `set_at(i, val)` | `(i64, u8) void throws IError` | Write a byte; reject indices outside `length()` |
+| `at(i)` | `(i64) AccessResult<u8>` | Read a byte; reject indices outside `length()` |
+| `set_at(i, val)` | `(i64, u8) AccessResult<void>` | Write a byte; reject indices outside `length()` |
 | `unsafe_at(i)` | `(i64) u8` | Unchecked read; requires an unsafe block |
 | `unsafe_set_at(i, val)` | `(i64, u8) void` | Unchecked write; requires an unsafe block |
 | `append_char(ch)` | `(u8) void` | Append a single byte |
@@ -301,7 +302,7 @@ var again = join(allocator, fields, "=");  // "NAME=ADA"
 | `reverse()` | `() void` | Reverse the bytes in place |
 | `replace(from, to)` | `(static_ptr<u8>, static_ptr<u8>) void`, `(const ref String, const ref String) void` | Replace every occurrence in place; an empty `from` does nothing |
 | `clone(alloc)` | `(const ref HeapAllocator) String` | Copy into a new String |
-| `substr(alloc, start, count)` | `(const ref HeapAllocator, i64, i64) String throws IError` | Copy a byte range; throws if it falls outside the string |
+| `substr(alloc, start, count)` | `(const ref HeapAllocator, i64, i64) AccessResult<String>` | Copy a byte range or return `OutOfBounds` |
 | `split(alloc, sep)` | `(const ref HeapAllocator, u8) Vec<String>`, `(const ref HeapAllocator, static_ptr<u8>) Vec<String>` | Split into owned pieces; always yields one piece more than there are separators |
 | `split_nonempty(alloc, sep)` | `(const ref HeapAllocator, u8) Vec<String>`, `(const ref HeapAllocator, static_ptr<u8>) Vec<String>` | Like `split`, but empty pieces are dropped: adjacent, leading, and trailing separators yield nothing |
 | `split_whitespace(alloc)` | `(const ref HeapAllocator) Vec<String>` | Split on runs of ASCII whitespace; never yields an empty piece |
@@ -365,7 +366,7 @@ A non-owning view into a `String`. Provides read-only access to a substring with
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `length()` | `() i64` | View length |
-| `at(i)` | `(i64) u8 throws IError` | Read a byte; reject indices outside the view |
+| `at(i)` | `(i64) AccessResult<u8>` | Read a byte; reject indices outside the view |
 | `unsafe_at(i)` | `(i64) u8` | Unchecked read relative to the view; requires an unsafe block |
 | `equals_literal(s)` | `(static_ptr<u8>) bool` | Compare with a string literal |
 | `find_char(ch)` | `(u8) Option<i64>` | Index of first occurrence; `None` if absent |
@@ -447,28 +448,25 @@ See [Threads](/threads) for the whole picture.
 
 `stdlib/io.sun` (module `std.io`). Every path is taken two ways: as a
 `static_ptr<u8>` — what a string literal is — and as a `ref String` for a path
-put together at runtime.
+put together at runtime. Fallible calls return `SystemResult<T>` with an owned
+`Error`. The examples use `try` inside a function returning a compatible result.
 
 ```sun
 using std;
 using std.io;
 
 var f = File();
-try {
-    f.open("notes.txt", FileMode.Write);
-    f.write("Hello, World!");
-    f.close();
-} catch (e: ref IError) {
-    eprintln("could not write notes.txt");
-}
+try f.open("notes.txt", FileMode.Write);
+f.write("Hello, World!");
+f.close();
 
 // Or in one step
-var text = read_to_string(alloc, "notes.txt");
+var text = try read_to_string(alloc, "notes.txt");
 
 // A runtime path
 var path = String(alloc, "/tmp/");
 path.append_literal("report.csv");
-write_string(path, text);
+try write_string(path, text);
 ```
 
 `FileMode` is `Read` (must exist), `Write` (create or truncate) or `Append`.
@@ -476,15 +474,15 @@ write_string(path, text);
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `open` | `(path: Path, mode: FileMode) void throws IError` | Open a file |
+| `open` | `(path: Path, mode: FileMode) SystemResult<void>` | Open a file |
 | `adopt` | `(fd: i32) void` | Take ownership of an open descriptor |
 | `write` | `(data: static_ptr<u8>) i64` / `(data: ref String) i64` | Bytes written |
 | `write_bytes` | `(buf: raw_ptr<u8>, len: i64) i64` | Write raw bytes |
-| `read_all` | `(alloc: ref HeapAllocator) String throws IError` | Read to end of file |
+| `read_all` | `(alloc: ref HeapAllocator) SystemResult<String>` | Read to end of file |
 | `read_into` | `(buf: raw_ptr<u8>, len: i64) i64` | Read into a buffer |
 | `seek` | `(offset: i64, whence: Whence) i64` | New offset from the start |
 | `tell` / `size` | `() i64` | Current position / total length |
-| `sync` / `truncate` | `() void throws IError` / `(length: i64) void throws IError` | Flush / resize |
+| `sync` / `truncate` | `() SystemResult<void>` / `(length: i64) SystemResult<void>` | Flush / resize |
 | `close` / `is_open` / `get_fd` | | Close (idempotent), query, borrow the fd |
 
 A `File` closes itself at scope exit. The descriptor it holds is `0` when it
@@ -495,13 +493,13 @@ Free functions:
 
 | Function | Signature |
 |----------|-----------|
-| `read_to_string` | `(alloc: ref HeapAllocator, path: Path) String throws IError` |
-| `write_string` | `(path: Path, contents: ref String) void throws IError` |
-| `remove_file` / `remove_dir` | `(path: Path) void throws IError` |
-| `rename_file` | `(old_path: Path, new_path: Path) void throws IError` |
-| `make_dir` | `(path: Path, mode: i32) void throws IError` |
+| `read_to_string` | `(alloc: ref HeapAllocator, path: Path) SystemResult<String>` |
+| `write_string` | `(path: Path, contents: ref String) SystemResult<void>` |
+| `remove_file` / `remove_dir` | `(path: Path) SystemResult<void>` |
+| `rename_file` | `(old_path: Path, new_path: Path) SystemResult<void>` |
+| `make_dir` | `(path: Path, mode: i32) SystemResult<void>` |
 | `exists` / `is_dir` / `is_file` | `(path: Path) bool` |
-| `get_file_size` | `(path: Path) i64 throws IError` |
+| `get_file_size` | `(path: Path) SystemResult<i64>` |
 | `read_line` | `(alloc: ref HeapAllocator) Option<String>` |
 
 `Path` stands for the two overloads each of these has: `static_ptr<u8>` (a
@@ -525,7 +523,7 @@ directory record itself — no second syscall per entry, and no application-leve
 parsing of `getdents64` output.
 
 ```sun
-var entries = read_dir(alloc, "/etc");
+var entries = try read_dir(alloc, "/etc");
 for (var e: DirEntry in entries) {
     if (e.is_dir()) {
         print("dir  ");
@@ -538,7 +536,7 @@ for (var e: DirEntry in entries) {
 
 | Item | Signature | Description |
 |------|-----------|-------------|
-| `read_dir` | `(alloc: ref HeapAllocator, path: Path) Vec<DirEntry> throws IError` | `.` and `..` excluded, filesystem order |
+| `read_dir` | `(alloc: ref HeapAllocator, path: Path) SystemResult<Vec<DirEntry>>` | `.` and `..` excluded, filesystem order |
 | `DirEntry.name` | `() ref String` | Borrowed — the entry keeps it |
 | `DirEntry.kind` | `() FileKind` | `File`, `Dir`, `Symlink`, `Other` or `Unknown` |
 | `DirEntry.is_dir` / `is_file` | `() bool` | |
@@ -557,7 +555,7 @@ var poller = Poller(alloc);
 poller.add_read(sock_fd);
 poller.add_read(pipe_fd);
 
-var ready = poller.wait(1000);   // -1 blocks forever
+var ready = try poller.wait(1000);   // -1 blocks forever
 if (poller.is_readable(0)) { /* sock_fd has data */ }
 if (poller.is_hup(1)) { /* pipe_fd's writer closed */ }
 ```
@@ -569,7 +567,7 @@ durations clamp to the largest `i32` timeout.
 ```sun
 using std.time;
 
-var events = poller.wait(create_duration_millis(250));
+var events = try poller.wait(create_duration_millis(250));
 for (var event: ref Event in events) {
     if (event.is_readable()) { /* event.fd() has data */ }
     if (event.is_hup()) { /* event.fd() reached end of stream */ }
@@ -583,8 +581,8 @@ poller.remove(sock_fd);       // removes every registration for sock_fd
 | `add_read` / `add_write` / `add_read_write` | `(fd: i32) void` | Watch a descriptor |
 | `add` | `(fd: i32, events: i16) void` | Watch with an explicit `POLL*` mask |
 | `remove` | `(fd: i32) bool` | Remove every matching registration; report whether one existed |
-| `wait` | `(timeout_ms: i32) i32 throws IError` | Number ready; -1 blocks |
-| `wait` | `(timeout: const ref Duration) Vec<Event> throws IError` | Ready descriptors in registration order |
+| `wait` | `(timeout_ms: i32) SystemResult<i32>` | Number ready; -1 blocks |
+| `wait` | `(timeout: const ref Duration) SystemResult<Vec<Event>>` | Ready descriptors in registration order |
 | `is_readable` / `is_writable` / `is_hup` / `is_error` | `(i: i64) bool` | |
 | `fd_at` / `revents` | `(i: i64) i32` / `(i: i64) i16` | |
 | `clear` / `count` | | Reset, or how many are watched |
@@ -605,18 +603,20 @@ terminal size queries and single-key reads with a timeout, on Linux and macOS.
 Nothing here needs `termios` or `ioctl` bound by hand: the struct mirror and
 the per-OS flag values live in `target_linux.sun` / `target_darwin.sun`.
 
+Inside a function returning a compatible result, use `try` to propagate failures:
+
 ```sun
 using std.io;
 using std.terminal;
 using std.time;
 
 if (is_terminal(STDIN_FD)) {
-    var mode = TerminalMode(STDIN_FD, Mode.Raw, SignalPolicy.AsInput);
-    var size = get_size(STDOUT_FD);
+    var mode = try TerminalMode(STDIN_FD, Mode.Raw, SignalPolicy.AsInput);
+    var size = try get_size(STDOUT_FD);
     while (true) {
-        match read_key(STDIN_FD, create_duration_millis(250)) {
+        match try read_key(STDIN_FD, create_duration_millis(250)) {
             Option.Some(key) => { if (key == 3 or key == b'q') { break; } },
-            Option.None => { size = get_size(STDOUT_FD); }   // maybe resized
+            Option.None => { size = try get_size(STDOUT_FD); }   // maybe resized
         };
     }
 }   // `mode` leaves scope here and the terminal is restored
@@ -624,10 +624,10 @@ if (is_terminal(STDIN_FD)) {
 
 `TerminalMode` saves the descriptor's settings when it is constructed and puts
 them back when it leaves scope, whether by reaching the end of the block, by
-`return`, or by an exception unwinding through it. Call `restore()` to put them
+`return`, or by `try` propagating an error. Call `restore()` to put them
 back early; a second call does nothing. A moved-from guard is all zeros and
 restores nothing, so handing a guard to another owner moves the duty with it.
-Constructing one on a descriptor that is not a terminal throws with `ENOTTY`
+Constructing one on a descriptor that is not a terminal returns an error with `ENOTTY`
 and changes nothing.
 
 | `Mode` | Clears | Keeps |
@@ -665,16 +665,16 @@ example whenever `read_key` returns `None`.
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `is_terminal` | `(fd: i32) bool` | `isatty`; false for pipes, files and invalid descriptors |
-| `get_size` | `(fd: i32) Size throws IError` | `rows` and `cols`; throws `ENOTTY` on a non-terminal |
-| `read_key` | `(fd: i32, timeout: const ref Duration) Option<u8> throws IError` | One byte, `None` on timeout; throws once input has closed |
-| `try_read_key` | `(fd: i32) Option<u8> throws IError` | `read_key` with a zero timeout |
-| `read_attributes` | `(fd: i32) Termios throws IError` | Snapshot of the line-discipline settings |
+| `get_size` | `(fd: i32) SystemResult<Size>` | `rows` and `cols`; returns `ENOTTY` on a non-terminal |
+| `read_key` | `(fd: i32, timeout: const ref Duration) SystemResult<Option<u8>>` | One byte, `None` on timeout; returns an error once input has closed |
+| `try_read_key` | `(fd: i32) SystemResult<Option<u8>>` | `read_key` with a zero timeout |
+| `read_attributes` | `(fd: i32) SystemResult<Termios>` | Snapshot of the line-discipline settings |
 | `has_echo` / `is_canonical` / `delivers_signals` | `(const ref Termios) bool` | Read the `ECHO` / `ICANON` / `ISIG` bits of a snapshot |
 
 | `TerminalMode` | Signature | Description |
 |----------------|-----------|-------------|
-| `init` | `(fd: i32, mode: Mode, signals: SignalPolicy) throws IError` | Save and switch |
-| `restore` | `() void throws IError` | Put the saved settings back now; idempotent |
+| `init` | `(fd: i32, mode: Mode, signals: SignalPolicy) _Result<void, Error>` | Save and switch |
+| `restore` | `() SystemResult<void>` | Put the saved settings back now; idempotent |
 | `is_active` | `() bool` | Whether the terminal is still in the applied mode |
 
 `read_key` allocates nothing and never touches a descriptor the caller did not
@@ -684,11 +684,17 @@ rest with `try_read_key`. `Termios` is opaque; `equals(const ref Termios)`
 compares two snapshots. The native request codes `TIOCGWINSZ`, `TIOCSWINSZ`
 and `TIOCSCTTY` are public for programs that drive `ioctl` themselves.
 
+Terminal operations return `SystemResult<T>`. `TerminalMode` construction still
+uses `SystemResult<TerminalMode>`; `try` can propagate either result.
+
 ## Environment
 
 `Env` in module `std.env` owns a snapshot of the process environment. It
 copies entries in native order, preserves duplicate names, splits each entry
 at its first `=`, and is directly iterable as borrowed `EnvEntry` values.
+
+The fallible calls below use `try` inside a function returning `SystemResult<T>`
+or another compatible result enum.
 
 ```sun
 using std;
@@ -704,21 +710,21 @@ for (var entry: ref EnvEntry in environment) {
     println(entry.name());
 }
 
-try { environment.set("LANG", "C"); } catch (e: ref IError) { }
-var here = environment.cwd();
+try environment.set("LANG", "C");
+var here = try environment.cwd();
 ```
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `get` | `(name: Name) Option<ref String>` | First matching entry, or `None` |
 | `has` | `(name: Name) bool` | Whether the snapshot contains the name |
-| `set` | `(name: Name, value: Name) void throws IError` | Mutate libc, then refresh |
-| `remove` | `(name: Name) void throws IError` | Mutate libc, then refresh |
+| `set` | `(name: Name, value: Name) SystemResult<void>` | Mutate libc, then refresh |
+| `remove` | `(name: Name) SystemResult<void>` | Mutate libc, then refresh |
 | `refresh` | `() void` | Observe changes made outside this `Env` |
 | `size` / `is_empty` | `() i64` / `() bool` | Snapshot size |
 | `iter` | `() EnvIterator` | Borrow entries in native order |
-| `cwd` | `() String throws IError` | Working directory |
-| `set_cwd` | `(path: Name) void throws IError` | Change it process-wide |
+| `cwd` | `() SystemResult<String>` | Working directory |
+| `set_cwd` | `(path: Name) SystemResult<void>` | Change it process-wide |
 | `args` | `(argc, argv) Vec<String>` | Copy argv, with `argv[0]` first |
 
 `Name` means either `static_ptr<u8>` or `ref String`; `set` provides all
@@ -740,6 +746,8 @@ function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
 
 `stdlib/process.sun` (module `std.process`). `Command` covers running a program;
 the raw POSIX calls are there for programs that drive the fork themselves.
+Fallible operations return `SystemResult<T>` with an owned `Error`; `try`
+propagates its code and message to a compatible caller result.
 
 ```sun
 using std.process;
@@ -747,7 +755,7 @@ using std.process;
 var cmd = Command(alloc, "/bin/sh");
 cmd.add_arg("-c");
 cmd.add_arg("printf hello");
-var out = cmd.output();
+var out = try cmd.output();
 
 println(out.status());     // 0
 println(out.stdout());     // hello
@@ -760,9 +768,9 @@ println(out.stdout());     // hello
 | `init` | `(alloc: ref HeapAllocator, program: static_ptr<u8> \| ref String)` | The program is `argv[0]` |
 | `arg` | `(value: static_ptr<u8>) void` / `(value: ref String) void` | Append one argument |
 | `stdin` / `stdout` / `stderr` | `(mode: Stdio) void` | `Inherit`, `Piped` or `Null` |
-| `start` | `() Child throws IError` | Run it, return immediately |
-| `status` | `() i32 throws IError` | Run to completion, inheriting the streams |
-| `output` | `() Output throws IError` | Run to completion, capturing both streams |
+| `start` | `() SystemResult<Child>` | Run it, return immediately |
+| `status` | `() SystemResult<i32>` | Run to completion, inheriting the streams |
+| `output` | `() SystemResult<Output>` | Run to completion, capturing both streams |
 
 Arguments are passed to the program as they are given — a space inside one
 argument stays inside it, with no shell reparsing.
@@ -776,12 +784,12 @@ reader goes away would then see `EPIPE` and complain instead of exiting quietly.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `id` | `() i32` | Process id |
-| `wait` | `() i32 throws IError` | Exit code; a killed child reports 128 + signal |
-| `try_wait` | `() Option<i32> throws IError` | `None` while it is still running |
-| `kill` | `(sig: i32) void throws IError` | |
+| `wait` | `() SystemResult<i32>` | Exit code; a killed child reports 128 + signal |
+| `try_wait` | `() SystemResult<Option<i32>>` | `None` while it is still running |
+| `kill` | `(sig: i32) SystemResult<void>` | |
 | `write_stdin` / `close_stdin` | `(data: ref String) i64` / `() void` | Needs `stdin(Stdio.Piped)` |
 | `take_stdout` / `take_stderr` | `() i32` | Hand the pipe over |
-| `collect` | `(alloc: ref HeapAllocator) Output throws IError` | Drain both pipes and wait |
+| `collect` | `(alloc: ref HeapAllocator) SystemResult<Output>` | Drain both pipes and wait |
 
 `collect` polls the two pipes rather than draining one and then the other: a
 child that fills the stderr pipe while the parent is stuck reading stdout would
@@ -798,16 +806,16 @@ or killing on that would touch a process the object no longer stands for. Call
 |----------|-----------|-------------|
 | `pid` / `parent_pid` | `() i32` | |
 | `uid` / `euid` | `() u32` | |
-| `kill` | `(target: i32, sig: i32) void throws IError` | |
-| `set_pgid` | `(target: i32, pgid: i32) void throws IError` | 0 means "this one" |
-| `create_new_session` | `() i32 throws IError` | `setsid` |
+| `kill` | `(target: i32, sig: i32) SystemResult<void>` | |
+| `set_pgid` | `(target: i32, pgid: i32) SystemResult<void>` | 0 means "this one" |
+| `create_new_session` | `() SystemResult<i32>` | `setsid` |
 | `exit` / `exit_now` | `(code: i32) void` | With / without atexit handlers |
-| `fork` | `() i32 throws IError` | 0 in the child, the child's pid in the parent |
-| `exec` | `(cmd: ref Command) void throws IError` | Only returns on failure |
-| `wait_pid` | `(target: i32, options: i32) i32 throws IError` | Raw wait status; -1 = any child |
+| `fork` | `() SystemResult<i32>` | 0 in the child, the child's pid in the parent |
+| `exec` | `(cmd: ref Command) SystemResult<void>` | Only returns on failure |
+| `wait_pid` | `(target: i32, options: i32) SystemResult<i32>` | Raw wait status; -1 = any child |
 | `exited` / `exit_status` / `signaled` / `get_term_signal` | `(status: i32)` | Read a wait status |
-| `open_pipe` | `(alloc: ref HeapAllocator) Pipe throws IError` | `read_fd()` / `write_fd()` |
-| `dup_fd` | `(old_fd: i32, new_fd: i32) void throws IError` | `dup2` |
+| `open_pipe` | `(alloc: ref HeapAllocator) SystemResult<Pipe>` | `read_fd()` / `write_fd()` |
+| `dup_fd` | `(old_fd: i32, new_fd: i32) SystemResult<void>` | `dup2` |
 
 Signal numbers are `SIGHUP`, `SIGINT`, `SIGQUIT`, `SIGKILL`, `SIGSEGV`,
 `SIGPIPE`, `SIGALRM`, `SIGTERM`, `SIGCHLD`, `SIGCONT`, `SIGSTOP`; `wait_pid`
@@ -857,7 +865,9 @@ C's `tm_year`/`tm_mon` offsets. It also carries `day`, `hour`, `minute`,
 ## Networking
 
 TCP and UDP sockets and hostname resolution, from `networking.sun`. For TLS
-and HTTPS see [TLS & HTTPS](/tls).
+and HTTPS see [TLS & HTTPS](/tls). Fallible networking and HTTP operations
+return `SystemResult<T>`. These examples use `try` inside a function returning
+a compatible result enum.
 
 ```sun
 using std;
@@ -865,41 +875,41 @@ using std;
 // Client
 var stream = TcpStream();
 var host = String(alloc, "example.com");
-stream.connect_host(host, 80);       // resolve a name, then connect
-stream.connect_ip(ip, 80);           // or an address already in hand
-stream.connect_local(8080);          // or 127.0.0.1
-stream.set_nonblocking(true);         // configure the chosen connection
+try stream.connect_host(host, 80);       // resolve a name, then connect
+try stream.connect_ip(ip, 80);           // or an address already in hand
+try stream.connect_local(8080);          // or 127.0.0.1
+try stream.set_nonblocking(true);         // configure the chosen connection
 
-stream.send_str("ping");
-stream.send_string(message);
+try stream.send_str("ping");
+try stream.send_string(message);
 var buf = ContiguousBuffer<u8>(alloc, 4096);
-var n = stream.recv(buf);            // bytes read; 0 at end of stream
+var n = try stream.recv(buf);            // bytes read; 0 at end of stream
 stream.close();
 
 // Server
 var listener = TcpListener();
-listener.bind_port(8080);            // 0.0.0.0; bind_loopback for 127.0.0.1
-listener.set_nonblocking(true);       // configure after binding
-listener.listen(128);
-var client = listener.accept();
-client.set_nonblocking(true);         // accepted streams configure themselves
+try listener.bind_port(8080);            // 0.0.0.0; bind_loopback for 127.0.0.1
+try listener.set_nonblocking(true);       // configure after binding
+try listener.listen(128);
+var client = try listener.accept();
+try client.set_nonblocking(true);         // accepted streams configure themselves
 ```
 
 `resolve_host_ipv4` does name resolution on its own, returning the first A
 record in network byte order — the form `connect_ip` takes:
 
 ```sun
-var ip: i32 = resolve_host_ipv4(host);
+var ip: i32 = try resolve_host_ipv4(host);
 ```
 
-It throws when the name does not resolve or has no IPv4 address. Socket
-operations also throw the positive libc `errno` value through `IError.code()`;
+Resolution returns `SystemResult.Error` when the name does not resolve or has
+no IPv4 address. Socket failures carry the positive libc `errno` value in `Error.code()`;
 they do not use `-1` as an error code.
 
 For a single-threaded event loop, connect a stream or bind a listener first,
 then call `set_nonblocking(true)` and register `get_fd()` with a `Poller`. Wait
 with a `Duration`, handle each returned `Event`, and keep reading, writing, or
-accepting until an operation throws an error for which
+accepting until an operation returns `SystemResult.Error(e)` for which
 `is_would_block(e.code())` is true. An accepted `TcpStream` has its own
 descriptor, so configure and register it separately. Calling
 `set_nonblocking(false)` restores blocking behavior without changing unrelated
@@ -915,12 +925,12 @@ returns.
 
 ```sun
 var lan = Ipv4Addr(192, 168, 1, 10);     // from octets
-var addr = parse_ipv4(text);             // from a String; throws if malformed
+var addr = try parse_ipv4(text);             // propagate an error if malformed
 var any = ipv4_any();                    // 0.0.0.0
 var home = ipv4_loopback();              // 127.0.0.1
 println(lan.to_string(alloc));           // "192.168.1.10"
-stream.connect_addr(lan, 80);            // TCP takes it too
-listener.bind_addr(any, 8080);
+try stream.connect_addr(lan, 80);            // TCP takes it too
+try listener.bind_addr(any, 8080);
 ```
 
 ### UDP
@@ -929,7 +939,7 @@ listener.bind_addr(any, 8080);
 call. `bind` creates the socket, so it always comes first; binding port 0
 lets the OS pick a free port — right for a send-only socket — and
 `local_port()` reads the pick back. Binds are exclusive by default: an
-occupied address throws an `Error` with the native `EADDRINUSE` code. A
+occupied address returns an `Error` with the native `EADDRINUSE` code. A
 failed bind leaves the socket closed, so callers can retry another port.
 Pass `true` as the third argument, `socket.bind(any, port, true)`, to enable
 `SO_REUSEADDR` for shared listeners. Each socket sharing the address must
@@ -940,15 +950,15 @@ using std;
 
 var socket = UdpSocket();
 var any = ipv4_any();
-socket.bind(any, 0);
-var port: i32 = socket.local_port();
+try socket.bind(any, 0);
+var port: i32 = try socket.local_port();
 
 var dest = Ipv4Addr(192, 168, 1, 20);
-socket.send_str_to("ping", dest, 9000);      // a literal
-socket.send_to(data, len, dest, 9000);       // raw bytes
+try socket.send_str_to("ping", dest, 9000);      // a literal
+try socket.send_to(data, len, dest, 9000);       // raw bytes
 
 var buf = ContiguousBuffer<u8>(alloc, 2048);
-var datagram = socket.recv_from(buf);        // one datagram, cut to fit buf
+var datagram = try socket.recv_from(buf);        // one datagram, cut to fit buf
 datagram.length();                           // bytes received
 datagram.addr();                             // sender's Ipv4Addr
 datagram.port();                             // sender's port
@@ -956,7 +966,7 @@ socket.close();
 ```
 
 A blocking `recv_from` can be given a deadline with
-`set_recv_timeout(duration)`; when it expires the call throws an error for
+`set_recv_timeout(duration)`; when it expires the call returns an error for
 which `is_would_block(e.code())` is true. `set_nonblocking(true)` and a
 `Poller` work here the same way they do for TCP.
 
@@ -966,13 +976,13 @@ sent to the group on its bound port:
 
 ```sun
 var socket = UdpSocket();
-socket.bind(ipv4_any(), 9000, true);
+try socket.bind(ipv4_any(), 9000, true);
 var group = Ipv4Addr(239, 255, 0, 1);
 var iface = ipv4_any();
-socket.join_multicast(group, iface);
-socket.set_multicast_ttl(1);        // how many router hops sends may cross
-socket.set_multicast_loop(true);    // hear this host's own sends
-socket.leave_multicast(group, iface);
+try socket.join_multicast(group, iface);
+try socket.set_multicast_ttl(1);        // how many router hops sends may cross
+try socket.set_multicast_loop(true);    // hear this host's own sends
+try socket.leave_multicast(group, iface);
 ```
 
 IPv4 is the only supported address family for now. TCP sockets have no
@@ -986,7 +996,7 @@ the response.
 
 ```sun
 var server = HttpServer(alloc);
-server.bind(8080);
+try server.bind(8080);
 server.serve((req: ref HttpRequest, resp: ref HttpResponse) => void {
     if (req.path.equals_literal("/")) {
         resp.set_body("<h1>Hello</h1>");
@@ -1001,29 +1011,32 @@ It handles one connection at a time, parses request line and headers (not
 bodies), and always answers `Connection: close`. For outgoing requests, use
 `HttpsClient` from the tls bundle.
 
-## Option\<T\> and Result\<T, E\>
+## Optional values and results
 
-Payload enums for absence and fallibility, defined in `option.sun`:
+`Option<T>`, defined in `option.sun`, represents a value that may be absent:
 
 ```sun
 enum Option<T> { Some(T), None }
-enum Result<T, E> { Ok(T), Err(E) }
 ```
 
-Inspect them with `match`; construction infers type arguments from the
-payload (`Option.Some(42)`) or from the expected type (`Option.None` in
-return position or against an annotation):
+For fallible operations, prefer the result enums defined in `result.sun`:
 
-```sun
-var v = match m.find(key) {
-    Option.Some(x) => x,
-    Option.None => fallback
-};
-```
+- `AccessResult<T>` contains `Ok(T)` or `OutOfBounds(IndexOutOfBoundsError)`. Checked vector, buffer, and string access operations use this narrow result.
+- `LookupResult<T>` contains `Ok(T)` or `NotFound(NotFoundError)` for map and linked-list lookups, updates, and removal.
+- `PopResult<T>` contains `Ok(T)` or `Empty(EmptyError)` for linked-list and string pops.
+- `JsonResult<T>` contains `Ok(T)` or `Error(JsonError)` for JSON parsing, conversions, and container operations.
+- `ConversionResult<T>` reports `ConversionError` through its `Error` variant.
+- `ArithmeticResult<T>` contains `Ok(T)`, `Overflow(OverflowError)`, and `DivisionByZero(DivisionByZeroError)`. Use `_ => ...` to handle all remaining variants in a match.
+- `ProtoResult<T>` contains `Ok(T)` or `Error(ProtoDecodeError)` for wire reads and generated protobuf decoders.
+- `SystemResult<T>` contains `Ok(T)` or `Error(Error)` for environment, process, file, polling, terminal, networking, and HTTP operations.
+- `Result<T>` contains `Ok(T)` and named variants for standard error categories,
+  including bounds, lookup, I/O, allocation, conversion, arithmetic, JSON, and
+  protocol decoding errors. Use it when combining several APIs.
 
-Use `Option` for "might not be there" (lookups, `first`/`last`, `pop`,
-iterator `next`), and `IError` throwing for actual failures. `Result<T, E>`
-suits fallible operations whose error is a value rather than an exception.
+Use `match` to handle results or prefix `try` to propagate failures. `try` treats
+the first declared variant as success; it does not depend on stdlib names.
+The builtin `_Result<T, E>` remains available without importing the stdlib.
+
 
 ## Iteration: IIterator\<T, Container\> and IIterable\<T, Self\>
 
@@ -1135,10 +1148,10 @@ n.append_decimal(text);   // 265252859812191058636308480000000
 | `set_u64(v)`, `assign(other)`, `clear()` | | Replace the value |
 | `compare(other)`, `compare_u64(v)`, `equals(other)` | `(const ref BigUint) i64`, `(u64) i64`, `(const ref BigUint) bool` | Ordering (-1/0/1) |
 | `add(other)`, `add_small(v)` | `(const ref BigUint) void`, `(u64) void` | In-place addition |
-| `sub(other)` | `(const ref BigUint) void throws IError` | In-place subtraction; throws `OverflowError` if the result would be negative |
+| `sub(other)` | `(const ref BigUint) ArithmeticResult<void>` | In-place subtraction; returns `Overflow` if the result would be negative |
 | `mul(other)`, `mul_small(v)`, `mul_pow10(n)` | `(const ref BigUint) void`, `(u64) void`, `(i64) void` | In-place multiplication |
 | `shl(bits)`, `shr(bits)` | `(i64) void` | In-place shifts |
-| `divmod_small(d)` | `(u32) u32 throws IError` | Divide in place by a 32-bit divisor, returning the remainder |
+| `divmod_small(d)` | `(u32) ArithmeticResult<u32>` | Divide in place, returning the remainder or `DivisionByZero` for a zero divisor |
 | `append_decimal(out)` | `(ref String) void` | Append the decimal digits |
 | `set_decimal(text)` | `(const ref String) bool` | Parse decimal digits; `false` (value left at zero) if malformed |
 
@@ -1146,18 +1159,28 @@ n.append_decimal(text);   // 265252859812191058636308480000000
 
 A value never narrows on its own: assigning an `i64` to an `i32` is a compile
 error. `math.sun` provides `safe_convert<T>(x)`, which converts between any two
-numeric types and throws `ConversionError` when the value does not fit:
+numeric types and returns `ConversionResult<T>`. Its `Error` variant owns a
+`ConversionError` when the value does not fit:
 
 ```sun
-var ms: i64 = 200;
-var t: i32 = safe_convert<i32>(ms);       // 200
-var big: i64 = 4294967498;
-var u: i32 = safe_convert<i32>(big);      // throws ConversionError
-var n: u64 = safe_convert<u64>(-1);       // throws: negative to unsigned
-var b: u8 = safe_convert<u8>(255.0);      // 255
-var c: u8 = safe_convert<u8>(256.0);      // throws
-var h: f32 = safe_convert<f32>(1.0e300);  // throws: infinite in f32
+/** Narrows a value and lets the caller handle conversion failure. */
+function narrow(value: i64) ConversionResult<u8> {
+  return safe_convert<u8>(value);
+}
+
+/** Prints the converted number or the error message. */
+function show_conversion(value: i64) void {
+  match narrow(value) {
+    ConversionResult.Ok(number) => println(number),
+    ConversionResult.Error(error) => println(error.message())
+  };
+}
 ```
+
+Inside a function returning a compatible result enum, use `try safe_convert<T>(x)`
+to extract the number and propagate conversion failures. For example, converting
+`255.0` to `u8` succeeds; `256.0`, negative integers, and NaN return `Error`.
+
 
 Checked: integer values outside `T`'s range (including a sign change that flips
 the value), floats that are NaN or outside `T`'s range, and an `f64` that
@@ -1219,17 +1242,21 @@ scan), numbers are `Int(i64)` when the text is an integer that fits and
 `Float(f64)` otherwise, strings are UTF-8 `String`s.
 
 ```sun
-var alloc = make_heap_allocator();
-var doc = parse_json(alloc, "{\"name\": \"sun\", \"tags\": [1, 2.5]}");
-var name: ref String = doc.get("name").as_string();
-var second: f64 = doc.get("tags").at(1).as_f64();
+/** Parses and builds JSON while propagating concrete JSON errors. */
+function json_example() JsonResult<void> {
+  var alloc = make_heap_allocator();
+  var doc = try parse_json(alloc, "{\"name\": \"sun\", \"tags\": [1, 2.5]}");
+  var tags = try doc.get("tags");
+  var second: f64 = try (try tags.at(1)).as_f64();
 
-var obj = create_json_object(alloc);
-obj.set(String(alloc, "ok"), Json(true));
-obj.set(String(alloc, "tags"), create_json_array(alloc));
-obj.get("tags").push(Json(42));
-println(obj.to_string(alloc));            // {"ok":true,"tags":[42]}
-println(obj.to_pretty_string(alloc, 2));
+  var obj = create_json_object(alloc);
+  try obj.set(String(alloc, "ok"), Json(true));
+  try obj.set(String(alloc, "tags"), create_json_array(alloc));
+  try (try obj.get("tags")).push(Json(42));
+  println(obj.to_string(alloc));            // {"ok":true,"tags":[42]}
+  println(obj.to_pretty_string(alloc, 2));
+  return JsonResult.Ok;
+}
 ```
 
 The tree node is `class Json` wrapping a `public var value: JsonValue`:
@@ -1249,33 +1276,34 @@ store a copy instead. `create_json_string(alloc, ref s)` does that for a `String
 
 ```sun
 // cfg.model is still needed later, so the document gets a copy
-req.set(String(alloc, "model"), create_json_string(alloc, cfg.model));
+try req.set(String(alloc, "model"), create_json_string(alloc, cfg.model));
 // Equivalent to an explicit clone:
-req.set(String(alloc, "model"), Json(cfg.model.clone(alloc)));
+try req.set(String(alloc, "model"), Json(cfg.model.clone(alloc)));
 // Moves cfg.model into the document; using it again is a compile error
-req.set(String(alloc, "model"), Json(cfg.model));
+try req.set(String(alloc, "model"), Json(cfg.model));
 ```
 
 | Function / Method | Signature | Description |
 |--------|-----------|-------------|
-| `parse_json(alloc, text)` | `(ref HeapAllocator, ref String) Json throws IError` | Parse a complete document (also accepts a `static_ptr<u8>` literal). Rejects trailing text, leading zeros, control characters in strings, and nesting deeper than 256 |
+| `parse_json(alloc, text)` | `(ref HeapAllocator, ref String) JsonResult<Json>` | Parse a complete document (also accepts a `static_ptr<u8>` literal). Rejects trailing text, leading zeros, control characters in strings, and nesting deeper than 256 |
 | `Json()`, `Json(b)`, `Json(n)`, `Json(x)`, `Json(s)` | `()`, `(bool)`, `(i64)`, `(f64)`, `(String)` | Build a scalar node (`Json(s)` moves the `String` into the node; see above) |
 | `create_json_array(alloc)` / `create_json_object(alloc)` | `(ref HeapAllocator) Json` | Empty array / object |
 | `create_json_string(alloc, text)` | `(ref HeapAllocator, static_ptr<u8>) Json`, `(ref HeapAllocator, ref String) Json` | String node from a literal, or a copy of a borrowed `String` (the caller keeps its own) |
 | `is_null()`, `is_bool()`, `is_int()`, `is_float()`, `is_number()`, `is_string()`, `is_array()`, `is_object()` | `() bool` | Kind checks |
-| `as_bool()`, `as_i64()`, `as_f64()` | `() T throws IError` | Scalar readers; `as_i64` accepts an integral `Float`, `as_f64` accepts an `Int` |
-| `as_string()` | `() ref String throws IError` | Borrow the string |
+| `as_bool()`, `as_i64()`, `as_f64()` | `() JsonResult<T>` | Scalar readers; `as_i64` accepts an integral `Float`, `as_f64` accepts an `Int` |
+| `as_string()` | `() JsonResult<ref String>` | Borrow the string |
 | `len()` | `() i64` | Array items or object members (0 for scalars) |
-| `at(i)` | `(i64) ref Json throws IError` | Array item |
-| `get(key)` | `(static_ptr<u8>) ref Json throws IError`, `(ref String) ref Json throws IError` | Object member value |
+| `at(i)` | `(i64) JsonResult<ref Json>` | Array item |
+| `get(key)` | `(static_ptr<u8>) JsonResult<ref Json>`, `(ref String) JsonResult<ref Json>` | Object member value |
 | `has(key)` | `(static_ptr<u8>) bool` | Whether an object has the key |
-| `key_at(i)` / `value_at(i)` | `(i64) ref String throws IError` / `(i64) ref Json throws IError` | Object members by position, in insertion order |
-| `push(item)` | `(Json) void throws IError` | Append to an array |
-| `set(key, value)` | `(String, Json) void throws IError` | Set an object member (replaces an existing key's value in place, otherwise appends) |
+| `key_at(i)` / `value_at(i)` | `(i64) JsonResult<ref String>` / `(i64) JsonResult<ref Json>` | Object members by position, in insertion order |
+| `push(item)` | `(Json) JsonResult<void>` | Append to an array |
+| `set(key, value)` | `(String, Json) JsonResult<void>` | Set an object member (replaces an existing key's value in place, otherwise appends) |
 | `write(out)` / `write_pretty(out, indent)` | `(ref String) void` / `(ref String, i64) void` | Append JSON text to a `String` |
 | `to_string(alloc)` / `to_pretty_string(alloc, indent)` | `(ref HeapAllocator) String` / `(ref HeapAllocator, i64) String` | JSON text as a new `String` |
 
-Readers throw `JsonError` (code 60) on a kind mismatch or missing key; parse
+Fallible JSON operations return `JsonResult<T>`. Its `Error` variant owns a
+`JsonError` (code 60) on a kind mismatch or missing key; parse
 errors carry the byte offset of the problem in `offset()`. When writing,
 `Float` values keep a `.0` or exponent so they read back as `Float`, and
 non-finite floats become `null`.
@@ -1287,10 +1315,10 @@ The assertions and runner support behind `test_function` — see
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `assert(cond)` / `assert(cond, msg)` | `(bool[, static_ptr<u8>]) void throws IError` | Throw `AssertionError` when false |
-| `assert_eq(expected, actual)` | overloaded per primitive, plus `(const ref String, const ref String)` | Throw when the values differ, showing both |
-| `assert_ne(a, b)` | overloaded per primitive | Throw when the values are equal |
-| `fail(msg)` | `(static_ptr<u8>) void throws IError` | Fail unconditionally |
+| `assert(cond)` / `assert(cond, msg)` | `(bool[, static_ptr<u8>]) std.test.AssertionResult<void>` | Return `Error(AssertionError)` when false |
+| `assert_eq(expected, actual)` | overloaded per primitive, plus `(const ref String, const ref String)` | Return an assertion error when the values differ, showing both |
+| `assert_ne(a, b)` | overloaded per primitive | Return an assertion error when the values are equal |
+| `fail(msg)` | `(static_ptr<u8>) std.test.AssertionResult<void>` | Fail unconditionally |
 
 `AssertionError` (code 10) implements `IError`. The remaining items —
 `TestResult`, `run_one`, `report`, `finish`, `wants_sequential` — exist for
@@ -1319,29 +1347,33 @@ object itself.
 | `JsonError` | 60 | JSON parse errors (with `offset()`) and kind mismatches |
 
 ```sun
-function pop_first(v: ref Vec<i32>) i32 throws IError {
-    if (v.is_empty()) {
-        throw EmptyError();
-    }
-    return v.get(0);
+/** Returns the first value or an owned empty-container error. */
+function first(v: ref Vec<i32>) PopResult<i32> {
+    return match v.get(0) {
+        AccessResult.Ok(value) => PopResult.Ok(value),
+        AccessResult.OutOfBounds(_) => PopResult.Empty(EmptyError())
+    };
 }
 ```
 
-`Error` takes its message either as a literal or as a `String` put together at
-runtime. Given a `String` it keeps its own copy, so the message stays readable
-after the `String` it came from is gone — including in a caller that catches the
-error several frames up.
+`Error` accepts either a literal or a `String` composed at runtime. It owns a
+copy, so its message remains readable after the source string has been dropped.
+Returning and propagating a result transfers that ownership to the caller.
 
 ```sun
-var path = String(alloc, "/tmp/");
-path.append(name);
-throw Error(errno(), path);
-
-// ... several frames up:
-catch (e: ref IError) {
-    var msg: String = e.message();   // an owned clone
-    eprintln(msg);
+/** Creates an owned error message from a runtime path. */
+function failure(path: const ref String) SystemResult<void> {
+    return SystemResult.Error(Error(errno(), path));
 }
+
+// At the caller:
+match failure(path) {
+    SystemResult.Ok => {},
+    (e: const ref IError) => {
+        var msg: String = e.message();
+        eprintln(msg);
+    }
+};
 ```
 
 ## Print Functions

@@ -15,7 +15,7 @@ var response = client.get(host, "/");
 
 Certificates are verified by default: the chain must validate against the
 system CA store and the certificate must match the hostname, otherwise
-`connect` throws. Point `SSL_CERT_FILE` at a PEM file to trust a private CA
+`connect` returns a TLS error. Point `SSL_CERT_FILE` at a PEM file to trust a private CA
 instead.
 
 `tls.moon` carries its own static OpenSSL, so nothing here needs `-lssl`,

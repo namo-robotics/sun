@@ -154,29 +154,25 @@ void ExpressionAnalyzer::checkIntegerDivision(
   if (!leftType || !rightType || !leftType->isIntegral() ||
       !rightType->isIntegral())
     return;
-  if (ctx_.isInTryBlock() || ctx_.isInThrowingFunction()) return;
-
   constants::ConstantEvaluator evaluator(ctx_.results().declarations);
   auto divisor = evaluator.evaluateExpression(rhs);
-  if (divisor && divisor->isInteger()) {
-    unsigned width = std::max(*constants::getIntegerBitWidth(*leftType),
-                              *constants::getIntegerBitWidth(*rightType));
-    auto bits = rightType->isUnsigned()
-                    ? divisor->getInteger().zextOrTrunc(width)
-                    : divisor->getInteger().sextOrTrunc(width);
-    if (!bits.isZero()) {
-      if (leftType->isUnsigned() || !bits.isAllOnes()) return;
-      auto dividend = evaluator.evaluateExpression(lhs);
-      if (dividend && dividend->isInteger() &&
-          !dividend->getInteger().sextOrTrunc(width).isMinSignedValue())
-        return;
-    }
+  if (!divisor || !divisor->isInteger()) return;
+  unsigned width = std::max(*constants::getIntegerBitWidth(*leftType),
+                            *constants::getIntegerBitWidth(*rightType));
+  auto bits = rightType->isUnsigned()
+                  ? divisor->getInteger().zextOrTrunc(width)
+                  : divisor->getInteger().sextOrTrunc(width);
+  bool invalid = bits.isZero();
+  if (!invalid && !leftType->isUnsigned() && bits.isAllOnes()) {
+    auto dividend = evaluator.evaluateExpression(lhs);
+    invalid = dividend && dividend->isInteger() &&
+              dividend->getInteger().sextOrTrunc(width).isMinSignedValue();
   }
-  logAndThrowError(
-      "Integer division or remainder may throw ArithmeticError; use a try "
-      "block "
-      "or declare the function with 'throws IError'",
-      location);
+  if (invalid)
+    logAndThrowError(
+        "Invalid integer division or remainder; use checked_div or checked_rem "
+        "to handle failure",
+        location);
 }
 
 void ExpressionAnalyzer::analyzeBinaryExpr(sun::ast::BinaryExprAST& binExpr,

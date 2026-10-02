@@ -21,12 +21,12 @@ TEST(EndToEnd_Testing, all_passing_tests_exit_zero) {
         }
 
         test_function addsOne() {
-            std.test.assert_eq(geometry.addOne(1), 2);
+            try std.test.assert_eq(geometry.addOne(1), 2);
         }
     }
 
     test_function rootAssertHolds() {
-        std.test.assert(true);
+        try std.test.assert(true);
     }
   )";
   EXPECT_EQ(executeTestsWithStdlib(program), 0);
@@ -42,11 +42,11 @@ TEST(EndToEnd_Testing, a_failing_test_exits_one) {
     using std;
 
     test_function passes() {
-        std.test.assert(true);
+        try std.test.assert(true);
     }
 
     test_function fails() {
-        std.test.assert_eq(1, 2);
+        try std.test.assert_eq(1, 2);
     }
   )";
   EXPECT_EQ(executeTestsWithStdlib(program), 1);
@@ -70,7 +70,7 @@ TEST(EndToEnd_Testing, tests_reach_module_private_helpers) {
         }
 
         test_function bumps() {
-            std.test.assert_eq(counter.bump(), counter.count);
+            try std.test.assert_eq(counter.bump(), counter.count);
         }
     }
   )"),
@@ -99,11 +99,11 @@ TEST(EndToEnd_Testing, fixture_teardown_runs_on_failure) {
         // Tests live in the module so they reach its private Fixture.
         test_function failsButCleansUp() {
             var f = fx.Fixture();
-            std.test.fail("intentional");
+            try std.test.fail("intentional");
         }
 
         test_function teardownRan() {
-            std.test.assert_eq(fx.teardowns, 1);
+            try std.test.assert_eq(fx.teardowns, 1);
         }
     }
   )",
@@ -113,16 +113,16 @@ TEST(EndToEnd_Testing, fixture_teardown_runs_on_failure) {
 
 // An uncaught error from a test is a failure like any other, and a thrown
 // error's message reaches the report path without crashing the runner.
-TEST(EndToEnd_Testing, a_thrown_error_fails_the_test) {
+TEST(EndToEnd_Testing, a_returned_error_fails_the_test) {
   EXPECT_EQ(executeTestsWithStdlib(R"(
     using std;
 
-    test_function throwsAnError() {
-        throw Error(9, "kaboom");
+    test_function returnsAnError() _Result<void, Error> {
+        return _Result.Err(Error(9, "kaboom"));
     }
 
     test_function stillRuns() {
-        std.test.assert(true);
+        try std.test.assert(true);
     }
   )"),
             1);
@@ -159,7 +159,7 @@ TEST(EndToEnd_Testing, user_main_is_replaced_and_optional) {
     }
 
     test_function runs() {
-        std.test.assert(true);
+        try std.test.assert(true);
     }
   )"),
             0);
@@ -168,7 +168,7 @@ TEST(EndToEnd_Testing, user_main_is_replaced_and_optional) {
     using std;
 
     test_function noMainNeeded() {
-        std.test.assert(true);
+        try std.test.assert(true);
     }
   )"),
             0);
@@ -180,7 +180,7 @@ TEST(EndToEnd_Testing, production_compile_ignores_tests) {
     using std;
 
     test_function ignored() {
-        std.test.assert(true);
+        try std.test.assert(true);
     }
 
     function main() i32 { return 0; }
@@ -195,17 +195,17 @@ static const char* kFilterProgram = R"(
 
     module geometry {
         test_function passes() {
-            std.test.assert(true);
+            try std.test.assert(true);
         }
 
         test_function alsoPasses() {
-            std.test.assert(true);
+            try std.test.assert(true);
         }
     }
 
     module physics {
         test_function fails() {
-            std.test.assert(false);
+            try std.test.assert(false);
         }
     }
 )";
@@ -279,4 +279,97 @@ TEST(EndToEnd_Testing, example_program_compiles_in_production) {
   EXPECT_NO_THROW(sun::driver::compileFileWithStdlib(
       (std::filesystem::path(root) / "tests/programs/testing_example.sun")
           .string()));
+}
+
+/** _Result-returning tests report failures and release fixtures in both runner
+ * modes. */
+TEST(EndToEnd_Testing, returned_errors_fail_tests) {
+  const std::string program = R"(
+    using std;
+    /** Provides a concrete alternate failure. */
+    class Failure implements IError {
+      /** Constructs the marker. */
+      init() {}
+      /** Identifies the failure. */
+      public const method code() i32 { return 42; }
+      /** Returns an owned diagnostic message. */
+      public const method message() String { return String("returned failure"); }
+    }
+    /** Collects the errors this test can return. */
+    enum TestError { Assertion(std.test.AssertionError), Other(Failure) }
+    /** Succeeds through its implicit unit result. */
+    test_function passes() _Result<void, std.test.AssertionError> {}
+    /** Succeeds through an early bare return. */
+    test_function early() _Result<void, std.test.AssertionError> { return; }
+    /** Reports a concrete error through the runner's common interface. */
+    test_function fails() _Result<void, TestError> { return _Result.Err(TestError.Other(Failure())); }
+  )";
+  EXPECT_EQ(executeTestsWithStdlib(program), 1);
+  const char* argv[] = {"program", "--test-sequential", nullptr};
+  EXPECT_EQ(executeTestsWithStdlib(program, 2, const_cast<char**>(argv)), 1);
+}
+
+/** Custom result tests use declaration-order success and report concrete
+ * errors. */
+TEST(EndToEnd_Testing, custom_result_tests) {
+  const std::string program = R"(
+    using std;
+    /** Combines assertions with failures from system calls. */
+    enum Outcome { Passed, Assertion(std.test.AssertionError), System(Error) }
+    /** Returns success implicitly. */
+    test_function implicit_success() Outcome {
+      try std.test.assert_eq(2 + 2, 4);
+    }
+    /** Returns success through a bare return. */
+    test_function early_success() Outcome { return; }
+    /** Accepts a result enum supplied by the standard library. */
+    test_function library_success() SystemResult<void> { return; }
+    /** Coexists with the default builtin result convention. */
+    test_function legacy_success() { try std.test.assert(true); }
+  )";
+  EXPECT_EQ(executeTestsWithStdlib(program), 0);
+  const char* argv[] = {"program", "--test-sequential", nullptr};
+  EXPECT_EQ(executeTestsWithStdlib(program, 2, const_cast<char**>(argv)), 0);
+}
+
+/** A concrete failure in a custom test result fails the test run. */
+TEST(EndToEnd_Testing, custom_result_failure_exits_one) {
+  const std::string program = R"(
+    using std;
+    /** Reports assertion failures directly in a test-owned enum. */
+    enum Outcome { Passed, Assertion(std.test.AssertionError) }
+    /** Propagates an assertion failure through a custom result. */
+    test_function fails() Outcome { try std.test.assert(false, "custom failure"); }
+  )";
+  EXPECT_EQ(executeTestsWithStdlib(program), 1);
+  const char* argv[] = {"program", "--test-sequential", nullptr};
+  EXPECT_EQ(executeTestsWithStdlib(program, 2, const_cast<char**>(argv)), 1);
+}
+
+/** Failure payloads cannot silently evade the test runner's error matching. */
+TEST(EndToEnd_Testing, rejects_non_error_test_payload) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeTestsWithStdlib(R"(
+    /** An integer is not a reportable test failure. */
+    enum Outcome { Passed, Failure(i32) }
+    /** Attempts to return an unsupported error payload. */
+    test_function invalid() Outcome { return Outcome.Failure(1); }
+  )"),
+      "Test failure variants must own a concrete IError payload");
+}
+
+/** Tests without annotations return the standard assertion enum. */
+TEST(EndToEnd_Testing, default_assertion_result) {
+  EXPECT_EQ(executeTestsWithStdlib(R"(
+    /** Returns the default library success explicitly. */
+    test_function success() { return std.test.AssertionResult.Ok; }
+  )"),
+            0);
+  EXPECT_EQ(executeTestsWithStdlib(R"(
+    /** Returns the default library failure explicitly. */
+    test_function failure() {
+      return std.test.AssertionResult.Error(std.test.AssertionError("explicit failure"));
+    }
+  )"),
+            1);
 }

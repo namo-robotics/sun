@@ -1,41 +1,47 @@
 // An HTTPS GET with the tls bundle's HttpsClient.
 //
 // The certificate is verified against the system CA store and checked
-// against the hostname; a bad certificate throws rather than returning a
-// response.
+// against the hostname; a bad certificate returns an error.
 
 using std;
 using tls;
 
-/** Runs the example that fetches an HTTPS response. */
-function main() i32 {
+/** Carries request, system, or response access failures. */
+enum RequestResult { Ok, Tls(tls.TlsError), System(Error), Bounds(IndexOutOfBoundsError) }
+
+/** Performs the operation and propagates returned failures. */
+function run() RequestResult {
   var alloc = make_heap_allocator();
   var client = HttpsClient(alloc);
   var host = String(alloc, "example.com");
 
-  try {
-    var response = client.get(host, "/");
+  var response = try client.get(host, "/");
 
-    print("status: ");
-    println(response.status);
-    print("body bytes: ");
-    println(response.body.length());
+  print("status: ");
+  println(response.status);
+  print("body bytes: ");
+  println(response.body.length());
 
-    // Print the first line of the body
-    var end: i64 = 0;
-    while (end < response.body.length() and response.body.at(end) != b'\n') {
-      end = end + 1;
-    }
-    var first_line = response.body.substr(alloc, 0, end);
-    println(first_line);
-
-    return 0;
-  } catch (e: ref IError) {
-    var message = e.message();
-    print("request failed: ");
-    println(message);
-    return 1;
+  // Print the first line of the body
+  var end: i64 = 0;
+  while (end < response.body.length() and (try response.body.at(end)) != b'\n') {
+    end = end + 1;
   }
+  var first_line = try response.body.substr(alloc, 0, end);
+  println(first_line);
+
+  return RequestResult.Ok;
+}
+
+/** Reports errors and sets the process exit code. */
+function main() i32 {
+  return match run() {
+    (e: const ref IError) => {
+      println(e.message());
+      1;
+    },
+    _ => 0
+  };
 }
 
 manifest {

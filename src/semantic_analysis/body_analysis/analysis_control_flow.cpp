@@ -48,17 +48,194 @@ void BodyAnalyzer::analyzeMatchExpr(sun::ast::MatchExprAST& matchExpr,
   // Enum discriminants get variant patterns, payload bindings, and
   // exhaustiveness checking
   TypePtr discType = unwrapRef(matchExpr.getDiscriminant()->getResolvedType());
+  if (matchExpr.isPropagation()) {
+    using namespace sun::ast;
+    auto source = std::dynamic_pointer_cast<sun::types::EnumType>(discType);
+    auto target = std::dynamic_pointer_cast<sun::types::EnumType>(
+        ctx_.currentFunctionReturnType());
+    const auto location = matchExpr.getLocation();
+    // The first declaration is success, regardless of its name or numeric tag.
+    auto validate = [&](const std::shared_ptr<sun::types::EnumType>& type,
+                        const std::string& role) {
+      if (!type || type->getVariants().empty())
+        logAndThrowError("'try' requires " + role + " to be a nonempty enum",
+                         location);
+      if (type->getVariants().front().payloadTypes.size() > 1)
+        logAndThrowError(
+            "'try' requires the first enum variant to have zero or "
+            "one success payload",
+            location);
+      for (size_t i = 1; i < type->getVariants().size(); ++i)
+        if (type->getVariants()[i].payloadTypes.size() != 1)
+          logAndThrowError(
+              "'try' requires each failure variant to have one "
+              "payload",
+              location);
+    };
+    validate(source, "its operand");
+    validate(target, "the enclosing function's return type");
+    ctx_.currentScope().declareEnum("$try_source", source);
+    ctx_.currentScope().declareEnum("$try_target", target);
+    auto member = [&](const std::string& type, const std::string& variant) {
+      auto name = std::make_unique<VariableReferenceAST>(type);
+      name->setLocation(location);
+      auto access = std::make_unique<MemberAccessAST>(std::move(name), variant);
+      access->setLocation(location);
+      return access;
+    };
+    auto construct = [&](const std::string& type, const std::string& variant,
+                         std::unique_ptr<ExprAST> payload) {
+      std::vector<std::unique_ptr<ExprAST>> arguments;
+      arguments.push_back(std::move(payload));
+      auto call = std::make_unique<CallExprAST>(member(type, variant),
+                                                std::move(arguments));
+      call->setLocation(location);
+      return call;
+    };
+    auto& arms = matchExpr.getArmsMutable();
+    arms.clear();
+    for (size_t i = 0; i < source->getVariants().size(); ++i) {
+      const auto& variant = source->getVariants()[i];
+      const bool success = i == 0;
+      const std::string bindingName = success ? "$try_value" : "$try_error";
+      std::unique_ptr<ExprAST> body;
+      if (variant.payloadTypes.empty()) {
+        body = std::make_unique<BlockExprAST>();
+      } else {
+        body = std::make_unique<VariableReferenceAST>(bindingName);
+        body->setLocation(location);
+      }
+      if (!success) {
+        const sun::types::EnumVariant* destination = nullptr;
+        const sun::types::EnumVariant* wrapper = nullptr;
+        std::shared_ptr<sun::types::EnumType> wrapperType;
+        if (source->equals(*target)) {
+          destination = &target->getVariants()[i];
+        } else {
+          for (size_t j = 1; j < target->getVariants().size(); ++j) {
+            const auto& candidate = target->getVariants()[j];
+            if (!candidate.payloadTypes.front()->equals(
+                    *variant.payloadTypes.front()))
+              continue;
+            if (destination)
+              logAndThrowError(
+                  "Ambiguous error propagation: multiple variants "
+                  "accept this error",
+                  location);
+            destination = &candidate;
+          }
+          // Preserve explicit error-sum wrapping used by _Result<T, E> callers.
+          if (!destination) {
+            for (size_t j = 1; j < target->getVariants().size(); ++j) {
+              const auto& candidate = target->getVariants()[j];
+              auto nested = std::dynamic_pointer_cast<sun::types::EnumType>(
+                  candidate.payloadTypes.front());
+              if (!nested) continue;
+              for (const auto& nestedVariant : nested->getVariants()) {
+                if (nestedVariant.payloadTypes.size() != 1 ||
+                    !nestedVariant.payloadTypes.front()->equals(
+                        *variant.payloadTypes.front()))
+                  continue;
+                if (destination)
+                  logAndThrowError(
+                      "Ambiguous error propagation: multiple variants "
+                      "accept this error",
+                      location);
+                destination = &candidate;
+                wrapper = &nestedVariant;
+                wrapperType = nested;
+              }
+            }
+          }
+        }
+        if (!destination)
+          logAndThrowError("Cannot propagate error variant '" + variant.name +
+                               "' into the enclosing enum return type",
+                           location);
+        if (wrapper) {
+          const auto wrapperName = "$try_wrapper_" + std::to_string(i);
+          ctx_.currentScope().declareEnum(wrapperName, wrapperType);
+          body = construct(wrapperName, wrapper->name, std::move(body));
+        }
+        body = std::make_unique<ReturnExprAST>(
+            construct("$try_target", destination->name, std::move(body)));
+      }
+      body->setLocation(location);
+      arms.emplace_back(member("$try_source", variant.name), false,
+                        std::move(body));
+      if (!variant.payloadTypes.empty()) {
+        arms.back().hasPayloadParens = true;
+        PatternBinding binding;
+        binding.name = bindingName;
+        binding.location = location;
+        arms.back().bindings.push_back(std::move(binding));
+      }
+    }
+  }
   if (discType && discType->isEnum()) {
     sema_.enums().analyzeEnumMatch(
         matchExpr, std::static_pointer_cast<sun::types::EnumType>(discType),
         expectedType);
-    matchExpr.setResolvedType(preparedMatchType(matchExpr));
+    matchExpr.setResolvedType(
+        matchExpr.isPropagation()
+            ? (std::static_pointer_cast<sun::types::EnumType>(discType)
+                       ->getVariants()
+                       .front()
+                       .payloadTypes.empty()
+                   ? Types::Void()
+                   : std::static_pointer_cast<sun::types::EnumType>(discType)
+                         ->getVariants()
+                         .front()
+                         .payloadTypes.front())
+            : preparedMatchType(matchExpr));
     checkOwnedMatchArmTypes(matchExpr);
     return;
   }
 
   // Analyze each arm, propagating expectedType to arm bodies
-  for (const auto& arm : matchExpr.getArms()) {
+  for (auto& arm : matchExpr.getArmsMutable()) {
+    if (arm.bindingType) {
+      if (!arm.bindingType->isReference())
+        logAndThrowError("Typed match bindings must use ref or const ref",
+                         arm.pattern->getLocation());
+      auto bindingType =
+          sema_.typeResolver().typeAnnotationToType(*arm.bindingType);
+      auto target = unwrapRef(bindingType);
+      bool matches =
+          discType && (discType->isTypeParameter() ||
+                       (discType->isClass() && discType->equals(*target)));
+      if (discType && discType->isClass() && target->isInterface())
+        matches =
+            static_cast<ClassType*>(discType.get())
+                ->implementsInterface(
+                    *static_cast<sun::types::InterfaceType*>(target.get()));
+      if (!matches)
+        logAndThrowError(
+            "Typed match pattern does not match the concrete discriminant",
+            arm.pattern->getLocation());
+      auto source = matchExpr.getDiscriminant()->getResolvedType();
+      if (sun::types::isMutableRef(bindingType) && source->isReference() &&
+          !sun::types::isMutableRef(source))
+        logAndThrowError(
+            "Cannot bind a mutable reference through a const match "
+            "discriminant",
+            arm.pattern->getLocation());
+      sema_.expressions().checkMethodReceiver(
+          *matchExpr.getDiscriminant(), "typed match binding",
+          !sun::types::isMutableRef(bindingType), false,
+          arm.pattern->getLocation());
+      arm.matchedVariantTags = {0};
+      arm.pattern->setResolvedType(discType);
+      auto& binding = arm.bindings.front();
+      binding.resolvedType = bindingType;
+      ctx_.enterScope();
+      if (!binding.isWildcard)
+        ctx_.currentScope().declareVariable(binding.name, bindingType, false,
+                                            false, binding.declaration.id);
+      sema_.analyzeExpr(*arm.body, expectedType);
+      ctx_.exitScope();
+      continue;
+    }
     if (arm.hasPayloadParens) {
       logAndThrowError(
           "Destructuring patterns require an enum discriminant",
@@ -371,6 +548,33 @@ void BodyAnalyzer::analyzeUnsafeBlock(sun::ast::UnsafeBlockAST& unsafeBlock) {
 }
 
 void BodyAnalyzer::analyzeReturnExpr(sun::ast::ReturnExprAST& returnExpr) {
+  auto* function = ctx_.currentFunctionScope();
+  const bool fallibleInit = ctx_.getCurrentClass() && function &&
+                            function->functionName.baseName == "init" &&
+                            ctx_.currentFunctionReturnType() &&
+                            ctx_.currentFunctionReturnType()->isEnum();
+  auto initResult = fallibleInit
+                        ? std::static_pointer_cast<sun::types::EnumType>(
+                              ctx_.currentFunctionReturnType())
+                        : nullptr;
+  if (fallibleInit && !returnExpr.hasValue()) {
+    ctx_.currentScope().declareEnum("$init_result", initResult);
+    returnExpr.forEachChildSlot([&](std::unique_ptr<ExprAST>& value) {
+      value = std::make_unique<sun::ast::MemberAccessAST>(
+          std::make_unique<sun::ast::VariableReferenceAST>("$init_result"),
+          initResult->getVariants().front().name);
+      value->setLocation(returnExpr.getLocation());
+    });
+  }
+  if (fallibleInit) {
+    const ExprAST* variant = returnExpr.getValue();
+    if (auto* call = dynamic_cast<const sun::ast::CallExprAST*>(variant))
+      variant = call->getCallee();
+    auto* member = dynamic_cast<const sun::ast::MemberAccessAST*>(variant);
+    if (!member || !initResult->hasVariant(member->getMemberName()))
+      logAndThrowError("A fallible init returns a result variant or return;",
+                       returnExpr.getLocation());
+  }
   if (returnExpr.hasValue()) {
     // Propagate the function's return type for return-position inference
     // (e.g. `return Option.None;`)
@@ -379,6 +583,12 @@ void BodyAnalyzer::analyzeReturnExpr(sun::ast::ReturnExprAST& returnExpr) {
     sema_.analyzeExpr(const_cast<ExprAST&>(*returnExpr.getValue()),
                       declaredReturn);
     TypePtr valueType = requireResolvedType(*returnExpr.getValue());
+    if (declaredReturn && declaredReturn->isEnum() &&
+        !declaredReturn->equals(*valueType))
+      logAndThrowError("Return value has type '" +
+                           valueType->toDisplayString() + "', expected '" +
+                           declaredReturn->toDisplayString() + "'",
+                       returnExpr.getLocation());
     // Returning by value out of a borrow would hand the caller a second
     // value backed by the borrowed storage.
     if (valueType && valueType->isReference() && declaredReturn &&

@@ -7,4 +7,4 @@ cd "$DIR"
 out=$(./main)
 echo "$out"
 echo "$out" | grep -q "^5$"
-echo "$out" | grep -q "caught division by zero"
+echo "$out" | grep -q "^division by zero$"

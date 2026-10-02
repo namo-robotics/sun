@@ -947,21 +947,29 @@ TEST(Modules, moon_clean_lambda_param_still_rejects_captures) {
 TEST(Modules, moon_free_function_throw_is_caught_by_importer) {
   initTestEnvironment();
   auto moonPath = writeMoonLib("throwlib", R"(
-    public module throwlib {
-        public class Boom implements IError {
-            init() {}
-            public method code() i32 { return 77; }
-            public method message() static_ptr<u8> { return "boom"; }
-        }
-        public function fail(x: i32) i32 throws IError {
-            if (x > 0) { throw Boom(); }
-            return 1;
-        }
-        public function nested(x: i32) i32 throws IError {
-            return fail(x);
-        }
+public module throwlib {
+  /** Owns successes and concrete errors across a library boundary. */
+  public enum Outcome<T> { Ok(T), Boom(Boom) }
+  public class Boom implements IError {
+    init() {}
+    public const method code() i32 {
+      return 77;
     }
-  )");
+    public const method message() static_ptr<u8> {
+      return "boom";
+    }
+  }
+  public function fail(x: i32) Outcome<i32> {
+    if (x > 0) {
+      return Outcome.Boom(Boom());
+    }
+    return Outcome.Ok(1);
+  }
+  public function nested(x: i32) Outcome<i32> {
+    return Outcome.Ok(try fail(x));
+  }
+}
+)");
 
   auto driver = Driver::createForJIT("moon_throw_main");
   driver->setMoonImports({MoonImport(moonPath.string())});
@@ -970,9 +978,9 @@ TEST(Modules, moon_free_function_throw_is_caught_by_importer) {
 
     function main() i32 {
         var r: i32 = 0;
-        try { r = r + fail(1); } catch (e: ref IError) { r = r + e.code(); }
-        try { r = r + nested(1); } catch (e: ref IError) { r = r + 1000; }
-        try { r = r + fail(0); } catch (e: ref IError) { r = r + 5000; }
+        match fail(1) { Outcome.Ok(value) => { r += value; }, (e: ref IError) => { r += e.code(); } };
+        match nested(1) { Outcome.Ok(value) => { r += value; }, (e: ref IError) => { r += 1000; } };
+        match fail(0) { Outcome.Ok(value) => { r += value; }, (e: ref IError) => { r += 5000; } };
         return r;
     }
   )");

@@ -193,12 +193,28 @@ TEST(Operators_Arithmetic, div_i32) {
 
 TEST(Operators_Arithmetic, div_i32_variables) {
   auto value = executeString(R"(
-      function main() i32 throws IError {
-          var x: i32 = 84;
-          var y: i32 = 2;
-          return x / y;
-      }
-    )");
+/** Represents a fixture failure without a standard-library dependency. */
+class Error implements IError {
+  /** Creates the fixture failure. */
+  init() {}
+  /** Returns its numeric code. */
+  const method code() i32 {
+    return 1;
+  }
+  /** Returns a static description. */
+  const method message() static_ptr<u8> {
+    return "failure";
+  }
+}
+/** Owns successes and concrete fixture errors. */
+enum Outcome<T> { Ok(T), Error(Error) }
+
+function main() i32 {
+  var x: i32 = 84;
+  var y: i32 = 2;
+  return x / y;
+}
+)");
   EXPECT_EQ(value, 42);
 }
 
@@ -253,12 +269,28 @@ TEST(Operators_Arithmetic, mod_i32) {
 
 TEST(Operators_Arithmetic, mod_i32_variables) {
   auto value = executeString(R"(
-      function main() i32 throws IError {
-          var x: i32 = 17;
-          var y: i32 = 5;
-          return x % y;
-      }
-    )");
+/** Represents a fixture failure without a standard-library dependency. */
+class Error implements IError {
+  /** Creates the fixture failure. */
+  init() {}
+  /** Returns its numeric code. */
+  const method code() i32 {
+    return 1;
+  }
+  /** Returns a static description. */
+  const method message() static_ptr<u8> {
+    return "failure";
+  }
+}
+/** Owns successes and concrete fixture errors. */
+enum Outcome<T> { Ok(T), Error(Error) }
+
+function main() i32 {
+  var x: i32 = 17;
+  var y: i32 = 5;
+  return x % y;
+}
+)");
   EXPECT_EQ(value, 2);
 }
 
@@ -300,12 +332,28 @@ TEST(Operators_Arithmetic, mod_both_negative) {
 
 TEST(Operators_Arithmetic, mod_i64) {
   auto value = executeString(R"(
-      function main() i64 throws IError {
-          var x: i64 = 1000000000007;
-          var y: i64 = 1000000000;
-          return x % y;
-      }
-    )");
+/** Represents a fixture failure without a standard-library dependency. */
+class Error implements IError {
+  /** Creates the fixture failure. */
+  init() {}
+  /** Returns its numeric code. */
+  const method code() i32 {
+    return 1;
+  }
+  /** Returns a static description. */
+  const method message() static_ptr<u8> {
+    return "failure";
+  }
+}
+/** Owns successes and concrete fixture errors. */
+enum Outcome<T> { Ok(T), Error(Error) }
+
+function main() i64 {
+  var x: i64 = 1000000000007;
+  var y: i64 = 1000000000;
+  return x % y;
+}
+)");
   EXPECT_EQ(value, static_cast<int64_t>(7));
 }
 
@@ -565,14 +613,30 @@ TEST(Operators_Arithmetic, chained_operations) {
 
 TEST(Operators_Arithmetic, quotient_remainder_identity) {
   auto value = executeString(R"(
-      function main() i32 throws IError {
-          var a: i32 = 10;
-          var b: i32 = 3;
-          var quotient: i32 = a / b;
-          var remainder: i32 = a % b;
-          return quotient * b + remainder;
-      }
-    )");
+/** Represents a fixture failure without a standard-library dependency. */
+class Error implements IError {
+  /** Creates the fixture failure. */
+  init() {}
+  /** Returns its numeric code. */
+  const method code() i32 {
+    return 1;
+  }
+  /** Returns a static description. */
+  const method message() static_ptr<u8> {
+    return "failure";
+  }
+}
+/** Owns successes and concrete fixture errors. */
+enum Outcome<T> { Ok(T), Error(Error) }
+
+function main() i32 {
+  var a: i32 = 10;
+  var b: i32 = 3;
+  var quotient: i32 = a / b;
+  var remainder: i32 = a % b;
+  return quotient * b + remainder;
+}
+)");
   EXPECT_EQ(value, 10);  // Verifies q*b + r = a
 }
 // ============================================================================
@@ -630,15 +694,33 @@ TEST(Operators_Arithmetic, f32_plus_literal_stays_f32) {
 
 TEST(Operators_Arithmetic, mixed_width_operands_promote_to_wider) {
   auto value = executeString(R"(
-      function to_i32(x: i64) i32 { return _convert<i32>(x); }
+/** Represents a fixture failure without a standard-library dependency. */
+class Error implements IError {
+  /** Creates the fixture failure. */
+  init() {}
+  /** Returns its numeric code. */
+  const method code() i32 {
+    return 1;
+  }
+  /** Returns a static description. */
+  const method message() static_ptr<u8> {
+    return "failure";
+  }
+}
+/** Owns successes and concrete fixture errors. */
+enum Outcome<T> { Ok(T), Error(Error) }
 
-      function main() i32 throws IError {
-          var a: i32 = 1000000;
-          var b: i64 = 1000000;
-          // i32 + i64 is i64, which the i64 parameter accepts
-          return to_i32(a * b / b);
-      }
-    )");
+function to_i32(x: i64) i32 {
+  return _convert<i32>(x);
+}
+
+function main() i32 {
+  var a: i32 = 1000000;
+  var b: i64 = 1000000;
+  // i32 + i64 is i64, which the i64 parameter accepts
+  return to_i32(a * b / b);
+}
+)");
   EXPECT_EQ(value, 1000000);
 }
 
@@ -657,17 +739,41 @@ TEST(Operators_Arithmetic, literal_too_wide_for_operand_is_error) {
 /** Valid boundary counts and divisors retain their ordinary results. */
 TEST(Operators_Arithmetic, checked_integer_boundaries_succeed) {
   EXPECT_EQ(executeString(R"(
-    /** Exercises values adjacent to invalid arithmetic inputs. */
-    function main() i32 throws IError {
-      var minimum: i64 = -9223372036854775807 - 1;
-      var maximum: u64 = 18446744073709551615;
-      var top: u64 = 1u64 << 63;
-      if (minimum / 1 != minimum or minimum % 1 != 0) { return 1; }
-      if (maximum / maximum != 1 or maximum % maximum != 0) { return 2; }
-      if (top >> 63 != 1 or minimum >> 63 != -1) { return 3; }
-      if (7 / -1 != -7 or 7 % -1 != 0 or 1 << 0 != 1) { return 4; }
-      return 0;
-    }
-  )"),
+/** Represents a fixture failure without a standard-library dependency. */
+class Error implements IError {
+  /** Creates the fixture failure. */
+  init() {}
+  /** Returns its numeric code. */
+  const method code() i32 {
+    return 1;
+  }
+  /** Returns a static description. */
+  const method message() static_ptr<u8> {
+    return "failure";
+  }
+}
+/** Owns successes and concrete fixture errors. */
+enum Outcome<T> { Ok(T), Error(Error) }
+
+/** Exercises values adjacent to invalid arithmetic inputs. */
+function main() i32 {
+  var minimum: i64 = -9223372036854775807 - 1;
+  var maximum: u64 = 18446744073709551615;
+  var top: u64 = 1u64 << 63;
+  if (minimum / 1 != minimum or minimum % 1 != 0) {
+    return 1;
+  }
+  if (maximum / maximum != 1 or maximum % maximum != 0) {
+    return 2;
+  }
+  if (top >> 63 != 1 or minimum >> 63 != -1) {
+    return 3;
+  }
+  if (7 / -1 != -7 or 7 % -1 != 0 or 1 << 0 != 1) {
+    return 4;
+  }
+  return 0;
+}
+)"),
             0);
 }

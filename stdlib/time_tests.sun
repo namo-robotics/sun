@@ -16,16 +16,16 @@ public module std {
      */
     test_function duration_conversions() {
       var d = std.time.create_duration_millis(1500);
-      std.test.assert_eq(d.as_secs(), 1);
-      std.test.assert_eq(d.as_millis(), 1500);
-      std.test.assert_eq(d.as_micros(), 1500000);
-      std.test.assert_eq(d.as_nanos(), 1500000000);
-      std.test.assert_eq(d.subsec_nanos(), 500000000);
-      std.test.assert(d.as_secs_f64() > 1.49 and d.as_secs_f64() < 1.51, "fractional seconds near 1.5");
+      try std.test.assert_eq(d.as_secs(), 1);
+      try std.test.assert_eq(d.as_millis(), 1500);
+      try std.test.assert_eq(d.as_micros(), 1500000);
+      try std.test.assert_eq(d.as_nanos(), 1500000000);
+      try std.test.assert_eq(d.subsec_nanos(), 500000000);
+      try std.test.assert(d.as_secs_f64() > 1.49 and d.as_secs_f64() < 1.51, "fractional seconds near 1.5");
 
-      std.test.assert_eq(std.time.create_duration_seconds(2).as_millis(), 2000);
-      std.test.assert_eq(std.time.create_duration_micros(2500).as_nanos(), 2500000);
-      std.test.assert_eq(std.time.create_duration_nanos(1).as_nanos(), 1);
+      try std.test.assert_eq(std.time.create_duration_seconds(2).as_millis(), 2000);
+      try std.test.assert_eq(std.time.create_duration_micros(2500).as_nanos(), 2500000);
+      try std.test.assert_eq(std.time.create_duration_nanos(1).as_nanos(), 1);
     }
 
     /**
@@ -35,8 +35,8 @@ public module std {
     test_function monotonic_clock_does_not_go_backwards() {
       var first = std.time.now();
       var second = std.time.now();
-      std.test.assert(second.since(first).as_nanos() >= 0, "forward difference is non-negative");
-      std.test.assert_eq(first.since(second).as_nanos(), 0);
+      try std.test.assert(second.since(first).as_nanos() >= 0, "forward difference is non-negative");
+      try std.test.assert_eq(first.since(second).as_nanos(), 0);
     }
 
     /**
@@ -46,7 +46,7 @@ public module std {
     test_function sleep_waits_at_least_the_requested_time() {
       var start = std.time.now();
       std.time.sleep(std.time.create_duration_millis(50));
-      std.test.assert(start.elapsed().as_millis() >= 40, "slept for roughly the requested time");
+      try std.test.assert(start.elapsed().as_millis() >= 40, "slept for roughly the requested time");
     }
 
     /**
@@ -59,16 +59,16 @@ public module std {
       var cmd = std.process.Command(alloc, "/bin/sh");
       cmd.add_arg("-c");
       cmd.add_arg("date +%s");
-      var out = cmd.output();
-      std.test.assert_eq(out.status(), 0);
+      var out = try std.test.expect_system(cmd.output());
+      try std.test.assert_eq(out.status(), 0);
       out.stdout().trim();
       var host: i64 = match out.stdout().parse_i64() {
         Option.Some(x) => x,
         Option.None => -1
       };
       var after = std.time.read_unix_time();
-      std.test.assert(host >= before - 5, "host clock is not behind ours");
-      std.test.assert(host <= after + 5, "host clock is not ahead of ours");
+      try std.test.assert(host >= before - 5, "host clock is not behind ours");
+      try std.test.assert(host <= after + 5, "host clock is not ahead of ours");
     }
 
     /**
@@ -78,8 +78,8 @@ public module std {
       var secs = std.time.read_unix_time();
       var ms = std.time.read_unix_time_millis();
       var derived = ms / 1000;
-      std.test.assert(derived >= secs - 2, "millis not behind seconds");
-      std.test.assert(derived <= secs + 2, "millis not ahead of seconds");
+      try std.test.assert(derived >= secs - 2, "millis not behind seconds");
+      try std.test.assert(derived <= secs + 2, "millis not ahead of seconds");
     }
 
     /**
@@ -88,14 +88,14 @@ public module std {
      */
     test_function utc_breaks_a_fixed_timestamp_into_calendar_fields() {
       var d = std.time.convert_to_utc(1700000000);
-      std.test.assert_eq(d.year, 2023);
-      std.test.assert_eq(d.month, 11);  // 1-based, not tm_mon
-      std.test.assert_eq(d.day, 14);
-      std.test.assert_eq(d.hour, 22);
-      std.test.assert_eq(d.minute, 13);
-      std.test.assert_eq(d.second, 20);
-      std.test.assert_eq(d.weekday, 2);  // Tuesday, Sunday = 0
-      std.test.assert_eq(d.utc_offset, 0);
+      try std.test.assert_eq(d.year, 2023);
+      try std.test.assert_eq(d.month, 11);  // 1-based, not tm_mon
+      try std.test.assert_eq(d.day, 14);
+      try std.test.assert_eq(d.hour, 22);
+      try std.test.assert_eq(d.minute, 13);
+      try std.test.assert_eq(d.second, 20);
+      try std.test.assert_eq(d.weekday, 2);  // Tuesday, Sunday = 0
+      try std.test.assert_eq(d.utc_offset, 0);
     }
 
     /**
@@ -104,9 +104,9 @@ public module std {
      */
     test_function to_unix_utc_round_trips() {
       var stamp: i64 = 1700000000;
-      std.test.assert_eq(std.time.to_unix_utc(std.time.convert_to_utc(stamp)), stamp);
+      try std.test.assert_eq(std.time.to_unix_utc(std.time.convert_to_utc(stamp)), stamp);
       var d = std.time.DateTime(1970, 1, 1, 0, 0, 0);
-      std.test.assert_eq(std.time.to_unix_utc(d), 0);
+      try std.test.assert_eq(std.time.to_unix_utc(d), 0);
     }
 
     /**
@@ -116,9 +116,9 @@ public module std {
       var alloc = make_heap_allocator();
       var d = std.time.convert_to_utc(1700000000);
       var text = std.time.format(alloc, d, "%Y-%m-%d %H:%M:%S");
-      std.test.assert(text.equals_literal("2023-11-14 22:13:20"), "full timestamp renders");
+      try std.test.assert(text.equals_literal("2023-11-14 22:13:20"), "full timestamp renders");
       var day = std.time.format(alloc, d, "%Y-%m-%d");
-      std.test.assert(day.equals_literal("2023-11-14"), "date-only format renders");
+      try std.test.assert(day.equals_literal("2023-11-14"), "date-only format renders");
     }
 
     /**
@@ -131,8 +131,8 @@ public module std {
     test_function local_uses_the_timezone() {
       var stamp: i64 = 1700000000;
       var d = std.time.convert_to_local(stamp);
-      std.test.assert_eq(std.time.to_unix_local(d), stamp);
-      std.test.assert_eq(std.time.to_unix_utc(d), stamp + d.utc_offset);
+      try std.test.assert_eq(std.time.to_unix_local(d), stamp);
+      try std.test.assert_eq(std.time.to_unix_utc(d), stamp + d.utc_offset);
     }
   }  // module time_tests
 }  // module std

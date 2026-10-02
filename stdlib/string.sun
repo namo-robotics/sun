@@ -193,12 +193,12 @@ public module std {
       return this.len;
     }
 
-    /** Read a byte, or throw when the index is outside the view. */
-    public const method at(i: i64) u8 throws IError {
+    /** Read a byte, or return IndexOutOfBoundsError when the index is outside the view. */
+    public const method at(i: i64) AccessResult<u8> {
       if (i < 0 or i >= this.len) {
-        throw IndexOutOfBoundsError(i);
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(i));
       }
-      return unsafe { this.unsafe_at(i); };
+      return AccessResult.Ok(unsafe { this.unsafe_at(i); });
     }
 
     /** Read a byte without bounds checks. The caller must ensure 0 <= i < length(). */
@@ -420,12 +420,12 @@ public module std {
 
     /**
      * Construct from ContiguousBuffer with specified length
-     * Copies length bytes into a new owned string. Throws IndexOutOfBoundsError
+     * Copies length bytes into a new owned string. Returns IndexOutOfBoundsError
      * when length is negative or exceeds the source buffer size.
      */
-    init(allocator: const ref HeapAllocator, buffer: ref ContiguousBuffer<u8>, length: i64) throws IError {
+    init(allocator: const ref HeapAllocator, buffer: ref ContiguousBuffer<u8>, length: i64) AccessResult<void> {
       if (length < 0 or length > buffer.size()) {
-        throw IndexOutOfBoundsError(length);
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(length));
       }
 
       var capacity: i64 = length + 1;
@@ -464,20 +464,21 @@ public module std {
       return this.len == 0;
     }
 
-    /** Read a byte, or throw when the index is outside the string. */
-    public const method at(i: i64) u8 throws IError {
+    /** Read a byte, or return IndexOutOfBoundsError when the index is outside the string. */
+    public const method at(i: i64) AccessResult<u8> {
       if (i < 0 or i >= this.len) {
-        throw IndexOutOfBoundsError(i);
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(i));
       }
-      return unsafe { this.unsafe_at(i); };
+      return AccessResult.Ok(unsafe { this.unsafe_at(i); });
     }
 
-    /** Write a byte, or throw when the index is outside the string. */
-    public method set_at(i: i64, val: u8) void throws IError {
+    /** Write a byte, or return IndexOutOfBoundsError when the index is outside the string. */
+    public method set_at(i: i64, val: u8) AccessResult<void> {
       if (i < 0 or i >= this.len) {
-        throw IndexOutOfBoundsError(i);
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(i));
       }
       unsafe { this.unsafe_set_at(i, val); };
+      return AccessResult.Ok;
     }
 
     /** Read a byte without bounds checks. The caller must ensure 0 <= i < length(). */
@@ -706,12 +707,12 @@ public module std {
     /**
      * Remove and return last byte
      */
-    public method pop() u8 throws IError {
+    public method pop() PopResult<u8> {
       if (this.len == 0) {
-        throw EmptyError();
+        return PopResult.Empty(EmptyError());
       }
       this.len = this.len - 1;
-      return unsafe { this.data.get_unchecked(this.len); };
+      return PopResult.Ok(unsafe { this.data.get_unchecked(this.len); });
     }
 
     /**
@@ -726,12 +727,12 @@ public module std {
     /**
      * Remove byte at index, shifting remaining bytes left
      */
-    public method remove(index: i64) u8 throws IError {
+    public method remove(index: i64) AccessResult<u8> {
       if (index < 0) {
-        throw IndexOutOfBoundsError(index);
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
       }
       if (index >= this.len) {
-        throw IndexOutOfBoundsError(index);
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
       }
       var removed: u8 = unsafe { this.data.get_unchecked(index); };
       // Shift remaining bytes left
@@ -740,18 +741,18 @@ public module std {
         unsafe { this.data.set_unchecked(i, next); };
       }
       this.len = this.len - 1;
-      return removed;
+      return AccessResult.Ok(removed);
     }
 
     /**
      * Insert byte at index, shifting remaining bytes right
      */
-    public method insert_char(index: i64, ch: u8) void throws IError {
+    public method insert_char(index: i64, ch: u8) AccessResult<void> {
       if (index < 0) {
-        throw IndexOutOfBoundsError(index);
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
       }
       if (index > this.len) {
-        throw IndexOutOfBoundsError(index);
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
       }
       this.ensure_capacity(1);
       // Shift bytes right from end
@@ -761,6 +762,7 @@ public module std {
       }
       unsafe { this.data.set_unchecked(index, ch); };
       this.len = this.len + 1;
+      return AccessResult.Ok;
     }
 
     // ========================================================================
@@ -1179,16 +1181,16 @@ public module std {
 
     /**
      * Copy `count` bytes starting at `start` into a new string
-     * Throws IndexOutOfBoundsError if the range falls outside the string
+     * Returns IndexOutOfBoundsError if the range falls outside the string
      */
-    public const method substr(alloc: const ref HeapAllocator, start: i64, count: i64) String throws IError {
+    public const method substr(alloc: const ref HeapAllocator, start: i64, count: i64) AccessResult<String> {
       if (start < 0 or count < 0) {
-        throw IndexOutOfBoundsError(start);
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(start));
       }
       if (start + count > this.len) {
-        throw IndexOutOfBoundsError(start + count);
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(start + count));
       }
-      return this.copy_range(alloc, start, count);
+      return AccessResult.Ok(this.copy_range(alloc, start, count));
     }
 
     /**

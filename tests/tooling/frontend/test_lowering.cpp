@@ -80,8 +80,8 @@ function classify(d: i64) i64 {
     };
 }
 
-function compute(n: i32) i32 throws IError {
-    if (n < 0) { throw 1; }
+function compute(n: i32) Result<i32> {
+    if (n < 0) { return Result.Error(1); }
     var total: i32 = 0;
     for (var i: i32 = 0; i < n; i = i + 1) {
         total += i;
@@ -94,16 +94,14 @@ function compute(n: i32) i32 throws IError {
     var first: i32 = arr[0];
     arr[1] = first > 0 ? -first : ~first;
     var f = (a: i32) => i32 { return a * 2; };
-    return f(total);
+    return Result.Ok(f(total));
 }
 
 function main() i32 {
-    try {
-        var r = compute(10);
-        return r;
-    } catch (e: ref IError) {
-        return -1;
-    }
+    return match compute(10) {
+        Result.Ok(value) => value,
+        _ => -1
+    };
 }
 )";
 

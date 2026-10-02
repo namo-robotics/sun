@@ -39,9 +39,9 @@ arguments you supply are checked against it, and `_return_type_of<F>` is what
 it returns. Both are resolved when the call is compiled, so a wrong argument
 is a compile error like any other.
 
-The spawned function must not throw: the thread has no way to hand an
-unwinding error back to the spawner, so a `throws` callee is rejected at
-compile time. Catch inside the function and carry failures in its result.
+A spawned function can return a result enum. `join()` transfers that result
+to the joining thread, which handles it with `match` or propagates it with
+`try`. Errors have the same explicit ownership across threads as other values.
 
 Every spawned thread gets an 8 MiB stack, whatever libc the binary links.
 Libc defaults vary wildly (glibc ~8 MiB, musl 128 KiB, macOS 512 KiB), so
@@ -159,7 +159,7 @@ class Worker {
 }   // dropping a Worker joins its thread
 ```
 
-## The Thread's Result
+## The Thread's _Result
 
 `join()` hands you the value the thread returned, and you own it from then on:
 if it is a class or a payload enum, it is dropped at the end of your scope,
@@ -443,7 +443,7 @@ ordering rules.
 
 - `spawn` takes anything callable: a lambda (a literal, a variable holding
   one, or a global) or a named function passed as a value — the `_Callable`
-  constraint. It must not be able to throw
+  constraint. Fallible workers return a result enum
 - The arguments must match the callee's parameters exactly, in number and type
 - A thread is joined when its handle goes out of scope, so a thread spawned
   inside a loop body is joined at the end of that iteration. To run several

@@ -236,7 +236,7 @@ TEST(Tooling_Backend_InputHash, program_and_tests_are_skipped_separately) {
 using std;
 module input_hash_app {
   test_function answer_is_forty_two() {
-    std.test.assert_eq(input_hash_app.answer(), 42);
+    try std.test.assert_eq(input_hash_app.answer(), 42);
   }
 }
 )";

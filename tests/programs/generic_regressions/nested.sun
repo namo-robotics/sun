@@ -14,9 +14,9 @@ public module m {
   }
   /** Stores a decoding callback. */
   public class TypeSupport<T> {
-    public var decode: function (ref Decoder, const ref HeapAllocator) T throws IError;
+    public var decode: function (ref Decoder, const ref HeapAllocator) T;
     /** Initializes the fixture fields used by this example or regression test. */
-    init(decode: function (ref Decoder, const ref HeapAllocator) T throws IError) {
+    init(decode: function (ref Decoder, const ref HeapAllocator) T) {
       this.decode = decode;
     }
   }
@@ -73,18 +73,23 @@ class Msg {
   }
 }
 /** Returns a message fixture through the generic decoder callback signature. */
-function decode(d: ref m.Decoder, a: const ref HeapAllocator) Msg throws IError {
+function decode(d: ref m.Decoder, a: const ref HeapAllocator) Msg {
   return Msg(7);
 }
 /** Runs the regression scenario and returns its observable result to the test harness. */
-function main() i32 throws IError {
+function main() i32 {
   var a = make_heap_allocator();
   var s = m.Subscriber();
   var r = s.create_datareader<Msg>(m.TypeSupport<Msg>(decode), Shared<m.Info>(a, m.Info()));
   var e = r.empty();
   var out = r.make(Msg(7));
   if (e.size() == 0 and out.size() == 2) {
-    var sample = out.remove(1);
+    var sample = match out.remove(1) {
+      AccessResult.Ok(value) => value,
+      AccessResult.OutOfBounds(_) => {
+        return -100;
+      }
+    };
     return match sample.data {
       Option.Some(value) => value.v - 7,
       Option.None => 1

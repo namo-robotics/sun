@@ -373,10 +373,14 @@ class Formatter {
       return;  // ';' comes from needsSemicolon
     }
     out_ += asMethod ? "method " : f.isTest() ? "test_function " : "function ";
-    // A test's whole return signature (void, throws IError) is synthesized,
-    // never spelled in source, so printing any of it would not re-parse.
+    const auto& result = f.getProto().getReturnType();
+    const bool defaultTestResult =
+        f.isTest() && result && result->baseName == "_Result" &&
+        result->typeArguments.size() == 2 &&
+        result->typeArguments[0]->baseName == "void" &&
+        result->typeArguments[1]->baseName == "std.test.AssertionError";
     printProtoSig(f.getProto(), /*includeParameters=*/true,
-                  /*includeReturnType=*/!f.isTest());
+                  /*includeReturnType=*/!defaultTestResult);
     out_ += ' ';
     printBlockML(f.getBody());
   }
@@ -665,6 +669,11 @@ class Formatter {
 
   /** Writes a pattern match using formatted Sun source syntax. */
   void printMatch(const sun::ast::MatchExprAST& m) {
+    if (m.isPropagation()) {
+      out_ += "try ";
+      printExpr(*m.getDiscriminant());
+      return;
+    }
     out_ += "match ";
     printExpr(*m.getDiscriminant());
     out_ += " {\n";
@@ -676,7 +685,14 @@ class Formatter {
       if (arm.pattern) flushCommentsBefore(arm.pattern->getLocation().offset);
       writeIndent();
       int armEndLine = -1;
-      if (arm.isWildcard) {
+      if (arm.bindingType) {
+        out_ += '(';
+        out_ +=
+            arm.bindings.front().isWildcard ? "_" : arm.bindings.front().name;
+        out_ += ": ";
+        printType(*arm.bindingType);
+        out_ += ')';
+      } else if (arm.isWildcard) {
         out_ += '_';
       } else {
         printExpr(*arm.pattern);

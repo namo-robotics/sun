@@ -93,14 +93,14 @@ public module std {
      * heap memory would be released twice. Use remove()/swap_remove()/pop()
      * to move one out and shrink the Vec.
      */
-    public const method get(index: i64) ref T throws IError {
+    public const method get(index: i64) AccessResult<ref T> {
       if (index < 0) {
-        throw IndexOutOfBoundsError(index);
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
       }
       if (index >= this.size_) {
-        throw IndexOutOfBoundsError(index);
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
       }
-      return unsafe { this.data.get_unchecked(index); };
+      return AccessResult.Ok(unsafe { this.data.get_unchecked(index); });
     }
 
     /** Borrow an element. The caller must provide an initialized index below size(). */
@@ -112,15 +112,16 @@ public module std {
      * Set element at index (bounds-checked against size).
      * The previous element is dropped before being overwritten.
      */
-    public method set(index: i64, value: T) void throws IError {
+    public method set(index: i64, value: T) AccessResult<void> {
       if (index < 0) {
-        throw IndexOutOfBoundsError(index);
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
       }
       if (index >= this.size_) {
-        throw IndexOutOfBoundsError(index);
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
       }
       this.drop_range(index, index + 1);
       unsafe { this.data.set_unchecked(index, value); };
+      return AccessResult.Ok;
     }
 
     /** Store an element. The caller must provide a nonnegative index below size(). */
@@ -172,13 +173,13 @@ public module std {
      * Throws IndexOutOfBoundsError for an invalid index. Moves the tail down
      * and shrinks the Vec without allocating or changing its capacity.
      */
-    public method remove(index: i64) T throws IError {
-      var value = this.extract_for_removal(index);
+    public method remove(index: i64) AccessResult<T> {
+      var value = try this.extract_for_removal(index);
       for (var i: i64 = index; i < this.size_ - 1; i = i + 1) {
         unsafe { this.data.set_unchecked(i, unsafe { this.data.take_unchecked(i + 1); }); };
       }
       this.size_ = this.size_ - 1;
-      return value;
+      return AccessResult.Ok(value);
     }
 
     /**
@@ -186,31 +187,31 @@ public module std {
      * Throws IndexOutOfBoundsError for an invalid index. Shrinks the Vec in
      * constant time without allocating; the remaining order may change.
      */
-    public method swap_remove(index: i64) T throws IError {
-      var value = this.extract_for_removal(index);
+    public method swap_remove(index: i64) AccessResult<T> {
+      var value = try this.extract_for_removal(index);
       this.size_ = this.size_ - 1;
       if (index < this.size_) {
         unsafe { this.data.set_unchecked(index, unsafe { this.data.take_unchecked(this.size_); }); };
       }
-      return value;
+      return AccessResult.Ok(value);
     }
 
     /** Replace an element and return its previous value without changing size. */
-    public method replace(index: i64, value: T) T throws IError {
-      var previous = this.extract_for_removal(index);
+    public method replace(index: i64, value: T) AccessResult<T> {
+      var previous = try this.extract_for_removal(index);
       unsafe { this.data.set_unchecked(index, value); };
-      return previous;
+      return AccessResult.Ok(previous);
     }
 
     /** Extract a slot that the caller must immediately replace or remove. */
-    method extract_for_removal(index: i64) T throws IError {
+    method extract_for_removal(index: i64) AccessResult<T> {
       if (index < 0) {
-        throw IndexOutOfBoundsError(index);
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
       }
       if (index >= this.size_) {
-        throw IndexOutOfBoundsError(index);
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
       }
-      return unsafe { this.data.take_unchecked(index); };
+      return AccessResult.Ok(unsafe { this.data.take_unchecked(index); });
     }
 
     /**

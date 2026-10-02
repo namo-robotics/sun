@@ -82,20 +82,21 @@ void bindName(const std::string& name, const TypePtr& value,
 
 /** Infers generic bindings by matching a parameter type against an argument
  * type. */
-void bindTypeParameters(const sun::ast::TypeAnnotation& param,
-                        const TypePtr& argType,
-                        const std::vector<std::string>& typeParams,
-                        std::map<std::string, TypePtr>& bindings) {
+static void bindTypeShape(const sun::ast::TypeAnnotation& param,
+                          const TypePtr& argType,
+                          const std::vector<std::string>& typeParams,
+                          std::map<std::string, TypePtr>& bindings,
+                          bool preserveReference) {
   if (!argType) return;
 
   // `ref T` against an argument of type T (or ref T)
   if (param.baseName == "ref" && param.elementType) {
-    bindTypeParameters(*param.elementType, unwrapRef(argType), typeParams,
-                       bindings);
+    bindTypeShape(*param.elementType, unwrapRef(argType), typeParams, bindings,
+                  true);
     return;
   }
 
-  TypePtr value = unwrapRef(argType);
+  TypePtr value = preserveReference ? argType : unwrapRef(argType);
   if (!value) return;
 
   // The parameter is the type parameter itself: T, bound to the argument
@@ -104,10 +105,28 @@ void bindTypeParameters(const sun::ast::TypeAnnotation& param,
     return;
   }
 
+  // Callable annotations can bind parameters nested in their return types.
+  if (param.returnType && (value->isFunction() || value->isLambda())) {
+    const auto& parameters =
+        value->isFunction()
+            ? static_cast<const FunctionType&>(*value).getParamTypes()
+            : static_cast<const LambdaType&>(*value).getParamTypes();
+    auto returned =
+        value->isFunction()
+            ? static_cast<const FunctionType&>(*value).getReturnType()
+            : static_cast<const LambdaType&>(*value).getReturnType();
+    for (size_t i = 0; i < param.paramTypes.size() && i < parameters.size();
+         ++i)
+      bindTypeShape(*param.paramTypes[i], parameters[i], typeParams, bindings,
+                    true);
+    bindTypeShape(*param.returnType, returned, typeParams, bindings, true);
+    return;
+  }
+
   // array<T> / raw_ptr<T> / static_ptr<T>: bind against the element
   if (param.elementType) {
     if (TypePtr element = elementOf(value)) {
-      bindTypeParameters(*param.elementType, element, typeParams, bindings);
+      bindTypeShape(*param.elementType, element, typeParams, bindings, true);
     }
     return;
   }
@@ -118,27 +137,28 @@ void bindTypeParameters(const sun::ast::TypeAnnotation& param,
     if (!args) return;
     for (size_t i = 0; i < param.typeArguments.size() && i < args->size();
          ++i) {
-      bindTypeParameters(*param.typeArguments[i], (*args)[i], typeParams,
-                         bindings);
+      bindTypeShape(*param.typeArguments[i], (*args)[i], typeParams, bindings,
+                    true);
     }
   }
 }
 
 /** Infers generic bindings by matching a parameter type against an argument
  * type. */
-void bindTypeParameters(const TypePtr& param, const TypePtr& argType,
-                        const std::vector<std::string>& typeParams,
-                        std::map<std::string, TypePtr>& bindings) {
+static void bindTypeShape(const TypePtr& param, const TypePtr& argType,
+                          const std::vector<std::string>& typeParams,
+                          std::map<std::string, TypePtr>& bindings,
+                          bool preserveReference) {
   if (!param || !argType) return;
 
   // `ref T` against an argument of type T (or ref T)
   if (param->isReference()) {
-    bindTypeParameters(unwrapRef(param), unwrapRef(argType), typeParams,
-                       bindings);
+    bindTypeShape(unwrapRef(param), unwrapRef(argType), typeParams, bindings,
+                  true);
     return;
   }
 
-  TypePtr value = unwrapRef(argType);
+  TypePtr value = preserveReference ? argType : unwrapRef(argType);
   if (!value) return;
 
   if (param->isTypeParameter()) {
@@ -151,8 +171,20 @@ void bindTypeParameters(const TypePtr& param, const TypePtr& argType,
   // array<T> / raw_ptr<T> / static_ptr<T>: bind against the element
   if (TypePtr paramElement = elementOf(param)) {
     if (TypePtr element = elementOf(value)) {
-      bindTypeParameters(paramElement, element, typeParams, bindings);
+      bindTypeShape(paramElement, element, typeParams, bindings, true);
     }
+    return;
+  }
+
+  if (param->isFunction() && value->isFunction()) {
+    const auto& p = static_cast<const FunctionType&>(*param);
+    const auto& a = static_cast<const FunctionType&>(*value);
+    for (size_t i = 0;
+         i < p.getParamTypes().size() && i < a.getParamTypes().size(); ++i)
+      bindTypeShape(p.getParamTypes()[i], a.getParamTypes()[i], typeParams,
+                    bindings, true);
+    bindTypeShape(p.getReturnType(), a.getReturnType(), typeParams, bindings,
+                  true);
     return;
   }
 
@@ -163,10 +195,10 @@ void bindTypeParameters(const TypePtr& param, const TypePtr& argType,
     const auto& pParams = p->getParamTypes();
     const auto& aParams = a->getParamTypes();
     for (size_t i = 0; i < pParams.size() && i < aParams.size(); ++i) {
-      bindTypeParameters(pParams[i], aParams[i], typeParams, bindings);
+      bindTypeShape(pParams[i], aParams[i], typeParams, bindings, true);
     }
-    bindTypeParameters(p->getReturnType(), a->getReturnType(), typeParams,
-                       bindings);
+    bindTypeShape(p->getReturnType(), a->getReturnType(), typeParams, bindings,
+                  true);
     return;
   }
 
@@ -176,8 +208,25 @@ void bindTypeParameters(const TypePtr& param, const TypePtr& argType,
       paramArgs ? typeArgumentsOf(value) : nullptr;
   if (!paramArgs || !args) return;
   for (size_t i = 0; i < paramArgs->size() && i < args->size(); ++i) {
-    bindTypeParameters((*paramArgs)[i], (*args)[i], typeParams, bindings);
+    bindTypeShape((*paramArgs)[i], (*args)[i], typeParams, bindings, true);
   }
+}
+
+/** Deduces a call argument, allowing an outer reference to supply a value
+ * parameter. */
+void bindTypeParameters(const sun::ast::TypeAnnotation& param,
+                        const TypePtr& argType,
+                        const std::vector<std::string>& typeParams,
+                        std::map<std::string, TypePtr>& bindings) {
+  bindTypeShape(param, argType, typeParams, bindings, false);
+}
+
+/** Preserves references nested in resolved generic arguments and callable
+ * signatures. */
+void bindTypeParameters(const TypePtr& param, const TypePtr& argType,
+                        const std::vector<std::string>& typeParams,
+                        std::map<std::string, TypePtr>& bindings) {
+  bindTypeShape(param, argType, typeParams, bindings, false);
 }
 
 /** Reports whether a semantic type contains an unbound generic parameter. */

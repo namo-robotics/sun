@@ -25,10 +25,10 @@ public module tls {
       var alloc = make_heap_allocator();
       var raw = String(alloc, "HTTP/1.1 404 Not Found\r\nContent-Length: 5\r\n\r\nhello");
       var resp = HttpClientResponse(alloc);
-      parse_response(alloc, raw, resp);
-      std.test.assert_eq(resp.status, 404);
-      std.test.assert(resp.body.equals_literal("hello"), "body is the bytes after the headers");
-      std.test.assert(resp.headers.starts_with("Content-Length: 5"), "headers keep the raw header block");
+      try std.test.expect_system_success(parse_response(alloc, raw, resp));
+      try std.test.assert_eq(resp.status, 404);
+      try std.test.assert(resp.body.equals_literal("hello"), "body is the bytes after the headers");
+      try std.test.assert(resp.headers.starts_with("Content-Length: 5"), "headers keep the raw header block");
     }
 
     /** Checks decodes chunked body. */
@@ -36,9 +36,9 @@ public module tls {
       var alloc = make_heap_allocator();
       var raw = String(alloc, "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n");
       var resp = HttpClientResponse(alloc);
-      parse_response(alloc, raw, resp);
-      std.test.assert_eq(resp.status, 200);
-      std.test.assert(resp.body.equals_literal("hello world"), "chunks are joined without their sizes");
+      try std.test.expect_system_success(parse_response(alloc, raw, resp));
+      try std.test.assert_eq(resp.status, 200);
+      try std.test.assert(resp.body.equals_literal("hello world"), "chunks are joined without their sizes");
     }
 
     /** Checks rejects response without header terminator. */
@@ -47,12 +47,13 @@ public module tls {
       var raw = String(alloc, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n");
       var resp = HttpClientResponse(alloc);
       var threw: bool = false;
-      try {
-        parse_response(alloc, raw, resp);
-      } catch (e: ref IError) {
-        threw = true;
-      }
-      std.test.assert(threw, "a header block with no blank line is not a response");
+      match parse_response(alloc, raw, resp) {
+        SystemResult.Ok => {},
+        SystemResult.Error(e) => {
+          threw = true;
+        }
+      };
+      try std.test.assert(threw, "a header block with no blank line is not a response");
     }
 
     // ------------------------------------------------------------------
@@ -67,11 +68,14 @@ public module tls {
       cmd.add_arg("version");
       cmd.set_stdout(Stdio.Null);
       cmd.set_stderr(Stdio.Null);
-      try {
-        return cmd.status() == 0;
-      } catch (e: ref IError) {
-        return false;
-      }
+      match cmd.status() {
+        SystemResult.Ok(matched_value) => {
+          return matched_value == 0;
+        },
+        SystemResult.Error(e) => {
+          return false;
+        }
+      };
     }
 
     /**
@@ -87,16 +91,16 @@ public module tls {
       var server: std.process.Child;
 
       /** Initializes the fixture fields used by this example or regression test. */
-      init(allocator: ref HeapAllocator, common_name: static_ptr<u8>) throws IError {
+      init(allocator: ref HeapAllocator, common_name: static_ptr<u8>) SystemResult<void> {
         // Let the OS choose a port so other test runs cannot occupy a fixed one.
         var reservation = TcpListener();
-        reservation.bind_loopback(0);
-        var port_: i32 = reservation.local_port();
+        try reservation.bind_loopback(0);
+        var port_: i32 = (try reservation.local_port());
         var dir = String(allocator, "/tmp/sun_tls_");
         dir.append(port_);
         dir.append_char(b'_');
         dir.append(std.process.pid());
-        std.io.make_dir(dir, 493);
+        try std.io.make_dir(dir, 493);
         var cert = dir.clone(allocator);
         cert.append_literal("/cert.pem");
         var key = dir.clone(allocator);
@@ -124,8 +128,8 @@ public module tls {
         mint.add_arg(alt_name);
         mint.set_stdout(Stdio.Null);
         mint.set_stderr(Stdio.Null);
-        if (mint.status() != 0) {
-          throw Error(1, "could not mint a test certificate");
+        if ((try mint.status()) != 0) {
+          return SystemResult.Error(Error(1, "could not mint a test certificate"));
         }
 
         var port_text = String(allocator, "127.0.0.1:");
@@ -143,7 +147,7 @@ public module tls {
         serve.set_stdout(Stdio.Null);
         serve.set_stderr(Stdio.Null);
         reservation.close();
-        this.server = serve.start();
+        this.server = (try serve.start());
         this.cert_path = cert;
         this.key_path = key;
         this.dir = dir;
@@ -154,44 +158,51 @@ public module tls {
         var attempts: i32 = 0;
         var ready: bool = false;
         while (not ready and attempts < 50) {
-          match this.server.try_wait() {
+          match (try this.server.try_wait()) {
             Option.Some(code) => {
-              throw Error(code, "the local TLS server exited during startup");
+              return SystemResult.Error(Error(code, "the local TLS server exited during startup"));
             },
             Option.None => {}
           };
           var probe = TcpStream();
-          try {
-            probe.connect_local(port_);
-            ready = true;
-          } catch (e: ref IError) {
-            std.time.sleep(pause);
-          }
+          match probe.connect_local(port_) {
+            SystemResult.Ok => {
+              ready = true;
+            },
+            SystemResult.Error(e) => {
+              std.time.sleep(pause);
+            }
+          };
           probe.close();
           attempts = attempts + 1;
         }
         if (not ready) {
-          this.server.kill(std.process.SIGTERM);
-          throw Error(1, "the local TLS server did not start");
+          try this.server.kill(std.process.SIGTERM);
+          return SystemResult.Error(Error(1, "the local TLS server did not start"));
         }
       }
 
       /** Records fixture destruction so tests can verify ownership and cleanup. */
       deinit() {
         // Best-effort teardown; deinit must not throw.
-        try {
-          this.server.kill(std.process.SIGTERM);
-          this.server.wait();
-        } catch (e: ref IError) {}
-        try {
-          std.io.remove_file(this.cert_path);
-        } catch (e: ref IError) {}
-        try {
-          std.io.remove_file(this.key_path);
-        } catch (e: ref IError) {}
-        try {
-          std.io.remove_dir(this.dir);
-        } catch (e: ref IError) {}
+        match this.server.kill(std.process.SIGTERM) {
+          SystemResult.Ok => {
+            ignore_error(this.server.wait());
+          },
+          SystemResult.Error(e) => {}
+        };
+        match std.io.remove_file(this.cert_path) {
+          SystemResult.Ok => {},
+          SystemResult.Error(e) => {}
+        };
+        match std.io.remove_file(this.key_path) {
+          SystemResult.Ok => {},
+          SystemResult.Error(e) => {}
+        };
+        match std.io.remove_dir(this.dir) {
+          SystemResult.Ok => {},
+          SystemResult.Error(e) => {}
+        };
       }
     }
 
@@ -202,12 +213,15 @@ public module tls {
     function fetch_status(alloc: ref HeapAllocator, port: i32) i32 {
       var client = HttpsClient(alloc);
       var host = String(alloc, "localhost");
-      try {
-        var resp = client.get(host, port, "/");
-        return resp.status;
-      } catch (e: ref IError) {
-        return -1;
-      }
+      match client.get(host, port, "/") {
+        ClientResult.Ok(matched_value) => {
+          var resp = matched_value;
+          return resp.status;
+        },
+        (e: const ref IError) => {
+          return -1;
+        }
+      };
     }
 
     /**
@@ -219,12 +233,12 @@ public module tls {
         println("SKIP: openssl tool not available");
         return;
       }
-      var server = TlsServer(alloc, "localhost");
+      var server = (try std.test.expect_system(TlsServer(alloc, "localhost")));
       var environment = std.env.Env(alloc);
-      environment.set("SSL_CERT_FILE", server.cert_path);
+      try std.test.expect_system_success(environment.set("SSL_CERT_FILE", server.cert_path));
       var status = fetch_status(alloc, server.port);
-      environment.remove("SSL_CERT_FILE");
-      std.test.assert_eq(status, 200);
+      try std.test.expect_system_success(environment.remove("SSL_CERT_FILE"));
+      try std.test.assert_eq(status, 200);
     }
 
     /**
@@ -237,10 +251,10 @@ public module tls {
         println("SKIP: openssl tool not available");
         return;
       }
-      var server = TlsServer(alloc, "localhost");
+      var server = (try std.test.expect_system(TlsServer(alloc, "localhost")));
       var environment = std.env.Env(alloc);
-      environment.remove("SSL_CERT_FILE");
-      std.test.assert_eq(fetch_status(alloc, server.port), -1);
+      try std.test.expect_system_success(environment.remove("SSL_CERT_FILE"));
+      try std.test.assert_eq(fetch_status(alloc, server.port), -1);
     }
 
     /**
@@ -253,12 +267,45 @@ public module tls {
         println("SKIP: openssl tool not available");
         return;
       }
-      var server = TlsServer(alloc, "otherhost.example");
+      var server = (try std.test.expect_system(TlsServer(alloc, "otherhost.example")));
       var environment = std.env.Env(alloc);
-      environment.set("SSL_CERT_FILE", server.cert_path);
+      try std.test.expect_system_success(environment.set("SSL_CERT_FILE", server.cert_path));
       var status = fetch_status(alloc, server.port);
-      environment.remove("SSL_CERT_FILE");
-      std.test.assert_eq(status, -1);
+      try std.test.expect_system_success(environment.remove("SSL_CERT_FILE"));
+      try std.test.assert_eq(status, -1);
+    }
+    /** Propagates a malformed HTTP response into the client result. */
+    function parse_invalid_response(alloc: ref HeapAllocator) ClientResult<void> {
+      var raw = String(alloc, "invalid response");
+      var response = HttpClientResponse(alloc);
+      try parse_response(alloc, raw, response);
+      return ClientResult.Ok;
+    }
+
+    /** Both client error categories remain concrete and support interface matching. */
+    test_function client_result_error_payloads() {
+      var alloc = make_heap_allocator();
+      match parse_invalid_response(alloc) {
+        ClientResult.System(error) => {
+          try std.test.assert_eq(error.code(), -1);
+          var message = error.message();
+          try std.test.assert(message.equals_literal("malformed HTTP response: missing header terminator"), "HTTP error text is preserved");
+        },
+        _ => {
+          try std.test.fail("expected a system error");
+        }
+      };
+      var failure: ClientResult<i32> = ClientResult.Tls(TlsError(7, String(alloc, "test TLS error")));
+      match failure {
+        ClientResult.Ok(_) => {
+          try std.test.fail("expected a TLS error");
+        },
+        (error: const ref IError) => {
+          try std.test.assert_eq(error.code(), 7);
+          var message = error.message();
+          try std.test.assert(message.equals_literal("test TLS error"), "TLS error text is preserved");
+        }
+      };
     }
   }  // module https_client_tests
 }  // module tls

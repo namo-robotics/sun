@@ -215,25 +215,52 @@ TEST(MemorySafety_Drops_Match, explicit_return_cleans_remaining_payloads) {
 
 TEST(MemorySafety_Drops_Match, unwind_cleans_owned_payloads) {
   EXPECT_EQ(executeString(program(R"(
-    class Error implements IError {
-      init() {}
-      method code() i32 { return 1; }
-      method message() static_ptr<u8> { return "error"; }
+/** Owns successes and concrete fixture errors. */
+enum Outcome<T> { Ok(T), Error(Error) }
+
+class Error implements IError {
+  init() {}
+  const method code() i32 {
+    return 1;
+  }
+  const method message() static_ptr<u8> {
+    return "error";
+  }
+}
+function fail() Outcome<void> {
+  return Outcome.Error(Error());
+  return Outcome.Ok;
+}
+function sink(r: Res) void {}
+function run(t: Triple) Outcome<void> {
+  match t {
+    Triple.Left(a, b, c) => {
+      sink(a);
+      try fail();
+    },
+    Triple.Right(a, b, c) => {
+      sink(a);
+      try fail();
     }
-    function fail() void throws IError { throw Error(); }
-    function sink(r: Res) void { }
-    function run(t: Triple) void throws IError {
-      match t {
-        Triple.Left(a, b, c) => { sink(a); fail(); },
-        Triple.Right(a, b, c) => { sink(a); fail(); }
-      };
+  };
+
+  return Outcome.Ok;
+}
+function main() i32 {
+  /** Executes a fallible operation. */
+  var attempt_0 = () => Outcome<void> {
+    try run(Triple.Left(Res(1), Res(2), Res(3)));
+    return Outcome.Ok;
+  };
+  match attempt_0() {
+    Outcome.Ok => {},
+    (e: ref IError) => {
+      return drops;
     }
-    function main() i32 {
-      try { run(Triple.Left(Res(1), Res(2), Res(3))); }
-      catch (e: ref IError) { return drops; }
-      return -1;
-    }
-  )")),
+  };
+  return -1;
+}
+)")),
             3);
 }
 
@@ -385,26 +412,55 @@ TEST(MemorySafety_Drops_Match,
 
 TEST(MemorySafety_Drops_Match, thrown_payload_survives_unwind) {
   EXPECT_EQ(executeString(program(R"(
-    class Error implements IError {
-      var id: i32;
-      init() { this.id = 7; }
-      deinit() { this.id = 0; }
-      method code() i32 { return this.id; }
-      method message() static_ptr<u8> { return "error"; }
+/** Owns successes and concrete fixture errors. */
+enum Outcome<T> { Ok(T), Error(Error) }
+
+class Error implements IError {
+  var id: i32;
+  init() {
+    this.id = 7;
+  }
+  deinit() {
+    this.id = 0;
+  }
+  const method code() i32 {
+    return this.id;
+  }
+  const method message() static_ptr<u8> {
+    return "error";
+  }
+}
+enum Errors { One(Error, Res) }
+function run() Outcome<i32> {
+  /** Executes a fallible operation. */
+  var attempt_0 = () => Outcome<void> {
+    var errors = Errors.One(Error(), Res(1));
+    match errors {
+      Errors.One(e, _) => {
+        return Outcome.Error(e);
+      }
+    };
+
+    return Outcome.Ok;
+  };
+  match attempt_0() {
+    Outcome.Ok => {},
+    (e: ref IError) => {
+      return Outcome.Ok(e.code());
     }
-    enum Errors { One(Error, Res) }
-    function run() i32 throws IError {
-      try {
-        var errors = Errors.One(Error(), Res(1));
-        match errors { Errors.One(e, _) => { throw e; } };
-      } catch (e: ref IError) { return e.code(); }
-      return -1;
-    }
-    function main() i32 throws IError {
-      if (run() != 7) { return 100; }
-      return drops;
-    }
-  )")),
+  };
+  return Outcome.Ok(-1);
+}
+function main() i32 {
+  if (match run() {
+    Outcome.Ok(value) => value,
+    _ => -1
+  } != 7) {
+    return 100;
+  }
+  return drops;
+}
+)")),
             1);
 }
 

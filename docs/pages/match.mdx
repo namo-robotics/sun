@@ -255,6 +255,37 @@ Enum matches are exhaustive: cover every variant or add a `_` arm. Duplicate
 arms and arms after `_` produce unreachable-arm warnings.
 
 <Callout type="info">
-  For non-enum discriminants match remains equality-based. Guards, range
-  patterns, and nested destructuring are planned for future versions.
+  Ordinary value patterns compare for equality. Guards, range patterns, and
+  nested destructuring are planned for future versions.
 </Callout>
+
+## Typed borrowed bindings
+
+A typed pattern uses the same `name: type` spelling as a function parameter:
+
+```sun
+match error {
+    (e: ref RetryableError) => { /* Handle a retryable payload. */ },
+    (_: ref IError) => { /* Handle other error payloads. */ },
+    _ => { /* Handle remaining variants. */ }
+};
+```
+
+Use `const ref` for read-only access. `_` in a typed binding keeps the type test
+without creating a variable; a plain `_` matches unconditionally.
+
+On an enum, a typed pattern examines each single-payload variant. A concrete
+class pattern requires that exact payload type; an interface pattern accepts
+payload classes implementing the interface or borrowed interfaces extending it.
+Matching a concrete class directly is also supported. Interface patterns do not
+perform runtime downcasts of an interface value.
+
+Arms run in source order. Exhaustiveness checking includes every variant covered
+by a typed pattern. Multiple variants carrying the same concrete type are grouped
+by a typed pattern; an ordinary variant pattern can distinguish them.
+
+Bindings borrow the active payload. They neither move nor copy it, and they
+cannot outlive its owner. Mutable bindings cannot borrow through a const value.
+Payload-free and multiple-payload variants use ordinary variant patterns or `_`.
+Nested enums require another match: matching `_Result<T, ErrorEnum>` against an
+interface does not recursively inspect the variants inside `ErrorEnum`.

@@ -119,14 +119,14 @@ function add(a: i32, b: i32) i32 {
 
 function read(p: const ref Point) i32 { return p.x; }
 
-function mayFail(v: i32) i32 throws IError { return v; }
+function mayFail(v: i32) _Result<i32, i32> { return _Result.Ok(v); }
 
 function main() i32 {
     var p = Point(1, 2);
     var s = p.sum();
     var q = p.x;
     var flag = true;
-    if (flag) { return read(p) + q + s + add(1, 2) + mayFail(3); }
+    if (flag) { return read(p) + q + s + add(1, 2) + match mayFail(3) { _Result.Ok(v) => v, _ => 0 }; }
     return 0;
 }
 )";
@@ -185,7 +185,7 @@ TEST(Tooling_Lsp_Hover, FunctionSignatureOnName) {
 
 TEST(Tooling_Lsp_Hover, ThrowingFunction) {
   EXPECT_EQ(hoverAt(kProgram, "function mayFail"),
-            "function mayFail(v: i32) i32 throws IError");
+            "function mayFail(v: i32) _Result<i32, i32>");
 }
 
 TEST(Tooling_Lsp_Hover, ConstMethod) {
@@ -202,14 +202,14 @@ TEST(Tooling_Lsp_Hover, FunctionCallee) {
 
 TEST(Tooling_Lsp_Hover, FunctionPointerVariableUsesFunctionSyntax) {
   const char* source = R"(
-function fail(x: i32) i32 throws IError { return x; }
+function fail(x: i32) _Result<i32, i32> { return _Result.Ok(x); }
 function main() i32 {
-    var callback: function (i32) i32 throws IError = fail;
+    var callback: function (i32) _Result<i32, i32> = fail;
     return 0;
 }
 )";
   EXPECT_EQ(hoverAt(source, "var callback"),
-            "var callback: function (i32) i32 throws IError");
+            "var callback: function (i32) _Result<i32, i32>");
 }
 
 // Lambda types retain arrow syntax, and a lambda that carries captures keeps
@@ -222,7 +222,7 @@ class Holder {
     public method set(cb: <'this>() => i32) void { this.callback = cb; }
 }
 
-function apply(f: (i32) => i32 throws IError) i32 throws IError {
+function apply(f: (i32) => _Result<i32, i32>) _Result<i32, i32> {
     return f(1);
 }
 
@@ -233,7 +233,7 @@ function main() i32 {
 )";
   EXPECT_EQ(hoverAt(source, "callback: <'_>"), "var callback: <'_>() => i32");
   EXPECT_EQ(hoverAt(source, "cb;"), "cb: <'this>() => i32");
-  EXPECT_EQ(hoverAt(source, "f(1)"), "f: (i32) => i32 throws IError");
+  EXPECT_EQ(hoverAt(source, "f(1)"), "f: (i32) => _Result<i32, i32>");
 }
 
 TEST(Tooling_Lsp_Hover, ClassHeaderAndField) {
@@ -715,4 +715,18 @@ TEST(Tooling_Lsp_Hover, MergedModuleKeepsOriginDocumentation) {
     EXPECT_EQ(hover->documentation, entry.second);
     EXPECT_EQ(hover->range.offset, source.find(entry.first));
   }
+}
+
+/** Constructor hover shows the status result callers must handle. */
+TEST(Tooling_Lsp_Hover, FallibleConstructorResult) {
+  const char* source = R"(
+    /** Declares a constructor with a recoverable failure. */
+    class Item {
+      /** Completes construction successfully. */
+      init() _Result<void, i32> {}
+    }
+    /** Supplies an entry point. */
+    function main() i32 { return 0; }
+  )";
+  EXPECT_EQ(hoverAt(source, "init()"), "init() _Result<void, i32>");
 }

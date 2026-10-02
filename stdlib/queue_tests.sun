@@ -62,8 +62,8 @@ public module std {
     test_function empty_queue() {
       var allocator = make_heap_allocator();
       var q = Queue<i32>(allocator);
-      std.test.assert(q.is_empty());
-      std.test.assert_eq(q.size(), 0);
+      try std.test.assert(q.is_empty());
+      try std.test.assert_eq(q.size(), 0);
     }
 
     /** Checks push grows the queue. */
@@ -73,7 +73,7 @@ public module std {
       q.push(10);
       q.push(20);
       q.push(30);
-      std.test.assert_eq(q.size(), 3);
+      try std.test.assert_eq(q.size(), 3);
     }
 
     /**
@@ -94,7 +94,7 @@ public module std {
           Option.None => {}
         };
       }
-      std.test.assert_eq(order, 123);
+      try std.test.assert_eq(order, 123);
     }
 
     /** Checks pop on empty is none. */
@@ -110,7 +110,7 @@ public module std {
           result = 42;
         }
       };
-      std.test.assert_eq(result, 42);
+      try std.test.assert_eq(result, 42);
     }
 
     /** Checks push and pop interleaved. */
@@ -135,9 +135,9 @@ public module std {
         },
         Option.None => {}
       };
-      std.test.assert_eq(first, 1);
-      std.test.assert_eq(second, 2);
-      std.test.assert_eq(q.size(), 1);
+      try std.test.assert_eq(first, 1);
+      try std.test.assert_eq(second, 2);
+      try std.test.assert_eq(q.size(), 1);
     }
 
     /** Checks peek borrows the front without removing it. */
@@ -153,9 +153,9 @@ public module std {
         },
         Option.None => {}
       };
-      std.test.assert_eq(front, 7);
+      try std.test.assert_eq(front, 7);
       // Still two items: peek borrows, it does not take.
-      std.test.assert_eq(q.size(), 2);
+      try std.test.assert_eq(q.size(), 2);
     }
 
     /** Checks peek back is the most recent push. */
@@ -173,7 +173,7 @@ public module std {
           result = -1;
         }
       };
-      std.test.assert_eq(result, 9);
+      try std.test.assert_eq(result, 9);
     }
 
     /** Checks peek on empty is none. */
@@ -189,7 +189,7 @@ public module std {
           result = 42;
         }
       };
-      std.test.assert_eq(result, 42);
+      try std.test.assert_eq(result, 42);
     }
 
     /** Checks clear empties the queue. */
@@ -199,8 +199,8 @@ public module std {
       q.push(1);
       q.push(2);
       q.clear();
-      std.test.assert(q.is_empty());
-      std.test.assert_eq(q.size(), 0);
+      try std.test.assert(q.is_empty());
+      try std.test.assert_eq(q.size(), 0);
     }
 
     /** Checks iterates front to back. */
@@ -214,9 +214,9 @@ public module std {
       for (var x: i32 in q) {
         seen = seen * 10 + x;
       }
-      std.test.assert_eq(seen, 123);
+      try std.test.assert_eq(seen, 123);
       // Iteration borrows: everything is still queued afterwards.
-      std.test.assert_eq(q.size(), 3);
+      try std.test.assert_eq(q.size(), 3);
     }
 
     /**
@@ -224,7 +224,7 @@ public module std {
      */
     test_function drops_remaining_items() {
       fill_and_abandon_queue();
-      std.test.assert_eq(drops_when_queue_dies, 3);
+      try std.test.assert_eq(drops_when_queue_dies, 3);
     }
 
     /** Checks clear drops the items it removes. */
@@ -235,7 +235,7 @@ public module std {
       q.push(TrackedByClear(2));
       q.clear();
       // Both were dropped by clear(), before the queue itself goes away.
-      std.test.assert_eq(drops_from_clear, 2);
+      try std.test.assert_eq(drops_from_clear, 2);
     }
   }  // module queue_tests
 }  // module std

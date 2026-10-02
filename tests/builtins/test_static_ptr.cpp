@@ -80,8 +80,8 @@ TEST(Builtins_StaticPtr, length_of_a_method_result) {
   auto value = executeString(R"(
     class Boom implements IError {
       init() {}
-      method code() i32 { return 9; }
-      method message() static_ptr<u8> { return "boom"; }
+      const method code() i32 { return 9; }
+      const method message() static_ptr<u8> { return "boom"; }
     }
     function main() i32 {
       var b: Boom = Boom();

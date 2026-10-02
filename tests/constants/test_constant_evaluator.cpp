@@ -134,10 +134,10 @@ void expectSameAtCompileTimeAndRunTime(const std::string& resultType,
       << (decision.reason ? decision.reason->message : "");
   ASSERT_TRUE(decision.value.has_value());
 
-  std::string program =
-      functions + "function main() i32 throws IError {\n" + variables +
-      "  var RESULT: " + resultType + " = " + expression + ";\n  if (" +
-      buildBitComparison(*decision.value) + ") { return 0; }\n  return 1;\n}\n";
+  std::string program = functions + "function main() i32 {\n" + variables +
+                        "  var RESULT: " + resultType + " = " + expression +
+                        ";\n  if (" + buildBitComparison(*decision.value) +
+                        ") { return 0; }\n  return 1;\n}\n";
   EXPECT_EQ(sun::driver::executeString(program), 0)
       << "compile time gave " << decision.value->toDisplayString()
       << ", run time disagreed:\n"
@@ -406,13 +406,13 @@ TEST(Constants_Evaluator, numeric_conversions_match_run_time) {
 
 // === What is left to the startup function, and why ===
 
-/** Invalid file-scope arithmetic cannot propagate an unchecked exception. */
-TEST(Constants_Evaluator, invalid_integer_operations_require_handling) {
+/** Statically invalid integer arithmetic is rejected before startup. */
+TEST(Constants_Evaluator, invalid_integer_operations_are_rejected) {
   for (const std::string expression :
        {"1 / 0", "1 % 0", "-2147483648 / -1", "-2147483648 % -1"}) {
     EXPECT_SUN_ERROR_WITH_MESSAGE(
         decideGlobal("const A: i32 = " + expression + ";", "A"),
-        "may throw ArithmeticError");
+        "Invalid integer division or remainder");
   }
   expectInitializedAtStartup(
       "const F: f64 = 1.0e40;\nconst A: i32 = _convert<i32>(F);", "A",
@@ -549,13 +549,12 @@ TEST(Constants_Evaluator, functions_that_are_not_pure_wait_for_startup) {
     const V: i64 = same<i64>(1);
   )",
                              "V", "");
-  EXPECT_SUN_ERROR_WITH_MESSAGE(decideGlobal(R"(
-    /** Propagates invalid arithmetic to the caller. */
-    function divide(a: i64, b: i64) i64 throws IError { return a / b; }
-    const V: i64 = divide(1, 0);
+  expectInitializedAtStartup(R"(
+    /** Returns an arithmetic error as an ordinary value. */
+    function divide(a: i64, b: i64) _Result<i64, ArithmeticError> { return checked_div(a, b); }
+    const V = divide(1, 0);
   )",
-                                             "V"),
-                                "Call to throwing function");
+                             "V", "");
 }
 
 // A function that never finishes must not hang the compiler.

@@ -202,6 +202,8 @@ struct MemberAccessAnalysis : public ExprAnalysis {
  * Analysis data for CallExprAST
  */
 struct CallAnalysis : public ExprAnalysis {
+  // Fields known to be initialized after a constructor's helper call returns.
+  std::vector<DeclarationId> initializedFields;
   // How each argument reaches its parameter, decided by the semantic analyzer
   // once the callee's signature is known; codegen carries these out.
   std::vector<sun::semantic_analysis::ArgConversion> argConversions;

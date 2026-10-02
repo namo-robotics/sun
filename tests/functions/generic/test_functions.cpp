@@ -277,36 +277,69 @@ TEST(Functions_Generic, mutually_ordered_specializations_share_one_symbol) {
 
 TEST(Functions_Generic, throwing_generic_is_catchable) {
   auto value = executeString(R"(
-    class Boom implements IError {
-        init() {}
-        method code() i32 { return 1; }
-        method message() static_ptr<u8> { return "boom"; }
+/** Owns successes and concrete fixture errors. */
+enum Outcome<T> { Ok(T), Boom(Boom) }
+
+class Boom implements IError {
+  init() {}
+  const method code() i32 {
+    return 1;
+  }
+  const method message() static_ptr<u8> {
+    return "boom";
+  }
+}
+function risky<T>(x: T) Outcome<i32> {
+  return Outcome.Boom(Boom());
+}
+function main() i32 {
+  return match risky<i32>(1) {
+    Outcome.Ok(value) => value,
+    (e: ref IError) => {
+      return 42;
     }
-    function risky<T>(x: T) i32 throws IError { throw Boom(); }
-    function main() i32 {
-        try { return risky<i32>(1); } catch (e: ref IError) { return 42; }
-    }
-  )");
+  };
+}
+)");
   EXPECT_EQ(value, 42);
 }
 
 TEST(Functions_Generic, throwing_generic_is_catchable_from_class_method) {
   auto value = executeString(R"(
-    class Boom implements IError {
-        init() {}
-        method code() i32 { return 1; }
-        method message() static_ptr<u8> { return "boom"; }
-    }
-    class Box<T> {
-        var v: T;
-        init(v: T) { this.v = v; }
-        method get() i32 {
-            try { return risky<T>(this.v); } catch (e: ref IError) { return 42; }
-        }
-    }
-    function risky<T>(x: T) i32 throws IError { throw Boom(); }
-    function main() i32 { var b = Box<i32>(1); return b.get(); }
-  )");
+/** Owns successes and concrete fixture errors. */
+enum Outcome<T> { Ok(T), Boom(Boom) }
+
+class Boom implements IError {
+  init() {}
+  const method code() i32 {
+    return 1;
+  }
+  const method message() static_ptr<u8> {
+    return "boom";
+  }
+}
+class Box<T> {
+  var v: T;
+  init(v: T) {
+    this.v = v;
+  }
+  method get() i32 {
+    return match risky<T>(this.v) {
+      Outcome.Ok(value) => value,
+      (e: ref IError) => {
+        return 42;
+      }
+    };
+  }
+}
+function risky<T>(x: T) Outcome<i32> {
+  return Outcome.Boom(Boom());
+}
+function main() i32 {
+  var b = Box<i32>(1);
+  return b.get();
+}
+)");
   EXPECT_EQ(value, 42);
 }
 

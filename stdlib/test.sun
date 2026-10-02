@@ -2,11 +2,11 @@
 //
 // Test functions are declared with `test_function` and compiled only into
 // the test binary. For that binary the compiler synthesizes a main that runs
-// every test through run_one — each on its own thread by default — and
+// every test through its result runner — each on its own thread by default — and
 // reports with report/finish. Passing --test-sequential to the test binary
 // runs the tests one after another in declaration order instead.
 //
-// A failed assertion throws AssertionError. Unwinding runs the same drop
+// A failed assertion returns AssertionError. Propagation runs the same drop
 // glue as normal scope exit, so a fixture class's deinit (the teardown)
 // still runs when a test fails.
 //
@@ -14,7 +14,7 @@
 //   test_function growsWhenFull() {
 //       var v = Vec<i32>(make_heap_allocator());
 //       v.push(1);
-//       std.test.assert_eq(v.size(), 1);
+//       try std.test.assert_eq(v.size(), 1);
 //   }
 
 /** Assertions and helpers for running tests. */
@@ -43,68 +43,217 @@ public module std.test {
     /**
      * Error code 10: assertion failure.
      */
-    public method code() i32 {
+    public const method code() i32 {
       return 10;
     }
 
     /**
      * A fresh copy of the explanation, owned by the caller.
      */
-    public method message() String {
+    public const method message() String {
       var alloc: HeapAllocator = HeapAllocator();
       return this.message_.clone(alloc);
     }
   }
 
+  /** Carries a successful assertion value or an owned assertion failure. */
+  public enum AssertionResult<T> {
+    Ok(T),
+    Error(AssertionError)
+  }
+
   /**
-   * Throw AssertionError when the condition is false.
+   * Returns AssertionError when the condition is false.
    */
-  public function assert(condition: bool) void throws IError {
+  public function assert(condition: bool) std.test.AssertionResult<void> {
     if (condition) {
-      return;
+      return std.test.AssertionResult.Ok;
     }
-    throw AssertionError("assertion failed");
+    return std.test.AssertionResult.Error(AssertionError("assertion failed"));
   }
 
   /**
    * Same, with an explanation shown in the failure output.
    */
-  public function assert(condition: bool, message: static_ptr<u8>) void throws IError {
+  public function assert(condition: bool, message: static_ptr<u8>) std.test.AssertionResult<void> {
     if (condition) {
-      return;
+      return std.test.AssertionResult.Ok;
     }
-    throw AssertionError(message);
+    return std.test.AssertionResult.Error(AssertionError(message));
   }
 
-  /** Throw when primitive values differ, showing both in the failure text. */
-  public function assert_eq<T: _Primitive>(expected: T, actual: T) void throws IError {
+  /** Returns AssertionError when primitive values differ, showing both in the failure text. */
+  public function assert_eq<T: _Primitive>(expected: T, actual: T) std.test.AssertionResult<void> {
     if (expected == actual) {
-      return;
+      return std.test.AssertionResult.Ok;
     }
-    throw AssertionError(`assertion failed: expected ${expected}, got ${actual}`);
+    return std.test.AssertionResult.Error(AssertionError(`assertion failed: expected ${expected}, got ${actual}`));
   }
   /**
    * Compare two strings by content.
    */
-  public function assert_eq(expected: const ref String, actual: const ref String) void throws IError {
+  public function assert_eq(expected: const ref String, actual: const ref String) std.test.AssertionResult<void> {
     if (expected.equals(actual)) {
-      return;
+      return std.test.AssertionResult.Ok;
     }
-    throw AssertionError(`assertion failed: expected ${expected}, got ${actual}`);
+    return std.test.AssertionResult.Error(AssertionError(`assertion failed: expected ${expected}, got ${actual}`));
   }
 
-  /** Throw when primitive values are equal, showing the value in the failure text. */
-  public function assert_ne<T: _Primitive>(a: T, b: T) void throws IError {
+  /** Returns AssertionError when primitive values are equal, showing the value in the failure text. */
+  public function assert_ne<T: _Primitive>(a: T, b: T) std.test.AssertionResult<void> {
     if (a == b) {
-      throw AssertionError(`assertion failed: both values are ${a}`);
+      return std.test.AssertionResult.Error(AssertionError(`assertion failed: both values are ${a}`));
     }
+    return std.test.AssertionResult.Ok;
   }
 
   /**
    * Unconditionally fail with the given message.
    */
-  public function fail(message: static_ptr<u8>) void throws IError {
-    throw AssertionError(message);
+  public function fail(message: static_ptr<u8>) std.test.AssertionResult<void> {
+    return std.test.AssertionResult.Error(AssertionError(message));
+  }
+
+  /** Returns the success value or reports the unexpected error as an assertion failure. */
+  public function expect_ok<T, E>(result: _Result<T, E>) std.test.AssertionResult<T> {
+    return match result {
+      _Result.Ok(value) => std.test.AssertionResult.Ok(value),
+      _Result.Err(error) => match error {
+        (e: const ref IError) => std.test.AssertionResult.Error(AssertionError(e.message()))
+      }
+    };
+  }
+
+  /** Reads a primitive success through a borrow, or reports its error as an assertion failure. */
+  public function expect_value<T: _Primitive, E>(result: _Result<ref T, E>) std.test.AssertionResult<T> {
+    return match result {
+      _Result.Ok(value) => std.test.AssertionResult.Ok(value),
+      _Result.Err(error) => match error {
+        (e: const ref IError) => std.test.AssertionResult.Error(AssertionError(e.message()))
+      }
+    };
+  }
+
+  /** Checks that an operation returning no value succeeded. */
+  public function expect_success<E>(result: _Result<void, E>) std.test.AssertionResult<void> {
+    return match result {
+      _Result.Ok => std.test.AssertionResult.Ok,
+      _Result.Err(error) => match error {
+        (e: const ref IError) => std.test.AssertionResult.Error(AssertionError(e.message()))
+      }
+    };
+  }
+
+  /** Returns a checked access value or reports its bounds error as a test failure. */
+  public function expect_access<T>(result: AccessResult<T>) std.test.AssertionResult<T> {
+    return match result {
+      AccessResult.Ok(value) => std.test.AssertionResult.Ok(value),
+      AccessResult.OutOfBounds(error) => std.test.AssertionResult.Error(AssertionError(error.message()))
+    };
+  }
+
+  /** Reads a checked scalar borrow before returning its value to the test. */
+  public function expect_access_value<T: _Primitive>(result: AccessResult<ref T>) std.test.AssertionResult<T> {
+    return match result {
+      AccessResult.Ok(value) => std.test.AssertionResult.Ok(value),
+      AccessResult.OutOfBounds(error) => std.test.AssertionResult.Error(AssertionError(error.message()))
+    };
+  }
+
+  /** Reports an unexpected bounds failure from a checked access update. */
+  public function expect_access_success(result: AccessResult<void>) std.test.AssertionResult<void> {
+    return match result {
+      AccessResult.Ok => std.test.AssertionResult.Ok,
+      AccessResult.OutOfBounds(error) => std.test.AssertionResult.Error(AssertionError(error.message()))
+    };
+  }
+
+  /** Returns a found value or reports its lookup error as a test failure. */
+  public function expect_lookup<T>(result: LookupResult<T>) std.test.AssertionResult<T> {
+    return match result {
+      LookupResult.Ok(value) => std.test.AssertionResult.Ok(value),
+      LookupResult.NotFound(error) => std.test.AssertionResult.Error(AssertionError(error.message()))
+    };
+  }
+
+  /** Reads a found scalar borrow or reports its lookup error as a test failure. */
+  public function expect_lookup_value<T: _Primitive>(result: LookupResult<ref T>) std.test.AssertionResult<T> {
+    return match result {
+      LookupResult.Ok(value) => std.test.AssertionResult.Ok(value),
+      LookupResult.NotFound(error) => std.test.AssertionResult.Error(AssertionError(error.message()))
+    };
+  }
+
+  /** Checks that a lookup-based update succeeded. */
+  public function expect_lookup_success(result: LookupResult<void>) std.test.AssertionResult<void> {
+    return match result {
+      LookupResult.Ok => std.test.AssertionResult.Ok,
+      LookupResult.NotFound(error) => std.test.AssertionResult.Error(AssertionError(error.message()))
+    };
+  }
+
+  /** Returns a removed value or reports an empty collection as a test failure. */
+  public function expect_pop<T>(result: PopResult<T>) std.test.AssertionResult<T> {
+    return match result {
+      PopResult.Ok(value) => std.test.AssertionResult.Ok(value),
+      PopResult.Empty(error) => std.test.AssertionResult.Error(AssertionError(error.message()))
+    };
+  }
+
+  /** Returns a JSON value or reports its error as a test failure. */
+  public function expect_json<T>(result: JsonResult<T>) std.test.AssertionResult<T> {
+    return match result {
+      JsonResult.Ok(value) => std.test.AssertionResult.Ok(value),
+      JsonResult.Error(error) => std.test.AssertionResult.Error(AssertionError(error.message()))
+    };
+  }
+
+  /** Checks that a JSON container update succeeded. */
+  public function expect_json_success(result: JsonResult<void>) std.test.AssertionResult<void> {
+    return match result {
+      JsonResult.Ok => std.test.AssertionResult.Ok,
+      JsonResult.Error(error) => std.test.AssertionResult.Error(AssertionError(error.message()))
+    };
+  }
+
+  /** Returns a converted value or reports a conversion test failure. */
+  public function expect_conversion<T>(result: ConversionResult<T>) std.test.AssertionResult<T> {
+    return match result {
+      ConversionResult.Ok(value) => std.test.AssertionResult.Ok(value),
+      ConversionResult.Error(error) => std.test.AssertionResult.Error(AssertionError(error.message()))
+    };
+  }
+
+  /** Checks that an arithmetic update succeeded. */
+  public function expect_arithmetic_success(result: ArithmeticResult<void>) std.test.AssertionResult<void> {
+    return match result {
+      ArithmeticResult.Ok => std.test.AssertionResult.Ok,
+      (error: const ref IError) => std.test.AssertionResult.Error(AssertionError(error.message()))
+    };
+  }
+
+  /** Returns an arithmetic value or reports its error as a test failure. */
+  public function expect_arithmetic<T>(result: ArithmeticResult<T>) std.test.AssertionResult<T> {
+    return match result {
+      ArithmeticResult.Ok(value) => std.test.AssertionResult.Ok(value),
+      (error: const ref IError) => std.test.AssertionResult.Error(AssertionError(error.message()))
+    };
+  }
+
+  /** Returns a system-call value or reports its error as a test failure. */
+  public function expect_system<T>(result: SystemResult<T>) std.test.AssertionResult<T> {
+    return match result {
+      SystemResult.Ok(value) => std.test.AssertionResult.Ok(value),
+      SystemResult.Error(error) => std.test.AssertionResult.Error(AssertionError(error.message()))
+    };
+  }
+
+  /** Checks that a system operation succeeded. */
+  public function expect_system_success(result: SystemResult<void>) std.test.AssertionResult<void> {
+    return match result {
+      SystemResult.Ok => std.test.AssertionResult.Ok,
+      SystemResult.Error(error) => std.test.AssertionResult.Error(AssertionError(error.message()))
+    };
   }
 
   /**
@@ -124,18 +273,22 @@ public module std.test {
     }
   }
 
-  /**
-   * Run one test: call it and catch anything it throws. Never throws
-   * itself, so it is safe to run on a spawned thread (nothing may unwind
-   * across a spawn boundary).
-   */
-  public function run_one(name: static_ptr<u8>, fn: function () void throws IError) TestResult {
-    try {
-      fn();
-      return TestResult(name, true, String(""));
-    } catch (e: ref IError) {
-      return TestResult(name, false, e.message());
-    }
+  /** Runs a result-returning test and owns its failure text for reporting. */
+  public function run_one<E>(name: static_ptr<u8>, fn: function () _Result<void, E>) TestResult {
+    return match fn() {
+      _Result.Ok => TestResult(name, true, String("")),
+      _Result.Err(error) => match error {
+        (e: const ref IError) => TestResult(name, false, e.message())
+      }
+    };
+  }
+
+  /** Runs a structural result test and groups its concrete error payloads. */
+  public function run_result<R>(name: static_ptr<u8>, fn: function () R) TestResult {
+    return match fn() {
+      (error: const ref IError) => TestResult(name, false, error.message()),
+      _ => TestResult(name, true, String(""))
+    };
   }
 
   /**

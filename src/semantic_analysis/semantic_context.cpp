@@ -12,6 +12,7 @@
 #include <set>
 #include <sstream>
 
+#include "ast/enum_definition_ast.h"
 #include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/symbol_names.h"
 #include "semantic_analysis/type_analysis/type_checking.h"
@@ -46,6 +47,47 @@ SemanticContext::SemanticContext(
   rootScope_->accessContext = this;  // lookups filter by visibility
   rootScope_->interfaces["IError"] = results_->types->errorInterface;
   rootScope_->classes["ArithmeticError"] = results_->types->arithmeticError;
+  std::vector<sun::ast::EnumVariantDecl> variants;
+  for (const auto& name : {"Ok", "Err"}) {
+    sun::ast::EnumVariantDecl variant;
+    variant.name = name;
+    variant.value = variants.size();
+    variant.payloadTypes.emplace_back(variant.value == 0 ? "T" : "E");
+    variants.push_back(std::move(variant));
+  }
+  builtinResult_ = std::make_shared<sun::ast::EnumDefinitionAST>(
+      "_Result", std::move(variants), false,
+      std::vector<sun::ast::TypeParameter>{sun::ast::TypeParameter("T"),
+                                           sun::ast::TypeParameter("E")});
+  builtinResult_->setQualifiedName(QualifiedName{{}, "_Result"});
+  builtinResult_->setVisibility(Visibility::Public);
+  auto& table = results_->declarations;
+  auto& identity = builtinResult_->declarationIdentity();
+  identity.id = table.add(DeclarationKind::Enum, "_Result");
+  identity.session = table.session();
+  uint64_t ordinal = 1;
+  auto identify = [&](DeclarationId id) {
+    table.bindPortable(
+        id,
+        PortableDeclarationKey::original(
+            "6dc218ce0ea231b0bf4ce230fa0ddf2c2d968336be2371f0c61eb5a0bc61ed80",
+            ordinal++));
+  };
+  identify(identity.id);
+  for (const auto& name : {"T", "E"}) {
+    auto id = table.add(DeclarationKind::TypeParameter, name, identity.id);
+    identity.typeParameters.push_back(id);
+    identify(id);
+  }
+  for (const auto& variant : builtinResult_->getVariants()) {
+    variant.declaration.id =
+        table.add(DeclarationKind::Variant, variant.name, identity.id);
+    variant.declaration.session = table.session();
+    identify(variant.declaration.id);
+  }
+  rootScope_->declareGenericEnum(
+      "_Result", {builtinResult_.get(), builtinResult_->getTypeParameters(),
+                  builtinResult_->getQualifiedName()});
   registerBuiltinFunctions();
 }
 
@@ -1082,6 +1124,7 @@ std::shared_ptr<sun::types::EnumType> SemanticContext::lookupEnum(
 
 const GenericEnumInfo* SemanticContext::lookupGenericEnum(
     const std::string& name) const {
+  if (name == "_Result") return rootScope_->findGenericEnum("_Result");
   return currentScope_->lookupGenericEnum(name);
 }
 

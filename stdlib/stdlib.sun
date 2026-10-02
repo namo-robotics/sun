@@ -19,6 +19,7 @@ manifest {
         "matrix.sun",
         "string.sun",
         "errors.sun",
+        "result.sun",
         "print.sun",
         "map.sun",
         "linked_list.sun",

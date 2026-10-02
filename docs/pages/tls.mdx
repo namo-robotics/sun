@@ -18,21 +18,23 @@ flags and no OpenSSL installed on the machine it runs on.
 using std;
 using tls;
 
+/** Fetches a page and reports either error category. */
 function main() i32 {
     var alloc = make_heap_allocator();
     var client = HttpsClient(alloc);
     var host = String(alloc, "example.com");
 
-    try {
-        var response = client.get(host, "/");
-        println(response.status);   // 200
-        println(response.body);
-        return 0;
-    } catch (e: ref IError) {
-        var message = e.message();
-        println(message);
-        return 1;
-    }
+    return match client.get(host, "/") {
+        ClientResult.Ok(response) => {
+            println(response.status);
+            println(response.body);
+            0;
+        },
+        (error: const ref IError) => {
+            println(error.message());
+            1;
+        }
+    };
 }
 
 manifest {
@@ -45,12 +47,18 @@ sun client.sun              # run it
 sun --compile -o client client.sun
 ```
 
+TLS operations return `ClientResult<T>` with `Ok(T)`, `System(Error)`, or
+`Tls(TlsError)`. Use specific variants, an interface arm as above, or `_` to
+handle remaining variants. Prefix `try` extracts success and propagates failures
+into a compatible caller result. The stream examples below assume such a caller.
+The standalone HTTP response parser returns `SystemResult<void>`.
+
 ## Certificate verification
 
 Verification is on and cannot be switched off. A connection only succeeds if
 the peer's certificate chain validates against the trusted CA store **and**
 the certificate matches the hostname passed to `connect`. Anything else
-throws, with the reason in the error message:
+returns `ClientResult.Tls`, with the reason in the error message:
 
 ```
 certificate verification failed: self-signed certificate
@@ -74,10 +82,10 @@ take the host as a `String` and the path as a literal; both have an overload
 taking a port, which defaults to 443.
 
 ```sun
-public function get(host: ref String, path: static_ptr<u8>) HttpClientResponse throws IError
-public function get(host: ref String, port: i32, path: static_ptr<u8>) HttpClientResponse throws IError
+public function get(host: ref String, path: static_ptr<u8>) ClientResult<HttpClientResponse>
+public function get(host: ref String, port: i32, path: static_ptr<u8>) ClientResult<HttpClientResponse>
 public function post(host: ref String, path: static_ptr<u8>, content_type: static_ptr<u8>,
-                     body: const ref String) HttpClientResponse throws IError
+                     body: const ref String) ClientResult<HttpClientResponse>
 ```
 
 The response carries the status, the raw header block, and the decoded body:
@@ -106,11 +114,11 @@ same shape as `TcpStream`, with the handshake done in `connect`.
 
 ```sun
 var stream = TlsStream();
-stream.connect(host, 443);
-stream.send_str("PING\r\n");
+try stream.connect(host, 443);
+try stream.send_str("PING\r\n");
 
 var buf = ContiguousBuffer<u8>(alloc, 4096);
-var n = stream.recv(buf);   // 0 once the peer closes
+var n = try stream.recv(buf);   // 0 once the peer closes
 stream.close();
 ```
 
@@ -126,12 +134,12 @@ can use it too:
 using std;
 
 var stream = TcpStream();
-stream.connect_host(host, 8080);          // resolve, then connect
+try stream.connect_host(host, 8080);          // resolve, then connect
 
-var ip: i32 = resolve_host_ipv4(host);    // first A record, network order
+var ip: i32 = try resolve_host_ipv4(host);    // first A record, network order
 ```
 
-Both throw if the name does not resolve or has no IPv4 address. IPv6 is not
+Both return `SystemResult.Error` if the name does not resolve or has no IPv4 address. IPv6 is not
 supported yet.
 
 ## Building the bundle

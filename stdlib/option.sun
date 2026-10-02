@@ -1,7 +1,9 @@
-// stdlib/option.sun - Optional values and fallible results
+// stdlib/option.sun - Optional values
 //
-// Option<T> represents a value that may be absent; Result<T, E> represents
-// success or failure. Both are payload enums inspected with match:
+// Option<T> represents a value that may be absent. The builtin _Result<T, E>
+// represents success or failure without a standard-library dependency. Stdlib
+// result enums live in result.sun. These types
+// are payload enums inspected with match:
 //
 //   var found = m.find(key);
 //   var v = match found {
@@ -18,11 +20,5 @@ public module std {
   public enum Option<T> {
     Some(T),
     None
-  }
-
-  /** Contains either a successful value or an error value. */
-  public enum Result<T, E> {
-    Ok(T),
-    Err(E)
   }
 }

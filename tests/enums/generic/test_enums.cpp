@@ -69,9 +69,11 @@ TEST(Enums_Generic, ResultWithTwoParams) {
   auto value = executeString(R"(
     enum Result<T, E> { Ok(T), Err(E) }
 
-    function checked_div(a: i32, b: i32) Result<i32, i32> {
-        try { return Result.Ok(a / b); }
-        catch (e: ref ArithmeticError) { return Result.Err(-1); }
+    function divide(a: i32, b: i32) Result<i32, i32> {
+        return match checked_div(a, b) {
+            _Result.Ok(v) => Result.Ok(v),
+            _Result.Err(error) => Result.Err(-1)
+        };
     }
 
     function get(r: ref Result<i32, i32>) i32 {
@@ -82,8 +84,8 @@ TEST(Enums_Generic, ResultWithTwoParams) {
     }
 
     function main() i32 {
-        var good = checked_div(84, 2);
-        var bad = checked_div(1, 0);
+        var good = divide(84, 2);
+        var bad = divide(1, 0);
         return get(good) + get(bad);   // 42 + -1
     }
   )");

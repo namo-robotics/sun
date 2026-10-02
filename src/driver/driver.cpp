@@ -766,6 +766,13 @@ void Driver::addJITStaticLibrary(const std::string& path) {
  * unit. */
 namespace {
 
+/** Records a test name and the runner for its declared result representation.
+ */
+struct TestEntry {
+  std::string name;
+  std::string runner;
+};
+
 /**
  * Walk the item-level statements of a merged program, recursing through
  * module bodies. Strip mode erases every test function; collect mode makes
@@ -775,7 +782,7 @@ namespace {
  * injection, so only user-written modules are visited.
  */
 void visitTests(BlockExprAST& block, std::vector<std::string>& modulePath,
-                bool strip, std::vector<std::string>* found, bool& sawAny) {
+                bool strip, std::vector<TestEntry>* found, bool& sawAny) {
   auto& body = block.mutableBody();
   for (auto it = body.begin(); it != body.end();) {
     ExprAST* stmt = it->get();
@@ -804,7 +811,10 @@ void visitTests(BlockExprAST& block, std::vector<std::string>& modulePath,
       std::string path;
       for (const auto& segment : modulePath) path += segment + ".";
       path += func.getProto().getName();
-      found->push_back(path);
+      found->push_back(
+          {path, func.getProto().getReturnType()->baseName == "_Result"
+                     ? "run_one"
+                     : "run_result"});
       ++it;
       continue;
     }
@@ -830,17 +840,18 @@ void removeRootMain(BlockExprAST& block) {
 /**
  * The test binary's entry point, rendered from the embedded runner template
  * (src/driver/test_runner_template.inja.sun) with the collected dotted test
- * names. The template documents the runner's behavior; this only feeds in
- * the names.
+ * names and runner adapters. JSON is used only at the template boundary.
  */
-std::string synthesizeTestRunner(const std::vector<std::string>& tests) {
+std::string synthesizeTestRunner(const std::vector<TestEntry>& tests) {
   inja::Environment env;
   // Jinja-style whitespace handling, so the template's {% for %} lines
   // leave no blank lines behind in the rendered runner.
   env.set_trim_blocks(true);
   env.set_lstrip_blocks(true);
   nlohmann::json data;
-  data["tests"] = tests;
+  data["tests"] = nlohmann::json::array();
+  for (const auto& test : tests)
+    data["tests"].push_back({{"name", test.name}, {"runner", test.runner}});
   return env.render(kTestRunnerTemplate, data);
 }
 
@@ -848,7 +859,7 @@ std::string synthesizeTestRunner(const std::vector<std::string>& tests) {
 
 void Driver::applyTestHandling(BlockExprAST& blockAst) {
   std::vector<std::string> modulePath;
-  std::vector<std::string> tests;
+  std::vector<TestEntry> tests;
   bool sawAny = false;
 
   if (testHandling_ == TestHandling::Strip) {

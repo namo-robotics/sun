@@ -498,16 +498,17 @@ class TypeMapper {
   static std::string readExpr(const FD* f) {
     switch (f->type()) {
       case FD::TYPE_STRING:
-        return "r.read_string_field(alloc)";
+        return "try r.read_string_field(alloc)";
       case FD::TYPE_BYTES:
-        return "r.read_bytes_field(alloc)";
+        return "try r.read_bytes_field(alloc)";
       case FD::TYPE_MESSAGE:
-        return messageName(f->message_type()) + "_decode_nested(alloc, r)";
+        return "try " + messageName(f->message_type()) +
+               "_decode_nested(alloc, r)";
       case FD::TYPE_ENUM:
         return "proto_enum_from_i32_" + enumName(f->enum_type()) +
-               "(r.read_int32())";
+               "(try r.read_int32())";
       default:
-        return "r.read_" + wireSuffix(f) + "()";
+        return "try r.read_" + wireSuffix(f) + "()";
     }
   }
 
@@ -863,11 +864,12 @@ class MessageGenerator {
    */
   void emitDecodeFrom() {
     w_.open("public function " + name_ +
-            "_decode_from(alloc: ref HeapAllocator, r: ref ProtoReader) " +
-            name_ + " throws IError {");
+            "_decode_from(alloc: ref HeapAllocator, r: ref ProtoReader) "
+            "ProtoResult<" +
+            name_ + "> {");
     w_.line("var msg = " + name_ + "(alloc);");
     w_.open("while (r.at_end() == false) {");
-    w_.line("var tag: u64 = r.read_tag();");
+    w_.line("var tag: u64 = try r.read_tag();");
     w_.line("var field: i64 = proto_read_tag_field(tag);");
     w_.line("var wire: i64 = proto_read_tag_wire_type(tag);");
     bool first = true;
@@ -880,10 +882,10 @@ class MessageGenerator {
       w_.closeSilently();
     }
     w_.open(first ? "if (true) {" : "} else {");
-    w_.line("r.skip_field(wire, tag, msg.unknown_fields);");
+    w_.line("try r.skip_field(wire, tag, msg.unknown_fields);");
     w_.close();
     w_.close();  // while
-    w_.line("return msg;");
+    w_.line("return ProtoResult.Ok(msg);");
     w_.close();
     w_.line();
   }
@@ -901,7 +903,7 @@ class MessageGenerator {
     } else if (f->is_repeated() && T::isPackable(f)) {
       // Accept both packed (wire 2) and unpacked encodings
       w_.open("if (wire == 2) {");
-      w_.line("var end: i64 = r.read_length();");
+      w_.line("var end: i64 = try r.read_length();");
       w_.line("var old: i64 = r.push_limit(end);");
       w_.open("while (r.at_end() == false) {");
       w_.line(fld + ".push(" + T::readExpr(f) + ");");
@@ -925,12 +927,12 @@ class MessageGenerator {
     const pb::Descriptor* entry = f->message_type();
     const FD* k = entry->map_key();
     const FD* v = entry->map_value();
-    w_.line("var end: i64 = r.read_length();");
+    w_.line("var end: i64 = try r.read_length();");
     w_.line("var old: i64 = r.push_limit(end);");
     w_.line("var key: " + T::elementType(k) + " = " + T::zeroValue(k) + ";");
     w_.line("var val: " + T::elementType(v) + " = " + T::zeroValue(v) + ";");
     w_.open("while (r.at_end() == false) {");
-    w_.line("var etag: u64 = r.read_tag();");
+    w_.line("var etag: u64 = try r.read_tag();");
     w_.line("var efield: i64 = proto_read_tag_field(etag);");
     w_.open("if (efield == 1) {");
     w_.line("key = " + T::readExpr(k) + ";");
@@ -940,7 +942,7 @@ class MessageGenerator {
     w_.close("} else {");
     w_.open("");
     w_.line(
-        "r.skip_field(proto_read_tag_wire_type(etag), etag, "
+        "try r.skip_field(proto_read_tag_wire_type(etag), etag, "
         "msg.unknown_fields);");
     w_.close();
     w_.close();
@@ -953,26 +955,26 @@ class MessageGenerator {
    */
   void emitDecodeHelpers() {
     const std::string sig = "(alloc: ref HeapAllocator, r: ref ProtoReader) ";
-    w_.open("public function " + name_ + "_decode_nested" + sig + name_ +
-            " throws IError {");
-    w_.line("var end: i64 = r.read_length();");
+    w_.open("public function " + name_ + "_decode_nested" + sig +
+            "ProtoResult<" + name_ + "> {");
+    w_.line("var end: i64 = try r.read_length();");
     w_.line("var old: i64 = r.push_limit(end);");
-    w_.line("var msg = " + name_ + "_decode_from(alloc, r);");
+    w_.line("var msg = try " + name_ + "_decode_from(alloc, r);");
     w_.line("r.pop_limit(old);");
-    w_.line("return msg;");
+    w_.line("return ProtoResult.Ok(msg);");
     w_.close();
     w_.line();
 
     w_.open("public function " + name_ +
-            "_decode(alloc: ref HeapAllocator, buf: ref Vec<u8>) " + name_ +
-            " throws IError {");
+            "_decode(alloc: ref HeapAllocator, buf: ref Vec<u8>) ProtoResult<" +
+            name_ + "> {");
     w_.line("var r = ProtoReader(buf);");
     w_.line("return " + name_ + "_decode_from(alloc, r);");
     w_.close();
     w_.line();
 
-    w_.open("public function " + name_ + "_decode_delimited" + sig + name_ +
-            " throws IError {");
+    w_.open("public function " + name_ + "_decode_delimited" + sig +
+            "ProtoResult<" + name_ + "> {");
     w_.line("return " + name_ + "_decode_nested(alloc, r);");
     w_.close();
     w_.line();

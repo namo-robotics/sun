@@ -46,6 +46,7 @@ namespace sun::semantic_analysis {
  */
 class SemanticContext : public AccessContext {
   SourceFileId sourceFileId_ = 0;
+  std::shared_ptr<sun::ast::EnumDefinitionAST> builtinResult_;
   DeclarationState declarations_;
   size_t declarationCollectionDepth_ = 0;
   std::vector<std::string> activeLifetimeNames_;
