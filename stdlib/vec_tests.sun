@@ -8,17 +8,17 @@ public module std {
   /** Groups tests for the vec library behavior. */
   module vec_tests {
     /** Combines assertions with failures from borrowed element access. */
-    enum TestError { Assertion(std.test.AssertionError), Bounds(IndexOutOfBoundsError) }
+    enum TestResult { Ok, Assertion(std.test.AssertionError), Bounds(IndexOutOfBoundsError) }
 
     /** Checks create empty vec. */
-    test_function create_empty_vec() _Result<void, std.vec_tests.TestError> {
+    test_function create_empty_vec() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
       try std.test.assert_eq(v.size(), 0);
     }
 
     /** Checks push and size. */
-    test_function push_and_size() _Result<void, std.vec_tests.TestError> {
+    test_function push_and_size() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
       v.push(10);
@@ -28,7 +28,7 @@ public module std {
     }
 
     /** Checks push and get. */
-    test_function push_and_get() _Result<void, std.vec_tests.TestError> {
+    test_function push_and_get() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
       v.push(10);
@@ -38,7 +38,7 @@ public module std {
     }
 
     /** Checks set element. */
-    test_function set_element() _Result<void, std.vec_tests.TestError> {
+    test_function set_element() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
       v.push(10);
@@ -48,7 +48,7 @@ public module std {
     }
 
     /** Checks pop element. */
-    test_function pop_element() _Result<void, std.vec_tests.TestError> {
+    test_function pop_element() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
       v.push(10);
@@ -63,7 +63,7 @@ public module std {
     }
 
     /** Checks pop empty is none. */
-    test_function pop_empty_is_none() _Result<void, std.vec_tests.TestError> {
+    test_function pop_empty_is_none() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
       v.push(1);
@@ -76,7 +76,7 @@ public module std {
     }
 
     /** Checks remove first and iterate. */
-    test_function remove_first_and_iterate() _Result<void, std.vec_tests.TestError> {
+    test_function remove_first_and_iterate() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 4);
       v.push(1);
@@ -96,7 +96,7 @@ public module std {
     }
 
     /** Checks remove middle lsyntax tree and singleton. */
-    test_function remove_middle_last_and_singleton() _Result<void, std.vec_tests.TestError> {
+    test_function remove_middle_last_and_singleton() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 4);
       v.push(10);
@@ -115,7 +115,7 @@ public module std {
     }
 
     /** Checks remove invalid indices leave vec unchanged. */
-    test_function remove_invalid_indices_leave_vec_unchanged() _Result<void, std.vec_tests.TestError> {
+    test_function remove_invalid_indices_leave_vec_unchanged() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 4);
       var caught: i64 = 0;
@@ -143,7 +143,7 @@ public module std {
     }
 
     /** Checks swap remove first and iterate. */
-    test_function swap_remove_first_and_iterate() _Result<void, std.vec_tests.TestError> {
+    test_function swap_remove_first_and_iterate() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 4);
       v.push(1);
@@ -163,7 +163,7 @@ public module std {
     }
 
     /** Checks swap remove middle lsyntax tree and singleton. */
-    test_function swap_remove_middle_last_and_singleton() _Result<void, std.vec_tests.TestError> {
+    test_function swap_remove_middle_last_and_singleton() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 4);
       v.push(10);
@@ -182,7 +182,7 @@ public module std {
     }
 
     /** Checks swap remove invalid indices leave vec unchanged. */
-    test_function swap_remove_invalid_indices_leave_vec_unchanged() _Result<void, std.vec_tests.TestError> {
+    test_function swap_remove_invalid_indices_leave_vec_unchanged() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 4);
       var caught: i64 = 0;
@@ -210,7 +210,7 @@ public module std {
     }
 
     /** Replacing an optional slot leaves a valid empty value at the same index. */
-    test_function replace_leaves_explicit_empty_slot() _Result<void, std.vec_tests.TestError> {
+    test_function replace_leaves_explicit_empty_slot() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<Option<i32>>(allocator, 2);
       v.push(Option.Some(10));
@@ -256,22 +256,22 @@ public module std {
     }
 
     /** Select a removal operation and transfer its result to the caller. */
-    function remove_tracked(v: ref Vec<RemovalTracked>, swap: bool) _Result<RemovalTracked, IndexOutOfBoundsError> {
+    function remove_tracked(v: ref Vec<RemovalTracked>, swap: bool) AccessResult<RemovalTracked> {
       if (swap) {
-        return _Result.Ok((try v.swap_remove(0)));
+        return AccessResult.Ok(try v.swap_remove(0));
       }
-      return _Result.Ok((try v.remove(0)));
+      return AccessResult.Ok(try v.remove(0));
     }
 
     /** Check that removing values transfers ownership without dropping them. */
-    function exercise_removal_ownership(swap: bool) _Result<void, std.test.AssertionError> {
+    function exercise_removal_ownership(swap: bool) std.test.AssertionResult<void> {
       var allocator = make_heap_allocator();
       var v = Vec<RemovalTracked>(allocator, 4);
       v.push(RemovalTracked(String("first")));
       v.push(RemovalTracked(String("middle")));
       v.push(RemovalTracked(String("last")));
       var before = removal_drops;
-      var removed = try std.test.expect_ok(remove_tracked(v, swap));
+      var removed = try std.test.expect_access(remove_tracked(v, swap));
       try std.test.assert_eq(removed.value.length(), 5);
       try std.test.assert_eq(removal_drops, before);
       try std.test.assert_eq(v.size(), 2);
@@ -279,20 +279,20 @@ public module std {
       try std.test.assert_eq(removal_drops, before + 2);
       try std.test.assert_eq(removed.value.length(), 5);
       v.push(RemovalTracked(String("replacement")));
-      return _Result.Ok;
+      return std.test.AssertionResult.Ok;
     }
 
     /** Checks removal transfers ownership and drops each value once. */
-    test_function removal_transfers_ownership_and_drops_each_value_once() _Result<void, std.vec_tests.TestError> {
+    test_function removal_transfers_ownership_and_drops_each_value_once() std.vec_tests.TestResult {
       removal_drops = 0;
-      try std.test.expect_success(exercise_removal_ownership(false));
+      try exercise_removal_ownership(false);
       try std.test.assert_eq(removal_drops, 4);
-      try std.test.expect_success(exercise_removal_ownership(true));
+      try exercise_removal_ownership(true);
       try std.test.assert_eq(removal_drops, 8);
     }
 
     /** Reports whether the collection contains no elements. */
-    test_function is_empty() _Result<void, std.vec_tests.TestError> {
+    test_function is_empty() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
       try std.test.assert(v.is_empty());
@@ -301,7 +301,7 @@ public module std {
     }
 
     /** Checks clear. */
-    test_function clear() _Result<void, std.vec_tests.TestError> {
+    test_function clear() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
       v.push(1);
@@ -312,14 +312,14 @@ public module std {
     }
 
     /** Checks capacity. */
-    test_function capacity() _Result<void, std.vec_tests.TestError> {
+    test_function capacity() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
       try std.test.assert_eq(v.capacity(), 8);
     }
 
     /** Checks auto grow. */
-    test_function auto_grow() _Result<void, std.vec_tests.TestError> {
+    test_function auto_grow() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
       for (var i: i64 = 0; i < 20; i = i + 1) {
@@ -329,7 +329,7 @@ public module std {
     }
 
     /** Checks auto grow values preserved. */
-    test_function auto_grow_values_preserved() _Result<void, std.vec_tests.TestError> {
+    test_function auto_grow_values_preserved() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
       for (var i: i64 = 0; i < 20; i = i + 1) {
@@ -339,7 +339,7 @@ public module std {
     }
 
     /** Checks first and lsyntax tree. */
-    test_function first_and_last() _Result<void, std.vec_tests.TestError> {
+    test_function first_and_last() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
       v.push(10);
@@ -358,7 +358,7 @@ public module std {
     }
 
     /** Checks i32 type. */
-    test_function i32_type() _Result<void, std.vec_tests.TestError> {
+    test_function i32_type() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i32>(allocator, 8);
       v.push(5);
@@ -367,7 +367,7 @@ public module std {
     }
 
     /** Checks iteration. */
-    test_function iteration() _Result<void, std.vec_tests.TestError> {
+    test_function iteration() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
       v.push(1);
@@ -382,7 +382,7 @@ public module std {
     }
 
     /** Checks index operator. */
-    test_function index_operator() _Result<void, std.vec_tests.TestError> {
+    test_function index_operator() std.vec_tests.TestResult {
       var allocator = make_heap_allocator();
       var v = Vec<i64>(allocator, 8);
       v.push(100);

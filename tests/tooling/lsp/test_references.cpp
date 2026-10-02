@@ -424,16 +424,17 @@ class Oops implements IError {
     const method code() i32 { return 1; }
     const method message() static_ptr<u8> { return "oops"; }
 }
-function risky(x: i32) i32 throws IError {
-    if (x < 0) { throw Oops(); }
-    return x;
+function risky(x: i32) _Result<i32, Oops> {
+    if (x < 0) { return _Result.Err(Oops()); }
+    return _Result.Ok(x);
 }
 function main() i32 {
-    try {
-        return risky(1);
-    } catch (err: ref IError) {
+    return match risky(1) {
+      _Result.Ok(value) => value,
+      (err: ref IError) => {
         return err.code() + err.code();
-    }
+      }
+    };
 }
 )";
   EXPECT_TRUE(
@@ -443,8 +444,8 @@ function main() i32 {
   EXPECT_TRUE(
       refersTo(source, "err: ref IError", true,
                {{"err: ref IError"}, {"err.code() +"}, {"err.code();"}}));
-  EXPECT_TRUE(
-      refersTo(source, "Oops();", true, {{"Oops implements"}, {"Oops();"}}));
+  EXPECT_TRUE(refersTo(source, "Oops());", true,
+                       {{"Oops implements"}, {"Oops>"}, {"Oops());"}}));
 }
 
 TEST(Tooling_Lsp_References, MergedFiles) {

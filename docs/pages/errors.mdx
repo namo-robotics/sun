@@ -238,9 +238,13 @@ Code before the failing call has run; code after it has not. An owned error move
 through `_Result.Err` without copying its payload or allocating exception storage.
 A borrowed error never transfers ownership of its referent.
 
-## Migration status
+## Replacing Exception Syntax
 
 The standard library, TLS APIs, generated protocol-buffer decoders, and test
-runner use returned results. Legacy exception syntax still exists in the
-compiler while the remaining compiler fixtures are migrated. Do not use the old
-`throws`, `throw`, or block-form `try` syntax in new code.
+runner use returned results. `throws`, `throw`, and block-form `try`/`catch` are
+rejected with migration diagnostics. Declare a result return type, return an
+error variant, and use `try expression` for propagation or `match` for handling.
+
+Builtin `_Result<T, E>` remains available. Prefer library-defined result enums
+with concrete owned errors; borrowed interface payloads are supported when
+their referents outlive the result.

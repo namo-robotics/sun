@@ -384,20 +384,21 @@ class DivByZero implements IError {
     const method message() String { return String("division by zero"); }
 }
 
-function divide(a: i32, b: i32) i32 throws IError {
-    if (b == 0) {
-        throw DivByZero();  // any class implementing IError
-    }
-    return a / b;
+/** Owns either a quotient or its concrete failure. */
+enum DivideResult<T> { Ok(T), Error(DivByZero) }
+
+/** Checks for a zero divisor before computing the quotient. */
+function divide(a: i32, b: i32) DivideResult<i32> {
+    if (b == 0) { return DivideResult.Error(DivByZero()); }
+    return DivideResult.Ok(a / b);
 }
 
+/** Handles an owned error through a borrowed interface view. */
 function main() i32 {
-    try {
-        var result = divide(10, 0);
-        return result;
-    } catch (e: ref IError) {
-        return -1;  // Handle error
-    }
+    return match divide(10, 0) {
+        DivideResult.Ok(value) => value,
+        (e: const ref IError) => -1
+    };
 }
 ```
 

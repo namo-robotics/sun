@@ -2,7 +2,7 @@
 //
 // Test functions are declared with `test_function` and compiled only into
 // the test binary. For that binary the compiler synthesizes a main that runs
-// every test through run_one — each on its own thread by default — and
+// every test through its result runner — each on its own thread by default — and
 // reports with report/finish. Passing --test-sequential to the test binary
 // runs the tests one after another in declaration order instead.
 //

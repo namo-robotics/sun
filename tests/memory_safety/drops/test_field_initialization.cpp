@@ -450,12 +450,13 @@ TEST(MemorySafety_Drops_FieldInit,
       const method message() static_ptr<u8> { return "boom"; }
     }
 
-    function boom(f: bool) void throws IError { if (f) { throw Boom(); } }
+    function boom(f: bool) _Result<void, Boom> { if (f) { return _Result.Err(Boom()); } return _Result.Ok; }
 
     class Holder {
       var r: Res;
       init(f: bool) {
-        try { this.r = Res(1); boom(f); } catch (e: ref Boom) { this.r = Res(2); }
+        if (f) { this.r = Res(1); }
+        match boom(f) { _Result.Ok => {}, _Result.Err(_) => { this.r = Res(2); } };
       }
     }
 
@@ -474,13 +475,13 @@ TEST(MemorySafety_Drops_FieldInit, a_field_settled_before_a_try_is_certain) {
       const method message() static_ptr<u8> { return "boom"; }
     }
 
-    function boom(f: bool) void throws IError { if (f) { throw Boom(); } }
+    function boom(f: bool) _Result<void, Boom> { if (f) { return _Result.Err(Boom()); } return _Result.Ok; }
 
     class Holder {
       var r: Res;
       init(f: bool) {
         this.r = Res(0);
-        try { boom(f); this.r = Res(1); } catch (e: ref Boom) { this.r = Res(2); }
+        match boom(f) { _Result.Ok => { this.r = Res(1); }, _Result.Err(_) => { this.r = Res(2); } };
       }
     }
 

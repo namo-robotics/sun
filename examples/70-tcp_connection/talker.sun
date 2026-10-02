@@ -1,24 +1,29 @@
 // Talker: connects and sends a message
 using std;
 
-/** Runs the example that exchanges messages over a TCP connection. */
+/** Performs the operation and propagates returned failures. */
+function run() Result<void> {
+  var stream = TcpStream();
+  try stream.connect_local(8080);
+  println("Connected to 127.0.0.1:8080");
+
+  try stream.send_str("Hello from talker!");
+  println("Message sent");
+
+  stream.close();
+
+  return Result.Ok;
+}
+
+/** Reports errors and sets the process exit code. */
 function main() i32 {
-  // Socket operations can fail, so they run inside a `try` block.
-  try {
-    var stream = TcpStream();
-    stream.connect_local(8080);
-    println("Connected to 127.0.0.1:8080");
-
-    stream.send_str("Hello from talker!");
-    println("Message sent");
-
-    stream.close();
-  } catch (e: ref IError) {
-    println("Network error (is the listener running?):");
-    println(e.message());
-    return 1;
-  }
-  return 0;
+  return match run() {
+    (e: const ref IError) => {
+      println(e.message());
+      1;
+    },
+    _ => 0
+  };
 }
 
 manifest {

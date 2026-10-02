@@ -668,17 +668,12 @@ constexpr const char* kThrowingProgram = R"(
       const method code() i32 { return 1; }
       const method message() static_ptr<u8> { return "division by zero"; }
     }
-    function divide(a: i32, b: i32) i32 throws IError {
-        if (b == 0) { throw DivByZero(); }
-        return a / b;
+    function divide(a: i32, b: i32) _Result<i32, DivByZero> {
+        if (b == 0) { return _Result.Err(DivByZero()); }
+        return _Result.Ok(a / b);
     }
     function main() i32 {
-        try {
-            var x = divide(10, 0);
-            return 1;
-        } catch (e: ref IError) {
-            return 42;
-        }
+        return match divide(10, 0) { _Result.Ok(_) => 1, _Result.Err(_) => 42 };
     }
 )";
 

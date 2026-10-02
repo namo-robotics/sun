@@ -777,7 +777,7 @@ TEST(Ffi_Callbacks, rejects_mismatched_lambda_bound_and_null_values) {
 TEST(Ffi_Callbacks, rejects_throwing_and_unsupported_callback_signatures) {
   EXPECT_THROW(executeString(R"(
     extern "C" function register_callback(
-        callback: function (i32) i32 throws IError) void;
+        callback: function (i32) _Result<i32, i32>) void;
     function main() i32 { return 0; }
   )"),
                SunError);

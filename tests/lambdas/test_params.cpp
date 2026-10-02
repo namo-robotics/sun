@@ -173,70 +173,87 @@ TEST(Lambdas_Params, lambda_param_forwarded_between_methods) {
 
 TEST(Lambdas_Throwing, throw_and_catch) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
+/** Owns successes and concrete fixture errors. */
+enum Outcome<T> { Ok(T), Error(Error) }
 
-    function main() i32 {
-        var risky = (x: i32) => i32 throws IError {
-            if (x < 0) { throw Error(1, "negative"); }
-            return x * 2;
-        };
-
-        try {
-            var a = risky(5);
-            var b = risky(-1);
-            return a + b;
-        } catch (e: ref IError) {
-            return 42;
-        }
+function main() i32 {
+  var risky = (x: i32) => Outcome<i32> {
+    if (x < 0) {
+      return Outcome.Error(Error(1, "negative"));
     }
-  )");
+    return Outcome.Ok(x * 2);
+  };
+
+  /** Executes a fallible operation. */
+  var attempt_0 = [ref risky]() => Outcome<i32> {
+    var a = try risky(5);
+    var b = try risky(-1);
+    return Outcome.Ok(a + b);
+  };
+  return match attempt_0() {
+    Outcome.Ok(value) => value,
+    (e: ref IError) => {
+      return 42;
+    }
+  };
+}
+)");
   EXPECT_EQ(value, 42);
 }
 
 TEST(Lambdas_Throwing, throwing_lambda_as_param) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
+/** Owns successes and concrete fixture errors. */
+enum Outcome<T> { Ok(T), Error(Error) }
 
-    function run_guarded(f: (i32) => i32 throws IError, x: i32) i32 {
-        try {
-            return f(x);
-        } catch (e: ref IError) {
-            return -1;
-        }
+function run_guarded(f: (i32) => Outcome<i32>, x: i32) i32 {
+  return match f(x) {
+    Outcome.Ok(value) => value,
+    (e: ref IError) => {
+      return -1;
     }
+  };
+}
 
-    function main() i32 {
-        var risky = (x: i32) => i32 throws IError {
-            if (x < 0) { throw Error(1, "negative"); }
-            return x * 2;
-        };
-        var a = run_guarded(risky, 21);   // 42
-        var b = run_guarded(risky, -5);   // -1
-        return a + b;
+function main() i32 {
+  var risky = (x: i32) => Outcome<i32> {
+    if (x < 0) {
+      return Outcome.Error(Error(1, "negative"));
     }
-  )");
+    return Outcome.Ok(x * 2);
+  };
+  var a = run_guarded(risky, 21);  // 42
+  var b = run_guarded(risky, -5);  // -1
+  return a + b;
+}
+)");
   EXPECT_EQ(value, 41);
 }
 
 TEST(Lambdas_Throwing, non_throwing_into_throwing_param) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
+/** Owns successes and concrete fixture errors. */
+enum Outcome<T> { Ok(T), Error(Error) }
 
-    function run_guarded(f: (i32) => i32 throws IError, x: i32) i32 {
-        try {
-            return f(x);
-        } catch (e: ref IError) {
-            return -1;
-        }
+function run_guarded(f: (i32) => Outcome<i32>, x: i32) i32 {
+  return match f(x) {
+    Outcome.Ok(value) => value,
+    (e: ref IError) => {
+      return -1;
     }
+  };
+}
 
-    function main() i32 {
-        var safe = (x: i32) => i32 {
-            return x + 100;
-        };
-        return run_guarded(safe, 1);
-    }
-  )");
+function main() i32 {
+  var safe = (x: i32) => Outcome<i32> {
+    return Outcome.Ok(x + 100);
+  };
+  return run_guarded(safe, 1);
+}
+)");
   EXPECT_EQ(value, 101);
 }
 
@@ -245,9 +262,9 @@ TEST(Lambdas_Throwing, uncaught_call_rejected) {
     using std;
 
     function main() i32 {
-        var risky = (x: i32) => i32 throws IError {
-            if (x < 0) { throw Error(1, "negative"); }
-            return x;
+        var risky = (x: i32) => SystemResult<i32> {
+            if (x < 0) { return SystemResult.Error(Error(1, "negative")); }
+            return SystemResult.Ok(x);
         };
         return risky(1);
     }

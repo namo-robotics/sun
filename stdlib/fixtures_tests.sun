@@ -23,7 +23,7 @@ public module std {
       var alloc: HeapAllocator;
 
       /** Creates the scratch directory or returns its filesystem error. */
-      init(allocator: ref HeapAllocator, tag: static_ptr<u8>) _Result<void, Error> {
+      init(allocator: ref HeapAllocator, tag: static_ptr<u8>) SystemResult<void> {
         this.alloc = allocator.copy();
         var p = String("/tmp/sun_stdlib_");
         p.append_literal(tag);

@@ -50,6 +50,9 @@ public module std {
       }
     }
 
+    /** Carries worker success or an owned failure. */
+    enum WorkResult<T> { Ok(T), Error(Boom) }
+
     /**
      * Error type for the unwinding test.
      */
@@ -77,10 +80,10 @@ public module std {
     /**
      * Locks the shared counter, writes it, and throws with the guard alive.
      */
-    function lock_then_throw(s: const ref Shared<Counter>) _Result<i32, Boom> {
+    function lock_then_throw(s: const ref Shared<Counter>) WorkResult<i32> {
       var g = s.lock();
       g.get().n = 7;
-      return _Result.Err(Boom());
+      return WorkResult.Error(Boom());
     }
 
     /**
@@ -215,8 +218,8 @@ public module std {
       var s = Shared<Counter>(alloc, Counter());
       var got: i64 = 0;
       match lock_then_throw(s) {
-        _Result.Ok(_) => {},
-        _Result.Err(e) => {
+        WorkResult.Ok(_) => {},
+        WorkResult.Error(e) => {
           var g = s.lock();  // deadlocks if the guard did not unlock
           got = g.get().n;
         }

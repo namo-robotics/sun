@@ -798,12 +798,8 @@ TEST(Tooling_Serialization, ModuleDefinitionRoundtrip) {
 
 TEST(Tooling_Serialization, TryCatchRoundtrip) {
   auto block = parseCode(R"(
-    function test() i32 throws IError {
-      try {
-        return 42;
-      } catch (e: ref IError) {
-        return -1;
-      }
+    function test() Result<i32> {
+      return Result.Ok(try work());
     }
   )");
 
@@ -820,7 +816,7 @@ TEST(Tooling_Serialization, TryCatchRoundtrip) {
 
 TEST(Tooling_Serialization, ThrowExprRoundtrip) {
   auto errorVal = std::make_unique<NumberExprAST>(static_cast<int64_t>(1));
-  auto ast = std::make_unique<sun::ast::ThrowExprAST>(std::move(errorVal));
+  auto ast = std::make_unique<sun::ast::ReturnExprAST>(std::move(errorVal));
 
   ASTSerializer serializer;
   std::string data = serializer.serializeToString(*ast);
@@ -829,7 +825,7 @@ TEST(Tooling_Serialization, ThrowExprRoundtrip) {
   auto restored = deserializer.deserializeFromString(data);
 
   ASSERT_NE(restored, nullptr);
-  ASSERT_EQ(restored->getType(), ASTNodeType::THROW);
+  ASSERT_EQ(restored->getType(), ASTNodeType::RETURN);
 }
 
 // =============================================================================
@@ -1060,7 +1056,7 @@ TEST(Tooling_Serialization, ReferenceTypeAnnotation) {
 }
 TEST(Tooling_Serialization, FunctionPointerTypeAnnotationRoundtrip) {
   auto block = parseCode(R"(
-    function use(callback: function (i32, bool) i64 throws IError) void {}
+    function use(callback: function (i32, bool) Result<i64>) void {}
   )");
   ASSERT_NE(block, nullptr);
 
@@ -1074,8 +1070,8 @@ TEST(Tooling_Serialization, FunctionPointerTypeAnnotationRoundtrip) {
   auto* function = static_cast<FunctionAST*>(restoredBlock->getBody()[0].get());
   const auto& type = function->getProto().getArgs()[0].second;
   EXPECT_TRUE(type.isFunction());
-  EXPECT_TRUE(type.canError);
-  EXPECT_EQ(type.toString(), "function (i32, bool) i64 throws IError");
+  EXPECT_FALSE(type.canError);
+  EXPECT_EQ(type.toString(), "function (i32, bool) Result<i64>");
 }
 
 // =============================================================================

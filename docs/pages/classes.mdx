@@ -32,7 +32,6 @@ class Point {
   calling the class then returns `Result<Class>`. Library-defined result enums
   use their first type parameter for the constructed value. Use `try Class(args)` to
   propagate failure. See [returned errors](/errors#returned-error-values).
-  Legacy exception constructors still use `init(args) throws IError { }`.
 - **Methods**: Declared with the `method` keyword inside the class body; a
   method can access `this`
 - **Member access**: Use `.` to access fields and call methods
@@ -66,8 +65,8 @@ do not introduce implicit copies.
 When every field has a default and there is no constructor, Sun supplies
 `init()`. If only some fields have defaults, write a constructor that initializes
 the rest, including fields inherited from interfaces. A default that propagates
-an error requires an explicit constructor with an appropriate `throws`
-declaration; the supplied constructor is non-throwing.
+an error uses `try` and requires an explicit constructor returning a compatible
+result enum; the supplied constructor is infallible.
 
 Field initializers also work in packed classes. Fields still require explicit
 types. Struct literals must name every field and do not run these defaults.

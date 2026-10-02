@@ -172,26 +172,27 @@ A generic hash map using open addressing with linear probing. Implements `IItera
 var allocator = make_heap_allocator();
 var m = Map<i64, i32>(allocator, 16);  // Initial capacity 16
 m.insert(42, 100);
-var val = m.get_or_default(42, 0);   // 100
-m.remove(42);
+var fallback: i32 = 0;
+var val = m.get_or_default(42, fallback);   // 100
+ignore_error(m.remove(42));
 ```
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `insert(key, value)` | `(K, V) void throws IError` | Insert or update a key-value pair |
-| `get(key)` | `(K) V throws IError` | Get value by key (throws if not found) |
-| `find(key)` | `(K) Option<ref V> throws IError` | Get value by key; `None` if not present |
-| `get_or_default(key, default)` | `(K, ref V) ref V throws IError` | Get value or return default |
-| `remove(key)` | `(K) V throws IError` | Remove and return value (throws if not found) |
-| `contains(key)` | `(K) bool throws IError` | Check if key exists |
+| `insert(key, value)` | `(K, V) void` | Insert or update a key-value pair |
+| `get(key)` | `(K) LookupResult<ref V>` | Borrow the value or return `NotFound` |
+| `find(key)` | `(K) Option<ref V>` | Get value by key; `None` if not present |
+| `get_or_default(key, default)` | `(K, ref V) ref V` | Get value or return default |
+| `remove(key)` | `(K) LookupResult<V>` | Remove the value or return `NotFound` |
+| `contains(key)` | `(K) bool` | Check if key exists |
 | `size()` | `() i64` | Number of entries |
 | `capacity()` | `() i64` | Number of buckets |
 | `is_empty()` | `() bool` | Check if empty |
 | `clear()` | `() void` | Remove all entries |
 | `iter()` | `() MapIterator<K, V>` | Get iterator over values |
 
-Lookup and insertion methods propagate `ArithmeticError` if bucket arithmetic
-fails. Call them inside `try` or a function declared with `throws IError`.
+Handle `get` and `remove` with `match`, or propagate their `LookupResult`
+with `try` from a function that returns a compatible result enum.
 
 ### Iteration
 
@@ -234,8 +235,8 @@ and yield `char`. See [Characters and Bytes](/builtin-types#characters-and-bytes
 | `length()` | `() i64` | Current string length |
 | `capacity()` | `() i64` | Allocated capacity |
 | `is_empty()` | `() bool` | True when the string has no bytes |
-| `at(i)` | `(i64) u8 throws IError` | Read a byte; reject indices outside `length()` |
-| `set_at(i, val)` | `(i64, u8) void throws IError` | Write a byte; reject indices outside `length()` |
+| `at(i)` | `(i64) AccessResult<u8>` | Read a byte; reject indices outside `length()` |
+| `set_at(i, val)` | `(i64, u8) AccessResult<void>` | Write a byte; reject indices outside `length()` |
 | `unsafe_at(i)` | `(i64) u8` | Unchecked read; requires an unsafe block |
 | `unsafe_set_at(i, val)` | `(i64, u8) void` | Unchecked write; requires an unsafe block |
 | `append_char(ch)` | `(u8) void` | Append a single byte |
@@ -301,7 +302,7 @@ var again = join(allocator, fields, "=");  // "NAME=ADA"
 | `reverse()` | `() void` | Reverse the bytes in place |
 | `replace(from, to)` | `(static_ptr<u8>, static_ptr<u8>) void`, `(const ref String, const ref String) void` | Replace every occurrence in place; an empty `from` does nothing |
 | `clone(alloc)` | `(const ref HeapAllocator) String` | Copy into a new String |
-| `substr(alloc, start, count)` | `(const ref HeapAllocator, i64, i64) String throws IError` | Copy a byte range; throws if it falls outside the string |
+| `substr(alloc, start, count)` | `(const ref HeapAllocator, i64, i64) AccessResult<String>` | Copy a byte range or return `OutOfBounds` |
 | `split(alloc, sep)` | `(const ref HeapAllocator, u8) Vec<String>`, `(const ref HeapAllocator, static_ptr<u8>) Vec<String>` | Split into owned pieces; always yields one piece more than there are separators |
 | `split_nonempty(alloc, sep)` | `(const ref HeapAllocator, u8) Vec<String>`, `(const ref HeapAllocator, static_ptr<u8>) Vec<String>` | Like `split`, but empty pieces are dropped: adjacent, leading, and trailing separators yield nothing |
 | `split_whitespace(alloc)` | `(const ref HeapAllocator) Vec<String>` | Split on runs of ASCII whitespace; never yields an empty piece |
@@ -365,7 +366,7 @@ A non-owning view into a `String`. Provides read-only access to a substring with
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `length()` | `() i64` | View length |
-| `at(i)` | `(i64) u8 throws IError` | Read a byte; reject indices outside the view |
+| `at(i)` | `(i64) AccessResult<u8>` | Read a byte; reject indices outside the view |
 | `unsafe_at(i)` | `(i64) u8` | Unchecked read relative to the view; requires an unsafe block |
 | `equals_literal(s)` | `(static_ptr<u8>) bool` | Compare with a string literal |
 | `find_char(ch)` | `(u8) Option<i64>` | Index of first occurrence; `None` if absent |
@@ -1346,29 +1347,33 @@ object itself.
 | `JsonError` | 60 | JSON parse errors (with `offset()`) and kind mismatches |
 
 ```sun
-function pop_first(v: ref Vec<i32>) i32 throws IError {
-    if (v.is_empty()) {
-        throw EmptyError();
-    }
-    return v.get(0);
+/** Returns the first value or an owned empty-container error. */
+function first(v: ref Vec<i32>) PopResult<i32> {
+    return match v.get(0) {
+        AccessResult.Ok(value) => PopResult.Ok(value),
+        AccessResult.OutOfBounds(_) => PopResult.Empty(EmptyError())
+    };
 }
 ```
 
-`Error` takes its message either as a literal or as a `String` put together at
-runtime. Given a `String` it keeps its own copy, so the message stays readable
-after the `String` it came from is gone — including in a caller that catches the
-error several frames up.
+`Error` accepts either a literal or a `String` composed at runtime. It owns a
+copy, so its message remains readable after the source string has been dropped.
+Returning and propagating a result transfers that ownership to the caller.
 
 ```sun
-var path = String(alloc, "/tmp/");
-path.append(name);
-throw Error(errno(), path);
-
-// ... several frames up:
-catch (e: ref IError) {
-    var msg: String = e.message();   // an owned clone
-    eprintln(msg);
+/** Creates an owned error message from a runtime path. */
+function failure(path: const ref String) SystemResult<void> {
+    return SystemResult.Error(Error(errno(), path));
 }
+
+// At the caller:
+match failure(path) {
+    SystemResult.Ok => {},
+    (e: const ref IError) => {
+        var msg: String = e.message();
+        eprintln(msg);
+    }
+};
 ```
 
 ## Print Functions

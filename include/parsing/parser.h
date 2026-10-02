@@ -508,19 +508,9 @@ class Parser {
   unique_ptr<ExprAST> finishIndexedAssignment(unique_ptr<ExprAST> expr);
 
   /**
-   * Try-catch expression parsing: try { ... } catch (e: ref IError) { ... }
-   */
-  unique_ptr<ExprAST> parseTryCatch();
-
-  /**
    * Unsafe block parsing: unsafe { ... }
    */
   unique_ptr<ExprAST> parseUnsafeBlock();
-
-  /**
-   * Throw expression parsing: throw &lt;expr&gt;
-   */
-  unique_ptr<ExprAST> parseThrow();
 
   /**
    * Class definition parsing: class Name { fields and methods }

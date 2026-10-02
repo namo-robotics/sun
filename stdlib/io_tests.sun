@@ -15,7 +15,7 @@ public module std {
     /** Checks read dir lists entries without dot and dotdot. */
     test_function read_dir_lists_entries_without_dot_and_dotdot() {
       var alloc = make_heap_allocator();
-      var td = try std.test.expect_ok(std.tests.TempDir(alloc, "read_dir_lists"));
+      var td = try std.test.expect_system(std.tests.TempDir(alloc, "read_dir_lists"));
       var a_path = td.file("a.txt");
       var a_body = String("aaa");
       try std.test.expect_system_success(std.io.write_string(a_path, a_body));
@@ -45,7 +45,7 @@ public module std {
     /** Checks read dir finds a named entry. */
     test_function read_dir_finds_a_named_entry() {
       var alloc = make_heap_allocator();
-      var td = try std.test.expect_ok(std.tests.TempDir(alloc, "read_dir_finds"));
+      var td = try std.test.expect_system(std.tests.TempDir(alloc, "read_dir_finds"));
       var needle = td.file("needle.txt");
       var body = String("x");
       try std.test.expect_system_success(std.io.write_string(needle, body));
@@ -63,7 +63,7 @@ public module std {
     /** Checks read dir on empty directory. */
     test_function read_dir_on_empty_directory() {
       var alloc = make_heap_allocator();
-      var td = try std.test.expect_ok(std.tests.TempDir(alloc, "read_dir_empty"));
+      var td = try std.test.expect_system(std.tests.TempDir(alloc, "read_dir_empty"));
       var entries = try std.test.expect_system(std.io.read_dir(alloc, td.path));
       try std.test.assert_eq(entries.size(), 0);
     }
@@ -71,7 +71,7 @@ public module std {
     /** Checks read dir on missing directory throws. */
     test_function read_dir_on_missing_directory_throws() {
       var alloc = make_heap_allocator();
-      var td = try std.test.expect_ok(std.tests.TempDir(alloc, "read_dir_missing"));
+      var td = try std.test.expect_system(std.tests.TempDir(alloc, "read_dir_missing"));
       var missing = td.file("nope");
       match std.io.read_dir(alloc, missing) {
         SystemResult.Ok(matched_value) => {
@@ -85,7 +85,7 @@ public module std {
     /** Checks metadata predicates. */
     test_function metadata_predicates() {
       var alloc = make_heap_allocator();
-      var td = try std.test.expect_ok(std.tests.TempDir(alloc, "metadata_predicates"));
+      var td = try std.test.expect_system(std.tests.TempDir(alloc, "metadata_predicates"));
       var file = td.file("file.txt");
       var body = String("12345");
       try std.test.expect_system_success(std.io.write_string(file, body));
@@ -105,7 +105,7 @@ public module std {
     /** Checks read dir accepts a runtime string path. */
     test_function read_dir_accepts_a_runtime_string_path() {
       var alloc = make_heap_allocator();
-      var td = try std.test.expect_ok(std.tests.TempDir(alloc, "read_dir_runtime"));
+      var td = try std.test.expect_system(std.tests.TempDir(alloc, "read_dir_runtime"));
       var only = td.file("only.txt");
       var body = String("x");
       try std.test.expect_system_success(std.io.write_string(only, body));
@@ -122,7 +122,7 @@ public module std {
     /** Checks open and write a computed path. */
     test_function open_and_write_a_computed_path() {
       var alloc = make_heap_allocator();
-      var td = try std.test.expect_ok(std.tests.TempDir(alloc, "open_write_computed"));
+      var td = try std.test.expect_system(std.tests.TempDir(alloc, "open_write_computed"));
       var path = td.file("computed.txt");
 
       var f = std.io.File();
@@ -139,7 +139,7 @@ public module std {
     /** Checks whole file helpers take a computed path. */
     test_function whole_file_helpers_take_a_computed_path() {
       var alloc = make_heap_allocator();
-      var td = try std.test.expect_ok(std.tests.TempDir(alloc, "whole_file_helpers"));
+      var td = try std.test.expect_system(std.tests.TempDir(alloc, "whole_file_helpers"));
       var path = td.file("round_trip.txt");
       var body = String("round trip");
 
@@ -152,7 +152,7 @@ public module std {
     /** Checks metadata queries take a computed path. */
     test_function metadata_queries_take_a_computed_path() {
       var alloc = make_heap_allocator();
-      var td = try std.test.expect_ok(std.tests.TempDir(alloc, "metadata_computed"));
+      var td = try std.test.expect_system(std.tests.TempDir(alloc, "metadata_computed"));
       var file = td.file("there.txt");
       var body = String("x");
       try std.test.expect_system_success(std.io.write_string(file, body));
@@ -168,7 +168,7 @@ public module std {
     /** Checks directory calls take a computed path. */
     test_function directory_calls_take_a_computed_path() {
       var alloc = make_heap_allocator();
-      var td = try std.test.expect_ok(std.tests.TempDir(alloc, "directory_computed"));
+      var td = try std.test.expect_system(std.tests.TempDir(alloc, "directory_computed"));
       var dir = td.file("made");
       try std.test.expect_system_success(std.io.make_dir(dir, 493));
       try std.test.assert(std.io.is_dir(dir), "made should be a directory");
@@ -369,7 +369,7 @@ public module std {
     /** Checks sun io file runtime string path. */
     test_function sun_io_file_runtime_string_path() {
       var alloc = make_heap_allocator();
-      var td = try std.test.expect_ok(std.tests.TempDir(alloc, "sun_io_file_runtime"));
+      var td = try std.test.expect_system(std.tests.TempDir(alloc, "sun_io_file_runtime"));
       // The path is built at runtime, which the intrinsics cannot take.
       var path = td.file("runtime.txt");
       var body = String("runtime path");
@@ -383,7 +383,7 @@ public module std {
     /** Checks sun io file seek and size. */
     test_function sun_io_file_seek_and_size() {
       var alloc = make_heap_allocator();
-      var td = try std.test.expect_ok(std.tests.TempDir(alloc, "sun_io_file_seek"));
+      var td = try std.test.expect_system(std.tests.TempDir(alloc, "sun_io_file_seek"));
       var path = td.file("seek.txt");
       var body = String("0123456789");
       try std.test.expect_system_success(std.io.write_string(path, body));
@@ -402,7 +402,7 @@ public module std {
     /** Checks sun io append mode keeps existing content. */
     test_function sun_io_append_mode_keeps_existing_content() {
       var alloc = make_heap_allocator();
-      var td = try std.test.expect_ok(std.tests.TempDir(alloc, "sun_io_append"));
+      var td = try std.test.expect_system(std.tests.TempDir(alloc, "sun_io_append"));
       var path = td.file("append.txt");
       var body = String("first;");
       try std.test.expect_system_success(std.io.write_string(path, body));
@@ -419,7 +419,7 @@ public module std {
     /** Checks sun io open missing file throws. */
     test_function sun_io_open_missing_file_throws() {
       var alloc = make_heap_allocator();
-      var td = try std.test.expect_ok(std.tests.TempDir(alloc, "sun_io_open_missing"));
+      var td = try std.test.expect_system(std.tests.TempDir(alloc, "sun_io_open_missing"));
       var missing = td.file("nope.txt");
       var f = std.io.File();
       match f.open(missing, std.io.FileMode.Read) {
@@ -433,7 +433,7 @@ public module std {
     /** Checks sun io remove rename and directories. */
     test_function sun_io_remove_rename_and_directories() {
       var alloc = make_heap_allocator();
-      var td = try std.test.expect_ok(std.tests.TempDir(alloc, "sun_io_remove_rename"));
+      var td = try std.test.expect_system(std.tests.TempDir(alloc, "sun_io_remove_rename"));
       var victim = td.file("victim.txt");
       var body = String("x");
       try std.test.expect_system_success(std.io.write_string(victim, body));

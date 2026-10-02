@@ -868,7 +868,7 @@ std::optional<Declaration> ownDeclaration(const ExprAST& node, int offset,
            static_cast<const sun::ast::MatchExprAST&>(node).getArms()) {
         for (const auto& binding : arm.bindings) {
           if (!binding.isWildcard && spanContains(binding.location, offset)) {
-            return Declaration{binding.location, "", nullptr, binding.name};
+            return Declaration{binding.location, "", &node, binding.name};
           }
         }
       }
@@ -978,6 +978,13 @@ std::optional<Declaration> declarationUnder(const BlockExprAST& program,
         source);
   }
   if (auto own = ownDeclaration(node, offset, source)) return own;
+  // Typed patterns contain a reference-shaped node for the binding name.
+  // Resolve the declaration in the enclosing match before treating it as a use.
+  for (auto it = target.chain.rbegin(); it != target.chain.rend(); ++it) {
+    if ((*it)->getType() == ASTNodeType::MATCH) {
+      if (auto own = ownDeclaration(**it, offset, source)) return own;
+    }
+  }
   return resolveSymbol(program, target.chain, node);
 }
 

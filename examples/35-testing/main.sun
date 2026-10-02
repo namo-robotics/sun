@@ -16,22 +16,22 @@ module distance {
 
   /**
    * A test is a function declared with `test_function`: no parameters, no
-   * return type, and it may always throw — a failed assertion is a throw.
+   * return annotation, and propagates failed assertions with `try`.
    */
   test_function halves() {
-    std.test.assert_eq(distance.half(10), 5);
+    try std.test.assert_eq(distance.half(10), 5);
   }
 
   /** Checks finds the midpoint. */
   test_function findsTheMidpoint() {
-    std.test.assert_eq(distance.midpoint(2, 10), 6);
+    try std.test.assert_eq(distance.midpoint(2, 10), 6);
   }
 }
 
 /**
  * A fixture is an ordinary class: init is the setup, deinit the teardown.
- * A failed assertion unwinds, and unwinding drops locals like scope exit
- * does, so teardown runs whether the test passes or fails.
+ * Propagating a failed assertion drops locals, so teardown runs whether
+ * the test passes or fails.
  */
 class ScratchBuffer {
   public var data: Vec<i64>;
@@ -53,7 +53,7 @@ class ScratchBuffer {
 /** Checks starts with one entry. */
 test_function startsWithOneEntry() {
   var fx = ScratchBuffer();
-  std.test.assert_eq(fx.data.size(), 1);
+  try std.test.assert_eq(fx.data.size(), 1);
 }
 
 /** Runs the example that uses functions exercised by the example tests. */

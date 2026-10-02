@@ -1,22 +1,27 @@
 // Sender: sends one datagram to the receiver
 using std;
 
-/** Runs the example that exchanges datagrams over UDP. */
-function main() i32 {
-  // Socket operations can fail, so they run inside a `try` block.
-  try {
-    var socket = UdpSocket();
-    socket.bind(ipv4_any(), 0);  // port 0: the OS picks a free port
-    socket.send_str_to("Hello from sender!", ipv4_loopback(), 9090);
-    println("Datagram sent");
+/** Performs the operation and propagates returned failures. */
+function run() Result<void> {
+  var socket = UdpSocket();
+  try socket.bind(ipv4_any(), 0);  // port 0: the OS picks a free port
+  try socket.send_str_to("Hello from sender!", ipv4_loopback(), 9090);
+  println("Datagram sent");
 
-    socket.close();
-  } catch (e: ref IError) {
-    println("Network error:");
-    println(e.message());
-    return 1;
-  }
-  return 0;
+  socket.close();
+
+  return Result.Ok;
+}
+
+/** Reports errors and sets the process exit code. */
+function main() i32 {
+  return match run() {
+    (e: const ref IError) => {
+      println(e.message());
+      1;
+    },
+    _ => 0
+  };
 }
 
 manifest {

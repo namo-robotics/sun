@@ -10,7 +10,7 @@ public module std {
   /** Groups tests for the linked list library behavior. */
   module linked_list_tests {
     /** Combines assertion failures with errors from borrowed reads. */
-    enum TestError { Assertion(std.test.AssertionError), Read(NotFoundError) }
+    enum TestResult { Ok, Assertion(std.test.AssertionError), Read(NotFoundError) }
 
     /**
      * A 2-D point used by the class-element tests.
@@ -74,7 +74,7 @@ public module std {
     }
 
     /** Checks empty list. */
-    test_function empty_list() _Result<void, std.linked_list_tests.TestError> {
+    test_function empty_list() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
       try std.test.assert(ll.is_empty());
@@ -82,7 +82,7 @@ public module std {
     }
 
     /** Checks push back. */
-    test_function push_back() _Result<void, std.linked_list_tests.TestError> {
+    test_function push_back() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
       ll.push_back(10);
@@ -102,7 +102,7 @@ public module std {
     }
 
     /** Checks push front. */
-    test_function push_front() _Result<void, std.linked_list_tests.TestError> {
+    test_function push_front() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
       ll.push_front(3);
@@ -122,7 +122,7 @@ public module std {
     }
 
     /** Checks pop front. */
-    test_function pop_front() _Result<void, std.linked_list_tests.TestError> {
+    test_function pop_front() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
       ll.push_back(10);
@@ -133,7 +133,7 @@ public module std {
     }
 
     /** Checks pop back. */
-    test_function pop_back() _Result<void, std.linked_list_tests.TestError> {
+    test_function pop_back() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
       ll.push_back(10);
@@ -144,7 +144,7 @@ public module std {
     }
 
     /** Checks pop empty throws. */
-    test_function pop_empty_throws() _Result<void, std.linked_list_tests.TestError> {
+    test_function pop_empty_throws() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
       match ll.pop_front() {
@@ -164,7 +164,7 @@ public module std {
     }
 
     /** Checks drain list. */
-    test_function drain_list() _Result<void, std.linked_list_tests.TestError> {
+    test_function drain_list() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
       ll.push_back(1);
@@ -179,7 +179,7 @@ public module std {
     }
 
     /** Checks get and set. */
-    test_function get_and_set() _Result<void, std.linked_list_tests.TestError> {
+    test_function get_and_set() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
       ll.push_back(10);
@@ -196,7 +196,7 @@ public module std {
     }
 
     /** Checks get out of bounds. */
-    test_function get_out_of_bounds() _Result<void, std.linked_list_tests.TestError> {
+    test_function get_out_of_bounds() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
       ll.push_back(10);
@@ -210,7 +210,7 @@ public module std {
     }
 
     /** Checks remove nodes. */
-    test_function remove_nodes() _Result<void, std.linked_list_tests.TestError> {
+    test_function remove_nodes() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
       ll.push_back(10);
@@ -229,7 +229,7 @@ public module std {
     }
 
     /** Checks clear and reuse. */
-    test_function clear_and_reuse() _Result<void, std.linked_list_tests.TestError> {
+    test_function clear_and_reuse() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
       ll.push_back(10);
@@ -246,7 +246,7 @@ public module std {
     }
 
     /** Checks for in iteration. */
-    test_function for_in_iteration() _Result<void, std.linked_list_tests.TestError> {
+    test_function for_in_iteration() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
       ll.push_back(1);
@@ -265,7 +265,7 @@ public module std {
     }
 
     /** Checks iterate empty. */
-    test_function iterate_empty() _Result<void, std.linked_list_tests.TestError> {
+    test_function iterate_empty() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
       var sum: i32 = 0;
@@ -276,7 +276,7 @@ public module std {
     }
 
     /** Checks mixed push front back. */
-    test_function mixed_push_front_back() _Result<void, std.linked_list_tests.TestError> {
+    test_function mixed_push_front_back() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i32>(allocator);
       ll.push_back(2);
@@ -293,7 +293,7 @@ public module std {
     }
 
     /** Checks i64 type. */
-    test_function i64_type() _Result<void, std.linked_list_tests.TestError> {
+    test_function i64_type() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var ll = LinkedList<i64>(allocator);
       ll.push_back(100);
@@ -304,7 +304,7 @@ public module std {
     }
 
     /** Checks list of class objects. */
-    test_function list_of_class_objects() _Result<void, std.linked_list_tests.TestError> {
+    test_function list_of_class_objects() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var list = LinkedList<Point>(allocator);
       list.push_back(Point(1, 2));
@@ -318,7 +318,7 @@ public module std {
     }
 
     /** Checks class objects push front pop. */
-    test_function class_objects_push_front_pop() _Result<void, std.linked_list_tests.TestError> {
+    test_function class_objects_push_front_pop() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var list = LinkedList<Pair>(allocator);
       list.push_back(Pair(2, 3));
@@ -331,7 +331,7 @@ public module std {
     }
 
     /** Checks iterate class objects. */
-    test_function iterate_class_objects() _Result<void, std.linked_list_tests.TestError> {
+    test_function iterate_class_objects() std.linked_list_tests.TestResult {
       var allocator = make_heap_allocator();
       var list = LinkedList<Weight>(allocator);
       list.push_back(Weight(10));

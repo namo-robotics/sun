@@ -243,60 +243,70 @@ TEST(Lambdas_BoundMethods, generic_method_reference_rejected) {
 
 TEST(Lambdas_BoundMethods, throwing_method_into_throwing_param) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
+/** Owns successes and concrete fixture errors. */
+enum Outcome<T> { Ok(T), Error(Error) }
 
-    class Parser {
-        var errors: i32;
-        init() { this.errors = 0; }
-        method parse(x: i32) i32 throws IError {
-            if (x < 0) {
-                this.errors = this.errors + 1;
-                throw Error(1, "negative");
-            }
-            return x * 2;
-        }
+class Parser {
+  var errors: i32;
+  init() {
+    this.errors = 0;
+  }
+  method parse(x: i32) Outcome<i32> {
+    if (x < 0) {
+      this.errors = this.errors + 1;
+      return Outcome.Error(Error(1, "negative"));
     }
+    return Outcome.Ok(x * 2);
+  }
+}
 
-    function run_guarded(f: <'_>(i32) => i32 throws IError, x: i32) i32 {
-        try {
-            return f(x);
-        } catch (e: ref IError) {
-            return -1;
-        }
+function run_guarded(f: <'_>(i32) => Outcome<i32>, x: i32) i32 {
+  return match f(x) {
+    Outcome.Ok(value) => value,
+    (e: ref IError) => {
+      return -1;
     }
+  };
+}
 
-    function main() i32 {
-        var p = Parser();
-        var a = run_guarded(p.parse, 21);   // 42
-        var b = run_guarded(p.parse, -5);   // -1
-        return a + b + p.errors;            // 42 - 1 + 1
-    }
-  )");
+function main() i32 {
+  var p = Parser();
+  var a = run_guarded(p.parse, 21);  // 42
+  var b = run_guarded(p.parse, -5);  // -1
+  return a + b + p.errors;  // 42 - 1 + 1
+}
+)");
   EXPECT_EQ(value, 42);
 }
 
 TEST(Lambdas_BoundMethods, nonthrowing_method_into_throwing_param) {
   auto value = executeStringWithStdlib(R"(
-    using std;
+using std;
+/** Owns successes and concrete fixture errors. */
+enum Outcome<T> { Ok(T), Error(Error) }
 
-    class Doubler {
-        init() {}
-        method twice(x: i32) i32 { return x * 2; }
-    }
+class Doubler {
+  init() {}
+  method twice(x: i32) Outcome<i32> {
+    return Outcome.Ok(x * 2);
+  }
+}
 
-    function run_guarded(f: <'_>(i32) => i32 throws IError, x: i32) i32 {
-        try {
-            return f(x);
-        } catch (e: ref IError) {
-            return -1;
-        }
+function run_guarded(f: <'_>(i32) => Outcome<i32>, x: i32) i32 {
+  return match f(x) {
+    Outcome.Ok(value) => value,
+    (e: ref IError) => {
+      return -1;
     }
+  };
+}
 
-    function main() i32 {
-        var d = Doubler();
-        return run_guarded(d.twice, 50);
-    }
-  )");
+function main() i32 {
+  var d = Doubler();
+  return run_guarded(d.twice, 50);
+}
+)");
   EXPECT_EQ(value, 100);
 }
 
@@ -306,16 +316,16 @@ TEST(Lambdas_BoundMethods, stored_throwing_method_uncaught_rejected) {
 
     class Parser {
         init() {}
-        method parse(x: i32) i32 throws IError {
-            if (x < 0) { throw Error(1, "negative"); }
-            return x;
+        method parse(x: i32) SystemResult<i32> {
+            if (x < 0) { return SystemResult.Error(Error(1, "negative")); }
+            return SystemResult.Ok(x);
         }
     }
 
     function main() i32 {
         var p = Parser();
         var f = p.parse;
-        return f(1);   // call outside try / ' throws IError' context
+        return f(1);   // returning a result where a plain integer is required
     }
   )"),
                SunError);

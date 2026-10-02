@@ -117,29 +117,29 @@ interface IShape {
 function measure(s: const ref IShape) f64 { return s.area(); }
 ```
 
-## Throwing Methods
+## Methods That Return Errors
 
-An interface method can declare `throws IError`, including a method with a
-default implementation:
+An interface method declares its result enum as its return type, including
+methods with default implementations:
 
 ```sun
 /** Describes an operation that may fail. */
 interface Operation {
-    /** Runs the operation or reports an error. */
-    method run() void throws IError;
+    /** Runs the operation or returns an owned system error. */
+    method run() SystemResult<void>;
 }
 
 /** Propagates an error from interface dispatch. */
-function invoke(operation: ref Operation) void throws IError {
-    operation.run();
+function invoke(operation: ref Operation) SystemResult<void> {
+    try operation.run();
+    return SystemResult.Ok;
 }
 ```
 
-Calls through the interface require a `try` block or an enclosing function
-with `throws IError`. An implementation may be non-throwing, but a throwing
-method cannot implement a non-throwing requirement. A child interface may
-remove `throws IError` from an inherited method, but cannot add it to a
-non-throwing method. See [Error Handling](/errors).
+Implementations and inherited overrides must preserve the method's result
+type. An implementation that always succeeds still explicitly returns the
+success variant. Callers may match the result, propagate it with `try`, or
+explicitly discard it with `ignore_error`. See [Error Handling](/errors).
 
 ## Interface Fields
 

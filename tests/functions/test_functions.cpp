@@ -525,43 +525,71 @@ TEST(Functions, overloaded_function_value_without_context_is_ambiguous) {
 
 TEST(Functions, nonthrowing_pointer_widens_to_throwing_pointer) {
   auto value = executeString(R"(
-    function double(x: i32) i32 { return x * 2; }
+/** Represents a fixture failure without a standard-library dependency. */
+class Error implements IError {
+  /** Creates the fixture failure. */
+  init() {}
+  /** Returns its numeric code. */
+  const method code() i32 {
+    return 1;
+  }
+  /** Returns a static description. */
+  const method message() static_ptr<u8> {
+    return "failure";
+  }
+}
+/** Owns successes and concrete fixture errors. */
+enum Outcome<T> { Ok(T), Error(Error) }
 
-    function invoke(callback: function (i32) i32 throws IError,
-                    x: i32) i32 throws IError {
-        return callback(x);
-    }
+function double(x: i32) Outcome<i32> {
+  return Outcome.Ok(x * 2);
+}
 
-    function main() i32 {
-        try {
-            return invoke(double, 21);
-        } catch (error: ref IError) {
-            return -1;
-        }
+function invoke(callback: function (i32) Outcome<i32>, x: i32) Outcome<i32> {
+  return Outcome.Ok(try callback(x));
+}
+
+function main() i32 {
+  return match invoke(double, 21) {
+    Outcome.Ok(value) => value,
+    (error: ref IError) => {
+      return -1;
     }
-  )");
+  };
+}
+)");
   EXPECT_EQ(value, 42);
 }
 
 TEST(Functions, throwing_pointer_propagates_indirect_exceptions) {
   auto value = executeString(R"(
-    class CallbackError implements IError {
-        init() {}
-        const method code() i32 { return 1; }
-        const method message() static_ptr<u8> { return "callback failed"; }
-    }
+/** Owns successes and concrete fixture errors. */
+enum Outcome<T> { Ok(T), CallbackError(CallbackError) }
 
-    function fail(x: i32) i32 throws IError { throw CallbackError(); }
+class CallbackError implements IError {
+  init() {}
+  const method code() i32 {
+    return 1;
+  }
+  const method message() static_ptr<u8> {
+    return "callback failed";
+  }
+}
 
-    function main() i32 {
-        var callback: function (i32) i32 throws IError = fail;
-        try {
-            return callback(1);
-        } catch (error: ref IError) {
-            return 42;
-        }
+function fail(x: i32) Outcome<i32> {
+  return Outcome.CallbackError(CallbackError());
+}
+
+function main() i32 {
+  var callback: function (i32) Outcome<i32> = fail;
+  return match callback(1) {
+    Outcome.Ok(value) => value,
+    (error: ref IError) => {
+      return 42;
     }
-  )");
+  };
+}
+)");
   EXPECT_EQ(value, 42);
 }
 
@@ -572,7 +600,7 @@ TEST(Functions, throwing_pointer_does_not_narrow) {
         const method code() i32 { return 1; }
         const method message() static_ptr<u8> { return "callback failed"; }
     }
-    function fail(x: i32) i32 throws IError { throw CallbackError(); }
+    function fail(x: i32) _Result<i32, CallbackError> { return _Result.Err(CallbackError()); }
     function main() i32 {
         var callback: function (i32) i32 = fail;
         return callback(1);
@@ -588,9 +616,9 @@ TEST(Functions, indirect_throwing_call_requires_error_handling) {
         const method code() i32 { return 1; }
         const method message() static_ptr<u8> { return "callback failed"; }
     }
-    function fail(x: i32) i32 throws IError { throw CallbackError(); }
+    function fail(x: i32) _Result<i32, CallbackError> { return _Result.Err(CallbackError()); }
     function main() i32 {
-        var callback: function (i32) i32 throws IError = fail;
+        var callback: function (i32) _Result<i32, CallbackError> = fail;
         return callback(1);
     }
   )"),
@@ -675,21 +703,49 @@ TEST(Functions, callable_variable_shadows_direct_function_target) {
 /** Constructor arguments accept widening from a stored infallible pointer. */
 TEST(Functions, nonthrowing_pointer_widens_in_constructor) {
   EXPECT_EQ(executeString(R"(
-    /** Doubles its input without failure. */ function double(x: i32) i32 { return x * 2; }
-    /** Stores a callback that may fail. */
-    class Handler {
-      var callback: function (i32) i32 throws IError;
-      /** Stores the callback. */
-      init(callback: function (i32) i32 throws IError) { this.callback = callback; }
-      /** Invokes the stored callback. */
-      method call(x: i32) i32 throws IError { return this.callback(x); }
+/** Represents a fixture failure without a standard-library dependency. */
+class Error implements IError {
+  /** Creates the fixture failure. */
+  init() {}
+  /** Returns its numeric code. */
+  const method code() i32 {
+    return 1;
+  }
+  /** Returns a static description. */
+  const method message() static_ptr<u8> {
+    return "failure";
+  }
+}
+/** Owns successes and concrete fixture errors. */
+enum Outcome<T> { Ok(T), Error(Error) }
+
+/** Doubles its input without failure. */
+function double(x: i32) Outcome<i32> {
+  return Outcome.Ok(x * 2);
+}
+/** Stores a callback that may fail. */
+class Handler {
+  var callback: function (i32) Outcome<i32>;
+  /** Stores the callback. */
+  init(callback: function (i32) Outcome<i32>) {
+    this.callback = callback;
+  }
+  /** Invokes the stored callback. */
+  method call(x: i32) Outcome<i32> {
+    return Outcome.Ok(try this.callback(x));
+  }
+}
+/** Widens a stored pointer and handles the resulting error contract. */
+function main() i32 {
+  var callback: function (i32) Outcome<i32> = double;
+  var handler = Handler(callback);
+  return match handler.call(21) {
+    Outcome.Ok(value) => value,
+    (error: ref IError) => {
+      return 0;
     }
-    /** Widens a stored pointer and handles the resulting error contract. */
-    function main() i32 {
-      var callback: function (i32) i32 = double;
-      var handler = Handler(callback);
-      try { return handler.call(21); } catch (error: ref IError) { return 0; }
-    }
-  )"),
+  };
+}
+)"),
             42);
 }

@@ -216,6 +216,8 @@ Parser::ParsedPattern Parser::parsePattern() {
         curTok.kind == TokenKind::UNDERSCORE) {
       sun::ast::PatternBinding binding;
       binding.location = captureStart();
+      binding.location.setEnd(curTok.end.line, curTok.end.column,
+                              curTok.end.offset);
       binding.isWildcard = curTok.kind == TokenKind::UNDERSCORE;
       if (!binding.isWildcard) binding.name = curTok.getIdentifier().value();
       getNextToken();
@@ -750,10 +752,10 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
 
   // Check for return type. Named functions place it directly after their
   // parameters; lambda literals put it after the fat arrow.
-  // Syntax: function foo(args) ReturnType throws IError { ... }
-  //         (args) => ReturnType throws IError { ... }
-  // Return type is required for all functions except init and deinit, which
-  // never declare one and implicitly return void.
+  // Syntax: function foo(args) ReturnType { ... }
+  //         (args) => ReturnType { ... }
+  // Infallible lifecycle methods omit the return type. Fallible init methods
+  // declare a result enum.
   std::optional<sun::ast::TypeAnnotation> retType;
   if (isTestFunction) {
     // Tests return assertion failures by default; broader error enums may be
@@ -770,16 +772,9 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
     }
   } else if (isLifecycleMethod) {
     retType = sun::ast::TypeAnnotation("void");
-    // A constructor that can throw is written: init(args) throws IError { }
-    if (curTok.kind == TokenKind::THROWS) {
-      if (name == "deinit") parsingError("'deinit' cannot throw");
-      getNextToken();  // eat 'throws'
-      bool isErrorType = curTok.kind == TokenKind::IDENTIFIER &&
-                         curTok.getIdentifier() == "IError";
-      if (!isErrorType) parsingError("expected 'IError' after 'throws'");
-      getNextToken();  // eat 'IError'
-      retType->canError = true;
-    }
+    // Reject the removed exception clause before parsing a result type.
+    if (curTok.kind == TokenKind::THROWS)
+      parsingError("'throws' is no longer supported; return a result enum");
     if (curTok.kind != TokenKind::BRACE_OPEN) {
       if (name == "deinit")
         parsingError("'deinit' cannot declare a return type");
@@ -792,26 +787,9 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
   } else if (curTok.kind != TokenKind::BRACE_OPEN) {
     retType = parseTypeAnnotation();
 
-    // Check for error union: "throws IError"
-    if (curTok.kind == TokenKind::THROWS) {
-      getNextToken();  // eat 'throws'
-      // Only accept 'IError' identifier
-      bool isErrorType = false;
-      if (curTok.kind == TokenKind::IDENTIFIER) {
-        auto id = curTok.getIdentifier();
-        isErrorType = id.has_value() && id.value() == "IError";
-      }
-      if (!isErrorType) {
-        parsingError("expected 'IError' after 'throws'");
-      }
-      getNextToken();  // eat 'IError'
-      if (retType.has_value()) {
-        retType->canError = true;
-        // Extend the span over the "throws IError" consumed here
-        retType->span.setEnd(prevTok_.end.line, prevTok_.end.column,
-                             prevTok_.end.offset);
-      }
-    }
+    // Reject the removed exception clause.
+    if (curTok.kind == TokenKind::THROWS)
+      parsingError("'throws' is no longer supported; return a result enum");
   } else {
     // No return type specified
     if (isLambda) {
@@ -1239,7 +1217,7 @@ unique_ptr<ExprAST> Parser::parsePrimary() {
           "such as '() => i32 { return 0; }' instead");
       break;
     case TokenKind::TRY: {
-      // try { ... } catch (e: ref IError) { ... } syntax
+      // Prefix try propagates the failure variants of an enum value.
       Position start = captureStart();
       getNextToken();  // eat 'try'
       if (curTok.kind != TokenKind::BRACE_OPEN) {
@@ -1250,11 +1228,13 @@ unique_ptr<ExprAST> Parser::parsePrimary() {
                               std::move(operand), std::move(arms), true),
                           start);
       }
-      base = finishNode(parseTryCatch(), start);
+      parsingError(
+          "block-form 'try' is no longer supported; use 'try expression' or "
+          "match a result");
       break;
     }
     case TokenKind::THROW:
-      base = parseThrow();
+      parsingError("'throw' is no longer supported; return an error variant");
       break;
     case TokenKind::UNSAFE:
       base = parseUnsafeBlock();
@@ -1699,14 +1679,8 @@ sun::ast::TypeAnnotation Parser::parseTypeAnnotationImpl() {
     type.returnType =
         std::make_unique<sun::ast::TypeAnnotation>(parseTypeAnnotation());
 
-    if (curTok.kind == TokenKind::THROWS) {
-      getNextToken();  // eat 'throws'
-      bool isErrorType = curTok.kind == TokenKind::IDENTIFIER &&
-                         curTok.getIdentifier() == "IError";
-      if (!isErrorType) parsingError("expected 'IError' after 'throws'");
-      getNextToken();  // eat 'IError'
-      type.canError = true;
-    }
+    if (curTok.kind == TokenKind::THROWS)
+      parsingError("'throws' is no longer supported; return a result enum");
 
     return type;
   }
@@ -1772,17 +1746,9 @@ sun::ast::TypeAnnotation Parser::parseTypeAnnotationImpl() {
     type.returnType =
         std::make_unique<sun::ast::TypeAnnotation>(parseTypeAnnotation());
 
-    // Throwing lambda type: (params) => ret throws IError
-    if (curTok.kind == TokenKind::THROWS) {
-      getNextToken();  // eat 'throws'
-      auto id = curTok.getIdentifier();
-      if (curTok.kind != TokenKind::IDENTIFIER || !id.has_value() ||
-          id.value() != "IError") {
-        parsingError("expected 'IError' after 'throws'");
-      }
-      getNextToken();  // eat 'IError'
-      type.canError = true;
-    }
+    // A lambda expresses failure through its return type.
+    if (curTok.kind == TokenKind::THROWS)
+      parsingError("'throws' is no longer supported; return a result enum");
 
     return type;
   }
@@ -2654,22 +2620,17 @@ unique_ptr<ExprAST> Parser::parseStatementCore() {
     case TokenKind::TRY: {
       auto tryExpr = parseExpression();
       if (!tryExpr) return nullptr;
-      if (tryExpr->getType() != ASTNodeType::TRY_CATCH) {
-        expectCurrentTokenKind(TokenKind::SEMI_COLON,
-                               "expected ';' after propagation statement");
-      }
+      expectCurrentTokenKind(TokenKind::SEMI_COLON,
+                             "expected ';' after propagation statement");
       while (curTok.kind == TokenKind::SEMI_COLON) getNextToken();
       return tryExpr;
     }
-    case TokenKind::THROW: {
-      // Throw statement: throw <expr>;
-      auto throwExpr = parseThrow();
-      if (curTok.kind == TokenKind::SEMI_COLON)
-        getNextToken();
-      else
-        parsingError("expected ';' after throw statement");
-      return throwExpr;
-    }
+    case TokenKind::THROW:
+      parsingError("'throw' is no longer supported; return an error variant");
+      return nullptr;
+    case TokenKind::CATCH:
+      parsingError("'catch' is no longer supported; match a result instead");
+      return nullptr;
     case TokenKind::SEMI_COLON:
       getNextToken();  // ignore empty statement
       return nullptr;
@@ -4324,16 +4285,8 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
         retType = parseTypeAnnotation();
       }
 
-      if (curTok.kind == TokenKind::THROWS) {
-        getNextToken();  // eat 'throws'
-        if (curTok.kind != TokenKind::IDENTIFIER ||
-            curTok.getIdentifier() != "IError")
-          parsingError("expected 'IError' after 'throws'");
-        getNextToken();  // eat 'IError'
-        retType->canError = true;
-        retType->span.setEnd(prevTok_.end.line, prevTok_.end.column,
-                             prevTok_.end.offset);
-      }
+      if (curTok.kind == TokenKind::THROWS)
+        parsingError("'throws' is no longer supported; return a result enum");
 
       // Signature span ends at the last token before the body/semicolon
       Position protoLoc = methodStart;
@@ -4539,23 +4492,6 @@ unique_ptr<EnumDefinitionAST> Parser::parseEnumDefinition() {
                     start);
 }
 
-// Parse throw expression: throw <expr>
-// Syntax: throw errorExpr;
-unique_ptr<ExprAST> Parser::parseThrow() {
-  Position start = captureStart();
-  getNextToken();  // eat 'throw'
-
-  // Parse the error expression being thrown
-  auto errorExpr = parseExpression();
-  if (!errorExpr) {
-    parsingError("expected expression after 'throw'");
-    return nullptr;
-  }
-
-  return finishNode(
-      std::make_unique<sun::ast::ThrowExprAST>(std::move(errorExpr)), start);
-}
-
 // Parse an unsafe block or a single unary expression.
 unique_ptr<ExprAST> Parser::parseUnsafeBlock() {
   Position loc = captureStart();
@@ -4586,72 +4522,5 @@ unique_ptr<ExprAST> Parser::parseUnsafeBlock() {
                     loc);
 }
 
-// Parse try-catch expression: try { ... } catch (e: ref IError) { ... }
-// Note: 'try' has already been consumed; we're at '{'
-unique_ptr<ExprAST> Parser::parseTryCatch() {
-  // Parse try block - we're already at '{' ('try' was consumed by the caller,
-  // which re-stamps the span to include it)
-  Position start = captureStart();
-  auto tryBlock = parseBlock(BlockKind::Try);
-  if (!tryBlock) {
-    parsingError("expected block after 'try'");
-    return nullptr;
-  }
 
-  // Expect at least one 'catch'
-  if (curTok.kind != TokenKind::CATCH) {
-    parsingError("expected 'catch' after try block");
-    return nullptr;
-  }
-
-  // Parse one or more catch clauses: catch (name: ref Type) { ... }
-  std::vector<sun::ast::CatchClause> catchClauses;
-  while (curTok.kind == TokenKind::CATCH) {
-    getNextToken();  // eat 'catch'
-
-    if (curTok.kind != TokenKind::PAREN_OPEN) {
-      parsingError("expected '(' after 'catch'");
-      return nullptr;
-    }
-    getNextToken();  // eat '('
-
-    sun::ast::CatchClause catchClause;
-
-    if (curTok.kind != TokenKind::IDENTIFIER) {
-      throwIdentifierError("expected binding name in catch clause");
-      return nullptr;
-    }
-
-    catchClause.bindingName = curTok.getIdentifier().value();
-    getNextToken();  // eat identifier
-
-    if (curTok.kind != TokenKind::COLON) {
-      parsingError("expected ':' after binding name in catch clause");
-      return nullptr;
-    }
-    getNextToken();  // eat ':'
-
-    catchClause.bindingType = parseTypeAnnotation();
-
-    if (curTok.kind != TokenKind::PAREN_CLOSE) {
-      parsingError("expected ')' after catch binding");
-      return nullptr;
-    }
-    getNextToken();  // eat ')'
-
-    if (curTok.kind != TokenKind::BRACE_OPEN) {
-      parsingError("expected '{' to start catch body");
-      return nullptr;
-    }
-
-    catchClause.body = parseBlock(BlockKind::Catch);
-    if (!catchClause.body) return nullptr;
-
-    catchClauses.push_back(std::move(catchClause));
-  }
-
-  return finishNode(std::make_unique<sun::ast::TryCatchExprAST>(
-                        std::move(tryBlock), std::move(catchClauses)),
-                    start);
-}
 }  // namespace sun::parsing

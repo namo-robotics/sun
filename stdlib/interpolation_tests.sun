@@ -20,9 +20,9 @@ public module std {
      * Take an interpolated String by value and check its contents survived
      * the move.
      */
-    function take_label(s: String) _Result<void, std.test.AssertionError> {
+    function take_label(s: String) std.test.AssertionResult<void> {
       try std.test.assert(s.equals_literal("v=7"), "moved interpolation lost its contents");
-      return _Result.Ok;
+      return std.test.AssertionResult.Ok;
     }
 
     /**
@@ -176,7 +176,7 @@ public module std {
      * Same ownership transfer, in argument position
      */
     test_function passed_by_value_keeps_contents() {
-      try std.test.expect_success(take_label(`v=${7}`));
+      try take_label(`v=${7}`);
     }
 
     /** Checks println interpolated direct. */

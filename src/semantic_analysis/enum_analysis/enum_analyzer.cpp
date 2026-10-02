@@ -491,7 +491,8 @@ void EnumAnalyzer::analyzeEnumMatch(sun::ast::MatchExprAST& matchExpr,
         reachable |= coveredTags.insert(variant.value).second;
       }
       if (arm.matchedVariantTags.empty())
-        logAndThrowError("Typed match pattern matches no variant payloads",
+        logAndThrowError("Typed match pattern matches no variant payloads: '" +
+                             bindingType->toDisplayString() + "'",
                          arm.pattern->getLocation());
       if (!reachable)
         logWarning("Typed match arm is unreachable",

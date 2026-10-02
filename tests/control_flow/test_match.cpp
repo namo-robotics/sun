@@ -425,45 +425,66 @@ TEST(ControlFlow_Match, NoMatchContinuesExecution) {
 // throws has no fall-through; codegen must still terminate the tail block.
 TEST(ControlFlow_Match, method_ending_in_fully_terminating_match) {
   auto value = sun::driver::executeStringWithStdlib(R"(
-    using std;
+using std;
+/** Owns successes and concrete fixture errors. */
+enum Outcome<T> { Ok(T), NotANumber(NotANumber) }
 
-    class NotANumber implements IError {
-      init() {}
-      const method code() i32 { return 7; }
-      const method message() String { return String("not a number"); }
-    }
+class NotANumber implements IError {
+  init() {}
+  const method code() i32 {
+    return 7;
+  }
+  const method message() String {
+    return String("not a number");
+  }
+}
 
-    enum Value {
-      Int(i64),
-      Float(f64),
-      Empty
-    }
+enum Value {
+  Int(i64),
+  Float(f64),
+  Empty
+}
 
-    class Holder {
-      var v: Value;
-      init(v: Value) { this.v = v; }
-      method as_f64() f64 throws IError {
-        match this.v {
-          Value.Int(x) => { return _convert<f64>(x); },
-          Value.Float(x) => { return x; },
-          _ => { throw NotANumber(); }
-        };
+class Holder {
+  var v: Value;
+  init(v: Value) {
+    this.v = v;
+  }
+  method as_f64() Outcome<f64> {
+    match this.v {
+      Value.Int(x) => {
+        return Outcome.Ok(_convert<f64>(x));
+      },
+      Value.Float(x) => {
+        return Outcome.Ok(x);
+      },
+      _ => {
+        return Outcome.NotANumber(NotANumber());
       }
-    }
+    };
+  }
+}
 
-    function main() i32 {
-      var a = Holder(Value.Int(4));
-      var b = Holder(Value.Empty);
-      var total: f64 = 0.0;
-      try {
-        total = a.as_f64();
-        total = total + b.as_f64();
-      } catch (e: ref IError) {
-        return _convert<i32>(total) + e.code();
-      }
-      return 0;
+function main() i32 {
+  var a = Holder(Value.Int(4));
+  var b = Holder(Value.Empty);
+  var total: f64 = 0.0;
+  /** Executes a fallible operation. */
+  var attempt_0 = [ref a, ref b, ref total]() => Outcome<void> {
+    total = try a.as_f64();
+    total = total + try b.as_f64();
+
+    return Outcome.Ok;
+  };
+  match attempt_0() {
+    Outcome.Ok => {},
+    (e: ref IError) => {
+      return _convert<i32>(total) + e.code();
     }
-  )");
+  };
+  return 0;
+}
+)");
   EXPECT_EQ(value, 11);
 }
 

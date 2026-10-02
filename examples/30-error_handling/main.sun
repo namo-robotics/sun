@@ -1,38 +1,31 @@
 using std;
 
-/**
- * A function that can fail declares an error type after its return type with
- * the ` throws IError` suffix, and signals failure with `throw`. The thrown value is
- * any class implementing `IError` (the standard library provides several).
- */
-function divide(a: i32, b: i32) i32 throws IError {
+/** Returns either a quotient or a concrete arithmetic failure. */
+function divide(a: i32, b: i32) ArithmeticResult<i32> {
   if (b == 0) {
-    throw DivisionByZeroError();
+    return ArithmeticResult.DivisionByZero(DivisionByZeroError());
   }
-  return a / b;
+  if (a == -2147483648 and b == -1) {
+    return ArithmeticResult.Overflow(OverflowError());
+  }
+  return ArithmeticResult.Ok(a / b);
 }
 
-/** Runs the example that throws and handles errors. */
+/** Handles an arithmetic result without requiring one arm per error. */
+function show(a: i32, b: i32) void {
+  match divide(a, b) {
+    ArithmeticResult.Ok(value) => println(value),
+    (error: const ref IError) => println(error.message())
+  };
+}
+
+/** Exercises successful division and a recoverable zero divisor. */
 function main() i32 {
-  // A successful call needs no special handling.
-  try {
-    var ok = divide(10, 2);  // 5
-    println(ok);
-  } catch (e: ref IError) {
-    println("unexpected error");
-  }
-
-  // A failing call unwinds to the nearest matching catch.
-  try {
-    var bad = divide(10, 0);  // throws DivisionByZeroError
-    println(bad);
-  } catch (e: ref IError) {
-    println("caught division by zero");
-  }
-
+  show(10, 2);
+  show(10, 0);
   return 0;
 }
 
 manifest {
-    libraries: ["stdlib.moon"]
+  libraries: ["stdlib.moon"]
 }

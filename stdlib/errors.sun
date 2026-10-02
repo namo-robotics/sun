@@ -9,16 +9,16 @@
 // message was composed in.
 //
 // Error takes its message either as a literal or as a String built at runtime:
-//   return _Result.Err(Error(errno(), "failed to open file"));
-//   return _Result.Err(Error(-1, path));   // path: a String built at runtime
+//   return SystemResult.Error(Error(errno(), "failed to open file"));
+//   return SystemResult.Error(Error(-1, path));   // path: a String built at runtime
 //
 // Usage:
 //   import "stdlib/errors.sun";
 //   using std;
 //
-//   method pop_front() _Result<T, EmptyError> {
+//   method pop_front() PopResult<T> {
 //       if (this.is_empty()) {
-//           return _Result.Err(EmptyError());
+//           return PopResult.Empty(EmptyError());
 //       }
 //       // ...
 //   }

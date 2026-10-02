@@ -28,7 +28,7 @@ void BodyAnalyzer::analyzeBlock(BlockExprAST& block) {
 
 /**
  * Sun has no implicit returns: a function whose signature promises a value
- * must leave through an explicit `return` (or a throw) on every path. Checked
+ * must leave through an explicit `return` on every path. Checked
  * after the body is analyzed, so match discriminants carry their types.
  */
 static void checkAllPathsReturn(const PrototypeAST& proto,
@@ -39,11 +39,11 @@ static void checkAllPathsReturn(const PrototypeAST& proto,
   if (sun::semantic_analysis::alwaysExits(body)) return;
   const std::string name =
       proto.getName().empty() ? "lambda" : "'" + proto.getName() + "'";
-  logAndThrowError(
-      "Function " + name + " can reach the end of its body without a value: " +
-          "it must end in a `return` (or a throw) on every path. Sun has no "
-          "implicit returns.",
-      loc);
+  logAndThrowError("Function " + name +
+                       " can reach the end of its body without a value: " +
+                       "it must end in a `return` on every path. Sun has no "
+                       "implicit returns.",
+                   loc);
 }
 
 /** Checks the status enum used by a fallible constructor. */

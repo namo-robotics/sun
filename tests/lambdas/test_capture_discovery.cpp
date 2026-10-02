@@ -53,7 +53,7 @@ TEST(Lambdas_CaptureDiscovery, scalar_used_inside_try_block) {
   auto value = executeString(R"(
       function main() i32 {
           var n: i32 = 5;
-          var f = () => i32 { try { return n; } catch (e: ref IError) { return 0; } };
+          var f = () => i32 { return n; };
           return f();
       }
     )");
@@ -62,20 +62,27 @@ TEST(Lambdas_CaptureDiscovery, scalar_used_inside_try_block) {
 
 TEST(Lambdas_CaptureDiscovery, scalar_used_inside_catch_block) {
   auto value = executeStringWithStdlib(R"(
-      using std;
+using std;
+/** Owns successes and concrete fixture errors. */
+enum Outcome<T> { Ok(T), Error(Error) }
 
-      function boom() i32 throws IError {
-          throw Error(1, "boom");
-      }
+function boom() Outcome<i32> {
+  return Outcome.Error(Error(1, "boom"));
+}
 
-      function main() i32 {
-          var n: i32 = 6;
-          var f = () => i32 {
-              try { return boom(); } catch (e: ref IError) { return n; }
-          };
-          return f();
+function main() i32 {
+  var n: i32 = 6;
+  var f = () => i32 {
+    return match boom() {
+      Outcome.Ok(value) => value,
+      (e: ref IError) => {
+        return n;
       }
-    )");
+    };
+  };
+  return f();
+}
+)");
   EXPECT_EQ(value, 6);
 }
 
@@ -95,14 +102,21 @@ TEST(Lambdas_CaptureDiscovery, scalar_used_inside_array_literal) {
 
 TEST(Lambdas_CaptureDiscovery, scalar_used_in_a_thrown_error) {
   auto value = executeStringWithStdlib(R"(
-      using std;
+using std;
+/** Owns successes and concrete fixture errors. */
+enum Outcome<T> { Ok(T), Error(Error) }
 
-      function main() i32 {
-          var n: i32 = 8;
-          var f = () => i32 throws IError { throw Error(n, "bad"); };
-          try { return f(); } catch (e: ref IError) { return e.code(); }
-      }
-    )");
+function main() i32 {
+  var n: i32 = 8;
+  var f = () => Outcome<i32> { return Outcome.Error(Error(n, "bad")); };
+  return match f() {
+    Outcome.Ok(value) => value,
+    (e: ref IError) => {
+      return e.code();
+    }
+  };
+}
+)");
   EXPECT_EQ(value, 8);
 }
 
@@ -143,20 +157,27 @@ TEST(Lambdas_CaptureDiscovery, loop_counter_shadows_an_outer_name) {
 
 TEST(Lambdas_CaptureDiscovery, catch_binding_shadows_an_outer_name) {
   auto value = executeStringWithStdlib(R"(
-      using std;
+using std;
+/** Owns successes and concrete fixture errors. */
+enum Outcome<T> { Ok(T), Error(Error) }
 
-      function boom() i32 throws IError {
-          throw Error(9, "boom");
-      }
+function boom() Outcome<i32> {
+  return Outcome.Error(Error(9, "boom"));
+}
 
-      function main() i32 {
-          var e: i32 = 100;
-          var f = () => i32 {
-              try { return boom(); } catch (e: ref IError) { return e.code(); }
-          };
-          return f() + e;
+function main() i32 {
+  var e: i32 = 100;
+  var f = () => i32 {
+    return match boom() {
+      Outcome.Ok(value) => value,
+      (e: ref IError) => {
+        return e.code();
       }
-    )");
+    };
+  };
+  return f() + e;
+}
+)");
   EXPECT_EQ(value, 109);
 }
 

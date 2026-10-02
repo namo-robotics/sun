@@ -14,8 +14,8 @@ public module std {
       var pid: i32 = try std.test.expect_system(std.process.fork());
       if (pid == 0) {
         match check_descriptor_zero() {
-          _Result.Ok => {},
-          _Result.Err(e) => {
+          std.test.AssertionResult.Ok => {},
+          std.test.AssertionResult.Error(e) => {
             std.process.exit_now(1);
           }
         };
@@ -27,7 +27,7 @@ public module std {
     }
 
     /** Exercise every socket acquisition path with descriptor zero available. */
-    function check_descriptor_zero() _Result<void, std.test.AssertionError> {
+    function check_descriptor_zero() std.test.AssertionResult<void> {
       unsafe { c_close(0); };
       for (var mode: i32 = 0; mode < 3; mode = mode + 1) {
         var listener = TcpListener();
@@ -97,7 +97,7 @@ public module std {
         try std.test.assert_eq(socket.get_fd(), 0);
       }
       try std.test.assert_eq(unsafe { c_fcntl(0, F_GETFL); }, -1);
-      return _Result.Ok;
+      return std.test.AssertionResult.Ok;
     }
 
     /** Check that removing and dropping a TcpStream preserves stdin. */

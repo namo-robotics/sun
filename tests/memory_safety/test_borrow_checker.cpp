@@ -489,13 +489,10 @@ TEST(MemorySafety_BorrowChecker, return_in_catch_does_not_move_on_fallthrough) {
   auto value = executeStringWithStdlib(R"(
     using std;
 
-    function pick(alloc: ref HeapAllocator, n: i64) Vec<String> throws IError {
+    function pick(alloc: ref HeapAllocator, n: i64) Vec<String> {
       var out = Vec<String>(alloc, 4);
-      try {
-        if (n == 3) { throw EmptyError(); }
-      } catch (e: ref IError) {
-        return out;
-      }
+      var status: PopResult<void> = n == 3 ? PopResult.Empty(EmptyError()) : PopResult.Ok;
+      match status { PopResult.Empty(_) => { return out; }, _ => {} };
       if (n < 2) { return out; }
       out.push(String(alloc, "ok"));
       return out;
@@ -503,12 +500,8 @@ TEST(MemorySafety_BorrowChecker, return_in_catch_does_not_move_on_fallthrough) {
 
     function main() i32 {
       var alloc = make_heap_allocator();
-      try {
-        var v = pick(alloc, 5);
-        return _convert<i32>(v.size());
-      } catch (e: ref IError) {
-        return -1;
-      }
+      var v = pick(alloc, 5);
+      return _convert<i32>(v.size());
     }
   )");
   EXPECT_EQ(value, 1);
@@ -519,26 +512,21 @@ TEST(MemorySafety_BorrowChecker,
   auto value = executeStringWithStdlib(R"(
     using std;
 
-    function pick(alloc: ref HeapAllocator, n: i64) Vec<String> throws IError {
+    function pick(alloc: ref HeapAllocator, n: i64) Vec<String> {
       var out = Vec<String>(alloc, 4);
-      try {
-        if (n == 3) { throw EmptyError(); }
-      } catch (e: ref EmptyError) {
-        return out;
-      } catch (e: ref IError) {
-        return out;
-      }
+      var status: Result<void> = n == 3 ? Result.Empty(EmptyError()) : Result.Ok;
+      match status {
+        (e: ref EmptyError) => { return out; },
+        (e: ref IError) => { return out; },
+        _ => {}
+      };
       return out;
     }
 
     function main() i32 {
       var alloc = make_heap_allocator();
-      try {
-        var v = pick(alloc, 5);
-        return _convert<i32>(v.size());
-      } catch (e: ref IError) {
-        return -1;
-      }
+      var v = pick(alloc, 5);
+      return _convert<i32>(v.size());
     }
   )");
   EXPECT_EQ(value, 0);
@@ -575,19 +563,16 @@ TEST(MemorySafety_BorrowChecker, error_on_move_in_falling_through_catch) {
 
     function consume(v: Vec<String>) i64 { return v.size(); }
 
-    function f(alloc: ref HeapAllocator, n: i64) Vec<String> throws IError {
+    function f(alloc: ref HeapAllocator, n: i64) Vec<String> {
       var out = Vec<String>(alloc, 4);
-      try {
-        if (n == 3) { throw EmptyError(); }
-      } catch (e: ref IError) {
-        var k = consume(out);
-      }
+      var result: PopResult<void> = n == 3 ? PopResult.Empty(EmptyError()) : PopResult.Ok;
+      match result { PopResult.Empty(_) => { var k = consume(out); }, _ => {} };
       return out;
     }
 
     function main() i32 {
       var alloc = make_heap_allocator();
-      try { var v = f(alloc, 1); return 0; } catch (e: ref IError) { return -1; }
+      var v = f(alloc, 1); return 0;
     }
   )"),
                SunError);
@@ -625,19 +610,17 @@ TEST(MemorySafety_BorrowChecker, error_on_move_in_try_block_used_after) {
 
     function consume(v: Vec<String>) i64 { return v.size(); }
 
-    function f(alloc: ref HeapAllocator) Vec<String> throws IError {
+    function f(alloc: ref HeapAllocator) Vec<String> {
       var out = Vec<String>(alloc, 4);
-      try {
-        var k = consume(out);
-      } catch (e: ref IError) {
-        return out;
-      }
+      var k = consume(out);
+      var result: PopResult<void> = PopResult.Empty(EmptyError());
+      match result { PopResult.Empty(_) => { return out; }, _ => {} };
       return out;
     }
 
     function main() i32 {
       var alloc = make_heap_allocator();
-      try { var v = f(alloc); return 0; } catch (e: ref IError) { return -1; }
+      var v = f(alloc); return 0;
     }
   )"),
                SunError);

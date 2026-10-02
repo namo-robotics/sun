@@ -153,7 +153,7 @@ std::string renderPrototype(const sun::ast::PrototypeAST& proto,
                             bool isPublic, const std::string& source,
                             const Bindings& bindings) {
   // Constructors and destructors are spelled bare: no 'public', no
-  // 'method', no return type — only a 'throws IError' when init can fail.
+  // 'method'; only fallible constructors show their result type.
   bool isLifecycle = name == "init" || name == "deinit";
   std::string out;
   if (isPublic && !isLifecycle) out += "public ";
@@ -193,11 +193,13 @@ std::string renderPrototype(const sun::ast::PrototypeAST& proto,
   }
   out += ")";
 
-  if (isLifecycle) {
-    if (proto.canThrow()) out += " throws IError";
-  } else if (proto.hasResolvedReturnType()) {
+  const bool hasResult =
+      proto.hasResolvedReturnType()
+          ? !proto.getResolvedReturnType()->isVoid()
+          : proto.hasReturnType() && proto.getReturnType()->baseName != "void";
+  if (isLifecycle && !hasResult) return out;
+  if (proto.hasResolvedReturnType()) {
     out += " " + renderType(*proto.getResolvedReturnType(), bindings);
-    if (proto.canThrow()) out += " throws IError";
   } else if (proto.hasReturnType()) {
     out += " " + annotationText(*proto.getReturnType(), source);
   }

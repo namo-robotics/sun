@@ -155,13 +155,12 @@ TEST(Tooling_Fmt, LiteralFidelity) {
 }
 
 TEST(Tooling_Fmt, TypeFidelity) {
-  EXPECT_EQ(
-      fmt("function f(a: ref  Foo, b: raw_ptr<Bar>) i32 throws  IError {\n"
-          "throw 1;\n"
-          "}"),
-      "function f(a: ref  Foo, b: raw_ptr<Bar>) i32 throws  IError {\n"
-      "  throw 1;\n"
-      "}\n");
+  EXPECT_EQ(fmt("function f(a: ref  Foo, b: raw_ptr<Bar>) Result<i32> {\n"
+                "return Result.Error(1);\n"
+                "}"),
+            "function f(a: ref  Foo, b: raw_ptr<Bar>) Result<i32> {\n"
+            "  return Result.Error(1);\n"
+            "}\n");
 }
 
 // Constructors and destructors print bare — no 'public function', no return
@@ -169,7 +168,7 @@ TEST(Tooling_Fmt, TypeFidelity) {
 TEST(Tooling_Fmt, LifecycleMethods) {
   EXPECT_EQ(fmt("class A {\n"
                 "  var x: i32;\n"
-                "  init(v: i32) throws IError {\n"
+                "  init(v: i32) Result<void> {\n"
                 "    this.x = v;\n"
                 "  }\n"
                 "  deinit() {\n"
@@ -178,7 +177,7 @@ TEST(Tooling_Fmt, LifecycleMethods) {
                 "}"),
             "class A {\n"
             "  var x: i32;\n"
-            "  init(v: i32) throws IError {\n"
+            "  init(v: i32) Result<void> {\n"
             "    this.x = v;\n"
             "  }\n"
             "  deinit() {\n"
@@ -397,15 +396,9 @@ TEST(Tooling_Fmt, MatchExpression) {
 
 TEST(Tooling_Fmt, TryCatchThrow) {
   EXPECT_EQ(
-      fmt("function f(x: i32) i32 {\n"
-          "try { return div(10, x); } catch (e: ref IError) { return -1; }\n"
-          "}"),
-      "function f(x: i32) i32 {\n"
-      "  try {\n"
-      "    return div(10, x);\n"
-      "  } catch (e: ref IError) {\n"
-      "    return -1;\n"
-      "  }\n"
+      fmt("function f(x:i32) Result<i32>{return Result.Ok(try div(10,x));}"),
+      "function f(x: i32) Result<i32> {\n"
+      "  return Result.Ok(try div(10, x));\n"
       "}\n");
 }
 
@@ -454,9 +447,8 @@ TEST(Tooling_Fmt, LambdaAndCaptures) {
 }
 
 TEST(Tooling_Fmt, FunctionPointerType) {
-  EXPECT_EQ(
-      fmt("function apply(cb:function(i32,bool)i64 throws IError)void{}"),
-      "function apply(cb: function (i32, bool) i64 throws IError) void {}\n");
+  EXPECT_EQ(fmt("function apply(cb:function(i32,bool)Result<i64>)void{}"),
+            "function apply(cb: function (i32, bool) Result<i64>) void {}\n");
   EXPECT_EQ(fmt("function choose()function(i32)i32{return double;}"),
             "function choose() function (i32) i32 {\n"
             "  return double;\n"

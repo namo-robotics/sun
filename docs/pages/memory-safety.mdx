@@ -120,8 +120,9 @@ init(flag: bool) {
 }
 ```
 
-A `try` block asks it too: a throw can leave the block part-way through, so a
-`catch` clause cannot tell whether the field was assigned before the throw.
+`try expression` exits a fallible constructor on error and drops only the fields
+initialized so far. A `match` that handles the error locally must leave fields
+initialized on every path that continues.
 
 A loop is the same question: its body may be the first pass or a later one, so
 it needs the field settled before the loop, or the value settled in a local and
@@ -249,7 +250,7 @@ A global whose initializer the compiler can work out, such as
 `const LIMIT: i64 = BASE * 2 + 1;`, is computed at compile time and written into
 the program. That covers literals, operators, other compile-time constants,
 array literals and array elements, and calls to plain functions that only
-compute: a function that takes and returns values, cannot throw, and touches
+compute: a function that takes and returns values, has no side effects, and touches
 nothing but its own variables and compile-time constants. Branches, loops and
 recursion are all fine. Any other global is given its value when the program starts, before
 `main` runs, in the order the globals are written. That includes a `const`:
@@ -1029,8 +1030,8 @@ type is rejected. A generic callback does not remove the requirement. An unsafe
 callback must be wrapped in a lambda that upholds its contract before it can be
 passed to `spawn`.
 
-`String.at()` and `String.set_at()` check the index against `length()` and throw
-`IndexOutOfBoundsError` on failure. Their unchecked counterparts are
+`String.at()` and `String.set_at()` check the index against `length()` and return
+`AccessResult.OutOfBounds(IndexOutOfBoundsError)` on failure. Their unchecked counterparts are
 `unsafe_at()` and `unsafe_set_at()`, both requiring explicit `unsafe`. The
 `get_unchecked()` and `set_unchecked()` methods on `Vec` and `ContiguousBuffer`
 also require explicit `unsafe`.

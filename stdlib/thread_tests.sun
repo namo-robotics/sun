@@ -36,6 +36,9 @@ public module std {
       }
     }
 
+    /** Carries worker success or an owned failure. */
+    enum WorkResult<T> { Ok(T), Error(Boom) }
+
     /**
      * Error type for the unwinding test.
      */
@@ -55,8 +58,8 @@ public module std {
     /**
      * Throws immediately.
      */
-    function throw_boom() _Result<i32, Boom> {
-      return _Result.Err(Boom());
+    function throw_boom() WorkResult<i32> {
+      return WorkResult.Error(Boom());
     }
 
     // ------------------------------------------------------------------
@@ -287,7 +290,7 @@ public module std {
     }
 
     /** Joins its thread when a returned error leaves the helper's scope. */
-    function join_before_error() _Result<i32, Boom> {
+    function join_before_error() WorkResult<i32> {
       var c = JoinedCounter();
       var t = spawn(
         [ref c]() => i32 {
@@ -299,7 +302,7 @@ public module std {
           return 0;
         }
       );
-      return _Result.Ok(try throw_boom());
+      return WorkResult.Ok(try throw_boom());
     }
 
     /**
@@ -309,10 +312,10 @@ public module std {
     test_function unjoined_thread_joins_on_propagation() {
       joined_at_error = 0;
       match join_before_error() {
-        _Result.Ok(_) => {
+        WorkResult.Ok(_) => {
           try std.test.fail("expected Boom");
         },
-        _Result.Err(_) => {}
+        WorkResult.Error(_) => {}
       };
       try std.test.assert_eq(joined_at_error, 100000);
     }

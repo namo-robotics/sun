@@ -56,9 +56,9 @@ enum class TokenKind {
   TEST_FUNCTION,  // test_function keyword: a function compiled only into the
                   // test binary
   TRY,            // try keyword for error handling
-  CATCH,          // catch keyword for exception handling
-  THROW,          // throw keyword for throwing exceptions
-  THROWS,         // throws keyword marking a signature that may throw
+  CATCH,          // reserved for the removed catch-syntax diagnostic
+  THROW,          // reserved for the removed throw-syntax diagnostic
+  THROWS,         // reserved for the removed throws-syntax diagnostic
   UNSAFE,         // unsafe keyword for unsafe blocks
   // Type keywords (must come before IDENTIFIER for priority)
   STATIC_PTR,       // static_ptr (pointer to immortal static data)

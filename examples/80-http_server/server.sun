@@ -5,12 +5,13 @@ using std;
 function main() i32 {
   var alloc = make_heap_allocator();
   var server = HttpServer(alloc);
-  try {
-    server.bind_loopback(8080);
-  } catch (e: ref IError) {
-    println("Failed to bind 127.0.0.1:8080 (port in use?)");
-    return 1;
-  }
+  match server.bind_loopback(8080) {
+    SystemResult.Ok => {},
+    SystemResult.Error(e) => {
+      println(e.message());
+      return 1;
+    }
+  };
   println("Serving on http://127.0.0.1:8080");
 
   server.serve(
