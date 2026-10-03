@@ -1,59 +1,35 @@
 # GPU matrix multiplication benchmark
 
-Use the separate [benchmark container](../README.md) to run Sun, PyTorch, and
-CuPy together. These dependencies are not installed in the devcontainer.
+Compares Sun, PyTorch, and CuPy on 512×512 float32 matrices. Use the
+[GPU benchmark container and CUDA build instructions](../README.md) for setup.
 
-Build the optional CUDA library and run from the repository root:
+## Run
+
+From the repository root (adjust build and CUDA library paths as needed):
 
 ```sh
 build/sun --lib-path build -lcublas -lcudart -lpthread benchmarks/gpu-matmul/main.sun
-```
-
-Add the toolkit's library directory to `-L` and `LD_LIBRARY_PATH` if needed.
-The benchmark reports upload (including device allocation), allocating products,
-products with reusable outputs, and download separately. Each operation waits
-for completion, so host timing includes launch and synchronization overhead.
-A warmup multiplication runs before the timed arithmetic loops. Results depend
-on the device and toolkit; there is no performance pass/fail threshold.
-
-## PyTorch and CuPy comparisons
-
-Run the same workload in Python using either framework:
-
-```sh
 python3 benchmarks/gpu-matmul/compare.py pytorch
 python3 benchmarks/gpu-matmul/compare.py cupy
 ```
 
-These are optional benchmark dependencies. Install a CUDA-enabled PyTorch build
-following the [PyTorch installation instructions](https://pytorch.org/get-started/locally/).
-For CUDA 12, CuPy provides the `cupy-cuda12x` package; follow the
-[CuPy installation instructions](https://docs.cupy.dev/en/stable/install.html)
-for your platform. Each command only imports the selected framework.
+Reports upload, allocating products, products with reusable outputs, and download
+separately. After one warmup, arithmetic timings are **totals for ten products**.
+Every operation synchronizes; results are validated outside the timed regions.
+TF32 is disabled. Allocation and memory-pool differences affect results, so
+reusable outputs give the closer arithmetic comparison. Compare runs on the same
+idle GPU; these timings do not isolate language overhead.
 
-All three programs use device zero, two contiguous 512×512 float32 matrices
-filled with ones, one warmup product, ten allocating products, and ten products
-with reusable output storage. Arithmetic timings are **totals for ten products**;
-divide by ten for average latency. Upload includes both input matrices; download
-copies one result into existing host storage. Every downloaded element is checked
-against 512 outside the timed regions. Initialization and host input creation are
-excluded, but uploads can include first-use allocation overhead.
+## Charts
 
-The Python comparisons synchronize after each upload, multiplication, and
-download to match Sun's synchronous API. PyTorch uses
-[`torch.mm(..., out=...)`](https://docs.pytorch.org/docs/stable/generated/torch.mm.html)
-and CuPy uses
-[`cupy.matmul(..., out=...)`](https://docs.cupy.dev/en/stable/reference/generated/cupy.matmul.html)
-for output reuse. TF32 is disabled, and PyTorch uses
-[`highest` float32 precision](https://docs.pytorch.org/docs/stable/generated/torch.set_float32_matmul_precision.html).
-No autograd graph or JIT compilation is involved.
+CI uploads `gpu-matmul.png` with the GPU logs, linked from the job summary.
+To plot locally, save each run's output as `benchmark-sun.log`,
+`benchmark-pytorch.log`, or `benchmark-cupy.log` in `tmp/gpu-matmul`, then run:
 
-Run each command several times on the same idle GPU and record the GPU, driver,
-toolkit, and framework versions with any reported results. Compare the four
-timings separately. Python frameworks retain their default memory pools, while
-Sun currently allocates and zeroes fresh device storage for each allocating
-product. Their CUDA libraries may also choose different multiplication
-algorithms. These results compare the actual APIs, including those costs; they
-do not isolate language overhead. Reusable outputs provide the closer arithmetic
-comparison. JAX compilation and multi-operation throughput are outside this
-small synchronous benchmark's scope.
+```sh
+python3 -m pip install -r benchmarks/gpu-matmul/plot-requirements.txt
+python3 benchmarks/gpu-matmul/plot.py tmp/gpu-matmul tmp/gpu-matmul/gpu-matmul.png
+```
+
+Plotting needs only Matplotlib, no GPU. In the benchmark container, skip the
+install and use `/usr/bin/python3` for plotting; Matplotlib is already installed.

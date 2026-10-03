@@ -1,0 +1,2 @@
+# Plotting is independent of the optional CUDA comparison frameworks.
+matplotlib==3.11.2

@@ -265,22 +265,38 @@ jobs:
         continue-on-error: true
         run: python benchmarks/gpu-matmul/compare.py cupy 2>&1 | tee tmp/gpu-ci/benchmark-cupy.log
 
+      - name: Plot GPU benchmark results
+        if: always() && steps.gpu-python.outcome == 'success'
+        continue-on-error: true
+        env:
+          MPLCONFIGDIR: ${{ github.workspace }}/tmp/gpu-ci/matplotlib
+        run: |
+          python -m pip install -r benchmarks/gpu-matmul/plot-requirements.txt
+          python benchmarks/gpu-matmul/plot.py tmp/gpu-ci tmp/gpu-ci/gpu-matmul.png
+
       - name: Upload GPU results and logs
+        id: gpu-artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: cuda-gpu-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             tmp/gpu-ci/*.log
+            tmp/gpu-ci/*.png
             tmp/gpu-ci/build/Testing/Temporary/LastTest.log
           if-no-files-found: ignore
           retention-days: 30
 
       - name: Publish GPU benchmark summary
         if: always()
+        env:
+          GPU_ARTIFACT_URL: ${{ steps.gpu-artifact.outputs.artifact-url }}
         run: |
           {
             echo '### GPU matrix benchmarks'
+            if [ -f tmp/gpu-ci/gpu-matmul.png ] && [ -n "$GPU_ARTIFACT_URL" ]; then
+              printf '\n[Download the GPU timing chart and full logs](%s)\n' "$GPU_ARTIFACT_URL"
+            fi
             echo 'Informational timings; see step outcomes for failures and artifacts for full logs.'
             for log in tmp/gpu-ci/hardware.log tmp/gpu-ci/benchmark-*.log; do
               [ -f "$log" ] || continue
