@@ -171,7 +171,8 @@ TEST(Tooling_Fmt, LifecycleMethods) {
                 "  init(v: i32) Result<void> {\n"
                 "    this.x = v;\n"
                 "  }\n"
-                "  deinit() {\n"
+                "\n"
+            "  deinit() {\n"
                 "    this.x = 0;\n"
                 "  }\n"
                 "}"),
@@ -180,6 +181,7 @@ TEST(Tooling_Fmt, LifecycleMethods) {
             "  init(v: i32) Result<void> {\n"
             "    this.x = v;\n"
             "  }\n"
+            "\n"
             "  deinit() {\n"
             "    this.x = 0;\n"
             "  }\n"
@@ -215,6 +217,59 @@ TEST(Tooling_Fmt, BlankLineBetweenFunctions) {
             "function a() void {}\n"
             "\n"
             "function b() void {}\n");
+}
+
+/** Separates adjacent functions regardless of their original spacing. */
+TEST(Tooling_Fmt, InsertsBlankLinesBetweenFunctions) {
+  const std::string expected =
+      "/** First. */\n"
+      "function first() void {}\n"
+      "\n"
+      "/** Second. */\n"
+      "public function second() void {}\n"
+      "\n"
+      "/** Check. */\n"
+      "test_function check() {}\n";
+  EXPECT_EQ(fmt("/** First. */\nfunction first() void {}\n"
+                "/** Second. */\npublic function second() void {}\n"
+                "/** Check. */\ntest_function check() {}"), expected);
+  EXPECT_EQ(fmt(expected), expected);
+}
+
+/** Keeps method documentation attached and avoids duplicate blank lines. */
+TEST(Tooling_Fmt, InsertsBlankLinesBetweenDocumentedMethods) {
+  const std::string source =
+      "/** Readiness. */\nclass Event {\n"
+      "  /** Construct. */\n  init() {} // initialized\n"
+      "  /** Read. */\n  public const method read() bool { return true; }\n"
+      "\n\n  /** Write. */\n  public const method write() bool { return false; }\n"
+      "  /** Destroy. */\n  deinit() {}\n}\n";
+  const std::string expected =
+      "/** Readiness. */\nclass Event {\n"
+      "  /** Construct. */\n  init() {}  // initialized\n"
+      "\n  /** Read. */\n  public const method read() bool {\n"
+      "    return true;\n  }\n"
+      "\n  /** Write. */\n  public const method write() bool {\n"
+      "    return false;\n  }\n"
+      "\n  /** Destroy. */\n  deinit() {}\n}\n";
+  EXPECT_EQ(fmt(source), expected);
+  EXPECT_EQ(fmt(expected), expected);
+}
+
+/** Applies the same spacing inside modules and interface declarations. */
+TEST(Tooling_Fmt, FunctionSpacingInModulesAndInterfaces) {
+  const std::string source =
+      "/** Helpers. */\nmodule helpers {\n"
+      "  /** First. */\n  function first() void {}\n"
+      "  /** Second. */\n  function second() void {}\n}\n"
+      "/** Reader. */\ninterface Reader {\n"
+      "  /** Read. */\n  method read() i32;\n"
+      "  /** Peek. */\n  method peek() i32;\n}\n";
+  auto expected = source;
+  expected.insert(expected.find("  /** Second."), "\n");
+  expected.insert(expected.find("  /** Peek."), "\n");
+  EXPECT_EQ(fmt(source), expected);
+  EXPECT_EQ(fmt(expected), expected);
 }
 
 // ------------------------------------------------------------------
@@ -273,6 +328,7 @@ TEST(Tooling_Fmt, SingleLineListStaysSingleLine) {
   EXPECT_EQ(fmt("function g(a: i32, b: i32) void {}\n"
                 "function f() void { g(1,   2); }\n"),
             "function g(a: i32, b: i32) void {}\n"
+            "\n"
             "function f() void {\n"
             "  g(1, 2);\n"
             "}\n");
@@ -282,6 +338,7 @@ TEST(Tooling_Fmt, MultiLineCallStaysMultiLine) {
   EXPECT_EQ(fmt("function g(a: i32, b: i32) void {}\n"
                 "function f() void {\ng(1,\n2);\n}\n"),
             "function g(a: i32, b: i32) void {}\n"
+            "\n"
             "function f() void {\n"
             "  g(\n"
             "    1,\n"
@@ -364,6 +421,7 @@ TEST(Tooling_Fmt, InterfaceSignatureAndDefault) {
                 "}"),
             "interface IAllocator {\n"
             "  method alloc(size: i64) raw_ptr<u8>;\n"
+            "\n"
             "  method zero() i32 {\n"
             "    return 0;\n"
             "  }\n"
@@ -423,11 +481,13 @@ TEST(Tooling_Fmt, UsingAndDeclare) {
                 "using std.Vec;\n"
                 "declare Vec_i32 = Vec<i32>;\n"
                 "declare function isOdd(n: i32) bool;\n"
-                "extern function _malloc(size: i64) raw_ptr<u8>;\n"),
+                "\n"
+            "extern function _malloc(size: i64) raw_ptr<u8>;\n"),
             "using std;\n"
             "using std.Vec;\n"
             "declare Vec_i32 = Vec<i32>;\n"
             "declare function isOdd(n: i32) bool;\n"
+            "\n"
             "extern function _malloc(size: i64) raw_ptr<u8>;\n");
 }
 
@@ -562,6 +622,7 @@ TEST(Tooling_Fmt, ConstMethodsAndLoops) {
             "  public const method get() i32 {\n"
             "    return this.n;\n"
             "  }\n"
+            "\n"
             "  const method zero() bool {\n"
             "    return this.n == 0;\n"
             "  }\n"

@@ -22,6 +22,8 @@ are ignored, and files that fail to parse are reported and left untouched
 - Comments are preserved: own-line comments keep their position, trailing
   comments stay on their line (two spaces before `//`).
 - Blank lines between statements are preserved, collapsed to at most one.
+- Consecutive functions and methods are separated by a blank line, placed
+  before any leading documentation comments.
 - Bracketed lists (call arguments, array literals) stay on one line if they
   were written on one line; multi-line lists get one element per line.
 - Parentheses are never added or removed.

@@ -81,11 +81,19 @@ class Formatter {
   /** Writes indentation for the current formatting depth. */
   void writeIndent() { out_.append(indent_ * kIndentWidth, ' '); }
 
+  /** Inserts a blank line unless the output already ends with one. */
+  void ensureBlankLine() {
+    if (!out_.empty() &&
+        (out_.size() < 2 || out_.compare(out_.size() - 2, 2, "\n\n") != 0)) {
+      out_ += '\n';
+    }
+  }
+
   /**
    * Preserve at most one blank line from the source
    */
   void blankGap(int nextStartLine) {
-    if (lastLine_ >= 0 && nextStartLine - lastLine_ >= 2) out_ += '\n';
+    if (lastLine_ >= 0 && nextStartLine - lastLine_ >= 2) ensureBlankLine();
   }
 
   /** Reports whether this object has comment before. */
@@ -128,10 +136,14 @@ class Formatter {
   /** Formats statements in order, beginning at the requested index. */
   void printStmts(const std::vector<std::unique_ptr<ExprAST>>& stmts,
                   size_t start = 0) {
+    bool previousWasFunction = false;
     for (size_t i = start; i < stmts.size(); ++i) {
       const auto& stmt = stmts[i];
       if (!stmt || stmt->isPrecompiled()) continue;
       const Position& loc = stmt->getLocation();
+      const bool isFunction = stmt->getType() == ASTNodeType::FUNCTION;
+      if (previousWasFunction && isFunction) ensureBlankLine();
+      previousWasFunction = isFunction;
       flushCommentsBefore(loc.offset);
       blankGap(loc.line);
       writeIndent();
@@ -480,7 +492,10 @@ class Formatter {
         members.begin(), members.end(),
         [](const Member& a, const Member& b) { return a.offset < b.offset; });
 
+    bool previousWasMethod = false;
     for (const auto& m : members) {
+      if (previousWasMethod && m.method) ensureBlankLine();
+      previousWasMethod = m.method != nullptr;
       flushCommentsBefore(m.offset);
       blankGap(m.line);
       writeIndent();
@@ -561,7 +576,10 @@ class Formatter {
         members.begin(), members.end(),
         [](const Member& a, const Member& b) { return a.offset < b.offset; });
 
+    bool previousWasMethod = false;
     for (const auto& m : members) {
+      if (previousWasMethod && m.method) ensureBlankLine();
+      previousWasMethod = m.method != nullptr;
       flushCommentsBefore(m.offset);
       blankGap(m.line);
       writeIndent();

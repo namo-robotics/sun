@@ -15,26 +15,32 @@ public module std.io {
     public const method fd() i32 {
       return this.event_.fd();
     }
+
     /** Return the application's token without narrowing it. */
     public const method token() u64 {
       return this.token_;
     }
+
     /** Return the portable POLL* readiness bits. */
     public const method events() i16 {
       return this.event_.events();
     }
+
     /** Report available input. */
     public const method is_readable() bool {
       return this.event_.is_readable();
     }
+
     /** Report available output space. */
     public const method is_writable() bool {
       return this.event_.is_writable();
     }
+
     /** Report a peer shutdown; buffered input may still be readable. */
     public const method is_hup() bool {
       return this.event_.is_hup();
     }
+
     /** Report a descriptor error. */
     public const method is_error() bool {
       return this.event_.is_error();
