@@ -168,7 +168,9 @@ jobs:
           echo "deb [signed-by=/usr/share/keyrings/llvm-gpu.gpg] https://apt.llvm.org/${VERSION_CODENAME}/ llvm-toolchain-${VERSION_CODENAME}-20 main" > tmp/gpu-ci/llvm.list
           sudo install -m 644 tmp/gpu-ci/llvm.list /etc/apt/sources.list.d/llvm-gpu.list
           sudo apt-get update
-          sudo apt-get install -y clang-20 llvm-20-dev lld-20 libarchive-dev libzstd-dev libgtest-dev ninja-build
+          sudo apt-get install -y \
+            build-essential cmake ninja-build python3 \
+            clang-20 llvm-20-dev lld-20 libarchive-dev libzstd-dev libgtest-dev
 
       - name: Install CUDA toolkit without GPU drivers
         run: |
