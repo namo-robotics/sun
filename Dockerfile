@@ -28,6 +28,8 @@ RUN apt-get update --error-on=any && apt-get install -y --no-install-recommends 
     llvm-20 llvm-20-dev llvm-20-tools \
     libllvm-20-ocaml-dev \
     clangd-20 clang-format-20 clang-tidy-20 clang-tools-20 \
+    # NVIDIA CUDA compiler, headers, and libraries; GPU drivers belong on the host.
+    nvidia-cuda-toolkit \
     # Common LLVM dev dependencies
     libarchive-dev libzstd-dev zlib1g-dev libxml2-dev libedit-dev libncurses-dev \
     libcurl4-openssl-dev libpfm4-dev libdw-dev libcapstone-dev \

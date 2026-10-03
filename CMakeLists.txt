@@ -644,3 +644,8 @@ endif()
 if(BUILD_TESTING)
     add_subdirectory(tests)
 endif()
+
+option(SUN_ENABLE_CUDA "Build the optional NVIDIA matrix library" OFF)
+if(SUN_ENABLE_CUDA)
+    add_subdirectory(cuda)
+endif()

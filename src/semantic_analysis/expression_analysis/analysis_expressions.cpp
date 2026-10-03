@@ -178,6 +178,15 @@ void ExpressionAnalyzer::checkIntegerDivision(
 void ExpressionAnalyzer::analyzeBinaryExpr(sun::ast::BinaryExprAST& binExpr,
                                            TypePtr expectedType) {
   sema_.analyzeExpr(const_cast<ExprAST&>(*binExpr.getLHS()));
+  auto leftType = unwrapRef(binExpr.getLHS()->getResolvedType());
+  if (leftType && leftType->isClass() &&
+      (binExpr.getOp().kind == TokenKind::PLUS ||
+       binExpr.getOp().kind == TokenKind::STAR)) {
+    binExpr.lowerToMethod(binExpr.getOp().kind == TokenKind::PLUS
+                              ? "__add__" : "__multiply__");
+    sema_.calls().analyzeCall(binExpr, expectedType);
+    return;
+  }
   sema_.analyzeExpr(const_cast<ExprAST&>(*binExpr.getRHS()));
 
   // Payload enums have no structural equality; match is the eliminator

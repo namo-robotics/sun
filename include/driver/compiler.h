@@ -37,8 +37,7 @@ struct LinkOptions {
   std::vector<std::string> libraries;    // -lfoo  -> "foo"
   std::vector<std::string> searchPaths;  // -Ldir  -> "dir"
   // Static archives carried inside imported .moon bundles, extracted to
-  // disk. Passed to the linker by path, after -l libraries so they can
-  // satisfy those libraries' undefined symbols.
+  // disk. Linked together with -l libraries so either can depend on the other.
   std::vector<std::string> archives;
   std::string targetTriple;  // --target -> cross linker needed
   std::string sysroot;       // --sysroot -> target's root fs
@@ -370,9 +369,6 @@ inline bool linkExecutable(const std::string& objectPath,
   for (const auto& dir : linkOpts.searchPaths) {
     cmd += " -L" + shellQuote(dir);
   }
-  for (const auto& lib : linkOpts.libraries) {
-    cmd += " -l" + shellQuote(lib);
-  }
   // Bundle-carried archives go in by path. On GNU linkers,
   // --start-group/--end-group lets them resolve each other's symbols
   // regardless of order (libssl needs libcrypto, and a bundle may carry them
@@ -383,8 +379,14 @@ inline bool linkExecutable(const std::string& objectPath,
     for (const auto& archive : linkOpts.archives) {
       cmd += " " + shellQuote(archive);
     }
-    if (!isDarwin) cmd += " -Wl,--end-group";
   }
+  // Shared dependencies must follow the objects and archives that use them:
+  // Linux's --as-needed otherwise discards CUDA (and similar) libraries.
+  for (const auto& lib : linkOpts.libraries) {
+    cmd += " -l" + shellQuote(lib);
+  }
+  if (!linkOpts.archives.empty() && !isDarwin)
+    cmd += " -Wl,--end-group";
 
   cmd += isDarwin ? " -lc++" : " -lstdc++";
 

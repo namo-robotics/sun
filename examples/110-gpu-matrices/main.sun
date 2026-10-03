@@ -1,0 +1,36 @@
+/** Demonstrates allocating operators and reusable GPU outputs. */
+manifest { libraries: ["stdlib.moon", "cuda.moon"] }
+using std;
+using cuda;
+
+/** Uploads once, chains operations on the GPU, and downloads explicitly. */
+function run() GpuResult<void> {
+  var alloc = make_heap_allocator();
+  var host = Matrix<f32>(alloc, [2, 2]);
+  host[0, 0] = 1.0f32;
+  host[0, 1] = 2.0f32;
+  host[1, 0] = 3.0f32;
+  host[1, 1] = 4.0f32;
+  var device = try open_device(0);
+  var a = try device.upload(host);
+  var b = try device.upload(host);
+  var c = try (a * b);
+  var sum = try (c + c);
+  try a.matmul_into(b, c);
+  try sum.scale_in_place(0.5f32);
+  try sum.copy_to_host(host);
+  println(host[0, 0]);
+  println(host[1, 1]);
+  return GpuResult.Ok;
+}
+
+/** Prints failures and returns a failing process status. */
+function main() i32 {
+  return match run() {
+    (error: const ref IError) => {
+      println(error.message());
+      1;
+    },
+    _ => 0
+  };
+}

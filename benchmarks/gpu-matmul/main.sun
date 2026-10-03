@@ -1,0 +1,55 @@
+/** Measures transfers, allocating products, and repeated output reuse separately. */
+manifest { libraries: ["stdlib.moon", "cuda.moon"] }
+using std;
+using cuda;
+
+/** Runs a synchronous benchmark without imposing a hardware performance threshold. */
+function run() GpuResult<void> {
+  var alloc = make_heap_allocator();
+  var host = Matrix<f32>(alloc, [512, 512]);
+  for (var i: i64 = 0; i < 512; i = i + 1) {
+    for (var j: i64 = 0; j < 512; j = j + 1) {
+      host[i, j] = 1.0f32;
+    }
+  }
+  var device = try open_device(0);
+  var upload_start = std.time.now();
+  var a = try device.upload(host);
+  var b = try device.upload(host);
+  println("Upload with allocation (microseconds):");
+  println(upload_start.elapsed().as_micros());
+  var c = try a.matmul(b);
+  var allocating_start = std.time.now();
+  for (var i: i64 = 0; i < 10; i = i + 1) {
+    var product = try (a * b);
+    if (product.size() != c.size()) {
+      return GpuResult.Error(GpuError(-1, "benchmark"));
+    }
+  }
+  println("Allocating products (microseconds):");
+  println(allocating_start.elapsed().as_micros());
+  var reuse_start = std.time.now();
+  for (var i: i64 = 0; i < 10; i = i + 1) {
+    try a.matmul_into(b, c);
+  }
+  println("Products reusing output (microseconds):");
+  println(reuse_start.elapsed().as_micros());
+  var download_start = std.time.now();
+  try c.copy_to_host(host);
+  println("Download (microseconds):");
+  println(download_start.elapsed().as_micros());
+  println("First result element:");
+  println(host[0, 0]);
+  return GpuResult.Ok;
+}
+
+/** Reports benchmark setup or execution failures. */
+function main() i32 {
+  return match run() {
+    (error: const ref IError) => {
+      println(error.message());
+      1;
+    },
+    _ => 0
+  };
+}

@@ -15,6 +15,7 @@
   "memory-safety": "Memory Safety",
   "threads": "Threads",
   "matrices": "Matrices",
+  "cuda": "NVIDIA GPU Matrices",
   "modules": "Modules & Namespaces",
   "protobuf": "Protobuf",
   "stdlib": "Standard Library",

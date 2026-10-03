@@ -22,6 +22,7 @@ class VariableReferenceAST;
  * (myFuncVar(x))
  */
 class CallExprAST : public ExprAST {
+ protected:
   std::unique_ptr<ExprAST> Callee;  // Expression that evaluates to a function
   std::vector<std::unique_ptr<ExprAST>> Args;
 

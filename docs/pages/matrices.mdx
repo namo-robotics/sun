@@ -261,3 +261,9 @@ manifest {
     libraries: ["stdlib.moon"]
 }
 ```
+
+## GPU matrices
+
+The optional [NVIDIA library](/cuda) supplies `cuda.DeviceMatrix<T>`, explicit
+host/device transfers, and GPU arithmetic. Host `std.Matrix<T>` retains its
+existing storage and indexing behavior.

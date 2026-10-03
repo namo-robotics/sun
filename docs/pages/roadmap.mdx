@@ -194,12 +194,13 @@ import); the transport is the gap.
 
 ## Hardware Accelerators
 
-`Matrix<T>` and linear algebra run on the CPU today. The design goal is
-builtin GPU/accelerator support without leaving the language.
+Host `Matrix<T>` storage is complemented by optional NVIDIA-backed
+`cuda.DeviceMatrix<T>` operations. General Sun-written kernels and asynchronous
+device borrowing remain future work.
 
 - [ ] Offload kernels via LLVM Offload
-- [ ] Device memory ownership modelled by the borrow checker
-- [ ] `Matrix<T>` operations dispatched to the device when available
+- [ ] Asynchronous device operations with lifetimes modelled by the borrow checker
+- [ ] Validate the NVIDIA backend on ARM64 SBSA and Jetson hardware
 
 ## Tuples (maybe)
 
