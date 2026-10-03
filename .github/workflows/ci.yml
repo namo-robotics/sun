@@ -135,6 +135,7 @@ jobs:
           fi
 
   cuda-gpu:
+    needs: build-and-test
     name: CUDA tests, examples, and GPU benchmarks
     runs-on: linux-x64-gpu
     timeout-minutes: 60
@@ -142,7 +143,6 @@ jobs:
       run:
         shell: bash
     env:
-      CCACHE_SLOPPINESS: pch_defines,time_macros
       SUN_PATH: ${{ github.workspace }}
       CUDAToolkit_ROOT: /usr/local/cuda-12.6
       LD_LIBRARY_PATH: /usr/local/cuda-12.6/lib64
@@ -150,14 +150,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Download compiler and standard library
+        uses: actions/download-artifact@v4
+        with:
+          name: sun-linux-compiler-${{ env.BUILD_SHA }}
+          path: tmp/gpu-ci
+
       - name: Check GPU and record hardware
         run: |
-          mkdir -p tmp/gpu-ci
+          source /etc/os-release
+          if [ "$ID:$VERSION_ID:$(uname -m)" != ubuntu:24.04:x86_64 ]; then
+            echo 'The shared compiler requires an Ubuntu 24.04 x86-64 GPU runner' >&2
+            exit 1
+          fi
+          mkdir -p tmp/gpu-ci/compiler
+          tar -xzf tmp/gpu-ci/compiler.tar.gz -C tmp/gpu-ci/compiler
           nvidia-smi | tee tmp/gpu-ci/hardware.log
           nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv \
             | tee -a tmp/gpu-ci/hardware.log
 
-      - name: Install LLVM 20 and build dependencies
+      - name: Install compiler runtime and CUDA build dependencies
         run: |
           source /etc/os-release
           curl --fail --location --retry 3 https://apt.llvm.org/llvm-snapshot.gpg.key -o tmp/gpu-ci/llvm-key.asc
@@ -170,14 +182,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential cmake ninja-build python3 \
-            clang-20 llvm-20-dev lld-20 libarchive-dev libzstd-dev libgtest-dev
+            libllvm20 libarchive13t64
 
       - name: Install CUDA toolkit without GPU drivers
         run: |
           source /etc/os-release
           case "$ID:$VERSION_ID:$(uname -m)" in
-            ubuntu:22.04:x86_64|ubuntu:24.04:x86_64) ;;
-            *) echo 'Expected an Ubuntu 22.04 or 24.04 x86-64 GPU runner' >&2; exit 1 ;;
+            ubuntu:24.04:x86_64) ;;
+            *) echo 'Expected an Ubuntu 24.04 x86-64 GPU runner' >&2; exit 1 ;;
           esac
           curl --fail --location --retry 3 \
             "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu${VERSION_ID//./}/x86_64/cuda-keyring_1.1-1_all.deb" \
@@ -187,22 +199,13 @@ jobs:
           sudo apt-get install -y --no-install-recommends cuda-toolkit-12-6
           "$CUDAToolkit_ROOT/bin/nvcc" --version | tee -a tmp/gpu-ci/hardware.log
 
-      - name: Set up ccache
-        uses: hendrikmuhs/ccache-action@v1.2.23
-        with:
-          key: cuda-clang20
-          max-size: 2G
-
       - name: Build CUDA bundle and test programs
         run: |
-          # A separate build directory avoids the root config's TLS products.
+          # Configure only CUDA targets using the compiler from the Linux job.
           cmake -S . -B tmp/gpu-ci/build -G Ninja \
-            -DCMAKE_C_COMPILER=clang-20 \
-            -DCMAKE_CXX_COMPILER=clang++-20 \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DSUN_CUDA_PREBUILT_DIR="$PWD/tmp/gpu-ci/compiler" \
             -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_TESTING=ON -DSUN_ENABLE_CUDA=ON -DSUN_CUDA_REQUIRE_GPU=ON
+            -DBUILD_TESTING=ON -DSUN_CUDA_REQUIRE_GPU=ON
           cmake --build tmp/gpu-ci/build -j$(($(nproc)/2)) \
             --target cuda_moon cuda_native_fault_checks sun_cuda_fake cuda_native_checks \
             2>&1 | tee tmp/gpu-ci/build.log
@@ -215,7 +218,7 @@ jobs:
 
       - name: Run CUDA example through JIT and native compilation
         run: |
-          sun="$PWD/tmp/gpu-ci/build/sun"
+          sun="$PWD/tmp/gpu-ci/compiler/sun"
           flags=(--lib-path "$PWD/tmp/gpu-ci/build" -L "$CUDAToolkit_ROOT/lib64" -lcublas -lcudart -lpthread)
           source=examples/110-gpu-matrices/main.sun
           "$sun" "${flags[@]}" "$source" | tee tmp/gpu-ci/example-jit.log
@@ -232,7 +235,7 @@ jobs:
       - name: Run Sun GPU benchmark
         continue-on-error: true
         run: |
-          tmp/gpu-ci/build/sun --lib-path tmp/gpu-ci/build \
+          tmp/gpu-ci/compiler/sun --lib-path tmp/gpu-ci/build \
             -L "$CUDAToolkit_ROOT/lib64" -lcublas -lcudart -lpthread \
             benchmarks/gpu-matmul/main.sun 2>&1 | tee tmp/gpu-ci/benchmark-sun.log
 
@@ -368,6 +371,20 @@ jobs:
 
       - name: Build
         run: cmake --build build -j$(($(nproc)/2))
+
+      - name: Package compiler and standard library for GPU tests
+        run: |
+          mkdir -p tmp/gpu-ci
+          # Tar preserves the compiler's executable permission across artifact upload.
+          tar -czf tmp/gpu-ci/compiler.tar.gz -C build sun stdlib.moon
+
+      - name: Upload compiler and standard library for GPU tests
+        uses: actions/upload-artifact@v4
+        with:
+          name: sun-linux-compiler-${{ env.BUILD_SHA }}
+          path: tmp/gpu-ci/compiler.tar.gz
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Check tls.moon was built
         # The example skips itself when the bundle is missing; without this

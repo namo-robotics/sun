@@ -3,6 +3,24 @@ project(SunCompiler LANGUAGES C CXX)
 
 include(CTest)  # Defines BUILD_TESTING before creating any test targets.
 
+# CUDA CI reuses the compiler and standard library from the Linux build.
+# Return before discovering compiler development dependencies or adding its targets.
+set(SUN_CUDA_PREBUILT_DIR "" CACHE PATH "Directory containing sun and stdlib.moon for a CUDA-only build")
+if(SUN_CUDA_PREBUILT_DIR)
+    foreach(artifact sun stdlib.moon)
+        if(NOT EXISTS "${SUN_CUDA_PREBUILT_DIR}/${artifact}")
+            message(FATAL_ERROR "SUN_CUDA_PREBUILT_DIR is missing ${artifact}")
+        endif()
+    endforeach()
+    add_executable(sun IMPORTED GLOBAL)
+    set_target_properties(sun PROPERTIES IMPORTED_LOCATION "${SUN_CUDA_PREBUILT_DIR}/sun")
+    configure_file("${SUN_CUDA_PREBUILT_DIR}/stdlib.moon"
+                   "${CMAKE_BINARY_DIR}/stdlib.moon" COPYONLY)
+    add_custom_target(stdlib_moon)
+    add_subdirectory(cuda)
+    return()
+endif()
+
 # ------------------------------------------------------------------
 # General settings
 # ------------------------------------------------------------------
