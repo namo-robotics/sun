@@ -16,8 +16,9 @@ function run() GpuResult<void> {
   var upload_start = std.time.now();
   var a = try device.upload(host);
   var b = try device.upload(host);
+  var upload_micros = upload_start.elapsed().as_micros();
   println("Upload with allocation (microseconds):");
-  println(upload_start.elapsed().as_micros());
+  println(upload_micros);
   var c = try a.matmul(b);
   var allocating_start = std.time.now();
   for (var i: i64 = 0; i < 10; i = i + 1) {
@@ -26,18 +27,28 @@ function run() GpuResult<void> {
       return GpuResult.Error(GpuError(-1, "benchmark"));
     }
   }
+  var allocating_micros = allocating_start.elapsed().as_micros();
   println("Allocating products (microseconds):");
-  println(allocating_start.elapsed().as_micros());
+  println(allocating_micros);
   var reuse_start = std.time.now();
   for (var i: i64 = 0; i < 10; i = i + 1) {
     try a.matmul_into(b, c);
   }
+  var reuse_micros = reuse_start.elapsed().as_micros();
   println("Products reusing output (microseconds):");
-  println(reuse_start.elapsed().as_micros());
+  println(reuse_micros);
   var download_start = std.time.now();
   try c.copy_to_host(host);
+  var download_micros = download_start.elapsed().as_micros();
   println("Download (microseconds):");
-  println(download_start.elapsed().as_micros());
+  println(download_micros);
+  for (var i: i64 = 0; i < 512; i = i + 1) {
+    for (var j: i64 = 0; j < 512; j = j + 1) {
+      if (host[i, j] != 512.0f32) {
+        return GpuResult.Error(GpuError(-1, "benchmark result"));
+      }
+    }
+  }
   println("First result element:");
   println(host[0, 0]);
   return GpuResult.Ok;

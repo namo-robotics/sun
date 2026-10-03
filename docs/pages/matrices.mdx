@@ -41,6 +41,19 @@ manifest {
 }
 ```
 
+To initialize the elements as well, pass an array literal first and the allocator
+second. The matrix infers all dimensions and owns independent storage:
+
+```sun
+var m = Matrix<f32>([[1.0f32, 2.0f32], [3.0f32, 4.0f32]], allocator);
+var value = m[1, 0];  // 3.0f32
+```
+
+This constructor also accepts an existing array by reference. Use elements of
+the matrix's type, such as `Matrix<i64>([1i64, 2i64], allocator)`. Putting the
+values first keeps integer data distinct from the shape in
+`Matrix<i64>(allocator, [2, 3])`.
+
 ## Indexing
 
 Access elements using comma-separated indices in brackets:

@@ -66,6 +66,26 @@ public module std {
     }
 
     /**
+     * Allocates a matrix with the array's shape and stores its elements in
+     * row-major order. The array is borrowed only during construction.
+     * Values come before the allocator to distinguish them from a shape.
+     */
+    init(values: const ref array<T>, alloc: const ref HeapAllocator) {
+      this.alloc = alloc.copy();
+      this.ndims_ = values.ndims();
+      this.dims = Vec<i64>(alloc, this.ndims_);
+      for (var i: i64 = 0; i < this.ndims_; i = i + 1) {
+        this.dims.push(values.dim(i));
+        this.total_size = this.total_size * values.dim(i);
+      }
+      this.data = ContiguousBuffer<T>(alloc, this.total_size);
+      // A single index into an unsized array addresses its flat storage.
+      for (var i: i64 = 0; i < this.total_size; i = i + 1) {
+        ignore_error(this.data.set(i, values[i]));
+      }
+    }
+
+    /**
      * Compute linear index from n-dimensional indices (row-major order)
      */
     public const method compute_linear_index(indices: const ref array<i64>) i64 {

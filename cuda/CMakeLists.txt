@@ -18,14 +18,19 @@ set_target_properties(sun_cuda_native PROPERTIES
 target_link_libraries(sun_cuda_native PRIVATE CUDA::cudart CUDA::cublas Threads::Threads)
 target_compile_options(sun_cuda_native PRIVATE -Wall -Wextra -Werror)
 add_custom_target(cuda_moon ALL
-    COMMAND ${CMAKE_COMMAND} -E env "SUN_CUDA_NATIVE=${CMAKE_CURRENT_BINARY_DIR}"
-            "SUN_CUDA_STDLIB=${CMAKE_BINARY_DIR}"
-            bash "${CMAKE_SOURCE_DIR}/scripts/build-moon.sh" "$<TARGET_FILE:sun>"
+    COMMAND bash "${CMAKE_SOURCE_DIR}/scripts/build-moon.sh" "$<TARGET_FILE:sun>"
             "${CMAKE_CURRENT_SOURCE_DIR}/cuda.sun" "${CMAKE_BINARY_DIR}/cuda.moon"
+            --path-var "SUN_CUDA_NATIVE=${CMAKE_CURRENT_BINARY_DIR}"
+            --path-var "SUN_CUDA_STDLIB=${CMAKE_BINARY_DIR}"
     BYPRODUCTS "${CMAKE_BINARY_DIR}/cuda.moon"
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     VERBATIM)
 add_dependencies(cuda_moon sun stdlib_moon sun_cuda_native)
+
+# The root config may also build CUDA when its entrypoint is enabled.
+if(TARGET sun_config_products)
+    add_dependencies(sun_config_products sun_cuda_native)
+endif()
 
 if(BUILD_TESTING)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)

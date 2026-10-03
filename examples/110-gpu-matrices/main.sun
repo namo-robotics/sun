@@ -1,26 +1,23 @@
-/** Demonstrates allocating operators and reusable GPU outputs. */
+/** Multiplies two matrices on the GPU and prints the result. */
 manifest { libraries: ["stdlib.moon", "cuda.moon"] }
 using std;
 using cuda;
 
-/** Uploads once, chains operations on the GPU, and downloads explicitly. */
+/** Uploads a matrix twice, multiplies on the GPU, and downloads the product. */
 function run() GpuResult<void> {
   var alloc = make_heap_allocator();
-  var host = Matrix<f32>(alloc, [2, 2]);
-  host[0, 0] = 1.0f32;
-  host[0, 1] = 2.0f32;
-  host[1, 0] = 3.0f32;
-  host[1, 1] = 4.0f32;
-  var device = try open_device(0);
-  var a = try device.upload(host);
-  var b = try device.upload(host);
+  var gpu = try open_device(0);
+  var a_cpu = Matrix<f32>([[1.0f32, 2.0f32], [3.0f32, 4.0f32]], alloc);
+  var b_cpu = Matrix<f32>([[1.0f32, 2.0f32], [3.0f32, 4.0f32]], alloc);
+  var a = try gpu.upload(a_cpu);
+  var b = try gpu.upload(b_cpu);
   var c = try (a * b);
-  var sum = try (c + c);
-  try a.matmul_into(b, c);
-  try sum.scale_in_place(0.5f32);
-  try sum.copy_to_host(host);
-  println(host[0, 0]);
-  println(host[1, 1]);
+  var c_cpu = Matrix<f32>(alloc, [2, 2]);
+  try c.copy_to_host(c_cpu);
+  println(c_cpu[0, 0]);
+  println(c_cpu[0, 1]);
+  println(c_cpu[1, 0]);
+  println(c_cpu[1, 1]);
   return GpuResult.Ok;
 }
 

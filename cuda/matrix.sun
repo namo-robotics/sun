@@ -1,7 +1,7 @@
+using std;
+
 /** Provides owning GPU matrices with explicit transfers and synchronous arithmetic. */
 public module cuda {
-  using std;
-
   /** Distinguishes validation, resource, CUDA runtime, and BLAS errors. */
   public enum GpuErrorCategory { Validation, Resource, Runtime, Blas }
 

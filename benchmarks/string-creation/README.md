@@ -27,10 +27,10 @@ All benchmark processes run sequentially, pinned to logical CPU 1, a performance
 
 ## Reproduce
 
-Rebuild the devcontainer after changing its Dockerfile. It includes Clang, Python,
-Rust/Cargo, Go, .NET 8 with ICU, and Matplotlib; Node.js comes from the existing
-devcontainer feature. Ubuntu supplies the package versions, so local versions may
-differ from CI. No extra toolchain paths or Python environment are needed.
+Use the separate [CPU benchmark image](../README.md), which includes Clang,
+Python, Rust/Cargo, Go, .NET 8 with ICU, Node.js, and Matplotlib. Benchmark-only
+toolchains are not installed in the devcontainer. Ubuntu supplies the package
+versions, so local versions may differ from CI.
 
 Run from the workspace root. Build Sun first and put Clang, Rust/Cargo, Go, .NET 8 SDK, Node.js, and Python on `PATH`:
 

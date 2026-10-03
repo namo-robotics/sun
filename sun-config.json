@@ -4,7 +4,9 @@
         "x86_64-linux-gnu": {
             "sun_path": ["build"],
             "path_variables": {
-                "OPENSSL_LIBS_LINUX": "third_party/openssl/x86_64-linux-musl"
+                "OPENSSL_LIBS_LINUX": "third_party/openssl/x86_64-linux-musl",
+                "SUN_CUDA_STDLIB": "build",
+                "SUN_CUDA_NATIVE": "build/cuda"
             },
             "entrypoints": [
                 {
@@ -18,6 +20,12 @@
                     "type": "library",
                     "output_name": "build/tls",
                     "test_binary_name": "build/tls_tests_test"
+                },
+                {
+                    "path": "cuda/cuda.sun",
+                    "enabled": true,
+                    "type": "library",
+                    "output_name": "build/cuda"
                 }
             ]
         },
@@ -64,7 +72,9 @@
         "aarch64-linux-gnu": {
             "sun_path": ["build/aarch64-linux-gnu"],
             "path_variables": {
-                "OPENSSL_LIBS_LINUX": "third_party/openssl/aarch64-linux-musl"
+                "OPENSSL_LIBS_LINUX": "third_party/openssl/aarch64-linux-musl",
+                "SUN_CUDA_STDLIB": "build/aarch64-linux-gnu",
+                "SUN_CUDA_NATIVE": "build/cuda"
             },
             "entrypoints": [
                 {
@@ -78,6 +88,12 @@
                     "type": "library",
                     "output_name": "build/aarch64-linux-gnu/tls",
                     "test_binary_name": "build/aarch64-linux-gnu/tls_tests_test"
+                },
+                {
+                    "path": "cuda/cuda.sun",
+                    "enabled": true,
+                    "type": "library",
+                    "output_name": "build/aarch64-linux-gnu/cuda"
                 }
             ]
         },

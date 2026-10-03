@@ -16,7 +16,18 @@ cmake -S . -B build -DSUN_ENABLE_CUDA=ON
 cmake --build build -j$(($(nproc)/2))
 ```
 
-The build produces `build/cuda.moon`, containing the Sun API and its native
+The root `sun-config.json` also lists `cuda/cuda.sun` for the supported Linux
+glibc targets and builds it by default with `build/sun -c sun-config.json`.
+Build the native archive first with
+`cmake --build build --target sun_cuda_native -j$(($(nproc)/2))`, using a build
+configured with `SUN_ENABLE_CUDA=ON`. A full CMake build handles this dependency
+automatically. Set the CUDA entry's `enabled` to `false` for builds without CUDA.
+The configured output is
+`build/cuda.moon` on x86-64 and `build/aarch64-linux-gnu/cuda.moon` on ARM64.
+The `SUN_CUDA_NATIVE` path variable points to `build/cuda`, where CMake places
+the native archive; adjust it if you use a different build directory.
+
+The CMake build produces `build/cuda.moon`, containing the Sun API and its native
 wrapper archive. NVIDIA libraries and drivers are not bundled. If CUDA is not
 on the system library search path, supply its library directory to both Sun and
 the operating-system loader:
