@@ -55,8 +55,8 @@
             "enabled": {
                 "default": false,
                 "target": {
-                    "x86_64-linux-gnu": true,
-                    "aarch64-linux-gnu": true
+                    "x86_64-linux-gnu": false,
+                    "aarch64-linux-gnu": false
                 }
             }
         }

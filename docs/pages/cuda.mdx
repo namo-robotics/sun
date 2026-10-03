@@ -16,12 +16,14 @@ cmake -S . -B build -DSUN_ENABLE_CUDA=ON
 cmake --build build -j$(($(nproc)/2))
 ```
 
-The root `sun-config.json` also lists `cuda/cuda.sun` for the supported Linux
-glibc targets and builds it by default with `build/sun -c sun-config.json`.
-Build the native archive first with
+The root `sun-config.json` also lists `cuda/cuda.sun`, disabled by default so
+ordinary builds do not require CUDA. To include it in
+`build/sun -c sun-config.json`, set the CUDA entry's `enabled.target` value to
+`true` for your Linux glibc target. Build the native archive first with
 `cmake --build build --target sun_cuda_native -j$(($(nproc)/2))`, using a build
 configured with `SUN_ENABLE_CUDA=ON`. A full CMake build handles this dependency
-automatically. Set the CUDA entry's `enabled` to `false` for builds without CUDA.
+automatically and builds `cuda.moon` when `SUN_ENABLE_CUDA=ON`, independently
+of whether the root config entry is enabled.
 The configured output is
 `build/cuda.moon` on x86-64 and `build/aarch64-linux-gnu/cuda.moon` on ARM64.
 The `SUN_CUDA_NATIVE` path variable points to `build/cuda`, where CMake places
@@ -42,6 +44,14 @@ build/sun -c --dynamic --lib-path build -L /usr/local/cuda/lib64 -lcublas -lcuda
 Use the directory containing `libcublas.so` and `libcudart.so` in your toolkit;
 distribution packages and Jetson may use different directories. Fully static,
 musl, and cross-compiled GPU programs are not supported in this first version.
+
+Linux CI installs the CUDA toolkit and builds `cuda.moon` without requiring a
+GPU. Validation, fault-injection, and simulated-backend tests run on CPU-only
+runners; the hardware test skips when no usable device is available. Linux
+releases include the native x86-64 bundle in the Debian package and as
+`cuda-x86_64-linux-gnu.moon`. CUDA is not included in macOS releases or the
+cross-compiled ARM64 bundles. Using the GPU API still requires the NVIDIA
+shared libraries and a compatible driver on the execution machine.
 
 ## Storage and ownership
 
