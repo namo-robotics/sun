@@ -3,16 +3,9 @@ FROM ubuntu:26.04
 
 LABEL devcontainer.feature="LLVM 20 Dev Environment (Ubuntu 26.04 LTS)"
 
-# Install trusted certificates over HTTP before using the HTTPS mirror.
-RUN sed -i \
-    -e 's|http://archive.ubuntu.com/ubuntu/|http://mirror.geekonweb.fr/ubuntu/|g' \
-    -e 's|https://archive.ubuntu.com/ubuntu/|http://mirror.geekonweb.fr/ubuntu/|g' \
-    -e 's|http://security.ubuntu.com/ubuntu/|http://mirror.geekonweb.fr/ubuntu/|g' \
-    -e 's|https://security.ubuntu.com/ubuntu/|http://mirror.geekonweb.fr/ubuntu/|g' \
-    /etc/apt/sources.list.d/ubuntu.sources \
-    && apt-get update --error-on=any \
+# Install trusted certificates
+RUN apt-get update --error-on=any \
     && apt-get install -y --no-install-recommends ca-certificates \
-    && sed -i 's|http://mirror.geekonweb.fr/ubuntu/|https://mirror.geekonweb.fr/ubuntu/|g' /etc/apt/sources.list.d/ubuntu.sources \
     && rm -rf /var/lib/apt/lists/*
 
 ENV DEBIAN_FRONTEND=noninteractive \
