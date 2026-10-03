@@ -449,11 +449,6 @@ jobs:
           for dir in examples/*/; do
             [ -f "${dir}build.sh" ] || continue
             name=$(basename "$dir")
-            # Restore this integration after sun_serve migrates: https://github.com/namo-robotics/sun/issues/353
-            if [ "$name" = "100-git_library" ]; then
-              echo "SKIP ${name}: waiting for upstream result migration (#353)"
-              continue
-            fi
             echo "::group::${name}"
             if ( cd "$dir" && bash build.sh && bash test.sh ); then
               echo "PASS ${name}"
@@ -552,11 +547,6 @@ jobs:
           for dir in examples/*/; do
             [ -f "${dir}build.sh" ] || continue
             name=$(basename "$dir")
-            # Restore this integration after sun_serve migrates: https://github.com/namo-robotics/sun/issues/353
-            if [ "$name" = "100-git_library" ]; then
-              echo "SKIP ${name}: waiting for upstream result migration (#353)"
-              continue
-            fi
             echo "::group::${name}"
             if ( cd "$dir" && bash build.sh && bash test.sh ); then
               echo "PASS ${name}"

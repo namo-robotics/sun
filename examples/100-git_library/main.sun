@@ -2,15 +2,50 @@ manifest {
     libraries: ["stdlib.moon", "$SUN_SERVE/sun_serve.moon"]
 }
 
-/** Checks the imported library's HTTP helpers and prints its version. */
+using std;
+using sun_serve;
+
+/** Checks polling results and HTTP helpers from the imported library. */
+function check_library() ServerResult<i32> {
+  var alloc = make_heap_allocator();
+  var layout = try probe_epoll_layout(alloc);
+  var poller = try Epoll(alloc, layout, 1);
+  if (try poller.wait(0)) != 0 {
+    return ServerResult.Ok(3);
+  }
+  // An invalid descriptor must produce an owned error across the Moon boundary.
+  match poller.add(-1, 0, 0) {
+    ServerResult.Ok => {
+      return ServerResult.Ok(4);
+    },
+    ServerResult.Error(error) => {
+      if error.message().length() == 0 {
+        return ServerResult.Ok(5);
+      }
+    },
+    (error: const ref IError) => {
+      eprintln(error.message());
+      return ServerResult.Ok(6);
+    }
+  };
+  if status_has_no_body(200) {
+    return ServerResult.Ok(1);
+  }
+  if status_has_no_body(204) {
+    println(version());
+    println(reason_phrase(200));
+    return ServerResult.Ok(0);
+  }
+  return ServerResult.Ok(2);
+}
+
+/** Reports unexpected library failures and returns the integration status. */
 function main() i32 {
-  if sun_serve.status_has_no_body(200) {
-    return 1;
-  }
-  if sun_serve.status_has_no_body(204) {
-    std.println(sun_serve.version());
-    std.println(sun_serve.reason_phrase(200));
-    return 0;
-  }
-  return 2;
+  return match check_library() {
+    ServerResult.Ok(status) => status,
+    (error: const ref IError) => {
+      eprintln(error.message());
+      return 7;
+    }
+  };
 }
