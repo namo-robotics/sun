@@ -1,0 +1,306 @@
+using std;
+
+/** Provides owning GPU matrices with explicit transfers and synchronous arithmetic. */
+public module cuda {
+  /** Distinguishes validation, resource, CUDA runtime, and BLAS errors. */
+  public enum GpuErrorCategory { Validation, Resource, Runtime, Blas }
+
+  /** Retains an operation name and status without allocating diagnostic strings. */
+  public class GpuError implements IError {
+    var status: i32;
+    var operation_: static_ptr<u8>;
+    /** Records the failing operation and its encoded native status. */
+    init(status: i32, operation: static_ptr<u8>) {
+      this.status = status;
+      this.operation_ = operation;
+    }
+    /** Returns the encoded status, preserving validation and backend distinctions. */
+    public const method code() i32 {
+      return this.status;
+    }
+    /** Returns the native status for runtime or BLAS failures. */
+    public const method native_code() i32 {
+      if (this.status >= 20000) {
+        return this.status - 20000;
+      }
+      if (this.status >= 10000) {
+        return this.status - 10000;
+      }
+      return this.status;
+    }
+    /** Identifies the source of the failure. */
+    public const method category() GpuErrorCategory {
+      if (this.status >= 20000) {
+        return GpuErrorCategory.Blas;
+      }
+      if (this.status >= 10000) {
+        return GpuErrorCategory.Runtime;
+      }
+      if (this.status == -5 or this.status == -6) {
+        return GpuErrorCategory.Resource;
+      }
+      return GpuErrorCategory.Validation;
+    }
+    /** Returns the static operation label. */
+    public const method operation() static_ptr<u8> {
+      return this.operation_;
+    }
+    /** Allocates a readable diagnostic only when requested. */
+    public const method message() String {
+      var text = String(this.operation_);
+      if (this.status == -1) {
+        text.append(": invalid shape or argument");
+      } else if (this.status == -2) {
+        text.append(": dimensions exceed backend limits");
+      } else if (this.status == -3) {
+        text.append(": matrices belong to different contexts");
+      } else if (this.status == -4) {
+        text.append(": output aliases an input");
+      } else if (this.status == -5) {
+        text.append(": device context is unavailable");
+      } else if (this.status == -6) {
+        text.append(": host resource allocation failed");
+      } else {
+        text.append(": NVIDIA backend failed; inspect native_code()");
+      }
+      return text;
+    }
+  }
+
+  /** Carries an owned successful result or a GPU operation failure. */
+  public enum GpuResult<T> { Ok(T), Error(GpuError) }
+
+  /** Prevents callers outside this module from adopting arbitrary handles. */
+  class HandleKey {
+    var unused: i8 = 0;
+  }
+
+  /** Converts a native status into Sun's explicit error propagation model. */
+  function checked(status: i32, operation: static_ptr<u8>) GpuResult<void> {
+    if (status != 0) {
+      return GpuResult.Error(GpuError(status, operation));
+    }
+    return GpuResult.Ok;
+  }
+
+  /** Allocates checked, initialized storage for a supported floating-point type. */
+  function allocate_matrix<T: _Float>(context: raw_ptr<u8>, rank: i64, rows: i64, columns: i64) GpuResult<DeviceMatrix<T>> {
+    if (rank != 1 and rank != 2) {
+      return GpuResult.Error(GpuError(-1, "allocate"));
+    }
+    var handle: raw_ptr<u8> = null;
+    var status = unsafe { c_allocate(context, _convert<i32>(rank), rows, columns, _convert<i32>(_sizeof<T>()), _address_of<raw_ptr<u8>>(handle)); };
+    if (status != 0) {
+      unsafe { c_matrix_release(handle); };
+      return GpuResult.Error(GpuError(status, "allocate"));
+    }
+    return GpuResult.Ok(DeviceMatrix<T>(handle, HandleKey()));
+  }
+
+  /** Owns contiguous GPU storage and retains its context until destruction. */
+  public class DeviceMatrix<T: _Float> {
+    var handle: raw_ptr<u8>;
+    /** Adopts a checked native allocation; only this module can supply the key. */
+    init(handle: raw_ptr<u8>, key: HandleKey) {
+      this.handle = handle;
+    }
+    /** Releases storage and its context reference exactly once. */
+    deinit() {
+      unsafe { c_matrix_release(this.handle); };
+    }
+    /** Returns the rank without accessing device memory. */
+    public const method ndims() i64 {
+      return unsafe { c_dimension(this.handle, -1); };
+    }
+    /** Returns the element count without accessing device memory. */
+    public const method size() i64 {
+      return unsafe { c_dimension(this.handle, -2); };
+    }
+    /** Returns the selected dimension, or zero for an invalid dimension. */
+    public const method dim(index: i64) i64 {
+      if (index < 0 or index >= this.ndims()) {
+        return 0;
+      }
+      return unsafe { c_dimension(this.handle, _convert<i32>(index)); };
+    }
+    /** Returns the internal second extent, treating vectors as one column. */
+    const method columns() i64 {
+      if (this.ndims() == 1) {
+        return 1;
+      }
+      return this.dim(1);
+    }
+    /** Allocates a result on this matrix's retained context. */
+    const method result_storage(rank: i64, rows: i64, columns: i64) GpuResult<DeviceMatrix<T>> {
+      var context = unsafe { c_matrix_context(this.handle); };
+      return allocate_matrix<T>(context, rank, rows, columns);
+    }
+    /** Copies an equal-shaped host matrix into this existing GPU allocation. */
+    public method copy_from_host(host: const ref Matrix<T>) GpuResult<void> {
+      if (host.ndims() != this.ndims()) {
+        return GpuResult.Error(GpuError(-1, "upload"));
+      }
+      var columns: i64 = 1;
+      if (host.ndims() == 2) {
+        columns = host.dim(1);
+      }
+      return checked(unsafe { c_transfer(this.handle, host.raw_data(), _convert<i32>(host.ndims()), host.dim(0), columns, 1); }, "upload");
+    }
+    /** Copies into equal-shaped host storage and waits for completion. */
+    public const method copy_to_host(host: ref Matrix<T>) GpuResult<void> {
+      if (host.ndims() != this.ndims()) {
+        return GpuResult.Error(GpuError(-1, "download"));
+      }
+      var columns: i64 = 1;
+      if (host.ndims() == 2) {
+        columns = host.dim(1);
+      }
+      return checked(unsafe { c_transfer(this.handle, host.raw_data(), _convert<i32>(host.ndims()), host.dim(0), columns, 0); }, "download");
+    }
+    /** Allocates a new result for matmul; inputs remain borrowed and unchanged. */
+    public const method matmul(other: const ref DeviceMatrix<T>) GpuResult<DeviceMatrix<T>> {
+      if (this.ndims() != 2 or other.ndims() != 2 or this.dim(1) != other.dim(0)) {
+        return GpuResult.Error(GpuError(-1, "matmul"));
+      }
+      if (unsafe { c_matrix_context(this.handle) != c_matrix_context(other.handle); }) {
+        return GpuResult.Error(GpuError(-3, "matmul"));
+      }
+      var output = try this.result_storage(2, this.dim(0), other.dim(1));
+      try this.matmul_into(other, output);
+      return GpuResult.Ok(output);
+    }
+    /** Computes matmul into existing, non-aliasing output storage. */
+    public const method matmul_into(other: const ref DeviceMatrix<T>, output: ref DeviceMatrix<T>) GpuResult<void> {
+      return checked(unsafe { c_binary(0, this.handle, other.handle, output.handle); }, "matmul");
+    }
+    /** Allocates a new result for add; inputs remain borrowed and unchanged. */
+    public const method add(other: const ref DeviceMatrix<T>) GpuResult<DeviceMatrix<T>> {
+      if (this.ndims() != other.ndims() or this.dim(0) != other.dim(0) or this.columns() != other.columns()) {
+        return GpuResult.Error(GpuError(-1, "add"));
+      }
+      if (unsafe { c_matrix_context(this.handle) != c_matrix_context(other.handle); }) {
+        return GpuResult.Error(GpuError(-3, "add"));
+      }
+      var output = try this.result_storage(this.ndims(), this.dim(0), this.columns());
+      try this.add_into(other, output);
+      return GpuResult.Ok(output);
+    }
+    /** Computes add into existing, non-aliasing output storage. */
+    public const method add_into(other: const ref DeviceMatrix<T>, output: ref DeviceMatrix<T>) GpuResult<void> {
+      return checked(unsafe { c_binary(1, this.handle, other.handle, output.handle); }, "add");
+    }
+    /** Allocates a new result for matvec; inputs remain borrowed and unchanged. */
+    public const method matvec(other: const ref DeviceMatrix<T>) GpuResult<DeviceMatrix<T>> {
+      if (this.ndims() != 2 or other.ndims() != 1 or this.dim(1) != other.dim(0)) {
+        return GpuResult.Error(GpuError(-1, "matvec"));
+      }
+      if (unsafe { c_matrix_context(this.handle) != c_matrix_context(other.handle); }) {
+        return GpuResult.Error(GpuError(-3, "matvec"));
+      }
+      var output = try this.result_storage(1, this.dim(0), 1);
+      try this.matvec_into(other, output);
+      return GpuResult.Ok(output);
+    }
+    /** Computes matvec into existing, non-aliasing output storage. */
+    public const method matvec_into(other: const ref DeviceMatrix<T>, output: ref DeviceMatrix<T>) GpuResult<void> {
+      return checked(unsafe { c_binary(2, this.handle, other.handle, output.handle); }, "matvec");
+    }
+    /** Allocates a scaled copy without changing this matrix. */
+    public const method scale(alpha: T) GpuResult<DeviceMatrix<T>> {
+      var output = try this.result_storage(this.ndims(), this.dim(0), this.columns());
+      try this.scale_into(alpha, output);
+      return GpuResult.Ok(output);
+    }
+    /** Writes a scaled copy into existing, non-aliasing storage. */
+    public const method scale_into(alpha: T, output: ref DeviceMatrix<T>) GpuResult<void> {
+      return checked(unsafe { c_scale(this.handle, _convert<f64>(alpha), output.handle, 0); }, "scale");
+    }
+    /** Scales this allocation without creating another matrix. */
+    public method scale_in_place(alpha: T) GpuResult<void> {
+      return checked(unsafe { c_scale(this.handle, _convert<f64>(alpha), this.handle, 1); }, "scale_in_place");
+    }
+    /** Returns a vector dot product as a host scalar after synchronization. */
+    public const method dot(other: const ref DeviceMatrix<T>) GpuResult<T> {
+      var output: T = _convert<T>(0);
+      try checked(unsafe { c_dot(this.handle, other.handle, _bitcast<raw_ptr<u8>>(_address_of<T>(output))); }, "dot");
+      return GpuResult.Ok(output);
+    }
+    /** Allocates the sum for the addition operator. */
+    public const method __add__(other: const ref DeviceMatrix<T>) GpuResult<DeviceMatrix<T>> {
+      return this.add(other);
+    }
+    /** Allocates the matrix product for the multiplication operator. */
+    public const method __multiply__(other: const ref DeviceMatrix<T>) GpuResult<DeviceMatrix<T>> {
+      return this.matmul(other);
+    }
+    /** Allocates a scaled copy for multiplication by a scalar on the right. */
+    public const method __multiply__(alpha: T) GpuResult<DeviceMatrix<T>> {
+      return this.scale(alpha);
+    }
+  }
+
+  /** Owns a CUDA execution context; matrices retain it independently. */
+  public class Device {
+    var handle: raw_ptr<u8>;
+    /** Adopts an initialized context using a module-private construction key. */
+    init(handle: raw_ptr<u8>, key: HandleKey) {
+      this.handle = handle;
+    }
+    /** Releases the public owner's reference without invalidating live matrices. */
+    deinit() {
+      unsafe { c_context_release(this.handle); };
+    }
+    /** Explicitly allocates zero-initialized GPU storage of the supplied shape. */
+    public const method allocate<T: _Float>(shape: const ref array<i64>) GpuResult<DeviceMatrix<T>> {
+      var rank = shape.dim(0);
+      if (rank != 1 and rank != 2) {
+        return GpuResult.Error(GpuError(-1, "allocate"));
+      }
+      var columns: i64 = 1;
+      if (rank == 2) {
+        columns = shape[1];
+      }
+      return allocate_matrix<T>(this.handle, rank, shape[0], columns);
+    }
+    /** Explicitly allocates and uploads a host f32 matrix. */
+    public const method upload(host: const ref Matrix<f32>) GpuResult<DeviceMatrix<f32>> {
+      var rank = host.ndims();
+      if (rank != 1 and rank != 2) {
+        return GpuResult.Error(GpuError(-1, "upload"));
+      }
+      var columns: i64 = 1;
+      if (rank == 2) {
+        columns = host.dim(1);
+      }
+      var output = try allocate_matrix<f32>(this.handle, rank, host.dim(0), columns);
+      try output.copy_from_host(host);
+      return GpuResult.Ok(output);
+    }
+    /** Explicitly allocates and uploads a host f64 matrix. */
+    public const method upload(host: const ref Matrix<f64>) GpuResult<DeviceMatrix<f64>> {
+      var rank = host.ndims();
+      if (rank != 1 and rank != 2) {
+        return GpuResult.Error(GpuError(-1, "upload"));
+      }
+      var columns: i64 = 1;
+      if (rank == 2) {
+        columns = host.dim(1);
+      }
+      var output = try allocate_matrix<f64>(this.handle, rank, host.dim(0), columns);
+      try output.copy_from_host(host);
+      return GpuResult.Ok(output);
+    }
+  }
+
+  /** Opens the selected CUDA device or returns its initialization failure. */
+  public function open_device(ordinal: i32) GpuResult<Device> {
+    var handle: raw_ptr<u8> = null;
+    try checked(unsafe { c_open(ordinal, _address_of<raw_ptr<u8>>(handle)); }, "open_device");
+    return GpuResult.Ok(Device(handle, HandleKey()));
+  }
+
+  /** Makes single-precision device matrices available in the precompiled bundle. */
+  public declare DeviceMatrix_f32 = DeviceMatrix<f32>;
+  /** Makes double-precision device matrices available in the precompiled bundle. */
+  public declare DeviceMatrix_f64 = DeviceMatrix<f64>;
+}

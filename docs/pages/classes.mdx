@@ -587,3 +587,30 @@ function main() i32 {
     return result1 + result2;  // 13
 }
 ```
+
+## Arithmetic operator hooks
+
+Classes may define `__add__` for `+` and `__multiply__` for `*`. Each hook is
+an ordinary method taking one explicit operand. The left operand is its
+receiver; the right operand is its argument. Normal overload resolution,
+visibility, `const`, `unsafe`, borrowing, and move rules apply. Operands execute
+once, left to right. Primitive arithmetic and operator precedence are unchanged.
+
+```sun
+/** Stores an integer operand. */
+class Number {
+    var value: i32;
+    /** Initializes the operand. */
+    init(value: i32) { this.value = value; }
+    /** Borrows the receiver and adds a scalar. */
+    public const method __add__(other: i32) i32 { return this.value + other; }
+    /** Borrows the receiver and multiplies by a scalar. */
+    public const method __multiply__(other: i32) i32 { return this.value * other; }
+}
+```
+
+Hooks may return owning values, references, or result enums. Result-returning
+operators require explicit handling, such as `try (a * b)` inside a compatible
+result-returning function. There is no automatic result unwrapping, reflected
+right-hand dispatch, or compound-assignment hook. Other arithmetic operators
+are not overloadable yet.

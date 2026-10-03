@@ -1,0 +1,143 @@
+# NVIDIA GPU matrices
+
+The optional `cuda.moon` library provides `cuda.Device` and
+`cuda.DeviceMatrix<T>`. It depends on `stdlib.moon`, which provides host
+`std.Matrix<T>` storage. Ordinary Sun programs do not require CUDA.
+
+## Building and running
+
+Build natively on Linux with glibc, an x86-64 or ARM64 host, and CUDA Toolkit 12
+or newer. ARM64 includes SBSA servers and Jetson Orin or newer with a compatible
+JetPack toolkit. Actual device support depends on the installed NVIDIA toolkit
+and driver; platform execution must be validated on the corresponding hardware.
+
+```bash
+cmake -S . -B build -DSUN_ENABLE_CUDA=ON
+cmake --build build -j$(($(nproc)/2))
+```
+
+The root `sun-config.json` also lists `cuda/cuda.sun`, disabled by default so
+ordinary builds do not require CUDA. To include it in
+`build/sun -c sun-config.json`, set the CUDA entry's `enabled.target` value to
+`true` for your Linux glibc target. Build the native archive first with
+`cmake --build build --target sun_cuda_native -j$(($(nproc)/2))`, using a build
+configured with `SUN_ENABLE_CUDA=ON`. A full CMake build handles this dependency
+automatically and builds `cuda.moon` when `SUN_ENABLE_CUDA=ON`, independently
+of whether the root config entry is enabled.
+The configured output is
+`build/cuda.moon` on x86-64 and `build/aarch64-linux-gnu/cuda.moon` on ARM64.
+The `SUN_CUDA_NATIVE` path variable points to `build/cuda`, where CMake places
+the native archive; adjust it if you use a different build directory.
+
+The CMake build produces `build/cuda.moon`, containing the Sun API and its native
+wrapper archive. NVIDIA libraries and drivers are not bundled. If CUDA is not
+on the system library search path, supply its library directory to both Sun and
+the operating-system loader:
+
+```bash
+export LD_LIBRARY_PATH=/usr/local/cuda/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+build/sun --lib-path build -L /usr/local/cuda/lib64 -lcublas -lcudart -lpthread examples/110-gpu-matrices/main.sun
+build/sun -c --dynamic --lib-path build -L /usr/local/cuda/lib64 -lcublas -lcudart -lpthread -o gpu-example examples/110-gpu-matrices/main.sun
+./gpu-example
+```
+
+Use the directory containing `libcublas.so` and `libcudart.so` in your toolkit;
+distribution packages and Jetson may use different directories. Fully static,
+musl, and cross-compiled GPU programs are not supported in this first version.
+
+Linux CI installs the CUDA toolkit and builds `cuda.moon` without requiring a
+GPU. Validation, fault-injection, and simulated-backend tests run on CPU-only
+runners; the hardware test skips when no usable device is available. Linux
+releases include the native x86-64 bundle in the Debian package and as
+`cuda-x86_64-linux-gnu.moon`. CUDA is not included in macOS releases or the
+cross-compiled ARM64 bundles. Using the GPU API still requires the NVIDIA
+shared libraries and a compatible driver on the execution machine.
+
+## Storage and ownership
+
+Import `stdlib.moon` and `cuda.moon` in the manifest. Open a context with
+`cuda.open_device(0)`. `device.upload(host)` explicitly allocates and copies a
+host matrix; `device.allocate<f32>(shape)` explicitly allocates zero-initialized
+storage. Shape elements are `i64`; for example, `[2i64, 3i64]`.
+
+Device matrices support `f32` and `f64`, positive one-dimensional vector or
+two-dimensional matrix shapes, and contiguous row-major storage. Each extent
+and the total element count must fit the backend's signed BLAS integer limit.
+`ndims()`, `size()`, and `dim(index)` read host metadata; `dim` returns zero for
+an invalid dimension. There is no device indexing, slicing, raw pointer access,
+or implicit copy.
+
+A matrix retains its native context and remains valid after its public `Device`
+owner is dropped. Moving a matrix transfers ownership. Context access is
+serialized internally, and all work completes before an operation returns.
+The calling thread's previous CUDA device is restored.
+
+## Arithmetic
+
+Inside a function returning `GpuResult<T>`, use `try` to propagate failures:
+
+```sun
+var a = try device.upload(host_a);
+var b = try device.upload(host_b);
+var c = try a.matmul(b);
+var d = try (a * b);
+var sum = try (c + d);
+try a.matmul_into(b, c);
+try sum.copy_to_host(host_output);
+```
+
+| Method | Behavior |
+| --- | --- |
+| `a.matmul(b)` / `a.matmul_into(b, output)` | Rank-two matrix product |
+| `a.add(b)` / `a.add_into(b, output)` | Equal-shaped addition |
+| `a.scale(alpha)` / `a.scale_into(alpha, output)` | Scalar multiplication |
+| `a.scale_in_place(alpha)` | Explicit in-place scaling |
+| `a.matvec(v)` / `a.matvec_into(v, output)` | Matrix times rank-one vector |
+| `a.dot(b)` | Rank-one vector dot product returning a host scalar |
+| `a.copy_from_host(host)` | Upload into existing device storage |
+| `a.copy_to_host(host_output)` | Download into existing host storage |
+
+`a + b` calls `a.add(b)`, `a * b` calls `a.matmul(b)`, and `a * scalar`
+calls `a.scale(scalar)`. Each allocates a result. Use `_into` methods to reuse
+storage; separate outputs must not alias inputs. Inputs must share a context,
+even if separate contexts target the same physical device.
+
+Operators return `GpuResult<DeviceMatrix<T>>`, just like methods. Unwrap
+intermediate results explicitly; `try (a * b + c)` does not automatically
+unwrap the inner product. Scalar-left multiplication, elementwise products,
+compound assignment, automatic CPU fallback, and asynchronous execution are
+not provided.
+
+## Errors, precision, and allocations
+
+`GpuResult<T>` contains `Ok(T)` or `Error(GpuError)`. Errors implement `IError`
+and expose `operation()`, `category()`, `code()`, and `native_code()`.
+Categories distinguish validation, resource, CUDA runtime, and cuBLAS failures.
+Encoded codes use negative values for validation/resources, CUDA status plus
+10000 for runtime failures, and BLAS status plus 20000 for BLAS failures.
+`message()` allocates a diagnostic string only when requested.
+
+Operations synchronize even on submission failure. A failed synchronization
+invalidates the context for further operations; destruction still attempts
+cleanup. An execution failure may leave an existing output partially changed.
+
+The backend uses pedantic floating-point arithmetic without reduced-precision
+modes. Results can differ from CPU calculations because reduction order differs.
+Creating contexts and matrices allocates resources; allocating arithmetic
+creates another matrix. Reuse methods allocate no Sun-owned device buffers,
+but NVIDIA libraries may manage internal workspace allocations.
+
+## Validation and benchmarking
+
+`cuda_validation`, `cuda_native_faults`, and `cuda_simulated` test validation,
+resource cleanup, and the public API without a real GPU. The simulation uses
+an explicit test-only CPU backend and is not a production fallback.
+
+`cuda_gpu` tests real hardware and is labelled `gpu;nvidia`. It skips when a
+usable context cannot be opened; configure `SUN_CUDA_REQUIRE_GPU=ON` on GPU
+validation machines to make that condition fail. A skipped hardware test is
+not evidence of GPU correctness or ARM64/Jetson support.
+
+`benchmarks/gpu-matmul/main.sun` reports transfer time, allocating products,
+and products reusing output separately. Run it with the same library flags as
+the example. Its timings are informational, with no pass/fail threshold.

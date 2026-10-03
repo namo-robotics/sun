@@ -1,0 +1,23 @@
+/** Provides private C declarations for the synchronous NVIDIA backend. */
+public module cuda {
+  /** Calls the native open operation; handles stay private. */
+  extern "C" function c_open(ordinal: i32, output: raw_ptr<raw_ptr<u8>>) i32 as "sun_cuda_open";
+  /** Calls the native context release operation; handles stay private. */
+  extern "C" function c_context_release(context: raw_ptr<u8>) void as "sun_cuda_context_release";
+  /** Calls the native allocate operation; handles stay private. */
+  extern "C" function c_allocate(context: raw_ptr<u8>, rank: i32, rows: i64, columns: i64, width: i32, output: raw_ptr<raw_ptr<u8>>) i32 as "sun_cuda_allocate";
+  /** Calls the native matrix release operation; handles stay private. */
+  extern "C" function c_matrix_release(matrix: raw_ptr<u8>) void as "sun_cuda_matrix_release";
+  /** Calls the native matrix context operation; handles stay private. */
+  extern "C" function c_matrix_context(matrix: raw_ptr<u8>) raw_ptr<u8> as "sun_cuda_matrix_context";
+  /** Calls the native dimension operation; handles stay private. */
+  extern "C" function c_dimension(matrix: raw_ptr<u8>, dimension: i32) i64 as "sun_cuda_dimension";
+  /** Calls the native transfer operation; handles stay private. */
+  extern "C" function c_transfer(matrix: raw_ptr<u8>, host: raw_ptr<u8>, rank: i32, rows: i64, columns: i64, upload: i32) i32 as "sun_cuda_transfer";
+  /** Calls the native binary operation; handles stay private. */
+  extern "C" function c_binary(operation: i32, a: raw_ptr<u8>, b: raw_ptr<u8>, output: raw_ptr<u8>) i32 as "sun_cuda_binary";
+  /** Calls the native scale operation; handles stay private. */
+  extern "C" function c_scale(a: raw_ptr<u8>, alpha: f64, output: raw_ptr<u8>, in_place: i32) i32 as "sun_cuda_scale";
+  /** Calls the native dot operation; handles stay private. */
+  extern "C" function c_dot(a: raw_ptr<u8>, b: raw_ptr<u8>, output: raw_ptr<u8>) i32 as "sun_cuda_dot";
+}

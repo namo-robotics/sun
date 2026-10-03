@@ -34,7 +34,7 @@ check_dependencies() {
     
     if [ ${#missing[@]} -ne 0 ]; then
         error "Missing dependencies: ${missing[*]}"
-        log "Install with: sudo apt-get install -y devscripts debhelper build-essential cmake llvm-20-dev libzstd-dev"
+        log "Install with: sudo apt-get install -y devscripts debhelper build-essential cmake llvm-20-dev libzstd-dev nvidia-cuda-toolkit"
         exit 1
     fi
 }
@@ -125,7 +125,7 @@ publish_bundles() {
 
     local triple
     triple=$(host_triple)
-    for moon in stdlib tls; do
+    for moon in stdlib tls cuda; do
         if [ -f "$obj_dir/$moon.moon" ]; then
             cp "$obj_dir/$moon.moon" "$PROJECT_ROOT/dist/$moon-$triple.moon"
             log "published $moon-$triple.moon"

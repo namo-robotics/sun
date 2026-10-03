@@ -1,0 +1,33 @@
+/** Multiplies two matrices on the GPU and prints the result. */
+manifest { libraries: ["stdlib.moon", "cuda.moon"] }
+using std;
+using cuda;
+
+/** Uploads a matrix twice, multiplies on the GPU, and downloads the product. */
+function run() GpuResult<void> {
+  var alloc = make_heap_allocator();
+  var gpu = try open_device(0);
+  var a_cpu = Matrix<f32>([[1.0f32, 2.0f32], [3.0f32, 4.0f32]], alloc);
+  var b_cpu = Matrix<f32>([[1.0f32, 2.0f32], [3.0f32, 4.0f32]], alloc);
+  var a = try gpu.upload(a_cpu);
+  var b = try gpu.upload(b_cpu);
+  var c = try (a * b);
+  var c_cpu = Matrix<f32>(alloc, [2, 2]);
+  try c.copy_to_host(c_cpu);
+  println(c_cpu[0, 0]);
+  println(c_cpu[0, 1]);
+  println(c_cpu[1, 0]);
+  println(c_cpu[1, 1]);
+  return GpuResult.Ok;
+}
+
+/** Prints failures and returns a failing process status. */
+function main() i32 {
+  return match run() {
+    (error: const ref IError) => {
+      println(error.message());
+      1;
+    },
+    _ => 0
+  };
+}

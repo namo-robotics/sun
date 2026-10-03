@@ -148,6 +148,11 @@ jobs:
           sudo ./llvm.sh 20
           sudo apt-get install -y llvm-20-dev lld-20 libarchive-dev libzstd-dev libgtest-dev ninja-build git curl ca-certificates
 
+      - name: Install CUDA toolkit without GPU drivers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends nvidia-cuda-toolkit
+
       - name: Cache x86_64 musl toolchain
         uses: actions/cache@v5
         with:
@@ -201,15 +206,19 @@ jobs:
             -DCMAKE_C_COMPILER=clang-20 \
             -DCMAKE_CXX_COMPILER=clang++-20 \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DSUN_ENABLE_CUDA=ON -DSUN_CUDA_REQUIRE_GPU=OFF
 
       - name: Build
-        run: cmake --build build -j$(nproc)
+        run: cmake --build build -j$(($(nproc)/2))
 
       - name: Check tls.moon was built
         # The example skips itself when the bundle is missing; without this
         # a failed fetch would look like a pass.
         run: test -f build/tls.moon
+
+      - name: Check CUDA bundle was built without a GPU
+        run: test -s build/cuda.moon
 
       - name: Test
         run: |
@@ -424,10 +433,18 @@ jobs:
           key: deb-gcc
           max-size: 2G
 
+      - name: Install CUDA toolkit without GPU drivers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends nvidia-cuda-toolkit
+
       - name: Build Debian package
         run: |
           chmod +x ./scripts/build-deb.sh
           ./scripts/build-deb.sh
+
+      - name: Check standalone CUDA release bundle
+        run: test -s dist/cuda-x86_64-linux-gnu.moon
 
       - name: Record Debian package name
         id: deb
@@ -477,9 +494,9 @@ jobs:
 
             The temporary path is reachable by APT's restricted `_apt` user, and mode `0644` handles restrictive user umasks.
 
-            The `.deb` installs the compiler and both bundles on Linux; on
-            macOS that is what `brew install namo-robotics/sun/sun` installs,
-            from the `.tar.gz` here. The `.moon` files are the same bundles on
+            The `.deb` installs the compiler, stdlib, TLS, and CUDA bundles on Linux.
+            On macOS, `brew install namo-robotics/sun/sun` installs the compiler,
+            stdlib, and TLS from the `.tar.gz` here. The `.moon` files are the bundles on
             their own, for dropping next to an existing compiler; each is
             named for the target it was built for. Install one under its
             canonical name in a bundle search directory:
@@ -488,10 +505,14 @@ jobs:
             # Linux
             mv stdlib-x86_64-linux-gnu.moon /usr/lib/sun/stdlib.moon
             mv tls-x86_64-linux-gnu.moon    /usr/lib/sun/tls.moon
+            mv cuda-x86_64-linux-gnu.moon   /usr/lib/sun/cuda.moon
             # macOS
             mv stdlib-arm64-apple-darwin.moon "$(brew --prefix)/lib/sun/stdlib.moon"
             mv tls-arm64-apple-darwin.moon    "$(brew --prefix)/lib/sun/tls.moon"
             ```
+
+            CUDA programs require CUDA runtime and cuBLAS shared libraries and
+            an NVIDIA driver at execution time. Installing Sun does not require a GPU.
 
             A bundle built for another architecture is rejected at link time,
             so take the one matching your target.
@@ -527,9 +548,9 @@ jobs:
 
             The temporary path is reachable by APT's restricted `_apt` user, and mode `0644` handles restrictive user umasks.
 
-            The `.deb` installs the compiler and both bundles on Linux; on
-            macOS that is what `brew install namo-robotics/sun/sun` installs,
-            from the `.tar.gz` here. The `.moon` files are the same bundles on
+            The `.deb` installs the compiler, stdlib, TLS, and CUDA bundles on Linux.
+            On macOS, `brew install namo-robotics/sun/sun` installs the compiler,
+            stdlib, and TLS from the `.tar.gz` here. The `.moon` files are the bundles on
             their own, for dropping next to an existing compiler; each is
             named for the target it was built for. Install one under its
             canonical name in a bundle search directory:
@@ -538,10 +559,14 @@ jobs:
             # Linux
             mv stdlib-x86_64-linux-gnu.moon /usr/lib/sun/stdlib.moon
             mv tls-x86_64-linux-gnu.moon    /usr/lib/sun/tls.moon
+            mv cuda-x86_64-linux-gnu.moon   /usr/lib/sun/cuda.moon
             # macOS
             mv stdlib-arm64-apple-darwin.moon "$(brew --prefix)/lib/sun/stdlib.moon"
             mv tls-arm64-apple-darwin.moon    "$(brew --prefix)/lib/sun/tls.moon"
             ```
+
+            CUDA programs require CUDA runtime and cuBLAS shared libraries and
+            an NVIDIA driver at execution time. Installing Sun does not require a GPU.
 
             A bundle built for another architecture is rejected at link time,
             so take the one matching your target.
@@ -603,6 +628,7 @@ jobs:
 
       - name: Test installation
         run: |
+          test -s /usr/lib/sun/cuda.moon
           which sun
           sun --help || true
           # Test with stdlib import (stdlib.moon installed to /usr/lib/sun/)

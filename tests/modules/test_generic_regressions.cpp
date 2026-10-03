@@ -275,7 +275,7 @@ manifest { libraries: ["lib.moon"] }
   ASSERT_NO_FATAL_FAILURE(checkProgram("consumer.sun"));
 }
 
-// A compiled numeric specialization must not hide errors for a new argument.
+/** A compiled numeric specialization must not hide missing operator hooks. */
 TEST_F(Modules_GenericRegressions, UncompiledClassBodiesAreChecked) {
   ASSERT_NO_FATAL_FAILURE(buildLibrary(R"(
 /** Supplies a class whose method requires arithmetic. */
@@ -302,7 +302,7 @@ manifest { libraries: ["lib.moon"] }
 )");
   ASSERT_TRUE(
       run("build/sun " + (dir / "invalid.sun").string(), false,
-          "Type mismatch in binary operation: incompatible operand types"));
+          "Unknown member '__add__' on class 'Msg'"));
 }
 
 TEST_F(Modules_GenericRegressions, ModuleGlobals) {

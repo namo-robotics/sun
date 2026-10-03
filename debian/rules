@@ -29,6 +29,7 @@ override_dh_auto_configure:
 	dh_auto_configure -- \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DBUILD_TESTING=OFF \
+		-DSUN_ENABLE_CUDA=ON \
 		-DSUN_CROSS_TLS_AARCH64=ON \
 		-DFETCHCONTENT_FULLY_DISCONNECTED=OFF \
 		$(CCACHE_ARGS)
@@ -43,6 +44,8 @@ override_dh_auto_install:
 	install -D -m 644 obj-*/stdlib.moon debian/sun/usr/lib/sun/stdlib.moon
 	# Install the TLS bundle (carries its own static OpenSSL)
 	install -D -m 644 obj-*/tls.moon debian/sun/usr/lib/sun/tls.moon
+	# Ship the native CUDA wrapper; NVIDIA shared libraries remain external.
+	install -D -m 644 obj-*/cuda.moon debian/sun/usr/lib/sun/cuda.moon
 	# Keep every cross bundle beside others built for the same target.
 	for dir in obj-*/*/; do \
 		for moon in stdlib tls; do \

@@ -27,6 +27,9 @@
 		// Codex sessions, settings and credentials bound from the host's
 		// ~/.codex. Requires ~/.codex to exist on the host.
 		"source=${localEnv:HOME}${localEnv:USERPROFILE}/.codex,target=/home/ubuntu/.codex,type=bind",
+		// Host-created chats retain absolute history paths. Expose those paths
+		// too so the container can read and fork their history (POSIX hosts).
+		"source=${localEnv:HOME}/.codex,target=${localEnv:HOME}/.codex,type=bind",
 		// GitHub CLI credentials (hosts.yml) bound from the host, so the
 		// container shares the host's `gh auth login` instead of needing its
 		// own. Requires ~/.config/gh to exist on the host.

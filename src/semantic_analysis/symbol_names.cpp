@@ -16,6 +16,8 @@ bool isReservedIdentifier(const std::string& name) {
   if (name.empty() || name[0] != '_') return false;
   static const std::unordered_set<std::string> allowedDunders = {
       "__index__",     // obj[i] read
+      "__add__",       // obj + operand
+      "__multiply__",  // obj * operand
       "__setindex__",  // obj[i] = val write
       "__slice__",     // obj[a:b] slicing
   };

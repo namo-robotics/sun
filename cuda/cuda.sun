@@ -1,0 +1,6 @@
+/** Builds the optional NVIDIA library; CUDA shared libraries are linked by its users. */
+manifest {
+  source_files: ["native.sun", "matrix.sun"]
+  libraries: ["$SUN_CUDA_STDLIB/stdlib.moon"]
+  archives: ["$SUN_CUDA_NATIVE/libsun_cuda_native.a"]
+}
