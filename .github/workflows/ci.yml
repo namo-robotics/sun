@@ -9,6 +9,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -130,6 +134,150 @@ jobs:
             printf '\n[Download the vertical bar chart (strings.png) and full results](%s)\n' "$BENCHMARK_ARTIFACT_URL" >> "$GITHUB_STEP_SUMMARY"
           fi
 
+  cuda-gpu:
+    name: CUDA tests, examples, and GPU benchmarks
+    runs-on: linux-x64-gpu
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      CCACHE_SLOPPINESS: pch_defines,time_macros
+      SUN_PATH: ${{ github.workspace }}
+      CUDAToolkit_ROOT: /usr/local/cuda-12.6
+      LD_LIBRARY_PATH: /usr/local/cuda-12.6/lib64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Check GPU and record hardware
+        run: |
+          mkdir -p tmp/gpu-ci
+          nvidia-smi | tee tmp/gpu-ci/hardware.log
+          nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv \
+            | tee -a tmp/gpu-ci/hardware.log
+
+      - name: Install LLVM 20 and build dependencies
+        run: |
+          curl --fail --location --retry 3 https://apt.llvm.org/llvm.sh -o tmp/gpu-ci/llvm.sh
+          sudo bash tmp/gpu-ci/llvm.sh 20
+          sudo apt-get install -y llvm-20-dev lld-20 libarchive-dev libzstd-dev libgtest-dev ninja-build
+
+      - name: Install CUDA toolkit without GPU drivers
+        run: |
+          source /etc/os-release
+          case "$ID:$VERSION_ID:$(uname -m)" in
+            ubuntu:22.04:x86_64|ubuntu:24.04:x86_64) ;;
+            *) echo 'Expected an Ubuntu 22.04 or 24.04 x86-64 GPU runner' >&2; exit 1 ;;
+          esac
+          curl --fail --location --retry 3 \
+            "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu${VERSION_ID//./}/x86_64/cuda-keyring_1.1-1_all.deb" \
+            -o tmp/gpu-ci/cuda-keyring.deb
+          sudo dpkg -i tmp/gpu-ci/cuda-keyring.deb
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cuda-toolkit-12-6
+          "$CUDAToolkit_ROOT/bin/nvcc" --version | tee -a tmp/gpu-ci/hardware.log
+
+      - name: Set up ccache
+        uses: hendrikmuhs/ccache-action@v1.2.23
+        with:
+          key: cuda-clang20
+          max-size: 2G
+
+      - name: Build CUDA bundle and test programs
+        run: |
+          # A separate build directory avoids the root config's TLS products.
+          cmake -S . -B tmp/gpu-ci/build -G Ninja \
+            -DCMAKE_C_COMPILER=clang-20 \
+            -DCMAKE_CXX_COMPILER=clang++-20 \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=ON -DSUN_ENABLE_CUDA=ON -DSUN_CUDA_REQUIRE_GPU=ON
+          cmake --build tmp/gpu-ci/build -j$(($(nproc)/2)) \
+            --target cuda_moon cuda_native_fault_checks sun_cuda_fake cuda_native_checks \
+            2>&1 | tee tmp/gpu-ci/build.log
+          test -s tmp/gpu-ci/build/cuda.moon
+
+      - name: Test CUDA with required GPU hardware
+        run: |
+          ctest --test-dir tmp/gpu-ci/build -R '^cuda_' --no-tests=error \
+            -j1 --output-on-failure 2>&1 | tee tmp/gpu-ci/tests.log
+
+      - name: Run CUDA example through JIT and native compilation
+        run: |
+          sun="$PWD/tmp/gpu-ci/build/sun"
+          flags=(--lib-path "$PWD/tmp/gpu-ci/build" -L "$CUDAToolkit_ROOT/lib64" -lcublas -lcudart -lpthread)
+          source=examples/110-gpu-matrices/main.sun
+          "$sun" "${flags[@]}" "$source" | tee tmp/gpu-ci/example-jit.log
+          "$sun" "${flags[@]}" -c --dynamic -o tmp/gpu-ci/gpu-matrices "$source"
+          tmp/gpu-ci/gpu-matrices | tee tmp/gpu-ci/example-native.log
+          python3 - <<'PY'
+          from pathlib import Path
+          for mode in ('jit', 'native'):
+              result = Path(f'tmp/gpu-ci/example-{mode}.log').read_text().split()
+              assert [float(value) for value in result] == [7, 10, 15, 22], result
+          PY
+
+      # Benchmark failures are informational; CUDA tests above still gate CI.
+      - name: Run Sun GPU benchmark
+        continue-on-error: true
+        run: |
+          tmp/gpu-ci/build/sun --lib-path tmp/gpu-ci/build \
+            -L "$CUDAToolkit_ROOT/lib64" -lcublas -lcudart -lpthread \
+            benchmarks/gpu-matmul/main.sun 2>&1 | tee tmp/gpu-ci/benchmark-sun.log
+
+      - name: Set up benchmark Python
+        id: gpu-python
+        continue-on-error: true
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install GPU comparison frameworks
+        id: gpu-frameworks
+        if: success() && steps.gpu-python.outcome == 'success'
+        continue-on-error: true
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cu124 torch==2.6.0
+          python -m pip install -r benchmarks/gpu-matmul/requirements.txt
+          python -m pip freeze > tmp/gpu-ci/frameworks.log
+
+      - name: Run PyTorch GPU benchmark
+        if: success() && steps.gpu-frameworks.outcome == 'success'
+        continue-on-error: true
+        run: python benchmarks/gpu-matmul/compare.py pytorch 2>&1 | tee tmp/gpu-ci/benchmark-pytorch.log
+
+      - name: Run CuPy GPU benchmark
+        if: success() && steps.gpu-frameworks.outcome == 'success'
+        continue-on-error: true
+        run: python benchmarks/gpu-matmul/compare.py cupy 2>&1 | tee tmp/gpu-ci/benchmark-cupy.log
+
+      - name: Upload GPU results and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cuda-gpu-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            tmp/gpu-ci/*.log
+            tmp/gpu-ci/build/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Publish GPU benchmark summary
+        if: always()
+        run: |
+          {
+            echo '### GPU matrix benchmarks'
+            echo 'Informational timings; see step outcomes for failures and artifacts for full logs.'
+            for log in tmp/gpu-ci/hardware.log tmp/gpu-ci/benchmark-*.log; do
+              [ -f "$log" ] || continue
+              printf '\n#### %s\n\n```text\n' "$(basename "$log" .log)"
+              cat "$log"
+              printf '\n```\n'
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
   build-and-test:
     runs-on: ubuntu-24.04
 
@@ -223,7 +371,7 @@ jobs:
       - name: Test
         run: |
           cd build
-          ctest -j$(nproc) --output-on-failure
+          ctest -j$(($(nproc)/2)) --output-on-failure
         env:
           SUN_PATH: ${{ github.workspace }}
 
@@ -465,7 +613,7 @@ jobs:
 
   # Publish only after compiler tests and this package's installation pass.
   publish-deb:
-    needs: [build-deb, build-and-test, build-and-test-macos, test-install]
+    needs: [build-deb, build-and-test, build-and-test-macos, cuda-gpu, test-install]
     permissions:
       contents: write
     runs-on: ubuntu-24.04
