@@ -546,7 +546,44 @@ answers it with a syscall when that matters.
 
 ### Waiting on descriptors
 
-`Poller` wraps portable `poll(2)`. Its integer timeout overload keeps descriptors
+`EventLoop` uses epoll on Linux and kqueue on macOS. It watches descriptors
+without scanning every registration on each wait. Call `open()` before adding
+borrowed descriptors, and remove them before closing or reusing them. The loop
+owns its queue and closes it on destruction. Registration changes can allocate
+through the supplied allocator; waits reuse storage reserved by the constructor.
+
+```sun
+var loop = EventLoop(alloc, 64); // maximum native events per batch
+try loop.open();
+try loop.add(sock_fd, POLLIN, 42u64);
+var count = try loop.wait(std.time.create_duration_millis(250));
+for (var i: i64 = 0; i < count; i = i + 1) {
+    var event = try loop.event_at(i);
+    if (event.is_readable()) { /* read from event.fd(); identify it by event.token() */ }
+    if (event.is_hup()) { /* drain buffered input before closing */ }
+}
+try loop.modify(sock_fd, POLLIN | POLLOUT, 42u64);
+try loop.remove(sock_fd);
+```
+
+Interest accepts `POLLIN`, `POLLOUT`, both, or zero to suspend normal readiness.
+Errors and hangups are reported through `is_error()` and `is_hup()`; their
+reporting for suspended descriptors depends on the OS. Tokens are full-width
+`u64` values and need not be unique. Duplicate adds and missing modify/remove
+operations return errors. Failed changes preserve registrations; if macOS cannot
+roll back a partial filter change, the loop closes and reports that failure.
+
+Readiness is level-triggered: data remains ready until consumed. An integer
+wait timeout of zero polls, `-1` waits indefinitely, and other negative values
+are rejected. Duration waits round up fractional milliseconds. Signals return
+an interrupted system error. Each wait replaces the previous batch, including
+on failure. `event_at()` checks bounds and returns an independent snapshot without
+allocating. macOS may return separate read and write events for one descriptor;
+event order is unspecified. A full batch does not discard remaining readiness.
+Use a loop from one thread at a time.
+
+`Poller` wraps portable `poll(2)`. Removal preserves the remaining registration
+order and readiness flags in linear time. Its integer timeout overload keeps descriptors
 in registration order, so `is_readable(i)` answers for the i-th one. Nothing
 here needs a `struct pollfd` assembled by hand.
 
@@ -573,6 +610,7 @@ for (var event: ref Event in events) {
     if (event.is_hup()) { /* event.fd() reached end of stream */ }
 }
 
+poller.modify(sock_fd, POLLOUT); // replaces interest in every matching registration
 poller.remove(sock_fd);       // removes every registration for sock_fd
 ```
 
@@ -580,6 +618,7 @@ poller.remove(sock_fd);       // removes every registration for sock_fd
 |--------|-----------|-------------|
 | `add_read` / `add_write` / `add_read_write` | `(fd: i32) void` | Watch a descriptor |
 | `add` | `(fd: i32, events: i16) void` | Watch with an explicit `POLL*` mask |
+| `modify` | `(fd: i32, events: i16) bool` | Replace interest and clear readiness for every matching registration |
 | `remove` | `(fd: i32) bool` | Remove every matching registration; report whether one existed |
 | `wait` | `(timeout_ms: i32) SystemResult<i32>` | Number ready; -1 blocks |
 | `wait` | `(timeout: const ref Duration) SystemResult<Vec<Event>>` | Ready descriptors in registration order |

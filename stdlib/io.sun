@@ -838,23 +838,37 @@ public module std.io {
      * Stop watching every registration for a descriptor.
      */
     public method remove(fd: i32) bool {
-      var removed: bool = false;
-      var i: i64 = 0;
-      while (i < this.fds.size()) {
-        if (unsafe { this.fds.get_unchecked(i); }.fd == fd) {
-          var j: i64 = i;
-          while (j + 1 < this.fds.size()) {
-            var next: ref PollFd = unsafe { this.fds.get_unchecked(j + 1); };
-            unsafe { this.fds.set_unchecked(j, PollFd(next.fd, next.events)); };
-            j = j + 1;
+      var kept: i64 = 0;
+      var original: i64 = this.fds.size();
+      for (var i: i64 = 0; i < original; i = i + 1) {
+        var entry = unsafe { this.fds.get_unchecked(i); };
+        if (entry.fd != fd) {
+          if (kept != i) {
+            var copy = PollFd(entry.fd, entry.events);
+            copy.revents = entry.revents;
+            unsafe { this.fds.set_unchecked(kept, copy); };
           }
-          this.fds.pop();
-          removed = true;
-        } else {
-          i = i + 1;
+          kept = kept + 1;
         }
       }
-      return removed;
+      while (this.fds.size() > kept) {
+        this.fds.pop();
+      }
+      return kept != original;
+    }
+
+    /** Change every matching registration's interest and clear its old readiness. */
+    public method modify(fd: i32, events: i16) bool {
+      var found: bool = false;
+      for (var i: i64 = 0; i < this.fds.size(); i = i + 1) {
+        var entry = unsafe { this.fds.get_unchecked(i); };
+        if (entry.fd == fd) {
+          entry.events = events;
+          entry.revents = 0;
+          found = true;
+        }
+      }
+      return found;
     }
 
     /**

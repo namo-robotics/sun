@@ -262,7 +262,7 @@ Value* IntrinsicsGenerator::codegenBuiltin(const std::string& name,
 
 Value* IntrinsicsGenerator::codegenTargetIsIntrinsic(const CallExprAST& expr) {
   // _target_is("macos") -> bool, folded to a constant for the compilation
-  // target. The argument must be a string literal from the known set so a
+  // target OS or architecture. The argument must be a known string literal so a
   // typo is a compile error rather than a silently false branch. The
   // if/ternary codegen keeps only the live side of a branch on a constant,
   // which is what lets per-OS stdlib code declare externs (like Darwin's
@@ -279,17 +279,22 @@ Value* IntrinsicsGenerator::codegenTargetIsIntrinsic(const CallExprAST& expr) {
 
   const std::string& name =
       static_cast<const sun::ast::StringLiteralAST&>(*args[0]).getValue();
-  if (!sun::support::isKnownTargetOs(name)) {
+  if (!sun::support::isKnownTargetOs(name) && name != "x86_64" &&
+      name != "aarch64") {
     sun::support::logAndThrowError(
         "_target_is does not know the target '" + name +
-            "'; it accepts \"linux\", \"macos\" and \"windows\"",
+            "'; it accepts \"linux\", \"macos\", \"windows\", "
+            "\"x86_64\" and \"aarch64\"",
         expr.getLocation());
     return nullptr;
   }
 
-  auto osName = sun::support::targetOsName(
-      sun::support::resolvedTargetTriple(module->getTargetTriple()));
-  bool result = osName && *osName == name;
+  const auto triple =
+      sun::support::resolvedTargetTriple(module->getTargetTriple());
+  auto osName = sun::support::targetOsName(triple);
+  bool result = (osName && *osName == name) ||
+                (name == "x86_64" && triple.getArch() == llvm::Triple::x86_64) ||
+                (name == "aarch64" && triple.getArch() == llvm::Triple::aarch64);
   return ConstantInt::get(llvm::Type::getInt1Ty(ctx.getContext()),
                           result ? 1 : 0);
 }

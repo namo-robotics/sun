@@ -1,0 +1,232 @@
+/** Kernel-backed, level-triggered descriptor readiness with application tokens. */
+public module std.io {
+  /** A readiness snapshot; its token belongs to the registration at wait time. */
+  public class ReadyEvent {
+    var event_: Event;
+    var token_: u64;
+
+    /** Capture a native event and its application's token. */
+    init(event: Event, token: u64) {
+      this.event_ = event;
+      this.token_ = token;
+    }
+
+    /** Return the registered descriptor. */
+    public const method fd() i32 {
+      return this.event_.fd();
+    }
+
+    /** Return the application's token without narrowing it. */
+    public const method token() u64 {
+      return this.token_;
+    }
+
+    /** Return the portable POLL* readiness bits. */
+    public const method events() i16 {
+      return this.event_.events();
+    }
+
+    /** Report available input. */
+    public const method is_readable() bool {
+      return this.event_.is_readable();
+    }
+
+    /** Report available output space. */
+    public const method is_writable() bool {
+      return this.event_.is_writable();
+    }
+
+    /** Report a peer shutdown; buffered input may still be readable. */
+    public const method is_hup() bool {
+      return this.event_.is_hup();
+    }
+
+    /** Report a descriptor error. */
+    public const method is_error() bool {
+      return this.event_.is_error();
+    }
+  }
+
+  /** Registration metadata kept separately from platform-specific event layouts. */
+  public class EventRegistration {
+    var events: i16;
+    var token: u64;
+
+    /** Store the requested interest and application token. */
+    init(events: i16, token: u64) {
+      this.events = events;
+      this.token = token;
+    }
+  }
+
+  /**
+   * Own an epoll or kqueue descriptor, but borrow all watched descriptors.
+   * Call open before use. Remove descriptors before closing or reusing them.
+   * The allocator supplies registration storage and reusable wait buffers.
+   * Wait returns at most capacity events; readiness remains level-triggered.
+   * Use from one thread at a time. macOS can return separate read/write events.
+   */
+  public class EventLoop {
+    // Store fd + 1 so zeroed moved-from objects own no descriptor, including fd 0.
+    var handle: i64 = 0;
+    var capacity: i32;
+    var registrations: Map<i64, EventRegistration>;
+    var native_events: ContiguousBuffer<u32>;
+    var ready: Vec<ReadyEvent>;
+
+    /** Reserve wait buffers; open rejects nonpositive capacities. */
+    init(alloc: ref HeapAllocator, capacity: i32) {
+      this.capacity = capacity;
+      this.registrations = Map<i64, EventRegistration>(alloc, 16);
+      var slots: i64 = capacity > 0 ? _convert<i64>(capacity) : 1;
+      this.native_events = ContiguousBuffer<u32>(alloc, slots * 8);
+      this.ready = Vec<ReadyEvent>(alloc, slots);
+    }
+
+    /** Open the native queue once. Failure leaves this object unopened. */
+    public method open() SystemResult<void> {
+      if (this.handle != 0 or this.capacity <= 0) {
+        return SystemResult.Error(Error(22, "invalid event loop state or capacity"));
+      }
+      var fd: i32 = native_loop_open();
+      if (fd < 0) {
+        return SystemResult.Error(Error(errno(), "cannot open event loop"));
+      }
+      this.handle = _convert<i64>(fd) + 1;
+      return SystemResult.Ok;
+    }
+
+    /** Close the queue and forget registrations without closing watched descriptors. */
+    public method close() void {
+      if (this.handle != 0) {
+        unsafe { c_close(_convert<i32>(this.handle - 1)); };
+        this.handle = 0;
+      }
+      this.registrations.clear();
+      this.ready.clear();
+    }
+
+    /** Release the queue, including when this value moves out of a scope. */
+    deinit() {
+      this.close();
+    }
+
+    /** Return the number of registrations. */
+    public const method count() i64 {
+      return this.registrations.size();
+    }
+
+    /**
+     * Register a descriptor once with POLLIN, POLLOUT, or both, and a token.
+     * Zero interest suspends normal readiness; error/hangup reporting varies by OS.
+     * Registration changes may allocate through the supplied allocator.
+     */
+    public method add(fd: i32, events: i16, token: u64) SystemResult<void> {
+      try this.check_interest(fd, events);
+      if (this.registrations.contains(fd)) {
+        return SystemResult.Error(Error(17, "descriptor is already registered"));
+      }
+      try this.change(fd, 0, events, 1);
+      this.registrations.insert(fd, EventRegistration(events, token));
+      return SystemResult.Ok;
+    }
+
+    /** Replace a registration's interest and token for subsequent waits. */
+    public method modify(fd: i32, events: i16, token: u64) SystemResult<void> {
+      try this.check_interest(fd, events);
+      var old: i16 = 0;
+      match this.registrations.get(fd) {
+        LookupResult.Ok(entry) => {
+          old = entry.events;
+        },
+        LookupResult.NotFound(e) => {
+          return SystemResult.Error(Error(2, "descriptor is not registered"));
+        }
+      };
+      try this.change(fd, old, events, 3);
+      this.registrations.insert(fd, EventRegistration(events, token));
+      return SystemResult.Ok;
+    }
+
+    /** Stop watching a registered descriptor. Remove it before closing it. */
+    public method remove(fd: i32) SystemResult<void> {
+      try this.check_interest(fd, 0);
+      var old: i16 = 0;
+      match this.registrations.get(fd) {
+        LookupResult.Ok(entry) => {
+          old = entry.events;
+        },
+        LookupResult.NotFound(e) => {
+          return SystemResult.Error(Error(2, "descriptor is not registered"));
+        }
+      };
+      try this.change(fd, old, 0, 2);
+      ignore_error(this.registrations.remove(fd));
+      return SystemResult.Ok;
+    }
+
+    /** Validate portable interest flags and require an open queue. */
+    method check_interest(fd: i32, events: i16) SystemResult<void> {
+      if (this.handle == 0 or fd < 0) {
+        return SystemResult.Error(Error(9, "event loop or descriptor is closed"));
+      }
+      if ((events & ~(POLLIN | POLLOUT)) != 0) {
+        return SystemResult.Error(Error(22, "unsupported event loop interest"));
+      }
+      return SystemResult.Ok;
+    }
+
+    /** Apply a native change; close the queue if a partial change cannot be undone. */
+    method change(fd: i32, old: i16, events: i16, operation: i32) SystemResult<void> {
+      var error: i32 = native_loop_change(_convert<i32>(this.handle - 1), fd, old, events, operation);
+      if (error < 0) {
+        this.close();
+        return SystemResult.Error(Error(0 - error, "event loop rollback failed; queue closed"));
+      }
+      if (error != 0) {
+        return SystemResult.Error(Error(error, "event loop registration failed"));
+      }
+      return SystemResult.Ok;
+    }
+
+    /**
+     * Replace the ready batch without allocating. Zero polls, -1 waits forever.
+     * Other negative timeouts are rejected. Signals return an interrupted error.
+     * On failure the ready batch is empty; successful events last until wait/close.
+     */
+    public method wait(timeout_ms: i32) SystemResult<i32> {
+      this.ready.clear();
+      try this.check_interest(0, 0);
+      if (timeout_ms < -1) {
+        return SystemResult.Error(Error(22, "invalid event loop timeout"));
+      }
+      var count: i32 = native_loop_wait(_convert<i32>(this.handle - 1), this.native_events.raw_data(), this.capacity, timeout_ms);
+      if (count < 0) {
+        return SystemResult.Error(Error(errno(), "event loop wait failed"));
+      }
+      for (var i: i64 = 0; i < count; i = i + 1) {
+        var event = native_loop_event(this.native_events.raw_data(), i);
+        match this.registrations.get(event.fd()) {
+          LookupResult.Ok(entry) => {
+            this.ready.push(ReadyEvent(event, entry.token));
+          },
+          LookupResult.NotFound(e) => {}
+        };
+      }
+      return SystemResult.Ok(_convert<i32>(this.ready.size()));
+    }
+
+    /** Wait for a finite duration, rounding fractional milliseconds upward. */
+    public method wait(timeout: const ref std.time.Duration) SystemResult<i32> {
+      return this.wait(poll_timeout_millis(timeout));
+    }
+
+    /** Return an independent event snapshot, with bounds checking and no allocation. */
+    public const method event_at(index: i64) AccessResult<ReadyEvent> {
+      return match this.ready.get(index) {
+        AccessResult.Ok(event) => AccessResult.Ok(ReadyEvent(Event(event.fd(), event.events()), event.token())),
+        AccessResult.OutOfBounds(error) => AccessResult.OutOfBounds(error)
+      };
+    }
+  }
+}

@@ -356,6 +356,30 @@ TEST(Ffi_Abi_CrossTargetDarwin, struct_argument_coerces_like_elf) {
       << "12-byte struct should coerce to [2 x i64] on arm64 Darwin";
 }
 
+/** Architecture checks use the requested target, including Darwin's arm64 spelling. */
+TEST(Ffi_Abi_CrossTargetDarwin, architecture_check_uses_target_triple) {
+  for (const auto* target : {"arm64-apple-darwin", "aarch64-linux-gnu",
+                             "x86_64-linux-gnu"}) {
+    auto driver = Driver::createForAOT("architecture_check", target);
+    driver->compileString(R"(
+      /** Return a distinct constant for each supported architecture. */
+      function main() i32 {
+        if (_target_is("aarch64")) { return 17; }
+        if (_target_is("x86_64")) { return 23; }
+        return 0;
+      }
+    )");
+    std::string ir;
+    llvm::raw_string_ostream os(ir);
+    driver->getModule().print(os, nullptr);
+    const bool x86 = std::string(target).find("x86_64") == 0;
+    EXPECT_NE(ir.find(x86 ? "ret i32 23" : "ret i32 17"), std::string::npos)
+        << target << "\n" << ir;
+    EXPECT_EQ(ir.find(x86 ? "ret i32 17" : "ret i32 23"), std::string::npos)
+        << target << "\n" << ir;
+  }
+}
+
 TEST(Ffi_Abi_CrossTargetDarwin, dead_target_branch_emits_no_extern_call) {
   // The reason _target_is folds at codegen rather than trusting an
   // optimizer: a call to a symbol the target's libc lacks must never reach

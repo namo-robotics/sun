@@ -1,0 +1,91 @@
+/** macOS kqueue boundary with portable readiness flags. */
+public module std.io {
+  /** Native kevent layout on the supported 64-bit macOS targets. */
+  class Kevent {
+    var ident: u64;
+    var filter: i16;
+    var flags: u16;
+    var fflags: u32 = 0;
+    var data: i64 = 0;
+    var udata: u64 = 0;
+
+    /** Describe one descriptor filter change. */
+    init(fd: i32, filter: i16, flags: u16) {
+      this.ident = _convert<u64>(fd);
+      this.filter = filter;
+      this.flags = flags;
+    }
+  }
+
+  /** Open a queue and set close-on-exec, preserving errno if setup fails. */
+  function native_loop_open() i32 {
+    var fd: i32 = unsafe { c_kqueue(); };
+    if (fd < 0) {
+      return fd;
+    }
+    if (unsafe { c_fcntl(fd, 2, 1); } < 0) {
+      var error: i32 = errno();
+      unsafe { c_close(fd); _store<i32>(errno_ptr(), 0, error); };
+      return -1;
+    }
+    return fd;
+  }
+
+  /** Change one filter only when its requested presence changes. */
+  function change_filter(queue: i32, fd: i32, filter: i16, old: bool, enabled: bool) i32 {
+    if (old == enabled) {
+      return 0;
+    }
+    var flags: u16 = enabled ? 1u16 : 2u16;
+    var change = Kevent(fd, filter, flags);
+    if (unsafe { c_kevent(queue, _bitcast<raw_ptr<u8>>(_address_of<Kevent>(change)), 1, null, 0, null); } < 0) {
+      return errno();
+    }
+    return 0;
+  }
+
+  /** Undo the first filter if the second fails; negative errno means rollback failed. */
+  function native_loop_change(queue: i32, fd: i32, old: i16, events: i16, operation: i32) i32 {
+    // Even a suspended registration must name an open descriptor.
+    if (unsafe { c_fcntl(fd, 1); } < 0) {
+      return errno();
+    }
+    var error: i32 = change_filter(queue, fd, -1, (old & POLLIN) != 0, (events & POLLIN) != 0);
+    if (error != 0) {
+      return error;
+    }
+    error = change_filter(queue, fd, -2, (old & POLLOUT) != 0, (events & POLLOUT) != 0);
+    if (error != 0) {
+      var rollback: i32 = change_filter(queue, fd, -1, (events & POLLIN) != 0, (old & POLLIN) != 0);
+      if (rollback != 0) {
+        return 0 - rollback;
+      }
+    }
+    return error;
+  }
+
+  /** Convert the portable millisecond timeout to kqueue's timespec. */
+  function native_loop_wait(queue: i32, events: raw_ptr<u8>, capacity: i32, timeout: i32) i32 {
+    if (timeout == -1) {
+      return unsafe { c_kevent(queue, null, 0, events, capacity, null); };
+    }
+    var duration = Timespec(timeout / 1000, _convert<i64>(timeout % 1000) * 1000000);
+    return unsafe { c_kevent(queue, null, 0, events, capacity, _bitcast<raw_ptr<u8>>(_address_of<Timespec>(duration))); };
+  }
+
+  /** Translate read/write filters and preserve EOF and error indications. */
+  function native_loop_event(events: raw_ptr<u8>, index: i64) Event {
+    var event = unsafe { _load<Kevent>(events, index); };
+    var bits: i16 = event.filter == -1 ? POLLIN : POLLOUT;
+    if ((event.flags & 32768) != 0) {
+      bits = bits | POLLHUP;
+      if (event.fflags != 0) {
+        bits = bits | POLLERR;
+      }
+    }
+    if ((event.flags & 16384) != 0) {
+      bits = bits | POLLERR;
+    }
+    return Event(_convert<i32>(event.ident), bits);
+  }
+}

@@ -85,7 +85,7 @@ manifest {
   top of this one carries them forward along with the code that calls into
   them, so a program needs only the bundle it imports. See [C FFI](/c-ffi)
 - **target** — Entries that only apply when compiling for one operating
-  system (`linux`, `macos` or `windows` — the same names `_target_is`
+  system (`linux`, `macos` or `windows` — the OS names `_target_is`
   accepts). Each block takes the same sections as the manifest itself. The
   manifest never decides the target: `--target` (or the host, when absent)
   does, at compile time — the block just says which entries belong to builds
@@ -452,6 +452,7 @@ manifest {
 | `bigint.sun` | Arbitrary-precision `BigUint` |
 | `byte_order.sun` | `std.byte_order` — endianness conversions |
 | `env.sun` | `std.env` — environment variables, working directory, `args` |
+| `event_loop.sun` | `std.io` — epoll/kqueue readiness with `EventLoop` |
 | `errors.sun` | Standard error types (`EmptyError`, `NotFoundError`, etc.) |
 | `http.sun` | HTTP/1.1 server (`HttpServer`); the client is in `tls.moon` |
 | `io.sun` | `std.io` — files, directories, `Poller` |

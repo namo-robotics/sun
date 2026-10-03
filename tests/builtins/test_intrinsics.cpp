@@ -935,6 +935,20 @@ TEST(Builtins_TargetIsIntrinsic, host_jit_matches_exactly_one_os) {
   EXPECT_EQ(value, 1);
 }
 
+/** Supported native architectures select exactly one compile-time branch. */
+TEST(Builtins_TargetIsIntrinsic, host_jit_matches_exactly_one_architecture) {
+  auto value = executeString(R"(
+    /** Count architecture matches for the compilation target. */
+    function main() i32 {
+        var count: i32 = 0;
+        if (_target_is("x86_64")) { count = count + 1; }
+        if (_target_is("aarch64")) { count = count + 1; }
+        return count;
+    }
+  )");
+  EXPECT_EQ(value, 1);
+}
+
 TEST(Builtins_TargetIsIntrinsic, folded_if_keeps_only_the_live_branch) {
   // "windows" is known but never the test host, so the else side must run.
   auto value = executeString(R"(
