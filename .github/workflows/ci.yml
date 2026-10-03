@@ -159,9 +159,18 @@ jobs:
 
       - name: Install LLVM 20 and build dependencies
         run: |
-          curl --fail --location --retry 3 https://apt.llvm.org/llvm.sh -o tmp/gpu-ci/llvm.sh
-          sudo bash tmp/gpu-ci/llvm.sh 20
-          sudo apt-get install -y llvm-20-dev lld-20 libarchive-dev libzstd-dev libgtest-dev ninja-build
+          source /etc/os-release
+          curl --fail --location --retry 3 https://apt.llvm.org/llvm-snapshot.gpg.key -o tmp/gpu-ci/llvm-key.asc
+          echo '8b2a587ffd672c4687e7581dad4b2f6c1bb2ad6b480cd9771ba2ff48e0b8c75d  tmp/gpu-ci/llvm-key.asc' | sha256sum --check
+          gpg --batch --dearmor --output tmp/gpu-ci/llvm-key.gpg tmp/gpu-ci/llvm-key.asc
+          # APT's unprivileged user must be able to read the signing key and source.
+          sudo install -m 644 tmp/gpu-ci/llvm-key.gpg /usr/share/keyrings/llvm-gpu.gpg
+          echo "deb [signed-by=/usr/share/keyrings/llvm-gpu.gpg] https://apt.llvm.org/${VERSION_CODENAME}/ llvm-toolchain-${VERSION_CODENAME}-20 main" > tmp/gpu-ci/llvm.list
+          sudo install -m 644 tmp/gpu-ci/llvm.list /etc/apt/sources.list.d/llvm-gpu.list
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake ninja-build python3 \
+            clang-20 llvm-20-dev lld-20 libarchive-dev libzstd-dev libgtest-dev
 
       - name: Install CUDA toolkit without GPU drivers
         run: |
