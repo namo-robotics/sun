@@ -583,12 +583,13 @@ the bytes are going to or coming from.
 
 ## Target Intrinsics
 
-### `_target_is(os)`
+### `_target_is(name)`
 
-A compile-time check of the operating system being compiled for. The
-argument must be a string literal from `"linux"`, `"macos"` or `"windows"`
-(anything else is a compile error), and the call folds to a constant for the
-`--target` in effect (the host's OS when compiling natively).
+A compile-time check of the operating system or architecture being compiled for.
+The argument must be one of `"linux"`, `"macos"`, `"windows"`, `"x86_64"`, or
+`"aarch64"` (anything else is a compile error). The call folds to a constant
+for the `--target` in effect, or the host when compiling natively.
+`"aarch64"` also matches targets spelled `arm64-apple-darwin`.
 
 A branch on a folded condition keeps only its live side — dead branches are
 pruned during code generation, not left to an optimizer — so per-OS code may
@@ -603,8 +604,8 @@ if (_target_is("macos")) {
 ```
 
 For whole files of per-OS definitions, prefer the manifest's `target:` block
-(see [Modules](/modules)); `_target_is` is the in-function form of the same
-vocabulary.
+(see [Modules](/modules)). Manifest selectors accept operating systems;
+architecture checks are available through `_target_is`.
 
 ## Futex Intrinsics
 
@@ -802,6 +803,6 @@ class Vec<T> {
 | `_bswap_u64` | `x: u64` | `u64` | The value with its bytes reversed |
 | `_futex_wait` | `ptr, expected` | `void` | Block until woken |
 | `_futex_wake` | `ptr` | `void` | Wake one blocked thread |
-| `_target_is` | `os: string literal` | `bool` | Compile-time check of the target OS |
+| `_target_is` | `name: string literal` | `bool` | Compile-time check of the target OS or architecture |
 
 The `__`-prefixed file and socket intrinsics have tables of their own above.

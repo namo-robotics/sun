@@ -298,6 +298,29 @@ public module std {
       try std.test.assert(not p.remove(99), "99 was never watched");
     }
 
+    /** Removing duplicates preserves order and readiness of retained descriptors. */
+    test_function removal_preserves_ready_flags_and_modify_clears_them() {
+      var alloc = make_heap_allocator();
+      var pipe = try std.test.expect_system(std.process.open_pipe(alloc));
+      var reader = std.io.File();
+      reader.adopt(pipe.read_fd());
+      var writer = std.io.File();
+      writer.adopt(pipe.write_fd());
+      var poller = std.io.Poller(alloc);
+      poller.add_read(-1);
+      poller.add_read(-1);
+      poller.add_write(pipe.write_fd());
+      try std.test.assert_eq(try std.test.expect_system(poller.wait(0)), 1);
+      try std.test.assert(poller.remove(-1), "duplicate ignored descriptors removed");
+      try std.test.assert_eq(poller.count(), 1);
+      try std.test.assert(poller.is_writable(0), "compaction preserves readiness");
+      poller.add_write(pipe.write_fd());
+      try std.test.assert(poller.modify(pipe.write_fd(), 0), "all matching interests replaced");
+      try std.test.assert_eq(poller.revents(0), 0);
+      try std.test.assert_eq(try std.test.expect_system(poller.wait(0)), 0);
+      try std.test.assert(not poller.modify(-1, std.io.POLLIN), "missing descriptor is reported");
+    }
+
     /** Checks duration wait returns ready events. */
     test_function duration_wait_returns_ready_events() {
       var alloc = make_heap_allocator();

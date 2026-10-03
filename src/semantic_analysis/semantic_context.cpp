@@ -866,7 +866,7 @@ void SemanticContext::registerBuiltinFunctions() {
 
   // Target intrinsics
   // _target_is("macos") - compile-time check of the compilation target's
-  // operating system; codegen folds it to a constant and keeps only the live
+  // operating system or architecture; codegen folds it and keeps only the live
   // side of a branch on it
   currentScope().declareFunction("_target_is",
                                  {Types::Bool(), {Types::String()}, {}});

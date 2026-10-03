@@ -1,0 +1,257 @@
+using std;
+
+/** Regression coverage for kernel readiness queues and their portable interface. */
+public module std.event_loop_tests {
+  /** Assert that a rejected operation reports the expected system error. */
+  function expect_error(result: SystemResult<void>, code: i32) std.test.AssertionResult<void> {
+    match result {
+      SystemResult.Ok => {
+        return std.test.AssertionResult.Error(std.test.AssertionError("expected an error"));
+      },
+      SystemResult.Error(error) => {
+        try std.test.assert_eq(error.code(), code);
+      }
+    };
+    return std.test.AssertionResult.Ok;
+  }
+
+  /** Check lifecycle, empty waits, invalid arguments, and bounds-checked access. */
+  test_function lifecycle_and_empty_wait() {
+    var alloc = make_heap_allocator();
+    var invalid = std.io.EventLoop(alloc, 0);
+    try expect_error(invalid.open(), 22);
+    var loop = std.io.EventLoop(alloc, 8);
+    try expect_error(loop.add(1, std.io.POLLIN, 0u64), 9);
+    try std.test.expect_system_success(loop.open());
+    try expect_error(loop.open(), 22);
+    try std.test.assert_eq(loop.count(), 0);
+    try std.test.assert_eq(try std.test.expect_system(loop.wait(0)), 0);
+    var start = std.time.now();
+    try std.test.assert_eq(try std.test.expect_system(loop.wait(std.time.create_duration_millis(20))), 0);
+    try std.test.assert(start.elapsed().as_millis() >= 10, "empty wait honors timeout");
+    match loop.event_at(0) {
+      AccessResult.Ok(event) => {
+        try std.test.assert(false, "empty batch has no event");
+      },
+      AccessResult.OutOfBounds(error) => {}
+    };
+    match loop.wait(-2) {
+      SystemResult.Ok(count) => {
+        try std.test.assert(false, "invalid timeout rejected");
+      },
+      SystemResult.Error(error) => {
+        try std.test.assert_eq(error.code(), 22);
+      }
+    };
+    loop.close();
+    loop.close();
+    try std.test.expect_system_success(loop.open());
+  }
+
+  /** Check full-width tokens, level triggering, suspension, modification, and removal. */
+  test_function readable_tokens_modify_and_remove() {
+    var alloc = make_heap_allocator();
+    var pipe = try std.test.expect_system(std.process.open_pipe(alloc));
+    var reader = std.io.File();
+    reader.adopt(pipe.read_fd());
+    var writer = std.io.File();
+    writer.adopt(pipe.write_fd());
+    var loop = std.io.EventLoop(alloc, 4);
+    try std.test.expect_system_success(loop.open());
+    try std.test.expect_system_success(loop.add(pipe.read_fd(), std.io.POLLIN, 18446744073709551615u64));
+    try std.test.assert_eq(try std.test.expect_system(loop.wait(0)), 0);
+    writer.write("ready");
+    try std.test.assert_eq(try std.test.expect_system(loop.wait(1000)), 1);
+    var event = try std.test.expect_access(loop.event_at(0));
+    try std.test.assert_eq(event.fd(), pipe.read_fd());
+    try std.test.assert(event.token() == 18446744073709551615u64, "token is not narrowed");
+    try std.test.assert(event.is_readable(), "pipe input is readable");
+    try std.test.assert(not event.is_writable(), "read interest excludes write readiness");
+    try std.test.assert_eq(try std.test.expect_system(loop.wait(0)), 1);
+    try std.test.expect_system_success(loop.modify(pipe.read_fd(), 0, 7u64));
+    try std.test.assert_eq(try std.test.expect_system(loop.wait(0)), 0);
+    try std.test.expect_system_success(loop.modify(pipe.read_fd(), std.io.POLLIN, 4294967297u64));
+    try std.test.assert_eq(try std.test.expect_system(loop.wait(0)), 1);
+    var changed = try std.test.expect_access(loop.event_at(0));
+    try std.test.assert(changed.token() == 4294967297u64, "updated token reaches subsequent waits");
+    try std.test.assert(event.token() == 18446744073709551615u64, "earlier snapshot remains independent");
+    try std.test.expect_system_success(loop.remove(pipe.read_fd()));
+    try std.test.assert_eq(loop.count(), 0);
+    try std.test.assert_eq(try std.test.expect_system(loop.wait(0)), 0);
+    try std.test.expect_system_success(loop.add(pipe.read_fd(), std.io.POLLIN, 9u64));
+    try std.test.assert_eq(try std.test.expect_system(loop.wait(0)), 1);
+  }
+
+  /** Check duplicate/missing registrations and rejected changes preserve valid state. */
+  test_function registration_errors_preserve_state() {
+    var alloc = make_heap_allocator();
+    var pipe = try std.test.expect_system(std.process.open_pipe(alloc));
+    var reader = std.io.File();
+    reader.adopt(pipe.read_fd());
+    var writer = std.io.File();
+    writer.adopt(pipe.write_fd());
+    var loop = std.io.EventLoop(alloc, 4);
+    try std.test.expect_system_success(loop.open());
+    try expect_error(loop.add(-1, std.io.POLLIN, 0u64), 9);
+    try expect_error(loop.add(2147483647, std.io.POLLIN, 0u64), 9);
+    try std.test.assert_eq(loop.count(), 0);
+    try expect_error(loop.add(pipe.read_fd(), std.io.POLLPRI, 0u64), 22);
+    try expect_error(loop.modify(pipe.read_fd(), std.io.POLLIN, 0u64), 2);
+    try expect_error(loop.remove(pipe.read_fd()), 2);
+    try std.test.expect_system_success(loop.add(pipe.write_fd(), std.io.POLLOUT, 11u64));
+    try expect_error(loop.add(pipe.write_fd(), std.io.POLLIN, 22u64), 17);
+    try expect_error(loop.modify(pipe.write_fd(), std.io.POLLERR, 22u64), 22);
+    try std.test.assert_eq(loop.count(), 1);
+    try std.test.assert_eq(try std.test.expect_system(loop.wait(0)), 1);
+    var event = try std.test.expect_access(loop.event_at(0));
+    try std.test.assert(event.is_writable(), "pipe has write capacity");
+    try std.test.assert(event.token() == 11u64, "failed modification preserves token");
+    try std.test.expect_system_success(loop.remove(pipe.write_fd()));
+    try expect_error(loop.remove(pipe.write_fd()), 2);
+  }
+
+  /** Check native record strides across a batch and report peer hangup. */
+  test_function multiple_ready_records_and_hangup() {
+    var alloc = make_heap_allocator();
+    var first = try std.test.expect_system(std.process.open_pipe(alloc));
+    var second = try std.test.expect_system(std.process.open_pipe(alloc));
+    var reader1 = std.io.File();
+    reader1.adopt(first.read_fd());
+    var reader2 = std.io.File();
+    reader2.adopt(second.read_fd());
+    first.close_write();
+    second.close_write();
+    var loop = std.io.EventLoop(alloc, 2);
+    try std.test.expect_system_success(loop.open());
+    try std.test.expect_system_success(loop.add(first.read_fd(), std.io.POLLIN, 1u64));
+    try std.test.expect_system_success(loop.add(second.read_fd(), std.io.POLLIN, 2u64));
+    try std.test.assert_eq(try std.test.expect_system(loop.wait(1000)), 2);
+    var first_event = try std.test.expect_access(loop.event_at(0));
+    var second_event = try std.test.expect_access(loop.event_at(1));
+    try std.test.assert(first_event.is_hup() and second_event.is_hup(), "both peers closed");
+    try std.test.assert(first_event.fd() != second_event.fd(), "separate records retain descriptors");
+    try std.test.assert(first_event.token() + second_event.token() == 3u64, "both tokens survive native decoding");
+    try std.test.expect_system_success(loop.remove(first.read_fd()));
+    try std.test.expect_system_success(loop.remove(second.read_fd()));
+  }
+
+  /** A small batch must not lose readiness for descriptors beyond its capacity. */
+  test_function bounded_batches_and_move() {
+    var alloc = make_heap_allocator();
+    var first = try std.test.expect_system(std.process.open_pipe(alloc));
+    var second = try std.test.expect_system(std.process.open_pipe(alloc));
+    var reader1 = std.io.File();
+    reader1.adopt(first.read_fd());
+    var reader2 = std.io.File();
+    reader2.adopt(second.read_fd());
+    first.close_write();
+    second.close_write();
+    var original = std.io.EventLoop(alloc, 1);
+    try std.test.expect_system_success(original.open());
+    try std.test.expect_system_success(original.add(first.read_fd(), std.io.POLLIN, 1u64));
+    try std.test.expect_system_success(original.add(second.read_fd(), std.io.POLLIN, 2u64));
+    var loop = original;
+    try std.test.assert_eq(try std.test.expect_system(loop.wait(1000)), 1);
+    var event = try std.test.expect_access(loop.event_at(0));
+    var first_fd = event.fd();
+    try std.test.expect_system_success(loop.remove(first_fd));
+    try std.test.assert_eq(try std.test.expect_system(loop.wait(1000)), 1);
+    var remaining = try std.test.expect_access(loop.event_at(0));
+    try std.test.assert(remaining.fd() != first_fd, "remaining descriptor is still ready");
+    loop.close();
+    try std.test.assert_eq(loop.count(), 0);
+  }
+  /** Registration growth and repeated removal keep every token associated with its descriptor. */
+  test_function registration_growth_and_reuse() {
+    var alloc = make_heap_allocator();
+    var readers = Vec<std.io.File>(alloc, 32);
+    var loop = std.io.EventLoop(alloc, 5);
+    try std.test.expect_system_success(loop.open());
+    for (var i: i64 = 0; i < 32; i = i + 1) {
+      var pipe = try std.test.expect_system(std.process.open_pipe(alloc));
+      var reader = std.io.File();
+      reader.adopt(pipe.read_fd());
+      pipe.close_write();
+      try std.test.expect_system_success(loop.add(pipe.read_fd(), std.io.POLLIN, _convert<u64>(pipe.read_fd())));
+      readers.push(reader);
+    }
+    for (var pass: i32 = 0; pass < 2; pass = pass + 1) {
+      while (loop.count() > 0) {
+        var count = try std.test.expect_system(loop.wait(1000));
+        try std.test.assert(count > 0 and count <= 5, "bounded batch makes progress");
+        for (var i: i64 = 0; i < count; i = i + 1) {
+          var event = try std.test.expect_access(loop.event_at(i));
+          try std.test.assert(event.token() == _convert<u64>(event.fd()), "token follows descriptor after growth");
+          try std.test.expect_system_success(loop.remove(event.fd()));
+        }
+      }
+      if (pass == 0) {
+        for (var retained: ref std.io.File in readers) {
+          try std.test.expect_system_success(loop.add(retained.get_fd(), std.io.POLLIN, _convert<u64>(retained.get_fd())));
+        }
+      }
+    }
+  }
+  /** Changing a connected socket's read/write filters updates readiness in place. */
+  test_function socket_interest_changes() {
+    var alloc = make_heap_allocator();
+    var listener = TcpListener();
+    try std.test.expect_system_success(listener.bind_loopback(0));
+    try std.test.expect_system_success(listener.listen(1));
+    var client = TcpStream();
+    try std.test.expect_system_success(client.connect_local(try std.test.expect_system(listener.local_port())));
+    var peer = try std.test.expect_system(listener.accept());
+    var loop = std.io.EventLoop(alloc, 4);
+    try std.test.expect_system_success(loop.open());
+    try std.test.expect_system_success(loop.add(peer.get_fd(), std.io.POLLIN, 10u64));
+    try std.test.assert_eq(try std.test.expect_system(loop.wait(0)), 0);
+    try std.test.expect_system_success(loop.modify(peer.get_fd(), std.io.POLLOUT, 20u64));
+    try std.test.assert_eq(try std.test.expect_system(loop.wait(1000)), 1);
+    var writable = try std.test.expect_access(loop.event_at(0));
+    try std.test.assert(writable.is_writable() and not writable.is_readable(), "write interest replaced read interest");
+    try std.test.expect_system_success(loop.modify(peer.get_fd(), std.io.POLLIN | std.io.POLLOUT, 30u64));
+    try std.test.expect_system(client.send_str("ready"));
+    var count = try std.test.expect_system(loop.wait(1000));
+    var bits: i16 = 0;
+    for (var i: i64 = 0; i < count; i = i + 1) {
+      var event = try std.test.expect_access(loop.event_at(i));
+      bits = bits | event.events();
+      try std.test.assert(event.token() == 30u64, "both filters report updated token");
+    }
+    try std.test.assert((bits & std.io.POLLIN) != 0 and (bits & std.io.POLLOUT) != 0, "both interests report readiness");
+    try std.test.expect_system_success(loop.remove(peer.get_fd()));
+  }
+
+  /** A moved loop still closes descriptor zero and keeps close-on-exec enabled. */
+  function check_descriptor_zero() std.test.AssertionResult<void> {
+    unsafe { c_close(0); };
+    var alloc = make_heap_allocator();
+    if (true) {
+      var original = std.io.EventLoop(alloc, 1);
+      try std.test.expect_system_success(original.open());
+      try std.test.assert((unsafe { c_fcntl(0, 1); } & 1) != 0, "queue is close-on-exec");
+      var moved = original;
+      try std.test.assert_eq(try std.test.expect_system(moved.wait(0)), 0);
+    }
+    try std.test.assert_eq(unsafe { c_fcntl(0, 1); }, -1);
+    return std.test.AssertionResult.Ok;
+  }
+
+  /** Isolate descriptor-zero ownership checks from the test runner's stdin. */
+  test_function queue_can_own_descriptor_zero() {
+    var pid = try std.test.expect_system(std.process.fork());
+    if (pid == 0) {
+      match check_descriptor_zero() {
+        std.test.AssertionResult.Ok => {
+          std.process.exit_now(0);
+        },
+        std.test.AssertionResult.Error(error) => {
+          std.process.exit_now(1);
+        }
+      };
+    }
+    var status = try std.test.expect_system(std.process.wait_pid(pid, 0));
+    try std.test.assert(std.process.exited(status), "queue child exited normally");
+    try std.test.assert_eq(std.process.exit_status(status), 0);
+  }
+}

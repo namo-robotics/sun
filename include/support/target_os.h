@@ -1,9 +1,10 @@
 // support/target_os.h — The OS names Sun exposes for compile-time target
 // selection: "linux", "macos", "windows".
 //
-// Two features share this vocabulary and must never drift apart: the
+// Two features share this OS vocabulary: the
 // _target_is("...") intrinsic, and the manifest's `target: { <os>: ... }`
-// blocks that include sources only when compiling for that OS.
+// blocks that include sources only when compiling for that OS. The intrinsic
+// also accepts architecture names, independently of manifest selectors.
 
 #pragma once
 

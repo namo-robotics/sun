@@ -1,0 +1,48 @@
+/** Linux epoll boundary; no native packed records escape into application code. */
+public module std.io {
+  /** Storage large enough for either supported epoll_event ABI, aligned to words. */
+  class EpollChange {
+    var events: u32;
+    var word1: u32 = 0;
+    var word2: u32 = 0;
+    var word3: u32 = 0;
+
+    /** Store a descriptor in epoll's data field at the compilation target's offset. */
+    init(fd: i32, events: i16) {
+      this.events = _convert<u32>(events);
+      if (_target_is("x86_64")) {
+        this.word1 = _convert<u32>(fd);
+      } else {
+        this.word2 = _convert<u32>(fd);
+      }
+    }
+  }
+
+  /** Open a queue that will not leak across exec. */
+  function native_loop_open() i32 {
+    return unsafe { c_epoll_create1(524288); };
+  }
+
+  /** Return zero on success, or the saved errno on failure. */
+  function native_loop_change(queue: i32, fd: i32, old: i16, events: i16, operation: i32) i32 {
+    var change = EpollChange(fd, events);
+    if (unsafe { c_epoll_ctl(queue, operation, fd, _bitcast<raw_ptr<u8>>(_address_of<EpollChange>(change))); } < 0) {
+      return errno();
+    }
+    return 0;
+  }
+
+  /** Wait directly into the event loop's reusable native storage. */
+  function native_loop_wait(queue: i32, events: raw_ptr<u8>, capacity: i32, timeout: i32) i32 {
+    return unsafe { c_epoll_wait(queue, events, capacity, timeout); };
+  }
+
+  /** Decode using aligned word loads, including the packed x86-64 data field. */
+  function native_loop_event(events: raw_ptr<u8>, index: i64) Event {
+    var stride: i64 = _target_is("x86_64") ? 3 : 4;
+    var offset: i64 = _target_is("x86_64") ? 1 : 2;
+    var bits: u32 = unsafe { _load<u32>(events, index * stride); };
+    var fd: u32 = unsafe { _load<u32>(events, index * stride + offset); };
+    return Event(_convert<i32>(fd), _convert<i16>(bits & 29));
+  }
+}

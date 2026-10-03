@@ -42,6 +42,17 @@ public module std {
   /** Creates a pipe and writes its read and write descriptors into caller-provided storage. */
   extern "C" function c_pipe(fds: raw_ptr<i32>) i32 as "pipe";
 
+  /** Create a Linux epoll queue with native flags. */
+  extern "C" function c_epoll_create1(flags: i32) i32 as "epoll_create1";
+  /** Apply a Linux epoll registration change using a native event record. */
+  extern "C" function c_epoll_ctl(queue: i32, operation: i32, fd: i32, event: raw_ptr<u8>) i32 as "epoll_ctl";
+  /** Fill caller-owned storage with Linux epoll readiness records. */
+  extern "C" function c_epoll_wait(queue: i32, events: raw_ptr<u8>, capacity: i32, timeout: i32) i32 as "epoll_wait";
+  /** Create a macOS kqueue readiness queue. */
+  extern "C" function c_kqueue() i32 as "kqueue";
+  /** Submit macOS kqueue changes or retrieve native readiness records. */
+  extern "C" function c_kevent(queue: i32, changes: raw_ptr<u8>, count: i32, events: raw_ptr<u8>, capacity: i32, timeout: raw_ptr<u8>) i32 as "kevent";
+
   // --- paths ---------------------------------------------------------------
 
   /** Removes a filesystem entry named by a null-terminated path. */
