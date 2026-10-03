@@ -132,8 +132,7 @@ jobs:
 
   cuda-gpu:
     name: CUDA tests, examples, and GPU benchmarks
-    # Set to the name of namo-robotics hosted runner 3.
-    runs-on: ${{ vars.CUDA_RUNNER }}
+    runs-on: linux-x64-gpu
     timeout-minutes: 60
     defaults:
       run:
