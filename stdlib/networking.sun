@@ -58,9 +58,11 @@ public module std {
   }
 
   /**
-   * Change one descriptor's non-blocking flag while preserving its other flags.
+   * Enable or disable non-blocking I/O while preserving other descriptor flags.
+   * Borrows fd without closing it. Returns a system error if reading or updating
+   * the flags fails. Descriptors sharing the same open file description are affected.
    */
-  function set_fd_nonblocking(fd: i32, enabled: bool) SystemResult<void> {
+  public function set_fd_nonblocking(fd: i32, enabled: bool) SystemResult<void> {
     var flags: i32 = unsafe { c_fcntl(fd, F_GETFL); };
     if (flags < 0) {
       var err_code: i32 = errno();

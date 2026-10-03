@@ -373,3 +373,43 @@ TEST(EndToEnd_Testing, default_assertion_result) {
   )"),
             1);
 }
+
+/** Check the public descriptor helpers from a module outside the standard library. */
+TEST(EndToEnd_Testing, public_errno_and_nonblocking_helpers) {
+  EXPECT_EQ(executeTestsWithStdlib(R"(
+    using std;
+
+    /** Exercise the descriptor API as an application importing stdlib would. */
+    module descriptor_client {
+        /** Read descriptor flags independently to check the public helper. */
+        extern function fcntl(fd: i32, command: i32, ...) i32;
+
+        /** Check flag changes, restoration, and error reporting across modules. */
+        test_function descriptor_helpers() {
+            var listener = TcpListener();
+            try std.test.expect_system_success(listener.bind_loopback(0));
+            var fd: i32 = listener.get_fd();
+            var original: i32 = unsafe { fcntl(fd, 3); };
+            try std.test.assert(original >= 0);
+            try std.test.expect_system_success(std.set_fd_nonblocking(fd, true));
+            var enabled: i32 = unsafe { fcntl(fd, 3); };
+            try std.test.assert(enabled != original);
+            try std.test.expect_system_success(std.set_fd_nonblocking(fd, false));
+            try std.test.assert_eq(unsafe { fcntl(fd, 3); }, original);
+
+            var failed: i32 = unsafe { fcntl(-1, 3); };
+            var code: i32 = std.errno();
+            try std.test.assert_eq(failed, -1);
+            try std.test.assert(code > 0);
+            try std.test.assert(not std.is_would_block(code));
+            var reported: i32 = 0;
+            match std.set_fd_nonblocking(-1, true) {
+                SystemResult.Ok => {},
+                SystemResult.Error(e) => { reported = e.code(); }
+            };
+            try std.test.assert_eq(reported, code);
+        }
+    }
+  )"),
+            0);
+}

@@ -183,10 +183,10 @@ public module std {
   // errno_ptr().
 
   /**
-   * The last error a C call reported. Only meaningful right after a call that
-   * signalled failure.
+   * Read the current thread's C errno value without clearing it. Only meaningful
+   * immediately after a C call signals failure; later calls may overwrite it.
    */
-  function errno() i32 {
+  public function errno() i32 {
     return unsafe { _load<i32>(errno_ptr(), 0); };
   }
 
