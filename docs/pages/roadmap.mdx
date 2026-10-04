@@ -103,11 +103,11 @@ community-supplyable now that FFI has landed.
 
 ## Networking and TLS
 
-A TLS client, hostname resolution and an HTTPS client have landed:
+TLS client and server transports, hostname resolution and an HTTPS client have landed:
 `tls.moon` wraps OpenSSL and carries a static copy of it, so TLS programs
 need no linker flags and no OpenSSL on the target. Remaining work:
 
-- [ ] TLS server support, so `HttpServer` can serve HTTPS
+- [ ] Integrate `TlsServerContext` with `HttpServer` so it can serve HTTPS
 - [ ] IPv6, and connect/read timeouts on both `TcpStream` and `TlsStream`
 - [ ] Redirect following and connection reuse in `HttpsClient`
 - [ ] Fetch remote `.moon` bundles with the native client instead of shelling
