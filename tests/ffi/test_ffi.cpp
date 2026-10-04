@@ -1333,6 +1333,44 @@ TEST(Ffi, compatible_native_aliases) {
   )"), 7);
 }
 
+/** Raw pointer aliases share the C ABI for both parameters and return values. */
+TEST(Ffi, native_aliases_with_different_pointer_pointees) {
+  EXPECT_EQ(executeString(R"(
+    /** Bind allocation with a byte pointer result. */
+    extern "C" function bytes(size: i64) raw_ptr<u8> as "malloc";
+    /** Bind allocation with a word pointer result. */
+    extern "C" function words(size: i64) raw_ptr<u64> as "malloc";
+    /** Release a byte allocation. */
+    extern "C" function free_bytes(buffer: raw_ptr<u8>) void as "free";
+    /** Release a word allocation. */
+    extern "C" function free_words(buffer: raw_ptr<u64>) void as "free";
+    /** Exercise both typed views of the native symbols. */
+    function main() i32 {
+      unsafe {
+        var b = bytes(8);
+        var w = words(8);
+        free_bytes(b);
+        free_words(w);
+      };
+      return 7;
+    }
+  )"), 7);
+}
+
+/** Buffer aliases may differ in pointee type but must keep other ABI types. */
+TEST(Ffi, native_buffer_aliases_preserve_signature_checks) {
+  for (const std::string& countType : {"i64", "i32", "raw_ptr<u8>"}) {
+    auto driver = Driver::createForAOT("native_buffer_aliases");
+    auto analyzed = driver->analyzeString(R"(
+      /** Read bytes through the native buffer parameter. */
+      extern "C" function bytes(fd: i32, buf: raw_ptr<u8>, count: i64) i64 as "read";
+      /** Read words through the same native buffer parameter. */
+      extern "C" function words(fd: i32, buf: raw_ptr<u64>, count: )" +
+      countType + ") i64 as \"read\";");
+    EXPECT_EQ(analyzed.error.has_value(), countType != "i64");
+  }
+}
+
 /** Imported private externs retain their source identity in diagnostics. */
 TEST(Ffi, conflicting_native_signature_from_moon) {
   namespace fs = std::filesystem;

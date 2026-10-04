@@ -159,6 +159,28 @@ void DeclarationCollectionPass::collectFunctionSignature(FunctionAST& func) {
                                       ctx_.currentLocation());
 }
 
+/** Compare native value types without imposing a pointee type on C buffers. */
+static bool compatibleNativeValueTypes(const TypePtr& first,
+                                       const TypePtr& second) {
+  return (first->isRawPointer() && second->isRawPointer()) ||
+         first->equals(*second);
+}
+
+/** Compare C signatures while retaining scalar and callback type checks. */
+static bool compatibleNativeFunctionTypes(const TypePtr& first,
+                                          const TypePtr& second) {
+  const auto& a = static_cast<const sun::types::FunctionType&>(*first);
+  const auto& b = static_cast<const sun::types::FunctionType&>(*second);
+  if (!compatibleNativeValueTypes(a.getReturnType(), b.getReturnType()) ||
+      a.getParamTypes().size() != b.getParamTypes().size())
+    return false;
+  for (size_t i = 0; i < a.getParamTypes().size(); ++i) {
+    if (!compatibleNativeValueTypes(a.getParamTypes()[i], b.getParamTypes()[i]))
+      return false;
+  }
+  return true;
+}
+
 void DeclarationCollectionPass::registerNativeFunction(
     const PrototypeAST& proto, const std::vector<TypePtr>& params,
     TypePtr returnType) {
@@ -169,7 +191,8 @@ void DeclarationCollectionPass::registerNativeFunction(
                                proto.isCVariadic()});
   if (inserted) return;
   const auto& previous = entry->second;
-  if (previous.type->equals(*type) && previous.variadic == proto.isCVariadic())
+  if (compatibleNativeFunctionTypes(previous.type, type) &&
+      previous.variadic == proto.isCVariadic())
     return;
 
   logAndThrowError(
