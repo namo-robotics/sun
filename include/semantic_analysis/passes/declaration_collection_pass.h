@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -80,6 +81,21 @@ class DeclarationCollectionPass {
   void registerUsing(sun::ast::UsingAST &usingDecl);
 
  private:
+  /** Owns a native declaration's resolved signature and diagnostic origin. */
+  struct NativeFunctionSignature {
+    sun::types::TypePtr type;
+    std::string name;
+    sun::support::Position location;
+    bool variadic;
+  };
+
+  /** Reject incompatible declarations of one native symbol across all scopes. */
+  void registerNativeFunction(const sun::ast::PrototypeAST &proto,
+                              const std::vector<sun::types::TypePtr> &params,
+                              sun::types::TypePtr returnType);
+
+  // Shared by source and imported declarations for this analysis session.
+  std::map<std::string, NativeFunctionSignature> nativeFunctions_;
   SemanticContext &ctx_;
   SemanticAnalyzer &sema_;
 };

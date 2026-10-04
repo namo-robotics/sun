@@ -299,6 +299,7 @@ TEST(Ffi_Abi_DarwinBundles, os_family_separates_linux_from_darwin) {
 // Cross-target driver integration (--target arm64-apple-darwin)
 // ============================================================================
 
+/** Check ABI extension attributes independently of diagnostic metadata. */
 TEST(Ffi_Abi_CrossTargetDarwin, extern_ir_carries_extension_attributes) {
   auto driver = Driver::createForAOT("darwin_ir_module", "arm64-apple-darwin");
   driver->compileString(R"(
@@ -320,15 +321,15 @@ TEST(Ffi_Abi_CrossTargetDarwin, extern_ir_carries_extension_attributes) {
 
   // Declaration and call site both need the attribute; the backend lowers
   // the call from the call site's.
-  EXPECT_NE(ir.find("declare i32 @sun_ffi_take_byte(i8 zeroext"),
-            std::string::npos)
-      << ir;
+  const auto* takeByte = driver->getModule().getFunction("sun_ffi_take_byte");
+  ASSERT_NE(takeByte, nullptr);
+  EXPECT_TRUE(takeByte->hasParamAttribute(0, llvm::Attribute::ZExt)) << ir;
   EXPECT_NE(ir.find("call i32 @sun_ffi_take_byte(i8 zeroext"),
             std::string::npos)
       << ir;
-  EXPECT_NE(ir.find("declare signext i16 @sun_ffi_give_short"),
-            std::string::npos)
-      << ir;
+  const auto* giveShort = driver->getModule().getFunction("sun_ffi_give_short");
+  ASSERT_NE(giveShort, nullptr);
+  EXPECT_TRUE(giveShort->hasRetAttribute(llvm::Attribute::SExt)) << ir;
 }
 
 TEST(Ffi_Abi_CrossTargetDarwin, struct_argument_coerces_like_elf) {
