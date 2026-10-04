@@ -1,0 +1,47 @@
+/** The private OpenSSL socket adapter used by server sessions. */
+public module tls {
+  using std;
+
+  const BIO_TYPE_SOURCE_SINK: i32 = 1024;
+  const BIO_CTRL_FLUSH: i32 = 11;
+  const BIO_RETRY_FLAGS: i32 = 15;
+  const BIO_RETRY_READ: i32 = 9;
+  const BIO_RETRY_WRITE: i32 = 10;
+  const SOCKET_INTERRUPTED: i32 = 4;
+
+  /** Sends bytes without SIGPIPE and marks retryable nonblocking failures. */
+  function tls_socket_write(bio: raw_ptr<u8>, data: raw_ptr<u8>, length: i32) i32 {
+    unsafe { c_bio_clear_flags(bio, BIO_RETRY_FLAGS); };
+    var fd: i32 = unsafe { _load<i32>(c_bio_get_data(bio), 0); };
+    var count: i64 = unsafe { c_tls_send(fd, data, _convert<i64>(length), MSG_NOSIGNAL); };
+    if (count < 0) {
+      var code: i32 = errno();
+      if (is_would_block(code) or code == SOCKET_INTERRUPTED) {
+        unsafe { c_bio_set_flags(bio, BIO_RETRY_WRITE); };
+      }
+    }
+    return _convert<i32>(count);
+  }
+
+  /** Reads socket bytes and marks retryable nonblocking failures. */
+  function tls_socket_read(bio: raw_ptr<u8>, data: raw_ptr<u8>, length: i32) i32 {
+    unsafe { c_bio_clear_flags(bio, BIO_RETRY_FLAGS); };
+    var fd: i32 = unsafe { _load<i32>(c_bio_get_data(bio), 0); };
+    var count: i64 = unsafe { c_tls_recv(fd, data, _convert<i64>(length), 0); };
+    if (count < 0) {
+      var code: i32 = errno();
+      if (is_would_block(code) or code == SOCKET_INTERRUPTED) {
+        unsafe { c_bio_set_flags(bio, BIO_RETRY_READ); };
+      }
+    }
+    return _convert<i32>(count);
+  }
+
+  /** A socket has no user-space output to flush and supports no other controls. */
+  function tls_socket_ctrl(bio: raw_ptr<u8>, command: i32, value: i64, data: raw_ptr<u8>) i64 {
+    if (command == BIO_CTRL_FLUSH) {
+      return 1;
+    }
+    return 0;
+  }
+}

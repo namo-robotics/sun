@@ -125,6 +125,76 @@ stream.close();
 `close` shuts the session down and releases everything; dropping the value
 does the same.
 
+## Server TLS
+
+`TlsServerContext` loads a PEM certificate chain and matching, unencrypted PEM
+private key. It requires TLS 1.2 or newer. A failed replacement load leaves
+the previous configuration usable, and sessions
+already accepted retain their original configuration.
+
+Accept TCP connections with `TcpListener`, then transfer each socket to the
+context. `accept` makes the socket nonblocking and returns a `TlsServerStream`;
+it does not run the handshake or wait for network traffic.
+
+```sun
+var context = TlsServerContext();
+var cert = String("cert.pem");
+var key = String("key.pem");
+try context.load(cert, key);
+
+var listener = TcpListener();
+try listener.bind_port(8443);
+try listener.listen(128);
+var stream = try context.accept(try listener.accept());
+```
+
+Setup uses `ClientResult<T>`, the bundle's existing transport/TLS error result.
+The snippet assumes a caller returning a compatible result. For an event-driven
+accept loop, also set the `TcpListener` nonblocking and handle its would-block
+errors with `is_would_block`.
+
+Drive `stream.handshake()` until it returns `ServerResult.Ok(0)`, then use
+`read(buffer)` and `write(string)`. These operations return `ServerResult<i64>`:
+
+| Result | Meaning |
+| --- | --- |
+| `Ok(n)` | Handshake complete, or application bytes read/written |
+| `WantRead` | Wait for readability on `get_fd()`, then retry the operation |
+| `WantWrite` | Wait for writability on `get_fd()`, then retry the operation |
+| `Closed` | The peer sent a TLS close notification, or shutdown finished |
+| `Tls(error)` | TLS/transport, state, or argument error, with an explanation |
+
+Either I/O operation can require either readiness direction. After a write
+returns a readiness result, retry with the **same contents and length**; the
+string's storage may move. Successful writes can be partial: advance by the
+returned count before starting the next write. `pending()` reports decrypted
+bytes already buffered inside OpenSSL; consume those without waiting for
+another socket event. Empty reads and writes return `Ok(0)` after the handshake.
+
+`shutdown()` performs a nonblocking close-notification exchange; continue on
+readiness results until it returns `Closed`. `close()` and destruction release
+the session and socket immediately, without network I/O. Abrupt TCP EOF is an
+error, not a clean TLS close. Server socket writes suppress `SIGPIPE` without
+changing process-wide signal handlers.
+
+### Application protocol negotiation
+
+The optional third argument to `load` is a static, length-prefixed ALPN list,
+in server preference order:
+
+```sun
+try context.load(cert, key, "\x02h2\x08http/1.1");
+```
+
+Each length byte must be nonzero and followed by exactly that many protocol
+bytes. Names containing NUL are unsupported. Static storage keeps the callback
+valid even after the context is moved or closed, without copying the list per
+connection. `stream.alpn()` returns an owned string with the selected name, or
+an empty string when the client offers no matching protocol. Advertise only
+protocols your application implements. TLS does not implement HTTP/2 itself.
+
+The server API handles TLS transport; `HttpServer` does not yet use it directly.
+
 ## Hostnames
 
 Name resolution is in the standard library, not the TLS bundle, so plain TCP
@@ -183,7 +253,7 @@ the set matching the compilation target:
 
 ```sun
 manifest {
-    source_files: ["openssl.sun", "tls_stream.sun", "https_client.sun"]
+    source_files: ["openssl.sun", "tls_stream.sun", "tls_server.sun", "tls_socket.sun", "https_client.sun"]
     libraries: ["stdlib.moon"]
     target: {
         linux: {
@@ -207,7 +277,8 @@ sharing one build share one copy; see [C FFI](/c-ffi).
 
 ## Tests
 
-The bundle's own tests are Sun code, `tls/https_client_tests.sun`, listed
+The bundle's own tests are Sun code, `tls/https_client_tests.sun` and
+`tls/tls_server_tests.sun`, listed
 under `test_files:` in `tls/tls.sun` (see [Testing](/testing)) and compiled
 only into the test binary, `build/tls_tests_test`. Response parsing runs with
 no network; the handshake tests mint a throwaway certificate with the
@@ -215,3 +286,8 @@ no network; the handshake tests mint a throwaway certificate with the
 the client accepts the certificate once `SSL_CERT_FILE` trusts it and rejects
 it otherwise. They run sequentially because that variable is process-wide,
 and skip themselves when the `openssl` tool is not on the path.
+
+Server tests use local nonblocking OpenSSL peers to check handshake progress,
+ALPN preference and fallback, partial writes and backpressure, credential load
+failures, context lifetime, and clean versus abrupt closure. They need the
+`openssl` command-line tool only to create temporary credentials.

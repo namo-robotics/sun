@@ -1,0 +1,334 @@
+/** Server TLS contexts and owned, nonblocking connections. */
+public module tls {
+  using std;
+
+  /** An operation's progress, peer closure, or fatal transport/TLS error. */
+  public enum ServerResult<T> {
+    Ok(T),
+    WantRead,
+    WantWrite,
+    Closed,
+    Tls(TlsError)
+  }
+
+  const SSL_ERROR_WANT_READ: i32 = 2;
+  const SSL_ERROR_WANT_WRITE: i32 = 3;
+  const SSL_CTRL_SET_MIN_PROTO_VERSION: i32 = 123;
+  const TLS1_2_VERSION: i64 = 771;
+  const SSL_CTRL_MODE: i32 = 33;
+  const SSL_MODE_ENABLE_PARTIAL_WRITE: i64 = 1;
+  const SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER: i64 = 2;
+  const SSL_FILETYPE_PEM: i32 = 1;
+  const SSL_TLSEXT_ERR_OK: i32 = 0;
+  const SSL_TLSEXT_ERR_NOACK: i32 = 3;
+  const OPENSSL_NPN_NEGOTIATED: i32 = 1;
+
+  /** Rejects encrypted private keys instead of prompting on process stdin. */
+  function reject_key_password(buf: raw_ptr<u8>, size: i32, writing: i32, arg: raw_ptr<u8>) i32 {
+    return 0;
+  }
+
+  /** Selects ALPN from a validated static list, whose lifetime exceeds every session. */
+  function select_server_alpn(ssl: raw_ptr<u8>, out: raw_ptr<raw_ptr<u8>>, outlen: raw_ptr<u8>, client: raw_ptr<u8>, client_len: u32, arg: raw_ptr<u8>) i32 {
+    var length: i64 = unsafe { c_tls_strlen(arg); };
+    var selected: i32 = unsafe { c_ssl_select_next_proto(out, outlen, arg, _convert<u32>(length), client, client_len); };
+    if (selected == OPENSSL_NPN_NEGOTIATED) {
+      return SSL_TLSEXT_ERR_OK;
+    }
+    return SSL_TLSEXT_ERR_NOACK;
+  }
+
+  /**
+   * Owns a server certificate configuration. Sessions retain OpenSSL's context
+   * reference, so closing or reloading this value does not invalidate them.
+   */
+  public class TlsServerContext {
+    var ctx: raw_ptr<u8> = null;
+
+    /** Releases this owner's context reference. */
+    deinit() {
+      this.close();
+    }
+
+    /** Loads PEM credentials with no application-protocol negotiation. */
+    public method load(cert_path: ref String, key_path: ref String) ClientResult<void> {
+      return this.load(cert_path, key_path, "");
+    }
+
+    /**
+     * Loads PEM credentials and requires TLS 1.2 or newer. ALPN is a static
+     * length-prefixed list in server preference order, e.g. "\x02h2\x08http/1.1".
+     * Protocol names must not contain NUL. Failure preserves the old context.
+     */
+    public method load(cert_path: ref String, key_path: ref String, alpn: static_ptr<u8>) ClientResult<void> {
+      var pos: i64 = 0;
+      while (pos < alpn.length()) {
+        var length: i64 = _convert<i64>(unsafe { _load<u8>(alpn.raw(), pos); });
+        if (length == 0 or pos + length + 1 > alpn.length() or alpn.length() > 65535) {
+          return ClientResult.Tls(TlsError(-1, "invalid ALPN protocol list"));
+        }
+        var end: i64 = pos + length + 1;
+        pos = pos + 1;
+        while (pos < end) {
+          if (unsafe { _load<u8>(alpn.raw(), pos); } == 0) {
+            return ClientResult.Tls(TlsError(-1, "ALPN protocol names cannot contain NUL"));
+          }
+          pos = pos + 1;
+        }
+      }
+      unsafe { c_err_clear_error(); };
+      var method: raw_ptr<u8> = unsafe { c_tls_server_method(); };
+      var next: raw_ptr<u8> = unsafe { c_ssl_ctx_new(method); };
+      if (next == null) {
+        return ClientResult.Tls(TlsError(-1, take_openssl_error("SSL_CTX_new failed")));
+      }
+      if (unsafe { c_ssl_ctx_ctrl(next, SSL_CTRL_SET_MIN_PROTO_VERSION, TLS1_2_VERSION, null); } != 1) {
+        var error = TlsError(-1, take_openssl_error("failed to set minimum TLS version"));
+        unsafe { c_ssl_ctx_free(next); };
+        return ClientResult.Tls(error);
+      }
+      unsafe { c_ssl_ctx_ctrl(next, SSL_CTRL_MODE, SSL_MODE_ENABLE_PARTIAL_WRITE | SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER, null); };
+      if (unsafe { c_ssl_ctx_use_certificate_chain_file(next, cert_path.c_str()); } != 1) {
+        var error = TlsError(-1, take_openssl_error("failed to load certificate chain"));
+        unsafe { c_ssl_ctx_free(next); };
+        return ClientResult.Tls(error);
+      }
+      unsafe { c_ssl_ctx_set_default_passwd_cb(next, reject_key_password); };
+      if (unsafe { c_ssl_ctx_use_private_key_file(next, key_path.c_str(), SSL_FILETYPE_PEM); } != 1) {
+        var error = TlsError(-1, take_openssl_error("failed to load private key"));
+        unsafe { c_ssl_ctx_free(next); };
+        return ClientResult.Tls(error);
+      }
+      if (unsafe { c_ssl_ctx_check_private_key(next); } != 1) {
+        var error = TlsError(-1, take_openssl_error("private key does not match certificate"));
+        unsafe { c_ssl_ctx_free(next); };
+        return ClientResult.Tls(error);
+      }
+      if (alpn.length() > 0) {
+        unsafe { c_ssl_ctx_set_alpn_select_cb(next, select_server_alpn, alpn.raw()); };
+      }
+      this.close();
+      this.ctx = next;
+      return ClientResult.Ok;
+    }
+
+    /**
+     * Takes ownership of an accepted socket and makes it nonblocking. The caller
+     * drives handshake() after success. Failure closes the transferred socket.
+     */
+    public method accept(tcp: TcpStream) ClientResult<TlsServerStream> {
+      if (this.ctx == null) {
+        return ClientResult.Tls(TlsError(-1, "server TLS context is not loaded"));
+      }
+      try tcp.set_nonblocking(true);
+      unsafe { c_err_clear_error(); };
+      var ssl: raw_ptr<u8> = unsafe { c_ssl_new(this.ctx); };
+      if (ssl == null) {
+        return ClientResult.Tls(TlsError(-1, take_openssl_error("SSL_new failed")));
+      }
+      var stream = TlsServerStream();
+      stream.tcp = tcp;
+      stream.ssl = ssl;
+      try stream.attach_socket();
+      unsafe { c_ssl_set_accept_state(ssl); };
+      return ClientResult.Ok(stream);
+    }
+
+    /** Reports whether new sessions can be created. */
+    public const method is_ready() bool {
+      return this.ctx != null;
+    }
+
+    /** Releases the context; existing sessions retain their own references. */
+    public method close() void {
+      if (this.ctx != null) {
+        unsafe { c_ssl_ctx_free(this.ctx); };
+        this.ctx = null;
+      }
+    }
+  }
+
+  /** Owns an accepted socket and its nonblocking TLS session. */
+  public class TlsServerStream {
+    var tcp: TcpStream = TcpStream();
+    var ssl: raw_ptr<u8> = null;
+    var ready: bool = false;
+    var bio_method: raw_ptr<u8> = null;
+    var socket_data: Option<ContiguousBuffer<i32>> = Option.None;
+
+    /** Allocates a socket adapter whose borrowed descriptor survives stream moves. */
+    method attach_socket() ClientResult<void> {
+      var socket_data = ContiguousBuffer<i32>(make_heap_allocator(), 1);
+      unsafe { _store<i32>(socket_data.raw_data(), 0, this.tcp.get_fd()); };
+      // This private method is never looked up by type, so no global index is needed.
+      this.bio_method = unsafe { c_bio_meth_new(BIO_TYPE_SOURCE_SINK, "Sun TLS socket".raw()); };
+      if (this.bio_method == null) {
+        return ClientResult.Tls(TlsError(-1, take_openssl_error("BIO_meth_new failed")));
+      }
+      if (unsafe { c_bio_meth_set_write(this.bio_method, tls_socket_write); } != 1 or unsafe { c_bio_meth_set_read(this.bio_method, tls_socket_read); } != 1 or unsafe { c_bio_meth_set_ctrl(this.bio_method, tls_socket_ctrl); } != 1) {
+        return ClientResult.Tls(TlsError(-1, take_openssl_error("BIO callback setup failed")));
+      }
+      var bio: raw_ptr<u8> = unsafe { c_bio_new(this.bio_method); };
+      if (bio == null) {
+        return ClientResult.Tls(TlsError(-1, take_openssl_error("BIO_new failed")));
+      }
+      unsafe {
+        c_bio_set_data(bio, socket_data.raw_data());
+        c_bio_set_init(bio, 1);
+        c_ssl_set_bio(this.ssl, bio, bio);
+      };
+      this.socket_data = Option.Some(socket_data);
+      return ClientResult.Ok;
+    }
+
+    /** Releases the session and socket without performing network I/O. */
+    deinit() {
+      this.close();
+    }
+
+    /** Classifies the immediately preceding TLS call, closing on fatal errors. */
+    method failure(result: i32) ServerResult<i64> {
+      var reason: i32 = unsafe { c_ssl_get_error(this.ssl, result); };
+      if (reason == SSL_ERROR_WANT_READ) {
+        return ServerResult.WantRead;
+      }
+      if (reason == SSL_ERROR_WANT_WRITE) {
+        return ServerResult.WantWrite;
+      }
+      if (reason == SSL_ERROR_ZERO_RETURN) {
+        return ServerResult.Closed;
+      }
+      // An unannounced EOF is a failure, not an authenticated TLS shutdown.
+      var error = TlsError(reason, take_openssl_error("server TLS operation failed"));
+      this.close();
+      return ServerResult.Tls(error);
+    }
+
+    /** Advances the handshake; Ok(0) means application I/O can begin. */
+    public method handshake() ServerResult<i64> {
+      if (this.ssl == null) {
+        return ServerResult.Tls(TlsError(-1, "TLS stream is closed"));
+      }
+      unsafe { c_err_clear_error(); };
+      var result: i32 = unsafe { c_ssl_do_handshake(this.ssl); };
+      if (result == 1) {
+        this.ready = true;
+        return ServerResult.Ok(0);
+      }
+      return this.failure(result);
+    }
+
+    /** Reads up to the buffer size; Closed means the peer sent close_notify. */
+    public method read(buf: ref ContiguousBuffer<u8>) ServerResult<i64> {
+      if (not this.ready or this.ssl == null) {
+        return ServerResult.Tls(TlsError(-1, "TLS handshake is not complete"));
+      }
+      if (buf.size() == 0) {
+        return ServerResult.Ok(0);
+      }
+      var count: i64 = buf.size();
+      if (count > 2147483647) {
+        count = 2147483647;
+      }
+      unsafe { c_err_clear_error(); };
+      var result: i32 = unsafe { c_ssl_read(this.ssl, buf.raw_data(), _convert<i32>(count)); };
+      if (result > 0) {
+        return ServerResult.Ok(_convert<i64>(result));
+      }
+      return this.failure(result);
+    }
+
+    /**
+     * Writes at most one TLS record from data. After WantRead/WantWrite, retry
+     * with identical contents and length; its storage may move between calls.
+     */
+    public method write(data: const ref String) ServerResult<i64> {
+      if (not this.ready or this.ssl == null) {
+        return ServerResult.Tls(TlsError(-1, "TLS handshake is not complete"));
+      }
+      if (data.length() == 0) {
+        return ServerResult.Ok(0);
+      }
+      if (data.length() > 2147483647) {
+        return ServerResult.Tls(TlsError(-1, "TLS write exceeds OpenSSL's length limit"));
+      }
+      unsafe { c_err_clear_error(); };
+      var result: i32 = unsafe { c_ssl_write(this.ssl, data.bytes(), _convert<i32>(data.length())); };
+      if (result > 0) {
+        return ServerResult.Ok(_convert<i64>(result));
+      }
+      return this.failure(result);
+    }
+
+    /** Sends close_notify and waits nonblockingly for the peer's response. */
+    public method shutdown() ServerResult<i64> {
+      if (this.ssl == null) {
+        return ServerResult.Closed;
+      }
+      if (not this.ready) {
+        this.close();
+        return ServerResult.Closed;
+      }
+      unsafe { c_err_clear_error(); };
+      var result: i32 = unsafe { c_ssl_shutdown(this.ssl); };
+      if (result == 1) {
+        this.close();
+        return ServerResult.Closed;
+      }
+      if (result == 0) {
+        return ServerResult.WantRead;
+      }
+      return this.failure(result);
+    }
+
+    /** Reports bytes already decrypted, which need no new readiness event. */
+    public method pending() i64 {
+      if (this.ssl == null) {
+        return 0;
+      }
+      return _convert<i64>(unsafe { c_ssl_pending(this.ssl); });
+    }
+
+    /** Returns an owned ALPN name, or an empty string when none was selected. */
+    public method alpn() String {
+      var out = String("");
+      if (this.ssl == null) {
+        return out;
+      }
+      var data: raw_ptr<u8> = null;
+      var length: u32 = 0;
+      unsafe { c_ssl_get0_alpn_selected(this.ssl, _address_of<raw_ptr<u8>>(data), _address_of<u32>(length)); };
+      var index: i64 = 0;
+      while (index < _convert<i64>(length)) {
+        out.append_char(unsafe { _load<u8>(data, index); });
+        index = index + 1;
+      }
+      return out;
+    }
+
+    /** Borrows the socket descriptor for an event loop; do not close it directly. */
+    public method get_fd() i32 {
+      return this.tcp.get_fd();
+    }
+
+    /** Reports whether this value owns a TLS session. */
+    public const method is_open() bool {
+      return this.ssl != null;
+    }
+
+    /** Releases resources immediately; use shutdown() first for a clean TLS close. */
+    public method close() void {
+      if (this.ssl != null) {
+        unsafe { c_ssl_free(this.ssl); };
+        this.ssl = null;
+      }
+      if (this.bio_method != null) {
+        unsafe { c_bio_meth_free(this.bio_method); };
+        this.bio_method = null;
+      }
+      this.socket_data = Option.None;
+      this.ready = false;
+      this.tcp.close();
+    }
+  }
+}

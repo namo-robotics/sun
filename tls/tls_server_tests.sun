@@ -1,0 +1,526 @@
+/** Regression coverage for nonblocking server TLS. */
+public module tls {
+  using std;
+
+  /** Checks that unloaded contexts reject sockets instead of calling OpenSSL. */
+  test_function server_context_requires_credentials() {
+    var ctx = TlsServerContext();
+    try std.test.assert(not ctx.is_ready(), "context starts empty");
+    var rejected: bool = match ctx.accept(TcpStream()) {
+      ClientResult.Tls(error) => true,
+      _ => false
+    };
+    try std.test.assert(rejected, "accept requires credentials");
+    ctx.close();
+    ctx.close();
+  }
+
+  /** Checks that malformed ALPN lists fail before reading credential files. */
+  test_function server_rejects_malformed_alpn() {
+    var ctx = TlsServerContext();
+    var path = String("missing.pem");
+    var rejected: bool = match ctx.load(path, path, "\x08h2") {
+      ClientResult.Tls(error) => error.message().equals_literal("invalid ALPN protocol list"),
+      _ => false
+    };
+    try std.test.assert(rejected, "ALPN lengths must fit the supplied list");
+    try std.test.assert(
+      match ctx.load(path, path, "\x00") {
+        ClientResult.Tls(error) => error.message().equals_literal("invalid ALPN protocol list"),
+        _ => false
+      },
+      "empty protocol names are invalid"
+    );
+    try std.test.assert(
+      match ctx.load(path, path, "\x02h\x00") {
+        ClientResult.Tls(error) => error.message().equals_literal("ALPN protocol names cannot contain NUL"),
+        _ => false
+      }
+    );
+  }
+}
+
+/** Local OpenSSL peers and credentials used only by the server tests. */
+public module tls {
+  /** Fixtures and loopback integration tests for TLS servers. */
+  module server_tests {
+    using std;
+    using tls;
+
+    /** Configures the test client's advertised application protocols. */
+    extern "C" function test_set_alpn(ssl: raw_ptr<u8>, data: raw_ptr<u8>, length: u32) i32 as "SSL_set_alpn_protos";
+
+    /** Skips integration cases when the optional certificate tool is unavailable. */
+    function have_openssl() bool {
+      var alloc = make_heap_allocator();
+      var command = std.process.Command(alloc, "openssl");
+      command.add_arg("version");
+      command.set_stdout(std.process.Stdio.Null);
+      command.set_stderr(std.process.Stdio.Null);
+      var available: bool = match command.status() {
+        SystemResult.Ok(code) => code == 0,
+        _ => false
+      };
+      if (available) {
+        return true;
+      }
+      println("SKIP server TLS integration: openssl is not on PATH");
+      return false;
+    }
+
+    /** Owns throwaway credentials, a listener, and a nonblocking OpenSSL client. */
+    class Peer {
+      var listener: TcpListener = TcpListener();
+      var tcp: TcpStream = TcpStream();
+      var ctx: raw_ptr<u8> = null;
+      var ssl: raw_ptr<u8> = null;
+      var dir: String = String("");
+      public var cert: String = String("");
+      public var key: String = String("");
+      public var encrypted_key: String = String("");
+      public var server: TlsServerContext = TlsServerContext();
+
+      /** Creates a certificate and connected TCP pair; no handshake occurs yet. */
+      init() ClientResult<void> {
+        var alloc = make_heap_allocator();
+        try this.listener.bind_loopback(0);
+        try this.listener.listen(4);
+        var port: i32 = try this.listener.local_port();
+        this.dir = String("tmp/sun_tls_server_");
+        this.dir.append(std.process.pid());
+        this.dir.append_char(b'_');
+        this.dir.append(port);
+        // The source tree may not have a temporary directory in a fresh checkout.
+        ignore_error(std.io.make_dir("tmp", 448));
+        try std.io.make_dir(this.dir, 448);
+        this.cert = this.dir.clone(alloc);
+        this.cert.append("/cert.pem");
+        this.key = this.dir.clone(alloc);
+        this.key.append("/key.pem");
+        this.encrypted_key = this.dir.clone(alloc);
+        this.encrypted_key.append("/encrypted.pem");
+        var command = std.process.Command(alloc, "openssl");
+        command.add_arg("req");
+        command.add_arg("-x509");
+        command.add_arg("-newkey");
+        command.add_arg("rsa:2048");
+        command.add_arg("-nodes");
+        command.add_arg("-days");
+        command.add_arg("1");
+        command.add_arg("-subj");
+        command.add_arg("/CN=localhost");
+        command.add_arg("-keyout");
+        command.add_arg(this.key);
+        command.add_arg("-out");
+        command.add_arg(this.cert);
+        command.set_stdout(std.process.Stdio.Null);
+        command.set_stderr(std.process.Stdio.Null);
+        if ((try command.status()) != 0) {
+          return ClientResult.Tls(TlsError(-1, "could not create server test certificate"));
+        }
+        try this.server.load(this.cert, this.key, "\x02h2\x08http/1.1");
+        try this.tcp.connect_local(port);
+        try this.tcp.set_nonblocking(true);
+        this.ctx = unsafe { c_ssl_ctx_new(c_tls_client_method()); };
+        if (this.ctx == null) {
+          return ClientResult.Tls(TlsError(-1, "test client context allocation failed"));
+        }
+        this.ssl = unsafe { c_ssl_new(this.ctx); };
+        if (this.ssl == null) {
+          return ClientResult.Tls(TlsError(-1, "test client allocation failed"));
+        }
+        if (unsafe { c_ssl_set_fd(this.ssl, this.tcp.get_fd()); } != 1) {
+          return ClientResult.Tls(TlsError(-1, "test client socket setup failed"));
+        }
+        return ClientResult.Ok;
+      }
+
+      /** Frees client state and removes all files created by this fixture. */
+      deinit() {
+        if (this.ssl != null) {
+          unsafe { c_ssl_free(this.ssl); };
+        }
+        if (this.ctx != null) {
+          unsafe { c_ssl_ctx_free(this.ctx); };
+        }
+        ignore_error(std.io.remove_file(this.cert));
+        ignore_error(std.io.remove_file(this.key));
+        ignore_error(std.io.remove_file(this.encrypted_key));
+        ignore_error(std.io.remove_dir(this.dir));
+      }
+
+      /** Accepts the connected test socket into the public server API. */
+      public method accept() ClientResult<TlsServerStream> {
+        return this.server.accept(try this.listener.accept());
+      }
+
+      /** Offers an ALPN list before the client handshake begins. */
+      public method offer(protocols: static_ptr<u8>) std.test.AssertionResult<void> {
+        try std.test.assert_eq(unsafe { test_set_alpn(this.ssl, protocols.raw(), _convert<u32>(protocols.length())); }, 0);
+        return std.test.AssertionResult.Ok;
+      }
+
+      /** Advances both peers with a bounded wait, failing on any fatal result. */
+      public method handshake(stream: ref TlsServerStream) std.test.AssertionResult<void> {
+        var client_ready: bool = false;
+        var server_ready: bool = false;
+        var attempts: i32 = 0;
+        while (attempts < 1000 and (not client_ready or not server_ready)) {
+          if (not client_ready) {
+            unsafe { c_err_clear_error(); };
+            var result: i32 = unsafe { c_ssl_connect(this.ssl); };
+            if (result == 1) {
+              client_ready = true;
+            } else {
+              var reason: i32 = unsafe { c_ssl_get_error(this.ssl, result); };
+              try std.test.assert(reason == SSL_ERROR_WANT_READ or reason == SSL_ERROR_WANT_WRITE, "client handshake must succeed or need readiness");
+            }
+          }
+          if (not server_ready) {
+            match stream.handshake() {
+              ServerResult.Ok(n) => {
+                server_ready = true;
+              },
+              ServerResult.WantRead => {},
+              ServerResult.WantWrite => {},
+              _ => {
+                return std.test.AssertionResult.Error(std.test.AssertionError("server handshake failed"));
+              }
+            };
+          }
+          std.time.sleep(std.time.create_duration_millis(1));
+          attempts = attempts + 1;
+        }
+        try std.test.assert(client_ready and server_ready, "handshake must finish within the deadline");
+        return std.test.AssertionResult.Ok;
+      }
+
+      /** Writes a small application record from the test client. */
+      public method send(data: static_ptr<u8>) std.test.AssertionResult<void> {
+        unsafe { c_err_clear_error(); };
+        try std.test.assert_eq(unsafe { c_ssl_write(this.ssl, data.raw(), _convert<i32>(data.length())); }, _convert<i32>(data.length()));
+        return std.test.AssertionResult.Ok;
+      }
+
+      /** Drains client-side records, returning application bytes received so far. */
+      public method receive(buf: ref ContiguousBuffer<u8>) std.test.AssertionResult<i32> {
+        unsafe { c_err_clear_error(); };
+        var result: i32 = unsafe { c_ssl_read(this.ssl, buf.raw_data(), _convert<i32>(buf.size())); };
+        if (result > 0) {
+          return std.test.AssertionResult.Ok(result);
+        }
+        var reason: i32 = unsafe { c_ssl_get_error(this.ssl, result); };
+        try std.test.assert(reason == SSL_ERROR_WANT_READ or reason == SSL_ERROR_WANT_WRITE or reason == SSL_ERROR_ZERO_RETURN, "client read must not fail");
+        return std.test.AssertionResult.Ok(0);
+      }
+
+      /** Sends a TLS close notification from the client. */
+      public method shutdown() void {
+        unsafe { c_err_clear_error(); c_ssl_shutdown(this.ssl); };
+      }
+
+      /** Sends plaintext to test rejection before the TLS handshake. */
+      public method send_plaintext() SystemResult<void> {
+        try this.tcp.send_str("GET / HTTP/1.1\r\n\r\n");
+        return SystemResult.Ok;
+      }
+
+      /** Writes an encrypted private key to test noninteractive loading failure. */
+      public method encrypt_key() SystemResult<void> {
+        var command = std.process.Command(make_heap_allocator(), "openssl");
+        command.add_arg("pkey");
+        command.add_arg("-in");
+        command.add_arg(this.key);
+        command.add_arg("-aes-256-cbc");
+        command.add_arg("-passout");
+        command.add_arg("pass:test-password");
+        command.add_arg("-out");
+        command.add_arg(this.encrypted_key);
+        command.set_stdout(std.process.Stdio.Null);
+        command.set_stderr(std.process.Stdio.Null);
+        if ((try command.status()) != 0) {
+          return SystemResult.Error(Error(1, "could not encrypt test key"));
+        }
+        return SystemResult.Ok;
+      }
+
+      /** Drops TCP without sending a TLS close notification. */
+      public method disconnect() void {
+        this.tcp.close();
+      }
+    }
+
+    /** Turns setup failures into test assertions while preserving their messages. */
+    function expect_client<T>(result: ClientResult<T>) std.test.AssertionResult<T> {
+      return match result {
+        ClientResult.Ok(value) => std.test.AssertionResult.Ok(value),
+        (error: const ref IError) => std.test.AssertionResult.Error(std.test.AssertionError(error.message()))
+      };
+    }
+
+    /** Converts an unexpected readiness/error result into a useful assertion failure. */
+    function expect_ok(result: ServerResult<i64>) std.test.AssertionResult<i64> {
+      return match result {
+        ServerResult.Ok(n) => std.test.AssertionResult.Ok(n),
+        ServerResult.Tls(error) => std.test.AssertionResult.Error(std.test.AssertionError(error.message())),
+        _ => std.test.AssertionResult.Error(std.test.AssertionError("expected completed TLS operation"))
+      };
+    }
+
+    /** Exercises readiness, ALPN preference, bidirectional I/O, and context lifetime. */
+    test_function handshake_io_and_context_lifetime() {
+      if (not have_openssl()) {
+        return;
+      }
+      var peer = try expect_client(Peer());
+      try peer.offer("\x08http/1.1\x02h2");
+      var stream = try expect_client(peer.accept());
+      var needs_read: bool = match stream.handshake() {
+        ServerResult.WantRead => true,
+        _ => false
+      };
+      try std.test.assert(needs_read, "server waits for the client hello");
+      peer.server.close();
+      try peer.handshake(stream);
+      try std.test.assert(stream.alpn().equals_literal("h2"), "server preference chooses h2");
+      var alloc = make_heap_allocator();
+      var buf = ContiguousBuffer<u8>(alloc, 2);
+      try std.test.assert(
+        match stream.read(buf) {
+          ServerResult.WantRead => true,
+          _ => false
+        },
+        "an idle stream needs read readiness"
+      );
+      try peer.send("ping");
+      try std.test.assert_eq(try expect_ok(stream.read(buf)), 2);
+      try std.test.assert_eq(unsafe { _load<u8>(buf.raw_data(), 0); }, b'p');
+      try std.test.assert_eq(unsafe { _load<u8>(buf.raw_data(), 1); }, b'i');
+      try std.test.assert_eq(stream.pending(), 2);
+      try std.test.assert_eq(try expect_ok(stream.read(buf)), 2);
+      try std.test.assert_eq(unsafe { _load<u8>(buf.raw_data(), 0); }, b'n');
+      try std.test.assert_eq(unsafe { _load<u8>(buf.raw_data(), 1); }, b'g');
+      var empty = String("");
+      try std.test.assert_eq(try expect_ok(stream.write(empty)), 0);
+      var empty_buf = ContiguousBuffer<u8>(alloc, 0);
+      try std.test.assert_eq(try expect_ok(stream.read(empty_buf)), 0);
+      var response = String("pong");
+      try std.test.assert_eq(try expect_ok(stream.write(response)), 4);
+      var total: i32 = 0;
+      var attempts: i32 = 0;
+      while (total < 4 and attempts < 1000) {
+        total = total + (try peer.receive(buf));
+        std.time.sleep(std.time.create_duration_millis(1));
+        attempts = attempts + 1;
+      }
+      try std.test.assert_eq(total, 4);
+      peer.shutdown();
+      var closed: bool = false;
+      attempts = 0;
+      while (not closed and attempts < 1000) {
+        closed = match stream.read(buf) {
+          ServerResult.Closed => true,
+          ServerResult.WantRead => false,
+          _ => {
+            try std.test.fail("expected close notification");
+            false;
+          }
+        };
+        std.time.sleep(std.time.create_duration_millis(1));
+        attempts = attempts + 1;
+      }
+      try std.test.assert(closed, "peer closure is visible");
+      try std.test.assert(
+        match stream.shutdown() {
+          ServerResult.Closed => true,
+          _ => false
+        },
+        "shutdown completes after peer notification"
+      );
+      stream.close();
+      try std.test.assert(not stream.is_open(), "close releases the stream");
+      try std.test.assert_eq(stream.get_fd(), -1);
+    }
+
+    /** Checks absent ALPN overlap and detects an unauthenticated transport EOF. */
+    test_function no_alpn_overlap_and_abrupt_eof() {
+      if (not have_openssl()) {
+        return;
+      }
+      var peer = try expect_client(Peer());
+      try peer.offer("\x04test");
+      var stream = try expect_client(peer.accept());
+      try peer.handshake(stream);
+      try std.test.assert_eq(stream.alpn().length(), 0);
+      peer.disconnect();
+      var alloc = make_heap_allocator();
+      var buf = ContiguousBuffer<u8>(alloc, 16);
+      var failed: bool = false;
+      var attempts: i32 = 0;
+      while (not failed and attempts < 1000) {
+        failed = match stream.read(buf) {
+          ServerResult.Tls(error) => true,
+          ServerResult.WantRead => false,
+          _ => {
+            try std.test.fail("abrupt EOF must be a TLS error");
+            false;
+          }
+        };
+        std.time.sleep(std.time.create_duration_millis(1));
+        attempts = attempts + 1;
+      }
+      try std.test.assert(failed and not stream.is_open(), "fatal errors close the stream");
+    }
+
+    /** A failed credential reload preserves the usable previous configuration. */
+    test_function invalid_credentials_preserve_context() {
+      if (not have_openssl()) {
+        return;
+      }
+      var peer = try expect_client(Peer());
+      try std.test.assert(
+        match peer.server.accept(TcpStream()) {
+          ClientResult.System(error) => true,
+          _ => false
+        },
+        "closed sockets fail during setup"
+      );
+      try peer.offer("\x02h2");
+      var missing = String("tmp/nonexistent-server-certificate.pem");
+      try std.test.assert(
+        match peer.server.load(missing, peer.key) {
+          ClientResult.Tls(error) => true,
+          _ => false
+        }
+      );
+      try std.test.assert(peer.server.is_ready());
+      try std.test.assert(
+        match peer.server.load(peer.cert, missing) {
+          ClientResult.Tls(error) => true,
+          _ => false
+        }
+      );
+      try std.test.assert(peer.server.is_ready());
+      try std.test.expect_system_success(peer.encrypt_key());
+      try std.test.assert(
+        match peer.server.load(peer.cert, peer.encrypted_key) {
+          ClientResult.Tls(error) => true,
+          _ => false
+        },
+        "encrypted keys fail without prompting"
+      );
+      var other = try expect_client(Peer());
+      try std.test.assert(
+        match peer.server.load(peer.cert, other.key) {
+          ClientResult.Tls(error) => true,
+          _ => false
+        },
+        "mismatched key must be rejected"
+      );
+      var stream = try expect_client(peer.accept());
+      try peer.handshake(stream);
+      try std.test.assert(stream.alpn().equals_literal("h2"), "failed reloads preserve ALPN configuration");
+    }
+
+    /** Fills the transport to exercise partial writes and retry after WantWrite. */
+    test_function write_backpressure_and_shutdown() {
+      if (not have_openssl()) {
+        return;
+      }
+      var peer = try expect_client(Peer());
+      var stream = try expect_client(peer.accept());
+      try peer.handshake(stream);
+      var data = String("");
+      for (var i: i32 = 0; i < 32768; i = i + 1) {
+        data.append_char(b'x');
+      }
+      var first: i64 = try expect_ok(stream.write(data));
+      try std.test.assert(first > 0 and first < data.length(), "large writes complete one record at a time");
+      var blocked: bool = false;
+      var attempts: i32 = 0;
+      while (not blocked and attempts < 10000) {
+        blocked = match stream.write(data) {
+          ServerResult.Ok(n) => false,
+          ServerResult.WantWrite => true,
+          _ => {
+            try std.test.fail("expected write progress or backpressure");
+            false;
+          }
+        };
+        attempts = attempts + 1;
+      }
+      try std.test.assert(blocked, "a peer that does not read must apply backpressure");
+      var buf = ContiguousBuffer<u8>(make_heap_allocator(), 65536);
+      var resumed: bool = false;
+      attempts = 0;
+      while (not resumed and attempts < 1000) {
+        var received: i32 = try peer.receive(buf);
+        if (received > 0) {
+          try std.test.assert_eq(unsafe { _load<u8>(buf.raw_data(), 0); }, b'x');
+        }
+        resumed = match stream.write(data) {
+          ServerResult.Ok(n) => n > 0,
+          ServerResult.WantWrite => false,
+          _ => {
+            try std.test.fail("retry must preserve the pending write");
+            false;
+          }
+        };
+        std.time.sleep(std.time.create_duration_millis(1));
+        attempts = attempts + 1;
+      }
+      try std.test.assert(resumed, "reading at the peer releases backpressure");
+      // Drain queued records before exchanging close notifications.
+      var received: i32 = 1;
+      while (received > 0) {
+        received = try peer.receive(buf);
+      }
+      try std.test.assert(
+        match stream.shutdown() {
+          ServerResult.WantRead => true,
+          _ => false
+        },
+        "server shutdown waits for peer notification"
+      );
+      peer.shutdown();
+      var closed: bool = false;
+      attempts = 0;
+      while (not closed and attempts < 1000) {
+        closed = match stream.shutdown() {
+          ServerResult.Closed => true,
+          ServerResult.WantRead => false,
+          ServerResult.WantWrite => false,
+          _ => {
+            try std.test.fail("clean shutdown must complete");
+            false;
+          }
+        };
+        std.time.sleep(std.time.create_duration_millis(1));
+        attempts = attempts + 1;
+      }
+      try std.test.assert(closed and not stream.is_open());
+    }
+
+    /** Plain HTTP input fails the handshake and releases the accepted socket. */
+    test_function handshake_rejects_plaintext() {
+      if (not have_openssl()) {
+        return;
+      }
+      var peer = try expect_client(Peer());
+      var stream = try expect_client(peer.accept());
+      try std.test.expect_system_success(peer.send_plaintext());
+      var failed: bool = match stream.handshake() {
+        ServerResult.Tls(error) => true,
+        _ => false
+      };
+      try std.test.assert(failed and not stream.is_open());
+      try std.test.assert(
+        match stream.handshake() {
+          ServerResult.Tls(error) => true,
+          _ => false
+        },
+        "closed sessions reject handshake retries"
+      );
+    }
+  }
+}
