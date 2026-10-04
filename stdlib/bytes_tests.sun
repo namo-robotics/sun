@@ -1,0 +1,84 @@
+/** Regression tests for bounded byte storage and native-endian decoding. */
+public module std.bytes_tests {
+  /** Checks boundaries, unaligned decoding, signed values, and overflow-sized offsets. */
+  test_function native_decoding_checks_slice_bounds() {
+    var alloc = make_heap_allocator();
+    var buffer = ContiguousBuffer<u8>(alloc, 12);
+    buffer.fill(255);
+    var bytes = try std.test.expect_access(ByteSlice(buffer, 1, 8));
+    try std.test.assert_eq(bytes.size(), 8);
+    try std.test.assert_eq(try std.test.expect_access(std.byte_order.read_native_i16(bytes, 1)), -1);
+    try std.test.assert_eq(try std.test.expect_access(std.byte_order.read_native_i32(bytes, 1)), -1);
+    try std.test.assert_eq(try std.test.expect_access(std.byte_order.read_native_i64(bytes, 0)), -1);
+    try std.test.assert_eq(try std.test.expect_access(std.byte_order.read_native_u16(bytes, 6)), 65535);
+    try std.test.assert_eq(try std.test.expect_access(std.byte_order.read_native_u32(bytes, 4)), 4294967295);
+    try std.test.assert_eq(try std.test.expect_access(std.byte_order.read_native_u64(bytes, 0)), 18446744073709551615);
+    var offsets: array<i64, 4> = [-1, 1, 8, 9223372036854775807];
+    for (var i: i64 = 0; i < 4; i = i + 1) {
+      var offset = offsets[i];
+      match std.byte_order.read_native_i64(bytes, offset) {
+        AccessResult.Ok(_) => {
+          try std.test.fail("invalid native load succeeded");
+        },
+        AccessResult.OutOfBounds(_) => {}
+      };
+    }
+  }
+
+  /** Rejects invalid slice ranges without adding potentially overflowing bounds. */
+  test_function byte_slices_reject_invalid_ranges() {
+    var alloc = make_heap_allocator();
+    var buffer = ContiguousBuffer<u8>(alloc, 8);
+    var starts: array<i64, 3> = [-1, 9, 9223372036854775807];
+    for (var i: i64 = 0; i < 3; i = i + 1) {
+      var start = starts[i];
+      match ByteSlice(buffer, start, 0) {
+        AccessResult.Ok(_) => {
+          try std.test.fail("invalid start accepted");
+        },
+        AccessResult.OutOfBounds(_) => {}
+      };
+      match MutableByteSlice(buffer, start, 0) {
+        AccessResult.Ok(_) => {
+          try std.test.fail("invalid mutable start accepted");
+        },
+        AccessResult.OutOfBounds(_) => {}
+      };
+    }
+    var counts: array<i64, 3> = [-1, 8, 9223372036854775807];
+    for (var i: i64 = 0; i < 3; i = i + 1) {
+      var count = counts[i];
+      match ByteSlice(buffer, 1, count) {
+        AccessResult.Ok(_) => {
+          try std.test.fail("invalid length accepted");
+        },
+        AccessResult.OutOfBounds(_) => {}
+      };
+      match MutableByteSlice(buffer, 1, count) {
+        AccessResult.Ok(_) => {
+          try std.test.fail("invalid mutable length accepted");
+        },
+        AccessResult.OutOfBounds(_) => {}
+      };
+    }
+  }
+
+  /** Copies the host representation at an unaligned offset and decodes exactly that value. */
+  test_function native_decoding_preserves_host_order() {
+    var alloc = make_heap_allocator();
+    var buffer = ContiguousBuffer<u8>(alloc, 10);
+    buffer.fill(0);
+    var expected: i64 = -72623859790382856;
+    unsafe {
+      _memcpy(_ptr_offset(buffer.raw_data(), 1), _ptr_as_raw<u8>(_address_of<i64>(expected)), _sizeof<i64>());
+    };
+    var bytes = try std.test.expect_access(ByteSlice(buffer, 1, 8));
+    try std.test.assert_eq(try std.test.expect_access(std.byte_order.read_native_i64(bytes, 0)), expected);
+    match bytes.get(8) {
+      AccessResult.OutOfBounds(_) => {},
+      _ => {
+        try std.test.fail("slice get must not read outside its range");
+      }
+    };
+  }
+}
