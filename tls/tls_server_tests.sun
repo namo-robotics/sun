@@ -267,6 +267,29 @@ public module tls {
       };
     }
 
+    /** Retries a nonblocking read until data arrives, failing on errors or timeout. */
+    function read_when_ready(stream: ref TlsServerStream, buf: ref ContiguousBuffer<u8>) std.test.AssertionResult<i64> {
+      var attempts: i32 = 0;
+      while (attempts < 1000) {
+        match stream.read(buf) {
+          ServerResult.WantRead => {},
+          ServerResult.WantWrite => {},
+          ServerResult.Ok(n) => {
+            return std.test.AssertionResult.Ok(n);
+          },
+          ServerResult.Tls(error) => {
+            return std.test.AssertionResult.Error(std.test.AssertionError(error.message()));
+          },
+          ServerResult.Closed => {
+            return std.test.AssertionResult.Error(std.test.AssertionError("TLS stream closed before data arrived"));
+          }
+        };
+        std.time.sleep(std.time.create_duration_millis(1));
+        attempts = attempts + 1;
+      }
+      return std.test.AssertionResult.Error(std.test.AssertionError("TLS read did not finish within the deadline"));
+    }
+
     /** Exercises readiness, ALPN preference, bidirectional I/O, and context lifetime. */
     test_function handshake_io_and_context_lifetime() {
       if (not have_openssl()) {
@@ -293,7 +316,7 @@ public module tls {
         "an idle stream needs read readiness"
       );
       try peer.send("ping");
-      try std.test.assert_eq(try expect_ok(stream.read(buf)), 2);
+      try std.test.assert_eq(try read_when_ready(stream, buf), 2);
       try std.test.assert_eq(unsafe { _load<u8>(buf.raw_data(), 0); }, b'p');
       try std.test.assert_eq(unsafe { _load<u8>(buf.raw_data(), 1); }, b'i');
       try std.test.assert_eq(stream.pending(), 2);
@@ -509,11 +532,24 @@ public module tls {
       var peer = try expect_client(Peer());
       var stream = try expect_client(peer.accept());
       try std.test.expect_system_success(peer.send_plaintext());
-      var failed: bool = match stream.handshake() {
-        ServerResult.Tls(error) => true,
-        _ => false
-      };
-      try std.test.assert(failed and not stream.is_open());
+      var failed: bool = false;
+      var attempts: i32 = 0;
+      while (not failed and attempts < 1000) {
+        failed = match stream.handshake() {
+          ServerResult.Tls(error) => true,
+          ServerResult.WantRead => false,
+          ServerResult.WantWrite => false,
+          _ => {
+            try std.test.fail("plaintext must fail the TLS handshake");
+            false;
+          }
+        };
+        if (not failed) {
+          std.time.sleep(std.time.create_duration_millis(1));
+        }
+        attempts = attempts + 1;
+      }
+      try std.test.assert(failed and not stream.is_open(), "plaintext must be rejected within the deadline");
       try std.test.assert(
         match stream.handshake() {
           ServerResult.Tls(error) => true,
