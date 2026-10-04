@@ -161,6 +161,7 @@ public module std.event_loop_tests {
     loop.close();
     try std.test.assert_eq(loop.count(), 0);
   }
+
   /** Registration growth and repeated removal keep every token associated with its descriptor. */
   test_function registration_growth_and_reuse() {
     var alloc = make_heap_allocator();
@@ -192,6 +193,7 @@ public module std.event_loop_tests {
       }
     }
   }
+
   /** Changing a connected socket's read/write filters updates readiness in place. */
   test_function socket_interest_changes() {
     var alloc = make_heap_allocator();
@@ -211,6 +213,11 @@ public module std.event_loop_tests {
     try std.test.assert(writable.is_writable() and not writable.is_readable(), "write interest replaced read interest");
     try std.test.expect_system_success(loop.modify(peer.get_fd(), std.io.POLLIN | std.io.POLLOUT, 30u64));
     try std.test.expect_system(client.send_str("ready"));
+    // Write readiness can wake the loop before the sent data reaches the peer.
+    var readable = std.io.Poller(alloc);
+    readable.add_read(peer.get_fd());
+    try std.test.assert_eq(try std.test.expect_system(readable.wait(1000)), 1);
+    try std.test.assert(readable.is_readable(0), "peer has received input before checking both interests");
     var count = try std.test.expect_system(loop.wait(1000));
     var bits: i16 = 0;
     for (var i: i64 = 0; i < count; i = i + 1) {
