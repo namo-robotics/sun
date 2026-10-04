@@ -1299,3 +1299,155 @@ TEST(Ffi, same_c_symbol_wrapped_privately_in_two_modules) {
   )");
   EXPECT_EQ(value, 42);
 }
+
+/** Reject incompatible aliases during analysis without generating LLVM IR. */
+TEST(Ffi, conflicting_native_signatures_report_both_declarations) {
+  for (const std::string& declaration : {
+           "extern \"C\" function second(x: i64) i32 as \"native_conflict\";",
+           "extern \"C\" function second(x: i32) i64 as \"native_conflict\";",
+           "extern \"C\" function second(x: i32, y: i32) i32 as \"native_conflict\";",
+           "extern \"C\" function second(x: i32, ...) i32 as \"native_conflict\";"}) {
+    auto driver = Driver::createForAOT("native_conflict");
+    auto analyzed = driver->analyzeString(
+        "/** First native binding. */ extern \"C\" function first(x: i32) i32 "
+        "as \"native_conflict\"; /** Conflicting native binding. */ " + declaration);
+    ASSERT_TRUE(analyzed.error.has_value());
+    const auto& error = *analyzed.error;
+    EXPECT_NE(error.getMessage().find("native_conflict"), std::string::npos);
+    EXPECT_NE(error.getMessage().find("first"), std::string::npos);
+    EXPECT_NE(error.getMessage().find("second"), std::string::npos);
+    EXPECT_NE(error.getMessage().find("Conflicting signatures"), std::string::npos);
+    EXPECT_TRUE(error.getLocation().has_value());
+  }
+}
+
+/** Compatible aliases share a native declaration and remain callable. */
+TEST(Ffi, compatible_native_aliases) {
+  EXPECT_EQ(executeString(R"(
+    /** First binding to libc absolute value. */
+    extern "C" function first(x: i32) i32 as "abs";
+    /** Another compatible binding. */
+    extern "C" function second(x: i32) i32 as "abs";
+    /** Exercise both aliases. */
+    function main() i32 { return unsafe { first(-3) + second(-4); }; }
+  )"), 7);
+}
+
+/** Raw pointer aliases share the C ABI for both parameters and return values. */
+TEST(Ffi, native_aliases_with_different_pointer_pointees) {
+  EXPECT_EQ(executeString(R"(
+    /** Bind allocation with a byte pointer result. */
+    extern "C" function bytes(size: i64) raw_ptr<u8> as "malloc";
+    /** Bind allocation with a word pointer result. */
+    extern "C" function words(size: i64) raw_ptr<u64> as "malloc";
+    /** Release a byte allocation. */
+    extern "C" function free_bytes(buffer: raw_ptr<u8>) void as "free";
+    /** Release a word allocation. */
+    extern "C" function free_words(buffer: raw_ptr<u64>) void as "free";
+    /** Exercise both typed views of the native symbols. */
+    function main() i32 {
+      unsafe {
+        var b = bytes(8);
+        var w = words(8);
+        free_bytes(b);
+        free_words(w);
+      };
+      return 7;
+    }
+  )"), 7);
+}
+
+/** Buffer aliases may differ in pointee type but must keep other ABI types. */
+TEST(Ffi, native_buffer_aliases_preserve_signature_checks) {
+  for (const std::string& countType : {"i64", "i32", "raw_ptr<u8>"}) {
+    auto driver = Driver::createForAOT("native_buffer_aliases");
+    auto analyzed = driver->analyzeString(R"(
+      /** Read bytes through the native buffer parameter. */
+      extern "C" function bytes(fd: i32, buf: raw_ptr<u8>, count: i64) i64 as "read";
+      /** Read words through the same native buffer parameter. */
+      extern "C" function words(fd: i32, buf: raw_ptr<u64>, count: )" +
+      countType + ") i64 as \"read\";");
+    EXPECT_EQ(analyzed.error.has_value(), countType != "i64");
+  }
+}
+
+/** Imported private externs retain their source identity in diagnostics. */
+TEST(Ffi, conflicting_native_signature_from_moon) {
+  namespace fs = std::filesystem;
+  initTestEnvironment();
+  const fs::path dir = fs::current_path() / "tmp" / "ffi_signature_conflict";
+  fs::create_directories(dir);
+  const auto source = dir / "native_binding.sun";
+  const auto moon = dir / "native_binding.moon";
+  {
+    std::ofstream out(source);
+    out << R"(
+      /** Wrap a private native binding. */
+      public module native_binding {
+        /** Original integer-based signal binding. */
+        extern "C" function original(sig: i32, handler: i64) i64 as "signal";
+        /** Keep the native declaration in the compiled module. */
+        public function install(sig: i32, handler: i64) i64 {
+          return unsafe { original(sig, handler); };
+        }
+      }
+    )";
+  }
+  sun::moon_bundling::MoonBuildOptions options;
+  options.optimize = false;
+  sun::moon_bundling::MoonBuilder::build(source.string(), moon, options);
+  auto driver = Driver::createForAOT("moon_signature_conflict");
+  driver->setMoonImports({sun::moon_bundling::MoonImport(moon.string())});
+  auto analyzed = driver->analyzeString(R"(
+      /** Typed signal binding conflicts with the imported integer binding. */
+      extern "C" function typed(sig: i32, handler: function (i32) void)
+          raw_ptr<u8> as "signal";
+      /** Signal callback. */
+      function callback(sig: i32) void {}
+      /** Exercise the conflicting signature. */
+      function main() i32 {
+        unsafe { typed(2, callback); };
+        return 0;
+      }
+    )");
+  ASSERT_TRUE(analyzed.error.has_value());
+  const auto& error = *analyzed.error;
+  EXPECT_NE(error.getMessage().find("Conflicting signatures"), std::string::npos);
+  EXPECT_NE(error.getMessage().find("signal"), std::string::npos);
+  EXPECT_NE(error.getMessage().find("original"), std::string::npos);
+  EXPECT_NE(error.getMessage().find("typed"), std::string::npos);
+  EXPECT_NE(error.getMessage().find("native_binding.sun"), std::string::npos);
+  EXPECT_TRUE(error.getLocation().has_value());
+  fs::remove_all(dir);
+}
+
+/** Compare callback types across modules even though LLVM lowers both to ptr. */
+TEST(Ffi, native_callback_conflicts_during_analysis) {
+  auto driver = Driver::createForAOT("callback_conflict_analysis");
+  auto analyzed = driver->analyzeString(R"(
+    /** First native binding scope. */
+    module first_scope {
+      /** Register a callback receiving an integer. */
+      extern "C" function first(handler: function (i32) void) void as "register_callback";
+    }
+    /** Second native binding scope. */
+    module second_scope {
+      /** Conflicting callback parameter width. */
+      extern "C" function second(handler: function (i64) void) void as "register_callback";
+    }
+  )");
+  ASSERT_TRUE(analyzed.error.has_value());
+  EXPECT_NE(analyzed.error->getMessage().find("Conflicting signatures"),
+            std::string::npos);
+  EXPECT_NE(analyzed.error->getMessage().find("function (i32) void"),
+            std::string::npos);
+  EXPECT_NE(analyzed.error->getMessage().find("function (i64) void"),
+            std::string::npos);
+
+  // A fresh editor analysis must not retain declarations from the failed run.
+  auto next = driver->analyzeString(R"(
+    /** Independent binding in a new analysis session. */
+    extern "C" function next(handler: function (i64) void) void as "register_callback";
+  )");
+  EXPECT_FALSE(next.error.has_value());
+}

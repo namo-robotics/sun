@@ -124,40 +124,45 @@ llvm::Function* ExternCEmitter::declare(
     logAndThrowError("C symbol '" + symbol +
                      "' was already declared as a global variable");
   }
-  if (llvm::Function* existing = module_->getFunction(symbol)) {
-    // The function may have been created by another path (linked .moon
-    // bitcode, a prior declaration). Without a registered lowering,
-    // needsMarshalling() would silently answer no and calls would skip the
-    // ABI rewriting the signature was built with.
-    if (!lowerings_.count(symbol)) {
-      SignednessInfo signs = signednessOf(proto);
-      auto lowering =
-          lowerCSignature(targetTriple(module_), returnType, paramTypes,
-                          module_->getDataLayout(), &signs);
-      llvm::FunctionType* expected = buildLoweredFunctionType(
-          lowering, ctx_.getContext(), proto.isCVariadic());
-      if (expected != existing->getFunctionType()) {
-        logAndThrowError("extern \"C\" declaration of '" + symbol +
-                         "' does not match the signature it was previously "
-                         "declared or compiled with");
-      }
-      lowerings_[symbol] = lowering;
-      applyAttributes(existing, lowering);
-    }
-    // A C extern's name *is* its ABI; tag it so .moon bundling leaves the
-    // symbol alone.
-    existing->addFnAttr("sun.cabi");
-    return existing;
-  }
-
-  // Apply the C ABI to the signature. Scalars and pointers come back
-  // unchanged; aggregates are coerced into register-sized pieces or passed
-  // through memory. LLVM does none of this on its own.
+  // Validate every declaration, including symbols with a cached lowering.
   SignednessInfo signs = signednessOf(proto);
   auto lowering = lowerCSignature(targetTriple(module_), returnType, paramTypes,
                                   module_->getDataLayout(), &signs);
   llvm::FunctionType* funcType = buildLoweredFunctionType(
       lowering, ctx_.getContext(), proto.isCVariadic());
+
+  if (llvm::Function* existing = module_->getFunction(symbol)) {
+    if (funcType != existing->getFunctionType()) {
+      std::string previous = "previously compiled declaration";
+      if (auto* origin = existing->getMetadata("sun.cabi.declaration")) {
+        if (auto* text = llvm::dyn_cast<llvm::MDString>(origin->getOperand(0)))
+          previous = text->getString().str();
+      }
+      std::string signatures;
+      llvm::raw_string_ostream stream(signatures);
+      existing->getFunctionType()->print(stream);
+      stream << " versus ";
+      funcType->print(stream);
+      logAndThrowError(
+          "Conflicting signatures for native symbol '" + symbol +
+              "': declaration '" + proto.getName() + "' conflicts with " +
+              previous + " (" + signatures + ")",
+          proto.getLocation());
+    }
+    if (!lowerings_.count(symbol)) {
+      lowerings_[symbol] = lowering;
+      applyAttributes(existing, lowering);
+    }
+    existing->addFnAttr("sun.cabi");
+    if (!existing->getMetadata("sun.cabi.declaration")) {
+      existing->setMetadata(
+          "sun.cabi.declaration",
+          llvm::MDNode::get(ctx_.getContext(), llvm::MDString::get(
+              ctx_.getContext(), "declaration '" + proto.getName() + "' at " +
+                                     proto.getLocation().toString())));
+    }
+    return existing;
+  }
 
   llvm::Function* func = llvm::Function::Create(
       funcType, llvm::Function::ExternalLinkage, symbol, module_);
@@ -167,6 +172,12 @@ llvm::Function* ExternCEmitter::declare(
   lowerings_[func->getName().str()] = lowering;
   applyAttributes(func, lowering);
   func->addFnAttr("sun.cabi");
+  // Keep the source identity when this declaration travels in moon bitcode.
+  func->setMetadata(
+      "sun.cabi.declaration",
+      llvm::MDNode::get(ctx_.getContext(), llvm::MDString::get(
+          ctx_.getContext(), "declaration '" + proto.getName() + "' at " +
+                                 proto.getLocation().toString())));
 
   // Parameter names are only meaningful where a parameter survived one-to-one;
   // coerced and indirect ones no longer correspond to a single source name.

@@ -138,6 +138,8 @@ void DeclarationCollectionPass::collectFunctionSignature(FunctionAST& func) {
         sema_.typeResolver().typeAnnotationToType(*proto.getReturnType());
   }
 
+  if (func.isCExtern()) registerNativeFunction(proto, paramTypes, returnType);
+
   const auto& qualifiedName = proto.getQualifiedName();
 
   // Minimal FunctionInfo (no captures — those require body analysis)
@@ -155,6 +157,52 @@ void DeclarationCollectionPass::collectFunctionSignature(FunctionAST& func) {
 
   ctx_.currentScope().declareFunction(qualifiedName.baseName, info,
                                       ctx_.currentLocation());
+}
+
+/** Compare native value types without imposing a pointee type on C buffers. */
+static bool compatibleNativeValueTypes(const TypePtr& first,
+                                       const TypePtr& second) {
+  return (first->isRawPointer() && second->isRawPointer()) ||
+         first->equals(*second);
+}
+
+/** Compare C signatures while retaining scalar and callback type checks. */
+static bool compatibleNativeFunctionTypes(const TypePtr& first,
+                                          const TypePtr& second) {
+  const auto& a = static_cast<const sun::types::FunctionType&>(*first);
+  const auto& b = static_cast<const sun::types::FunctionType&>(*second);
+  if (!compatibleNativeValueTypes(a.getReturnType(), b.getReturnType()) ||
+      a.getParamTypes().size() != b.getParamTypes().size())
+    return false;
+  for (size_t i = 0; i < a.getParamTypes().size(); ++i) {
+    if (!compatibleNativeValueTypes(a.getParamTypes()[i], b.getParamTypes()[i]))
+      return false;
+  }
+  return true;
+}
+
+void DeclarationCollectionPass::registerNativeFunction(
+    const PrototypeAST& proto, const std::vector<TypePtr>& params,
+    TypePtr returnType) {
+  auto type = Types::Function(returnType, params);
+  auto [entry, inserted] = nativeFunctions_.try_emplace(
+      proto.getLinkName(), NativeFunctionSignature{
+                               type, proto.getName(), proto.getLocation(),
+                               proto.isCVariadic()});
+  if (inserted) return;
+  const auto& previous = entry->second;
+  if (compatibleNativeFunctionTypes(previous.type, type) &&
+      previous.variadic == proto.isCVariadic())
+    return;
+
+  logAndThrowError(
+      "Conflicting signatures for native symbol '" + proto.getLinkName() +
+          "': declaration '" + proto.getName() + "' (" + type->toDisplayString() +
+          (proto.isCVariadic() ? ", variadic" : "") +
+          ") conflicts with declaration '" + previous.name + "' at " +
+          previous.location.toString() + " (" + previous.type->toDisplayString() +
+          (previous.variadic ? ", variadic" : "") + ")",
+      proto.getLocation());
 }
 
 void DeclarationCollectionPass::collectExternVariable(
