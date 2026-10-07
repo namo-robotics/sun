@@ -56,10 +56,42 @@ TEST(BoundedIo, slice_prevents_resizing_storage) {
       var alloc = make_heap_allocator();
       var buffer = ContiguousBuffer<u8>(alloc, 4);
       var bytes = ByteSlice(buffer);
-      buffer.resize(1);
+      buffer.resize_to(1);
       return _convert<i32>(bytes.size());
     }
   )"), "Borrow check failed");
+}
+
+/** Read-only methods remain usable while a slice borrows the buffer. */
+TEST(BoundedIo, slice_allows_reading_storage_size) {
+  EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
+    using std;
+    /** Reads both sizes while the shared borrow is alive. */
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var buffer = ContiguousBuffer<u8>(alloc, 4);
+      var bytes = ByteSlice(buffer);
+      return _convert<i32>(buffer.size() + bytes.size());
+    }
+  )"), 8);
+}
+
+/** Releasing a slice's scope permits replacing the buffer allocation. */
+TEST(BoundedIo, storage_can_resize_after_slice_scope) {
+  EXPECT_EQ(sun::driver::executeStringWithStdlib(R"(
+    using std;
+    /** Resizes only after the slice and its borrow have ended. */
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var buffer = ContiguousBuffer<u8>(alloc, 4);
+      if (true) {
+        var bytes = ByteSlice(buffer);
+        if (bytes.size() != 4) { return -1; }
+      };
+      buffer.resize_to(1);
+      return _convert<i32>(buffer.size());
+    }
+  )"), 1);
 }
 
 /** Mutable views cannot outlive the local allocation they reference. */

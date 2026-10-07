@@ -1,32 +1,61 @@
 # Memory Safety
 
-Sun implements a **simplified Rust-style ownership system** that provides memory safety guarantees without requiring explicit lifetime annotations. This page covers ownership and moves, references and borrowing, the rules the borrow checker enforces, and the `unsafe` block that steps outside them.
+Sun implements Rust-style memory safety to eliminate common programming errors such as
 
-import { Callout } from 'nextra/components'
+- dangling references
+- double frees
+- data races
+- aliasing violations
 
-<Callout type="info">
-  Sun is inference-first: most code never writes a lifetime. References are scoped and cannot escape their defining context. Optional Rust-style lifetime names (`'a`, `'this`) exist for one purpose — relating two positions of one signature, so a callee that stores one argument into another can say so (see [Named Lifetimes](#named-lifetimes-relate-two-positions-of-one-signature)).
-</Callout>
+and more.
 
-## Overview
+This memory-safety is based on three fundamental concepts:
 
-Sun's ownership model is built around three key concepts:
+1. **Ownership**
+2. **Move Semantics**
+3. **Borrowing**
 
-1. **Value Types**: Primitives and classes are value types, allocated on the stack by default
-2. **Move Semantics**: Class-typed variables transfer ownership when assigned to another variable
-3. **References**: Temporary borrows of variables, tracked by the borrow checker
 
-```mermaid
-flowchart TD
-    subgraph "Memory Model"
-        A[Variable Declaration] --> B{Type?}
-        B -->|Primitive| C[Stack Value<br/>Copy on assign]
-        B -->|Class| D[Stack Value<br/>Move on assign]
-        B -->|Reference| E[Borrow of existing variable<br/>Tracked by borrow checker]
-    end
+## Ownership
+
+Every owned value in Sun has one owner responsible for its cleanup. The owner
+can be a variable, a field, or a container element.
+
+```sun
+var owner: std.String = `hello`;  // owner owns the string
 ```
 
-## Value Types and Move Semantics
+When the owner leaves its scope, the value is destroyed unless ownership has
+been transferred elsewhere.
+
+## Move Semantics
+
+Moving a value transfers ownership without copying it. The previous owner can
+no longer use the value.
+
+```sun
+var next = owner;  // The string moves from owner to next
+// owner.length();  // ERROR: owner has moved
+```
+
+Compound values such as strings move on assignment; primitive values are copied.
+
+## Borrowing
+
+A reference borrows a value without taking ownership. The value must remain
+alive for the duration of the borrow.
+
+```sun
+const ref borrowed = next;  // Borrows the string for reading
+var length = borrowed.length();
+```
+
+Use `ref` for mutable access or `const ref` for read-only access. A value can
+have one mutable borrow or several read-only borrows at a time.
+
+## Key Examples
+
+The following examples show how ownership, moves, and borrowing affect everyday code.
 
 ### Primitives
 
@@ -139,10 +168,6 @@ init(n: i32) {
 Only fields that own something are held to this. A field holding a number
 releases nothing when it is written again, so accumulating a total in a loop is
 fine.
-
-A constructor's first direct assignment starts a field's lifetime without
-destroying its storage. Later assignments destroy the previous value, unless
-ownership has moved away.
 
 ### Moving Values Out
 
@@ -616,6 +641,22 @@ function main() void {
 }
 ```
 
+A non-const method on a borrowed class variable is also checked as a write:
+its body could replace the backing allocation. For example, inside a function
+with `using std;` and a heap allocator named `alloc`:
+
+```sun
+var buffer = ContiguousBuffer<u8>(alloc, 4);
+var bytes = ByteSlice(buffer);
+buffer.resize_to(1);
+return _convert<i32>(bytes.size());
+```
+
+`ByteSlice(buffer)` borrows the buffer and records its length. `resize_to(1)`
+would replace the allocation while the slice still expects the original bounds,
+so the compiler rejects that call with a borrow error. Const calls such as
+`buffer.size()` remain allowed; resizing is allowed after the slice's scope ends.
+
 Scalars are different: overwriting an `i32` leaves its storage in place, so
 assigning to a borrowed scalar stays legal and live borrows simply observe
 the new value:
@@ -874,23 +915,8 @@ three you meant.
 
 ## Scope-Based Borrowing
 
-Borrows are automatically invalidated when the reference goes out of scope:
-
-```sun
-function main() i32 {
-    var x: i32 = 10;
-    
-    if (condition) {
-        ref r = x;    // Borrow starts (scope depth increases)
-        r = 20;
-    }                 // Borrow ends (scope depth decreases)
-    
-    x = 30;           // ✓ OK: x is no longer borrowed
-    return x;
-}
-```
-
-This works naturally with loops - each iteration creates a fresh borrow:
+As in [Rule 2](#rule-2-sequential-borrows-are-allowed), leaving a scope ends its
+borrows. Each loop iteration therefore creates a fresh borrow:
 
 ```sun
 function main() i32 {
