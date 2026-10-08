@@ -34,6 +34,8 @@ public module std {
 
   // Descriptor flags and the errno used for non-blocking operations.
   const O_NONBLOCK: i32 = 2048;  // 0x800
+  /** Native error code for an interrupted system call. */
+  const INTERRUPTED_ERRNO: i32 = 4;
   const WOULD_BLOCK_ERRNO: i32 = 11;
   /** Native error code for an address that is already bound. */
   const ADDRESS_IN_USE_ERRNO: i32 = 98;

@@ -949,6 +949,35 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
     return;
   }
 
+  // A mutable method can replace the receiver's backing storage, just like
+  // assignment. Check existing loans before recording any returned holder.
+  if (callee->getType() == ASTNodeType::MEMBER_ACCESS) {
+    const auto& member = static_cast<const MemberAccessAST&>(*callee);
+    const auto* receiver = member.getObject();
+    TypePtr receiverType = receiver ? receiver->getResolvedType() : nullptr;
+    if (receiverType && receiverType->isReference()) {
+      receiverType =
+          static_cast<const ReferenceType&>(*receiverType).getReferencedType();
+    }
+    if (receiverType && receiverType->isClass()) {
+      for (const auto& method :
+           static_cast<const ClassType&>(*receiverType).getMethods()) {
+        if (method.declarationId == member.getTargetDeclarationId() &&
+            !method.isConst && !method.isConstructor) {
+          // Field loans are tracked against the whole object, so checking
+          // their base here would also reject changes to unrelated fields.
+          if (receiver->getType() == ASTNodeType::VARIABLE_REFERENCE) {
+            const auto& variable =
+                static_cast<const VariableReferenceAST&>(*receiver);
+            checkVariableWrite(variable.getName(), receiverType,
+                               call.getLocation());
+          }
+          break;
+        }
+      }
+    }
+  }
+
   // A value that stores references - a constructed holder, or one a call
   // hands back by value - keeps pointing into the call's by-ref inputs, so
   // it holds a loan on each of them, conservatively until scope exit since

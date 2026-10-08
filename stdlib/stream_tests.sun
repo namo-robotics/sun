@@ -1,0 +1,268 @@
+/** Exercises bounded descriptor I/O with real pipes and borrowed handles. */
+public module std.io.stream_tests {
+  /** Requires a successful complete write of the expected size. */
+  function expect_write(result: std.io.WriteResult, count: i64) std.test.AssertionResult<void> {
+    match result {
+      std.io.WriteResult.Complete(n) => {
+        try std.test.assert_eq(n, count);
+      },
+      _ => {
+        try std.test.fail("expected complete write");
+      }
+    };
+    return std.test.AssertionResult.Ok;
+  }
+
+  /** Requires a data read of the expected size. */
+  function expect_read(result: std.io.ReadResult, count: i64) std.test.AssertionResult<void> {
+    match result {
+      std.io.ReadResult.Data(n) => {
+        try std.test.assert_eq(n, count);
+      },
+      _ => {
+        try std.test.fail("expected bytes");
+      }
+    };
+    return std.test.AssertionResult.Ok;
+  }
+
+  /** Enables nonblocking I/O on a test descriptor. */
+  function nonblocking(fd: i32) std.test.AssertionResult<void> {
+    var flags = unsafe { c_fcntl(fd, 3); };
+    try std.test.assert(flags >= 0, "get flags");
+    try std.test.assert_eq(unsafe { c_fcntl(fd, 4, flags | O_NONBLOCK); }, 0);
+    return std.test.AssertionResult.Ok;
+  }
+
+  /** Checks bounded offsets, short reads, EOF, and that borrowed handles never close their pipes. */
+  test_function borrowed_stream_short_read_and_ownership() {
+    var alloc = make_heap_allocator();
+    var pipe = try std.test.expect_system(std.process.open_pipe(alloc));
+    var input = ContiguousBuffer<u8>(alloc, 8);
+    input.fill(90);
+    try std.test.expect_access_success(input.set(2, 42));
+    if (true) {
+      var writer = std.io.BorrowedStream(pipe.write_fd());
+      var bytes = try std.test.expect_access(ByteSlice(input, 2, 1));
+      try expect_write(writer.write_all(bytes), 1);
+    }
+    try std.test.assert(unsafe { c_fcntl(pipe.write_fd(), 3); } >= 0, "borrowed writer leaves descriptor open");
+    var output = ContiguousBuffer<u8>(alloc, 8);
+    output.fill(99);
+    if (true) {
+      var reader = std.io.BorrowedStream(pipe.read_fd());
+      var bytes = try std.test.expect_access(MutableByteSlice(output, 3, 2));
+      try expect_read(reader.read(bytes), 1);
+      try std.test.assert_eq(try std.test.expect_access(bytes.get(0)), 42);
+    }
+    try std.test.assert_eq(try std.test.expect_access_value(output.get(2)), 99);
+    try std.test.assert_eq(try std.test.expect_access_value(output.get(3)), 42);
+    try std.test.assert_eq(try std.test.expect_access_value(output.get(4)), 99);
+    try std.test.assert(unsafe { c_fcntl(pipe.read_fd(), 3); } >= 0, "borrowed reader leaves descriptor open");
+    pipe.close_write();
+    var reader = std.io.BorrowedStream(pipe.read_fd());
+    var bytes = MutableByteSlice(output);
+    match reader.read(bytes) {
+      std.io.ReadResult.Eof => {},
+      _ => {
+        try std.test.fail("expected EOF");
+      }
+    };
+  }
+
+  /** Empty slices do no I/O even on invalid descriptors; nonempty slices report errors. */
+  test_function borrowed_stream_empty_and_errors() {
+    var alloc = make_heap_allocator();
+    var buffer = ContiguousBuffer<u8>(alloc, 8);
+    buffer.fill(0);
+    var stream = std.io.BorrowedStream(-1);
+    if (true) {
+      var bytes = try std.test.expect_access(ByteSlice(buffer, 8, 0));
+      try expect_write(stream.write_all(bytes), 0);
+    }
+    if (true) {
+      var bytes = try std.test.expect_access(MutableByteSlice(buffer, 8, 0));
+      try expect_read(stream.read(bytes), 0);
+    }
+    if (true) {
+      var bytes = ByteSlice(buffer);
+      match stream.write_all(bytes) {
+        std.io.WriteResult.Error(n, e) => {
+          try std.test.assert_eq(n, 0);
+        },
+        _ => {
+          try std.test.fail("expected write error");
+        }
+      };
+    }
+    var bytes = MutableByteSlice(buffer);
+    match stream.read(bytes) {
+      std.io.ReadResult.Error(_) => {},
+      _ => {
+        try std.test.fail("expected read error");
+      }
+    };
+    try std.test.assert_eq(std.io.stdin().get_fd(), std.io.STDIN_FD);
+    try std.test.assert_eq(std.io.stdout().get_fd(), std.io.STDOUT_FD);
+    try std.test.assert_eq(std.io.stderr().get_fd(), std.io.STDERR_FD);
+  }
+
+  /** Nonblocking writes preserve the exact prefix count, and reads distinguish would-block from EOF. */
+  test_function borrowed_stream_would_block_preserves_progress() {
+    var alloc = make_heap_allocator();
+    var pipe = try std.test.expect_system(std.process.open_pipe(alloc));
+    try nonblocking(pipe.read_fd());
+    try nonblocking(pipe.write_fd());
+    var reader = std.io.BorrowedStream(pipe.read_fd());
+    var writer = std.io.BorrowedStream(pipe.write_fd());
+    var output = ContiguousBuffer<u8>(alloc, 1048576);
+    if (true) {
+      var bytes = MutableByteSlice(output);
+      match reader.read(bytes) {
+        std.io.ReadResult.WouldBlock => {},
+        _ => {
+          try std.test.fail("empty open pipe would block");
+        }
+      };
+    }
+    var input = ContiguousBuffer<u8>(alloc, 1048576);
+    input.fill(73);
+    var written: i64 = 0;
+    if (true) {
+      var bytes = ByteSlice(input);
+      match writer.write_all(bytes) {
+        std.io.WriteResult.WouldBlock(n) => {
+          written = n;
+        },
+        _ => {
+          try std.test.fail("large write should fill pipe");
+        }
+      };
+      try std.test.assert(written > 0 and written < bytes.size(), "short write reports its prefix");
+      match writer.write_all(bytes) {
+        std.io.WriteResult.WouldBlock(n) => {
+          try std.test.assert_eq(n, 0);
+        },
+        _ => {
+          try std.test.fail("full pipe would block without progress");
+        }
+      };
+    }
+    var bytes = MutableByteSlice(output);
+    try expect_read(reader.read(bytes), written);
+    try std.test.assert_eq(try std.test.expect_access(bytes.get(written - 1)), 73);
+  }
+
+  /** File methods use the same bounded I/O contract as borrowed streams. */
+  test_function file_bounded_io() {
+    var alloc = make_heap_allocator();
+    var td = try std.test.expect_system(std.tests.TempDir(alloc, "bounded_io"));
+    var path = td.file("bytes");
+    var file = std.io.File();
+    try std.test.expect_system_success(file.open(path, std.io.FileMode.Write));
+    var buffer = ContiguousBuffer<u8>(alloc, 4);
+    buffer.fill(37);
+    if (true) {
+      var bytes = ByteSlice(buffer);
+      try expect_write(file.write_all(bytes), 4);
+    }
+    file.close();
+    try std.test.expect_system_success(file.open(path, std.io.FileMode.Read));
+    buffer.fill(0);
+    var bytes = MutableByteSlice(buffer);
+    try expect_read(file.read(bytes), 4);
+    try std.test.assert_eq(try std.test.expect_access(bytes.get(3)), 37);
+  }
+
+  /** Models interruptions and short reads without timing-sensitive signals. */
+  class InterruptedReader implements std.io.ByteReader {
+    public var calls: i64 = 0;
+
+    /** Interrupts once, then returns an initialized short prefix. */
+    public unsafe method read(fd: i32, data: raw_ptr<u8>, count: i64) i64 {
+      this.calls = this.calls + 1;
+      if (this.calls == 1) {
+        unsafe { _store<i32>(errno_ptr(), 0, INTERRUPTED_ERRNO); };
+        return -1;
+      }
+      if (count != 4 or fd != 123) {
+        return 0;
+      }
+      unsafe { _store<u8>(data, 0, 42); };
+      return 1;
+    }
+  }
+
+  /** Models short writes interleaved with interruption and optional terminal failure. */
+  class InterruptedWriter implements std.io.ByteWriter {
+    public var calls: i64 = 0;
+    public var valid: bool = true;
+    var mode: i64;
+
+    /** Selects completion, native failure, or a zero-progress write. */
+    init(mode: i64) {
+      this.mode = mode;
+    }
+
+    /** Checks suffix advancement while injecting interruption and write results. */
+    public unsafe method write(fd: i32, data: raw_ptr<u8>, count: i64) i64 {
+      this.calls = this.calls + 1;
+      if (this.calls == 1 or this.calls == 3) {
+        unsafe { _store<i32>(errno_ptr(), 0, INTERRUPTED_ERRNO); };
+        return -1;
+      }
+      if (this.calls == 2) {
+        this.valid = this.valid and count == 4;
+        return 2;
+      }
+      this.valid = this.valid and count == 2 and unsafe { _load<u8>(data, 0); } == 73;
+      if (this.mode == 1) {
+        unsafe { _store<i32>(errno_ptr(), 0, 5); };
+        return -1;
+      }
+      if (this.mode == 2) {
+        return 0;
+      }
+      return 2;
+    }
+  }
+
+  /** Retries interrupted reads and returns the first successful short read. */
+  test_function interrupted_read_retries() {
+    var alloc = make_heap_allocator();
+    var buffer = ContiguousBuffer<u8>(alloc, 4);
+    var bytes = MutableByteSlice(buffer);
+    var operation = InterruptedReader();
+    try expect_read(std.io.read_slice_using(123, bytes, operation), 1);
+    try std.test.assert_eq(operation.calls, 2);
+    try std.test.assert_eq(try std.test.expect_access(bytes.get(0)), 42);
+  }
+
+  /** Retries interruptions between short writes and retains progress on errors or zero writes. */
+  test_function interrupted_writes_preserve_progress() {
+    var alloc = make_heap_allocator();
+    var buffer = ContiguousBuffer<u8>(alloc, 4);
+    buffer.fill(0);
+    try std.test.expect_access_success(buffer.set(2, 73));
+    var bytes = ByteSlice(buffer);
+    for (var mode: i64 = 0; mode < 3; mode = mode + 1) {
+      var operation = InterruptedWriter(mode);
+      var result = std.io.write_slice_using(123, bytes, operation);
+      match result {
+        std.io.WriteResult.Complete(n) => {
+          try std.test.assert_eq(mode, 0);
+          try std.test.assert_eq(n, 4);
+        },
+        std.io.WriteResult.Error(n, e) => {
+          try std.test.assert(mode != 0, "only failure modes report errors");
+          try std.test.assert_eq(n, 2);
+        },
+        _ => {
+          try std.test.fail("unexpected would-block");
+        }
+      };
+      try std.test.assert_eq(operation.calls, 4);
+      try std.test.assert(operation.valid, "retry starts at the remaining suffix");
+    }
+  }
+}

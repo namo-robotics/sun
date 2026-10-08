@@ -477,9 +477,11 @@ try write_string(path, text);
 | `open` | `(path: Path, mode: FileMode) SystemResult<void>` | Open a file |
 | `adopt` | `(fd: i32) void` | Take ownership of an open descriptor |
 | `write` | `(data: static_ptr<u8>) i64` / `(data: ref String) i64` | Bytes written |
-| `write_bytes` | `(buf: raw_ptr<u8>, len: i64) i64` | Write raw bytes |
+| `write_all` | `(bytes: const ref ByteSlice) WriteResult` | Write a bounded slice, retrying short writes and interruptions |
+| `write_bytes` | `unsafe (buf: raw_ptr<u8>, len: i64) i64` | Write caller-validated raw storage |
 | `read_all` | `(alloc: ref HeapAllocator) SystemResult<String>` | Read to end of file |
-| `read_into` | `(buf: raw_ptr<u8>, len: i64) i64` | Read into a buffer |
+| `read` | `(bytes: ref MutableByteSlice) ReadResult` | Read into a bounded slice, retrying interruptions |
+| `read_into` | `unsafe (buf: raw_ptr<u8>, len: i64) i64` | Read into caller-validated raw storage |
 | `seek` | `(offset: i64, whence: Whence) i64` | New offset from the start |
 | `tell` / `size` | `() i64` | Current position / total length |
 | `sync` / `truncate` | `() SystemResult<void>` / `(length: i64) SystemResult<void>` | Flush / resize |
@@ -488,6 +490,53 @@ try write_string(path, text);
 A `File` closes itself at scope exit. The descriptor it holds is `0` when it
 holds nothing, so a moved-from `File` — which is zeroed — closes nothing rather
 than closing stdin.
+
+### Borrowed streams and bounded bytes
+
+`std.io.stdin()`, `stdout()`, and `stderr()` return `BorrowedStream` handles.
+Dropping a handle never closes the descriptor. `BorrowedStream(fd)` also borrows
+an existing descriptor; its owner must keep it open during use.
+
+`ByteSlice(buffer)` borrows a `ContiguousBuffer<u8>` read-only, while
+`MutableByteSlice(buffer)` borrows it mutably. Neither allocates or copies bytes.
+The `(buffer, start, count)` constructors return `AccessResult` and reject
+negative, overflowing, or out-of-bounds ranges. The backing buffer remains
+borrowed while the slice is in use. Slices expose `size()` and checked `get(index)`.
+
+```sun
+using std;
+
+/** Reads a bounded chunk from standard input. */
+function read_chunk(alloc: ref HeapAllocator) void {
+    var buffer = ContiguousBuffer<u8>(alloc, 4096);
+    var bytes = MutableByteSlice(buffer);
+    var input = std.io.stdin();
+    match input.read(bytes) {
+        std.io.ReadResult.Data(count) => println(count),
+        std.io.ReadResult.Eof => println("end of input"),
+        std.io.ReadResult.WouldBlock => println("try again when readable"),
+        std.io.ReadResult.Error(error) => println(error.message())
+    };
+}
+```
+
+Both `File` and `BorrowedStream` provide `read` and `write_all`:
+
+- `read` returns `Data(count)` as soon as bytes arrive, `Eof` for end of input,
+  `WouldBlock` for a nonblocking descriptor with no available bytes, or
+  `Error(error)`. An empty slice returns `Data(0)` without a system call.
+- `write_all` retries short writes until complete. It returns `Complete(count)`,
+  `WouldBlock(count)`, or `Error(count, error)`. Every count is the number already
+  written. To resume, pass a new slice starting after that prefix; do not resend
+  the whole original slice. An empty slice returns `Complete(0)` without I/O.
+- Both retry interrupted calls. A zero-progress write is an error. Descriptor
+  flags and process signal handling are unchanged, including native SIGPIPE
+  behavior for writes to closed pipes.
+
+`std.byte_order.read_native_u16/u32/u64` and `read_native_i16/i32/i64` take a
+`const ref ByteSlice` and a byte offset, returning `AccessResult<integer>`.
+They accept unaligned offsets and check against the slice's bounds before
+copying the integer in the target's native byte order. No allocation is needed.
 
 Free functions:
 

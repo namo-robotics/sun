@@ -1,0 +1,95 @@
+/** Bounded borrowed byte storage for I/O and binary decoding. */
+public module std {
+  /** Checks a byte range without overflowing when given very large bounds. */
+  function valid_byte_range(size: i64, start: i64, count: i64) bool {
+    return start >= 0 and count >= 0 and start <= size and count <= size - start;
+  }
+
+  /** Borrows read-only bytes without allocating or taking ownership. */
+  public class ByteSlice {
+    var buffer: const ref ContiguousBuffer<u8>;
+    var start: i64;
+    var count: i64;
+
+    /** Borrows the entire buffer. */
+    init(buffer: const ref ContiguousBuffer<u8>) {
+      this.buffer = buffer;
+      this.start = 0;
+      this.count = buffer.size();
+    }
+
+    /** Borrows a checked range; rejects negative or out-of-bounds ranges. */
+    init(buffer: const ref ContiguousBuffer<u8>, start: i64, count: i64) AccessResult<void> {
+      this.buffer = buffer;
+      this.start = 0;
+      this.count = 0;
+      if (not valid_byte_range(buffer.size(), start, count)) {
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(start));
+      }
+      this.start = start;
+      this.count = count;
+    }
+
+    /** Returns the number of bytes in the borrowed range. */
+    public const method size() i64 {
+      return this.count;
+    }
+
+    /** Reads a byte after checking its position within this slice. */
+    public const method get(index: i64) AccessResult<u8> {
+      if (index < 0 or index >= this.count) {
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
+      }
+      return AccessResult.Ok(unsafe { this.buffer.get_unchecked(this.start + index); });
+    }
+
+    /** Exposes storage only to the standard library's checked native boundary. */
+    const method raw_data() raw_ptr<u8> {
+      return unsafe { _ptr_offset(this.buffer.raw_data(), this.start); };
+    }
+  }
+
+  /** Borrows mutable bytes without allocating or taking ownership. */
+  public class MutableByteSlice {
+    var buffer: ref ContiguousBuffer<u8>;
+    var start: i64;
+    var count: i64;
+
+    /** Borrows the entire buffer. */
+    init(buffer: ref ContiguousBuffer<u8>) {
+      this.buffer = buffer;
+      this.start = 0;
+      this.count = buffer.size();
+    }
+
+    /** Borrows a checked range; rejects negative or out-of-bounds ranges. */
+    init(buffer: ref ContiguousBuffer<u8>, start: i64, count: i64) AccessResult<void> {
+      this.buffer = buffer;
+      this.start = 0;
+      this.count = 0;
+      if (not valid_byte_range(buffer.size(), start, count)) {
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(start));
+      }
+      this.start = start;
+      this.count = count;
+    }
+
+    /** Returns the number of bytes in the borrowed range. */
+    public const method size() i64 {
+      return this.count;
+    }
+
+    /** Reads a byte after checking its position within this slice. */
+    public const method get(index: i64) AccessResult<u8> {
+      if (index < 0 or index >= this.count) {
+        return AccessResult.OutOfBounds(IndexOutOfBoundsError(index));
+      }
+      return AccessResult.Ok(unsafe { this.buffer.get_unchecked(this.start + index); });
+    }
+
+    /** Exposes storage only to the standard library's checked native boundary. */
+    const method raw_data() raw_ptr<u8> {
+      return unsafe { _ptr_offset(this.buffer.raw_data(), this.start); };
+    }
+  }
+}

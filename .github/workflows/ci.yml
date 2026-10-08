@@ -449,6 +449,11 @@ jobs:
           for dir in examples/*/; do
             [ -f "${dir}build.sh" ] || continue
             name=$(basename "$dir")
+            # Re-enable once sun_serve supports the current safe file I/O API.
+            if [ "$name" = "100-git_library" ]; then
+              echo "SKIP ${name}: waiting for sun_serve compatibility update"
+              continue
+            fi
             echo "::group::${name}"
             if ( cd "$dir" && bash build.sh && bash test.sh ); then
               echo "PASS ${name}"
@@ -547,6 +552,11 @@ jobs:
           for dir in examples/*/; do
             [ -f "${dir}build.sh" ] || continue
             name=$(basename "$dir")
+            # Re-enable once sun_serve supports the current safe file I/O API.
+            if [ "$name" = "100-git_library" ]; then
+              echo "SKIP ${name}: waiting for sun_serve compatibility update"
+              continue
+            fi
             echo "::group::${name}"
             if ( cd "$dir" && bash build.sh && bash test.sh ); then
               echo "PASS ${name}"

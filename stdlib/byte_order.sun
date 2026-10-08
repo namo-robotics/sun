@@ -129,4 +129,64 @@ public module std.byte_order {
   public function from_little_endian_u64(value: u64) u64 {
     return value;
   }
+
+  /** Decodes an unaligned native-endian u16, rejecting ranges outside the slice. */
+  public function read_native_u16(bytes: const ref ByteSlice, offset: i64) AccessResult<u16> {
+    if (not valid_byte_range(bytes.size(), offset, _sizeof<u16>())) {
+      return AccessResult.OutOfBounds(IndexOutOfBoundsError(offset));
+    }
+    var value: u16 = 0;
+    unsafe { _memcpy(_ptr_as_raw<u8>(_address_of<u16>(value)), _ptr_offset(bytes.raw_data(), offset), _sizeof<u16>()); };
+    return AccessResult.Ok(value);
+  }
+
+  /** Decodes an unaligned native-endian u32, rejecting ranges outside the slice. */
+  public function read_native_u32(bytes: const ref ByteSlice, offset: i64) AccessResult<u32> {
+    if (not valid_byte_range(bytes.size(), offset, _sizeof<u32>())) {
+      return AccessResult.OutOfBounds(IndexOutOfBoundsError(offset));
+    }
+    var value: u32 = 0;
+    unsafe { _memcpy(_ptr_as_raw<u8>(_address_of<u32>(value)), _ptr_offset(bytes.raw_data(), offset), _sizeof<u32>()); };
+    return AccessResult.Ok(value);
+  }
+
+  /** Decodes an unaligned native-endian u64, rejecting ranges outside the slice. */
+  public function read_native_u64(bytes: const ref ByteSlice, offset: i64) AccessResult<u64> {
+    if (not valid_byte_range(bytes.size(), offset, _sizeof<u64>())) {
+      return AccessResult.OutOfBounds(IndexOutOfBoundsError(offset));
+    }
+    var value: u64 = 0;
+    unsafe { _memcpy(_ptr_as_raw<u8>(_address_of<u64>(value)), _ptr_offset(bytes.raw_data(), offset), _sizeof<u64>()); };
+    return AccessResult.Ok(value);
+  }
+
+  /** Decodes an unaligned native-endian i16, rejecting ranges outside the slice. */
+  public function read_native_i16(bytes: const ref ByteSlice, offset: i64) AccessResult<i16> {
+    if (not valid_byte_range(bytes.size(), offset, _sizeof<i16>())) {
+      return AccessResult.OutOfBounds(IndexOutOfBoundsError(offset));
+    }
+    var value: i16 = 0;
+    unsafe { _memcpy(_ptr_as_raw<u8>(_address_of<i16>(value)), _ptr_offset(bytes.raw_data(), offset), _sizeof<i16>()); };
+    return AccessResult.Ok(value);
+  }
+
+  /** Decodes an unaligned native-endian i32, rejecting ranges outside the slice. */
+  public function read_native_i32(bytes: const ref ByteSlice, offset: i64) AccessResult<i32> {
+    if (not valid_byte_range(bytes.size(), offset, _sizeof<i32>())) {
+      return AccessResult.OutOfBounds(IndexOutOfBoundsError(offset));
+    }
+    var value: i32 = 0;
+    unsafe { _memcpy(_ptr_as_raw<u8>(_address_of<i32>(value)), _ptr_offset(bytes.raw_data(), offset), _sizeof<i32>()); };
+    return AccessResult.Ok(value);
+  }
+
+  /** Decodes an unaligned native-endian i64, rejecting ranges outside the slice. */
+  public function read_native_i64(bytes: const ref ByteSlice, offset: i64) AccessResult<i64> {
+    if (not valid_byte_range(bytes.size(), offset, _sizeof<i64>())) {
+      return AccessResult.OutOfBounds(IndexOutOfBoundsError(offset));
+    }
+    var value: i64 = 0;
+    unsafe { _memcpy(_ptr_as_raw<u8>(_address_of<i64>(value)), _ptr_offset(bytes.raw_data(), offset), _sizeof<i64>()); };
+    return AccessResult.Ok(value);
+  }
 }
