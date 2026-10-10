@@ -1,5 +1,6 @@
 target_sources(sun_tests PRIVATE
     test_functions.cpp
+    test_returns.cpp
     test_test_functions.cpp
 )
 
