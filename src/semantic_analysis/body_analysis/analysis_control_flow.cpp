@@ -610,6 +610,11 @@ void BodyAnalyzer::analyzeReturnExpr(sun::ast::ReturnExprAST& returnExpr) {
     }
     returnExpr.setResolvedType(valueType);
   } else {
+    TypePtr declaredReturn = ctx_.currentFunctionReturnType();
+    if (declaredReturn && !declaredReturn->isVoid())
+      logAndThrowError("Return requires a value of type '" +
+                           declaredReturn->toDisplayString() + "'",
+                       returnExpr.getLocation());
     returnExpr.setResolvedType(Types::Void());
   }
 }
