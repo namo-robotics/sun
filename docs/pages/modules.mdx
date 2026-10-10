@@ -464,7 +464,7 @@ manifest {
 | `networking.sun` | TCP sockets (`TcpStream`, `TcpListener`) and DNS |
 | `option.sun` | `Option<T>` and `_Result<T, E>` payload enums |
 | `print.sun` | Overloaded `print`/`println`/`eprint`/`eprintln` |
-| `process.sun` | `std.process` — `Command`, signals, raw fork/exec |
+| `process.sun`, `process_inspection.sun` | `std.process` — `Command`, signals, raw fork/exec, process snapshots and owned handles |
 | `proto_wire.sun` | Protobuf wire format |
 | `queue.sun` | FIFO `Queue<T>` built on `LinkedList<T>` |
 | `shared.sun` | `Shared<T>` reference-counted handle with `Mutex`-guarded access |

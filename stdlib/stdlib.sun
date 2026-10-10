@@ -34,6 +34,7 @@ manifest {
         "env.sun",
         "time.sun",
         "process.sun",
+        "process_inspection.sun",
         "terminal.sun",
         "networking.sun",
         "http.sun",
@@ -64,6 +65,7 @@ manifest {
         "networking_tests.sun",
         "option_tests.sun",
         "process_tests.sun",
+        "process_inspection_tests.sun",
         "queue_tests.sun",
         "shared_tests.sun",
         "string_tests.sun",
@@ -77,10 +79,12 @@ manifest {
     ],
     target: {
         linux: {
-            source_files: [ "target_linux.sun", "event_loop_linux.sun" ]
+            source_files: [ "target_linux.sun", "event_loop_linux.sun", "process_linux.sun" ],
+            test_files: [ "process_linux_tests.sun" ]
         },
         macos: {
-            source_files: [ "target_darwin.sun", "event_loop_darwin.sun" ]
+            source_files: [ "target_darwin.sun", "event_loop_darwin.sun", "process_darwin.sun" ],
+            test_files: [ "process_darwin_tests.sun" ]
         }
     }
 }
