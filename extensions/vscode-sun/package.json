@@ -1,195 +1,195 @@
 {
-    "name": "sun-language",
-    "displayName": "Sun Language",
-    "description": "Syntax highlighting, diagnostics, formatting, hover type information, go-to-definition, find references, rename symbol and Test Explorer for Sun",
-    "icon": "images/sun-logo.png",
-    "version": "0.1.41",
-    "publisher": "namo-robotics",
-    "license": "MIT",
-    "repository": {
-        "type": "git",
-        "url": "https://github.com/namo-robotics/sun"
-    },
-    "engines": {
-        "vscode": "^1.90.0"
-    },
-    "categories": [
-        "Programming Languages"
-    ],
-    "activationEvents": [
-        "workspaceContains:**/*.sun"
-    ],
-    "main": "./out/extension.js",
-    "contributes": {
-        "languages": [
-            {
-                "id": "sun",
-                "aliases": [
-                    "Sun",
-                    "sun"
-                ],
-                "extensions": [
-                    ".sun"
-                ],
-                "icon": {
-                    "light": "./images/sun.svg",
-                    "dark": "./images/sun.svg"
-                },
-                "configuration": "./language-configuration.json"
-            },
-            {
-                "id": "moon",
-                "aliases": [
-                    "Moon",
-                    "moon"
-                ],
-                "extensions": [
-                    ".moon"
-                ],
-                "icon": {
-                    "light": "./images/moon.svg",
-                    "dark": "./images/moon.svg"
-                }
-            }
+  "name": "sun-language",
+  "displayName": "Sun Language",
+  "description": "Syntax highlighting, diagnostics, formatting, hover type information, go-to-definition, find references, rename symbol and Test Explorer for Sun",
+  "icon": "images/sun-logo.png",
+  "version": "0.1.42",
+  "publisher": "namo-robotics",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/namo-robotics/sun"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "workspaceContains:**/*.sun"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "sun",
+        "aliases": [
+          "Sun",
+          "sun"
         ],
-        "grammars": [
-            {
-                "language": "sun",
-                "scopeName": "source.sun",
-                "path": "./syntaxes/sun.tmLanguage.json"
-            }
+        "extensions": [
+          ".sun"
         ],
-        "semanticTokenTypes": [
-            {
-                "id": "lifecycle",
-                "superType": "method",
-                "description": "Constructors and destructors (init/deinit)"
-            }
+        "icon": {
+          "light": "./images/sun.svg",
+          "dark": "./images/sun.svg"
+        },
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "moon",
+        "aliases": [
+          "Moon",
+          "moon"
         ],
-        "semanticTokenScopes": [
-            {
-                "language": "sun",
-                "scopes": {
-                    "lifecycle": [
-                        "entity.name.function.sun"
-                    ],
-                    "type": [
-                        "entity.name.type.sun"
-                    ],
-                    "class": [
-                        "entity.name.type.class.sun"
-                    ],
-                    "interface": [
-                        "entity.name.type.interface.sun"
-                    ],
-                    "enum": [
-                        "entity.name.type.enum.sun"
-                    ],
-                    "typeParameter": [
-                        "entity.name.type.parameter.sun"
-                    ],
-                    "function": [
-                        "entity.name.function.sun"
-                    ],
-                    "method": [
-                        "entity.name.function.sun"
-                    ],
-                    "variable": [
-                        "variable.other.readwrite.sun"
-                    ],
-                    "property": [
-                        "variable.other.property.sun"
-                    ],
-                    "parameter": [
-                        "variable.parameter.sun"
-                    ]
-                }
-            }
+        "extensions": [
+          ".moon"
         ],
-        "configuration": {
-            "title": "Sun",
-            "properties": {
-                "sun.syntaxOnly": {
-                    "type": "boolean",
-                    "default": false,
-                    "scope": "window",
-                    "description": "Keep only syntax highlighting. Stops the Sun language server and Test Explorer, disabling diagnostics, semantic highlighting, formatting, and navigation. Changes take effect immediately."
-                },
-                "sun.lsp_path": {
-                    "type": "string",
-                    "default": "sun-lsp",
-                    "description": "Path to the sun-lsp executable"
-                },
-                "sun.compiler_path": {
-                    "type": "string",
-                    "default": "sun",
-                    "description": "Path to the sun compiler, used by the Test Explorer to run tests (sun test <entrypoint>). Absolute, workspace-relative (for example build/sun), or a command on PATH; when unset the extension also tries the sun binary next to sun-lsp."
-                },
-                "sun.sun_configs": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    },
-                    "default": [
-                        "sun-config.json"
-                    ],
-                    "description": "sun-config.json files (absolute or workspace-relative) whose entrypoints lists describe the project. Their entrypoints combine with sun.entrypoints for test discovery and cross-file analysis."
-                },
-                "sun.sun_path": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    },
-                    "default": [],
-                    "description": "Additional paths to include in SUN_PATH for module resolution."
-                },
-                "sun.entrypoints": {
-                    "type": "array",
-                    "items": {
-                        "oneOf": [
-                            {
-                                "type": "string",
-                                "description": "Path to the entrypoint file containing a manifest block."
-                            },
-                            {
-                                "type": "object",
-                                "properties": {
-                                    "path": {
-                                        "type": "string",
-                                        "description": "Path to the entrypoint file containing a manifest block."
-                                    }
-                                },
-                                "required": [
-                                    "path"
-                                ]
-                            }
-                        ]
-                    },
-                    "default": [],
-                    "description": "Explicit entrypoint files with manifest blocks, combined with sun.sun_configs. Open files containing a manifest are also detected as entrypoints. Files listed in an entrypoint's manifest will use the full manifest context for cross-file analysis."
-                },
-                "sun.path_variables": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "type": "string"
-                    },
-                    "default": {},
-                    "description": "Path variables for manifest entries, e.g. {\"LIBS\": \"libs\"}. Equivalent to passing --path-var NAME=<dir> to the compiler; relative values resolve against the entrypoint's directory. A sun-config.json in the entrypoint's folder (or a parent) overrides these."
-                }
-            }
+        "icon": {
+          "light": "./images/moon.svg",
+          "dark": "./images/moon.svg"
         }
-    },
-    "scripts": {
-        "compile": "tsc -p ./",
-        "test": "npm run compile && node --test test/*.test.cjs",
-        "watch": "tsc -watch -p ./"
-    },
-    "devDependencies": {
-        "@types/node": "^20.14.0",
-        "@types/vscode": "^1.90.0",
-        "typescript": "^5.5.0"
-    },
-    "dependencies": {
-        "vscode-languageclient": "^9.0.1"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "sun",
+        "scopeName": "source.sun",
+        "path": "./syntaxes/sun.tmLanguage.json"
+      }
+    ],
+    "semanticTokenTypes": [
+      {
+        "id": "lifecycle",
+        "superType": "method",
+        "description": "Constructors and destructors (init/deinit)"
+      }
+    ],
+    "semanticTokenScopes": [
+      {
+        "language": "sun",
+        "scopes": {
+          "lifecycle": [
+            "entity.name.function.sun"
+          ],
+          "type": [
+            "entity.name.type.sun"
+          ],
+          "class": [
+            "entity.name.type.class.sun"
+          ],
+          "interface": [
+            "entity.name.type.interface.sun"
+          ],
+          "enum": [
+            "entity.name.type.enum.sun"
+          ],
+          "typeParameter": [
+            "entity.name.type.parameter.sun"
+          ],
+          "function": [
+            "entity.name.function.sun"
+          ],
+          "method": [
+            "entity.name.function.sun"
+          ],
+          "variable": [
+            "variable.other.readwrite.sun"
+          ],
+          "property": [
+            "variable.other.property.sun"
+          ],
+          "parameter": [
+            "variable.parameter.sun"
+          ]
+        }
+      }
+    ],
+    "configuration": {
+      "title": "Sun",
+      "properties": {
+        "sun.syntaxOnly": {
+          "type": "boolean",
+          "default": false,
+          "scope": "window",
+          "description": "Keep only syntax highlighting. Stops the Sun language server and Test Explorer, disabling diagnostics, semantic highlighting, formatting, and navigation. Changes take effect immediately."
+        },
+        "sun.lsp_path": {
+          "type": "string",
+          "default": "sun-lsp",
+          "description": "Path to the sun-lsp executable"
+        },
+        "sun.compiler_path": {
+          "type": "string",
+          "default": "sun",
+          "description": "Path to the sun compiler, used by the Test Explorer to run tests (sun test <entrypoint>). Absolute, workspace-relative (for example build/sun), or a command on PATH; when unset the extension also tries the sun binary next to sun-lsp."
+        },
+        "sun.sun_configs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "sun-config.json"
+          ],
+          "description": "sun-config.json files (absolute or workspace-relative) whose entrypoints lists describe the project. Their entrypoints combine with sun.entrypoints for test discovery and cross-file analysis."
+        },
+        "sun.sun_path": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Additional paths to include in SUN_PATH for module resolution."
+        },
+        "sun.entrypoints": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "Path to the entrypoint file containing a manifest block."
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "Path to the entrypoint file containing a manifest block."
+                  }
+                },
+                "required": [
+                  "path"
+                ]
+              }
+            ]
+          },
+          "default": [],
+          "description": "Explicit entrypoint files with manifest blocks, combined with sun.sun_configs. Open files containing a manifest are also detected as entrypoints. Files listed in an entrypoint's manifest will use the full manifest context for cross-file analysis."
+        },
+        "sun.path_variables": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "description": "Path variables for manifest entries, e.g. {\"LIBS\": \"libs\"}. Equivalent to passing --path-var NAME=<dir> to the compiler; relative values resolve against the entrypoint's directory. A sun-config.json in the entrypoint's folder (or a parent) overrides these."
+        }
+      }
     }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "test": "npm run compile && node --test test/*.test.cjs",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.5.0"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
 }

@@ -1,0 +1,358 @@
+/** Compiler-provided intrinsic declarations. Generic operand parameters describe
+ * inferred types; explicit type arguments and special behavior are checked by
+ * the compiler. These declarations are loaded separately from user programs. */
+
+/** Return the storage size of T in bytes, determined at compile time. */
+declare function _sizeof<T>() i64;
+
+/** Construct T in caller-provided, suitably aligned storage. Arguments follow
+ * the selected constructor. A fallible constructor returns its result instead
+ * of void. Raw pointers may have any pointee type; no storage is allocated by
+ * the intrinsic itself. P is inferred from the pointer; only T is supplied
+ * explicitly. */
+declare function _init<T, P>(pointer: raw_ptr<P>, args...);
+
+/** Run the destructor and drop owned fields of T without freeing its storage.
+ * The pointer must refer to a live T. P is inferred from the pointer; only T
+ * is supplied explicitly. */
+declare function _deinit<T, P>(pointer: raw_ptr<P>) void;
+
+/** Read T at ptr + index * sizeof(T). The raw pointer may have any pointee
+ * type; the addressed storage must contain a live, aligned T. No bounds check
+ * is performed. P is inferred from the pointer; only T is supplied explicitly. */
+declare function _load<T, P>(pointer: raw_ptr<P>, index: i64) T;
+
+/** Write T at ptr + index * sizeof(T). The raw pointer may have any pointee
+ * type; the caller provides valid aligned storage and manages any previous
+ * value. No bounds check is performed. P is inferred from the pointer; only T
+ * is supplied explicitly. */
+declare function _store<T, P>(pointer: raw_ptr<P>, index: i64, value: T) void;
+
+/** Expose a non-owning raw pointer without transferring ownership. The owner
+ * must remain alive while the pointer is used. */
+declare function _ptr_as_raw<T>(pointer: ptr<T>) raw_ptr<T>;
+
+/** Return the address of existing storage without copying or transferring
+ * ownership. The raw pointer does not extend the value's lifetime. */
+declare function _address_of<T>(value: ref T) raw_ptr<T>;
+
+/** Borrow the pointed-to value. The caller guarantees a non-null, aligned
+ * pointer to a live T and valid lifetime and aliasing. */
+declare function _to_ref<T>(pointer: raw_ptr<T>) ref T;
+
+/** Test the value's static type against T or a compiler type trait. Resolved at
+ * compile time. V is inferred from the value; only T is supplied explicitly. */
+declare function _is<T, V>(value: V) bool;
+
+/** Convert an integer to a payload-free enum, returning None when no variant
+ * has that value. Requires the standard library. V is inferred from the value;
+ * only T is supplied explicitly. */
+declare function _enum_from_int<T, V: _Integer>(value: V) std.Option<T>;
+
+/** Explicitly convert a numeric value to T. Integer narrowing truncates; this
+ * is not a checked range conversion. V is inferred from the value; only T is
+ * supplied explicitly. */
+declare function _convert<T, V: _Numeric>(value: V) T;
+
+/** Reinterpret bits as a same-size numeric type, or retype a raw pointer. Does
+ * not convert the numeric value or make pointed-to memory safe to access. V is
+ * inferred from the value; only T is supplied explicitly. */
+declare function _bitcast<T, V>(value: V) T;
+
+/** Start an OS thread and allocate its context. Move arguments into the thread.
+ * The context must be joined exactly once; prefer std.thread.spawn. */
+declare function _spawn<F>(fn: F, args...: _params_of<F>) raw_ptr<std.thread.ThreadContext>;
+
+/** Wait for a thread, take its result, and release its context. Consume a
+ * context returned by _spawn exactly once. */
+declare function _thread_join<T>(ctx: raw_ptr<std.thread.ThreadContext>) T;
+
+/** Wait for a thread, drop its result, and release its context. Consume a
+ * context returned by _spawn exactly once. */
+declare function _thread_join_drop<T>(ctx: raw_ptr<std.thread.ThreadContext>) void;
+
+/** Allocate size bytes of uninitialized heap storage. The caller owns the
+ * returned allocation and releases it with _free. */
+declare function _malloc(size: i64) raw_ptr<i8>;
+
+/** Release an allocation obtained from _malloc. Do not use the allocation
+ * afterward; this does not run Sun destructors. */
+declare function _free(pointer: raw_ptr<i8>) void;
+
+/** Copy len bytes between valid, non-overlapping memory regions. Does not
+ * implement ownership-aware copying. */
+declare function _memcpy(dst: raw_ptr<u8>, src: raw_ptr<u8>, len: i64) void;
+
+/** Copy len bytes between valid memory regions, allowing overlap. Does not
+ * implement ownership-aware moving. */
+declare function _memmove(dst: raw_ptr<u8>, src: raw_ptr<u8>, len: i64) void;
+
+/** Fill len bytes of valid writable memory with the low byte of value. */
+declare function _memset(dst: raw_ptr<u8>, value: i32, len: i64) void;
+
+/** Offset a raw pointer by a byte count. Does not check bounds or extend the
+ * allocation's lifetime. */
+declare function _ptr_offset(pointer: raw_ptr<u8>, byte_offset: i64) raw_ptr<u8>;
+
+/** Read an i64 at element index, using an offset of index * sizeof(i64). The
+ * caller guarantees valid aligned storage. */
+declare function _load_i64(pointer: raw_ptr<i8>, index: i64) i64;
+
+/** Write an i64 at element index, using an offset of index * sizeof(i64). The
+ * caller guarantees valid aligned storage. */
+declare function _store_i64(pointer: raw_ptr<i8>, index: i64, value: i64) void;
+
+/** Write an i32 value to standard output without a newline. */
+declare function _print_i32(value: i32) void;
+
+/** Write an i64 value to standard output without a newline. */
+declare function _print_i64(value: i64) void;
+
+/** Write a u64 value to standard output without a newline. */
+declare function _print_u64(value: u64) void;
+
+/** Write a f64 value to standard output without a newline. */
+declare function _print_f64(value: f64) void;
+
+/** Write a Unicode scalar to standard output as UTF-8. */
+declare function _print_char(value: char) void;
+
+/** Write a newline to standard output. */
+declare function _print_newline() void;
+
+/** Write len bytes to standard output without a newline. The byte range must be
+ * readable. */
+declare function _print_bytes(pointer: raw_ptr<i8>, len: i64) void;
+
+/** Write a string followed by a newline to standard output. The raw-pointer
+ * overload requires a readable null-terminated string. */
+declare function _println_str(value: static_ptr<u8>) void;
+
+/** Write a string followed by a newline to standard output. The raw-pointer
+ * overload requires a readable null-terminated string. */
+declare function _println_str(value: raw_ptr<u8>) void;
+
+/** Atomically load with acquire ordering. The pointer must refer to live,
+ * naturally aligned storage accessed atomically while shared. */
+declare function _atomic_load_i32(pointer: raw_ptr<i32>) i32;
+
+/** Atomically store with release ordering, publishing preceding writes. The
+ * pointer must refer to live, naturally aligned storage accessed atomically
+ * while shared. */
+declare function _atomic_store_i32(pointer: raw_ptr<i32>, value: i32) void;
+
+/** Replace the value only if it equals expected; return the previous value.
+ * Uses acquire-release ordering on success and acquire on failure. Requires
+ * live, naturally aligned atomic storage. */
+declare function _atomic_cmpxchg_i32(pointer: raw_ptr<i32>, expected: i32, desired: i32) i32;
+
+/** Add delta atomically and return the previous value. Uses acquire-release
+ * ordering. Requires live, naturally aligned atomic storage. */
+declare function _atomic_fetch_add_i32(pointer: raw_ptr<i32>, delta: i32) i32;
+
+/** Subtract delta atomically and return the previous value. Uses acquire-
+ * release ordering. Requires live, naturally aligned atomic storage. */
+declare function _atomic_fetch_sub_i32(pointer: raw_ptr<i32>, delta: i32) i32;
+
+/** Atomically load with acquire ordering. The pointer must refer to live,
+ * naturally aligned storage accessed atomically while shared. */
+declare function _atomic_load_i64(pointer: raw_ptr<i64>) i64;
+
+/** Atomically store with release ordering, publishing preceding writes. The
+ * pointer must refer to live, naturally aligned storage accessed atomically
+ * while shared. */
+declare function _atomic_store_i64(pointer: raw_ptr<i64>, value: i64) void;
+
+/** Replace the value only if it equals expected; return the previous value.
+ * Uses acquire-release ordering on success and acquire on failure. Requires
+ * live, naturally aligned atomic storage. */
+declare function _atomic_cmpxchg_i64(pointer: raw_ptr<i64>, expected: i64, desired: i64) i64;
+
+/** Add delta atomically and return the previous value. Uses acquire-release
+ * ordering. Requires live, naturally aligned atomic storage. */
+declare function _atomic_fetch_add_i64(pointer: raw_ptr<i64>, delta: i64) i64;
+
+/** Subtract delta atomically and return the previous value. Uses acquire-
+ * release ordering. Requires live, naturally aligned atomic storage. */
+declare function _atomic_fetch_sub_i64(pointer: raw_ptr<i64>, delta: i64) i64;
+
+/** Atomically load with acquire ordering. The pointer must refer to live,
+ * naturally aligned storage accessed atomically while shared. */
+declare function _atomic_load_u64(pointer: raw_ptr<u64>) u64;
+
+/** Atomically store with release ordering, publishing preceding writes. The
+ * pointer must refer to live, naturally aligned storage accessed atomically
+ * while shared. */
+declare function _atomic_store_u64(pointer: raw_ptr<u64>, value: u64) void;
+
+/** Replace the value only if it equals expected; return the previous value.
+ * Uses acquire-release ordering on success and acquire on failure. Requires
+ * live, naturally aligned atomic storage. */
+declare function _atomic_cmpxchg_u64(pointer: raw_ptr<u64>, expected: u64, desired: u64) u64;
+
+/** Add delta atomically and return the previous value. Uses acquire-release
+ * ordering. Requires live, naturally aligned atomic storage. */
+declare function _atomic_fetch_add_u64(pointer: raw_ptr<u64>, delta: u64) u64;
+
+/** Subtract delta atomically and return the previous value. Uses acquire-
+ * release ordering. Requires live, naturally aligned atomic storage. */
+declare function _atomic_fetch_sub_u64(pointer: raw_ptr<u64>, delta: u64) u64;
+
+/** Emit an acquire memory fence. Synchronization still requires a matching
+ * atomic communication between threads. */
+declare function _atomic_fence_acquire() void;
+
+/** Emit a release memory fence. Synchronization still requires a matching
+ * atomic communication between threads. */
+declare function _atomic_fence_release() void;
+
+/** Return persistent state shared with the native SIGINT/SIGTERM handler.
+ * Internal to std.signal.SignalSubscription; callers must obey its ownership
+ * and handler-lifetime protocol. Supported on Linux and macOS, x86-64 and
+ * AArch64. */
+declare function _signal_state() raw_ptr<u8>;
+
+/** Return the native C signal-handler address used by
+ * std.signal.SignalSubscription. It records pending signals and wakes a
+ * nonblocking pipe using lock-free atomics and write, preserving errno.
+ * Supported on Linux and macOS, x86-64 and AArch64. */
+declare function _signal_handler() raw_ptr<u8>;
+
+/** On Linux, wait if the aligned atomic word still equals expected. May wake
+ * spuriously; recheck the condition in a loop. */
+declare function _futex_wait(pointer: raw_ptr<i32>, expected: i32) void;
+
+/** On Linux, wake at most one thread waiting on this aligned atomic word. */
+declare function _futex_wake(pointer: raw_ptr<i32>) void;
+
+/** Return the high half of the full-width unsigned product. */
+declare function _mul_hi_u64(a: u64, b: u64) u64;
+
+/** Count leading zero bits. For zero, return the bit width of u64. */
+declare function _ctlz_u64(value: u64) u64;
+
+/** Count trailing zero bits. For zero, return the bit width of u64. */
+declare function _cttz_u64(value: u64) u64;
+
+/** Reverse the byte order of the value. */
+declare function _bswap_u16(value: u16) u16;
+
+/** Reverse the byte order of the value. */
+declare function _bswap_u32(value: u32) u32;
+
+/** Reverse the byte order of the value. */
+declare function _bswap_u64(value: u64) u64;
+
+/** Test the compilation target's OS or architecture at compile time. The
+ * argument must be a recognized string literal, such as "linux", "macos",
+ * "x86_64", or "aarch64". */
+declare function _target_is(name: static_ptr<u8>) bool;
+
+/** Open a file and return its descriptor, or a negative value on failure. */
+declare function __file_open(path: static_ptr<u8>, flags: i32) i32;
+
+/** Close a file descriptor. Return the native status code. */
+declare function __file_close(fd: i32) i32;
+
+/** Write a string to a file descriptor. Return the native write result. */
+declare function __file_write(fd: i32, data: static_ptr<u8>) i32;
+
+/** Read into a newly allocated buffer. The caller must release the returned
+ * allocation with _free. */
+declare function __file_read(fd: i32, count: i32) raw_ptr<i8>;
+
+/** Change the file position. Return the resulting offset, or a negative value
+ * on failure. */
+declare function __lseek(fd: i32, offset: i64, whence: i32) i64;
+
+/** Fill caller-provided storage for the target libc's struct stat. Return the
+ * native status code. */
+declare function __fstat(fd: i32, buffer: raw_ptr<i8>) i32;
+
+/** Flush file data to persistent storage. Return the native status code. */
+declare function __fsync(fd: i32) i32;
+
+/** Set a file's length. Return the native status code. */
+declare function __ftruncate(fd: i32, length: i64) i32;
+
+/** Remove a filesystem entry. Return the native status code. */
+declare function __unlink(path: static_ptr<u8>) i32;
+
+/** Rename a filesystem entry. Return the native status code. */
+declare function __rename(old_path: static_ptr<u8>, new_path: static_ptr<u8>) i32;
+
+/** Create a directory with native permission bits. Return the native status
+ * code. */
+declare function __mkdir(path: static_ptr<u8>, mode: i32) i32;
+
+/** Remove an empty directory. Return the native status code. */
+declare function __rmdir(path: static_ptr<u8>) i32;
+
+/** Write from a readable byte range. Return the byte count, which may be short,
+ * or a negative value on failure. */
+declare function __write(fd: i32, buffer: raw_ptr<u8>, len: i64) i64;
+
+/** Read into a writable byte range. Return the byte count, zero at end-of-file,
+ * or a negative value on failure. */
+declare function __read(fd: i32, buffer: raw_ptr<u8>, len: i64) i64;
+
+/** Create a native socket. Return its descriptor, or a negative value on
+ * failure. */
+declare function __socket(domain: i32, type: i32, protocol: i32) i32;
+
+/** Bind a socket using a native sockaddr record. Return the native status code. */
+declare function __bind(fd: i32, address: raw_ptr<u8>, length: i32) i32;
+
+/** Begin listening for connections. Return the native status code. */
+declare function __listen(fd: i32, backlog: i32) i32;
+
+/** Accept a connection and write its peer address into caller-provided storage.
+ * Return a new descriptor or a negative value on failure. */
+declare function __accept(fd: i32, address: raw_ptr<u8>, length: raw_ptr<i32>) i32;
+
+/** Connect to a native socket address. Return the native status code. */
+declare function __connect(fd: i32, address: raw_ptr<u8>, length: i32) i32;
+
+/** Send bytes from a readable range. Return the byte count, which may be short,
+ * or a negative value on failure. */
+declare function __send(fd: i32, buffer: raw_ptr<u8>, len: i64, flags: i32) i64;
+
+/** Receive into a writable range. Return the byte count or a negative value on
+ * failure. */
+declare function __recv(fd: i32, buffer: raw_ptr<u8>, len: i64, flags: i32) i64;
+
+/** Disable reading, writing, or both on a socket. Return the native status
+ * code. */
+declare function __shutdown(fd: i32, how: i32) i32;
+
+/** Set a native socket option from caller-provided storage. Return the native
+ * status code. */
+declare function __setsockopt(fd: i32, level: i32, option: i32, value: raw_ptr<u8>, length: i32) i32;
+
+/** Read a native socket option into caller-provided storage, updating its
+ * length. Return the native status code. */
+declare function __getsockopt(fd: i32, level: i32, option: i32, value: raw_ptr<u8>, length: raw_ptr<i32>) i32;
+
+/** Build a native IPv4 address and bind the socket. Return the native status
+ * code. */
+declare function __bind_ipv4(fd: i32, ip: i32, port: i32) i32;
+
+/** Build a native IPv4 address and connect the socket. Return the native status
+ * code. */
+declare function __connect_ipv4(fd: i32, ip: i32, port: i32) i32;
+
+/** Accept a connection without retaining its peer address. Return a new
+ * descriptor or a negative value on failure. */
+declare function __accept_fd(fd: i32) i32;
+
+/** Send a datagram to an IPv4 address. Return the byte count or a negative
+ * value on failure. */
+declare function __sendto_ipv4(fd: i32, buffer: raw_ptr<u8>, len: i64, flags: i32, ip: i32, port: i32) i64;
+
+/** Receive a datagram and write the peer address and port through the output
+ * pointers. Return the byte count or a negative value on failure. */
+declare function __recvfrom_ipv4(fd: i32, buffer: raw_ptr<u8>, len: i64, flags: i32, out_ip: raw_ptr<i32>, out_port: raw_ptr<i32>) i64;
+
+/** Write a socket's local IPv4 address and port through the output pointers.
+ * Return the native status code. */
+declare function __getsockname_ipv4(fd: i32, out_ip: raw_ptr<i32>, out_port: raw_ptr<i32>) i32;
