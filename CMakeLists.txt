@@ -293,6 +293,7 @@ add_library(sun_lib
     src/codegen/abi/sysv/sysv_x86_64.cpp
     src/codegen/intrinsics/signals.cpp
     src/codegen/intrinsics/atomic.cpp
+    src/codegen/intrinsics/declarations.cpp
     src/codegen/intrinsics/bits.cpp
     src/codegen/intrinsics/builtins.cpp
     src/codegen/intrinsics/generic.cpp
@@ -438,6 +439,21 @@ add_custom_command(
     COMMENT "Embedding test_runner_template.inja.sun")
 add_custom_target(test_runner_template DEPENDS ${TEST_RUNNER_HEADER})
 add_dependencies(sun_lib test_runner_template)
+
+# Keep intrinsic signatures and documentation in compiler-owned Sun source.
+set(INTRINSIC_SOURCE ${CMAKE_SOURCE_DIR}/src/codegen/intrinsics/intrinsics.sun)
+set(INTRINSIC_HEADER ${CMAKE_BINARY_DIR}/generated/intrinsic_source.h)
+add_custom_command(
+    OUTPUT ${INTRINSIC_HEADER}
+    COMMAND ${CMAKE_COMMAND}
+        -DINPUT_FILE=${INTRINSIC_SOURCE}
+        -DOUTPUT_FILE=${INTRINSIC_HEADER}
+        -DVARIABLE_NAME=kIntrinsicSource
+        -P ${CMAKE_SOURCE_DIR}/cmake/EmbedFile.cmake
+    DEPENDS ${INTRINSIC_SOURCE} ${CMAKE_SOURCE_DIR}/cmake/EmbedFile.cmake
+    COMMENT "Embedding intrinsics.sun")
+add_custom_target(intrinsic_source DEPENDS ${INTRINSIC_HEADER})
+add_dependencies(sun_lib intrinsic_source)
 
 set(SUN_VERSION_HEADER ${CMAKE_BINARY_DIR}/generated/sun_version.h)
 add_custom_target(sun_version

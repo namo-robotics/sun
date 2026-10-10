@@ -6,7 +6,10 @@
 #include <vector>
 
 #include "ast.h"
+#include "codegen/intrinsics/declarations.h"
+#include "codegen/intrinsics/intrinsics.h"
 #include "lsp/declarations.h"
+#include "lsp/name_ranges.h"
 #include "parsing/doc_comments.h"
 
 using sun::types::TypePtr;
@@ -185,11 +188,10 @@ std::string renderPrototype(const sun::ast::PrototypeAST& proto,
   }
   if (proto.hasVariadicParam()) {
     if (!args.empty()) out += ", ";
-    out += proto.getVariadicParamName();
+    out += proto.getVariadicParamName() + "...";
     if (proto.hasVariadicTypeAnnotation()) {
       out += ": " + annotationText(proto.getVariadicTypeAnnotation(), source);
     }
-    out += "...";
   }
   out += ")";
 
@@ -512,6 +514,47 @@ std::optional<Hover> hoverAnnotation(const ExprAST& decl,
   return hover;
 }
 
+/** Shows compiler declarations only while the cursor is on an intrinsic name. */
+std::optional<Hover> hoverIntrinsic(const Target& target, int byteOffset,
+                                    const std::string& source) {
+  using namespace sun::codegen::intrinsics;
+  for (auto it = target.chain.rbegin(); it != target.chain.rend(); ++it) {
+    const ExprAST* node = *it;
+    std::string name;
+    Position location = node->getLocation();
+    if (node->getType() == ASTNodeType::GENERIC_CALL) {
+      name = static_cast<const sun::ast::GenericCallAST&>(*node)
+                 .getFunctionName();
+    } else if (node->getType() == ASTNodeType::CALL) {
+      const auto* callee =
+          static_cast<const sun::ast::CallExprAST&>(*node).getCallee();
+      if (!callee || callee->getType() != ASTNodeType::VARIABLE_REFERENCE)
+        continue;
+      name = static_cast<const sun::ast::VariableReferenceAST&>(*callee)
+                 .getName();
+      location = callee->getLocation();
+    } else {
+      continue;
+    }
+    const auto range = nameRange(location, name, source);
+    if (!spanContains(range, byteOffset)) continue;
+    std::string code;
+    std::string documentation;
+    for (const auto* proto : intrinsicDeclarations()) {
+      if (proto->getName() != name) continue;
+      if (!code.empty()) code += "\n";
+      code += renderPrototype(*proto, "function", name, false,
+                              intrinsicSource(), {});
+      if (documentation.empty()) documentation = proto->getDoc();
+    }
+    if (code.empty()) continue;
+    if (requiresUnsafeBlock(name))
+      documentation += "\n\nRequires an unsafe block.";
+    return Hover{std::move(code), std::move(documentation), range};
+  }
+  return std::nullopt;
+}
+
 }  // namespace
 
 /** Finds the most deeply nested syntax node covering a document offset. */
@@ -530,6 +573,8 @@ std::optional<Hover> computeHover(const sun::ast::BlockExprAST& program,
   std::string documentPath = normalizePath(filePath);
   std::optional<Target> target = locate(program, documentPath, byteOffset);
   if (!target) return std::nullopt;
+  if (auto intrinsic = hoverIntrinsic(*target, byteOffset, source))
+    return intrinsic;
 
   // Synthesized modules share a declaration span but have distinct names.
   for (const auto* node : target->chain) {
