@@ -18,7 +18,7 @@ public module std {
    */
   public interface IAllocator {
     /**
-     * Allocate an array of count elements of type T
+     * Allocate an array of count elements with storage aligned to _alignof<T>().
      * Returns raw_ptr<T> - caller is responsible for freeing
      */
     public method alloc<T>(count: i64) raw_ptr<T>;
@@ -68,7 +68,7 @@ public module std {
      */
     public method alloc<T>(count: i64) raw_ptr<T> {
       var size: i64 = count * _sizeof<T>();
-      return unsafe { _malloc(size); };
+      return unsafe { _aligned_malloc<T>(size); };
     }
 
     /**
@@ -98,7 +98,7 @@ public module std {
      */
     public method create<T>(args...: _params_of<T>) raw_ptr<T> {
       var size: i64 = _sizeof<T>();
-      var memory: raw_ptr<u8> = this.alloc_raw(size);
+      var memory: raw_ptr<u8> = unsafe { _aligned_malloc<T>(size); };
       unsafe { _init<T>(memory, args...); };
       return memory;
     }

@@ -232,6 +232,10 @@ Paths are relative to the config file. Sun looks for configs beside the source
 and in parent folders; `root: true` stops that search. Explicit `--path-var`
 arguments override configured variables.
 
+The optional `c_bindings` setting writes Sun binding files from selected C header
+declarations before compilation. List those files explicitly in the manifest. See [C header binding generation](/c-ffi#optional-header-binding-generation)
+for configuration and dependencies.
+
 Each setting can choose a value independently for each target. An ordinary
 value is an unconditional default; a wrapper supplies replacements:
 

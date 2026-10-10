@@ -654,6 +654,7 @@ message ClassDef {
   repeated string lifetime_params = 12;     // class Bus<'a, 'b>
   // Concrete class shapes whose ordinary methods are present in the bundle.
   repeated CompiledSpecialization compiled_specializations = 13;
+  uint64 alignment = 14; // Minimum class alignment in bytes; zero is natural.
 }
 
 /**

@@ -2,6 +2,26 @@
 public module std.process {
   /** Exercise the macOS inspection record decoders. */
   module inspection_tests {
+    /** Native libproc writes match the generated record's named fields. */
+    test_function generated_process_record_fields() {
+      var alloc = make_heap_allocator();
+      var target = pid();
+      var info = ContiguousBuffer<darwin_process_abi.proc_bsdinfo>(alloc, 1);
+      var info_size = _convert<i32>(_sizeof<darwin_process_abi.proc_bsdinfo>());
+      var got = unsafe { c_proc_pidinfo(target, 3, 0, info.raw_data(), info_size); };
+      try std.test.assert_eq(got, info_size);
+      try std.test.assert_eq(info[0].pbi_pid, _convert<u32>(target));
+      var identity = try std.test.expect_system(process_identity(alloc, target));
+      try std.test.assert_eq(identity.start_marker, info[0].pbi_start_tvsec * 1000000 + info[0].pbi_start_tvusec);
+
+      var task = ContiguousBuffer<darwin_process_abi.proc_taskinfo>(alloc, 1);
+      var task_size = _convert<i32>(_sizeof<darwin_process_abi.proc_taskinfo>());
+      got = unsafe { c_proc_pidinfo(target, 4, 0, task.raw_data(), task_size); };
+      try std.test.assert_eq(got, task_size);
+      try std.test.assert(task[0].pti_resident_size > 0, "resident memory is reported");
+      try std.test.assert(task[0].pti_threadnum > 0, "the current process has a thread");
+    }
+
     /** Fractional timebases and large tick values convert without intermediate overflow. */
     test_function mach_time_units() {
       var nanos = try std.test.expect_system(process_mach_time_ns(24, 125, 3));

@@ -5,6 +5,18 @@
 /** Return the storage size of T in bytes, determined at compile time. */
 declare function _sizeof<T>() i64;
 
+/** Return the minimum storage alignment of T in bytes. */
+declare function _alignof<T>() i64;
+
+/** Allocate bytes aligned for T. The result may be null and is freed with _free. */
+declare function _aligned_malloc<T>(bytes: i64) raw_ptr<u8>;
+
+/** Verify the target layout of a class against literal C layout requirements. */
+declare function _assert_c_layout<T>(args...) void;
+
+/** Require the normalized target triple recorded when generating bindings. */
+declare function _assert_c_target(target: static_ptr<u8>) void;
+
 /** Construct T in caller-provided, suitably aligned storage. Arguments follow
  * the selected constructor. A fallible constructor returns its result instead
  * of void. Raw pointers may have any pointee type; no storage is allocated by

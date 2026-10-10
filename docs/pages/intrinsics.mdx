@@ -30,6 +30,24 @@ class Point { x: f64; y: f64; }
 var pointSize = _sizeof<Point>();  // 16 (two 8-byte floats)
 ```
 
+### `_alignof<T>()`
+
+Returns the target storage alignment of `T` in bytes as an `i64`. This includes
+explicit class alignment and the alignment inherited by arrays and nested
+records. It is a compile-time constant and requires no `unsafe` block.
+
+### `_aligned_malloc<T>(bytes)`
+
+Allocates raw bytes aligned for `T`, returning `raw_ptr<u8>`, or null on failure.
+The byte count must be nonnegative. Free the result with `_free`. The intrinsic
+requires `unsafe`; it does not initialize values or track their lifetimes.
+Prefer the standard typed allocator methods in safe code.
+
+### C binding assertions
+
+`_assert_c_target("triple")` and `_assert_c_layout<T>(size, alignment, offsets...)`
+are module-level compile-time checks. See [C FFI](/c-ffi#optional-header-binding-generation).
+
 ### `_init<T>(ptr, args...)`
 
 Constructs an instance of type `T` at the memory location pointed to by `ptr`, forwarding `args` to the constructor.

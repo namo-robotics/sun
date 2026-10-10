@@ -99,6 +99,7 @@ void TypeRegistrationPass::run(BlockExprAST& block) {
           auto classType = ctx_.types()->getClass(classDef.getDeclarationId(),
                                                   qualifiedClass);
           classType->setPacked(classDef.isPacked());
+          classType->setAlignment(classDef.getAlignment());
           classType->visibility = classDef.getVisibility();
           ctx_.currentScope().declareClass(classDef.getName(), classType);
         }

@@ -974,6 +974,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
   }
   classDef->setIsPartial(proto.is_partial());
   classDef->setIsPacked(proto.is_packed());
+  classDef->setAlignment(proto.alignment());
   classDef->setVisibility(fromProto(proto.visibility()));
   classDef->setDoc(proto.doc());
   if (proto.has_declaration_identity())

@@ -23,8 +23,8 @@ namespace sun::moon_bundling {
  */
 struct MoonHeader {
   static constexpr uint32_t MAGIC = 0x53554E4C;  // "SUNL"
-  // Interfaces and catches borrow; exception payloads have runtime destruction.
-  static constexpr uint32_t VERSION = 11;
+  // Class alignment and C binding assertions are required layout metadata.
+  static constexpr uint32_t VERSION = 12;
 
   uint32_t magic = MAGIC;
   uint32_t version = VERSION;

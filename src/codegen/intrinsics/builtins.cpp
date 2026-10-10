@@ -103,9 +103,13 @@ const std::map<std::string, BuiltinEmitter>& builtinTable() {
        [](auto& g, const auto& e) { return g.codegenPtrOffsetIntrinsic(e); }},
 
       {"_signal_state",
-       [](auto& g, const auto& e) { return g.codegenSignalIntrinsic(e, false); }},
+       [](auto& g, const auto& e) {
+         return g.codegenSignalIntrinsic(e, false);
+       }},
       {"_signal_handler",
-       [](auto& g, const auto& e) { return g.codegenSignalIntrinsic(e, true); }},
+       [](auto& g, const auto& e) {
+         return g.codegenSignalIntrinsic(e, true);
+       }},
 
       // Atomic intrinsics
       {"_atomic_cmpxchg_i32",
@@ -217,6 +221,9 @@ const std::map<std::string, BuiltinEmitter>& builtinTable() {
       {"_futex_wake",
        [](auto& g, const auto& e) { return g.codegenFutexWakeIntrinsic(e); }},
 
+      {"_assert_c_target",
+       [](auto& g,
+          const auto& e) { return g.codegenAssertCTargetIntrinsic(e); }},
       // Target intrinsics
       {"_target_is",
        [](auto& g, const auto& e) { return g.codegenTargetIsIntrinsic(e); }},
@@ -297,11 +304,41 @@ Value* IntrinsicsGenerator::codegenTargetIsIntrinsic(const CallExprAST& expr) {
   const auto triple =
       sun::support::resolvedTargetTriple(module->getTargetTriple());
   auto osName = sun::support::targetOsName(triple);
-  bool result = (osName && *osName == name) ||
-                (name == "x86_64" && triple.getArch() == llvm::Triple::x86_64) ||
-                (name == "aarch64" && triple.getArch() == llvm::Triple::aarch64);
+  bool result =
+      (osName && *osName == name) ||
+      (name == "x86_64" && triple.getArch() == llvm::Triple::x86_64) ||
+      (name == "aarch64" && triple.getArch() == llvm::Triple::aarch64);
   return ConstantInt::get(llvm::Type::getInt1Ty(ctx.getContext()),
                           result ? 1 : 0);
+}
+
+Value* IntrinsicsGenerator::codegenAssertCTargetIntrinsic(
+    const CallExprAST& expr) {
+  const auto& args = expr.getArgs();
+  if (args.size() != 1 ||
+      args[0]->getType() != sun::ast::ASTNodeType::STRING_LITERAL)
+    sun::support::logAndThrowError(
+        "_assert_c_target requires one string literal", expr.getLocation());
+  const auto& expected =
+      static_cast<const sun::ast::StringLiteralAST&>(*args[0]).getValue();
+  const auto actual = module->getTargetTriple();
+  llvm::Triple expectedTriple(llvm::Triple::normalize(expected));
+  llvm::Triple actualTriple(llvm::Triple::normalize(actual));
+  if (expectedTriple.isMacOSX() && actualTriple.isMacOSX()) {
+    // Darwin kernel versions and macOS deployment versions describe the same
+    // platform. Keep architecture, vendor, environment, and layout checks.
+    expectedTriple.setOSName("darwin");
+    actualTriple.setOSName("darwin");
+    if (expectedTriple.getArchName() == "arm64")
+      expectedTriple.setArchName("aarch64");
+    if (actualTriple.getArchName() == "arm64")
+      actualTriple.setArchName("aarch64");
+  }
+  if (expectedTriple.str() != actualTriple.str())
+    sun::support::logAndThrowError("C binding target mismatch: expected '" +
+                                       expected + "', actual '" + actual + "'",
+                                   expr.getLocation());
+  return ConstantInt::get(llvm::Type::getInt1Ty(ctx.getContext()), 0);
 }
 
 }  // namespace sun::codegen::intrinsics

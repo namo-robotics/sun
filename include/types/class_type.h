@@ -82,6 +82,7 @@ class ClassType : public NominalType {
       implementedInterfaces;  // Interfaces this class implements
   std::vector<DeclarationId>
       staticOnlyInterfaces;  // Implemented, but not convertible to (see below)
+  uint64_t alignment_ = 0;   // Zero means natural alignment.
   bool isPacked_ = false;    // "packed class": lay fields out with no padding
   // Lifetime names the class DECLARES ('class Bus<'a>'). Declarations only,
   // never bindings, so sharing one ClassType per class stays sound; the
@@ -420,16 +421,33 @@ class ClassType : public NominalType {
         fieldTypes.push_back(field.type->toLLVMType(ctx));
       }
     }
+    // A zero-length vector array contributes alignment without a source field.
+    // Keeping it last preserves source field indices and rounds the array
+    // stride.
+    if (alignment_) {
+      auto* marker =
+          llvm::FixedVectorType::get(llvm::Type::getInt8Ty(ctx), alignment_);
+      fieldTypes.push_back(llvm::ArrayType::get(marker, 0));
+    }
     cachedLLVMType = llvm::StructType::get(ctx, fieldTypes, isPacked_);
     return cachedLLVMType;
   }
 
-  /**
-   * Packed classes have no inter-field padding and struct alignment 1.
-   * Must be set before the first getStructType() call, which memoizes.
+  /** Returns the explicit minimum byte alignment, or zero for natural layout.
    */
+  uint64_t getAlignment() const { return alignment_; }
+  /** Sets the minimum alignment before the class layout is materialized. */
+  void setAlignment(uint64_t alignment) {
+    if (alignment &&
+        (isPacked_ || (alignment & (alignment - 1)) || alignment > 65536))
+      logAndThrowError(
+          "Invalid explicit class alignment in declaration metadata");
+    alignment_ = alignment;
+  }
+
+  /** Returns whether the class has no inter-field padding and alignment 1. */
   bool isPacked() const { return isPacked_; }
-  /** Controls whether the class uses a packed memory layout. */
+  /** Sets packing before the class layout is materialized. */
   void setPacked(bool v) { isPacked_ = v; }
 };
 

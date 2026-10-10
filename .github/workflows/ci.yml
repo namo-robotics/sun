@@ -45,7 +45,7 @@ jobs:
           sudo install -m 644 tmp/string-creation-ci/llvm-key.gpg /usr/share/keyrings/llvm-benchmark.gpg
           echo 'deb [signed-by=/usr/share/keyrings/llvm-benchmark.gpg] https://apt.llvm.org/noble/ llvm-toolchain-noble-20 main' | sudo tee /etc/apt/sources.list.d/llvm-benchmark.list
           sudo apt-get update
-          sudo apt-get install -y clang-20 llvm-20-dev lld-20 libarchive-dev libzstd-dev ninja-build
+          sudo apt-get install -y clang-20 llvm-20-dev libclang-20-dev lld-20 libarchive-dev libzstd-dev ninja-build
 
       - name: Set up ccache
         uses: hendrikmuhs/ccache-action@v1.2.23
@@ -322,7 +322,7 @@ jobs:
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh 20
-          sudo apt-get install -y llvm-20-dev lld-20 libarchive-dev libzstd-dev libgtest-dev ninja-build git curl ca-certificates
+          sudo apt-get install -y llvm-20-dev libclang-20-dev lld-20 libarchive-dev libzstd-dev libgtest-dev ninja-build git curl ca-certificates
 
       - name: Install CUDA toolkit without GPU drivers
         run: |
@@ -416,6 +416,10 @@ jobs:
           ctest -j$(($(nproc)/2)) --output-on-failure
         env:
           SUN_PATH: ${{ github.workspace }}
+
+      - name: Test C binding generation
+        run: |
+          python3 tests/tooling/bindgen/test_bindgen.py
 
       - name: Run stdlib Sun tests
         # The stdlib's own suite (stdlib/*_tests.sun), AOT-compiled to
@@ -527,6 +531,19 @@ jobs:
         env:
           SUN_PATH: ${{ github.workspace }}
 
+      - name: Test C binding generation
+        run: |
+          python3 tests/tooling/bindgen/test_bindgen.py
+          for arch in arm64 x86_64; do
+            build/sun bindgen stdlib/bindings/process_darwin.h \
+              --target "$arch-apple-darwin" --module darwin_process_abi \
+              --allow proc_bsdinfo --allow proc_taskinfo \
+              --output "tmp/process_darwin_$arch.sun" \
+              -- -isysroot "$(xcrun --sdk macosx --show-sdk-path)"
+            build/sun fmt "tmp/process_darwin_$arch.sun"
+            diff -u "stdlib/bindings/process_darwin_$arch.sun" "tmp/process_darwin_$arch.sun"
+          done
+
       - name: Run stdlib Sun tests
         # Same as the Linux job: a visible run of stdlib/*_tests.sun on real
         # macOS hardware, sequential because the env and cwd tests change
@@ -610,7 +627,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             cmake \
-            llvm-20-dev \
+            llvm-20-dev libclang-20-dev \
             libarchive-dev \
             libzstd-dev \
             devscripts \

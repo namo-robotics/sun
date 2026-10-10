@@ -166,9 +166,9 @@ class Driver {
                              const std::string& filePath);
 
   /**
-   * Read, parse and merge every source file plus synthesized .proto modules.
-   * sourceOverrides maps a canonical path to text used instead of the file
-   * on disk (an editor's unsaved buffer).
+   * Generate configured C binding files, then read, parse and merge manifest
+   * sources and protobuf modules. sourceOverrides maps a canonical path to text
+   * used instead of the file on disk (an editor's unsaved buffer).
    */
   std::unique_ptr<BlockExprAST> parseAndMergeFiles(
       const std::vector<std::string>& sourceFiles,

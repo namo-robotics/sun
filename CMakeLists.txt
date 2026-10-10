@@ -52,6 +52,12 @@ add_definitions(${LLVM_DEFINITIONS})
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 
+# Native C header parsing for sun bindgen uses the matching LLVM toolchain.
+find_path(SUN_LIBCLANG_INCLUDE_DIR clang-c/Index.h
+          HINTS ${LLVM_INCLUDE_DIRS} REQUIRED)
+find_library(SUN_LIBCLANG_LIBRARY NAMES clang-20 clang
+             HINTS ${LLVM_LIBRARY_DIRS} REQUIRED)
+
 # ------------------------------------------------------------------
 # Protobuf (for AST serialization)
 # ------------------------------------------------------------------
@@ -166,6 +172,8 @@ add_library(sun_lib
     src/driver/driver.cpp
     src/driver/build_record.cpp
     src/driver/input_hash.cpp
+    src/driver/c_bindings.cpp
+    src/driver/bindgen/generator.cpp
     src/driver/manifest_processor.cpp
     src/driver/sun_config.cpp
     src/driver/package.cpp
@@ -333,6 +341,7 @@ add_library(sun_lib
     src/cli/option_parser.cpp
     src/cli/usage.cpp
     src/cli/command_support.cpp
+    src/cli/bindgen_command.cpp
     src/cli/fmt_command.cpp
     src/cli/test_command.cpp
     src/cli/bundle_command.cpp
@@ -351,6 +360,9 @@ target_include_directories(sun_lib
     PRIVATE
         src  # If you have private headers in src/
 )
+
+target_include_directories(sun_lib SYSTEM PRIVATE ${SUN_LIBCLANG_INCLUDE_DIR})
+target_link_libraries(sun_lib PUBLIC ${SUN_LIBCLANG_LIBRARY})
 
 # Link LLVM the modern way (target-based)
 # libprotoc provides google::protobuf::compiler::Importer, used to parse .proto
@@ -683,4 +695,17 @@ endif()
 option(SUN_ENABLE_CUDA "Build the optional NVIDIA matrix library" OFF)
 if(SUN_ENABLE_CUDA)
     add_subdirectory(cuda)
+endif()
+
+# Python is only a test harness; bindgen itself is native C++.
+option(SUN_TEST_BINDGEN "Enable bindgen integration tests" OFF)
+if(SUN_TEST_BINDGEN)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    if(BUILD_TESTING)
+        add_test(NAME bindgen_tests
+                 COMMAND ${CMAKE_COMMAND} -E env
+                         SUN_BINDGEN_COMPILER=$<TARGET_FILE:sun>
+                         ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/tooling/bindgen/test_bindgen.py)
+        set_tests_properties(bindgen_tests PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    endif()
 endif()

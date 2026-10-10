@@ -919,6 +919,7 @@ void ASTSerializer::serializeClassDef(const sun::ast::ClassDefinitionAST& expr,
 
   cls->set_is_partial(expr.isPartial());
   cls->set_is_packed(expr.isPacked());
+  cls->set_alignment(expr.getAlignment());
   cls->set_visibility(toProto(expr.getVisibility()));
   cls->set_doc(expr.getDoc());
 }

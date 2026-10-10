@@ -303,6 +303,20 @@ std::vector<moon::ModuleMetadata> extractAnalyzedMetadata(
           } else if (auto* variable =
                          dynamic_cast<const VariableCreationAST*>(stmt.get())) {
             extractGlobal(*variable, temporary, serializer, declarations);
+          } else if (auto* check =
+                         dynamic_cast<const sun::ast::GenericCallAST*>(
+                             stmt.get());
+                     check && check->getFunctionName() == "_assert_c_layout") {
+            *temporary.add_c_binding_assertions() = serializer.serialize(*stmt);
+          } else if (auto* call =
+                         dynamic_cast<const sun::ast::CallExprAST*>(stmt.get());
+                     call &&
+                     dynamic_cast<const sun::ast::VariableReferenceAST*>(
+                         call->getCallee()) &&
+                     static_cast<const sun::ast::VariableReferenceAST*>(
+                         call->getCallee())
+                             ->getName() == "_assert_c_target") {
+            *temporary.add_c_binding_assertions() = serializer.serialize(*stmt);
           } else if (stmt->getType() == ASTNodeType::USING) {
             *temporary.add_using_declarations() = serializer.serialize(*stmt);
           } else

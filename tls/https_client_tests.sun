@@ -274,6 +274,7 @@ public module tls {
       try std.test.expect_system_success(environment.remove("SSL_CERT_FILE"));
       try std.test.assert_eq(status, -1);
     }
+
     /** Propagates a malformed HTTP response into the client result. */
     function parse_invalid_response(alloc: ref HeapAllocator) ClientResult<void> {
       var raw = String(alloc, "invalid response");

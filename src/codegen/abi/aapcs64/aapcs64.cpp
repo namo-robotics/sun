@@ -93,7 +93,8 @@ ArgLowering lowerAggregate(llvm::Type* type, const llvm::DataLayout& dl,
 
   llvm::Type* base = nullptr;
   unsigned count = 0;
-  if (isHFA(type, base, count)) {
+  if (isHFA(type, base, count) &&
+      size == count * dl.getTypeAllocSize(base).getFixedValue()) {
     // Returned HFAs keep the literal struct type — clang emits
     // `declare %struct.H @f()` — and LLVM assigns the FP registers itself.
     if (isReturn) return result;  // Direct

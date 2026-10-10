@@ -95,6 +95,7 @@ void ClassAnalyzer::analyzeClassDefinition(
 
   // Layout must be decided before any getStructType() call memoizes it
   classType->setPacked(classDef.isPacked());
+  classType->setAlignment(classDef.getAlignment());
   classType->visibility = classDef.getVisibility();
   classType->setLifetimeParams(
       sun::ast::lifetimeParameterNames(classDef.getLifetimeParameters()));

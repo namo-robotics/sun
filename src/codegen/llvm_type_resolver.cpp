@@ -73,7 +73,10 @@ StructType* LLVMTypeResolver::getEnumStorageType(const EnumType& enumType) {
   }
 
   const uint64_t unitBytes = maxAlign.value();
-  llvm::Type* unitTy = llvm::Type::getIntNTy(ctx, unitBytes * 8);
+  llvm::Type* unitTy =
+      unitBytes > 8 ? static_cast<llvm::Type*>(llvm::FixedVectorType::get(
+                          llvm::Type::getInt8Ty(ctx), unitBytes))
+                    : llvm::Type::getIntNTy(ctx, unitBytes * 8);
   const uint64_t tagArea = alignTo(4, unitBytes);
   const uint64_t payloadBytes = maxSize > tagArea ? maxSize - tagArea : 0;
   const uint64_t numUnits = (payloadBytes + unitBytes - 1) / unitBytes;

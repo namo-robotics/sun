@@ -7,6 +7,7 @@
 #include "codegen/codegen_visitor.h"
 #include "codegen/intrinsics/intrinsics.h"
 #include "codegen/intrinsics/intrinsics_generator.h"
+#include "llvm/TargetParser/Triple.h"
 #include "support/error.h"
 
 using sun::types::EnumType;
@@ -37,6 +38,81 @@ Value* IntrinsicsGenerator::codegenSizeofIntrinsic(TypePtr targetType) {
   uint64_t size = DL.getTypeAllocSize(llvmType);
 
   return llvm::ConstantInt::get(llvm::Type::getInt64Ty(ctx.getContext()), size);
+}
+
+Value* IntrinsicsGenerator::codegenAlignofIntrinsic(TypePtr type) {
+  auto* storage = typeResolver.resolve(type);
+  return ConstantInt::get(
+      llvm::Type::getInt64Ty(ctx.getContext()),
+      module->getDataLayout().getABITypeAlign(storage).value());
+}
+
+Value* IntrinsicsGenerator::codegenAlignedMallocIntrinsic(
+    const sun::ast::GenericCallAST& expr) {
+  auto* type = typeResolver.resolve(expr.getResolvedTypeArgs()[0]);
+  const auto& dl = module->getDataLayout();
+  auto* bytes = codegen(*expr.getArgs()[0]);
+  bytes = ctx.builder->CreateIntCast(
+      bytes, llvm::Type::getInt64Ty(ctx.getContext()), true);
+  return allocateAlignedBytes(bytes, dl.getABITypeAlign(type).value());
+}
+
+Value* IntrinsicsGenerator::allocateAlignedBytes(Value* bytes,
+                                                 uint64_t alignment) {
+  auto* i64 = llvm::Type::getInt64Ty(ctx.getContext());
+  auto* pointer = llvm::PointerType::getUnqual(ctx.getContext());
+  // Ordinary scalar storage retains the existing malloc fast path.
+  if (alignment <= module->getDataLayout().getPointerABIAlignment(0).value()) {
+    auto function = module->getOrInsertFunction(
+        "malloc", llvm::FunctionType::get(pointer, {i64}, false));
+    return ctx.builder->CreateCall(function, {bytes});
+  }
+  llvm::Triple target(module->getTargetTriple());
+  if (!target.isOSLinux() && !target.isOSDarwin())
+    logAndThrowError(
+        "Over-aligned heap allocation is not supported for target '" +
+        module->getTargetTriple() + "'");
+  alignment =
+      std::max<uint64_t>(alignment, module->getDataLayout().getPointerSize());
+  auto* slot = gen_.createEntryBlockAlloca(
+      ctx.builder->GetInsertBlock()->getParent(), "aligned.memory", pointer);
+  ctx.builder->CreateStore(ConstantPointerNull::get(pointer), slot);
+  auto function = module->getOrInsertFunction(
+      "posix_memalign",
+      llvm::FunctionType::get(llvm::Type::getInt32Ty(ctx.getContext()),
+                              {pointer, i64, i64}, false));
+  ctx.builder->CreateCall(function,
+                          {slot, ConstantInt::get(i64, alignment), bytes});
+  return ctx.builder->CreateLoad(pointer, slot);
+}
+
+Value* IntrinsicsGenerator::codegenAssertCLayoutIntrinsic(
+    const sun::ast::GenericCallAST& expr) {
+  auto type = expr.getResolvedTypeArgs()[0];
+  const auto& cls = static_cast<const sun::types::ClassType&>(*type);
+  auto* storage = llvm::cast<llvm::StructType>(typeResolver.resolve(type));
+  const auto& dl = module->getDataLayout();
+  std::vector<uint64_t> actual{dl.getTypeAllocSize(storage).getFixedValue(),
+                               dl.getABITypeAlign(storage).value()};
+  auto* layout = dl.getStructLayout(storage);
+  for (const auto& field : cls.getFields())
+    actual.push_back(layout->getElementOffset(field.index));
+  for (size_t i = 0; i < actual.size(); ++i) {
+    auto expected =
+        static_cast<const sun::ast::NumberExprAST&>(*expr.getArgs()[i])
+            .getMagnitude();
+    if (actual[i] != expected) {
+      auto label = i == 0   ? "size"
+                   : i == 1 ? "alignment"
+                            : "offset of " + cls.getFields()[i - 2].name;
+      logAndThrowError("C layout mismatch for '" + cls.getDisplayName() +
+                           "': " + label + " expected " +
+                           std::to_string(expected) + ", actual " +
+                           std::to_string(actual[i]),
+                       expr.getLocation());
+    }
+  }
+  return ConstantInt::get(llvm::Type::getInt1Ty(ctx.getContext()), 0);
 }
 
 Value* IntrinsicsGenerator::codegenInitIntrinsic(

@@ -2457,6 +2457,8 @@ unique_ptr<ExprAST> Parser::parseStatementCore() {
       auto classDef = parseClassDefinition();
       if (classDef) {
         classDef->setIsPartial(true);
+        if (classDef->getAlignment())
+          parsingError("partial class cannot declare alignment");
         // Validate: no fields allowed in partial class
         if (!classDef->getFields().empty()) {
           parsingError("partial class cannot define fields");
@@ -3907,6 +3909,11 @@ void Parser::createModuleStubs(
     }
   }
 
+  for (const auto& assertion : metadata.c_binding_assertions()) {
+    auto ast = deserializer.deserialize(assertion);
+    if (ast) moduleAST.push_back(std::move(ast));
+  }
+
   // Add all stubs directly (consolidation and wrapping is done by the caller)
   for (auto& ast : moduleAST) {
     collectedAST.push_back(std::move(ast));
@@ -3998,9 +4005,27 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
   std::vector<sun::ast::ClassFieldDecl> fields;
   std::vector<ClassMethodDecl> methods;
 
+  uint64_t alignment = 0;
   // Parse class body (fields and methods)
   while (curTok.kind != TokenKind::BRACE_CLOSE &&
          curTok.kind != TokenKind::TOK_EOF) {
+    if (curTok.kind == TokenKind::IDENTIFIER &&
+        curTok.getIdentifier() == "alignment") {
+      if (packed) parsingError("packed_class cannot declare alignment");
+      if (alignment) parsingError("class alignment may only be declared once");
+      getNextToken();
+      expectCurrentTokenKind(TokenKind::COLON, "expected ':' after alignment");
+      getNextToken();
+      expectCurrentTokenKind(
+          TokenKind::INTEGER,
+          "alignment requires a positive power-of-two integer literal");
+      alignment = curTok.getInteger().value();
+      if (!alignment || (alignment & (alignment - 1)) || alignment > 65536)
+        parsingError(
+            "alignment must be a power of two between 1 and 65536 bytes");
+      getNextToken();
+      continue;
+    }
     Position memberStart = captureStart();
     Visibility memberVis =
         parsePublic() ? Visibility::Public : Visibility::Private;
@@ -4121,6 +4146,7 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
   auto classDef = std::make_unique<ClassDefinitionAST>(
       std::move(className), std::move(typeParameters),
       std::move(implementedInterfaces), std::move(fields), std::move(methods));
+  classDef->setAlignment(alignment);
   classDef->setLifetimeParameters(std::move(lifetimeParameters));
   return finishNode(std::move(classDef), start);
 }
@@ -4521,6 +4547,5 @@ unique_ptr<ExprAST> Parser::parseUnsafeBlock() {
   return finishNode(std::make_unique<sun::ast::UnsafeBlockAST>(std::move(body)),
                     loc);
 }
-
 
 }  // namespace sun::parsing

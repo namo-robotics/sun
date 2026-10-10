@@ -142,6 +142,7 @@ public module std {
       try std.test.assert(unsafe { cli.get_unchecked(1); }.equals_literal("alpha"), "argv[1] copied");
       try std.test.assert(unsafe { cli.get_unchecked(2); }.equals_literal("beta"), "argv[2] copied");
     }
+
     /** A rejected name returns the system error without adding an entry. */
     test_function invalid_name_returns_system_error() {
       var alloc = make_heap_allocator();

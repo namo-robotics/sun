@@ -81,6 +81,58 @@ class Formatter {
   /** Writes indentation for the current formatting depth. */
   void writeIndent() { out_.append(indent_ * kIndentWidth, ' '); }
 
+  /** Reindents manifest lines using delimiters outside strings and comments.
+   * Preserves line breaks and token contents, including multiline literals. */
+  void printManifest(const Position& location) {
+    const std::string source = slice(location);
+    std::istringstream input(source);
+    Lexer lexer(input);
+    lexer.setEmitComments(true);
+    std::vector<Token> tokens;
+    for (auto token = lexer.getNextToken(); token.kind != TokenKind::TOK_EOF;
+         token = lexer.getNextToken()) {
+      tokens.push_back(std::move(token));
+    }
+    size_t tokenIndex = 0;
+    int depth = 0;
+    for (size_t start = 0; start < source.size();) {
+      auto end = source.find('\n', start);
+      if (end == std::string::npos) end = source.size();
+      auto first = source.find_first_not_of(" \t\r", start);
+      if (first == std::string::npos || first > end) first = end;
+      const bool insideToken =
+          tokenIndex > 0 &&
+          static_cast<size_t>(tokens[tokenIndex - 1].end.offset) > start;
+      int lineDepth = depth;
+      if (tokenIndex < tokens.size() &&
+          static_cast<size_t>(tokens[tokenIndex].start.offset) == first &&
+          (tokens[tokenIndex].kind == TokenKind::BRACE_CLOSE ||
+           tokens[tokenIndex].kind == TokenKind::BRACKET_CLOSE)) {
+        --lineDepth;
+      }
+      if (insideToken) {
+        out_.append(source, start, end - start);
+      } else if (first < end) {
+        if (start != 0)
+          out_.append((indent_ + std::max(0, lineDepth)) * kIndentWidth, ' ');
+        out_.append(source, first, end - first);
+      }
+      while (tokenIndex < tokens.size() &&
+             static_cast<size_t>(tokens[tokenIndex].start.offset) < end) {
+        const auto kind = tokens[tokenIndex++].kind;
+        if (kind == TokenKind::BRACE_OPEN || kind == TokenKind::BRACKET_OPEN)
+          ++depth;
+        if (kind == TokenKind::BRACE_CLOSE || kind == TokenKind::BRACKET_CLOSE)
+          --depth;
+      }
+      if (end < source.size()) out_ += '\n';
+      start = end + 1;
+    }
+    while (next_ != comments_.end() &&
+           next_->first < location.endOffset.value_or(location.offset))
+      ++next_;
+  }
+
   /** Inserts a blank line unless the output already ends with one. */
   void ensureBlankLine() {
     if (!out_.empty() &&
@@ -475,6 +527,10 @@ class Formatter {
       const sun::ast::ClassFieldDecl* field;
       const FunctionAST* method;
     };
+    if (c.getAlignment()) {
+      writeIndent();
+      out_ += "alignment: " + std::to_string(c.getAlignment()) + "\n";
+    }
     std::vector<Member> members;
     for (const auto& f : c.getFields()) {
       members.push_back(
@@ -1137,8 +1193,12 @@ class Formatter {
         printModule(static_cast<const ModuleAST&>(e));
         break;
 
+      case ASTNodeType::MANIFEST:
+        printManifest(loc);
+        break;
+
       // Statement forms without structured spans on their parts (using,
-      // declare, manifest, import): verbatim slice, normalized ';'
+      // declare, import): verbatim slice, normalized ';'
       default: {
         std::string s = stripPublic(slice(loc));
         if (s.empty()) {

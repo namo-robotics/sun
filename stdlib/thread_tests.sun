@@ -45,10 +45,12 @@ public module std {
     class Boom implements IError {
       /** Creates an empty fixture value for this example or regression test. */
       init() {}
+
       /** Returns the error category used by the test fixture. */
       const method code() i32 {
         return 1;
       }
+
       /** Returns an owned explanation of the fixture's error. */
       const method message() String {
         return String("boom");
@@ -283,6 +285,7 @@ public module std {
       public var n: i32 = 0;
       /** Starts a counter for the propagation cleanup test. */
       init() {}
+
       /** Observes the worker only after the later-created handle has joined it. */
       deinit() {
         joined_at_error = this.n;
@@ -369,6 +372,7 @@ public module std {
       init(v: i32) {
         this.v = v;
       }
+
       /** Records fixture destruction so tests can verify ownership and cleanup. */
       deinit() {
         joined_result_drops = joined_result_drops + 1;
@@ -407,6 +411,7 @@ public module std {
       init(v: i32) {
         this.v = v;
       }
+
       /** Records fixture destruction so tests can verify ownership and cleanup. */
       deinit() {
         unjoined_result_drops = unjoined_result_drops + 1;
@@ -442,10 +447,12 @@ public module std {
         var size: i64 = 8;
         this.data = unsafe { _malloc(size); };
       }
+
       /** Returns the payload used to check interface or generic method dispatch. */
       public method get() i32 {
         return this.v;
       }
+
       /** Records fixture destruction so tests can verify ownership and cleanup. */
       deinit() {
         if (this.data != null) {
@@ -493,6 +500,7 @@ public module std {
       init(v: i32) {
         this.v = v;
       }
+
       /** Records fixture destruction so tests can verify ownership and cleanup. */
       deinit() {
         enum_payload_drops = enum_payload_drops + 1;
@@ -599,6 +607,7 @@ public module std {
       init(v: i32) {
         this.v = v;
       }
+
       /** Records fixture destruction so tests can verify ownership and cleanup. */
       deinit() {
         if (this.v != 0) {
@@ -653,6 +662,7 @@ public module std {
       init() {
         this.t = spawn(() => i32 { return 7; });
       }
+
       /** Moves the stored fixture value out to the caller. */
       public method take() i32 {
         return this.t.join();
@@ -678,6 +688,7 @@ public module std {
       init() {
         this.count = 40;
       }
+
       /** Returns the stored fixture count plus the supplied increment. */
       public method get(extra: i32) i32 {
         return this.count + extra;
@@ -704,12 +715,14 @@ public module std {
       init(base: i32) {
         this.base = base;
       }
+
       /**
        * The work that runs on the thread.
        */
       public method work() i32 {
         return this.base * 2;
       }
+
       /**
        * Run work() on a thread; when it finishes, hand what it returned to
        * the callback and pass the callback's answer on.

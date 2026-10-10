@@ -33,7 +33,7 @@ public module std {
     init(allocator: const ref HeapAllocator, size: i64) {
       this.alloc = allocator.copy();
       this.size_ = size;
-      this.data = Unique<u8>(this.alloc.alloc_raw(size * _sizeof<T>()));
+      this.data = Unique<u8>(_bitcast<raw_ptr<u8>>(this.alloc.alloc<T>(size)));
     }
 
     // ========================================================================
@@ -186,7 +186,7 @@ public module std {
       }
 
       // Allocate new buffer
-      var new_data: raw_ptr<u8> = this.alloc.alloc_raw(new_size * _sizeof<T>());
+      var new_data: raw_ptr<u8> = _bitcast<raw_ptr<u8>>(this.alloc.alloc<T>(new_size));
 
       // Copy existing elements (up to min of old and new size)
       var copy_count: i64 = this.size_;

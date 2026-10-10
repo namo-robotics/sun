@@ -39,11 +39,13 @@ public module m {
       this.support = support;
       this.state = state;
     }
+
     /** Returns an empty sample vector. */
     public method empty() Vec<Sample<T>> {
       var a = make_heap_allocator();
       return Vec<Sample<T>>(a, 2);
     }
+
     /** Wraps a value in a populated sample vector. */
     public method make(v: T) Vec<Sample<T>> {
       var a = make_heap_allocator();
@@ -58,6 +60,7 @@ public module m {
   public class Subscriber {
     /** Creates an empty fixture value for this example or regression test. */
     init() {}
+
     /** Constructs a reader for the supplied type. */
     public method create_datareader<T>(support: TypeSupport<T>, state: Shared<Info>) Reader<T> {
       return Reader<T>(support, state);
@@ -76,6 +79,7 @@ class Msg {
 function decode(d: ref m.Decoder, a: const ref HeapAllocator) Msg {
   return Msg(7);
 }
+
 /** Runs the regression scenario and returns its observable result to the test harness. */
 function main() i32 {
   var a = make_heap_allocator();

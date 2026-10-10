@@ -20,6 +20,7 @@
 #include "borrow_checker/borrow_checker.h"
 #include "debug/ast_dot_generator.h"
 #include "debug/scope_tree_generator.h"
+#include "driver/c_bindings.h"
 #include "driver/manifest_processor.h"
 #include "generated/test_runner_template.h"
 #include "moon_bundling/archive_symbols.h"
@@ -1731,6 +1732,10 @@ std::unique_ptr<BlockExprAST> Driver::parseAndMergeFiles(
   if (sourceFiles.empty()) {
     throw SunError(SunError::Kind::Parse, "No source files specified");
   }
+
+  generateCBindings(
+      std::filesystem::absolute(sourceFiles.front()).parent_path().string(),
+      ctx->mainModule->getTargetTriple());
 
   // Parse all source files independently
   std::vector<std::unique_ptr<BlockExprAST>> parsedFiles;

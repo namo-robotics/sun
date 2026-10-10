@@ -202,6 +202,7 @@ std::shared_ptr<ClassType> GenericSpecializer::instantiateGenericClass(
   // Layout is a property of the generic definition, so every specialization
   // inherits it. Must precede the first getStructType(), which memoizes.
   specializedClass->setPacked(genericClassInfo->AST->isPacked());
+  specializedClass->setAlignment(genericClassInfo->AST->getAlignment());
   specializedClass->visibility = genericClassInfo->AST->getVisibility();
 
   // Add fields with substituted types (skip if type already exists or already
@@ -389,6 +390,7 @@ std::shared_ptr<ClassType> GenericSpecializer::instantiateGenericClass(
     specializedAST->setLifetimeParameters(
         genericClassInfo->AST->getLifetimeParameters());
     specializedAST->setIsPacked(genericClassInfo->AST->isPacked());
+    specializedAST->setAlignment(genericClassInfo->AST->getAlignment());
     specializedAST->setVisibility(genericClassInfo->AST->getVisibility());
 
     // Store specialization on the generic class AST for codegen access
@@ -420,6 +422,7 @@ std::shared_ptr<ClassType> GenericSpecializer::instantiateGenericClass(
   specializedAST->setLifetimeParameters(
       genericClassInfo->AST->getLifetimeParameters());
   specializedAST->setIsPacked(genericClassInfo->AST->isPacked());
+  specializedAST->setAlignment(genericClassInfo->AST->getAlignment());
   specializedAST->setVisibility(genericClassInfo->AST->getVisibility());
   specializedAST->setLocation(genericClassInfo->AST->getLocation());
   specializedAST->inheritSourceFile(genericClassInfo->AST->getSourceFileId());

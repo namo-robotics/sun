@@ -88,24 +88,28 @@ public module std {
   function hash_map_key(k: i64) i64 {
     return hash_i64(k);
   }
+
   /**
    * Hash a 32-bit signed key.
    */
   function hash_map_key(k: i32) i64 {
     return hash_i64(k);
   }
+
   /**
    * Hash a 32-bit unsigned key.
    */
   function hash_map_key(k: u32) i64 {
     return hash_i64(k);
   }
+
   /**
    * Hash a 64-bit unsigned key.
    */
   function hash_map_key(k: u64) i64 {
     return hash_i64(_convert<i64>(k));
   }
+
   /**
    * Hash a String key by its bytes.
    */
@@ -119,24 +123,28 @@ public module std {
   function compare_map_keys(a: const ref i64, b: i64) bool {
     return a == b;
   }
+
   /**
    * Compare a stored 32-bit signed key against a lookup key.
    */
   function compare_map_keys(a: const ref i32, b: i32) bool {
     return a == b;
   }
+
   /**
    * Compare a stored 32-bit unsigned key against a lookup key.
    */
   function compare_map_keys(a: const ref u32, b: u32) bool {
     return a == b;
   }
+
   /**
    * Compare a stored 64-bit unsigned key against a lookup key.
    */
   function compare_map_keys(a: const ref u64, b: u64) bool {
     return a == b;
   }
+
   /**
    * Compare a stored String key against a lookup key, byte for byte.
    */

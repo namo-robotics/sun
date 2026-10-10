@@ -2,14 +2,14 @@
 public module std.process {
   /** Read the BSD start timeval as an opaque microsecond start marker. */
   function native_process_identity(alloc: ref HeapAllocator, target: i32) SystemResult<ProcessIdentity> {
-    // proc_bsdinfo is word-aligned; its final words contain the start timeval.
-    var record = ContiguousBuffer<u64>(alloc, 17);
-    var got = unsafe { c_proc_pidinfo(target, 3, 0, record.raw_data(), 136); };
-    if (got != 136) {
+    var record = ContiguousBuffer<darwin_process_abi.proc_bsdinfo>(alloc, 1);
+    var record_size = _convert<i32>(_sizeof<darwin_process_abi.proc_bsdinfo>());
+    var got = unsafe { c_proc_pidinfo(target, 3, 0, record.raw_data(), record_size); };
+    if (got != record_size) {
       return SystemResult.Error(Error(got <= 0 ? errno() : 22, "process identity unavailable"));
     }
-    var seconds = record[15];
-    var micros = record[16];
+    var seconds = record[0].pbi_start_tvsec;
+    var micros = record[0].pbi_start_tvusec;
     if (micros >= 1000000 or seconds > (U64_MAX - micros) / 1000000) {
       return SystemResult.Error(Error(22, "invalid process start time"));
     }
@@ -155,14 +155,15 @@ public module std.process {
   /** Read libproc cumulative CPU nanoseconds and resident bytes independently of text. */
   function native_process_snapshot(alloc: ref HeapAllocator, target: i32) SystemResult<ProcessSnapshot> {
     var identity = try process_identity(alloc, target);
-    var record = ContiguousBuffer<u64>(alloc, 12);
-    var got = unsafe { c_proc_pidinfo(target, 4, 0, record.raw_data(), 96); };
+    var record = ContiguousBuffer<darwin_process_abi.proc_taskinfo>(alloc, 1);
+    var record_size = _convert<i32>(_sizeof<darwin_process_abi.proc_taskinfo>());
+    var got = unsafe { c_proc_pidinfo(target, 4, 0, record.raw_data(), record_size); };
     var code = got <= 0 ? errno() : 22;
     var cpu: SystemResult<u64> = SystemResult.Error(Error(code, "process CPU time unavailable"));
     var rss: SystemResult<u64> = SystemResult.Error(Error(code, "process RSS unavailable"));
-    if (got == 96) {
-      rss = SystemResult.Ok(record[1]);
-      cpu = process_cpu_ns(record[2], record[3]);
+    if (got == record_size) {
+      rss = SystemResult.Ok(record[0].pti_resident_size);
+      cpu = process_cpu_ns(record[0].pti_total_user, record[0].pti_total_system);
     }
     return SystemResult.Ok(ProcessSnapshot(identity, cpu, rss, process_executable(alloc, target), native_process_arguments(alloc, target)));
   }

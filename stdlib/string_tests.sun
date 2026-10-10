@@ -1020,6 +1020,7 @@ public module std {
       try std.test.assert_eq(s.length(), 6);  // '[' + 4 bytes + ']'
       try std.test.assert((try std.test.expect_access(s.at(0))) == b'[' and (try std.test.expect_access(s.at(5))) == b']', "brackets preserved");
     }
+
     /** Checks that popping moves the final byte and reports an empty string. */
     test_function pop_reports_empty() {
       var text = String("ab");

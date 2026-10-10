@@ -47,6 +47,16 @@ struct ConfigResource {
   std::string destination;
 };
 
+/** A C header translated into a Sun module during compilation. */
+struct ConfigCBinding {
+  bool enabled = true;
+  std::string header;
+  std::string output;
+  std::string baseDir;
+  std::vector<std::string> allow;
+  std::vector<std::string> clangArgs;
+};
+
 /** A selected archive, Moon file, or Git library, resolved only when used. */
 struct ConfigDependency {
   bool available = true;
@@ -105,6 +115,7 @@ struct SunConfig {
   std::vector<ConfigEntrypoint> entrypoints;         // declared build products
   std::map<std::string, ConfigDependency> dependencies;
   std::vector<ConfigPackage> packages;
+  std::map<std::string, ConfigCBinding> cBindings;
   std::string targetTriple;  // resolved compilation triple, retaining vendor
                              // and OS version
   bool root = false;         // stop the upward search at this file

@@ -9,6 +9,7 @@
 #include <map>
 #include <sstream>
 
+#include "driver/c_bindings.h"
 #include "driver/package.h"
 #include "parsing/parser.h"
 #include "support/error.h"
@@ -184,9 +185,16 @@ std::string ManifestProcessor::resolvePath(const std::string& path,
   return path;
 }
 
+std::optional<SunConfig> ManifestProcessor::configFor(
+    const std::string& baseDir, const std::string& targetTriple) {
+  if (sourceConfig) return *sourceConfig;
+  return SunConfig::findFrom(baseDir, targetTriple);
+}
+
 ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
                                             const std::string& baseDir,
                                             const std::string& targetTriple) {
+  generateCBindings(baseDir, targetTriple);
   ResolvedManifest out;
   out.baseDir = baseDir;
 

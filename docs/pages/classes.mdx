@@ -614,3 +614,38 @@ operators require explicit handling, such as `try (a * b)` inside a compatible
 result-returning function. There is no automatic result unwrapping, reflected
 right-hand dispatch, or compound-assignment hook. Other arithmetic operators
 are not overloadable yet.
+
+## Explicit alignment
+
+A class can request a minimum byte alignment with metadata in its body:
+
+```sun
+/** Four floats stored at a SIMD-friendly boundary. */
+class Vector {
+    alignment: 16
+
+    var x: f32;
+    var y: f32;
+    var z: f32;
+    var w: f32;
+}
+```
+
+`alignment: N` is metadata, not a field, and has no semicolon. It may appear
+once in the primary class declaration. `N` must be a positive power-of-two
+integer literal no greater than 65536. It cannot appear in a `packed_class`
+or a partial class extension. Generic specializations retain the requirement.
+
+The effective alignment is the greater of this requirement and the fields'
+natural alignment. Class size includes trailing padding so successive array
+elements remain aligned. Stack variables, globals, nested fields, typed heap
+allocations, and function arguments and results honor the requirement.
+
+`_alignof<T>()` reports the target alignment; `_sizeof<T>()` includes padding.
+Use `HeapAllocator.alloc<T>` or `create<T>` for typed heap storage. Raw byte
+allocation does not promise an arbitrary type's alignment; unsafe code that
+constructs a value in raw storage is responsible for satisfying it. Custom
+implementations of `IAllocator.alloc<T>` must honor `_alignof<T>()` as well.
+
+Alignment provides storage suitable for SIMD operations; it does not itself
+introduce SIMD types or instructions.

@@ -157,10 +157,9 @@ Value* IntrinsicsGenerator::codegenSpawnIntrinsic(
         calleeFuncType->param_begin() + (lambdaType ? 1 : 0),
         calleeFuncType->param_end());
     argsType = StructType::get(llvmCtx, fieldTypes);
-    argsBlob = ctx.builder->CreateCall(
-        mallocFunc,
-        {ConstantInt::get(i64Ty, layout.getTypeAllocSize(argsType))},
-        "spawn.args");
+    argsBlob = allocateAlignedBytes(
+        ConstantInt::get(i64Ty, layout.getTypeAllocSize(argsType)),
+        layout.getABITypeAlign(argsType).value());
     for (size_t i = 1; i < argValues.size(); ++i) {
       ctx.builder->CreateStore(
           argValues[i],
@@ -184,10 +183,9 @@ Value* IntrinsicsGenerator::codegenSpawnIntrinsic(
   // slot stays null and the trampoline skips the store.
   Value* resultSlot = ConstantPointerNull::get(cast<PointerType>(ptrTy));
   if (!resultLLVMType->isVoidTy()) {
-    resultSlot = ctx.builder->CreateCall(
-        mallocFunc,
-        {ConstantInt::get(i64Ty, layout.getTypeAllocSize(resultLLVMType))},
-        "spawn.result");
+    resultSlot = allocateAlignedBytes(
+        ConstantInt::get(i64Ty, layout.getTypeAllocSize(resultLLVMType)),
+        layout.getABITypeAlign(resultLLVMType).value());
   }
   ctx.builder->CreateStore(
       resultSlot, ctx.builder->CreateStructGEP(contextType, contextPtr, 2));
