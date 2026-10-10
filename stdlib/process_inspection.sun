@@ -1,0 +1,187 @@
+/** Portable process inspection and owned handles to visible processes. */
+public module std.process {
+  /** Largest unsigned value representable by process counters and size calculations. */
+  const U64_MAX: u64 = 18446744073709551615;
+
+  /** A PID and opaque OS start marker, meaningful only on this host and boot. */
+  public class ProcessIdentity {
+    public var pid: i32;
+    public var start_marker: u64;
+
+    /** Store an observed identity; constructing one does not validate it. */
+    init(pid: i32, start_marker: u64) {
+      this.pid = pid;
+      this.start_marker = start_marker;
+    }
+
+    /** Compare both parts; start markers have the operating system's resolution. */
+    public const method equals(other: const ref ProcessIdentity) bool {
+      return this.pid == other.pid and this.start_marker == other.start_marker;
+    }
+  }
+
+  /** Owned observations; individual unavailable fields retain their native error. */
+  public class ProcessSnapshot {
+    public var identity: ProcessIdentity;
+    public var cpu_time_ns: SystemResult<u64>;
+    public var rss_bytes: SystemResult<u64>;
+    public var executable: SystemResult<String>;
+    public var arguments: SystemResult<Vec<String>>;
+
+    /** Move observations into a snapshot. CPU time excludes waited-for children. */
+    init(identity: ProcessIdentity, cpu_time_ns: SystemResult<u64>, rss_bytes: SystemResult<u64>, executable: SystemResult<String>, arguments: SystemResult<Vec<String>>) {
+      this.identity = identity;
+      this.cpu_time_ns = cpu_time_ns;
+      this.rss_bytes = rss_bytes;
+      this.executable = executable;
+      this.arguments = arguments;
+    }
+  }
+
+  /** State whether signaling is atomic with respect to PID reuse. */
+  public enum ProcessProtection {
+    Atomic,
+    Checked
+  }
+
+  /** Return the caller-visible PIDs; entries may exit before they are inspected. */
+  public function process_ids(alloc: ref HeapAllocator) SystemResult<Vec<i32>> {
+    return native_process_ids(alloc);
+  }
+
+  /** Read identity without requesting access beyond the caller's credentials. */
+  public function process_identity(alloc: ref HeapAllocator, target: i32) SystemResult<ProcessIdentity> {
+    if (target <= 0) {
+      return SystemResult.Error(Error(22, "process id must be positive"));
+    }
+    return native_process_identity(alloc, target);
+  }
+
+  /** Collect fields and recheck identity; observations are not an atomic snapshot. */
+  public function inspect_process(alloc: ref HeapAllocator, target: i32) SystemResult<ProcessSnapshot> {
+    if (target <= 0) {
+      return SystemResult.Error(Error(22, "process id must be positive"));
+    }
+    var snapshot = try native_process_snapshot(alloc, target);
+    var after = try process_identity(alloc, target);
+    if (not snapshot.identity.equals(after)) {
+      return SystemResult.Error(Error(3, "process identity changed during inspection"));
+    }
+    return SystemResult.Ok(snapshot);
+  }
+
+  /** Return the system's memory page size in bytes, or an error if unavailable. */
+  public function page_size_bytes() SystemResult<u64> {
+    var size = unsafe { c_getpagesize(); };
+    if (size <= 0) {
+      return SystemResult.Error(Error(22, "page size unavailable"));
+    }
+    return SystemResult.Ok(_convert<u64>(size));
+  }
+
+  /** Return installed physical memory in bytes, not a container's memory limit. */
+  public function physical_memory_bytes() SystemResult<u64> {
+    return native_physical_memory_bytes();
+  }
+
+  /**
+   * Own a process reference. Linux requires pidfds and never falls back to kill.
+   * macOS checks identity immediately before kill, leaving a PID-reuse race.
+   * Closing or destroying a handle neither signals nor waits for the process.
+   */
+  public class ProcessHandle {
+    var alloc: HeapAllocator;
+    var identity_: ProcessIdentity;
+    // Zero also represents a moved-from handle. Linux stores fd + 1.
+    var token: i64 = 0;
+
+    /** Create a closed handle using the allocator for native identity queries. */
+    init(alloc: ref HeapAllocator) {
+      this.alloc = alloc.copy();
+      this.identity_ = ProcessIdentity(0, 0);
+    }
+
+    /** Open an observed identity; failure leaves this handle closed. */
+    public method open(identity: const ref ProcessIdentity) SystemResult<void> {
+      this.close();
+      if (identity.pid <= 0) {
+        return SystemResult.Error(Error(22, "process id must be positive"));
+      }
+      this.token = try native_process_open(this.alloc, identity);
+      this.identity_ = ProcessIdentity(identity.pid, identity.start_marker);
+      return SystemResult.Ok;
+    }
+
+    /** Report the platform's signaling guarantee. */
+    public const method protection() ProcessProtection {
+      return native_process_protection();
+    }
+
+    /** Send SIGTERM to the bound process, preserving native permission errors. */
+    public method terminate() SystemResult<void> {
+      return this.send(SIGTERM);
+    }
+
+    /** Send SIGKILL to the bound process. */
+    public method kill() SystemResult<void> {
+      return this.send(SIGKILL);
+    }
+
+    /** Reject closed handles before dispatching to the platform backend. */
+    method send(signal: i32) SystemResult<void> {
+      if (this.token == 0) {
+        return SystemResult.Error(Error(9, "process handle is closed"));
+      }
+      return native_process_signal(this.alloc, this.identity_, this.token, signal);
+    }
+
+    /** Release native resources exactly once, including descriptor zero. */
+    public method close() void {
+      if (this.token != 0) {
+        native_process_close(this.token);
+        this.token = 0;
+      }
+    }
+
+    /** Release the owned reference without terminating or reaping the process. */
+    deinit() {
+      this.close();
+    }
+  }
+
+  /** Return a checked byte, using NUL when a parser reaches the end. */
+  function process_byte(text: const ref String, index: i64) u8 {
+    return match text.at(index) {
+      AccessResult.Ok(byte) => byte,
+      AccessResult.OutOfBounds(error) => 0
+    };
+  }
+
+  /** Copy a bounded native byte range into allocator-owned text. */
+  function process_text(alloc: ref HeapAllocator, data: ref ContiguousBuffer<u8>, start: i64, end: i64) String {
+    var text = String(alloc, "");
+    for (var i = start; i < end; i = i + 1) {
+      text.append_char(data[i]);
+    }
+    return text;
+  }
+
+  /** Decode NUL-terminated argument bytes, preserving empty arguments. */
+  function process_arguments(alloc: ref HeapAllocator, text: const ref String) SystemResult<Vec<String>> {
+    var args = Vec<String>(alloc, 8);
+    var argument = String(alloc, "");
+    for (var i: i64 = 0; i < text.length(); i = i + 1) {
+      var byte = process_byte(text, i);
+      if (byte == 0) {
+        args.push(argument);
+        argument = String(alloc, "");
+      } else {
+        argument.append_char(byte);
+      }
+    }
+    if (not argument.is_empty()) {
+      return SystemResult.Error(Error(22, "truncated process arguments"));
+    }
+    return SystemResult.Ok(args);
+  }
+}

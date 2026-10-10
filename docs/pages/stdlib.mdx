@@ -963,6 +963,65 @@ waits and never signals there — a moved-from `Child` is all zeroes, and reapin
 or killing on that would touch a process the object no longer stands for. Call
 `wait` to reap.
 
+### Process inspection and identity-bound handles
+
+Inspection runs with the caller's existing credentials. Pass an allocator to
+`process_ids(alloc)`, `process_identity(alloc, pid)`, and
+`inspect_process(alloc, pid)`; all return `SystemResult<T>`. Enumeration returns
+`Vec<i32>` and can race with process creation and exit. Inspect each PID
+separately and handle failures.
+
+`ProcessIdentity` contains `pid: i32` and `start_marker: u64`, with
+`equals(other)` comparing both. The marker is opaque and valid only on the same
+host and boot: Linux uses start ticks, macOS uses the start timeval. Markers have
+OS-defined resolution; they are not globally unique identifiers.
+
+`ProcessSnapshot` owns these public fields:
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `identity` | `ProcessIdentity` | Identity checked again after collecting the fields |
+| `cpu_time_ns` | `SystemResult<u64>` | Cumulative user plus system CPU time in nanoseconds, excluding children; Linux precision is clock ticks |
+| `rss_bytes` | `SystemResult<u64>` | Resident memory in bytes |
+| `executable` | `SystemResult<String>` | Executable path, if visible |
+| `arguments` | `SystemResult<Vec<String>>` | Arguments including argv[0], preserving spaces and empty arguments |
+
+Each field error preserves the native error code when an OS call fails, so
+unavailable data is distinct from zero or an empty value. An identity read
+failure or changed identity fails the whole inspection. Fields are collected
+at different times: this is not an atomic snapshot, and a concurrent exec may
+change the executable and arguments without changing the start marker. Arguments
+may have been modified by the target. On macOS the OS argument record's padding
+makes an empty argv[0] indistinguishable from padding.
+
+`page_size_bytes()` and `physical_memory_bytes()` return `SystemResult<u64>`.
+Physical memory is the system total, not a container or cgroup limit.
+
+```sun
+var observed = try process_identity(alloc, target_pid);
+var handle = ProcessHandle(alloc);
+try handle.open(observed);
+println(handle.protection() == ProcessProtection.Atomic);
+try handle.terminate();  // SIGTERM; kill() sends SIGKILL
+handle.close();
+```
+
+`ProcessHandle` owns its native reference and is moved, never implicitly copied.
+`open(identity)` first closes any previous reference and leaves the handle closed
+on failure. `close()` is idempotent; destruction closes automatically. Neither
+operation signals nor reaps the process. Closed handles reject signaling with
+`EBADF`. The allocator passed to the constructor is retained for identity queries.
+
+| Platform | `protection()` | Guarantee |
+|----------|----------------|-----------|
+| Linux | `ProcessProtection.Atomic` | Uses `pidfd_open` and `pidfd_send_signal`; after opening, PID reuse cannot redirect a signal. Missing kernel facilities return `ENOSYS`; there is no fallback to POSIX `kill`. |
+| macOS | `ProcessProtection.Checked` | Checks the saved identity immediately before POSIX `kill`. A process can exit and its PID can be reused between these calls; signaling is **not atomically protected**. |
+
+Opening validates the caller's observed start marker. Linux also checks that the
+pidfd still refers to a live process after reading its identity. The kernel still
+enforces signaling permissions; errors such as `EPERM` remain visible. Handles to
+arbitrary processes do not provide the child-specific waiting behavior of `Child`.
+
 ### Identity, signals and raw control
 
 | Function | Signature | Description |

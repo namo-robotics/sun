@@ -1,0 +1,208 @@
+/** macOS libproc inspection and explicitly non-atomic process handles. */
+public module std.process {
+  /** Read the BSD start timeval as an opaque microsecond start marker. */
+  function native_process_identity(alloc: ref HeapAllocator, target: i32) SystemResult<ProcessIdentity> {
+    // proc_bsdinfo is word-aligned; its final words contain the start timeval.
+    var record = ContiguousBuffer<u64>(alloc, 17);
+    var got = unsafe { c_proc_pidinfo(target, 3, 0, record.raw_data(), 136); };
+    if (got != 136) {
+      return SystemResult.Error(Error(got <= 0 ? errno() : 22, "process identity unavailable"));
+    }
+    var seconds = record[15];
+    var micros = record[16];
+    if (micros >= 1000000 or seconds > (U64_MAX - micros) / 1000000) {
+      return SystemResult.Error(Error(22, "invalid process start time"));
+    }
+    return SystemResult.Ok(ProcessIdentity(target, seconds * 1000000 + micros));
+  }
+
+  /** Retry enumeration with more room when concurrent launches fill the buffer. */
+  function native_process_ids(alloc: ref HeapAllocator) SystemResult<Vec<i32>> {
+    var needed = unsafe { c_proc_listpids(1, 0, null, 0); };
+    if (needed <= 0) {
+      return SystemResult.Error(Error(errno(), "process enumeration unavailable"));
+    }
+    var capacity: i64 = _convert<i64>(needed) / 4 + 64;
+    while (capacity <= 16777216) {
+      var data = ContiguousBuffer<i32>(alloc, capacity);
+      var bytes = _convert<i32>(capacity * 4);
+      var got = unsafe { c_proc_listpids(1, 0, data.raw_data(), bytes); };
+      if (got <= 0) {
+        return SystemResult.Error(Error(errno(), "process enumeration failed"));
+      }
+      if (got < bytes) {
+        if (got % 4 != 0) {
+          return SystemResult.Error(Error(22, "invalid process enumeration record"));
+        }
+        var ids = Vec<i32>(alloc, _convert<i64>(got) / 4);
+        for (var i: i64 = 0; i < _convert<i64>(got) / 4; i = i + 1) {
+          if (data[i] > 0) {
+            ids.push(data[i]);
+          }
+        }
+        return SystemResult.Ok(ids);
+      }
+      capacity = capacity * 2;
+    }
+    return SystemResult.Error(Error(12, "process enumeration grew beyond capacity"));
+  }
+
+  /** Read the libproc path with the platform's maximum supported path buffer. */
+  function process_executable(alloc: ref HeapAllocator, target: i32) SystemResult<String> {
+    var data = ContiguousBuffer<u8>(alloc, 4096);
+    var got = unsafe { c_proc_pidpath(target, data.raw_data(), 4096); };
+    if (got <= 0) {
+      return SystemResult.Error(Error(errno(), "process executable unavailable"));
+    }
+    var end: i64 = 0;
+    while (end < _convert<i64>(got) and data[end] != 0) {
+      end = end + 1;
+    }
+    return SystemResult.Ok(process_text(alloc, data, 0, end));
+  }
+
+  /** Decode KERN_PROCARGS2, using argc to exclude the trailing environment. */
+  function darwin_process_arguments(alloc: ref HeapAllocator, data: ref ContiguousBuffer<u8>, size: i64) SystemResult<Vec<String>> {
+    if (size < 4 or size > data.size()) {
+      return SystemResult.Error(Error(22, "invalid process argument record"));
+    }
+    var count = unsafe { _load<i32>(data.raw_data(), 0); };
+    if (count < 0 or _convert<i64>(count) > size - 4) {
+      return SystemResult.Error(Error(22, "invalid process argument count"));
+    }
+    var at: i64 = 4;
+    // The executable path is followed by NUL padding, then argv.
+    while (at < size and data[at] != 0) {
+      at = at + 1;
+    }
+    while (at < size and data[at] == 0) {
+      at = at + 1;
+    }
+    var args = Vec<String>(alloc, _convert<i64>(count));
+    for (var i: i32 = 0; i < count; i = i + 1) {
+      var start = at;
+      while (at < size and data[at] != 0) {
+        at = at + 1;
+      }
+      if (at >= size) {
+        return SystemResult.Error(Error(22, "truncated process arguments"));
+      }
+      args.push(process_text(alloc, data, start, at));
+      at = at + 1;
+    }
+    return SystemResult.Ok(args);
+  }
+
+  /** Read argv through sysctl; access denial remains a field error. */
+  function native_process_arguments(alloc: ref HeapAllocator, target: i32) SystemResult<Vec<String>> {
+    var max_size: i32 = 0;
+    var length: u64 = 4;
+    if (unsafe { c_sysctlbyname("kern.argmax", _bitcast<raw_ptr<u8>>(_address_of<i32>(max_size)), _address_of<u64>(length), null, 0); } < 0) {
+      return SystemResult.Error(Error(errno(), "argument limit unavailable"));
+    }
+    if (max_size < 4 or length != 4) {
+      return SystemResult.Error(Error(22, "invalid argument limit"));
+    }
+    var data = ContiguousBuffer<u8>(alloc, _convert<i64>(max_size));
+    var name = ContiguousBuffer<i32>(alloc, 3);
+    name[0] = 1;
+    name[1] = 49;
+    name[2] = target;
+    length = _convert<u64>(max_size);
+    if (unsafe { c_sysctl(_bitcast<raw_ptr<i32>>(name.raw_data()), 3, data.raw_data(), _address_of<u64>(length), null, 0); } < 0) {
+      return SystemResult.Error(Error(errno(), "process arguments unavailable"));
+    }
+    return darwin_process_arguments(alloc, data, _convert<i64>(length));
+  }
+
+  /** Native timebase storage, kept on the stack for CPU unit conversion. */
+  class ProcessTimebase {
+    var numerator: u32 = 0;
+    var denominator: u32 = 0;
+
+    /** Initialize an empty ratio for mach_timebase_info to fill. */
+    init() {}
+  }
+
+  /** Scale Mach ticks without overflowing the intermediate product. */
+  function process_mach_time_ns(ticks: u64, numerator: u32, denominator: u32) SystemResult<u64> {
+    if (denominator == 0 or numerator == 0) {
+      return SystemResult.Error(Error(22, "invalid Mach timebase"));
+    }
+    var n = _convert<u64>(numerator);
+    var d = _convert<u64>(denominator);
+    var whole = ticks / d;
+    var fraction = (ticks % d) * n / d;
+    if (whole > (U64_MAX - fraction) / n) {
+      return SystemResult.Error(Error(22, "CPU time overflows"));
+    }
+    return SystemResult.Ok(whole * n + fraction);
+  }
+
+  /** Convert libproc's cumulative Mach CPU ticks to nanoseconds. */
+  function process_cpu_ns(user: u64, system: u64) SystemResult<u64> {
+    var timebase = ProcessTimebase();
+    var code = unsafe { c_mach_timebase_info(_bitcast<raw_ptr<u8>>(_address_of<ProcessTimebase>(timebase))); };
+    if (code != 0) {
+      return SystemResult.Error(Error(code, "Mach timebase unavailable"));
+    }
+    if (user > U64_MAX - system) {
+      return SystemResult.Error(Error(22, "CPU time overflows"));
+    }
+    return process_mach_time_ns(user + system, timebase.numerator, timebase.denominator);
+  }
+
+  /** Read libproc cumulative CPU nanoseconds and resident bytes independently of text. */
+  function native_process_snapshot(alloc: ref HeapAllocator, target: i32) SystemResult<ProcessSnapshot> {
+    var identity = try process_identity(alloc, target);
+    var record = ContiguousBuffer<u64>(alloc, 12);
+    var got = unsafe { c_proc_pidinfo(target, 4, 0, record.raw_data(), 96); };
+    var code = got <= 0 ? errno() : 22;
+    var cpu: SystemResult<u64> = SystemResult.Error(Error(code, "process CPU time unavailable"));
+    var rss: SystemResult<u64> = SystemResult.Error(Error(code, "process RSS unavailable"));
+    if (got == 96) {
+      rss = SystemResult.Ok(record[1]);
+      cpu = process_cpu_ns(record[2], record[3]);
+    }
+    return SystemResult.Ok(ProcessSnapshot(identity, cpu, rss, process_executable(alloc, target), native_process_arguments(alloc, target)));
+  }
+
+  /** Query installed memory without Mach task privileges. */
+  function native_physical_memory_bytes() SystemResult<u64> {
+    var bytes: u64 = 0;
+    var length: u64 = 8;
+    if (unsafe { c_sysctlbyname("hw.memsize", _bitcast<raw_ptr<u8>>(_address_of<u64>(bytes)), _address_of<u64>(length), null, 0); } < 0) {
+      return SystemResult.Error(Error(errno(), "physical memory unavailable"));
+    }
+    if (length != 8 or bytes == 0) {
+      return SystemResult.Error(Error(22, "invalid physical memory size"));
+    }
+    return SystemResult.Ok(bytes);
+  }
+
+  /** macOS checks identity before kill but cannot bind that check atomically. */
+  function native_process_protection() ProcessProtection {
+    return ProcessProtection.Checked;
+  }
+
+  /** Validate the supplied identity before activating a checked handle. */
+  function native_process_open(alloc: ref HeapAllocator, identity: const ref ProcessIdentity) SystemResult<i64> {
+    var observed = try process_identity(alloc, identity.pid);
+    if (not identity.equals(observed)) {
+      return SystemResult.Error(Error(3, "process identity changed"));
+    }
+    return SystemResult.Ok(1);
+  }
+
+  /** Recheck immediately before kill; PID reuse can still occur between the calls. */
+  function native_process_signal(alloc: ref HeapAllocator, identity: const ref ProcessIdentity, token: i64, signal: i32) SystemResult<void> {
+    var observed = try process_identity(alloc, identity.pid);
+    if (not identity.equals(observed)) {
+      return SystemResult.Error(Error(3, "process identity changed"));
+    }
+    return kill(identity.pid, signal);
+  }
+
+  /** A checked macOS handle owns no native descriptor. */
+  function native_process_close(token: i64) void {}
+}

@@ -1,0 +1,139 @@
+using std;
+using std.process;
+
+/** Native regression tests for portable process inspection and ownership. */
+public module std.process {
+  /** Exercise native inspection and owned process handles. */
+  module inspection_tests {
+    /** Require a failure and return its preserved native error code. */
+    function error_code<T>(result: SystemResult<T>) std.test.AssertionResult<i32> {
+      return match result {
+        SystemResult.Error(error) => std.test.AssertionResult.Ok(error.code()),
+        _ => std.test.AssertionResult.Error(std.test.AssertionError("expected process operation to fail"))
+      };
+    }
+
+    /** Current-process snapshots expose identity, text, and explicit resource units. */
+    test_function snapshot_and_system_units() {
+      var alloc = make_heap_allocator();
+      var snapshot = try std.test.expect_system(inspect_process(alloc, pid()));
+      var identity = try std.test.expect_system(process_identity(alloc, pid()));
+      try std.test.assert(snapshot.identity.equals(identity), "snapshot keeps the observed identity");
+      var rss = try std.test.expect_system(snapshot.rss_bytes);
+      var cpu = try std.test.expect_system(snapshot.cpu_time_ns);
+      var page = try std.test.expect_system(page_size_bytes());
+      var memory = try std.test.expect_system(physical_memory_bytes());
+      try std.test.assert(page >= 1024 and page <= 1048576, "page size is in bytes");
+      try std.test.assert(rss >= page and rss <= memory, "resident memory is in bytes");
+      try std.test.assert(rss % page == 0, "resident memory counts whole pages");
+      var executable = try std.test.expect_system(snapshot.executable);
+      var args = try std.test.expect_system(snapshot.arguments);
+      try std.test.assert(not executable.is_empty(), "executable available for self");
+      try std.test.assert(args.size() > 0, "argv is available for self");
+      var later = try std.test.expect_system(inspect_process(alloc, pid()));
+      var later_cpu = try std.test.expect_system(later.cpu_time_ns);
+      try std.test.assert(later_cpu >= cpu, "CPU time is cumulative");
+      var ids = try std.test.expect_system(process_ids(alloc));
+      var found = false;
+      for (var i: i64 = 0; i < ids.size(); i = i + 1) {
+        found = found or ids[i] == pid();
+      }
+      try std.test.assert(found, "enumeration includes the caller");
+    }
+
+    /** Read an independent POSIX process CPU clock in nanoseconds. */
+    function cpu_clock_ns() std.test.AssertionResult<u64> {
+      var ts = Timespec(0, 0);
+      var clock_id: i32 = _target_is("linux") ? 2 : 12;
+      var code = unsafe { c_clock_gettime(clock_id, ts); };
+      try std.test.assert_eq(code, 0);
+      return std.test.AssertionResult.Ok(_convert<u64>(ts.sec * 1000000000 + ts.nsec));
+    }
+
+    /** Snapshot CPU units agree with the OS process clock, allowing Linux tick rounding. */
+    test_function cpu_time_is_nanoseconds() {
+      var alloc = make_heap_allocator();
+      var start = try cpu_clock_ns();
+      while ((try cpu_clock_ns()) - start < 100000000) {}
+      var before = try cpu_clock_ns();
+      var snapshot = try std.test.expect_system(inspect_process(alloc, pid()));
+      var after = try cpu_clock_ns();
+      var cpu = try std.test.expect_system(snapshot.cpu_time_ns);
+      try std.test.assert(cpu + 20000000 >= before, "CPU time is not ticks or microseconds");
+      try std.test.assert(cpu <= after + 20000000, "CPU time has nanosecond scale");
+    }
+
+    /** Invalid PIDs and stale start markers never target a process group or reused PID. */
+    test_function invalid_and_reused_identity() {
+      var alloc = make_heap_allocator();
+      try std.test.assert_eq(try error_code(process_identity(alloc, 0)), 22);
+      try std.test.assert_eq(try error_code(inspect_process(alloc, -1)), 22);
+      var identity = try std.test.expect_system(process_identity(alloc, pid()));
+      var stale = ProcessIdentity(identity.pid, identity.start_marker + 1);
+      var handle = ProcessHandle(alloc);
+      try std.test.assert_eq(try error_code(handle.open(stale)), 3);
+      try std.test.assert_eq(try error_code(handle.terminate()), 9);
+    }
+
+    /** Closing twice and moving a handle do not signal or lose the owned reference. */
+    test_function handle_move_and_close() {
+      var alloc = make_heap_allocator();
+      var identity = try std.test.expect_system(process_identity(alloc, pid()));
+      var original = ProcessHandle(alloc);
+      try std.test.expect_system_success(original.open(identity));
+      var moved = original;
+      moved.close();
+      moved.close();
+      try std.test.assert_eq(try error_code(moved.kill()), 9);
+      try std.test.assert_eq(try error_code(moved.terminate()), 9);
+      try std.test.expect_system_success(moved.open(identity));
+      var expected = _target_is("linux") ? ProcessProtection.Atomic : ProcessProtection.Checked;
+      try std.test.assert(moved.protection() == expected, "platform guarantee is explicit");
+    }
+
+    /** A bound handle kills its child, then rejects signaling after the child is reaped. */
+    test_function handle_exit_and_kill() {
+      var alloc = make_heap_allocator();
+      var cmd = Command(alloc, "/bin/sleep");
+      cmd.add_arg("30");
+      var child = try std.test.expect_system(cmd.start());
+      var identity = try std.test.expect_system(process_identity(alloc, child.id()));
+      var handle = ProcessHandle(alloc);
+      try std.test.expect_system_success(handle.open(identity));
+      try std.test.expect_system_success(handle.kill());
+      try std.test.assert_eq(try std.test.expect_system(child.wait()), 128 + SIGKILL);
+      var code = try error_code(handle.kill());
+      try std.test.assert(code == 3 or code == 2, "exited process is unavailable");
+      try error_code(handle.open(identity));
+      try std.test.assert_eq(try error_code(handle.kill()), 9);
+    }
+
+    /** SIGTERM is delivered through an identity-bound handle. */
+    test_function handle_terminate() {
+      var alloc = make_heap_allocator();
+      var cmd = Command(alloc, "/bin/sleep");
+      cmd.add_arg("30");
+      var child = try std.test.expect_system(cmd.start());
+      var identity = try std.test.expect_system(process_identity(alloc, child.id()));
+      var handle = ProcessHandle(alloc);
+      try std.test.expect_system_success(handle.open(identity));
+      try std.test.expect_system_success(handle.terminate());
+      try std.test.assert_eq(try std.test.expect_system(child.wait()), 128 + SIGTERM);
+    }
+
+    /** NUL-delimited argv keeps spaces and empty arguments without a trailing fake argument. */
+    test_function argument_boundaries() {
+      var alloc = make_heap_allocator();
+      var bytes = String(alloc, "program\0two words\0\0last\0");
+      var args = try std.test.expect_system(std.process.process_arguments(alloc, bytes));
+      try std.test.assert_eq(args.size(), 4);
+      try std.test.assert(args[1].equals_literal("two words"), "spaces remain in one argument");
+      try std.test.assert(args[2].is_empty(), "empty argument preserved");
+      var empty = String(alloc, "");
+      var none = try std.test.expect_system(std.process.process_arguments(alloc, empty));
+      try std.test.assert_eq(none.size(), 0);
+      var truncated = String(alloc, "missing terminator");
+      try std.test.assert_eq(try error_code(std.process.process_arguments(alloc, truncated)), 22);
+    }
+  }
+}

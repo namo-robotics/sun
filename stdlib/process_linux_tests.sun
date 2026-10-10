@@ -1,0 +1,64 @@
+/** Linux-specific native and procfs parser regressions. */
+public module std.process {
+  /** Tests for Linux process data and descriptor ownership. */
+  module inspection_tests {
+    /** Construct a stat fixture with a command name containing spaces and parentheses. */
+    function stat_fixture(alloc: ref HeapAllocator) String {
+      var text = String(alloc, "42 (name ) with (parens)) S");
+      for (var field: i32 = 4; field <= 24; field = field + 1) {
+        text.append_char(b' ');
+        if (field == 14) {
+          text.append("150");
+        } else if (field == 15) {
+          text.append("50");
+        } else if (field == 22) {
+          text.append("123456");
+        } else if (field == 24) {
+          text.append("7");
+        } else {
+          text.append("0");
+        }
+      }
+      text.append_char(b'\n');
+      return text;
+    }
+
+    /** Parsing does not confuse command-name delimiters with stat field boundaries. */
+    test_function stat_units_and_names() {
+      var alloc = make_heap_allocator();
+      var text = stat_fixture(alloc);
+      var start = try std.test.expect_system(process_stat_field(text, 22));
+      try std.test.assert_eq(start, _convert<u64>(123456));
+      var ticks = unsafe { c_sysconf(2); };
+      var cpu = try std.test.expect_system(process_cpu_ns(text));
+      try std.test.assert_eq(cpu, _convert<u64>(200000000000 / ticks));
+      var rss = try std.test.expect_system(process_rss_bytes(text));
+      var page = try std.test.expect_system(page_size_bytes());
+      try std.test.assert_eq(rss, page * 7);
+      var malformed = String(alloc, "42 (bad) S 1");
+      try std.test.assert_eq(try error_code(process_stat_field(malformed, 22)), 22);
+      var negative = String(alloc, "42 (bad) S -1");
+      try std.test.assert_eq(try error_code(process_stat_field(negative, 4)), 22);
+      var overflow = String(alloc, "42 (bad) S 18446744073709551616");
+      try std.test.assert_eq(try error_code(process_stat_field(overflow, 4)), 22);
+    }
+
+    /** Repeated successful, failed, and moved handles release every pidfd. */
+    test_function descriptors_are_closed() {
+      var alloc = make_heap_allocator();
+      var before = try std.test.expect_system(std.io.read_dir(alloc, "/proc/self/fd"));
+      var identity = try std.test.expect_system(process_identity(alloc, pid()));
+      var stale = ProcessIdentity(identity.pid, identity.start_marker + 1);
+      for (var i: i32 = 0; i < 20; i = i + 1) {
+        var handle = ProcessHandle(alloc);
+        try std.test.expect_system_success(handle.open(identity));
+        try std.test.expect_system_success(handle.open(identity));
+        try std.test.assert_eq(try error_code(handle.open(stale)), 3);
+        try std.test.expect_system_success(handle.open(identity));
+        var moved = handle;
+      }
+      var after = try std.test.expect_system(std.io.read_dir(alloc, "/proc/self/fd"));
+      try std.test.assert_eq(before.size(), after.size());
+    }
+  }
+}

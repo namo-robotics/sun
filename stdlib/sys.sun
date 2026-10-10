@@ -165,6 +165,36 @@ public module std {
   /** Changes the process working directory to the supplied path. */
   extern "C" function c_chdir(path: raw_ptr<u8>) i32 as "chdir";
 
+  /** Query a native system limit; names are supplied by the platform backend. */
+  extern "C" function c_sysconf(name: i32) i64 as "sysconf";
+
+  /** Return the native memory page size in bytes. */
+  extern "C" function c_getpagesize() i32 as "getpagesize";
+
+  /** Read a symbolic link without adding a trailing NUL. */
+  extern "C" function c_readlink(path: raw_ptr<u8>, buffer: raw_ptr<u8>, size: i64) i64 as "readlink";
+
+  /** Invoke a Linux syscall using the target's native long ABI. */
+  extern "C" function c_syscall(number: i64, ...) i64 as "syscall";
+
+  /** Query macOS process records into caller-owned storage. */
+  extern "C" function c_proc_pidinfo(pid: i32, flavor: i32, arg: u64, buffer: raw_ptr<u8>, size: i32) i32 as "proc_pidinfo";
+
+  /** List macOS process identifiers into caller-owned storage. */
+  extern "C" function c_proc_listpids(kind: u32, info: u32, buffer: raw_ptr<u8>, size: i32) i32 as "proc_listpids";
+
+  /** Read a macOS executable path into caller-owned storage. */
+  extern "C" function c_proc_pidpath(pid: i32, buffer: raw_ptr<u8>, size: u32) i32 as "proc_pidpath";
+
+  /** Read the macOS Mach tick-to-nanosecond ratio into two unsigned words. */
+  extern "C" function c_mach_timebase_info(info: raw_ptr<u8>) i32 as "mach_timebase_info";
+
+  /** Query a macOS kernel property by numeric name. */
+  extern "C" function c_sysctl(name: raw_ptr<i32>, count: u32, output: raw_ptr<u8>, size: raw_ptr<u64>, input: raw_ptr<u8>, input_size: u64) i32 as "sysctl";
+
+  /** Query a macOS kernel property by string name. */
+  extern "C" function c_sysctlbyname(name: raw_ptr<u8>, output: raw_ptr<u8>, size: raw_ptr<u64>, input: raw_ptr<u8>, input_size: u64) i32 as "sysctlbyname";
+
   // --- processes -----------------------------------------------------------
 
   /** Creates a child process and returns the process-specific fork result. */

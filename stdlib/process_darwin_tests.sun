@@ -1,0 +1,33 @@
+/** macOS timebase and native argument-record regressions. */
+public module std.process {
+  /** Exercise the macOS inspection record decoders. */
+  module inspection_tests {
+    /** Fractional timebases and large tick values convert without intermediate overflow. */
+    test_function mach_time_units() {
+      var nanos = try std.test.expect_system(process_mach_time_ns(24, 125, 3));
+      try std.test.assert_eq(nanos, _convert<u64>(1000));
+      var large = try std.test.expect_system(process_mach_time_ns(U64_MAX, 1, 1));
+      try std.test.assert_eq(large, U64_MAX);
+      try std.test.assert_eq(try error_code(process_mach_time_ns(U64_MAX, 125, 3)), 22);
+      try std.test.assert_eq(try error_code(process_mach_time_ns(10, 1, 0)), 22);
+    }
+
+    /** KERN_PROCARGS2 padding is skipped and argc excludes environment entries. */
+    test_function darwin_argument_record() {
+      var alloc = make_heap_allocator();
+      var text = String(alloc, "/bin/program\0\0program\0\0two words\0KEY=value\0");
+      var data = ContiguousBuffer<u8>(alloc, text.length() + 4);
+      unsafe { _store<i32>(data.raw_data(), 0, 3); };
+      for (var i: i64 = 0; i < text.length(); i = i + 1) {
+        data[i + 4] = process_byte(text, i);
+      }
+      var args = try std.test.expect_system(darwin_process_arguments(alloc, data, data.size()));
+      try std.test.assert_eq(args.size(), 3);
+      try std.test.assert(args[0].equals_literal("program"), "argv excludes the executable prefix");
+      try std.test.assert(args[1].is_empty(), "empty argument preserved");
+      try std.test.assert(args[2].equals_literal("two words"), "argument spaces preserved");
+      try std.test.assert_eq(try error_code(darwin_process_arguments(alloc, data, 3)), 22);
+      try std.test.assert_eq(try error_code(darwin_process_arguments(alloc, data, 4)), 22);
+    }
+  }
+}
