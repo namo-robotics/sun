@@ -1,0 +1,204 @@
+/** Scoped SIGINT/SIGTERM events delivered through a nonblocking wakeup pipe. */
+public module std.signal {
+  /** Compiler-owned, process-lifetime storage; layout matches signals.cpp. */
+  class SignalState {
+    var gate: i32;
+    var writer: i32;
+    var owned: i32;
+    var pending: i32;
+  }
+
+  /** Borrow the permanent state shared with the native handler. */
+  function state() ref SignalState {
+    return unsafe { _to_ref<SignalState>(_signal_state()); };
+  }
+
+  /** A coalesced snapshot: each bit means at least one delivery since the last take. */
+  public class SignalEvents {
+    var bits: i32;
+
+    /** Capture the pending signal bits. */
+    init(bits: i32) {
+      this.bits = bits;
+    }
+
+    /** Whether SIGINT was delivered. */
+    public const method interrupted() bool {
+      return (this.bits & 1) != 0;
+    }
+
+    /** Whether SIGTERM was delivered. */
+    public const method terminated() bool {
+      return (this.bits & 2) != 0;
+    }
+
+    /** Whether either signal was delivered. */
+    public const method any() bool {
+      return this.bits != 0;
+    }
+  }
+
+  /**
+   * Own the process's SIGINT/SIGTERM dispositions and a wakeup pipe for a scope.
+   * Construction explicitly installs both handlers; restore or scope exit restores
+   * the complete saved dispositions. Only one subscription may be active. Do not
+   * change these dispositions externally, fork, or unload the library while active.
+   * Use the object on one thread at a time; signals may arrive on any thread.
+   * Register fd() for reads with Poller or EventLoop, then call take_pending().
+   * Remove the registration before restore or scope exit. A poll interrupted by
+   * a signal can return EINTR: take_pending or retry the wait in that case.
+   * The handler uses only lock-free atomics, a nonblocking write, and saved errno.
+   * Repeated deliveries coalesce; ordering and delivery counts are not preserved.
+   */
+  public class SignalSubscription {
+    var owns: bool = false;
+    var enabled: bool = false;
+    var int_installed: bool = false;
+    var term_installed: bool = false;
+    var reader: i32 = -1;
+    var writer: i32 = -1;
+    var saved_int: SignalAction = SignalAction();
+    var saved_term: SignalAction = SignalAction();
+
+    /** Install both dispositions, or roll back resources acquired before failure. */
+    init() SystemResult<void> {
+      var shared = state();
+      if (unsafe { _atomic_cmpxchg_i32(_address_of<i32>(shared.owned), 0, 1); } != 0) {
+        return SystemResult.Error(Error(16, "a signal subscription is already active"));
+      }
+      this.owns = true;
+      var descriptors: array<i32, 2> = [0, 0];
+      if (unsafe { c_pipe(_address_of<i32>(descriptors[0])); } < 0) {
+        return SystemResult.Error(this.fail(errno()));
+      }
+      this.reader = descriptors[0];
+      this.writer = descriptors[1];
+      // Both ends are nonblocking and close-on-exec before any handler is installed.
+      for (var i: i64 = 0; i < 2; i = i + 1) {
+        if (unsafe { c_fcntl(descriptors[i], 4, O_NONBLOCK); } < 0) {
+          return SystemResult.Error(this.fail(errno()));
+        }
+        if (unsafe { c_fcntl(descriptors[i], 2, 1); } < 0) {
+          return SystemResult.Error(this.fail(errno()));
+        }
+      }
+      var action = SignalAction();
+      action.handler = unsafe { _signal_handler(); };
+      if (unsafe { c_sigemptyset(action.mask_pointer()); } < 0) {
+        return SystemResult.Error(this.fail(errno()));
+      }
+      shared.writer = this.writer;
+      unsafe { _atomic_store_i32(_address_of<i32>(shared.pending), 0); };
+      // Add the enable bit instead of overwriting a late disabled handler's count.
+      unsafe { _atomic_fetch_add_i32(_address_of<i32>(shared.gate), 1); };
+      this.enabled = true;
+      if (unsafe {
+        c_sigaction(
+          std.process.SIGINT,
+          _bitcast<raw_ptr<u8>>(_address_of<SignalAction>(action)),
+          _bitcast<raw_ptr<u8>>(_address_of<SignalAction>(this.saved_int))
+        );
+      } < 0) {
+        return SystemResult.Error(this.fail(errno()));
+      }
+      this.int_installed = true;
+      if (unsafe {
+        c_sigaction(
+          std.process.SIGTERM,
+          _bitcast<raw_ptr<u8>>(_address_of<SignalAction>(action)),
+          _bitcast<raw_ptr<u8>>(_address_of<SignalAction>(this.saved_term))
+        );
+      } < 0) {
+        return SystemResult.Error(this.fail(errno()));
+      }
+      this.term_installed = true;
+    }
+
+    /** Roll back a failed installation while retaining the original error code. */
+    method fail(code: i32) Error {
+      ignore_error(this.restore());
+      return Error(code, "failed to install signal subscription");
+    }
+
+    /** Borrow the read descriptor; returns -1 after restoration. Do not close it. */
+    public const method fd() i32 {
+      return this.owns ? this.reader : -1;
+    }
+
+    /** Drain wakeups and atomically take both pending bits without allocating. */
+    public method take_pending() SystemResult<SignalEvents> {
+      if (not this.owns) {
+        return SystemResult.Error(Error(9, "signal subscription is not active"));
+      }
+      var bytes: array<u8, 16> = [0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8];
+      while (true) {
+        var count = unsafe { c_read(this.reader, _address_of<u8>(bytes[0]), 16); };
+        if (count > 0) {
+          continue;
+        }
+        if (count < 0 and errno() == INTERRUPTED_ERRNO) {
+          continue;
+        }
+        if (count < 0 and errno() == WOULD_BLOCK_ERRNO) {
+          break;
+        }
+        return SystemResult.Error(Error(errno(), "failed to drain signal pipe"));
+      }
+      var shared = state();
+      var bits = unsafe { _atomic_load_i32(_address_of<i32>(shared.pending)); };
+      while (unsafe { _atomic_cmpxchg_i32(_address_of<i32>(shared.pending), bits, 0); } != bits) {
+        bits = unsafe { _atomic_load_i32(_address_of<i32>(shared.pending)); };
+      }
+      return SystemResult.Ok(SignalEvents(bits));
+    }
+
+    /**
+     * Restore saved handlers and close the pipe after all enabled handlers finish.
+     * Idempotent. If sigaction fails, retain resources so the operation can be retried.
+     * A signal delivered during restoration may use either the saved or new action.
+     */
+    public method restore() SystemResult<void> {
+      if (not this.owns) {
+        return SystemResult.Ok;
+      }
+      if (this.int_installed) {
+        if (unsafe {
+          c_sigaction(std.process.SIGINT, _bitcast<raw_ptr<u8>>(_address_of<SignalAction>(this.saved_int)), null);
+        } < 0) {
+          return SystemResult.Error(Error(errno(), "failed to restore SIGINT"));
+        }
+        this.int_installed = false;
+      }
+      if (this.term_installed) {
+        if (unsafe {
+          c_sigaction(std.process.SIGTERM, _bitcast<raw_ptr<u8>>(_address_of<SignalAction>(this.saved_term)), null);
+        } < 0) {
+          return SystemResult.Error(Error(errno(), "failed to restore SIGTERM"));
+        }
+        this.term_installed = false;
+      }
+      var shared = state();
+      if (this.enabled) {
+        unsafe { _atomic_fetch_sub_i32(_address_of<i32>(shared.gate), 1); };
+        while (unsafe { _atomic_load_i32(_address_of<i32>(shared.gate)); } != 0) {}
+        this.enabled = false;
+      }
+      if (this.writer >= 0) {
+        unsafe { c_close(this.writer); };
+      }
+      if (this.reader >= 0) {
+        unsafe { c_close(this.reader); };
+      }
+      this.owns = false;
+      unsafe { _atomic_store_i32(_address_of<i32>(shared.owned), 0); };
+      return SystemResult.Ok;
+    }
+
+    /** Best-effort restoration; on failure keep the handler's resources alive. */
+    deinit() {
+      if (this.owns) {
+        ignore_error(this.restore());
+      }
+    }
+  }
+}

@@ -136,6 +136,9 @@ class IntrinsicsGenerator {
   llvm::Value* codegenBswapIntrinsic(const CallExprAST& expr,
                                      unsigned bitWidth);
 
+  /** Emit the process-lifetime signal state or its async-signal-safe C handler. */
+  llvm::Value* codegenSignalIntrinsic(const CallExprAST& expr, bool handler);
+
   /**
    * Atomic intrinsics (in atomic.cpp)
    */

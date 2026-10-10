@@ -291,6 +291,7 @@ add_library(sun_lib
     src/codegen/abi/c_abi.cpp
     src/codegen/abi/extern_c.cpp
     src/codegen/abi/sysv/sysv_x86_64.cpp
+    src/codegen/intrinsics/signals.cpp
     src/codegen/intrinsics/atomic.cpp
     src/codegen/intrinsics/bits.cpp
     src/codegen/intrinsics/builtins.cpp

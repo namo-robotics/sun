@@ -102,6 +102,11 @@ const std::map<std::string, BuiltinEmitter>& builtinTable() {
       {"_ptr_offset",
        [](auto& g, const auto& e) { return g.codegenPtrOffsetIntrinsic(e); }},
 
+      {"_signal_state",
+       [](auto& g, const auto& e) { return g.codegenSignalIntrinsic(e, false); }},
+      {"_signal_handler",
+       [](auto& g, const auto& e) { return g.codegenSignalIntrinsic(e, true); }},
+
       // Atomic intrinsics
       {"_atomic_cmpxchg_i32",
        [](auto& g, const auto& e) {

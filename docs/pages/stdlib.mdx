@@ -425,6 +425,25 @@ var answer = t.join();   // 42
 |--------|-----------|-------------|
 | `join()` | `() T` | Block until the thread finishes, and take its result |
 
+### Atomic Boolean
+
+`std.thread.AtomicBool()` starts false; `AtomicBool(true)` starts true. It stores
+its value inline and allocates nothing. On supported x86-64 and AArch64 targets,
+its naturally aligned 32-bit operations are lock-free, with no lock fallback.
+
+| Method | Ordering | Result |
+|--------|----------|--------|
+| `load()` | Acquire | Current Boolean |
+| `store(value)` | Release | Sets the Boolean |
+| `compare_exchange(expected, desired)` | Acquire-release on success; acquire on failure | Whether the value was replaced |
+
+A release store followed by an acquire load that observes it publishes preceding
+writes to the reader. These operations are not sequentially consistent. Keep the
+flag at a stable address while shared: initialization, moves, and destruction
+require exclusive access. Sun does not implicitly copy the flag. Only these atomic
+operations are signal-safe on the named targets; this is not a signal-safety
+promise for arbitrary calling code or generic atomic implementations.
+
 ### Mutex
 
 Mutual exclusion, using an atomic compare-and-swap for the uncontended case
@@ -684,6 +703,63 @@ An `Event` exposes `fd()` and the raw mask through `events()`. Its
 `is_invalid()` helpers test the corresponding bit without exposing platform
 details.
 
+## Signal events
+
+`std.signal.SignalSubscription` explicitly installs handlers for `SIGINT` and
+`SIGTERM` on Linux and macOS (x86-64 and AArch64). It owns a nonblocking,
+close-on-exec pipe; register `fd()` for read readiness with `Poller` or `EventLoop`.
+`take_pending()` drains wakeups and returns a `SignalEvents` snapshot with
+`interrupted()`, `terminated()`, and `any()` queries. Repeated signals coalesce;
+counts and order are not preserved. Both signal kinds remain pending even when
+the pipe is full. A wakeup can occasionally have an empty snapshot when another
+handler finishes writing after its pending bit was consumed.
+
+```sun
+using std;
+
+/** Wait for an interrupt or termination request, then restore both handlers. */
+function wait_for_shutdown() SystemResult<void> {
+    var alloc = make_heap_allocator();
+    var signals = try std.signal.SignalSubscription();
+    var loop = std.io.EventLoop(alloc, 4);
+    try loop.open();
+    try loop.add(signals.fd(), std.io.POLLIN, 1u64);
+    var stopping = false;
+    while (not stopping) {
+        match loop.wait(-1) {
+            SystemResult.Ok(count) => {},
+            SystemResult.Error(error) => {
+                if (error.code() != 4) { return SystemResult.Error(error); }
+                // EINTR: the signal may have interrupted the waiting thread.
+            }
+        };
+        var events = try signals.take_pending();
+        stopping = events.any();
+    }
+    try loop.remove(signals.fd());
+    try signals.restore();
+    return SystemResult.Ok;
+}
+```
+
+`restore()` is idempotent and restores the previous callbacks, masks, and flags.
+Scope exit also attempts restoration, including after error propagation. Remove
+the descriptor from pollers before restoration or destruction; `fd()` returns
+`-1` after restoration. An explicit restoration error retains the resources for a
+retry; a destructor cannot report that error and leaves those resources alive.
+Only one subscription can be active in a library instance; an overlapping
+subscription returns an error without changing either disposition.
+
+Signals may arrive on any thread. The native handler preserves `errno`, records
+pending bits using lock-free atomics, and writes a byte without blocking. It
+allocates nothing, takes no locks, and calls no user callback. Restoration waits
+for active pipe writes before closing either end. Use subscription methods on
+one thread at a time. Do not independently change these signal dispositions or
+fork while subscribed. Do not unload the compiled handler code while a callback
+could still be returning. Signals delivered during installation or restoration
+may use either disposition; blocked signals remain blocked until the application
+unblocks them. No work is scheduled implicitly, and no thread is created.
+
 ## Terminal
 
 `stdlib/terminal.sun` (module `std.terminal`). Scoped raw and cbreak modes,
@@ -730,10 +806,9 @@ is never discarded.
 
 ### Signal policy
 
-The library never installs a signal handler. Sun cannot make a Sun function a C
-signal handler, and a process-wide handler installed by a library would be a
-surprise anyway, so what the interrupt keys do is a choice the caller makes
-once, when constructing the guard:
+The terminal library never installs a signal handler. Signal subscriptions are
+an explicit, separate operation through `std.signal`. What the interrupt keys
+do is a choice the caller makes when constructing the terminal guard:
 
 | `SignalPolicy` | Meaning |
 |----------------|---------|
