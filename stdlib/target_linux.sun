@@ -155,3 +155,24 @@ public module std.terminal {
   /** Make the terminal the calling session's controlling terminal. */
   public const TIOCSCTTY: u64 = 0x540E;
 }
+
+/** Native signal action layout for this target's libc. */
+public module std.signal {
+  /** Complete saved disposition, including its mask and flags. */
+  class SignalAction {
+    /** Borrow the native mask storage for sigemptyset. */
+    method mask_pointer() raw_ptr<u8> {
+      return unsafe { _bitcast<raw_ptr<u8>>(_address_of<array<i64, 16>>(this.mask)); };
+    }
+
+    var handler: raw_ptr<u8> = null;
+    var mask: array<i64, 16>;
+    var flags: i32 = 0;
+    var restorer: raw_ptr<u8> = null;
+
+    /** Zero the entire native signal mask before installation or a libc query. */
+    init() {
+      this.mask = [0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64];
+    }
+  }
+}

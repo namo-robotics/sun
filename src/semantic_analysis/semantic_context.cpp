@@ -820,6 +820,11 @@ void SemanticContext::registerBuiltinFunctions() {
                       {Types::RawPointer(Types::UInt8()), Types::Int64()},
                       {}});
 
+  currentScope().declareFunction("_signal_state",
+                                 {Types::RawPointer(Types::UInt8()), {}, {}});
+  currentScope().declareFunction("_signal_handler",
+                                 {Types::RawPointer(Types::UInt8()), {}, {}});
+
   // Atomic intrinsics use acquire/release ordering and operate on matching
   // pointer and value types.
   auto registerAtomicInteger = [this](const std::string& suffix,

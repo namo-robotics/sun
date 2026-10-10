@@ -1,0 +1,112 @@
+/** Exercise process-wide signal state sequentially within one test. */
+public module std.signal {
+  /** Deliver a signal synchronously to the calling thread. */
+  extern "C" function test_raise(sig: i32) i32 as "raise";
+
+  /** Own a subscription across a propagated error to exercise destructor cleanup. */
+  function subscription_error() SystemResult<void> {
+    var subscription = try SignalSubscription();
+    return SystemResult.Error(Error(1, "expected test error"));
+  }
+
+  /** Deliver from another thread after the event loop has had time to block. */
+  function delayed_signal() i32 {
+    std.time.sleep(std.time.create_duration_millis(20));
+    return unsafe { test_raise(std.process.SIGTERM); };
+  }
+
+  /** Coalescing, full-pipe safety, pollers, moves, restoration, and exclusive ownership. */
+  test_function signal_subscription_lifecycle() {
+    var alloc = make_heap_allocator();
+    var subscription = try std.test.expect_system(SignalSubscription());
+    var fd = subscription.fd();
+    try std.test.assert(fd >= 0);
+    try std.test.assert((unsafe { c_fcntl(fd, 1); } & 1) != 0);
+    try std.test.assert((unsafe { c_fcntl(fd, 3); } & O_NONBLOCK) != 0);
+    match SignalSubscription() {
+      SystemResult.Ok(other) => {
+        try std.test.assert(false, "overlapping subscription accepted");
+      },
+      SystemResult.Error(error) => {
+        try std.test.assert_eq(error.code(), 16);
+      }
+    };
+    var poller = std.io.Poller(alloc);
+    poller.add_read(fd);
+    var loop = std.io.EventLoop(alloc, 4);
+    try std.test.expect_system_success(loop.open());
+    try std.test.expect_system_success(loop.add(fd, std.io.POLLIN, 7u64));
+    var sender = std.thread.spawn(delayed_signal);
+    try std.test.assert((try std.test.expect_system(loop.wait(1000))) > 0);
+    try std.test.assert_eq(sender.join(), 0);
+    var wakeup = try std.test.expect_system(subscription.take_pending());
+    try std.test.assert(wakeup.terminated());
+    var poll_sender = std.thread.spawn(delayed_signal);
+    try std.test.assert_eq(try std.test.expect_system(poller.wait(1000)), 1);
+    try std.test.assert_eq(poll_sender.join(), 0);
+    var poll_wakeup = try std.test.expect_system(subscription.take_pending());
+    try std.test.assert(poll_wakeup.terminated());
+    for (var i: i32 = 0; i < 100; i = i + 1) {
+      try std.test.assert_eq(unsafe { test_raise(std.process.SIGINT); }, 0);
+      try std.test.assert_eq(unsafe { test_raise(std.process.SIGTERM); }, 0);
+      try std.test.assert_eq(try std.test.expect_system(poller.wait(1000)), 1);
+      try std.test.assert((try std.test.expect_system(loop.wait(1000))) > 0);
+      var events = try std.test.expect_system(subscription.take_pending());
+      try std.test.assert(events.interrupted() and events.terminated());
+      var empty = try std.test.expect_system(subscription.take_pending());
+      try std.test.assert(not empty.any());
+      try std.test.assert_eq(try std.test.expect_system(poller.wait(0)), 0);
+    }
+
+    // Fill the pipe deliberately: the handler must not block or lose either bit.
+    var byte: u8 = 1;
+    var shared = state();
+    while (unsafe { c_write(shared.writer, _address_of<u8>(byte), 1); } == 1) {}
+    try std.test.assert_eq(errno(), WOULD_BLOCK_ERRNO);
+    unsafe { _store<i32>(errno_ptr(), 0, 123); };
+    unsafe { test_raise(std.process.SIGINT); test_raise(std.process.SIGTERM); };
+    try std.test.assert_eq(errno(), 123);
+    var full = try std.test.expect_system(subscription.take_pending());
+    try std.test.assert(full.interrupted() and full.terminated());
+
+    try std.test.expect_system_success(loop.remove(fd));
+    poller.remove(fd);
+    var moved = subscription;
+    try std.test.assert_eq(moved.fd(), fd);
+    try std.test.expect_system_success(moved.restore());
+    try std.test.expect_system_success(moved.restore());
+    try std.test.assert_eq(moved.fd(), -1);
+    try std.test.assert_eq(unsafe { c_fcntl(fd, 1); }, -1);
+    ignore_error(subscription_error());
+    var again = try std.test.expect_system(SignalSubscription());
+    unsafe { test_raise(std.process.SIGTERM); };
+    var final_events = try std.test.expect_system(again.take_pending());
+    try std.test.assert(final_events.terminated());
+  }
+}
+
+/** Test acquire/release communication through the public atomic Boolean. */
+public module std.atomic_bool_tests {
+  var published: std.thread.AtomicBool = std.thread.AtomicBool();
+  var payload: i32 = 0;
+
+  /** Publish ordinary data before setting a release flag. */
+  function publish() void {
+    payload = 42;
+    published.store(true);
+  }
+
+  /** Verify flag operations and their use for cross-thread publication. */
+  test_function atomic_bool_publication() {
+    var flag = std.thread.AtomicBool(true);
+    try std.test.assert(flag.load());
+    try std.test.assert(not flag.compare_exchange(false, true));
+    try std.test.assert(flag.compare_exchange(true, false));
+    try std.test.assert(not flag.load());
+    published.store(false);
+    var worker = std.thread.spawn(publish);
+    while (not published.load()) {}
+    try std.test.assert_eq(payload, 42);
+    worker.join();
+  }
+}

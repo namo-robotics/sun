@@ -26,6 +26,7 @@ manifest {
         "linked_list.sun",
         "queue.sun",
         "thread.sun",
+        "signal.sun",
         "test.sun",
         "shared.sun",
         "io.sun",
@@ -69,6 +70,7 @@ manifest {
         "terminal_tests.sun",
         "test_tests.sun",
         "thread_tests.sun",
+        "signal_tests.sun",
         "time_tests.sun",
         "udp_tests.sun",
         "vec_tests.sun"

@@ -22,6 +22,44 @@
 /** Run tasks on threads and synchronize shared access. */
 public module std.thread {
   /**
+   * An inline Boolean with no allocation or lock fallback on supported x86-64
+   * and AArch64 targets. Load acquires; store releases; compare_exchange has
+   * acquire-release success and acquire failure ordering. Construction, moves,
+   * and destruction require exclusive access; only the operations are atomic.
+   * These operations are signal-safe on those targets, but this does not make
+   * arbitrary code that calls them (or generic atomic types) signal-safe.
+   */
+  public class AtomicBool {
+    var value: i32 = 0;
+
+    /** Construct an initially false flag. */
+    init() {}
+
+    /** Construct a flag with the requested initial value. */
+    init(value: bool) {
+      this.value = value ? 1 : 0;
+    }
+
+    /** Acquire the current value and writes published by a release operation. */
+    public method load() bool {
+      return unsafe { _atomic_load_i32(_address_of<i32>(this.value)); } != 0;
+    }
+
+    /** Publish preceding writes before setting the flag. */
+    public method store(value: bool) void {
+      unsafe { _atomic_store_i32(_address_of<i32>(this.value), value ? 1 : 0); };
+    }
+
+    /** Replace expected with desired if equal; return whether it was replaced. */
+    public method compare_exchange(expected: bool, desired: bool) bool {
+      var old = unsafe {
+        _atomic_cmpxchg_i32(_address_of<i32>(this.value), expected ? 1 : 0, desired ? 1 : 0);
+      };
+      return old == (expected ? 1 : 0);
+    }
+  }
+
+  /**
    * What a running thread and whoever joins it share. spawn fills in the
    * code pointer, the environment and the result slot; the OS writes the
    * thread id; and the thread reads its arguments, releases them, and
