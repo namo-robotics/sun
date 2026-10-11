@@ -1,0 +1,57 @@
+# SIMD
+
+`std.simd.F32x4` holds four `f32` lanes in an inline, 16-byte-aligned class.
+Arithmetic processes corresponding lanes together using LLVM vector operations.
+No heap allocation occurs for vector construction or arithmetic.
+
+```sun
+using std;
+
+/** Scales four samples, adds a bias, and stores the result without allocation. */
+function process(samples: ref ContiguousBuffer<f32>) AccessResult<void> {
+    var input = try std.simd.load(samples, 0);
+    var gain = std.simd.splat(2.0f32);
+    var bias = std.simd.splat(0.5f32);
+    var output = input * gain + bias;
+    try output.store(samples, 0);
+    return AccessResult.Ok;
+}
+```
+
+Include `stdlib.moon` in your program's manifest. `std.simd.F32x4()` initializes
+all lanes to zero. Construct individual lanes
+with `std.simd.F32x4(x, y, z, w)` and access them through the public fields
+`x`, `y`, `z`, and `w`.
+
+| API | Behavior |
+| --- | --- |
+| `std.simd.splat(value)` | Repeat a scalar in every lane |
+| `a.add(b)` or `a + b` | Add corresponding lanes |
+| `a.sub(b)` | Subtract corresponding lanes |
+| `a.mul(b)` or `a * b` | Multiply corresponding lanes |
+| `std.simd.load(buffer, offset)` | Read four initialized floats |
+| `value.store(buffer, offset)` | Write four floats |
+
+Arithmetic borrows operands and returns a new inline value. Multiply and add
+round separately; no fused arithmetic or fast-math is requested. NaNs and
+infinities follow ordinary floating-point arithmetic.
+
+Load and store offsets count float elements, not bytes. Checked access returns
+`AccessResult`, rejects negative or incomplete ranges, and never reads or writes
+past the buffer. A failed store leaves the buffer unchanged. Loads require
+initialized input elements; stores can initialize previously unwritten elements.
+Only ordinary `f32` alignment is required, including for offset accesses.
+
+For validated low-level kernels, `value.load_unchecked(data, offset)` replaces
+its lanes and `value.store_unchecked(data, offset)` writes its lanes. Both are
+unsafe methods taking `raw_ptr<u8>` plus a float-element offset. The caller must
+provide a valid, correctly aligned four-element range, with initialized input
+for loads. The checked buffer APIs are preferable for application code.
+
+LLVM selects instructions for the compilation target; there is no runtime CPU
+dispatch or guarantee that every target uses a single hardware instruction per
+operation. The first SIMD type is `F32x4`; double-precision vectors, masks,
+shuffles, reductions, and fused multiply-add are not implemented.
+
+[Matrix multiplication](/matrices#gemm-matrix-multiplication) uses these operations
+for contiguous groups of four output columns in eligible `f32` products.

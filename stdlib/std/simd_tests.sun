@@ -1,0 +1,81 @@
+using std;
+
+/** Checks SIMD lane arithmetic and checked storage access. */
+public module std.simd_tests {
+  /** Checks the zero-initializing constructor. */
+  test_function default_constructor() {
+    var value = std.simd.F32x4();
+    try std.test.assert_eq(value.x, 0.0f32);
+    try std.test.assert_eq(value.y, 0.0f32);
+    try std.test.assert_eq(value.z, 0.0f32);
+    try std.test.assert_eq(value.w, 0.0f32);
+  }
+
+  /** Checks every lane, borrowed operands, and aligned inline layout. */
+  test_function arithmetic() {
+    var a = std.simd.F32x4(1.0f32, -2.0f32, 3.0f32, 0.5f32);
+    var b = std.simd.splat(2.0f32);
+    var sum = a + b;
+    var product = a * b;
+    var difference = a.sub(b);
+    try std.test.assert_eq(sum.x, 3.0f32);
+    try std.test.assert_eq(sum.y, 0.0f32);
+    try std.test.assert_eq(sum.z, 5.0f32);
+    try std.test.assert_eq(sum.w, 2.5f32);
+    try std.test.assert_eq(product.x, 2.0f32);
+    try std.test.assert_eq(product.y, -4.0f32);
+    try std.test.assert_eq(product.z, 6.0f32);
+    try std.test.assert_eq(product.w, 1.0f32);
+    try std.test.assert_eq(difference.x, -1.0f32);
+    try std.test.assert_eq(difference.y, -4.0f32);
+    try std.test.assert_eq(difference.z, 1.0f32);
+    try std.test.assert_eq(difference.w, -1.5f32);
+    try std.test.assert_eq(a.x, 1.0f32);
+    try std.test.assert_eq(_sizeof<std.simd.F32x4>(), 16);
+    try std.test.assert_eq(_alignof<std.simd.F32x4>(), 16);
+  }
+
+  /** Checks four-byte-offset loads and stores and untouched surrounding lanes. */
+  test_function buffer_access() {
+    var alloc = make_heap_allocator();
+    var buffer = ContiguousBuffer<f32>(alloc, 7);
+    buffer.fill(-1.0f32);
+    var value = std.simd.F32x4(1.0f32, 2.0f32, 3.0f32, 4.0f32);
+    try std.test.expect_access_success(value.store(buffer, 1));
+    var loaded = try std.test.expect_access(std.simd.load(buffer, 1));
+    try std.test.assert_eq(loaded.x, 1.0f32);
+    try std.test.assert_eq(loaded.y, 2.0f32);
+    try std.test.assert_eq(loaded.z, 3.0f32);
+    try std.test.assert_eq(loaded.w, 4.0f32);
+    try std.test.assert_eq(buffer[0], -1.0f32);
+    try std.test.assert_eq(buffer[5], -1.0f32);
+    try std.test.expect_access_success(loaded.store(buffer, 3));
+    try std.test.assert_eq(buffer[6], 4.0f32);
+    match std.simd.load(buffer, -1) {
+      AccessResult.Ok(v) => {
+        try std.test.fail("negative load accepted");
+      },
+      AccessResult.OutOfBounds(error) => {}
+    };
+    match std.simd.load(buffer, I64_MAX) {
+      AccessResult.Ok(v) => {
+        try std.test.fail("overflowing load accepted");
+      },
+      AccessResult.OutOfBounds(error) => {}
+    };
+    match value.store(buffer, 4) {
+      AccessResult.Ok => {
+        try std.test.fail("short store accepted");
+      },
+      AccessResult.OutOfBounds(error) => {}
+    };
+    try std.test.assert_eq(buffer[6], 4.0f32);
+    var short_buffer = ContiguousBuffer<f32>(alloc, 3);
+    match std.simd.load(short_buffer, 0) {
+      AccessResult.Ok(v) => {
+        try std.test.fail("short load accepted");
+      },
+      AccessResult.OutOfBounds(error) => {}
+    };
+  }
+}

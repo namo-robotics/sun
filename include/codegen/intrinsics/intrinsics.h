@@ -119,6 +119,11 @@ enum class Intrinsic {
   // =========================================================================
   // Bit intrinsics (wide multiply, leading/trailing zero counts)
   // =========================================================================
+  SimdF32x4Copy,
+  SimdF32x4Splat,
+  SimdF32x4Add,
+  SimdF32x4Sub,
+  SimdF32x4Mul,
   MulHiU64,  // _mul_hi_u64(a, b) -> u64 (high 64 bits of the 128-bit product)
   CtlzU64,   // _ctlz_u64(x) -> u64 (leading zero bits; 64 for 0)
   CttzU64,   // _cttz_u64(x) -> u64 (trailing zero bits; 64 for 0)
@@ -246,6 +251,11 @@ inline Intrinsic getIntrinsic(const std::string& name) {
   if (name == "_futex_wake") return Intrinsic::FutexWake;
 
   // Bit intrinsics
+  if (name == "_simd_f32x4_copy") return Intrinsic::SimdF32x4Copy;
+  if (name == "_simd_f32x4_splat") return Intrinsic::SimdF32x4Splat;
+  if (name == "_simd_f32x4_add") return Intrinsic::SimdF32x4Add;
+  if (name == "_simd_f32x4_sub") return Intrinsic::SimdF32x4Sub;
+  if (name == "_simd_f32x4_mul") return Intrinsic::SimdF32x4Mul;
   if (name == "_mul_hi_u64") return Intrinsic::MulHiU64;
   if (name == "_ctlz_u64") return Intrinsic::CtlzU64;
   if (name == "_cttz_u64") return Intrinsic::CttzU64;
@@ -339,6 +349,11 @@ inline bool isIntrinsic(const std::string& name) {
  */
 inline bool requiresUnsafeBlock(Intrinsic i) {
   switch (i) {
+    case Intrinsic::SimdF32x4Copy:
+    case Intrinsic::SimdF32x4Splat:
+    case Intrinsic::SimdF32x4Add:
+    case Intrinsic::SimdF32x4Sub:
+    case Intrinsic::SimdF32x4Mul:
     // Reads and writes through a raw pointer
     case Intrinsic::Load:
     case Intrinsic::Store:

@@ -368,3 +368,22 @@ declare function __recvfrom_ipv4(fd: i32, buffer: raw_ptr<u8>, len: i64, flags: 
 /** Write a socket's local IPv4 address and port through the output pointers.
  * Return the native status code. */
 declare function __getsockname_ipv4(fd: i32, out_ip: raw_ptr<i32>, out_port: raw_ptr<i32>) i32;
+
+/** Copies four initialized f32 lanes into writable storage. Both pointers need
+ * f32 alignment and four accessible lanes. Overlap is allowed. Requires unsafe. */
+declare function _simd_f32x4_copy(output: raw_ptr<f32>, input: raw_ptr<f32>) void;
+
+/** Writes value into four writable f32 lanes. Requires f32 alignment and unsafe. */
+declare function _simd_f32x4_splat(output: raw_ptr<f32>, value: f32) void;
+
+/** Adds four initialized lanes from each input into writable output. All
+ * pointers need f32 alignment and four accessible lanes. Overlap is allowed. */
+declare function _simd_f32x4_add(output: raw_ptr<f32>, a: raw_ptr<f32>, b: raw_ptr<f32>) void;
+
+/** Subtracts four initialized lanes from each input into writable output. All
+ * pointers need f32 alignment and four accessible lanes. Overlap is allowed. */
+declare function _simd_f32x4_sub(output: raw_ptr<f32>, a: raw_ptr<f32>, b: raw_ptr<f32>) void;
+
+/** Multiplies four initialized lanes from each input into writable output. All
+ * pointers need f32 alignment and four accessible lanes. Overlap is allowed. */
+declare function _simd_f32x4_mul(output: raw_ptr<f32>, a: raw_ptr<f32>, b: raw_ptr<f32>) void;

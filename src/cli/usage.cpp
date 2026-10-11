@@ -22,6 +22,8 @@ const char* const kUsageBody =
     "  -o <file>         Output executable name (default: a.out or based on "
     "input)\n"
     "  -S                Emit assembly file\n"
+    "  --emit-llvm       Emit a complete LLVM IR module (combine with -O0 for "
+    "external optimization)\n"
     "  --emit-obj        Emit object file only (do not link)\n"
     "  --target <triple> Cross-compile for <triple> (e.g. aarch64-linux-gnu)\n"
     "                    Works with -c (needs a cross toolchain), --emit-obj "

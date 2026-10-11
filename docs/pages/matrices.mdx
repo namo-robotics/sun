@@ -280,3 +280,109 @@ manifest {
 The optional [NVIDIA library](/cuda) supplies `cuda.DeviceMatrix<T>`, explicit
 host/device transfers, and GPU arithmetic. Host `std.Matrix<T>` retains its
 existing storage and indexing behavior.
+
+## Matrix multiplication methods and operator
+
+For `Matrix<f32>` and `Matrix<f64>`, `a * b` performs matrix multiplication
+and returns `std.linalg.LinalgResult<Matrix<T>>`. Handle the result explicitly,
+for example with `try (a * b)`. Both operands are borrowed and must have the
+same element type. The result owns independent storage allocated through the
+left operand's allocator. This operator allocates intentionally; use the
+methods below when reusing output storage.
+
+```sun
+using std;
+using std.linalg;
+
+/** Demonstrates allocating multiplication and reusable output storage. */
+function main() LinalgResult<void> {
+    var alloc = make_heap_allocator();
+    var a = Matrix<f64>([[1.0, 2.0], [3.0, 4.0]], alloc);
+    var b = Matrix<f64>([[5.0, 6.0], [7.0, 8.0]], alloc);
+    var product = try (a * b);
+
+    var output = Matrix<f64>(alloc, [2, 2]);
+    try a.matmul_into(b, output);  // output = a * b, without allocation
+    try output.gemm(1.0, a, Transpose.None, b, Transpose.None, 1.0);
+    // output now contains twice a * b; product and both inputs are unchanged.
+    return LinalgResult.Ok;
+}
+
+manifest {
+    libraries: ["stdlib.moon"]
+}
+```
+
+`a.matmul_into(b, output)` overwrites output without reading its old values.
+`output.gemm(alpha, a, trans_a, b, trans_b, beta)` updates output using the full
+GEMM formula and supports transposed inputs. Both methods allocate no storage
+and preserve the destination on validation errors. They require a correctly
+shaped destination that does not share storage with either input.
+
+`std.linalg.matmul(a, b, allocator)` provides the same allocating product as
+`a * b` with an explicitly chosen allocator. Allocating multiplication checks
+input ranks, compatible shapes, and output size overflow before allocating.
+Integer matrices remain available as containers but cannot use these
+floating-point multiplication operations. Matrix addition and elementwise
+multiplication are not provided by these methods.
+
+## GEMM matrix multiplication
+
+`std.linalg.gemm` computes `C = alpha * op(A) * op(B) + beta * C` for
+`Matrix<f32>` and `Matrix<f64>`. Supply an existing two-dimensional destination;
+GEMM does not allocate output or scratch storage.
+
+```sun
+using std;
+using std.linalg;
+
+/** Multiplies two matrices into caller-owned output storage. */
+function main() LinalgResult<void> {
+    var alloc = make_heap_allocator();
+    var a = Matrix<f64>([[1.0, 2.0], [3.0, 4.0]], alloc);
+    var b = Matrix<f64>([[5.0, 6.0], [7.0, 8.0]], alloc);
+    var c = Matrix<f64>(alloc, [2, 2]);
+    try gemm<f64>(1.0, a, Transpose.None, b, Transpose.None, 0.0, c);
+    // c now contains [[19, 22], [43, 50]].
+    return LinalgResult.Ok;
+}
+
+manifest {
+    libraries: ["stdlib.moon"]
+}
+```
+
+`Transpose.Transpose` uses an input's transposed orientation without copying it.
+For example, `gemm<f64>(1.0, a, Transpose.Transpose, a, Transpose.None, 0.0, c)`
+computes `AᵀA`; the destination must have the corresponding shape.
+
+The shape-only matrix constructor leaves elements uninitialized. When `beta`
+is zero, GEMM overwrites `C` without reading it, so newly allocated output is
+valid. Otherwise initialize `C` before the call. Initialize input elements when
+they will be read; `alpha == 0` or an empty inner dimension skips input reads
+and only scales the output. Empty output dimensions are accepted.
+
+All validation precedes output writes. `LinalgResult.Error` carries a
+`LinalgError` whose `reason()` identifies invalid dimensions, incompatible
+shapes, or output storage shared with an input. Inputs may share storage with
+each other, but the destination must be separate even when `alpha` is zero.
+Constructing an error does not allocate; requesting its `message()` creates a
+string. Matrix views and integer matrices are not supported by this API.
+
+For `f32`, GEMM uses explicit four-lane SIMD for complete groups of output
+columns when `B` is not transposed. Complete 4×4 output blocks accumulate in
+four SIMD registers across the inner dimension, then are stored once. Each
+vector loaded from `B` is reused across four rows of `A`. Leftover rows use the
+four-column SIMD loop. This applies to `a * b`, `matmul_into`, and both GEMM
+interfaces.
+Transposing `A` still permits this path. Remaining columns, transposed `B`, and
+all `f64` operations use scalar arithmetic.
+
+SIMD loads require only ordinary `f32` alignment, so rows do not need padding
+or a column count divisible by four. The kernel performs separate multiply
+and add operations, without fused multiply-add or fast-math. It retains the
+same accumulation order along the inner dimension. This is a basic SIMD
+kernel, not a cache-blocked or threaded BLAS implementation; performance
+depends on matrix shape, target CPU, and compiler optimization.
+
+The underlying [SIMD API](/simd) is also available for other numeric algorithms.

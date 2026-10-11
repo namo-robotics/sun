@@ -302,6 +302,7 @@ add_library(sun_lib
     src/codegen/intrinsics/signals.cpp
     src/codegen/intrinsics/atomic.cpp
     src/codegen/intrinsics/declarations.cpp
+    src/codegen/intrinsics/simd.cpp
     src/codegen/intrinsics/bits.cpp
     src/codegen/intrinsics/builtins.cpp
     src/codegen/intrinsics/generic.cpp

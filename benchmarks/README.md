@@ -2,7 +2,7 @@
 
 Benchmark frameworks and comparison toolchains live in a separate image.
 The devcontainer builds only the root Dockerfile; it does not install Rust,
-Go, .NET, Matplotlib, PyTorch, or CuPy for benchmarks.
+Go, .NET, Matplotlib, OpenBLAS, PyTorch, or CuPy for benchmarks.
 
 Build from the repository root:
 
@@ -36,6 +36,7 @@ mkdir -p "$HOME"
 cmake -S . -B tmp/benchmark-build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
 cmake --build tmp/benchmark-build -j$(($(nproc)/2))
 SUN=$PWD/tmp/benchmark-build/sun python3 benchmarks/string-creation/run.py
+SUN=$PWD/tmp/benchmark-build/sun python3 benchmarks/cpu-matmul/run.py
 ```
 
 For GPU benchmarks the host needs a working NVIDIA driver and

@@ -1,0 +1,444 @@
+using std;
+using std.linalg;
+
+/** Verifies scalar matrix multiplication and its validation contract. */
+public module std.linalg_tests {
+  /** Turns an unexpected operation failure into a test assertion. */
+  function expect_ok(result: LinalgResult<void>) std.test.AssertionResult<void> {
+    match result {
+      LinalgResult.Ok => {
+        return std.test.AssertionResult.Ok;
+      },
+      LinalgResult.Error(error) => {
+        return std.test.fail("unexpected GEMM error");
+      }
+    };
+  }
+
+  /** Checks Matrix wrappers, result ownership, and operand preservation in both precisions. */
+  function check_matrix_methods<T: _Float>() std.test.AssertionResult<void> {
+    var alloc = make_heap_allocator();
+    var a = Matrix<T>(alloc, [2, 3]);
+    var b = Matrix<T>(alloc, [3, 2]);
+    for (var i: i64 = 0; i < 2; i = i + 1) {
+      for (var j: i64 = 0; j < 3; j = j + 1) {
+        a[i, j] = _convert<T>(i * 3 + j + 1);
+      }
+    }
+    for (var i: i64 = 0; i < 3; i = i + 1) {
+      for (var j: i64 = 0; j < 2; j = j + 1) {
+        b[i, j] = _convert<T>(i * 2 + j + 1);
+      }
+    }
+    var c = Matrix<T>(alloc, [2, 2]);
+    try expect_ok(a.matmul_into(b, c));
+    try std.test.assert_eq(c[0, 0], _convert<T>(22));
+    try std.test.assert_eq(c[1, 1], _convert<T>(64));
+    try expect_ok(c.gemm(_convert<T>(2), a, Transpose.None, b, Transpose.None, _convert<T>(-1)));
+    try std.test.assert_eq(c[1, 1], _convert<T>(64));
+    match a * b {
+      LinalgResult.Ok(product) => {
+        try std.test.assert_eq(product.dim(0), 2);
+        try std.test.assert_eq(product.dim(1), 2);
+        try std.test.assert_eq(product[0, 1], _convert<T>(28));
+        try std.test.assert_eq(product[1, 0], _convert<T>(49));
+        product[0, 0] = _convert<T>(0);
+        try std.test.assert_eq(a[0, 0], _convert<T>(1));
+        try std.test.assert_eq(b[0, 0], _convert<T>(1));
+      },
+      LinalgResult.Error(error) => {
+        return std.test.fail("matrix operator failed");
+      }
+    };
+    var transposed = Matrix<T>(alloc, [3, 3]);
+    try expect_ok(transposed.gemm(_convert<T>(1), a, Transpose.Transpose, a, Transpose.None, _convert<T>(0)));
+    try std.test.assert_eq(transposed[0, 0], _convert<T>(17));
+    try std.test.assert_eq(transposed[2, 2], _convert<T>(45));
+    return std.test.AssertionResult.Ok;
+  }
+
+  /** Runs the Matrix convenience APIs for each supported element type. */
+  test_function matrix_methods_and_operator() {
+    try check_matrix_methods<f32>();
+    try check_matrix_methods<f64>();
+  }
+
+  /** Checks allocating multiplication errors and allocation-free alias validation. */
+  test_function matrix_method_errors() {
+    var alloc = make_heap_allocator();
+    var a = Matrix<f64>([[2.0]], alloc);
+    var b = Matrix<f64>(alloc, [2, 1]);
+    match a * b {
+      LinalgResult.Ok(product) => {
+        try std.test.fail("expected shape error");
+      },
+      LinalgResult.Error(error) => {
+        try std.test.assert(error.reason() == LinalgErrorReason.IncompatibleShapes);
+      }
+    };
+    var vector = Matrix<f64>([1.0], alloc);
+    match vector * a {
+      LinalgResult.Ok(product) => {
+        try std.test.fail("expected rank error");
+      },
+      LinalgResult.Error(error) => {
+        try std.test.assert(error.reason() == LinalgErrorReason.InvalidDimensions);
+      }
+    };
+    try expect_error(a.matmul_into(a, a), LinalgErrorReason.OverlappingOutput);
+    try expect_error(a.gemm(0.0, a, Transpose.None, a, Transpose.None, 0.0), LinalgErrorReason.OverlappingOutput);
+    try std.test.assert_eq(a[0, 0], 2.0);
+    var left = Matrix<f64>(alloc, [2, 0]);
+    var right = Matrix<f64>(alloc, [0, 3]);
+    match left * right {
+      LinalgResult.Ok(product) => {
+        try std.test.assert_eq(product.dim(0), 2);
+        try std.test.assert_eq(product.dim(1), 3);
+        try std.test.assert_eq(product[1, 2], 0.0);
+      },
+      LinalgResult.Error(error) => {
+        try std.test.fail("empty product failed");
+      }
+    };
+    var huge_left = Matrix<f64>(alloc, [std.I64_MAX, 0]);
+    var huge_right = Matrix<f64>(alloc, [0, 2]);
+    match huge_left * huge_right {
+      LinalgResult.Ok(product) => {
+        try std.test.fail("expected output size overflow");
+      },
+      LinalgResult.Error(error) => {
+        try std.test.assert(error.reason() == LinalgErrorReason.InvalidDimensions);
+      }
+    };
+  }
+
+  /** Compares vector groups and every tail length with scalar dot products. */
+  test_function simd_widths_and_tails() {
+    var alloc = make_heap_allocator();
+    var a = Matrix<f32>([[1.0f32, 2.0f32, -3.0f32], [4.0f32, -5.0f32, 6.0f32]], alloc);
+    for (var width: i64 = 1; width <= 10; width = width + 1) {
+      var b = Matrix<f32>(alloc, [3, width]);
+      var c = Matrix<f32>(alloc, [2, width]);
+      for (var k: i64 = 0; k < 3; k = k + 1) {
+        for (var j: i64 = 0; j < width; j = j + 1) {
+          b[k, j] = _convert<f32>(k + j);
+        }
+      }
+      try expect_ok(a.matmul_into(b, c));
+      for (var i: i64 = 0; i < 2; i = i + 1) {
+        for (var j: i64 = 0; j < width; j = j + 1) {
+          var expected: f32 = 0.0f32;
+          for (var k: i64 = 0; k < 3; k = k + 1) {
+            expected = expected + a[i, k] * b[k, j];
+          }
+          try std.test.assert_eq(c[i, j], expected);
+        }
+      }
+    }
+  }
+
+  /** Checks complete tiles and all row/column tails against independent dot products.
+   * Dyadic inputs allow exact comparisons, including nonzero beta and transposed A. */
+  test_function register_tiles_and_tails() {
+    var alloc = make_heap_allocator();
+    for (var m: i64 = 3; m <= 9; m = m + 1) {
+      for (var n: i64 = 3; n <= 9; n = n + 1) {
+        for (var k: i64 = 1; k <= 7; k = k + 6) {
+          for (var ta: i64 = 0; ta < 2; ta = ta + 1) {
+            var rows = m;
+            var cols = k;
+            var opa = Transpose.None;
+            if (ta == 1) {
+              rows = k;
+              cols = m;
+              opa = Transpose.Transpose;
+            }
+            var a = Matrix<f32>(alloc, [rows, cols]);
+            var b = Matrix<f32>(alloc, [k, n]);
+            var c = Matrix<f32>(alloc, [m, n]);
+            for (var i: i64 = 0; i < rows; i = i + 1) {
+              for (var j: i64 = 0; j < cols; j = j + 1) {
+                a[i, j] = _convert<f32>(i - j + 1) / 4.0f32;
+              }
+            }
+            for (var p: i64 = 0; p < k; p = p + 1) {
+              for (var j: i64 = 0; j < n; j = j + 1) {
+                b[p, j] = _convert<f32>(p + j - 3) / 8.0f32;
+              }
+            }
+            for (var mode: i64 = 0; mode < 3; mode = mode + 1) {
+              var beta: f32 = 0.0f32;
+              if (mode == 1) {
+                beta = 1.0f32;
+              }
+              if (mode == 2) {
+                beta = -0.5f32;
+              }
+              for (var i: i64 = 0; i < m; i = i + 1) {
+                for (var j: i64 = 0; j < n; j = j + 1) {
+                  c[i, j] = _convert<f32>(i - j);
+                  if (mode == 0) {
+                    c[i, j] = _bitcast<f32>(2143289344u32);
+                  }
+                }
+              }
+              try expect_ok(gemm<f32>(-1.5f32, a, opa, b, Transpose.None, beta, c));
+              for (var i: i64 = 0; i < m; i = i + 1) {
+                for (var j: i64 = 0; j < n; j = j + 1) {
+                  var expected = beta * _convert<f32>(i - j);
+                  for (var p: i64 = 0; p < k; p = p + 1) {
+                    var av: f32 = 0.0f32;
+                    if (ta == 0) {
+                      av = a[i, p];
+                    } else {
+                      av = a[p, i];
+                    }
+                    expected = expected + (-1.5f32 * av) * b[p, j];
+                  }
+                  try std.test.assert_eq(c[i, j], expected);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /** Checks separate rounding and increasing-k accumulation inside full tiles. */
+  test_function register_tiles_preserve_rounding() {
+    var alloc = make_heap_allocator();
+    var x = _bitcast<f32>(1065353217u32);
+    var y = _bitcast<f32>(1065353214u32);
+    var a = Matrix<f32>(alloc, [4, 3]);
+    var b = Matrix<f32>(alloc, [3, 4]);
+    var c = Matrix<f32>(alloc, [4, 4]);
+    for (var i: i64 = 0; i < 4; i = i + 1) {
+      for (var p: i64 = 0; p < 3; p = p + 1) {
+        a[i, p] = x;
+        b[p, i] = y;
+      }
+      for (var j: i64 = 0; j < 4; j = j + 1) {
+        c[i, j] = -3.0f32;
+      }
+    }
+    try expect_ok(c.gemm(1.0f32, a, Transpose.None, b, Transpose.None, 1.0f32));
+    for (var i: i64 = 0; i < 4; i = i + 1) {
+      for (var j: i64 = 0; j < 4; j = j + 1) {
+        try std.test.assert_eq(c[i, j], 0.0f32);
+      }
+      for (var p: i64 = 0; p < 3; p = p + 1) {
+        a[i, p] = 1.0f32;
+      }
+      b[0, i] = 16777216.0f32;
+      b[1, i] = 1.0f32;
+      b[2, i] = -16777216.0f32;
+    }
+    try expect_ok(a.matmul_into(b, c));
+    for (var i: i64 = 0; i < 4; i = i + 1) {
+      for (var j: i64 = 0; j < 4; j = j + 1) {
+        try std.test.assert_eq(c[i, j], 0.0f32);
+      }
+    }
+  }
+
+  /** Keeps multiply and add separately rounded even in the SIMD kernel. */
+  test_function simd_does_not_fuse() {
+    var alloc = make_heap_allocator();
+    var x = _bitcast<f32>(1065353217u32);
+    var y = _bitcast<f32>(1065353214u32);
+    var a = Matrix<f32>([[x]], alloc);
+    var b = Matrix<f32>([[y, y, y, y]], alloc);
+    var c = Matrix<f32>([[-1.0f32, -1.0f32, -1.0f32, -1.0f32]], alloc);
+    try expect_ok(c.gemm(1.0f32, a, Transpose.None, b, Transpose.None, 1.0f32));
+    try std.test.assert_eq(c[0, 0], 0.0f32);
+    try std.test.assert_eq(c[0, 3], 0.0f32);
+  }
+
+  /** Checks every transpose combination against an independent dot-product loop. */
+  function check_products<T: _Float>() std.test.AssertionResult<void> {
+    var alloc = make_heap_allocator();
+    for (var ta: i64 = 0; ta < 2; ta = ta + 1) {
+      for (var tb: i64 = 0; tb < 2; tb = tb + 1) {
+        var ar: i64 = 2;
+        var ac: i64 = 3;
+        var br: i64 = 3;
+        var bc: i64 = 5;
+        var opa = Transpose.None;
+        var opb = Transpose.None;
+        if (ta == 1) {
+          ar = 3;
+          ac = 2;
+          opa = Transpose.Transpose;
+        }
+        if (tb == 1) {
+          br = 5;
+          bc = 3;
+          opb = Transpose.Transpose;
+        }
+        var a = Matrix<T>(alloc, [ar, ac]);
+        var b = Matrix<T>(alloc, [br, bc]);
+        var c = Matrix<T>(alloc, [2, 5]);
+        for (var i: i64 = 0; i < ar; i = i + 1) {
+          for (var j: i64 = 0; j < ac; j = j + 1) {
+            a[i, j] = _convert<T>(i * ac + j - 2) / _convert<T>(3);
+          }
+        }
+        for (var i: i64 = 0; i < br; i = i + 1) {
+          for (var j: i64 = 0; j < bc; j = j + 1) {
+            b[i, j] = _convert<T>(i * bc + j + 1) / _convert<T>(7);
+          }
+        }
+        for (var i: i64 = 0; i < 2; i = i + 1) {
+          for (var j: i64 = 0; j < 5; j = j + 1) {
+            c[i, j] = _convert<T>(i + j);
+          }
+        }
+        var alpha = _convert<T>(-1.5);
+        var beta = _convert<T>(0.5);
+        try expect_ok(gemm<T>(alpha, a, opa, b, opb, beta, c));
+        for (var i: i64 = 0; i < 2; i = i + 1) {
+          for (var j: i64 = 0; j < 5; j = j + 1) {
+            var sum = _convert<T>(0);
+            for (var k: i64 = 0; k < 3; k = k + 1) {
+              var av = _convert<T>(0);
+              var bv = _convert<T>(0);
+              if (ta == 0) {
+                av = a[i, k];
+              } else {
+                av = a[k, i];
+              }
+              if (tb == 0) {
+                bv = b[k, j];
+              } else {
+                bv = b[j, k];
+              }
+              sum = sum + av * bv;
+            }
+            var expected = alpha * sum + beta * _convert<T>(i + j);
+            var error = c[i, j] - expected;
+            if (error < _convert<T>(0)) {
+              error = _convert<T>(0) - error;
+            }
+            var tolerance = _convert<T>(0.00001);
+            if (_is<f64>(sum)) {
+              tolerance = _convert<T>(0.000000000001);
+            }
+            var magnitude = expected;
+            if (magnitude < _convert<T>(0)) {
+              magnitude = _convert<T>(0) - magnitude;
+            }
+            try std.test.assert(error <= tolerance * (_convert<T>(1) + magnitude));
+          }
+        }
+      }
+    }
+    return std.test.AssertionResult.Ok;
+  }
+
+  /** Checks rectangular products in both supported precisions. */
+  test_function transpose_products() {
+    try check_products<f32>();
+    try check_products<f64>();
+  }
+
+  /** Checks exact square results, shared inputs, and output accumulation. */
+  test_function square_and_shared_inputs() {
+    var alloc = make_heap_allocator();
+    var a = Matrix<f64>([[1.0, 2.0], [3.0, 4.0]], alloc);
+    var c = Matrix<f64>(alloc, [2, 2]);
+    try expect_ok(gemm<f64>(1.0, a, Transpose.None, a, Transpose.None, 0.0, c));
+    try std.test.assert_eq(c[0, 0], 7.0);
+    try std.test.assert_eq(c[0, 1], 10.0);
+    try std.test.assert_eq(c[1, 0], 15.0);
+    try std.test.assert_eq(c[1, 1], 22.0);
+    try expect_ok(gemm<f64>(2.0, a, Transpose.None, a, Transpose.None, -1.0, c));
+    try std.test.assert_eq(c[1, 1], 22.0);
+    try expect_ok(gemm<f64>(1.0, a, Transpose.None, a, Transpose.None, 1.0, c));
+    try std.test.assert_eq(c[1, 1], 44.0);
+  }
+
+  /** Checks zero factors, uninitialized inputs, and overwriting NaN output. */
+  test_function zero_factors_and_single_element() {
+    var alloc = make_heap_allocator();
+    var a = Matrix<f32>(alloc, [1, 1]);
+    var b = Matrix<f32>(alloc, [1, 1]);
+    var c = Matrix<f32>([[3.0f32]], alloc);
+    try expect_ok(gemm<f32>(0.0f32, a, Transpose.None, b, Transpose.None, -2.0f32, c));
+    try std.test.assert_eq(c[0, 0], -6.0f32);
+    a[0, 0] = 2.0f32;
+    b[0, 0] = 4.0f32;
+    c[0, 0] = _bitcast<f32>(2143289344u32);
+    try expect_ok(gemm<f32>(1.0f32, a, Transpose.None, b, Transpose.None, 0.0f32, c));
+    try std.test.assert_eq(c[0, 0], 8.0f32);
+    c[0, 0] = _bitcast<f32>(2143289344u32);
+    try expect_ok(gemm<f32>(0.0f32, a, Transpose.None, b, Transpose.None, 0.0f32, c));
+    try std.test.assert_eq(c[0, 0], 0.0f32);
+  }
+
+  /** Checks empty output and empty dot products without reading inputs. */
+  test_function empty_dimensions() {
+    var alloc = make_heap_allocator();
+    var a = Matrix<f64>(alloc, [2, 0]);
+    var b = Matrix<f64>(alloc, [0, 3]);
+    var c = Matrix<f64>(alloc, [2, 3]);
+    try expect_ok(gemm<f64>(1.0, a, Transpose.None, b, Transpose.None, 0.0, c));
+    try std.test.assert_eq(c[1, 2], 0.0);
+    c[1, 2] = 4.0;
+    try expect_ok(gemm<f64>(1.0, a, Transpose.None, b, Transpose.None, 2.0, c));
+    try std.test.assert_eq(c[1, 2], 8.0);
+    var empty_rows = Matrix<f64>(alloc, [0, 2]);
+    var right = Matrix<f64>(alloc, [2, 3]);
+    var out_rows = Matrix<f64>(alloc, [0, 3]);
+    try expect_ok(gemm<f64>(1.0, empty_rows, Transpose.None, right, Transpose.None, 0.0, out_rows));
+    var left = Matrix<f64>(alloc, [3, 2]);
+    var empty_cols = Matrix<f64>(alloc, [2, 0]);
+    var out_cols = Matrix<f64>(alloc, [3, 0]);
+    try expect_ok(gemm<f64>(1.0, left, Transpose.None, empty_cols, Transpose.None, 0.0, out_cols));
+  }
+
+  /** Confirms that a rejected operation reports its structured reason. */
+  function expect_error(result: LinalgResult<void>, reason: LinalgErrorReason) std.test.AssertionResult<void> {
+    match result {
+      LinalgResult.Ok => {
+        return std.test.fail("expected GEMM validation failure");
+      },
+      LinalgResult.Error(error) => {
+        return std.test.assert(error.reason() == reason);
+      }
+    };
+  }
+
+  /** Checks ranks, shapes, and output aliasing before any output is modified. */
+  test_function validation_preserves_output() {
+    var alloc = make_heap_allocator();
+    var a = Matrix<f32>([[2.0f32]], alloc);
+    var b = Matrix<f32>([[3.0f32]], alloc);
+    var c = Matrix<f32>([[9.0f32]], alloc);
+    var vector = Matrix<f32>([1.0f32], alloc);
+    try expect_error(gemm<f32>(1.0f32, vector, Transpose.None, b, Transpose.None, 0.0f32, c), LinalgErrorReason.InvalidDimensions);
+    var wrong = Matrix<f32>(alloc, [2, 1]);
+    try expect_error(gemm<f32>(1.0f32, a, Transpose.None, wrong, Transpose.None, 0.0f32, c), LinalgErrorReason.IncompatibleShapes);
+    try expect_error(gemm<f32>(1.0f32, a, Transpose.None, b, Transpose.None, 0.0f32, wrong), LinalgErrorReason.IncompatibleShapes);
+    try std.test.assert_eq(c[0, 0], 9.0f32);
+    try expect_error(gemm<f32>(0.0f32, a, Transpose.None, b, Transpose.None, 0.0f32, a), LinalgErrorReason.OverlappingOutput);
+    try expect_error(gemm<f32>(1.0f32, a, Transpose.None, b, Transpose.None, 0.0f32, b), LinalgErrorReason.OverlappingOutput);
+    try std.test.assert_eq(a[0, 0], 2.0f32);
+    try std.test.assert_eq(b[0, 0], 3.0f32);
+  }
+}
+
+/** Tests internal dimension validation without allocating invalid matrices. */
+public module std.linalg {
+  /** Rejects negative, inconsistent, overflowing element and byte counts. */
+  test_function dimension_arithmetic() {
+    try std.test.assert(not valid_dimensions<f32>(-1, 0, 0));
+    try std.test.assert(not valid_dimensions<f32>(0, -1, 0));
+    try std.test.assert(not valid_dimensions<f32>(2, 3, 5));
+    try std.test.assert(not valid_dimensions<f64>(std.I64_MAX, 2, 0));
+    try std.test.assert(not valid_dimensions<f64>(1, std.I64_MAX, std.I64_MAX));
+    try std.test.assert(valid_dimensions<f32>(0, std.I64_MAX, 0));
+    try std.test.assert(valid_dimensions<f64>(std.I64_MAX, 0, 0));
+    try std.test.assert(valid_dimensions<f32>(2, 3, 6));
+  }
+}

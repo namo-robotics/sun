@@ -1,0 +1,72 @@
+/** Runs preallocated f32 Matrix products using the staged standard library. */
+using std;
+
+/** Reads and validates the benchmark command-line parameters. */
+extern "C" function bench_configure(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32;
+
+/** Reads a validated shape or repetition parameter. */
+extern "C" function bench_arg(index: i32) i64;
+
+/** Initializes both input buffers; their lengths must match the configured shapes. */
+extern "C" function bench_fill(a: raw_ptr<u8>, b: raw_ptr<u8>) void;
+
+/** Returns a monotonic timestamp in nanoseconds. */
+extern "C" function bench_now_ns() i64;
+
+/** Makes a completed output observable to the optimizer. */
+extern "C" function bench_barrier(c: raw_ptr<u8>) void;
+
+/** Checks an initialized output buffer against the independent reference. */
+extern "C" function bench_validate(c: raw_ptr<u8>) i32;
+
+/** Records nanoseconds for one batch of products. */
+extern "C" function bench_report(elapsed: i64) void;
+
+/** Allocates once and checks complete results outside the measured intervals. */
+function run() std.linalg.LinalgResult<i32> {
+  var m = unsafe { bench_arg(0); };
+  var k = unsafe { bench_arg(1); };
+  var n = unsafe { bench_arg(2); };
+  var repetitions = unsafe { bench_arg(3); };
+  var samples = unsafe { bench_arg(4); };
+  var warmups = unsafe { bench_arg(5); };
+  var alloc = make_heap_allocator();
+  var a = Matrix<f32>(alloc, [m, k]);
+  var b = Matrix<f32>(alloc, [k, n]);
+  var c = Matrix<f32>(alloc, [m, n]);
+  // Shapes were validated by the harness; each buffer has the required capacity.
+  unsafe { bench_fill(a.raw_data(), b.raw_data()); };
+  for (var w: i64 = 0; w < warmups; w = w + 1) {
+    try a.matmul_into(b, c);
+  }
+  if (unsafe { bench_validate(c.raw_data()); } != 0) {
+    return std.linalg.LinalgResult.Ok(1);
+  }
+  for (var s: i64 = 0; s < samples; s = s + 1) {
+    var start = unsafe { bench_now_ns(); };
+    for (var r: i64 = 0; r < repetitions; r = r + 1) {
+      try a.matmul_into(b, c);
+      unsafe { bench_barrier(c.raw_data()); };
+    }
+    var elapsed = unsafe { bench_now_ns(); } - start;
+    if (unsafe { bench_validate(c.raw_data()); } != 0) {
+      return std.linalg.LinalgResult.Ok(1);
+    }
+    unsafe { bench_report(elapsed); };
+  }
+  return std.linalg.LinalgResult.Ok(0);
+}
+
+/** Reports invalid parameters, incorrect results, or Matrix validation errors. */
+function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
+  if (unsafe { bench_configure(argc, argv); } != 0) {
+    return 1;
+  }
+  return match run() {
+    (error: const ref IError) => {
+      println(error.message());
+      1;
+    },
+    std.linalg.LinalgResult.Ok(result) => result
+  };
+}

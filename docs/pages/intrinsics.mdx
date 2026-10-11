@@ -824,3 +824,22 @@ class Vec<T> {
 | `_target_is` | `name: string literal` | `bool` | Compile-time check of the target OS or architecture |
 
 The `__`-prefixed file and socket intrinsics have tables of their own above.
+
+## Four-lane float SIMD
+
+Prefer the checked [`std.simd` API](/simd). Its compiler primitives are:
+
+| Intrinsic | Arguments | Operation |
+| --- | --- | --- |
+| `_simd_f32x4_copy` | output, input | Copy four lanes |
+| `_simd_f32x4_splat` | output, value: f32 | Broadcast a scalar |
+| `_simd_f32x4_add` | output, a, b | Lane-wise addition |
+| `_simd_f32x4_sub` | output, a, b | Lane-wise subtraction |
+| `_simd_f32x4_mul` | output, a, b | Lane-wise multiplication |
+
+All pointers are `raw_ptr<f32>`, all results are written into output, and the
+return type is `void`. These operations require an `unsafe` block. Each pointer
+must address four accessible lanes with ordinary `f32` alignment. Input lanes
+must be initialized and output must be writable. Inputs are loaded before any
+output write, so overlapping ranges are supported. Arithmetic lowers to LLVM
+`<4 x float>` operations without fast-math flags or fused multiply-add.

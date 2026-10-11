@@ -1,0 +1,259 @@
+/** Provides allocation-free operations on owning, row-major matrices. */
+public module std.linalg {
+  /** Selects the logical orientation of an input without copying it. */
+  public enum Transpose { None, Transpose }
+
+  /** Identifies a rejected matrix operation without allocating a message. */
+  public enum LinalgErrorReason { InvalidDimensions, IncompatibleShapes, OverlappingOutput }
+
+  /** Describes an invalid operation; message text is allocated only on request. */
+  public class LinalgError implements IError {
+    var reason_: LinalgErrorReason;
+
+    /** Stores the reason without allocating. */
+    init(reason: LinalgErrorReason) {
+      this.reason_ = reason;
+    }
+
+    /** Returns the structured reason for the failure. */
+    public const method reason() LinalgErrorReason {
+      return this.reason_;
+    }
+
+    /** Returns a stable code within this error category. */
+    public const method code() i32 {
+      if (this.reason_ == LinalgErrorReason.InvalidDimensions) {
+        return 1;
+      }
+      if (this.reason_ == LinalgErrorReason.IncompatibleShapes) {
+        return 2;
+      }
+      return 3;
+    }
+
+    /** Allocates a description of the rejected operation. */
+    public const method message() std.String {
+      if (this.reason_ == LinalgErrorReason.InvalidDimensions) {
+        return std.String("GEMM requires valid two-dimensional matrices");
+      }
+      if (this.reason_ == LinalgErrorReason.IncompatibleShapes) {
+        return std.String("GEMM matrix shapes are incompatible");
+      }
+      return std.String("GEMM output shares storage with an input");
+    }
+  }
+
+  /** Returns an operation result or an allocation-free validation error. */
+  public enum LinalgResult<T> { Ok(T), Error(LinalgError) }
+
+  /** Checks shape and byte counts before any offset arithmetic is performed. */
+  function valid_dimensions<T: _Float>(rows: i64, cols: i64, size: i64) bool {
+    if (rows < 0 or cols < 0) {
+      return false;
+    }
+    if (rows != 0) {
+      if (cols > std.I64_MAX / rows) {
+        return false;
+      }
+    }
+    var count = rows * cols;
+    if (count > std.I64_MAX / _sizeof<T>()) {
+      return false;
+    }
+    return count == size;
+  }
+
+  /** Checks matrix rank before accessing its two dimensions. */
+  function valid_matrix<T: _Float>(matrix: const ref std.Matrix<T>) bool {
+    if (matrix.ndims() != 2) {
+      return false;
+    }
+    return valid_dimensions<T>(matrix.dim(0), matrix.dim(1), matrix.size());
+  }
+
+  /** Scales validated output storage, reading existing values only for nonzero beta. */
+  function scale_output<T: _Float>(output: ref std.Matrix<T>, beta: T) void {
+    var data = output.raw_data();
+    var count = output.size();
+    if (beta == _convert<T>(1)) {
+      return;
+    }
+    for (var i: i64 = 0; i < count; i = i + 1) {
+      if (beta == _convert<T>(0)) {
+        unsafe { _store<T>(data, i, _convert<T>(0)); };
+      } else {
+        unsafe { _store<T>(data, i, beta * _load<T>(data, i)); };
+      }
+    }
+  }
+
+  /** Accumulates complete 4-by-4 f32 tiles, retaining each output tile across k.
+   * Inputs must be initialized and disjoint from initialized output; all shapes
+   * and strides must already be validated.
+   * A uses ar/ac strides; B has contiguous columns and row stride br. Output
+   * has row stride n. rows and cols are multiples of four within output bounds.
+   * Each lane accumulates in increasing k, with separate multiply and add. */
+  function multiply_tiles(alpha: f32, a: raw_ptr<u8>, ar: i64, ac: i64, b: raw_ptr<u8>, br: i64, c: raw_ptr<u8>, n: i64, k: i64, rows: i64, cols: i64) void {
+    for (var i: i64 = 0; i < rows; i = i + 4) {
+      var a0 = i * ar;
+      var c0 = i * n;
+      var a1 = (i + 1) * ar;
+      var c1 = (i + 1) * n;
+      var a2 = (i + 2) * ar;
+      var c2 = (i + 2) * n;
+      var a3 = (i + 3) * ar;
+      var c3 = (i + 3) * n;
+      for (var j: i64 = 0; j < cols; j = j + 4) {
+        var acc0 = std.simd.F32x4();
+        unsafe { acc0.load_unchecked(c, c0 + j); };
+        var acc1 = std.simd.F32x4();
+        unsafe { acc1.load_unchecked(c, c1 + j); };
+        var acc2 = std.simd.F32x4();
+        unsafe { acc2.load_unchecked(c, c2 + j); };
+        var acc3 = std.simd.F32x4();
+        unsafe { acc3.load_unchecked(c, c3 + j); };
+        var bv = std.simd.F32x4();
+        for (var p: i64 = 0; p < k; p = p + 1) {
+          var offset = p * ac;
+          unsafe { bv.load_unchecked(b, p * br + j); };
+          var factor0 = std.simd.splat(unsafe { alpha * _load<f32>(a, a0 + offset); });
+          var product0 = factor0.mul(bv);
+          acc0 = acc0.add(product0);
+          var factor1 = std.simd.splat(unsafe { alpha * _load<f32>(a, a1 + offset); });
+          var product1 = factor1.mul(bv);
+          acc1 = acc1.add(product1);
+          var factor2 = std.simd.splat(unsafe { alpha * _load<f32>(a, a2 + offset); });
+          var product2 = factor2.mul(bv);
+          acc2 = acc2.add(product2);
+          var factor3 = std.simd.splat(unsafe { alpha * _load<f32>(a, a3 + offset); });
+          var product3 = factor3.mul(bv);
+          acc3 = acc3.add(product3);
+        }
+        unsafe { acc0.store_unchecked(c, c0 + j); };
+        unsafe { acc1.store_unchecked(c, c1 + j); };
+        unsafe { acc2.store_unchecked(c, c2 + j); };
+        unsafe { acc3.store_unchecked(c, c3 + j); };
+      }
+    }
+  }
+
+  /** Accumulates validated, initialized input storage into disjoint initialized output.
+   * Dimensions and strides must keep every element offset within its allocation. */
+  function multiply<T: _Float>(alpha: T, left: const ref std.Matrix<T>, ar: i64, ac: i64, right: const ref std.Matrix<T>, br: i64, bc: i64, output: ref std.Matrix<T>, k: i64) void {
+    var a = left.raw_data();
+    var b = right.raw_data();
+    var c = output.raw_data();
+    var m = output.dim(0);
+    var n = output.dim(1);
+    var vector_enabled = false;
+    var tiled_rows: i64 = 0;
+    var tiled_cols: i64 = 0;
+    if (_is<f32>(alpha) and bc == 1 and n >= 4) {
+      vector_enabled = true;
+      tiled_rows = m - m % 4;
+      tiled_cols = n - n % 4;
+      multiply_tiles(_convert<f32>(alpha), a, ar, ac, b, br, c, n, k, tiled_rows, tiled_cols);
+    }
+    for (var i: i64 = 0; i < m; i = i + 1) {
+      var arow = i * ar;
+      var crow = i * n;
+      var first_column: i64 = 0;
+      if (i < tiled_rows) {
+        first_column = tiled_cols;
+      }
+      if (first_column == n) {
+        continue;
+      }
+      for (var p: i64 = 0; p < k; p = p + 1) {
+        var scaled: T = unsafe { alpha * _load<T>(a, arow + p * ac); };
+        var brow = p * br;
+        var j = first_column;
+        if (vector_enabled) {
+          var factor = std.simd.splat(_convert<f32>(scaled));
+          var bv = std.simd.F32x4();
+          var cv = std.simd.F32x4();
+          while (j <= n - 4) {
+            unsafe { bv.load_unchecked(b, brow + j); cv.load_unchecked(c, crow + j); };
+            var product = factor.mul(bv);
+            var sum = cv.add(product);
+            unsafe { sum.store_unchecked(c, crow + j); };
+            j = j + 4;
+          }
+        }
+        while (j < n) {
+          unsafe {
+            _store<T>(c, crow + j, _load<T>(c, crow + j) + scaled * _load<T>(b, brow + j * bc));
+          };
+          j = j + 1;
+        }
+      }
+    }
+  }
+
+  /** Computes C = alpha * op(A) * op(B) + beta * C without allocation.
+   * Inputs must be initialized when alpha is nonzero and the product is nonempty.
+   * C need not be initialized when beta is zero. C must not share nonempty storage
+   * with either input. Validation failures leave C unchanged. */
+  public function gemm<T: _Float>(alpha: T, a: const ref std.Matrix<T>, trans_a: Transpose, b: const ref std.Matrix<T>, trans_b: Transpose, beta: T, c: ref std.Matrix<T>) LinalgResult<void> {
+    if (not valid_matrix<T>(a) or not valid_matrix<T>(b) or not valid_matrix<T>(c)) {
+      return LinalgResult.Error(LinalgError(LinalgErrorReason.InvalidDimensions));
+    }
+    var m = a.dim(0);
+    var k = a.dim(1);
+    var bk = b.dim(0);
+    var n = b.dim(1);
+    var ar = k;
+    var ac: i64 = 1;
+    var br = n;
+    var bc: i64 = 1;
+    if (trans_a == Transpose.Transpose) {
+      m = a.dim(1);
+      k = a.dim(0);
+      ar = 1;
+      ac = a.dim(1);
+    }
+    if (trans_b == Transpose.Transpose) {
+      bk = b.dim(1);
+      n = b.dim(0);
+      br = 1;
+      bc = b.dim(1);
+    }
+    if (k != bk or c.dim(0) != m or c.dim(1) != n) {
+      return LinalgResult.Error(LinalgError(LinalgErrorReason.IncompatibleShapes));
+    }
+    if (c.size() != 0) {
+      if ((a.size() != 0 and c.raw_data() == a.raw_data()) or (b.size() != 0 and c.raw_data() == b.raw_data())) {
+        return LinalgResult.Error(LinalgError(LinalgErrorReason.OverlappingOutput));
+      }
+    }
+    if (m == 0 or n == 0) {
+      return LinalgResult.Ok;
+    }
+    scale_output<T>(c, beta);
+    if (alpha != _convert<T>(0) and k != 0) {
+      multiply<T>(alpha, a, ar, ac, b, br, bc, c, k);
+    }
+    return LinalgResult.Ok;
+  }
+
+  /** Allocates A * B through the supplied allocator after validating both shapes.
+   * Inputs are borrowed; all arithmetic is delegated to GEMM. */
+  public function matmul<T: _Float>(a: const ref std.Matrix<T>, b: const ref std.Matrix<T>, alloc: const ref std.HeapAllocator) LinalgResult<std.Matrix<T>> {
+    if (not valid_matrix<T>(a) or not valid_matrix<T>(b)) {
+      return LinalgResult.Error(LinalgError(LinalgErrorReason.InvalidDimensions));
+    }
+    if (a.dim(1) != b.dim(0)) {
+      return LinalgResult.Error(LinalgError(LinalgErrorReason.IncompatibleShapes));
+    }
+    var rows = a.dim(0);
+    var cols = b.dim(1);
+    if (rows != 0) {
+      if (cols > std.I64_MAX / _sizeof<T>() / rows) {
+        return LinalgResult.Error(LinalgError(LinalgErrorReason.InvalidDimensions));
+      }
+    }
+    var output = std.Matrix<T>(alloc, [rows, cols]);
+    try gemm<T>(_convert<T>(1), a, Transpose.None, b, Transpose.None, _convert<T>(0), output);
+    return LinalgResult.Ok(output);
+  }
+}

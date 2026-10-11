@@ -303,7 +303,7 @@ bool ModuleLinker::linkOnlyUsedSymbols(bool demandDriven) {
 }
 
 bool ModuleLinker::linkModuleBitcode(const std::string& moduleKey,
-                                   bool demandDriven) {
+                                     bool demandDriven) {
   // Already linked?
   if (linkedModules_.count(moduleKey)) {
     return true;

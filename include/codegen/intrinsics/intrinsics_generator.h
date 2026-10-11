@@ -135,6 +135,11 @@ class IntrinsicsGenerator {
   /** Emits LLVM code that advances a pointer by a byte offset. */
   llvm::Value* codegenPtrOffsetIntrinsic(const CallExprAST& expr);
 
+  /** Emits four-lane float operations on caller-provided storage aligned to
+   * f32. */
+  llvm::Value* codegenSimdF32x4(const CallExprAST& expr,
+                                const std::string& operation);
+
   /**
    * Bit intrinsics (in intrinsics/bits.cpp)
    */

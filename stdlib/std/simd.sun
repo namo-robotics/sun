@@ -1,0 +1,101 @@
+/** Provides fixed-width SIMD arithmetic with checked buffer access. */
+public module std.simd {
+  /** Stores four independent f32 lanes without heap allocation. */
+  public class F32x4 {
+    alignment: 16
+    public var x: f32;
+    public var y: f32;
+    public var z: f32;
+    public var w: f32;
+
+    /** Initializes every lane to zero. */
+    init() {
+      this.x = 0.0f32;
+      this.y = 0.0f32;
+      this.z = 0.0f32;
+      this.w = 0.0f32;
+    }
+
+    /** Initializes every lane. */
+    init(x: f32, y: f32, z: f32, w: f32) {
+      this.x = x;
+      this.y = y;
+      this.z = z;
+      this.w = w;
+    }
+
+    /** Adds corresponding lanes while borrowing both operands. */
+    public const method add(other: const ref F32x4) F32x4 {
+      var result = F32x4();
+      unsafe { _simd_f32x4_add(_address_of<f32>(result.x), _address_of<f32>(this.x), _address_of<f32>(other.x)); };
+      return result;
+    }
+
+    /** Subtracts the other operand lane by lane. */
+    public const method sub(other: const ref F32x4) F32x4 {
+      var result = F32x4();
+      unsafe { _simd_f32x4_sub(_address_of<f32>(result.x), _address_of<f32>(this.x), _address_of<f32>(other.x)); };
+      return result;
+    }
+
+    /** Multiplies corresponding lanes without fused arithmetic. */
+    public const method mul(other: const ref F32x4) F32x4 {
+      var result = F32x4();
+      unsafe { _simd_f32x4_mul(_address_of<f32>(result.x), _address_of<f32>(this.x), _address_of<f32>(other.x)); };
+      return result;
+    }
+
+    /** Adds corresponding lanes through the arithmetic operator. */
+    public const method __add__(other: const ref F32x4) F32x4 {
+      return this.add(other);
+    }
+
+    /** Multiplies corresponding lanes through the arithmetic operator. */
+    public const method __multiply__(other: const ref F32x4) F32x4 {
+      return this.mul(other);
+    }
+
+    /** Stores four lanes after checking the destination range, without allocation. */
+    public const method store(buffer: ref std.ContiguousBuffer<f32>, offset: i64) std.AccessResult<void> {
+      if (offset < 0 or buffer.size() < 4 or offset > buffer.size() - 4) {
+        return std.AccessResult.OutOfBounds(std.IndexOutOfBoundsError(offset));
+      }
+      unsafe { this.store_unchecked(buffer.raw_data(), offset); };
+      return std.AccessResult.Ok;
+    }
+
+    /** Loads four initialized floats from caller-validated storage at a float offset.
+     * The address must have f32 alignment and all four lanes must be in bounds. */
+    public unsafe method load_unchecked(data: raw_ptr<u8>, offset: i64) void {
+      unsafe {
+        _simd_f32x4_copy(_address_of<f32>(this.x), _bitcast<raw_ptr<f32>>(_ptr_offset(data, offset * _sizeof<f32>())));
+      };
+    }
+
+    /** Writes four lanes at a float offset into caller-validated writable storage.
+     * The address must have f32 alignment; the range must fit the allocation. */
+    public const unsafe method store_unchecked(data: raw_ptr<u8>, offset: i64) void {
+      unsafe {
+        _simd_f32x4_copy(_bitcast<raw_ptr<f32>>(_ptr_offset(data, offset * _sizeof<f32>())), _address_of<f32>(this.x));
+      };
+    }
+  }
+
+  /** Broadcasts one scalar into all four lanes without allocation. */
+  public function splat(value: f32) F32x4 {
+    var result = F32x4();
+    unsafe { _simd_f32x4_splat(_address_of<f32>(result.x), value); };
+    return result;
+  }
+
+  /** Loads four initialized floats after checking the buffer range.
+   * Only ordinary f32 alignment is required, including at nonzero offsets. */
+  public function load(buffer: const ref std.ContiguousBuffer<f32>, offset: i64) std.AccessResult<F32x4> {
+    if (offset < 0 or buffer.size() < 4 or offset > buffer.size() - 4) {
+      return std.AccessResult.OutOfBounds(std.IndexOutOfBoundsError(offset));
+    }
+    var result = F32x4();
+    unsafe { result.load_unchecked(buffer.raw_data(), offset); };
+    return std.AccessResult.Ok(result);
+  }
+}

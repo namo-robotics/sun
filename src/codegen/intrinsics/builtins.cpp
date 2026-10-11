@@ -192,6 +192,16 @@ const std::map<std::string, BuiltinEmitter>& builtinTable() {
        }},
 
       // Bit intrinsics
+      {"_simd_f32x4_copy",
+       [](auto& g, const auto& e) { return g.codegenSimdF32x4(e, "copy"); }},
+      {"_simd_f32x4_splat",
+       [](auto& g, const auto& e) { return g.codegenSimdF32x4(e, "splat"); }},
+      {"_simd_f32x4_add",
+       [](auto& g, const auto& e) { return g.codegenSimdF32x4(e, "add"); }},
+      {"_simd_f32x4_sub",
+       [](auto& g, const auto& e) { return g.codegenSimdF32x4(e, "sub"); }},
+      {"_simd_f32x4_mul",
+       [](auto& g, const auto& e) { return g.codegenSimdF32x4(e, "mul"); }},
       {"_mul_hi_u64",
        [](auto& g, const auto& e) { return g.codegenMulHiU64Intrinsic(e); }},
       {"_ctlz_u64",
@@ -203,17 +213,17 @@ const std::map<std::string, BuiltinEmitter>& builtinTable() {
          return g.codegenCountZerosIntrinsic(e, /*leading=*/false);
        }},
       {"_bswap_u16",
-       [](auto& g, const auto& e) {
-         return g.codegenBswapIntrinsic(e, /*bitWidth=*/16);
-       }},
+       [](auto& g,
+          const auto&
+              e) { return g.codegenBswapIntrinsic(e, /*bitWidth=*/16); }},
       {"_bswap_u32",
-       [](auto& g, const auto& e) {
-         return g.codegenBswapIntrinsic(e, /*bitWidth=*/32);
-       }},
+       [](auto& g,
+          const auto&
+              e) { return g.codegenBswapIntrinsic(e, /*bitWidth=*/32); }},
       {"_bswap_u64",
-       [](auto& g, const auto& e) {
-         return g.codegenBswapIntrinsic(e, /*bitWidth=*/64);
-       }},
+       [](auto& g,
+          const auto&
+              e) { return g.codegenBswapIntrinsic(e, /*bitWidth=*/64); }},
 
       // Futex intrinsics
       {"_futex_wait",

@@ -755,3 +755,121 @@ TEST(EndToEnd_Programs, string_bytes_from_const_ref) {
   )");
   EXPECT_EQ(value, 0);
 }
+
+/** Checks scalar GEMM through the precompiled standard-library interface. */
+TEST(EndToEnd_Programs, scalar_gemm_from_stdlib) {
+  EXPECT_EQ(executeStringWithStdlib(R"(
+    using std;
+    /** Runs both floating-point specializations from the imported bundle. */
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var a = Matrix<f64>([[1.0, 2.0], [3.0, 4.0]], alloc);
+      var c = Matrix<f64>(alloc, [2, 2]);
+      match std.linalg.gemm<f64>(1.0, a, std.linalg.Transpose.None,
+          a, std.linalg.Transpose.None, 0.0, c) {
+        std.linalg.LinalgResult.Ok => {},
+        std.linalg.LinalgResult.Error(error) => { return -1; }
+      };
+      var x = Matrix<f32>([[2.0f32]], alloc);
+      var y = Matrix<f32>(alloc, [1, 1]);
+      match std.linalg.gemm<f32>(1.0f32, x, std.linalg.Transpose.Transpose,
+          x, std.linalg.Transpose.None, 0.0f32, y) {
+        std.linalg.LinalgResult.Ok => {},
+        std.linalg.LinalgResult.Error(error) => { return -2; }
+      };
+      return _convert<i32>(c[1, 1]) + _convert<i32>(y[0, 0]);
+    }
+  )"),
+            26);
+}
+
+/** Rejects integer GEMM before its floating-point kernel is instantiated. */
+TEST(EndToEnd_Programs, scalar_gemm_rejects_integer) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
+    using std;
+    /** Attempts an unsupported integer multiplication. */
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var a = Matrix<i32>([[2]], alloc);
+      var c = Matrix<i32>(alloc, [1, 1]);
+      var result = std.linalg.gemm<i32>(1, a, std.linalg.Transpose.None,
+          a, std.linalg.Transpose.None, 0, c);
+      return 0;
+    }
+  )"),
+                                "does not satisfy constraint '_Float'");
+}
+
+/** Checks Matrix wrappers and owning operator results across a bundle boundary.
+ */
+TEST(EndToEnd_Programs, matrix_multiplication_methods_from_stdlib) {
+  EXPECT_EQ(executeStringWithStdlib(R"(
+    using std;
+    using std.linalg;
+    /** Returns an owning product after its local operands have been destroyed. */
+    function calculate() LinalgResult<Matrix<f64>> {
+      var alloc = make_heap_allocator();
+      var a = Matrix<f64>([[1.0, 2.0], [3.0, 4.0]], alloc);
+      var square = try (a * a);
+      return square * a;
+    }
+    /** Exercises output methods and explicit operator error propagation. */
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var a = Matrix<f32>([[1.0f32, 2.0f32], [3.0f32, 4.0f32]], alloc);
+      var output = Matrix<f32>(alloc, [2, 2]);
+      match a.matmul_into(a, output) {
+        LinalgResult.Ok => {},
+        LinalgResult.Error(error) => { return -1; }
+      };
+      match output.gemm(1.0f32, a, Transpose.None, a, Transpose.None, 1.0f32) {
+        LinalgResult.Ok => {},
+        LinalgResult.Error(error) => { return -2; }
+      };
+      match calculate() {
+        LinalgResult.Ok(product) => { return _convert<i32>(product[1, 1]) + _convert<i32>(output[1, 1]); },
+        LinalgResult.Error(error) => { return -3; }
+      };
+    }
+  )"),
+            162);
+}
+
+/** Keeps integer storage usable while rejecting unsupported matrix arithmetic.
+ */
+TEST(EndToEnd_Programs, matrix_multiplication_methods_reject_integer) {
+  for (const std::string call : {"a * a", "a.matmul_into(a, c)",
+                                 "c.gemm(1, a, std.linalg.Transpose.None, a, "
+                                 "std.linalg.Transpose.None, 0)"}) {
+    EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
+      using std;
+      /** Attempts a floating-point-only operation on integer matrices. */
+      function main() i32 {
+        var alloc = make_heap_allocator();
+        var a = Matrix<i32>([[2]], alloc);
+        var c = Matrix<i32>(alloc, [1, 1]);
+        var result = )" + call + R"(;
+        ignore_error(result);
+        return 0;
+      }
+    )"),
+                                  "does not satisfy constraint '_Float'");
+  }
+}
+
+/** Requires matching element types instead of silently converting a matrix. */
+TEST(EndToEnd_Programs, matrix_multiplication_rejects_mixed_precision) {
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using std;
+    /** Attempts to multiply matrices with different element types. */
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var a = Matrix<f32>([[2.0f32]], alloc);
+      var b = Matrix<f64>([[3.0]], alloc);
+      var result = a * b;
+      ignore_error(result);
+      return 0;
+    }
+  )"),
+               SunError);
+}

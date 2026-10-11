@@ -666,6 +666,21 @@ Module '07f0c36b...' was compiled for 'aarch64-linux-gnu' but the current
 target is 'x86_64-pc-linux-gnu'; rebuild the .moon with --target ...
 ```
 
+## Exporting complete LLVM IR
+
+Use `--emit-llvm` to write a complete textual LLVM module for external tooling:
+
+```bash
+sun --emit-llvm -O0 -o main.ll main.sun
+```
+
+This compiles without linking or running tests and includes imported definitions,
+globals, and declarations. Without `-o`, the output uses the entrypoint name with
+an `.ll` extension. Omit `-O0` to export optimized IR. Unlike `--emit-ir`, which
+prints selected user-defined functions, this output can be passed to matching
+LLVM `opt` and `llc` tools. LLVM exports are rebuilt each time and cannot be
+combined with `--emit-obj`, `--emit-moon`, or config-file builds.
+
 ## Namespaces (module blocks)
 
 Use `module` blocks to group related types and functions:
