@@ -98,6 +98,9 @@ class Driver {
   // Whether the last compilation saw any test functions or test_files
   bool hasTests_ = false;
 
+  // Complete executables may discard definitions not reachable from main.
+  bool executable_ = false;
+
   // Static archives the program's own manifest declares under `archives:`,
   // resolved to paths. A bundle build packs them into the .moon; a program
   // build (including a library's test binary) links them directly.
@@ -374,6 +377,12 @@ class Driver {
       const std::vector<std::string>& sourceFiles,
       const std::vector<MoonImport>& moonImports = {}, int argc = 0,
       char** argv = nullptr, const std::vector<std::string>& protoFiles = {});
+
+  /** Allows pruning unreachable definitions when producing a complete
+   * executable. Leave disabled for object files and reusable libraries that
+   * export symbols.
+   */
+  void setExecutable(bool executable) { executable_ = executable; }
 
   /**
    * Access the underlying module (for emitting object code after compilation)

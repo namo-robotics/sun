@@ -104,14 +104,40 @@ target_compile_definitions(sun_tests
     PRIVATE SUN_FFI_TESTLIB_DIR="${CMAKE_BINARY_DIR}/tests"
             SUN_FFI_TESTLIB_V2_DIR="${CMAKE_BINARY_DIR}/tests/v2")
 
-# Discover tests automatically (nice per-test reporting in ctest)
+# One shard uses individual discovery for IDEs and isolated reruns.
+set(SUN_TEST_SHARDS "1" CACHE STRING "Number of GoogleTest shards; 1 discovers individual tests")
+if(NOT SUN_TEST_SHARDS MATCHES "^[1-9][0-9]*$")
+    message(FATAL_ERROR "SUN_TEST_SHARDS must be a positive integer")
+endif()
+set(sun_individual_test_filter "*")
+if(SUN_TEST_SHARDS GREATER 1)
+    # Stateful FFI tests need fresh processes. Slow integration tests stay
+    # separate so CTest can schedule them without holding up an entire shard.
+    set(sun_isolated_tests
+        "*Modules_NestedTypeArguments*.*" "*Errors_Arithmetic*.*"
+        "EndToEnd_*.*" "Modules_GenericRegressions.*" "Tooling_Bindgen.*"
+        "Ffi_Link.*" "Tooling_Backend_InputHash.*" "Modules_ProtoImport.*"
+        "Tooling_Backend_DebugInfo.*" "Ffi_Abi_StaticLink.*"
+        "Ffi_Abi_CrossTargetDarwin.*"
+        "*DISABLED_*"
+    )
+    list(JOIN sun_isolated_tests ":" sun_individual_test_filter)
+    math(EXPR sun_last_shard "${SUN_TEST_SHARDS} - 1")
+    foreach(shard RANGE 0 ${sun_last_shard})
+        add_test(NAME sun_tests.shard.${shard}
+            COMMAND sun_tests "--gtest_filter=-${sun_individual_test_filter}"
+                "--gtest_output=xml:${CMAKE_CURRENT_BINARY_DIR}/test-results/shard-${shard}.xml"
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+        set_tests_properties(sun_tests.shard.${shard} PROPERTIES
+            ENVIRONMENT "SUN_PATH=${CMAKE_SOURCE_DIR};GTEST_TOTAL_SHARDS=${SUN_TEST_SHARDS};GTEST_SHARD_INDEX=${shard}")
+    endforeach()
+endif()
+
 include(GoogleTest)
-# PRE_TEST: enumerate tests at ctest time instead of re-running the binary
-# after every relink during builds
 gtest_discover_tests(sun_tests
+    TEST_FILTER "${sun_individual_test_filter}"
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     PROPERTIES ENVIRONMENT "SUN_PATH=${CMAKE_SOURCE_DIR}"
+    XML_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/test-results/individual"
     DISCOVERY_MODE PRE_TEST
 )
-
-# No need to copy programs - tests run from workspace root using source files

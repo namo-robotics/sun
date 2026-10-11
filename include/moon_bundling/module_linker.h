@@ -61,10 +61,12 @@ class ModuleLinker {
 
   /**
    * Link only the modules needed to resolve undefined symbols in target
-   * Must call declareAvailableFunctions() first
+   * Must call declareAvailableFunctions() first. For objects and executables,
+   * demandDriven also avoids importing bodies unreachable from their
+   * references. Libraries retain all bodies for future generic instantiations.
    * @return true on success
    */
-  bool linkOnlyUsedSymbols();
+  bool linkOnlyUsedSymbols(bool demandDriven = false);
 
   /**
    * Get list of successfully linked modules
@@ -79,10 +81,8 @@ class ModuleLinker {
   const std::string& getError() const { return error_; }
 
  private:
-  /**
-   * Link a module and its dependencies recursively
-   */
-  bool linkModuleRecursive(const std::string& moduleKey);
+  /** Links a self-contained module, optionally importing only needed bodies. */
+  bool linkModuleBitcode(const std::string& moduleKey, bool demandDriven = false);
 
   llvm::Module& target_;
   // Context for modules parsed by declareAvailableFunctions(). Scans use

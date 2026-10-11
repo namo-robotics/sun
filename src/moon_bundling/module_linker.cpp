@@ -135,12 +135,12 @@ ModuleLinker::ModuleLinker(llvm::Module& targetModule)
     : target_(targetModule) {}
 
 bool ModuleLinker::linkModule(const std::string& moduleKey) {
-  return linkModuleRecursive(moduleKey);
+  return linkModuleBitcode(moduleKey);
 }
 
 bool ModuleLinker::linkModules(const std::vector<std::string>& moduleKeys) {
   for (const auto& key : moduleKeys) {
-    if (!linkModuleRecursive(key)) {
+    if (!linkModuleBitcode(key)) {
       return false;
     }
   }
@@ -253,7 +253,7 @@ void ModuleLinker::declareAvailableFunctions() {
   }
 }
 
-bool ModuleLinker::linkOnlyUsedSymbols() {
+bool ModuleLinker::linkOnlyUsedSymbols(bool demandDriven) {
   std::set<std::string> neededModules;
 
   // Find undefined symbols in target module that we can provide.
@@ -282,9 +282,19 @@ bool ModuleLinker::linkOnlyUsedSymbols() {
     }
   }
 
-  // Link only the needed modules (and their dependencies)
+  if (demandDriven) {
+    // The forward-declaration scan advertises the whole library. Those unused
+    // declarations would otherwise make LLVM import every advertised body.
+    for (auto it = target_.begin(); it != target_.end();) {
+      auto& function = *it++;
+      if (function.isDeclaration() && function.use_empty())
+        function.eraseFromParent();
+    }
+  }
+
+  // Each module already contains its dependencies.
   for (const auto& modPath : neededModules) {
-    if (!linkModuleRecursive(modPath)) {
+    if (!linkModuleBitcode(modPath, demandDriven)) {
       return false;
     }
   }
@@ -292,7 +302,8 @@ bool ModuleLinker::linkOnlyUsedSymbols() {
   return true;
 }
 
-bool ModuleLinker::linkModuleRecursive(const std::string& moduleKey) {
+bool ModuleLinker::linkModuleBitcode(const std::string& moduleKey,
+                                   bool demandDriven) {
   // Already linked?
   if (linkedModules_.count(moduleKey)) {
     return true;
@@ -373,8 +384,9 @@ bool ModuleLinker::linkModuleRecursive(const std::string& moduleKey) {
 
   // Link into target
   // Using Linker::linkModules with OverrideFromSrc to handle duplicate symbols
-  if (llvm::Linker::linkModules(target_, std::move(libModule),
-                                llvm::Linker::Flags::OverrideFromSrc)) {
+  unsigned flags = llvm::Linker::Flags::OverrideFromSrc;
+  if (demandDriven) flags |= llvm::Linker::Flags::LinkOnlyNeeded;
+  if (llvm::Linker::linkModules(target_, std::move(libModule), flags)) {
     error_ = "LLVM linker failed for: " + moduleKey;
     return false;
   }

@@ -388,40 +388,26 @@ TEST(Tooling_Frontend_Lexer, ParsesComparisonAtEndOfInput) {
 }
 
 // ------------------------------------------------------------------
-// Shared DFA cache
+// Generated token table
 // ------------------------------------------------------------------
 
-TEST(Tooling_Frontend_Lexer, SharedDfaCacheStopsGrowing) {
-  const std::string source =
-      "function main() i32 {\n"
-      "  var total = 0;\n"
-      "  for (var i = 0; i < 10; i = i + 1) { total += i * 2; }\n"
-      "  var s = \"text\"; // trailing\n"
-      "  return total;\n"
-      "}\n";
-
-  lexAll(source);
-  const int states = Lexer::getTokenDFA().stateCount();
-  const long long misses = Lexer::getTokenDFA().transitionMisses();
-
-  lexAll(source);
-  EXPECT_EQ(Lexer::getTokenDFA().stateCount(), states)
-      << "re-lexing the same source must not create DFA states";
-  EXPECT_EQ(Lexer::getTokenDFA().transitionMisses(), misses)
-      << "re-lexing the same source must not miss the transition cache";
-}
-
-TEST(Tooling_Frontend_Lexer, DfaStateCountStaysBounded) {
-  // Lex a broad mix of constructs; the state count is bounded by the token
-  // grammar, not by the input.
-  lexAll(
-      "class C implements I { var a: array<i32>; function f() void throws "
-      "IError {} }"
-      " match x { 1 => y, _ => z } var lambda = (a: i32) => i32 { return a; }; "
-      "a >>= 2 & 3 | 4 ^ 5 ~ 6;"
-      " `tmpl ${x}` \"str\" 1.5e-3 0 _i /* c */ // c\n"
-      " static_ptr<u8> raw_ptr<f64> ... :: -> => != <= >= %= /= *=");
-  EXPECT_LT(Lexer::getTokenDFA().stateCount(), 4000);
+/** Every generated transition and token priority matches the reference DFA. */
+TEST(Tooling_Frontend_Lexer, GeneratedTableMatchesGrammar) {
+  auto reference =
+      sun::parsing::RegexParser().parse(Lexer::getStaticFullRegex());
+  const auto& table = sun::parsing::getTokenTable();
+  EXPECT_EQ(table.startState(), reference.startState());
+  for (int state = 0; state < reference.stateCount(); ++state) {
+    ASSERT_LT(static_cast<size_t>(state), table.transitions.size());
+    EXPECT_EQ(table.acceptKind(state), reference.acceptKind(state));
+    for (int byte = 0; byte < sun::parsing::DFA::kAlphabet; ++byte) {
+      EXPECT_EQ(table.step(state, static_cast<unsigned char>(byte)),
+                reference.step(state, static_cast<unsigned char>(byte)))
+          << "state " << state << ", byte " << byte;
+    }
+  }
+  EXPECT_EQ(table.transitions.size(),
+            static_cast<size_t>(reference.stateCount()));
 }
 
 // ------------------------------------------------------------------
@@ -458,11 +444,10 @@ TEST(Tooling_Frontend_Lexer, DISABLED_ThroughputMBps) {
   const double bytes = static_cast<double>(source.size()) * kRuns;
   std::printf(
       "\n  lexed %.2f MB in %.3f s  =>  %.2f MB/s  (%zu tokens)\n"
-      "  DFA states=%d  transition misses=%lld  table=%.0f KiB\n\n",
+      "  DFA states=%zu  table=%.0f KiB\n\n",
       bytes / (1024 * 1024), elapsed, bytes / (1024 * 1024) / elapsed, tokens,
-      Lexer::getTokenDFA().stateCount(),
-      Lexer::getTokenDFA().transitionMisses(),
-      Lexer::getTokenDFA().stateCount() * 256 * 4 / 1024.0);
+      sun::parsing::getTokenTable().transitions.size(),
+      sun::parsing::getTokenTable().transitions.size() * 256 * 4 / 1024.0);
 }
 
 TEST(Tooling_Frontend_Lexer, DISABLED_ConstructionCost) {

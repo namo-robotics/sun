@@ -1,0 +1,30 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "dev-fast",
+      "displayName": "Optimized development tests with assertions",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_FLAGS": "-O2 -g -fno-omit-frame-pointer",
+        "CMAKE_C_FLAGS": "-O2 -g -fno-omit-frame-pointer",
+        "SUN_TEST_SHARDS": "32",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++"
+      },
+      "description": "Uses build/ with optimized compiler code, debug symbols, and assertions. GoogleTest shards share startup costs; per-case XML is written to build/tests/test-results. Set SUN_TEST_SHARDS=1 for individual IDE/CTest discovery."
+    },
+    {
+      "name": "dev-debug",
+      "displayName": "Unoptimized development with individual tests",
+      "inherits": "dev-fast",
+      "cacheVariables": {
+        "CMAKE_CXX_FLAGS": "-O0 -g3 -fno-omit-frame-pointer",
+        "CMAKE_C_FLAGS": "-O0 -g3 -fno-omit-frame-pointer",
+        "SUN_TEST_SHARDS": "1"
+      }
+    }
+  ]
+}

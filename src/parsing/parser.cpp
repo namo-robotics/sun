@@ -3574,6 +3574,11 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
   std::vector<sun::semantic_analysis::LibraryDeclarationRecord>
       declarationRecords;
   std::vector<sun::ast::MoonScopeAST::DeclarationRequirement> requirements;
+  // A serialized tree repeats the same source identities on many nodes.
+  // Resolve each file once per import instead of locking the global map per
+  // node.
+  std::unordered_map<sun::support::SourceFileId, sun::support::SourceFileId>
+      importedSourceFiles;
 
   for (const auto& moduleKey : reader->listModules()) {
     // Record for linking
@@ -3631,7 +3636,11 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
     auto scopedMetadata = *metadata;
     sun::serialization::remapSourceFiles(
         scopedMetadata, [&](sun::support::SourceFileId id) {
-          return sun::serialization::loadedSourceFileId(contentHash, id);
+          auto [it, inserted] = importedSourceFiles.try_emplace(id, 0);
+          if (inserted)
+            it->second =
+                sun::serialization::loadedSourceFileId(contentHash, id);
+          return it->second;
         });
     sun::serialization::ASTDeserializer importDeserializer;
     for (const auto& u : scopedMetadata.using_declarations()) {

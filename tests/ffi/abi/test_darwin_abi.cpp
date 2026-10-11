@@ -532,6 +532,7 @@ TEST(Ffi_Abi_CrossTargetDarwin, stdlib_program_compiles_to_a_macho_object) {
 
   auto driver =
       Driver::createForAOT("darwin_stdlib_module", "arm64-apple-darwin");
+  driver->setExecutable(true);
   driver->setMoonImports(
       {{std::filesystem::absolute(stdlibMoon).string(), {}}});
   driver->compileString(R"(

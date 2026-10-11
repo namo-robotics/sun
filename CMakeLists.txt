@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.22)
 project(SunCompiler LANGUAGES C CXX)
 
 include(CTest)  # Defines BUILD_TESTING before creating any test targets.
@@ -350,6 +350,21 @@ add_library(sun_lib
     src/cli/jit_command.cpp
     # Add other implementation files here (but NOT main.cpp)
 )
+
+# Build the token automaton once instead of rebuilding it in every compiler process.
+add_executable(sun_token_table_generator scripts/generate_token_table.cpp)
+target_include_directories(sun_token_table_generator PRIVATE ${CMAKE_SOURCE_DIR}/include)
+set(TOKEN_TABLE ${CMAKE_BINARY_DIR}/generated/token_table.inc)
+add_custom_command(
+    OUTPUT ${TOKEN_TABLE}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/generated
+    COMMAND sun_token_table_generator ${TOKEN_TABLE}
+    DEPENDS sun_token_table_generator
+    VERBATIM
+)
+add_custom_target(token_table DEPENDS ${TOKEN_TABLE})
+add_dependencies(sun_lib token_table)
+target_sources(sun_lib PRIVATE src/parsing/token_table.cpp)
 
 # Public headers go in include/SunCompiler/ or include/
 target_include_directories(sun_lib

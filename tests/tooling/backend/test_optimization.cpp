@@ -52,3 +52,36 @@ TEST(Tooling_Backend_Optimization, buffer_accessor_inlines_after_moon_linking) {
     }
   }
 }
+
+/** JIT pruning removes unused definitions while library compilation keeps them.
+ */
+TEST(Tooling_Backend_Optimization, jit_prunes_without_losing_library_exports) {
+  sun::driver::initTestEnvironment();
+  const std::string source = R"(
+    /** Provides an exported definition unused by this entrypoint. */
+    function unused() i32 { return 99; }
+    /** Returns an observable value from the entrypoint. */
+    function main() i32 { return 17; }
+  )";
+  for (bool optimize : {false, true}) {
+    auto jit = sun::driver::Driver::createForJIT("prune", false, optimize);
+    EXPECT_EQ(jit->executeString(source), 17);
+    for (const auto& function : jit->getModule())
+      if (!function.isDeclaration()) EXPECT_EQ(function.getName(), "main");
+
+    auto library =
+        sun::driver::Driver::createForAOT("exports", "", false, optimize);
+    library->compileString(source);
+    unsigned definitions = 0;
+    for (const auto& function : library->getModule())
+      if (!function.isDeclaration()) ++definitions;
+    EXPECT_GE(definitions, 2u);
+
+    auto executable =
+        sun::driver::Driver::createForAOT("executable", "", false, optimize);
+    executable->setExecutable(true);
+    executable->compileString(source);
+    for (const auto& function : executable->getModule())
+      if (!function.isDeclaration()) EXPECT_EQ(function.getName(), "main");
+  }
+}
