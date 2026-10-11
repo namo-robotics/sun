@@ -40,6 +40,9 @@ struct ResolvedManifest {
 /** Resolves manifest dependencies and prepares their compiler inputs. */
 class ManifestProcessor {
  public:
+  /** Returns the active dependency configuration or the entrypoint's config. */
+  static std::optional<SunConfig> configFor(const std::string& baseDir,
+                                            const std::string& targetTriple);
   /**
    * The manifest block among a program's top-level statements, or nullptr
    */

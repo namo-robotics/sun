@@ -5,6 +5,7 @@
 // from the C runtime that `cc` links in.
 
 #include <gtest/gtest.h>
+#include <unistd.h>
 
 #include <cstdlib>
 #include <filesystem>
@@ -29,6 +30,68 @@ using sun::driver::Driver;
 using sun::driver::executeString;
 using sun::driver::initTestEnvironment;
 using sun::support::SunError;
+
+/** Checks that imported class alignment and layout requirements are retained.
+ */
+TEST(Ffi_Alignment, moon_layout_requirements_are_rechecked) {
+  namespace fs = std::filesystem;
+  initTestEnvironment();
+  auto dir = fs::path(__FILE__).parent_path().parent_path().parent_path() /
+             "tmp" / ("alignment-moon-" + std::to_string(getpid()));
+  fs::create_directories(dir);
+  auto source = dir / "aligned.sun";
+  auto bundle = dir / "aligned.moon";
+  {
+    std::ofstream output(source);
+    output << R"(
+      /** Exports an explicitly aligned native-shaped value. */
+      public module aligned {
+        /** A scalar with additional alignment. */
+        public class Value { alignment: 64 public var number: i32; }
+        _assert_c_layout<Value>(64, 64, 0);
+      }
+    )";
+  }
+  sun::moon_bundling::MoonBuildOptions options;
+  options.forceRebuild = true;
+  sun::moon_bundling::MoonBuilder::build(source.string(), bundle, options);
+  auto reader = sun::moon_bundling::MoonReader::open(bundle);
+  ASSERT_NE(reader, nullptr);
+  auto modules = reader->listModules();
+  ASSERT_EQ(modules.size(), 1u);
+  auto metadata = *reader->getMetadata(modules[0]);
+  ASSERT_EQ(metadata.classes_size(), 1);
+  EXPECT_EQ(metadata.classes(0).alignment(), 64u);
+  ASSERT_EQ(metadata.c_binding_assertions_size(), 1);
+  {
+    auto driver = Driver::createForJIT("alignment_import");
+    driver->setMoonImports({sun::moon_bundling::MoonImport(bundle.string())});
+    EXPECT_EQ(driver->executeString(R"(
+      using aligned;
+      /** Queries the imported type's alignment. */
+      function main() i64 { return _alignof<Value>(); }
+    )"),
+              64);
+  }
+  // Corrupt only the recorded requirement, leaving the native layout intact.
+  metadata.mutable_c_binding_assertions(0)
+      ->mutable_generic_call_expr()
+      ->mutable_args(0)
+      ->mutable_number_expr()
+      ->set_int_magnitude(128);
+  llvm::LLVMContext context;
+  auto native = reader->loadModule(modules[0], context);
+  ASSERT_NE(native, nullptr);
+  sun::moon_bundling::MoonWriter writer(metadata.content_hash());
+  writer.addModule(*native, metadata);
+  auto corrupt = dir / "incorrect.moon";
+  ASSERT_TRUE(writer.write(corrupt));
+  auto driver = Driver::createForJIT("incorrect_alignment_import");
+  driver->setMoonImports({sun::moon_bundling::MoonImport(corrupt.string())});
+  EXPECT_THROW(driver->compileString("function main() i32 { return 0; }"),
+               SunError);
+  fs::remove_all(dir);
+}
 
 // ============================================================================
 // Calling C functions
@@ -1302,21 +1365,25 @@ TEST(Ffi, same_c_symbol_wrapped_privately_in_two_modules) {
 
 /** Reject incompatible aliases during analysis without generating LLVM IR. */
 TEST(Ffi, conflicting_native_signatures_report_both_declarations) {
-  for (const std::string& declaration : {
-           "extern \"C\" function second(x: i64) i32 as \"native_conflict\";",
-           "extern \"C\" function second(x: i32) i64 as \"native_conflict\";",
-           "extern \"C\" function second(x: i32, y: i32) i32 as \"native_conflict\";",
-           "extern \"C\" function second(x: i32, ...) i32 as \"native_conflict\";"}) {
+  for (const std::string& declaration :
+       {"extern \"C\" function second(x: i64) i32 as \"native_conflict\";",
+        "extern \"C\" function second(x: i32) i64 as \"native_conflict\";",
+        "extern \"C\" function second(x: i32, y: i32) i32 as "
+        "\"native_conflict\";",
+        "extern \"C\" function second(x: i32, ...) i32 as "
+        "\"native_conflict\";"}) {
     auto driver = Driver::createForAOT("native_conflict");
     auto analyzed = driver->analyzeString(
         "/** First native binding. */ extern \"C\" function first(x: i32) i32 "
-        "as \"native_conflict\"; /** Conflicting native binding. */ " + declaration);
+        "as \"native_conflict\"; /** Conflicting native binding. */ " +
+        declaration);
     ASSERT_TRUE(analyzed.error.has_value());
     const auto& error = *analyzed.error;
     EXPECT_NE(error.getMessage().find("native_conflict"), std::string::npos);
     EXPECT_NE(error.getMessage().find("first"), std::string::npos);
     EXPECT_NE(error.getMessage().find("second"), std::string::npos);
-    EXPECT_NE(error.getMessage().find("Conflicting signatures"), std::string::npos);
+    EXPECT_NE(error.getMessage().find("Conflicting signatures"),
+              std::string::npos);
     EXPECT_TRUE(error.getLocation().has_value());
   }
 }
@@ -1330,10 +1397,12 @@ TEST(Ffi, compatible_native_aliases) {
     extern "C" function second(x: i32) i32 as "abs";
     /** Exercise both aliases. */
     function main() i32 { return unsafe { first(-3) + second(-4); }; }
-  )"), 7);
+  )"),
+            7);
 }
 
-/** Raw pointer aliases share the C ABI for both parameters and return values. */
+/** Raw pointer aliases share the C ABI for both parameters and return values.
+ */
 TEST(Ffi, native_aliases_with_different_pointer_pointees) {
   EXPECT_EQ(executeString(R"(
     /** Bind allocation with a byte pointer result. */
@@ -1354,7 +1423,8 @@ TEST(Ffi, native_aliases_with_different_pointer_pointees) {
       };
       return 7;
     }
-  )"), 7);
+  )"),
+            7);
 }
 
 /** Buffer aliases may differ in pointee type but must keep other ABI types. */
@@ -1366,7 +1436,7 @@ TEST(Ffi, native_buffer_aliases_preserve_signature_checks) {
       extern "C" function bytes(fd: i32, buf: raw_ptr<u8>, count: i64) i64 as "read";
       /** Read words through the same native buffer parameter. */
       extern "C" function words(fd: i32, buf: raw_ptr<u64>, count: )" +
-      countType + ") i64 as \"read\";");
+                                          countType + ") i64 as \"read\";");
     EXPECT_EQ(analyzed.error.has_value(), countType != "i64");
   }
 }
@@ -1412,7 +1482,8 @@ TEST(Ffi, conflicting_native_signature_from_moon) {
     )");
   ASSERT_TRUE(analyzed.error.has_value());
   const auto& error = *analyzed.error;
-  EXPECT_NE(error.getMessage().find("Conflicting signatures"), std::string::npos);
+  EXPECT_NE(error.getMessage().find("Conflicting signatures"),
+            std::string::npos);
   EXPECT_NE(error.getMessage().find("signal"), std::string::npos);
   EXPECT_NE(error.getMessage().find("original"), std::string::npos);
   EXPECT_NE(error.getMessage().find("typed"), std::string::npos);
@@ -1421,7 +1492,8 @@ TEST(Ffi, conflicting_native_signature_from_moon) {
   fs::remove_all(dir);
 }
 
-/** Compare callback types across modules even though LLVM lowers both to ptr. */
+/** Compare callback types across modules even though LLVM lowers both to ptr.
+ */
 TEST(Ffi, native_callback_conflicts_during_analysis) {
   auto driver = Driver::createForAOT("callback_conflict_analysis");
   auto analyzed = driver->analyzeString(R"(
@@ -1450,4 +1522,46 @@ TEST(Ffi, native_callback_conflicts_during_analysis) {
     extern "C" function next(handler: function (i64) void) void as "register_callback";
   )");
   EXPECT_FALSE(next.error.has_value());
+}
+
+/** Compares explicit Sun alignment with native C sizes, offsets and calls. */
+TEST(Ffi_Alignment, native_layout_and_calls) {
+  ASSERT_TRUE(loadFfiTestLib());
+  EXPECT_EQ(executeString(R"(
+    /** Mirrors the native padded reading. */
+    class Reading { var status: u8; var value: i32; }
+    /** Mirrors a C record explicitly aligned to a cache line. */
+    class Aligned { alignment: 64 var value: i32; }
+    /** Mirrors a C record containing an aligned array. */
+    class Outer { var prefix: u8; var items: array<Aligned, 2>; var suffix: u8; }
+    _assert_c_layout<Reading>(8, 4, 0, 4);
+    _assert_c_layout<Aligned>(64, 64, 0);
+    _assert_c_layout<Outer>(256, 64, 0, 64, 192);
+    /** Reads native layout measurements. */
+    extern "C" function sun_ffi_aligned_layout(index: i32) i64;
+    /** Creates an aligned native value. */
+    extern "C" function sun_ffi_aligned_make(value: i32) Aligned;
+    /** Consumes an aligned native value. */
+    extern "C" function sun_ffi_aligned_take(value: Aligned) i32;
+    /** Checks a native pointer's alignment. */
+    extern "C" function sun_ffi_aligned_address(value: ref Aligned) i32;
+    /** Checks native layouts and both directions of by-value calls. */
+    function main() i32 {
+      unsafe {
+        if (sun_ffi_aligned_layout(0) != _sizeof<Reading>()) { return 1; }
+        if (sun_ffi_aligned_layout(1) != _alignof<Reading>()) { return 2; }
+        if (sun_ffi_aligned_layout(2) != 4) { return 3; }
+        if (sun_ffi_aligned_layout(3) != _sizeof<Aligned>()) { return 4; }
+        if (sun_ffi_aligned_layout(4) != _alignof<Aligned>()) { return 5; }
+        if (sun_ffi_aligned_layout(5) != _sizeof<Outer>()) { return 6; }
+        if (sun_ffi_aligned_layout(6) != _alignof<Outer>()) { return 7; }
+        if (sun_ffi_aligned_layout(7) != 64) { return 8; }
+        if (sun_ffi_aligned_layout(8) != 192) { return 9; }
+        var value = sun_ffi_aligned_make(42);
+        if (sun_ffi_aligned_address(value) != 1) { return 10; }
+        return sun_ffi_aligned_take(value);
+      };
+    }
+  )"),
+            42);
 }

@@ -182,8 +182,8 @@ void ExpressionAnalyzer::analyzeBinaryExpr(sun::ast::BinaryExprAST& binExpr,
   if (leftType && leftType->isClass() &&
       (binExpr.getOp().kind == TokenKind::PLUS ||
        binExpr.getOp().kind == TokenKind::STAR)) {
-    binExpr.lowerToMethod(binExpr.getOp().kind == TokenKind::PLUS
-                              ? "__add__" : "__multiply__");
+    binExpr.lowerToMethod(
+        binExpr.getOp().kind == TokenKind::PLUS ? "__add__" : "__multiply__");
     sema_.calls().analyzeCall(binExpr, expectedType);
     return;
   }

@@ -14,10 +14,12 @@ public module cuda {
       this.status = status;
       this.operation_ = operation;
     }
+
     /** Returns the encoded status, preserving validation and backend distinctions. */
     public const method code() i32 {
       return this.status;
     }
+
     /** Returns the native status for runtime or BLAS failures. */
     public const method native_code() i32 {
       if (this.status >= 20000) {
@@ -28,6 +30,7 @@ public module cuda {
       }
       return this.status;
     }
+
     /** Identifies the source of the failure. */
     public const method category() GpuErrorCategory {
       if (this.status >= 20000) {
@@ -41,10 +44,12 @@ public module cuda {
       }
       return GpuErrorCategory.Validation;
     }
+
     /** Returns the static operation label. */
     public const method operation() static_ptr<u8> {
       return this.operation_;
     }
+
     /** Allocates a readable diagnostic only when requested. */
     public const method message() String {
       var text = String(this.operation_);
@@ -104,18 +109,22 @@ public module cuda {
     init(handle: raw_ptr<u8>, key: HandleKey) {
       this.handle = handle;
     }
+
     /** Releases storage and its context reference exactly once. */
     deinit() {
       unsafe { c_matrix_release(this.handle); };
     }
+
     /** Returns the rank without accessing device memory. */
     public const method ndims() i64 {
       return unsafe { c_dimension(this.handle, -1); };
     }
+
     /** Returns the element count without accessing device memory. */
     public const method size() i64 {
       return unsafe { c_dimension(this.handle, -2); };
     }
+
     /** Returns the selected dimension, or zero for an invalid dimension. */
     public const method dim(index: i64) i64 {
       if (index < 0 or index >= this.ndims()) {
@@ -123,6 +132,7 @@ public module cuda {
       }
       return unsafe { c_dimension(this.handle, _convert<i32>(index)); };
     }
+
     /** Returns the internal second extent, treating vectors as one column. */
     const method columns() i64 {
       if (this.ndims() == 1) {
@@ -130,11 +140,13 @@ public module cuda {
       }
       return this.dim(1);
     }
+
     /** Allocates a result on this matrix's retained context. */
     const method result_storage(rank: i64, rows: i64, columns: i64) GpuResult<DeviceMatrix<T>> {
       var context = unsafe { c_matrix_context(this.handle); };
       return allocate_matrix<T>(context, rank, rows, columns);
     }
+
     /** Copies an equal-shaped host matrix into this existing GPU allocation. */
     public method copy_from_host(host: const ref Matrix<T>) GpuResult<void> {
       if (host.ndims() != this.ndims()) {
@@ -146,6 +158,7 @@ public module cuda {
       }
       return checked(unsafe { c_transfer(this.handle, host.raw_data(), _convert<i32>(host.ndims()), host.dim(0), columns, 1); }, "upload");
     }
+
     /** Copies into equal-shaped host storage and waits for completion. */
     public const method copy_to_host(host: ref Matrix<T>) GpuResult<void> {
       if (host.ndims() != this.ndims()) {
@@ -157,6 +170,7 @@ public module cuda {
       }
       return checked(unsafe { c_transfer(this.handle, host.raw_data(), _convert<i32>(host.ndims()), host.dim(0), columns, 0); }, "download");
     }
+
     /** Allocates a new result for matmul; inputs remain borrowed and unchanged. */
     public const method matmul(other: const ref DeviceMatrix<T>) GpuResult<DeviceMatrix<T>> {
       if (this.ndims() != 2 or other.ndims() != 2 or this.dim(1) != other.dim(0)) {
@@ -169,10 +183,12 @@ public module cuda {
       try this.matmul_into(other, output);
       return GpuResult.Ok(output);
     }
+
     /** Computes matmul into existing, non-aliasing output storage. */
     public const method matmul_into(other: const ref DeviceMatrix<T>, output: ref DeviceMatrix<T>) GpuResult<void> {
       return checked(unsafe { c_binary(0, this.handle, other.handle, output.handle); }, "matmul");
     }
+
     /** Allocates a new result for add; inputs remain borrowed and unchanged. */
     public const method add(other: const ref DeviceMatrix<T>) GpuResult<DeviceMatrix<T>> {
       if (this.ndims() != other.ndims() or this.dim(0) != other.dim(0) or this.columns() != other.columns()) {
@@ -185,10 +201,12 @@ public module cuda {
       try this.add_into(other, output);
       return GpuResult.Ok(output);
     }
+
     /** Computes add into existing, non-aliasing output storage. */
     public const method add_into(other: const ref DeviceMatrix<T>, output: ref DeviceMatrix<T>) GpuResult<void> {
       return checked(unsafe { c_binary(1, this.handle, other.handle, output.handle); }, "add");
     }
+
     /** Allocates a new result for matvec; inputs remain borrowed and unchanged. */
     public const method matvec(other: const ref DeviceMatrix<T>) GpuResult<DeviceMatrix<T>> {
       if (this.ndims() != 2 or other.ndims() != 1 or this.dim(1) != other.dim(0)) {
@@ -201,38 +219,46 @@ public module cuda {
       try this.matvec_into(other, output);
       return GpuResult.Ok(output);
     }
+
     /** Computes matvec into existing, non-aliasing output storage. */
     public const method matvec_into(other: const ref DeviceMatrix<T>, output: ref DeviceMatrix<T>) GpuResult<void> {
       return checked(unsafe { c_binary(2, this.handle, other.handle, output.handle); }, "matvec");
     }
+
     /** Allocates a scaled copy without changing this matrix. */
     public const method scale(alpha: T) GpuResult<DeviceMatrix<T>> {
       var output = try this.result_storage(this.ndims(), this.dim(0), this.columns());
       try this.scale_into(alpha, output);
       return GpuResult.Ok(output);
     }
+
     /** Writes a scaled copy into existing, non-aliasing storage. */
     public const method scale_into(alpha: T, output: ref DeviceMatrix<T>) GpuResult<void> {
       return checked(unsafe { c_scale(this.handle, _convert<f64>(alpha), output.handle, 0); }, "scale");
     }
+
     /** Scales this allocation without creating another matrix. */
     public method scale_in_place(alpha: T) GpuResult<void> {
       return checked(unsafe { c_scale(this.handle, _convert<f64>(alpha), this.handle, 1); }, "scale_in_place");
     }
+
     /** Returns a vector dot product as a host scalar after synchronization. */
     public const method dot(other: const ref DeviceMatrix<T>) GpuResult<T> {
       var output: T = _convert<T>(0);
       try checked(unsafe { c_dot(this.handle, other.handle, _bitcast<raw_ptr<u8>>(_address_of<T>(output))); }, "dot");
       return GpuResult.Ok(output);
     }
+
     /** Allocates the sum for the addition operator. */
     public const method __add__(other: const ref DeviceMatrix<T>) GpuResult<DeviceMatrix<T>> {
       return this.add(other);
     }
+
     /** Allocates the matrix product for the multiplication operator. */
     public const method __multiply__(other: const ref DeviceMatrix<T>) GpuResult<DeviceMatrix<T>> {
       return this.matmul(other);
     }
+
     /** Allocates a scaled copy for multiplication by a scalar on the right. */
     public const method __multiply__(alpha: T) GpuResult<DeviceMatrix<T>> {
       return this.scale(alpha);
@@ -246,10 +272,12 @@ public module cuda {
     init(handle: raw_ptr<u8>, key: HandleKey) {
       this.handle = handle;
     }
+
     /** Releases the public owner's reference without invalidating live matrices. */
     deinit() {
       unsafe { c_context_release(this.handle); };
     }
+
     /** Explicitly allocates zero-initialized GPU storage of the supplied shape. */
     public const method allocate<T: _Float>(shape: const ref array<i64>) GpuResult<DeviceMatrix<T>> {
       var rank = shape.dim(0);
@@ -262,6 +290,7 @@ public module cuda {
       }
       return allocate_matrix<T>(this.handle, rank, shape[0], columns);
     }
+
     /** Explicitly allocates and uploads a host f32 matrix. */
     public const method upload(host: const ref Matrix<f32>) GpuResult<DeviceMatrix<f32>> {
       var rank = host.ndims();
@@ -276,6 +305,7 @@ public module cuda {
       try output.copy_from_host(host);
       return GpuResult.Ok(output);
     }
+
     /** Explicitly allocates and uploads a host f64 matrix. */
     public const method upload(host: const ref Matrix<f64>) GpuResult<DeviceMatrix<f64>> {
       var rank = host.ndims();

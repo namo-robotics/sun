@@ -23,6 +23,39 @@ TEST(Tooling_Fmt, SimpleFunction) {
             "}\n");
 }
 
+/** Manifests use two spaces per level without interpreting literal delimiters.
+ */
+TEST(Tooling_Fmt, ManifestIndentation) {
+  const std::string input =
+      "manifest {\n"
+      "    source_files: [\n"
+      "        // Keep the } and ] in this comment.\n"
+      "        \"a[{}].sun\",\n"
+      "        \"other.sun\"\n"
+      "    ],\n"
+      "    target: {\n"
+      "        macos: {\n"
+      "            source_files: [\"darwin.sun\"]\n"
+      "        }\n"
+      "    }\n"
+      "}\n";
+  const std::string expected =
+      "manifest {\n"
+      "  source_files: [\n"
+      "    // Keep the } and ] in this comment.\n"
+      "    \"a[{}].sun\",\n"
+      "    \"other.sun\"\n"
+      "  ],\n"
+      "  target: {\n"
+      "    macos: {\n"
+      "      source_files: [\"darwin.sun\"]\n"
+      "    }\n"
+      "  }\n"
+      "}\n";
+  EXPECT_EQ(fmt(input), expected);
+  EXPECT_EQ(fmt(expected), expected);
+}
+
 // A test function prints its keyword and nothing of its synthesized
 // signature (void return, implicit throws), so the output re-parses.
 TEST(Tooling_Fmt, TestFunctionKeepsItsKeyword) {
@@ -172,7 +205,7 @@ TEST(Tooling_Fmt, LifecycleMethods) {
                 "    this.x = v;\n"
                 "  }\n"
                 "\n"
-            "  deinit() {\n"
+                "  deinit() {\n"
                 "    this.x = 0;\n"
                 "  }\n"
                 "}"),
@@ -232,7 +265,8 @@ TEST(Tooling_Fmt, InsertsBlankLinesBetweenFunctions) {
       "test_function check() {}\n";
   EXPECT_EQ(fmt("/** First. */\nfunction first() void {}\n"
                 "/** Second. */\npublic function second() void {}\n"
-                "/** Check. */\ntest_function check() {}"), expected);
+                "/** Check. */\ntest_function check() {}"),
+            expected);
   EXPECT_EQ(fmt(expected), expected);
 }
 
@@ -242,7 +276,8 @@ TEST(Tooling_Fmt, InsertsBlankLinesBetweenDocumentedMethods) {
       "/** Readiness. */\nclass Event {\n"
       "  /** Construct. */\n  init() {} // initialized\n"
       "  /** Read. */\n  public const method read() bool { return true; }\n"
-      "\n\n  /** Write. */\n  public const method write() bool { return false; }\n"
+      "\n\n  /** Write. */\n  public const method write() bool { return false; "
+      "}\n"
       "  /** Destroy. */\n  deinit() {}\n}\n";
   const std::string expected =
       "/** Readiness. */\nclass Event {\n"
@@ -482,7 +517,7 @@ TEST(Tooling_Fmt, UsingAndDeclare) {
                 "declare Vec_i32 = Vec<i32>;\n"
                 "declare function isOdd(n: i32) bool;\n"
                 "\n"
-            "extern function _malloc(size: i64) raw_ptr<u8>;\n"),
+                "extern function _malloc(size: i64) raw_ptr<u8>;\n"),
             "using std;\n"
             "using std.Vec;\n"
             "declare Vec_i32 = Vec<i32>;\n"
@@ -1024,5 +1059,13 @@ TEST(Tooling_Fmt, InterfaceParent) {
       fmt("interface Child<T> extends lib.Parent<T>{method read()T;}");
   EXPECT_NE(formatted.find("interface Child<T> extends lib.Parent<T> {"),
             std::string::npos);
+  EXPECT_EQ(fmt(formatted), formatted);
+}
+
+/** Preserves alignment metadata and keeps its spelling stable across
+ * formatting. */
+TEST(Tooling_Fmt, ClassAlignment) {
+  auto formatted = fmt("class Vector {alignment:16 var x:f32;}");
+  EXPECT_EQ(formatted, "class Vector {\n  alignment: 16\n  var x: f32;\n}\n");
   EXPECT_EQ(fmt(formatted), formatted);
 }

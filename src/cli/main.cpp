@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "cli/bindgen_command.h"
 #include "cli/bundle_command.h"
 #include "cli/command_support.h"
 #include "cli/compile_command.h"
@@ -50,6 +51,9 @@ int main(int argc, char* argv[]) {
   if (argc > 1) args.assign(argv + 1, argv + argc);
 
   // A subcommand is only recognised as the first argument
+  if (!args.empty() && args[0] == "bindgen") {
+    return sun::cli::runBindgenCommand({args.begin() + 1, args.end()});
+  }
   if (!args.empty() && (args[0] == "fmt" || args[0] == "test")) {
     std::vector<std::string> commandArgs(args.begin() + 1, args.end());
     return args[0] == "fmt" ? sun::cli::runFmtCommand(commandArgs)

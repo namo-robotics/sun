@@ -7,6 +7,7 @@ class Point {
     this.x = x;
     this.y = y;
   }
+
   /** Returns the sum of the numeric fields in this test value. */
   public method sum() i32 {
     return this.x + this.y;

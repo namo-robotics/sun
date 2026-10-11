@@ -145,6 +145,7 @@ public module std {
       };
       try std.test.assert_eq(v, 7);
     }
+
     /** Failed arithmetic reports its precise error without changing the value. */
     test_function failed_arithmetic_preserves_value() {
       var alloc = make_heap_allocator();

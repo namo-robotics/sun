@@ -38,20 +38,24 @@ enum class Intrinsic {
   // =========================================================================
   // Generic intrinsics (require type argument)
   // =========================================================================
-  Sizeof,       // _sizeof<T>() -> i64
-  Init,         // _init<T>(ptr, args...) -> void
-  Load,         // _load<T>(ptr, index) -> T
-  Store,        // _store<T>(ptr, index, value) -> void
-  PtrAsRaw,     // _ptr_as_raw<T>(ptr<T>) -> raw_ptr<T>
-  Is,           // _is<T>(value) -> bool (compile-time type check)
-  AddressOf,    // _address_of<T>(ref T) -> raw_ptr<T>
-  ToRef,        // _to_ref<T>(raw_ptr<T>) -> ref T (unsafe dereference)
-  Deinit,       // _deinit<T>(raw_ptr<T>) -> void (call T.deinit if exists)
-  EnumFromInt,  // _enum_from_int<T>(integer) -> std.Option<T>
-  Convert,      // _convert<T>(numeric) -> T (explicit numeric conversion:
-                // trunc / extend / int<->float)
-  Bitcast,      // _bitcast<T>(value) -> T (same-size bit reinterpretation,
-                // e.g. f32 <-> u32, f64 <-> u64)
+  Alignof,        // _alignof<T>() -> i64
+  AlignedMalloc,  // _aligned_malloc<T>(bytes) -> raw_ptr<u8>
+  AssertCLayout,  // _assert_c_layout<T>(size, alignment, offsets...)
+  AssertCTarget,  // _assert_c_target(triple)
+  Sizeof,         // _sizeof<T>() -> i64
+  Init,           // _init<T>(ptr, args...) -> void
+  Load,           // _load<T>(ptr, index) -> T
+  Store,          // _store<T>(ptr, index, value) -> void
+  PtrAsRaw,       // _ptr_as_raw<T>(ptr<T>) -> raw_ptr<T>
+  Is,             // _is<T>(value) -> bool (compile-time type check)
+  AddressOf,      // _address_of<T>(ref T) -> raw_ptr<T>
+  ToRef,          // _to_ref<T>(raw_ptr<T>) -> ref T (unsafe dereference)
+  Deinit,         // _deinit<T>(raw_ptr<T>) -> void (call T.deinit if exists)
+  EnumFromInt,    // _enum_from_int<T>(integer) -> std.Option<T>
+  Convert,        // _convert<T>(numeric) -> T (explicit numeric conversion:
+                  // trunc / extend / int<->float)
+  Bitcast,        // _bitcast<T>(value) -> T (same-size bit reinterpretation,
+                  // e.g. f32 <-> u32, f64 <-> u64)
 
   // Thread intrinsics. The pthread trampoline is built per lambda signature,
   // which cannot be written in Sun (pthread_create wants ptr(*)(ptr), Sun
@@ -89,8 +93,9 @@ enum class Intrinsic {
   // =========================================================================
   AtomicCmpxchgI32,  // _atomic_cmpxchg_i32(ptr, expected, desired) -> old_value
   AtomicStoreI32,    // _atomic_store_i32(ptr, value) -> void
-  SignalState,      // _signal_state() -> raw_ptr<u8> (process-lifetime handler state)
-  SignalHandler,    // _signal_handler() -> raw_ptr<u8> (native C entrypoint)
+  SignalState,       // _signal_state() -> raw_ptr<u8> (process-lifetime handler
+                     // state)
+  SignalHandler,     // _signal_handler() -> raw_ptr<u8> (native C entrypoint)
   AtomicLoadI32,     // _atomic_load_i32(ptr) -> i32
   AtomicFetchAddI32,  // _atomic_fetch_add_i32(ptr, delta) -> old_value
   AtomicFetchSubI32,  // _atomic_fetch_sub_i32(ptr, delta) -> old_value
@@ -169,6 +174,10 @@ inline Intrinsic getIntrinsic(const std::string& name) {
   // -------------------------------------------------------------------------
   // Generic intrinsics
   // -------------------------------------------------------------------------
+  if (name == "_alignof") return Intrinsic::Alignof;
+  if (name == "_aligned_malloc") return Intrinsic::AlignedMalloc;
+  if (name == "_assert_c_layout") return Intrinsic::AssertCLayout;
+  if (name == "_assert_c_target") return Intrinsic::AssertCTarget;
   if (name == "_sizeof") return Intrinsic::Sizeof;
   if (name == "_init") return Intrinsic::Init;
   if (name == "_load") return Intrinsic::Load;
@@ -287,6 +296,9 @@ inline Intrinsic getIntrinsic(const std::string& name) {
  */
 inline bool isGenericIntrinsic(Intrinsic i) {
   switch (i) {
+    case Intrinsic::Alignof:
+    case Intrinsic::AlignedMalloc:
+    case Intrinsic::AssertCLayout:
     case Intrinsic::Sizeof:
     case Intrinsic::Init:
     case Intrinsic::Load:
@@ -340,6 +352,7 @@ inline bool requiresUnsafeBlock(Intrinsic i) {
     case Intrinsic::Memset:
     case Intrinsic::PtrOffset:
     // Untracked heap memory
+    case Intrinsic::AlignedMalloc:
     case Intrinsic::Malloc:
     case Intrinsic::Free:
     // Cross-thread reads and writes the borrow checker cannot see

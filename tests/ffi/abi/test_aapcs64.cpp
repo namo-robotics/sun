@@ -771,3 +771,16 @@ TEST(Ffi_Abi_StaticLink, cross_musl_stdlib_binary_runs_under_qemu) {
   int rc = std::system(("qemu-aarch64 " + binary + " >/dev/null 2>&1").c_str());
   EXPECT_EQ(WEXITSTATUS(rc), 42);
 }
+
+/** Tail padding disqualifies an otherwise homogeneous float aggregate. */
+TEST_F(Ffi_Abi_Aapcs64, over_aligned_float_with_padding_is_indirect) {
+  auto* marker = llvm::ArrayType::get(llvm::FixedVectorType::get(i8(), 64), 0);
+  auto* type = structOf({f32(), marker});
+  EXPECT_EQ(dl.getTypeAllocSize(type), 64u);
+  auto argument = sun::codegen::abi::aapcs64::lowerArgument(type, dl);
+  auto result = sun::codegen::abi::aapcs64::lowerReturn(type, dl);
+  EXPECT_TRUE(argument.isIndirect());
+  EXPECT_TRUE(result.isIndirect());
+  EXPECT_EQ(argument.align, 64u);
+  EXPECT_EQ(result.align, 64u);
+}

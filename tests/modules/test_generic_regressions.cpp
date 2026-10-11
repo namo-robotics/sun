@@ -300,9 +300,8 @@ function main() i32 {
 }
 manifest { libraries: ["lib.moon"] }
 )");
-  ASSERT_TRUE(
-      run("build/sun " + (dir / "invalid.sun").string(), false,
-          "Unknown member '__add__' on class 'Msg'"));
+  ASSERT_TRUE(run("build/sun " + (dir / "invalid.sun").string(), false,
+                  "Unknown member '__add__' on class 'Msg'"));
 }
 
 TEST_F(Modules_GenericRegressions, ModuleGlobals) {

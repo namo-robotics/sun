@@ -70,6 +70,18 @@ class IntrinsicsGenerator {
    * Generic intrinsics codegen (in intrinsics/generic.cpp)
    */
   llvm::Value* codegenSizeofIntrinsic(TypePtr typeArg);
+  /** Returns the target alignment of a storage type. */
+  llvm::Value* codegenAlignofIntrinsic(TypePtr typeArg);
+  /** Allocates byte storage satisfying the type alignment, freed by free. */
+  llvm::Value* codegenAlignedMallocIntrinsic(
+      const sun::ast::GenericCallAST& expr);
+  /** Allocates suitably aligned bytes for compiler-owned thread storage. */
+  llvm::Value* allocateAlignedBytes(llvm::Value* bytes, uint64_t alignment);
+  /** Checks literal C layout requirements without emitting runtime code. */
+  llvm::Value* codegenAssertCLayoutIntrinsic(
+      const sun::ast::GenericCallAST& expr);
+  /** Rejects bindings generated for a different normalized target triple. */
+  llvm::Value* codegenAssertCTargetIntrinsic(const sun::ast::CallExprAST& expr);
   /** Emits LLVM code that constructs a value in supplied storage. */
   llvm::Value* codegenInitIntrinsic(
       TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args,
@@ -136,7 +148,8 @@ class IntrinsicsGenerator {
   llvm::Value* codegenBswapIntrinsic(const CallExprAST& expr,
                                      unsigned bitWidth);
 
-  /** Emit the process-lifetime signal state or its async-signal-safe C handler. */
+  /** Emit the process-lifetime signal state or its async-signal-safe C handler.
+   */
   llvm::Value* codegenSignalIntrinsic(const CallExprAST& expr, bool handler);
 
   /**

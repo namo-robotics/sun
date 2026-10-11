@@ -89,6 +89,7 @@ public module std.test {
     }
     return std.test.AssertionResult.Error(AssertionError(`assertion failed: expected ${expected}, got ${actual}`));
   }
+
   /**
    * Compare two strings by content.
    */

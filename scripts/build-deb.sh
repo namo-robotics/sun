@@ -34,7 +34,7 @@ check_dependencies() {
     
     if [ ${#missing[@]} -ne 0 ]; then
         error "Missing dependencies: ${missing[*]}"
-        log "Install with: sudo apt-get install -y devscripts debhelper build-essential cmake llvm-20-dev libzstd-dev nvidia-cuda-toolkit"
+        log "Install with: sudo apt-get install -y devscripts debhelper build-essential cmake llvm-20-dev libclang-20-dev libzstd-dev nvidia-cuda-toolkit"
         exit 1
     fi
 }

@@ -78,6 +78,7 @@ class ClassDefinitionAST : public ExprAST {
   std::vector<ClassFieldDecl> fields;
   std::vector<ClassMethodDecl> methods;
   std::set<std::string> compiledSpecializations_;
+  uint64_t alignment_ = 0;  // Zero means natural alignment.
   bool isPartial_ = false;  // True for "partial class X {}" (methods only)
   bool isPacked_ = false;   // True for "packed class X {}" (no field padding)
   std::string doc_;         // Comment written above the class
@@ -277,6 +278,12 @@ class ClassDefinitionAST : public ExprAST {
   /**
    * Packed class support: "packed class X {}" lays fields out with no padding
    */
+  /** Returns the explicit minimum byte alignment, or zero for natural layout.
+   */
+  uint64_t getAlignment() const { return alignment_; }
+  /** Sets the minimum alignment before the class layout is materialized. */
+  void setAlignment(uint64_t alignment) { alignment_ = alignment; }
+
   bool isPacked() const { return isPacked_; }
   /** Controls whether the class uses a packed memory layout. */
   void setIsPacked(bool v) { isPacked_ = v; }

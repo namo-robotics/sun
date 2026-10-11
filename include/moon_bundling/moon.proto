@@ -46,6 +46,8 @@ message DeclarationRecord {
 message ModuleMetadata {
   repeated string module_declarations = 17;
   repeated DeclarationRecord declarations = 18;
+  // Compile-only C binding requirements, rechecked in every importing target.
+  repeated sun.proto.ast.ASTNode c_binding_assertions = 20;
   reserved 16;  // Former module binding table; references now carry canonical names.
   // Source identification
   string source_hash = 1;     // Unique key for this declaration entry

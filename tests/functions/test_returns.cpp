@@ -39,7 +39,8 @@ void expectMissingReturnValue(const std::string& source,
     analyzeReturns(source);
     FAIL() << "Expected semantic analysis to reject a bare return";
   } catch (const sun::support::SunError& error) {
-    EXPECT_EQ(error.getMessage(), "Return requires a value of type '" + type + "'");
+    EXPECT_EQ(error.getMessage(),
+              "Return requires a value of type '" + type + "'");
     ASSERT_TRUE(error.getLocation().has_value());
     EXPECT_EQ(error.getLocation()->line, line);
     EXPECT_EQ(error.getLocation()->column, column);
@@ -49,17 +50,16 @@ void expectMissingReturnValue(const std::string& source,
 
 /** Direct and nested returns must supply the declared Boolean result. */
 TEST(Functions_Returns, RejectBareReturnsInControlFlow) {
-  for (const std::string body : {
-           "return;",
-           "if (condition) { if (condition) { return; } } return true;",
-           "if (condition) { return true; } else { return; }",
-           "while (condition) { return; } return true;",
-           "unsafe { return; };",
-           "if (condition) { unsafe { return; }; } return true;"}) {
+  for (const std::string body :
+       {"return;", "if (condition) { if (condition) { return; } } return true;",
+        "if (condition) { return true; } else { return; }",
+        "while (condition) { return; } return true;", "unsafe { return; };",
+        "if (condition) { unsafe { return; }; } return true;"}) {
     SCOPED_TRACE(body);
     expectMissingReturnValue(
         "/** Exercise a reachable bare return. */\n"
-        "function invalid(condition: bool) bool {\n  " + body + "\n}",
+        "function invalid(condition: bool) bool {\n  " +
+            body + "\n}",
         "bool");
   }
 }
@@ -69,7 +69,8 @@ TEST(Functions_Returns, RejectBareIntegerReturn) {
   expectMissingReturnValue(R"(
     /** Must provide an integer. */
     function invalid() i32 { return; }
-  )", "i32");
+  )",
+                           "i32");
 }
 
 /** Method bodies use the enclosing method's return type. */
@@ -80,7 +81,8 @@ TEST(Functions_Returns, RejectBareMethodReturn) {
       /** Must provide a Boolean. */
       method invalid() bool { return; }
     }
-  )", "bool");
+  )",
+                           "bool");
 }
 
 /** Generic bodies must supply a value of their declared type parameter. */
@@ -90,7 +92,8 @@ TEST(Functions_Returns, RejectBareGenericReturn) {
     function invalid<T>(value: T) T { return; }
     /** Instantiate the invalid body. */
     function main() i32 { return invalid(1); }
-  )", "T");
+  )",
+                           "T");
 }
 
 /** A nested lambda checks its own result rather than the outer function's. */
@@ -101,7 +104,8 @@ TEST(Functions_Returns, RejectBareLambdaReturn) {
       /** Must provide a Boolean. */
       var invalid = []() => bool { return; };
     }
-  )", "bool");
+  )",
+                           "bool");
 }
 
 /** Void returns remain valid, including inside a value-returning function. */

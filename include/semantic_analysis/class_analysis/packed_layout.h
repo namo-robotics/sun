@@ -102,6 +102,11 @@ inline std::string rejectFieldType(const sun::types::TypePtr& fieldType) {
            "owned elsewhere and cannot be packed; use a sized array<T, N> or "
            "raw_ptr<T> instead.";
   }
+  if (fieldType->isArray()) {
+    return rejectFieldType(
+        static_cast<const sun::types::ArrayType*>(fieldType.get())
+            ->getElementType());
+  }
   if (fieldType->isInterface()) {
     return "has interface type. Interface values are fat pointers and cannot "
            "be packed.";

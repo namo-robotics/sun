@@ -160,6 +160,13 @@ void CallAnalyzer::analyzeCall(CallExprAST& callExpr, TypePtr expectedType) {
     const auto& varRef =
         static_cast<const VariableReferenceAST&>(*callExpr.getCallee());
     checkRequiresUnsafeBlock(varRef.getName(), callExpr.getLocation());
+    if (varRef.getName() == "_assert_c_target") {
+      if (!ctx_.isAtModuleLevel() || callExpr.getArgs().size() != 1 ||
+          callExpr.getArgs()[0]->getType() != ASTNodeType::STRING_LITERAL)
+        logAndThrowError(
+            "_assert_c_target requires one string literal at module scope",
+            callExpr.getLocation());
+    }
     const bool userDefined =
         ctx_.currentScope().lookupVariable(varRef.getName()) ||
         !ctx_.currentScope().getAllFunctions(varRef.getName()).empty() ||

@@ -73,6 +73,23 @@ void stringsValue(const llvm::json::Value& value) {
   for (const auto& item : *array) stringValue(item);
 }
 
+/** Checks the declarations and compiler options for a generated C module. */
+void cBindingValue(const llvm::json::Value& value) {
+  const auto& obj = object(value);
+  keys(obj, {"header", "output", "allow", "clang_args"});
+  if (!obj.get("header") || !obj.get("output") || !obj.get("allow"))
+    invalid("c_bindings entries require header, output and allow");
+  stringValue(*obj.get("header"));
+  stringValue(*obj.get("output"));
+  if (std::filesystem::path(obj.getString("output")->str()).extension() !=
+      ".sun")
+    invalid("c_bindings output must name a .sun file");
+  stringsValue(*obj.get("allow"));
+  if (obj.getArray("allow")->empty())
+    invalid("c_bindings allow must not be empty");
+  if (auto* args = obj.get("clang_args")) stringsValue(*args);
+}
+
 /** Returns whether a setting uses the default/target wrapper. */
 bool wrapped(const llvm::json::Value& value) {
   auto* obj = value.getAsObject();
@@ -274,7 +291,7 @@ bool containsWrapper(const llvm::json::Value& value) {
 SunConfig parse(const Object& root, const std::filesystem::path& file,
                 const std::string& target) {
   keys(root, {"root", "sun_path", "path_variables", "entrypoints", "packages",
-              "dependencies", "target"});
+              "dependencies", "target", "c_bindings"});
   SunConfig config;
   config.configDir = std::filesystem::weakly_canonical(
       std::filesystem::absolute(file).parent_path());
@@ -286,6 +303,35 @@ SunConfig parse(const Object& root, const std::filesystem::path& file,
     for (const auto& path : *select(*value, target, stringsValue)->getAsArray())
       config.sunPath.push_back(
           anchor(path.getAsString()->str(), config.configDir));
+  if (auto* bindings = root.get("c_bindings")) {
+    for (const auto& [name, value] : object(*bindings)) {
+      const std::string module = name.str();
+      if (module.empty() ||
+          (!std::isalpha(static_cast<unsigned char>(module[0])) &&
+           module[0] != '_') ||
+          !std::all_of(module.begin(), module.end(), [](unsigned char c) {
+            return std::isalnum(c) || c == '_';
+          }))
+        invalid("c_bindings keys must be Sun module identifiers");
+      ConfigCBinding binding;
+      binding.baseDir = config.configDir.string();
+      const auto* selected = select(value, target, cBindingValue, false);
+      binding.enabled = selected != nullptr;
+      if (selected) {
+        const auto& obj = object(*selected);
+        binding.header =
+            anchor(obj.getString("header")->str(), config.configDir);
+        binding.output =
+            anchor(obj.getString("output")->str(), config.configDir);
+        for (const auto& name : *obj.getArray("allow"))
+          binding.allow.push_back(name.getAsString()->str());
+        if (const auto* args = obj.getArray("clang_args"))
+          for (const auto& arg : *args)
+            binding.clangArgs.push_back(arg.getAsString()->str());
+      }
+      config.cBindings.emplace(module, std::move(binding));
+    }
+  }
   if (auto* vars = root.get("path_variables"))
     for (const auto& [key, value] : object(*vars))
       config.pathVariables[key.str()] =
@@ -405,6 +451,8 @@ std::optional<SunConfig> SunConfig::findFrom(
           merged->pathVariables.emplace(name, value);
         for (const auto& [name, value] : config.dependencies)
           merged->dependencies.emplace(name, value);
+        for (const auto& [name, value] : config.cBindings)
+          merged->cBindings.emplace(name, value);
         merged->sunPath.insert(merged->sunPath.end(), config.sunPath.begin(),
                                config.sunPath.end());
         merged->entrypoints.insert(merged->entrypoints.end(),

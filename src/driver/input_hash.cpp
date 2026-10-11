@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <map>
 
+#include "driver/c_bindings.h"
 #include "generated/sun_version.h"
 #include "moon_bundling/moon.h"
 #include "moon_bundling/proto_importer.h"
@@ -108,6 +109,7 @@ void addSourceDigests(BuildInputs& inputs,
                       const std::vector<std::string>& sourceFiles,
                       const std::vector<std::string>& protoFiles,
                       const std::string& baseDir) {
+  generateCBindings(baseDir, inputs.targetTriple);
   for (const auto& path : sourceFiles) {
     inputs.sourceDigests.push_back(computeFileDigest(path, "source"));
   }

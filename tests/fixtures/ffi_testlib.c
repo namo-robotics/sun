@@ -5,7 +5,8 @@
 // against libc alone would pass even if -l/-L did nothing, because libc is
 // already resident in the process.
 
-/** Triples a value through a symbol provided only by the shared test library. */
+/** Triples a value through a symbol provided only by the shared test library.
+ */
 int sun_ffi_triple(int x) { return x * 3; }
 
 /** Adds two wide integers through a native-library call. */
@@ -33,7 +34,8 @@ void sun_ffi_store_callback(SunFfiCallback callback) {
   sun_ffi_stored_callback = callback;
 }
 
-/** Invokes the retained callback, or returns a failure marker when none is stored. */
+/** Invokes the retained callback, or returns a failure marker when none is
+ * stored. */
 int sun_ffi_call_stored_callback(int value) {
   return sun_ffi_stored_callback ? sun_ffi_stored_callback(value) : -1;
 }
@@ -61,7 +63,8 @@ struct SunFfiMixed {
   int a;
   double b;
 };  // 16B -> INTEGER + SSE
-/** An aggregate large enough to exercise indirect argument and result passing. */
+/** An aggregate large enough to exercise indirect argument and result passing.
+ */
 struct SunFfiBig {
   int a, b, c, d, e;
 };  // 20B -> MEMORY (byval/sret)
@@ -90,4 +93,40 @@ struct SunFfiBig sun_ffi_make_big(int base) {
 /** Combines a by-value structure with the following scalar argument. */
 int sun_ffi_pair_then_int(struct SunFfiPair p, int extra) {
   return p.a + p.b + extra;
+}
+
+#include <stddef.h>
+#include <stdint.h>
+
+#include "ffi_alignment.h"
+
+struct SunFfiAligned sun_ffi_aligned_make(int value) {
+  struct SunFfiAligned result = {value};
+  return result;
+}
+
+int sun_ffi_aligned_take(struct SunFfiAligned value) { return value.value; }
+
+int sun_ffi_aligned_address(struct SunFfiAligned* value) {
+  return (uintptr_t)value % _Alignof(struct SunFfiAligned) == 0;
+}
+
+long long sun_ffi_aligned_layout(int index) {
+  const long long values[] = {sizeof(struct SunFfiReading),
+                              _Alignof(struct SunFfiReading),
+                              offsetof(struct SunFfiReading, value),
+                              sizeof(struct SunFfiAligned),
+                              _Alignof(struct SunFfiAligned),
+                              sizeof(struct SunFfiAlignedOuter),
+                              _Alignof(struct SunFfiAlignedOuter),
+                              offsetof(struct SunFfiAlignedOuter, items),
+                              offsetof(struct SunFfiAlignedOuter, suffix)};
+  return index >= 0 && index < (int)(sizeof(values) / sizeof(values[0]))
+             ? values[index]
+             : -1;
+}
+
+/** Reports whether compiler-managed storage meets a requested alignment. */
+long long sun_test_alignment_remainder(void* pointer, long long alignment) {
+  return pointer ? (long long)((uintptr_t)pointer % alignment) : -1;
 }

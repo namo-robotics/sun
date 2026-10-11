@@ -1548,3 +1548,16 @@ TEST(Tooling_Serialization, InterfaceParentRoundtrip) {
   EXPECT_EQ(definition.getParent()->lifetimeArguments,
             std::vector<std::string>{"b"});
 }
+
+/** Retains explicit alignment through AST cloning and protobuf round trips. */
+TEST(Tooling_Serialization, ClassAlignmentRoundtrip) {
+  auto block = parseCode("class Aligned<T> { alignment: 64 var value: T; }");
+  auto copy = block->getBody()[0]->clone();
+  const auto& cls = static_cast<const ClassDefinitionAST&>(*copy);
+  EXPECT_EQ(cls.getAlignment(), 64u);
+  ASTSerializer serializer;
+  ASTDeserializer deserializer;
+  auto restored = deserializer.deserialize(serializer.serialize(cls));
+  EXPECT_EQ(static_cast<const ClassDefinitionAST&>(*restored).getAlignment(),
+            64u);
+}

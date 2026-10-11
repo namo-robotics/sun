@@ -16,7 +16,7 @@ RUN apt-get update --error-on=any && apt-get install -y --no-install-recommends 
     build-essential cmake ninja-build git python3 python3-pip \
     # LLVM 20 full development suite (native since 25.10)
     clang-20 lldb-20 lld-20 \
-    llvm-20 llvm-20-dev llvm-20-tools \
+    llvm-20 llvm-20-dev llvm-20-tools libclang-20-dev \
     libllvm-20-ocaml-dev \
     clangd-20 clang-format-20 clang-tidy-20 clang-tools-20 \
     # NVIDIA CUDA compiler, headers, and libraries; GPU drivers belong on the host.

@@ -249,6 +249,7 @@ public module std {
       init(value: String) {
         this.value = value;
       }
+
       /** Records fixture destruction so tests can verify ownership and cleanup. */
       deinit() {
         removal_drops = removal_drops + 1;

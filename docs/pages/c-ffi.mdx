@@ -96,9 +96,10 @@ Only the Sun-side name (`c_strlen`) comes into scope; the C name does not.
 | `struct T` (returned) | `T` |
 | `void` | `void` |
 
-Class layout matches C: fields in declaration order with the platform's natural
-padding. A Sun class and the C struct it mirrors have identical layout, so no
-annotation is needed to keep them in sync.
+Ordinary class layout follows C's declaration order and natural padding.
+Matching the C field types is still the binding author's responsibility.
+An explicitly aligned C record can require class `alignment: N` metadata;
+packing and member-specific alignment need separate consideration.
 
 Types with no C spelling — arrays and slices (fat pointers), interfaces (vtable
 pairs), lambdas (closures) — are rejected at the declaration rather than
@@ -430,8 +431,155 @@ carried archives just as the linker would, so a program that works under
 - The borrow checker does not model a pointer escaping into C. Handing C a `ref`
   gives it an address with no lifetime tracking across the call — the `unsafe`
   block is the only marker.
-- There is no automatic binding generation from C headers; structs, enums and
-  signatures are declared by hand.
-- There is no `extern` declaration for a C *global*, only for functions. That
-  is why the standard library has no way to enumerate the environment, which
-  would need `environ`.
+- The `sun bindgen` command supports a limited subset of C headers, as
+  described below. Other declarations still require handwritten bindings.
+
+## Optional header binding generation
+
+The standard library lists target-specific macOS process bindings in its
+manifest through `$SUN_DARWIN_PROCESS_BINDINGS`, selected in `sun-config.json`.
+To regenerate on macOS with the generator dependencies installed:
+
+```bash
+for arch in arm64 x86_64; do
+  sun bindgen stdlib/bindings/process_darwin.h \
+    --target "$arch-apple-darwin" --module darwin_process_abi \
+    --allow proc_bsdinfo --allow proc_taskinfo \
+    --output "stdlib/bindings/process_darwin_$arch.sun" \
+    -- -isysroot "$(xcrun --sdk macosx --show-sdk-path)"
+  sun fmt "stdlib/bindings/process_darwin_$arch.sun"
+done
+```
+
+Each file retains its target and layout assertions. macOS CI regenerates both
+files from the SDK and checks for differences. Ordinary builds use the
+checked-in files without SDK header generation.
+
+Generate bindings as ordinary `.sun` files, inspect or check them into source
+control, and list them explicitly in your manifest. You can run `sun bindgen`
+yourself or configure Sun to run it before compilation:
+
+```json filename="sun-config.json"
+{
+  "root": true,
+  "c_bindings": {
+    "sensor": {
+      "header": "include/sensor.h",
+      "output": "bindings/sensor.sun",
+      "allow": ["Reading", "read_sensor"],
+      "clang_args": ["-Iinclude"]
+    }
+  }
+}
+```
+
+```sun
+manifest {
+    source_files: ["bindings/sensor.sun"]
+}
+```
+
+The key `sensor` names the generated module. Use its declarations as
+`sensor.Reading` and `sensor.read_sensor`. Generation does not import the module:
+only files listed in the manifest are compiled. Run `sun main.sun`,
+`sun -c main.sun`, or `sun test main.sun` as usual. Object and `.moon` builds
+use the same workflow. Native libraries still need to be linked.
+
+`output` is required and must name a `.sun` file. Output and header paths, and
+relative Clang include paths, resolve from the config file; manifest paths
+resolve from the Sun source file. Headers, outputs, and Clang arguments support
+configured path variables. Parent directories are created as needed. Successful
+generation replaces changed files atomically and leaves unchanged files alone;
+failed generation preserves the previous output and stops the build.
+
+Configs are inherited from parent folders; the nearest definition of a module
+wins. Each binding can use the existing `default`/`target` wrapper to select
+headers, output files, and SDK options. Without a default or matching target,
+that binding is inactive. Sun's `--target` option or the host determines the
+generation target. Use separate outputs for different targets and select the
+appropriate files in the manifest.
+
+Configured generation runs before manifest files are read and before build
+cache checks. Changes to generated declarations therefore trigger recompilation.
+To compile checked-in bindings without regenerating them, omit `c_bindings` and
+keep their manifest entries. That workflow does not parse C headers.
+
+The built-in `sun bindgen` command is implemented in C++ and uses the compiler's
+linked libclang 20. It needs no Python interpreter or Python packages. Compiler
+builds require the libclang development headers and library (`libclang-20-dev`
+on Ubuntu, included with `llvm@20` on macOS).
+
+The command writes ordinary Sun source; `--output -` prints it to standard
+output. `SUN_TEST_BINDGEN=ON` enables integration tests in CMake; Python is used
+only to run those tests, with no extra packages.
+
+```bash
+sun bindgen \
+    tests/fixtures/ffi_alignment.h \
+    --target x86_64-unknown-linux-gnu --module native \
+    --allow SunFfiReading --allow SunFfiAligned \
+    --allow sun_ffi_aligned_make --allow sun_ffi_aligned_take \
+    --output tmp/native.sun
+sun --target x86_64-unknown-linux-gnu --emit-obj \
+    -o tmp/native.o tmp/native.sun
+```
+
+Repeat `--allow` for each desired C declaration. Dependencies are included;
+unrelated declarations are ignored. Pass target SDK options after `--`, for
+example `-- -isysroot /path/to/MacOSX.sdk -I/path/to/vendor/include` when using
+an Apple target. Supply headers and preprocessor flags for the library and SDK
+you actually link against. Regenerate separately for each target or SDK change.
+
+Supported declarations are named structs, ordinary C functions, scalar types,
+raw pointers, fixed arrays, nested records, and typedefs resolved to their
+underlying types. Increased record alignment generates `alignment: N` metadata.
+C pointer `const` does not create a checked foreign contract in Sun; calls
+remain unsafe. C typedef spellings are resolved at use sites, not emitted as
+Sun aliases. Reserved names are prefixed with `c_`; collisions are errors.
+
+Unions, bitfields, incomplete or anonymous records, packing, member alignment,
+callbacks, variadic functions, inline definitions, C++ and unsupported scalar
+types are rejected with header locations. This tool does not generate macros,
+enum declarations, or native globals. Existing handwritten callback and global
+declarations remain available.
+
+Generated files contain compile-only requirements:
+
+```sun
+_assert_c_target("x86_64-unknown-linux-gnu");
+_assert_c_layout<SunFfiReading>(8, 4, 0, 4);
+```
+
+These calls must appear at module scope. The target must match after LLVM
+triple normalization. For macOS, Darwin/macOS version suffixes and equivalent
+architecture spellings are ignored; architecture, vendor, and environment must
+still match. This does not guarantee API availability on older OS releases.
+Layout arguments are nonnegative integer literals:
+size, alignment, then one byte offset per field in declaration order. Sun
+checks its actual target layout, including unused records, and reports expected
+and actual values on mismatch. Assertions survive `.moon` bundling and emit no
+runtime instructions. Bundles must be rebuilt for the updated format so older
+compilers cannot silently ignore required alignment metadata.
+
+Compiling generated bindings does not read C headers. The checks
+verify the recorded header contract; they cannot prove that the linked library
+binary matches those headers or that C respects pointer lifetimes.
+
+For handwritten bindings, use ordinary fields and explicit reserved bytes when
+an external interface requires gaps between fields:
+
+```sun
+/** Describes registers separated by reserved bytes. */
+class Registers {
+    var status: u32;
+    var reserved: array<u8, 12>;
+    var control: u32;
+}
+
+_assert_c_layout<Registers>(20, 4, 0, 4, 16);
+```
+
+Here `control` starts at byte 16. The assertion checks the total size, alignment,
+and field offsets; it does not change them. Use `alignment: N` only when a class
+needs stronger alignment. Hardware register access also requires appropriate
+volatile operations; this declaration describes only the memory layout.

@@ -71,9 +71,9 @@ const std::string& getCompilerDigest();
 std::string computeFileDigest(const std::string& path, const char* what);
 
 /**
- * Add the digest of each source file, and of the Sun source generated from
- * each proto schema, to `inputs`. `baseDir` is the folder proto paths are
- * relative to. Throws SunError when a file cannot be read.
+ * Generate configured C binding files, then hash source files and generated
+ * protobuf modules. C bindings contribute only when listed as source files.
+ * Throws SunError when an input cannot be read or generated.
  */
 void addSourceDigests(BuildInputs& inputs,
                       const std::vector<std::string>& sourceFiles,

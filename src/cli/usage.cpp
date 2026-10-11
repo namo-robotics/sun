@@ -13,6 +13,10 @@ namespace {
 
 // Everything in the help text below its first line, which names the program.
 const char* const kUsageBody =
+    "Commands:\n"
+    "  bindgen          Generate Sun bindings from C headers (see sun bindgen "
+    "--help)\n"
+    "\n"
     "Options:\n"
     "  -c, --compile     Compile to executable (default: JIT execute)\n"
     "  -o <file>         Output executable name (default: a.out or based on "

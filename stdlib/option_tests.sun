@@ -139,6 +139,7 @@ public module std {
       init(v: i32) {
         this.n = v;
       }
+
       /** Returns the payload used to check interface or generic method dispatch. */
       method get() i32 {
         return this.n;

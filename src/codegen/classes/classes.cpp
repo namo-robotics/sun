@@ -1054,6 +1054,12 @@ Value* ClassGenerator::codegen(const sun::ast::GenericCallAST& expr) {
 
   // Handle generic intrinsics via switch
   switch (sun::codegen::intrinsics::getIntrinsic(funcName)) {
+    case Intrinsic::Alignof:
+      return intrinsics().codegenAlignofIntrinsic(getFirstTypeArg());
+    case Intrinsic::AlignedMalloc:
+      return intrinsics().codegenAlignedMallocIntrinsic(expr);
+    case Intrinsic::AssertCLayout:
+      return intrinsics().codegenAssertCLayoutIntrinsic(expr);
     case Intrinsic::Sizeof:
       return intrinsics().codegenSizeofIntrinsic(getFirstTypeArg());
     case Intrinsic::Init:

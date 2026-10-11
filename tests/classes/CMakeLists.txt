@@ -1,4 +1,5 @@
 target_sources(sun_tests PRIVATE
+    test_alignment.cpp
     test_classes.cpp
     test_const_methods.cpp
     test_packed.cpp

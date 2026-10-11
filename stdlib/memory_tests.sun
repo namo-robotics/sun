@@ -13,6 +13,7 @@ public module std {
       init(id: i32) {
         this.id = id;
       }
+
       /** Records fixture destruction so tests can verify ownership and cleanup. */
       deinit() {
         drops = drops + 1;

@@ -22,6 +22,7 @@ public module std {
       init(id: i32) {
         this.id = id;
       }
+
       /** Records fixture destruction so tests can verify ownership and cleanup. */
       deinit() {
         if (this.id != 0) {
@@ -39,6 +40,7 @@ public module std {
       init(id: i32) {
         this.id = id;
       }
+
       /** Records fixture destruction so tests can verify ownership and cleanup. */
       deinit() {
         if (this.id != 0) {

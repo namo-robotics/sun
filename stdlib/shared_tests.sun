@@ -33,6 +33,7 @@ public module std {
       init(v: i32) {
         this.v = v;
       }
+
       /** Records fixture destruction so tests can verify ownership and cleanup. */
       deinit() {
         drop_count = drop_count + 1;
@@ -59,10 +60,12 @@ public module std {
     class Boom implements IError {
       /** Creates an empty fixture value for this example or regression test. */
       init() {}
+
       /** Returns the error category used by the test fixture. */
       const method code() i32 {
         return 1;
       }
+
       /** Returns an owned explanation of the fixture's error. */
       const method message() String {
         return String("boom");
