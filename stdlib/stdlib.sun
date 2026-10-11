@@ -54,6 +54,7 @@ manifest {
     "interpolation_tests.sun",
     "io_tests.sun",
     "stream_tests.sun",
+    "line_reader_tests.sun",
     "event_loop_tests.sun",
     "json_tests.sun",
     "linked_list_tests.sun",

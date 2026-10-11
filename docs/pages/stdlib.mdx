@@ -584,6 +584,41 @@ x86-64 and aarch64, and the stdlib is compiled from one source for both, so the
 questions people actually ask are answered with `access`, `opendir` and `lseek`
 instead.
 
+### Bounded file lines
+
+`LineReader(alloc, file, max_line_length, buffer_size)` borrows an open `File`
+and returns `SystemResult<LineReader>`. The maximum is measured in bytes,
+excluding LF. A zero maximum allows empty lines; negative limits and nonpositive
+buffer sizes are rejected. Do not close, seek, or read the file separately while
+the reader is in use.
+
+```sun
+var file = File();
+try file.open("recording.jsonl", FileMode.Read);
+var reader = try LineReader(alloc, file, 65536, 4096);
+match reader.next() {
+    LineReadResult.Complete => println(reader.line()),
+    LineReadResult.Incomplete => println("unterminated final record"),
+    LineReadResult.TooLong => println("record exceeds the byte limit"),
+    LineReadResult.Eof => {},
+    LineReadResult.WouldBlock => {},
+    LineReadResult.Error(e) => println(e.message())
+};
+```
+
+Call `next()` for each record. `line()` borrows the bytes until the next call;
+clone the string explicitly to retain it. LF is removed, while CR and other bytes
+are preserved. `Incomplete` reports nonempty final data without LF separately
+from `Eof`. `TooLong` takes precedence for an overlong final record, retains only
+the bounded prefix, and drains through LF or EOF so the following call can
+continue with the next record. EOF remains EOF on subsequent calls.
+
+The reader retries interrupted reads and accumulates short reads. `WouldBlock`
+and `Error` preserve partial data for a later retry, including progress while
+skipping an overlong line. Storage consists of the fixed read buffer and a string
+that grows on demand up to the line limit (with spare capacity) and is reused;
+it does not grow with the total file size.
+
 ### Reading a directory
 
 `read_dir` returns the entries with their kind attached, taken from the
